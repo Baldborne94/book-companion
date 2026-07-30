@@ -11,7 +11,6 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",
     "epubjs": "^0.3.93",
-    "html-to-image": "^1.11.13",
     "jszip": "^3.10.1",
     "pdfjs-dist": "^5.7.284",
     "react": "^18.3.1",
