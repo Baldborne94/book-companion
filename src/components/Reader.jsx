@@ -1,0 +1,845 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { C, FONT_TITLE } from "../data/constants.js";
+import { getFile, getAux, putAux } from "../lib/bookStore.js";
+import {
+  getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights,
+} from "../lib/annotations.js";
+import { getProgress, setProgress, setStatus } from "../lib/library.js";
+import {
+  READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
+} from "../lib/readerSettings.js";
+import { searchBook } from "../lib/epubSearch.js";
+
+const isTouch = () => navigator.maxTouchPoints > 0;
+const GOOGLE_FONT_CSS =
+  "@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap');";
+
+function flattenToc(items, depth = 0, out = []) {
+  for (const it of items || []) {
+    out.push({ href: it.href, label: (it.label || "").trim() || "…", depth });
+    if (it.subitems?.length) flattenToc(it.subitems, depth + 1, out);
+  }
+  return out;
+}
+
+function contentStyles(s) {
+  const t = READER_THEMES[s.theme];
+  const font = READER_FONTS.find((f) => f.id === s.font)?.css;
+  const textSel =
+    "p, div, span, li, td, th, dd, dt, blockquote, cite, em, strong, i, b, small, figcaption";
+  const rules = {
+    html: { background: `${t.bg} !important` },
+    body: {
+      background: `${t.bg} !important`,
+      color: `${t.fg} !important`,
+      "line-height": `${s.lineHeight} !important`,
+    },
+    [textSel]: {
+      color: `${t.fg} !important`,
+      "line-height": `${s.lineHeight} !important`,
+    },
+    "h1, h2, h3, h4, h5, h6": { color: `${t.fg} !important` },
+    "a, a *": { color: `${t.link} !important` },
+    img: { "max-width": "100% !important" },
+  };
+  if (font) {
+    rules.body["font-family"] = `${font} !important`;
+    rules[textSel]["font-family"] = `${font} !important`;
+    rules["h1, h2, h3, h4, h5, h6"]["font-family"] = `${font} !important`;
+  }
+  return rules;
+}
+
+const barBtn = (active) => ({
+  width: 40,
+  height: 40,
+  borderRadius: 10,
+  fontSize: 19,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: active ? C.accent : C.text,
+  background: active ? `${C.accent}1a` : "transparent",
+});
+
+function Stepper({ label, value, onDec, onInc }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+      <span style={{ fontSize: 14.5, color: C.muted }}>{label}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <button onClick={onDec} style={{ ...barBtn(false), border: `1px solid ${C.border}` }}>−</button>
+        <span style={{ minWidth: 52, textAlign: "center", fontSize: 15 }}>{value}</span>
+        <button onClick={onInc} style={{ ...barBtn(false), border: `1px solid ${C.border}` }}>＋</button>
+      </div>
+    </div>
+  );
+}
+
+function Slider({ label, min, max, step, value, onChange }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5, color: C.muted, marginBottom: 4 }}>
+        <span>{label}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        style={{ width: "100%", accentColor: C.accent }}
+      />
+    </div>
+  );
+}
+
+function Panel({ title, onClose, children }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: "absolute", inset: 0, zIndex: 30, background: "#08061188", display: "flex", alignItems: "flex-end" }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxHeight: "72%",
+          overflowY: "auto",
+          background: C.surface,
+          borderTop: `1px solid ${C.border}`,
+          borderRadius: "18px 18px 0 0",
+          padding: "16px 18px 24px",
+          animation: "bc-fade-in 0.25s ease-out",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <h3 style={{ fontFamily: FONT_TITLE, fontSize: 20, fontWeight: 600, color: C.text }}>{title}</h3>
+          <button onClick={onClose} style={barBtn(false)}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export default function Reader({ book, onClose, notify }) {
+  const viewerRef = useRef(null);
+  const epubRef = useRef(null);
+  const rendRef = useRef(null);
+  const saveTimer = useRef(null);
+  const live = useRef({ cfi: getCfi(book.id), progress: getProgress(book.id), locReady: false, settings: null });
+
+  const [settings, setSettings] = useState(() =>
+    loadReaderSettings(Math.min(window.innerWidth, window.innerHeight))
+  );
+  const [status, setStatusUi] = useState("loading");
+  const [chrome, setChrome] = useState(() => !isTouch());
+  const [panel, setPanel] = useState(null);
+  const [progress, setProgressUi] = useState(() => getProgress(book.id));
+  const [locReady, setLocReady] = useState(false);
+  const [toc, setToc] = useState([]);
+  const [marks, setMarks] = useState(() => getMarks(book.id));
+  const [hls, setHls] = useState(() => getHighlights(book.id));
+  const [selMenu, setSelMenu] = useState(null);
+  const [query, setQuery] = useState("");
+  const [searchState, setSearchState] = useState({ busy: false, results: null });
+
+  live.current.settings = settings;
+  live.current.panel = panel;
+  live.current.selMenu = selMenu;
+  const theme = READER_THEMES[settings.theme];
+
+  const flush = useCallback(() => {
+    const s = live.current;
+    if (s.cfi) setCfi(book.id, s.cfi);
+    setProgress(book.id, s.progress || 0);
+  }, [book.id]);
+
+  const handleClose = useCallback(() => {
+    clearTimeout(saveTimer.current);
+    flush();
+    if ((live.current.progress || 0) >= 0.97) setStatus(book.id, "read");
+    onClose();
+  }, [book.id, flush, onClose]);
+
+  const applyStyles = useCallback((rendition, s) => {
+    rendition.themes.default(contentStyles(s));
+    rendition.themes.fontSize(`${s.fontSize}%`);
+  }, []);
+
+  const addAnnotation = useCallback((rendition, h) => {
+    rendition.annotations.highlight(h.cfi, {}, () => setPanel("hl"), "bc-hl", {
+      fill: h.color,
+      "fill-opacity": "0.35",
+      "mix-blend-mode": "multiply",
+    });
+  }, []);
+
+  const makeRendition = useCallback(
+    (s) => {
+      const eb = epubRef.current;
+      if (!eb || !viewerRef.current) return;
+      if (rendRef.current) {
+        try { rendRef.current.destroy(); } catch { /* già distrutto */ }
+      }
+      viewerRef.current.innerHTML = "";
+      const r = eb.renderTo(viewerRef.current, {
+        width: "100%",
+        height: "100%",
+        flow: s.flow === "scrolled" ? "scrolled-doc" : "paginated",
+        spread: s.spread,
+        allowScriptedContent: false,
+      });
+      rendRef.current = r;
+      applyStyles(r, s);
+
+      r.on("relocated", (loc) => {
+        const st = live.current;
+        st.cfi = loc.start.cfi;
+        if (st.locReady) {
+          const p = eb.locations.percentageFromCfi(loc.start.cfi);
+          if (Number.isFinite(p)) {
+            st.progress = p;
+            setProgressUi(p);
+          }
+        }
+        if (loc.atEnd) setStatus(book.id, "read");
+        clearTimeout(saveTimer.current);
+        saveTimer.current = setTimeout(flush, 1500);
+      });
+
+      r.on("selected", (cfiRange, contents) => {
+        const text = contents.window.getSelection()?.toString() || "";
+        if (text.trim()) setSelMenu({ cfi: cfiRange, text });
+      });
+
+      r.on("rendered", (_section, view) => {
+        const doc = view?.contents?.document;
+        if (!doc) return;
+        if (live.current.settings.font === "garamond") {
+          try { view.contents.addStylesheetCss(GOOGLE_FONT_CSS, "bc-font"); } catch { /* offline: fallback serif */ }
+        }
+        doc.addEventListener("click", (e) => {
+          if (e.target.closest?.("a")) return;
+          const sel = view.contents.window.getSelection();
+          if (sel && sel.toString()) return;
+          setChrome((v) => !v);
+        });
+      });
+
+      r.on("keydown", (e) => {
+        if (e.key === "ArrowRight") r.next();
+        if (e.key === "ArrowLeft") r.prev();
+      });
+
+      r.display(live.current.cfi || undefined)
+        .catch(() => r.display())
+        .then(() => setStatusUi("ready"));
+
+      getHighlights(book.id).forEach((h) => addAnnotation(r, h));
+    },
+    [addAnnotation, applyStyles, book.id, flush]
+  );
+
+  useEffect(() => {
+    let dead = false;
+    (async () => {
+      try {
+        const blob = await getFile(book.id);
+        if (!blob) throw new Error("file mancante");
+        const { default: ePub } = await import("epubjs");
+        const eb = ePub(await blob.arrayBuffer());
+        epubRef.current = eb;
+        await eb.ready;
+        if (dead) return;
+        eb.loaded.navigation.then((nav) => !dead && setToc(flattenToc(nav.toc)));
+        makeRendition(live.current.settings);
+        const cached = await getAux(`loc_${book.id}`);
+        if (dead) return;
+        if (cached) eb.locations.load(cached);
+        else {
+          await eb.locations.generate(600);
+          putAux(`loc_${book.id}`, eb.locations.save());
+        }
+        if (dead) return;
+        live.current.locReady = true;
+        setLocReady(true);
+        if (live.current.cfi) {
+          const p = eb.locations.percentageFromCfi(live.current.cfi);
+          if (Number.isFinite(p)) {
+            live.current.progress = p;
+            setProgressUi(p);
+          }
+        }
+      } catch {
+        if (!dead) setStatusUi("error");
+      }
+    })();
+
+    const onVis = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        if (live.current.selMenu) setSelMenu(null);
+        else if (live.current.panel) setPanel(null);
+        else handleClose();
+      }
+      if (e.key === "ArrowRight") rendRef.current?.next();
+      if (e.key === "ArrowLeft") rendRef.current?.prev();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("beforeunload", flush);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      dead = true;
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("beforeunload", flush);
+      window.removeEventListener("keydown", onKey);
+      clearTimeout(saveTimer.current);
+      flush();
+      try { rendRef.current?.destroy(); } catch { /* già distrutto */ }
+      try { epubRef.current?.destroy(); } catch { /* già distrutto */ }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    window.dispatchEvent(new Event("resize"));
+  }, [settings.margin]);
+
+  function updateSettings(patch) {
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    saveReaderSettings(next);
+    if ("flow" in patch || "spread" in patch || "font" in patch) makeRendition(next);
+    else if (rendRef.current && ("theme" in patch || "fontSize" in patch || "lineHeight" in patch)) {
+      applyStyles(rendRef.current, next);
+    }
+  }
+
+  function addMark() {
+    if (!live.current.cfi) return;
+    const label = locReady
+      ? `Segnalibro al ${Math.round((live.current.progress || 0) * 100)}%`
+      : "Segnalibro";
+    const m = { id: crypto.randomUUID(), cfi: live.current.cfi, label, createdAt: Date.now() };
+    const next = [...marks, m];
+    setMarks(next);
+    saveMarks(book.id, next);
+    notify("Segnalibro riposto tra le pagine 📑");
+  }
+
+  function removeMark(m) {
+    const next = marks.filter((x) => x.id !== m.id);
+    setMarks(next);
+    saveMarks(book.id, next);
+  }
+
+  function applyHighlight(color) {
+    if (!selMenu) return;
+    const h = {
+      id: crypto.randomUUID(),
+      cfi: selMenu.cfi,
+      text: selMenu.text.slice(0, 400),
+      color,
+      createdAt: Date.now(),
+    };
+    addAnnotation(rendRef.current, h);
+    const next = [...hls, h];
+    setHls(next);
+    saveHighlights(book.id, next);
+    setSelMenu(null);
+  }
+
+  function removeHighlight(h) {
+    try { rendRef.current?.annotations.remove(h.cfi, "highlight"); } catch { /* vista non montata */ }
+    const next = hls.filter((x) => x.id !== h.id);
+    setHls(next);
+    saveHighlights(book.id, next);
+  }
+
+  async function runSearch() {
+    const q = query.trim();
+    if (!q || searchState.busy) return;
+    setSearchState({ busy: true, results: null });
+    const results = await searchBook(epubRef.current, q);
+    setSearchState({ busy: false, results });
+  }
+
+  function goTo(target) {
+    rendRef.current?.display(target);
+    setPanel(null);
+  }
+
+  const pct = Math.round((progress || 0) * 100);
+  const paginated = settings.flow !== "scrolled";
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 45,
+        background: theme.bg,
+        animation: "bc-fade-in 0.45s ease-out",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        ref={viewerRef}
+        style={{
+          position: "absolute",
+          inset: 0,
+          padding: `14px ${settings.margin}px`,
+          boxSizing: "border-box",
+        }}
+      />
+
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          zIndex: 5,
+          background: "#ff9a3c",
+          mixBlendMode: "multiply",
+          opacity: settings.warmth,
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          zIndex: 5,
+          background: "#000",
+          opacity: 1 - settings.brightness,
+        }}
+      />
+
+      {status === "loading" && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 20,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 10,
+            background: theme.bg,
+            color: C.muted,
+          }}
+        >
+          <span style={{ fontSize: 40, animation: "bc-flicker 3s ease-in-out infinite" }}>🕯️</span>
+          <span style={{ fontFamily: FONT_TITLE, fontSize: 18 }}>Apro il tomo…</span>
+        </div>
+      )}
+
+      {status === "error" && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 20,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 14,
+            background: theme.bg,
+            color: C.text,
+            textAlign: "center",
+            padding: 24,
+          }}
+        >
+          <span style={{ fontSize: 40 }}>📕</span>
+          <span>Questo tomo non si lascia aprire… il file potrebbe essere danneggiato.</span>
+          <button
+            onClick={handleClose}
+            style={{ padding: "10px 22px", borderRadius: 10, border: `1px solid ${C.border}`, color: C.muted }}
+          >
+            Torna alla Libreria
+          </button>
+        </div>
+      )}
+
+      {paginated && status === "ready" && (
+        <>
+          <button
+            aria-label="Pagina precedente"
+            onClick={() => rendRef.current?.prev()}
+            style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: "13%", zIndex: 10, cursor: "w-resize" }}
+          />
+          <button
+            aria-label="Pagina successiva"
+            onClick={() => rendRef.current?.next()}
+            style={{ position: "absolute", right: 0, top: "15%", bottom: "15%", width: "13%", zIndex: 10, cursor: "e-resize" }}
+          />
+        </>
+      )}
+
+      {chrome && (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 25,
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "8px 10px",
+              background: `${C.surface}f2`,
+              backdropFilter: "blur(8px)",
+              borderBottom: `1px solid ${C.border}`,
+              animation: "bc-fade-in 0.2s ease-out",
+            }}
+          >
+            <button onClick={handleClose} style={barBtn(false)} aria-label="Chiudi il libro">✕</button>
+            <span
+              style={{
+                flex: 1,
+                fontFamily: FONT_TITLE,
+                fontSize: 16.5,
+                fontWeight: 600,
+                color: C.text,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {book.title}
+            </span>
+            <button onClick={() => setPanel(panel === "search" ? null : "search")} style={barBtn(panel === "search")} aria-label="Cerca">🔍</button>
+            <button onClick={() => setPanel(panel === "toc" ? null : "toc")} style={barBtn(panel === "toc")} aria-label="Indice">☰</button>
+            <button onClick={() => setPanel(panel === "marks" ? null : "marks")} style={barBtn(panel === "marks")} aria-label="Segnalibri">📑</button>
+            <button onClick={() => setPanel(panel === "hl" ? null : "hl")} style={barBtn(panel === "hl")} aria-label="Evidenziazioni">🖍️</button>
+            <button onClick={() => setPanel(panel === "settings" ? null : "settings")} style={{ ...barBtn(panel === "settings"), fontFamily: FONT_TITLE, fontSize: 17 }} aria-label="Impostazioni">Aa</button>
+          </div>
+
+          <div
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              zIndex: 25,
+              padding: "10px 16px calc(10px + env(safe-area-inset-bottom))",
+              background: `${C.surface}f2`,
+              backdropFilter: "blur(8px)",
+              borderTop: `1px solid ${C.border}`,
+              animation: "bc-fade-in 0.2s ease-out",
+            }}
+          >
+            <input
+              type="range"
+              min={0}
+              max={1000}
+              value={Math.round((progress || 0) * 1000)}
+              disabled={!locReady}
+              onChange={(e) => {
+                if (!locReady) return;
+                const cfi = epubRef.current.locations.cfiFromPercentage(parseInt(e.target.value, 10) / 1000);
+                if (cfi) rendRef.current?.display(cfi);
+              }}
+              style={{ width: "100%", accentColor: C.accent }}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.muted, marginTop: 2 }}>
+              <span>{locReady ? `${pct}%` : "misuro le pagine…"}</span>
+              <span>{settings.flow === "scrolled" ? "scorrimento" : "pagine"}</span>
+            </div>
+          </div>
+        </>
+      )}
+
+      {selMenu && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: chrome ? 92 : 24,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 35,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "10px 14px",
+            borderRadius: 14,
+            background: `${C.card}f8`,
+            border: `1px solid ${C.border}`,
+            boxShadow: `0 8px 30px #00000088`,
+            animation: "bc-fade-in 0.2s ease-out",
+          }}
+        >
+          {HL_COLORS.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => applyHighlight(c.value)}
+              aria-label={`Evidenzia in ${c.label}`}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                background: c.value,
+                border: `2px solid ${C.bg}`,
+                boxShadow: `0 0 8px ${c.value}88`,
+              }}
+            />
+          ))}
+          <button onClick={() => setSelMenu(null)} style={{ color: C.muted, fontSize: 14, marginLeft: 4 }}>
+            Annulla
+          </button>
+        </div>
+      )}
+
+      {panel === "settings" && (
+        <Panel title="Il tuo modo di leggere" onClose={() => setPanel(null)}>
+          <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+            {Object.entries(READER_THEMES).map(([id, t]) => (
+              <button
+                key={id}
+                onClick={() => updateSettings({ theme: id })}
+                style={{
+                  flex: 1,
+                  padding: "12px 4px",
+                  borderRadius: 10,
+                  background: t.bg,
+                  color: t.fg,
+                  fontSize: 13.5,
+                  border: `2px solid ${settings.theme === id ? C.accent : C.border}`,
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <span style={{ display: "block", fontSize: 14.5, color: C.muted, marginBottom: 6 }}>Carattere</span>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {READER_FONTS.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => updateSettings({ font: f.id })}
+                  style={{
+                    padding: "7px 14px",
+                    borderRadius: 999,
+                    fontSize: 14,
+                    fontFamily: f.css || "inherit",
+                    border: `1px solid ${settings.font === f.id ? C.accent : C.border}`,
+                    color: settings.font === f.id ? C.accent : C.muted,
+                  }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Stepper
+            label="Dimensione testo"
+            value={`${settings.fontSize}%`}
+            onDec={() => updateSettings({ fontSize: Math.max(70, settings.fontSize - 10) })}
+            onInc={() => updateSettings({ fontSize: Math.min(180, settings.fontSize + 10) })}
+          />
+          <Stepper
+            label="Interlinea"
+            value={settings.lineHeight.toFixed(1)}
+            onDec={() => updateSettings({ lineHeight: Math.max(1.1, +(settings.lineHeight - 0.1).toFixed(1)) })}
+            onInc={() => updateSettings({ lineHeight: Math.min(2.2, +(settings.lineHeight + 0.1).toFixed(1)) })}
+          />
+          <Stepper
+            label="Margini"
+            value={`${settings.margin}px`}
+            onDec={() => updateSettings({ margin: Math.max(0, settings.margin - 12) })}
+            onInc={() => updateSettings({ margin: Math.min(96, settings.margin + 12) })}
+          />
+          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            <button
+              onClick={() => updateSettings({ flow: "paginated" })}
+              style={{
+                flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 14,
+                border: `1px solid ${paginated ? C.accent : C.border}`,
+                color: paginated ? C.accent : C.muted,
+              }}
+            >
+              Pagine
+            </button>
+            <button
+              onClick={() => updateSettings({ flow: "scrolled" })}
+              style={{
+                flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 14,
+                border: `1px solid ${!paginated ? C.accent : C.border}`,
+                color: !paginated ? C.accent : C.muted,
+              }}
+            >
+              Scorrimento
+            </button>
+            <button
+              onClick={() => updateSettings({ spread: settings.spread === "auto" ? "none" : "auto" })}
+              disabled={!paginated}
+              style={{
+                flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 14,
+                border: `1px solid ${C.border}`,
+                color: paginated ? C.muted : C.dim,
+              }}
+            >
+              {settings.spread === "auto" ? "Doppia: auto" : "Pagina singola"}
+            </button>
+          </div>
+          <Slider
+            label="Filtro notte caldo"
+            min={0} max={0.45} step={0.05}
+            value={settings.warmth}
+            onChange={(v) => updateSettings({ warmth: v })}
+          />
+          <Slider
+            label="Luminosità"
+            min={0.4} max={1} step={0.05}
+            value={settings.brightness}
+            onChange={(v) => updateSettings({ brightness: v })}
+          />
+        </Panel>
+      )}
+
+      {panel === "toc" && (
+        <Panel title="Indice" onClose={() => setPanel(null)}>
+          {toc.length === 0 ? (
+            <p style={{ color: C.muted }}>Questo tomo non ha un indice.</p>
+          ) : (
+            toc.map((t, i) => (
+              <button
+                key={i}
+                onClick={() => goTo(t.href)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "10px 6px",
+                  paddingLeft: 6 + t.depth * 18,
+                  fontSize: 15,
+                  color: t.depth === 0 ? C.text : C.muted,
+                  borderBottom: `1px solid ${C.border}44`,
+                }}
+              >
+                {t.label}
+              </button>
+            ))
+          )}
+        </Panel>
+      )}
+
+      {panel === "marks" && (
+        <Panel title="Segnalibri" onClose={() => setPanel(null)}>
+          <button
+            onClick={addMark}
+            style={{
+              width: "100%",
+              padding: "11px 0",
+              borderRadius: 12,
+              marginBottom: 14,
+              background: `linear-gradient(180deg, ${C.accent}, #b8893a)`,
+              color: "#241c0a",
+              fontWeight: 600,
+              fontSize: 15,
+            }}
+          >
+            📑 Salva qui
+          </button>
+          {marks.length === 0 ? (
+            <p style={{ color: C.muted }}>Nessun segnalibro ancora.</p>
+          ) : (
+            marks.map((m) => (
+              <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.border}44` }}>
+                <button
+                  onClick={() => goTo(m.cfi)}
+                  style={{ flex: 1, textAlign: "left", padding: "11px 6px", fontSize: 15, color: C.text }}
+                >
+                  {m.label}
+                  <span style={{ display: "block", fontSize: 12.5, color: C.muted }}>
+                    {new Date(m.createdAt).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </button>
+                <button onClick={() => removeMark(m)} aria-label="Elimina segnalibro" style={{ color: C.muted, padding: 8 }}>🗑</button>
+              </div>
+            ))
+          )}
+        </Panel>
+      )}
+
+      {panel === "hl" && (
+        <Panel title="Evidenziazioni" onClose={() => setPanel(null)}>
+          {hls.length === 0 ? (
+            <p style={{ color: C.muted }}>
+              Seleziona un passaggio nel testo per evidenziarlo: lo ritroverai qui.
+            </p>
+          ) : (
+            hls.map((h) => (
+              <div key={h.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 0", borderBottom: `1px solid ${C.border}44` }}>
+                <span style={{ width: 4, alignSelf: "stretch", borderRadius: 2, background: h.color, flexShrink: 0 }} />
+                <button onClick={() => goTo(h.cfi)} style={{ flex: 1, textAlign: "left", fontSize: 14.5, color: C.text, lineHeight: 1.45, fontStyle: "italic" }}>
+                  “{h.text}”
+                </button>
+                <button onClick={() => removeHighlight(h)} aria-label="Rimuovi evidenziazione" style={{ color: C.muted, padding: 6 }}>🗑</button>
+              </div>
+            ))
+          )}
+        </Panel>
+      )}
+
+      {panel === "search" && (
+        <Panel title="Cerca nel libro" onClose={() => setPanel(null)}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && runSearch()}
+              placeholder="Una parola, un nome, un incantesimo…"
+              style={{
+                flex: 1,
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: `1px solid ${C.border}`,
+                background: C.card,
+                color: C.text,
+                fontSize: 15,
+                outline: "none",
+              }}
+            />
+            <button
+              onClick={runSearch}
+              style={{ padding: "0 18px", borderRadius: 10, background: `linear-gradient(180deg, ${C.accent}, #b8893a)`, color: "#241c0a", fontWeight: 600 }}
+            >
+              {searchState.busy ? "…" : "Cerca"}
+            </button>
+          </div>
+          {searchState.busy && <p style={{ color: C.muted }}>Sfoglio le pagine…</p>}
+          {searchState.results && searchState.results.length === 0 && (
+            <p style={{ color: C.muted }}>Nessuna traccia di «{query}» in questo tomo.</p>
+          )}
+          {searchState.results?.map((r, i) => (
+            <button
+              key={i}
+              onClick={() => goTo(r.cfi)}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 6px",
+                fontSize: 14.5,
+                color: C.text,
+                lineHeight: 1.4,
+                borderBottom: `1px solid ${C.border}44`,
+              }}
+            >
+              {r.excerpt}
+            </button>
+          ))}
+        </Panel>
+      )}
+    </div>
+  );
+}

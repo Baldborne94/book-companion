@@ -44,5 +44,8 @@ export function removeBookMeta(id) {
   saveBooks(loadBooks().filter((b) => b.id !== id));
   localStorage.removeItem(`bc_prog_${id}`);
   localStorage.removeItem(`bc_status_${id}`);
+  localStorage.removeItem(`bc_cfi_${id}`);
+  localStorage.removeItem(`bc_marks_${id}`);
+  localStorage.removeItem(`bc_hl_${id}`);
   if (getLastOpened() === id) localStorage.removeItem(LAST_KEY);
 }

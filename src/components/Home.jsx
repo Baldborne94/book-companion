@@ -20,7 +20,7 @@ function SectionTitle({ children }) {
   );
 }
 
-export default function Home({ books, goTo, onOpenBook }) {
+export default function Home({ books, goTo, onOpenBook, onRead }) {
   if (books.length === 0) {
     return (
       <EmptyState
@@ -43,7 +43,7 @@ export default function Home({ books, goTo, onOpenBook }) {
         <>
           <SectionTitle>Continua a leggere</SectionTitle>
           <button
-            onClick={() => onOpenBook(last.id)}
+            onClick={() => (last.fileType === "epub" ? onRead(last.id) : onOpenBook(last.id))}
             style={{
               width: "100%",
               display: "flex",
