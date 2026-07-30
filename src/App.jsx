@@ -11,6 +11,7 @@ import MusicRoom from "./components/MusicRoom.jsx";
 import { getBookMusic, setBookMusic } from "./lib/music.js";
 
 const Reader = lazy(() => import("./components/Reader.jsx"));
+const PdfReader = lazy(() => import("./components/PdfReader.jsx"));
 
 const reducedMotion = () =>
   typeof window !== "undefined" &&
@@ -248,23 +249,19 @@ export default function App() {
     if (!b) return;
     setLastOpened(id);
     if (getStatus(id) === "unread") setStatus(id, "reading");
-    if (b.fileType === "epub") {
-      setOpenId(null);
-      setReadingStart(startCfi);
-      setReadingId(id);
-      if (music.playing && music.current) {
-        setBookMusic(id, { url: music.current.url, name: music.current.name });
-      } else {
-        const pair = getBookMusic(id);
-        if (pair) {
-          notify(`Questo libro suona con «${pair.name || "la sua melodia"}»`, {
-            label: "▶ Riprendi",
-            onClick: () => playerRef.current?.play(pair.url, pair.name),
-          });
-        }
-      }
+    setOpenId(null);
+    setReadingStart(startCfi);
+    setReadingId(id);
+    if (music.playing && music.current) {
+      setBookMusic(id, { url: music.current.url, name: music.current.name });
     } else {
-      notify("Il reader PDF arriva con una fase dedicata — presto anche questo tomo ✨");
+      const pair = getBookMusic(id);
+      if (pair) {
+        notify(`Questo libro suona con «${pair.name || "la sua melodia"}»`, {
+          label: "▶ Riprendi",
+          onClick: () => playerRef.current?.play(pair.url, pair.name),
+        });
+      }
     }
   }
 
@@ -349,19 +346,34 @@ export default function App() {
             </div>
           }
         >
-          <Reader
-            key={`${readingBook.id}:${readingStart || ""}`}
-            book={readingBook}
-            startCfi={readingStart}
-            music={music}
-            onMusicToggle={() => (music.playing ? playerRef.current?.pause() : playerRef.current?.resume())}
-            onMusicStop={() => playerRef.current?.stop()}
-            onClose={() => {
-              setReadingId(null);
-              setReadingStart(null);
-            }}
-            notify={notify}
-          />
+          {readingBook.fileType === "epub" ? (
+            <Reader
+              key={`${readingBook.id}:${readingStart || ""}`}
+              book={readingBook}
+              startCfi={readingStart}
+              music={music}
+              onMusicToggle={() => (music.playing ? playerRef.current?.pause() : playerRef.current?.resume())}
+              onMusicStop={() => playerRef.current?.stop()}
+              onClose={() => {
+                setReadingId(null);
+                setReadingStart(null);
+              }}
+              notify={notify}
+            />
+          ) : (
+            <PdfReader
+              key={readingBook.id}
+              book={readingBook}
+              music={music}
+              onMusicToggle={() => (music.playing ? playerRef.current?.pause() : playerRef.current?.resume())}
+              onMusicStop={() => playerRef.current?.stop()}
+              onClose={() => {
+                setReadingId(null);
+                setReadingStart(null);
+              }}
+              notify={notify}
+            />
+          )}
         </Suspense>
       )}
       <MusicPlayer

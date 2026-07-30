@@ -43,7 +43,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden }) {
         <>
           <SectionTitle>Continua a leggere</SectionTitle>
           <button
-            onClick={() => (last.fileType === "epub" ? onRead(last.id) : onOpenBook(last.id))}
+            onClick={() => onRead(last.id)}
             style={{
               width: "100%",
               display: "flex",

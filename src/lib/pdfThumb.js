@@ -1,7 +1,11 @@
-import * as pdfjs from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
+import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+
+export function loadPdf(arrayBuffer) {
+  return pdfjs.getDocument({ data: arrayBuffer }).promise;
+}
 
 export async function renderPdfThumb(arrayBuffer) {
   const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
