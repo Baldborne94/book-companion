@@ -123,12 +123,12 @@ function Panel({ title, onClose, children }) {
   );
 }
 
-export default function Reader({ book, onClose, notify }) {
+export default function Reader({ book, startCfi, onClose, notify }) {
   const viewerRef = useRef(null);
   const epubRef = useRef(null);
   const rendRef = useRef(null);
   const saveTimer = useRef(null);
-  const live = useRef({ cfi: getCfi(book.id), progress: getProgress(book.id), locReady: false, settings: null });
+  const live = useRef({ cfi: startCfi || getCfi(book.id), progress: getProgress(book.id), locReady: false, settings: null });
 
   const [settings, setSettings] = useState(() =>
     loadReaderSettings(Math.min(window.innerWidth, window.innerHeight))
