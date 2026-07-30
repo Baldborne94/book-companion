@@ -82,7 +82,7 @@ Dipendenze: `epubjs` (metadati + reader poi), `pdfjs-dist` (thumbnail + reader p
 
 Criteri: import di un EPUB reale mostra copertina e metadati corretti; ricarico la pagina e c'è ancora tutto; funziona offline; `navigator.storage.persist()` richiesto; export scarica un backup completo.
 
-### Fase C — Il Reader (EPUB ✅, PDF ☐)
+### Fase C — Il Reader (EPUB ✅, PDF ✅)
 
 Reader **montato in App.jsx sopra tutto** (position:fixed, z-index alto), lazy-loaded, mai dentro la Libreria (lezione wh-companion: un solo mount point). Il player musica resta montato sotto.
 
@@ -162,4 +162,4 @@ Su wh-companion l'embed Spotify dava problemi: il controllo `postMessage` dell'i
 
 A ogni fase completata, spunta qui lo stato (✅) così le sessioni successive sanno dove siamo.
 
-Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ☐ · D ✅ · E ☐
+Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ☐
