@@ -77,19 +77,37 @@ input {
 
 @keyframes bc-turn-next {
   0% {
-    transform: rotateY(0deg);
+    transform: rotateY(0deg) translateZ(0);
+  }
+  50% {
+    transform: rotateY(-89deg) translateZ(26px);
   }
   100% {
-    transform: rotateY(-178deg);
+    transform: rotateY(-178deg) translateZ(0);
   }
 }
 
 @keyframes bc-turn-prev {
   0% {
-    transform: rotateY(0deg);
+    transform: rotateY(0deg) translateZ(0);
+  }
+  50% {
+    transform: rotateY(89deg) translateZ(26px);
   }
   100% {
-    transform: rotateY(178deg);
+    transform: rotateY(178deg) translateZ(0);
+  }
+}
+
+@keyframes bc-cast {
+  0% {
+    opacity: 0;
+  }
+  45% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
   }
 }
 
