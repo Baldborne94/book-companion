@@ -5,7 +5,7 @@ import {
   getUpdatedAt, touchBook, getTombstones, clearTombstones, getLastOpened,
 } from "./library.js";
 import { getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights, removeAnnotations } from "./annotations.js";
-import { getBookMusic, setBookMusic, getFavorites, saveFavorites } from "./music.js";
+import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites } from "./music.js";
 import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow } from "./syncCore.js";
 
 const LAST_SYNC_KEY = "bc_lastsync";
@@ -79,7 +79,7 @@ function localPrefs() {
   }
   return {
     reader,
-    music_favs: getFavorites(),
+    music_favs: getFavoritesRaw(),
     last_opened: getLastOpened(),
     updated_at: parseInt(localStorage.getItem(PREFS_UPD_KEY), 10) || 0,
   };
@@ -170,15 +170,17 @@ export async function syncNow({ onProgress } = {}) {
   if (pull.length || removeLocal.length) saveBooks(next);
 
   const { data: remotePrefsRows } = await sb.from("prefs").select("*").eq("user_id", uid).limit(1);
-  const decision = mergePrefs(localPrefs(), remotePrefsRows?.[0] || null);
-  if (decision.apply) {
-    if (decision.apply.reader) localStorage.setItem("bc_reader", JSON.stringify(decision.apply.reader));
-    if (Array.isArray(decision.apply.music_favs)) saveFavorites(decision.apply.music_favs);
-    if (decision.apply.last_opened) localStorage.setItem("bc_lastopen", decision.apply.last_opened);
-    localStorage.setItem(PREFS_UPD_KEY, String(decision.apply.updated_at));
-  } else if (decision.push) {
-    await sb.from("prefs").upsert({ ...decision.push, user_id: uid });
+  const { merged, applyLocal, pushRemote } = mergePrefs(localPrefs(), remotePrefsRows?.[0] || null);
+  const stamp = pushRemote ? Date.now() : merged.updated_at;
+  if (applyLocal) {
+    if (merged.reader) localStorage.setItem("bc_reader", JSON.stringify(merged.reader));
+    writeFavorites(merged.music_favs);
+    if (merged.last_opened) localStorage.setItem("bc_lastopen", merged.last_opened);
   }
+  if (pushRemote) {
+    await sb.from("prefs").upsert({ ...merged, updated_at: stamp, user_id: uid });
+  }
+  localStorage.setItem(PREFS_UPD_KEY, String(stamp));
 
   localStorage.setItem(LAST_SYNC_KEY, String(Date.now()));
   return {

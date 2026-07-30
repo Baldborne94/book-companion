@@ -27,7 +27,9 @@ export function embedUrl(src) {
   return `${base}${src.video}?${params}`;
 }
 
-export function getFavorites() {
+// La lista grezza contiene anche le lapidi (deleted: true): servono a
+// propagare le eliminazioni tra dispositivi senza toccare lo schema.
+export function getFavoritesRaw() {
   try {
     const v = JSON.parse(localStorage.getItem(FAVS_KEY));
     return Array.isArray(v) ? v : [];
@@ -36,8 +38,14 @@ export function getFavorites() {
   }
 }
 
-export function saveFavorites(list) {
+export const getFavorites = () => getFavoritesRaw().filter((f) => !f.deleted);
+
+export function writeFavorites(list) {
   localStorage.setItem(FAVS_KEY, JSON.stringify(list));
+}
+
+export function saveFavorites(list) {
+  writeFavorites(list);
   localStorage.setItem("bc_prefs_upd", String(Date.now()));
 }
 
