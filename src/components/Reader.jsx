@@ -129,11 +129,16 @@ function Panel({ title, onClose, children }) {
 export default function Reader({ book, startCfi, music, onMusicToggle, onMusicStop, onClose, notify }) {
   const viewerRef = useRef(null);
   const rootRef = useRef(null);
+  const bookRef = useRef(null);
+  const snapRef = useRef(null);
+  const snapSeq = useRef(0);
+  const snapTimer = useRef(null);
   const epubRef = useRef(null);
   const rendRef = useRef(null);
   const saveTimer = useRef(null);
   const turnTimer = useRef(null);
   const turnRef = useRef(() => {});
+  const snapSchedRef = useRef(() => {});
   const live = useRef({ cfi: startCfi || getCfi(book.id), progress: getProgress(book.id), locReady: false, settings: null });
 
   const [settings, setSettings] = useState(() =>
@@ -216,6 +221,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
         if (loc.atEnd) setStatus(book.id, "read");
         clearTimeout(saveTimer.current);
         saveTimer.current = setTimeout(flush, 1500);
+        snapSchedRef.current(350);
       });
 
       r.on("layout", (layout) => setPages(layout.divisor > 1 ? 2 : 1));
@@ -309,6 +315,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
       window.removeEventListener("beforeunload", flush);
       window.removeEventListener("keydown", onKey);
       clearTimeout(saveTimer.current);
+      clearTimeout(snapTimer.current);
       flush();
       try { rendRef.current?.destroy(); } catch { /* già distrutto */ }
       try { epubRef.current?.destroy(); } catch { /* già distrutto */ }
@@ -328,6 +335,56 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
     };
   }, []);
 
+  async function captureSnapshot() {
+    const s = live.current.settings;
+    if (!bookRef.current || s.flow === "scrolled" || !s.pageTurn || reducedMotion()) return;
+    const seq = ++snapSeq.current;
+    try {
+      const { toCanvas } = await import("html-to-image");
+      const bookEl = bookRef.current;
+      const rect = bookEl.getBoundingClientRect();
+      if (rect.width < 10 || seq !== snapSeq.current) return;
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const out = document.createElement("canvas");
+      out.width = Math.round(rect.width * dpr);
+      out.height = Math.round(rect.height * dpr);
+      const ctx = out.getContext("2d");
+      const t = READER_THEMES[s.theme];
+      ctx.fillStyle = t.bg;
+      ctx.fillRect(0, 0, out.width, out.height);
+      for (const frame of bookEl.querySelectorAll("iframe")) {
+        const doc = frame.contentDocument;
+        if (!doc?.documentElement) continue;
+        const r = frame.getBoundingClientRect();
+        const left = Math.max(rect.left, r.left);
+        const right = Math.min(rect.right, r.right);
+        const top = Math.max(rect.top, r.top);
+        const bottom = Math.min(rect.bottom, r.bottom);
+        if (right - left < 2 || bottom - top < 2) continue;
+        const c = await toCanvas(doc.documentElement, {
+          width: right - left,
+          height: bottom - top,
+          pixelRatio: dpr,
+          backgroundColor: t.bg,
+          style: { transform: `translate(${r.left - left}px, ${r.top - top}px)`, transformOrigin: "0 0" },
+        });
+        if (seq !== snapSeq.current) return;
+        ctx.drawImage(c, (left - rect.left) * dpr, (top - rect.top) * dpr);
+      }
+      if (seq !== snapSeq.current) return;
+      snapRef.current = { url: out.toDataURL(), w: rect.width, h: rect.height };
+    } catch {
+      snapRef.current = null;
+    }
+  }
+
+  function scheduleSnapshot(delay = 300) {
+    snapRef.current = null;
+    snapSeq.current++;
+    clearTimeout(snapTimer.current);
+    snapTimer.current = setTimeout(captureSnapshot, delay);
+  }
+
   function toggleFullscreen() {
     if (document.fullscreenElement) {
       document.exitFullscreen?.();
@@ -336,13 +393,17 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
     }
   }
 
+  snapSchedRef.current = scheduleSnapshot;
+
   function turn(dir) {
     const r = rendRef.current;
     if (!r || status !== "ready") return;
     if (settings.flow !== "scrolled" && settings.pageTurn && !reducedMotion()) {
-      setTurning({ dir, key: Date.now() });
+      const snap = snapRef.current;
+      snapRef.current = null;
+      setTurning({ dir, key: Date.now(), snap });
       clearTimeout(turnTimer.current);
-      turnTimer.current = setTimeout(() => setTurning(null), 400);
+      turnTimer.current = setTimeout(() => setTurning(null), snap ? 560 : 400);
     }
     if (dir === "next") r.next();
     else r.prev();
@@ -356,6 +417,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
     if ("flow" in patch || "spread" in patch || "font" in patch) makeRendition(next);
     else if (rendRef.current && ("theme" in patch || "fontSize" in patch || "lineHeight" in patch)) {
       applyStyles(rendRef.current, next);
+      scheduleSnapshot(600);
     }
   }
 
@@ -451,6 +513,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
       }}
     >
       <div
+        ref={bookRef}
         style={{
           position: "absolute",
           inset: "clamp(6px, 1.6vw, 18px)",
@@ -514,7 +577,54 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
             }}
           />
         )}
-        {turning && pages === 2 && (
+        {turning?.snap && (
+          <div
+            key={turning.key}
+            data-flip={turning.dir}
+            data-mode="snap"
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              ...(turning.dir === "next"
+                ? { left: pages === 2 ? "50%" : 0, right: 0, transformOrigin: "left center" }
+                : { left: 0, right: pages === 2 ? "50%" : 0, transformOrigin: "right center" }),
+              zIndex: 6,
+              pointerEvents: "none",
+              transformStyle: "preserve-3d",
+              animation: `${turning.dir === "next" ? "bc-turn-next" : "bc-turn-prev"} 0.52s cubic-bezier(0.3, 0.6, 0.3, 1) forwards`,
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                backgroundImage: `url(${turning.snap.url})`,
+                backgroundSize: `${turning.snap.w}px ${turning.snap.h}px`,
+                backgroundPosition:
+                  turning.dir === "next" && pages === 2 ? `-${turning.snap.w / 2}px 0` : "0 0",
+                boxShadow:
+                  turning.dir === "next" ? "-16px 0 34px #00000059" : "16px 0 34px #00000059",
+                animation: "bc-face-front 0.52s cubic-bezier(0.3, 0.6, 0.3, 1) forwards",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                transform: "rotateY(180deg)",
+                backgroundColor: theme.bg,
+                backgroundImage:
+                  turning.dir === "next"
+                    ? "linear-gradient(to left, #00000029, transparent 30%)"
+                    : "linear-gradient(to right, #00000029, transparent 30%)",
+                animation: "bc-face-back 0.52s cubic-bezier(0.3, 0.6, 0.3, 1) forwards",
+              }}
+            />
+          </div>
+        )}
+        {turning && !turning.snap && pages === 2 && (
           <div
             key={turning.key}
             data-flip={turning.dir}
@@ -534,7 +644,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
             }}
           />
         )}
-        {turning && pages === 1 && (
+        {turning && !turning.snap && pages === 1 && (
           <div
             key={turning.key}
             data-flip={turning.dir}
