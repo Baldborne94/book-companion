@@ -134,6 +134,8 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
   const rendRef = useRef(null);
   const saveTimer = useRef(null);
   const turnTimer = useRef(null);
+  const swapTimer = useRef(null);
+  const swapPending = useRef(null);
   const turnRef = useRef(() => {});
   const live = useRef({ cfi: startCfi || getCfi(book.id), progress: getProgress(book.id), locReady: false, settings: null });
 
@@ -310,6 +312,8 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
       window.removeEventListener("beforeunload", flush);
       window.removeEventListener("keydown", onKey);
       clearTimeout(saveTimer.current);
+      clearTimeout(swapTimer.current);
+      clearTimeout(turnTimer.current);
       flush();
       try { rendRef.current?.destroy(); } catch { /* già distrutto */ }
       try { epubRef.current?.destroy(); } catch { /* già distrutto */ }
@@ -340,13 +344,27 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
   function turn(dir) {
     const r = rendRef.current;
     if (!r || status !== "ready") return;
-    if (settings.flow !== "scrolled" && settings.pageTurn && !reducedMotion()) {
-      setTurning({ dir, key: Date.now() });
-      clearTimeout(turnTimer.current);
-      turnTimer.current = setTimeout(() => setTurning(null), 440);
+    const animate = settings.flow !== "scrolled" && settings.pageTurn && !reducedMotion();
+    if (!animate) {
+      if (dir === "next") r.next();
+      else r.prev();
+      return;
     }
-    if (dir === "next") r.next();
-    else r.prev();
+    if (swapTimer.current) {
+      clearTimeout(swapTimer.current);
+      swapPending.current?.();
+    }
+    setTurning({ dir, key: Date.now() });
+    clearTimeout(turnTimer.current);
+    turnTimer.current = setTimeout(() => setTurning(null), 590);
+    const doSwap = () => {
+      swapTimer.current = null;
+      swapPending.current = null;
+      if (dir === "next") r.next();
+      else r.prev();
+    };
+    swapPending.current = doSwap;
+    swapTimer.current = setTimeout(doSwap, 275);
   }
   turnRef.current = turn;
 
@@ -417,25 +435,25 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
   const pct = Math.round((progress || 0) * 100);
   const paginated = settings.flow !== "scrolled";
 
-  const sheetGeom = turning
+  const leafGeom = turning
     ? turning.dir === "next"
       ? {
-          left: 0,
-          right: "50%",
-          transformOrigin: "right center",
-          borderRadius: "12px 0 0 12px",
-          backgroundImage: "linear-gradient(to right, transparent 55%, #00000038)",
-          boxShadow: "-26px 0 44px #00000066",
-          animationName: "bc-sheet-next",
-        }
-      : {
-          left: "50%",
+          left: pages === 2 ? "50%" : 0,
           right: 0,
           transformOrigin: "left center",
           borderRadius: "0 12px 12px 0",
-          backgroundImage: "linear-gradient(to left, transparent 55%, #00000038)",
+          backgroundImage: "linear-gradient(to right, #00000038, transparent 30%)",
+          boxShadow: "-26px 0 44px #00000066",
+          animationName: "bc-leaf-next",
+        }
+      : {
+          left: 0,
+          right: pages === 2 ? "50%" : 0,
+          transformOrigin: "right center",
+          borderRadius: "12px 0 0 12px",
+          backgroundImage: "linear-gradient(to left, #00000038, transparent 30%)",
           boxShadow: "26px 0 44px #00000066",
-          animationName: "bc-sheet-prev",
+          animationName: "bc-leaf-prev",
         }
     : null;
 
@@ -533,11 +551,11 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
                 turning.dir === "next"
                   ? "linear-gradient(to left, #00000059, transparent 65%)"
                   : "linear-gradient(to right, #00000059, transparent 65%)",
-              animation: "bc-cast 0.4s cubic-bezier(0.25, 0.6, 0.3, 1) forwards",
+              animation: "bc-cast 0.55s ease-in-out forwards",
             }}
           />
         )}
-        {turning && pages === 2 && (
+        {turning && (
           <div
             key={turning.key}
             data-flip={turning.dir}
@@ -546,33 +564,15 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
               position: "absolute",
               top: 0,
               bottom: 0,
-              ...sheetGeom,
+              ...leafGeom,
               zIndex: 6,
               pointerEvents: "none",
-              backfaceVisibility: "hidden",
+              backfaceVisibility: "visible",
               backgroundColor: theme.bg,
-              animationDuration: "0.4s",
-              animationTimingFunction: "cubic-bezier(0.25, 0.6, 0.3, 1)",
+              opacity: 0,
+              animationDuration: "0.55s",
+              animationTimingFunction: "ease-in-out",
               animationFillMode: "forwards",
-            }}
-          />
-        )}
-        {turning && pages === 1 && (
-          <div
-            key={turning.key}
-            data-flip={turning.dir}
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              top: 0,
-              bottom: 0,
-              left: 0,
-              width: "45%",
-              zIndex: 6,
-              pointerEvents: "none",
-              background:
-                "linear-gradient(90deg, transparent, #00000024 35%, #0000003d 50%, #00000024 65%, transparent)",
-              animation: `${turning.dir === "next" ? "bc-sweep-next" : "bc-sweep-prev"} 0.28s ease-out forwards`,
             }}
           />
         )}
