@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
-import { getFile } from "../lib/bookStore.js";
+import { ensureLocalFile } from "../lib/sync.js";
 import { getCfi, setCfi } from "../lib/annotations.js";
 import { getProgress, setProgress, setStatus } from "../lib/library.js";
 import { loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
@@ -84,7 +84,7 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
     let dead = false;
     (async () => {
       try {
-        const blob = await getFile(book.id);
+        const blob = await ensureLocalFile(book);
         if (!blob) throw new Error("file mancante");
         const { loadPdf } = await import("../lib/pdfThumb.js");
         const pdf = await loadPdf(await blob.arrayBuffer());
@@ -238,7 +238,10 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
           }}
         >
           <span style={{ fontSize: 40 }}>📕</span>
-          <span>Questo tomo non si lascia aprire… il file potrebbe essere danneggiato.</span>
+          <span>
+            Questo tomo non si lascia aprire… il file potrebbe essere danneggiato, oppure è nel
+            cloud e ora sei offline.
+          </span>
           <button
             onClick={handleClose}
             style={{ padding: "10px 22px", borderRadius: 10, border: `1px solid ${C.border}`, color: C.muted }}

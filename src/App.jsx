@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { registerSW } from "virtual:pwa-register";
 import { C, FONT_TITLE, SECTIONS } from "./data/constants.js";
-import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus } from "./lib/library.js";
+import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook } from "./lib/library.js";
 import { removeBookData, requestPersistence } from "./lib/bookStore.js";
 import Home from "./components/Home.jsx";
 import Library from "./components/Library.jsx";
@@ -9,7 +9,10 @@ import BookSheet from "./components/BookSheet.jsx";
 import QuoteGarden from "./components/QuoteGarden.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
 import MusicRoom from "./components/MusicRoom.jsx";
+import SyncPanel from "./components/SyncPanel.jsx";
 import { getBookMusic, setBookMusic } from "./lib/music.js";
+import { isSyncConfigured } from "./lib/supabase.js";
+import { getSession, syncNow, localFileIds } from "./lib/sync.js";
 
 const Reader = lazy(() => import("./components/Reader.jsx"));
 const PdfReader = lazy(() => import("./components/PdfReader.jsx"));
@@ -65,7 +68,7 @@ function Stardust() {
   );
 }
 
-function Header() {
+function Header({ onSync, syncing, signedIn }) {
   return (
     <header
       style={{
@@ -75,6 +78,24 @@ function Header() {
         textAlign: "center",
       }}
     >
+      <button
+        onClick={onSync}
+        aria-label="Sincronizzazione"
+        style={{
+          position: "absolute",
+          top: 16,
+          right: 14,
+          width: 42,
+          height: 42,
+          borderRadius: 12,
+          fontSize: 20,
+          color: signedIn ? C.accent : C.muted,
+          opacity: syncing ? 0.6 : 1,
+          animation: syncing ? "bc-flicker 1.6s ease-in-out infinite" : "none",
+        }}
+      >
+        ☁️
+      </button>
       <h1
         style={{
           fontFamily: FONT_TITLE,
@@ -211,6 +232,9 @@ export default function App() {
   const [gardenOpen, setGardenOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [music, setMusic] = useState({ current: null, playing: false, timerEnd: null });
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [sync, setSync] = useState({ busy: false, message: null, at: 0, signedIn: false });
+  const [localIds, setLocalIds] = useState(null);
   const toastTimer = useRef(null);
   const playerRef = useRef(null);
   const swUpdate = useRef(null);
@@ -253,7 +277,53 @@ export default function App() {
     setBooks(next);
   }
 
+  const runSync = useRef(() => {});
+  runSync.current = async (quiet = false) => {
+    if (!isSyncConfigured() || sync.busy) return;
+    if (!(await getSession())) return;
+    setSync((s) => ({ ...s, busy: true, message: quiet ? s.message : "Sincronizzo…" }));
+    try {
+      const res = await syncNow({
+        onProgress: (message) => setSync((s) => ({ ...s, message })),
+      });
+      if (res.books) setBooks(res.books);
+      setLocalIds(await localFileIds());
+      const moved = (res.pulled || 0) + (res.pushed || 0) + (res.removed || 0);
+      setSync({
+        busy: false,
+        message: moved ? `Aggiornati ${moved} elementi` : "Tutto già allineato",
+        at: Date.now(),
+        signedIn: true,
+      });
+      if (!quiet && moved) notify("Biblioteca sincronizzata ✨");
+    } catch (e) {
+      setSync((s) => ({ ...s, busy: false, message: `Sincronizzazione fallita: ${e?.message || "errore"}` }));
+      if (!quiet) notify("Sincronizzazione fallita — riprovo più tardi");
+    }
+  };
+
+  useEffect(() => {
+    if (!isSyncConfigured()) return;
+    let alive = true;
+    getSession().then((s) => {
+      if (!alive || !s) return;
+      setSync((v) => ({ ...v, signedIn: true }));
+      runSync.current(true);
+    });
+    localFileIds().then((ids) => alive && setLocalIds(ids));
+    const onOnline = () => runSync.current(true);
+    const onVis = () => document.visibilityState === "visible" && runSync.current(true);
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      alive = false;
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
+
   function handleSaveMeta(patch) {
+    touchBook(patch.id);
     updateBooks(books.map((b) => (b.id === patch.id ? { ...b, ...patch } : b)));
   }
 
@@ -267,6 +337,7 @@ export default function App() {
       /* i metadati sono già rimossi: i bytes orfani non sono raggiungibili dalla UI */
     }
     notify("Il tomo è tornato alla polvere 🕯️");
+    runSync.current(true);
   }
 
   function handleRead(id, startCfi = null) {
@@ -310,7 +381,7 @@ export default function App() {
       }}
     >
       <Stardust />
-      <Header />
+      <Header onSync={() => setSyncOpen(true)} syncing={sync.busy} signedIn={sync.signedIn} />
       <main
         key={section}
         style={{
@@ -328,7 +399,14 @@ export default function App() {
           <Home books={books} goTo={setSection} onOpenBook={setOpenId} onRead={handleRead} onGarden={() => setGardenOpen(true)} />
         )}
         {section === "library" && (
-          <Library books={books} updateBooks={updateBooks} onOpenBook={setOpenId} notify={notify} />
+          <Library
+            books={books}
+            updateBooks={updateBooks}
+            onOpenBook={setOpenId}
+            notify={notify}
+            localIds={localIds}
+            onImported={() => runSync.current(true)}
+          />
         )}
         {section === "music" && <MusicRoom music={music} playerRef={playerRef} notify={notify} />}
       </main>
@@ -341,6 +419,14 @@ export default function App() {
           onSaveMeta={handleSaveMeta}
           onDelete={handleDelete}
           onRead={handleRead}
+          notify={notify}
+        />
+      )}
+      {syncOpen && (
+        <SyncPanel
+          status={sync}
+          onClose={() => setSyncOpen(false)}
+          onSync={() => runSync.current(false)}
           notify={notify}
         />
       )}
@@ -383,6 +469,8 @@ export default function App() {
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);
+                localFileIds().then(setLocalIds);
+                runSync.current(true);
               }}
               notify={notify}
             />
@@ -396,6 +484,8 @@ export default function App() {
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);
+                localFileIds().then(setLocalIds);
+                runSync.current(true);
               }}
               notify={notify}
             />

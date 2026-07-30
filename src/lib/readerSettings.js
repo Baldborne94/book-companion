@@ -48,4 +48,5 @@ export function loadReaderSettings(shortSide) {
 
 export function saveReaderSettings(settings) {
   localStorage.setItem(KEY, JSON.stringify(settings));
+  localStorage.setItem("bc_prefs_upd", String(Date.now()));
 }

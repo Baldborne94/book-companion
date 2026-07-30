@@ -75,30 +75,66 @@ input {
   }
 }
 
-@keyframes bc-flip-next {
+@keyframes bc-sheet-next {
   0% {
+    transform: rotateY(88deg);
+    opacity: 1;
+  }
+  72% {
     transform: rotateY(0deg);
     opacity: 1;
   }
-  70% {
-    opacity: 1;
-  }
   100% {
-    transform: rotateY(-150deg);
+    transform: rotateY(0deg);
     opacity: 0;
   }
 }
 
-@keyframes bc-flip-prev {
+@keyframes bc-sheet-prev {
   0% {
+    transform: rotateY(-88deg);
+    opacity: 1;
+  }
+  72% {
     transform: rotateY(0deg);
     opacity: 1;
   }
-  70% {
+  100% {
+    transform: rotateY(0deg);
+    opacity: 0;
+  }
+}
+
+@keyframes bc-sweep-next {
+  0% {
+    transform: translateX(230%);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  80% {
     opacity: 1;
   }
   100% {
-    transform: rotateY(150deg);
+    transform: translateX(-130%);
+    opacity: 0;
+  }
+}
+
+@keyframes bc-sweep-prev {
+  0% {
+    transform: translateX(-130%);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(230%);
     opacity: 0;
   }
 }
