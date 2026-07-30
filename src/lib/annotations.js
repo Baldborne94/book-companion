@@ -27,7 +27,22 @@ export const saveHighlights = (id, list) => {
   touch(id);
 };
 
+// Posizione piu' avanzata vista su un altro dispositivo, in attesa di conferma
+export function getJump(id) {
+  try {
+    return JSON.parse(localStorage.getItem(`bc_jump_${id}`)) || null;
+  } catch {
+    return null;
+  }
+}
+
+export const setJump = (id, jump) =>
+  localStorage.setItem(`bc_jump_${id}`, JSON.stringify(jump));
+
+export const clearJump = (id) => localStorage.removeItem(`bc_jump_${id}`);
+
 export function removeAnnotations(id) {
+  localStorage.removeItem(`bc_jump_${id}`);
   localStorage.removeItem(`bc_cfi_${id}`);
   localStorage.removeItem(`bc_marks_${id}`);
   localStorage.removeItem(`bc_hl_${id}`);

@@ -119,6 +119,22 @@ export default function QuoteGarden({ books, onClose, onReadAt }) {
                     }}
                   >
                     “{q.text}”
+                    {q.note && (
+                      <span
+                        style={{
+                          display: "block",
+                          marginTop: 8,
+                          paddingLeft: 10,
+                          borderLeft: `2px solid ${C.arcane}77`,
+                          fontSize: 14,
+                          fontStyle: "normal",
+                          color: C.arcane,
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {q.note}
+                      </span>
+                    )}
                     <span style={{ display: "block", marginTop: 6, fontSize: 12.5, fontStyle: "normal", color: C.muted }}>
                       {new Date(q.createdAt).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" })}
                       {" · tocca per rileggere nel libro"}

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { registerSW } from "virtual:pwa-register";
 import { C, FONT_TITLE, SECTIONS } from "./data/constants.js";
-import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook } from "./lib/library.js";
+import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook, getProgress } from "./lib/library.js";
 import { removeBookData, requestPersistence } from "./lib/bookStore.js";
 import Home from "./components/Home.jsx";
 import Library from "./components/Library.jsx";
@@ -11,6 +11,7 @@ import MusicPlayer from "./components/MusicPlayer.jsx";
 import MusicRoom from "./components/MusicRoom.jsx";
 import SyncPanel from "./components/SyncPanel.jsx";
 import { getBookMusic, setBookMusic } from "./lib/music.js";
+import { getJump, clearJump } from "./lib/annotations.js";
 import { isSyncConfigured } from "./lib/supabase.js";
 import { getSession, syncNow, localFileIds } from "./lib/sync.js";
 
@@ -348,6 +349,19 @@ export default function App() {
     setOpenId(null);
     setReadingStart(startCfi);
     setReadingId(id);
+
+    const jump = getJump(id);
+    if (jump && !startCfi) {
+      clearJump(id);
+      if ((jump.progress || 0) > getProgress(id) + 0.02) {
+        notify(
+          `Su un altro dispositivo eri al ${Math.round(jump.progress * 100)}%`,
+          { label: "Vai lì", onClick: () => handleRead(id, jump.cfi) }
+        );
+        return;
+      }
+    }
+
     if (music.playing && music.current) {
       setBookMusic(id, { url: music.current.url, name: music.current.name });
     } else {
