@@ -11,6 +11,8 @@ import {
 import { searchBook } from "../lib/epubSearch.js";
 
 const isTouch = () => navigator.maxTouchPoints > 0;
+const reducedMotion = () =>
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const GOOGLE_FONT_CSS =
   "@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap');";
 
@@ -125,9 +127,12 @@ function Panel({ title, onClose, children }) {
 
 export default function Reader({ book, startCfi, music, onMusicToggle, onMusicStop, onClose, notify }) {
   const viewerRef = useRef(null);
+  const rootRef = useRef(null);
   const epubRef = useRef(null);
   const rendRef = useRef(null);
   const saveTimer = useRef(null);
+  const turnTimer = useRef(null);
+  const turnRef = useRef(() => {});
   const live = useRef({ cfi: startCfi || getCfi(book.id), progress: getProgress(book.id), locReady: false, settings: null });
 
   const [settings, setSettings] = useState(() =>
@@ -144,6 +149,9 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
   const [selMenu, setSelMenu] = useState(null);
   const [query, setQuery] = useState("");
   const [searchState, setSearchState] = useState({ busy: false, results: null });
+  const [pages, setPages] = useState(1);
+  const [turning, setTurning] = useState(null);
+  const [isFs, setIsFs] = useState(false);
 
   live.current.settings = settings;
   live.current.panel = panel;
@@ -209,6 +217,8 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
         saveTimer.current = setTimeout(flush, 1500);
       });
 
+      r.on("layout", (layout) => setPages(layout.divisor > 1 ? 2 : 1));
+
       r.on("selected", (cfiRange, contents) => {
         const text = contents.window.getSelection()?.toString() || "";
         if (text.trim()) setSelMenu({ cfi: cfiRange, text });
@@ -229,8 +239,8 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
       });
 
       r.on("keydown", (e) => {
-        if (e.key === "ArrowRight") r.next();
-        if (e.key === "ArrowLeft") r.prev();
+        if (e.key === "ArrowRight") turnRef.current("next");
+        if (e.key === "ArrowLeft") turnRef.current("prev");
       });
 
       r.display(live.current.cfi || undefined)
@@ -286,8 +296,8 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
         else if (live.current.panel) setPanel(null);
         else handleClose();
       }
-      if (e.key === "ArrowRight") rendRef.current?.next();
-      if (e.key === "ArrowLeft") rendRef.current?.prev();
+      if (e.key === "ArrowRight") turnRef.current("next");
+      if (e.key === "ArrowLeft") turnRef.current("prev");
     };
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("beforeunload", flush);
@@ -307,6 +317,36 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
   useEffect(() => {
     window.dispatchEvent(new Event("resize"));
   }, [settings.margin]);
+
+  useEffect(() => {
+    const onFs = () => setIsFs(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFs);
+      clearTimeout(turnTimer.current);
+    };
+  }, []);
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.();
+    } else {
+      rootRef.current?.requestFullscreen?.().catch(() => notify("Schermo intero non disponibile qui"));
+    }
+  }
+
+  function turn(dir) {
+    const r = rendRef.current;
+    if (!r || status !== "ready") return;
+    if (settings.flow !== "scrolled" && settings.pageTurn && !reducedMotion()) {
+      setTurning({ dir, key: Date.now() });
+      clearTimeout(turnTimer.current);
+      turnTimer.current = setTimeout(() => setTurning(null), 470);
+    }
+    if (dir === "next") r.next();
+    else r.prev();
+  }
+  turnRef.current = turn;
 
   function updateSettings(patch) {
     const next = { ...settings, ...patch };
@@ -375,26 +415,121 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
   const pct = Math.round((progress || 0) * 100);
   const paginated = settings.flow !== "scrolled";
 
+  const flipGeom = turning
+    ? turning.dir === "next"
+      ? {
+          left: pages === 2 ? "50%" : 0,
+          right: 0,
+          transformOrigin: "left center",
+          borderRadius: "0 12px 12px 0",
+          backgroundImage: "linear-gradient(to right, #00000038, transparent 18%)",
+          boxShadow: "-24px 0 38px #00000059",
+        }
+      : {
+          left: 0,
+          right: pages === 2 ? "50%" : 0,
+          transformOrigin: "right center",
+          borderRadius: "12px 0 0 12px",
+          backgroundImage: "linear-gradient(to left, #00000038, transparent 18%)",
+          boxShadow: "24px 0 38px #00000059",
+        }
+    : null;
+
   return (
     <div
+      ref={rootRef}
       style={{
         position: "fixed",
         inset: 0,
         zIndex: 45,
-        background: theme.bg,
+        background: "linear-gradient(165deg, #171322 0%, #0b0914 70%)",
         animation: "bc-fade-in 0.45s ease-out",
         overflow: "hidden",
       }}
     >
       <div
-        ref={viewerRef}
         style={{
           position: "absolute",
-          inset: 0,
-          padding: `14px ${settings.margin}px`,
-          boxSizing: "border-box",
+          inset: "clamp(6px, 1.6vw, 18px)",
+          borderRadius: 12,
+          background: theme.bg,
+          border: "1px solid #00000066",
+          boxShadow: `0 14px 44px #000000b3, 0 0 0 1px ${C.accent}22, inset 0 0 30px #00000026`,
+          overflow: "hidden",
+          perspective: 1600,
         }}
-      />
+      >
+        <div
+          ref={viewerRef}
+          style={{
+            position: "absolute",
+            inset: 0,
+            padding: `14px ${settings.margin}px`,
+            boxSizing: "border-box",
+          }}
+        />
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: 0,
+            width: 16,
+            zIndex: 4,
+            pointerEvents: "none",
+            background: "linear-gradient(90deg, #00000033, transparent)",
+          }}
+        />
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            right: 0,
+            width: 16,
+            zIndex: 4,
+            pointerEvents: "none",
+            background: "linear-gradient(270deg, #00000033, transparent)",
+          }}
+        />
+        {pages === 2 && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: "50%",
+              width: 96,
+              transform: "translateX(-50%)",
+              zIndex: 4,
+              pointerEvents: "none",
+              background:
+                "linear-gradient(90deg, transparent, #00000021 32%, #0000004d 50%, #00000021 68%, transparent)",
+            }}
+          />
+        )}
+        {turning && (
+          <div
+            key={turning.key}
+            data-flip={turning.dir}
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              ...flipGeom,
+              zIndex: 6,
+              pointerEvents: "none",
+              backfaceVisibility: "hidden",
+              backgroundColor: theme.bg,
+              animation: `${turning.dir === "next" ? "bc-flip-next" : "bc-flip-prev"} 0.45s ease-in forwards`,
+            }}
+          />
+        )}
+      </div>
 
       <div
         style={{
@@ -470,12 +605,12 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
         <>
           <button
             aria-label="Pagina precedente"
-            onClick={() => rendRef.current?.prev()}
+            onClick={() => turn("prev")}
             style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: "13%", zIndex: 10, cursor: "w-resize" }}
           />
           <button
             aria-label="Pagina successiva"
-            onClick={() => rendRef.current?.next()}
+            onClick={() => turn("next")}
             style={{ position: "absolute", right: 0, top: "15%", bottom: "15%", width: "13%", zIndex: 10, cursor: "e-resize" }}
           />
         </>
@@ -529,6 +664,11 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
             <button onClick={() => setPanel(panel === "toc" ? null : "toc")} style={barBtn(panel === "toc")} aria-label="Indice">☰</button>
             <button onClick={() => setPanel(panel === "marks" ? null : "marks")} style={barBtn(panel === "marks")} aria-label="Segnalibri">📑</button>
             <button onClick={() => setPanel(panel === "hl" ? null : "hl")} style={barBtn(panel === "hl")} aria-label="Evidenziazioni">🖍️</button>
+            {document.fullscreenEnabled && (
+              <button onClick={toggleFullscreen} style={barBtn(isFs)} aria-label={isFs ? "Esci da schermo intero" : "Schermo intero"}>
+                {isFs ? "⛶" : "⛶"}
+              </button>
+            )}
             <button onClick={() => setPanel(panel === "settings" ? null : "settings")} style={{ ...barBtn(panel === "settings"), fontFamily: FONT_TITLE, fontSize: 17 }} aria-label="Impostazioni">Aa</button>
           </div>
 
@@ -698,6 +838,22 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
               }}
             >
               {settings.spread === "auto" ? "Doppia: auto" : "Pagina singola"}
+            </button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+            <span style={{ fontSize: 14.5, color: C.muted }}>Voltapagina animato</span>
+            <button
+              onClick={() => updateSettings({ pageTurn: !settings.pageTurn })}
+              style={{
+                padding: "6px 16px",
+                borderRadius: 999,
+                fontSize: 14,
+                border: `1px solid ${settings.pageTurn ? C.accent : C.border}`,
+                color: settings.pageTurn ? C.accent : C.muted,
+                background: settings.pageTurn ? `${C.accent}14` : "transparent",
+              }}
+            >
+              {settings.pageTurn ? "Attivo ✨" : "Spento"}
             </button>
           </div>
           <Slider
