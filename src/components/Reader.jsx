@@ -12,6 +12,8 @@ import {
 import { searchBook } from "../lib/epubSearch.js";
 
 const isTouch = () => navigator.maxTouchPoints > 0;
+const isTablet = () =>
+  isTouch() && Math.min(window.innerWidth, window.innerHeight) >= 520;
 const reducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const GOOGLE_FONT_CSS =
@@ -344,7 +346,8 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
   function turn(dir) {
     const r = rendRef.current;
     if (!r || status !== "ready") return;
-    const animate = settings.flow !== "scrolled" && settings.pageTurn && !reducedMotion();
+    const animate =
+      isTablet() && settings.flow !== "scrolled" && settings.pageTurn && !reducedMotion();
     if (!animate) {
       if (dir === "next") r.next();
       else r.prev();
@@ -893,22 +896,24 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
               {settings.spread === "auto" ? "Doppia: auto" : "Pagina singola"}
             </button>
           </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <span style={{ fontSize: 14.5, color: C.muted }}>Voltapagina animato</span>
-            <button
-              onClick={() => updateSettings({ pageTurn: !settings.pageTurn })}
-              style={{
-                padding: "6px 16px",
-                borderRadius: 999,
-                fontSize: 14,
-                border: `1px solid ${settings.pageTurn ? C.accent : C.border}`,
-                color: settings.pageTurn ? C.accent : C.muted,
-                background: settings.pageTurn ? `${C.accent}14` : "transparent",
-              }}
-            >
-              {settings.pageTurn ? "Attivo ✨" : "Spento"}
-            </button>
-          </div>
+          {isTablet() && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <span style={{ fontSize: 14.5, color: C.muted }}>Voltapagina animato</span>
+              <button
+                onClick={() => updateSettings({ pageTurn: !settings.pageTurn })}
+                style={{
+                  padding: "6px 16px",
+                  borderRadius: 999,
+                  fontSize: 14,
+                  border: `1px solid ${settings.pageTurn ? C.accent : C.border}`,
+                  color: settings.pageTurn ? C.accent : C.muted,
+                  background: settings.pageTurn ? `${C.accent}14` : "transparent",
+                }}
+              >
+                {settings.pageTurn ? "Attivo ✨" : "Spento"}
+              </button>
+            </div>
+          )}
           <Slider
             label="Filtro notte caldo"
             min={0} max={0.45} step={0.05}
