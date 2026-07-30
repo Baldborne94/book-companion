@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
-import { getFavorites, saveFavorites } from "../lib/music.js";
+import { getFavoritesRaw, saveFavorites } from "../lib/music.js";
 import EmptyState from "./EmptyState.jsx";
 
 const SLEEP_CHOICES = [
@@ -24,8 +24,10 @@ const inputStyle = {
 
 export default function MusicRoom({ music, playerRef, notify }) {
   const [link, setLink] = useState("");
-  const [favs, setFavs] = useState(() => getFavorites());
+  const [favs, setFavs] = useState(() => getFavoritesRaw());
   const [favName, setFavName] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [draft, setDraft] = useState("");
 
   const { current, playing, timerEnd } = music;
   const sleepLeft = timerEnd ? Math.max(0, Math.ceil((timerEnd - Date.now()) / 60000)) : null;
@@ -36,23 +38,42 @@ export default function MusicRoom({ music, playerRef, notify }) {
     if (playerRef.current?.play(url)) setLink("");
   }
 
-  function saveCurrentAsFav() {
-    if (!current) return;
-    const name = favName.trim() || "Melodia senza nome";
-    const next = [...favs, { id: crypto.randomUUID(), name, url: current.url, addedAt: Date.now() }];
+  function commit(next) {
     setFavs(next);
     saveFavorites(next);
+  }
+
+  function saveCurrentAsFav() {
+    if (!current) return;
+    const now = Date.now();
+    const name = favName.trim() || "Melodia senza nome";
+    commit([...favs, { id: crypto.randomUUID(), name, url: current.url, addedAt: now, updatedAt: now }]);
     setFavName("");
     notify(`«${name}» custodita tra le tue melodie ✨`);
   }
 
   function removeFav(f) {
-    const next = favs.filter((x) => x.id !== f.id);
-    setFavs(next);
-    saveFavorites(next);
+    commit(favs.map((x) => (x.id === f.id ? { ...x, deleted: true, updatedAt: Date.now() } : x)));
   }
 
-  const alreadySaved = current && favs.some((f) => f.url === current.url);
+  function startRename(f) {
+    setEditing(f.id);
+    setDraft(f.name);
+  }
+
+  function commitRename() {
+    const name = draft.trim();
+    if (!name) {
+      setEditing(null);
+      return;
+    }
+    commit(favs.map((x) => (x.id === editing ? { ...x, name, updatedAt: Date.now() } : x)));
+    setEditing(null);
+    notify(`Ora si chiama «${name}» ✨`);
+  }
+
+  const liveFavs = favs.filter((f) => !f.deleted);
+  const alreadySaved = current && liveFavs.some((f) => f.url === current.url);
 
   return (
     <div style={{ animation: "bc-fade-in 0.4s ease-out" }}>
@@ -172,7 +193,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
         Le tue melodie
       </h2>
 
-      {favs.length === 0 ? (
+      {liveFavs.length === 0 ? (
         <EmptyState
           emoji="🎼"
           title="La sala della musica attende"
@@ -180,31 +201,64 @@ export default function MusicRoom({ music, playerRef, notify }) {
         />
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
-          {favs.map((f) => (
+          {liveFavs.map((f) => (
             <div
               key={f.id}
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 10,
+                gap: 8,
                 padding: "13px 14px",
                 borderRadius: 14,
-                border: `1px solid ${C.border}`,
+                border: `1px solid ${editing === f.id ? C.accent : C.border}`,
                 background: `linear-gradient(135deg, ${C.card}, ${C.surface})`,
               }}
             >
-              <button
-                onClick={() => playerRef.current?.play(f.url, f.name)}
-                style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, textAlign: "left", minWidth: 0 }}
-              >
-                <span style={{ fontSize: 22, filter: `drop-shadow(0 0 8px ${C.arcane}66)` }}>♪</span>
-                <span style={{ flex: 1, fontSize: 15, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {f.name}
-                </span>
-              </button>
-              <button onClick={() => removeFav(f)} aria-label="Dimentica melodia" style={{ color: C.muted, padding: 4 }}>
-                🗑
-              </button>
+              {editing === f.id ? (
+                <>
+                  <span style={{ fontSize: 22, color: C.accent }}>♪</span>
+                  <input
+                    autoFocus
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitRename();
+                      if (e.key === "Escape") setEditing(null);
+                    }}
+                    onBlur={commitRename}
+                    placeholder="Come la chiami?"
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: `1px solid ${C.border}`,
+                      background: C.bg,
+                      color: C.text,
+                      fontSize: 15,
+                      outline: "none",
+                    }}
+                  />
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => playerRef.current?.play(f.url, f.name)}
+                    style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, textAlign: "left", minWidth: 0 }}
+                  >
+                    <span style={{ fontSize: 22, filter: `drop-shadow(0 0 8px ${C.arcane}66)` }}>♪</span>
+                    <span style={{ flex: 1, fontSize: 15, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {f.name}
+                    </span>
+                  </button>
+                  <button onClick={() => startRename(f)} aria-label={`Rinomina ${f.name}`} style={{ color: C.muted, padding: 4, fontSize: 15 }}>
+                    ✎
+                  </button>
+                  <button onClick={() => removeFav(f)} aria-label={`Dimentica ${f.name}`} style={{ color: C.muted, padding: 4 }}>
+                    🗑
+                  </button>
+                </>
+              )}
             </div>
           ))}
         </div>

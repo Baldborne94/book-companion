@@ -89,11 +89,42 @@ export function planSync({ localRows, tombstones, remoteRows }) {
   return { pull, push, removeLocal };
 }
 
-export function mergePrefs(localPrefs, remotePrefs) {
-  if (!remotePrefs) return { apply: null, push: localPrefs };
-  if (!localPrefs || remotePrefs.updated_at > localPrefs.updated_at)
-    return { apply: remotePrefs, push: null };
-  if (localPrefs.updated_at > remotePrefs.updated_at)
-    return { apply: null, push: localPrefs };
-  return { apply: null, push: null };
+const favStamp = (f) => f.updatedAt || f.addedAt || 0;
+
+// Unione, non sostituzione: melodie salvate su dispositivi diversi
+// devono sopravvivere entrambe. Vince la versione piu' recente per id.
+export function mergeFavorites(localFavs = [], remoteFavs = []) {
+  const byId = new Map();
+  for (const f of [...(remoteFavs || []), ...(localFavs || [])]) {
+    if (!f?.id) continue;
+    const prev = byId.get(f.id);
+    if (!prev || favStamp(f) >= favStamp(prev)) byId.set(f.id, f);
+  }
+  return [...byId.values()].sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));
+}
+
+export function mergePrefs(local, remote) {
+  const music_favs = mergeFavorites(local.music_favs, remote?.music_favs);
+  const remoteNewer = !!remote && (remote.updated_at || 0) > (local.updated_at || 0);
+  const merged = {
+    reader: remoteNewer ? (remote.reader ?? local.reader) : (local.reader ?? remote?.reader ?? null),
+    last_opened: remoteNewer
+      ? remote.last_opened || local.last_opened || null
+      : local.last_opened || remote?.last_opened || null,
+    music_favs,
+    updated_at: Math.max(local.updated_at || 0, remote?.updated_at || 0),
+  };
+  const eq = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  return {
+    merged,
+    applyLocal:
+      !eq(merged.music_favs, local.music_favs) ||
+      !eq(merged.reader, local.reader) ||
+      merged.last_opened !== (local.last_opened || null),
+    pushRemote:
+      !remote ||
+      !eq(merged.music_favs, remote.music_favs) ||
+      !eq(merged.reader, remote.reader) ||
+      merged.last_opened !== (remote.last_opened || null),
+  };
 }
