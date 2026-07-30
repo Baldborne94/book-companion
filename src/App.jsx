@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, SECTIONS } from "./data/constants.js";
-import { loadBooks, saveBooks, removeBookMeta } from "./lib/library.js";
+import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus } from "./lib/library.js";
 import { removeBookData, requestPersistence } from "./lib/bookStore.js";
 import Home from "./components/Home.jsx";
 import Library from "./components/Library.jsx";
 import BookSheet from "./components/BookSheet.jsx";
 import EmptyState from "./components/EmptyState.jsx";
+
+const Reader = lazy(() => import("./components/Reader.jsx"));
 
 const reducedMotion = () =>
   typeof window !== "undefined" &&
@@ -190,6 +192,7 @@ export default function App() {
   const [section, setSection] = useState("home");
   const [books, setBooks] = useState(() => loadBooks());
   const [openId, setOpenId] = useState(null);
+  const [readingId, setReadingId] = useState(null);
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
 
@@ -224,7 +227,21 @@ export default function App() {
     notify("Il tomo è tornato alla polvere 🕯️");
   }
 
+  function handleRead(id) {
+    const b = books.find((x) => x.id === id);
+    if (!b) return;
+    setLastOpened(id);
+    if (getStatus(id) === "unread") setStatus(id, "reading");
+    if (b.fileType === "epub") {
+      setOpenId(null);
+      setReadingId(id);
+    } else {
+      notify("Il reader PDF arriva con una fase dedicata — presto anche questo tomo ✨");
+    }
+  }
+
   const openBook = books.find((b) => b.id === openId);
+  const readingBook = books.find((b) => b.id === readingId);
 
   return (
     <div
@@ -250,7 +267,7 @@ export default function App() {
           animation: "bc-fade-in 0.35s ease-out",
         }}
       >
-        {section === "home" && <Home books={books} goTo={setSection} onOpenBook={setOpenId} />}
+        {section === "home" && <Home books={books} goTo={setSection} onOpenBook={setOpenId} onRead={handleRead} />}
         {section === "library" && (
           <Library books={books} updateBooks={updateBooks} onOpenBook={setOpenId} notify={notify} />
         )}
@@ -264,8 +281,33 @@ export default function App() {
           onClose={() => setOpenId(null)}
           onSaveMeta={handleSaveMeta}
           onDelete={handleDelete}
+          onRead={handleRead}
           notify={notify}
         />
+      )}
+      {readingBook && (
+        <Suspense
+          fallback={
+            <div
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 45,
+                background: C.bg,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: C.muted,
+                fontFamily: FONT_TITLE,
+                fontSize: 18,
+              }}
+            >
+              🕯️ Apro il tomo…
+            </div>
+          }
+        >
+          <Reader key={readingBook.id} book={readingBook} onClose={() => setReadingId(null)} notify={notify} />
+        </Suspense>
       )}
       <Toast message={toast} />
     </div>

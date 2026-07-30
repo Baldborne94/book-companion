@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
-import { getProgress, getStatus, setStatus, setLastOpened } from "../lib/library.js";
+import { getProgress, getStatus, setStatus } from "../lib/library.js";
 import BookCover from "./BookCover.jsx";
 
 const STATUSES = [
@@ -29,7 +29,7 @@ function Field({ label, value, onChange, placeholder }) {
   );
 }
 
-export default function BookSheet({ book, onClose, onSaveMeta, onDelete, notify }) {
+export default function BookSheet({ book, onClose, onSaveMeta, onDelete, onRead, notify }) {
   const [title, setTitle] = useState(book.title);
   const [author, setAuthor] = useState(book.author || "");
   const [series, setSeries] = useState(book.series || "");
@@ -58,9 +58,15 @@ export default function BookSheet({ book, onClose, onSaveMeta, onDelete, notify 
   }
 
   function openBook() {
-    setLastOpened(book.id);
-    if (status === "unread") changeStatus("reading");
-    notify("Il reader arriva con la prossima fase ✨ Intanto l'ho segnato come libro attuale.");
+    onSaveMeta({
+      ...book,
+      title: title.trim() || book.title,
+      author: author.trim(),
+      series: series.trim(),
+      notes,
+      rating,
+    });
+    onRead(book.id);
   }
 
   return (
