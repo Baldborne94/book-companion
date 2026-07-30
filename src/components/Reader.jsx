@@ -356,7 +356,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
     }
     setTurning({ dir, key: Date.now() });
     clearTimeout(turnTimer.current);
-    turnTimer.current = setTimeout(() => setTurning(null), 590);
+    turnTimer.current = setTimeout(() => setTurning(null), 850);
     const doSwap = () => {
       swapTimer.current = null;
       swapPending.current = null;
@@ -364,7 +364,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
       else r.prev();
     };
     swapPending.current = doSwap;
-    swapTimer.current = setTimeout(doSwap, 275);
+    swapTimer.current = setTimeout(doSwap, 400);
   }
   turnRef.current = turn;
 
@@ -551,7 +551,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
                 turning.dir === "next"
                   ? "linear-gradient(to left, #00000059, transparent 65%)"
                   : "linear-gradient(to right, #00000059, transparent 65%)",
-              animation: "bc-cast 0.55s ease-in-out forwards",
+              animation: "bc-cast 0.8s ease-in-out forwards",
             }}
           />
         )}
@@ -571,7 +571,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
               backgroundColor: theme.bg,
               opacity: 0,
               willChange: "transform, opacity",
-              animationDuration: "0.55s",
+              animationDuration: "0.8s",
               animationTimingFunction: "ease-in-out",
               animationFillMode: "forwards",
             }}
