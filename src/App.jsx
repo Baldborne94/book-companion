@@ -1,5 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, SECTIONS } from "./data/constants.js";
+import { loadBooks, saveBooks, removeBookMeta } from "./lib/library.js";
+import { removeBookData, requestPersistence } from "./lib/bookStore.js";
+import Home from "./components/Home.jsx";
+import Library from "./components/Library.jsx";
+import BookSheet from "./components/BookSheet.jsx";
+import EmptyState from "./components/EmptyState.jsx";
 
 const reducedMotion = () =>
   typeof window !== "undefined" &&
@@ -91,85 +97,6 @@ function Header() {
   );
 }
 
-function EmptyState({ emoji, title, text, action, onAction }) {
-  return (
-    <div
-      style={{
-        textAlign: "center",
-        padding: "48px 24px",
-        animation: "bc-fade-in 0.6s ease-out",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 64,
-          marginBottom: 16,
-          filter: `drop-shadow(0 0 22px ${C.arcane}66)`,
-        }}
-      >
-        {emoji}
-      </div>
-      <h2
-        style={{
-          fontFamily: FONT_TITLE,
-          fontWeight: 600,
-          fontSize: 24,
-          color: C.text,
-          marginBottom: 8,
-        }}
-      >
-        {title}
-      </h2>
-      <p style={{ color: C.muted, maxWidth: 420, margin: "0 auto 24px" }}>{text}</p>
-      {action && (
-        <button
-          onClick={onAction}
-          style={{
-            padding: "12px 28px",
-            borderRadius: 12,
-            background: `linear-gradient(180deg, ${C.accent}, #b8893a)`,
-            color: "#241c0a",
-            fontWeight: 600,
-            fontSize: 16,
-            boxShadow: `0 0 24px ${C.accent}33`,
-            transition: "transform 0.2s ease-out, box-shadow 0.2s ease-out",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.boxShadow = `0 0 34px ${C.accent}55`;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.boxShadow = `0 0 24px ${C.accent}33`;
-          }}
-        >
-          {action}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function Home({ goTo }) {
-  return (
-    <EmptyState
-      emoji="🔮"
-      title="Benvenuto nel tuo regno"
-      text="Qui ritroverai il libro che stai leggendo e gli ultimi arrivati sul tuo scaffale. Tutto comincia portando il primo tomo in Libreria."
-      action="Vai alla Libreria"
-      onAction={() => goTo("library")}
-    />
-  );
-}
-
-function Library() {
-  return (
-    <EmptyState
-      emoji="📜"
-      title="Il tuo grimorio è ancora vuoto…"
-      text="Presto potrai caricare i tuoi EPUB e PDF: appariranno qui come tomi su uno scaffale incantato, con copertine, ricerca e segnalibri. L'importazione arriva con la prossima fase."
-    />
-  );
-}
-
 function Music() {
   return (
     <EmptyState
@@ -232,8 +159,72 @@ function BottomNav({ section, goTo }) {
   );
 }
 
+function Toast({ message }) {
+  if (!message) return null;
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 86,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 60,
+        maxWidth: "min(92vw, 480px)",
+        padding: "11px 18px",
+        borderRadius: 12,
+        border: `1px solid ${C.border}`,
+        background: `${C.card}f5`,
+        color: C.text,
+        fontSize: 14.5,
+        textAlign: "center",
+        boxShadow: `0 0 30px ${C.arcane}22, 0 8px 24px #00000066`,
+        animation: "bc-fade-in 0.25s ease-out",
+      }}
+    >
+      {message}
+    </div>
+  );
+}
+
 export default function App() {
   const [section, setSection] = useState("home");
+  const [books, setBooks] = useState(() => loadBooks());
+  const [openId, setOpenId] = useState(null);
+  const [toast, setToast] = useState(null);
+  const toastTimer = useRef(null);
+
+  useEffect(() => {
+    requestPersistence();
+  }, []);
+
+  function notify(message) {
+    setToast(message);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 4500);
+  }
+
+  function updateBooks(next) {
+    saveBooks(next);
+    setBooks(next);
+  }
+
+  function handleSaveMeta(patch) {
+    updateBooks(books.map((b) => (b.id === patch.id ? { ...b, ...patch } : b)));
+  }
+
+  async function handleDelete(id) {
+    setOpenId(null);
+    removeBookMeta(id);
+    setBooks(loadBooks());
+    try {
+      await removeBookData(id);
+    } catch {
+      /* i metadati sono già rimossi: i bytes orfani non sono raggiungibili dalla UI */
+    }
+    notify("Il tomo è tornato alla polvere 🕯️");
+  }
+
+  const openBook = books.find((b) => b.id === openId);
 
   return (
     <div
@@ -259,11 +250,24 @@ export default function App() {
           animation: "bc-fade-in 0.35s ease-out",
         }}
       >
-        {section === "home" && <Home goTo={setSection} />}
-        {section === "library" && <Library />}
+        {section === "home" && <Home books={books} goTo={setSection} onOpenBook={setOpenId} />}
+        {section === "library" && (
+          <Library books={books} updateBooks={updateBooks} onOpenBook={setOpenId} notify={notify} />
+        )}
         {section === "music" && <Music />}
       </main>
       <BottomNav section={section} goTo={setSection} />
+      {openBook && (
+        <BookSheet
+          key={openBook.id}
+          book={openBook}
+          onClose={() => setOpenId(null)}
+          onSaveMeta={handleSaveMeta}
+          onDelete={handleDelete}
+          notify={notify}
+        />
+      )}
+      <Toast message={toast} />
     </div>
   );
 }

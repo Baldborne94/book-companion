@@ -16,7 +16,7 @@ App PWA per la biblioteca personale dell'utente: carica i **suoi** EPUB/PDF, li 
 
 ## 2. Stato del repo
 
-Scaffold Fase 0 completato (shell con nav Ingresso/Libreria/Musica, `src/data/constants.js`, manifest PWA, UI in italiano). Le sessioni successive partono dalla prima fase non spuntata in fondo a questo file.
+Scaffold Fase 0 completato (shell con nav Ingresso/Libreria/Musica, `src/data/constants.js`, manifest PWA, UI in italiano). Struttura: `src/lib/` per storage/import/export (senza JSX, testabile), `src/components/` per le sezioni UI, import lazy di `epubjs`/`pdfjs-dist`/`jszip` (chunk separati). Le sessioni successive partono dalla prima fase non spuntata in fondo a questo file.
 
 ## 3. Direzione visiva — "Biblioteca Magica" 🕯️
 
@@ -63,7 +63,7 @@ export const C = {
 
 Applicata la direzione visiva di §3 a tutta la shell: palette in `constants.js`, font, gradiente di sfondo, particelle, header con flicker di candela, empty state evocativi nelle tre sezioni, `prefers-reduced-motion` rispettato. `npm run build` verde.
 
-### Fase B — La Libreria (il cuore local-first)
+### Fase B — La Libreria (il cuore local-first) ✅
 
 Dipendenze: `epubjs` (metadati + reader poi), `pdfjs-dist` (thumbnail + reader poi).
 
@@ -162,4 +162,4 @@ Su wh-companion l'embed Spotify dava problemi: il controllo `postMessage` dell'i
 
 A ogni fase completata, spunta qui lo stato (✅) così le sessioni successive sanno dove siamo.
 
-Stato fasi: A ✅ · B ☐ · C-EPUB ☐ · C3 ☐ · C-PDF ☐ · D ☐ · E ☐
+Stato fasi: A ✅ · B ✅ · C-EPUB ☐ · C3 ☐ · C-PDF ☐ · D ☐ · E ☐
