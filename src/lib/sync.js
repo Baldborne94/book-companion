@@ -6,7 +6,7 @@ import {
 } from "./library.js";
 import { getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights, removeAnnotations } from "./annotations.js";
 import { getBookMusic, setBookMusic, getFavorites, saveFavorites } from "./music.js";
-import { planSync, mergePrefs, rowFromLocal, localFromRow } from "./syncCore.js";
+import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow } from "./syncCore.js";
 
 const LAST_SYNC_KEY = "bc_lastsync";
 const UPLOADED_KEY = "bc_uploaded";
@@ -113,7 +113,7 @@ export async function syncNow({ onProgress } = {}) {
     say(`Invio ${push.length} ${push.length === 1 ? "libro" : "libri"}…`);
     const { error: upErr } = await sb
       .from("books")
-      .upsert(push.map((r) => ({ ...r, user_id: uid })));
+      .upsert(push.map((r) => ({ ...normalizeRow(r), user_id: uid })));
     if (upErr) throw upErr;
     const deletedIds = push.filter((r) => r.deleted).map((r) => r.id);
     if (deletedIds.length) {

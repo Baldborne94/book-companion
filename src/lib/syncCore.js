@@ -1,3 +1,26 @@
+const EMPTY_ROW = {
+  title: "",
+  author: "",
+  series: "",
+  file_type: "epub",
+  added_at: 0,
+  rating: 0,
+  notes: "",
+  status: "unread",
+  progress: 0,
+  cfi: null,
+  marks: [],
+  highlights: [],
+  music: null,
+  file_ext: null,
+  deleted: false,
+  updated_at: 0,
+};
+
+// PostgREST unisce le chiavi di un batch: una riga con meno colonne
+// (le lapidi) le riceverebbe come null, non come default.
+export const normalizeRow = (row) => ({ ...EMPTY_ROW, ...row });
+
 export const rowFromLocal = (book, state, updatedAt) => ({
   id: book.id,
   title: book.title || "",
