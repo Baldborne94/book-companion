@@ -5,8 +5,10 @@ import { removeBookData, requestPersistence } from "./lib/bookStore.js";
 import Home from "./components/Home.jsx";
 import Library from "./components/Library.jsx";
 import BookSheet from "./components/BookSheet.jsx";
-import EmptyState from "./components/EmptyState.jsx";
 import QuoteGarden from "./components/QuoteGarden.jsx";
+import MusicPlayer from "./components/MusicPlayer.jsx";
+import MusicRoom from "./components/MusicRoom.jsx";
+import { getBookMusic, setBookMusic } from "./lib/music.js";
 
 const Reader = lazy(() => import("./components/Reader.jsx"));
 
@@ -100,16 +102,6 @@ function Header() {
   );
 }
 
-function Music() {
-  return (
-    <EmptyState
-      emoji="🎼"
-      title="La sala della musica è silenziosa"
-      text="Qui incollerai un link YouTube — pioggia e camino, arpe celtiche, cori lontani — e la musica ti accompagnerà mentre leggi. In arrivo in una fase dedicata."
-    />
-  );
-}
-
 function BottomNav({ section, goTo }) {
   return (
     <nav
@@ -162,8 +154,8 @@ function BottomNav({ section, goTo }) {
   );
 }
 
-function Toast({ message }) {
-  if (!message) return null;
+function Toast({ toast, onDismiss }) {
+  if (!toast) return null;
   return (
     <div
       style={{
@@ -184,7 +176,26 @@ function Toast({ message }) {
         animation: "bc-fade-in 0.25s ease-out",
       }}
     >
-      {message}
+      {toast.message}
+      {toast.action && (
+        <button
+          onClick={() => {
+            toast.action.onClick();
+            onDismiss();
+          }}
+          style={{
+            marginLeft: 12,
+            padding: "5px 14px",
+            borderRadius: 999,
+            border: `1px solid ${C.accent}`,
+            color: C.accent,
+            fontSize: 14,
+            fontWeight: 600,
+          }}
+        >
+          {toast.action.label}
+        </button>
+      )}
     </div>
   );
 }
@@ -197,16 +208,18 @@ export default function App() {
   const [readingStart, setReadingStart] = useState(null);
   const [gardenOpen, setGardenOpen] = useState(false);
   const [toast, setToast] = useState(null);
+  const [music, setMusic] = useState({ current: null, playing: false, timerEnd: null });
   const toastTimer = useRef(null);
+  const playerRef = useRef(null);
 
   useEffect(() => {
     requestPersistence();
   }, []);
 
-  function notify(message) {
-    setToast(message);
+  function notify(message, action = null) {
+    setToast({ message, action });
     clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 4500);
+    toastTimer.current = setTimeout(() => setToast(null), action ? 8000 : 4500);
   }
 
   function updateBooks(next) {
@@ -239,6 +252,17 @@ export default function App() {
       setOpenId(null);
       setReadingStart(startCfi);
       setReadingId(id);
+      if (music.playing && music.current) {
+        setBookMusic(id, { url: music.current.url, name: music.current.name });
+      } else {
+        const pair = getBookMusic(id);
+        if (pair) {
+          notify(`Questo libro suona con «${pair.name || "la sua melodia"}»`, {
+            label: "▶ Riprendi",
+            onClick: () => playerRef.current?.play(pair.url, pair.name),
+          });
+        }
+      }
     } else {
       notify("Il reader PDF arriva con una fase dedicata — presto anche questo tomo ✨");
     }
@@ -246,6 +270,12 @@ export default function App() {
 
   const openBook = books.find((b) => b.id === openId);
   const readingBook = books.find((b) => b.id === readingId);
+
+  useEffect(() => {
+    if (readingId && music.current) {
+      setBookMusic(readingId, { url: music.current.url, name: music.current.name });
+    }
+  }, [music.current, readingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div
@@ -277,7 +307,7 @@ export default function App() {
         {section === "library" && (
           <Library books={books} updateBooks={updateBooks} onOpenBook={setOpenId} notify={notify} />
         )}
-        {section === "music" && <Music />}
+        {section === "music" && <MusicRoom music={music} playerRef={playerRef} notify={notify} />}
       </main>
       <BottomNav section={section} goTo={setSection} />
       {openBook && (
@@ -323,6 +353,9 @@ export default function App() {
             key={`${readingBook.id}:${readingStart || ""}`}
             book={readingBook}
             startCfi={readingStart}
+            music={music}
+            onMusicToggle={() => (music.playing ? playerRef.current?.pause() : playerRef.current?.resume())}
+            onMusicStop={() => playerRef.current?.stop()}
             onClose={() => {
               setReadingId(null);
               setReadingStart(null);
@@ -331,7 +364,13 @@ export default function App() {
           />
         </Suspense>
       )}
-      <Toast message={toast} />
+      <MusicPlayer
+        ref={playerRef}
+        onInfo={setMusic}
+        hideMini={section === "music" || !!readingBook}
+        notify={notify}
+      />
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }

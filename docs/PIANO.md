@@ -106,7 +106,7 @@ Criteri: chiudo a pagina X → riapro esattamente a pagina X; le impostazioni so
 
 Vista che raccoglie **tutte le evidenziazioni di tutti i libri** in un unico posto: il "libro dei libri", su tema pergamena, raggruppato per libro, con salto al punto esatto nel reader. È la risposta ai clippings scomodi del Kindle. Dati già presenti dalla Fase C (evidenziazioni per libro): questa fase è solo la vista aggregata + navigazione.
 
-### Fase D — Il Player (solo YouTube)
+### Fase D — Il Player (solo YouTube) ✅
 
 Modello wh-companion, già collaudato:
 - `MusicPlayer.jsx` **sempre montato** in App (mai smontato o la musica si ferma; z-index sotto al contenuto, sopra solo nella sezione Musica), `forwardRef` con `stop()/pause()/resume()`.
@@ -162,4 +162,4 @@ Su wh-companion l'embed Spotify dava problemi: il controllo `postMessage` dell'i
 
 A ogni fase completata, spunta qui lo stato (✅) così le sessioni successive sanno dove siamo.
 
-Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ☐ · D ☐ · E ☐
+Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ☐ · D ✅ · E ☐
