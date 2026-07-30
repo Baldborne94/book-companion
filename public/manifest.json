@@ -1,0 +1,19 @@
+{
+  "name": "Book Companion",
+  "short_name": "Book Companion",
+  "description": "La tua biblioteca personale: libri, lettura e musica in un unico regno.",
+  "lang": "it",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f0d1a",
+  "theme_color": "#0f0d1a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
