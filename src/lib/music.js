@@ -38,6 +38,7 @@ export function getFavorites() {
 
 export function saveFavorites(list) {
   localStorage.setItem(FAVS_KEY, JSON.stringify(list));
+  localStorage.setItem("bc_prefs_upd", String(Date.now()));
 }
 
 export function getBookMusic(bookId) {
@@ -50,4 +51,5 @@ export function getBookMusic(bookId) {
 
 export function setBookMusic(bookId, pair) {
   localStorage.setItem(`bc_music_${bookId}`, JSON.stringify(pair));
+  localStorage.setItem(`bc_upd_${bookId}`, String(Date.now()));
 }

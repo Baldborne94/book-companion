@@ -34,6 +34,7 @@ export const getFile = (id) => withStore("files", "readonly", (s) => s.get(id));
 export const putCover = (id, blob) => withStore("covers", "readwrite", (s) => s.put(blob, id));
 export const getCover = (id) => withStore("covers", "readonly", (s) => s.get(id));
 
+export const listFileIds = () => withStore("files", "readonly", (s) => s.getAllKeys());
 export const putAux = (key, value) => withStore("aux", "readwrite", (s) => s.put(value, key));
 export const getAux = (key) => withStore("aux", "readonly", (s) => s.get(key));
 

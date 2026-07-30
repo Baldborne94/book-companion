@@ -23,7 +23,7 @@ const SORTS = [
 const fmtBytes = (n) =>
   n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1e6))} MB`;
 
-function Shelf({ books, onOpenBook }) {
+function Shelf({ books, onOpenBook, localIds }) {
   return (
     <div
       style={{
@@ -82,6 +82,24 @@ function Shelf({ books, onOpenBook }) {
                   ✓
                 </span>
               )}
+              {localIds && !localIds.has(b.id) && (
+                <span
+                  title="Nel cloud — si scarica quando lo apri"
+                  style={{
+                    position: "absolute",
+                    bottom: 6,
+                    left: 6,
+                    padding: "1px 6px",
+                    borderRadius: 10,
+                    fontSize: 12,
+                    background: `${C.bg}cc`,
+                    border: `1px solid ${C.arcane}77`,
+                    color: C.arcane,
+                  }}
+                >
+                  ☁
+                </span>
+              )}
             </div>
             <div
               style={{
@@ -125,7 +143,7 @@ function Shelf({ books, onOpenBook }) {
   );
 }
 
-export default function Library({ books, updateBooks, onOpenBook, notify }) {
+export default function Library({ books, updateBooks, onOpenBook, notify, localIds, onImported }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [sort, setSort] = useState("recent");
@@ -144,7 +162,10 @@ export default function Library({ books, updateBooks, onOpenBook, notify }) {
     setImporting(true);
     try {
       const { added, errors } = await importFiles(files);
-      if (added.length) updateBooks([...books, ...added]);
+      if (added.length) {
+        updateBooks([...books, ...added]);
+        onImported?.();
+      }
       const parts = [];
       if (added.length)
         parts.push(added.length === 1 ? "Un nuovo tomo sullo scaffale ✨" : `${added.length} nuovi tomi sullo scaffale ✨`);
@@ -297,7 +318,7 @@ export default function Library({ books, updateBooks, onOpenBook, notify }) {
           Nessun tomo risponde all'appello con questi filtri…
         </p>
       ) : (
-        <Shelf books={visible} onOpenBook={onOpenBook} />
+        <Shelf books={visible} onOpenBook={onOpenBook} localIds={localIds} />
       )}
 
       {books.length > 0 && (

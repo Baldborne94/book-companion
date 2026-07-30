@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
-import { getFile, getAux, putAux } from "../lib/bookStore.js";
+import { getAux, putAux } from "../lib/bookStore.js";
+import { ensureLocalFile } from "../lib/sync.js";
 import {
   getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights,
 } from "../lib/annotations.js";
@@ -256,7 +257,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
     let dead = false;
     (async () => {
       try {
-        const blob = await getFile(book.id);
+        const blob = await ensureLocalFile(book);
         if (!blob) throw new Error("file mancante");
         const { default: ePub } = await import("epubjs");
         const eb = ePub(await blob.arrayBuffer());
@@ -591,7 +592,10 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
           }}
         >
           <span style={{ fontSize: 40 }}>📕</span>
-          <span>Questo tomo non si lascia aprire… il file potrebbe essere danneggiato.</span>
+          <span>
+            Questo tomo non si lascia aprire… il file potrebbe essere danneggiato, oppure è nel
+            cloud e ora sei offline.
+          </span>
           <button
             onClick={handleClose}
             style={{ padding: "10px 22px", borderRadius: 10, border: `1px solid ${C.border}`, color: C.muted }}

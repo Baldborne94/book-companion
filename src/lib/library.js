@@ -1,5 +1,33 @@
 const BOOKS_KEY = "bc_books";
 const LAST_KEY = "bc_lastopen";
+const TOMBS_KEY = "bc_tombs";
+
+export const touchBook = (id, ts = Date.now()) =>
+  localStorage.setItem(`bc_upd_${id}`, String(ts));
+
+export function getUpdatedAt(id, fallback = 0) {
+  const v = parseInt(localStorage.getItem(`bc_upd_${id}`), 10);
+  return Number.isFinite(v) ? Math.max(v, fallback) : fallback;
+}
+
+export function getTombstones() {
+  try {
+    const v = JSON.parse(localStorage.getItem(TOMBS_KEY));
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+export function addTombstone(id, ts = Date.now()) {
+  localStorage.setItem(TOMBS_KEY, JSON.stringify({ ...getTombstones(), [id]: ts }));
+}
+
+export function clearTombstones(ids) {
+  const t = getTombstones();
+  ids.forEach((id) => delete t[id]);
+  localStorage.setItem(TOMBS_KEY, JSON.stringify(t));
+}
 
 export function loadBooks() {
   try {
@@ -22,6 +50,7 @@ export function getProgress(id) {
 
 export function setProgress(id, fraction) {
   localStorage.setItem(`bc_prog_${id}`, String(Math.min(1, Math.max(0, fraction))));
+  touchBook(id);
 }
 
 export function getStatus(id) {
@@ -30,6 +59,7 @@ export function getStatus(id) {
 
 export function setStatus(id, status) {
   localStorage.setItem(`bc_status_${id}`, status);
+  touchBook(id);
 }
 
 export function getLastOpened() {
@@ -38,10 +68,14 @@ export function getLastOpened() {
 
 export function setLastOpened(id) {
   localStorage.setItem(LAST_KEY, id);
+  localStorage.setItem("bc_prefs_upd", String(Date.now()));
 }
 
 export function removeBookMeta(id) {
   saveBooks(loadBooks().filter((b) => b.id !== id));
+  addTombstone(id);
+  localStorage.removeItem(`bc_upd_${id}`);
+  localStorage.removeItem(`bc_music_${id}`);
   localStorage.removeItem(`bc_prog_${id}`);
   localStorage.removeItem(`bc_status_${id}`);
   localStorage.removeItem(`bc_cfi_${id}`);

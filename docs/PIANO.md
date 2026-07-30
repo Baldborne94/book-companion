@@ -127,7 +127,16 @@ Criteri: la musica non si interrompe navigando tra sezioni né aprendo/chiudendo
 - Deploy su Vercel, auto-deploy su `main`.
 - **Priorità alta per l'utente**: il tablet Android è il dispositivo principale — installare presto la PWA è anche il test reale dell'app (e su Android l'installazione garantisce lo storage persistente).
 
-### Dopo (fuori scope, non iniziare): Supabase sync multi-dispositivo, statistiche di lettura, obiettivi, i18n EN, suite E2E Playwright (riusare l'harness di wh-companion), eventuale wrap TWA/Capacitor per APK (audio a schermo spento, "Apri con" per EPUB).
+### Fase F — Sync multi-dispositivo (Supabase) ✅
+
+Local-first con specchio cloud: l'app funziona identica senza configurazione; con `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` si accende la sincronizzazione (client caricato lazy).
+- **Accesso**: magic link via email (`signInWithOtp`), pannello ☁️ nell'header.
+- **Dati**: tabella `books` (metadati + stato + progresso + CFI + segnalibri + evidenziazioni + musica del libro, per-utente con RLS) e `prefs` (impostazioni reader, preferiti musicali, ultimo aperto). Schema in `supabase/schema.sql`.
+- **File**: bucket privato `books` (`<uid>/<bookId>.<ext>` + `.cover`); upload al primo sync dopo l'import, **download on-demand** al primo "Apri il libro" su un nuovo dispositivo (badge ☁ sulle copertine non ancora scaricate).
+- **Merge**: last-write-wins per libro via `bc_upd_<id>` (touch su ogni progresso/stato/annotazione/musica); cancellazioni con lapidi `bc_tombs` che rimuovono anche i file dal bucket; prefs con timestamp `bc_prefs_upd`. Logica pura e testabile in `lib/syncCore.js` (`planSync`/`mergePrefs`).
+- **Trigger**: all'avvio, al ritorno in foreground, al ritorno online, dopo import/eliminazione e alla chiusura del reader (il progresso vola subito sul cloud).
+
+### Dopo (fuori scope, non iniziare): statistiche di lettura, obiettivi, i18n EN, suite E2E Playwright (riusare l'harness di wh-companion), eventuale wrap TWA/Capacitor per APK (audio a schermo spento, "Apri con" per EPUB).
 
 ## 5. Ordine e granularità
 
@@ -162,4 +171,4 @@ Su wh-companion l'embed Spotify dava problemi: il controllo `postMessage` dell'i
 
 A ogni fase completata, spunta qui lo stato (✅) così le sessioni successive sanno dove siamo.
 
-Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ — milestone completa 🎉
+Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ · F-sync ✅ — milestone completa 🎉
