@@ -221,7 +221,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
         if (loc.atEnd) setStatus(book.id, "read");
         clearTimeout(saveTimer.current);
         saveTimer.current = setTimeout(flush, 1500);
-        snapSchedRef.current(350);
+        snapSchedRef.current(200);
       });
 
       r.on("layout", (layout) => setPages(layout.divisor > 1 ? 2 : 1));
@@ -372,13 +372,18 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
         ctx.drawImage(c, (left - rect.left) * dpr, (top - rect.top) * dpr);
       }
       if (seq !== snapSeq.current) return;
-      snapRef.current = { url: out.toDataURL(), w: rect.width, h: rect.height };
+      const url = out.toDataURL();
+      const img = new Image();
+      img.src = url;
+      try { await img.decode(); } catch { /* decodificherà al primo paint */ }
+      if (seq !== snapSeq.current) return;
+      snapRef.current = { url, w: rect.width, h: rect.height, img };
     } catch {
       snapRef.current = null;
     }
   }
 
-  function scheduleSnapshot(delay = 300) {
+  function scheduleSnapshot(delay = 180) {
     snapRef.current = null;
     snapSeq.current++;
     clearTimeout(snapTimer.current);
@@ -403,7 +408,13 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
       snapRef.current = null;
       setTurning({ dir, key: Date.now(), snap });
       clearTimeout(turnTimer.current);
-      turnTimer.current = setTimeout(() => setTurning(null), snap ? 560 : 400);
+      turnTimer.current = setTimeout(() => setTurning(null), snap ? 720 : 400);
+      if (snap) {
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => (dir === "next" ? r.next() : r.prev()))
+        );
+        return;
+      }
     }
     if (dir === "next") r.next();
     else r.prev();
@@ -577,6 +588,25 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
             }}
           />
         )}
+        {turning?.snap && pages === 2 && (
+          <div
+            key={`cover-${turning.key}`}
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              ...(turning.dir === "next" ? { left: 0, right: "50%" } : { left: "50%", right: 0 }),
+              zIndex: 5,
+              pointerEvents: "none",
+              backgroundImage: `url(${turning.snap.url})`,
+              backgroundSize: `${turning.snap.w}px ${turning.snap.h}px`,
+              backgroundPosition:
+                turning.dir === "next" ? "0 0" : `-${turning.snap.w / 2}px 0`,
+              animation: "bc-cover-hold 0.64s cubic-bezier(0.25, 0.7, 0.3, 1) forwards",
+            }}
+          />
+        )}
         {turning?.snap && (
           <div
             key={turning.key}
@@ -593,7 +623,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
               zIndex: 6,
               pointerEvents: "none",
               transformStyle: "preserve-3d",
-              animation: `${turning.dir === "next" ? "bc-turn-next" : "bc-turn-prev"} 0.52s cubic-bezier(0.3, 0.6, 0.3, 1) forwards`,
+              animation: `${turning.dir === "next" ? "bc-turn-next" : "bc-turn-prev"} 0.64s cubic-bezier(0.25, 0.7, 0.3, 1) forwards`,
             }}
           >
             <div
@@ -606,7 +636,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
                   turning.dir === "next" && pages === 2 ? `-${turning.snap.w / 2}px 0` : "0 0",
                 boxShadow:
                   turning.dir === "next" ? "-16px 0 34px #00000059" : "16px 0 34px #00000059",
-                animation: "bc-face-front 0.52s cubic-bezier(0.3, 0.6, 0.3, 1) forwards",
+                animation: "bc-face-front 0.64s cubic-bezier(0.25, 0.7, 0.3, 1) forwards",
               }}
             />
             <div
@@ -619,7 +649,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
                   turning.dir === "next"
                     ? "linear-gradient(to left, #00000029, transparent 30%)"
                     : "linear-gradient(to right, #00000029, transparent 30%)",
-                animation: "bc-face-back 0.52s cubic-bezier(0.3, 0.6, 0.3, 1) forwards",
+                animation: "bc-face-back 0.64s cubic-bezier(0.25, 0.7, 0.3, 1) forwards",
               }}
             />
           </div>

@@ -114,6 +114,15 @@ input {
   }
 }
 
+@keyframes bc-cover-hold {
+  0%, 80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 @keyframes bc-sheet-next {
   0% {
     transform: rotateY(88deg);
