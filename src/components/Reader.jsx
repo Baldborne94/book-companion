@@ -359,15 +359,16 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
     }
     setTurning({ dir, key: Date.now() });
     clearTimeout(turnTimer.current);
-    turnTimer.current = setTimeout(() => setTurning(null), 850);
+    turnTimer.current = setTimeout(() => setTurning(null), 1050);
     const doSwap = () => {
       swapTimer.current = null;
       swapPending.current = null;
       if (dir === "next") r.next();
       else r.prev();
     };
+    // il foglio e la copertura sono opachi a 80ms: lo scambio resta invisibile
     swapPending.current = doSwap;
-    swapTimer.current = setTimeout(doSwap, 400);
+    swapTimer.current = setTimeout(doSwap, 95);
   }
   turnRef.current = turn;
 
@@ -542,6 +543,28 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
         )}
         {turning && pages === 2 && (
           <div
+            key={`cover-${turning.key}`}
+            data-cover={turning.dir}
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              ...(turning.dir === "next" ? { left: 0, right: "50%" } : { left: "50%", right: 0 }),
+              zIndex: 5,
+              pointerEvents: "none",
+              opacity: 0,
+              backgroundColor: theme.bg,
+              backgroundImage:
+                turning.dir === "next"
+                  ? "linear-gradient(to right, transparent 70%, #0000001f)"
+                  : "linear-gradient(to left, transparent 70%, #0000001f)",
+              animation: "bc-cover-half 1s ease-in-out forwards",
+            }}
+          />
+        )}
+        {turning && pages === 2 && (
+          <div
             key={`cast-${turning.key}`}
             aria-hidden="true"
             style={{
@@ -556,7 +579,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
                 turning.dir === "next"
                   ? "linear-gradient(to left, #00000059, transparent 65%)"
                   : "linear-gradient(to right, #00000059, transparent 65%)",
-              animation: "bc-cast 0.8s ease-in-out forwards",
+              animation: "bc-cast 1s ease-in-out forwards",
             }}
           />
         )}
@@ -576,8 +599,8 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
               backgroundColor: theme.bg,
               opacity: 0,
               willChange: "transform, opacity",
-              animationDuration: "0.8s",
-              animationTimingFunction: "ease-in-out",
+              animationDuration: "1s",
+              animationTimingFunction: "cubic-bezier(0.3, 0.45, 0.35, 1)",
               animationFillMode: "forwards",
             }}
           />
