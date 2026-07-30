@@ -120,7 +120,7 @@ Modello wh-companion, già collaudato:
 
 Criteri: la musica non si interrompe navigando tra sezioni né aprendo/chiudendo il reader; pausa dal reader funziona; riaprendo un libro viene proposta la sua musica.
 
-### Fase E — PWA + deploy
+### Fase E — PWA + deploy ✅
 
 - `vite-plugin-pwa` in modalità **`prompt`** (MAI autoUpdate: ricarica la pagina mentre leggi), `skipWaiting`/`clientsClaim` **false**, precache di **tutti** i chunk JS, toast "nuova versione" mai mostrato a reader aperto, update applicato al passaggio in background.
 - Icone PWA a tema (libro + stella, sfondo `#0f0d1a`), installabile su telefono/tablet.
@@ -162,4 +162,4 @@ Su wh-companion l'embed Spotify dava problemi: il controllo `postMessage` dell'i
 
 A ogni fase completata, spunta qui lo stato (✅) così le sessioni successive sanno dove siamo.
 
-Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ☐
+Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ — milestone completa 🎉

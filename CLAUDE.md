@@ -16,6 +16,8 @@ App PWA local-first per la biblioteca personale: EPUB/PDF caricati dall'utente, 
 - Musica: `MusicPlayer.jsx` sempre montato in App (iframe youtube-nocookie invisibile + mini-player, `forwardRef` play/pause/resume/stop/setSleep); UI sezione in `MusicRoom.jsx`; parsing/preferiti/legame libro in `lib/music.js` (`bc_music_favs`, `bc_music_<bookId>`).
 - Reader: `components/Reader.jsx` (EPUB) e `components/PdfReader.jsx` (PDF, progresso = pagina/totale in `bc_cfi_<id>` come numero), lazy, montati SOLO in App.jsx (position:fixed z-45). CFI in `bc_cfi_<id>`, segnalibri `bc_marks_<id>`, evidenziazioni `bc_hl_<id>`, locations epub.js cachate in IndexedDB aux (`loc_<id>`). Impostazioni condivise in `bc_reader` via `readerSettings.js` (default derivati dal device fusi SOTTO le preferenze).
 
+- PWA: `vite-plugin-pwa` in modalità `prompt` (mai autoUpdate), `skipWaiting`/`clientsClaim` false, precache di tutti i chunk (limite 4 MiB per il worker pdf.js), runtime cache per i Google Fonts. Banner "nuova versione" MAI a reader aperto; update auto al passaggio in background solo se non si sta leggendo (`registerSW` in App.jsx).
+
 ## Convenzioni di lavoro
 
 - `npm run build` sempre verde prima di ogni commit.

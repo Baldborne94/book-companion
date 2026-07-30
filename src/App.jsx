@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { registerSW } from "virtual:pwa-register";
 import { C, FONT_TITLE, SECTIONS } from "./data/constants.js";
 import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus } from "./lib/library.js";
 import { removeBookData, requestPersistence } from "./lib/bookStore.js";
@@ -212,9 +213,33 @@ export default function App() {
   const [music, setMusic] = useState({ current: null, playing: false, timerEnd: null });
   const toastTimer = useRef(null);
   const playerRef = useRef(null);
+  const swUpdate = useRef(null);
+  const [updateReady, setUpdateReady] = useState(false);
+  const flags = useRef({ reading: false, updateReady: false });
 
   useEffect(() => {
     requestPersistence();
+    try {
+      swUpdate.current = registerSW({
+        onNeedRefresh: () => {
+          flags.current.updateReady = true;
+          setUpdateReady(true);
+        },
+      });
+    } catch {
+      /* service worker non disponibile (dev / browser antico): l'app funziona uguale */
+    }
+    const onVis = () => {
+      if (
+        document.visibilityState === "hidden" &&
+        flags.current.updateReady &&
+        !flags.current.reading
+      ) {
+        swUpdate.current?.(true);
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
   function notify(message, action = null) {
@@ -267,6 +292,7 @@ export default function App() {
 
   const openBook = books.find((b) => b.id === openId);
   const readingBook = books.find((b) => b.id === readingId);
+  flags.current.reading = !!readingBook;
 
   useEffect(() => {
     if (readingId && music.current) {
@@ -382,6 +408,45 @@ export default function App() {
         hideMini={section === "music" || !!readingBook}
         notify={notify}
       />
+      {updateReady && !readingBook && (
+        <div
+          style={{
+            position: "fixed",
+            top: 10,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 30,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            maxWidth: "min(94vw, 460px)",
+            padding: "10px 16px",
+            borderRadius: 12,
+            border: `1px solid ${C.accent}66`,
+            background: `${C.card}f8`,
+            color: C.text,
+            fontSize: 14.5,
+            boxShadow: `0 0 30px ${C.accent}22, 0 8px 24px #00000066`,
+            animation: "bc-fade-in 0.3s ease-out",
+          }}
+        >
+          <span>✨ Una nuova versione della biblioteca è pronta</span>
+          <button
+            onClick={() => swUpdate.current?.(true)}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 999,
+              border: `1px solid ${C.accent}`,
+              color: C.accent,
+              fontWeight: 600,
+              fontSize: 14,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Aggiorna
+          </button>
+        </div>
+      )}
       <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>
   );
