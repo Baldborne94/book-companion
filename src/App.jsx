@@ -6,6 +6,7 @@ import Home from "./components/Home.jsx";
 import Library from "./components/Library.jsx";
 import BookSheet from "./components/BookSheet.jsx";
 import EmptyState from "./components/EmptyState.jsx";
+import QuoteGarden from "./components/QuoteGarden.jsx";
 
 const Reader = lazy(() => import("./components/Reader.jsx"));
 
@@ -193,6 +194,8 @@ export default function App() {
   const [books, setBooks] = useState(() => loadBooks());
   const [openId, setOpenId] = useState(null);
   const [readingId, setReadingId] = useState(null);
+  const [readingStart, setReadingStart] = useState(null);
+  const [gardenOpen, setGardenOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
 
@@ -227,13 +230,14 @@ export default function App() {
     notify("Il tomo è tornato alla polvere 🕯️");
   }
 
-  function handleRead(id) {
+  function handleRead(id, startCfi = null) {
     const b = books.find((x) => x.id === id);
     if (!b) return;
     setLastOpened(id);
     if (getStatus(id) === "unread") setStatus(id, "reading");
     if (b.fileType === "epub") {
       setOpenId(null);
+      setReadingStart(startCfi);
       setReadingId(id);
     } else {
       notify("Il reader PDF arriva con una fase dedicata — presto anche questo tomo ✨");
@@ -267,7 +271,9 @@ export default function App() {
           animation: "bc-fade-in 0.35s ease-out",
         }}
       >
-        {section === "home" && <Home books={books} goTo={setSection} onOpenBook={setOpenId} onRead={handleRead} />}
+        {section === "home" && (
+          <Home books={books} goTo={setSection} onOpenBook={setOpenId} onRead={handleRead} onGarden={() => setGardenOpen(true)} />
+        )}
         {section === "library" && (
           <Library books={books} updateBooks={updateBooks} onOpenBook={setOpenId} notify={notify} />
         )}
@@ -283,6 +289,13 @@ export default function App() {
           onDelete={handleDelete}
           onRead={handleRead}
           notify={notify}
+        />
+      )}
+      {gardenOpen && (
+        <QuoteGarden
+          books={books}
+          onClose={() => setGardenOpen(false)}
+          onReadAt={(id, cfi) => handleRead(id, cfi)}
         />
       )}
       {readingBook && (
@@ -306,7 +319,16 @@ export default function App() {
             </div>
           }
         >
-          <Reader key={readingBook.id} book={readingBook} onClose={() => setReadingId(null)} notify={notify} />
+          <Reader
+            key={`${readingBook.id}:${readingStart || ""}`}
+            book={readingBook}
+            startCfi={readingStart}
+            onClose={() => {
+              setReadingId(null);
+              setReadingStart(null);
+            }}
+            notify={notify}
+          />
         </Suspense>
       )}
       <Toast message={toast} />

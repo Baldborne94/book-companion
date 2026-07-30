@@ -20,7 +20,7 @@ function SectionTitle({ children }) {
   );
 }
 
-export default function Home({ books, goTo, onOpenBook, onRead }) {
+export default function Home({ books, goTo, onOpenBook, onRead, onGarden }) {
   if (books.length === 0) {
     return (
       <EmptyState
@@ -93,6 +93,33 @@ export default function Home({ books, goTo, onOpenBook, onRead }) {
           </button>
         </>
       )}
+
+      <button
+        onClick={onGarden}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          marginTop: 22,
+          padding: "13px 16px",
+          borderRadius: 14,
+          border: `1px solid ${C.arcane}55`,
+          background: `linear-gradient(135deg, ${C.arcane}14, transparent)`,
+          textAlign: "left",
+        }}
+      >
+        <span style={{ fontSize: 24, filter: `drop-shadow(0 0 10px ${C.arcane}88)` }}>🌿</span>
+        <span style={{ flex: 1 }}>
+          <span style={{ display: "block", fontFamily: FONT_TITLE, fontWeight: 600, fontSize: 17, color: C.text }}>
+            Il giardino delle citazioni
+          </span>
+          <span style={{ display: "block", fontSize: 13.5, color: C.muted }}>
+            I passaggi che hai evidenziato, di ogni libro, in un unico posto
+          </span>
+        </span>
+        <span style={{ fontSize: 20, color: C.arcane }}>›</span>
+      </button>
 
       <SectionTitle>Aggiunti di recente</SectionTitle>
       <div

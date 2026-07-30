@@ -102,7 +102,7 @@ Reader **montato in App.jsx sopra tutto** (position:fixed, z-index alto), lazy-l
 
 Criteri: chiudo a pagina X → riapro esattamente a pagina X; le impostazioni sopravvivono al riavvio; un EPUB con CSS propri rispetta il font scelto.
 
-### Fase C3 — Il giardino delle citazioni (PR piccolo, dopo C-EPUB)
+### Fase C3 — Il giardino delle citazioni (PR piccolo, dopo C-EPUB) ✅
 
 Vista che raccoglie **tutte le evidenziazioni di tutti i libri** in un unico posto: il "libro dei libri", su tema pergamena, raggruppato per libro, con salto al punto esatto nel reader. È la risposta ai clippings scomodi del Kindle. Dati già presenti dalla Fase C (evidenziazioni per libro): questa fase è solo la vista aggregata + navigazione.
 
@@ -162,4 +162,4 @@ Su wh-companion l'embed Spotify dava problemi: il controllo `postMessage` dell'i
 
 A ogni fase completata, spunta qui lo stato (✅) così le sessioni successive sanno dove siamo.
 
-Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ☐ · C-PDF ☐ · D ☐ · E ☐
+Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ☐ · D ☐ · E ☐
