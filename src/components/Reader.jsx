@@ -479,7 +479,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
           border: "1px solid #00000066",
           boxShadow: `0 14px 44px #000000b3, 0 0 0 1px ${C.accent}22, inset 0 0 30px #00000026`,
           overflow: "hidden",
-          perspective: 1200,
+          perspective: 1500,
           touchAction: "manipulation",
         }}
       >
@@ -570,6 +570,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
               backfaceVisibility: "visible",
               backgroundColor: theme.bg,
               opacity: 0,
+              willChange: "transform, opacity",
               animationDuration: "0.55s",
               animationTimingFunction: "ease-in-out",
               animationFillMode: "forwards",
