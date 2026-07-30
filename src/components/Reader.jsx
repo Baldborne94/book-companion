@@ -123,7 +123,7 @@ function Panel({ title, onClose, children }) {
   );
 }
 
-export default function Reader({ book, startCfi, onClose, notify }) {
+export default function Reader({ book, startCfi, music, onMusicToggle, onMusicStop, onClose, notify }) {
   const viewerRef = useRef(null);
   const epubRef = useRef(null);
   const rendRef = useRef(null);
@@ -515,6 +515,16 @@ export default function Reader({ book, startCfi, onClose, notify }) {
             >
               {book.title}
             </span>
+            {music?.current && (
+              <>
+                <button onClick={onMusicToggle} style={barBtn(false)} aria-label={music.playing ? "Pausa musica" : "Riprendi musica"}>
+                  {music.playing ? "⏸" : "▶"}
+                </button>
+                <button onClick={onMusicStop} style={{ ...barBtn(false), fontSize: 16, color: C.muted }} aria-label="Spegni musica">
+                  🔇
+                </button>
+              </>
+            )}
             <button onClick={() => setPanel(panel === "search" ? null : "search")} style={barBtn(panel === "search")} aria-label="Cerca">🔍</button>
             <button onClick={() => setPanel(panel === "toc" ? null : "toc")} style={barBtn(panel === "toc")} aria-label="Indice">☰</button>
             <button onClick={() => setPanel(panel === "marks" ? null : "marks")} style={barBtn(panel === "marks")} aria-label="Segnalibri">📑</button>

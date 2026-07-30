@@ -13,6 +13,7 @@ App PWA local-first per la biblioteca personale: EPUB/PDF caricati dall'utente, 
 - UI in italiano. Niente commenti nel codice salvo WHY non ovvi.
 - Storage: bytes dei libri in IndexedDB, metadati/progressi in localStorage (prefisso `bc_`). Progresso sempre frazione 0–1.
 - `src/lib/`: moduli senza JSX (bookStore = IndexedDB con store files/covers/aux, library = localStorage, importBook, exportLibrary, pdfThumb, readerSettings, annotations, epubSearch). `src/components/`: sezioni e overlay UI. `epubjs`/`pdfjs-dist`/`jszip` importati solo lazy (chunk separati). Worker pdf.js via `?url` in `pdfThumb.js`.
+- Musica: `MusicPlayer.jsx` sempre montato in App (iframe youtube-nocookie invisibile + mini-player, `forwardRef` play/pause/resume/stop/setSleep); UI sezione in `MusicRoom.jsx`; parsing/preferiti/legame libro in `lib/music.js` (`bc_music_favs`, `bc_music_<bookId>`).
 - Reader: `components/Reader.jsx`, lazy, montato SOLO in App.jsx (position:fixed z-45). CFI in `bc_cfi_<id>`, segnalibri `bc_marks_<id>`, evidenziazioni `bc_hl_<id>`, locations epub.js cachate in IndexedDB aux (`loc_<id>`). Impostazioni condivise in `bc_reader` via `readerSettings.js` (default derivati dal device fusi SOTTO le preferenze).
 
 ## Convenzioni di lavoro
