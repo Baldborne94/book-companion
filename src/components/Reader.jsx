@@ -441,18 +441,20 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
           left: pages === 2 ? "50%" : 0,
           right: 0,
           transformOrigin: "left center",
-          borderRadius: "0 12px 12px 0",
-          backgroundImage: "linear-gradient(to right, #00000038, transparent 30%)",
-          boxShadow: "-26px 0 44px #00000066",
+          borderRadius: "6px 20px 20px 6px",
+          backgroundImage:
+            "linear-gradient(115deg, #ffffff0d, transparent 45%), linear-gradient(to right, #00000030, transparent 28%, transparent 62%, #00000012 86%, #00000024 100%)",
+          boxShadow: "-30px 0 54px #00000047",
           animationName: "bc-leaf-next",
         }
       : {
           left: 0,
           right: pages === 2 ? "50%" : 0,
           transformOrigin: "right center",
-          borderRadius: "12px 0 0 12px",
-          backgroundImage: "linear-gradient(to left, #00000038, transparent 30%)",
-          boxShadow: "26px 0 44px #00000066",
+          borderRadius: "20px 6px 6px 20px",
+          backgroundImage:
+            "linear-gradient(245deg, #ffffff0d, transparent 45%), linear-gradient(to left, #00000030, transparent 28%, transparent 62%, #00000012 86%, #00000024 100%)",
+          boxShadow: "30px 0 54px #00000047",
           animationName: "bc-leaf-prev",
         }
     : null;
