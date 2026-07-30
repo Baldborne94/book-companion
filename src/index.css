@@ -75,6 +75,45 @@ input {
   }
 }
 
+@keyframes bc-turn-next {
+  0% {
+    transform: rotateY(0deg);
+  }
+  100% {
+    transform: rotateY(-178deg);
+  }
+}
+
+@keyframes bc-turn-prev {
+  0% {
+    transform: rotateY(0deg);
+  }
+  100% {
+    transform: rotateY(178deg);
+  }
+}
+
+@keyframes bc-face-front {
+  0%, 49.9% {
+    opacity: 1;
+  }
+  50%, 100% {
+    opacity: 0;
+  }
+}
+
+@keyframes bc-face-back {
+  0%, 49.9% {
+    opacity: 0;
+  }
+  50%, 90% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 @keyframes bc-sheet-next {
   0% {
     transform: rotateY(88deg);
