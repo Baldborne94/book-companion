@@ -12,6 +12,7 @@ App PWA local-first per la biblioteca personale: EPUB/PDF caricati dall'utente, 
 - Palette e costanti condivise in `src/data/constants.js` (oggetto `C`).
 - UI in italiano. Niente commenti nel codice salvo WHY non ovvi.
 - Storage: bytes dei libri in IndexedDB, metadati/progressi in localStorage (prefisso `bc_`). Progresso sempre frazione 0–1.
+- `src/lib/`: moduli senza JSX (bookStore = IndexedDB, library = localStorage, importBook, exportLibrary, pdfThumb). `src/components/`: sezioni e overlay UI. `epubjs`/`pdfjs-dist`/`jszip` importati solo lazy (chunk separati). Worker pdf.js via `?url` in `pdfThumb.js`.
 
 ## Convenzioni di lavoro
 
