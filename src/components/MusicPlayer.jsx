@@ -187,7 +187,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
             position: "fixed",
             left: 12,
             right: 12,
-            bottom: "calc(53px + env(safe-area-inset-bottom))",
+            bottom: "calc(47px + min(env(safe-area-inset-bottom, 0px), 8px))",
             zIndex: 11,
             display: "flex",
             alignItems: "center",
