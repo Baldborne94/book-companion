@@ -15,6 +15,8 @@ import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../l
 
 const EDGE_MIN = 3;
 const EDGE_MAX = 17;
+// la rilegatura visibile attorno alla carta
+const FRAME = 6;
 const EDGE_STRIPES =
   "repeating-linear-gradient(to right, #00000047 0 1px, #ffffff1f 1px 2px, #0000001c 2px 4px)";
 
@@ -492,8 +494,8 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
   const leafGeom = turning
     ? turning.dir === "next"
       ? {
-          left: pages === 2 ? "50%" : 0,
-          right: 0,
+          left: pages === 2 ? "50%" : FRAME,
+          right: FRAME,
           transformOrigin: "left center",
           borderRadius: "6px 20px 20px 6px",
           backgroundImage:
@@ -502,8 +504,8 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
           animationName: "bc-leaf-next",
         }
       : {
-          left: 0,
-          right: pages === 2 ? "50%" : 0,
+          left: FRAME,
+          right: pages === 2 ? "50%" : FRAME,
           transformOrigin: "right center",
           borderRadius: "20px 6px 6px 20px",
           backgroundImage:
@@ -543,18 +545,23 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
           ref={viewerRef}
           style={{
             position: "absolute",
-            inset: 0,
-            padding: `7px ${Math.max(settings.margin, EDGE_MAX + 8)}px`,
+            inset: FRAME,
+            padding: `4px ${Math.max(settings.margin, EDGE_MAX + 8)}px`,
             boxSizing: "border-box",
+            borderRadius: 3,
+            // la carta arriva fino al bordo interno della rilegatura: senza,
+            // il margine di lettura mostrava la copertina e staccava le
+            // pagine impilate dal foglio
+            background: theme.bg,
           }}
         />
         <div
           aria-hidden="true"
           style={{
             position: "absolute",
-            left: 0,
-            top: 5,
-            bottom: 5,
+            left: FRAME,
+            top: FRAME + 4,
+            bottom: FRAME + 4,
             width: edgeRead,
             zIndex: 4,
             pointerEvents: "none",
@@ -568,9 +575,9 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
           aria-hidden="true"
           style={{
             position: "absolute",
-            right: 0,
-            top: 5,
-            bottom: 5,
+            right: FRAME,
+            top: FRAME + 4,
+            bottom: FRAME + 4,
             width: edgeLeftToRead,
             zIndex: 4,
             pointerEvents: "none",
@@ -584,9 +591,9 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
           aria-hidden="true"
           style={{
             position: "absolute",
-            top: 0,
-            bottom: 0,
-            left: 0,
+            top: FRAME,
+            bottom: FRAME,
+            left: FRAME,
             width: 16,
             zIndex: 4,
             pointerEvents: "none",
@@ -597,9 +604,9 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
           aria-hidden="true"
           style={{
             position: "absolute",
-            top: 0,
-            bottom: 0,
-            right: 0,
+            top: FRAME,
+            bottom: FRAME,
+            right: FRAME,
             width: 16,
             zIndex: 4,
             pointerEvents: "none",
@@ -611,8 +618,8 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
             aria-hidden="true"
             style={{
               position: "absolute",
-              top: 0,
-              bottom: 0,
+              top: FRAME,
+              bottom: FRAME,
               left: "50%",
               width: 96,
               transform: "translateX(-50%)",
@@ -630,9 +637,9 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
             aria-hidden="true"
             style={{
               position: "absolute",
-              top: 0,
-              bottom: 0,
-              ...(turning.dir === "next" ? { left: 0, right: "50%" } : { left: "50%", right: 0 }),
+              top: FRAME,
+              bottom: FRAME,
+              ...(turning.dir === "next" ? { left: FRAME, right: "50%" } : { left: "50%", right: FRAME }),
               zIndex: 5,
               pointerEvents: "none",
               opacity: 0,
@@ -651,9 +658,9 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
             aria-hidden="true"
             style={{
               position: "absolute",
-              top: 0,
-              bottom: 0,
-              ...(turning.dir === "next" ? { left: 0, right: "50%" } : { left: "50%", right: 0 }),
+              top: FRAME,
+              bottom: FRAME,
+              ...(turning.dir === "next" ? { left: FRAME, right: "50%" } : { left: "50%", right: FRAME }),
               zIndex: 5,
               pointerEvents: "none",
               opacity: 0,
@@ -672,8 +679,8 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
             aria-hidden="true"
             style={{
               position: "absolute",
-              top: 0,
-              bottom: 0,
+              top: FRAME,
+              bottom: FRAME,
               ...leafGeom,
               zIndex: 6,
               pointerEvents: "none",

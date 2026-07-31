@@ -178,15 +178,13 @@ function BottomNav({ section, goTo, themeId }) {
   return (
     <nav
       style={{
-        position: "fixed",
-        bottom: 0,
-        left: 0,
-        right: 0,
+        position: "relative",
         zIndex: 10,
         display: "flex",
         justifyContent: "space-around",
         alignItems: "stretch",
         height: 62,
+        flexShrink: 0,
         boxSizing: "content-box",
         background: `${C.surface}f2`,
         backdropFilter: "blur(8px)",
@@ -565,6 +563,7 @@ export default function App() {
       {theme.decor === "foliage" && <Foliage />}
       {theme.decor === "scrolls" && <Scrolls />}
       <Stardust theme={theme} />
+      <div className="bc-scroll">
       <Header
         onSync={() => setSyncOpen(true)}
         syncing={sync.busy}
@@ -581,7 +580,7 @@ export default function App() {
           width: "100%",
           maxWidth: 960,
           margin: "0 auto",
-          padding: "8px 16px 96px",
+          padding: "8px 16px 26px",
           animation: "bc-fade-in 0.35s ease-out",
         }}
       >
@@ -611,6 +610,7 @@ export default function App() {
         )}
         {section === "music" && <MusicRoom music={music} playerRef={playerRef} notify={notify} />}
       </main>
+      </div>
       <BottomNav section={section} goTo={navigate} themeId={themeId} />
       {openBook && (
         <BookSheet
