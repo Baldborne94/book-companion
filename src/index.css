@@ -22,10 +22,25 @@ body {
   overscroll-behavior-y: none;
 }
 
-/* dvh con fallback: su tablet la barra del browser fa ballare 100vh */
+/* La barra in basso deve stare ai piedi del visibile, non del documento:
+   position:fixed su Android segue il viewport di layout e balla con la
+   barra degli indirizzi. Guscio alto quanto lo schermo, scorre solo il
+   contenuto. */
 .bc-shell {
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.bc-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  display: flex;
+  flex-direction: column;
 }
 
 button {
