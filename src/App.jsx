@@ -183,7 +183,7 @@ function BottomNav({ section, goTo, themeId }) {
         display: "flex",
         justifyContent: "space-around",
         alignItems: "stretch",
-        height: 62,
+        height: 46,
         flexShrink: 0,
         boxSizing: "content-box",
         background: `${C.surface}f2`,
@@ -202,10 +202,9 @@ function BottomNav({ section, goTo, themeId }) {
             style={{
               flex: 1,
               display: "flex",
-              flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              gap: 2,
+              gap: 7,
               color: active ? C.accent : C.muted,
               transition: "color 0.2s ease-out",
             }}
@@ -215,9 +214,9 @@ function BottomNav({ section, goTo, themeId }) {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                width: 46,
+                width: 34,
                 height: 30,
-                borderRadius: 11,
+                borderRadius: 9,
                 background: active ? `${C.accent}1c` : "transparent",
                 filter: active ? `drop-shadow(0 0 7px ${C.accent}66)` : "none",
                 transition: "background 0.2s ease-out, filter 0.2s ease-out",
@@ -225,10 +224,10 @@ function BottomNav({ section, goTo, themeId }) {
             >
               {(() => {
                 const I = navIcon(s.id, themeId);
-                return <I size={23} active={active} />;
+                return <I size={21} active={active} />;
               })()}
             </span>
-            <span style={{ fontSize: 13, fontWeight: active ? 600 : 400 }}>{s.label}</span>
+            <span style={{ fontSize: 13.5, fontWeight: active ? 600 : 400 }}>{s.label}</span>
           </button>
         );
       })}
