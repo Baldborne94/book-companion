@@ -459,7 +459,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
       word: res.word || word,
       loading: false,
       entries: res.entries,
-      translated: res.translated,
+      translation: res.translation,
       foreign: res.foreign,
       offline: res.offline,
     });
@@ -1251,9 +1251,14 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
               </button>
             </div>
 
+            {dict.translation && (
+              <p style={{ fontSize: 16.5, color: C.accent, lineHeight: 1.4, margin: "0 0 10px" }}>
+                {dict.translation}
+              </p>
+            )}
             {dict.loading ? (
               <p style={{ color: C.muted, fontSize: 14.5 }}>Consulto il dizionario…</p>
-            ) : dict.entries.length === 0 ? (
+            ) : dict.entries.length === 0 && !dict.translation ? (
               <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.5 }}>
                 {dict.offline
                   ? "Il dizionario ha bisogno della rete: riprova quando sei online."
@@ -1261,7 +1266,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
               </p>
             ) : (
               <>
-                {(dictAll ? dict.entries : dict.entries.slice(0, 3)).map((e, i) => (
+                {(dictAll ? dict.entries : dict.entries.slice(0, dict.translation ? 2 : 3)).map((e, i) => (
                   <div key={i} style={{ display: "flex", gap: 9, marginBottom: 9 }}>
                     {e.pos && (
                       <span
@@ -1280,12 +1285,12 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
                     <span style={{ fontSize: 15, color: C.text, lineHeight: 1.45 }}>{e.text}</span>
                   </div>
                 ))}
-                {!dictAll && dict.entries.length > 3 && (
+                {!dictAll && dict.entries.length > (dict.translation ? 2 : 3) && (
                   <button
                     onClick={() => setDictAll(true)}
                     style={{ fontSize: 13.5, color: C.accent, paddingTop: 2 }}
                   >
-                    Altri {dict.entries.length - 3} significati
+                    Altri {dict.entries.length - (dict.translation ? 2 : 3)} significati
                   </button>
                 )}
               </>

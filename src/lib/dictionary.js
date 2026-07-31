@@ -1,7 +1,9 @@
 const CACHE = new Map();
 
-// la lingua dell'interfaccia: e' da qui che arriva la glossa tradotta
-const UI_LANG = "it";
+// L'endpoint /page/definition esiste SOLO su en.wiktionary: sugli altri
+// Wiktionary risponde 404, quindi il vecchio ripiego "prima l'italiano"
+// falliva in silenzio su ogni parola. Le definizioni arrivano da
+// en.wiktionary; la glossa italiana da MyMemory (gratuito, senza chiavi).
 
 // DOMParser invece di innerHTML: il documento e' inerte, niente script o img
 const strip = (html) => {
@@ -57,9 +59,9 @@ const rank = (pos) => {
   return i < 0 ? POS_ORDER.length : i;
 };
 
-async function fetchSenses(site, section, word) {
+async function fetchSenses(word, section) {
   const res = await fetch(
-    `https://${site}.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(word)}`
+    `https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(word)}`
   );
   if (!res.ok) return [];
   const data = await res.json();
@@ -79,6 +81,30 @@ async function fetchSenses(site, section, word) {
     .sort((a, b) => a.order - b.order);
 }
 
+async function fetchTranslation(word, from) {
+  const res = await fetch(
+    `https://api.mymemory.translated.net/get?q=${encodeURIComponent(word)}&langpair=${from}|it`
+  );
+  if (!res.ok) return "";
+  const data = await res.json();
+  // le proposte migliori per prime; via la parola stessa, i doppioni e i
+  // frammenti di frase che MyMemory ripesca dalle sue memorie
+  const seen = new Set([word.toLowerCase()]);
+  const out = [];
+  const take = (raw) => {
+    const t = String(raw || "").trim().toLowerCase();
+    if (!t || seen.has(t) || t.split(" ").length > 3) return;
+    seen.add(t);
+    out.push(t);
+  };
+  const matches = [...(data?.matches || [])].sort(
+    (a, b) => parseFloat(b.quality || 0) - parseFloat(a.quality || 0)
+  );
+  for (const m of matches) if (out.length < 3) take(m.translation);
+  if (!out.length) take(data?.responseData?.translatedText);
+  return out.join(", ");
+}
+
 export async function lookup(raw, bookLang = "en") {
   const word = cleanWord(raw).toLowerCase();
   if (!word) return { word: "", entries: [] };
@@ -86,33 +112,27 @@ export async function lookup(raw, bookLang = "en") {
   const key = `${word}|${lang}`;
   if (CACHE.has(key)) return CACHE.get(key);
 
-  // il Wiktionary italiano descrive anche le parole straniere, in italiano:
-  // e' una traduzione vera, non una definizione da decifrare
-  const sources = [{ site: UI_LANG, section: lang }];
-  if (lang !== UI_LANG) sources.push({ site: lang, section: lang });
-
   let entries = [];
-  let translated = false;
+  let translation = "";
   let offline = false;
-  for (const s of sources) {
-    try {
-      entries = await fetchSenses(s.site, s.section, word);
-    } catch {
-      offline = true;
-    }
-    if (entries.length) {
-      translated = s.site === UI_LANG && lang !== UI_LANG;
-      break;
-    }
+  const jobs = [
+    fetchSenses(word, lang)
+      .then((r) => (entries = r))
+      .catch(() => (offline = true)),
+  ];
+  if (lang !== "it") {
+    jobs.push(fetchTranslation(word, lang).then((r) => (translation = r)).catch(() => {}));
   }
+  await Promise.all(jobs);
 
   const out = {
     word,
+    translation,
     entries: entries.slice(0, 8),
-    translated,
-    // avvisa solo quando la definizione resta in una lingua non nostra
-    foreign: lang !== UI_LANG && !translated && entries.length > 0,
-    offline: offline && !entries.length,
+    // il libro e' straniero e la traduzione non e' arrivata: la scheda
+    // avvisa che le definizioni restano in lingua originale
+    foreign: lang !== "it" && !translation && entries.length > 0,
+    offline: offline && !entries.length && !translation,
   };
   CACHE.set(key, out);
   return out;
