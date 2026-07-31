@@ -4,7 +4,12 @@ import { C, FONT_TITLE, SECTIONS, THEMES, DEFAULT_THEME, applyAppTheme } from ".
 import Foliage from "./components/Foliage.jsx";
 import { CandleIcon, BooksIcon, MusicIcon, LeafIcon, CloudIcon } from "./components/Icons.jsx";
 
-const NAV_ICONS = { home: CandleIcon, library: BooksIcon, music: MusicIcon };
+// L'ingresso porta l'insegna dell'atmosfera scelta: candela di notte,
+// foglia nel boschetto.
+const THEME_ICON = { night: CandleIcon, grove: LeafIcon };
+const themeIcon = (id) => THEME_ICON[id] || CandleIcon;
+const navIcon = (sectionId, themeId) =>
+  sectionId === "home" ? themeIcon(themeId) : sectionId === "library" ? BooksIcon : MusicIcon;
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
 import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook, getProgress } from "./lib/library.js";
 import { removeBookData, requestPersistence } from "./lib/bookStore.js";
@@ -101,7 +106,10 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
           color: C.muted,
         }}
       >
-        {theme.id === "grove" ? <LeafIcon size={22} /> : <CandleIcon size={22} />}
+        {(() => {
+          const I = themeIcon(theme.id);
+          return <I size={22} />;
+        })()}
       </button>
       <button
         onClick={onSync}
@@ -143,7 +151,10 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
             filter: `drop-shadow(0 0 10px ${C.accent}66)`,
           }}
         >
-          {theme.id === "grove" ? <LeafIcon size={26} active /> : <CandleIcon size={26} active />}
+          {(() => {
+            const I = themeIcon(theme.id);
+            return <I size={26} active />;
+          })()}
         </span>
         Book Companion
       </h1>
@@ -161,7 +172,7 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
   );
 }
 
-function BottomNav({ section, goTo }) {
+function BottomNav({ section, goTo, themeId }) {
   return (
     <nav
       style={{
@@ -213,7 +224,7 @@ function BottomNav({ section, goTo }) {
               }}
             >
               {(() => {
-                const I = NAV_ICONS[s.id];
+                const I = navIcon(s.id, themeId);
                 return <I size={23} active={active} />;
               })()}
             </span>
@@ -322,7 +333,12 @@ function ThemePicker({ current, onPick, onClose }) {
                 background: t.gradient,
               }}
             >
-              <span style={{ fontSize: 26 }}>{t.icon}</span>
+              <span style={{ color: t.colors.accent, flexShrink: 0 }}>
+                {(() => {
+                  const I = themeIcon(t.id);
+                  return <I size={26} active={active} />;
+                })()}
+              </span>
               <span style={{ flex: 1 }}>
                 <span
                   style={{
@@ -574,7 +590,7 @@ export default function App() {
         )}
         {section === "music" && <MusicRoom music={music} playerRef={playerRef} notify={notify} />}
       </main>
-      <BottomNav section={section} goTo={setSection} />
+      <BottomNav section={section} goTo={setSection} themeId={themeId} />
       {openBook && (
         <BookSheet
           key={openBook.id}
