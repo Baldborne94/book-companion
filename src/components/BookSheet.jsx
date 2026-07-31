@@ -36,6 +36,63 @@ const fieldStyle = {
   outline: "none",
 };
 
+function Stars({ value, onChange }) {
+  const half = (n) => Math.min(1, Math.max(0, value - (n - 1)));
+  const set = (v) => onChange(v === value ? 0 : v);
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      {[1, 2, 3, 4, 5].map((n) => {
+        const fill = half(n);
+        const star = (color) => (
+          <span
+            style={{
+              display: "block",
+              width: 32,
+              fontSize: 27,
+              lineHeight: "32px",
+              textAlign: "center",
+              color,
+              filter: color === C.accent ? `drop-shadow(0 0 6px ${C.accent}66)` : "none",
+            }}
+          >
+            ★
+          </span>
+        );
+        return (
+          <span key={n} style={{ position: "relative", width: 32, height: 32 }}>
+            {star(C.dim)}
+            <span
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: `${fill * 100}%`,
+                overflow: "hidden",
+                pointerEvents: "none",
+              }}
+            >
+              {star(C.accent)}
+            </span>
+            <button
+              onClick={() => set(n - 0.5)}
+              aria-label={`${n - 0.5} stelle`}
+              style={{ position: "absolute", left: 0, top: 0, width: "50%", height: "100%" }}
+            />
+            <button
+              onClick={() => set(n)}
+              aria-label={`${n} stelle`}
+              style={{ position: "absolute", right: 0, top: 0, width: "50%", height: "100%" }}
+            />
+          </span>
+        );
+      })}
+      <span style={{ marginLeft: 8, fontSize: 14, color: C.muted }}>
+        {value ? String(value).replace(".", ",") : "—"}
+      </span>
+    </div>
+  );
+}
+
 function Field({ label, value, onChange, placeholder, options, listId }) {
   return (
     <label style={{ display: "block", marginBottom: 10 }}>
@@ -64,6 +121,9 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   const [series, setSeries] = useState(book.series || "");
   const [genre, setGenre] = useState(book.genre || "");
   const [saga, setSaga] = useState(book.saga || "");
+  const [sagaOrder, setSagaOrder] = useState(
+    book.sagaOrder === null || book.sagaOrder === undefined ? "" : String(book.sagaOrder)
+  );
 
   const uniq = (key) => [...new Set(books.map((b) => (b[key] || "").trim()).filter(Boolean))].sort();
   const [notes, setNotes] = useState(book.notes || "");
@@ -81,6 +141,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
       series: series.trim(),
       genre: genre.trim(),
       saga: saga.trim(),
+      sagaOrder: sagaOrder.trim() === "" ? null : Number(sagaOrder),
       notes,
       rating,
     });
@@ -100,6 +161,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
       series: series.trim(),
       genre: genre.trim(),
       saga: saga.trim(),
+      sagaOrder: sagaOrder.trim() === "" ? null : Number(sagaOrder),
       notes,
       rating,
     });
@@ -159,14 +221,30 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
           <div style={{ flex: 1, minWidth: 220 }}>
             <Field label="Titolo" value={title} onChange={setTitle} />
             <Field label="Autore" value={author} onChange={setAuthor} placeholder="Sconosciuto…" />
-            <Field
-              label="Saga (l'universo che raccoglie più libri)"
-              value={saga}
-              onChange={setSaga}
-              placeholder="es. The Realm of the Elderlings"
-              options={uniq("saga")}
-              listId="bc-sagas"
-            />
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Field
+                  label="Saga (l'universo che raccoglie più libri)"
+                  value={saga}
+                  onChange={setSaga}
+                  placeholder="es. The Realm of the Elderlings"
+                  options={uniq("saga")}
+                  listId="bc-sagas"
+                />
+              </div>
+              <label style={{ display: "block", marginBottom: 10, width: 96, flexShrink: 0 }}>
+                <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 3 }}>
+                  N° lettura
+                </span>
+                <input
+                  value={sagaOrder}
+                  onChange={(e) => setSagaOrder(e.target.value.replace(/[^\d]/g, ""))}
+                  inputMode="numeric"
+                  placeholder="1"
+                  style={{ ...fieldStyle, textAlign: "center" }}
+                />
+              </label>
+            </div>
             <Field
               label="Serie (il ciclo dentro la saga)"
               value={series}
@@ -186,23 +264,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
 
             <div style={{ marginBottom: 10 }}>
               <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 3 }}>Valutazione</span>
-              <div style={{ display: "flex", gap: 4 }}>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setRating(n === rating ? 0 : n)}
-                    aria-label={`${n} stelle`}
-                    style={{
-                      fontSize: 24,
-                      color: n <= rating ? C.accent : C.dim,
-                      filter: n <= rating ? `drop-shadow(0 0 6px ${C.accent}66)` : "none",
-                      transition: "color 0.15s ease-out",
-                    }}
-                  >
-                    ★
-                  </button>
-                ))}
-              </div>
+              <Stars value={rating} onChange={setRating} />
             </div>
 
             <div style={{ marginBottom: 12 }}>
