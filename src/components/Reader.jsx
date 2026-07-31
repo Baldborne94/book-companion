@@ -529,9 +529,9 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
         ref={bookRef}
         style={{
           position: "absolute",
-          inset: "clamp(6px, 1.6vw, 18px)",
+          inset: "clamp(3px, 0.9vw, 10px)",
           borderRadius: 12,
-          background: theme.bg,
+          background: theme.cover || theme.bg,
           border: "1px solid #00000066",
           boxShadow: `0 14px 44px #000000b3, 0 0 0 1px ${C.accent}22, inset 0 0 30px #00000026`,
           overflow: "hidden",
@@ -544,7 +544,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
           style={{
             position: "absolute",
             inset: 0,
-            padding: `14px ${Math.max(settings.margin, EDGE_MAX + 8)}px`,
+            padding: `7px ${Math.max(settings.margin, EDGE_MAX + 8)}px`,
             boxSizing: "border-box",
           }}
         />
@@ -553,8 +553,8 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
           style={{
             position: "absolute",
             left: 0,
-            top: 10,
-            bottom: 10,
+            top: 5,
+            bottom: 5,
             width: edgeRead,
             zIndex: 4,
             pointerEvents: "none",
@@ -569,8 +569,8 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
           style={{
             position: "absolute",
             right: 0,
-            top: 10,
-            bottom: 10,
+            top: 5,
+            bottom: 5,
             width: edgeLeftToRead,
             zIndex: 4,
             pointerEvents: "none",

@@ -5,15 +5,57 @@ import { parseYouTube, embedUrl } from "../lib/music.js";
 const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }, ref) {
   const iframeRef = useRef(null);
   const sleepRef = useRef(null);
+  const queueRef = useRef({ list: [], i: 0, shuffle: false });
+  const advanceRef = useRef(() => {});
   const [current, setCurrent] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [timerEnd, setTimerEnd] = useState(null);
+  const [sleepMin, setSleepMin] = useState(0);
+  const [queue, setQueue] = useState(null);
 
   useEffect(() => {
-    onInfo({ current, playing, timerEnd });
-  }, [current, playing, timerEnd, onInfo]);
+    onInfo({ current, playing, timerEnd, sleepMin, queue });
+  }, [current, playing, timerEnd, sleepMin, queue, onInfo]);
 
   useEffect(() => () => clearTimeout(sleepRef.current), []);
+
+  // Handshake con l'iframe di YouTube: senza "listening" non manda eventi
+  useEffect(() => {
+    if (!current) return;
+    let n = 0;
+    const t = setInterval(() => {
+      try {
+        iframeRef.current?.contentWindow?.postMessage(
+          JSON.stringify({ event: "listening", id: 1, channel: "widget" }),
+          "*"
+        );
+      } catch {
+        /* iframe non ancora pronto */
+      }
+      if (++n > 10) clearInterval(t);
+    }, 400);
+    return () => clearInterval(t);
+  }, [current?.embed]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const onMsg = (e) => {
+      if (!String(e.origin).includes("youtube")) return;
+      let d = e.data;
+      if (typeof d === "string") {
+        try {
+          d = JSON.parse(d);
+        } catch {
+          return;
+        }
+      }
+      const ended =
+        (d?.event === "onStateChange" && d.info === 0) ||
+        (d?.event === "infoDelivery" && d?.info?.playerState === 0);
+      if (ended) advanceRef.current();
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
 
   function command(func) {
     try {
@@ -26,7 +68,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
     }
   }
 
-  function play(url, name = "") {
+  function start(url, name = "") {
     const src = parseYouTube(url);
     if (!src) {
       notify("Questo non sembra un link YouTube… incolla un video o una playlist 🎵");
@@ -36,6 +78,45 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
     setPlaying(true);
     return true;
   }
+
+  function play(url, name = "") {
+    queueRef.current = { list: [], i: 0, shuffle: false };
+    setQueue(null);
+    return start(url, name);
+  }
+
+  const shuffled = (list) => {
+    const a = [...list];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+
+  function playQueue(list, shuffle = false) {
+    const clean = (list || []).filter((f) => f?.url);
+    if (!clean.length) return false;
+    const order = shuffle ? shuffled(clean) : clean;
+    queueRef.current = { list: order, i: 0, shuffle };
+    setQueue({ total: order.length, shuffle, index: 0 });
+    return start(order[0].url, order[0].name);
+  }
+
+  function advance() {
+    const q = queueRef.current;
+    if (!q.list.length) return;
+    let i = q.i + 1;
+    if (i >= q.list.length) {
+      // a fine giro rimescola, cosi' l'ordine casuale non si ripete uguale
+      q.list = q.shuffle ? shuffled(q.list) : q.list;
+      i = 0;
+    }
+    q.i = i;
+    setQueue({ total: q.list.length, shuffle: q.shuffle, index: i });
+    start(q.list[i].url, q.list[i].name);
+  }
+  advanceRef.current = advance;
 
   function pause() {
     command("pauseVideo");
@@ -50,9 +131,12 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
   function clearSleep() {
     clearTimeout(sleepRef.current);
     setTimerEnd(null);
+    setSleepMin(0);
   }
 
   function stop() {
+    queueRef.current = { list: [], i: 0, shuffle: false };
+    setQueue(null);
     setCurrent(null);
     setPlaying(false);
     clearSleep();
@@ -62,6 +146,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
     clearTimeout(sleepRef.current);
     if (!minutes) {
       setTimerEnd(null);
+      setSleepMin(0);
       return;
     }
     sleepRef.current = setTimeout(() => {
@@ -69,9 +154,10 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
       notify("🌙 La musica si è addormentata. Buona lettura.");
     }, minutes * 60000);
     setTimerEnd(Date.now() + minutes * 60000);
+    setSleepMin(minutes);
   }
 
-  useImperativeHandle(ref, () => ({ play, pause, resume, stop, setSleep }));
+  useImperativeHandle(ref, () => ({ play, playQueue, pause, resume, stop, setSleep }));
 
   return (
     <>
