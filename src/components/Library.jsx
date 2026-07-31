@@ -29,7 +29,7 @@ const GROUPS = [
 const fmtBytes = (n) =>
   n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1e6))} MB`;
 
-function Shelf({ books, onOpenBook, localIds }) {
+function Shelf({ books, onOpenBook, localIds, showOrder }) {
   return (
     <div
       style={{
@@ -86,6 +86,25 @@ function Shelf({ books, onOpenBook, localIds }) {
                   }}
                 >
                   ✓
+                </span>
+              )}
+              {showOrder && b.sagaOrder != null && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 6,
+                    left: 6,
+                    minWidth: 20,
+                    padding: "1px 6px",
+                    borderRadius: 10,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    background: `${C.bg}dd`,
+                    border: `1px solid ${C.accent}88`,
+                    color: C.accent,
+                  }}
+                >
+                  {b.sagaOrder}
                 </span>
               )}
               {localIds && !localIds.has(b.id) && (
@@ -159,6 +178,17 @@ function Grouped({ books, group, onOpenBook, localIds }) {
     if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key).push(b);
   }
+  // dentro una saga comanda l'ordine di lettura; i libri senza numero in coda
+  if (group === "saga") {
+    for (const [key, list] of buckets) {
+      if (!key) continue;
+      list.sort((a, b) => {
+        const x = a.sagaOrder ?? Infinity;
+        const y = b.sagaOrder ?? Infinity;
+        return x === y ? 0 : x - y;
+      });
+    }
+  }
   // i libri senza etichetta chiudono la fila
   const names = [...buckets.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b, "it"));
   if (buckets.has("")) names.push("");
@@ -184,7 +214,12 @@ function Grouped({ books, group, onOpenBook, localIds }) {
           {buckets.get(name).length}
         </span>
       </h3>
-      <Shelf books={buckets.get(name)} onOpenBook={onOpenBook} localIds={localIds} />
+      <Shelf
+        books={buckets.get(name)}
+        onOpenBook={onOpenBook}
+        localIds={localIds}
+        showOrder={group === "saga" && !!name}
+      />
     </section>
   ));
 }

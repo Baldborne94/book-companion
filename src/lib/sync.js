@@ -52,6 +52,36 @@ export async function signOut() {
   await sb?.auth.signOut();
 }
 
+// Schema non ancora migrato: invece di rompere tutta la sincronizzazione,
+// si rinuncia al singolo campo e si salva il resto.
+const DEGRADE = [
+  {
+    test: (m) => /genre|saga/i.test(m),
+    label: "genere e saga",
+    apply: (rows) => rows.map(({ genre, saga, saga_order, ...r }) => r),
+  },
+  {
+    test: (m) => /rating/i.test(m) || /invalid input syntax for type integer/i.test(m),
+    label: "mezze stelle",
+    apply: (rows) => rows.map((r) => ({ ...r, rating: Math.round(r.rating || 0) })),
+  },
+];
+
+async function upsertBooks(sb, rows) {
+  let payload = rows;
+  const dropped = [];
+  for (let i = 0; i <= DEGRADE.length; i++) {
+    const { error } = await sb.from("books").upsert(payload);
+    if (!error) return dropped;
+    const msg = `${error.message || ""} ${error.details || ""}`;
+    const step = DEGRADE.find((d) => !dropped.includes(d.label) && d.test(msg));
+    if (!step) throw error;
+    payload = step.apply(payload);
+    dropped.push(step.label);
+  }
+  return dropped;
+}
+
 function readLocalState(id) {
   return {
     status: getStatus(id),
@@ -124,15 +154,8 @@ export async function syncNow({ onProgress } = {}) {
   if (push.length) {
     say(`Invio ${push.length} ${push.length === 1 ? "libro" : "libri"}…`);
     const rows = push.map((r) => ({ ...normalizeRow(r), user_id: uid }));
-    let { error: upErr } = await sb.from("books").upsert(rows);
-    // Database non ancora migrato: si sincronizza tutto il resto
-    if (upErr && /genre|saga/i.test(upErr.message || "")) {
-      ({ error: upErr } = await sb.from("books").upsert(
-        rows.map(({ genre, saga, ...rest }) => rest)
-      ));
-      if (!upErr) say("Sincronizzato (genere e saga: aggiorna lo schema)");
-    }
-    if (upErr) throw upErr;
+    const missing = await upsertBooks(sb, rows);
+    if (missing.length) say(`Sincronizzato (${missing.join(", ")}: aggiorna lo schema)`);
     const deletedIds = push.filter((r) => r.deleted).map((r) => r.id);
     if (deletedIds.length) {
       const paths = deletedIds.flatMap((id) => [
