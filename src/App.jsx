@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { registerSW } from "virtual:pwa-register";
-import { C, FONT_TITLE, SECTIONS } from "./data/constants.js";
+import { C, FONT_TITLE, SECTIONS, THEMES, DEFAULT_THEME, applyAppTheme } from "./data/constants.js";
+import Foliage from "./components/Foliage.jsx";
+import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
 import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook, getProgress } from "./lib/library.js";
 import { removeBookData, requestPersistence } from "./lib/bookStore.js";
 import Home from "./components/Home.jsx";
@@ -22,18 +24,19 @@ const reducedMotion = () =>
   typeof window !== "undefined" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-function Stardust() {
+function Stardust({ theme }) {
+  const m = theme.motes;
   const stars = useMemo(() => {
     if (reducedMotion()) return [];
     return Array.from({ length: 20 }, (_, i) => ({
       id: i,
       left: Math.random() * 100,
-      size: 7 + Math.random() * 6,
+      size: m.size[0] + Math.random() * (m.size[1] - m.size[0]),
       duration: 20 + Math.random() * 16,
       delay: -Math.random() * 30,
-      color: i % 3 === 0 ? C.accent : C.arcane,
+      gold: i % 3 === 0,
     }));
-  }, []);
+  }, [theme.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (stars.length === 0) return null;
 
@@ -54,22 +57,22 @@ function Stardust() {
           style={{
             position: "absolute",
             left: `${s.left}%`,
-            bottom: "-5vh",
+            [m.from === "top" ? "top" : "bottom"]: "-6vh",
             fontSize: s.size,
-            color: s.color,
+            color: s.gold ? C.accent : C.arcane,
             opacity: 0,
-            animation: `bc-rise ${s.duration}s linear ${s.delay}s infinite`,
+            animation: `${m.anim} ${s.duration}s linear ${s.delay}s infinite`,
             willChange: "transform, opacity",
           }}
         >
-          ✦
+          {m.char}
         </span>
       ))}
     </div>
   );
 }
 
-function Header({ onSync, syncing, signedIn }) {
+function Header({ onSync, syncing, signedIn, theme, onTheme }) {
   return (
     <header
       style={{
@@ -79,6 +82,21 @@ function Header({ onSync, syncing, signedIn }) {
         textAlign: "center",
       }}
     >
+      <button
+        onClick={onTheme}
+        aria-label="Cambia atmosfera"
+        style={{
+          position: "absolute",
+          top: 16,
+          left: 14,
+          width: 42,
+          height: 42,
+          borderRadius: 12,
+          fontSize: 20,
+        }}
+      >
+        {theme.icon}
+      </button>
       <button
         onClick={onSync}
         aria-label="Sincronizzazione"
@@ -108,7 +126,7 @@ function Header({ onSync, syncing, signedIn }) {
         }}
       >
         <span style={{ animation: "bc-flicker 6s ease-in-out infinite", display: "inline-block" }}>
-          🕯️
+          {theme.icon}
         </span>{" "}
         Book Companion
       </h1>
@@ -120,7 +138,7 @@ function Header({ onSync, syncing, signedIn }) {
           color: C.muted,
         }}
       >
-        La tua biblioteca, di notte ✦
+        {theme.tagline}
       </p>
     </header>
   );
@@ -224,6 +242,86 @@ function Toast({ toast, onDismiss }) {
   );
 }
 
+function ThemePicker({ current, onPick, onClose }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 55,
+        background: "#08061199",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        animation: "bc-fade-in 0.25s ease-out",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: 440,
+          borderRadius: 18,
+          border: `1px solid ${C.border}`,
+          background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
+          boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
+          padding: 22,
+        }}
+      >
+        <h2 style={{ fontFamily: FONT_TITLE, fontSize: 23, fontWeight: 600, color: C.text, marginBottom: 14 }}>
+          Dove vuoi leggere?
+        </h2>
+        {Object.values(THEMES).map((t) => {
+          const active = t.id === current;
+          return (
+            <button
+              key={t.id}
+              onClick={() => onPick(t.id)}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                gap: 14,
+                textAlign: "left",
+                padding: "13px 15px",
+                marginBottom: 10,
+                borderRadius: 14,
+                border: `1px solid ${active ? t.colors.accent : C.border}`,
+                background: t.gradient,
+              }}
+            >
+              <span style={{ fontSize: 26 }}>{t.icon}</span>
+              <span style={{ flex: 1 }}>
+                <span
+                  style={{
+                    display: "block",
+                    fontFamily: FONT_TITLE,
+                    fontWeight: 600,
+                    fontSize: 18,
+                    color: t.colors.text,
+                  }}
+                >
+                  {t.label}
+                </span>
+                <span style={{ display: "block", fontSize: 13.5, color: t.colors.muted }}>{t.hint}</span>
+              </span>
+              {active && <span style={{ color: t.colors.accent, fontSize: 18 }}>✓</span>}
+            </button>
+          );
+        })}
+        <div style={{ marginTop: 8, textAlign: "right" }}>
+          <button onClick={onClose} style={{ color: C.muted, fontSize: 14.5 }}>
+            Chiudi
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [section, setSection] = useState("home");
   const [books, setBooks] = useState(() => loadBooks());
@@ -236,6 +334,22 @@ export default function App() {
   const [syncOpen, setSyncOpen] = useState(false);
   const [sync, setSync] = useState({ busy: false, message: null, at: 0, signedIn: false });
   const [localIds, setLocalIds] = useState(null);
+  const [themeId, setThemeId] = useState(() => {
+    const saved = loadReaderSettings(Math.min(window.innerWidth, window.innerHeight)).appTheme;
+    const id = THEMES[saved] ? saved : DEFAULT_THEME;
+    applyAppTheme(id);
+    return id;
+  });
+  const [themeOpen, setThemeOpen] = useState(false);
+  const theme = THEMES[themeId];
+
+  function pickTheme(id) {
+    applyAppTheme(id);
+    setThemeId(id);
+    setThemeOpen(false);
+    const s = loadReaderSettings(Math.min(window.innerWidth, window.innerHeight));
+    saveReaderSettings({ ...s, appTheme: id });
+  }
   const toastTimer = useRef(null);
   const playerRef = useRef(null);
   const swUpdate = useRef(null);
@@ -389,13 +503,20 @@ export default function App() {
     <div
       style={{
         minHeight: "100vh",
-        background: `radial-gradient(ellipse 120% 80% at 50% 0%, #1a1530 0%, ${C.bg} 55%, #0b0914 100%)`,
+        background: theme.gradient,
         display: "flex",
         flexDirection: "column",
       }}
     >
-      <Stardust />
-      <Header onSync={() => setSyncOpen(true)} syncing={sync.busy} signedIn={sync.signedIn} />
+      {theme.foliage && <Foliage />}
+      <Stardust theme={theme} />
+      <Header
+        onSync={() => setSyncOpen(true)}
+        syncing={sync.busy}
+        signedIn={sync.signedIn}
+        theme={theme}
+        onTheme={() => setThemeOpen(true)}
+      />
       <main
         key={section}
         style={{
@@ -435,6 +556,9 @@ export default function App() {
           onRead={handleRead}
           notify={notify}
         />
+      )}
+      {themeOpen && (
+        <ThemePicker current={themeId} onPick={pickTheme} onClose={() => setThemeOpen(false)} />
       )}
       {syncOpen && (
         <SyncPanel

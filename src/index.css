@@ -51,6 +51,33 @@ input {
   }
 }
 
+@keyframes bc-drift {
+  0% {
+    transform: translateY(-10vh) translateX(0) rotate(0deg);
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.5;
+  }
+  82% {
+    opacity: 0.32;
+  }
+  100% {
+    transform: translateY(108vh) translateX(70px) rotate(200deg);
+    opacity: 0;
+  }
+}
+
+@keyframes bc-sway {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(1.4deg);
+  }
+}
+
 @keyframes bc-fade-in {
   from {
     opacity: 0;
