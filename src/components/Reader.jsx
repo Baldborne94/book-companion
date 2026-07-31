@@ -863,11 +863,16 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.muted, marginTop: 2 }}>
               <span>{locReady ? `${pct}%` : "misuro le pagine…"}</span>
               <span>
-                {chapterLeft
-                  ? `~${chapterLeft} alla fine del capitolo`
-                  : settings.flow === "scrolled"
-                    ? "scorrimento"
-                    : "pagine"}
+                {settings.flow === "scrolled"
+                  ? "scorrimento"
+                  : [
+                      displayed ? `pag. ${displayed.page} di ${displayed.total} del capitolo` : null,
+                      chapterLeft
+                        ? `${chapterLeft.startsWith("meno") ? "" : "~"}${chapterLeft} alla fine`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "pagine"}
               </span>
             </div>
           </div>
