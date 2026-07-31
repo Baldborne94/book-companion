@@ -183,13 +183,15 @@ function BottomNav({ section, goTo, themeId }) {
         display: "flex",
         justifyContent: "space-around",
         alignItems: "stretch",
-        height: 46,
+        height: 40,
         flexShrink: 0,
         boxSizing: "content-box",
         background: `${C.surface}f2`,
         backdropFilter: "blur(8px)",
         borderTop: `1px solid ${C.border}`,
-        paddingBottom: "env(safe-area-inset-bottom)",
+        // il margine di sistema su Android arriva a decine di px e
+        // raddoppiava la barra: se ne prende quel tanto che basta
+        paddingBottom: "min(env(safe-area-inset-bottom, 0px), 8px)",
       }}
     >
       {SECTIONS.map((s) => {
@@ -214,9 +216,9 @@ function BottomNav({ section, goTo, themeId }) {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                width: 34,
-                height: 30,
-                borderRadius: 9,
+                width: 32,
+                height: 27,
+                borderRadius: 8,
                 background: active ? `${C.accent}1c` : "transparent",
                 filter: active ? `drop-shadow(0 0 7px ${C.accent}66)` : "none",
                 transition: "background 0.2s ease-out, filter 0.2s ease-out",
@@ -224,10 +226,10 @@ function BottomNav({ section, goTo, themeId }) {
             >
               {(() => {
                 const I = navIcon(s.id, themeId);
-                return <I size={21} active={active} />;
+                return <I size={20} active={active} />;
               })()}
             </span>
-            <span style={{ fontSize: 13.5, fontWeight: active ? 600 : 400 }}>{s.label}</span>
+            <span style={{ fontSize: 13, fontWeight: active ? 600 : 400 }}>{s.label}</span>
           </button>
         );
       })}
