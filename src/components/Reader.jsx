@@ -10,6 +10,13 @@ import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
 } from "../lib/readerSettings.js";
 import { searchBook } from "../lib/epubSearch.js";
+import { lookup, wordCount, cleanWord } from "../lib/dictionary.js";
+import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../lib/readingSpeed.js";
+
+const EDGE_MIN = 3;
+const EDGE_MAX = 17;
+const EDGE_STRIPES =
+  "repeating-linear-gradient(to right, #00000047 0 1px, #ffffff1f 1px 2px, #0000001c 2px 4px)";
 
 const isTouch = () => navigator.maxTouchPoints > 0;
 const isTablet = () =>
@@ -158,6 +165,14 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
   const [pages, setPages] = useState(1);
   const [turning, setTurning] = useState(null);
   const [isFs, setIsFs] = useState(false);
+  const [displayed, setDisplayed] = useState(null);
+  const [speed, setSpeed] = useState(() => medianMs(loadSamples()));
+  const [dict, setDict] = useState(null);
+  const [noteFor, setNoteFor] = useState(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const samplesRef = useRef(loadSamples());
+  const lastTurnAt = useRef(0);
+  const langRef = useRef(["en"]);
 
   live.current.settings = settings;
   live.current.panel = panel;
@@ -219,6 +234,17 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
           }
         }
         if (loc.atEnd) setStatus(book.id, "read");
+        if (loc.start?.displayed?.total) setDisplayed(loc.start.displayed);
+        const now = Date.now();
+        if (lastTurnAt.current) {
+          const next = pushSample(samplesRef.current, now - lastTurnAt.current);
+          if (next !== samplesRef.current) {
+            samplesRef.current = next;
+            saveSamples(next);
+            setSpeed(medianMs(next));
+          }
+        }
+        lastTurnAt.current = now;
         clearTimeout(saveTimer.current);
         saveTimer.current = setTimeout(flush, 1500);
       });
@@ -269,6 +295,8 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
         epubRef.current = eb;
         await eb.ready;
         if (dead) return;
+        const lang = (eb.packaging?.metadata?.language || "").slice(0, 2).toLowerCase();
+        langRef.current = lang && lang !== "en" ? [lang, "en"] : ["en"];
         eb.loaded.navigation.then((nav) => !dead && setToc(flattenToc(nav.toc)));
         makeRendition(live.current.settings);
         const cached = await getAux(`loc_${book.id}`);
@@ -416,6 +444,23 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
     setSelMenu(null);
   }
 
+  async function defineSelection() {
+    const word = cleanWord(selMenu?.text);
+    if (!word) return;
+    setSelMenu(null);
+    setDict({ word, loading: true, entries: [] });
+    setPanel("dict");
+    const res = await lookup(word, langRef.current);
+    setDict({ word: res.word || word, loading: false, entries: res.entries, offline: res.offline });
+  }
+
+  function saveNote() {
+    const next = hls.map((h) => (h.id === noteFor ? { ...h, note: noteDraft.trim() } : h));
+    setHls(next);
+    saveHighlights(book.id, next);
+    setNoteFor(null);
+  }
+
   function removeHighlight(h) {
     try { rendRef.current?.annotations.remove(h.cfi, "highlight"); } catch { /* vista non montata */ }
     const next = hls.filter((x) => x.id !== h.id);
@@ -438,6 +483,11 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
 
   const pct = Math.round((progress || 0) * 100);
   const paginated = settings.flow !== "scrolled";
+  const p = Math.min(1, Math.max(0, progress || 0));
+  const edgeRead = EDGE_MIN + Math.round((EDGE_MAX - EDGE_MIN) * p);
+  const edgeLeftToRead = EDGE_MIN + Math.round((EDGE_MAX - EDGE_MIN) * (1 - p));
+  const pagesLeft = displayed ? Math.max(0, displayed.total - displayed.page) : 0;
+  const chapterLeft = speed && pagesLeft > 0 ? formatLeft(pagesLeft * speed * pages) : null;
 
   const leafGeom = turning
     ? turning.dir === "next"
@@ -494,8 +544,40 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
           style={{
             position: "absolute",
             inset: 0,
-            padding: `14px ${settings.margin}px`,
+            padding: `14px ${Math.max(settings.margin, EDGE_MAX + 8)}px`,
             boxSizing: "border-box",
+          }}
+        />
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 10,
+            bottom: 10,
+            width: edgeRead,
+            zIndex: 4,
+            pointerEvents: "none",
+            borderRadius: "10px 2px 2px 10px",
+            backgroundColor: theme.bg,
+            backgroundImage: EDGE_STRIPES,
+            boxShadow: "inset -7px 0 9px -7px #00000066, 1px 0 2px #00000033",
+          }}
+        />
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            right: 0,
+            top: 10,
+            bottom: 10,
+            width: edgeLeftToRead,
+            zIndex: 4,
+            pointerEvents: "none",
+            borderRadius: "2px 10px 10px 2px",
+            backgroundColor: theme.bg,
+            backgroundImage: EDGE_STRIPES,
+            boxShadow: "inset 7px 0 9px -7px #00000066, -1px 0 2px #00000033",
           }}
         />
         <div
@@ -780,7 +862,13 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
             />
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.muted, marginTop: 2 }}>
               <span>{locReady ? `${pct}%` : "misuro le pagine…"}</span>
-              <span>{settings.flow === "scrolled" ? "scorrimento" : "pagine"}</span>
+              <span>
+                {chapterLeft
+                  ? `~${chapterLeft} alla fine del capitolo`
+                  : settings.flow === "scrolled"
+                    ? "scorrimento"
+                    : "pagine"}
+              </span>
             </div>
           </div>
         </>
@@ -820,6 +908,22 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
               }}
             />
           ))}
+          {wordCount(selMenu.text) <= 3 && (
+            <button
+              onClick={defineSelection}
+              style={{
+                marginLeft: 4,
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: `1px solid ${C.arcane}88`,
+                color: C.arcane,
+                fontSize: 14,
+                whiteSpace: "nowrap",
+              }}
+            >
+              📖 Definisci
+            </button>
+          )}
           <button onClick={() => setSelMenu(null)} style={{ color: C.muted, fontSize: 14, marginLeft: 4 }}>
             Annulla
           </button>
@@ -1027,10 +1131,82 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
             hls.map((h) => (
               <div key={h.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 0", borderBottom: `1px solid ${C.border}44` }}>
                 <span style={{ width: 4, alignSelf: "stretch", borderRadius: 2, background: h.color, flexShrink: 0 }} />
-                <button onClick={() => goTo(h.cfi)} style={{ flex: 1, textAlign: "left", fontSize: 14.5, color: C.text, lineHeight: 1.45, fontStyle: "italic" }}>
-                  “{h.text}”
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <button onClick={() => goTo(h.cfi)} style={{ width: "100%", textAlign: "left", fontSize: 14.5, color: C.text, lineHeight: 1.45, fontStyle: "italic" }}>
+                    “{h.text}”
+                  </button>
+                  {noteFor === h.id ? (
+                    <textarea
+                      autoFocus
+                      value={noteDraft}
+                      onChange={(e) => setNoteDraft(e.target.value)}
+                      onBlur={saveNote}
+                      onKeyDown={(e) => e.key === "Escape" && setNoteFor(null)}
+                      rows={2}
+                      placeholder="Il tuo pensiero su questo passaggio…"
+                      style={{
+                        width: "100%",
+                        marginTop: 6,
+                        padding: "7px 10px",
+                        borderRadius: 8,
+                        border: `1px solid ${C.accent}77`,
+                        background: C.card,
+                        color: C.text,
+                        fontSize: 14,
+                        fontFamily: "inherit",
+                        lineHeight: 1.4,
+                        resize: "vertical",
+                        outline: "none",
+                      }}
+                    />
+                  ) : (
+                    h.note && (
+                      <button
+                        onClick={() => {
+                          setNoteFor(h.id);
+                          setNoteDraft(h.note || "");
+                        }}
+                        style={{ display: "block", textAlign: "left", marginTop: 5, fontSize: 13.5, color: C.arcane, lineHeight: 1.4 }}
+                      >
+                        ✎ {h.note}
+                      </button>
+                    )
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    setNoteFor(h.id);
+                    setNoteDraft(h.note || "");
+                  }}
+                  aria-label="Nota sull'evidenziazione"
+                  style={{ color: h.note ? C.arcane : C.muted, padding: 6 }}
+                >
+                  ✎
                 </button>
                 <button onClick={() => removeHighlight(h)} aria-label="Rimuovi evidenziazione" style={{ color: C.muted, padding: 6 }}>🗑</button>
+              </div>
+            ))
+          )}
+        </Panel>
+      )}
+
+      {panel === "dict" && dict && (
+        <Panel title={`📖 ${dict.word}`} onClose={() => setPanel(null)}>
+          {dict.loading ? (
+            <p style={{ color: C.muted }}>Consulto il dizionario…</p>
+          ) : dict.entries.length === 0 ? (
+            <p style={{ color: C.muted }}>
+              {dict.offline
+                ? "Il dizionario ha bisogno della rete: riprova quando sei online."
+                : `Nessuna voce per «${dict.word}».`}
+            </p>
+          ) : (
+            dict.entries.map((e, i) => (
+              <div key={i} style={{ padding: "9px 0", borderBottom: `1px solid ${C.border}44` }}>
+                {e.pos && (
+                  <span style={{ fontSize: 12.5, color: C.arcane, fontStyle: "italic" }}>{e.pos}</span>
+                )}
+                <p style={{ fontSize: 15, color: C.text, lineHeight: 1.5 }}>{e.text}</p>
               </div>
             ))
           )}

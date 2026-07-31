@@ -4,7 +4,9 @@ import {
   loadBooks, saveBooks, getProgress, setProgress, getStatus, setStatus,
   getUpdatedAt, touchBook, getTombstones, clearTombstones, getLastOpened,
 } from "./library.js";
-import { getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights, removeAnnotations } from "./annotations.js";
+import {
+  getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights, removeAnnotations, setJump,
+} from "./annotations.js";
 import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites } from "./music.js";
 import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow } from "./syncCore.js";
 
@@ -108,6 +110,16 @@ export async function syncNow({ onProgress } = {}) {
     tombstones,
     remoteRows: remoteRows || [],
   });
+
+  // Se questo dispositivo e' piu' recente ma piu' indietro, la posizione
+  // remota non va persa: la teniamo da parte e la proponiamo all'apertura.
+  for (const row of push) {
+    if (row.deleted) continue;
+    const r = (remoteRows || []).find((x) => x.id === row.id);
+    if (r && !r.deleted && r.cfi && (r.progress || 0) > (row.progress || 0) + 0.02) {
+      setJump(row.id, { cfi: r.cfi, progress: r.progress });
+    }
+  }
 
   if (push.length) {
     say(`Invio ${push.length} ${push.length === 1 ? "libro" : "libri"}…`);

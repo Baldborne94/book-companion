@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
-import { getFavoritesRaw, saveFavorites } from "../lib/music.js";
+import { getFavoritesRaw, saveFavorites, parseYouTube } from "../lib/music.js";
 import EmptyState from "./EmptyState.jsx";
 
 const SLEEP_CHOICES = [
@@ -28,6 +28,9 @@ export default function MusicRoom({ music, playerRef, notify }) {
   const [favName, setFavName] = useState("");
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [newUrl, setNewUrl] = useState("");
+  const [newName, setNewName] = useState("");
 
   const { current, playing, timerEnd } = music;
   const sleepLeft = timerEnd ? Math.max(0, Math.ceil((timerEnd - Date.now()) / 60000)) : null;
@@ -54,6 +57,21 @@ export default function MusicRoom({ music, playerRef, notify }) {
 
   function removeFav(f) {
     commit(favs.map((x) => (x.id === f.id ? { ...x, deleted: true, updatedAt: Date.now() } : x)));
+  }
+
+  function addMelody() {
+    const url = newUrl.trim();
+    if (!parseYouTube(url)) {
+      notify("Questo non sembra un link YouTube… incolla un video o una playlist 🎵");
+      return;
+    }
+    const now = Date.now();
+    const name = newName.trim() || "Melodia senza nome";
+    commit([...favs, { id: crypto.randomUUID(), name, url, addedAt: now, updatedAt: now }]);
+    setNewUrl("");
+    setNewName("");
+    setAdding(false);
+    notify(`«${name}» custodita tra le tue melodie ✨`);
   }
 
   function startRename(f) {
@@ -188,10 +206,70 @@ export default function MusicRoom({ music, playerRef, notify }) {
         </div>
       )}
 
-      <h2 style={{ fontFamily: FONT_TITLE, fontWeight: 600, fontSize: 21, color: C.text, margin: "6px 0 12px" }}>
-        <span style={{ color: C.arcane, marginRight: 6 }}>✦</span>
-        Le tue melodie
-      </h2>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "6px 0 12px", flexWrap: "wrap" }}>
+        <h2 style={{ fontFamily: FONT_TITLE, fontWeight: 600, fontSize: 21, color: C.text }}>
+          <span style={{ color: C.arcane, marginRight: 6 }}>✦</span>
+          Le tue melodie
+        </h2>
+        <span style={{ flex: 1 }} />
+        <button
+          onClick={() => setAdding((v) => !v)}
+          style={{
+            padding: "6px 14px",
+            borderRadius: 999,
+            fontSize: 14,
+            border: `1px solid ${adding ? C.accent : C.border}`,
+            color: adding ? C.accent : C.muted,
+            background: adding ? `${C.accent}14` : "transparent",
+          }}
+        >
+          {adding ? "Annulla" : "＋ Aggiungi melodia"}
+        </button>
+      </div>
+
+      {adding && (
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            marginBottom: 16,
+            padding: 14,
+            borderRadius: 14,
+            border: `1px solid ${C.accent}55`,
+            background: `linear-gradient(135deg, ${C.accent}0d, ${C.card})`,
+          }}
+        >
+          <input
+            autoFocus
+            value={newUrl}
+            onChange={(e) => setNewUrl(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addMelody()}
+            placeholder="Link YouTube della melodia…"
+            style={{ ...inputStyle, flexBasis: "100%" }}
+          />
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addMelody()}
+            placeholder="Nome («Pioggia e camino»)"
+            style={inputStyle}
+          />
+          <button
+            onClick={addMelody}
+            style={{
+              padding: "10px 20px",
+              borderRadius: 12,
+              background: `linear-gradient(180deg, ${C.accent}, #b8893a)`,
+              color: "#241c0a",
+              fontWeight: 600,
+              fontSize: 15,
+            }}
+          >
+            ☆ Custodisci
+          </button>
+        </div>
+      )}
 
       {liveFavs.length === 0 ? (
         <EmptyState
