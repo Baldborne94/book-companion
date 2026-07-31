@@ -74,6 +74,26 @@ input {
   }
 }
 
+@keyframes bc-motes {
+  0% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.4;
+  }
+  50% {
+    transform: translate3d(24px, -54vh, 0);
+  }
+  84% {
+    opacity: 0.26;
+  }
+  100% {
+    transform: translate3d(0, -108vh, 0);
+    opacity: 0;
+  }
+}
+
 @keyframes bc-sway {
   0%,
   100% {
