@@ -2,14 +2,9 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { registerSW } from "virtual:pwa-register";
 import { C, FONT_TITLE, SECTIONS, THEMES, DEFAULT_THEME, applyAppTheme } from "./data/constants.js";
 import Foliage from "./components/Foliage.jsx";
-import { CandleIcon, BooksIcon, MusicIcon, LeafIcon, CloudIcon } from "./components/Icons.jsx";
+import Scrolls from "./components/Scrolls.jsx";
+import { CandleIcon, BooksIcon, MusicIcon, LeafIcon, ScrollIcon, CloudIcon } from "./components/Icons.jsx";
 
-// L'ingresso porta l'insegna dell'atmosfera scelta: candela di notte,
-// foglia nel boschetto.
-const THEME_ICON = { night: CandleIcon, grove: LeafIcon };
-const themeIcon = (id) => THEME_ICON[id] || CandleIcon;
-const navIcon = (sectionId, themeId) =>
-  sectionId === "home" ? themeIcon(themeId) : sectionId === "library" ? BooksIcon : MusicIcon;
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
 import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook, getProgress } from "./lib/library.js";
 import { removeBookData, requestPersistence } from "./lib/bookStore.js";
@@ -24,6 +19,13 @@ import { getBookMusic, setBookMusic } from "./lib/music.js";
 import { getJump, clearJump } from "./lib/annotations.js";
 import { isSyncConfigured } from "./lib/supabase.js";
 import { getSession, syncNow, localFileIds } from "./lib/sync.js";
+
+// L'ingresso porta l'insegna dell'atmosfera scelta: candela di notte,
+// foglia nel boschetto, pergamena nell'archivio.
+const THEME_ICON = { night: CandleIcon, grove: LeafIcon, citadel: ScrollIcon };
+const themeIcon = (id) => THEME_ICON[id] || CandleIcon;
+const navIcon = (sectionId, themeId) =>
+  sectionId === "home" ? themeIcon(themeId) : sectionId === "library" ? BooksIcon : MusicIcon;
 
 const Reader = lazy(() => import("./components/Reader.jsx"));
 const PdfReader = lazy(() => import("./components/PdfReader.jsx"));
@@ -553,7 +555,8 @@ export default function App() {
         flexDirection: "column",
       }}
     >
-      {theme.foliage && <Foliage />}
+      {theme.decor === "foliage" && <Foliage />}
+      {theme.decor === "scrolls" && <Scrolls />}
       <Stardust theme={theme} />
       <Header
         onSync={() => setSyncOpen(true)}

@@ -122,6 +122,19 @@ export const SparkIcon = (p) => (
   </Icon>
 );
 
+export const ScrollIcon = ({ active, ...p }) => (
+  <Icon {...p}>
+    <path
+      d="M7.6 3.9h11.2v13.4c0 1.6-1.3 2.9-2.9 2.9H7.6z"
+      fill="currentColor"
+      fillOpacity={active ? FILL : 0}
+    />
+    <path d="M7.6 3.9H5.9A1.9 1.9 0 0 0 4 5.8c0 1 .85 1.9 1.9 1.9h1.7" />
+    <path d="M18.8 17.3h1.3a1.9 1.9 0 0 1 0 3.8H8.4" />
+    <path d="M10.4 8.3h5.9M10.4 11.5h5.9M10.4 14.7h3.6" opacity="0.7" />
+  </Icon>
+);
+
 export const BookmarkIcon = (p) => (
   <Icon {...p}>
     <path d="M6.6 3.6h10.8v17.2l-5.4-3.9-5.4 3.9z" />

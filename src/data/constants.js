@@ -2,7 +2,6 @@ export const THEMES = {
   night: {
     id: "night",
     label: "Biblioteca Magica",
-    icon: "🕯️",
     hint: "Notte profonda, candele e polvere di stelle",
     tagline: "La tua biblioteca, di notte",
     colors: {
@@ -21,12 +20,11 @@ export const THEMES = {
     gradient:
       "radial-gradient(ellipse 120% 80% at 50% 0%, #1a1530 0%, #0f0d1a 55%, #0b0914 100%)",
     motes: { char: "✦", anim: "bc-rise", size: [7, 13], from: "bottom" },
-    foliage: false,
+    decor: null,
   },
   grove: {
     id: "grove",
     label: "Rifugio Silvano",
-    icon: "🌿",
     hint: "Un'antica biblioteca tra le fronde, in pace",
     tagline: "La tua biblioteca, tra le fronde",
     colors: {
@@ -45,7 +43,30 @@ export const THEMES = {
     gradient:
       "radial-gradient(ellipse 85% 45% at 50% -14%, #3b4726 0%, #26301a 38%, #171d10 68%, #0d1109 100%)",
     motes: { char: "🍃", anim: "bc-drift", size: [9, 16], from: "top" },
-    foliage: true,
+    decor: "foliage",
+  },
+  citadel: {
+    id: "citadel",
+    label: "Archivio della Cittadella",
+    hint: "Sale di pietra, pergamene e oro di candela",
+    tagline: "La tua biblioteca, tra le pergamene",
+    colors: {
+      bg: "#141210",
+      surface: "#1e1a15",
+      card: "#26201a",
+      border: "#4a3d2c",
+      accent: "#e3bd76",
+      arcane: "#b6bcc6",
+      text: "#f0e7d3",
+      muted: "#a99a80",
+      dim: "#443a2b",
+      green: "#7fae72",
+      red: "#c2684e",
+    },
+    gradient:
+      "radial-gradient(ellipse 95% 55% at 50% -8%, #3a2e20 0%, #251e15 42%, #17130e 74%, #100d09 100%)",
+    motes: { char: "·", anim: "bc-motes", size: [13, 24], from: "bottom" },
+    decor: "scrolls",
   },
 };
 
@@ -70,7 +91,7 @@ export const FONT_TITLE = '"Cormorant Garamond", Georgia, serif';
 export const FONT_BODY = '"EB Garamond", Georgia, serif';
 
 export const SECTIONS = [
-  { id: "home", label: "Ingresso", icon: "🕯️" },
-  { id: "library", label: "Libreria", icon: "📚" },
-  { id: "music", label: "Musica", icon: "🎵" },
+  { id: "home", label: "Ingresso" },
+  { id: "library", label: "Libreria" },
+  { id: "music", label: "Musica" },
 ];
