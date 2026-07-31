@@ -224,7 +224,7 @@ function Grouped({ books, group, onOpenBook, localIds }) {
   ));
 }
 
-export default function Library({ books, updateBooks, onOpenBook, notify, localIds, onImported }) {
+export default function Library({ books, updateBooks, onOpenBook, notify, localIds, onImported, focusSaga }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [sort, setSort] = useState("recent");
@@ -237,6 +237,14 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
   useEffect(() => {
     storageEstimate().then(setEstimate);
   }, [books]);
+
+  // arrivo dalla home toccando una saga: la libreria si apre gia' raccolta
+  // per saghe e ristretta a quella
+  useEffect(() => {
+    if (!focusSaga) return;
+    setGroup("saga");
+    setQuery(focusSaga);
+  }, [focusSaga]);
 
   async function handleFiles(fileList) {
     const files = Array.from(fileList || []);
@@ -272,7 +280,13 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
 
   const q = query.trim().toLowerCase();
   const visible = books
-    .filter((b) => !q || b.title.toLowerCase().includes(q) || (b.author || "").toLowerCase().includes(q))
+    .filter(
+      (b) =>
+        !q ||
+        b.title.toLowerCase().includes(q) ||
+        (b.author || "").toLowerCase().includes(q) ||
+        (b.saga || "").toLowerCase().includes(q)
+    )
     .filter((b) => filter === "all" || getStatus(b.id) === filter)
     .sort((a, b) =>
       sort === "title"

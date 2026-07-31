@@ -98,6 +98,16 @@ export function planSync({ localRows, tombstones, remoteRows }) {
   return { pull, push, removeLocal };
 }
 
+// Uno schema migrato DOPO un salvataggio degradato lascia nel cloud righe
+// con lo stesso updated_at ma prive dei campi nuovi: non ripartirebbero
+// mai da sole. Si rimanda tutto cio' di cui il locale resta padrone,
+// lasciando stare le righe che il cloud sta per insegnarci.
+export function withRepush({ push, pull, removeLocal, localRows }) {
+  const already = new Set(push.map((r) => r.id));
+  const held = new Set([...pull.map((r) => r.id), ...removeLocal]);
+  return [...push, ...localRows.filter((r) => !already.has(r.id) && !held.has(r.id))];
+}
+
 const favStamp = (f) => f.updatedAt || f.addedAt || 0;
 
 // Unione, non sostituzione: melodie salvate su dispositivi diversi

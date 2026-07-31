@@ -135,6 +135,16 @@ export const ScrollIcon = ({ active, ...p }) => (
   </Icon>
 );
 
+export const StarIcon = (p) => (
+  <Icon {...p}>
+    <path
+      d="M12 3.4l2.55 5.6 6.05.72-4.5 4.15 1.22 6-5.32-3-5.32 3 1.22-6-4.5-4.15 6.05-.72z"
+      fill="currentColor"
+      stroke="none"
+    />
+  </Icon>
+);
+
 export const BookmarkIcon = (p) => (
   <Icon {...p}>
     <path d="M6.6 3.6h10.8v17.2l-5.4-3.9-5.4 3.9z" />

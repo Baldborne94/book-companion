@@ -1,8 +1,13 @@
 import { C, FONT_TITLE } from "../data/constants.js";
 import { getLastOpened, getProgress, getStatus, getUpdatedAt } from "../lib/library.js";
 import BookCover from "./BookCover.jsx";
-import { LeafIcon, SparkIcon } from "./Icons.jsx";
+import { LeafIcon, SparkIcon, StarIcon } from "./Icons.jsx";
 import EmptyState from "./EmptyState.jsx";
+
+// da quante stelle in su un libro entra fra i preferiti
+const FAV_MIN = 4;
+
+const stars = (v) => String(v).replace(".", ",");
 
 function greeting() {
   const h = new Date().getHours();
@@ -59,13 +64,74 @@ function SectionTitle({ children }) {
   );
 }
 
-export default function Home({ books, goTo, onOpenBook, onRead, onGarden }) {
+function Rating({ value }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 3,
+        fontSize: 12.5,
+        color: C.accent,
+      }}
+    >
+      <StarIcon size={12} />
+      {stars(value)}
+    </span>
+  );
+}
+
+function SagaCard({ saga, onOpen }) {
+  return (
+    <button
+      onClick={() => onOpen(saga.name)}
+      style={{
+        flexShrink: 0,
+        width: 214,
+        textAlign: "left",
+        padding: 13,
+        borderRadius: 14,
+        border: `1px solid ${saga.best >= FAV_MIN ? `${C.accent}66` : C.border}`,
+        background: `linear-gradient(135deg, ${C.card}, ${C.surface})`,
+      }}
+    >
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        {saga.books.slice(0, 3).map((b) => (
+          <div key={b.id} style={{ width: 42 }}>
+            <BookCover book={b} radius={5} compact />
+          </div>
+        ))}
+      </div>
+      <div
+        style={{
+          fontFamily: FONT_TITLE,
+          fontWeight: 600,
+          fontSize: 16.5,
+          color: C.text,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {saga.name}
+      </div>
+      <div style={{ fontSize: 13, color: C.muted, marginTop: 2, display: "flex", gap: 8 }}>
+        <span>
+          {saga.books.length} {saga.books.length === 1 ? "libro" : "libri"}
+        </span>
+        {saga.best >= FAV_MIN && <Rating value={saga.best} />}
+      </div>
+    </button>
+  );
+}
+
+export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onSaga }) {
   if (books.length === 0) {
     return (
       <EmptyState
         emoji="🔮"
         title="Benvenuto nel tuo regno"
-        text="Qui ritroverai il libro che stai leggendo e gli ultimi arrivati sul tuo scaffale. Tutto comincia portando il primo tomo in Libreria."
+        text="Qui ritroverai il libro che stai leggendo e le saghe a cui tieni di più. Tutto comincia portando il primo tomo in Libreria."
         action="Vai alla Libreria"
         onAction={() => goTo("library")}
       />
@@ -84,14 +150,33 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden }) {
     books.find((b) => b.id === getLastOpened()) || started[0] || unread[0] || [...books].sort(byRecent)[0];
   const pct = last ? Math.round(getProgress(last.id) * 100) : 0;
   const resuming = pct > 0;
-  const recent = [...books].sort((a, b) => b.addedAt - a.addedAt).slice(0, 6);
+
+  const favorites = books
+    .filter((b) => (b.rating || 0) >= FAV_MIN)
+    .sort((a, b) => (b.rating || 0) - (a.rating || 0) || (a.sagaOrder ?? Infinity) - (b.sagaOrder ?? Infinity));
+
+  const bySaga = new Map();
+  for (const b of books) {
+    const name = (b.saga || "").trim();
+    if (!name) continue;
+    const e = bySaga.get(name) || { name, books: [], best: 0 };
+    e.books.push(b);
+    e.best = Math.max(e.best, b.rating || 0);
+    bySaga.set(name, e);
+  }
+  for (const e of bySaga.values()) {
+    e.books.sort((a, b) => (a.sagaOrder ?? Infinity) - (b.sagaOrder ?? Infinity));
+  }
+  const sagas = [...bySaga.values()].sort(
+    (a, b) => b.best - a.best || b.books.length - a.books.length || a.name.localeCompare(b.name, "it")
+  );
 
   return (
     <div style={{ animation: "bc-fade-in 0.4s ease-out" }}>
       <Welcome last={last} pct={pct} />
       {last && (
         <>
-          <SectionTitle>{resuming ? "Continua a leggere" : "Comincia da qui"}</SectionTitle>
+          <SectionTitle>Continua da dove ti sei fermato</SectionTitle>
           <button
             onClick={() => onRead(last.id)}
             style={{
@@ -175,34 +260,69 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden }) {
         <span style={{ fontSize: 20, color: C.arcane }}>›</span>
       </button>
 
-      <SectionTitle>Aggiunti di recente</SectionTitle>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))",
-          gap: "16px 14px",
-        }}
-      >
-        {recent.map((b) => (
-          <button key={b.id} onClick={() => onOpenBook(b.id)} style={{ textAlign: "center" }}>
-            <BookCover book={b} />
-            <div
-              style={{
-                marginTop: 6,
-                fontSize: 13,
-                lineHeight: 1.25,
-                color: C.text,
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-              }}
-            >
-              {b.title}
-            </div>
-          </button>
-        ))}
-      </div>
+      {sagas.length > 0 && (
+        <>
+          <SectionTitle>Le tue saghe</SectionTitle>
+          <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
+            {sagas.map((s) => (
+              <SagaCard key={s.name} saga={s} onOpen={onSaga} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {favorites.length > 0 && (
+        <>
+          <SectionTitle>I tuoi preferiti</SectionTitle>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))",
+              gap: "16px 14px",
+            }}
+          >
+            {favorites.map((b) => (
+              <button key={b.id} onClick={() => onOpenBook(b.id)} style={{ textAlign: "center" }}>
+                <BookCover book={b} />
+                <div
+                  style={{
+                    marginTop: 6,
+                    fontSize: 13,
+                    lineHeight: 1.25,
+                    color: C.text,
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                  }}
+                >
+                  {b.title}
+                </div>
+                <div style={{ marginTop: 3 }}>
+                  <Rating value={b.rating} />
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {sagas.length === 0 && favorites.length === 0 && (
+        <div
+          style={{
+            marginTop: 22,
+            padding: "16px 18px",
+            borderRadius: 14,
+            border: `1px dashed ${C.border}`,
+            fontSize: 14,
+            lineHeight: 1.5,
+            color: C.muted,
+          }}
+        >
+          Qui vivranno le tue saghe e i tuoi preferiti. Apri la scheda di un libro dalla Libreria:
+          indica la saga a cui appartiene e assegnagli le stelle — da quattro in su lo ritrovi qui.
+        </div>
+      )}
     </div>
   );
 }
