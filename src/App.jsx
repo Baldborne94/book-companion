@@ -2,6 +2,9 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { registerSW } from "virtual:pwa-register";
 import { C, FONT_TITLE, SECTIONS, THEMES, DEFAULT_THEME, applyAppTheme } from "./data/constants.js";
 import Foliage from "./components/Foliage.jsx";
+import { CandleIcon, BooksIcon, MusicIcon, LeafIcon, CloudIcon } from "./components/Icons.jsx";
+
+const NAV_ICONS = { home: CandleIcon, library: BooksIcon, music: MusicIcon };
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
 import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook, getProgress } from "./lib/library.js";
 import { removeBookData, requestPersistence } from "./lib/bookStore.js";
@@ -92,10 +95,13 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
           width: 42,
           height: 42,
           borderRadius: 12,
-          fontSize: 20,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: C.muted,
         }}
       >
-        {theme.icon}
+        {theme.id === "grove" ? <LeafIcon size={22} /> : <CandleIcon size={22} />}
       </button>
       <button
         onClick={onSync}
@@ -107,13 +113,15 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
           width: 42,
           height: 42,
           borderRadius: 12,
-          fontSize: 20,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
           color: signedIn ? C.accent : C.muted,
           opacity: syncing ? 0.6 : 1,
           animation: syncing ? "bc-flicker 1.6s ease-in-out infinite" : "none",
         }}
       >
-        ☁️
+        <CloudIcon size={22} />
       </button>
       <h1
         style={{
@@ -125,9 +133,18 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
           textShadow: `0 0 18px ${C.accent}55, 0 0 42px ${C.accent}22`,
         }}
       >
-        <span style={{ animation: "bc-flicker 6s ease-in-out infinite", display: "inline-block" }}>
-          {theme.icon}
-        </span>{" "}
+        <span
+          style={{
+            display: "inline-block",
+            verticalAlign: "-3px",
+            marginRight: 8,
+            color: C.accent,
+            animation: "bc-flicker 6s ease-in-out infinite",
+            filter: `drop-shadow(0 0 10px ${C.accent}66)`,
+          }}
+        >
+          {theme.id === "grove" ? <LeafIcon size={26} /> : <CandleIcon size={26} />}
+        </span>
         Book Companion
       </h1>
       <p
@@ -184,12 +201,14 @@ function BottomNav({ section, goTo }) {
           >
             <span
               style={{
-                fontSize: 22,
-                filter: active ? `drop-shadow(0 0 8px ${C.accent}88)` : "none",
+                filter: active ? `drop-shadow(0 0 7px ${C.accent}77)` : "none",
                 transition: "filter 0.2s ease-out",
               }}
             >
-              {s.icon}
+              {(() => {
+                const I = NAV_ICONS[s.id];
+                return <I size={24} />;
+              })()}
             </span>
             <span style={{ fontSize: 13, fontWeight: active ? 600 : 400 }}>{s.label}</span>
           </button>

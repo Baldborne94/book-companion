@@ -1,5 +1,5 @@
 import { C, FONT_TITLE } from "../data/constants.js";
-import { getLastOpened, getProgress } from "../lib/library.js";
+import { getLastOpened, getProgress, getStatus, getUpdatedAt } from "../lib/library.js";
 import BookCover from "./BookCover.jsx";
 import EmptyState from "./EmptyState.jsx";
 
@@ -66,7 +66,12 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden }) {
     );
   }
 
-  const last = books.find((b) => b.id === getLastOpened());
+  // L'ultimo aperto vale solo per questo dispositivo: se manca (o e' stato
+  // letto altrove) si ripiega sul libro in lettura toccato piu' di recente.
+  const inProgress = books
+    .filter((b) => getStatus(b.id) === "reading" || getProgress(b.id) > 0)
+    .sort((a, b) => getUpdatedAt(b.id, b.addedAt || 0) - getUpdatedAt(a.id, a.addedAt || 0));
+  const last = books.find((b) => b.id === getLastOpened()) || inProgress[0];
   const pct = last ? Math.round(getProgress(last.id) * 100) : 0;
   const recent = [...books].sort((a, b) => b.addedAt - a.addedAt).slice(0, 6);
 
