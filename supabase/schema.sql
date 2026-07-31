@@ -8,7 +8,8 @@
 --     add column if not exists saga_order int;
 --   alter table public.books alter column rating type real;   -- mezze stelle
 -- Senza, l'app sincronizza comunque tutto il resto: rinuncia solo al
--- campo mancante e lo tiene in locale.
+-- campo mancante e lo tiene in locale. Dopo la migrazione i libri gia'
+-- salvati si ricaricano da soli alla prima sincronizzazione.
 
 create table if not exists public.books (
   id uuid primary key,

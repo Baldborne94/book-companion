@@ -8,9 +8,10 @@ import {
   getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights, removeAnnotations, setJump,
 } from "./annotations.js";
 import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites } from "./music.js";
-import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow } from "./syncCore.js";
+import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush } from "./syncCore.js";
 
 const LAST_SYNC_KEY = "bc_lastsync";
+const REPUSH_KEY = "bc_repush";
 const UPLOADED_KEY = "bc_uploaded";
 const PREFS_UPD_KEY = "bc_prefs_upd";
 
@@ -151,11 +152,18 @@ export async function syncNow({ onProgress } = {}) {
     }
   }
 
-  if (push.length) {
-    say(`Invio ${push.length} ${push.length === 1 ? "libro" : "libri"}…`);
-    const rows = push.map((r) => ({ ...normalizeRow(r), user_id: uid }));
+  // Finche' lo schema resta indietro il flag non si chiude: al primo invio
+  // completo i campi persi tornano nel cloud da soli.
+  const repairing = localStorage.getItem(REPUSH_KEY) !== "done";
+  const toPush = repairing ? withRepush({ push, pull, removeLocal, localRows }) : push;
+  let degraded = false;
+
+  if (toPush.length) {
+    say(`Invio ${toPush.length} ${toPush.length === 1 ? "libro" : "libri"}…`);
+    const rows = toPush.map((r) => ({ ...normalizeRow(r), user_id: uid }));
     const missing = await upsertBooks(sb, rows);
-    if (missing.length) say(`Sincronizzato (${missing.join(", ")}: aggiorna lo schema)`);
+    degraded = missing.length > 0;
+    if (degraded) say(`Sincronizzato (${missing.join(", ")}: aggiorna lo schema)`);
     const deletedIds = push.filter((r) => r.deleted).map((r) => r.id);
     if (deletedIds.length) {
       const paths = deletedIds.flatMap((id) => [
@@ -167,6 +175,7 @@ export async function syncNow({ onProgress } = {}) {
       clearTombstones(deletedIds);
     }
   }
+  if (!degraded) localStorage.setItem(REPUSH_KEY, "done");
 
   const already = uploaded();
   const localFiles = new Set(await listFileIds());
@@ -225,7 +234,7 @@ export async function syncNow({ onProgress } = {}) {
 
   localStorage.setItem(LAST_SYNC_KEY, String(Date.now()));
   return {
-    pushed: push.length,
+    pushed: toPush.length,
     pulled: pull.length,
     removed: removeLocal.length,
     books: loadBooks(),
