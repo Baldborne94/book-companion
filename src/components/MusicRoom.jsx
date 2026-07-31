@@ -8,7 +8,18 @@ const SLEEP_CHOICES = [
   { min: 15, label: "15 min" },
   { min: 30, label: "30 min" },
   { min: 60, label: "1 ora" },
+  { min: 90, label: "1 h 30" },
+  { min: 120, label: "2 ore" },
+  { min: 150, label: "2 h 30" },
+  { min: 180, label: "3 ore" },
 ];
+
+const fmtLeft = (min) => {
+  if (min < 60) return `~${min} min`;
+  const h = Math.floor(min / 60);
+  const r = min % 60;
+  return r ? `~${h} h ${r} min` : `~${h} h`;
+};
 
 const inputStyle = {
   flex: 1,
@@ -32,7 +43,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
   const [newUrl, setNewUrl] = useState("");
   const [newName, setNewName] = useState("");
 
-  const { current, playing, timerEnd } = music;
+  const { current, playing, timerEnd, sleepMin, queue } = music;
   const sleepLeft = timerEnd ? Math.max(0, Math.ceil((timerEnd - Date.now()) / 60000)) : null;
 
   function playLink() {
@@ -145,6 +156,11 @@ export default function MusicRoom({ music, playerRef, notify }) {
               <div style={{ fontFamily: FONT_TITLE, fontWeight: 600, fontSize: 18, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {current.name || "Musica di sottofondo"}
               </div>
+              {queue && (
+                <div style={{ fontSize: 12.5, color: C.arcane }}>
+                  {queue.shuffle ? "🔀 casuale" : "▶ in ordine"} · {queue.index + 1} di {queue.total}
+                </div>
+              )}
               <div style={{ fontSize: 12.5, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {current.url}
               </div>
@@ -182,7 +198,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
             <span style={{ fontSize: 13.5, color: C.muted }}>🌙 Si spegne da sola:</span>
             {SLEEP_CHOICES.map((s) => {
-              const active = s.min === 0 ? !timerEnd : sleepLeft !== null && Math.abs(sleepLeft - s.min) <= s.min * 0.1;
+              const active = s.min === 0 ? !timerEnd : (sleepMin || 0) === s.min;
               return (
                 <button
                   key={s.min}
@@ -200,7 +216,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
               );
             })}
             {sleepLeft !== null && (
-              <span style={{ fontSize: 13, color: C.arcane }}>~{sleepLeft} min</span>
+              <span style={{ fontSize: 13, color: C.arcane }}>{fmtLeft(sleepLeft)}</span>
             )}
           </div>
         </div>
@@ -212,6 +228,34 @@ export default function MusicRoom({ music, playerRef, notify }) {
           Le tue melodie
         </h2>
         <span style={{ flex: 1 }} />
+        {liveFavs.length > 1 && (
+          <>
+            <button
+              onClick={() => playerRef.current?.playQueue(liveFavs, false)}
+              style={{
+                padding: "6px 14px",
+                borderRadius: 999,
+                fontSize: 14,
+                border: `1px solid ${queue && !queue.shuffle ? C.accent : C.border}`,
+                color: queue && !queue.shuffle ? C.accent : C.muted,
+              }}
+            >
+              ▶ Tutte
+            </button>
+            <button
+              onClick={() => playerRef.current?.playQueue(liveFavs, true)}
+              style={{
+                padding: "6px 14px",
+                borderRadius: 999,
+                fontSize: 14,
+                border: `1px solid ${queue?.shuffle ? C.accent : C.border}`,
+                color: queue?.shuffle ? C.accent : C.muted,
+              }}
+            >
+              🔀 Casuale
+            </button>
+          </>
+        )}
         <button
           onClick={() => setAdding((v) => !v)}
           style={{

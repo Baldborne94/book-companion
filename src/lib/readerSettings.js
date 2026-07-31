@@ -1,11 +1,12 @@
 const KEY = "bc_reader";
 
+// cover = la rilegatura che circonda le pagine
 export const READER_THEMES = {
-  night: { label: "Notte", bg: "#141120", fg: "#d9d2c2", link: "#b9a1e8" },
-  sepia: { label: "Pergamena", bg: "#f2e4c8", fg: "#453521", link: "#8a5a18" },
-  paper: { label: "Carta", bg: "#f7f3ea", fg: "#28251f", link: "#7a4f9e" },
-  grove: { label: "Bosco", bg: "#ece7d1", fg: "#2f3524", link: "#4f7a3a" },
-  oled: { label: "Nero", bg: "#000000", fg: "#c9c2b2", link: "#a98fdd" },
+  night: { label: "Notte", bg: "#141120", fg: "#d9d2c2", link: "#b9a1e8", cover: "#2a2340" },
+  sepia: { label: "Pergamena", bg: "#f2e4c8", fg: "#453521", link: "#8a5a18", cover: "#6d5233" },
+  paper: { label: "Carta", bg: "#f7f3ea", fg: "#28251f", link: "#7a4f9e", cover: "#4b4640" },
+  grove: { label: "Bosco", bg: "#ece7d1", fg: "#2f3524", link: "#4f7a3a", cover: "#41522f" },
+  oled: { label: "Nero", bg: "#000000", fg: "#c9c2b2", link: "#a98fdd", cover: "#1b1b1b" },
 };
 
 export const READER_FONTS = [
