@@ -22,6 +22,12 @@ body {
   overscroll-behavior-y: none;
 }
 
+/* dvh con fallback: su tablet la barra del browser fa ballare 100vh */
+.bc-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
 button {
   font-family: inherit;
   cursor: pointer;
