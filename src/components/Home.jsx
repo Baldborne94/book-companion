@@ -1,6 +1,7 @@
 import { C, FONT_TITLE } from "../data/constants.js";
 import { getLastOpened, getProgress, getStatus, getUpdatedAt } from "../lib/library.js";
 import BookCover from "./BookCover.jsx";
+import { LeafIcon, SparkIcon } from "./Icons.jsx";
 import EmptyState from "./EmptyState.jsx";
 
 function greeting() {
@@ -45,9 +46,14 @@ function SectionTitle({ children }) {
         fontSize: 21,
         color: C.text,
         margin: "22px 0 12px",
+        display: "flex",
+        alignItems: "center",
+        gap: 7,
       }}
     >
-      <span style={{ color: C.arcane, marginRight: 6 }}>✦</span>
+      <span style={{ color: C.arcane, flexShrink: 0 }}>
+        <SparkIcon size={15} />
+      </span>
       {children}
     </h2>
   );
@@ -66,13 +72,18 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden }) {
     );
   }
 
-  // L'ultimo aperto vale solo per questo dispositivo: se manca (o e' stato
-  // letto altrove) si ripiega sul libro in lettura toccato piu' di recente.
-  const inProgress = books
-    .filter((b) => getStatus(b.id) === "reading" || getProgress(b.id) > 0)
-    .sort((a, b) => getUpdatedAt(b.id, b.addedAt || 0) - getUpdatedAt(a.id, a.addedAt || 0));
-  const last = books.find((b) => b.id === getLastOpened()) || inProgress[0];
+  // bc_lastopen vale solo per questo dispositivo: se manca (perche' il libro
+  // e' stato aperto altrove) si ripiega sui libri gia' iniziati e infine sul
+  // piu' recente, cosi' la home propone sempre qualcosa da aprire.
+  const byRecent = (a, b) => getUpdatedAt(b.id, b.addedAt || 0) - getUpdatedAt(a.id, a.addedAt || 0);
+  const started = books
+    .filter((b) => getStatus(b.id) !== "read" && (getStatus(b.id) === "reading" || getProgress(b.id) > 0))
+    .sort(byRecent);
+  const unread = books.filter((b) => getStatus(b.id) !== "read").sort(byRecent);
+  const last =
+    books.find((b) => b.id === getLastOpened()) || started[0] || unread[0] || [...books].sort(byRecent)[0];
   const pct = last ? Math.round(getProgress(last.id) * 100) : 0;
+  const resuming = pct > 0;
   const recent = [...books].sort((a, b) => b.addedAt - a.addedAt).slice(0, 6);
 
   return (
@@ -80,7 +91,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden }) {
       <Welcome last={last} pct={pct} />
       {last && (
         <>
-          <SectionTitle>Continua a leggere</SectionTitle>
+          <SectionTitle>{resuming ? "Continua a leggere" : "Comincia da qui"}</SectionTitle>
           <button
             onClick={() => onRead(last.id)}
             style={{
@@ -114,18 +125,20 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden }) {
                 {last.title}
               </div>
               {last.author && <div style={{ fontSize: 14, color: C.muted, marginBottom: 8 }}>{last.author}</div>}
-              <div style={{ height: 5, borderRadius: 3, background: C.dim, overflow: "hidden", marginBottom: 5 }}>
-                <div
-                  style={{
-                    width: `${Math.max(pct, 2)}%`,
-                    height: "100%",
-                    borderRadius: 3,
-                    background: `linear-gradient(90deg, ${C.accent}, ${C.arcane})`,
-                  }}
-                />
-              </div>
+              {resuming && (
+                <div style={{ height: 5, borderRadius: 3, background: C.dim, overflow: "hidden", marginBottom: 5 }}>
+                  <div
+                    style={{
+                      width: `${Math.max(pct, 2)}%`,
+                      height: "100%",
+                      borderRadius: 3,
+                      background: `linear-gradient(90deg, ${C.accent}, ${C.arcane})`,
+                    }}
+                  />
+                </div>
+              )}
               <div style={{ fontSize: 13, color: C.muted }}>
-                {pct > 0 ? `${pct}% — riprendi da dove eri` : "riprendi la lettura"}
+                {resuming ? `${pct}% — riprendi da dove eri` : "apri e comincia il primo capitolo"}
               </div>
             </div>
             <span style={{ fontSize: 22, color: C.accent }}>›</span>
@@ -148,7 +161,9 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden }) {
           textAlign: "left",
         }}
       >
-        <span style={{ fontSize: 24, filter: `drop-shadow(0 0 10px ${C.arcane}88)` }}>🌿</span>
+        <span style={{ color: C.arcane, filter: `drop-shadow(0 0 10px ${C.arcane}66)` }}>
+          <LeafIcon size={24} active />
+        </span>
         <span style={{ flex: 1 }}>
           <span style={{ display: "block", fontFamily: FONT_TITLE, fontWeight: 600, fontSize: 17, color: C.text }}>
             Il giardino delle citazioni

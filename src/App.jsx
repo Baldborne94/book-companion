@@ -121,7 +121,7 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
           animation: syncing ? "bc-flicker 1.6s ease-in-out infinite" : "none",
         }}
       >
-        <CloudIcon size={22} />
+        <CloudIcon size={22} active={signedIn} />
       </button>
       <h1
         style={{
@@ -143,7 +143,7 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
             filter: `drop-shadow(0 0 10px ${C.accent}66)`,
           }}
         >
-          {theme.id === "grove" ? <LeafIcon size={26} /> : <CandleIcon size={26} />}
+          {theme.id === "grove" ? <LeafIcon size={26} active /> : <CandleIcon size={26} active />}
         </span>
         Book Companion
       </h1>
@@ -201,13 +201,20 @@ function BottomNav({ section, goTo }) {
           >
             <span
               style={{
-                filter: active ? `drop-shadow(0 0 7px ${C.accent}77)` : "none",
-                transition: "filter 0.2s ease-out",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 46,
+                height: 30,
+                borderRadius: 11,
+                background: active ? `${C.accent}1c` : "transparent",
+                filter: active ? `drop-shadow(0 0 7px ${C.accent}66)` : "none",
+                transition: "background 0.2s ease-out, filter 0.2s ease-out",
               }}
             >
               {(() => {
                 const I = NAV_ICONS[s.id];
-                return <I size={24} />;
+                return <I size={23} active={active} />;
               })()}
             </span>
             <span style={{ fontSize: 13, fontWeight: active ? 600 : 400 }}>{s.label}</span>

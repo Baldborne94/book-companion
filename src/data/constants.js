@@ -4,7 +4,7 @@ export const THEMES = {
     label: "Biblioteca Magica",
     icon: "🕯️",
     hint: "Notte profonda, candele e polvere di stelle",
-    tagline: "La tua biblioteca, di notte ✦",
+    tagline: "La tua biblioteca, di notte",
     colors: {
       bg: "#0f0d1a",
       surface: "#151226",
@@ -28,7 +28,7 @@ export const THEMES = {
     label: "Rifugio Silvano",
     icon: "🌿",
     hint: "Un'antica biblioteca tra le fronde, in pace",
-    tagline: "La tua biblioteca, tra le fronde 🍃",
+    tagline: "La tua biblioteca, tra le fronde",
     colors: {
       bg: "#12170e",
       surface: "#1a2114",
