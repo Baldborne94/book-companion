@@ -170,11 +170,12 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
   const [displayed, setDisplayed] = useState(null);
   const [speed, setSpeed] = useState(() => medianMs(loadSamples()));
   const [dict, setDict] = useState(null);
+  const [dictAll, setDictAll] = useState(false);
   const [noteFor, setNoteFor] = useState(null);
   const [noteDraft, setNoteDraft] = useState("");
   const samplesRef = useRef(loadSamples());
   const lastTurnAt = useRef(0);
-  const langRef = useRef(["en"]);
+  const langRef = useRef("en");
 
   live.current.settings = settings;
   live.current.panel = panel;
@@ -298,7 +299,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
         await eb.ready;
         if (dead) return;
         const lang = (eb.packaging?.metadata?.language || "").slice(0, 2).toLowerCase();
-        langRef.current = lang && lang !== "en" ? [lang, "en"] : ["en"];
+        langRef.current = lang || "en";
         eb.loaded.navigation.then((nav) => !dead && setToc(flattenToc(nav.toc)));
         makeRendition(live.current.settings);
         const cached = await getAux(`loc_${book.id}`);
@@ -451,9 +452,17 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
     if (!word) return;
     setSelMenu(null);
     setDict({ word, loading: true, entries: [] });
+    setDictAll(false);
     setPanel("dict");
     const res = await lookup(word, langRef.current);
-    setDict({ word: res.word || word, loading: false, entries: res.entries, offline: res.offline });
+    setDict({
+      word: res.word || word,
+      loading: false,
+      entries: res.entries,
+      translated: res.translated,
+      foreign: res.foreign,
+      offline: res.offline,
+    });
   }
 
   function saveNote() {
@@ -1203,26 +1212,86 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
       )}
 
       {panel === "dict" && dict && (
-        <Panel title={`📖 ${dict.word}`} onClose={() => setPanel(null)}>
-          {dict.loading ? (
-            <p style={{ color: C.muted }}>Consulto il dizionario…</p>
-          ) : dict.entries.length === 0 ? (
-            <p style={{ color: C.muted }}>
-              {dict.offline
-                ? "Il dizionario ha bisogno della rete: riprova quando sei online."
-                : `Nessuna voce per «${dict.word}».`}
-            </p>
-          ) : (
-            dict.entries.map((e, i) => (
-              <div key={i} style={{ padding: "9px 0", borderBottom: `1px solid ${C.border}44` }}>
-                {e.pos && (
-                  <span style={{ fontSize: 12.5, color: C.arcane, fontStyle: "italic" }}>{e.pos}</span>
+        <div
+          onClick={() => setPanel(null)}
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 30,
+            background: "#0806115e",
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(94%, 460px)",
+              marginBottom: chrome ? 92 : 26,
+              maxHeight: "52%",
+              overflowY: "auto",
+              background: `${C.card}fa`,
+              border: `1px solid ${C.border}`,
+              borderRadius: 16,
+              boxShadow: "0 12px 44px #000000aa",
+              padding: "13px 16px 15px",
+              animation: "bc-fade-in 0.2s ease-out",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
+              <span style={{ fontFamily: FONT_TITLE, fontSize: 21, fontWeight: 600, color: C.text }}>
+                {dict.word}
+              </span>
+              {dict.foreign && (
+                <span style={{ fontSize: 11.5, color: C.muted }}>in lingua originale</span>
+              )}
+              <button onClick={() => setPanel(null)} style={{ marginLeft: "auto", color: C.muted, fontSize: 17 }}>
+                ✕
+              </button>
+            </div>
+
+            {dict.loading ? (
+              <p style={{ color: C.muted, fontSize: 14.5 }}>Consulto il dizionario…</p>
+            ) : dict.entries.length === 0 ? (
+              <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.5 }}>
+                {dict.offline
+                  ? "Il dizionario ha bisogno della rete: riprova quando sei online."
+                  : `Nessuna voce per «${dict.word}».`}
+              </p>
+            ) : (
+              <>
+                {(dictAll ? dict.entries : dict.entries.slice(0, 3)).map((e, i) => (
+                  <div key={i} style={{ display: "flex", gap: 9, marginBottom: 9 }}>
+                    {e.pos && (
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          fontSize: 11.5,
+                          color: C.arcane,
+                          fontStyle: "italic",
+                          paddingTop: 3,
+                          minWidth: 66,
+                        }}
+                      >
+                        {e.pos}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 15, color: C.text, lineHeight: 1.45 }}>{e.text}</span>
+                  </div>
+                ))}
+                {!dictAll && dict.entries.length > 3 && (
+                  <button
+                    onClick={() => setDictAll(true)}
+                    style={{ fontSize: 13.5, color: C.accent, paddingTop: 2 }}
+                  >
+                    Altri {dict.entries.length - 3} significati
+                  </button>
                 )}
-                <p style={{ fontSize: 15, color: C.text, lineHeight: 1.5 }}>{e.text}</p>
-              </div>
-            ))
-          )}
-        </Panel>
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       {panel === "search" && (
