@@ -2,6 +2,14 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { registerSW } from "virtual:pwa-register";
 import { C, FONT_TITLE, SECTIONS, THEMES, DEFAULT_THEME, applyAppTheme } from "./data/constants.js";
 import Foliage from "./components/Foliage.jsx";
+import { CandleIcon, BooksIcon, MusicIcon, LeafIcon, CloudIcon } from "./components/Icons.jsx";
+
+// L'ingresso porta l'insegna dell'atmosfera scelta: candela di notte,
+// foglia nel boschetto.
+const THEME_ICON = { night: CandleIcon, grove: LeafIcon };
+const themeIcon = (id) => THEME_ICON[id] || CandleIcon;
+const navIcon = (sectionId, themeId) =>
+  sectionId === "home" ? themeIcon(themeId) : sectionId === "library" ? BooksIcon : MusicIcon;
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
 import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook, getProgress } from "./lib/library.js";
 import { removeBookData, requestPersistence } from "./lib/bookStore.js";
@@ -92,10 +100,16 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
           width: 42,
           height: 42,
           borderRadius: 12,
-          fontSize: 20,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: C.muted,
         }}
       >
-        {theme.icon}
+        {(() => {
+          const I = themeIcon(theme.id);
+          return <I size={22} />;
+        })()}
       </button>
       <button
         onClick={onSync}
@@ -107,13 +121,15 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
           width: 42,
           height: 42,
           borderRadius: 12,
-          fontSize: 20,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
           color: signedIn ? C.accent : C.muted,
           opacity: syncing ? 0.6 : 1,
           animation: syncing ? "bc-flicker 1.6s ease-in-out infinite" : "none",
         }}
       >
-        ☁️
+        <CloudIcon size={22} active={signedIn} />
       </button>
       <h1
         style={{
@@ -125,9 +141,21 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
           textShadow: `0 0 18px ${C.accent}55, 0 0 42px ${C.accent}22`,
         }}
       >
-        <span style={{ animation: "bc-flicker 6s ease-in-out infinite", display: "inline-block" }}>
-          {theme.icon}
-        </span>{" "}
+        <span
+          style={{
+            display: "inline-block",
+            verticalAlign: "-3px",
+            marginRight: 8,
+            color: C.accent,
+            animation: "bc-flicker 6s ease-in-out infinite",
+            filter: `drop-shadow(0 0 10px ${C.accent}66)`,
+          }}
+        >
+          {(() => {
+            const I = themeIcon(theme.id);
+            return <I size={26} active />;
+          })()}
+        </span>
         Book Companion
       </h1>
       <p
@@ -144,7 +172,7 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
   );
 }
 
-function BottomNav({ section, goTo }) {
+function BottomNav({ section, goTo, themeId }) {
   return (
     <nav
       style={{
@@ -184,12 +212,21 @@ function BottomNav({ section, goTo }) {
           >
             <span
               style={{
-                fontSize: 22,
-                filter: active ? `drop-shadow(0 0 8px ${C.accent}88)` : "none",
-                transition: "filter 0.2s ease-out",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 46,
+                height: 30,
+                borderRadius: 11,
+                background: active ? `${C.accent}1c` : "transparent",
+                filter: active ? `drop-shadow(0 0 7px ${C.accent}66)` : "none",
+                transition: "background 0.2s ease-out, filter 0.2s ease-out",
               }}
             >
-              {s.icon}
+              {(() => {
+                const I = navIcon(s.id, themeId);
+                return <I size={23} active={active} />;
+              })()}
             </span>
             <span style={{ fontSize: 13, fontWeight: active ? 600 : 400 }}>{s.label}</span>
           </button>
@@ -296,7 +333,12 @@ function ThemePicker({ current, onPick, onClose }) {
                 background: t.gradient,
               }}
             >
-              <span style={{ fontSize: 26 }}>{t.icon}</span>
+              <span style={{ color: t.colors.accent, flexShrink: 0 }}>
+                {(() => {
+                  const I = themeIcon(t.id);
+                  return <I size={26} active={active} />;
+                })()}
+              </span>
               <span style={{ flex: 1 }}>
                 <span
                   style={{
@@ -548,7 +590,7 @@ export default function App() {
         )}
         {section === "music" && <MusicRoom music={music} playerRef={playerRef} notify={notify} />}
       </main>
-      <BottomNav section={section} goTo={setSection} />
+      <BottomNav section={section} goTo={setSection} themeId={themeId} />
       {openBook && (
         <BookSheet
           key={openBook.id}
