@@ -123,9 +123,15 @@ export async function syncNow({ onProgress } = {}) {
 
   if (push.length) {
     say(`Invio ${push.length} ${push.length === 1 ? "libro" : "libri"}…`);
-    const { error: upErr } = await sb
-      .from("books")
-      .upsert(push.map((r) => ({ ...normalizeRow(r), user_id: uid })));
+    const rows = push.map((r) => ({ ...normalizeRow(r), user_id: uid }));
+    let { error: upErr } = await sb.from("books").upsert(rows);
+    // Database non ancora migrato: si sincronizza tutto il resto
+    if (upErr && /genre|saga/i.test(upErr.message || "")) {
+      ({ error: upErr } = await sb.from("books").upsert(
+        rows.map(({ genre, saga, ...rest }) => rest)
+      ));
+      if (!upErr) say("Sincronizzato (genere e saga: aggiorna lo schema)");
+    }
     if (upErr) throw upErr;
     const deletedIds = push.filter((r) => r.deleted).map((r) => r.id);
     if (deletedIds.length) {

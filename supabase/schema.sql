@@ -1,5 +1,11 @@
 -- Book Companion — schema per la sincronizzazione multi-dispositivo.
 -- Esegui questo file una volta sola nel SQL Editor del tuo progetto Supabase.
+--
+-- GIA' INSTALLATO PRIMA DI GENERI E SAGHE? Basta questa riga:
+--   alter table public.books
+--     add column if not exists genre text not null default '',
+--     add column if not exists saga  text not null default '';
+-- Senza, l'app sincronizza tutto il resto e tiene genere e saga in locale.
 
 create table if not exists public.books (
   id uuid primary key,
@@ -7,6 +13,8 @@ create table if not exists public.books (
   title text not null default '',
   author text not null default '',
   series text not null default '',
+  genre text not null default '',
+  saga text not null default '',
   file_type text not null default 'epub',
   added_at bigint not null default 0,
   rating int not null default 0,

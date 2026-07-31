@@ -20,6 +20,12 @@ const SORTS = [
   { id: "author", label: "Autore" },
 ];
 
+const GROUPS = [
+  { id: "none", label: "Scaffale" },
+  { id: "genre", label: "Genere", empty: "Senza genere" },
+  { id: "saga", label: "Saga", empty: "Fuori saga" },
+];
+
 const fmtBytes = (n) =>
   n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1e6))} MB`;
 
@@ -143,10 +149,51 @@ function Shelf({ books, onOpenBook, localIds }) {
   );
 }
 
+function Grouped({ books, group, onOpenBook, localIds }) {
+  if (group === "none") return <Shelf books={books} onOpenBook={onOpenBook} localIds={localIds} />;
+
+  const cfg = GROUPS.find((g) => g.id === group);
+  const buckets = new Map();
+  for (const b of books) {
+    const key = (b[group] || "").trim();
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(b);
+  }
+  // i libri senza etichetta chiudono la fila
+  const names = [...buckets.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b, "it"));
+  if (buckets.has("")) names.push("");
+
+  return names.map((name) => (
+    <section key={name || "_"} style={{ marginBottom: 26 }}>
+      <h3
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          gap: 8,
+          fontFamily: FONT_TITLE,
+          fontWeight: 600,
+          fontSize: 19,
+          color: name ? C.accent : C.muted,
+          marginBottom: 10,
+          paddingBottom: 5,
+          borderBottom: `1px solid ${C.border}`,
+        }}
+      >
+        <span>{name || cfg.empty}</span>
+        <span style={{ fontSize: 13, color: C.muted, fontFamily: "inherit" }}>
+          {buckets.get(name).length}
+        </span>
+      </h3>
+      <Shelf books={buckets.get(name)} onOpenBook={onOpenBook} localIds={localIds} />
+    </section>
+  ));
+}
+
 export default function Library({ books, updateBooks, onOpenBook, notify, localIds, onImported }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [sort, setSort] = useState("recent");
+  const [group, setGroup] = useState("none");
   const [importing, setImporting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [estimate, setEstimate] = useState(null);
@@ -285,6 +332,25 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
         })}
         <span style={{ flex: 1 }} />
         <select
+          value={group}
+          onChange={(e) => setGroup(e.target.value)}
+          style={{
+            padding: "6px 10px",
+            borderRadius: 10,
+            border: `1px solid ${group === "none" ? C.border : C.accent}`,
+            background: C.surface,
+            color: group === "none" ? C.muted : C.accent,
+            fontSize: 14,
+            fontFamily: "inherit",
+          }}
+        >
+          {GROUPS.map((g) => (
+            <option key={g.id} value={g.id}>
+              Raggruppa: {g.label}
+            </option>
+          ))}
+        </select>
+        <select
           value={sort}
           onChange={(e) => setSort(e.target.value)}
           style={{
@@ -318,7 +384,7 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
           Nessun tomo risponde all'appello con questi filtri…
         </p>
       ) : (
-        <Shelf books={visible} onOpenBook={onOpenBook} localIds={localIds} />
+        <Grouped books={visible} group={group} onOpenBook={onOpenBook} localIds={localIds} />
       )}
 
       {books.length > 0 && (

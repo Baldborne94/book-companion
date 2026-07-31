@@ -155,6 +155,9 @@ function BottomNav({ section, goTo }) {
         zIndex: 10,
         display: "flex",
         justifyContent: "space-around",
+        alignItems: "stretch",
+        height: 62,
+        boxSizing: "content-box",
         background: `${C.surface}f2`,
         backdropFilter: "blur(8px)",
         borderTop: `1px solid ${C.border}`,
@@ -170,10 +173,10 @@ function BottomNav({ section, goTo }) {
             aria-current={active ? "page" : undefined}
             style={{
               flex: 1,
-              padding: "10px 0 12px",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
+              justifyContent: "center",
               gap: 2,
               color: active ? C.accent : C.muted,
               transition: "color 0.2s ease-out",
@@ -501,8 +504,8 @@ export default function App() {
 
   return (
     <div
+      className="bc-shell"
       style={{
-        minHeight: "100vh",
         background: theme.gradient,
         display: "flex",
         flexDirection: "column",
@@ -550,6 +553,7 @@ export default function App() {
         <BookSheet
           key={openBook.id}
           book={openBook}
+          books={books}
           onClose={() => setOpenId(null)}
           onSaveMeta={handleSaveMeta}
           onDelete={handleDelete}

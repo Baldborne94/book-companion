@@ -3,6 +3,39 @@ import { getLastOpened, getProgress } from "../lib/library.js";
 import BookCover from "./BookCover.jsx";
 import EmptyState from "./EmptyState.jsx";
 
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 5) return "Ancora sveglio";
+  if (h < 12) return "Buongiorno";
+  if (h < 18) return "Buon pomeriggio";
+  return "Buonasera";
+}
+
+function Welcome({ last, pct }) {
+  return (
+    <div
+      style={{
+        padding: "18px 20px",
+        borderRadius: 16,
+        border: `1px solid ${C.border}`,
+        background: `linear-gradient(135deg, ${C.accent}12, transparent 60%)`,
+        marginBottom: 6,
+      }}
+    >
+      <div style={{ fontFamily: FONT_TITLE, fontSize: 25, fontWeight: 600, color: C.text }}>
+        {greeting()}, eccoti.
+      </div>
+      <div style={{ fontSize: 15, color: C.muted, marginTop: 3, lineHeight: 1.45 }}>
+        {last
+          ? pct > 0
+            ? <>Sei al {pct}% di <span style={{ color: C.accent }}>{last.title}</span>. Riprendi da dove eri.</>
+            : <>Ti aspetta <span style={{ color: C.accent }}>{last.title}</span>. Buona lettura.</>
+          : "Il tuo posto tra i libri ti aspettava."}
+      </div>
+    </div>
+  );
+}
+
 function SectionTitle({ children }) {
   return (
     <h2
@@ -39,6 +72,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden }) {
 
   return (
     <div style={{ animation: "bc-fade-in 0.4s ease-out" }}>
+      <Welcome last={last} pct={pct} />
       {last && (
         <>
           <SectionTitle>Continua a leggere</SectionTitle>

@@ -3,6 +3,22 @@ import { C, FONT_TITLE } from "../data/constants.js";
 import { getProgress, getStatus, setStatus } from "../lib/library.js";
 import BookCover from "./BookCover.jsx";
 
+const GENRE_HINTS = [
+  "Fantasy",
+  "Fantascienza",
+  "Horror",
+  "Giallo",
+  "Thriller",
+  "Avventura",
+  "Storico",
+  "Romanzo",
+  "Saggistica",
+  "Biografia",
+  "Poesia",
+  "Fumetti",
+  "Manuali",
+];
+
 const STATUSES = [
   { id: "unread", label: "Da leggere", color: null },
   { id: "reading", label: "In lettura", color: null },
@@ -20,19 +36,36 @@ const fieldStyle = {
   outline: "none",
 };
 
-function Field({ label, value, onChange, placeholder }) {
+function Field({ label, value, onChange, placeholder, options, listId }) {
   return (
     <label style={{ display: "block", marginBottom: 10 }}>
       <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 3 }}>{label}</span>
-      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} style={fieldStyle} />
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        list={listId}
+        style={fieldStyle}
+      />
+      {options && (
+        <datalist id={listId}>
+          {options.map((o) => (
+            <option key={o} value={o} />
+          ))}
+        </datalist>
+      )}
     </label>
   );
 }
 
-export default function BookSheet({ book, onClose, onSaveMeta, onDelete, onRead, notify }) {
+export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDelete, onRead, notify }) {
   const [title, setTitle] = useState(book.title);
   const [author, setAuthor] = useState(book.author || "");
   const [series, setSeries] = useState(book.series || "");
+  const [genre, setGenre] = useState(book.genre || "");
+  const [saga, setSaga] = useState(book.saga || "");
+
+  const uniq = (key) => [...new Set(books.map((b) => (b[key] || "").trim()).filter(Boolean))].sort();
   const [notes, setNotes] = useState(book.notes || "");
   const [rating, setRating] = useState(book.rating || 0);
   const [status, setStatusState] = useState(getStatus(book.id));
@@ -46,6 +79,8 @@ export default function BookSheet({ book, onClose, onSaveMeta, onDelete, onRead,
       title: title.trim() || book.title,
       author: author.trim(),
       series: series.trim(),
+      genre: genre.trim(),
+      saga: saga.trim(),
       notes,
       rating,
     });
@@ -63,6 +98,8 @@ export default function BookSheet({ book, onClose, onSaveMeta, onDelete, onRead,
       title: title.trim() || book.title,
       author: author.trim(),
       series: series.trim(),
+      genre: genre.trim(),
+      saga: saga.trim(),
       notes,
       rating,
     });
@@ -122,7 +159,30 @@ export default function BookSheet({ book, onClose, onSaveMeta, onDelete, onRead,
           <div style={{ flex: 1, minWidth: 220 }}>
             <Field label="Titolo" value={title} onChange={setTitle} />
             <Field label="Autore" value={author} onChange={setAuthor} placeholder="Sconosciuto…" />
-            <Field label="Serie" value={series} onChange={setSeries} placeholder="—" />
+            <Field
+              label="Saga (l'universo che raccoglie più libri)"
+              value={saga}
+              onChange={setSaga}
+              placeholder="es. The Realm of the Elderlings"
+              options={uniq("saga")}
+              listId="bc-sagas"
+            />
+            <Field
+              label="Serie (il ciclo dentro la saga)"
+              value={series}
+              onChange={setSeries}
+              placeholder="es. Farseer Trilogy"
+              options={uniq("series")}
+              listId="bc-series"
+            />
+            <Field
+              label="Genere"
+              value={genre}
+              onChange={setGenre}
+              placeholder="es. Fantasy"
+              options={[...new Set([...uniq("genre"), ...GENRE_HINTS])]}
+              listId="bc-genres"
+            />
 
             <div style={{ marginBottom: 10 }}>
               <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 3 }}>Valutazione</span>
