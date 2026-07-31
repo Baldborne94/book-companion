@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
 import { getCover } from "../lib/bookStore.js";
 
-export default function BookCover({ book, radius = 8 }) {
+export default function BookCover({ book, radius = 8, compact = false }) {
   const [url, setUrl] = useState(null);
 
   useEffect(() => {
@@ -41,8 +41,11 @@ export default function BookCover({ book, radius = 8 }) {
           style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
         />
       ) : (
-        <div style={{ padding: 10, textAlign: "center" }}>
-          <div style={{ fontSize: 22, marginBottom: 6 }}>{book.fileType === "pdf" ? "📄" : "📖"}</div>
+        <div style={{ padding: compact ? 4 : 10, textAlign: "center" }}>
+          <div style={{ fontSize: compact ? 16 : 22, marginBottom: compact ? 0 : 6 }}>
+            {book.fileType === "pdf" ? "📄" : "📖"}
+          </div>
+          {!compact && (
           <div
             style={{
               fontFamily: FONT_TITLE,
@@ -57,6 +60,7 @@ export default function BookCover({ book, radius = 8 }) {
           >
             {book.title}
           </div>
+          )}
         </div>
       )}
     </div>

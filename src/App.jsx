@@ -371,6 +371,13 @@ function ThemePicker({ current, onPick, onClose }) {
 
 export default function App() {
   const [section, setSection] = useState("home");
+  const [focusSaga, setFocusSaga] = useState(null);
+  // la saga vale solo per il salto dalla home: tornando dal menu la
+  // libreria deve ritrovarsi intera
+  const navigate = (id) => {
+    setFocusSaga(null);
+    setSection(id);
+  };
   const [books, setBooks] = useState(() => loadBooks());
   const [openId, setOpenId] = useState(null);
   const [readingId, setReadingId] = useState(null);
@@ -579,7 +586,17 @@ export default function App() {
         }}
       >
         {section === "home" && (
-          <Home books={books} goTo={setSection} onOpenBook={setOpenId} onRead={handleRead} onGarden={() => setGardenOpen(true)} />
+          <Home
+            books={books}
+            goTo={navigate}
+            onOpenBook={setOpenId}
+            onRead={handleRead}
+            onGarden={() => setGardenOpen(true)}
+            onSaga={(name) => {
+              setFocusSaga(name);
+              setSection("library");
+            }}
+          />
         )}
         {section === "library" && (
           <Library
@@ -589,11 +606,12 @@ export default function App() {
             notify={notify}
             localIds={localIds}
             onImported={() => runSync.current(true)}
+            focusSaga={focusSaga}
           />
         )}
         {section === "music" && <MusicRoom music={music} playerRef={playerRef} notify={notify} />}
       </main>
-      <BottomNav section={section} goTo={setSection} themeId={themeId} />
+      <BottomNav section={section} goTo={navigate} themeId={themeId} />
       {openBook && (
         <BookSheet
           key={openBook.id}
