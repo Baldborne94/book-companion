@@ -279,10 +279,24 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         if (live.current.settings.font === "garamond") {
           try { view.contents.addStylesheetCss(GOOGLE_FONT_CSS, "bc-font"); } catch { /* offline: fallback serif */ }
         }
+        // Su touch il cambio pagina nasce da qui, non da bottoni sovrapposti:
+        // quelli intercettavano il tocco prolungato e rendevano impossibile
+        // selezionare una parola nelle fasce laterali.
         doc.addEventListener("click", (e) => {
           if (e.target.closest?.("a")) return;
           const sel = view.contents.window.getSelection();
           if (sel && sel.toString()) return;
+          if (isTouch() && live.current.settings.flow !== "scrolled") {
+            // dentro il capitolo le coordinate vivono nello spazio delle
+            // colonne, largo quanto tutto il testo: vanno riportate al libro
+            const frameEl = view.contents.window.frameElement;
+            const box = bookRef.current?.getBoundingClientRect();
+            if (frameEl && box?.width) {
+              const rel = (frameEl.getBoundingClientRect().left + e.clientX - box.left) / box.width;
+              if (rel < 0.28) return turnRef.current("prev");
+              if (rel > 0.72) return turnRef.current("next");
+            }
+          }
           setChrome((v) => !v);
         });
       });
@@ -814,7 +828,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         </div>
       )}
 
-      {paginated && status === "ready" && (
+      {paginated && status === "ready" && !isTouch() && (
         <>
           <button
             aria-label="Pagina precedente"
