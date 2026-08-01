@@ -22,6 +22,15 @@ const FRAME = 6;
 const EDGE_STRIPES =
   "repeating-linear-gradient(to right, #00000047 0 1px, #ffffff1f 1px 2px, #0000001c 2px 4px)";
 
+// In doppia pagina epub.js riporta solo il foglio di sinistra: il numero
+// pari non compariva mai nel piede e sembrava saltato.
+function pageLabel(d, spread) {
+  const destra = spread === 2 && d.page < d.total ? d.page + 1 : null;
+  return destra
+    ? `pagine ${d.page}-${destra} di ${d.total} del capitolo`
+    : `pag. ${d.page} di ${d.total} del capitolo`;
+}
+
 const isTouch = () => navigator.maxTouchPoints > 0;
 const isTablet = () =>
   isTouch() && Math.min(window.innerWidth, window.innerHeight) >= 520;
@@ -931,7 +940,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 {settings.flow === "scrolled"
                   ? "scorrimento"
                   : [
-                      displayed ? `pag. ${displayed.page} di ${displayed.total} del capitolo` : null,
+                      displayed ? pageLabel(displayed, pages) : null,
                       chapterLeft
                         ? `${chapterLeft.startsWith("meno") ? "" : "~"}${chapterLeft} alla fine`
                         : null,
