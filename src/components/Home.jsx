@@ -1,4 +1,6 @@
 import { C, FONT_TITLE } from "../data/constants.js";
+import { useViewport } from "../lib/viewport.js";
+import { greeting } from "../lib/greeting.js";
 import { getLastOpened, getProgress, getStatus, getUpdatedAt } from "../lib/library.js";
 import { nextInSaga } from "../lib/saga.js";
 import BookCover from "./BookCover.jsx";
@@ -9,14 +11,6 @@ import EmptyState from "./EmptyState.jsx";
 const FAV_MIN = 4;
 
 const stars = (v) => String(v).replace(".", ",");
-
-function greeting() {
-  const h = new Date().getHours();
-  if (h < 5) return "Ancora sveglio";
-  if (h < 12) return "Buongiorno";
-  if (h < 18) return "Buon pomeriggio";
-  return "Buonasera";
-}
 
 function Welcome({ last, pct, followedFrom }) {
   return (
@@ -53,7 +47,7 @@ function SectionTitle({ children }) {
         fontWeight: 600,
         fontSize: 21,
         color: C.text,
-        margin: "22px 0 12px",
+        margin: "16px 0 12px",
         display: "flex",
         alignItems: "center",
         gap: 7,
@@ -129,6 +123,8 @@ function SagaCard({ saga, onOpen }) {
 }
 
 export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onSaga }) {
+  const { wide, tall } = useViewport();
+
   if (books.length === 0) {
     return (
       <EmptyState
@@ -181,8 +177,18 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onSaga
   );
 
   return (
-    <div style={{ animation: "bc-fade-in 0.4s ease-out" }}>
-      <Welcome last={last} pct={pct} followedFrom={followedFrom} />
+    <div
+      style={{
+        animation: "bc-fade-in 0.4s ease-out",
+        display: wide ? "grid" : "block",
+        gridTemplateColumns: wide ? "minmax(0, 1fr) minmax(0, 1fr)" : undefined,
+        gap: wide ? "0 28px" : undefined,
+        alignItems: "start",
+      }}
+    >
+      {/* dove l'intestazione e' compatta il saluto sta gia' lassu' */}
+      {tall && <Welcome last={last} pct={pct} followedFrom={followedFrom} />}
+      <div style={{ gridColumn: wide ? 1 : "auto" }}>
       {last && (
         <>
           <SectionTitle>{followedFrom ? "Il prossimo della saga" : "Continua da dove ti sei fermato"}</SectionTitle>
@@ -272,11 +278,13 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onSaga
         </span>
         <span style={{ fontSize: 20, color: C.arcane }}>›</span>
       </button>
+      </div>
 
+      <div style={{ gridColumn: wide ? 2 : "auto" }}>
       {sagas.length > 0 && (
         <>
           <SectionTitle>Le tue saghe</SectionTitle>
-          <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
+          <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4, flexWrap: wide ? "wrap" : "nowrap" }}>
             {sagas.map((s) => (
               <SagaCard key={s.name} saga={s} onOpen={onSaga} />
             ))}
@@ -336,6 +344,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onSaga
           indica la saga a cui appartiene e assegnagli le stelle — da quattro in su lo ritrovi qui.
         </div>
       )}
+      </div>
     </div>
   );
 }
