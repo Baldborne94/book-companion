@@ -1,5 +1,6 @@
 import { C, FONT_TITLE } from "../data/constants.js";
 import { getLastOpened, getProgress, getStatus, getUpdatedAt } from "../lib/library.js";
+import { nextInSaga } from "../lib/saga.js";
 import BookCover from "./BookCover.jsx";
 import { LeafIcon, SparkIcon, StarIcon } from "./Icons.jsx";
 import EmptyState from "./EmptyState.jsx";
@@ -17,7 +18,7 @@ function greeting() {
   return "Buonasera";
 }
 
-function Welcome({ last, pct }) {
+function Welcome({ last, pct, followedFrom }) {
   return (
     <div
       style={{
@@ -32,7 +33,9 @@ function Welcome({ last, pct }) {
         {greeting()}, eccoti.
       </div>
       <div style={{ fontSize: 15, color: C.muted, marginTop: 3, lineHeight: 1.45 }}>
-        {last
+        {followedFrom ? (
+          <>Hai finito <span style={{ color: C.accent }}>{followedFrom.title}</span>. Il prossimo della saga è <span style={{ color: C.accent }}>{last.title}</span>.</>
+        ) : last
           ? pct > 0
             ? <>Sei al {pct}% di <span style={{ color: C.accent }}>{last.title}</span>. Riprendi da dove eri.</>
             : <>Ti aspetta <span style={{ color: C.accent }}>{last.title}</span>. Buona lettura.</>
@@ -146,8 +149,14 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onSaga
     .filter((b) => getStatus(b.id) !== "read" && (getStatus(b.id) === "reading" || getProgress(b.id) > 0))
     .sort(byRecent);
   const unread = books.filter((b) => getStatus(b.id) !== "read").sort(byRecent);
+  // se l'ultimo aperto e' stato finito, il riquadro propone il passo
+  // successivo della sua saga invece di riproporre un libro chiuso
+  const lastOpened = books.find((b) => b.id === getLastOpened());
+  const lastDone = lastOpened && getStatus(lastOpened.id) === "read" ? lastOpened : null;
+  const followUp = lastDone ? nextInSaga(lastDone, books) : null;
   const last =
-    books.find((b) => b.id === getLastOpened()) || started[0] || unread[0] || [...books].sort(byRecent)[0];
+    (lastDone ? null : lastOpened) || followUp || started[0] || unread[0] || [...books].sort(byRecent)[0];
+  const followedFrom = followUp && last === followUp ? lastDone : null;
   const pct = last ? Math.round(getProgress(last.id) * 100) : 0;
   const resuming = pct > 0;
 
@@ -173,10 +182,10 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onSaga
 
   return (
     <div style={{ animation: "bc-fade-in 0.4s ease-out" }}>
-      <Welcome last={last} pct={pct} />
+      <Welcome last={last} pct={pct} followedFrom={followedFrom} />
       {last && (
         <>
-          <SectionTitle>Continua da dove ti sei fermato</SectionTitle>
+          <SectionTitle>{followedFrom ? "Il prossimo della saga" : "Continua da dove ti sei fermato"}</SectionTitle>
           <button
             onClick={() => onRead(last.id)}
             style={{
@@ -223,7 +232,11 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onSaga
                 </div>
               )}
               <div style={{ fontSize: 13, color: C.muted }}>
-                {resuming ? `${pct}% — riprendi da dove eri` : "apri e comincia il primo capitolo"}
+                {resuming
+                  ? `${pct}% — riprendi da dove eri`
+                  : followedFrom
+                    ? `il passo n° ${last.sagaOrder} di ${last.saga}`
+                    : "apri e comincia il primo capitolo"}
               </div>
             </div>
             <span style={{ fontSize: 22, color: C.accent }}>›</span>
