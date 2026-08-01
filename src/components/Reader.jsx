@@ -231,6 +231,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       r.on("relocated", (loc) => {
         const st = live.current;
         st.cfi = loc.start.cfi;
+        st.href = loc.start.href;
         if (st.locReady) {
           const p = eb.locations.percentageFromCfi(loc.start.cfi);
           if (Number.isFinite(p)) {
@@ -420,14 +421,31 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
   function addMark() {
     if (!live.current.cfi) return;
-    const label = locReady
-      ? `Segnalibro al ${Math.round((live.current.progress || 0) * 100)}%`
-      : "Segnalibro";
+    // capitolo e pagina, non la percentuale: quella si ricalcola dal CFI a
+    // ogni apertura del pannello, mentre un'etichetta congelata in un
+    // omnibus arrotondava a "0%" per decine di pagine
+    const base = (live.current.href || "").split("#")[0];
+    const chap = toc.find((t) => (t.href || "").split("#")[0] === base)?.label || "";
+    const label =
+      [chap, displayed ? `pag. ${displayed.page}` : ""].filter(Boolean).join(" · ") || "Segnalibro";
     const m = { id: crypto.randomUUID(), cfi: live.current.cfi, label, createdAt: Date.now() };
     const next = [...marks, m];
     setMarks(next);
     saveMarks(book.id, next);
     notify("Segnalibro riposto tra le pagine 📑");
+  }
+
+  function markPct(cfi) {
+    const eb = epubRef.current;
+    if (!eb || !locReady) return null;
+    try {
+      const p = eb.locations.percentageFromCfi(cfi);
+      if (!Number.isFinite(p)) return null;
+      const v = p * 100;
+      return (v < 10 ? v.toFixed(1) : String(Math.round(v))).replace(".", ",");
+    } catch {
+      return null;
+    }
   }
 
   function removeMark(m) {
@@ -1129,20 +1147,29 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           {marks.length === 0 ? (
             <p style={{ color: C.muted }}>Nessun segnalibro ancora.</p>
           ) : (
-            marks.map((m) => (
+            marks.map((m) => {
+              const pct = markPct(m.cfi);
+              const stale = /^Segnalibro( al \d+%)?$/.test(m.label);
+              const title = stale && pct ? `Segnalibro al ${pct}%` : m.label;
+              const sub = [
+                pct && !stale ? `al ${pct}%` : "",
+                new Date(m.createdAt).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }),
+              ].filter(Boolean).join(" · ");
+              return (
               <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.border}44` }}>
                 <button
                   onClick={() => goTo(m.cfi)}
                   style={{ flex: 1, textAlign: "left", padding: "11px 6px", fontSize: 15, color: C.text }}
                 >
-                  {m.label}
+                  {title}
                   <span style={{ display: "block", fontSize: 12.5, color: C.muted }}>
-                    {new Date(m.createdAt).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    {sub}
                   </span>
                 </button>
                 <button onClick={() => removeMark(m)} aria-label="Elimina segnalibro" style={{ color: C.muted, padding: 8 }}>🗑</button>
               </div>
-            ))
+              );
+            })
           )}
         </Panel>
       )}
