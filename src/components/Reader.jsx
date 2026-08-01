@@ -12,6 +12,7 @@ import {
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, wordCount, cleanWord } from "../lib/dictionary.js";
 import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../lib/readingSpeed.js";
+import { leftoverScroll } from "../lib/spread.js";
 import BookCover from "./BookCover.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
 
@@ -411,14 +412,23 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     }
   }
 
+  // avanti si scorre il residuo prima di cambiare capitolo, cosi' l'ultima
+  // pagina scritta non viene saltata; indietro epub.js gia' atterra in fondo
+  function step(r, dir) {
+    if (dir === "prev") return r.prev();
+    const rest = leftoverScroll(r.manager);
+    if (!rest) return r.next();
+    r.manager.scrollBy(rest, 0, true);
+    return r.reportLocation();
+  }
+
   function turn(dir) {
     const r = rendRef.current;
     if (!r || status !== "ready") return;
     const animate =
       isTablet() && settings.flow !== "scrolled" && settings.pageTurn && !reducedMotion();
     if (!animate) {
-      if (dir === "next") r.next();
-      else r.prev();
+      step(r, dir);
       return;
     }
     if (swapTimer.current) {
@@ -431,8 +441,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const doSwap = () => {
       swapTimer.current = null;
       swapPending.current = null;
-      if (dir === "next") r.next();
-      else r.prev();
+      step(r, dir);
     };
     // il foglio e la copertura sono opachi a 80ms: lo scambio resta invisibile
     swapPending.current = doSwap;
