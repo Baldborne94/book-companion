@@ -13,6 +13,7 @@ import { searchBook } from "../lib/epubSearch.js";
 import { lookup, wordCount, cleanWord } from "../lib/dictionary.js";
 import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../lib/readingSpeed.js";
 import BookCover from "./BookCover.jsx";
+import DictionaryCard from "./DictionaryCard.jsx";
 
 const EDGE_MIN = 3;
 const EDGE_MAX = 17;
@@ -180,7 +181,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const id = requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     return () => cancelAnimationFrame(id);
   }, [chrome, status]);
-  const [dictAll, setDictAll] = useState(false);
   const [noteFor, setNoteFor] = useState(null);
   const [noteDraft, setNoteDraft] = useState("");
   const samplesRef = useRef(loadSamples());
@@ -497,7 +497,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     if (!word) return;
     setSelMenu(null);
     setDict({ word, loading: true, entries: [] });
-    setDictAll(false);
     setPanel("dict");
     const res = await lookup(word, langRef.current);
     setDict({
@@ -1326,94 +1325,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         </div>
       )}
 
-      {panel === "dict" && dict && (
-        <div
-          onClick={() => setPanel(null)}
-          style={{
-            position: "absolute",
-            inset: 0,
-            zIndex: 30,
-            background: "#0806115e",
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "center",
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "min(94%, 460px)",
-              marginBottom: chrome ? 92 : 26,
-              maxHeight: "52%",
-              overflowY: "auto",
-              background: `${C.card}fa`,
-              border: `1px solid ${C.border}`,
-              borderRadius: 16,
-              boxShadow: "0 12px 44px #000000aa",
-              padding: "13px 16px 15px",
-              animation: "bc-fade-in 0.2s ease-out",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
-              <span style={{ fontFamily: FONT_TITLE, fontSize: 21, fontWeight: 600, color: C.text }}>
-                {dict.word}
-              </span>
-              {dict.foreign && (
-                <span style={{ fontSize: 11.5, color: C.muted }}>in lingua originale</span>
-              )}
-              <button onClick={() => setPanel(null)} style={{ marginLeft: "auto", color: C.muted, fontSize: 17 }}>
-                ✕
-              </button>
-            </div>
-
-            {dict.translation && (
-              <p style={{ fontSize: 16.5, color: C.accent, lineHeight: 1.4, margin: "0 0 10px" }}>
-                {dict.translation}
-              </p>
-            )}
-            {dict.loading ? (
-              <p style={{ color: C.muted, fontSize: 14.5 }}>Consulto il dizionario…</p>
-            ) : dict.entries.length === 0 && !dict.translation ? (
-              <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.5 }}>
-                {dict.offline
-                  ? "Il dizionario ha bisogno della rete: riprova quando sei online."
-                  : `Nessuna voce per «${dict.word}».`}
-              </p>
-            ) : (
-              <>
-                {(dictAll ? dict.entries : dict.entries.slice(0, dict.translation ? 2 : 3)).map((e, i) => (
-                  <div key={i} style={{ display: "flex", gap: 9, marginBottom: 9 }}>
-                    {e.pos && (
-                      <span
-                        style={{
-                          flexShrink: 0,
-                          fontSize: 11.5,
-                          color: C.arcane,
-                          fontStyle: "italic",
-                          paddingTop: 3,
-                          minWidth: 66,
-                        }}
-                      >
-                        {e.pos}
-                      </span>
-                    )}
-                    <span style={{ fontSize: 15, color: C.text, lineHeight: 1.45 }}>{e.text}</span>
-                  </div>
-                ))}
-                {!dictAll && dict.entries.length > (dict.translation ? 2 : 3) && (
-                  <button
-                    onClick={() => setDictAll(true)}
-                    style={{ fontSize: 13.5, color: C.accent, paddingTop: 2 }}
-                  >
-                    Altri {dict.entries.length - (dict.translation ? 2 : 3)} significati
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        </div>
+      {panel === "dict" && (
+        <DictionaryCard dict={dict} bottom={chrome ? 92 : 26} onClose={() => setPanel(null)} />
       )}
-
       {panel === "search" && (
         <Panel title="Cerca nel libro" onClose={() => setPanel(null)}>
           <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>

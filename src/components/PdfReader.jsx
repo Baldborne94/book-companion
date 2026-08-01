@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
 import { ensureLocalFile } from "../lib/sync.js";
-import { getCfi, setCfi } from "../lib/annotations.js";
+import { getCfi, setCfi, getMarks, saveMarks } from "../lib/annotations.js";
 import { getProgress, setProgress, setStatus } from "../lib/library.js";
 import { loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
+import { lookup, wordCount, cleanWord } from "../lib/dictionary.js";
 import BookCover from "./BookCover.jsx";
+import DictionaryCard from "./DictionaryCard.jsx";
 
 const isTouch = () => navigator.maxTouchPoints > 0;
 
@@ -20,11 +22,45 @@ const barBtn = (active) => ({
   background: active ? `${C.accent}1a` : "transparent",
 });
 
+function Panel({ title, onClose, children }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: "absolute", inset: 0, zIndex: 30, background: "#08061188", display: "flex", alignItems: "flex-end" }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxHeight: "72%",
+          overflowY: "auto",
+          background: C.surface,
+          borderTop: `1px solid ${C.border}`,
+          borderRadius: "18px 18px 0 0",
+          padding: "16px 18px 24px",
+          animation: "bc-fade-in 0.25s ease-out",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <h3 style={{ fontFamily: FONT_TITLE, fontSize: 20, fontWeight: 600, color: C.text }}>{title}</h3>
+          <button onClick={onClose} style={barBtn(false)}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onClose, notify, nextBook, onReadNext }) {
   const containerRef = useRef(null);
+  const pageBoxRef = useRef(null);
   const canvasRef = useRef(null);
+  const textRef = useRef(null);
   const pdfRef = useRef(null);
+  const modRef = useRef(null);
   const renderTask = useRef(null);
+  const textLayer = useRef(null);
+  const langRef = useRef("en");
   const live = useRef({ page: Math.max(1, parseInt(getCfi(book.id), 10) || 1), pages: 0 });
 
   const [settings, setSettings] = useState(() =>
@@ -32,11 +68,16 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
   );
   const [status, setStatusUi] = useState("loading");
   const [chrome, setChrome] = useState(() => !isTouch());
-  const [panel, setPanel] = useState(false);
+  const [panel, setPanel] = useState(null);
   const [page, setPage] = useState(live.current.page);
   const [pages, setPages] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [endCard, setEndCard] = useState(null);
+  const [marks, setMarks] = useState(() => getMarks(book.id));
+  const [outline, setOutline] = useState([]);
+  const [sel, setSel] = useState(null);
+  const [dict, setDict] = useState(null);
+  const [jump, setJump] = useState("");
 
   const flush = useCallback(() => {
     const s = live.current;
@@ -54,6 +95,11 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
     onClose();
   }, [book.id, flush, onClose]);
 
+  const goToPage = useCallback((n) => {
+    const max = live.current.pages || 1;
+    setPage(Math.min(max, Math.max(1, n)));
+  }, []);
+
   const renderPage = useCallback(
     async (pageNum, zoomLevel) => {
       const pdf = pdfRef.current;
@@ -62,6 +108,7 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
       if (!pdf || !canvas || !container) return;
       try {
         renderTask.current?.cancel();
+        textLayer.current?.cancel?.();
         const p = await pdf.getPage(pageNum);
         const base = p.getViewport({ scale: 1 });
         const cssWidth = Math.min(container.clientWidth - 8, (container.clientHeight - 8) * (base.width / base.height));
@@ -70,13 +117,33 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
         const viewport = p.getViewport({ scale: scale * dpr });
         canvas.width = Math.ceil(viewport.width);
         canvas.height = Math.ceil(viewport.height);
-        canvas.style.width = `${Math.ceil(viewport.width / dpr)}px`;
-        canvas.style.height = `${Math.ceil(viewport.height / dpr)}px`;
+        const cssW = Math.ceil(viewport.width / dpr);
+        const cssH = Math.ceil(viewport.height / dpr);
+        canvas.style.width = `${cssW}px`;
+        canvas.style.height = `${cssH}px`;
+        if (pageBoxRef.current) {
+          pageBoxRef.current.style.width = `${cssW}px`;
+          pageBoxRef.current.style.height = `${cssH}px`;
+        }
         const task = p.render({ canvas, canvasContext: canvas.getContext("2d"), viewport });
         renderTask.current = task;
         await task.promise;
+
+        const layer = textRef.current;
+        const mod = modRef.current;
+        if (layer && mod) {
+          layer.replaceChildren();
+          layer.style.setProperty("--total-scale-factor", String(scale));
+          const tl = mod.makeTextLayer({
+            textContentSource: p.streamTextContent(),
+            container: layer,
+            viewport: p.getViewport({ scale }),
+          });
+          textLayer.current = tl;
+          await tl.render();
+        }
       } catch (e) {
-        if (e?.name !== "RenderingCancelledException") throw e;
+        if (e?.name !== "RenderingCancelledException" && e?.message !== "TextLayer task cancelled.") throw e;
       }
     },
     []
@@ -88,8 +155,9 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
       try {
         const blob = await ensureLocalFile(book);
         if (!blob) throw new Error("file mancante");
-        const { loadPdf } = await import("../lib/pdfThumb.js");
-        const pdf = await loadPdf(await blob.arrayBuffer());
+        const mod = await import("../lib/pdfThumb.js");
+        modRef.current = mod;
+        const pdf = await mod.loadPdf(await blob.arrayBuffer());
         if (dead) {
           pdf.destroy();
           return;
@@ -100,6 +168,34 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
         setPages(pdf.numPages);
         setPage(live.current.page);
         setStatusUi("ready");
+
+        pdf.getMetadata().then((m) => {
+          const l = (m?.info?.Language || "").slice(0, 2).toLowerCase();
+          if (l) langRef.current = l;
+        }).catch(() => { /* metadati assenti: resta l'inglese */ });
+
+        // l'indice del PDF, se c'e': i titoli puntano a riferimenti interni
+        // che vanno risolti in numeri di pagina uno per uno
+        pdf.getOutline().then(async (items) => {
+          if (dead || !items?.length) return;
+          const flat = [];
+          const walk = (list, depth) => {
+            for (const it of list || []) {
+              flat.push({ title: (it.title || "").trim(), dest: it.dest, depth });
+              if (it.items?.length && flat.length < 200) walk(it.items, depth + 1);
+            }
+          };
+          walk(items, 0);
+          const out = [];
+          for (const it of flat.slice(0, 200)) {
+            try {
+              const dest = typeof it.dest === "string" ? await pdf.getDestination(it.dest) : it.dest;
+              const idx = dest?.[0] ? await pdf.getPageIndex(dest[0]) : null;
+              if (idx != null) out.push({ ...it, page: idx + 1 });
+            } catch { /* voce rotta: si salta */ }
+          }
+          if (!dead) setOutline(out);
+        }).catch(() => { /* niente indice */ });
       } catch {
         if (!dead) setStatusUi("error");
       }
@@ -123,6 +219,7 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
   useEffect(() => {
     if (status !== "ready") return;
     live.current.page = page;
+    setSel(null);
     renderPage(page, zoom);
     flush();
     if (pages > 0 && page === pages) {
@@ -138,15 +235,22 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
     return () => window.removeEventListener("resize", onResize);
   }, [status, zoom, renderPage]);
 
+  // il riquadro cambia misura col mostrarsi delle barre: si ridisegna
+  useEffect(() => {
+    if (status !== "ready") return;
+    const id = requestAnimationFrame(() => renderPage(live.current.page, zoom));
+    return () => cancelAnimationFrame(id);
+  }, [chrome, status, zoom, renderPage]);
+
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === "Escape") (panel ? setPanel(false) : handleClose());
-      if (e.key === "ArrowRight") setPage((p) => Math.min(live.current.pages || p, p + 1));
-      if (e.key === "ArrowLeft") setPage((p) => Math.max(1, p - 1));
+      if (e.key === "Escape") (panel ? setPanel(null) : handleClose());
+      if (e.key === "ArrowRight") goToPage(live.current.page + 1);
+      if (e.key === "ArrowLeft") goToPage(live.current.page - 1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [panel, handleClose]);
+  }, [panel, handleClose, goToPage]);
 
   function updateSettings(patch) {
     const next = { ...settings, ...patch };
@@ -154,7 +258,49 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
     saveReaderSettings(next);
   }
 
+  function readSelection() {
+    const text = window.getSelection()?.toString() || "";
+    setSel(text.trim() ? { text } : null);
+  }
+
+  async function defineSelection() {
+    const word = cleanWord(sel?.text);
+    if (!word) return;
+    setSel(null);
+    setDict({ word, loading: true, entries: [] });
+    setPanel("dict");
+    const res = await lookup(word, langRef.current);
+    setDict({
+      word: res.word || word,
+      loading: false,
+      entries: res.entries,
+      translation: res.translation,
+      foreign: res.foreign,
+      offline: res.offline,
+    });
+  }
+
+  function addMark() {
+    const m = {
+      id: crypto.randomUUID(),
+      cfi: String(live.current.page),
+      label: `pag. ${live.current.page}`,
+      createdAt: Date.now(),
+    };
+    const next = [...marks, m];
+    setMarks(next);
+    saveMarks(book.id, next);
+    notify("Segnalibro riposto tra le pagine 📑");
+  }
+
+  function removeMark(m) {
+    const next = marks.filter((x) => x.id !== m.id);
+    setMarks(next);
+    saveMarks(book.id, next);
+  }
+
   const pct = pages > 0 ? Math.round((page / pages) * 100) : 0;
+  const edge = "clamp(3px, 0.9vw, 10px)";
 
   return (
     <div
@@ -169,18 +315,33 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
     >
       <div
         ref={containerRef}
-        onClick={() => setChrome((v) => !v)}
+        onPointerUp={readSelection}
+        onClick={(e) => {
+          if (window.getSelection()?.toString().trim()) return;
+          if (isTouch() && zoom === 1) {
+            const r = containerRef.current.getBoundingClientRect();
+            const rel = (e.clientX - r.left) / (r.width || 1);
+            if (rel < 0.22) return goToPage(live.current.page - 1);
+            if (rel > 0.78) return goToPage(live.current.page + 1);
+          }
+          setChrome((v) => !v);
+        }}
         style={{
           position: "absolute",
-          inset: 0,
+          left: edge,
+          right: edge,
+          top: chrome ? 59 : edge,
+          bottom: chrome ? "calc(69px + env(safe-area-inset-bottom))" : edge,
           overflow: "auto",
           display: "flex",
           alignItems: zoom > 1 ? "flex-start" : "center",
           justifyContent: zoom > 1 ? "flex-start" : "center",
-          padding: 4,
         }}
       >
-        <canvas ref={canvasRef} style={{ display: "block", boxShadow: "0 4px 30px #00000088" }} />
+        <div ref={pageBoxRef} style={{ position: "relative", flexShrink: 0, boxShadow: "0 4px 30px #00000088" }}>
+          <canvas ref={canvasRef} style={{ display: "block" }} />
+          <div ref={textRef} className="textLayer" />
+        </div>
       </div>
 
       <div
@@ -256,19 +417,55 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
         </div>
       )}
 
-      {status === "ready" && zoom === 1 && (
+      {status === "ready" && zoom === 1 && !isTouch() && (
         <>
           <button
             aria-label="Pagina precedente"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            onClick={() => goToPage(live.current.page - 1)}
             style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: "13%", zIndex: 10, cursor: "w-resize" }}
           />
           <button
             aria-label="Pagina successiva"
-            onClick={() => setPage((p) => Math.min(pages, p + 1))}
+            onClick={() => goToPage(live.current.page + 1)}
             style={{ position: "absolute", right: 0, top: "15%", bottom: "15%", width: "13%", zIndex: 10, cursor: "e-resize" }}
           />
         </>
+      )}
+
+      {sel && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: chrome ? 92 : 24,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 35,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "10px 14px",
+            borderRadius: 14,
+            background: `${C.card}f8`,
+            border: `1px solid ${C.border}`,
+            boxShadow: "0 8px 30px #00000088",
+            animation: "bc-fade-in 0.2s ease-out",
+          }}
+        >
+          {wordCount(sel.text) <= 3 && (
+            <button onClick={defineSelection} style={{ fontSize: 14.5, color: C.accent, fontWeight: 600 }}>
+              📖 Definisci
+            </button>
+          )}
+          <button
+            onClick={() => {
+              window.getSelection()?.removeAllRanges();
+              setSel(null);
+            }}
+            style={{ fontSize: 14.5, color: C.muted }}
+          >
+            Annulla
+          </button>
+        </div>
       )}
 
       {chrome && (
@@ -315,6 +512,14 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
                 </button>
               </>
             )}
+            {outline.length > 0 && (
+              <button onClick={() => setPanel(panel === "toc" ? null : "toc")} style={barBtn(panel === "toc")} aria-label="Indice">
+                ☰
+              </button>
+            )}
+            <button onClick={() => setPanel(panel === "marks" ? null : "marks")} style={barBtn(panel === "marks")} aria-label="Segnalibri">
+              📑
+            </button>
             <button
               onClick={() => setZoom((z) => Math.max(1, +(z - 0.25).toFixed(2)))}
               style={barBtn(false)}
@@ -329,7 +534,7 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
             >
               ＋
             </button>
-            <button onClick={() => setPanel((v) => !v)} style={{ ...barBtn(panel), fontSize: 17 }} aria-label="Filtro notte">
+            <button onClick={() => setPanel(panel === "night" ? null : "night")} style={{ ...barBtn(panel === "night"), fontSize: 17 }} aria-label="Filtro notte">
               🌙
             </button>
           </div>
@@ -356,17 +561,43 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
               onChange={(e) => setPage(parseInt(e.target.value, 10))}
               style={{ width: "100%", accentColor: C.accent }}
             />
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.muted, marginTop: 2 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12.5, color: C.muted, marginTop: 2 }}>
               <span>{pct}%</span>
-              <span>
-                {page} / {pages || "…"}
-              </span>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const n = parseInt(jump, 10);
+                  if (Number.isFinite(n)) goToPage(n);
+                  setJump("");
+                }}
+                style={{ display: "flex", alignItems: "center", gap: 6 }}
+              >
+                <input
+                  value={jump}
+                  onChange={(e) => setJump(e.target.value.replace(/\D/g, ""))}
+                  inputMode="numeric"
+                  placeholder={String(page)}
+                  aria-label="Vai a pagina"
+                  style={{
+                    width: 58,
+                    padding: "3px 7px",
+                    borderRadius: 8,
+                    border: `1px solid ${C.border}`,
+                    background: C.card,
+                    color: C.text,
+                    fontSize: 12.5,
+                    textAlign: "right",
+                    outline: "none",
+                  }}
+                />
+                <span>/ {pages || "…"}</span>
+              </form>
             </div>
           </div>
         </>
       )}
 
-      {panel && (
+      {panel === "night" && (
         <div
           style={{
             position: "absolute",
@@ -404,6 +635,83 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
           />
         </div>
       )}
+
+      {panel === "marks" && (
+        <Panel title="Segnalibri" onClose={() => setPanel(null)}>
+          <button
+            onClick={addMark}
+            style={{
+              width: "100%",
+              padding: "11px 0",
+              borderRadius: 12,
+              marginBottom: 14,
+              background: `linear-gradient(180deg, ${C.accent}, #b8893a)`,
+              color: "#241c0a",
+              fontWeight: 600,
+              fontSize: 15,
+            }}
+          >
+            📑 Salva qui
+          </button>
+          {marks.length === 0 ? (
+            <p style={{ color: C.muted }}>Nessun segnalibro ancora.</p>
+          ) : (
+            [...marks]
+              .sort((a, b) => (parseInt(a.cfi, 10) || 0) - (parseInt(b.cfi, 10) || 0))
+              .map((m) => (
+                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.border}44` }}>
+                  <button
+                    onClick={() => {
+                      goToPage(parseInt(m.cfi, 10) || 1);
+                      setPanel(null);
+                    }}
+                    style={{ flex: 1, textAlign: "left", padding: "11px 6px", fontSize: 15, color: C.text }}
+                  >
+                    {m.label}
+                    <span style={{ display: "block", fontSize: 12.5, color: C.muted }}>
+                      {pages ? `al ${Math.round(((parseInt(m.cfi, 10) || 1) / pages) * 100)}% · ` : ""}
+                      {new Date(m.createdAt).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </button>
+                  <button onClick={() => removeMark(m)} aria-label="Elimina segnalibro" style={{ color: C.muted, padding: 8 }}>🗑</button>
+                </div>
+              ))
+          )}
+        </Panel>
+      )}
+
+      {panel === "toc" && (
+        <Panel title="Indice" onClose={() => setPanel(null)}>
+          {outline.map((it, i) => (
+            <button
+              key={i}
+              onClick={() => {
+                goToPage(it.page);
+                setPanel(null);
+              }}
+              style={{
+                display: "flex",
+                width: "100%",
+                gap: 10,
+                textAlign: "left",
+                padding: "10px 6px",
+                paddingLeft: 6 + it.depth * 14,
+                borderBottom: `1px solid ${C.border}44`,
+                fontSize: 15,
+                color: it.page === page ? C.accent : C.text,
+              }}
+            >
+              <span style={{ flex: 1 }}>{it.title || "…"}</span>
+              <span style={{ fontSize: 12.5, color: C.muted }}>{it.page}</span>
+            </button>
+          ))}
+        </Panel>
+      )}
+
+      {panel === "dict" && (
+        <DictionaryCard dict={dict} bottom={chrome ? 92 : 26} onClose={() => setPanel(null)} />
+      )}
+
       {endCard === "shown" && nextBook && (
         <div
           style={{

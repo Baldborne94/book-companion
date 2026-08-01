@@ -7,14 +7,14 @@ App PWA local-first per la biblioteca personale: EPUB/PDF caricati dall'utente, 
 ## Architettura
 
 - React 18 + Vite 5 SPA. Niente router: sezione attiva via `useState` in `App.jsx`.
-- Stili 100% inline JSX; `src/index.css` contiene solo reset, font Google e keyframes globali.
+- Stili 100% inline JSX; `src/index.css` contiene solo reset, font Google, keyframes globali e le regole `.textLayer` di pdf.js (span generati dalla libreria, non stilabili inline).
 - Nessuna libreria UI. Stato locale `useState`/`useEffect`.
 - Palette e costanti condivise in `src/data/constants.js` (oggetto `C`).
 - UI in italiano. Niente commenti nel codice salvo WHY non ovvi.
 - Storage: bytes dei libri in IndexedDB, metadati/progressi in localStorage (prefisso `bc_`). Progresso sempre frazione 0–1.
 - `src/lib/`: moduli senza JSX (bookStore = IndexedDB con store files/covers/aux, library = localStorage, importBook, exportLibrary/restoreLibrary, pdfThumb, saga, readerSettings, annotations, epubSearch). `src/components/`: sezioni e overlay UI. `epubjs`/`pdfjs-dist`/`jszip` importati solo lazy (chunk separati). Worker pdf.js via `?url` in `pdfThumb.js`.
 - Musica: `MusicPlayer.jsx` sempre montato in App (iframe youtube-nocookie invisibile + mini-player, `forwardRef` play/pause/resume/stop/setSleep); UI sezione in `MusicRoom.jsx`; parsing/preferiti/legame libro in `lib/music.js` (`bc_music_favs`, `bc_music_<bookId>`).
-- Reader: `components/Reader.jsx` (EPUB) e `components/PdfReader.jsx` (PDF, progresso = pagina/totale in `bc_cfi_<id>` come numero), lazy, montati SOLO in App.jsx (position:fixed z-45). CFI in `bc_cfi_<id>`, segnalibri `bc_marks_<id>`, evidenziazioni `bc_hl_<id>`, locations epub.js cachate in IndexedDB aux (`loc_<id>`). Impostazioni condivise in `bc_reader` via `readerSettings.js` (default derivati dal device fusi SOTTO le preferenze).
+- Reader: `components/Reader.jsx` (EPUB) e `components/PdfReader.jsx` (PDF con livello testo pdf.js: selezione, dizionario, segnalibri per pagina, indice del documento; progresso = pagina/totale in `bc_cfi_<id>` come numero). Scheda dizionario condivisa in `components/DictionaryCard.jsx`, lazy, montati SOLO in App.jsx (position:fixed z-45). CFI in `bc_cfi_<id>`, segnalibri `bc_marks_<id>`, evidenziazioni `bc_hl_<id>`, locations epub.js cachate in IndexedDB aux (`loc_<id>`). Impostazioni condivise in `bc_reader` via `readerSettings.js` (default derivati dal device fusi SOTTO le preferenze).
 
 - Sync (opzionale): Supabase local-first — client lazy in `lib/supabase.js` (attivo solo con `VITE_SUPABASE_*`), motore in `lib/sync.js`, logica pura di merge in `lib/syncCore.js` (last-write-wins via `bc_upd_<id>`, lapidi `bc_tombs`, prefs `bc_prefs_upd`). File nel bucket privato `books`, download on-demand via `ensureLocalFile` nei reader. Schema/RLS in `supabase/schema.sql`. Senza chiavi l'app resta identica al local-first.
 - PWA: `vite-plugin-pwa` in modalità `prompt` (mai autoUpdate), `skipWaiting`/`clientsClaim` false, precache di tutti i chunk (limite 4 MiB per il worker pdf.js), runtime cache per i Google Fonts. Banner "nuova versione" MAI a reader aperto; update auto al passaggio in background solo se non si sta leggendo (`registerSW` in App.jsx).
