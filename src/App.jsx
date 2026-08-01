@@ -20,6 +20,8 @@ import { getJump, clearJump } from "./lib/annotations.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
 import { getSession, syncNow, localFileIds } from "./lib/sync.js";
+import { useViewport } from "./lib/viewport.js";
+import { greeting } from "./lib/greeting.js";
 
 // L'ingresso porta l'insegna dell'atmosfera scelta: candela di notte,
 // foglia nel boschetto, pergamena nell'archivio.
@@ -80,6 +82,65 @@ function Stardust({ theme }) {
         </span>
       ))}
     </div>
+  );
+}
+
+function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
+  const I = themeIcon(theme.id);
+  return (
+    <header
+      style={{
+        position: "relative",
+        zIndex: 2,
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "10px 16px 6px",
+      }}
+    >
+      <span
+        style={{
+          color: C.accent,
+          flexShrink: 0,
+          animation: "bc-flicker 6s ease-in-out infinite",
+          filter: `drop-shadow(0 0 10px ${C.accent}66)`,
+        }}
+      >
+        <I size={26} active />
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: "block", fontFamily: FONT_TITLE, fontSize: 23, fontWeight: 600, color: C.text }}>
+          {greeting()}, eccoti.
+        </span>
+        <span style={{ display: "block", fontSize: 12.5, color: C.muted, letterSpacing: "0.04em" }}>
+          Book Companion
+        </span>
+      </span>
+      <button
+        onClick={onTheme}
+        aria-label="Cambia atmosfera"
+        style={{ width: 40, height: 40, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted }}
+      >
+        <I size={21} />
+      </button>
+      <button
+        onClick={onSync}
+        aria-label="Sincronizzazione"
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 11,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: signedIn ? C.accent : C.muted,
+          opacity: syncing ? 0.6 : 1,
+          animation: syncing ? "bc-flicker 1.6s ease-in-out infinite" : "none",
+        }}
+      >
+        <CloudIcon size={21} active={signedIn} />
+      </button>
+    </header>
   );
 }
 
@@ -372,6 +433,7 @@ function ThemePicker({ current, onPick, onClose }) {
 export default function App() {
   const [section, setSection] = useState("home");
   const [focusSaga, setFocusSaga] = useState(null);
+  const { tall } = useViewport();
   // la saga vale solo per il salto dalla home: tornando dal menu la
   // libreria deve ritrovarsi intera
   const navigate = (id) => {
@@ -567,13 +629,23 @@ export default function App() {
       {theme.decor === "scrolls" && <Scrolls />}
       <Stardust theme={theme} />
       <div className="bc-scroll">
-      <Header
-        onSync={() => setSyncOpen(true)}
-        syncing={sync.busy}
-        signedIn={sync.signedIn}
-        theme={theme}
-        onTheme={() => setThemeOpen(true)}
-      />
+      {tall ? (
+        <Header
+          onSync={() => setSyncOpen(true)}
+          syncing={sync.busy}
+          signedIn={sync.signedIn}
+          theme={theme}
+          onTheme={() => setThemeOpen(true)}
+        />
+      ) : (
+        <CompactHeader
+          onSync={() => setSyncOpen(true)}
+          syncing={sync.busy}
+          signedIn={sync.signedIn}
+          theme={theme}
+          onTheme={() => setThemeOpen(true)}
+        />
+      )}
       <main
         key={section}
         style={{
