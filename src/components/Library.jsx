@@ -4,6 +4,7 @@ import { getProgress, getStatus } from "../lib/library.js";
 import { storageEstimate } from "../lib/bookStore.js";
 import { importFiles } from "../lib/importBook.js";
 import { exportLibrary } from "../lib/exportLibrary.js";
+import { restoreLibrary } from "../lib/restoreLibrary.js";
 import BookCover from "./BookCover.jsx";
 import EmptyState from "./EmptyState.jsx";
 
@@ -231,6 +232,8 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
   const [group, setGroup] = useState("none");
   const [importing, setImporting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const archiveRef = useRef(null);
   const [estimate, setEstimate] = useState(null);
   const inputRef = useRef(null);
 
@@ -278,6 +281,30 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
     }
   }
 
+  async function handleRestore(file) {
+    if (!file || restoring) return;
+    setRestoring(true);
+    try {
+      const r = await restoreLibrary(file, { onProgress: notify });
+      updateBooks(r.books);
+      onImported?.();
+      const parts = [
+        r.added ? `${r.added} ${r.added === 1 ? "libro tornato" : "libri tornati"}` : null,
+        r.files ? `${r.files} ${r.files === 1 ? "file" : "file"} recuperati` : null,
+        r.kept ? `${r.kept} gia' in libreria` : null,
+      ].filter(Boolean);
+      notify(parts.length ? `Ripristino: ${parts.join(", ")} 🕯️` : "Nell'archivio non c'era nulla di nuovo");
+      if (r.partial) {
+        notify("Archivio vecchio: segnalibri ed evidenziazioni non erano stati salvati");
+      }
+    } catch (err) {
+      notify(err?.message || "Ripristino fallito, riprova");
+    } finally {
+      setRestoring(false);
+      if (archiveRef.current) archiveRef.current.value = "";
+    }
+  }
+
   const q = query.trim().toLowerCase();
   const visible = books
     .filter(
@@ -322,6 +349,13 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
         multiple
         style={{ display: "none" }}
         onChange={(e) => handleFiles(e.target.files)}
+      />
+      <input
+        ref={archiveRef}
+        type="file"
+        accept=".zip"
+        style={{ display: "none" }}
+        onChange={(e) => handleRestore(e.target.files?.[0])}
       />
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
@@ -456,6 +490,20 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
             {estimate?.usage ? ` · ${fmtBytes(estimate.usage)} usati` : ""}
             {estimate?.quota ? ` di ${fmtBytes(estimate.quota)}` : ""}
           </span>
+          <button
+            onClick={() => archiveRef.current?.click()}
+            disabled={restoring}
+            style={{
+              padding: "7px 16px",
+              borderRadius: 10,
+              border: `1px solid ${C.border}`,
+              color: restoring ? C.muted : C.text,
+              fontSize: 14,
+              marginRight: 8,
+            }}
+          >
+            {restoring ? "Ripristino…" : "↩ Ripristina"}
+          </button>
           <button
             onClick={handleExport}
             style={{
