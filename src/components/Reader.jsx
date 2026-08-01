@@ -172,6 +172,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [speed, setSpeed] = useState(() => medianMs(loadSamples()));
   const [dict, setDict] = useState(null);
   const [endCard, setEndCard] = useState(null);
+
+  // il contenitore cambia misura col mostrarsi delle barre: la nuova
+  // impaginazione la decide epub.js, che ascolta il resize della finestra
+  useEffect(() => {
+    if (status !== "ready") return;
+    const id = requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+    return () => cancelAnimationFrame(id);
+  }, [chrome, status]);
   const [dictAll, setDictAll] = useState(false);
   const [noteFor, setNoteFor] = useState(null);
   const [noteDraft, setNoteDraft] = useState("");
@@ -563,7 +571,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         ref={bookRef}
         style={{
           position: "absolute",
-          inset: "clamp(3px, 0.9vw, 10px)",
+          left: "clamp(3px, 0.9vw, 10px)",
+          right: "clamp(3px, 0.9vw, 10px)",
+          // a barre visibili il libro sta fra le due, mai sotto: era il
+          // fondo pagina "tagliato" dalla barra di avanzamento
+          top: chrome ? 59 : "clamp(3px, 0.9vw, 10px)",
+          bottom: chrome ? "calc(69px + env(safe-area-inset-bottom))" : "clamp(3px, 0.9vw, 10px)",
           borderRadius: 12,
           background: theme.cover || theme.bg,
           border: "1px solid #00000066",
