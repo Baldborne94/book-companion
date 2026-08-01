@@ -7,6 +7,10 @@ export function loadPdf(arrayBuffer) {
   return pdfjs.getDocument({ data: arrayBuffer }).promise;
 }
 
+// il livello di testo trasparente sopra il canvas: senza, un PDF non si
+// puo' selezionare, quindi niente dizionario
+export const makeTextLayer = (opts) => new pdfjs.TextLayer(opts);
+
 export async function renderPdfThumb(arrayBuffer) {
   const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
   try {
