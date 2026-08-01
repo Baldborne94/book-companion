@@ -12,6 +12,7 @@ import {
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, wordCount, cleanWord } from "../lib/dictionary.js";
 import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../lib/readingSpeed.js";
+import BookCover from "./BookCover.jsx";
 
 const EDGE_MIN = 3;
 const EDGE_MAX = 17;
@@ -137,7 +138,7 @@ function Panel({ title, onClose, children }) {
   );
 }
 
-export default function Reader({ book, startCfi, music, onMusicToggle, onMusicStop, onClose, notify }) {
+export default function Reader({ book, startCfi, nextBook, onReadNext, music, onMusicToggle, onMusicStop, onClose, notify }) {
   const viewerRef = useRef(null);
   const rootRef = useRef(null);
   const bookRef = useRef(null);
@@ -170,6 +171,7 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
   const [displayed, setDisplayed] = useState(null);
   const [speed, setSpeed] = useState(() => medianMs(loadSamples()));
   const [dict, setDict] = useState(null);
+  const [endCard, setEndCard] = useState(null);
   const [dictAll, setDictAll] = useState(false);
   const [noteFor, setNoteFor] = useState(null);
   const [noteDraft, setNoteDraft] = useState("");
@@ -236,7 +238,10 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
             setProgressUi(p);
           }
         }
-        if (loc.atEnd) setStatus(book.id, "read");
+        if (loc.atEnd) {
+          setStatus(book.id, "read");
+          setEndCard((v) => (v === null ? "shown" : v));
+        }
         if (loc.start?.displayed?.total) setDisplayed(loc.start.displayed);
         const now = Date.now();
         if (lastTurnAt.current) {
@@ -1209,6 +1214,62 @@ export default function Reader({ book, startCfi, music, onMusicToggle, onMusicSt
             ))
           )}
         </Panel>
+      )}
+
+      {endCard === "shown" && nextBook && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            transform: "translateX(-50%)",
+            bottom: chrome ? 96 : 30,
+            zIndex: 32,
+            width: "min(94%, 440px)",
+            display: "flex",
+            gap: 14,
+            alignItems: "center",
+            padding: "13px 16px",
+            borderRadius: 16,
+            background: `${C.card}fa`,
+            border: `1px solid ${C.accent}55`,
+            boxShadow: "0 12px 44px #000000aa",
+            animation: "bc-fade-in 0.3s ease-out",
+          }}
+        >
+          <div style={{ width: 52, flexShrink: 0 }}>
+            <BookCover book={nextBook} radius={6} compact />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, color: C.muted }}>Fine del volume — il prossimo della saga</div>
+            <div
+              style={{
+                fontFamily: FONT_TITLE,
+                fontWeight: 600,
+                fontSize: 17,
+                color: C.text,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {nextBook.title}
+            </div>
+            <div style={{ display: "flex", gap: 14, marginTop: 5 }}>
+              <button
+                onClick={() => {
+                  flush();
+                  onReadNext(nextBook.id);
+                }}
+                style={{ fontSize: 14, fontWeight: 600, color: C.accent }}
+              >
+                Leggilo ora
+              </button>
+              <button onClick={() => setEndCard("dismissed")} style={{ fontSize: 14, color: C.muted }}>
+                Più tardi
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {panel === "dict" && dict && (

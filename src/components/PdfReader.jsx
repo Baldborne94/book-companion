@@ -4,6 +4,7 @@ import { ensureLocalFile } from "../lib/sync.js";
 import { getCfi, setCfi } from "../lib/annotations.js";
 import { getProgress, setProgress, setStatus } from "../lib/library.js";
 import { loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
+import BookCover from "./BookCover.jsx";
 
 const isTouch = () => navigator.maxTouchPoints > 0;
 
@@ -19,7 +20,7 @@ const barBtn = (active) => ({
   background: active ? `${C.accent}1a` : "transparent",
 });
 
-export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onClose, notify }) {
+export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onClose, notify, nextBook, onReadNext }) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const pdfRef = useRef(null);
@@ -35,6 +36,7 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
   const [page, setPage] = useState(live.current.page);
   const [pages, setPages] = useState(0);
   const [zoom, setZoom] = useState(1);
+  const [endCard, setEndCard] = useState(null);
 
   const flush = useCallback(() => {
     const s = live.current;
@@ -123,7 +125,10 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
     live.current.page = page;
     renderPage(page, zoom);
     flush();
-    if (pages > 0 && page === pages) setStatus(book.id, "read");
+    if (pages > 0 && page === pages) {
+      setStatus(book.id, "read");
+      setEndCard((v) => (v === null ? "shown" : v));
+    }
   }, [status, page, zoom, pages, book.id, renderPage, flush]);
 
   useEffect(() => {
@@ -397,6 +402,61 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
             onChange={(e) => updateSettings({ brightness: parseFloat(e.target.value) })}
             style={{ width: "100%", accentColor: C.accent }}
           />
+        </div>
+      )}
+      {endCard === "shown" && nextBook && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            transform: "translateX(-50%)",
+            bottom: chrome ? 96 : 30,
+            zIndex: 32,
+            width: "min(94%, 440px)",
+            display: "flex",
+            gap: 14,
+            alignItems: "center",
+            padding: "13px 16px",
+            borderRadius: 16,
+            background: `${C.card}fa`,
+            border: `1px solid ${C.accent}55`,
+            boxShadow: "0 12px 44px #000000aa",
+            animation: "bc-fade-in 0.3s ease-out",
+          }}
+        >
+          <div style={{ width: 52, flexShrink: 0 }}>
+            <BookCover book={nextBook} radius={6} compact />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, color: C.muted }}>Fine del volume — il prossimo della saga</div>
+            <div
+              style={{
+                fontFamily: FONT_TITLE,
+                fontWeight: 600,
+                fontSize: 17,
+                color: C.text,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {nextBook.title}
+            </div>
+            <div style={{ display: "flex", gap: 14, marginTop: 5 }}>
+              <button
+                onClick={() => {
+                  flush();
+                  onReadNext(nextBook.id);
+                }}
+                style={{ fontSize: 14, fontWeight: 600, color: C.accent }}
+              >
+                Leggilo ora
+              </button>
+              <button onClick={() => setEndCard("dismissed")} style={{ fontSize: 14, color: C.muted }}>
+                Più tardi
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

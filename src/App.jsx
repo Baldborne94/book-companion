@@ -17,6 +17,7 @@ import MusicRoom from "./components/MusicRoom.jsx";
 import SyncPanel from "./components/SyncPanel.jsx";
 import { getBookMusic, setBookMusic } from "./lib/music.js";
 import { getJump, clearJump } from "./lib/annotations.js";
+import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
 import { getSession, syncNow, localFileIds } from "./lib/sync.js";
 
@@ -544,6 +545,7 @@ export default function App() {
 
   const openBook = books.find((b) => b.id === openId);
   const readingBook = books.find((b) => b.id === readingId);
+  const nextBook = readingBook ? nextInSaga(readingBook, books) : null;
   flags.current.reading = !!readingBook;
 
   useEffect(() => {
@@ -669,6 +671,8 @@ export default function App() {
               key={`${readingBook.id}:${readingStart || ""}`}
               book={readingBook}
               startCfi={readingStart}
+              nextBook={nextBook}
+              onReadNext={handleRead}
               music={music}
               onMusicToggle={() => (music.playing ? playerRef.current?.pause() : playerRef.current?.resume())}
               onMusicStop={() => playerRef.current?.stop()}
@@ -684,6 +688,8 @@ export default function App() {
             <PdfReader
               key={readingBook.id}
               book={readingBook}
+              nextBook={nextBook}
+              onReadNext={handleRead}
               music={music}
               onMusicToggle={() => (music.playing ? playerRef.current?.pause() : playerRef.current?.resume())}
               onMusicStop={() => playerRef.current?.stop()}
