@@ -560,7 +560,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const edgeRead = EDGE_MIN + Math.round((EDGE_MAX - EDGE_MIN) * p);
   const edgeLeftToRead = EDGE_MIN + Math.round((EDGE_MAX - EDGE_MIN) * (1 - p));
   const pagesLeft = displayed ? Math.max(0, displayed.total - displayed.page) : 0;
-  const chapterLeft = speed && pagesLeft > 0 ? formatLeft(pagesLeft * speed * pages) : null;
+  // speed e' il tempo fra un cambio pagina e l'altro, e in doppia pagina un
+  // cambio ne avanza due: le pagine rimaste vanno divise per il foglio, non
+  // moltiplicate — sbagliando verso la stima usciva quattro volte troppo lunga
+  const turnsLeft = Math.ceil(pagesLeft / Math.max(1, pages));
+  const chapterLeft = speed && turnsLeft > 0 ? formatLeft(turnsLeft * speed) : null;
 
   const leafGeom = turning
     ? turning.dir === "next"
