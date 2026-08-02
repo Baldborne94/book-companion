@@ -1,9 +1,17 @@
+import { getAux, putAux } from "./bookStore.js";
+
 const CACHE = new Map();
+const AUX_KEY = "dict_cache";
+const MAX_WORDS = 600;
 
 // L'endpoint /page/definition esiste SOLO su en.wiktionary: sugli altri
 // Wiktionary risponde 404, quindi il vecchio ripiego "prima l'italiano"
 // falliva in silenzio su ogni parola. Le definizioni arrivano da
 // en.wiktionary; la glossa italiana da MyMemory (gratuito, senza chiavi).
+
+// La cache vive anche fuori dalla sessione: le parole gia' cercate restano
+// consultabili senza rete, che e' la condizione normale di chi legge in
+// viaggio. In memoria per la velocita', su IndexedDB per il ritorno.
 
 // DOMParser invece di innerHTML: il documento e' inerte, niente script o img
 const strip = (html) => {
@@ -105,12 +113,59 @@ async function fetchTranslation(word, from) {
   return out.join(", ");
 }
 
+// le voci meno recenti cedono il posto: un vocabolario di lettura non ha
+// bisogno di ricordare tutto, solo quello che si e' cercato ultimamente
+export function trimCache(records, max = MAX_WORDS) {
+  if (records.length <= max) return records;
+  return [...records].sort((a, b) => (b[1].at || 0) - (a[1].at || 0)).slice(0, max);
+}
+
+let loaded;
+function loadCache() {
+  if (!loaded) {
+    loaded = (async () => {
+      try {
+        const saved = await getAux(AUX_KEY);
+        if (saved?.v !== 1 || !saved.words) return;
+        for (const [k, v] of Object.entries(saved.words)) {
+          if (v && Array.isArray(v.entries) && !CACHE.has(k)) CACHE.set(k, v);
+        }
+      } catch {
+        /* senza IndexedDB resta la cache di sessione: si legge lo stesso */
+      }
+    })();
+  }
+  return loaded;
+}
+
+async function persist() {
+  const kept = trimCache([...CACHE.entries()]);
+  if (kept.length < CACHE.size) {
+    CACHE.clear();
+    for (const [k, v] of kept) CACHE.set(k, v);
+  }
+  const words = {};
+  // «nessuna voce» non vale la pena di conservarlo: la selezione puo' aver
+  // preso una parola spezzata, e al prossimo avvio si riprova
+  for (const [k, v] of kept) if (v.entries.length || v.translation) words[k] = v;
+  try {
+    await putAux(AUX_KEY, { v: 1, words });
+  } catch {
+    /* quota piena o storage negato: la ricerca ha comunque risposto */
+  }
+}
+
 export async function lookup(raw, bookLang = "en") {
   const word = cleanWord(raw).toLowerCase();
   if (!word) return { word: "", entries: [] };
   const lang = (bookLang || "en").slice(0, 2).toLowerCase();
   const key = `${word}|${lang}`;
-  if (CACHE.has(key)) return CACHE.get(key);
+  await loadCache();
+  const known = CACHE.get(key);
+  if (known) {
+    known.at = Date.now();
+    return known;
+  }
 
   let entries = [];
   let translation = "";
@@ -133,7 +188,12 @@ export async function lookup(raw, bookLang = "en") {
     // avvisa che le definizioni restano in lingua originale
     foreign: lang !== "it" && !translation && entries.length > 0,
     offline: offline && !entries.length && !translation,
+    at: Date.now(),
   };
+  // un buco di rete non diventa una risposta definitiva: senza salvarlo,
+  // la stessa parola riprova appena la connessione torna
+  if (out.offline) return out;
   CACHE.set(key, out);
+  await persist();
   return out;
 }
