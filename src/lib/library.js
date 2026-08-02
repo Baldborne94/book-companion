@@ -57,8 +57,33 @@ export function getStatus(id) {
   return localStorage.getItem(`bc_status_${id}`) || "unread";
 }
 
+// Il diario nasce qui: setStatus e' l'unico passaggio comune a tutte le
+// strade (reader, scheda del libro, apertura), quindi le date si scrivono
+// una volta sola e nessun percorso puo' dimenticarsele.
+export const getStarted = (id) => parseInt(localStorage.getItem(`bc_start_${id}`), 10) || 0;
+export const getFinished = (id) => parseInt(localStorage.getItem(`bc_end_${id}`), 10) || 0;
+
+export function setDates(id, { started, finished }) {
+  if (started) localStorage.setItem(`bc_start_${id}`, String(started));
+  else if (started === 0) localStorage.removeItem(`bc_start_${id}`);
+  if (finished) localStorage.setItem(`bc_end_${id}`, String(finished));
+  else if (finished === 0) localStorage.removeItem(`bc_end_${id}`);
+}
+
 export function setStatus(id, status) {
+  const prev = getStatus(id);
   localStorage.setItem(`bc_status_${id}`, status);
+  if (status !== prev) {
+    const now = Date.now();
+    if (status === "reading" && !getStarted(id)) setDates(id, { started: now });
+    // un libro ripreso e finito di nuovo aggiorna la data di fine
+    if (status === "read") {
+      if (!getStarted(id)) setDates(id, { started: now });
+      setDates(id, { finished: now });
+    }
+    // tornare a "da leggere" e' un azzeramento esplicito
+    if (status === "unread") setDates(id, { started: 0, finished: 0 });
+  }
   touchBook(id);
 }
 
@@ -81,5 +106,7 @@ export function removeBookMeta(id) {
   localStorage.removeItem(`bc_cfi_${id}`);
   localStorage.removeItem(`bc_marks_${id}`);
   localStorage.removeItem(`bc_hl_${id}`);
+  localStorage.removeItem(`bc_start_${id}`);
+  localStorage.removeItem(`bc_end_${id}`);
   if (getLastOpened() === id) localStorage.removeItem(LAST_KEY);
 }

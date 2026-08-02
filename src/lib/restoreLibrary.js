@@ -1,5 +1,5 @@
 import { putFile, putCover, listFileIds } from "./bookStore.js";
-import { loadBooks, saveBooks, setProgress, setStatus, touchBook, clearTombstones } from "./library.js";
+import { loadBooks, saveBooks, setProgress, setStatus, touchBook, clearTombstones, setDates } from "./library.js";
 import { setCfi, saveMarks, saveHighlights } from "./annotations.js";
 import { setBookMusic } from "./music.js";
 
@@ -23,7 +23,7 @@ export function planRestore({ archiveBooks = [], localBooks = [], localFileIds =
 }
 
 const stripState = (b) => {
-  const { progress, status, cfi, marks, highlights, music, file, cover, ...meta } = b;
+  const { progress, status, started, finished, cfi, marks, highlights, music, file, cover, ...meta } = b;
   return meta;
 };
 
@@ -75,6 +75,7 @@ export async function restoreLibrary(archive, { onProgress } = {}) {
     next.push(stripState(b));
     setProgress(b.id, b.progress || 0);
     setStatus(b.id, b.status || "unread");
+    if (b.started || b.finished) setDates(b.id, { started: b.started, finished: b.finished });
     if (b.cfi) setCfi(b.id, b.cfi);
     if (Array.isArray(b.marks) && b.marks.length) saveMarks(b.id, b.marks);
     if (Array.isArray(b.highlights) && b.highlights.length) saveHighlights(b.id, b.highlights);

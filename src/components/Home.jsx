@@ -4,7 +4,7 @@ import { greeting } from "../lib/greeting.js";
 import { getLastOpened, getProgress, getStatus, getUpdatedAt } from "../lib/library.js";
 import { nextInSaga } from "../lib/saga.js";
 import BookCover from "./BookCover.jsx";
-import { LeafIcon, SparkIcon, StarIcon } from "./Icons.jsx";
+import { BookmarkIcon, LeafIcon, SparkIcon, StarIcon } from "./Icons.jsx";
 import EmptyState from "./EmptyState.jsx";
 
 // da quante stelle in su un libro entra fra i preferiti
@@ -122,7 +122,7 @@ function SagaCard({ saga, onOpen }) {
   );
 }
 
-export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onSaga }) {
+export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onSaga }) {
   const { wide, tall } = useViewport();
 
   if (books.length === 0) {
@@ -277,6 +277,35 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onSaga
           </span>
         </span>
         <span style={{ fontSize: 20, color: C.arcane }}>›</span>
+      </button>
+
+      <button
+        onClick={onDiary}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          marginTop: 10,
+          padding: "13px 16px",
+          borderRadius: 14,
+          border: `1px solid ${C.accent}44`,
+          background: `linear-gradient(135deg, ${C.accent}10, transparent)`,
+          textAlign: "left",
+        }}
+      >
+        <span style={{ color: C.accent, filter: `drop-shadow(0 0 10px ${C.accent}55)` }}>
+          <BookmarkIcon size={24} />
+        </span>
+        <span style={{ flex: 1 }}>
+          <span style={{ display: "block", fontFamily: FONT_TITLE, fontWeight: 600, fontSize: 17, color: C.text }}>
+            Il diario di lettura
+          </span>
+          <span style={{ display: "block", fontSize: 13.5, color: C.muted }}>
+            Quando hai cominciato e finito ogni libro, anno per anno
+          </span>
+        </span>
+        <span style={{ fontSize: 20, color: C.accent }}>›</span>
       </button>
       </div>
 

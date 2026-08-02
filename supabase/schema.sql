@@ -7,6 +7,9 @@
 --     add column if not exists saga  text not null default '',
 --     add column if not exists saga_order int;
 --   alter table public.books alter column rating type real;   -- mezze stelle
+--   alter table public.books
+--     add column if not exists started_at  bigint not null default 0,
+--     add column if not exists finished_at bigint not null default 0;
 -- Senza, l'app sincronizza comunque tutto il resto: rinuncia solo al
 -- campo mancante e lo tiene in locale. Dopo la migrazione i libri gia'
 -- salvati si ricaricano da soli alla prima sincronizzazione.
@@ -25,6 +28,8 @@ create table if not exists public.books (
   rating real not null default 0,
   notes text not null default '',
   status text not null default 'unread',
+  started_at bigint not null default 0,
+  finished_at bigint not null default 0,
   progress double precision not null default 0,
   cfi text,
   marks jsonb not null default '[]'::jsonb,

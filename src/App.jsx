@@ -12,6 +12,7 @@ import Home from "./components/Home.jsx";
 import Library from "./components/Library.jsx";
 import BookSheet from "./components/BookSheet.jsx";
 import QuoteGarden from "./components/QuoteGarden.jsx";
+import ReadingDiary from "./components/ReadingDiary.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
 import MusicRoom from "./components/MusicRoom.jsx";
 import SyncPanel from "./components/SyncPanel.jsx";
@@ -445,6 +446,7 @@ export default function App() {
   const [readingId, setReadingId] = useState(null);
   const [readingStart, setReadingStart] = useState(null);
   const [gardenOpen, setGardenOpen] = useState(false);
+  const [diaryOpen, setDiaryOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [music, setMusic] = useState({ current: null, playing: false, timerEnd: null });
   const [syncOpen, setSyncOpen] = useState(false);
@@ -666,6 +668,7 @@ export default function App() {
             onOpenBook={setOpenId}
             onRead={handleRead}
             onGarden={() => setGardenOpen(true)}
+            onDiary={() => setDiaryOpen(true)}
             onSaga={(name) => {
               setFocusSaga(name);
               setSection("library");
@@ -716,6 +719,9 @@ export default function App() {
           onClose={() => setGardenOpen(false)}
           onReadAt={(id, cfi) => handleRead(id, cfi)}
         />
+      )}
+      {diaryOpen && (
+        <ReadingDiary books={books} onClose={() => setDiaryOpen(false)} onOpenBook={setOpenId} />
       )}
       {readingBook && (
         <Suspense
