@@ -764,8 +764,9 @@ export default function App() {
             />
           ) : (
             <PdfReader
-              key={readingBook.id}
+              key={`${readingBook.id}:${readingStart || ""}`}
               book={readingBook}
+              startCfi={readingStart}
               nextBook={nextBook}
               onReadNext={handleRead}
               music={music}
