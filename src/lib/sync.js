@@ -3,6 +3,7 @@ import { putFile, getFile, putCover, getCover, removeBookData, listFileIds } fro
 import {
   loadBooks, saveBooks, getProgress, setProgress, getStatus, setStatus,
   getUpdatedAt, touchBook, getTombstones, clearTombstones, getLastOpened,
+  getStarted, getFinished, setDates,
 } from "./library.js";
 import {
   getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights, removeAnnotations, setJump,
@@ -57,6 +58,11 @@ export async function signOut() {
 // si rinuncia al singolo campo e si salva il resto.
 const DEGRADE = [
   {
+    test: (m) => /started_at|finished_at/i.test(m),
+    label: "diario di lettura",
+    apply: (rows) => rows.map(({ started_at, finished_at, ...r }) => r),
+  },
+  {
     test: (m) => /genre|saga/i.test(m),
     label: "genere e saga",
     apply: (rows) => rows.map(({ genre, saga, saga_order, ...r }) => r),
@@ -86,6 +92,8 @@ async function upsertBooks(sb, rows) {
 function readLocalState(id) {
   return {
     status: getStatus(id),
+    started: getStarted(id),
+    finished: getFinished(id),
     progress: getProgress(id),
     cfi: getCfi(id),
     marks: getMarks(id),
@@ -96,6 +104,10 @@ function readLocalState(id) {
 
 function writeLocalState(id, state) {
   setStatus(id, state.status);
+  // dopo setStatus, che altrimenti le riscriverebbe con l'ora locale
+  if (state.started || state.finished) {
+    setDates(id, { started: state.started, finished: state.finished });
+  }
   setProgress(id, state.progress);
   if (state.cfi) setCfi(id, state.cfi);
   saveMarks(id, state.marks);

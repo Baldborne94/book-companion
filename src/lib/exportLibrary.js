@@ -1,5 +1,5 @@
 import { getFile, getCover } from "./bookStore.js";
-import { loadBooks, getProgress, getStatus } from "./library.js";
+import { loadBooks, getProgress, getStatus, getStarted, getFinished } from "./library.js";
 import { getCfi, getMarks, getHighlights } from "./annotations.js";
 import { getBookMusic } from "./music.js";
 
@@ -21,6 +21,8 @@ export async function exportLibrary() {
       ...b,
       progress: getProgress(b.id),
       status: getStatus(b.id),
+      started: getStarted(b.id),
+      finished: getFinished(b.id),
       cfi: getCfi(b.id),
       marks: getMarks(b.id),
       highlights: getHighlights(b.id),
