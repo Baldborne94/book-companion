@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
 import { ensureLocalFile } from "../lib/sync.js";
-import { getCfi, setCfi, getMarks, saveMarks } from "../lib/annotations.js";
+import { getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights } from "../lib/annotations.js";
 import { getProgress, setProgress, setStatus } from "../lib/library.js";
-import { loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
+import { HL_COLORS, loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
 import { lookup, wordCount, cleanWord } from "../lib/dictionary.js";
+import { toPageRects, rectStyle, pageOf } from "../lib/pdfHighlights.js";
+import { searchPdf } from "../lib/pdfSearch.js";
 import BookCover from "./BookCover.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
+import HighlightList from "./HighlightList.jsx";
 
 const isTouch = () => navigator.maxTouchPoints > 0;
 
@@ -51,7 +54,7 @@ function Panel({ title, onClose, children }) {
   );
 }
 
-export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onClose, notify, nextBook, onReadNext }) {
+export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusicStop, onClose, notify, nextBook, onReadNext }) {
   const containerRef = useRef(null);
   const pageBoxRef = useRef(null);
   const canvasRef = useRef(null);
@@ -59,9 +62,15 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
   const pdfRef = useRef(null);
   const modRef = useRef(null);
   const renderTask = useRef(null);
+  const renderToken = useRef(0);
   const textLayer = useRef(null);
   const langRef = useRef("en");
-  const live = useRef({ page: Math.max(1, parseInt(getCfi(book.id), 10) || 1), pages: 0 });
+  const textCache = useRef(new Map());
+  const searchRun = useRef(0);
+  const live = useRef({
+    page: Math.max(1, parseInt(startCfi, 10) || parseInt(getCfi(book.id), 10) || 1),
+    pages: 0,
+  });
 
   const [settings, setSettings] = useState(() =>
     loadReaderSettings(Math.min(window.innerWidth, window.innerHeight))
@@ -74,10 +83,13 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
   const [zoom, setZoom] = useState(1);
   const [endCard, setEndCard] = useState(null);
   const [marks, setMarks] = useState(() => getMarks(book.id));
+  const [hls, setHls] = useState(() => getHighlights(book.id));
   const [outline, setOutline] = useState([]);
   const [sel, setSel] = useState(null);
   const [dict, setDict] = useState(null);
   const [jump, setJump] = useState("");
+  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState({ busy: false, results: null, scanned: 0, full: false });
 
   const flush = useCallback(() => {
     const s = live.current;
@@ -106,10 +118,20 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
       const canvas = canvasRef.current;
       const container = containerRef.current;
       if (!pdf || !canvas || !container) return;
+      // Annullare non basta: finche' il disegno precedente non ha davvero
+      // mollato la tela, pdf.js rifiuta il successivo. Il gettone scarta i
+      // ridisegni scavalcati mentre si aspettava.
+      const token = ++renderToken.current;
       try {
-        renderTask.current?.cancel();
+        const prev = renderTask.current;
+        if (prev) {
+          prev.cancel();
+          await prev.promise.catch(() => {});
+        }
         textLayer.current?.cancel?.();
+        if (renderToken.current !== token) return;
         const p = await pdf.getPage(pageNum);
+        if (renderToken.current !== token) return;
         const base = p.getViewport({ scale: 1 });
         const cssWidth = Math.min(container.clientWidth - 8, (container.clientHeight - 8) * (base.width / base.height));
         const scale = (cssWidth / base.width) * zoomLevel;
@@ -131,7 +153,7 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
 
         const layer = textRef.current;
         const mod = modRef.current;
-        if (layer && mod) {
+        if (layer && mod && renderToken.current === token) {
           layer.replaceChildren();
           layer.style.setProperty("--total-scale-factor", String(scale));
           const tl = mod.makeTextLayer({
@@ -208,6 +230,7 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
     window.addEventListener("beforeunload", flush);
     return () => {
       dead = true;
+      searchRun.current++;
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("beforeunload", flush);
       renderTask.current?.cancel();
@@ -252,15 +275,76 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
     return () => window.removeEventListener("keydown", onKey);
   }, [panel, handleClose, goToPage]);
 
+  // chiuso il pannello, sfogliare il resto del tomo non serve piu' a nessuno
+  useEffect(() => {
+    if (panel !== "search") searchRun.current++;
+  }, [panel]);
+
   function updateSettings(patch) {
     const next = { ...settings, ...patch };
     setSettings(next);
     saveReaderSettings(next);
   }
 
+  // i rettangoli vanno presi adesso: al primo tocco sul menu la selezione
+  // non c'e' piu' e con lei sparirebbe la posizione del passaggio
   function readSelection() {
-    const text = window.getSelection()?.toString() || "";
-    setSel(text.trim() ? { text } : null);
+    const s = window.getSelection();
+    const text = (s?.toString() || "").trim();
+    if (!text || !s.rangeCount || !pageBoxRef.current) return setSel(null);
+    const rects = toPageRects(s.getRangeAt(0).getClientRects(), pageBoxRef.current.getBoundingClientRect());
+    setSel({ text, rects });
+  }
+
+  function clearSelection() {
+    window.getSelection()?.removeAllRanges();
+    setSel(null);
+  }
+
+  function applyHighlight(color) {
+    if (!sel?.rects.length) return;
+    const h = {
+      id: crypto.randomUUID(),
+      cfi: String(live.current.page),
+      text: sel.text.slice(0, 400),
+      color,
+      rects: sel.rects,
+      createdAt: Date.now(),
+    };
+    const next = [...hls, h];
+    setHls(next);
+    saveHighlights(book.id, next);
+    clearSelection();
+  }
+
+  function saveHls(next) {
+    setHls(next);
+    saveHighlights(book.id, next);
+  }
+
+  async function runSearch() {
+    const q = query.trim();
+    if (!q || !pdfRef.current) return;
+    const run = ++searchRun.current;
+    setSearch({ busy: true, results: [], scanned: 0, full: false });
+    const out = await searchPdf(pdfRef.current, q, {
+      cache: textCache.current,
+      from: live.current.page,
+      alive: () => searchRun.current === run,
+      // ridisegnare a ogni pagina di un tomo lungo costa piu' della ricerca:
+      // si aggiorna quando c'e' qualcosa di nuovo da mostrare
+      onPage: (scanned, results) => {
+        if (searchRun.current !== run) return;
+        setSearch((s) =>
+          results.length > (s.results?.length || 0) || scanned % 24 === 0
+            ? { busy: true, results: [...results], scanned, full: false }
+            : s
+        );
+      },
+    });
+    if (searchRun.current === run) {
+      setSearch({ busy: false, results: out.results, scanned: out.scanned, full: out.full });
+    }
   }
 
   async function defineSelection() {
@@ -301,6 +385,7 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
 
   const pct = pages > 0 ? Math.round((page / pages) * 100) : 0;
   const edge = "clamp(3px, 0.9vw, 10px)";
+  const pageHls = hls.filter((h) => pageOf(h) === page && h.rects?.length);
 
   return (
     <div
@@ -340,6 +425,25 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
       >
         <div ref={pageBoxRef} style={{ position: "relative", flexShrink: 0, boxShadow: "0 4px 30px #00000088" }}>
           <canvas ref={canvasRef} style={{ display: "block" }} />
+          {/* sotto il livello testo: sopra, ruberebbe la selezione proprio
+              dove si e' gia' evidenziato */}
+          <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none" }}>
+            {pageHls.map((h) =>
+              h.rects.map((r, i) => (
+                <div
+                  key={`${h.id}-${i}`}
+                  style={{
+                    position: "absolute",
+                    ...rectStyle(r),
+                    background: h.color,
+                    opacity: 0.36,
+                    mixBlendMode: "multiply",
+                    borderRadius: 2,
+                  }}
+                />
+              ))
+            )}
+          </div>
           <div ref={textRef} className="textLayer" />
         </div>
       </div>
@@ -451,18 +555,39 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
             animation: "bc-fade-in 0.2s ease-out",
           }}
         >
+          {sel.rects.length > 0 &&
+            HL_COLORS.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => applyHighlight(c.value)}
+                aria-label={`Evidenzia in ${c.label}`}
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  background: c.value,
+                  border: `2px solid ${C.bg}`,
+                  boxShadow: `0 0 8px ${c.value}88`,
+                }}
+              />
+            ))}
           {wordCount(sel.text) <= 3 && (
-            <button onClick={defineSelection} style={{ fontSize: 14.5, color: C.accent, fontWeight: 600 }}>
+            <button
+              onClick={defineSelection}
+              style={{
+                marginLeft: 4,
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: `1px solid ${C.arcane}88`,
+                color: C.arcane,
+                fontSize: 14,
+                whiteSpace: "nowrap",
+              }}
+            >
               📖 Definisci
             </button>
           )}
-          <button
-            onClick={() => {
-              window.getSelection()?.removeAllRanges();
-              setSel(null);
-            }}
-            style={{ fontSize: 14.5, color: C.muted }}
-          >
+          <button onClick={clearSelection} style={{ fontSize: 14.5, color: C.muted, marginLeft: 4 }}>
             Annulla
           </button>
         </div>
@@ -517,8 +642,14 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
                 ☰
               </button>
             )}
+            <button onClick={() => setPanel(panel === "search" ? null : "search")} style={barBtn(panel === "search")} aria-label="Cerca">
+              🔍
+            </button>
             <button onClick={() => setPanel(panel === "marks" ? null : "marks")} style={barBtn(panel === "marks")} aria-label="Segnalibri">
               📑
+            </button>
+            <button onClick={() => setPanel(panel === "hl" ? null : "hl")} style={barBtn(panel === "hl")} aria-label="Evidenziazioni">
+              🖍️
             </button>
             <button
               onClick={() => setZoom((z) => Math.max(1, +(z - 0.25).toFixed(2)))}
@@ -677,6 +808,87 @@ export default function PdfReader({ book, music, onMusicToggle, onMusicStop, onC
                 </div>
               ))
           )}
+        </Panel>
+      )}
+
+      {panel === "hl" && (
+        <Panel title="Evidenziazioni" onClose={() => setPanel(null)}>
+          <HighlightList
+            highlights={hls}
+            onGoTo={(h) => {
+              goToPage(pageOf(h) || 1);
+              setPanel(null);
+            }}
+            onChange={saveHls}
+            onRemove={(h) => saveHls(hls.filter((x) => x.id !== h.id))}
+            empty="Seleziona un passaggio nella pagina per evidenziarlo: lo ritroverai qui e nel giardino delle citazioni."
+          />
+        </Panel>
+      )}
+
+      {panel === "search" && (
+        <Panel title="Cerca nel tomo" onClose={() => setPanel(null)}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && runSearch()}
+              placeholder="Una parola, un nome, un incantesimo…"
+              style={{
+                flex: 1,
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: `1px solid ${C.border}`,
+                background: C.card,
+                color: C.text,
+                fontSize: 15,
+                outline: "none",
+              }}
+            />
+            <button
+              onClick={runSearch}
+              style={{ padding: "0 18px", borderRadius: 10, background: `linear-gradient(180deg, ${C.accent}, #b8893a)`, color: "#241c0a", fontWeight: 600 }}
+            >
+              {search.busy ? "…" : "Cerca"}
+            </button>
+          </div>
+          {search.busy && (
+            <p style={{ color: C.muted, marginBottom: 10 }}>
+              Sfoglio le pagine… {search.scanned} di {pages}
+            </p>
+          )}
+          {!search.busy && search.results?.length === 0 && (
+            <p style={{ color: C.muted }}>Nessuna traccia di «{query}» in questo tomo.</p>
+          )}
+          {search.full && (
+            <p style={{ color: C.muted, fontSize: 13, marginBottom: 8 }}>
+              Primi {search.results.length} passaggi: affina la ricerca per vedere gli altri.
+            </p>
+          )}
+          {search.results?.map((r, i) => (
+            <button
+              key={`${r.page}-${i}`}
+              onClick={() => {
+                goToPage(r.page);
+                setPanel(null);
+              }}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 6px",
+                fontSize: 14.5,
+                color: C.text,
+                lineHeight: 1.4,
+                borderBottom: `1px solid ${C.border}44`,
+              }}
+            >
+              <span style={{ display: "block", fontSize: 12, color: C.muted, marginBottom: 2 }}>pag. {r.page}</span>
+              {r.before}
+              <mark style={{ background: "transparent", color: C.accent, fontWeight: 600 }}>{r.hit}</mark>
+              {r.after}
+            </button>
+          ))}
         </Panel>
       )}
 

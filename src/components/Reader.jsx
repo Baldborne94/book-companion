@@ -14,6 +14,7 @@ import { lookup, wordCount, cleanWord } from "../lib/dictionary.js";
 import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../lib/readingSpeed.js";
 import { leftoverScroll } from "../lib/spread.js";
 import BookCover from "./BookCover.jsx";
+import HighlightList from "./HighlightList.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
 
 const EDGE_MIN = 3;
@@ -191,8 +192,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const id = requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     return () => cancelAnimationFrame(id);
   }, [chrome, status]);
-  const [noteFor, setNoteFor] = useState(null);
-  const [noteDraft, setNoteDraft] = useState("");
   const samplesRef = useRef(loadSamples());
   const lastTurnAt = useRef(0);
   const langRef = useRef("en");
@@ -527,11 +526,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     });
   }
 
-  function saveNote() {
-    const next = hls.map((h) => (h.id === noteFor ? { ...h, note: noteDraft.trim() } : h));
+  function saveNotes(next) {
     setHls(next);
     saveHighlights(book.id, next);
-    setNoteFor(null);
   }
 
   function removeHighlight(h) {
@@ -1224,70 +1221,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
       {panel === "hl" && (
         <Panel title="Evidenziazioni" onClose={() => setPanel(null)}>
-          {hls.length === 0 ? (
-            <p style={{ color: C.muted }}>
-              Seleziona un passaggio nel testo per evidenziarlo: lo ritroverai qui.
-            </p>
-          ) : (
-            hls.map((h) => (
-              <div key={h.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 0", borderBottom: `1px solid ${C.border}44` }}>
-                <span style={{ width: 4, alignSelf: "stretch", borderRadius: 2, background: h.color, flexShrink: 0 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <button onClick={() => goTo(h.cfi)} style={{ width: "100%", textAlign: "left", fontSize: 14.5, color: C.text, lineHeight: 1.45, fontStyle: "italic" }}>
-                    “{h.text}”
-                  </button>
-                  {noteFor === h.id ? (
-                    <textarea
-                      autoFocus
-                      value={noteDraft}
-                      onChange={(e) => setNoteDraft(e.target.value)}
-                      onBlur={saveNote}
-                      onKeyDown={(e) => e.key === "Escape" && setNoteFor(null)}
-                      rows={2}
-                      placeholder="Il tuo pensiero su questo passaggio…"
-                      style={{
-                        width: "100%",
-                        marginTop: 6,
-                        padding: "7px 10px",
-                        borderRadius: 8,
-                        border: `1px solid ${C.accent}77`,
-                        background: C.card,
-                        color: C.text,
-                        fontSize: 14,
-                        fontFamily: "inherit",
-                        lineHeight: 1.4,
-                        resize: "vertical",
-                        outline: "none",
-                      }}
-                    />
-                  ) : (
-                    h.note && (
-                      <button
-                        onClick={() => {
-                          setNoteFor(h.id);
-                          setNoteDraft(h.note || "");
-                        }}
-                        style={{ display: "block", textAlign: "left", marginTop: 5, fontSize: 13.5, color: C.arcane, lineHeight: 1.4 }}
-                      >
-                        ✎ {h.note}
-                      </button>
-                    )
-                  )}
-                </div>
-                <button
-                  onClick={() => {
-                    setNoteFor(h.id);
-                    setNoteDraft(h.note || "");
-                  }}
-                  aria-label="Nota sull'evidenziazione"
-                  style={{ color: h.note ? C.arcane : C.muted, padding: 6 }}
-                >
-                  ✎
-                </button>
-                <button onClick={() => removeHighlight(h)} aria-label="Rimuovi evidenziazione" style={{ color: C.muted, padding: 6 }}>🗑</button>
-              </div>
-            ))
-          )}
+          <HighlightList
+            highlights={hls}
+            onGoTo={(h) => goTo(h.cfi)}
+            onChange={saveNotes}
+            onRemove={removeHighlight}
+            empty="Seleziona un passaggio nel testo per evidenziarlo: lo ritroverai qui."
+          />
         </Panel>
       )}
 
