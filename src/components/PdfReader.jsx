@@ -17,7 +17,7 @@ import HighlightList from "./HighlightList.jsx";
 const TAP_PREV = 0.28;
 const TAP_NEXT = 0.72;
 // stessi limiti del reader EPUB per la scheda del significato
-const NET_WORDS = 12;
+const NET_WORDS = 30;
 const PHRASE_WORDS = 300;
 
 const isTouch = () => navigator.maxTouchPoints > 0;
@@ -363,7 +363,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     const word = cleanWord(raw);
     if (!word) return;
     setSel(null);
-    setDict({ word, loading: true, entries: [] });
+    setDict({ word, raw, loading: true, entries: [] });
     setPanel("dict");
     const local = await explain(raw, book);
     setDict((d) => (d ? { ...d, ...local } : d));
@@ -377,6 +377,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     setDict({
       ...local,
       word: res.word || word,
+      raw,
       loading: false,
       entries: res.entries,
       translation: res.translation,
