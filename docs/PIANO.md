@@ -136,6 +136,13 @@ Local-first con specchio cloud: l'app funziona identica senza configurazione; co
 - **Merge**: last-write-wins per libro via `bc_upd_<id>` (touch su ogni progresso/stato/annotazione/musica); cancellazioni con lapidi `bc_tombs` che rimuovono anche i file dal bucket; prefs con timestamp `bc_prefs_upd`. Logica pura e testabile in `lib/syncCore.js` (`planSync`/`mergePrefs`).
 - **Trigger**: all'avvio, al ritorno in foreground, al ritorno online, dopo import/eliminazione e alla chiusura del reader (il progresso vola subito sul cloud).
 
+### Fase G — Compagno di lettura in lingua originale (G1 ✅)
+
+Chi legge in inglese inciampa in due cose che il dizionario non copre: i nomi propri di una saga e i modi di dire. Il glossario è **dati nostri**, non una fonte da interrogare: risponde prima della rete e anche senza.
+- **G1 ✅** — Tre elenchi curati in italiano, tutti caricati lazy: `data/glossaryDiscworld.js` (Mondo Disco, senza spoiler, con rimando al wiki), `data/slangEn.js` (slang britannico, col significato e non la traduzione letterale) e `data/spokenEn.js` (il parlato scritto com'è pronunciato — *wossname*, *thass*, *inna*, gli Igor, i Feegle — che non sta su nessun dizionario). Motore in `lib/glossary.js`: indice normalizzato e `scan()` che legge la selezione da sinistra a destra prendendo ogni volta il pezzo più lungo riconosciuto, quindi su un paragrafo di parlato biascicato restituisce **tutte** le chiavi in ordine di lettura. Parole comuni (`c: 1`) solo se selezionate da sole, nomi propri solo se maiuscoli nel testo. Il libro si lega al glossario dall'autore o dalla saga (`glossaryOf`); se il termine non è fra le voci ma il libro è di quella saga, la scheda offre comunque **"Cerca sul wiki"** — l'elenco scritto a mano non coprirà mai un mondo intero.
+- **G2** (da fare) — Segnare i termini nel testo alla prima occorrenza per capitolo, con le annotazioni di epub.js (sovrapposte, mai nel DOM: i CFI salvati devono restare validi) e un interruttore nelle impostazioni.
+- **G3** (da valutare) — Estratto del wiki dal vivo via API MediaWiki, con ripiego sulla voce locale quando la rete o il CORS non collaborano.
+
 ### Dopo (fuori scope, non iniziare): statistiche di lettura, obiettivi, i18n EN, suite E2E Playwright (riusare l'harness di wh-companion), eventuale wrap TWA/Capacitor per APK (audio a schermo spento, "Apri con" per EPUB).
 
 ## 5. Ordine e granularità
@@ -171,4 +178,4 @@ Su wh-companion l'embed Spotify dava problemi: il controllo `postMessage` dell'i
 
 A ogni fase completata, spunta qui lo stato (✅) così le sessioni successive sanno dove siamo.
 
-Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ · F-sync ✅ — milestone completa 🎉
+Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ · F-sync ✅ · G1-glossario ✅ — milestone completa 🎉

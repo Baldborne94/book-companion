@@ -11,6 +11,7 @@ import {
 } from "../lib/readerSettings.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, wordCount, cleanWord } from "../lib/dictionary.js";
+import { explain } from "../lib/glossary.js";
 import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../lib/readingSpeed.js";
 import { leftoverScroll } from "../lib/spread.js";
 import BookCover from "./BookCover.jsx";
@@ -43,6 +44,14 @@ function pageLabel(d, spread) {
 // cornice e taglio delle pagine compresi, non solo dentro al capitolo
 const TAP_PREV = 0.28;
 const TAP_NEXT = 0.72;
+// oltre questa lunghezza la selezione e' un brano: il dizionario in rete non
+// ha nulla da dire e MyMemory restituirebbe una traduzione a macchina
+const NET_WORDS = 12;
+// la selezione da capire e' spesso un paragrafo intero — il parlato
+// biascicato si decifra tutto insieme, non parola per parola — quindi il
+// pulsante deve esserci anche li'. Fermarsi a poche parole lo rendeva
+// inservibile proprio nei casi difficili.
+const PHRASE_WORDS = 300;
 
 const isTouch = () => navigator.maxTouchPoints > 0;
 const isTablet = () =>
@@ -545,14 +554,26 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     setSelMenu(null);
   }
 
+  // Il glossario di casa risponde subito e anche offline, quindi si mostra
+  // appena c'e'; il dizionario in rete arriva dopo e completa la scheda.
+  // Su una frase lunga la rete non serve a nulla: e' il modo di dire che si
+  // vuole capire, e quello sta nel glossario.
   async function defineSelection() {
-    const word = cleanWord(selMenu?.text);
+    const raw = selMenu?.text || "";
+    const word = cleanWord(raw);
     if (!word) return;
     setSelMenu(null);
     setDict({ word, loading: true, entries: [] });
     setPanel("dict");
+    const local = await explain(raw, book);
+    setDict((d) => (d ? { ...d, ...local } : d));
+    if (wordCount(raw) > NET_WORDS) {
+      setDict((d) => (d ? { ...d, loading: false } : d));
+      return;
+    }
     const res = await lookup(word, langRef.current);
     setDict({
+      ...local,
       word: res.word || word,
       loading: false,
       entries: res.entries,
@@ -1053,7 +1074,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               }}
             />
           ))}
-          {wordCount(selMenu.text) <= 3 && (
+          {wordCount(selMenu.text) <= PHRASE_WORDS && (
             <button
               onClick={defineSelection}
               style={{
@@ -1066,7 +1087,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 whiteSpace: "nowrap",
               }}
             >
-              📖 Definisci
+              {wordCount(selMenu.text) > 1 ? "🔎 Significato" : "📖 Definisci"}
             </button>
           )}
           <button onClick={() => setSelMenu(null)} style={{ color: C.muted, fontSize: 14, marginLeft: 4 }}>
