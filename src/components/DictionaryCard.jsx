@@ -9,7 +9,7 @@ export default function DictionaryCard({ dict, bottom, onClose }) {
   const local = dict.gloss || dict.slang;
   // le due voci in evidenza sono gia' scritte per esteso sopra: qui sotto
   // vanno tutte le altre chiavi trovate nel brano
-  const rest = (dict.found || []).filter((e) => e !== dict.gloss && e !== dict.slang);
+  const rest = (dict.found || []).filter((e) => e.t !== dict.gloss?.t && e.t !== dict.slang?.t);
   const shown = local ? 1 : dict.translation ? 2 : 3;
 
   return (

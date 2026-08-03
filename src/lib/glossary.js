@@ -107,6 +107,7 @@ export function glossaryOf(book) {
 }
 
 export const wikiUrl = (term) => WIKI_SEARCH + encodeURIComponent(term);
+export const normalize = norm;
 
 const cache = { saga: new Map(), slang: null, spoken: null };
 
@@ -141,6 +142,26 @@ function lazyIndex(key, load) {
 
 const slangIndex = () => lazyIndex("slang", () => import("../data/slangEn.js"));
 const spokenIndex = () => lazyIndex("spoken", () => import("../data/spokenEn.js"));
+
+// Per segnare i termini nel testo serve una passata sola su ogni nodo: una
+// espressione unica con tutte le chiavi, le piu' lunghe per prime cosi'
+// «Granny Weatherwax» vince su «Weatherwax». Fuori le chiavi corte, che da
+// sole nel corpo del testo farebbero solo rumore.
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+export async function termIndex(book) {
+  const id = glossaryOf(book);
+  if (!id) return null;
+  const ix = await sagaIndex(id);
+  if (!ix) return null;
+  if (!ix.re) {
+    const keys = [...ix.map.keys()].filter((k) => k.length >= 4).sort((a, b) => b.length - a.length);
+    ix.re = keys.length
+      ? new RegExp(`(?<![\\p{L}\\p{N}])(${keys.map(escapeRe).join("|")})(?![\\p{L}\\p{N}])`, "giu")
+      : null;
+  }
+  return ix.re ? ix : null;
+}
 
 // Ritorna quel che di casa nostra si sa su una selezione: `found` e' tutto
 // quello che si riconosce nell'ordine in cui si legge — su un paragrafo di

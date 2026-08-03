@@ -35,6 +35,7 @@ export function deviceDefaults(shortSide) {
     warmth: 0,
     brightness: 1,
     pageTurn: true,
+    terms: true,
     appTheme: "night",
   };
 }
