@@ -1,3 +1,5 @@
+import { riconosci } from "./sagaBooks.js";
+
 // Il glossario risponde prima della rete e anche senza: sono dati nostri,
 // non un dizionario da interrogare. I file delle voci arrivano lazy, cosi'
 // restano fuori dal primo caricamento e finiscono in un chunk precachato:
@@ -99,11 +101,11 @@ const SAGA_HINTS = ["discworld", "disc world", "mondo disco", "mondo dei dischi"
 // Il legame libro → glossario passa dall'autore, che l'import legge dai
 // metadati dell'EPUB, o dalla saga scritta a mano nella scheda del libro.
 export function glossaryOf(book) {
-  const author = norm(book?.author);
   const saga = norm(book?.saga);
-  if (author.includes("pratchett")) return "discworld";
   if (SAGA_HINTS.some((h) => saga.includes(h))) return "discworld";
-  return null;
+  // anche dal titolo: i libri importati prima che l'app riconoscesse le saghe
+  // hanno il campo saga vuoto, e non e' un buon motivo per restare senza
+  return riconosci({ title: book?.title, author: book?.author }) ? "discworld" : null;
 }
 
 export const wikiUrl = (term) => WIKI_SEARCH + encodeURIComponent(term);
