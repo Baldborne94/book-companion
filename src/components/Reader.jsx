@@ -22,12 +22,16 @@ const EDGE_MIN = 3;
 const EDGE_MAX = 17;
 // la rilegatura visibile attorno alla carta
 const FRAME = 6;
-// Testa e piede della carta: spazio riservato una volta per tutte alle barre,
-// che compaiono sopra senza mai cambiare la misura della pagina. Restringere
-// il libro le farebbe reimpaginare a epub.js, e con la nuova impaginazione si
-// sposterebbe tutto — punto di lettura, segnalibri, evidenziazioni.
-const HEAD = 53;
-const FOOT = 63;
+// Testa e piede della carta. Sono margini tipografici, non piu' lo spazio
+// riservato alle barre: il testo deve riempire la pagina, e quando le barre
+// compaiono coprono le prime e le ultime righe — scelta del lettore, che le
+// tiene su il tempo di un tocco. Quello che NON deve cambiare e' la misura:
+// resta fissa a barre accese e spente, o epub.js reimpagina e sposta tutto —
+// punto di lettura, segnalibri, evidenziazioni. A questi si aggiungono i
+// 20px che epub.js mette di suo sul body, inline e con !important: sono
+// intoccabili da un foglio di stile, e fanno da margine minimo.
+const HEAD = 8;
+const FOOT = 8;
 const EDGE_STRIPES =
   "repeating-linear-gradient(to right, #00000047 0 1px, #ffffff1f 1px 2px, #0000001c 2px 4px)";
 
