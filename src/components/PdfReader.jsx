@@ -11,6 +11,11 @@ import BookCover from "./BookCover.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
 import HighlightList from "./HighlightList.jsx";
 
+// stesse fasce del reader EPUB, misurate sullo schermo: cosi' anche il
+// margine attorno alla pagina volta, non solo il foglio
+const TAP_PREV = 0.28;
+const TAP_NEXT = 0.72;
+
 const isTouch = () => navigator.maxTouchPoints > 0;
 
 const barBtn = (active) => ({
@@ -55,6 +60,7 @@ function Panel({ title, onClose, children }) {
 }
 
 export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusicStop, onClose, notify, nextBook, onReadNext }) {
+  const rootRef = useRef(null);
   const containerRef = useRef(null);
   const pageBoxRef = useRef(null);
   const canvasRef = useRef(null);
@@ -383,12 +389,27 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     saveMarks(book.id, next);
   }
 
+  // il margine attorno al foglio non e' terra di nessuno: vale come il bordo
+  // della pagina. Qui arrivano solo i tocchi sullo sfondo — barre, pannelli e
+  // menu sono altri elementi, o ogni loro bottone avrebbe voltato pagina.
+  function tapAside(e) {
+    if (!isTouch() || e.target !== rootRef.current) return;
+    if (zoom === 1) {
+      const rel = e.clientX / (window.innerWidth || 1);
+      if (rel < TAP_PREV) return goToPage(live.current.page - 1);
+      if (rel > TAP_NEXT) return goToPage(live.current.page + 1);
+    }
+    setChrome((v) => !v);
+  }
+
   const pct = pages > 0 ? Math.round((page / pages) * 100) : 0;
   const edge = "clamp(3px, 0.9vw, 10px)";
   const pageHls = hls.filter((h) => pageOf(h) === page && h.rects?.length);
 
   return (
     <div
+      ref={rootRef}
+      onClick={tapAside}
       style={{
         position: "fixed",
         inset: 0,
@@ -404,10 +425,9 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
         onClick={(e) => {
           if (window.getSelection()?.toString().trim()) return;
           if (isTouch() && zoom === 1) {
-            const r = containerRef.current.getBoundingClientRect();
-            const rel = (e.clientX - r.left) / (r.width || 1);
-            if (rel < 0.22) return goToPage(live.current.page - 1);
-            if (rel > 0.78) return goToPage(live.current.page + 1);
+            const rel = e.clientX / (window.innerWidth || 1);
+            if (rel < TAP_PREV) return goToPage(live.current.page - 1);
+            if (rel > TAP_NEXT) return goToPage(live.current.page + 1);
           }
           setChrome((v) => !v);
         }}

@@ -33,6 +33,11 @@ function pageLabel(d, spread) {
     : `pag. ${d.page} di ${d.total} del capitolo`;
 }
 
+// fasce laterali del tocco: valgono su tutta la larghezza dello schermo,
+// cornice e taglio delle pagine compresi, non solo dentro al capitolo
+const TAP_PREV = 0.28;
+const TAP_NEXT = 0.72;
+
 const isTouch = () => navigator.maxTouchPoints > 0;
 const isTablet = () =>
   isTouch() && Math.min(window.innerWidth, window.innerHeight) >= 520;
@@ -185,13 +190,41 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [dict, setDict] = useState(null);
   const [endCard, setEndCard] = useState(null);
 
-  // il contenitore cambia misura col mostrarsi delle barre: la nuova
-  // impaginazione la decide epub.js, che ascolta il resize della finestra
+  const anchor = useRef(null);
+  const reflowing = useRef(false);
+  const chromeSeen = useRef(chrome);
+
+  // Il contenitore cambia misura col mostrarsi delle barre e epub.js
+  // reimpagina: la pagina va ridata. Lasciandolo ripartire dal CFI corrente
+  // si arretrava di mezza pagina ogni volta (epub.js allinea sempre
+  // all'inizio della pagina che contiene il CFI, e l'arretramento si
+  // sommava a ogni scambio). Si riparte invece dall'ultima pagina scelta
+  // dal lettore: mostrare e nascondere le barre riporta esattamente li'.
+  const relayout = useCallback((cfi) => {
+    const r = rendRef.current;
+    if (cfi) reflowing.current = true;
+    try {
+      if (r) r.resize(undefined, undefined, cfi || undefined);
+      else window.dispatchEvent(new Event("resize"));
+    } catch {
+      window.dispatchEvent(new Event("resize"));
+    }
+  }, []);
+
   useEffect(() => {
     if (status !== "ready") return;
-    const id = requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
-    return () => cancelAnimationFrame(id);
-  }, [chrome, status]);
+    const changed = chromeSeen.current !== chrome;
+    chromeSeen.current = chrome;
+    const cfi = changed ? anchor.current || live.current.cfi : null;
+    const id = requestAnimationFrame(() => relayout(cfi));
+    // se la misura non cambia epub.js non riposiziona nulla e "relocated"
+    // non arriva: la bandiera va tolta comunque
+    const guard = setTimeout(() => { reflowing.current = false; }, 1500);
+    return () => {
+      cancelAnimationFrame(id);
+      clearTimeout(guard);
+    };
+  }, [chrome, status, relayout]);
   const samplesRef = useRef(loadSamples());
   const lastTurnAt = useRef(0);
   const langRef = useRef("en");
@@ -249,6 +282,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         const st = live.current;
         st.cfi = loc.start.cfi;
         st.href = loc.start.href;
+        // l'ancora segue solo le pagine scelte dal lettore: quelle rese da un
+        // reimpaginamento sono un ripiego e non devono diventare il nuovo "li'"
+        if (reflowing.current) reflowing.current = false;
+        else anchor.current = loc.start.cfi;
         if (st.locReady) {
           const p = eb.locations.percentageFromCfi(loc.start.cfi);
           if (Number.isFinite(p)) {
@@ -297,13 +334,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           if (sel && sel.toString()) return;
           if (isTouch() && live.current.settings.flow !== "scrolled") {
             // dentro il capitolo le coordinate vivono nello spazio delle
-            // colonne, largo quanto tutto il testo: vanno riportate al libro
+            // colonne, largo quanto tutto il testo: vanno riportate allo
+            // schermo, dove le fasce sono le stesse del bordo del libro
             const frameEl = view.contents.window.frameElement;
-            const box = bookRef.current?.getBoundingClientRect();
-            if (frameEl && box?.width) {
-              const rel = (frameEl.getBoundingClientRect().left + e.clientX - box.left) / box.width;
-              if (rel < 0.28) return turnRef.current("prev");
-              if (rel > 0.72) return turnRef.current("next");
+            if (frameEl && window.innerWidth) {
+              const rel = (frameEl.getBoundingClientRect().left + e.clientX) / window.innerWidth;
+              if (rel < TAP_PREV) return turnRef.current("prev");
+              if (rel > TAP_NEXT) return turnRef.current("next");
             }
           }
           setChrome((v) => !v);
@@ -390,9 +427,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const marginSeen = useRef(settings.margin);
   useEffect(() => {
-    window.dispatchEvent(new Event("resize"));
-  }, [settings.margin]);
+    if (marginSeen.current === settings.margin) return;
+    marginSeen.current = settings.margin;
+    relayout(anchor.current || live.current.cfi);
+  }, [settings.margin, relayout]);
 
   useEffect(() => {
     const onFs = () => setIsFs(!!document.fullscreenElement);
@@ -551,6 +591,25 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     setPanel(null);
   }
 
+  // Fuori dal capitolo il tocco moriva: cornice, taglio delle pagine e
+  // margine attorno al libro non voltavano nulla, proprio dove il pollice
+  // si appoggia tenendo il tablet. Qui arrivano solo i tocchi sul libro o
+  // sullo sfondo — barre, pannelli e menu sono altri elementi e si fermano
+  // da soli, altrimenti ogni loro bottone avrebbe cambiato pagina.
+  function tapAside(e) {
+    if (!isTouch()) return;
+    const root = rootRef.current;
+    const target = e.target;
+    if (target !== root && !bookRef.current?.contains(target)) return;
+    if (selMenu) return setSelMenu(null);
+    if (paginated && status === "ready") {
+      const rel = e.clientX / (window.innerWidth || 1);
+      if (rel < TAP_PREV) return turn("prev");
+      if (rel > TAP_NEXT) return turn("next");
+    }
+    setChrome((v) => !v);
+  }
+
   const pct = Math.round((progress || 0) * 100);
   const paginated = settings.flow !== "scrolled";
   const p = Math.min(1, Math.max(0, progress || 0));
@@ -590,6 +649,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   return (
     <div
       ref={rootRef}
+      onClick={tapAside}
       style={{
         position: "fixed",
         inset: 0,
