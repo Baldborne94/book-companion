@@ -6,6 +6,7 @@ import { getProgress, setProgress, setStatus } from "../lib/library.js";
 import { HL_COLORS, loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
 import { explain } from "../lib/glossary.js";
+import { contextAround } from "../lib/oracle.js";
 import { toPageRects, rectStyle, pageOf } from "../lib/pdfHighlights.js";
 import { searchPdf } from "../lib/pdfSearch.js";
 import BookCover from "./BookCover.jsx";
@@ -302,7 +303,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     const text = (s?.toString() || "").trim();
     if (!text || !s.rangeCount || !pageBoxRef.current) return setSel(null);
     const rects = toPageRects(s.getRangeAt(0).getClientRects(), pageBoxRef.current.getBoundingClientRect());
-    setSel({ text, rects });
+    setSel({ text, rects, context: contextAround(s) });
   }
 
   function clearSelection() {
@@ -360,10 +361,11 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   // offline, poi il dizionario in rete se la selezione e' corta abbastanza
   async function defineSelection() {
     const raw = sel?.text || "";
+    const context = sel?.context || "";
     const word = cleanWord(raw);
     if (!word) return;
     setSel(null);
-    setDict({ word, raw, loading: true, entries: [] });
+    setDict({ word, raw, context, loading: true, entries: [] });
     setPanel("dict");
     const local = await explain(raw, book);
     setDict((d) => (d ? { ...d, ...local } : d));
@@ -378,6 +380,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
       ...local,
       word: res.word || word,
       raw,
+      context,
       loading: false,
       entries: res.entries,
       translation: res.translation,
@@ -963,7 +966,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
       )}
 
       {panel === "dict" && (
-        <DictionaryCard dict={dict} bottom={chrome ? 92 : 26} onClose={() => setPanel(null)} />
+        <DictionaryCard dict={dict} book={book} bottom={chrome ? 92 : 26} onClose={() => setPanel(null)} />
       )}
 
       {endCard === "shown" && nextBook && (

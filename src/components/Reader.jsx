@@ -12,6 +12,7 @@ import {
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
 import { explain, termIndex, normalize, wikiUrl, glossaryOf } from "../lib/glossary.js";
+import { contextAround } from "../lib/oracle.js";
 import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../lib/readingSpeed.js";
 import { leftoverScroll } from "../lib/spread.js";
 import BookCover from "./BookCover.jsx";
@@ -446,8 +447,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       r.on("layout", (layout) => setPages(layout.divisor > 1 ? 2 : 1));
 
       r.on("selected", (cfiRange, contents) => {
-        const text = contents.window.getSelection()?.toString() || "";
-        if (text.trim()) setSelMenu({ cfi: cfiRange, text });
+        const sel = contents.window.getSelection();
+        const text = sel?.toString() || "";
+        // il paragrafo attorno si prende ora: al tocco sul menu la selezione
+        // e' gia' sparita, e all'Oracolo serve il contesto, non la frase sola
+        if (text.trim()) setSelMenu({ cfi: cfiRange, text, context: contextAround(sel) });
       });
 
       r.on("rendered", (_section, view) => {
@@ -723,10 +727,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // vuole capire, e quello sta nel glossario.
   async function defineSelection() {
     const raw = selMenu?.text || "";
+    const context = selMenu?.context || "";
     const word = cleanWord(raw);
     if (!word) return;
     setSelMenu(null);
-    setDict({ word, raw, loading: true, entries: [] });
+    setDict({ word, raw, context, loading: true, entries: [] });
     setPanel("dict");
     const local = await explain(raw, book);
     setDict((d) => (d ? { ...d, ...local } : d));
@@ -741,6 +746,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       ...local,
       word: res.word || word,
       raw,
+      context,
       loading: false,
       entries: res.entries,
       translation: res.translation,
@@ -1552,7 +1558,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       )}
 
       {panel === "dict" && (
-        <DictionaryCard dict={dict} bottom={chrome ? 92 : 26} onClose={() => setPanel(null)} />
+        <DictionaryCard dict={dict} book={book} bottom={chrome ? 92 : 26} onClose={() => setPanel(null)} />
       )}
       {panel === "search" && (
         <Panel title="Cerca nel libro" onClose={() => setPanel(null)}>
