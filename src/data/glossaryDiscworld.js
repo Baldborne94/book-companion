@@ -37,14 +37,14 @@ export default [
 
   // — la Guardia
   { t: "City Watch", k: "organizzazione", d: "La Guardia Cittadina di Ankh-Morpork: da manipolo di guardie notturne buone a nulla diventa, romanzo dopo romanzo, una vera polizia.", a: ["the Watch", "Night Watch", "Watch"] },
-  { t: "Samuel Vimes", k: "personaggio", d: "Comandante della Guardia Cittadina: cinico, sarcastico, allergico all'aristocrazia e incapace di lasciar perdere un caso. La sua onestà è rabbia tenuta al guinzaglio.", a: ["Sam Vimes", "Vimes", "Commander Vimes"] },
+  { t: "Samuel Vimes", k: "personaggio", d: "L'uomo a capo della Guardia Cittadina: cinico, sarcastico, allergico all'aristocrazia e incapace di lasciar perdere un caso. La sua onestà è rabbia tenuta al guinzaglio.", a: ["Sam Vimes", "Vimes", "Commander Vimes"] },
   { t: "Carrot Ironfoundersson", k: "personaggio", d: "Guardia altissima cresciuta dai nani come se fosse nano. Onestà disarmante, memoria per i nomi di tutti e un carisma che imbarazza lui per primo.", a: ["Carrot", "Captain Carrot"] },
-  { t: "Angua", k: "personaggio", d: "Guardia di Ankh-Morpork, originaria dell'Überwald: è un lupo mannaro, il che nel lavoro di polizia aiuta parecchio.", a: ["Angua von Überwald", "Sergeant Angua"] },
+  { t: "Angua", k: "personaggio", d: "Guardia di Ankh-Morpork, originaria dell'Überwald: è una lupa mannara, il che nel lavoro di polizia aiuta parecchio.", a: ["Angua von Überwald", "Sergeant Angua"] },
   { t: "Fred Colon", k: "personaggio", d: "Sergente della Guardia: comodo, prudente, esperto nell'arte di essere altrove quando succede qualcosa. Con Nobby forma una coppia inseparabile.", a: ["Sergeant Colon", "Colon"] },
   { t: "Nobby Nobbs", k: "personaggio", d: "Caporale della Guardia: piccolo, sporco, cleptomane. Porta addosso un certificato firmato che attesta che è un essere umano, perché a occhio non si direbbe.", a: ["Nobby", "Corporal Nobbs", "Cecil Wormsborough St John Nobbs"] },
-  { t: "Detritus", k: "personaggio", d: "Troll enorme, sergente della Guardia: più fa freddo più ragiona in fretta, quindi in inverno diventa quasi un genio." },
+  { t: "Detritus", k: "personaggio", d: "Troll enorme, che dalla buttafuori finisce in divisa nella Guardia: più fa freddo più ragiona in fretta, quindi in inverno diventa quasi un genio." },
   { t: "Cheery Littlebottom", k: "personaggio", d: "Nana, esperta di alchimia e medicina legale della Guardia. È la prima a dichiarare apertamente di essere femmina, cosa che fra i nani è una piccola rivoluzione.", a: ["Cheery", "Cheri Littlebottom"] },
-  { t: "Lady Sybil Ramkin", k: "personaggio", d: "La nobildonna più ricca di Ankh-Morpork, allevatrice di draghi palustri e moglie di Vimes: pratica, gentile e inarrestabile.", a: ["Sybil Ramkin", "Sybil", "Lady Sybil"] },
+  { t: "Lady Sybil Ramkin", k: "personaggio", d: "La nobildonna più ricca di Ankh-Morpork, allevatrice di draghi palustri: pratica, gentile, inarrestabile e con una voce che si sente da tre strade.", a: ["Sybil Ramkin", "Sybil", "Lady Sybil"] },
   { t: "swamp dragon", k: "concetto", d: "Piccolo drago da compagnia dell'allevamento di Lady Sybil: digestione instabile, tendenza a esplodere se agitato.", a: ["swamp dragons"] },
 
   // — maghi
@@ -129,6 +129,24 @@ export default [
   { t: "Tsort", k: "luogo", d: "Antica città rivale di Ephebe, teatro di una guerra combattuta per una donna e di un famoso cavallo di legno." },
   { t: "Holy Wood", k: "luogo", d: "La collina dove per un breve, folle periodo si sono fatti i «quadri in movimento»: il cinema secondo il Mondo Disco." },
   { t: "Bes Pelargic", k: "luogo", d: "Il grande porto dell'Impero Agateo." },
+
+  // — Guards! Guards! (nulla oltre quello che il libro ha gia' detto)
+  { t: "Elucidated Brethren of the Ebon Night", k: "organizzazione", d: "La «Confraternita Illuminata della Notte d'Ebano»: una società segreta di ometti scontenti che si riunisce in una stanza dietro una porticina con lo spioncino. Parole d'ordine solenni, cappucci, e la mentalità di una riunione di condominio.", a: ["Elucidated Brethren", "Ebon Night", "the Brethren"] },
+  { t: "Illuminated and Ancient Brethren of Ee", k: "organizzazione", d: "Un'altra società segreta di Ankh-Morpork, tre porte più in là. La battuta è tutta qui: la città ne è piena, hanno tutte nomi solenni, si riuniscono tutte in una stanza sul retro — e il martedì la stanza è del circolo di traforo.", a: ["Brethren of Ee"] },
+  { t: "Supreme Grand Master", k: "personaggio", d: "Il capo incappucciato della Confraternita: l'unica cosa grandiosa dell'organizzazione è il titolo che si è dato. Tiene insieme il gruppo facendo leva sul rancore di ciascuno." },
+  { t: "Brother Watchtower", k: "personaggio", d: "Uno dei confratelli della Notte d'Ebano. Si chiamano tutti Fratello Qualcosa — Dita, Intonacatore, Torre di Guardia — e dietro il cappuccio restano quello che sono: piccoli uomini con piccoli livori.", a: ["Brother Fingers", "Brother Plasterer", "Brother Dunnykin", "Brother Doorkeeper"] },
+  { t: "The Summoning of Dragons", k: "concetto", d: "Il libro sottratto alla biblioteca dell'Università Invisibile: spiega come richiamare un drago. Che sia sparito è, per il Bibliotecario, una faccenda personale.", a: ["Summoning of Dragons"] },
+  { t: "draco nobilis", k: "concetto", d: "Il drago nobile: enorme, intelligente, corazzato, quello dei racconti e degli stemmi. Sul Disco è considerato estinto da secoli, cosa che rende scomodo incontrarne uno.", a: ["noble dragon"] },
+  { t: "draco vulgaris", k: "concetto", d: "Il nome scientifico del drago palustre, il parente piccolo e domestico: quaranta centimetri, digestione esplosiva e sguardo speranzoso." },
+  { t: "Errol", k: "personaggio", d: "Draghetto palustre gracile e malaticcio dell'allevamento di Lady Sybil, finito in custodia alla Guardia. Mangia carbone, molle di divano e qualunque cosa non sia inchiodata." },
+  { t: "Sunshine Sanctuary for Sick Dragons", k: "luogo", d: "Il rifugio di Lady Sybil per draghi palustri malandati o abbandonati: rumoroso, puzzolente e soggetto a esplosioni. Lei lo chiama casa.", a: ["Sunshine Sanctuary"] },
+  { t: "Fabricati Diem, Pvnc", k: "concetto", d: "Il motto della Guardia sullo stemma, in latino maccheronico: vale «fatti la giornata, teppista», cioè il «go ahead, make my day» dei film polizieschi.", a: ["Fabricati Diem"] },
+  { t: "Treacle Mine Road", k: "luogo", d: "La strada del corpo di guardia della Guardia Notturna, in un quartiere che di miniere di melassa non ne ha più da un pezzo. Il nome è rimasto." },
+  { t: "Sham Harga's House of Ribs", k: "luogo", d: "La tavola calda dove Vimes mangia quando mangia: aperta a ogni ora, unta in ogni superficie, con un caffè che sta in piedi da solo.", a: ["Harga's House of Ribs", "Sham Harga"] },
+  { t: "Lupine Wonse", k: "personaggio", d: "Il segretario del Patrizio: efficiente, ambizioso, e con un passato ad Ankh-Morpork che incrocia quello di Vimes.", a: ["Wonse"] },
+  { t: "Laws and Ordinances of the Cities of Ankh and Morpork", k: "concetto", d: "Il librone di leggi che Carrot si porta dietro e — cosa che ad Ankh-Morpork non era mai venuta in mente a nessuno — prende alla lettera.", a: ["Laws and Ordinances"] },
+  { t: "the King of Ankh-Morpork", k: "concetto", d: "Ankh-Morpork non ha un re da secoli, e la città ci sta benissimo. La nostalgia monarchica però cova sotto la cenere, ed è una brutta cosa da avere in mano quando qualcuno la soffia.", a: ["king of Ankh-Morpork"] },
+  { t: "sausage inna bun", k: "concetto", d: "La salsiccia nel panino di CMOT Dibbler: il modo in cui la grida per strada — «inna bun» — è diventato il verso ufficiale del commercio ad Ankh-Morpork." },
 
   // — parole che fanno inciampare
   { t: "figgin", k: "concetto", d: "Compare in una minaccia truce («appeso per il suo figgin»), e suona come una parte del corpo. Una nota a piè di pagina rivela che è un piccolo dolcetto di pasta frolla con l'uvetta: la minaccia era di appendere il condannato per il suo pasticcino.", a: ["figgins"] },
