@@ -11,7 +11,7 @@ import {
 } from "../lib/readerSettings.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, wordCount, cleanWord } from "../lib/dictionary.js";
-import { explain } from "../lib/glossary.js";
+import { explain, termIndex, normalize, wikiUrl, glossaryOf } from "../lib/glossary.js";
 import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../lib/readingSpeed.js";
 import { leftoverScroll } from "../lib/spread.js";
 import BookCover from "./BookCover.jsx";
@@ -44,6 +44,8 @@ function pageLabel(d, spread) {
 // cornice e taglio delle pagine compresi, non solo dentro al capitolo
 const TAP_PREV = 0.28;
 const TAP_NEXT = 0.72;
+// tetto ai segni per capitolo: la pagina resta una pagina, non un elenco
+const MARKS_PER_CHAPTER = 60;
 // oltre questa lunghezza la selezione e' un brano: il dizionario in rete non
 // ha nulla da dire e MyMemory restituirebbe una traduzione a macchina
 const NET_WORDS = 12;
@@ -60,6 +62,64 @@ const reducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const GOOGLE_FONT_CSS =
   "@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap');";
+
+// La parola sotto il dito, non il segno disegnato sopra: cosi' risponde ogni
+// occorrenza e non solo quella marcata, e il tocco non deve contendersi
+// l'evento con la fascia del cambio pagina.
+function termAt(doc, x, y, ix) {
+  let node = null;
+  let offset = 0;
+  if (doc.caretRangeFromPoint) {
+    const r = doc.caretRangeFromPoint(x, y);
+    if (r) {
+      node = r.startContainer;
+      offset = r.startOffset;
+    }
+  } else if (doc.caretPositionFromPoint) {
+    const pos = doc.caretPositionFromPoint(x, y);
+    if (pos) {
+      node = pos.offsetNode;
+      offset = pos.offset;
+    }
+  }
+  if (!node || node.nodeType !== 3) return null;
+  const text = node.nodeValue || "";
+  const parola = /[\p{L}\p{N}'’-]/u;
+  let da = offset;
+  let a = offset;
+  while (da > 0 && parola.test(text[da - 1])) da -= 1;
+  while (a < text.length && parola.test(text[a])) a += 1;
+  if (a <= da) return null;
+  // un nome puo' essere composto: si guarda anche una parola prima e due dopo
+  let sinistra = da;
+  for (let i = 0; i < 1 && sinistra > 0; i++) {
+    let j = sinistra - 1;
+    while (j > 0 && !parola.test(text[j - 1]) && text[j - 1] === " ") j -= 1;
+    while (j > 0 && parola.test(text[j - 1])) j -= 1;
+    sinistra = j;
+  }
+  let destra = a;
+  for (let i = 0; i < 2 && destra < text.length; i++) {
+    let j = destra;
+    while (j < text.length && text[j] === " ") j += 1;
+    while (j < text.length && parola.test(text[j])) j += 1;
+    destra = j;
+  }
+  const candidati = [
+    text.slice(sinistra, destra),
+    text.slice(da, destra),
+    text.slice(sinistra, a),
+    text.slice(da, a),
+  ];
+  for (const c of candidati) {
+    const pulito = c.trim();
+    if (!pulito) continue;
+    const e = ix.map.get(normalize(pulito));
+    // il nome proprio vale solo se nel testo e' scritto con la maiuscola
+    if (e && (!/^\p{Lu}/u.test(e.t) || /^\p{Lu}/u.test(pulito))) return e;
+  }
+  return null;
+}
 
 function flattenToc(items, depth = 0, out = []) {
   for (const it of items || []) {
@@ -206,6 +266,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [endCard, setEndCard] = useState(null);
 
   const anchor = useRef(null);
+  const markedRef = useRef(new Map());
+  const termsRef = useRef(null);
+  const termCfis = useRef([]);
   const reflowing = useRef(false);
   const reflowTimer = useRef(null);
 
@@ -255,6 +318,64 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     rendition.themes.default(contentStyles(s));
     rendition.themes.fontSize(`${s.fontSize}%`);
   }, []);
+
+  // I termini si segnano con le annotazioni di epub.js, che disegnano SOPRA
+  // la pagina: avvolgerli in uno <span> cambierebbe la struttura del capitolo
+  // e con lei i percorsi dei CFI, mandando fuori posto segnalibri ed
+  // evidenziazioni gia' salvati. Solo la prima occorrenza per capitolo: con
+  // «Vimes» e «Ankh-Morpork» a ogni riga la pagina diventerebbe illeggibile.
+  const markTerms = useCallback(
+    async (view) => {
+      if (!live.current.settings?.terms) return;
+      const ix = await termIndex(book);
+      termsRef.current = ix;
+      const doc = view?.contents?.document;
+      if (!ix || !doc || !view.contents) return;
+      const href = (view.section?.href || "").split("#")[0];
+      let done = markedRef.current.get(href);
+      if (!done) markedRef.current.set(href, (done = new Set()));
+      const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
+        acceptNode: (n) =>
+          n.parentElement?.closest("a, script, style")
+            ? NodeFilter.FILTER_REJECT
+            : NodeFilter.FILTER_ACCEPT,
+      });
+      let left = MARKS_PER_CHAPTER - done.size;
+      for (let node = walker.nextNode(); node && left > 0; node = walker.nextNode()) {
+        const text = node.nodeValue;
+        if (!text || text.length < 4) continue;
+        ix.re.lastIndex = 0;
+        for (let m = ix.re.exec(text); m && left > 0; m = ix.re.exec(text)) {
+          const entry = ix.map.get(normalize(m[1]));
+          if (!entry || done.has(entry.t)) continue;
+          // «Death» il personaggio, non «the death of the king»
+          if (/^\p{Lu}/u.test(entry.t) && !/^\p{Lu}/u.test(m[1])) continue;
+          const range = doc.createRange();
+          range.setStart(node, m.index);
+          range.setEnd(node, m.index + m[1].length);
+          let cfi = null;
+          try {
+            cfi = view.contents.cfiFromRange(range);
+          } catch {
+            /* nodo che epub.js non sa indirizzare: si lascia stare */
+          }
+          if (!cfi) continue;
+          done.add(entry.t);
+          termCfis.current.push(cfi);
+          left -= 1;
+          try {
+            rendRef.current?.annotations.highlight(cfi, { bcTerm: entry.t }, undefined, "bc-term", {
+              fill: C.arcane,
+              "fill-opacity": "0.22",
+            });
+          } catch {
+            /* annotazione rifiutata: il termine resta comunque cercabile */
+          }
+        }
+      }
+    },
+    [book] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const addAnnotation = useCallback((rendition, h) => {
     rendition.annotations.highlight(h.cfi, {}, () => setPanel("hl"), "bc-hl", {
@@ -332,10 +453,16 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // Su touch il cambio pagina nasce da qui, non da bottoni sovrapposti:
         // quelli intercettavano il tocco prolungato e rendevano impossibile
         // selezionare una parola nelle fasce laterali.
+        markTerms(view);
         doc.addEventListener("click", (e) => {
           if (e.target.closest?.("a")) return;
           const sel = view.contents.window.getSelection();
           if (sel && sel.toString()) return;
+          const ix = termsRef.current;
+          if (ix) {
+            const hit = termAt(doc, e.clientX, e.clientY, ix);
+            if (hit) return openTerm(hit);
+          }
           if (isTouch() && live.current.settings.flow !== "scrolled") {
             // dentro il capitolo le coordinate vivono nello spazio delle
             // colonne, largo quanto tutto il testo: vanno riportate allo
@@ -497,6 +624,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const next = { ...settings, ...patch };
     setSettings(next);
     saveReaderSettings(next);
+    if ("terms" in patch) {
+      live.current.settings = next;
+      clearTerms();
+      // i segni si tolgono e si rimettono sulle viste gia' a schermo: non
+      // vale la pena rifare il libro da capo per un interruttore
+      if (next.terms) rendRef.current?.manager?.views?.forEach?.((v) => markTerms(v));
+    }
     if ("flow" in patch || "spread" in patch || "font" in patch) makeRendition(next);
     else if (rendRef.current && ("theme" in patch || "fontSize" in patch || "lineHeight" in patch)) {
       applyStyles(rendRef.current, next);
@@ -552,6 +686,29 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     setHls(next);
     saveHighlights(book.id, next);
     setSelMenu(null);
+  }
+
+  // Il segno nel testo apre la stessa scheda della selezione, senza passare
+  // dalla rete: la voce ce l'abbiamo gia' in mano.
+  function openTerm(e) {
+    setDict({
+      word: e.t,
+      loading: false,
+      entries: [],
+      gloss: { ...e, wiki: wikiUrl(e.t) },
+      found: [e],
+    });
+    setPanel("dict");
+  }
+
+  function clearTerms() {
+    for (const cfi of termCfis.current) {
+      try { rendRef.current?.annotations.remove(cfi, "highlight"); } catch { /* vista gia' smontata */ }
+    }
+    termCfis.current = [];
+    markedRef.current.clear();
+    // spenti i segni, il tocco sulla parola torna a essere un cambio pagina
+    termsRef.current = null;
   }
 
   // Il glossario di casa risponde subito e anche offline, quindi si mostra
@@ -1189,6 +1346,24 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               {settings.spread === "auto" ? "Doppia: auto" : "Pagina singola"}
             </button>
           </div>
+          {glossaryOf(book) && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <span style={{ fontSize: 14.5, color: C.muted }}>Segna i termini della saga</span>
+              <button
+                onClick={() => updateSettings({ terms: !settings.terms })}
+                style={{
+                  padding: "6px 16px",
+                  borderRadius: 999,
+                  fontSize: 14,
+                  border: `1px solid ${settings.terms ? C.arcane : C.border}`,
+                  color: settings.terms ? C.arcane : C.muted,
+                  background: settings.terms ? `${C.arcane}14` : "transparent",
+                }}
+              >
+                {settings.terms ? "Attivo 📖" : "Spento"}
+              </button>
+            </div>
+          )}
           {isTablet() && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <span style={{ fontSize: 14.5, color: C.muted }}>Voltapagina animato</span>
