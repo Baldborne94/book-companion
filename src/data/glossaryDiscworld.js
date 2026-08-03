@@ -130,6 +130,15 @@ export default [
   { t: "Holy Wood", k: "luogo", d: "La collina dove per un breve, folle periodo si sono fatti i «quadri in movimento»: il cinema secondo il Mondo Disco." },
   { t: "Bes Pelargic", k: "luogo", d: "Il grande porto dell'Impero Agateo." },
 
+  // — parole che fanno inciampare
+  { t: "figgin", k: "concetto", d: "Compare in una minaccia truce («appeso per il suo figgin»), e suona come una parte del corpo. Una nota a piè di pagina rivela che è un piccolo dolcetto di pasta frolla con l'uvetta: la minaccia era di appendere il condannato per il suo pasticcino.", a: ["figgins"] },
+  { t: "knurd", k: "concetto", d: "«Drunk» scritto al contrario: lo stato che si raggiunge togliendosi di dosso più sobrietà del normale, di solito col caffè di Klatch. Si vede il mondo esattamente com'è, ed è un'esperienza terribile." },
+  { t: "Klatchian coffee", k: "concetto", d: "Il caffè di Klatch: talmente forte da rendere «knurd», cioè spaventosamente lucidi. Si beve accompagnato da qualcosa di alcolico per restare a galla." },
+  { t: "scumble", k: "concetto", d: "Il distillato di mele dei Monti Montuosi: fatto di mele, per lo più. Si beve in bicchierini piccolissimi e scioglie i cucchiai.", a: ["scumbled"] },
+  { t: "Wow-Wow Sauce", k: "concetto", d: "La salsa preferita di Vimes: una ricetta con senape, rafano e sostanze che di solito non entrano in cucina. Va maneggiata come un esplosivo, perché lo è." },
+  { t: "scorpion pit", k: "concetto", d: "La fossa degli scorpioni sotto il palazzo del Patrizio, evocata regolarmente nelle conversazioni con lui. Che esista davvero non è mai il punto." },
+  { t: "Quisition", k: "organizzazione", d: "L'inquisizione della Chiesa di Om a Omnia: si occupa di far confessare l'ortodossia, con strumenti che parlano da soli." },
+
   // — modi di dire ricorrenti
   { t: "million-to-one chance", k: "concetto", d: "Sul Disco le probabilità di uno su un milione riescono nove volte su dieci, purché siano esattamente di uno su un milione: la gente ci lavora sopra di calcolo.", a: ["million to one chance", "million-to-one chances"] },
   { t: "Vimes boots theory", k: "concetto", d: "La teoria degli stivali di Vimes: il povero compra stivali da dieci dollari che durano una stagione, il ricco ne compra un paio da cinquanta che dura anni. Essere poveri costa di più.", a: ["boots theory"] },

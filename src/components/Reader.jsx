@@ -47,9 +47,11 @@ const TAP_NEXT = 0.72;
 // oltre questa lunghezza la selezione e' un brano: il dizionario in rete non
 // ha nulla da dire e MyMemory restituirebbe una traduzione a macchina
 const NET_WORDS = 12;
-// il modo di dire va selezionato tutto, quindi il pulsante deve arrivare a
-// coprire una frase intera: fermarsi a tre parole lo rendeva inservibile
-const PHRASE_WORDS = 25;
+// la selezione da capire e' spesso un paragrafo intero — il parlato
+// biascicato si decifra tutto insieme, non parola per parola — quindi il
+// pulsante deve esserci anche li'. Fermarsi a poche parole lo rendeva
+// inservibile proprio nei casi difficili.
+const PHRASE_WORDS = 300;
 
 const isTouch = () => navigator.maxTouchPoints > 0;
 const isTablet = () =>

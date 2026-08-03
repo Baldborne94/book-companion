@@ -18,7 +18,7 @@ const TAP_PREV = 0.28;
 const TAP_NEXT = 0.72;
 // stessi limiti del reader EPUB per la scheda del significato
 const NET_WORDS = 12;
-const PHRASE_WORDS = 25;
+const PHRASE_WORDS = 300;
 
 const isTouch = () => navigator.maxTouchPoints > 0;
 

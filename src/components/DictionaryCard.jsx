@@ -7,6 +7,9 @@ export default function DictionaryCard({ dict, bottom, onClose }) {
   const [all, setAll] = useState(false);
   if (!dict) return null;
   const local = dict.gloss || dict.slang;
+  // le due voci in evidenza sono gia' scritte per esteso sopra: qui sotto
+  // vanno tutte le altre chiavi trovate nel brano
+  const rest = (dict.found || []).filter((e) => e !== dict.gloss && e !== dict.slang);
   const shown = local ? 1 : dict.translation ? 2 : 3;
 
   return (
@@ -77,6 +80,26 @@ export default function DictionaryCard({ dict, bottom, onClose }) {
           </div>
         )}
 
+        {!dict.gloss && dict.wikiSearch && (
+          <a
+            href={dict.wikiSearch.url}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: "inline-block",
+              marginBottom: 12,
+              fontSize: 13.5,
+              color: C.accent,
+              border: `1px solid ${C.accent}55`,
+              borderRadius: 999,
+              padding: "5px 12px",
+              textDecoration: "none",
+            }}
+          >
+            Cerca «{dict.wikiSearch.term}» sul wiki ↗
+          </a>
+        )}
+
         {dict.slang && (
           <div
             style={{
@@ -96,6 +119,35 @@ export default function DictionaryCard({ dict, bottom, onClose }) {
             <p style={{ fontSize: 15, color: C.text, lineHeight: 1.45, margin: 0 }}>
               {dict.slang.d}
             </p>
+          </div>
+        )}
+
+        {rest.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 6 }}>
+              Nel brano riconosco anche
+            </div>
+            {rest.slice(0, 12).map((e, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, marginBottom: 5, alignItems: "baseline" }}>
+                <span
+                  style={{
+                    flexShrink: 0,
+                    minWidth: 96,
+                    fontSize: 13.5,
+                    color: e.kind === "gloss" ? C.accent : C.text,
+                    fontWeight: 600,
+                  }}
+                >
+                  {e.t}
+                </span>
+                <span style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.4 }}>{e.d}</span>
+              </div>
+            ))}
+            {rest.length > 12 && (
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+                e altre {rest.length - 12} voci
+              </div>
+            )}
           </div>
         )}
 

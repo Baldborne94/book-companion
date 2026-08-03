@@ -48,31 +48,50 @@ function buildIndex(entries) {
   return { map, max };
 }
 
-// Le locuzioni si riconoscono dentro una frase lunga: e' esattamente il caso
-// d'uso, selezionare la frase e chiedere cosa vuol dire. Le parole singole
-// hanno due trappole: quelle segnate `c` hanno anche un senso comunissimo
-// («dead», «proper», «row») e scatterebbero ovunque, mentre i nomi propri
-// («Death», «Igor») vanno distinti dall'uso normale della stessa parola.
-function match(index, raw, { proper = false } = {}) {
+// La selezione si legge da sinistra a destra prendendo ogni volta il pezzo
+// piu' lungo che si riconosce e ripartendo da dopo: su un paragrafo intero
+// escono tutte le voci, in ordine di lettura e senza accavallarsi. Le parole
+// singole hanno due trappole: quelle segnate `c` hanno anche un senso
+// comunissimo («dead», «proper», «row») e scatterebbero ovunque, mentre i
+// nomi propri («Death», «Igor») vanno distinti dall'uso normale della stessa
+// parola, e a distinguerli e' la maiuscola nel testo.
+function scan(indexes, raw) {
   const words = norm(raw).split(" ").filter(Boolean);
-  if (!words.length || !index) return null;
-  for (let n = Math.min(index.max, words.length); n >= 2; n--) {
-    for (let i = 0; i + n <= words.length; i++) {
-      const hit = index.map.get(words.slice(i, i + n).join(" "));
-      if (hit) return hit;
-    }
-  }
+  const out = [];
+  const seen = new Set();
   const alone = words.length === 1;
-  for (const w of words) {
-    const hit = index.map.get(w);
-    if (!hit) continue;
-    // selezionata da sola non ci sono dubbi: e' quella che si sta chiedendo
-    if (alone) return hit;
-    if (hit.c) continue;
-    if (proper && /^[A-Z]/.test(hit.t) && !capitalized(raw, w)) continue;
-    return hit;
+  const longest = Math.max(1, ...indexes.map(([, ix]) => (ix ? ix.max : 1)));
+  let i = 0;
+  while (i < words.length) {
+    let hit = null;
+    let len = 0;
+    let kind = "";
+    for (let n = Math.min(longest, words.length - i); n >= 1 && !hit; n--) {
+      const key = words.slice(i, i + n).join(" ");
+      for (const [k, ix] of indexes) {
+        const e = ix?.map.get(key);
+        if (!e) continue;
+        if (n === 1 && !alone) {
+          if (e.c) continue;
+          if (k === "gloss" && /^[A-Z]/.test(e.t) && !capitalized(raw, key)) continue;
+        }
+        hit = e;
+        len = n;
+        kind = k;
+        break;
+      }
+    }
+    if (!hit) {
+      i += 1;
+      continue;
+    }
+    if (!seen.has(`${kind}:${hit.t}`)) {
+      seen.add(`${kind}:${hit.t}`);
+      out.push({ ...hit, kind });
+    }
+    i += len;
   }
-  return null;
+  return out;
 }
 
 const SAGA_HINTS = ["discworld", "disc world", "mondo disco", "mondo dei dischi"];
@@ -89,7 +108,7 @@ export function glossaryOf(book) {
 
 export const wikiUrl = (term) => WIKI_SEARCH + encodeURIComponent(term);
 
-const cache = { saga: new Map(), slang: null };
+const cache = { saga: new Map(), slang: null, spoken: null };
 
 async function sagaIndex(id) {
   if (!id) return null;
@@ -107,30 +126,50 @@ async function sagaIndex(id) {
   return cache.saga.get(id);
 }
 
-async function slangIndex() {
-  if (!cache.slang) {
-    cache.slang = (async () => {
+function lazyIndex(key, load) {
+  if (!cache[key]) {
+    cache[key] = (async () => {
       try {
-        const mod = await import("../data/slangEn.js");
-        return buildIndex(mod.default);
+        return buildIndex((await load()).default);
       } catch {
         return null;
       }
     })();
   }
-  return cache.slang;
+  return cache[key];
 }
 
-// Ritorna quel che di casa nostra si sa su una selezione: la voce della saga
-// (con il rimando al wiki) e il modo di dire. Possono esserci tutti e due.
+const slangIndex = () => lazyIndex("slang", () => import("../data/slangEn.js"));
+const spokenIndex = () => lazyIndex("spoken", () => import("../data/spokenEn.js"));
+
+// Ritorna quel che di casa nostra si sa su una selezione: `found` e' tutto
+// quello che si riconosce nell'ordine in cui si legge — su un paragrafo di
+// parlato biascicato sono le chiavi per rimetterlo in piedi — mentre `gloss`
+// e `slang` sono le due voci da mettere in evidenza nella scheda.
 export async function explain(raw, book) {
   const text = String(raw || "").trim();
-  if (!text) return { gloss: null, slang: null };
+  if (!text) return { gloss: null, slang: null, found: [] };
   const id = glossaryOf(book);
-  const [saga, slang] = await Promise.all([sagaIndex(id), slangIndex()]);
-  const gloss = match(saga, text, { proper: true });
+  const [saga, slang, spoken] = await Promise.all([sagaIndex(id), slangIndex(), spokenIndex()]);
+  const found = scan(
+    [
+      ["gloss", saga],
+      ["slang", slang],
+      ["spoken", spoken],
+    ],
+    text
+  ).map((e) => (e.kind === "gloss" ? { ...e, wiki: wikiUrl(e.t), saga: id } : e));
+  const gloss = found.find((e) => e.kind === "gloss") || null;
+  // Le voci scritte a mano non copriranno mai tutto un mondo intero: se il
+  // libro e' di una saga con un wiki e la selezione e' corta, la strada per
+  // il wiki si offre lo stesso. Meglio un tocco in piu' che un vicolo cieco
+  // su una parola che esiste solo li' dentro.
+  const parola = text.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+  const cercabile = id && !gloss && parola && parola.split(/\s+/).length <= 4;
   return {
-    gloss: gloss ? { ...gloss, wiki: wikiUrl(gloss.t), saga: id } : null,
-    slang: match(slang, text) || null,
+    gloss,
+    slang: found.find((e) => e.kind !== "gloss") || null,
+    found,
+    wikiSearch: cercabile ? { term: parola, url: wikiUrl(parola) } : null,
   };
 }
