@@ -264,12 +264,11 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     return () => window.removeEventListener("resize", onResize);
   }, [status, zoom, renderPage]);
 
-  // il riquadro cambia misura col mostrarsi delle barre: si ridisegna
   useEffect(() => {
     if (status !== "ready") return;
     const id = requestAnimationFrame(() => renderPage(live.current.page, zoom));
     return () => cancelAnimationFrame(id);
-  }, [chrome, status, zoom, renderPage]);
+  }, [status, zoom, renderPage]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -435,8 +434,11 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
           position: "absolute",
           left: edge,
           right: edge,
-          top: chrome ? 59 : edge,
-          bottom: chrome ? "calc(69px + env(safe-area-inset-bottom))" : edge,
+          // il foglio non cambia mai misura: le barre compaiono sopra la
+          // fascia sempre lasciata libera a testa e piede, cosi' la pagina
+          // non viene ridisegnata e non balla sotto le dita
+          top: 59,
+          bottom: "calc(69px + env(safe-area-inset-bottom))",
           overflow: "auto",
           display: "flex",
           alignItems: zoom > 1 ? "flex-start" : "center",
