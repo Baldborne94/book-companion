@@ -171,25 +171,28 @@ export async function explain(raw, book) {
   const text = String(raw || "").trim();
   if (!text) return { gloss: null, slang: null, found: [] };
   const id = glossaryOf(book);
-  const [saga, slang, spoken] = await Promise.all([sagaIndex(id), slangIndex(), spokenIndex()]);
+  const [saga, modi, parlato] = await Promise.all([sagaIndex(id), slangIndex(), spokenIndex()]);
   const found = scan(
     [
       ["gloss", saga],
-      ["slang", slang],
-      ["spoken", spoken],
+      ["slang", modi],
+      ["spoken", parlato],
     ],
     text
   ).map((e) => (e.kind === "gloss" ? { ...e, wiki: wikiUrl(e.t), saga: id } : e));
   const gloss = found.find((e) => e.kind === "gloss") || null;
+  const slang = found.find((e) => e.kind !== "gloss") || null;
   // Le voci scritte a mano non copriranno mai tutto un mondo intero: se il
   // libro e' di una saga con un wiki e la selezione e' corta, la strada per
   // il wiki si offre lo stesso. Meglio un tocco in piu' che un vicolo cieco
   // su una parola che esiste solo li' dentro.
   const parola = text.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
-  const cercabile = id && !gloss && parola && parola.split(/\s+/).length <= 4;
+  // il rimando al wiki e' un ripiego: se una risposta ce l'abbiamo, anche
+  // solo il modo di dire, non serve mandare nessuno altrove
+  const cercabile = id && !gloss && !slang && parola && parola.split(/\s+/).length <= 4;
   return {
     gloss,
-    slang: found.find((e) => e.kind !== "gloss") || null,
+    slang,
     found,
     wikiSearch: cercabile ? { term: parola, url: wikiUrl(parola) } : null,
   };

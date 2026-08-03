@@ -4,7 +4,7 @@ import { ensureLocalFile } from "../lib/sync.js";
 import { getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights } from "../lib/annotations.js";
 import { getProgress, setProgress, setStatus } from "../lib/library.js";
 import { HL_COLORS, loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
-import { lookup, wordCount, cleanWord } from "../lib/dictionary.js";
+import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
 import { explain } from "../lib/glossary.js";
 import { toPageRects, rectStyle, pageOf } from "../lib/pdfHighlights.js";
 import { searchPdf } from "../lib/pdfSearch.js";
@@ -371,7 +371,9 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
       setDict((d) => (d ? { ...d, loading: false } : d));
       return;
     }
-    const res = await lookup(word, langRef.current);
+    const res = await (wordCount(raw) > 1
+      ? lookupPhrase(raw, langRef.current)
+      : lookup(word, langRef.current));
     setDict({
       ...local,
       word: res.word || word,
@@ -380,6 +382,9 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
       translation: res.translation,
       foreign: res.foreign,
       offline: res.offline,
+      machine: res.machine,
+      idiom: res.idiom,
+      frase: wordCount(raw) > 1,
     });
   }
 
