@@ -152,9 +152,43 @@ export default function DictionaryCard({ dict, bottom, onClose }) {
         )}
 
         {dict.translation && (
-          <p style={{ fontSize: 16.5, color: C.accent, lineHeight: 1.4, margin: "0 0 10px" }}>
-            {dict.translation}
-          </p>
+          <>
+            {dict.machine && (
+              <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 2 }}>
+                traduzione automatica, solo per orientarsi
+              </div>
+            )}
+            <p
+              style={{
+                fontSize: dict.machine ? 15 : 16.5,
+                color: dict.machine ? C.text : C.accent,
+                lineHeight: 1.4,
+                margin: "0 0 10px",
+              }}
+            >
+              {dict.translation}
+            </p>
+          </>
+        )}
+
+        {!dict.loading && !local && !dict.idiom && !dict.entries.length && dict.word && (
+          <a
+            href={`https://www.google.com/search?q=${encodeURIComponent(`"${dict.word}" meaning`)}`}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: "inline-block",
+              marginBottom: 10,
+              fontSize: 13.5,
+              color: C.arcane,
+              border: `1px solid ${C.arcane}55`,
+              borderRadius: 999,
+              padding: "5px 12px",
+              textDecoration: "none",
+            }}
+          >
+            Cerca questa espressione ↗
+          </a>
         )}
 
         {dict.loading ? (
@@ -168,7 +202,9 @@ export default function DictionaryCard({ dict, bottom, onClose }) {
             <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.5 }}>
               {dict.offline
                 ? "Il dizionario ha bisogno della rete: riprova quando sei online."
-                : `Nessuna voce per «${dict.word}».`}
+                : dict.frase
+                  ? "Questo passaggio non è un modo di dire che conosco, e nemmeno Wiktionary ne ha una voce."
+                  : `Nessuna voce per «${dict.word}».`}
             </p>
           )
         ) : (

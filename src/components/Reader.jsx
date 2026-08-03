@@ -10,7 +10,7 @@ import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
 } from "../lib/readerSettings.js";
 import { searchBook } from "../lib/epubSearch.js";
-import { lookup, wordCount, cleanWord } from "../lib/dictionary.js";
+import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
 import { explain, termIndex, normalize, wikiUrl, glossaryOf } from "../lib/glossary.js";
 import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../lib/readingSpeed.js";
 import { leftoverScroll } from "../lib/spread.js";
@@ -728,7 +728,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       setDict((d) => (d ? { ...d, loading: false } : d));
       return;
     }
-    const res = await lookup(word, langRef.current);
+    const res = await (wordCount(raw) > 1
+      ? lookupPhrase(raw, langRef.current)
+      : lookup(word, langRef.current));
     setDict({
       ...local,
       word: res.word || word,
@@ -737,6 +739,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       translation: res.translation,
       foreign: res.foreign,
       offline: res.offline,
+      machine: res.machine,
+      idiom: res.idiom,
+      frase: wordCount(raw) > 1,
     });
   }
 
