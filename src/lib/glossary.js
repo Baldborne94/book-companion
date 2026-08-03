@@ -57,6 +57,14 @@ function buildIndex(entries) {
 // comunissimo («dead», «proper», «row») e scatterebbero ovunque, mentre i
 // nomi propri («Death», «Igor») vanno distinti dall'uso normale della stessa
 // parola, e a distinguerli e' la maiuscola nel testo.
+// Nei verbi separabili il complemento sta in mezzo: «egg them on» e' «egg
+// on» con «them» incastrato. Elencare un alias per ogni pronome e per ogni
+// forma del verbo non scala, quindi la regola sta qui una volta sola.
+const OGGETTI = new Set([
+  "them", "him", "her", "me", "us", "you", "it", "'em", "em", "himself",
+  "herself", "themselves", "myself", "yourself", "ourselves", "one",
+]);
+
 function scan(indexes, raw) {
   const words = norm(raw).split(" ").filter(Boolean);
   const out = [];
@@ -69,18 +77,23 @@ function scan(indexes, raw) {
     let len = 0;
     let kind = "";
     for (let n = Math.min(longest, words.length - i); n >= 1 && !hit; n--) {
-      const key = words.slice(i, i + n).join(" ");
-      for (const [k, ix] of indexes) {
-        const e = ix?.map.get(key);
-        if (!e) continue;
-        if (n === 1 && !alone) {
-          if (e.c) continue;
-          if (k === "gloss" && /^[A-Z]/.test(e.t) && !capitalized(raw, key)) continue;
+      const finestra = words.slice(i, i + n);
+      const chiavi = [finestra.join(" ")];
+      if (n === 3 && OGGETTI.has(finestra[1])) chiavi.push(`${finestra[0]} ${finestra[2]}`);
+      for (const key of chiavi) {
+        for (const [k, ix] of indexes) {
+          const e = ix?.map.get(key);
+          if (!e) continue;
+          if (n === 1 && !alone) {
+            if (e.c) continue;
+            if (k === "gloss" && /^[A-Z]/.test(e.t) && !capitalized(raw, key)) continue;
+          }
+          hit = e;
+          len = n;
+          kind = k;
+          break;
         }
-        hit = e;
-        len = n;
-        kind = k;
-        break;
+        if (hit) break;
       }
     }
     if (!hit) {

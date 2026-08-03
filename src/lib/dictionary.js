@@ -213,6 +213,23 @@ const LEMMI = {
   was: "be", were: "be", been: "be", being: "be", is: "be", are: "be",
 };
 
+// I verbi separabili sono il caso che le finestre contigue non prendono mai:
+// nel libro c'e' «egg them on», il dizionario la indicizza come «egg on». Il
+// complemento in mezzo va tolto, o l'idioma resta invisibile — ed e' successo
+// davvero, con «at all» che vinceva per mancanza di avversari.
+const OGGETTI = new Set([
+  "them", "him", "her", "me", "us", "you", "it", "'em", "em", "himself",
+  "herself", "themselves", "myself", "yourself", "ourselves", "one",
+]);
+
+// Locuzioni cosi' comuni che spiegarle non aiuta nessuno: se restano loro
+// sole a vincere, la scheda risponde a una domanda che non era stata fatta.
+const TROPPO_COMUNI = new Set([
+  "at all", "of course", "as well", "in fact", "a lot", "a lot of", "sort of",
+  "kind of", "and so on", "at last", "at once", "as if", "as though",
+  "no one", "each other", "one another", "so that", "such as", "up to",
+]);
+
 // «out of the» non e' un modo di dire di niente: le finestre che finiscono
 // con una parola vuota si scartano prima di sprecarci una richiesta
 const VUOTE = new Set([
@@ -242,9 +259,14 @@ function subPhrases(words) {
       aggiungi(f.join(" "));
       const base = LEMMI[f[0]];
       if (base) aggiungi([base, ...f.slice(1)].join(" "));
+      // verbo separabile: «egg them on» → «egg on», «egg on» all'infinito
+      if (n === 3 && OGGETTI.has(f[1])) {
+        aggiungi(`${f[0]} ${f[2]}`);
+        if (base) aggiungi(`${base} ${f[2]}`);
+      }
     }
   }
-  return out;
+  return out.filter((t) => !TROPPO_COMUNI.has(t));
 }
 
 // Quali di questi titoli esistono davvero su Wiktionary: una domanda sola per

@@ -74,6 +74,23 @@ export default [
   { t: "on about", a: ["what are you on about"], d: "«Ma di che parli?»: si dice a chi farnetica o non si capisce." },
   { t: "make a right pig's ear", a: ["pig's ear", "pigs ear"], d: "Fare un lavoro pessimo, combinare un disastro." },
   { t: "not a sausage", a: [], d: "Niente di niente, nemmeno una briciola." },
+  // — verbi separabili: nel testo il complemento sta in mezzo («egg them
+  //   on»), e un dizionario che indicizza «egg on» non li trova mai
+  { t: "egg on", a: ["egging on", "egged on", "eggs on"], d: "Incitare, istigare: spingere qualcuno a fare una cosa avventata, di solito standosene da parte a guardare." },
+  { t: "wind up", a: ["winding up", "wound up", "winds up", "a wind-up"], d: "Prendere in giro qualcuno per farlo innervosire, punzecchiarlo; «a wind-up» è una presa in giro." },
+  { t: "tell off", a: ["telling off", "told off", "tells off", "ticking off", "ticked off"], d: "Fare una lavata di capo, sgridare di brutto." },
+  { t: "put off", a: ["putting off", "puts off"], d: "Scoraggiare, far passare la voglia a qualcuno; oppure rimandare qualcosa." },
+  { t: "take in", a: ["took in", "taken in", "taking in", "takes in"], d: "Ingannare, gabbare («he was taken in»); oppure accogliere in casa, o assorbire un'informazione." },
+  { t: "do in", a: ["did in", "done in", "doing in"], d: "Far fuori qualcuno; «done in» detto di sé vuol dire stremato." },
+  { t: "show up", a: ["showed up", "showing up", "shows up"], d: "Presentarsi, farsi vivo; ma «show someone up» è metterlo in imbarazzo davanti agli altri." },
+  { t: "own up", a: ["owned up", "owning up"], d: "Ammettere una colpa, confessare." },
+  { t: "let on", a: ["letting on", "let them on"], d: "Lasciar trapelare, far capire di sapere qualcosa." },
+  { t: "get on with", a: ["gets on with", "getting on with"], d: "Andare d'accordo con qualcuno; oppure sbrigarsi a fare una cosa." },
+  { t: "put up with", a: ["puts up with", "putting up with", "put up with it"], d: "Sopportare, mandare giù senza protestare." },
+  { t: "make out", a: ["made out", "making out"], d: "Distinguere a fatica («I could just make out the door»); oppure sostenere, dare a intendere." },
+  { t: "carry on", a: ["carried on", "carrying on"], d: "Andare avanti, continuare; ma «carrying on» può anche voler dire fare storie o darsi da fare in modo scomposto." },
+  { t: "have egg on your face", a: ["egg on his face", "egg on her face", "egg on my face"], d: "Fare una figuraccia: restare con la faccia da scemo dopo che una cosa è andata storta o si è stati smentiti." },
+
   { t: "every man jack", a: ["not a man jack", "man jack", "every man jack of them", "not a man jack of em"], d: "«Ogni singolo uomo», tutti quanti nessuno escluso; in negativo, «non uno di loro». Espressione vecchio stile, da caserma o da taverna." },
   { t: "of 'em", a: ["of em"], d: "«Of them»: la contrazione parlata di «di loro», «di quelli»." },
   { t: "sworn the oath", a: ["swear the oath", "swore the oath"], d: "Aver prestato giuramento, di solito entrando in una confraternita o in un corpo armato." },

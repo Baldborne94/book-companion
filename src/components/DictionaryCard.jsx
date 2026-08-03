@@ -1,10 +1,47 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
+import { consultaOracolo, hasOracle, setOracleKey } from "../lib/oracle.js";
 
 // La scheda del dizionario e' identica nei due reader: qui una volta sola,
 // cosi' EPUB e PDF non divergono.
-export default function DictionaryCard({ dict, bottom, onClose }) {
+export default function DictionaryCard({ dict, book, bottom, onClose }) {
   const [all, setAll] = useState(false);
+  // {loading} | {answer} | {error}; la chiave si chiede qui dentro, dove
+  // l'Oracolo si usa, non in un pannello di impostazioni da scoprire
+  const [oracolo, setOracolo] = useState(null);
+  const [keyOpen, setKeyOpen] = useState(false);
+  const [keyDraft, setKeyDraft] = useState("");
+  // la scheda resta montata tra una selezione e l'altra: la risposta della
+  // frase di prima non deve comparire sotto la frase nuova
+  const tagRef = useRef();
+  const tag = dict ? `${dict.raw || ""}|${dict.word || ""}` : "";
+  if (tagRef.current !== tag) {
+    tagRef.current = tag;
+    if (oracolo) setOracolo(null);
+    if (keyOpen) setKeyOpen(false);
+    if (all) setAll(false);
+  }
+
+  async function chiedi() {
+    setOracolo({ loading: true });
+    const mio = tag;
+    const res = await consultaOracolo({
+      text: dict.raw?.trim() || dict.word,
+      context: dict.context,
+      book,
+    });
+    if (tagRef.current === mio) setOracolo(res);
+  }
+
+  function salvaChiave() {
+    const k = keyDraft.trim();
+    if (!k) return;
+    setOracleKey(k);
+    setKeyDraft("");
+    setKeyOpen(false);
+    chiedi();
+  }
+
   if (!dict) return null;
   // Chi seleziona UNA FRASE sta chiedendo cosa vuol dire quella frase: in
   // cima ci va il modo di dire, non il nome proprio che capita di trovarci
@@ -97,7 +134,12 @@ export default function DictionaryCard({ dict, bottom, onClose }) {
           </div>
         )}
 
-        {!primaria && dict.wikiSearch && (
+        {/* Il rimando al wiki della saga solo se la parola NON esiste in
+            inglese: se Wiktionary ha una voce, e' una parola comune e sul
+            wiki del Mondo Disco non ci sara' nulla. Vale anche per la sola
+            traduzione: se MyMemory sa renderla, e' inglese. Offrirlo a ogni
+            parola sconosciuta voleva dire offrirlo quasi sempre a vuoto. */}
+        {!primaria && dict.wikiSearch && !dict.loading && !dict.entries.length && !dict.translation && (
           <a
             href={dict.wikiSearch.url}
             target="_blank"
@@ -201,7 +243,7 @@ export default function DictionaryCard({ dict, bottom, onClose }) {
           </>
         )}
 
-        {!dict.loading && !local && !dict.idiom && !dict.entries.length && dict.word && (
+        {!dict.loading && !local && !dict.idiom && !dict.entries.length && dict.word && !dict.wikiSearch && (
           <a
             href={`https://www.google.com/search?q=${encodeURIComponent(`"${dict.word}" meaning`)}`}
             target="_blank"
@@ -264,6 +306,94 @@ export default function DictionaryCard({ dict, bottom, onClose }) {
               </button>
             )}
           </>
+        )}
+
+        {/* L'Oracolo: glossario e dizionario spiegano parole e modi di dire,
+            ma il senso di una battuta sta nel paragrafo. Si offre sempre,
+            anche quando una risposta di casa c'e' gia'. */}
+        {(dict.raw || dict.word) && !dict.loading && (
+          <div style={{ marginTop: 10, paddingTop: 11, borderTop: `1px solid ${C.border}66` }}>
+            {oracolo?.answer ? (
+              <>
+                <div style={{ fontSize: 11.5, color: C.arcane, marginBottom: 4 }}>✨ L'Oracolo dice</div>
+                <p style={{ fontSize: 15, color: C.text, lineHeight: 1.5, margin: 0 }}>{oracolo.answer}</p>
+              </>
+            ) : oracolo?.loading ? (
+              <p style={{ fontSize: 13.5, color: C.muted, margin: 0 }}>✨ L'Oracolo sta leggendo il passaggio…</p>
+            ) : oracolo?.error === "chiave" ? (
+              <div>
+                <p style={{ fontSize: 13.5, color: C.muted, margin: "0 0 8px" }}>
+                  L'Oracolo non ha accettato la chiave.
+                </p>
+                <button
+                  onClick={() => { setOracolo(null); setKeyOpen(true); }}
+                  style={{ fontSize: 13.5, color: C.arcane, border: `1px solid ${C.arcane}55`, borderRadius: 999, padding: "5px 12px" }}
+                >
+                  Cambia chiave
+                </button>
+              </div>
+            ) : oracolo?.error ? (
+              <div>
+                <p style={{ fontSize: 13.5, color: C.muted, margin: "0 0 8px" }}>
+                  {oracolo.error === "rete"
+                    ? "L'Oracolo ha bisogno della rete: riprova quando sei online."
+                    : "L'Oracolo non ha risposto: riprova tra un momento."}
+                </p>
+                <button
+                  onClick={chiedi}
+                  style={{ fontSize: 13.5, color: C.arcane, border: `1px solid ${C.arcane}55`, borderRadius: 999, padding: "5px 12px" }}
+                >
+                  Riprova
+                </button>
+              </div>
+            ) : keyOpen ? (
+              <div>
+                <p style={{ fontSize: 13, color: C.muted, margin: "0 0 8px", lineHeight: 1.45 }}>
+                  Serve una chiave API di Anthropic (console.anthropic.com). Resta solo su questo
+                  dispositivo e paghi solo quel che chiedi.
+                </p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    type="password"
+                    value={keyDraft}
+                    onChange={(e) => setKeyDraft(e.target.value)}
+                    placeholder="sk-ant-…"
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      background: "transparent",
+                      border: `1px solid ${C.border}`,
+                      borderRadius: 8,
+                      padding: "7px 10px",
+                      fontSize: 14,
+                      color: C.text,
+                    }}
+                  />
+                  <button
+                    onClick={salvaChiave}
+                    style={{ flexShrink: 0, fontSize: 13.5, color: C.arcane, border: `1px solid ${C.arcane}55`, borderRadius: 999, padding: "5px 12px" }}
+                  >
+                    Salva e chiedi
+                  </button>
+                </div>
+              </div>
+            ) : hasOracle() ? (
+              <button
+                onClick={chiedi}
+                style={{ fontSize: 13.5, color: C.arcane, border: `1px solid ${C.arcane}55`, borderRadius: 999, padding: "5px 12px" }}
+              >
+                ✨ Spiegami questo passaggio
+              </button>
+            ) : (
+              <button
+                onClick={() => setKeyOpen(true)}
+                style={{ fontSize: 12.5, color: C.muted, textAlign: "left", padding: 0, lineHeight: 1.45 }}
+              >
+                ✨ L'Oracolo può spiegarti cosa vuol dire qui, nel contesto del libro — serve una
+                chiave API, tocca per impostarla
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>
