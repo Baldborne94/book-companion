@@ -21,6 +21,12 @@ const EDGE_MIN = 3;
 const EDGE_MAX = 17;
 // la rilegatura visibile attorno alla carta
 const FRAME = 6;
+// Testa e piede della carta: spazio riservato una volta per tutte alle barre,
+// che compaiono sopra senza mai cambiare la misura della pagina. Restringere
+// il libro le farebbe reimpaginare a epub.js, e con la nuova impaginazione si
+// sposterebbe tutto — punto di lettura, segnalibri, evidenziazioni.
+const HEAD = 53;
+const FOOT = 63;
 const EDGE_STRIPES =
   "repeating-linear-gradient(to right, #00000047 0 1px, #ffffff1f 1px 2px, #0000001c 2px 4px)";
 
@@ -192,14 +198,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
   const anchor = useRef(null);
   const reflowing = useRef(false);
-  const chromeSeen = useRef(chrome);
+  const reflowTimer = useRef(null);
 
-  // Il contenitore cambia misura col mostrarsi delle barre e epub.js
-  // reimpagina: la pagina va ridata. Lasciandolo ripartire dal CFI corrente
-  // si arretrava di mezza pagina ogni volta (epub.js allinea sempre
-  // all'inizio della pagina che contiene il CFI, e l'arretramento si
-  // sommava a ogni scambio). Si riparte invece dall'ultima pagina scelta
-  // dal lettore: mostrare e nascondere le barre riporta esattamente li'.
+  // Le barre non toccano piu' la misura del libro, ma cambiare margine
+  // reimpagina lo stesso. Lasciando ripartire epub.js dal CFI corrente si
+  // arretrava di mezza pagina ogni volta, perche' allinea sempre all'inizio
+  // della pagina che lo contiene: si riparte invece dall'ultima pagina
+  // scelta dal lettore, che non si sposta da sola.
   const relayout = useCallback((cfi) => {
     const r = rendRef.current;
     if (cfi) reflowing.current = true;
@@ -209,22 +214,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     } catch {
       window.dispatchEvent(new Event("resize"));
     }
-  }, []);
-
-  useEffect(() => {
-    if (status !== "ready") return;
-    const changed = chromeSeen.current !== chrome;
-    chromeSeen.current = chrome;
-    const cfi = changed ? anchor.current || live.current.cfi : null;
-    const id = requestAnimationFrame(() => relayout(cfi));
     // se la misura non cambia epub.js non riposiziona nulla e "relocated"
     // non arriva: la bandiera va tolta comunque
-    const guard = setTimeout(() => { reflowing.current = false; }, 1500);
-    return () => {
-      cancelAnimationFrame(id);
-      clearTimeout(guard);
-    };
-  }, [chrome, status, relayout]);
+    clearTimeout(reflowTimer.current);
+    reflowTimer.current = setTimeout(() => { reflowing.current = false; }, 1500);
+  }, []);
+
   const samplesRef = useRef(loadSamples());
   const lastTurnAt = useRef(0);
   const langRef = useRef("en");
@@ -421,6 +416,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       clearTimeout(saveTimer.current);
       clearTimeout(swapTimer.current);
       clearTimeout(turnTimer.current);
+      clearTimeout(reflowTimer.current);
       flush();
       try { rendRef.current?.destroy(); } catch { /* già distrutto */ }
       try { epubRef.current?.destroy(); } catch { /* già distrutto */ }
@@ -665,10 +661,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           position: "absolute",
           left: "clamp(3px, 0.9vw, 10px)",
           right: "clamp(3px, 0.9vw, 10px)",
-          // a barre visibili il libro sta fra le due, mai sotto: era il
-          // fondo pagina "tagliato" dalla barra di avanzamento
-          top: chrome ? 59 : "clamp(3px, 0.9vw, 10px)",
-          bottom: chrome ? "calc(69px + env(safe-area-inset-bottom))" : "clamp(3px, 0.9vw, 10px)",
+          // il libro non si muove mai: le barre vanno e vengono sopra i
+          // margini di testa e piede, che restano vuoti apposta
+          top: "clamp(3px, 0.9vw, 10px)",
+          bottom: "clamp(3px, 0.9vw, 10px)",
           borderRadius: 12,
           background: theme.cover || theme.bg,
           border: "1px solid #00000066",
@@ -683,7 +679,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           style={{
             position: "absolute",
             inset: FRAME,
-            padding: `4px ${Math.max(settings.margin, EDGE_MAX + 8)}px`,
+            padding: `${HEAD}px ${Math.max(settings.margin, EDGE_MAX + 8)}px calc(${FOOT}px + env(safe-area-inset-bottom))`,
             boxSizing: "border-box",
             borderRadius: 3,
             // la carta arriva fino al bordo interno della rilegatura: senza,
