@@ -97,7 +97,12 @@ export default function DictionaryCard({ dict, bottom, onClose }) {
           </div>
         )}
 
-        {!primaria && dict.wikiSearch && (
+        {/* Il rimando al wiki della saga solo se la parola NON esiste in
+            inglese: se Wiktionary ha una voce, e' una parola comune e sul
+            wiki del Mondo Disco non ci sara' nulla. Vale anche per la sola
+            traduzione: se MyMemory sa renderla, e' inglese. Offrirlo a ogni
+            parola sconosciuta voleva dire offrirlo quasi sempre a vuoto. */}
+        {!primaria && dict.wikiSearch && !dict.loading && !dict.entries.length && !dict.translation && (
           <a
             href={dict.wikiSearch.url}
             target="_blank"
@@ -201,7 +206,7 @@ export default function DictionaryCard({ dict, bottom, onClose }) {
           </>
         )}
 
-        {!dict.loading && !local && !dict.idiom && !dict.entries.length && dict.word && (
+        {!dict.loading && !local && !dict.idiom && !dict.entries.length && dict.word && !dict.wikiSearch && (
           <a
             href={`https://www.google.com/search?q=${encodeURIComponent(`"${dict.word}" meaning`)}`}
             target="_blank"
