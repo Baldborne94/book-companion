@@ -6,11 +6,23 @@ import { C, FONT_TITLE } from "../data/constants.js";
 export default function DictionaryCard({ dict, bottom, onClose }) {
   const [all, setAll] = useState(false);
   if (!dict) return null;
-  const local = dict.gloss || dict.slang;
-  // le due voci in evidenza sono gia' scritte per esteso sopra: qui sotto
-  // vanno tutte le altre chiavi trovate nel brano
-  const rest = (dict.found || []).filter((e) => e.t !== dict.gloss?.t && e.t !== dict.slang?.t);
+  // Chi seleziona UNA FRASE sta chiedendo cosa vuol dire quella frase: in
+  // cima ci va il modo di dire, non il nome proprio che capita di trovarci
+  // dentro. Chiedere il senso di un periodo e vedersi rispondere con la voce
+  // di un termine appena cercato e' l'errore piu' irritante che questa
+  // scheda possa fare, e lo faceva.
+  // Se nella frase c'e' piu' di una cosa da spiegare, sceglierne una sola da
+  // mettere in cima e' arbitrario: la prima in ordine di lettura non e' per
+  // forza quella che non si capiva. Si elencano tutte, in ordine di lettura.
+  const tutte = dict.found || [];
+  const elenco = dict.frase && tutte.length > 1;
+  const primaria = elenco ? null : dict.frase ? dict.slang || dict.gloss : dict.gloss || dict.slang;
+  const secondaria = elenco || primaria !== dict.gloss ? (elenco ? null : dict.gloss) : dict.slang;
+  const local = primaria || secondaria || elenco;
+  const rest = elenco ? tutte : tutte.filter((e) => e.t !== primaria?.t && e.t !== secondaria?.t);
   const shown = local ? 1 : dict.translation ? 2 : 3;
+  const testo = dict.raw?.trim() || dict.word || "";
+  const titolo = primaria?.t || (testo.length > 44 ? `${testo.slice(0, 44)}…` : testo);
 
   return (
     <div
@@ -42,9 +54,12 @@ export default function DictionaryCard({ dict, bottom, onClose }) {
       >
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
           <span style={{ fontFamily: FONT_TITLE, fontSize: 21, fontWeight: 600, color: C.text }}>
-            {dict.gloss?.t || dict.word}
+            {titolo}
           </span>
-          {dict.gloss && <span style={{ fontSize: 11.5, color: C.arcane }}>{dict.gloss.k}</span>}
+          {primaria?.k && <span style={{ fontSize: 11.5, color: C.arcane }}>{primaria.k}</span>}
+          {primaria?.r && (
+            <span style={{ fontSize: 11.5, color: C.muted, fontStyle: "italic" }}>{primaria.r}</span>
+          )}
           {!dict.gloss && dict.foreign && (
             <span style={{ fontSize: 11.5, color: C.muted }}>in lingua originale</span>
           )}
@@ -53,13 +68,14 @@ export default function DictionaryCard({ dict, bottom, onClose }) {
           </button>
         </div>
 
-        {dict.gloss && (
+        {primaria && (
           <div style={{ marginBottom: 12 }}>
             <p style={{ fontSize: 15.5, color: C.text, lineHeight: 1.5, margin: "0 0 8px" }}>
-              {dict.gloss.d}
+              {primaria.d}
             </p>
+            {primaria.wiki && (
             <a
-              href={dict.gloss.wiki}
+              href={primaria.wiki}
               target="_blank"
               rel="noreferrer"
               style={{
@@ -74,13 +90,14 @@ export default function DictionaryCard({ dict, bottom, onClose }) {
             >
               Apri sul wiki ↗
             </a>
-            <span style={{ fontSize: 11.5, color: C.muted, marginLeft: 9 }}>
-              di là si spoilera
-            </span>
+            )}
+            {primaria.wiki && (
+              <span style={{ fontSize: 11.5, color: C.muted, marginLeft: 9 }}>di là si spoilera</span>
+            )}
           </div>
         )}
 
-        {!dict.gloss && dict.wikiSearch && (
+        {!primaria && dict.wikiSearch && (
           <a
             href={dict.wikiSearch.url}
             target="_blank"
@@ -100,7 +117,7 @@ export default function DictionaryCard({ dict, bottom, onClose }) {
           </a>
         )}
 
-        {dict.slang && (
+        {secondaria && (
           <div
             style={{
               marginBottom: 12,
@@ -109,37 +126,50 @@ export default function DictionaryCard({ dict, bottom, onClose }) {
             }}
           >
             <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 3 }}>
-              <span style={{ fontSize: 14.5, color: C.text, fontWeight: 600 }}>{dict.slang.t}</span>
-              {dict.slang.r && (
+              <span style={{ fontSize: 14.5, color: C.text, fontWeight: 600 }}>{secondaria.t}</span>
+              {(secondaria.r || secondaria.k) && (
                 <span style={{ fontSize: 11.5, color: C.muted, fontStyle: "italic" }}>
-                  {dict.slang.r}
+                  {secondaria.r || secondaria.k}
                 </span>
               )}
             </div>
             <p style={{ fontSize: 15, color: C.text, lineHeight: 1.45, margin: 0 }}>
-              {dict.slang.d}
+              {secondaria.d}
             </p>
+            {secondaria.wiki && (
+              <a
+                href={secondaria.wiki}
+                target="_blank"
+                rel="noreferrer"
+                style={{ display: "inline-block", marginTop: 6, fontSize: 12.5, color: C.accent, textDecoration: "none" }}
+              >
+                Apri sul wiki ↗
+              </a>
+            )}
           </div>
         )}
 
         {rest.length > 0 && (
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 6 }}>
-              Nel brano riconosco anche
+              {elenco ? "In questa frase riconosco" : "Nel brano riconosco anche"}
             </div>
             {rest.slice(0, 12).map((e, i) => (
               <div key={i} style={{ display: "flex", gap: 8, marginBottom: 5, alignItems: "baseline" }}>
-                <span
-                  style={{
-                    flexShrink: 0,
-                    minWidth: 96,
-                    fontSize: 13.5,
-                    color: e.kind === "gloss" ? C.accent : C.text,
-                    fontWeight: 600,
-                  }}
-                >
-                  {e.t}
-                </span>
+                {e.wiki ? (
+                  <a
+                    href={e.wiki}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ flexShrink: 0, minWidth: 96, fontSize: 13.5, color: C.accent, fontWeight: 600, textDecoration: "none" }}
+                  >
+                    {e.t} ↗
+                  </a>
+                ) : (
+                  <span style={{ flexShrink: 0, minWidth: 96, fontSize: 13.5, color: C.text, fontWeight: 600 }}>
+                    {e.t}
+                  </span>
+                )}
                 <span style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.4 }}>{e.d}</span>
               </div>
             ))}

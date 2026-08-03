@@ -50,9 +50,11 @@ const TAP_PREV = 0.28;
 const TAP_NEXT = 0.72;
 // tetto ai segni per capitolo: la pagina resta una pagina, non un elenco
 const MARKS_PER_CHAPTER = 60;
-// oltre questa lunghezza la selezione e' un brano: il dizionario in rete non
-// ha nulla da dire e MyMemory restituirebbe una traduzione a macchina
-const NET_WORDS = 12;
+// Oltre questa lunghezza la selezione non e' piu' una frase ma un brano, e
+// cercarci dentro un modo di dire non ha senso. Il tetto era 12 quando ogni
+// sotto-frase costava una richiesta: ora ne basta una per tutte, quindi una
+// frase lunga com'e' quella vera di un romanzo ci sta dentro.
+const NET_WORDS = 30;
 // la selezione da capire e' spesso un paragrafo intero — il parlato
 // biascicato si decifra tutto insieme, non parola per parola — quindi il
 // pulsante deve esserci anche li'. Fermarsi a poche parole lo rendeva
@@ -724,7 +726,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const word = cleanWord(raw);
     if (!word) return;
     setSelMenu(null);
-    setDict({ word, loading: true, entries: [] });
+    setDict({ word, raw, loading: true, entries: [] });
     setPanel("dict");
     const local = await explain(raw, book);
     setDict((d) => (d ? { ...d, ...local } : d));
@@ -738,6 +740,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     setDict({
       ...local,
       word: res.word || word,
+      raw,
       loading: false,
       entries: res.entries,
       translation: res.translation,
