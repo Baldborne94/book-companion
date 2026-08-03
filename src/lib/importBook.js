@@ -1,4 +1,5 @@
 import { putFile, putCover } from "./bookStore.js";
+import { riconosci } from "./sagaBooks.js";
 
 export async function importFiles(fileList) {
   const added = [];
@@ -32,6 +33,13 @@ export async function importFiles(fileList) {
       else await enrichPdf(meta, file);
     } catch {
       /* estrazione fallita: il libro resta col filename come titolo */
+    }
+    // saga e numero d'ordine dal titolo, senza chiederli a mano: e' quello
+    // che accende il glossario e fa funzionare il «prossimo della saga»
+    const saga = riconosci({ title: meta.title, author: meta.author, fileName: file.name });
+    if (saga) {
+      meta.saga = saga.saga;
+      if (saga.sagaOrder != null) meta.sagaOrder = saga.sagaOrder;
     }
     added.push(meta);
   }
