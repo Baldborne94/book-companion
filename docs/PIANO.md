@@ -136,6 +136,13 @@ Local-first con specchio cloud: l'app funziona identica senza configurazione; co
 - **Merge**: last-write-wins per libro via `bc_upd_<id>` (touch su ogni progresso/stato/annotazione/musica); cancellazioni con lapidi `bc_tombs` che rimuovono anche i file dal bucket; prefs con timestamp `bc_prefs_upd`. Logica pura e testabile in `lib/syncCore.js` (`planSync`/`mergePrefs`).
 - **Trigger**: all'avvio, al ritorno in foreground, al ritorno online, dopo import/eliminazione e alla chiusura del reader (il progresso vola subito sul cloud).
 
+### Fase G — Compagno di lettura in lingua originale (G1 ✅)
+
+Chi legge in inglese inciampa in due cose che il dizionario non copre: i nomi propri di una saga e i modi di dire. Il glossario è **dati nostri**, non una fonte da interrogare: risponde prima della rete e anche senza.
+- **G1 ✅** — Voci curate in italiano caricate lazy: `data/glossaryDiscworld.js` (Mondo Disco, senza spoiler, con rimando al wiki) e `data/slangEn.js` (slang britannico, col significato e non la traduzione letterale). Motore in `lib/glossary.js`: indice normalizzato, riconoscimento della locuzione **dentro** una frase selezionata, parole comuni (`c: 1`) solo se selezionate da sole, nomi propri solo se maiuscoli nel testo. Il libro si lega al glossario dall'autore o dalla saga (`glossaryOf`). La scheda condivisa mostra voce + "Apri sul wiki", e il pulsante della selezione arriva a coprire una frase intera.
+- **G2** (da fare) — Segnare i termini nel testo alla prima occorrenza per capitolo, con le annotazioni di epub.js (sovrapposte, mai nel DOM: i CFI salvati devono restare validi) e un interruttore nelle impostazioni.
+- **G3** (da valutare) — Estratto del wiki dal vivo via API MediaWiki, con ripiego sulla voce locale quando la rete o il CORS non collaborano.
+
 ### Dopo (fuori scope, non iniziare): statistiche di lettura, obiettivi, i18n EN, suite E2E Playwright (riusare l'harness di wh-companion), eventuale wrap TWA/Capacitor per APK (audio a schermo spento, "Apri con" per EPUB).
 
 ## 5. Ordine e granularità
@@ -171,4 +178,4 @@ Su wh-companion l'embed Spotify dava problemi: il controllo `postMessage` dell'i
 
 A ogni fase completata, spunta qui lo stato (✅) così le sessioni successive sanno dove siamo.
 
-Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ · F-sync ✅ — milestone completa 🎉
+Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ · F-sync ✅ · G1-glossario ✅ — milestone completa 🎉

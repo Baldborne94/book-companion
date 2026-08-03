@@ -5,6 +5,7 @@ import { getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights } fr
 import { getProgress, setProgress, setStatus } from "../lib/library.js";
 import { HL_COLORS, loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
 import { lookup, wordCount, cleanWord } from "../lib/dictionary.js";
+import { explain } from "../lib/glossary.js";
 import { toPageRects, rectStyle, pageOf } from "../lib/pdfHighlights.js";
 import { searchPdf } from "../lib/pdfSearch.js";
 import BookCover from "./BookCover.jsx";
@@ -15,6 +16,9 @@ import HighlightList from "./HighlightList.jsx";
 // margine attorno alla pagina volta, non solo il foglio
 const TAP_PREV = 0.28;
 const TAP_NEXT = 0.72;
+// stessi limiti del reader EPUB per la scheda del significato
+const NET_WORDS = 12;
+const PHRASE_WORDS = 25;
 
 const isTouch = () => navigator.maxTouchPoints > 0;
 
@@ -352,14 +356,24 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     }
   }
 
+  // come nel reader EPUB: prima il glossario di casa, che risponde anche
+  // offline, poi il dizionario in rete se la selezione e' corta abbastanza
   async function defineSelection() {
-    const word = cleanWord(sel?.text);
+    const raw = sel?.text || "";
+    const word = cleanWord(raw);
     if (!word) return;
     setSel(null);
     setDict({ word, loading: true, entries: [] });
     setPanel("dict");
+    const local = await explain(raw, book);
+    setDict((d) => (d ? { ...d, ...local } : d));
+    if (wordCount(raw) > NET_WORDS) {
+      setDict((d) => (d ? { ...d, loading: false } : d));
+      return;
+    }
     const res = await lookup(word, langRef.current);
     setDict({
+      ...local,
       word: res.word || word,
       loading: false,
       entries: res.entries,
@@ -593,7 +607,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                 }}
               />
             ))}
-          {wordCount(sel.text) <= 3 && (
+          {wordCount(sel.text) <= PHRASE_WORDS && (
             <button
               onClick={defineSelection}
               style={{
@@ -606,7 +620,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                 whiteSpace: "nowrap",
               }}
             >
-              📖 Definisci
+              {wordCount(sel.text) > 1 ? "🔎 Significato" : "📖 Definisci"}
             </button>
           )}
           <button onClick={clearSelection} style={{ fontSize: 14.5, color: C.muted, marginLeft: 4 }}>
