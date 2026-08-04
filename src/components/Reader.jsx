@@ -37,6 +37,18 @@ const HEAD = 8;
 const FOOT = 8;
 const EDGE_STRIPES =
   "repeating-linear-gradient(to right, #00000047 0 1px, #ffffff1f 1px 2px, #0000001c 2px 4px)";
+// Finto piombo per i fogli in volo: righe di testo appena accennate, cinque
+// per paragrafo, fatte solo di velature e vuoti cosi' non litigano con le
+// ombre del foglio. Il contenuto vero vive nell'iframe di epub.js e non si
+// puo' stampare qui; a questa velocita' l'occhio legge il ritmo, non le
+// parole.
+const PRINT_ROWS = (fg) =>
+  `repeating-linear-gradient(to bottom, ` +
+  `${fg}18 0 2px, transparent 2px 15px, ` +
+  `${fg}18 15px 17px, transparent 17px 30px, ` +
+  `${fg}18 30px 32px, transparent 32px 45px, ` +
+  `${fg}18 45px 47px, transparent 47px 60px, ` +
+  `${fg}18 60px 62px, transparent 62px 84px)`;
 
 // In doppia pagina epub.js riporta solo il foglio di sinistra: il numero
 // pari non compariva mai nel piede e sembrava saltato.
@@ -684,7 +696,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     }
     setTurning({ dir, key: Date.now() });
     clearTimeout(turnTimer.current);
-    turnTimer.current = setTimeout(() => setTurning(null), 1050);
+    turnTimer.current = setTimeout(() => setTurning(null), 1200);
     const doSwap = () => {
       swapTimer.current = null;
       swapPending.current = null;
@@ -1065,9 +1077,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 turning.dir === "next"
                   ? "linear-gradient(to right, transparent 70%, #0000001f)"
                   : "linear-gradient(to left, transparent 70%, #0000001f)",
-              animation: "bc-cover-half 1s ease-in-out forwards",
+              animation: "bc-cover-half 1.1s ease-in-out forwards",
             }}
-          />
+          >
+            <div
+              aria-hidden="true"
+              style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
+            />
+          </div>
         )}
         {turning && twoUp && (
           <div
@@ -1085,7 +1102,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 turning.dir === "next"
                   ? "linear-gradient(to left, #00000059, transparent 65%)"
                   : "linear-gradient(to right, #00000059, transparent 65%)",
-              animation: "bc-cast 1s ease-in-out forwards",
+              animation: "bc-cast 1.1s ease-in-out forwards",
             }}
           />
         )}
@@ -1125,8 +1142,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               pointerEvents: "none",
               opacity: 0,
               background:
-                "linear-gradient(90deg, transparent, #00000038 50%, transparent)",
-              animation: "bc-spine-pulse 1s ease-in-out forwards",
+                "linear-gradient(90deg, transparent, #0000002e 50%, transparent)",
+              animation: "bc-spine-pulse 1.1s ease-in-out forwards",
             }}
           />
         )}
@@ -1147,11 +1164,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               opacity: 0,
               overflow: "hidden",
               willChange: "transform, opacity",
-              animationDuration: "1s",
+              animationDuration: "1.1s",
               animationTimingFunction: "cubic-bezier(0.3, 0.45, 0.35, 1)",
               animationFillMode: "forwards",
             }}
           >
+            <div
+              aria-hidden="true"
+              style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
+            />
             <div
               aria-hidden="true"
               style={{
@@ -1162,7 +1183,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   turning.dir === "next"
                     ? "linear-gradient(to right, #00000066, #0000002e)"
                     : "linear-gradient(to left, #00000066, #0000002e)",
-                animation: "bc-leaf-shade 1s ease-in-out forwards",
+                animation: "bc-leaf-shade 1.1s ease-in-out forwards",
               }}
             />
             <div
