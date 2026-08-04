@@ -210,6 +210,41 @@ input {
   }
 }
 
+/* pagina singola: il foglio vecchio scivola via di lato scoprendo il nuovo.
+   Deve essere opaco prima dello scambio del contenuto (95ms) e reggere
+   fermo un attimo, poi esce oltre il bordo e la cornice lo taglia. */
+@keyframes bc-sheet-next {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  16%,
+  34% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(calc(-100% - 40px));
+    opacity: 1;
+  }
+}
+
+@keyframes bc-sheet-prev {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  16%,
+  34% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(calc(100% + 40px));
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

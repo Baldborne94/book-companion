@@ -409,6 +409,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // in scorrimento non esistono facciate: senza questo, in orizzontale
         // epub.js dichiara comunque un layout a due colonne e compare il dorso
         spread: s.flow === "scrolled" ? "none" : s.spread,
+        // le due facciate solo col tablet sdraiato: la soglia sta a meta'
+        // fra il lato corto e quello lungo dello schermo, cosi' "auto"
+        // diventa "solo in orizzontale" e la rotazione cambia layout da sola
+        minSpreadWidth: Math.ceil((window.innerWidth + window.innerHeight) / 2),
         allowScriptedContent: false,
       });
       rendRef.current = r;
@@ -1081,7 +1085,33 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             }}
           />
         )}
-        {turning && (
+        {turning && !twoUp && (
+          <div
+            key={`sheet-${turning.key}`}
+            data-flip={turning.dir}
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: FRAME,
+              bottom: FRAME,
+              left: FRAME,
+              right: FRAME,
+              zIndex: 6,
+              pointerEvents: "none",
+              opacity: 0,
+              borderRadius: 3,
+              backgroundColor: theme.bg,
+              backgroundImage:
+                turning.dir === "next"
+                  ? "linear-gradient(115deg, #ffffff0d, transparent 45%), linear-gradient(to left, #00000026, transparent 22%)"
+                  : "linear-gradient(245deg, #ffffff0d, transparent 45%), linear-gradient(to right, #00000026, transparent 22%)",
+              boxShadow: "0 0 30px #00000059",
+              willChange: "transform, opacity",
+              animation: `bc-sheet-${turning.dir} 0.55s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`,
+            }}
+          />
+        )}
+        {turning && twoUp && (
           <div
             key={turning.key}
             data-flip={turning.dir}
