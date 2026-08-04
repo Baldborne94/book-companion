@@ -1112,6 +1112,26 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         )}
         {turning && twoUp && (
           <div
+            key={`spinep-${turning.key}`}
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: FRAME,
+              bottom: FRAME,
+              left: "50%",
+              width: 130,
+              transform: "translateX(-50%)",
+              zIndex: 5,
+              pointerEvents: "none",
+              opacity: 0,
+              background:
+                "linear-gradient(90deg, transparent, #00000038 50%, transparent)",
+              animation: "bc-spine-pulse 1s ease-in-out forwards",
+            }}
+          />
+        )}
+        {turning && twoUp && (
+          <div
             key={turning.key}
             data-flip={turning.dir}
             aria-hidden="true"
@@ -1125,12 +1145,38 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               backfaceVisibility: "visible",
               backgroundColor: theme.bg,
               opacity: 0,
+              overflow: "hidden",
               willChange: "transform, opacity",
               animationDuration: "1s",
               animationTimingFunction: "cubic-bezier(0.3, 0.45, 0.35, 1)",
               animationFillMode: "forwards",
             }}
-          />
+          >
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                inset: 0,
+                opacity: 0,
+                background:
+                  turning.dir === "next"
+                    ? "linear-gradient(to right, #00000066, #0000002e)"
+                    : "linear-gradient(to left, #00000066, #0000002e)",
+                animation: "bc-leaf-shade 1s ease-in-out forwards",
+              }}
+            />
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                ...(turning.dir === "next" ? { right: 0 } : { left: 0 }),
+                width: 2,
+                background: "#00000047",
+              }}
+            />
+          </div>
         )}
       </div>
 
