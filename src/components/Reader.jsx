@@ -996,20 +996,20 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           left: twoUp ? "50%" : FRAME,
           right: FRAME,
           transformOrigin: "left center",
-          borderRadius: "6px 20px 20px 6px",
+          borderRadius: "6px 34px 34px 6px",
           backgroundImage:
             "linear-gradient(115deg, #ffffff0d, transparent 45%), linear-gradient(to right, #00000030, transparent 28%, transparent 62%, #00000012 86%, #00000024 100%)",
-          boxShadow: "-30px 0 54px #00000047",
+          boxShadow: "-26px 0 70px #0000003d",
           animationName: "bc-leaf-next",
         }
       : {
           left: FRAME,
           right: twoUp ? "50%" : FRAME,
           transformOrigin: "right center",
-          borderRadius: "20px 6px 6px 20px",
+          borderRadius: "34px 6px 6px 34px",
           backgroundImage:
             "linear-gradient(245deg, #ffffff0d, transparent 45%), linear-gradient(to left, #00000030, transparent 28%, transparent 62%, #00000012 86%, #00000024 100%)",
-          boxShadow: "30px 0 54px #00000047",
+          boxShadow: "26px 0 70px #0000003d",
           animationName: "bc-leaf-prev",
         }
     : null;
@@ -1185,8 +1185,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               opacity: 0,
               background:
                 turning.dir === "next"
-                  ? "linear-gradient(to left, #00000059, transparent 65%)"
-                  : "linear-gradient(to right, #00000059, transparent 65%)",
+                  ? "linear-gradient(to left, #0000004d, transparent 78%)"
+                  : "linear-gradient(to right, #0000004d, transparent 78%)",
               animation: "bc-cast 1.1s ease-in-out forwards",
             }}
           />
@@ -1306,8 +1306,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   opacity: 0,
                   background:
                     turning.dir === "next"
-                      ? "linear-gradient(to right, #00000066, #0000002e)"
-                      : "linear-gradient(to left, #00000066, #0000002e)",
+                      ? "linear-gradient(to right, #00000052, #00000026)"
+                      : "linear-gradient(to left, #00000052, #00000026)",
                   animation: "bc-leaf-shade 1.1s ease-in-out forwards",
                 }}
               />
@@ -1318,8 +1318,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   top: 0,
                   bottom: 0,
                   ...(turning.dir === "next" ? { right: 0 } : { left: 0 }),
-                  width: 2,
-                  background: "#00000047",
+                  width: 7,
+                  background:
+                    turning.dir === "next"
+                      ? "linear-gradient(to left, #00000038, transparent)"
+                      : "linear-gradient(to right, #00000038, transparent)",
                 }}
               />
             </div>
@@ -1358,8 +1361,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   opacity: 0,
                   background:
                     turning.dir === "next"
-                      ? "linear-gradient(to left, #00000066, #0000002e)"
-                      : "linear-gradient(to right, #00000066, #0000002e)",
+                      ? "linear-gradient(to left, #00000052, #00000026)"
+                      : "linear-gradient(to right, #00000052, #00000026)",
                   animation: "bc-leaf-shade 1.1s ease-in-out forwards",
                 }}
               />
