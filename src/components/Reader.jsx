@@ -248,6 +248,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const swapTimer = useRef(null);
   const swapPending = useRef(null);
   const turnRef = useRef(() => {});
+  const moved = useRef(false);
+  const fixTimers = useRef([]);
   const live = useRef({ cfi: startCfi || getCfi(book.id), progress: getProgress(book.id), locReady: false, settings: null });
 
   const [settings, setSettings] = useState(() =>
@@ -495,9 +497,30 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         if (e.key === "ArrowLeft") turnRef.current("prev");
       });
 
-      r.display(live.current.cfi || undefined)
+      // Il capitolo si impagina col font di ripiego e solo dopo arriva
+      // quello vero: le misure cambiano, epub.js ricolloca dal pixel e il
+      // punto chiesto scivola indietro di una-due pagine — che poi venivano
+      // risalvate come "ultima pagina letta". Finche' il lettore non sfoglia
+      // il punto buono resta quello chiesto: ci si torna sopra quando le
+      // misure si sono assestate.
+      moved.current = false;
+      fixTimers.current.forEach(clearTimeout);
+      const target = live.current.cfi;
+      r.display(target || undefined)
         .catch(() => r.display())
         .then(() => setStatusUi("ready"));
+      if (target) {
+        const fix = () => {
+          if (moved.current || rendRef.current !== r) return;
+          if (live.current.cfi === target) return;
+          anchor.current = target;
+          reflowing.current = true;
+          clearTimeout(reflowTimer.current);
+          reflowTimer.current = setTimeout(() => { reflowing.current = false; }, 1500);
+          r.display(target).catch(() => { reflowing.current = false; });
+        };
+        fixTimers.current = [setTimeout(fix, 1500), setTimeout(fix, 3500)];
+      }
 
       getHighlights(book.id).forEach((h) => addAnnotation(r, h));
     },
@@ -565,6 +588,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       clearTimeout(swapTimer.current);
       clearTimeout(turnTimer.current);
       clearTimeout(reflowTimer.current);
+      fixTimers.current.forEach(clearTimeout);
       flush();
       try { rendRef.current?.destroy(); } catch { /* già distrutto */ }
       try { epubRef.current?.destroy(); } catch { /* già distrutto */ }
@@ -585,6 +609,39 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       document.removeEventListener("fullscreenchange", onFs);
       clearTimeout(turnTimer.current);
     };
+  }, []);
+
+  // Schermo intero, rotazione e barre di sistema cambiano la misura del
+  // riquadro senza passare dalle impostazioni: epub.js reimpagina da solo e
+  // si riallinea all'INIZIO della pagina che contiene il punto corrente —
+  // mezzo passo indietro a ogni cambio. Quella posizione arretrata finiva
+  // salvata, e spostava segnalibri e "ultima pagina letta" a seconda della
+  // modalita'. Il punto va fotografato al primo segnale di resize, quando
+  // l'ancora e' ancora quella scelta dal lettore, e a giro finito ci si
+  // torna sopra esplicitamente.
+  useEffect(() => {
+    const el = bookRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    let primo = true;
+    let foto = null;
+    let timer;
+    const ro = new ResizeObserver(() => {
+      if (primo) { primo = false; return; }
+      if (!foto) foto = anchor.current || live.current.cfi;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const dove = foto;
+        foto = null;
+        if (!dove || !rendRef.current) return;
+        anchor.current = dove;
+        reflowing.current = true;
+        clearTimeout(reflowTimer.current);
+        reflowTimer.current = setTimeout(() => { reflowing.current = false; }, 1500);
+        rendRef.current.display(dove).catch(() => { reflowing.current = false; });
+      }, 500);
+    });
+    ro.observe(el);
+    return () => { ro.disconnect(); clearTimeout(timer); };
   }, []);
 
   function toggleFullscreen() {
@@ -608,6 +665,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   function turn(dir) {
     const r = rendRef.current;
     if (!r || status !== "ready") return;
+    moved.current = true;
     const animate =
       isTablet() && settings.flow !== "scrolled" && settings.pageTurn && !reducedMotion();
     if (!animate) {
@@ -783,6 +841,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   function goTo(target, flash) {
     const r = rendRef.current;
     if (!r) return;
+    moved.current = true;
     const arrivo = r.display(target);
     setPanel(null);
     if (!flash) return;
@@ -1213,6 +1272,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               onChange={(e) => {
                 if (!locReady) return;
                 const cfi = epubRef.current.locations.cfiFromPercentage(parseInt(e.target.value, 10) / 1000);
+                moved.current = true;
                 if (cfi) rendRef.current?.display(cfi);
               }}
               style={{ width: "100%", accentColor: C.accent }}
