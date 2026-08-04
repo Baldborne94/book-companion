@@ -19,7 +19,9 @@ import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
 
-const EDGE_MIN = 3;
+// sotto i 7px la pila di fogli diventa un filo che sembra un difetto,
+// non l'orlo delle pagine: il minimo deve leggersi come carta impilata
+const EDGE_MIN = 7;
 const EDGE_MAX = 17;
 // la rilegatura visibile attorno alla carta
 const FRAME = 6;
@@ -973,12 +975,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           style={{
             position: "absolute",
             left: FRAME,
-            top: FRAME + 4,
-            bottom: FRAME + 4,
+            top: FRAME,
+            bottom: FRAME,
             width: edgeRead,
             zIndex: 4,
             pointerEvents: "none",
-            borderRadius: "10px 2px 2px 10px",
+            // stessa altezza e stesso raggio della carta: staccata anche di
+            // pochi px, la pila lasciava toppe scoperte verso gli angoli
+            borderRadius: "3px 2px 2px 3px",
             backgroundColor: theme.bg,
             backgroundImage: EDGE_STRIPES,
             boxShadow: "inset -7px 0 9px -7px #00000066, 1px 0 2px #00000033",
@@ -989,12 +993,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           style={{
             position: "absolute",
             right: FRAME,
-            top: FRAME + 4,
-            bottom: FRAME + 4,
+            top: FRAME,
+            bottom: FRAME,
             width: edgeLeftToRead,
             zIndex: 4,
             pointerEvents: "none",
-            borderRadius: "2px 10px 10px 2px",
+            borderRadius: "2px 3px 3px 2px",
             backgroundColor: theme.bg,
             backgroundImage: EDGE_STRIPES,
             boxShadow: "inset 7px 0 9px -7px #00000066, -1px 0 2px #00000033",
