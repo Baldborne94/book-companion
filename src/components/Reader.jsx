@@ -299,6 +299,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const parkTimer = useRef(null);
   const turningRef = useRef(null);
   const texRef = useRef(null);
+  const curlBroken = useRef(false);
   const curlCanvasRef = useRef(null);
   const curlRun = useRef(null);
   const turnRef = useRef(() => {});
@@ -854,46 +855,74 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // fa partire il cilindro sul canvas e restituisce la maniglia del giro;
   // il disegno vive fuori da React: sessanta fotogrammi al secondo di
   // colonne che si piegano non sono roba da re-render
-  function startCurl(dir, tex) {
-    const host = bookRef.current;
-    const cv = curlCanvasRef.current;
-    if (!host || !cv) return null;
-    const rh = host.getBoundingClientRect();
-    const Wc = Math.round(rh.width) - FRAME * 2;
-    const Hc = Math.round(rh.height) - FRAME * 2;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    cv.width = Wc * dpr;
-    cv.height = Hc * dpr;
-    cv.style.display = "block";
-    const ctx = cv.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const stato = {
-      oldImg: tex.img,
-      newImg: dir === "next" ? tex.next : tex.prev,
-      sc: tex.sc || 1,
-      dir,
-      start: performance.now(),
-      Wc,
-      Hc,
-    };
-    curlRun.current = stato;
-    const DUR = 1050;
-    const paper = theme.bg;
-    const rows = `${theme.fg}14`;
-    const frame = (now) => {
-      if (curlRun.current !== stato) return;
-      const t = (now - stato.start) / DUR;
-      if (t >= 1) {
-        ctx.clearRect(0, 0, Wc, Hc);
+  function startCurl(dir, tex, key) {
+    try {
+      const host = bookRef.current;
+      const cv = curlCanvasRef.current;
+      if (!host || !cv || curlBroken.current) return null;
+      const rh = host.getBoundingClientRect();
+      const Wc = Math.round(rh.width) - FRAME * 2;
+      const Hc = Math.round(rh.height) - FRAME * 2;
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      cv.width = Wc * dpr;
+      cv.height = Hc * dpr;
+      const ctx = cv.getContext("2d");
+      if (!ctx) return null;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // il primo fotogramma si disegna QUI, prima di dichiarare il giro su
+      // canvas: se drawImage esplode (certe GPU Android con le immagini
+      // SVG), si torna null e parte il palco DOM come se nulla fosse
+      const stato = {
+        oldImg: tex.img,
+        newImg: dir === "next" ? tex.next : tex.prev,
+        sc: tex.sc || 1,
+        dir,
+        start: performance.now(),
+        Wc,
+        Hc,
+      };
+      const DUR = 1050;
+      const paper = theme.bg;
+      const rows = `${theme.fg}14`;
+      drawCurl(ctx, { oldImg: stato.oldImg, newImg: stato.newImg, t: 0, dir, Wc, Hc, paper, rows, sc: stato.sc });
+      cv.style.display = "block";
+      curlRun.current = stato;
+      const spegni = () => {
+        try { ctx.clearRect(0, 0, Wc, Hc); } catch { /* niente da pulire */ }
         cv.style.display = "none";
-        curlRun.current = null;
-        return;
-      }
-      drawCurl(ctx, { oldImg: stato.oldImg, newImg: stato.newImg, t, dir, Wc, Hc, paper, rows, sc: stato.sc });
+        if (curlRun.current === stato) curlRun.current = null;
+      };
+      const frame = (now) => {
+        if (curlRun.current !== stato) return;
+        const t = (now - stato.start) / DUR;
+        if (t >= 1) {
+          spegni();
+          return;
+        }
+        try {
+          drawCurl(ctx, { oldImg: stato.oldImg, newImg: stato.newImg, t, dir, Wc, Hc, paper, rows, sc: stato.sc });
+        } catch {
+          // il canvas ha tradito a giro in corso: si spegne, il palco DOM
+          // prende il testimone su questo stesso giro, e per il resto della
+          // sessione si vola solo col palco
+          curlBroken.current = true;
+          spegni();
+          setTurning((v) => {
+            if (!v || v.key !== key) return v;
+            const geo = snapRects();
+            return { dir, key, x: geo?.x, y: geo?.y, hw: geo?.hw, href: geo?.href, x2: null, href2: null };
+          });
+          return;
+        }
+        requestAnimationFrame(frame);
+      };
       requestAnimationFrame(frame);
-    };
-    requestAnimationFrame(frame);
-    return stato;
+      return stato;
+    } catch {
+      curlBroken.current = true;
+      if (curlCanvasRef.current) curlCanvasRef.current.style.display = "none";
+      return null;
+    }
   }
 
   function turn(dir) {
@@ -920,7 +949,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       tex.href === geo.href &&
       Math.abs(tex.x - geo.x) < 1;
     if (curl) {
-      const stato = startCurl(dir, tex);
+      const stato = startCurl(dir, tex, key);
       if (stato) {
         setTurning({ dir, key, curl: true });
         clearTimeout(turnTimer.current);
