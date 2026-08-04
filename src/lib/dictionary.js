@@ -202,8 +202,9 @@ const MAX_TRIES = 50;
 // Wiktionary indicizza l'infinito: nel libro c'e' «taking the mickey», la
 // voce si chiama «take the mickey». Il verbo sta quasi sempre in testa al
 // modo di dire, quindi si prova anche la prima parola riportata alla forma
-// base. Solo con una tabella esplicita: tagliare le desinenze a occhio
-// storpierebbe le parole che desinenze non hanno.
+// base. La tabella copre gli irregolari; le forme regolari si tentano per
+// desinenza piu' sotto (basiDi), tanto un tentativo sbagliato non esiste su
+// Wiktionary e la verifica di esistenza lo scarta gratis.
 const LEMMI = {
   took: "take", takes: "take", taking: "take", taken: "take",
   kicked: "kick", kicks: "kick", kicking: "kick",
@@ -243,6 +244,38 @@ const LEMMI = {
   was: "be", were: "be", been: "be", being: "be", is: "be", are: "be",
 };
 
+// Le forme regolari non stanno in LEMMI: «muscling» deve diventare «muscle»
+// senza una riga di tabella. Indovinare per desinenza qui e' sicuro perche'
+// ogni candidato passa comunque dalla verifica di esistenza: «muscl in» non
+// e' una voce e muore li', «muscle in» lo e' e vince.
+export function basiDi(w) {
+  const out = new Set();
+  if (LEMMI[w]) out.add(LEMMI[w]);
+  const doppia = (stem) => /(.)\1$/.test(stem);
+  if (w.endsWith("ing") && w.length > 4) {
+    const stem = w.slice(0, -3);
+    out.add(stem);
+    out.add(`${stem}e`);
+    if (doppia(stem)) out.add(stem.slice(0, -1));
+  } else if (w.endsWith("ied") && w.length > 4) {
+    out.add(`${w.slice(0, -3)}y`);
+  } else if (w.endsWith("ed") && w.length > 3) {
+    const stem = w.slice(0, -2);
+    out.add(stem);
+    out.add(`${stem}e`);
+    if (doppia(stem)) out.add(stem.slice(0, -1));
+  } else if (w.endsWith("ies") && w.length > 4) {
+    out.add(`${w.slice(0, -3)}y`);
+  } else if (w.endsWith("es") && w.length > 3) {
+    out.add(w.slice(0, -1));
+    out.add(w.slice(0, -2));
+  } else if (w.endsWith("s") && w.length > 3) {
+    out.add(w.slice(0, -1));
+  }
+  out.delete(w);
+  return [...out];
+}
+
 // I verbi separabili sono il caso che le finestre contigue non prendono mai:
 // nel libro c'e' «egg them on», il dizionario la indicizza come «egg on». Il
 // complemento in mezzo va tolto, o l'idioma resta invisibile — ed e' successo
@@ -261,7 +294,14 @@ const TROPPO_COMUNI = new Set([
 ]);
 
 // «out of the» non e' un modo di dire di niente: le finestre che finiscono
-// con una parola vuota si scartano prima di sprecarci una richiesta
+// con una parola vuota si scartano prima di sprecarci una richiesta. Con
+// un'eccezione: «in» e «on» sono anche particelle di verbi frasali, e
+// scartare ogni finestra che ci finisce rendeva «muscle in» introvabile.
+const PARTICELLE = new Set([
+  "in", "on", "up", "out", "off", "down", "over", "away", "back", "along",
+  "around", "about", "through", "round",
+]);
+
 const VUOTE = new Set([
   "the", "a", "an", "of", "and", "or", "but", "to", "in", "on", "at", "by",
   "for", "with", "from", "that", "this", "it", "he", "she", "they", "you",
@@ -285,14 +325,18 @@ function subPhrases(words) {
   for (let n = Math.min(5, words.length); n >= 2; n--) {
     for (let i = 0; i + n <= words.length; i++) {
       const f = words.slice(i, i + n);
-      if (VUOTE.has(f[f.length - 1]) || f.every((w) => VUOTE.has(w))) continue;
+      const ultima = f[f.length - 1];
+      // la particella in coda salva la finestra solo se davanti c'e' un
+      // verbo plausibile, non un'altra parola vuota («was in» non serve)
+      const frasale = PARTICELLE.has(ultima) && !VUOTE.has(f[0]);
+      if ((VUOTE.has(ultima) && !frasale) || f.every((w) => VUOTE.has(w))) continue;
       aggiungi(f.join(" "));
-      const base = LEMMI[f[0]];
-      if (base) aggiungi([base, ...f.slice(1)].join(" "));
+      const basi = basiDi(f[0]);
+      for (const base of basi) aggiungi([base, ...f.slice(1)].join(" "));
       // verbo separabile: «egg them on» → «egg on», «egg on» all'infinito
       if (n === 3 && OGGETTI.has(f[1])) {
         aggiungi(`${f[0]} ${f[2]}`);
-        if (base) aggiungi(`${base} ${f[2]}`);
+        for (const base of basi) aggiungi(`${base} ${f[2]}`);
       }
     }
   }

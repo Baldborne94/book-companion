@@ -89,6 +89,7 @@ export default [
   { t: "put up with", a: ["puts up with", "putting up with", "put up with it"], d: "Sopportare, mandare giù senza protestare." },
   { t: "make out", a: ["made out", "making out"], d: "Distinguere a fatica («I could just make out the door»); oppure sostenere, dare a intendere." },
   { t: "carry on", a: ["carried on", "carrying on"], d: "Andare avanti, continuare; ma «carrying on» può anche voler dire fare storie o darsi da fare in modo scomposto." },
+  { t: "muscle in", a: ["muscling in", "muscled in", "muscles in", "muscle in on"], d: "Intromettersi con prepotenza in un affare altrui per prendersene una fetta, come farebbe un gangster nel giro di qualcun altro." },
   { t: "have egg on your face", a: ["egg on his face", "egg on her face", "egg on my face"], d: "Fare una figuraccia: restare con la faccia da scemo dopo che una cosa è andata storta o si è stati smentiti." },
 
   { t: "every man jack", a: ["not a man jack", "man jack", "every man jack of them", "not a man jack of em"], d: "«Ogni singolo uomo», tutti quanti nessuno escluso; in negativo, «non uno di loro». Espressione vecchio stile, da caserma o da taverna." },
