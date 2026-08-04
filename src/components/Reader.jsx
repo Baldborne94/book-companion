@@ -404,7 +404,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         width: "100%",
         height: "100%",
         flow: s.flow === "scrolled" ? "scrolled-doc" : "paginated",
-        spread: s.spread,
+        // in scorrimento non esistono facciate: senza questo, in orizzontale
+        // epub.js dichiara comunque un layout a due colonne e compare il dorso
+        spread: s.flow === "scrolled" ? "none" : s.spread,
         allowScriptedContent: false,
       });
       rendRef.current = r;
@@ -822,6 +824,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
   const pct = Math.round((progress || 0) * 100);
   const paginated = settings.flow !== "scrolled";
+  const twoUp = paginated && pages === 2;
   const p = Math.min(1, Math.max(0, progress || 0));
   const edgeRead = EDGE_MIN + Math.round((EDGE_MAX - EDGE_MIN) * p);
   const edgeLeftToRead = EDGE_MIN + Math.round((EDGE_MAX - EDGE_MIN) * (1 - p));
@@ -835,7 +838,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const leafGeom = turning
     ? turning.dir === "next"
       ? {
-          left: pages === 2 ? "50%" : FRAME,
+          left: twoUp ? "50%" : FRAME,
           right: FRAME,
           transformOrigin: "left center",
           borderRadius: "6px 20px 20px 6px",
@@ -846,7 +849,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         }
       : {
           left: FRAME,
-          right: pages === 2 ? "50%" : FRAME,
+          right: twoUp ? "50%" : FRAME,
           transformOrigin: "right center",
           borderRadius: "20px 6px 6px 20px",
           backgroundImage:
@@ -960,7 +963,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             background: "linear-gradient(270deg, #00000033, transparent)",
           }}
         />
-        {pages === 2 && (
+        {twoUp && (
           <div
             aria-hidden="true"
             style={{
@@ -977,7 +980,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             }}
           />
         )}
-        {turning && pages === 2 && (
+        {turning && twoUp && (
           <div
             key={`cover-${turning.key}`}
             data-cover={turning.dir}
@@ -999,7 +1002,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             }}
           />
         )}
-        {turning && pages === 2 && (
+        {turning && twoUp && (
           <div
             key={`cast-${turning.key}`}
             aria-hidden="true"
