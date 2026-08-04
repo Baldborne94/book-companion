@@ -77,7 +77,10 @@ export function rasterize({ baked, w, h, offsetX, offsetY = 0, outW, outH, scale
   return new Promise((resolve, reject) => {
     img.onload = () => {
       URL.revokeObjectURL(url);
-      resolve(img);
+      // un'immagine "caricata" ma non decodificabile fa esplodere drawImage
+      // al primo fotogramma: meglio scoprirlo qui, dove c'e' il ripiego
+      const decodifica = img.decode ? img.decode() : Promise.resolve();
+      decodifica.then(() => resolve(img)).catch(() => reject(new Error("decodifica fallita")));
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
