@@ -226,23 +226,32 @@ function Slider({ label, min, max, step, value, onChange }) {
 // un iframe muto e senza script, rimesso dove stava l'originale rispetto al
 // libro. `base` e' il bordo sinistro, nel libro, della meta' che la faccia
 // copre: cosi' il ritaglio combacia col testo a schermo.
-function SnapPage({ snap, base }) {
-  if (!snap) return null;
+// L'iframe resta MONTATO per sempre nel suo posto sul palco: spostarlo nel
+// DOM lo ricaricherebbe, e ricostruirlo al tocco costava lampi bianchi e
+// facce nude sul tablet. Il documento si prepara nei momenti morti (park)
+// e il clone resta invisibile finche' non ha davvero finito di dipingersi.
+function StageFrame({ park, shown, x, y, base }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    setReady(false);
+  }, [park?.html]);
   return (
     <iframe
       aria-hidden="true"
       tabIndex={-1}
       sandbox="allow-same-origin"
       scrolling="no"
-      srcDoc={snap.html}
+      srcDoc={park?.html || "<html></html>"}
+      onLoad={() => requestAnimationFrame(() => setReady(true))}
       style={{
         position: "absolute",
-        left: snap.x - base,
-        top: snap.y - FRAME,
-        width: snap.w,
-        height: snap.h,
+        left: (x ?? 0) - base,
+        top: (y ?? 0) - FRAME,
+        width: park?.w ?? 10,
+        height: park?.h ?? 10,
         border: 0,
         pointerEvents: "none",
+        opacity: ready && shown ? 1 : 0,
       }}
     />
   );
@@ -286,7 +295,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const saveTimer = useRef(null);
   const turnTimer = useRef(null);
   const swapTimer = useRef(null);
-  const swapPending = useRef(null);
+  const parkTimer = useRef(null);
+  const turningRef = useRef(null);
   const turnRef = useRef(() => {});
   const moved = useRef(false);
   const fixTimers = useRef([]);
@@ -308,6 +318,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [searchState, setSearchState] = useState({ busy: false, results: null });
   const [pages, setPages] = useState(1);
   const [turning, setTurning] = useState(null);
+  const [park, setPark] = useState(null);
   const [isFs, setIsFs] = useState(false);
   const [displayed, setDisplayed] = useState(null);
   const [speed, setSpeed] = useState(() => medianMs(loadSamples()));
@@ -347,6 +358,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
   live.current.settings = settings;
   live.current.panel = panel;
+  turningRef.current = turning;
   live.current.selMenu = selMenu;
   const theme = READER_THEMES[settings.theme];
 
@@ -490,6 +502,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         lastTurnAt.current = now;
         clearTimeout(saveTimer.current);
         saveTimer.current = setTimeout(flush, 1500);
+        // il palco si prepara nei momenti morti: a ogni approdo si
+        // rinfresca la fotografia del capitolo per il prossimo giro
+        schedulePark();
       });
 
       r.on("layout", (layout) => setPages(layout.divisor > 1 ? 2 : 1));
@@ -632,6 +647,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       clearTimeout(swapTimer.current);
       clearTimeout(turnTimer.current);
       clearTimeout(reflowTimer.current);
+      clearTimeout(parkTimer.current);
       fixTimers.current.forEach(clearTimeout);
       flush();
       try { rendRef.current?.destroy(); } catch { /* già distrutto */ }
@@ -706,34 +722,54 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     return r.reportLocation();
   }
 
-  // La fotografia della pagina per il foglio che gira: il documento del
-  // capitolo — stili inline di epub.js compresi, quindi stesse colonne e
-  // stessi caratteri — con la posizione dell'iframe rispetto al libro.
-  // Se qualcosa manca si torna null e il foglio resta di sole velature.
-  function snapSpread() {
+  // La vista che il lettore sta davvero guardando: con piu' capitoli in
+  // piedi (epub.js precarica il prossimo) la "prima vista" puo' essere
+  // quella fuori schermo — conta la piu' sovrapposta al libro.
+  function bestView() {
+    const host = bookRef.current;
+    if (!host) return null;
+    const rh = host.getBoundingClientRect();
+    let out = null;
+    let meglio = 0;
+    rendRef.current?.manager?.views?.forEach?.((v) => {
+      const f = v?.iframe || v?.element?.querySelector?.("iframe");
+      if (!f || !v?.contents?.document) return;
+      const r = f.getBoundingClientRect();
+      const visibile = Math.min(r.right, rh.right) - Math.max(r.left, rh.left);
+      if (visibile > meglio) {
+        meglio = visibile;
+        out = { view: v, ri: r, rh };
+      }
+    });
+    return out;
+  }
+
+  // Solo misure, niente serializzazioni: si legge al tocco, deve costare
+  // quanto un getBoundingClientRect.
+  function snapRects() {
     try {
-      const host = bookRef.current;
-      if (!host) return null;
-      const rh = host.getBoundingClientRect();
-      // con piu' capitoli in piedi (epub.js precarica il prossimo) la
-      // "prima vista" puo' essere quella fuori schermo: la fotografia
-      // giusta e' della vista piu' sovrapposta al libro
-      let view = null;
-      let ri = null;
-      let meglio = 0;
-      rendRef.current?.manager?.views?.forEach?.((v) => {
-        const f = v?.iframe || v?.element?.querySelector?.("iframe");
-        if (!f || !v?.contents?.document) return;
-        const r = f.getBoundingClientRect();
-        const visibile = Math.min(r.right, rh.right) - Math.max(r.left, rh.left);
-        if (visibile > meglio) {
-          meglio = visibile;
-          view = v;
-          ri = r;
-        }
-      });
-      const doc = view?.contents?.document;
-      if (!view || !ri || !doc) return null;
+      const b = bestView();
+      if (!b) return null;
+      return {
+        href: (b.view.section?.href || "").split("#")[0],
+        x: Math.round(b.ri.left - b.rh.left),
+        y: Math.round(b.ri.top - b.rh.top),
+        hw: b.rh.width,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  // La fotografia del capitolo — stili inline di epub.js compresi, quindi
+  // stesse colonne e stessi caratteri. Costa una serializzazione: si fa nei
+  // momenti morti dopo un cambio pagina (park), MAI al tocco — sul tablet
+  // il clone montato in corsa arrivava tardi e il foglio girava nudo.
+  function snapPark() {
+    try {
+      const b = bestView();
+      const doc = b?.view?.contents?.document;
+      if (!b || !doc) return null;
       // epub.js inietta tema e interlinea via CSSOM (insertRule): il tag
       // <style> nel markup resta vuoto e outerHTML non li porta con se'.
       // Senza queste regole il clone reimpagina diverso e la finestra di
@@ -751,16 +787,22 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         : style + raw;
       return {
         html,
-        w: Math.round(ri.width),
-        h: Math.round(ri.height),
-        x: Math.round(ri.left - rh.left),
-        y: Math.round(ri.top - rh.top),
-        hw: rh.width,
+        w: Math.round(b.ri.width),
+        h: Math.round(b.ri.height),
+        href: (b.view.section?.href || "").split("#")[0],
       };
     } catch {
       return null;
     }
   }
+
+  const schedulePark = useCallback(() => {
+    clearTimeout(parkTimer.current);
+    parkTimer.current = setTimeout(() => {
+      const p = snapPark();
+      if (p) setPark((old) => (old && old.html === p.html ? old : p));
+    }, 450);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function turn(dir) {
     const r = rendRef.current;
@@ -768,32 +810,29 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     moved.current = true;
     const animate =
       isTablet() && settings.flow !== "scrolled" && settings.pageTurn && !reducedMotion();
-    if (!animate) {
+    // un tocco durante un giro e' fretta: si cambia pagina secco, senza
+    // accavallare animazioni (rimontare il palco ricaricherebbe i cloni)
+    if (!animate || turningRef.current) {
       step(r, dir);
       return;
     }
-    if (swapTimer.current) {
-      clearTimeout(swapTimer.current);
-      swapPending.current?.();
-    }
     const key = Date.now();
-    setTurning({ dir, key, snap: snapSpread() });
+    const geo = snapRects();
+    setTurning({ dir, key, x: geo?.x, y: geo?.y, hw: geo?.hw, href: geo?.href, x2: null, href2: null });
     clearTimeout(turnTimer.current);
     turnTimer.current = setTimeout(() => setTurning(null), 1200);
     const doSwap = () => {
       swapTimer.current = null;
-      swapPending.current = null;
       step(r, dir);
-      // il retro del foglio mostra la pagina che sta arrivando: si puo'
-      // fotografare solo a scambio avvenuto, ma resta nascosto fino a
-      // meta' giro, quindi il tempo c'e'
+      // il retro del foglio mostra la pagina che sta arrivando: il testo e'
+      // lo stesso capitolo gia' preparato, serve solo la nuova posizione —
+      // una misura, letta a scambio avvenuto, col retro ancora nascosto
       setTimeout(() => {
-        const dopo = snapSpread();
-        if (dopo) setTurning((t) => (t && t.key === key ? { ...t, snapAfter: dopo } : t));
-      }, 180);
+        const g2 = snapRects();
+        if (g2) setTurning((t) => (t && t.key === key ? { ...t, x2: g2.x, href2: g2.href } : t));
+      }, 150);
     };
     // il foglio e la copertura sono opachi a 80ms: lo scambio resta invisibile
-    swapPending.current = doSwap;
     swapTimer.current = setTimeout(doSwap, 95);
   }
   turnRef.current = turn;
@@ -812,6 +851,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     if ("flow" in patch || "spread" in patch || "font" in patch) makeRendition(next);
     else if (rendRef.current && ("theme" in patch || "fontSize" in patch || "lineHeight" in patch)) {
       applyStyles(rendRef.current, next);
+      schedulePark();
     }
   }
 
@@ -1002,8 +1042,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const turnsLeft = Math.ceil(pagesLeft / Math.max(1, pages));
   const chapterLeft = speed && turnsLeft > 0 ? formatLeft(turnsLeft * speed) : null;
 
-  const leafGeom = turning
-    ? turning.dir === "next"
+  // il palco della voltata resta sempre montato: la geometria segue la
+  // direzione dell'ultimo giro (o "next" da fermo, tanto e' invisibile)
+  const dirNow = turning?.dir || "next";
+  const leafGeom =
+    dirNow === "next"
       ? {
           left: twoUp ? "50%" : FRAME,
           right: FRAME,
@@ -1023,8 +1066,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             "linear-gradient(245deg, #ffffff0d, transparent 45%), linear-gradient(to left, #00000030, transparent 28%, transparent 62%, #00000012 86%, #00000024 100%)",
           boxShadow: "26px 0 70px #0000003d",
           animationName: "bc-leaf-prev",
-        }
-    : null;
+        };
+  // niente attore parte nudo: il clone si mostra solo se la fotografia
+  // pronta e' del capitolo giusto per quella faccia
+  const anim = (name) => (turning ? `${name} 1.1s ease-in-out forwards` : "none");
+  const frontOk = !!(turning && park && turning.href && park.href === turning.href);
+  const backOk = !!(turning && park && turning.href2 && park.href === turning.href2 && turning.x2 !== null);
 
   return (
     <div
@@ -1149,62 +1196,237 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             }}
           />
         )}
-        {turning && twoUp && (
-          <div
-            key={`cover-${turning.key}`}
-            data-cover={turning.dir}
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              top: FRAME,
-              bottom: FRAME,
-              ...(turning.dir === "next" ? { left: FRAME, right: "50%" } : { left: "50%", right: FRAME }),
-              zIndex: 5,
-              pointerEvents: "none",
-              opacity: 0,
-              backgroundColor: theme.bg,
-              backgroundImage:
-                turning.dir === "next"
-                  ? "linear-gradient(to right, transparent 70%, #0000001f)"
-                  : "linear-gradient(to left, transparent 70%, #0000001f)",
-              animation: "bc-cover-half 1.1s ease-in-out forwards",
-              overflow: "hidden",
-            }}
-          >
+        {twoUp && (
+          <>
+            <div
+              data-cover={dirNow}
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: FRAME,
+                bottom: FRAME,
+                ...(dirNow === "next" ? { left: FRAME, right: "50%" } : { left: "50%", right: FRAME }),
+                zIndex: 5,
+                pointerEvents: "none",
+                visibility: turning ? "visible" : "hidden",
+                opacity: 0,
+                backgroundColor: theme.bg,
+                backgroundImage:
+                  dirNow === "next"
+                    ? "linear-gradient(to right, transparent 70%, #0000001f)"
+                    : "linear-gradient(to left, transparent 70%, #0000001f)",
+                animation: anim("bc-cover-half"),
+                overflow: "hidden",
+              }}
+            >
+              <div
+                aria-hidden="true"
+                style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
+              />
+              <StageFrame
+                park={park}
+                shown={frontOk}
+                x={turning?.x}
+                y={turning?.y}
+                base={dirNow === "next" ? FRAME : (turning?.hw ?? 0) / 2}
+              />
+            </div>
             <div
               aria-hidden="true"
-              style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
+              style={{
+                position: "absolute",
+                top: FRAME,
+                bottom: FRAME,
+                ...(dirNow === "next" ? { left: FRAME, right: "50%" } : { left: "50%", right: FRAME }),
+                zIndex: 5,
+                pointerEvents: "none",
+                visibility: turning ? "visible" : "hidden",
+                opacity: 0,
+                background:
+                  dirNow === "next"
+                    ? "linear-gradient(to left, #0000004d, transparent 78%)"
+                    : "linear-gradient(to right, #0000004d, transparent 78%)",
+                animation: anim("bc-cast"),
+              }}
             />
-            <SnapPage
-              snap={turning.snap}
-              base={turning.dir === "next" ? FRAME : (turning.snap?.hw ?? 0) / 2}
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: FRAME,
+                bottom: FRAME,
+                left: "50%",
+                width: 130,
+                transform: "translateX(-50%)",
+                zIndex: 5,
+                pointerEvents: "none",
+                visibility: turning ? "visible" : "hidden",
+                opacity: 0,
+                background:
+                  "linear-gradient(90deg, transparent, #0000002e 50%, transparent)",
+                animation: anim("bc-spine-pulse"),
+              }}
             />
-          </div>
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: FRAME,
+                bottom: FRAME,
+                left: leafGeom.left,
+                right: leafGeom.right,
+                zIndex: 6,
+                pointerEvents: "none",
+                visibility: turning ? "visible" : "hidden",
+                // l'involucro presta solo la prospettiva: qualsiasi opacita'
+                // qui (anche solo agli estremi della dissolvenza) appiattisce
+                // la scena e stampa le due facce una sopra l'altra
+                perspective: 1500,
+              }}
+            >
+              <div
+                data-flip={dirNow}
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  transformOrigin: leafGeom.transformOrigin,
+                  // niente overflow ne' opacita' qui: appiattirebbero il 3D
+                  // e le due facce diventerebbero una sola
+                  transformStyle: "preserve-3d",
+                  willChange: "transform",
+                  animation: turning
+                    ? `${leafGeom.animationName} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
+                    : "none",
+                }}
+              >
+                {/* l'ombra portata sta su un piano suo: il clip-path delle
+                    facce la taglierebbe via insieme a tutto cio' che sborda */}
+                <div
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    // mezzo pixel dietro le facce: piani coincidenti in 3D
+                    // si contendono la profondita' e sfarfallano sulla GPU
+                    transform: "translateZ(-0.5px)",
+                    borderRadius: leafGeom.borderRadius,
+                    boxShadow: leafGeom.boxShadow,
+                    opacity: 0,
+                    animation: anim("bc-leaf-fade"),
+                  }}
+                />
+                {/* faccia davanti: la pagina che sta partendo. La dissolvenza
+                    vive qui, sulle facce piatte, e il ritaglio degli angoli
+                    e' clip-path: overflow+raggio non vengono onorati
+                    sull'iframe composito dentro il 3D */}
+                <div
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    overflow: "hidden",
+                    borderRadius: leafGeom.borderRadius,
+                    clipPath: `inset(0 round ${leafGeom.borderRadius})`,
+                    backfaceVisibility: "hidden",
+                    transform: "translateZ(0.5px)",
+                    backgroundColor: theme.bg,
+                    backgroundImage: leafGeom.backgroundImage,
+                    opacity: 0,
+                    animation: anim("bc-leaf-front"),
+                  }}
+                >
+                  <div
+                    aria-hidden="true"
+                    style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
+                  />
+                  <StageFrame
+                    park={park}
+                    shown={frontOk}
+                    x={turning?.x}
+                    y={turning?.y}
+                    base={dirNow === "next" ? (turning?.hw ?? 0) / 2 : FRAME}
+                  />
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      opacity: 0,
+                      background:
+                        dirNow === "next"
+                          ? "linear-gradient(to right, #00000052, #00000026)"
+                          : "linear-gradient(to left, #00000052, #00000026)",
+                      animation: anim("bc-leaf-shade"),
+                    }}
+                  />
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      bottom: 0,
+                      ...(dirNow === "next" ? { right: 0 } : { left: 0 }),
+                      width: 7,
+                      background:
+                        dirNow === "next"
+                          ? "linear-gradient(to left, #00000038, transparent)"
+                          : "linear-gradient(to right, #00000038, transparent)",
+                    }}
+                  />
+                </div>
+                {/* faccia dietro: la pagina che sta arrivando — stesso
+                    capitolo gia' preparato, solo la posizione post-scambio;
+                    il rotateY(180) della faccia annulla lo specchio della
+                    rotazione del foglio */}
+                <div
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    overflow: "hidden",
+                    borderRadius: leafGeom.borderRadius,
+                    clipPath: `inset(0 round ${leafGeom.borderRadius})`,
+                    backfaceVisibility: "hidden",
+                    transform: "rotateY(180deg) translateZ(0.5px)",
+                    backgroundColor: theme.bg,
+                    backgroundImage: leafGeom.backgroundImage,
+                    opacity: 0,
+                    animation: anim("bc-leaf-back"),
+                  }}
+                >
+                  <div
+                    aria-hidden="true"
+                    style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
+                  />
+                  <StageFrame
+                    park={park}
+                    shown={backOk}
+                    x={turning?.x2}
+                    y={turning?.y}
+                    base={dirNow === "next" ? FRAME : (turning?.hw ?? 0) / 2}
+                  />
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      opacity: 0,
+                      background:
+                        dirNow === "next"
+                          ? "linear-gradient(to left, #00000052, #00000026)"
+                          : "linear-gradient(to right, #00000052, #00000026)",
+                      animation: anim("bc-leaf-shade"),
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </>
         )}
-        {turning && twoUp && (
+        {paginated && !twoUp && (
           <div
-            key={`cast-${turning.key}`}
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              top: FRAME,
-              bottom: FRAME,
-              ...(turning.dir === "next" ? { left: FRAME, right: "50%" } : { left: "50%", right: FRAME }),
-              zIndex: 5,
-              pointerEvents: "none",
-              opacity: 0,
-              background:
-                turning.dir === "next"
-                  ? "linear-gradient(to left, #0000004d, transparent 78%)"
-                  : "linear-gradient(to right, #0000004d, transparent 78%)",
-              animation: "bc-cast 1.1s ease-in-out forwards",
-            }}
-          />
-        )}
-        {turning && !twoUp && (
-          <div
-            key={`sheet-${turning.key}`}
-            data-flip={turning.dir}
+            data-flip={dirNow}
             aria-hidden="true"
             style={{
               position: "absolute",
@@ -1214,189 +1436,20 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               right: FRAME,
               zIndex: 6,
               pointerEvents: "none",
+              visibility: turning ? "visible" : "hidden",
               opacity: 0,
               borderRadius: 3,
               backgroundColor: theme.bg,
               overflow: "hidden",
               willChange: "opacity",
-              animation: "bc-sheet-fade 0.5s ease-out forwards",
+              animation: turning ? "bc-sheet-fade 0.5s ease-out forwards" : "none",
             }}
           >
             {/* il velo porta la pagina che parte: la dissolvenza diventa un
                 incrocio fra testo vero e testo vero */}
-            <SnapPage snap={turning.snap} base={FRAME} />
+            <StageFrame park={park} shown={frontOk} x={turning?.x} y={turning?.y} base={FRAME} />
           </div>
         )}
-        {turning && twoUp && (
-          <div
-            key={`spinep-${turning.key}`}
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              top: FRAME,
-              bottom: FRAME,
-              left: "50%",
-              width: 130,
-              transform: "translateX(-50%)",
-              zIndex: 5,
-              pointerEvents: "none",
-              opacity: 0,
-              background:
-                "linear-gradient(90deg, transparent, #0000002e 50%, transparent)",
-              animation: "bc-spine-pulse 1.1s ease-in-out forwards",
-            }}
-          />
-        )}
-        {turning && twoUp && (
-          <div
-            key={turning.key}
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              top: FRAME,
-              bottom: FRAME,
-              left: leafGeom.left,
-              right: leafGeom.right,
-              zIndex: 6,
-              pointerEvents: "none",
-              // l'involucro presta solo la prospettiva: qualsiasi opacita'
-              // qui (anche solo agli estremi della dissolvenza) appiattisce
-              // la scena e stampa le due facce una sopra l'altra
-              perspective: 1500,
-            }}
-          >
-            <div
-              data-flip={turning.dir}
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                inset: 0,
-                transformOrigin: leafGeom.transformOrigin,
-                // niente overflow ne' opacita' qui: appiattirebbero il 3D e
-                // le due facce diventerebbero una sola
-                transformStyle: "preserve-3d",
-                willChange: "transform",
-                animationName: leafGeom.animationName,
-                animationDuration: "1.1s",
-                animationTimingFunction: "cubic-bezier(0.3, 0.45, 0.35, 1)",
-                animationFillMode: "forwards",
-              }}
-            >
-              {/* l'ombra portata sta su un piano suo: il clip-path delle
-                  facce la taglierebbe via insieme a tutto cio' che sborda */}
-              <div
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  // mezzo pixel dietro le facce: piani coincidenti in 3D
-                  // si contendono la profondita' e sfarfallano sulla GPU
-                  transform: "translateZ(-0.5px)",
-                  borderRadius: leafGeom.borderRadius,
-                  boxShadow: leafGeom.boxShadow,
-                  opacity: 0,
-                  animation: "bc-leaf-fade 1.1s ease-in-out forwards",
-                }}
-              />
-            {/* faccia davanti: la pagina che sta partendo. La dissolvenza
-                vive qui, sulle facce piatte, e il ritaglio degli angoli e'
-                clip-path: overflow+raggio non vengono onorati sull'iframe
-                composito dentro il 3D e il testo sbordava squadrato */}
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                inset: 0,
-                overflow: "hidden",
-                borderRadius: leafGeom.borderRadius,
-                clipPath: `inset(0 round ${leafGeom.borderRadius})`,
-                backfaceVisibility: "hidden",
-                transform: "translateZ(0.5px)",
-                backgroundColor: theme.bg,
-                backgroundImage: leafGeom.backgroundImage,
-                opacity: 0,
-                animation: "bc-leaf-front 1.1s ease-in-out forwards",
-              }}
-            >
-              <div
-                aria-hidden="true"
-                style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
-              />
-              <SnapPage
-                snap={turning.snap}
-                base={turning.dir === "next" ? (turning.snap?.hw ?? 0) / 2 : FRAME}
-              />
-              <div
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  opacity: 0,
-                  background:
-                    turning.dir === "next"
-                      ? "linear-gradient(to right, #00000052, #00000026)"
-                      : "linear-gradient(to left, #00000052, #00000026)",
-                  animation: "bc-leaf-shade 1.1s ease-in-out forwards",
-                }}
-              />
-              <div
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  bottom: 0,
-                  ...(turning.dir === "next" ? { right: 0 } : { left: 0 }),
-                  width: 7,
-                  background:
-                    turning.dir === "next"
-                      ? "linear-gradient(to left, #00000038, transparent)"
-                      : "linear-gradient(to right, #00000038, transparent)",
-                }}
-              />
-            </div>
-            {/* faccia dietro: la pagina che sta arrivando, fotografata a
-                scambio avvenuto; il rotateY(180) della faccia annulla lo
-                specchio della rotazione del foglio */}
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                inset: 0,
-                overflow: "hidden",
-                borderRadius: leafGeom.borderRadius,
-                clipPath: `inset(0 round ${leafGeom.borderRadius})`,
-                backfaceVisibility: "hidden",
-                transform: "rotateY(180deg) translateZ(0.5px)",
-                backgroundColor: theme.bg,
-                backgroundImage: leafGeom.backgroundImage,
-                opacity: 0,
-                animation: "bc-leaf-back 1.1s ease-in-out forwards",
-              }}
-            >
-              <div
-                aria-hidden="true"
-                style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
-              />
-              <SnapPage
-                snap={turning.snapAfter}
-                base={turning.dir === "next" ? FRAME : (turning.snapAfter?.hw ?? 0) / 2}
-              />
-              <div
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  opacity: 0,
-                  background:
-                    turning.dir === "next"
-                      ? "linear-gradient(to left, #00000052, #00000026)"
-                      : "linear-gradient(to right, #00000052, #00000026)",
-                  animation: "bc-leaf-shade 1.1s ease-in-out forwards",
-                }}
-              />
-            </div>
-            </div>
-          </div>
         )}
       </div>
 
