@@ -1,3 +1,5 @@
+import { queryRegex } from "./wordForms.js";
+
 // Cercare in un PDF vuol dire leggerne il testo pagina per pagina: non c'e'
 // un indice, quindi si sfoglia davvero. Il testo gia' letto resta in una
 // cache per la sessione, cosi' la seconda ricerca e' immediata.
@@ -38,16 +40,16 @@ function context(text, start, end, pad = 46) {
 }
 
 export function findMatches(text, query, max = 3) {
+  // non alla lettera: «muscle in» deve trovare anche «muscling in», quindi
+  // la domanda diventa l'espressione con tutte le forme flesse
   const needle = normalizeWithMap(query || "").text.trim();
-  if (!needle || !text) return [];
+  const re = queryRegex(needle);
+  if (!re || !text) return [];
   const { text: hay, map } = normalizeWithMap(text);
   const out = [];
-  let from = 0;
-  while (out.length < max) {
-    const i = hay.indexOf(needle, from);
-    if (i < 0) break;
-    out.push(context(text, map[i], map[i + needle.length] ?? text.length));
-    from = i + needle.length;
+  for (const m of hay.matchAll(re)) {
+    out.push(context(text, map[m.index], map[m.index + m[0].length] ?? text.length));
+    if (out.length >= max) break;
   }
   return out;
 }

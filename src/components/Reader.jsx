@@ -778,9 +778,27 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     setSearchState({ busy: false, results });
   }
 
-  function goTo(target) {
-    rendRef.current?.display(target);
+  function goTo(target, flash) {
+    const r = rendRef.current;
+    if (!r) return;
+    const arrivo = r.display(target);
     setPanel(null);
+    if (!flash) return;
+    // il risultato trovato si accende per qualche secondo: serve solo a far
+    // atterrare l'occhio sul punto, poi la pagina torna pulita
+    arrivo?.then?.(() => {
+      try {
+        r.annotations.highlight(target, {}, undefined, "bc-found", {
+          fill: C.accent,
+          "fill-opacity": "0.4",
+        });
+        setTimeout(() => {
+          try { r.annotations.remove(target, "highlight"); } catch { /* vista smontata */ }
+        }, 2600);
+      } catch {
+        /* cfi senza range: si arriva comunque alla pagina */
+      }
+    });
   }
 
   // Fuori dal capitolo il tocco moriva: cornice, taglio delle pagine e
@@ -1593,7 +1611,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           {searchState.results?.map((r, i) => (
             <button
               key={i}
-              onClick={() => goTo(r.cfi)}
+              onClick={() => goTo(r.cfi, true)}
               style={{
                 display: "block",
                 width: "100%",
