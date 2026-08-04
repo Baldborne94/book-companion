@@ -57,7 +57,9 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
   const secondaria = elenco || primaria !== dict.gloss ? (elenco ? null : dict.gloss) : dict.slang;
   const local = primaria || secondaria || elenco;
   const rest = elenco ? tutte : tutte.filter((e) => e.t !== primaria?.t && e.t !== secondaria?.t);
-  const shown = local ? 1 : dict.translation ? 2 : 3;
+  // se la prima riga e' solo il rimando («plurale di…»), un significato vero
+  // in piu' resta visibile senza dover toccare «Altri»
+  const shown = (local ? 1 : dict.translation ? 2 : 3) + (dict.entries?.[0]?.forma ? 1 : 0);
   const testo = dict.raw?.trim() || dict.word || "";
   const titolo = primaria?.t || (testo.length > 44 ? `${testo.slice(0, 44)}…` : testo);
 

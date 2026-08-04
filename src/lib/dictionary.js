@@ -67,6 +67,36 @@ const rank = (pos) => {
   return i < 0 ? POS_ORDER.length : i;
 };
 
+// Sulle forme flesse Wiktionary non spiega: rimanda. «gutters» ha come unica
+// definizione "plural of gutter", che a chi legge non dice nulla. Il rimando
+// va seguito: la scheda mostra la natura della forma (in italiano) e sotto i
+// significati veri della parola base.
+const FORME = [
+  [/third-person singular/, "terza persona singolare di"],
+  [/past (?:tense|participle) and (?:past )?participle|past tense and past participle/, "passato e participio passato di"],
+  [/past participle/, "participio passato di"],
+  [/past tense|simple past/, "passato di"],
+  [/present participle|gerund/, "participio presente di"],
+  [/\bplural\b/, "plurale di"],
+  [/comparative/, "comparativo di"],
+  [/superlative/, "superlativo di"],
+  [/diminutive/, "diminutivo di"],
+  [/contraction/, "contrazione di"],
+  [/(?:alternative|archaic|obsolete|dated|nonstandard|informal) (?:form|spelling|letter-case form)|alternative case form|pronunciation spelling|eye dialect/, "variante di"],
+];
+
+export function formaDi(text) {
+  const m = /^(.*?\bof)\s+([a-z' -]+?)[.;,]?$/i.exec(String(text || "").trim());
+  if (!m) return null;
+  const lemma = m[2].trim().toLowerCase();
+  if (!lemma || lemma.split(/\s+/).length > 3) return null;
+  const desc = m[1].toLowerCase();
+  for (const [re, label] of FORME) {
+    if (re.test(desc)) return { lemma, label };
+  }
+  return null;
+}
+
 async function fetchSenses(word, section) {
   const res = await fetch(
     `https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(word)}`
@@ -355,7 +385,9 @@ export async function lookup(raw, bookLang = "en") {
   const key = `${word}|${lang}`;
   await loadCache();
   const known = CACHE.get(key);
-  if (known) {
+  // le voci salvate prima che i rimandi si seguissero contengono ancora il
+  // "plural of" nudo: si riprovano, cosi' si completano da sole
+  if (known && !known.entries?.some((e) => formaDi(e.text))) {
     known.at = Date.now();
     return known;
   }
@@ -372,6 +404,25 @@ export async function lookup(raw, bookLang = "en") {
     jobs.push(fetchTranslation(word, lang).then((r) => (translation = r)).catch(() => {}));
   }
   await Promise.all(jobs);
+
+  // si segue il primo rimando (un salto solo: basta e non gira in tondo),
+  // le altre righe-rimando si dicono almeno in italiano
+  let base = null;
+  for (const e of entries) {
+    const f = formaDi(e.text);
+    if (!f) continue;
+    e.text = `${f.label} «${f.lemma}»`;
+    e.forma = true;
+    if (!base && f.lemma !== word) base = f;
+  }
+  if (base) {
+    try {
+      const senseBase = await fetchSenses(base.lemma, lang);
+      entries = [...entries, ...senseBase.filter((e) => !formaDi(e.text))];
+    } catch {
+      /* resta il rimando in italiano: gia' meglio di prima */
+    }
+  }
 
   const out = {
     word,
