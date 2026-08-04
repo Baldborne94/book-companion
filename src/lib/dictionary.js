@@ -291,15 +291,21 @@ const TROPPO_COMUNI = new Set([
   "at all", "of course", "as well", "in fact", "a lot", "a lot of", "sort of",
   "kind of", "and so on", "at last", "at once", "as if", "as though",
   "no one", "each other", "one another", "so that", "such as", "up to",
+  // esistono su Wiktionary ma vincerebbero su meta' delle frasi inglesi
+  "have to", "had to", "has to", "having to", "want to", "going to", "go to",
+  "get to", "got to", "need to", "try to", "used to", "come in", "come on",
+  "go on", "go in", "look at",
 ]);
 
 // «out of the» non e' un modo di dire di niente: le finestre che finiscono
 // con una parola vuota si scartano prima di sprecarci una richiesta. Con
-// un'eccezione: «in» e «on» sono anche particelle di verbi frasali, e
-// scartare ogni finestra che ci finisce rendeva «muscle in» introvabile.
+// un'eccezione: molte parole vuote sono anche particelle o preposizioni su
+// cui i verbi frasali finiscono — «muscle in», «get by», «see to», «fall
+// for», «get away with», «get rid of» — e scartare ogni finestra che ci
+// finisce li rendeva tutti introvabili.
 const PARTICELLE = new Set([
   "in", "on", "up", "out", "off", "down", "over", "away", "back", "along",
-  "around", "about", "through", "round",
+  "around", "about", "through", "round", "to", "at", "by", "for", "with", "of",
 ]);
 
 const VUOTE = new Set([
@@ -340,7 +346,10 @@ function subPhrases(words) {
       }
     }
   }
-  return out.filter((t) => !TROPPO_COMUNI.has(t));
+  // le locuzioni comuni si scartano solo come pezzi di una frase piu' lunga:
+  // chi seleziona esattamente «used to» la sua risposta la vuole davvero
+  const intera = words.join(" ");
+  return out.filter((t) => t === intera || !TROPPO_COMUNI.has(t));
 }
 
 // Quali di questi titoli esistono davvero su Wiktionary: una domanda sola per
