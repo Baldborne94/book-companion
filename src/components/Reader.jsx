@@ -1240,7 +1240,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         {turning && twoUp && (
           <div
             key={turning.key}
-            data-flip={turning.dir}
             aria-hidden="true"
             style={{
               position: "absolute",
@@ -1250,15 +1249,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               right: leafGeom.right,
               zIndex: 6,
               pointerEvents: "none",
-              // l'involucro fa solo la dissolvenza, da piatto, e presta la
-              // prospettiva al rotatore: animare l'opacita' sull'elemento 3D
-              // appiattirebbe la scena e specchierebbe il retro
-              opacity: 0,
+              // l'involucro presta solo la prospettiva: qualsiasi opacita'
+              // qui (anche solo agli estremi della dissolvenza) appiattisce
+              // la scena e stampa le due facce una sopra l'altra
               perspective: 1500,
-              animation: "bc-leaf-fade 1.1s ease-in-out forwards",
             }}
           >
             <div
+              data-flip={turning.dir}
               aria-hidden="true"
               style={{
                 position: "absolute",
@@ -1274,7 +1272,23 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 animationFillMode: "forwards",
               }}
             >
-            {/* faccia davanti: la pagina che sta partendo */}
+              {/* l'ombra portata sta su un piano suo: il clip-path delle
+                  facce la taglierebbe via insieme a tutto cio' che sborda */}
+              <div
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  borderRadius: leafGeom.borderRadius,
+                  boxShadow: leafGeom.boxShadow,
+                  opacity: 0,
+                  animation: "bc-leaf-fade 1.1s ease-in-out forwards",
+                }}
+              />
+            {/* faccia davanti: la pagina che sta partendo. La dissolvenza
+                vive qui, sulle facce piatte, e il ritaglio degli angoli e'
+                clip-path: overflow+raggio non vengono onorati sull'iframe
+                composito dentro il 3D e il testo sbordava squadrato */}
             <div
               aria-hidden="true"
               style={{
@@ -1282,10 +1296,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 inset: 0,
                 overflow: "hidden",
                 borderRadius: leafGeom.borderRadius,
-                boxShadow: leafGeom.boxShadow,
+                clipPath: `inset(0 round ${leafGeom.borderRadius})`,
                 backfaceVisibility: "hidden",
                 backgroundColor: theme.bg,
                 backgroundImage: leafGeom.backgroundImage,
+                opacity: 0,
+                animation: "bc-leaf-fade 1.1s ease-in-out forwards",
               }}
             >
               {!turning.snap && (
@@ -1336,11 +1352,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 inset: 0,
                 overflow: "hidden",
                 borderRadius: leafGeom.borderRadius,
-                boxShadow: leafGeom.boxShadow,
+                clipPath: `inset(0 round ${leafGeom.borderRadius})`,
                 backfaceVisibility: "hidden",
                 transform: "rotateY(180deg)",
                 backgroundColor: theme.bg,
                 backgroundImage: leafGeom.backgroundImage,
+                opacity: 0,
+                animation: "bc-leaf-fade 1.1s ease-in-out forwards",
               }}
             >
               {!turning.snapAfter && (
