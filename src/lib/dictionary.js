@@ -67,6 +67,36 @@ const rank = (pos) => {
   return i < 0 ? POS_ORDER.length : i;
 };
 
+// Sulle forme flesse Wiktionary non spiega: rimanda. «gutters» ha come unica
+// definizione "plural of gutter", che a chi legge non dice nulla. Il rimando
+// va seguito: la scheda mostra la natura della forma (in italiano) e sotto i
+// significati veri della parola base.
+const FORME = [
+  [/third-person singular/, "terza persona singolare di"],
+  [/past (?:tense|participle) and (?:past )?participle|past tense and past participle/, "passato e participio passato di"],
+  [/past participle/, "participio passato di"],
+  [/past tense|simple past/, "passato di"],
+  [/present participle|gerund/, "participio presente di"],
+  [/\bplural\b/, "plurale di"],
+  [/comparative/, "comparativo di"],
+  [/superlative/, "superlativo di"],
+  [/diminutive/, "diminutivo di"],
+  [/contraction/, "contrazione di"],
+  [/(?:alternative|archaic|obsolete|dated|nonstandard|informal) (?:form|spelling|letter-case form)|alternative case form|pronunciation spelling|eye dialect/, "variante di"],
+];
+
+export function formaDi(text) {
+  const m = /^(.*?\bof)\s+([a-z' -]+?)[.;,]?$/i.exec(String(text || "").trim());
+  if (!m) return null;
+  const lemma = m[2].trim().toLowerCase();
+  if (!lemma || lemma.split(/\s+/).length > 3) return null;
+  const desc = m[1].toLowerCase();
+  for (const [re, label] of FORME) {
+    if (re.test(desc)) return { lemma, label };
+  }
+  return null;
+}
+
 async function fetchSenses(word, section) {
   const res = await fetch(
     `https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(word)}`
@@ -172,8 +202,9 @@ const MAX_TRIES = 50;
 // Wiktionary indicizza l'infinito: nel libro c'e' «taking the mickey», la
 // voce si chiama «take the mickey». Il verbo sta quasi sempre in testa al
 // modo di dire, quindi si prova anche la prima parola riportata alla forma
-// base. Solo con una tabella esplicita: tagliare le desinenze a occhio
-// storpierebbe le parole che desinenze non hanno.
+// base. La tabella copre gli irregolari; le forme regolari si tentano per
+// desinenza piu' sotto (basiDi), tanto un tentativo sbagliato non esiste su
+// Wiktionary e la verifica di esistenza lo scarta gratis.
 const LEMMI = {
   took: "take", takes: "take", taking: "take", taken: "take",
   kicked: "kick", kicks: "kick", kicking: "kick",
@@ -213,6 +244,38 @@ const LEMMI = {
   was: "be", were: "be", been: "be", being: "be", is: "be", are: "be",
 };
 
+// Le forme regolari non stanno in LEMMI: «muscling» deve diventare «muscle»
+// senza una riga di tabella. Indovinare per desinenza qui e' sicuro perche'
+// ogni candidato passa comunque dalla verifica di esistenza: «muscl in» non
+// e' una voce e muore li', «muscle in» lo e' e vince.
+export function basiDi(w) {
+  const out = new Set();
+  if (LEMMI[w]) out.add(LEMMI[w]);
+  const doppia = (stem) => /(.)\1$/.test(stem);
+  if (w.endsWith("ing") && w.length > 4) {
+    const stem = w.slice(0, -3);
+    out.add(stem);
+    out.add(`${stem}e`);
+    if (doppia(stem)) out.add(stem.slice(0, -1));
+  } else if (w.endsWith("ied") && w.length > 4) {
+    out.add(`${w.slice(0, -3)}y`);
+  } else if (w.endsWith("ed") && w.length > 3) {
+    const stem = w.slice(0, -2);
+    out.add(stem);
+    out.add(`${stem}e`);
+    if (doppia(stem)) out.add(stem.slice(0, -1));
+  } else if (w.endsWith("ies") && w.length > 4) {
+    out.add(`${w.slice(0, -3)}y`);
+  } else if (w.endsWith("es") && w.length > 3) {
+    out.add(w.slice(0, -1));
+    out.add(w.slice(0, -2));
+  } else if (w.endsWith("s") && w.length > 3) {
+    out.add(w.slice(0, -1));
+  }
+  out.delete(w);
+  return [...out];
+}
+
 // I verbi separabili sono il caso che le finestre contigue non prendono mai:
 // nel libro c'e' «egg them on», il dizionario la indicizza come «egg on». Il
 // complemento in mezzo va tolto, o l'idioma resta invisibile — ed e' successo
@@ -228,10 +291,23 @@ const TROPPO_COMUNI = new Set([
   "at all", "of course", "as well", "in fact", "a lot", "a lot of", "sort of",
   "kind of", "and so on", "at last", "at once", "as if", "as though",
   "no one", "each other", "one another", "so that", "such as", "up to",
+  // esistono su Wiktionary ma vincerebbero su meta' delle frasi inglesi
+  "have to", "had to", "has to", "having to", "want to", "going to", "go to",
+  "get to", "got to", "need to", "try to", "used to", "come in", "come on",
+  "go on", "go in", "look at",
 ]);
 
 // «out of the» non e' un modo di dire di niente: le finestre che finiscono
-// con una parola vuota si scartano prima di sprecarci una richiesta
+// con una parola vuota si scartano prima di sprecarci una richiesta. Con
+// un'eccezione: molte parole vuote sono anche particelle o preposizioni su
+// cui i verbi frasali finiscono — «muscle in», «get by», «see to», «fall
+// for», «get away with», «get rid of» — e scartare ogni finestra che ci
+// finisce li rendeva tutti introvabili.
+const PARTICELLE = new Set([
+  "in", "on", "up", "out", "off", "down", "over", "away", "back", "along",
+  "around", "about", "through", "round", "to", "at", "by", "for", "with", "of",
+]);
+
 const VUOTE = new Set([
   "the", "a", "an", "of", "and", "or", "but", "to", "in", "on", "at", "by",
   "for", "with", "from", "that", "this", "it", "he", "she", "they", "you",
@@ -255,18 +331,25 @@ function subPhrases(words) {
   for (let n = Math.min(5, words.length); n >= 2; n--) {
     for (let i = 0; i + n <= words.length; i++) {
       const f = words.slice(i, i + n);
-      if (VUOTE.has(f[f.length - 1]) || f.every((w) => VUOTE.has(w))) continue;
+      const ultima = f[f.length - 1];
+      // la particella in coda salva la finestra solo se davanti c'e' un
+      // verbo plausibile, non un'altra parola vuota («was in» non serve)
+      const frasale = PARTICELLE.has(ultima) && !VUOTE.has(f[0]);
+      if ((VUOTE.has(ultima) && !frasale) || f.every((w) => VUOTE.has(w))) continue;
       aggiungi(f.join(" "));
-      const base = LEMMI[f[0]];
-      if (base) aggiungi([base, ...f.slice(1)].join(" "));
+      const basi = basiDi(f[0]);
+      for (const base of basi) aggiungi([base, ...f.slice(1)].join(" "));
       // verbo separabile: «egg them on» → «egg on», «egg on» all'infinito
       if (n === 3 && OGGETTI.has(f[1])) {
         aggiungi(`${f[0]} ${f[2]}`);
-        if (base) aggiungi(`${base} ${f[2]}`);
+        for (const base of basi) aggiungi(`${base} ${f[2]}`);
       }
     }
   }
-  return out.filter((t) => !TROPPO_COMUNI.has(t));
+  // le locuzioni comuni si scartano solo come pezzi di una frase piu' lunga:
+  // chi seleziona esattamente «used to» la sua risposta la vuole davvero
+  const intera = words.join(" ");
+  return out.filter((t) => t === intera || !TROPPO_COMUNI.has(t));
 }
 
 // Quali di questi titoli esistono davvero su Wiktionary: una domanda sola per
@@ -355,7 +438,9 @@ export async function lookup(raw, bookLang = "en") {
   const key = `${word}|${lang}`;
   await loadCache();
   const known = CACHE.get(key);
-  if (known) {
+  // le voci salvate prima che i rimandi si seguissero contengono ancora il
+  // "plural of" nudo: si riprovano, cosi' si completano da sole
+  if (known && !known.entries?.some((e) => formaDi(e.text))) {
     known.at = Date.now();
     return known;
   }
@@ -372,6 +457,25 @@ export async function lookup(raw, bookLang = "en") {
     jobs.push(fetchTranslation(word, lang).then((r) => (translation = r)).catch(() => {}));
   }
   await Promise.all(jobs);
+
+  // si segue il primo rimando (un salto solo: basta e non gira in tondo),
+  // le altre righe-rimando si dicono almeno in italiano
+  let base = null;
+  for (const e of entries) {
+    const f = formaDi(e.text);
+    if (!f) continue;
+    e.text = `${f.label} «${f.lemma}»`;
+    e.forma = true;
+    if (!base && f.lemma !== word) base = f;
+  }
+  if (base) {
+    try {
+      const senseBase = await fetchSenses(base.lemma, lang);
+      entries = [...entries, ...senseBase.filter((e) => !formaDi(e.text))];
+    } catch {
+      /* resta il rimando in italiano: gia' meglio di prima */
+    }
+  }
 
   const out = {
     word,
