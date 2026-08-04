@@ -172,16 +172,16 @@ input {
     opacity: 1;
   }
   32% {
-    transform: rotateY(-54deg) scaleX(0.93);
+    transform: rotateY(-54deg) scaleX(0.968);
   }
   56% {
-    transform: rotateY(-122deg) scaleX(0.9);
+    transform: rotateY(-122deg) scaleX(0.955);
   }
-  80% {
-    transform: rotateY(-170deg) scaleX(0.975);
+  78% {
+    transform: rotateY(-170deg) scaleX(0.988);
     opacity: 1;
   }
-  90% {
+  86% {
     transform: rotateY(-178deg) scaleX(1);
     opacity: 1;
   }
@@ -201,16 +201,16 @@ input {
     opacity: 1;
   }
   32% {
-    transform: rotateY(54deg) scaleX(0.93);
+    transform: rotateY(54deg) scaleX(0.968);
   }
   56% {
-    transform: rotateY(122deg) scaleX(0.9);
+    transform: rotateY(122deg) scaleX(0.955);
   }
-  80% {
-    transform: rotateY(170deg) scaleX(0.975);
+  78% {
+    transform: rotateY(170deg) scaleX(0.988);
     opacity: 1;
   }
-  90% {
+  86% {
     transform: rotateY(178deg) scaleX(1);
     opacity: 1;
   }
@@ -242,28 +242,30 @@ input {
   }
 }
 
-/* il dorso si approfondisce quando il foglio gli passa sopra */
+/* il dorso si approfondisce quando il foglio gli passa sopra: un picco
+   solo, salita e discesa lunghe, che non si faccia notare da fermo */
 @keyframes bc-spine-pulse {
   0%,
-  10% {
+  8% {
     opacity: 0;
   }
-  45%,
-  60% {
+  46% {
     opacity: 1;
   }
-  95%,
   100% {
     opacity: 0;
   }
 }
 
+/* la copertura si spegne lunga e in coda al foglio: l'arrivo sulla pagina
+   nuova (o vecchia, tornando indietro) deve essere una dissolvenza, non
+   uno scatto */
 @keyframes bc-cover-half {
   0% {
     opacity: 0;
   }
   8%,
-  80% {
+  72% {
     opacity: 1;
   }
   100% {
