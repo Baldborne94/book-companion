@@ -1279,6 +1279,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 style={{
                   position: "absolute",
                   inset: 0,
+                  // mezzo pixel dietro le facce: piani coincidenti in 3D
+                  // si contendono la profondita' e sfarfallano sulla GPU
+                  transform: "translateZ(-0.5px)",
                   borderRadius: leafGeom.borderRadius,
                   boxShadow: leafGeom.boxShadow,
                   opacity: 0,
@@ -1298,10 +1301,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 borderRadius: leafGeom.borderRadius,
                 clipPath: `inset(0 round ${leafGeom.borderRadius})`,
                 backfaceVisibility: "hidden",
+                transform: "translateZ(0.5px)",
                 backgroundColor: theme.bg,
                 backgroundImage: leafGeom.backgroundImage,
                 opacity: 0,
-                animation: "bc-leaf-fade 1.1s ease-in-out forwards",
+                animation: "bc-leaf-front 1.1s ease-in-out forwards",
               }}
             >
               {!turning.snap && (
@@ -1354,11 +1358,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 borderRadius: leafGeom.borderRadius,
                 clipPath: `inset(0 round ${leafGeom.borderRadius})`,
                 backfaceVisibility: "hidden",
-                transform: "rotateY(180deg)",
+                transform: "rotateY(180deg) translateZ(0.5px)",
                 backgroundColor: theme.bg,
                 backgroundImage: leafGeom.backgroundImage,
                 opacity: 0,
-                animation: "bc-leaf-fade 1.1s ease-in-out forwards",
+                animation: "bc-leaf-back 1.1s ease-in-out forwards",
               }}
             >
               {!turning.snapAfter && (
