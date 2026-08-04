@@ -713,15 +713,27 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   function snapSpread() {
     try {
       const host = bookRef.current;
-      let view = null;
-      rendRef.current?.manager?.views?.forEach?.((v) => {
-        if (!view && v?.contents?.document) view = v;
-      });
-      const ifr = view?.iframe || view?.element?.querySelector?.("iframe");
-      const doc = view?.contents?.document;
-      if (!host || !ifr || !doc) return null;
-      const ri = ifr.getBoundingClientRect();
+      if (!host) return null;
       const rh = host.getBoundingClientRect();
+      // con piu' capitoli in piedi (epub.js precarica il prossimo) la
+      // "prima vista" puo' essere quella fuori schermo: la fotografia
+      // giusta e' della vista piu' sovrapposta al libro
+      let view = null;
+      let ri = null;
+      let meglio = 0;
+      rendRef.current?.manager?.views?.forEach?.((v) => {
+        const f = v?.iframe || v?.element?.querySelector?.("iframe");
+        if (!f || !v?.contents?.document) return;
+        const r = f.getBoundingClientRect();
+        const visibile = Math.min(r.right, rh.right) - Math.max(r.left, rh.left);
+        if (visibile > meglio) {
+          meglio = visibile;
+          view = v;
+          ri = r;
+        }
+      });
+      const doc = view?.contents?.document;
+      if (!view || !ri || !doc) return null;
       // epub.js inietta tema e interlinea via CSSOM (insertRule): il tag
       // <style> nel markup resta vuoto e outerHTML non li porta con se'.
       // Senza queste regole il clone reimpagina diverso e la finestra di
@@ -1159,12 +1171,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               overflow: "hidden",
             }}
           >
-            {!turning.snap && (
-              <div
-                aria-hidden="true"
-                style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
-              />
-            )}
+            <div
+              aria-hidden="true"
+              style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
+            />
             <SnapPage
               snap={turning.snap}
               base={turning.dir === "next" ? FRAME : (turning.snap?.hw ?? 0) / 2}
@@ -1308,12 +1318,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 animation: "bc-leaf-front 1.1s ease-in-out forwards",
               }}
             >
-              {!turning.snap && (
-                <div
-                  aria-hidden="true"
-                  style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
-                />
-              )}
+              <div
+                aria-hidden="true"
+                style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
+              />
               <SnapPage
                 snap={turning.snap}
                 base={turning.dir === "next" ? (turning.snap?.hw ?? 0) / 2 : FRAME}
@@ -1365,12 +1373,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 animation: "bc-leaf-back 1.1s ease-in-out forwards",
               }}
             >
-              {!turning.snapAfter && (
-                <div
-                  aria-hidden="true"
-                  style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
-                />
-              )}
+              <div
+                aria-hidden="true"
+                style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
+              />
               <SnapPage
                 snap={turning.snapAfter}
                 base={turning.dir === "next" ? FRAME : (turning.snapAfter?.hw ?? 0) / 2}
