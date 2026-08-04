@@ -15,6 +15,7 @@ import { explain, termIndex, normalize, wikiUrl, glossaryOf } from "../lib/gloss
 import { contextAround } from "../lib/oracle.js";
 import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../lib/readingSpeed.js";
 import { leftoverScroll } from "../lib/spread.js";
+import { bakeHtml, rasterize, drawCurl } from "../lib/pageCurl.js";
 import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
@@ -297,6 +298,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const swapTimer = useRef(null);
   const parkTimer = useRef(null);
   const turningRef = useRef(null);
+  const texRef = useRef(null);
+  const curlCanvasRef = useRef(null);
+  const curlRun = useRef(null);
   const turnRef = useRef(() => {});
   const moved = useRef(false);
   const fixTimers = useRef([]);
@@ -454,6 +458,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         try { rendRef.current.destroy(); } catch { /* già distrutto */ }
       }
       viewerRef.current.innerHTML = "";
+      texRef.current = null;
       const r = eb.renderTo(viewerRef.current, {
         width: "100%",
         height: "100%",
@@ -648,6 +653,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       clearTimeout(turnTimer.current);
       clearTimeout(reflowTimer.current);
       clearTimeout(parkTimer.current);
+      curlRun.current = null;
       fixTimers.current.forEach(clearTimeout);
       flush();
       try { rendRef.current?.destroy(); } catch { /* già distrutto */ }
@@ -785,8 +791,17 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       const html = /<\/head>/i.test(raw)
         ? raw.replace(/<\/head>/i, `${style}</head>`)
         : style + raw;
+      // due sapori della stessa fotografia: HTML per gli iframe del palco,
+      // XML per l'immagine SVG del cilindro (dentro foreignObject i tag non
+      // chiusi e le & nude fanno fallire il parser)
+      const styleXml = `<style>${css.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</style>`;
+      const rawXml = new XMLSerializer().serializeToString(doc.documentElement);
+      const xml = /<\/head>/i.test(rawXml)
+        ? rawXml.replace(/<\/head>/i, `${styleXml}</head>`)
+        : styleXml + rawXml;
       return {
         html,
+        xml,
         w: Math.round(b.ri.width),
         h: Math.round(b.ri.height),
         href: (b.view.section?.href || "").split("#")[0],
@@ -798,11 +813,88 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
   const schedulePark = useCallback(() => {
     clearTimeout(parkTimer.current);
-    parkTimer.current = setTimeout(() => {
+    parkTimer.current = setTimeout(async () => {
       const p = snapPark();
-      if (p) setPark((old) => (old && old.html === p.html ? old : p));
+      if (!p) return;
+      setPark((old) => (old && old.html === p.html ? old : p));
+      // la texture per la voltata di carta vera si cuoce da fermi: font
+      // incorporati e doppia pagina rasterizzata, pronta prima del tocco
+      try {
+        const geo = snapRects();
+        const host = bookRef.current;
+        if (!geo || !host) return;
+        const rh = host.getBoundingClientRect();
+        const baked = await bakeHtml(p.xml);
+        const outW = Math.round(rh.width) - FRAME * 2;
+        const outH = Math.round(rh.height) - FRAME * 2;
+        // nitido alla densita' dello schermo, ma senza far esplodere la
+        // memoria: tre finestre restano in vita per tutta la lettura
+        let sc = Math.min(2, window.devicePixelRatio || 1);
+        if (outW * outH * sc * sc > 8_000_000) sc = 1;
+        const finestra = (offsetX) =>
+          rasterize({ baked, w: p.w, h: p.h, offsetX, offsetY: FRAME - geo.y, outW, outH, scale: sc });
+        const qui = FRAME - geo.x;
+        const img = await finestra(qui);
+        texRef.current = { img, baked, w: p.w, h: p.h, x: geo.x, href: p.href, sc, next: null, prev: null };
+        // anche le finestre del giro dopo si cuociono da fermi: il layout
+        // dell'intero capitolo e' troppo lento per i 400ms del giro, e il
+        // retro senza texture atterrava carta nuda
+        const delta = rendRef.current?.manager?.layout?.delta;
+        if (delta > 0) {
+          const mio = texRef.current;
+          finestra(qui + delta).then((im) => { if (texRef.current === mio) mio.next = im; }).catch(() => {});
+          finestra(qui - delta).then((im) => { if (texRef.current === mio) mio.prev = im; }).catch(() => {});
+        }
+      } catch {
+        texRef.current = null;
+      }
     }, 450);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // fa partire il cilindro sul canvas e restituisce la maniglia del giro;
+  // il disegno vive fuori da React: sessanta fotogrammi al secondo di
+  // colonne che si piegano non sono roba da re-render
+  function startCurl(dir, tex) {
+    const host = bookRef.current;
+    const cv = curlCanvasRef.current;
+    if (!host || !cv) return null;
+    const rh = host.getBoundingClientRect();
+    const Wc = Math.round(rh.width) - FRAME * 2;
+    const Hc = Math.round(rh.height) - FRAME * 2;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = Wc * dpr;
+    cv.height = Hc * dpr;
+    cv.style.display = "block";
+    const ctx = cv.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const stato = {
+      oldImg: tex.img,
+      newImg: dir === "next" ? tex.next : tex.prev,
+      sc: tex.sc || 1,
+      dir,
+      start: performance.now(),
+      Wc,
+      Hc,
+    };
+    curlRun.current = stato;
+    const DUR = 1050;
+    const paper = theme.bg;
+    const rows = `${theme.fg}14`;
+    const frame = (now) => {
+      if (curlRun.current !== stato) return;
+      const t = (now - stato.start) / DUR;
+      if (t >= 1) {
+        ctx.clearRect(0, 0, Wc, Hc);
+        cv.style.display = "none";
+        curlRun.current = null;
+        return;
+      }
+      drawCurl(ctx, { oldImg: stato.oldImg, newImg: stato.newImg, t, dir, Wc, Hc, paper, rows, sc: stato.sc });
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+    return stato;
+  }
 
   function turn(dir) {
     const r = rendRef.current;
@@ -818,6 +910,56 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     }
     const key = Date.now();
     const geo = snapRects();
+    // la strada maestra e' il cilindro di carta vera: parte solo se la
+    // texture parcheggiata e' fresca (stesso capitolo, stessa posizione)
+    const tex = texRef.current;
+    const curl =
+      pages === 2 &&
+      tex &&
+      geo &&
+      tex.href === geo.href &&
+      Math.abs(tex.x - geo.x) < 1;
+    if (curl) {
+      const stato = startCurl(dir, tex);
+      if (stato) {
+        setTurning({ dir, key, curl: true });
+        clearTimeout(turnTimer.current);
+        turnTimer.current = setTimeout(() => setTurning(null), 1200);
+        swapTimer.current = setTimeout(() => {
+          swapTimer.current = null;
+          step(r, dir);
+          // il retro e' lo stesso capitolo gia' cotto: a scambio avvenuto
+          // serve solo la nuova finestra, e il retro resta nascosto ancora
+          // per mezzo giro
+          setTimeout(async () => {
+            try {
+              const g2 = snapRects();
+              if (!g2 || g2.href !== tex.href) {
+                stato.newImg = null;
+                return;
+              }
+              // ai confini di capitolo epub.js scorre di un passo diverso:
+              // se la finestra precotta non e' quella vera, si ricuoce
+              const delta = rendRef.current?.manager?.layout?.delta || 0;
+              const atteso = dir === "next" ? tex.x - delta : tex.x + delta;
+              if (stato.newImg && Math.abs(g2.x - atteso) < 1) return;
+              const img2 = await rasterize({
+                baked: tex.baked,
+                w: tex.w,
+                h: tex.h,
+                offsetX: FRAME - g2.x,
+                offsetY: FRAME - g2.y,
+                outW: stato.Wc,
+                outH: stato.Hc,
+                scale: stato.sc,
+              });
+              if (curlRun.current === stato) stato.newImg = img2;
+            } catch { /* il retro restera' carta con righe accennate */ }
+          }, 120);
+        }, 95);
+        return;
+      }
+    }
     setTurning({ dir, key, x: geo?.x, y: geo?.y, hw: geo?.hw, href: geo?.href, x2: null, href2: null });
     clearTimeout(turnTimer.current);
     turnTimer.current = setTimeout(() => setTurning(null), 1200);
@@ -851,6 +993,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     if ("flow" in patch || "spread" in patch || "font" in patch) makeRendition(next);
     else if (rendRef.current && ("theme" in patch || "fontSize" in patch || "lineHeight" in patch)) {
       applyStyles(rendRef.current, next);
+      texRef.current = null;
       schedulePark();
     }
   }
@@ -1044,7 +1187,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
   // il palco della voltata resta sempre montato: la geometria segue la
   // direzione dell'ultimo giro (o "next" da fermo, tanto e' invisibile)
-  const dirNow = turning?.dir || "next";
+  const stage = turning && !turning.curl ? turning : null;
+  const dirNow = stage?.dir || "next";
   const leafGeom =
     dirNow === "next"
       ? {
@@ -1069,9 +1213,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         };
   // niente attore parte nudo: il clone si mostra solo se la fotografia
   // pronta e' del capitolo giusto per quella faccia
-  const anim = (name) => (turning ? `${name} 1.1s ease-in-out forwards` : "none");
-  const frontOk = !!(turning && park && turning.href && park.href === turning.href);
-  const backOk = !!(turning && park && turning.href2 && park.href === turning.href2 && turning.x2 !== null);
+  const anim = (name) => (stage ? `${name} 1.1s ease-in-out forwards` : "none");
+  const frontOk = !!(stage && park && stage.href && park.href === stage.href);
+  const backOk = !!(stage && park && stage.href2 && park.href === stage.href2 && stage.x2 !== null);
 
   return (
     <div
@@ -1208,7 +1352,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 ...(dirNow === "next" ? { left: FRAME, right: "50%" } : { left: "50%", right: FRAME }),
                 zIndex: 5,
                 pointerEvents: "none",
-                visibility: turning ? "visible" : "hidden",
+                visibility: stage ? "visible" : "hidden",
                 opacity: 0,
                 backgroundColor: theme.bg,
                 backgroundImage:
@@ -1226,9 +1370,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               <StageFrame
                 park={park}
                 shown={frontOk}
-                x={turning?.x}
-                y={turning?.y}
-                base={dirNow === "next" ? FRAME : (turning?.hw ?? 0) / 2}
+                x={stage?.x}
+                y={stage?.y}
+                base={dirNow === "next" ? FRAME : (stage?.hw ?? 0) / 2}
               />
             </div>
             <div
@@ -1240,7 +1384,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 ...(dirNow === "next" ? { left: FRAME, right: "50%" } : { left: "50%", right: FRAME }),
                 zIndex: 5,
                 pointerEvents: "none",
-                visibility: turning ? "visible" : "hidden",
+                visibility: stage ? "visible" : "hidden",
                 opacity: 0,
                 background:
                   dirNow === "next"
@@ -1260,7 +1404,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 transform: "translateX(-50%)",
                 zIndex: 5,
                 pointerEvents: "none",
-                visibility: turning ? "visible" : "hidden",
+                visibility: stage ? "visible" : "hidden",
                 opacity: 0,
                 background:
                   "linear-gradient(90deg, transparent, #0000002e 50%, transparent)",
@@ -1277,7 +1421,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 right: leafGeom.right,
                 zIndex: 6,
                 pointerEvents: "none",
-                visibility: turning ? "visible" : "hidden",
+                visibility: stage ? "visible" : "hidden",
                 // l'involucro presta solo la prospettiva: qualsiasi opacita'
                 // qui (anche solo agli estremi della dissolvenza) appiattisce
                 // la scena e stampa le due facce una sopra l'altra
@@ -1295,7 +1439,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   // e le due facce diventerebbero una sola
                   transformStyle: "preserve-3d",
                   willChange: "transform",
-                  animation: turning
+                  animation: stage
                     ? `${leafGeom.animationName} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
                     : "none",
                 }}
@@ -1343,9 +1487,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   <StageFrame
                     park={park}
                     shown={frontOk}
-                    x={turning?.x}
-                    y={turning?.y}
-                    base={dirNow === "next" ? (turning?.hw ?? 0) / 2 : FRAME}
+                    x={stage?.x}
+                    y={stage?.y}
+                    base={dirNow === "next" ? (stage?.hw ?? 0) / 2 : FRAME}
                   />
                   <div
                     aria-hidden="true"
@@ -1402,9 +1546,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   <StageFrame
                     park={park}
                     shown={backOk}
-                    x={turning?.x2}
-                    y={turning?.y}
-                    base={dirNow === "next" ? FRAME : (turning?.hw ?? 0) / 2}
+                    x={stage?.x2}
+                    y={stage?.y}
+                    base={dirNow === "next" ? FRAME : (stage?.hw ?? 0) / 2}
                   />
                   <div
                     aria-hidden="true"
@@ -1436,20 +1580,35 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               right: FRAME,
               zIndex: 6,
               pointerEvents: "none",
-              visibility: turning ? "visible" : "hidden",
+              visibility: stage ? "visible" : "hidden",
               opacity: 0,
               borderRadius: 3,
               backgroundColor: theme.bg,
               overflow: "hidden",
               willChange: "opacity",
-              animation: turning ? "bc-sheet-fade 0.5s ease-out forwards" : "none",
+              animation: stage ? "bc-sheet-fade 0.5s ease-out forwards" : "none",
             }}
           >
             {/* il velo porta la pagina che parte: la dissolvenza diventa un
                 incrocio fra testo vero e testo vero */}
-            <StageFrame park={park} shown={frontOk} x={turning?.x} y={turning?.y} base={FRAME} />
+            <StageFrame park={park} shown={frontOk} x={stage?.x} y={stage?.y} base={FRAME} />
           </div>
         )}
+        {/* il cilindro di carta vera: quando la texture e' pronta il giro
+            si disegna qui, colonna per colonna, e il palco DOM riposa */}
+        <canvas
+          ref={curlCanvasRef}
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: FRAME,
+            width: `calc(100% - ${FRAME * 2}px)`,
+            height: `calc(100% - ${FRAME * 2}px)`,
+            zIndex: 6,
+            pointerEvents: "none",
+            display: "none",
+          }}
+        />
         )}
       </div>
 
