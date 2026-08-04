@@ -8,7 +8,7 @@ import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js
 import { explain } from "../lib/glossary.js";
 import { contextAround } from "../lib/oracle.js";
 import { toPageRects, rectStyle, pageOf } from "../lib/pdfHighlights.js";
-import { searchPdf } from "../lib/pdfSearch.js";
+import { searchPdf, normalizeWithMap } from "../lib/pdfSearch.js";
 import BookCover from "./BookCover.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
 import HighlightList from "./HighlightList.jsx";
@@ -64,6 +64,27 @@ function Panel({ title, onClose, children }) {
   );
 }
 
+// Arrivando da un risultato di ricerca, la riga del livello testo che
+// contiene il passaggio si accende un attimo: senza, si atterra sulla pagina
+// giusta ma il punto tocca trovarlo a occhio. Confronto sul testo
+// normalizzato come fa la ricerca, cosi' accenti e maiuscole non ingannano.
+function accendiRisultato(flashRef, layer, pageNum) {
+  const f = flashRef.current;
+  if (!f || !layer) return;
+  if (pageNum != null && f.page !== pageNum) return;
+  flashRef.current = null;
+  const cerca = normalizeWithMap(f.hit || "").text.trim().slice(0, 20);
+  if (!cerca) return;
+  for (const span of layer.querySelectorAll("span")) {
+    if (normalizeWithMap(span.textContent || "").text.includes(cerca)) {
+      span.style.background = `${C.accent}55`;
+      span.style.borderRadius = "3px";
+      setTimeout(() => { span.style.background = "transparent"; }, 2600);
+      return;
+    }
+  }
+}
+
 export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusicStop, onClose, notify, nextBook, onReadNext }) {
   const rootRef = useRef(null);
   const containerRef = useRef(null);
@@ -75,6 +96,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   const renderTask = useRef(null);
   const renderToken = useRef(0);
   const textLayer = useRef(null);
+  const flashRef = useRef(null);
   const langRef = useRef("en");
   const textCache = useRef(new Map());
   const searchRun = useRef(0);
@@ -174,6 +196,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
           });
           textLayer.current = tl;
           await tl.render();
+          if (renderToken.current === token) accendiRisultato(flashRef, layer, pageNum);
         }
       } catch (e) {
         if (e?.name !== "RenderingCancelledException" && e?.message !== "TextLayer task cancelled.") throw e;
@@ -914,7 +937,10 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             <button
               key={`${r.page}-${i}`}
               onClick={() => {
-                goToPage(r.page);
+                flashRef.current = { page: r.page, hit: r.hit };
+                // pagina gia' aperta: nessun ridisegno in arrivo, si accende ora
+                if (r.page === page) accendiRisultato(flashRef, textRef.current, null);
+                else goToPage(r.page);
                 setPanel(null);
               }}
               style={{

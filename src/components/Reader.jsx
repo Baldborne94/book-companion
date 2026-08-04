@@ -404,7 +404,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         width: "100%",
         height: "100%",
         flow: s.flow === "scrolled" ? "scrolled-doc" : "paginated",
-        spread: s.spread,
+        // in scorrimento non esistono facciate: senza questo, in orizzontale
+        // epub.js dichiara comunque un layout a due colonne e compare il dorso
+        spread: s.flow === "scrolled" ? "none" : s.spread,
         allowScriptedContent: false,
       });
       rendRef.current = r;
@@ -778,9 +780,27 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     setSearchState({ busy: false, results });
   }
 
-  function goTo(target) {
-    rendRef.current?.display(target);
+  function goTo(target, flash) {
+    const r = rendRef.current;
+    if (!r) return;
+    const arrivo = r.display(target);
     setPanel(null);
+    if (!flash) return;
+    // il risultato trovato si accende per qualche secondo: serve solo a far
+    // atterrare l'occhio sul punto, poi la pagina torna pulita
+    arrivo?.then?.(() => {
+      try {
+        r.annotations.highlight(target, {}, undefined, "bc-found", {
+          fill: C.accent,
+          "fill-opacity": "0.4",
+        });
+        setTimeout(() => {
+          try { r.annotations.remove(target, "highlight"); } catch { /* vista smontata */ }
+        }, 2600);
+      } catch {
+        /* cfi senza range: si arriva comunque alla pagina */
+      }
+    });
   }
 
   // Fuori dal capitolo il tocco moriva: cornice, taglio delle pagine e
@@ -804,6 +824,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
   const pct = Math.round((progress || 0) * 100);
   const paginated = settings.flow !== "scrolled";
+  const twoUp = paginated && pages === 2;
   const p = Math.min(1, Math.max(0, progress || 0));
   const edgeRead = EDGE_MIN + Math.round((EDGE_MAX - EDGE_MIN) * p);
   const edgeLeftToRead = EDGE_MIN + Math.round((EDGE_MAX - EDGE_MIN) * (1 - p));
@@ -817,7 +838,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const leafGeom = turning
     ? turning.dir === "next"
       ? {
-          left: pages === 2 ? "50%" : FRAME,
+          left: twoUp ? "50%" : FRAME,
           right: FRAME,
           transformOrigin: "left center",
           borderRadius: "6px 20px 20px 6px",
@@ -828,7 +849,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         }
       : {
           left: FRAME,
-          right: pages === 2 ? "50%" : FRAME,
+          right: twoUp ? "50%" : FRAME,
           transformOrigin: "right center",
           borderRadius: "20px 6px 6px 20px",
           backgroundImage:
@@ -942,7 +963,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             background: "linear-gradient(270deg, #00000033, transparent)",
           }}
         />
-        {pages === 2 && (
+        {twoUp && (
           <div
             aria-hidden="true"
             style={{
@@ -959,7 +980,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             }}
           />
         )}
-        {turning && pages === 2 && (
+        {turning && twoUp && (
           <div
             key={`cover-${turning.key}`}
             data-cover={turning.dir}
@@ -981,7 +1002,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             }}
           />
         )}
-        {turning && pages === 2 && (
+        {turning && twoUp && (
           <div
             key={`cast-${turning.key}`}
             aria-hidden="true"
@@ -1593,7 +1614,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           {searchState.results?.map((r, i) => (
             <button
               key={i}
-              onClick={() => goTo(r.cfi)}
+              onClick={() => goTo(r.cfi, true)}
               style={{
                 display: "block",
                 width: "100%",
