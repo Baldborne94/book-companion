@@ -210,6 +210,22 @@ input {
   }
 }
 
+/* pagina singola: dissolvenza attraverso la carta. Il velo deve essere
+   opaco prima dello scambio del contenuto (95ms), poi la pagina nuova
+   emerge da sotto. */
+@keyframes bc-sheet-fade {
+  0% {
+    opacity: 0;
+  }
+  18%,
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
