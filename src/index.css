@@ -218,6 +218,39 @@ input {
   }
 }
 
+/* Lo scambio delle facce e' esplicito, non affidato al backface culling:
+   sui contenuti compositi (l'iframe della fotografia) Chrome Android a
+   volte disegna comunque la faccia che dovrebbe essere nascosta, e le due
+   scritte si sovrapponevano. Il giro passa i 90 gradi attorno al 45%:
+   li' la davanti si spegne e il retro si accende, col foglio di taglio. */
+@keyframes bc-leaf-front {
+  0% {
+    opacity: 0;
+  }
+  8%,
+  45% {
+    opacity: 1;
+  }
+  45.3%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes bc-leaf-back {
+  0%,
+  45% {
+    opacity: 0;
+  }
+  45.3%,
+  86% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 /* la luce sul foglio che gira: di taglio la carta ne prende meno, e il
    velo scuro respira col giro — massimo a meta', spento all'atterraggio */
 @keyframes bc-leaf-shade {
