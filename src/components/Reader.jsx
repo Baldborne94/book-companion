@@ -222,6 +222,32 @@ function Slider({ label, min, max, step, value, onChange }) {
   );
 }
 
+// La pagina vera sul foglio che gira: la fotografia del capitolo rinasce in
+// un iframe muto e senza script, rimesso dove stava l'originale rispetto al
+// libro. `base` e' il bordo sinistro, nel libro, della meta' che la faccia
+// copre: cosi' il ritaglio combacia col testo a schermo.
+function SnapPage({ snap, base }) {
+  if (!snap) return null;
+  return (
+    <iframe
+      aria-hidden="true"
+      tabIndex={-1}
+      sandbox="allow-same-origin"
+      scrolling="no"
+      srcDoc={snap.html}
+      style={{
+        position: "absolute",
+        left: snap.x - base,
+        top: snap.y - FRAME,
+        width: snap.w,
+        height: snap.h,
+        border: 0,
+        pointerEvents: "none",
+      }}
+    />
+  );
+}
+
 function Panel({ title, onClose, children }) {
   return (
     <div
@@ -680,6 +706,50 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     return r.reportLocation();
   }
 
+  // La fotografia della pagina per il foglio che gira: il documento del
+  // capitolo — stili inline di epub.js compresi, quindi stesse colonne e
+  // stessi caratteri — con la posizione dell'iframe rispetto al libro.
+  // Se qualcosa manca si torna null e il foglio resta di sole velature.
+  function snapSpread() {
+    try {
+      const host = bookRef.current;
+      let view = null;
+      rendRef.current?.manager?.views?.forEach?.((v) => {
+        if (!view && v?.contents?.document) view = v;
+      });
+      const ifr = view?.iframe || view?.element?.querySelector?.("iframe");
+      const doc = view?.contents?.document;
+      if (!host || !ifr || !doc) return null;
+      const ri = ifr.getBoundingClientRect();
+      const rh = host.getBoundingClientRect();
+      // epub.js inietta tema e interlinea via CSSOM (insertRule): il tag
+      // <style> nel markup resta vuoto e outerHTML non li porta con se'.
+      // Senza queste regole il clone reimpagina diverso e la finestra di
+      // testo non combacia piu': si serializzano a mano e si imbarcano.
+      let css = "";
+      for (const sheet of doc.styleSheets) {
+        try {
+          for (const rule of sheet.cssRules) css += `${rule.cssText}\n`;
+        } catch { /* foglio di un'altra origine: illeggibile e non nostro */ }
+      }
+      const style = `<style>${css.replace(/<\//g, "<\\/")}</style>`;
+      const raw = doc.documentElement.outerHTML;
+      const html = /<\/head>/i.test(raw)
+        ? raw.replace(/<\/head>/i, `${style}</head>`)
+        : style + raw;
+      return {
+        html,
+        w: Math.round(ri.width),
+        h: Math.round(ri.height),
+        x: Math.round(ri.left - rh.left),
+        y: Math.round(ri.top - rh.top),
+        hw: rh.width,
+      };
+    } catch {
+      return null;
+    }
+  }
+
   function turn(dir) {
     const r = rendRef.current;
     if (!r || status !== "ready") return;
@@ -694,13 +764,21 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       clearTimeout(swapTimer.current);
       swapPending.current?.();
     }
-    setTurning({ dir, key: Date.now() });
+    const key = Date.now();
+    setTurning({ dir, key, snap: snapSpread() });
     clearTimeout(turnTimer.current);
     turnTimer.current = setTimeout(() => setTurning(null), 1200);
     const doSwap = () => {
       swapTimer.current = null;
       swapPending.current = null;
       step(r, dir);
+      // il retro del foglio mostra la pagina che sta arrivando: si puo'
+      // fotografare solo a scambio avvenuto, ma resta nascosto fino a
+      // meta' giro, quindi il tempo c'e'
+      setTimeout(() => {
+        const dopo = snapSpread();
+        if (dopo) setTurning((t) => (t && t.key === key ? { ...t, snapAfter: dopo } : t));
+      }, 180);
     };
     // il foglio e la copertura sono opachi a 80ms: lo scambio resta invisibile
     swapPending.current = doSwap;
@@ -1078,11 +1156,18 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   ? "linear-gradient(to right, transparent 70%, #0000001f)"
                   : "linear-gradient(to left, transparent 70%, #0000001f)",
               animation: "bc-cover-half 1.1s ease-in-out forwards",
+              overflow: "hidden",
             }}
           >
-            <div
-              aria-hidden="true"
-              style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
+            {!turning.snap && (
+              <div
+                aria-hidden="true"
+                style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
+              />
+            )}
+            <SnapPage
+              snap={turning.snap}
+              base={turning.dir === "next" ? FRAME : (turning.snap?.hw ?? 0) / 2}
             />
           </div>
         )}
@@ -1122,10 +1207,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               opacity: 0,
               borderRadius: 3,
               backgroundColor: theme.bg,
+              overflow: "hidden",
               willChange: "opacity",
               animation: "bc-sheet-fade 0.5s ease-out forwards",
             }}
-          />
+          >
+            {/* il velo porta la pagina che parte: la dissolvenza diventa un
+                incrocio fra testo vero e testo vero */}
+            <SnapPage snap={turning.snap} base={FRAME} />
+          </div>
         )}
         {turning && twoUp && (
           <div
@@ -1156,47 +1246,125 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               position: "absolute",
               top: FRAME,
               bottom: FRAME,
-              ...leafGeom,
+              left: leafGeom.left,
+              right: leafGeom.right,
               zIndex: 6,
               pointerEvents: "none",
-              backfaceVisibility: "visible",
-              backgroundColor: theme.bg,
+              // l'involucro fa solo la dissolvenza, da piatto, e presta la
+              // prospettiva al rotatore: animare l'opacita' sull'elemento 3D
+              // appiattirebbe la scena e specchierebbe il retro
               opacity: 0,
-              overflow: "hidden",
-              willChange: "transform, opacity",
-              animationDuration: "1.1s",
-              animationTimingFunction: "cubic-bezier(0.3, 0.45, 0.35, 1)",
-              animationFillMode: "forwards",
+              perspective: 1500,
+              animation: "bc-leaf-fade 1.1s ease-in-out forwards",
             }}
           >
-            <div
-              aria-hidden="true"
-              style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
-            />
             <div
               aria-hidden="true"
               style={{
                 position: "absolute",
                 inset: 0,
-                opacity: 0,
-                background:
-                  turning.dir === "next"
-                    ? "linear-gradient(to right, #00000066, #0000002e)"
-                    : "linear-gradient(to left, #00000066, #0000002e)",
-                animation: "bc-leaf-shade 1.1s ease-in-out forwards",
+                transformOrigin: leafGeom.transformOrigin,
+                // niente overflow ne' opacita' qui: appiattirebbero il 3D e
+                // le due facce diventerebbero una sola
+                transformStyle: "preserve-3d",
+                willChange: "transform",
+                animationName: leafGeom.animationName,
+                animationDuration: "1.1s",
+                animationTimingFunction: "cubic-bezier(0.3, 0.45, 0.35, 1)",
+                animationFillMode: "forwards",
               }}
-            />
+            >
+            {/* faccia davanti: la pagina che sta partendo */}
             <div
               aria-hidden="true"
               style={{
                 position: "absolute",
-                top: 0,
-                bottom: 0,
-                ...(turning.dir === "next" ? { right: 0 } : { left: 0 }),
-                width: 2,
-                background: "#00000047",
+                inset: 0,
+                overflow: "hidden",
+                borderRadius: leafGeom.borderRadius,
+                boxShadow: leafGeom.boxShadow,
+                backfaceVisibility: "hidden",
+                backgroundColor: theme.bg,
+                backgroundImage: leafGeom.backgroundImage,
               }}
-            />
+            >
+              {!turning.snap && (
+                <div
+                  aria-hidden="true"
+                  style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
+                />
+              )}
+              <SnapPage
+                snap={turning.snap}
+                base={turning.dir === "next" ? (turning.snap?.hw ?? 0) / 2 : FRAME}
+              />
+              <div
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  opacity: 0,
+                  background:
+                    turning.dir === "next"
+                      ? "linear-gradient(to right, #00000066, #0000002e)"
+                      : "linear-gradient(to left, #00000066, #0000002e)",
+                  animation: "bc-leaf-shade 1.1s ease-in-out forwards",
+                }}
+              />
+              <div
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  bottom: 0,
+                  ...(turning.dir === "next" ? { right: 0 } : { left: 0 }),
+                  width: 2,
+                  background: "#00000047",
+                }}
+              />
+            </div>
+            {/* faccia dietro: la pagina che sta arrivando, fotografata a
+                scambio avvenuto; il rotateY(180) della faccia annulla lo
+                specchio della rotazione del foglio */}
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                inset: 0,
+                overflow: "hidden",
+                borderRadius: leafGeom.borderRadius,
+                boxShadow: leafGeom.boxShadow,
+                backfaceVisibility: "hidden",
+                transform: "rotateY(180deg)",
+                backgroundColor: theme.bg,
+                backgroundImage: leafGeom.backgroundImage,
+              }}
+            >
+              {!turning.snapAfter && (
+                <div
+                  aria-hidden="true"
+                  style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
+                />
+              )}
+              <SnapPage
+                snap={turning.snapAfter}
+                base={turning.dir === "next" ? FRAME : (turning.snapAfter?.hw ?? 0) / 2}
+              />
+              <div
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  opacity: 0,
+                  background:
+                    turning.dir === "next"
+                      ? "linear-gradient(to left, #00000066, #0000002e)"
+                      : "linear-gradient(to right, #00000066, #0000002e)",
+                  animation: "bc-leaf-shade 1.1s ease-in-out forwards",
+                }}
+              />
+            </div>
+            </div>
           </div>
         )}
       </div>
