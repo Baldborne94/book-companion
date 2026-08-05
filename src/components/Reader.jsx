@@ -77,6 +77,13 @@ const NET_WORDS = 30;
 // inservibile proprio nei casi difficili.
 const PHRASE_WORDS = 300;
 
+// Il cilindro dipinto su canvas (lib/pageCurl.js) e' spento: sulla GPU del
+// tablet rendeva strisce sovrapposte e la voltata deve prima di tutto
+// funzionare. Restano il palco DOM con le pagine vere sulle facce e tutta
+// l'infrastruttura del cilindro, pronta per quando si potra' collaudare
+// su hardware vero.
+const CURL_ATTIVO = false;
+
 const isTouch = () => navigator.maxTouchPoints > 0;
 const isTablet = () =>
   isTouch() && Math.min(window.innerWidth, window.innerHeight) >= 520;
@@ -818,6 +825,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       const p = snapPark();
       if (!p) return;
       setPark((old) => (old && old.html === p.html ? old : p));
+      if (!CURL_ATTIVO) return;
       // la texture per la voltata di carta vera si cuoce da fermi: font
       // incorporati e doppia pagina rasterizzata, pronta prima del tocco
       try {
@@ -943,6 +951,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // texture parcheggiata e' fresca (stesso capitolo, stessa posizione)
     const tex = texRef.current;
     const curl =
+      CURL_ATTIVO &&
       pages === 2 &&
       tex &&
       geo &&
