@@ -489,6 +489,7 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
             {books.length} {books.length === 1 ? "libro custodito" : "libri custoditi"}
             {estimate?.usage ? ` · ${fmtBytes(estimate.usage)} usati` : ""}
             {estimate?.quota ? ` di ${fmtBytes(estimate.quota)}` : ""}
+            {` · v. ${typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "?"}`}
           </span>
           <button
             onClick={() => archiveRef.current?.click()}

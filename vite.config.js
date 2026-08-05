@@ -3,6 +3,20 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  // il timbro di versione visibile in app: senza, e' impossibile sapere
+  // quale build gira davvero sul tablet (il service worker in modalita'
+  // prompt puo' restare indietro di parecchi rilasci)
+  define: {
+    __BC_VERSIONE__: JSON.stringify(
+      new Date().toLocaleString("it-IT", {
+        timeZone: "Europe/Rome",
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    ),
+  },
   plugins: [
     react(),
     VitePWA({
