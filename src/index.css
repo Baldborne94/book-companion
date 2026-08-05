@@ -339,19 +339,60 @@ input {
   }
 }
 
-/* la copertura si spegne lunga e in coda al foglio: l'arrivo sulla pagina
-   nuova (o vecchia, tornando indietro) deve essere una dissolvenza, non
-   uno scatto */
+/* La copertura porta il testo VECCHIO della meta' che il foglio deve
+   ancora ricoprire, mentre sotto la pagina vera mostra gia' quello NUOVO.
+   Sfumandola si vedevano i due testi uno sopra l'altro: il fantasma.
+   Resta piena finche' il foglio non le e' sopra del tutto (a 180 gradi,
+   opaco), poi sparisce di colpo — nascosta, quindi invisibile. */
 @keyframes bc-cover-half {
   0% {
     opacity: 0;
   }
   8%,
-  72% {
+  88% {
     opacity: 1;
   }
+  89%,
   100% {
     opacity: 0;
+  }
+}
+
+/* La piega vera: il bordo libero del foglio si incurva ad arco mentre gira
+   e si distende atterrando — la sagoma che fa dire "carta" invece di
+   "tavola". Va sul clip-path perche' il border-radius non ritaglia il
+   contenuto composito degli iframe dentro il 3D (e il testo sbordava). */
+@keyframes bc-leaf-bow-next {
+  0%,
+  8% {
+    clip-path: inset(0 round 5px 22px 22px 5px);
+  }
+  34% {
+    clip-path: inset(0 round 5px 10% 10% 5px / 5px 44% 44% 5px);
+  }
+  56% {
+    clip-path: inset(0 round 5px 12% 12% 5px / 5px 48% 48% 5px);
+  }
+  86%,
+  100% {
+    clip-path: inset(0 round 5px 22px 22px 5px);
+  }
+}
+
+@keyframes bc-leaf-bow-prev {
+  0%,
+  8% {
+    clip-path: inset(0 round 22px 5px 5px 22px);
+  }
+  34% {
+    clip-path: inset(0 round 10% 5px 5px 10% / 44% 5px 5px 44%);
+  }
+  56% {
+    clip-path: inset(0 round 12% 5px 5px 12% / 48% 5px 5px 48%);
+  }
+  86%,
+  100% {
+    clip-path: inset(0 round 22px 5px 5px 22px);
   }
 }
 

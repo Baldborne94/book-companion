@@ -1400,6 +1400,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                     ? "linear-gradient(to right, transparent 70%, #0000001f)"
                     : "linear-gradient(to left, transparent 70%, #0000001f)",
                 animation: anim("bc-cover-half"),
+                // stessi angoli con cui il foglio si posa: dagli spigoli
+                // quadri della copertura sbucava il testo vecchio
+                clipPath: `inset(0 round ${dirNow === "next" ? "22px 5px 5px 22px" : "5px 22px 22px 5px"})`,
                 overflow: "hidden",
               }}
             >
@@ -1531,11 +1534,19 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                     borderRadius: leafGeom.borderRadius,
                     clipPath: `inset(0 round ${leafGeom.borderRadius})`,
                     backfaceVisibility: "hidden",
+                    // bordo trasparente: senza, i bordi ruotati escono
+                    // seghettati dal compositore Android
+                    outline: "1px solid transparent",
                     transform: "translateZ(0.5px)",
                     backgroundColor: theme.bg,
                     backgroundImage: leafGeom.backgroundImage,
                     opacity: 0,
-                    animation: anim("bc-leaf-front"),
+                    // due animazioni sulla stessa faccia: quando si accende,
+                    // e come si incurva il bordo libero mentre gira
+                    animationName: stage ? `bc-leaf-front, bc-leaf-bow-${dirNow}` : "none",
+                    animationDuration: "1.1s",
+                    animationTimingFunction: "ease-in-out, cubic-bezier(0.3, 0.45, 0.35, 1)",
+                    animationFillMode: "forwards",
                   }}
                 >
                   <div
@@ -1620,11 +1631,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                     borderRadius: leafGeom.borderRadius,
                     clipPath: `inset(0 round ${leafGeom.borderRadius})`,
                     backfaceVisibility: "hidden",
+                    outline: "1px solid transparent",
                     transform: "rotateY(180deg) translateZ(0.5px)",
                     backgroundColor: theme.bg,
                     backgroundImage: leafGeom.backgroundImage,
                     opacity: 0,
-                    animation: anim("bc-leaf-back"),
+                    animationName: stage ? `bc-leaf-back, bc-leaf-bow-${dirNow}` : "none",
+                    animationDuration: "1.1s",
+                    animationTimingFunction: "ease-in-out, cubic-bezier(0.3, 0.45, 0.35, 1)",
+                    animationFillMode: "forwards",
                   }}
                 >
                   <div
