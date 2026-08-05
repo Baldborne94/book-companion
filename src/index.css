@@ -213,9 +213,10 @@ input {
     opacity: 0;
   }
   8%,
-  86% {
+  70% {
     opacity: 1;
   }
+  94%,
   100% {
     opacity: 0;
   }
@@ -240,17 +241,18 @@ input {
   }
 }
 
+/* il retro resta PIENO fino in fondo: a 180 gradi e' identico alla pagina
+   che ha sotto, quindi il taglio netto non si vede. Sfumandolo si vedevano
+   invece il suo bordo, la sua ombra e il suo taglio sopra la pagina vera —
+   il contorno fantasma su bordi e angoli. */
 @keyframes bc-leaf-back {
   0%,
   44% {
     opacity: 0;
   }
   46%,
-  86% {
-    opacity: 1;
-  }
   100% {
-    opacity: 0;
+    opacity: 1;
   }
 }
 
@@ -273,6 +275,52 @@ input {
   88%,
   100% {
     opacity: 0;
+  }
+}
+
+/* Il riflesso che rotola sul foglio: su una superficie curva la luce
+   scorre da un bordo all'altro mentre la pagina ruota, ed e' proprio
+   quello che l'occhio legge come "carta che si piega" invece che come
+   tavola rigida. Solo transform e opacity. */
+@keyframes bc-leaf-gloss-next {
+  0%,
+  10% {
+    opacity: 0;
+    transform: translateX(-40%);
+  }
+  30% {
+    opacity: 0.5;
+  }
+  55% {
+    opacity: 0.62;
+  }
+  80% {
+    opacity: 0.3;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(120%);
+  }
+}
+
+@keyframes bc-leaf-gloss-prev {
+  0%,
+  10% {
+    opacity: 0;
+    transform: translateX(40%);
+  }
+  30% {
+    opacity: 0.5;
+  }
+  55% {
+    opacity: 0.62;
+  }
+  80% {
+    opacity: 0.3;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-120%);
   }
 }
 
