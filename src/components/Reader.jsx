@@ -237,24 +237,39 @@ function StageFrame({ park, shown, x, y, base }) {
     setReady(false);
   }, [park?.html]);
   return (
-    <iframe
+    <div
       aria-hidden="true"
-      tabIndex={-1}
-      sandbox="allow-same-origin"
-      scrolling="no"
-      srcDoc={park?.html || "<html></html>"}
-      onLoad={() => requestAnimationFrame(() => setReady(true))}
       style={{
         position: "absolute",
-        left: (x ?? 0) - base,
-        top: (y ?? 0) - FRAME,
-        width: park?.w ?? 10,
-        height: park?.h ?? 10,
-        border: 0,
-        pointerEvents: "none",
-        opacity: ready && shown ? 1 : 0,
+        inset: 0,
+        overflow: "hidden",
+        // contain:paint obbliga il compositore a rispettare il taglio: dentro
+        // il 3D, overflow e clip-path sugli antenati vengono lasciati cadere
+        // su Android, e le colonne del capitolo sbucavano sopra la pagina —
+        // la "sovrapposizione che compare e scompare"
+        contain: "paint",
+        isolation: "isolate",
       }}
-    />
+    >
+      <iframe
+        aria-hidden="true"
+        tabIndex={-1}
+        sandbox="allow-same-origin"
+        scrolling="no"
+        srcDoc={park?.html || "<html></html>"}
+        onLoad={() => requestAnimationFrame(() => setReady(true))}
+        style={{
+          position: "absolute",
+          left: (x ?? 0) - base,
+          top: (y ?? 0) - FRAME,
+          width: park?.w ?? 10,
+          height: park?.h ?? 10,
+          border: 0,
+          pointerEvents: "none",
+          opacity: ready && shown ? 1 : 0,
+        }}
+      />
+    </div>
   );
 }
 
@@ -946,7 +961,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // texture parcheggiata e' fresca (stesso capitolo, stessa posizione)
     const tex = texRef.current;
     const curl =
-      settings.curl &&
+      false &&
       pages === 2 &&
       tex &&
       geo &&
@@ -1235,7 +1250,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           left: twoUp ? "50%" : FRAME,
           right: FRAME,
           transformOrigin: "left center",
-          borderRadius: "5px 22px 22px 5px",
+          borderRadius: "4px 6px 6px 4px",
           backgroundImage:
             "linear-gradient(115deg, #ffffff0d, transparent 45%), linear-gradient(to right, #00000030, transparent 28%, transparent 62%, #00000012 86%, #00000024 100%)",
           boxShadow: "-26px 0 70px #0000003d",
@@ -1245,7 +1260,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           left: FRAME,
           right: twoUp ? "50%" : FRAME,
           transformOrigin: "right center",
-          borderRadius: "22px 5px 5px 22px",
+          borderRadius: "6px 4px 4px 6px",
           backgroundImage:
             "linear-gradient(245deg, #ffffff0d, transparent 45%), linear-gradient(to left, #00000030, transparent 28%, transparent 62%, #00000012 86%, #00000024 100%)",
           boxShadow: "26px 0 70px #0000003d",
@@ -1402,7 +1417,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 animation: anim("bc-cover-half"),
                 // stessi angoli con cui il foglio si posa: dagli spigoli
                 // quadri della copertura sbucava il testo vecchio
-                clipPath: `inset(0 round ${dirNow === "next" ? "22px 5px 5px 22px" : "5px 22px 22px 5px"})`,
+                clipPath: `inset(0 round ${dirNow === "next" ? "6px 4px 4px 6px" : "4px 6px 6px 4px"})`,
                 overflow: "hidden",
               }}
             >
@@ -1543,10 +1558,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                     opacity: 0,
                     // due animazioni sulla stessa faccia: quando si accende,
                     // e come si incurva il bordo libero mentre gira
-                    animationName: stage ? `bc-leaf-front, bc-leaf-bow-${dirNow}` : "none",
-                    animationDuration: "1.1s",
-                    animationTimingFunction: "ease-in-out, cubic-bezier(0.3, 0.45, 0.35, 1)",
-                    animationFillMode: "forwards",
+                    animation: anim("bc-leaf-front"),
                   }}
                 >
                   <div
@@ -1636,10 +1648,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                     backgroundColor: theme.bg,
                     backgroundImage: leafGeom.backgroundImage,
                     opacity: 0,
-                    animationName: stage ? `bc-leaf-back, bc-leaf-bow-${dirNow}` : "none",
-                    animationDuration: "1.1s",
-                    animationTimingFunction: "ease-in-out, cubic-bezier(0.3, 0.45, 0.35, 1)",
-                    animationFillMode: "forwards",
+                    animation: anim("bc-leaf-back"),
                   }}
                 >
                   <div
@@ -2118,29 +2127,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 }}
               >
                 {settings.pageTurn ? "Attivo ✨" : "Spento"}
-              </button>
-            </div>
-          )}
-          {isTablet() && settings.pageTurn && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-              <span style={{ fontSize: 14.5, color: C.muted }}>
-                Foglio che si arrotola
-                <span style={{ display: "block", fontSize: 12.5, color: `${C.muted}b0` }}>
-                  come la carta vera · sperimentale
-                </span>
-              </span>
-              <button
-                onClick={() => updateSettings({ curl: !settings.curl })}
-                style={{
-                  padding: "6px 16px",
-                  borderRadius: 999,
-                  fontSize: 14,
-                  border: `1px solid ${settings.curl ? C.accent : C.border}`,
-                  color: settings.curl ? C.accent : C.muted,
-                  background: settings.curl ? `${C.accent}14` : "transparent",
-                }}
-              >
-                {settings.curl ? "Attivo 📜" : "Spento"}
               </button>
             </div>
           )}

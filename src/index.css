@@ -358,43 +358,7 @@ input {
   }
 }
 
-/* La piega vera: il bordo libero del foglio si incurva ad arco mentre gira
-   e si distende atterrando — la sagoma che fa dire "carta" invece di
-   "tavola". Va sul clip-path perche' il border-radius non ritaglia il
-   contenuto composito degli iframe dentro il 3D (e il testo sbordava). */
-@keyframes bc-leaf-bow-next {
-  0%,
-  8% {
-    clip-path: inset(0 round 5px 22px 22px 5px);
-  }
-  34% {
-    clip-path: inset(0 round 5px 10% 10% 5px / 5px 44% 44% 5px);
-  }
-  56% {
-    clip-path: inset(0 round 5px 12% 12% 5px / 5px 48% 48% 5px);
-  }
-  86%,
-  100% {
-    clip-path: inset(0 round 5px 22px 22px 5px);
-  }
-}
 
-@keyframes bc-leaf-bow-prev {
-  0%,
-  8% {
-    clip-path: inset(0 round 22px 5px 5px 22px);
-  }
-  34% {
-    clip-path: inset(0 round 10% 5px 5px 10% / 44% 5px 5px 44%);
-  }
-  56% {
-    clip-path: inset(0 round 12% 5px 5px 12% / 48% 5px 5px 48%);
-  }
-  86%,
-  100% {
-    clip-path: inset(0 round 22px 5px 5px 22px);
-  }
-}
 
 /* pagina singola: dissolvenza attraverso la carta. Il velo deve essere
    opaco prima dello scambio del contenuto (95ms), poi la pagina nuova
