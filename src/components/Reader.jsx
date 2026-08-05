@@ -881,7 +881,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         Wc,
         Hc,
       };
-      const DUR = 1050;
+      const DUR = 1200;
       const paper = theme.bg;
       const rows = `${theme.fg}14`;
       drawCurl(ctx, { oldImg: stato.oldImg, newImg: stato.newImg, t: 0, dir, Wc, Hc, paper, rows, sc: stato.sc });

@@ -90,7 +90,9 @@ export function rasterize({ baked, w, h, offsetX, offsetY = 0, outW, outH, scale
   });
 }
 
-const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+// seno, non cubica: la fase centrale — quella in cui il rotolo si vede —
+// deve durare, o la piega passa in tre fotogrammi
+const easeInOut = (t) => -(Math.cos(Math.PI * t) - 1) / 2;
 
 // Un fotogramma del foglio che si arrotola. Coordinate in px CSS del canvas
 // (0 = bordo interno sinistro del libro), il canvas e' gia' scalato al dpr.
@@ -119,9 +121,15 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
   else ctx.drawImage(oldImg, P * sc, 0, P * sc, Hc * sc, P, 0, P, Hc);
 
   const c = P * (1 - te);
-  const r = Math.max(3, P * 0.26 * (1 - te * 0.92));
+  // il rotolo resta rotolo per tutto il giro: e' la curvatura che si vede,
+  // stringerla subito faceva sembrare il foglio un pannello piatto
+  const r = Math.max(8, P * 0.34 * (1 - te * 0.72));
   const arc = Math.PI * r;
   const passo = 2;
+  // l'orlo libero si solleva a meta' giro e si posa atterrando, come una
+  // pagina pelata dall'angolo
+  const alzata = Hc * 0.045 * Math.sin(Math.PI * te);
+  const dy = (s) => -alzata * (Math.max(0, s - c) / Math.max(1, P - c));
 
   // ombra portata davanti alla piega, sulla pagina che si sta scoprendo
   const fronteOmbra = c + r;
@@ -166,14 +174,19 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
     const comp = Math.max(0.12, Math.abs(Math.cos(a)));
     const larg = Math.max(1, passo * comp);
     const x = destX(d);
+    const y = dy(s);
     if (a <= Math.PI / 2) {
-      ctx.drawImage(oldImg, fronteSrc(s) * sc, 0, passo * sc, Hc * sc, x, 0, larg, Hc);
-      ctx.fillStyle = `rgba(0,0,0,${0.28 * (1 - comp)})`;
-      ctx.fillRect(x, 0, larg, Hc);
+      ctx.drawImage(oldImg, fronteSrc(s) * sc, 0, passo * sc, Hc * sc, x, y, larg, Hc);
+      // in salita verso il crinale la carta prende luce, poi si spegne
+      const luce = Math.sin(a);
+      ctx.fillStyle = `rgba(255,255,255,${0.14 * luce})`;
+      ctx.fillRect(x, y, larg, Hc);
+      ctx.fillStyle = `rgba(0,0,0,${0.2 * (1 - comp) * (1 - luce)})`;
+      ctx.fillRect(x, y, larg, Hc);
     } else if (newImg) {
-      ctx.drawImage(newImg, retroSrc(s) * sc, 0, passo * sc, Hc * sc, x, 0, larg, Hc);
-      ctx.fillStyle = `rgba(255,255,255,${0.1 * (1 - comp)})`;
-      ctx.fillRect(x, 0, larg, Hc);
+      ctx.drawImage(newImg, retroSrc(s) * sc, 0, passo * sc, Hc * sc, x, y, larg, Hc);
+      ctx.fillStyle = `rgba(0,0,0,${0.16 * Math.abs(Math.cos(a)) === 0 ? 0 : 0.16 * (1 - comp)})`;
+      ctx.fillRect(x, y, larg, Hc);
     } else {
       retroNudo(x, larg);
     }
@@ -185,7 +198,8 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
     const d = c - (s - (c + arc));
     const x = destX(d);
     if (x < -passo || x > Wc) continue;
-    if (newImg) ctx.drawImage(newImg, retroSrc(s) * sc, 0, passo * sc, Hc * sc, x, 0, passo, Hc);
+    const y = dy(s);
+    if (newImg) ctx.drawImage(newImg, retroSrc(s) * sc, 0, passo * sc, Hc * sc, x, y, passo, Hc);
     else retroNudo(x, passo);
   }
 
