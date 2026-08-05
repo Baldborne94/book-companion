@@ -1469,16 +1469,18 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               aria-hidden="true"
               style={{
                 position: "absolute",
-                top: FRAME,
-                bottom: FRAME,
-                left: leafGeom.left,
-                right: leafGeom.right,
+                inset: FRAME,
                 zIndex: 6,
                 pointerEvents: "none",
                 visibility: stage ? "visible" : "hidden",
-                // l'involucro presta solo la prospettiva: qualsiasi opacita'
-                // qui (anche solo agli estremi della dissolvenza) appiattisce
-                // la scena e stampa le due facce una sopra l'altra
+                // L'involucro presta solo la prospettiva, e deve coprire il
+                // libro INTERO: il punto di fuga sta al suo centro, cioe' sul
+                // dorso. Stretto su meta' pagina il fuoco cadeva fuori asse e
+                // il foglio, arrivando, si posava una spanna piu' in la' della
+                // pagina — sotto restava la striscia di quella vecchia.
+                // Qualsiasi opacita' qui (anche agli estremi della
+                // dissolvenza) appiattisce la scena e stampa le due facce una
+                // sopra l'altra.
                 perspective: 1500,
               }}
             >
@@ -1487,7 +1489,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 aria-hidden="true"
                 style={{
                   position: "absolute",
-                  inset: 0,
+                  top: 0,
+                  bottom: 0,
+                  ...(dirNow === "next" ? { left: "50%", right: 0 } : { left: 0, right: "50%" }),
                   transformOrigin: leafGeom.transformOrigin,
                   // niente overflow ne' opacita' qui: appiattirebbero il 3D
                   // e le due facce diventerebbero una sola
