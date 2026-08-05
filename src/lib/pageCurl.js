@@ -121,9 +121,10 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
   else ctx.drawImage(oldImg, P * sc, 0, P * sc, Hc * sc, P, 0, P, Hc);
 
   const c = P * (1 - te);
-  // il rotolo resta rotolo per tutto il giro: e' la curvatura che si vede,
-  // stringerla subito faceva sembrare il foglio un pannello piatto
-  const r = Math.max(8, P * 0.34 * (1 - te * 0.72));
+  // Il rotolo dev'essere LARGO: in un libro vero la piega e' una fascia
+  // ampia che prende luce, non un filo. Stretta, il testo compresso legge
+  // come sbavatura invece che come carta piegata.
+  const r = Math.max(14, P * 0.44 * (1 - te * 0.55));
   const arc = Math.PI * r;
   const passo = 2;
   // l'orlo libero si solleva a meta' giro e si posa atterrando, come una
@@ -175,20 +176,32 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
     const larg = Math.max(1, passo * comp);
     const x = destX(d);
     const y = dy(s);
+    // Ombreggiatura da cilindro: la faccia illuminata e' quella che guarda
+    // il lettore (a=0), e si spegne mano a mano che la carta si mette di
+    // taglio. E' questa scala di grigi che fa vedere la piega: senza, il
+    // testo compresso sembra solo sbavato.
     if (a <= Math.PI / 2) {
       ctx.drawImage(oldImg, fronteSrc(s) * sc, 0, passo * sc, Hc * sc, x, y, larg, Hc);
-      // in salita verso il crinale la carta prende luce, poi si spegne
-      const luce = Math.sin(a);
-      ctx.fillStyle = `rgba(255,255,255,${0.14 * luce})`;
-      ctx.fillRect(x, y, larg, Hc);
-      ctx.fillStyle = `rgba(0,0,0,${0.2 * (1 - comp) * (1 - luce)})`;
+      // un filo di luce dove la carta comincia a sollevarsi, poi buio
+      // crescente fino al crinale
+      const su = Math.sin(a);
+      if (su < 0.45) {
+        ctx.fillStyle = `rgba(255,250,235,${0.2 * (1 - su / 0.45)})`;
+        ctx.fillRect(x, y, larg, Hc);
+      }
+      ctx.fillStyle = `rgba(0,0,0,${0.5 * su * su})`;
       ctx.fillRect(x, y, larg, Hc);
     } else if (newImg) {
+      // il retro, visto di sbieco oltre il crinale: parte scurissimo e si
+      // schiarisce distendendosi sulla pagina
       ctx.drawImage(newImg, retroSrc(s) * sc, 0, passo * sc, Hc * sc, x, y, larg, Hc);
-      ctx.fillStyle = `rgba(0,0,0,${0.16 * Math.abs(Math.cos(a)) === 0 ? 0 : 0.16 * (1 - comp)})`;
+      const giu = Math.sin(a);
+      ctx.fillStyle = `rgba(0,0,0,${0.42 * giu * giu})`;
       ctx.fillRect(x, y, larg, Hc);
     } else {
       retroNudo(x, larg);
+      ctx.fillStyle = `rgba(0,0,0,${0.42 * Math.sin(a) ** 2})`;
+      ctx.fillRect(x, y, larg, Hc);
     }
   }
 
