@@ -1758,7 +1758,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             display: "none",
           }}
         />
-        )}
       </div>
 
       <div
