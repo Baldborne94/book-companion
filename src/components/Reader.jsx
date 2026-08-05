@@ -77,13 +77,6 @@ const NET_WORDS = 30;
 // inservibile proprio nei casi difficili.
 const PHRASE_WORDS = 300;
 
-// Il cilindro dipinto su canvas (lib/pageCurl.js) e' spento: sulla GPU del
-// tablet rendeva strisce sovrapposte e la voltata deve prima di tutto
-// funzionare. Restano il palco DOM con le pagine vere sulle facce e tutta
-// l'infrastruttura del cilindro, pronta per quando si potra' collaudare
-// su hardware vero.
-const CURL_ATTIVO = false;
-
 const isTouch = () => navigator.maxTouchPoints > 0;
 const isTablet = () =>
   isTouch() && Math.min(window.innerWidth, window.innerHeight) >= 520;
@@ -827,7 +820,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       const p = snapPark();
       if (!p) return;
       setPark((old) => (old && old.html === p.html ? old : p));
-      if (!CURL_ATTIVO) return;
+      if (!live.current.settings?.curl) return;
       // la texture per la voltata di carta vera si cuoce da fermi: font
       // incorporati e doppia pagina rasterizzata, pronta prima del tocco
       try {
@@ -953,7 +946,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // texture parcheggiata e' fresca (stesso capitolo, stessa posizione)
     const tex = texRef.current;
     const curl =
-      CURL_ATTIVO &&
+      settings.curl &&
       pages === 2 &&
       tex &&
       geo &&
@@ -1029,6 +1022,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       // i segni si tolgono e si rimettono sulle viste gia' a schermo: non
       // vale la pena rifare il libro da capo per un interruttore
       if (next.terms) rendRef.current?.manager?.views?.forEach?.((v) => markTerms(v));
+    }
+    if ("curl" in patch) {
+      // acceso l'interruttore, le texture del rotolo vanno cotte subito:
+      // altrimenti il primo giro parte ancora col palco DOM
+      live.current.settings = next;
+      texRef.current = null;
+      if (next.curl) schedulePark();
     }
     if ("flow" in patch || "spread" in patch || "font" in patch) makeRendition(next);
     else if (rendRef.current && ("theme" in patch || "fontSize" in patch || "lineHeight" in patch)) {
@@ -2118,6 +2118,29 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 }}
               >
                 {settings.pageTurn ? "Attivo ✨" : "Spento"}
+              </button>
+            </div>
+          )}
+          {isTablet() && settings.pageTurn && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <span style={{ fontSize: 14.5, color: C.muted }}>
+                Foglio che si arrotola
+                <span style={{ display: "block", fontSize: 12.5, color: `${C.muted}b0` }}>
+                  come la carta vera · sperimentale
+                </span>
+              </span>
+              <button
+                onClick={() => updateSettings({ curl: !settings.curl })}
+                style={{
+                  padding: "6px 16px",
+                  borderRadius: 999,
+                  fontSize: 14,
+                  border: `1px solid ${settings.curl ? C.accent : C.border}`,
+                  color: settings.curl ? C.accent : C.muted,
+                  background: settings.curl ? `${C.accent}14` : "transparent",
+                }}
+              >
+                {settings.curl ? "Attivo 📜" : "Spento"}
               </button>
             </div>
           )}
