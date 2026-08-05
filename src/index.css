@@ -228,10 +228,10 @@ input {
     opacity: 0;
   }
   8%,
-  45% {
+  44% {
     opacity: 1;
   }
-  45.3%,
+  46%,
   100% {
     opacity: 0;
   }
@@ -239,10 +239,10 @@ input {
 
 @keyframes bc-leaf-back {
   0%,
-  45% {
+  44% {
     opacity: 0;
   }
-  45.3%,
+  46%,
   86% {
     opacity: 1;
   }
