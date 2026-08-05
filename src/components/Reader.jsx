@@ -1235,7 +1235,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           left: twoUp ? "50%" : FRAME,
           right: FRAME,
           transformOrigin: "left center",
-          borderRadius: "6px 34px 34px 6px",
+          borderRadius: "5px 22px 22px 5px",
           backgroundImage:
             "linear-gradient(115deg, #ffffff0d, transparent 45%), linear-gradient(to right, #00000030, transparent 28%, transparent 62%, #00000012 86%, #00000024 100%)",
           boxShadow: "-26px 0 70px #0000003d",
@@ -1245,7 +1245,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           left: FRAME,
           right: twoUp ? "50%" : FRAME,
           transformOrigin: "right center",
-          borderRadius: "34px 6px 6px 34px",
+          borderRadius: "22px 5px 5px 22px",
           backgroundImage:
             "linear-gradient(245deg, #ffffff0d, transparent 45%), linear-gradient(to left, #00000030, transparent 28%, transparent 62%, #00000012 86%, #00000024 100%)",
           boxShadow: "26px 0 70px #0000003d",
@@ -1574,6 +1574,24 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       animation: anim("bc-leaf-shade"),
                     }}
                   />
+                  {/* il riflesso che rotola: la luce scorre da un bordo
+                      all'altro e la carta smette di sembrare una tavola */}
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      bottom: 0,
+                      left: "-30%",
+                      width: "60%",
+                      opacity: 0,
+                      background:
+                        "linear-gradient(90deg, transparent, #fff6e055 38%, #fff6e07a 50%, #fff6e055 62%, transparent)",
+                      animation: stage
+                        ? `bc-leaf-gloss-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
+                        : "none",
+                    }}
+                  />
                   <div
                     aria-hidden="true"
                     style={{
@@ -1643,6 +1661,24 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                           ? "linear-gradient(to left, #00000052, #00000026)"
                           : "linear-gradient(to right, #00000052, #00000026)",
                       animation: anim("bc-leaf-shade"),
+                    }}
+                  />
+                  {/* il riflesso che rotola: la luce scorre da un bordo
+                      all'altro e la carta smette di sembrare una tavola */}
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      bottom: 0,
+                      left: "-30%",
+                      width: "60%",
+                      opacity: 0,
+                      background:
+                        "linear-gradient(90deg, transparent, #fff6e055 38%, #fff6e07a 50%, #fff6e055 62%, transparent)",
+                      animation: stage
+                        ? `bc-leaf-gloss-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
+                        : "none",
                     }}
                   />
                 </div>
