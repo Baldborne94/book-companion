@@ -766,8 +766,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       if (!b) return null;
       return {
         href: (b.view.section?.href || "").split("#")[0],
-        x: Math.round(b.ri.left - b.rh.left),
-        y: Math.round(b.ri.top - b.rh.top),
+        // frazionari, non arrotondati: mezzo pixel di scarto si vede come
+        // testo doppio nella dissolvenza d'atterraggio
+        x: b.ri.left - b.rh.left,
+        y: b.ri.top - b.rh.top,
         hw: b.rh.width,
       };
     } catch {
@@ -1412,6 +1414,20 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 y={stage?.y}
                 base={dirNow === "next" ? FRAME : (stage?.hw ?? 0) / 2}
               />
+              {/* il taglio delle pagine non deve sparire mentre la faccia
+                  copre il bordo: si replica sul lato esterno */}
+              <div
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  bottom: 0,
+                  ...(dirNow === "next" ? { left: 0 } : { right: 0 }),
+                  width: dirNow === "next" ? edgeRead : edgeLeftToRead,
+                  backgroundColor: theme.bg,
+                  backgroundImage: EDGE_STRIPES,
+                }}
+              />
             </div>
             <div
               aria-hidden="true"
@@ -1533,6 +1549,18 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                     aria-hidden="true"
                     style={{
                       position: "absolute",
+                      top: 0,
+                      bottom: 0,
+                      ...(dirNow === "next" ? { right: 0 } : { left: 0 }),
+                      width: dirNow === "next" ? edgeLeftToRead : edgeRead,
+                      backgroundColor: theme.bg,
+                      backgroundImage: EDGE_STRIPES,
+                    }}
+                  />
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
                       inset: 0,
                       opacity: 0,
                       background:
@@ -1587,6 +1615,18 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                     x={stage?.x2}
                     y={stage?.y}
                     base={dirNow === "next" ? FRAME : (stage?.hw ?? 0) / 2}
+                  />
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      bottom: 0,
+                      ...(dirNow === "next" ? { left: 0 } : { right: 0 }),
+                      width: dirNow === "next" ? edgeRead : edgeLeftToRead,
+                      backgroundColor: theme.bg,
+                      backgroundImage: EDGE_STRIPES,
+                    }}
                   />
                   <div
                     aria-hidden="true"
