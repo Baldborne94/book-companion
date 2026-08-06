@@ -1253,7 +1253,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           borderRadius: "4px 6px 6px 4px",
           backgroundImage:
             "linear-gradient(115deg, #ffffff0d, transparent 45%), linear-gradient(to right, #00000030, transparent 28%, transparent 62%, #00000012 86%, #00000024 100%)",
-          boxShadow: "-30px 0 52px -26px #00000052",
           animationName: "bc-leaf-next",
         }
       : {
@@ -1263,7 +1262,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           borderRadius: "6px 4px 4px 6px",
           backgroundImage:
             "linear-gradient(245deg, #ffffff0d, transparent 45%), linear-gradient(to left, #00000030, transparent 28%, transparent 62%, #00000012 86%, #00000024 100%)",
-          boxShadow: "30px 0 52px -26px #00000052",
           animationName: "bc-leaf-prev",
         };
   // niente attore parte nudo: il clone si mostra solo se la fotografia
@@ -1535,12 +1533,23 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   aria-hidden="true"
                   style={{
                     position: "absolute",
-                    inset: 0,
+                    // Solo DI FIANCO al foglio, alto quanto lui: un
+                    // box-shadow sfoca in tutte le direzioni e la sua coda
+                    // verticale finiva sopra e sotto la pagina che gira —
+                    // invisibile sui temi scuri, un alone su Carta e
+                    // Pergamena. Una fascia in gradiente non puo' sbavare
+                    // dove non c'e'.
+                    top: 0,
+                    bottom: 0,
+                    ...(dirNow === "next" ? { right: "100%" } : { left: "100%" }),
+                    width: 64,
                     // mezzo pixel dietro le facce: piani coincidenti in 3D
                     // si contendono la profondita' e sfarfallano sulla GPU
                     transform: "translateZ(-0.5px)",
-                    borderRadius: leafGeom.borderRadius,
-                    boxShadow: leafGeom.boxShadow,
+                    background:
+                      dirNow === "next"
+                        ? "linear-gradient(to left, #0000004f, #00000026 34%, #0000000a 66%, transparent)"
+                        : "linear-gradient(to right, #0000004f, #00000026 34%, #0000000a 66%, transparent)",
                     opacity: 0,
                     animation: anim("bc-leaf-fade"),
                   }}
