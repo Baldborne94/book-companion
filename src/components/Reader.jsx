@@ -1986,6 +1986,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             value={settings.brightness}
             onChange={(v) => updateSettings({ brightness: v })}
           />
+          {/* Il timbro della build ANCHE qui, non solo in fondo alla
+              Libreria: il service worker sta in modalita' prompt e il
+              banner della nuova versione non compare mai a lettore aperto,
+              quindi si puo' restare indietro di parecchi rilasci proprio
+              mentre si giudica una modifica al lettore. Qui si legge senza
+              uscire dal libro. */}
+          <p style={{ marginTop: 14, fontSize: 12.5, color: C.muted, textAlign: "center" }}>
+            versione {typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "?"}
+          </p>
         </Panel>
       )}
 
