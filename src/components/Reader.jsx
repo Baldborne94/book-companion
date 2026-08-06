@@ -1502,11 +1502,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 //
                 // Il punto di vista sta LONTANO. Da vicino (1500) il foglio,
                 // ruotando, si avvicinava all'occhio e cresceva fino a meta'
-                // in piu': il suo testo diventava piu' grande di quello della
+                // in piu': il testo diventava piu' grande di quello della
                 // pagina e sbordava sopra e sotto, tagliato dalla cornice.
-                // Un libro si guarda da tre volte la sua larghezza, non da
-                // mezza: cosi' la pagina in volo resta della sua misura.
-                perspective: 5200,
+                // Da qui la crescita resta sotto il margine bianco della
+                // pagina, quindi il ritaglio non tocca il testo — e il foglio
+                // non va rimpicciolito per stare dentro, cosa che si vedeva
+                // subito: sembrava una paginetta diversa dalle altre.
+                perspective: 6800,
               }}
             >
               <div
