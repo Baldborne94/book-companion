@@ -306,8 +306,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const curlBroken = useRef(false);
   const curlCanvasRef = useRef(null);
   const curlRun = useRef(null);
-  const oldWrapRef = useRef(null);
-  const slideWrapRef = useRef(null);
   const turnRef = useRef(() => {});
   const moved = useRef(false);
   const fixTimers = useRef([]);
@@ -978,9 +976,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     try {
       const host = bookRef.current;
       const cv = curlCanvasRef.current;
-      const vecchia = oldWrapRef.current;
-      const posato = slideWrapRef.current;
-      if (!host || !cv || !vecchia || !posato || curlBroken.current) return null;
+      if (!host || !cv || curlBroken.current) return null;
       const rh = host.getBoundingClientRect();
       const Wc = Math.round(rh.width) - FRAME * 2;
       const Hc = Math.round(rh.height) - FRAME * 2;
@@ -992,19 +988,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       const ctx = cv.getContext("2d");
       if (!ctx) return null;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const next = dir === "next";
-      const P = Wc / 2;
       const stato = {
         oldImg: tex.img,
-        newImg: next ? tex.next : tex.prev,
+        newImg: dir === "next" ? tex.next : tex.prev,
         sc: dpr,
         dir,
         start: performance.now(),
         Wc,
         Hc,
-        // finche' il clone del retro non e' misurato e acceso, il canvas
-        // disegna anche la parte atterrata come ripiego
-        slideOk: false,
       };
       const DUR = 850;
       const paper = theme.bg;
@@ -1013,46 +1004,32 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       // se drawImage esplode (certe GPU con le immagini SVG), si torna
       // null e parte la dissolvenza come se nulla fosse
       drawCurl(ctx, { oldImg: stato.oldImg, newImg: stato.newImg, t: 0, dir, Wc, Hc, paper, rows, sc: dpr });
-      // Il ritaglio della pagina vecchia PRIMA che React accenda i cloni,
-      // cosi' non esiste un fotogramma di clone nudo. Una fascia sola: la
-      // meta' che il foglio deve ancora coprire e la parte di foglio non
-      // ancora arrivata al rotolo sono contigue e mostrano la STESSA
-      // finestra — due cloni sarebbero due iframe e due ritagli da
-      // aggiornare a ogni fotogramma per disegnare la stessa cosa.
-      vecchia.style.clipPath = "inset(0 0 0 0)";
-      posato.style.clipPath = "inset(0 100% 0 0)";
-      posato.style.transform = "";
+      // La DISSOLVENZA in entrata e in uscita nasconde l'unica differenza
+      // che resta: la fotografia rende il testo con un peso appena diverso
+      // dalla pagina viva. Primo e ultimo fotogramma disegnano esattamente
+      // cio' che hanno sotto (a t=0 la pagina vecchia, a t=1 la nuova gia'
+      // scambiata), quindi la dissolvenza non nasconde un salto: nasconde
+      // un cambio di resa. Guidata dall'orologio dell'animazione, non da
+      // una transizione CSS, cosi' non puo' sfasarsi.
+      cv.style.opacity = "0";
       cv.style.display = "block";
       curlRun.current = stato;
       const spegni = () => {
         try { ctx.clearRect(0, 0, Wc, Hc); } catch { /* niente da pulire */ }
         cv.style.display = "none";
+        cv.style.opacity = "0";
         if (curlRun.current === stato) curlRun.current = null;
       };
       const frame = (now) => {
         if (curlRun.current !== stato) return;
         const t = Math.min(1, (now - stato.start) / DUR);
         try {
-          const { c, arc, landa } = curlGeom(t, Wc);
-          // la pagina vecchia resta scoperta dal bordo esterno fino al
-          // rotolo, e la fascia si accorcia mentre il foglio si arrotola
-          vecchia.style.clipPath = next
-            ? `inset(0 ${Math.max(0, Wc - (P + c))}px 0 0)`
-            : `inset(0 0 0 ${Math.max(0, P - c)}px)`;
-          // il retro atterrato: la striscia esterna della pagina nuova,
-          // ritagliata a misura e traslata fino al rotolo; a fine giro
-          // ritaglio pieno e traslazione zero — IDENTICO alla pagina viva,
-          // e lo spegnimento non ha niente da far vedere
-          if (stato.slideOk && landa > 0.5) {
-            const shift = 2 * c + arc;
-            if (next) {
-              posato.style.clipPath = `inset(0 ${Math.max(0, Wc - landa)}px 0 0)`;
-              posato.style.transform = shift > 0.5 ? `translateX(${shift}px)` : "";
-            } else {
-              posato.style.clipPath = `inset(0 0 0 ${Math.max(0, Wc - landa)}px)`;
-              posato.style.transform = shift > 0.5 ? `translateX(${-shift}px)` : "";
-            }
-          }
+          // La salita si chiude PRIMA dello scambio (47ms contro 60): a
+          // dissolvenza incompleta il cambio della pagina sotto traspariva
+          // attraverso il canvas, ed era un lampo proprio sul tocco. La
+          // discesa resta lunga, perche' l'ultimo fotogramma coincide con
+          // la pagina vera e va lasciato sfumare con calma.
+          cv.style.opacity = String(Math.min(1, t / 0.055) * Math.min(1, (1 - t) / 0.16));
           drawCurl(ctx, {
             oldImg: stato.oldImg,
             newImg: stato.newImg,
@@ -1063,12 +1040,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             paper,
             rows,
             sc: dpr,
-            atterratoVivo: stato.slideOk,
           });
         } catch {
-          // il canvas ha tradito a giro in corso: si spegne, la dissolvenza
-          // prende il testimone su questo stesso giro (i cloni si spengono
-          // da soli: senza turning.curl il loro iframe torna trasparente)
+          // il canvas ha tradito a giro in corso: si spegne e la
+          // dissolvenza prende il testimone su questo stesso giro
           curlBroken.current = true;
           spegni();
           setTurning((v) => {
@@ -1127,14 +1102,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     if (curl) {
       const stato = startCurl(dir, tex, key);
       if (stato) {
-        // x/y accendono i cloni vivi del giro (coperta e piatto) sulla
-        // finestra vecchia; x2 arrivera' dopo lo scambio per il retro
-        setTurning({ dir, key, curl: true, x: geo.x, y: geo.y, href: geo.href });
+        setTurning({ dir, key, curl: true });
         clearTimeout(turnTimer.current);
         turnTimer.current = setTimeout(() => setTurning(null), 900);
-        // lo scambio sta PRESTO (50ms): con la partenza lanciata il foglio
+        // lo scambio sta presto (60ms): con la partenza lanciata il foglio
         // scopre in fretta la pagina sotto, che dev'essere gia' quella
-        // nuova prima che il bordo libero le passi sopra
+        // nuova prima che il bordo libero le passi sopra — ma dopo che il
+        // canvas e' diventato opaco, o il cambio si vede in trasparenza
         swapTimer.current = setTimeout(() => {
           swapTimer.current = null;
           step(r, dir);
@@ -1145,14 +1119,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 stato.newImg = null;
                 return;
               }
-              // il clone del retro si posiziona sulla finestra vera e si
-              // accende un fotogramma dopo che React l'ha reso
-              setTurning((v) => (v && v.key === key ? { ...v, x2: g2.x, y2: g2.y } : v));
-              requestAnimationFrame(() =>
-                requestAnimationFrame(() => {
-                  if (curlRun.current === stato) stato.slideOk = true;
-                })
-              );
               // ai confini di capitolo epub.js scorre di un passo diverso:
               // se la finestra precotta non e' quella vera, la texture del
               // lato retro del rotolo si ricuoce
@@ -1172,7 +1138,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               if (curlRun.current === stato) stato.newImg = img2;
             } catch { /* il retro restera' carta con righe accennate */ }
           }, 60);
-        }, 50);
+        }, 60);
         return;
       }
     }
@@ -1409,10 +1375,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // niente velo nudo: il clone si mostra solo se la fotografia pronta e'
   // del capitolo giusto
   const frontOk = !!(stage && park && stage.href && park.href === stage.href);
-  // i cloni del giro di carta: coperta e piatto vivono sulla finestra
-  // vecchia, il retro solo dopo la misura post-scambio
-  const curlFrontOk = !!(turning?.curl && park && turning.href && park.href === turning.href);
-  const curlBackOk = !!(curlFrontOk && turning.x2 != null);
 
   return (
     <div
@@ -1591,28 +1553,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             }}
           />
         )}
-        {/* I cloni vivi del giro di carta: la pagina vecchia (dal bordo
-            esterno fino al rotolo) e il retro che si posa. Iframe del
-            capitolo, identici al
-            pixel alla pagina vera: al canvas resta solo la piega. Ritagli
-            e traslazioni li muove startCurl fotogramma per fotogramma,
-            fuori da React: qui non vanno mai messi stili che cambiano
-            durante il giro, o il primo re-render li azzererebbe. Da fermi
-            l'iframe dentro e' trasparente (shown=false). */}
-        <div
-          ref={oldWrapRef}
-          aria-hidden="true"
-          style={{ position: "absolute", inset: FRAME, zIndex: 5, pointerEvents: "none", contain: "paint" }}
-        >
-          <StageFrame park={park} shown={curlFrontOk} x={turning?.x} y={turning?.y} base={FRAME} />
-        </div>
-        <div
-          ref={slideWrapRef}
-          aria-hidden="true"
-          style={{ position: "absolute", inset: FRAME, zIndex: 5, pointerEvents: "none", contain: "paint" }}
-        >
-          <StageFrame park={park} shown={curlBackOk} x={turning?.x2} y={turning?.y2 ?? turning?.y} base={FRAME} />
-        </div>
         {/* il cilindro di carta vera: quando la texture e' pronta la PIEGA
             si disegna qui, colonna per colonna, e la dissolvenza riposa */}
         <canvas
