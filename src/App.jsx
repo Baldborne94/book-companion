@@ -473,6 +473,7 @@ export default function App() {
   const swUpdate = useRef(null);
   const [updateReady, setUpdateReady] = useState(false);
   const flags = useRef({ reading: false, updateReady: false });
+  const swReg = useRef(null);
 
   useEffect(() => {
     requestPersistence();
@@ -481,6 +482,9 @@ export default function App() {
         onNeedRefresh: () => {
           flags.current.updateReady = true;
           setUpdateReady(true);
+        },
+        onRegisteredSW: (_url, reg) => {
+          swReg.current = reg || null;
         },
       });
     } catch {
@@ -496,7 +500,23 @@ export default function App() {
       }
     };
     document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
+    // La caccia all'aggiornamento non si ferma al primo controllo: aperta
+    // l'app e infilatosi subito nel libro, il banner non compare (mai a
+    // lettore aperto) e il passaggio in background non aggiorna (si sta
+    // leggendo) — si puo' restare indietro di rilasci per giorni senza
+    // accorgersene. Un giro d'orologio ogni mezz'ora rimette in pari senza
+    // disturbare: se la novita' c'e', il banner aspetta il momento buono.
+    // Si CERCA soltanto: update() sulla registrazione scopre se c'e' una
+    // versione nuova, e semmai fa scattare onNeedRefresh. Chiamare invece
+    // la funzione di registerSW ricaricherebbe la pagina — un reload a
+    // lettore aperto, proprio cio' che non si deve fare mai.
+    const ronda = setInterval(() => {
+      try { swReg.current?.update?.(); } catch { /* nessun worker: pazienza */ }
+    }, 30 * 60 * 1000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      clearInterval(ronda);
+    };
   }, []);
 
   function notify(message, action = null) {
