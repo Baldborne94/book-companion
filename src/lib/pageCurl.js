@@ -121,7 +121,10 @@ export function curlGeom(t, Wc) {
   // residuo di pi/2 px, e la pagina atterrata restava 2px fuori posto —
   // uno scatto del testo allo spegnimento, misurato. A raggio nullo l'arco
   // e' vuoto (il ciclo non gira) e l'ultimo fotogramma e' la pagina vera.
-  const r = Math.min(P * 0.14, 84) * (1 - te * 0.3) * Math.min(1, (1 - te) / 0.05);
+  // il collasso finale del raggio si distende sull'ultimo 14% invece che
+  // sul 5%: strizzato, la piega spariva con uno scatto secco proprio
+  // prima dell'atterraggio
+  const r = Math.min(P * 0.14, 84) * (1 - te * 0.3) * Math.min(1, (1 - te) / 0.14);
   const arc = Math.PI * r;
   return { te, P, c, r, arc, landa: Math.max(0, P - c - arc) };
 }
@@ -286,12 +289,46 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
 
   // oltre l'arco il foglio e' di nuovo piatto, a faccia in giu': il retro
   // atterra sull'altra meta' e la copre passo passo
+  let orloPosato = null;
   for (let s = c + arc; s < P; s += passo) {
     const d = c - (s - (c + arc));
     const x = destX(d);
     if (x < -passo || x > Wc) continue;
+    if (orloPosato === null) orloPosato = x;
     if (newImg) ctx.drawImage(newImg, retroSrc(s) * sc, 0, passo * sc, Hc * sc, x, 0, passo, Hc);
     else retroNudo(x, passo);
+  }
+
+  // IL FOGLIO POSATO E' UN FOGLIO, non una finestra sulla pagina sotto.
+  // Senza ombreggiatura era dipinto nello stesso identico tono di cio' che
+  // ha accanto, e l'occhio leggeva due pagine trasparenti l'una sull'altra
+  // invece di una carta appoggiata sopra. Serve un velo che si spegne
+  // atterrando (a fine giro dev'essere identico alla pagina vera) e un
+  // orlo netto dove la carta finisce.
+  const respiro = Math.sin(Math.PI * te);
+  if (orloPosato !== null && respiro > 0.01) {
+    const fine = next ? P + c : P - c;
+    const larg = Math.abs(fine - orloPosato);
+    if (larg > 1) {
+      const da = next ? orloPosato : fine;
+      const v = ctx.createLinearGradient(next ? fine : da, 0, next ? da : fine, 0);
+      v.addColorStop(0, `rgba(0,0,0,${0.26 * respiro})`);
+      v.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = v;
+      ctx.fillRect(Math.min(da, fine), 0, larg, Hc);
+      // l'ombra che il foglio posato getta sulla pagina davanti a se'
+      const o = next
+        ? ctx.createLinearGradient(orloPosato, 0, orloPosato - 40, 0)
+        : ctx.createLinearGradient(orloPosato + passo, 0, orloPosato + passo + 40, 0);
+      o.addColorStop(0, `rgba(0,0,0,${0.3 * respiro})`);
+      o.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = o;
+      ctx.fillRect(next ? orloPosato - 40 : orloPosato + passo, 0, 40, Hc);
+      // l'orlo vero e proprio: una riga sottile, quel tanto che basta a
+      // dire dove finisce la carta
+      ctx.fillStyle = `rgba(0,0,0,${0.34 * respiro})`;
+      ctx.fillRect(next ? orloPosato : orloPosato + passo - 1, 0, 1, Hc);
+    }
   }
 
   // ombra del foglio sollevato sulla meta' che sta per essere coperta

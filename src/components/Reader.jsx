@@ -998,7 +998,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         Hc,
       };
       const DUR = 850;
-      const CODA = 140;
+      // la coda e' corta e in accelerazione: piu' lunga si notava come una
+      // "mini transizione" a se stante subito prima dell'atterraggio
+      const CODA = 90;
       const paper = theme.bg;
       const rows = `${theme.fg}14`;
       // il primo fotogramma si disegna QUI, prima di dichiarare il giro:
@@ -1078,7 +1080,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 spegni();
                 return;
               }
-              cv.style.opacity = String(1 - q);
+              cv.style.opacity = String((1 - q) * (1 - q));
               requestAnimationFrame(coda);
             };
             requestAnimationFrame(coda);
