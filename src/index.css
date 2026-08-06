@@ -169,7 +169,9 @@ input {
    come una curvatura vista di scorcio) e atterra morbida distendendosi.
    Niente skew: inclinare il foglio lo trasformava in un parallelogramma,
    col testo di sbieco. E il giro finisce a 180 gradi esatti, o il foglio
-   resta di traverso sulla pagina su cui si posa.
+   resta di traverso sulla pagina su cui si posa. Gli ultimi gradi hanno
+   piu' tempo degli altri: schiacciati in due fotogrammi, il foglio non
+   atterrava — SBATTEVA piatto, col testo che si stirava di colpo.
    Qui SOLO transform: l'opacita' vive sull'involucro (bc-leaf-fade),
    perche' animarla sull'elemento 3D appiattisce la scena e le due facce
    del foglio collassano in una, specchiata. */
@@ -185,9 +187,9 @@ input {
     transform: rotateY(-122deg) scaleX(0.955);
   }
   78% {
-    transform: rotateY(-170deg) scaleX(0.99);
+    transform: rotateY(-168deg) scaleX(0.988);
   }
-  86%,
+  92%,
   100% {
     transform: rotateY(-180deg) scaleX(1);
   }
@@ -205,9 +207,9 @@ input {
     transform: rotateY(122deg) scaleX(0.955);
   }
   78% {
-    transform: rotateY(170deg) scaleX(0.99);
+    transform: rotateY(168deg) scaleX(0.988);
   }
-  86%,
+  92%,
   100% {
     transform: rotateY(180deg) scaleX(1);
   }
@@ -246,18 +248,41 @@ input {
   }
 }
 
-/* il retro resta PIENO fino in fondo: a 180 gradi e' identico alla pagina
-   che ha sotto, quindi il taglio netto non si vede. Sfumandolo si vedevano
-   invece il suo bordo, la sua ombra e il suo taglio sopra la pagina vera —
-   il contorno fantasma su bordi e angoli. */
+/* il retro resta PIENO per tutto il giro (sfumato a meta' volo mostrava
+   bordo, ombra e taglio come contorni fantasma) e si dissolve solo negli
+   ultimissimi fotogrammi, a foglio posato, quando sotto c'e' gia' la
+   pagina vera: la replica passa dal compositore 3D — un soffio piu'
+   morbida e mai allineata al pixel — e toglierla di colpo allo smontaggio
+   del palco era il "lampo" con cui finiva ogni voltata. */
 @keyframes bc-leaf-back {
   0%,
   44% {
     opacity: 0;
   }
   46%,
-  100% {
+  94% {
     opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Il velo di luce e dorso del retro si spegne PRIMA dell'atterraggio:
+   cotto nello sfondo della faccia restava stampato sulla pagina posata —
+   una striscia scura lungo il dorso e il bordo esterno — e spariva di
+   colpo con lo smontaggio del palco. */
+@keyframes bc-leaf-veil {
+  0% {
+    opacity: 0;
+  }
+  8%,
+  62% {
+    opacity: 1;
+  }
+  88%,
+  100% {
+    opacity: 0;
   }
 }
 

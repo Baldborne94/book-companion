@@ -1048,7 +1048,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       // una misura, letta a scambio avvenuto, col retro ancora nascosto
       setTimeout(() => {
         const g2 = snapRects();
-        if (g2) setTurning((t) => (t && t.key === key ? { ...t, x2: g2.x, href2: g2.href } : t));
+        // anche la y: dopo lo scambio l'iframe puo' assestarsi di un pixel,
+        // e il retro fuori asse si vedeva come sussulto del testo alla fine
+        if (g2) setTurning((t) => (t && t.key === key ? { ...t, x2: g2.x, y2: g2.y, href2: g2.href } : t));
       }, 150);
     };
     // il foglio e la copertura sono opachi a 80ms: lo scambio resta invisibile
@@ -1716,11 +1718,23 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                     outline: "1px solid transparent",
                     transform: "rotateY(180deg) translateZ(0.5px)",
                     backgroundColor: theme.bg,
-                    backgroundImage: leafGeom.backgroundImage,
                     opacity: 0,
                     animation: anim("bc-leaf-back"),
                   }}
                 >
+                  {/* il velo sta su un piano suo e muore prima del retro:
+                      nello sfondo della faccia restava stampato sulla
+                      pagina posata fino allo smontaggio */}
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      backgroundImage: leafGeom.backgroundImage,
+                      opacity: 0,
+                      animation: anim("bc-leaf-veil"),
+                    }}
+                  />
                   <div
                     aria-hidden="true"
                     style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
@@ -1729,7 +1743,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                     park={park}
                     shown={backOk}
                     x={stage?.x2}
-                    y={stage?.y}
+                    y={stage?.y2 ?? stage?.y}
                     base={dirNow === "next" ? FRAME : (stage?.hw ?? 0) / 2}
                   />
                   <div
