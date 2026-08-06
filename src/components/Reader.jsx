@@ -570,6 +570,35 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           }
           setChrome((v) => !v);
         });
+        // sfogliare col dito come su carta: soglie strette per non rubare
+        // il gesto alla selezione del testo o allo scroll verticale
+        let sw = null;
+        doc.addEventListener(
+          "touchstart",
+          (e) => {
+            sw = e.touches.length === 1
+              ? { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() }
+              : null;
+          },
+          { passive: true }
+        );
+        doc.addEventListener("touchcancel", () => { sw = null; }, { passive: true });
+        doc.addEventListener(
+          "touchend",
+          (e) => {
+            const s0 = sw;
+            sw = null;
+            if (!s0 || live.current.settings.flow === "scrolled") return;
+            const selNow = view.contents.window.getSelection();
+            if (selNow && selNow.toString()) return;
+            const t = e.changedTouches[0];
+            const dx = t.clientX - s0.x;
+            const dy = t.clientY - s0.y;
+            if (Date.now() - s0.t > 600 || Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+            turnRef.current(dx < 0 ? "next" : "prev");
+          },
+          { passive: true }
+        );
       });
 
       r.on("keydown", (e) => {
