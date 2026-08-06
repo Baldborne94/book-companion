@@ -312,6 +312,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const turnTimer = useRef(null);
   const swapTimer = useRef(null);
   const parkTimer = useRef(null);
+  const snapTimer = useRef(null);
   const turningRef = useRef(null);
   const texRef = useRef(null);
   const curlBroken = useRef(false);
@@ -337,6 +338,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [query, setQuery] = useState("");
   const [searchState, setSearchState] = useState({ busy: false, results: null });
   const [pages, setPages] = useState(1);
+  const [snapPad, setSnapPad] = useState(0);
   const [turning, setTurning] = useState(null);
   const [park, setPark] = useState(null);
   const [isFs, setIsFs] = useState(false);
@@ -346,6 +348,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [endCard, setEndCard] = useState(null);
 
   const anchor = useRef(null);
+  const snapRef = useRef(0);
+  const snapSeen = useRef(0);
   const markedRef = useRef(new Map());
   const termsRef = useRef(null);
   const termCfis = useRef([]);
@@ -526,6 +530,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // il palco si prepara nei momenti morti: a ogni approdo si
         // rinfresca la fotografia del capitolo per il prossimo giro
         schedulePark();
+        // l'avanzo di riga si ricalcola qui: a misura stabile la funzione
+        // esce subito, quindi non costa nulla a ogni voltata
+        measureSnap();
       });
 
       r.on("layout", (layout) => setPages(layout.divisor > 1 ? 2 : 1));
@@ -698,6 +705,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       clearTimeout(turnTimer.current);
       clearTimeout(reflowTimer.current);
       clearTimeout(parkTimer.current);
+      clearTimeout(snapTimer.current);
       curlRun.current = null;
       fixTimers.current.forEach(clearTimeout);
       flush();
@@ -712,6 +720,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     marginSeen.current = settings.margin;
     relayout(anchor.current || live.current.cfi);
   }, [settings.margin, relayout]);
+
+  // tolto l'avanzo, epub.js va rimesso al lavoro sulla misura nuova: si
+  // riparte dall'ultima pagina scelta dal lettore, come per il margine
+  useEffect(() => {
+    if (snapSeen.current === snapPad) return;
+    snapSeen.current = snapPad;
+    relayout(anchor.current || live.current.cfi);
+  }, [snapPad, relayout]);
 
   useEffect(() => {
     const onFs = () => setIsFs(!!document.fullscreenElement);
@@ -793,6 +809,50 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       }
     });
     return out;
+  }
+
+  // La gabbia di testo deve contenere un numero INTERO di righe.
+  //
+  // L'altezza disponibile non e' quasi mai un multiplo esatto dell'interlinea:
+  // in fondo alla colonna avanza una frazione di riga. Che fine fa quella
+  // frazione lo decide il motore, e i due non sono d'accordo: Chrome spinge la
+  // riga alla colonna dopo (e lascia un vuoto in fondo alto fino a una riga,
+  // diverso a ogni pagina), Firefox la disegna e la TAGLIA sul bordo della
+  // colonna — la riga mozzata a meta' altezza in fondo a ogni facciata.
+  // Nessuna delle due e' una pagina di libro.
+  //
+  // Si toglie quindi l'avanzo dal riquadro, una volta sola: la carta resta
+  // larga uguale (lo sfondo e' del contenitore, non della gabbia), il margine
+  // di piede cresce di quei pochi pixel e diventa lo stesso su ogni pagina.
+  // La misura si prende dal documento vero e si somma indietro il ritaglio
+  // gia' applicato, cosi' il conto e' lo stesso a ogni giro e non rincorre
+  // se stesso.
+  function measureSnap() {
+    if (live.current.settings?.flow === "scrolled") {
+      if (snapRef.current !== 0) {
+        snapRef.current = 0;
+        setSnapPad(0);
+      }
+      return;
+    }
+    try {
+      const doc = bestView()?.view?.contents?.document;
+      const body = doc?.body;
+      if (!body) return;
+      const cs = doc.defaultView.getComputedStyle(body);
+      const passo = parseFloat(cs.lineHeight);
+      const alto =
+        body.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+      if (!(passo > 4) || !(alto > passo)) return;
+      const pieno = alto + snapRef.current;
+      const avanzo = Math.round(pieno % passo);
+      // meno di un pixel non vale una reimpaginazione
+      if (Math.abs(avanzo - snapRef.current) < 1) return;
+      snapRef.current = avanzo;
+      setSnapPad(avanzo);
+    } catch {
+      /* vista non ancora pronta: si rimisura al prossimo approdo */
+    }
   }
 
   // Solo misure, niente serializzazioni: si legge al tocco, deve costare
@@ -1081,6 +1141,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       applyStyles(rendRef.current, next);
       texRef.current = null;
       schedulePark();
+      // corpo e interlinea cambiano il passo delle righe, quindi l'avanzo:
+      // si rimisura a testo gia' ridisegnato
+      clearTimeout(snapTimer.current);
+      snapTimer.current = setTimeout(measureSnap, 320);
     }
   }
 
@@ -1340,7 +1404,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           style={{
             position: "absolute",
             inset: FRAME,
-            padding: `${HEAD}px ${Math.max(settings.margin, EDGE_MAX + 8)}px calc(${FOOT}px + env(safe-area-inset-bottom))`,
+            padding: `${HEAD}px ${Math.max(settings.margin, EDGE_MAX + 8)}px calc(${FOOT + snapPad}px + env(safe-area-inset-bottom))`,
             boxSizing: "border-box",
             borderRadius: 3,
             // la carta arriva fino al bordo interno della rilegatura: senza,
@@ -1677,11 +1741,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       position: "absolute",
                       top: 0,
                       bottom: 0,
-                      left: "-30%",
-                      width: "60%",
+                      left: "-24%",
+                      width: "48%",
                       opacity: 0,
                       background:
-                        "linear-gradient(90deg, transparent, #fff6e055 38%, #fff6e07a 50%, #fff6e055 62%, transparent)",
+                        "linear-gradient(90deg, transparent, #fff6e04d 34%, #fff6e08f 50%, #fff6e04d 66%, transparent)",
                       animation: stage
                         ? `bc-leaf-gloss-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
                         : "none",
@@ -1779,11 +1843,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       position: "absolute",
                       top: 0,
                       bottom: 0,
-                      left: "-30%",
-                      width: "60%",
+                      left: "-24%",
+                      width: "48%",
                       opacity: 0,
                       background:
-                        "linear-gradient(90deg, transparent, #fff6e055 38%, #fff6e07a 50%, #fff6e055 62%, transparent)",
+                        "linear-gradient(90deg, transparent, #fff6e04d 34%, #fff6e08f 50%, #fff6e04d 66%, transparent)",
                       animation: stage
                         ? `bc-leaf-gloss-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
                         : "none",
