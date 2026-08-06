@@ -144,15 +144,20 @@ input {
 }
 
 @keyframes bc-cast {
-  0%,
-  8% {
+  0% {
     opacity: 0;
   }
-  52% {
-    opacity: 0.85;
+  20% {
+    opacity: 0.32;
   }
-  80% {
-    opacity: 0.5;
+  52% {
+    opacity: 0.8;
+  }
+  72% {
+    opacity: 0.58;
+  }
+  88% {
+    opacity: 0.24;
   }
   100% {
     opacity: 0;
@@ -327,12 +332,17 @@ input {
 /* il dorso si approfondisce quando il foglio gli passa sopra: un picco
    solo, salita e discesa lunghe, che non si faccia notare da fermo */
 @keyframes bc-spine-pulse {
-  0%,
-  8% {
+  0% {
     opacity: 0;
+  }
+  22% {
+    opacity: 0.4;
   }
   46% {
     opacity: 1;
+  }
+  72% {
+    opacity: 0.45;
   }
   100% {
     opacity: 0;

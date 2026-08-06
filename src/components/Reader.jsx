@@ -1386,12 +1386,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               top: FRAME,
               bottom: FRAME,
               left: "50%",
-              width: 96,
+              width: 150,
               transform: "translateX(-50%)",
               zIndex: 4,
               pointerEvents: "none",
               background:
-                "linear-gradient(90deg, transparent, #00000021 32%, #0000004d 50%, #00000021 68%, transparent)",
+                "linear-gradient(90deg, transparent, #0000000d 18%, #0000001c 32%, #00000030 42%, #00000042 50%, #00000030 58%, #0000001c 68%, #0000000d 82%, transparent)",
             }}
           />
         )}
@@ -1460,8 +1460,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 opacity: 0,
                 background:
                   dirNow === "next"
-                    ? "linear-gradient(to left, #0000004d, transparent 78%)"
-                    : "linear-gradient(to right, #0000004d, transparent 78%)",
+                    ? "linear-gradient(to left, #00000047, #00000024 34%, #0000000f 58%, transparent 88%)"
+                    : "linear-gradient(to right, #00000047, #00000024 34%, #0000000f 58%, transparent 88%)",
                 animation: anim("bc-cast"),
               }}
             />
@@ -1472,14 +1472,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 top: FRAME,
                 bottom: FRAME,
                 left: "50%",
-                width: 130,
+                width: 240,
                 transform: "translateX(-50%)",
                 zIndex: 5,
                 pointerEvents: "none",
                 visibility: stage ? "visible" : "hidden",
                 opacity: 0,
                 background:
-                  "linear-gradient(90deg, transparent, #0000002e 50%, transparent)",
+                  "linear-gradient(90deg, transparent, #00000012 22%, #00000026 38%, #00000030 50%, #00000026 62%, #00000012 78%, transparent)",
                 animation: anim("bc-spine-pulse"),
               }}
             />
