@@ -35,8 +35,6 @@ export function deviceDefaults(shortSide) {
     warmth: 0,
     brightness: 1,
     pageTurn: true,
-    // la voltata a rotolo e' sperimentale: si accende dalle impostazioni
-    curl: false,
     terms: true,
     appTheme: "night",
   };

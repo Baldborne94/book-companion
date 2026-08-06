@@ -80,7 +80,20 @@ export function rasterize({ baked, w, h, offsetX, offsetY = 0, outW, outH, scale
       // un'immagine "caricata" ma non decodificabile fa esplodere drawImage
       // al primo fotogramma: meglio scoprirlo qui, dove c'e' il ripiego
       const decodifica = img.decode ? img.decode() : Promise.resolve();
-      decodifica.then(() => resolve(img)).catch(() => reject(new Error("decodifica fallita")));
+      decodifica
+        .then(() => {
+          // La texture si consegna gia' TRAVASATA su un canvas. Disegnare le
+          // colonne del rotolo direttamente dall'immagine SVG costava 32ms a
+          // fotogramma (ogni drawImage la ri-rasterizza); dallo stesso canvas
+          // 0,6ms — misurato. Il travaso costa 0,1ms, una volta sola. Era
+          // QUESTO a rendere il cilindro piu' lento del palco sul tablet.
+          const cache = document.createElement("canvas");
+          cache.width = img.width;
+          cache.height = img.height;
+          cache.getContext("2d").drawImage(img, 0, 0);
+          resolve(cache);
+        })
+        .catch(() => reject(new Error("decodifica fallita")));
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
@@ -123,8 +136,11 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
   const c = P * (1 - te);
   // Il rotolo dev'essere LARGO: in un libro vero la piega e' una fascia
   // ampia che prende luce, non un filo. Stretta, il testo compresso legge
-  // come sbavatura invece che come carta piegata.
-  const r = Math.max(14, P * 0.44 * (1 - te * 0.55));
+  // come sbavatura invece che come carta piegata. Ma nell'ultimo tratto il
+  // raggio COLLASSA: senza, il giro finiva con la piega ancora arrotolata
+  // e lo spegnimento del canvas la faceva sparire di colpo — a raggio zero
+  // l'ultimo fotogramma E' la pagina nuova, e lo spegnimento non si vede.
+  const r = Math.max(0.5, P * 0.44 * (1 - te * 0.55) * Math.min(1, (1 - te) / 0.1));
   const arc = Math.PI * r;
   const passo = 2;
   // l'orlo libero si solleva a meta' giro e si posa atterrando, come una

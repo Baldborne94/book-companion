@@ -912,7 +912,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       const p = snapPark();
       if (!p) return;
       setPark((old) => (old && old.html === p.html ? old : p));
-      if (!live.current.settings?.curl) return;
+      // le texture del cilindro servono solo alla doppia pagina animata:
+      // altrove si risparmiano tre rasterizzazioni a ogni approdo
+      const divisor = rendRef.current?.manager?.layout?.divisor || 1;
+      const s = live.current.settings;
+      if (!s?.pageTurn || s?.flow === "scrolled" || divisor !== 2 || reducedMotion()) return;
       // la texture per la voltata di carta vera si cuoce da fermi: font
       // incorporati e doppia pagina rasterizzata, pronta prima del tocco
       try {
@@ -966,7 +970,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       // il primo fotogramma si disegna QUI, prima di dichiarare il giro su
       // canvas: se drawImage esplode (certe GPU Android con le immagini
-      // SVG), si torna null e parte il palco DOM come se nulla fosse
+      // SVG), si torna null e parte la dissolvenza come se nulla fosse
       const stato = {
         oldImg: tex.img,
         newImg: dir === "next" ? tex.next : tex.prev,
@@ -976,7 +980,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         Wc,
         Hc,
       };
-      const DUR = 1200;
+      const DUR = 850;
       const paper = theme.bg;
       const rows = `${theme.fg}14`;
       drawCurl(ctx, { oldImg: stato.oldImg, newImg: stato.newImg, t: 0, dir, Wc, Hc, paper, rows, sc: stato.sc });
@@ -991,15 +995,21 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         if (curlRun.current !== stato) return;
         const t = (now - stato.start) / DUR;
         if (t >= 1) {
-          spegni();
+          // l'ultimo fotogramma si disegna a t=1 esatto e resta a schermo un
+          // giro di rAF: col raggio collassato e' identico alla pagina vera
+          // sotto, e lo spegnimento al fotogramma dopo non si vede
+          try {
+            drawCurl(ctx, { oldImg: stato.oldImg, newImg: stato.newImg, t: 1, dir, Wc, Hc, paper, rows, sc: stato.sc });
+          } catch { /* lo spegnimento copre anche questo */ }
+          requestAnimationFrame(spegni);
           return;
         }
         try {
           drawCurl(ctx, { oldImg: stato.oldImg, newImg: stato.newImg, t, dir, Wc, Hc, paper, rows, sc: stato.sc });
         } catch {
-          // il canvas ha tradito a giro in corso: si spegne, il palco DOM
+          // il canvas ha tradito a giro in corso: si spegne, la dissolvenza
           // prende il testimone su questo stesso giro, e per il resto della
-          // sessione si vola solo col palco
+          // sessione si volta solo con lei
           curlBroken.current = true;
           spegni();
           setTurning((v) => {
@@ -1027,7 +1037,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const animate =
       isTablet() && settings.flow !== "scrolled" && settings.pageTurn && !reducedMotion();
     // un tocco durante un giro e' fretta: si cambia pagina secco, senza
-    // accavallare animazioni (rimontare il palco ricaricherebbe i cloni)
+    // accavallare animazioni
     if (!animate || turningRef.current) {
       step(r, dir);
       return;
@@ -1035,10 +1045,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const key = Date.now();
     const geo = snapRects();
     // la strada maestra e' il cilindro di carta vera: parte solo se la
-    // texture parcheggiata e' fresca (stesso capitolo, stessa posizione)
+    // texture parcheggiata e' fresca (stesso capitolo, stessa posizione);
+    // in ogni altro caso — texture in cottura, capitolo appena cambiato,
+    // canvas che ha tradito — si scivola nella dissolvenza senza avvisi
     const tex = texRef.current;
     const curl =
-      false &&
       pages === 2 &&
       tex &&
       geo &&
@@ -1049,7 +1060,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       if (stato) {
         setTurning({ dir, key, curl: true });
         clearTimeout(turnTimer.current);
-        turnTimer.current = setTimeout(() => setTurning(null), 1200);
+        turnTimer.current = setTimeout(() => setTurning(null), 900);
         swapTimer.current = setTimeout(() => {
           swapTimer.current = null;
           step(r, dir);
@@ -1107,12 +1118,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       // vale la pena rifare il libro da capo per un interruttore
       if (next.terms) rendRef.current?.manager?.views?.forEach?.((v) => markTerms(v));
     }
-    if ("curl" in patch) {
-      // acceso l'interruttore, le texture del rotolo vanno cotte subito:
-      // altrimenti il primo giro parte ancora col palco DOM
+    if ("pageTurn" in patch) {
+      // acceso l'interruttore, le texture del cilindro vanno cotte subito:
+      // altrimenti il primo giro parte ancora con la dissolvenza
       live.current.settings = next;
       texRef.current = null;
-      if (next.curl) schedulePark();
+      if (next.pageTurn) schedulePark();
     }
     if ("flow" in patch || "spread" in patch || "font" in patch) makeRendition(next);
     else if (rendRef.current && ("theme" in patch || "fontSize" in patch || "lineHeight" in patch)) {
@@ -1560,7 +1571,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           />
         )}
         {/* il cilindro di carta vera: quando la texture e' pronta il giro
-            si disegna qui, colonna per colonna, e il palco DOM riposa */}
+            si disegna qui, colonna per colonna, e la dissolvenza riposa */}
         <canvas
           ref={curlCanvasRef}
           aria-hidden="true"
