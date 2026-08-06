@@ -998,6 +998,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         Hc,
       };
       const DUR = 850;
+      const CODA = 140;
       const paper = theme.bg;
       const rows = `${theme.fg}14`;
       // il primo fotogramma si disegna QUI, prima di dichiarare il giro:
@@ -1020,16 +1021,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         cv.style.opacity = "0";
         if (curlRun.current === stato) curlRun.current = null;
       };
+      stato.stop = spegni;
       const frame = (now) => {
         if (curlRun.current !== stato) return;
         const t = Math.min(1, (now - stato.start) / DUR);
         try {
-          // La salita si chiude PRIMA dello scambio (47ms contro 60): a
-          // dissolvenza incompleta il cambio della pagina sotto traspariva
-          // attraverso il canvas, ed era un lampo proprio sul tocco. La
-          // discesa resta lunga, perche' l'ultimo fotogramma coincide con
-          // la pagina vera e va lasciato sfumare con calma.
-          cv.style.opacity = String(Math.min(1, t / 0.055) * Math.min(1, (1 - t) / 0.16));
+          // In salita basta poco: a t=0 il canvas disegna la meta' che il
+          // foglio occupa, identica per contenuto a quella viva sotto. La
+          // discesa non e' qui — sta nella coda, dopo lo scambio.
+          cv.style.opacity = String(Math.min(1, t / 0.06));
           drawCurl(ctx, {
             oldImg: stato.oldImg,
             newImg: stato.newImg,
@@ -1054,7 +1054,25 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           return;
         }
         if (t >= 1) {
-          spegni();
+          // L'ultimo fotogramma E' la pagina nuova: si scambia la pagina
+          // viva sotto (invisibile, il canvas la copre) e poi si dissolve
+          // la copia dipinta su quella vera. Nessun salto: stesso
+          // contenuto, stessa posizione, solo un cambio di resa che la
+          // dissolvenza si porta via.
+          try { stato.scambia?.(); } catch { /* giro finito comunque */ }
+          stato.scambia = null;
+          const finita = performance.now();
+          const coda = (ora) => {
+            if (curlRun.current !== stato) return;
+            const q = (ora - finita) / CODA;
+            if (q >= 1) {
+              spegni();
+              return;
+            }
+            cv.style.opacity = String(1 - q);
+            requestAnimationFrame(coda);
+          };
+          requestAnimationFrame(coda);
           return;
         }
         requestAnimationFrame(frame);
@@ -1074,9 +1092,22 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     moved.current = true;
     const animate =
       isTablet() && settings.flow !== "scrolled" && settings.pageTurn && !reducedMotion();
-    // un tocco durante un giro e' fretta: si cambia pagina secco, senza
-    // accavallare animazioni
+    // Un tocco durante un giro e' fretta: si cambia pagina secco. E il giro
+    // in corso va SPENTO prima, non lasciato finire: da quando lo scambio
+    // della pagina viva e' rinviato alla fine, un cilindro ancora in volo
+    // avrebbe fatto il suo passo per conto suo dopo questo — due pagine
+    // avanti per un tocco solo.
     if (!animate || turningRef.current) {
+      if (curlRun.current) {
+        const corso = curlRun.current;
+        corso.stop?.();
+        curlRun.current = null;
+        // il passo che il giro interrotto doveva ancora fare si esegue
+        // ADESSO, prima del nuovo: annullarlo faceva avanzare di una
+        // pagina sola chi ne aveva toccate due
+        try { corso.scambia?.(); } catch { /* giro gia' concluso */ }
+        corso.scambia = null;
+      }
       step(r, dir);
       return;
     }
@@ -1091,9 +1122,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // "sfarfallava" al tocco e allo spegnimento. In ogni caso dubbio si
     // scivola nella dissolvenza senza avvisi.
     const tex = texRef.current;
+    const arrivo = tex && (dir === "next" ? tex.next : tex.prev);
     const curl =
       pages === 2 &&
       tex &&
+      // senza la fotografia della pagina d'arrivo la zona scoperta dal
+      // foglio resterebbe carta nuda per tutto il giro (succede ai confini
+      // di capitolo): meglio la dissolvenza
+      arrivo &&
       geo &&
       tex.href === geo.href &&
       Math.abs(tex.x - geo.x) < 1 &&
@@ -1104,41 +1140,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       if (stato) {
         setTurning({ dir, key, curl: true });
         clearTimeout(turnTimer.current);
-        turnTimer.current = setTimeout(() => setTurning(null), 900);
-        // lo scambio sta presto (60ms): con la partenza lanciata il foglio
-        // scopre in fretta la pagina sotto, che dev'essere gia' quella
-        // nuova prima che il bordo libero le passi sopra — ma dopo che il
-        // canvas e' diventato opaco, o il cambio si vede in trasparenza
-        swapTimer.current = setTimeout(() => {
-          swapTimer.current = null;
-          step(r, dir);
-          setTimeout(async () => {
-            try {
-              const g2 = snapRects();
-              if (!g2 || g2.href !== tex.href) {
-                stato.newImg = null;
-                return;
-              }
-              // ai confini di capitolo epub.js scorre di un passo diverso:
-              // se la finestra precotta non e' quella vera, la texture del
-              // lato retro del rotolo si ricuoce
-              const delta = rendRef.current?.manager?.layout?.delta || 0;
-              const atteso = dir === "next" ? tex.x - delta : tex.x + delta;
-              if (stato.newImg && Math.abs(g2.x - atteso) < 1) return;
-              const img2 = await rasterize({
-                baked: tex.baked,
-                w: tex.w,
-                h: tex.h,
-                offsetX: FRAME - g2.x,
-                offsetY: FRAME - g2.y,
-                outW: stato.Wc,
-                outH: stato.Hc,
-                scale: stato.sc,
-              });
-              if (curlRun.current === stato) stato.newImg = img2;
-            } catch { /* il retro restera' carta con righe accennate */ }
-          }, 60);
-        }, 60);
+        // il giro dura quanto l'animazione PIU' la coda della dissolvenza
+        turnTimer.current = setTimeout(() => setTurning(null), 1050);
+        // Lo scambio della pagina viva avviene alla FINE, sotto il canvas
+        // ormai opaco e con l'ultimo fotogramma gia' identico alla pagina
+        // nuova: per tutto il giro la meta' ferma resta VIVA, e non c'e'
+        // piu' nessuna fotografia a coprirla. Lo fa startCurl a t=1.
+        stato.scambia = () => {
+          if (rendRef.current === r) step(r, dir);
+        };
         return;
       }
     }
