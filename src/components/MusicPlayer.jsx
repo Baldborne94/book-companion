@@ -19,6 +19,51 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
 
   useEffect(() => () => clearTimeout(sleepRef.current), []);
 
+  // Lo stato vivo per i gestori che vivono fuori da React (visibilita',
+  // ronda del timer): leggere le variabili di stato li' dentro darebbe
+  // sempre quelle del primo montaggio.
+  const vivo = useRef({ playing: false, timerEnd: null, current: null });
+  vivo.current = { playing, timerEnd, current };
+
+  // A SCHERMO SPENTO. Due cose diverse, e conviene distinguerle.
+  //
+  // La riproduzione in se' non e' in nostro potere: l'audio esce da un
+  // iframe di YouTube, e browser e YouTube decidono loro se sospenderlo
+  // quando la pagina va in background. Non esiste una chiamata che lo
+  // impedisca — il tentativo tipico (Wake Lock) tiene acceso lo SCHERMO,
+  // cioe' l'opposto di quel che serve.
+  //
+  // Quello che possiamo garantire e' che la musica non muoia PER COLPA
+  // NOSTRA e che il timer sia rispettato lo stesso:
+  // - il conto alla rovescia sta sull'orologio da muro, non sul setTimeout
+  //   (che i browser congelano in background: al risveglio la musica
+  //   sarebbe andata avanti oltre il tempo chiesto);
+  // - riaccendendo il tablet, se il tempo non e' scaduto e il lettore non
+  //   aveva messo in pausa a mano, si rida' il comando di riprendere.
+  useEffect(() => {
+    const scaduto = () => {
+      const t = vivo.current.timerEnd;
+      return t != null && Date.now() >= t;
+    };
+    const controlla = () => {
+      if (!vivo.current.current) return;
+      if (scaduto()) {
+        stopRef.current();
+        return;
+      }
+      if (document.visibilityState === "visible" && vivo.current.playing) {
+        command("playVideo");
+      }
+    };
+    document.addEventListener("visibilitychange", controlla);
+    // la ronda copre anche il caso in cui il sistema non mandi mai l'evento
+    const ronda = setInterval(() => { if (scaduto()) stopRef.current(); }, 15000);
+    return () => {
+      document.removeEventListener("visibilitychange", controlla);
+      clearInterval(ronda);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Handshake con l'iframe di YouTube: senza "listening" non manda eventi
   useEffect(() => {
     if (!current) return;
@@ -118,6 +163,8 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
   }
   advanceRef.current = advance;
 
+  const stopRef = useRef(() => {});
+
   function pause() {
     command("pauseVideo");
     setPlaying(false);
@@ -149,13 +196,43 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
       setSleepMin(0);
       return;
     }
-    sleepRef.current = setTimeout(() => {
-      stop();
-      notify("🌙 La musica si è addormentata. Buona lettura.");
-    }, minutes * 60000);
+    // il setTimeout serve solo col tablet acceso: in background i browser
+    // lo congelano, ed e' la ronda sull'orologio da muro a fermare la
+    // musica all'ora giusta
+    sleepRef.current = setTimeout(() => stopRef.current(), minutes * 60000);
     setTimerEnd(Date.now() + minutes * 60000);
     setSleepMin(minutes);
   }
+
+  stopRef.current = () => {
+    stop();
+    notify("🌙 La musica si è addormentata. Buona lettura.");
+  };
+
+  // Il tastierino del sistema (schermata di blocco, notifica) sa che qui
+  // c'e' della musica: non obbliga il browser a tenerla viva, ma quando la
+  // tiene viva da' i comandi giusti invece di lasciare il lettore a
+  // riaccendere il tablet per fermarla.
+  useEffect(() => {
+    const ms = navigator.mediaSession;
+    if (!ms) return;
+    try {
+      if (current) {
+        ms.metadata = new window.MediaMetadata({
+          title: current.name || "Musica di sottofondo",
+          artist: "Book Companion",
+        });
+        ms.playbackState = playing ? "playing" : "paused";
+        ms.setActionHandler("play", () => resume());
+        ms.setActionHandler("pause", () => pause());
+        ms.setActionHandler("stop", () => stop());
+        ms.setActionHandler("nexttrack", queueRef.current.list.length ? () => advanceRef.current() : null);
+      } else {
+        ms.metadata = null;
+        ms.playbackState = "none";
+      }
+    } catch { /* niente sessione multimediale: si resta ai comandi in app */ }
+  }, [current, playing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useImperativeHandle(ref, () => ({ play, playQueue, pause, resume, stop, setSleep }));
 
