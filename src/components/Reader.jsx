@@ -38,19 +38,6 @@ const HEAD = 8;
 const FOOT = 8;
 const EDGE_STRIPES =
   "repeating-linear-gradient(to right, #00000047 0 1px, #ffffff1f 1px 2px, #0000001c 2px 4px)";
-// Finto piombo per i fogli in volo: righe di testo appena accennate, cinque
-// per paragrafo, fatte solo di velature e vuoti cosi' non litigano con le
-// ombre del foglio. Il contenuto vero vive nell'iframe di epub.js e non si
-// puo' stampare qui; a questa velocita' l'occhio legge il ritmo, non le
-// parole.
-const PRINT_ROWS = (fg) =>
-  `repeating-linear-gradient(to bottom, ` +
-  `${fg}18 0 2px, transparent 2px 15px, ` +
-  `${fg}18 15px 17px, transparent 17px 30px, ` +
-  `${fg}18 30px 32px, transparent 32px 45px, ` +
-  `${fg}18 45px 47px, transparent 47px 60px, ` +
-  `${fg}18 60px 62px, transparent 62px 84px)`;
-
 // In doppia pagina epub.js riporta solo il foglio di sinistra: il numero
 // pari non compariva mai nel piede e sembrava saltato.
 function pageLabel(d, spread) {
@@ -178,6 +165,7 @@ function contentStyles(s) {
   }
   return rules;
 }
+
 
 const barBtn = (active) => ({
   width: 40,
@@ -1017,7 +1005,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           setTurning((v) => {
             if (!v || v.key !== key) return v;
             const geo = snapRects();
-            return { dir, key, x: geo?.x, y: geo?.y, hw: geo?.hw, href: geo?.href, x2: null, href2: null };
+            return { dir, key, x: geo?.x, y: geo?.y, href: geo?.href };
           });
           return;
         }
@@ -1097,24 +1085,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         return;
       }
     }
-    setTurning({ dir, key, x: geo?.x, y: geo?.y, hw: geo?.hw, href: geo?.href, x2: null, href2: null });
+    setTurning({ dir, key, x: geo?.x, y: geo?.y, href: geo?.href });
     clearTimeout(turnTimer.current);
-    turnTimer.current = setTimeout(() => setTurning(null), 1200);
-    const doSwap = () => {
+    turnTimer.current = setTimeout(() => setTurning(null), 650);
+    // il velo e' opaco a 90ms: lo scambio sotto resta invisibile
+    swapTimer.current = setTimeout(() => {
       swapTimer.current = null;
       step(r, dir);
-      // il retro del foglio mostra la pagina che sta arrivando: il testo e'
-      // lo stesso capitolo gia' preparato, serve solo la nuova posizione —
-      // una misura, letta a scambio avvenuto, col retro ancora nascosto
-      setTimeout(() => {
-        const g2 = snapRects();
-        // anche la y: dopo lo scambio l'iframe puo' assestarsi di un pixel,
-        // e il retro fuori asse si vedeva come sussulto del testo alla fine
-        if (g2) setTurning((t) => (t && t.key === key ? { ...t, x2: g2.x, y2: g2.y, href2: g2.href } : t));
-      }, 150);
-    };
-    // il foglio e la copertura sono opachi a 80ms: lo scambio resta invisibile
-    swapTimer.current = setTimeout(doSwap, 95);
+    }, 95);
   }
   turnRef.current = turn;
 
@@ -1335,37 +1313,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const turnsLeft = Math.ceil(pagesLeft / Math.max(1, pages));
   const chapterLeft = speed && turnsLeft > 0 ? formatLeft(turnsLeft * speed) : null;
 
-  // il palco della voltata resta sempre montato: la geometria segue la
-  // direzione dell'ultimo giro (o "next" da fermo, tanto e' invisibile)
+  // il velo della voltata resta sempre montato, invisibile da fermo
   const stage = turning && !turning.curl ? turning : null;
-  const dirNow = stage?.dir || "next";
-  const leafGeom =
-    dirNow === "next"
-      ? {
-          left: twoUp ? "50%" : FRAME,
-          right: FRAME,
-          transformOrigin: "left center",
-          borderRadius: "4px 6px 6px 4px",
-          // il velo lato dorso leggero: pesante, la pagina appena atterrata
-          // restava grigia rispetto alla gemella per tutta la dissolvenza
-          backgroundImage:
-            "linear-gradient(115deg, #ffffff0d, transparent 45%), linear-gradient(to right, #0000001f, transparent 18%, transparent 70%, #0000000d 90%, #00000017 100%)",
-          animationName: "bc-leaf-next",
-        }
-      : {
-          left: FRAME,
-          right: twoUp ? "50%" : FRAME,
-          transformOrigin: "right center",
-          borderRadius: "6px 4px 4px 6px",
-          backgroundImage:
-            "linear-gradient(245deg, #ffffff0d, transparent 45%), linear-gradient(to left, #0000001f, transparent 18%, transparent 70%, #0000000d 90%, #00000017 100%)",
-          animationName: "bc-leaf-prev",
-        };
-  // niente attore parte nudo: il clone si mostra solo se la fotografia
-  // pronta e' del capitolo giusto per quella faccia
-  const anim = (name) => (stage ? `${name} 1.1s ease-in-out forwards` : "none");
+  // niente velo nudo: il clone si mostra solo se la fotografia pronta e'
+  // del capitolo giusto
   const frontOk = !!(stage && park && stage.href && park.href === stage.href);
-  const backOk = !!(stage && park && stage.href2 && park.href === stage.href2 && stage.x2 !== null);
 
   return (
     <div
@@ -1492,384 +1444,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             }}
           />
         )}
-        {twoUp && (
-          <>
-            <div
-              data-cover={dirNow}
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                top: FRAME,
-                bottom: FRAME,
-                ...(dirNow === "next" ? { left: FRAME, right: "50%" } : { left: "50%", right: FRAME }),
-                zIndex: 5,
-                pointerEvents: "none",
-                visibility: stage ? "visible" : "hidden",
-                opacity: 0,
-                backgroundColor: theme.bg,
-                backgroundImage:
-                  dirNow === "next"
-                    ? "linear-gradient(to right, transparent 70%, #0000001f)"
-                    : "linear-gradient(to left, transparent 70%, #0000001f)",
-                animation: anim("bc-cover-half"),
-                // stessi angoli con cui il foglio si posa: dagli spigoli
-                // quadri della copertura sbucava il testo vecchio
-                clipPath: `inset(0 round ${dirNow === "next" ? "6px 4px 4px 6px" : "4px 6px 6px 4px"})`,
-                overflow: "hidden",
-              }}
-            >
-              <div
-                aria-hidden="true"
-                style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
-              />
-              <StageFrame
-                park={park}
-                shown={frontOk}
-                x={stage?.x}
-                y={stage?.y}
-                base={dirNow === "next" ? FRAME : (stage?.hw ?? 0) / 2}
-              />
-              {/* il taglio delle pagine non deve sparire mentre la faccia
-                  copre il bordo: si replica sul lato esterno */}
-              <div
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  bottom: 0,
-                  ...(dirNow === "next" ? { left: 0 } : { right: 0 }),
-                  width: dirNow === "next" ? edgeRead : edgeLeftToRead,
-                  backgroundColor: theme.bg,
-                  backgroundImage: EDGE_STRIPES,
-                }}
-              />
-            </div>
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                top: FRAME,
-                bottom: FRAME,
-                ...(dirNow === "next" ? { left: FRAME, right: "50%" } : { left: "50%", right: FRAME }),
-                zIndex: 5,
-                pointerEvents: "none",
-                visibility: stage ? "visible" : "hidden",
-                opacity: 0,
-                background:
-                  dirNow === "next"
-                    ? "linear-gradient(to left, #0000003d, #0000001c 26%, #0000000a 48%, transparent 72%)"
-                    : "linear-gradient(to right, #0000003d, #0000001c 26%, #0000000a 48%, transparent 72%)",
-                animation: anim("bc-cast"),
-              }}
-            />
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                top: FRAME,
-                bottom: FRAME,
-                left: "50%",
-                // il respiro del dorso approfondisce la STESSA piega della
-                // fascia fissa: piu' largo, allargava la macchia invece di
-                // scavare il solco
-                width: 150,
-                transform: "translateX(-50%)",
-                zIndex: 5,
-                pointerEvents: "none",
-                visibility: stage ? "visible" : "hidden",
-                opacity: 0,
-                background:
-                  "linear-gradient(90deg, transparent, #0000000d 26%, #0000001f 44%, #00000026 50%, #0000001f 56%, #0000000d 74%, transparent)",
-                animation: anim("bc-spine-pulse"),
-              }}
-            />
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                inset: FRAME,
-                zIndex: 6,
-                pointerEvents: "none",
-                visibility: stage ? "visible" : "hidden",
-                // Anche da lontano il foglio, avvicinandosi all'occhio,
-                // cresce di qualche punto oltre l'altezza della pagina: carta
-                // chiara che sbordava sulla rilegatura scura, sopra e sotto.
-                // Il taglio sta QUI, un gradino FUORI dalla scena 3D — sul
-                // wrapper prospettico qualsiasi raggruppamento appiattisce le
-                // facce l'una sull'altra. contain:paint come per StageFrame,
-                // o il compositore Android lascia cadere il ritaglio.
-                overflow: "hidden",
-                contain: "paint",
-              }}
-            >
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                inset: 0,
-                // L'involucro presta solo la prospettiva, e deve coprire il
-                // libro INTERO: il punto di fuga sta al suo centro, cioe' sul
-                // dorso. Stretto su meta' pagina il fuoco cadeva fuori asse e
-                // il foglio, arrivando, si posava una spanna piu' in la' della
-                // pagina — sotto restava la striscia di quella vecchia.
-                // Qualsiasi opacita' qui (anche agli estremi della
-                // dissolvenza) appiattisce la scena e stampa le due facce una
-                // sopra l'altra.
-                //
-                // Il punto di vista sta LONTANO. Da vicino (1500) il foglio,
-                // ruotando, si avvicinava all'occhio e cresceva fino a meta'
-                // in piu': il testo diventava piu' grande di quello della
-                // pagina e sbordava sopra e sotto, tagliato dalla cornice.
-                // Da qui la crescita resta sotto il margine bianco della
-                // pagina, quindi il ritaglio non tocca il testo — e il foglio
-                // non va rimpicciolito per stare dentro, cosa che si vedeva
-                // subito: sembrava una paginetta diversa dalle altre.
-                perspective: 6800,
-              }}
-            >
-              <div
-                data-flip={dirNow}
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  bottom: 0,
-                  ...(dirNow === "next" ? { left: "50%", right: 0 } : { left: 0, right: "50%" }),
-                  transformOrigin: leafGeom.transformOrigin,
-                  // niente overflow ne' opacita' qui: appiattirebbero il 3D
-                  // e le due facce diventerebbero una sola
-                  transformStyle: "preserve-3d",
-                  willChange: "transform",
-                  animation: stage
-                    ? `${leafGeom.animationName} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
-                    : "none",
-                }}
-              >
-                {/* l'ombra portata sta su un piano suo: il clip-path delle
-                    facce la taglierebbe via insieme a tutto cio' che sborda */}
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: "absolute",
-                    // Solo DI FIANCO al foglio, alto quanto lui: un
-                    // box-shadow sfoca in tutte le direzioni e la sua coda
-                    // verticale finiva sopra e sotto la pagina che gira —
-                    // invisibile sui temi scuri, un alone su Carta e
-                    // Pergamena. Una fascia in gradiente non puo' sbavare
-                    // dove non c'e'.
-                    top: 0,
-                    bottom: 0,
-                    ...(dirNow === "next" ? { right: "100%" } : { left: "100%" }),
-                    width: 64,
-                    // mezzo pixel dietro le facce: piani coincidenti in 3D
-                    // si contendono la profondita' e sfarfallano sulla GPU
-                    transform: "translateZ(-0.5px)",
-                    background:
-                      dirNow === "next"
-                        ? "linear-gradient(to left, #0000004f, #00000026 34%, #0000000a 66%, transparent)"
-                        : "linear-gradient(to right, #0000004f, #00000026 34%, #0000000a 66%, transparent)",
-                    opacity: 0,
-                    animation: anim("bc-leaf-fade"),
-                  }}
-                />
-                {/* faccia davanti: la pagina che sta partendo. La dissolvenza
-                    vive qui, sulle facce piatte, e il ritaglio degli angoli
-                    e' clip-path: overflow+raggio non vengono onorati
-                    sull'iframe composito dentro il 3D */}
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    overflow: "hidden",
-                    borderRadius: leafGeom.borderRadius,
-                    clipPath: `inset(0 round ${leafGeom.borderRadius})`,
-                    backfaceVisibility: "hidden",
-                    // bordo trasparente: senza, i bordi ruotati escono
-                    // seghettati dal compositore Android
-                    outline: "1px solid transparent",
-                    transform: "translateZ(0.5px)",
-                    backgroundColor: theme.bg,
-                    backgroundImage: leafGeom.backgroundImage,
-                    opacity: 0,
-                    // due animazioni sulla stessa faccia: quando si accende,
-                    // e come si incurva il bordo libero mentre gira
-                    animation: anim("bc-leaf-front"),
-                  }}
-                >
-                  <div
-                    aria-hidden="true"
-                    style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
-                  />
-                  <StageFrame
-                    park={park}
-                    shown={frontOk}
-                    x={stage?.x}
-                    y={stage?.y}
-                    base={dirNow === "next" ? (stage?.hw ?? 0) / 2 : FRAME}
-                  />
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      bottom: 0,
-                      ...(dirNow === "next" ? { right: 0 } : { left: 0 }),
-                      width: dirNow === "next" ? edgeLeftToRead : edgeRead,
-                      backgroundColor: theme.bg,
-                      backgroundImage: EDGE_STRIPES,
-                    }}
-                  />
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      opacity: 0,
-                      background:
-                        dirNow === "next"
-                          ? "linear-gradient(to right, #00000052, #00000026)"
-                          : "linear-gradient(to left, #00000052, #00000026)",
-                      animation: anim("bc-leaf-shade"),
-                    }}
-                  />
-                  {/* il riflesso che rotola: la luce scorre da un bordo
-                      all'altro e la carta smette di sembrare una tavola */}
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      bottom: 0,
-                      left: "-24%",
-                      width: "48%",
-                      opacity: 0,
-                      // il riflesso di un cilindro ha i FIANCHI SCURI: e' il
-                      // contrasto chiaro-scuro ravvicinato a dire "superficie
-                      // curva", una banda chiara da sola resta un lampo su
-                      // una tavola piatta
-                      background:
-                        "linear-gradient(90deg, transparent, #00000021 18%, #fff6e04d 38%, #fff6e099 50%, #fff6e04d 62%, #00000021 82%, transparent)",
-                      animation: stage
-                        ? `bc-leaf-gloss-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
-                        : "none",
-                    }}
-                  />
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      bottom: 0,
-                      ...(dirNow === "next" ? { right: 0 } : { left: 0 }),
-                      width: 7,
-                      background:
-                        dirNow === "next"
-                          ? "linear-gradient(to left, #00000038, transparent)"
-                          : "linear-gradient(to right, #00000038, transparent)",
-                    }}
-                  />
-                </div>
-                {/* faccia dietro: la pagina che sta arrivando — stesso
-                    capitolo gia' preparato, solo la posizione post-scambio;
-                    il rotateY(180) della faccia annulla lo specchio della
-                    rotazione del foglio */}
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    overflow: "hidden",
-                    borderRadius: leafGeom.borderRadius,
-                    clipPath: `inset(0 round ${leafGeom.borderRadius})`,
-                    backfaceVisibility: "hidden",
-                    outline: "1px solid transparent",
-                    transform: "rotateY(180deg) translateZ(0.5px)",
-                    backgroundColor: theme.bg,
-                    opacity: 0,
-                    animation: anim("bc-leaf-back"),
-                  }}
-                >
-                  {/* il velo sta su un piano suo e muore prima del retro:
-                      nello sfondo della faccia restava stampato sulla
-                      pagina posata fino allo smontaggio */}
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      backgroundImage: leafGeom.backgroundImage,
-                      opacity: 0,
-                      animation: anim("bc-leaf-veil"),
-                    }}
-                  />
-                  <div
-                    aria-hidden="true"
-                    style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
-                  />
-                  <StageFrame
-                    park={park}
-                    shown={backOk}
-                    x={stage?.x2}
-                    y={stage?.y2 ?? stage?.y}
-                    base={dirNow === "next" ? FRAME : (stage?.hw ?? 0) / 2}
-                  />
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      bottom: 0,
-                      ...(dirNow === "next" ? { left: 0 } : { right: 0 }),
-                      width: dirNow === "next" ? edgeRead : edgeLeftToRead,
-                      backgroundColor: theme.bg,
-                      backgroundImage: EDGE_STRIPES,
-                    }}
-                  />
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      opacity: 0,
-                      background:
-                        dirNow === "next"
-                          ? "linear-gradient(to left, #00000052, #00000026)"
-                          : "linear-gradient(to right, #00000052, #00000026)",
-                      animation: anim("bc-leaf-shade"),
-                    }}
-                  />
-                  {/* il riflesso che rotola: la luce scorre da un bordo
-                      all'altro e la carta smette di sembrare una tavola */}
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      bottom: 0,
-                      left: "-24%",
-                      width: "48%",
-                      opacity: 0,
-                      // il riflesso di un cilindro ha i FIANCHI SCURI: e' il
-                      // contrasto chiaro-scuro ravvicinato a dire "superficie
-                      // curva", una banda chiara da sola resta un lampo su
-                      // una tavola piatta
-                      background:
-                        "linear-gradient(90deg, transparent, #00000021 18%, #fff6e04d 38%, #fff6e099 50%, #fff6e04d 62%, #00000021 82%, transparent)",
-                      animation: stage
-                        ? `bc-leaf-gloss-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
-                        : "none",
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-            </div>
-          </>
-        )}
-        {paginated && !twoUp && (
+        {paginated && (
           <div
-            data-flip={dirNow}
             aria-hidden="true"
             style={{
               position: "absolute",
@@ -1891,7 +1467,97 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             {/* il velo porta la pagina che parte: la dissolvenza diventa un
                 incrocio fra testo vero e testo vero */}
             <StageFrame park={park} shown={frontOk} x={stage?.x} y={stage?.y} base={FRAME} />
+            {/* il velo copre anche taglio, pieghe e ombre fisse (z4): se ne
+                porta una copia, o sparirebbero per mezzo secondo a ogni giro */}
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                left: 0,
+                width: edgeRead,
+                borderRadius: "3px 2px 2px 3px",
+                backgroundColor: theme.bg,
+                backgroundImage: EDGE_STRIPES,
+                boxShadow: "inset -7px 0 9px -7px #00000066, 1px 0 2px #00000033",
+              }}
+            />
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                right: 0,
+                width: edgeLeftToRead,
+                borderRadius: "2px 3px 3px 2px",
+                backgroundColor: theme.bg,
+                backgroundImage: EDGE_STRIPES,
+                boxShadow: "inset 7px 0 9px -7px #00000066, -1px 0 2px #00000033",
+              }}
+            />
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                left: 0,
+                width: 16,
+                background: "linear-gradient(90deg, #00000033, transparent)",
+              }}
+            />
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                right: 0,
+                width: 16,
+                background: "linear-gradient(270deg, #00000033, transparent)",
+              }}
+            />
+            {twoUp && (
+              <div
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  bottom: 0,
+                  left: "50%",
+                  width: 100,
+                  transform: "translateX(-50%)",
+                  background:
+                    "linear-gradient(90deg, transparent, #0000000f 30%, #0000002e 46%, #0000003d 50%, #0000002e 54%, #0000000f 70%, transparent)",
+                }}
+              />
+            )}
           </div>
+        )}
+        {/* il respiro del dorso: l'unico movimento della voltata a due
+            pagine — il solco si approfondisce e torna, come carta che
+            passa sulla cucitura, sopra il velo e la pagina che emerge */}
+        {twoUp && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: FRAME,
+              bottom: FRAME,
+              left: "50%",
+              width: 150,
+              transform: "translateX(-50%)",
+              zIndex: 7,
+              pointerEvents: "none",
+              visibility: stage ? "visible" : "hidden",
+              opacity: 0,
+              background:
+                "linear-gradient(90deg, transparent, #0000000d 26%, #0000001f 44%, #00000026 50%, #0000001f 56%, #0000000d 74%, transparent)",
+              animation: stage ? "bc-spine-pulse 0.5s ease-in-out forwards" : "none",
+            }}
+          />
         )}
         {/* il cilindro di carta vera: quando la texture e' pronta il giro
             si disegna qui, colonna per colonna, e il palco DOM riposa */}
