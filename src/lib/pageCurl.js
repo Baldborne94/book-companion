@@ -134,26 +134,30 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
   else ctx.drawImage(oldImg, P * sc, 0, P * sc, Hc * sc, P, 0, P, Hc);
 
   const c = P * (1 - te);
-  // Il rotolo dev'essere LARGO: in un libro vero la piega e' una fascia
-  // ampia che prende luce, non un filo. Stretta, il testo compresso legge
-  // come sbavatura invece che come carta piegata. Ma nell'ultimo tratto il
-  // raggio COLLASSA: senza, il giro finiva con la piega ancora arrotolata
-  // e lo spegnimento del canvas la faceva sparire di colpo — a raggio zero
-  // l'ultimo fotogramma E' la pagina nuova, e lo spegnimento non si vede.
-  const r = Math.max(0.5, P * 0.44 * (1 - te * 0.55) * Math.min(1, (1 - te) / 0.1));
+  // Il rotolo e' STRETTO come una piega di carta vera: due-tre centimetri,
+  // non mezza pagina. Largo (si era provato 0.44·P) il testo compresso si
+  // spalmava in una fascia nebbiosa un terzo di pagina, e il retro
+  // atterrato galleggiava lontano dal suo posto: era QUELLO l'effetto
+  // sbavato sul tablet. Nell'ultimo tratto il raggio collassa: a raggio
+  // zero l'ultimo fotogramma E' la pagina nuova, e lo spegnimento del
+  // canvas non si vede.
+  const r = Math.max(0.5, Math.min(P * 0.14, 84) * (1 - te * 0.3) * Math.min(1, (1 - te) / 0.1));
   const arc = Math.PI * r;
   const passo = 2;
-  // l'orlo libero si solleva a meta' giro e si posa atterrando, come una
-  // pagina pelata dall'angolo
-  const alzata = Hc * 0.045 * Math.sin(Math.PI * te);
-  const dy = (s) => -alzata * (Math.max(0, s - c) / Math.max(1, P - c));
+  // NESSUNO spostamento verticale: un cilindro ad asse verticale, visto di
+  // fronte, non alza nulla. La vecchia "alzata" spostava le colonne in su
+  // via via verso l'orlo: le righe del testo si piegavano come gomma fusa,
+  // e sotto le colonne sollevate restava una fessura non dipinta — la
+  // macchia scura ai piedi del rotolo sui temi chiari.
 
   // ombra portata davanti alla piega, sulla pagina che si sta scoprendo
   const fronteOmbra = c + r;
   const g = next
     ? ctx.createLinearGradient(P + fronteOmbra, 0, P + fronteOmbra + 46, 0)
     : ctx.createLinearGradient(P - fronteOmbra, 0, P - fronteOmbra - 46, 0);
-  const buio = 0.22 * Math.sin(Math.PI * te);
+  // mezze luci, non notte: le ombre sono tarate sulla carta chiara, dove
+  // il buio pesante leggeva come sporco invece che come piega
+  const buio = 0.13 * Math.sin(Math.PI * te);
   g.addColorStop(0, `rgba(0,0,0,${buio})`);
   g.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = g;
@@ -195,33 +199,32 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
     const comp = Math.max(0.12, Math.abs(Math.cos(a)));
     const larg = Math.max(1, passo * comp);
     const x = destX(d);
-    const y = dy(s);
     // Ombreggiatura da cilindro: la faccia illuminata e' quella che guarda
     // il lettore (a=0), e si spegne mano a mano che la carta si mette di
     // taglio. E' questa scala di grigi che fa vedere la piega: senza, il
     // testo compresso sembra solo sbavato.
     if (a <= Math.PI / 2) {
-      ctx.drawImage(oldImg, fronteSrc(s) * sc, 0, passo * sc, Hc * sc, x, y, larg, Hc);
-      // un filo di luce dove la carta comincia a sollevarsi, poi buio
-      // crescente fino al crinale
+      ctx.drawImage(oldImg, fronteSrc(s) * sc, 0, passo * sc, Hc * sc, x, 0, larg, Hc);
+      // un filo di luce dove la carta comincia a sollevarsi, poi una
+      // penombra leggera fino al crinale
       const su = Math.sin(a);
       if (su < 0.45) {
         ctx.fillStyle = `rgba(255,250,235,${0.2 * (1 - su / 0.45)})`;
-        ctx.fillRect(x, y, larg, Hc);
+        ctx.fillRect(x, 0, larg, Hc);
       }
-      ctx.fillStyle = `rgba(0,0,0,${0.5 * su * su})`;
-      ctx.fillRect(x, y, larg, Hc);
+      ctx.fillStyle = `rgba(0,0,0,${0.3 * su * su})`;
+      ctx.fillRect(x, 0, larg, Hc);
     } else if (newImg) {
-      // il retro, visto di sbieco oltre il crinale: parte scurissimo e si
+      // il retro, visto di sbieco oltre il crinale: in penombra, e si
       // schiarisce distendendosi sulla pagina
-      ctx.drawImage(newImg, retroSrc(s) * sc, 0, passo * sc, Hc * sc, x, y, larg, Hc);
+      ctx.drawImage(newImg, retroSrc(s) * sc, 0, passo * sc, Hc * sc, x, 0, larg, Hc);
       const giu = Math.sin(a);
-      ctx.fillStyle = `rgba(0,0,0,${0.42 * giu * giu})`;
-      ctx.fillRect(x, y, larg, Hc);
+      ctx.fillStyle = `rgba(0,0,0,${0.24 * giu * giu})`;
+      ctx.fillRect(x, 0, larg, Hc);
     } else {
       retroNudo(x, larg);
-      ctx.fillStyle = `rgba(0,0,0,${0.42 * Math.sin(a) ** 2})`;
-      ctx.fillRect(x, y, larg, Hc);
+      ctx.fillStyle = `rgba(0,0,0,${0.24 * Math.sin(a) ** 2})`;
+      ctx.fillRect(x, 0, larg, Hc);
     }
   }
 
@@ -231,8 +234,7 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
     const d = c - (s - (c + arc));
     const x = destX(d);
     if (x < -passo || x > Wc) continue;
-    const y = dy(s);
-    if (newImg) ctx.drawImage(newImg, retroSrc(s) * sc, 0, passo * sc, Hc * sc, x, y, passo, Hc);
+    if (newImg) ctx.drawImage(newImg, retroSrc(s) * sc, 0, passo * sc, Hc * sc, x, 0, passo, Hc);
     else retroNudo(x, passo);
   }
 
@@ -242,7 +244,7 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
   const g2 = next
     ? ctx.createLinearGradient(P - 0, 0, P - 60, 0)
     : ctx.createLinearGradient(P + 0, 0, P + 60, 0);
-  g2.addColorStop(0, `rgba(0,0,0,${0.16 * Math.sin(Math.PI * te)})`);
+  g2.addColorStop(0, `rgba(0,0,0,${0.1 * Math.sin(Math.PI * te)})`);
   g2.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = g2;
   if (next) ctx.fillRect(P - 60, 0, 60, Hc);
