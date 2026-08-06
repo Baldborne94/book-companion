@@ -1280,8 +1280,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           right: FRAME,
           transformOrigin: "left center",
           borderRadius: "4px 6px 6px 4px",
+          // il velo lato dorso leggero: pesante, la pagina appena atterrata
+          // restava grigia rispetto alla gemella per tutta la dissolvenza
           backgroundImage:
-            "linear-gradient(115deg, #ffffff0d, transparent 45%), linear-gradient(to right, #00000030, transparent 28%, transparent 62%, #00000012 86%, #00000024 100%)",
+            "linear-gradient(115deg, #ffffff0d, transparent 45%), linear-gradient(to right, #0000001f, transparent 18%, transparent 70%, #0000000d 90%, #00000017 100%)",
           animationName: "bc-leaf-next",
         }
       : {
@@ -1290,7 +1292,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           transformOrigin: "right center",
           borderRadius: "6px 4px 4px 6px",
           backgroundImage:
-            "linear-gradient(245deg, #ffffff0d, transparent 45%), linear-gradient(to left, #00000030, transparent 28%, transparent 62%, #00000012 86%, #00000024 100%)",
+            "linear-gradient(245deg, #ffffff0d, transparent 45%), linear-gradient(to left, #0000001f, transparent 18%, transparent 70%, #0000000d 90%, #00000017 100%)",
           animationName: "bc-leaf-prev",
         };
   // niente attore parte nudo: il clone si mostra solo se la fotografia
@@ -1413,12 +1415,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               top: FRAME,
               bottom: FRAME,
               left: "50%",
-              width: 150,
+              // una piega stretta, non un'ombra larga: il solco del libro
+              // vero sta a ridosso della cucitura e muore in fretta
+              width: 100,
               transform: "translateX(-50%)",
               zIndex: 4,
               pointerEvents: "none",
               background:
-                "linear-gradient(90deg, transparent, #0000000d 18%, #0000001c 32%, #00000030 42%, #00000042 50%, #00000030 58%, #0000001c 68%, #0000000d 82%, transparent)",
+                "linear-gradient(90deg, transparent, #0000000f 30%, #0000002e 46%, #0000003d 50%, #0000002e 54%, #0000000f 70%, transparent)",
             }}
           />
         )}
@@ -1487,8 +1491,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 opacity: 0,
                 background:
                   dirNow === "next"
-                    ? "linear-gradient(to left, #00000047, #00000024 34%, #0000000f 58%, transparent 88%)"
-                    : "linear-gradient(to right, #00000047, #00000024 34%, #0000000f 58%, transparent 88%)",
+                    ? "linear-gradient(to left, #0000003d, #0000001c 26%, #0000000a 48%, transparent 72%)"
+                    : "linear-gradient(to right, #0000003d, #0000001c 26%, #0000000a 48%, transparent 72%)",
                 animation: anim("bc-cast"),
               }}
             />
@@ -1499,14 +1503,17 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 top: FRAME,
                 bottom: FRAME,
                 left: "50%",
-                width: 240,
+                // il respiro del dorso approfondisce la STESSA piega della
+                // fascia fissa: piu' largo, allargava la macchia invece di
+                // scavare il solco
+                width: 150,
                 transform: "translateX(-50%)",
                 zIndex: 5,
                 pointerEvents: "none",
                 visibility: stage ? "visible" : "hidden",
                 opacity: 0,
                 background:
-                  "linear-gradient(90deg, transparent, #00000012 22%, #00000026 38%, #00000030 50%, #00000026 62%, #00000012 78%, transparent)",
+                  "linear-gradient(90deg, transparent, #0000000d 26%, #0000001f 44%, #00000026 50%, #0000001f 56%, #0000000d 74%, transparent)",
                 animation: anim("bc-spine-pulse"),
               }}
             />
@@ -1518,6 +1525,22 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 zIndex: 6,
                 pointerEvents: "none",
                 visibility: stage ? "visible" : "hidden",
+                // Anche da lontano il foglio, avvicinandosi all'occhio,
+                // cresce di qualche punto oltre l'altezza della pagina: carta
+                // chiara che sbordava sulla rilegatura scura, sopra e sotto.
+                // Il taglio sta QUI, un gradino FUORI dalla scena 3D — sul
+                // wrapper prospettico qualsiasi raggruppamento appiattisce le
+                // facce l'una sull'altra. contain:paint come per StageFrame,
+                // o il compositore Android lascia cadere il ritaglio.
+                overflow: "hidden",
+                contain: "paint",
+              }}
+            >
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                inset: 0,
                 // L'involucro presta solo la prospettiva, e deve coprire il
                 // libro INTERO: il punto di fuga sta al suo centro, cioe' sul
                 // dorso. Stretto su meta' pagina il fuoco cadeva fuori asse e
@@ -1754,6 +1777,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   />
                 </div>
               </div>
+            </div>
             </div>
           </>
         )}
