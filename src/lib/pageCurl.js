@@ -147,11 +147,13 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
   const next = dir === "next";
   ctx.clearRect(0, 0, Wc, Hc);
 
-  // la meta' che il foglio deve ancora coprire mostra la sua pagina VECCHIA
-  // (in un libro vero non cambia finche' il foglio non ci atterra sopra);
-  // l'altra meta' resta trasparente: sotto c'e' gia' la pagina nuova vera
-  if (next) ctx.drawImage(oldImg, 0, 0, P * sc, Hc * sc, 0, 0, P, Hc);
-  else ctx.drawImage(oldImg, P * sc, 0, P * sc, Hc * sc, P, 0, P, Hc);
+  // La meta' che il foglio deve ancora coprire NON si disegna: sotto c'e'
+  // la pagina viva, ancora quella vecchia (lo scambio avviene alla fine del
+  // giro, sotto il canvas gia' opaco). E' la mossa che toglie di mezzo il
+  // difetto piu' ostinato: finche' il canvas ci ridipingeva sopra la
+  // fotografia, meta' pagina FERMA restava resa con un peso diverso dal
+  // vivo per tutto il giro. Ora resta viva, identica a se stessa, e il
+  // canvas disegna solo cio' che si muove — meta' dei pixel di prima.
 
   const passo = 2;
   // NESSUNO spostamento verticale: un cilindro ad asse verticale, visto di
@@ -159,6 +161,33 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
   // via via verso l'orlo: le righe del testo si piegavano come gomma fusa,
   // e sotto le colonne sollevate restava una fessura non dipinta — la
   // macchia scura ai piedi del rotolo sui temi chiari.
+
+  // il retro senza texture (fotografia nuova in ritardo o confine di
+  // capitolo): carta nuda con righe accennate
+  const retroNudo = (x, larg) => {
+    ctx.fillStyle = paper;
+    ctx.fillRect(x, 0, larg, Hc);
+    if (rows) {
+      ctx.fillStyle = rows;
+      for (let y = Hc * 0.07; y < Hc * 0.93; y += 16) ctx.fillRect(x, y, larg, 2);
+    }
+  };
+
+  // La pagina che il foglio ha gia' scoperto: e' quella NUOVA, e sotto non
+  // c'e' ancora (lo scambio e' a fine giro), quindi la disegna il canvas.
+  // Cresce da nulla mentre il foglio si arrotola.
+  if (newImg) {
+    const bordo = Math.min(P, c + r);
+    const largo = P - bordo;
+    if (largo > 0) {
+      if (next) ctx.drawImage(newImg, (P + bordo) * sc, 0, largo * sc, Hc * sc, P + bordo, 0, largo, Hc);
+      else ctx.drawImage(newImg, (P - bordo - largo) * sc, 0, largo * sc, Hc * sc, P - bordo - largo, 0, largo, Hc);
+    }
+  } else {
+    const bordo = Math.min(P, c + r);
+    const largo = P - bordo;
+    if (largo > 0) retroNudo(next ? P + bordo : P - bordo - largo, largo);
+  }
 
   // ombra portata davanti alla piega, sulla pagina che si sta scoprendo
   const fronteOmbra = c + r;
@@ -173,17 +202,6 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
   ctx.fillStyle = g;
   if (next) ctx.fillRect(P + fronteOmbra, 0, 46, Hc);
   else ctx.fillRect(P - fronteOmbra - 46, 0, 46, Hc);
-
-  // il retro senza texture (fotografia nuova in ritardo o confine di
-  // capitolo): carta nuda con righe accennate
-  const retroNudo = (x, larg) => {
-    ctx.fillStyle = paper;
-    ctx.fillRect(x, 0, larg, Hc);
-    if (rows) {
-      ctx.fillStyle = rows;
-      for (let y = Hc * 0.07; y < Hc * 0.93; y += 16) ctx.fillRect(x, y, larg, 2);
-    }
-  };
 
   // s misura la posizione lungo il foglio a partire dal dorso; il fronte e'
   // la meta' che parte, il retro la pagina che atterra sull'altra meta'.
@@ -229,8 +247,16 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
     // testo compresso sembra solo sbavato.
     if (a <= Math.PI / 2) {
       ctx.drawImage(oldImg, fronteSrc(s) * sc, 0, passo * sc, Hc * sc, x, 0, larg, Hc);
-      // un filo di luce dove la carta comincia a sollevarsi, poi una
-      // penombra leggera fino al crinale
+      // Oltre una certa inclinazione il testo si PERDE nella carta invece
+      // di sbavare: compresso all'88% la scritta diventa un codice a
+      // barre, e a schermo si legge come pagina sporca o trasparente. Una
+      // carta che si volta, vista di taglio, non mostra le sue parole.
+      if (comp < 0.5) {
+        ctx.globalAlpha = 1 - comp / 0.5;
+        ctx.fillStyle = paper;
+        ctx.fillRect(x, 0, larg, Hc);
+        ctx.globalAlpha = 1;
+      }
       const su = Math.sin(a);
       if (su < 0.45) {
         ctx.fillStyle = `rgba(255,250,235,${0.2 * (1 - su / 0.45)})`;
@@ -242,6 +268,12 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
       // il retro, visto di sbieco oltre il crinale: in penombra, e si
       // schiarisce distendendosi sulla pagina
       ctx.drawImage(newImg, retroSrc(s) * sc, 0, passo * sc, Hc * sc, x, 0, larg, Hc);
+      if (comp < 0.5) {
+        ctx.globalAlpha = 1 - comp / 0.5;
+        ctx.fillStyle = paper;
+        ctx.fillRect(x, 0, larg, Hc);
+        ctx.globalAlpha = 1;
+      }
       const giu = Math.sin(a);
       ctx.fillStyle = `rgba(0,0,0,${0.24 * giu * giu})`;
       ctx.fillRect(x, 0, larg, Hc);
