@@ -1253,7 +1253,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           borderRadius: "4px 6px 6px 4px",
           backgroundImage:
             "linear-gradient(115deg, #ffffff0d, transparent 45%), linear-gradient(to right, #00000030, transparent 28%, transparent 62%, #00000012 86%, #00000024 100%)",
-          boxShadow: "-26px 0 70px #0000003d",
+          boxShadow: "-30px 0 52px -26px #00000052",
           animationName: "bc-leaf-next",
         }
       : {
@@ -1263,7 +1263,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           borderRadius: "6px 4px 4px 6px",
           backgroundImage:
             "linear-gradient(245deg, #ffffff0d, transparent 45%), linear-gradient(to left, #00000030, transparent 28%, transparent 62%, #00000012 86%, #00000024 100%)",
-          boxShadow: "26px 0 70px #0000003d",
+          boxShadow: "30px 0 52px -26px #00000052",
           animationName: "bc-leaf-prev",
         };
   // niente attore parte nudo: il clone si mostra solo se la fotografia
