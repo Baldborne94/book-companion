@@ -126,26 +126,32 @@ export function curlGeom(t, Wc) {
   return { te, P, c, r, arc, landa: Math.max(0, P - c - arc) };
 }
 
-// Un fotogramma della PIEGA — e solo della piega. Le parti ferme del
-// foglio (la meta' coperta, il piatto non ancora arrivato al rotolo, il
-// retro gia' atterrato) le rendono i CLONI VIVI nel Reader: iframe con lo
-// stesso capitolo, identici al pixel alla pagina vera. La fotografia
-// rasterizzata rende il testo con un peso diverso dal vivo (misurato,
-// vistoso su Firefox): va mostrata solo dove la carta e' in movimento e
-// compressa, dove la differenza non ha un fermo-immagine su cui farsi
-// vedere.
+// Un fotogramma del foglio che si arrotola: il canvas disegna TUTTO.
+//
+// Si era provato a lasciargli solo la piega, con cloni vivi (iframe) per le
+// parti ferme: allineamento perfetto al pixel, ma sul tablet i fotogrammi
+// resi per giro sono scesi da 18/22 a 14/22 — comporre due iframe larghi
+// un intero capitolo, ritagliati a ogni fotogramma, costa piu' di quanto
+// valga. Il canvas resta UNO. La differenza di resa fra fotografia e
+// pagina viva si nasconde invece con la dissolvenza in entrata e in
+// uscita, che ora funziona davvero perche' primo e ultimo fotogramma
+// coincidono con la pagina vera (raggio della piega a zero esatto).
 //
 //   oldImg  fotografia della doppia pagina PRIMA dello scambio (A|B)
 //   newImg  fotografia DOPO lo scambio (C|D), o null se non ancora pronta
 //   t       avanzamento 0..1 (gia' grezzo: l'easing sta qui dentro)
 //   dir     "next" o "prev"
 //   Wc, Hc  misure del canvas in px CSS
-//   atterratoVivo  true se il retro atterrato lo sta gia' mostrando il
-//                  clone vivo: il canvas allora non lo disegna
-export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc = 1, atterratoVivo = false }) {
+export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc = 1 }) {
   const { te, P, c, r, arc } = curlGeom(t, Wc);
   const next = dir === "next";
   ctx.clearRect(0, 0, Wc, Hc);
+
+  // la meta' che il foglio deve ancora coprire mostra la sua pagina VECCHIA
+  // (in un libro vero non cambia finche' il foglio non ci atterra sopra);
+  // l'altra meta' resta trasparente: sotto c'e' gia' la pagina nuova vera
+  if (next) ctx.drawImage(oldImg, 0, 0, P * sc, Hc * sc, 0, 0, P, Hc);
+  else ctx.drawImage(oldImg, P * sc, 0, P * sc, Hc * sc, P, 0, P, Hc);
 
   const passo = 2;
   // NESSUNO spostamento verticale: un cilindro ad asse verticale, visto di
@@ -200,6 +206,15 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
     ctx.fillRect(bandaX, 0, r + passo, Hc);
   }
 
+  // parte piatta ancora a terra: il fronte fermo, identico al vero sotto.
+  // La mappa e' l'identita', quindi un SOLO blit invece di centinaia di
+  // colonne da 2px
+  const piatto = Math.min(c, P);
+  if (piatto > 0) {
+    if (next) ctx.drawImage(oldImg, P * sc, 0, piatto * sc, Hc * sc, P, 0, piatto, Hc);
+    else ctx.drawImage(oldImg, (P - piatto) * sc, 0, piatto * sc, Hc * sc, P - piatto, 0, piatto, Hc);
+  }
+
   // l'arco: colonne compresse dal coseno; oltre mezzo giro si vede il retro
   for (let s = c; s < Math.min(P, c + arc); s += passo) {
     const a = (s - c) / r;
@@ -237,10 +252,9 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
     }
   }
 
-  // oltre l'arco il foglio e' di nuovo piatto, a faccia in giu'. Di norma
-  // lo mostra il clone vivo; il canvas lo disegna solo come ripiego,
-  // quando la finestra nuova non e' ancora misurata
-  for (let s = atterratoVivo ? P : c + arc; s < P; s += passo) {
+  // oltre l'arco il foglio e' di nuovo piatto, a faccia in giu': il retro
+  // atterra sull'altra meta' e la copre passo passo
+  for (let s = c + arc; s < P; s += passo) {
     const d = c - (s - (c + arc));
     const x = destX(d);
     if (x < -passo || x > Wc) continue;
