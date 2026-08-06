@@ -351,6 +351,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // scelta dal lettore, che non si sposta da sola.
   const relayout = useCallback((cfi) => {
     const r = rendRef.current;
+    // ogni reimpaginazione rende bugiarda la fotografia parcheggiata: si
+    // butta subito, non si aspetta che il controllo di freschezza la scopra
+    texRef.current = null;
     if (cfi) reflowing.current = true;
     try {
       if (r) r.resize(undefined, undefined, cfi || undefined);
@@ -856,6 +859,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         x: b.ri.left - b.rh.left,
         y: b.ri.top - b.rh.top,
         hw: b.rh.width,
+        // la sagoma dell'intero capitolo: se cambia, c'e' stata una
+        // reimpaginazione e ogni fotografia precedente mente
+        wi: b.ri.width,
+        hi: b.ri.height,
       };
     } catch {
       return null;
@@ -927,9 +934,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         const baked = await bakeHtml(p.xml);
         const outW = Math.round(rh.width) - FRAME * 2;
         const outH = Math.round(rh.height) - FRAME * 2;
-        // nitido alla densita' dello schermo, ma senza far esplodere la
-        // memoria: tre finestre restano in vita per tutta la lettura
-        let sc = Math.min(2, window.devicePixelRatio || 1);
+        // ESATTAMENTE alla densita' dello schermo, non "circa": tappata a 2
+        // su uno schermo a 2.25 ogni glifo veniva ricampionato e il testo
+        // in volo sfarfallava rispetto a quello fermo. La memoria la guarda
+        // il tetto sull'area: tre finestre restano in vita per tutta la
+        // lettura
+        let sc = Math.min(3, window.devicePixelRatio || 1);
+        if (outW * outH * sc * sc > 8_000_000) sc = 2;
         if (outW * outH * sc * sc > 8_000_000) sc = 1;
         const finestra = (offsetX) =>
           rasterize({ baked, w: p.w, h: p.h, offsetX, offsetY: FRAME - geo.y, outW, outH, scale: sc });
@@ -962,7 +973,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       const rh = host.getBoundingClientRect();
       const Wc = Math.round(rh.width) - FRAME * 2;
       const Hc = Math.round(rh.height) - FRAME * 2;
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      // il canvas vive alla STESSA densita' della texture: scale diverse
+      // significano ricampionare ogni colonna, e il testo in volo sfarfalla
+      const dpr = tex.sc || Math.min(2, window.devicePixelRatio || 1);
       cv.width = Wc * dpr;
       cv.height = Hc * dpr;
       const ctx = cv.getContext("2d");
@@ -984,24 +997,35 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       const paper = theme.bg;
       const rows = `${theme.fg}14`;
       drawCurl(ctx, { oldImg: stato.oldImg, newImg: stato.newImg, t: 0, dir, Wc, Hc, paper, rows, sc: stato.sc });
+      // Il canvas entra ed esce in DISSOLVENZA, mai di scatto: la fotografia
+      // e la pagina viva non saranno mai identiche al subpixel (l'SVG
+      // aggancia le righe a modo suo), e lo stacco netto si vedeva come uno
+      // sfarfallio del testo a ogni inizio e fine giro. Sfumato in due
+      // fotogrammi, lo scarto non ha piu' un istante in cui farsi notare.
+      cv.style.transition = "opacity 70ms linear";
+      cv.style.opacity = "0";
       cv.style.display = "block";
+      requestAnimationFrame(() => { cv.style.opacity = "1"; });
       curlRun.current = stato;
       const spegni = () => {
-        try { ctx.clearRect(0, 0, Wc, Hc); } catch { /* niente da pulire */ }
-        cv.style.display = "none";
+        cv.style.opacity = "0";
+        setTimeout(() => {
+          try { ctx.clearRect(0, 0, Wc, Hc); } catch { /* niente da pulire */ }
+          cv.style.display = "none";
+        }, 90);
         if (curlRun.current === stato) curlRun.current = null;
       };
       const frame = (now) => {
         if (curlRun.current !== stato) return;
         const t = (now - stato.start) / DUR;
         if (t >= 1) {
-          // l'ultimo fotogramma si disegna a t=1 esatto e resta a schermo un
-          // giro di rAF: col raggio collassato e' identico alla pagina vera
-          // sotto, e lo spegnimento al fotogramma dopo non si vede
+          // l'ultimo fotogramma si disegna a t=1 esatto: col raggio
+          // collassato e' la pagina vera, e la dissolvenza d'uscita parte
+          // da un'immagine gia' identica a cio' che scopre
           try {
             drawCurl(ctx, { oldImg: stato.oldImg, newImg: stato.newImg, t: 1, dir, Wc, Hc, paper, rows, sc: stato.sc });
           } catch { /* lo spegnimento copre anche questo */ }
-          requestAnimationFrame(spegni);
+          spegni();
           return;
         }
         try {
@@ -1045,16 +1069,22 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const key = Date.now();
     const geo = snapRects();
     // la strada maestra e' il cilindro di carta vera: parte solo se la
-    // texture parcheggiata e' fresca (stesso capitolo, stessa posizione);
-    // in ogni altro caso — texture in cottura, capitolo appena cambiato,
-    // canvas che ha tradito — si scivola nella dissolvenza senza avvisi
+    // texture parcheggiata e' fresca — stesso capitolo, stessa posizione E
+    // stessa sagoma del capitolo. La sola x non basta: dopo una
+    // reimpaginazione (gabbia a righe intere, margini) la x puo' coincidere
+    // — a pagina 1 e' zero comunque — ma le righe stanno altrove, e il
+    // giro partiva con la fotografia dell'impaginazione vecchia: il testo
+    // "sfarfallava" al tocco e allo spegnimento. In ogni caso dubbio si
+    // scivola nella dissolvenza senza avvisi.
     const tex = texRef.current;
     const curl =
       pages === 2 &&
       tex &&
       geo &&
       tex.href === geo.href &&
-      Math.abs(tex.x - geo.x) < 1;
+      Math.abs(tex.x - geo.x) < 1 &&
+      Math.abs(tex.w - geo.wi) < 1 &&
+      Math.abs(tex.h - geo.hi) < 1;
     if (curl) {
       const stato = startCurl(dir, tex, key);
       if (stato) {
@@ -1384,7 +1414,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             top: FRAME,
             bottom: FRAME,
             width: edgeRead,
-            zIndex: 4,
+            // SOPRA il canvas del cilindro e il velo della dissolvenza:
+            // taglio, ombre e piega restano identici a se stessi per tutto
+            // il giro, e le animazioni non devono ridipingerli — coperti,
+            // sparivano di colpo al primo fotogramma (lo "sfarfallio")
+            zIndex: 7,
             pointerEvents: "none",
             // stessa altezza e stesso raggio della carta: staccata anche di
             // pochi px, la pila lasciava toppe scoperte verso gli angoli
@@ -1402,7 +1436,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             top: FRAME,
             bottom: FRAME,
             width: edgeLeftToRead,
-            zIndex: 4,
+            zIndex: 7,
             pointerEvents: "none",
             borderRadius: "2px 3px 3px 2px",
             backgroundColor: theme.bg,
@@ -1418,7 +1452,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             bottom: FRAME,
             left: FRAME,
             width: 16,
-            zIndex: 4,
+            zIndex: 7,
             pointerEvents: "none",
             background: "linear-gradient(90deg, #00000033, transparent)",
           }}
@@ -1431,7 +1465,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             bottom: FRAME,
             right: FRAME,
             width: 16,
-            zIndex: 4,
+            zIndex: 7,
             pointerEvents: "none",
             background: "linear-gradient(270deg, #00000033, transparent)",
           }}
@@ -1448,7 +1482,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               // vero sta a ridosso della cucitura e muore in fretta
               width: 100,
               transform: "translateX(-50%)",
-              zIndex: 4,
+              zIndex: 7,
               pointerEvents: "none",
               background:
                 "linear-gradient(90deg, transparent, #0000000f 30%, #0000002e 46%, #0000003d 50%, #0000002e 54%, #0000000f 70%, transparent)",
@@ -1478,73 +1512,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             {/* il velo porta la pagina che parte: la dissolvenza diventa un
                 incrocio fra testo vero e testo vero */}
             <StageFrame park={park} shown={frontOk} x={stage?.x} y={stage?.y} base={FRAME} />
-            {/* il velo copre anche taglio, pieghe e ombre fisse (z4): se ne
-                porta una copia, o sparirebbero per mezzo secondo a ogni giro */}
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                top: 0,
-                bottom: 0,
-                left: 0,
-                width: edgeRead,
-                borderRadius: "3px 2px 2px 3px",
-                backgroundColor: theme.bg,
-                backgroundImage: EDGE_STRIPES,
-                boxShadow: "inset -7px 0 9px -7px #00000066, 1px 0 2px #00000033",
-              }}
-            />
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                top: 0,
-                bottom: 0,
-                right: 0,
-                width: edgeLeftToRead,
-                borderRadius: "2px 3px 3px 2px",
-                backgroundColor: theme.bg,
-                backgroundImage: EDGE_STRIPES,
-                boxShadow: "inset 7px 0 9px -7px #00000066, -1px 0 2px #00000033",
-              }}
-            />
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                top: 0,
-                bottom: 0,
-                left: 0,
-                width: 16,
-                background: "linear-gradient(90deg, #00000033, transparent)",
-              }}
-            />
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                top: 0,
-                bottom: 0,
-                right: 0,
-                width: 16,
-                background: "linear-gradient(270deg, #00000033, transparent)",
-              }}
-            />
-            {twoUp && (
-              <div
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  bottom: 0,
-                  left: "50%",
-                  width: 100,
-                  transform: "translateX(-50%)",
-                  background:
-                    "linear-gradient(90deg, transparent, #0000000f 30%, #0000002e 46%, #0000003d 50%, #0000002e 54%, #0000000f 70%, transparent)",
-                }}
-              />
-            )}
           </div>
         )}
         {/* il respiro del dorso: l'unico movimento della voltata a due
@@ -1560,7 +1527,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               left: "50%",
               width: 150,
               transform: "translateX(-50%)",
-              zIndex: 7,
+              zIndex: 8,
               pointerEvents: "none",
               visibility: stage ? "visible" : "hidden",
               opacity: 0,

@@ -179,9 +179,13 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
   const retroSrc = (s) => (next ? P - s - passo : P + s);
   const destX = (d) => (next ? P + d : P - d - passo);
 
-  // parte piatta ancora a terra: il fronte fermo, identico al vero sotto
-  for (let s = 0; s < Math.min(c, P); s += passo) {
-    ctx.drawImage(oldImg, fronteSrc(s) * sc, 0, passo * sc, Hc * sc, destX(s), 0, passo, Hc);
+  // parte piatta ancora a terra: il fronte fermo, identico al vero sotto.
+  // La mappa e' l'identita', quindi un SOLO blit: centinaia di colonne da
+  // 2px qui erano solo chiamate sprecate
+  const piatto = Math.min(c, P);
+  if (piatto > 0) {
+    if (next) ctx.drawImage(oldImg, P * sc, 0, piatto * sc, Hc * sc, P, 0, piatto, Hc);
+    else ctx.drawImage(oldImg, (P - piatto) * sc, 0, piatto * sc, Hc * sc, P - piatto, 0, piatto, Hc);
   }
 
   // l'arco: colonne compresse dal coseno; oltre mezzo giro si vede il retro
