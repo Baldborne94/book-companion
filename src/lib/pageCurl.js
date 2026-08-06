@@ -159,6 +159,24 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
   // canvas disegna solo cio' che si muove — meta' dei pixel di prima.
 
   const passo = 2;
+  // QUANTO IL FOGLIO E' IN VOLO. In un libro vero la pagina che gira non si
+  // legge: e' carta in movimento. Mostrare il suo testo nitido per tutto il
+  // giro e' l'origine di ogni impressione di pagine che si accavallano —
+  // tre fasce leggibili affiancate, e l'occhio non le legge come una carta
+  // che si volta. Qui il foglio mostra le sue parole solo quando e' FERMO
+  // (a inizio e fine giro, dove per giunta deve combaciare al pixel con la
+  // pagina viva) e diventa carta anonima mentre vola.
+  const moto = Math.min(1, Math.sin(Math.PI * te) * 1.7);
+  // il velo arriva a COPERTURA PIENA: al 93% restava un fantasma grigio
+  // delle lettere, e un fantasma e' esattamente cio' che si vuole togliere
+  const velo = Math.min(1, moto * 1.35);
+  const incarta = (x, larg) => {
+    if (velo < 0.01 || larg <= 0) return;
+    ctx.globalAlpha = velo;
+    ctx.fillStyle = paper;
+    ctx.fillRect(x, 0, larg, Hc);
+    ctx.globalAlpha = 1;
+  };
   // NESSUNO spostamento verticale: un cilindro ad asse verticale, visto di
   // fronte, non alza nulla. La vecchia "alzata" spostava le colonne in su
   // via via verso l'orlo: le righe del testo si piegavano come gomma fusa,
@@ -234,6 +252,7 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
   if (piatto > 0) {
     if (next) ctx.drawImage(oldImg, P * sc, 0, piatto * sc, Hc * sc, P, 0, piatto, Hc);
     else ctx.drawImage(oldImg, (P - piatto) * sc, 0, piatto * sc, Hc * sc, P - piatto, 0, piatto, Hc);
+    incarta(next ? P : P - piatto, piatto);
   }
 
   // l'arco: colonne compresse dal coseno; oltre mezzo giro si vede il retro
@@ -289,15 +308,26 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
 
   // oltre l'arco il foglio e' di nuovo piatto, a faccia in giu': il retro
   // atterra sull'altra meta' e la copre passo passo
+  // ENTRAMBI gli estremi della fascia posata. Tenere solo il primo bordo
+  // dava una fascia di larghezza ZERO: velo e ombreggiatura del foglio
+  // posato non venivano disegnati affatto, e sembrava che non servissero.
   let orloPosato = null;
+  let capoPosato = null;
   for (let s = c + arc; s < P; s += passo) {
     const d = c - (s - (c + arc));
     const x = destX(d);
     if (x < -passo || x > Wc) continue;
     if (orloPosato === null) orloPosato = x;
+    capoPosato = x;
     if (newImg) ctx.drawImage(newImg, retroSrc(s) * sc, 0, passo * sc, Hc * sc, x, 0, passo, Hc);
     else retroNudo(x, passo);
   }
+
+  // anche il retro che atterra e' carta finche' e' in movimento: le sue
+  // parole compaiono posandosi, quando il foglio e' di nuovo fermo
+  const posatoDa = orloPosato === null ? null : Math.min(orloPosato, capoPosato);
+  const posatoLarg = orloPosato === null ? 0 : Math.abs(capoPosato - orloPosato) + passo;
+  if (posatoDa !== null) incarta(posatoDa, posatoLarg);
 
   // IL FOGLIO POSATO E' UN FOGLIO, non una finestra sulla pagina sotto.
   // Senza ombreggiatura era dipinto nello stesso identico tono di cio' che
@@ -306,28 +336,30 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
   // atterrando (a fine giro dev'essere identico alla pagina vera) e un
   // orlo netto dove la carta finisce.
   const respiro = Math.sin(Math.PI * te);
-  if (orloPosato !== null && respiro > 0.01) {
-    const fine = next ? P + c : P - c;
-    const larg = Math.abs(fine - orloPosato);
+  if (posatoDa !== null && respiro > 0.01) {
+    const larg = posatoLarg;
     if (larg > 1) {
-      const da = next ? orloPosato : fine;
-      const v = ctx.createLinearGradient(next ? fine : da, 0, next ? da : fine, 0);
+      // il velo si approfondisce verso la piega, cioe' verso l'orlo dal
+      // quale la carta si e' appena ribaltata
+      const v = ctx.createLinearGradient(orloPosato, 0, capoPosato, 0);
       v.addColorStop(0, `rgba(0,0,0,${0.26 * respiro})`);
       v.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = v;
-      ctx.fillRect(Math.min(da, fine), 0, larg, Hc);
+      ctx.fillRect(posatoDa, 0, larg, Hc);
       // l'ombra che il foglio posato getta sulla pagina davanti a se'
+      // l'ombra che il foglio posato getta oltre il suo bordo libero
+      const libero = next ? posatoDa : posatoDa + larg;
       const o = next
-        ? ctx.createLinearGradient(orloPosato, 0, orloPosato - 40, 0)
-        : ctx.createLinearGradient(orloPosato + passo, 0, orloPosato + passo + 40, 0);
+        ? ctx.createLinearGradient(libero, 0, libero - 40, 0)
+        : ctx.createLinearGradient(libero, 0, libero + 40, 0);
       o.addColorStop(0, `rgba(0,0,0,${0.3 * respiro})`);
       o.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = o;
-      ctx.fillRect(next ? orloPosato - 40 : orloPosato + passo, 0, 40, Hc);
+      ctx.fillRect(next ? libero - 40 : libero, 0, 40, Hc);
       // l'orlo vero e proprio: una riga sottile, quel tanto che basta a
       // dire dove finisce la carta
       ctx.fillStyle = `rgba(0,0,0,${0.34 * respiro})`;
-      ctx.fillRect(next ? orloPosato : orloPosato + passo - 1, 0, 1, Hc);
+      ctx.fillRect(next ? libero : libero - 1, 0, 1, Hc);
     }
   }
 

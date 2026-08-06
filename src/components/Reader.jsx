@@ -997,7 +997,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         Wc,
         Hc,
       };
-      const DUR = 850;
+      // piu' svelto: la carta in volo non ha niente da farsi leggere, e un
+      // giro breve e' quello che si sente sotto il dito in un libro vero
+      const DUR = 620;
       // la coda e' corta e in accelerazione: piu' lunga si notava come una
       // "mini transizione" a se stante subito prima dell'atterraggio
       const CODA = 90;
