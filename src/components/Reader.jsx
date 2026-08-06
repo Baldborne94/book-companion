@@ -1059,20 +1059,37 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           // la copia dipinta su quella vera. Nessun salto: stesso
           // contenuto, stessa posizione, solo un cambio di resa che la
           // dissolvenza si porta via.
-          try { stato.scambia?.(); } catch { /* giro finito comunque */ }
-          stato.scambia = null;
-          const finita = performance.now();
-          const coda = (ora) => {
-            if (curlRun.current !== stato) return;
-            const q = (ora - finita) / CODA;
-            if (q >= 1) {
-              spegni();
-              return;
-            }
-            cv.style.opacity = String(1 - q);
+          // Lo scambio va ATTESO prima di dissolvere. epub.js impagina la
+          // pagina nuova in modo asincrono: facendo partire la discesa
+          // subito, il canvas svaniva mentre sotto c'era ancora la pagina
+          // VECCHIA — due testi sovrapposti sulla meta' scoperta, il velo
+          // che si vedeva a fine giro. Si aspetta la promessa (e un
+          // fotogramma perche' il compositore la mostri), con un tetto di
+          // sicurezza se epub.js non risponde.
+          let partita = false;
+          const viaLaCoda = () => {
+            if (partita || curlRun.current !== stato) return;
+            partita = true;
+            const finita = performance.now();
+            const coda = (ora) => {
+              if (curlRun.current !== stato) return;
+              const q = (ora - finita) / CODA;
+              if (q >= 1) {
+                spegni();
+                return;
+              }
+              cv.style.opacity = String(1 - q);
+              requestAnimationFrame(coda);
+            };
             requestAnimationFrame(coda);
           };
-          requestAnimationFrame(coda);
+          let atteso = null;
+          try { atteso = stato.scambia?.(); } catch { /* giro finito comunque */ }
+          stato.scambia = null;
+          Promise.resolve(atteso)
+            .catch(() => {})
+            .then(() => requestAnimationFrame(() => requestAnimationFrame(viaLaCoda)));
+          setTimeout(viaLaCoda, 400);
           return;
         }
         requestAnimationFrame(frame);
@@ -1141,14 +1158,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         setTurning({ dir, key, curl: true });
         clearTimeout(turnTimer.current);
         // il giro dura quanto l'animazione PIU' la coda della dissolvenza
-        turnTimer.current = setTimeout(() => setTurning(null), 1050);
+        // il giro dura l'animazione, l'attesa dello scambio e la coda
+        turnTimer.current = setTimeout(() => setTurning(null), 1500);
         // Lo scambio della pagina viva avviene alla FINE, sotto il canvas
         // ormai opaco e con l'ultimo fotogramma gia' identico alla pagina
         // nuova: per tutto il giro la meta' ferma resta VIVA, e non c'e'
         // piu' nessuna fotografia a coprirla. Lo fa startCurl a t=1.
-        stato.scambia = () => {
-          if (rendRef.current === r) step(r, dir);
-        };
+        stato.scambia = () => (rendRef.current === r ? step(r, dir) : null);
         return;
       }
     }
