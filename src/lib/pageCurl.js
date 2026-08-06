@@ -103,46 +103,50 @@ export function rasterize({ baked, w, h, offsetX, offsetY = 0, outW, outH, scale
   });
 }
 
-// seno, non cubica: la fase centrale — quella in cui il rotolo si vede —
-// deve durare, o la piega passa in tre fotogrammi
-const easeInOut = (t) => -(Math.cos(Math.PI * t) - 1) / 2;
+// La pagina e' LANCIATA dal dito: parte veloce e si posa piano, come una
+// carta vera lasciata andare. La vecchia campana (seno) partiva da ferma:
+// il primo decimo di giro era immobile, e l'occhio aveva tutto il tempo di
+// notare lo scambio fra pagina viva e fotografia.
+export const easeCurl = (t) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 1.7);
 
-// Un fotogramma del foglio che si arrotola. Coordinate in px CSS del canvas
-// (0 = bordo interno sinistro del libro), il canvas e' gia' scalato al dpr.
+// La geometria del rotolo a un dato avanzamento: unica fonte di verita',
+// condivisa fra il canvas (che disegna la piega) e i cloni vivi (che il
+// Reader ritaglia e trasla alla stessa cadenza).
+export function curlGeom(t, Wc) {
+  const te = easeCurl(t);
+  const P = Wc / 2;
+  const c = P * (1 - te);
+  // Stretto come una piega vera, e collassa a ZERO ESATTO atterrando. Il
+  // vecchio minimo di 0,5px sembrava innocuo: lasciava pero' un arco
+  // residuo di pi/2 px, e la pagina atterrata restava 2px fuori posto —
+  // uno scatto del testo allo spegnimento, misurato. A raggio nullo l'arco
+  // e' vuoto (il ciclo non gira) e l'ultimo fotogramma e' la pagina vera.
+  const r = Math.min(P * 0.14, 84) * (1 - te * 0.3) * Math.min(1, (1 - te) / 0.05);
+  const arc = Math.PI * r;
+  return { te, P, c, r, arc, landa: Math.max(0, P - c - arc) };
+}
+
+// Un fotogramma della PIEGA — e solo della piega. Le parti ferme del
+// foglio (la meta' coperta, il piatto non ancora arrivato al rotolo, il
+// retro gia' atterrato) le rendono i CLONI VIVI nel Reader: iframe con lo
+// stesso capitolo, identici al pixel alla pagina vera. La fotografia
+// rasterizzata rende il testo con un peso diverso dal vivo (misurato,
+// vistoso su Firefox): va mostrata solo dove la carta e' in movimento e
+// compressa, dove la differenza non ha un fermo-immagine su cui farsi
+// vedere.
 //
 //   oldImg  fotografia della doppia pagina PRIMA dello scambio (A|B)
 //   newImg  fotografia DOPO lo scambio (C|D), o null se non ancora pronta
 //   t       avanzamento 0..1 (gia' grezzo: l'easing sta qui dentro)
 //   dir     "next" o "prev"
 //   Wc, Hc  misure del canvas in px CSS
-//
-// Modello: il foglio (fronte = pagina che parte, retro = pagina che arriva)
-// si avvolge su un cilindro verticale il cui punto di contatto viaggia
-// verso il dorso mentre il raggio si stringe: la parte piatta resta ferma,
-// l'arco comprime le colonne (cos dell'angolo), oltre mezzo giro compare il
-// retro che atterra progressivamente sull'altra meta'.
-export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc = 1 }) {
-  const te = easeInOut(Math.min(1, Math.max(0, t)));
-  const P = Wc / 2;
+//   atterratoVivo  true se il retro atterrato lo sta gia' mostrando il
+//                  clone vivo: il canvas allora non lo disegna
+export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc = 1, atterratoVivo = false }) {
+  const { te, P, c, r, arc } = curlGeom(t, Wc);
   const next = dir === "next";
   ctx.clearRect(0, 0, Wc, Hc);
 
-  // la meta' che il foglio deve ancora coprire mostra la sua pagina VECCHIA
-  // (in un libro vero non cambia finche' il foglio non ci atterra sopra);
-  // l'altra meta' resta trasparente: sotto c'e' gia' la pagina nuova vera
-  if (next) ctx.drawImage(oldImg, 0, 0, P * sc, Hc * sc, 0, 0, P, Hc);
-  else ctx.drawImage(oldImg, P * sc, 0, P * sc, Hc * sc, P, 0, P, Hc);
-
-  const c = P * (1 - te);
-  // Il rotolo e' STRETTO come una piega di carta vera: due-tre centimetri,
-  // non mezza pagina. Largo (si era provato 0.44·P) il testo compresso si
-  // spalmava in una fascia nebbiosa un terzo di pagina, e il retro
-  // atterrato galleggiava lontano dal suo posto: era QUELLO l'effetto
-  // sbavato sul tablet. Nell'ultimo tratto il raggio collassa: a raggio
-  // zero l'ultimo fotogramma E' la pagina nuova, e lo spegnimento del
-  // canvas non si vede.
-  const r = Math.max(0.5, Math.min(P * 0.14, 84) * (1 - te * 0.3) * Math.min(1, (1 - te) / 0.1));
-  const arc = Math.PI * r;
   const passo = 2;
   // NESSUNO spostamento verticale: un cilindro ad asse verticale, visto di
   // fronte, non alza nulla. La vecchia "alzata" spostava le colonne in su
@@ -183,13 +187,17 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
   const retroSrc = (s) => (next ? P - s - passo : P + s);
   const destX = (d) => (next ? P + d : P - d - passo);
 
-  // parte piatta ancora a terra: il fronte fermo, identico al vero sotto.
-  // La mappa e' l'identita', quindi un SOLO blit: centinaia di colonne da
-  // 2px qui erano solo chiamate sprecate
-  const piatto = Math.min(c, P);
-  if (piatto > 0) {
-    if (next) ctx.drawImage(oldImg, P * sc, 0, piatto * sc, Hc * sc, P, 0, piatto, Hc);
-    else ctx.drawImage(oldImg, (P - piatto) * sc, 0, piatto * sc, Hc * sc, P - piatto, 0, piatto, Hc);
+
+  // La fascia della piega si RIEMPIE di carta prima delle colonne. Le
+  // colonne compresse finiscono a larghezze frazionarie e fra una e
+  // l'altra restano fessure sub-pixel: finche' sotto c'era la fotografia
+  // dell'intera pagina non si vedevano, ma sotto i cloni vivi ogni fessura
+  // e' una finestra su un TESTO DIVERSO — due pagine leggibili una sopra
+  // l'altra. Il fondo di carta chiude le fessure.
+  if (r > 0) {
+    const bandaX = next ? P + c : P - c - r;
+    ctx.fillStyle = paper;
+    ctx.fillRect(bandaX, 0, r + passo, Hc);
   }
 
   // l'arco: colonne compresse dal coseno; oltre mezzo giro si vede il retro
@@ -197,7 +205,8 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
     const a = (s - c) / r;
     const d = c + r * Math.sin(a);
     const comp = Math.max(0.12, Math.abs(Math.cos(a)));
-    const larg = Math.max(1, passo * comp);
+    // +0.6: le colonne si sovrappongono appena invece di lasciare fessure
+    const larg = Math.max(1, passo * comp) + 0.6;
     const x = destX(d);
     // Ombreggiatura da cilindro: la faccia illuminata e' quella che guarda
     // il lettore (a=0), e si spegne mano a mano che la carta si mette di
@@ -228,9 +237,10 @@ export function drawCurl(ctx, { oldImg, newImg, t, dir, Wc, Hc, paper, rows, sc 
     }
   }
 
-  // oltre l'arco il foglio e' di nuovo piatto, a faccia in giu': il retro
-  // atterra sull'altra meta' e la copre passo passo
-  for (let s = c + arc; s < P; s += passo) {
+  // oltre l'arco il foglio e' di nuovo piatto, a faccia in giu'. Di norma
+  // lo mostra il clone vivo; il canvas lo disegna solo come ripiego,
+  // quando la finestra nuova non e' ancora misurata
+  for (let s = atterratoVivo ? P : c + arc; s < P; s += passo) {
     const d = c - (s - (c + arc));
     const x = destX(d);
     if (x < -passo || x > Wc) continue;
