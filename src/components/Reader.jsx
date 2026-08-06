@@ -1741,11 +1741,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       position: "absolute",
                       top: 0,
                       bottom: 0,
-                      left: "-30%",
-                      width: "60%",
+                      left: "-24%",
+                      width: "48%",
                       opacity: 0,
                       background:
-                        "linear-gradient(90deg, transparent, #fff6e055 38%, #fff6e07a 50%, #fff6e055 62%, transparent)",
+                        "linear-gradient(90deg, transparent, #fff6e04d 34%, #fff6e08f 50%, #fff6e04d 66%, transparent)",
                       animation: stage
                         ? `bc-leaf-gloss-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
                         : "none",
@@ -1843,11 +1843,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       position: "absolute",
                       top: 0,
                       bottom: 0,
-                      left: "-30%",
-                      width: "60%",
+                      left: "-24%",
+                      width: "48%",
                       opacity: 0,
                       background:
-                        "linear-gradient(90deg, transparent, #fff6e055 38%, #fff6e07a 50%, #fff6e055 62%, transparent)",
+                        "linear-gradient(90deg, transparent, #fff6e04d 34%, #fff6e08f 50%, #fff6e04d 66%, transparent)",
                       animation: stage
                         ? `bc-leaf-gloss-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
                         : "none",
