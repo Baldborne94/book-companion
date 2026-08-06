@@ -1744,8 +1744,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       left: "-24%",
                       width: "48%",
                       opacity: 0,
+                      // il riflesso di un cilindro ha i FIANCHI SCURI: e' il
+                      // contrasto chiaro-scuro ravvicinato a dire "superficie
+                      // curva", una banda chiara da sola resta un lampo su
+                      // una tavola piatta
                       background:
-                        "linear-gradient(90deg, transparent, #fff6e04d 34%, #fff6e08f 50%, #fff6e04d 66%, transparent)",
+                        "linear-gradient(90deg, transparent, #00000021 18%, #fff6e04d 38%, #fff6e099 50%, #fff6e04d 62%, #00000021 82%, transparent)",
                       animation: stage
                         ? `bc-leaf-gloss-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
                         : "none",
@@ -1846,8 +1850,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       left: "-24%",
                       width: "48%",
                       opacity: 0,
+                      // il riflesso di un cilindro ha i FIANCHI SCURI: e' il
+                      // contrasto chiaro-scuro ravvicinato a dire "superficie
+                      // curva", una banda chiara da sola resta un lampo su
+                      // una tavola piatta
                       background:
-                        "linear-gradient(90deg, transparent, #fff6e04d 34%, #fff6e08f 50%, #fff6e04d 66%, transparent)",
+                        "linear-gradient(90deg, transparent, #00000021 18%, #fff6e04d 38%, #fff6e099 50%, #fff6e04d 62%, #00000021 82%, transparent)",
                       animation: stage
                         ? `bc-leaf-gloss-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
                         : "none",

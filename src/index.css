@@ -175,8 +175,15 @@ input {
    nemmeno troppo: la posata si chiude all'88%, quel tanto che basta a
    distendersi senza che il giro sembri trattenuto sul finale.
    La FLESSIONE e' tutta nello scaleX: una carta che si incurva copre meno
-   larghezza di una tavola rigida, ed e' quel restringimento — non l'ombra —
-   che l'occhio legge come foglio che si piega.
+   larghezza di una tavola rigida (la corda e' piu' corta dell'arco), ed e'
+   quel restringimento — non l'ombra — che l'occhio legge come foglio che
+   si piega. Ma va messa DOVE SI VEDE, e non e' a meta' giro: li' la
+   rotazione schiaccia gia' il foglio quasi a zero, e comprimere una lama
+   sottile non si nota. Misurato: una piega concentrata sul centro cambiava
+   la larghezza a schermo di 15px su 600 — invisibile. Il foglio e' largo
+   quando e' ancora poco inclinato, cioe' verso il 20% e verso il 70%: e'
+   li' che la piega deve essere profonda. Agli estremi invece torna
+   piatto per forza, o non combacia con la pagina che ha sotto.
    I 90 gradi sono INCHIODATI al 45% da un fotogramma chiave apposta. Le
    percentuali dei keyframe valgono esatte solo dove sono scritte: in mezzo
    comanda la cubica, e misurando il foglio col browser al 45% era gia' a
@@ -190,17 +197,23 @@ input {
   8% {
     transform: rotateY(0deg) scaleX(1);
   }
+  20% {
+    transform: rotateY(-44.5deg) scaleX(0.885);
+  }
   32% {
-    transform: rotateY(-54deg) scaleX(0.928);
+    transform: rotateY(-54deg) scaleX(0.868);
   }
   45% {
-    transform: rotateY(-90deg) scaleX(0.912);
+    transform: rotateY(-90deg) scaleX(0.862);
   }
   56% {
-    transform: rotateY(-122deg) scaleX(0.918);
+    transform: rotateY(-122deg) scaleX(0.872);
+  }
+  70% {
+    transform: rotateY(-164.3deg) scaleX(0.9);
   }
   78% {
-    transform: rotateY(-168deg) scaleX(0.972);
+    transform: rotateY(-168deg) scaleX(0.947);
   }
   88%,
   100% {
@@ -213,17 +226,23 @@ input {
   8% {
     transform: rotateY(0deg) scaleX(1);
   }
+  20% {
+    transform: rotateY(44.5deg) scaleX(0.885);
+  }
   32% {
-    transform: rotateY(54deg) scaleX(0.928);
+    transform: rotateY(54deg) scaleX(0.868);
   }
   45% {
-    transform: rotateY(90deg) scaleX(0.912);
+    transform: rotateY(90deg) scaleX(0.862);
   }
   56% {
-    transform: rotateY(122deg) scaleX(0.918);
+    transform: rotateY(122deg) scaleX(0.872);
+  }
+  70% {
+    transform: rotateY(164.3deg) scaleX(0.9);
   }
   78% {
-    transform: rotateY(168deg) scaleX(0.972);
+    transform: rotateY(168deg) scaleX(0.947);
   }
   88%,
   100% {
