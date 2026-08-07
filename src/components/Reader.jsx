@@ -923,9 +923,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       setPark((old) => (old && old.html === p.html ? old : p));
       // le texture del cilindro servono solo alla doppia pagina animata:
       // altrove si risparmiano tre rasterizzazioni a ogni approdo
+      // le fotografie servono SOLO al foglio che gira: spento, non si
+      // cuoce nulla — tre rasterizzazioni a ogni approdo non sono un
+      // prezzo da pagare per un effetto che non si usa
       const divisor = rendRef.current?.manager?.layout?.divisor || 1;
       const s = live.current.settings;
-      if (!s?.pageTurn || s?.flow === "scrolled" || divisor !== 2 || reducedMotion()) return;
+      if (!s?.pageTurn || !s?.curl || s?.flow === "scrolled" || divisor !== 2 || reducedMotion()) return;
       // la texture per la voltata di carta vera si cuoce da fermi: font
       // incorporati e doppia pagina rasterizzata, pronta prima del tocco
       try {
@@ -1144,7 +1147,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // scivola nella dissolvenza senza avvisi.
     const tex = texRef.current;
     const arrivo = tex && (dir === "next" ? tex.next : tex.prev);
+    // Il foglio che gira e' SPENTO di serie. Una giornata di lavoro ci ha
+    // portati a un cilindro corretto — carta in volo, meta' ferma viva,
+    // atterraggio al pixel — e comunque a schermo non convince: a meta'
+    // giro un libro aperto in due facciate mostra per forza un foglio che
+    // viaggia attraverso il testo, e l'occhio lo legge come disturbo, non
+    // come carta. Il codice resta, sotto un interruttore, per chi lo
+    // vuole; la lettura di tutti i giorni ha la dissolvenza quieta.
     const curl =
+      settings.curl &&
       pages === 2 &&
       tex &&
       // senza la fotografia della pagina d'arrivo la zona scoperta dal
@@ -1194,7 +1205,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       // vale la pena rifare il libro da capo per un interruttore
       if (next.terms) rendRef.current?.manager?.views?.forEach?.((v) => markTerms(v));
     }
-    if ("pageTurn" in patch) {
+    if ("curl" in patch || "pageTurn" in patch) {
       // acceso l'interruttore, le texture del cilindro vanno cotte subito:
       // altrimenti il primo giro parte ancora con la dissolvenza
       live.current.settings = next;
@@ -1955,6 +1966,24 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 }}
               >
                 {settings.terms ? "Attivo 📖" : "Spento"}
+              </button>
+            </div>
+          )}
+          {isTablet() && settings.pageTurn && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <span style={{ fontSize: 14.5, color: C.muted }}>Foglio che gira</span>
+              <button
+                onClick={() => updateSettings({ curl: !settings.curl })}
+                style={{
+                  padding: "6px 16px",
+                  borderRadius: 999,
+                  fontSize: 14,
+                  border: `1px solid ${settings.curl ? C.arcane : C.border}`,
+                  color: settings.curl ? C.arcane : C.muted,
+                  background: settings.curl ? `${C.arcane}14` : "transparent",
+                }}
+              >
+                {settings.curl ? "Attivo 📄" : "Spento"}
               </button>
             </div>
           )}
