@@ -164,6 +164,277 @@ input {
   }
 }
 
+@keyframes bc-cast {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.32;
+  }
+  52% {
+    opacity: 0.8;
+  }
+  72% {
+    opacity: 0.58;
+  }
+  88% {
+    opacity: 0.24;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* La pagina non e' un piano rigido: si stacca piano (il dito la solleva),
+   accelera cadendo, si flette al centro del giro (scaleX comprime la carta
+   come una curvatura vista di scorcio) e atterra morbida distendendosi.
+   Niente skew: inclinare il foglio lo trasformava in un parallelogramma,
+   col testo di sbieco. E il giro finisce a 180 gradi esatti, o il foglio
+   resta di traverso sulla pagina su cui si posa. Gli ultimi gradi hanno
+   piu' tempo degli altri: schiacciati in due fotogrammi, il foglio non
+   atterrava — SBATTEVA piatto, col testo che si stirava di colpo. Ma
+   nemmeno troppo: la posata si chiude all'88%, quel tanto che basta a
+   distendersi senza che il giro sembri trattenuto sul finale.
+   La FLESSIONE e' tutta nello scaleX: una carta che si incurva copre meno
+   larghezza di una tavola rigida (la corda e' piu' corta dell'arco), ed e'
+   quel restringimento — non l'ombra — che l'occhio legge come foglio che
+   si piega. Ma va messa DOVE SI VEDE, e non e' a meta' giro: li' la
+   rotazione schiaccia gia' il foglio quasi a zero, e comprimere una lama
+   sottile non si nota. Misurato: una piega concentrata sul centro cambiava
+   la larghezza a schermo di 15px su 600 — invisibile. Il foglio e' largo
+   quando e' ancora poco inclinato, cioe' verso il 20% e verso il 70%: e'
+   li' che la piega deve essere profonda. Agli estremi invece torna
+   piatto per forza, o non combacia con la pagina che ha sotto.
+   I 90 gradi sono INCHIODATI al 45% da un fotogramma chiave apposta. Le
+   percentuali dei keyframe valgono esatte solo dove sono scritte: in mezzo
+   comanda la cubica, e misurando il foglio col browser al 45% era gia' a
+   112 gradi — i 90 li passava verso il 40%. Lo scambio delle facce, tarato
+   sul 44-46%, cadeva quindi a foglio gia' voltato invece che di taglio.
+   Qui SOLO transform: l'opacita' vive sull'involucro (bc-leaf-fade),
+   perche' animarla sull'elemento 3D appiattisce la scena e le due facce
+   del foglio collassano in una, specchiata. */
+@keyframes bc-leaf-next {
+  0%,
+  8% {
+    transform: rotateY(0deg) scaleX(1);
+  }
+  20% {
+    transform: rotateY(-44.5deg) scaleX(0.885);
+  }
+  32% {
+    transform: rotateY(-54deg) scaleX(0.868);
+  }
+  45% {
+    transform: rotateY(-90deg) scaleX(0.862);
+  }
+  56% {
+    transform: rotateY(-122deg) scaleX(0.872);
+  }
+  70% {
+    transform: rotateY(-164.3deg) scaleX(0.9);
+  }
+  78% {
+    transform: rotateY(-168deg) scaleX(0.947);
+  }
+  88%,
+  100% {
+    transform: rotateY(-180deg) scaleX(1);
+  }
+}
+
+@keyframes bc-leaf-prev {
+  0%,
+  8% {
+    transform: rotateY(0deg) scaleX(1);
+  }
+  20% {
+    transform: rotateY(44.5deg) scaleX(0.885);
+  }
+  32% {
+    transform: rotateY(54deg) scaleX(0.868);
+  }
+  45% {
+    transform: rotateY(90deg) scaleX(0.862);
+  }
+  56% {
+    transform: rotateY(122deg) scaleX(0.872);
+  }
+  70% {
+    transform: rotateY(164.3deg) scaleX(0.9);
+  }
+  78% {
+    transform: rotateY(168deg) scaleX(0.947);
+  }
+  88%,
+  100% {
+    transform: rotateY(180deg) scaleX(1);
+  }
+}
+
+@keyframes bc-leaf-fade {
+  0% {
+    opacity: 0;
+  }
+  8%,
+  70% {
+    opacity: 1;
+  }
+  94%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Lo scambio delle facce e' esplicito, non affidato al backface culling:
+   sui contenuti compositi (l'iframe della fotografia) Chrome Android a
+   volte disegna comunque la faccia che dovrebbe essere nascosta, e le due
+   scritte si sovrapponevano. Il giro passa i 90 gradi attorno al 45%:
+   li' la davanti si spegne e il retro si accende, col foglio di taglio. */
+@keyframes bc-leaf-front {
+  0% {
+    opacity: 0;
+  }
+  8%,
+  44% {
+    opacity: 1;
+  }
+  46%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* il retro resta PIENO per tutto il giro (sfumato a meta' volo mostrava
+   bordo, ombra e taglio come contorni fantasma) e si dissolve solo negli
+   ultimissimi fotogrammi, a foglio posato, quando sotto c'e' gia' la
+   pagina vera: la replica passa dal compositore 3D — un soffio piu'
+   morbida e mai allineata al pixel — e toglierla di colpo allo smontaggio
+   del palco era il "lampo" con cui finiva ogni voltata. */
+@keyframes bc-leaf-back {
+  0%,
+  44% {
+    opacity: 0;
+  }
+  46%,
+  94% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Il velo di luce e dorso del retro si spegne PRIMA dell'atterraggio:
+   cotto nello sfondo della faccia restava stampato sulla pagina posata —
+   una striscia scura lungo il dorso e il bordo esterno — e spariva di
+   colpo con lo smontaggio del palco. */
+@keyframes bc-leaf-veil {
+  0% {
+    opacity: 0;
+  }
+  8%,
+  62% {
+    opacity: 1;
+  }
+  88%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* la luce sul foglio che gira: di taglio la carta ne prende meno, e il
+   velo scuro respira col giro — massimo a meta', spento all'atterraggio */
+@keyframes bc-leaf-shade {
+  0%,
+  12% {
+    opacity: 0;
+  }
+  38% {
+    opacity: 0.45;
+  }
+  52% {
+    opacity: 0.7;
+  }
+  66% {
+    opacity: 0.45;
+  }
+  88%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Il riflesso che rotola sul foglio: su una superficie curva la luce
+   scorre da un bordo all'altro mentre la pagina ruota, ed e' proprio
+   quello che l'occhio legge come "carta che si piega" invece che come
+   tavola rigida. Solo transform e opacity.
+   Piu' la carta si incurva, piu' stretta e viva e' la banda di luce: si
+   alza il picco invece di caricare altra ombra, che a forza di velature
+   scure il foglio diventava sporco invece che curvo. */
+@keyframes bc-leaf-gloss-next {
+  0%,
+  10% {
+    opacity: 0;
+    transform: translateX(-40%);
+  }
+  30% {
+    opacity: 0.62;
+  }
+  55% {
+    opacity: 0.82;
+  }
+  80% {
+    opacity: 0.34;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(120%);
+  }
+}
+
+@keyframes bc-leaf-gloss-prev {
+  0%,
+  10% {
+    opacity: 0;
+    transform: translateX(40%);
+  }
+  30% {
+    opacity: 0.62;
+  }
+  55% {
+    opacity: 0.82;
+  }
+  80% {
+    opacity: 0.34;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-120%);
+  }
+}
+
+
+/* La copertura porta il testo VECCHIO della meta' che il foglio deve
+   ancora ricoprire, mentre sotto la pagina vera mostra gia' quello NUOVO.
+   Sfumandola si vedevano i due testi uno sopra l'altro: il fantasma.
+   Resta piena finche' il foglio non le e' sopra del tutto (a 180 gradi,
+   opaco), poi sparisce di colpo — nascosta, quindi invisibile. */
+@keyframes bc-cover-half {
+  0% {
+    opacity: 0;
+  }
+  8%,
+  88% {
+    opacity: 1;
+  }
+  89%,
+  100% {
+    opacity: 0;
+  }
+}
+
+
+
 /* La voltata e' una dissolvenza attraverso la carta, in singola e in
    doppia: il velo porta la fotografia della pagina che parte, deve essere
    opaco prima dello scambio del contenuto (95ms), poi la pagina nuova
