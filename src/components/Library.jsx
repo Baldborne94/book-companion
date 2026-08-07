@@ -5,6 +5,7 @@ import { storageEstimate } from "../lib/bookStore.js";
 import { importFiles } from "../lib/importBook.js";
 import { exportLibrary } from "../lib/exportLibrary.js";
 import { restoreLibrary } from "../lib/restoreLibrary.js";
+import { getFavorites, isFile } from "../lib/music.js";
 import BookCover from "./BookCover.jsx";
 import EmptyState from "./EmptyState.jsx";
 
@@ -236,6 +237,9 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
   const archiveRef = useRef(null);
   const [estimate, setEstimate] = useState(null);
   const inputRef = useRef(null);
+  // Le melodie caricate da file vivono solo qui, come i libri: chi ne ha
+  // deve poter fare un archivio anche senza avere un libro in libreria.
+  const melodie = getFavorites().filter(isFile).length;
 
   useEffect(() => {
     storageEstimate().then(setEstimate);
@@ -271,11 +275,17 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
   }
 
   async function handleExport() {
-    if (!books.length) return;
+    // anche una biblioteca senza libri vale un archivio, se ci sono melodie
+    // caricate da file: quei byte stanno solo qui
+    if (!books.length && !melodie) return;
     notify("Preparo il backup…");
     try {
-      const n = await exportLibrary();
-      notify(`Backup scaricato: ${n} ${n === 1 ? "libro" : "libri"} al sicuro 🕯️`);
+      const r = await exportLibrary();
+      const parti = [
+        r.libri ? `${r.libri} ${r.libri === 1 ? "libro" : "libri"}` : null,
+        r.melodie ? `${r.melodie} ${r.melodie === 1 ? "melodia" : "melodie"}` : null,
+      ].filter(Boolean);
+      notify(`Backup scaricato: ${parti.join(" e ")} al sicuro 🕯️`);
     } catch {
       notify("Esportazione fallita, riprova");
     }
@@ -291,6 +301,7 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
       const parts = [
         r.added ? `${r.added} ${r.added === 1 ? "libro tornato" : "libri tornati"}` : null,
         r.files ? `${r.files} ${r.files === 1 ? "file" : "file"} recuperati` : null,
+        r.melodie ? `${r.melodie} ${r.melodie === 1 ? "melodia tornata" : "melodie tornate"}` : null,
         r.kept ? `${r.kept} gia' in libreria` : null,
       ].filter(Boolean);
       notify(parts.length ? `Ripristino: ${parts.join(", ")} 🕯️` : "Nell'archivio non c'era nulla di nuovo");
@@ -470,7 +481,7 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
         <Grouped books={visible} group={group} onOpenBook={onOpenBook} localIds={localIds} />
       )}
 
-      {books.length > 0 && (
+      {(books.length > 0 || melodie > 0) && (
         <div
           style={{
             marginTop: 32,
@@ -487,6 +498,7 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
         >
           <span>
             {books.length} {books.length === 1 ? "libro custodito" : "libri custoditi"}
+            {melodie ? ` · ${melodie} ${melodie === 1 ? "melodia" : "melodie"}` : ""}
             {estimate?.usage ? ` · ${fmtBytes(estimate.usage)} usati` : ""}
             {estimate?.quota ? ` di ${fmtBytes(estimate.quota)}` : ""}
             {` · v. ${typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "?"}`}

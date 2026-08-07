@@ -1,9 +1,11 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { C } from "../data/constants.js";
-import { parseYouTube, embedUrl } from "../lib/music.js";
+import { parseYouTube, embedUrl, isFile, loadTrack } from "../lib/music.js";
 
 const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }, ref) {
   const iframeRef = useRef(null);
+  const audioRef = useRef(null);
+  const urlRef = useRef(null);
   const sleepRef = useRef(null);
   const queueRef = useRef({ list: [], i: 0, shuffle: false });
   const advanceRef = useRef(() => {});
@@ -17,7 +19,13 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
     onInfo({ current, playing, timerEnd, sleepMin, queue });
   }, [current, playing, timerEnd, sleepMin, queue, onInfo]);
 
-  useEffect(() => () => clearTimeout(sleepRef.current), []);
+  useEffect(
+    () => () => {
+      clearTimeout(sleepRef.current);
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+    },
+    []
+  );
 
   // Lo stato vivo per i gestori che vivono fuori da React (visibilita',
   // ronda del timer): leggere le variabili di stato li' dentro darebbe
@@ -51,6 +59,10 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
         stopRef.current();
         return;
       }
+      // il richiamo serve solo a YouTube, che si mette in pausa da solo
+      // quando la pagina va in secondo piano; l'audio nostro non si e' mai
+      // fermato e svegliarlo qui gli farebbe solo perdere il filo
+      if (vivo.current.current?.trackId) return;
       if (document.visibilityState === "visible" && vivo.current.playing) {
         command("playVideo");
       }
@@ -64,9 +76,23 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // L'attributo autoplay vale al primo caricamento; cambiando traccia in
+  // coda non c'e' nessun tocco del lettore a coprirci, e la riproduzione
+  // va chiesta a mano. Il permesso c'e' comunque — la scheda sta gia'
+  // suonando — ma se il browser dice di no bisogna dirlo, non restare muti
+  // con la musica ferma.
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a || !current?.src || !playing) return;
+    a.play().catch(() => {
+      setPlaying(false);
+      notify("Il browser ha fermato la musica: toccala di nuovo per riprendere 🎵");
+    });
+  }, [current?.src, playing]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Handshake con l'iframe di YouTube: senza "listening" non manda eventi
   useEffect(() => {
-    if (!current) return;
+    if (!current || current.trackId) return;
     let n = 0;
     const t = setInterval(() => {
       try {
@@ -113,21 +139,65 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
     }
   }
 
-  function start(url, name = "") {
-    const src = parseYouTube(url);
-    if (!src) {
-      notify("Questo non sembra un link YouTube… incolla un video o una playlist 🎵");
+  // L'indirizzo temporaneo del blob vive quanto la traccia che suona: sono
+  // i BYTE a stare in archivio, mai l'indirizzo (che vale solo per questa
+  // sessione e perde ogni senso al ricaricamento).
+  function liberaUrl() {
+    if (urlRef.current) {
+      URL.revokeObjectURL(urlRef.current);
+      urlRef.current = null;
+    }
+  }
+
+  function spegniAudio() {
+    const a = audioRef.current;
+    if (a) {
+      try { a.pause(); } catch { /* mai partito */ }
+      a.removeAttribute("src");
+      try { a.load(); } catch { /* niente da scaricare */ }
+    }
+    liberaUrl();
+  }
+
+  async function suonaFile(voce) {
+    const blob = await loadTrack(voce.trackId).catch(() => null);
+    if (!blob) {
+      // succede alle melodie arrivate dalla sincronizzazione: il preferito
+      // viaggia, i byte no
+      notify(`«${voce.name}» sta solo sull'altro dispositivo: ricaricala da qui 🎵`);
       return false;
     }
-    setCurrent({ url, name, embed: embedUrl(src) });
+    liberaUrl();
+    urlRef.current = URL.createObjectURL(blob);
+    setCurrent({ trackId: voce.trackId, name: voce.name, src: urlRef.current });
     setPlaying(true);
     return true;
   }
 
-  function play(url, name = "") {
+  // `voce` e' un preferito intero (file o YouTube) oppure un semplice
+  // indirizzo incollato al volo
+  function start(voce, name = "") {
+    if (isFile(voce)) {
+      spegniAudio();
+      suonaFile(voce);
+      return true;
+    }
+    const url = typeof voce === "string" ? voce : voce?.url;
+    const src = parseYouTube(url || "");
+    if (!src) {
+      notify("Questo non sembra un link YouTube… incolla un video o una playlist 🎵");
+      return false;
+    }
+    spegniAudio();
+    setCurrent({ url, name: (typeof voce === "string" ? name : voce.name) || name, embed: embedUrl(src) });
+    setPlaying(true);
+    return true;
+  }
+
+  function play(voce, name = "") {
     queueRef.current = { list: [], i: 0, shuffle: false };
     setQueue(null);
-    return start(url, name);
+    return start(voce, name);
   }
 
   const shuffled = (list) => {
@@ -140,12 +210,12 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
   };
 
   function playQueue(list, shuffle = false) {
-    const clean = (list || []).filter((f) => f?.url);
+    const clean = (list || []).filter((f) => f?.url || f?.trackId);
     if (!clean.length) return false;
     const order = shuffle ? shuffled(clean) : clean;
     queueRef.current = { list: order, i: 0, shuffle };
     setQueue({ total: order.length, shuffle, index: 0 });
-    return start(order[0].url, order[0].name);
+    return start(order[0]);
   }
 
   function advance() {
@@ -159,19 +229,23 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
     }
     q.i = i;
     setQueue({ total: q.list.length, shuffle: q.shuffle, index: i });
-    start(q.list[i].url, q.list[i].name);
+    start(q.list[i]);
   }
   advanceRef.current = advance;
 
   const stopRef = useRef(() => {});
 
   function pause() {
-    command("pauseVideo");
+    if (audioRef.current && vivo.current.current?.trackId) {
+      try { audioRef.current.pause(); } catch { /* mai partito */ }
+    } else command("pauseVideo");
     setPlaying(false);
   }
 
   function resume() {
-    command("playVideo");
+    if (audioRef.current && vivo.current.current?.trackId) {
+      audioRef.current.play().catch(() => {});
+    } else command("playVideo");
     setPlaying(true);
   }
 
@@ -184,6 +258,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
   function stop() {
     queueRef.current = { list: [], i: 0, shuffle: false };
     setQueue(null);
+    spegniAudio();
     setCurrent(null);
     setPlaying(false);
     clearSleep();
@@ -238,7 +313,25 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
 
   return (
     <>
-      {current && (
+      {/* IL LETTORE CHE REGGE LO SCHERMO SPENTO. Sta in cima alla pagina,
+          non dentro un iframe altrui: i browser tengono viva la scheda che
+          ha un <audio> in riproduzione, ed e' cosi' che suonano radio e
+          podcast sul web. Resta montato sempre, come il resto del player. */}
+      <audio
+        ref={audioRef}
+        src={current?.src || undefined}
+        autoPlay={!!current?.src}
+        // una melodia sola gira all'infinito: e' sottofondo, non un disco
+        // da ascoltare fino in fondo. In coda invece si passa alla
+        // prossima, e ci pensa onEnded.
+        loop={!!current?.src && !queue}
+        onEnded={() => advanceRef.current()}
+        onError={() => {
+          if (current?.src) notify("Questa traccia non si riesce a suonare 🎵");
+        }}
+        style={{ display: "none" }}
+      />
+      {current?.embed && (
         <iframe
           ref={iframeRef}
           key={current.embed}

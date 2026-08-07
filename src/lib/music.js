@@ -1,4 +1,43 @@
+import { putTrack, getTrack, removeTrack } from "./bookStore.js";
+
 const FAVS_KEY = "bc_music_favs";
+
+// DUE SORGENTI, UN SOLO ELENCO DI MELODIE.
+//
+// YouTube suona solo a schermo acceso, e non e' un limite della PWA: e' il
+// lettore dentro l'iframe: quando la pagina va in secondo piano, YouTube si
+// mette in pausa da solo e il browser gli toglie il tempo. Non c'e' chiamata
+// che lo impedisca, perche' quel lettore non e' nostro.
+// Un file audio nostro invece suona da un <audio> in cima alla pagina, e
+// quello i browser lo tengono vivo a schermo spento — e' lo stesso
+// meccanismo delle radio e dei podcast sul web. Percio' le melodie che
+// devono accompagnare il sonno sono FILE, non link.
+//
+// Un preferito e' YouTube se ha un `url`, un file se ha un `trackId`. I
+// preferiti gia' salvati non hanno `trackId`, quindi restano YouTube senza
+// bisogno di migrare niente.
+export const isFile = (f) => !!f?.trackId;
+
+const AUDIO_OK = /^audio\//;
+
+export async function addTrackFile(file) {
+  if (!AUDIO_OK.test(file.type || "")) return null;
+  const trackId = crypto.randomUUID();
+  await putTrack(trackId, file);
+  const now = Date.now();
+  return {
+    id: crypto.randomUUID(),
+    name: (file.name || "").replace(/\.[^.]+$/, "") || "Melodia senza nome",
+    trackId,
+    mime: file.type,
+    size: file.size,
+    addedAt: now,
+    updatedAt: now,
+  };
+}
+
+export const loadTrack = (trackId) => getTrack(trackId);
+export const dropTrack = (trackId) => removeTrack(trackId).catch(() => {});
 
 export function parseYouTube(input) {
   try {

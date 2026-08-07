@@ -615,13 +615,15 @@ export default function App() {
     }
 
     if (music.playing && music.current) {
-      setBookMusic(id, { url: music.current.url, name: music.current.name });
+      // il legame porta con se' la sorgente: un file ha il suo trackId,
+      // un video il suo indirizzo
+      setBookMusic(id, { url: music.current.url, trackId: music.current.trackId, name: music.current.name });
     } else {
       const pair = getBookMusic(id);
       if (pair) {
         notify(`Questo libro suona con «${pair.name || "la sua melodia"}»`, {
           label: "▶ Riprendi",
-          onClick: () => playerRef.current?.play(pair.url, pair.name),
+          onClick: () => playerRef.current?.play(pair),
         });
       }
     }
@@ -634,7 +636,7 @@ export default function App() {
 
   useEffect(() => {
     if (readingId && music.current) {
-      setBookMusic(readingId, { url: music.current.url, name: music.current.name });
+      setBookMusic(readingId, { url: music.current.url, trackId: music.current.trackId, name: music.current.name });
     }
   }, [music.current, readingId]); // eslint-disable-line react-hooks/exhaustive-deps
 

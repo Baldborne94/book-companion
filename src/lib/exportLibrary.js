@@ -1,11 +1,14 @@
 import { getFile, getCover } from "./bookStore.js";
 import { loadBooks, getProgress, getStatus, getStarted, getFinished } from "./library.js";
 import { getCfi, getMarks, getHighlights } from "./annotations.js";
-import { getBookMusic } from "./music.js";
+import { getBookMusic, getFavoritesRaw, isFile, loadTrack } from "./music.js";
 
 // v1 conteneva solo metadati e file: un ripristino avrebbe perso segnalibri,
 // evidenziazioni e punto di lettura. Da v2 l'archivio si basta da solo.
-export const ARCHIVE_VERSION = 2;
+// Da v3 porta anche le melodie: da quando la musica di sottofondo puo'
+// essere un file tuo, quei byte esistono solo qui dentro e in IndexedDB —
+// un archivio che li lasciasse fuori non sarebbe piu' un archivio completo.
+export const ARCHIVE_VERSION = 3;
 
 const safeName = (s) =>
   (s || "senza-titolo").replace(/[^\p{L}\p{N} _-]/gu, "").trim().slice(0, 60) || "senza-titolo";
@@ -41,6 +44,21 @@ export async function exportLibrary() {
     manifest.push(entry);
   }
 
+  const melodie = [];
+  let melodieConByte = 0;
+  for (const f of getFavoritesRaw()) {
+    const voce = { ...f };
+    if (isFile(f) && !f.deleted) {
+      const blob = await loadTrack(f.trackId).catch(() => null);
+      if (blob) {
+        voce.track = `melodie/${f.trackId}.bin`;
+        zip.file(voce.track, blob);
+        melodieConByte++;
+      }
+    }
+    melodie.push(voce);
+  }
+
   zip.file(
     "biblioteca.json",
     JSON.stringify(
@@ -49,6 +67,7 @@ export async function exportLibrary() {
         version: ARCHIVE_VERSION,
         exportedAt: new Date().toISOString(),
         books: manifest,
+        melodie,
       },
       null,
       2
@@ -62,5 +81,5 @@ export async function exportLibrary() {
   a.download = `book-companion-backup-${new Date().toISOString().slice(0, 10)}.zip`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
-  return books.length;
+  return { libri: books.length, melodie: melodieConByte };
 }

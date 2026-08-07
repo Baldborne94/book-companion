@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
-import { getFavoritesRaw, saveFavorites, parseYouTube } from "../lib/music.js";
+import { getFavoritesRaw, saveFavorites, parseYouTube, isFile, addTrackFile, dropTrack } from "../lib/music.js";
 import EmptyState from "./EmptyState.jsx";
 
 const SLEEP_CHOICES = [
@@ -42,6 +42,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
   const [adding, setAdding] = useState(false);
   const [newUrl, setNewUrl] = useState("");
   const [newName, setNewName] = useState("");
+  const fileRef = useRef(null);
+  const [caricando, setCaricando] = useState(false);
 
   const { current, playing, timerEnd, sleepMin, queue } = music;
   const sleepLeft = timerEnd ? Math.max(0, Math.ceil((timerEnd - Date.now()) / 60000)) : null;
@@ -67,7 +69,33 @@ export default function MusicRoom({ music, playerRef, notify }) {
   }
 
   function removeFav(f) {
+    // la lapide resta (serve a propagare l'eliminazione), ma i byte se ne
+    // vanno subito: sono la cosa pesante
+    if (isFile(f)) dropTrack(f.trackId);
     commit(favs.map((x) => (x.id === f.id ? { ...x, deleted: true, updatedAt: Date.now() } : x)));
+  }
+
+  async function addFiles(lista) {
+    const scelti = [...(lista || [])];
+    if (!scelti.length) return;
+    setCaricando(true);
+    const nuovi = [];
+    let scartati = 0;
+    for (const file of scelti) {
+      const voce = await addTrackFile(file).catch(() => null);
+      if (voce) nuovi.push(voce);
+      else scartati++;
+    }
+    setCaricando(false);
+    if (nuovi.length) {
+      commit([...favs, ...nuovi]);
+      notify(
+        nuovi.length === 1
+          ? `«${nuovi[0].name}» custodita ✨ Questa suona anche a tablet spento.`
+          : `${nuovi.length} melodie custodite ✨ Queste suonano anche a tablet spento.`
+      );
+    }
+    if (scartati) notify(`${scartati} file non sono audio e li ho lasciati fuori 🎵`);
   }
 
   function addMelody() {
@@ -102,7 +130,9 @@ export default function MusicRoom({ music, playerRef, notify }) {
   }
 
   const liveFavs = favs.filter((f) => !f.deleted);
-  const alreadySaved = current && liveFavs.some((f) => f.url === current.url);
+  const alreadySaved =
+    current &&
+    liveFavs.some((f) => (current.trackId ? f.trackId === current.trackId : f.url === current.url));
 
   return (
     <div style={{ animation: "bc-fade-in 0.4s ease-out" }}>
@@ -161,8 +191,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
                   {queue.shuffle ? "🔀 casuale" : "▶ in ordine"} · {queue.index + 1} di {queue.total}
                 </div>
               )}
-              <div style={{ fontSize: 12.5, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {current.url}
+              <div style={{ fontSize: 12.5, color: current.trackId ? C.accent : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {current.trackId ? "♫ dal tuo archivio · suona anche a schermo spento" : current.url}
               </div>
             </div>
             <button
@@ -256,6 +286,32 @@ export default function MusicRoom({ music, playerRef, notify }) {
             </button>
           </>
         )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="audio/*"
+          multiple
+          onChange={(e) => {
+            addFiles(e.target.files);
+            e.target.value = "";
+          }}
+          style={{ display: "none" }}
+        />
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={caricando}
+          style={{
+            padding: "6px 14px",
+            borderRadius: 999,
+            fontSize: 14,
+            border: `1px solid ${C.accent}88`,
+            color: C.accent,
+            background: `${C.accent}14`,
+            opacity: caricando ? 0.6 : 1,
+          }}
+        >
+          {caricando ? "…custodisco" : "♫ Dai tuoi file"}
+        </button>
         <button
           onClick={() => setAdding((v) => !v)}
           style={{
@@ -267,9 +323,13 @@ export default function MusicRoom({ music, playerRef, notify }) {
             background: adding ? `${C.accent}14` : "transparent",
           }}
         >
-          {adding ? "Annulla" : "＋ Aggiungi melodia"}
+          {adding ? "Annulla" : "＋ Da YouTube"}
         </button>
       </div>
+      <p style={{ fontSize: 12.5, color: C.muted, margin: "-4px 0 14px", lineHeight: 1.5 }}>
+        ♫ Le melodie dai tuoi file continuano a suonare a tablet spento, fino allo scadere del timer.
+        ♪ Quelle da YouTube no: il loro lettore si mette in pausa da solo quando lo schermo si spegne, e non è in nostro potere.
+      </p>
 
       {adding && (
         <div
@@ -319,7 +379,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
         <EmptyState
           emoji="🎼"
           title="La sala della musica attende"
-          text="Incolla un link YouTube qui sopra — pioggia e camino, arpe celtiche, cori lontani — poi custodiscilo con un nome tutto tuo: lo ritroverai qui, pronto ad accompagnare la lettura."
+          text="Porta qui i tuoi file audio — pioggia e camino, arpe celtiche, cori lontani — e ti accompagneranno anche a tablet spento, fino allo scadere del timer. Oppure incolla un link YouTube, se ti basta ascoltare a schermo acceso."
         />
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
@@ -365,10 +425,19 @@ export default function MusicRoom({ music, playerRef, notify }) {
               ) : (
                 <>
                   <button
-                    onClick={() => playerRef.current?.play(f.url, f.name)}
+                    onClick={() => playerRef.current?.play(f)}
                     style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, textAlign: "left", minWidth: 0 }}
+                    title={isFile(f) ? "Dal tuo archivio: suona anche a schermo spento" : "Da YouTube: solo a schermo acceso"}
                   >
-                    <span style={{ fontSize: 22, filter: `drop-shadow(0 0 8px ${C.arcane}66)` }}>♪</span>
+                    <span
+                      style={{
+                        fontSize: 22,
+                        filter: `drop-shadow(0 0 8px ${isFile(f) ? C.accent : C.arcane}66)`,
+                        color: isFile(f) ? C.accent : "inherit",
+                      }}
+                    >
+                      {isFile(f) ? "♫" : "♪"}
+                    </span>
                     <span style={{ flex: 1, fontSize: 15, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {f.name}
                     </span>
