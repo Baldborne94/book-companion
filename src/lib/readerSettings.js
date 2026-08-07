@@ -35,9 +35,6 @@ export function deviceDefaults(shortSide) {
     warmth: 0,
     brightness: 1,
     pageTurn: true,
-    // il foglio che gira e' un di piu': la lettura di tutti i giorni ha la
-    // dissolvenza quieta, e chi vuole il cilindro se lo accende
-    curl: false,
     terms: true,
     appTheme: "night",
   };

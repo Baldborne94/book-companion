@@ -15,7 +15,6 @@ import { explain, termIndex, normalize, wikiUrl, glossaryOf } from "../lib/gloss
 import { contextAround } from "../lib/oracle.js";
 import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../lib/readingSpeed.js";
 import { leftoverScroll } from "../lib/spread.js";
-import { bakeHtml, rasterize, drawCurl, curlGeom } from "../lib/pageCurl.js";
 import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
@@ -321,10 +320,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const parkTimer = useRef(null);
   const snapTimer = useRef(null);
   const turningRef = useRef(null);
-  const texRef = useRef(null);
-  const curlBroken = useRef(false);
-  const curlCanvasRef = useRef(null);
-  const curlRun = useRef(null);
   const turnRef = useRef(() => {});
   const moved = useRef(false);
   const fixTimers = useRef([]);
@@ -370,9 +365,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // scelta dal lettore, che non si sposta da sola.
   const relayout = useCallback((cfi) => {
     const r = rendRef.current;
-    // ogni reimpaginazione rende bugiarda la fotografia parcheggiata: si
-    // butta subito, non si aspetta che il controllo di freschezza la scopra
-    texRef.current = null;
     if (cfi) reflowing.current = true;
     try {
       if (r) r.resize(undefined, undefined, cfi || undefined);
@@ -407,15 +399,30 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const [r, g, b] = [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16) || 0);
     return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5;
   })();
-  // la luce sulla carta scura resta appena percettibile e prende il colore
-  // dell'inchiostro invece del crema
+  // Sulla carta scura la luce c'e' eccome, ma e' STRETTA e del colore
+  // dell'inchiostro: una lama di riflesso, non la lampada color crema che
+  // attraversava la pagina. Larga come sulla pergamena diventava un faro,
+  // e fioca come l'avevamo lasciata spariva del tutto.
   const luceFoglio = cartaScura
-    ? `linear-gradient(90deg, transparent, ${theme.fg}0f 38%, ${theme.fg}24 50%, ${theme.fg}0f 62%, transparent)`
+    ? `linear-gradient(90deg, transparent, ${theme.fg}12 42%, ${theme.fg}59 50%, ${theme.fg}12 58%, transparent)`
     : "linear-gradient(90deg, transparent, #00000021 18%, #fff6e04d 38%, #fff6e099 50%, #fff6e04d 62%, #00000021 82%, transparent)";
+  // L'ombra di un foglio incernierato non e' una rampa uniforme da un
+  // bordo all'altro: la carta vicino alla piega sta nell'incavo del dorso e
+  // non prende luce quasi per niente, poi si schiarisce in fretta, resta
+  // appena velata per tutto il corpo del foglio e si rialza un po' verso il
+  // taglio, dove la curvatura la piega via dalla luce. E' quel buio stretto
+  // e profondo sul dorso a dire "questo foglio e' attaccato li'".
+  // `verso` e' il lato da cui parte il buio, cioe' dove sta la cerniera.
   const ombraFoglio = (verso) =>
     cartaScura
-      ? `linear-gradient(to ${verso}, #00000038, #00000014)`
-      : `linear-gradient(to ${verso}, #00000052, #00000026)`;
+      ? `linear-gradient(to ${verso}, #00000052 0%, #00000029 13%, #0000000f 52%, #0000001a 100%)`
+      : `linear-gradient(to ${verso}, #0000007a 0%, #0000003d 13%, #00000014 52%, #00000026 100%)`;
+  // L'incavo che viaggia col riflesso: la banda scura che segue la piega.
+  // Sulla carta scura il nero rende poco (e' gia' quasi nero sotto), quindi
+  // resta discreta e lascia il mestiere alla lama di luce.
+  const bandaFoglio = cartaScura
+    ? "linear-gradient(90deg, transparent, #0000001a 20%, #00000059 50%, #0000001a 80%, transparent)"
+    : "linear-gradient(90deg, transparent, #00000014 20%, #00000052 50%, #00000014 80%, transparent)";
 
   const flush = useCallback(() => {
     const s = live.current;
@@ -509,7 +516,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         try { rendRef.current.destroy(); } catch { /* già distrutto */ }
       }
       viewerRef.current.innerHTML = "";
-      texRef.current = null;
       const r = eb.renderTo(viewerRef.current, {
         width: "100%",
         height: "100%",
@@ -737,7 +743,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       clearTimeout(reflowTimer.current);
       clearTimeout(parkTimer.current);
       clearTimeout(snapTimer.current);
-      curlRun.current = null;
       fixTimers.current.forEach(clearTimeout);
       flush();
       try { rendRef.current?.destroy(); } catch { /* già distrutto */ }
@@ -935,17 +940,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       const html = /<\/head>/i.test(raw)
         ? raw.replace(/<\/head>/i, `${style}</head>`)
         : style + raw;
-      // due sapori della stessa fotografia: HTML per gli iframe del palco,
-      // XML per l'immagine SVG del cilindro (dentro foreignObject i tag non
-      // chiusi e le & nude fanno fallire il parser)
-      const styleXml = `<style>${css.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</style>`;
-      const rawXml = new XMLSerializer().serializeToString(doc.documentElement);
-      const xml = /<\/head>/i.test(rawXml)
-        ? rawXml.replace(/<\/head>/i, `${styleXml}</head>`)
-        : styleXml + rawXml;
       return {
         html,
-        xml,
         w: Math.round(b.ri.width),
         h: Math.round(b.ri.height),
         href: (b.view.section?.href || "").split("#")[0],
@@ -957,198 +953,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
   const schedulePark = useCallback(() => {
     clearTimeout(parkTimer.current);
-    parkTimer.current = setTimeout(async () => {
+    parkTimer.current = setTimeout(() => {
       const p = snapPark();
       if (!p) return;
       setPark((old) => (old && old.html === p.html ? old : p));
-      // le texture del cilindro servono solo alla doppia pagina animata:
-      // altrove si risparmiano tre rasterizzazioni a ogni approdo
-      // le fotografie servono SOLO al foglio che gira: spento, non si
-      // cuoce nulla — tre rasterizzazioni a ogni approdo non sono un
-      // prezzo da pagare per un effetto che non si usa
-      const divisor = rendRef.current?.manager?.layout?.divisor || 1;
-      const s = live.current.settings;
-      if (!s?.pageTurn || !s?.curl || s?.flow === "scrolled" || divisor !== 2 || reducedMotion()) return;
-      // la texture per la voltata di carta vera si cuoce da fermi: font
-      // incorporati e doppia pagina rasterizzata, pronta prima del tocco
-      try {
-        const geo = snapRects();
-        const host = bookRef.current;
-        if (!geo || !host) return;
-        const rh = host.getBoundingClientRect();
-        const baked = await bakeHtml(p.xml);
-        const outW = Math.round(rh.width) - FRAME * 2;
-        const outH = Math.round(rh.height) - FRAME * 2;
-        // ESATTAMENTE alla densita' dello schermo, non "circa": tappata a 2
-        // su uno schermo a 2.25 ogni glifo veniva ricampionato e il testo
-        // in volo sfarfallava rispetto a quello fermo. La memoria la guarda
-        // il tetto sull'area: tre finestre restano in vita per tutta la
-        // lettura
-        let sc = Math.min(3, window.devicePixelRatio || 1);
-        if (outW * outH * sc * sc > 8_000_000) sc = 2;
-        if (outW * outH * sc * sc > 8_000_000) sc = 1;
-        const finestra = (offsetX) =>
-          rasterize({ baked, w: p.w, h: p.h, offsetX, offsetY: FRAME - geo.y, outW, outH, scale: sc });
-        const qui = FRAME - geo.x;
-        const img = await finestra(qui);
-        texRef.current = { img, baked, w: p.w, h: p.h, x: geo.x, href: p.href, sc, next: null, prev: null };
-        // anche le finestre del giro dopo si cuociono da fermi: il layout
-        // dell'intero capitolo e' troppo lento per i 400ms del giro, e il
-        // retro senza texture atterrava carta nuda
-        const delta = rendRef.current?.manager?.layout?.delta;
-        if (delta > 0) {
-          const mio = texRef.current;
-          finestra(qui + delta).then((im) => { if (texRef.current === mio) mio.next = im; }).catch(() => {});
-          finestra(qui - delta).then((im) => { if (texRef.current === mio) mio.prev = im; }).catch(() => {});
-        }
-      } catch {
-        texRef.current = null;
-      }
     }, 450);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Fa partire il giro di carta e restituisce la maniglia. Architettura
-  // IBRIDA: le parti ferme del foglio sono CLONI VIVI (iframe del capitolo,
-  // identici al pixel alla pagina vera), il canvas disegna solo la piega in
-  // movimento. La fotografia rasterizzata rende il testo con un peso
-  // diverso dal vivo — vistoso su Firefox — e ogni fermo-immagine di
-  // texture su testo fermo si vedeva come sfarfallio: ora la texture vive
-  // solo dove la carta e' compressa e in corsa. Il disegno sta fuori da
-  // React: ritagli e traslazioni si aggiornano a ogni fotogramma via ref.
-  function startCurl(dir, tex, key) {
-    try {
-      const host = bookRef.current;
-      const cv = curlCanvasRef.current;
-      if (!host || !cv || curlBroken.current) return null;
-      const rh = host.getBoundingClientRect();
-      const Wc = Math.round(rh.width) - FRAME * 2;
-      const Hc = Math.round(rh.height) - FRAME * 2;
-      // il canvas vive alla STESSA densita' della texture: scale diverse
-      // significano ricampionare ogni colonna, e il testo sfarfalla
-      const dpr = tex.sc || Math.min(2, window.devicePixelRatio || 1);
-      cv.width = Wc * dpr;
-      cv.height = Hc * dpr;
-      const ctx = cv.getContext("2d");
-      if (!ctx) return null;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const stato = {
-        oldImg: tex.img,
-        newImg: dir === "next" ? tex.next : tex.prev,
-        sc: dpr,
-        dir,
-        start: performance.now(),
-        Wc,
-        Hc,
-      };
-      // piu' svelto: la carta in volo non ha niente da farsi leggere, e un
-      // giro breve e' quello che si sente sotto il dito in un libro vero
-      const DUR = 620;
-      // la coda e' corta e in accelerazione: piu' lunga si notava come una
-      // "mini transizione" a se stante subito prima dell'atterraggio
-      const CODA = 90;
-      const paper = theme.bg;
-      const rows = `${theme.fg}14`;
-      // il primo fotogramma si disegna QUI, prima di dichiarare il giro:
-      // se drawImage esplode (certe GPU con le immagini SVG), si torna
-      // null e parte la dissolvenza come se nulla fosse
-      drawCurl(ctx, { oldImg: stato.oldImg, newImg: stato.newImg, t: 0, dir, Wc, Hc, paper, rows, sc: dpr });
-      // La DISSOLVENZA in entrata e in uscita nasconde l'unica differenza
-      // che resta: la fotografia rende il testo con un peso appena diverso
-      // dalla pagina viva. Primo e ultimo fotogramma disegnano esattamente
-      // cio' che hanno sotto (a t=0 la pagina vecchia, a t=1 la nuova gia'
-      // scambiata), quindi la dissolvenza non nasconde un salto: nasconde
-      // un cambio di resa. Guidata dall'orologio dell'animazione, non da
-      // una transizione CSS, cosi' non puo' sfasarsi.
-      cv.style.opacity = "0";
-      cv.style.display = "block";
-      curlRun.current = stato;
-      const spegni = () => {
-        try { ctx.clearRect(0, 0, Wc, Hc); } catch { /* niente da pulire */ }
-        cv.style.display = "none";
-        cv.style.opacity = "0";
-        if (curlRun.current === stato) curlRun.current = null;
-      };
-      stato.stop = spegni;
-      const frame = (now) => {
-        if (curlRun.current !== stato) return;
-        const t = Math.min(1, (now - stato.start) / DUR);
-        try {
-          // In salita basta poco: a t=0 il canvas disegna la meta' che il
-          // foglio occupa, identica per contenuto a quella viva sotto. La
-          // discesa non e' qui — sta nella coda, dopo lo scambio.
-          cv.style.opacity = String(Math.min(1, t / 0.06));
-          drawCurl(ctx, {
-            oldImg: stato.oldImg,
-            newImg: stato.newImg,
-            t,
-            dir,
-            Wc,
-            Hc,
-            paper,
-            rows,
-            sc: dpr,
-          });
-        } catch {
-          // il canvas ha tradito a giro in corso: si spegne e la
-          // dissolvenza prende il testimone su questo stesso giro
-          curlBroken.current = true;
-          spegni();
-          setTurning((v) => {
-            if (!v || v.key !== key) return v;
-            const geo = snapRects();
-            return { dir, key, x: geo?.x, y: geo?.y, href: geo?.href };
-          });
-          return;
-        }
-        if (t >= 1) {
-          // L'ultimo fotogramma E' la pagina nuova: si scambia la pagina
-          // viva sotto (invisibile, il canvas la copre) e poi si dissolve
-          // la copia dipinta su quella vera. Nessun salto: stesso
-          // contenuto, stessa posizione, solo un cambio di resa che la
-          // dissolvenza si porta via.
-          // Lo scambio va ATTESO prima di dissolvere. epub.js impagina la
-          // pagina nuova in modo asincrono: facendo partire la discesa
-          // subito, il canvas svaniva mentre sotto c'era ancora la pagina
-          // VECCHIA — due testi sovrapposti sulla meta' scoperta, il velo
-          // che si vedeva a fine giro. Si aspetta la promessa (e un
-          // fotogramma perche' il compositore la mostri), con un tetto di
-          // sicurezza se epub.js non risponde.
-          let partita = false;
-          const viaLaCoda = () => {
-            if (partita || curlRun.current !== stato) return;
-            partita = true;
-            const finita = performance.now();
-            const coda = (ora) => {
-              if (curlRun.current !== stato) return;
-              const q = (ora - finita) / CODA;
-              if (q >= 1) {
-                spegni();
-                return;
-              }
-              cv.style.opacity = String((1 - q) * (1 - q));
-              requestAnimationFrame(coda);
-            };
-            requestAnimationFrame(coda);
-          };
-          let atteso = null;
-          try { atteso = stato.scambia?.(); } catch { /* giro finito comunque */ }
-          stato.scambia = null;
-          Promise.resolve(atteso)
-            .catch(() => {})
-            .then(() => requestAnimationFrame(() => requestAnimationFrame(viaLaCoda)));
-          setTimeout(viaLaCoda, 400);
-          return;
-        }
-        requestAnimationFrame(frame);
-      };
-      requestAnimationFrame(frame);
-      return stato;
-    } catch {
-      curlBroken.current = true;
-      if (curlCanvasRef.current) curlCanvasRef.current.style.display = "none";
-      return null;
-    }
-  }
 
   function turn(dir) {
     const r = rendRef.current;
@@ -1156,73 +966,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     moved.current = true;
     const animate =
       isTablet() && settings.flow !== "scrolled" && settings.pageTurn && !reducedMotion();
-    // Un tocco durante un giro e' fretta: si cambia pagina secco. E il giro
-    // in corso va SPENTO prima, non lasciato finire: da quando lo scambio
-    // della pagina viva e' rinviato alla fine, un cilindro ancora in volo
-    // avrebbe fatto il suo passo per conto suo dopo questo — due pagine
-    // avanti per un tocco solo.
+    // un tocco durante un giro e' fretta: si cambia pagina secco
     if (!animate || turningRef.current) {
-      if (curlRun.current) {
-        const corso = curlRun.current;
-        corso.stop?.();
-        curlRun.current = null;
-        // il passo che il giro interrotto doveva ancora fare si esegue
-        // ADESSO, prima del nuovo: annullarlo faceva avanzare di una
-        // pagina sola chi ne aveva toccate due
-        try { corso.scambia?.(); } catch { /* giro gia' concluso */ }
-        corso.scambia = null;
-      }
       step(r, dir);
       return;
     }
     const key = Date.now();
     const geo = snapRects();
-    // la strada maestra e' il cilindro di carta vera: parte solo se la
-    // texture parcheggiata e' fresca — stesso capitolo, stessa posizione E
-    // stessa sagoma del capitolo. La sola x non basta: dopo una
-    // reimpaginazione (gabbia a righe intere, margini) la x puo' coincidere
-    // — a pagina 1 e' zero comunque — ma le righe stanno altrove, e il
-    // giro partiva con la fotografia dell'impaginazione vecchia: il testo
-    // "sfarfallava" al tocco e allo spegnimento. In ogni caso dubbio si
-    // scivola nella dissolvenza senza avvisi.
-    const tex = texRef.current;
-    const arrivo = tex && (dir === "next" ? tex.next : tex.prev);
-    // Il foglio che gira e' SPENTO di serie. Una giornata di lavoro ci ha
-    // portati a un cilindro corretto — carta in volo, meta' ferma viva,
-    // atterraggio al pixel — e comunque a schermo non convince: a meta'
-    // giro un libro aperto in due facciate mostra per forza un foglio che
-    // viaggia attraverso il testo, e l'occhio lo legge come disturbo, non
-    // come carta. Il codice resta, sotto un interruttore, per chi lo
-    // vuole; la lettura di tutti i giorni ha la dissolvenza quieta.
-    const curl =
-      settings.curl &&
-      pages === 2 &&
-      tex &&
-      // senza la fotografia della pagina d'arrivo la zona scoperta dal
-      // foglio resterebbe carta nuda per tutto il giro (succede ai confini
-      // di capitolo): meglio la dissolvenza
-      arrivo &&
-      geo &&
-      tex.href === geo.href &&
-      Math.abs(tex.x - geo.x) < 1 &&
-      Math.abs(tex.w - geo.wi) < 1 &&
-      Math.abs(tex.h - geo.hi) < 1;
-    if (curl) {
-      const stato = startCurl(dir, tex, key);
-      if (stato) {
-        setTurning({ dir, key, curl: true });
-        clearTimeout(turnTimer.current);
-        // il giro dura quanto l'animazione PIU' la coda della dissolvenza
-        // il giro dura l'animazione, l'attesa dello scambio e la coda
-        turnTimer.current = setTimeout(() => setTurning(null), 1500);
-        // Lo scambio della pagina viva avviene alla FINE, sotto il canvas
-        // ormai opaco e con l'ultimo fotogramma gia' identico alla pagina
-        // nuova: per tutto il giro la meta' ferma resta VIVA, e non c'e'
-        // piu' nessuna fotografia a coprirla. Lo fa startCurl a t=1.
-        stato.scambia = () => (rendRef.current === r ? step(r, dir) : null);
-        return;
-      }
-    }
     setTurning({ dir, key, x: geo?.x, y: geo?.y, hw: geo?.hw, href: geo?.href, x2: null, href2: null });
     clearTimeout(turnTimer.current);
     turnTimer.current = setTimeout(() => setTurning(null), 1200);
@@ -1255,17 +1005,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       // vale la pena rifare il libro da capo per un interruttore
       if (next.terms) rendRef.current?.manager?.views?.forEach?.((v) => markTerms(v));
     }
-    if ("curl" in patch || "pageTurn" in patch) {
-      // acceso l'interruttore, le texture del cilindro vanno cotte subito:
-      // altrimenti il primo giro parte ancora con la dissolvenza
+    if ("pageTurn" in patch) {
+      // acceso l'interruttore, la fotografia del capitolo va preparata
+      // subito: altrimenti il primo giro trova le facce del foglio nude
       live.current.settings = next;
-      texRef.current = null;
       if (next.pageTurn) schedulePark();
     }
     if ("flow" in patch || "spread" in patch || "font" in patch) makeRendition(next);
     else if (rendRef.current && ("theme" in patch || "fontSize" in patch || "lineHeight" in patch)) {
       applyStyles(rendRef.current, next);
-      texRef.current = null;
       schedulePark();
       // corpo e interlinea cambiano il passo delle righe, quindi l'avanzo:
       // si rimisura a testo gia' ridisegnato
@@ -1463,7 +1211,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
   // il palco del foglio 3D resta sempre montato: la geometria segue la
   // direzione dell'ultimo giro (o "next" da fermo, tanto e' invisibile)
-  const stage = turning && !turning.curl ? turning : null;
+  const stage = turning;
   const dirNow = stage?.dir || "next";
   const leafGeom =
     dirNow === "next"
@@ -1685,10 +1433,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 pointerEvents: "none",
                 visibility: stage ? "visible" : "hidden",
                 opacity: 0,
+                // l'ombra cresce DAL dorso: lo scaleX del fotogramma la
+                // allunga verso il taglio, e l'ancoraggio e' qui perche' e'
+                // l'unica cosa che cambia fra i due versi
+                transformOrigin: dirNow === "next" ? "right center" : "left center",
                 background:
                   dirNow === "next"
-                    ? "linear-gradient(to left, #0000003d, #0000001c 26%, #0000000a 48%, transparent 72%)"
-                    : "linear-gradient(to right, #0000003d, #0000001c 26%, #0000000a 48%, transparent 72%)",
+                    ? "linear-gradient(to left, #00000059, #0000002e 22%, #00000014 52%, transparent 82%)"
+                    : "linear-gradient(to right, #00000059, #0000002e 22%, #00000014 52%, transparent 82%)",
                 animation: anim("bc-cast"),
               }}
             />
@@ -1869,6 +1621,27 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       maskImage: SFUMA_ORLI,
                     }}
                   />
+                  {/* l'incavo che scorre: viaggia appaiato al riflesso, un
+                      terzo di pagina indietro, cosi' luce e ombra si
+                      muovono INSIEME al foglio invece di accendersi sul
+                      posto */}
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      bottom: 0,
+                      left: "-45%",
+                      width: "90%",
+                      opacity: 0,
+                      background: bandaFoglio,
+                      WebkitMaskImage: SFUMA_ORLI,
+                      maskImage: SFUMA_ORLI,
+                      animation: stage
+                        ? `bc-leaf-band-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
+                        : "none",
+                    }}
+                  />
                   {/* il riflesso che rotola: la luce scorre da un bordo
                       all'altro e la carta smette di sembrare una tavola */}
                   <div
@@ -1975,6 +1748,27 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       maskImage: SFUMA_ORLI,
                     }}
                   />
+                  {/* l'incavo che scorre: viaggia appaiato al riflesso, un
+                      terzo di pagina indietro, cosi' luce e ombra si
+                      muovono INSIEME al foglio invece di accendersi sul
+                      posto */}
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      bottom: 0,
+                      left: "-45%",
+                      width: "90%",
+                      opacity: 0,
+                      background: bandaFoglio,
+                      WebkitMaskImage: SFUMA_ORLI,
+                      maskImage: SFUMA_ORLI,
+                      animation: stage
+                        ? `bc-leaf-band-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
+                        : "none",
+                    }}
+                  />
                   {/* il riflesso che rotola: la luce scorre da un bordo
                       all'altro e la carta smette di sembrare una tavola */}
                   <div
@@ -2052,21 +1846,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             }}
           />
         )}
-        {/* il cilindro di carta vera: quando la texture e' pronta la PIEGA
-            si disegna qui, colonna per colonna, e la dissolvenza riposa */}
-        <canvas
-          ref={curlCanvasRef}
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            inset: FRAME,
-            width: `calc(100% - ${FRAME * 2}px)`,
-            height: `calc(100% - ${FRAME * 2}px)`,
-            zIndex: 6,
-            pointerEvents: "none",
-            display: "none",
-          }}
-        />
       </div>
 
       <div
@@ -2424,24 +2203,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 }}
               >
                 {settings.terms ? "Attivo 📖" : "Spento"}
-              </button>
-            </div>
-          )}
-          {isTablet() && settings.pageTurn && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-              <span style={{ fontSize: 14.5, color: C.muted }}>Foglio che gira</span>
-              <button
-                onClick={() => updateSettings({ curl: !settings.curl })}
-                style={{
-                  padding: "6px 16px",
-                  borderRadius: 999,
-                  fontSize: 14,
-                  border: `1px solid ${settings.curl ? C.arcane : C.border}`,
-                  color: settings.curl ? C.arcane : C.muted,
-                  background: settings.curl ? `${C.arcane}14` : "transparent",
-                }}
-              >
-                {settings.curl ? "Attivo 📄" : "Spento"}
               </button>
             </div>
           )}
