@@ -171,12 +171,6 @@ function contentStyles(s) {
 // ombre del foglio. Il contenuto vero vive nell'iframe di epub.js e non si
 // puo' stampare qui; a questa velocita' l'occhio legge il ritmo, non le
 // parole.
-// Velature e riflessi del foglio si spengono sugli ultimi punti in alto e
-// in basso: li' ci sono i margini vuoti della pagina, e una velatura che
-// finisce di netto ci lascia una riga d'ombra orizzontale.
-const SFUMA_ORLI =
-  "linear-gradient(to bottom, transparent 0, #000 3.5%, #000 96.5%, transparent 100%)";
-
 const PRINT_ROWS = (fg) =>
   `repeating-linear-gradient(to bottom, ` +
   `${fg}18 0 2px, transparent 2px 15px, ` +
@@ -429,24 +423,25 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       `linear-gradient(${gradi}, transparent 0, ${buioOrlo} 15%, ${buio} 30%, ${buioOrlo} 44%, transparent 54%, ` +
       `${fianco} 57%, ${luceOrlo} 65%, ${luce} 72%, ${luceOrlo} 80%, ${fianco} 87%, transparent 100%)`;
   })();
-  // L'ombra di un foglio incernierato non e' una rampa uniforme da un
-  // bordo all'altro: la carta vicino alla piega sta nell'incavo del dorso e
-  // non prende luce quasi per niente, poi si schiarisce in fretta, resta
-  // appena velata per tutto il corpo del foglio e si rialza un po' verso il
-  // taglio, dove la curvatura la piega via dalla luce. E' quel buio stretto
-  // e profondo sul dorso a dire "questo foglio e' attaccato li'".
-  // Sta FERMO rispetto al foglio, quindi non merita uno strato suo: e' una
-  // fermata in piu' del fondo della faccia, dipinta una volta sola insieme
-  // al resto invece di essere una superficie da comporre a ogni fotogramma.
-  // Finisce di netto su testa e piede, dove la pagina vera e' vuota, e li'
-  // si leggeva come una riga d'ombra orizzontale: la copre una fascia di
-  // carta piena, che e' un'altra fermata dello stesso fondo e costa zero.
+  // L'incavo del dorso: la carta vicino alla piega non prende luce, e a un
+  // palmo di li' e' gia' carta normale. Sta FERMO rispetto al foglio,
+  // quindi non merita uno strato suo — e' una fermata in piu' del fondo
+  // della faccia, dipinta una volta sola invece di essere una superficie da
+  // comporre a ogni fotogramma.
+  //
+  // Il resto del foglio va lasciato ESATTAMENTE come la pagina che copre.
+  // Prima c'era una velatura di fondo su tutta la superficie (dal 15% di
+  // nero sul taglio all'8% nel corpo): misurato, rendeva la carta del
+  // foglio 119,100,78 contro i 129,108,85 della pagina sotto. Un otto per
+  // cento non si nota come "ombra", si nota come BORDO — testa e piede del
+  // foglio diventavano due righe nette contro la pagina, ed e' quello che
+  // si vedeva sopra e sotto durante il giro. Ora la velatura muore prima
+  // di meta' foglio e i due bordi non hanno piu' niente da rivelare.
   // `verso` e' il lato da cui parte il buio, cioe' dove sta la cerniera.
   const ombraFoglio = (verso) =>
-    `linear-gradient(to bottom, ${theme.bg} 0, ${theme.bg}00 3.5%, ${theme.bg}00 96.5%, ${theme.bg} 100%), ` +
-    (cartaScura
-      ? `linear-gradient(to ${verso}, #00000052 0%, #00000029 13%, #0000000f 52%, #0000001a 100%)`
-      : `linear-gradient(to ${verso}, #0000007a 0%, #0000003d 13%, #00000014 52%, #00000026 100%)`);
+    cartaScura
+      ? `linear-gradient(to ${verso}, #0000004d 0%, #0000001f 9%, #00000008 26%, transparent 45%)`
+      : `linear-gradient(to ${verso}, #00000073 0%, #00000030 9%, #0000000d 26%, transparent 45%)`;
 
   const flush = useCallback(() => {
     const s = live.current;
@@ -1521,10 +1516,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 // allunga verso il taglio, e l'ancoraggio e' qui perche' e'
                 // l'unica cosa che cambia fra i due versi
                 transformOrigin: dirNow === "next" ? "right center" : "left center",
+                // Stretta e attaccata al dorso. Larga meta' facciata era una
+                // macchia grigia sulla pagina, non un'ombra: l'ombra di un
+                // foglio inclinato cade dove il foglio e' VICINO alla carta,
+                // cioe' presso la cerniera, e a un palmo di li' e' gia'
+                // finita.
                 background:
                   dirNow === "next"
-                    ? "linear-gradient(to left, #00000059, #0000002e 22%, #00000014 52%, transparent 82%)"
-                    : "linear-gradient(to right, #00000059, #0000002e 22%, #00000014 52%, transparent 82%)",
+                    ? "linear-gradient(to left, #0000004d, #0000001c 14%, #0000000a 32%, transparent 52%)"
+                    : "linear-gradient(to right, #0000004d, #0000001c 14%, #0000000a 32%, transparent 52%)",
                 willChange: livello("transform, opacity"),
                 animation: anim("bc-cast"),
               }}
@@ -1701,8 +1701,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       width: "76%",
                       opacity: 0,
                       background: veloFoglio(dirNow === "next" ? "90deg" : "270deg"),
-                      WebkitMaskImage: SFUMA_ORLI,
-                      maskImage: SFUMA_ORLI,
                       willChange: livello("transform, opacity"),
                       animation: corsa
                         ? `bc-leaf-velo-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
@@ -1782,8 +1780,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       width: "76%",
                       opacity: 0,
                       background: veloFoglio(dirNow === "next" ? "90deg" : "270deg"),
-                      WebkitMaskImage: SFUMA_ORLI,
-                      maskImage: SFUMA_ORLI,
                       willChange: livello("transform, opacity"),
                       animation: corsa
                         ? `bc-leaf-velo-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`

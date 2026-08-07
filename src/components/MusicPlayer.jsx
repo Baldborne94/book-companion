@@ -291,22 +291,32 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
   useEffect(() => {
     const ms = navigator.mediaSession;
     if (!ms) return;
-    try {
-      if (current) {
-        ms.metadata = new window.MediaMetadata({
-          title: current.name || "Musica di sottofondo",
-          artist: "Book Companion",
-        });
-        ms.playbackState = playing ? "playing" : "paused";
-        ms.setActionHandler("play", () => resume());
-        ms.setActionHandler("pause", () => pause());
-        ms.setActionHandler("stop", () => stop());
-        ms.setActionHandler("nexttrack", queueRef.current.list.length ? () => advanceRef.current() : null);
-      } else {
+    if (!current) {
+      try {
         ms.metadata = null;
         ms.playbackState = "none";
-      }
-    } catch { /* niente sessione multimediale: si resta ai comandi in app */ }
+      } catch { /* niente sessione multimediale */ }
+      return;
+    }
+    // Tre pezzi, tre try distinti. Prima erano in blocco, e su un browser
+    // dove MediaMetadata non si costruisce saltavano anche lo stato e i
+    // comandi — cioe' proprio le cose che dicono al sistema "qui c'e'
+    // musica viva", che a schermo spento e' quel che tiene su tutto.
+    try {
+      ms.metadata = new window.MediaMetadata({
+        title: current.name || "Musica di sottofondo",
+        artist: "Book Companion",
+      });
+    } catch { /* niente scheda: pazienza, i comandi contano di piu' */ }
+    try {
+      ms.playbackState = playing ? "playing" : "paused";
+    } catch { /* stato non impostabile */ }
+    try {
+      ms.setActionHandler("play", () => resume());
+      ms.setActionHandler("pause", () => pause());
+      ms.setActionHandler("stop", () => stop());
+      ms.setActionHandler("nexttrack", queueRef.current.list.length ? () => advanceRef.current() : null);
+    } catch { /* si resta ai comandi in app */ }
   }, [current, playing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useImperativeHandle(ref, () => ({ play, playQueue, pause, resume, stop, setSleep }));
@@ -326,10 +336,25 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
         // prossima, e ci pensa onEnded.
         loop={!!current?.src && !queue}
         onEnded={() => advanceRef.current()}
+        preload="auto"
+        playsInline
         onError={() => {
           if (current?.src) notify("Questa traccia non si riesce a suonare 🎵");
         }}
-        style={{ display: "none" }}
+        // NON display:none. Un elemento tolto dal disegno e' un elemento che
+        // il browser puo' trattare da fantasma, e a schermo spento e'
+        // esattamente quando non vogliamo sorprese: sta a schermo come
+        // l'iframe della musica, due pixel invisibili in un angolo.
+        style={{
+          position: "fixed",
+          bottom: 0,
+          left: 0,
+          width: 2,
+          height: 2,
+          opacity: 0,
+          pointerEvents: "none",
+          zIndex: 1,
+        }}
       />
       {current?.embed && (
         <iframe
@@ -390,6 +415,14 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
             }}
           >
             {current.name || "Musica di sottofondo"}
+          </span>
+          {/* da dove esce l'audio, a colpo d'occhio: e' l'unica cosa che
+              dice se questa musica reggera' lo schermo spento o no */}
+          <span
+            title={current.trackId ? "Dal tuo archivio: regge lo schermo spento" : "Da YouTube: solo a schermo acceso"}
+            style={{ fontSize: 15, color: current.trackId ? C.accent : C.muted, opacity: 0.9 }}
+          >
+            {current.trackId ? "♫" : "♪"}
           </span>
           <button
             onClick={playing ? pause : resume}
