@@ -25,6 +25,12 @@ const EDGE_MIN = 7;
 const EDGE_MAX = 17;
 // la rilegatura visibile attorno alla carta
 const FRAME = 6;
+// Quanto dura il giro. Un tempo solo, da cui scendono lo scambio della
+// pagina e lo smontaggio del palco: scritto in tre posti si sfasava.
+// Era 1,1 secondi, ed era mezzo secondo di troppo. Una pagina vera si
+// volta in fretta, e piu' il giro dura piu' l'occhio ha tempo di guardare
+// il foglio invece di leggere il libro.
+const GIRO = 820;
 // Testa e piede della carta. Sono margini tipografici, non piu' lo spazio
 // riservato alle barre: il testo deve riempire la pagina, e quando le barre
 // compaiono coprono le prime e le ultime righe — scelta del lettore, che le
@@ -407,41 +413,30 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // Sulla carta scura la luce e' STRETTA e color inchiostro: una lama di
   // riflesso, non la lampada color crema tarata sulla pergamena.
   //
-  // LA LUCE DEL VOLO sta qui dentro, e non e' un vezzo. Il testo sul foglio
-  // che gira e' piu' magro e piu' pallido di quello della pagina ferma, e
-  // non per colpa nostra: appena c'e' un grado di rotazione il browser
-  // smette di scrivere i glifi sui pixel e proietta una fotografia della
-  // faccia — misurato, circa il 30% di contrasto in meno, e succederebbe
-  // con qualunque motore grafico. Compensarlo non si puo': ispessire
-  // l'inchiostro del clone ingrassa le lettere del 40% per recuperare dieci
-  // toni, scurirlo non fa presa sugli stili di epub.js.
-  // Allora invece di combattere quella morbidezza la si DICHIARA: il foglio
-  // alzato prende una luce che la pagina distesa non ha, e un testo piu'
-  // tenue su carta illuminata e' una conseguenza che torna, non un difetto.
-  // Le due strade ovvie costano care e sono state misurate e scartate: il
-  // mosso (`filter: blur`) 11 fotogrammi su 72, un velo di luce come strato
-  // a se' 6. Questa non costa niente, perche' fra una fermata e l'altra il
-  // gradiente deve pur avere un colore: invece di lasciarlo trasparente gli
-  // si da' la luce. A meta' giro questo riquadro e' largo il doppio del
-  // foglio scorciato, quindi lo copre tutto.
+  // DISCRETO. Tutte le velature qui sotto sono state ABBASSATE: la versione
+  // di prima — una luce di fondo sul foglio alzato, un riflesso a due terzi
+  // di opacita', un incavo al 45% di nero — voleva far leggere come "carta
+  // illuminata" il testo che il browser rende piu' tenue sotto rotazione.
+  // A schermo non e' andata: si vedeva l'effetto, non la pagina. Un libro
+  // vero, alla luce di una lampada da comodino, di luci e ombre ne fa
+  // pochissime, e sono appena percettibili. Meglio un giro che non si nota
+  // di uno che si fa guardare.
   const veloFoglio = (() => {
-    const buio = cartaScura ? "#00000059" : "#00000052";
-    const buioOrlo = cartaScura ? "#0000001a" : "#00000014";
-    const luce = cartaScura ? `${theme.fg}59` : "#fff6e0a6";
-    const luceOrlo = cartaScura ? `${theme.fg}12` : "#fff6e04d";
+    const buio = cartaScura ? "#00000026" : "#00000024";
+    const buioOrlo = cartaScura ? "#0000000a" : "#00000008";
+    const luce = cartaScura ? `${theme.fg}24` : "#fff6e038";
+    const luceOrlo = cartaScura ? `${theme.fg}08` : "#fff6e014";
     // il riflesso di un cilindro ha i FIANCHI SCURI: e' il contrasto
     // chiaro-scuro ravvicinato a dire "superficie curva", una banda chiara
     // da sola resta un lampo su una tavola piatta
-    const fianco = cartaScura ? "transparent" : "#0000001c";
-    // il fondo su cui corrono buio e riflesso: la carta alzata, illuminata
-    const alone = cartaScura ? `${theme.fg}0a` : "#fff6e03d";
+    const fianco = cartaScura ? "transparent" : "#0000000a";
     // Il riquadro e' largo ESATTAMENTE quanto la parte che dipinge. Era il
     // 140% della pagina con i due quinti esterni trasparenti: pixel
     // rasterizzati a ogni fotogramma per non disegnare niente, e dentro un
     // foglio che ruota ogni fotogramma e' una rasterizzazione nuova.
     return (gradi) =>
-      `linear-gradient(${gradi}, transparent 0, ${buioOrlo} 12%, ${buio} 30%, ${buioOrlo} 44%, ${alone} 54%, ` +
-      `${fianco} 57%, ${luceOrlo} 65%, ${luce} 72%, ${luceOrlo} 80%, ${fianco} 87%, ${alone} 93%, transparent 100%)`;
+      `linear-gradient(${gradi}, transparent 0, ${buioOrlo} 12%, ${buio} 30%, ${buioOrlo} 44%, transparent 54%, ` +
+      `${fianco} 57%, ${luceOrlo} 65%, ${luce} 72%, ${luceOrlo} 80%, ${fianco} 87%, transparent 100%)`;
   })();
   // L'incavo del dorso: la carta vicino alla piega non prende luce, e a un
   // palmo di li' e' gia' carta normale. Sta FERMO rispetto al foglio,
@@ -460,8 +455,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // `verso` e' il lato da cui parte il buio, cioe' dove sta la cerniera.
   const ombraFoglio = (verso) =>
     cartaScura
-      ? `linear-gradient(to ${verso}, #0000004d 0%, #0000001f 9%, #00000008 26%, transparent 45%)`
-      : `linear-gradient(to ${verso}, #00000073 0%, #00000030 9%, #0000000d 26%, transparent 45%)`;
+      ? `linear-gradient(to ${verso}, #0000002b 0%, #00000012 9%, #00000005 26%, transparent 42%)`
+      : `linear-gradient(to ${verso}, #00000042 0%, #0000001c 9%, #00000008 26%, transparent 42%)`;
 
   const flush = useCallback(() => {
     const s = live.current;
@@ -1069,9 +1064,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         partito = true;
         setTurning((t) => (t && t.key === key ? { ...t, via: true } : t));
         clearTimeout(turnTimer.current);
-        turnTimer.current = setTimeout(() => setTurning(null), 1200);
+        turnTimer.current = setTimeout(() => setTurning(null), GIRO + 100);
         // il foglio e la copertura sono opachi a 80ms: lo scambio resta invisibile
-        swapTimer.current = setTimeout(doSwap, 95);
+        swapTimer.current = setTimeout(doSwap, Math.round(GIRO * 0.085));
       })
     );
   }
@@ -1325,7 +1320,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // muoversi. Fra i due passa un fotogramma: e' li' che si smaltisce tutta
   // la pittura, col foglio ancora fermo e invisibile.
   const corsa = stage?.via ? stage : null;
-  const anim = (name) => (corsa ? `${name} 1.1s ease-in-out forwards` : "none");
+  const anim = (name) => (corsa ? `${name} ${GIRO}ms ease-in-out forwards` : "none");
   // LA VELATURA DEL VOLO. Il testo sul foglio che gira e' piu' magro e piu'
   // pallido di quello della pagina ferma, e non per colpa nostra: appena
   // c'e' un grado di rotazione il browser smette di scrivere i glifi sui
@@ -1560,8 +1555,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 // finita.
                 background:
                   dirNow === "next"
-                    ? "linear-gradient(to left, #0000004d, #0000001c 14%, #0000000a 32%, transparent 52%)"
-                    : "linear-gradient(to right, #0000004d, #0000001c 14%, #0000000a 32%, transparent 52%)",
+                    ? "linear-gradient(to left, #0000002b, #00000010 14%, #00000005 32%, transparent 52%)"
+                    : "linear-gradient(to right, #0000002b, #00000010 14%, #00000005 32%, transparent 52%)",
                 willChange: livello("transform, opacity"),
                 animation: anim("bc-cast"),
               }}
@@ -1646,7 +1641,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   transformStyle: "preserve-3d",
                   willChange: livello("transform"),
                   animation: corsa
-                    ? `${leafGeom.animationName} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
+                    ? `${leafGeom.animationName} ${GIRO}ms cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
                     : "none",
                 }}
               >
@@ -1740,7 +1735,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       background: veloFoglio(dirNow === "next" ? "90deg" : "270deg"),
                       willChange: livello("transform, opacity"),
                       animation: corsa
-                        ? `bc-leaf-velo-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
+                        ? `bc-leaf-velo-${dirNow} ${GIRO}ms cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
                         : "none",
                     }}
                   />
@@ -1819,7 +1814,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       background: veloFoglio(dirNow === "next" ? "90deg" : "270deg"),
                       willChange: livello("transform, opacity"),
                       animation: corsa
-                        ? `bc-leaf-velo-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
+                        ? `bc-leaf-velo-${dirNow} ${GIRO}ms cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
                         : "none",
                     }}
                   />
@@ -1846,7 +1841,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               backgroundColor: theme.bg,
               overflow: "hidden",
               willChange: livello("opacity"),
-              animation: corsa ? "bc-sheet-fade 0.5s ease-out forwards" : "none",
+              animation: corsa ? `bc-sheet-fade ${Math.round(GIRO * 0.45)}ms ease-out forwards` : "none",
             }}
           >
             {/* il velo porta la pagina che parte: la dissolvenza diventa un
@@ -1874,7 +1869,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               background:
                 "linear-gradient(90deg, transparent, #0000000d 26%, #0000001f 44%, #00000026 50%, #0000001f 56%, #0000000d 74%, transparent)",
               willChange: livello("opacity"),
-              animation: corsa ? "bc-spine-pulse 0.5s ease-in-out forwards" : "none",
+              animation: corsa ? `bc-spine-pulse ${Math.round(GIRO * 0.45)}ms ease-in-out forwards` : "none",
             }}
           />
         )}
