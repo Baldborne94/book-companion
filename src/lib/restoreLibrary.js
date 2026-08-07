@@ -1,7 +1,14 @@
-import { putFile, putCover, listFileIds } from "./bookStore.js";
+import { putFile, putCover, listFileIds, putTrack } from "./bookStore.js";
 import { loadBooks, saveBooks, setProgress, setStatus, touchBook, clearTombstones, setDates } from "./library.js";
 import { setCfi, saveMarks, saveHighlights } from "./annotations.js";
-import { setBookMusic } from "./music.js";
+import { setBookMusic, getFavoritesRaw, saveFavorites } from "./music.js";
+
+// Come per i libri: quello che c'e' gia' resta, dall'archivio si prende
+// solo cio' che manca. Una melodia si riconosce dal suo id.
+export function planMelodie(archivio = [], locali = []) {
+  const noti = new Set(locali.map((f) => f.id));
+  return archivio.filter((f) => f?.id && !noti.has(f.id));
+}
 
 // Ripristinare non e' sovrascrivere: quello che c'e' gia' sul dispositivo
 // e' presumibilmente piu' fresco dell'archivio e resta com'e'. Dall'archivio
@@ -88,11 +95,30 @@ export async function restoreLibrary(archive, { onProgress } = {}) {
   // sincronizzazione lo cancellerebbe di nuovo
   if (add.length) clearTombstones(add.map((b) => b.id));
 
+  const localiMel = getFavoritesRaw();
+  const nuoveMel = planMelodie(Array.isArray(data.melodie) ? data.melodie : [], localiMel);
+  let melodieRipristinate = 0;
+  for (const f of nuoveMel) {
+    const { track, ...voce } = f;
+    if (track && zip.file(track)) {
+      say(`Ripristino «${voce.name || "una melodia"}»…`);
+      await putTrack(voce.trackId, await zip.file(track).async("blob"));
+      melodieRipristinate++;
+    } else if (voce.trackId) {
+      // il preferito c'e' ma i byte no: meglio non lasciare in elenco una
+      // melodia che non suonerebbe
+      continue;
+    }
+    localiMel.push(voce);
+  }
+  if (nuoveMel.length) saveFavorites(localiMel);
+
   return {
     added: add.length,
     kept: kept.length,
     files: restoredFiles,
+    melodie: melodieRipristinate,
     books: loadBooks(),
-    partial: data.version !== 2,
+    partial: !(data.version >= 2),
   };
 }

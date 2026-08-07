@@ -5,12 +5,15 @@ let dbPromise;
 function db() {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 2);
+      const req = indexedDB.open(DB_NAME, 3);
       req.onupgradeneeded = () => {
         const d = req.result;
         if (!d.objectStoreNames.contains("files")) d.createObjectStore("files");
         if (!d.objectStoreNames.contains("covers")) d.createObjectStore("covers");
         if (!d.objectStoreNames.contains("aux")) d.createObjectStore("aux");
+        // le tracce audio stanno per conto loro: cancellare un libro non
+        // deve portarsi via la musica, e viceversa
+        if (!d.objectStoreNames.contains("tracks")) d.createObjectStore("tracks");
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
@@ -33,6 +36,10 @@ export const putFile = (id, blob) => withStore("files", "readwrite", (s) => s.pu
 export const getFile = (id) => withStore("files", "readonly", (s) => s.get(id));
 export const putCover = (id, blob) => withStore("covers", "readwrite", (s) => s.put(blob, id));
 export const getCover = (id) => withStore("covers", "readonly", (s) => s.get(id));
+
+export const putTrack = (id, blob) => withStore("tracks", "readwrite", (s) => s.put(blob, id));
+export const getTrack = (id) => withStore("tracks", "readonly", (s) => s.get(id));
+export const removeTrack = (id) => withStore("tracks", "readwrite", (s) => s.delete(id));
 
 export const listFileIds = () => withStore("files", "readonly", (s) => s.getAllKeys());
 export const putAux = (key, value) => withStore("aux", "readwrite", (s) => s.put(value, key));
