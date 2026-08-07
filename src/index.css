@@ -338,48 +338,7 @@ input {
   }
 }
 
-/* Il velo di luce e dorso del retro si spegne PRIMA dell'atterraggio:
-   cotto nello sfondo della faccia restava stampato sulla pagina posata —
-   una striscia scura lungo il dorso e il bordo esterno — e spariva di
-   colpo con lo smontaggio del palco. */
-@keyframes bc-leaf-veil {
-  0% {
-    opacity: 0;
-  }
-  8%,
-  62% {
-    opacity: 1;
-  }
-  88%,
-  100% {
-    opacity: 0;
-  }
-}
 
-/* Il velo scuro sul foglio che gira. Segue l'inclinazione, non il tempo:
-   disteso la carta prende tutta la luce, di taglio quasi niente. Il colmo
-   sta al 45%, dove il foglio e' pinnato a 90 gradi, e non a meta' del
-   giro come prima — l'ombra piu' fitta arrivava dopo il momento in cui il
-   foglio era davvero di coltello, e si leggeva come un ritardo. */
-@keyframes bc-leaf-shade {
-  0%,
-  10% {
-    opacity: 0;
-  }
-  26% {
-    opacity: 0.5;
-  }
-  45% {
-    opacity: 0.82;
-  }
-  64% {
-    opacity: 0.5;
-  }
-  86%,
-  100% {
-    opacity: 0;
-  }
-}
 
 /* Il riflesso che rotola sul foglio: su una superficie curva la luce
    scorre da un bordo all'altro mentre la pagina ruota, ed e' proprio
@@ -388,47 +347,7 @@ input {
    Piu' la carta si incurva, piu' stretta e viva e' la banda di luce: si
    alza il picco invece di caricare altra ombra, che a forza di velature
    scure il foglio diventava sporco invece che curvo. */
-@keyframes bc-leaf-gloss-next {
-  0%,
-  10% {
-    opacity: 0;
-    transform: translateX(-60%);
-  }
-  30% {
-    opacity: 0.62;
-  }
-  55% {
-    opacity: 0.82;
-  }
-  80% {
-    opacity: 0.34;
-  }
-  100% {
-    opacity: 0;
-    transform: translateX(260%);
-  }
-}
 
-@keyframes bc-leaf-gloss-prev {
-  0%,
-  10% {
-    opacity: 0;
-    transform: translateX(60%);
-  }
-  30% {
-    opacity: 0.62;
-  }
-  55% {
-    opacity: 0.82;
-  }
-  80% {
-    opacity: 0.34;
-  }
-  100% {
-    opacity: 0;
-    transform: translateX(-260%);
-  }
-}
 
 /* L'ombra della piega, che SCORRE. La luce che rotola aveva gia' il suo
    riflesso in movimento; il buio invece stava fermo e si limitava ad
@@ -439,51 +358,56 @@ input {
    tarato perche' le due bande restino appaiate — stesso tempo, stessa
    easing, spostamenti proporzionali alla larghezza dei rispettivi
    riquadri. */
-@keyframes bc-leaf-band-next {
+@keyframes bc-leaf-velo-next {
   0%,
   8% {
     opacity: 0;
-    transform: translateX(-71%);
+    transform: translateX(-46%);
   }
   28% {
-    opacity: 0.55;
+    opacity: 0.6;
   }
-  48% {
-    opacity: 0.85;
+  50% {
+    opacity: 0.88;
   }
-  72% {
-    opacity: 0.5;
+  78% {
+    opacity: 0.4;
   }
-  86% {
+  92% {
     opacity: 0;
   }
   100% {
     opacity: 0;
-    transform: translateX(100%);
+    transform: translateX(151%);
   }
 }
 
-@keyframes bc-leaf-band-prev {
+/* Andando all'indietro il gradiente e' specchiato (270deg invece di
+   90deg), quindi le fermate di buio e luce cadono simmetriche: gli
+   estremi della corsa non sono l'opposto esatto degli altri, sono quelli
+   che portano il riflesso da fuori pagina a fuori pagina col buio sempre
+   dietro. */
+@keyframes bc-leaf-velo-prev {
   0%,
   8% {
     opacity: 0;
-    transform: translateX(71%);
+    transform: translateX(177%);
   }
   28% {
-    opacity: 0.55;
+    opacity: 0.6;
   }
-  48% {
-    opacity: 0.85;
+  50% {
+    opacity: 0.88;
   }
-  72% {
-    opacity: 0.5;
+  78% {
+    opacity: 0.4;
   }
-  86% {
+  92% {
     opacity: 0;
   }
   100% {
     opacity: 0;
-    transform: translateX(-100%);
+    transform: translateX(-20%);
   }
 }
 
