@@ -2,21 +2,43 @@ import { putTrack, getTrack, removeTrack } from "./bookStore.js";
 
 const FAVS_KEY = "bc_music_favs";
 
-// DUE SORGENTI, UN SOLO ELENCO DI MELODIE.
+// TRE SORGENTI, UN SOLO ELENCO DI MELODIE.
 //
-// YouTube suona solo a schermo acceso, e non e' un limite della PWA: e' il
-// lettore dentro l'iframe: quando la pagina va in secondo piano, YouTube si
-// mette in pausa da solo e il browser gli toglie il tempo. Non c'e' chiamata
-// che lo impedisca, perche' quel lettore non e' nostro.
-// Un file audio nostro invece suona da un <audio> in cima alla pagina, e
-// quello i browser lo tengono vivo a schermo spento — e' lo stesso
-// meccanismo delle radio e dei podcast sul web. Percio' le melodie che
-// devono accompagnare il sonno sono FILE, non link.
+// La riga che divide tutto e' una sola: CHI SUONA. Se suona un <audio>
+// nostro, in cima alla pagina, il browser tiene viva la scheda a schermo
+// spento — e' lo stesso meccanismo con cui sul web suonano radio e podcast.
+// Se suona il lettore di YouTube dentro un iframe, no: quando la pagina va
+// in secondo piano YouTube si mette in pausa da solo e il browser gli
+// toglie il tempo. Non c'e' chiamata che lo impedisca, perche' quel lettore
+// non e' nostro — e non lo sarebbe nemmeno dentro un'app Android, dove a
+// schermo spento la pagina e' in secondo piano lo stesso.
 //
-// Un preferito e' YouTube se ha un `url`, un file se ha un `trackId`. I
-// preferiti gia' salvati non hanno `trackId`, quindi restano YouTube senza
-// bisogno di migrare niente.
+// Quindi:
+// - `trackId`  → un file caricato dal lettore, byte nello store `tracks`;
+// - `url` che NON e' YouTube → un flusso audio diretto (una radio, un
+//   ambient senza fine): lo suona il nostro <audio>, niente da scaricare;
+// - `url` di YouTube → l'iframe, e solo a schermo acceso.
+//
+// I preferiti gia' salvati hanno solo `url` di YouTube, quindi continuano a
+// comportarsi come prima senza bisogno di migrare niente.
 export const isFile = (f) => !!f?.trackId;
+
+// un indirizzo che sappiamo suonare da soli. Solo https: la pagina sta su
+// https e un flusso in chiaro verrebbe bloccato dal browser senza spiegare
+// perche', lasciando il lettore davanti a una musica che non parte.
+export function isFlusso(input) {
+  const url = typeof input === "string" ? input : input?.url;
+  if (!url || parseYouTube(url)) return false;
+  try {
+    return new URL(url.trim()).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+// tutto cio' che suona dal NOSTRO lettore, cioe' tutto cio' che regge lo
+// schermo spento
+export const reggeSchermoSpento = (f) => isFile(f) || isFlusso(f);
 
 const AUDIO_OK = /^audio\//;
 

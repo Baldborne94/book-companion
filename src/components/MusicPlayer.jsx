@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { C } from "../data/constants.js";
-import { parseYouTube, embedUrl, isFile, loadTrack } from "../lib/music.js";
+import { parseYouTube, embedUrl, isFile, isFlusso, loadTrack } from "../lib/music.js";
 
 const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }, ref) {
   const iframeRef = useRef(null);
@@ -33,16 +33,17 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
   const vivo = useRef({ playing: false, timerEnd: null, current: null });
   vivo.current = { playing, timerEnd, current };
 
-  // A SCHERMO SPENTO. Due cose diverse, e conviene distinguerle.
+  // A SCHERMO SPENTO.
   //
-  // La riproduzione in se' non e' in nostro potere: l'audio esce da un
-  // iframe di YouTube, e browser e YouTube decidono loro se sospenderlo
-  // quando la pagina va in background. Non esiste una chiamata che lo
-  // impedisca — il tentativo tipico (Wake Lock) tiene acceso lo SCHERMO,
-  // cioe' l'opposto di quel che serve.
+  // Quel che suona dal nostro <audio> — un file o un flusso diretto —
+  // continua da solo: e' il browser a tenere viva una scheda che sta
+  // riproducendo. Qui non c'e' niente da fare, e infatti non facciamo
+  // niente: il richiamo sotto le passa accanto.
   //
-  // Quello che possiamo garantire e' che la musica non muoia PER COLPA
-  // NOSTRA e che il timer sia rispettato lo stesso:
+  // Quel che suona da YouTube non e' in nostro potere: quel lettore si mette
+  // in pausa da solo in secondo piano. Il tentativo tipico (Wake Lock) tiene
+  // acceso lo SCHERMO, cioe' l'opposto di quel che serve. Per YouTube
+  // possiamo solo non peggiorare le cose e rispettare il timer lo stesso:
   // - il conto alla rovescia sta sull'orologio da muro, non sul setTimeout
   //   (che i browser congelano in background: al risveglio la musica
   //   sarebbe andata avanti oltre il tempo chiesto);
@@ -62,7 +63,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
       // il richiamo serve solo a YouTube, che si mette in pausa da solo
       // quando la pagina va in secondo piano; l'audio nostro non si e' mai
       // fermato e svegliarlo qui gli farebbe solo perdere il filo
-      if (vivo.current.current?.trackId) return;
+      if (vivo.current.current?.src) return;
       if (document.visibilityState === "visible" && vivo.current.playing) {
         command("playVideo");
       }
@@ -92,7 +93,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
 
   // Handshake con l'iframe di YouTube: senza "listening" non manda eventi
   useEffect(() => {
-    if (!current || current.trackId) return;
+    if (!current || current.src) return;
     let n = 0;
     const t = setInterval(() => {
       try {
@@ -174,24 +175,38 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
     return true;
   }
 
-  // `voce` e' un preferito intero (file o YouTube) oppure un semplice
-  // indirizzo incollato al volo
+  // `voce` e' un preferito intero (file, flusso o YouTube) oppure un
+  // semplice indirizzo incollato al volo
   function start(voce, name = "") {
     if (isFile(voce)) {
       spegniAudio();
       suonaFile(voce);
       return true;
     }
-    const url = typeof voce === "string" ? voce : voce?.url;
+    const url = typeof voce === "string" ? voce.trim() : voce?.url;
+    const comeSiChiama = (typeof voce === "string" ? name : voce?.name) || name;
     const src = parseYouTube(url || "");
-    if (!src) {
-      notify("Questo non sembra un link YouTube… incolla un video o una playlist 🎵");
-      return false;
+    if (src) {
+      spegniAudio();
+      setCurrent({ url, name: comeSiChiama, embed: embedUrl(src) });
+      setPlaying(true);
+      return true;
     }
-    spegniAudio();
-    setCurrent({ url, name: (typeof voce === "string" ? name : voce.name) || name, embed: embedUrl(src) });
-    setPlaying(true);
-    return true;
+    // non e' YouTube: proviamo a suonarlo noi. Un flusso diretto — una
+    // radio, un ambient senza fine — passa dal nostro <audio> come un file,
+    // quindi regge lo schermo spento e non c'e' niente da scaricare.
+    if (isFlusso(url)) {
+      spegniAudio();
+      setCurrent({ url, name: comeSiChiama, src: url, flusso: true });
+      setPlaying(true);
+      return true;
+    }
+    notify(
+      /^http:\/\//i.test(url || "")
+        ? "Un indirizzo in chiaro (http) il browser lo blocca: serve https 🎵"
+        : "Non è un link YouTube né un flusso audio… incolla un video, una playlist o l'indirizzo di una radio 🎵"
+    );
+    return false;
   }
 
   function play(voce, name = "") {
@@ -236,14 +251,14 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
   const stopRef = useRef(() => {});
 
   function pause() {
-    if (audioRef.current && vivo.current.current?.trackId) {
+    if (audioRef.current && vivo.current.current?.src) {
       try { audioRef.current.pause(); } catch { /* mai partito */ }
     } else command("pauseVideo");
     setPlaying(false);
   }
 
   function resume() {
-    if (audioRef.current && vivo.current.current?.trackId) {
+    if (audioRef.current && vivo.current.current?.src) {
       audioRef.current.play().catch(() => {});
     } else command("playVideo");
     setPlaying(true);
@@ -334,6 +349,9 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
         // una melodia sola gira all'infinito: e' sottofondo, non un disco
         // da ascoltare fino in fondo. In coda invece si passa alla
         // prossima, e ci pensa onEnded.
+        // Vale anche per gli indirizzi: una radio senza fine il ciclo non lo
+        // vede mai, ma un link a un mp3 e' un file come gli altri e senza
+        // ciclo si spegneva dopo un giro solo — misurato in prova.
         loop={!!current?.src && !queue}
         onEnded={() => advanceRef.current()}
         preload="auto"
@@ -419,10 +437,10 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
           {/* da dove esce l'audio, a colpo d'occhio: e' l'unica cosa che
               dice se questa musica reggera' lo schermo spento o no */}
           <span
-            title={current.trackId ? "Dal tuo archivio: regge lo schermo spento" : "Da YouTube: solo a schermo acceso"}
-            style={{ fontSize: 15, color: current.trackId ? C.accent : C.muted, opacity: 0.9 }}
+            title={current.src ? "Lo suona l'app: regge lo schermo spento" : "Da YouTube: solo a schermo acceso"}
+            style={{ fontSize: 15, color: current.src ? C.accent : C.muted, opacity: 0.9 }}
           >
-            {current.trackId ? "♫" : "♪"}
+            {current.src ? "♫" : "♪"}
           </span>
           <button
             onClick={playing ? pause : resume}
