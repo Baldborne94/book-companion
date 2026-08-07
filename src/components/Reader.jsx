@@ -172,6 +172,12 @@ function contentStyles(s) {
 // ombre del foglio. Il contenuto vero vive nell'iframe di epub.js e non si
 // puo' stampare qui; a questa velocita' l'occhio legge il ritmo, non le
 // parole.
+// Velature e riflessi del foglio si spengono sugli ultimi punti in alto e
+// in basso: li' ci sono i margini vuoti della pagina, e una velatura che
+// finisce di netto ci lascia una riga d'ombra orizzontale.
+const SFUMA_ORLI =
+  "linear-gradient(to bottom, transparent 0, #000 3.5%, #000 96.5%, transparent 100%)";
+
 const PRINT_ROWS = (fg) =>
   `repeating-linear-gradient(to bottom, ` +
   `${fg}18 0 2px, transparent 2px 15px, ` +
@@ -389,6 +395,27 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   turningRef.current = turning;
   live.current.selMenu = selMenu;
   const theme = READER_THEMES[settings.theme];
+  // Quanto e' scura la carta di questo tema. Luce e ombra sul foglio che
+  // gira erano tarate una volta per tutte sulla pergamena: sul tema notte
+  // la banda di luce color crema diventava una lampada che attraversa la
+  // pagina, e l'ombra spariva del tutto (nero su nero). Su carta scura la
+  // luce dev'essere fioca e del colore della carta, non crema; l'ombra
+  // quasi inutile. Su carta chiara vale il contrario.
+  const cartaScura = (() => {
+    const h = (theme.bg || "#000").replace("#", "");
+    const n = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+    const [r, g, b] = [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16) || 0);
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5;
+  })();
+  // la luce sulla carta scura resta appena percettibile e prende il colore
+  // dell'inchiostro invece del crema
+  const luceFoglio = cartaScura
+    ? `linear-gradient(90deg, transparent, ${theme.fg}0f 38%, ${theme.fg}24 50%, ${theme.fg}0f 62%, transparent)`
+    : "linear-gradient(90deg, transparent, #00000021 18%, #fff6e04d 38%, #fff6e099 50%, #fff6e04d 62%, #00000021 82%, transparent)";
+  const ombraFoglio = (verso) =>
+    cartaScura
+      ? `linear-gradient(to ${verso}, #00000038, #00000014)`
+      : `linear-gradient(to ${verso}, #00000052, #00000026)`;
 
   const flush = useCallback(() => {
     const s = live.current;
@@ -1829,11 +1856,17 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       position: "absolute",
                       inset: 0,
                       opacity: 0,
-                      background:
-                        dirNow === "next"
-                          ? "linear-gradient(to right, #00000052, #00000026)"
-                          : "linear-gradient(to left, #00000052, #00000026)",
+                      background: ombraFoglio(dirNow === "next" ? "right" : "left"),
                       animation: anim("bc-leaf-shade"),
+                      // Sfuma a NULLA sul bordo alto e basso. Il foglio e'
+                      // alto quanto tutta la pagina, margini compresi, e la
+                      // sua velatura scuriva anche le fasce vuote di testa e
+                      // piede dove la pagina vera non ha nulla: si vedeva
+                      // come una riga d'ombra orizzontale vicino al centro,
+                      // sopra e sotto. Con la maschera il foglio si perde
+                      // nei margini invece di finire con uno spigolo.
+                      WebkitMaskImage: SFUMA_ORLI,
+                      maskImage: SFUMA_ORLI,
                     }}
                   />
                   {/* il riflesso che rotola: la luce scorre da un bordo
@@ -1851,8 +1884,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       // contrasto chiaro-scuro ravvicinato a dire "superficie
                       // curva", una banda chiara da sola resta un lampo su
                       // una tavola piatta
-                      background:
-                        "linear-gradient(90deg, transparent, #00000021 18%, #fff6e04d 38%, #fff6e099 50%, #fff6e04d 62%, #00000021 82%, transparent)",
+                      background: luceFoglio,
+                      WebkitMaskImage: SFUMA_ORLI,
+                      maskImage: SFUMA_ORLI,
                       animation: stage
                         ? `bc-leaf-gloss-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
                         : "none",
@@ -1935,11 +1969,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       position: "absolute",
                       inset: 0,
                       opacity: 0,
-                      background:
-                        dirNow === "next"
-                          ? "linear-gradient(to left, #00000052, #00000026)"
-                          : "linear-gradient(to right, #00000052, #00000026)",
+                      background: ombraFoglio(dirNow === "next" ? "left" : "right"),
                       animation: anim("bc-leaf-shade"),
+                      WebkitMaskImage: SFUMA_ORLI,
+                      maskImage: SFUMA_ORLI,
                     }}
                   />
                   {/* il riflesso che rotola: la luce scorre da un bordo
@@ -1957,8 +1990,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       // contrasto chiaro-scuro ravvicinato a dire "superficie
                       // curva", una banda chiara da sola resta un lampo su
                       // una tavola piatta
-                      background:
-                        "linear-gradient(90deg, transparent, #00000021 18%, #fff6e04d 38%, #fff6e099 50%, #fff6e04d 62%, #00000021 82%, transparent)",
+                      background: luceFoglio,
+                      WebkitMaskImage: SFUMA_ORLI,
+                      maskImage: SFUMA_ORLI,
                       animation: stage
                         ? `bc-leaf-gloss-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
                         : "none",
