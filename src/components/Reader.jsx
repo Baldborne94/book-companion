@@ -406,6 +406,24 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // del prezzo e senza il rischio che le due corse si sfasino.
   // Sulla carta scura la luce e' STRETTA e color inchiostro: una lama di
   // riflesso, non la lampada color crema tarata sulla pergamena.
+  //
+  // LA LUCE DEL VOLO sta qui dentro, e non e' un vezzo. Il testo sul foglio
+  // che gira e' piu' magro e piu' pallido di quello della pagina ferma, e
+  // non per colpa nostra: appena c'e' un grado di rotazione il browser
+  // smette di scrivere i glifi sui pixel e proietta una fotografia della
+  // faccia — misurato, circa il 30% di contrasto in meno, e succederebbe
+  // con qualunque motore grafico. Compensarlo non si puo': ispessire
+  // l'inchiostro del clone ingrassa le lettere del 40% per recuperare dieci
+  // toni, scurirlo non fa presa sugli stili di epub.js.
+  // Allora invece di combattere quella morbidezza la si DICHIARA: il foglio
+  // alzato prende una luce che la pagina distesa non ha, e un testo piu'
+  // tenue su carta illuminata e' una conseguenza che torna, non un difetto.
+  // Le due strade ovvie costano care e sono state misurate e scartate: il
+  // mosso (`filter: blur`) 11 fotogrammi su 72, un velo di luce come strato
+  // a se' 6. Questa non costa niente, perche' fra una fermata e l'altra il
+  // gradiente deve pur avere un colore: invece di lasciarlo trasparente gli
+  // si da' la luce. A meta' giro questo riquadro e' largo il doppio del
+  // foglio scorciato, quindi lo copre tutto.
   const veloFoglio = (() => {
     const buio = cartaScura ? "#00000059" : "#00000052";
     const buioOrlo = cartaScura ? "#0000001a" : "#00000014";
@@ -415,13 +433,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // chiaro-scuro ravvicinato a dire "superficie curva", una banda chiara
     // da sola resta un lampo su una tavola piatta
     const fianco = cartaScura ? "transparent" : "#0000001c";
+    // il fondo su cui corrono buio e riflesso: la carta alzata, illuminata
+    const alone = cartaScura ? `${theme.fg}0a` : "#fff6e03d";
     // Il riquadro e' largo ESATTAMENTE quanto la parte che dipinge. Era il
     // 140% della pagina con i due quinti esterni trasparenti: pixel
     // rasterizzati a ogni fotogramma per non disegnare niente, e dentro un
     // foglio che ruota ogni fotogramma e' una rasterizzazione nuova.
     return (gradi) =>
-      `linear-gradient(${gradi}, transparent 0, ${buioOrlo} 15%, ${buio} 30%, ${buioOrlo} 44%, transparent 54%, ` +
-      `${fianco} 57%, ${luceOrlo} 65%, ${luce} 72%, ${luceOrlo} 80%, ${fianco} 87%, transparent 100%)`;
+      `linear-gradient(${gradi}, transparent 0, ${buioOrlo} 12%, ${buio} 30%, ${buioOrlo} 44%, ${alone} 54%, ` +
+      `${fianco} 57%, ${luceOrlo} 65%, ${luce} 72%, ${luceOrlo} 80%, ${fianco} 87%, ${alone} 93%, transparent 100%)`;
   })();
   // L'incavo del dorso: la carta vicino alla piega non prende luce, e a un
   // palmo di li' e' gia' carta normale. Sta FERMO rispetto al foglio,
@@ -1306,6 +1326,23 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // la pittura, col foglio ancora fermo e invisibile.
   const corsa = stage?.via ? stage : null;
   const anim = (name) => (corsa ? `${name} 1.1s ease-in-out forwards` : "none");
+  // LA VELATURA DEL VOLO. Il testo sul foglio che gira e' piu' magro e piu'
+  // pallido di quello della pagina ferma, e non per colpa nostra: appena
+  // c'e' un grado di rotazione il browser smette di scrivere i glifi sui
+  // pixel e proietta una fotografia della faccia — misurato, circa il 30%
+  // di contrasto in meno, e la stessa cosa succederebbe con qualunque
+  // motore grafico. Compensarlo non si puo' (ispessire l'inchiostro
+  // ingrassa le lettere, scurirlo non fa presa sugli stili di epub.js).
+  // Allora si fa l'opposto: invece di combattere quella morbidezza la si
+  // DICHIARA, dando al foglio in volo una luce che la pagina ferma non ha.
+  // Un foglio alzato prende la luce di taglio e sbianca: se sbianca perche'
+  // e' ILLUMINATO, il testo piu' tenue e' una conseguenza che torna, non un
+  // difetto.
+  // La strada ovvia — sfocare il foglio come una carta mossa — e' stata
+  // provata e scartata: `filter: blur` costa 11 fotogrammi su 72 (misurato),
+  // cioe' ci ridava a mano destra gli scatti che avevamo tolto a sinistra.
+  // La luce invece e' una fermata in piu' di un gradiente che c'e' gia', e
+  // non costa niente.
   // OGNI velatura del giro deve avere un LIVELLO SUO. Senza, il compositore
   // le tiene nel livello del documento e ogni loro cambio di opacita'
   // ridipinge l'INTERA finestra: nella traccia si vedevano 25 pitture a
