@@ -399,30 +399,54 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const [r, g, b] = [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16) || 0);
     return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5;
   })();
-  // Sulla carta scura la luce c'e' eccome, ma e' STRETTA e del colore
-  // dell'inchiostro: una lama di riflesso, non la lampada color crema che
-  // attraversava la pagina. Larga come sulla pergamena diventava un faro,
-  // e fioca come l'avevamo lasciata spariva del tutto.
-  const luceFoglio = cartaScura
-    ? `linear-gradient(90deg, transparent, ${theme.fg}12 42%, ${theme.fg}59 50%, ${theme.fg}12 58%, transparent)`
-    : "linear-gradient(90deg, transparent, #00000021 18%, #fff6e04d 38%, #fff6e099 50%, #fff6e04d 62%, #00000021 82%, transparent)";
+  // IL VELO CHE VIAGGIA — uno solo. Erano due strati sovrapposti, la banda
+  // scura e la lama di luce, ognuno con la sua animazione: due superfici
+  // semitrasparenti grandi quanto la pagina da fondere a ogni fotogramma
+  // sopra un foglio che intanto ruota. E' li' che se ne andavano i
+  // fotogrammi (misurato: togliendo le velature si passa da 53 a 67
+  // fotogrammi per giro). Buio e luce stanno a distanza fissa l'uno
+  // dall'altra per tutto il giro, quindi non serviva affatto muoverli
+  // separatamente: sono due fermate dello STESSO gradiente, e viaggiano
+  // insieme in un solo strato. Il buio sta indietro di un terzo di pagina,
+  // la luce davanti sul colmo della curva — esattamente come prima, a meta'
+  // del prezzo e senza il rischio che le due corse si sfasino.
+  // Sulla carta scura la luce e' STRETTA e color inchiostro: una lama di
+  // riflesso, non la lampada color crema tarata sulla pergamena.
+  const veloFoglio = (() => {
+    const buio = cartaScura ? "#00000059" : "#00000052";
+    const buioOrlo = cartaScura ? "#0000001a" : "#00000014";
+    const luce = cartaScura ? `${theme.fg}59` : "#fff6e0a6";
+    const luceOrlo = cartaScura ? `${theme.fg}12` : "#fff6e04d";
+    // il riflesso di un cilindro ha i FIANCHI SCURI: e' il contrasto
+    // chiaro-scuro ravvicinato a dire "superficie curva", una banda chiara
+    // da sola resta un lampo su una tavola piatta
+    const fianco = cartaScura ? "transparent" : "#0000001c";
+    // Il riquadro e' largo ESATTAMENTE quanto la parte che dipinge. Era il
+    // 140% della pagina con i due quinti esterni trasparenti: pixel
+    // rasterizzati a ogni fotogramma per non disegnare niente, e dentro un
+    // foglio che ruota ogni fotogramma e' una rasterizzazione nuova.
+    return (gradi) =>
+      `linear-gradient(${gradi}, transparent 0, ${buioOrlo} 15%, ${buio} 30%, ${buioOrlo} 44%, transparent 54%, ` +
+      `${fianco} 57%, ${luceOrlo} 65%, ${luce} 72%, ${luceOrlo} 80%, ${fianco} 87%, transparent 100%)`;
+  })();
   // L'ombra di un foglio incernierato non e' una rampa uniforme da un
   // bordo all'altro: la carta vicino alla piega sta nell'incavo del dorso e
   // non prende luce quasi per niente, poi si schiarisce in fretta, resta
   // appena velata per tutto il corpo del foglio e si rialza un po' verso il
   // taglio, dove la curvatura la piega via dalla luce. E' quel buio stretto
   // e profondo sul dorso a dire "questo foglio e' attaccato li'".
+  // Sta FERMO rispetto al foglio, quindi non merita uno strato suo: e' una
+  // fermata in piu' del fondo della faccia, dipinta una volta sola insieme
+  // al resto invece di essere una superficie da comporre a ogni fotogramma.
+  // Finisce di netto su testa e piede, dove la pagina vera e' vuota, e li'
+  // si leggeva come una riga d'ombra orizzontale: la copre una fascia di
+  // carta piena, che e' un'altra fermata dello stesso fondo e costa zero.
   // `verso` e' il lato da cui parte il buio, cioe' dove sta la cerniera.
   const ombraFoglio = (verso) =>
-    cartaScura
+    `linear-gradient(to bottom, ${theme.bg} 0, ${theme.bg}00 3.5%, ${theme.bg}00 96.5%, ${theme.bg} 100%), ` +
+    (cartaScura
       ? `linear-gradient(to ${verso}, #00000052 0%, #00000029 13%, #0000000f 52%, #0000001a 100%)`
-      : `linear-gradient(to ${verso}, #0000007a 0%, #0000003d 13%, #00000014 52%, #00000026 100%)`;
-  // L'incavo che viaggia col riflesso: la banda scura che segue la piega.
-  // Sulla carta scura il nero rende poco (e' gia' quasi nero sotto), quindi
-  // resta discreta e lascia il mestiere alla lama di luce.
-  const bandaFoglio = cartaScura
-    ? "linear-gradient(90deg, transparent, #0000001a 20%, #00000059 50%, #0000001a 80%, transparent)"
-    : "linear-gradient(90deg, transparent, #00000014 20%, #00000052 50%, #00000014 80%, transparent)";
+      : `linear-gradient(to ${verso}, #0000007a 0%, #0000003d 13%, #00000014 52%, #00000026 100%)`);
 
   const flush = useCallback(() => {
     const s = live.current;
@@ -951,9 +975,19 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     }
   }
 
+  // La fotografia costa: serializza tutto il capitolo con i suoi fogli di
+  // stile e riscrive il srcDoc di due iframe. Cade 450ms dopo il cambio
+  // pagina, cioe' — se il cambio l'ha fatto un giro — proprio NEL MEZZO
+  // dell'animazione: nella traccia era il lavoro grosso che spezzava i
+  // fotogrammi a meta' volo. Finche' il foglio e' in aria si riprova piu'
+  // tardi; i "momenti morti" sono quelli veri, a giro finito.
   const schedulePark = useCallback(() => {
     clearTimeout(parkTimer.current);
     parkTimer.current = setTimeout(() => {
+      if (turningRef.current) {
+        schedulePark();
+        return;
+      }
       const p = snapPark();
       if (!p) return;
       setPark((old) => (old && old.html === p.html ? old : p));
@@ -973,9 +1007,28 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     }
     const key = Date.now();
     const geo = snapRects();
-    setTurning({ dir, key, x: geo?.x, y: geo?.y, hw: geo?.hw, href: geo?.href, x2: null, href2: null });
+    // PRIMA SI DIPINGE, POI SI PARTE. Il palco del foglio — le due facce,
+    // i cloni del capitolo, le velature, la copertura, l'ombra gettata —
+    // nasce al tocco, e finche' nasceva insieme all'animazione il browser
+    // doveva dipingere sei superfici grandi quanto la pagina, rifare i
+    // livelli e consegnarli al compositore MENTRE il foglio era gia' in
+    // volo: nella traccia sono ~150ms di lavoro tutto nei primi fotogrammi,
+    // ed e' quello lo scatto che si vedeva in partenza (dopo, il giro e'
+    // vuoto: la traccia non ha piu' nulla fino alla fine).
+    // Adesso il palco compare fermo e invisibile, si lascia dipingere, e
+    // solo al fotogramma dopo — quando il lavoro e' finito per davvero —
+    // partono le animazioni. Il giro comincia qualche millisecondo piu'
+    // tardi e in cambio non perde un fotogramma.
+    setTurning({ dir, key, x: geo?.x, y: geo?.y, hw: geo?.hw, href: geo?.href, x2: null, href2: null, via: false });
+    // rete di sicurezza: a scheda nascosta i rAF non arrivano mai, e senza
+    // questo il palco resterebbe montato a impedire ogni giro successivo e
+    // la pagina non cambierebbe affatto
+    let partito = false;
     clearTimeout(turnTimer.current);
-    turnTimer.current = setTimeout(() => setTurning(null), 1200);
+    turnTimer.current = setTimeout(() => {
+      setTurning(null);
+      if (!partito) step(r, dir);
+    }, 1600);
     const doSwap = () => {
       swapTimer.current = null;
       step(r, dir);
@@ -989,8 +1042,23 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         if (g2) setTurning((t) => (t && t.key === key ? { ...t, x2: g2.x, y2: g2.y, href2: g2.href } : t));
       }, 150);
     };
-    // il foglio e la copertura sono opachi a 80ms: lo scambio resta invisibile
-    swapTimer.current = setTimeout(doSwap, 95);
+    // due giri di rAF: il primo cade prima che il fotogramma col palco
+    // nuovo sia disegnato, il secondo dopo che e' stato consegnato
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        // il giro e' ancora il nostro? La domanda si fa QUI e non dentro
+        // l'aggiornamento di stato: React non esegue quelle funzioni subito,
+        // e leggendo il risultato sul momento si trovava sempre "no" — il
+        // foglio girava ma la pagina sotto non cambiava mai
+        if (turningRef.current?.key !== key) return;
+        partito = true;
+        setTurning((t) => (t && t.key === key ? { ...t, via: true } : t));
+        clearTimeout(turnTimer.current);
+        turnTimer.current = setTimeout(() => setTurning(null), 1200);
+        // il foglio e la copertura sono opachi a 80ms: lo scambio resta invisibile
+        swapTimer.current = setTimeout(doSwap, 95);
+      })
+    );
   }
   turnRef.current = turn;
 
@@ -1237,7 +1305,22 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         };
   // niente attore parte nudo: il clone si mostra solo se la fotografia
   // pronta e' del capitolo giusto per quella faccia
-  const anim = (name) => (stage ? `${name} 1.1s ease-in-out forwards` : "none");
+  // `stage` = il palco esiste (va montato, promosso, dipinto).
+  // `corsa` = il palco e' gia' stato consegnato al compositore e puo'
+  // muoversi. Fra i due passa un fotogramma: e' li' che si smaltisce tutta
+  // la pittura, col foglio ancora fermo e invisibile.
+  const corsa = stage?.via ? stage : null;
+  const anim = (name) => (corsa ? `${name} 1.1s ease-in-out forwards` : "none");
+  // OGNI velatura del giro deve avere un LIVELLO SUO. Senza, il compositore
+  // le tiene nel livello del documento e ogni loro cambio di opacita'
+  // ridipinge l'INTERA finestra: nella traccia si vedevano 25 pitture a
+  // schermo pieno per giro, una ogni due o tre fotogrammi, ed e' da li' che
+  // venivano gli scatti. Promesso il livello, la pittura si fa una volta e
+  // il resto del giro e' solo compositing.
+  // La promessa vale SOLO durante il giro: tenerla accesa sempre vorrebbe
+  // dire una decina di superfici grandi quanto la pagina parcheggiate in
+  // memoria per tutta la lettura, che su un tablet non e' un affare.
+  const livello = (cosa) => (stage ? cosa : "auto");
   const frontOk = !!(stage && park && stage.href && park.href === stage.href);
   const backOk = !!(stage && park && stage.href2 && park.href === stage.href2 && stage.x2 !== null);
 
@@ -1389,6 +1472,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   dirNow === "next"
                     ? "linear-gradient(to right, transparent 70%, #0000001f)"
                     : "linear-gradient(to left, transparent 70%, #0000001f)",
+                willChange: livello("opacity"),
                 animation: anim("bc-cover-half"),
                 // stessi angoli con cui il foglio si posa: dagli spigoli
                 // quadri della copertura sbucava il testo vecchio
@@ -1441,6 +1525,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   dirNow === "next"
                     ? "linear-gradient(to left, #00000059, #0000002e 22%, #00000014 52%, transparent 82%)"
                     : "linear-gradient(to right, #00000059, #0000002e 22%, #00000014 52%, transparent 82%)",
+                willChange: livello("transform, opacity"),
                 animation: anim("bc-cast"),
               }}
             />
@@ -1462,6 +1547,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 opacity: 0,
                 background:
                   "linear-gradient(90deg, transparent, #0000000d 26%, #0000001f 44%, #00000026 50%, #0000001f 56%, #0000000d 74%, transparent)",
+                willChange: livello("opacity"),
                 animation: anim("bc-spine-pulse"),
               }}
             />
@@ -1521,8 +1607,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   // niente overflow ne' opacita' qui: appiattirebbero il 3D
                   // e le due facce diventerebbero una sola
                   transformStyle: "preserve-3d",
-                  willChange: "transform",
-                  animation: stage
+                  willChange: livello("transform"),
+                  animation: corsa
                     ? `${leafGeom.animationName} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
                     : "none",
                 }}
@@ -1551,6 +1637,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                         ? "linear-gradient(to left, #0000004f, #00000026 34%, #0000000a 66%, transparent)"
                         : "linear-gradient(to right, #0000004f, #00000026 34%, #0000000a 66%, transparent)",
                     opacity: 0,
+                    willChange: livello("opacity"),
                     animation: anim("bc-leaf-fade"),
                   }}
                 />
@@ -1572,10 +1659,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                     outline: "1px solid transparent",
                     transform: "translateZ(0.5px)",
                     backgroundColor: theme.bg,
-                    backgroundImage: leafGeom.backgroundImage,
+                    backgroundImage: `${ombraFoglio(dirNow === "next" ? "right" : "left")}, ${leafGeom.backgroundImage}`,
                     opacity: 0,
-                    // due animazioni sulla stessa faccia: quando si accende,
-                    // e come si incurva il bordo libero mentre gira
+                    willChange: livello("opacity"),
                     animation: anim("bc-leaf-front"),
                   }}
                 >
@@ -1602,66 +1688,24 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       backgroundImage: EDGE_STRIPES,
                     }}
                   />
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      opacity: 0,
-                      background: ombraFoglio(dirNow === "next" ? "right" : "left"),
-                      animation: anim("bc-leaf-shade"),
-                      // Sfuma a NULLA sul bordo alto e basso. Il foglio e'
-                      // alto quanto tutta la pagina, margini compresi, e la
-                      // sua velatura scuriva anche le fasce vuote di testa e
-                      // piede dove la pagina vera non ha nulla: si vedeva
-                      // come una riga d'ombra orizzontale vicino al centro,
-                      // sopra e sotto. Con la maschera il foglio si perde
-                      // nei margini invece di finire con uno spigolo.
-                      WebkitMaskImage: SFUMA_ORLI,
-                      maskImage: SFUMA_ORLI,
-                    }}
-                  />
-                  {/* l'incavo che scorre: viaggia appaiato al riflesso, un
-                      terzo di pagina indietro, cosi' luce e ombra si
-                      muovono INSIEME al foglio invece di accendersi sul
-                      posto */}
+                  {/* buio e luce insieme, in un solo velo che viaggia:
+                      l'incavo dietro, il riflesso davanti sul colmo della
+                      curva, a distanza fissa per tutto il giro */}
                   <div
                     aria-hidden="true"
                     style={{
                       position: "absolute",
                       top: 0,
                       bottom: 0,
-                      left: "-45%",
-                      width: "90%",
+                      left: "-44.8%",
+                      width: "76%",
                       opacity: 0,
-                      background: bandaFoglio,
+                      background: veloFoglio(dirNow === "next" ? "90deg" : "270deg"),
                       WebkitMaskImage: SFUMA_ORLI,
                       maskImage: SFUMA_ORLI,
-                      animation: stage
-                        ? `bc-leaf-band-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
-                        : "none",
-                    }}
-                  />
-                  {/* il riflesso che rotola: la luce scorre da un bordo
-                      all'altro e la carta smette di sembrare una tavola */}
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      bottom: 0,
-                      left: "-24%",
-                      width: "48%",
-                      opacity: 0,
-                      // il riflesso di un cilindro ha i FIANCHI SCURI: e' il
-                      // contrasto chiaro-scuro ravvicinato a dire "superficie
-                      // curva", una banda chiara da sola resta un lampo su
-                      // una tavola piatta
-                      background: luceFoglio,
-                      WebkitMaskImage: SFUMA_ORLI,
-                      maskImage: SFUMA_ORLI,
-                      animation: stage
-                        ? `bc-leaf-gloss-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
+                      willChange: livello("transform, opacity"),
+                      animation: corsa
+                        ? `bc-leaf-velo-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
                         : "none",
                     }}
                   />
@@ -1696,23 +1740,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                     outline: "1px solid transparent",
                     transform: "rotateY(180deg) translateZ(0.5px)",
                     backgroundColor: theme.bg,
+                    backgroundImage: `${ombraFoglio(dirNow === "next" ? "left" : "right")}, ${leafGeom.backgroundImage}`,
                     opacity: 0,
+                    willChange: livello("opacity"),
                     animation: anim("bc-leaf-back"),
                   }}
                 >
-                  {/* il velo sta su un piano suo e muore prima del retro:
-                      nello sfondo della faccia restava stampato sulla
-                      pagina posata fino allo smontaggio */}
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      backgroundImage: leafGeom.backgroundImage,
-                      opacity: 0,
-                      animation: anim("bc-leaf-veil"),
-                    }}
-                  />
                   <div
                     aria-hidden="true"
                     style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
@@ -1736,59 +1769,24 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                       backgroundImage: EDGE_STRIPES,
                     }}
                   />
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      opacity: 0,
-                      background: ombraFoglio(dirNow === "next" ? "left" : "right"),
-                      animation: anim("bc-leaf-shade"),
-                      WebkitMaskImage: SFUMA_ORLI,
-                      maskImage: SFUMA_ORLI,
-                    }}
-                  />
-                  {/* l'incavo che scorre: viaggia appaiato al riflesso, un
-                      terzo di pagina indietro, cosi' luce e ombra si
-                      muovono INSIEME al foglio invece di accendersi sul
-                      posto */}
+                  {/* buio e luce insieme, in un solo velo che viaggia:
+                      l'incavo dietro, il riflesso davanti sul colmo della
+                      curva, a distanza fissa per tutto il giro */}
                   <div
                     aria-hidden="true"
                     style={{
                       position: "absolute",
                       top: 0,
                       bottom: 0,
-                      left: "-45%",
-                      width: "90%",
+                      left: "-44.8%",
+                      width: "76%",
                       opacity: 0,
-                      background: bandaFoglio,
+                      background: veloFoglio(dirNow === "next" ? "90deg" : "270deg"),
                       WebkitMaskImage: SFUMA_ORLI,
                       maskImage: SFUMA_ORLI,
-                      animation: stage
-                        ? `bc-leaf-band-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
-                        : "none",
-                    }}
-                  />
-                  {/* il riflesso che rotola: la luce scorre da un bordo
-                      all'altro e la carta smette di sembrare una tavola */}
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      bottom: 0,
-                      left: "-24%",
-                      width: "48%",
-                      opacity: 0,
-                      // il riflesso di un cilindro ha i FIANCHI SCURI: e' il
-                      // contrasto chiaro-scuro ravvicinato a dire "superficie
-                      // curva", una banda chiara da sola resta un lampo su
-                      // una tavola piatta
-                      background: luceFoglio,
-                      WebkitMaskImage: SFUMA_ORLI,
-                      maskImage: SFUMA_ORLI,
-                      animation: stage
-                        ? `bc-leaf-gloss-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
+                      willChange: livello("transform, opacity"),
+                      animation: corsa
+                        ? `bc-leaf-velo-${dirNow} 1.1s cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
                         : "none",
                     }}
                   />
@@ -1814,8 +1812,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               borderRadius: 3,
               backgroundColor: theme.bg,
               overflow: "hidden",
-              willChange: "opacity",
-              animation: stage ? "bc-sheet-fade 0.5s ease-out forwards" : "none",
+              willChange: livello("opacity"),
+              animation: corsa ? "bc-sheet-fade 0.5s ease-out forwards" : "none",
             }}
           >
             {/* il velo porta la pagina che parte: la dissolvenza diventa un
@@ -1842,7 +1840,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               opacity: 0,
               background:
                 "linear-gradient(90deg, transparent, #0000000d 26%, #0000001f 44%, #00000026 50%, #0000001f 56%, #0000000d 74%, transparent)",
-              animation: stage ? "bc-spine-pulse 0.5s ease-in-out forwards" : "none",
+              willChange: livello("opacity"),
+              animation: corsa ? "bc-spine-pulse 0.5s ease-in-out forwards" : "none",
             }}
           />
         )}
