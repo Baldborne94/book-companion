@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
-import { getFavoritesRaw, saveFavorites, parseYouTube, isFile, addTrackFile, dropTrack } from "../lib/music.js";
+import { getFavoritesRaw, saveFavorites, isFlusso, isFile, reggeSchermoSpento, addTrackFile, dropTrack, parseYouTube } from "../lib/music.js";
 import EmptyState from "./EmptyState.jsx";
 
 const SLEEP_CHOICES = [
@@ -100,8 +100,12 @@ export default function MusicRoom({ music, playerRef, notify }) {
 
   function addMelody() {
     const url = newUrl.trim();
-    if (!parseYouTube(url)) {
-      notify("Questo non sembra un link YouTube… incolla un video o una playlist 🎵");
+    if (!parseYouTube(url) && !isFlusso(url)) {
+      notify(
+        /^http:\/\//i.test(url)
+          ? "Un indirizzo in chiaro (http) il browser lo blocca: serve https 🎵"
+          : "Non è un link YouTube né un flusso audio… incolla un video, una playlist o l'indirizzo di una radio 🎵"
+      );
       return;
     }
     const now = Date.now();
@@ -141,7 +145,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
           value={link}
           onChange={(e) => setLink(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && playLink()}
-          placeholder="Incolla un link YouTube (video o playlist)…"
+          placeholder="Incolla un link YouTube o l'indirizzo di una radio…"
           style={inputStyle}
         />
         <button
@@ -191,8 +195,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
                   {queue.shuffle ? "🔀 casuale" : "▶ in ordine"} · {queue.index + 1} di {queue.total}
                 </div>
               )}
-              <div style={{ fontSize: 12.5, color: current.trackId ? C.accent : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {current.trackId ? "♫ dal tuo archivio · suona anche a schermo spento" : current.url}
+              <div style={{ fontSize: 12.5, color: current.src ? C.accent : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {current.src ? `♫ ${current.trackId ? "dal tuo archivio" : "in diretta"} · va avanti a schermo spento` : current.url}
               </div>
             </div>
             <button
@@ -323,12 +327,12 @@ export default function MusicRoom({ music, playerRef, notify }) {
             background: adding ? `${C.accent}14` : "transparent",
           }}
         >
-          {adding ? "Annulla" : "＋ Da YouTube"}
+          {adding ? "Annulla" : "＋ Da un link"}
         </button>
       </div>
       <p style={{ fontSize: 12.5, color: C.muted, margin: "-4px 0 14px", lineHeight: 1.5 }}>
-        ♫ Le melodie dai tuoi file continuano a suonare a tablet spento, fino allo scadere del timer.
-        ♪ Quelle da YouTube no: il loro lettore si mette in pausa da solo quando lo schermo si spegne, e non è in nostro potere.
+        ♫ Quello che suona l'app — un tuo file o l'indirizzo di una radio — va avanti a tablet spento, fino allo scadere del timer.
+        ♪ YouTube no: quel lettore si mette in pausa da solo quando lo schermo si spegne, e non è in nostro potere.
       </p>
 
       {adding && (
@@ -349,7 +353,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
             value={newUrl}
             onChange={(e) => setNewUrl(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addMelody()}
-            placeholder="Link YouTube della melodia…"
+            placeholder="Link YouTube, o indirizzo di un flusso audio…"
             style={{ ...inputStyle, flexBasis: "100%" }}
           />
           <input
@@ -379,7 +383,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
         <EmptyState
           emoji="🎼"
           title="La sala della musica attende"
-          text="Porta qui i tuoi file audio — pioggia e camino, arpe celtiche, cori lontani — e ti accompagneranno anche a tablet spento, fino allo scadere del timer. Oppure incolla un link YouTube, se ti basta ascoltare a schermo acceso."
+          text="Porta qui i tuoi file audio, o incolla l'indirizzo di una radio — pioggia e camino, arpe celtiche, cori lontani: li suona l'app, e ti accompagnano anche a tablet spento fino allo scadere del timer. Un link YouTube va bene lo stesso, ma solo a schermo acceso."
         />
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
@@ -427,16 +431,16 @@ export default function MusicRoom({ music, playerRef, notify }) {
                   <button
                     onClick={() => playerRef.current?.play(f)}
                     style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, textAlign: "left", minWidth: 0 }}
-                    title={isFile(f) ? "Dal tuo archivio: suona anche a schermo spento" : "Da YouTube: solo a schermo acceso"}
+                    title={reggeSchermoSpento(f) ? "Lo suona l'app: va avanti a schermo spento" : "Da YouTube: solo a schermo acceso"}
                   >
                     <span
                       style={{
                         fontSize: 22,
-                        filter: `drop-shadow(0 0 8px ${isFile(f) ? C.accent : C.arcane}66)`,
-                        color: isFile(f) ? C.accent : "inherit",
+                        filter: `drop-shadow(0 0 8px ${reggeSchermoSpento(f) ? C.accent : C.arcane}66)`,
+                        color: reggeSchermoSpento(f) ? C.accent : "inherit",
                       }}
                     >
-                      {isFile(f) ? "♫" : "♪"}
+                      {reggeSchermoSpento(f) ? "♫" : "♪"}
                     </span>
                     <span style={{ flex: 1, fontSize: 15, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {f.name}
