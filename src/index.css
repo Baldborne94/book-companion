@@ -154,10 +154,10 @@ input {
     opacity: 0.4;
   }
   46% {
-    opacity: 1;
+    opacity: 0.55;
   }
   72% {
-    opacity: 0.45;
+    opacity: 0.25;
   }
   100% {
     opacity: 0;
@@ -178,19 +178,19 @@ input {
     transform: scaleX(0.22);
   }
   22% {
-    opacity: 0.3;
+    opacity: 0.2;
     transform: scaleX(0.26);
   }
   45% {
-    opacity: 0.42;
+    opacity: 0.28;
     transform: scaleX(0.34);
   }
   68% {
-    opacity: 0.6;
+    opacity: 0.42;
     transform: scaleX(0.78);
   }
   86% {
-    opacity: 0.28;
+    opacity: 0.2;
     transform: scaleX(1);
   }
   100% {
@@ -209,7 +209,11 @@ input {
    atterrava — SBATTEVA piatto, col testo che si stirava di colpo. Ma
    nemmeno troppo: la posata si chiude all'88%, quel tanto che basta a
    distendersi senza che il giro sembri trattenuto sul finale.
-   La FLESSIONE e' tutta nello scaleX: una carta che si incurva copre meno
+   La FLESSIONE e' tutta nello scaleX, ed e' LEGGERA. Era il 14% di
+   restringimento: a schermo il foglio non sembrava piegarsi, sembrava
+   sgonfiarsi, e insieme allo scorcio della rotazione dava un movimento che
+   non somiglia a nessuna carta. Una pagina vera, voltata con un dito, si
+   incurva appena. Il principio resta: una carta che si incurva copre meno
    larghezza di una tavola rigida (la corda e' piu' corta dell'arco), ed e'
    quel restringimento — non l'ombra — che l'occhio legge come foglio che
    si piega. Ma va messa DOVE SI VEDE, e non e' a meta' giro: li' la
@@ -233,22 +237,22 @@ input {
     transform: rotateY(0deg) scaleX(1);
   }
   20% {
-    transform: rotateY(-44.5deg) scaleX(0.885);
+    transform: rotateY(-44.5deg) scaleX(0.952);
   }
   32% {
-    transform: rotateY(-54deg) scaleX(0.868);
+    transform: rotateY(-54deg) scaleX(0.941);
   }
   45% {
-    transform: rotateY(-90deg) scaleX(0.862);
+    transform: rotateY(-90deg) scaleX(0.938);
   }
   56% {
-    transform: rotateY(-122deg) scaleX(0.872);
+    transform: rotateY(-122deg) scaleX(0.944);
   }
   70% {
-    transform: rotateY(-164.3deg) scaleX(0.9);
+    transform: rotateY(-164.3deg) scaleX(0.958);
   }
   78% {
-    transform: rotateY(-168deg) scaleX(0.947);
+    transform: rotateY(-168deg) scaleX(0.978);
   }
   88%,
   100% {
@@ -262,22 +266,22 @@ input {
     transform: rotateY(0deg) scaleX(1);
   }
   20% {
-    transform: rotateY(44.5deg) scaleX(0.885);
+    transform: rotateY(44.5deg) scaleX(0.952);
   }
   32% {
-    transform: rotateY(54deg) scaleX(0.868);
+    transform: rotateY(54deg) scaleX(0.941);
   }
   45% {
-    transform: rotateY(90deg) scaleX(0.862);
+    transform: rotateY(90deg) scaleX(0.938);
   }
   56% {
-    transform: rotateY(122deg) scaleX(0.872);
+    transform: rotateY(122deg) scaleX(0.944);
   }
   70% {
-    transform: rotateY(164.3deg) scaleX(0.9);
+    transform: rotateY(164.3deg) scaleX(0.958);
   }
   78% {
-    transform: rotateY(168deg) scaleX(0.947);
+    transform: rotateY(168deg) scaleX(0.978);
   }
   88%,
   100% {
@@ -368,7 +372,7 @@ input {
     opacity: 0.6;
   }
   50% {
-    opacity: 0.88;
+    opacity: 0.62;
   }
   78% {
     opacity: 0.4;
@@ -397,7 +401,7 @@ input {
     opacity: 0.6;
   }
   50% {
-    opacity: 0.88;
+    opacity: 0.62;
   }
   78% {
     opacity: 0.4;
