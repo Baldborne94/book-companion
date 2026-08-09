@@ -1,7 +1,7 @@
 import { getFile, getCover } from "./bookStore.js";
 import { loadBooks, getProgress, getStatus, getStarted, getFinished } from "./library.js";
 import { getCfi, getMarks, getHighlights } from "./annotations.js";
-import { getBookMusic, getFavoritesRaw, isFile, loadTrack } from "./music.js";
+import { getBookMusic, getFavoritesRaw, getListsRaw, isFile, loadTrack } from "./music.js";
 
 // v1 conteneva solo metadati e file: un ripristino avrebbe perso segnalibri,
 // evidenziazioni e punto di lettura. Da v2 l'archivio si basta da solo.
@@ -68,6 +68,7 @@ export async function exportLibrary() {
         exportedAt: new Date().toISOString(),
         books: manifest,
         melodie,
+        raccolte: getListsRaw(),
       },
       null,
       2

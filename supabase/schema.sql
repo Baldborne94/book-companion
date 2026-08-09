@@ -51,9 +51,14 @@ create table if not exists public.prefs (
   user_id uuid primary key references auth.users(id) on delete cascade,
   reader jsonb,
   music_favs jsonb not null default '[]'::jsonb,
+  music_lists jsonb not null default '[]'::jsonb,
   last_opened text,
   updated_at bigint not null default 0
 );
+
+-- per i database gia' creati: `create table if not exists` non aggiunge le
+-- colonne nuove, e senza questa riga le raccolte non salirebbero mai
+alter table public.prefs add column if not exists music_lists jsonb not null default '[]'::jsonb;
 
 alter table public.prefs enable row level security;
 

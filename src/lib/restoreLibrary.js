@@ -1,7 +1,7 @@
 import { putFile, putCover, listFileIds, putTrack } from "./bookStore.js";
 import { loadBooks, saveBooks, setProgress, setStatus, touchBook, clearTombstones, setDates } from "./library.js";
 import { setCfi, saveMarks, saveHighlights } from "./annotations.js";
-import { setBookMusic, getFavoritesRaw, saveFavorites } from "./music.js";
+import { setBookMusic, getFavoritesRaw, saveFavorites, getListsRaw, saveLists } from "./music.js";
 
 // Come per i libri: quello che c'e' gia' resta, dall'archivio si prende
 // solo cio' che manca. Una melodia si riconosce dal suo id.
@@ -113,11 +113,18 @@ export async function restoreLibrary(archive, { onProgress } = {}) {
   }
   if (nuoveMel.length) saveFavorites(localiMel);
 
+  // le raccolte sono solo nomi ed elenchi di id: nessun byte da ripristinare,
+  // e i brani che qui non esistono li salta gia' `braniDi`
+  const localiRac = getListsRaw();
+  const nuoveRac = planMelodie(Array.isArray(data.raccolte) ? data.raccolte : [], localiRac);
+  if (nuoveRac.length) saveLists([...localiRac, ...nuoveRac]);
+
   return {
     added: add.length,
     kept: kept.length,
     files: restoredFiles,
     melodie: melodieRipristinate,
+    raccolte: nuoveRac.length,
     books: loadBooks(),
     partial: !(data.version >= 2),
   };

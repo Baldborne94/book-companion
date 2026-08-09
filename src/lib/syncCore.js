@@ -130,6 +130,9 @@ export function mergeFavorites(localFavs = [], remoteFavs = []) {
 
 export function mergePrefs(local, remote) {
   const music_favs = mergeFavorites(local.music_favs, remote?.music_favs);
+  // le raccolte hanno la stessa forma dei preferiti (id, addedAt,
+  // updatedAt, deleted), quindi si fondono con la stessa regola
+  const music_lists = mergeFavorites(local.music_lists, remote?.music_lists);
   const remoteNewer = !!remote && (remote.updated_at || 0) > (local.updated_at || 0);
   const merged = {
     reader: remoteNewer ? (remote.reader ?? local.reader) : (local.reader ?? remote?.reader ?? null),
@@ -137,6 +140,7 @@ export function mergePrefs(local, remote) {
       ? remote.last_opened || local.last_opened || null
       : local.last_opened || remote?.last_opened || null,
     music_favs,
+    music_lists,
     updated_at: Math.max(local.updated_at || 0, remote?.updated_at || 0),
   };
   const eq = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -144,11 +148,13 @@ export function mergePrefs(local, remote) {
     merged,
     applyLocal:
       !eq(merged.music_favs, local.music_favs) ||
+      !eq(merged.music_lists, local.music_lists) ||
       !eq(merged.reader, local.reader) ||
       merged.last_opened !== (local.last_opened || null),
     pushRemote:
       !remote ||
       !eq(merged.music_favs, remote.music_favs) ||
+      !eq(merged.music_lists, remote.music_lists) ||
       !eq(merged.reader, remote.reader) ||
       merged.last_opened !== (remote.last_opened || null),
   };
