@@ -776,6 +776,7 @@ export default function App() {
               music={music}
               onMusicToggle={() => (music.playing ? playerRef.current?.pause() : playerRef.current?.resume())}
               onMusicStop={() => playerRef.current?.stop()}
+              onMusicVolume={(v) => playerRef.current?.setVolume(v)}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);
@@ -794,6 +795,7 @@ export default function App() {
               music={music}
               onMusicToggle={() => (music.playing ? playerRef.current?.pause() : playerRef.current?.resume())}
               onMusicStop={() => playerRef.current?.stop()}
+              onMusicVolume={(v) => playerRef.current?.setVolume(v)}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);

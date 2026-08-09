@@ -129,6 +129,23 @@ export function nuovaRaccolta(name) {
 export const braniDi = (raccolta, favs) =>
   (raccolta?.brani || []).map((id) => favs.find((f) => f.id === id && !f.deleted)).filter(Boolean);
 
+// IL VOLUME IN APP. Serve a tenere la musica sotto la lettura senza
+// abbassare tutto il tablet — le notifiche e la sveglia restano dove sono.
+// E' una cosa del dispositivo, non della biblioteca (sul tablet a letto si
+// tiene basso, altrove no): per questo sta fuori dalle preferenze che
+// viaggiano nella sincronizzazione. Parte da 1: chi aggiorna non deve
+// trovarsi la musica piu' bassa di ieri senza averla toccata.
+const VOL_KEY = "bc_music_vol";
+
+export function getVolume() {
+  const v = parseFloat(localStorage.getItem(VOL_KEY));
+  return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
+}
+
+export function saveVolume(v) {
+  localStorage.setItem(VOL_KEY, String(Math.min(1, Math.max(0, v))));
+}
+
 export function getBookMusic(bookId) {
   try {
     return JSON.parse(localStorage.getItem(`bc_music_${bookId}`)) || null;
