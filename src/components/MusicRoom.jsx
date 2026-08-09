@@ -56,7 +56,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
   const [rinomina, setRinomina] = useState(null);
   const [bozzaRac, setBozzaRac] = useState("");
 
-  const { current, playing, timerEnd, sleepMin, queue } = music;
+  const { current, playing, timerEnd, sleepMin, queue, volume = 1 } = music;
+  const volPerCento = Math.round(volume * 100);
   const sleepLeft = timerEnd ? Math.max(0, Math.ceil((timerEnd - Date.now()) / 60000)) : null;
 
   function playLink() {
@@ -285,6 +286,22 @@ export default function MusicRoom({ music, playerRef, notify }) {
             </div>
           )}
 
+          {/* il volume della sola musica: sotto la lettura si tiene bassa
+              senza abbassare tutto il tablet, e le notifiche restano dove sono */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
+            <span style={{ fontSize: 13.5, color: C.muted }}>{volPerCento === 0 ? "🔇" : volPerCento < 45 ? "🔉" : "🔊"} Volume:</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={volPerCento}
+              onChange={(e) => playerRef.current?.setVolume(parseInt(e.target.value, 10) / 100)}
+              aria-label="Volume della musica"
+              style={{ flex: 1, minWidth: 120, accentColor: C.accent }}
+            />
+            <span style={{ fontSize: 13, color: C.arcane, width: 40, textAlign: "right" }}>{volPerCento}%</span>
+          </div>
+
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
             <span style={{ fontSize: 13.5, color: C.muted }}>🌙 Si spegne da sola:</span>
             {SLEEP_CHOICES.map((s) => {
@@ -306,7 +323,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
               );
             })}
             {sleepLeft !== null && (
-              <span style={{ fontSize: 13, color: C.arcane }}>{fmtLeft(sleepLeft)}</span>
+              <span style={{ fontSize: 13, color: C.arcane }}>{fmtLeft(sleepLeft)} · sfuma piano sul finire</span>
             )}
           </div>
         </div>

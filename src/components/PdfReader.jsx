@@ -85,7 +85,7 @@ function accendiRisultato(flashRef, layer, pageNum) {
   }
 }
 
-export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusicStop, onClose, notify, nextBook, onReadNext }) {
+export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusicStop, onMusicVolume, onClose, notify, nextBook, onReadNext }) {
   const rootRef = useRef(null);
   const containerRef = useRef(null);
   const pageBoxRef = useRef(null);
@@ -700,6 +700,17 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                 <button onClick={onMusicToggle} style={barBtn(false)} aria-label={music.playing ? "Pausa musica" : "Riprendi musica"}>
                   {music.playing ? "⏸" : "▶"}
                 </button>
+                {/* il volume qui e' quello della sola musica: sotto la lettura
+                    si abbassa lei, non le notifiche e la sveglia del tablet */}
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={Math.round((music.volume ?? 1) * 100)}
+                  onChange={(e) => onMusicVolume?.(parseInt(e.target.value, 10) / 100)}
+                  aria-label="Volume della musica"
+                  style={{ width: 64, flexShrink: 0, accentColor: C.accent }}
+                />
                 <button onClick={onMusicStop} style={{ ...barBtn(false), fontSize: 16, color: C.muted }} aria-label="Spegni musica">
                   🔇
                 </button>

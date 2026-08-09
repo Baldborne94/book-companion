@@ -1,12 +1,16 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { C } from "../data/constants.js";
-import { parseYouTube, embedUrl, isFile, loadTrack } from "../lib/music.js";
+import { parseYouTube, embedUrl, isFile, loadTrack, getVolume, saveVolume } from "../lib/music.js";
+
+// Gli ultimi trenta secondi prima dello scadere del timer la musica scende
+// fino a spegnersi. L'ora chiesta resta quella: a quel minuto c'e' silenzio,
+// non l'inizio di una discesa.
+const DISSOLVENZA = 30000;
 
 const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }, ref) {
   const iframeRef = useRef(null);
   const audioRef = useRef(null);
   const urlRef = useRef(null);
-  const sleepRef = useRef(null);
   const queueRef = useRef({ list: [], i: 0, shuffle: false });
   const advanceRef = useRef(() => {});
   const [current, setCurrent] = useState(null);
@@ -14,14 +18,19 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
   const [timerEnd, setTimerEnd] = useState(null);
   const [sleepMin, setSleepMin] = useState(0);
   const [queue, setQueue] = useState(null);
+  const [volume, setVolumeStato] = useState(() => getVolume());
+  // il volume scelto dal lettore e la dissolvenza del timer sono due cose
+  // distinte che si moltiplicano: la seconda non deve riscrivere la prima,
+  // o allo scadere del timer il volume salvato resterebbe a zero
+  const volRef = useRef(volume);
+  const dissRef = useRef(1);
 
   useEffect(() => {
-    onInfo({ current, playing, timerEnd, sleepMin, queue });
-  }, [current, playing, timerEnd, sleepMin, queue, onInfo]);
+    onInfo({ current, playing, timerEnd, sleepMin, queue, volume });
+  }, [current, playing, timerEnd, sleepMin, queue, volume, onInfo]);
 
   useEffect(
     () => () => {
-      clearTimeout(sleepRef.current);
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     },
     []
@@ -69,13 +78,47 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
       }
     };
     document.addEventListener("visibilitychange", controlla);
-    // la ronda copre anche il caso in cui il sistema non mandi mai l'evento
-    const ronda = setInterval(() => { if (scaduto()) stopRef.current(); }, 15000);
-    return () => {
-      document.removeEventListener("visibilitychange", controlla);
-      clearInterval(ronda);
-    };
+    return () => document.removeEventListener("visibilitychange", controlla);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // LA RONDA DEL TIMER, CHE E' ANCHE LA DISSOLVENZA.
+  //
+  // Un solo battito per due lavori, perche' sono lo stesso lavoro: guardare
+  // l'orologio da muro. Il ritmo si adatta — un colpo ogni quindici secondi
+  // finche' la fine e' lontana, uno ogni frazione di secondo dentro la
+  // dissolvenza — e il volume si ricalcola sempre dall'ora, mai a passi:
+  // se il tablet in secondo piano congela i timer, al risveglio la musica
+  // e' al punto giusto invece che indietro di tutti i colpi persi.
+  useEffect(() => {
+    if (timerEnd == null) {
+      if (dissRef.current !== 1) {
+        dissRef.current = 1;
+        applicaVolume();
+      }
+      return;
+    }
+    let acceso = true;
+    let h;
+    const battito = () => {
+      if (!acceso) return;
+      const resta = timerEnd - Date.now();
+      if (resta <= 0) {
+        stopRef.current();
+        return;
+      }
+      const g = resta >= DISSOLVENZA ? 1 : resta / DISSOLVENZA;
+      if (g !== dissRef.current) {
+        dissRef.current = g;
+        applicaVolume();
+      }
+      h = setTimeout(battito, resta > DISSOLVENZA ? Math.min(15000, resta - DISSOLVENZA) : 400);
+    };
+    battito();
+    return () => {
+      acceso = false;
+      clearTimeout(h);
+    };
+  }, [timerEnd]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // L'attributo autoplay vale al primo caricamento; cambiando traccia in
   // coda non c'e' nessun tocco del lettore a coprirci, e la riproduzione
@@ -85,6 +128,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
   useEffect(() => {
     const a = audioRef.current;
     if (!a || !current?.src || !playing) return;
+    applicaVolume();
     a.play().catch(() => {
       setPlaying(false);
       notify("Il browser ha fermato la musica: toccala di nuovo per riprendere 🎵");
@@ -104,6 +148,8 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
       } catch {
         /* iframe non ancora pronto */
       }
+      // il volume va ridetto a ogni lettore nuovo: l'iframe nasce al massimo
+      applicaVolume();
       if (++n > 10) clearInterval(t);
     }, 400);
     return () => clearInterval(t);
@@ -129,15 +175,31 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
-  function command(func) {
+  function command(func, args = []) {
     try {
       iframeRef.current?.contentWindow?.postMessage(
-        JSON.stringify({ event: "command", func, args: [] }),
+        JSON.stringify({ event: "command", func, args }),
         "*"
       );
     } catch {
       /* iframe non ancora pronto: lo stato UI resta la fonte di verità */
     }
+  }
+
+  // Un solo posto da cui esce il volume vero, per tutt'e due le sorgenti:
+  // il nostro <audio> lo vuole da 0 a 1, YouTube da 0 a 100.
+  function applicaVolume() {
+    const v = Math.min(1, Math.max(0, volRef.current * dissRef.current));
+    if (audioRef.current) audioRef.current.volume = v;
+    command("setVolume", [Math.round(v * 100)]);
+  }
+
+  function setVolume(v) {
+    const n = Math.min(1, Math.max(0, Number(v) || 0));
+    volRef.current = n;
+    setVolumeStato(n);
+    saveVolume(n);
+    applicaVolume();
   }
 
   // L'indirizzo temporaneo del blob vive quanto la traccia che suona: sono
@@ -252,7 +314,6 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
   }
 
   function clearSleep() {
-    clearTimeout(sleepRef.current);
     setTimerEnd(null);
     setSleepMin(0);
   }
@@ -267,16 +328,12 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
   }
 
   function setSleep(minutes) {
-    clearTimeout(sleepRef.current);
     if (!minutes) {
-      setTimerEnd(null);
-      setSleepMin(0);
+      clearSleep();
       return;
     }
-    // il setTimeout serve solo col tablet acceso: in background i browser
-    // lo congelano, ed e' la ronda sull'orologio da muro a fermare la
-    // musica all'ora giusta
-    sleepRef.current = setTimeout(() => stopRef.current(), minutes * 60000);
+    // qui si scrive solo l'ora della fine: a fermare la musica — e a farla
+    // sfumare prima — ci pensa la ronda, che guarda l'orologio da muro
     setTimerEnd(Date.now() + minutes * 60000);
     setSleepMin(minutes);
   }
@@ -321,7 +378,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
     } catch { /* si resta ai comandi in app */ }
   }, [current, playing]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useImperativeHandle(ref, () => ({ play, playQueue, pause, resume, stop, setSleep }));
+  useImperativeHandle(ref, () => ({ play, playQueue, pause, resume, stop, setSleep, setVolume }));
 
   return (
     <>
