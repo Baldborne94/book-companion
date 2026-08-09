@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { C } from "../data/constants.js";
-import { parseYouTube, embedUrl, isFile, isFlusso, loadTrack } from "../lib/music.js";
+import { parseYouTube, embedUrl, isFile, loadTrack } from "../lib/music.js";
 
 const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }, ref) {
   const iframeRef = useRef(null);
@@ -192,20 +192,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
       setPlaying(true);
       return true;
     }
-    // non e' YouTube: proviamo a suonarlo noi. Un flusso diretto — una
-    // radio, un ambient senza fine — passa dal nostro <audio> come un file,
-    // quindi regge lo schermo spento e non c'e' niente da scaricare.
-    if (isFlusso(url)) {
-      spegniAudio();
-      setCurrent({ url, name: comeSiChiama, src: url, flusso: true });
-      setPlaying(true);
-      return true;
-    }
-    notify(
-      /^http:\/\//i.test(url || "")
-        ? "Un indirizzo in chiaro (http) il browser lo blocca: serve https 🎵"
-        : "Non è un link YouTube né un flusso audio… incolla un video, una playlist o l'indirizzo di una radio 🎵"
-    );
+    notify("Questo non sembra un link YouTube… incolla un video o una playlist 🎵");
     return false;
   }
 
@@ -349,9 +336,6 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
         // una melodia sola gira all'infinito: e' sottofondo, non un disco
         // da ascoltare fino in fondo. In coda invece si passa alla
         // prossima, e ci pensa onEnded.
-        // Vale anche per gli indirizzi: una radio senza fine il ciclo non lo
-        // vede mai, ma un link a un mp3 e' un file come gli altri e senza
-        // ciclo si spegneva dopo un giro solo — misurato in prova.
         loop={!!current?.src && !queue}
         onEnded={() => advanceRef.current()}
         preload="auto"

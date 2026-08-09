@@ -1,6 +1,9 @@
 import { useRef, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
-import { getFavoritesRaw, saveFavorites, isFlusso, isFile, reggeSchermoSpento, addTrackFile, dropTrack, parseYouTube } from "../lib/music.js";
+import {
+  getFavoritesRaw, saveFavorites, isFile, addTrackFile, dropTrack, parseYouTube,
+  getListsRaw, saveLists, nuovaRaccolta, braniDi,
+} from "../lib/music.js";
 import EmptyState from "./EmptyState.jsx";
 
 const SLEEP_CHOICES = [
@@ -44,6 +47,14 @@ export default function MusicRoom({ music, playerRef, notify }) {
   const [newName, setNewName] = useState("");
   const fileRef = useRef(null);
   const [caricando, setCaricando] = useState(false);
+  const [raccolte, setRaccolte] = useState(() => getListsRaw());
+  // l'id della raccolta di cui si stanno scegliendo i brani: finche' e'
+  // acceso, l'elenco delle melodie diventa una lista di spunte
+  const [scegliendo, setScegliendo] = useState(null);
+  const [nuova, setNuova] = useState(false);
+  const [nomeNuova, setNomeNuova] = useState("");
+  const [rinomina, setRinomina] = useState(null);
+  const [bozzaRac, setBozzaRac] = useState("");
 
   const { current, playing, timerEnd, sleepMin, queue } = music;
   const sleepLeft = timerEnd ? Math.max(0, Math.ceil((timerEnd - Date.now()) / 60000)) : null;
@@ -100,12 +111,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
 
   function addMelody() {
     const url = newUrl.trim();
-    if (!parseYouTube(url) && !isFlusso(url)) {
-      notify(
-        /^http:\/\//i.test(url)
-          ? "Un indirizzo in chiaro (http) il browser lo blocca: serve https 🎵"
-          : "Non è un link YouTube né un flusso audio… incolla un video, una playlist o l'indirizzo di una radio 🎵"
-      );
+    if (!parseYouTube(url)) {
+      notify("Questo non sembra un link YouTube… incolla un video o una playlist 🎵");
       return;
     }
     const now = Date.now();
@@ -115,6 +122,53 @@ export default function MusicRoom({ music, playerRef, notify }) {
     setNewName("");
     setAdding(false);
     notify(`«${name}» custodita tra le tue melodie ✨`);
+  }
+
+  function commitRac(next) {
+    setRaccolte(next);
+    saveLists(next);
+  }
+
+  function creaRaccolta() {
+    const nome = nomeNuova.trim();
+    if (!nome) return;
+    const r = nuovaRaccolta(nome);
+    commitRac([...raccolte, r]);
+    setNomeNuova("");
+    setNuova(false);
+    setScegliendo(r.id);
+    notify(`«${nome}» creata ✨ Ora scegli i brani.`);
+  }
+
+  function togliRaccolta(r) {
+    commitRac(raccolte.map((x) => (x.id === r.id ? { ...x, deleted: true, updatedAt: Date.now() } : x)));
+    if (scegliendo === r.id) setScegliendo(null);
+  }
+
+  function commitRinominaRac() {
+    const nome = bozzaRac.trim();
+    if (!nome) {
+      setRinomina(null);
+      return;
+    }
+    commitRac(raccolte.map((x) => (x.id === rinomina ? { ...x, name: nome, updatedAt: Date.now() } : x)));
+    setRinomina(null);
+  }
+
+  // un tocco sulla melodia mentre si sceglie: dentro se non c'era, fuori se
+  // c'era. L'ordine e' quello in cui li hai messi, non quello dell'elenco.
+  function alterna(racId, favId) {
+    commitRac(
+      raccolte.map((x) => {
+        if (x.id !== racId) return x;
+        const dentro = (x.brani || []).includes(favId);
+        return {
+          ...x,
+          brani: dentro ? x.brani.filter((b) => b !== favId) : [...(x.brani || []), favId],
+          updatedAt: Date.now(),
+        };
+      })
+    );
   }
 
   function startRename(f) {
@@ -134,6 +188,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
   }
 
   const liveFavs = favs.filter((f) => !f.deleted);
+  const liveRac = raccolte.filter((r) => !r.deleted);
+  const inScelta = liveRac.find((r) => r.id === scegliendo) || null;
   const alreadySaved =
     current &&
     liveFavs.some((f) => (current.trackId ? f.trackId === current.trackId : f.url === current.url));
@@ -145,7 +201,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
           value={link}
           onChange={(e) => setLink(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && playLink()}
-          placeholder="Incolla un link YouTube o l'indirizzo di una radio…"
+          placeholder="Incolla un link YouTube (video o playlist)…"
           style={inputStyle}
         />
         <button
@@ -196,7 +252,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
                 </div>
               )}
               <div style={{ fontSize: 12.5, color: current.src ? C.accent : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {current.src ? `♫ ${current.trackId ? "dal tuo archivio" : "in diretta"} · va avanti a schermo spento` : current.url}
+                {current.src ? "♫ dal tuo archivio · va avanti a schermo spento" : current.url}
               </div>
             </div>
             <button
@@ -253,6 +309,163 @@ export default function MusicRoom({ music, playerRef, notify }) {
               <span style={{ fontSize: 13, color: C.arcane }}>{fmtLeft(sleepLeft)}</span>
             )}
           </div>
+        </div>
+      )}
+
+      {/* LE RACCOLTE. Una raccolta e' un nome e un elenco di brani scelti da
+          te: serve a dire "stasera questi, in quest'ordine" senza doverti
+          portare dietro tutte le melodie ogni volta. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "6px 0 12px", flexWrap: "wrap" }}>
+        <h2 style={{ fontFamily: FONT_TITLE, fontWeight: 600, fontSize: 21, color: C.text }}>
+          <span style={{ color: C.accent, marginRight: 6 }}>✧</span>
+          Le tue raccolte
+        </h2>
+        <span style={{ flex: 1 }} />
+        <button
+          onClick={() => setNuova((v) => !v)}
+          style={{
+            padding: "6px 14px",
+            borderRadius: 999,
+            fontSize: 14,
+            border: `1px solid ${nuova ? C.accent : C.border}`,
+            color: nuova ? C.accent : C.muted,
+            background: nuova ? `${C.accent}14` : "transparent",
+          }}
+        >
+          {nuova ? "Annulla" : "＋ Nuova raccolta"}
+        </button>
+      </div>
+
+      {nuova && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+          <input
+            autoFocus
+            value={nomeNuova}
+            onChange={(e) => setNomeNuova(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && creaRaccolta()}
+            placeholder="Come la chiami? («Notti d'inverno»)"
+            style={inputStyle}
+          />
+          <button
+            onClick={creaRaccolta}
+            style={{
+              padding: "10px 20px",
+              borderRadius: 12,
+              background: `linear-gradient(180deg, ${C.accent}, #b8893a)`,
+              color: "#241c0a",
+              fontWeight: 600,
+              fontSize: 15,
+            }}
+          >
+            ✧ Crea
+          </button>
+        </div>
+      )}
+
+      {liveRac.length === 0 ? (
+        <p style={{ fontSize: 13.5, color: C.muted, margin: "0 0 20px", lineHeight: 1.5 }}>
+          Una raccolta è un gruppo di melodie che scegli tu — «per leggere», «per dormire» — e che suonano
+          una dopo l'altra. Creane una e poi scegli i brani dall'elenco qui sotto.
+        </p>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12, marginBottom: 22 }}>
+          {liveRac.map((r) => {
+            const brani = braniDi(r, liveFavs);
+            const attiva = scegliendo === r.id;
+            return (
+              <div
+                key={r.id}
+                style={{
+                  padding: "13px 14px",
+                  borderRadius: 14,
+                  border: `1px solid ${attiva ? C.accent : C.border}`,
+                  background: attiva
+                    ? `linear-gradient(135deg, ${C.accent}14, ${C.card})`
+                    : `linear-gradient(135deg, ${C.card}, ${C.surface})`,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {rinomina === r.id ? (
+                    <input
+                      autoFocus
+                      value={bozzaRac}
+                      onChange={(e) => setBozzaRac(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitRinominaRac();
+                        if (e.key === "Escape") setRinomina(null);
+                      }}
+                      onBlur={commitRinominaRac}
+                      style={{ ...inputStyle, minWidth: 0, padding: "6px 10px", background: C.bg }}
+                    />
+                  ) : (
+                    <>
+                      <span style={{ fontSize: 20, color: C.accent }}>✧</span>
+                      <span style={{ flex: 1, fontSize: 15, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {r.name}
+                      </span>
+                      <button
+                        onClick={() => { setRinomina(r.id); setBozzaRac(r.name); }}
+                        aria-label={`Rinomina ${r.name}`}
+                        style={{ color: C.muted, padding: 4, fontSize: 15 }}
+                      >
+                        ✎
+                      </button>
+                      <button onClick={() => togliRaccolta(r)} aria-label={`Dimentica ${r.name}`} style={{ color: C.muted, padding: 4 }}>
+                        🗑
+                      </button>
+                    </>
+                  )}
+                </div>
+                <div style={{ fontSize: 12.5, color: C.muted, margin: "6px 0 10px" }}>
+                  {brani.length === 0
+                    ? "nessun brano ancora"
+                    : `${brani.length} ${brani.length === 1 ? "brano" : "brani"}`}
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    onClick={() => playerRef.current?.playQueue(brani, false)}
+                    disabled={!brani.length}
+                    style={{
+                      padding: "5px 12px",
+                      borderRadius: 999,
+                      fontSize: 13.5,
+                      border: `1px solid ${brani.length ? C.accent : C.border}`,
+                      color: brani.length ? C.accent : C.muted,
+                      opacity: brani.length ? 1 : 0.5,
+                    }}
+                  >
+                    ▶ In ordine
+                  </button>
+                  <button
+                    onClick={() => playerRef.current?.playQueue(brani, true)}
+                    disabled={brani.length < 2}
+                    style={{
+                      padding: "5px 12px",
+                      borderRadius: 999,
+                      fontSize: 13.5,
+                      border: `1px solid ${C.border}`,
+                      color: C.muted,
+                      opacity: brani.length > 1 ? 1 : 0.5,
+                    }}
+                  >
+                    🔀
+                  </button>
+                  <button
+                    onClick={() => setScegliendo(attiva ? null : r.id)}
+                    style={{
+                      padding: "5px 12px",
+                      borderRadius: 999,
+                      fontSize: 13.5,
+                      border: `1px solid ${attiva ? C.accent : C.border}`,
+                      color: attiva ? C.accent : C.muted,
+                    }}
+                  >
+                    {attiva ? "Fatto" : "Scegli i brani"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -327,11 +540,11 @@ export default function MusicRoom({ music, playerRef, notify }) {
             background: adding ? `${C.accent}14` : "transparent",
           }}
         >
-          {adding ? "Annulla" : "＋ Da un link"}
+          {adding ? "Annulla" : "＋ Da YouTube"}
         </button>
       </div>
       <p style={{ fontSize: 12.5, color: C.muted, margin: "-4px 0 14px", lineHeight: 1.5 }}>
-        ♫ Quello che suona l'app — un tuo file o l'indirizzo di una radio — va avanti a tablet spento, fino allo scadere del timer.
+        ♫ Le melodie dai tuoi file vanno avanti a tablet spento, fino allo scadere del timer.
         ♪ YouTube no: quel lettore si mette in pausa da solo quando lo schermo si spegne, e non è in nostro potere.
       </p>
 
@@ -353,7 +566,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
             value={newUrl}
             onChange={(e) => setNewUrl(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addMelody()}
-            placeholder="Link YouTube, o indirizzo di un flusso audio…"
+            placeholder="Link YouTube della melodia…"
             style={{ ...inputStyle, flexBasis: "100%" }}
           />
           <input
@@ -379,11 +592,38 @@ export default function MusicRoom({ music, playerRef, notify }) {
         </div>
       )}
 
+      {inScelta && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+            padding: "10px 14px",
+            borderRadius: 12,
+            marginBottom: 12,
+            border: `1px solid ${C.accent}66`,
+            background: `${C.accent}14`,
+          }}
+        >
+          <span style={{ fontSize: 14, color: C.text }}>
+            Scegli i brani per <b>«{inScelta.name}»</b> — toccali per metterli dentro o toglierli.
+          </span>
+          <span style={{ flex: 1 }} />
+          <button
+            onClick={() => setScegliendo(null)}
+            style={{ padding: "5px 14px", borderRadius: 999, fontSize: 13.5, border: `1px solid ${C.accent}`, color: C.accent }}
+          >
+            Fatto
+          </button>
+        </div>
+      )}
+
       {liveFavs.length === 0 ? (
         <EmptyState
           emoji="🎼"
           title="La sala della musica attende"
-          text="Porta qui i tuoi file audio, o incolla l'indirizzo di una radio — pioggia e camino, arpe celtiche, cori lontani: li suona l'app, e ti accompagnano anche a tablet spento fino allo scadere del timer. Un link YouTube va bene lo stesso, ma solo a schermo acceso."
+          text="Porta qui i tuoi file audio — pioggia e camino, arpe celtiche, cori lontani: li suona l'app, e ti accompagnano anche a tablet spento fino allo scadere del timer. Un link YouTube va bene lo stesso, ma solo a schermo acceso."
         />
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
@@ -396,11 +636,42 @@ export default function MusicRoom({ music, playerRef, notify }) {
                 gap: 8,
                 padding: "13px 14px",
                 borderRadius: 14,
-                border: `1px solid ${editing === f.id ? C.accent : C.border}`,
+                border: `1px solid ${
+                  editing === f.id || (inScelta && (inScelta.brani || []).includes(f.id)) ? C.accent : C.border
+                }`,
                 background: `linear-gradient(135deg, ${C.card}, ${C.surface})`,
               }}
             >
-              {editing === f.id ? (
+              {inScelta ? (
+                (() => {
+                  const dentro = (inScelta.brani || []).includes(f.id);
+                  return (
+                    <button
+                      onClick={() => alterna(inScelta.id, f.id)}
+                      style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, textAlign: "left", minWidth: 0 }}
+                    >
+                      <span style={{ fontSize: 20, color: dentro ? C.accent : C.muted, width: 22 }}>
+                        {dentro ? "✓" : "○"}
+                      </span>
+                      <span
+                        style={{
+                          flex: 1,
+                          fontSize: 15,
+                          color: dentro ? C.text : C.muted,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {f.name}
+                      </span>
+                      <span style={{ fontSize: 15, color: isFile(f) ? C.accent : C.muted, opacity: 0.8 }}>
+                        {isFile(f) ? "♫" : "♪"}
+                      </span>
+                    </button>
+                  );
+                })()
+              ) : editing === f.id ? (
                 <>
                   <span style={{ fontSize: 22, color: C.accent }}>♪</span>
                   <input
@@ -431,16 +702,16 @@ export default function MusicRoom({ music, playerRef, notify }) {
                   <button
                     onClick={() => playerRef.current?.play(f)}
                     style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, textAlign: "left", minWidth: 0 }}
-                    title={reggeSchermoSpento(f) ? "Lo suona l'app: va avanti a schermo spento" : "Da YouTube: solo a schermo acceso"}
+                    title={isFile(f) ? "Dal tuo archivio: va avanti a schermo spento" : "Da YouTube: solo a schermo acceso"}
                   >
                     <span
                       style={{
                         fontSize: 22,
-                        filter: `drop-shadow(0 0 8px ${reggeSchermoSpento(f) ? C.accent : C.arcane}66)`,
-                        color: reggeSchermoSpento(f) ? C.accent : "inherit",
+                        filter: `drop-shadow(0 0 8px ${isFile(f) ? C.accent : C.arcane}66)`,
+                        color: isFile(f) ? C.accent : "inherit",
                       }}
                     >
-                      {reggeSchermoSpento(f) ? "♫" : "♪"}
+                      {isFile(f) ? "♫" : "♪"}
                     </span>
                     <span style={{ flex: 1, fontSize: 15, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {f.name}

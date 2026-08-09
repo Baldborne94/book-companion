@@ -302,6 +302,7 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
         r.added ? `${r.added} ${r.added === 1 ? "libro tornato" : "libri tornati"}` : null,
         r.files ? `${r.files} ${r.files === 1 ? "file" : "file"} recuperati` : null,
         r.melodie ? `${r.melodie} ${r.melodie === 1 ? "melodia tornata" : "melodie tornate"}` : null,
+        r.raccolte ? `${r.raccolte} ${r.raccolte === 1 ? "raccolta" : "raccolte"}` : null,
         r.kept ? `${r.kept} gia' in libreria` : null,
       ].filter(Boolean);
       notify(parts.length ? `Ripristino: ${parts.join(", ")} 🕯️` : "Nell'archivio non c'era nulla di nuovo");

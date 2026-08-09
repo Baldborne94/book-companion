@@ -8,7 +8,7 @@ import {
 import {
   getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights, removeAnnotations, setJump,
 } from "./annotations.js";
-import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites } from "./music.js";
+import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, getListsRaw, writeLists } from "./music.js";
 import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush } from "./syncCore.js";
 
 const LAST_SYNC_KEY = "bc_lastsync";
@@ -125,6 +125,7 @@ function localPrefs() {
   return {
     reader,
     music_favs: getFavoritesRaw(),
+    music_lists: getListsRaw(),
     last_opened: getLastOpened(),
     updated_at: parseInt(localStorage.getItem(PREFS_UPD_KEY), 10) || 0,
   };
@@ -237,6 +238,7 @@ export async function syncNow({ onProgress } = {}) {
   if (applyLocal) {
     if (merged.reader) localStorage.setItem("bc_reader", JSON.stringify(merged.reader));
     writeFavorites(merged.music_favs);
+    writeLists(merged.music_lists);
     if (merged.last_opened) localStorage.setItem("bc_lastopen", merged.last_opened);
   }
   if (pushRemote) {
