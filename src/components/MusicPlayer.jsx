@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { C } from "../data/constants.js";
-import { parseYouTube, embedUrl, isFile, loadTrack, getVolume, saveVolume } from "../lib/music.js";
+import { parseYouTube, embedUrl, isFile, loadTrack, getVolume, saveVolume, restaDa } from "../lib/music.js";
 
 // Gli ultimi trenta secondi prima dello scadere del timer la musica scende
 // fino a spegnersi. L'ora chiesta resta quella: a quel minuto c'e' silenzio,
@@ -18,6 +18,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
   const [timerEnd, setTimerEnd] = useState(null);
   const [sleepMin, setSleepMin] = useState(0);
   const [queue, setQueue] = useState(null);
+  const [manca, setManca] = useState(null);
   const [volume, setVolumeStato] = useState(() => getVolume());
   // il volume scelto dal lettore e la dissolvenza del timer sono due cose
   // distinte che si moltiplicano: la seconda non deve riscrivere la prima,
@@ -26,8 +27,8 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
   const dissRef = useRef(1);
 
   useEffect(() => {
-    onInfo({ current, playing, timerEnd, sleepMin, queue, volume });
-  }, [current, playing, timerEnd, sleepMin, queue, volume, onInfo]);
+    onInfo({ current, playing, timerEnd, sleepMin, queue, volume, manca });
+  }, [current, playing, timerEnd, sleepMin, queue, volume, manca, onInfo]);
 
   useEffect(
     () => () => {
@@ -91,6 +92,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
   // e' al punto giusto invece che indietro di tutti i colpi persi.
   useEffect(() => {
     if (timerEnd == null) {
+      setManca(null);
       if (dissRef.current !== 1) {
         dissRef.current = 1;
         applicaVolume();
@@ -106,6 +108,10 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
         stopRef.current();
         return;
       }
+      // il battito da' anche il conto alla rovescia da mostrare: React lascia
+      // cadere il re-render quando l'etichetta non e' cambiata, e per quasi
+      // tutto il timer non cambia
+      setManca(restaDa(resta));
       const g = resta >= DISSOLVENZA ? 1 : resta / DISSOLVENZA;
       if (g !== dissRef.current) {
         dissRef.current = g;
@@ -483,6 +489,14 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
           >
             {current.src ? "♫" : "♪"}
           </span>
+          {manca && (
+            <span
+              title="Quanto manca allo spegnimento"
+              style={{ fontSize: 12.5, color: C.muted, whiteSpace: "nowrap" }}
+            >
+              🌙 {manca}
+            </span>
+          )}
           <button
             onClick={playing ? pause : resume}
             aria-label={playing ? "Pausa" : "Riprendi"}

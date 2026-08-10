@@ -142,6 +142,21 @@ export function getVolume() {
   return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
 }
 
+// Quanto manca allo spegnimento, in poche lettere: sta accanto ai comandi
+// del player, dove lo spazio e' quello che e'. Sotto il minuto passa ai
+// secondi — e' il tratto in cui la musica sta gia' sfumando, e vedere
+// «1 min» fermo li' sembrerebbe un conto rotto.
+export function restaDa(ms) {
+  if (ms == null) return null;
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  if (s < 60) return `${s} s`;
+  const m = Math.ceil(s / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return r ? `${h} h ${r}` : `${h} h`;
+}
+
 export function saveVolume(v) {
   localStorage.setItem(VOL_KEY, String(Math.min(1, Math.max(0, v))));
 }
