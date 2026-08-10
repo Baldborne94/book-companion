@@ -46,4 +46,7 @@ export function removeAnnotations(id) {
   localStorage.removeItem(`bc_cfi_${id}`);
   localStorage.removeItem(`bc_marks_${id}`);
   localStorage.removeItem(`bc_hl_${id}`);
+  // la misura dei margini del PDF: si rifa' da sola, ma non ha senso
+  // lasciarla in giro per un libro che non c'e' piu'
+  localStorage.removeItem(`bc_pdfcrop_${id}`);
 }
