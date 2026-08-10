@@ -811,6 +811,7 @@ export default function App() {
         ref={playerRef}
         onInfo={setMusic}
         hideMini={section === "music" || !!readingBook}
+        onOpen={() => navigate("music")}
         notify={notify}
       />
       {updateReady && !readingBook && (

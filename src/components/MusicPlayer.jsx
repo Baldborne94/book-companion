@@ -7,7 +7,7 @@ import { parseYouTube, embedUrl, isFile, loadTrack, getVolume, saveVolume, resta
 // non l'inizio di una discesa.
 const DISSOLVENZA = 30000;
 
-const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }, ref) {
+const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, notify }, ref) {
   const iframeRef = useRef(null);
   const audioRef = useRef(null);
   const urlRef = useRef(null);
@@ -460,43 +460,54 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, notify }
             animation: "bc-fade-in 0.25s ease-out",
           }}
         >
-          <span
-            style={{
-              fontSize: 20,
-              animation: playing ? "bc-flicker 3s ease-in-out infinite" : "none",
-              opacity: playing ? 1 : 0.5,
-            }}
+          {/* tutta la parte che racconta — nota, nome, sorgente, conto alla
+              rovescia — e' un solo bersaglio che porta alla sala della
+              musica: i tasti restano fuori, o cambiare traccia diventerebbe
+              un salto di sezione */}
+          <button
+            onClick={onOpen}
+            aria-label="Vai alla sala della musica"
+            style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, minWidth: 0, textAlign: "left" }}
           >
-            🎶
-          </span>
-          <span
-            style={{
-              flex: 1,
-              fontSize: 14.5,
-              color: C.text,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {current.name || "Musica di sottofondo"}
-          </span>
-          {/* da dove esce l'audio, a colpo d'occhio: e' l'unica cosa che
-              dice se questa musica reggera' lo schermo spento o no */}
-          <span
-            title={current.src ? "Lo suona l'app: regge lo schermo spento" : "Da YouTube: solo a schermo acceso"}
-            style={{ fontSize: 15, color: current.src ? C.accent : C.muted, opacity: 0.9 }}
-          >
-            {current.src ? "♫" : "♪"}
-          </span>
-          {manca && (
             <span
-              title="Quanto manca allo spegnimento"
-              style={{ fontSize: 12.5, color: C.muted, whiteSpace: "nowrap" }}
+              style={{
+                fontSize: 20,
+                animation: playing ? "bc-flicker 3s ease-in-out infinite" : "none",
+                opacity: playing ? 1 : 0.5,
+              }}
             >
-              🌙 {manca}
+              🎶
             </span>
-          )}
+            <span
+              style={{
+                flex: 1,
+                fontSize: 14.5,
+                color: C.text,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {current.name || "Musica di sottofondo"}
+            </span>
+            {/* da dove esce l'audio, a colpo d'occhio: e' l'unica cosa che
+                dice se questa musica reggera' lo schermo spento o no */}
+            <span
+              title={current.src ? "Lo suona l'app: regge lo schermo spento" : "Da YouTube: solo a schermo acceso"}
+              style={{ fontSize: 15, color: current.src ? C.accent : C.muted, opacity: 0.9 }}
+            >
+              {current.src ? "♫" : "♪"}
+            </span>
+            {manca && (
+              <span
+                title="Quanto manca allo spegnimento"
+                style={{ fontSize: 12.5, color: C.muted, whiteSpace: "nowrap" }}
+              >
+                🌙 {manca}
+              </span>
+            )}
+            <span style={{ fontSize: 15, color: C.muted, opacity: 0.7 }}>›</span>
+          </button>
           <button
             onClick={playing ? pause : resume}
             aria-label={playing ? "Pausa" : "Riprendi"}
