@@ -17,13 +17,6 @@ const SLEEP_CHOICES = [
   { min: 180, label: "3 ore" },
 ];
 
-const fmtLeft = (min) => {
-  if (min < 60) return `~${min} min`;
-  const h = Math.floor(min / 60);
-  const r = min % 60;
-  return r ? `~${h} h ${r} min` : `~${h} h`;
-};
-
 const inputStyle = {
   flex: 1,
   minWidth: 160,
@@ -56,9 +49,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
   const [rinomina, setRinomina] = useState(null);
   const [bozzaRac, setBozzaRac] = useState("");
 
-  const { current, playing, timerEnd, sleepMin, queue, volume = 1 } = music;
+  const { current, playing, timerEnd, sleepMin, queue, volume = 1, manca } = music;
   const volPerCento = Math.round(volume * 100);
-  const sleepLeft = timerEnd ? Math.max(0, Math.ceil((timerEnd - Date.now()) / 60000)) : null;
 
   function playLink() {
     const url = link.trim();
@@ -322,8 +314,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
                 </button>
               );
             })}
-            {sleepLeft !== null && (
-              <span style={{ fontSize: 13, color: C.arcane }}>{fmtLeft(sleepLeft)} · sfuma piano sul finire</span>
+            {manca && (
+              <span style={{ fontSize: 13, color: C.arcane }}>manca {manca} · sfuma piano sul finire</span>
             )}
           </div>
         </div>

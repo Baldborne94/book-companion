@@ -697,6 +697,11 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             </span>
             {music?.current && (
               <>
+                {music.manca && (
+                  <span title="Quanto manca allo spegnimento della musica" style={{ fontSize: 12.5, color: C.muted, whiteSpace: "nowrap" }}>
+                    🌙 {music.manca}
+                  </span>
+                )}
                 <button onClick={onMusicToggle} style={barBtn(false)} aria-label={music.playing ? "Pausa musica" : "Riprendi musica"}>
                   {music.playing ? "⏸" : "▶"}
                 </button>
