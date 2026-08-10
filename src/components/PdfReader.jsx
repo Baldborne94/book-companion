@@ -9,6 +9,8 @@ import { explain } from "../lib/glossary.js";
 import { contextAround } from "../lib/oracle.js";
 import { toPageRects, rectStyle, pageOf } from "../lib/pdfHighlights.js";
 import { searchPdf, normalizeWithMap } from "../lib/pdfSearch.js";
+import { TUTTA, getCrop, saveCrop, misuraLibro, vuoto } from "../lib/pdfCrop.js";
+import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../lib/readingSpeed.js";
 import BookCover from "./BookCover.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
 import HighlightList from "./HighlightList.jsx";
@@ -89,6 +91,11 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   const rootRef = useRef(null);
   const containerRef = useRef(null);
   const pageBoxRef = useRef(null);
+  // La cornice della pagina INTERA, margini compresi, che scorre sotto la
+  // finestra ritagliata. Testo ed evidenziazioni vivono qui dentro: cosi'
+  // le frazioni salvate restano frazioni della pagina vera, e accendere o
+  // spegnere il ritaglio non sposta niente di quel che avevi segnato.
+  const pageFullRef = useRef(null);
   const canvasRef = useRef(null);
   const textRef = useRef(null);
   const pdfRef = useRef(null);
@@ -123,6 +130,13 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   const [jump, setJump] = useState("");
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState({ busy: false, results: null, scanned: 0, full: false });
+  const [crop, setCrop] = useState(() => getCrop(book.id));
+  const [campioni, setCampioni] = useState(() => loadSamples("pdf"));
+  const ultimoGiro = useRef(0);
+
+  // il ritaglio in mano al disegno, che vive fuori da React
+  const cropRef = useRef(TUTTA);
+  cropRef.current = settings.ritaglia !== false && crop ? crop : TUTTA;
 
   const flush = useCallback(() => {
     const s = live.current;
@@ -165,20 +179,41 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
         if (renderToken.current !== token) return;
         const p = await pdf.getPage(pageNum);
         if (renderToken.current !== token) return;
+        // Il foglio si misura sul RITAGLIO, non sulla pagina: e' la parte
+        // scritta a doversi prendere lo schermo. La stessa scala vale poi
+        // per la cornice piena, o testo e disegno si sfaserebbero.
+        const rit = cropRef.current;
         const base = p.getViewport({ scale: 1 });
-        const cssWidth = Math.min(container.clientWidth - 8, (container.clientHeight - 8) * (base.width / base.height));
-        const scale = (cssWidth / base.width) * zoomLevel;
+        const largo = base.width * (rit.r - rit.l);
+        const alto = base.height * (rit.b - rit.t);
+        const cssWidth = Math.min(container.clientWidth - 8, (container.clientHeight - 8) * (largo / alto));
+        const scale = (cssWidth / largo) * zoomLevel;
         const dpr = window.devicePixelRatio || 1;
-        const viewport = p.getViewport({ scale: scale * dpr });
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        const cssW = Math.ceil(viewport.width / dpr);
-        const cssH = Math.ceil(viewport.height / dpr);
+        const pieno = p.getViewport({ scale: scale * dpr });
+        // gli scostamenti spostano il disegno, non la misura del riquadro:
+        // la tela grande quanto il ritaglio ritaglia da se'
+        const viewport = p.getViewport({
+          scale: scale * dpr,
+          offsetX: -rit.l * pieno.width,
+          offsetY: -rit.t * pieno.height,
+        });
+        canvas.width = Math.ceil(pieno.width * (rit.r - rit.l));
+        canvas.height = Math.ceil(pieno.height * (rit.b - rit.t));
+        const cssW = Math.ceil(canvas.width / dpr);
+        const cssH = Math.ceil(canvas.height / dpr);
         canvas.style.width = `${cssW}px`;
         canvas.style.height = `${cssH}px`;
         if (pageBoxRef.current) {
           pageBoxRef.current.style.width = `${cssW}px`;
           pageBoxRef.current.style.height = `${cssH}px`;
+        }
+        if (pageFullRef.current) {
+          const pw = pieno.width / dpr;
+          const ph = pieno.height / dpr;
+          pageFullRef.current.style.width = `${pw}px`;
+          pageFullRef.current.style.height = `${ph}px`;
+          pageFullRef.current.style.left = `${-rit.l * pw}px`;
+          pageFullRef.current.style.top = `${-rit.t * ph}px`;
         }
         const task = p.render({ canvas, canvasContext: canvas.getContext("2d"), viewport });
         renderTask.current = task;
@@ -224,6 +259,16 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
         setPages(pdf.numPages);
         setPage(live.current.page);
         setStatusUi("ready");
+
+        // i margini si misurano una volta sola per libro: dalla seconda
+        // apertura il ritaglio e' gia' li' e il foglio nasce gia' giusto
+        if (!getCrop(book.id)) {
+          misuraLibro(pdf).then((c) => {
+            if (dead) return;
+            saveCrop(book.id, c);
+            setCrop(c);
+          }).catch(() => { /* niente misura: si legge la pagina intera */ });
+        }
 
         pdf.getMetadata().then((m) => {
           const l = (m?.info?.Language || "").slice(0, 2).toLowerCase();
@@ -287,6 +332,27 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
 
   useEffect(() => {
     if (status !== "ready") return;
+    renderPage(live.current.page, zoom);
+  }, [status, crop, settings.ritaglia]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Il passo di lettura, misurato sul tempo fra una pagina e l'altra. Sta
+  // in un cassetto suo e non in quello dei libri sfogliati: una pagina A4
+  // non e' una schermata di EPUB, e mescolarle sballerebbe tutt'e due le
+  // stime.
+  useEffect(() => {
+    if (status !== "ready") return;
+    const ora = Date.now();
+    const prima = ultimoGiro.current;
+    ultimoGiro.current = ora;
+    if (!prima) return;
+    const next = pushSample(campioni, ora - prima);
+    if (next === campioni) return;
+    setCampioni(next);
+    saveSamples(next, "pdf");
+  }, [page, status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (status !== "ready") return;
     const onResize = () => renderPage(live.current.page, zoom);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -324,8 +390,10 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   function readSelection() {
     const s = window.getSelection();
     const text = (s?.toString() || "").trim();
-    if (!text || !s.rangeCount || !pageBoxRef.current) return setSel(null);
-    const rects = toPageRects(s.getRangeAt(0).getClientRects(), pageBoxRef.current.getBoundingClientRect());
+    // le frazioni si prendono sulla pagina INTERA, mai sulla finestra
+    // ritagliata: quel che si salva deve valere anche a ritaglio spento
+    if (!text || !s.rangeCount || !pageFullRef.current) return setSel(null);
+    const rects = toPageRects(s.getRangeAt(0).getClientRects(), pageFullRef.current.getBoundingClientRect());
     setSel({ text, rects, context: contextAround(s) });
   }
 
@@ -448,6 +516,19 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   }
 
   const pct = pages > 0 ? Math.round((page / pages) * 100) : 0;
+  const pagineLeft = pages > 0 ? Math.max(0, pages - page) : 0;
+  const passo = medianMs(campioni);
+  const tempoLeft = passo && pagineLeft > 0 ? formatLeft(pagineLeft * passo) : null;
+  const quantoManca = !pages
+    ? null
+    : pagineLeft === 0
+      ? "ultima pagina"
+      : [
+          `${pagineLeft} ${pagineLeft === 1 ? "pagina" : "pagine"}`,
+          tempoLeft ? `${tempoLeft.startsWith("meno") ? "" : "~"}${tempoLeft} alla fine` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
   const edge = "clamp(3px, 0.9vw, 10px)";
   const pageHls = hls.filter((h) => pageOf(h) === page && h.rects?.length);
 
@@ -491,28 +572,36 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
           justifyContent: zoom > 1 ? "flex-start" : "center",
         }}
       >
-        <div ref={pageBoxRef} style={{ position: "relative", flexShrink: 0, boxShadow: "0 4px 30px #00000088" }}>
+        <div
+          ref={pageBoxRef}
+          style={{ position: "relative", flexShrink: 0, overflow: "hidden", boxShadow: "0 4px 30px #00000088" }}
+        >
           <canvas ref={canvasRef} style={{ display: "block" }} />
-          {/* sotto il livello testo: sopra, ruberebbe la selezione proprio
-              dove si e' gia' evidenziato */}
-          <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none" }}>
-            {pageHls.map((h) =>
-              h.rects.map((r, i) => (
-                <div
-                  key={`${h.id}-${i}`}
-                  style={{
-                    position: "absolute",
-                    ...rectStyle(r),
-                    background: h.color,
-                    opacity: 0.36,
-                    mixBlendMode: "multiply",
-                    borderRadius: 2,
-                  }}
-                />
-              ))
-            )}
+          {/* la pagina intera, margini compresi: sporge dalla finestra e
+              viene tagliata da lei. Dentro ci stanno testo ed evidenziazioni,
+              che cosi' continuano a misurarsi sulla pagina vera */}
+          <div ref={pageFullRef} style={{ position: "absolute", left: 0, top: 0 }}>
+            {/* sotto il livello testo: sopra, ruberebbe la selezione proprio
+                dove si e' gia' evidenziato */}
+            <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none" }}>
+              {pageHls.map((h) =>
+                h.rects.map((r, i) => (
+                  <div
+                    key={`${h.id}-${i}`}
+                    style={{
+                      position: "absolute",
+                      ...rectStyle(r),
+                      background: h.color,
+                      opacity: 0.36,
+                      mixBlendMode: "multiply",
+                      borderRadius: 2,
+                    }}
+                  />
+                ))
+              )}
+            </div>
+            <div ref={textRef} className="textLayer" />
           </div>
-          <div ref={textRef} className="textLayer" />
         </div>
       </div>
 
@@ -778,6 +867,11 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12.5, color: C.muted, marginTop: 2 }}>
               <span>{pct}%</span>
+              {quantoManca && (
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 10px" }}>
+                  {quantoManca}
+                </span>
+              )}
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -848,6 +942,33 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             onChange={(e) => updateSettings({ brightness: parseFloat(e.target.value) })}
             style={{ width: "100%", accentColor: C.accent }}
           />
+
+          <div style={{ height: 1, background: C.border, margin: "14px 0 12px" }} />
+          <button
+            onClick={() => updateSettings({ ritaglia: settings.ritaglia === false })}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "8px 10px",
+              borderRadius: 10,
+              border: `1px solid ${settings.ritaglia !== false ? C.accent : C.border}`,
+              color: settings.ritaglia !== false ? C.accent : C.muted,
+              fontSize: 14,
+              textAlign: "left",
+            }}
+          >
+            <span style={{ fontSize: 16 }}>{settings.ritaglia !== false ? "☑" : "☐"}</span>
+            <span style={{ flex: 1 }}>Togli i margini bianchi</span>
+          </button>
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 6, lineHeight: 1.45 }}>
+            {crop === null
+              ? "Sto misurando i margini di questo tomo…"
+              : vuoto(crop)
+                ? "Questo tomo non ha margini da togliere."
+                : `Qui se ne va ${Math.round((1 - (crop.r - crop.l) * (crop.b - crop.t)) * 100)}% di carta bianca.`}
+          </div>
         </div>
       )}
 
