@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
 import { ensureLocalFile } from "../lib/sync.js";
 import { getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights } from "../lib/annotations.js";
-import { getProgress, setProgress, setStatus } from "../lib/library.js";
+import { getProgress, setProgress, setStatus, getStatus, loadBooks } from "../lib/library.js";
+import { schedaChiE } from "../lib/chiSono.js";
+import { schedaRiassunto } from "../lib/trama.js";
+import { sembraUnNome } from "../lib/nomi.js";
 import { HL_COLORS, loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
 import { explain } from "../lib/glossary.js";
@@ -14,6 +17,7 @@ import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../l
 import BookCover from "./BookCover.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
 import HighlightList from "./HighlightList.jsx";
+import SchedaOracolo, { attese } from "./SchedaOracolo.jsx";
 
 // stesse fasce del reader EPUB, misurate sullo schermo: cosi' anche il
 // margine attorno alla pagina volta, non solo il foglio
@@ -127,6 +131,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   const [outline, setOutline] = useState([]);
   const [sel, setSel] = useState(null);
   const [dict, setDict] = useState(null);
+  const [chi, setChi] = useState(null);
   const [jump, setJump] = useState("");
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState({ busy: false, results: null, scanned: 0, full: false });
@@ -452,6 +457,41 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     }
   }
 
+  // Le schede dell'Oracolo, identiche a quelle del reader EPUB: la macchina
+  // sotto sa gia' leggere i PDF (il segno e' il numero di pagina), mancava
+  // solo il tasto. La frontiera vale anche qui, saga compresa.
+  const chiRun = useRef(0);
+  const chiCache = useRef(new Map());
+  const doveSono = () => ({
+    book,
+    libri: loadBooks(),
+    statusOf: getStatus,
+    // nel PDF il segno e' un numero di pagina, e quello vivo e' piu' avanti
+    // di quello salvato: fra un flush e l'altro passano pagine gia' lette
+    cfiOf: (id) => (id === book.id ? String(live.current.page) : getCfi(id)),
+  });
+
+  async function scheda(chiave, avvia) {
+    setSel(null);
+    setPanel("chi");
+    const gia = chiCache.current.get(chiave);
+    if (gia) return setChi(gia);
+    const mio = ++chiRun.current;
+    const vivo = () => chiRun.current === mio;
+    const finito = await avvia({ ...doveSono(), vivo, passo: (s) => vivo() && setChi(s) });
+    if (!vivo() || !finito) return;
+    if (finito.answer) chiCache.current.set(chiave, finito);
+    setChi(finito);
+  }
+
+  const chiE = (nome) => scheda(`chi:${nome}`, (ctx) => schedaChiE({ nome, ...ctx }));
+  // il riassunto si rifà ogni volta: il senso è «fin dove sono ADESSO», e
+  // una risposta in cache racconterebbe dov'eri la volta scorsa
+  const dovEravamo = () => {
+    chiCache.current.delete("trama");
+    return scheda("trama", schedaRiassunto);
+  };
+
   // come nel reader EPUB: prima il glossario di casa, che risponde anche
   // offline, poi il dizionario in rete se la selezione e' corta abbastanza
   async function defineSelection() {
@@ -750,6 +790,21 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
               {wordCount(sel.text) > 1 ? "🔎 Significato" : "📖 Definisci"}
             </button>
           )}
+          {sembraUnNome(sel.text) && (
+            <button
+              onClick={() => chiE(sel.text.trim())}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: `1px solid ${C.accent}88`,
+                color: C.accent,
+                fontSize: 14,
+                whiteSpace: "nowrap",
+              }}
+            >
+              🕮 Chi è
+            </button>
+          )}
           <button onClick={clearSelection} style={{ fontSize: 14.5, color: C.muted, marginLeft: 4 }}>
             Annulla
           </button>
@@ -857,6 +912,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             <button onClick={() => setPanel(panel === "hl" ? null : "hl")} style={barBtn(panel === "hl")} aria-label="Evidenziazioni">
               🖍️
             </button>
+            <button onClick={dovEravamo} style={barBtn(false)} aria-label="Dove eravamo rimasti">🧭</button>
             <button
               onClick={() => setZoom((z) => Math.max(1, +(z - 0.25).toFixed(2)))}
               style={barBtn(false)}
@@ -1158,6 +1214,24 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
               <span style={{ fontSize: 12.5, color: C.muted }}>{it.page}</span>
             </button>
           ))}
+        </Panel>
+      )}
+
+      {panel === "chi" && chi && (
+        <Panel
+          title={chi.nome ? `Chi è ${chi.nome}` : "Dove eravamo rimasti"}
+          onClose={() => setPanel(null)}
+        >
+          <SchedaOracolo
+            scheda={chi}
+            attese={attese(chi)}
+            vuoto={
+              chi.nome
+                ? `Non trovo «${chi.nome}» in quello che hai letto finora.`
+                : "Non riesco a rileggere quello che hai letto finora."
+            }
+            onRiprova={() => (chi.nome ? chiE(chi.nome) : dovEravamo())}
+          />
         </Panel>
       )}
 
