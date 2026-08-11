@@ -1,6 +1,7 @@
 import { getFile } from "./bookStore.js";
 import { pageText, findMatches } from "./pdfSearch.js";
 import { chiedi, getOracleKey } from "./oracle.js";
+import { varianti, regexNome, nuovoRegistro, annota, decidi } from "./nomi.js";
 
 // «CHI È COSTUI?» — la scheda di un personaggio cucita su quello che hai
 // letto, e su nient'altro.
@@ -70,46 +71,6 @@ const SISTEMA = [
   "Se i passaggi non bastano a dire chi è, dillo in una riga invece di",
   "inventare; se non bastano su un punto, taci su quel punto.",
 ].join(" ");
-
-// Un nome, non una frase: la scheda ha senso su «Logen Novedita», non su
-// mezzo paragrafo.
-export function sembraUnNome(s) {
-  const t = String(s || "").trim();
-  if (!t || t.length > 42) return false;
-  const parole = t.split(/\s+/);
-  if (parole.length > 4) return false;
-  return parole.some((p) => /^[A-ZÀ-Þ]/.test(p));
-}
-
-// Le parti del nome valgono da sole: selezioni «Logen Novedita» e le pagine
-// dove e' scritto solo «Novedita» devono contare lo stesso. Fuori restano
-// gli articoli e i titoli («The», «Lord»): da soli acchiapperebbero mezzo
-// libro. Il ponte fra nome e soprannome («il Sanguinario» = Logen) invece
-// non si puo' costruire senza dire al modello di che saga si tratta — e
-// quello non si fa.
-const GENERICHE = new Set([
-  "the", "der", "die", "das", "los", "las", "van", "von", "mac",
-  "del", "dei", "della", "dello", "don", "dom", "san", "santa", "ser",
-  "sir", "lord", "lady", "king", "queen", "mister", "miss", "old",
-]);
-
-export function varianti(nome) {
-  const intero = String(nome || "").trim().replace(/\s+/g, " ");
-  if (!intero) return [];
-  const parti = intero
-    .split(" ")
-    .filter((p) => /^[A-ZÀ-Þ]/.test(p) && p.length >= 3 && !GENERICHE.has(p.toLowerCase()));
-  return [...new Set([intero, ...parti])];
-}
-
-const sfuggi = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-// maiuscole rispettate: «Death» il personaggio, non «the death of kings»
-export function regexNome(nome) {
-  const v = varianti(nome);
-  if (!v.length) return null;
-  return new RegExp(`(?<![\\p{L}\\p{N}])(${v.map(sfuggi).join("|")})(?![\\p{L}\\p{N}])`, "gu");
-}
 
 // Il paragrafo attorno alla menzione, non mezzo rigo: «…alzo' lo sguardo
 // verso…» non dice niente ne' al lettore ne' al modello.
@@ -182,7 +143,7 @@ async function daEpub(libro, re, fino) {
   return out;
 }
 
-async function daPdf(libro, nome, fino) {
+async function daPdf(libro, nomi, fino) {
   const blob = await getFile(libro.id);
   if (!blob) return [];
   const mod = await import("./pdfThumb.js");
@@ -193,7 +154,7 @@ async function daPdf(libro, nome, fino) {
     // leggono proprio, ed e' anche questo che rende giusti gli «ultimi»
     const limite = fino ? Math.min(parseInt(fino, 10) || pdf.numPages, pdf.numPages) : pdf.numPages;
     const cache = new Map();
-    const nomi = varianti(nome);
+    const cercati = [...new Set([].concat(nomi).flatMap(varianti))];
     for (let n = 1; n <= limite && out.length < MAX_MENZIONI; n++) {
       let testoPag;
       try {
@@ -202,7 +163,7 @@ async function daPdf(libro, nome, fino) {
         continue;
       }
       const visti = new Set();
-      for (const v of nomi) {
+      for (const v of cercati) {
         for (const m of findMatches(testoPag, v, 2, 220)) {
           const chiave = `${m.before.slice(-24)}|${m.hit}`;
           if (visti.has(chiave)) continue;
@@ -222,11 +183,81 @@ async function daPdf(libro, nome, fino) {
   return out;
 }
 
-export async function raccogliPassaggi(nome, tappe, { vivo } = {}) {
+// GLI ALTRI NOMI DELLA STESSA PERSONA.
+//
+// Si cercano SOLO nel volume che il lettore ha aperto, e fin dove e'
+// arrivato. Non e' una rinuncia: la parola l'ha toccata su quella pagina,
+// quindi in quel volume c'e' di sicuro, ed e' li' che il libro la presenta
+// per esteso. Aprire tutta la saga per trovare un cognome vorrebbe dire
+// raddoppiare l'attesa su ogni scheda.
+//
+// E' una passata di sola conta — niente CFI, niente paragrafi — quindi costa
+// una frazione della raccolta vera. Nel capitolo dove sta il segno si legge
+// tutto il capitolo: un nome non e' un fatto, e i passaggi restano comunque
+// tagliati sul segno.
+async function aliasDaEpub(libro, reg, fino) {
+  const blob = await getFile(libro.id);
+  if (!blob) return;
+  const { default: ePub } = await import("epubjs");
+  const eb = ePub(await blob.arrayBuffer());
+  try {
+    await eb.ready;
+    const cfi = new ePub.CFI();
+    for (const item of eb.spine.spineItems) {
+      if (fino) {
+        try {
+          if (cfi.compare(`epubcfi(${item.cfiBase}!/0)`, fino) > 0) break;
+        } catch { /* base illeggibile: si tira dritto */ }
+      }
+      try {
+        await item.load(eb.load.bind(eb));
+        annota(reg, item.document?.body?.textContent);
+      } catch { /* capitolo illeggibile: gli altri bastano */ } finally {
+        try { item.unload(); } catch { /* gia' scaricato */ }
+      }
+    }
+  } finally {
+    try { eb.destroy(); } catch { /* gia' chiuso */ }
+  }
+}
+
+async function aliasDaPdf(libro, reg, fino) {
+  const blob = await getFile(libro.id);
+  if (!blob) return;
+  const mod = await import("./pdfThumb.js");
+  const pdf = await mod.loadPdf(await blob.arrayBuffer());
+  try {
+    const limite = fino ? Math.min(parseInt(fino, 10) || pdf.numPages, pdf.numPages) : pdf.numPages;
+    const cache = new Map();
+    for (let n = 1; n <= limite; n++) {
+      try {
+        annota(reg, await pageText(pdf, n, cache));
+      } catch { /* pagina illeggibile: le altre bastano */ }
+    }
+  } finally {
+    try { pdf.destroy(); } catch { /* gia' chiuso */ }
+  }
+}
+
+export async function trovaAlias(nome, tappa) {
+  if (!tappa?.libro) return [];
+  const reg = nuovoRegistro(nome);
+  try {
+    const fino = tappa.tutto ? null : tappa.fino;
+    if (tappa.libro.fileType === "pdf") await aliasDaPdf(tappa.libro, reg, fino);
+    else await aliasDaEpub(tappa.libro, reg, fino);
+  } catch {
+    return [];
+  }
+  return decidi(reg);
+}
+
+export async function raccogliPassaggi(nomi, tappe, { vivo } = {}) {
   const attivo = vivo || (() => true);
-  const re = regexNome(nome);
-  if (!re) return [];
   const tutti = [];
+  const elenco = [].concat(nomi);
+  const re = regexNome(elenco);
+  if (!re) return [];
   // un tomo per volta, come la ricerca in biblioteca: su un tablet aprirli
   // tutti insieme vuol dire farsi chiudere la scheda
   for (const t of tappe) {
@@ -234,7 +265,7 @@ export async function raccogliPassaggi(nome, tappe, { vivo } = {}) {
     try {
       const pezzi =
         t.libro.fileType === "pdf"
-          ? await daPdf(t.libro, nome, t.tutto ? null : t.fino)
+          ? await daPdf(t.libro, elenco, t.tutto ? null : t.fino)
           : await daEpub(t.libro, re, t.tutto ? null : t.fino);
       tutti.push(...pezzi);
     } catch {
@@ -337,11 +368,20 @@ const etichette = (tappe) => {
   return m;
 };
 
-export async function chiediChiE({ nome, passaggi, tappe }, fetcher) {
+export async function chiediChiE({ nome, alias = [], passaggi, tappe }, fetcher) {
   if (!getOracleKey()) return { error: "chiave" };
   if (!passaggi.length) return { error: "nessunPassaggio" };
   const eti = etichette(tappe);
   const righe = [`Il lettore chiede: chi è «${nome}»?`];
+  // gli altri nomi vengono dal testo che il lettore ha letto, non da fuori:
+  // dirglieli non apre nessuna porta, e senza di quelli meta' dei passaggi
+  // sembrerebbero parlare di un'altra persona
+  if (alias.length) {
+    righe.push(
+      `Nei passaggi la stessa persona è chiamata anche: ${alias.map((a) => `«${a}»`).join(", ")}. ` +
+        "Sono tutti lei: trattali come un nome solo."
+    );
+  }
   righe.push(
     tappe.length === 1
       ? "Sta leggendo un libro ed è arrivato a un certo punto. Non ti dico quale libro, apposta: devi rispondere da questi passaggi e non da quello che ricordi."
