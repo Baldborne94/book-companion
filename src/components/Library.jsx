@@ -7,6 +7,7 @@ import { exportLibrary } from "../lib/exportLibrary.js";
 import { restoreLibrary } from "../lib/restoreLibrary.js";
 import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
+import { fmtBytes } from "../lib/bytes.js";
 import BookCover from "./BookCover.jsx";
 import EmptyState from "./EmptyState.jsx";
 
@@ -28,9 +29,6 @@ const GROUPS = [
   { id: "genre", label: "Genere", empty: "Senza genere" },
   { id: "saga", label: "Saga", empty: "Fuori saga" },
 ];
-
-const fmtBytes = (n) =>
-  n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1e6))} MB`;
 
 function Shelf({ books, onOpenBook, localIds, showOrder }) {
   return (

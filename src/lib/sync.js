@@ -316,6 +316,62 @@ export async function ensureLocalTrack(trackId, onScarico) {
   return data;
 }
 
+// QUANTO PESI LASSU'.
+//
+// Il piano gratuito da' un gigabyte, e finora ci si navigava al buio: te ne
+// accorgevi quando qualcosa smetteva di caricarsi. Qui si chiede l'elenco
+// del secchio e si sommano le dimensioni, separando i libri dalle melodie —
+// perche' la risposta interessante non e' «quanto», e' «chi».
+//
+// Il conto e' quello che c'e' VERAMENTE nel secchio, non quello che secondo
+// noi ci dovrebbe essere: cosi' vengono fuori anche gli avanzi di libri
+// cancellati altrove.
+async function elenca(sb, cartella) {
+  const dentro = [];
+  for (let salto = 0; ; salto += 100) {
+    const { data, error } = await sb.storage
+      .from(BUCKET)
+      .list(cartella, { limit: 100, offset: salto });
+    if (error || !data?.length) break;
+    dentro.push(...data);
+    if (data.length < 100) break;
+  }
+  return dentro;
+}
+
+// la parte che sa contare, separata da quella che sa chiedere: cosi' si puo'
+// provare senza un secchio vero sotto
+export function contaSpazio(radiceGrezza, braniGrezzi) {
+  // Le cartelle compaiono nell'elenco senza metadati. Lo scarto si fa QUI e
+  // non solo in chi chiede: una cartella contata come libro non si vede —
+  // pesa zero — ma fa dire «4 libri» dove ce ne sono tre.
+  const file = (lista) => (lista || []).filter((o) => o?.metadata);
+  const radice = file(radiceGrezza);
+  const brani = file(braniGrezzi);
+  const peso = (lista) => lista.reduce((s, o) => s + (o.metadata?.size || 0), 0);
+  const copertine = radice.filter((o) => o.name.endsWith(".cover"));
+  const libri = radice.filter((o) => !o.name.endsWith(".cover"));
+  return {
+    libri: { quanti: libri.length, byte: peso(libri) },
+    copertine: { quanti: copertine.length, byte: peso(copertine) },
+    melodie: { quanti: brani.length, byte: peso(brani) },
+    totale: peso(radice) + peso(brani),
+  };
+}
+
+export async function cloudUsage() {
+  if (!isSyncConfigured()) return null;
+  const session = await getSession();
+  if (!session) return null;
+  const sb = await getClient();
+  const uid = session.user.id;
+  try {
+    return contaSpazio(await elenca(sb, uid), await elenca(sb, `${uid}/melodie`));
+  } catch {
+    return null;
+  }
+}
+
 export async function localFileIds() {
   try {
     return new Set(await listFileIds());
