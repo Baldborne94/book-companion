@@ -87,7 +87,7 @@ function accendiRisultato(flashRef, layer, pageNum) {
   }
 }
 
-export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusicStop, onMusicVolume, onClose, notify, nextBook, onReadNext }) {
+export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusicStop, onMusicVolume, onAlive, onClose, notify, nextBook, onReadNext }) {
   const rootRef = useRef(null);
   const containerRef = useRef(null);
   const pageBoxRef = useRef(null);
@@ -345,6 +345,9 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     const prima = ultimoGiro.current;
     ultimoGiro.current = ora;
     if (!prima) return;
+    // una voltata e' la prova che qualcuno sta leggendo: e' da qui che lo
+    // schermo si guadagna un altro quarto d'ora di veglia
+    onAlive?.();
     const next = pushSample(campioni, ora - prima);
     if (next === campioni) return;
     setCampioni(next);

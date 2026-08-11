@@ -36,6 +36,8 @@ export function deviceDefaults(shortSide) {
     brightness: 1,
     pageTurn: true,
     terms: true,
+    // la colonna come in stampa: giustificata E sillabata, mai una sola
+    justify: true,
     // solo per i PDF: toglie i margini bianchi della carta
     ritaglia: true,
     appTheme: "night",

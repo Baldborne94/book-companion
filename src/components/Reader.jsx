@@ -15,6 +15,7 @@ import { explain, termIndex, normalize, wikiUrl, glossaryOf } from "../lib/gloss
 import { contextAround } from "../lib/oracle.js";
 import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../lib/readingSpeed.js";
 import { leftoverScroll } from "../lib/spread.js";
+import { sillaba } from "../lib/hyphens.js";
 import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
@@ -143,11 +144,16 @@ function flattenToc(items, depth = 0, out = []) {
   return out;
 }
 
-function contentStyles(s) {
+function contentStyles(s, lingua) {
   const t = READER_THEMES[s.theme];
   const font = READER_FONTS.find((f) => f.id === s.font)?.css;
   const textSel =
     "p, div, span, li, td, th, dd, dt, blockquote, cite, em, strong, i, b, small, figcaption";
+  // La colonna giustificata si prende solo la prosa. Non `div`, che spesso
+  // avvolge anche i titoli: quelli il libro li centra o li allinea a modo
+  // suo, e giustificarli e' il modo piu' rapido di far sembrare rotta una
+  // pagina impaginata bene.
+  const proseSel = "p, li, dd, blockquote";
   const rules = {
     html: { background: `${t.bg} !important` },
     body: {
@@ -167,6 +173,35 @@ function contentStyles(s) {
     rules.body["font-family"] = `${font} !important`;
     rules[textSel]["font-family"] = `${font} !important`;
     rules["h1, h2, h3, h4, h5, h6"]["font-family"] = `${font} !important`;
+  }
+  // GIUSTIFICATO E SILLABATO, o nessuno dei due.
+  //
+  // Giustificare senza poter spezzare le parole apre fiumi di bianco fra
+  // una parola e l'altra: su una colonna stretta da tablet e' peggio del
+  // bordo frastagliato che voleva togliere. E il browser sa sillabare solo
+  // se sa in che lingua sta leggendo — se il libro non lo dichiara, qui non
+  // si tocca niente e il pannello lo spiega.
+  // Spenta, la levetta deve dire ESPLICITAMENTE «a bandiera», non limitarsi
+  // a togliere la regola: epub.js accoda al foglio di stile del capitolo e
+  // non lo ripulisce mai, quindi una regola tolta resta scritta e continua a
+  // valere finche' il libro non viene rifatto da capo. Le regole che
+  // arrivano dopo vincono, quelle che spariscono no.
+  if (lingua) {
+    rules[proseSel] = s.justify
+      ? {
+          "text-align": "justify !important",
+          hyphens: "auto !important",
+          "-webkit-hyphens": "auto !important",
+          // mai spezzare dopo due lettere: sono le sillabazioni che si notano
+          "hyphenate-limit-chars": "6 3 3",
+        }
+      : {
+          // `start`, non `left`: cosi' regge anche un libro che si legge
+          // da destra
+          "text-align": "start !important",
+          hyphens: "manual !important",
+          "-webkit-hyphens": "manual !important",
+        };
   }
   return rules;
 }
@@ -308,7 +343,7 @@ function Panel({ title, onClose, children }) {
   );
 }
 
-export default function Reader({ book, startCfi, nextBook, onReadNext, music, onMusicToggle, onMusicStop, onMusicVolume, onClose, notify }) {
+export default function Reader({ book, startCfi, nextBook, onReadNext, music, onMusicToggle, onMusicStop, onMusicVolume, onAlive, onClose, notify }) {
   const viewerRef = useRef(null);
   const rootRef = useRef(null);
   const bookRef = useRef(null);
@@ -381,6 +416,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const samplesRef = useRef(loadSamples());
   const lastTurnAt = useRef(0);
   const langRef = useRef("en");
+  // La lingua DICHIARATA dal libro, che non e' la stessa cosa: `langRef`
+  // ripiega sull'inglese per il dizionario, qui invece serve sapere se il
+  // libro l'ha detta davvero — senza, il browser non sillaba.
+  const linguaRef = useRef(null);
+  const [lingua, setLingua] = useState(null);
+  const aliveRef = useRef(null);
+  aliveRef.current = onAlive;
 
   live.current.settings = settings;
   live.current.panel = panel;
@@ -472,7 +514,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   }, [book.id, flush, onClose]);
 
   const applyStyles = useCallback((rendition, s) => {
-    rendition.themes.default(contentStyles(s));
+    rendition.themes.default(contentStyles(s, linguaRef.current));
     rendition.themes.fontSize(`${s.fontSize}%`);
   }, []);
 
@@ -568,6 +610,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
       r.on("relocated", (loc) => {
         const st = live.current;
+        // una voltata e' la prova che qualcuno sta leggendo: e' da qui che
+        // lo schermo si guadagna un altro quarto d'ora di veglia
+        aliveRef.current?.();
         st.cfi = loc.start.cfi;
         st.href = loc.start.href;
         // l'ancora segue solo le pagine scelte dal lettore: quelle rese da un
@@ -619,6 +664,18 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       r.on("rendered", (_section, view) => {
         const doc = view?.contents?.document;
         if (!doc) return;
+        // La sillabazione nasce dalla lingua, e parecchi capitoli non la
+        // dichiarano nemmeno quando il libro la dichiara nel suo indice:
+        // qui gliela si presta. Tocca un attributo di <html>, non la
+        // struttura, quindi i CFI salvati non si muovono di un pelo.
+        if (linguaRef.current) {
+          const el = doc.documentElement;
+          if (!el.getAttribute("lang")) el.setAttribute("lang", linguaRef.current);
+          if (!el.getAttribute("xml:lang")) {
+            try { el.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:lang", linguaRef.current); }
+            catch { /* documento che non vuole il namespace: basta `lang` */ }
+          }
+        }
         if (live.current.settings.font === "garamond") {
           try { view.contents.addStylesheetCss(GOOGLE_FONT_CSS, "bc-font"); } catch { /* offline: fallback serif */ }
         }
@@ -727,6 +784,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         if (dead) return;
         const lang = (eb.packaging?.metadata?.language || "").slice(0, 2).toLowerCase();
         langRef.current = lang || "en";
+        // non basta che il libro dichiari la lingua: serve che il browser
+        // sappia sillabarla, e quello si misura sul posto
+        const dichiarata = /^[a-z]{2}$/.test(lang) ? lang : null;
+        linguaRef.current = dichiarata && sillaba(dichiarata) ? dichiarata : null;
+        setLingua({ dichiarata, sillababile: !!linguaRef.current });
         eb.loaded.navigation.then((nav) => !dead && setToc(flattenToc(nav.toc)));
         makeRendition(live.current.settings);
         const cached = await getAux(`loc_${book.id}`);
@@ -1090,7 +1152,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       if (next.pageTurn) schedulePark();
     }
     if ("flow" in patch || "spread" in patch || "font" in patch) makeRendition(next);
-    else if (rendRef.current && ("theme" in patch || "fontSize" in patch || "lineHeight" in patch)) {
+    else if (rendRef.current && ("theme" in patch || "fontSize" in patch || "lineHeight" in patch || "justify" in patch)) {
       applyStyles(rendRef.current, next);
       schedulePark();
       // corpo e interlinea cambiano il passo delle righe, quindi l'avanzo:
@@ -1275,6 +1337,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   }
 
   const pct = Math.round((progress || 0) * 100);
+  const puoGiustificare = !!lingua?.sillababile;
   const paginated = settings.flow !== "scrolled";
   const twoUp = paginated && pages === 2;
   const p = Math.min(1, Math.max(0, progress || 0));
@@ -2230,6 +2293,32 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             >
               {settings.spread === "auto" ? "Doppia: auto" : "Pagina singola"}
             </button>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 14.5, color: puoGiustificare ? C.muted : C.dim }}>Colonna come in stampa</span>
+              <button
+                onClick={() => updateSettings({ justify: !settings.justify })}
+                disabled={!puoGiustificare}
+                style={{
+                  padding: "6px 16px",
+                  borderRadius: 999,
+                  fontSize: 14,
+                  border: `1px solid ${settings.justify && puoGiustificare ? C.accent : C.border}`,
+                  color: !puoGiustificare ? C.dim : settings.justify ? C.accent : C.muted,
+                  background: settings.justify && puoGiustificare ? `${C.accent}14` : "transparent",
+                }}
+              >
+                {!puoGiustificare ? "Non si può" : settings.justify ? "Attiva ✒" : "Spenta"}
+              </button>
+            </div>
+            <p style={{ margin: "5px 0 0", fontSize: 12.5, color: C.dim, lineHeight: 1.45 }}>
+              {puoGiustificare
+                ? "Testo giustificato e parole sillabate a fine riga, come su carta."
+                : !lingua?.dichiarata
+                  ? "Questo tomo non dichiara la sua lingua, e senza lingua non si sillaba: giustificarlo aprirebbe fiumi di bianco fra le parole."
+                  : "Questo browser non sa sillabare in questa lingua — l'ho provato qui, su questo dispositivo. Giustificare senza poter spezzare le parole aprirebbe fiumi di bianco, e allora meglio il bordo a bandiera."}
+            </p>
           </div>
           {glossaryOf(book) && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
