@@ -1250,7 +1250,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       cfiOf: (id) => (id === book.id ? live.current.cfi || getCfi(id) : getCfi(id)),
     });
     setChi({ nome, fase: "cerco", tappe });
-    const scelti = scegliPassaggi(await raccogliPassaggi(nome, tappe, { vivo: () => chiRun.current === mio }));
+    const raccolti = await raccogliPassaggi(nome, tappe, { vivo: () => chiRun.current === mio });
+    const scelti = scegliPassaggi(raccolti, book.id);
     if (chiRun.current !== mio) return;
     if (!scelti.length) return setChi({ nome, fase: "vuoto", tappe, passaggi: [] });
     setChi({ nome, fase: "chiedo", tappe, passaggi: scelti });
@@ -2514,8 +2515,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           )}
           {chi.fase === "fatto" && (
             <>
-              {/* pre-line: la risposta arriva a righe (frase, punti, dove eri
-                  rimasto) e i ritorni a capo sono la sua struttura */}
+              {/* pre-line: la risposta e' prosa in due o tre paragrafi, e la
+                  riga vuota fra l'uno e l'altro e' la sua unica struttura */}
               <p style={{ color: C.text, fontSize: 15.5, lineHeight: 1.6, margin: 0, whiteSpace: "pre-line" }}>{chi.answer}</p>
               {/* Da dove viene la risposta: la garanzia resta, ma ripiegata.
                   Il controllo dev'essere possibile, non un muro di citazioni

@@ -12,14 +12,23 @@ import { chiedi, getOracleKey } from "./oracle.js";
 // uscire da li', e gli stessi passaggi vengono mostrati al lettore: e' lui a
 // poter controllare, invece di doversi fidare.
 
-// Dodici passaggi: dall'inizio (chi e' quando entra in scena), dal fondo
-// (cosa sta facendo adesso) e anche dal MEZZO, campionato a passo regolare —
-// e' li' che spesso stanno i fatti chiave di un personaggio, e prendendo
-// solo capo e coda restavano fuori. Dodici paragrafi sono ancora centesimi
-// di chiamata.
+// Da ogni volume si prende dall'inizio (chi e' quando entra in scena), dal
+// fondo (cosa sta facendo adesso) e dal MEZZO a passo regolare — e' li' che
+// spesso stanno i fatti chiave, e prendendo solo capo e coda restavano
+// fuori.
+//
+// Ma la quota e' PER VOLUME, e il volume aperto ha la sua. Con una quota
+// sola sull'intera frontiera, il «capo» finiva nel primo volume della saga e
+// la «coda» nelle scene recenti: l'INIZIO DEL LIBRO CHE STAI LEGGENDO non
+// veniva campionato da nessuno dei due. Ed e' li' che sta la premessa — chi
+// e' stato tradito, da chi, perche' vuole vendetta. La scheda usciva senza
+// il fatto che regge il libro.
 const DA_CAPO = 3;
 const DA_MEZZO = 3;
 const DA_FONDO = 6;
+// quanto spetta, in tutto, ai volumi precedenti: il passato serve, ma la
+// storia che il lettore ha in mano adesso conta di piu'
+const DA_PRIMA = 6;
 // tetto di sicurezza per libro: oltre, e' un protagonista e le menzioni in
 // piu' non cambiano la scelta
 const MAX_MENZIONI = 240;
@@ -33,21 +42,25 @@ const SISTEMA = [
   "REGOLA ASSOLUTA: rispondi soltanto con ciò che si ricava da quei",
   "passaggi. Non usare nulla che sai di questo libro o di questa saga da",
   "altre fonti: quel che sai potrebbe venire da pagine che il lettore non ha",
-  "ancora letto, e rovinargliele. Se i passaggi non bastano a dire chi è,",
-  "dillo in una riga invece di inventare o completare a memoria.",
+  "ancora letto, e rovinargliele.",
   "Non anticipare MAI cosa succederà.",
-  "Rispondi in un italiano semplice e naturale, testo puro senza markdown,",
-  "in questa forma:",
-  "prima riga: chi è, in una frase secca.",
-  "Poi una riga vuota e da 3 a 6 righe che iniziano con «— », i punti",
-  "salienti della sua storia NELL'ORDINE in cui il lettore li ha",
-  "incontrati: chi è quando compare, i legami con altri personaggi o luoghi",
-  "dei passaggi, i fatti importanti che gli sono successi, i tratti che",
-  "contano. Un punto per riga, niente giri di parole — servono a chi",
-  "reincontra il personaggio dopo tanto tempo e deve rimettersi in pari.",
-  "Chiudi con una riga vuota e una riga «Dove eri rimasto: …» con l'ultima",
-  "cosa che sta facendo nei passaggi piu' recenti.",
-  "Se per un punto i passaggi non bastano, salta il punto senza inventare.",
+  "LINGUA: scrivi nella stessa lingua dei passaggi. Se i passaggi sono in",
+  "inglese rispondi in inglese, se sono in italiano rispondi in italiano.",
+  "FORMA: prosa, non un elenco. Due o tre paragrafi brevi, separati da una",
+  "riga vuota, testo puro senza markdown, senza trattini a capo, senza",
+  "titoletti. Scrivi come un lettore che racconta a voce a un amico chi è",
+  "quel personaggio, con frasi intere e distese.",
+  "CONTENUTO: racconta la sua storia fino a qui, non i suoi tratti. Chi era",
+  "prima, che cosa gli è successo e per mano di chi, che cosa ha perso, che",
+  "cosa vuole adesso e perché lo vuole. I torti subiti, i tradimenti, le",
+  "alleanze e le rivalità sono la parte che conta: se i passaggi li",
+  "mostrano, raccontali per esteso e chiama le persone coinvolte con i nomi",
+  "che compaiono nei passaggi. Serve a chi reincontra il personaggio dopo",
+  "tanto tempo e deve rimettersi in pari.",
+  "Chiudi con una frase su dove il lettore lo ha lasciato: cosa sta facendo",
+  "nei passaggi più recenti.",
+  "Se i passaggi non bastano a dire chi è, dillo in una riga invece di",
+  "inventare; se non bastano su un punto, taci su quel punto.",
 ].join(" ");
 
 // Un nome, non una frase: la scheda ha senso su «Logen Novedita», non su
@@ -243,24 +256,51 @@ export function ripulisci(menzioni) {
 
 const SOSTANZA = 90;
 
-export function scegliPassaggi(tutti) {
+// capo, coda e mezzo a passo regolare. Il mezzo non sono «i migliori» — non
+// sappiamo giudicare cosa conta in una storia — ma sparsi, cosi' nessun
+// tratto lungo resta muto.
+function capoMezzoCoda(base, nCapo, nMezzo, nFondo) {
+  if (base.length <= nCapo + nMezzo + nFondo) return base;
+  const capo = base.slice(0, nCapo);
+  const coda = nFondo ? base.slice(base.length - nFondo) : [];
+  const centro = base.slice(nCapo, base.length - nFondo);
+  const passo = centro.length / (nMezzo + 1);
+  const mezzo = Array.from({ length: nMezzo }, (_, i) => centro[Math.floor(passo * (i + 1))]).filter(Boolean);
+  return [...new Set([...capo, ...mezzo, ...coda])];
+}
+
+// n passaggi sparsi su tutta la lista, capo e coda compresi: e' cosi' che si
+// riassumono i volumi gia' finiti, dove non c'e' un «adesso» da privilegiare.
+function sparsi(lista, n) {
+  if (n <= 0 || !lista.length) return [];
+  if (lista.length <= n) return lista;
+  if (n === 1) return [lista[0]];
+  const passo = (lista.length - 1) / (n - 1);
+  return [...new Set(Array.from({ length: n }, (_, i) => lista[Math.round(passo * i)]))];
+}
+
+// La quota si spartisce fra il volume aperto e quelli di prima, e il volume
+// aperto la sua ce l'ha sempre: e' li' che sta la premessa del libro che il
+// lettore ha in mano. Quello che un lato non usa passa all'altro.
+export function scegliPassaggi(tutti, idCorrente) {
   const puliti = ripulisci(tutti);
   const ricchi = puliti.filter((m) => m.testo.length >= SOSTANZA);
+  const perQui = DA_CAPO + DA_MEZZO + DA_FONDO;
+  const totale = perQui + DA_PRIMA;
   // se di passaggi sostanziosi non ce n'e' abbastanza, meglio i magri che
   // il silenzio
-  const totale = DA_CAPO + DA_MEZZO + DA_FONDO;
   const base = ricchi.length >= totale ? ricchi : puliti;
   if (base.length <= totale) return base;
-  const capo = base.slice(0, DA_CAPO);
-  const coda = base.slice(-DA_FONDO);
-  const centro = base.slice(DA_CAPO, base.length - DA_FONDO);
-  // il mezzo a passo regolare: non i migliori — non sappiamo giudicare cosa
-  // conta nella storia — ma sparsi, cosi' nessun tratto lungo resta muto
-  const passo = centro.length / (DA_MEZZO + 1);
-  const mezzo = [...new Set(
-    Array.from({ length: DA_MEZZO }, (_, i) => centro[Math.floor(passo * (i + 1))]).filter(Boolean)
-  )];
-  return [...capo, ...mezzo, ...coda];
+
+  const qui = idCorrente ? base.filter((m) => m.libro.id === idCorrente) : [];
+  if (!qui.length) return capoMezzoCoda(base, DA_CAPO, DA_MEZZO, DA_FONDO);
+  const prima = base.filter((m) => m.libro.id !== idCorrente);
+
+  const nPrima = Math.min(prima.length, totale - Math.min(qui.length, perQui));
+  const nQui = Math.min(qui.length, totale - nPrima);
+  const nFondo = Math.min(DA_FONDO, Math.floor(nQui / 2));
+  const nCapo = Math.min(DA_CAPO, nQui - nFondo);
+  return [...sparsi(prima, nPrima), ...capoMezzoCoda(qui, nCapo, nQui - nCapo - nFondo, nFondo)];
 }
 
 // I TITOLI NON ESCONO DAL DISPOSITIVO.
@@ -285,11 +325,15 @@ export async function chiediChiE({ nome, passaggi, tappe }, fetcher) {
   const eti = etichette(tappe);
   const righe = [`Il lettore chiede: chi è «${nome}»?`];
   righe.push(
-    `Ha letto ${tappe.length} ${tappe.length === 1 ? "volume" : "volumi"} di una saga, ` +
-      "l'ultimo solo in parte. Non ti dico quale saga né quali titoli, apposta: " +
-      "devi rispondere da questi passaggi e non da quello che ricordi."
+    tappe.length === 1
+      ? "Sta leggendo un libro ed è arrivato a un certo punto. Non ti dico quale libro, apposta: devi rispondere da questi passaggi e non da quello che ricordi."
+      : `Ha letto ${tappe.length} volumi di una saga, l'ultimo solo in parte. ` +
+        "Non ti dico quale saga né quali titoli, apposta: devi rispondere da questi passaggi e non da quello che ricordi."
   );
-  righe.push("Passaggi in cui compare, in ordine di lettura:");
+  righe.push(
+    "Passaggi in cui compare, in ordine di lettura. L'ultimo volume è quello che ha in mano adesso: " +
+      "i suoi passaggi raccontano la situazione presente del personaggio, quelli dei volumi precedenti il suo passato."
+  );
   passaggi.forEach((p, i) => {
     righe.push(`${i + 1}. [${eti.get(p.libro.id) || "Volume"}] «${p.testo}»`);
   });
