@@ -842,6 +842,8 @@ export default function App() {
               onMusicToggle={() => (music.playing ? playerRef.current?.pause() : playerRef.current?.resume())}
               onMusicStop={() => playerRef.current?.stop()}
               onMusicVolume={(v) => playerRef.current?.setVolume(v)}
+              onMusicNext={() => playerRef.current?.next()}
+              onMusicRoom={() => navigate("music")}
               onAlive={() => svegliaRef.current()}
               onClose={() => {
                 setReadingId(null);
@@ -862,6 +864,8 @@ export default function App() {
               onMusicToggle={() => (music.playing ? playerRef.current?.pause() : playerRef.current?.resume())}
               onMusicStop={() => playerRef.current?.stop()}
               onMusicVolume={(v) => playerRef.current?.setVolume(v)}
+              onMusicNext={() => playerRef.current?.next()}
+              onMusicRoom={() => navigate("music")}
               onAlive={() => svegliaRef.current()}
               onClose={() => {
                 setReadingId(null);
