@@ -23,9 +23,17 @@ import { chiedi, getOracleKey } from "./oracle.js";
 // veniva campionato da nessuno dei due. Ed e' li' che sta la premessa — chi
 // e' stato tradito, da chi, perche' vuole vendetta. La scheda usciva senza
 // il fatto che regge il libro.
-const DA_CAPO = 3;
-const DA_MEZZO = 3;
+//
+// E l'apertura non sono «le prime menzioni di fila»: quelle stanno tutte
+// nella prima pagina del primo capitolo, dove il personaggio si sta ancora
+// solo alzando dal letto. La scena che fonda il libro si svolge lungo tutto
+// quel capitolo, e va campionata a passo largo (APERTURA) — altrimenti si
+// raccoglie il buongiorno e si perde il tradimento.
+const DA_CAPO = 5;
+const DA_MEZZO = 5;
 const DA_FONDO = 6;
+// quanta parte del volume aperto conta come apertura
+const APERTURA = 0.2;
 // quanto spetta, in tutto, ai volumi precedenti: il passato serve, ma la
 // storia che il lettore ha in mano adesso conta di piu'
 const DA_PRIMA = 6;
@@ -256,27 +264,37 @@ export function ripulisci(menzioni) {
 
 const SOSTANZA = 90;
 
-// capo, coda e mezzo a passo regolare. Il mezzo non sono «i migliori» — non
-// sappiamo giudicare cosa conta in una storia — ma sparsi, cosi' nessun
-// tratto lungo resta muto.
-function capoMezzoCoda(base, nCapo, nMezzo, nFondo) {
-  if (base.length <= nCapo + nMezzo + nFondo) return base;
-  const capo = base.slice(0, nCapo);
-  const coda = nFondo ? base.slice(base.length - nFondo) : [];
-  const centro = base.slice(nCapo, base.length - nFondo);
-  const passo = centro.length / (nMezzo + 1);
-  const mezzo = Array.from({ length: nMezzo }, (_, i) => centro[Math.floor(passo * (i + 1))]).filter(Boolean);
-  return [...new Set([...capo, ...mezzo, ...coda])];
-}
-
 // n passaggi sparsi su tutta la lista, capo e coda compresi: e' cosi' che si
 // riassumono i volumi gia' finiti, dove non c'e' un «adesso» da privilegiare.
+// Non sono «i migliori» — non sappiamo giudicare cosa conta in una storia —
+// ma sparsi, cosi' nessun tratto lungo resta muto.
 function sparsi(lista, n) {
   if (n <= 0 || !lista.length) return [];
   if (lista.length <= n) return lista;
   if (n === 1) return [lista[0]];
   const passo = (lista.length - 1) / (n - 1);
   return [...new Set(Array.from({ length: n }, (_, i) => lista[Math.round(passo * i)]))];
+}
+
+// Il volume aperto: l'apertura sparsa su tutto il primo quinto (e' li' che
+// il libro dichiara la sua premessa, e ci vuole un capitolo intero per
+// dichiararla), il corpo sparso su quel che segue, e la coda fitta e di
+// fila — quella e' il «dove eri rimasto», e li' i passaggi vicini fra loro
+// servono, perche' raccontano una scena sola.
+function volumeAperto(qui, n) {
+  const nFondo = Math.min(DA_FONDO, Math.floor(n / 2));
+  const resto = n - nFondo;
+  const nCapo = Math.min(DA_CAPO, Math.ceil(resto / 2));
+  const coda = nFondo ? qui.slice(qui.length - nFondo) : [];
+  const prima = qui.slice(0, qui.length - nFondo);
+  const taglio = Math.max(nCapo, Math.round(prima.length * APERTURA));
+  return [
+    ...new Set([
+      ...sparsi(prima.slice(0, taglio), nCapo),
+      ...sparsi(prima.slice(taglio), resto - nCapo),
+      ...coda,
+    ]),
+  ];
 }
 
 // La quota si spartisce fra il volume aperto e quelli di prima, e il volume
@@ -293,14 +311,14 @@ export function scegliPassaggi(tutti, idCorrente) {
   if (base.length <= totale) return base;
 
   const qui = idCorrente ? base.filter((m) => m.libro.id === idCorrente) : [];
-  if (!qui.length) return capoMezzoCoda(base, DA_CAPO, DA_MEZZO, DA_FONDO);
+  // nel volume aperto il nome non compare: allora e' tutto passato, e si
+  // tratta la frontiera intera come fosse un volume solo
+  if (!qui.length) return volumeAperto(base, perQui);
   const prima = base.filter((m) => m.libro.id !== idCorrente);
 
   const nPrima = Math.min(prima.length, totale - Math.min(qui.length, perQui));
   const nQui = Math.min(qui.length, totale - nPrima);
-  const nFondo = Math.min(DA_FONDO, Math.floor(nQui / 2));
-  const nCapo = Math.min(DA_CAPO, nQui - nFondo);
-  return [...sparsi(prima, nPrima), ...capoMezzoCoda(qui, nCapo, nQui - nCapo - nFondo, nFondo)];
+  return [...sparsi(prima, nPrima), ...volumeAperto(qui, nQui)];
 }
 
 // I TITOLI NON ESCONO DAL DISPOSITIVO.
@@ -332,7 +350,9 @@ export async function chiediChiE({ nome, passaggi, tappe }, fetcher) {
   );
   righe.push(
     "Passaggi in cui compare, in ordine di lettura. L'ultimo volume è quello che ha in mano adesso: " +
-      "i suoi passaggi raccontano la situazione presente del personaggio, quelli dei volumi precedenti il suo passato."
+      "i suoi primi passaggi vengono dall'apertura del libro — è lì che di solito si capisce cosa è successo " +
+      "al personaggio e perché fa quello che fa — e gli ultimi da dove il lettore si è fermato. " +
+      "I passaggi dei volumi precedenti sono il suo passato."
   );
   passaggi.forEach((p, i) => {
     righe.push(`${i + 1}. [${eti.get(p.libro.id) || "Volume"}] «${p.testo}»`);
