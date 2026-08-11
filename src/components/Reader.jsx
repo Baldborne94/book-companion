@@ -426,6 +426,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const aliveRef = useRef(null);
   aliveRef.current = onAlive;
   const [chi, setChi] = useState(null);
+  // i passaggi-fonte stanno ripiegati: la risposta e' quella che conta, e il
+  // controllo dev'essere possibile, non obbligatorio
+  const [chiFonti, setChiFonti] = useState(false);
 
   live.current.settings = settings;
   live.current.panel = panel;
@@ -1209,6 +1212,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   async function chiE(nome) {
     setSelMenu(null);
     setPanel("chi");
+    setChiFonti(false);
     const gia = chiCache.current.get(nome);
     if (gia) return setChi(gia);
     const mio = ++chiRun.current;
@@ -2470,8 +2474,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           )}
           {chi.fase === "vuoto" && (
             <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.55 }}>
-              Non trovo {chi.nome} in quello che hai letto finora. Se è appena comparso, aspetta
-              di incontrarlo ancora un paio di volte.
+              Non trovo «{chi.nome}» in quello che hai letto finora.
             </p>
           )}
           {chi.fase === "errore" && (
@@ -2482,38 +2485,54 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             </p>
           )}
           {chi.fase === "fatto" && (
-            <p style={{ color: C.text, fontSize: 15.5, lineHeight: 1.6, margin: 0 }}>{chi.answer}</p>
-          )}
-
-          {(chi.fase === "fatto" || chi.fase === "chiedo") && (
             <>
-              {/* Da dove viene la risposta. E' la parte che rende la scheda
-                  verificabile: senza, resterebbe da fidarsi. */}
-              <div style={{ marginTop: 16, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
-                <div style={{ fontSize: 12.5, color: C.arcane, marginBottom: 8 }}>
-                  Solo da {raccontaFrontiera(chi.tappe)} — niente oltre il tuo segno
-                </div>
-                {chi.passaggi.map((p, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: "8px 10px",
-                      marginBottom: 6,
-                      borderRadius: 10,
-                      border: `1px solid ${C.border}`,
-                      background: C.bg,
-                      fontSize: 13,
-                      color: C.muted,
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    <span style={{ color: C.accent, marginRight: 6 }}>
-                      {p.libro.id === book.id ? "qui" : p.libro.title}
-                      {p.dove ? ` · ${p.dove}` : ""}
-                    </span>
-                    {p.testo}
-                  </div>
-                ))}
+              <p style={{ color: C.text, fontSize: 15.5, lineHeight: 1.6, margin: 0 }}>{chi.answer}</p>
+              {/* Da dove viene la risposta: la garanzia resta, ma ripiegata.
+                  Il controllo dev'essere possibile, non un muro di citazioni
+                  sotto ogni scheda. */}
+              <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
+                <p style={{ margin: 0, fontSize: 12.5, color: C.dim, lineHeight: 1.5 }}>
+                  Basata solo su quello che hai letto: {raccontaFrontiera(chi.tappe)}.
+                </p>
+                <button
+                  onClick={() => setChiFonti((v) => !v)}
+                  style={{
+                    marginTop: 8,
+                    padding: "6px 14px",
+                    borderRadius: 999,
+                    fontSize: 13,
+                    border: `1px solid ${C.border}`,
+                    color: C.muted,
+                  }}
+                >
+                  {chiFonti
+                    ? "Nascondi i passaggi"
+                    : `Vedi i ${chi.passaggi.length} passaggi usati`}
+                </button>
+                {chiFonti &&
+                  chi.passaggi.map((p, i) => {
+                    const dove = [chi.tappe.length > 1 ? p.libro.title : null, p.dove]
+                      .filter(Boolean)
+                      .join(" · ");
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          padding: "8px 10px",
+                          marginTop: i === 0 ? 10 : 6,
+                          borderRadius: 10,
+                          border: `1px solid ${C.border}`,
+                          background: C.bg,
+                          fontSize: 13,
+                          color: C.muted,
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {dove && <span style={{ color: C.accent, marginRight: 6 }}>{dove}</span>}
+                        {p.testo}
+                      </div>
+                    );
+                  })}
               </div>
             </>
           )}

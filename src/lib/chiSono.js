@@ -32,8 +32,8 @@ const SISTEMA = [
   "altre fonti: quel che sai potrebbe venire da pagine che il lettore non ha",
   "ancora letto, e rovinargliele. Se i passaggi non bastano a dire chi è,",
   "dillo in una riga invece di inventare o completare a memoria.",
-  "Non anticipare MAI cosa succederà. Rispondi in italiano, da 2 a 6 frasi,",
-  "tono da amico che ha letto il libro con lui, senza markdown né elenchi.",
+  "Non anticipare MAI cosa succederà. Rispondi in un italiano semplice e",
+  "naturale, da 2 a 6 frasi, senza markdown né elenchi.",
 ].join(" ");
 
 // Un nome, non una frase: la scheda ha senso su «Logen Novedita», non su
