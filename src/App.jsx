@@ -766,6 +766,7 @@ export default function App() {
             books={books}
             updateBooks={updateBooks}
             onOpenBook={setOpenId}
+            onReadAt={(id, punto) => handleRead(id, punto)}
             notify={notify}
             localIds={localIds}
             onImported={() => runSync.current(true)}
