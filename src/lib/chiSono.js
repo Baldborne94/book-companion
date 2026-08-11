@@ -2,7 +2,6 @@ import { getFile } from "./bookStore.js";
 import { searchBook } from "./epubSearch.js";
 import { searchPdf } from "./pdfSearch.js";
 import { chiedi, getOracleKey } from "./oracle.js";
-import { raccontaFrontiera } from "./frontiera.js";
 
 // «CHI È COSTUI?» — la scheda di un personaggio cucita su quello che hai
 // letto, e su nient'altro.
@@ -111,14 +110,35 @@ export function scegliPassaggi(tutti) {
   return [...tutti.slice(0, DA_CAPO), ...tutti.slice(-DA_FONDO)];
 }
 
+// I TITOLI NON ESCONO DAL DISPOSITIVO.
+//
+// Dire al modello «questo e' il secondo volume della Prima Legge» significa
+// consegnargli la trama intera: da li' in poi puo' rispondere a memoria
+// invece che dai passaggi, e la memoria comprende i libri che il lettore non
+// ha ancora letto. I volumi si numerano e basta — al modello serve l'ordine,
+// non il nome. Il nome lo vede il lettore nella scheda, che e' l'unico posto
+// dove non fa danno.
+const etichette = (tappe) => {
+  const m = new Map();
+  tappe.forEach((t, i) => {
+    m.set(t.libro.id, i === tappe.length - 1 ? `Volume ${i + 1}, dove sta leggendo` : `Volume ${i + 1}`);
+  });
+  return m;
+};
+
 export async function chiediChiE({ nome, passaggi, tappe }, fetcher) {
   if (!getOracleKey()) return { error: "chiave" };
   if (!passaggi.length) return { error: "nessunPassaggio" };
+  const eti = etichette(tappe);
   const righe = [`Il lettore chiede: chi è «${nome}»?`];
-  righe.push(`Ha letto finora: ${raccontaFrontiera(tappe)}.`);
+  righe.push(
+    `Ha letto ${tappe.length} ${tappe.length === 1 ? "volume" : "volumi"} di una saga, ` +
+      "l'ultimo solo in parte. Non ti dico quale saga né quali titoli, apposta: " +
+      "devi rispondere da questi passaggi e non da quello che ricordi."
+  );
   righe.push("Passaggi in cui compare, in ordine di lettura:");
   passaggi.forEach((p, i) => {
-    righe.push(`${i + 1}. [${p.libro.title}] «${p.testo}»`);
+    righe.push(`${i + 1}. [${eti.get(p.libro.id) || "Volume"}] «${p.testo}»`);
   });
   return chiedi({ system: SISTEMA, user: righe.join("\n") }, fetcher);
 }
