@@ -7,7 +7,8 @@ import {
 } from "../lib/annotations.js";
 import { getProgress, setProgress, setStatus, getStatus, loadBooks } from "../lib/library.js";
 import { frontiera, raccontaFrontiera } from "../lib/frontiera.js";
-import { sembraUnNome, raccogliPassaggi, scegliPassaggi, chiediChiE } from "../lib/chiSono.js";
+import { trovaAlias, raccogliPassaggi, scegliPassaggi, chiediChiE } from "../lib/chiSono.js";
+import { sembraUnNome } from "../lib/nomi.js";
 import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
 } from "../lib/readerSettings.js";
@@ -1249,14 +1250,23 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       statusOf: getStatus,
       cfiOf: (id) => (id === book.id ? live.current.cfi || getCfi(id) : getCfi(id)),
     });
-    setChi({ nome, fase: "cerco", tappe });
-    const scelti = scegliPassaggi(await raccogliPassaggi(nome, tappe, { vivo: () => chiRun.current === mio }));
+    setChi({ nome, fase: "nomi", tappe });
+    // prima gli ALTRI nomi: nel libro la stessa persona e' anche il suo
+    // cognome e il suo soprannome, e cercando solo la parola toccata meta'
+    // della sua storia non verrebbe raccolta
+    const alias = await trovaAlias(nome, tappe[tappe.length - 1]);
     if (chiRun.current !== mio) return;
-    if (!scelti.length) return setChi({ nome, fase: "vuoto", tappe, passaggi: [] });
-    setChi({ nome, fase: "chiedo", tappe, passaggi: scelti });
-    const res = await chiediChiE({ nome, passaggi: scelti, tappe });
+    setChi({ nome, alias, fase: "cerco", tappe });
+    const raccolti = await raccogliPassaggi([nome, ...alias], tappe, {
+      vivo: () => chiRun.current === mio,
+    });
+    const scelti = scegliPassaggi(raccolti, book.id);
     if (chiRun.current !== mio) return;
-    const finito = { nome, fase: res.answer ? "fatto" : "errore", tappe, passaggi: scelti, ...res };
+    if (!scelti.length) return setChi({ nome, alias, fase: "vuoto", tappe, passaggi: [] });
+    setChi({ nome, alias, fase: "chiedo", tappe, passaggi: scelti });
+    const res = await chiediChiE({ nome, alias, passaggi: scelti, tappe });
+    if (chiRun.current !== mio) return;
+    const finito = { nome, alias, fase: res.answer ? "fatto" : "errore", tappe, passaggi: scelti, ...res };
     if (res.answer) chiCache.current.set(nome, finito);
     setChi(finito);
   }
@@ -2490,9 +2500,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
       {panel === "chi" && chi && (
         <Panel title={`Chi è ${chi.nome}`} onClose={() => setPanel(null)}>
+          {chi.fase === "nomi" && (
+            <p style={{ color: C.muted, fontSize: 14.5 }}>
+              Cerco con quali nomi il libro la chiama…
+            </p>
+          )}
           {chi.fase === "cerco" && (
             <p style={{ color: C.muted, fontSize: 14.5 }}>
-              Cerco {chi.nome} in quello che hai letto…
+              Cerco {[chi.nome, ...(chi.alias || [])].join(", ")} in quello che hai letto…
             </p>
           )}
           {chi.fase === "chiedo" && (
@@ -2514,8 +2529,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           )}
           {chi.fase === "fatto" && (
             <>
-              {/* pre-line: la risposta arriva a righe (frase, punti, dove eri
-                  rimasto) e i ritorni a capo sono la sua struttura */}
+              {/* pre-line: la risposta e' prosa in due o tre paragrafi, e la
+                  riga vuota fra l'uno e l'altro e' la sua unica struttura */}
               <p style={{ color: C.text, fontSize: 15.5, lineHeight: 1.6, margin: 0, whiteSpace: "pre-line" }}>{chi.answer}</p>
               {/* Da dove viene la risposta: la garanzia resta, ma ripiegata.
                   Il controllo dev'essere possibile, non un muro di citazioni
@@ -2523,6 +2538,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
                 <p style={{ margin: 0, fontSize: 12.5, color: C.dim, lineHeight: 1.5 }}>
                   Basata solo su quello che hai letto: {raccontaFrontiera(chi.tappe)}.
+                  {/* i nomi trovati si dichiarano: se ne ha preso uno sbagliato
+                      te ne accorgi da qui, senza dover leggere i passaggi */}
+                  {chi.alias?.length ? ` Cercata anche come ${chi.alias.join(", ")}.` : ""}
                 </p>
                 <button
                   onClick={() => setChiFonti((v) => !v)}
