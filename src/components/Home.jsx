@@ -1,6 +1,5 @@
 import { C, FONT_TITLE } from "../data/constants.js";
 import { useViewport } from "../lib/viewport.js";
-import { greeting } from "../lib/greeting.js";
 import { getLastOpened, getProgress, getStatus, getUpdatedAt } from "../lib/library.js";
 import { nextInSaga } from "../lib/saga.js";
 import BookCover from "./BookCover.jsx";
@@ -11,33 +10,6 @@ import EmptyState from "./EmptyState.jsx";
 const FAV_MIN = 4;
 
 const stars = (v) => String(v).replace(".", ",");
-
-function Welcome({ last, pct, followedFrom }) {
-  return (
-    <div
-      style={{
-        padding: "18px 20px",
-        borderRadius: 16,
-        border: `1px solid ${C.border}`,
-        background: `linear-gradient(135deg, ${C.accent}12, transparent 60%)`,
-        marginBottom: 6,
-      }}
-    >
-      <div style={{ fontFamily: FONT_TITLE, fontSize: 25, fontWeight: 600, color: C.text }}>
-        {greeting()}, eccoti.
-      </div>
-      <div style={{ fontSize: 15, color: C.muted, marginTop: 3, lineHeight: 1.45 }}>
-        {followedFrom ? (
-          <>Hai finito <span style={{ color: C.accent }}>{followedFrom.title}</span>. Il prossimo della saga è <span style={{ color: C.accent }}>{last.title}</span>.</>
-        ) : last
-          ? pct > 0
-            ? <>Sei al {pct}% di <span style={{ color: C.accent }}>{last.title}</span>. Riprendi da dove eri.</>
-            : <>Ti aspetta <span style={{ color: C.accent }}>{last.title}</span>. Buona lettura.</>
-          : "Il tuo posto tra i libri ti aspettava."}
-      </div>
-    </div>
-  );
-}
 
 function SectionTitle({ children }) {
   return (
@@ -123,7 +95,7 @@ function SagaCard({ saga, onOpen }) {
 }
 
 export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onSaga }) {
-  const { wide, tall } = useViewport();
+  const { wide } = useViewport();
 
   if (books.length === 0) {
     return (
@@ -186,8 +158,6 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
         alignItems: "start",
       }}
     >
-      {/* dove l'intestazione e' compatta il saluto sta gia' lassu' */}
-      {tall && <Welcome last={last} pct={pct} followedFrom={followedFrom} />}
       <div style={{ gridColumn: wide ? 1 : "auto" }}>
       {last && (
         <>

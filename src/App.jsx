@@ -22,7 +22,6 @@ import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
 import { getSession, syncNow, localFileIds } from "./lib/sync.js";
 import { useViewport } from "./lib/viewport.js";
-import { greeting } from "./lib/greeting.js";
 
 // L'ingresso porta l'insegna dell'atmosfera scelta: candela di notte,
 // foglia nel boschetto, pergamena nell'archivio.
@@ -109,13 +108,8 @@ function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
       >
         <I size={26} active />
       </span>
-      <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: "block", fontFamily: FONT_TITLE, fontSize: 23, fontWeight: 600, color: C.text }}>
-          {greeting()}, eccoti.
-        </span>
-        <span style={{ display: "block", fontSize: 12.5, color: C.muted, letterSpacing: "0.04em" }}>
-          Book Companion
-        </span>
+      <span style={{ flex: 1, minWidth: 0, fontFamily: FONT_TITLE, fontSize: 23, fontWeight: 600, color: C.text }}>
+        Book Companion
       </span>
       <button
         onClick={onTheme}
