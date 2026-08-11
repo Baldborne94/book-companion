@@ -343,7 +343,7 @@ function Panel({ title, onClose, children }) {
   );
 }
 
-export default function Reader({ book, startCfi, nextBook, onReadNext, music, onMusicToggle, onMusicStop, onMusicVolume, onAlive, onClose, notify }) {
+export default function Reader({ book, startCfi, nextBook, onReadNext, music, onMusicToggle, onMusicStop, onMusicVolume, onMusicNext, onMusicRoom, onAlive, onClose, notify }) {
   const viewerRef = useRef(null);
   const rootRef = useRef(null);
   const bookRef = useRef(null);
@@ -2067,8 +2067,35 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                     🌙 {music.manca}
                   </span>
                 )}
+                {/* Cosa sta suonando, e la via per andare a sceglierne
+                    un'altra. Il libro si chiude passando dalla porta di
+                    sempre, non sparendo: il punto di lettura va salvato
+                    come per ogni altra uscita. */}
+                <button
+                  onClick={() => { handleClose(); onMusicRoom?.(); }}
+                  title={`${music.current.name || "Musica di sottofondo"} — vai alla sala della musica`}
+                  style={{
+                    maxWidth: 150,
+                    padding: "0 8px",
+                    height: 40,
+                    borderRadius: 10,
+                    fontSize: 13,
+                    color: C.muted,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <span style={{ color: music.current.src ? C.accent : C.arcane, marginRight: 5 }}>
+                    {music.current.src ? "♫" : "♪"}
+                  </span>
+                  {music.current.name || "Musica di sottofondo"}
+                </button>
                 <button onClick={onMusicToggle} style={barBtn(false)} aria-label={music.playing ? "Pausa musica" : "Riprendi musica"}>
                   {music.playing ? "⏸" : "▶"}
+                </button>
+                <button onClick={onMusicNext} style={{ ...barBtn(false), fontSize: 16 }} aria-label="Melodia successiva">
+                  ⏭
                 </button>
                 {/* il volume qui e' quello della sola musica: sotto la lettura
                     si abbassa lei, non le notifiche e la sveglia del tablet */}

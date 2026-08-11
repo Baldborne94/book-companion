@@ -1,6 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { C } from "../data/constants.js";
-import { parseYouTube, embedUrl, isFile, loadTrack, getVolume, saveVolume, restaDa } from "../lib/music.js";
+import {
+  parseYouTube, embedUrl, isFile, loadTrack, getVolume, saveVolume, restaDa, getFavorites,
+} from "../lib/music.js";
 
 // Gli ultimi trenta secondi prima dello scadere del timer la musica scende
 // fino a spegnersi. L'ora chiesta resta quella: a quel minuto c'e' silenzio,
@@ -13,6 +15,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
   const urlRef = useRef(null);
   const queueRef = useRef({ list: [], i: 0, shuffle: false });
   const advanceRef = useRef(() => {});
+  const nextRef = useRef(() => {});
   const [current, setCurrent] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [timerEnd, setTimerEnd] = useState(null);
@@ -303,6 +306,30 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
   }
   advanceRef.current = advance;
 
+  // «CAMBIA CANZONE» da qualunque parte tu sia, anche a libro aperto.
+  //
+  // Con una raccolta in corso e' la prossima della coda. Con una melodia
+  // sola in ripetizione una coda non c'e', ma un ordine si': quello del tuo
+  // elenco. Si riparte da li' senza aprire una coda vera, cosi' la melodia
+  // che arriva continua a girare da sola come faceva quella prima.
+  function next() {
+    if (queueRef.current.list.length) {
+      advance();
+      return true;
+    }
+    const elenco = getFavorites();
+    if (elenco.length < 2) {
+      notify("Hai una melodia sola: portane altre nella sala della musica 🎵");
+      return false;
+    }
+    const ora = vivo.current.current;
+    const dove = elenco.findIndex((f) =>
+      ora?.trackId ? f.trackId === ora.trackId : !!ora?.url && f.url === ora.url
+    );
+    return start(elenco[(dove + 1) % elenco.length]);
+  }
+  nextRef.current = next;
+
   const stopRef = useRef(() => {});
 
   function pause() {
@@ -380,11 +407,13 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
       ms.setActionHandler("play", () => resume());
       ms.setActionHandler("pause", () => pause());
       ms.setActionHandler("stop", () => stop());
-      ms.setActionHandler("nexttrack", queueRef.current.list.length ? () => advanceRef.current() : null);
+      // il tasto «avanti» del sistema vale sempre: fuori da una raccolta
+      // l'ordine e' quello del tuo elenco di melodie
+      ms.setActionHandler("nexttrack", () => nextRef.current());
     } catch { /* si resta ai comandi in app */ }
   }, [current, playing]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useImperativeHandle(ref, () => ({ play, playQueue, pause, resume, stop, setSleep, setVolume }));
+  useImperativeHandle(ref, () => ({ play, playQueue, pause, resume, stop, setSleep, setVolume, next }));
 
   return (
     <>
