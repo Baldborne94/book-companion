@@ -39,7 +39,7 @@ function context(text, start, end, pad = 46) {
   };
 }
 
-export function findMatches(text, query, max = 3) {
+export function findMatches(text, query, max = 3, pad = 46) {
   // non alla lettera: «muscle in» deve trovare anche «muscling in», quindi
   // la domanda diventa l'espressione con tutte le forme flesse
   const needle = normalizeWithMap(query || "").text.trim();
@@ -48,7 +48,7 @@ export function findMatches(text, query, max = 3) {
   const { text: hay, map } = normalizeWithMap(text);
   const out = [];
   for (const m of hay.matchAll(re)) {
-    out.push(context(text, map[m.index], map[m.index + m[0].length] ?? text.length));
+    out.push(context(text, map[m.index], map[m.index + m[0].length] ?? text.length, pad));
     if (out.length >= max) break;
   }
   return out;

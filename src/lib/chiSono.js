@@ -1,6 +1,5 @@
 import { getFile } from "./bookStore.js";
-import { searchBook } from "./epubSearch.js";
-import { searchPdf } from "./pdfSearch.js";
+import { pageText, findMatches } from "./pdfSearch.js";
 import { chiedi, getOracleKey } from "./oracle.js";
 
 // «CHI È COSTUI?» — la scheda di un personaggio cucita su quello che hai
@@ -18,7 +17,11 @@ import { chiedi, getOracleKey } from "./oracle.js";
 // aggiunge parole e non aggiunge risposta.
 const DA_CAPO = 2;
 const DA_FONDO = 4;
-const PER_LIBRO = 12;
+// tetto di sicurezza per libro: oltre, e' un protagonista e le menzioni in
+// piu' non cambiano la scelta
+const MAX_MENZIONI = 240;
+// quanto paragrafo si porta a casa attorno a ogni menzione
+const PARAGRAFO = 480;
 
 const SISTEMA = [
   "Sei l'Oracolo di un'app di lettura. Il lettore ti chiede chi è un",
@@ -43,26 +46,105 @@ export function sembraUnNome(s) {
   return parole.some((p) => /^[A-ZÀ-Þ]/.test(p));
 }
 
-async function daEpub(libro, nome, fino) {
+// Le parti del nome valgono da sole: selezioni «Logen Novedita» e le pagine
+// dove e' scritto solo «Novedita» devono contare lo stesso. Fuori restano
+// gli articoli e i titoli («The», «Lord»): da soli acchiapperebbero mezzo
+// libro. Il ponte fra nome e soprannome («il Sanguinario» = Logen) invece
+// non si puo' costruire senza dire al modello di che saga si tratta — e
+// quello non si fa.
+const GENERICHE = new Set([
+  "the", "der", "die", "das", "los", "las", "van", "von", "mac",
+  "del", "dei", "della", "dello", "don", "dom", "san", "santa", "ser",
+  "sir", "lord", "lady", "king", "queen", "mister", "miss", "old",
+]);
+
+export function varianti(nome) {
+  const intero = String(nome || "").trim().replace(/\s+/g, " ");
+  if (!intero) return [];
+  const parti = intero
+    .split(" ")
+    .filter((p) => /^[A-ZÀ-Þ]/.test(p) && p.length >= 3 && !GENERICHE.has(p.toLowerCase()));
+  return [...new Set([intero, ...parti])];
+}
+
+const sfuggi = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// maiuscole rispettate: «Death» il personaggio, non «the death of kings»
+export function regexNome(nome) {
+  const v = varianti(nome);
+  if (!v.length) return null;
+  return new RegExp(`(?<![\\p{L}\\p{N}])(${v.map(sfuggi).join("|")})(?![\\p{L}\\p{N}])`, "gu");
+}
+
+// Il paragrafo attorno alla menzione, non mezzo rigo: «…alzo' lo sguardo
+// verso…» non dice niente ne' al lettore ne' al modello.
+function paragrafo(node, colpito, maxLen = PARAGRAFO) {
+  const blocco =
+    node.parentElement?.closest?.("p, li, blockquote, dd, td, h1, h2, h3") || node.parentElement;
+  const tutto = String(blocco?.textContent || node.textContent || "").replace(/\s+/g, " ").trim();
+  if (tutto.length <= maxLen) return tutto;
+  const at = tutto.indexOf(colpito);
+  const centro = at >= 0 ? at + colpito.length / 2 : tutto.length / 2;
+  const from = Math.max(0, Math.min(Math.round(centro - maxLen / 2), tutto.length - maxLen));
+  const pezzo = tutto.slice(from, from + maxLen);
+  return (from > 0 ? "…" : "") + pezzo + (from + maxLen < tutto.length ? "…" : "");
+}
+
+async function daEpub(libro, re, fino) {
   const blob = await getFile(libro.id);
   if (!blob) return [];
   const { default: ePub } = await import("epubjs");
   const eb = ePub(await blob.arrayBuffer());
+  const out = [];
   try {
     await eb.ready;
-    const trovati = await searchBook(eb, nome, PER_LIBRO * 3);
     const cfi = new ePub.CFI();
-    // il taglio al segnalibro e' il cuore della faccenda: un passaggio che
-    // sta una riga oltre e' un passaggio che non hai letto
-    const dentro = fino
-      ? trovati.filter((r) => {
-          try { return cfi.compare(r.cfi, fino) <= 0; } catch { return false; }
-        })
-      : trovati;
-    return dentro.slice(0, PER_LIBRO).map((r) => ({ libro, cfi: r.cfi, testo: r.excerpt }));
+    const dentro = (c) => {
+      try { return cfi.compare(c, fino) <= 0; } catch { return false; }
+    };
+    for (const item of eb.spine.spineItems) {
+      // La spina e' in ordine di lettura: il primo capitolo che comincia
+      // oltre il segno chiude il giro, e i capitoli dopo non si aprono
+      // nemmeno. Prima si scorreva dall'inizio con un tetto sulle menzioni:
+      // per un protagonista il tetto si esauriva nei primi capitoli e «gli
+      // ultimi passaggi» venivano in realta' da meta' libro.
+      if (fino) {
+        try {
+          if (cfi.compare(`epubcfi(${item.cfiBase}!/0)`, fino) > 0) break;
+        } catch { /* base illeggibile: si scorre e filtra per menzione */ }
+      }
+      try {
+        await item.load(eb.load.bind(eb));
+        const doc = item.document;
+        if (doc?.body) {
+          const walker = doc.createTreeWalker(doc.body, 4 /* solo nodi di testo */);
+          let node;
+          while ((node = walker.nextNode()) && out.length < MAX_MENZIONI) {
+            const text = node.textContent;
+            if (!text || !text.trim()) continue;
+            re.lastIndex = 0;
+            // una menzione per nodo: il paragrafo attorno e' lo stesso
+            const m = re.exec(text);
+            if (!m) continue;
+            try {
+              const range = doc.createRange();
+              range.setStart(node, m.index);
+              range.setEnd(node, m.index + m[0].length);
+              const c = item.cfiFromRange(range);
+              if (fino && !dentro(c)) continue;
+              out.push({ libro, cfi: c, testo: paragrafo(node, m[0]) });
+            } catch { /* range fuori misura: si passa oltre */ }
+          }
+        }
+      } catch { /* capitolo illeggibile: gli altri bastano */ } finally {
+        try { item.unload(); } catch { /* gia' scaricato */ }
+      }
+      if (out.length >= MAX_MENZIONI) break;
+    }
   } finally {
     try { eb.destroy(); } catch { /* gia' chiuso */ }
   }
+  return out;
 }
 
 async function daPdf(libro, nome, fino) {
@@ -70,23 +152,45 @@ async function daPdf(libro, nome, fino) {
   if (!blob) return [];
   const mod = await import("./pdfThumb.js");
   const pdf = await mod.loadPdf(await blob.arrayBuffer());
+  const out = [];
   try {
-    const limite = fino ? parseInt(fino, 10) || 0 : 0;
-    const { results } = await searchPdf(pdf, nome, { limit: PER_LIBRO * 3 });
-    const dentro = limite ? results.filter((r) => r.page <= limite) : results;
-    return dentro.slice(0, PER_LIBRO).map((r) => ({
-      libro,
-      cfi: String(r.page),
-      dove: `pag. ${r.page}`,
-      testo: `${r.before}${r.hit}${r.after}`.trim(),
-    }));
+    // nei PDF il segno e' un numero di pagina: le pagine oltre non si
+    // leggono proprio, ed e' anche questo che rende giusti gli «ultimi»
+    const limite = fino ? Math.min(parseInt(fino, 10) || pdf.numPages, pdf.numPages) : pdf.numPages;
+    const cache = new Map();
+    const nomi = varianti(nome);
+    for (let n = 1; n <= limite && out.length < MAX_MENZIONI; n++) {
+      let testoPag;
+      try {
+        testoPag = await pageText(pdf, n, cache);
+      } catch {
+        continue;
+      }
+      const visti = new Set();
+      for (const v of nomi) {
+        for (const m of findMatches(testoPag, v, 2, 220)) {
+          const chiave = `${m.before.slice(-24)}|${m.hit}`;
+          if (visti.has(chiave)) continue;
+          visti.add(chiave);
+          out.push({
+            libro,
+            cfi: String(n),
+            dove: `pag. ${n}`,
+            testo: `${m.before}${m.hit}${m.after}`.trim(),
+          });
+        }
+      }
+    }
   } finally {
     try { pdf.destroy(); } catch { /* gia' chiuso */ }
   }
+  return out;
 }
 
 export async function raccogliPassaggi(nome, tappe, { vivo } = {}) {
   const attivo = vivo || (() => true);
+  const re = regexNome(nome);
+  if (!re) return [];
   const tutti = [];
   // un tomo per volta, come la ricerca in biblioteca: su un tablet aprirli
   // tutti insieme vuol dire farsi chiudere la scheda
@@ -96,7 +200,7 @@ export async function raccogliPassaggi(nome, tappe, { vivo } = {}) {
       const pezzi =
         t.libro.fileType === "pdf"
           ? await daPdf(t.libro, nome, t.tutto ? null : t.fino)
-          : await daEpub(t.libro, nome, t.tutto ? null : t.fino);
+          : await daEpub(t.libro, re, t.tutto ? null : t.fino);
       tutti.push(...pezzi);
     } catch {
       /* tomo che non si apre: gli altri bastano */
@@ -105,9 +209,34 @@ export async function raccogliPassaggi(nome, tappe, { vivo } = {}) {
   return tutti;
 }
 
+// Le menzioni fotocopia — «disse Logen», «Logen annui'» — sprecano i sei
+// posti della scheda: i doppioni si scartano, e a parita' si preferiscono i
+// passaggi dove attorno al nome c'e' sostanza.
+const impronta = (t) =>
+  t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim().slice(0, 80);
+
+export function ripulisci(menzioni) {
+  const visti = new Set();
+  const out = [];
+  for (const m of menzioni) {
+    const k = impronta(m.testo);
+    if (!k || visti.has(k)) continue;
+    visti.add(k);
+    out.push(m);
+  }
+  return out;
+}
+
+const SOSTANZA = 90;
+
 export function scegliPassaggi(tutti) {
-  if (tutti.length <= DA_CAPO + DA_FONDO) return tutti;
-  return [...tutti.slice(0, DA_CAPO), ...tutti.slice(-DA_FONDO)];
+  const puliti = ripulisci(tutti);
+  const ricchi = puliti.filter((m) => m.testo.length >= SOSTANZA);
+  // se di passaggi sostanziosi non ce n'e' abbastanza, meglio i magri che
+  // il silenzio
+  const base = ricchi.length >= DA_CAPO + DA_FONDO ? ricchi : puliti;
+  if (base.length <= DA_CAPO + DA_FONDO) return base;
+  return [...base.slice(0, DA_CAPO), ...base.slice(-DA_FONDO)];
 }
 
 // I TITOLI NON ESCONO DAL DISPOSITIVO.
