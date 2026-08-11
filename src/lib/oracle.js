@@ -65,18 +65,12 @@ const SISTEMA = [
 
 const cache = new Map();
 
-export async function consultaOracolo({ text, context, book }, fetcher) {
+// La chiamata sola, senza sapere cosa si sta chiedendo: la usano sia la
+// spiegazione di un passaggio sia la scheda di un personaggio, e gli errori
+// vanno tradotti in un posto solo.
+export async function chiedi({ system, user }, fetcher) {
   const chiave = getOracleKey();
-  const brano = String(text || "").trim();
   if (!chiave) return { error: "chiave" };
-  if (!brano) return { error: "vuoto" };
-  const k = `${book?.id || ""}|${brano}`;
-  if (cache.has(k)) return cache.get(k);
-  const righe = [];
-  if (book?.title) righe.push(`Libro: «${book.title}»${book.author ? ` di ${book.author}` : ""}.`);
-  righe.push(`Passaggio selezionato: «${brano}»`);
-  const attorno = String(context || "").trim();
-  if (attorno && attorno !== brano) righe.push(`Il paragrafo attorno: «${attorno}»`);
   try {
     const r = await (fetcher || fetch)("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -92,8 +86,8 @@ export async function consultaOracolo({ text, context, book }, fetcher) {
         model: "claude-opus-5",
         max_tokens: 1500,
         thinking: { type: "adaptive" },
-        system: SISTEMA,
-        messages: [{ role: "user", content: righe.join("\n") }],
+        system,
+        messages: [{ role: "user", content: user }],
       }),
     });
     if (r.status === 401 || r.status === 403) return { error: "chiave" };
@@ -104,11 +98,24 @@ export async function consultaOracolo({ text, context, book }, fetcher) {
       .map((b) => b.text)
       .join("\n")
       .trim();
-    if (!answer) return { error: "api" };
-    const out = { answer };
-    cache.set(k, out);
-    return out;
+    return answer ? { answer } : { error: "api" };
   } catch {
     return { error: "rete" };
   }
+}
+
+export async function consultaOracolo({ text, context, book }, fetcher) {
+  const brano = String(text || "").trim();
+  if (!getOracleKey()) return { error: "chiave" };
+  if (!brano) return { error: "vuoto" };
+  const k = `${book?.id || ""}|${brano}`;
+  if (cache.has(k)) return cache.get(k);
+  const righe = [];
+  if (book?.title) righe.push(`Libro: «${book.title}»${book.author ? ` di ${book.author}` : ""}.`);
+  righe.push(`Passaggio selezionato: «${brano}»`);
+  const attorno = String(context || "").trim();
+  if (attorno && attorno !== brano) righe.push(`Il paragrafo attorno: «${attorno}»`);
+  const out = await chiedi({ system: SISTEMA, user: righe.join("\n") }, fetcher);
+  if (out.answer) cache.set(k, out);
+  return out;
 }

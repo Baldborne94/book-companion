@@ -5,7 +5,9 @@ import { ensureLocalFile } from "../lib/sync.js";
 import {
   getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights,
 } from "../lib/annotations.js";
-import { getProgress, setProgress, setStatus } from "../lib/library.js";
+import { getProgress, setProgress, setStatus, getStatus, loadBooks } from "../lib/library.js";
+import { frontiera, raccontaFrontiera } from "../lib/frontiera.js";
+import { sembraUnNome, raccogliPassaggi, scegliPassaggi, chiediChiE } from "../lib/chiSono.js";
 import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
 } from "../lib/readerSettings.js";
@@ -423,6 +425,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [lingua, setLingua] = useState(null);
   const aliveRef = useRef(null);
   aliveRef.current = onAlive;
+  const [chi, setChi] = useState(null);
 
   live.current.settings = settings;
   live.current.panel = panel;
@@ -1195,6 +1198,36 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const next = marks.filter((x) => x.id !== m.id);
     setMarks(next);
     saveMarks(book.id, next);
+  }
+
+  // «Chi è costui?». La scheda si cuce su quello che hai letto e su nient'altro:
+  // la frontiera dice quali volumi possono parlare e fin dove, i passaggi si
+  // raccolgono solo li' dentro, e sono gli stessi che poi ti mostro — cosi'
+  // puoi controllare invece di fidarti.
+  const chiRun = useRef(0);
+  const chiCache = useRef(new Map());
+  async function chiE(nome) {
+    setSelMenu(null);
+    setPanel("chi");
+    const gia = chiCache.current.get(nome);
+    if (gia) return setChi(gia);
+    const mio = ++chiRun.current;
+    // per il libro aperto vale il segno VIVO, non quello salvato: fra un
+    // flush e l'altro passa qualche pagina, e sono pagine che hai letto
+    const tappe = frontiera(book, loadBooks(), {
+      statusOf: getStatus,
+      cfiOf: (id) => (id === book.id ? live.current.cfi || getCfi(id) : getCfi(id)),
+    });
+    setChi({ nome, fase: "cerco", tappe });
+    const scelti = scegliPassaggi(await raccogliPassaggi(nome, tappe, { vivo: () => chiRun.current === mio }));
+    if (chiRun.current !== mio) return;
+    if (!scelti.length) return setChi({ nome, fase: "vuoto", tappe, passaggi: [] });
+    setChi({ nome, fase: "chiedo", tappe, passaggi: scelti });
+    const res = await chiediChiE({ nome, passaggi: scelti, tappe });
+    if (chiRun.current !== mio) return;
+    const finito = { nome, fase: res.answer ? "fatto" : "errore", tappe, passaggi: scelti, ...res };
+    if (res.answer) chiCache.current.set(nome, finito);
+    setChi(finito);
   }
 
   function applyHighlight(color) {
@@ -2206,6 +2239,22 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               }}
             />
           ))}
+          {sembraUnNome(selMenu.text) && (
+            <button
+              onClick={() => chiE(selMenu.text.trim())}
+              style={{
+                marginLeft: 4,
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: `1px solid ${C.accent}88`,
+                color: C.accent,
+                fontSize: 14,
+                whiteSpace: "nowrap",
+              }}
+            >
+              👤 Chi è
+            </button>
+          )}
           {wordCount(selMenu.text) <= PHRASE_WORDS && (
             <button
               onClick={defineSelection}
@@ -2404,6 +2453,70 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           <p style={{ marginTop: 14, fontSize: 12.5, color: C.muted, textAlign: "center" }}>
             versione {typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "?"}
           </p>
+        </Panel>
+      )}
+
+      {panel === "chi" && chi && (
+        <Panel title={`Chi è ${chi.nome}`} onClose={() => setPanel(null)}>
+          {chi.fase === "cerco" && (
+            <p style={{ color: C.muted, fontSize: 14.5 }}>
+              Cerco {chi.nome} in quello che hai letto…
+            </p>
+          )}
+          {chi.fase === "chiedo" && (
+            <p style={{ color: C.muted, fontSize: 14.5 }}>
+              ✨ L'Oracolo sta leggendo {chi.passaggi.length} passaggi…
+            </p>
+          )}
+          {chi.fase === "vuoto" && (
+            <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.55 }}>
+              Non trovo {chi.nome} in quello che hai letto finora. Se è appena comparso, aspetta
+              di incontrarlo ancora un paio di volte.
+            </p>
+          )}
+          {chi.fase === "errore" && (
+            <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.55 }}>
+              {chi.error === "chiave"
+                ? "Serve la tua chiave dell'Oracolo: la trovi nella scheda del dizionario."
+                : "L'Oracolo non ha risposto. Riprova fra un momento."}
+            </p>
+          )}
+          {chi.fase === "fatto" && (
+            <p style={{ color: C.text, fontSize: 15.5, lineHeight: 1.6, margin: 0 }}>{chi.answer}</p>
+          )}
+
+          {(chi.fase === "fatto" || chi.fase === "chiedo") && (
+            <>
+              {/* Da dove viene la risposta. E' la parte che rende la scheda
+                  verificabile: senza, resterebbe da fidarsi. */}
+              <div style={{ marginTop: 16, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 12.5, color: C.arcane, marginBottom: 8 }}>
+                  Solo da {raccontaFrontiera(chi.tappe)} — niente oltre il tuo segno
+                </div>
+                {chi.passaggi.map((p, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      padding: "8px 10px",
+                      marginBottom: 6,
+                      borderRadius: 10,
+                      border: `1px solid ${C.border}`,
+                      background: C.bg,
+                      fontSize: 13,
+                      color: C.muted,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    <span style={{ color: C.accent, marginRight: 6 }}>
+                      {p.libro.id === book.id ? "qui" : p.libro.title}
+                      {p.dove ? ` · ${p.dove}` : ""}
+                    </span>
+                    {p.testo}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </Panel>
       )}
 
