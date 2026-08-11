@@ -2486,7 +2486,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           )}
           {chi.fase === "fatto" && (
             <>
-              <p style={{ color: C.text, fontSize: 15.5, lineHeight: 1.6, margin: 0 }}>{chi.answer}</p>
+              {/* pre-line: la risposta arriva a righe (frase, punti, dove eri
+                  rimasto) e i ritorni a capo sono la sua struttura */}
+              <p style={{ color: C.text, fontSize: 15.5, lineHeight: 1.6, margin: 0, whiteSpace: "pre-line" }}>{chi.answer}</p>
               {/* Da dove viene la risposta: la garanzia resta, ma ripiegata.
                   Il controllo dev'essere possibile, non un muro di citazioni
                   sotto ogni scheda. */}

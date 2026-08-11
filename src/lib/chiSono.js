@@ -12,11 +12,14 @@ import { chiedi, getOracleKey } from "./oracle.js";
 // uscire da li', e gli stessi passaggi vengono mostrati al lettore: e' lui a
 // poter controllare, invece di doversi fidare.
 
-// Due dall'inizio e quattro dal fondo: i primi dicono chi e' quando entra in
-// scena, gli ultimi cosa sta facendo adesso. Il mezzo di una saga lunga
-// aggiunge parole e non aggiunge risposta.
-const DA_CAPO = 2;
-const DA_FONDO = 4;
+// Dodici passaggi: dall'inizio (chi e' quando entra in scena), dal fondo
+// (cosa sta facendo adesso) e anche dal MEZZO, campionato a passo regolare —
+// e' li' che spesso stanno i fatti chiave di un personaggio, e prendendo
+// solo capo e coda restavano fuori. Dodici paragrafi sono ancora centesimi
+// di chiamata.
+const DA_CAPO = 3;
+const DA_MEZZO = 3;
+const DA_FONDO = 6;
 // tetto di sicurezza per libro: oltre, e' un protagonista e le menzioni in
 // piu' non cambiano la scelta
 const MAX_MENZIONI = 240;
@@ -32,8 +35,19 @@ const SISTEMA = [
   "altre fonti: quel che sai potrebbe venire da pagine che il lettore non ha",
   "ancora letto, e rovinargliele. Se i passaggi non bastano a dire chi è,",
   "dillo in una riga invece di inventare o completare a memoria.",
-  "Non anticipare MAI cosa succederà. Rispondi in un italiano semplice e",
-  "naturale, da 2 a 6 frasi, senza markdown né elenchi.",
+  "Non anticipare MAI cosa succederà.",
+  "Rispondi in un italiano semplice e naturale, testo puro senza markdown,",
+  "in questa forma:",
+  "prima riga: chi è, in una frase secca.",
+  "Poi una riga vuota e da 3 a 6 righe che iniziano con «— », i punti",
+  "salienti della sua storia NELL'ORDINE in cui il lettore li ha",
+  "incontrati: chi è quando compare, i legami con altri personaggi o luoghi",
+  "dei passaggi, i fatti importanti che gli sono successi, i tratti che",
+  "contano. Un punto per riga, niente giri di parole — servono a chi",
+  "reincontra il personaggio dopo tanto tempo e deve rimettersi in pari.",
+  "Chiudi con una riga vuota e una riga «Dove eri rimasto: …» con l'ultima",
+  "cosa che sta facendo nei passaggi piu' recenti.",
+  "Se per un punto i passaggi non bastano, salta il punto senza inventare.",
 ].join(" ");
 
 // Un nome, non una frase: la scheda ha senso su «Logen Novedita», non su
@@ -234,9 +248,19 @@ export function scegliPassaggi(tutti) {
   const ricchi = puliti.filter((m) => m.testo.length >= SOSTANZA);
   // se di passaggi sostanziosi non ce n'e' abbastanza, meglio i magri che
   // il silenzio
-  const base = ricchi.length >= DA_CAPO + DA_FONDO ? ricchi : puliti;
-  if (base.length <= DA_CAPO + DA_FONDO) return base;
-  return [...base.slice(0, DA_CAPO), ...base.slice(-DA_FONDO)];
+  const totale = DA_CAPO + DA_MEZZO + DA_FONDO;
+  const base = ricchi.length >= totale ? ricchi : puliti;
+  if (base.length <= totale) return base;
+  const capo = base.slice(0, DA_CAPO);
+  const coda = base.slice(-DA_FONDO);
+  const centro = base.slice(DA_CAPO, base.length - DA_FONDO);
+  // il mezzo a passo regolare: non i migliori — non sappiamo giudicare cosa
+  // conta nella storia — ma sparsi, cosi' nessun tratto lungo resta muto
+  const passo = centro.length / (DA_MEZZO + 1);
+  const mezzo = [...new Set(
+    Array.from({ length: DA_MEZZO }, (_, i) => centro[Math.floor(passo * (i + 1))]).filter(Boolean)
+  )];
+  return [...capo, ...mezzo, ...coda];
 }
 
 // I TITOLI NON ESCONO DAL DISPOSITIVO.
