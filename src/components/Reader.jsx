@@ -6,8 +6,8 @@ import {
   getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights,
 } from "../lib/annotations.js";
 import { getProgress, setProgress, setStatus, getStatus, loadBooks } from "../lib/library.js";
-import { frontiera, raccontaFrontiera } from "../lib/frontiera.js";
-import { trovaAlias, raccogliPassaggi, scegliPassaggi, chiediChiE } from "../lib/chiSono.js";
+import { schedaChiE } from "../lib/chiSono.js";
+import { schedaRiassunto } from "../lib/trama.js";
 import { sembraUnNome } from "../lib/nomi.js";
 import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
@@ -22,6 +22,7 @@ import { sillaba } from "../lib/hyphens.js";
 import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
+import SchedaOracolo, { attese } from "./SchedaOracolo.jsx";
 
 // sotto i 7px la pila di fogli diventa un filo che sembra un difetto,
 // non l'orlo delle pagine: il minimo deve leggersi come carta impilata
@@ -437,7 +438,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [chi, setChi] = useState(null);
   // i passaggi-fonte stanno ripiegati: la risposta e' quella che conta, e il
   // controllo dev'essere possibile, non obbligatorio
-  const [chiFonti, setChiFonti] = useState(false);
   const rotella = useRef(0);
 
   live.current.settings = settings;
@@ -1231,45 +1231,44 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     saveMarks(book.id, next);
   }
 
-  // «Chi è costui?». La scheda si cuce su quello che hai letto e su nient'altro:
-  // la frontiera dice quali volumi possono parlare e fin dove, i passaggi si
-  // raccolgono solo li' dentro, e sono gli stessi che poi ti mostro — cosi'
-  // puoi controllare invece di fidarti.
+  // Le schede dell'Oracolo — «Chi è costui?» e «Dove eravamo rimasti» — si
+  // cuciono su quello che hai letto e su nient'altro: la frontiera dice quali
+  // volumi possono parlare e fin dove, i passaggi si raccolgono solo li'
+  // dentro, e sono gli stessi che poi ti mostro — cosi' puoi controllare
+  // invece di fidarti.
   const chiRun = useRef(0);
   const chiCache = useRef(new Map());
-  async function chiE(nome) {
+  // per il libro aperto vale il segno VIVO, non quello salvato: fra un flush
+  // e l'altro passa qualche pagina, e sono pagine che hai letto
+  const doveSono = () => ({
+    book,
+    libri: loadBooks(),
+    statusOf: getStatus,
+    cfiOf: (id) => (id === book.id ? live.current.cfi || getCfi(id) : getCfi(id)),
+  });
+
+  async function scheda(chiave, avvia) {
     setSelMenu(null);
     setPanel("chi");
-    setChiFonti(false);
-    const gia = chiCache.current.get(nome);
+    const gia = chiCache.current.get(chiave);
     if (gia) return setChi(gia);
     const mio = ++chiRun.current;
-    // per il libro aperto vale il segno VIVO, non quello salvato: fra un
-    // flush e l'altro passa qualche pagina, e sono pagine che hai letto
-    const tappe = frontiera(book, loadBooks(), {
-      statusOf: getStatus,
-      cfiOf: (id) => (id === book.id ? live.current.cfi || getCfi(id) : getCfi(id)),
-    });
-    setChi({ nome, fase: "nomi", tappe });
-    // prima gli ALTRI nomi: nel libro la stessa persona e' anche il suo
-    // cognome e il suo soprannome, e cercando solo la parola toccata meta'
-    // della sua storia non verrebbe raccolta
-    const alias = await trovaAlias(nome, tappe[tappe.length - 1]);
-    if (chiRun.current !== mio) return;
-    setChi({ nome, alias, fase: "cerco", tappe });
-    const raccolti = await raccogliPassaggi([nome, ...alias], tappe, {
-      vivo: () => chiRun.current === mio,
-    });
-    const scelti = scegliPassaggi(raccolti, book.id);
-    if (chiRun.current !== mio) return;
-    if (!scelti.length) return setChi({ nome, alias, fase: "vuoto", tappe, passaggi: [] });
-    setChi({ nome, alias, fase: "chiedo", tappe, passaggi: scelti });
-    const res = await chiediChiE({ nome, alias, passaggi: scelti, tappe });
-    if (chiRun.current !== mio) return;
-    const finito = { nome, alias, fase: res.answer ? "fatto" : "errore", tappe, passaggi: scelti, ...res };
-    if (res.answer) chiCache.current.set(nome, finito);
+    const vivo = () => chiRun.current === mio;
+    const finito = await avvia({ ...doveSono(), vivo, passo: (s) => vivo() && setChi(s) });
+    if (!vivo() || !finito) return;
+    // in cache solo le risposte: un errore di rete non deve restare
+    // appiccicato alla parola per tutta la lettura
+    if (finito.answer) chiCache.current.set(chiave, finito);
     setChi(finito);
   }
+
+  const chiE = (nome) => scheda(`chi:${nome}`, (ctx) => schedaChiE({ nome, ...ctx }));
+  // il riassunto si rifà ogni volta: il senso è «fin dove sono ADESSO», e
+  // una risposta in cache racconterebbe dov'eri la volta scorsa
+  const dovEravamo = () => {
+    chiCache.current.delete("trama");
+    return scheda("trama", schedaRiassunto);
+  };
 
   function applyHighlight(color) {
     if (!selMenu) return;
@@ -2192,6 +2191,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             <button onClick={() => setPanel(panel === "toc" ? null : "toc")} style={barBtn(panel === "toc")} aria-label="Indice">☰</button>
             <button onClick={() => setPanel(panel === "marks" ? null : "marks")} style={barBtn(panel === "marks")} aria-label="Segnalibri">📑</button>
             <button onClick={() => setPanel(panel === "hl" ? null : "hl")} style={barBtn(panel === "hl")} aria-label="Evidenziazioni">🖍️</button>
+            <button onClick={dovEravamo} style={barBtn(false)} aria-label="Dove eravamo rimasti">🧭</button>
             {document.fullscreenEnabled && (
               <button onClick={toggleFullscreen} style={barBtn(isFs)} aria-label={isFs ? "Esci da schermo intero" : "Schermo intero"}>
                 {isFs ? "⛶" : "⛶"}
@@ -2499,91 +2499,20 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       )}
 
       {panel === "chi" && chi && (
-        <Panel title={`Chi è ${chi.nome}`} onClose={() => setPanel(null)}>
-          {chi.fase === "nomi" && (
-            <p style={{ color: C.muted, fontSize: 14.5 }}>
-              Cerco con quali nomi il libro la chiama…
-            </p>
-          )}
-          {chi.fase === "cerco" && (
-            <p style={{ color: C.muted, fontSize: 14.5 }}>
-              Cerco {[chi.nome, ...(chi.alias || [])].join(", ")} in quello che hai letto…
-            </p>
-          )}
-          {chi.fase === "chiedo" && (
-            <p style={{ color: C.muted, fontSize: 14.5 }}>
-              ✨ L'Oracolo sta leggendo {chi.passaggi.length} passaggi…
-            </p>
-          )}
-          {chi.fase === "vuoto" && (
-            <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.55 }}>
-              Non trovo «{chi.nome}» in quello che hai letto finora.
-            </p>
-          )}
-          {chi.fase === "errore" && (
-            <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.55 }}>
-              {chi.error === "chiave"
-                ? "Serve la tua chiave dell'Oracolo: la trovi nella scheda del dizionario."
-                : "L'Oracolo non ha risposto. Riprova fra un momento."}
-            </p>
-          )}
-          {chi.fase === "fatto" && (
-            <>
-              {/* pre-line: la risposta e' prosa in due o tre paragrafi, e la
-                  riga vuota fra l'uno e l'altro e' la sua unica struttura */}
-              <p style={{ color: C.text, fontSize: 15.5, lineHeight: 1.6, margin: 0, whiteSpace: "pre-line" }}>{chi.answer}</p>
-              {/* Da dove viene la risposta: la garanzia resta, ma ripiegata.
-                  Il controllo dev'essere possibile, non un muro di citazioni
-                  sotto ogni scheda. */}
-              <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
-                <p style={{ margin: 0, fontSize: 12.5, color: C.dim, lineHeight: 1.5 }}>
-                  Basata solo su quello che hai letto: {raccontaFrontiera(chi.tappe)}.
-                  {/* i nomi trovati si dichiarano: se ne ha preso uno sbagliato
-                      te ne accorgi da qui, senza dover leggere i passaggi */}
-                  {chi.alias?.length ? ` Cercata anche come ${chi.alias.join(", ")}.` : ""}
-                </p>
-                <button
-                  onClick={() => setChiFonti((v) => !v)}
-                  style={{
-                    marginTop: 8,
-                    padding: "6px 14px",
-                    borderRadius: 999,
-                    fontSize: 13,
-                    border: `1px solid ${C.border}`,
-                    color: C.muted,
-                  }}
-                >
-                  {chiFonti
-                    ? "Nascondi i passaggi"
-                    : `Vedi i ${chi.passaggi.length} passaggi usati`}
-                </button>
-                {chiFonti &&
-                  chi.passaggi.map((p, i) => {
-                    const dove = [chi.tappe.length > 1 ? p.libro.title : null, p.dove]
-                      .filter(Boolean)
-                      .join(" · ");
-                    return (
-                      <div
-                        key={i}
-                        style={{
-                          padding: "8px 10px",
-                          marginTop: i === 0 ? 10 : 6,
-                          borderRadius: 10,
-                          border: `1px solid ${C.border}`,
-                          background: C.bg,
-                          fontSize: 13,
-                          color: C.muted,
-                          lineHeight: 1.5,
-                        }}
-                      >
-                        {dove && <span style={{ color: C.accent, marginRight: 6 }}>{dove}</span>}
-                        {p.testo}
-                      </div>
-                    );
-                  })}
-              </div>
-            </>
-          )}
+        <Panel
+          title={chi.nome ? `Chi è ${chi.nome}` : "Dove eravamo rimasti"}
+          onClose={() => setPanel(null)}
+        >
+          <SchedaOracolo
+            scheda={chi}
+            attese={attese(chi)}
+            vuoto={
+              chi.nome
+                ? `Non trovo «${chi.nome}» in quello che hai letto finora.`
+                : "Non riesco a rileggere quello che hai letto finora."
+            }
+            onRiprova={() => (chi.nome ? chiE(chi.nome) : dovEravamo())}
+          />
         </Panel>
       )}
 

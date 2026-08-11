@@ -2,6 +2,7 @@ import { getFile } from "./bookStore.js";
 import { pageText, findMatches } from "./pdfSearch.js";
 import { chiedi, getOracleKey } from "./oracle.js";
 import { varianti, regexNome, nuovoRegistro, annota, decidi } from "./nomi.js";
+import { frontiera } from "./frontiera.js";
 
 // «CHI È COSTUI?» — la scheda di un personaggio cucita su quello che hai
 // letto, e su nient'altro.
@@ -367,6 +368,26 @@ const etichette = (tappe) => {
   });
   return m;
 };
+
+// Il giro intero, uguale per i due reader: cambia solo da dove arriva il
+// segno vivo (CFI nell'EPUB, numero di pagina nel PDF).
+export async function schedaChiE({ nome, book, libri, statusOf, cfiOf, vivo, passo }) {
+  const tappe = frontiera(book, libri, { statusOf, cfiOf });
+  passo({ nome, fase: "nomi", tappe });
+  // prima gli ALTRI nomi: nel libro la stessa persona e' anche il suo cognome
+  // e il suo soprannome, e cercando solo la parola toccata meta' della sua
+  // storia non verrebbe raccolta
+  const alias = await trovaAlias(nome, tappe[tappe.length - 1]);
+  if (!vivo()) return null;
+  passo({ nome, alias, fase: "cerco", tappe });
+  const scelti = scegliPassaggi(await raccogliPassaggi([nome, ...alias], tappe, { vivo }), book.id);
+  if (!vivo()) return null;
+  if (!scelti.length) return { nome, alias, fase: "vuoto", tappe, passaggi: [] };
+  passo({ nome, alias, fase: "chiedo", tappe, passaggi: scelti });
+  const res = await chiediChiE({ nome, alias, passaggi: scelti, tappe });
+  if (!vivo()) return null;
+  return { nome, alias, fase: res.answer ? "fatto" : "errore", tappe, passaggi: scelti, ...res };
+}
 
 export async function chiediChiE({ nome, alias = [], passaggi, tappe }, fetcher) {
   if (!getOracleKey()) return { error: "chiave" };

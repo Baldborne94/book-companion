@@ -180,3 +180,5 @@ Su wh-companion l'embed Spotify dava problemi: il controllo `postMessage` dell'i
 A ogni fase completata, spunta qui lo stato (✅) così le sessioni successive sanno dove siamo.
 
 Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ · F-sync ✅ · G1-glossario ✅ · G2-segni ✅ · G3-oracolo ✅ — milestone completa 🎉
+
+Dopo la milestone, sulla frontiera di lettura (`lib/frontiera.js`): «Chi è costui?» in tutti e due i reader e «Dove eravamo rimasti» (`lib/trama.js`), scheda condivisa in `components/SchedaOracolo.jsx` con dentro il campo per la chiave. Il dettaglio sta in `CLAUDE.md`.
