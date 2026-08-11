@@ -1,7 +1,50 @@
 import { useEffect, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
 import { isSyncConfigured } from "../lib/supabase.js";
-import { getSession, signIn, signOut, getLastSync } from "../lib/sync.js";
+import { getSession, signIn, signOut, getLastSync, cloudUsage } from "../lib/sync.js";
+import { fmtBytes } from "../lib/bytes.js";
+
+// Il piano gratuito di Supabase da' un gigabyte. Non e' una quota che si
+// possa chiedere al server — dipende dal piano — quindi qui e' un
+// RIFERIMENTO dichiarato, non una misura: la barra dice «quanto ci sta in un
+// piano gratuito», e chi ne ha uno piu' grande sa di avere piu' margine.
+const GRATIS = 1e9;
+
+function Spazio({ dati }) {
+  if (dati === undefined) return <p style={{ color: C.muted, fontSize: 13.5 }}>Conto lo spazio…</p>;
+  if (!dati) return null;
+  const { libri, copertine, melodie, totale } = dati;
+  const fetta = (n) => `${Math.min(100, (n / GRATIS) * 100)}%`;
+  const pieno = totale / GRATIS;
+  return (
+    <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 7 }}>
+        <span style={{ fontSize: 14.5, color: C.text }}>{fmtBytes(totale)} lassù</span>
+        <span style={{ fontSize: 12.5, color: C.muted }}>di 1 GB del piano gratuito</span>
+      </div>
+      <div style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden", background: C.dim }}>
+        <div style={{ width: fetta(libri.byte + copertine.byte), background: C.accent }} />
+        <div style={{ width: fetta(melodie.byte), background: C.arcane }} />
+      </div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 8, fontSize: 12.5, color: C.muted }}>
+        <span>
+          <span style={{ color: C.accent }}>■</span> {libri.quanti} {libri.quanti === 1 ? "libro" : "libri"} ·{" "}
+          {fmtBytes(libri.byte + copertine.byte)}
+        </span>
+        <span>
+          <span style={{ color: C.arcane }}>■</span> {melodie.quanti}{" "}
+          {melodie.quanti === 1 ? "melodia" : "melodie"} · {fmtBytes(melodie.byte)}
+        </span>
+      </div>
+      {pieno > 0.8 && (
+        <p style={{ margin: "8px 0 0", fontSize: 12.5, color: C.accent, lineHeight: 1.45 }}>
+          Lo spazio sta finendo. Le melodie pesano molto più dei libri: quelle che non ti servono a
+          schermo spento possono tornare a essere un link YouTube, che non occupa niente.
+        </p>
+      )}
+    </div>
+  );
+}
 
 const fmtWhen = (ts) => {
   if (!ts) return "mai";
@@ -22,9 +65,21 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  const [spazio, setSpazio] = useState(undefined);
+
   useEffect(() => {
     getSession().then(setSession);
   }, [status.at]);
+
+  // il conto si rifa' a ogni sincronizzazione finita: e' proprio quando puo'
+  // essere cambiato
+  useEffect(() => {
+    if (!session) return;
+    let vivo = true;
+    setSpazio(undefined);
+    cloudUsage().then((d) => vivo && setSpazio(d));
+    return () => { vivo = false; };
+  }, [session, status.at]);
 
   async function handleSignIn() {
     const e = email.trim();
@@ -136,6 +191,7 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
                 Esci
               </button>
             </div>
+            <Spazio dati={spazio} />
           </>
         ) : sent ? (
           <p style={{ color: C.text, fontSize: 15, lineHeight: 1.55 }}>

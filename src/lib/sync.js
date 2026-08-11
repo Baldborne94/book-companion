@@ -1,5 +1,5 @@
 import { getClient, isSyncConfigured, BUCKET } from "./supabase.js";
-import { putFile, getFile, putCover, getCover, removeBookData, listFileIds } from "./bookStore.js";
+import { putFile, getFile, putCover, getCover, removeBookData, listFileIds, getTrack, putTrack } from "./bookStore.js";
 import {
   loadBooks, saveBooks, getProgress, setProgress, getStatus, setStatus,
   getUpdatedAt, touchBook, getTombstones, clearTombstones, getLastOpened,
@@ -31,6 +31,10 @@ const markUploaded = (id) =>
 
 const filePath = (uid, book) => `${uid}/${book.id}.${book.fileType || "epub"}`;
 const coverPath = (uid, id) => `${uid}/${id}.cover`;
+// Le melodie stanno nello stesso secchio dei libri: il permesso guarda solo
+// la prima cartella (`uid/…`), quindi una sottocartella non chiede niente a
+// nessuno.
+const trackPath = (uid, trackId) => `${uid}/melodie/${trackId}`;
 
 export async function getSession() {
   const sb = await getClient();
@@ -210,6 +214,31 @@ export async function syncNow({ onProgress } = {}) {
     markUploaded(row.id);
   }
 
+  // LE MELODIE SONO BYTE COME I LIBRI, e vanno dove vanno i libri. Finora
+  // viaggiava solo la voce dell'elenco: sull'altro dispositivo compariva il
+  // nome e non suonava niente, che e' il modo peggiore di sincronizzare una
+  // cosa. Il caricamento si fa una volta sola per melodia (`uploaded`), e
+  // chi non riesce ci riprova al giro dopo.
+  const melodie = getFavoritesRaw();
+  for (const f of melodie) {
+    if (f.deleted || !f.trackId || already.has(f.trackId)) continue;
+    const blob = await getTrack(f.trackId).catch(() => null);
+    if (!blob) continue;
+    say(`Carico «${f.name || "una melodia"}»…`);
+    const { error: mErr } = await sb.storage
+      .from(BUCKET)
+      .upload(trackPath(uid, f.trackId), blob, { upsert: true, contentType: blob.type || undefined });
+    // spazio finito o rete che cade: la melodia resta non caricata e ci si
+    // riprova, ma il resto della sincronizzazione non deve saltare per aria
+    if (mErr && mErr.statusCode !== "409") continue;
+    markUploaded(f.trackId);
+  }
+  // le lapidi valgono anche lassu': una melodia dimenticata non deve restare
+  // a occupare spazio per sempre. Si cancella da qualunque dispositivo,
+  // perche' chi ha caricato i byte puo' essere un altro.
+  const spente = melodie.filter((f) => f.deleted && f.trackId).map((f) => trackPath(uid, f.trackId));
+  if (spente.length) await sb.storage.from(BUCKET).remove(spente).catch(() => {});
+
   if (pull.length || removeLocal.length) say("Ricevo le novità…");
   let next = loadBooks();
   for (const row of pull) {
@@ -266,6 +295,81 @@ export async function ensureLocalFile(book) {
   if (error || !data) return null;
   await putFile(book.id, data);
   return data;
+}
+
+// Come `ensureLocalFile` per i libri: i byte si scaricano quando servono
+// davvero, non a ogni sincronizzazione. Su un portatile che apri una volta
+// al mese non ha senso tirare giu' mezzo giga di musica per sport.
+export async function ensureLocalTrack(trackId, onScarico) {
+  const local = await getTrack(trackId).catch(() => null);
+  if (local) return local;
+  if (!isSyncConfigured()) return null;
+  const session = await getSession();
+  if (!session) return null;
+  const sb = await getClient();
+  // l'avviso parte solo adesso, che si scarica per davvero: annunciarlo
+  // prima di sapere se c'e' un cloud da cui prendere e' una bugia breve
+  onScarico?.();
+  const { data, error } = await sb.storage.from(BUCKET).download(trackPath(session.user.id, trackId));
+  if (error || !data) return null;
+  await putTrack(trackId, data);
+  return data;
+}
+
+// QUANTO PESI LASSU'.
+//
+// Il piano gratuito da' un gigabyte, e finora ci si navigava al buio: te ne
+// accorgevi quando qualcosa smetteva di caricarsi. Qui si chiede l'elenco
+// del secchio e si sommano le dimensioni, separando i libri dalle melodie —
+// perche' la risposta interessante non e' «quanto», e' «chi».
+//
+// Il conto e' quello che c'e' VERAMENTE nel secchio, non quello che secondo
+// noi ci dovrebbe essere: cosi' vengono fuori anche gli avanzi di libri
+// cancellati altrove.
+async function elenca(sb, cartella) {
+  const dentro = [];
+  for (let salto = 0; ; salto += 100) {
+    const { data, error } = await sb.storage
+      .from(BUCKET)
+      .list(cartella, { limit: 100, offset: salto });
+    if (error || !data?.length) break;
+    dentro.push(...data);
+    if (data.length < 100) break;
+  }
+  return dentro;
+}
+
+// la parte che sa contare, separata da quella che sa chiedere: cosi' si puo'
+// provare senza un secchio vero sotto
+export function contaSpazio(radiceGrezza, braniGrezzi) {
+  // Le cartelle compaiono nell'elenco senza metadati. Lo scarto si fa QUI e
+  // non solo in chi chiede: una cartella contata come libro non si vede —
+  // pesa zero — ma fa dire «4 libri» dove ce ne sono tre.
+  const file = (lista) => (lista || []).filter((o) => o?.metadata);
+  const radice = file(radiceGrezza);
+  const brani = file(braniGrezzi);
+  const peso = (lista) => lista.reduce((s, o) => s + (o.metadata?.size || 0), 0);
+  const copertine = radice.filter((o) => o.name.endsWith(".cover"));
+  const libri = radice.filter((o) => !o.name.endsWith(".cover"));
+  return {
+    libri: { quanti: libri.length, byte: peso(libri) },
+    copertine: { quanti: copertine.length, byte: peso(copertine) },
+    melodie: { quanti: brani.length, byte: peso(brani) },
+    totale: peso(radice) + peso(brani),
+  };
+}
+
+export async function cloudUsage() {
+  if (!isSyncConfigured()) return null;
+  const session = await getSession();
+  if (!session) return null;
+  const sb = await getClient();
+  const uid = session.user.id;
+  try {
+    return contaSpazio(await elenca(sb, uid), await elenca(sb, `${uid}/melodie`));
+  } catch {
+    return null;
+  }
 }
 
 export async function localFileIds() {
