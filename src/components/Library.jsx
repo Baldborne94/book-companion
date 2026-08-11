@@ -6,6 +6,7 @@ import { importFiles } from "../lib/importBook.js";
 import { exportLibrary } from "../lib/exportLibrary.js";
 import { restoreLibrary } from "../lib/restoreLibrary.js";
 import { getFavorites, isFile } from "../lib/music.js";
+import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
 import BookCover from "./BookCover.jsx";
 import EmptyState from "./EmptyState.jsx";
 
@@ -226,8 +227,12 @@ function Grouped({ books, group, onOpenBook, localIds }) {
   ));
 }
 
-export default function Library({ books, updateBooks, onOpenBook, notify, localIds, onImported, focusSaga }) {
+export default function Library({ books, updateBooks, onOpenBook, onReadAt, notify, localIds, onImported, focusSaga }) {
   const [query, setQuery] = useState("");
+  // la ricerca dentro i tomi: `vivo` e' il filo che la tiene in vita, e
+  // spezzarlo e' l'unico modo per fermarla a meta'
+  const [dentro, setDentro] = useState(null);
+  const vivo = useRef(null);
   const [filter, setFilter] = useState("all");
   const [sort, setSort] = useState("recent");
   const [group, setGroup] = useState("none");
@@ -244,6 +249,39 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
   useEffect(() => {
     storageEstimate().then(setEstimate);
   }, [books]);
+
+  // uscendo dalla libreria la ricerca in corso non serve piu' a nessuno, e
+  // continuerebbe ad aprire tomi a vuoto
+  useEffect(() => () => { if (vivo.current) vivo.current.acceso = false; }, []);
+
+  // Spezzare il filo ferma il giro, ma il giro fermato non torna piu' a
+  // scrivere lo stato: la chiusura tocca a qui, o la riga «sfoglio…»
+  // resterebbe appesa per sempre. Quello che ha gia' trovato resta a
+  // schermo: e' il senso di fermarsi invece di annullare.
+  function fermaRicerca() {
+    if (vivo.current) vivo.current.acceso = false;
+    vivo.current = null;
+    setDentro((d) => (d?.cercando ? { ...d, cercando: false, dove: null } : d));
+  }
+
+  async function cercaDentro() {
+    fermaRicerca();
+    const q = query.trim();
+    if (!abbastanzaLunga(q)) return;
+    const filo = { acceso: true };
+    vivo.current = filo;
+    setDentro({ q, cercando: true, dove: null, fatti: 0, totale: books.length, esiti: [], lontani: 0 });
+    const { lontani, esaminati } = await cercaOvunque(books, q, {
+      vivo: () => filo.acceso,
+      onLibro: ({ i, titolo }) =>
+        filo.acceso && setDentro((d) => (d ? { ...d, fatti: i, dove: titolo } : d)),
+      onTrovato: ({ libro, trovati }) =>
+        filo.acceso && setDentro((d) => (d ? { ...d, esiti: [...d.esiti, { libro, trovati }] } : d)),
+    });
+    if (!filo.acceso) return;
+    vivo.current = null;
+    setDentro((d) => (d ? { ...d, cercando: false, dove: null, lontani, esaminati } : d));
+  }
 
   // arrivo dalla home toccando una saga: la libreria si apre gia' raccolta
   // per saghe e ristretta a quella
@@ -389,6 +427,7 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && cercaDentro()}
           placeholder="Cerca per titolo o autore…"
           style={{
             flex: 1,
@@ -402,6 +441,23 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
             outline: "none",
           }}
         />
+        {/* lo scaffale risponde subito su titoli e autori; questo va a
+            guardare dentro, ed e' un altro mestiere: si chiede a mano */}
+        {abbastanzaLunga(query) && books.length > 0 && (
+          <button
+            onClick={dentro?.cercando ? fermaRicerca : cercaDentro}
+            style={{
+              padding: "10px 18px",
+              borderRadius: 12,
+              fontSize: 14.5,
+              border: `1px solid ${dentro?.cercando ? C.border : C.arcane}88`,
+              color: dentro?.cercando ? C.muted : C.arcane,
+              background: dentro?.cercando ? "transparent" : `${C.arcane}14`,
+            }}
+          >
+            {dentro?.cercando ? "Ferma" : "🔍 Cerca dentro i tomi"}
+          </button>
+        )}
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 20 }}>
@@ -465,6 +521,82 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
           ))}
         </select>
       </div>
+
+      {dentro && (
+        <div
+          style={{
+            marginBottom: 22,
+            padding: "14px 16px",
+            borderRadius: 16,
+            border: `1px solid ${C.arcane}55`,
+            background: `linear-gradient(135deg, ${C.arcane}12, ${C.card})`,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+            <h3 style={{ fontFamily: FONT_TITLE, fontSize: 18, fontWeight: 600, color: C.text }}>
+              <span style={{ color: C.arcane, marginRight: 6 }}>✦</span>
+              «{dentro.q}» dentro i tomi
+            </h3>
+            <span style={{ flex: 1 }} />
+            {dentro.cercando ? (
+              <span style={{ fontSize: 13, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 320 }}>
+                sfoglio «{dentro.dove || "…"}» · {dentro.fatti + 1} di {dentro.totale}
+              </span>
+            ) : (
+              <button onClick={() => setDentro(null)} aria-label="Chiudi i risultati" style={{ color: C.muted, padding: 4, fontSize: 15 }}>
+                ✕
+              </button>
+            )}
+          </div>
+
+          {dentro.esiti.length === 0 && !dentro.cercando && (
+            <p style={{ fontSize: 13.5, color: C.muted, margin: 0, lineHeight: 1.5 }}>
+              Non l'ho trovata in nessuno dei tomi che hai qui.
+            </p>
+          )}
+
+          {dentro.esiti.map(({ libro, trovati }) => (
+            <div key={libro.id} style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 14.5, color: C.text, fontWeight: 600, marginBottom: 4 }}>
+                {libro.title}
+                {libro.author && <span style={{ color: C.muted, fontWeight: 400 }}> · {libro.author}</span>}
+              </div>
+              {trovati.map((t, i) => (
+                <button
+                  key={i}
+                  onClick={() => onReadAt?.(libro.id, t.punto)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "8px 10px",
+                    marginBottom: 6,
+                    borderRadius: 10,
+                    border: `1px solid ${C.border}`,
+                    background: C.surface,
+                    color: C.muted,
+                    fontSize: 13.5,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {t.dove && <span style={{ color: C.arcane, marginRight: 6 }}>{t.dove}</span>}
+                  {t.prima}
+                  <mark style={{ background: "transparent", color: C.accent, fontWeight: 600 }}>{t.dentro}</mark>
+                  {t.dopo}
+                </button>
+              ))}
+            </div>
+          ))}
+
+          {!dentro.cercando && dentro.lontani > 0 && (
+            <p style={{ fontSize: 12.5, color: C.dim, margin: "10px 0 0", lineHeight: 1.45 }}>
+              {dentro.lontani === 1
+                ? "Un tomo vive solo sull'altro dispositivo e non l'ho aperto: aprilo una volta da qui e la prossima ricerca lo troverà."
+                : `${dentro.lontani} tomi vivono solo sull'altro dispositivo e non li ho aperti: aprili una volta da qui e la prossima ricerca li troverà.`}
+            </p>
+          )}
+        </div>
+      )}
 
       {books.length === 0 ? (
         <EmptyState
