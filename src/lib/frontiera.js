@@ -49,9 +49,10 @@ export function frontiera(corrente, libri, { statusOf, cfiOf }) {
 
 // Come si racconta al lettore da dove viene la risposta. Non e' un dettaglio
 // tecnico: e' quello che gli permette di CONTROLLARE invece di fidarsi.
+// In italiano piano, senza formule ripetute.
 export function raccontaFrontiera(tappe) {
-  if (!tappe.length) return "non hai ancora letto abbastanza";
+  if (!tappe.length) return "niente, per ora";
   return tappe
-    .map((t) => (t.tutto ? `«${t.libro.title}» per intero` : `«${t.libro.title}» fino al tuo segno`))
+    .map((t) => (t.tutto ? `«${t.libro.title}» (tutto)` : `«${t.libro.title}» (fin dove sei arrivato)`))
     .join(", ");
 }
