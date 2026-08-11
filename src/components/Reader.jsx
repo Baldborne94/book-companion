@@ -149,8 +149,16 @@ function flattenToc(items, depth = 0, out = []) {
 function contentStyles(s, lingua) {
   const t = READER_THEMES[s.theme];
   const font = READER_FONTS.find((f) => f.id === s.font)?.css;
-  const textSel =
-    "p, div, span, li, td, th, dd, dt, blockquote, cite, em, strong, i, b, small, figcaption";
+  // L'INCHIOSTRO E' QUELLO DEL TEMA, SENZA ECCEZIONI.
+  //
+  // Prima si elencavano gli elementi da ricolorare, e chi non era in elenco
+  // teneva il colore dell'editore: il primo paragrafo di un capitolo, un
+  // <font> di un vecchio EPUB, una didascalia, una lettera capitale. Su
+  // pergamena si notava appena; sul tema notte quel testo restava nero su
+  // nero. Un elenco di tag e' una partita a rincorrere: qui si dice «tutto
+  // quello che sta nel corpo», e i collegamenti si riprendono il loro colore
+  // subito dopo (stessa specificita', vince la regola che arriva dopo).
+  const textSel = "body *";
   // La colonna giustificata si prende solo la prosa. Non `div`, che spesso
   // avvolge anche i titoli: quelli il libro li centra o li allinea a modo
   // suo, e giustificarli e' il modo piu' rapido di far sembrare rotta una
@@ -429,6 +437,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // i passaggi-fonte stanno ripiegati: la risposta e' quella che conta, e il
   // controllo dev'essere possibile, non obbligatorio
   const [chiFonti, setChiFonti] = useState(false);
+  const rotella = useRef(0);
 
   live.current.settings = settings;
   live.current.panel = panel;
@@ -711,6 +720,24 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           }
           setChrome((v) => !v);
         });
+        // La rotellina volta la pagina col mouse. In pagine impaginate
+        // l'iframe non scorre, quindi il gesto e' libero — e a differenza di
+        // un click non ruba niente alla selezione.
+        if (!isTouch()) {
+          let ultimo = 0;
+          doc.addEventListener(
+            "wheel",
+            (e) => {
+              if (live.current.settings.flow === "scrolled") return;
+              if (Math.abs(e.deltaY) < 4) return;
+              const ora = Date.now();
+              if (ora - ultimo < 300) return;
+              ultimo = ora;
+              turnRef.current(e.deltaY > 0 ? "next" : "prev");
+            },
+            { passive: true }
+          );
+        }
         // sfogliare col dito come su carta: soglie strette per non rubare
         // il gesto alla selezione del testo o allo scroll verticale
         let sw = null;
@@ -1360,7 +1387,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // sullo sfondo — barre, pannelli e menu sono altri elementi e si fermano
   // da soli, altrimenti ogni loro bottone avrebbe cambiato pagina.
   function tapAside(e) {
-    if (!isTouch()) return;
     const root = rootRef.current;
     const target = e.target;
     if (target !== root && !bookRef.current?.contains(target)) return;
@@ -1455,6 +1481,16 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     <div
       ref={rootRef}
       onClick={tapAside}
+      onWheel={(e) => {
+        // la stessa rotellina anche fuori dall'iframe: sul margine attorno
+        // al libro il gesto deve rispondere uguale
+        if (isTouch() || !paginated || status !== "ready") return;
+        if (Math.abs(e.deltaY) < 4) return;
+        const ora = Date.now();
+        if (ora - rotella.current < 300) return;
+        rotella.current = ora;
+        turn(e.deltaY > 0 ? "next" : "prev");
+      }}
       style={{
         position: "fixed",
         inset: 0,
@@ -2048,20 +2084,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         </div>
       )}
 
-      {paginated && status === "ready" && !isTouch() && (
-        <>
-          <button
-            aria-label="Pagina precedente"
-            onClick={() => turn("prev")}
-            style={{ position: "absolute", left: 0, top: "12%", bottom: "12%", width: "22%", zIndex: 10, cursor: "w-resize", touchAction: "manipulation" }}
-          />
-          <button
-            aria-label="Pagina successiva"
-            onClick={() => turn("next")}
-            style={{ position: "absolute", right: 0, top: "12%", bottom: "12%", width: "26%", zIndex: 10, cursor: "e-resize", touchAction: "manipulation" }}
-          />
-        </>
-      )}
+      {/* Col mouse NON ci sono piu' i due bottoni invisibili sulle fasce
+          laterali. Coprivano quasi meta' della pagina e stavano SOPRA il
+          testo: nelle fasce non si poteva selezionare una parola, cliccarci
+          voltava e basta. E' lo stesso motivo per cui erano gia' spariti sul
+          tocco. Al loro posto la rotellina, che non litiga con la selezione,
+          piu' le frecce e il margine attorno al libro. */}
 
       {chrome && (
         <>

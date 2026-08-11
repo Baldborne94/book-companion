@@ -135,6 +135,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   const ultimoGiro = useRef(0);
 
   // il ritaglio in mano al disegno, che vive fuori da React
+  const rotella = useRef(0);
   const cropRef = useRef(TUTTA);
   cropRef.current = settings.ritaglia !== false && crop ? crop : TUTTA;
 
@@ -509,7 +510,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   // della pagina. Qui arrivano solo i tocchi sullo sfondo — barre, pannelli e
   // menu sono altri elementi, o ogni loro bottone avrebbe voltato pagina.
   function tapAside(e) {
-    if (!isTouch() || e.target !== rootRef.current) return;
+    if (e.target !== rootRef.current) return;
     if (zoom === 1) {
       const rel = e.clientX / (window.innerWidth || 1);
       if (rel < TAP_PREV) return goToPage(live.current.page - 1);
@@ -539,6 +540,18 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     <div
       ref={rootRef}
       onClick={tapAside}
+      onWheel={(e) => {
+        // col mouse la pagina si volta con la rotellina: non litiga con la
+        // selezione del testo, che e' esattamente quel che facevano i
+        // bottoni invisibili di prima. A zoom aperto no: li' la rotellina
+        // serve a scorrere il foglio ingrandito.
+        if (isTouch() || zoom !== 1 || status !== "ready") return;
+        if (Math.abs(e.deltaY) < 4) return;
+        const ora = Date.now();
+        if (ora - rotella.current < 220) return;
+        rotella.current = ora;
+        goToPage(live.current.page + (e.deltaY > 0 ? 1 : -1));
+      }}
       style={{
         position: "fixed",
         inset: 0,
@@ -681,20 +694,10 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
         </div>
       )}
 
-      {status === "ready" && zoom === 1 && !isTouch() && (
-        <>
-          <button
-            aria-label="Pagina precedente"
-            onClick={() => goToPage(live.current.page - 1)}
-            style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: "13%", zIndex: 10, cursor: "w-resize" }}
-          />
-          <button
-            aria-label="Pagina successiva"
-            onClick={() => goToPage(live.current.page + 1)}
-            style={{ position: "absolute", right: 0, top: "15%", bottom: "15%", width: "13%", zIndex: 10, cursor: "e-resize" }}
-          />
-        </>
-      )}
+      {/* Come nel reader EPUB: col mouse niente bottoni invisibili sulle
+          fasce laterali. Stavano sopra il livello del testo e li' dentro non
+          si poteva selezionare niente — cliccare voltava e basta. Restano la
+          rotellina, le frecce e il margine attorno al foglio. */}
 
       {sel && (
         <div
