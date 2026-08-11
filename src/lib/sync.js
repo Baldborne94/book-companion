@@ -220,18 +220,28 @@ export async function syncNow({ onProgress } = {}) {
   // cosa. Il caricamento si fa una volta sola per melodia (`uploaded`), e
   // chi non riesce ci riprova al giro dopo.
   const melodie = getFavoritesRaw();
+  let melodieSu = 0;
+  let melodieNo = 0;
   for (const f of melodie) {
     if (f.deleted || !f.trackId || already.has(f.trackId)) continue;
     const blob = await getTrack(f.trackId).catch(() => null);
+    // i byte stanno su un altro dispositivo: da qui non c'e' niente da
+    // caricare, e non e' un guaio
     if (!blob) continue;
     say(`Carico «${f.name || "una melodia"}»…`);
     const { error: mErr } = await sb.storage
       .from(BUCKET)
       .upload(trackPath(uid, f.trackId), blob, { upsert: true, contentType: blob.type || undefined });
     // spazio finito o rete che cade: la melodia resta non caricata e ci si
-    // riprova, ma il resto della sincronizzazione non deve saltare per aria
-    if (mErr && mErr.statusCode !== "409") continue;
+    // riprova, ma il resto della sincronizzazione non deve saltare per aria.
+    // Va pero' DETTO: un caricamento che fallisce in silenzio ti lascia a
+    // credere che la musica sia al sicuro lassu' quando non c'e'.
+    if (mErr && mErr.statusCode !== "409") {
+      melodieNo++;
+      continue;
+    }
     markUploaded(f.trackId);
+    melodieSu++;
   }
   // le lapidi valgono anche lassu': una melodia dimenticata non deve restare
   // a occupare spazio per sempre. Si cancella da qualunque dispositivo,
@@ -280,6 +290,8 @@ export async function syncNow({ onProgress } = {}) {
     pushed: toPush.length,
     pulled: pull.length,
     removed: removeLocal.length,
+    melodieSu,
+    melodieNo,
     books: loadBooks(),
   };
 }

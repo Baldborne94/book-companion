@@ -537,13 +537,23 @@ export default function App() {
       if (res.books) setBooks(res.books);
       setLocalIds(await localFileIds());
       const moved = (res.pulled || 0) + (res.pushed || 0) + (res.removed || 0);
+      // le melodie hanno un conto loro: sono poche e pesanti, e quando una
+      // non sale bisogna dirlo invece di lasciar credere che sia al sicuro
+      const musica = res.melodieSu
+        ? ` · ${res.melodieSu} ${res.melodieSu === 1 ? "melodia portata" : "melodie portate"} nel cloud`
+        : "";
+      const guai = res.melodieNo
+        ? ` · ${res.melodieNo} ${res.melodieNo === 1 ? "melodia non è salita" : "melodie non sono salite"}: forse lo spazio è finito`
+        : "";
       setSync({
         busy: false,
-        message: moved ? `Aggiornati ${moved} elementi` : "Tutto già allineato",
+        message: `${moved ? `Aggiornati ${moved} elementi` : "Tutto già allineato"}${musica}${guai}`,
         at: Date.now(),
         signedIn: true,
       });
-      if (!quiet && moved) notify("Biblioteca sincronizzata ✨");
+      if (!quiet && res.melodieNo) {
+        notify(`${res.melodieNo === 1 ? "Una melodia non è salita" : `${res.melodieNo} melodie non sono salite`} nel cloud — controlla lo spazio nel pannello ☁️`);
+      } else if (!quiet && moved) notify("Biblioteca sincronizzata ✨");
     } catch (e) {
       setSync((s) => ({ ...s, busy: false, message: `Sincronizzazione fallita: ${e?.message || "errore"}` }));
       if (!quiet) notify("Sincronizzazione fallita — riprovo più tardi");
