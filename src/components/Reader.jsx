@@ -727,6 +727,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         else if (live.current.panel) setPanel(null);
         else handleClose();
       }
+      // scrivendo in un campo (ricerca, chiave dell'Oracolo, cursore) le
+      // frecce muovono il cursore, non il libro
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
       if (e.key === "ArrowRight") turnRef.current("next");
       if (e.key === "ArrowLeft") turnRef.current("prev");
     };
