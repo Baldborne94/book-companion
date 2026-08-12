@@ -1367,19 +1367,29 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             background: theme.bg,
           }}
         />
-        {velo && (
-          <div
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              inset: FRAME,
-              zIndex: 6,
-              borderRadius: 3,
-              background: theme.bg,
-              pointerEvents: "none",
-            }}
-          />
-        )}
+        {/* IL VELO DEV'ESSERE CARTA, NON UN LAMPO. Sta SOTTO il filtro caldo
+            e la luminosita' (che vivono in cima al reader): dipinto sopra
+            di loro usciva crema contro una pagina tabacco — misurato sul
+            video del lettore, 241,227,200 contro 216,179,137 — e quel
+            salto di tinta era il lampo. Sotto, prende gli stessi filtri
+            della carta e il testo si limita a sparire.
+            Resta montato sempre e viaggia di opacita': comparire e sparire
+            di scatto e' un lampo comunque. Entra in fretta, perche' deve
+            coprire l'atterraggio provvisorio prima che dipinga; esce
+            piano, che e' la parte che si guarda. */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: FRAME,
+            zIndex: 4,
+            borderRadius: 3,
+            background: theme.bg,
+            pointerEvents: "none",
+            opacity: velo ? 1 : 0,
+            transition: `opacity ${velo ? 90 : 300}ms ease-in-out`,
+          }}
+        />
         <div
           aria-hidden="true"
           style={{
