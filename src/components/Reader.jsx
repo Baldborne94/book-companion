@@ -1055,6 +1055,84 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             background: theme.bg,
           }}
         />
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: FRAME,
+            top: FRAME,
+            bottom: FRAME,
+            width: edgeRead,
+            zIndex: 7,
+            pointerEvents: "none",
+            // stessa altezza e stesso raggio della carta: staccata anche di
+            // pochi px, la pila lasciava toppe scoperte verso gli angoli
+            borderRadius: "3px 2px 2px 3px",
+            backgroundColor: theme.bg,
+            backgroundImage: EDGE_STRIPES,
+            boxShadow: "inset -7px 0 9px -7px #00000066, 1px 0 2px #00000033",
+          }}
+        />
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            right: FRAME,
+            top: FRAME,
+            bottom: FRAME,
+            width: edgeLeftToRead,
+            zIndex: 7,
+            pointerEvents: "none",
+            borderRadius: "2px 3px 3px 2px",
+            backgroundColor: theme.bg,
+            backgroundImage: EDGE_STRIPES,
+            boxShadow: "inset 7px 0 9px -7px #00000066, -1px 0 2px #00000033",
+          }}
+        />
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: FRAME,
+            bottom: FRAME,
+            left: FRAME,
+            width: 16,
+            zIndex: 7,
+            pointerEvents: "none",
+            background: "linear-gradient(90deg, #00000033, transparent)",
+          }}
+        />
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: FRAME,
+            bottom: FRAME,
+            right: FRAME,
+            width: 16,
+            zIndex: 7,
+            pointerEvents: "none",
+            background: "linear-gradient(270deg, #00000033, transparent)",
+          }}
+        />
+        {twoUp && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: FRAME,
+              bottom: FRAME,
+              left: "50%",
+              // una piega stretta, non un'ombra larga: il solco del libro
+              // vero sta a ridosso della cucitura e muore in fretta
+              width: 100,
+              transform: "translateX(-50%)",
+              zIndex: 7,
+              pointerEvents: "none",
+              background:
+                "linear-gradient(90deg, transparent, #0000000f 30%, #0000002e 46%, #0000003d 50%, #0000002e 54%, #0000000f 70%, transparent)",
+            }}
+          />
         )}
       </div>
 
