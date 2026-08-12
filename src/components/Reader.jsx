@@ -17,6 +17,7 @@ import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js
 import { explain, termIndex, normalize, wikiUrl, glossaryOf } from "../lib/glossary.js";
 import { contextAround } from "../lib/oracle.js";
 import { sillaba } from "../lib/hyphens.js";
+import { leftoverScroll } from "../lib/spread.js";
 import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
@@ -297,6 +298,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [searchState, setSearchState] = useState({ busy: false, results: null });
   const [pages, setPages] = useState(1);
   const [isFs, setIsFs] = useState(false);
+  // il velo color carta sul passo indietro oltre il confine: copre la
+  // ricostruzione del capitolo (vedi step) e cade a misura ferma
+  const [velo, setVelo] = useState(false);
   const [dict, setDict] = useState(null);
   const [endCard, setEndCard] = useState(null);
 
@@ -436,6 +440,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         try { rendRef.current.destroy(); } catch { /* già distrutto */ }
       }
       viewerRef.current.innerHTML = "";
+      setVelo(false);
       const r = eb.renderTo(viewerRef.current, {
         width: "100%",
         height: "100%",
@@ -717,9 +722,111 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     }
   }
 
-  // La voltata e' quella di epub.js, niente in mezzo.
+  // LE DUE CURE DEL CONFINE — le sole rimesse dopo la pulizia, chieste
+  // dal lettore («arrivando al capitolo nuovo mi salta l'ultima pagina,
+  // e tornando indietro atterro tre pagine prima»). Tutto il resto della
+  // voltata e' epub.js nudo.
+  //
+  // INDIETRO: il capitolo precedente non esiste piu' impaginato e va
+  // ricostruito li' per li'; Firefox lo impagina col font di ripiego
+  // mentre quello vero si carica, epub.js atterra sul fondo provvisorio
+  // e il testo poi si allunga — restavi pagine prima dell'ultima. Si fa
+  // la guardia alla LARGHEZZA del capitolo (le promesse dei font mentono:
+  // chieste un attimo prima del layout giurano che e' tutto carico) e a
+  // ogni crescita si ri-atterra sul fondo del capitolo giusto, allineato
+  // alla facciata. Il lavoro sta sotto un velo color carta che cade a
+  // misura ferma; ogni gesto del lettore uccide guardia e velo.
+  const PASSO = 120;
+  const assestamento = useRef(0);
+  function aCapitoloAssestato(azione, scopri) {
+    const gettone = ++assestamento.current;
+    let sw0 = rendRef.current?.manager?.container?.scrollWidth || 0;
+    let giri = 0;
+    let stabile = 0;
+    let confermato = false;
+    let coperto = !!scopri;
+    const fine = () => {
+      if (coperto) {
+        coperto = false;
+        scopri();
+      }
+    };
+    const ronda = () => {
+      if (gettone !== assestamento.current) return fine();
+      const cont = rendRef.current?.manager?.container;
+      if (!cont) return fine();
+      giri += 1;
+      if (cont.scrollWidth !== sw0) {
+        sw0 = cont.scrollWidth;
+        stabile = 0;
+        try { azione(); } catch { /* la vista puo' essere gia' sparita */ }
+      } else {
+        stabile += 1;
+      }
+      if (!confermato && stabile >= 2) {
+        confermato = true;
+        try { azione(); } catch { /* la vista puo' essere gia' sparita */ }
+        fine();
+      }
+      if (giri < 20) setTimeout(ronda, PASSO);
+      else fine();
+    };
+    setTimeout(ronda, PASSO);
+  }
+
+  // la vista montata (il manager ne tiene una): serve a capire se il
+  // passo indietro sta per attraversare un confine
+  function vistaCorrente() {
+    let out = null;
+    rendRef.current?.manager?.views?.forEach?.((v) => {
+      if (v?.section) out = v;
+    });
+    return out;
+  }
+
   function step(r, dir) {
-    return dir === "prev" ? r.prev() : r.next();
+    assestamento.current++;
+    setVelo(false);
+    if (dir === "prev") {
+      const vecchia = vistaCorrente();
+      const sez = vecchia?.section?.index;
+      // al primo foglio della sezione il passo indietro attraversa il
+      // confine: il capitolo che sta per nascere si copre PRIMA che
+      // dipinga l'atterraggio provvisorio
+      const base = vecchia?.element?.offsetLeft || 0;
+      if (sez != null && (r.manager?.container?.scrollLeft ?? 0) <= base) setVelo(true);
+      const p = r.prev();
+      p?.then?.(() => {
+        const arrivo = vistaCorrente();
+        if (rendRef.current !== r || !arrivo || arrivo.section?.index === sez) {
+          setVelo(false);
+          return;
+        }
+        const indice = arrivo.section.index;
+        aCapitoloAssestato(() => {
+          if (rendRef.current !== r) return;
+          const cont = r.manager.container;
+          // il fondo di QUESTO capitolo, allineato alla facciata: la fine
+          // del contenitore potrebbe essere la coda di un'altra vista
+          let el = null;
+          r.manager.views?.forEach?.((v) => { if (v.section?.index === indice) el = v.element; });
+          if (!el) return;
+          const facciata = r.manager.layout?.delta || cont.clientWidth || 1;
+          const ultima = el.offsetLeft + Math.max(0, el.offsetWidth - cont.clientWidth);
+          r.manager.scrollTo(el.offsetLeft + Math.round((ultima - el.offsetLeft) / facciata) * facciata, 0, true);
+          r.reportLocation();
+        }, () => setVelo(false));
+      });
+      p?.catch?.(() => setVelo(false));
+      return p;
+    }
+    // AVANTI: epub.js cede il passo al capitolo nuovo quando l'avanzo e'
+    // piu' corto di una facciata, ANCHE se non l'hai ancora letta —
+    // l'ultima pagina scritta spariva. Se resta carta la si scorre.
+    const rest = leftoverScroll(r.manager);
+    if (!rest) return r.next();
+    r.manager.scrollBy(rest, 0, true);
+    return r.reportLocation();
   }
 
   // La voltata e' SECCA, per scelta: il foglio animato (palco di cloni,
@@ -926,6 +1033,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const r = rendRef.current;
     if (!r) return;
     moved.current = true;
+    assestamento.current++;
+    setVelo(false);
     const arrivo = r.display(target);
     setPanel(null);
     if (!flash) return;
@@ -1053,6 +1162,24 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             // il margine di lettura mostrava la copertina e staccava le
             // pagine impilate dal foglio
             background: theme.bg,
+          }}
+        />
+        {/* il velo sta SOTTO il filtro caldo e la luminosita' (che vivono
+            in cima al reader, zIndex 5): dipinto sopra usciva pergamena
+            pura contro una pagina filtrata — misurato sul video del
+            lettore, ed era il lampo. Viaggia di opacita': entra in 90ms
+            per coprire in tempo, esce in 300 che e' la parte che si vede. */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: FRAME,
+            zIndex: 4,
+            borderRadius: 3,
+            background: theme.bg,
+            pointerEvents: "none",
+            opacity: velo ? 1 : 0,
+            transition: `opacity ${velo ? 90 : 300}ms ease-in-out`,
           }}
         />
         <div
@@ -1340,6 +1467,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 if (!locReady) return;
                 const cfi = epubRef.current.locations.cfiFromPercentage(parseInt(e.target.value, 10) / 1000);
                 moved.current = true;
+                assestamento.current++;
+                setVelo(false);
                 if (cfi) rendRef.current?.display(cfi);
               }}
               style={{ width: "100%", accentColor: C.accent }}
