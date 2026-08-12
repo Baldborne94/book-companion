@@ -44,11 +44,70 @@ const EDGE_STRIPES =
   "repeating-linear-gradient(to right, #00000047 0 1px, #ffffff1f 1px 2px, #0000001c 2px 4px)";
 // In doppia pagina epub.js riporta solo il foglio di sinistra: il numero
 // pari non compariva mai nel piede e sembrava saltato.
-function pageLabel(d, spread) {
+// UN CAPITOLO CHE NON C'E' NON SI CONTA. Nei libri fatti di un pezzo solo
+// — tanti Pratchett: tutto il romanzo dentro «Begin Reading» — «di 174 del
+// capitolo» non vuol dire niente e sembra un'impaginazione impazzita.
+// Li' resta solo la pagina che stai leggendo.
+function pageLabel(d, spread, capitoli) {
   const destra = spread === 2 && d.page < d.total ? d.page + 1 : null;
-  return destra
-    ? `pagine ${d.page}-${destra} di ${d.total} del capitolo`
-    : `pag. ${d.page} di ${d.total} del capitolo`;
+  const dove = destra ? `pagine ${d.page}-${destra}` : `pag. ${d.page}`;
+  return capitoli ? `${dove} di ${d.total} del capitolo` : dove;
+}
+
+// I CAPITOLI LI DECIDE L'INDICE, NON I FILE. L'editore spezza il testo in
+// piu' documenti per suo comodo — Guards! Guards! ne ha parecchi da 142
+// facciate l'uno — ma nell'indice il romanzo e' UNA voce, «Begin
+// Reading»: quei pezzi non sono capitoli, e numerarli «pagina 1-2 di 142
+// del capitolo» a meta' libro non vuol dire niente.
+// Quindi: i file si raggruppano sotto la voce d'indice che li apre (un
+// file senza voce e' la continuazione del precedente), e si guarda quanto
+// pesa ogni voce. Un capitolo e' una voce di taglia da capitolo: sotto
+// un terzo del libro e sopra un centesimo — le briciole sono dediche e
+// colophon, il pezzo grosso e' il romanzo intero.
+const QUOTA_MAX = 0.34;
+const QUOTA_MIN = 0.01;
+const MIN_CAPITOLI = 4;
+function misuraSezioni(eb, voci) {
+  const vuoto = { capitoli: false, tot: 0, per: new Map() };
+  try {
+    const tutte = JSON.parse(eb.locations.save() || "[]");
+    if (!Array.isArray(tutte) || tutte.length < 8) return vuoto;
+    // quanto testo in ogni file, per posizione nella spina
+    const per = new Map();
+    const perIndice = new Map();
+    for (const cfi of tutte) {
+      const base = String(cfi).split("!")[0];
+      per.set(base, (per.get(base) || 0) + 1);
+      // il passo del file dentro il CFI: /6/N -> posizione N/2 - 1
+      const m = /\/6\/(\d+)/.exec(base);
+      if (m) {
+        const i = Number(m[1]) / 2 - 1;
+        perIndice.set(i, (perIndice.get(i) || 0) + 1);
+      }
+    }
+    // i file che una voce d'indice apre davvero
+    const aperti = new Set();
+    for (const v of voci || []) {
+      const href = (v.href || "").split("#")[0];
+      if (!href) continue;
+      try {
+        const sez = eb.spine.get(href);
+        if (sez && Number.isFinite(sez.index)) aperti.add(sez.index);
+      } catch { /* voce che non punta a un file della spina */ }
+    }
+    if (!aperti.size) return { capitoli: false, tot: tutte.length, per };
+    // ogni file va alla voce che lo precede: le continuazioni non contano
+    const unita = [];
+    for (const i of [...perIndice.keys()].sort((a, b) => a - b)) {
+      if (aperti.has(i) || !unita.length) unita.push(0);
+      unita[unita.length - 1] += perIndice.get(i);
+    }
+    const capitoli =
+      unita.filter((n) => n / tutte.length <= QUOTA_MAX && n / tutte.length >= QUOTA_MIN).length >= MIN_CAPITOLI;
+    return { capitoli, tot: tutte.length, per };
+  } catch {
+    return vuoto;
+  }
 }
 
 // fasce laterali del tocco: valgono su tutta la larghezza dello schermo,
@@ -303,6 +362,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [panel, setPanel] = useState(null);
   const [progress, setProgressUi] = useState(() => getProgress(book.id));
   const [locReady, setLocReady] = useState(false);
+  // il libro ha capitoli veri? (vedi misuraSezioni) Finche' non lo
+  // sappiamo si tace: meglio nessun conteggio che uno sbagliato.
+  const [capitoli, setCapitoli] = useState(false);
+  const sezioni = useRef({ capitoli: false, tot: 0, per: new Map() });
   const [toc, setToc] = useState([]);
   const [marks, setMarks] = useState(() => getMarks(book.id));
   const [hls, setHls] = useState(() => getHighlights(book.id));
@@ -727,6 +790,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         if (dead) return;
         live.current.locReady = true;
         setLocReady(true);
+        // l'indice serve per sapere quali file sono capitoli davvero
+        const nav = await eb.loaded.navigation;
+        if (dead) return;
+        const misura = misuraSezioni(eb, flattenToc(nav.toc));
+        sezioni.current = misura;
+        setCapitoli(misura.capitoli);
         if (live.current.cfi) {
           const p = eb.locations.percentageFromCfi(live.current.cfi);
           if (Number.isFinite(p)) {
@@ -1309,8 +1378,30 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // cambio ne avanza due: le pagine rimaste vanno divise per il foglio, non
   // moltiplicate — sbagliando verso la stima usciva quattro volte troppo lunga
   const turnsLeft = Math.ceil(pagesLeft / Math.max(1, pages));
-  const chapterLeft = speed && turnsLeft > 0 ? formatLeft(turnsLeft * speed) : null;
-
+  // il tempo che manca al capitolo lo si dice solo dove un capitolo c'e'
+  const chapterLeft =
+    capitoli && speed && turnsLeft > 0 ? formatLeft(turnsLeft * speed) : null;
+  // QUANTO MANCA ALLA FINE DEL LIBRO, a richiesta. Le pagine dell'intero
+  // libro nessuno le conosce (ogni file si impagina solo quando lo apri),
+  // ma le locations sono contate tutte: quelle della sezione aperta, divise
+  // per le sue pagine, dicono quanto testo sta in una pagina — e da li' le
+  // pagine che restano.
+  const bookLeft = (() => {
+    if (!settings.restaLibro || !speed || !displayed || !locReady) return null;
+    const { tot, per } = sezioni.current;
+    const base = String(live.current.cfi || "").split("!")[0];
+    const quota = per.get(base);
+    if (!tot || !quota || !displayed.total) return null;
+    try {
+      const fatte = epubRef.current.locations.locationFromCfi(live.current.cfi);
+      const restano = tot - (Number.isFinite(fatte) ? fatte : tot * p);
+      const perPagina = quota / displayed.total;
+      const giri = Math.ceil(restano / perPagina / Math.max(1, pages));
+      return giri > 0 ? formatLeft(giri * speed) : null;
+    } catch {
+      return null;
+    }
+  })();
 
   return (
     <div
@@ -1691,9 +1782,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 {settings.flow === "scrolled"
                   ? "scorrimento"
                   : [
-                      displayed ? pageLabel(displayed, pages) : null,
+                      displayed ? pageLabel(displayed, pages, capitoli) : null,
                       chapterLeft
                         ? `${chapterLeft.startsWith("meno") ? "" : "~"}${chapterLeft} alla fine`
+                        : null,
+                      bookLeft
+                        ? `${bookLeft.startsWith("meno") ? "" : "~"}${bookLeft} al termine del libro`
                         : null,
                     ]
                       .filter(Boolean)
@@ -1913,6 +2007,22 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               </button>
             </div>
           )}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+            <span style={{ fontSize: 14.5, color: C.muted }}>Quanto manca alla fine del libro</span>
+            <button
+              onClick={() => updateSettings({ restaLibro: !settings.restaLibro })}
+              style={{
+                padding: "6px 16px",
+                borderRadius: 999,
+                fontSize: 14,
+                border: `1px solid ${settings.restaLibro ? C.accent : C.border}`,
+                color: settings.restaLibro ? C.accent : C.muted,
+                background: settings.restaLibro ? `${C.accent}14` : "transparent",
+              }}
+            >
+              {settings.restaLibro ? "Attivo ⏳" : "Spento"}
+            </button>
+          </div>
           <Slider
             label="Filtro notte caldo"
             min={0} max={0.45} step={0.05}
