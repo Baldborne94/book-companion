@@ -817,10 +817,57 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     }
   }
 
+  // UN CAPITOLO APPENA COSTRUITO CRESCE SOTTO I PIEDI. epub.js atterra
+  // misurando il capitolo prima che font incorporati e immagini abbiano
+  // preso posto: qualche istante dopo il testo si allunga di colonne
+  // intere e il punto scelto resta indietro. Tornando sulla pagina prima
+  // di un capitolo si finiva «diverse pagine» prima dell'ultima
+  // (misurato su Gecko: 4 facciate perse su un capitolo con immagine,
+  // 10 sul monstre col font incorporato) — e li' si restava, perche' i
+  // pixel di scorrimento non seguono la carta che si allunga. Ad assets
+  // assestati si rifa' l'atterraggio sul bersaglio vero; se non c'era
+  // niente da aspettare non succede nulla, e se il lettore ha gia'
+  // rivoltato la correzione muore col suo gettone.
+  const assestamento = useRef(0);
+  function aCapitoloAssestato(azione) {
+    const gettone = ++assestamento.current;
+    const doc = bestView()?.view?.contents?.document;
+    if (!doc) return;
+    const attese = [];
+    try {
+      if (doc.fonts && doc.fonts.status !== "loaded") attese.push(doc.fonts.ready);
+    } catch { /* documento senza Font Loading API */ }
+    for (const img of doc.images || []) {
+      if (!img.complete) attese.push(new Promise((va) => { img.onload = img.onerror = va; }));
+    }
+    if (!attese.length) return;
+    const scadenza = new Promise((va) => setTimeout(va, 2500));
+    Promise.race([Promise.all(attese), scadenza]).then(() => {
+      requestAnimationFrame(() => {
+        if (gettone !== assestamento.current) return;
+        try { azione(); } catch { /* la vista puo' essere gia' sparita */ }
+      });
+    });
+  }
+
   // avanti si scorre il residuo prima di cambiare capitolo, cosi' l'ultima
-  // pagina scritta non viene saltata; indietro epub.js gia' atterra in fondo
+  // pagina scritta non viene saltata; indietro epub.js gia' atterra in
+  // fondo — ma sul fondo di QUEL momento, da riprendere a capitolo fermo
   function step(r, dir) {
-    if (dir === "prev") return r.prev();
+    assestamento.current++;
+    if (dir === "prev") {
+      const sez = bestView()?.view?.section?.index;
+      const p = r.prev();
+      p?.then?.(() => {
+        if (rendRef.current !== r || bestView()?.view?.section?.index === sez) return;
+        aCapitoloAssestato(() => {
+          if (rendRef.current !== r) return;
+          r.manager.scrollTo(r.manager.container.scrollWidth, 0, true);
+          r.reportLocation();
+        });
+      });
+      return p;
+    }
     const rest = leftoverScroll(r.manager);
     if (!rest) return r.next();
     r.manager.scrollBy(rest, 0, true);
@@ -1128,7 +1175,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const r = rendRef.current;
     if (!r) return;
     moved.current = true;
+    assestamento.current++;
     const arrivo = r.display(target);
+    // un segnalibro in un capitolo non ancora costruito atterra con le
+    // misure di prima che font e immagini prendessero posto: a capitolo
+    // assestato si rifa' lo stesso display, che ormai costa niente
+    arrivo?.then?.(() => aCapitoloAssestato(() => {
+      if (rendRef.current === r) r.display(target);
+    }));
     setPanel(null);
     if (!flash) return;
     // il risultato trovato si accende per qualche secondo: serve solo a far
@@ -1525,6 +1579,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 if (!locReady) return;
                 const cfi = epubRef.current.locations.cfiFromPercentage(parseInt(e.target.value, 10) / 1000);
                 moved.current = true;
+                assestamento.current++;
                 if (cfi) rendRef.current?.display(cfi);
               }}
               style={{ width: "100%", accentColor: C.accent }}
