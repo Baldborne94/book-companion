@@ -368,6 +368,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const snapTimer = useRef(null);
   const turningRef = useRef(null);
   const turnRef = useRef(() => {});
+  // quante volte il lettore ha mosso il libro DI SUA MANO (voltata, cursore,
+  // indice, segnalibro): serve solo a sapere se stava leggendo durante una
+  // raffica di ridimensionamenti. Un contatore, non un orologio: su un
+  // tablet lento le finestre di tempo scadono prima che l'impaginazione
+  // finisca, un conteggio no.
+  const giri = useRef(0);
   const moved = useRef(false);
   const fixTimers = useRef([]);
   const live = useRef({ cfi: startCfi || getCfi(book.id), progress: getProgress(book.id), locReady: false, settings: null });
@@ -916,15 +922,27 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const el = bookRef.current;
     if (!el || typeof ResizeObserver === "undefined") return undefined;
     let primo = true;
-    let foto = null;
-    let timer;
+    let timer = null;
+    let giriInizio = 0;
     const ro = new ResizeObserver(() => {
       if (primo) { primo = false; return; }
-      if (!foto) foto = anchor.current || live.current.cfi;
+      // a inizio raffica ci si segna a che punto era la lettura
+      if (!timer) giriInizio = giri.current;
       clearTimeout(timer);
       timer = setTimeout(() => {
-        const dove = foto;
-        foto = null;
+        timer = null;
+        // SE IL LETTORE HA SFOGLIATO DURANTE LA RAFFICA, NON SI RIMETTE
+        // NIENTE. Il ripristino corregge la deriva di mezza pagina che
+        // epub.js lascia reimpaginando; ma se intanto hai voltato, il posto
+        // te lo sei scelto tu e rimetterti dov'eri ti mangia le voltate.
+        // Su Android la barra del browser va e viene MENTRE leggi, quindi
+        // raffiche e voltate arrivano sempre insieme: misurato su un libro
+        // senza capitoli con la CPU strozzata come un tablet, SEDICI tocchi
+        // di fila non muovevano il libro di una riga.
+        if (giri.current !== giriInizio) return;
+        // e il punto si legge ADESSO: una fotografia presa a inizio raffica
+        // riporterebbe indietro quello che e' successo nel frattempo
+        const dove = anchor.current || live.current.cfi;
         if (!dove || !rendRef.current) return;
         anchor.current = dove;
         reflowing.current = true;
@@ -948,6 +966,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // avanti si scorre il residuo prima di cambiare capitolo, cosi' l'ultima
   // pagina scritta non viene saltata; indietro epub.js gia' atterra in fondo
   function step(r, dir) {
+    giri.current++;
     if (dir === "prev") return r.prev();
     const rest = leftoverScroll(r.manager);
     if (!rest) return r.next();
@@ -1087,11 +1106,30 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // dell'animazione: nella traccia era il lavoro grosso che spezzava i
   // fotogrammi a meta' volo. Finche' il foglio e' in aria si riprova piu'
   // tardi; i "momenti morti" sono quelli veri, a giro finito.
+  // UN CAPITOLO ENORME NON SI FOTOGRAFA. La fotografia serializza il
+  // capitolo intero e lo fa ri-impaginare a due iframe: coi capitoli corti
+  // costa poco, ma un tomo alla Pratchett — un blocco unico da 150 facciate
+  // — sono secondi di lavoro A OGNI VOLTATA su un tablet. Il giro affogava:
+  // il tocco arrivava col palco ancora su, la voltata avveniva muta sotto il
+  // sipario, e ogni voltata muta rifotografava. Misurato con la CPU
+  // strozzata 8×: schermo inchiodato alla prima pagina, segno interno sei
+  // voltate avanti — esattamente il salto visto sul tablet.
+  const GROSSO = 40000;
+  const grosso = useRef(false);
+
   const schedulePark = useCallback(() => {
     clearTimeout(parkTimer.current);
     parkTimer.current = setTimeout(() => {
       if (turningRef.current) {
         schedulePark();
+        return;
+      }
+      const doc = bestView()?.view?.contents?.document;
+      grosso.current = (doc?.body?.textContent?.length || 0) > GROSSO;
+      if (grosso.current) {
+        // niente palco per questo capitolo: la voltata sara' secca, e il
+        // clone vecchio non deve restare li' a mostrare un'altra pagina
+        setPark(null);
         return;
       }
       const p = snapPark();
@@ -1105,7 +1143,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     if (!r || status !== "ready") return;
     moved.current = true;
     const animate =
-      isTablet() && settings.flow !== "scrolled" && settings.pageTurn && !reducedMotion();
+      isTablet() && settings.flow !== "scrolled" && settings.pageTurn && !reducedMotion() &&
+      // il capitolo-monstre volta secco: l'animazione ha bisogno della
+      // fotografia, e la fotografia di un blocco da 150 facciate affoga il
+      // tablet (vedi GROSSO)
+      !grosso.current;
     // un tocco durante un giro e' fretta: si cambia pagina secco
     if (!animate || turningRef.current) {
       step(r, dir);
@@ -1369,6 +1411,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   function goTo(target, flash) {
     const r = rendRef.current;
     if (!r) return;
+    giri.current++;
     moved.current = true;
     const arrivo = r.display(target);
     setPanel(null);
@@ -2223,6 +2266,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               onChange={(e) => {
                 if (!locReady) return;
                 const cfi = epubRef.current.locations.cfiFromPercentage(parseInt(e.target.value, 10) / 1000);
+                giri.current++;
                 moved.current = true;
                 if (cfi) rendRef.current?.display(cfi);
               }}
