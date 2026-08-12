@@ -35,6 +35,9 @@ export function deviceDefaults(shortSide) {
     warmth: 0,
     brightness: 1,
     terms: true,
+    // quanto manca alla fine del libro: spento, perche' e' una stima e a
+    // chi legge e basta non serve saperlo a ogni pagina
+    restaLibro: false,
     // la colonna come in stampa: giustificata E sillabata, mai una sola
     justify: true,
     // solo per i PDF: toglie i margini bianchi della carta
