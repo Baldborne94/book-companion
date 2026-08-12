@@ -16,8 +16,6 @@ import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
 import { explain, termIndex, normalize, wikiUrl, glossaryOf } from "../lib/glossary.js";
 import { contextAround } from "../lib/oracle.js";
-import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../lib/readingSpeed.js";
-import { leftoverScroll } from "../lib/spread.js";
 import { sillaba } from "../lib/hyphens.js";
 import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
@@ -42,114 +40,6 @@ const HEAD = 8;
 const FOOT = 8;
 const EDGE_STRIPES =
   "repeating-linear-gradient(to right, #00000047 0 1px, #ffffff1f 1px 2px, #0000001c 2px 4px)";
-// In doppia pagina epub.js riporta solo il foglio di sinistra: il numero
-// pari non compariva mai nel piede e sembrava saltato.
-// UN CAPITOLO CHE NON C'E' NON SI CONTA. Nei libri fatti di un pezzo solo
-// — tanti Pratchett: tutto il romanzo dentro «Begin Reading» — «di 174 del
-// capitolo» non vuol dire niente e sembra un'impaginazione impazzita.
-// Li' resta solo la pagina che stai leggendo.
-function pageLabel(d, spread, capitoli) {
-  const destra = spread === 2 && d.page < d.total ? d.page + 1 : null;
-  const dove = destra ? `pagine ${d.page}-${destra}` : `pag. ${d.page}`;
-  return capitoli ? `${dove} di ${d.total} del capitolo` : dove;
-}
-
-// SENZA CAPITOLI LE PAGINE SI CONTANO DALL'INIZIO DEL LIBRO. epub.js
-// numera dentro il documento aperto, e l'editore i documenti li spezza
-// dove gli pare: si leggeva «143-144» e alla voltata dopo «1-2», sempre
-// al 26% del libro. La pagina vera si stima dalle locations, che sono
-// contate su tutto il libro: quelle della sezione aperta, divise per le
-// sue facciate, dicono quanto testo entra in una pagina.
-// Il passo si misura sulle sezioni GROSSE gia' viste, mai su quella
-// aperta: entrando in una paginetta di coda — un colophon di due righe —
-// il conto usciva da 122 a 439 di botto. Le briciole non dicono niente su
-// quanto testo entra in una pagina, e piu' capitoli si leggono piu' la
-// misura si assesta.
-const FACCIATE_MINIME = 5;
-function paginaDelLibro(eb, cfi, passo) {
-  try {
-    if (!passo?.pag || !cfi) return null;
-    const fatte = eb.locations.locationFromCfi(cfi);
-    if (!Number.isFinite(fatte) || fatte < 0) return null;
-    return Math.max(1, Math.round(fatte / (passo.loc / passo.pag)) + 1);
-  } catch {
-    return null;
-  }
-}
-
-// I CAPITOLI LI DECIDE L'INDICE, NON I FILE. L'editore spezza il testo in
-// piu' documenti per suo comodo — Guards! Guards! ne ha parecchi da 142
-// facciate l'uno — ma nell'indice il romanzo e' UNA voce, «Begin
-// Reading»: quei pezzi non sono capitoli, e numerarli «pagina 1-2 di 142
-// del capitolo» a meta' libro non vuol dire niente.
-// Quindi: i file si raggruppano sotto la voce d'indice che li apre (un
-// file senza voce e' la continuazione del precedente), e si guarda quanto
-// pesa ogni voce. Un capitolo e' una voce di taglia da capitolo: sotto
-// un terzo del libro e sopra un centesimo — le briciole sono dediche e
-// colophon, il pezzo grosso e' il romanzo intero.
-const QUOTA_MAX = 0.34;
-const QUOTA_MIN = 0.01;
-const MIN_CAPITOLI = 4;
-function misuraSezioni(eb, voci) {
-  const vuoto = { capitoli: false, tot: 0, per: new Map() };
-  try {
-    const tutte = JSON.parse(eb.locations.save() || "[]");
-    if (!Array.isArray(tutte) || tutte.length < 8) return vuoto;
-    // quanto testo in ogni file, per posizione nella spina
-    const per = new Map();
-    const perIndice = new Map();
-    for (const cfi of tutte) {
-      const base = String(cfi).split("!")[0];
-      per.set(base, (per.get(base) || 0) + 1);
-      // il passo del file dentro il CFI: /6/N -> posizione N/2 - 1
-      const m = /\/6\/(\d+)/.exec(base);
-      if (m) {
-        const i = Number(m[1]) / 2 - 1;
-        perIndice.set(i, (perIndice.get(i) || 0) + 1);
-      }
-    }
-    // i file che una voce d'indice apre davvero
-    const aperti = new Set();
-    for (const v of voci || []) {
-      const href = (v.href || "").split("#")[0];
-      if (!href) continue;
-      try {
-        const sez = eb.spine.get(href);
-        if (sez && Number.isFinite(sez.index)) aperti.add(sez.index);
-      } catch { /* voce che non punta a un file della spina */ }
-    }
-    if (!aperti.size) return { capitoli: false, tot: tutte.length, per };
-    // ogni file va alla voce che lo precede: le continuazioni non contano
-    const unita = [];
-    for (const i of [...perIndice.keys()].sort((a, b) => a - b)) {
-      if (aperti.has(i) || !unita.length) unita.push(0);
-      unita[unita.length - 1] += perIndice.get(i);
-    }
-    const capitoli =
-      unita.filter((n) => n / tutte.length <= QUOTA_MAX && n / tutte.length >= QUOTA_MIN).length >= MIN_CAPITOLI;
-    return { capitoli, tot: tutte.length, per };
-  } catch {
-    return vuoto;
-  }
-}
-
-// fasce laterali del tocco: valgono su tutta la larghezza dello schermo,
-// cornice e taglio delle pagine compresi, non solo dentro al capitolo
-const TAP_PREV = 0.28;
-const TAP_NEXT = 0.72;
-// tetto ai segni per capitolo: la pagina resta una pagina, non un elenco
-const MARKS_PER_CHAPTER = 60;
-// Oltre questa lunghezza la selezione non e' piu' una frase ma un brano, e
-// cercarci dentro un modo di dire non ha senso. Il tetto era 12 quando ogni
-// sotto-frase costava una richiesta: ora ne basta una per tutte, quindi una
-// frase lunga com'e' quella vera di un romanzo ci sta dentro.
-const NET_WORDS = 30;
-// la selezione da capire e' spesso un paragrafo intero — il parlato
-// biascicato si decifra tutto insieme, non parola per parola — quindi il
-// pulsante deve esserci anche li'. Fermarsi a poche parole lo rendeva
-// inservibile proprio nei casi difficili.
-const PHRASE_WORDS = 300;
-
 const isTouch = () => navigator.maxTouchPoints > 0;
 const GOOGLE_FONT_CSS =
   "@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap');";
@@ -371,7 +261,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const epubRef = useRef(null);
   const rendRef = useRef(null);
   const saveTimer = useRef(null);
-  const snapTimer = useRef(null);
   const turnRef = useRef(() => {});
   const moved = useRef(false);
   const fixTimers = useRef([]);
@@ -385,13 +274,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [panel, setPanel] = useState(null);
   const [progress, setProgressUi] = useState(() => getProgress(book.id));
   const [locReady, setLocReady] = useState(false);
-  // il libro ha capitoli veri? (vedi misuraSezioni) Finche' non lo
-  // sappiamo si tace: meglio nessun conteggio che uno sbagliato.
-  const [capitoli, setCapitoli] = useState(false);
-  const sezioni = useRef({ capitoli: false, tot: 0, per: new Map() });
-  // quanto testo entra in una pagina, misurato sulle sezioni gia' viste
-  const [passo, setPasso] = useState({ loc: 0, pag: 0 });
-  const passoViste = useRef(new Set());
   const [toc, setToc] = useState([]);
   const [marks, setMarks] = useState(() => getMarks(book.id));
   const [hls, setHls] = useState(() => getHighlights(book.id));
@@ -399,44 +281,17 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [query, setQuery] = useState("");
   const [searchState, setSearchState] = useState({ busy: false, results: null });
   const [pages, setPages] = useState(1);
-  const [snapPad, setSnapPad] = useState(0);
   const [isFs, setIsFs] = useState(false);
-  const [displayed, setDisplayed] = useState(null);
-  const [speed, setSpeed] = useState(() => medianMs(loadSamples()));
   const [dict, setDict] = useState(null);
   const [endCard, setEndCard] = useState(null);
-  // il velo color carta sugli atterraggi in una sezione fresca: copre
-  // l'assestamento (atterraggio provvisorio + scatto sul bersaglio) e
-  // cade a misura ferma — vedi aCapitoloAssestato
-  const [velo, setVelo] = useState(false);
 
   const anchor = useRef(null);
-  const snapRef = useRef(0);
-  const snapSeen = useRef(0);
   const markedRef = useRef(new Map());
   const termsRef = useRef(null);
   const termCfis = useRef([]);
   const reflowing = useRef(false);
   const reflowTimer = useRef(null);
 
-  // Colonne INTERE o niente. Lasciando a epub.js il "100%" la larghezza
-  // puo' uscire DISPARI: la colonna vale meta' larghezza meno la gola, si
-  // porta dietro il mezzo pixel, Firefox lo arrotonda a modo suo e l'errore
-  // si ACCUMULA lungo il capitolo — facciate appaiate pari-dispari, ultima
-  // pagina mangiata, atterraggi sbagliati tornando indietro. La misura si
-  // prende qui, si fa PARI, e si consegna a epub.js come NUMERO: cosi' il
-  // motore smette anche di seguire da solo la finestra, e la barra di
-  // Android che va e viene non reimpagina piu' niente.
-  const misuraLibro = () => {
-    const el = viewerRef.current;
-    if (!el) return null;
-    const cs = getComputedStyle(el);
-    const cw = Math.floor(el.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0));
-    const ch = Math.floor(el.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0));
-    if (cw < 40 || ch < 40) return null;
-    return { w: cw % 2 ? cw - 1 : cw, h: ch };
-  };
-  const misuraData = useRef({ w: 0, h: 0 });
 
   // Le barre non toccano piu' la misura del libro, ma cambiare margine
   // reimpagina lo stesso. Lasciando ripartire epub.js dal CFI corrente si
@@ -447,21 +302,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const r = rendRef.current;
     if (cfi) reflowing.current = true;
     try {
-      const m = misuraLibro();
-      if (m) misuraData.current = { w: m.w, h: m.h };
-      if (r) r.resize(m ? m.w : undefined, m ? m.h : undefined, cfi || undefined);
+      if (r) r.resize(undefined, undefined, cfi || undefined);
       else window.dispatchEvent(new Event("resize"));
     } catch {
       window.dispatchEvent(new Event("resize"));
     }
-    // se la misura non cambia epub.js non riposiziona nulla e "relocated"
-    // non arriva: la bandiera va tolta comunque
     clearTimeout(reflowTimer.current);
     reflowTimer.current = setTimeout(() => { reflowing.current = false; }, 1500);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
-  const samplesRef = useRef(loadSamples());
-  const lastTurnAt = useRef(0);
   const langRef = useRef("en");
   // La lingua DICHIARATA dal libro, che non e' la stessa cosa: `langRef`
   // ripiega sull'inglese per il dizionario, qui invece serve sapere se il
@@ -572,13 +421,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         try { rendRef.current.destroy(); } catch { /* già distrutto */ }
       }
       viewerRef.current.innerHTML = "";
-      setVelo(false);
-      const m = misuraLibro();
-      misuraData.current = m ? { w: m.w, h: m.h } : { w: 0, h: 0 };
       const r = eb.renderTo(viewerRef.current, {
-        // misura esplicita e PARI, mai "100%": vedi misuraLibro
-        width: m ? m.w : "100%",
-        height: m ? m.h : "100%",
+        width: "100%",
+        height: "100%",
         flow: s.flow === "scrolled" ? "scrolled-doc" : "paginated",
         // in scorrimento non esistono facciate: senza questo, in orizzontale
         // epub.js dichiara comunque un layout a due colonne e compare il dorso
@@ -591,22 +436,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       });
       rendRef.current = r;
       applyStyles(r, s);
-
-      // Saltando a un'ancora (indice, segnalibro) epub.js fa
-      // floor(offset / facciata) sull'offset letto dai rettangoli, e
-      // Firefox li riporta con un residuo sub-pixel: 55887,99998 al posto
-      // di 55888 fa perdere una facciata secca. L'offset si arrotonda
-      // PRIMA che il floor lo veda; sui numeri gia' interi non cambia nulla.
-      r.started.then(() => {
-        const man = r.manager;
-        if (!man?.moveTo || man.bcTondo) return;
-        man.bcTondo = true;
-        const vero = man.moveTo.bind(man);
-        man.moveTo = (offset, width) => vero(
-          { ...offset, left: Math.round(offset?.left || 0), top: Math.round(offset?.top || 0) },
-          width
-        );
-      });
 
       r.on("relocated", (loc) => {
         const st = live.current;
@@ -630,22 +459,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           setStatus(book.id, "read");
           setEndCard((v) => (v === null ? "shown" : v));
         }
-        if (loc.start?.displayed?.total) setDisplayed(contaPagina(r, loc.start));
-        const now = Date.now();
-        if (lastTurnAt.current) {
-          const next = pushSample(samplesRef.current, now - lastTurnAt.current);
-          if (next !== samplesRef.current) {
-            samplesRef.current = next;
-            saveSamples(next);
-            setSpeed(medianMs(next));
-          }
-        }
-        lastTurnAt.current = now;
         clearTimeout(saveTimer.current);
         saveTimer.current = setTimeout(flush, 1500);
-        // l'avanzo di riga si ricalcola qui: a misura stabile la funzione
-        // esce subito, quindi non costa nulla a ogni voltata
-        measureSnap();
       });
 
       r.on("layout", (layout) => setPages(layout.divisor > 1 ? 2 : 1));
@@ -816,12 +631,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         if (dead) return;
         live.current.locReady = true;
         setLocReady(true);
-        // l'indice serve per sapere quali file sono capitoli davvero
-        const nav = await eb.loaded.navigation;
-        if (dead) return;
-        const misura = misuraSezioni(eb, flattenToc(nav.toc));
-        sezioni.current = misura;
-        setCapitoli(misura.capitoli);
         if (live.current.cfi) {
           const p = eb.locations.percentageFromCfi(live.current.cfi);
           if (Number.isFinite(p)) {
@@ -860,7 +669,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       window.removeEventListener("keydown", onKey);
       clearTimeout(saveTimer.current);
       clearTimeout(reflowTimer.current);
-      clearTimeout(snapTimer.current);
       fixTimers.current.forEach(clearTimeout);
       flush();
       try { rendRef.current?.destroy(); } catch { /* già distrutto */ }
@@ -875,31 +683,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     relayout(anchor.current || live.current.cfi);
   }, [settings.margin, relayout]);
 
-  // ogni sezione grossa che si apre insegna quanto testo sta in una
-  // pagina: si somma alle altre, e la misura migliora leggendo
-  useEffect(() => {
-    if (!locReady || !displayed?.total || displayed.total < FACCIATE_MINIME) return;
-    const base = String(live.current.cfi || "").split("!")[0];
-    const quota = sezioni.current.per.get(base);
-    if (!quota || passoViste.current.has(base)) return;
-    passoViste.current.add(base);
-    setPasso((v) => ({ loc: v.loc + quota, pag: v.pag + displayed.total }));
-  }, [displayed, locReady]);
 
-  // corpo e interlinea cambiano quante righe stanno in una pagina: la
-  // misura vecchia non vale piu' e si ricomincia a contarla
-  useEffect(() => {
-    passoViste.current = new Set();
-    setPasso({ loc: 0, pag: 0 });
-  }, [settings.fontSize, settings.lineHeight, settings.font, settings.margin, settings.spread, pages]);
-
-  // tolto l'avanzo, epub.js va rimesso al lavoro sulla misura nuova: si
-  // riparte dall'ultima pagina scelta dal lettore, come per il margine
-  useEffect(() => {
-    if (snapSeen.current === snapPad) return;
-    snapSeen.current = snapPad;
-    relayout(anchor.current || live.current.cfi);
-  }, [snapPad, relayout]);
 
   useEffect(() => {
     const onFs = () => setIsFs(!!document.fullscreenElement);
@@ -909,39 +693,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     };
   }, []);
 
-  // Rotazione e schermo intero cambiano davvero la misura del riquadro; la
-  // barra del browser su Android invece balla SOLO l'altezza, decine di
-  // volte MENTRE leggi. Il libro ha misura fissa (vedi misuraLibro), quindi
-  // epub.js da solo non reimpagina piu': qui si decide QUANDO consegnargli
-  // una misura nuova — mai per il balletto della barra, sempre per un
-  // cambio vero, ripartendo dall'ultima pagina scelta dal lettore (letta
-  // ADESSO, non a inizio raffica: se intanto hai voltato, il posto te lo
-  // sei scelto tu e non va riavvolto).
-  useEffect(() => {
-    const el = bookRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return undefined;
-    let primo = true;
-    let timer = null;
-    const ro = new ResizeObserver(() => {
-      if (primo) { primo = false; return; }
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        timer = null;
-        const m = misuraLibro();
-        if (!m || !rendRef.current) return;
-        if (m.w === misuraData.current.w && Math.abs(m.h - misuraData.current.h) < 120) return;
-        misuraData.current = { w: m.w, h: m.h };
-        const dove = anchor.current || live.current.cfi;
-        reflowing.current = true;
-        clearTimeout(reflowTimer.current);
-        reflowTimer.current = setTimeout(() => { reflowing.current = false; }, 1500);
-        try { rendRef.current.resize(m.w, m.h, dove || undefined); }
-        catch { reflowing.current = false; }
-      }, 500);
-    });
-    ro.observe(el);
-    return () => { ro.disconnect(); clearTimeout(timer); };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleFullscreen() {
     if (document.fullscreenElement) {
@@ -951,210 +702,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     }
   }
 
-  // UN CAPITOLO APPENA COSTRUITO CRESCE SOTTO I PIEDI. epub.js atterra
-  // misurando il capitolo prima che font incorporati e immagini abbiano
-  // preso posto: qualche istante dopo il testo si allunga di colonne
-  // intere e il punto scelto resta indietro. Tornando sulla pagina prima
-  // di un capitolo si finiva «diverse pagine» prima dell'ultima
-  // (misurato su Gecko: 4 facciate perse su un capitolo con immagine,
-  // 10 sul monstre col font incorporato) — e li' si restava, perche' i
-  // pixel di scorrimento non seguono la carta che si allunga. Ad assets
-  // assestati si rifa' l'atterraggio sul bersaglio vero; se non c'era
-  // niente da aspettare non succede nulla, e se il lettore ha gia'
-  // rivoltato la correzione muore col suo gettone.
-  // La prima versione aspettava le PROMESSE di font e immagini, ma il
-  // momento del controllo tradisce: i font si chiedono al primo layout
-  // che li usa, e interrogati un attimo prima `document.fonts` giura che
-  // e' tutto carico. Qui invece si fa la guardia alla MISURA: per quattro
-  // secondi si riguarda la larghezza del capitolo, e a ogni crescita si
-  // ri-atterra — piu' un ri-atterraggio di conferma al primo giro utile,
-  // che a bersaglio gia' centrato non muove niente e non si vede.
-  // E IL LAVORO NON SI GUARDA: l'atterraggio provvisorio piu' lo scatto
-  // sul bersaglio erano un glitch a vista. Chi atterra in una sezione
-  // fresca passa un velo color carta sul libro (`scopri` lo toglie), che
-  // si alza PRIMA del primo dipinto e cade quando la misura sta ferma da
-  // due ronde — subito dopo l'atterraggio di conferma, cosi' si scopre
-  // direttamente la pagina giusta. La guardia continua muta fino a ~3s
-  // per la crescita ritardataria, e qualunque gesto del lettore la
-  // uccide E toglie il velo.
-  // il polso della guardia: fitto, perche' il velo dura quanto lei —
-  // due ronde ferme e si scopre (circa un terzo di secondo)
-  const PASSO = 120;
-  const assestamento = useRef(0);
-  function aCapitoloAssestato(azione, scopri) {
-    const gettone = ++assestamento.current;
-    let sw0 = rendRef.current?.manager?.container?.scrollWidth || 0;
-    let giri = 0;
-    let stabile = 0;
-    let confermato = false;
-    let coperto = !!scopri;
-    const fine = () => {
-      if (coperto) {
-        coperto = false;
-        scopri();
-      }
-    };
-    const ronda = () => {
-      if (gettone !== assestamento.current) return fine();
-      const cont = rendRef.current?.manager?.container;
-      if (!cont) return fine();
-      giri += 1;
-      if (cont.scrollWidth !== sw0) {
-        sw0 = cont.scrollWidth;
-        stabile = 0;
-        try { azione(); } catch { /* la vista puo' essere gia' sparita */ }
-      } else {
-        stabile += 1;
-      }
-      if (!confermato && stabile >= 2) {
-        confermato = true;
-        try { azione(); } catch { /* la vista puo' essere gia' sparita */ }
-        fine();
-      }
-      if (giri < 20) setTimeout(ronda, PASSO);
-      else fine();
-    };
-    setTimeout(ronda, PASSO);
-  }
-
-  // avanti si scorre il residuo prima di cambiare capitolo, cosi' l'ultima
-  // pagina scritta non viene saltata; indietro epub.js gia' atterra in
-  // fondo — ma sul fondo di QUEL momento, da riprendere a capitolo fermo
+  // La voltata e' quella di epub.js, niente in mezzo.
   function step(r, dir) {
-    assestamento.current++;
-    setVelo(false);
-    if (dir === "prev") {
-      const b = bestView();
-      const sez = b?.view?.section?.index;
-      // al primo foglio della sezione il passo indietro attraversa il
-      // confine: il capitolo che sta per nascere si copre PRIMA che
-      // dipinga l'atterraggio provvisorio
-      const base = b?.view?.element?.offsetLeft || 0;
-      if ((r.manager?.container?.scrollLeft ?? 0) <= base) setVelo(true);
-      const p = r.prev();
-      p?.then?.(() => {
-        const arrivo = bestView()?.view;
-        if (rendRef.current !== r || !arrivo || arrivo.section?.index === sez) {
-          setVelo(false);
-          return;
-        }
-        const indice = arrivo.section.index;
-        aCapitoloAssestato(() => {
-          if (rendRef.current !== r) return;
-          const cont = r.manager.container;
-          // il fondo DI QUESTO capitolo, non del contenitore: epub.js puo'
-          // tenerne montati due, e la fine del contenitore sarebbe la coda
-          // di quello da cui siamo appena venuti — un balzo in avanti
-          let el = null;
-          r.manager.views?.forEach?.((v) => { if (v.section?.index === indice) el = v.element; });
-          if (!el) return;
-          const passo = r.manager.layout?.pageWidth || cont.clientWidth || 1;
-          const ultima = el.offsetLeft + Math.max(0, el.offsetWidth - cont.clientWidth);
-          r.manager.scrollTo(el.offsetLeft + Math.round((ultima - el.offsetLeft) / passo) * passo, 0, true);
-          r.reportLocation();
-        }, () => setVelo(false));
-      });
-      p?.catch?.(() => setVelo(false));
-      return p;
-    }
-    const rest = leftoverScroll(r.manager);
-    if (!rest) return r.next();
-    r.manager.scrollBy(rest, 0, true);
-    return r.reportLocation();
-  }
-
-  // IL CONTAPAGINE NON SI FIDA DEI RETTANGOLI. epub.js ricava la pagina
-  // corrente da getBoundingClientRect, e Firefox riporta quei rettangoli
-  // con un residuo sub-pixel (997,99998 per 998): il floor scende di
-  // un'unita' e l'etichetta esce con la sinistra pari — numeri che si
-  // ripetono, si sovrappongono, e il famoso «12-13 di 14» con la destra
-  // vuota mentre il testo sta al posto giusto. Lo scorrimento del
-  // contenitore e l'offset della vista invece sono INTERI: la pagina si
-  // riconta da li', e l'arrotondamento chiude la porta al residuo.
-  function contaPagina(r, start) {
-    const displayed = start.displayed;
-    try {
-      if (live.current.settings.flow === "scrolled") return displayed;
-      const man = r.manager;
-      const sl = man?.container?.scrollLeft;
-      const pw = man?.layout?.pageWidth;
-      if (!(pw > 0) || !Number.isFinite(sl)) return displayed;
-      let base = 0;
-      man.views?.forEach?.((v) => {
-        if ((v.section?.href || "") === (start.href || "")) base = v.element?.offsetLeft || 0;
-      });
-      const page = Math.round((sl - base) / pw) + 1;
-      if (page < 1 || page > displayed.total) return displayed;
-      return { ...displayed, page };
-    } catch {
-      return displayed;
-    }
-  }
-
-  // La vista che il lettore sta davvero guardando: con piu' capitoli in
-  // piedi (epub.js precarica il prossimo) la "prima vista" puo' essere
-  // quella fuori schermo — conta la piu' sovrapposta al libro.
-  function bestView() {
-    const host = bookRef.current;
-    if (!host) return null;
-    const rh = host.getBoundingClientRect();
-    let out = null;
-    let meglio = 0;
-    rendRef.current?.manager?.views?.forEach?.((v) => {
-      const f = v?.iframe || v?.element?.querySelector?.("iframe");
-      if (!f || !v?.contents?.document) return;
-      const r = f.getBoundingClientRect();
-      const visibile = Math.min(r.right, rh.right) - Math.max(r.left, rh.left);
-      if (visibile > meglio) {
-        meglio = visibile;
-        out = { view: v, ri: r, rh };
-      }
-    });
-    return out;
-  }
-
-  // La gabbia di testo deve contenere un numero INTERO di righe.
-  //
-  // L'altezza disponibile non e' quasi mai un multiplo esatto dell'interlinea:
-  // in fondo alla colonna avanza una frazione di riga. Che fine fa quella
-  // frazione lo decide il motore, e i due non sono d'accordo: Chrome spinge la
-  // riga alla colonna dopo (e lascia un vuoto in fondo alto fino a una riga,
-  // diverso a ogni pagina), Firefox la disegna e la TAGLIA sul bordo della
-  // colonna — la riga mozzata a meta' altezza in fondo a ogni facciata.
-  // Nessuna delle due e' una pagina di libro.
-  //
-  // Si toglie quindi l'avanzo dal riquadro, una volta sola: la carta resta
-  // larga uguale (lo sfondo e' del contenitore, non della gabbia), il margine
-  // di piede cresce di quei pochi pixel e diventa lo stesso su ogni pagina.
-  // La misura si prende dal documento vero e si somma indietro il ritaglio
-  // gia' applicato, cosi' il conto e' lo stesso a ogni giro e non rincorre
-  // se stesso.
-  function measureSnap() {
-    if (live.current.settings?.flow === "scrolled") {
-      if (snapRef.current !== 0) {
-        snapRef.current = 0;
-        setSnapPad(0);
-      }
-      return;
-    }
-    try {
-      const doc = bestView()?.view?.contents?.document;
-      const body = doc?.body;
-      if (!body) return;
-      const cs = doc.defaultView.getComputedStyle(body);
-      const passo = parseFloat(cs.lineHeight);
-      const alto =
-        body.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
-      if (!(passo > 4) || !(alto > passo)) return;
-      const pieno = alto + snapRef.current;
-      const avanzo = Math.round(pieno % passo);
-      // meno di un pixel non vale una reimpaginazione
-      if (Math.abs(avanzo - snapRef.current) < 1) return;
-      snapRef.current = avanzo;
-      setSnapPad(avanzo);
-    } catch {
-      /* vista non ancora pronta: si rimisura al prossimo approdo */
-    }
+    return dir === "prev" ? r.prev() : r.next();
   }
 
   // La voltata e' SECCA, per scelta: il foglio animato (palco di cloni,
@@ -1183,10 +733,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     if ("flow" in patch || "spread" in patch || "font" in patch) makeRendition(next);
     else if (rendRef.current && ("theme" in patch || "fontSize" in patch || "lineHeight" in patch || "justify" in patch)) {
       applyStyles(rendRef.current, next);
-      // corpo e interlinea cambiano il passo delle righe, quindi l'avanzo:
-      // si rimisura a testo gia' ridisegnato
-      clearTimeout(snapTimer.current);
-      snapTimer.current = setTimeout(measureSnap, 320);
     }
   }
 
@@ -1197,8 +743,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // omnibus arrotondava a "0%" per decine di pagine
     const base = (live.current.href || "").split("#")[0];
     const chap = toc.find((t) => (t.href || "").split("#")[0] === base)?.label || "";
-    const label =
-      [chap, displayed ? `pag. ${displayed.page}` : ""].filter(Boolean).join(" · ") || "Segnalibro";
+    const label = [chap, `${Math.round((live.current.progress || 0) * 100)}%`]
+      .filter(Boolean)
+      .join(" · ") || "Segnalibro";
     const m = { id: crypto.randomUUID(), cfi: live.current.cfi, label, createdAt: Date.now() };
     const next = [...marks, m];
     setMarks(next);
@@ -1364,15 +911,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const r = rendRef.current;
     if (!r) return;
     moved.current = true;
-    assestamento.current++;
-    setVelo(false);
     const arrivo = r.display(target);
-    // un segnalibro in un capitolo non ancora costruito atterra con le
-    // misure di prima che font e immagini prendessero posto: a capitolo
-    // assestato si rifa' lo stesso display, che ormai costa niente
-    arrivo?.then?.(() => aCapitoloAssestato(() => {
-      if (rendRef.current === r) r.display(target);
-    }));
     setPanel(null);
     if (!flash) return;
     // il risultato trovato si accende per qualche secondo: serve solo a far
@@ -1417,47 +956,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const p = Math.min(1, Math.max(0, progress || 0));
   const edgeRead = EDGE_MIN + Math.round((EDGE_MAX - EDGE_MIN) * p);
   const edgeLeftToRead = EDGE_MIN + Math.round((EDGE_MAX - EDGE_MIN) * (1 - p));
-  const pagesLeft = displayed ? Math.max(0, displayed.total - displayed.page) : 0;
-  // speed e' il tempo fra un cambio pagina e l'altro, e in doppia pagina un
-  // cambio ne avanza due: le pagine rimaste vanno divise per il foglio, non
-  // moltiplicate — sbagliando verso la stima usciva quattro volte troppo lunga
-  const turnsLeft = Math.ceil(pagesLeft / Math.max(1, pages));
-  // il tempo che manca al capitolo lo si dice solo dove un capitolo c'e'
-  const chapterLeft =
-    capitoli && speed && turnsLeft > 0 ? formatLeft(turnsLeft * speed) : null;
-  // le pagine: dentro il capitolo dove i capitoli ci sono, dall'inizio del
-  // libro dove non ci sono (li' il documento non e' un'unita' di niente)
-  const paginaLibro =
-    !capitoli && locReady && epubRef.current
-      ? paginaDelLibro(epubRef.current, live.current.cfi, passo)
-      : null;
-  const etichettaPagine = (() => {
-    if (paginaLibro) {
-      return pages === 2 ? `pagine ${paginaLibro}-${paginaLibro + 1}` : `pag. ${paginaLibro}`;
-    }
-    return displayed ? pageLabel(displayed, pages, capitoli) : null;
-  })();
-  // QUANTO MANCA ALLA FINE DEL LIBRO, a richiesta. Le pagine dell'intero
-  // libro nessuno le conosce (ogni file si impagina solo quando lo apri),
-  // ma le locations sono contate tutte: quelle della sezione aperta, divise
-  // per le sue pagine, dicono quanto testo sta in una pagina — e da li' le
-  // pagine che restano.
-  const bookLeft = (() => {
-    if (!settings.restaLibro || !speed || !displayed || !locReady) return null;
-    const { tot, per } = sezioni.current;
-    const base = String(live.current.cfi || "").split("!")[0];
-    const quota = per.get(base);
-    if (!tot || !quota || !displayed.total) return null;
-    try {
-      const fatte = epubRef.current.locations.locationFromCfi(live.current.cfi);
-      const restano = tot - (Number.isFinite(fatte) ? fatte : tot * p);
-      const perPagina = quota / displayed.total;
-      const giri = Math.ceil(restano / perPagina / Math.max(1, pages));
-      return giri > 0 ? formatLeft(giri * speed) : null;
-    } catch {
-      return null;
-    }
-  })();
 
   return (
     <div
@@ -1505,7 +1003,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           style={{
             position: "absolute",
             inset: FRAME,
-            padding: `${HEAD}px ${Math.max(settings.margin, EDGE_MAX + 8)}px calc(${FOOT + snapPad}px + env(safe-area-inset-bottom))`,
+            padding: `${HEAD}px ${Math.max(settings.margin, EDGE_MAX + 8)}px calc(${FOOT}px + env(safe-area-inset-bottom))`,
             boxSizing: "border-box",
             borderRadius: 3,
             // la carta arriva fino al bordo interno della rilegatura: senza,
@@ -1514,111 +1012,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             background: theme.bg,
           }}
         />
-        {/* IL VELO DEV'ESSERE CARTA, NON UN LAMPO. Sta SOTTO il filtro caldo
-            e la luminosita' (che vivono in cima al reader): dipinto sopra
-            di loro usciva crema contro una pagina tabacco — misurato sul
-            video del lettore, 241,227,200 contro 216,179,137 — e quel
-            salto di tinta era il lampo. Sotto, prende gli stessi filtri
-            della carta e il testo si limita a sparire.
-            Resta montato sempre e viaggia di opacita': comparire e sparire
-            di scatto e' un lampo comunque. Entra in fretta, perche' deve
-            coprire l'atterraggio provvisorio prima che dipinga; esce
-            piano, che e' la parte che si guarda. */}
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            inset: FRAME,
-            zIndex: 4,
-            borderRadius: 3,
-            background: theme.bg,
-            pointerEvents: "none",
-            opacity: velo ? 1 : 0,
-            transition: `opacity ${velo ? 90 : 300}ms ease-in-out`,
-          }}
-        />
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            left: FRAME,
-            top: FRAME,
-            bottom: FRAME,
-            width: edgeRead,
-            // SOPRA il canvas del cilindro e il velo della dissolvenza:
-            // taglio, ombre e piega restano identici a se stessi per tutto
-            // il giro, e le animazioni non devono ridipingerli — coperti,
-            // sparivano di colpo al primo fotogramma (lo "sfarfallio")
-            zIndex: 7,
-            pointerEvents: "none",
-            // stessa altezza e stesso raggio della carta: staccata anche di
-            // pochi px, la pila lasciava toppe scoperte verso gli angoli
-            borderRadius: "3px 2px 2px 3px",
-            backgroundColor: theme.bg,
-            backgroundImage: EDGE_STRIPES,
-            boxShadow: "inset -7px 0 9px -7px #00000066, 1px 0 2px #00000033",
-          }}
-        />
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            right: FRAME,
-            top: FRAME,
-            bottom: FRAME,
-            width: edgeLeftToRead,
-            zIndex: 7,
-            pointerEvents: "none",
-            borderRadius: "2px 3px 3px 2px",
-            backgroundColor: theme.bg,
-            backgroundImage: EDGE_STRIPES,
-            boxShadow: "inset 7px 0 9px -7px #00000066, -1px 0 2px #00000033",
-          }}
-        />
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            top: FRAME,
-            bottom: FRAME,
-            left: FRAME,
-            width: 16,
-            zIndex: 7,
-            pointerEvents: "none",
-            background: "linear-gradient(90deg, #00000033, transparent)",
-          }}
-        />
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            top: FRAME,
-            bottom: FRAME,
-            right: FRAME,
-            width: 16,
-            zIndex: 7,
-            pointerEvents: "none",
-            background: "linear-gradient(270deg, #00000033, transparent)",
-          }}
-        />
-        {twoUp && (
-          <div
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              top: FRAME,
-              bottom: FRAME,
-              left: "50%",
-              // una piega stretta, non un'ombra larga: il solco del libro
-              // vero sta a ridosso della cucitura e muore in fretta
-              width: 100,
-              transform: "translateX(-50%)",
-              zIndex: 7,
-              pointerEvents: "none",
-              background:
-                "linear-gradient(90deg, transparent, #0000000f 30%, #0000002e 46%, #0000003d 50%, #0000002e 54%, #0000000f 70%, transparent)",
-            }}
-          />
         )}
       </div>
 
@@ -1826,8 +1219,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 if (!locReady) return;
                 const cfi = epubRef.current.locations.cfiFromPercentage(parseInt(e.target.value, 10) / 1000);
                 moved.current = true;
-                assestamento.current++;
-                setVelo(false);
                 if (cfi) rendRef.current?.display(cfi);
               }}
               style={{ width: "100%", accentColor: C.accent }}
@@ -1835,19 +1226,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.muted, marginTop: 2 }}>
               <span>{locReady ? `${pct}%` : "misuro le pagine…"}</span>
               <span>
-                {settings.flow === "scrolled"
-                  ? "scorrimento"
-                  : [
-                      etichettaPagine,
-                      chapterLeft
-                        ? `${chapterLeft.startsWith("meno") ? "" : "~"}${chapterLeft} alla fine`
-                        : null,
-                      bookLeft
-                        ? `${bookLeft.startsWith("meno") ? "" : "~"}${bookLeft} al termine del libro`
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ") || "pagine"}
+                {settings.flow === "scrolled" ? "scorrimento" : `${pct}% del libro`}
               </span>
             </div>
           </div>
@@ -2063,22 +1442,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               </button>
             </div>
           )}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <span style={{ fontSize: 14.5, color: C.muted }}>Quanto manca alla fine del libro</span>
-            <button
-              onClick={() => updateSettings({ restaLibro: !settings.restaLibro })}
-              style={{
-                padding: "6px 16px",
-                borderRadius: 999,
-                fontSize: 14,
-                border: `1px solid ${settings.restaLibro ? C.accent : C.border}`,
-                color: settings.restaLibro ? C.accent : C.muted,
-                background: settings.restaLibro ? `${C.accent}14` : "transparent",
-              }}
-            >
-              {settings.restaLibro ? "Attivo ⏳" : "Spento"}
-            </button>
-          </div>
           <Slider
             label="Filtro notte caldo"
             min={0} max={0.45} step={0.05}
