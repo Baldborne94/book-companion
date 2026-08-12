@@ -44,22 +44,14 @@ const GIRO = 820;
 // punto di lettura, segnalibri, evidenziazioni. A questi si aggiungono i
 // 20px che epub.js mette di suo sul body, inline e con !important: sono
 // intoccabili da un foglio di stile, e fanno da margine minimo.
-// Ci vivono anche il titolo corrente e il numero di pagina, come sui margini
-// di un libro stampato. La banda e' riservata SEMPRE, anche a folio spento:
-// se la misura dipendesse dalla levetta, spegnerla reimpaginerebbe il libro e
+// In testa ci vive il titolo corrente, come sul margine di un libro
+// stampato. La banda e' riservata SEMPRE, anche a levetta spenta: se la
+// misura dipendesse dalla levetta, spegnerla reimpaginerebbe il libro e
 // sposterebbe il testo sotto le dita. Si sceglie cosa stamparci, non quanta
-// carta lasciare.
+// carta lasciare — ed e' anche il motivo per cui il piede resta largo pur
+// non portando piu' il folio: stringerlo adesso reimpaginerebbe ogni libro.
 const HEAD = 26;
 const FOOT = 26;
-// Un foglio di carta, in caratteri: le locations di epub.js si generano da
-// 600, e tre fanno una pagina di tascabile. Il folio conta la CARTA, non lo
-// schermo: allo stesso punto della storia e' lo stesso numero su ogni
-// dispositivo e con ogni corpo, ed e' quindi un numero che ha senso ricordare
-// o citare. Cambiando corpo puo' scalare di una pagina, ma non perche' balli
-// il conto: e' il punto di lettura che si sposta, perche' la pagina che ti
-// contiene comincia prima o dopo quando il testo si reimpagina.
-const LOC_PAGINA = 3;
-
 // IL TITOLO CORRENTE NON E' L'ETICHETTA DELL'INDICE.
 //
 // Gli indici degli EPUB sono pieni di voci di servizio — «Begin Reading»,
@@ -77,19 +69,6 @@ function titoloUtile(s) {
   return t && t.length <= 64 && !NAV_INUTILI.test(t) ? t : "";
 }
 
-// Il folio di un punto qualunque del libro. Serve tutte le volte che un
-// numero di pagina deve uscire — margine, segnalibri, barra — perche' siano
-// LO STESSO numero: due conti diversi per la stessa pagina sono peggio di
-// nessun conto.
-function foglioDa(eb, cfi) {
-  if (!eb || !cfi) return null;
-  try {
-    const i = eb.locations.locationFromCfi(cfi);
-    return Number.isFinite(i) && i >= 0 ? Math.floor(i / LOC_PAGINA) + 1 : null;
-  } catch {
-    return null;
-  }
-}
 const EDGE_STRIPES =
   "repeating-linear-gradient(to right, #00000047 0 1px, #ffffff1f 1px 2px, #0000001c 2px 4px)";
 // In doppia pagina epub.js riporta solo il foglio di sinistra: il numero
@@ -454,12 +433,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [panel, setPanel] = useState(null);
   const [progress, setProgressUi] = useState(() => getProgress(book.id));
   const [locReady, setLocReady] = useState(false);
-  const [pagineCarta, setPagineCarta] = useState(0);
-  // i due folii del foglio aperto: quello di sinistra e quello di destra, ognuno
-  // calcolato dal SUO punto. In doppia pagina il destro non e' «il sinistro piu'
-  // uno»: un foglio di carta puo' coprire due schermate o mezza, e sommare uno
-  // faceva uscire numeri che si ripetevano e non tornavano col segnalibro.
-  const [folii, setFolii] = useState({ da: null, a: null });
   // da dove sei stato portato via, e per quanto te lo ricordo
   const [salto, setSalto] = useState(null);
   // dove sta il cursore MENTRE lo trascini: il libro non lo segue finche' non
@@ -734,7 +707,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             st.progress = p;
             setProgressUi(p);
           }
-          setFolii({ da: foglioDa(eb, loc.start.cfi), a: foglioDa(eb, loc.end?.cfi) });
         }
         if (loc.atEnd) {
           setStatus(book.id, "read");
@@ -935,12 +907,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         if (dead) return;
         live.current.locReady = true;
         setLocReady(true);
-        setPagineCarta(Math.max(1, Math.ceil((eb.locations.total || 0) / LOC_PAGINA)));
-        // il primo giro di `relocated` e' passato prima che le locations
-        // esistessero: senza questo, il folio resta vuoto fino alla prima
-        // voltata proprio quando apri il libro
-        const qui = rendRef.current?.currentLocation?.();
-        if (qui?.start) setFolii({ da: foglioDa(eb, qui.start.cfi), a: foglioDa(eb, qui.end?.cfi) });
         if (live.current.cfi) {
           const p = eb.locations.percentageFromCfi(live.current.cfi);
           if (Number.isFinite(p)) {
@@ -1318,9 +1284,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // omnibus arrotondava a "0%" per decine di pagine
     const suo = (live.current.href || "").split("#")[0];
     const chap = titoli[suo] || titoloUtile(toc.find((t) => (t.href || "").split("#")[0] === suo)?.label);
-    // il folio, non la pagina del capitolo: il segnalibro deve dire lo stesso
-    // numero che vedi stampato sul margine, o i due conti si contraddicono
-    const label = [chap, folii.da ? `pag. ${folii.da}` : ""].filter(Boolean).join(" · ") || "Segnalibro";
+    // la pagina del CAPITOLO: epub.js la conta esatta e va sempre uno per
+    // uno, mentre i fogli di carta saltavano. E' l'unico numero di pagina
+    // rimasto nel reader, quindi non contraddice piu' niente.
+    const label =
+      [chap, displayed ? `pag. ${displayed.page}` : ""].filter(Boolean).join(" · ") || "Segnalibro";
     const m = { id: crypto.randomUUID(), cfi: live.current.cfi, label, createdAt: Date.now() };
     const next = [...marks, m];
     setMarks(next);
@@ -1332,8 +1300,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // e' quella giusta. Piu' a lungo diventerebbe un avviso fisso anche quando
   // il salto lo volevi tu.
   const saltoTimer = useRef(null);
-  function segnaSalto(cfi, folio) {
-    setSalto({ cfi, folio });
+  function segnaSalto(cfi, dove) {
+    setSalto({ cfi, dove });
     clearTimeout(saltoTimer.current);
     saltoTimer.current = setTimeout(() => setSalto(null), 30000);
   }
@@ -1523,7 +1491,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const r = rendRef.current;
     if (!r) return;
     const prima = live.current.cfi;
-    if (prima && prima !== target) segnaSalto(prima, folii.da);
+    if (prima && prima !== target) segnaSalto(prima, pct);
     moved.current = true;
     const arrivo = r.display(target);
     setPanel(null);
@@ -1702,13 +1670,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             background: theme.bg,
           }}
         />
-        {/* I MARGINI STAMPATI.
-            Titolo corrente in testa e folio al piede, sui margini che il
-            riquadro riserva comunque. In doppia pagina si fa come su carta:
-            a sinistra il titolo del libro, a destra quello del capitolo, e
-            due folii consecutivi. Sta sotto la rilegatura e sotto i fogli in
-            volo (z 7 e oltre), cosi' una voltata lo copre invece di lasciarlo
-            fermo a mezz'aria sopra la pagina che gira. */}
+        {/* IL TITOLO CORRENTE, sul margine di testa che il riquadro riserva
+            comunque. In doppia pagina si fa come su carta: a sinistra il
+            titolo del libro, a destra quello del capitolo. Sta sotto la
+            rilegatura e sotto i fogli in volo (z 7 e oltre), cosi' una
+            voltata lo copre invece di lasciarlo fermo a mezz'aria sopra la
+            pagina che gira. */}
         {stampaMargini && (
           <div
             aria-hidden="true"
@@ -1747,19 +1714,18 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 </span>
               ))}
             </div>
-            <div style={{ display: "flex", gap: 24, letterSpacing: 1.2 }}>
-              {/* Ogni facciata porta il folio del SUO punto. Il destro non e'
-                  «il sinistro piu' uno»: un foglio di carta puo' coprire due
-                  schermate o mezza, e sommare uno faceva uscire numeri che si
-                  ripetevano fra un foglio e l'altro e non tornavano col
-                  segnalibro. Se le due facciate stanno sulla stessa pagina di
-                  carta il numero si scrive una volta sola. */}
-              {(twoUp ? [folii.da, folii.a !== folii.da ? folii.a : null] : [folii.da]).map((n, i) => (
-                <span key={i} style={{ flex: 1, textAlign: "center" }}>
-                  {n || ""}
-                </span>
-              ))}
-            </div>
+            {/* AL PIEDE NON SI STAMPA NIENTE, ed e' una scelta.
+                Il numero c'era e contava i fogli di CARTA: 1800 caratteri,
+                una pagina di tascabile. Ma le facciate dello schermo hanno
+                un'altra misura, quindi una pagina di carta cadeva a cavallo
+                di due schermate e la serie usciva 1,3 → 3,5 → 5,6: sempre in
+                avanti, ma con numeri che si ripetono e che saltano. Un folio
+                che non va uno per uno e' peggio di nessun folio — chi legge
+                si aspetta la pagina dopo, non la pagina piu' due.
+                Per numerarle una per una bisognerebbe contare le FACCIATE, e
+                quelle il libro non le sa finche' non le impagina tutte.
+                La banda resta riservata lo stesso: e' li' che vive l'aria in
+                fondo alla pagina, e toglierla reimpaginerebbe tutto. */}
           </div>
         )}
         <div
@@ -2453,14 +2419,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.muted, marginTop: 2 }}>
               {/* lo stesso folio del margine e del segnalibro: un numero solo
                   per tutto il reader, o i conti si contraddicono a vicenda */}
+              {/* mentre trascini dice dove andresti a finire: il libro non
+                  si muove finche' non lasci, e senza questa riga sembrerebbe
+                  che il cursore non faccia niente */}
               <span style={cursore != null ? { color: C.accent } : undefined}>
                 {!locReady
                   ? "misuro le pagine…"
                   : cursore != null
-                    ? `→ pag. ${Math.max(1, Math.round((cursore / 1000) * pagineCarta))} di ${pagineCarta}`
-                    : [folii.da ? `pag. ${folii.da} di ${pagineCarta}` : null, `${pct}%`]
-                        .filter(Boolean)
-                        .join(" · ")}
+                    ? `→ al ${Math.round(cursore / 10)}%`
+                    : `${pct}%`}
               </span>
               <span>
                 {settings.flow === "scrolled"
@@ -2499,7 +2466,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             whiteSpace: "nowrap",
           }}
         >
-          ↩ Torna {salto.folio ? `a pag. ${salto.folio}` : "dov'eri"}
+          ↩ Torna {salto.dove != null ? `al ${salto.dove}%` : "dov'eri"}
         </button>
       )}
 
@@ -2696,7 +2663,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           </div>
           <div style={{ marginBottom: 14 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 14.5, color: paginated ? C.muted : C.dim }}>Margini stampati</span>
+              <span style={{ fontSize: 14.5, color: paginated ? C.muted : C.dim }}>Titolo corrente sul margine</span>
               <button
                 onClick={() => updateSettings({ folio: settings.folio === false })}
                 disabled={!paginated}
@@ -2713,9 +2680,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               </button>
             </div>
             <p style={{ margin: "5px 0 0", fontSize: 12.5, color: C.dim, lineHeight: 1.45 }}>
-              Titolo corrente e numero di pagina sui margini, come su carta. Il numero conta i fogli
-              del libro, non le schermate: allo stesso punto della storia è lo stesso su ogni
-              dispositivo, e non si moltiplica se rimpicciolisci il testo.
+              Il titolo del libro e quello del capitolo in testa alla pagina, come su carta. Al piede
+              non c'è il numero: le facciate dello schermo non coincidono con le pagine di un libro
+              stampato, e sarebbero uscite numerate a salti.
             </p>
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
@@ -2861,17 +2828,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           ) : (
             marks.map((m) => {
               const pct = markPct(m.cfi);
-              // Il numero si ricalcola dal CFI, non si legge dall'etichetta
-              // salvata: cosi' anche i segnalibri vecchi — messi quando qui si
-              // contavano le pagine del capitolo — dicono lo stesso numero che
-              // trovi stampato sul margine.
-              const foglio = locReady ? foglioDa(epubRef.current, m.cfi) : null;
               const stale = /^Segnalibro( al \d+%)?$/.test(m.label);
-              const capo = m.label.replace(/\s*·\s*pag\.\s*\d+\s*$/, "");
-              const title = stale || !capo ? (foglio ? `Segnalibro a pag. ${foglio}` : "Segnalibro") : capo;
+              const title = stale && pct ? `Segnalibro al ${pct}%` : m.label;
               const sub = [
-                foglio && !stale ? `pag. ${foglio}` : "",
-                pct ? `al ${pct}%` : "",
+                pct && !stale ? `al ${pct}%` : "",
                 new Date(m.createdAt).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }),
               ].filter(Boolean).join(" · ");
               return (
