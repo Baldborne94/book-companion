@@ -928,8 +928,17 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         else if (live.current.panel) setPanel(null);
         else handleClose();
       }
-      if (e.key === "ArrowRight") turnRef.current("next");
-      if (e.key === "ArrowLeft") turnRef.current("prev");
+      // Dentro un campo di testo le frecce muovono il cursore: voltare
+      // pagina mentre scrivi nella ricerca e' un dispetto. Escape invece
+      // vale anche li', ed e' il modo di uscire dal campo.
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      // Basta ascoltare QUI, anche quando il fuoco e' dentro il libro:
+      // i tasti dell'iframe arrivano lo stesso a questo documento. Appendere
+      // lo stesso gestore anche al capitolo sembra la cosa giusta e invece
+      // volta DUE pagine per tasto — provato.
+      if (e.key === "ArrowRight" || e.key === "PageDown") turnRef.current("next");
+      if (e.key === "ArrowLeft" || e.key === "PageUp") turnRef.current("prev");
     };
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("beforeunload", flush);
