@@ -44,30 +44,8 @@ const GIRO = 820;
 // punto di lettura, segnalibri, evidenziazioni. A questi si aggiungono i
 // 20px che epub.js mette di suo sul body, inline e con !important: sono
 // intoccabili da un foglio di stile, e fanno da margine minimo.
-// QUESTI NUMERI NON SI TOCCANO PIU'. Sono la misura con cui il reader ha
-// sempre funzionato: portarli a 26 per stamparci il titolo corrente ha
-// reimpaginato ogni libro e cambiato il numero di colonne dei capitoli, ed
-// e' li' che su tablet sono cominciati i salti di pagina. Il titolo sul
-// margine era bello: non vale una lettura che salta.
 const HEAD = 8;
 const FOOT = 8;
-// IL TITOLO CORRENTE NON E' L'ETICHETTA DELL'INDICE.
-//
-// Gli indici degli EPUB sono pieni di voci di servizio — «Begin Reading»,
-// «Cover», «Contents» — che nell'indice hanno un senso e in testa alla pagina
-// no: si legge «BEGIN READING» accanto al titolo del libro e sembra rotto.
-// Si preferisce quindi il titolo che il capitolo ha stampato su di se' (il
-// suo `h1`), si ripiega sull'indice, e in ogni caso si scarta quello che non
-// e' un titolo: le voci di navigazione e le righe troppo lunghe per un
-// margine.
-const NAV_INUTILI =
-  /^(begin(ning)?( reading)?|start( of content| here)?|cover|title ?page|contents?|table of contents|front ?matter|back ?matter|copertina|frontespizio|indice|sommario|inizio( lettura)?|colophon|colofone)$/i;
-
-function titoloUtile(s) {
-  const t = String(s || "").replace(/\s+/g, " ").trim();
-  return t && t.length <= 64 && !NAV_INUTILI.test(t) ? t : "";
-}
-
 const EDGE_STRIPES =
   "repeating-linear-gradient(to right, #00000047 0 1px, #ffffff1f 1px 2px, #0000001c 2px 4px)";
 // In doppia pagina epub.js riporta solo il foglio di sinistra: il numero
@@ -237,14 +215,6 @@ function contentStyles(s, lingua) {
           "-webkit-hyphens": "manual !important",
         };
   }
-  // NIENTE CAPOLETTERA, ed e' una rinuncia decisa dopo averlo provato.
-  //
-  // Un `::first-letter` flottante alto tre righe e' l'unica cosa che questo
-  // reader mettesse DENTRO la colonna di testo, e la colonna qui e' un
-  // multicolonna impaginato: i float li' sono il punto piu' fragile dei
-  // motori, e Firefox li tratta diversamente da Chrome. Col capolettera
-  // acceso la lettura saltava avanti di parecchie pagine da sola, su
-  // tablet. Una bella lettera non vale una lettura rotta.
   return rules;
 }
 
@@ -398,10 +368,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const snapTimer = useRef(null);
   const turningRef = useRef(null);
   const turnRef = useRef(() => {});
-  // questa ricollocazione l'ha chiesta il lettore, non il motore
-  const voluto = useRef(0);
-  // quante voltate ha chiesto il lettore: dice se sta leggendo proprio adesso
-  const giri = useRef(0);
   const moved = useRef(false);
   const fixTimers = useRef([]);
   const live = useRef({ cfi: startCfi || getCfi(book.id), progress: getProgress(book.id), locReady: false, settings: null });
@@ -414,14 +380,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [panel, setPanel] = useState(null);
   const [progress, setProgressUi] = useState(() => getProgress(book.id));
   const [locReady, setLocReady] = useState(false);
-  // da dove sei stato portato via, e per quanto te lo ricordo
-  const [salto, setSalto] = useState(null);
-  // dove sta il cursore MENTRE lo trascini: il libro non lo segue finche' non
-  // lo lasci, quindi il valore non puo' venire dal progresso o React lo
-  // rimetterebbe indietro a ogni evento e il cursore non si muoverebbe
-  const [cursore, setCursore] = useState(null);
-  // il titolo stampato dal capitolo su se stesso, per href
-  const [titoli, setTitoli] = useState({});
   const [toc, setToc] = useState([]);
   const [marks, setMarks] = useState(() => getMarks(book.id));
   const [hls, setHls] = useState(() => getHighlights(book.id));
@@ -439,9 +397,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [endCard, setEndCard] = useState(null);
 
   const anchor = useRef(null);
-  // in che capitolo sta l'ancora: il ripristino non deve mai cambiarti
-  // capitolo, e per saperlo bisogna essersi segnati da dove viene
-  const ancoraHref = useRef(null);
   const snapRef = useRef(0);
   const snapSeen = useRef(0);
   const markedRef = useRef(new Map());
@@ -457,11 +412,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // scelta dal lettore, che non si sposta da sola.
   const relayout = useCallback((cfi) => {
     const r = rendRef.current;
-    // stessa regola del ripristino: non si cambia capitolo per raddrizzare
-    // una riga
-    if (cfi && ancoraHref.current && live.current.href && ancoraHref.current !== live.current.href) {
-      cfi = null;
-    }
     if (cfi) reflowing.current = true;
     try {
       if (r) r.resize(undefined, undefined, cfi || undefined);
@@ -681,31 +631,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         aliveRef.current?.();
         st.cfi = loc.start.cfi;
         st.href = loc.start.href;
-        // L'ANCORA LA SCRIVE SOLO IL LETTORE.
-        //
-        // E' il punto in cui rimetterlo dopo una reimpaginazione, quindi deve
-        // essere l'ultima pagina che ha scelto LUI: voltata, indice,
-        // segnalibro, cursore. Ogni altra ricollocazione — e ne arrivano
-        // tante, perche' epub.js reimpagina da solo a ogni cambio di misura —
-        // e' un ripiego del motore e non va scambiata per una scelta.
-        //
-        // Prima bastava che non fosse in corso un reflow NOSTRO. Ma i reflow
-        // di epub.js non passano di qui, e il loro approdo arriva spesso
-        // DOPO la voltata: si prendeva quello, cioe' il punto di prima della
-        // voltata, e il ripristino ci riportava sopra. Su Android, dove la
-        // barra del browser va e viene mentre leggi, il risultato e' che la
-        // pagina non avanza piu' — misurato: al confine di capitolo il libro
-        // rimbalzava fra 17-18 di 22 e 19-20 di 26 a ogni tocco.
-        // La finestra e' stretta apposta: `voluto` e' un interruttore, e se
-        // la voltata non produce un approdo (succede quando si scorre
-        // l'avanzo in fondo a un capitolo) resterebbe alzato in attesa. Il
-        // primo reflow che passa se lo prenderebbe, e l'ancora finirebbe su
-        // un punto che il lettore non ha mai scelto.
-        if (voluto.current && Date.now() - voluto.current < 2000) {
-          voluto.current = 0;
-          anchor.current = loc.start.cfi;
-          ancoraHref.current = loc.start.href || null;
-        }
+        // l'ancora segue solo le pagine scelte dal lettore: quelle rese da un
+        // reimpaginamento sono un ripiego e non devono diventare il nuovo "li'"
+        if (reflowing.current) reflowing.current = false;
+        else anchor.current = loc.start.cfi;
         if (st.locReady) {
           const p = eb.locations.percentageFromCfi(loc.start.cfi);
           if (Number.isFinite(p)) {
@@ -751,12 +680,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       r.on("rendered", (_section, view) => {
         const doc = view?.contents?.document;
         if (!doc) return;
-        // il titolo che il capitolo si e' stampato addosso: e' quello che il
-        // lettore vede in cima alla prima pagina, ed e' il titolo corrente
-        // giusto anche quando l'indice dice «Begin Reading»
-        const base = (_section?.href || "").split("#")[0];
-        const suo = titoloUtile(doc.querySelector("h1, h2, h3, h4")?.textContent);
-        if (base && suo) setTitoli((t) => (t[base] === suo ? t : { ...t, [base]: suo }));
         // La sillabazione nasce dalla lingua, e parecchi capitoli non la
         // dichiarano nemmeno quando il libro la dichiara nel suo indice:
         // qui gliela si presta. Tocca un attributo di <html>, non la
@@ -861,8 +784,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       moved.current = false;
       fixTimers.current.forEach(clearTimeout);
       const target = live.current.cfi;
-      // il primo approdo semina l'ancora: da li' in poi la muove solo il lettore
-      voluto.current = Date.now();
       r.display(target || undefined)
         .catch(() => r.display())
         .then(() => setStatusUi("ready"));
@@ -935,17 +856,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         else if (live.current.panel) setPanel(null);
         else handleClose();
       }
-      // Dentro un campo di testo le frecce muovono il cursore: voltare
-      // pagina mentre scrivi nella ricerca e' un dispetto. Escape invece
-      // vale anche li', ed e' il modo di uscire dal campo.
-      const t = e.target;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      // Basta ascoltare QUI, anche quando il fuoco e' dentro il libro:
-      // i tasti dell'iframe arrivano lo stesso a questo documento. Appendere
-      // lo stesso gestore anche al capitolo sembra la cosa giusta e invece
-      // volta DUE pagine per tasto — provato.
-      if (e.key === "ArrowRight" || e.key === "PageDown") turnRef.current("next");
-      if (e.key === "ArrowLeft" || e.key === "PageUp") turnRef.current("prev");
+      if (e.key === "ArrowRight") turnRef.current("next");
+      if (e.key === "ArrowLeft") turnRef.current("prev");
     };
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("beforeunload", flush);
@@ -961,17 +873,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       clearTimeout(reflowTimer.current);
       clearTimeout(parkTimer.current);
       clearTimeout(snapTimer.current);
-      clearTimeout(saltoTimer.current);
       fixTimers.current.forEach(clearTimeout);
       flush();
       try { rendRef.current?.destroy(); } catch { /* già distrutto */ }
       try { epubRef.current?.destroy(); } catch { /* già distrutto */ }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // il cursore torna a seguire il libro appena il libro e' arrivato: cosi' il
-  // passaggio non sfarfalla tornando un attimo al valore di prima
-  useEffect(() => { setCursore(null); }, [progress]);
 
   const marginSeen = useRef(settings.margin);
   useEffect(() => {
@@ -1009,42 +916,16 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const el = bookRef.current;
     if (!el || typeof ResizeObserver === "undefined") return undefined;
     let primo = true;
-    let timer = null;
-    let giriInizio = 0;
+    let foto = null;
+    let timer;
     const ro = new ResizeObserver(() => {
       if (primo) { primo = false; return; }
-      // inizio di una raffica: mi segno a che punto era la lettura
-      if (!timer) giriInizio = giri.current;
+      if (!foto) foto = anchor.current || live.current.cfi;
       clearTimeout(timer);
       timer = setTimeout(() => {
-        timer = null;
-        // SE IL LETTORE HA SFOGLIATO, NON SI RIMETTE NIENTE.
-        //
-        // Il ripristino serve a una cosa sola: dopo una reimpaginazione
-        // epub.js si riallinea all'INIZIO della pagina che contiene il punto,
-        // e cosi' arretra di mezza pagina a ogni giro — da fermi si vede.
-        // Ma se intanto il lettore ha voltato, il posto se l'e' scelto lui: la
-        // deriva non conta piu', e rimetterlo dove stava gli mangia le
-        // voltate. Su Android la barra del browser va e viene MENTRE leggi,
-        // quindi le due cose capitano sempre insieme.
-        if (giri.current !== giriInizio) return;
-        // Il punto si legge ADESSO, non all'inizio della raffica: su Android
-        // la barra del browser va e viene di continuo mentre leggi, e una
-        // fotografia scattata mezzo secondo prima riportava indietro tutte le
-        // pagine sfogliate nel frattempo — misurato: ventotto voltate e il
-        // libro fermo allo zero per cento.
-        const dove = anchor.current || live.current.cfi;
+        const dove = foto;
+        foto = null;
         if (!dove || !rendRef.current) return;
-        // IL RIPRISTINO NON PUO' CAMBIARTI CAPITOLO.
-        //
-        // Serve a recuperare mezza pagina di deriva, niente di piu'. Se
-        // l'ancora sta in un altro capitolo di quello che hai davanti vuol
-        // dire che e' rimasta indietro — succede quando la voltata che ti ha
-        // portato nel capitolo nuovo non produce un approdo, e nel frattempo
-        // il capitolo nuovo si sta ancora impaginando. Rimetterti li' non
-        // corregge una deriva: ti sbalza indietro di decine di pagine, che e'
-        // esattamente il danno che il ripristino dovrebbe evitare.
-        if (ancoraHref.current && live.current.href && ancoraHref.current !== live.current.href) return;
         anchor.current = dove;
         reflowing.current = true;
         clearTimeout(reflowTimer.current);
@@ -1066,16 +947,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
   // avanti si scorre il residuo prima di cambiare capitolo, cosi' l'ultima
   // pagina scritta non viene saltata; indietro epub.js gia' atterra in fondo
-  // UNA VOLTATA VOLUTA DAL LETTORE, non un assestamento del motore.
-  //
-  // `anchor` deve tenere l'ULTIMO punto scelto da chi legge, e solo quello:
-  // e' il punto in cui rimetterlo dopo ogni reimpaginazione. Le
-  // ricollocazioni che nascono da un reflow non devono toccarlo, ma le
-  // voltate vere si — anche se cadono in mezzo a un reflow, come succede su
-  // Android mentre la barra del browser va e viene.
   function step(r, dir) {
-    voluto.current = Date.now();
-    giri.current++;
     if (dir === "prev") return r.prev();
     const rest = leftoverScroll(r.manager);
     if (!rest) return r.next();
@@ -1314,10 +1186,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       if (next.pageTurn) schedulePark();
     }
     if ("flow" in patch || "spread" in patch || "font" in patch) makeRendition(next);
-    else if (
-      rendRef.current &&
-      ("theme" in patch || "fontSize" in patch || "lineHeight" in patch || "justify" in patch)
-    ) {
+    else if (rendRef.current && ("theme" in patch || "fontSize" in patch || "lineHeight" in patch || "justify" in patch)) {
       applyStyles(rendRef.current, next);
       schedulePark();
       // corpo e interlinea cambiano il passo delle righe, quindi l'avanzo:
@@ -1332,11 +1201,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // capitolo e pagina, non la percentuale: quella si ricalcola dal CFI a
     // ogni apertura del pannello, mentre un'etichetta congelata in un
     // omnibus arrotondava a "0%" per decine di pagine
-    const suo = (live.current.href || "").split("#")[0];
-    const chap = titoli[suo] || titoloUtile(toc.find((t) => (t.href || "").split("#")[0] === suo)?.label);
-    // la pagina del CAPITOLO: epub.js la conta esatta e va sempre uno per
-    // uno, mentre i fogli di carta saltavano. E' l'unico numero di pagina
-    // rimasto nel reader, quindi non contraddice piu' niente.
+    const base = (live.current.href || "").split("#")[0];
+    const chap = toc.find((t) => (t.href || "").split("#")[0] === base)?.label || "";
     const label =
       [chap, displayed ? `pag. ${displayed.page}` : ""].filter(Boolean).join(" · ") || "Segnalibro";
     const m = { id: crypto.randomUUID(), cfi: live.current.cfi, label, createdAt: Date.now() };
@@ -1344,36 +1210,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     setMarks(next);
     saveMarks(book.id, next);
     notify("Segnalibro riposto tra le pagine 📑");
-  }
-
-  // Il ricordo dura mezzo minuto: e' il tempo di accorgersi che la pagina non
-  // e' quella giusta. Piu' a lungo diventerebbe un avviso fisso anche quando
-  // il salto lo volevi tu.
-  const saltoTimer = useRef(null);
-  function segnaSalto(cfi, dove) {
-    setSalto({ cfi, dove });
-    clearTimeout(saltoTimer.current);
-    saltoTimer.current = setTimeout(() => setSalto(null), 30000);
-  }
-
-  // il cursore lasciato: si va dove punta, passando dalla porta dei salti
-  // cosi' anche questo lascia il filo per tornare
-  function mollaIlCursore() {
-    const v = cursore;
-    if (v == null || !locReady) return setCursore(null);
-    const cfi = epubRef.current?.locations?.cfiFromPercentage(v / 1000);
-    if (cfi) goTo(cfi);
-    else setCursore(null);
-  }
-
-  function tornaIndietro() {
-    const s = salto;
-    setSalto(null);
-    clearTimeout(saltoTimer.current);
-    if (!s?.cfi) return;
-    moved.current = true;
-    voluto.current = Date.now();
-    rendRef.current?.display(s.cfi);
   }
 
   function markPct(cfi) {
@@ -1530,21 +1366,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     setSearchState({ busy: false, results });
   }
 
-  // IL FILO PER TORNARE INDIETRO.
-  //
-  // Un salto — il cursore in fondo alla barra, l'indice, un segnalibro, un
-  // risultato di ricerca — ti porta via di centinaia di pagine e non lascia
-  // traccia di dov'eri. Sul tablet il cursore prende tutta la larghezza in
-  // fondo allo schermo, proprio dove appoggi il pollice: basta sfiorarlo. Da
-  // qualunque salto si deve poter tornare, e il punto di partenza va preso
-  // PRIMA di muoversi, perche' un attimo dopo non esiste piu'.
   function goTo(target, flash) {
     const r = rendRef.current;
     if (!r) return;
-    const prima = live.current.cfi;
-    if (prima && prima !== target) segnaSalto(prima, pct);
     moved.current = true;
-    voluto.current = Date.now();
     const arrivo = r.display(target);
     setPanel(null);
     if (!flash) return;
@@ -2393,29 +2218,18 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               type="range"
               min={0}
               max={1000}
-              value={cursore ?? Math.round((progress || 0) * 1000)}
+              value={Math.round((progress || 0) * 1000)}
               disabled={!locReady}
-              // Il libro si muove quando LASCI il cursore, non mentre lo
-              // trascini: seguirlo voleva dire reimpaginare a ogni pixel, e
-              // ogni reimpaginazione e' un salto vero. Sotto, intanto, si
-              // legge dove si andrebbe a finire.
-              onChange={(e) => setCursore(parseInt(e.target.value, 10))}
-              onPointerUp={mollaIlCursore}
-              onKeyUp={mollaIlCursore}
-              onPointerCancel={() => setCursore(null)}
+              onChange={(e) => {
+                if (!locReady) return;
+                const cfi = epubRef.current.locations.cfiFromPercentage(parseInt(e.target.value, 10) / 1000);
+                moved.current = true;
+                if (cfi) rendRef.current?.display(cfi);
+              }}
               style={{ width: "100%", accentColor: C.accent }}
             />
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.muted, marginTop: 2 }}>
-              {/* mentre trascini dice dove andresti a finire: il libro non
-                  si muove finche' non lasci, e senza questa riga sembrerebbe
-                  che il cursore non faccia niente */}
-              <span style={cursore != null ? { color: C.accent } : undefined}>
-                {!locReady
-                  ? "misuro le pagine…"
-                  : cursore != null
-                    ? `→ al ${Math.round(cursore / 10)}%`
-                    : `${pct}%`}
-              </span>
+              <span>{locReady ? `${pct}%` : "misuro le pagine…"}</span>
               <span>
                 {settings.flow === "scrolled"
                   ? "scorrimento"
@@ -2431,30 +2245,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             </div>
           </div>
         </>
-      )}
-
-      {salto && !selMenu && (
-        <button
-          onClick={tornaIndietro}
-          style={{
-            position: "absolute",
-            bottom: chrome ? 92 : 24,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 34,
-            padding: "9px 16px",
-            borderRadius: 999,
-            fontSize: 14,
-            color: C.text,
-            background: `${C.card}f2`,
-            border: `1px solid ${C.accent}66`,
-            boxShadow: "0 8px 26px #00000088",
-            animation: "bc-fade-in 0.2s ease-out",
-            whiteSpace: "nowrap",
-          }}
-        >
-          ↩ Torna {salto.dove != null ? `al ${salto.dove}%` : "dov'eri"}
-        </button>
       )}
 
       {selMenu && (
