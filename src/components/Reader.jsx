@@ -18,6 +18,7 @@ import { explain, termIndex, normalize, wikiUrl, glossaryOf } from "../lib/gloss
 import { contextAround } from "../lib/oracle.js";
 import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../lib/readingSpeed.js";
 import { leftoverScroll } from "../lib/spread.js";
+import { segna, racconta, svuota } from "../lib/scatolaNera.js";
 import { sillaba } from "../lib/hyphens.js";
 import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
@@ -447,6 +448,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // in che capitolo sta l'ancora: il ripristino non deve mai cambiarti
   // capitolo, e per saperlo bisogna essersi segnati da dove viene
   const ancoraHref = useRef(null);
+  // chi ha chiesto il prossimo movimento: lo dichiara chi lo avvia, lo
+  // consuma l'approdo. Vuoto vuol dire che non e' stato nessuno di noi.
+  const causa = useRef("apertura");
   const snapRef = useRef(0);
   const snapSeen = useRef(0);
   const markedRef = useRef(new Map());
@@ -462,6 +466,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // scelta dal lettore, che non si sposta da sola.
   const relayout = useCallback((cfi) => {
     const r = rendRef.current;
+    causa.current = "ricalcolo";
     // stessa regola del ripristino: non si cambia capitolo per raddrizzare
     // una riga
     if (cfi && ancoraHref.current && live.current.href && ancoraHref.current !== live.current.href) {
@@ -681,6 +686,17 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
       r.on("relocated", (loc) => {
         const st = live.current;
+        segna({
+          causa: causa.current || "motore",
+          daCap: (st.href || "").split("/").pop(),
+          daPag: st.pagina,
+          aCap: (loc.start.href || "").split("/").pop(),
+          aPag: loc.start?.displayed?.page,
+          w: window.innerWidth,
+          h: window.innerHeight,
+        });
+        causa.current = "";
+        st.pagina = loc.start?.displayed?.page;
         // una voltata e' la prova che qualcuno sta leggendo: e' da qui che
         // lo schermo si guadagna un altro quarto d'ora di veglia
         aliveRef.current?.();
@@ -877,6 +893,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           if (moved.current || rendRef.current !== r) return;
           if (live.current.cfi === target) return;
           anchor.current = target;
+          causa.current = "assestamento";
           reflowing.current = true;
           clearTimeout(reflowTimer.current);
           reflowTimer.current = setTimeout(() => { reflowing.current = false; }, 1500);
@@ -1052,6 +1069,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // esattamente il danno che il ripristino dovrebbe evitare.
         if (ancoraHref.current && live.current.href && ancoraHref.current !== live.current.href) return;
         anchor.current = dove;
+        causa.current = "ripristino";
         reflowing.current = true;
         clearTimeout(reflowTimer.current);
         reflowTimer.current = setTimeout(() => { reflowing.current = false; }, 1500);
@@ -1081,6 +1099,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // Android mentre la barra del browser va e viene.
   function step(r, dir) {
     voluto.current = Date.now();
+    causa.current = dir === "prev" ? "indietro" : "voltata";
     giri.current++;
     if (dir === "prev") return r.prev();
     const rest = leftoverScroll(r.manager);
@@ -1379,6 +1398,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     if (!s?.cfi) return;
     moved.current = true;
     voluto.current = Date.now();
+    causa.current = "ritorno";
     rendRef.current?.display(s.cfi);
   }
 
@@ -1551,6 +1571,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     if (prima && prima !== target) segnaSalto(prima, pct);
     moved.current = true;
     voluto.current = Date.now();
+    causa.current = "salto";
     const arrivo = r.display(target);
     setPanel(null);
     if (!flash) return;
@@ -2791,6 +2812,24 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             value={settings.brightness}
             onChange={(v) => updateSettings({ brightness: v })}
           />
+          {/* LA SCATOLA NERA, dove il lettore puo' leggerla.
+              Sta qui e non in un pannello nascosto perche' serve proprio a
+              chi ha il difetto sotto gli occhi e non ha modo di collegare il
+              tablet a niente: apre, guarda, fotografa, manda. */}
+          <button
+            onClick={() => setPanel("scatola")}
+            style={{
+              width: "100%",
+              marginTop: 8,
+              padding: "9px 0",
+              borderRadius: 10,
+              fontSize: 13.5,
+              border: `1px solid ${C.border}`,
+              color: C.muted,
+            }}
+          >
+            🔎 Cos'ha mosso il libro
+          </button>
           {/* Il timbro della build ANCHE qui, non solo in fondo alla
               Libreria: il service worker sta in modalita' prompt e il
               banner della nuova versione non compare mai a lettore aperto,
@@ -2818,6 +2857,45 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             }
             onRiprova={() => (chi.nome ? chiE(chi.nome) : dovEravamo())}
           />
+        </Panel>
+      )}
+
+      {panel === "scatola" && (
+        <Panel title="Cos'ha mosso il libro" onClose={() => setPanel(null)}>
+          <p style={{ margin: "0 0 10px", fontSize: 13, color: C.muted, lineHeight: 1.5 }}>
+            Ogni riga è una volta in cui la pagina si è spostata: l'ora, chi l'ha chiesto, da che
+            capitolo e pagina a quale, e la misura della finestra. <b>«motore»</b> vuol dire che non
+            è stato nessun comando dell'app: si è mosso epub.js per conto suo.
+          </p>
+          <pre
+            style={{
+              margin: 0,
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: `1px solid ${C.border}`,
+              background: C.bg,
+              color: C.text,
+              fontSize: 11,
+              lineHeight: 1.5,
+              whiteSpace: "pre",
+              overflowX: "auto",
+            }}
+          >
+            {racconta()}
+          </pre>
+          <button
+            onClick={() => { svuota(); setPanel(null); }}
+            style={{
+              marginTop: 10,
+              padding: "7px 14px",
+              borderRadius: 999,
+              fontSize: 13,
+              border: `1px solid ${C.border}`,
+              color: C.muted,
+            }}
+          >
+            Ricomincia da capo
+          </button>
         </Panel>
       )}
 
