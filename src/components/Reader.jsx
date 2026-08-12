@@ -400,7 +400,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const turningRef = useRef(null);
   const turnRef = useRef(() => {});
   // questa ricollocazione l'ha chiesta il lettore, non il motore
-  const voluto = useRef(false);
+  const voluto = useRef(0);
   // quante voltate ha chiesto il lettore: dice se sta leggendo proprio adesso
   const giri = useRef(0);
   const moved = useRef(false);
@@ -444,6 +444,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [endCard, setEndCard] = useState(null);
 
   const anchor = useRef(null);
+  // in che capitolo sta l'ancora: il ripristino non deve mai cambiarti
+  // capitolo, e per saperlo bisogna essersi segnati da dove viene
+  const ancoraHref = useRef(null);
   const snapRef = useRef(0);
   const snapSeen = useRef(0);
   const markedRef = useRef(new Map());
@@ -459,6 +462,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // scelta dal lettore, che non si sposta da sola.
   const relayout = useCallback((cfi) => {
     const r = rendRef.current;
+    // stessa regola del ripristino: non si cambia capitolo per raddrizzare
+    // una riga
+    if (cfi && ancoraHref.current && live.current.href && ancoraHref.current !== live.current.href) {
+      cfi = null;
+    }
     if (cfi) reflowing.current = true;
     try {
       if (r) r.resize(undefined, undefined, cfi || undefined);
@@ -694,9 +702,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // barra del browser va e viene mentre leggi, il risultato e' che la
         // pagina non avanza piu' — misurato: al confine di capitolo il libro
         // rimbalzava fra 17-18 di 22 e 19-20 di 26 a ogni tocco.
-        if (voluto.current) {
-          voluto.current = false;
+        // La finestra e' stretta apposta: `voluto` e' un interruttore, e se
+        // la voltata non produce un approdo (succede quando si scorre
+        // l'avanzo in fondo a un capitolo) resterebbe alzato in attesa. Il
+        // primo reflow che passa se lo prenderebbe, e l'ancora finirebbe su
+        // un punto che il lettore non ha mai scelto.
+        if (voluto.current && Date.now() - voluto.current < 2000) {
+          voluto.current = 0;
           anchor.current = loc.start.cfi;
+          ancoraHref.current = loc.start.href || null;
         }
         if (st.locReady) {
           const p = eb.locations.percentageFromCfi(loc.start.cfi);
@@ -854,7 +868,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       fixTimers.current.forEach(clearTimeout);
       const target = live.current.cfi;
       // il primo approdo semina l'ancora: da li' in poi la muove solo il lettore
-      voluto.current = true;
+      voluto.current = Date.now();
       r.display(target || undefined)
         .catch(() => r.display())
         .then(() => setStatusUi("ready"));
@@ -1027,6 +1041,16 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // libro fermo allo zero per cento.
         const dove = anchor.current || live.current.cfi;
         if (!dove || !rendRef.current) return;
+        // IL RIPRISTINO NON PUO' CAMBIARTI CAPITOLO.
+        //
+        // Serve a recuperare mezza pagina di deriva, niente di piu'. Se
+        // l'ancora sta in un altro capitolo di quello che hai davanti vuol
+        // dire che e' rimasta indietro — succede quando la voltata che ti ha
+        // portato nel capitolo nuovo non produce un approdo, e nel frattempo
+        // il capitolo nuovo si sta ancora impaginando. Rimetterti li' non
+        // corregge una deriva: ti sbalza indietro di decine di pagine, che e'
+        // esattamente il danno che il ripristino dovrebbe evitare.
+        if (ancoraHref.current && live.current.href && ancoraHref.current !== live.current.href) return;
         anchor.current = dove;
         reflowing.current = true;
         clearTimeout(reflowTimer.current);
@@ -1056,7 +1080,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // voltate vere si — anche se cadono in mezzo a un reflow, come succede su
   // Android mentre la barra del browser va e viene.
   function step(r, dir) {
-    voluto.current = true;
+    voluto.current = Date.now();
     giri.current++;
     if (dir === "prev") return r.prev();
     const rest = leftoverScroll(r.manager);
@@ -1354,7 +1378,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     clearTimeout(saltoTimer.current);
     if (!s?.cfi) return;
     moved.current = true;
-    voluto.current = true;
+    voluto.current = Date.now();
     rendRef.current?.display(s.cfi);
   }
 
@@ -1526,7 +1550,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const prima = live.current.cfi;
     if (prima && prima !== target) segnaSalto(prima, pct);
     moved.current = true;
-    voluto.current = true;
+    voluto.current = Date.now();
     const arrivo = r.display(target);
     setPanel(null);
     if (!flash) return;
