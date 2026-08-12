@@ -399,6 +399,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const snapTimer = useRef(null);
   const turningRef = useRef(null);
   const turnRef = useRef(() => {});
+  // questa ricollocazione l'ha chiesta il lettore, non il motore
+  const voluto = useRef(false);
+  // quante voltate ha chiesto il lettore: dice se sta leggendo proprio adesso
+  const giri = useRef(0);
   const moved = useRef(false);
   const fixTimers = useRef([]);
   const live = useRef({ cfi: startCfi || getCfi(book.id), progress: getProgress(book.id), locReady: false, settings: null });
@@ -675,10 +679,25 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         st.cfi = loc.start.cfi;
         st.href = loc.start.href;
         setHref(loc.start.href || "");
-        // l'ancora segue solo le pagine scelte dal lettore: quelle rese da un
-        // reimpaginamento sono un ripiego e non devono diventare il nuovo "li'"
-        if (reflowing.current) reflowing.current = false;
-        else anchor.current = loc.start.cfi;
+        // L'ANCORA LA SCRIVE SOLO IL LETTORE.
+        //
+        // E' il punto in cui rimetterlo dopo una reimpaginazione, quindi deve
+        // essere l'ultima pagina che ha scelto LUI: voltata, indice,
+        // segnalibro, cursore. Ogni altra ricollocazione — e ne arrivano
+        // tante, perche' epub.js reimpagina da solo a ogni cambio di misura —
+        // e' un ripiego del motore e non va scambiata per una scelta.
+        //
+        // Prima bastava che non fosse in corso un reflow NOSTRO. Ma i reflow
+        // di epub.js non passano di qui, e il loro approdo arriva spesso
+        // DOPO la voltata: si prendeva quello, cioe' il punto di prima della
+        // voltata, e il ripristino ci riportava sopra. Su Android, dove la
+        // barra del browser va e viene mentre leggi, il risultato e' che la
+        // pagina non avanza piu' — misurato: al confine di capitolo il libro
+        // rimbalzava fra 17-18 di 22 e 19-20 di 26 a ogni tocco.
+        if (voluto.current) {
+          voluto.current = false;
+          anchor.current = loc.start.cfi;
+        }
         if (st.locReady) {
           const p = eb.locations.percentageFromCfi(loc.start.cfi);
           if (Number.isFinite(p)) {
@@ -834,6 +853,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       moved.current = false;
       fixTimers.current.forEach(clearTimeout);
       const target = live.current.cfi;
+      // il primo approdo semina l'ancora: da li' in poi la muove solo il lettore
+      voluto.current = true;
       r.display(target || undefined)
         .catch(() => r.display())
         .then(() => setStatusUi("ready"));
@@ -980,15 +1001,31 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const el = bookRef.current;
     if (!el || typeof ResizeObserver === "undefined") return undefined;
     let primo = true;
-    let foto = null;
-    let timer;
+    let timer = null;
+    let giriInizio = 0;
     const ro = new ResizeObserver(() => {
       if (primo) { primo = false; return; }
-      if (!foto) foto = anchor.current || live.current.cfi;
+      // inizio di una raffica: mi segno a che punto era la lettura
+      if (!timer) giriInizio = giri.current;
       clearTimeout(timer);
       timer = setTimeout(() => {
-        const dove = foto;
-        foto = null;
+        timer = null;
+        // SE IL LETTORE HA SFOGLIATO, NON SI RIMETTE NIENTE.
+        //
+        // Il ripristino serve a una cosa sola: dopo una reimpaginazione
+        // epub.js si riallinea all'INIZIO della pagina che contiene il punto,
+        // e cosi' arretra di mezza pagina a ogni giro — da fermi si vede.
+        // Ma se intanto il lettore ha voltato, il posto se l'e' scelto lui: la
+        // deriva non conta piu', e rimetterlo dove stava gli mangia le
+        // voltate. Su Android la barra del browser va e viene MENTRE leggi,
+        // quindi le due cose capitano sempre insieme.
+        if (giri.current !== giriInizio) return;
+        // Il punto si legge ADESSO, non all'inizio della raffica: su Android
+        // la barra del browser va e viene di continuo mentre leggi, e una
+        // fotografia scattata mezzo secondo prima riportava indietro tutte le
+        // pagine sfogliate nel frattempo — misurato: ventotto voltate e il
+        // libro fermo allo zero per cento.
+        const dove = anchor.current || live.current.cfi;
         if (!dove || !rendRef.current) return;
         anchor.current = dove;
         reflowing.current = true;
@@ -1011,7 +1048,16 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
   // avanti si scorre il residuo prima di cambiare capitolo, cosi' l'ultima
   // pagina scritta non viene saltata; indietro epub.js gia' atterra in fondo
+  // UNA VOLTATA VOLUTA DAL LETTORE, non un assestamento del motore.
+  //
+  // `anchor` deve tenere l'ULTIMO punto scelto da chi legge, e solo quello:
+  // e' il punto in cui rimetterlo dopo ogni reimpaginazione. Le
+  // ricollocazioni che nascono da un reflow non devono toccarlo, ma le
+  // voltate vere si — anche se cadono in mezzo a un reflow, come succede su
+  // Android mentre la barra del browser va e viene.
   function step(r, dir) {
+    voluto.current = true;
+    giri.current++;
     if (dir === "prev") return r.prev();
     const rest = leftoverScroll(r.manager);
     if (!rest) return r.next();
@@ -1308,6 +1354,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     clearTimeout(saltoTimer.current);
     if (!s?.cfi) return;
     moved.current = true;
+    voluto.current = true;
     rendRef.current?.display(s.cfi);
   }
 
@@ -1479,6 +1526,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const prima = live.current.cfi;
     if (prima && prima !== target) segnaSalto(prima, pct);
     moved.current = true;
+    voluto.current = true;
     const arrivo = r.display(target);
     setPanel(null);
     if (!flash) return;
