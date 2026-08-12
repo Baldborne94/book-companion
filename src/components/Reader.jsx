@@ -498,6 +498,22 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       rendRef.current = r;
       applyStyles(r, s);
 
+      // Saltando a un'ancora (indice, segnalibro) epub.js fa
+      // floor(offset / facciata) sull'offset letto dai rettangoli, e
+      // Firefox li riporta con un residuo sub-pixel: 55887,99998 al posto
+      // di 55888 fa perdere una facciata secca. L'offset si arrotonda
+      // PRIMA che il floor lo veda; sui numeri gia' interi non cambia nulla.
+      r.started.then(() => {
+        const man = r.manager;
+        if (!man?.moveTo || man.bcTondo) return;
+        man.bcTondo = true;
+        const vero = man.moveTo.bind(man);
+        man.moveTo = (offset, width) => vero(
+          { ...offset, left: Math.round(offset?.left || 0), top: Math.round(offset?.top || 0) },
+          width
+        );
+      });
+
       r.on("relocated", (loc) => {
         const st = live.current;
         // una voltata e' la prova che qualcuno sta leggendo: e' da qui che
@@ -828,26 +844,30 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // assestati si rifa' l'atterraggio sul bersaglio vero; se non c'era
   // niente da aspettare non succede nulla, e se il lettore ha gia'
   // rivoltato la correzione muore col suo gettone.
+  // La prima versione aspettava le PROMESSE di font e immagini, ma il
+  // momento del controllo tradisce: i font si chiedono al primo layout
+  // che li usa, e interrogati un attimo prima `document.fonts` giura che
+  // e' tutto carico. Qui invece si fa la guardia alla MISURA: per quattro
+  // secondi si riguarda la larghezza del capitolo, e a ogni crescita si
+  // ri-atterra — piu' un ri-atterraggio di conferma al primo giro utile,
+  // che a bersaglio gia' centrato non muove niente e non si vede.
   const assestamento = useRef(0);
   function aCapitoloAssestato(azione) {
     const gettone = ++assestamento.current;
-    const doc = bestView()?.view?.contents?.document;
-    if (!doc) return;
-    const attese = [];
-    try {
-      if (doc.fonts && doc.fonts.status !== "loaded") attese.push(doc.fonts.ready);
-    } catch { /* documento senza Font Loading API */ }
-    for (const img of doc.images || []) {
-      if (!img.complete) attese.push(new Promise((va) => { img.onload = img.onerror = va; }));
-    }
-    if (!attese.length) return;
-    const scadenza = new Promise((va) => setTimeout(va, 2500));
-    Promise.race([Promise.all(attese), scadenza]).then(() => {
-      requestAnimationFrame(() => {
-        if (gettone !== assestamento.current) return;
+    let sw0 = rendRef.current?.manager?.container?.scrollWidth || 0;
+    let giri = 0;
+    const ronda = () => {
+      if (gettone !== assestamento.current) return;
+      const cont = rendRef.current?.manager?.container;
+      if (!cont) return;
+      giri += 1;
+      if (cont.scrollWidth !== sw0 || giri === 4) {
+        sw0 = cont.scrollWidth;
         try { azione(); } catch { /* la vista puo' essere gia' sparita */ }
-      });
-    });
+      }
+      if (giri < 16) setTimeout(ronda, 250);
+    };
+    setTimeout(ronda, 250);
   }
 
   // avanti si scorre il residuo prima di cambiare capitolo, cosi' l'ultima
