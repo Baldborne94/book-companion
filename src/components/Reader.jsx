@@ -520,7 +520,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           setStatus(book.id, "read");
           setEndCard((v) => (v === null ? "shown" : v));
         }
-        if (loc.start?.displayed?.total) setDisplayed(loc.start.displayed);
+        if (loc.start?.displayed?.total) setDisplayed(contaPagina(r, loc.start));
         const now = Date.now();
         if (lastTurnAt.current) {
           const next = pushSample(samplesRef.current, now - lastTurnAt.current);
@@ -825,6 +825,34 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     if (!rest) return r.next();
     r.manager.scrollBy(rest, 0, true);
     return r.reportLocation();
+  }
+
+  // IL CONTAPAGINE NON SI FIDA DEI RETTANGOLI. epub.js ricava la pagina
+  // corrente da getBoundingClientRect, e Firefox riporta quei rettangoli
+  // con un residuo sub-pixel (997,99998 per 998): il floor scende di
+  // un'unita' e l'etichetta esce con la sinistra pari — numeri che si
+  // ripetono, si sovrappongono, e il famoso «12-13 di 14» con la destra
+  // vuota mentre il testo sta al posto giusto. Lo scorrimento del
+  // contenitore e l'offset della vista invece sono INTERI: la pagina si
+  // riconta da li', e l'arrotondamento chiude la porta al residuo.
+  function contaPagina(r, start) {
+    const displayed = start.displayed;
+    try {
+      if (live.current.settings.flow === "scrolled") return displayed;
+      const man = r.manager;
+      const sl = man?.container?.scrollLeft;
+      const pw = man?.layout?.pageWidth;
+      if (!(pw > 0) || !Number.isFinite(sl)) return displayed;
+      let base = 0;
+      man.views?.forEach?.((v) => {
+        if ((v.section?.href || "") === (start.href || "")) base = v.element?.offsetLeft || 0;
+      });
+      const page = Math.round((sl - base) / pw) + 1;
+      if (page < 1 || page > displayed.total) return displayed;
+      return { ...displayed, page };
+    } catch {
+      return displayed;
+    }
   }
 
   // La vista che il lettore sta davvero guardando: con piu' capitoli in
