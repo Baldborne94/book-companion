@@ -40,6 +40,21 @@ const HEAD = 8;
 const FOOT = 8;
 const EDGE_STRIPES =
   "repeating-linear-gradient(to right, #00000047 0 1px, #ffffff1f 1px 2px, #0000001c 2px 4px)";
+// fasce laterali del tocco: valgono su tutta la larghezza dello schermo,
+// cornice e taglio delle pagine compresi, non solo dentro al capitolo
+const TAP_PREV = 0.28;
+const TAP_NEXT = 0.72;
+// tetto ai segni per capitolo: la pagina resta una pagina, non un elenco
+const MARKS_PER_CHAPTER = 60;
+// Oltre questa lunghezza la selezione non e' piu' una frase ma un brano, e
+// cercarci dentro un modo di dire non ha senso.
+const NET_WORDS = 30;
+// la selezione da capire e' spesso un paragrafo intero — il parlato
+// biascicato si decifra tutto insieme — quindi il pulsante deve esserci
+// anche li'.
+const PHRASE_WORDS = 300;
+// tre locations da 600 caratteri fanno all'incirca una facciata stampata
+const POSIZIONI_PER_PAGINA = 3;
 const isTouch = () => navigator.maxTouchPoints > 0;
 const GOOGLE_FONT_CSS =
   "@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap');";
@@ -956,6 +971,34 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const p = Math.min(1, Math.max(0, progress || 0));
   const edgeRead = EDGE_MIN + Math.round((EDGE_MAX - EDGE_MIN) * p);
   const edgeLeftToRead = EDGE_MIN + Math.round((EDGE_MAX - EDGE_MIN) * (1 - p));
+  // LE PAGINE SI CONTANO SUL TESTO, NON SULLO SCHERMO. Le locations sono
+  // pezzi di testo di 600 caratteri, contati una volta su tutto il libro:
+  // tre fanno all'incirca una facciata stampata. Il numero che ne esce non
+  // e' la facciata che hai davanti — cambia il corpo del testo e resta lo
+  // stesso, com'e' giusto — ma sale sempre, non riparte a ogni documento e
+  // su un altro dispositivo e' identico. Misurare le facciate vere voleva
+  // dire interrogare l'impaginazione a ogni voltata, ed e' da li' che sono
+  // arrivati mesi di numeri ballerini.
+  const pagine = (() => {
+    if (!locReady || !epubRef.current || !live.current.cfi) return null;
+    try {
+      const tutte = epubRef.current.locations.length();
+      const qui = epubRef.current.locations.locationFromCfi(live.current.cfi);
+      if (!tutte || !Number.isFinite(qui) || qui < 0) return null;
+      return {
+        n: Math.floor(qui / POSIZIONI_PER_PAGINA) + 1,
+        tot: Math.max(1, Math.round(tutte / POSIZIONI_PER_PAGINA)),
+      };
+    } catch {
+      return null;
+    }
+  })();
+  // il nome del capitolo, come lo chiama l'indice del libro
+  const capitolo = (() => {
+    const base = (live.current.href || "").split("#")[0];
+    if (!base) return null;
+    return toc.find((t) => (t.href || "").split("#")[0] === base)?.label || null;
+  })();
 
   return (
     <div
@@ -1226,7 +1269,16 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.muted, marginTop: 2 }}>
               <span>{locReady ? `${pct}%` : "misuro le pagine…"}</span>
               <span>
-                {settings.flow === "scrolled" ? "scorrimento" : `${pct}% del libro`}
+                {[
+                  capitolo,
+                  settings.flow === "scrolled"
+                    ? "scorrimento"
+                    : pagine
+                      ? `pag. ${pagine.n} di ${pagine.tot}`
+                      : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "…"}
               </span>
             </div>
           </div>
