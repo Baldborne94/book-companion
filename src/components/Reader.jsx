@@ -44,14 +44,13 @@ const GIRO = 820;
 // punto di lettura, segnalibri, evidenziazioni. A questi si aggiungono i
 // 20px che epub.js mette di suo sul body, inline e con !important: sono
 // intoccabili da un foglio di stile, e fanno da margine minimo.
-// In testa ci vive il titolo corrente, come sul margine di un libro
-// stampato. La banda e' riservata SEMPRE, anche a levetta spenta: se la
-// misura dipendesse dalla levetta, spegnerla reimpaginerebbe il libro e
-// sposterebbe il testo sotto le dita. Si sceglie cosa stamparci, non quanta
-// carta lasciare — ed e' anche il motivo per cui il piede resta largo pur
-// non portando piu' il folio: stringerlo adesso reimpaginerebbe ogni libro.
-const HEAD = 26;
-const FOOT = 26;
+// QUESTI NUMERI NON SI TOCCANO PIU'. Sono la misura con cui il reader ha
+// sempre funzionato: portarli a 26 per stamparci il titolo corrente ha
+// reimpaginato ogni libro e cambiato il numero di colonne dei capitoli, ed
+// e' li' che su tablet sono cominciati i salti di pagina. Il titolo sul
+// margine era bello: non vale una lettura che salta.
+const HEAD = 8;
+const FOOT = 8;
 // IL TITOLO CORRENTE NON E' L'ETICHETTA DELL'INDICE.
 //
 // Gli indici degli EPUB sono pieni di voci di servizio — «Begin Reading»,
@@ -423,10 +422,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [cursore, setCursore] = useState(null);
   // il titolo stampato dal capitolo su se stesso, per href
   const [titoli, setTitoli] = useState({});
-  // il capitolo per il titolo corrente: si tiene l'href e il titolo si cerca
-  // in fase di disegno, cosi' non serve un indice aggiornato dentro il
-  // gestore di epub.js, che viene registrato una volta sola
-  const [href, setHref] = useState("");
   const [toc, setToc] = useState([]);
   const [marks, setMarks] = useState(() => getMarks(book.id));
   const [hls, setHls] = useState(() => getHighlights(book.id));
@@ -686,7 +681,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         aliveRef.current?.();
         st.cfi = loc.start.cfi;
         st.href = loc.start.href;
-        setHref(loc.start.href || "");
         // L'ANCORA LA SCRIVE SOLO IL LETTORE.
         //
         // E' il punto in cui rimetterlo dopo una reimpaginazione, quindi deve
@@ -1596,11 +1590,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const p = Math.min(1, Math.max(0, progress || 0));
   const edgeRead = EDGE_MIN + Math.round((EDGE_MAX - EDGE_MIN) * p);
   const edgeLeftToRead = EDGE_MIN + Math.round((EDGE_MAX - EDGE_MIN) * (1 - p));
-  const base = (href || "").split("#")[0];
-  const capitolo =
-    titoli[base] || titoloUtile(toc.find((t) => (t.href || "").split("#")[0] === base)?.label);
-  // le barre coprono i margini: quando ci sono, il libro tace e parlano loro
-  const stampaMargini = settings.folio !== false && paginated && !chrome && status === "ready";
   const pagesLeft = displayed ? Math.max(0, displayed.total - displayed.page) : 0;
   // speed e' il tempo fra un cambio pagina e l'altro, e in doppia pagina un
   // cambio ne avanza due: le pagine rimaste vanno divise per il foglio, non
@@ -1728,64 +1717,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             background: theme.bg,
           }}
         />
-        {/* IL TITOLO CORRENTE, sul margine di testa che il riquadro riserva
-            comunque. In doppia pagina si fa come su carta: a sinistra il
-            titolo del libro, a destra quello del capitolo. Sta sotto la
-            rilegatura e sotto i fogli in volo (z 7 e oltre), cosi' una
-            voltata lo copre invece di lasciarlo fermo a mezz'aria sopra la
-            pagina che gira. */}
-        {stampaMargini && (
-          <div
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              inset: FRAME,
-              padding: `4px ${Math.max(settings.margin, EDGE_MAX + 8)}px calc(4px + env(safe-area-inset-bottom))`,
-              boxSizing: "border-box",
-              pointerEvents: "none",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "space-between",
-              fontFamily: FONT_TITLE,
-              color: `${theme.fg}66`,
-              fontSize: 11.5,
-              letterSpacing: 0.7,
-            }}
-          >
-            <div style={{ display: "flex", gap: 24 }}>
-              {/* come su carta: a sinistra il libro, a destra il capitolo. Se
-                  il capitolo non ha un titolo dicibile la destra resta bianca
-                  — meglio un margine vuoto di una parola sbagliata. */}
-              {(twoUp ? [book.title, capitolo] : [capitolo || book.title]).map((testo, i) => (
-                <span
-                  key={i}
-                  style={{
-                    flex: 1,
-                    textAlign: "center",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  {testo}
-                </span>
-              ))}
-            </div>
-            {/* AL PIEDE NON SI STAMPA NIENTE, ed e' una scelta.
-                Il numero c'era e contava i fogli di CARTA: 1800 caratteri,
-                una pagina di tascabile. Ma le facciate dello schermo hanno
-                un'altra misura, quindi una pagina di carta cadeva a cavallo
-                di due schermate e la serie usciva 1,3 → 3,5 → 5,6: sempre in
-                avanti, ma con numeri che si ripetono e che saltano. Un folio
-                che non va uno per uno e' peggio di nessun folio — chi legge
-                si aspetta la pagina dopo, non la pagina piu' due.
-                Per numerarle una per una bisognerebbe contare le FACCIATE, e
-                quelle il libro non le sa finche' non le impagina tutte.
-                La banda resta riservata lo stesso: e' li' che vive l'aria in
-                fondo alla pagina, e toglierla reimpaginerebbe tutto. */}
-          </div>
-        )}
         <div
           aria-hidden="true"
           style={{
@@ -2475,8 +2406,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               style={{ width: "100%", accentColor: C.accent }}
             />
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.muted, marginTop: 2 }}>
-              {/* lo stesso folio del margine e del segnalibro: un numero solo
-                  per tutto il reader, o i conti si contraddicono a vicenda */}
               {/* mentre trascini dice dove andresti a finire: il libro non
                   si muove finche' non lasci, e senza questa riga sembrerebbe
                   che il cursore non faccia niente */}
@@ -2717,30 +2646,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 : !lingua?.dichiarata
                   ? "Questo tomo non dichiara la sua lingua, e senza lingua non si sillaba: giustificarlo aprirebbe fiumi di bianco fra le parole."
                   : "Questo browser non sa sillabare in questa lingua — l'ho provato qui, su questo dispositivo. Giustificare senza poter spezzare le parole aprirebbe fiumi di bianco, e allora meglio il bordo a bandiera."}
-            </p>
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 14.5, color: paginated ? C.muted : C.dim }}>Titolo corrente sul margine</span>
-              <button
-                onClick={() => updateSettings({ folio: settings.folio === false })}
-                disabled={!paginated}
-                style={{
-                  padding: "6px 16px",
-                  borderRadius: 999,
-                  fontSize: 14,
-                  border: `1px solid ${settings.folio !== false && paginated ? C.accent : C.border}`,
-                  color: !paginated ? C.dim : settings.folio !== false ? C.accent : C.muted,
-                  background: settings.folio !== false && paginated ? `${C.accent}14` : "transparent",
-                }}
-              >
-                {settings.folio !== false ? "Attivi 📖" : "Spenti"}
-              </button>
-            </div>
-            <p style={{ margin: "5px 0 0", fontSize: 12.5, color: C.dim, lineHeight: 1.45 }}>
-              Il titolo del libro e quello del capitolo in testa alla pagina, come su carta. Al piede
-              non c'è il numero: le facciate dello schermo non coincidono con le pagine di un libro
-              stampato, e sarebbero uscite numerate a salti.
             </p>
           </div>
           {glossaryOf(book) && (
