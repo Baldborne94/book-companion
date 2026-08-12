@@ -294,7 +294,7 @@ export default function Library({ books, updateBooks, onOpenBook, onReadAt, noti
     if (!files.length || importing) return;
     setImporting(true);
     try {
-      const { added, errors } = await importFiles(files);
+      const { added, errors, cuciti } = await importFiles(files);
       if (added.length) {
         updateBooks([...books, ...added]);
         onImported?.();
@@ -302,6 +302,9 @@ export default function Library({ books, updateBooks, onOpenBook, onReadAt, noti
       const parts = [];
       if (added.length)
         parts.push(added.length === 1 ? "Un nuovo tomo sullo scaffale ✨" : `${added.length} nuovi tomi sullo scaffale ✨`);
+      // se il libro arrivava a pezzi vale la pena dirlo: spiega perche'
+      // adesso il testo scorre dove prima c'erano facciate bianche
+      if (cuciti) parts.push(cuciti === 1 ? "un pezzo ricucito 🪡" : `${cuciti} pezzi ricuciti 🪡`);
       errors.forEach((e) => parts.push(`«${e.name}»: ${e.reason}`));
       notify(parts.join(" · ") || "Nessun file importato");
     } finally {
