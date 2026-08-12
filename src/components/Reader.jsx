@@ -171,9 +171,6 @@ function flattenToc(items, depth = 0, out = []) {
   return out;
 }
 
-// quanto del corpo occupa davvero una maiuscola, nei serif che usiamo
-const CAP = 0.7;
-
 function contentStyles(s, lingua) {
   const t = READER_THEMES[s.theme];
   const font = READER_FONTS.find((f) => f.id === s.font)?.css;
@@ -241,33 +238,14 @@ function contentStyles(s, lingua) {
           "-webkit-hyphens": "manual !important",
         };
   }
-  // IL CAPOLETTERA.
+  // NIENTE CAPOLETTERA, ed e' una rinuncia decisa dopo averlo provato.
   //
-  // `::first-letter` e' pura presentazione: non tocca il DOM, quindi non
-  // sposta un solo CFI — segnalibri ed evidenziazioni restano dove sono.
-  // Prende il PRIMO paragrafo dopo un titolo, non il primo paragrafo del
-  // corpo: molti EPUB aprono il capitolo con una data, un'epigrafe o il nome
-  // del narratore, e la capitale su quelli sta male.
-  //
-  // Si spegne dichiarando i valori normali, non togliendo la regola: epub.js
-  // accoda al foglio di stile del capitolo e non lo ripulisce mai.
-  const primo = "h1 + p::first-letter, h2 + p::first-letter, h3 + p::first-letter";
-  rules[primo] = s.capolettera
-    ? {
-        float: "left",
-        // Tre righe di altezza — sotto sembra un refuso, sopra sfonda la
-        // colonna stretta di un tablet. La misura NON e' «tre volte
-        // l'interlinea»: quella e' l'altezza della scatola, non della
-        // lettera. Una maiuscola occupa circa il 70% del suo corpo, quindi il
-        // corpo va diviso per quel 70% o la capitale galleggia a mezz'aria
-        // con un buco sotto. L'interlinea poi riporta la scatola alle tre
-        // righe esatte, cosi' il testo le gira intorno e non oltre.
-        "font-size": `${((3 * s.lineHeight) / CAP).toFixed(2)}em`,
-        "line-height": String(CAP),
-        "padding-right": "0.07em",
-        color: `${t.link} !important`,
-      }
-    : { float: "none", "font-size": "inherit", "line-height": "inherit", color: `${t.fg} !important` };
+  // Un `::first-letter` flottante alto tre righe e' l'unica cosa che questo
+  // reader mettesse DENTRO la colonna di testo, e la colonna qui e' un
+  // multicolonna impaginato: i float li' sono il punto piu' fragile dei
+  // motori, e Firefox li tratta diversamente da Chrome. Col capolettera
+  // acceso la lettura saltava avanti di parecchie pagine da sola, su
+  // tablet. Una bella lettera non vale una lettura rotta.
   return rules;
 }
 
@@ -1274,8 +1252,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     if ("flow" in patch || "spread" in patch || "font" in patch) makeRendition(next);
     else if (
       rendRef.current &&
-      ("theme" in patch || "fontSize" in patch || "lineHeight" in patch || "justify" in patch ||
-        "capolettera" in patch)
+      ("theme" in patch || "fontSize" in patch || "lineHeight" in patch || "justify" in patch)
     ) {
       applyStyles(rendRef.current, next);
       schedulePark();
@@ -2693,22 +2670,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               non c'è il numero: le facciate dello schermo non coincidono con le pagine di un libro
               stampato, e sarebbero uscite numerate a salti.
             </p>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <span style={{ fontSize: 14.5, color: C.muted }}>Capolettera a inizio capitolo</span>
-            <button
-              onClick={() => updateSettings({ capolettera: settings.capolettera === false })}
-              style={{
-                padding: "6px 16px",
-                borderRadius: 999,
-                fontSize: 14,
-                border: `1px solid ${settings.capolettera !== false ? C.accent : C.border}`,
-                color: settings.capolettera !== false ? C.accent : C.muted,
-                background: settings.capolettera !== false ? `${C.accent}14` : "transparent",
-              }}
-            >
-              {settings.capolettera !== false ? "Attivo ✒" : "Spento"}
-            </button>
           </div>
           {glossaryOf(book) && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
