@@ -1,9 +1,14 @@
 import { putFile, putCover } from "./bookStore.js";
 import { riconosci } from "./sagaBooks.js";
 
+// oltre questa taglia il libro non si ricuce: tenere in memoria due
+// copie dell'archivio, su un tablet, vale piu' di qualche pagina bianca
+const TROPPO_GROSSO = 80 * 1024 * 1024;
+
 export async function importFiles(fileList) {
   const added = [];
   const errors = [];
+  let cuciti = 0;
   for (const file of Array.from(fileList)) {
     const lower = file.name.toLowerCase();
     const fileType = lower.endsWith(".epub") ? "epub" : lower.endsWith(".pdf") ? "pdf" : null;
@@ -12,8 +17,26 @@ export async function importFiles(fileList) {
       continue;
     }
     const id = crypto.randomUUID();
+    // I PEZZI SI RICUCIONO ALL'INGRESSO. Un ePub spezzato in piu'
+    // documenti lascia una facciata bianca a ogni giuntura, in mezzo a
+    // una scena: qui il libro entra gia' intero. Si fa SOLO ora, perche'
+    // cambia i CFI e su un libro gia' letto sposterebbe segnalibri,
+    // evidenziazioni e punto di lettura.
+    let daSalvare = file;
+    if (fileType === "epub" && file.size <= TROPPO_GROSSO) {
+      try {
+        const { unisciPezzi } = await import("./unisciEpub.js");
+        const cucito = await unisciPezzi(file);
+        if (cucito?.blob) {
+          daSalvare = cucito.blob;
+          cuciti += cucito.cuciti;
+        }
+      } catch {
+        /* libro che non si lascia ricucire: entra com'e', con le sue giunture */
+      }
+    }
     try {
-      await putFile(id, file);
+      await putFile(id, daSalvare);
     } catch {
       errors.push({ name: file.name, reason: "salvataggio fallito" });
       continue;
@@ -29,7 +52,7 @@ export async function importFiles(fileList) {
       notes: "",
     };
     try {
-      if (fileType === "epub") await enrichEpub(meta, file);
+      if (fileType === "epub") await enrichEpub(meta, daSalvare);
       else await enrichPdf(meta, file);
     } catch {
       /* estrazione fallita: il libro resta col filename come titolo */
@@ -43,7 +66,7 @@ export async function importFiles(fileList) {
     }
     added.push(meta);
   }
-  return { added, errors };
+  return { added, errors, cuciti };
 }
 
 async function enrichEpub(meta, file) {
