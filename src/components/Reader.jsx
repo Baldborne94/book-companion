@@ -316,6 +316,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [speed, setSpeed] = useState(() => medianMs(loadSamples()));
   const [dict, setDict] = useState(null);
   const [endCard, setEndCard] = useState(null);
+  // il velo color carta sugli atterraggi in una sezione fresca: copre
+  // l'assestamento (atterraggio provvisorio + scatto sul bersaglio) e
+  // cade a misura ferma — vedi aCapitoloAssestato
+  const [velo, setVelo] = useState(false);
 
   const anchor = useRef(null);
   const snapRef = useRef(0);
@@ -479,6 +483,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         try { rendRef.current.destroy(); } catch { /* già distrutto */ }
       }
       viewerRef.current.innerHTML = "";
+      setVelo(false);
       const m = misuraLibro();
       misuraData.current = m ? { w: m.w, h: m.h } : { w: 0, h: 0 };
       const r = eb.renderTo(viewerRef.current, {
@@ -851,23 +856,52 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // secondi si riguarda la larghezza del capitolo, e a ogni crescita si
   // ri-atterra — piu' un ri-atterraggio di conferma al primo giro utile,
   // che a bersaglio gia' centrato non muove niente e non si vede.
+  // E IL LAVORO NON SI GUARDA: l'atterraggio provvisorio piu' lo scatto
+  // sul bersaglio erano un glitch a vista. Chi atterra in una sezione
+  // fresca passa un velo color carta sul libro (`scopri` lo toglie), che
+  // si alza PRIMA del primo dipinto e cade quando la misura sta ferma da
+  // due ronde — subito dopo l'atterraggio di conferma, cosi' si scopre
+  // direttamente la pagina giusta. La guardia continua muta fino a ~3s
+  // per la crescita ritardataria, e qualunque gesto del lettore la
+  // uccide E toglie il velo.
+  // il polso della guardia: fitto, perche' il velo dura quanto lei —
+  // due ronde ferme e si scopre (circa un terzo di secondo)
+  const PASSO = 120;
   const assestamento = useRef(0);
-  function aCapitoloAssestato(azione) {
+  function aCapitoloAssestato(azione, scopri) {
     const gettone = ++assestamento.current;
     let sw0 = rendRef.current?.manager?.container?.scrollWidth || 0;
     let giri = 0;
-    const ronda = () => {
-      if (gettone !== assestamento.current) return;
-      const cont = rendRef.current?.manager?.container;
-      if (!cont) return;
-      giri += 1;
-      if (cont.scrollWidth !== sw0 || giri === 4) {
-        sw0 = cont.scrollWidth;
-        try { azione(); } catch { /* la vista puo' essere gia' sparita */ }
+    let stabile = 0;
+    let confermato = false;
+    let coperto = !!scopri;
+    const fine = () => {
+      if (coperto) {
+        coperto = false;
+        scopri();
       }
-      if (giri < 16) setTimeout(ronda, 250);
     };
-    setTimeout(ronda, 250);
+    const ronda = () => {
+      if (gettone !== assestamento.current) return fine();
+      const cont = rendRef.current?.manager?.container;
+      if (!cont) return fine();
+      giri += 1;
+      if (cont.scrollWidth !== sw0) {
+        sw0 = cont.scrollWidth;
+        stabile = 0;
+        try { azione(); } catch { /* la vista puo' essere gia' sparita */ }
+      } else {
+        stabile += 1;
+      }
+      if (!confermato && stabile >= 2) {
+        confermato = true;
+        try { azione(); } catch { /* la vista puo' essere gia' sparita */ }
+        fine();
+      }
+      if (giri < 20) setTimeout(ronda, PASSO);
+      else fine();
+    };
+    setTimeout(ronda, PASSO);
   }
 
   // avanti si scorre il residuo prima di cambiare capitolo, cosi' l'ultima
@@ -875,17 +909,39 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // fondo — ma sul fondo di QUEL momento, da riprendere a capitolo fermo
   function step(r, dir) {
     assestamento.current++;
+    setVelo(false);
     if (dir === "prev") {
-      const sez = bestView()?.view?.section?.index;
+      const b = bestView();
+      const sez = b?.view?.section?.index;
+      // al primo foglio della sezione il passo indietro attraversa il
+      // confine: il capitolo che sta per nascere si copre PRIMA che
+      // dipinga l'atterraggio provvisorio
+      const base = b?.view?.element?.offsetLeft || 0;
+      if ((r.manager?.container?.scrollLeft ?? 0) <= base) setVelo(true);
       const p = r.prev();
       p?.then?.(() => {
-        if (rendRef.current !== r || bestView()?.view?.section?.index === sez) return;
+        const arrivo = bestView()?.view;
+        if (rendRef.current !== r || !arrivo || arrivo.section?.index === sez) {
+          setVelo(false);
+          return;
+        }
+        const indice = arrivo.section.index;
         aCapitoloAssestato(() => {
           if (rendRef.current !== r) return;
-          r.manager.scrollTo(r.manager.container.scrollWidth, 0, true);
+          const cont = r.manager.container;
+          // il fondo DI QUESTO capitolo, non del contenitore: epub.js puo'
+          // tenerne montati due, e la fine del contenitore sarebbe la coda
+          // di quello da cui siamo appena venuti — un balzo in avanti
+          let el = null;
+          r.manager.views?.forEach?.((v) => { if (v.section?.index === indice) el = v.element; });
+          if (!el) return;
+          const passo = r.manager.layout?.pageWidth || cont.clientWidth || 1;
+          const ultima = el.offsetLeft + Math.max(0, el.offsetWidth - cont.clientWidth);
+          r.manager.scrollTo(el.offsetLeft + Math.round((ultima - el.offsetLeft) / passo) * passo, 0, true);
           r.reportLocation();
-        });
+        }, () => setVelo(false));
       });
+      p?.catch?.(() => setVelo(false));
       return p;
     }
     const rest = leftoverScroll(r.manager);
@@ -1196,6 +1252,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     if (!r) return;
     moved.current = true;
     assestamento.current++;
+    setVelo(false);
     const arrivo = r.display(target);
     // un segnalibro in un capitolo non ancora costruito atterra con le
     // misure di prima che font e immagini prendessero posto: a capitolo
@@ -1310,6 +1367,19 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             background: theme.bg,
           }}
         />
+        {velo && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              inset: FRAME,
+              zIndex: 6,
+              borderRadius: 3,
+              background: theme.bg,
+              pointerEvents: "none",
+            }}
+          />
+        )}
         <div
           aria-hidden="true"
           style={{
@@ -1600,6 +1670,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 const cfi = epubRef.current.locations.cfiFromPercentage(parseInt(e.target.value, 10) / 1000);
                 moved.current = true;
                 assestamento.current++;
+                setVelo(false);
                 if (cfi) rendRef.current?.display(cfi);
               }}
               style={{ width: "100%", accentColor: C.accent }}
