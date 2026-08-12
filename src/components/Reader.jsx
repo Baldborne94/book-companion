@@ -54,6 +54,29 @@ function pageLabel(d, spread, capitoli) {
   return capitoli ? `${dove} di ${d.total} del capitolo` : dove;
 }
 
+// SENZA CAPITOLI LE PAGINE SI CONTANO DALL'INIZIO DEL LIBRO. epub.js
+// numera dentro il documento aperto, e l'editore i documenti li spezza
+// dove gli pare: si leggeva «143-144» e alla voltata dopo «1-2», sempre
+// al 26% del libro. La pagina vera si stima dalle locations, che sono
+// contate su tutto il libro: quelle della sezione aperta, divise per le
+// sue facciate, dicono quanto testo entra in una pagina.
+// Il passo si misura sulle sezioni GROSSE gia' viste, mai su quella
+// aperta: entrando in una paginetta di coda — un colophon di due righe —
+// il conto usciva da 122 a 439 di botto. Le briciole non dicono niente su
+// quanto testo entra in una pagina, e piu' capitoli si leggono piu' la
+// misura si assesta.
+const FACCIATE_MINIME = 5;
+function paginaDelLibro(eb, cfi, passo) {
+  try {
+    if (!passo?.pag || !cfi) return null;
+    const fatte = eb.locations.locationFromCfi(cfi);
+    if (!Number.isFinite(fatte) || fatte < 0) return null;
+    return Math.max(1, Math.round(fatte / (passo.loc / passo.pag)) + 1);
+  } catch {
+    return null;
+  }
+}
+
 // I CAPITOLI LI DECIDE L'INDICE, NON I FILE. L'editore spezza il testo in
 // piu' documenti per suo comodo — Guards! Guards! ne ha parecchi da 142
 // facciate l'uno — ma nell'indice il romanzo e' UNA voce, «Begin
@@ -366,6 +389,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // sappiamo si tace: meglio nessun conteggio che uno sbagliato.
   const [capitoli, setCapitoli] = useState(false);
   const sezioni = useRef({ capitoli: false, tot: 0, per: new Map() });
+  // quanto testo entra in una pagina, misurato sulle sezioni gia' viste
+  const [passo, setPasso] = useState({ loc: 0, pag: 0 });
+  const passoViste = useRef(new Set());
   const [toc, setToc] = useState([]);
   const [marks, setMarks] = useState(() => getMarks(book.id));
   const [hls, setHls] = useState(() => getHighlights(book.id));
@@ -848,6 +874,24 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     marginSeen.current = settings.margin;
     relayout(anchor.current || live.current.cfi);
   }, [settings.margin, relayout]);
+
+  // ogni sezione grossa che si apre insegna quanto testo sta in una
+  // pagina: si somma alle altre, e la misura migliora leggendo
+  useEffect(() => {
+    if (!locReady || !displayed?.total || displayed.total < FACCIATE_MINIME) return;
+    const base = String(live.current.cfi || "").split("!")[0];
+    const quota = sezioni.current.per.get(base);
+    if (!quota || passoViste.current.has(base)) return;
+    passoViste.current.add(base);
+    setPasso((v) => ({ loc: v.loc + quota, pag: v.pag + displayed.total }));
+  }, [displayed, locReady]);
+
+  // corpo e interlinea cambiano quante righe stanno in una pagina: la
+  // misura vecchia non vale piu' e si ricomincia a contarla
+  useEffect(() => {
+    passoViste.current = new Set();
+    setPasso({ loc: 0, pag: 0 });
+  }, [settings.fontSize, settings.lineHeight, settings.font, settings.margin, settings.spread, pages]);
 
   // tolto l'avanzo, epub.js va rimesso al lavoro sulla misura nuova: si
   // riparte dall'ultima pagina scelta dal lettore, come per il margine
@@ -1381,6 +1425,18 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // il tempo che manca al capitolo lo si dice solo dove un capitolo c'e'
   const chapterLeft =
     capitoli && speed && turnsLeft > 0 ? formatLeft(turnsLeft * speed) : null;
+  // le pagine: dentro il capitolo dove i capitoli ci sono, dall'inizio del
+  // libro dove non ci sono (li' il documento non e' un'unita' di niente)
+  const paginaLibro =
+    !capitoli && locReady && epubRef.current
+      ? paginaDelLibro(epubRef.current, live.current.cfi, passo)
+      : null;
+  const etichettaPagine = (() => {
+    if (paginaLibro) {
+      return pages === 2 ? `pagine ${paginaLibro}-${paginaLibro + 1}` : `pag. ${paginaLibro}`;
+    }
+    return displayed ? pageLabel(displayed, pages, capitoli) : null;
+  })();
   // QUANTO MANCA ALLA FINE DEL LIBRO, a richiesta. Le pagine dell'intero
   // libro nessuno le conosce (ogni file si impagina solo quando lo apri),
   // ma le locations sono contate tutte: quelle della sezione aperta, divise
@@ -1782,7 +1838,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 {settings.flow === "scrolled"
                   ? "scorrimento"
                   : [
-                      displayed ? pageLabel(displayed, pages, capitoli) : null,
+                      etichettaPagine,
                       chapterLeft
                         ? `${chapterLeft.startsWith("meno") ? "" : "~"}${chapterLeft} alla fine`
                         : null,
