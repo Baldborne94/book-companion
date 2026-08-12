@@ -30,12 +30,6 @@ const EDGE_MIN = 7;
 const EDGE_MAX = 17;
 // la rilegatura visibile attorno alla carta
 const FRAME = 6;
-// Quanto dura il giro. Un tempo solo, da cui scendono lo scambio della
-// pagina e lo smontaggio del palco: scritto in tre posti si sfasava.
-// Era 1,1 secondi, ed era mezzo secondo di troppo. Una pagina vera si
-// volta in fretta, e piu' il giro dura piu' l'occhio ha tempo di guardare
-// il foglio invece di leggere il libro.
-const GIRO = 820;
 // Testa e piede della carta. Sono margini tipografici, non piu' lo spazio
 // riservato alle barre: il testo deve riempire la pagina, e quando le barre
 // compaiono coprono le prime e le ultime righe — scelta del lettore, che le
@@ -75,10 +69,6 @@ const NET_WORDS = 30;
 const PHRASE_WORDS = 300;
 
 const isTouch = () => navigator.maxTouchPoints > 0;
-const isTablet = () =>
-  isTouch() && Math.min(window.innerWidth, window.innerHeight) >= 520;
-const reducedMotion = () =>
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const GOOGLE_FONT_CSS =
   "@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap');";
 
@@ -218,20 +208,6 @@ function contentStyles(s, lingua) {
   return rules;
 }
 
-
-// Finto piombo per i fogli in volo: righe di testo appena accennate, cinque
-// per paragrafo, fatte solo di velature e vuoti cosi' non litigano con le
-// ombre del foglio. Il contenuto vero vive nell'iframe di epub.js e non si
-// puo' stampare qui; a questa velocita' l'occhio legge il ritmo, non le
-// parole.
-const PRINT_ROWS = (fg) =>
-  `repeating-linear-gradient(to bottom, ` +
-  `${fg}18 0 2px, transparent 2px 15px, ` +
-  `${fg}18 15px 17px, transparent 17px 30px, ` +
-  `${fg}18 30px 32px, transparent 32px 45px, ` +
-  `${fg}18 45px 47px, transparent 47px 60px, ` +
-  `${fg}18 60px 62px, transparent 62px 84px)`;
-
 const barBtn = (active) => ({
   width: 40,
   height: 40,
@@ -276,55 +252,6 @@ function Slider({ label, min, max, step, value, onChange }) {
   );
 }
 
-// La pagina vera sul foglio che gira: la fotografia del capitolo rinasce in
-// un iframe muto e senza script, rimesso dove stava l'originale rispetto al
-// libro. `base` e' il bordo sinistro, nel libro, della meta' che la faccia
-// copre: cosi' il ritaglio combacia col testo a schermo.
-// L'iframe resta MONTATO per sempre nel suo posto sul palco: spostarlo nel
-// DOM lo ricaricherebbe, e ricostruirlo al tocco costava lampi bianchi e
-// facce nude sul tablet. Il documento si prepara nei momenti morti (park)
-// e il clone resta invisibile finche' non ha davvero finito di dipingersi.
-function StageFrame({ park, shown, x, y, base }) {
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    setReady(false);
-  }, [park?.html]);
-  return (
-    <div
-      aria-hidden="true"
-      style={{
-        position: "absolute",
-        inset: 0,
-        overflow: "hidden",
-        // contain:paint obbliga il compositore a rispettare il taglio: dentro
-        // il 3D, overflow e clip-path sugli antenati vengono lasciati cadere
-        // su Android, e le colonne del capitolo sbucavano sopra la pagina —
-        // la "sovrapposizione che compare e scompare"
-        contain: "paint",
-        isolation: "isolate",
-      }}
-    >
-      <iframe
-        aria-hidden="true"
-        tabIndex={-1}
-        sandbox="allow-same-origin"
-        scrolling="no"
-        srcDoc={park?.html || "<html></html>"}
-        onLoad={() => requestAnimationFrame(() => setReady(true))}
-        style={{
-          position: "absolute",
-          left: (x ?? 0) - base,
-          top: (y ?? 0) - FRAME,
-          width: park?.w ?? 10,
-          height: park?.h ?? 10,
-          border: 0,
-          pointerEvents: "none",
-          opacity: ready && shown ? 1 : 0,
-        }}
-      />
-    </div>
-  );
-}
 
 function Panel({ title, onClose, children }) {
   return (
@@ -362,18 +289,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const epubRef = useRef(null);
   const rendRef = useRef(null);
   const saveTimer = useRef(null);
-  const turnTimer = useRef(null);
-  const swapTimer = useRef(null);
-  const parkTimer = useRef(null);
   const snapTimer = useRef(null);
-  const turningRef = useRef(null);
   const turnRef = useRef(() => {});
-  // quante volte il lettore ha mosso il libro DI SUA MANO (voltata, cursore,
-  // indice, segnalibro): serve solo a sapere se stava leggendo durante una
-  // raffica di ridimensionamenti. Un contatore, non un orologio: su un
-  // tablet lento le finestre di tempo scadono prima che l'impaginazione
-  // finisca, un conteggio no.
-  const giri = useRef(0);
   const moved = useRef(false);
   const fixTimers = useRef([]);
   const live = useRef({ cfi: startCfi || getCfi(book.id), progress: getProgress(book.id), locReady: false, settings: null });
@@ -394,8 +311,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [searchState, setSearchState] = useState({ busy: false, results: null });
   const [pages, setPages] = useState(1);
   const [snapPad, setSnapPad] = useState(0);
-  const [turning, setTurning] = useState(null);
-  const [park, setPark] = useState(null);
   const [isFs, setIsFs] = useState(false);
   const [displayed, setDisplayed] = useState(null);
   const [speed, setSpeed] = useState(() => medianMs(loadSamples()));
@@ -411,6 +326,25 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const reflowing = useRef(false);
   const reflowTimer = useRef(null);
 
+  // Colonne INTERE o niente. Lasciando a epub.js il "100%" la larghezza
+  // puo' uscire DISPARI: la colonna vale meta' larghezza meno la gola, si
+  // porta dietro il mezzo pixel, Firefox lo arrotonda a modo suo e l'errore
+  // si ACCUMULA lungo il capitolo — facciate appaiate pari-dispari, ultima
+  // pagina mangiata, atterraggi sbagliati tornando indietro. La misura si
+  // prende qui, si fa PARI, e si consegna a epub.js come NUMERO: cosi' il
+  // motore smette anche di seguire da solo la finestra, e la barra di
+  // Android che va e viene non reimpagina piu' niente.
+  const misuraLibro = () => {
+    const el = viewerRef.current;
+    if (!el) return null;
+    const cs = getComputedStyle(el);
+    const cw = Math.floor(el.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0));
+    const ch = Math.floor(el.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0));
+    if (cw < 40 || ch < 40) return null;
+    return { w: cw % 2 ? cw - 1 : cw, h: ch };
+  };
+  const misuraData = useRef({ w: 0, h: 0 });
+
   // Le barre non toccano piu' la misura del libro, ma cambiare margine
   // reimpagina lo stesso. Lasciando ripartire epub.js dal CFI corrente si
   // arretrava di mezza pagina ogni volta, perche' allinea sempre all'inizio
@@ -420,7 +354,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const r = rendRef.current;
     if (cfi) reflowing.current = true;
     try {
-      if (r) r.resize(undefined, undefined, cfi || undefined);
+      const m = misuraLibro();
+      if (m) misuraData.current = { w: m.w, h: m.h };
+      if (r) r.resize(m ? m.w : undefined, m ? m.h : undefined, cfi || undefined);
       else window.dispatchEvent(new Event("resize"));
     } catch {
       window.dispatchEvent(new Event("resize"));
@@ -429,7 +365,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // non arriva: la bandiera va tolta comunque
     clearTimeout(reflowTimer.current);
     reflowTimer.current = setTimeout(() => { reflowing.current = false; }, 1500);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const samplesRef = useRef(loadSamples());
   const lastTurnAt = useRef(0);
@@ -448,79 +384,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
   live.current.settings = settings;
   live.current.panel = panel;
-  turningRef.current = turning;
   live.current.selMenu = selMenu;
   const theme = READER_THEMES[settings.theme];
-  // Quanto e' scura la carta di questo tema. Luce e ombra sul foglio che
-  // gira erano tarate una volta per tutte sulla pergamena: sul tema notte
-  // la banda di luce color crema diventava una lampada che attraversa la
-  // pagina, e l'ombra spariva del tutto (nero su nero). Su carta scura la
-  // luce dev'essere fioca e del colore della carta, non crema; l'ombra
-  // quasi inutile. Su carta chiara vale il contrario.
-  const cartaScura = (() => {
-    const h = (theme.bg || "#000").replace("#", "");
-    const n = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
-    const [r, g, b] = [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16) || 0);
-    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5;
-  })();
-  // IL VELO CHE VIAGGIA — uno solo. Erano due strati sovrapposti, la banda
-  // scura e la lama di luce, ognuno con la sua animazione: due superfici
-  // semitrasparenti grandi quanto la pagina da fondere a ogni fotogramma
-  // sopra un foglio che intanto ruota. E' li' che se ne andavano i
-  // fotogrammi (misurato: togliendo le velature si passa da 53 a 67
-  // fotogrammi per giro). Buio e luce stanno a distanza fissa l'uno
-  // dall'altra per tutto il giro, quindi non serviva affatto muoverli
-  // separatamente: sono due fermate dello STESSO gradiente, e viaggiano
-  // insieme in un solo strato. Il buio sta indietro di un terzo di pagina,
-  // la luce davanti sul colmo della curva — esattamente come prima, a meta'
-  // del prezzo e senza il rischio che le due corse si sfasino.
-  // Sulla carta scura la luce e' STRETTA e color inchiostro: una lama di
-  // riflesso, non la lampada color crema tarata sulla pergamena.
-  //
-  // DISCRETO. Tutte le velature qui sotto sono state ABBASSATE: la versione
-  // di prima — una luce di fondo sul foglio alzato, un riflesso a due terzi
-  // di opacita', un incavo al 45% di nero — voleva far leggere come "carta
-  // illuminata" il testo che il browser rende piu' tenue sotto rotazione.
-  // A schermo non e' andata: si vedeva l'effetto, non la pagina. Un libro
-  // vero, alla luce di una lampada da comodino, di luci e ombre ne fa
-  // pochissime, e sono appena percettibili. Meglio un giro che non si nota
-  // di uno che si fa guardare.
-  const veloFoglio = (() => {
-    const buio = cartaScura ? "#00000026" : "#00000024";
-    const buioOrlo = cartaScura ? "#0000000a" : "#00000008";
-    const luce = cartaScura ? `${theme.fg}24` : "#fff6e038";
-    const luceOrlo = cartaScura ? `${theme.fg}08` : "#fff6e014";
-    // il riflesso di un cilindro ha i FIANCHI SCURI: e' il contrasto
-    // chiaro-scuro ravvicinato a dire "superficie curva", una banda chiara
-    // da sola resta un lampo su una tavola piatta
-    const fianco = cartaScura ? "transparent" : "#0000000a";
-    // Il riquadro e' largo ESATTAMENTE quanto la parte che dipinge. Era il
-    // 140% della pagina con i due quinti esterni trasparenti: pixel
-    // rasterizzati a ogni fotogramma per non disegnare niente, e dentro un
-    // foglio che ruota ogni fotogramma e' una rasterizzazione nuova.
-    return (gradi) =>
-      `linear-gradient(${gradi}, transparent 0, ${buioOrlo} 12%, ${buio} 30%, ${buioOrlo} 44%, transparent 54%, ` +
-      `${fianco} 57%, ${luceOrlo} 65%, ${luce} 72%, ${luceOrlo} 80%, ${fianco} 87%, transparent 100%)`;
-  })();
-  // L'incavo del dorso: la carta vicino alla piega non prende luce, e a un
-  // palmo di li' e' gia' carta normale. Sta FERMO rispetto al foglio,
-  // quindi non merita uno strato suo — e' una fermata in piu' del fondo
-  // della faccia, dipinta una volta sola invece di essere una superficie da
-  // comporre a ogni fotogramma.
-  //
-  // Il resto del foglio va lasciato ESATTAMENTE come la pagina che copre.
-  // Prima c'era una velatura di fondo su tutta la superficie (dal 15% di
-  // nero sul taglio all'8% nel corpo): misurato, rendeva la carta del
-  // foglio 119,100,78 contro i 129,108,85 della pagina sotto. Un otto per
-  // cento non si nota come "ombra", si nota come BORDO — testa e piede del
-  // foglio diventavano due righe nette contro la pagina, ed e' quello che
-  // si vedeva sopra e sotto durante il giro. Ora la velatura muore prima
-  // di meta' foglio e i due bordi non hanno piu' niente da rivelare.
-  // `verso` e' il lato da cui parte il buio, cioe' dove sta la cerniera.
-  const ombraFoglio = (verso) =>
-    cartaScura
-      ? `linear-gradient(to ${verso}, #0000002b 0%, #00000012 9%, #00000005 26%, transparent 42%)`
-      : `linear-gradient(to ${verso}, #00000042 0%, #0000001c 9%, #00000008 26%, transparent 42%)`;
 
   const flush = useCallback(() => {
     const s = live.current;
@@ -614,9 +479,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         try { rendRef.current.destroy(); } catch { /* già distrutto */ }
       }
       viewerRef.current.innerHTML = "";
+      const m = misuraLibro();
+      misuraData.current = m ? { w: m.w, h: m.h } : { w: 0, h: 0 };
       const r = eb.renderTo(viewerRef.current, {
-        width: "100%",
-        height: "100%",
+        // misura esplicita e PARI, mai "100%": vedi misuraLibro
+        width: m ? m.w : "100%",
+        height: m ? m.h : "100%",
         flow: s.flow === "scrolled" ? "scrolled-doc" : "paginated",
         // in scorrimento non esistono facciate: senza questo, in orizzontale
         // epub.js dichiara comunque un layout a due colonne e compare il dorso
@@ -665,9 +533,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         lastTurnAt.current = now;
         clearTimeout(saveTimer.current);
         saveTimer.current = setTimeout(flush, 1500);
-        // il palco si prepara nei momenti morti: a ogni approdo si
-        // rinfresca la fotografia del capitolo per il prossimo giro
-        schedulePark();
         // l'avanzo di riga si ricalcola qui: a misura stabile la funzione
         // esce subito, quindi non costa nulla a ogni voltata
         measureSnap();
@@ -862,6 +727,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         else if (live.current.panel) setPanel(null);
         else handleClose();
       }
+      // scrivendo in un campo (ricerca, chiave dell'Oracolo, cursore) le
+      // frecce muovono il cursore, non il libro
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
       if (e.key === "ArrowRight") turnRef.current("next");
       if (e.key === "ArrowLeft") turnRef.current("prev");
     };
@@ -874,10 +743,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       window.removeEventListener("beforeunload", flush);
       window.removeEventListener("keydown", onKey);
       clearTimeout(saveTimer.current);
-      clearTimeout(swapTimer.current);
-      clearTimeout(turnTimer.current);
       clearTimeout(reflowTimer.current);
-      clearTimeout(parkTimer.current);
       clearTimeout(snapTimer.current);
       fixTimers.current.forEach(clearTimeout);
       flush();
@@ -906,54 +772,42 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     document.addEventListener("fullscreenchange", onFs);
     return () => {
       document.removeEventListener("fullscreenchange", onFs);
-      clearTimeout(turnTimer.current);
     };
   }, []);
 
-  // Schermo intero, rotazione e barre di sistema cambiano la misura del
-  // riquadro senza passare dalle impostazioni: epub.js reimpagina da solo e
-  // si riallinea all'INIZIO della pagina che contiene il punto corrente —
-  // mezzo passo indietro a ogni cambio. Quella posizione arretrata finiva
-  // salvata, e spostava segnalibri e "ultima pagina letta" a seconda della
-  // modalita'. Il punto va fotografato al primo segnale di resize, quando
-  // l'ancora e' ancora quella scelta dal lettore, e a giro finito ci si
-  // torna sopra esplicitamente.
+  // Rotazione e schermo intero cambiano davvero la misura del riquadro; la
+  // barra del browser su Android invece balla SOLO l'altezza, decine di
+  // volte MENTRE leggi. Il libro ha misura fissa (vedi misuraLibro), quindi
+  // epub.js da solo non reimpagina piu': qui si decide QUANDO consegnargli
+  // una misura nuova — mai per il balletto della barra, sempre per un
+  // cambio vero, ripartendo dall'ultima pagina scelta dal lettore (letta
+  // ADESSO, non a inizio raffica: se intanto hai voltato, il posto te lo
+  // sei scelto tu e non va riavvolto).
   useEffect(() => {
     const el = bookRef.current;
     if (!el || typeof ResizeObserver === "undefined") return undefined;
     let primo = true;
     let timer = null;
-    let giriInizio = 0;
     const ro = new ResizeObserver(() => {
       if (primo) { primo = false; return; }
-      // a inizio raffica ci si segna a che punto era la lettura
-      if (!timer) giriInizio = giri.current;
       clearTimeout(timer);
       timer = setTimeout(() => {
         timer = null;
-        // SE IL LETTORE HA SFOGLIATO DURANTE LA RAFFICA, NON SI RIMETTE
-        // NIENTE. Il ripristino corregge la deriva di mezza pagina che
-        // epub.js lascia reimpaginando; ma se intanto hai voltato, il posto
-        // te lo sei scelto tu e rimetterti dov'eri ti mangia le voltate.
-        // Su Android la barra del browser va e viene MENTRE leggi, quindi
-        // raffiche e voltate arrivano sempre insieme: misurato su un libro
-        // senza capitoli con la CPU strozzata come un tablet, SEDICI tocchi
-        // di fila non muovevano il libro di una riga.
-        if (giri.current !== giriInizio) return;
-        // e il punto si legge ADESSO: una fotografia presa a inizio raffica
-        // riporterebbe indietro quello che e' successo nel frattempo
+        const m = misuraLibro();
+        if (!m || !rendRef.current) return;
+        if (m.w === misuraData.current.w && Math.abs(m.h - misuraData.current.h) < 120) return;
+        misuraData.current = { w: m.w, h: m.h };
         const dove = anchor.current || live.current.cfi;
-        if (!dove || !rendRef.current) return;
-        anchor.current = dove;
         reflowing.current = true;
         clearTimeout(reflowTimer.current);
         reflowTimer.current = setTimeout(() => { reflowing.current = false; }, 1500);
-        rendRef.current.display(dove).catch(() => { reflowing.current = false; });
+        try { rendRef.current.resize(m.w, m.h, dove || undefined); }
+        catch { reflowing.current = false; }
       }, 500);
     });
     ro.observe(el);
     return () => { ro.disconnect(); clearTimeout(timer); };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleFullscreen() {
     if (document.fullscreenElement) {
@@ -966,7 +820,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // avanti si scorre il residuo prima di cambiare capitolo, cosi' l'ultima
   // pagina scritta non viene saltata; indietro epub.js gia' atterra in fondo
   function step(r, dir) {
-    giri.current++;
     if (dir === "prev") return r.prev();
     const rest = leftoverScroll(r.manager);
     if (!rest) return r.next();
@@ -1040,173 +893,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     }
   }
 
-  // Solo misure, niente serializzazioni: si legge al tocco, deve costare
-  // quanto un getBoundingClientRect.
-  function snapRects() {
-    try {
-      const b = bestView();
-      if (!b) return null;
-      return {
-        href: (b.view.section?.href || "").split("#")[0],
-        // frazionari, non arrotondati: mezzo pixel di scarto si vede come
-        // testo doppio nella dissolvenza d'atterraggio. E dal bordo INTERNO
-        // della cornice: canvas, cloni e velo vivono dentro il bordo di 1px
-        // del libro, misurare dal bordo esterno li spostava tutti di 1px
-        x: b.ri.left - b.rh.left - (bookRef.current?.clientLeft || 0),
-        y: b.ri.top - b.rh.top - (bookRef.current?.clientTop || 0),
-        hw: b.rh.width,
-        // la sagoma dell'intero capitolo: se cambia, c'e' stata una
-        // reimpaginazione e ogni fotografia precedente mente
-        wi: b.ri.width,
-        hi: b.ri.height,
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  // La fotografia del capitolo — stili inline di epub.js compresi, quindi
-  // stesse colonne e stessi caratteri. Costa una serializzazione: si fa nei
-  // momenti morti dopo un cambio pagina (park), MAI al tocco — sul tablet
-  // il clone montato in corsa arrivava tardi e il foglio girava nudo.
-  function snapPark() {
-    try {
-      const b = bestView();
-      const doc = b?.view?.contents?.document;
-      if (!b || !doc) return null;
-      // epub.js inietta tema e interlinea via CSSOM (insertRule): il tag
-      // <style> nel markup resta vuoto e outerHTML non li porta con se'.
-      // Senza queste regole il clone reimpagina diverso e la finestra di
-      // testo non combacia piu': si serializzano a mano e si imbarcano.
-      let css = "";
-      for (const sheet of doc.styleSheets) {
-        try {
-          for (const rule of sheet.cssRules) css += `${rule.cssText}\n`;
-        } catch { /* foglio di un'altra origine: illeggibile e non nostro */ }
-      }
-      const style = `<style>${css.replace(/<\//g, "<\\/")}</style>`;
-      const raw = doc.documentElement.outerHTML;
-      const html = /<\/head>/i.test(raw)
-        ? raw.replace(/<\/head>/i, `${style}</head>`)
-        : style + raw;
-      return {
-        html,
-        w: Math.round(b.ri.width),
-        h: Math.round(b.ri.height),
-        href: (b.view.section?.href || "").split("#")[0],
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  // La fotografia costa: serializza tutto il capitolo con i suoi fogli di
-  // stile e riscrive il srcDoc di due iframe. Cade 450ms dopo il cambio
-  // pagina, cioe' — se il cambio l'ha fatto un giro — proprio NEL MEZZO
-  // dell'animazione: nella traccia era il lavoro grosso che spezzava i
-  // fotogrammi a meta' volo. Finche' il foglio e' in aria si riprova piu'
-  // tardi; i "momenti morti" sono quelli veri, a giro finito.
-  // UN CAPITOLO ENORME NON SI FOTOGRAFA. La fotografia serializza il
-  // capitolo intero e lo fa ri-impaginare a due iframe: coi capitoli corti
-  // costa poco, ma un tomo alla Pratchett — un blocco unico da 150 facciate
-  // — sono secondi di lavoro A OGNI VOLTATA su un tablet. Il giro affogava:
-  // il tocco arrivava col palco ancora su, la voltata avveniva muta sotto il
-  // sipario, e ogni voltata muta rifotografava. Misurato con la CPU
-  // strozzata 8×: schermo inchiodato alla prima pagina, segno interno sei
-  // voltate avanti — esattamente il salto visto sul tablet.
-  const GROSSO = 40000;
-  const grosso = useRef(false);
-
-  const schedulePark = useCallback(() => {
-    clearTimeout(parkTimer.current);
-    parkTimer.current = setTimeout(() => {
-      if (turningRef.current) {
-        schedulePark();
-        return;
-      }
-      const doc = bestView()?.view?.contents?.document;
-      grosso.current = (doc?.body?.textContent?.length || 0) > GROSSO;
-      if (grosso.current) {
-        // niente palco per questo capitolo: la voltata sara' secca, e il
-        // clone vecchio non deve restare li' a mostrare un'altra pagina
-        setPark(null);
-        return;
-      }
-      const p = snapPark();
-      if (!p) return;
-      setPark((old) => (old && old.html === p.html ? old : p));
-    }, 450);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
+  // La voltata e' SECCA, per scelta: il foglio animato (palco di cloni,
+  // fotografie del capitolo, velature) e' stato tolto per intero dopo mesi
+  // di salti di pagina su tablet — non re-introdurlo senza una prova lunga
+  // su Firefox Android.
   function turn(dir) {
     const r = rendRef.current;
     if (!r || status !== "ready") return;
     moved.current = true;
-    const animate =
-      isTablet() && settings.flow !== "scrolled" && settings.pageTurn && !reducedMotion() &&
-      // il capitolo-monstre volta secco: l'animazione ha bisogno della
-      // fotografia, e la fotografia di un blocco da 150 facciate affoga il
-      // tablet (vedi GROSSO)
-      !grosso.current;
-    // un tocco durante un giro e' fretta: si cambia pagina secco
-    if (!animate || turningRef.current) {
-      step(r, dir);
-      return;
-    }
-    const key = Date.now();
-    const geo = snapRects();
-    // PRIMA SI DIPINGE, POI SI PARTE. Il palco del foglio — le due facce,
-    // i cloni del capitolo, le velature, la copertura, l'ombra gettata —
-    // nasce al tocco, e finche' nasceva insieme all'animazione il browser
-    // doveva dipingere sei superfici grandi quanto la pagina, rifare i
-    // livelli e consegnarli al compositore MENTRE il foglio era gia' in
-    // volo: nella traccia sono ~150ms di lavoro tutto nei primi fotogrammi,
-    // ed e' quello lo scatto che si vedeva in partenza (dopo, il giro e'
-    // vuoto: la traccia non ha piu' nulla fino alla fine).
-    // Adesso il palco compare fermo e invisibile, si lascia dipingere, e
-    // solo al fotogramma dopo — quando il lavoro e' finito per davvero —
-    // partono le animazioni. Il giro comincia qualche millisecondo piu'
-    // tardi e in cambio non perde un fotogramma.
-    setTurning({ dir, key, x: geo?.x, y: geo?.y, hw: geo?.hw, href: geo?.href, x2: null, href2: null, via: false });
-    // rete di sicurezza: a scheda nascosta i rAF non arrivano mai, e senza
-    // questo il palco resterebbe montato a impedire ogni giro successivo e
-    // la pagina non cambierebbe affatto
-    let partito = false;
-    clearTimeout(turnTimer.current);
-    turnTimer.current = setTimeout(() => {
-      setTurning(null);
-      if (!partito) step(r, dir);
-    }, 1600);
-    const doSwap = () => {
-      swapTimer.current = null;
-      step(r, dir);
-      // il retro del foglio mostra la pagina che sta arrivando: il testo e'
-      // lo stesso capitolo gia' preparato, serve solo la nuova posizione —
-      // una misura, letta a scambio avvenuto, col retro ancora nascosto
-      setTimeout(() => {
-        const g2 = snapRects();
-        // anche la y: dopo lo scambio l'iframe puo' assestarsi di un pixel,
-        // e il retro fuori asse si vedeva come sussulto del testo alla fine
-        if (g2) setTurning((t) => (t && t.key === key ? { ...t, x2: g2.x, y2: g2.y, href2: g2.href } : t));
-      }, 150);
-    };
-    // due giri di rAF: il primo cade prima che il fotogramma col palco
-    // nuovo sia disegnato, il secondo dopo che e' stato consegnato
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        // il giro e' ancora il nostro? La domanda si fa QUI e non dentro
-        // l'aggiornamento di stato: React non esegue quelle funzioni subito,
-        // e leggendo il risultato sul momento si trovava sempre "no" — il
-        // foglio girava ma la pagina sotto non cambiava mai
-        if (turningRef.current?.key !== key) return;
-        partito = true;
-        setTurning((t) => (t && t.key === key ? { ...t, via: true } : t));
-        clearTimeout(turnTimer.current);
-        turnTimer.current = setTimeout(() => setTurning(null), GIRO + 100);
-        // il foglio e la copertura sono opachi a 80ms: lo scambio resta invisibile
-        swapTimer.current = setTimeout(doSwap, Math.round(GIRO * 0.085));
-      })
-    );
+    step(r, dir);
   }
   turnRef.current = turn;
 
@@ -1221,16 +916,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       // vale la pena rifare il libro da capo per un interruttore
       if (next.terms) rendRef.current?.manager?.views?.forEach?.((v) => markTerms(v));
     }
-    if ("pageTurn" in patch) {
-      // acceso l'interruttore, la fotografia del capitolo va preparata
-      // subito: altrimenti il primo giro trova le facce del foglio nude
-      live.current.settings = next;
-      if (next.pageTurn) schedulePark();
-    }
     if ("flow" in patch || "spread" in patch || "font" in patch) makeRendition(next);
     else if (rendRef.current && ("theme" in patch || "fontSize" in patch || "lineHeight" in patch || "justify" in patch)) {
       applyStyles(rendRef.current, next);
-      schedulePark();
       // corpo e interlinea cambiano il passo delle righe, quindi l'avanzo:
       // si rimisura a testo gia' ridisegnato
       clearTimeout(snapTimer.current);
@@ -1411,7 +1099,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   function goTo(target, flash) {
     const r = rendRef.current;
     if (!r) return;
-    giri.current++;
     moved.current = true;
     const arrivo = r.display(target);
     setPanel(null);
@@ -1465,69 +1152,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const turnsLeft = Math.ceil(pagesLeft / Math.max(1, pages));
   const chapterLeft = speed && turnsLeft > 0 ? formatLeft(turnsLeft * speed) : null;
 
-  // il palco del foglio 3D resta sempre montato: la geometria segue la
-  // direzione dell'ultimo giro (o "next" da fermo, tanto e' invisibile)
-  const stage = turning;
-  const dirNow = stage?.dir || "next";
-  const leafGeom =
-    dirNow === "next"
-      ? {
-          left: twoUp ? "50%" : FRAME,
-          right: FRAME,
-          transformOrigin: "left center",
-          borderRadius: "4px 6px 6px 4px",
-          // il velo lato dorso leggero: pesante, la pagina appena atterrata
-          // restava grigia rispetto alla gemella per tutta la dissolvenza
-          backgroundImage:
-            "linear-gradient(115deg, #ffffff0d, transparent 45%), linear-gradient(to right, #0000001f, transparent 18%, transparent 70%, #0000000d 90%, #00000017 100%)",
-          animationName: "bc-leaf-next",
-        }
-      : {
-          left: FRAME,
-          right: twoUp ? "50%" : FRAME,
-          transformOrigin: "right center",
-          borderRadius: "6px 4px 4px 6px",
-          backgroundImage:
-            "linear-gradient(245deg, #ffffff0d, transparent 45%), linear-gradient(to left, #0000001f, transparent 18%, transparent 70%, #0000000d 90%, #00000017 100%)",
-          animationName: "bc-leaf-prev",
-        };
-  // niente attore parte nudo: il clone si mostra solo se la fotografia
-  // pronta e' del capitolo giusto per quella faccia
-  // `stage` = il palco esiste (va montato, promosso, dipinto).
-  // `corsa` = il palco e' gia' stato consegnato al compositore e puo'
-  // muoversi. Fra i due passa un fotogramma: e' li' che si smaltisce tutta
-  // la pittura, col foglio ancora fermo e invisibile.
-  const corsa = stage?.via ? stage : null;
-  const anim = (name) => (corsa ? `${name} ${GIRO}ms ease-in-out forwards` : "none");
-  // LA VELATURA DEL VOLO. Il testo sul foglio che gira e' piu' magro e piu'
-  // pallido di quello della pagina ferma, e non per colpa nostra: appena
-  // c'e' un grado di rotazione il browser smette di scrivere i glifi sui
-  // pixel e proietta una fotografia della faccia — misurato, circa il 30%
-  // di contrasto in meno, e la stessa cosa succederebbe con qualunque
-  // motore grafico. Compensarlo non si puo' (ispessire l'inchiostro
-  // ingrassa le lettere, scurirlo non fa presa sugli stili di epub.js).
-  // Allora si fa l'opposto: invece di combattere quella morbidezza la si
-  // DICHIARA, dando al foglio in volo una luce che la pagina ferma non ha.
-  // Un foglio alzato prende la luce di taglio e sbianca: se sbianca perche'
-  // e' ILLUMINATO, il testo piu' tenue e' una conseguenza che torna, non un
-  // difetto.
-  // La strada ovvia — sfocare il foglio come una carta mossa — e' stata
-  // provata e scartata: `filter: blur` costa 11 fotogrammi su 72 (misurato),
-  // cioe' ci ridava a mano destra gli scatti che avevamo tolto a sinistra.
-  // La luce invece e' una fermata in piu' di un gradiente che c'e' gia', e
-  // non costa niente.
-  // OGNI velatura del giro deve avere un LIVELLO SUO. Senza, il compositore
-  // le tiene nel livello del documento e ogni loro cambio di opacita'
-  // ridipinge l'INTERA finestra: nella traccia si vedevano 25 pitture a
-  // schermo pieno per giro, una ogni due o tre fotogrammi, ed e' da li' che
-  // venivano gli scatti. Promesso il livello, la pittura si fa una volta e
-  // il resto del giro e' solo compositing.
-  // La promessa vale SOLO durante il giro: tenerla accesa sempre vorrebbe
-  // dire una decina di superfici grandi quanto la pagina parcheggiate in
-  // memoria per tutta la lettura, che su un tablet non e' un affare.
-  const livello = (cosa) => (stage ? cosa : "auto");
-  const frontOk = !!(stage && park && stage.href && park.href === stage.href);
-  const backOk = !!(stage && park && stage.href2 && park.href === stage.href2 && stage.x2 !== null);
 
   return (
     <div
@@ -1567,7 +1191,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           border: "1px solid #00000066",
           boxShadow: `0 14px 44px #000000b3, 0 0 0 1px ${C.accent}22, inset 0 0 30px #00000026`,
           overflow: "hidden",
-          perspective: 1500,
           touchAction: "manipulation",
         }}
       >
@@ -1665,399 +1288,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               pointerEvents: "none",
               background:
                 "linear-gradient(90deg, transparent, #0000000f 30%, #0000002e 46%, #0000003d 50%, #0000002e 54%, #0000000f 70%, transparent)",
-            }}
-          />
-        )}
-        {twoUp && (
-          <>
-            <div
-              data-cover={dirNow}
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                top: FRAME,
-                bottom: FRAME,
-                ...(dirNow === "next" ? { left: FRAME, right: "50%" } : { left: "50%", right: FRAME }),
-                zIndex: 5,
-                pointerEvents: "none",
-                visibility: stage ? "visible" : "hidden",
-                opacity: 0,
-                backgroundColor: theme.bg,
-                backgroundImage:
-                  dirNow === "next"
-                    ? "linear-gradient(to right, transparent 70%, #0000001f)"
-                    : "linear-gradient(to left, transparent 70%, #0000001f)",
-                willChange: livello("opacity"),
-                animation: anim("bc-cover-half"),
-                // stessi angoli con cui il foglio si posa: dagli spigoli
-                // quadri della copertura sbucava il testo vecchio
-                clipPath: `inset(0 round ${dirNow === "next" ? "6px 4px 4px 6px" : "4px 6px 6px 4px"})`,
-                overflow: "hidden",
-              }}
-            >
-              <div
-                aria-hidden="true"
-                style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
-              />
-              <StageFrame
-                park={park}
-                shown={frontOk}
-                x={stage?.x}
-                y={stage?.y}
-                base={dirNow === "next" ? FRAME : (stage?.hw ?? 0) / 2}
-              />
-              {/* il taglio delle pagine non deve sparire mentre la faccia
-                  copre il bordo: si replica sul lato esterno */}
-              <div
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  bottom: 0,
-                  ...(dirNow === "next" ? { left: 0 } : { right: 0 }),
-                  width: dirNow === "next" ? edgeRead : edgeLeftToRead,
-                  backgroundColor: theme.bg,
-                  backgroundImage: EDGE_STRIPES,
-                }}
-              />
-            </div>
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                top: FRAME,
-                bottom: FRAME,
-                ...(dirNow === "next" ? { left: FRAME, right: "50%" } : { left: "50%", right: FRAME }),
-                zIndex: 5,
-                pointerEvents: "none",
-                visibility: stage ? "visible" : "hidden",
-                opacity: 0,
-                // l'ombra cresce DAL dorso: lo scaleX del fotogramma la
-                // allunga verso il taglio, e l'ancoraggio e' qui perche' e'
-                // l'unica cosa che cambia fra i due versi
-                transformOrigin: dirNow === "next" ? "right center" : "left center",
-                // Stretta e attaccata al dorso. Larga meta' facciata era una
-                // macchia grigia sulla pagina, non un'ombra: l'ombra di un
-                // foglio inclinato cade dove il foglio e' VICINO alla carta,
-                // cioe' presso la cerniera, e a un palmo di li' e' gia'
-                // finita.
-                background:
-                  dirNow === "next"
-                    ? "linear-gradient(to left, #0000002b, #00000010 14%, #00000005 32%, transparent 52%)"
-                    : "linear-gradient(to right, #0000002b, #00000010 14%, #00000005 32%, transparent 52%)",
-                willChange: livello("transform, opacity"),
-                animation: anim("bc-cast"),
-              }}
-            />
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                top: FRAME,
-                bottom: FRAME,
-                left: "50%",
-                // il respiro del dorso approfondisce la STESSA piega della
-                // fascia fissa: piu' largo, allargava la macchia invece di
-                // scavare il solco
-                width: 150,
-                transform: "translateX(-50%)",
-                zIndex: 5,
-                pointerEvents: "none",
-                visibility: stage ? "visible" : "hidden",
-                opacity: 0,
-                background:
-                  "linear-gradient(90deg, transparent, #0000000d 26%, #0000001f 44%, #00000026 50%, #0000001f 56%, #0000000d 74%, transparent)",
-                willChange: livello("opacity"),
-                animation: anim("bc-spine-pulse"),
-              }}
-            />
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                inset: FRAME,
-                zIndex: 6,
-                pointerEvents: "none",
-                visibility: stage ? "visible" : "hidden",
-                // Anche da lontano il foglio, avvicinandosi all'occhio,
-                // cresce di qualche punto oltre l'altezza della pagina: carta
-                // chiara che sbordava sulla rilegatura scura, sopra e sotto.
-                // Il taglio sta QUI, un gradino FUORI dalla scena 3D — sul
-                // wrapper prospettico qualsiasi raggruppamento appiattisce le
-                // facce l'una sull'altra. contain:paint come per StageFrame,
-                // o il compositore Android lascia cadere il ritaglio.
-                overflow: "hidden",
-                contain: "paint",
-              }}
-            >
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                inset: 0,
-                // L'involucro presta solo la prospettiva, e deve coprire il
-                // libro INTERO: il punto di fuga sta al suo centro, cioe' sul
-                // dorso. Stretto su meta' pagina il fuoco cadeva fuori asse e
-                // il foglio, arrivando, si posava una spanna piu' in la' della
-                // pagina — sotto restava la striscia di quella vecchia.
-                // Qualsiasi opacita' qui (anche agli estremi della
-                // dissolvenza) appiattisce la scena e stampa le due facce una
-                // sopra l'altra.
-                //
-                // Il punto di vista sta LONTANO. Da vicino (1500) il foglio,
-                // ruotando, si avvicinava all'occhio e cresceva fino a meta'
-                // in piu': il testo diventava piu' grande di quello della
-                // pagina e sbordava sopra e sotto, tagliato dalla cornice.
-                // Da qui la crescita resta sotto il margine bianco della
-                // pagina, quindi il ritaglio non tocca il testo — e il foglio
-                // non va rimpicciolito per stare dentro, cosa che si vedeva
-                // subito: sembrava una paginetta diversa dalle altre.
-                perspective: 6800,
-              }}
-            >
-              <div
-                data-flip={dirNow}
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  bottom: 0,
-                  ...(dirNow === "next" ? { left: "50%", right: 0 } : { left: 0, right: "50%" }),
-                  transformOrigin: leafGeom.transformOrigin,
-                  // niente overflow ne' opacita' qui: appiattirebbero il 3D
-                  // e le due facce diventerebbero una sola
-                  transformStyle: "preserve-3d",
-                  willChange: livello("transform"),
-                  animation: corsa
-                    ? `${leafGeom.animationName} ${GIRO}ms cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
-                    : "none",
-                }}
-              >
-                {/* l'ombra portata sta su un piano suo: il clip-path delle
-                    facce la taglierebbe via insieme a tutto cio' che sborda */}
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: "absolute",
-                    // Solo DI FIANCO al foglio, alto quanto lui: un
-                    // box-shadow sfoca in tutte le direzioni e la sua coda
-                    // verticale finiva sopra e sotto la pagina che gira —
-                    // invisibile sui temi scuri, un alone su Carta e
-                    // Pergamena. Una fascia in gradiente non puo' sbavare
-                    // dove non c'e'.
-                    top: 0,
-                    bottom: 0,
-                    ...(dirNow === "next" ? { right: "100%" } : { left: "100%" }),
-                    width: 64,
-                    // mezzo pixel dietro le facce: piani coincidenti in 3D
-                    // si contendono la profondita' e sfarfallano sulla GPU
-                    transform: "translateZ(-0.5px)",
-                    background:
-                      dirNow === "next"
-                        ? "linear-gradient(to left, #0000004f, #00000026 34%, #0000000a 66%, transparent)"
-                        : "linear-gradient(to right, #0000004f, #00000026 34%, #0000000a 66%, transparent)",
-                    opacity: 0,
-                    willChange: livello("opacity"),
-                    animation: anim("bc-leaf-fade"),
-                  }}
-                />
-                {/* faccia davanti: la pagina che sta partendo. La dissolvenza
-                    vive qui, sulle facce piatte, e il ritaglio degli angoli
-                    e' clip-path: overflow+raggio non vengono onorati
-                    sull'iframe composito dentro il 3D */}
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    overflow: "hidden",
-                    borderRadius: leafGeom.borderRadius,
-                    clipPath: `inset(0 round ${leafGeom.borderRadius})`,
-                    backfaceVisibility: "hidden",
-                    // bordo trasparente: senza, i bordi ruotati escono
-                    // seghettati dal compositore Android
-                    outline: "1px solid transparent",
-                    transform: "translateZ(0.5px)",
-                    backgroundColor: theme.bg,
-                    backgroundImage: `${ombraFoglio(dirNow === "next" ? "right" : "left")}, ${leafGeom.backgroundImage}`,
-                    opacity: 0,
-                    willChange: livello("opacity"),
-                    animation: anim("bc-leaf-front"),
-                  }}
-                >
-                  <div
-                    aria-hidden="true"
-                    style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
-                  />
-                  <StageFrame
-                    park={park}
-                    shown={frontOk}
-                    x={stage?.x}
-                    y={stage?.y}
-                    base={dirNow === "next" ? (stage?.hw ?? 0) / 2 : FRAME}
-                  />
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      bottom: 0,
-                      ...(dirNow === "next" ? { right: 0 } : { left: 0 }),
-                      width: dirNow === "next" ? edgeLeftToRead : edgeRead,
-                      backgroundColor: theme.bg,
-                      backgroundImage: EDGE_STRIPES,
-                    }}
-                  />
-                  {/* buio e luce insieme, in un solo velo che viaggia:
-                      l'incavo dietro, il riflesso davanti sul colmo della
-                      curva, a distanza fissa per tutto il giro */}
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      bottom: 0,
-                      left: "-44.8%",
-                      width: "76%",
-                      opacity: 0,
-                      background: veloFoglio(dirNow === "next" ? "90deg" : "270deg"),
-                      willChange: livello("transform, opacity"),
-                      animation: corsa
-                        ? `bc-leaf-velo-${dirNow} ${GIRO}ms cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
-                        : "none",
-                    }}
-                  />
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      bottom: 0,
-                      ...(dirNow === "next" ? { right: 0 } : { left: 0 }),
-                      width: 7,
-                      background:
-                        dirNow === "next"
-                          ? "linear-gradient(to left, #00000038, transparent)"
-                          : "linear-gradient(to right, #00000038, transparent)",
-                    }}
-                  />
-                </div>
-                {/* faccia dietro: la pagina che sta arrivando — stesso
-                    capitolo gia' preparato, solo la posizione post-scambio;
-                    il rotateY(180) della faccia annulla lo specchio della
-                    rotazione del foglio */}
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    overflow: "hidden",
-                    borderRadius: leafGeom.borderRadius,
-                    clipPath: `inset(0 round ${leafGeom.borderRadius})`,
-                    backfaceVisibility: "hidden",
-                    outline: "1px solid transparent",
-                    transform: "rotateY(180deg) translateZ(0.5px)",
-                    backgroundColor: theme.bg,
-                    backgroundImage: `${ombraFoglio(dirNow === "next" ? "left" : "right")}, ${leafGeom.backgroundImage}`,
-                    opacity: 0,
-                    willChange: livello("opacity"),
-                    animation: anim("bc-leaf-back"),
-                  }}
-                >
-                  <div
-                    aria-hidden="true"
-                    style={{ position: "absolute", inset: "7% 9%", backgroundImage: PRINT_ROWS(theme.fg) }}
-                  />
-                  <StageFrame
-                    park={park}
-                    shown={backOk}
-                    x={stage?.x2}
-                    y={stage?.y2 ?? stage?.y}
-                    base={dirNow === "next" ? FRAME : (stage?.hw ?? 0) / 2}
-                  />
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      bottom: 0,
-                      ...(dirNow === "next" ? { left: 0 } : { right: 0 }),
-                      width: dirNow === "next" ? edgeRead : edgeLeftToRead,
-                      backgroundColor: theme.bg,
-                      backgroundImage: EDGE_STRIPES,
-                    }}
-                  />
-                  {/* buio e luce insieme, in un solo velo che viaggia:
-                      l'incavo dietro, il riflesso davanti sul colmo della
-                      curva, a distanza fissa per tutto il giro */}
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      bottom: 0,
-                      left: "-44.8%",
-                      width: "76%",
-                      opacity: 0,
-                      background: veloFoglio(dirNow === "next" ? "90deg" : "270deg"),
-                      willChange: livello("transform, opacity"),
-                      animation: corsa
-                        ? `bc-leaf-velo-${dirNow} ${GIRO}ms cubic-bezier(0.3, 0.45, 0.35, 1) forwards`
-                        : "none",
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-            </div>
-          </>
-        )}
-        {paginated && !twoUp && (
-          <div
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              top: FRAME,
-              bottom: FRAME,
-              left: FRAME,
-              right: FRAME,
-              zIndex: 6,
-              pointerEvents: "none",
-              visibility: stage ? "visible" : "hidden",
-              opacity: 0,
-              borderRadius: 3,
-              backgroundColor: theme.bg,
-              overflow: "hidden",
-              willChange: livello("opacity"),
-              animation: corsa ? `bc-sheet-fade ${Math.round(GIRO * 0.45)}ms ease-out forwards` : "none",
-            }}
-          >
-            {/* il velo porta la pagina che parte: la dissolvenza diventa un
-                incrocio fra testo vero e testo vero */}
-            <StageFrame park={park} shown={frontOk} x={stage?.x} y={stage?.y} base={FRAME} />
-          </div>
-        )}
-        {/* il respiro del dorso: l'unico movimento della voltata a due
-            pagine — il solco si approfondisce e torna, come carta che
-            passa sulla cucitura, sopra il velo e la pagina che emerge */}
-        {twoUp && (
-          <div
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              top: FRAME,
-              bottom: FRAME,
-              left: "50%",
-              width: 150,
-              transform: "translateX(-50%)",
-              zIndex: 8,
-              pointerEvents: "none",
-              visibility: stage ? "visible" : "hidden",
-              opacity: 0,
-              background:
-                "linear-gradient(90deg, transparent, #0000000d 26%, #0000001f 44%, #00000026 50%, #0000001f 56%, #0000000d 74%, transparent)",
-              willChange: livello("opacity"),
-              animation: corsa ? `bc-spine-pulse ${Math.round(GIRO * 0.45)}ms ease-in-out forwards` : "none",
             }}
           />
         )}
@@ -2266,7 +1496,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               onChange={(e) => {
                 if (!locReady) return;
                 const cfi = epubRef.current.locations.cfiFromPercentage(parseInt(e.target.value, 10) / 1000);
-                giri.current++;
                 moved.current = true;
                 if (cfi) rendRef.current?.display(cfi);
               }}
@@ -2497,24 +1726,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 }}
               >
                 {settings.terms ? "Attivo 📖" : "Spento"}
-              </button>
-            </div>
-          )}
-          {isTablet() && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-              <span style={{ fontSize: 14.5, color: C.muted }}>Voltapagina animato</span>
-              <button
-                onClick={() => updateSettings({ pageTurn: !settings.pageTurn })}
-                style={{
-                  padding: "6px 16px",
-                  borderRadius: 999,
-                  fontSize: 14,
-                  border: `1px solid ${settings.pageTurn ? C.accent : C.border}`,
-                  color: settings.pageTurn ? C.accent : C.muted,
-                  background: settings.pageTurn ? `${C.accent}14` : "transparent",
-                }}
-              >
-                {settings.pageTurn ? "Attivo ✨" : "Spento"}
               </button>
             </div>
           )}
