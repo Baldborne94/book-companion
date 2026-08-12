@@ -34,7 +34,6 @@ export function deviceDefaults(shortSide) {
     spread: shortSide < 520 ? "none" : "auto",
     warmth: 0,
     brightness: 1,
-    pageTurn: true,
     terms: true,
     // la colonna come in stampa: giustificata E sillabata, mai una sola
     justify: true,
