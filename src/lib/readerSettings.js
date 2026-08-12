@@ -38,10 +38,9 @@ export function deviceDefaults(shortSide) {
     terms: true,
     // la colonna come in stampa: giustificata E sillabata, mai una sola
     justify: true,
-    // i margini di testa e piede non restano vuoti: titolo corrente e numero
-    // di pagina, come in un libro stampato
+    // il margine di testa non resta vuoto: titolo del libro e del capitolo,
+    // come in un libro stampato
     folio: true,
-    capolettera: true,
     // solo per i PDF: toglie i margini bianchi della carta
     ritaglia: true,
     appTheme: "night",
