@@ -353,6 +353,44 @@ function quantiLibri(vecchi) {
   return pesi.map((p) => Math.max(1, Math.round(p / unita)));
 }
 
+// IL TETTO DEVE ESSERE UN TETTO, E LA VICINANZA CONTA.
+//
+// Con un minimo fisso per volume il tetto era una raccomandazione: tredici
+// volumi davano 78 passaggi su 72, quaranta ne davano 160 — novantamila
+// caratteri davanti al modello. E la spartizione era piatta: prima di
+// aprire il quattordicesimo, il primo libro pesava quanto il tredicesimo,
+// mentre quello che serve per ripartire sta soprattutto negli ultimi.
+//
+// Qui i posti si assegnano ESATTAMENTE quanti sono, col metodo del resto
+// piu' grande: un posto garantito a testa finche' bastano — nessun volume
+// resta muto — e il resto a peso, dove il peso e' quanti libri tiene il
+// volume, sfumato dalla distanza. Una saga da quaranta libri sta nel
+// tetto come una da tre.
+const VICINANZA = 0.85;
+// oltre questi volumi la saga e' «lunga»: passarli tutti in rassegna
+// diventa un elenco di titoli, e si cambia richiesta al modello
+const SAGA_CORTA = 5;
+
+function spartisci(pesi, budget) {
+  const n = pesi.length;
+  if (!n || budget <= 0) return pesi.map(() => 0);
+  const minimo = budget >= n ? 1 : 0;
+  const somma = pesi.reduce((a, b) => a + b, 0) || 1;
+  const resto = Math.max(0, budget - minimo * n);
+  const grezzi = pesi.map((p) => minimo + (resto * p) / somma);
+  const quote = grezzi.map((g) => Math.floor(g));
+  // i posti avanzati dall'arrotondamento vanno a chi ha il resto piu' grosso
+  const ordine = grezzi
+    .map((g, i) => ({ i, r: g - Math.floor(g) }))
+    .sort((a, b) => b.r - a.r);
+  let avanzo = budget - quote.reduce((a, b) => a + b, 0);
+  for (let k = 0; avanzo > 0; k = (k + 1) % n) {
+    quote[ordine[k % n].i] += 1;
+    avanzo -= 1;
+  }
+  return quote;
+}
+
 export function scegliPrima(raccolto) {
   if (!raccolto.length) return [];
   const ultimo = raccolto[raccolto.length - 1];
@@ -360,12 +398,17 @@ export function scegliPrima(raccolto) {
   const libri = vecchi.length ? quantiLibri(vecchi) : [];
   const totLibri = libri.reduce((a, b) => a + b, 0);
   const budget = Math.min(PRIMA_TETTO_VECCHI, PRIMA_VECCHI * totLibri);
+  // il peso: quanti libri tiene il volume, sfumato da quanto è lontano
+  const quote = spartisci(
+    libri.map((n, i) => n * Math.pow(VICINANZA, vecchi.length - 1 - i)),
+    budget
+  );
   // Ogni passaggio dei volumi vecchi si porta dietro il suo NUMERO di
   // volume: senza, i frammenti arrivano al modello tutti mescolati sotto
   // un'etichetta sola, e non puo' raccontarli in ordine nemmeno volendo.
   // Il numero torna titolo sullo schermo (`conTitoli`), mai al modello.
   const fuori = vecchi.flatMap((r, i) =>
-    sparsi(r.corpo, Math.max(4, Math.round((budget * libri[i]) / totLibri))).map((testo) => ({
+    sparsi(r.corpo, quote[i]).map((testo) => ({
       testo,
       quando: "prima",
       volume: i + 1,
@@ -414,12 +457,25 @@ export async function chiediPrima({ passaggi, tappe }, fetcher) {
       "quello che ha appena finito: le [ultime pagine] sono come si è chiuso, ed è da lì che riparte."
   );
   if (tappe.length > 1) {
+    // Su una saga corta si può passare per ogni volume. Su una da dieci o
+    // quaranta no: chiederlo in duecentocinquanta parole vorrebbe dire un
+    // elenco di titoli, e chi sta per aprire il quattordicesimo vuole
+    // sapere soprattutto come si è arrivati fin qui.
     righe.push(
-      "I passaggi marcati «Volume N» vengono dai volumi ancora precedenti, campionati lungo tutto il " +
-        "loro corso. PASSA PER OGNI VOLUME, in ordine, dal primo: bastano poche frasi a testa, ma non " +
-        "saltarne nessuno e non spendere tutto sull'ultimo. Quando dici dove accade una cosa, scrivi " +
-        "proprio «Volume 1», «Volume 2»: l'app mostrerà al lettore i titoli veri. Racconta quello che i " +
-        "passaggi mostrano, senza dedurne fatti che non ci sono."
+      tappe.length <= SAGA_CORTA
+        ? "I passaggi marcati «Volume N» vengono dai volumi ancora precedenti, campionati lungo tutto " +
+            "il loro corso. PASSA PER OGNI VOLUME, in ordine, dal primo: bastano poche frasi a testa, " +
+            "ma non saltarne nessuno e non spendere tutto sull'ultimo."
+        : `I passaggi marcati «Volume N» vengono dai ${tappe.length - 1} volumi precedenti, campionati ` +
+            "lungo tutto il loro corso. È una saga lunga e non ci stanno tutti: tieni il filo che arriva " +
+            "fino a qui — da dove è partita, cosa si trascina dietro — e racconta con più agio i volumi " +
+            "più recenti, quelli da cui il lettore riparte davvero. Dei più lontani basta quello che " +
+            "serve a capire il presente."
+    );
+    righe.push(
+      "Quando dici dove accade una cosa, scrivi proprio «Volume 1», «Volume 2»: l'app mostrerà al " +
+        "lettore i titoli veri. Racconta quello che i passaggi mostrano, senza dedurne fatti che non " +
+        "ci sono."
     );
   }
   const eti = { qui: "inizio", coda: "ultime pagine" };
