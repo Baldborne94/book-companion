@@ -7,6 +7,7 @@ import { exportLibrary } from "../lib/exportLibrary.js";
 import { restoreLibrary } from "../lib/restoreLibrary.js";
 import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
+import { portaACasa } from "../lib/sync.js";
 import { fmtBytes } from "../lib/bytes.js";
 import BookCover from "./BookCover.jsx";
 import EmptyState from "./EmptyState.jsx";
@@ -225,7 +226,18 @@ function Grouped({ books, group, onOpenBook, localIds }) {
   ));
 }
 
-export default function Library({ books, updateBooks, onOpenBook, onReadAt, notify, localIds, onImported, focusSaga }) {
+export default function Library({
+  books,
+  updateBooks,
+  onOpenBook,
+  onReadAt,
+  notify,
+  localIds,
+  onImported,
+  focusSaga,
+  collegato,
+  onFileLocali,
+}) {
   const [query, setQuery] = useState("");
   // la ricerca dentro i tomi: `vivo` e' il filo che la tiene in vita, e
   // spezzarlo e' l'unico modo per fermarla a meta'
@@ -237,6 +249,10 @@ export default function Library({ books, updateBooks, onOpenBook, onReadAt, noti
   const [importing, setImporting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  // il richiamo dei tomi dal cloud: {i, totale, titolo} mentre scende, e
+  // `filoTomi` e' il modo di fermarlo a meta'
+  const [portando, setPortando] = useState(null);
+  const filoTomi = useRef(null);
   const archiveRef = useRef(null);
   const [estimate, setEstimate] = useState(null);
   const inputRef = useRef(null);
@@ -247,6 +263,40 @@ export default function Library({ books, updateBooks, onOpenBook, onReadAt, noti
   useEffect(() => {
     storageEstimate().then(setEstimate);
   }, [books]);
+
+  // I tomi che stanno solo nel cloud: sono quelli con la nuvoletta, e sono
+  // quelli che le domande sulla saga non possono sfogliare. Senza un cloud
+  // collegato non c'e' niente da richiamare: offrirlo lo stesso sarebbe una
+  // promessa che nessuno puo' mantenere.
+  const nelCloud = collegato && localIds ? books.filter((b) => !localIds.has(b.id)) : [];
+
+  async function richiamaTomi() {
+    if (!nelCloud.length || portando) return;
+    const mio = {};
+    filoTomi.current = mio;
+    setPortando({ i: 0, totale: nelCloud.length, titolo: nelCloud[0].title });
+    const esito = await portaACasa(nelCloud, {
+      vivo: () => filoTomi.current === mio,
+      onProgress: (p) => filoTomi.current === mio && setPortando(p),
+    });
+    if (filoTomi.current !== mio) return;
+    filoTomi.current = null;
+    setPortando(null);
+    // quel che e' sceso resta sceso anche se il giro e' stato fermato: si
+    // dice quanto si e' fatto, non «annullato»
+    const parti = [];
+    if (esito.scesi) parti.push(`${esito.scesi} ${esito.scesi === 1 ? "tomo è" : "tomi sono"} qui`);
+    if (esito.falliti)
+      parti.push(`${esito.falliti} non ${esito.falliti === 1 ? "è sceso" : "sono scesi"}`);
+    notify?.(
+      parti.length
+        ? `${parti.join(", ")}${esito.fermato ? " — giro fermato" : ""}`
+        : "Non c'era niente da portare a casa"
+    );
+    // le nuvolette si spengono qui, senza aspettare una sincronizzazione
+    // intera: quel che e' cambiato sta tutto in casa
+    if (esito.scesi) onFileLocali?.();
+  }
 
   // uscendo dalla libreria la ricerca in corso non serve piu' a nessuno, e
   // continuerebbe ad aprire tomi a vuoto
@@ -630,13 +680,41 @@ export default function Library({ books, updateBooks, onOpenBook, onReadAt, noti
             color: C.muted,
           }}
         >
-          <span>
-            {books.length} {books.length === 1 ? "libro custodito" : "libri custoditi"}
-            {melodie ? ` · ${melodie} ${melodie === 1 ? "melodia" : "melodie"}` : ""}
-            {estimate?.usage ? ` · ${fmtBytes(estimate.usage)} usati` : ""}
-            {estimate?.quota ? ` di ${fmtBytes(estimate.quota)}` : ""}
-            {` · v. ${typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "?"}`}
-          </span>
+          {/* mentre i tomi scendono, il posto del conteggio lo prende il
+              titolo: un giro lungo deve dire a che punto e' e su cosa */}
+          {portando ? (
+            <span style={{ color: C.arcane }}>
+              ☁ Porto qui «{portando.titolo}» — {portando.i + 1} di {portando.totale}
+            </span>
+          ) : (
+            <span>
+              {books.length} {books.length === 1 ? "libro custodito" : "libri custoditi"}
+              {melodie ? ` · ${melodie} ${melodie === 1 ? "melodia" : "melodie"}` : ""}
+              {estimate?.usage ? ` · ${fmtBytes(estimate.usage)} usati` : ""}
+              {estimate?.quota ? ` di ${fmtBytes(estimate.quota)}` : ""}
+              {` · v. ${typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "?"}`}
+            </span>
+          )}
+          {/* Il richiamo dei tomi: c'e' solo se qualcosa e' rimasto lassu',
+              e il numero sta nel tasto perche' chi lo tocca sappia in
+              anticipo quanta connessione ci vuole. */}
+          {nelCloud.length > 0 && (
+            <button
+              onClick={portando ? () => { filoTomi.current = null; setPortando(null); } : richiamaTomi}
+              style={{
+                padding: "7px 16px",
+                borderRadius: 10,
+                border: `1px solid ${C.arcane}66`,
+                color: C.arcane,
+                fontSize: 14,
+                marginRight: 8,
+              }}
+            >
+              {portando
+                ? `Fermo qui (${portando.i + 1} di ${portando.totale})`
+                : `☁ Porta qui ${nelCloud.length} ${nelCloud.length === 1 ? "tomo" : "tomi"}`}
+            </button>
+          )}
           <button
             onClick={() => archiveRef.current?.click()}
             disabled={restoring}

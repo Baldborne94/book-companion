@@ -309,6 +309,55 @@ export async function ensureLocalFile(book) {
   return data;
 }
 
+// PORTARE A CASA I TOMI RIMASTI NEL CLOUD.
+//
+// Un libro arrivato dalla sincronizzazione ha qui titolo, copertina e
+// progresso, ma i byte scendono solo la prima volta che lo apri. Per
+// leggere va benissimo; per le domande che attraversano la saga no —
+// «Chi è costui?» sfoglia i volumi che hai finito, e un volume che non e'
+// su questo dispositivo resta muto (adesso lo dichiara, ma resta muto).
+// Aprirli uno per uno per sbloccarli e' una faccenda da dieci minuti:
+// questo giro li porta giu' tutti insieme, una volta sola.
+//
+// Un tomo per volta, come ogni passata lunga di questa app: venti
+// scaricamenti in parallelo su una connessione da tablet sono il modo di
+// non finirne nessuno. Il filo `vivo` e' l'unico modo di fermarlo a meta',
+// e quel che e' gia' sceso resta sceso.
+export async function portaACasa(libri, { onProgress, vivo } = {}) {
+  const attivo = vivo || (() => true);
+  const esito = { scesi: 0, falliti: 0, fermato: false };
+  if (!isSyncConfigured()) return esito;
+  const session = await getSession();
+  if (!session) return esito;
+  const sb = await getClient();
+  // si guarda adesso chi manca davvero: fra il conto della Libreria e
+  // questo giro il lettore puo' aver aperto un libro
+  const mancanti = [];
+  for (const b of libri) {
+    if (!(await getFile(b.id).catch(() => null))) mancanti.push(b);
+  }
+  for (const [i, b] of mancanti.entries()) {
+    if (!attivo()) {
+      esito.fermato = true;
+      break;
+    }
+    onProgress?.({ i, totale: mancanti.length, titolo: b.title });
+    try {
+      const { data, error } = await sb.storage
+        .from(BUCKET)
+        .download(filePath(session.user.id, b));
+      if (error || !data) esito.falliti += 1;
+      else {
+        await putFile(b.id, data);
+        esito.scesi += 1;
+      }
+    } catch {
+      esito.falliti += 1;
+    }
+  }
+  return esito;
+}
+
 // Come `ensureLocalFile` per i libri: i byte si scaricano quando servono
 // davvero, non a ogni sincronizzazione. Su un portatile che apri una volta
 // al mese non ha senso tirare giu' mezzo giga di musica per sport.

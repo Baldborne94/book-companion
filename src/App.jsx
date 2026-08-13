@@ -775,6 +775,10 @@ export default function App() {
             localIds={localIds}
             onImported={() => runSync.current(true)}
             focusSaga={focusSaga}
+            collegato={sync.signedIn}
+            // i byte scesi in casa non sono roba da sincronizzare: basta
+            // ricontare chi c'e', e le nuvolette si spengono subito
+            onFileLocali={async () => setLocalIds(await localFileIds())}
           />
         )}
         {section === "music" && <MusicRoom music={music} playerRef={playerRef} notify={notify} />}
