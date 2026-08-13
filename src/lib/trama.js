@@ -32,6 +32,10 @@ const DA_CORPO = 8;
 const DA_CODA = 12;
 const DA_PRIMA = 6;
 const APERTURA = 0.2;
+// quanti paragrafi bastano per dire «siamo dentro la storia»: prima di
+// questi, un titolo tipo «Indice» o «Copyright» e' materiale di TESTA e si
+// salta; dopo, e' il materiale di coda e la storia e' finita li'
+const DENTRO_LA_STORIA = 30;
 
 const SISTEMA = [
   "Sei l'Oracolo di un'app di lettura. Il lettore riprende un libro dopo",
@@ -90,17 +94,38 @@ function oltre(doc, item, cfi, el, fino) {
   }
 }
 
+// LE ULTIME PAGINE DEL FILE NON SONO IL FINALE DELLA STORIA.
+//
+// In fondo a un romanzo ci sono l'elenco dei personaggi, i ringraziamenti,
+// l'appendice, l'estratto del prossimo volume. La coda si prende dal
+// FONDO del testo, e su un libro finito finiva dritta lì dentro: alla
+// domanda «come si è chiuso?» la scheda rispondeva «le ultime pagine che
+// ho sono un elenco di personaggi» (segnalato dal lettore). Da un elenco
+// di nomi non si ricava una scena.
+//
+// Si riconosce dal titolo del documento o dalla sua prima intestazione:
+// quando comincia il materiale di contorno, la storia è finita lì.
+const CONTORNO =
+  /^\s*(dramatis\s+personae|cast\s+of\s+characters|personaggi|acknowledge?ments?|ringraziamenti|appendix|appendice|glossary|glossario|about\s+the\s+author|l['’]autore|nota\s+dell['’]autore|author['’]s\s+note|note\s+dell['’]editore|extract|estratto|anteprima|excerpt|also\s+by|dello\s+stesso\s+autore|copyright|indice|contents|table\s+of\s+contents|bibliograf)/i;
+
+function eContorno(doc) {
+  const titolo = doc?.title || "";
+  const testa = doc?.querySelector?.("h1, h2, h3, h4")?.textContent || "";
+  return CONTORNO.test(titolo.trim()) || CONTORNO.test(testa.trim());
+}
+
 async function tramaDaEpub(libro, fino) {
   const blob = await getFile(libro.id);
   if (!blob) return null;
   const { default: ePub } = await import("epubjs");
   const eb = ePub(await blob.arrayBuffer());
   const r = nuovaRaccolta();
+  let finito = false;
   try {
     await eb.ready;
     const cfi = new ePub.CFI();
     const spina = eb.spine.spineItems;
-    for (let i = 0; i < spina.length; i++) {
+    for (let i = 0; i < spina.length && !finito; i++) {
       const item = spina[i];
       if (fino) {
         try {
@@ -123,6 +148,18 @@ async function tramaDaEpub(libro, fino) {
       try {
         await item.load(eb.load.bind(eb));
         const doc = item.document;
+        // Il materiale di contorno chiude la storia: da lì in poi non è
+        // più romanzo, e la coda deve fermarsi prima. Ma le stesse parole
+        // stanno anche in TESTA a un libro — indice, copyright, «dello
+        // stesso autore» — e fermarsi lì vorrebbe dire non raccogliere
+        // niente: in apertura si salta e si tira dritto, in fondo si
+        // chiude.
+        if (eContorno(doc)) {
+          if (r.corpo.length >= DENTRO_LA_STORIA) {
+            finito = true;
+          }
+          continue;
+        }
         if (doc?.body) {
           for (const el of doc.querySelectorAll("p, blockquote, dd")) {
             if (taglia && oltre(doc, item, cfi, el, fino)) break;
@@ -261,18 +298,64 @@ const SISTEMA_PRIMA = [
   "MISURA: sulle 250 parole. Serve a rimettersi in pari in mezzo minuto.",
   "CONTENUTO: la storia com'è arrivata fin qui — da dove è partita, chi ci",
   "si muove dentro e cosa vuole, i fatti che contano e i conti rimasti",
-  "aperti. Chiudi dicendo come si è chiuso l'ultimo volume, che è il punto",
-  "da cui riparte quello che ha in mano.",
-  "Se i passaggi non bastano a ricostruire il filo, dillo in una riga",
-  "invece di inventare.",
+  "aperti. Chiudi dicendo dove sono arrivate le cose alla fine dell'ultimo",
+  "volume, che è il punto da cui riparte quello che ha in mano.",
+  "NIENTE PREMESSE E NIENTE SCUSE: attacca dal racconto. Non aprire",
+  "dicendo che i passaggi sono pochi o frammentari, non commentare il",
+  "materiale che ti ho dato e non parlare di te — al lettore serve la",
+  "storia, e da dove viene la risposta glielo dichiara già l'app.",
+  "I passaggi sono un campione, non il libro intero: è normale che siano",
+  "scene sparse. Ricava quello che si può ricavare e raccontalo con",
+  "sicurezza, senza riempire i buchi con roba inventata; su quello che",
+  "davvero non c'è, taci invece di segnalarlo.",
 ].join(" ");
+
+// QUI I VOLUMI PRECEDENTI SONO IL SOGGETTO, NON LO SFONDO.
+//
+// `scegliTrama` è fatta per «dove eravamo rimasti»: il libro in mano è la
+// storia, e ai volumi di prima bastano sei frammenti a collocare i nomi.
+// Con quella spartizione questa scheda usciva fatta di schegge — «nomi e
+// luoghi da tenere a mente, non una storia» (parole sue, e aveva ragione).
+//
+// Qui la proporzione si rovescia: l'ultimo volume finito è quello da cui
+// riparti e prende la parte grossa, compresa la sua chiusura vera; i più
+// vecchi hanno ciascuno la propria quota, non una in comune.
+const PRIMA_APERTURA = 5;
+const PRIMA_CORPO = 14;
+const PRIMA_CODA = 10;
+const PRIMA_VECCHI = 10;
+const PRIMA_TETTO_VECCHI = 30;
+
+export function scegliPrima(raccolto) {
+  if (!raccolto.length) return [];
+  const ultimo = raccolto[raccolto.length - 1];
+  const vecchi = raccolto.slice(0, -1);
+  const quota = vecchi.length
+    ? Math.max(4, Math.floor(Math.min(PRIMA_TETTO_VECCHI, PRIMA_VECCHI * vecchi.length) / vecchi.length))
+    : 0;
+  const fuori = vecchi.flatMap((r) =>
+    sparsi(r.corpo, quota).map((testo) => ({ testo, quando: "prima" }))
+  );
+  const coda = ultimo.coda.slice(-PRIMA_CODA);
+  const corpo = ultimo.corpo.filter((t) => !coda.includes(t));
+  const taglio = Math.max(PRIMA_APERTURA, Math.round(corpo.length * APERTURA));
+  const scelti = [
+    ...sparsi(corpo.slice(0, taglio), PRIMA_APERTURA),
+    ...sparsi(corpo.slice(taglio), PRIMA_CORPO),
+  ];
+  return [
+    ...fuori,
+    ...scelti.map((testo) => ({ testo, quando: "qui" })),
+    ...coda.map((testo) => ({ testo, quando: "coda" })),
+  ];
+}
 
 export async function schedaPrima({ book, libri, statusOf, cfiOf, vivo, passo }) {
   const tappe = frontiera(book, libri, { statusOf, cfiOf }).filter((t) => t.libro.id !== book.id);
   if (!tappe.length) return { fase: "vuoto", tappe: [], lontani: [], passaggi: [] };
   passo({ fase: "cerco", tappe });
   const { raccolto, lontani } = await raccogliTrama(tappe, { vivo });
-  const scelti = scegliTrama(raccolto);
+  const scelti = scegliPrima(raccolto);
   if (!vivo()) return null;
   if (!scelti.length) return { fase: "vuoto", tappe, lontani, passaggi: [] };
   passo({ fase: "chiedo", tappe, lontani, passaggi: scelti });
@@ -297,8 +380,9 @@ export async function chiediPrima({ passaggi, tappe }, fetcher) {
   );
   if (tappe.length > 1) {
     righe.push(
-      "I passaggi [prima] sono pochi frammenti sparsi su interi volumi ancora precedenti: servono " +
-        "solo a collocare nomi e luoghi che tornano. NON riassumere quei volumi da lì."
+      "I passaggi [prima] vengono dai volumi ancora precedenti, campionati lungo tutto il loro corso: " +
+        "raccontane quello che mostrano — chi sono, cosa è successo, come si lega a quel che viene dopo — " +
+        "senza però dedurne fatti che non ci sono."
     );
   }
   const eti = { prima: "prima", qui: "inizio", coda: "ultime pagine" };
