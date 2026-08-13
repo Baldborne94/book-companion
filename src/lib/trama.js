@@ -407,10 +407,15 @@ export function scegliPrima(raccolto) {
   // volume: senza, i frammenti arrivano al modello tutti mescolati sotto
   // un'etichetta sola, e non puo' raccontarli in ordine nemmeno volendo.
   // Il numero torna titolo sullo schermo (`conTitoli`), mai al modello.
+  // e quanti ROMANZI tiene: un cofanetto etichettato come un volume solo
+  // si prende una riga come tutti gli altri, per quanti passaggi gli si
+  // diano — il modello non puo' sapere che sono tre libri se non glielo
+  // si dice (segnalato: «la trilogia me la scarnifichi»)
   const fuori = vecchi.flatMap((r, i) =>
     sparsi(r.corpo, quote[i]).map((testo) => ({
       testo,
       quando: "prima",
+      libri: libri[i],
       volume: i + 1,
     }))
   );
@@ -500,9 +505,23 @@ export async function chiediPrima({ passaggi, tappe }, fetcher) {
         "ci sono."
     );
   }
+  // un volume che ne raccoglie tre va detto, o si prende lo spazio di uno
+  const cofanetti = passaggi.filter((p) => p.quando === "prima" && p.libri > 1);
+  if (cofanetti.length) {
+    const quali = [...new Set(cofanetti.map((p) => `«Volume ${p.volume}» (${p.libri} romanzi)`))];
+    righe.push(
+      `Attenzione: ${quali.join(", ")} non è un romanzo solo ma un'edizione che ne raccoglie ` +
+        "più d'uno, e i suoi passaggi vengono da storie diverse che si susseguono. Dagli lo spazio " +
+        "che merita — più o meno quanto daresti a quei romanzi presi uno per uno — e racconta i " +
+        "suoi archi in ordine, invece di liquidarlo con una frase come fosse un volume qualunque."
+    );
+  }
   const eti = { qui: "inizio", coda: "ultime pagine" };
   passaggi.forEach((p, i) => {
-    const dove = p.quando === "prima" ? `Volume ${p.volume}` : eti[p.quando];
+    const dove =
+      p.quando === "prima"
+        ? `Volume ${p.volume}${p.libri > 1 ? `, ${p.libri} romanzi in uno` : ""}`
+        : eti[p.quando];
     righe.push(`${i + 1}. [${dove}] «${p.testo}»`);
   });
   return chiedi({ system: SISTEMA_PRIMA, user: righe.join("\n"), tetto: TETTO_SCHEDA }, fetcher);
