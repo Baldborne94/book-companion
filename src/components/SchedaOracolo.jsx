@@ -64,6 +64,23 @@ function Chiave({ onSalva }) {
 
 const riga = { color: C.muted, fontSize: 14.5, lineHeight: 1.55, margin: 0 };
 
+// I tomi che non sono su questo dispositivo NON sono stati letti: la
+// frontiera li elenca perche' il lettore li ha finiti, ma i byte stanno
+// nel cloud e nessuno li ha aperti. Senza questa riga la scheda diceva
+// «basata su tutta la saga» mentre rispondeva da un libro solo — ed e'
+// esattamente il genere di silenzio che questa app non si permette.
+function Lontani({ libri }) {
+  if (!libri?.length) return null;
+  const nomi = libri.map((l) => `«${l.title}»`).join(", ");
+  return (
+    <p style={{ margin: "8px 0 0", fontSize: 12.5, color: C.arcane, lineHeight: 1.5 }}>
+      {libri.length === 1
+        ? `Però ${nomi} non è su questo dispositivo: non ho potuto sfogliarlo, e quel che c'è dentro manca da questa risposta.`
+        : `Però questi non sono su questo dispositivo: ${nomi}. Non ho potuto sfogliarli, e quel che c'è dentro manca da questa risposta.`}
+    </p>
+  );
+}
+
 // Le attese dicono cosa sta facendo, non «attendere»: raccogliere i passaggi
 // di un protagonista su tre volumi prende decine di secondi, e una rotellina
 // muta in quel tempo si legge come un blocco.
@@ -83,7 +100,16 @@ export default function SchedaOracolo({ scheda, attese, vuoto, onRiprova }) {
   if (fase !== "fatto" && fase !== "errore" && fase !== "vuoto") {
     return <p style={riga}>{attese[fase]}</p>;
   }
-  if (fase === "vuoto") return <p style={riga}>{vuoto}</p>;
+  if (fase === "vuoto") {
+    return (
+      <>
+        <p style={riga}>{vuoto}</p>
+        {/* «non l'ho trovato» detto senza dire che tre volumi sono rimasti
+            chiusi e' una mezza verita' */}
+        <Lontani libri={scheda.lontani} />
+      </>
+    );
+  }
   if (fase === "errore") {
     return scheda.error === "chiave" ? (
       <Chiave onSalva={onRiprova} />
@@ -150,6 +176,7 @@ export default function SchedaOracolo({ scheda, attese, vuoto, onRiprova }) {
               accorgi da qui, senza dover leggere i passaggi */}
           {scheda.alias?.length ? ` Cercata anche come ${scheda.alias.join(", ")}.` : ""}
         </p>
+        <Lontani libri={scheda.lontani} />
         <button
           onClick={() => setFonti((v) => !v)}
           style={{

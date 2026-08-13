@@ -41,7 +41,10 @@ const SISTEMA = [
   "Non usare nulla che sai di questo libro o di questa saga da altre fonti:",
   "quel che sai potrebbe venire da pagine che non ha ancora letto, e",
   "rovinargliele. Non anticipare MAI cosa succederà, nemmeno per accennarlo.",
-  "LINGUA: scrivi nella stessa lingua dei passaggi.",
+  "LINGUA: scrivi SEMPRE IN ITALIANO, anche quando i passaggi sono in",
+  "un'altra lingua — la scheda è parte di un'app italiana. Nomi di persone",
+  "e di luoghi restano come stanno nei passaggi, senza tradurli. Scrivi un",
+  "italiano curato e naturale, da lettore che racconta.",
   "FORMA: prosa, non un elenco. Due paragrafi brevi separati da una riga",
   "vuota, testo puro senza markdown, senza titoletti.",
   "Il primo paragrafo è la storia fin qui: da dove è partita, chi ci si muove",
@@ -158,9 +161,13 @@ async function tramaDaPdf(libro, fino) {
   return r;
 }
 
+// Come nella scheda personaggio: un tomo che non e' su questo dispositivo
+// non si legge, e non dirlo significa dichiarare nella provenienza un
+// volume che nessuno ha aperto.
 export async function raccogliTrama(tappe, { vivo } = {}) {
   const attivo = vivo || (() => true);
   const out = [];
+  const lontani = [];
   for (const t of tappe) {
     if (!attivo()) break;
     try {
@@ -168,11 +175,13 @@ export async function raccogliTrama(tappe, { vivo } = {}) {
       const r =
         t.libro.fileType === "pdf" ? await tramaDaPdf(t.libro, fino) : await tramaDaEpub(t.libro, fino);
       if (r) out.push({ libro: t.libro, ...r });
+      else lontani.push(t.libro);
     } catch {
       /* tomo che non si apre: gli altri bastano */
+      lontani.push(t.libro);
     }
   }
-  return out;
+  return { raccolto: out, lontani };
 }
 
 function sparsi(lista, n) {
@@ -215,13 +224,14 @@ export function scegliTrama(raccolto) {
 export async function schedaRiassunto({ book, libri, statusOf, cfiOf, vivo, passo }) {
   const tappe = frontiera(book, libri, { statusOf, cfiOf });
   passo({ fase: "cerco", tappe });
-  const scelti = scegliTrama(await raccogliTrama(tappe, { vivo }));
+  const { raccolto, lontani } = await raccogliTrama(tappe, { vivo });
+  const scelti = scegliTrama(raccolto);
   if (!vivo()) return null;
-  if (!scelti.length) return { fase: "vuoto", tappe, passaggi: [] };
-  passo({ fase: "chiedo", tappe, passaggi: scelti });
+  if (!scelti.length) return { fase: "vuoto", tappe, lontani, passaggi: [] };
+  passo({ fase: "chiedo", tappe, lontani, passaggi: scelti });
   const res = await chiediRiassunto({ passaggi: scelti, tappe });
   if (!vivo()) return null;
-  return { fase: res.answer ? "fatto" : "errore", tappe, passaggi: scelti, ...res };
+  return { fase: res.answer ? "fatto" : "errore", tappe, lontani, passaggi: scelti, ...res };
 }
 
 export async function chiediRiassunto({ passaggi, tappe }, fetcher) {
