@@ -784,86 +784,104 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     return out;
   }
 
+  // LA VOLTATA E' UNA DISSOLVENZA, chiesta dal lettore: il velo color
+  // carta si alza (90ms), la pagina cambia sotto il velo pieno, e il velo
+  // ricade in 300ms sulla pagina nuova. Cosi' il confine di capitolo —
+  // che sotto il velo ci stava gia' per necessita' — e le voltate comuni
+  // parlano la stessa lingua, e il confine non e' piu' un caso speciale:
+  // lo si riconosce solo DOPO la voltata, dalla sezione cambiata, e li'
+  // il velo resta su finche' la misura non si ferma. Un secondo tocco
+  // durante l'attesa sbriga subito la voltata in coda: due tocchi svelti
+  // valgono due pagine, nessuna si perde.
+  const inAttesa = useRef(null);
   function step(r, dir) {
-    assestamento.current++;
-    setVelo(false);
-    if (dir === "prev") {
-      const vecchia = vistaCorrente();
-      const sez = vecchia?.section?.index;
-      // al primo foglio della sezione il passo indietro attraversa il
-      // confine: il capitolo che sta per nascere si copre PRIMA che
-      // dipinga l'atterraggio provvisorio
-      const base = vecchia?.element?.offsetLeft || 0;
-      if (sez != null && (r.manager?.container?.scrollLeft ?? 0) <= base) setVelo(true);
-      const p = r.prev();
+    if (inAttesa.current) {
+      const subito = inAttesa.current;
+      inAttesa.current = null;
+      subito();
+    }
+    const gettone = ++assestamento.current;
+    const cala = () => {
+      if (gettone === assestamento.current) setVelo(false);
+    };
+    setVelo(true);
+    const via = () => {
+      inAttesa.current = null;
+      if (gettone !== assestamento.current || rendRef.current !== r) return;
+      volta();
+    };
+    inAttesa.current = via;
+    setTimeout(() => {
+      if (inAttesa.current === via) via();
+    }, PASSO);
+
+    function volta() {
+      if (dir === "prev") {
+        const sez = vistaCorrente()?.section?.index;
+        const p = r.prev();
+        p?.then?.(() => {
+          if (gettone !== assestamento.current) return;
+          const arrivo = vistaCorrente();
+          if (rendRef.current !== r || !arrivo || arrivo.section?.index === sez) {
+            cala();
+            return;
+          }
+          // confine attraversato: il capitolo ricostruito cresce quando
+          // arriva il font incorporato e l'atterraggio provvisorio resta
+          // corto. A ogni crescita si ri-atterra sul fondo del capitolo
+          // giusto, allineato alla facciata.
+          const indice = arrivo.section.index;
+          aCapitoloAssestato(() => {
+            if (rendRef.current !== r) return;
+            const cont = r.manager.container;
+            // il fondo di QUESTO capitolo: la fine del contenitore
+            // potrebbe essere la coda di un'altra vista
+            let el = null;
+            r.manager.views?.forEach?.((v) => { if (v.section?.index === indice) el = v.element; });
+            if (!el) return;
+            const facciata = r.manager.layout?.delta || cont.clientWidth || 1;
+            const ultima = el.offsetLeft + Math.max(0, el.offsetWidth - cont.clientWidth);
+            r.manager.scrollTo(el.offsetLeft + Math.round((ultima - el.offsetLeft) / facciata) * facciata, 0, true);
+            r.reportLocation();
+          }, () => setVelo(false));
+        });
+        p?.catch?.(cala);
+        if (!p || !p.then) cala();
+        return;
+      }
+      // AVANTI: epub.js cede il passo al capitolo nuovo quando l'avanzo e'
+      // piu' corto di una facciata, ANCHE se non l'hai ancora letta —
+      // l'ultima pagina scritta spariva. Se resta carta la si scorre.
+      const rest = leftoverScroll(r.manager);
+      if (rest) {
+        r.manager.scrollBy(rest, 0, true);
+        r.reportLocation();
+        cala();
+        return;
+      }
+      const sez = vistaCorrente()?.section?.index;
+      const p = r.next();
       p?.then?.(() => {
+        if (gettone !== assestamento.current) return;
         const arrivo = vistaCorrente();
         if (rendRef.current !== r || !arrivo || arrivo.section?.index === sez) {
-          setVelo(false);
+          cala();
           return;
         }
-        const indice = arrivo.section.index;
-        aCapitoloAssestato(() => {
-          if (rendRef.current !== r) return;
-          const cont = r.manager.container;
-          // il fondo di QUESTO capitolo, allineato alla facciata: la fine
-          // del contenitore potrebbe essere la coda di un'altra vista
-          let el = null;
-          r.manager.views?.forEach?.((v) => { if (v.section?.index === indice) el = v.element; });
-          if (!el) return;
-          const facciata = r.manager.layout?.delta || cont.clientWidth || 1;
-          const ultima = el.offsetLeft + Math.max(0, el.offsetWidth - cont.clientWidth);
-          r.manager.scrollTo(el.offsetLeft + Math.round((ultima - el.offsetLeft) / facciata) * facciata, 0, true);
-          r.reportLocation();
-        }, () => setVelo(false));
-      });
-      p?.catch?.(() => setVelo(false));
-      return p;
-    }
-    // AVANTI: epub.js cede il passo al capitolo nuovo quando l'avanzo e'
-    // piu' corto di una facciata, ANCHE se non l'hai ancora letta —
-    // l'ultima pagina scritta spariva. Se resta carta la si scorre.
-    const rest = leftoverScroll(r.manager);
-    if (rest) {
-      r.manager.scrollBy(rest, 0, true);
-      return r.reportLocation();
-    }
-    // E ANCHE IN AVANTI IL CONFINE SI COPRE: il capitolo nuovo va
-    // costruito li' per li', e senza velo si vedeva quasi un secondo di
-    // carta nuda di colpo e poi il testo di scatto (misurato sul video
-    // del lettore). Qui si atterra all'INIZIO del capitolo, che non si
-    // muove quando la carta cresce: niente da correggere, il velo aspetta
-    // solo che la misura si fermi. Le voltate dentro il capitolo non
-    // passano di qui.
-    const vecchia = vistaCorrente();
-    const sez = vecchia?.section?.index;
-    let attraversa = false;
-    if (vecchia?.element && r.manager?.container) {
-      const cont = r.manager.container;
-      const fine = vecchia.element.offsetLeft + vecchia.element.offsetWidth;
-      const delta = r.manager.layout?.delta || cont.clientWidth || 1;
-      attraversa = cont.scrollLeft + delta >= fine - 4;
-    }
-    if (attraversa) setVelo(true);
-    const p = r.next();
-    if (attraversa) {
-      p?.then?.(() => {
-        const arrivo = vistaCorrente();
-        if (rendRef.current !== r || !arrivo || arrivo.section?.index === sez) {
-          setVelo(false);
-          return;
-        }
+        // confine attraversato: si atterra all'INIZIO del capitolo nuovo,
+        // che non si muove quando la carta cresce — niente da correggere,
+        // il velo aspetta solo che la misura si fermi
         aCapitoloAssestato(() => {}, () => setVelo(false));
       });
-      p?.catch?.(() => setVelo(false));
+      p?.catch?.(cala);
+      if (!p || !p.then) cala();
     }
-    return p;
   }
 
-  // La voltata e' SECCA, per scelta: il foglio animato (palco di cloni,
-  // fotografie del capitolo, velature) e' stato tolto per intero dopo mesi
-  // di salti di pagina su tablet — non re-introdurlo senza una prova lunga
-  // su Firefox Android.
+  // Niente foglio animato (palco di cloni, fotografie del capitolo): tolto
+  // per intero dopo mesi di salti di pagina su tablet, non re-introdurlo
+  // senza una prova lunga su Firefox Android. La dissolvenza di velo qui
+  // sopra e' l'UNICO movimento concesso.
   function turn(dir) {
     const r = rendRef.current;
     if (!r || status !== "ready") return;
