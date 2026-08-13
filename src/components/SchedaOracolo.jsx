@@ -69,6 +69,24 @@ const riga = { color: C.muted, fontSize: 14.5, lineHeight: 1.55, margin: 0 };
 // nel cloud e nessuno li ha aperti. Senza questa riga la scheda diceva
 // «basata su tutta la saga» mentre rispondeva da un libro solo — ed e'
 // esattamente il genere di silenzio che questa app non si permette.
+// I volumi SFOGLIATI in cui il nome non e' saltato fuori. Detto per
+// nome, un volume che tace e' un'informazione; taciuto, e' il modo in cui
+// un pezzo di storia sparisce senza che nessuno se ne accorga — che e'
+// gia' successo, e il lettore l'ha dovuto scoprire leggendo la scheda.
+function Muti({ tappe, passaggi, lontani }) {
+  const conRoba = new Set(passaggi.map((p) => p.libro?.id));
+  const assenti = new Set((lontani || []).map((l) => l.id));
+  const muti = tappe
+    .map((t) => t.libro)
+    .filter((l) => l && !conRoba.has(l.id) && !assenti.has(l.id));
+  if (!muti.length || !conRoba.size) return null;
+  return (
+    <p style={{ margin: "6px 0 0", fontSize: 12.5, color: C.dim, lineHeight: 1.5 }}>
+      Non l'ho trovato in {muti.map((l) => `«${l.title}»`).join(", ")}.
+    </p>
+  );
+}
+
 function Lontani({ libri }) {
   if (!libri?.length) return null;
   const nomi = libri.map((l) => `«${l.title}»`).join(", ");
@@ -177,6 +195,11 @@ export default function SchedaOracolo({ scheda, attese, vuoto, onRiprova }) {
           {scheda.alias?.length ? ` Cercata anche come ${scheda.alias.join(", ")}.` : ""}
         </p>
         <Lontani libri={scheda.lontani} />
+        {/* solo per la scheda personaggio: nel riassunto «non l'ho
+            trovato» non vuol dire niente, non si cerca un nome */}
+        {scheda.nome && (
+          <Muti tappe={tappe} passaggi={passaggi} lontani={scheda.lontani} />
+        )}
         <button
           onClick={() => setFonti((v) => !v)}
           style={{
