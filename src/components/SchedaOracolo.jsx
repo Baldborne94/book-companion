@@ -2,6 +2,7 @@ import { useState } from "react";
 import { C } from "../data/constants.js";
 import { setOracleKey } from "../lib/oracle.js";
 import { raccontaFrontiera } from "../lib/frontiera.js";
+import { movimenti, conTitoli, TITOLETTI } from "../lib/chiSono.js";
 
 // Il corpo delle schede dell'Oracolo — «Chi è costui?» e «Dove eravamo
 // rimasti» — condiviso fra i due reader. Cambia la domanda, non la scheda:
@@ -110,13 +111,28 @@ export default function SchedaOracolo({ scheda, attese, vuoto, onRiprova }) {
     );
   }
 
+  // i numeri dei volumi tornano titoli solo qui, sullo schermo: al modello
+  // i titoli non arrivano mai
+  const testo = conTitoli(scheda.answer, tappe);
+  // i tre movimenti («Chi è» soltanto: il riassunto resta prosa nuda); se
+  // il modello non ha diviso in tre, niente titoletti — meglio senza che
+  // con un titolo sul pezzo sbagliato
+  const parti = scheda.nome ? movimenti(testo) : null;
+  const prosa = { color: C.text, fontSize: 15.5, lineHeight: 1.6, margin: 0, whiteSpace: "pre-line" };
   return (
     <>
-      {/* pre-line: la risposta e' prosa in due o tre paragrafi, e la riga
-          vuota fra l'uno e l'altro e' la sua unica struttura */}
-      <p style={{ color: C.text, fontSize: 15.5, lineHeight: 1.6, margin: 0, whiteSpace: "pre-line" }}>
-        {scheda.answer}
-      </p>
+      {parti ? (
+        parti.map((p, i) => (
+          <div key={i} style={{ marginTop: i ? 14 : 0 }}>
+            <div style={{ fontSize: 11.5, color: C.arcane, marginBottom: 4 }}>{TITOLETTI[i]}</div>
+            <p style={prosa}>{p}</p>
+          </div>
+        ))
+      ) : (
+        /* pre-line: la prosa ha nella riga vuota la sua unica struttura;
+           un divisorio avanzato dal modello si riduce a quella */
+        <p style={prosa}>{testo.replace(/\n\s*-{3,}\s*\n/g, "\n\n")}</p>
+      )}
       {/* Da dove viene la risposta: la garanzia resta, ma ripiegata. Il
           controllo dev'essere possibile, non un muro di citazioni sotto ogni
           scheda. */}
