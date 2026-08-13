@@ -327,9 +327,12 @@ const PRIMA_APERTURA = 5;
 const PRIMA_CORPO = 14;
 const PRIMA_CODA = 10;
 const PRIMA_VECCHI = 10;
-// il tetto e' sui libri-equivalenti, non sui file: un cofanetto da tre
-// romanzi ne vale tre, e il suo spazio deve poterci stare
-const PRIMA_TETTO_VECCHI = 45;
+// Il tetto e' sui libri-equivalenti, non sui file: un cofanetto da tre
+// romanzi ne vale tre, e il suo spazio deve poterci stare. Sta largo
+// abbastanza da non stringere prima dei sette libri: con cinque
+// volumi-tipo (un cofanetto piu' due romanzi) tagliava gia', e le saghe
+// lunghe sono proprio quelle in cui questa scheda serve di piu'.
+const PRIMA_TETTO_VECCHI = 72;
 
 // E UN COFANETTO NON E' UN VOLUME COME GLI ALTRI.
 //

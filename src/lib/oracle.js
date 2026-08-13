@@ -77,7 +77,13 @@ const cache = new Map();
 // dice il prompt, che chiede una scheda compatta. Serve solo perche' il
 // ragionamento abbia dove stare senza mangiarsi il finale.
 export const TETTO_BREVE = 1500;
-export const TETTO_SCHEDA = 4000;
+// Su una saga lunga davanti al modello finiscono cento passaggi, e il
+// ragionamento cresce con loro: il tetto deve restare piu' alto di quanto
+// serve, o si torna al troncamento a meta' frase. Non e' il permesso di
+// scrivere di piu' — quanto scrivere lo dice il prompt, che chiede una
+// scheda compatta — ma lo spazio perche' il ragionamento non si mangi il
+// finale della risposta.
+export const TETTO_SCHEDA = 6000;
 
 // La chiamata sola, senza sapere cosa si sta chiedendo: la usano sia la
 // spiegazione di un passaggio sia la scheda di un personaggio, e gli errori
