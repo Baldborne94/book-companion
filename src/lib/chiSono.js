@@ -446,16 +446,21 @@ function quantiLibri(passaggi, idCorrente) {
 // E LA QUOTA E' A PESO, NON A TESTA.
 //
 // Un cofanetto che tiene dentro tre romanzi aveva gli stessi posti di una
-// raccolta di racconti: un terzo di quota per ciascuno dei romanzi che
-// contiene, e gli incontri di la' non arrivavano nella scheda. Il peso e'
-// il testo scorso davvero (`esteso`), non il numero di menzioni: un
-// personaggio fittissimo in un libro breve non deve rubare il posto al
-// libro lungo dove compare tre volte.
+// raccolta di racconti, e gli incontri di la' non arrivavano nella scheda.
+//
+// Il peso e' QUANTO DEL PERSONAGGIO c'e' in quel volume — le sue menzioni,
+// gia' ripulite dai doppioni — non quanto e' lungo il libro. Si era
+// provato con la lunghezza (`esteso`, che resta a dire quanti libri tiene
+// un file), ma su una scheda-personaggio e' la misura sbagliata: il
+// cofanetto vinceva perche' e' spesso, e il volume dove il personaggio e'
+// PROTAGONISTA prendeva un quarto dei suoi posti (segnalato dal lettore
+// su Best Served Cold e Monza Murcatto). Dove compare di piu', li' c'e'
+// la sua storia.
 function perVolume(prima, n) {
   if (n <= 0 || !prima.length) return [];
   const ordine = [...new Set(prima.map((m) => m.libro.id))];
   const gruppi = ordine.map((id) => prima.filter((m) => m.libro.id === id));
-  const pesi = gruppi.map((g) => Math.max(1, g[0]?.esteso || 1));
+  const pesi = gruppi.map((g) => g.length);
   const somma = pesi.reduce((a, b) => a + b, 0);
   // un posto garantito a testa finche' i posti bastano: un volume dove il
   // personaggio compare di sfuggita va detto lo stesso, ed e' proprio
@@ -500,15 +505,28 @@ export function scegliPassaggi(tutti, idCorrente) {
   const base = ricchi.length >= totale ? ricchi : puliti;
   if (base.length <= totale) return base;
 
+  // NEL LIBRO APERTO IL PERSONAGGIO PUO' NON ESSERE ANCORA COMPARSO.
+  //
+  // Succede sempre quando un libro e' appena cominciato, ed e' proprio
+  // allora che la scheda serve di piu'. Prima, in quel caso, si buttava
+  // via tutta la spartizione per volume e si trattava la frontiera come
+  // se fosse un volume solo: il tomo con piu' menzioni si prendeva quasi
+  // tutti i posti e i volumi dove il personaggio e' PROTAGONISTA
+  // sparivano dalla scheda (segnalato: «perche' non hai considerato Best
+  // Served Cold e il suo ruolo con Monza?»).
+  //
+  // Il rimedio: il ruolo di «volume dove sei adesso» passa all'ULTIMO in
+  // cui compare — e' li' che l'hai lasciato — e tutti quelli prima si
+  // spartiscono la loro quota a peso, come sempre.
   const qui = idCorrente ? base.filter((m) => m.libro.id === idCorrente) : [];
-  // nel volume aperto il nome non compare: allora e' tutto passato, e si
-  // tratta la frontiera intera come fosse un volume solo
-  if (!qui.length) return volumeAperto(base, perQui);
-  const prima = base.filter((m) => m.libro.id !== idCorrente);
+  const idFinale = qui.length ? idCorrente : base[base.length - 1]?.libro.id;
+  const ultimo = qui.length ? qui : base.filter((m) => m.libro.id === idFinale);
+  const prima = base.filter((m) => m.libro.id !== idFinale);
+  if (!ultimo.length) return volumeAperto(base, perQui);
 
-  const nPrima = Math.min(prima.length, totale - Math.min(qui.length, perQui));
-  const nQui = Math.min(qui.length, totale - nPrima);
-  return [...perVolume(prima, nPrima), ...volumeAperto(qui, nQui)];
+  const nPrima = Math.min(prima.length, totale - Math.min(ultimo.length, perQui));
+  const nUltimo = Math.min(ultimo.length, totale - nPrima);
+  return [...perVolume(prima, nPrima), ...volumeAperto(ultimo, nUltimo)];
 }
 
 // I TITOLI NON ESCONO DAL DISPOSITIVO.
