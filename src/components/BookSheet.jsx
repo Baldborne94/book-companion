@@ -3,6 +3,7 @@ import { C, FONT_TITLE } from "../data/constants.js";
 import { getProgress, getStatus, setStatus } from "../lib/library.js";
 import { getCfi } from "../lib/annotations.js";
 import { frontiera } from "../lib/frontiera.js";
+import { soloDellaSerie } from "../lib/trama.js";
 import BookCover from "./BookCover.jsx";
 
 // la scheda dell'Oracolo arriva solo se la si chiede: qui dentro non
@@ -145,11 +146,21 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   // sopra, nei campi Saga e Numero.
   const [prima, setPrima] = useState(null);
   const filoPrima = useRef(0);
-  const precedenti = frontiera(
-    { ...book, saga: saga.trim(), sagaOrder: sagaOrder.trim() === "" ? null : Number(sagaOrder) },
-    books,
-    { statusOf: getStatus, cfiOf: getCfi }
-  ).filter((t) => t.libro.id !== book.id);
+  const comEditato = {
+    ...book,
+    saga: saga.trim(),
+    series: series.trim(),
+    sagaOrder: sagaOrder.trim() === "" ? null : Number(sagaOrder),
+  };
+  // stesso raggruppamento della scheda: se il volume dichiara una serie i
+  // precedenti sono quelli della SUA serie. Il conteggio nel tasto deve
+  // dire lo stesso numero che poi verrà davvero sfogliato.
+  const precedenti = soloDellaSerie(
+    comEditato,
+    frontiera(comEditato, books, { statusOf: getStatus, cfiOf: getCfi }).filter(
+      (t) => t.libro.id !== book.id
+    )
+  );
 
   async function chiediPrimaDiCominciare() {
     const mio = ++filoPrima.current;
@@ -157,7 +168,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
     setPrima({ fase: "cerco", tappe: precedenti });
     const { schedaPrima } = await import("../lib/trama.js");
     const finito = await schedaPrima({
-      book: { ...book, saga: saga.trim(), sagaOrder: sagaOrder.trim() === "" ? null : Number(sagaOrder) },
+      book: comEditato,
       libri: books,
       statusOf: getStatus,
       // il volume che sta per cominciare non ha un «fin dove»: quello che
