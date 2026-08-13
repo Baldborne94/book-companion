@@ -65,12 +65,15 @@ const SISTEMA = [
 // il tetto si dirada tenendo uno su due. Il passo raddoppia, la copertura
 // resta distesa su tutto il letto, e la memoria non se ne accorge.
 function nuovaRaccolta() {
-  return { corpo: [], coda: [], passo: 1, visti: 0 };
+  // `esteso` = quanto testo si e' scorso davvero: e' la misura del volume,
+  // e serve a capire quanti LIBRI tiene dentro un file solo
+  return { corpo: [], coda: [], passo: 1, visti: 0, esteso: 0 };
 }
 
 function raccogli(r, testo) {
   const t = String(testo || "").replace(/\s+/g, " ").trim();
   if (t.length < MIN_PARAGRAFO) return;
+  r.esteso += t.length;
   const pezzo = t.length > PARAGRAFO ? `${t.slice(0, PARAGRAFO)}…` : t;
   r.coda.push(pezzo);
   if (r.coda.length > CODA) r.coda.shift();
@@ -324,17 +327,46 @@ const PRIMA_APERTURA = 5;
 const PRIMA_CORPO = 14;
 const PRIMA_CODA = 10;
 const PRIMA_VECCHI = 10;
-const PRIMA_TETTO_VECCHI = 30;
+// il tetto e' sui libri-equivalenti, non sui file: un cofanetto da tre
+// romanzi ne vale tre, e il suo spazio deve poterci stare
+const PRIMA_TETTO_VECCHI = 45;
+
+// E UN COFANETTO NON E' UN VOLUME COME GLI ALTRI.
+//
+// Con una quota fissa per volume, il tomo che tiene dentro tre romanzi
+// riceveva quanto una raccolta di racconti: dieci paragrafi sparsi su un
+// milione e mezzo di caratteri, cioe' niente. La scheda finiva per
+// saltare quei romanzi, e di loro restava solo l'eco nei ricordi dei
+// personaggi dei volumi dopo (segnalato dal lettore: «sembra che ti sei
+// saltato totalmente gli eventi della prima trilogia»).
+//
+// Si contano i libri in «volumi tipo», con la MEDIANA dei precedenti come
+// unita' — la stessa misura della scheda personaggio — e la quota va a
+// libri-equivalenti, non a file.
+function quantiLibri(vecchi) {
+  const pesi = vecchi.map((r) => Math.max(1, r.esteso || 1));
+  const ordinate = [...pesi].sort((a, b) => a - b);
+  const unita = ordinate[Math.floor(ordinate.length / 2)] || 1;
+  return pesi.map((p) => Math.max(1, Math.round(p / unita)));
+}
 
 export function scegliPrima(raccolto) {
   if (!raccolto.length) return [];
   const ultimo = raccolto[raccolto.length - 1];
   const vecchi = raccolto.slice(0, -1);
-  const quota = vecchi.length
-    ? Math.max(4, Math.floor(Math.min(PRIMA_TETTO_VECCHI, PRIMA_VECCHI * vecchi.length) / vecchi.length))
-    : 0;
-  const fuori = vecchi.flatMap((r) =>
-    sparsi(r.corpo, quota).map((testo) => ({ testo, quando: "prima" }))
+  const libri = vecchi.length ? quantiLibri(vecchi) : [];
+  const totLibri = libri.reduce((a, b) => a + b, 0);
+  const budget = Math.min(PRIMA_TETTO_VECCHI, PRIMA_VECCHI * totLibri);
+  // Ogni passaggio dei volumi vecchi si porta dietro il suo NUMERO di
+  // volume: senza, i frammenti arrivano al modello tutti mescolati sotto
+  // un'etichetta sola, e non puo' raccontarli in ordine nemmeno volendo.
+  // Il numero torna titolo sullo schermo (`conTitoli`), mai al modello.
+  const fuori = vecchi.flatMap((r, i) =>
+    sparsi(r.corpo, Math.max(4, Math.round((budget * libri[i]) / totLibri))).map((testo) => ({
+      testo,
+      quando: "prima",
+      volume: i + 1,
+    }))
   );
   const coda = ultimo.coda.slice(-PRIMA_CODA);
   const corpo = ultimo.corpo.filter((t) => !coda.includes(t));
@@ -380,14 +412,17 @@ export async function chiediPrima({ passaggi, tappe }, fetcher) {
   );
   if (tappe.length > 1) {
     righe.push(
-      "I passaggi [prima] vengono dai volumi ancora precedenti, campionati lungo tutto il loro corso: " +
-        "raccontane quello che mostrano — chi sono, cosa è successo, come si lega a quel che viene dopo — " +
-        "senza però dedurne fatti che non ci sono."
+      "I passaggi marcati «Volume N» vengono dai volumi ancora precedenti, campionati lungo tutto il " +
+        "loro corso. PASSA PER OGNI VOLUME, in ordine, dal primo: bastano poche frasi a testa, ma non " +
+        "saltarne nessuno e non spendere tutto sull'ultimo. Quando dici dove accade una cosa, scrivi " +
+        "proprio «Volume 1», «Volume 2»: l'app mostrerà al lettore i titoli veri. Racconta quello che i " +
+        "passaggi mostrano, senza dedurne fatti che non ci sono."
     );
   }
-  const eti = { prima: "prima", qui: "inizio", coda: "ultime pagine" };
+  const eti = { qui: "inizio", coda: "ultime pagine" };
   passaggi.forEach((p, i) => {
-    righe.push(`${i + 1}. [${eti[p.quando]}] «${p.testo}»`);
+    const dove = p.quando === "prima" ? `Volume ${p.volume}` : eti[p.quando];
+    righe.push(`${i + 1}. [${dove}] «${p.testo}»`);
   });
   return chiedi({ system: SISTEMA_PRIMA, user: righe.join("\n"), tetto: TETTO_SCHEDA }, fetcher);
 }
