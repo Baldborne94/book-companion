@@ -330,6 +330,77 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     reflowTimer.current = setTimeout(() => { reflowing.current = false; }, 1500);
   }, []);
 
+  // L'AVANZO DI RIGA: i pixel che restano in fondo alla colonna quando la
+  // sua altezza non e' un multiplo esatto dell'altezza di riga. Si toglie
+  // quell'avanzo dal riquadro, cosi' la colonna finisce dove finisce una
+  // riga e non a meta' dello spazio della successiva.
+  //
+  // E' una delle meccaniche tolte quando il reader e' stato spogliato:
+  // rimessa da sola, su richiesta esplicita del lettore. Le tre regole che
+  // la tengono innocua stanno qui sotto, e sono quelle che mancavano al
+  // primo tentativo — che impediva al libro di aprirsi.
+  const [avanzo, setAvanzo] = useState(0);
+  const avanzoRef = useRef(0);
+  const avanzoTimer = useRef(null);
+  // (1) MAI MENTRE EPUB.JS STA MONTANDO. Misurare da dentro `rendered` e
+  // rientrargli con un resize mentre la `display` e' ancora per aria gli
+  // distrugge le viste sotto i piedi: "this.resources is undefined", e il
+  // libro non si apriva affatto. Questo interruttore si alza solo quando
+  // la prima `display` ha finito, e si riabbassa a ogni rendition nuova.
+  const avanzoPronto = useRef(false);
+  // (2) UNA VOLTA PER LIBRO, come il ritaglio dei margini nei PDF: ogni
+  // capitolo ha i suoi orli, e rimisurare a ogni capitolo farebbe cambiare
+  // misura al foglio a ogni voltata. Percio' la misura NON sta appesa a
+  // `rendered` ne' a `relocated`: si chiama a mano nei quattro momenti in
+  // cui la griglia cambia davvero — apertura, corpo/interlinea, margine,
+  // schermo che gira — e in nessun altro.
+
+  // torna `true` se ha davvero ritagliato: chi apre il libro se ne serve
+  // per tenere accesa la candela finche' la pagina non si e' assestata
+  const misuraAvanzo = useCallback(() => {
+    if (!avanzoPronto.current) return false;
+    const doc = viewerRef.current?.querySelector("iframe")?.contentDocument;
+    if (!doc?.body) return false;
+    const orli = getComputedStyle(doc.body);
+    const campione = doc.querySelector("p, li, dd, blockquote") || doc.body;
+    const riga = parseFloat(getComputedStyle(campione).lineHeight);
+    const cornice = parseFloat(orli.paddingTop) + parseFloat(orli.paddingBottom);
+    // l'altezza che il testo puo' davvero occupare: la colonna meno gli
+    // orli che il libro si mette da solo col suo foglio di stile
+    const colonna = doc.body.clientHeight - (Number.isFinite(cornice) ? cornice : 0);
+    if (!Number.isFinite(riga) || riga <= 1 || colonna <= riga) return false;
+    // (3) LA TRAPPOLA E' IL CICLO: tolto l'avanzo la colonna e' un multiplo
+    // esatto e di avanzo ne ha zero, quindi rimisurando l'altezza CORRENTE
+    // si tornerebbe indietro, poi avanti, all'infinito. Si misura sempre
+    // sull'altezza SENZA ritaglio.
+    const grezzo = (colonna + avanzoRef.current) % riga;
+    // Il ritaglio e' in pixel interi e l'interlinea no (corpo grande: 26,4).
+    // Si arrotonda per ECCESSO, o la colonna resterebbe un capello sopra il
+    // multiplo; ma a meno di un pixel dalla riga piena la riga ci sta tutta,
+    // e togliergliela sarebbe una riga di lettura buttata via.
+    const resto = grezzo < 1 || riga - grezzo < 1 ? 0 : Math.ceil(grezzo);
+    if (resto === avanzoRef.current) return false;
+    avanzoRef.current = resto;
+    setAvanzo(resto);
+    // il margine si scrive SUBITO nel riquadro, a mano: aspettando il
+    // render di React, epub.js si rimisurerebbe sul riquadro di prima e il
+    // ritaglio resterebbe nel padding senza mai entrare nella colonna
+    viewerRef.current.style.paddingBottom = `calc(${FOOT + resto}px + env(safe-area-inset-bottom))`;
+    relayout(anchor.current || live.current.cfi);
+    return true;
+  }, [relayout]);
+
+  // il ritardo lascia finire a epub.js il reimpaginamento che ha gia' per
+  // le mani: si misura sopra il suo risultato, non mentre lo scrive
+  const chiediAvanzo = useCallback((ritardo) => {
+    clearTimeout(avanzoTimer.current);
+    avanzoTimer.current = setTimeout(misuraAvanzo, ritardo);
+  }, [misuraAvanzo]);
+  // chiamata da dentro `makeRendition`, che non deve cambiare identita' a
+  // ogni render: passa da un ref, non dalle dipendenze
+  const misuraAvanzoRef = useRef(null);
+  misuraAvanzoRef.current = misuraAvanzo;
+
   // La lingua DICHIARATA dal libro: serve sapere se l'ha detta davvero —
   // senza, il browser non sillaba.
   const linguaRef = useRef(null);
@@ -598,9 +669,24 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       moved.current = false;
       fixTimers.current.forEach(clearTimeout);
       const target = live.current.cfi;
+      avanzoPronto.current = false;
       r.display(target || undefined)
         .catch(() => r.display())
-        .then(() => setStatusUi("ready"));
+        .then(() => {
+          if (rendRef.current !== r) return setStatusUi("ready");
+          // solo ADESSO epub.js e' fermo: la misura dell'avanzo puo'
+          // entrare senza trovarlo a meta' del montaggio. E la candela
+          // resta accesa finche' il ritaglio non ha fatto il suo giro:
+          // altrimenti la pagina compare lunga e si riassesta sotto gli
+          // occhi del lettore — un'apertura che si corregge da sola.
+          avanzoPronto.current = true;
+          clearTimeout(avanzoTimer.current);
+          avanzoTimer.current = setTimeout(() => {
+            const ritagliato = rendRef.current === r && misuraAvanzoRef.current();
+            if (!ritagliato) return setStatusUi("ready");
+            avanzoTimer.current = setTimeout(() => setStatusUi("ready"), 300);
+          }, 350);
+        });
       if (target) {
         const fix = () => {
           if (moved.current || rendRef.current !== r) return;
@@ -686,6 +772,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       window.removeEventListener("keydown", onKey);
       clearTimeout(saveTimer.current);
       clearTimeout(reflowTimer.current);
+      clearTimeout(avanzoTimer.current);
       fixTimers.current.forEach(clearTimeout);
       flush();
       try { rendRef.current?.destroy(); } catch { /* già distrutto */ }
@@ -698,7 +785,31 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     if (marginSeen.current === settings.margin) return;
     marginSeen.current = settings.margin;
     relayout(anchor.current || live.current.cfi);
-  }, [settings.margin, relayout]);
+    chiediAvanzo(500);
+  }, [settings.margin, relayout, chiediAvanzo]);
+
+  // lo schermo che gira cambia l'altezza della colonna, quindi l'avanzo di
+  // prima non vale piu'. Il reimpaginamento lo fa gia' epub.js da solo: qui
+  // si aspetta che abbia finito e si rimisura sopra il suo risultato.
+  useEffect(() => {
+    // due colpi, non uno: se al primo epub.js non ha ancora rimisurato il
+    // corpo, la misura torna quella di prima e il ritaglio resterebbe
+    // tarato sullo schermo vecchio. Il secondo e' gratis quando il primo
+    // ha gia' fatto centro — trova l'avanzo giusto e non tocca niente.
+    let secondo = null;
+    const onSize = () => {
+      chiediAvanzo(700);
+      clearTimeout(secondo);
+      secondo = setTimeout(() => chiediAvanzo(0), 1600);
+    };
+    window.addEventListener("resize", onSize);
+    window.addEventListener("orientationchange", onSize);
+    return () => {
+      clearTimeout(secondo);
+      window.removeEventListener("resize", onSize);
+      window.removeEventListener("orientationchange", onSize);
+    };
+  }, [chiediAvanzo]);
 
 
 
@@ -901,6 +1012,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     if ("flow" in patch || "spread" in patch || "font" in patch) makeRendition(next);
     else if (rendRef.current && ("theme" in patch || "fontSize" in patch || "lineHeight" in patch || "justify" in patch)) {
       applyStyles(rendRef.current, next);
+      // corpo e interlinea cambiano l'altezza di RIGA: il ritaglio di prima
+      // era tagliato su una griglia che non c'e' piu'
+      if ("fontSize" in patch || "lineHeight" in patch) chiediAvanzo(500);
     }
   }
 
@@ -1222,7 +1336,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           style={{
             position: "absolute",
             inset: FRAME,
-            padding: `${HEAD}px ${Math.max(settings.margin, EDGE_MAX + 8)}px calc(${FOOT}px + env(safe-area-inset-bottom))`,
+            // l'avanzo si toglie da SOTTO: cosi' il testo resta ancorato in
+            // alto e la pagina non balla quando la misura cambia
+            padding: `${HEAD}px ${Math.max(settings.margin, EDGE_MAX + 8)}px calc(${FOOT + avanzo}px + env(safe-area-inset-bottom))`,
             boxSizing: "border-box",
             borderRadius: 3,
             // la carta arriva fino al bordo interno della rilegatura: senza,
