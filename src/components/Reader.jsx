@@ -6,7 +6,7 @@ import {
   getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights,
 } from "../lib/annotations.js";
 import { getProgress, setProgress, setStatus, getStatus, loadBooks } from "../lib/library.js";
-import { schedaChiE } from "../lib/chiSono.js";
+import { schedaChiE, nuoveMenzioni } from "../lib/chiSono.js";
 import { schedaRiassunto } from "../lib/trama.js";
 import { sembraUnNome } from "../lib/nomi.js";
 import {
@@ -956,11 +956,25 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     cfiOf: (id) => (id === book.id ? live.current.cfi || getCfi(id) : getCfi(id)),
   });
 
-  async function scheda(chiave, avvia) {
+  const segnoOra = () => live.current.cfi || getCfi(book.id) || "";
+
+  // DA DOVE SI CONTA IL NUOVO: dalla menzione che avevi TOCCATO.
+  //
+  // Non da dove eri (la parola che hai toccato è più avanti del segno di
+  // pagina, e conterebbe come novità la volta dopo), non da fin dove la
+  // scheda aveva letto (che si ferma prima di quella parola, stessa
+  // trappola al contrario). Si conta dalla menzione toccata: se fra
+  // quella e la pagina dove sei adesso non ce n'è nessun'altra, di lui
+  // non è successo niente di nuovo e la scheda di allora è ancora esatta.
+  // La menzione che stai toccando ADESSO sta oltre il segno di pagina, e
+  // resta fuori dal conto da sola.
+  const daDoveContare = (gia) => gia.tocco || gia.segno;
+
+  async function scheda(chiave, avvia, riusa, tocco) {
     setSelMenu(null);
     setPanel("chi");
     const gia = chiCache.current.get(chiave);
-    if (gia) return setChi(gia);
+    if (gia && (!riusa || (await riusa(gia)))) return setChi(gia.dato);
     const mio = ++chiRun.current;
     const vivo = () => chiRun.current === mio;
     const finito = await avvia({ ...doveSono(), vivo, passo: (s) => vivo() && setChi(s) });
@@ -968,9 +982,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // in cache solo le risposte: un errore di rete non deve restare
     // appiccicato alla parola per tutta la lettura
     if (finito.answer) {
-      chiCache.current.set(chiave, finito);
-      // la chiave porta dentro il segno, quindi le voci si moltiplicano
-      // con la lettura: si tengono le ultime, non tutte
+      chiCache.current.set(chiave, { dato: finito, segno: segnoOra(), tocco });
       if (chiCache.current.size > MAX_SCHEDE) {
         chiCache.current.delete(chiCache.current.keys().next().value);
       }
@@ -978,17 +990,29 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     setChi(finito);
   }
 
-  // LA SCHEDA E' DEL PUNTO IN CUI SEI, non della parola.
+  // LA SCHEDA E' DEL PUNTO IN CUI SEI, non della parola — ma si rifà solo
+  // se c'è del nuovo da raccontare.
   //
-  // La cache teneva la risposta sotto il solo nome: chiesto di nuovo
-  // duecento pagine dopo, tornava la scheda di allora, che è il contrario
-  // di quello che serve — quello che vuoi sapere è cosa gli è successo
-  // FINO A QUI. Il segno entra nella chiave, come già fa il riassunto
-  // buttando via la sua: sulla stessa pagina la risposta è immediata,
-  // più avanti si rifà.
-  const chiE = (nome) =>
-    scheda(`chi:${nome}@${live.current.cfi || getCfi(book.id) || ""}`, (ctx) =>
-      schedaChiE({ nome, ...ctx })
+  // Prima la risposta restava sotto il solo nome, e duecento pagine dopo
+  // tornava quella di allora: il contrario di quello che serve. Rifarla a
+  // ogni pagina però costerebbe una chiamata per riscrivere le stesse
+  // cose. La regola giusta, chiesta dal lettore, sta in mezzo: se da
+  // allora il personaggio NON è più comparso, quella scheda è ancora
+  // esatta e si riusa; se è tornato in scena, se ne fa una nuova.
+  const chiE = (nome, tocco) =>
+    scheda(
+      `chi:${nome}`,
+      (ctx) => schedaChiE({ nome, ...ctx }),
+      async (gia) => {
+        setChi({ ...gia.dato, fase: "cerco" });
+        return !(await nuoveMenzioni(
+          book,
+          [nome, ...(gia.dato.alias || [])],
+          daDoveContare(gia),
+          segnoOra()
+        ));
+      },
+      tocco
     );
   // il riassunto si rifà ogni volta: il senso è «fin dove sono ADESSO», e
   // una risposta in cache racconterebbe dov'eri la volta scorsa
@@ -1571,7 +1595,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           ))}
           {sembraUnNome(selMenu.text) && (
             <button
-              onClick={() => chiE(selMenu.text.trim())}
+              onClick={() => chiE(selMenu.text.trim(), selMenu.cfi)}
               style={{
                 marginLeft: 4,
                 padding: "6px 12px",

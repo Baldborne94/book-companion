@@ -3,7 +3,7 @@ import { C, FONT_TITLE } from "../data/constants.js";
 import { ensureLocalFile } from "../lib/sync.js";
 import { getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights } from "../lib/annotations.js";
 import { getProgress, setProgress, setStatus, getStatus, loadBooks } from "../lib/library.js";
-import { schedaChiE } from "../lib/chiSono.js";
+import { schedaChiE, nuoveMenzioni } from "../lib/chiSono.js";
 import { schedaRiassunto } from "../lib/trama.js";
 import { sembraUnNome } from "../lib/nomi.js";
 import { HL_COLORS, loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
@@ -466,17 +466,17 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     cfiOf: (id) => (id === book.id ? String(live.current.page) : getCfi(id)),
   });
 
-  async function scheda(chiave, avvia) {
+  async function scheda(chiave, avvia, riusa, tocco) {
     setSel(null);
     setPanel("chi");
     const gia = chiCache.current.get(chiave);
-    if (gia) return setChi(gia);
+    if (gia && (!riusa || (await riusa(gia)))) return setChi(gia.dato);
     const mio = ++chiRun.current;
     const vivo = () => chiRun.current === mio;
     const finito = await avvia({ ...doveSono(), vivo, passo: (s) => vivo() && setChi(s) });
     if (!vivo() || !finito) return;
     if (finito.answer) {
-      chiCache.current.set(chiave, finito);
+      chiCache.current.set(chiave, { dato: finito, segno: String(live.current.page), tocco });
       if (chiCache.current.size > MAX_SCHEDE) {
         chiCache.current.delete(chiCache.current.keys().next().value);
       }
@@ -484,10 +484,25 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     setChi(finito);
   }
 
-  // come nel reader EPUB: la scheda è del punto in cui sei, non della
-  // parola — qui il segno è il numero di pagina
-  const chiE = (nome) =>
-    scheda(`chi:${nome}@${live.current.page}`, (ctx) => schedaChiE({ nome, ...ctx }));
+  // come nel reader EPUB: la scheda si rifà solo se da allora il
+  // personaggio è tornato in scena — qui il segno è il numero di pagina
+  // come nell'EPUB: si conta dalla menzione TOCCATA — qui, dalla pagina su
+  // cui l'avevi toccata — e non da dove eri
+  const chiE = (nome, tocco) =>
+    scheda(
+      `chi:${nome}`,
+      (ctx) => schedaChiE({ nome, ...ctx }),
+      async (gia) => {
+        setChi({ ...gia.dato, fase: "cerco" });
+        return !(await nuoveMenzioni(
+          book,
+          [nome, ...(gia.dato.alias || [])],
+          gia.tocco || gia.segno,
+          String(live.current.page)
+        ));
+      },
+      tocco
+    );
   // il riassunto si rifà ogni volta: il senso è «fin dove sono ADESSO», e
   // una risposta in cache racconterebbe dov'eri la volta scorsa
   const dovEravamo = () => {
@@ -775,7 +790,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
           )}
           {sembraUnNome(sel.text) && (
             <button
-              onClick={() => chiE(sel.text.trim())}
+              onClick={() => chiE(sel.text.trim(), String(live.current.page))}
               style={{
                 padding: "6px 12px",
                 borderRadius: 999,
