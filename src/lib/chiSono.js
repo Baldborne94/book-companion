@@ -137,6 +137,120 @@ function paragrafo(node, colpito, maxLen = PARAGRAFO) {
   return (from > 0 ? "…" : "") + pezzo + (from + maxLen < tutto.length ? "…" : "");
 }
 
+// C'E' DEL NUOVO SU DI LUI, DA ALLORA?
+//
+// La scheda vale per il punto in cui l'hai chiesta. Ma se da allora il
+// personaggio NON e' piu' comparso, quella scheda e' ancora esatta:
+// rifarla vorrebbe dire pagare una chiamata per riscrivere le stesse
+// cose (regola chiesta dal lettore). Se invece e' tornato in scena, e'
+// vecchia e va rifatta.
+//
+// Si guarda solo il libro aperto, e solo il tratto letto DA ALLORA: e'
+// l'unico pezzo di storia che si e' mosso.
+async function nuoveDaEpub(libro, re, da, a) {
+  const blob = await getFile(libro.id);
+  if (!blob) return true;
+  const { default: ePub } = await import("epubjs");
+  const eb = ePub(await blob.arrayBuffer());
+  try {
+    await eb.ready;
+    const cfi = new ePub.CFI();
+    const spina = eb.spine.spineItems;
+    for (let i = 0; i < spina.length; i++) {
+      const item = spina[i];
+      const inizio = `epubcfi(${item.cfiBase}!/0)`;
+      try {
+        // i capitoli che cominciano oltre il segno di adesso non li hai letti
+        if (cfi.compare(inizio, a) > 0) break;
+        // e quelli che finiscono prima di «allora» sono roba gia' pesata:
+        // se il capitolo dopo comincia prima di «allora», questo e' tutto dietro
+        const dopo = spina[i + 1];
+        if (dopo && cfi.compare(`epubcfi(${dopo.cfiBase}!/0)`, da) <= 0) continue;
+      } catch { /* segni illeggibili: si guarda dentro, per sicurezza */ }
+      try {
+        await item.load(eb.load.bind(eb));
+        const doc = item.document;
+        if (doc?.body) {
+          const walker = doc.createTreeWalker(doc.body, 4);
+          let node;
+          while ((node = walker.nextNode())) {
+            const text = node.textContent;
+            if (!text || !text.trim()) continue;
+            re.lastIndex = 0;
+            const m = re.exec(text);
+            if (!m) continue;
+            try {
+              const range = doc.createRange();
+              range.setStart(node, m.index);
+              range.setEnd(node, m.index + m[0].length);
+              const c = item.cfiFromRange(range);
+              if (cfi.compare(c, da) > 0 && cfi.compare(c, a) <= 0) return true;
+            } catch { /* range fuori misura: si tira dritto */ }
+          }
+        }
+      } catch { /* capitolo illeggibile: nel dubbio si continua */ } finally {
+        try { item.unload(); } catch { /* gia' scaricato */ }
+      }
+    }
+    return false;
+  } finally {
+    try { eb.destroy(); } catch { /* gia' chiuso */ }
+  }
+}
+
+async function nuoveDaPdf(libro, nomi, da, a) {
+  const blob = await getFile(libro.id);
+  if (!blob) return true;
+  const mod = await import("./pdfThumb.js");
+  const pdf = await mod.loadPdf(await blob.arrayBuffer());
+  try {
+    const cache = new Map();
+    const cercati = [...new Set([].concat(nomi).flatMap(varianti))];
+    const primo = Math.max(1, (parseInt(da, 10) || 0) + 1);
+    const ultimo = Math.min(parseInt(a, 10) || 0, pdf.numPages);
+    for (let n = primo; n <= ultimo; n++) {
+      let testoPag;
+      try {
+        testoPag = await pageText(pdf, n, cache);
+      } catch {
+        continue;
+      }
+      // basta trovarne una: qui non si raccoglie, si risponde si'/no
+      for (const v of cercati) {
+        if (findMatches(testoPag, v, 1, 0).length) return true;
+      }
+    }
+    return false;
+  } finally {
+    try { pdf.destroy(); } catch { /* gia' chiuso */ }
+  }
+}
+
+// `da` = il segno di quando la scheda e' stata fatta, `a` = dove sei
+// adesso. Nel dubbio si risponde «si'»: una scheda vecchia mostrata come
+// nuova e' peggio di una chiamata in piu'.
+export async function nuoveMenzioni(libro, nomi, da, a) {
+  if (!libro || !da || !a || da === a) return !da || !a;
+  const elenco = [].concat(nomi).filter(Boolean);
+  const re = regexNome(elenco);
+  if (!re) return true;
+  try {
+    if (libro.fileType === "pdf") {
+      // sei tornato indietro: la scheda di allora sa cose che adesso non
+      // hai ancora letto, e mostrarla sarebbe uno spoiler
+      if ((parseInt(a, 10) || 0) < (parseInt(da, 10) || 0)) return true;
+      return await nuoveDaPdf(libro, elenco, da, a);
+    }
+    const { default: ePub } = await import("epubjs");
+    try {
+      if (new ePub.CFI().compare(a, da) < 0) return true;
+    } catch { /* segni non confrontabili: decide la scansione */ }
+    return await nuoveDaEpub(libro, re, da, a);
+  } catch {
+    return true;
+  }
+}
+
 async function daEpub(libro, re, fino) {
   // null = il tomo non e' su questo dispositivo, e va detto; [] = c'e' ma
   // il nome non ci compare. Confonderli faceva sparire un volume intero
