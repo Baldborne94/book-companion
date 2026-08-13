@@ -428,8 +428,30 @@ export function scegliPrima(raccolto) {
   ];
 }
 
+// «PRIMA» VUOL DIRE LA STESSA STORIA, NON LO STESSO MONDO.
+//
+// Una saga grande e' divisa in cicli: nel Mondo Disco, chi apre un
+// romanzo delle Guardie vuole sapere cosa e' successo nelle Guardie, non
+// negli altri quaranta libri dell'universo (segnalato dal lettore). Se il
+// volume dichiara una serie, i precedenti sono quelli della SUA serie; se
+// non la dichiara, resta l'universo intero — che e' il caso di una saga
+// senza cicli, dove i due raggruppamenti coincidono.
+//
+// Vale qui e non nella scheda personaggio: li' il campo largo aiuta —
+// chiedere di Vetinari leggendo le Streghe deve poter pescare dalle
+// Guardie — e la difesa dagli spoiler regge lo stesso, perche' i volumi
+// dopo il corrente restano fuori in ogni caso.
+export function soloDellaSerie(book, tappe) {
+  const serie = (book.series || "").trim().toLowerCase();
+  if (!serie) return tappe;
+  return tappe.filter((t) => (t.libro.series || "").trim().toLowerCase() === serie);
+}
+
 export async function schedaPrima({ book, libri, statusOf, cfiOf, vivo, passo }) {
-  const tappe = frontiera(book, libri, { statusOf, cfiOf }).filter((t) => t.libro.id !== book.id);
+  const tappe = soloDellaSerie(
+    book,
+    frontiera(book, libri, { statusOf, cfiOf }).filter((t) => t.libro.id !== book.id)
+  );
   if (!tappe.length) return { fase: "vuoto", tappe: [], lontani: [], passaggi: [] };
   passo({ fase: "cerco", tappe });
   const { raccolto, lontani } = await raccogliTrama(tappe, { vivo });

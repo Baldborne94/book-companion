@@ -63,6 +63,10 @@ export async function importFiles(fileList) {
     if (saga) {
       meta.saga = saga.saga;
       if (saga.sagaOrder != null) meta.sagaOrder = saga.sagaOrder;
+      // il CICLO era riconosciuto e poi buttato via. E' l'informazione che
+      // dice quale storia continua un volume: nel Mondo Disco «cosa e'
+      // successo prima» sono le Guardie, non tutti e quarantuno i romanzi.
+      if (saga.ciclo && !meta.series) meta.series = saga.ciclo;
     }
     added.push(meta);
   }
