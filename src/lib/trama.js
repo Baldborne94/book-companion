@@ -1,6 +1,6 @@
 import { getFile } from "./bookStore.js";
 import { pageText } from "./pdfSearch.js";
-import { chiedi, getOracleKey } from "./oracle.js";
+import { chiedi, getOracleKey, TETTO_SCHEDA } from "./oracle.js";
 import { frontiera } from "./frontiera.js";
 
 // «DOVE ERAVAMO RIMASTI» — la storia fin qui, e non una riga oltre.
@@ -251,5 +251,7 @@ export async function chiediRiassunto({ passaggi, tappe }, fetcher) {
   passaggi.forEach((p, i) => {
     righe.push(`${i + 1}. [${eti[p.quando]}] «${p.testo}»`);
   });
-  return chiedi({ system: SISTEMA, user: righe.join("\n") }, fetcher);
+  // stesso tetto della scheda personaggio: la risposta e' corta, ma il
+  // ragionamento su decine di passaggi attinge allo stesso budget
+  return chiedi({ system: SISTEMA, user: righe.join("\n"), tetto: TETTO_SCHEDA }, fetcher);
 }

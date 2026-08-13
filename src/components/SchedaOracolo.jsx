@@ -133,6 +133,13 @@ export default function SchedaOracolo({ scheda, attese, vuoto, onRiprova }) {
            un divisorio avanzato dal modello si riduce a quella */
         <p style={prosa}>{testo.replace(/\n\s*-{3,}\s*\n/g, "\n\n")}</p>
       )}
+      {/* una risposta troncata, mostrata com'e', sembra finita: il lettore
+          crede che la storia si fermi li' */}
+      {scheda.tagliata && (
+        <p style={{ marginTop: 10, fontSize: 12.5, color: C.dim, lineHeight: 1.5 }}>
+          L'Oracolo si è fermato qui: il racconto era troppo lungo per una scheda sola.
+        </p>
+      )}
       {/* Da dove viene la risposta: la garanzia resta, ma ripiegata. Il
           controllo dev'essere possibile, non un muro di citazioni sotto ogni
           scheda. */}
