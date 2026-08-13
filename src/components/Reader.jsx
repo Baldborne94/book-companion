@@ -47,6 +47,9 @@ const TAP_PREV = 0.28;
 const TAP_NEXT = 0.72;
 // tetto ai segni per capitolo: la pagina resta una pagina, non un elenco
 const MARKS_PER_CHAPTER = 60;
+// quante schede dell'Oracolo si tengono da parte: la chiave porta dentro
+// il segno, quindi ne nasce una nuova a ogni punto in cui chiedi
+const MAX_SCHEDE = 8;
 // la selezione da capire e' spesso un paragrafo intero — il parlato
 // biascicato si decifra tutto insieme — quindi il pulsante deve esserci
 // anche li'.
@@ -964,11 +967,29 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     if (!vivo() || !finito) return;
     // in cache solo le risposte: un errore di rete non deve restare
     // appiccicato alla parola per tutta la lettura
-    if (finito.answer) chiCache.current.set(chiave, finito);
+    if (finito.answer) {
+      chiCache.current.set(chiave, finito);
+      // la chiave porta dentro il segno, quindi le voci si moltiplicano
+      // con la lettura: si tengono le ultime, non tutte
+      if (chiCache.current.size > MAX_SCHEDE) {
+        chiCache.current.delete(chiCache.current.keys().next().value);
+      }
+    }
     setChi(finito);
   }
 
-  const chiE = (nome) => scheda(`chi:${nome}`, (ctx) => schedaChiE({ nome, ...ctx }));
+  // LA SCHEDA E' DEL PUNTO IN CUI SEI, non della parola.
+  //
+  // La cache teneva la risposta sotto il solo nome: chiesto di nuovo
+  // duecento pagine dopo, tornava la scheda di allora, che è il contrario
+  // di quello che serve — quello che vuoi sapere è cosa gli è successo
+  // FINO A QUI. Il segno entra nella chiave, come già fa il riassunto
+  // buttando via la sua: sulla stessa pagina la risposta è immediata,
+  // più avanti si rifà.
+  const chiE = (nome) =>
+    scheda(`chi:${nome}@${live.current.cfi || getCfi(book.id) || ""}`, (ctx) =>
+      schedaChiE({ nome, ...ctx })
+    );
   // il riassunto si rifà ogni volta: il senso è «fin dove sono ADESSO», e
   // una risposta in cache racconterebbe dov'eri la volta scorsa
   const dovEravamo = () => {

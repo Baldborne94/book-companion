@@ -25,6 +25,8 @@ const TAP_PREV = 0.28;
 const TAP_NEXT = 0.72;
 // stesso limite del reader EPUB per la scheda del significato
 const PHRASE_WORDS = 300;
+// e stesso tetto alle schede dell'Oracolo tenute da parte
+const MAX_SCHEDE = 8;
 
 const isTouch = () => navigator.maxTouchPoints > 0;
 
@@ -473,11 +475,19 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     const vivo = () => chiRun.current === mio;
     const finito = await avvia({ ...doveSono(), vivo, passo: (s) => vivo() && setChi(s) });
     if (!vivo() || !finito) return;
-    if (finito.answer) chiCache.current.set(chiave, finito);
+    if (finito.answer) {
+      chiCache.current.set(chiave, finito);
+      if (chiCache.current.size > MAX_SCHEDE) {
+        chiCache.current.delete(chiCache.current.keys().next().value);
+      }
+    }
     setChi(finito);
   }
 
-  const chiE = (nome) => scheda(`chi:${nome}`, (ctx) => schedaChiE({ nome, ...ctx }));
+  // come nel reader EPUB: la scheda è del punto in cui sei, non della
+  // parola — qui il segno è il numero di pagina
+  const chiE = (nome) =>
+    scheda(`chi:${nome}@${live.current.page}`, (ctx) => schedaChiE({ nome, ...ctx }));
   // il riassunto si rifà ogni volta: il senso è «fin dove sono ADESSO», e
   // una risposta in cache racconterebbe dov'eri la volta scorsa
   const dovEravamo = () => {
