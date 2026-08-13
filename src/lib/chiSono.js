@@ -42,8 +42,12 @@ const APERTURA = 0.2;
 // Il tetto tiene a bada le saghe lunghe.
 const DA_VOLUME_PRIMA = 4;
 const MAX_PRIMA = 16;
-// tetto di sicurezza per libro: oltre, e' un protagonista e le menzioni in
-// piu' non cambiano la scelta
+// Quante menzioni si tengono per libro. NON e' un punto d'arresto: al
+// tetto la raccolta SI DIRADA — una su due, e il passo raddoppia — e il
+// giro prosegue fino in fondo al volume. Fermarsi qui voleva dire, in un
+// tomo che tiene dentro tre romanzi, riempire il tetto col primo e non
+// aprire mai gli altri due: gli incontri di la' sparivano, e nessuna quota
+// avrebbe potuto ripescarli perche' non erano stati nemmeno raccolti.
 const MAX_MENZIONI = 240;
 // quanto paragrafo si porta a casa attorno a ogni menzione
 const PARAGRAFO = 480;
@@ -57,8 +61,12 @@ const SISTEMA = [
   "altre fonti: quel che sai potrebbe venire da pagine che il lettore non ha",
   "ancora letto, e rovinargliele.",
   "Non anticipare MAI cosa succederà.",
-  "LINGUA: scrivi nella stessa lingua dei passaggi. Se i passaggi sono in",
-  "inglese rispondi in inglese, se sono in italiano rispondi in italiano.",
+  "LINGUA: scrivi SEMPRE IN ITALIANO, anche quando i passaggi sono in",
+  "un'altra lingua — la scheda è parte di un'app italiana, e leggerne una",
+  "metà in inglese e una in italiano stona. Nomi di persone e di luoghi",
+  "restano come stanno nei passaggi, senza tradurli; se citi una frase del",
+  "libro lasciala nella sua lingua fra virgolette. Scrivi un italiano",
+  "curato e naturale, da lettore che racconta, non da traduttore.",
   "FORMA: tre parti, divise da una riga che contiene solo tre trattini",
   "(---). Testo puro: niente markdown, niente titoletti, niente elenchi —",
   "i titoli li mette l'app. Dentro ogni parte scrivi in prosa, come un",
@@ -83,6 +91,10 @@ const SISTEMA = [
   "facendo nei passaggi più recenti.",
   "Se i passaggi non bastano a dire chi è, dillo in una riga invece di",
   "inventare; se non bastano su un punto, taci su quel punto.",
+  "NIENTE PREMESSE: attacca subito col ritratto. Non aprire spiegando da",
+  "quali volumi vengono i passaggi o quali non li mostrano — da dove viene",
+  "la risposta lo dichiara l'app, sotto la scheda, e ripeterlo ruba le",
+  "prime righe a quello che il lettore ti ha chiesto.",
 ].join(" ");
 
 // I tre movimenti della scheda: i titoletti sono dell'app (e in italiano,
@@ -126,11 +138,20 @@ function paragrafo(node, colpito, maxLen = PARAGRAFO) {
 }
 
 async function daEpub(libro, re, fino) {
+  // null = il tomo non e' su questo dispositivo, e va detto; [] = c'e' ma
+  // il nome non ci compare. Confonderli faceva sparire un volume intero
+  // dalla scheda senza che nessuno se ne accorgesse.
   const blob = await getFile(libro.id);
-  if (!blob) return [];
+  if (!blob) return null;
   const { default: ePub } = await import("epubjs");
   const eb = ePub(await blob.arrayBuffer());
-  const out = [];
+  let out = [];
+  // quanto testo si e' scorso davvero: e' la misura del volume, e serve a
+  // dargli la sua quota (un tomo con tre romanzi dentro non e' un volume
+  // come gli altri)
+  let esteso = 0;
+  let visti = 0;
+  let passo = 1;
   try {
     await eb.ready;
     const cfi = new ePub.CFI();
@@ -154,13 +175,16 @@ async function daEpub(libro, re, fino) {
         if (doc?.body) {
           const walker = doc.createTreeWalker(doc.body, 4 /* solo nodi di testo */);
           let node;
-          while ((node = walker.nextNode()) && out.length < MAX_MENZIONI) {
+          while ((node = walker.nextNode())) {
             const text = node.textContent;
             if (!text || !text.trim()) continue;
+            esteso += text.length;
             re.lastIndex = 0;
             // una menzione per nodo: il paragrafo attorno e' lo stesso
             const m = re.exec(text);
             if (!m) continue;
+            visti += 1;
+            if (visti % passo) continue;
             try {
               const range = doc.createRange();
               range.setStart(node, m.index);
@@ -168,58 +192,71 @@ async function daEpub(libro, re, fino) {
               const c = item.cfiFromRange(range);
               if (fino && !dentro(c)) continue;
               out.push({ libro, cfi: c, testo: paragrafo(node, m[0]) });
+              if (out.length >= MAX_MENZIONI) {
+                out = out.filter((_, i) => i % 2 === 0);
+                passo *= 2;
+              }
             } catch { /* range fuori misura: si passa oltre */ }
           }
         }
       } catch { /* capitolo illeggibile: gli altri bastano */ } finally {
         try { item.unload(); } catch { /* gia' scaricato */ }
       }
-      if (out.length >= MAX_MENZIONI) break;
     }
   } finally {
     try { eb.destroy(); } catch { /* gia' chiuso */ }
   }
-  return out;
+  return out.map((m) => ({ ...m, esteso }));
 }
 
 async function daPdf(libro, nomi, fino) {
   const blob = await getFile(libro.id);
-  if (!blob) return [];
+  if (!blob) return null;
   const mod = await import("./pdfThumb.js");
   const pdf = await mod.loadPdf(await blob.arrayBuffer());
-  const out = [];
+  let out = [];
+  let esteso = 0;
+  let contate = 0;
+  let passo = 1;
   try {
     // nei PDF il segno e' un numero di pagina: le pagine oltre non si
     // leggono proprio, ed e' anche questo che rende giusti gli «ultimi»
     const limite = fino ? Math.min(parseInt(fino, 10) || pdf.numPages, pdf.numPages) : pdf.numPages;
     const cache = new Map();
     const cercati = [...new Set([].concat(nomi).flatMap(varianti))];
-    for (let n = 1; n <= limite && out.length < MAX_MENZIONI; n++) {
+    for (let n = 1; n <= limite; n++) {
       let testoPag;
       try {
         testoPag = await pageText(pdf, n, cache);
       } catch {
         continue;
       }
+      esteso += testoPag.length;
       const visti = new Set();
       for (const v of cercati) {
         for (const m of findMatches(testoPag, v, 2, 220)) {
           const chiave = `${m.before.slice(-24)}|${m.hit}`;
           if (visti.has(chiave)) continue;
           visti.add(chiave);
+          contate += 1;
+          if (contate % passo) continue;
           out.push({
             libro,
             cfi: String(n),
             dove: `pag. ${n}`,
             testo: `${m.before}${m.hit}${m.after}`.trim(),
           });
+          if (out.length >= MAX_MENZIONI) {
+            out = out.filter((_, i) => i % 2 === 0);
+            passo *= 2;
+          }
         }
       }
     }
   } finally {
     try { pdf.destroy(); } catch { /* gia' chiuso */ }
   }
-  return out;
+  return out.map((m) => ({ ...m, esteso }));
 }
 
 // GLI ALTRI NOMI DELLA STESSA PERSONA.
@@ -291,12 +328,22 @@ export async function trovaAlias(nome, tappa) {
   return decidi(reg);
 }
 
+// I TOMI CHE NON SONO SU QUESTO DISPOSITIVO SI DICHIARANO.
+//
+// I byte di un libro possono stare solo nel cloud: `getFile` allora non
+// torna nulla e quel volume non viene sfogliato. Prima succedeva in
+// silenzio, e la scheda continuava a dichiarare nella provenienza un
+// volume che non era mai stato aperto — il lettore leggeva «basata su
+// tutta la saga» mentre la risposta veniva da un libro solo. Come la
+// ricerca in biblioteca, i tomi lontani si contano e si dicono; scaricarli
+// per una domanda sola, su una connessione da tablet, non si fa.
 export async function raccogliPassaggi(nomi, tappe, { vivo } = {}) {
   const attivo = vivo || (() => true);
   const tutti = [];
+  const lontani = [];
   const elenco = [].concat(nomi);
   const re = regexNome(elenco);
-  if (!re) return [];
+  if (!re) return { tutti, lontani };
   // un tomo per volta, come la ricerca in biblioteca: su un tablet aprirli
   // tutti insieme vuol dire farsi chiudere la scheda
   for (const t of tappe) {
@@ -306,12 +353,16 @@ export async function raccogliPassaggi(nomi, tappe, { vivo } = {}) {
         t.libro.fileType === "pdf"
           ? await daPdf(t.libro, elenco, t.tutto ? null : t.fino)
           : await daEpub(t.libro, re, t.tutto ? null : t.fino);
-      tutti.push(...pezzi);
+      // niente byte, niente lettura: e' un volume muto, non un volume
+      // dove il personaggio non compare
+      if (pezzi === null) lontani.push(t.libro);
+      else tutti.push(...pezzi);
     } catch {
       /* tomo che non si apre: gli altri bastano */
+      lontani.push(t.libro);
     }
   }
-  return tutti;
+  return { tutti, lontani };
 }
 
 // Le menzioni fotocopia — «disse Logen», «Logen annui'» — sprecano i sei
@@ -372,22 +423,66 @@ function volumeAperto(qui, n) {
 // suo giro ai volumi ricchi. Con una lista sola, il volume dove il
 // personaggio e' protagonista si mangiava la quota di quelli dove compare
 // di sfuggita — ed erano proprio gli incontri che la scheda non raccontava.
+// QUANTI LIBRI SONO, non quanti file.
+//
+// Un cofanetto e' un file solo e tre romanzi: contarlo per uno voleva dire
+// dare a tre libri la quota di uno. Si misura in «volumi tipo», e il
+// volume tipo e' la MEDIANA di quelli che il lettore ha finito — cosi' non
+// serve sapere quanto e' lungo un romanzo, lo dice la sua biblioteca. La
+// mediana regge anche se un tomo e' enorme o se una raccolta e' minuta.
+function quantiLibri(passaggi, idCorrente) {
+  const misure = new Map();
+  for (const m of passaggi) {
+    if (m.libro.id === idCorrente) continue;
+    if (!misure.has(m.libro.id)) misure.set(m.libro.id, Math.max(1, m.esteso || 1));
+  }
+  const e = [...misure.values()];
+  if (!e.length) return 0;
+  const ordinate = [...e].sort((a, b) => a - b);
+  const unita = ordinate[Math.floor(ordinate.length / 2)];
+  return e.reduce((n, x) => n + Math.max(1, Math.round(x / unita)), 0);
+}
+
+// E LA QUOTA E' A PESO, NON A TESTA.
+//
+// Un cofanetto che tiene dentro tre romanzi aveva gli stessi posti di una
+// raccolta di racconti: un terzo di quota per ciascuno dei romanzi che
+// contiene, e gli incontri di la' non arrivavano nella scheda. Il peso e'
+// il testo scorso davvero (`esteso`), non il numero di menzioni: un
+// personaggio fittissimo in un libro breve non deve rubare il posto al
+// libro lungo dove compare tre volte.
 function perVolume(prima, n) {
   if (n <= 0 || !prima.length) return [];
   const ordine = [...new Set(prima.map((m) => m.libro.id))];
   const gruppi = ordine.map((id) => prima.filter((m) => m.libro.id === id));
-  const conteggi = gruppi.map(() => 0);
-  let resto = n;
-  while (resto > 0) {
+  const pesi = gruppi.map((g) => Math.max(1, g[0]?.esteso || 1));
+  const somma = pesi.reduce((a, b) => a + b, 0);
+  // un posto garantito a testa finche' i posti bastano: un volume dove il
+  // personaggio compare di sfuggita va detto lo stesso, ed e' proprio
+  // l'incontro che il lettore non ricorda
+  const minimo = n >= gruppi.length ? 1 : 0;
+  const conteggi = gruppi.map((g, i) =>
+    Math.min(g.length, Math.max(minimo, Math.round((n * pesi[i]) / somma)))
+  );
+  let totale = conteggi.reduce((a, b) => a + b, 0);
+  // l'avanzo di chi non ha piu' menzioni passa agli altri, a giri
+  while (totale < n) {
     let dato = false;
-    for (let i = 0; i < gruppi.length && resto > 0; i++) {
+    for (let i = 0; i < gruppi.length && totale < n; i++) {
       if (conteggi[i] < gruppi[i].length) {
         conteggi[i] += 1;
-        resto -= 1;
+        totale += 1;
         dato = true;
       }
     }
     if (!dato) break;
+  }
+  // e se l'arrotondamento ha sforato, si toglie a chi ne ha di piu'
+  while (totale > n) {
+    const i = conteggi.indexOf(Math.max(...conteggi));
+    if (conteggi[i] <= minimo) break;
+    conteggi[i] -= 1;
+    totale -= 1;
   }
   return gruppi.flatMap((g, i) => sparsi(g, conteggi[i]));
 }
@@ -399,10 +494,7 @@ export function scegliPassaggi(tutti, idCorrente) {
   const puliti = ripulisci(tutti);
   const ricchi = puliti.filter((m) => m.testo.length >= SOSTANZA);
   const perQui = DA_CAPO + DA_MEZZO + DA_FONDO;
-  const volumiPrima = new Set(
-    puliti.filter((m) => m.libro.id !== idCorrente).map((m) => m.libro.id)
-  ).size;
-  const totale = perQui + Math.min(volumiPrima * DA_VOLUME_PRIMA, MAX_PRIMA);
+  const totale = perQui + Math.min(quantiLibri(puliti, idCorrente) * DA_VOLUME_PRIMA, MAX_PRIMA);
   // se di passaggi sostanziosi non ce n'e' abbastanza, meglio i magri che
   // il silenzio
   const base = ricchi.length >= totale ? ricchi : puliti;
@@ -446,13 +538,22 @@ export async function schedaChiE({ nome, book, libri, statusOf, cfiOf, vivo, pas
   const alias = await trovaAlias(nome, tappe[tappe.length - 1]);
   if (!vivo()) return null;
   passo({ nome, alias, fase: "cerco", tappe });
-  const scelti = scegliPassaggi(await raccogliPassaggi([nome, ...alias], tappe, { vivo }), book.id);
+  const { tutti, lontani } = await raccogliPassaggi([nome, ...alias], tappe, { vivo });
+  const scelti = scegliPassaggi(tutti, book.id);
   if (!vivo()) return null;
-  if (!scelti.length) return { nome, alias, fase: "vuoto", tappe, passaggi: [] };
-  passo({ nome, alias, fase: "chiedo", tappe, passaggi: scelti });
+  if (!scelti.length) return { nome, alias, fase: "vuoto", tappe, lontani, passaggi: [] };
+  passo({ nome, alias, fase: "chiedo", tappe, lontani, passaggi: scelti });
   const res = await chiediChiE({ nome, alias, passaggi: scelti, tappe });
   if (!vivo()) return null;
-  return { nome, alias, fase: res.answer ? "fatto" : "errore", tappe, passaggi: scelti, ...res };
+  return {
+    nome,
+    alias,
+    fase: res.answer ? "fatto" : "errore",
+    tappe,
+    lontani,
+    passaggi: scelti,
+    ...res,
+  };
 }
 
 export async function chiediChiE({ nome, alias = [], passaggi, tappe }, fetcher) {
