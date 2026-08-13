@@ -1,6 +1,6 @@
 import { getFile } from "./bookStore.js";
 import { pageText, findMatches } from "./pdfSearch.js";
-import { chiedi, getOracleKey } from "./oracle.js";
+import { chiedi, getOracleKey, TETTO_SCHEDA } from "./oracle.js";
 import { varianti, regexNome, nuovoRegistro, annota, decidi } from "./nomi.js";
 import { frontiera } from "./frontiera.js";
 
@@ -63,19 +63,22 @@ const SISTEMA = [
   "(---). Testo puro: niente markdown, niente titoletti, niente elenchi —",
   "i titoli li mette l'app. Dentro ogni parte scrivi in prosa, come un",
   "lettore che racconta a voce a un amico, con frasi intere e distese.",
+  "MISURA: una scheda compatta, non un saggio. In tutto sulle 250 parole.",
+  "Chi la legge vuole rimettersi in pari in mezzo minuto, non rileggere il",
+  "libro: scegli i fatti che contano e lascia stare le scene minori.",
   "PRIMA PARTE, il ritratto: com'è fatto e che aria ha — aspetto, modi,",
-  "come parla — ma solo quello che i passaggi mostrano. Un paragrafo breve.",
+  "come parla — ma solo quello che i passaggi mostrano. Due o tre frasi.",
   "SECONDA PARTE, la storia fin qui: non i suoi tratti ma che cosa gli è",
   "successo, e per mano di chi. Chi era prima, che cosa ha perso, che cosa",
-  "vuole adesso e perché lo vuole. I torti subiti,",
-  "i tradimenti, le alleanze e le rivalità sono la parte che conta: se i",
-  "passaggi li mostrano, raccontali per esteso e chiama le persone",
-  "coinvolte con i nomi che compaiono nei passaggi. Serve a chi reincontra",
-  "il personaggio dopo tanto tempo e deve rimettersi in pari. Segui",
-  "l'ordine di lettura, e se i volumi sono più d'uno di' dove accadono le",
-  "cose scrivendo proprio «Volume 1», «Volume 2», come sono etichettati i",
-  "passaggi: l'app mostrerà al lettore i titoli veri. Qui anche più di un",
-  "paragrafo, separati da una riga vuota.",
+  "vuole adesso e perché lo vuole. I torti subiti, i tradimenti, le",
+  "alleanze e le rivalità sono la parte che conta, e chiama le persone",
+  "coinvolte con i nomi che compaiono nei passaggi.",
+  "PASSA PER TUTTI I VOLUMI in cui i passaggi lo mostrano, in ordine di",
+  "lettura, a cominciare da dove il lettore lo ha incontrato la PRIMA",
+  "volta: bastano una o due frasi per volume, ma non saltarne nessuno e non",
+  "spendere tutto sul volume dove compare di più. Dove accadono le cose",
+  "dillo scrivendo proprio «Volume 1», «Volume 2», come sono etichettati i",
+  "passaggi: l'app mostrerà al lettore i titoli veri.",
   "TERZA PARTE, dove il lettore lo ha lasciato: una o due frasi su cosa sta",
   "facendo nei passaggi più recenti.",
   "Se i passaggi non bastano a dire chi è, dillo in una riga invece di",
@@ -481,5 +484,5 @@ export async function chiediChiE({ nome, alias = [], passaggi, tappe }, fetcher)
   passaggi.forEach((p, i) => {
     righe.push(`${i + 1}. [${eti.get(p.libro.id) || "Volume"}] «${p.testo}»`);
   });
-  return chiedi({ system: SISTEMA, user: righe.join("\n") }, fetcher);
+  return chiedi({ system: SISTEMA, user: righe.join("\n"), tetto: TETTO_SCHEDA }, fetcher);
 }

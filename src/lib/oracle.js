@@ -65,10 +65,24 @@ const SISTEMA = [
 
 const cache = new Map();
 
+// IL TETTO E' DELLA DOMANDA, NON DELLA CHIAMATA.
+//
+// Con un tetto solo per tutti, la scheda di un personaggio su cinque
+// volumi si troncava a meta' frase: restava senza l'ultimo movimento, e
+// senza i divisori la scheda perdeva pure i titoletti. E il tetto lo
+// dividono in due: `thinking: adaptive` PAGA DAL MEDESIMO BUDGET, quindi
+// il ragionamento su trenta passaggi si mangiava la risposta.
+//
+// Il tetto largo NON e' il permesso di dilungarsi: quanto scrivere lo
+// dice il prompt, che chiede una scheda compatta. Serve solo perche' il
+// ragionamento abbia dove stare senza mangiarsi il finale.
+export const TETTO_BREVE = 1500;
+export const TETTO_SCHEDA = 4000;
+
 // La chiamata sola, senza sapere cosa si sta chiedendo: la usano sia la
 // spiegazione di un passaggio sia la scheda di un personaggio, e gli errori
 // vanno tradotti in un posto solo.
-export async function chiedi({ system, user }, fetcher) {
+export async function chiedi({ system, user, tetto = TETTO_BREVE }, fetcher) {
   const chiave = getOracleKey();
   if (!chiave) return { error: "chiave" };
   try {
@@ -84,7 +98,7 @@ export async function chiedi({ system, user }, fetcher) {
       },
       body: JSON.stringify({
         model: "claude-opus-5",
-        max_tokens: 1500,
+        max_tokens: tetto,
         thinking: { type: "adaptive" },
         system,
         messages: [{ role: "user", content: user }],
@@ -98,7 +112,9 @@ export async function chiedi({ system, user }, fetcher) {
       .map((b) => b.text)
       .join("\n")
       .trim();
-    return answer ? { answer } : { error: "api" };
+    // una risposta troncata si DICHIARA: mostrata com'e' sembra finita, e
+    // il lettore crede che la storia si fermi li'
+    return answer ? { answer, tagliata: data.stop_reason === "max_tokens" } : { error: "api" };
   } catch {
     return { error: "rete" };
   }
