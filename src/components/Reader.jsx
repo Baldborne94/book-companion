@@ -13,7 +13,7 @@ import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
 } from "../lib/readerSettings.js";
 import { searchBook } from "../lib/epubSearch.js";
-import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
+import { wordCount, cleanWord } from "../lib/dictionary.js";
 import { explain, termIndex, normalize, wikiUrl, glossaryOf } from "../lib/glossary.js";
 import { contextAround } from "../lib/oracle.js";
 import { sillaba } from "../lib/hyphens.js";
@@ -47,9 +47,6 @@ const TAP_PREV = 0.28;
 const TAP_NEXT = 0.72;
 // tetto ai segni per capitolo: la pagina resta una pagina, non un elenco
 const MARKS_PER_CHAPTER = 60;
-// Oltre questa lunghezza la selezione non e' piu' una frase ma un brano, e
-// cercarci dentro un modo di dire non ha senso.
-const NET_WORDS = 30;
 // la selezione da capire e' spesso un paragrafo intero — il parlato
 // biascicato si decifra tutto insieme — quindi il pulsante deve esserci
 // anche li'.
@@ -330,10 +327,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     reflowTimer.current = setTimeout(() => { reflowing.current = false; }, 1500);
   }, []);
 
-  const langRef = useRef("en");
-  // La lingua DICHIARATA dal libro, che non e' la stessa cosa: `langRef`
-  // ripiega sull'inglese per il dizionario, qui invece serve sapere se il
-  // libro l'ha detta davvero — senza, il browser non sillaba.
+  // La lingua DICHIARATA dal libro: serve sapere se l'ha detta davvero —
+  // senza, il browser non sillaba.
   const linguaRef = useRef(null);
   const [lingua, setLingua] = useState(null);
   const aliveRef = useRef(null);
@@ -633,7 +628,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         await eb.ready;
         if (dead) return;
         const lang = (eb.packaging?.metadata?.language || "").slice(0, 2).toLowerCase();
-        langRef.current = lang || "en";
         // non basta che il libro dichiari la lingua: serve che il browser
         // sappia sillabarla, e quello si misura sul posto
         const dichiarata = /^[a-z]{2}$/.test(lang) ? lang : null;
@@ -784,86 +778,104 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     return out;
   }
 
+  // LA VOLTATA E' UNA DISSOLVENZA, chiesta dal lettore: il velo color
+  // carta si alza (90ms), la pagina cambia sotto il velo pieno, e il velo
+  // ricade in 300ms sulla pagina nuova. Cosi' il confine di capitolo —
+  // che sotto il velo ci stava gia' per necessita' — e le voltate comuni
+  // parlano la stessa lingua, e il confine non e' piu' un caso speciale:
+  // lo si riconosce solo DOPO la voltata, dalla sezione cambiata, e li'
+  // il velo resta su finche' la misura non si ferma. Un secondo tocco
+  // durante l'attesa sbriga subito la voltata in coda: due tocchi svelti
+  // valgono due pagine, nessuna si perde.
+  const inAttesa = useRef(null);
   function step(r, dir) {
-    assestamento.current++;
-    setVelo(false);
-    if (dir === "prev") {
-      const vecchia = vistaCorrente();
-      const sez = vecchia?.section?.index;
-      // al primo foglio della sezione il passo indietro attraversa il
-      // confine: il capitolo che sta per nascere si copre PRIMA che
-      // dipinga l'atterraggio provvisorio
-      const base = vecchia?.element?.offsetLeft || 0;
-      if (sez != null && (r.manager?.container?.scrollLeft ?? 0) <= base) setVelo(true);
-      const p = r.prev();
+    if (inAttesa.current) {
+      const subito = inAttesa.current;
+      inAttesa.current = null;
+      subito();
+    }
+    const gettone = ++assestamento.current;
+    const cala = () => {
+      if (gettone === assestamento.current) setVelo(false);
+    };
+    setVelo(true);
+    const via = () => {
+      inAttesa.current = null;
+      if (gettone !== assestamento.current || rendRef.current !== r) return;
+      volta();
+    };
+    inAttesa.current = via;
+    setTimeout(() => {
+      if (inAttesa.current === via) via();
+    }, PASSO);
+
+    function volta() {
+      if (dir === "prev") {
+        const sez = vistaCorrente()?.section?.index;
+        const p = r.prev();
+        p?.then?.(() => {
+          if (gettone !== assestamento.current) return;
+          const arrivo = vistaCorrente();
+          if (rendRef.current !== r || !arrivo || arrivo.section?.index === sez) {
+            cala();
+            return;
+          }
+          // confine attraversato: il capitolo ricostruito cresce quando
+          // arriva il font incorporato e l'atterraggio provvisorio resta
+          // corto. A ogni crescita si ri-atterra sul fondo del capitolo
+          // giusto, allineato alla facciata.
+          const indice = arrivo.section.index;
+          aCapitoloAssestato(() => {
+            if (rendRef.current !== r) return;
+            const cont = r.manager.container;
+            // il fondo di QUESTO capitolo: la fine del contenitore
+            // potrebbe essere la coda di un'altra vista
+            let el = null;
+            r.manager.views?.forEach?.((v) => { if (v.section?.index === indice) el = v.element; });
+            if (!el) return;
+            const facciata = r.manager.layout?.delta || cont.clientWidth || 1;
+            const ultima = el.offsetLeft + Math.max(0, el.offsetWidth - cont.clientWidth);
+            r.manager.scrollTo(el.offsetLeft + Math.round((ultima - el.offsetLeft) / facciata) * facciata, 0, true);
+            r.reportLocation();
+          }, () => setVelo(false));
+        });
+        p?.catch?.(cala);
+        if (!p || !p.then) cala();
+        return;
+      }
+      // AVANTI: epub.js cede il passo al capitolo nuovo quando l'avanzo e'
+      // piu' corto di una facciata, ANCHE se non l'hai ancora letta —
+      // l'ultima pagina scritta spariva. Se resta carta la si scorre.
+      const rest = leftoverScroll(r.manager);
+      if (rest) {
+        r.manager.scrollBy(rest, 0, true);
+        r.reportLocation();
+        cala();
+        return;
+      }
+      const sez = vistaCorrente()?.section?.index;
+      const p = r.next();
       p?.then?.(() => {
+        if (gettone !== assestamento.current) return;
         const arrivo = vistaCorrente();
         if (rendRef.current !== r || !arrivo || arrivo.section?.index === sez) {
-          setVelo(false);
+          cala();
           return;
         }
-        const indice = arrivo.section.index;
-        aCapitoloAssestato(() => {
-          if (rendRef.current !== r) return;
-          const cont = r.manager.container;
-          // il fondo di QUESTO capitolo, allineato alla facciata: la fine
-          // del contenitore potrebbe essere la coda di un'altra vista
-          let el = null;
-          r.manager.views?.forEach?.((v) => { if (v.section?.index === indice) el = v.element; });
-          if (!el) return;
-          const facciata = r.manager.layout?.delta || cont.clientWidth || 1;
-          const ultima = el.offsetLeft + Math.max(0, el.offsetWidth - cont.clientWidth);
-          r.manager.scrollTo(el.offsetLeft + Math.round((ultima - el.offsetLeft) / facciata) * facciata, 0, true);
-          r.reportLocation();
-        }, () => setVelo(false));
-      });
-      p?.catch?.(() => setVelo(false));
-      return p;
-    }
-    // AVANTI: epub.js cede il passo al capitolo nuovo quando l'avanzo e'
-    // piu' corto di una facciata, ANCHE se non l'hai ancora letta —
-    // l'ultima pagina scritta spariva. Se resta carta la si scorre.
-    const rest = leftoverScroll(r.manager);
-    if (rest) {
-      r.manager.scrollBy(rest, 0, true);
-      return r.reportLocation();
-    }
-    // E ANCHE IN AVANTI IL CONFINE SI COPRE: il capitolo nuovo va
-    // costruito li' per li', e senza velo si vedeva quasi un secondo di
-    // carta nuda di colpo e poi il testo di scatto (misurato sul video
-    // del lettore). Qui si atterra all'INIZIO del capitolo, che non si
-    // muove quando la carta cresce: niente da correggere, il velo aspetta
-    // solo che la misura si fermi. Le voltate dentro il capitolo non
-    // passano di qui.
-    const vecchia = vistaCorrente();
-    const sez = vecchia?.section?.index;
-    let attraversa = false;
-    if (vecchia?.element && r.manager?.container) {
-      const cont = r.manager.container;
-      const fine = vecchia.element.offsetLeft + vecchia.element.offsetWidth;
-      const delta = r.manager.layout?.delta || cont.clientWidth || 1;
-      attraversa = cont.scrollLeft + delta >= fine - 4;
-    }
-    if (attraversa) setVelo(true);
-    const p = r.next();
-    if (attraversa) {
-      p?.then?.(() => {
-        const arrivo = vistaCorrente();
-        if (rendRef.current !== r || !arrivo || arrivo.section?.index === sez) {
-          setVelo(false);
-          return;
-        }
+        // confine attraversato: si atterra all'INIZIO del capitolo nuovo,
+        // che non si muove quando la carta cresce — niente da correggere,
+        // il velo aspetta solo che la misura si fermi
         aCapitoloAssestato(() => {}, () => setVelo(false));
       });
-      p?.catch?.(() => setVelo(false));
+      p?.catch?.(cala);
+      if (!p || !p.then) cala();
     }
-    return p;
   }
 
-  // La voltata e' SECCA, per scelta: il foglio animato (palco di cloni,
-  // fotografie del capitolo, velature) e' stato tolto per intero dopo mesi
-  // di salti di pagina su tablet — non re-introdurlo senza una prova lunga
-  // su Firefox Android.
+  // Niente foglio animato (palco di cloni, fotografie del capitolo): tolto
+  // per intero dopo mesi di salti di pagina su tablet, non re-introdurlo
+  // senza una prova lunga su Firefox Android. La dissolvenza di velo qui
+  // sopra e' l'UNICO movimento concesso.
   function turn(dir) {
     const r = rendRef.current;
     if (!r || status !== "ready") return;
@@ -986,7 +998,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     setDict({
       word: e.t,
       loading: false,
-      entries: [],
       gloss: { ...e, wiki: wikiUrl(e.t) },
       found: [e],
     });
@@ -1003,41 +1014,21 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     termsRef.current = null;
   }
 
-  // Il glossario di casa risponde subito e anche offline, quindi si mostra
-  // appena c'e'; il dizionario in rete arriva dopo e completa la scheda.
-  // Su una frase lunga la rete non serve a nulla: e' il modo di dire che si
-  // vuole capire, e quello sta nel glossario.
+  // Le definizioni parola per parola sono affare del dizionario del
+  // tablet, che compare da se' nel menu di selezione ed e' migliore del
+  // nostro (scelta del lettore: il dizionario in rete e' stato congedato).
+  // La scheda di casa risponde con quello che il tablet non puo' sapere:
+  // glossario della saga, modi di dire, e l'Oracolo.
   async function defineSelection() {
     const raw = selMenu?.text || "";
     const context = selMenu?.context || "";
     const word = cleanWord(raw);
     if (!word) return;
     setSelMenu(null);
-    setDict({ word, raw, context, loading: true, entries: [] });
+    setDict({ word, raw, context, loading: true });
     setPanel("dict");
     const local = await explain(raw, book);
-    setDict((d) => (d ? { ...d, ...local } : d));
-    if (wordCount(raw) > NET_WORDS) {
-      setDict((d) => (d ? { ...d, loading: false } : d));
-      return;
-    }
-    const res = await (wordCount(raw) > 1
-      ? lookupPhrase(raw, langRef.current)
-      : lookup(word, langRef.current));
-    setDict({
-      ...local,
-      word: res.word || word,
-      raw,
-      context,
-      loading: false,
-      entries: res.entries,
-      translation: res.translation,
-      foreign: res.foreign,
-      offline: res.offline,
-      machine: res.machine,
-      idiom: res.idiom,
-      frase: wordCount(raw) > 1,
-    });
+    setDict((d) => (d ? { ...d, ...local, loading: false, frase: wordCount(raw) > 1 } : d));
   }
 
   function saveNotes(next) {

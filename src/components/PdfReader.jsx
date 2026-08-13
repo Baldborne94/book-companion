@@ -7,7 +7,7 @@ import { schedaChiE } from "../lib/chiSono.js";
 import { schedaRiassunto } from "../lib/trama.js";
 import { sembraUnNome } from "../lib/nomi.js";
 import { HL_COLORS, loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
-import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
+import { wordCount, cleanWord } from "../lib/dictionary.js";
 import { explain } from "../lib/glossary.js";
 import { contextAround } from "../lib/oracle.js";
 import { toPageRects, rectStyle, pageOf } from "../lib/pdfHighlights.js";
@@ -23,8 +23,7 @@ import SchedaOracolo, { attese } from "./SchedaOracolo.jsx";
 // margine attorno alla pagina volta, non solo il foglio
 const TAP_PREV = 0.28;
 const TAP_NEXT = 0.72;
-// stessi limiti del reader EPUB per la scheda del significato
-const NET_WORDS = 30;
+// stesso limite del reader EPUB per la scheda del significato
 const PHRASE_WORDS = 300;
 
 const isTouch = () => navigator.maxTouchPoints > 0;
@@ -108,7 +107,6 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   const renderToken = useRef(0);
   const textLayer = useRef(null);
   const flashRef = useRef(null);
-  const langRef = useRef("en");
   const textCache = useRef(new Map());
   const searchRun = useRef(0);
   const live = useRef({
@@ -275,11 +273,6 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             setCrop(c);
           }).catch(() => { /* niente misura: si legge la pagina intera */ });
         }
-
-        pdf.getMetadata().then((m) => {
-          const l = (m?.info?.Language || "").slice(0, 2).toLowerCase();
-          if (l) langRef.current = l;
-        }).catch(() => { /* metadati assenti: resta l'inglese */ });
 
         // l'indice del PDF, se c'e': i titoli puntano a riferimenti interni
         // che vanno risolti in numeri di pagina uno per uno
@@ -492,39 +485,19 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     return scheda("trama", schedaRiassunto);
   };
 
-  // come nel reader EPUB: prima il glossario di casa, che risponde anche
-  // offline, poi il dizionario in rete se la selezione e' corta abbastanza
+  // come nel reader EPUB: le definizioni parola per parola sono affare del
+  // dizionario del tablet (menu di selezione); la scheda di casa risponde
+  // con glossario della saga, modi di dire e Oracolo
   async function defineSelection() {
     const raw = sel?.text || "";
     const context = sel?.context || "";
     const word = cleanWord(raw);
     if (!word) return;
     setSel(null);
-    setDict({ word, raw, context, loading: true, entries: [] });
+    setDict({ word, raw, context, loading: true });
     setPanel("dict");
     const local = await explain(raw, book);
-    setDict((d) => (d ? { ...d, ...local } : d));
-    if (wordCount(raw) > NET_WORDS) {
-      setDict((d) => (d ? { ...d, loading: false } : d));
-      return;
-    }
-    const res = await (wordCount(raw) > 1
-      ? lookupPhrase(raw, langRef.current)
-      : lookup(word, langRef.current));
-    setDict({
-      ...local,
-      word: res.word || word,
-      raw,
-      context,
-      loading: false,
-      entries: res.entries,
-      translation: res.translation,
-      foreign: res.foreign,
-      offline: res.offline,
-      machine: res.machine,
-      idiom: res.idiom,
-      frase: wordCount(raw) > 1,
-    });
+    setDict((d) => (d ? { ...d, ...local, loading: false, frase: wordCount(raw) > 1 } : d));
   }
 
   function addMark() {
