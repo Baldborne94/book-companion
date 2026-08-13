@@ -270,6 +270,37 @@ export default function Library({
   // promessa che nessuno puo' mantenere.
   const nelCloud = collegato && localIds ? books.filter((b) => !localIds.has(b.id)) : [];
 
+  // IL RICONOSCIMENTO GIRA SOLO ALL'IMPORT, e i libri entrati prima non
+  // tornano indietro a farsi guardare. Chi ha importato i Pratchett prima
+  // che il ciclo venisse salvato ha saga e numero ma serie vuota, e senza
+  // serie «Prima di cominciare» non sa quale storia stai continuando.
+  //
+  // Questo giro ripassa quello che c'e' gia' e riempie SOLO i campi vuoti:
+  // quello che hai scritto a mano non si tocca mai, nemmeno quando il
+  // riconoscimento la pensa diversamente — su questi campi l'ultima parola
+  // e' del lettore.
+  async function riconosciSaghe() {
+    const { riconosci } = await import("../lib/sagaBooks.js");
+    let sistemati = 0;
+    const next = books.map((b) => {
+      const trovato = riconosci({ title: b.title, author: b.author });
+      if (!trovato) return b;
+      const tocchi = {};
+      if (!(b.saga || "").trim() && trovato.saga) tocchi.saga = trovato.saga;
+      if (b.sagaOrder == null && trovato.sagaOrder != null) tocchi.sagaOrder = trovato.sagaOrder;
+      if (!(b.series || "").trim() && trovato.ciclo) tocchi.series = trovato.ciclo;
+      if (!Object.keys(tocchi).length) return b;
+      sistemati += 1;
+      return { ...b, ...tocchi };
+    });
+    if (sistemati) updateBooks(next);
+    notify?.(
+      sistemati
+        ? `${sistemati} ${sistemati === 1 ? "libro sistemato" : "libri sistemati"}`
+        : "Erano già tutti a posto"
+    );
+  }
+
   async function richiamaTomi() {
     if (!nelCloud.length || portando) return;
     const mio = {};
@@ -715,6 +746,19 @@ export default function Library({
                 : `☁ Porta qui ${nelCloud.length} ${nelCloud.length === 1 ? "tomo" : "tomi"}`}
             </button>
           )}
+          <button
+            onClick={riconosciSaghe}
+            style={{
+              padding: "7px 16px",
+              borderRadius: 10,
+              border: `1px solid ${C.border}`,
+              color: C.text,
+              fontSize: 14,
+              marginRight: 8,
+            }}
+          >
+            🔖 Riconosci saghe e cicli
+          </button>
           <button
             onClick={() => archiveRef.current?.click()}
             disabled={restoring}
