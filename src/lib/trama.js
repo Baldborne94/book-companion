@@ -234,6 +234,80 @@ export async function schedaRiassunto({ book, libri, statusOf, cfiOf, vivo, pass
   return { fase: res.answer ? "fatto" : "errore", tappe, lontani, passaggi: scelti, ...res };
 }
 
+// «PRIMA DI COMINCIARE» — cosa è successo nei volumi che vengono prima.
+//
+// Stessa raccolta di «Dove eravamo rimasti», ma su un libro che NON hai
+// ancora aperto: la frontiera, non trovando un segno per il volume
+// corrente, restituisce da sola i soli volumi precedenti. Non serve
+// nessuna lista di saghe: vale per qualunque saga hai in libreria e per
+// quelle che ci metterai, perche' l'ordine lo dici tu nella scheda del
+// libro (saga + numero d'ordine).
+//
+// Il volume che stai per cominciare resta FUORI anche se ci hai messo il
+// naso una volta: qui si chiede cosa viene prima, e una riga del libro
+// nuovo sarebbe uno spoiler chiesto per sbaglio.
+const SISTEMA_PRIMA = [
+  "Sei l'Oracolo di un'app di lettura. Il lettore sta per cominciare un",
+  "volume di una saga e vuole ricordarsi cosa è successo nei volumi",
+  "precedenti, che ha già letto.",
+  "REGOLA ASSOLUTA: racconta soltanto ciò che si ricava dai passaggi che",
+  "ti mostro. Non usare nulla che sai di questa saga da altre fonti, e non",
+  "dire una parola su cosa succederà nel volume che sta per aprire: non",
+  "l'ha ancora letto, e rovinarglielo è il danno peggiore che puoi fare.",
+  "LINGUA: scrivi SEMPRE IN ITALIANO, anche quando i passaggi sono in",
+  "un'altra lingua. Nomi di persone e di luoghi restano come stanno.",
+  "FORMA: prosa, non un elenco. Due o tre paragrafi brevi separati da una",
+  "riga vuota, testo puro senza markdown e senza titoletti.",
+  "MISURA: sulle 250 parole. Serve a rimettersi in pari in mezzo minuto.",
+  "CONTENUTO: la storia com'è arrivata fin qui — da dove è partita, chi ci",
+  "si muove dentro e cosa vuole, i fatti che contano e i conti rimasti",
+  "aperti. Chiudi dicendo come si è chiuso l'ultimo volume, che è il punto",
+  "da cui riparte quello che ha in mano.",
+  "Se i passaggi non bastano a ricostruire il filo, dillo in una riga",
+  "invece di inventare.",
+].join(" ");
+
+export async function schedaPrima({ book, libri, statusOf, cfiOf, vivo, passo }) {
+  const tappe = frontiera(book, libri, { statusOf, cfiOf }).filter((t) => t.libro.id !== book.id);
+  if (!tappe.length) return { fase: "vuoto", tappe: [], lontani: [], passaggi: [] };
+  passo({ fase: "cerco", tappe });
+  const { raccolto, lontani } = await raccogliTrama(tappe, { vivo });
+  const scelti = scegliTrama(raccolto);
+  if (!vivo()) return null;
+  if (!scelti.length) return { fase: "vuoto", tappe, lontani, passaggi: [] };
+  passo({ fase: "chiedo", tappe, lontani, passaggi: scelti });
+  const res = await chiediPrima({ passaggi: scelti, tappe });
+  if (!vivo()) return null;
+  return { fase: res.answer ? "fatto" : "errore", tappe, lontani, passaggi: scelti, ...res };
+}
+
+export async function chiediPrima({ passaggi, tappe }, fetcher) {
+  if (!getOracleKey()) return { error: "chiave" };
+  if (!passaggi.length) return { error: "nessunPassaggio" };
+  const righe = ["Il lettore chiede: cosa è successo nei volumi precedenti?"];
+  righe.push(
+    tappe.length === 1
+      ? "Ha letto il volume che viene prima di quello che sta per aprire. Non ti dico quale libro né quale saga, apposta: devi rispondere da questi passaggi e non da quello che ricordi."
+      : `Ha letto ${tappe.length} volumi che vengono prima. ` +
+        "Non ti dico quale saga né quali titoli, apposta: devi rispondere da questi passaggi e non da quello che ricordi."
+  );
+  righe.push(
+    "Passaggi in ordine di lettura. [inizio] e [ultime pagine] vengono dal volume più recente, " +
+      "quello che ha appena finito: le [ultime pagine] sono come si è chiuso, ed è da lì che riparte."
+  );
+  if (tappe.length > 1) {
+    righe.push(
+      "I passaggi [prima] sono pochi frammenti sparsi su interi volumi ancora precedenti: servono " +
+        "solo a collocare nomi e luoghi che tornano. NON riassumere quei volumi da lì."
+    );
+  }
+  const eti = { prima: "prima", qui: "inizio", coda: "ultime pagine" };
+  passaggi.forEach((p, i) => {
+    righe.push(`${i + 1}. [${eti[p.quando]}] «${p.testo}»`);
+  });
+  return chiedi({ system: SISTEMA_PRIMA, user: righe.join("\n"), tetto: TETTO_SCHEDA }, fetcher);
+}
+
 export async function chiediRiassunto({ passaggi, tappe }, fetcher) {
   if (!getOracleKey()) return { error: "chiave" };
   if (!passaggi.length) return { error: "nessunPassaggio" };
