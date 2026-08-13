@@ -36,9 +36,12 @@ const DA_MEZZO = 5;
 const DA_FONDO = 6;
 // quanta parte del volume aperto conta come apertura
 const APERTURA = 0.2;
-// quanto spetta, in tutto, ai volumi precedenti: il passato serve, ma la
-// storia che il lettore ha in mano adesso conta di piu'
-const DA_PRIMA = 6;
+// quota per OGNI volume gia' finito, non in tutto: con sei passaggi da
+// spartire sull'intera saga, a quattro libri finiti toccava un passaggio e
+// mezzo a testa — troppo poco perche' ne uscissero gli eventi principali.
+// Il tetto tiene a bada le saghe lunghe.
+const DA_VOLUME_PRIMA = 4;
+const MAX_PRIMA = 16;
 // tetto di sicurezza per libro: oltre, e' un protagonista e le menzioni in
 // piu' non cambiano la scelta
 const MAX_MENZIONI = 240;
@@ -56,22 +59,54 @@ const SISTEMA = [
   "Non anticipare MAI cosa succederà.",
   "LINGUA: scrivi nella stessa lingua dei passaggi. Se i passaggi sono in",
   "inglese rispondi in inglese, se sono in italiano rispondi in italiano.",
-  "FORMA: prosa, non un elenco. Due o tre paragrafi brevi, separati da una",
-  "riga vuota, testo puro senza markdown, senza trattini a capo, senza",
-  "titoletti. Scrivi come un lettore che racconta a voce a un amico chi è",
-  "quel personaggio, con frasi intere e distese.",
-  "CONTENUTO: racconta la sua storia fino a qui, non i suoi tratti. Chi era",
-  "prima, che cosa gli è successo e per mano di chi, che cosa ha perso, che",
-  "cosa vuole adesso e perché lo vuole. I torti subiti, i tradimenti, le",
-  "alleanze e le rivalità sono la parte che conta: se i passaggi li",
-  "mostrano, raccontali per esteso e chiama le persone coinvolte con i nomi",
-  "che compaiono nei passaggi. Serve a chi reincontra il personaggio dopo",
-  "tanto tempo e deve rimettersi in pari.",
-  "Chiudi con una frase su dove il lettore lo ha lasciato: cosa sta facendo",
-  "nei passaggi più recenti.",
+  "FORMA: tre parti, divise da una riga che contiene solo tre trattini",
+  "(---). Testo puro: niente markdown, niente titoletti, niente elenchi —",
+  "i titoli li mette l'app. Dentro ogni parte scrivi in prosa, come un",
+  "lettore che racconta a voce a un amico, con frasi intere e distese.",
+  "PRIMA PARTE, il ritratto: com'è fatto e che aria ha — aspetto, modi,",
+  "come parla — ma solo quello che i passaggi mostrano. Un paragrafo breve.",
+  "SECONDA PARTE, la storia fin qui: non i suoi tratti ma che cosa gli è",
+  "successo, e per mano di chi. Chi era prima, che cosa ha perso, che cosa",
+  "vuole adesso e perché lo vuole. I torti subiti,",
+  "i tradimenti, le alleanze e le rivalità sono la parte che conta: se i",
+  "passaggi li mostrano, raccontali per esteso e chiama le persone",
+  "coinvolte con i nomi che compaiono nei passaggi. Serve a chi reincontra",
+  "il personaggio dopo tanto tempo e deve rimettersi in pari. Segui",
+  "l'ordine di lettura, e se i volumi sono più d'uno di' dove accadono le",
+  "cose scrivendo proprio «Volume 1», «Volume 2», come sono etichettati i",
+  "passaggi: l'app mostrerà al lettore i titoli veri. Qui anche più di un",
+  "paragrafo, separati da una riga vuota.",
+  "TERZA PARTE, dove il lettore lo ha lasciato: una o due frasi su cosa sta",
+  "facendo nei passaggi più recenti.",
   "Se i passaggi non bastano a dire chi è, dillo in una riga invece di",
   "inventare; se non bastano su un punto, taci su quel punto.",
 ].join(" ");
+
+// I tre movimenti della scheda: i titoletti sono dell'app (e in italiano,
+// come il resto dell'interfaccia), al modello si chiedono solo i divisori.
+// Se i movimenti non tornano tre, la prosa si mostra nuda: meglio senza
+// titoli che con un titolo sul pezzo sbagliato.
+export const TITOLETTI = ["Il ritratto", "La storia fin qui", "Dove l'hai lasciato"];
+
+export function movimenti(answer) {
+  const parti = String(answer || "")
+    .split(/\n\s*-{3,}\s*\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parti.length === TITOLETTI.length ? parti : null;
+}
+
+// I numeri dei volumi tornano titoli QUI, sullo schermo: al modello i
+// titoli non arrivano mai (riconoscerebbe la saga e risponderebbe a
+// memoria), ma il lettore deve leggere il nome del suo libro, non un
+// numero. Un numero fuori dalla frontiera resta com'e'.
+export function conTitoli(testo, tappe) {
+  if (!tappe?.length) return String(testo || "");
+  return String(testo || "").replace(/\bvolume\s+(\d+)\b/gi, (tutto, n) => {
+    const titolo = tappe[Number(n) - 1]?.libro?.title;
+    return titolo ? `«${titolo}»` : tutto;
+  });
+}
 
 // Il paragrafo attorno alla menzione, non mezzo rigo: «…alzo' lo sguardo
 // verso…» non dice niente ne' al lettore ne' al modello.
@@ -329,6 +364,31 @@ function volumeAperto(qui, n) {
   ];
 }
 
+// Ai volumi finiti la quota si da' UNO PER UNO, a giri: un posto a testa
+// finche' la quota non si esaurisce, e chi non ha piu' menzioni lascia il
+// suo giro ai volumi ricchi. Con una lista sola, il volume dove il
+// personaggio e' protagonista si mangiava la quota di quelli dove compare
+// di sfuggita — ed erano proprio gli incontri che la scheda non raccontava.
+function perVolume(prima, n) {
+  if (n <= 0 || !prima.length) return [];
+  const ordine = [...new Set(prima.map((m) => m.libro.id))];
+  const gruppi = ordine.map((id) => prima.filter((m) => m.libro.id === id));
+  const conteggi = gruppi.map(() => 0);
+  let resto = n;
+  while (resto > 0) {
+    let dato = false;
+    for (let i = 0; i < gruppi.length && resto > 0; i++) {
+      if (conteggi[i] < gruppi[i].length) {
+        conteggi[i] += 1;
+        resto -= 1;
+        dato = true;
+      }
+    }
+    if (!dato) break;
+  }
+  return gruppi.flatMap((g, i) => sparsi(g, conteggi[i]));
+}
+
 // La quota si spartisce fra il volume aperto e quelli di prima, e il volume
 // aperto la sua ce l'ha sempre: e' li' che sta la premessa del libro che il
 // lettore ha in mano. Quello che un lato non usa passa all'altro.
@@ -336,7 +396,10 @@ export function scegliPassaggi(tutti, idCorrente) {
   const puliti = ripulisci(tutti);
   const ricchi = puliti.filter((m) => m.testo.length >= SOSTANZA);
   const perQui = DA_CAPO + DA_MEZZO + DA_FONDO;
-  const totale = perQui + DA_PRIMA;
+  const volumiPrima = new Set(
+    puliti.filter((m) => m.libro.id !== idCorrente).map((m) => m.libro.id)
+  ).size;
+  const totale = perQui + Math.min(volumiPrima * DA_VOLUME_PRIMA, MAX_PRIMA);
   // se di passaggi sostanziosi non ce n'e' abbastanza, meglio i magri che
   // il silenzio
   const base = ricchi.length >= totale ? ricchi : puliti;
@@ -350,7 +413,7 @@ export function scegliPassaggi(tutti, idCorrente) {
 
   const nPrima = Math.min(prima.length, totale - Math.min(qui.length, perQui));
   const nQui = Math.min(qui.length, totale - nPrima);
-  return [...sparsi(prima, nPrima), ...volumeAperto(qui, nQui)];
+  return [...perVolume(prima, nPrima), ...volumeAperto(qui, nQui)];
 }
 
 // I TITOLI NON ESCONO DAL DISPOSITIVO.
