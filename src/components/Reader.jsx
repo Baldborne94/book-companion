@@ -824,9 +824,40 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // piu' corto di una facciata, ANCHE se non l'hai ancora letta —
     // l'ultima pagina scritta spariva. Se resta carta la si scorre.
     const rest = leftoverScroll(r.manager);
-    if (!rest) return r.next();
-    r.manager.scrollBy(rest, 0, true);
-    return r.reportLocation();
+    if (rest) {
+      r.manager.scrollBy(rest, 0, true);
+      return r.reportLocation();
+    }
+    // E ANCHE IN AVANTI IL CONFINE SI COPRE: il capitolo nuovo va
+    // costruito li' per li', e senza velo si vedeva quasi un secondo di
+    // carta nuda di colpo e poi il testo di scatto (misurato sul video
+    // del lettore). Qui si atterra all'INIZIO del capitolo, che non si
+    // muove quando la carta cresce: niente da correggere, il velo aspetta
+    // solo che la misura si fermi. Le voltate dentro il capitolo non
+    // passano di qui.
+    const vecchia = vistaCorrente();
+    const sez = vecchia?.section?.index;
+    let attraversa = false;
+    if (vecchia?.element && r.manager?.container) {
+      const cont = r.manager.container;
+      const fine = vecchia.element.offsetLeft + vecchia.element.offsetWidth;
+      const delta = r.manager.layout?.delta || cont.clientWidth || 1;
+      attraversa = cont.scrollLeft + delta >= fine - 4;
+    }
+    if (attraversa) setVelo(true);
+    const p = r.next();
+    if (attraversa) {
+      p?.then?.(() => {
+        const arrivo = vistaCorrente();
+        if (rendRef.current !== r || !arrivo || arrivo.section?.index === sez) {
+          setVelo(false);
+          return;
+        }
+        aCapitoloAssestato(() => {}, () => setVelo(false));
+      });
+      p?.catch?.(() => setVelo(false));
+    }
+    return p;
   }
 
   // La voltata e' SECCA, per scelta: il foglio animato (palco di cloni,
