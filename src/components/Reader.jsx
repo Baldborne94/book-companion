@@ -13,7 +13,7 @@ import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
 } from "../lib/readerSettings.js";
 import { searchBook } from "../lib/epubSearch.js";
-import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
+import { wordCount, cleanWord } from "../lib/dictionary.js";
 import { explain, termIndex, normalize, wikiUrl, glossaryOf } from "../lib/glossary.js";
 import { contextAround } from "../lib/oracle.js";
 import { sillaba } from "../lib/hyphens.js";
@@ -47,9 +47,6 @@ const TAP_PREV = 0.28;
 const TAP_NEXT = 0.72;
 // tetto ai segni per capitolo: la pagina resta una pagina, non un elenco
 const MARKS_PER_CHAPTER = 60;
-// Oltre questa lunghezza la selezione non e' piu' una frase ma un brano, e
-// cercarci dentro un modo di dire non ha senso.
-const NET_WORDS = 30;
 // la selezione da capire e' spesso un paragrafo intero — il parlato
 // biascicato si decifra tutto insieme — quindi il pulsante deve esserci
 // anche li'.
@@ -330,10 +327,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     reflowTimer.current = setTimeout(() => { reflowing.current = false; }, 1500);
   }, []);
 
-  const langRef = useRef("en");
-  // La lingua DICHIARATA dal libro, che non e' la stessa cosa: `langRef`
-  // ripiega sull'inglese per il dizionario, qui invece serve sapere se il
-  // libro l'ha detta davvero — senza, il browser non sillaba.
+  // La lingua DICHIARATA dal libro: serve sapere se l'ha detta davvero —
+  // senza, il browser non sillaba.
   const linguaRef = useRef(null);
   const [lingua, setLingua] = useState(null);
   const aliveRef = useRef(null);
@@ -633,7 +628,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         await eb.ready;
         if (dead) return;
         const lang = (eb.packaging?.metadata?.language || "").slice(0, 2).toLowerCase();
-        langRef.current = lang || "en";
         // non basta che il libro dichiari la lingua: serve che il browser
         // sappia sillabarla, e quello si misura sul posto
         const dichiarata = /^[a-z]{2}$/.test(lang) ? lang : null;
@@ -1004,7 +998,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     setDict({
       word: e.t,
       loading: false,
-      entries: [],
       gloss: { ...e, wiki: wikiUrl(e.t) },
       found: [e],
     });
@@ -1021,41 +1014,21 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     termsRef.current = null;
   }
 
-  // Il glossario di casa risponde subito e anche offline, quindi si mostra
-  // appena c'e'; il dizionario in rete arriva dopo e completa la scheda.
-  // Su una frase lunga la rete non serve a nulla: e' il modo di dire che si
-  // vuole capire, e quello sta nel glossario.
+  // Le definizioni parola per parola sono affare del dizionario del
+  // tablet, che compare da se' nel menu di selezione ed e' migliore del
+  // nostro (scelta del lettore: il dizionario in rete e' stato congedato).
+  // La scheda di casa risponde con quello che il tablet non puo' sapere:
+  // glossario della saga, modi di dire, e l'Oracolo.
   async function defineSelection() {
     const raw = selMenu?.text || "";
     const context = selMenu?.context || "";
     const word = cleanWord(raw);
     if (!word) return;
     setSelMenu(null);
-    setDict({ word, raw, context, loading: true, entries: [] });
+    setDict({ word, raw, context, loading: true });
     setPanel("dict");
     const local = await explain(raw, book);
-    setDict((d) => (d ? { ...d, ...local } : d));
-    if (wordCount(raw) > NET_WORDS) {
-      setDict((d) => (d ? { ...d, loading: false } : d));
-      return;
-    }
-    const res = await (wordCount(raw) > 1
-      ? lookupPhrase(raw, langRef.current)
-      : lookup(word, langRef.current));
-    setDict({
-      ...local,
-      word: res.word || word,
-      raw,
-      context,
-      loading: false,
-      entries: res.entries,
-      translation: res.translation,
-      foreign: res.foreign,
-      offline: res.offline,
-      machine: res.machine,
-      idiom: res.idiom,
-      frase: wordCount(raw) > 1,
-    });
+    setDict((d) => (d ? { ...d, ...local, loading: false, frase: wordCount(raw) > 1 } : d));
   }
 
   function saveNotes(next) {

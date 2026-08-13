@@ -4,8 +4,12 @@ import { consultaOracolo, hasOracle, setOracleKey } from "../lib/oracle.js";
 
 // La scheda del dizionario e' identica nei due reader: qui una volta sola,
 // cosi' EPUB e PDF non divergono.
+// Le definizioni parola per parola non stanno piu' qui: il dizionario del
+// tablet, nel menu di selezione, e' migliore del nostro (scelta del
+// lettore, e il dizionario in rete e' stato congedato). La scheda risponde
+// con quello che il tablet non puo' sapere: glossario della saga, modi di
+// dire, e l'Oracolo.
 export default function DictionaryCard({ dict, book, bottom, onClose }) {
-  const [all, setAll] = useState(false);
   // {loading} | {answer} | {error}; la chiave si chiede qui dentro, dove
   // l'Oracolo si usa, non in un pannello di impostazioni da scoprire
   const [oracolo, setOracolo] = useState(null);
@@ -19,7 +23,6 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
     tagRef.current = tag;
     if (oracolo) setOracolo(null);
     if (keyOpen) setKeyOpen(false);
-    if (all) setAll(false);
   }
 
   async function chiedi() {
@@ -57,9 +60,6 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
   const secondaria = elenco || primaria !== dict.gloss ? (elenco ? null : dict.gloss) : dict.slang;
   const local = primaria || secondaria || elenco;
   const rest = elenco ? tutte : tutte.filter((e) => e.t !== primaria?.t && e.t !== secondaria?.t);
-  // se la prima riga e' solo il rimando («plurale di…»), un significato vero
-  // in piu' resta visibile senza dover toccare «Altri»
-  const shown = (local ? 1 : dict.translation ? 2 : 3) + (dict.entries?.[0]?.forma ? 1 : 0);
   const testo = dict.raw?.trim() || dict.word || "";
   const titolo = primaria?.t || (testo.length > 44 ? `${testo.slice(0, 44)}…` : testo);
 
@@ -99,9 +99,6 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
           {primaria?.r && (
             <span style={{ fontSize: 11.5, color: C.muted, fontStyle: "italic" }}>{primaria.r}</span>
           )}
-          {!dict.gloss && dict.foreign && (
-            <span style={{ fontSize: 11.5, color: C.muted }}>in lingua originale</span>
-          )}
           <button onClick={onClose} style={{ marginLeft: "auto", color: C.muted, fontSize: 17 }}>
             ✕
           </button>
@@ -136,12 +133,11 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
           </div>
         )}
 
-        {/* Il rimando al wiki della saga solo se la parola NON esiste in
-            inglese: se Wiktionary ha una voce, e' una parola comune e sul
-            wiki del Mondo Disco non ci sara' nulla. Vale anche per la sola
-            traduzione: se MyMemory sa renderla, e' inglese. Offrirlo a ogni
-            parola sconosciuta voleva dire offrirlo quasi sempre a vuoto. */}
-        {!primaria && dict.wikiSearch && !dict.loading && !dict.entries.length && !dict.translation && (
+        {/* Il rimando al wiki della saga quando il glossario tace: senza
+            piu' il dizionario in rete non sappiamo se la parola e' inglese
+            comune, ma chi apre questa scheda in un libro di saga sta quasi
+            sempre chiedendo di un nome del mondo, non di un vocabolo. */}
+        {!primaria && dict.wikiSearch && !dict.loading && (
           <a
             href={dict.wikiSearch.url}
             target="_blank"
@@ -225,27 +221,7 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
           </div>
         )}
 
-        {dict.translation && (
-          <>
-            {dict.machine && (
-              <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 2 }}>
-                traduzione automatica, solo per orientarsi
-              </div>
-            )}
-            <p
-              style={{
-                fontSize: dict.machine ? 15 : 16.5,
-                color: dict.machine ? C.text : C.accent,
-                lineHeight: 1.4,
-                margin: "0 0 10px",
-              }}
-            >
-              {dict.translation}
-            </p>
-          </>
-        )}
-
-        {!dict.loading && !local && !dict.idiom && !dict.entries.length && dict.word && !dict.wikiSearch && (
+        {!dict.loading && !local && dict.frase && !dict.wikiSearch && (
           <a
             href={`https://www.google.com/search?q=${encodeURIComponent(`"${dict.word}" meaning`)}`}
             target="_blank"
@@ -266,48 +242,15 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
         )}
 
         {dict.loading ? (
-          <p style={{ color: C.muted, fontSize: local ? 13 : 14.5 }}>
-            {local ? "Cerco anche sul dizionario…" : "Consulto il dizionario…"}
+          <p style={{ color: C.muted, fontSize: 14.5 }}>Sfoglio il glossario…</p>
+        ) : local ? null : (
+          // il glossario che tace non chiude la scheda: resta l'Oracolo, e
+          // per la definizione nuda c'e' il dizionario del tablet
+          <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.5 }}>
+            {dict.frase
+              ? "Questo passaggio non è un modo di dire che conosco."
+              : `Il glossario non conosce «${dict.word}»: per la definizione c'è il dizionario del tablet, nel menu della selezione.`}
           </p>
-        ) : dict.entries.length === 0 && !dict.translation ? (
-          // col glossario in mano il dizionario che tace non e' una notizia:
-          // la domanda ha gia' avuto risposta
-          local ? null : (
-            <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.5 }}>
-              {dict.offline
-                ? "Il dizionario ha bisogno della rete: riprova quando sei online."
-                : dict.frase
-                  ? "Questo passaggio non è un modo di dire che conosco, e nemmeno Wiktionary ne ha una voce."
-                  : `Nessuna voce per «${dict.word}».`}
-            </p>
-          )
-        ) : (
-          <>
-            {(all ? dict.entries : dict.entries.slice(0, shown)).map((e, i) => (
-              <div key={i} style={{ display: "flex", gap: 9, marginBottom: 9 }}>
-                {e.pos && (
-                  <span
-                    style={{
-                      flexShrink: 0,
-                      fontSize: 11.5,
-                      color: C.arcane,
-                      fontStyle: "italic",
-                      paddingTop: 3,
-                      minWidth: 66,
-                    }}
-                  >
-                    {e.pos}
-                  </span>
-                )}
-                <span style={{ fontSize: 15, color: C.text, lineHeight: 1.45 }}>{e.text}</span>
-              </div>
-            ))}
-            {!all && dict.entries.length > shown && (
-              <button onClick={() => setAll(true)} style={{ fontSize: 13.5, color: C.accent, paddingTop: 2 }}>
-                Altri {dict.entries.length - shown} significati
-              </button>
-            )}
-          </>
         )}
 
         {/* L'Oracolo: glossario e dizionario spiegano parole e modi di dire,
