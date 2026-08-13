@@ -1,7 +1,13 @@
-import { useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
 import { getProgress, getStatus, setStatus } from "../lib/library.js";
+import { getCfi } from "../lib/annotations.js";
+import { frontiera } from "../lib/frontiera.js";
 import BookCover from "./BookCover.jsx";
+
+// la scheda dell'Oracolo arriva solo se la si chiede: qui dentro non
+// serve quasi mai, e pesa quanto il reader
+const SchedaOracolo = lazy(() => import("./SchedaOracolo.jsx"));
 
 const GENRE_HINTS = [
   "Fantasy",
@@ -132,6 +138,36 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const pct = Math.round(getProgress(book.id) * 100);
+
+  // «PRIMA DI COMINCIARE»: c'è solo se davvero c'è un prima, cioè se di
+  // questa saga hai già letto (o stai leggendo) qualche volume che viene
+  // avanti nell'ordine. Vale per qualunque saga: l'ordine lo dici tu qui
+  // sopra, nei campi Saga e Numero.
+  const [prima, setPrima] = useState(null);
+  const filoPrima = useRef(0);
+  const precedenti = frontiera(
+    { ...book, saga: saga.trim(), sagaOrder: sagaOrder.trim() === "" ? null : Number(sagaOrder) },
+    books,
+    { statusOf: getStatus, cfiOf: getCfi }
+  ).filter((t) => t.libro.id !== book.id);
+
+  async function chiediPrimaDiCominciare() {
+    const mio = ++filoPrima.current;
+    const vivo = () => filoPrima.current === mio;
+    setPrima({ fase: "cerco", tappe: precedenti });
+    const { schedaPrima } = await import("../lib/trama.js");
+    const finito = await schedaPrima({
+      book: { ...book, saga: saga.trim(), sagaOrder: sagaOrder.trim() === "" ? null : Number(sagaOrder) },
+      libri: books,
+      statusOf: getStatus,
+      // il volume che sta per cominciare non ha un «fin dove»: quello che
+      // conta è tutto quello che viene prima
+      cfiOf: (id) => (id === book.id ? null : getCfi(id)),
+      vivo,
+      passo: (s) => vivo() && setPrima(s),
+    });
+    if (vivo() && finito) setPrima(finito);
+  }
 
   function commitAndClose() {
     onSaveMeta({
@@ -305,6 +341,57 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
             style={{ ...fieldStyle, resize: "vertical", fontFamily: "inherit", lineHeight: 1.4 }}
           />
         </label>
+
+        {/* Il richiamo dei volumi precedenti: c'è solo se un prima esiste
+            davvero, e sta sopra «Apri il libro» perché è lì che serve —
+            un attimo prima di cominciare. */}
+        {precedenti.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            {prima ? (
+              <div
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: `1px solid ${C.border}`,
+                  background: `${C.bg}88`,
+                  maxHeight: "44vh",
+                  overflowY: "auto",
+                }}
+              >
+                <Suspense fallback={<p style={{ color: C.muted, fontSize: 14, margin: 0 }}>…</p>}>
+                  <SchedaOracolo
+                    scheda={prima}
+                    attese={{
+                      cerco: `Rileggo ${precedenti.length === 1 ? "il volume che viene prima" : `i ${precedenti.length} volumi che vengono prima`}…`,
+                      chiedo: `✨ L'Oracolo sta leggendo ${prima.passaggi?.length || 0} passaggi…`,
+                    }}
+                    vuoto="Di questa saga non trovo volumi precedenti già letti su questo dispositivo."
+                    onRiprova={chiediPrimaDiCominciare}
+                  />
+                </Suspense>
+              </div>
+            ) : (
+              <button
+                onClick={chiediPrimaDiCominciare}
+                style={{
+                  width: "100%",
+                  padding: "10px 16px",
+                  borderRadius: 12,
+                  border: `1px solid ${C.arcane}66`,
+                  color: C.arcane,
+                  fontSize: 14.5,
+                  textAlign: "left",
+                  lineHeight: 1.4,
+                }}
+              >
+                ✨ Prima di cominciare: cosa è successo{" "}
+                {precedenti.length === 1
+                  ? "nel volume precedente"
+                  : `nei ${precedenti.length} volumi precedenti`}
+              </button>
+            )}
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <button
