@@ -129,7 +129,7 @@ function flattenToc(items, depth = 0, out = []) {
   return out;
 }
 
-function contentStyles(s, lingua) {
+export function contentStyles(s, lingua) {
   const t = READER_THEMES[s.theme];
   const font = READER_FONTS.find((f) => f.id === s.font)?.css;
   // L'INCHIOSTRO E' QUELLO DEL TEMA, SENZA ECCEZIONI.
@@ -141,6 +141,24 @@ function contentStyles(s, lingua) {
   // nero. Un elenco di tag e' una partita a rincorrere: qui si dice «tutto
   // quello che sta nel corpo», e i collegamenti si riprendono il loro colore
   // subito dopo (stessa specificita', vince la regola che arriva dopo).
+  //
+  // MA L'INCHIOSTRO SI', L'INTERLINEA NO. Il colore su ogni elemento non
+  // sposta niente; l'interlinea si'. Molti ePub fanno gli stacchi con un
+  // paragrafo spaziatore a `line-height: 0`, e riportarglielo a interlinea
+  // piena trasforma un capello in una riga bianca in mezzo a una scena
+  // (misurato: +24px, ed e' lo stacco che il lettore vedeva da noi e non
+  // negli altri reader, che l'interlinea non la forzano su tutto).
+  //
+  // L'interlinea sta quindi su `body`, da cui tutto eredita, e sulla prosa
+  // — e sulla prosa **senza `!important`**, che e' l'altra meta' della
+  // cura: lo spaziatore e' quasi sempre un `<p>`, quindi una regola sulla
+  // prosa lo riprenderebbe comunque. Senza `!important` la gara la decide
+  // la specificita': il `p { line-height }` del libro perde perche' il
+  // nostro foglio arriva dopo — ed e' il caso comune, la levetta continua
+  // a comandare — mentre `.sp { line-height: 0 }` vince, perche' una
+  // classe batte un tag. Ed e' giusto: quella classe e' uno spaziatore
+  // voluto. Il prezzo, accettato: anche `.chapter p { line-height: 1.1 }`
+  // vince li' sulla levetta.
   const textSel = "body *";
   // La colonna giustificata si prende solo la prosa. Non `div`, che spesso
   // avvolge anche i titoli: quelli il libro li centra o li allinea a modo
@@ -156,7 +174,9 @@ function contentStyles(s, lingua) {
     },
     [textSel]: {
       color: `${t.fg} !important`,
-      "line-height": `${s.lineHeight} !important`,
+    },
+    [proseSel]: {
+      "line-height": `${s.lineHeight}`,
     },
     "h1, h2, h3, h4, h5, h6": { color: `${t.fg} !important` },
     "a, a *": { color: `${t.link} !important` },
@@ -180,7 +200,9 @@ function contentStyles(s, lingua) {
   // valere finche' il libro non viene rifatto da capo. Le regole che
   // arrivano dopo vincono, quelle che spariscono no.
   if (lingua) {
-    rules[proseSel] = s.justify
+    // si AGGIUNGE alla prosa, non si riscrive: li' c'e' gia' l'interlinea,
+    // e un `=` la porterebbe via insieme alla levetta che la governa
+    Object.assign(rules[proseSel], s.justify
       ? {
           "text-align": "justify !important",
           hyphens: "auto !important",
@@ -194,7 +216,7 @@ function contentStyles(s, lingua) {
           "text-align": "start !important",
           hyphens: "manual !important",
           "-webkit-hyphens": "manual !important",
-        };
+        });
   }
   return rules;
 }

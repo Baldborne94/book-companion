@@ -36,7 +36,7 @@ App PWA local-first per la biblioteca personale: EPUB/PDF caricati dall'utente, 
 
 ## Lezioni da wh-companion (vincolanti — NON re-impararle)
 
-1. Tipografia reader sugli **elementi** del capitolo, mai solo su `body`. E l'inchiostro su `body *`, non su un elenco di tag: chi resta fuori dall'elenco tiene il colore dell'editore, e sul tema notte sparisce. I collegamenti si riprendono `theme.link` con la regola subito dopo.
+1. Tipografia reader sugli **elementi** del capitolo, mai solo su `body`. E l'inchiostro su `body *`, non su un elenco di tag: chi resta fuori dall'elenco tiene il colore dell'editore, e sul tema notte sparisce. I collegamenti si riprendono `theme.link` con la regola subito dopo. **Ma su `body *` ci va l'inchiostro, NON l'interlinea**: il colore non sposta niente, l'interlinea si'. Molti ePub fanno gli stacchi con un paragrafo spaziatore a `line-height: 0`, e forzarglielo a interlinea piena apre una riga bianca in mezzo a una scena — misurato +24px su un libro vero, ed e' lo stacco che il lettore vedeva da noi e non negli altri reader (segnalato: «come mai vedo questi spazi non previsti?»). L'interlinea sta su `body` con `!important` e sulla prosa **senza**: cosi' il `p { line-height }` del libro perde (il nostro foglio arriva dopo, stessa specificita') e la levetta continua a comandare, mentre `.sp { line-height: 0 }` vince, perche' una classe batte un tag — ed e' giusto, quella classe e' uno spaziatore voluto. Prezzo accettato: anche `.chapter p { line-height: 1.1 }` vince li' sulla levetta.
 2. Doppia pagina: unica fonte di verità = evento `layout` di epub.js. Mai misurare da soli.
 3. Progresso **sempre 0–1**. Mai scrivere 0–100 nello stesso store.
 4. `MusicPlayer` mai smontato. Reader sopra, player sotto.
