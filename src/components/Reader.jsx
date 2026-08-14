@@ -129,6 +129,43 @@ function flattenToc(items, depth = 0, out = []) {
   return out;
 }
 
+// I PARAGRAFI SENZA TESTO NON SONO PARAGRAFI, e il browser non lo sa.
+//
+// Un ePub convertito lascia in giro le ancore delle pagine di carta —
+// `<p><a class="calibre3"></a></p>`, centocinquanta volte in un romanzo
+// (contate su Guards! Guards!). Non hanno testo, ma sono `<p>`, e il libro
+// non li veste con nessuna classe: entra allora il foglio del BROWSER, che
+// ai paragrafi da' `margin: 1em 0`, e in mezzo a una scena si apre una
+// riga bianca. Non e' il nostro tema (misurato: identico con e senza), e'
+// che non normalizzavamo niente. Gli altri reader normalizzano, ed e' per
+// questo che da loro lo stacco non c'e'.
+//
+// Si fa QUI e non in CSS perche' il CSS non sa dire «senza testo»:
+// `p:has(> a:only-child:empty)` guarda i figli elemento e ignora il testo,
+// quindi prende anche la battuta vera che si porta dietro un'ancora, e la
+// schiaccia. Qui invece il testo si legge.
+//
+// Tre cose restano intoccabili: il paragrafo con testo, quello con dentro
+// un'immagine, e lo stacco di scena voluto dal libro — che si riconosce
+// perche' contiene uno spazio unificatore o un `<br>`, cioe' qualcuno ce
+// l'ha messo apposta per aprire una riga.
+export function spegniVuoti(doc) {
+  if (!doc) return 0;
+  let spenti = 0;
+  for (const p of doc.querySelectorAll("p")) {
+    const testo = p.textContent || "";
+    // lo spazio unificatore si scrive per codice: a occhio, nel sorgente,
+    // e' identico a uno spazio normale e la regola sembrerebbe assurda
+    if (testo.includes("\u00a0") || p.querySelector("br")) continue;
+    if (testo.trim()) continue;
+    if (p.querySelector("img, svg, video, canvas, object, iframe")) continue;
+    p.style.margin = "0";
+    p.style.lineHeight = "0";
+    spenti += 1;
+  }
+  return spenti;
+}
+
 export function contentStyles(s, lingua) {
   const t = READER_THEMES[s.theme];
   const font = READER_FONTS.find((f) => f.id === s.font)?.css;
@@ -181,6 +218,32 @@ export function contentStyles(s, lingua) {
     "h1, h2, h3, h4, h5, h6": { color: `${t.fg} !important` },
     "a, a *": { color: `${t.link} !important` },
     img: { "max-width": "100% !important" },
+    // I PARAGRAFI VUOTI NON SONO PARAGRAFI, e il browser non lo sa.
+    //
+    // Un ePub convertito lascia in giro le ancore delle pagine di carta:
+    // `<p><a class="calibre3"></a></p>`, centocinquantacinque volte in un
+    // solo romanzo (misurato su Guards! Guards!). Non hanno testo, ma sono
+    // `<p>`, e il libro non li veste con nessuna classe: entra allora il
+    // foglio di stile del BROWSER, che ai paragrafi da' `margin: 1em 0` —
+    // 16px di riga bianca in mezzo a una scena. Non e' colpa del nostro
+    // tema (misurato: identico con e senza), e' che non normalizzavamo
+    // niente e il default passava. Gli altri reader normalizzano, ed e'
+    // per questo che da loro lo stacco non si vede.
+    //
+    // Si azzerano SOLO i paragrafi senza testo, mai i paragrafi veri: un
+    // libro che separa la prosa con i margini invece che col rientro deve
+    // continuare a farlo. E si azzerano i margini, non `display: none`,
+    // perche' quelle ancore possono essere il bersaglio di un rimando e
+    // devono restare raggiungibili.
+    // Qui sta solo il caso che il CSS sa dire davvero: un `<p>` senza
+    // NIENTE dentro. Tutto il resto — l'ancora vuota dentro un paragrafo
+    // altrimenti vuoto — lo fa `spegniVuoti` a mano, perche' il CSS non
+    // sa distinguere «paragrafo senza testo» da «paragrafo con testo che
+    // contiene anche un'ancora vuota»: `p:has(> a:only-child:empty)`
+    // prende tutti e due, e sul secondo schiaccia una battuta vera (130
+    // paragrafi rovinati in questo libro, presi da un test e non dalla
+    // lettura del diff).
+    "p:empty": { margin: "0", "line-height": "0" },
   };
   if (font) {
     rules.body["font-family"] = `${font} !important`;
@@ -552,6 +615,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         allowScriptedContent: false,
       });
       rendRef.current = r;
+      // Le ancore delle pagine di carta si spengono PRIMA che il capitolo
+      // venga impaginato: `content` gira a documento caricato e a misura
+      // non ancora presa, quindi non c'e' niente da reimpaginare dopo — e
+      // non si rientra in epub.js mentre monta, che e' la lezione che il
+      // ritaglio dell'avanzo ha gia' pagato.
+      r.hooks.content.register((contents) => spegniVuoti(contents?.document));
       applyStyles(r, s);
 
       r.on("relocated", (loc) => {

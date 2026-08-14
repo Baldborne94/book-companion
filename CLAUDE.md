@@ -37,12 +37,13 @@ App PWA local-first per la biblioteca personale: EPUB/PDF caricati dall'utente, 
 ## Lezioni da wh-companion (vincolanti — NON re-impararle)
 
 1. Tipografia reader sugli **elementi** del capitolo, mai solo su `body`. E l'inchiostro su `body *`, non su un elenco di tag: chi resta fuori dall'elenco tiene il colore dell'editore, e sul tema notte sparisce. I collegamenti si riprendono `theme.link` con la regola subito dopo. **Ma su `body *` ci va l'inchiostro, NON l'interlinea**: il colore non sposta niente, l'interlinea si'. Molti ePub fanno gli stacchi con un paragrafo spaziatore a `line-height: 0`, e forzarglielo a interlinea piena apre una riga bianca in mezzo a una scena — misurato +24px su un libro vero, ed e' lo stacco che il lettore vedeva da noi e non negli altri reader (segnalato: «come mai vedo questi spazi non previsti?»). L'interlinea sta su `body` con `!important` e sulla prosa **senza**: cosi' il `p { line-height }` del libro perde (il nostro foglio arriva dopo, stessa specificita') e la levetta continua a comandare, mentre `.sp { line-height: 0 }` vince, perche' una classe batte un tag — ed e' giusto, quella classe e' uno spaziatore voluto. Prezzo accettato: anche `.chapter p { line-height: 1.1 }` vince li' sulla levetta.
-2. Doppia pagina: unica fonte di verità = evento `layout` di epub.js. Mai misurare da soli.
-3. Progresso **sempre 0–1**. Mai scrivere 0–100 nello stesso store.
-4. `MusicPlayer` mai smontato. Reader sopra, player sotto.
-5. `navigator.onLine` mente (true su LAN senza internet) → sempre fallback su cache/IndexedDB.
-6. Service worker `prompt`, mai reload automatico durante la lettura.
-7. CFI: flush sincrono alla chiusura o la posizione si perde nel debounce.
-8. Default derivati dal dispositivo si fondono **sotto** le preferenze salvate, mai sopra.
-9. Animazioni solo `opacity`/`transform` (lo scale/layout fa flickerare).
-10. Blob/copertine: persistere i **bytes**, mai gli object URL.
+2. **I paragrafi SENZA TESTO non sono paragrafi, e il browser non lo sa** (`spegniVuoti` in `Reader.jsx`, agganciato a `hooks.content`): un ePub convertito lascia in giro le ancore delle pagine di carta — `<p><a class="calibre3"></a></p>`, **centocinquanta volte in un romanzo** (contate su *Guards! Guards!*). Non hanno testo ma sono `<p>`, e il libro non li veste con nessuna classe: entra il foglio del BROWSER, che ai paragrafi da' `margin: 1em 0`, e in mezzo a una scena si apre una riga bianca. Non e' il nostro tema (misurato: identico con e senza) — e' che non normalizzavamo niente, mentre gli altri reader lo fanno. **E NON SI FA IN CSS**: `p:has(> a:only-child:empty)` guarda i figli elemento e ignora il testo, quindi prende anche la battuta vera che si porta dietro un'ancora e la schiaccia — **130 paragrafi rovinati in questo libro, presi da un test e non dalla lettura del diff**. Si legge il testo, e allora si sa. Tre cose restano intoccabili: il paragrafo con testo, quello con dentro un'immagine, e **lo stacco di scena voluto dal libro** — che si riconosce dallo spazio unificatore o da un `<br>`, perche' li' qualcuno ha aperto una riga apposta (in *Guards! Guards!* sono 110, e vanno conservati tutti). Si azzerano i margini, non `display: none`: quelle ancore possono essere il bersaglio di un rimando e devono restare raggiungibili. Il giro sta in `hooks.content`, che gira a documento caricato e a misura non ancora presa: non si rientra in epub.js mentre monta.
+3. Doppia pagina: unica fonte di verità = evento `layout` di epub.js. Mai misurare da soli.
+4. Progresso **sempre 0–1**. Mai scrivere 0–100 nello stesso store.
+5. `MusicPlayer` mai smontato. Reader sopra, player sotto.
+6. `navigator.onLine` mente (true su LAN senza internet) → sempre fallback su cache/IndexedDB.
+7. Service worker `prompt`, mai reload automatico durante la lettura.
+8. CFI: flush sincrono alla chiusura o la posizione si perde nel debounce.
+9. Default derivati dal dispositivo si fondono **sotto** le preferenze salvate, mai sopra.
+10. Animazioni solo `opacity`/`transform` (lo scale/layout fa flickerare).
+11. Blob/copertine: persistere i **bytes**, mai gli object URL.
