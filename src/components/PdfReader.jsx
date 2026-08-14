@@ -7,7 +7,7 @@ import { schedaChiE, nuoveMenzioni } from "../lib/chiSono.js";
 import { schedaRiassunto } from "../lib/trama.js";
 import { sembraUnNome } from "../lib/nomi.js";
 import { HL_COLORS, loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
-import { wordCount, cleanWord } from "../lib/dictionary.js";
+import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
 import { explain } from "../lib/glossary.js";
 import { contextAround } from "../lib/oracle.js";
 import { toPageRects, rectStyle, pageOf } from "../lib/pdfHighlights.js";
@@ -25,6 +25,9 @@ const TAP_PREV = 0.28;
 const TAP_NEXT = 0.72;
 // stesso limite del reader EPUB per la scheda del significato
 const PHRASE_WORDS = 300;
+// Oltre questa lunghezza la selezione non e' piu' una frase ma un brano, e
+// cercarci dentro un modo di dire non ha senso.
+const NET_WORDS = 30;
 // e stesso tetto alle schede dell'Oracolo tenute da parte
 const MAX_SCHEDE = 8;
 
@@ -510,19 +513,48 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     return scheda("trama", schedaRiassunto);
   };
 
-  // come nel reader EPUB: le definizioni parola per parola sono affare del
-  // dizionario del tablet (menu di selezione); la scheda di casa risponde
-  // con glossario della saga, modi di dire e Oracolo
+  // come nel reader EPUB: prima il glossario di casa, che risponde anche
+  // offline, poi il vocabolario in rete che completa la scheda. Un PDF non
+  // dichiara la lingua come un ePub: si cerca in inglese, che e' la lingua
+  // dei libri per cui questa scheda serve.
   async function defineSelection() {
     const raw = sel?.text || "";
     const context = sel?.context || "";
     const word = cleanWord(raw);
     if (!word) return;
     setSel(null);
+    const frase = wordCount(raw) > 1;
     setDict({ word, raw, context, loading: true });
     setPanel("dict");
+    const mio = raw;
     const local = await explain(raw, book);
-    setDict((d) => (d ? { ...d, ...local, loading: false, frase: wordCount(raw) > 1 } : d));
+    setDict((d) => (d && d.raw === mio ? { ...d, ...local } : d));
+    if (wordCount(raw) > NET_WORDS) {
+      setDict((d) => (d && d.raw === mio ? { ...d, loading: false, frase } : d));
+      return;
+    }
+    const res = await (frase ? lookupPhrase(raw, "en") : lookup(word, "en")).catch(() => ({
+      entries: [],
+      offline: true,
+    }));
+    setDict((d) =>
+      d && d.raw === mio
+        ? {
+            ...d,
+            word: res.word || word,
+            loading: false,
+            frase,
+            lang: "en",
+            entries: res.entries,
+            translation: res.translation,
+            lemma: res.lemma,
+            forma: res.forma,
+            offline: res.offline,
+            machine: res.machine,
+            idiom: res.idiom,
+          }
+        : d
+    );
   }
 
   function addMark() {

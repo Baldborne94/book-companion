@@ -13,7 +13,7 @@ import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
 } from "../lib/readerSettings.js";
 import { searchBook } from "../lib/epubSearch.js";
-import { wordCount, cleanWord } from "../lib/dictionary.js";
+import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
 import { explain, termIndex, normalize, wikiUrl, glossaryOf } from "../lib/glossary.js";
 import { contextAround } from "../lib/oracle.js";
 import { sillaba } from "../lib/hyphens.js";
@@ -47,6 +47,9 @@ const TAP_PREV = 0.28;
 const TAP_NEXT = 0.72;
 // tetto ai segni per capitolo: la pagina resta una pagina, non un elenco
 const MARKS_PER_CHAPTER = 60;
+// Oltre questa lunghezza la selezione non e' piu' una frase ma un brano, e
+// cercarci dentro un modo di dire non ha senso.
+const NET_WORDS = 30;
 // quante schede dell'Oracolo si tengono da parte: la chiave porta dentro
 // il segno, quindi ne nasce una nuova a ogni punto in cui chiedi
 const MAX_SCHEDE = 8;
@@ -401,8 +404,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const misuraAvanzoRef = useRef(null);
   misuraAvanzoRef.current = misuraAvanzo;
 
-  // La lingua DICHIARATA dal libro: serve sapere se l'ha detta davvero —
-  // senza, il browser non sillaba.
+  // La lingua per il vocabolario, che ripiega sull'inglese perche' una
+  // ricerca va fatta comunque.
+  const langRef = useRef("en");
+  // La lingua DICHIARATA dal libro, che non e' la stessa cosa: qui serve
+  // sapere se l'ha detta davvero — senza, il browser non sillaba.
   const linguaRef = useRef(null);
   const [lingua, setLingua] = useState(null);
   const aliveRef = useRef(null);
@@ -717,6 +723,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         await eb.ready;
         if (dead) return;
         const lang = (eb.packaging?.metadata?.language || "").slice(0, 2).toLowerCase();
+        langRef.current = lang || "en";
         // non basta che il libro dichiari la lingua: serve che il browser
         // sappia sillabarla, e quello si misura sul posto
         const dichiarata = /^[a-z]{2}$/.test(lang) ? lang : null;
@@ -1173,21 +1180,48 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     termsRef.current = null;
   }
 
-  // Le definizioni parola per parola sono affare del dizionario del
-  // tablet, che compare da se' nel menu di selezione ed e' migliore del
-  // nostro (scelta del lettore: il dizionario in rete e' stato congedato).
-  // La scheda di casa risponde con quello che il tablet non puo' sapere:
-  // glossario della saga, modi di dire, e l'Oracolo.
+  // Il glossario di casa risponde subito e anche offline, quindi si mostra
+  // appena c'e'; il vocabolario in rete arriva dopo e completa la scheda.
+  // Su una frase lunga la rete non serve a nulla: e' il modo di dire che si
+  // vuole capire, e quello sta nel glossario.
   async function defineSelection() {
     const raw = selMenu?.text || "";
     const context = selMenu?.context || "";
     const word = cleanWord(raw);
     if (!word) return;
     setSelMenu(null);
+    const frase = wordCount(raw) > 1;
     setDict({ word, raw, context, loading: true });
     setPanel("dict");
+    const mio = raw;
     const local = await explain(raw, book);
-    setDict((d) => (d ? { ...d, ...local, loading: false, frase: wordCount(raw) > 1 } : d));
+    // la selezione puo' essere gia' cambiata sotto: la risposta vecchia non
+    // deve riscrivere la scheda nuova
+    setDict((d) => (d && d.raw === mio ? { ...d, ...local } : d));
+    if (wordCount(raw) > NET_WORDS) {
+      setDict((d) => (d && d.raw === mio ? { ...d, loading: false, frase } : d));
+      return;
+    }
+    const res = await (frase ? lookupPhrase(raw, langRef.current) : lookup(word, langRef.current))
+      .catch(() => ({ entries: [], offline: true }));
+    setDict((d) =>
+      d && d.raw === mio
+        ? {
+            ...d,
+            word: res.word || word,
+            loading: false,
+            frase,
+            lang: langRef.current,
+            entries: res.entries,
+            translation: res.translation,
+            lemma: res.lemma,
+            forma: res.forma,
+            offline: res.offline,
+            machine: res.machine,
+            idiom: res.idiom,
+          }
+        : d
+    );
   }
 
   function saveNotes(next) {
