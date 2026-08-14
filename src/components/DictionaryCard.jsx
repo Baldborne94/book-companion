@@ -9,6 +9,110 @@ import { consultaOracolo, hasOracle, setOracleKey } from "../lib/oracle.js";
 // lettore, e il dizionario in rete e' stato congedato). La scheda risponde
 // con quello che il tablet non puo' sapere: glossario della saga, modi di
 // dire, e l'Oracolo.
+// La voce di vocabolario, impaginata come il Collins del tablet (scelta
+// del lettore: «usa lo stile che si presenta usando il dizionario collins
+// che mi sembra fatto bene»). Le due cose che la rendono leggibile sono
+// la BANDA che dice da dove viene la risposta, e i sensi NUMERATI con la
+// categoria grammaticale davanti — non un muro di prosa.
+//
+// E il primo riquadro resta IN LINGUA, come nel Collins: tradurre a
+// macchina le definizioni e' esattamente il difetto che aveva fatto
+// congedare questo dizionario. La resa italiana sta nel secondo riquadro,
+// dove il Collins mette la sua, e riguarda la parola — non la glossa.
+function banda(testo) {
+  return (
+    <div
+      style={{
+        padding: "5px 12px",
+        background: `${C.surface}e6`,
+        borderBottom: `1px solid ${C.border}`,
+        fontSize: 11,
+        letterSpacing: 0.6,
+        textTransform: "uppercase",
+        color: C.muted,
+      }}
+    >
+      {testo}
+    </div>
+  );
+}
+
+function Voce({ dict }) {
+  const entries = dict.entries || [];
+  if (!entries.length && !dict.translation) return null;
+  const lingua = (dict.lang || "en") === "en" ? "Inglese" : (dict.lang || "").toUpperCase();
+
+  return (
+    <div
+      style={{
+        marginBottom: 12,
+        border: `1px solid ${C.border}`,
+        borderRadius: 10,
+        overflow: "hidden",
+        background: `${C.surface}55`,
+      }}
+    >
+      {entries.length > 0 && (
+        <>
+          {banda(`Wiktionary ${lingua}`)}
+          <div style={{ padding: "9px 12px 11px" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+              <span style={{ fontSize: 16, fontWeight: 600, color: C.text }}>
+                {dict.lemma || dict.word}
+              </span>
+              {dict.forma && (
+                <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>
+                  ({dict.forma} «{dict.lemma}»)
+                </span>
+              )}
+            </div>
+            {entries.map((e, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, marginBottom: 7 }}>
+                <span style={{ flexShrink: 0, fontSize: 13, color: C.accent, minWidth: 12 }}>
+                  {i + 1}
+                </span>
+                <div style={{ minWidth: 0 }}>
+                  {e.pos && (
+                    <span
+                      style={{
+                        fontSize: 10.5,
+                        letterSpacing: 0.5,
+                        textTransform: "uppercase",
+                        color: C.arcane,
+                        marginRight: 7,
+                      }}
+                    >
+                      {e.pos}
+                    </span>
+                  )}
+                  <span style={{ fontSize: 14.5, color: C.text, lineHeight: 1.5 }}>{e.text}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {dict.translation && (
+        <>
+          {banda(dict.machine ? "Reso a macchina, dall'inglese" : "Dall'inglese all'italiano")}
+          <div style={{ padding: "8px 12px 10px" }}>
+            <span style={{ fontSize: 14.5, color: C.text, lineHeight: 1.5 }}>
+              {dict.translation}
+            </span>
+            {dict.machine && (
+              <div style={{ fontSize: 11.5, color: C.muted, marginTop: 5, lineHeight: 1.4 }}>
+                Nessuna voce di vocabolario per questo passaggio: qui sopra c'è una traduzione
+                automatica, non il senso del modo di dire.
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function DictionaryCard({ dict, book, bottom, onClose }) {
   // {loading} | {answer} | {error}; la chiave si chiede qui dentro, dove
   // l'Oracolo si usa, non in un pannello di impostazioni da scoprire
@@ -58,7 +162,8 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
   const elenco = dict.frase && tutte.length > 1;
   const primaria = elenco ? null : dict.frase ? dict.slang || dict.gloss : dict.gloss || dict.slang;
   const secondaria = elenco || primaria !== dict.gloss ? (elenco ? null : dict.gloss) : dict.slang;
-  const local = primaria || secondaria || elenco;
+  const voce = !!(dict.entries?.length || dict.translation);
+  const local = primaria || secondaria || elenco || voce;
   const rest = elenco ? tutte : tutte.filter((e) => e.t !== primaria?.t && e.t !== secondaria?.t);
   const testo = dict.raw?.trim() || dict.word || "";
   const titolo = primaria?.t || (testo.length > 44 ? `${testo.slice(0, 44)}…` : testo);
@@ -157,6 +262,8 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
           </a>
         )}
 
+        <Voce dict={dict} />
+
         {secondaria && (
           <div
             style={{
@@ -247,9 +354,11 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
           // il glossario che tace non chiude la scheda: resta l'Oracolo, e
           // per la definizione nuda c'e' il dizionario del tablet
           <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.5 }}>
-            {dict.frase
-              ? "Questo passaggio non è un modo di dire che conosco."
-              : `Il glossario non conosce «${dict.word}»: per la definizione c'è il dizionario del tablet, nel menu della selezione.`}
+            {dict.offline
+              ? "Senza rete il vocabolario non risponde: le parole già cercate restano consultabili, le altre aspettano."
+              : dict.frase
+                ? "Questo passaggio non è un modo di dire che conosco."
+                : `Né il glossario né il vocabolario conoscono «${dict.word}». C'è anche il dizionario del tablet, nel menu della selezione.`}
           </p>
         )}
 
