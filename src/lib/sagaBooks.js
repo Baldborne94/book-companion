@@ -54,6 +54,47 @@ export function riconosci({ title, author, fileName } = {}) {
   return null;
 }
 
+// L'autore lo conosciamo, ma QUESTO titolo sta fuori dalla sua saga. Serve
+// alla deduzione dalla biblioteca: senza, a Good Omens finirebbe «Discworld»
+// solo perche' tutti gli altri Pratchett ce l'hanno scritto.
+export function fuoriSaga({ title, author, fileName } = {}) {
+  if (!norm(author).includes("pratchett")) return false;
+  return [title, fileName]
+    .filter(Boolean)
+    .map(norm)
+    .some((campo) => FUORI_SAGA.some((t) => contiene(campo, t)));
+}
+
+// «Abercrombie, Joe» e «Joe Abercrombie» sono la stessa persona, e negli
+// ePub capitano tutt'e due: si confrontano le parole del nome, ordinate.
+const chiaveAutore = (a) => norm(a).split(" ").filter(Boolean).sort().join(" ");
+
+// LA SAGA SI IMPARA DALLA TUA BIBLIOTECA, non da una tabella.
+//
+// La tabella conosce un autore solo (Pratchett) e non potra' mai conoscerli
+// tutti. Ma la saga di un libro spesso e' gia' scritta — da te — su un
+// altro libro dello stesso autore: se hai messo «Circle of the World» su
+// The Heroes, il cofanetto di First Law la vuole uguale.
+//
+// La regola e' volutamente timida, perche' un'attribuzione sbagliata
+// mescola due storie: si propone solo se TUTTI i libri di quell'autore che
+// una saga ce l'hanno dichiarano LA STESSA. Due saghe diverse dello stesso
+// autore, e non si tocca niente.
+export function sagaDaBiblioteca(libro = {}, libri = []) {
+  const mio = chiaveAutore(libro.author);
+  if (mio.length < 3) return null;
+  let scelta = null;
+  for (const b of libri) {
+    if (b.id && libro.id && b.id === libro.id) continue;
+    if (chiaveAutore(b.author) !== mio) continue;
+    const s = String(b.saga || "").trim();
+    if (!s) continue;
+    if (!scelta) scelta = s;
+    else if (s.toLowerCase() !== scelta.toLowerCase()) return null;
+  }
+  return scelta;
+}
+
 // Il ripasso dei libri gia' in biblioteca. Riempire i campi vuoti non
 // basta: chi ha importato i libri quando i cicli si chiamavano «Streghe»,
 // o «The Witches Cycle», quel nome ce l'ha ancora scritto, e un campo
@@ -64,15 +105,23 @@ export function riconosci({ title, author, fileName } = {}) {
 // no: quello che il lettore ha scritto a mano non si tocca mai, nemmeno
 // quando il riconoscimento la pensa diversamente, perche' su questi campi
 // l'ultima parola e' sua.
-export function ripassa(libro = {}) {
+export function ripassa(libro = {}, libri = []) {
   const trovato = riconosci({ title: libro.title, author: libro.author });
   const saga = String(libro.saga || "").trim();
   const serie = String(libro.series || "").trim();
   const tocchi = {};
+  let dedotta = false;
 
   if (trovato) {
     if (!saga) tocchi.saga = trovato.saga;
     if (libro.sagaOrder == null && trovato.sagaOrder != null) tocchi.sagaOrder = trovato.sagaOrder;
+  } else if (!saga && !fuoriSaga(libro)) {
+    // la tabella non lo conosce: glielo puo' dire la tua biblioteca
+    const dalla = sagaDaBiblioteca(libro, libri);
+    if (dalla) {
+      tocchi.saga = dalla;
+      dedotta = true;
+    }
   }
 
   if (!serie) {
@@ -91,5 +140,8 @@ export function ripassa(libro = {}) {
     if ((giusto || "") !== serie) tocchi.series = giusto || "";
   }
 
-  return Object.keys(tocchi).length ? tocchi : null;
+  // `campi` sono i valori da scrivere; `dedotta` dice che la saga non
+  // l'abbiamo riconosciuta ma DEDOTTA dagli altri libri dello stesso
+  // autore — e' un'informazione del lettore, e il resoconto la dice a parte
+  return Object.keys(tocchi).length ? { campi: tocchi, dedotta } : null;
 }
