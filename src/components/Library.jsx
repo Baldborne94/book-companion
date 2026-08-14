@@ -290,18 +290,28 @@ export default function Library({
     const { ripassa } = await import("../lib/sagaBooks.js");
     let sistemati = 0;
     let rinominati = 0;
+    let dedotte = 0;
     const next = books.map((b) => {
-      const tocchi = ripassa(b);
-      if (!tocchi) return b;
-      if ((b.series || "").trim() && "series" in tocchi) rinominati += 1;
+      // la biblioteca intera va passata: e' da li' che si impara la saga di
+      // un autore che la nostra tabella non conosce
+      const esito = ripassa(b, books);
+      if (!esito) return b;
+      if (esito.dedotta) dedotte += 1;
+      else if ((b.series || "").trim() && "series" in esito.campi) rinominati += 1;
       else sistemati += 1;
-      return { ...b, ...tocchi };
+      return { ...b, ...esito.campi };
     });
-    if (sistemati || rinominati) updateBooks(next);
+    if (sistemati || rinominati || dedotte) updateBooks(next);
     const parti = [];
     if (sistemati) parti.push(`${sistemati} ${sistemati === 1 ? "libro sistemato" : "libri sistemati"}`);
     if (rinominati)
       parti.push(`${rinominati} ${rinominati === 1 ? "serie rinominata" : "serie rinominate"}`);
+    // la saga dedotta si dice a parte: non l'abbiamo riconosciuta, l'abbiamo
+    // copiata dagli altri libri di quell'autore, e il lettore deve saperlo
+    if (dedotte)
+      parti.push(
+        `${dedotte} ${dedotte === 1 ? "saga dedotta" : "saghe dedotte"} dalla tua biblioteca`
+      );
     notify?.(parti.length ? parti.join(", ") : "Erano già tutti a posto");
   }
 
