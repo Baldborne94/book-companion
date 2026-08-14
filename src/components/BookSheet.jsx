@@ -4,27 +4,14 @@ import { getProgress, getStatus, setStatus } from "../lib/library.js";
 import { getCfi } from "../lib/annotations.js";
 import { frontiera } from "../lib/frontiera.js";
 import { soloDellaSerie } from "../lib/trama.js";
+import { TUTTI } from "../data/generi.js";
 import BookCover from "./BookCover.jsx";
 
 // la scheda dell'Oracolo arriva solo se la si chiede: qui dentro non
 // serve quasi mai, e pesa quanto il reader
 const SchedaOracolo = lazy(() => import("./SchedaOracolo.jsx"));
-
-const GENRE_HINTS = [
-  "Fantasy",
-  "Fantascienza",
-  "Horror",
-  "Giallo",
-  "Thriller",
-  "Avventura",
-  "Storico",
-  "Romanzo",
-  "Saggistica",
-  "Biografia",
-  "Poesia",
-  "Fumetti",
-  "Manuali",
-];
+// e l'elenco dei generi solo a chi tocca «Scegli»
+const GenrePicker = lazy(() => import("./GenrePicker.jsx"));
 
 const STATUSES = [
   { id: "unread", label: "Da leggere", color: null },
@@ -127,6 +114,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   const [author, setAuthor] = useState(book.author || "");
   const [series, setSeries] = useState(book.series || "");
   const [genre, setGenre] = useState(book.genre || "");
+  const [sceltaGenere, setSceltaGenere] = useState(false);
   const [saga, setSaga] = useState(book.saga || "");
   const [sagaOrder, setSagaOrder] = useState(
     book.sagaOrder === null || book.sagaOrder === undefined ? "" : String(book.sagaOrder)
@@ -300,14 +288,50 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
               options={uniq("series")}
               listId="bc-series"
             />
-            <Field
-              label="Genere"
-              value={genre}
-              onChange={setGenre}
-              placeholder="es. Fantasy"
-              options={[...new Set([...uniq("genre"), ...GENRE_HINTS])]}
-              listId="bc-genres"
-            />
+            {/* la casella resta scrivibile — quello che ci scrivi tu vale
+                sempre — ma il tasto accanto apre l'elenco da toccare, che
+                e' l'unico modo civile di scegliere «Sword & sorcery» su un
+                tablet senza tirare su la tastiera */}
+            <label style={{ display: "block", marginBottom: 10 }}>
+              <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 3 }}>
+                Genere
+              </span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  value={genre}
+                  onChange={(e) => setGenre(e.target.value)}
+                  placeholder="es. Fantasy"
+                  list="bc-genres"
+                  style={{ ...fieldStyle, flex: 1, minWidth: 0 }}
+                />
+                <button
+                  onClick={() => setSceltaGenere((v) => !v)}
+                  aria-expanded={sceltaGenere}
+                  style={{
+                    flexShrink: 0,
+                    padding: "9px 16px",
+                    borderRadius: 10,
+                    fontSize: 14,
+                    cursor: "pointer",
+                    border: `1px solid ${sceltaGenere ? C.accent : C.border}`,
+                    background: sceltaGenere ? `${C.accent}22` : "transparent",
+                    color: sceltaGenere ? C.accent : C.text,
+                  }}
+                >
+                  Scegli
+                </button>
+              </div>
+              <datalist id="bc-genres">
+                {[...new Set([...uniq("genre"), ...TUTTI])].map((o) => (
+                  <option key={o} value={o} />
+                ))}
+              </datalist>
+            </label>
+            {sceltaGenere && (
+              <Suspense fallback={null}>
+                <GenrePicker value={genre} onChange={setGenre} miei={uniq("genre")} />
+              </Suspense>
+            )}
 
             <div style={{ marginBottom: 10 }}>
               <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 3 }}>Valutazione</span>

@@ -9,6 +9,7 @@ import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
 import { portaACasa } from "../lib/sync.js";
 import { fmtBytes } from "../lib/bytes.js";
+import { famigliaDi } from "../data/generi.js";
 import BookCover from "./BookCover.jsx";
 import EmptyState from "./EmptyState.jsx";
 
@@ -176,7 +177,11 @@ function Grouped({ books, group, onOpenBook, localIds }) {
   const cfg = GROUPS.find((g) => g.id === group);
   const buckets = new Map();
   for (const b of books) {
-    const key = (b[group] || "").trim();
+    // il genere si raggruppa per FAMIGLIA: «Fantasy · Grimdark» e «Fantasy
+    // · Epico» stanno sullo stesso scaffale. Prendendo il valore intero
+    // ogni sottogenere farebbe un gruppo da un libro, e uno scaffale di
+    // gruppi da uno non e' un raggruppamento.
+    const key = group === "genre" ? famigliaDi(b.genre) : (b[group] || "").trim();
     if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key).push(b);
   }
