@@ -26,11 +26,33 @@ const chip = (attivo, tono) => ({
 export default function GenrePicker({ value, onChange, miei = [] }) {
   const scelto = String(value || "").trim();
   const [aperta, setAperta] = useState(() => famigliaDi(scelto) || null);
+  const [nuovo, setNuovo] = useState(null);
 
   // i generi che ci sono gia' in biblioteca e che il nostro elenco non
   // conosce: sono parole tue, e restano a portata di dito
   const tuoi = miei.filter((g) => !FAMIGLIE.some((f) => f.nome === famigliaDi(g)));
   const famiglia = FAMIGLIE.find((f) => f.nome === aperta);
+
+  // IL SOTTOGENERE NON E' OBBLIGATORIO: toccare la famiglia sceglie gia',
+  // e l'elenco che si apre sotto e' un'offerta, non un secondo passo da
+  // fare per forza. Ma su una famiglia gia' scelta il tocco non riscrive
+  // niente — si sta solo riaprendo l'elenco per curiosare, e buttare via
+  // il sottogenere che avevi messo sarebbe un dispetto.
+  function tocca(nome) {
+    setNuovo(null);
+    if (famigliaDi(scelto) === nome) {
+      setAperta(aperta === nome ? null : nome);
+      return;
+    }
+    onChange(nome);
+    setAperta(nome);
+  }
+
+  // i tuoi sottogeneri dentro questa famiglia: una volta scritti, tornano
+  // qui come tutti gli altri
+  const mieiQui = famiglia
+    ? miei.filter((g) => famigliaDi(g) === famiglia.nome && g !== famiglia.nome && !famiglia.sotto.includes(g.slice(famiglia.nome.length + SEP.length)))
+    : [];
 
   return (
     <div
@@ -47,7 +69,7 @@ export default function GenrePicker({ value, onChange, miei = [] }) {
         {FAMIGLIE.map((f) => (
           <button
             key={f.nome}
-            onClick={() => setAperta(aperta === f.nome ? null : f.nome)}
+            onClick={() => tocca(f.nome)}
             style={chip(aperta === f.nome || famigliaDi(scelto) === f.nome, C.accent)}
           >
             {f.nome}
@@ -72,14 +94,50 @@ export default function GenrePicker({ value, onChange, miei = [] }) {
           >
             Solo «{famiglia.nome}»
           </button>
-          {famiglia.sotto.map((s) => {
-            const intero = famiglia.nome + SEP + s;
-            return (
-              <button key={s} onClick={() => onChange(intero)} style={chip(scelto === intero, C.arcane)}>
-                {s}
+          {[...famiglia.sotto.map((s) => famiglia.nome + SEP + s), ...mieiQui].map((intero) => (
+            <button key={intero} onClick={() => onChange(intero)} style={chip(scelto === intero, C.arcane)}>
+              {intero.slice(famiglia.nome.length + SEP.length)}
+            </button>
+          ))}
+
+          {/* il sottogenere tuo si scrive qui dentro, non nella casella
+              grande: il separatore lo mette l'app, o dovresti scovare il
+              «·» sulla tastiera del tablet */}
+          {nuovo === null ? (
+            <button onClick={() => setNuovo("")} style={chip(false, C.arcane)}>
+              + Il mio
+            </button>
+          ) : (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const t = nuovo.trim();
+                if (t) onChange(famiglia.nome + SEP + t);
+                setNuovo(null);
+              }}
+              style={{ display: "flex", gap: 8, alignItems: "center" }}
+            >
+              <input
+                autoFocus
+                value={nuovo}
+                onChange={(e) => setNuovo(e.target.value)}
+                placeholder={`Sottogenere di ${famiglia.nome}…`}
+                style={{
+                  padding: "11px 14px",
+                  borderRadius: 999,
+                  border: `1px solid ${C.arcane}`,
+                  background: C.card,
+                  color: C.text,
+                  fontSize: 14.5,
+                  minWidth: 0,
+                  width: 210,
+                }}
+              />
+              <button type="submit" style={chip(true, C.arcane)}>
+                Aggiungi
               </button>
-            );
-          })}
+            </form>
+          )}
         </div>
       )}
 

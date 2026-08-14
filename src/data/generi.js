@@ -18,7 +18,11 @@ export const SEP = " · ";
 export const FAMIGLIE = [
   {
     nome: "Fantasy",
-    sotto: ["Epico", "Grimdark", "Urban fantasy", "Sword & sorcery", "Fiabesco", "Romantasy", "Comico", "Portale", "Mitologico"],
+    // «Satirico» e «Parodia» non sono lo stesso di «Comico»: il Mondo
+    // Disco, Adams, Gaiman non fanno ridere e basta, prendono in giro
+    // qualcosa. Senza queste due voci l'unica etichetta possibile per
+    // quarantun romanzi era «Comico», che e' come non etichettarli.
+    sotto: ["Epico", "Grimdark", "Urban fantasy", "Sword & sorcery", "Fiabesco", "Romantasy", "Comico", "Satirico", "Parodia", "Portale", "Mitologico"],
   },
   {
     nome: "Fantascienza",
