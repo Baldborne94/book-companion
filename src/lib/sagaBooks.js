@@ -1,4 +1,4 @@
-import DISCWORLD, { SAGA } from "../data/discworldBooks.js";
+import DISCWORLD, { SAGA, CICLI_NOSTRI } from "../data/discworldBooks.js";
 
 // Riconoscere il romanzo dal titolo: i metadati degli EPUB sono spesso vuoti,
 // storti o pieni di roba dell'editore («Guards! Guards! (Discworld Novels
@@ -52,4 +52,44 @@ export function riconosci({ title, author, fileName } = {}) {
     return { saga: SAGA, sagaOrder: null, ciclo: null, titolo: null };
   }
   return null;
+}
+
+// Il ripasso dei libri gia' in biblioteca. Riempire i campi vuoti non
+// basta: chi ha importato i libri quando i cicli si chiamavano «Streghe»,
+// o «The Witches Cycle», quel nome ce l'ha ancora scritto, e un campo
+// pieno non e' vuoto — il tasto rispondeva «erano gia' tutti a posto» e i
+// nomi vecchi restavano li' per sempre.
+//
+// Quindi i nomi che abbiamo scritto NOI si aggiornano, e tutto il resto
+// no: quello che il lettore ha scritto a mano non si tocca mai, nemmeno
+// quando il riconoscimento la pensa diversamente, perche' su questi campi
+// l'ultima parola e' sua.
+export function ripassa(libro = {}) {
+  const trovato = riconosci({ title: libro.title, author: libro.author });
+  const saga = String(libro.saga || "").trim();
+  const serie = String(libro.series || "").trim();
+  const tocchi = {};
+
+  if (trovato) {
+    if (!saga) tocchi.saga = trovato.saga;
+    if (libro.sagaOrder == null && trovato.sagaOrder != null) tocchi.sagaOrder = trovato.sagaOrder;
+  }
+
+  if (!serie) {
+    if (trovato?.ciclo) tocchi.series = trovato.ciclo;
+  } else if (
+    Object.prototype.hasOwnProperty.call(CICLI_NOSTRI, serie) &&
+    (trovato?.saga === SAGA || saga === SAGA)
+  ) {
+    // se il titolo si riconosce ancora, il ciclo giusto lo dice la tabella,
+    // che e' piu' informata della mappa dei nomi vecchi: sa promuovere un
+    // «Autoconclusivo» ad «Ancient Civilizations». Se invece si riconosce
+    // solo l'autore — titolo tradotto, metadati riscritti — la tabella non
+    // sa di che libro parliamo e direbbe «nessun ciclo», cancellando un
+    // ciclo buono: li' vale la mappa dei nomi.
+    const giusto = trovato?.titolo ? trovato.ciclo : CICLI_NOSTRI[serie];
+    if ((giusto || "") !== serie) tocchi.series = giusto || "";
+  }
+
+  return Object.keys(tocchi).length ? tocchi : null;
 }

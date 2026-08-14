@@ -275,30 +275,29 @@ export default function Library({
   // che il ciclo venisse salvato ha saga e numero ma serie vuota, e senza
   // serie «Prima di cominciare» non sa quale storia stai continuando.
   //
-  // Questo giro ripassa quello che c'e' gia' e riempie SOLO i campi vuoti:
-  // quello che hai scritto a mano non si tocca mai, nemmeno quando il
-  // riconoscimento la pensa diversamente — su questi campi l'ultima parola
-  // e' del lettore.
+  // Questo giro ripassa quello che c'e' gia': riempie i campi vuoti e
+  // aggiorna i cicli che avevamo scritto NOI, che nel frattempo hanno
+  // cambiato nome. Quello che hai scritto a mano non si tocca mai, nemmeno
+  // quando il riconoscimento la pensa diversamente — su questi campi
+  // l'ultima parola e' del lettore. Il conto dice le due cose separate,
+  // perche' «rinominati» e' un intervento su roba che c'era gia'.
   async function riconosciSaghe() {
-    const { riconosci } = await import("../lib/sagaBooks.js");
+    const { ripassa } = await import("../lib/sagaBooks.js");
     let sistemati = 0;
+    let rinominati = 0;
     const next = books.map((b) => {
-      const trovato = riconosci({ title: b.title, author: b.author });
-      if (!trovato) return b;
-      const tocchi = {};
-      if (!(b.saga || "").trim() && trovato.saga) tocchi.saga = trovato.saga;
-      if (b.sagaOrder == null && trovato.sagaOrder != null) tocchi.sagaOrder = trovato.sagaOrder;
-      if (!(b.series || "").trim() && trovato.ciclo) tocchi.series = trovato.ciclo;
-      if (!Object.keys(tocchi).length) return b;
-      sistemati += 1;
+      const tocchi = ripassa(b);
+      if (!tocchi) return b;
+      if ((b.series || "").trim() && "series" in tocchi) rinominati += 1;
+      else sistemati += 1;
       return { ...b, ...tocchi };
     });
-    if (sistemati) updateBooks(next);
-    notify?.(
-      sistemati
-        ? `${sistemati} ${sistemati === 1 ? "libro sistemato" : "libri sistemati"}`
-        : "Erano già tutti a posto"
-    );
+    if (sistemati || rinominati) updateBooks(next);
+    const parti = [];
+    if (sistemati) parti.push(`${sistemati} ${sistemati === 1 ? "libro sistemato" : "libri sistemati"}`);
+    if (rinominati)
+      parti.push(`${rinominati} ${rinominati === 1 ? "serie rinominata" : "serie rinominate"}`);
+    notify?.(parti.length ? parti.join(", ") : "Erano già tutti a posto");
   }
 
   async function richiamaTomi() {
