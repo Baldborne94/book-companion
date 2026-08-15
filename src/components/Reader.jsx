@@ -13,6 +13,7 @@ import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
 } from "../lib/readerSettings.js";
 import { contentStyles, spegniVuoti } from "../lib/readerTheme.js";
+import { ritaglioAvanzo, flattenToc } from "../lib/readerLayout.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
 import { explain, termIndex, normalize, wikiUrl, glossaryOf } from "../lib/glossary.js";
@@ -122,13 +123,6 @@ function termAt(doc, x, y, ix) {
   return null;
 }
 
-function flattenToc(items, depth = 0, out = []) {
-  for (const it of items || []) {
-    out.push({ href: it.href, label: (it.label || "").trim() || "…", depth });
-    if (it.subitems?.length) flattenToc(it.subitems, depth + 1, out);
-  }
-  return out;
-}
 
 
 const barBtn = (active) => ({
@@ -303,18 +297,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // l'altezza che il testo puo' davvero occupare: la colonna meno gli
     // orli che il libro si mette da solo col suo foglio di stile
     const colonna = doc.body.clientHeight - (Number.isFinite(cornice) ? cornice : 0);
-    if (!Number.isFinite(riga) || riga <= 1 || colonna <= riga) return false;
-    // (3) LA TRAPPOLA E' IL CICLO: tolto l'avanzo la colonna e' un multiplo
-    // esatto e di avanzo ne ha zero, quindi rimisurando l'altezza CORRENTE
-    // si tornerebbe indietro, poi avanti, all'infinito. Si misura sempre
-    // sull'altezza SENZA ritaglio.
-    const grezzo = (colonna + avanzoRef.current) % riga;
-    // Il ritaglio e' in pixel interi e l'interlinea no (corpo grande: 26,4).
-    // Si arrotonda per ECCESSO, o la colonna resterebbe un capello sopra il
-    // multiplo; ma a meno di un pixel dalla riga piena la riga ci sta tutta,
-    // e togliergliela sarebbe una riga di lettura buttata via.
-    const resto = grezzo < 1 || riga - grezzo < 1 ? 0 : Math.ceil(grezzo);
-    if (resto === avanzoRef.current) return false;
+    // (3) l'aritmetica sta in `lib/readerLayout.js`, con le due trappole
+    // gia' cascate una volta: si misura sull'altezza SENZA ritaglio, o si
+    // rimpalla all'infinito, e a meno di un pixel dalla riga piena non si
+    // toglie niente
+    const resto = ritaglioAvanzo({ colonna, riga, attuale: avanzoRef.current });
+    if (resto === null || resto === avanzoRef.current) return false;
     avanzoRef.current = resto;
     setAvanzo(resto);
     // il margine si scrive SUBITO nel riquadro, a mano: aspettando il
