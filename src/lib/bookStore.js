@@ -51,14 +51,41 @@ export async function removeBookData(id) {
   await withStore("aux", "readwrite", (s) => s.delete(`loc_${id}`));
 }
 
-export async function requestPersistence() {
+// LA PERSISTENZA SI CHIEDE, MA SOPRATTUTTO SI GUARDA.
+//
+// Senza, i byte dei libri, le evidenziazioni, il diario e i punti di
+// lettura stanno in una memoria che il browser puo' sfrattare quando gli
+// serve spazio. Android la concede a certe condizioni (PWA installata,
+// abbastanza uso) e la nega senza dire niente: buttare via la risposta
+// voleva dire lasciare il lettore convinto di essere al sicuro.
+//
+// Prende `navigator.storage` invece di andarselo a prendere da solo, cosi'
+// un test puo' passargli le cinque situazioni che capitano davvero senza
+// bisogno di un browser (`test/persistenza.test.mjs`).
+export async function persistenza(storage, chiedi = true) {
+  // niente API: browser vecchio o contesto non sicuro. Non e' un «no», e'
+  // un «non si sa» — e va detto diversamente, perche' non c'e' niente da
+  // riprovare e allarmare a vuoto sarebbe peggio del silenzio
+  if (!storage?.persist) return "sconosciuta";
   try {
-    if (navigator.storage?.persist) return await navigator.storage.persist();
+    // gia' concessa: non si richiede due volte
+    if (storage.persisted && (await storage.persisted())) return "concessa";
+    // solo lettura, e il browser non sa nemmeno dire com'e' messo: non si
+    // spaccia per un «negata», che manderebbe in pagina un avviso inventato
+    if (!chiedi) return storage.persisted ? "negata" : "sconosciuta";
+    return (await storage.persist()) ? "concessa" : "negata";
   } catch {
-    /* alcuni browser lanciano senza permesso: non è un errore per noi */
+    /* alcuni browser lanciano invece di rispondere: per noi e' un non-so */
+    return "sconosciuta";
   }
-  return false;
 }
+
+const suoStorage = () => (typeof navigator === "undefined" ? null : navigator.storage);
+
+// all'avvio si CHIEDE; in Libreria si GUARDA soltanto, o il solo aprire lo
+// scaffale farebbe comparire un permesso a sorpresa
+export const requestPersistence = () => persistenza(suoStorage(), true);
+export const statoPersistenza = () => persistenza(suoStorage(), false);
 
 export async function storageEstimate() {
   try {

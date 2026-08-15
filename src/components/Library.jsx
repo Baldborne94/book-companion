@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
 import { getProgress, getStatus } from "../lib/library.js";
-import { storageEstimate } from "../lib/bookStore.js";
+import { storageEstimate, statoPersistenza, requestPersistence } from "../lib/bookStore.js";
 import { importFiles } from "../lib/importBook.js";
 import { exportLibrary } from "../lib/exportLibrary.js";
 import { restoreLibrary } from "../lib/restoreLibrary.js";
@@ -265,9 +265,23 @@ export default function Library({
   // deve poter fare un archivio anche senza avere un libro in libreria.
   const melodie = getFavorites().filter(isFile).length;
 
+  // Lo sfratto della memoria: se il browser non ha concesso la persistenza,
+  // biblioteca, evidenziazioni, diario e punti di lettura stanno in uno
+  // spazio che puo' essere buttato via quando serve posto. Qui si GUARDA
+  // soltanto — chiedere all'apertura della Libreria farebbe comparire un
+  // permesso a sorpresa — e la richiesta vera resta quella dell'avvio.
+  const [persist, setPersist] = useState("concessa");
+
   useEffect(() => {
     storageEstimate().then(setEstimate);
+    statoPersistenza().then(setPersist);
   }, [books]);
+
+  async function richiediPersistenza() {
+    // riprovare ha senso davvero: Android la concede quando la PWA viene
+    // installata o quando l'app se l'e' guadagnata con l'uso
+    setPersist(await requestPersistence());
+  }
 
   // I tomi che stanno solo nel cloud: sono quelli con la nuvoletta, e sono
   // quelli che le domande sulla saga non possono sfogliare. Senza un cloud
@@ -738,6 +752,36 @@ export default function Library({
               {estimate?.usage ? ` · ${fmtBytes(estimate.usage)} usati` : ""}
               {estimate?.quota ? ` di ${fmtBytes(estimate.quota)}` : ""}
               {` · v. ${typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "?"}`}
+            </span>
+          )}
+          {/* Non un allarme: uno STATO. Sparisce da solo quando il browser
+              concede la persistenza — cosa che su Android succede quando la
+              PWA viene installata — e finche' c'e' sta accanto al tasto che
+              lo risolve davvero, che e' l'archivio. */}
+          {persist === "negata" && !portando && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+                color: C.accent,
+              }}
+            >
+              ⚠ Il browser non ha promesso di conservare questi dati: può
+              liberarli se gli serve spazio.
+              <button
+                onClick={richiediPersistenza}
+                style={{
+                  padding: "3px 10px",
+                  borderRadius: 999,
+                  border: `1px solid ${C.accent}66`,
+                  color: C.accent,
+                  fontSize: 12.5,
+                }}
+              >
+                Richiedi
+              </button>
             </span>
           )}
           {/* Il richiamo dei tomi: c'e' solo se qualcosa e' rimasto lassu',
