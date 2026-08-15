@@ -41,11 +41,8 @@ const findFile = (zip, book) => {
   return zip.file(new RegExp(`^libri/.*${tail.replace(/\./g, "\\.")}$`))[0] || null;
 };
 
-export async function restoreLibrary(archive, { onProgress } = {}) {
+async function apri(archive) {
   const { default: JSZip } = await import("jszip");
-  const say = (m) => onProgress?.(m);
-
-  say("Apro l'archivio…");
   const zip = await JSZip.loadAsync(archive);
   const manifest = zip.file("biblioteca.json");
   if (!manifest) throw new Error("Non sembra un archivio di Book Companion");
@@ -58,10 +55,40 @@ export async function restoreLibrary(archive, { onProgress } = {}) {
   if (data?.app !== "book-companion" || !Array.isArray(data.books)) {
     throw new Error("Non sembra un archivio di Book Companion");
   }
+  return { zip, data };
+}
+
+// SBIRCIARE PRIMA DI APRIRE. Un archivio e' un blocco unico e finora
+// entrava tutto senza chiedere: chi voleva solo i libri si ritrovava in
+// casa anche le melodie, e viceversa. Qui si legge il solo indice — nessun
+// byte estratto, nessuna scrittura — per poter dire cosa c'e' dentro e
+// lasciar scegliere.
+export async function sbircia(archive) {
+  const { data } = await apri(archive);
+  return {
+    libri: data.books.length,
+    melodie: Array.isArray(data.melodie) ? data.melodie.length : 0,
+    raccolte: Array.isArray(data.raccolte) ? data.raccolte.length : 0,
+    // gli archivi v1 non portavano segnalibri ed evidenziazioni: si dice
+    // prima, non dopo aver ripristinato
+    parziale: !(data.version >= 2),
+  };
+}
+
+// `cosa` dice quali meta' prendere. Le raccolte seguono le melodie: sono
+// nomi ed elenchi di id di brani, e senza i brani non suonerebbero.
+export async function restoreLibrary(archive, { onProgress, cosa } = {}) {
+  const prendi = { libri: true, melodie: true, ...(cosa || {}) };
+  const say = (m) => onProgress?.(m);
+
+  say("Apro l'archivio…");
+  const { zip, data } = await apri(archive);
 
   const localBooks = loadBooks();
   const localFileIds = new Set(await listFileIds().catch(() => []));
-  const { add, fill, kept } = planRestore({ archiveBooks: data.books, localBooks, localFileIds });
+  const { add, fill, kept } = prendi.libri
+    ? planRestore({ archiveBooks: data.books, localBooks, localFileIds })
+    : { add: [], fill: [], kept: [] };
 
   let restoredFiles = 0;
   const next = [...localBooks];
@@ -96,7 +123,9 @@ export async function restoreLibrary(archive, { onProgress } = {}) {
   if (add.length) clearTombstones(add.map((b) => b.id));
 
   const localiMel = getFavoritesRaw();
-  const nuoveMel = planMelodie(Array.isArray(data.melodie) ? data.melodie : [], localiMel);
+  const nuoveMel = prendi.melodie
+    ? planMelodie(Array.isArray(data.melodie) ? data.melodie : [], localiMel)
+    : [];
   let melodieRipristinate = 0;
   for (const f of nuoveMel) {
     const { track, ...voce } = f;
@@ -116,7 +145,9 @@ export async function restoreLibrary(archive, { onProgress } = {}) {
   // le raccolte sono solo nomi ed elenchi di id: nessun byte da ripristinare,
   // e i brani che qui non esistono li salta gia' `braniDi`
   const localiRac = getListsRaw();
-  const nuoveRac = planMelodie(Array.isArray(data.raccolte) ? data.raccolte : [], localiRac);
+  const nuoveRac = prendi.melodie
+    ? planMelodie(Array.isArray(data.raccolte) ? data.raccolte : [], localiRac)
+    : [];
   if (nuoveRac.length) saveLists([...localiRac, ...nuoveRac]);
 
   return {

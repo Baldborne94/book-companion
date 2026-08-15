@@ -4,7 +4,7 @@ import { getProgress, getStatus } from "../lib/library.js";
 import { storageEstimate, statoPersistenza, requestPersistence } from "../lib/bookStore.js";
 import { importFiles, resoconto } from "../lib/importBook.js";
 import { exportLibrary } from "../lib/exportLibrary.js";
-import { restoreLibrary } from "../lib/restoreLibrary.js";
+import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
 import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
 import { portaACasa } from "../lib/sync.js";
@@ -432,11 +432,30 @@ export default function Library({
     }
   }
 
-  async function handleRestore(file) {
+  // PRIMA SI SBIRCIA, POI SI SCEGLIE. L'archivio e' un blocco unico e
+  // finora entrava tutto senza chiedere: chi voleva solo i libri si
+  // ritrovava in casa anche le melodie. Qui si legge il solo indice — non
+  // si estrae un byte — e si mostra cosa c'e' dentro.
+  const [archivio, setArchivio] = useState(null);
+
+  async function apriArchivio(file) {
     if (!file || restoring) return;
+    try {
+      const dentro = await sbircia(file);
+      setArchivio({ file, dentro, prendi: { libri: dentro.libri > 0, melodie: dentro.melodie > 0 } });
+    } catch (err) {
+      notify(err?.message || "Archivio illeggibile");
+    } finally {
+      if (archiveRef.current) archiveRef.current.value = "";
+    }
+  }
+
+  async function handleRestore(file, cosa) {
+    if (!file || restoring) return;
+    setArchivio(null);
     setRestoring(true);
     try {
-      const r = await restoreLibrary(file, { onProgress: notify });
+      const r = await restoreLibrary(file, { onProgress: notify, cosa });
       updateBooks(r.books);
       onImported?.();
       const parts = [
@@ -447,9 +466,8 @@ export default function Library({
         r.kept ? `${r.kept} gia' in libreria` : null,
       ].filter(Boolean);
       notify(parts.length ? `Ripristino: ${parts.join(", ")} 🕯️` : "Nell'archivio non c'era nulla di nuovo");
-      if (r.partial) {
-        notify("Archivio vecchio: segnalibri ed evidenziazioni non erano stati salvati");
-      }
+      // l'avviso sull'archivio vecchio ora lo da' il pannello, PRIMA di
+      // partire: a ripristino fatto sarebbe solo un rimpianto
     } catch (err) {
       notify(err?.message || "Ripristino fallito, riprova");
     } finally {
@@ -508,7 +526,7 @@ export default function Library({
         type="file"
         accept=".zip"
         style={{ display: "none" }}
-        onChange={(e) => handleRestore(e.target.files?.[0])}
+        onChange={(e) => apriArchivio(e.target.files?.[0])}
       />
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
@@ -838,6 +856,146 @@ export default function Library({
           </button>
         </div>
       )}
+
+      {archivio && (
+        <SceltaArchivio
+          archivio={archivio}
+          onCambia={(prendi) => setArchivio((a) => (a ? { ...a, prendi } : a))}
+          onChiudi={() => setArchivio(null)}
+          onVai={() => handleRestore(archivio.file, archivio.prendi)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Il pannello che si apre PRIMA di ripristinare. Non chiede «vuoi
+// continuare?» — quello sarebbe un intralcio — ma dice cosa c'e' dentro
+// l'archivio e lascia scegliere quale meta' prendere. Le caselle partono
+// spuntate: chi tocca «Ripristina» e conferma senza leggere ottiene quello
+// che otteneva prima, cioe' tutto.
+function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
+  const { dentro, prendi } = archivio;
+  const niente = !prendi.libri && !prendi.melodie;
+  const righe = [
+    dentro.libri && {
+      id: "libri",
+      testo: `${dentro.libri} ${dentro.libri === 1 ? "libro" : "libri"}`,
+      // quello che viaggia col libro e non si vede nel conto
+      sotto: "con segnalibri, evidenziazioni e punto di lettura",
+    },
+    dentro.melodie && {
+      id: "melodie",
+      testo: `${dentro.melodie} ${dentro.melodie === 1 ? "melodia" : "melodie"}`,
+      // le raccolte seguono le melodie: sono elenchi di quei brani
+      sotto: dentro.raccolte
+        ? `con ${dentro.raccolte} ${dentro.raccolte === 1 ? "raccolta" : "raccolte"}`
+        : "i file caricati da te",
+    },
+  ].filter(Boolean);
+
+  return (
+    <div
+      onClick={onChiudi}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 55,
+        background: "#080611cc",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        animation: "bc-fade-in 0.25s ease-out",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: 420,
+          borderRadius: 18,
+          border: `1px solid ${C.border}`,
+          background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
+          boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
+          padding: 22,
+        }}
+      >
+        <h2 style={{ fontFamily: FONT_TITLE, fontSize: 22, fontWeight: 600, color: C.text }}>
+          ↩ Cosa porto dentro?
+        </h2>
+        <p style={{ color: C.muted, fontSize: 13.5, marginTop: 6, marginBottom: 16 }}>
+          {righe.length
+            ? "Quello che è già qui resta com'è: dall'archivio si prende solo ciò che manca."
+            : "Questo archivio è vuoto: non c'è nulla da riportare dentro."}
+        </p>
+
+        {righe.map((r) => (
+          <button
+            key={r.id}
+            onClick={() => onCambia({ ...prendi, [r.id]: !prendi[r.id] })}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              width: "100%",
+              textAlign: "left",
+              padding: "12px 14px",
+              marginBottom: 8,
+              borderRadius: 12,
+              border: `1px solid ${prendi[r.id] ? `${C.accent}88` : C.border}`,
+              background: prendi[r.id] ? `${C.accent}14` : "transparent",
+            }}
+          >
+            <span style={{ fontSize: 17, color: prendi[r.id] ? C.accent : C.muted }}>
+              {prendi[r.id] ? "☑" : "☐"}
+            </span>
+            <span>
+              <span style={{ display: "block", color: C.text, fontSize: 15.5 }}>{r.testo}</span>
+              <span style={{ display: "block", color: C.muted, fontSize: 12.5, marginTop: 2 }}>
+                {r.sotto}
+              </span>
+            </span>
+          </button>
+        ))}
+
+        {/* Detto prima, non dopo: a ripristino fatto sarebbe solo un rimpianto. */}
+        {dentro.parziale && dentro.libri > 0 && prendi.libri && (
+          <p style={{ color: C.accent, fontSize: 12.5, marginTop: 10 }}>
+            ⚠ Archivio vecchio: segnalibri ed evidenziazioni non erano stati salvati.
+          </p>
+        )}
+
+        <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "flex-end" }}>
+          <button
+            onClick={onChiudi}
+            style={{
+              padding: "10px 18px",
+              borderRadius: 10,
+              border: `1px solid ${C.border}`,
+              color: C.muted,
+              fontSize: 14,
+            }}
+          >
+            Lascia stare
+          </button>
+          <button
+            onClick={onVai}
+            disabled={niente}
+            style={{
+              padding: "10px 20px",
+              borderRadius: 10,
+              border: `1px solid ${niente ? C.border : `${C.accent}88`}`,
+              background: niente ? "transparent" : `${C.accent}22`,
+              color: niente ? C.muted : C.accent,
+              fontSize: 14,
+            }}
+          >
+            Ripristina
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
