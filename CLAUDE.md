@@ -30,7 +30,11 @@ App PWA local-first per la biblioteca personale: EPUB/PDF caricati dall'utente, 
 
 ## Convenzioni di lavoro
 
-- `npm run build` sempre verde prima di ogni commit.
+- `npm run build` **e `npm test`** sempre verdi prima di ogni commit.
+- **I test stanno in `test/`, e ci stanno perche' oggi prendono difetti che la lettura del diff non prende.** Ne sono passati tre in una sola giornata: la regola CSS `p:has(> a:only-child:empty)` che schiacciava 130 paragrafi di prosa, la prima cura dell'interlinea che semplicemente non curava niente, e il filtro sulle memorie di MyMemory. Niente librerie: un corridore di trenta righe (`test/run.mjs`), gli aiuti in `test/aiuto.mjs`, e un file per argomento che esporta `default async (t) => {}`.
+- **Due livelli.** `npm test` gira su Node puro e deve funzionare su una macchina appena clonata: saghe e vocabolario (con le due fonti simulate e un `DOMParser` minimo, per non tirarsi dietro jsdom). `test/tema.test.mjs` invece **vuole un browser vero**, perche' il CSS non si prova a mente: chiede `playwright` e, se manca, si dichiara **SALTATO** invece di fallire. Saltare non e' passare — chi tocca `lib/readerTheme.js` lo fa girare per davvero (`npm i -D playwright && npx playwright install chromium`, oppure `PLAYWRIGHT_CHROMIUM=/percorso/al/chrome npm test`).
+- **`lib/readerTheme.js` esiste per essere provato**: `contentStyles` e `spegniVuoti` non hanno un grammo di JSX, e stanno fuori da `Reader.jsx` proprio perche' un test le possa importare invece di ritagliarle dal sorgente.
+- **Un test che passa anche sul codice rotto non vale niente.** Quando se ne scrive uno, lo si prova rompendo apposta la cosa che dovrebbe difendere: e' cosi' che si e' scoperto che il filtro sul `segment` di MyMemory non era coperto da nessuno — la punteggiatura da sola bastava a far passare il controllo, e ci e' voluta una memoria «pulita» (`segment` = una frase, resa senza punteggiatura) per scoprirlo.
 - Branch `claude/*` → PR draft → squash merge su `main`; dopo lo squash, `git rebase origin/main` prima del push successivo.
 - Un PR per fase del piano.
 
