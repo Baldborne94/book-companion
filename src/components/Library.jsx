@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
 import { getProgress, getStatus } from "../lib/library.js";
 import { storageEstimate, statoPersistenza, requestPersistence } from "../lib/bookStore.js";
-import { importFiles } from "../lib/importBook.js";
+import { importFiles, resoconto } from "../lib/importBook.js";
 import { exportLibrary } from "../lib/exportLibrary.js";
 import { restoreLibrary } from "../lib/restoreLibrary.js";
 import { getFavorites, isFile } from "../lib/music.js";
@@ -403,19 +403,12 @@ export default function Library({
     if (!files.length || importing) return;
     setImporting(true);
     try {
-      const { added, errors, cuciti } = await importFiles(files);
-      if (added.length) {
-        updateBooks([...books, ...added]);
+      const esito = await importFiles(files);
+      if (esito.added.length) {
+        updateBooks([...books, ...esito.added]);
         onImported?.();
       }
-      const parts = [];
-      if (added.length)
-        parts.push(added.length === 1 ? "Un nuovo tomo sullo scaffale ✨" : `${added.length} nuovi tomi sullo scaffale ✨`);
-      // se il libro arrivava a pezzi vale la pena dirlo: spiega perche'
-      // adesso il testo scorre dove prima c'erano facciate bianche
-      if (cuciti) parts.push(cuciti === 1 ? "un pezzo ricucito 🪡" : `${cuciti} pezzi ricuciti 🪡`);
-      errors.forEach((e) => parts.push(`«${e.name}»: ${e.reason}`));
-      notify(parts.join(" · ") || "Nessun file importato");
+      notify(resoconto(esito));
     } finally {
       setImporting(false);
       if (inputRef.current) inputRef.current.value = "";
