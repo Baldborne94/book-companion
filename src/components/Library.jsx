@@ -3,7 +3,7 @@ import { C, FONT_TITLE } from "../data/constants.js";
 import { getProgress, getStatus } from "../lib/library.js";
 import { storageEstimate, statoPersistenza, requestPersistence } from "../lib/bookStore.js";
 import { importFiles, resoconto } from "../lib/importBook.js";
-import { exportLibrary } from "../lib/exportLibrary.js";
+import { exportLibrary, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
 import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
 import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
@@ -403,7 +403,9 @@ export default function Library({
     if (!files.length || importing) return;
     setImporting(true);
     try {
-      const esito = await importFiles(files);
+      // la libreria di adesso serve a riconoscere i doppioni: senza, lo
+      // stesso file importato due volte fa due libri distinti
+      const esito = await importFiles(files, books);
       if (esito.added.length) {
         updateBooks([...books, ...esito.added]);
         onImported?.();
@@ -415,6 +417,17 @@ export default function Library({
     }
   }
 
+  // Da quanto non c'e' una copia al sicuro. Sta accanto all'avviso sulla
+  // persistenza perche' sono la stessa preoccupazione vista da due lati:
+  // uno dice che il browser puo' sfrattarti, l'altro da quanto non hai una
+  // copia fuori dal browser.
+  const [ultimoArch, setUltimoArch] = useState(ultimoArchivio);
+  const promemoria = promemoriaArchivio({
+    ultimo: ultimoArch,
+    roba: books.length + melodie,
+    persistenza: persist,
+  });
+
   async function handleExport() {
     // anche una biblioteca senza libri vale un archivio, se ci sono melodie
     // caricate da file: quei byte stanno solo qui
@@ -422,6 +435,7 @@ export default function Library({
     notify("Preparo il backup…");
     try {
       const r = await exportLibrary();
+      setUltimoArch(Date.now());
       const parti = [
         r.libri ? `${r.libri} ${r.libri === 1 ? "libro" : "libri"}` : null,
         r.melodie ? `${r.melodie} ${r.melodie === 1 ? "melodia" : "melodie"}` : null,
@@ -793,6 +807,15 @@ export default function Library({
               >
                 Richiedi
               </button>
+            </span>
+          )}
+          {/* L'altra meta' della stessa preoccupazione: non «il browser può
+              sfrattarti» ma «da quanto non hai una copia fuori dal browser».
+              Sotto soglia tace — e la soglia si stringe a una settimana se
+              la persistenza è stata negata, perché lì il rischio è vero. */}
+          {promemoria && !portando && (
+            <span style={{ color: C.muted }}>
+              ⧗ {promemoria} <span style={{ color: C.arcane }}>Esportala qui accanto.</span>
             </span>
           )}
           {/* Il richiamo dei tomi: c'e' solo se qualcosa e' rimasto lassu',
