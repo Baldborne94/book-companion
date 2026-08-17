@@ -36,6 +36,9 @@ export const putFile = (id, blob) => withStore("files", "readwrite", (s) => s.pu
 export const getFile = (id) => withStore("files", "readonly", (s) => s.get(id));
 export const putCover = (id, blob) => withStore("covers", "readwrite", (s) => s.put(blob, id));
 export const getCover = (id) => withStore("covers", "readonly", (s) => s.get(id));
+// togliere la copertina scelta a mano non e' cancellare il libro: si torna
+// al dorso disegnato, che e' quello che c'era prima
+export const removeCover = (id) => withStore("covers", "readwrite", (s) => s.delete(id));
 
 export const putTrack = (id, blob) => withStore("tracks", "readwrite", (s) => s.put(blob, id));
 export const getTrack = (id) => withStore("tracks", "readonly", (s) => s.get(id));

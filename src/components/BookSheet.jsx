@@ -1,6 +1,10 @@
-import { lazy, Suspense, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
-import { getProgress, getStatus, setStatus } from "../lib/library.js";
+import { getProgress, getStatus, setStatus, touchBook } from "../lib/library.js";
+import { getCover, putCover, removeCover } from "../lib/bookStore.js";
+import { preparaCopertina } from "../lib/copertina.js";
+import { caricaCopertina } from "../lib/sync.js";
+import { chiaveGlossario, vociDi, salvaVoci, togli } from "../lib/glossarioMio.js";
 import { getCfi } from "../lib/annotations.js";
 import { frontiera } from "../lib/frontiera.js";
 import { soloDellaSerie } from "../lib/trama.js";
@@ -126,6 +130,68 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   const [status, setStatusState] = useState(getStatus(book.id));
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // LA COPERTINA A MANO. `coverV` è l'appiglio che fa ricaricare l'immagine:
+  // l'id del libro non cambia, quindi da solo non basterebbe.
+  const coverRef = useRef(null);
+  const [coverV, setCoverV] = useState(0);
+  const [coverBusy, setCoverBusy] = useState(false);
+  const [haCopertina, setHaCopertina] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    getCover(book.id).then((b) => vivo && setHaCopertina(!!b));
+    return () => {
+      vivo = false;
+    };
+  }, [book.id, coverV]);
+
+  async function cambiaCopertina(file) {
+    if (!file || coverBusy) return;
+    setCoverBusy(true);
+    try {
+      const blob = await preparaCopertina(file);
+      if (!blob) {
+        notify?.("Quella non sembra un'immagine");
+        return;
+      }
+      await putCover(book.id, blob);
+      // il libro è cambiato anche se i suoi campi no: senza questo la
+      // sincronizzazione non saprebbe che c'è qualcosa di nuovo
+      touchBook(book.id);
+      setCoverV((v) => v + 1);
+      caricaCopertina(book.id);
+      notify?.("Copertina rivestita 🖼");
+    } catch {
+      notify?.("Non sono riuscito a leggere quell'immagine");
+    } finally {
+      setCoverBusy(false);
+      if (coverRef.current) coverRef.current.value = "";
+    }
+  }
+
+  async function togliCopertina() {
+    if (coverBusy) return;
+    setCoverBusy(true);
+    try {
+      await removeCover(book.id);
+      touchBook(book.id);
+      setCoverV((v) => v + 1);
+      caricaCopertina(book.id);
+    } finally {
+      setCoverBusy(false);
+    }
+  }
+
+  // Il glossario tuo è legato alla SAGA, e la saga si può stare cambiando
+  // proprio qui sopra: si rilegge dal campo, non dal libro salvato.
+  const chiaveMia = chiaveGlossario({ ...book, saga });
+  const [glossOpen, setGlossOpen] = useState(false);
+  const [glossV, setGlossV] = useState(0);
+  const mieVoci = useMemo(() => vociDi(chiaveMia), [chiaveMia, glossV]);
+  function togliVoce(t) {
+    salvaVoci(chiaveMia, togli(mieVoci, t));
+    setGlossV((v) => v + 1);
+  }
+
   const pct = Math.round(getProgress(book.id) * 100);
 
   // «PRIMA DI COMINCIARE»: c'è solo se davvero c'è un prima, cioè se di
@@ -235,7 +301,50 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
       >
         <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
           <div style={{ width: 150, flexShrink: 0, margin: "0 auto" }}>
-            <BookCover book={book} radius={10} />
+            <BookCover book={book} radius={10} version={coverV} />
+            {/* Titolo, autore, saga e genere si correggono qui da sempre; la
+                copertina no, e un ePub senza copertina restava un dorso muto
+                per sempre. Il tasto sta sotto l'immagine, dov'è la cosa che
+                cambia. */}
+            <input
+              ref={coverRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={(e) => cambiaCopertina(e.target.files?.[0])}
+            />
+            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+              <button
+                onClick={() => coverRef.current?.click()}
+                disabled={coverBusy}
+                style={{
+                  flex: 1,
+                  padding: "7px 0",
+                  borderRadius: 9,
+                  border: `1px solid ${C.border}`,
+                  color: coverBusy ? C.muted : C.text,
+                  fontSize: 12.5,
+                }}
+              >
+                {coverBusy ? "…" : "🖼 Copertina"}
+              </button>
+              {haCopertina && (
+                <button
+                  onClick={togliCopertina}
+                  disabled={coverBusy}
+                  aria-label="Togli la copertina"
+                  style={{
+                    padding: "7px 10px",
+                    borderRadius: 9,
+                    border: `1px solid ${C.border}`,
+                    color: C.muted,
+                    fontSize: 12.5,
+                  }}
+                >
+                  🗑
+                </button>
+              )}
+            </div>
             {status === "reading" && pct > 0 && (
               <div style={{ marginTop: 10 }}>
                 <div style={{ height: 5, borderRadius: 3, background: C.dim, overflow: "hidden" }}>
@@ -424,6 +533,67 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                   ? "nel volume precedente"
                   : `nei ${precedenti.length} volumi precedenti`}
               </button>
+            )}
+          </div>
+        )}
+
+        {/* IL GLOSSARIO TUO. Le voci si scrivono nel reader, toccando la
+            parola: qui si rileggono tutte insieme, che è l'unico posto dove
+            ci si accorge di una spiegazione sbagliata scritta di fretta. La
+            chiave è la saga, quindi la stessa lista vale per tutti i volumi. */}
+        {mieVoci.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <button
+              onClick={() => setGlossOpen((v) => !v)}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 14px",
+                borderRadius: 12,
+                border: `1px solid ${C.border}`,
+                color: C.text,
+                fontSize: 14.5,
+              }}
+            >
+              📖 Il tuo glossario · {mieVoci.length}{" "}
+              {mieVoci.length === 1 ? "termine" : "termini"}
+              {saga.trim() ? ` di «${saga.trim()}»` : " di questo libro"}
+              <span style={{ float: "right", color: C.muted }}>{glossOpen ? "▾" : "▸"}</span>
+            </button>
+            {glossOpen && (
+              <div style={{ marginTop: 8 }}>
+                {mieVoci.map((v) => (
+                  <div
+                    key={v.t}
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "flex-start",
+                      padding: "9px 12px",
+                      marginBottom: 6,
+                      borderRadius: 10,
+                      background: C.surface,
+                      border: `1px solid ${C.border}`,
+                    }}
+                  >
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 14.5, color: C.accent, fontWeight: 600 }}>
+                        {v.t}
+                      </span>
+                      <span style={{ display: "block", fontSize: 13.5, color: C.text, lineHeight: 1.45 }}>
+                        {v.d}
+                      </span>
+                    </span>
+                    <button
+                      onClick={() => togliVoce(v.t)}
+                      aria-label={`Togli «${v.t}» dal glossario`}
+                      style={{ color: C.muted, padding: 4 }}
+                    >
+                      🗑
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}

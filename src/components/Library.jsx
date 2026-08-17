@@ -477,6 +477,7 @@ export default function Library({
         r.files ? `${r.files} ${r.files === 1 ? "file" : "file"} recuperati` : null,
         r.melodie ? `${r.melodie} ${r.melodie === 1 ? "melodia tornata" : "melodie tornate"}` : null,
         r.raccolte ? `${r.raccolte} ${r.raccolte === 1 ? "raccolta" : "raccolte"}` : null,
+        r.termini ? `${r.termini} ${r.termini === 1 ? "termine" : "termini"} di glossario` : null,
         r.kept ? `${r.kept} gia' in libreria` : null,
       ].filter(Boolean);
       notify(parts.length ? `Ripristino: ${parts.join(", ")} 🕯️` : "Nell'archivio non c'era nulla di nuovo");
@@ -905,7 +906,11 @@ function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
       id: "libri",
       testo: `${dentro.libri} ${dentro.libri === 1 ? "libro" : "libri"}`,
       // quello che viaggia col libro e non si vede nel conto
-      sotto: "con segnalibri, evidenziazioni e punto di lettura",
+      sotto: dentro.termini
+        ? `con segnalibri, evidenziazioni, punto di lettura e ${dentro.termini} ${
+            dentro.termini === 1 ? "termine" : "termini"
+          } di glossario`
+        : "con segnalibri, evidenziazioni e punto di lettura",
     },
     dentro.melodie && {
       id: "melodie",

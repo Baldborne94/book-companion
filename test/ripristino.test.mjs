@@ -8,13 +8,23 @@
 // fallisce da sola in un `catch` che c'era gia'. Il localStorage invece si
 // finge qui, che sono sei righe.
 
-const memoria = new Map();
-globalThis.localStorage = {
-  getItem: (k) => (memoria.has(k) ? memoria.get(k) : null),
-  setItem: (k, v) => memoria.set(k, String(v)),
-  removeItem: (k) => memoria.delete(k),
-  clear: () => memoria.clear(),
-};
+// Le chiavi devono essere ENUMERABILI come nel browser: i glossari si
+// raccolgono con `Object.keys(localStorage)`, e un finto localStorage che
+// tenesse i valori altrove li farebbe sparire senza far fallire niente.
+const memoria = {};
+for (const [nome, fn] of Object.entries({
+  getItem: (k) => (k in memoria ? memoria[k] : null),
+  setItem: (k, v) => {
+    memoria[k] = String(v);
+  },
+  removeItem: (k) => {
+    delete memoria[k];
+  },
+})) {
+  Object.defineProperty(memoria, nome, { value: fn, enumerable: false });
+}
+globalThis.localStorage = memoria;
+const quante = () => Object.keys(memoria).length;
 
 const { default: JSZip } = await import("jszip");
 const { sbircia, restoreLibrary, planMelodie } = await import("../src/lib/restoreLibrary.js");
@@ -26,7 +36,14 @@ const { getFavoritesRaw, getListsRaw } = await import("../src/lib/music.js");
 // collegamenti a YouTube. Una traccia da file c'e' lo stesso, con i suoi
 // byte nello zip: serve a provare che con le melodie non spuntate quei
 // byte non vengono nemmeno guardati.
-async function archivio({ version = 3, libri = 2, melodie = 2, raccolte = 1, conTrack = false } = {}) {
+async function archivio({
+  version = 3,
+  libri = 2,
+  melodie = 2,
+  raccolte = 1,
+  conTrack = false,
+  glossari = null,
+} = {}) {
   const zip = new JSZip();
   const data = {
     app: "book-companion",
@@ -50,6 +67,7 @@ async function archivio({ version = 3, libri = 2, melodie = 2, raccolte = 1, con
       brani: ["mel-0"],
     })),
   };
+  if (glossari) data.glossari = glossari;
   if (conTrack) {
     data.melodie.push({ id: "mel-file", name: "Da file", trackId: "tr-1", track: "melodie/tr-1" });
     zip.file("melodie/tr-1", "finti byte audio");
@@ -58,7 +76,9 @@ async function archivio({ version = 3, libri = 2, melodie = 2, raccolte = 1, con
   return zip.generateAsync({ type: "nodebuffer" });
 }
 
-const pulisci = () => memoria.clear();
+const pulisci = () => {
+  for (const k of Object.keys(memoria)) delete memoria[k];
+};
 const errore = async (fn) => {
   try {
     await fn();
@@ -77,7 +97,7 @@ export default async function (t) {
   t.eq("quante raccolte", dentro.raccolte, 3);
   t.eq("un archivio recente non e' parziale", dentro.parziale, false);
   // sbirciare non e' ripristinare: nulla dev'essere finito in casa
-  t.eq("sbirciare non scrive niente", memoria.size, 0);
+  t.eq("sbirciare non scrive niente", quante(), 0);
 
   const vecchio = await sbircia(await archivio({ version: 1 }));
   t.eq("l'archivio v1 si dichiara parziale", vecchio.parziale, true);
@@ -145,7 +165,7 @@ export default async function (t) {
   });
   t.eq("nessun libro", niente.added, 0);
   t.eq("nessuna raccolta", niente.raccolte, 0);
-  t.eq("e la casa resta com'era", memoria.size, 0);
+  t.eq("e la casa resta com'era", quante(), 0);
 
   // ---- quello che c'e' gia' resta com'e' ---------------------------------
   // due giri di fila non devono raddoppiare niente: e' la regola di sempre
@@ -166,6 +186,37 @@ export default async function (t) {
     1
   );
   t.eq("una voce senza id non e' una melodia", planMelodie([{ name: "x" }], []).length, 0);
+
+  // ---- I TERMINI DEL GLOSSARIO SEGUONO I LIBRI --------------------------
+  // sono voci di glossario di una saga, non musica: un archivio che li
+  // lasciasse fuori sarebbe una trappola, e te ne accorgeresti il giorno
+  // che ripristini
+  const GLOSS = { "saga:malazan": [{ t: "Warren", d: "i sentieri magici", addedAt: 1 }] };
+  pulisci();
+  const conGloss = await restoreLibrary(await archivio({ glossari: GLOSS }));
+  t.eq("il termine entra", conGloss.termini, 1);
+  t.c(
+    "e si trova dove deve stare",
+    /Warren/.test(localStorage.getItem("bc_gloss_saga:malazan") || "")
+  );
+  t.eq("sbirciando si contano prima", (await sbircia(await archivio({ glossari: GLOSS }))).termini, 1);
+
+  pulisci();
+  const senzaLibri = await restoreLibrary(await archivio({ glossari: GLOSS }), {
+    cosa: { libri: false, melodie: true },
+  });
+  t.eq("senza i libri restano fuori", senzaLibri.termini, 0);
+  t.eq("e non c'e' nessun glossario in casa", localStorage.getItem("bc_gloss_saga:malazan"), null);
+
+  // il secondo giro non raddoppia, e non riscrive quello che hai corretto
+  pulisci();
+  await restoreLibrary(await archivio({ glossari: GLOSS }));
+  const dueVolte = await restoreLibrary(await archivio({ glossari: GLOSS }));
+  t.eq("il secondo giro non aggiunge termini", dueVolte.termini, 0);
+
+  // un archivio vecchio, senza glossari, non deve esplodere
+  pulisci();
+  t.eq("nessun glossario, nessun termine", (await restoreLibrary(await archivio())).termini, 0);
 
   // ---- e i byte non si guardano nemmeno ----------------------------------
   // Con le melodie non spuntate, la traccia da file dev'essere saltata

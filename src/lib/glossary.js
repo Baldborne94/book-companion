@@ -1,4 +1,5 @@
 import { riconosci } from "./sagaBooks.js";
+import { chiaveGlossario, vociDi } from "./glossarioMio.js";
 
 // Il glossario risponde prima della rete e anche senza: sono dati nostri,
 // non un dizionario da interrogare. I file delle voci arrivano lazy, cosi'
@@ -121,6 +122,13 @@ export function glossaryOf(book) {
   return riconosci({ title: book?.title, author: book?.author }) ? "discworld" : null;
 }
 
+// Il glossario di un libro adesso puo' venire da due parti: le nostre voci
+// (solo Mondo Disco) e le tue (qualunque saga). La levetta «segna i
+// termini» guarda questo, non piu' la sola saga riconosciuta — altrimenti
+// su Malazan resterebbe spenta anche con venti voci scritte da te.
+export const haGlossario = (book) =>
+  !!glossaryOf(book) || vociDi(chiaveGlossario(book)).length > 0;
+
 export const wikiUrl = (term) => WIKI_SEARCH + encodeURIComponent(term);
 export const normalize = norm;
 
@@ -158,23 +166,44 @@ function lazyIndex(key, load) {
 const slangIndex = () => lazyIndex("slang", () => import("../data/slangEn.js"));
 const spokenIndex = () => lazyIndex("spoken", () => import("../data/spokenEn.js"));
 
+// LE VOCI TUE. Non si mettono in cache: sono poche e cambiano mentre leggi
+// — aggiungi un termine e alla selezione dopo dev'esserci gia'. Un indice
+// costruito su venti voci costa meno di un battito di ciglia; una cache che
+// non si accorge dell'ultima voce aggiunta costa la fiducia.
+export function indiceMio(book) {
+  const voci = vociDi(chiaveGlossario(book));
+  return voci.length ? buildIndex(voci) : null;
+}
+
 // Per segnare i termini nel testo serve una passata sola su ogni nodo: una
 // espressione unica con tutte le chiavi, le piu' lunghe per prime cosi'
 // «Granny Weatherwax» vince su «Weatherwax». Fuori le chiavi corte, che da
 // sole nel corpo del testo farebbero solo rumore.
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const espressione = (map) => {
+  const keys = [...map.keys()].filter((k) => k.length >= 4).sort((a, b) => b.length - a.length);
+  return keys.length
+    ? new RegExp(`(?<![\\p{L}\\p{N}])(${keys.map(escapeRe).join("|")})(?![\\p{L}\\p{N}])`, "giu")
+    : null;
+};
+
 export async function termIndex(book) {
   const id = glossaryOf(book);
-  if (!id) return null;
-  const ix = await sagaIndex(id);
-  if (!ix) return null;
-  if (!ix.re) {
-    const keys = [...ix.map.keys()].filter((k) => k.length >= 4).sort((a, b) => b.length - a.length);
-    ix.re = keys.length
-      ? new RegExp(`(?<![\\p{L}\\p{N}])(${keys.map(escapeRe).join("|")})(?![\\p{L}\\p{N}])`, "giu")
-      : null;
+  const mio = indiceMio(book);
+  const ix = id ? await sagaIndex(id) : null;
+  // I due glossari si segnano insieme sulla pagina: sono la stessa cosa per
+  // chi legge — una parola di questo mondo, spiegata. Le voci TUE vincono,
+  // perche' sulla tua saga sai piu' tu di noi.
+  if (mio) {
+    const map = new Map(ix ? [...ix.map, ...mio.map] : mio.map);
+    // l'espressione qui si ricostruisce ogni volta: le voci tue cambiano
+    // mentre leggi, e una regex cachata resterebbe indietro di un termine
+    const re = espressione(map);
+    return re ? { map, max: Math.max(ix?.max || 1, mio.max), re } : null;
   }
+  if (!ix) return null;
+  if (!ix.re) ix.re = espressione(ix.map);
   return ix.re ? ix : null;
 }
 
@@ -186,15 +215,21 @@ export async function explain(raw, book) {
   const text = String(raw || "").trim();
   if (!text) return { gloss: null, slang: null, found: [] };
   const id = glossaryOf(book);
+  const mio = indiceMio(book);
   const [saga, modi, parlato] = await Promise.all([sagaIndex(id), slangIndex(), spokenIndex()]);
+  // le voci tue stanno per PRIME: `scan` prende la prima che risponde, e su
+  // un termine che sta in tutt'e due comanda quello che hai scritto tu
   const found = scan(
     [
+      ["gloss", mio],
       ["gloss", saga],
       ["slang", modi],
       ["spoken", parlato],
     ],
     text
-  ).map((e) => (e.kind === "gloss" ? { ...e, wiki: wikiUrl(e.t), saga: id } : e));
+    // il rimando al wiki e' del Mondo Disco: appiccicarlo a una voce tua su
+    // un'altra saga manderebbe il lettore a cercare Malazan sul wiki sbagliato
+  ).map((e) => (e.kind === "gloss" && id && !mio?.map.has(norm(e.t)) ? { ...e, wiki: wikiUrl(e.t), saga: id } : e));
   const gloss = found.find((e) => e.kind === "gloss") || null;
   const slang = found.find((e) => e.kind !== "gloss") || null;
   // Le voci scritte a mano non copriranno mai tutto un mondo intero: se il

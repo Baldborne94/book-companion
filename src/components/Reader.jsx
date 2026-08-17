@@ -16,7 +16,7 @@ import { contentStyles, spegniVuoti } from "../lib/readerTheme.js";
 import { ritaglioAvanzo, flattenToc } from "../lib/readerLayout.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
-import { explain, termIndex, normalize, wikiUrl, glossaryOf } from "../lib/glossary.js";
+import { explain, termIndex, normalize, wikiUrl, haGlossario } from "../lib/glossary.js";
 import { contextAround } from "../lib/oracle.js";
 import { sillaba } from "../lib/hyphens.js";
 import { leftoverScroll } from "../lib/spread.js";
@@ -1826,7 +1826,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   : "Questo browser non sa sillabare in questa lingua — l'ho provato qui, su questo dispositivo. Giustificare senza poter spezzare le parole aprirebbe fiumi di bianco, e allora meglio il bordo a bandiera."}
             </p>
           </div>
-          {glossaryOf(book) && (
+          {haGlossario(book) && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <span style={{ fontSize: 14.5, color: C.muted }}>Segna i termini della saga</span>
               <button

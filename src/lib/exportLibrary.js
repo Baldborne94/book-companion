@@ -2,13 +2,17 @@ import { getFile, getCover } from "./bookStore.js";
 import { loadBooks, getProgress, getStatus, getStarted, getFinished } from "./library.js";
 import { getCfi, getMarks, getHighlights } from "./annotations.js";
 import { getBookMusic, getFavoritesRaw, getListsRaw, isFile, loadTrack } from "./music.js";
+import { tuttiIGlossari } from "./glossarioMio.js";
 
 // v1 conteneva solo metadati e file: un ripristino avrebbe perso segnalibri,
 // evidenziazioni e punto di lettura. Da v2 l'archivio si basta da solo.
 // Da v3 porta anche le melodie: da quando la musica di sottofondo puo'
 // essere un file tuo, quei byte esistono solo qui dentro e in IndexedDB —
 // un archivio che li lasciasse fuori non sarebbe piu' un archivio completo.
-export const ARCHIVE_VERSION = 3;
+// Da v4 porta anche i termini che il lettore ha scritto nel suo glossario:
+// se li scrivi a mano e il backup non li porta con se', te ne accorgi il
+// giorno che ripristini — cioe' il giorno peggiore.
+export const ARCHIVE_VERSION = 4;
 
 // DA QUANTO NON FAI UN ARCHIVIO.
 //
@@ -108,6 +112,7 @@ export async function exportLibrary() {
         books: manifest,
         melodie,
         raccolte: getListsRaw(),
+        glossari: tuttiIGlossari(),
       },
       null,
       2

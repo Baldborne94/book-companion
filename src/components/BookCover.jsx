@@ -2,23 +2,31 @@ import { useEffect, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
 import { getCover } from "../lib/bookStore.js";
 
-export default function BookCover({ book, radius = 8, compact = false }) {
+// `version` serve a chi la copertina la CAMBIA: l'id del libro non cambia,
+// quindi senza un secondo appiglio l'effetto non ripartirebbe e resteresti
+// a guardare quella di prima.
+export default function BookCover({ book, radius = 8, compact = false, version = 0 }) {
   const [url, setUrl] = useState(null);
 
   useEffect(() => {
     let alive = true;
     let objectUrl = null;
     getCover(book.id).then((blob) => {
-      if (alive && blob) {
+      if (!alive) return;
+      if (blob) {
         objectUrl = URL.createObjectURL(blob);
         setUrl(objectUrl);
+      } else {
+        // tolta la copertina si torna al dorso disegnato: senza questo, la
+        // vecchia immagine resterebbe appesa allo schermo
+        setUrl(null);
       }
     });
     return () => {
       alive = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [book.id]);
+  }, [book.id, version]);
 
   return (
     <div

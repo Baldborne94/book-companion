@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
 import { consultaOracolo, hasOracle, setOracleKey } from "../lib/oracle.js";
+import { chiaveGlossario, vociDi, salvaVoci, aggiungi, togli, cerca } from "../lib/glossarioMio.js";
 
 // La scheda del dizionario e' identica nei due reader: qui una volta sola,
 // cosi' EPUB e PDF non divergono.
@@ -119,6 +120,11 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
   const [oracolo, setOracolo] = useState(null);
   const [keyOpen, setKeyOpen] = useState(false);
   const [keyDraft, setKeyDraft] = useState("");
+  // il glossario tuo: `giro` serve solo a rileggere le voci dopo aver
+  // salvato — stanno in localStorage, e senza un rendering non si rileggono
+  const [glossOpen, setGlossOpen] = useState(false);
+  const [glossDraft, setGlossDraft] = useState("");
+  const [, setGiro] = useState(0);
   // la scheda resta montata tra una selezione e l'altra: la risposta della
   // frase di prima non deve comparire sotto la frase nuova
   const tagRef = useRef();
@@ -127,6 +133,7 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
     tagRef.current = tag;
     if (oracolo) setOracolo(null);
     if (keyOpen) setKeyOpen(false);
+    if (glossOpen) setGlossOpen(false);
   }
 
   async function chiedi() {
@@ -147,6 +154,38 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
     setKeyDraft("");
     setKeyOpen(false);
     chiedi();
+  }
+
+  // IL GLOSSARIO TUO, per qualunque saga. Le nostre voci coprono un mondo
+  // solo; questa è la strada perché il lettore tenga i termini del mondo
+  // che sta attraversando davvero.
+  const chiaveMia = chiaveGlossario(book);
+  const termine = (dict?.raw?.trim() || dict?.word || "").trim();
+  // solo su un TERMINE, non su un periodo: un glossario di paragrafi non è
+  // un glossario
+  const segnabile = !!chiaveMia && !!termine && termine.split(/\s+/).length <= 4 && termine.length <= 60;
+  const mie = segnabile ? vociDi(chiaveMia) : [];
+  const mia = segnabile ? cerca(mie, termine) : null;
+
+  function apriGloss() {
+    // prefilled con quello che c'è già, o con la risposta dell'Oracolo: è
+    // proprio la spiegazione che altrimenti butteresti via chiudendo la scheda
+    setGlossDraft(mia?.d || oracolo?.answer || "");
+    setGlossOpen(true);
+  }
+
+  function salvaGloss() {
+    const d = glossDraft.trim();
+    if (!d) return;
+    salvaVoci(chiaveMia, aggiungi(mie, termine, d));
+    setGlossOpen(false);
+    setGiro((g) => g + 1);
+  }
+
+  function rimuoviGloss() {
+    salvaVoci(chiaveMia, togli(mie, termine));
+    setGlossOpen(false);
+    setGiro((g) => g + 1);
   }
 
   if (!dict) return null;
@@ -446,6 +485,75 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
                 ✨ L'Oracolo può spiegarti cosa vuol dire qui, nel contesto del libro — serve una
                 chiave API, tocca per impostarla
               </button>
+            )}
+          </div>
+        )}
+
+        {/* IL GLOSSARIO TUO. Le nostre voci coprono un mondo solo, e la
+            spiegazione dell'Oracolo finora si buttava via chiudendo la
+            scheda: qui si tiene, sulla saga del libro, e da domani quel
+            termine si spiega da solo — anche senza rete e senza chiave. */}
+        {segnabile && (
+          <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+            {glossOpen ? (
+              <div>
+                <textarea
+                  value={glossDraft}
+                  onChange={(e) => setGlossDraft(e.target.value)}
+                  rows={3}
+                  autoFocus
+                  placeholder={`Cosa vuol dire «${termine}», con parole tue`}
+                  style={{
+                    width: "100%",
+                    padding: "9px 12px",
+                    borderRadius: 10,
+                    border: `1px solid ${C.border}`,
+                    background: C.surface,
+                    color: C.text,
+                    fontSize: 14.5,
+                    lineHeight: 1.45,
+                    resize: "vertical",
+                    outline: "none",
+                  }}
+                />
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <button
+                    onClick={salvaGloss}
+                    style={{
+                      fontSize: 13.5,
+                      color: C.accent,
+                      border: `1px solid ${C.accent}55`,
+                      borderRadius: 999,
+                      padding: "5px 14px",
+                    }}
+                  >
+                    Tieni nel glossario
+                  </button>
+                  <button onClick={() => setGlossOpen(false)} style={{ fontSize: 13, color: C.muted, padding: "5px 8px" }}>
+                    Lascia stare
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button
+                  onClick={apriGloss}
+                  style={{
+                    fontSize: 13.5,
+                    color: mia ? C.muted : C.accent,
+                    border: `1px solid ${mia ? C.border : `${C.accent}55`}`,
+                    borderRadius: 999,
+                    padding: "5px 14px",
+                  }}
+                >
+                  {mia ? "✎ Cambia la tua voce" : "📖 Tieni nel glossario"}
+                </button>
+                {mia && (
+                  <button onClick={rimuoviGloss} aria-label="Togli dal glossario" style={{ color: C.muted, padding: 6 }}>
+                    🗑
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}
