@@ -26,6 +26,43 @@ export function misura(w, h, max = LATO) {
   return { w: Math.max(1, Math.round(w * k)), h: Math.max(1, Math.round(h * k)) };
 }
 
+// TORNARE INDIETRO VUOL DIRE RIMETTERE QUELLA DEL LIBRO, non restare senza.
+//
+// Cancellare la copertina scelta a mano lasciava il dorso disegnato anche
+// sui libri che una copertina ce l'avevano: l'unica strada per riaverla era
+// reimportare il romanzo. Ma quella copertina sta ancora dentro il file, e
+// tirarla fuori e' lo stesso giro che fa l'import.
+//
+// Torna il blob, o `null` se il libro una copertina non ce l'ha davvero —
+// e allora il dorso disegnato E' lo stato di partenza. Chi chiama deve
+// pero' avere i byte in mano: senza file non si guarda, e cancellare la
+// copertina buona per un libro rimasto nel cloud sarebbe il danno peggiore.
+export async function copertinaOriginale(book, bytes) {
+  if (!bytes) return null;
+  try {
+    const buf = await bytes.arrayBuffer();
+    if (book?.fileType === "pdf") {
+      const { renderPdfThumb } = await import("./pdfThumb.js");
+      return (await renderPdfThumb(buf)) || null;
+    }
+    const { default: ePub } = await import("epubjs");
+    const eb = ePub(buf);
+    try {
+      const percorso = await eb.loaded.cover;
+      if (percorso && eb.archive) {
+        const b = await eb.archive.getBlob(percorso);
+        if (b) return b;
+      }
+      const url = await eb.coverUrl();
+      return url ? await (await fetch(url)).blob() : null;
+    } finally {
+      eb.destroy();
+    }
+  } catch {
+    return null;
+  }
+}
+
 const IMMAGINE = /^image\//;
 
 // Torna il blob da salvare. Se qualcosa non funziona — formato che il

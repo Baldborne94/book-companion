@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE } from "../data/constants.js";
 import { getProgress, getStatus, setStatus, touchBook } from "../lib/library.js";
-import { getCover, putCover, removeCover } from "../lib/bookStore.js";
-import { preparaCopertina } from "../lib/copertina.js";
+import { getCover, getFile, putCover, removeCover } from "../lib/bookStore.js";
+import { preparaCopertina, copertinaOriginale } from "../lib/copertina.js";
 import { caricaCopertina } from "../lib/sync.js";
 import { chiaveGlossario, vociDi, salvaVoci, togli } from "../lib/glossarioMio.js";
 import { getCfi } from "../lib/annotations.js";
@@ -168,14 +168,30 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
     }
   }
 
+  // «Torna indietro» vuol dire rimettere la copertina DEL LIBRO, non restare
+  // senza: quella sta ancora dentro il file, e tirarla fuori è lo stesso
+  // giro che fa l'import. Solo se il libro davvero non ne ha una si resta
+  // col dorso disegnato, che lì è lo stato di partenza.
   async function togliCopertina() {
     if (coverBusy) return;
     setCoverBusy(true);
     try {
-      await removeCover(book.id);
+      const bytes = await getFile(book.id).catch(() => null);
+      // senza il file non si guarda, e buttare via la copertina buona di un
+      // libro rimasto nel cloud sarebbe il danno peggiore
+      if (!bytes) {
+        notify?.("Il file non è su questo dispositivo: la copertina resta com'è");
+        return;
+      }
+      const originale = await copertinaOriginale(book, bytes);
+      if (originale) await putCover(book.id, originale);
+      else await removeCover(book.id);
       touchBook(book.id);
       setCoverV((v) => v + 1);
       caricaCopertina(book.id);
+      notify?.(originale ? "Rimessa la copertina del libro 🖼" : "Tornata al dorso disegnato");
+    } catch {
+      notify?.("Non sono riuscito a rimettere la copertina originale");
     } finally {
       setCoverBusy(false);
     }
@@ -332,7 +348,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                 <button
                   onClick={togliCopertina}
                   disabled={coverBusy}
-                  aria-label="Togli la copertina"
+                  aria-label="Rimetti la copertina del libro"
                   style={{
                     padding: "7px 10px",
                     borderRadius: 9,
@@ -341,7 +357,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                     fontSize: 12.5,
                   }}
                 >
-                  🗑
+                  ↺
                 </button>
               )}
             </div>
