@@ -6,6 +6,9 @@ import {
   getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights,
 } from "../lib/annotations.js";
 import { getProgress, setProgress, setStatus, getStatus, loadBooks } from "../lib/library.js";
+// il tetto alle schede tenute da parte sta col resto della cache, o le
+// due copie prenderebbero strade diverse
+import { leggiSchede, scriviSchede, riponi, tocca, daTenere, MAX_SCHEDE } from "../lib/schedeCache.js";
 import { schedaChiE, nuoveMenzioni } from "../lib/chiSono.js";
 import { schedaRiassunto } from "../lib/trama.js";
 import { sembraUnNome } from "../lib/nomi.js";
@@ -52,9 +55,6 @@ const MARKS_PER_CHAPTER = 60;
 // Oltre questa lunghezza la selezione non e' piu' una frase ma un brano, e
 // cercarci dentro un modo di dire non ha senso.
 const NET_WORDS = 30;
-// quante schede dell'Oracolo si tengono da parte: la chiave porta dentro
-// il segno, quindi ne nasce una nuova a ogni punto in cui chiedi
-const MAX_SCHEDE = 8;
 // la selezione da capire e' spesso un paragrafo intero — il parlato
 // biascicato si decifra tutto insieme — quindi il pulsante deve esserci
 // anche li'.
@@ -994,6 +994,30 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // invece di fidarti.
   const chiRun = useRef(0);
   const chiCache = useRef(new Map());
+  // LA CACHE SOPRAVVIVE AL LIBRO CHIUSO. La regola «si rifà solo se di lui
+  // è successo qualcosa di nuovo» aveva bisogno di una scheda vecchia con
+  // cui confrontarsi: in un `useRef` non ce n'era più nessuna il giorno
+  // dopo, e la regola sembrava scritta senza funzionare mai.
+  useEffect(() => {
+    let vivo = true;
+    leggiSchede(book.id).then((voci) => {
+      if (!vivo) return;
+      for (const v of voci) if (!chiCache.current.has(v.chiave)) chiCache.current.set(v.chiave, v);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [book.id]);
+
+  // Si posa su disco solo quel che vale la pena ritrovare, e l'ordine
+  // d'uso è quello vero: `riponi` butta la meno usata di recente.
+  const posa = (chiave, voce) => {
+    if (!daTenere(chiave)) return;
+    leggiSchede(book.id)
+      .then((voci) => scriviSchede(book.id, riponi(voci, { chiave, ...voce })))
+      .catch(() => {});
+  };
+
   // per il libro aperto vale il segno VIVO, non quello salvato: fra un flush
   // e l'altro passa qualche pagina, e sono pagine che hai letto
   const doveSono = () => ({
@@ -1021,7 +1045,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     setSelMenu(null);
     setPanel("chi");
     const gia = chiCache.current.get(chiave);
-    if (gia && (!riusa || (await riusa(gia)))) return setChi(gia.dato);
+    if (gia && (!riusa || (await riusa(gia)))) {
+      // rileggerla conta come usarla, o una scheda buona per settimane
+      // resterebbe la prima da buttare
+      if (daTenere(chiave)) {
+        leggiSchede(book.id).then((v) => scriviSchede(book.id, tocca(v, chiave))).catch(() => {});
+      }
+      return setChi(gia.dato);
+    }
     const mio = ++chiRun.current;
     const vivo = () => chiRun.current === mio;
     const finito = await avvia({ ...doveSono(), vivo, passo: (s) => vivo() && setChi(s) });
@@ -1029,10 +1060,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // in cache solo le risposte: un errore di rete non deve restare
     // appiccicato alla parola per tutta la lettura
     if (finito.answer) {
-      chiCache.current.set(chiave, { dato: finito, segno: segnoOra(), tocco });
+      const voce = { dato: finito, segno: segnoOra(), tocco };
+      chiCache.current.set(chiave, voce);
       if (chiCache.current.size > MAX_SCHEDE) {
         chiCache.current.delete(chiCache.current.keys().next().value);
       }
+      posa(chiave, voce);
     }
     setChi(finito);
   }

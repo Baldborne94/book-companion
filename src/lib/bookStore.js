@@ -52,6 +52,9 @@ export async function removeBookData(id) {
   await withStore("files", "readwrite", (s) => s.delete(id));
   await withStore("covers", "readwrite", (s) => s.delete(id));
   await withStore("aux", "readwrite", (s) => s.delete(`loc_${id}`));
+  // le schede dell'Oracolo di questo libro: senza, resterebbero in giro a
+  // occupare spazio per un romanzo che non c'e' piu'
+  await withStore("aux", "readwrite", (s) => s.delete(`schede_${id}`));
 }
 
 // LA PERSISTENZA SI CHIEDE, MA SOPRATTUTTO SI GUARDA.
