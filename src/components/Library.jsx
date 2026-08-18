@@ -551,8 +551,8 @@ export default function Library({
           style={{
             padding: "10px 20px",
             borderRadius: 12,
-            background: importing ? C.dim : `linear-gradient(180deg, ${C.accent}, #b8893a)`,
-            color: importing ? C.muted : "#241c0a",
+            background: importing ? C.dim : `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+            color: importing ? C.muted : C.onAccent,
             fontWeight: 600,
             fontSize: 15,
             boxShadow: importing ? "none" : `0 0 20px ${C.accent}2e`,

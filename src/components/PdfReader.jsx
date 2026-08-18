@@ -1129,8 +1129,8 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
               padding: "11px 0",
               borderRadius: 12,
               marginBottom: 14,
-              background: `linear-gradient(180deg, ${C.accent}, #b8893a)`,
-              color: "#241c0a",
+              background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+              color: C.onAccent,
               fontWeight: 600,
               fontSize: 15,
             }}
@@ -1200,7 +1200,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             />
             <button
               onClick={runSearch}
-              style={{ padding: "0 18px", borderRadius: 10, background: `linear-gradient(180deg, ${C.accent}, #b8893a)`, color: "#241c0a", fontWeight: 600 }}
+              style={{ padding: "0 18px", borderRadius: 10, background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`, color: C.onAccent, fontWeight: 600 }}
             >
               {search.busy ? "…" : "Cerca"}
             </button>

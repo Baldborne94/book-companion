@@ -36,8 +36,8 @@ export default function EmptyState({ emoji, title, text, action, onAction }) {
           style={{
             padding: "12px 28px",
             borderRadius: 12,
-            background: `linear-gradient(180deg, ${C.accent}, #b8893a)`,
-            color: "#241c0a",
+            background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+            color: C.onAccent,
             fontWeight: 600,
             fontSize: 16,
             boxShadow: `0 0 24px ${C.accent}33`,

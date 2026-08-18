@@ -202,8 +202,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
           style={{
             padding: "10px 22px",
             borderRadius: 12,
-            background: `linear-gradient(180deg, ${C.accent}, #b8893a)`,
-            color: "#241c0a",
+            background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+            color: C.onAccent,
             fontWeight: 600,
             fontSize: 15,
             boxShadow: `0 0 20px ${C.accent}2e`,
@@ -360,8 +360,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
             style={{
               padding: "10px 20px",
               borderRadius: 12,
-              background: `linear-gradient(180deg, ${C.accent}, #b8893a)`,
-              color: "#241c0a",
+              background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+              color: C.onAccent,
               fontWeight: 600,
               fontSize: 15,
             }}
@@ -590,8 +590,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
             style={{
               padding: "10px 20px",
               borderRadius: 12,
-              background: `linear-gradient(180deg, ${C.accent}, #b8893a)`,
-              color: "#241c0a",
+              background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+              color: C.onAccent,
               fontWeight: 600,
               fontSize: 15,
             }}
