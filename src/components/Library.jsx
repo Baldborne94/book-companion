@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { C, FONT_TITLE } from "../data/constants.js";
+import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { getProgress, getStatus } from "../lib/library.js";
 import { storageEstimate, statoPersistenza, requestPersistence } from "../lib/bookStore.js";
 import { importFiles, resoconto } from "../lib/importBook.js";
@@ -64,8 +64,8 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
                     top: 6,
                     right: 6,
                     padding: "2px 7px",
-                    borderRadius: 10,
-                    fontSize: 12,
+                    borderRadius: R.piccolo,
+                    fontSize: F.minuscolo,
                     fontWeight: 600,
                     background: `${C.bg}cc`,
                     border: `1px solid ${C.accent}88`,
@@ -82,8 +82,8 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
                     top: 6,
                     right: 6,
                     padding: "2px 7px",
-                    borderRadius: 10,
-                    fontSize: 12,
+                    borderRadius: R.piccolo,
+                    fontSize: F.minuscolo,
                     background: `${C.bg}cc`,
                     border: `1px solid ${C.green}88`,
                     color: C.green,
@@ -102,8 +102,8 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
                     top: 6,
                     right: 6,
                     padding: "2px 7px",
-                    borderRadius: 10,
-                    fontSize: 12,
+                    borderRadius: R.piccolo,
+                    fontSize: F.minuscolo,
                     background: `${C.bg}cc`,
                     border: `1px solid ${C.red}88`,
                     color: C.red,
@@ -120,8 +120,8 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
                     left: 6,
                     minWidth: 20,
                     padding: "1px 6px",
-                    borderRadius: 10,
-                    fontSize: 12.5,
+                    borderRadius: R.piccolo,
+                    fontSize: F.minuscolo,
                     fontWeight: 600,
                     background: `${C.bg}dd`,
                     border: `1px solid ${C.accent}88`,
@@ -139,8 +139,8 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
                     bottom: 6,
                     left: 6,
                     padding: "1px 6px",
-                    borderRadius: 10,
-                    fontSize: 12,
+                    borderRadius: R.piccolo,
+                    fontSize: F.minuscolo,
                     background: `${C.bg}cc`,
                     border: `1px solid ${C.arcane}77`,
                     color: C.arcane,
@@ -161,7 +161,7 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
             <div
               style={{
                 marginTop: 7,
-                fontSize: 14,
+                fontSize: F.nota,
                 lineHeight: 1.25,
                 color: C.text,
                 display: "-webkit-box",
@@ -175,7 +175,7 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
             {b.author && (
               <div
                 style={{
-                  fontSize: 12.5,
+                  fontSize: F.minuscolo,
                   color: C.muted,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -230,7 +230,7 @@ function Grouped({ books, group, onOpenBook, localIds }) {
           gap: 8,
           fontFamily: FONT_TITLE,
           fontWeight: 600,
-          fontSize: 19,
+          fontSize: F.titoletto,
           color: name ? C.accent : C.muted,
           marginBottom: 10,
           paddingBottom: 5,
@@ -238,7 +238,7 @@ function Grouped({ books, group, onOpenBook, localIds }) {
         }}
       >
         <span>{name || cfg.empty}</span>
-        <span style={{ fontSize: 13, color: C.muted, fontFamily: "inherit" }}>
+        <span style={{ fontSize: F.piccolo, color: C.muted, fontFamily: "inherit" }}>
           {buckets.get(name).length}
         </span>
       </h3>
@@ -543,7 +543,7 @@ export default function Library({
         handleFiles(e.dataTransfer.files);
       }}
       style={{
-        borderRadius: 16,
+        borderRadius: R.medio,
         outline: dragOver ? `2px dashed ${C.accent}` : "2px dashed transparent",
         outlineOffset: 6,
         transition: "outline-color 0.2s ease-out",
@@ -571,11 +571,11 @@ export default function Library({
           disabled={importing}
           style={{
             padding: "10px 20px",
-            borderRadius: 12,
+            borderRadius: R.piccolo,
             background: importing ? C.dim : `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
             color: importing ? C.muted : C.onAccent,
             fontWeight: 600,
-            fontSize: 15,
+            fontSize: F.corpo,
             boxShadow: importing ? "none" : `0 0 20px ${C.accent}2e`,
           }}
         >
@@ -590,11 +590,11 @@ export default function Library({
             flex: 1,
             minWidth: 180,
             padding: "10px 14px",
-            borderRadius: 12,
+            borderRadius: R.piccolo,
             border: `1px solid ${C.border}`,
             background: C.surface,
             color: C.text,
-            fontSize: 15,
+            fontSize: F.corpo,
             outline: "none",
           }}
         />
@@ -605,8 +605,8 @@ export default function Library({
             onClick={dentro?.cercando ? fermaRicerca : cercaDentro}
             style={{
               padding: "10px 18px",
-              borderRadius: 12,
-              fontSize: 14.5,
+              borderRadius: R.piccolo,
+              fontSize: F.nota,
               border: `1px solid ${dentro?.cercando ? C.border : C.arcane}88`,
               color: dentro?.cercando ? C.muted : C.arcane,
               background: dentro?.cercando ? "transparent" : `${C.arcane}14`,
@@ -626,8 +626,8 @@ export default function Library({
               onClick={() => setFilter(f.id)}
               style={{
                 padding: "6px 14px",
-                borderRadius: 999,
-                fontSize: 14,
+                borderRadius: R.tondo,
+                fontSize: F.nota,
                 border: `1px solid ${active ? C.accent : C.border}`,
                 color: active ? C.accent : C.muted,
                 background: active ? `${C.accent}14` : "transparent",
@@ -644,11 +644,11 @@ export default function Library({
           onChange={(e) => setGroup(e.target.value)}
           style={{
             padding: "6px 10px",
-            borderRadius: 10,
+            borderRadius: R.piccolo,
             border: `1px solid ${group === "none" ? C.border : C.accent}`,
             background: C.surface,
             color: group === "none" ? C.muted : C.accent,
-            fontSize: 14,
+            fontSize: F.nota,
             fontFamily: "inherit",
           }}
         >
@@ -663,11 +663,11 @@ export default function Library({
           onChange={(e) => setSort(e.target.value)}
           style={{
             padding: "6px 10px",
-            borderRadius: 10,
+            borderRadius: R.piccolo,
             border: `1px solid ${C.border}`,
             background: C.surface,
             color: C.muted,
-            fontSize: 14,
+            fontSize: F.nota,
             fontFamily: "inherit",
           }}
         >
@@ -684,37 +684,37 @@ export default function Library({
           style={{
             marginBottom: 22,
             padding: "14px 16px",
-            borderRadius: 16,
+            borderRadius: R.medio,
             border: `1px solid ${C.arcane}55`,
             background: `linear-gradient(135deg, ${C.arcane}12, ${C.card})`,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-            <h3 style={{ fontFamily: FONT_TITLE, fontSize: 18, fontWeight: 600, color: C.text }}>
+            <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.rilievo, fontWeight: 600, color: C.text }}>
               <span style={{ color: C.arcane, marginRight: 6 }}>✦</span>
               «{dentro.q}» dentro i tomi
             </h3>
             <span style={{ flex: 1 }} />
             {dentro.cercando ? (
-              <span style={{ fontSize: 13, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 320 }}>
+              <span style={{ fontSize: F.piccolo, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 320 }}>
                 sfoglio «{dentro.dove || "…"}» · {dentro.fatti + 1} di {dentro.totale}
               </span>
             ) : (
-              <button onClick={() => setDentro(null)} aria-label="Chiudi i risultati" style={{ color: C.muted, padding: 4, fontSize: 15 }}>
+              <button onClick={() => setDentro(null)} aria-label="Chiudi i risultati" style={{ color: C.muted, padding: 4, fontSize: F.corpo }}>
                 ✕
               </button>
             )}
           </div>
 
           {dentro.esiti.length === 0 && !dentro.cercando && (
-            <p style={{ fontSize: 13.5, color: C.muted, margin: 0, lineHeight: 1.5 }}>
+            <p style={{ fontSize: F.piccolo, color: C.muted, margin: 0, lineHeight: 1.5 }}>
               Non l'ho trovata in nessuno dei tomi che hai qui.
             </p>
           )}
 
           {dentro.esiti.map(({ libro, trovati }) => (
             <div key={libro.id} style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 14.5, color: C.text, fontWeight: 600, marginBottom: 4 }}>
+              <div style={{ fontSize: F.nota, color: C.text, fontWeight: 600, marginBottom: 4 }}>
                 {libro.title}
                 {libro.author && <span style={{ color: C.muted, fontWeight: 400 }}> · {libro.author}</span>}
               </div>
@@ -728,11 +728,11 @@ export default function Library({
                     textAlign: "left",
                     padding: "8px 10px",
                     marginBottom: 6,
-                    borderRadius: 10,
+                    borderRadius: R.piccolo,
                     border: `1px solid ${C.border}`,
                     background: C.surface,
                     color: C.muted,
-                    fontSize: 13.5,
+                    fontSize: F.piccolo,
                     lineHeight: 1.5,
                   }}
                 >
@@ -746,7 +746,7 @@ export default function Library({
           ))}
 
           {!dentro.cercando && dentro.lontani > 0 && (
-            <p style={{ fontSize: 12.5, color: C.dim, margin: "10px 0 0", lineHeight: 1.45 }}>
+            <p style={{ fontSize: F.minuscolo, color: C.dim, margin: "10px 0 0", lineHeight: 1.45 }}>
               {dentro.lontani === 1
                 ? "Un tomo vive solo sull'altro dispositivo e non l'ho aperto: aprilo una volta da qui e la prossima ricerca lo troverà."
                 : `${dentro.lontani} tomi vivono solo sull'altro dispositivo e non li ho aperti: aprili una volta da qui e la prossima ricerca li troverà.`}
@@ -782,7 +782,7 @@ export default function Library({
             flexWrap: "wrap",
             alignItems: "center",
             justifyContent: "space-between",
-            fontSize: 13.5,
+            fontSize: F.piccolo,
             color: C.muted,
           }}
         >
@@ -821,10 +821,10 @@ export default function Library({
                 onClick={richiediPersistenza}
                 style={{
                   padding: "3px 10px",
-                  borderRadius: 999,
+                  borderRadius: R.tondo,
                   border: `1px solid ${C.accent}66`,
                   color: C.accent,
-                  fontSize: 12.5,
+                  fontSize: F.minuscolo,
                 }}
               >
                 Richiedi
@@ -848,10 +848,10 @@ export default function Library({
               onClick={portando ? () => { filoTomi.current = null; setPortando(null); } : richiamaTomi}
               style={{
                 padding: "7px 16px",
-                borderRadius: 10,
+                borderRadius: R.piccolo,
                 border: `1px solid ${C.arcane}66`,
                 color: C.arcane,
-                fontSize: 14,
+                fontSize: F.nota,
                 marginRight: 8,
               }}
             >
@@ -864,10 +864,10 @@ export default function Library({
             onClick={riconosciSaghe}
             style={{
               padding: "7px 16px",
-              borderRadius: 10,
+              borderRadius: R.piccolo,
               border: `1px solid ${C.border}`,
               color: C.text,
-              fontSize: 14,
+              fontSize: F.nota,
               marginRight: 8,
             }}
           >
@@ -878,10 +878,10 @@ export default function Library({
             disabled={restoring}
             style={{
               padding: "7px 16px",
-              borderRadius: 10,
+              borderRadius: R.piccolo,
               border: `1px solid ${C.border}`,
               color: restoring ? C.muted : C.text,
-              fontSize: 14,
+              fontSize: F.nota,
               marginRight: 8,
             }}
           >
@@ -891,10 +891,10 @@ export default function Library({
             onClick={handleExport}
             style={{
               padding: "7px 16px",
-              borderRadius: 10,
+              borderRadius: R.piccolo,
               border: `1px solid ${C.arcane}66`,
               color: C.arcane,
-              fontSize: 14,
+              fontSize: F.nota,
             }}
           >
             📦 Esporta biblioteca
@@ -964,17 +964,17 @@ function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
         style={{
           width: "100%",
           maxWidth: 420,
-          borderRadius: 18,
+          borderRadius: R.grande,
           border: `1px solid ${C.border}`,
           background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
           boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
           padding: 22,
         }}
       >
-        <h2 style={{ fontFamily: FONT_TITLE, fontSize: 22, fontWeight: 600, color: C.text }}>
+        <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
           ↩ Cosa porto dentro?
         </h2>
-        <p style={{ color: C.muted, fontSize: 13.5, marginTop: 6, marginBottom: 16 }}>
+        <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 16 }}>
           {righe.length
             ? "Quello che è già qui resta com'è: dall'archivio si prende solo ciò che manca."
             : "Questo archivio è vuoto: non c'è nulla da riportare dentro."}
@@ -992,17 +992,17 @@ function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
               textAlign: "left",
               padding: "12px 14px",
               marginBottom: 8,
-              borderRadius: 12,
+              borderRadius: R.piccolo,
               border: `1px solid ${prendi[r.id] ? `${C.accent}88` : C.border}`,
               background: prendi[r.id] ? `${C.accent}14` : "transparent",
             }}
           >
-            <span style={{ fontSize: 17, color: prendi[r.id] ? C.accent : C.muted }}>
+            <span style={{ fontSize: F.rilievo, color: prendi[r.id] ? C.accent : C.muted }}>
               {prendi[r.id] ? "☑" : "☐"}
             </span>
             <span>
-              <span style={{ display: "block", color: C.text, fontSize: 15.5 }}>{r.testo}</span>
-              <span style={{ display: "block", color: C.muted, fontSize: 12.5, marginTop: 2 }}>
+              <span style={{ display: "block", color: C.text, fontSize: F.corpo }}>{r.testo}</span>
+              <span style={{ display: "block", color: C.muted, fontSize: F.minuscolo, marginTop: 2 }}>
                 {r.sotto}
               </span>
             </span>
@@ -1011,7 +1011,7 @@ function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
 
         {/* Detto prima, non dopo: a ripristino fatto sarebbe solo un rimpianto. */}
         {dentro.parziale && dentro.libri > 0 && prendi.libri && (
-          <p style={{ color: C.accent, fontSize: 12.5, marginTop: 10 }}>
+          <p style={{ color: C.accent, fontSize: F.minuscolo, marginTop: 10 }}>
             ⚠ Archivio vecchio: segnalibri ed evidenziazioni non erano stati salvati.
           </p>
         )}
@@ -1021,10 +1021,10 @@ function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
             onClick={onChiudi}
             style={{
               padding: "10px 18px",
-              borderRadius: 10,
+              borderRadius: R.piccolo,
               border: `1px solid ${C.border}`,
               color: C.muted,
-              fontSize: 14,
+              fontSize: F.nota,
             }}
           >
             Lascia stare
@@ -1034,11 +1034,11 @@ function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
             disabled={niente}
             style={{
               padding: "10px 20px",
-              borderRadius: 10,
+              borderRadius: R.piccolo,
               border: `1px solid ${niente ? C.border : `${C.accent}88`}`,
               background: niente ? "transparent" : `${C.accent}22`,
               color: niente ? C.muted : C.accent,
-              fontSize: 14,
+              fontSize: F.nota,
             }}
           >
             Ripristina

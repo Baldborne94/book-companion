@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { C } from "../data/constants.js";
+import { C, F, R } from "../data/constants.js";
 import { ensureLocalTrack } from "../lib/sync.js";
 import {
   parseYouTube, embedUrl, isFile, loadTrack, getVolume, saveVolume, restaDa, getFavorites,
@@ -488,7 +488,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
             alignItems: "center",
             gap: 10,
             padding: "9px 14px",
-            borderRadius: 14,
+            borderRadius: R.medio,
             background: `${C.card}f5`,
             border: `1px solid ${C.border}`,
             boxShadow: `0 0 24px ${C.arcane}22, 0 6px 24px #00000066`,
@@ -506,7 +506,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
           >
             <span
               style={{
-                fontSize: 20,
+                fontSize: F.titoletto,
                 animation: playing ? "bc-flicker 3s ease-in-out infinite" : "none",
                 opacity: playing ? 1 : 0.5,
               }}
@@ -516,7 +516,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
             <span
               style={{
                 flex: 1,
-                fontSize: 14.5,
+                fontSize: F.nota,
                 color: C.text,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -529,28 +529,28 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
                 dice se questa musica reggera' lo schermo spento o no */}
             <span
               title={current.src ? "Lo suona l'app: regge lo schermo spento" : "Da YouTube: solo a schermo acceso"}
-              style={{ fontSize: 15, color: current.src ? C.accent : C.muted, opacity: 0.9 }}
+              style={{ fontSize: F.corpo, color: current.src ? C.accent : C.muted, opacity: 0.9 }}
             >
               {current.src ? "♫" : "♪"}
             </span>
             {manca && (
               <span
                 title="Quanto manca allo spegnimento"
-                style={{ fontSize: 12.5, color: C.muted, whiteSpace: "nowrap" }}
+                style={{ fontSize: F.minuscolo, color: C.muted, whiteSpace: "nowrap" }}
               >
                 🌙 {manca}
               </span>
             )}
-            <span style={{ fontSize: 15, color: C.muted, opacity: 0.7 }}>›</span>
+            <span style={{ fontSize: F.corpo, color: C.muted, opacity: 0.7 }}>›</span>
           </button>
           <button
             onClick={playing ? pause : resume}
             aria-label={playing ? "Pausa" : "Riprendi"}
-            style={{ fontSize: 20, color: C.accent, width: 34, height: 34 }}
+            style={{ fontSize: F.titoletto, color: C.accent, width: 34, height: 34 }}
           >
             {playing ? "⏸" : "▶"}
           </button>
-          <button onClick={stop} aria-label="Spegni la musica" style={{ fontSize: 16, color: C.muted, width: 30, height: 30 }}>
+          <button onClick={stop} aria-label="Spegni la musica" style={{ fontSize: F.corpo, color: C.muted, width: 30, height: 30 }}>
             ✕
           </button>
         </div>

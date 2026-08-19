@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { registerSW } from "virtual:pwa-register";
-import { C, FONT_TITLE, SECTIONS, THEMES, DEFAULT_THEME, applyAppTheme } from "./data/constants.js";
+import { C, FONT_TITLE, SECTIONS, THEMES, DEFAULT_THEME, applyAppTheme, F, R } from "./data/constants.js";
 import Foliage from "./components/Foliage.jsx";
 import Scrolls from "./components/Scrolls.jsx";
 import { CandleIcon, BooksIcon, MusicIcon, LeafIcon, ScrollIcon, CloudIcon } from "./components/Icons.jsx";
@@ -108,13 +108,13 @@ function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
       >
         <I size={26} active />
       </span>
-      <span style={{ flex: 1, minWidth: 0, fontFamily: FONT_TITLE, fontSize: 23, fontWeight: 600, color: C.text }}>
+      <span style={{ flex: 1, minWidth: 0, fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
         Book Companion
       </span>
       <button
         onClick={onTheme}
         aria-label="Cambia atmosfera"
-        style={{ width: 40, height: 40, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted }}
+        style={{ width: 40, height: 40, borderRadius: R.piccolo, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted }}
       >
         <I size={21} />
       </button>
@@ -124,7 +124,7 @@ function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
         style={{
           width: 40,
           height: 40,
-          borderRadius: 11,
+          borderRadius: R.piccolo,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -158,7 +158,7 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
           left: 14,
           width: 42,
           height: 42,
-          borderRadius: 12,
+          borderRadius: R.piccolo,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -179,7 +179,7 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
           right: 14,
           width: 42,
           height: 42,
-          borderRadius: 12,
+          borderRadius: R.piccolo,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -220,7 +220,7 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
       <p
         style={{
           marginTop: 2,
-          fontSize: 15,
+          fontSize: F.corpo,
           fontStyle: "italic",
           color: C.muted,
         }}
@@ -275,7 +275,7 @@ function BottomNav({ section, goTo, themeId }) {
                 justifyContent: "center",
                 width: 32,
                 height: 27,
-                borderRadius: 8,
+                borderRadius: R.piccolo,
                 background: active ? `${C.accent}1c` : "transparent",
                 filter: active ? `drop-shadow(0 0 7px ${C.accent}66)` : "none",
                 transition: "background 0.2s ease-out, filter 0.2s ease-out",
@@ -286,7 +286,7 @@ function BottomNav({ section, goTo, themeId }) {
                 return <I size={20} active={active} />;
               })()}
             </span>
-            <span style={{ fontSize: 13, fontWeight: active ? 600 : 400 }}>{s.label}</span>
+            <span style={{ fontSize: F.piccolo, fontWeight: active ? 600 : 400 }}>{s.label}</span>
           </button>
         );
       })}
@@ -306,11 +306,11 @@ function Toast({ toast, onDismiss }) {
         zIndex: 60,
         maxWidth: "min(92vw, 480px)",
         padding: "11px 18px",
-        borderRadius: 12,
+        borderRadius: R.piccolo,
         border: `1px solid ${C.border}`,
         background: `${C.card}f5`,
         color: C.text,
-        fontSize: 14.5,
+        fontSize: F.nota,
         textAlign: "center",
         boxShadow: `0 0 30px ${C.arcane}22, 0 8px 24px #00000066`,
         animation: "bc-fade-in 0.25s ease-out",
@@ -326,10 +326,10 @@ function Toast({ toast, onDismiss }) {
           style={{
             marginLeft: 12,
             padding: "5px 14px",
-            borderRadius: 999,
+            borderRadius: R.tondo,
             border: `1px solid ${C.accent}`,
             color: C.accent,
-            fontSize: 14,
+            fontSize: F.nota,
             fontWeight: 600,
           }}
         >
@@ -362,14 +362,14 @@ function ThemePicker({ current, onPick, onClose }) {
         style={{
           width: "100%",
           maxWidth: 440,
-          borderRadius: 18,
+          borderRadius: R.grande,
           border: `1px solid ${C.border}`,
           background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
           boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
           padding: 22,
         }}
       >
-        <h2 style={{ fontFamily: FONT_TITLE, fontSize: 23, fontWeight: 600, color: C.text, marginBottom: 14 }}>
+        <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text, marginBottom: 14 }}>
           Dove vuoi leggere?
         </h2>
         {Object.values(THEMES).map((t) => {
@@ -386,7 +386,7 @@ function ThemePicker({ current, onPick, onClose }) {
                 textAlign: "left",
                 padding: "13px 15px",
                 marginBottom: 10,
-                borderRadius: 14,
+                borderRadius: R.medio,
                 border: `1px solid ${active ? t.colors.accent : C.border}`,
                 background: t.gradient,
               }}
@@ -403,20 +403,20 @@ function ThemePicker({ current, onPick, onClose }) {
                     display: "block",
                     fontFamily: FONT_TITLE,
                     fontWeight: 600,
-                    fontSize: 18,
+                    fontSize: F.rilievo,
                     color: t.colors.text,
                   }}
                 >
                   {t.label}
                 </span>
-                <span style={{ display: "block", fontSize: 13.5, color: t.colors.muted }}>{t.hint}</span>
+                <span style={{ display: "block", fontSize: F.piccolo, color: t.colors.muted }}>{t.hint}</span>
               </span>
-              {active && <span style={{ color: t.colors.accent, fontSize: 18 }}>✓</span>}
+              {active && <span style={{ color: t.colors.accent, fontSize: F.rilievo }}>✓</span>}
             </button>
           );
         })}
         <div style={{ marginTop: 8, textAlign: "right" }}>
-          <button onClick={onClose} style={{ color: C.muted, fontSize: 14.5 }}>
+          <button onClick={onClose} style={{ color: C.muted, fontSize: F.nota }}>
             Chiudi
           </button>
         </div>
@@ -832,7 +832,7 @@ export default function App() {
                 justifyContent: "center",
                 color: C.muted,
                 fontFamily: FONT_TITLE,
-                fontSize: 18,
+                fontSize: F.rilievo,
               }}
             >
               🕯️ Apro il tomo…
@@ -906,11 +906,11 @@ export default function App() {
             gap: 12,
             maxWidth: "min(94vw, 460px)",
             padding: "10px 16px",
-            borderRadius: 12,
+            borderRadius: R.piccolo,
             border: `1px solid ${C.accent}66`,
             background: `${C.card}f8`,
             color: C.text,
-            fontSize: 14.5,
+            fontSize: F.nota,
             boxShadow: `0 0 30px ${C.accent}22, 0 8px 24px #00000066`,
             animation: "bc-fade-in 0.3s ease-out",
           }}
@@ -920,11 +920,11 @@ export default function App() {
             onClick={() => swUpdate.current?.(true)}
             style={{
               padding: "6px 14px",
-              borderRadius: 999,
+              borderRadius: R.tondo,
               border: `1px solid ${C.accent}`,
               color: C.accent,
               fontWeight: 600,
-              fontSize: 14,
+              fontSize: F.nota,
               whiteSpace: "nowrap",
             }}
           >

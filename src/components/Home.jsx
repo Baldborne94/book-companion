@@ -1,4 +1,4 @@
-import { C, FONT_TITLE } from "../data/constants.js";
+import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { useViewport } from "../lib/viewport.js";
 import { getLastOpened, getProgress, getStatus, getUpdatedAt } from "../lib/library.js";
 import { nextInSaga } from "../lib/saga.js";
@@ -17,7 +17,7 @@ function SectionTitle({ children }) {
       style={{
         fontFamily: FONT_TITLE,
         fontWeight: 600,
-        fontSize: 21,
+        fontSize: F.titolo,
         color: C.text,
         margin: "16px 0 12px",
         display: "flex",
@@ -40,7 +40,7 @@ function Rating({ value }) {
         display: "inline-flex",
         alignItems: "center",
         gap: 3,
-        fontSize: 12.5,
+        fontSize: F.minuscolo,
         color: C.accent,
       }}
     >
@@ -59,7 +59,7 @@ function SagaCard({ saga, onOpen }) {
         width: 214,
         textAlign: "left",
         padding: 13,
-        borderRadius: 14,
+        borderRadius: R.medio,
         border: `1px solid ${saga.best >= FAV_MIN ? `${C.accent}66` : C.border}`,
         background: `linear-gradient(135deg, ${C.card}, ${C.surface})`,
       }}
@@ -75,7 +75,7 @@ function SagaCard({ saga, onOpen }) {
         style={{
           fontFamily: FONT_TITLE,
           fontWeight: 600,
-          fontSize: 16.5,
+          fontSize: F.rilievo,
           color: C.text,
           overflow: "hidden",
           textOverflow: "ellipsis",
@@ -84,7 +84,7 @@ function SagaCard({ saga, onOpen }) {
       >
         {saga.name}
       </div>
-      <div style={{ fontSize: 13, color: C.muted, marginTop: 2, display: "flex", gap: 8 }}>
+      <div style={{ fontSize: F.piccolo, color: C.muted, marginTop: 2, display: "flex", gap: 8 }}>
         <span>
           {saga.books.length} {saga.books.length === 1 ? "libro" : "libri"}
         </span>
@@ -181,7 +181,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
               alignItems: "center",
               textAlign: "left",
               padding: 14,
-              borderRadius: 16,
+              borderRadius: R.medio,
               border: `1px solid ${C.border}`,
               background: `linear-gradient(135deg, ${C.card}, ${C.surface})`,
               boxShadow: `0 0 30px ${C.arcane}14`,
@@ -195,7 +195,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
                 style={{
                   fontFamily: FONT_TITLE,
                   fontWeight: 600,
-                  fontSize: 19,
+                  fontSize: F.titoletto,
                   color: C.text,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -204,20 +204,20 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
               >
                 {last.title}
               </div>
-              {last.author && <div style={{ fontSize: 14, color: C.muted, marginBottom: 8 }}>{last.author}</div>}
+              {last.author && <div style={{ fontSize: F.nota, color: C.muted, marginBottom: 8 }}>{last.author}</div>}
               {resuming && (
-                <div style={{ height: 5, borderRadius: 3, background: C.dim, overflow: "hidden", marginBottom: 5 }}>
+                <div style={{ height: 5, borderRadius: R.minimo, background: C.dim, overflow: "hidden", marginBottom: 5 }}>
                   <div
                     style={{
                       width: `${Math.max(pct, 2)}%`,
                       height: "100%",
-                      borderRadius: 3,
+                      borderRadius: R.minimo,
                       background: `linear-gradient(90deg, ${C.accent}, ${C.arcane})`,
                     }}
                   />
                 </div>
               )}
-              <div style={{ fontSize: 13, color: C.muted }}>
+              <div style={{ fontSize: F.piccolo, color: C.muted }}>
                 {resuming
                   ? `${pct}% — riprendi da dove eri`
                   : followedFrom
@@ -225,7 +225,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
                     : "apri e comincia il primo capitolo"}
               </div>
             </div>
-            <span style={{ fontSize: 22, color: C.accent }}>›</span>
+            <span style={{ fontSize: F.titolo, color: C.accent }}>›</span>
           </button>
         </>
       )}
@@ -239,7 +239,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
           gap: 12,
           marginTop: 22,
           padding: "13px 16px",
-          borderRadius: 14,
+          borderRadius: R.medio,
           border: `1px solid ${C.arcane}55`,
           background: `linear-gradient(135deg, ${C.arcane}14, transparent)`,
           textAlign: "left",
@@ -249,14 +249,14 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
           <LeafIcon size={24} active />
         </span>
         <span style={{ flex: 1 }}>
-          <span style={{ display: "block", fontFamily: FONT_TITLE, fontWeight: 600, fontSize: 17, color: C.text }}>
+          <span style={{ display: "block", fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.rilievo, color: C.text }}>
             Il giardino delle citazioni
           </span>
-          <span style={{ display: "block", fontSize: 13.5, color: C.muted }}>
+          <span style={{ display: "block", fontSize: F.piccolo, color: C.muted }}>
             I passaggi che hai evidenziato, di ogni libro, in un unico posto
           </span>
         </span>
-        <span style={{ fontSize: 20, color: C.arcane }}>›</span>
+        <span style={{ fontSize: F.titoletto, color: C.arcane }}>›</span>
       </button>
 
       <button
@@ -268,7 +268,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
           gap: 12,
           marginTop: 10,
           padding: "13px 16px",
-          borderRadius: 14,
+          borderRadius: R.medio,
           border: `1px solid ${C.accent}44`,
           background: `linear-gradient(135deg, ${C.accent}10, transparent)`,
           textAlign: "left",
@@ -278,14 +278,14 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
           <BookmarkIcon size={24} />
         </span>
         <span style={{ flex: 1 }}>
-          <span style={{ display: "block", fontFamily: FONT_TITLE, fontWeight: 600, fontSize: 17, color: C.text }}>
+          <span style={{ display: "block", fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.rilievo, color: C.text }}>
             Il diario di lettura
           </span>
-          <span style={{ display: "block", fontSize: 13.5, color: C.muted }}>
+          <span style={{ display: "block", fontSize: F.piccolo, color: C.muted }}>
             Quando hai cominciato e finito ogni libro, anno per anno
           </span>
         </span>
-        <span style={{ fontSize: 20, color: C.accent }}>›</span>
+        <span style={{ fontSize: F.titoletto, color: C.accent }}>›</span>
       </button>
       </div>
 
@@ -317,7 +317,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
                 <div
                   style={{
                     marginTop: 6,
-                    fontSize: 13,
+                    fontSize: F.piccolo,
                     lineHeight: 1.25,
                     color: C.text,
                     display: "-webkit-box",
@@ -342,9 +342,9 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
           style={{
             marginTop: 22,
             padding: "16px 18px",
-            borderRadius: 14,
+            borderRadius: R.medio,
             border: `1px dashed ${C.border}`,
-            fontSize: 14,
+            fontSize: F.nota,
             lineHeight: 1.5,
             color: C.muted,
           }}

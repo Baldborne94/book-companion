@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { C, FONT_TITLE } from "../data/constants.js";
+import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { getAux, putAux } from "../lib/bookStore.js";
 import { ensureLocalFile } from "../lib/sync.js";
 import {
@@ -128,8 +128,8 @@ function termAt(doc, x, y, ix) {
 const barBtn = (active) => ({
   width: 40,
   height: 40,
-  borderRadius: 10,
-  fontSize: 19,
+  borderRadius: R.piccolo,
+  fontSize: F.titoletto,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -140,10 +140,10 @@ const barBtn = (active) => ({
 function Stepper({ label, value, onDec, onInc }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-      <span style={{ fontSize: 14.5, color: C.muted }}>{label}</span>
+      <span style={{ fontSize: F.nota, color: C.muted }}>{label}</span>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <button onClick={onDec} style={{ ...barBtn(false), border: `1px solid ${C.border}` }}>−</button>
-        <span style={{ minWidth: 52, textAlign: "center", fontSize: 15 }}>{value}</span>
+        <span style={{ minWidth: 52, textAlign: "center", fontSize: F.corpo }}>{value}</span>
         <button onClick={onInc} style={{ ...barBtn(false), border: `1px solid ${C.border}` }}>＋</button>
       </div>
     </div>
@@ -153,7 +153,7 @@ function Stepper({ label, value, onDec, onInc }) {
 function Slider({ label, min, max, step, value, onChange }) {
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5, color: C.muted, marginBottom: 4 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: F.nota, color: C.muted, marginBottom: 4 }}>
         <span>{label}</span>
       </div>
       <input
@@ -190,7 +190,7 @@ function Panel({ title, onClose, children }) {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <h3 style={{ fontFamily: FONT_TITLE, fontSize: 20, fontWeight: 600, color: C.text }}>{title}</h3>
+          <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.titoletto, fontWeight: 600, color: C.text }}>{title}</h3>
           <button onClick={onClose} style={barBtn(false)}>✕</button>
         </div>
         {children}
@@ -1316,7 +1316,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           // margini di testa e piede, che restano vuoti apposta
           top: "clamp(3px, 0.9vw, 10px)",
           bottom: "clamp(3px, 0.9vw, 10px)",
-          borderRadius: 12,
+          borderRadius: R.piccolo,
           background: theme.cover || theme.bg,
           border: "1px solid #00000066",
           boxShadow: `0 14px 44px #000000b3, 0 0 0 1px ${C.accent}22, inset 0 0 30px #00000026`,
@@ -1333,7 +1333,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             // alto e la pagina non balla quando la misura cambia
             padding: `${HEAD}px ${Math.max(settings.margin, EDGE_MAX + 8)}px calc(${FOOT + avanzo}px + env(safe-area-inset-bottom))`,
             boxSizing: "border-box",
-            borderRadius: 3,
+            borderRadius: R.minimo,
             // la carta arriva fino al bordo interno della rilegatura: senza,
             // il margine di lettura mostrava la copertina e staccava le
             // pagine impilate dal foglio
@@ -1351,7 +1351,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             position: "absolute",
             inset: FRAME,
             zIndex: 4,
-            borderRadius: 3,
+            borderRadius: R.minimo,
             background: theme.bg,
             pointerEvents: "none",
             opacity: velo ? 1 : 0,
@@ -1477,7 +1477,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           }}
         >
           <span style={{ fontSize: 40, animation: "bc-flicker 3s ease-in-out infinite" }}>🕯️</span>
-          <span style={{ fontFamily: FONT_TITLE, fontSize: 18 }}>Apro il tomo…</span>
+          <span style={{ fontFamily: FONT_TITLE, fontSize: F.rilievo }}>Apro il tomo…</span>
         </div>
       )}
 
@@ -1505,7 +1505,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           </span>
           <button
             onClick={handleClose}
-            style={{ padding: "10px 22px", borderRadius: 10, border: `1px solid ${C.border}`, color: C.muted }}
+            style={{ padding: "10px 22px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.muted }}
           >
             Torna alla Libreria
           </button>
@@ -1543,7 +1543,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               style={{
                 flex: 1,
                 fontFamily: FONT_TITLE,
-                fontSize: 16.5,
+                fontSize: F.rilievo,
                 fontWeight: 600,
                 color: C.text,
                 overflow: "hidden",
@@ -1556,7 +1556,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             {music?.current && (
               <>
                 {music.manca && (
-                  <span title="Quanto manca allo spegnimento della musica" style={{ fontSize: 12.5, color: C.muted, whiteSpace: "nowrap" }}>
+                  <span title="Quanto manca allo spegnimento della musica" style={{ fontSize: F.minuscolo, color: C.muted, whiteSpace: "nowrap" }}>
                     🌙 {music.manca}
                   </span>
                 )}
@@ -1571,8 +1571,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                     maxWidth: 150,
                     padding: "0 8px",
                     height: 40,
-                    borderRadius: 10,
-                    fontSize: 13,
+                    borderRadius: R.piccolo,
+                    fontSize: F.piccolo,
                     color: C.muted,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -1587,7 +1587,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 <button onClick={onMusicToggle} style={barBtn(false)} aria-label={music.playing ? "Pausa musica" : "Riprendi musica"}>
                   {music.playing ? "⏸" : "▶"}
                 </button>
-                <button onClick={onMusicNext} style={{ ...barBtn(false), fontSize: 16 }} aria-label="Melodia successiva">
+                <button onClick={onMusicNext} style={{ ...barBtn(false), fontSize: F.corpo }} aria-label="Melodia successiva">
                   ⏭
                 </button>
                 {/* il volume qui e' quello della sola musica: sotto la lettura
@@ -1601,7 +1601,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   aria-label="Volume della musica"
                   style={{ width: 64, flexShrink: 0, accentColor: C.accent }}
                 />
-                <button onClick={onMusicStop} style={{ ...barBtn(false), fontSize: 16, color: C.muted }} aria-label="Spegni musica">
+                <button onClick={onMusicStop} style={{ ...barBtn(false), fontSize: F.corpo, color: C.muted }} aria-label="Spegni musica">
                   🔇
                 </button>
               </>
@@ -1616,7 +1616,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 {isFs ? "⛶" : "⛶"}
               </button>
             )}
-            <button onClick={() => setPanel(panel === "settings" ? null : "settings")} style={{ ...barBtn(panel === "settings"), fontFamily: FONT_TITLE, fontSize: 17 }} aria-label="Impostazioni">Aa</button>
+            <button onClick={() => setPanel(panel === "settings" ? null : "settings")} style={{ ...barBtn(panel === "settings"), fontFamily: FONT_TITLE, fontSize: F.rilievo }} aria-label="Impostazioni">Aa</button>
           </div>
 
           <div
@@ -1649,7 +1649,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               }}
               style={{ width: "100%", accentColor: C.accent }}
             />
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.muted, marginTop: 2 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: F.minuscolo, color: C.muted, marginTop: 2 }}>
               <span>{locReady ? `${pct}%` : "misuro le pagine…"}</span>
               <span>
                 {[
@@ -1680,7 +1680,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             alignItems: "center",
             gap: 10,
             padding: "10px 14px",
-            borderRadius: 14,
+            borderRadius: R.medio,
             background: `${C.card}f8`,
             border: `1px solid ${C.border}`,
             boxShadow: `0 8px 30px #00000088`,
@@ -1708,10 +1708,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               style={{
                 marginLeft: 4,
                 padding: "6px 12px",
-                borderRadius: 999,
+                borderRadius: R.tondo,
                 border: `1px solid ${C.accent}88`,
                 color: C.accent,
-                fontSize: 14,
+                fontSize: F.nota,
                 whiteSpace: "nowrap",
               }}
             >
@@ -1724,17 +1724,17 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               style={{
                 marginLeft: 4,
                 padding: "6px 12px",
-                borderRadius: 999,
+                borderRadius: R.tondo,
                 border: `1px solid ${C.arcane}88`,
                 color: C.arcane,
-                fontSize: 14,
+                fontSize: F.nota,
                 whiteSpace: "nowrap",
               }}
             >
               {wordCount(selMenu.text) > 1 ? "🔎 Significato" : "📖 Definisci"}
             </button>
           )}
-          <button onClick={() => setSelMenu(null)} style={{ color: C.muted, fontSize: 14, marginLeft: 4 }}>
+          <button onClick={() => setSelMenu(null)} style={{ color: C.muted, fontSize: F.nota, marginLeft: 4 }}>
             Annulla
           </button>
         </div>
@@ -1750,10 +1750,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 style={{
                   flex: 1,
                   padding: "12px 4px",
-                  borderRadius: 10,
+                  borderRadius: R.piccolo,
                   background: t.bg,
                   color: t.fg,
-                  fontSize: 13.5,
+                  fontSize: F.piccolo,
                   border: `2px solid ${settings.theme === id ? C.accent : C.border}`,
                 }}
               >
@@ -1762,7 +1762,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             ))}
           </div>
           <div style={{ marginBottom: 14 }}>
-            <span style={{ display: "block", fontSize: 14.5, color: C.muted, marginBottom: 6 }}>Carattere</span>
+            <span style={{ display: "block", fontSize: F.nota, color: C.muted, marginBottom: 6 }}>Carattere</span>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {READER_FONTS.map((f) => (
                 <button
@@ -1770,8 +1770,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   onClick={() => updateSettings({ font: f.id })}
                   style={{
                     padding: "7px 14px",
-                    borderRadius: 999,
-                    fontSize: 14,
+                    borderRadius: R.tondo,
+                    fontSize: F.nota,
                     fontFamily: f.css || "inherit",
                     border: `1px solid ${settings.font === f.id ? C.accent : C.border}`,
                     color: settings.font === f.id ? C.accent : C.muted,
@@ -1804,7 +1804,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             <button
               onClick={() => updateSettings({ flow: "paginated" })}
               style={{
-                flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 14,
+                flex: 1, padding: "9px 0", borderRadius: R.piccolo, fontSize: F.nota,
                 border: `1px solid ${paginated ? C.accent : C.border}`,
                 color: paginated ? C.accent : C.muted,
               }}
@@ -1814,7 +1814,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             <button
               onClick={() => updateSettings({ flow: "scrolled" })}
               style={{
-                flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 14,
+                flex: 1, padding: "9px 0", borderRadius: R.piccolo, fontSize: F.nota,
                 border: `1px solid ${!paginated ? C.accent : C.border}`,
                 color: !paginated ? C.accent : C.muted,
               }}
@@ -1825,7 +1825,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               onClick={() => updateSettings({ spread: settings.spread === "auto" ? "none" : "auto" })}
               disabled={!paginated}
               style={{
-                flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 14,
+                flex: 1, padding: "9px 0", borderRadius: R.piccolo, fontSize: F.nota,
                 border: `1px solid ${C.border}`,
                 color: paginated ? C.muted : C.dim,
               }}
@@ -1835,14 +1835,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           </div>
           <div style={{ marginBottom: 14 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 14.5, color: puoGiustificare ? C.muted : C.dim }}>Colonna come in stampa</span>
+              <span style={{ fontSize: F.nota, color: puoGiustificare ? C.muted : C.dim }}>Colonna come in stampa</span>
               <button
                 onClick={() => updateSettings({ justify: !settings.justify })}
                 disabled={!puoGiustificare}
                 style={{
                   padding: "6px 16px",
-                  borderRadius: 999,
-                  fontSize: 14,
+                  borderRadius: R.tondo,
+                  fontSize: F.nota,
                   border: `1px solid ${settings.justify && puoGiustificare ? C.accent : C.border}`,
                   color: !puoGiustificare ? C.dim : settings.justify ? C.accent : C.muted,
                   background: settings.justify && puoGiustificare ? `${C.accent}14` : "transparent",
@@ -1851,7 +1851,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 {!puoGiustificare ? "Non si può" : settings.justify ? "Attiva ✒" : "Spenta"}
               </button>
             </div>
-            <p style={{ margin: "5px 0 0", fontSize: 12.5, color: C.dim, lineHeight: 1.45 }}>
+            <p style={{ margin: "5px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.45 }}>
               {puoGiustificare
                 ? "Testo giustificato e parole sillabate a fine riga, come su carta."
                 : !lingua?.dichiarata
@@ -1861,13 +1861,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           </div>
           {haGlossario(book) && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-              <span style={{ fontSize: 14.5, color: C.muted }}>Segna i termini della saga</span>
+              <span style={{ fontSize: F.nota, color: C.muted }}>Segna i termini della saga</span>
               <button
                 onClick={() => updateSettings({ terms: !settings.terms })}
                 style={{
                   padding: "6px 16px",
-                  borderRadius: 999,
-                  fontSize: 14,
+                  borderRadius: R.tondo,
+                  fontSize: F.nota,
                   border: `1px solid ${settings.terms ? C.arcane : C.border}`,
                   color: settings.terms ? C.arcane : C.muted,
                   background: settings.terms ? `${C.arcane}14` : "transparent",
@@ -1895,7 +1895,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               quindi si puo' restare indietro di parecchi rilasci proprio
               mentre si giudica una modifica al lettore. Qui si legge senza
               uscire dal libro. */}
-          <p style={{ marginTop: 14, fontSize: 12.5, color: C.muted, textAlign: "center" }}>
+          <p style={{ marginTop: 14, fontSize: F.minuscolo, color: C.muted, textAlign: "center" }}>
             versione {typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "?"}
           </p>
         </Panel>
@@ -1934,7 +1934,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   textAlign: "left",
                   padding: "10px 6px",
                   paddingLeft: 6 + t.depth * 18,
-                  fontSize: 15,
+                  fontSize: F.corpo,
                   color: t.depth === 0 ? C.text : C.muted,
                   borderBottom: `1px solid ${C.border}44`,
                 }}
@@ -1953,12 +1953,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             style={{
               width: "100%",
               padding: "11px 0",
-              borderRadius: 12,
+              borderRadius: R.piccolo,
               marginBottom: 14,
               background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
               color: C.onAccent,
               fontWeight: 600,
-              fontSize: 15,
+              fontSize: F.corpo,
             }}
           >
             📑 Salva qui
@@ -1978,10 +1978,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.border}44` }}>
                 <button
                   onClick={() => goTo(m.cfi)}
-                  style={{ flex: 1, textAlign: "left", padding: "11px 6px", fontSize: 15, color: C.text }}
+                  style={{ flex: 1, textAlign: "left", padding: "11px 6px", fontSize: F.corpo, color: C.text }}
                 >
                   {title}
-                  <span style={{ display: "block", fontSize: 12.5, color: C.muted }}>
+                  <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted }}>
                     {sub}
                   </span>
                 </button>
@@ -2018,7 +2018,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             gap: 14,
             alignItems: "center",
             padding: "13px 16px",
-            borderRadius: 16,
+            borderRadius: R.medio,
             background: `${C.card}fa`,
             border: `1px solid ${C.accent}55`,
             boxShadow: "0 12px 44px #000000aa",
@@ -2029,12 +2029,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             <BookCover book={nextBook} radius={6} compact />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12.5, color: C.muted }}>Fine del volume — il prossimo della saga</div>
+            <div style={{ fontSize: F.minuscolo, color: C.muted }}>Fine del volume — il prossimo della saga</div>
             <div
               style={{
                 fontFamily: FONT_TITLE,
                 fontWeight: 600,
-                fontSize: 17,
+                fontSize: F.rilievo,
                 color: C.text,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -2049,11 +2049,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   flush();
                   onReadNext(nextBook.id);
                 }}
-                style={{ fontSize: 14, fontWeight: 600, color: C.accent }}
+                style={{ fontSize: F.nota, fontWeight: 600, color: C.accent }}
               >
                 Leggilo ora
               </button>
-              <button onClick={() => setEndCard("dismissed")} style={{ fontSize: 14, color: C.muted }}>
+              <button onClick={() => setEndCard("dismissed")} style={{ fontSize: F.nota, color: C.muted }}>
                 Più tardi
               </button>
             </div>
@@ -2075,17 +2075,17 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               style={{
                 flex: 1,
                 padding: "10px 14px",
-                borderRadius: 10,
+                borderRadius: R.piccolo,
                 border: `1px solid ${C.border}`,
                 background: C.card,
                 color: C.text,
-                fontSize: 15,
+                fontSize: F.corpo,
                 outline: "none",
               }}
             />
             <button
               onClick={runSearch}
-              style={{ padding: "0 18px", borderRadius: 10, background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`, color: C.onAccent, fontWeight: 600 }}
+              style={{ padding: "0 18px", borderRadius: R.piccolo, background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`, color: C.onAccent, fontWeight: 600 }}
             >
               {searchState.busy ? "…" : "Cerca"}
             </button>
@@ -2103,7 +2103,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 width: "100%",
                 textAlign: "left",
                 padding: "10px 6px",
-                fontSize: 14.5,
+                fontSize: F.nota,
                 color: C.text,
                 lineHeight: 1.4,
                 borderBottom: `1px solid ${C.border}44`,

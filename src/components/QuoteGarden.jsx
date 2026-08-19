@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { C, TEMA, FONT_TITLE } from "../data/constants.js";
+import { C, TEMA, FONT_TITLE, F, R } from "../data/constants.js";
 import { getHighlights, saveHighlights, getMarks } from "../lib/annotations.js";
 import { raccogli, filtra, conta, testoCitazione, esporta } from "../lib/citazioni.js";
 
@@ -75,11 +75,11 @@ export default function QuoteGarden({ books, onClose, onReadAt }) {
           <button
             onClick={onClose}
             aria-label="Chiudi il giardino"
-            style={{ width: 40, height: 40, borderRadius: 10, fontSize: 19, color: C.text }}
+            style={{ width: 40, height: 40, borderRadius: R.piccolo, fontSize: F.titoletto, color: C.text }}
           >
             ✕
           </button>
-          <h2 style={{ flex: 1, fontFamily: FONT_TITLE, fontSize: 21, fontWeight: 600, color: C.text }}>
+          <h2 style={{ flex: 1, fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
             🌿 Il giardino delle citazioni
           </h2>
           {n.citazioni > 0 && (
@@ -87,10 +87,10 @@ export default function QuoteGarden({ books, onClose, onReadAt }) {
               onClick={esportaTutto}
               style={{
                 padding: "8px 14px",
-                borderRadius: 10,
+                borderRadius: R.piccolo,
                 border: `1px solid ${C.arcane}66`,
                 color: C.arcane,
-                fontSize: 13.5,
+                fontSize: F.piccolo,
               }}
             >
               📄 Esporta
@@ -106,11 +106,11 @@ export default function QuoteGarden({ books, onClose, onReadAt }) {
               style={{
                 flex: 1,
                 padding: "10px 14px",
-                borderRadius: 10,
+                borderRadius: R.piccolo,
                 border: `1px solid ${C.border}`,
                 background: C.card,
                 color: C.text,
-                fontSize: 14.5,
+                fontSize: F.nota,
               }}
             />
             {cercando && (
@@ -118,14 +118,14 @@ export default function QuoteGarden({ books, onClose, onReadAt }) {
                 ✕
               </button>
             )}
-            <span style={{ fontSize: 13, color: C.muted, whiteSpace: "nowrap" }}>
+            <span style={{ fontSize: F.piccolo, color: C.muted, whiteSpace: "nowrap" }}>
               {n.citazioni} {n.citazioni === 1 ? "passaggio" : "passaggi"}
               {n.segni ? ` · ${n.segni} 🔖` : ""}
             </span>
           </div>
         )}
         {copiata === "no" && (
-          <div style={{ marginTop: 8, fontSize: 13, color: C.accent }}>
+          <div style={{ marginTop: 8, fontSize: F.piccolo, color: C.accent }}>
             Gli appunti non si lasciano scrivere qui: seleziona il testo a mano.
           </div>
         )}
@@ -137,7 +137,7 @@ export default function QuoteGarden({ books, onClose, onReadAt }) {
             <div style={{ fontSize: 60, marginBottom: 14, filter: `drop-shadow(0 0 22px ${C.arcane}66)` }}>
               {cercando ? "🔍" : "🌱"}
             </div>
-            <h3 style={{ fontFamily: FONT_TITLE, fontSize: 23, fontWeight: 600, color: C.text, marginBottom: 8 }}>
+            <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text, marginBottom: 8 }}>
               {cercando ? "Niente che somigli a questo" : "Il giardino attende i primi semi…"}
             </h3>
             <p style={{ color: C.muted, maxWidth: 420, margin: "0 auto" }}>
@@ -152,7 +152,7 @@ export default function QuoteGarden({ books, onClose, onReadAt }) {
               <h3
                 style={{
                   fontFamily: FONT_TITLE,
-                  fontSize: 20,
+                  fontSize: F.titoletto,
                   fontWeight: 600,
                   color: C.accent,
                   marginBottom: 2,
@@ -162,7 +162,7 @@ export default function QuoteGarden({ books, onClose, onReadAt }) {
                 {book.title}
               </h3>
               {book.author && (
-                <div style={{ fontSize: 13.5, color: C.muted, marginBottom: 10 }}>{book.author}</div>
+                <div style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 10 }}>{book.author}</div>
               )}
               {citazioni.map((q) => (
                 <div
@@ -173,18 +173,18 @@ export default function QuoteGarden({ books, onClose, onReadAt }) {
                     alignItems: "stretch",
                     marginBottom: 10,
                     padding: "12px 14px",
-                    borderRadius: 12,
+                    borderRadius: R.piccolo,
                     border: `1px solid ${C.border}`,
                     background: `linear-gradient(135deg, ${C.card}, ${C.surface})`,
                   }}
                 >
-                  <span style={{ width: 4, borderRadius: 2, background: q.color, flexShrink: 0 }} />
+                  <span style={{ width: 4, borderRadius: R.minimo, background: q.color, flexShrink: 0 }} />
                   <button
                     onClick={() => onReadAt(book.id, q.cfi)}
                     style={{
                       flex: 1,
                       textAlign: "left",
-                      fontSize: 15.5,
+                      fontSize: F.corpo,
                       fontStyle: "italic",
                       lineHeight: 1.5,
                       color: C.text,
@@ -198,7 +198,7 @@ export default function QuoteGarden({ books, onClose, onReadAt }) {
                           marginTop: 8,
                           paddingLeft: 10,
                           borderLeft: `2px solid ${C.arcane}77`,
-                          fontSize: 14,
+                          fontSize: F.nota,
                           fontStyle: "normal",
                           color: C.arcane,
                           lineHeight: 1.45,
@@ -207,7 +207,7 @@ export default function QuoteGarden({ books, onClose, onReadAt }) {
                         {q.note}
                       </span>
                     )}
-                    <span style={{ display: "block", marginTop: 6, fontSize: 12.5, fontStyle: "normal", color: C.muted }}>
+                    <span style={{ display: "block", marginTop: 6, fontSize: F.minuscolo, fontStyle: "normal", color: C.muted }}>
                       {new Date(q.createdAt).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" })}
                       {" · tocca per rileggere nel libro"}
                     </span>
@@ -216,7 +216,7 @@ export default function QuoteGarden({ books, onClose, onReadAt }) {
                     <button
                       onClick={() => copia(q, book)}
                       aria-label="Copia la citazione"
-                      style={{ color: copiata === q.id ? C.green : C.muted, padding: 6, fontSize: 15 }}
+                      style={{ color: copiata === q.id ? C.green : C.muted, padding: 6, fontSize: F.corpo }}
                     >
                       {copiata === q.id ? "✓" : "⧉"}
                     </button>
@@ -242,10 +242,10 @@ export default function QuoteGarden({ books, onClose, onReadAt }) {
                     textAlign: "left",
                     marginBottom: 8,
                     padding: "10px 14px",
-                    borderRadius: 12,
+                    borderRadius: R.piccolo,
                     border: `1px dashed ${C.border}`,
                     color: C.muted,
-                    fontSize: 14.5,
+                    fontSize: F.nota,
                   }}
                 >
                   🔖 {m.label || "Segnalibro"}

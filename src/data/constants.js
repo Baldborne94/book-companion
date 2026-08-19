@@ -117,6 +117,35 @@ export function applyAppTheme(id) {
 export const FONT_TITLE = '"Cormorant Garamond", Georgia, serif';
 export const FONT_BODY = '"EB Garamond", Georgia, serif';
 
+// LA SCALA. Prima c'erano ventisette corpi diversi — 12,5 · 13 · 13,5 · 14
+// · 14,5 · 15, sei gradini in due punti e mezzo — e tredici raggi. Nessuno
+// di quei mezzi punti comunicava una gerarchia: comunicavano che ogni
+// componente aveva scelto per conto suo, e la differenza si vede quando ne
+// metti due schermate accanto.
+//
+// Otto gradini, ognuno con un mestiere. Il valore in se' conta meno del
+// fatto che sia UNO SOLO: adesso ritoccare tutta l'app e' cambiare un
+// numero qui, non rincorrerne duecento nei file.
+export const F = {
+  minuscolo: 12, // conteggi e nuvolette sulle copertine
+  piccolo: 13, // etichette dei campi, righe di servizio
+  nota: 14, // testo secondario: date, autori, spiegazioni sotto
+  corpo: 15, // il testo dell'interfaccia, tasti e campi
+  rilievo: 17, // le voci che devono staccarsi dal resto
+  titoletto: 19, // intestazioni di gruppo
+  titolo: 22, // titoli di pannello
+  grande: 27, // i titoli grossi delle schermate vuote
+};
+
+// Stessa storia per gli angoli: quattro raggi piu' il tondo.
+export const R = {
+  minimo: 3, // barrette di avanzamento e segni sottili
+  piccolo: 10, // tasti e campi
+  medio: 14, // schede e riquadri
+  grande: 18, // i pannelli che si aprono sopra tutto
+  tondo: 999, // pastiglie
+};
+
 export const SECTIONS = [
   { id: "home", label: "Ingresso" },
   { id: "library", label: "Libreria" },
