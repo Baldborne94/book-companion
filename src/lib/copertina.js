@@ -37,6 +37,32 @@ export function misura(w, h, max = LATO) {
 // e allora il dorso disegnato E' lo stato di partenza. Chi chiama deve
 // pero' avere i byte in mano: senza file non si guarda, e cancellare la
 // copertina buona per un libro rimasto nel cloud sarebbe il danno peggiore.
+// Il cuore della faccenda, staccato apposta da epub.js: prende un libro
+// GIA' APERTO e ne tira fuori la copertina. Sta qui e non dentro
+// `copertinaOriginale` perche' e' la parte dove si sbaglia — due strade,
+// un ripiego, e una libreria da chiudere comunque — e un test la puo'
+// chiamare con un finto libro invece di tirarsi dietro un ePub vero.
+//
+// Le due strade sono quelle dell'import: prima il file dentro l'archivio,
+// che e' il caso normale, poi `coverUrl` per gli ePub che la dichiarano
+// solo nel foglio di copertina. E `destroy` in un `finally`, perche' un
+// libro aperto e non chiuso resta in memoria anche quando la copertina
+// non c'era.
+export async function copertinaDaEpub(eb) {
+  if (!eb) return null;
+  try {
+    const percorso = await eb.loaded?.cover;
+    if (percorso && eb.archive) {
+      const b = await eb.archive.getBlob(percorso);
+      if (b) return b;
+    }
+    const url = await eb.coverUrl?.();
+    return url ? await (await fetch(url)).blob() : null;
+  } finally {
+    eb.destroy?.();
+  }
+}
+
 export async function copertinaOriginale(book, bytes) {
   if (!bytes) return null;
   try {
@@ -46,18 +72,7 @@ export async function copertinaOriginale(book, bytes) {
       return (await renderPdfThumb(buf)) || null;
     }
     const { default: ePub } = await import("epubjs");
-    const eb = ePub(buf);
-    try {
-      const percorso = await eb.loaded.cover;
-      if (percorso && eb.archive) {
-        const b = await eb.archive.getBlob(percorso);
-        if (b) return b;
-      }
-      const url = await eb.coverUrl();
-      return url ? await (await fetch(url)).blob() : null;
-    } finally {
-      eb.destroy();
-    }
+    return await copertinaDaEpub(ePub(buf));
   } catch {
     return null;
   }

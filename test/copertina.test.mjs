@@ -2,7 +2,7 @@
 // `copertina.js` che si puo' provare senza un canvas, ed e' anche l'unico
 // dove si sbaglia in silenzio: una copertina schiacciata si nota subito,
 // ma un errore di un pixel no.
-import { misura, LATO } from "../src/lib/copertina.js";
+import { misura, LATO, copertinaDaEpub } from "../src/lib/copertina.js";
 
 const rapporto = (m) => m.w / m.h;
 
@@ -46,4 +46,66 @@ export default async function (t) {
   t.eq("niente del tutto", misura(), null);
   // un tetto assurdo non deve azzerare l'immagine: meglio tenerla com'e'
   t.eq("un tetto a zero lascia stare", misura(1200, 1800, 0).h, 1800);
+
+  // ---- LA COPERTINA DENTRO L'ePub ---------------------------------------
+  // `copertinaDaEpub` prende un libro GIA' aperto, quindi qui basta un
+  // finto: le due strade, il ripiego e la chiusura si provano tutte senza
+  // tirarsi dietro epub.js e un romanzo vero.
+  const DENTRO = { finto: "dai byte dell'archivio" };
+  const DA_URL = { finto: "scaricata dall'url" };
+  globalThis.fetch = async () => ({ blob: async () => DA_URL });
+
+  const libro = (opts = {}) => {
+    const eb = {
+      chiuso: false,
+      loaded: { cover: opts.percorso ?? null },
+      archive: opts.archivio === false ? null : { getBlob: async () => opts.blob ?? null },
+      coverUrl: async () => opts.url ?? null,
+      destroy() {
+        eb.chiuso = true;
+      },
+    };
+    return eb;
+  };
+
+  // la strada normale: il percorso c'è e l'archivio lo consegna
+  let eb = libro({ percorso: "OEBPS/cover.jpg", blob: DENTRO });
+  t.c("la copertina viene dall'archivio", (await copertinaDaEpub(eb)) === DENTRO);
+  t.c("e il libro si chiude", eb.chiuso);
+
+  // il ripiego: nessun percorso dichiarato, ma `coverUrl` risponde
+  eb = libro({ url: "blob:qualcosa" });
+  t.c("senza percorso si ripiega su coverUrl", (await copertinaDaEpub(eb)) === DA_URL);
+
+  // percorso dichiarato ma archivio muto: si ripiega lo stesso, non ci si
+  // ferma — è un ePub scritto male, non un ePub senza copertina
+  eb = libro({ percorso: "OEBPS/cover.jpg", blob: null, url: "blob:qualcosa" });
+  t.c("un archivio che tace non blocca il ripiego", (await copertinaDaEpub(eb)) === DA_URL);
+
+  // il libro che una copertina non ce l'ha davvero: `null`, e allora il
+  // dorso disegnato è lo stato di partenza
+  eb = libro({});
+  t.eq("nessuna copertina, nessun ripiego", await copertinaDaEpub(eb), null);
+  t.c("e si chiude comunque", eb.chiuso);
+
+  // IL LIBRO SI CHIUDE ANCHE SE QUALCOSA ESPLODE: un ePub aperto e non
+  // chiuso resta in memoria, e su un tablet è proprio quello che non serve
+  eb = libro({ percorso: "x" });
+  eb.archive = {
+    getBlob: async () => {
+      throw new Error("archivio rotto");
+    },
+  };
+  let esploso = false;
+  try {
+    await copertinaDaEpub(eb);
+  } catch {
+    esploso = true;
+  }
+  t.c("l'errore risale a chi sa cosa farne", esploso);
+  t.c("ma il libro è stato chiuso lo stesso", eb.chiuso);
+
+  t.eq("niente libro, niente copertina", await copertinaDaEpub(null), null);
+  // un finto senza i metodi non deve buttare giù la scheda
+  t.eq("un libro monco non esplode", await copertinaDaEpub({}), null);
 }
