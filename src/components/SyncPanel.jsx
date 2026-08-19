@@ -170,8 +170,8 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
                   minWidth: 150,
                   padding: "11px 18px",
                   borderRadius: 12,
-                  background: status.busy ? C.dim : `linear-gradient(180deg, ${C.accent}, #b8893a)`,
-                  color: status.busy ? C.muted : "#241c0a",
+                  background: status.busy ? C.dim : `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+                  color: status.busy ? C.muted : C.onAccent,
                   fontWeight: 600,
                   fontSize: 15,
                 }}
@@ -233,8 +233,8 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
                 style={{
                   padding: "10px 20px",
                   borderRadius: 12,
-                  background: `linear-gradient(180deg, ${C.accent}, #b8893a)`,
-                  color: "#241c0a",
+                  background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+                  color: C.onAccent,
                   fontWeight: 600,
                   fontSize: 15,
                 }}

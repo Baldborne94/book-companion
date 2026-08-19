@@ -5,9 +5,75 @@ import { riconosci } from "./sagaBooks.js";
 // copie dell'archivio, su un tablet, vale piu' di qualche pagina bianca
 const TROPPO_GROSSO = 80 * 1024 * 1024;
 
-export async function importFiles(fileList) {
+// I DOPPIONI. L'id di un libro e' un `randomUUID`, quindi lo STESSO file
+// importato due volte faceva due libri distinti: due punti di lettura, due
+// scaffali di evidenziazioni, due voci nel diario — e nessuno lo diceva.
+// Succede piu' spesso di quanto sembri: un archivio vecchio ripristinato,
+// un file ricaricato «per sicurezza», un cambio di dispositivo.
+//
+// Si riconosce in due modi, e sono due cose diverse:
+//
+// (1) L'IMPRONTA DEI BYTE. Un file identico e' identico: qui non c'e'
+//     niente da chiedere e niente da guadagnare a tenerne due copie, e il
+//     doppione si salta. Si misura sui byte ORIGINALI, non su quelli
+//     ricuciti: la ricucitura puo' cambiare da una versione all'altra
+//     dell'app, i byte che ti sei scelto no.
+//
+// (2) TITOLO E AUTORE. Un'altra edizione dello stesso romanzo ha byte
+//     diversi e resta un file legittimo — magari e' proprio la copia
+//     migliore che stavi cercando. Quello NON si salta: si importa e si
+//     DICE, perche' la scelta di tenerne una sola e' tua.
+export async function impronta(bytes) {
+  const cripto = globalThis.crypto?.subtle;
+  if (!cripto || !bytes?.byteLength) return null;
+  try {
+    const d = await cripto.digest("SHA-256", bytes);
+    return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    // senza impronta il libro entra lo stesso: un doppione in piu' e' un
+    // fastidio, un libro non importato e' un danno
+    return null;
+  }
+}
+
+export const giaInLibreria = (imp, libri = []) =>
+  (imp && libri.find((b) => b?.impronta === imp)) || null;
+
+const chiave = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    // articoli e punteggiatura non distinguono due edizioni
+    .replace(/\b(the|a|an|il|lo|la|i|gli|le|un|uno|una)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+// L'autore si confronta a parole ordinate, come in `sagaBooks`: «Abercrombie,
+// Joe» e «Joe Abercrombie» sono la stessa persona. E se una delle due copie
+// l'autore non ce l'ha, il titolo da solo deve bastare — un ePub senza
+// metadati e' proprio il caso in cui il doppione e' piu' probabile.
+const chiaveAutore = (a) => chiave(a).split(" ").filter(Boolean).sort().join(" ");
+
+export function sembraGiaLetto({ title, author } = {}, libri = []) {
+  const t = chiave(title);
+  if (t.length < 3) return null;
+  const a = chiaveAutore(author);
+  return (
+    libri.find((b) => {
+      if (chiave(b?.title) !== t) return false;
+      const suo = chiaveAutore(b?.author);
+      return !a || !suo || suo === a;
+    }) || null
+  );
+}
+
+export async function importFiles(fileList, libri = []) {
   const added = [];
   const errors = [];
+  // i due modi di essere un doppione: saltati e segnalati
+  const saltati = [];
+  const sospetti = [];
   let cuciti = 0;
   // Quello che l'import faceva in silenzio. Il piu' importante non e' il
   // numero dei libri: e' quante volte i METADATI non si sono letti, perche'
@@ -22,6 +88,16 @@ export async function importFiles(fileList) {
     const fileType = lower.endsWith(".epub") ? "epub" : lower.endsWith(".pdf") ? "pdf" : null;
     if (!fileType) {
       errors.push({ name: file.name, reason: "formato non supportato" });
+      continue;
+    }
+    // L'impronta si prende PRIMA di salvare: un doppione dei byte non deve
+    // nemmeno occupare lo spazio che poi andrebbe liberato. E si confronta
+    // anche coi libri entrati in questo stesso giro — la stessa cartella
+    // trascinata due volte e' il modo piu' facile di farlo.
+    const imp = await impronta(await file.arrayBuffer().catch(() => null));
+    const noto = giaInLibreria(imp, [...libri, ...added]);
+    if (noto) {
+      saltati.push({ name: file.name, title: noto.title });
       continue;
     }
     const id = crypto.randomUUID();
@@ -67,6 +143,12 @@ export async function importFiles(fileList) {
     }
     if (!letto?.titolo) senzaMetadati += 1;
     if (!letto?.copertina) senzaCopertina += 1;
+    // il titolo si sa solo adesso: un'altra edizione dello stesso romanzo
+    // entra comunque — tenerne una sola e' una scelta tua, non nostra — ma
+    // non entra di nascosto
+    const gemello = sembraGiaLetto(meta, [...libri, ...added]);
+    if (gemello) sospetti.push({ title: meta.title });
+    if (imp) meta.impronta = imp;
     // saga e numero d'ordine dal titolo, senza chiederli a mano: e' quello
     // che accende il glossario e fa funzionare il «prossimo della saga»
     const saga = riconosci({ title: meta.title, author: meta.author, fileName: file.name });
@@ -81,7 +163,7 @@ export async function importFiles(fileList) {
     }
     added.push(meta);
   }
-  return { added, errors, cuciti, riconosciuti, senzaMetadati, senzaCopertina };
+  return { added, errors, saltati, sospetti, cuciti, riconosciuti, senzaMetadati, senzaCopertina };
 }
 
 // IL RESOCONTO DELL'IMPORT, in una riga sola.
@@ -95,10 +177,26 @@ export async function importFiles(fileList) {
 // poi cosa abbiamo aggiustato, poi cosa NON siamo riusciti a leggere —
 // perche' quest'ultima e' l'unica su cui c'e' qualcosa da fare (aprire la
 // scheda e scrivere titolo e autore a mano).
-export function resoconto({ added = [], errors = [], cuciti = 0, riconosciuti = 0, senzaMetadati = 0 } = {}) {
+export function resoconto({
+  added = [],
+  errors = [],
+  saltati = [],
+  sospetti = [],
+  cuciti = 0,
+  riconosciuti = 0,
+  senzaMetadati = 0,
+} = {}) {
   const parti = [];
   if (added.length)
     parti.push(added.length === 1 ? "Un nuovo tomo sullo scaffale ✨" : `${added.length} nuovi tomi sullo scaffale ✨`);
+  // il doppione dei byte si dice SUBITO dopo il conto, perche' e' quello
+  // che spiega perche' i tomi entrati sono meno dei file che hai passato
+  if (saltati.length)
+    parti.push(
+      saltati.length === 1
+        ? `«${saltati[0].title || saltati[0].name}» era già in libreria, saltato 👯`
+        : `${saltati.length} erano già in libreria, saltati 👯`
+    );
   // se il libro arrivava a pezzi vale la pena dirlo: spiega perche' adesso
   // il testo scorre dove prima c'erano facciate bianche
   if (cuciti) parti.push(cuciti === 1 ? "un pezzo ricucito 🪡" : `${cuciti} pezzi ricuciti 🪡`);
@@ -110,7 +208,18 @@ export function resoconto({ added = [], errors = [], cuciti = 0, riconosciuti = 
         ? "un titolo preso dal nome del file — controllalo nella scheda"
         : `${senzaMetadati} titoli presi dal nome del file — controllali nella scheda`
     );
+  // l'altra edizione e' entrata: qui non c'e' un guasto da riparare, c'e'
+  // una scelta da fare — tenerle tutt'e due o cancellarne una
+  if (sospetti.length)
+    parti.push(
+      sospetti.length === 1
+        ? `«${sospetti[0].title}» sembra già in libreria in un'altra copia — decidi tu`
+        : `${sospetti.length} sembrano già in libreria in un'altra copia — decidi tu`
+    );
   for (const e of errors) parti.push(`«${e.name}»: ${e.reason}`);
+  // «Nessun file importato» resta per il caso in cui non e' successo
+  // NIENTE: un doppione saltato la sua riga ce l'ha gia', e dire che non e'
+  // stato importato niente senza dire perche' sarebbe una bugia per omissione
   return parti.join(" · ") || "Nessun file importato";
 }
 

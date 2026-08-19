@@ -296,6 +296,37 @@ export async function syncNow({ onProgress } = {}) {
   };
 }
 
+// LA COPERTINA CAMBIATA A MANO DEVE PARTIRE SUBITO, e da sola.
+//
+// Le copertine salgono insieme al file del libro, una volta sola per
+// sempre (`bc_uploaded`): dopo quel giro nessuno le riguarda piu'. Una
+// copertina rimessa a mano non partirebbe mai — e togliere il libro dai
+// «gia' caricati» per farla partire vorrebbe dire rispedire lassu' anche i
+// trenta megabyte del romanzo, per un'immagine da cinquanta chilobyte.
+// Quindi va per conto suo, e in silenzio: se il cloud non c'e' o non
+// risponde, la copertina qui e' cambiata lo stesso, che e' quello che il
+// lettore ha chiesto.
+export async function caricaCopertina(bookId) {
+  if (!isSyncConfigured()) return false;
+  try {
+    const session = await getSession();
+    if (!session) return false;
+    const sb = await getClient();
+    const uid = session.user.id;
+    const cover = await getCover(bookId);
+    if (!cover) {
+      await sb.storage.from(BUCKET).remove([coverPath(uid, bookId)]);
+      return true;
+    }
+    const { error } = await sb.storage
+      .from(BUCKET)
+      .upload(coverPath(uid, bookId), cover, { upsert: true });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
 export async function ensureLocalFile(book) {
   const local = await getFile(book.id);
   if (local) return local;

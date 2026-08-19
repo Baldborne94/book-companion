@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { C, FONT_TITLE } from "../data/constants.js";
+import { C, TEMA, FONT_TITLE } from "../data/constants.js";
 import { getStarted, getFinished, getStatus } from "../lib/library.js";
 import { buildDiary, yearStats, dayCount } from "../lib/diary.js";
 import BookCover from "./BookCover.jsx";
@@ -71,7 +71,7 @@ export default function ReadingDiary({ books, onClose, onOpenBook }) {
         inset: 0,
         zIndex: 40,
         overflowY: "auto",
-        background: `radial-gradient(ellipse 120% 80% at 50% 0%, ${C.surface} 0%, ${C.bg} 55%, #0b0914 100%)`,
+        background: TEMA.gradient,
         animation: "bc-fade-in 0.35s ease-out",
       }}
     >

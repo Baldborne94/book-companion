@@ -10,6 +10,8 @@ export const THEMES = {
       card: "#1c1730",
       border: "#332a4f",
       accent: "#d9a94e",
+      accentDeep: "#b8893a",
+      onAccent: "#241c0a",
       arcane: "#9b7fd4",
       text: "#e2dac9",
       muted: "#948aad",
@@ -33,6 +35,8 @@ export const THEMES = {
       card: "#212a19",
       border: "#3c4b31",
       accent: "#dcb45f",
+      accentDeep: "#bb9247",
+      onAccent: "#251d0c",
       arcane: "#84b16b",
       text: "#ece5cf",
       muted: "#a5ae93",
@@ -56,6 +60,8 @@ export const THEMES = {
       card: "#26201a",
       border: "#4a3d2c",
       accent: "#e3bd76",
+      accentDeep: "#c19959",
+      onAccent: "#261f0f",
       arcane: "#b6bcc6",
       text: "#f0e7d3",
       muted: "#a99a80",
@@ -76,13 +82,34 @@ export const DEFAULT_THEME = "night";
 // ridisegnare l'albero basta per cambiare tema senza un context.
 export const C = { ...THEMES[DEFAULT_THEME].colors };
 
+// Il tema vivo per intero — serve a chi ha bisogno di qualcosa che un
+// colore non e', tipo lo SFONDO A GRADIENTE. Prima ogni pannello a tutto
+// schermo se lo ridisegnava a mano coi viola della notte, e sugli altri
+// due temi ci si ritrovava un alone viola in mezzo al verde.
+export const TEMA = { ...THEMES[DEFAULT_THEME] };
+
+// Il colore di fondo si ricorda anche fuori da React: `index.html` lo
+// rilegge PRIMA che il bundle parta, o a ogni avvio a freddo comparirebbe
+// un lampo del tema di default sotto quello scelto.
+const BG_KEY = "bc_bg";
+
 export function applyAppTheme(id) {
   const t = THEMES[id] || THEMES[DEFAULT_THEME];
   Object.assign(C, t.colors);
+  Object.assign(TEMA, t);
   if (typeof document !== "undefined") {
-    document.body.style.background = t.colors.bg;
+    const root = document.documentElement;
+    root.style.setProperty("--bc-bg", t.colors.bg);
+    // l'accento serve al CSS per l'anello del fuoco, che inline non si puo'
+    // scrivere: `:focus-visible` non esiste come stile in linea
+    root.style.setProperty("--bc-accent", t.colors.accent);
     document.body.style.color = t.colors.text;
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", t.colors.bg);
+    try {
+      localStorage.setItem(BG_KEY, t.colors.bg);
+    } catch {
+      /* niente localStorage: al prossimo avvio il lampo torna, e basta */
+    }
   }
   return t;
 }

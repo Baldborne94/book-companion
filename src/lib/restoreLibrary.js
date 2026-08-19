@@ -2,6 +2,7 @@ import { putFile, putCover, listFileIds, putTrack } from "./bookStore.js";
 import { loadBooks, saveBooks, setProgress, setStatus, touchBook, clearTombstones, setDates } from "./library.js";
 import { setCfi, saveMarks, saveHighlights } from "./annotations.js";
 import { setBookMusic, getFavoritesRaw, saveFavorites, getListsRaw, saveLists } from "./music.js";
+import { tuttiIGlossari, fondi, scriviGlossari, quantiTermini } from "./glossarioMio.js";
 
 // Come per i libri: quello che c'e' gia' resta, dall'archivio si prende
 // solo cio' che manca. Una melodia si riconosce dal suo id.
@@ -69,6 +70,7 @@ export async function sbircia(archive) {
     libri: data.books.length,
     melodie: Array.isArray(data.melodie) ? data.melodie.length : 0,
     raccolte: Array.isArray(data.raccolte) ? data.raccolte.length : 0,
+    termini: quantiTermini(data.glossari),
     // gli archivi v1 non portavano segnalibri ed evidenziazioni: si dice
     // prima, non dopo aver ripristinato
     parziale: !(data.version >= 2),
@@ -150,12 +152,25 @@ export async function restoreLibrary(archive, { onProgress, cosa } = {}) {
     : [];
   if (nuoveRac.length) saveLists([...localiRac, ...nuoveRac]);
 
+  // I termini scritti a mano seguono i libri: sono voci di glossario di una
+  // saga, non musica. Quello che e' gia' qui resta com'e' — puo' essere una
+  // correzione fatta ieri — e dall'archivio si prende solo cio' che manca.
+  let termini = 0;
+  if (prendi.libri && data.glossari) {
+    const esito = fondi(tuttiIGlossari(), data.glossari);
+    if (esito.nuove) {
+      scriviGlossari(esito.glossari);
+      termini = esito.nuove;
+    }
+  }
+
   return {
     added: add.length,
     kept: kept.length,
     files: restoredFiles,
     melodie: melodieRipristinate,
     raccolte: nuoveRac.length,
+    termini,
     books: loadBooks(),
     partial: !(data.version >= 2),
   };

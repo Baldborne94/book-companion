@@ -3,6 +3,9 @@ import { C, FONT_TITLE } from "../data/constants.js";
 import { ensureLocalFile } from "../lib/sync.js";
 import { getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights } from "../lib/annotations.js";
 import { getProgress, setProgress, setStatus, getStatus, loadBooks } from "../lib/library.js";
+// il tetto alle schede tenute da parte sta col resto della cache, o le
+// due copie prenderebbero strade diverse
+import { leggiSchede, scriviSchede, riponi, tocca, daTenere, MAX_SCHEDE } from "../lib/schedeCache.js";
 import { schedaChiE, nuoveMenzioni } from "../lib/chiSono.js";
 import { schedaRiassunto } from "../lib/trama.js";
 import { sembraUnNome } from "../lib/nomi.js";
@@ -28,8 +31,6 @@ const PHRASE_WORDS = 300;
 // Oltre questa lunghezza la selezione non e' piu' una frase ma un brano, e
 // cercarci dentro un modo di dire non ha senso.
 const NET_WORDS = 30;
-// e stesso tetto alle schede dell'Oracolo tenute da parte
-const MAX_SCHEDE = 8;
 
 const isTouch = () => navigator.maxTouchPoints > 0;
 
@@ -460,6 +461,27 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   // solo il tasto. La frontiera vale anche qui, saga compresa.
   const chiRun = useRef(0);
   const chiCache = useRef(new Map());
+  // come nel reader EPUB: la cache sopravvive al libro chiuso, o la regola
+  // «si rifà solo se è successo qualcosa di nuovo» non avrebbe mai una
+  // scheda vecchia con cui confrontarsi
+  useEffect(() => {
+    let vivo = true;
+    leggiSchede(book.id).then((voci) => {
+      if (!vivo) return;
+      for (const v of voci) if (!chiCache.current.has(v.chiave)) chiCache.current.set(v.chiave, v);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [book.id]);
+
+  const posa = (chiave, voce) => {
+    if (!daTenere(chiave)) return;
+    leggiSchede(book.id)
+      .then((voci) => scriviSchede(book.id, riponi(voci, { chiave, ...voce })))
+      .catch(() => {});
+  };
+
   const doveSono = () => ({
     book,
     libri: loadBooks(),
@@ -473,16 +495,23 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     setSel(null);
     setPanel("chi");
     const gia = chiCache.current.get(chiave);
-    if (gia && (!riusa || (await riusa(gia)))) return setChi(gia.dato);
+    if (gia && (!riusa || (await riusa(gia)))) {
+      if (daTenere(chiave)) {
+        leggiSchede(book.id).then((v) => scriviSchede(book.id, tocca(v, chiave))).catch(() => {});
+      }
+      return setChi(gia.dato);
+    }
     const mio = ++chiRun.current;
     const vivo = () => chiRun.current === mio;
     const finito = await avvia({ ...doveSono(), vivo, passo: (s) => vivo() && setChi(s) });
     if (!vivo() || !finito) return;
     if (finito.answer) {
-      chiCache.current.set(chiave, { dato: finito, segno: String(live.current.page), tocco });
+      const voce = { dato: finito, segno: String(live.current.page), tocco };
+      chiCache.current.set(chiave, voce);
       if (chiCache.current.size > MAX_SCHEDE) {
         chiCache.current.delete(chiCache.current.keys().next().value);
       }
+      posa(chiave, voce);
     }
     setChi(finito);
   }
@@ -1100,8 +1129,8 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
               padding: "11px 0",
               borderRadius: 12,
               marginBottom: 14,
-              background: `linear-gradient(180deg, ${C.accent}, #b8893a)`,
-              color: "#241c0a",
+              background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+              color: C.onAccent,
               fontWeight: 600,
               fontSize: 15,
             }}
@@ -1171,7 +1200,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             />
             <button
               onClick={runSearch}
-              style={{ padding: "0 18px", borderRadius: 10, background: `linear-gradient(180deg, ${C.accent}, #b8893a)`, color: "#241c0a", fontWeight: 600 }}
+              style={{ padding: "0 18px", borderRadius: 10, background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`, color: C.onAccent, fontWeight: 600 }}
             >
               {search.busy ? "…" : "Cerca"}
             </button>

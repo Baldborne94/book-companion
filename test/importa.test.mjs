@@ -2,9 +2,10 @@
 // l'app ha fatto in silenzio. Il pezzo che conta e' il titolo preso dal
 // nome del file — e' il guasto che si scopre settimane dopo, da una saga
 // che non si accende.
-import { resoconto } from "../src/lib/importBook.js";
+import { resoconto, impronta, giaInLibreria, sembraGiaLetto } from "../src/lib/importBook.js";
 
 const libri = (n) => Array.from({ length: n }, (_, i) => ({ id: String(i) }));
+const byte = (s) => new TextEncoder().encode(s).buffer;
 
 export default async function (t) {
   // ---- il caso di tutti i giorni ---------------------------------------
@@ -54,4 +55,96 @@ export default async function (t) {
   t.c("poi quello che non si e' letto", pos("nome del file") > pos("saghe riconosciute"));
   t.c("gli errori in fondo", pos("rotto.epub") > pos("nome del file"));
   t.c("e tutto sta in una riga", !tutto.includes("\n"));
+
+  // ---- L'IMPRONTA DEI BYTE ----------------------------------------------
+  // l'id di un libro e' un randomUUID: senza impronta lo stesso file
+  // importato due volte faceva due libri distinti, e nessuno lo diceva
+  const a = await impronta(byte("le stesse identiche pagine"));
+  const b = await impronta(byte("le stesse identiche pagine"));
+  const c = await impronta(byte("le stesse identiche pagine."));
+  t.eq("lo stesso file da la stessa impronta", a, b);
+  t.c("un file diverso no", a !== c, `${a} vs ${c}`);
+  t.c("ed e' esadecimale", /^[0-9a-f]{64}$/.test(a), String(a));
+  // senza impronta il libro entra lo stesso: un doppione e' un fastidio,
+  // un libro non importato e' un danno
+  t.eq("un file vuoto non ha impronta", await impronta(byte("")), null);
+  t.eq("e nemmeno il nulla", await impronta(null), null);
+
+  const scaffale = [{ id: "x", title: "Guards! Guards!", author: "Terry Pratchett", impronta: a }];
+  t.c("il doppione si riconosce", giaInLibreria(a, scaffale)?.id === "x");
+  t.eq("un file nuovo no", giaInLibreria(c, scaffale), null);
+  // i libri entrati prima di questa cura l'impronta non ce l'hanno: non
+  // devono diventare tutti doppioni l'uno dell'altro
+  t.eq("nessuna impronta non e' un doppione", giaInLibreria(null, scaffale), null);
+  t.eq("e nemmeno contro un libro senza impronta", giaInLibreria(a, [{ id: "y" }]), null);
+  // LA TRAPPOLA: senza il guardiano su `imp`, un'impronta `undefined` si
+  // troverebbe uguale a TUTTI i libri vecchi, che l'impronta non ce l'hanno
+  // — e il primo libro della biblioteca diventerebbe il doppione di ogni
+  // file che importi
+  t.eq(
+    "un'impronta mancante non pareggia con chi non ce l'ha",
+    giaInLibreria(undefined, [{ id: "vecchio" }, { id: "altro" }]),
+    null
+  );
+
+  // ---- L'ALTRA EDIZIONE --------------------------------------------------
+  // byte diversi, stesso romanzo: questo NON si salta — magari e' proprio
+  // la copia migliore che cercavi — ma non entra di nascosto
+  t.c(
+    "stesso titolo e stesso autore",
+    sembraGiaLetto({ title: "Guards! Guards!", author: "Terry Pratchett" }, scaffale)?.id === "x"
+  );
+  t.c(
+    "l'autore si confronta a parole ordinate",
+    sembraGiaLetto({ title: "guards guards", author: "Pratchett, Terry" }, scaffale)?.id === "x"
+  );
+  t.c(
+    "l'articolo non distingue due edizioni",
+    sembraGiaLetto({ title: "The Colour of Magic" }, [{ title: "Colour of Magic" }]) !== null
+  );
+  // un ePub senza metadati e' proprio il caso in cui il doppione e' piu'
+  // probabile: il titolo da solo deve bastare
+  t.c(
+    "senza autore basta il titolo",
+    sembraGiaLetto({ title: "Guards! Guards!" }, scaffale)?.id === "x"
+  );
+  t.eq(
+    "ma due autori diversi sono due libri",
+    sembraGiaLetto({ title: "Guards! Guards!", author: "Joe Abercrombie" }, scaffale),
+    null
+  );
+  t.eq("un altro romanzo no", sembraGiaLetto({ title: "Mort", author: "Terry Pratchett" }, scaffale), null);
+  // un titolo di due lettere non identifica niente
+  t.eq("un titolo troppo corto non decide", sembraGiaLetto({ title: "It" }, [{ title: "It" }]), null);
+  t.eq("niente titolo, niente gemello", sembraGiaLetto({}, scaffale), null);
+
+  // ---- e il resoconto li dice, ognuno a modo suo ------------------------
+  t.c(
+    "il saltato dice quale libro era",
+    /«Guards! Guards!» era già in libreria/.test(
+      resoconto({ saltati: [{ name: "gg.epub", title: "Guards! Guards!" }] })
+    )
+  );
+  t.c(
+    "senza titolo ripiega sul nome del file",
+    /«gg\.epub»/.test(resoconto({ saltati: [{ name: "gg.epub" }] }))
+  );
+  t.c("piu' di uno si conta", /3 erano già in libreria/.test(resoconto({ saltati: libri(3) })));
+  t.c(
+    "il sospetto invece dice che decidi tu",
+    /sembra già in libreria in un'altra copia — decidi tu/.test(
+      resoconto({ added: libri(1), sospetti: [{ title: "Mort" }] })
+    )
+  );
+  // il doppione saltato spiega perche' i tomi entrati sono meno dei file
+  // passati: va detto SUBITO dopo il conto, non in fondo
+  const misto = resoconto({ added: libri(2), saltati: libri(1), cuciti: 4, senzaMetadati: 1 });
+  t.c("il saltato viene subito dopo i tomi", misto.indexOf("già in libreria") < misto.indexOf("ricuciti"));
+  // e da solo si spiega da se': «Nessun file importato» sarebbe una bugia
+  // per omissione, perche' il file c'era
+  t.c(
+    "un doppione solo non diventa «nessun file importato»",
+    !/Nessun file importato/.test(resoconto({ saltati: libri(1) }))
+  );
+  t.eq("mentre il vuoto vero resta vuoto", resoconto({}), "Nessun file importato");
 }

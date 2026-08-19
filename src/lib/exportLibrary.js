@@ -2,13 +2,56 @@ import { getFile, getCover } from "./bookStore.js";
 import { loadBooks, getProgress, getStatus, getStarted, getFinished } from "./library.js";
 import { getCfi, getMarks, getHighlights } from "./annotations.js";
 import { getBookMusic, getFavoritesRaw, getListsRaw, isFile, loadTrack } from "./music.js";
+import { tuttiIGlossari } from "./glossarioMio.js";
 
 // v1 conteneva solo metadati e file: un ripristino avrebbe perso segnalibri,
 // evidenziazioni e punto di lettura. Da v2 l'archivio si basta da solo.
 // Da v3 porta anche le melodie: da quando la musica di sottofondo puo'
 // essere un file tuo, quei byte esistono solo qui dentro e in IndexedDB —
 // un archivio che li lasciasse fuori non sarebbe piu' un archivio completo.
-export const ARCHIVE_VERSION = 3;
+// Da v4 porta anche i termini che il lettore ha scritto nel suo glossario:
+// se li scrivi a mano e il backup non li porta con se', te ne accorgi il
+// giorno che ripristini — cioe' il giorno peggiore.
+export const ARCHIVE_VERSION = 4;
+
+// DA QUANTO NON FAI UN ARCHIVIO.
+//
+// L'avviso sulla persistenza dice uno STATO («il browser può liberare
+// questi dati»); non dice da quanto tempo non c'e' una copia al sicuro. Se
+// il browser ha negato la persistenza e il tuo ultimo zip e' di marzo,
+// l'app lo sa e non te lo diceva. Qui il conto si tiene, e la riga esce
+// accanto al tasto che risolve — che e' «Esporta biblioteca».
+const ULTIMO_KEY = "bc_last_export";
+const GIORNO = 86400000;
+
+export function ultimoArchivio() {
+  const v = parseInt(localStorage.getItem(ULTIMO_KEY), 10);
+  return Number.isFinite(v) ? v : 0;
+}
+
+// «4 mesi fa» dice quello che «118 giorni fa» non dice: che e' tanto.
+export function daQuanto(giorni) {
+  if (giorni < 14) return `${Math.floor(giorni)} giorni fa`;
+  if (giorni < 30) return `${Math.floor(giorni / 7)} settimane fa`;
+  const mesi = Math.floor(giorni / 30.4);
+  if (mesi <= 1) return "un mese fa";
+  if (mesi < 12) return `${mesi} mesi fa`;
+  const anni = Math.floor(giorni / 365);
+  return anni <= 1 ? "più di un anno fa" : `più di ${anni} anni fa`;
+}
+
+// Il promemoria non e' un assillo: sotto la soglia tace del tutto. La
+// soglia pero' e' DUE, e la seconda e' la ragione per cui tutto questo
+// esiste — a persistenza negata i byte stanno in una memoria che il
+// browser puo' sfrattare, e un mese di silenzio e' troppo.
+export function promemoriaArchivio({ ultimo = 0, ora = Date.now(), roba = 0, persistenza = "sconosciuta" } = {}) {
+  // una biblioteca vuota non ha niente da perdere
+  if (!roba) return null;
+  if (!ultimo) return "Non hai mai fatto un archivio di questa biblioteca.";
+  const giorni = (ora - ultimo) / GIORNO;
+  if (giorni < (persistenza === "negata" ? 7 : 30)) return null;
+  return `L'ultimo archivio è di ${daQuanto(giorni)}.`;
+}
 
 const safeName = (s) =>
   (s || "senza-titolo").replace(/[^\p{L}\p{N} _-]/gu, "").trim().slice(0, 60) || "senza-titolo";
@@ -69,6 +112,7 @@ export async function exportLibrary() {
         books: manifest,
         melodie,
         raccolte: getListsRaw(),
+        glossari: tuttiIGlossari(),
       },
       null,
       2
@@ -82,5 +126,9 @@ export async function exportLibrary() {
   a.download = `book-companion-backup-${new Date().toISOString().slice(0, 10)}.zip`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
+  // La data si segna qui, che e' il piu' in la' dove arriviamo: dove il
+  // file sia andato a finire dopo il click il browser non ce lo dice, e
+  // fingere di saperlo sarebbe peggio che segnare il tentativo.
+  localStorage.setItem(ULTIMO_KEY, String(Date.now()));
   return { libri: books.length, melodie: melodieConByte };
 }

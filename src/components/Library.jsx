@@ -3,7 +3,7 @@ import { C, FONT_TITLE } from "../data/constants.js";
 import { getProgress, getStatus } from "../lib/library.js";
 import { storageEstimate, statoPersistenza, requestPersistence } from "../lib/bookStore.js";
 import { importFiles, resoconto } from "../lib/importBook.js";
-import { exportLibrary } from "../lib/exportLibrary.js";
+import { exportLibrary, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
 import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
 import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
@@ -403,7 +403,9 @@ export default function Library({
     if (!files.length || importing) return;
     setImporting(true);
     try {
-      const esito = await importFiles(files);
+      // la libreria di adesso serve a riconoscere i doppioni: senza, lo
+      // stesso file importato due volte fa due libri distinti
+      const esito = await importFiles(files, books);
       if (esito.added.length) {
         updateBooks([...books, ...esito.added]);
         onImported?.();
@@ -415,6 +417,17 @@ export default function Library({
     }
   }
 
+  // Da quanto non c'e' una copia al sicuro. Sta accanto all'avviso sulla
+  // persistenza perche' sono la stessa preoccupazione vista da due lati:
+  // uno dice che il browser puo' sfrattarti, l'altro da quanto non hai una
+  // copia fuori dal browser.
+  const [ultimoArch, setUltimoArch] = useState(ultimoArchivio);
+  const promemoria = promemoriaArchivio({
+    ultimo: ultimoArch,
+    roba: books.length + melodie,
+    persistenza: persist,
+  });
+
   async function handleExport() {
     // anche una biblioteca senza libri vale un archivio, se ci sono melodie
     // caricate da file: quei byte stanno solo qui
@@ -422,6 +435,7 @@ export default function Library({
     notify("Preparo il backup…");
     try {
       const r = await exportLibrary();
+      setUltimoArch(Date.now());
       const parti = [
         r.libri ? `${r.libri} ${r.libri === 1 ? "libro" : "libri"}` : null,
         r.melodie ? `${r.melodie} ${r.melodie === 1 ? "melodia" : "melodie"}` : null,
@@ -463,6 +477,7 @@ export default function Library({
         r.files ? `${r.files} ${r.files === 1 ? "file" : "file"} recuperati` : null,
         r.melodie ? `${r.melodie} ${r.melodie === 1 ? "melodia tornata" : "melodie tornate"}` : null,
         r.raccolte ? `${r.raccolte} ${r.raccolte === 1 ? "raccolta" : "raccolte"}` : null,
+        r.termini ? `${r.termini} ${r.termini === 1 ? "termine" : "termini"} di glossario` : null,
         r.kept ? `${r.kept} gia' in libreria` : null,
       ].filter(Boolean);
       notify(parts.length ? `Ripristino: ${parts.join(", ")} 🕯️` : "Nell'archivio non c'era nulla di nuovo");
@@ -536,8 +551,8 @@ export default function Library({
           style={{
             padding: "10px 20px",
             borderRadius: 12,
-            background: importing ? C.dim : `linear-gradient(180deg, ${C.accent}, #b8893a)`,
-            color: importing ? C.muted : "#241c0a",
+            background: importing ? C.dim : `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+            color: importing ? C.muted : C.onAccent,
             fontWeight: 600,
             fontSize: 15,
             boxShadow: importing ? "none" : `0 0 20px ${C.accent}2e`,
@@ -795,6 +810,15 @@ export default function Library({
               </button>
             </span>
           )}
+          {/* L'altra meta' della stessa preoccupazione: non «il browser può
+              sfrattarti» ma «da quanto non hai una copia fuori dal browser».
+              Sotto soglia tace — e la soglia si stringe a una settimana se
+              la persistenza è stata negata, perché lì il rischio è vero. */}
+          {promemoria && !portando && (
+            <span style={{ color: C.muted }}>
+              ⧗ {promemoria} <span style={{ color: C.arcane }}>Esportala qui accanto.</span>
+            </span>
+          )}
           {/* Il richiamo dei tomi: c'e' solo se qualcosa e' rimasto lassu',
               e il numero sta nel tasto perche' chi lo tocca sappia in
               anticipo quanta connessione ci vuole. */}
@@ -882,7 +906,11 @@ function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
       id: "libri",
       testo: `${dentro.libri} ${dentro.libri === 1 ? "libro" : "libri"}`,
       // quello che viaggia col libro e non si vede nel conto
-      sotto: "con segnalibri, evidenziazioni e punto di lettura",
+      sotto: dentro.termini
+        ? `con segnalibri, evidenziazioni, punto di lettura e ${dentro.termini} ${
+            dentro.termini === 1 ? "termine" : "termini"
+          } di glossario`
+        : "con segnalibri, evidenziazioni e punto di lettura",
     },
     dentro.melodie && {
       id: "melodie",

@@ -13,7 +13,11 @@ body,
 }
 
 body {
-  background: #0f0d1a;
+  /* Il fondo arriva dalla variabile che `index.html` riempie col colore del
+     tema scelto prima ancora che il bundle parta. Il valore di scorta è
+     quello della Biblioteca Magica: è il tema di partenza, quindi al primo
+     avvio in assoluto non c'è nessun lampo da evitare. */
+  background: var(--bc-bg, #0f0d1a);
   color: #e2dac9;
   font-family: "EB Garamond", Georgia, serif;
   font-size: 17px;
@@ -49,10 +53,39 @@ button {
   border: none;
   background: none;
   color: inherit;
+  /* IL TOCCO RISPONDE CON LA NOSTRA FACCIA, non con quella di Android.
+     Senza questa riga Chrome dipinge il suo rettangolo grigio-azzurro a
+     ogni tocco: in un'app di candele e pergamena è la cosa più fuori
+     posto che ci sia, e la vedi a ogni singolo tocco. */
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.18s ease-out;
 }
 
-input {
+/* Tolto il lampo di sistema serve qualcosa al suo posto, o il tasto non
+   risponde affatto. Gli stili sono tutti in linea e le pseudo-classi lì
+   non arrivano, quindi lo stato premuto può stare solo qui. Solo
+   `opacity` — vedi la lezione 10: scale e layout fanno sfarfallare. */
+button:active {
+  opacity: 0.62;
+  transition: none;
+}
+
+/* L'ANELLO DEL FUOCO. In otto file i campi hanno `outline: none` in linea
+   per togliere quello del browser, che è brutto; ma senza niente al suo
+   posto, con una tastiera collegata al tablet non si sa mai dove si è.
+   L'`!important` è qui perché uno stile in linea batte il foglio, ed è
+   esattamente il caso in cui serve. `:focus-visible` e non `:focus`: col
+   dito l'anello non deve comparire. */
+:focus-visible {
+  outline: 2px solid var(--bc-accent, #d9a94e) !important;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+input,
+textarea {
   font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
 }
 
 @keyframes bc-rise {
