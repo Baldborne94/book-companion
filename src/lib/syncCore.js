@@ -1,3 +1,4 @@
+import { fondi } from "./glossarioMio.js";
 const EMPTY_ROW = {
   title: "",
   author: "",
@@ -38,6 +39,10 @@ export const rowFromLocal = (book, state, updatedAt) => ({
   added_at: book.addedAt || 0,
   rating: book.rating || 0,
   notes: book.notes || "",
+  // l'impronta dei byte: e' quella che riconosce lo stesso file importato
+  // due volte, e senza di lei il doppione fra due dispositivi si puo' solo
+  // segnalare per titolo e autore, non saltare
+  impronta: book.impronta || null,
   status: state.status || "unread",
   started_at: state.started || 0,
   finished_at: state.finished || 0,
@@ -64,6 +69,7 @@ export const localFromRow = (row) => ({
     addedAt: row.added_at || 0,
     rating: row.rating || 0,
     notes: row.notes || "",
+    ...(row.impronta ? { impronta: row.impronta } : {}),
   },
   state: {
     status: row.status || "unread",
@@ -128,6 +134,17 @@ export function mergeFavorites(localFavs = [], remoteFavs = []) {
   return [...byId.values()].sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));
 }
 
+// I TERMINI DEL GLOSSARIO viaggiano nelle preferenze, non coi libri: la
+// chiave e' la saga, non il singolo volume. La fusione e' quella
+// dell'archivio (`fondi`: quel che c'e' gia' resta, si prende solo cio' che
+// manca), girata nel verso che dice l'orologio — chi ha scritto per ultimo
+// vince, come per tutto il resto delle preferenze.
+function fondiGlossari(local, remote, remoteNewer) {
+  const a = remoteNewer ? remote : local;
+  const b = remoteNewer ? local : remote;
+  return fondi(a || {}, b || {}).glossari;
+}
+
 export function mergePrefs(local, remote) {
   const music_favs = mergeFavorites(local.music_favs, remote?.music_favs);
   // le raccolte hanno la stessa forma dei preferiti (id, addedAt,
@@ -141,6 +158,7 @@ export function mergePrefs(local, remote) {
       : local.last_opened || remote?.last_opened || null,
     music_favs,
     music_lists,
+    glossari: fondiGlossari(local.glossari, remote?.glossari, remoteNewer),
     updated_at: Math.max(local.updated_at || 0, remote?.updated_at || 0),
   };
   const eq = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -150,12 +168,14 @@ export function mergePrefs(local, remote) {
       !eq(merged.music_favs, local.music_favs) ||
       !eq(merged.music_lists, local.music_lists) ||
       !eq(merged.reader, local.reader) ||
+      !eq(merged.glossari, local.glossari) ||
       merged.last_opened !== (local.last_opened || null),
     pushRemote:
       !remote ||
       !eq(merged.music_favs, remote.music_favs) ||
       !eq(merged.music_lists, remote.music_lists) ||
       !eq(merged.reader, remote.reader) ||
+      !eq(merged.glossari, remote.glossari) ||
       merged.last_opened !== (remote.last_opened || null),
   };
 }

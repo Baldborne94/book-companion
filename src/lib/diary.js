@@ -11,6 +11,11 @@ export function buildDiary(books, dates) {
   const reading = [];
   for (const b of books) {
     const { started, finished, status } = dates(b.id);
+    // ABBANDONATO NON E' FINITO. `setStatus` toglie gia' la data di fine
+    // quando molli un libro, ma il diario non deve fidarsi di quello solo:
+    // un archivio vecchio o un dispositivo rimasto indietro possono avere
+    // tutt'e due i segni, e nel dubbio la parola definitiva ce l'ha lo stato.
+    if (status === "abandoned") continue;
     if (finished) done.push({ book: b, started, finished, days: started ? dayCount(started, finished) : null });
     else if (status === "reading" && started) reading.push({ book: b, started });
   }

@@ -60,12 +60,33 @@ export default async function (t) {
     throw new Saltato("manca playwright — `npm i -D playwright && npx playwright install chromium`");
   }
 
-  const opzioni = process.env.PLAYWRIGHT_CHROMIUM ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM } : {};
+  // TRE STRADE PER UN BROWSER, e si provano in ordine. Playwright si porta
+  // dietro un Chromium di una versione precisa, e se sul disco c'e' quello
+  // di un'altra installazione il lancio fallisce con un percorso che non
+  // esiste — succede sul serio, e il file si dichiarava saltato per un
+  // motivo che con `readerTheme.js` non c'entra niente. Il Chrome di
+  // sistema fa lo stesso lavoro.
+  const strade = [
+    process.env.PLAYWRIGHT_CHROMIUM ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM } : null,
+    {},
+    { channel: "chrome" },
+    { channel: "chromium" },
+  ].filter(Boolean);
   let browser;
-  try {
-    browser = await chromium.launch(opzioni);
-  } catch (e) {
-    throw new Saltato(`il browser non parte (${String(e.message).split("\n")[0]})`);
+  let ultimo = "";
+  for (const opzioni of strade) {
+    try {
+      browser = await chromium.launch(opzioni);
+      break;
+    } catch (e) {
+      ultimo = String(e.message).split("\n")[0];
+    }
+  }
+  if (!browser) {
+    throw new Saltato(
+      `il browser non parte (${ultimo}) — `
+        + "`npx playwright install chromium`, oppure PLAYWRIGHT_CHROMIUM=/percorso/al/chrome"
+    );
   }
   const p = await browser.newPage({ viewport: { width: 900, height: 900 } });
 

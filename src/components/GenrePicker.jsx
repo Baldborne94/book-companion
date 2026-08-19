@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { C } from "../data/constants.js";
+import { C, F, R } from "../data/constants.js";
 import { FAMIGLIE, SEP, famigliaDi } from "../data/generi.js";
 
 // L'elenco dei generi da toccare col dito. Sta DENTRO la scheda, sotto la
@@ -14,8 +14,8 @@ import { FAMIGLIE, SEP, famigliaDi } from "../data/generi.js";
 // il tasto accanto — sono chip attaccati, e sbagliare genere e' silenzioso
 const chip = (attivo, tono) => ({
   padding: "12px 16px",
-  borderRadius: 999,
-  fontSize: 14.5,
+  borderRadius: R.tondo,
+  fontSize: F.nota,
   lineHeight: 1.25,
   cursor: "pointer",
   border: `1px solid ${attivo ? tono : C.border}`,
@@ -60,7 +60,7 @@ export default function GenrePicker({ value, onChange, miei = [] }) {
         marginTop: -4,
         marginBottom: 12,
         padding: 12,
-        borderRadius: 12,
+        borderRadius: R.piccolo,
         border: `1px solid ${C.border}`,
         background: C.surface,
       }}
@@ -124,11 +124,11 @@ export default function GenrePicker({ value, onChange, miei = [] }) {
                 placeholder={`Sottogenere di ${famiglia.nome}…`}
                 style={{
                   padding: "11px 14px",
-                  borderRadius: 999,
+                  borderRadius: R.tondo,
                   border: `1px solid ${C.arcane}`,
                   background: C.card,
                   color: C.text,
-                  fontSize: 14.5,
+                  fontSize: F.nota,
                   minWidth: 0,
                   width: 210,
                 }}
@@ -143,7 +143,7 @@ export default function GenrePicker({ value, onChange, miei = [] }) {
 
       {tuoi.length > 0 && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.dim}` }}>
-          <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 6 }}>
+          <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 6 }}>
             I tuoi
           </span>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -162,8 +162,8 @@ export default function GenrePicker({ value, onChange, miei = [] }) {
           style={{
             marginTop: 12,
             padding: "11px 16px",
-            borderRadius: 999,
-            fontSize: 13.5,
+            borderRadius: R.tondo,
+            fontSize: F.piccolo,
             border: `1px solid ${C.border}`,
             color: C.muted,
             background: "transparent",

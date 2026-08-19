@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { C, FONT_TITLE } from "../data/constants.js";
+import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { isSyncConfigured } from "../lib/supabase.js";
 import { getSession, signIn, signOut, getLastSync, cloudUsage } from "../lib/sync.js";
 import { fmtBytes } from "../lib/bytes.js";
@@ -11,7 +11,7 @@ import { fmtBytes } from "../lib/bytes.js";
 const GRATIS = 1e9;
 
 function Spazio({ dati }) {
-  if (dati === undefined) return <p style={{ color: C.muted, fontSize: 13.5 }}>Conto lo spazio…</p>;
+  if (dati === undefined) return <p style={{ color: C.muted, fontSize: F.piccolo }}>Conto lo spazio…</p>;
   if (!dati) return null;
   const { libri, copertine, melodie, totale } = dati;
   const fetta = (n) => `${Math.min(100, (n / GRATIS) * 100)}%`;
@@ -19,14 +19,14 @@ function Spazio({ dati }) {
   return (
     <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 7 }}>
-        <span style={{ fontSize: 14.5, color: C.text }}>{fmtBytes(totale)} lassù</span>
-        <span style={{ fontSize: 12.5, color: C.muted }}>di 1 GB del piano gratuito</span>
+        <span style={{ fontSize: F.nota, color: C.text }}>{fmtBytes(totale)} lassù</span>
+        <span style={{ fontSize: F.minuscolo, color: C.muted }}>di 1 GB del piano gratuito</span>
       </div>
-      <div style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden", background: C.dim }}>
+      <div style={{ display: "flex", height: 8, borderRadius: R.minimo, overflow: "hidden", background: C.dim }}>
         <div style={{ width: fetta(libri.byte + copertine.byte), background: C.accent }} />
         <div style={{ width: fetta(melodie.byte), background: C.arcane }} />
       </div>
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 8, fontSize: 12.5, color: C.muted }}>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 8, fontSize: F.minuscolo, color: C.muted }}>
         <span>
           <span style={{ color: C.accent }}>■</span> {libri.quanti} {libri.quanti === 1 ? "libro" : "libri"} ·{" "}
           {fmtBytes(libri.byte + copertine.byte)}
@@ -37,7 +37,7 @@ function Spazio({ dati }) {
         </span>
       </div>
       {pieno > 0.8 && (
-        <p style={{ margin: "8px 0 0", fontSize: 12.5, color: C.accent, lineHeight: 1.45 }}>
+        <p style={{ margin: "8px 0 0", fontSize: F.minuscolo, color: C.accent, lineHeight: 1.45 }}>
           Lo spazio sta finendo. Le melodie pesano molto più dei libri: quelle che non ti servono a
           schermo spento possono tornare a essere un link YouTube, che non occupa niente.
         </p>
@@ -122,7 +122,7 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
         style={{
           width: "100%",
           maxWidth: 460,
-          borderRadius: 18,
+          borderRadius: R.grande,
           border: `1px solid ${C.border}`,
           background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
           boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
@@ -132,7 +132,7 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
         <h2
           style={{
             fontFamily: FONT_TITLE,
-            fontSize: 23,
+            fontSize: F.titolo,
             fontWeight: 600,
             color: C.text,
             marginBottom: 6,
@@ -142,7 +142,7 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
         </h2>
 
         {!isSyncConfigured() ? (
-          <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.5 }}>
+          <p style={{ color: C.muted, fontSize: F.nota, lineHeight: 1.5 }}>
             La sincronizzazione non è ancora configurata. Servono le due chiavi del progetto
             Supabase nelle variabili d'ambiente (<code>VITE_SUPABASE_URL</code> e{" "}
             <code>VITE_SUPABASE_ANON_KEY</code>): le istruzioni complete sono in{" "}
@@ -153,13 +153,13 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
           <p style={{ color: C.muted }}>Un momento…</p>
         ) : session ? (
           <>
-            <p style={{ color: C.muted, fontSize: 14.5, marginBottom: 16 }}>
+            <p style={{ color: C.muted, fontSize: F.nota, marginBottom: 16 }}>
               Connesso come <span style={{ color: C.text }}>{session.user.email}</span>
               <br />
               Ultima sincronizzazione: {fmtWhen(getLastSync())}
             </p>
             {status.message && (
-              <p style={{ color: C.arcane, fontSize: 14, marginBottom: 12 }}>{status.message}</p>
+              <p style={{ color: C.arcane, fontSize: F.nota, marginBottom: 12 }}>{status.message}</p>
             )}
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button
@@ -169,11 +169,11 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
                   flex: 1,
                   minWidth: 150,
                   padding: "11px 18px",
-                  borderRadius: 12,
+                  borderRadius: R.piccolo,
                   background: status.busy ? C.dim : `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
                   color: status.busy ? C.muted : C.onAccent,
                   fontWeight: 600,
-                  fontSize: 15,
+                  fontSize: F.corpo,
                 }}
               >
                 {status.busy ? "Sincronizzo…" : "🔄 Sincronizza ora"}
@@ -182,10 +182,10 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
                 onClick={handleSignOut}
                 style={{
                   padding: "11px 18px",
-                  borderRadius: 12,
+                  borderRadius: R.piccolo,
                   border: `1px solid ${C.border}`,
                   color: C.muted,
-                  fontSize: 15,
+                  fontSize: F.corpo,
                 }}
               >
                 Esci
@@ -194,16 +194,16 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
             <Spazio dati={spazio} />
           </>
         ) : sent ? (
-          <p style={{ color: C.text, fontSize: 15, lineHeight: 1.55 }}>
+          <p style={{ color: C.text, fontSize: F.corpo, lineHeight: 1.55 }}>
             ✉️ Ti ho mandato un link a <strong>{email.trim()}</strong>.<br />
-            <span style={{ color: C.muted, fontSize: 14 }}>
+            <span style={{ color: C.muted, fontSize: F.nota }}>
               Aprilo da questo dispositivo: tornerai qui già connesso, e la biblioteca comincerà
               a sincronizzarsi da sola.
             </span>
           </p>
         ) : (
           <>
-            <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.5, marginBottom: 14 }}>
+            <p style={{ color: C.muted, fontSize: F.nota, lineHeight: 1.5, marginBottom: 14 }}>
               Entra con la tua email: libri, segnalibri, evidenziazioni, note e progressi ti
               seguiranno su ogni dispositivo. Niente password — ricevi un link e sei dentro.
             </p>
@@ -219,11 +219,11 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
                   flex: 1,
                   minWidth: 180,
                   padding: "10px 14px",
-                  borderRadius: 12,
+                  borderRadius: R.piccolo,
                   border: `1px solid ${C.border}`,
                   background: C.bg,
                   color: C.text,
-                  fontSize: 15,
+                  fontSize: F.corpo,
                   outline: "none",
                 }}
               />
@@ -232,11 +232,11 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
                 disabled={busy}
                 style={{
                   padding: "10px 20px",
-                  borderRadius: 12,
+                  borderRadius: R.piccolo,
                   background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
                   color: C.onAccent,
                   fontWeight: 600,
-                  fontSize: 15,
+                  fontSize: F.corpo,
                 }}
               >
                 {busy ? "…" : "Inviami il link"}
@@ -246,7 +246,7 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
         )}
 
         <div style={{ marginTop: 18, textAlign: "right" }}>
-          <button onClick={onClose} style={{ color: C.muted, fontSize: 14.5 }}>
+          <button onClick={onClose} style={{ color: C.muted, fontSize: F.nota }}>
             Chiudi
           </button>
         </div>

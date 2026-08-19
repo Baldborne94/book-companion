@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { C, FONT_TITLE } from "../data/constants.js";
+import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { getCover } from "../lib/bookStore.js";
 
 // `version` serve a chi la copertina la CAMBIA: l'id del libro non cambia,
@@ -50,14 +50,14 @@ export default function BookCover({ book, radius = 8, compact = false, version =
         />
       ) : (
         <div style={{ padding: compact ? 4 : 10, textAlign: "center" }}>
-          <div style={{ fontSize: compact ? 16 : 22, marginBottom: compact ? 0 : 6 }}>
+          <div style={{ fontSize: compact ? F.rilievo : F.titolo, marginBottom: compact ? 0 : 6 }}>
             {book.fileType === "pdf" ? "📄" : "📖"}
           </div>
           {!compact && (
           <div
             style={{
               fontFamily: FONT_TITLE,
-              fontSize: 13,
+              fontSize: F.piccolo,
               lineHeight: 1.25,
               color: C.text,
               display: "-webkit-box",

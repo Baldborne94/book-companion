@@ -10,6 +10,8 @@
 --   alter table public.books
 --     add column if not exists started_at  bigint not null default 0,
 --     add column if not exists finished_at bigint not null default 0;
+--   alter table public.books add column if not exists impronta text;  -- doppioni
+--   alter table public.prefs add column if not exists glossari jsonb not null default '{}'::jsonb;
 -- Senza, l'app sincronizza comunque tutto il resto: rinuncia solo al
 -- campo mancante e lo tiene in locale. Dopo la migrazione i libri gia'
 -- salvati si ricaricano da soli alla prima sincronizzazione.
@@ -37,8 +39,16 @@ create table if not exists public.books (
   music jsonb,
   file_ext text,
   deleted boolean not null default false,
-  updated_at bigint not null default 0
+  updated_at bigint not null default 0,
+  -- l'impronta SHA-256 dei byte del file: e' quella che riconosce lo stesso
+  -- file importato due volte. Senza questa colonna il doppione fra due
+  -- dispositivi si puo' solo segnalare per titolo e autore, non saltare.
+  impronta text
 );
+
+-- per i database gia' creati: `create table if not exists` non aggiunge le
+-- colonne nuove
+alter table public.books add column if not exists impronta text;
 
 create index if not exists books_user_idx on public.books(user_id);
 alter table public.books enable row level security;
@@ -52,6 +62,10 @@ create table if not exists public.prefs (
   reader jsonb,
   music_favs jsonb not null default '[]'::jsonb,
   music_lists jsonb not null default '[]'::jsonb,
+  -- i termini che il lettore ha scritto nel suo glossario, raccolti per
+  -- saga: la chiave e' la saga, non il singolo volume, quindi stanno qui
+  -- e non con i libri
+  glossari jsonb not null default '{}'::jsonb,
   last_opened text,
   updated_at bigint not null default 0
 );
@@ -59,6 +73,7 @@ create table if not exists public.prefs (
 -- per i database gia' creati: `create table if not exists` non aggiunge le
 -- colonne nuove, e senza questa riga le raccolte non salirebbero mai
 alter table public.prefs add column if not exists music_lists jsonb not null default '[]'::jsonb;
+alter table public.prefs add column if not exists glossari jsonb not null default '{}'::jsonb;
 
 alter table public.prefs enable row level security;
 

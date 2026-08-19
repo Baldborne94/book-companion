@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { C, FONT_TITLE } from "../data/constants.js";
+import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { ensureLocalFile } from "../lib/sync.js";
 import { getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights } from "../lib/annotations.js";
 import { getProgress, setProgress, setStatus, getStatus, loadBooks } from "../lib/library.js";
@@ -37,8 +37,8 @@ const isTouch = () => navigator.maxTouchPoints > 0;
 const barBtn = (active) => ({
   width: 40,
   height: 40,
-  borderRadius: 10,
-  fontSize: 19,
+  borderRadius: R.piccolo,
+  fontSize: F.titoletto,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -66,7 +66,7 @@ function Panel({ title, onClose, children }) {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <h3 style={{ fontFamily: FONT_TITLE, fontSize: 20, fontWeight: 600, color: C.text }}>{title}</h3>
+          <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.titoletto, fontWeight: 600, color: C.text }}>{title}</h3>
           <button onClick={onClose} style={barBtn(false)}>✕</button>
         </div>
         {children}
@@ -709,7 +709,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                       background: h.color,
                       opacity: 0.36,
                       mixBlendMode: "multiply",
-                      borderRadius: 2,
+                      borderRadius: R.minimo,
                     }}
                   />
                 ))
@@ -758,7 +758,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
           }}
         >
           <span style={{ fontSize: 40, animation: "bc-flicker 3s ease-in-out infinite" }}>🕯️</span>
-          <span style={{ fontFamily: FONT_TITLE, fontSize: 18 }}>Apro il tomo…</span>
+          <span style={{ fontFamily: FONT_TITLE, fontSize: F.rilievo }}>Apro il tomo…</span>
         </div>
       )}
 
@@ -786,7 +786,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
           </span>
           <button
             onClick={handleClose}
-            style={{ padding: "10px 22px", borderRadius: 10, border: `1px solid ${C.border}`, color: C.muted }}
+            style={{ padding: "10px 22px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.muted }}
           >
             Torna alla Libreria
           </button>
@@ -810,7 +810,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             alignItems: "center",
             gap: 10,
             padding: "10px 14px",
-            borderRadius: 14,
+            borderRadius: R.medio,
             background: `${C.card}f8`,
             border: `1px solid ${C.border}`,
             boxShadow: "0 8px 30px #00000088",
@@ -839,10 +839,10 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
               style={{
                 marginLeft: 4,
                 padding: "6px 12px",
-                borderRadius: 999,
+                borderRadius: R.tondo,
                 border: `1px solid ${C.arcane}88`,
                 color: C.arcane,
-                fontSize: 14,
+                fontSize: F.nota,
                 whiteSpace: "nowrap",
               }}
             >
@@ -854,17 +854,17 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
               onClick={() => chiE(sel.text.trim(), String(live.current.page))}
               style={{
                 padding: "6px 12px",
-                borderRadius: 999,
+                borderRadius: R.tondo,
                 border: `1px solid ${C.accent}88`,
                 color: C.accent,
-                fontSize: 14,
+                fontSize: F.nota,
                 whiteSpace: "nowrap",
               }}
             >
               🕮 Chi è
             </button>
           )}
-          <button onClick={clearSelection} style={{ fontSize: 14.5, color: C.muted, marginLeft: 4 }}>
+          <button onClick={clearSelection} style={{ fontSize: F.nota, color: C.muted, marginLeft: 4 }}>
             Annulla
           </button>
         </div>
@@ -894,7 +894,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
               style={{
                 flex: 1,
                 fontFamily: FONT_TITLE,
-                fontSize: 16.5,
+                fontSize: F.rilievo,
                 fontWeight: 600,
                 color: C.text,
                 overflow: "hidden",
@@ -907,7 +907,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             {music?.current && (
               <>
                 {music.manca && (
-                  <span title="Quanto manca allo spegnimento della musica" style={{ fontSize: 12.5, color: C.muted, whiteSpace: "nowrap" }}>
+                  <span title="Quanto manca allo spegnimento della musica" style={{ fontSize: F.minuscolo, color: C.muted, whiteSpace: "nowrap" }}>
                     🌙 {music.manca}
                   </span>
                 )}
@@ -922,8 +922,8 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                     maxWidth: 150,
                     padding: "0 8px",
                     height: 40,
-                    borderRadius: 10,
-                    fontSize: 13,
+                    borderRadius: R.piccolo,
+                    fontSize: F.piccolo,
                     color: C.muted,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -938,7 +938,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                 <button onClick={onMusicToggle} style={barBtn(false)} aria-label={music.playing ? "Pausa musica" : "Riprendi musica"}>
                   {music.playing ? "⏸" : "▶"}
                 </button>
-                <button onClick={onMusicNext} style={{ ...barBtn(false), fontSize: 16 }} aria-label="Melodia successiva">
+                <button onClick={onMusicNext} style={{ ...barBtn(false), fontSize: F.corpo }} aria-label="Melodia successiva">
                   ⏭
                 </button>
                 {/* il volume qui e' quello della sola musica: sotto la lettura
@@ -952,7 +952,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                   aria-label="Volume della musica"
                   style={{ width: 64, flexShrink: 0, accentColor: C.accent }}
                 />
-                <button onClick={onMusicStop} style={{ ...barBtn(false), fontSize: 16, color: C.muted }} aria-label="Spegni musica">
+                <button onClick={onMusicStop} style={{ ...barBtn(false), fontSize: F.corpo, color: C.muted }} aria-label="Spegni musica">
                   🔇
                 </button>
               </>
@@ -986,7 +986,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             >
               ＋
             </button>
-            <button onClick={() => setPanel(panel === "night" ? null : "night")} style={{ ...barBtn(panel === "night"), fontSize: 17 }} aria-label="Filtro notte">
+            <button onClick={() => setPanel(panel === "night" ? null : "night")} style={{ ...barBtn(panel === "night"), fontSize: F.rilievo }} aria-label="Filtro notte">
               🌙
             </button>
           </div>
@@ -1013,7 +1013,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
               onChange={(e) => setPage(parseInt(e.target.value, 10))}
               style={{ width: "100%", accentColor: C.accent }}
             />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12.5, color: C.muted, marginTop: 2 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: F.minuscolo, color: C.muted, marginTop: 2 }}>
               <span>{pct}%</span>
               {quantoManca && (
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 10px" }}>
@@ -1038,11 +1038,11 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                   style={{
                     width: 58,
                     padding: "3px 7px",
-                    borderRadius: 8,
+                    borderRadius: R.piccolo,
                     border: `1px solid ${C.border}`,
                     background: C.card,
                     color: C.text,
-                    fontSize: 12.5,
+                    fontSize: F.minuscolo,
                     textAlign: "right",
                     outline: "none",
                   }}
@@ -1063,14 +1063,14 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             zIndex: 30,
             width: 260,
             padding: 16,
-            borderRadius: 14,
+            borderRadius: R.medio,
             border: `1px solid ${C.border}`,
             background: `${C.surface}fa`,
             boxShadow: "0 10px 40px #00000088",
             animation: "bc-fade-in 0.2s ease-out",
           }}
         >
-          <div style={{ fontSize: 14, color: C.muted, marginBottom: 4 }}>Filtro notte caldo</div>
+          <div style={{ fontSize: F.nota, color: C.muted, marginBottom: 4 }}>Filtro notte caldo</div>
           <input
             type="range"
             min={0}
@@ -1080,7 +1080,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             onChange={(e) => updateSettings({ warmth: parseFloat(e.target.value) })}
             style={{ width: "100%", accentColor: C.accent, marginBottom: 12 }}
           />
-          <div style={{ fontSize: 14, color: C.muted, marginBottom: 4 }}>Luminosità</div>
+          <div style={{ fontSize: F.nota, color: C.muted, marginBottom: 4 }}>Luminosità</div>
           <input
             type="range"
             min={0.4}
@@ -1100,17 +1100,17 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
               alignItems: "center",
               gap: 10,
               padding: "8px 10px",
-              borderRadius: 10,
+              borderRadius: R.piccolo,
               border: `1px solid ${settings.ritaglia !== false ? C.accent : C.border}`,
               color: settings.ritaglia !== false ? C.accent : C.muted,
-              fontSize: 14,
+              fontSize: F.nota,
               textAlign: "left",
             }}
           >
-            <span style={{ fontSize: 16 }}>{settings.ritaglia !== false ? "☑" : "☐"}</span>
+            <span style={{ fontSize: F.corpo }}>{settings.ritaglia !== false ? "☑" : "☐"}</span>
             <span style={{ flex: 1 }}>Togli i margini bianchi</span>
           </button>
-          <div style={{ fontSize: 12, color: C.muted, marginTop: 6, lineHeight: 1.45 }}>
+          <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 6, lineHeight: 1.45 }}>
             {crop === null
               ? "Sto misurando i margini di questo tomo…"
               : vuoto(crop)
@@ -1127,12 +1127,12 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             style={{
               width: "100%",
               padding: "11px 0",
-              borderRadius: 12,
+              borderRadius: R.piccolo,
               marginBottom: 14,
               background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
               color: C.onAccent,
               fontWeight: 600,
-              fontSize: 15,
+              fontSize: F.corpo,
             }}
           >
             📑 Salva qui
@@ -1149,10 +1149,10 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                       goToPage(parseInt(m.cfi, 10) || 1);
                       setPanel(null);
                     }}
-                    style={{ flex: 1, textAlign: "left", padding: "11px 6px", fontSize: 15, color: C.text }}
+                    style={{ flex: 1, textAlign: "left", padding: "11px 6px", fontSize: F.corpo, color: C.text }}
                   >
                     {m.label}
-                    <span style={{ display: "block", fontSize: 12.5, color: C.muted }}>
+                    <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted }}>
                       {pages ? `al ${Math.round(((parseInt(m.cfi, 10) || 1) / pages) * 100)}% · ` : ""}
                       {new Date(m.createdAt).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                     </span>
@@ -1190,17 +1190,17 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
               style={{
                 flex: 1,
                 padding: "10px 14px",
-                borderRadius: 10,
+                borderRadius: R.piccolo,
                 border: `1px solid ${C.border}`,
                 background: C.card,
                 color: C.text,
-                fontSize: 15,
+                fontSize: F.corpo,
                 outline: "none",
               }}
             />
             <button
               onClick={runSearch}
-              style={{ padding: "0 18px", borderRadius: 10, background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`, color: C.onAccent, fontWeight: 600 }}
+              style={{ padding: "0 18px", borderRadius: R.piccolo, background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`, color: C.onAccent, fontWeight: 600 }}
             >
               {search.busy ? "…" : "Cerca"}
             </button>
@@ -1214,7 +1214,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             <p style={{ color: C.muted }}>Nessuna traccia di «{query}» in questo tomo.</p>
           )}
           {search.full && (
-            <p style={{ color: C.muted, fontSize: 13, marginBottom: 8 }}>
+            <p style={{ color: C.muted, fontSize: F.piccolo, marginBottom: 8 }}>
               Primi {search.results.length} passaggi: affina la ricerca per vedere gli altri.
             </p>
           )}
@@ -1233,13 +1233,13 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                 width: "100%",
                 textAlign: "left",
                 padding: "10px 6px",
-                fontSize: 14.5,
+                fontSize: F.nota,
                 color: C.text,
                 lineHeight: 1.4,
                 borderBottom: `1px solid ${C.border}44`,
               }}
             >
-              <span style={{ display: "block", fontSize: 12, color: C.muted, marginBottom: 2 }}>pag. {r.page}</span>
+              <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 2 }}>pag. {r.page}</span>
               {r.before}
               <mark style={{ background: "transparent", color: C.accent, fontWeight: 600 }}>{r.hit}</mark>
               {r.after}
@@ -1265,12 +1265,12 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                 padding: "10px 6px",
                 paddingLeft: 6 + it.depth * 14,
                 borderBottom: `1px solid ${C.border}44`,
-                fontSize: 15,
+                fontSize: F.corpo,
                 color: it.page === page ? C.accent : C.text,
               }}
             >
               <span style={{ flex: 1 }}>{it.title || "…"}</span>
-              <span style={{ fontSize: 12.5, color: C.muted }}>{it.page}</span>
+              <span style={{ fontSize: F.minuscolo, color: C.muted }}>{it.page}</span>
             </button>
           ))}
         </Panel>
@@ -1311,7 +1311,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             gap: 14,
             alignItems: "center",
             padding: "13px 16px",
-            borderRadius: 16,
+            borderRadius: R.medio,
             background: `${C.card}fa`,
             border: `1px solid ${C.accent}55`,
             boxShadow: "0 12px 44px #000000aa",
@@ -1322,12 +1322,12 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             <BookCover book={nextBook} radius={6} compact />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12.5, color: C.muted }}>Fine del volume — il prossimo della saga</div>
+            <div style={{ fontSize: F.minuscolo, color: C.muted }}>Fine del volume — il prossimo della saga</div>
             <div
               style={{
                 fontFamily: FONT_TITLE,
                 fontWeight: 600,
-                fontSize: 17,
+                fontSize: F.rilievo,
                 color: C.text,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -1342,11 +1342,11 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                   flush();
                   onReadNext(nextBook.id);
                 }}
-                style={{ fontSize: 14, fontWeight: 600, color: C.accent }}
+                style={{ fontSize: F.nota, fontWeight: 600, color: C.accent }}
               >
                 Leggilo ora
               </button>
-              <button onClick={() => setEndCard("dismissed")} style={{ fontSize: 14, color: C.muted }}>
+              <button onClick={() => setEndCard("dismissed")} style={{ fontSize: F.nota, color: C.muted }}>
                 Più tardi
               </button>
             </div>

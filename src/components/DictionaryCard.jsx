@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { C, FONT_TITLE } from "../data/constants.js";
+import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { consultaOracolo, hasOracle, setOracleKey } from "../lib/oracle.js";
 import { chiaveGlossario, vociDi, salvaVoci, aggiungi, togli, cerca } from "../lib/glossarioMio.js";
 
@@ -27,7 +27,7 @@ function banda(testo) {
         padding: "5px 12px",
         background: `${C.surface}e6`,
         borderBottom: `1px solid ${C.border}`,
-        fontSize: 11,
+        fontSize: F.minuscolo,
         letterSpacing: 0.6,
         textTransform: "uppercase",
         color: C.muted,
@@ -48,7 +48,7 @@ function Voce({ dict }) {
       style={{
         marginBottom: 12,
         border: `1px solid ${C.border}`,
-        borderRadius: 10,
+        borderRadius: R.piccolo,
         overflow: "hidden",
         background: `${C.surface}55`,
       }}
@@ -58,25 +58,25 @@ function Voce({ dict }) {
           {banda(`Wiktionary ${lingua}`)}
           <div style={{ padding: "9px 12px 11px" }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
-              <span style={{ fontSize: 16, fontWeight: 600, color: C.text }}>
+              <span style={{ fontSize: F.corpo, fontWeight: 600, color: C.text }}>
                 {dict.lemma || dict.word}
               </span>
               {dict.forma && (
-                <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>
+                <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>
                   ({dict.forma} «{dict.lemma}»)
                 </span>
               )}
             </div>
             {entries.map((e, i) => (
               <div key={i} style={{ display: "flex", gap: 8, marginBottom: 7 }}>
-                <span style={{ flexShrink: 0, fontSize: 13, color: C.accent, minWidth: 12 }}>
+                <span style={{ flexShrink: 0, fontSize: F.piccolo, color: C.accent, minWidth: 12 }}>
                   {i + 1}
                 </span>
                 <div style={{ minWidth: 0 }}>
                   {e.pos && (
                     <span
                       style={{
-                        fontSize: 10.5,
+                        fontSize: F.minuscolo,
                         letterSpacing: 0.5,
                         textTransform: "uppercase",
                         color: C.arcane,
@@ -86,7 +86,7 @@ function Voce({ dict }) {
                       {e.pos}
                     </span>
                   )}
-                  <span style={{ fontSize: 14.5, color: C.text, lineHeight: 1.5 }}>{e.text}</span>
+                  <span style={{ fontSize: F.nota, color: C.text, lineHeight: 1.5 }}>{e.text}</span>
                 </div>
               </div>
             ))}
@@ -98,11 +98,11 @@ function Voce({ dict }) {
         <>
           {banda(dict.machine ? "Reso a macchina, dall'inglese" : "Dall'inglese all'italiano")}
           <div style={{ padding: "8px 12px 10px" }}>
-            <span style={{ fontSize: 14.5, color: C.text, lineHeight: 1.5 }}>
+            <span style={{ fontSize: F.nota, color: C.text, lineHeight: 1.5 }}>
               {dict.translation}
             </span>
             {dict.machine && (
-              <div style={{ fontSize: 11.5, color: C.muted, marginTop: 5, lineHeight: 1.4 }}>
+              <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 5, lineHeight: 1.4 }}>
                 Nessuna voce di vocabolario per questo passaggio: qui sopra c'è una traduzione
                 automatica, non il senso del modo di dire.
               </div>
@@ -229,28 +229,28 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
           overflowY: "auto",
           background: `${C.card}fa`,
           border: `1px solid ${C.border}`,
-          borderRadius: 16,
+          borderRadius: R.medio,
           boxShadow: "0 12px 44px #000000aa",
           padding: "13px 16px 15px",
           animation: "bc-fade-in 0.2s ease-out",
         }}
       >
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
-          <span style={{ fontFamily: FONT_TITLE, fontSize: 21, fontWeight: 600, color: C.text }}>
+          <span style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
             {titolo}
           </span>
-          {primaria?.k && <span style={{ fontSize: 11.5, color: C.arcane }}>{primaria.k}</span>}
+          {primaria?.k && <span style={{ fontSize: F.minuscolo, color: C.arcane }}>{primaria.k}</span>}
           {primaria?.r && (
-            <span style={{ fontSize: 11.5, color: C.muted, fontStyle: "italic" }}>{primaria.r}</span>
+            <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>{primaria.r}</span>
           )}
-          <button onClick={onClose} style={{ marginLeft: "auto", color: C.muted, fontSize: 17 }}>
+          <button onClick={onClose} style={{ marginLeft: "auto", color: C.muted, fontSize: F.rilievo }}>
             ✕
           </button>
         </div>
 
         {primaria && (
           <div style={{ marginBottom: 12 }}>
-            <p style={{ fontSize: 15.5, color: C.text, lineHeight: 1.5, margin: "0 0 8px" }}>
+            <p style={{ fontSize: F.corpo, color: C.text, lineHeight: 1.5, margin: "0 0 8px" }}>
               {primaria.d}
             </p>
             {primaria.wiki && (
@@ -260,10 +260,10 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
               rel="noreferrer"
               style={{
                 display: "inline-block",
-                fontSize: 13.5,
+                fontSize: F.piccolo,
                 color: C.accent,
                 border: `1px solid ${C.accent}55`,
-                borderRadius: 999,
+                borderRadius: R.tondo,
                 padding: "5px 12px",
                 textDecoration: "none",
               }}
@@ -272,7 +272,7 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
             </a>
             )}
             {primaria.wiki && (
-              <span style={{ fontSize: 11.5, color: C.muted, marginLeft: 9 }}>di là si spoilera</span>
+              <span style={{ fontSize: F.minuscolo, color: C.muted, marginLeft: 9 }}>di là si spoilera</span>
             )}
           </div>
         )}
@@ -289,10 +289,10 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
             style={{
               display: "inline-block",
               marginBottom: 12,
-              fontSize: 13.5,
+              fontSize: F.piccolo,
               color: C.accent,
               border: `1px solid ${C.accent}55`,
-              borderRadius: 999,
+              borderRadius: R.tondo,
               padding: "5px 12px",
               textDecoration: "none",
             }}
@@ -312,14 +312,14 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
             }}
           >
             <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 3 }}>
-              <span style={{ fontSize: 14.5, color: C.text, fontWeight: 600 }}>{secondaria.t}</span>
+              <span style={{ fontSize: F.nota, color: C.text, fontWeight: 600 }}>{secondaria.t}</span>
               {(secondaria.r || secondaria.k) && (
-                <span style={{ fontSize: 11.5, color: C.muted, fontStyle: "italic" }}>
+                <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>
                   {secondaria.r || secondaria.k}
                 </span>
               )}
             </div>
-            <p style={{ fontSize: 15, color: C.text, lineHeight: 1.45, margin: 0 }}>
+            <p style={{ fontSize: F.corpo, color: C.text, lineHeight: 1.45, margin: 0 }}>
               {secondaria.d}
             </p>
             {secondaria.wiki && (
@@ -327,7 +327,7 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
                 href={secondaria.wiki}
                 target="_blank"
                 rel="noreferrer"
-                style={{ display: "inline-block", marginTop: 6, fontSize: 12.5, color: C.accent, textDecoration: "none" }}
+                style={{ display: "inline-block", marginTop: 6, fontSize: F.minuscolo, color: C.accent, textDecoration: "none" }}
               >
                 Apri sul wiki ↗
               </a>
@@ -337,7 +337,7 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
 
         {rest.length > 0 && (
           <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 6 }}>
+            <div style={{ fontSize: F.minuscolo, color: C.muted, marginBottom: 6 }}>
               {elenco ? "In questa frase riconosco" : "Nel brano riconosco anche"}
             </div>
             {rest.slice(0, 12).map((e, i) => (
@@ -347,20 +347,20 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
                     href={e.wiki}
                     target="_blank"
                     rel="noreferrer"
-                    style={{ flexShrink: 0, minWidth: 96, fontSize: 13.5, color: C.accent, fontWeight: 600, textDecoration: "none" }}
+                    style={{ flexShrink: 0, minWidth: 96, fontSize: F.piccolo, color: C.accent, fontWeight: 600, textDecoration: "none" }}
                   >
                     {e.t} ↗
                   </a>
                 ) : (
-                  <span style={{ flexShrink: 0, minWidth: 96, fontSize: 13.5, color: C.text, fontWeight: 600 }}>
+                  <span style={{ flexShrink: 0, minWidth: 96, fontSize: F.piccolo, color: C.text, fontWeight: 600 }}>
                     {e.t}
                   </span>
                 )}
-                <span style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.4 }}>{e.d}</span>
+                <span style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.4 }}>{e.d}</span>
               </div>
             ))}
             {rest.length > 12 && (
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+              <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 4 }}>
                 e altre {rest.length - 12} voci
               </div>
             )}
@@ -375,10 +375,10 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
             style={{
               display: "inline-block",
               marginBottom: 10,
-              fontSize: 13.5,
+              fontSize: F.piccolo,
               color: C.arcane,
               border: `1px solid ${C.arcane}55`,
-              borderRadius: 999,
+              borderRadius: R.tondo,
               padding: "5px 12px",
               textDecoration: "none",
             }}
@@ -388,11 +388,11 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
         )}
 
         {dict.loading ? (
-          <p style={{ color: C.muted, fontSize: 14.5 }}>Sfoglio il glossario…</p>
+          <p style={{ color: C.muted, fontSize: F.nota }}>Sfoglio il glossario…</p>
         ) : local ? null : (
           // il glossario che tace non chiude la scheda: resta l'Oracolo, e
           // per la definizione nuda c'e' il dizionario del tablet
-          <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.5 }}>
+          <p style={{ color: C.muted, fontSize: F.nota, lineHeight: 1.5 }}>
             {dict.offline
               ? "Senza rete il vocabolario non risponde: le parole già cercate restano consultabili, le altre aspettano."
               : dict.frase
@@ -408,40 +408,40 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
           <div style={{ marginTop: 10, paddingTop: 11, borderTop: `1px solid ${C.border}66` }}>
             {oracolo?.answer ? (
               <>
-                <div style={{ fontSize: 11.5, color: C.arcane, marginBottom: 4 }}>✨ L'Oracolo dice</div>
-                <p style={{ fontSize: 15, color: C.text, lineHeight: 1.5, margin: 0 }}>{oracolo.answer}</p>
+                <div style={{ fontSize: F.minuscolo, color: C.arcane, marginBottom: 4 }}>✨ L'Oracolo dice</div>
+                <p style={{ fontSize: F.corpo, color: C.text, lineHeight: 1.5, margin: 0 }}>{oracolo.answer}</p>
               </>
             ) : oracolo?.loading ? (
-              <p style={{ fontSize: 13.5, color: C.muted, margin: 0 }}>✨ L'Oracolo sta leggendo il passaggio…</p>
+              <p style={{ fontSize: F.piccolo, color: C.muted, margin: 0 }}>✨ L'Oracolo sta leggendo il passaggio…</p>
             ) : oracolo?.error === "chiave" ? (
               <div>
-                <p style={{ fontSize: 13.5, color: C.muted, margin: "0 0 8px" }}>
+                <p style={{ fontSize: F.piccolo, color: C.muted, margin: "0 0 8px" }}>
                   L'Oracolo non ha accettato la chiave.
                 </p>
                 <button
                   onClick={() => { setOracolo(null); setKeyOpen(true); }}
-                  style={{ fontSize: 13.5, color: C.arcane, border: `1px solid ${C.arcane}55`, borderRadius: 999, padding: "5px 12px" }}
+                  style={{ fontSize: F.piccolo, color: C.arcane, border: `1px solid ${C.arcane}55`, borderRadius: R.tondo, padding: "5px 12px" }}
                 >
                   Cambia chiave
                 </button>
               </div>
             ) : oracolo?.error ? (
               <div>
-                <p style={{ fontSize: 13.5, color: C.muted, margin: "0 0 8px" }}>
+                <p style={{ fontSize: F.piccolo, color: C.muted, margin: "0 0 8px" }}>
                   {oracolo.error === "rete"
                     ? "L'Oracolo ha bisogno della rete: riprova quando sei online."
                     : "L'Oracolo non ha risposto: riprova tra un momento."}
                 </p>
                 <button
                   onClick={chiedi}
-                  style={{ fontSize: 13.5, color: C.arcane, border: `1px solid ${C.arcane}55`, borderRadius: 999, padding: "5px 12px" }}
+                  style={{ fontSize: F.piccolo, color: C.arcane, border: `1px solid ${C.arcane}55`, borderRadius: R.tondo, padding: "5px 12px" }}
                 >
                   Riprova
                 </button>
               </div>
             ) : keyOpen ? (
               <div>
-                <p style={{ fontSize: 13, color: C.muted, margin: "0 0 8px", lineHeight: 1.45 }}>
+                <p style={{ fontSize: F.piccolo, color: C.muted, margin: "0 0 8px", lineHeight: 1.45 }}>
                   Serve una chiave API di Anthropic (console.anthropic.com). Resta solo su questo
                   dispositivo e paghi solo quel che chiedi.
                 </p>
@@ -456,15 +456,15 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
                       minWidth: 0,
                       background: "transparent",
                       border: `1px solid ${C.border}`,
-                      borderRadius: 8,
+                      borderRadius: R.piccolo,
                       padding: "7px 10px",
-                      fontSize: 14,
+                      fontSize: F.nota,
                       color: C.text,
                     }}
                   />
                   <button
                     onClick={salvaChiave}
-                    style={{ flexShrink: 0, fontSize: 13.5, color: C.arcane, border: `1px solid ${C.arcane}55`, borderRadius: 999, padding: "5px 12px" }}
+                    style={{ flexShrink: 0, fontSize: F.piccolo, color: C.arcane, border: `1px solid ${C.arcane}55`, borderRadius: R.tondo, padding: "5px 12px" }}
                   >
                     Salva e chiedi
                   </button>
@@ -473,14 +473,14 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
             ) : hasOracle() ? (
               <button
                 onClick={chiedi}
-                style={{ fontSize: 13.5, color: C.arcane, border: `1px solid ${C.arcane}55`, borderRadius: 999, padding: "5px 12px" }}
+                style={{ fontSize: F.piccolo, color: C.arcane, border: `1px solid ${C.arcane}55`, borderRadius: R.tondo, padding: "5px 12px" }}
               >
                 ✨ Spiegami questo passaggio
               </button>
             ) : (
               <button
                 onClick={() => setKeyOpen(true)}
-                style={{ fontSize: 12.5, color: C.muted, textAlign: "left", padding: 0, lineHeight: 1.45 }}
+                style={{ fontSize: F.minuscolo, color: C.muted, textAlign: "left", padding: 0, lineHeight: 1.45 }}
               >
                 ✨ L'Oracolo può spiegarti cosa vuol dire qui, nel contesto del libro — serve una
                 chiave API, tocca per impostarla
@@ -506,11 +506,11 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
                   style={{
                     width: "100%",
                     padding: "9px 12px",
-                    borderRadius: 10,
+                    borderRadius: R.piccolo,
                     border: `1px solid ${C.border}`,
                     background: C.surface,
                     color: C.text,
-                    fontSize: 14.5,
+                    fontSize: F.nota,
                     lineHeight: 1.45,
                     resize: "vertical",
                     outline: "none",
@@ -520,16 +520,16 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
                   <button
                     onClick={salvaGloss}
                     style={{
-                      fontSize: 13.5,
+                      fontSize: F.piccolo,
                       color: C.accent,
                       border: `1px solid ${C.accent}55`,
-                      borderRadius: 999,
+                      borderRadius: R.tondo,
                       padding: "5px 14px",
                     }}
                   >
                     Tieni nel glossario
                   </button>
-                  <button onClick={() => setGlossOpen(false)} style={{ fontSize: 13, color: C.muted, padding: "5px 8px" }}>
+                  <button onClick={() => setGlossOpen(false)} style={{ fontSize: F.piccolo, color: C.muted, padding: "5px 8px" }}>
                     Lascia stare
                   </button>
                 </div>
@@ -539,10 +539,10 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
                 <button
                   onClick={apriGloss}
                   style={{
-                    fontSize: 13.5,
+                    fontSize: F.piccolo,
                     color: mia ? C.muted : C.accent,
                     border: `1px solid ${mia ? C.border : `${C.accent}55`}`,
-                    borderRadius: 999,
+                    borderRadius: R.tondo,
                     padding: "5px 14px",
                   }}
                 >

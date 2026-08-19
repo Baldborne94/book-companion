@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { C } from "../data/constants.js";
+import { C, F, R } from "../data/constants.js";
 
 // L'elenco delle evidenziazioni e' identico nei due reader: qui una volta
 // sola, cosi' EPUB e PDF non divergono (come per la scheda del dizionario).
@@ -30,11 +30,11 @@ export default function HighlightList({ highlights, onGoTo, onChange, onRemove, 
         borderBottom: `1px solid ${C.border}44`,
       }}
     >
-      <span style={{ width: 4, alignSelf: "stretch", borderRadius: 2, background: h.color, flexShrink: 0 }} />
+      <span style={{ width: 4, alignSelf: "stretch", borderRadius: R.minimo, background: h.color, flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <button
           onClick={() => onGoTo(h)}
-          style={{ width: "100%", textAlign: "left", fontSize: 14.5, color: C.text, lineHeight: 1.45, fontStyle: "italic" }}
+          style={{ width: "100%", textAlign: "left", fontSize: F.nota, color: C.text, lineHeight: 1.45, fontStyle: "italic" }}
         >
           “{h.text}”
         </button>
@@ -51,11 +51,11 @@ export default function HighlightList({ highlights, onGoTo, onChange, onRemove, 
               width: "100%",
               marginTop: 6,
               padding: "7px 10px",
-              borderRadius: 8,
+              borderRadius: R.piccolo,
               border: `1px solid ${C.accent}77`,
               background: C.card,
               color: C.text,
-              fontSize: 14,
+              fontSize: F.nota,
               fontFamily: "inherit",
               lineHeight: 1.4,
               resize: "vertical",
@@ -66,7 +66,7 @@ export default function HighlightList({ highlights, onGoTo, onChange, onRemove, 
           h.note && (
             <button
               onClick={() => edit(h)}
-              style={{ display: "block", textAlign: "left", marginTop: 5, fontSize: 13.5, color: C.arcane, lineHeight: 1.4 }}
+              style={{ display: "block", textAlign: "left", marginTop: 5, fontSize: F.piccolo, color: C.arcane, lineHeight: 1.4 }}
             >
               ✎ {h.note}
             </button>

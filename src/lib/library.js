@@ -83,6 +83,15 @@ export function setStatus(id, status) {
     }
     // tornare a "da leggere" e' un azzeramento esplicito
     if (status === "unread") setDates(id, { started: 0, finished: 0 });
+    // ABBANDONARE NON E' FINIRE. La data d'inizio resta — quel libro l'hai
+    // davvero cominciato, ed e' un pezzo della tua storia di lettore — ma
+    // quella di fine se ne va: senza toglierla, un romanzo prima dichiarato
+    // letto e poi mollato resterebbe nel diario fra i finiti, e il conto
+    // dell'anno direbbe una cosa che non e' successa.
+    if (status === "abandoned") {
+      if (!getStarted(id)) setDates(id, { started: now });
+      setDates(id, { finished: 0 });
+    }
   }
   touchBook(id);
 }

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { C, TEMA, FONT_TITLE } from "../data/constants.js";
+import { C, TEMA, FONT_TITLE, F, R } from "../data/constants.js";
 import { getStarted, getFinished, getStatus } from "../lib/library.js";
 import { buildDiary, yearStats, dayCount } from "../lib/diary.js";
 import BookCover from "./BookCover.jsx";
@@ -32,7 +32,7 @@ function Riga({ e, onOpenBook }) {
             display: "block",
             fontFamily: FONT_TITLE,
             fontWeight: 600,
-            fontSize: 16.5,
+            fontSize: F.rilievo,
             color: C.text,
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -41,7 +41,7 @@ function Riga({ e, onOpenBook }) {
         >
           {e.book.title}
         </span>
-        <span style={{ display: "block", fontSize: 13, color: C.muted, marginTop: 2 }}>
+        <span style={{ display: "block", fontSize: F.piccolo, color: C.muted, marginTop: 2 }}>
           {e.finished
             ? e.started
               ? `${breve(e.started)} → ${breve(e.finished)} · ${giorni(e.days)}`
@@ -89,17 +89,17 @@ export default function ReadingDiary({ books, onClose, onOpenBook }) {
           borderBottom: `1px solid ${C.border}`,
         }}
       >
-        <h2 style={{ flex: 1, fontFamily: FONT_TITLE, fontSize: 22, fontWeight: 600, color: C.text }}>
+        <h2 style={{ flex: 1, fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
           Diario di lettura
         </h2>
-        <button onClick={onClose} aria-label="Chiudi" style={{ fontSize: 19, color: C.muted, padding: 6 }}>
+        <button onClick={onClose} aria-label="Chiudi" style={{ fontSize: F.titoletto, color: C.muted, padding: 6 }}>
           ✕
         </button>
       </div>
 
       <div style={{ maxWidth: 760, margin: "0 auto", padding: "16px 18px 40px" }}>
         {diary.total === 0 && diary.reading.length === 0 ? (
-          <p style={{ color: C.muted, fontSize: 15, lineHeight: 1.6, marginTop: 20 }}>
+          <p style={{ color: C.muted, fontSize: F.corpo, lineHeight: 1.6, marginTop: 20 }}>
             Il diario è ancora bianco. Da qui in avanti, ogni libro che cominci e che finisci
             lascerà la sua data: fra qualche mese questa pagina racconterà il tuo anno di letture.
           </p>
@@ -110,7 +110,7 @@ export default function ReadingDiary({ books, onClose, onOpenBook }) {
             <h3
               style={{
                 fontFamily: FONT_TITLE,
-                fontSize: 18,
+                fontSize: F.rilievo,
                 fontWeight: 600,
                 color: C.accent,
                 marginBottom: 6,
@@ -134,18 +134,18 @@ export default function ReadingDiary({ books, onClose, onOpenBook }) {
                   alignItems: "baseline",
                   gap: 10,
                   fontFamily: FONT_TITLE,
-                  fontSize: 21,
+                  fontSize: F.titolo,
                   fontWeight: 600,
                   color: C.text,
                   marginBottom: 4,
                 }}
               >
                 Letti nel {year}
-                <span style={{ fontSize: 14, color: C.accent, fontFamily: "inherit" }}>
+                <span style={{ fontSize: F.nota, color: C.accent, fontFamily: "inherit" }}>
                   {s.libri} {s.libri === 1 ? "libro" : "libri"}
                 </span>
               </h3>
-              <p style={{ fontSize: 13.5, color: C.muted, marginBottom: 10, lineHeight: 1.5 }}>
+              <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 10, lineHeight: 1.5 }}>
                 {s.media != null ? `In media ${giorni(s.media)} a libro.` : "Durate non registrate."}
                 {s.veloce ? ` Il più veloce: «${s.veloce.book.title}», ${giorni(s.veloce.days)}.` : ""}
               </p>

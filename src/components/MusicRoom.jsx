@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { C, FONT_TITLE } from "../data/constants.js";
+import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import {
   getFavoritesRaw, saveFavorites, isFile, addTrackFile, dropTrack, parseYouTube,
   getListsRaw, saveLists, nuovaRaccolta, braniDi,
@@ -21,11 +21,11 @@ const inputStyle = {
   flex: 1,
   minWidth: 160,
   padding: "10px 14px",
-  borderRadius: 12,
+  borderRadius: R.piccolo,
   border: `1px solid ${C.border}`,
   background: C.surface,
   color: C.text,
-  fontSize: 15,
+  fontSize: F.corpo,
   outline: "none",
 };
 
@@ -201,11 +201,11 @@ export default function MusicRoom({ music, playerRef, notify }) {
           onClick={playLink}
           style={{
             padding: "10px 22px",
-            borderRadius: 12,
+            borderRadius: R.piccolo,
             background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
             color: C.onAccent,
             fontWeight: 600,
-            fontSize: 15,
+            fontSize: F.corpo,
             boxShadow: `0 0 20px ${C.accent}2e`,
           }}
         >
@@ -217,7 +217,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
         <div
           style={{
             padding: 16,
-            borderRadius: 16,
+            borderRadius: R.medio,
             border: `1px solid ${C.arcane}55`,
             background: `linear-gradient(135deg, ${C.arcane}14, ${C.card})`,
             boxShadow: `0 0 30px ${C.arcane}1a`,
@@ -236,26 +236,26 @@ export default function MusicRoom({ music, playerRef, notify }) {
               🎶
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: FONT_TITLE, fontWeight: 600, fontSize: 18, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div style={{ fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.rilievo, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {current.name || "Musica di sottofondo"}
               </div>
               {queue && (
-                <div style={{ fontSize: 12.5, color: C.arcane }}>
+                <div style={{ fontSize: F.minuscolo, color: C.arcane }}>
                   {queue.shuffle ? "🔀 casuale" : "▶ in ordine"} · {queue.index + 1} di {queue.total}
                 </div>
               )}
-              <div style={{ fontSize: 12.5, color: current.src ? C.accent : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div style={{ fontSize: F.minuscolo, color: current.src ? C.accent : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {current.src ? "♫ dal tuo archivio · va avanti a schermo spento" : current.url}
               </div>
             </div>
             <button
               onClick={() => (playing ? playerRef.current?.pause() : playerRef.current?.resume())}
               aria-label={playing ? "Pausa" : "Riprendi"}
-              style={{ fontSize: 26, color: C.accent, width: 44, height: 44 }}
+              style={{ fontSize: F.grande, color: C.accent, width: 44, height: 44 }}
             >
               {playing ? "⏸" : "▶"}
             </button>
-            <button onClick={() => playerRef.current?.stop()} aria-label="Spegni" style={{ fontSize: 18, color: C.muted, width: 36, height: 36 }}>
+            <button onClick={() => playerRef.current?.stop()} aria-label="Spegni" style={{ fontSize: F.rilievo, color: C.muted, width: 36, height: 36 }}>
               ✕
             </button>
           </div>
@@ -271,7 +271,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
               />
               <button
                 onClick={saveCurrentAsFav}
-                style={{ padding: "9px 16px", borderRadius: 10, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: 14 }}
+                style={{ padding: "9px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
               >
                 ☆ Custodisci
               </button>
@@ -281,7 +281,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
           {/* il volume della sola musica: sotto la lettura si tiene bassa
               senza abbassare tutto il tablet, e le notifiche restano dove sono */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
-            <span style={{ fontSize: 13.5, color: C.muted }}>{volPerCento === 0 ? "🔇" : volPerCento < 45 ? "🔉" : "🔊"} Volume:</span>
+            <span style={{ fontSize: F.piccolo, color: C.muted }}>{volPerCento === 0 ? "🔇" : volPerCento < 45 ? "🔉" : "🔊"} Volume:</span>
             <input
               type="range"
               min={0}
@@ -291,11 +291,11 @@ export default function MusicRoom({ music, playerRef, notify }) {
               aria-label="Volume della musica"
               style={{ flex: 1, minWidth: 120, accentColor: C.accent }}
             />
-            <span style={{ fontSize: 13, color: C.arcane, width: 40, textAlign: "right" }}>{volPerCento}%</span>
+            <span style={{ fontSize: F.piccolo, color: C.arcane, width: 40, textAlign: "right" }}>{volPerCento}%</span>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 13.5, color: C.muted }}>🌙 Si spegne da sola:</span>
+            <span style={{ fontSize: F.piccolo, color: C.muted }}>🌙 Si spegne da sola:</span>
             {SLEEP_CHOICES.map((s) => {
               const active = s.min === 0 ? !timerEnd : (sleepMin || 0) === s.min;
               return (
@@ -304,8 +304,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
                   onClick={() => playerRef.current?.setSleep(s.min)}
                   style={{
                     padding: "5px 12px",
-                    borderRadius: 999,
-                    fontSize: 13.5,
+                    borderRadius: R.tondo,
+                    fontSize: F.piccolo,
                     border: `1px solid ${active ? C.accent : C.border}`,
                     color: active ? C.accent : C.muted,
                   }}
@@ -315,7 +315,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
               );
             })}
             {manca && (
-              <span style={{ fontSize: 13, color: C.arcane }}>manca {manca} · sfuma piano sul finire</span>
+              <span style={{ fontSize: F.piccolo, color: C.arcane }}>manca {manca} · sfuma piano sul finire</span>
             )}
           </div>
         </div>
@@ -325,7 +325,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
           te: serve a dire "stasera questi, in quest'ordine" senza doverti
           portare dietro tutte le melodie ogni volta. */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "6px 0 12px", flexWrap: "wrap" }}>
-        <h2 style={{ fontFamily: FONT_TITLE, fontWeight: 600, fontSize: 21, color: C.text }}>
+        <h2 style={{ fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.titolo, color: C.text }}>
           <span style={{ color: C.accent, marginRight: 6 }}>✧</span>
           Le tue raccolte
         </h2>
@@ -334,8 +334,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
           onClick={() => setNuova((v) => !v)}
           style={{
             padding: "6px 14px",
-            borderRadius: 999,
-            fontSize: 14,
+            borderRadius: R.tondo,
+            fontSize: F.nota,
             border: `1px solid ${nuova ? C.accent : C.border}`,
             color: nuova ? C.accent : C.muted,
             background: nuova ? `${C.accent}14` : "transparent",
@@ -359,11 +359,11 @@ export default function MusicRoom({ music, playerRef, notify }) {
             onClick={creaRaccolta}
             style={{
               padding: "10px 20px",
-              borderRadius: 12,
+              borderRadius: R.piccolo,
               background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
               color: C.onAccent,
               fontWeight: 600,
-              fontSize: 15,
+              fontSize: F.corpo,
             }}
           >
             ✧ Crea
@@ -372,7 +372,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
       )}
 
       {liveRac.length === 0 ? (
-        <p style={{ fontSize: 13.5, color: C.muted, margin: "0 0 20px", lineHeight: 1.5 }}>
+        <p style={{ fontSize: F.piccolo, color: C.muted, margin: "0 0 20px", lineHeight: 1.5 }}>
           Una raccolta è un gruppo di melodie che scegli tu — «per leggere», «per dormire» — e che suonano
           una dopo l'altra. Creane una e poi scegli i brani dall'elenco qui sotto.
         </p>
@@ -386,7 +386,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
                 key={r.id}
                 style={{
                   padding: "13px 14px",
-                  borderRadius: 14,
+                  borderRadius: R.medio,
                   border: `1px solid ${attiva ? C.accent : C.border}`,
                   background: attiva
                     ? `linear-gradient(135deg, ${C.accent}14, ${C.card})`
@@ -408,14 +408,14 @@ export default function MusicRoom({ music, playerRef, notify }) {
                     />
                   ) : (
                     <>
-                      <span style={{ fontSize: 20, color: C.accent }}>✧</span>
-                      <span style={{ flex: 1, fontSize: 15, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: F.titoletto, color: C.accent }}>✧</span>
+                      <span style={{ flex: 1, fontSize: F.corpo, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {r.name}
                       </span>
                       <button
                         onClick={() => { setRinomina(r.id); setBozzaRac(r.name); }}
                         aria-label={`Rinomina ${r.name}`}
-                        style={{ color: C.muted, padding: 4, fontSize: 15 }}
+                        style={{ color: C.muted, padding: 4, fontSize: F.corpo }}
                       >
                         ✎
                       </button>
@@ -425,7 +425,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
                     </>
                   )}
                 </div>
-                <div style={{ fontSize: 12.5, color: C.muted, margin: "6px 0 10px" }}>
+                <div style={{ fontSize: F.minuscolo, color: C.muted, margin: "6px 0 10px" }}>
                   {brani.length === 0
                     ? "nessun brano ancora"
                     : `${brani.length} ${brani.length === 1 ? "brano" : "brani"}`}
@@ -436,8 +436,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
                     disabled={!brani.length}
                     style={{
                       padding: "5px 12px",
-                      borderRadius: 999,
-                      fontSize: 13.5,
+                      borderRadius: R.tondo,
+                      fontSize: F.piccolo,
                       border: `1px solid ${brani.length ? C.accent : C.border}`,
                       color: brani.length ? C.accent : C.muted,
                       opacity: brani.length ? 1 : 0.5,
@@ -450,8 +450,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
                     disabled={brani.length < 2}
                     style={{
                       padding: "5px 12px",
-                      borderRadius: 999,
-                      fontSize: 13.5,
+                      borderRadius: R.tondo,
+                      fontSize: F.piccolo,
                       border: `1px solid ${C.border}`,
                       color: C.muted,
                       opacity: brani.length > 1 ? 1 : 0.5,
@@ -463,8 +463,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
                     onClick={() => setScegliendo(attiva ? null : r.id)}
                     style={{
                       padding: "5px 12px",
-                      borderRadius: 999,
-                      fontSize: 13.5,
+                      borderRadius: R.tondo,
+                      fontSize: F.piccolo,
                       border: `1px solid ${attiva ? C.accent : C.border}`,
                       color: attiva ? C.accent : C.muted,
                     }}
@@ -479,7 +479,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
       )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "6px 0 12px", flexWrap: "wrap" }}>
-        <h2 style={{ fontFamily: FONT_TITLE, fontWeight: 600, fontSize: 21, color: C.text }}>
+        <h2 style={{ fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.titolo, color: C.text }}>
           <span style={{ color: C.arcane, marginRight: 6 }}>✦</span>
           Le tue melodie
         </h2>
@@ -490,8 +490,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
               onClick={() => playerRef.current?.playQueue(liveFavs, false)}
               style={{
                 padding: "6px 14px",
-                borderRadius: 999,
-                fontSize: 14,
+                borderRadius: R.tondo,
+                fontSize: F.nota,
                 border: `1px solid ${queue && !queue.shuffle ? C.accent : C.border}`,
                 color: queue && !queue.shuffle ? C.accent : C.muted,
               }}
@@ -502,8 +502,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
               onClick={() => playerRef.current?.playQueue(liveFavs, true)}
               style={{
                 padding: "6px 14px",
-                borderRadius: 999,
-                fontSize: 14,
+                borderRadius: R.tondo,
+                fontSize: F.nota,
                 border: `1px solid ${queue?.shuffle ? C.accent : C.border}`,
                 color: queue?.shuffle ? C.accent : C.muted,
               }}
@@ -528,8 +528,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
           disabled={caricando}
           style={{
             padding: "6px 14px",
-            borderRadius: 999,
-            fontSize: 14,
+            borderRadius: R.tondo,
+            fontSize: F.nota,
             border: `1px solid ${C.accent}88`,
             color: C.accent,
             background: `${C.accent}14`,
@@ -542,8 +542,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
           onClick={() => setAdding((v) => !v)}
           style={{
             padding: "6px 14px",
-            borderRadius: 999,
-            fontSize: 14,
+            borderRadius: R.tondo,
+            fontSize: F.nota,
             border: `1px solid ${adding ? C.accent : C.border}`,
             color: adding ? C.accent : C.muted,
             background: adding ? `${C.accent}14` : "transparent",
@@ -552,7 +552,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
           {adding ? "Annulla" : "＋ Da YouTube"}
         </button>
       </div>
-      <p style={{ fontSize: 12.5, color: C.muted, margin: "-4px 0 14px", lineHeight: 1.5 }}>
+      <p style={{ fontSize: F.minuscolo, color: C.muted, margin: "-4px 0 14px", lineHeight: 1.5 }}>
         ♫ Le melodie dai tuoi file vanno avanti a tablet spento, fino allo scadere del timer.
         ♪ YouTube no: quel lettore si mette in pausa da solo quando lo schermo si spegne, e non è in nostro potere.
       </p>
@@ -565,7 +565,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
             flexWrap: "wrap",
             marginBottom: 16,
             padding: 14,
-            borderRadius: 14,
+            borderRadius: R.medio,
             border: `1px solid ${C.accent}55`,
             background: `linear-gradient(135deg, ${C.accent}0d, ${C.card})`,
           }}
@@ -589,11 +589,11 @@ export default function MusicRoom({ music, playerRef, notify }) {
             onClick={addMelody}
             style={{
               padding: "10px 20px",
-              borderRadius: 12,
+              borderRadius: R.piccolo,
               background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
               color: C.onAccent,
               fontWeight: 600,
-              fontSize: 15,
+              fontSize: F.corpo,
             }}
           >
             ☆ Custodisci
@@ -609,19 +609,19 @@ export default function MusicRoom({ music, playerRef, notify }) {
             gap: 10,
             flexWrap: "wrap",
             padding: "10px 14px",
-            borderRadius: 12,
+            borderRadius: R.piccolo,
             marginBottom: 12,
             border: `1px solid ${C.accent}66`,
             background: `${C.accent}14`,
           }}
         >
-          <span style={{ fontSize: 14, color: C.text }}>
+          <span style={{ fontSize: F.nota, color: C.text }}>
             Scegli i brani per <b>«{inScelta.name}»</b> — toccali per metterli dentro o toglierli.
           </span>
           <span style={{ flex: 1 }} />
           <button
             onClick={() => setScegliendo(null)}
-            style={{ padding: "5px 14px", borderRadius: 999, fontSize: 13.5, border: `1px solid ${C.accent}`, color: C.accent }}
+            style={{ padding: "5px 14px", borderRadius: R.tondo, fontSize: F.piccolo, border: `1px solid ${C.accent}`, color: C.accent }}
           >
             Fatto
           </button>
@@ -644,7 +644,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
                 alignItems: "center",
                 gap: 8,
                 padding: "13px 14px",
-                borderRadius: 14,
+                borderRadius: R.medio,
                 border: `1px solid ${
                   editing === f.id || (inScelta && (inScelta.brani || []).includes(f.id)) ? C.accent : C.border
                 }`,
@@ -659,13 +659,13 @@ export default function MusicRoom({ music, playerRef, notify }) {
                       onClick={() => alterna(inScelta.id, f.id)}
                       style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, textAlign: "left", minWidth: 0 }}
                     >
-                      <span style={{ fontSize: 20, color: dentro ? C.accent : C.muted, width: 22 }}>
+                      <span style={{ fontSize: F.titoletto, color: dentro ? C.accent : C.muted, width: 22 }}>
                         {dentro ? "✓" : "○"}
                       </span>
                       <span
                         style={{
                           flex: 1,
-                          fontSize: 15,
+                          fontSize: F.corpo,
                           color: dentro ? C.text : C.muted,
                           overflow: "hidden",
                           textOverflow: "ellipsis",
@@ -674,7 +674,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
                       >
                         {f.name}
                       </span>
-                      <span style={{ fontSize: 15, color: isFile(f) ? C.accent : C.muted, opacity: 0.8 }}>
+                      <span style={{ fontSize: F.corpo, color: isFile(f) ? C.accent : C.muted, opacity: 0.8 }}>
                         {isFile(f) ? "♫" : "♪"}
                       </span>
                     </button>
@@ -682,7 +682,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
                 })()
               ) : editing === f.id ? (
                 <>
-                  <span style={{ fontSize: 22, color: C.accent }}>♪</span>
+                  <span style={{ fontSize: F.titolo, color: C.accent }}>♪</span>
                   <input
                     autoFocus
                     value={draft}
@@ -697,11 +697,11 @@ export default function MusicRoom({ music, playerRef, notify }) {
                       flex: 1,
                       minWidth: 0,
                       padding: "6px 10px",
-                      borderRadius: 8,
+                      borderRadius: R.piccolo,
                       border: `1px solid ${C.border}`,
                       background: C.bg,
                       color: C.text,
-                      fontSize: 15,
+                      fontSize: F.corpo,
                       outline: "none",
                     }}
                   />
@@ -715,18 +715,18 @@ export default function MusicRoom({ music, playerRef, notify }) {
                   >
                     <span
                       style={{
-                        fontSize: 22,
+                        fontSize: F.titolo,
                         filter: `drop-shadow(0 0 8px ${isFile(f) ? C.accent : C.arcane}66)`,
                         color: isFile(f) ? C.accent : "inherit",
                       }}
                     >
                       {isFile(f) ? "♫" : "♪"}
                     </span>
-                    <span style={{ flex: 1, fontSize: 15, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <span style={{ flex: 1, fontSize: F.corpo, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {f.name}
                     </span>
                   </button>
-                  <button onClick={() => startRename(f)} aria-label={`Rinomina ${f.name}`} style={{ color: C.muted, padding: 4, fontSize: 15 }}>
+                  <button onClick={() => startRename(f)} aria-label={`Rinomina ${f.name}`} style={{ color: C.muted, padding: 4, fontSize: F.corpo }}>
                     ✎
                   </button>
                   <button onClick={() => removeFav(f)} aria-label={`Dimentica ${f.name}`} style={{ color: C.muted, padding: 4 }}>

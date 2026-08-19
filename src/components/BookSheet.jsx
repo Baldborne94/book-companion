@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { C, FONT_TITLE } from "../data/constants.js";
+import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { getProgress, getStatus, setStatus, touchBook } from "../lib/library.js";
 import { getCover, getFile, putCover, removeCover } from "../lib/bookStore.js";
 import { preparaCopertina, copertinaOriginale } from "../lib/copertina.js";
@@ -17,20 +17,25 @@ const SchedaOracolo = lazy(() => import("./SchedaOracolo.jsx"));
 // e l'elenco dei generi solo a chi tocca «Scegli»
 const GenrePicker = lazy(() => import("./GenrePicker.jsx"));
 
+// «Abbandonato» non è un giudizio sul libro, è la verità su di te: senza,
+// un romanzo mollato resta «in lettura» per sempre — in cima all'Ingresso,
+// a fingere che tu lo stia leggendo — e l'unico modo di toglierlo di lì era
+// dichiararlo letto, cioè una bugia che poi ti ritrovi nel diario.
 const STATUSES = [
   { id: "unread", label: "Da leggere", color: null },
   { id: "reading", label: "In lettura", color: null },
   { id: "read", label: "Letto", color: "green" },
+  { id: "abandoned", label: "Abbandonato", color: "red" },
 ];
 
 const fieldStyle = {
   width: "100%",
   padding: "9px 12px",
-  borderRadius: 10,
+  borderRadius: R.piccolo,
   border: `1px solid ${C.border}`,
   background: C.surface,
   color: C.text,
-  fontSize: 15,
+  fontSize: F.corpo,
   outline: "none",
 };
 
@@ -47,7 +52,7 @@ function Stars({ value, onChange }) {
             style={{
               display: "block",
               width: 32,
-              fontSize: 27,
+              fontSize: F.grande,
               lineHeight: "32px",
               textAlign: "center",
               color,
@@ -84,7 +89,7 @@ function Stars({ value, onChange }) {
           </span>
         );
       })}
-      <span style={{ marginLeft: 8, fontSize: 14, color: C.muted }}>
+      <span style={{ marginLeft: 8, fontSize: F.nota, color: C.muted }}>
         {value ? String(value).replace(".", ",") : "—"}
       </span>
     </div>
@@ -94,7 +99,7 @@ function Stars({ value, onChange }) {
 function Field({ label, value, onChange, placeholder, options, listId }) {
   return (
     <label style={{ display: "block", marginBottom: 10 }}>
-      <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 3 }}>{label}</span>
+      <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 3 }}>{label}</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -308,7 +313,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
           maxWidth: 600,
           maxHeight: "90vh",
           overflowY: "auto",
-          borderRadius: 18,
+          borderRadius: R.grande,
           border: `1px solid ${C.border}`,
           background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
           boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
@@ -336,10 +341,10 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                 style={{
                   flex: 1,
                   padding: "7px 0",
-                  borderRadius: 9,
+                  borderRadius: R.piccolo,
                   border: `1px solid ${C.border}`,
                   color: coverBusy ? C.muted : C.text,
-                  fontSize: 12.5,
+                  fontSize: F.minuscolo,
                 }}
               >
                 {coverBusy ? "…" : "🖼 Copertina"}
@@ -351,10 +356,10 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                   aria-label="Rimetti la copertina del libro"
                   style={{
                     padding: "7px 10px",
-                    borderRadius: 9,
+                    borderRadius: R.piccolo,
                     border: `1px solid ${C.border}`,
                     color: C.muted,
-                    fontSize: 12.5,
+                    fontSize: F.minuscolo,
                   }}
                 >
                   ↺
@@ -363,17 +368,17 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
             </div>
             {status === "reading" && pct > 0 && (
               <div style={{ marginTop: 10 }}>
-                <div style={{ height: 5, borderRadius: 3, background: C.dim, overflow: "hidden" }}>
+                <div style={{ height: 5, borderRadius: R.minimo, background: C.dim, overflow: "hidden" }}>
                   <div
                     style={{
                       width: `${pct}%`,
                       height: "100%",
-                      borderRadius: 3,
+                      borderRadius: R.minimo,
                       background: `linear-gradient(90deg, ${C.accent}, ${C.arcane})`,
                     }}
                   />
                 </div>
-                <div style={{ marginTop: 4, fontSize: 12.5, color: C.muted, textAlign: "center" }}>{pct}%</div>
+                <div style={{ marginTop: 4, fontSize: F.minuscolo, color: C.muted, textAlign: "center" }}>{pct}%</div>
               </div>
             )}
           </div>
@@ -393,7 +398,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                 />
               </div>
               <label style={{ display: "block", marginBottom: 10, width: 96, flexShrink: 0 }}>
-                <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 3 }}>
+                <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 3 }}>
                   N° lettura
                 </span>
                 <input
@@ -418,7 +423,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                 e' l'unico modo civile di scegliere «Sword & sorcery» su un
                 tablet senza tirare su la tastiera */}
             <label style={{ display: "block", marginBottom: 10 }}>
-              <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 3 }}>
+              <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 3 }}>
                 Genere
               </span>
               <div style={{ display: "flex", gap: 8 }}>
@@ -435,8 +440,8 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                   style={{
                     flexShrink: 0,
                     padding: "9px 16px",
-                    borderRadius: 10,
-                    fontSize: 14,
+                    borderRadius: R.piccolo,
+                    fontSize: F.nota,
                     cursor: "pointer",
                     border: `1px solid ${sceltaGenere ? C.accent : C.border}`,
                     background: sceltaGenere ? `${C.accent}22` : "transparent",
@@ -459,12 +464,12 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
             )}
 
             <div style={{ marginBottom: 10 }}>
-              <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 3 }}>Valutazione</span>
+              <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 3 }}>Valutazione</span>
               <Stars value={rating} onChange={setRating} />
             </div>
 
             <div style={{ marginBottom: 12 }}>
-              <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 4 }}>Stato</span>
+              <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 4 }}>Stato</span>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {STATUSES.map((s) => {
                   const active = status === s.id;
@@ -475,8 +480,8 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                       onClick={() => changeStatus(s.id)}
                       style={{
                         padding: "6px 14px",
-                        borderRadius: 999,
-                        fontSize: 14,
+                        borderRadius: R.tondo,
+                        fontSize: F.nota,
                         border: `1px solid ${active ? tone : C.border}`,
                         color: active ? tone : C.muted,
                         background: active ? `${tone}14` : "transparent",
@@ -492,7 +497,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
         </div>
 
         <label style={{ display: "block", margin: "6px 0 14px" }}>
-          <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 3 }}>Note personali</span>
+          <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 3 }}>Note personali</span>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -511,14 +516,14 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
               <div
                 style={{
                   padding: "12px 14px",
-                  borderRadius: 12,
+                  borderRadius: R.piccolo,
                   border: `1px solid ${C.border}`,
                   background: `${C.bg}88`,
                   maxHeight: "44vh",
                   overflowY: "auto",
                 }}
               >
-                <Suspense fallback={<p style={{ color: C.muted, fontSize: 14, margin: 0 }}>…</p>}>
+                <Suspense fallback={<p style={{ color: C.muted, fontSize: F.nota, margin: 0 }}>…</p>}>
                   <SchedaOracolo
                     scheda={prima}
                     attese={{
@@ -536,10 +541,10 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                 style={{
                   width: "100%",
                   padding: "10px 16px",
-                  borderRadius: 12,
+                  borderRadius: R.piccolo,
                   border: `1px solid ${C.arcane}66`,
                   color: C.arcane,
-                  fontSize: 14.5,
+                  fontSize: F.nota,
                   textAlign: "left",
                   lineHeight: 1.4,
                 }}
@@ -565,10 +570,10 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                 width: "100%",
                 textAlign: "left",
                 padding: "10px 14px",
-                borderRadius: 12,
+                borderRadius: R.piccolo,
                 border: `1px solid ${C.border}`,
                 color: C.text,
-                fontSize: 14.5,
+                fontSize: F.nota,
               }}
             >
               📖 Il tuo glossario · {mieVoci.length}{" "}
@@ -587,16 +592,16 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                       alignItems: "flex-start",
                       padding: "9px 12px",
                       marginBottom: 6,
-                      borderRadius: 10,
+                      borderRadius: R.piccolo,
                       background: C.surface,
                       border: `1px solid ${C.border}`,
                     }}
                   >
                     <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: "block", fontSize: 14.5, color: C.accent, fontWeight: 600 }}>
+                      <span style={{ display: "block", fontSize: F.nota, color: C.accent, fontWeight: 600 }}>
                         {v.t}
                       </span>
-                      <span style={{ display: "block", fontSize: 13.5, color: C.text, lineHeight: 1.45 }}>
+                      <span style={{ display: "block", fontSize: F.piccolo, color: C.text, lineHeight: 1.45 }}>
                         {v.d}
                       </span>
                     </span>
@@ -621,11 +626,11 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
               flex: 1,
               minWidth: 170,
               padding: "12px 20px",
-              borderRadius: 12,
+              borderRadius: R.piccolo,
               background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
               color: C.onAccent,
               fontWeight: 700,
-              fontSize: 16,
+              fontSize: F.corpo,
               fontFamily: FONT_TITLE,
               letterSpacing: "0.02em",
               boxShadow: `0 0 24px ${C.accent}33`,
@@ -637,10 +642,10 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
             onClick={commitAndClose}
             style={{
               padding: "12px 18px",
-              borderRadius: 12,
+              borderRadius: R.piccolo,
               border: `1px solid ${C.border}`,
               color: C.muted,
-              fontSize: 15,
+              fontSize: F.corpo,
             }}
           >
             Chiudi
@@ -650,7 +655,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
         <div style={{ marginTop: 14, textAlign: "center" }}>
           <button
             onClick={() => (confirmDelete ? onDelete(book.id) : setConfirmDelete(true))}
-            style={{ fontSize: 13.5, color: confirmDelete ? C.red : C.muted, textDecoration: "underline" }}
+            style={{ fontSize: F.piccolo, color: confirmDelete ? C.red : C.muted, textDecoration: "underline" }}
           >
             {confirmDelete ? "Confermi? Il file verrà rimosso per sempre — tocca di nuovo" : "Elimina questo libro"}
           </button>
