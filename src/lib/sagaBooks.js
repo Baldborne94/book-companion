@@ -1,4 +1,5 @@
 import DISCWORLD, { SAGA, CICLI_NOSTRI } from "../data/discworldBooks.js";
+import HORUS, { SAGA as SAGA_HH } from "../data/horusHeresy.js";
 
 // Riconoscere il romanzo dal titolo: i metadati degli EPUB sono spesso vuoti,
 // storti o pieni di roba dell'editore («Guards! Guards! (Discworld Novels
@@ -13,10 +14,6 @@ const norm = (s) =>
     .replace(/[^a-z0-9' ]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-
-// i titoli lunghi per primi: «The Light Fantastic» non deve perdere contro
-// «Light», e «Mort» non deve rubare la partita a «Monstrous Regiment»
-const INDICE = DISCWORLD.map((b) => ({ ...b, k: norm(b.t) })).sort((a, b) => b.k.length - a.k.length);
 
 // dentro una stringa piu' lunga, ma solo a confine di parola: «Mort» sta in
 // «Mortal Engines» come sequenza di lettere, non come titolo
@@ -38,18 +35,107 @@ const FUORI_SAGA = [
   "only you can save mankind", "johnny and the dead", "johnny and the bomb",
 ];
 
+// LE TAVOLE. Una per saga, e da qui in poi il codice non sa piu' quale sta
+// guardando: aggiungerne una terza e' scrivere un file in `data/` e una
+// riga qui.
+//
+// Le due che ci sono adesso pero' NON si riconoscono allo stesso modo, e la
+// differenza sta nell'autore. Pratchett ha scritto quasi solo Mondo Disco,
+// quindi il ripiego «l'autore lo conosco, la saga gliela do lo stesso» ci
+// azzecca quasi sempre (e i suoi fuori-saga stanno in un elenco). L'Eresia
+// di Horus la scrivono venti autori che scrivono anche moltissimo altro:
+// col ripiego sull'autore, i Gaunt's Ghosts di Abnett diventerebbero
+// Eresia. Per questo `autore` li' e' `null`.
+const TAVOLE = [
+  { saga: SAGA, libri: DISCWORLD, ordine: (b) => b.n, autore: "pratchett", fuori: FUORI_SAGA, stretta: false },
+  // `o` e non `n`: l'ordine e' quello del percorso CD8D, non la numerazione
+  // della collana. Vedi il commento in testa a `horusHeresy.js`.
+  { saga: SAGA_HH, libri: HORUS, ordine: (b) => b.o, autore: null, fuori: [], stretta: true },
+];
+
+// I titoli lunghi per primi, e da TUTTE le tavole insieme: «Garro» non
+// deve prendersi «Garro: Knight of the Grey». Oggi quella coppia la
+// fermerebbe anche la regola della copertura — l'antologia non porta
+// l'autore, e «garro» copre un quinto di quel campo — ma l'ordine e' la
+// difesa che vale anche per le tavole LARGHE, dove la copertura non si
+// applica: nel Mondo Disco una coppia cosi' non c'e', e il giorno che
+// arriva non deve dipendere dall'ordine con cui e' scritto un file.
+const INDICE = TAVOLE.flatMap((tav) =>
+  tav.libri.map((b) => ({ ...b, k: norm(b.t), tav }))
+).sort((a, b) => b.k.length - a.k.length);
+
+// QUANDO IL CONTENIMENTO NON BASTA.
+//
+// Il Mondo Disco se la cava col solo contenimento: i titoli sono
+// distintivi e c'e' il ripiego sull'autore a raccogliere quel che scappa.
+// L'Eresia no. Sedici delle sue voci sono parole comuni — «Scars»,
+// «Mortis», «Betrayer», «Fulgrim» — e venti autori diversi la scrivono
+// mentre scrivono anche moltissimo altro: presa per contenimento, «Scars»
+// si mangerebbe «Scars of the Past» di chiunque.
+//
+// Le tavole `strette` chiedono un secondo segnale, e ne basta uno dei due:
+// o l'AUTORE conferma, o il titolo e' il GROSSO di quello che c'e' scritto.
+// L'autore si cerca anche nel campo, perche' nei nomi dei file ci sta quasi
+// sempre e nei metadati quasi mai.
+const cognome = (a) => norm(a).split(" ").filter(Boolean).pop() || "";
+
+// Il rumore dell'editore e del file — «(The Horus Heresy Book 24)»,
+// «.epub», il numero della collana — non e' titolo, e non deve contare
+// quando si misura quanto del campo il titolo copre. Senza questa
+// ripulita, «Betrayer (Horus Heresy 24).epub» non si riconoscerebbe: il
+// titolo sarebbe un terzo di quel che c'e' scritto.
+// «The Horus Heresy» nel nome del file si scrive in tutt'e due i modi, e
+// spesso senza l'articolo: cercando la forma intera, «Betrayer (Horus
+// Heresy 24).epub» restava con mezza saga attaccata al titolo e non si
+// riconosceva piu'.
+const senzaArticolo = (s) => norm(s).replace(/^(the|il|lo|la|i|gli|le)\s+/, "");
+
+const senzaRumore = (campo, saga) =>
+  campo
+    .replace(senzaArticolo(saga), " ")
+    .replace(/\b(book|vol|volume|no|n)\s*\d+\b/g, " ")
+    .replace(/\b(epub|mobi|azw3|pdf|retail|ebook)\b/g, " ")
+    .replace(/\b\d+\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+// meta' e' la soglia: sotto, quel titolo e' una citazione dentro una frase
+// piu' lunga, non il titolo del libro che hai in mano
+const COPERTURA = 0.5;
+
+function combacia(campo, voce, autoreNorm) {
+  if (!contiene(campo, voce.k)) return false;
+  if (!voce.tav.stretta) return true;
+  const cogn = voce.a ? cognome(voce.a) : "";
+  const suo = cogn && (autoreNorm.includes(cogn) || campo.includes(cogn));
+  if (suo) return true;
+  // UN AUTORE SBAGLIATO E' UNA PROVA; UN AUTORE MANCANTE NON E' NIENTE.
+  // Se sappiamo di chi e' il libro e chi ce lo porta dice un altro nome,
+  // non e' quello: «Betrayer» di chiunque altro non e' il Betrayer
+  // dell'Eresia. Ma meta' degli ePub l'autore non ce l'ha, e li' il
+  // silenzio non deve valere come smentita.
+  if (cogn && autoreNorm) return false;
+  const nudo = senzaRumore(campo, voce.tav.saga);
+  return voce.k.length >= nudo.length * COPERTURA;
+}
+
 export function riconosci({ title, author, fileName } = {}) {
   const campi = [title, fileName].filter(Boolean).map(norm);
+  const chiAutore = norm(author);
   for (const campo of campi) {
     for (const b of INDICE) {
-      if (contiene(campo, b.k)) return { saga: SAGA, sagaOrder: b.n, ciclo: b.c, titolo: b.t };
+      if (combacia(campo, b, chiAutore)) {
+        return { saga: b.tav.saga, sagaOrder: b.tav.ordine(b) ?? null, ciclo: b.c, titolo: b.t };
+      }
     }
   }
   // il titolo non si riconosce ma l'autore si': saga senza numero, che e'
-  // comunque meglio di niente — il glossario si accende lo stesso
-  const fuori = campi.some((campo) => FUORI_SAGA.some((t) => contiene(campo, t)));
-  if (!fuori && norm(author).includes("pratchett")) {
-    return { saga: SAGA, sagaOrder: null, ciclo: null, titolo: null };
+  // comunque meglio di niente — il glossario si accende lo stesso. Vale solo
+  // per le tavole che un autore proprio ce l'hanno.
+  for (const tav of TAVOLE) {
+    if (!tav.autore || !chiAutore.includes(tav.autore)) continue;
+    if (campi.some((campo) => tav.fuori.some((t) => contiene(campo, t)))) continue;
+    return { saga: tav.saga, sagaOrder: null, ciclo: null, titolo: null };
   }
   return null;
 }
