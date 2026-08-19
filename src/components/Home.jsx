@@ -113,13 +113,23 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
   // e' stato aperto altrove) si ripiega sui libri gia' iniziati e infine sul
   // piu' recente, cosi' la home propone sempre qualcosa da aprire.
   const byRecent = (a, b) => getUpdatedAt(b.id, b.addedAt || 0) - getUpdatedAt(a.id, a.addedAt || 0);
+  // Un libro chiuso non si ripropone, e «chiuso» sono DUE cose: finito e
+  // abbandonato. Senza il secondo, il romanzo che hai mollato resterebbe qui
+  // in cima per sempre — che e' proprio il motivo per cui quello stato esiste.
+  const chiuso = (b) => {
+    const s = getStatus(b.id);
+    return s === "read" || s === "abandoned";
+  };
   const started = books
-    .filter((b) => getStatus(b.id) !== "read" && (getStatus(b.id) === "reading" || getProgress(b.id) > 0))
+    .filter((b) => !chiuso(b) && (getStatus(b.id) === "reading" || getProgress(b.id) > 0))
     .sort(byRecent);
-  const unread = books.filter((b) => getStatus(b.id) !== "read").sort(byRecent);
+  const unread = books.filter((b) => !chiuso(b)).sort(byRecent);
   // se l'ultimo aperto e' stato finito, il riquadro propone il passo
   // successivo della sua saga invece di riproporre un libro chiuso
-  const lastOpened = books.find((b) => b.id === getLastOpened());
+  const apertoOra = books.find((b) => b.id === getLastOpened());
+  // l'ultimo aperto vale solo se non l'hai chiuso: un libro abbandonato non
+  // torna in cima solo perche' era l'ultimo che avevi in mano
+  const lastOpened = apertoOra && getStatus(apertoOra.id) === "abandoned" ? null : apertoOra;
   const lastDone = lastOpened && getStatus(lastOpened.id) === "read" ? lastOpened : null;
   const followUp = lastDone ? nextInSaga(lastDone, books) : null;
   const last =

@@ -18,6 +18,7 @@ const FILTERS = [
   { id: "unread", label: "Da leggere" },
   { id: "reading", label: "In lettura" },
   { id: "read", label: "Letti" },
+  { id: "abandoned", label: "Abbandonati" },
 ];
 
 const SORTS = [
@@ -54,7 +55,7 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
               animation: "bc-fade-in 0.4s ease-out",
             }}
           >
-            <div style={{ position: "relative" }}>
+            <div style={{ position: "relative", opacity: status === "abandoned" ? 0.55 : 1 }}>
               <BookCover book={b} />
               {status === "reading" && pct > 0 && (
                 <span
@@ -89,6 +90,26 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
                   }}
                 >
                   ✓
+                </span>
+              )}
+              {/* Abbandonato: un segno suo, non il ✓ dei finiti. E la
+                  copertina si smorza, perche' sullo scaffale si deve
+                  vedere da lontano che quel libro è fermo. */}
+              {status === "abandoned" && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 6,
+                    right: 6,
+                    padding: "2px 7px",
+                    borderRadius: 10,
+                    fontSize: 12,
+                    background: `${C.bg}cc`,
+                    border: `1px solid ${C.red}88`,
+                    color: C.red,
+                  }}
+                >
+                  ⏸
                 </span>
               )}
               {showOrder && b.sagaOrder != null && (

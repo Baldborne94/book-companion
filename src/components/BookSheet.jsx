@@ -17,10 +17,15 @@ const SchedaOracolo = lazy(() => import("./SchedaOracolo.jsx"));
 // e l'elenco dei generi solo a chi tocca «Scegli»
 const GenrePicker = lazy(() => import("./GenrePicker.jsx"));
 
+// «Abbandonato» non è un giudizio sul libro, è la verità su di te: senza,
+// un romanzo mollato resta «in lettura» per sempre — in cima all'Ingresso,
+// a fingere che tu lo stia leggendo — e l'unico modo di toglierlo di lì era
+// dichiararlo letto, cioè una bugia che poi ti ritrovi nel diario.
 const STATUSES = [
   { id: "unread", label: "Da leggere", color: null },
   { id: "reading", label: "In lettura", color: null },
   { id: "read", label: "Letto", color: "green" },
+  { id: "abandoned", label: "Abbandonato", color: "red" },
 ];
 
 const fieldStyle = {
