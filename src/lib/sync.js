@@ -9,6 +9,7 @@ import {
   getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights, removeAnnotations, setJump,
 } from "./annotations.js";
 import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, getListsRaw, writeLists } from "./music.js";
+import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
 import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush } from "./syncCore.js";
 
 const LAST_SYNC_KEY = "bc_lastsync";
@@ -72,6 +73,11 @@ const DEGRADE = [
     apply: (rows) => rows.map(({ genre, saga, saga_order, ...r }) => r),
   },
   {
+    test: (m) => /impronta/i.test(m),
+    label: "impronta dei doppioni",
+    apply: (rows) => rows.map(({ impronta, ...r }) => r),
+  },
+  {
     test: (m) => /rating/i.test(m) || /invalid input syntax for type integer/i.test(m),
     label: "mezze stelle",
     apply: (rows) => rows.map((r) => ({ ...r, rating: Math.round(r.rating || 0) })),
@@ -130,6 +136,7 @@ function localPrefs() {
     reader,
     music_favs: getFavoritesRaw(),
     music_lists: getListsRaw(),
+    glossari: tuttiIGlossari(),
     last_opened: getLastOpened(),
     updated_at: parseInt(localStorage.getItem(PREFS_UPD_KEY), 10) || 0,
   };
@@ -278,10 +285,24 @@ export async function syncNow({ onProgress } = {}) {
     if (merged.reader) localStorage.setItem("bc_reader", JSON.stringify(merged.reader));
     writeFavorites(merged.music_favs);
     writeLists(merged.music_lists);
+    scriviGlossari(merged.glossari || {});
     if (merged.last_opened) localStorage.setItem("bc_lastopen", merged.last_opened);
   }
   if (pushRemote) {
-    await sb.from("prefs").upsert({ ...merged, updated_at: stamp, user_id: uid });
+    const riga = { ...merged, updated_at: stamp, user_id: uid };
+    const { error } = await sb.from("prefs").upsert(riga);
+    // Stessa regola dei libri: uno schema non ancora migrato non deve
+    // rompere TUTTA la sincronizzazione. Qui pero' la colonna e' una sola,
+    // quindi basta rinunciare a lei e riprovare — i termini restano in
+    // locale e nell'archivio, che e' dove viaggiavano prima.
+    if (error && /glossari/i.test(`${error.message || ""} ${error.details || ""}`)) {
+      const { glossari, ...senza } = riga;
+      const secondo = await sb.from("prefs").upsert(senza);
+      if (secondo.error) throw secondo.error;
+      say("Sincronizzato (glossario: aggiorna lo schema)");
+    } else if (error) {
+      throw error;
+    }
   }
   localStorage.setItem(PREFS_UPD_KEY, String(stamp));
 
