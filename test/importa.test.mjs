@@ -34,6 +34,17 @@ export default async function (t) {
   t.c("due saghe", /2 saghe riconosciute/.test(resoconto({ riconosciuti: 2 })));
   t.c("due titoli", /2 titoli presi/.test(resoconto({ senzaMetadati: 2 })));
 
+  // ---- LA COPERTINA CHE NON SI È TROVATA -------------------------------
+  // Era contata e mai detta: un dorso disegnato in mezzo allo scaffale
+  // sembrava una scelta nostra, e il lettore ha dovuto accorgersene da solo
+  // («anche su tablet non vedo la copertina»). La riga dice pure cosa fare,
+  // perché a mano si rimette.
+  t.c("la copertina mancante si dice", /senza copertina/.test(resoconto({ senzaCopertina: 1 })));
+  t.c("e dice cosa fare", /scheda/.test(resoconto({ senzaCopertina: 1 })));
+  t.c("un tomo, non «1 tomi»", /un tomo senza copertina/.test(resoconto({ senzaCopertina: 1 })));
+  t.c("due tomi", /2 tomi senza copertina/.test(resoconto({ senzaCopertina: 2 })));
+  t.c("e lo zero tace", !/copertina/.test(resoconto({ added: libri(2), senzaCopertina: 0 })));
+
   // ---- lo zero non si dice ----------------------------------------------
   // «0 pezzi ricuciti» sarebbe rumore a ogni import: quello che non e'
   // successo non va raccontato
