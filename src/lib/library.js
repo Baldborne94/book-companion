@@ -119,3 +119,37 @@ export function removeBookMeta(id) {
   localStorage.removeItem(`bc_end_${id}`);
   if (getLastOpened() === id) localStorage.removeItem(LAST_KEY);
 }
+
+// LA RICERCA SULLO SCAFFALE, e i campi che le mancavano.
+//
+// Cercava su titolo, autore e saga. Non sul genere, non sul ciclo, e
+// soprattutto **non sulle note che hai scritto tu** nella scheda del
+// libro: potevi annotare «quello col finale che non mi torna» e poi non
+// ritrovarlo mai piu'. Le note sono l'unico campo che nessun altro posto
+// dell'app sa cercare — il giardino delle citazioni cerca le note SULLE
+// CITAZIONI, che sono un'altra cosa.
+//
+// Sta qui e non dentro `Library.jsx` per la ragione di sempre: senza JSX
+// un test la puo' chiamare.
+//
+// Gli accenti si appianano da tutt'e due i lati (`piatto`): sul tablet la
+// tastiera l'accento te lo fa scrivere, ma nessuno cerca «Sanderson,
+// L'Arcanista» accentato — e un titolo che non si trova per una dieresi e'
+// un titolo perso.
+const piatto = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+
+// I campi sono in ordine di quanto e' probabile che tu stia cercando
+// quello. Non e' un dettaglio estetico: `some` si ferma al primo che
+// combacia, e il titolo e' quello che cerchi quasi sempre.
+export const CAMPI_RICERCA = ["title", "author", "saga", "series", "genre", "notes"];
+
+export function combacia(book, query) {
+  const q = piatto(query).trim();
+  if (!q) return true;
+  if (!book) return false;
+  return CAMPI_RICERCA.some((c) => piatto(book[c]).includes(q));
+}

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { consultaOracolo, hasOracle, setOracleKey } from "../lib/oracle.js";
+import { rigaUltima } from "../lib/spesa.js";
 import { chiaveGlossario, vociDi, salvaVoci, aggiungi, togli, cerca } from "../lib/glossarioMio.js";
 
 // La scheda del dizionario e' identica nei due reader: qui una volta sola,
@@ -410,6 +411,14 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
               <>
                 <div style={{ fontSize: F.minuscolo, color: C.arcane, marginBottom: 4 }}>✨ L'Oracolo dice</div>
                 <p style={{ fontSize: F.corpo, color: C.text, lineHeight: 1.5, margin: 0 }}>{oracolo.answer}</p>
+                {/* quanto è costata: qui le domande sono piccole e costano
+                    pochissimo, ed è proprio il confronto che serve — una
+                    parola spiegata non è una scheda su cento passaggi */}
+                {oracolo.uso && (
+                  <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: C.dim }}>
+                    {rigaUltima(oracolo.uso)}
+                  </p>
+                )}
               </>
             ) : oracolo?.loading ? (
               <p style={{ fontSize: F.piccolo, color: C.muted, margin: 0 }}>✨ L'Oracolo sta leggendo il passaggio…</p>
