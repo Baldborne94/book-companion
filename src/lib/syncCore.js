@@ -83,6 +83,32 @@ export const localFromRow = (row) => ({
   },
 });
 
+// UNO SCHEMA NON MIGRATO NON DEVE ROMPERE TUTTA LA SINCRONIZZAZIONE.
+//
+// PostgREST dice esattamente quale colonna non trova: «Could not find the
+// 'music_lists' column of 'prefs' in the schema cache». Per i libri c'era
+// gia' una scala di rinuncia; le preferenze invece morivano alla prima
+// colonna mancante, e con loro moriva TUTTO il giro — compresa la riga
+// «ultima sincronizzazione», che restava «mai» per sempre.
+//
+// Succede sul serio: `music_lists` esiste dalle raccolte musicali, e chi
+// non aveva rilanciato lo schema se l'e' trovata addosso mesi dopo.
+export function colonnaMancante(error) {
+  const testo = `${error?.message || ""} ${error?.details || ""}`;
+  const m = /'([a-z_]+)'\s+column/i.exec(testo);
+  return m ? m[1] : null;
+}
+
+// Quello che identifica la riga non si toglie mai: senza `user_id` la
+// scrittura non e' piu' nemmeno rivolta a qualcuno.
+const INTOCCABILI = new Set(["user_id", "updated_at", "id"]);
+
+export function senzaColonna(riga, nome) {
+  if (!nome || INTOCCABILI.has(nome) || !(nome in riga)) return null;
+  const { [nome]: _via, ...resto } = riga;
+  return resto;
+}
+
 export function planSync({ localRows, tombstones, remoteRows }) {
   const remote = new Map(remoteRows.map((r) => [r.id, r]));
   const local = new Map(localRows.map((r) => [r.id, r]));
