@@ -185,6 +185,7 @@ export function resoconto({
   cuciti = 0,
   riconosciuti = 0,
   senzaMetadati = 0,
+  senzaCopertina = 0,
 } = {}) {
   const parti = [];
   if (added.length)
@@ -207,6 +208,18 @@ export function resoconto({
       senzaMetadati === 1
         ? "un titolo preso dal nome del file — controllalo nella scheda"
         : `${senzaMetadati} titoli presi dal nome del file — controllali nella scheda`
+    );
+  // LA COPERTINA MANCANTE SI DICE, come il titolo. Era contata e mai
+  // mostrata, e un dorso disegnato in mezzo allo scaffale sembra una scelta
+  // nostra invece che un file a cui l'immagine non si e' trovata — il
+  // lettore ci ha messo settimane ad accorgersene, e ha dovuto dirlo lui.
+  // Sta accanto al titolo perche' e' la stessa specie di riga: qualcosa che
+  // non siamo riusciti a leggere, e che tu puoi rimettere a mano.
+  if (senzaCopertina)
+    parti.push(
+      senzaCopertina === 1
+        ? "un tomo senza copertina — puoi metterla tu dalla scheda 🖼"
+        : `${senzaCopertina} tomi senza copertina — puoi metterle tu dalla scheda 🖼`
     );
   // l'altra edizione e' entrata: qui non c'e' un guasto da riparare, c'e'
   // una scelta da fare — tenerle tutt'e due o cancellarne una
@@ -234,13 +247,11 @@ async function enrichEpub(meta, file) {
       esito.titolo = true;
     }
     if (md?.creator?.trim()) meta.author = md.creator.trim();
-    let cover = null;
-    const coverPath = await book.loaded.cover;
-    if (coverPath && book.archive) cover = await book.archive.getBlob(coverPath);
-    if (!cover) {
-      const url = await book.coverUrl();
-      if (url) cover = await (await fetch(url)).blob();
-    }
+    // Una sola strada per tutt'e due i punti dove serve una copertina:
+    // qui all'import e nel tasto ↺ della scheda. Prima erano due copie
+    // della stessa logica, e potevano divergere — infatti divergevano.
+    const { trovaCopertina } = await import("./copertina.js");
+    const cover = await trovaCopertina(book);
     if (cover) {
       await putCover(meta.id, cover);
       esito.copertina = true;

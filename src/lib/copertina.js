@@ -26,43 +26,121 @@ export function misura(w, h, max = LATO) {
   return { w: Math.max(1, Math.round(w * k)), h: Math.max(1, Math.round(h * k)) };
 }
 
-// TORNARE INDIETRO VUOL DIRE RIMETTERE QUELLA DEL LIBRO, non restare senza.
+// LA PRIMA IMMAGINE DI UNA PAGINA. Serve alla terza strada, e sta fuori
+// da tutto perche' e' l'unico pezzo che si puo' provare senza epub.js.
+// `<img src>` degli XHTML normali, `<image xlink:href>` degli ePub che la
+// copertina la mettono in un SVG a tutta pagina — e sono tanti.
+export function primaImmagine(html) {
+  const testo = String(html || "");
+  const img = /<img\b[^>]*?\ssrc\s*=\s*["']([^"']+)["']/i.exec(testo);
+  if (img) return img[1];
+  const svg = /<image\b[^>]*?\s(?:xlink:)?href\s*=\s*["']([^"']+)["']/i.exec(testo);
+  return svg ? svg[1] : null;
+}
+
+// Il percorso dell'immagine e' relativo al documento che la contiene.
+export function risolviAccanto(percorsoDoc, rel) {
+  const r = String(rel || "").trim();
+  if (!r || /^(https?:|data:)/i.test(r)) return null;
+  if (r.startsWith("/")) return r;
+  const parti = String(percorsoDoc || "").split("/").slice(0, -1);
+  for (const pezzo of r.split("/")) {
+    if (pezzo === "." || pezzo === "") continue;
+    if (pezzo === "..") parti.pop();
+    else parti.push(pezzo);
+  }
+  return parti.join("/");
+}
+
+// quante pagine guardare in testa al libro: la copertina, se c'e', e' la
+// prima o quasi. Piu' in la' si comincia a rischiare il logo dell'editore.
+const IN_TESTA = 3;
+
+// LA TERZA STRADA: LA PAGINA DI COPERTINA.
 //
-// Cancellare la copertina scelta a mano lasciava il dorso disegnato anche
-// sui libri che una copertina ce l'avevano: l'unica strada per riaverla era
-// reimportare il romanzo. Ma quella copertina sta ancora dentro il file, e
-// tirarla fuori e' lo stesso giro che fa l'import.
+// Misurato in un browser vero su due ePub costruiti apposta: se il file
+// non DICHIARA la copertina nei metadati, `loaded.cover` non torna niente
+// e `coverUrl()` torna null — tutt'e due le strade di prima falliscono, e
+// il libro entra col titolo giusto e nessuna copertina. Ma l'immagine c'e'
+// eccome: sta nella prima pagina della spina, che e' proprio la copertina.
+async function dallaPagina(eb) {
+  await eb.loaded?.spine;
+  const voci = (eb.spine?.items || []).slice(0, IN_TESTA);
+  // chi si chiama «cover» ha la precedenza: e' la stessa pagina, ma detta
+  const ordinate = [...voci].sort(
+    (a, b) => Number(/cover|copert/i.test(b.href || "")) - Number(/cover|copert/i.test(a.href || ""))
+  );
+  for (const it of ordinate) {
+    const percorso = it.canonical || it.url || it.href;
+    if (!percorso || !eb.archive?.getText) continue;
+    const html = await eb.archive.getText(percorso).catch(() => null);
+    const src = primaImmagine(html);
+    const dove = src && risolviAccanto(percorso, src);
+    if (!dove) continue;
+    const blob = await eb.archive.getBlob(dove).catch(() => null);
+    if (blob) return blob;
+  }
+  return null;
+}
+
+// TRE STRADE PER UNA COPERTINA, e si provano in ordine. Ognuna nel suo
+// `try`: prima stavano tutte insieme, e un errore nella prima si portava
+// via anche le altre — in silenzio, lasciando il libro col titolo giusto e
+// il dorso disegnato. E' quello che il lettore ha visto sull'Eresia.
 //
-// Torna il blob, o `null` se il libro una copertina non ce l'ha davvero —
-// e allora il dorso disegnato E' lo stato di partenza. Chi chiama deve
-// pero' avere i byte in mano: senza file non si guarda, e cancellare la
-// copertina buona per un libro rimasto nel cloud sarebbe il danno peggiore.
-// Il cuore della faccenda, staccato apposta da epub.js: prende un libro
-// GIA' APERTO e ne tira fuori la copertina. Sta qui e non dentro
-// `copertinaOriginale` perche' e' la parte dove si sbaglia — due strade,
-// un ripiego, e una libreria da chiudere comunque — e un test la puo'
-// chiamare con un finto libro invece di tirarsi dietro un ePub vero.
-//
-// Le due strade sono quelle dell'import: prima il file dentro l'archivio,
-// che e' il caso normale, poi `coverUrl` per gli ePub che la dichiarano
-// solo nel foglio di copertina. E `destroy` in un `finally`, perche' un
-// libro aperto e non chiuso resta in memoria anche quando la copertina
-// non c'era.
-export async function copertinaDaEpub(eb) {
+// Sta staccata da epub.js apposta: prende un libro GIA' APERTO, quindi un
+// test la chiama con un finto invece di tirarsi dietro un ePub vero.
+export async function trovaCopertina(eb) {
   if (!eb) return null;
+  // 1. i metadati la dichiarano: e' il caso normale
   try {
     const percorso = await eb.loaded?.cover;
     if (percorso && eb.archive) {
       const b = await eb.archive.getBlob(percorso);
       if (b) return b;
     }
+  } catch {
+    /* un archivio che tace non deve bloccare le altre strade */
+  }
+  // 2. il ripiego di epub.js, per chi la dichiara solo nel foglio
+  try {
     const url = await eb.coverUrl?.();
-    return url ? await (await fetch(url)).blob() : null;
+    if (url) return await (await fetch(url)).blob();
+  } catch {
+    /* idem */
+  }
+  // 3. la pagina di copertina, per chi non la dichiara affatto
+  try {
+    return await dallaPagina(eb);
+  } catch {
+    return null;
+  }
+}
+
+// Come sopra, ma chiude il libro: un ePub aperto e non chiuso resta in
+// memoria anche quando la copertina non c'era.
+export async function copertinaDaEpub(eb) {
+  if (!eb) return null;
+  try {
+    return await trovaCopertina(eb);
   } finally {
     eb.destroy?.();
   }
 }
 
+// TORNARE INDIETRO VUOL DIRE RIMETTERE QUELLA DEL LIBRO, non restare senza.
+//
+// Cancellare la copertina scelta a mano lasciava il dorso disegnato anche
+// sui libri che una copertina ce l'avevano: l'unica strada per riaverla era
+// reimportare il romanzo. Ma quella copertina sta ancora dentro il file, e
+// tirarla fuori e' lo stesso giro che fa l'import — e da quando e' lo
+// STESSO giro (`trovaCopertina`), il tasto ↺ ritrova anche le copertine
+// che solo la terza strada sa vedere.
+//
+// Torna il blob, o `null` se il libro una copertina non ce l'ha davvero —
+// e allora il dorso disegnato E' lo stato di partenza. Chi chiama deve
+// pero' avere i byte in mano: senza file non si guarda, e cancellare la
+// copertina buona per un libro rimasto nel cloud sarebbe il danno peggiore.
 export async function copertinaOriginale(book, bytes) {
   if (!bytes) return null;
   try {
