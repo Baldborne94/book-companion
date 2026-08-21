@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
-import { getProgress, getStatus } from "../lib/library.js";
-import { storageEstimate, statoPersistenza, requestPersistence } from "../lib/bookStore.js";
+import { getProgress, getStatus, combacia } from "../lib/library.js";
+import { storageEstimate, statoPersistenza, requestPersistence, getFile } from "../lib/bookStore.js";
 import { importFiles, resoconto } from "../lib/importBook.js";
 import { exportLibrary, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
 import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
@@ -279,6 +279,10 @@ export default function Library({
   // `filoTomi` e' il modo di fermarlo a meta'
   const [portando, setPortando] = useState(null);
   const filoTomi = useRef(null);
+  // il ripasso delle impronte e' l'altra passata lunga: stessa forma,
+  // stesso modo di fermarla
+  const [improntando, setImprontando] = useState(null);
+  const filoImpronte = useRef(null);
   const archiveRef = useRef(null);
   const [estimate, setEstimate] = useState(null);
   const inputRef = useRef(null);
@@ -347,6 +351,40 @@ export default function Library({
       parti.push(
         `${dedotte} ${dedotte === 1 ? "saga dedotta" : "saghe dedotte"} dalla tua biblioteca`
       );
+    notify?.(parti.length ? parti.join(", ") : "Erano già tutti a posto");
+  }
+
+  // I LIBRI GIA' IN CASA NON HANNO L'IMPRONTA, e sono la biblioteca intera
+  // di chi c'era prima della cura sui doppioni. Senza, rimettere dentro lo
+  // stesso file non lo fa SALTARE: resta solo il sospetto per titolo e
+  // autore, che si limita a dirtelo.
+  const senzaImpronta = books.filter((b) => !b.impronta);
+
+  async function ripassaLeImpronte() {
+    if (!senzaImpronta.length || improntando) return;
+    const mio = {};
+    filoImpronte.current = mio;
+    setImprontando({ i: 0, totale: senzaImpronta.length, titolo: senzaImpronta[0].title });
+    const { ripassaImpronte } = await import("../lib/importBook.js");
+    const esito = await ripassaImpronte(senzaImpronta, {
+      leggiByte: (id) => getFile(id),
+      vivo: () => filoImpronte.current === mio,
+      onProgress: (p) => filoImpronte.current === mio && setImprontando(p),
+    });
+    if (filoImpronte.current !== mio) return;
+    filoImpronte.current = null;
+    setImprontando(null);
+    // quel che e' stato letto resta scritto anche se il giro e' stato
+    // fermato: e' la stessa promessa di «Porta qui i tomi»
+    const quante = Object.keys(esito.campi).length;
+    if (quante) updateBooks(books.map((b) => (esito.campi[b.id] ? { ...b, impronta: esito.campi[b.id] } : b)));
+    const parti = [];
+    if (esito.scritte) parti.push(`${esito.scritte} ${esito.scritte === 1 ? "tomo riconosciuto" : "tomi riconosciuti"}`);
+    // i tomi rimasti lassu' si contano e si dicono, come ovunque: qui non
+    // c'e' un guasto, c'e' un file che su questo dispositivo non c'e'
+    if (esito.senzaByte)
+      parti.push(`${esito.senzaByte} ${esito.senzaByte === 1 ? "non è" : "non sono"} su questo dispositivo`);
+    if (esito.illeggibili) parti.push(`${esito.illeggibili} non si ${esito.illeggibili === 1 ? "è" : "sono"} letti`);
     notify?.(parti.length ? parti.join(", ") : "Erano già tutti a posto");
   }
 
@@ -512,15 +550,8 @@ export default function Library({
     }
   }
 
-  const q = query.trim().toLowerCase();
   const visible = books
-    .filter(
-      (b) =>
-        !q ||
-        b.title.toLowerCase().includes(q) ||
-        (b.author || "").toLowerCase().includes(q) ||
-        (b.saga || "").toLowerCase().includes(q)
-    )
+    .filter((b) => combacia(b, query))
     .filter((b) => filter === "all" || getStatus(b.id) === filter)
     .sort((a, b) =>
       sort === "title"
@@ -585,7 +616,7 @@ export default function Library({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && cercaDentro()}
-          placeholder="Cerca per titolo o autore…"
+          placeholder="Titolo, autore, saga, genere, le tue note…"
           style={{
             flex: 1,
             minWidth: 180,
@@ -792,6 +823,10 @@ export default function Library({
             <span style={{ color: C.arcane }}>
               ☁ Porto qui «{portando.titolo}» — {portando.i + 1} di {portando.totale}
             </span>
+          ) : improntando ? (
+            <span style={{ color: C.arcane }}>
+              👯 Guardo «{improntando.titolo}» — {improntando.i + 1} di {improntando.totale}
+            </span>
           ) : (
             <span>
               {books.length} {books.length === 1 ? "libro custodito" : "libri custoditi"}
@@ -873,6 +908,27 @@ export default function Library({
           >
             🔖 Riconosci saghe e cicli
           </button>
+          {/* Il ripasso delle impronte c'e' solo se qualcuno ne ha bisogno:
+              a biblioteca gia' a posto sarebbe un tasto che non fa niente.
+              Il numero sta scritto sopra perche' e' un giro che legge i
+              byte di ogni tomo, e chi lo tocca deve sapere quanto dura. */}
+          {senzaImpronta.length > 0 && (
+            <button
+              onClick={improntando ? () => { filoImpronte.current = null; setImprontando(null); } : ripassaLeImpronte}
+              style={{
+                padding: "7px 16px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.border}`,
+                color: C.text,
+                fontSize: F.nota,
+                marginRight: 8,
+              }}
+            >
+              {improntando
+                ? `Fermo qui (${improntando.i + 1} di ${improntando.totale})`
+                : `👯 Riconosci i doppioni di ${senzaImpronta.length} ${senzaImpronta.length === 1 ? "tomo" : "tomi"}`}
+            </button>
+          )}
           <button
             onClick={() => archiveRef.current?.click()}
             disabled={restoring}

@@ -4,6 +4,8 @@
 // La chiave API e' dell'utente e non lascia mai il dispositivo: la chiamata
 // parte dal browser dritta verso l'API Anthropic, nessun server in mezzo.
 
+import { daUsage, registra } from "./spesa.js";
+
 const KEY = "bc_ai_key";
 
 export function getOracleKey() {
@@ -118,9 +120,17 @@ export async function chiedi({ system, user, tetto = TETTO_BREVE }, fetcher) {
       .map((b) => b.text)
       .join("\n")
       .trim();
+    // I TOKEN CONSUMATI SI SEGNANO, e si segnano QUI perche' qui passano
+    // tutte le domande — spiegazione, scheda personaggio, «Dove eravamo
+    // rimasti», «Prima di cominciare». Metterlo in ognuna vorrebbe dire
+    // che la prossima si dimentica. `registra` non esplode mai: il lettore
+    // ha appena pagato questa risposta, e un conto che non si scrive non
+    // deve portarsela via.
+    const uso = daUsage(data.usage);
+    registra(data.usage);
     // una risposta troncata si DICHIARA: mostrata com'e' sembra finita, e
     // il lettore crede che la storia si fermi li'
-    return answer ? { answer, tagliata: data.stop_reason === "max_tokens" } : { error: "api" };
+    return answer ? { answer, tagliata: data.stop_reason === "max_tokens", uso } : { error: "api" };
   } catch {
     return { error: "rete" };
   }

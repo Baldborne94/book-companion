@@ -8,6 +8,38 @@
 import { contentStyles, spegniVuoti } from "../src/lib/readerTheme.js";
 import { READER_THEMES } from "../src/lib/readerSettings.js";
 import { Saltato } from "./aiuto.mjs";
+import { existsSync, readdirSync } from "node:fs";
+
+// DOVE PLAYWRIGHT TIENE I SUOI BROWSER, quando non e' dove crede lui.
+//
+// `PLAYWRIGHT_BROWSERS_PATH` e' la cartella dove i browser stanno davvero,
+// e la mettono sia le immagini gia' pronte sia chi installa a mano. Ma
+// playwright chiede la SUA versione precisa (`chromium-1234`), e se sul
+// disco c'e' la 1194 il lancio fallisce su un percorso che non esiste —
+// mentre il browser buono e' li' accanto. E' il caso di ogni sessione da
+// browser: il test si dichiarava saltato, e `readerTheme.js` restava senza
+// guardia proprio dove nessuno se ne sarebbe accorto.
+//
+// Si guarda prima il collegamento `chromium`, che e' quello che le immagini
+// pronte lasciano apposta, poi le cartelle versionate — le due disposizioni
+// (`chrome-linux` e `chrome-linux64`) cambiano da una versione all'altra.
+function browserSulDisco() {
+  const casa = process.env.PLAYWRIGHT_BROWSERS_PATH;
+  if (!casa || !existsSync(casa)) return null;
+  if (existsSync(`${casa}/chromium`)) return `${casa}/chromium`;
+  let cartelle = [];
+  try {
+    cartelle = readdirSync(casa).filter((d) => d.startsWith("chromium-")).sort().reverse();
+  } catch {
+    return null;
+  }
+  for (const d of cartelle) {
+    for (const dentro of ["chrome-linux/chrome", "chrome-linux64/chrome", "chrome-mac/Chromium.app/Contents/MacOS/Chromium"]) {
+      if (existsSync(`${casa}/${d}/${dentro}`)) return `${casa}/${d}/${dentro}`;
+    }
+  }
+  return null;
+}
 
 // il foglio di stile di un ePub vero: paragrafi attaccati col rientro, uno
 // spaziatore sottile, un contenitore che detta l'interlinea sua, e lo
@@ -17,6 +49,14 @@ const LIBRO = `
   .sp { line-height: 0; }
   .fitta p { line-height: 1.1; }
   .scena { margin: 0; }
+  /* L'EDITORE COLORA ANCHE QUELLO CHE NON E' UN PARAGRAFO, ed e' tutto il
+     punto della lezione 1: se l'inchiostro nostro va su un ELENCO di tag
+     invece che su «body *», chi resta fuori dall'elenco tiene questo nero
+     e sul tema notte sparisce. Senza queste due righe la lezione non era
+     coperta da niente: div, font, td e didascalia non avevano un colore
+     dell'editore da battere, ereditavano da «body» e passavano comunque. */
+  div, td, figcaption { color: #111; }
+  font { color: #333; }
 `;
 
 const CORPO = `
@@ -60,15 +100,19 @@ export default async function (t) {
     throw new Saltato("manca playwright — `npm i -D playwright && npx playwright install chromium`");
   }
 
-  // TRE STRADE PER UN BROWSER, e si provano in ordine. Playwright si porta
+  // PIU' STRADE PER UN BROWSER, e si provano in ordine. Playwright si porta
   // dietro un Chromium di una versione precisa, e se sul disco c'e' quello
   // di un'altra installazione il lancio fallisce con un percorso che non
   // esiste — succede sul serio, e il file si dichiarava saltato per un
   // motivo che con `readerTheme.js` non c'entra niente. Il Chrome di
-  // sistema fa lo stesso lavoro.
+  // sistema fa lo stesso lavoro, e il browser che sta dentro
+  // `PLAYWRIGHT_BROWSERS_PATH` pure: quella cartella e' proprio il posto
+  // dove i browser stanno, e non guardarci era il buco piu' grosso.
+  const sulDisco = browserSulDisco();
   const strade = [
     process.env.PLAYWRIGHT_CHROMIUM ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM } : null,
     {},
+    sulDisco ? { executablePath: sulDisco } : null,
     { channel: "chrome" },
     { channel: "chromium" },
   ].filter(Boolean);

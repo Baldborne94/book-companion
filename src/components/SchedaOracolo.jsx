@@ -3,6 +3,7 @@ import { C, F, R } from "../data/constants.js";
 import { setOracleKey } from "../lib/oracle.js";
 import { raccontaFrontiera } from "../lib/frontiera.js";
 import { movimenti, conTitoli, TITOLETTI } from "../lib/chiSono.js";
+import { rigaUltima, riassunto, costo, soldi, TARIFFE, MODELLO } from "../lib/spesa.js";
 
 // Il corpo delle schede dell'Oracolo — «Chi è costui?» e «Dove eravamo
 // rimasti» — condiviso fra i due reader. Cambia la domanda, non la scheda:
@@ -12,6 +13,30 @@ import { movimenti, conTitoli, TITOLETTI } from "../lib/chiSono.js";
 // La chiave sta QUI, dove l'Oracolo si usa. Prima la scheda diceva «la trovi
 // nella scheda del dizionario» e ti lasciava a cercarla: una porta in faccia
 // la prima volta che tocchi la funzione.
+
+// LA RIGA DEL COSTO. Quella della singola risposta piu' il mese in corso:
+// il totale da solo non dice mai quale funzione spende, e la singola da
+// sola non dice dove stai andando a finire. La tariffa e' scritta accanto
+// perche' un numero in valuta che non si puo' verificare vale poco — e
+// perche' quando Anthropic la cambia, quella riga dice ancora la verita'
+// su come e' stato fatto il conto.
+function Costo({ uso }) {
+  if (!uso) return null;
+  const riga = rigaUltima(uso);
+  const r = riassunto();
+  return (
+    <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.5 }}>
+      Questa risposta: {riga}
+      {r.mese
+        ? ` · questo mese ${soldi(costo(r.mese))} in ${r.mese.chiamate} ${r.mese.chiamate === 1 ? "domanda" : "domande"}`
+        : ""}
+      <span style={{ opacity: 0.75 }}>
+        {" "}
+        ({MODELLO}: ${TARIFFE.dentro} e ${TARIFFE.fuori} per milione di token)
+      </span>
+    </p>
+  );
+}
 
 function Chiave({ onSalva }) {
   const [bozza, setBozza] = useState("");
@@ -200,6 +225,12 @@ export default function SchedaOracolo({ scheda, attese, vuoto, onRiprova }) {
         {scheda.nome && (
           <Muti tappe={tappe} passaggi={passaggi} lontani={scheda.lontani} />
         )}
+        {/* QUANTO E' COSTATA QUESTA RISPOSTA. La chiave è tua e paghi tu:
+            un centinaio di passaggi davanti al modello non costano come
+            una parola cercata nel dizionario, e finché il numero non si
+            vedeva non c'era modo di saperlo. Sta qui e non in cima perché
+            è una nota a piè di pagina, non il titolo della scheda. */}
+        <Costo uso={scheda.uso} />
         <button
           onClick={() => setFonti((v) => !v)}
           style={{

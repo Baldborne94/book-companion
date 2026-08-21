@@ -39,6 +39,61 @@ export async function impronta(bytes) {
 export const giaInLibreria = (imp, libri = []) =>
   (imp && libri.find((b) => b?.impronta === imp)) || null;
 
+// IL RIPASSO DELLE IMPRONTE, sui libri che erano gia' qui.
+//
+// L'impronta si calcola all'import, e basta. Chi aveva la biblioteca
+// prima di questa cura ce l'ha vuota su TUTTI i libri — cioe' proprio la
+// collezione che si vorrebbe proteggere. Rimettere dentro lo stesso file
+// di un romanzo vecchio non lo faceva saltare: il confronto sui byte non
+// aveva niente con cui confrontare, e restava solo il sospetto per titolo
+// e autore, che si limita a dirtelo.
+//
+// Stessa forma di ogni passata lunga dell'app (`portaACasa`, la ricerca
+// in biblioteca): **un tomo per volta**, perche' aprirne venti insieme su
+// un tablet vuol dire tenere in memoria venti romanzi; avanzamento col
+// titolo che scende; e il filo `vivo` per fermarla a meta', con quello
+// che e' stato fatto che resta fatto.
+//
+// `leggiByte` arriva da fuori (e' `getFile` di `bookStore`) per la
+// ragione di sempre: cosi' un test la chiama con un finto invece di
+// tirarsi dietro IndexedDB.
+export async function ripassaImpronte(libri = [], { leggiByte, onProgress, vivo } = {}) {
+  const attivo = vivo || (() => true);
+  const esito = { scritte: 0, senzaByte: 0, illeggibili: 0, fermato: false, campi: {} };
+  // solo quelli che non ce l'hanno: chi l'ha gia' non si ri-legge: sono
+  // decine di megabyte per un valore che verrebbe identico
+  const mancanti = libri.filter((b) => b && !b.impronta);
+  for (const [i, b] of mancanti.entries()) {
+    if (!attivo()) {
+      esito.fermato = true;
+      break;
+    }
+    onProgress?.({ i, totale: mancanti.length, titolo: b.title });
+    // UN TOMO RIMASTO NEL CLOUD NON E' UN GUASTO: non ha i byte qui, e
+    // scaricare mezza biblioteca per calcolare degli hash sarebbe un
+    // prezzo che nessuno ha chiesto di pagare. Si conta e si dice.
+    // il `.then` invece di `Promise.resolve(leggiByte(...))` non e' stile:
+    // un `leggiByte` che esplode SUBITO — senza tornare una promessa —
+    // scavalcherebbe il `catch` e si porterebbe via tutto il giro, insieme
+    // alle impronte gia' calcolate. Preso da un test.
+    const file = await Promise.resolve()
+      .then(() => leggiByte?.(b.id))
+      .catch(() => null);
+    if (!file) {
+      esito.senzaByte += 1;
+      continue;
+    }
+    const imp = await impronta(await file.arrayBuffer().catch(() => null));
+    if (!imp) {
+      esito.illeggibili += 1;
+      continue;
+    }
+    esito.campi[b.id] = imp;
+    esito.scritte += 1;
+  }
+  return esito;
+}
+
 const chiave = (s) =>
   String(s || "")
     .toLowerCase()

@@ -2,7 +2,7 @@
 // l'app ha fatto in silenzio. Il pezzo che conta e' il titolo preso dal
 // nome del file — e' il guasto che si scopre settimane dopo, da una saga
 // che non si accende.
-import { resoconto, impronta, giaInLibreria, sembraGiaLetto } from "../src/lib/importBook.js";
+import { resoconto, impronta, giaInLibreria, sembraGiaLetto, ripassaImpronte } from "../src/lib/importBook.js";
 
 const libri = (n) => Array.from({ length: n }, (_, i) => ({ id: String(i) }));
 const byte = (s) => new TextEncoder().encode(s).buffer;
@@ -158,4 +158,70 @@ export default async function (t) {
     !/Nessun file importato/.test(resoconto({ saltati: libri(1) }))
   );
   t.eq("mentre il vuoto vero resta vuoto", resoconto({}), "Nessun file importato");
+
+  // ---- IL RIPASSO DELLE IMPRONTE SUI LIBRI GIA' IN CASA -----------------
+  // L'impronta si calcolava solo all'import: chi aveva la biblioteca prima
+  // di quella cura ce l'aveva vuota su TUTTI i libri, cioe' proprio la
+  // collezione da proteggere. Rimettere dentro lo stesso file non lo faceva
+  // saltare, perche' il confronto sui byte non aveva niente da confrontare.
+  const finto = (testo) => ({ arrayBuffer: async () => byte(testo) });
+  const inCasa = [
+    { id: "1", title: "Mort" },
+    { id: "2", title: "Reaper Man", impronta: "gia-fatta" },
+    { id: "3", title: "Nel cloud" },
+  ];
+  const byId = { 1: finto("le pagine di Mort"), 3: null };
+
+  let e = await ripassaImpronte(inCasa, { leggiByte: (id) => byId[id] });
+  t.eq("scrive l'impronta a chi non ce l'ha", e.scritte, 1);
+  t.c("e l'impronta e' quella dei byte", e.campi["1"] === (await impronta(byte("le pagine di Mort"))));
+  // CHI CE L'HA GIA' NON SI RILEGGE: sono decine di megabyte per un valore
+  // che verrebbe identico
+  t.c("il libro gia' a posto non si tocca", !("2" in e.campi));
+  // UN TOMO RIMASTO NEL CLOUD NON E' UN GUASTO: si conta e si dice, come
+  // ovunque nell'app — scaricare mezza biblioteca per degli hash sarebbe un
+  // prezzo che nessuno ha chiesto di pagare
+  t.eq("i tomi lontani si contano", e.senzaByte, 1);
+  t.eq("e non finiscono fra gli illeggibili", e.illeggibili, 0);
+
+  // un file che c'e' ma non si legge e' un'altra cosa ancora
+  e = await ripassaImpronte([{ id: "1", title: "Rotto" }], {
+    leggiByte: () => ({ arrayBuffer: async () => { throw new Error("rotto"); } }),
+  });
+  t.eq("un file illeggibile si conta a parte", e.illeggibili, 1);
+  t.eq("e non si finge di averlo fatto", e.scritte, 0);
+  // il lettore che ha tolto i permessi, o un `getFile` che esplode
+  e = await ripassaImpronte([{ id: "1", title: "x" }], { leggiByte: () => { throw new Error("boom"); } });
+  t.eq("nemmeno un archivio che esplode ferma il giro", e.senzaByte, 1);
+
+  // ---- SI PUO' FERMARE A META', e quel che e' fatto resta fatto ---------
+  // e' la promessa di ogni passata lunga dell'app
+  let visti = 0;
+  e = await ripassaImpronte(
+    [1, 2, 3, 4].map((n) => ({ id: String(n), title: `T${n}` })),
+    {
+      leggiByte: (id) => finto(`pagine ${id}`),
+      vivo: () => visti < 2,
+      onProgress: () => { visti += 1; },
+    }
+  );
+  t.c("il giro si ferma", e.fermato);
+  t.eq("e tiene quello che aveva gia' guardato", e.scritte, 2);
+  t.c("gli altri non li ha toccati", !("4" in e.campi));
+
+  // l'avanzamento dice a che punto e' e su cosa: un giro lungo muto e'
+  // indistinguibile da un giro bloccato
+  const passi = [];
+  await ripassaImpronte(inCasa, { leggiByte: (id) => byId[id], onProgress: (p) => passi.push(p) });
+  t.eq("l'avanzamento salta chi ce l'ha gia'", passi.length, 2);
+  t.eq("e porta il titolo", passi[0].titolo, "Mort");
+  t.eq("col totale giusto", passi[0].totale, 2);
+
+  // ---- niente da fare, niente da rompere --------------------------------
+  e = await ripassaImpronte([{ id: "1", impronta: "c'e'" }], { leggiByte: () => finto("x") });
+  t.eq("una biblioteca gia' a posto non legge niente", e.scritte, 0);
+  e = await ripassaImpronte([], {});
+  t.eq("e nemmeno una vuota", e.scritte, 0);
+  e = await ripassaImpronte([{ id: "1" }], {});
+  t.eq("senza un modo di leggere i byte non esplode", e.senzaByte, 1);
 }
