@@ -10,7 +10,7 @@ import {
 } from "./annotations.js";
 import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, getListsRaw, writeLists } from "./music.js";
 import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
-import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush } from "./syncCore.js";
+import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna } from "./syncCore.js";
 
 const LAST_SYNC_KEY = "bc_lastsync";
 const REPUSH_KEY = "bc_repush";
@@ -258,25 +258,42 @@ export async function syncNow({ onProgress } = {}) {
 
   if (pull.length || removeLocal.length) say("Ricevo le novità…");
   let next = loadBooks();
-  for (const row of pull) {
-    const { book, state } = localFromRow(row);
-    const i = next.findIndex((b) => b.id === book.id);
-    if (i >= 0) next[i] = { ...next[i], ...book };
-    else next.push(book);
-    writeLocalState(book.id, state);
-    touchBook(book.id, row.updated_at);
-    if (!(await getCover(book.id))) {
-      const { data } = await sb.storage.from(BUCKET).download(coverPath(uid, book.id));
-      if (data) await putCover(book.id, data);
+  try {
+    for (const row of pull) {
+      const { book, state } = localFromRow(row);
+      const i = next.findIndex((b) => b.id === book.id);
+      if (i >= 0) next[i] = { ...next[i], ...book };
+      else next.push(book);
+      writeLocalState(book.id, state);
+      touchBook(book.id, row.updated_at);
+      // UNA COPERTINA NON VALE UN RIPRISTINO. Stava dentro il giro senza
+      // rete di sicurezza: un solo scaricamento andato storto — e sono
+      // cinquantaquattro, su una connessione qualunque — buttava via
+      // l'intera ricezione, perche' `saveBooks` sta in fondo e non ci si
+      // arrivava mai. Il libro si tiene comunque: senza copertina si vede
+      // il dorso disegnato, ed e' infinitamente meglio di niente.
+      try {
+        if (!(await getCover(book.id))) {
+          const { data } = await sb.storage.from(BUCKET).download(coverPath(uid, book.id));
+          if (data) await putCover(book.id, data);
+        }
+      } catch {
+        /* si riprova alla prossima sincronizzazione */
+      }
     }
-  }
 
-  for (const id of removeLocal) {
-    next = next.filter((b) => b.id !== id);
-    removeAnnotations(id);
-    await removeBookData(id).catch(() => {});
+    for (const id of removeLocal) {
+      next = next.filter((b) => b.id !== id);
+      removeAnnotations(id);
+      await removeBookData(id).catch(() => {});
+    }
+  } finally {
+    // Quel che e' sceso resta sceso, anche se il giro si e' rotto a meta':
+    // e' la stessa regola di «Porta qui i tomi» e della ricerca in
+    // biblioteca. Rifare cinquanta libri da capo per un intoppo al
+    // quarantanovesimo non lo merita nessuno.
+    if (pull.length || removeLocal.length) saveBooks(next);
   }
-  if (pull.length || removeLocal.length) saveBooks(next);
 
   const { data: remotePrefsRows } = await sb.from("prefs").select("*").eq("user_id", uid).limit(1);
   const { merged, applyLocal, pushRemote } = mergePrefs(localPrefs(), remotePrefsRows?.[0] || null);
@@ -289,20 +306,22 @@ export async function syncNow({ onProgress } = {}) {
     if (merged.last_opened) localStorage.setItem("bc_lastopen", merged.last_opened);
   }
   if (pushRemote) {
-    const riga = { ...merged, updated_at: stamp, user_id: uid };
-    const { error } = await sb.from("prefs").upsert(riga);
-    // Stessa regola dei libri: uno schema non ancora migrato non deve
-    // rompere TUTTA la sincronizzazione. Qui pero' la colonna e' una sola,
-    // quindi basta rinunciare a lei e riprovare — i termini restano in
-    // locale e nell'archivio, che e' dove viaggiavano prima.
-    if (error && /glossari/i.test(`${error.message || ""} ${error.details || ""}`)) {
-      const { glossari, ...senza } = riga;
-      const secondo = await sb.from("prefs").upsert(senza);
-      if (secondo.error) throw secondo.error;
-      say("Sincronizzato (glossario: aggiorna lo schema)");
-    } else if (error) {
-      throw error;
+    // Le preferenze rinunciano alle colonne che lo schema non ha ancora,
+    // una per volta, come fanno i libri: prima una colonna mancante
+    // faceva morire tutto il giro, e «ultima sincronizzazione» restava
+    // «mai» anche quando i libri erano saliti e scesi senza un graffio.
+    let riga = { ...merged, updated_at: stamp, user_id: uid };
+    const persi = [];
+    for (let i = 0; i <= 8; i += 1) {
+      const { error } = await sb.from("prefs").upsert(riga);
+      if (!error) break;
+      const manca = colonnaMancante(error);
+      const ridotta = manca ? senzaColonna(riga, manca) : null;
+      if (!ridotta) throw error;
+      riga = ridotta;
+      persi.push(manca);
     }
+    if (persi.length) say(`Sincronizzato (${persi.join(", ")}: aggiorna lo schema)`);
   }
   localStorage.setItem(PREFS_UPD_KEY, String(stamp));
 

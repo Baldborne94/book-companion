@@ -5,7 +5,7 @@
 //
 // Qui si prova che ci entrano, e soprattutto CHI VINCE quando due
 // dispositivi hanno scritto lo stesso termine in modo diverso.
-import { rowFromLocal, localFromRow, mergePrefs } from "../src/lib/syncCore.js";
+import { rowFromLocal, localFromRow, mergePrefs, colonnaMancante, senzaColonna } from "../src/lib/syncCore.js";
 
 const stato = { status: "reading", progress: 0.5, marks: [], highlights: [] };
 
@@ -66,6 +66,33 @@ export default async function (t) {
   // due dispositivi già d'accordo non si scrivono a vicenda per niente
   r = mergePrefs(prefs({ glossari: MIO, updated_at: 100 }), { ...prefs({ glossari: MIO }), updated_at: 100 });
   t.c("due glossari identici non fanno traffico", !r.applyLocal && !r.pushRemote);
+
+  // ---- UNO SCHEMA NON MIGRATO NON ROMPE TUTTA LA SINCRONIZZAZIONE ------
+  // È successo sul serio: `music_lists` esiste dalle raccolte musicali, e
+  // chi non aveva rilanciato lo schema se l'è trovata addosso mesi dopo —
+  // le preferenze morivano alla prima colonna mancante, e con loro moriva
+  // TUTTO il giro, compresa la riga «ultima sincronizzazione».
+  const vero = {
+    message: "Could not find the 'music_lists' column of 'prefs' in the schema cache",
+    details: "",
+  };
+  t.eq("la colonna mancante si legge dall'errore", colonnaMancante(vero), "music_lists");
+  t.eq("e anche col nome fra i dettagli", colonnaMancante({ details: "the 'glossari' column of 'prefs'" }), "glossari");
+  t.eq("un errore che non parla di colonne", colonnaMancante({ message: "network error" }), null);
+  t.eq("e nessun errore", colonnaMancante(), null);
+
+  const prefRiga = { user_id: "u", updated_at: 5, reader: null, music_lists: [], glossari: {} };
+  const ridotta = senzaColonna(prefRiga, "music_lists");
+  t.c("la colonna se ne va", !("music_lists" in ridotta));
+  t.c("e il resto resta", "glossari" in ridotta && ridotta.user_id === "u");
+  // QUELLO CHE IDENTIFICA LA RIGA NON SI TOGLIE MAI: senza `user_id` la
+  // scrittura non sarebbe più nemmeno rivolta a qualcuno, e il giro
+  // continuerebbe a rinunciare all'infinito
+  t.eq("`user_id` non si tocca", senzaColonna(prefRiga, "user_id"), null);
+  t.eq("nemmeno `updated_at`", senzaColonna(prefRiga, "updated_at"), null);
+  // una colonna che non c'è già più: si smette, non si gira a vuoto
+  t.eq("una colonna già tolta ferma il giro", senzaColonna(ridotta, "music_lists"), null);
+  t.eq("e un nome vuoto pure", senzaColonna(prefRiga, null), null);
 
   // ---- niente da rompere -------------------------------------------------
   r = mergePrefs(prefs(), null);
