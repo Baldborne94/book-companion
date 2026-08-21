@@ -15,6 +15,8 @@ import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRep
 const LAST_SYNC_KEY = "bc_lastsync";
 const REPUSH_KEY = "bc_repush";
 const UPLOADED_KEY = "bc_uploaded";
+// Le copertine hanno un registro loro, e non e' un capriccio: vedi sotto.
+const UPLOADED_COV_KEY = "bc_uploaded_cov";
 const PREFS_UPD_KEY = "bc_prefs_upd";
 
 export const getLastSync = () => parseInt(localStorage.getItem(LAST_SYNC_KEY), 10) || 0;
@@ -29,6 +31,16 @@ const uploaded = () => {
 };
 const markUploaded = (id) =>
   localStorage.setItem(UPLOADED_KEY, JSON.stringify([...uploaded(), id]));
+
+const copertineSu = () => {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(UPLOADED_COV_KEY)) || []);
+  } catch {
+    return new Set();
+  }
+};
+const segnaCopertina = (id) =>
+  localStorage.setItem(UPLOADED_COV_KEY, JSON.stringify([...copertineSu(), id]));
 
 const filePath = (uid, book) => `${uid}/${book.id}.${book.fileType || "epub"}`;
 const coverPath = (uid, id) => `${uid}/${id}.cover`;
@@ -214,11 +226,38 @@ export async function syncNow({ onProgress } = {}) {
       .from(BUCKET)
       .upload(filePath(uid, book), blob, { upsert: true, contentType: blob.type || undefined });
     if (sErr && sErr.statusCode !== "409") throw sErr;
-    const cover = await getCover(row.id);
-    if (cover) {
-      await sb.storage.from(BUCKET).upload(coverPath(uid, row.id), cover, { upsert: true });
-    }
     markUploaded(row.id);
+  }
+
+  // LE COPERTINE HANNO UN REGISTRO LORO.
+  //
+  // Salivano appese al file, dentro il giro dei libri da caricare e solo
+  // per quelli mai caricati prima. Bastava che la copertina arrivasse DOPO
+  // — un libro importato senza, poi rivestito; o l'estrazione andata a buon
+  // fine al secondo tentativo — e quella copertina non partiva mai piu':
+  // il libro era gia' fra i «caricati», e nessuno lo riguardava. Sull'altro
+  // dispositivo restava un dorso disegnato per sempre, senza un modo per
+  // rimediare che non fosse reimportare tutto.
+  //
+  // Adesso e' un giro suo, con la sua memoria: si guarda ogni libro che una
+  // copertina ce l'ha qui, e si manda quella che non e' ancora partita. Il
+  // registro separato serve proprio a questo — legare le copertine al
+  // registro dei file vorrebbe dire, per farne salire una, rispedire lassu'
+  // trenta megabyte di romanzo.
+  const covGia = copertineSu();
+  let copertineNuove = 0;
+  for (const b of books) {
+    if (covGia.has(b.id)) continue;
+    const cover = await getCover(b.id).catch(() => null);
+    if (!cover) continue;
+    const { error: cErr } = await sb.storage
+      .from(BUCKET)
+      .upload(coverPath(uid, b.id), cover, { upsert: true });
+    // una copertina che non sale non ferma niente: si riprova al giro dopo
+    if (cErr && cErr.statusCode !== "409") continue;
+    segnaCopertina(b.id);
+    copertineNuove += 1;
+    if (copertineNuove === 1) say("Mando su le copertine…");
   }
 
   // LE MELODIE SONO BYTE COME I LIBRI, e vanno dove vanno i libri. Finora

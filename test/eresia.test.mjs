@@ -11,13 +11,37 @@ import { SAGA as SAGA_DISCO } from "../src/data/discworldBooks.js";
 export default async function (t) {
   // ---- la tavola sta in piedi da sola -----------------------------------
   t.c("ci sono i volumi", HORUS.length > 60, String(HORUS.length));
-  const ordini = HORUS.map((b) => b.o);
-  t.c("ogni volume ha il suo posto", ordini.every((o) => Number.isInteger(o) && o > 0));
-  t.eq("e nessun posto e' occupato due volte", new Set(ordini).size, ordini.length);
-  t.c("i posti sono di fila", ordini.every((o, i) => o === i + 1), ordini.slice(0, 5).join(","));
   t.c("ogni volume dice a che parte appartiene", HORUS.every((b) => !!b.c));
   const titoli = HORUS.map((b) => b.t.toLowerCase());
   t.eq("nessun titolo ripetuto", new Set(titoli).size, titoli.length);
+
+  // ---- IL NUMERO CONTA I ROMANZI DELL'ERESIA, E BASTA -------------------
+  // Prima contava ogni voce del percorso, prologo compreso, e «Horus
+  // Rising» usciva il quindicesimo del suo stesso inizio. Era sbagliato in
+  // tre modi: il prologo sono quattro percorsi ALTERNATIVI (ne leggi uno),
+  // quei libri non sono nemmeno dell'Eresia, e un'antologia messa davanti
+  // per via di un solo racconto rubava il posto al romanzo che apre tutto.
+  const numerati = HORUS.filter((b) => b.o != null);
+  const ordini = numerati.map((b) => b.o);
+  t.c("i romanzi hanno un posto", numerati.length > 30, String(numerati.length));
+  t.eq("e nessun posto è occupato due volte", new Set(ordini).size, ordini.length);
+  t.c("i posti sono di fila da 1", ordini.every((o, i) => o === i + 1), ordini.slice(0, 5).join(","));
+
+  // il controllo che il lettore ha fatto guardando lo scaffale
+  t.eq("«Horus Rising» è il PRIMO", HORUS.find((b) => b.t === "Horus Rising")?.o, 1);
+  t.eq("e «False Gods» il secondo", HORUS.find((b) => b.t === "False Gods")?.o, 2);
+
+  // quello che un numero NON ce l'ha, e perché
+  t.eq("il prologo non è un passo del cammino", HORUS.find((b) => b.t === "Eisenhorn")?.o, null);
+  t.eq("un'antologia nemmeno", HORUS.find((b) => b.t === "Eye of Terra")?.o, null);
+  t.c(
+    "ma restano nel loro ciclo, che dice quando aprirle",
+    HORUS.find((b) => b.t === "Eye of Terra")?.c.startsWith("Part 1")
+  );
+  t.c(
+    "e i 40k fuori dall'Eresia non contano",
+    HORUS.filter((b) => b.nota === "40k, fuori dall'Eresia").every((b) => b.o === null)
+  );
 
   // ---- OGNI VOCE RICONOSCE SE STESSA, e nella saga giusta ---------------
   // e' il controllo che prende le collisioni fra le due tavole: se un
@@ -26,7 +50,7 @@ export default async function (t) {
   const sbagliati = [];
   for (const b of HORUS) {
     const r = riconosci({ title: b.t, author: b.a || "" });
-    if (r?.saga !== SAGA_HH || r?.sagaOrder !== b.o) {
+    if (r?.saga !== SAGA_HH || (r?.sagaOrder ?? null) !== b.o) {
       sbagliati.push(`${b.t} → ${r ? `${r.saga} #${r.sagaOrder}` : "niente"}`);
     }
   }
@@ -59,17 +83,11 @@ export default async function (t) {
   );
 
   // ---- `o` E' L'ORDINE DEL PERCORSO, NON IL NUMERO DELLA COLLANA -------
-  // e' la cosa che sorprende guardando lo scaffale: CD8D rimescola apposta,
-  // quindi il quattordicesimo della Black Library arriva presto nel cammino
+  // CD8D rimescola apposta: il quattordicesimo della Black Library arriva
+  // sesto nel cammino
   const primoEretico = riconosci({ title: "The First Heretic", author: "Aaron Dembski-Bowden" });
-  const fulgrim = riconosci({ title: "Fulgrim", author: "Graham McNeill" });
-  t.c("«The First Heretic» è il 14 in collana", HORUS.find((b) => b.t === "The First Heretic")?.n === 14);
-  t.c(
-    "ma nel percorso viene subito dopo Fulgrim (il 5)",
-    primoEretico.sagaOrder > fulgrim.sagaOrder && primoEretico.sagaOrder - fulgrim.sagaOrder <= 2,
-    `${fulgrim.sagaOrder} → ${primoEretico.sagaOrder}`
-  );
-  t.c("e il numero di collana non finisce nell'ordine", primoEretico.sagaOrder !== 14);
+  t.eq("«The First Heretic» è il 14 in collana", HORUS.find((b) => b.t === "The First Heretic")?.n, 14);
+  t.eq("ma il 6 nel cammino", primoEretico.sagaOrder, 6);
 
   // ---- UN TITOLO DI UNA PAROLA SOLA NON BASTA A DECIDERE ---------------
   // «Scars», «Mortis», «Betrayer»: prese per contenimento si mangerebbero
