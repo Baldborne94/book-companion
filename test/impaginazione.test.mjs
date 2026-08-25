@@ -2,7 +2,7 @@
 // codice e due trappole, e tutt'e due ci sono gia' cascate una volta: al
 // primo tentativo il libro non si apriva affatto.
 import { ritaglioAvanzo, flattenToc } from "../src/lib/readerLayout.js";
-import { rientrata, spaziatoriFitti, RIENTRO_MINIMO, ABBASTANZA_PARAGRAFI } from "../src/lib/readerTheme.js";
+import { rientrata, spaziatoriFitti, SEGNO_DI_SCENA, RIENTRO_MINIMO, ABBASTANZA_PARAGRAFI } from "../src/lib/readerTheme.js";
 
 export default async function (t) {
   // ---- il conto normale --------------------------------------------------
@@ -118,4 +118,25 @@ export default async function (t) {
   t.c("nemmeno appena sotto la soglia", !spaziatoriFitti(ABBASTANZA_PARAGRAFI - 1, 99));
   t.c("da lì in su sì", spaziatoriFitti(ABBASTANZA_PARAGRAFI, ABBASTANZA_PARAGRAFI));
   t.c("niente paragrafi, niente", !spaziatoriFitti(0, 0));
+
+  // ---- UN SEGNO DI SCENA NON È UN PARAGRAFO ----------------------------
+  // Certi libri separano le scene con una riga di asterischi invece che
+  // con una riga vuota: ha testo, quindi non è «vuoto», ma lo spazio
+  // attorno ce l'ha per mestiere. Da quando i margini si azzerano
+  // sull'ELEMENTO — dove la specificità non protegge più niente — questa
+  // è l'unica cosa che li tiene staccati dalla prosa.
+  const segno = (t) => SEGNO_DI_SCENA.test(t);
+  t.c("tre asterischi", segno("***"));
+  t.c("con gli spazi", segno("* * *"));
+  t.c("il fregio", segno("⁂"));
+  t.c("le lineette", segno("— — —"));
+  t.c("il rombo", segno("◆"));
+
+  // E LA PROSA NON DEVE MAI PASSARE PER UN SEGNO DI SCENA, o resterebbe
+  // con lo stacco che stiamo togliendo
+  t.c("una battuta no", !segno("«Oook.»"));
+  t.c("nemmeno cortissima", !segno("No."));
+  t.c("né un numero di capitolo", !segno("12"));
+  t.c("né una riga di puntini lunga", !segno("..............."), "");
+  t.c("il vuoto non è un segno", !segno(""));
 }

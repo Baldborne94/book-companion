@@ -106,6 +106,13 @@ export const SPAZIATORI_FITTI = 0.5;
 // riga vuota in mezzo sarebbe «sistematico» per puro caso
 export const ABBASTANZA_PARAGRAFI = 6;
 
+// UN SEGNO DI SCENA NON E' UN PARAGRAFO. Certi libri separano le scene con
+// una riga di asterischi o un fregio invece che con una riga vuota: hanno
+// testo, quindi non sono «vuoti», ma lo spazio attorno ce l'hanno per
+// mestiere e togliergliela li incollerebbe alla prosa. Corti e senza
+// nessuna lettera ne' cifra: «* * *», «⁂», «— — —».
+export const SEGNO_DI_SCENA = /^[^\p{L}\p{N}]{1,12}$/u;
+
 export function spaziatoriFitti(pieni, spaziatori) {
   return pieni >= ABBASTANZA_PARAGRAFI && spaziatori >= pieni * SPAZIATORI_FITTI;
 }
@@ -140,6 +147,28 @@ export function togliStacco(doc) {
       s.style.margin = "0";
       s.style.lineHeight = "0";
     }
+  }
+
+  // E I MARGINI MESSI DA UNA CLASSE, che il foglio non riesce a battere.
+  //
+  // La regola qui sotto e' `p { margin: 0 }`: un selettore di TAG, senza
+  // `!important`. Bastava finche' il libro i margini se li metteva sul
+  // tag. Ma **Calibre veste ogni paragrafo con una classe**
+  // (`<p class="calibre2">`), e una classe batte un tag: su quei libri la
+  // cura perdeva e lo stacco restava tutto — misurato, 9,6px sopra e
+  // sotto, ed e' quello che il lettore vedeva ancora sul tablet dopo la
+  // prima cura.
+  //
+  // Si fa allora come `spegniVuoti`: **sugli elementi**, dove la
+  // specificita' non conta piu'. E lo stacco di scena resta protetto da un
+  // criterio migliore di quello vecchio — non piu' «ha una classe» ma «non
+  // e' un paragrafo di prosa»: i vuoti non si toccano (sono gli stacchi),
+  // e nemmeno i SEGNI di scena, quei paragrafi corti fatti solo di
+  // asterischi o fregi, che una riga vuota attorno ce l'hanno per mestiere.
+  for (const p of pieni) {
+    if (SEGNO_DI_SCENA.test((p.textContent || "").trim())) continue;
+    p.style.marginTop = "0";
+    p.style.marginBottom = "0";
   }
 
   // una volta sola per documento: `hooks.content` oggi gira una volta, ma
