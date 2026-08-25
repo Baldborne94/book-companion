@@ -7,6 +7,15 @@ import BookCover from "./BookCover.jsx";
 import { BookmarkIcon, LeafIcon, SparkIcon, StarIcon } from "./Icons.jsx";
 import EmptyState from "./EmptyState.jsx";
 
+// da quante stelle in su la CARTA DI UNA SAGA si accende (bordo dorato e
+// voto in vista). Non c'entra coi preferiti, che sono quelli col cuore:
+// qui è solo «questa saga ha un voto alto, mostralo» — ed è il punto che
+// ha rotto l'app quando i preferiti hanno smesso di usare le stelle: la
+// costante era stata tolta ma le carte-saga la usavano ancora, e Vite non
+// si accorge di un identificatore libero (la pagina moriva SOLO con una
+// saga sullo scaffale, quindi la prova senza saghe non l'aveva preso)
+const STELLE_ALTE = 4;
+
 const stars = (v) => String(v).replace(".", ",");
 
 function SectionTitle({ children }) {
@@ -58,7 +67,7 @@ function SagaCard({ saga, onOpen }) {
         textAlign: "left",
         padding: 13,
         borderRadius: R.medio,
-        border: `1px solid ${saga.best >= FAV_MIN ? `${C.accent}66` : C.border}`,
+        border: `1px solid ${saga.best >= STELLE_ALTE ? `${C.accent}66` : C.border}`,
         background: `linear-gradient(135deg, ${C.card}, ${C.surface})`,
       }}
     >
@@ -86,7 +95,7 @@ function SagaCard({ saga, onOpen }) {
         <span>
           {saga.books.length} {saga.books.length === 1 ? "libro" : "libri"}
         </span>
-        {saga.best >= FAV_MIN && <Rating value={saga.best} />}
+        {saga.best >= STELLE_ALTE && <Rating value={saga.best} />}
       </div>
     </button>
   );
