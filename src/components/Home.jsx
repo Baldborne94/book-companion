@@ -7,9 +7,6 @@ import BookCover from "./BookCover.jsx";
 import { BookmarkIcon, LeafIcon, SparkIcon, StarIcon } from "./Icons.jsx";
 import EmptyState from "./EmptyState.jsx";
 
-// da quante stelle in su un libro entra fra i preferiti
-const FAV_MIN = 4;
-
 const stars = (v) => String(v).replace(".", ",");
 
 function SectionTitle({ children }) {
@@ -143,8 +140,13 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
   const pct = last ? Math.round(getProgress(last.id) * 100) : 0;
   const resuming = pct > 0;
 
+  // I PREFERITI SONO QUELLI COL CUORE, non «tutti i libri da quattro
+  // stelle in su»: le stelle sono un voto, la vetrina è una scelta, e
+  // sceglierla tocca al lettore (chiesto: «metto io quali sono i miei
+  // preferiti»). Il cuore si mette nella scheda del libro, accanto alla
+  // valutazione.
   const favorites = books
-    .filter((b) => (b.rating || 0) >= FAV_MIN)
+    .filter((b) => b.fav)
     .sort((a, b) => (b.rating || 0) - (a.rating || 0) || (a.sagaOrder ?? Infinity) - (b.sagaOrder ?? Infinity));
 
   const bySaga = new Map();
@@ -366,7 +368,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
           }}
         >
           Qui vivranno le tue saghe e i tuoi preferiti. Apri la scheda di un libro dalla Libreria:
-          indica la saga a cui appartiene e assegnagli le stelle — da quattro in su lo ritrovi qui.
+          indica la saga a cui appartiene, e tocca ♡ accanto alla valutazione — col cuore lo ritrovi qui.
         </div>
       )}
       </div>

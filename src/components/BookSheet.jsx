@@ -8,7 +8,7 @@ import { caricaCopertina } from "../lib/sync.js";
 import { chiaveGlossario, vociDi, salvaVoci, togli } from "../lib/glossarioMio.js";
 import { getCfi } from "../lib/annotations.js";
 import { frontiera } from "../lib/frontiera.js";
-import { soloDellaSerie } from "../lib/trama.js";
+import { soloDellaSerie, perchePrimaTace } from "../lib/trama.js";
 import { TUTTI } from "../data/generi.js";
 import BookCover from "./BookCover.jsx";
 
@@ -28,6 +28,23 @@ const STATUSES = [
   { id: "read", label: "Letto", color: "green" },
   { id: "abandoned", label: "Abbandonato", color: "red" },
 ];
+
+// le parole per ogni anello rotto della catena di «Prima di cominciare»:
+// ognuna dice cosa manca E dove si mette a posto, o la riga sarebbe solo
+// un mistero spiegato con un altro mistero
+function fraseTace(t) {
+  if (t.perche === "soli")
+    return `nessun altro libro in biblioteca ha «${t.saga}» nel campo Saga — se i volumi precedenti ci sono, guarda com'è scritta la saga sulle loro schede`;
+  if (t.perche === "senzaNumero")
+    return "questo volume non ha il numero di lettura, e senza numero non so cosa viene prima";
+  if (t.perche === "numeri")
+    return `nessun altro volume di «${t.saga}» ha un numero di lettura minore di ${t.ordine} — metti i numeri sulle loro schede e saprò cosa viene prima`;
+  if (t.perche === "stato")
+    return t.quanti === 1
+      ? "il volume precedente non risulta «Letto», né «In lettura» con un segno di pagina"
+      : `nessuno dei ${t.quanti} volumi precedenti risulta «Letto», né «In lettura» con un segno di pagina`;
+  return `${t.quanti === 1 ? "il volume precedente letto dichiara" : `i ${t.quanti} volumi precedenti letti dichiarano`} una Serie diversa da «${t.serie}» — correggi la loro, o svuota questa per contare tutta la saga`;
+}
 
 const fieldStyle = {
   width: "100%",
@@ -133,6 +150,11 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   const uniq = (key) => [...new Set(books.map((b) => (b[key] || "").trim()).filter(Boolean))].sort();
   const [notes, setNotes] = useState(book.notes || "");
   const [rating, setRating] = useState(book.rating || 0);
+  // IL CUORE NON È UN VOTO: le stelle dicono quanto è buono, il cuore dice
+  // che sta nella tua vetrina. Prima i preferiti dell'Ingresso erano «tutti
+  // i libri da quattro stelle in su», e il lettore non poteva sceglierli
+  // (chiesto: «metto io quali sono i miei preferiti»).
+  const [fav, setFav] = useState(!!book.fav);
   const [status, setStatusState] = useState(getStatus(book.id));
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -319,6 +341,13 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
       (t) => t.libro.id !== book.id
     )
   );
+  // quando il tasto non c'è ma un prima dovrebbe esserci, la scheda dice
+  // DOVE si rompe la catena: un tasto che sparisce in silenzio trasforma
+  // un campo sbagliato in un mistero
+  const primaTace =
+    precedenti.length === 0
+      ? perchePrimaTace(comEditato, books, { statusOf: getStatus, cfiOf: getCfi })
+      : null;
 
   async function chiediPrimaDiCominciare() {
     const mio = ++filoPrima.current;
@@ -349,6 +378,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
       sagaOrder: sagaOrder.trim() === "" ? null : Number(sagaOrder),
       notes,
       rating,
+      fav,
     });
     onClose();
   }
@@ -369,6 +399,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
       sagaOrder: sagaOrder.trim() === "" ? null : Number(sagaOrder),
       notes,
       rating,
+      fav,
     });
     onRead(book.id);
   }
@@ -614,7 +645,22 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
 
             <div style={{ marginBottom: 10 }}>
               <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 3 }}>Valutazione</span>
-              <Stars value={rating} onChange={setRating} />
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <Stars value={rating} onChange={setRating} />
+                <button
+                  onClick={() => setFav((v) => !v)}
+                  style={{
+                    padding: "8px 14px",
+                    minHeight: 44,
+                    borderRadius: R.tondo,
+                    border: `1px solid ${fav ? C.accent : C.border}`,
+                    color: fav ? C.accent : C.muted,
+                    fontSize: F.piccolo,
+                  }}
+                >
+                  {fav ? "♥ Nei preferiti" : "♡ Tra i preferiti"}
+                </button>
+              </div>
             </div>
 
             <div style={{ marginBottom: 12 }}>
@@ -686,7 +732,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
         {/* Il richiamo dei volumi precedenti: c'è solo se un prima esiste
             davvero, e sta sopra «Apri il libro» perché è lì che serve —
             un attimo prima di cominciare. */}
-        {precedenti.length > 0 && (
+        {precedenti.length > 0 ? (
           <div style={{ marginBottom: 14 }}>
             {prima ? (
               <div
@@ -732,7 +778,11 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
               </button>
             )}
           </div>
-        )}
+        ) : primaTace ? (
+          <p style={{ margin: "0 0 14px", fontSize: F.minuscolo, color: C.muted, lineHeight: 1.5 }}>
+            ✨ «Prima di cominciare» non compare: {fraseTace(primaTace)}
+          </p>
+        ) : null}
 
         {/* IL GLOSSARIO TUO. Le voci si scrivono nel reader, toccando la
             parola: qui si rileggono tutte insieme, che è l'unico posto dove

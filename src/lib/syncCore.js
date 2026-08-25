@@ -43,6 +43,10 @@ export const rowFromLocal = (book, state, updatedAt) => ({
   // due volte, e senza di lei il doppione fra due dispositivi si puo' solo
   // segnalare per titolo e autore, non saltare
   impronta: book.impronta || null,
+  // il cuore dei preferiti: una scelta del lettore, non una soglia di
+  // stelle, quindi deve viaggiare — e `false` deve poter spegnere un
+  // `true` sull'altro dispositivo
+  fav: !!book.fav,
   status: state.status || "unread",
   started_at: state.started || 0,
   finished_at: state.finished || 0,
@@ -70,6 +74,7 @@ export const localFromRow = (row) => ({
     rating: row.rating || 0,
     notes: row.notes || "",
     ...(row.impronta ? { impronta: row.impronta } : {}),
+    ...(row.fav ? { fav: true } : {}),
   },
   state: {
     status: row.status || "unread",

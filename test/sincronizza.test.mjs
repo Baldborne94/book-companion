@@ -33,6 +33,19 @@ export default async function (t) {
   t.c("una riga senza impronta non se la inventa", !("impronta" in localFromRow({ id: "c" }).book));
   t.c("e nemmeno una con la colonna vuota", !("impronta" in localFromRow({ id: "c", impronta: null }).book));
 
+  // ---- il cuore dei preferiti sale e scende -----------------------------
+  // Il cuore è una scelta del lettore, quindi deve viaggiare fra i
+  // dispositivi — e togliere il cuore è una scelta quanto metterlo:
+  // `false` deve SALIRE come false, non sparire, o l'altro dispositivo
+  // terrebbe il cuore per sempre.
+  t.eq("il cuore entra nella riga", rowFromLocal({ id: "a", fav: true }, stato, 10).fav, true);
+  t.eq("e il cuore tolto sale come false", rowFromLocal({ id: "a" }, stato, 10).fav, false);
+  t.eq("scende su un libro col cuore", localFromRow({ id: "c", fav: true }).book.fav, true);
+  t.c(
+    "una riga senza la colonna non se lo inventa",
+    !("fav" in localFromRow({ id: "c" }).book) && !localFromRow({ id: "c", fav: false }).book.fav
+  );
+
   // ---- i glossari nelle preferenze --------------------------------------
   const MIO = { "saga:malazan": [{ t: "Warren", d: "la mia spiegazione", addedAt: 2 }] };
   const SUO = {
