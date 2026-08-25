@@ -34,6 +34,12 @@ const GROUPS = [
 ];
 
 function Shelf({ books, onOpenBook, localIds, showOrder }) {
+  // Chi ha il dorso disegnato lo sa solo `BookCover`, che va a guardare in
+  // IndexedDB se una copertina c'è: lo dice qui, e lo scaffale evita di
+  // ristampare titolo e autore sotto una copertina che li porta già.
+  const [dorsi, setDorsi] = useState({});
+  const segnaDorso = (id, v) =>
+    setDorsi((d) => (d[id] === v ? d : { ...d, [id]: v }));
   return (
     <div
       style={{
@@ -45,6 +51,12 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
       {books.map((b) => {
         const status = getStatus(b.id);
         const pct = Math.round(getProgress(b.id) * 100);
+        // IL TITOLO NON SI SCRIVE DUE VOLTE. Sul dorso disegnato c'è già,
+        // composto come si deve: ripeterlo qui sotto era rumore, e per
+        // giunta faceva venire le righe sfrangiate perché certe didascalie
+        // andavano a capo e altre no. Con una copertina VERA invece la
+        // didascalia è l'unico posto dove il titolo si legge, e resta.
+        const disegnato = dorsi[b.id];
         return (
           <button
             key={b.id}
@@ -56,7 +68,7 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
             }}
           >
             <div style={{ position: "relative", opacity: status === "abandoned" ? 0.55 : 1 }}>
-              <BookCover book={b} />
+              <BookCover book={b} onDisegnata={(v) => segnaDorso(b.id, v)} />
               {status === "reading" && pct > 0 && (
                 <span
                   style={{
@@ -158,21 +170,23 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
                 background: `linear-gradient(180deg, ${C.accent}55, #3a2b1466)`,
               }}
             />
-            <div
-              style={{
-                marginTop: 7,
-                fontSize: F.nota,
-                lineHeight: 1.25,
-                color: C.text,
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-              }}
-            >
-              {b.title}
-            </div>
-            {b.author && (
+            {!disegnato && (
+              <div
+                style={{
+                  marginTop: 7,
+                  fontSize: F.nota,
+                  lineHeight: 1.25,
+                  color: C.text,
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                }}
+              >
+                {b.title}
+              </div>
+            )}
+            {!disegnato && b.author && (
               <div
                 style={{
                   fontSize: F.minuscolo,
