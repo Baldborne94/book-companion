@@ -9,8 +9,8 @@
 // sé non si segnala**. Un elenco che grida a ogni libro fa ignorare anche
 // le righe che contano.
 import {
-  esamina, grave, quantoMojibake, visita, resocontoVisita,
-  GUAI, TESTO_MINIMO, GIUNTURE_TANTE, MOJIBAKE_TANTI, POCHI_CAPITOLI,
+  esamina, grave, curabile, quantoMojibake, visita, resocontoVisita, fattiDaEpub,
+  GUAI, CURABILI, TESTO_MINIMO, GIUNTURE_TANTE, MOJIBAKE_TANTI, POCHI_CAPITOLI, DOC_VUOTO,
 } from "../src/lib/visita.js";
 
 // un libro sano: tanto testo, indice pieno, niente di storto
@@ -138,4 +138,122 @@ export default async function (t) {
   );
   t.c("i lontani si dicono", /dispositivo/.test(resocontoVisita({ esaminati: 1, malati: [], lontani: ["A"] })));
   t.eq("niente da guardare", resocontoVisita({}), "Nessun tomo da guardare");
+
+  // ---- LA VISITA CURA QUELLO CHE SA CURARE ------------------------------
+  // Chiesto dal lettore: «mi serve così che TU possa correggere il
+  // problema, non io». Ricucibile → si ricuce; nei byte (encoding,
+  // scansione) → si dice, e la copia nuova la sceglie lui.
+  t.c("il libro spezzato è curabile", curabile(["spezzato"]));
+  t.c("le pagine bianche pure", curabile(["capitoliVuoti"]));
+  t.c("l'encoding rotto no", !curabile(["mojibake"]));
+  t.c("un guaio curabile in mezzo ad altri basta", curabile(["mojibake", "spezzato"]));
+  t.c("niente guai, niente cura", !curabile([]));
+
+  const spezzatoF = { ...SANO, giunture: GIUNTURE_TANTE };
+  const dueLibri = [
+    { id: "s", title: "Spezzato" },
+    { id: "m", title: "Rotto dentro" },
+  ];
+  const apriDue = async (b) => (b.id === "s" ? spezzatoF : { ...SANO, mojibake: 99 });
+
+  // la cura riesce: il libro esce dai malati ed entra nei ricuciti
+  e = await visita(dueLibri, {
+    leggiByte: () => ({}),
+    apri: apriDue,
+    cura: async (b) => (b.id === "s" ? { fatti: SANO } : null),
+  });
+  t.eq("il ricucito entra fra i curati", e.curati[0]?.title, "Spezzato");
+  t.c("e non è più fra i malati", !e.malati.some((m) => m.title === "Spezzato"));
+  // l'encoding non si cura MAI: la cura non va nemmeno chiamata
+  t.c("il mojibake resta fra i malati", e.malati.some((m) => m.title === "Rotto dentro"));
+
+  // NON CI SI FIDA DELLA CURA: si riesamina il libro nuovo, e se è ancora
+  // spezzato resta fra i malati — spuntare la casella sulla fiducia è il
+  // modo in cui un guasto sparisce dal referto senza sparire dal libro
+  e = await visita([dueLibri[0]], {
+    leggiByte: () => ({}),
+    apri: apriDue,
+    cura: async () => ({ fatti: spezzatoF }),
+  });
+  t.eq("una cura che non cura non conta", e.curati.length, 0);
+  t.c("e il libro resta fra i malati", e.malati[0]?.title === "Spezzato");
+
+  // IL LIBRO IN LETTURA NON SI TOCCA: la ricucitura sposterebbe segnalibri
+  // e punto di lettura — si spiega, non si agisce
+  e = await visita([dueLibri[0]], {
+    leggiByte: () => ({}),
+    apri: apriDue,
+    cura: async () => ({ protetto: true }),
+  });
+  t.c("il protetto resta malato", e.malati[0]?.title === "Spezzato");
+  t.c("ma si dichiara protetto", e.malati[0]?.protetto === true);
+  // e una cura che ESPLODE non porta via la visita
+  e = await visita([dueLibri[0]], {
+    leggiByte: () => ({}),
+    apri: apriDue,
+    cura: async () => { throw new Error("boom"); },
+  });
+  t.eq("una cura che esplode lascia il referto onesto", e.malati[0]?.title, "Spezzato");
+
+  t.c("i ricuciti si dicono nel resoconto",
+    /ricuciti da me/.test(resocontoVisita({ esaminati: 5, malati: [], curati: [{}, {}] })));
+
+  // ---- I FATTI DI UN ePub, col finto -------------------------------------
+  // Il referto vero del lettore accusava quasi ogni libro di «capitoli
+  // senza niente dentro»: erano le pagine di SOLA IMMAGINE (copertina,
+  // mappe) e il materiale di contorno in testa — falsi malati.
+  const finto = (docs, toc) => ({
+    load: () => {},
+    loaded: { spine: Promise.resolve(), navigation: Promise.resolve({ toc }) },
+    spine: {
+      items: docs.map((d, i) => ({
+        href: `c${i}.xhtml`,
+        load: async () => {},
+        unload: () => {},
+        document: {
+          body: { textContent: d.testo },
+          querySelector: () => (d.img ? {} : null),
+        },
+      })),
+    },
+  });
+  const PROSA_LUNGA = "parole vere ".repeat(400);
+  const tocDi = (...idx) => idx.map((i) => ({ href: `c${i}.xhtml` }));
+
+  // copertina (immagine), frontespizio corto, capitoli veri, coda corta
+  let fatti = await fattiDaEpub(
+    finto(
+      [
+        { testo: "", img: true },
+        { testo: "Dello stesso autore" },
+        { testo: PROSA_LUNGA },
+        { testo: PROSA_LUNGA },
+        { testo: PROSA_LUNGA },
+        { testo: "Ringraziamenti brevi" },
+      ],
+      tocDi(2, 3, 4)
+    )
+  );
+  t.eq("la copertina non è un capitolo vuoto", fatti.vuoti, 0);
+  t.eq("e il contorno non è una giuntura", fatti.giunture, 0);
+
+  // una pagina di sola immagine IN MEZZO alla storia resta innocente
+  fatti = await fattiDaEpub(
+    finto(
+      [{ testo: PROSA_LUNGA }, { testo: "", img: true }, { testo: PROSA_LUNGA }],
+      tocDi(0, 2)
+    )
+  );
+  t.eq("la mappa in mezzo al romanzo non è una pagina bianca", fatti.vuoti, 0);
+
+  // ma un buco VERO in mezzo alla storia si vede ancora: pagina senza
+  // testo e senza immagine fra due capitoli dell'indice
+  fatti = await fattiDaEpub(
+    finto(
+      [{ testo: PROSA_LUNGA }, { testo: "" }, { testo: "Mezza scena fuori indice che continua qui" }, { testo: PROSA_LUNGA }],
+      tocDi(0, 3)
+    )
+  );
+  t.eq("il vuoto vero in mezzo si conta", fatti.vuoti, 1);
+  t.eq("e la giuntura pure", fatti.giunture, 1);
 }

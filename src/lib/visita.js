@@ -53,13 +53,13 @@ export const GUAI = {
   },
   spezzato: {
     grave: false,
-    dice: "è spezzato in tanti pezzi che l'indice non apre",
-    cura: "reimportalo: all'ingresso i pezzi si ricuciono, e le facciate bianche spariscono",
+    dice: "è spezzato in pezzi che l'indice non apre",
+    cura: "la ricucitura non c'è riuscita: reimportarlo fa un lavoro più profondo",
   },
   capitoliVuoti: {
     grave: false,
-    dice: "ha capitoli senza niente dentro",
-    cura: "sono pagine bianche in mezzo alla lettura",
+    dice: "ha pagine bianche in mezzo alla storia",
+    cura: "la ricucitura non le ha tolte: se leggendo le incontri, reimportalo",
   },
   senzaIndice: {
     grave: false,
@@ -89,6 +89,14 @@ export function esamina(fatti = {}) {
 
 export const grave = (guai = []) => guai.some((g) => GUAI[g]?.grave);
 
+// I GUAI CHE LA VISITA SA CURARE DA SE': quelli che si risolvono
+// ricucendo il libro (chiesto dal lettore: «mi serve così che TU possa
+// correggere il problema, non io»). Il resto — encoding rotto, scansione
+// senza testo, file che non si apre — sta nei byte, e lì l'unica cura è
+// un'altra copia, che la sceglie il lettore.
+export const CURABILI = new Set(["spezzato", "capitoliVuoti"]);
+export const curabile = (guai = []) => guai.some((g) => CURABILI.has(g));
+
 // Conta le sequenze da UTF-8 letto male. Sta fuori perché è l'unico pezzo
 // che si può sbagliare in modo sottile.
 export function quantoMojibake(testo) {
@@ -115,28 +123,48 @@ export async function fattiDaEpub(eb) {
   } catch {
     /* un indice illeggibile è già un'informazione: resta vuoto */
   }
-  let caratteri = 0;
-  let mojibake = 0;
-  let vuoti = 0;
-  let giunture = 0;
+  const righe = [];
   for (const item of voci) {
     let t = "";
+    let img = false;
     try {
       await item.load(eb.load.bind(eb));
-      t = (item.document?.body?.textContent || "").replace(/\s+/g, " ").trim();
+      const doc = item.document;
+      t = (doc?.body?.textContent || "").replace(/\s+/g, " ").trim();
+      // UNA PAGINA DI SOLA IMMAGINE NON E' UNA PAGINA VUOTA: la copertina,
+      // una mappa, un'illustrazione non hanno testo per natura. Contarle
+      // come «capitoli senza niente dentro» accusava quasi ogni libro
+      // della biblioteca (segnalato dal referto del lettore: 55 tomi e
+      // l'elenco pieno di falsi malati).
+      img = !!doc?.querySelector?.("img, svg, image, video, figure");
     } catch {
       /* un capitolo che non si carica conta come vuoto, che è quello che
          il lettore vedrebbe */
     } finally {
       try { item.unload(); } catch { /* già scaricato */ }
     }
-    caratteri += t.length;
-    mojibake += quantoMojibake(t);
-    if (t.length < DOC_VUOTO) vuoti += 1;
-    else if (t.length < GIUNTURA && !inIndice.has(String(item.href || "").replace(/^\.?\//, ""))) {
-      giunture += 1;
-    }
+    righe.push({ t, img, inToc: inIndice.has(String(item.href || "").replace(/^\.?\//, "")) });
   }
+  // IL MATERIALE DI CONTORNO NON VOTA: frontespizio, copyright, dedica,
+  // «dello stesso autore» sono documenti corti fuori indice IN TESTA (e in
+  // coda), e sono normali — le giunture di un libro spezzato stanno IN
+  // MEZZO alla storia. Si contano solo i documenti fra la prima e l'ultima
+  // voce d'indice, che è dove un buco è un buco.
+  const conToc = righe.map((r, i) => (r.inToc ? i : -1)).filter((i) => i >= 0);
+  const primo = conToc.length ? conToc[0] : 0;
+  const ultimo = conToc.length ? conToc[conToc.length - 1] : righe.length - 1;
+  let caratteri = 0;
+  let mojibake = 0;
+  let vuoti = 0;
+  let giunture = 0;
+  righe.forEach((r, i) => {
+    caratteri += r.t.length;
+    mojibake += quantoMojibake(r.t);
+    const dentro = i > primo && i < ultimo;
+    if (!dentro || r.img) return;
+    if (r.t.length < DOC_VUOTO) vuoti += 1;
+    else if (r.t.length < GIUNTURA && !r.inToc) giunture += 1;
+  });
   return { caratteri, mojibake, vuoti, giunture, documenti: voci.length, indice: inIndice.size };
 }
 
@@ -147,9 +175,9 @@ export async function fattiDaEpub(eb) {
 //
 // `leggiByte` e `apri` arrivano da fuori per la ragione di sempre: un test
 // li passa finti invece di tirarsi dietro IndexedDB ed epub.js.
-export async function visita(libri = [], { leggiByte, apri, onProgress, vivo } = {}) {
+export async function visita(libri = [], { leggiByte, apri, cura, onProgress, vivo } = {}) {
   const attivo = vivo || (() => true);
-  const esito = { esaminati: 0, lontani: [], malati: [], fermato: false };
+  const esito = { esaminati: 0, lontani: [], malati: [], curati: [], fermato: false };
   for (const [i, b] of libri.entries()) {
     if (!attivo()) {
       esito.fermato = true;
@@ -175,7 +203,29 @@ export async function visita(libri = [], { leggiByte, apri, onProgress, vivo } =
       guai = ["nonSiApre"];
     }
     esito.esaminati += 1;
-    if (guai.length) esito.malati.push({ id: b.id, title: b.title, guai });
+    // LA CURA, quando c'è un guaio curabile e un modo di curarlo. `cura`
+    // torna: { fatti } se ha ricucito (e si riesamina il libro NUOVO, non
+    // si spunta la casella sulla fiducia), { protetto: true } se il libro
+    // è in lettura e toccarlo sposterebbe segnalibri e punto — lì si
+    // spiega invece di agire — o null se non c'è riuscita.
+    let protetto = false;
+    if (guai.some((g) => CURABILI.has(g)) && cura) {
+      let r = null;
+      try {
+        r = await cura(b, file);
+      } catch {
+        r = null;
+      }
+      if (r?.protetto) protetto = true;
+      else if (r?.fatti) {
+        const dopo = esamina(r.fatti);
+        if (dopo.filter((g) => CURABILI.has(g)).length < guai.filter((g) => CURABILI.has(g)).length) {
+          esito.curati.push({ id: b.id, title: b.title });
+        }
+        guai = dopo;
+      }
+    }
+    if (guai.length) esito.malati.push({ id: b.id, title: b.title, guai, protetto });
   }
   return esito;
 }
@@ -183,9 +233,10 @@ export async function visita(libri = [], { leggiByte, apri, onProgress, vivo } =
 // Il resoconto in una riga, con la stessa regola dell'import: gli zeri non
 // si dicono, e quello che c'è da fare si dice per ultimo.
 export function resocontoVisita(esito = {}) {
-  const { esaminati = 0, malati = [], lontani = [], fermato } = esito;
+  const { esaminati = 0, malati = [], lontani = [], curati = [], fermato } = esito;
   if (!esaminati && !lontani.length) return "Nessun tomo da guardare";
   const parti = [];
+  if (curati.length) parti.push(`${curati.length} ${curati.length === 1 ? "ricucito" : "ricuciti"} da me 🪡`);
   if (!malati.length) {
     parti.push(esaminati === 1 ? "Il tomo è a posto ✓" : `Tutti e ${esaminati} i tomi sono a posto ✓`);
   } else {

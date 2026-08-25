@@ -20,6 +20,18 @@ const UPLOADED_COV_KEY = "bc_uploaded_cov";
 const PREFS_UPD_KEY = "bc_prefs_upd";
 
 export const getLastSync = () => parseInt(localStorage.getItem(LAST_SYNC_KEY), 10) || 0;
+
+// I BYTE DI UN LIBRO SONO CAMBIATI IN CASA (la visita l'ha ricucito): la
+// copia nel cloud e' quella vecchia, e i file salgono una volta per sempre
+// — senza togliere il libro dal registro non risalirebbe mai piu'.
+export function daRicaricare(id) {
+  try {
+    const su = JSON.parse(localStorage.getItem(UPLOADED_KEY)) || [];
+    localStorage.setItem(UPLOADED_KEY, JSON.stringify(su.filter((x) => x !== id)));
+  } catch {
+    /* senza registro non c'e' niente da dimenticare */
+  }
+}
 export const touchPrefs = () => localStorage.setItem(PREFS_UPD_KEY, String(Date.now()));
 
 const uploaded = () => {
