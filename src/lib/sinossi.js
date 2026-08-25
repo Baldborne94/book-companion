@@ -45,6 +45,17 @@ const entita = (s) =>
 // punto sono tag veri che nessuno toglie più. Un giro solo, e nell'ordine
 // giusto — due giri di scappamento aprirebbero la porta a un `&amp;lt;`
 // scritto apposta.
+// L'ETICHETTA REDAZIONALE IN TESTA NON E' IL RETRO: certi editori
+// scrivono «SUMMARY:», «Product description», «Trama:» davanti alla
+// quarta, che sullo schermo diventa la prima parola del libro. Si toglie
+// solo se sta ALL'INIZIO e col suo separatore — una frase che comincia per
+// «Overview» senza i due punti e' prosa, non un'etichetta. Sta fuori da
+// `ripulisci` perche' serve anche ai retri GIA' salvati: Eric il suo
+// «SUMMARY:» ce l'aveva in casa da prima della cura, e rifargli tutta la
+// ripulitura vorrebbe dire scappare le entita' una seconda volta.
+export const senzaEtichetta = (t) =>
+  String(t || "").replace(/^(summary|sinossi|descrizione|trama|overview|(product|book) description)\s*[:\-–—]\s*/i, "");
+
 export function ripulisci(grezzo, max = MAX) {
   if (!grezzo) return "";
   let t = entita(String(grezzo));
@@ -55,6 +66,7 @@ export function ripulisci(grezzo, max = MAX) {
   t = t.replace(/[ \t ]+/g, " ");
   t = t.replace(/\n{3,}/g, "\n\n");
   t = t.split("\n").map((r) => r.trim()).join("\n").trim();
+  t = senzaEtichetta(t);
   if (t.length <= max) return t;
   // si taglia a fine FRASE, non a metà parola: un retro di copertina che
   // finisce con «…l'unico modo per» sembra un guasto, non una scelta

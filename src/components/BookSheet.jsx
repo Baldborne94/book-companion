@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { getProgress, getStatus, setStatus, touchBook } from "../lib/library.js";
 import { getCover, getFile, putCover, removeCover } from "../lib/bookStore.js";
-import { recupera } from "../lib/sinossi.js";
+import { recupera, senzaEtichetta } from "../lib/sinossi.js";
 import { preparaCopertina, copertinaOriginale } from "../lib/copertina.js";
 import { caricaCopertina } from "../lib/sync.js";
 import { chiaveGlossario, vociDi, salvaVoci, togli } from "../lib/glossarioMio.js";
@@ -142,7 +142,6 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   // sulla scheda. Aperto di suo solo su un libro che non hai mai aperto:
   // chi riprende a pagina duecento sa già cosa sta leggendo.
   const [retro, setRetro] = useState(typeof book.sinossi === "string" ? book.sinossi : "");
-  const [retroAperto, setRetroAperto] = useState(getProgress(book.id) <= 0);
   // da dove viene il retro, perché l'etichetta lo dica: «file» è la quarta
   // dell'editore, «rete» il catalogo, «oracolo» le prime pagine lette
   const [fonte, setFonte] = useState(book.sinossiMia ? "oracolo" : book.sinossiFonte || "file");
@@ -161,7 +160,12 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
         }
         onSaveMeta?.({ ...book, sinossi: "" });
       } else if (testo) {
-        setRetro(testo);
+        // il retro salvato prima della cura dell'etichetta puo' portarsi
+        // ancora il suo «SUMMARY:» in testa: si pulisce una volta e si
+        // riscrive, cosi' non lo rivedi mai piu'
+        const pulito = senzaEtichetta(testo);
+        setRetro(pulito);
+        if (pulito !== testo) onSaveMeta?.({ ...book, sinossi: pulito });
         return;
       }
       // 2. IL CATALOGO IN RETE, da solo (chiesto dal lettore: «tanto lo
@@ -183,7 +187,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   // LA COPERTINA SI GIRA, come un libro in mano (chiesto dal lettore:
   // «clicco la copertina e mi appare il retro»). Solo transform, mai
   // layout: lezione 10.
-  const [girata, setGirata] = useState(false);
+  const [girata, setGirata] = useState(() => !!(typeof book.sinossi === "string" && book.sinossi) && getProgress(book.id) <= 0);
   const [retroBusy, setRetroBusy] = useState(false);
 
   async function chiediIlRetro() {
@@ -207,7 +211,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
       }
       setRetro(res.answer);
       setFonte("oracolo");
-      setRetroAperto(true);
+      setGirata(true);
       onSaveMeta?.({ ...book, sinossi: res.answer, sinossiMia: true });
     } finally {
       setRetroBusy(false);
@@ -665,42 +669,6 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
           >
             {retroBusy ? "✨ Leggo le prime pagine…" : "✨ Di cosa parla?"}
           </button>
-        )}
-
-        {retro && (
-          <div style={{ margin: "6px 0 14px" }}>
-            <button
-              onClick={() => setRetroAperto((v) => !v)}
-              style={{
-                fontSize: F.minuscolo,
-                color: C.muted,
-                marginBottom: retroAperto ? 6 : 0,
-                padding: 0,
-              }}
-            >
-              {retroAperto ? "▾" : "▸"}{" "}
-              {fonte === "oracolo" ? "Dalle prime pagine" : fonte === "rete" ? "Dal catalogo in rete" : "Il retro del libro"}
-            </button>
-            {retroAperto && (
-              <p
-                style={{
-                  margin: 0,
-                  padding: "11px 13px",
-                  borderRadius: R.piccolo,
-                  border: `1px solid ${C.border}`,
-                  background: `${C.bg}88`,
-                  color: C.text,
-                  fontSize: F.nota,
-                  lineHeight: 1.55,
-                  whiteSpace: "pre-line",
-                  maxHeight: "32vh",
-                  overflowY: "auto",
-                }}
-              >
-                {retro}
-              </p>
-            )}
-          </div>
         )}
 
         <label style={{ display: "block", margin: "6px 0 14px" }}>

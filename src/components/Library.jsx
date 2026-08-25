@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { getProgress, getStatus, combacia } from "../lib/library.js";
 import { GUAI, grave } from "../lib/visita.js";
-import { storageEstimate, statoPersistenza, requestPersistence, getFile } from "../lib/bookStore.js";
+import { storageEstimate, statoPersistenza, requestPersistence, getFile, putFile } from "../lib/bookStore.js";
 import { importFiles, resoconto } from "../lib/importBook.js";
 import { exportLibrary, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
 import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
@@ -453,6 +453,43 @@ export default function Library({
           try { eb.destroy(); } catch { /* già chiuso */ }
         }
       },
+      // LA CURA: quello che si risolve ricucendo lo fa la visita, da sé
+      // (chiesto dal lettore: «mi serve così che TU possa correggere il
+      // problema, non io»). MA MAI su un libro in lettura o con segni:
+      // la ricucitura cambia i CFI, e sposterebbe segnalibri,
+      // evidenziazioni e punto di lettura — lì si spiega, non si agisce.
+      cura: async (b, file) => {
+        const pieno = (k) => {
+          try {
+            const v = JSON.parse(localStorage.getItem(k) || "[]");
+            return Array.isArray(v) && v.length > 0;
+          } catch {
+            return false;
+          }
+        };
+        const inLettura =
+          getProgress(b.id) > 0 ||
+          !!localStorage.getItem(`bc_cfi_${b.id}`) ||
+          pieno(`bc_marks_${b.id}`) ||
+          pieno(`bc_hl_${b.id}`);
+        if (inLettura) return { protetto: true };
+        if (b.fileType === "pdf") return null;
+        const { unisciPezzi } = await import("../lib/unisciEpub.js");
+        const cucito = await unisciPezzi(file);
+        if (!cucito?.blob || !cucito.cuciti) return null;
+        await putFile(b.id, cucito.blob);
+        // il cloud ha ancora la copia vecchia: si rimette in coda
+        const { daRicaricare } = await import("../lib/sync.js");
+        daRicaricare(b.id);
+        // e non ci si fida: si riapre il libro NUOVO e si riesamina
+        const { default: ePub } = await import("epubjs");
+        const eb = ePub(await cucito.blob.arrayBuffer());
+        try {
+          return { fatti: await fattiDaEpub(eb) };
+        } finally {
+          try { eb.destroy(); } catch { /* già chiuso */ }
+        }
+      },
       vivo: () => filoVisita.current === mio,
       onProgress: (p) => filoVisita.current === mio && setVisitando(p),
     });
@@ -462,7 +499,7 @@ export default function Library({
     notify?.(resocontoVisita(esito));
     // il referto si apre solo se c'è qualcosa da leggere: un pannello che
     // dice «tutto a posto» è un pannello da chiudere e basta
-    if (esito.malati.length || esito.lontani.length) setReferto(esito);
+    if (esito.malati.length || esito.lontani.length || esito.curati.length) setReferto(esito);
   }
 
   async function richiamaTomi() {
@@ -1077,7 +1114,7 @@ export default function Library({
 // lettore esattamente dov'era — sapere che un libro è rotto e non sapere
 // se è colpa del file o dell'app è peggio che non saperlo.
 function Referto({ esito, onChiudi }) {
-  const { malati = [], lontani = [], esaminati = 0 } = esito;
+  const { malati = [], lontani = [], curati = [], esaminati = 0 } = esito;
   return (
     <div
       onClick={onChiudi}
@@ -1112,10 +1149,35 @@ function Referto({ esito, onChiudi }) {
           🩺 La visita ai tuoi libri
         </h2>
         <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 16 }}>
-          {malati.length
-            ? `Ho guardato ${esaminati} ${esaminati === 1 ? "tomo" : "tomi"}. Quello che l'app sa già curare da sé non lo elenco.`
+          {malati.length || curati.length
+            ? `Ho guardato ${esaminati} ${esaminati === 1 ? "tomo" : "tomi"}. Quello che sapevo curare l'ho curato io; qui sotto c'è il resto.`
             : `Ho guardato ${esaminati} ${esaminati === 1 ? "tomo" : "tomi"} e non ho trovato niente da segnalare.`}
         </p>
+
+        {/* PRIMA QUELLO CHE HO SISTEMATO IO: il lettore non deve fare
+            niente, ma va detto — un libro ricucito in silenzio è un libro
+            cambiato in silenzio. */}
+        {curati.length > 0 && (
+          <div
+            style={{
+              padding: "12px 14px",
+              marginBottom: 8,
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.green}55`,
+              background: `${C.green}0e`,
+            }}
+          >
+            <div style={{ fontSize: F.nota, color: C.green, marginBottom: 4 }}>
+              🪡 {curati.length === 1 ? "Ricucito da me" : `Ricuciti da me (${curati.length})`}
+            </div>
+            <div style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.5 }}>
+              {curati.map((c) => c.title).join(" · ")}
+            </div>
+            <div style={{ marginTop: 4, fontSize: F.minuscolo, color: C.muted, opacity: 0.8 }}>
+              Le facciate bianche in mezzo alle scene sono sparite. Da parte tua non serve niente.
+            </div>
+          </div>
+        )}
 
         {malati.map((m) => (
           <div
@@ -1132,7 +1194,11 @@ function Referto({ esito, onChiudi }) {
             {m.guai.map((g) => (
               <div key={g} style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.5 }}>
                 <span style={{ color: GUAI[g].grave ? C.red : C.arcane }}>·</span> {GUAI[g].dice} —{" "}
-                <span style={{ opacity: 0.85 }}>{GUAI[g].cura}</span>
+                <span style={{ opacity: 0.85 }}>
+                  {m.protetto && grave(m.guai) === false
+                    ? "non l'ho toccato: lo stai leggendo, e ricucirlo sposterebbe segnalibri e punto di lettura. Reimportalo quando l'avrai chiuso."
+                    : GUAI[g].cura}
+                </span>
               </div>
             ))}
           </div>

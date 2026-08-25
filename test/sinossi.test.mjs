@@ -39,6 +39,19 @@ export default async function (t) {
   // scritto apposta, che al secondo giro tornerebbe un tag vero
   t.eq("non si scappa due volte", ripulisci("&amp;lt;p&amp;gt;"), "&lt;p&gt;");
 
+  // ---- L'ETICHETTA REDAZIONALE IN TESTA ---------------------------------
+  // «SUMMARY: Discworld's only demonology hacker…» — l'etichetta non è il
+  // retro, e sullo schermo diventava la prima parola del libro
+  t.eq("«SUMMARY:» se ne va", ripulisci("SUMMARY: Monza Murcatto arriva."), "Monza Murcatto arriva.");
+  t.eq("anche «Trama —»", ripulisci("Trama — Monza Murcatto arriva."), "Monza Murcatto arriva.");
+  t.eq("e «Product description:»", ripulisci("Product description: Monza arriva."), "Monza arriva.");
+  // ma una frase che COMINCIA con quelle parole senza separatore è prosa
+  t.eq(
+    "«Summary justice» resta intera",
+    ripulisci("Summary justice was the only kind Monza knew."),
+    "Summary justice was the only kind Monza knew."
+  );
+
   // ---- gli spazi si riordinano ------------------------------------------
   t.eq("gli spazi doppi si stringono", ripulisci("Uno    due"), "Uno due");
   t.eq("lo spazio unificatore diventa spazio", ripulisci("Uno&nbsp;due"), "Uno due");
