@@ -2,6 +2,7 @@
 // codice e due trappole, e tutt'e due ci sono gia' cascate una volta: al
 // primo tentativo il libro non si apriva affatto.
 import { ritaglioAvanzo, flattenToc } from "../src/lib/readerLayout.js";
+import { rientrata, RIENTRO_MINIMO } from "../src/lib/readerTheme.js";
 
 export default async function (t) {
   // ---- il conto normale --------------------------------------------------
@@ -61,4 +62,36 @@ export default async function (t) {
   t.eq("e torna al livello di prima", toc[2].depth, 0);
   t.eq("una voce senza titolo non resta muta", toc[2].label, "…");
   t.eq("un indice vuoto non esplode", flattenToc().length, 0);
+
+  // ---- IL PARAGRAFO SI SEGNA UNA VOLTA SOLA ----------------------------
+  // In «Eric» era segnato due volte, col rientro E con lo stacco, e la
+  // pagina veniva ariosa dove un romanzo stampato è compatto. Ma lo stacco
+  // si può togliere SOLO se il rientro c'è: senza, è l'unico segnale di
+  // paragrafo che il libro ha, e toglierlo incolla il romanzo in un blocco.
+  const tanti = (v, n = 10) => Array.from({ length: n }, () => v);
+
+  t.c("un libro rientrato si riconosce", rientrata(tanti(19)));
+  t.c("anche con un rientro piccolo ma vero", rientrata(tanti(RIENTRO_MINIMO)));
+  // IL CASO DA NON ROVINARE: nessun rientro, lo stacco è il segnale
+  t.c("un libro senza rientro NON si tocca", !rientrata(tanti(0)));
+  t.c("e nemmeno con un rientro da arrotondamento", !rientrata(tanti(RIENTRO_MINIMO - 1)));
+
+  // il primo paragrafo di capitolo quasi sempre non rientra: pretendere
+  // l'unanimità vorrebbe dire non riconoscere mai un libro rientrato
+  t.c("qualche paragrafo non rientrato non cambia il verdetto", rientrata([0, 19, 19, 19, 19, 19]));
+  t.c("ma se la maggioranza non rientra, no", !rientrata([19, 19, 0, 0, 0, 0]));
+
+  // un rientro NEGATIVO è comunque un rientro dichiarato (sporgente): il
+  // libro ha scelto come segnare il paragrafo, e non è con lo stacco
+  t.c("il rientro sporgente conta come rientro", rientrata(tanti(-19)));
+
+  // ---- su troppo poco non si decide ------------------------------------
+  // un documento di due righe — un frontespizio, una dedica — non dice
+  // niente su come è impaginato il romanzo
+  t.c("due paragrafi non bastano", !rientrata([19, 19]));
+  t.c("nessun paragrafo nemmeno", !rientrata([]));
+  t.c("e niente del tutto", !rientrata());
+  // i valori che non sono numeri (`text-indent: inherit` su un browser
+  // strano) non devono contare come «non rientrato»
+  t.c("i non-numeri si scartano, non si contano contro", rientrata([NaN, NaN, 19, 19, 19]));
 }

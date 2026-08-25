@@ -5,7 +5,7 @@
 //
 // Serve un browser. Senza, il file si dichiara SALTATO invece di fallire —
 // ma saltare non e' passare: chi tocca `readerTheme.js` deve farlo girare.
-import { contentStyles, spegniVuoti } from "../src/lib/readerTheme.js";
+import { contentStyles, spegniVuoti, togliStacco, rientrata, RIENTRO_MINIMO, QUANTI, CAMPIONE } from "../src/lib/readerTheme.js";
 import { READER_THEMES } from "../src/lib/readerSettings.js";
 import { Saltato } from "./aiuto.mjs";
 import { existsSync, readdirSync } from "node:fs";
@@ -141,6 +141,24 @@ export default async function (t) {
     await p.addStyleTag({ content: inCss(contentStyles(s, lingua)) });
     await p.evaluate(([src]) => new Function(`return ${src}`)()(document), [spegniVuoti.toString()]);
   }
+  // `togliStacco` si porta dietro `rientrata` e le tre costanti: si compone
+  // la sorgente coi valori VERI, cosi' cambiarli in `readerTheme.js` cambia
+  // anche il test invece di lasciarlo a difendere dei numeri inventati
+  const sorgenteStacco = `
+    const RIENTRO_MINIMO = ${RIENTRO_MINIMO};
+    const QUANTI = ${QUANTI};
+    const CAMPIONE = ${CAMPIONE};
+    const rientrata = ${rientrata.toString()};
+    return (${togliStacco.toString()});
+  `;
+  const staccaVia = () => p.evaluate(([src]) => new Function(src)()(document), [sorgenteStacco]);
+  // la distanza fra due elementi, che e' quello che il lettore vede
+  const fra = (a, b) =>
+    p.evaluate(([x, y]) => {
+      const u = document.getElementById(x).getBoundingClientRect();
+      const v = document.getElementById(y).getBoundingClientRect();
+      return Math.round(v.top - u.bottom);
+    }, [a, b]);
   const stile = (id, prop) => p.evaluate(([i, k]) => getComputedStyle(document.getElementById(i))[k], [id, prop]);
   const scatola = (id) =>
     p.evaluate(([i]) => {
@@ -221,6 +239,85 @@ export default async function (t) {
       await p.evaluate(() => getComputedStyle(document.body).backgroundColor), rgb(tema.bg));
     const largh = await p.evaluate(() => document.getElementById("img").getBoundingClientRect().width);
     t.c("l'immagine gigante sta nella pagina", largh <= 900, `${largh}px`);
+
+    // ---- LO STACCO DI TROPPO, quando il rientro c'è già ------------------
+    // «Eric» segna il paragrafo DUE volte, col rientro e con lo stacco, e la
+    // pagina viene ariosa dove un romanzo stampato è compatto («perché vedo
+    // tutti questi spazi?»). Qui si misura la cura in un motore vero, e
+    // soprattutto quello che la cura NON deve toccare.
+    const PAGINA = (foglio) => `<!doctype html><html><head><style>
+      ${foglio}
+      .scena { margin: 2em 0; }
+    </style></head><body>
+      <p id="u">He sat back and beamed.</p>
+      <p id="d">The rest of the council exchanged glances.</p>
+      <p class="scena" id="sc">&nbsp;</p>
+      <p id="t">The Bursar scowled at him.</p>
+    </body></html>`;
+
+    // (a) il libro tace sui margini: parla il foglio del BROWSER
+    await p.setContent(PAGINA("p { text-indent: 1.2em; }"));
+    const primaA = await fra("u", "d");
+    t.c("col rientro, lo stacco del browser c'è", primaA > 8, `${primaA}px`);
+    t.c("e si riconosce un libro rientrato", await staccaVia());
+    t.eq("lo stacco fra paragrafi se ne va", await fra("u", "d"), 0);
+    // LA RIGA CHE RENDE LA CURA ACCETTABILE: la pausa fra due scene resta.
+    // Vince perché è una CLASSE e noi scriviamo senza `!important`.
+    const scenaA = await fra("d", "sc");
+    t.c("ma lo stacco di SCENA resta intatto", scenaA >= 30, `${scenaA}px`);
+
+    // (b) il libro se li mette da sé, insieme al rientro: stessa storia
+    await p.setContent(PAGINA("p { text-indent: 1.2em; margin: 0.8em 0; }"));
+    t.c("anche i margini del libro si tolgono", await staccaVia());
+    t.eq("e il paragrafo si attacca", await fra("u", "d"), 0);
+    t.c("la scena resta anche qui", (await fra("d", "sc")) >= 30);
+
+    // (c) IL CASO DA NON ROVINARE: nessun rientro, lo stacco È il segnale.
+    // Togliere i margini qui incollerebbe il romanzo in un blocco unico.
+    await p.setContent(PAGINA("p { margin: 1em 0; }"));
+    const primaC = await fra("u", "d");
+    t.c("senza rientro non si tocca niente", !(await staccaVia()));
+    t.eq("e lo stacco resta quello del libro", await fra("u", "d"), primaC);
+    t.c("che è uno stacco vero", primaC > 8, `${primaC}px`);
+
+    // un documento troppo corto — un frontespizio, una dedica — non dice
+    // niente su come è impaginato il romanzo: non si decide
+    await p.setContent(`<!doctype html><html><head><style>p{text-indent:1.2em}</style></head>
+      <body><p id="u">Solo</p><p id="d">due righe</p></body></html>`);
+    t.c("su due paragrafi non si decide", !(await staccaVia()));
+
+    // e il foglio si scrive una volta sola: chiamarla due volte non deve
+    // impilare fogli dentro il documento
+    await p.setContent(PAGINA("p { text-indent: 1.2em; }"));
+    await staccaVia();
+    await staccaVia();
+    t.eq(
+      "il foglio non si impila",
+      await p.evaluate(() => document.querySelectorAll("style[data-bc=stacco]").length),
+      1
+    );
+
+    // I PARAGRAFI VUOTI NON VOTANO. Un ePub convertito ne lascia in giro
+    // centocinquanta (le ancore delle pagine di carta), e il libro spesso
+    // li veste con una classe che azzera il rientro. Se contassero nel
+    // campione, affogherebbero i paragrafi veri e un libro rientrato non
+    // verrebbe più riconosciuto — la cura non scatterebbe mai proprio sui
+    // libri che ne hanno più bisogno.
+    await p.setContent(`<!doctype html><html><head><style>
+      p { text-indent: 1.2em; }
+      .ancora { text-indent: 0; }
+    </style></head><body>
+      <p id="u">He sat back and beamed.</p>
+      ${'<p class="ancora"><a></a></p>'.repeat(12)}
+      <p id="d">The rest of the council exchanged glances.</p>
+      <p>The Bursar scowled at him.</p>
+      <p>The Archchancellor nodded.</p>
+    </body></html>`);
+    t.c("le ancore vuote non affogano i paragrafi veri", await staccaVia());
+    t.eq("e lo stacco se ne va lo stesso", await fra("u", "d"), 0);
+
+    t.c("niente documento, niente da fare", !togliStacco(null));
+    t.c("e un documento senza vista nemmeno", !togliStacco({ querySelectorAll: () => [] }));
   } finally {
     await browser.close();
   }

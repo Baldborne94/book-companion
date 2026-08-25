@@ -111,7 +111,7 @@ function oltre(doc, item, cfi, el, fino) {
 const CONTORNO =
   /^\s*(dramatis\s+personae|cast\s+of\s+characters|personaggi|acknowledge?ments?|ringraziamenti|appendix|appendice|glossary|glossario|about\s+the\s+author|l['’]autore|nota\s+dell['’]autore|author['’]s\s+note|note\s+dell['’]editore|extract|estratto|anteprima|excerpt|also\s+by|dello\s+stesso\s+autore|copyright|indice|contents|table\s+of\s+contents|bibliograf)/i;
 
-function eContorno(doc) {
+export function eContorno(doc) {
   const titolo = doc?.title || "";
   const testa = doc?.querySelector?.("h1, h2, h3, h4")?.textContent || "";
   return CONTORNO.test(titolo.trim()) || CONTORNO.test(testa.trim());

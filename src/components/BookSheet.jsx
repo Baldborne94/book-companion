@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { getProgress, getStatus, setStatus, touchBook } from "../lib/library.js";
 import { getCover, getFile, putCover, removeCover } from "../lib/bookStore.js";
+import { recupera } from "../lib/sinossi.js";
 import { preparaCopertina, copertinaOriginale } from "../lib/copertina.js";
 import { caricaCopertina } from "../lib/sync.js";
 import { chiaveGlossario, vociDi, salvaVoci, togli } from "../lib/glossarioMio.js";
@@ -134,6 +135,63 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   const [rating, setRating] = useState(book.rating || 0);
   const [status, setStatusState] = useState(getStatus(book.id));
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // IL RETRO DEL LIBRO. Nei libri importati da adesso arriva già scritto;
+  // per quelli entrati prima si va a prenderlo qui, una volta sola, e si
+  // salva — così un ePub da trenta megabyte non si riapre a ogni tocco
+  // sulla scheda. Aperto di suo solo su un libro che non hai mai aperto:
+  // chi riprende a pagina duecento sa già cosa sta leggendo.
+  const [retro, setRetro] = useState(typeof book.sinossi === "string" ? book.sinossi : "");
+  const [retroAperto, setRetroAperto] = useState(getProgress(book.id) <= 0);
+  useEffect(() => {
+    let vivo = true;
+    if (typeof book.sinossi === "string") {
+      setRetro(book.sinossi);
+      return () => { vivo = false; };
+    }
+    recupera(book, getFile).then((testo) => {
+      if (!vivo || testo === null) return;
+      setRetro(testo);
+      onSaveMeta?.({ ...book, sinossi: testo });
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [book.id]);
+
+  // il retro scritto dall'Oracolo si tiene come gli altri (`sinossi`), ma
+  // si dichiara: `daOracolo` cambia solo l'etichetta, perché «dalle prime
+  // pagine» e «il retro del libro» non sono la stessa cosa
+  const [retroBusy, setRetroBusy] = useState(false);
+  const [daOracolo, setDaOracolo] = useState(!!book.sinossiMia);
+
+  async function chiediIlRetro() {
+    if (retroBusy) return;
+    setRetroBusy(true);
+    try {
+      const { raccogliApertura, chiediRetro } = await import("../lib/sinossi.js");
+      const passaggi = await raccogliApertura(book, getFile);
+      if (!passaggi.length) {
+        notify?.("Non riesco a leggere le prime pagine di questo tomo");
+        return;
+      }
+      const res = await chiediRetro(passaggi);
+      if (res.error === "chiave") {
+        notify?.("Serve la chiave dell'Oracolo: la trovi toccando una parola nel libro");
+        return;
+      }
+      if (!res.answer) {
+        notify?.(res.error === "rete" ? "L'Oracolo ha bisogno della rete" : "L'Oracolo non ha risposto");
+        return;
+      }
+      setRetro(res.answer);
+      setDaOracolo(true);
+      setRetroAperto(true);
+      onSaveMeta?.({ ...book, sinossi: res.answer, sinossiMia: true });
+    } finally {
+      setRetroBusy(false);
+    }
+  }
 
   // LA COPERTINA A MANO. `coverV` è l'appiglio che fa ricaricare l'immagine:
   // l'id del libro non cambia, quindi da solo non basterebbe.
@@ -495,6 +553,68 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
             </div>
           </div>
         </div>
+
+        {/* IL RETRO DEL LIBRO. Sta sopra le tue note e sopra «Prima di
+            cominciare» perché risponde alla domanda più semplice di tutte
+            — «cosa sto per leggere?» — e perché l'ha scritta l'editore:
+            non è un riassunto della storia, è l'invito ad aprirla, e
+            quindi non contiene spoiler. Ripiegato: una quarta di
+            copertina lunga non deve spingere in fondo i campi. */}
+        {/* Nessuna descrizione nel file: si può chiederla all'Oracolo, ma
+            SOLO dalle prime pagine e senza mandargli il titolo — se
+            riconoscesse il libro risponderebbe a memoria, cioè con tutta
+            la trama, finale compreso. L'etichetta dice da dove viene. */}
+        {!retro && book.fileType !== "pdf" && (
+          <button
+            onClick={chiediIlRetro}
+            disabled={retroBusy}
+            style={{
+              margin: "6px 0 14px",
+              padding: "7px 14px",
+              borderRadius: R.tondo,
+              border: `1px solid ${C.arcane}55`,
+              color: retroBusy ? C.muted : C.arcane,
+              fontSize: F.piccolo,
+            }}
+          >
+            {retroBusy ? "✨ Leggo le prime pagine…" : "✨ Di cosa parla?"}
+          </button>
+        )}
+
+        {retro && (
+          <div style={{ margin: "6px 0 14px" }}>
+            <button
+              onClick={() => setRetroAperto((v) => !v)}
+              style={{
+                fontSize: F.minuscolo,
+                color: C.muted,
+                marginBottom: retroAperto ? 6 : 0,
+                padding: 0,
+              }}
+            >
+              {retroAperto ? "▾" : "▸"} {daOracolo ? "Dalle prime pagine" : "Il retro del libro"}
+            </button>
+            {retroAperto && (
+              <p
+                style={{
+                  margin: 0,
+                  padding: "11px 13px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.border}`,
+                  background: `${C.bg}88`,
+                  color: C.text,
+                  fontSize: F.nota,
+                  lineHeight: 1.55,
+                  whiteSpace: "pre-line",
+                  maxHeight: "32vh",
+                  overflowY: "auto",
+                }}
+              >
+                {retro}
+              </p>
+            )}
+          </div>
+        )}
 
         <label style={{ display: "block", margin: "6px 0 14px" }}>
           <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 3 }}>Note personali</span>

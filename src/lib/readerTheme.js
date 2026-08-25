@@ -40,6 +40,78 @@ export function spegniVuoti(doc) {
   return spenti;
 }
 
+// IL PARAGRAFO SI SEGNA UNA VOLTA SOLA: col rientro O con lo stacco.
+//
+// In «Eric» — e in parecchi ePub convertiti — il paragrafo e' segnato DUE
+// volte: rientro E stacco. Il risultato e' la pagina ariosa che il lettore
+// ha visto («perche' vedo tutti questi spazi?»), dove un romanzo stampato
+// e' compatto. Lo stacco puo' venire dal libro o, se il libro tace, dal
+// foglio del BROWSER, che ai paragrafi da' `margin: 1em 0` — misurato: 16px
+// nel primo caso, 13px nel secondo, e a occhio sono identici.
+//
+// Prima non toccavamo i margini della prosa di proposito, e la ragione
+// scritta qui era «un libro che separa la prosa coi margini invece che col
+// rientro deve continuare a farlo». Giusta, ma dava per scontato che un
+// libro ne usasse UNO dei due.
+//
+// IL CASO DA NON ROVINARE, misurato apposta: un libro SENZA rientro, dove
+// lo stacco e' l'unico segnale di paragrafo. Li' togliere i margini
+// incolla il romanzo in un blocco unico. Per questo non si toglie mai a
+// scatola chiusa: prima si guarda se la prosa e' rientrata.
+
+// quanto rientro conta come rientro: sotto, e' polvere di arrotondamento
+export const RIENTRO_MINIMO = 4;
+// quanti paragrafi rientrati bastano per dire che il libro rientra. Non
+// tutti: moltissimi ePub scrivono `p:first-of-type { text-indent: 0 }`, e
+// pretendere l'unanimita' vorrebbe dire non riconoscere mai un libro
+// rientrato.
+export const QUANTI = 0.6;
+
+// Pura apposta: prende i rientri gia' misurati e decide. Un test la chiama
+// con dei numeri, senza montare niente.
+export function rientrata(rientri = []) {
+  const buoni = rientri.filter((v) => Number.isFinite(v));
+  if (buoni.length < 3) return false;
+  return buoni.filter((v) => Math.abs(v) >= RIENTRO_MINIMO).length / buoni.length >= QUANTI;
+}
+
+// quanti paragrafi guardare: bastano per decidere, e leggere lo stile
+// calcolato di un documento intero costerebbe a ogni capitolo
+export const CAMPIONE = 20;
+
+// LA CURA, E IL TRUCCO CHE LA RENDE ACCETTABILE: i margini si azzerano
+// **senza `!important`**, cosi' una CLASSE continua a vincere. E' lo stesso
+// gioco di specificita' gia' usato per l'interlinea, e serve a una cosa
+// sola: lo stacco di scena voluto dal libro (`.scena { margin: 2em 0 }`)
+// resta intatto. Misurato in Chromium: stacco fra paragrafi 16px → 0px,
+// stacco di scena 32px → 32px.
+//
+// Sta in `hooks.content`, come `spegniVuoti`: a documento caricato e a
+// misura NON ancora presa. Cambiare i margini sposta l'impaginazione,
+// quindi va fatto prima che epub.js misuri — rientrarci dopo gli
+// distruggerebbe le viste.
+export function togliStacco(doc) {
+  if (!doc?.querySelectorAll) return false;
+  const vista = doc.defaultView;
+  if (!vista?.getComputedStyle) return false;
+  const rientri = [];
+  for (const p of doc.querySelectorAll("p")) {
+    if (!(p.textContent || "").trim()) continue;
+    rientri.push(parseFloat(vista.getComputedStyle(p).textIndent));
+    if (rientri.length >= CAMPIONE) break;
+  }
+  if (!rientrata(rientri)) return false;
+  // una volta sola per documento: `hooks.content` oggi gira una volta, ma
+  // un foglio impilato due volte e' il genere di cosa che nessuno nota
+  // finche' non ne trova venti
+  if (doc.querySelector("style[data-bc=stacco]")) return true;
+  const stile = doc.createElement("style");
+  stile.setAttribute("data-bc", "stacco");
+  stile.textContent = "p,li,dd,blockquote{margin-top:0;margin-bottom:0}";
+  (doc.head || doc.documentElement).appendChild(stile);
+  return true;
+}
+
 export function contentStyles(s, lingua) {
   const t = READER_THEMES[s.theme];
   const font = READER_FONTS.find((f) => f.id === s.font)?.css;
