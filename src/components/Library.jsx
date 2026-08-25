@@ -293,6 +293,10 @@ export default function Library({
   // che tace. Su «nuova» si installa subito: siamo in Libreria, nessun
   // libro aperto, il reload non costa niente.
   const [agg, setAgg] = useState(null);
+  // la cassetta degli attrezzi: chiusa a riposo, e resta aperta finche'
+  // la Libreria e' aperta — cosi' il tasto «Fermo qui» di un giro lungo
+  // avviato da dentro non sparisce sotto il ripiego
+  const [manutenzione, setManutenzione] = useState(false);
   async function controllaAggiornamenti() {
     if (agg === "cerco" || agg === "nuova") return;
     setAgg("cerco");
@@ -935,6 +939,7 @@ export default function Library({
       )}
 
       {(books.length > 0 || melodie > 0) && (
+        <>
         <div
           style={{
             marginTop: 32,
@@ -1028,102 +1033,142 @@ export default function Library({
               ⧗ {promemoria} <span style={{ color: C.arcane }}>Esportala qui accanto.</span>
             </span>
           )}
-          {/* Il richiamo dei tomi: c'e' solo se qualcosa e' rimasto lassu',
-              e il numero sta nel tasto perche' chi lo tocca sappia in
-              anticipo quanta connessione ci vuole. */}
-          {nelCloud.length > 0 && (
+          {/* IN VISTA RESTANO SOLO L'ARCHIVIO E LA CASSETTA DEGLI ATTREZZI.
+              I tasti di manutenzione erano arrivati a sei tutti in fila —
+              saghe, visita, doppioni, tomi dal cloud, ripristino — e sono
+              lavori da una volta al mese: sepolti lì sotto seppellivano
+              anche «Esporta», che invece e' il tasto di ogni settimana e
+              quello a cui gli avvisi qui sopra puntano («Esportala qui
+              accanto»): quello non si ripiega. */}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <button
-              onClick={portando ? () => { filoTomi.current = null; setPortando(null); } : richiamaTomi}
-              style={{
-                padding: "7px 16px",
-                borderRadius: R.piccolo,
-                border: `1px solid ${C.arcane}66`,
-                color: C.arcane,
-                fontSize: F.nota,
-                marginRight: 8,
-              }}
-            >
-              {portando
-                ? `Fermo qui (${portando.i + 1} di ${portando.totale})`
-                : `☁ Porta qui ${nelCloud.length} ${nelCloud.length === 1 ? "tomo" : "tomi"}`}
-            </button>
-          )}
-          <button
-            onClick={riconosciSaghe}
-            style={{
-              padding: "7px 16px",
-              borderRadius: R.piccolo,
-              border: `1px solid ${C.border}`,
-              color: C.text,
-              fontSize: F.nota,
-              marginRight: 8,
-            }}
-          >
-            🔖 Riconosci saghe e cicli
-          </button>
-          {/* Il ripasso delle impronte c'e' solo se qualcuno ne ha bisogno:
-              a biblioteca gia' a posto sarebbe un tasto che non fa niente.
-              Il numero sta scritto sopra perche' e' un giro che legge i
-              byte di ogni tomo, e chi lo tocca deve sapere quanto dura. */}
-          <button
-            onClick={visitando ? () => { filoVisita.current = null; setVisitando(null); } : visitaLibri}
-            style={{
-              padding: "7px 16px",
-              borderRadius: R.piccolo,
-              border: `1px solid ${C.border}`,
-              color: C.text,
-              fontSize: F.nota,
-              marginRight: 8,
-            }}
-          >
-            {visitando
-              ? `Fermo qui (${visitando.i + 1} di ${visitando.totale})`
-              : "🩺 Controlla i tuoi libri"}
-          </button>
-          {senzaImpronta.length > 0 && (
-            <button
-              onClick={improntando ? () => { filoImpronte.current = null; setImprontando(null); } : ripassaLeImpronte}
+              onClick={() => setManutenzione((v) => !v)}
               style={{
                 padding: "7px 16px",
                 borderRadius: R.piccolo,
                 border: `1px solid ${C.border}`,
                 color: C.text,
                 fontSize: F.nota,
-                marginRight: 8,
               }}
             >
-              {improntando
-                ? `Fermo qui (${improntando.i + 1} di ${improntando.totale})`
-                : `👯 Riconosci i doppioni di ${senzaImpronta.length} ${senzaImpronta.length === 1 ? "tomo" : "tomi"}`}
+              {/* il conto accanto al nome dice che la' dentro c'e' del
+                  lavoro che aspetta (tomi nel cloud, impronte da fare):
+                  senza, ripiegare i tasti nasconderebbe anche il bisogno */}
+              🧰 Manutenzione
+              {!manutenzione && nelCloud.length + senzaImpronta.length > 0
+                ? ` · ${nelCloud.length + senzaImpronta.length}`
+                : ""}{" "}
+              {manutenzione ? "▾" : "▸"}
             </button>
-          )}
-          <button
-            onClick={() => archiveRef.current?.click()}
-            disabled={restoring}
+            <button
+              onClick={handleExport}
+              style={{
+                padding: "7px 16px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.arcane}66`,
+                color: C.arcane,
+                fontSize: F.nota,
+              }}
+            >
+              📦 Esporta biblioteca
+            </button>
+          </span>
+        </div>
+        {manutenzione && (
+          <div
             style={{
-              padding: "7px 16px",
+              marginTop: 10,
+              padding: "10px 12px",
               borderRadius: R.piccolo,
               border: `1px solid ${C.border}`,
-              color: restoring ? C.muted : C.text,
-              fontSize: F.nota,
-              marginRight: 8,
+              background: `${C.bg}66`,
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              alignItems: "center",
             }}
           >
-            {restoring ? "Ripristino…" : "↩ Ripristina"}
-          </button>
-          <button
-            onClick={handleExport}
-            style={{
-              padding: "7px 16px",
-              borderRadius: R.piccolo,
-              border: `1px solid ${C.arcane}66`,
-              color: C.arcane,
-              fontSize: F.nota,
-            }}
-          >
-            📦 Esporta biblioteca
-          </button>
-        </div>
+            {/* Il richiamo dei tomi: c'e' solo se qualcosa e' rimasto lassu',
+                e il numero sta nel tasto perche' chi lo tocca sappia in
+                anticipo quanta connessione ci vuole. */}
+            {nelCloud.length > 0 && (
+              <button
+                onClick={portando ? () => { filoTomi.current = null; setPortando(null); } : richiamaTomi}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.arcane}66`,
+                  color: C.arcane,
+                  fontSize: F.nota,
+                }}
+              >
+                {portando
+                  ? `Fermo qui (${portando.i + 1} di ${portando.totale})`
+                  : `☁ Porta qui ${nelCloud.length} ${nelCloud.length === 1 ? "tomo" : "tomi"}`}
+              </button>
+            )}
+            <button
+              onClick={riconosciSaghe}
+              style={{
+                padding: "7px 16px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.border}`,
+                color: C.text,
+                fontSize: F.nota,
+              }}
+            >
+              🔖 Riconosci saghe e cicli
+            </button>
+            {/* Il ripasso delle impronte c'e' solo se qualcuno ne ha bisogno:
+                a biblioteca gia' a posto sarebbe un tasto che non fa niente.
+                Il numero sta scritto sopra perche' e' un giro che legge i
+                byte di ogni tomo, e chi lo tocca deve sapere quanto dura. */}
+            <button
+              onClick={visitando ? () => { filoVisita.current = null; setVisitando(null); } : visitaLibri}
+              style={{
+                padding: "7px 16px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.border}`,
+                color: C.text,
+                fontSize: F.nota,
+              }}
+            >
+              {visitando
+                ? `Fermo qui (${visitando.i + 1} di ${visitando.totale})`
+                : "🩺 Controlla i tuoi libri"}
+            </button>
+            {senzaImpronta.length > 0 && (
+              <button
+                onClick={improntando ? () => { filoImpronte.current = null; setImprontando(null); } : ripassaLeImpronte}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.border}`,
+                  color: C.text,
+                  fontSize: F.nota,
+                }}
+              >
+                {improntando
+                  ? `Fermo qui (${improntando.i + 1} di ${improntando.totale})`
+                  : `👯 Riconosci i doppioni di ${senzaImpronta.length} ${senzaImpronta.length === 1 ? "tomo" : "tomi"}`}
+              </button>
+            )}
+            <button
+              onClick={() => archiveRef.current?.click()}
+              disabled={restoring}
+              style={{
+                padding: "7px 16px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.border}`,
+                color: restoring ? C.muted : C.text,
+                fontSize: F.nota,
+              }}
+            >
+              {restoring ? "Ripristino…" : "↩ Ripristina"}
+            </button>
+          </div>
+        )}
+      </>
       )}
 
       {referto && <Referto esito={referto} onChiudi={() => setReferto(null)} />}
