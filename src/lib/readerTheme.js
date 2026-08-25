@@ -86,6 +86,30 @@ export const CAMPIONE = 20;
 // resta intatto. Misurato in Chromium: stacco fra paragrafi 16px → 0px,
 // stacco di scena 32px → 32px.
 //
+// UNO SPAZIATORE DOPO OGNI PARAGRAFO NON E' UNO STACCO DI SCENA.
+//
+// `spegniVuoti` conserva apposta i `<p>` con lo spazio unificatore: li' il
+// libro ha aperto una riga di proposito, ed e' la pausa fra due scene.
+// Giusto — finche' sono occasionali. Ma certi ePub ne mettono uno dopo
+// OGNI paragrafo, e allora non sono pause: sono il modo in cui quel libro
+// separa la prosa. Misurato sul libro del lettore: trenta paragrafi veri e
+// trenta spaziatori, alti 24px l'uno — esattamente lo stacco che si vedeva
+// sul tablet, e che la cura dei margini non toccava perche' non e' un
+// margine.
+//
+// La soglia sta larghissima da tutt'e due i lati: in un romanzo vero gli
+// stacchi di scena sono una decina ogni cento paragrafi (10%), mentre un
+// separatore sistematico ne fa uno per paragrafo (100%). A meta' strada non
+// ci arriva ne' l'uno ne' l'altro.
+export const SPAZIATORI_FITTI = 0.5;
+// e su pochi paragrafi non si decide: un frontespizio di tre righe con una
+// riga vuota in mezzo sarebbe «sistematico» per puro caso
+export const ABBASTANZA_PARAGRAFI = 6;
+
+export function spaziatoriFitti(pieni, spaziatori) {
+  return pieni >= ABBASTANZA_PARAGRAFI && spaziatori >= pieni * SPAZIATORI_FITTI;
+}
+
 // Sta in `hooks.content`, come `spegniVuoti`: a documento caricato e a
 // misura NON ancora presa. Cambiare i margini sposta l'impaginazione,
 // quindi va fatto prima che epub.js misuri — rientrarci dopo gli
@@ -94,13 +118,30 @@ export function togliStacco(doc) {
   if (!doc?.querySelectorAll) return false;
   const vista = doc.defaultView;
   if (!vista?.getComputedStyle) return false;
+  const tutti = [...doc.querySelectorAll("p")];
+  const pieni = tutti.filter((p) => (p.textContent || "").trim());
   const rientri = [];
-  for (const p of doc.querySelectorAll("p")) {
-    if (!(p.textContent || "").trim()) continue;
+  for (const p of pieni.slice(0, CAMPIONE)) {
     rientri.push(parseFloat(vista.getComputedStyle(p).textIndent));
-    if (rientri.length >= CAMPIONE) break;
   }
+  // il rientro comanda tutt'e due le cure: senza, lo stacco — margine o
+  // spaziatore che sia — e' l'unico segnale di paragrafo che il libro ha
   if (!rientrata(rientri)) return false;
+
+  // GLI SPAZIATORI FITTI si spengono uno per uno e non in CSS, per la
+  // stessa ragione di `spegniVuoti`: il foglio di stile non sa dire
+  // «paragrafo senza testo», e una regola su `p:empty` prenderebbe le cose
+  // sbagliate. Quelli con dentro un'immagine restano: non sono spaziatori.
+  const spaziatori = tutti.filter(
+    (p) => !(p.textContent || "").trim() && !p.querySelector("img, svg, video, canvas, object, iframe")
+  );
+  if (spaziatoriFitti(pieni.length, spaziatori.length)) {
+    for (const s of spaziatori) {
+      s.style.margin = "0";
+      s.style.lineHeight = "0";
+    }
+  }
+
   // una volta sola per documento: `hooks.content` oggi gira una volta, ma
   // un foglio impilato due volte e' il genere di cosa che nessuno nota
   // finche' non ne trova venti

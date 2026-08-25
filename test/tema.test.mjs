@@ -5,7 +5,8 @@
 //
 // Serve un browser. Senza, il file si dichiara SALTATO invece di fallire —
 // ma saltare non e' passare: chi tocca `readerTheme.js` deve farlo girare.
-import { contentStyles, spegniVuoti, togliStacco, rientrata, RIENTRO_MINIMO, QUANTI, CAMPIONE } from "../src/lib/readerTheme.js";
+import { contentStyles, spegniVuoti, togliStacco, rientrata, spaziatoriFitti,
+  RIENTRO_MINIMO, QUANTI, CAMPIONE, SPAZIATORI_FITTI, ABBASTANZA_PARAGRAFI } from "../src/lib/readerTheme.js";
 import { READER_THEMES } from "../src/lib/readerSettings.js";
 import { Saltato } from "./aiuto.mjs";
 import { existsSync, readdirSync } from "node:fs";
@@ -148,7 +149,10 @@ export default async function (t) {
     const RIENTRO_MINIMO = ${RIENTRO_MINIMO};
     const QUANTI = ${QUANTI};
     const CAMPIONE = ${CAMPIONE};
+    const SPAZIATORI_FITTI = ${SPAZIATORI_FITTI};
+    const ABBASTANZA_PARAGRAFI = ${ABBASTANZA_PARAGRAFI};
     const rientrata = ${rientrata.toString()};
+    const spaziatoriFitti = ${spaziatoriFitti.toString()};
     return (${togliStacco.toString()});
   `;
   const staccaVia = () => p.evaluate(([src]) => new Function(src)()(document), [sorgenteStacco]);
@@ -315,6 +319,40 @@ export default async function (t) {
     </body></html>`);
     t.c("le ancore vuote non affogano i paragrafi veri", await staccaVia());
     t.eq("e lo stacco se ne va lo stesso", await fra("u", "d"), 0);
+
+    // ---- GLI SPAZIATORI FITTI, misurati nel motore -------------------
+    // Il libro del lettore metteva un <p>&nbsp;</p> dopo OGNI paragrafo:
+    // trenta veri e trenta spaziatori da 24px, ed è lo stacco che si
+    // vedeva sul tablet. La cura dei margini non li toccava, perché non
+    // sono margini — sono paragrafi alti una riga.
+    const CON = (quanti, spaziatori) => `<!doctype html><html><head><style>
+      p { text-indent: 1.2em; margin: 0; }
+    </style></head><body>${Array.from({ length: quanti }, (_, i) =>
+      `<p id="p${i}">Paragrafo numero ${i}, con abbastanza parole da occupare una riga intera.</p>` +
+      (i < spaziatori ? "<p>&#160;</p>" : "")
+    ).join("")}</body></html>`;
+
+    await p.setContent(CON(10, 10));
+    const primaFitti = await fra("p0", "p1");
+    t.c("con uno spaziatore per paragrafo lo stacco c'è", primaFitti > 8, `${primaFitti}px`);
+    await staccaVia();
+    t.eq("e la cura lo spegne", await fra("p0", "p1"), 0);
+
+    // GLI STACCHI DI SCENA VERI SOPRAVVIVONO: in un romanzo sono una
+    // decina ogni cento paragrafi, e lì il libro ha aperto una riga
+    // apposta — spegnerli vorrebbe dire incollare due scene diverse
+    await p.setContent(CON(10, 1));
+    const scenaPrima = await fra("p0", "p1");
+    await staccaVia();
+    t.eq("uno stacco occasionale resta intatto", await fra("p0", "p1"), scenaPrima);
+    t.c("ed è uno stacco vero", scenaPrima > 8, `${scenaPrima}px`);
+
+    // e senza rientro non si tocca niente, come per i margini: lì lo
+    // spaziatore è l'unico segnale di paragrafo che il libro ha
+    await p.setContent(CON(10, 10).replace("text-indent: 1.2em;", ""));
+    const senzaRientro = await fra("p0", "p1");
+    t.c("senza rientro gli spaziatori non si toccano", !(await staccaVia()));
+    t.eq("e restano com'erano", await fra("p0", "p1"), senzaRientro);
 
     t.c("niente documento, niente da fare", !togliStacco(null));
     t.c("e un documento senza vista nemmeno", !togliStacco({ querySelectorAll: () => [] }));
