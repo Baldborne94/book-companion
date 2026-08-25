@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { getProgress, getStatus, combacia } from "../lib/library.js";
+import { GUAI, grave } from "../lib/visita.js";
 import { storageEstimate, statoPersistenza, requestPersistence, getFile } from "../lib/bookStore.js";
 import { importFiles, resoconto } from "../lib/importBook.js";
 import { exportLibrary, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
@@ -303,6 +304,10 @@ export default function Library({
   // stesso modo di fermarla
   const [improntando, setImprontando] = useState(null);
   const filoImpronte = useRef(null);
+  // la visita: terza passata lunga, stessa forma delle altre due
+  const [visitando, setVisitando] = useState(null);
+  const [referto, setReferto] = useState(null);
+  const filoVisita = useRef(null);
   const archiveRef = useRef(null);
   const [estimate, setEstimate] = useState(null);
   const inputRef = useRef(null);
@@ -406,6 +411,58 @@ export default function Library({
       parti.push(`${esito.senzaByte} ${esito.senzaByte === 1 ? "non è" : "non sono"} su questo dispositivo`);
     if (esito.illeggibili) parti.push(`${esito.illeggibili} non si ${esito.illeggibili === 1 ? "è" : "sono"} letti`);
     notify?.(parti.length ? parti.join(", ") : "Erano già tutti a posto");
+  }
+
+  // LA VISITA AI LIBRI. L'import dice com'è andata il giorno che il libro
+  // è entrato e poi tace per sempre, ma i guai di un ePub si scoprono a
+  // pagina duecento — e lì non sai nemmeno se è colpa del file o dell'app.
+  async function visitaLibri() {
+    if (!books.length || visitando) return;
+    const mio = {};
+    filoVisita.current = mio;
+    setVisitando({ i: 0, totale: books.length, titolo: books[0].title });
+    const { visita, fattiDaEpub, resocontoVisita } = await import("../lib/visita.js");
+    const esito = await visita(books, {
+      leggiByte: (id) => getFile(id),
+      // aprire il tomo sta QUI e non dentro `visita` perché così la
+      // passata si prova in Node con un finto, senza epub.js
+      apri: async (b, file) => {
+        const buf = await file.arrayBuffer();
+        if (b.fileType === "pdf") {
+          const { loadPdf, pageText } = await import("../lib/pdfThumb.js");
+          const pdf = await loadPdf(buf);
+          try {
+            // in un PDF il guaio vero è la scansione senza livello di
+            // testo: si vede dalle prime pagine, non serve leggerlo tutto
+            let caratteri = 0;
+            const cache = new Map();
+            const quante = Math.min(pdf.numPages, 8);
+            for (let n = 1; n <= quante; n++) caratteri += (await pageText(pdf, n, cache)).length;
+            // si riporta in scala sull'intero volume, o un PDF lungo
+            // sembrerebbe vuoto per via del campione
+            return { caratteri: Math.round((caratteri / quante) * pdf.numPages), documenti: pdf.numPages, indice: 2 };
+          } finally {
+            try { pdf.destroy(); } catch { /* già chiuso */ }
+          }
+        }
+        const { default: ePub } = await import("epubjs");
+        const eb = ePub(buf);
+        try {
+          return await fattiDaEpub(eb);
+        } finally {
+          try { eb.destroy(); } catch { /* già chiuso */ }
+        }
+      },
+      vivo: () => filoVisita.current === mio,
+      onProgress: (p) => filoVisita.current === mio && setVisitando(p),
+    });
+    if (filoVisita.current !== mio) return;
+    filoVisita.current = null;
+    setVisitando(null);
+    notify?.(resocontoVisita(esito));
+    // il referto si apre solo se c'è qualcosa da leggere: un pannello che
+    // dice «tutto a posto» è un pannello da chiudere e basta
+    if (esito.malati.length || esito.lontani.length) setReferto(esito);
   }
 
   async function richiamaTomi() {
@@ -843,6 +900,10 @@ export default function Library({
             <span style={{ color: C.arcane }}>
               ☁ Porto qui «{portando.titolo}» — {portando.i + 1} di {portando.totale}
             </span>
+          ) : visitando ? (
+            <span style={{ color: C.arcane }}>
+              🩺 Guardo «{visitando.titolo}» — {visitando.i + 1} di {visitando.totale}
+            </span>
           ) : improntando ? (
             <span style={{ color: C.arcane }}>
               👯 Guardo «{improntando.titolo}» — {improntando.i + 1} di {improntando.totale}
@@ -932,6 +993,21 @@ export default function Library({
               a biblioteca gia' a posto sarebbe un tasto che non fa niente.
               Il numero sta scritto sopra perche' e' un giro che legge i
               byte di ogni tomo, e chi lo tocca deve sapere quanto dura. */}
+          <button
+            onClick={visitando ? () => { filoVisita.current = null; setVisitando(null); } : visitaLibri}
+            style={{
+              padding: "7px 16px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.border}`,
+              color: C.text,
+              fontSize: F.nota,
+              marginRight: 8,
+            }}
+          >
+            {visitando
+              ? `Fermo qui (${visitando.i + 1} di ${visitando.totale})`
+              : "🩺 Controlla i tuoi libri"}
+          </button>
           {senzaImpronta.length > 0 && (
             <button
               onClick={improntando ? () => { filoImpronte.current = null; setImprontando(null); } : ripassaLeImpronte}
@@ -978,6 +1054,7 @@ export default function Library({
         </div>
       )}
 
+      {referto && <Referto esito={referto} onChiudi={() => setReferto(null)} />}
       {archivio && (
         <SceltaArchivio
           archivio={archivio}
@@ -995,6 +1072,101 @@ export default function Library({
 // l'archivio e lascia scegliere quale meta' prendere. Le caselle partono
 // spuntate: chi tocca «Ripristina» e conferma senza leggere ottiene quello
 // che otteneva prima, cioe' tutto.
+// IL REFERTO DELLA VISITA. Non un numero: i tomi PER NOME, cosa non va e
+// cosa puoi farci. Un elenco di guai senza la cura accanto lascia il
+// lettore esattamente dov'era — sapere che un libro è rotto e non sapere
+// se è colpa del file o dell'app è peggio che non saperlo.
+function Referto({ esito, onChiudi }) {
+  const { malati = [], lontani = [], esaminati = 0 } = esito;
+  return (
+    <div
+      onClick={onChiudi}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 55,
+        background: "#080611cc",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        animation: "bc-fade-in 0.25s ease-out",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: 520,
+          maxHeight: "84vh",
+          overflowY: "auto",
+          borderRadius: R.grande,
+          border: `1px solid ${C.border}`,
+          background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
+          boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
+          padding: 22,
+        }}
+      >
+        <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
+          🩺 La visita ai tuoi libri
+        </h2>
+        <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 16 }}>
+          {malati.length
+            ? `Ho guardato ${esaminati} ${esaminati === 1 ? "tomo" : "tomi"}. Quello che l'app sa già curare da sé non lo elenco.`
+            : `Ho guardato ${esaminati} ${esaminati === 1 ? "tomo" : "tomi"} e non ho trovato niente da segnalare.`}
+        </p>
+
+        {malati.map((m) => (
+          <div
+            key={m.id}
+            style={{
+              padding: "12px 14px",
+              marginBottom: 8,
+              borderRadius: R.piccolo,
+              border: `1px solid ${grave(m.guai) ? `${C.red}66` : C.border}`,
+              background: grave(m.guai) ? `${C.red}12` : "transparent",
+            }}
+          >
+            <div style={{ fontSize: F.nota, color: C.text, marginBottom: 5 }}>{m.title}</div>
+            {m.guai.map((g) => (
+              <div key={g} style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.5 }}>
+                <span style={{ color: GUAI[g].grave ? C.red : C.arcane }}>·</span> {GUAI[g].dice} —{" "}
+                <span style={{ opacity: 0.85 }}>{GUAI[g].cura}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+
+        {/* i tomi rimasti nel cloud si contano e si dicono, come ovunque:
+            scaricarne venti per una visita sarebbe un prezzo che nessuno
+            ha chiesto di pagare */}
+        {lontani.length > 0 && (
+          <p style={{ fontSize: F.piccolo, color: C.muted, marginTop: 10, lineHeight: 1.5 }}>
+            {lontani.length === 1
+              ? `«${lontani[0]}» non è su questo dispositivo, quindi non l'ho guardato.`
+              : `${lontani.length} tomi non sono su questo dispositivo, quindi non li ho guardati.`}
+          </p>
+        )}
+
+        <button
+          onClick={onChiudi}
+          style={{
+            marginTop: 16,
+            padding: "9px 18px",
+            borderRadius: R.piccolo,
+            border: `1px solid ${C.border}`,
+            color: C.text,
+            fontSize: F.nota,
+          }}
+        >
+          Chiudi
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
   const { dentro, prendi } = archivio;
   const niente = !prendi.libri && !prendi.melodie;
