@@ -10,6 +10,7 @@ import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
 import { portaACasa } from "../lib/sync.js";
 import { fmtBytes } from "../lib/bytes.js";
+import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
 import { famigliaDi } from "../data/generi.js";
 import BookCover from "./BookCover.jsx";
 import EmptyState from "./EmptyState.jsx";
@@ -284,8 +285,25 @@ export default function Library({
   focusSaga,
   collegato,
   onFileLocali,
+  aggiorna,
 }) {
   const [query, setQuery] = useState("");
+  // il controllo aggiornamenti col dito: `agg` e' l'esito in corso, e le
+  // parole stanno in ESITI_CONTROLLO — un esito senza frase e' un tasto
+  // che tace. Su «nuova» si installa subito: siamo in Libreria, nessun
+  // libro aperto, il reload non costa niente.
+  const [agg, setAgg] = useState(null);
+  async function controllaAggiornamenti() {
+    if (agg === "cerco" || agg === "nuova") return;
+    setAgg("cerco");
+    const esito = await aggiorna.cerca();
+    setAgg(esito);
+    if (esito === "nuova") {
+      setTimeout(() => aggiorna.applica(), 900);
+    } else {
+      setTimeout(() => setAgg((v) => (v === esito ? null : v)), 6000);
+    }
+  }
   // la ricerca dentro i tomi: `vivo` e' il filo che la tiene in vita, e
   // spezzarlo e' l'unico modo per fermarla a meta'
   const [dentro, setDentro] = useState(null);
@@ -946,12 +964,29 @@ export default function Library({
               👯 Guardo «{improntando.titolo}» — {improntando.i + 1} di {improntando.totale}
             </span>
           ) : (
-            <span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {books.length} {books.length === 1 ? "libro custodito" : "libri custoditi"}
               {melodie ? ` · ${melodie} ${melodie === 1 ? "melodia" : "melodie"}` : ""}
               {estimate?.usage ? ` · ${fmtBytes(estimate.usage)} usati` : ""}
               {estimate?.quota ? ` di ${fmtBytes(estimate.quota)}` : ""}
               {` · v. ${typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "?"}`}
+              {aggiorna &&
+                (agg ? (
+                  <span style={{ color: agg === "nuova" ? C.accent : C.arcane }}>{ESITI_CONTROLLO[agg]}</span>
+                ) : (
+                  <button
+                    onClick={controllaAggiornamenti}
+                    style={{
+                      padding: "3px 10px",
+                      borderRadius: R.tondo,
+                      border: `1px solid ${C.border}`,
+                      color: C.muted,
+                      fontSize: F.minuscolo,
+                    }}
+                  >
+                    🔄 Controlla
+                  </button>
+                ))}
             </span>
           )}
           {/* Non un allarme: uno STATO. Sparisce da solo quando il browser

@@ -8,6 +8,7 @@ import { CandleIcon, BooksIcon, MusicIcon, LeafIcon, ScrollIcon, CloudIcon } fro
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
 import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook, getProgress } from "./lib/library.js";
 import { removeBookData, requestPersistence } from "./lib/bookStore.js";
+import { cercaNuovaVersione } from "./lib/aggiornamenti.js";
 import Home from "./components/Home.jsx";
 import Library from "./components/Library.jsx";
 import BookSheet from "./components/BookSheet.jsx";
@@ -779,6 +780,13 @@ export default function App() {
             // i byte scesi in casa non sono roba da sincronizzare: basta
             // ricontare chi c'e', e le nuvolette si spengono subito
             onFileLocali={async () => setLocalIds(await localFileIds())}
+            // il controllo aggiornamenti col dito: qui siamo in Libreria,
+            // nessun libro aperto, quindi installare subito e' lecito —
+            // e' l'unico posto dove il reload non costa niente
+            aggiorna={{
+              cerca: () => cercaNuovaVersione(swReg.current),
+              applica: () => swUpdate.current?.(true),
+            }}
           />
         )}
         {section === "music" && <MusicRoom music={music} playerRef={playerRef} notify={notify} />}
