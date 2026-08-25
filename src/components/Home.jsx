@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { useViewport } from "../lib/viewport.js";
 import { getLastOpened, getProgress, getStatus, getUpdatedAt } from "../lib/library.js";
@@ -95,6 +96,10 @@ function SagaCard({ saga, onOpen }) {
 }
 
 export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onSaga }) {
+  // chi ha il dorso disegnato lo sa solo `BookCover`: lo dice qui, così i
+  // preferiti non ristampano un titolo che sta già sulla copertina
+  const [dorsi, setDorsi] = useState({});
+  const segnaDorso = (id, v) => setDorsi((d) => (d[id] === v ? d : { ...d, [id]: v }));
   const { wide } = useViewport();
 
   if (books.length === 0) {
@@ -188,7 +193,10 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
             }}
           >
             <div style={{ width: 84, flexShrink: 0 }}>
-              <BookCover book={last} />
+              {/* qui il titolo e l'autore stanno già scritti accanto, e il
+                  riquadro è alto ottantaquattro pixel: il dorso fa la sua
+                  parte col colore e basta */}
+              <BookCover book={last} compact />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
@@ -309,11 +317,18 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
               display: "grid",
               gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))",
               gap: "16px 14px",
+              // I LIBRI SI ALLINEANO IN ALTO. Un `<button>` più basso della sua
+              // riga centra il contenuto — è il browser che lo fa — e da quando la
+              // didascalia compare solo sotto le copertine VERE le righe hanno
+              // altezze diverse: i dorsi disegnati scivolavano in basso di
+              // quaranta pixel, e lo scaffale sembrava storto.
+              alignItems: "start",
             }}
           >
             {favorites.map((b) => (
               <button key={b.id} onClick={() => onOpenBook(b.id)} style={{ textAlign: "center" }}>
-                <BookCover book={b} />
+                <BookCover book={b} onDisegnata={(v) => segnaDorso(b.id, v)} />
+                {!dorsi[b.id] && (
                 <div
                   style={{
                     marginTop: 6,
@@ -328,6 +343,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
                 >
                   {b.title}
                 </div>
+                )}
                 <div style={{ marginTop: 3 }}>
                   <Rating value={b.rating} />
                 </div>
