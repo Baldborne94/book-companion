@@ -103,7 +103,11 @@ export function gradinoTitolo(titolo, quanti = GRADINI.length) {
   const t = String(titolo || "").trim();
   // soglie in caratteri, misurate sulla colonna 108–150px dello scaffale
   const perTutto = [12, 22, 34, 50];
-  const perParola = [7, 9, 11, 13];
+  // Misurate nella colonna PIU' STRETTA dello scaffale (108px meno la
+  // costola e i margini: restano una settantina di pixel di testo), che e'
+  // l'unica misura che conta — se ci sta li', ci sta ovunque. Con [7,9,11]
+  // «Neuromante» restava a diciassette punti e sbordava ancora di un pelo.
+  const perParola = [6, 8, 9, 11];
   const lunga = t.split(/\s+/).reduce((m, p) => Math.max(m, p.length), 0);
   const passo = (n, soglie) => {
     let i = 0;

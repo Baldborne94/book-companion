@@ -46,6 +46,12 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
         display: "grid",
         gridTemplateColumns: "repeat(auto-fill, minmax(108px, 1fr))",
         gap: "20px 16px",
+        // I LIBRI SI ALLINEANO IN ALTO. Un `<button>` più basso della sua
+        // riga centra il contenuto — è il browser che lo fa — e da quando la
+        // didascalia compare solo sotto le copertine VERE le righe hanno
+        // altezze diverse: i dorsi disegnati scivolavano in basso di
+        // quaranta pixel, e lo scaffale sembrava storto.
+        alignItems: "start",
       }}
     >
       {books.map((b) => {
