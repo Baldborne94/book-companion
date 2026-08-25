@@ -452,6 +452,33 @@ export function soloDellaSerie(book, tappe) {
   return tappe.filter((t) => (t.libro.series || "").trim().toLowerCase() === serie);
 }
 
+// PERCHÉ IL TASTO TACE. «Prima di cominciare» compare solo se un «prima»
+// esiste, ma sparire in silenzio trasforma un campo sbagliato in un
+// mistero: il lettore coi primi volumi letti guardava la scheda del nono
+// e il tasto non c'era, senza una riga a dire il perché — e da fuori le
+// cause possibili sono quattro, tutte invisibili. Qui si percorre la
+// stessa catena del tasto — saga, numeri, stato, serie — e si torna il
+// PRIMO anello rotto, coi numeri per dirlo. `null` = niente da spiegare:
+// o il tasto c'è, o un prima non è mai esistito (primo volume, nessuna
+// saga dichiarata), e lì una riga sarebbe rumore.
+export function perchePrimaTace(corrente, libri, { statusOf, cfiOf }) {
+  const saga = (corrente.saga || "").trim();
+  if (!saga) return null;
+  const ordine = corrente.sagaOrder;
+  // il primo volume non ha un prima: è la norma, non un guaio
+  if (ordine != null && ordine <= 1) return null;
+  const altri = libri.filter((b) => b.id !== corrente.id && (b.saga || "").trim() === saga);
+  if (!altri.length) return ordine == null ? null : { perche: "soli", saga };
+  if (ordine == null) return { perche: "senzaNumero", saga };
+  const davanti = altri.filter((b) => b.sagaOrder != null && b.sagaOrder < ordine);
+  if (!davanti.length) return { perche: "numeri", saga, ordine };
+  const tappe = frontiera(corrente, libri, { statusOf, cfiOf }).filter((t) => t.libro.id !== corrente.id);
+  if (!tappe.length) return { perche: "stato", saga, quanti: davanti.length };
+  if (!soloDellaSerie(corrente, tappe).length)
+    return { perche: "serie", serie: (corrente.series || "").trim(), quanti: tappe.length };
+  return null;
+}
+
 export async function schedaPrima({ book, libri, statusOf, cfiOf, vivo, passo }) {
   const tappe = soloDellaSerie(
     book,

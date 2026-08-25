@@ -11,6 +11,7 @@
 --     add column if not exists started_at  bigint not null default 0,
 --     add column if not exists finished_at bigint not null default 0;
 --   alter table public.books add column if not exists impronta text;  -- doppioni
+--   alter table public.books add column if not exists fav boolean not null default false;  -- cuore dei preferiti
 --   alter table public.prefs add column if not exists glossari jsonb not null default '{}'::jsonb;
 -- Senza, l'app sincronizza comunque tutto il resto: rinuncia solo al
 -- campo mancante e lo tiene in locale. Dopo la migrazione i libri gia'
@@ -43,12 +44,15 @@ create table if not exists public.books (
   -- l'impronta SHA-256 dei byte del file: e' quella che riconosce lo stesso
   -- file importato due volte. Senza questa colonna il doppione fra due
   -- dispositivi si puo' solo segnalare per titolo e autore, non saltare.
-  impronta text
+  impronta text,
+  -- il cuore dei preferiti: una scelta del lettore, non una soglia di stelle
+  fav boolean not null default false
 );
 
 -- per i database gia' creati: `create table if not exists` non aggiunge le
 -- colonne nuove
 alter table public.books add column if not exists impronta text;
+alter table public.books add column if not exists fav boolean not null default false;
 
 create index if not exists books_user_idx on public.books(user_id);
 alter table public.books enable row level security;

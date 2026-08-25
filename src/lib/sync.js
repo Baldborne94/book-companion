@@ -102,6 +102,11 @@ const DEGRADE = [
     apply: (rows) => rows.map(({ impronta, ...r }) => r),
   },
   {
+    test: (m) => /'fav'/i.test(m),
+    label: "cuore dei preferiti",
+    apply: (rows) => rows.map(({ fav, ...r }) => r),
+  },
+  {
     test: (m) => /rating/i.test(m) || /invalid input syntax for type integer/i.test(m),
     label: "mezze stelle",
     apply: (rows) => rows.map((r) => ({ ...r, rating: Math.round(r.rating || 0) })),
