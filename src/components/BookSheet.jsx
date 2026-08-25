@@ -453,13 +453,14 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                       >
                         {retro}
                       </div>
-                      <div style={{ marginTop: 7, fontSize: F.minuscolo, color: C.muted, opacity: 0.8 }}>
-                        {fonte === "oracolo"
-                          ? "— dalle prime pagine"
-                          : fonte === "rete"
-                            ? "— dal catalogo in rete"
-                            : "— dal file del libro"}
-                      </div>
+                      {/* la provenienza si dice solo quando NON è ovvia:
+                          «dal file del libro» è il caso normale, e
+                          dichiararlo è rumore — gli zeri non si dicono */}
+                      {fonte !== "file" && (
+                        <div style={{ marginTop: 7, fontSize: F.minuscolo, color: C.muted, opacity: 0.8 }}>
+                          {fonte === "oracolo" ? "— dalle prime pagine" : "— dal catalogo in rete"}
+                        </div>
+                      )}
                     </>
                   ) : (
                     <div style={{ fontSize: F.minuscolo, color: C.muted, lineHeight: 1.45 }}>
