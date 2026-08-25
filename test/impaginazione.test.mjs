@@ -2,7 +2,7 @@
 // codice e due trappole, e tutt'e due ci sono gia' cascate una volta: al
 // primo tentativo il libro non si apriva affatto.
 import { ritaglioAvanzo, flattenToc } from "../src/lib/readerLayout.js";
-import { rientrata, RIENTRO_MINIMO } from "../src/lib/readerTheme.js";
+import { rientrata, spaziatoriFitti, RIENTRO_MINIMO, ABBASTANZA_PARAGRAFI } from "../src/lib/readerTheme.js";
 
 export default async function (t) {
   // ---- il conto normale --------------------------------------------------
@@ -94,4 +94,28 @@ export default async function (t) {
   // i valori che non sono numeri (`text-indent: inherit` su un browser
   // strano) non devono contare come «non rientrato»
   t.c("i non-numeri si scartano, non si contano contro", rientrata([NaN, NaN, 19, 19, 19]));
+
+  // ---- UNO SPAZIATORE DOPO OGNI PARAGRAFO NON È UNO STACCO DI SCENA ----
+  // `spegniVuoti` conserva apposta i <p> con lo spazio unificatore: lì il
+  // libro ha aperto una riga di proposito. Giusto — finché sono
+  // occasionali. Ma certi ePub ne mettono uno dopo OGNI paragrafo, e
+  // allora non sono pause, sono il modo in cui quel libro separa la prosa.
+  // Misurato sul libro del lettore: 30 paragrafi veri, 30 spaziatori da
+  // 24px l'uno — lo stacco che si vedeva sul tablet.
+  t.c("uno per paragrafo è un separatore", spaziatoriFitti(30, 30));
+  t.c("anche uno ogni due", spaziatoriFitti(30, 15));
+
+  // GLI STACCHI DI SCENA VERI DEVONO SOPRAVVIVERE: in un romanzo sono una
+  // decina ogni cento paragrafi, e la soglia sta larghissima da lì
+  t.c("dieci su cento sono stacchi di scena", !spaziatoriFitti(100, 10));
+  t.c("e anche venti su cento", !spaziatoriFitti(100, 20));
+  t.c("nessuno spaziatore, niente da fare", !spaziatoriFitti(50, 0));
+
+  // ---- su poco testo non si decide -------------------------------------
+  // un frontespizio di tre righe con una riga vuota in mezzo sarebbe
+  // «sistematico» per puro caso
+  t.c("tre paragrafi non bastano", !spaziatoriFitti(3, 3));
+  t.c("nemmeno appena sotto la soglia", !spaziatoriFitti(ABBASTANZA_PARAGRAFI - 1, 99));
+  t.c("da lì in su sì", spaziatoriFitti(ABBASTANZA_PARAGRAFI, ABBASTANZA_PARAGRAFI));
+  t.c("niente paragrafi, niente", !spaziatoriFitti(0, 0));
 }
