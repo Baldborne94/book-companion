@@ -5,7 +5,7 @@
 //
 // Serve un browser. Senza, il file si dichiara SALTATO invece di fallire —
 // ma saltare non e' passare: chi tocca `readerTheme.js` deve farlo girare.
-import { contentStyles, spegniVuoti, togliStacco, rientrata, spaziatoriFitti,
+import { contentStyles, spegniVuoti, togliStacco, rientrata, spaziatoriFitti, SEGNO_DI_SCENA,
   RIENTRO_MINIMO, QUANTI, CAMPIONE, SPAZIATORI_FITTI, ABBASTANZA_PARAGRAFI } from "../src/lib/readerTheme.js";
 import { READER_THEMES } from "../src/lib/readerSettings.js";
 import { Saltato } from "./aiuto.mjs";
@@ -153,6 +153,7 @@ export default async function (t) {
     const ABBASTANZA_PARAGRAFI = ${ABBASTANZA_PARAGRAFI};
     const rientrata = ${rientrata.toString()};
     const spaziatoriFitti = ${spaziatoriFitti.toString()};
+    const SEGNO_DI_SCENA = ${SEGNO_DI_SCENA.toString()};
     return (${togliStacco.toString()});
   `;
   const staccaVia = () => p.evaluate(([src]) => new Function(src)()(document), [sorgenteStacco]);
@@ -353,6 +354,33 @@ export default async function (t) {
     const senzaRientro = await fra("p0", "p1");
     t.c("senza rientro gli spaziatori non si toccano", !(await staccaVia()));
     t.eq("e restano com'erano", await fra("p0", "p1"), senzaRientro);
+
+    // ---- I MARGINI MESSI DA UNA CLASSE, che il foglio non batte -------
+    // Calibre veste ogni paragrafo con una classe, e una classe batte un
+    // tag: la regola `p { margin: 0 }` perdeva, e lo stacco restava tutto.
+    // È la seconda causa dello stacco che il lettore vedeva ancora.
+    const CALIBRE = `<!doctype html><html><head><style>
+      .calibre2 { text-indent: 1.2em; margin-top: 0.6em; margin-bottom: 0.6em; }
+    </style></head><body>
+      ${Array.from({ length: 8 }, (_, i) =>
+        `<p class="calibre2" id="p${i}">Paragrafo ${i}, abbastanza lungo da occupare una riga.</p>`
+      ).join("")}
+      <p class="calibre2" id="segno">* * *</p>
+      <p class="calibre2" id="dopo">La scena dopo il segno.</p>
+    </body></html>`;
+
+    await p.setContent(CALIBRE);
+    const primaClasse = await fra("p0", "p1");
+    t.c("i margini della classe ci sono", primaClasse > 5, `${primaClasse}px`);
+    await staccaVia();
+    t.eq("e adesso se ne vanno", await fra("p0", "p1"), 0);
+
+    // MA IL SEGNO DI SCENA TIENE IL SUO SPAZIO: ha testo, quindi non è un
+    // «vuoto», e da quando i margini si azzerano sull'elemento è l'unica
+    // cosa che lo tiene staccato dalla prosa
+    const attornoAlSegno = await fra("p7", "segno");
+    t.c("«* * *» resta staccato dalla prosa", attornoAlSegno > 5, `${attornoAlSegno}px`);
+    t.c("da tutt'e due i lati", (await fra("segno", "dopo")) > 5);
 
     t.c("niente documento, niente da fare", !togliStacco(null));
     t.c("e un documento senza vista nemmeno", !togliStacco({ querySelectorAll: () => [] }));
