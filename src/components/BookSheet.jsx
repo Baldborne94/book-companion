@@ -143,27 +143,48 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   // chi riprende a pagina duecento sa già cosa sta leggendo.
   const [retro, setRetro] = useState(typeof book.sinossi === "string" ? book.sinossi : "");
   const [retroAperto, setRetroAperto] = useState(getProgress(book.id) <= 0);
+  // da dove viene il retro, perché l'etichetta lo dica: «file» è la quarta
+  // dell'editore, «rete» il catalogo, «oracolo» le prime pagine lette
+  const [fonte, setFonte] = useState(book.sinossiMia ? "oracolo" : book.sinossiFonte || "file");
   useEffect(() => {
     let vivo = true;
-    if (typeof book.sinossi === "string") {
-      setRetro(book.sinossi);
-      return () => { vivo = false; };
-    }
-    recupera(book, getFile).then((testo) => {
-      if (!vivo || testo === null) return;
-      setRetro(testo);
-      onSaveMeta?.({ ...book, sinossi: testo });
-    });
+    (async () => {
+      // 1. il file: l'ha scritta l'editore, funziona offline, vince sempre
+      let testo = typeof book.sinossi === "string" ? book.sinossi : null;
+      if (testo === null) {
+        testo = await recupera(book, getFile);
+        if (!vivo || testo === null) return;
+        setRetro(testo);
+        if (testo) {
+          onSaveMeta?.({ ...book, sinossi: testo });
+          return;
+        }
+        onSaveMeta?.({ ...book, sinossi: "" });
+      } else if (testo) {
+        setRetro(testo);
+        return;
+      }
+      // 2. IL CATALOGO IN RETE, da solo (chiesto dal lettore: «tanto lo
+      //    trovi online»). Un titolo per volta, solo quando apri QUESTA
+      //    scheda, e la fonte si dichiara sotto il testo. Un buco di rete
+      //    non si salva: si riproverà alla prossima apertura.
+      const { cercaRetro } = await import("../lib/retroInRete.js");
+      const inRete = await cercaRetro({ title: book.title, author: book.author });
+      if (!vivo || !inRete) return;
+      setRetro(inRete.testo);
+      setFonte("rete");
+      onSaveMeta?.({ ...book, sinossi: inRete.testo, sinossiFonte: "rete" });
+    })();
     return () => {
       vivo = false;
     };
   }, [book.id]);
 
-  // il retro scritto dall'Oracolo si tiene come gli altri (`sinossi`), ma
-  // si dichiara: `daOracolo` cambia solo l'etichetta, perché «dalle prime
-  // pagine» e «il retro del libro» non sono la stessa cosa
+  // LA COPERTINA SI GIRA, come un libro in mano (chiesto dal lettore:
+  // «clicco la copertina e mi appare il retro»). Solo transform, mai
+  // layout: lezione 10.
+  const [girata, setGirata] = useState(false);
   const [retroBusy, setRetroBusy] = useState(false);
-  const [daOracolo, setDaOracolo] = useState(!!book.sinossiMia);
 
   async function chiediIlRetro() {
     if (retroBusy) return;
@@ -185,7 +206,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
         return;
       }
       setRetro(res.answer);
-      setDaOracolo(true);
+      setFonte("oracolo");
       setRetroAperto(true);
       onSaveMeta?.({ ...book, sinossi: res.answer, sinossiMia: true });
     } finally {
@@ -380,7 +401,72 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
       >
         <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
           <div style={{ width: 150, flexShrink: 0, margin: "0 auto" }}>
-            <BookCover book={book} radius={10} version={coverV} />
+            {/* LA COPERTINA SI GIRA, come un libro preso in mano: sul retro
+                c'è la quarta di copertina. Solo `transform` (lezione 10), e
+                le due facce nascondono il proprio rovescio, o il testo del
+                retro si vedrebbe allo specchio dietro la copertina. */}
+            <button
+              onClick={() => setGirata((v) => !v)}
+              aria-label={girata ? "Gira sulla copertina" : "Gira sul retro del libro"}
+              style={{ display: "block", width: "100%", padding: 0, perspective: 700 }}
+            >
+              <div
+                style={{
+                  position: "relative",
+                  width: "100%",
+                  aspectRatio: "2 / 3",
+                  transformStyle: "preserve-3d",
+                  transition: "transform 0.55s ease",
+                  transform: girata ? "rotateY(180deg)" : "rotateY(0deg)",
+                }}
+              >
+                <div style={{ position: "absolute", inset: 0, backfaceVisibility: "hidden" }}>
+                  <BookCover book={book} radius={10} version={coverV} />
+                </div>
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    backfaceVisibility: "hidden",
+                    transform: "rotateY(180deg)",
+                    borderRadius: R.piccolo,
+                    border: `1px solid ${C.border}`,
+                    background: `linear-gradient(165deg, ${C.card}, ${C.surface})`,
+                    padding: "10px 11px",
+                    overflowY: "auto",
+                    textAlign: "left",
+                  }}
+                >
+                  {retro ? (
+                    <>
+                      <div
+                        style={{
+                          fontSize: F.minuscolo,
+                          color: C.text,
+                          lineHeight: 1.4,
+                          whiteSpace: "pre-line",
+                        }}
+                      >
+                        {retro}
+                      </div>
+                      <div style={{ marginTop: 7, fontSize: F.minuscolo, color: C.muted, opacity: 0.8 }}>
+                        {fonte === "oracolo"
+                          ? "— dalle prime pagine"
+                          : fonte === "rete"
+                            ? "— dal catalogo in rete"
+                            : "— dal file del libro"}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: F.minuscolo, color: C.muted, lineHeight: 1.45 }}>
+                      {retroBusy
+                        ? "✨ Leggo le prime pagine…"
+                        : "Il file non porta la quarta di copertina, e nel catalogo non l'ho ancora trovata."}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </button>
             {/* Titolo, autore, saga e genere si correggono qui da sempre; la
                 copertina no, e un ePub senza copertina restava un dorso muto
                 per sempre. Il tasto sta sotto l'immagine, dov'è la cosa che
@@ -592,7 +678,8 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                 padding: 0,
               }}
             >
-              {retroAperto ? "▾" : "▸"} {daOracolo ? "Dalle prime pagine" : "Il retro del libro"}
+              {retroAperto ? "▾" : "▸"}{" "}
+              {fonte === "oracolo" ? "Dalle prime pagine" : fonte === "rete" ? "Dal catalogo in rete" : "Il retro del libro"}
             </button>
             {retroAperto && (
               <p
