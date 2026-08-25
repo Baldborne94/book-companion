@@ -1,5 +1,6 @@
 import { putFile, putCover } from "./bookStore.js";
 import { riconosci } from "./sagaBooks.js";
+import { dalMetadata } from "./sinossi.js";
 
 // oltre questa taglia il libro non si ricuce: tenere in memoria due
 // copie dell'archivio, su un tablet, vale piu' di qualche pagina bianca
@@ -302,6 +303,10 @@ async function enrichEpub(meta, file) {
       esito.titolo = true;
     }
     if (md?.creator?.trim()) meta.author = md.creator.trim();
+    // IL RETRO DEL LIBRO era già qui dentro e lo buttavamo via. Costa una
+    // riga, non costa rete, e non passa da nessun modello: l'ha scritto
+    // l'editore, ed è senza spoiler per mestiere.
+    meta.sinossi = dalMetadata(md);
     // Una sola strada per tutt'e due i punti dove serve una copertina:
     // qui all'import e nel tasto ↺ della scheda. Prima erano due copie
     // della stessa logica, e potevano divergere — infatti divergevano.

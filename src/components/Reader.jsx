@@ -15,7 +15,7 @@ import { sembraUnNome } from "../lib/nomi.js";
 import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
 } from "../lib/readerSettings.js";
-import { contentStyles, spegniVuoti } from "../lib/readerTheme.js";
+import { contentStyles, spegniVuoti, togliStacco } from "../lib/readerTheme.js";
 import { ritaglioAvanzo, flattenToc } from "../lib/readerLayout.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
@@ -455,7 +455,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       // non ancora presa, quindi non c'e' niente da reimpaginare dopo — e
       // non si rientra in epub.js mentre monta, che e' la lezione che il
       // ritaglio dell'avanzo ha gia' pagato.
-      r.hooks.content.register((contents) => spegniVuoti(contents?.document));
+      r.hooks.content.register((contents) => {
+        spegniVuoti(contents?.document);
+        // e lo stacco di troppo, quando il libro il paragrafo lo segna
+        // gia' col rientro. Si decide per DOCUMENTO e non una volta per
+        // libro apposta: il frontespizio quasi mai rientra, e li' lo
+        // stacco e' l'unico segnale che ha — deve restare.
+        togliStacco(contents?.document);
+      });
       applyStyles(r, s);
 
       r.on("relocated", (loc) => {
