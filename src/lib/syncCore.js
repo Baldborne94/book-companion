@@ -114,6 +114,37 @@ export function senzaColonna(riga, nome) {
   return resto;
 }
 
+// IL PERCHE' DI UNA MELODIA CHE NON SALE. L'errore del server veniva
+// buttato via e al lettore si diceva «forse lo spazio e' finito» — un
+// indovinello, e sbagliato: il pannello mostrava 102 MB su 1 GB. Le
+// cause vere sono poche e distinguibili, e ognuna chiede una cosa
+// diversa al lettore: un file oltre il limite non salira' MAI (inutile
+// riprovare), un permesso rifiutato si cura rilanciando lo schema, la
+// rete caduta si cura da sola al giro dopo.
+export function percheMelodia(err) {
+  const testo = `${err?.message || ""} ${err?.error || ""}`.toLowerCase();
+  const codice = String(err?.statusCode ?? err?.status ?? "");
+  if (codice === "413" || /maximum allowed size|payload too large|entity too large/.test(testo))
+    return "grande";
+  if (codice === "403" || /row-level security|unauthorized|not authorized|violates.*policy|invalid signature|jwt/.test(testo))
+    return "permesso";
+  if (/quota|storage.*(full|exceeded)|exceeded.*(quota|storage)/.test(testo)) return "spazio";
+  if (codice === "404" || /bucket not found/.test(testo)) return "secchio";
+  if (/failed to fetch|network|timeout|load failed|fetch/.test(testo)) return "rete";
+  return "boh";
+}
+
+// le parole per ogni causa, qui e non nel componente: una causa senza la
+// sua frase e' un errore che torna a essere un indovinello
+export const FRASI_MELODIA = {
+  grande: "il file supera il limite per singolo file del piano cloud",
+  permesso: "il cloud rifiuta il permesso: prova a uscire e rientrare, o rilancia supabase/schema.sql",
+  spazio: "lo spazio nel cloud è davvero finito",
+  secchio: "nel cloud manca il secchio «books»: va creato come dice supabase/schema.sql",
+  rete: "la rete è caduta a metà: riproverò al prossimo giro",
+  boh: "il cloud ha risposto con un errore inatteso",
+};
+
 export function planSync({ localRows, tombstones, remoteRows }) {
   const remote = new Map(remoteRows.map((r) => [r.id, r]));
   const local = new Map(localRows.map((r) => [r.id, r]));

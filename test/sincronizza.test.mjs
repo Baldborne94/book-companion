@@ -5,7 +5,7 @@
 //
 // Qui si prova che ci entrano, e soprattutto CHI VINCE quando due
 // dispositivi hanno scritto lo stesso termine in modo diverso.
-import { rowFromLocal, localFromRow, mergePrefs, colonnaMancante, senzaColonna } from "../src/lib/syncCore.js";
+import { rowFromLocal, localFromRow, mergePrefs, colonnaMancante, senzaColonna, percheMelodia, FRASI_MELODIA } from "../src/lib/syncCore.js";
 
 const stato = { status: "reading", progress: 0.5, marks: [], highlights: [] };
 
@@ -114,4 +114,30 @@ export default async function (t) {
   // un dispositivo con la colonna non ancora migrata manda `undefined`
   r = mergePrefs(prefs({ glossari: MIO, updated_at: 100 }), { reader: null, updated_at: 50 });
   t.eq("un remoto senza la colonna non cancella i miei termini", r.merged.glossari["saga:malazan"].length, 1);
+
+  // ---- il perche' di una melodia che non sale ---------------------------
+  // L'errore del server veniva buttato via e si diceva «forse lo spazio e'
+  // finito»: un indovinello, e sul pannello del lettore era pure smentito
+  // dal contatore (102 MB su 1 GB). Le forme qui sotto sono quelle VERE
+  // delle risposte di Supabase Storage.
+  t.eq(
+    "il file oltre il limite si riconosce",
+    percheMelodia({ statusCode: "413", message: "The object exceeded the maximum allowed size" }),
+    "grande"
+  );
+  t.eq(
+    "il permesso rifiutato si riconosce",
+    percheMelodia({ statusCode: "403", message: "new row violates row-level security policy" }),
+    "permesso"
+  );
+  t.eq("il secchio mancante si riconosce", percheMelodia({ statusCode: "404", message: "Bucket not found" }), "secchio");
+  t.eq("la rete caduta si riconosce", percheMelodia({ message: "Failed to fetch" }), "rete");
+  t.eq("lo spazio finito DAVVERO si riconosce", percheMelodia({ message: "Storage quota exceeded" }), "spazio");
+  t.eq("un errore mai visto non si traveste da causa nota", percheMelodia({ message: "qualcosa di strano" }), "boh");
+  t.eq("e il niente non esplode", percheMelodia(undefined), "boh");
+  // ogni causa che il riconoscitore puo' tornare ha la sua frase: una
+  // causa muta e' un errore che torna a essere un indovinello
+  for (const c of ["grande", "permesso", "spazio", "secchio", "rete", "boh"]) {
+    t.c(`la causa «${c}» sa parlare`, typeof FRASI_MELODIA[c] === "string" && FRASI_MELODIA[c].length > 8);
+  }
 }

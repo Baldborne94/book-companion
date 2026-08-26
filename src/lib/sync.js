@@ -10,7 +10,7 @@ import {
 } from "./annotations.js";
 import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, getListsRaw, writeLists } from "./music.js";
 import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
-import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna } from "./syncCore.js";
+import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, percheMelodia } from "./syncCore.js";
 
 const LAST_SYNC_KEY = "bc_lastsync";
 const REPUSH_KEY = "bc_repush";
@@ -285,6 +285,10 @@ export async function syncNow({ onProgress } = {}) {
   const melodie = getFavoritesRaw();
   let melodieSu = 0;
   let melodieNo = 0;
+  // il PERCHE' di ogni rifiuto, non buttato via: al lettore si dice la
+  // causa vera, non «forse lo spazio e' finito» (che era un indovinello,
+  // e sul suo pannello era pure smentito dal contatore)
+  const melodiePerche = new Set();
   for (const f of melodie) {
     if (f.deleted || !f.trackId || already.has(f.trackId)) continue;
     const blob = await getTrack(f.trackId).catch(() => null);
@@ -301,6 +305,7 @@ export async function syncNow({ onProgress } = {}) {
     // credere che la musica sia al sicuro lassu' quando non c'e'.
     if (mErr && mErr.statusCode !== "409") {
       melodieNo++;
+      melodiePerche.add(percheMelodia(mErr));
       continue;
     }
     markUploaded(f.trackId);
@@ -388,6 +393,7 @@ export async function syncNow({ onProgress } = {}) {
     removed: removeLocal.length,
     melodieSu,
     melodieNo,
+    melodiePerche: [...melodiePerche],
     books: loadBooks(),
   };
 }
