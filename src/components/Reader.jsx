@@ -23,7 +23,7 @@ import { explain, termIndex, normalize, wikiUrl, haGlossario } from "../lib/glos
 import { contextAround } from "../lib/oracle.js";
 import { sillaba } from "../lib/hyphens.js";
 import { eNotaRef, risolviHref, estraiNota, piuVicina } from "../lib/nota.js";
-import { controllaSpezzatura, daRicucire, ricuciLibro, conSegni, taci } from "../lib/ricuci.js";
+import { controllaSpezzatura, saluteInCache, daRicucire, ricuciLibro, conSegni, taci } from "../lib/ricuci.js";
 import { leftoverScroll } from "../lib/spread.js";
 import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
@@ -723,38 +723,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     let dead = false;
     (async () => {
       try {
-        let blob = await ensureLocalFile(book);
+        const blob = await ensureLocalFile(book);
         if (!blob) throw new Error("file mancante");
         const { default: ePub } = await import("epubjs");
-        let eb = ePub(await blob.arrayBuffer());
+        const eb = ePub(await blob.arrayBuffer());
         epubRef.current = eb;
         await eb.ready;
-        if (dead) return;
-        // LO STANDARD: il testo copre la pagina. Il verdetto sulla
-        // spezzatura si prende qui (una volta per libro, poi sta su
-        // disco); un libro spezzato SENZA segni si ricuce subito, in
-        // silenzio — non c'è niente da spostare; con dei segni si rende
-        // la pagina e si offre il tasto.
-        try {
-          let salute = await controllaSpezzatura(book.id, eb, blob.size);
-          if (dead) return;
-          if (daRicucire(salute) && !conSegni(book.id)) {
-            const r = await ricuciLibro(book.id, blob);
-            if (r?.blob && !dead) {
-              try { eb.destroy(); } catch { /* già distrutto */ }
-              blob = r.blob;
-              eb = ePub(await blob.arrayBuffer());
-              epubRef.current = eb;
-              await eb.ready;
-              salute = await controllaSpezzatura(book.id, eb, blob.size);
-              notify?.("Questo libro era spezzato: l'ho ricucito 🪡");
-            }
-          }
-          if (dead) return;
-          if (daRicucire(salute) && !salute.taciuto) setCucitura("offri");
-        } catch {
-          /* un controllo che fallisce non deve impedire di leggere */
-        }
         if (dead) return;
         const lang = (eb.packaging?.metadata?.language || "").slice(0, 2).toLowerCase();
         langRef.current = lang || "en";
@@ -789,6 +763,41 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           relayout(anchor.current || live.current.cfi);
           chiediAvanzo(400);
         }, 2500);
+        // LO STANDARD (il testo copre la pagina) NON STA PIU' SULLA STRADA
+        // DELL'APERTURA: prima il verdetto si prendeva PRIMA di rendere,
+        // e sulla prima apertura voleva dire leggere tutto il libro con
+        // la candela accesa (segnalato: «come mai ci mette così tanto ad
+        // aprire il tomo?»). Ora la pagina compare subito e il controllo
+        // gira dietro, SU UN'ISTANZA USA-E-GETTA — caricare e scaricare i
+        // capitoli dell'istanza che sta rendendo le tirerebbe il tappeto.
+        // Se c'è da ricucire un libro senza segni, si ricuce e si riapre:
+        // la candela torna un attimo, una volta nella vita del libro.
+        (async () => {
+          let ebScan = null;
+          try {
+            let salute = await saluteInCache(book.id, blob.size);
+            if (!salute) {
+              ebScan = ePub(await blob.arrayBuffer());
+              await ebScan.ready;
+              salute = await controllaSpezzatura(book.id, ebScan, blob.size);
+            }
+            if (dead || !salute || !daRicucire(salute)) return;
+            if (conSegni(book.id)) {
+              if (!salute.taciuto) setCucitura("offri");
+              return;
+            }
+            const r = await ricuciLibro(book.id, blob);
+            if (!r?.blob || dead) return;
+            notify?.("Questo libro era spezzato: l'ho ricucito 🪡");
+            saltaPct.current = live.current.progress || 0;
+            setStatusUi("loading");
+            setGiro((g) => g + 1);
+          } catch {
+            /* un controllo che fallisce non tocca la lettura */
+          } finally {
+            try { ebScan?.destroy(); } catch { /* già chiuso */ }
+          }
+        })();
         if (live.current.cfi) {
           const p = eb.locations.percentageFromCfi(live.current.cfi);
           if (Number.isFinite(p)) {
