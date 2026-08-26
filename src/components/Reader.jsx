@@ -22,6 +22,7 @@ import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js
 import { explain, termIndex, normalize, wikiUrl, haGlossario } from "../lib/glossary.js";
 import { contextAround } from "../lib/oracle.js";
 import { sillaba } from "../lib/hyphens.js";
+import { eNotaRef, risolviHref, estraiNota, piuVicina } from "../lib/nota.js";
 import { leftoverScroll } from "../lib/spread.js";
 import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
@@ -170,6 +171,15 @@ function Slider({ label, min, max, step, value, onChange }) {
 }
 
 
+// quel che serve a riconoscere un rimando di nota, letto dall'ancora:
+// la dichiarazione (epub:type / role) o il testo-segno (vedi lib/nota.js)
+const infoRimando = (a) => ({
+  href: a.getAttribute("href") || "",
+  testo: a.textContent || "",
+  tipo: a.getAttribute("epub:type") || a.getAttributeNS?.("http://www.idpf.org/2007/ops", "type") || "",
+  ruolo: a.getAttribute("role") || "",
+});
+
 function Panel({ title, onClose, children }) {
   return (
     <div
@@ -232,6 +242,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [velo, setVelo] = useState(false);
   const [dict, setDict] = useState(null);
   const [endCard, setEndCard] = useState(null);
+  // la nota a piè di pagina, letta SUL POSTO: il testo della nota o null.
+  // Niente navigazione: chiusa la scheda sei dove eri (chiesto dal
+  // lettore: «vorrei che poi letto mi riporti al punto in cui ero»)
+  const [nota, setNota] = useState(null);
+  const apriNotaRef = useRef(() => {});
 
   const anchor = useRef(null);
   const markedRef = useRef(new Map());
@@ -523,6 +538,20 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // quelli intercettavano il tocco prolungato e rendevano impossibile
         // selezionare una parola nelle fasce laterali.
         markTerms(view);
+        // LE NOTE SI LEGGONO SUL POSTO: epub.js su un rimando salterebbe
+        // alla pagina delle note in fondo al libro — il segno si sposta e
+        // tornare indietro è un'impresa. Qui non ci si muove affatto: la
+        // nota arriva in una scheda, chiusa la scheda sei dove eri.
+        // epub.js aggancia il suo salto su `onclick`: si riscrive quello,
+        // sullo stesso gancio, e i collegamenti veri (indice, rimandi a
+        // capitoli) restano a epub.js come prima.
+        for (const a of doc.querySelectorAll("a[href]")) {
+          if (!eNotaRef(infoRimando(a))) continue;
+          a.onclick = () => {
+            apriNotaRef.current(a.getAttribute("href") || "", doc, view.section?.href || "");
+            return false;
+          };
+        }
         doc.addEventListener("click", (e) => {
           if (e.target.closest?.("a")) return;
           const sel = view.contents.window.getSelection();
@@ -532,6 +561,22 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             const hit = termAt(doc, e.clientX, e.clientY, ix);
             if (hit) return openTerm(hit);
           }
+          // l'asterisco è un bersaglio da pochi pixel, e pretendere il
+          // tocco esatto su un tablet è pretendere una mira che non c'è
+          // (segnalato: «come mai non riesco a cliccare l'asterisco?»):
+          // un tocco caduto a un soffio da un rimando è per il rimando,
+          // non per la voltata
+          const vicino = piuVicina(
+            [...doc.querySelectorAll("a[href]")]
+              .filter((x) => eNotaRef(infoRimando(x)))
+              .map((x) => {
+                const rc = x.getBoundingClientRect();
+                return { left: rc.left, top: rc.top, right: rc.right, bottom: rc.bottom, href: x.getAttribute("href") || "" };
+              }),
+            e.clientX,
+            e.clientY
+          );
+          if (vicino) return apriNotaRef.current(vicino.href, doc, view.section?.href || "");
           if (isTouch() && live.current.settings.flow !== "scrolled") {
             // dentro il capitolo le coordinate vivono nello spazio delle
             // colonne, largo quanto tutto il testo: vanno riportate allo
@@ -1209,6 +1254,33 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const results = await searchBook(epubRef.current, q);
     setSearchState({ busy: false, results });
   }
+
+  // La nota si estrae dal documento che la ospita: stesso file = la pagina
+  // che hai davanti; un file a parte (le note in fondo al libro) si apre e
+  // si richiude senza che la vista si muova. Se non c'è niente da estrarre
+  // si ripiega sul salto di prima: un rimando muto è peggio di un salto.
+  apriNotaRef.current = async (href, doc, base) => {
+    const { file, frammento } = risolviHref(href, base);
+    const capo = String(base).split("#")[0];
+    let testo = "";
+    if (!file || file === capo) testo = estraiNota(doc, frammento);
+    else {
+      const eb = epubRef.current;
+      const item = eb?.spine?.get?.(file);
+      if (item) {
+        try {
+          await item.load(eb.load.bind(eb));
+          testo = estraiNota(item.document, frammento);
+        } catch {
+          testo = "";
+        } finally {
+          try { item.unload(); } catch { /* già scaricato */ }
+        }
+      }
+    }
+    if (testo) setNota(testo);
+    else goTo(href);
+  };
 
   function goTo(target, flash) {
     const r = rendRef.current;
@@ -1926,6 +1998,16 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         </Panel>
       )}
 
+      {/* la nota a piè di pagina, sul posto: la pagina sotto non si è
+          mossa, quindi «tornare al punto in cui ero» è chiudere la scheda */}
+      {nota && (
+        <Panel title="Nota a piè di pagina" onClose={() => setNota(null)}>
+          <p style={{ margin: 0, fontSize: F.corpo, lineHeight: 1.6, color: C.text }}>{nota}</p>
+          <p style={{ margin: "12px 0 0", fontSize: F.minuscolo, color: C.muted }}>
+            Chiudi e sei esattamente dove eri: la pagina non si è mossa.
+          </p>
+        </Panel>
+      )}
       {panel === "toc" && (
         <Panel title="Indice" onClose={() => setPanel(null)}>
           {toc.length === 0 ? (

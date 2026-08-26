@@ -22,6 +22,7 @@ import { getJump, clearJump } from "./lib/annotations.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
 import { getSession, syncNow, localFileIds } from "./lib/sync.js";
+import { FRASI_MELODIA } from "./lib/syncCore.js";
 import { useViewport } from "./lib/viewport.js";
 
 // L'ingresso porta l'insegna dell'atmosfera scelta: candela di notte,
@@ -543,8 +544,14 @@ export default function App() {
       const musica = res.melodieSu
         ? ` · ${res.melodieSu} ${res.melodieSu === 1 ? "melodia portata" : "melodie portate"} nel cloud`
         : "";
+      // la causa e' quella che ha risposto il server, mai un indovinello:
+      // «forse lo spazio e' finito» era una frase di ripiego, e sbagliata
+      const perche = (res.melodiePerche || [])
+        .map((p) => FRASI_MELODIA[p])
+        .filter(Boolean)
+        .join("; ");
       const guai = res.melodieNo
-        ? ` · ${res.melodieNo} ${res.melodieNo === 1 ? "melodia non è salita" : "melodie non sono salite"}: forse lo spazio è finito`
+        ? ` · ${res.melodieNo} ${res.melodieNo === 1 ? "melodia non è salita" : "melodie non sono salite"}: ${perche || FRASI_MELODIA.boh}`
         : "";
       setSync({
         busy: false,
@@ -553,7 +560,7 @@ export default function App() {
         signedIn: true,
       });
       if (!quiet && res.melodieNo) {
-        notify(`${res.melodieNo === 1 ? "Una melodia non è salita" : `${res.melodieNo} melodie non sono salite`} nel cloud — controlla lo spazio nel pannello ☁️`);
+        notify(`${res.melodieNo === 1 ? "Una melodia non è salita" : `${res.melodieNo} melodie non sono salite`} nel cloud: ${perche || FRASI_MELODIA.boh}`);
       } else if (!quiet && moved) notify("Biblioteca sincronizzata ✨");
     } catch (e) {
       setSync((s) => ({ ...s, busy: false, message: `Sincronizzazione fallita: ${e?.message || "errore"}` }));
