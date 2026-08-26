@@ -270,6 +270,27 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // arretrava di mezza pagina ogni volta, perche' allinea sempre all'inizio
   // della pagina che lo contiene: si riparte invece dall'ultima pagina
   // scelta dal lettore, che non si sposta da sola.
+  // QUANTO DIVERGE LA PAGINA DAL SUO RIQUADRO. Sul tablet la PWA apre il
+  // libro mentre Android sta ancora ritirando le sue barre: epub.js misura
+  // il riquadro in quell'attimo, e la finestra non manda MAI un `resize`
+  // (è il riquadro che cambia, non la finestra) — così ogni pagina restava
+  // corta di quel tanto, con una fascia vuota in fondo, finché una
+  // rotazione non forzava la rimisura (segnalato dal lettore, confermato:
+  // «ruotando la fascia sparisce»). Il confronto non è «prima/dopo» ma
+  // «riquadro di ADESSO contro iframe che epub.js ha costruito»: prende
+  // ogni misura stantia, qualunque cosa l'abbia prodotta.
+  const scartoRiquadro = useCallback(() => {
+    if (live.current.settings.flow === "scrolled") return 0;
+    const el = viewerRef.current;
+    const fr = el?.querySelector("iframe");
+    if (!el || !fr) return 0;
+    const cs = getComputedStyle(el);
+    const utileH = el.clientHeight - parseFloat(cs.paddingTop || 0) - parseFloat(cs.paddingBottom || 0);
+    const utileW = el.clientWidth - parseFloat(cs.paddingLeft || 0) - parseFloat(cs.paddingRight || 0);
+    const r = fr.getBoundingClientRect();
+    return Math.max(Math.abs(r.height - utileH), Math.abs(r.width - utileW));
+  }, []);
+
   const relayout = useCallback((cfi) => {
     const r = rendRef.current;
     if (cfi) reflowing.current = true;
@@ -754,6 +775,20 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         if (dead) return;
         live.current.locReady = true;
         setLocReady(true);
+        // la misura stantia dell'apertura si riprende QUI, sotto la
+        // candela ancora accesa: il lettore non vede nessuno scatto
+        if (scartoRiquadro() >= 8) {
+          relayout(anchor.current || live.current.cfi);
+          chiediAvanzo(400);
+        }
+        // e un secondo sguardo poco dopo: le barre di Android possono
+        // rientrare anche a candela già spenta, senza che il riquadro
+        // cambi — l'osservatore lì non vede niente, questo sì
+        setTimeout(() => {
+          if (dead || scartoRiquadro() < 8) return;
+          relayout(anchor.current || live.current.cfi);
+          chiediAvanzo(400);
+        }, 2500);
         if (live.current.cfi) {
           const p = eb.locations.percentageFromCfi(live.current.cfi);
           if (Number.isFinite(p)) {
@@ -865,6 +900,38 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       window.removeEventListener("orientationchange", onSize);
     };
   }, [chiediAvanzo]);
+
+  // IL RIQUADRO SI GUARDA DA SÉ. Il vecchio ResizeObserver decideva LUI
+  // quando reimpaginare ed è stato tolto con la pulizia del reader; questo
+  // non decide niente: nota solo che pagina e riquadro DIVERGONO (le barre
+  // di sistema rientrate dopo l'apertura, uno schermo diviso) e riprende
+  // la misura sotto il velo color carta — il lettore non deve vedere lo
+  // scatto («sta cosa che fa uno scatto per aggiustarsi non mi piace»).
+  // Mai durante il montaggio (regola dell'avanzo): prima delle locations
+  // ci pensa il controllo sotto la candela.
+  const roTimer = useRef(null);
+  useEffect(() => {
+    const el = viewerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      clearTimeout(roTimer.current);
+      roTimer.current = setTimeout(() => {
+        if (!live.current.locReady || !rendRef.current) return;
+        if (scartoRiquadro() < 8) return;
+        setVelo(true);
+        setTimeout(() => {
+          relayout(anchor.current || live.current.cfi);
+          chiediAvanzo(700);
+          setTimeout(() => setVelo(false), 700);
+        }, 110);
+      }, 300);
+    });
+    ro.observe(el);
+    return () => {
+      clearTimeout(roTimer.current);
+      ro.disconnect();
+    };
+  }, [scartoRiquadro, relayout, chiediAvanzo]);
 
 
 
