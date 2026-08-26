@@ -79,7 +79,9 @@ export function esamina(fatti = {}) {
   // il mojibake si pesa sul testo: cinque «Ã¨» in un romanzo intero possono
   // essere una citazione, cinque in una pagina no
   if ((fatti.mojibake || 0) >= MOJIBAKE_TANTI) guai.push("mojibake");
-  if ((fatti.giunture || 0) >= GIUNTURE_TANTE) guai.push("spezzato");
+  // due modi di essere spezzato: TANTI pezzi corti che l'indice non apre,
+  // o anche UN SOLO taglio a metà frase — quello non è mai un caso
+  if ((fatti.giunture || 0) >= GIUNTURE_TANTE || (fatti.monconi || 0) >= 1) guai.push("spezzato");
   if ((fatti.vuoti || 0) > 0) guai.push("capitoliVuoti");
   // «niente indice» ha senso solo su un libro che di capitoli ne ha:
   // un racconto in tre documenti non ha un indice perché non gli serve
@@ -101,6 +103,25 @@ export const curabile = (guai = []) => guai.some((g) => CURABILI.has(g));
 // che si può sbagliare in modo sottile.
 export function quantoMojibake(testo) {
   return (String(testo || "").match(MOJIBAKE) || []).length;
+}
+
+// IL TAGLIO A META' FRASE. I libri spezzati da Calibre non hanno per forza
+// pezzi corti: i loro «split» sono capitoli interi, e la vecchia conta
+// (`giunture` = documenti corti fuori indice) non li vedeva — il referto
+// del lettore diceva «tutto a posto» su un Eric che finiva le pagine a
+// metà frase. Il segnale che non sbaglia è la coppia: un documento che
+// finisce SENZA punteggiatura di chiusura, e il successivo che comincia
+// con una MINUSCOLA. Un capitolo vero chiude la frase; una scena vera
+// comincia con la maiuscola. Basta UNA coppia così per dire «spezzato».
+const FINE_PULITA = /[.!?…»”"’')\]—–:;]$/;
+const INIZIO_MINUSCOLO = /^[a-zà-öø-ÿ]/;
+// sotto questa misura non si giudica: un frontespizio non è una frase
+export const PEZZO_VERO = 200;
+export function tagliaAMetaFrase(prima, dopo) {
+  const a = String(prima || "").trim();
+  const b = String(dopo || "").trim();
+  if (a.length < PEZZO_VERO || b.length < PEZZO_VERO) return false;
+  return !FINE_PULITA.test(a) && INIZIO_MINUSCOLO.test(b);
 }
 
 // I fatti di un ePub GIA' APERTO. Come `trovaCopertina`, prende il libro
@@ -165,7 +186,19 @@ export async function fattiDaEpub(eb) {
     if (r.t.length < DOC_VUOTO) vuoti += 1;
     else if (r.t.length < GIUNTURA && !r.inToc) giunture += 1;
   });
-  return { caratteri, mojibake, vuoti, giunture, documenti: voci.length, indice: inIndice.size };
+  // i tagli a metà frase si cercano sulle COPPIE di documenti contigui,
+  // dall'inizio della storia FINO IN FONDO ALLA SPINA — non fino
+  // all'ultima voce d'indice: nei Calibre spezzati i pezzi stanno proprio
+  // dopo l'ultima voce, ed è la firma stessa (fine monca + minuscola) a
+  // tenere fuori il materiale di coda, che una frase la chiude sempre
+  let monconi = 0;
+  for (let i = Math.max(primo, 0); i < righe.length - 1; i++) {
+    const a = righe[i];
+    const b = righe[i + 1];
+    if (!a || !b || a.img || b.img) continue;
+    if (tagliaAMetaFrase(a.t, b.t)) monconi += 1;
+  }
+  return { caratteri, mojibake, vuoti, giunture, monconi, documenti: voci.length, indice: inIndice.size };
 }
 
 // LA PASSATA, con la forma di ogni passata lunga dell'app: un tomo per

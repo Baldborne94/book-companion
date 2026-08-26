@@ -9,6 +9,7 @@
 // sé non si segnala**. Un elenco che grida a ogni libro fa ignorare anche
 // le righe che contano.
 import {
+  tagliaAMetaFrase, PEZZO_VERO,
   esamina, grave, curabile, quantoMojibake, visita, resocontoVisita, fattiDaEpub,
   GUAI, CURABILI, TESTO_MINIMO, GIUNTURE_TANTE, MOJIBAKE_TANTI, POCHI_CAPITOLI, DOC_VUOTO,
 } from "../src/lib/visita.js";
@@ -256,4 +257,35 @@ export default async function (t) {
   );
   t.eq("il vuoto vero in mezzo si conta", fatti.vuoti, 1);
   t.eq("e la giuntura pure", fatti.giunture, 1);
+
+  // ---- IL TAGLIO A META' FRASE: i pezzi LUNGHI di Calibre ---------------
+  // La vecchia conta vedeva solo i pezzi corti: un Eric spezzato in
+  // capitoli interi passava la visita da sano, e il lettore vedeva le
+  // pagine finire a metà frase in mezzo alla scena.
+  const lungo = (coda) => `${"He walked across the Library floor. ".repeat(10)}${coda}`;
+  const inizia = (testa) => `${testa} ${"and the shelves creaked all around him. ".repeat(10)}`;
+  t.c(
+    "fine senza punteggiatura + inizio minuscolo = taglio",
+    tagliaAMetaFrase(lungo("Some sort of a"), inizia("ghost, maybe."))
+  );
+  t.c(
+    "un capitolo che chiude la frase non è un taglio",
+    !tagliaAMetaFrase(lungo("The end of the chapter."), inizia("the next scene began quietly"))
+  );
+  t.c(
+    "una scena che comincia in maiuscolo non è un taglio",
+    !tagliaAMetaFrase(lungo("Some sort of a"), inizia("The Bursar sighed."))
+  );
+  t.c(
+    "sotto la misura non si giudica: un frontespizio non è una frase",
+    !tagliaAMetaFrase("ERIC", inizia("a novel of Discworld"))
+  );
+  t.c("e nemmeno col dopo corto", !tagliaAMetaFrase(lungo("Some sort of a"), "ok"));
+  t.c("il niente non esplode", !tagliaAMetaFrase(null, undefined));
+  t.c("PEZZO_VERO è una soglia vera", PEZZO_VERO >= 100);
+
+  // e la decisione: basta UN moncone per dire «spezzato»
+  t.c("un solo taglio a metà frase = spezzato", esamina({ ...SANO, monconi: 1 }).includes("spezzato"));
+  t.c("senza monconi il sano resta sano", !esamina({ ...SANO }).includes("spezzato"));
+  t.c("ed è curabile: la ricucitura lo sa fare", esamina({ ...SANO, monconi: 2 }).some((g) => ["spezzato"].includes(g)));
 }
