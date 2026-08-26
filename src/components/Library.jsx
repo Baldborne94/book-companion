@@ -513,16 +513,14 @@ export default function Library({
   // e il consenso esplicito del lettore dal referto
   async function ricuciDavvero(b, file) {
     if (b.fileType === "pdf") return null;
-    const { unisciPezzi } = await import("../lib/unisciEpub.js");
-    const cucito = await unisciPezzi(file);
-    if (!cucito?.blob || !cucito.cuciti) return null;
-    await putFile(b.id, cucito.blob);
-    // il cloud ha ancora la copia vecchia: si rimette in coda
-    const { daRicaricare } = await import("../lib/sync.js");
-    daRicaricare(b.id);
+    // il giro condiviso (`ricuciLibro`): riscrive i byte, rimette il libro
+    // in coda per il cloud e butta le locations cachate del libro vecchio
+    const { ricuciLibro } = await import("../lib/ricuci.js");
+    const r = await ricuciLibro(b.id, file);
+    if (!r?.blob) return null;
     // e non ci si fida: si riapre il libro NUOVO e si riesamina
     const { default: ePub } = await import("epubjs");
-    const eb = ePub(await cucito.blob.arrayBuffer());
+    const eb = ePub(await r.blob.arrayBuffer());
     try {
       return { fatti: await fattiDaEpub(eb) };
     } finally {

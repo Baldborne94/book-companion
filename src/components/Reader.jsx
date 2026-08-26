@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
-import { getAux, putAux } from "../lib/bookStore.js";
+import { getAux, putAux, getFile } from "../lib/bookStore.js";
 import { ensureLocalFile } from "../lib/sync.js";
 import {
   getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights,
@@ -23,6 +23,7 @@ import { explain, termIndex, normalize, wikiUrl, haGlossario } from "../lib/glos
 import { contextAround } from "../lib/oracle.js";
 import { sillaba } from "../lib/hyphens.js";
 import { eNotaRef, risolviHref, estraiNota, piuVicina } from "../lib/nota.js";
+import { controllaSpezzatura, daRicucire, ricuciLibro, conSegni, taci } from "../lib/ricuci.js";
 import { leftoverScroll } from "../lib/spread.js";
 import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
@@ -247,6 +248,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // lettore: «vorrei che poi letto mi riporti al punto in cui ero»)
   const [nota, setNota] = useState(null);
   const apriNotaRef = useRef(() => {});
+  // LO STANDARD DELLA LETTURA: il testo copre la pagina. Alla prima
+  // apertura si guarda (una volta, verdetto su disco) se il libro è
+  // spezzato; senza segni da proteggere si ricuce da sé, con un segno si
+  // offre il tasto — e dopo la cura il segno torna alla stessa
+  // percentuale, perché il CFI vecchio parla di file che non ci sono più.
+  const [cucitura, setCucitura] = useState(null);
+  const [giro, setGiro] = useState(0);
+  const saltaPct = useRef(null);
 
   const anchor = useRef(null);
   const markedRef = useRef(new Map());
@@ -693,12 +702,38 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     let dead = false;
     (async () => {
       try {
-        const blob = await ensureLocalFile(book);
+        let blob = await ensureLocalFile(book);
         if (!blob) throw new Error("file mancante");
         const { default: ePub } = await import("epubjs");
-        const eb = ePub(await blob.arrayBuffer());
+        let eb = ePub(await blob.arrayBuffer());
         epubRef.current = eb;
         await eb.ready;
+        if (dead) return;
+        // LO STANDARD: il testo copre la pagina. Il verdetto sulla
+        // spezzatura si prende qui (una volta per libro, poi sta su
+        // disco); un libro spezzato SENZA segni si ricuce subito, in
+        // silenzio — non c'è niente da spostare; con dei segni si rende
+        // la pagina e si offre il tasto.
+        try {
+          let salute = await controllaSpezzatura(book.id, eb, blob.size);
+          if (dead) return;
+          if (daRicucire(salute) && !conSegni(book.id)) {
+            const r = await ricuciLibro(book.id, blob);
+            if (r?.blob && !dead) {
+              try { eb.destroy(); } catch { /* già distrutto */ }
+              blob = r.blob;
+              eb = ePub(await blob.arrayBuffer());
+              epubRef.current = eb;
+              await eb.ready;
+              salute = await controllaSpezzatura(book.id, eb, blob.size);
+              notify?.("Questo libro era spezzato: l'ho ricucito 🪡");
+            }
+          }
+          if (dead) return;
+          if (daRicucire(salute) && !salute.taciuto) setCucitura("offri");
+        } catch {
+          /* un controllo che fallisce non deve impedire di leggere */
+        }
         if (dead) return;
         const lang = (eb.packaging?.metadata?.language || "").slice(0, 2).toLowerCase();
         langRef.current = lang || "en";
@@ -724,6 +759,39 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           if (Number.isFinite(p)) {
             live.current.progress = p;
             setProgressUi(p);
+          }
+        }
+        // il segno rimesso dopo una ricucitura: il CFI vecchio parlava di
+        // file che non esistono più, la percentuale invece è del romanzo.
+        // NON si salta subito: epub.js sta ancora montando la prima
+        // display, e rientrargli adesso è la trappola già pagata
+        // dall'avanzo — si aspetta che l'approdo si sia assestato.
+        if (saltaPct.current != null) {
+          const pct = Math.min(Math.max(saltaPct.current, 0), 0.999);
+          saltaPct.current = null;
+          let dove = eb.locations.cfiFromPercentage(pct);
+          // `cfiFromPercentage` torna un CFI A INTERVALLO (con la virgola),
+          // e `display` su quello non si muove: si ripiega sul suo inizio
+          try {
+            const c = new ePub.CFI(dove);
+            c.collapse(true);
+            dove = c.toString();
+          } catch { /* già un punto */ }
+          // L'ANCORA SI SPOSTA SUBITO, prima ancora del salto: il ritaglio
+          // dell'avanzo era già in coda col suo reimpaginamento, e
+          // atterrando sull'ancora vecchia (l'inizio) si rimangiava il
+          // salto un attimo dopo. Con l'ancora già sul segno, qualunque
+          // reimpaginamento successivo atterra lì da solo.
+          if (dove) {
+            anchor.current = dove;
+            live.current.cfi = dove;
+            // atterraggio RIPETUTO, come al confine di capitolo: la prima
+            // display puo' venire assorbita dall'assestamento del montaggio
+            for (const ritardo of [1200, 2400]) {
+              setTimeout(() => {
+                try { goTo(dove); } catch { /* il libro resta apribile */ }
+              }, ritardo);
+            }
           }
         }
       } catch {
@@ -763,7 +831,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       try { rendRef.current?.destroy(); } catch { /* già distrutto */ }
       try { epubRef.current?.destroy(); } catch { /* già distrutto */ }
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    // `giro` cresce solo quando una ricucitura ha riscritto i byte: il
+    // libro si riapre da capo su quelli nuovi
+  }, [giro]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const marginSeen = useRef(settings.margin);
   useEffect(() => {
@@ -1291,6 +1361,34 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     else if (spinaMuta) setNota("Questo rimando punta a una pagina che nel file non c'è più.");
     else goTo(href);
   };
+
+  // il consenso dal banner: si ricuce ADESSO, si tiene la percentuale come
+  // segno (il CFI vecchio parla di file morti), e il libro si riapre da
+  // capo sui byte nuovi con la candela accesa
+  async function ricuciOra() {
+    if (cucitura === "cucio") return;
+    setCucitura("cucio");
+    const bytes = await getFile(book.id).catch(() => null);
+    const r = bytes && (await ricuciLibro(book.id, bytes).catch(() => null));
+    if (!r?.blob) {
+      setCucitura(null);
+      notify?.("La ricucitura non ha trovato pezzi da unire: reimporta il file");
+      return;
+    }
+    saltaPct.current = live.current.progress || getProgress(book.id) || 0;
+    live.current.cfi = null;
+    try { localStorage.removeItem(`bc_cfi_${book.id}`); } catch { /* resterà, e verrà riscritto */ }
+    setCucitura(null);
+    setStatusUi("loading");
+    setGiro((g) => g + 1);
+  }
+
+  function piuTardi() {
+    setCucitura(null);
+    // «più tardi» si rispetta: niente banner alla prossima apertura, la
+    // cura resta nella visita
+    taci(book.id);
+  }
 
   function goTo(target, flash) {
     const r = rendRef.current;
@@ -2008,6 +2106,58 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         </Panel>
       )}
 
+      {/* il libro spezzato si dice DOVE si legge, non in un referto da
+          andare a cercare: è lo standard che il testo copra la pagina */}
+      {cucitura && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            transform: "translateX(-50%)",
+            bottom: 84,
+            zIndex: 26,
+            width: "min(640px, 92vw)",
+            padding: "12px 16px",
+            borderRadius: R.medio,
+            border: `1px solid ${C.border}`,
+            background: C.card,
+            boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
+            animation: "bc-fade-in 0.25s ease-out",
+          }}
+        >
+          <p style={{ margin: 0, fontSize: F.nota, color: C.text, lineHeight: 1.5 }}>
+            📖 Questo libro è spezzato in più pezzi: le pagine possono finire a metà frase, con un
+            vuoto sotto.
+          </p>
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <button
+              onClick={ricuciOra}
+              disabled={cucitura === "cucio"}
+              style={{
+                padding: "8px 14px",
+                borderRadius: R.tondo,
+                border: `1px solid ${C.arcane}66`,
+                color: cucitura === "cucio" ? C.muted : C.arcane,
+                fontSize: F.piccolo,
+              }}
+            >
+              {cucitura === "cucio" ? "🪡 Ricucio…" : "🪡 Ricucilo ora — il segno resta dov'è"}
+            </button>
+            <button
+              onClick={piuTardi}
+              style={{
+                padding: "8px 14px",
+                borderRadius: R.tondo,
+                border: `1px solid ${C.border}`,
+                color: C.muted,
+                fontSize: F.piccolo,
+              }}
+            >
+              Più tardi
+            </button>
+          </div>
+        </div>
+      )}
       {/* la nota a piè di pagina, sul posto: la pagina sotto non si è
           mossa, quindi «tornare al punto in cui ero» è chiudere la scheda */}
       {nota && (
