@@ -4,15 +4,25 @@
 // segno (*, †, [3]), un link di indice è una parola — e scambiare i due
 // vuol dire o un indice che non naviga più, o una nota che ti strappa
 // dalla pagina. Più il bersaglio allargato, che è geometria pura.
-import { eNotaRef, risolviHref, estraiNota, pulisciNota, piuVicina } from "../src/lib/nota.js";
+import { eNotaRef, risolviHref, estraiNota, pulisciNota, piuVicina, primoBloccoDopo } from "../src/lib/nota.js";
 
-// un documento finto quanto basta: getElementById più closest
+// un documento finto quanto basta: getElementById, closest e i FRATELLI
+// (senza i fratelli non si può provare la nota che sta dopo l'ancora)
 const elemento = (tag, testo, genitore) => {
   const el = {
     tagName: tag.toUpperCase(),
     textContent: testo,
+    genitore,
+    fratelli: [],
+    get parentElement() {
+      return this.genitore || null;
+    },
+    get nextElementSibling() {
+      const f = this.genitore?.figli || [];
+      return f[f.indexOf(this) + 1] || null;
+    },
     closest(sel) {
-      const cerca = sel.split(",").map((s) => s.trim().toUpperCase());
+      const cerca = sel.split(",").map((x) => x.trim().toUpperCase());
       let cur = this;
       while (cur) {
         if (cerca.includes(cur.tagName)) return cur;
@@ -20,10 +30,14 @@ const elemento = (tag, testo, genitore) => {
       }
       return null;
     },
-    genitore,
   };
+  if (genitore) {
+    genitore.figli = genitore.figli || [];
+    genitore.figli.push(el);
+  }
   return el;
 };
+const contenitore = (tag = "body") => ({ tagName: tag.toUpperCase(), figli: [], textContent: "" });
 const docCon = (mappa) => ({ getElementById: (id) => mappa[id] || null });
 
 export default async function (t) {
@@ -87,4 +101,47 @@ export default async function (t) {
   t.eq("il tocco lontano non prende niente", piuVicina(rett, 200, 300), null);
   t.eq("il raggio è un raggio: a 29px non scatta", piuVicina(rett, 100 - 29, 106, 28), null);
   t.eq("senza rimandi niente", piuVicina([], 105, 106), null);
+
+  // ---- L'ANCORA CHE STA PRIMA DELLA NOTA ---------------------------------
+  // È la forma dei libri convertiti da Mobi (l'Eric del lettore):
+  // `<a id="filepos1"></a>` da sola, e la nota nel paragrafo SUCCESSIVO.
+  // `closest` lì non arriva mai — l'ancora non sta dentro niente — e la
+  // scheda restava muta: il tocco si ripiegava sul salto, che per giunta
+  // moriva con «No Section Found».
+  const corpo = contenitore("body");
+  const ancora = elemento("a", "", corpo);
+  elemento("p", "* La nota che viene dopo l'ancora.", corpo);
+  t.eq(
+    "l'ancora nuda prende il paragrafo che la segue",
+    estraiNota(docCon({ fn: ancora }), "fn"),
+    "* La nota che viene dopo l'ancora."
+  );
+  // e i vuoti in mezzo non fermano la ricerca
+  const corpo2 = contenitore("body");
+  const ancora2 = elemento("a", "", corpo2);
+  elemento("p", " ", corpo2);
+  elemento("p", "* La nota vera, due passi più in là.", corpo2);
+  t.eq(
+    "i paragrafi vuoti in mezzo si saltano",
+    estraiNota(docCon({ fn: ancora2 }), "fn"),
+    "* La nota vera, due passi più in là."
+  );
+  // ma se dopo non c'è niente, non si inventa
+  const corpo3 = contenitore("body");
+  const sola = elemento("a", "", corpo3);
+  t.eq("un'ancora sola in fondo torna vuota", estraiNota(docCon({ fn: sola }), "fn"), "");
+  t.eq("e `primoBloccoDopo` senza niente torna null", primoBloccoDopo(sola), null);
+  t.eq("né esplode sul niente", primoBloccoDopo(null), null);
+
+  // il blocco che CONTIENE vince su quello che segue: la nota è quella in
+  // cui l'ancora sta dentro, non la successiva
+  const corpo4 = contenitore("body");
+  const par = elemento("p", "* La nota che contiene l'ancora.", corpo4);
+  const dentro = elemento("a", "", par);
+  elemento("p", "Il paragrafo dopo, che NON è la nota.", corpo4);
+  t.eq(
+    "l'ancora dentro un paragrafo prende il suo",
+    estraiNota(docCon({ fn: dentro }), "fn"),
+    "* La nota che contiene l'ancora."
+  );
 }

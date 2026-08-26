@@ -44,6 +44,10 @@ const FRAME = 6;
 // punto di lettura, segnalibri, evidenziazioni. A questi si aggiungono i
 // 20px che epub.js mette di suo sul body, inline e con !important: sono
 // intoccabili da un foglio di stile, e fanno da margine minimo.
+// Oltre questo tempo dall'approdo la pagina si mostra comunque: la
+// candela accesa copre tutto e si mangia i tocchi, quindi nessun ritardo
+// puo' tenerla su all'infinito.
+const SICUREZZA_CANDELA = 2500;
 const HEAD = 8;
 const FOOT = 8;
 const EDGE_STRIPES =
@@ -316,6 +320,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [avanzo, setAvanzo] = useState(0);
   const avanzoRef = useRef(0);
   const avanzoTimer = useRef(null);
+  // LA CANDELA NON PUO' DIPENDERE DA UN TIMER CHE ALTRI AZZERANO. Il giro
+  // che la spegne aspettava sul timer dell'avanzo, e `chiediAvanzo` lo
+  // azzera per mestiere: bastava che una rimisura (schermo che si assesta,
+  // margine cambiato, barre di Android che rientrano) cadesse in quella
+  // finestra e il velo «Apro il tomo…» restava acceso PER SEMPRE — a
+  // schermo intero, z-20, e con lui ogni tocco moriva lì: le note, il
+  // dizionario, la voltata. Timer suo, e una rete di sicurezza sotto.
+  const prontoTimer = useRef(null);
+  const sicurezzaTimer = useRef(null);
   // (1) MAI MENTRE EPUB.JS STA MONTANDO. Misurare da dentro `rendered` e
   // rientrargli con un resize mentre la `display` e' ancora per aria gli
   // distrugge le viste sotto i piedi: "this.resources is undefined", e il
@@ -694,12 +707,17 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           // altrimenti la pagina compare lunga e si riassesta sotto gli
           // occhi del lettore — un'apertura che si corregge da sola.
           avanzoPronto.current = true;
-          clearTimeout(avanzoTimer.current);
-          avanzoTimer.current = setTimeout(() => {
+          clearTimeout(prontoTimer.current);
+          prontoTimer.current = setTimeout(() => {
             const ritagliato = rendRef.current === r && misuraAvanzoRef.current();
             if (!ritagliato) return setStatusUi("ready");
-            avanzoTimer.current = setTimeout(() => setStatusUi("ready"), 300);
+            prontoTimer.current = setTimeout(() => setStatusUi("ready"), 300);
           }, 350);
+          // e comunque, qualunque cosa succeda: passato questo tempo la
+          // pagina si mostra. Un velo che resta e' peggio di una pagina
+          // che si assesta sotto gli occhi.
+          clearTimeout(sicurezzaTimer.current);
+          sicurezzaTimer.current = setTimeout(() => setStatusUi("ready"), SICUREZZA_CANDELA);
         });
       if (target) {
         const fix = () => {
@@ -870,6 +888,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       clearTimeout(saveTimer.current);
       clearTimeout(reflowTimer.current);
       clearTimeout(avanzoTimer.current);
+      clearTimeout(prontoTimer.current);
+      clearTimeout(sicurezzaTimer.current);
       fixTimers.current.forEach(clearTimeout);
       flush();
       try { rendRef.current?.destroy(); } catch { /* già distrutto */ }

@@ -46,6 +46,33 @@ export function risolviHref(rel, base = "") {
 // su un <sup>, e la nota e' il paragrafo che li contiene. Un contenitore
 // grosso (la sezione con TUTTE le note) invece non va preso: si sale solo
 // fino al primo blocco piccolo.
+// quanto testo basta perche' un elemento sia «la nota» e non un'ancora
+export const NOTA_MINIMA = 4;
+const BLOCCHI = "aside, li, p, dd, blockquote, div, section, td";
+
+const quanto = (el) => String(el?.textContent || "").trim().length;
+
+// IL PRIMO BLOCCO CHE SEGUE l'ancora, saltando i vuoti. E' la forma dei
+// libri convertiti da Mobi (l'Eric del lettore): `<a id="filepos1"></a>`
+// da sola, e la nota nel paragrafo SUCCESSIVO — dove `closest` non arriva
+// mai, perche' l'ancora non sta dentro niente. Si guarda avanti di pochi
+// passi, e se i fratelli finiscono si sale di un piano: piu' in la' non
+// c'e' piu' la nota, c'e' il resto del libro.
+export function primoBloccoDopo(el, passi = 4) {
+  let cur = el;
+  for (let i = 0; i < passi && cur; i++) {
+    let succ = cur.nextElementSibling;
+    while (succ && quanto(succ) < NOTA_MINIMA) succ = succ.nextElementSibling;
+    if (succ) return succ;
+    cur = cur.parentElement;
+    if (!cur || /^(body|html)$/i.test(cur.tagName || "")) return null;
+  }
+  return null;
+}
+
+// L'ancora nuda non e' la nota: tanti ePub mettono l'id su una <a> vuota o
+// su un <sup>. La nota e' il blocco che li CONTIENE — oppure, quando
+// l'ancora sta fuori da ogni blocco, quello che la SEGUE.
 export function estraiNota(doc, frammento) {
   if (!doc || !frammento) return "";
   let el = null;
@@ -55,10 +82,13 @@ export function estraiNota(doc, frammento) {
     el = null;
   }
   if (!el) return "";
-  const suo = String(el.textContent || "").trim();
-  if (!suo || suo.length < 4 || /^a$/i.test(el.tagName || "")) {
-    el = el.closest?.("aside, li, p, dd, blockquote") || el;
+  if (quanto(el) < NOTA_MINIMA || /^a$/i.test(el.tagName || "")) {
+    // un contenitore grosso (la sezione con TUTTE le note) non va preso:
+    // si sale solo fino al primo blocco piccolo
+    const dentro = el.closest?.(BLOCCHI);
+    if (dentro && quanto(dentro) >= NOTA_MINIMA) el = dentro;
   }
+  if (quanto(el) < NOTA_MINIMA) el = primoBloccoDopo(el) || el;
   return pulisciNota(el.textContent);
 }
 
