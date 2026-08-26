@@ -1425,13 +1425,38 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // che hai davanti; un file a parte (le note in fondo al libro) si apre e
   // si richiude senza che la vista si muova. Se non c'è niente da estrarre
   // si ripiega sul salto di prima: un rimando muto è peggio di un salto.
+  // LA NOTA SI CERCA DOVE STA, NON DOVE CI ASPETTIAMO CHE STIA. Il
+  // rimando dice un frammento; il documento che lo ospita puo' essere
+  // quello aperto, quello dichiarato nell'href, o — nei libri convertiti
+  // da Mobi, dove i `filepos` puntano a ancore sparse — un altro
+  // qualunque della spina. Si guarda in quest'ordine, e si smette al
+  // primo che risponde: un capitolo alla volta, aperto e RICHIUSO.
+  async function notaDaSpina(frammento, saltando) {
+    const eb = epubRef.current;
+    const voci = eb?.spine?.spineItems || eb?.spine?.items || [];
+    for (const item of voci) {
+      if (!item || item.href === saltando) continue;
+      let trovato = "";
+      try {
+        await item.load(eb.load.bind(eb));
+        trovato = estraiNota(item.document, frammento);
+      } catch {
+        trovato = "";
+      } finally {
+        try { item.unload(); } catch { /* già scaricato */ }
+      }
+      if (trovato) return trovato;
+    }
+    return "";
+  }
+
   apriNotaRef.current = async (href, doc, base) => {
     const { file, frammento } = risolviHref(href, base);
     const capo = String(base).split("#")[0];
-    let testo = "";
-    let spinaMuta = false;
-    if (!file || file === capo) testo = estraiNota(doc, frammento);
-    else {
+    // 1. la pagina che hai davanti: e' il caso comune e non costa niente
+    let testo = estraiNota(doc, frammento);
+    // 2. il documento che il rimando dichiara
+    if (!testo && file && file !== capo) {
       const eb = epubRef.current;
       const item = eb?.spine?.get?.(file);
       if (item) {
@@ -1443,19 +1468,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         } finally {
           try { item.unload(); } catch { /* già scaricato */ }
         }
-      } else spinaMuta = true;
-      // il file del rimando non esiste più: nei libri RICUCITI prima che
-      // la ricucitura sistemasse anche questi rimandi, lo «split» delle
-      // note è stato fuso nel capitolo e il rimando è rimasto puntato al
-      // file morto — la nota ormai abita QUI, nella pagina che hai
-      // davanti (era il perché degli asterischi muti di Eric)
-      if (!testo) testo = estraiNota(doc, frammento);
+      }
     }
-    if (testo) setNota(testo);
-    // un file morto non si può nemmeno aprire: dirlo è meglio di un
-    // salto che esplode in silenzio
-    else if (spinaMuta) setNota("Questo rimando punta a una pagina che nel file non c'è più.");
-    else goTo(href);
+    // 3. tutto il resto del libro, un capitolo alla volta
+    if (!testo && frammento) testo = await notaDaSpina(frammento, capo);
+    if (testo) return setNota(testo);
+    // 4. non c'e': si DICE. Un tocco che non fa niente sembra un tasto
+    //    rotto — e per il lettore lo e'.
+    setNota("Questa nota non si trova nel file del libro: il rimando punta a un punto che non c'è.");
   };
 
   // il consenso dal banner: si ricuce ADESSO, si tiene la percentuale come

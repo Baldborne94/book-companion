@@ -6,7 +6,8 @@
 // scheda del nono e il tasto non c'era, senza una riga a dire il perché.
 // Qui si prova che ogni anello rotto venga nominato giusto, e che i casi
 // normali (primo volume, nessuna saga) restino in silenzio.
-import { perchePrimaTace, soloDellaSerie } from "../src/lib/trama.js";
+import { perchePrimaTace, soloDellaSerie, scegliPrima, chiediPrima } from "../src/lib/trama.js";
+import { conTitoli } from "../src/lib/chiSono.js";
 import { frontiera } from "../src/lib/frontiera.js";
 
 const libro = (id, saga, ordine, extra = {}) => ({ id, title: id, saga, sagaOrder: ordine, ...extra });
@@ -104,4 +105,63 @@ export default async function (t) {
     perchePrimaTace({ ...eric, saga: "Discworld " }, [eric, ...letti], tuttiLetti),
     null
   );
+
+  // ---- OGNI VOLUME HA UN NUMERO, L'ULTIMO COMPRESO ----------------------
+  // Segnalato dal lettore su Eric: l'ultimo paragrafo della scheda diceva
+  // «Nel volume appena chiuso il Bagaglio è tornato a fare il Bagaglio…»
+  // senza dire QUALE. Il volume più recente era l'unico che arrivava al
+  // modello senza numero — solo [inizio] e [ultime pagine] — quindi non
+  // aveva un modo di chiamarlo, e `conTitoli` non aveva niente da
+  // sostituire: il titolo vero non compariva mai.
+  const raccolto = (nome, posto, quanti = 6) => ({
+    libro: { id: nome, title: nome },
+    posto,
+    corpo: Array.from({ length: quanti }, (_, i) => `${nome}: paragrafo ${i + 1}`),
+    coda: [`${nome}: come si è chiuso`],
+  });
+
+  let scelti = scegliPrima([raccolto("com", 0), raccolto("tlf", 1), raccolto("sourcery", 2)]);
+  const numeri = (quando) => [...new Set(scelti.filter((p) => p.quando === quando).map((p) => p.volume))];
+  t.eq("i volumi vecchi portano il loro numero", JSON.stringify(numeri("prima")), "[1,2]");
+  t.eq("e IL PIÙ RECENTE PURE, nell'apertura", JSON.stringify(numeri("qui")), "[3]");
+  t.eq("e nelle ultime pagine", JSON.stringify(numeri("coda")), "[3]");
+
+  // e il numero torna il titolo vero sullo schermo: è tutto il punto
+  const tomi = [{ libro: { title: "The Colour of Magic" } }, { libro: { title: "The Light Fantastic" } }, { libro: { title: "Sourcery" } }];
+  t.eq(
+    "«Volume 3» diventa il titolo del volume appena chiuso",
+    conTitoli("Nel Volume 3 arriva Coin.", tomi),
+    "Nel «Sourcery» arriva Coin."
+  );
+
+  // UN TOMO RIMASTO NEL CLOUD non si sfoglia e salta il giro: i numeri
+  // contano sulla FRONTIERA, non sul raccolto, o la scheda metterebbe
+  // sopra a un racconto il titolo del libro che non ha potuto leggere
+  scelti = scegliPrima([raccolto("com", 0), raccolto("sourcery", 2)]);
+  t.eq("col secondo volume lontano, il primo resta 1", JSON.stringify(numeri("prima")), "[1]");
+  t.eq("e il recente resta 3, non 2", JSON.stringify(numeri("qui")), "[3]");
+
+  // ---- e la richiesta al modello li NOMINA tutti ------------------------
+  const prima = globalThis.localStorage;
+  globalThis.localStorage = {
+    getItem: (k) => (k === "bc_ai_key" ? "prova" : null),
+    setItem: () => {},
+    removeItem: () => {},
+  };
+  let chiesto = "";
+  const finto = async (_url, opz) => {
+    chiesto = JSON.parse(opz.body).messages[0].content;
+    return {
+      ok: true,
+      json: async () => ({ content: [{ type: "text", text: "va bene" }], stop_reason: "end_turn" }),
+    };
+  };
+  try {
+    await chiediPrima({ passaggi: scegliPrima([raccolto("com", 0), raccolto("tlf", 1), raccolto("sourcery", 2)]), tappe: tomi }, finto);
+  } finally {
+    globalThis.localStorage = prima;
+  }
+  t.c("i passaggi del volume recente arrivano col numero", /\[Volume 3, inizio\]/.test(chiesto), chiesto.slice(0, 200));
+  t.c("e anche le sue ultime pagine", /\[Volume 3, ultime pagine\]/.test(chiesto));
+  t.c("e al modello si vieta «il volume appena chiuso»", /volume appena chiuso/.test(chiesto));
 }
