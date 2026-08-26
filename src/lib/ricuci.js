@@ -25,14 +25,20 @@ export const saluteValida = (salute, size) => !!salute && salute.size === size;
 export const daRicucire = (salute) =>
   (salute?.monconi || 0) >= 1 || (salute?.giunture || 0) >= GIUNTURE_TANTE;
 
-export async function controllaSpezzatura(id, eb, size) {
-  let salute = null;
+// il verdetto già scritto, se vale ancora: è la strada gratis, e chi
+// chiama può risparmiarsi di aprire una seconda copia del libro
+export async function saluteInCache(id, size) {
   try {
-    salute = await getAux(chiave(id));
+    const s = await getAux(chiave(id));
+    return saluteValida(s, size) ? s : null;
   } catch {
-    salute = null;
+    return null;
   }
-  if (saluteValida(salute, size)) return salute;
+}
+
+export async function controllaSpezzatura(id, eb, size) {
+  const inCache = await saluteInCache(id, size);
+  if (inCache) return inCache;
   const fatti = await fattiDaEpub(eb);
   const nuovo = { size, monconi: fatti.monconi || 0, giunture: fatti.giunture || 0 };
   try {
