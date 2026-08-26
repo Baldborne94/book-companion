@@ -80,6 +80,7 @@ function bersagliIndice(navDoc, cartellaNav) {
 
 export async function unisciPezzi(blob) {
   const { default: JSZip } = await import("jszip");
+  const { tagliaAMetaFrase } = await import("./visita.js");
   const zip = await JSZip.loadAsync(blob);
 
   const contenitore = await zip.file("META-INF/container.xml")?.async("string");
@@ -123,12 +124,36 @@ export async function unisciPezzi(blob) {
   }
   if (!bersagli.size) return null;
 
-  // i gruppi: un documento che l'indice non apre e' la continuazione del
-  // precedente
-  const gruppi = [];
+  // IL TAGLIO A META' FRASE SCAVALCA L'INDICE. Calibre mette spesso una
+  // voce d'indice DENTRO lo split — col frammento, per il titolo del
+  // capitolo che ci abita — e il pezzo risultava «aperto dall'indice» e
+  // non si toccava: il lettore, gia' «ricucito», rivedeva la stessa
+  // pagina tagliata a meta' frase. Ma un documento che comincia in
+  // minuscola dopo uno che finisce senza punteggiatura e' la
+  // continuazione della stessa frase, comunque la pensi l'indice; e le
+  // voci d'indice sopravvivono, perche' il giro in fondo riscrive anche
+  // loro, frammento compreso.
+  const testi = new Map();
   for (const s of spina) {
-    if (!gruppi.length || bersagli.has(s.voce.path)) gruppi.push([s]);
-    else gruppi[gruppi.length - 1].push(s);
+    try {
+      const d = zip.file(s.voce.path) ? leggi(await zip.file(s.voce.path).async("string")) : null;
+      testi.set(s.voce.path, (d?.querySelector("body")?.textContent || "").replace(/\s+/g, " ").trim());
+    } catch {
+      testi.set(s.voce.path, "");
+    }
+  }
+  // i gruppi: un documento che l'indice non apre — o che comincia a meta'
+  // frase — e' la continuazione del precedente
+  const gruppi = [];
+  let precedente = null;
+  for (const s of spina) {
+    const continua =
+      gruppi.length &&
+      (!bersagli.has(s.voce.path) ||
+        tagliaAMetaFrase(testi.get(precedente?.voce.path), testi.get(s.voce.path)));
+    if (continua) gruppi[gruppi.length - 1].push(s);
+    else gruppi.push([s]);
+    precedente = s;
   }
   const daCucire = gruppi.filter((g) => g.length > 1);
   if (!daCucire.length) return null;
