@@ -182,6 +182,11 @@ export function togliStacco(doc) {
   return true;
 }
 
+// Quanto respiro sopra e sotto DENTRO la pagina. Non zero: una riga
+// appiccicata al bordo della carta si legge peggio, e il velo della
+// voltata la lambisce. Sei pixel sono un soffio, non una fascia.
+export const PAGINA_SU_GIU = 6;
+
 export function contentStyles(s, lingua) {
   const t = READER_THEMES[s.theme];
   const font = READER_FONTS.find((f) => f.id === s.font)?.css;
@@ -224,6 +229,19 @@ export function contentStyles(s, lingua) {
       background: `${t.bg} !important`,
       color: `${t.fg} !important`,
       "line-height": `${s.lineHeight} !important`,
+      // I 20px SOPRA E SOTTO NON SONO NOSTRI: li mette epub.js dentro la
+      // pagina (`Contents.columns`, ramo orizzontale), e sono 40px di
+      // carta bianca per facciata che nessuno ha scelto — i nostri
+      // margini veri sono HEAD/FOOT, 8px. Su una colonna che non e' un
+      // multiplo dell'altezza di riga quei 40px possono valere una riga
+      // intera di lettura (misurato: +1 riga a corpo normale). Il
+      // margine laterale invece resta a epub.js: li' il padding e' meta'
+      // del `column-gap`, e toccarlo sfascerebbe il conto delle colonne.
+      // In scorrimento non si tocca niente: la' epub.js usa l'asse
+      // verticale e questi due valori sono un'altra cosa.
+      ...(s.flow === "scrolled"
+        ? {}
+        : { "padding-top": `${PAGINA_SU_GIU}px !important`, "padding-bottom": `${PAGINA_SU_GIU}px !important` }),
     },
     [textSel]: {
       color: `${t.fg} !important`,
