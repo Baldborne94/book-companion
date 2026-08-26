@@ -240,10 +240,16 @@ export async function unisciPezzi(blob) {
   for (const gruppo of daCucire) {
     for (const pezzo of gruppo.slice(1)) cucitiPer.set(pezzo.voce.path, gruppo[0].voce.path);
   }
+  // E NON SOLO L'INDICE: anche i documenti sopravvissuti — il capo per
+  // primo — possono avere rimandi ai pezzi cuciti via. È il caso delle
+  // NOTE a piè di pagina nei libri Calibre: il capitolo rimanda al suo
+  // «split» delle note, la ricucitura fonde lo split nel capitolo, e il
+  // rimando restava puntato a un file che non esiste più — l'asterisco
+  // non faceva NIENTE, su nessun dispositivo (segnalato dal lettore).
+  // I pezzi cuciti si saltano: i loro rimandi sono già stati sistemati.
   for (const voce of perId.values()) {
     if (!/xhtml|html|dtbncx/.test(voce.tipo) || !zip.file(voce.path)) continue;
-    const eIndice = voce === navVoce || /\bnav\b/.test(voce.proprieta) || /dtbncx/.test(voce.tipo);
-    if (!eIndice) continue;
+    if (cucitiPer.has(voce.path)) continue;
     const testo = await zip.file(voce.path).async("string");
     const doc = leggi(testo);
     if (!doc) continue;
@@ -257,7 +263,9 @@ export async function unisciPezzi(blob) {
       if (!capo) continue;
       const frammento = valore.includes("#") ? valore.slice(valore.indexOf("#") + 1) : "";
       const ancora = rinominati.get(`${risolto}#${frammento}`) || frammento || ancoraDi(risolto);
-      a.setAttribute(nome, `${relativo(suaDir, capo)}#${ancora}`);
+      // dal capo verso un suo pezzo cucito basta il frammento nudo
+      const dove = capo === voce.path ? "" : relativo(suaDir, capo);
+      a.setAttribute(nome, `${dove}#${ancora}`);
       toccato = true;
     }
     if (toccato) zip.file(voce.path, scrivi(doc));

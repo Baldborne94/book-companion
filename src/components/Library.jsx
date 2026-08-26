@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { getProgress, getStatus, combacia } from "../lib/library.js";
-import { GUAI, grave } from "../lib/visita.js";
+import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { storageEstimate, statoPersistenza, requestPersistence, getFile, putFile } from "../lib/bookStore.js";
 import { importFiles, resoconto } from "../lib/importBook.js";
 import { exportLibrary, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
@@ -495,22 +495,7 @@ export default function Library({
           pieno(`bc_marks_${b.id}`) ||
           pieno(`bc_hl_${b.id}`);
         if (inLettura) return { protetto: true };
-        if (b.fileType === "pdf") return null;
-        const { unisciPezzi } = await import("../lib/unisciEpub.js");
-        const cucito = await unisciPezzi(file);
-        if (!cucito?.blob || !cucito.cuciti) return null;
-        await putFile(b.id, cucito.blob);
-        // il cloud ha ancora la copia vecchia: si rimette in coda
-        const { daRicaricare } = await import("../lib/sync.js");
-        daRicaricare(b.id);
-        // e non ci si fida: si riapre il libro NUOVO e si riesamina
-        const { default: ePub } = await import("epubjs");
-        const eb = ePub(await cucito.blob.arrayBuffer());
-        try {
-          return { fatti: await fattiDaEpub(eb) };
-        } finally {
-          try { eb.destroy(); } catch { /* già chiuso */ }
-        }
+        return ricuciDavvero(b, file);
       },
       vivo: () => filoVisita.current === mio,
       onProgress: (p) => filoVisita.current === mio && setVisitando(p),
@@ -522,6 +507,56 @@ export default function Library({
     // il referto si apre solo se c'è qualcosa da leggere: un pannello che
     // dice «tutto a posto» è un pannello da chiudere e basta
     if (esito.malati.length || esito.lontani.length || esito.curati.length) setReferto(esito);
+  }
+
+  // la ricucitura vera e propria: la usa la visita (sui libri non protetti)
+  // e il consenso esplicito del lettore dal referto
+  async function ricuciDavvero(b, file) {
+    if (b.fileType === "pdf") return null;
+    // il giro condiviso (`ricuciLibro`): riscrive i byte, rimette il libro
+    // in coda per il cloud e butta le locations cachate del libro vecchio
+    const { ricuciLibro } = await import("../lib/ricuci.js");
+    const r = await ricuciLibro(b.id, file);
+    if (!r?.blob) return null;
+    // e non ci si fida: si riapre il libro NUOVO e si riesamina
+    const { default: ePub } = await import("epubjs");
+    const eb = ePub(await r.blob.arrayBuffer());
+    try {
+      return { fatti: await fattiDaEpub(eb) };
+    } finally {
+      try { eb.destroy(); } catch { /* già chiuso */ }
+    }
+  }
+
+  // IL CONSENSO DEL LETTORE SCAVALCA LA PROTEZIONE. Su un libro in lettura
+  // la visita non ricuce da sé — il segno può spostarsi — ma l'ultima
+  // parola è di chi legge: convivere per un intero romanzo con le facciate
+  // tagliate a metà frase è peggio di un segno da rimettere. Il prezzo
+  // sta scritto sul tasto, e il tasto sta solo nel referto.
+  const [ricucendo, setRicucendo] = useState(null);
+  async function ricuciForzato(id) {
+    const b = books.find((x) => x.id === id);
+    if (!b || ricucendo) return;
+    setRicucendo(id);
+    try {
+      const file = await getFile(id).catch(() => null);
+      if (!file) return notify?.("I byte di questo tomo non sono su questo dispositivo");
+      const r = await ricuciDavvero(b, file);
+      if (!r?.fatti) return notify?.("La ricucitura non ha trovato pezzi da unire: reimporta il file");
+      const dopo = esamina(r.fatti);
+      setReferto((v) =>
+        v && {
+          ...v,
+          curati: [...(v.curati || []), { id, title: b.title }],
+          malati: (v.malati || [])
+            .map((m) => (m.id === id ? { ...m, guai: dopo, protetto: false } : m))
+            .filter((m) => m.guai.length),
+        }
+      );
+      notify?.(`«${b.title}» ricucito 🪡 — se il segno si è spostato, rimettilo con un tocco`);
+    } finally {
+      setRicucendo(null);
+    }
   }
 
   async function richiamaTomi() {
@@ -1171,7 +1206,7 @@ export default function Library({
       </>
       )}
 
-      {referto && <Referto esito={referto} onChiudi={() => setReferto(null)} />}
+      {referto && <Referto esito={referto} onChiudi={() => setReferto(null)} onRicuci={ricuciForzato} ricucendo={ricucendo} />}
       {archivio && (
         <SceltaArchivio
           archivio={archivio}
@@ -1193,7 +1228,7 @@ export default function Library({
 // cosa puoi farci. Un elenco di guai senza la cura accanto lascia il
 // lettore esattamente dov'era — sapere che un libro è rotto e non sapere
 // se è colpa del file o dell'app è peggio che non saperlo.
-function Referto({ esito, onChiudi }) {
+function Referto({ esito, onChiudi, onRicuci, ricucendo }) {
   const { malati = [], lontani = [], curati = [], esaminati = 0 } = esito;
   return (
     <div
@@ -1276,11 +1311,29 @@ function Referto({ esito, onChiudi }) {
                 <span style={{ color: GUAI[g].grave ? C.red : C.arcane }}>·</span> {GUAI[g].dice} —{" "}
                 <span style={{ opacity: 0.85 }}>
                   {m.protetto && grave(m.guai) === false
-                    ? "non l'ho toccato: lo stai leggendo, e ricucirlo sposterebbe segnalibri e punto di lettura. Reimportalo quando l'avrai chiuso."
+                    ? "non l'ho toccato da me: lo stai leggendo, e ricucirlo può spostare segnalibri e punto di lettura."
                     : GUAI[g].cura}
                 </span>
               </div>
             ))}
+            {/* l'ultima parola e' del lettore: il prezzo sta scritto sul
+                tasto, e chi legge decide se pagarlo adesso o a libro chiuso */}
+            {m.protetto && (
+              <button
+                onClick={() => onRicuci?.(m.id)}
+                disabled={!!ricucendo}
+                style={{
+                  marginTop: 8,
+                  padding: "7px 14px",
+                  borderRadius: R.tondo,
+                  border: `1px solid ${C.arcane}66`,
+                  color: ricucendo ? C.muted : C.arcane,
+                  fontSize: F.piccolo,
+                }}
+              >
+                {ricucendo === m.id ? "🪡 Ricucio…" : "🪡 Ricuci lo stesso — il segno può spostarsi"}
+              </button>
+            )}
           </div>
         ))}
 
