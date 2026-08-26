@@ -1263,6 +1263,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const { file, frammento } = risolviHref(href, base);
     const capo = String(base).split("#")[0];
     let testo = "";
+    let spinaMuta = false;
     if (!file || file === capo) testo = estraiNota(doc, frammento);
     else {
       const eb = epubRef.current;
@@ -1276,9 +1277,18 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         } finally {
           try { item.unload(); } catch { /* già scaricato */ }
         }
-      }
+      } else spinaMuta = true;
+      // il file del rimando non esiste più: nei libri RICUCITI prima che
+      // la ricucitura sistemasse anche questi rimandi, lo «split» delle
+      // note è stato fuso nel capitolo e il rimando è rimasto puntato al
+      // file morto — la nota ormai abita QUI, nella pagina che hai
+      // davanti (era il perché degli asterischi muti di Eric)
+      if (!testo) testo = estraiNota(doc, frammento);
     }
     if (testo) setNota(testo);
+    // un file morto non si può nemmeno aprire: dirlo è meglio di un
+    // salto che esplode in silenzio
+    else if (spinaMuta) setNota("Questo rimando punta a una pagina che nel file non c'è più.");
     else goTo(href);
   };
 
