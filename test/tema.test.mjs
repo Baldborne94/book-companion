@@ -6,7 +6,7 @@
 // Serve un browser. Senza, il file si dichiara SALTATO invece di fallire —
 // ma saltare non e' passare: chi tocca `readerTheme.js` deve farlo girare.
 import { contentStyles, spegniVuoti, togliStacco, rientrata, spaziatoriFitti, SEGNO_DI_SCENA,
-  RIENTRO_MINIMO, QUANTI, CAMPIONE, SPAZIATORI_FITTI, ABBASTANZA_PARAGRAFI } from "../src/lib/readerTheme.js";
+  RIENTRO_MINIMO, QUANTI, CAMPIONE, SPAZIATORI_FITTI, ABBASTANZA_PARAGRAFI, PAGINA_SU_GIU } from "../src/lib/readerTheme.js";
 import { READER_THEMES } from "../src/lib/readerSettings.js";
 import { Saltato } from "./aiuto.mjs";
 import { existsSync, readdirSync } from "node:fs";
@@ -384,6 +384,34 @@ export default async function (t) {
 
     t.c("niente documento, niente da fare", !togliStacco(null));
     t.c("e un documento senza vista nemmeno", !togliStacco({ querySelectorAll: () => [] }));
+
+    // I 20px DI EPUB.JS DENTRO LA PAGINA. Li mette lui, in orizzontale,
+    // e sono 40px di carta bianca per facciata che nessuno ha scelto: su
+    // una colonna che non è multipla dell'altezza di riga valgono fino a
+    // due righe di lettura (misurato). Si battono con `!important`,
+    // perché epub.js li scrive in linea SENZA.
+    await p.setContent(`<!doctype html><html><body><p id="uno">uno</p></body></html>`);
+    await p.evaluate(() => {
+      document.body.style.paddingTop = "20px";
+      document.body.style.paddingBottom = "20px";
+    });
+    await p.addStyleTag({ content: inCss(contentStyles(BASE, "en")) });
+    const pad = await p.evaluate(() => {
+      const c = getComputedStyle(document.body);
+      return [c.paddingTop, c.paddingBottom];
+    });
+    t.eq("il padding di epub.js perde sopra", pad[0], `${PAGINA_SU_GIU}px`);
+    t.eq("e sotto", pad[1], `${PAGINA_SU_GIU}px`);
+    // IN SCORRIMENTO NON SI TOCCA: lì epub.js usa l'asse verticale e quei
+    // due valori sono metà del `column-gap`, un'altra cosa
+    t.c(
+      "in scorrimento il padding resta di epub.js",
+      !("padding-top" in contentStyles({ ...BASE, flow: "scrolled" }, "en").body)
+    );
+    t.c(
+      "e in paginato invece c'è",
+      "padding-bottom" in contentStyles({ ...BASE, flow: "paginated" }, "en").body
+    );
   } finally {
     await browser.close();
   }
