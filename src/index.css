@@ -243,3 +243,88 @@ textarea {
 .textLayer.selecting .endOfContent {
   top: 0;
 }
+
+/* LA SVOLTA DELLA PAGINA.
+ *
+ * Sta nel foglio di stile e non in linea per la ragione di sempre: sono
+ * pseudo-elementi (`::view-transition-old`), e li' gli stili in linea non
+ * arrivano — come per `:active` e `:focus-visible`.
+ *
+ * Il foglio animato di allora fotografava la pagina in un canvas a ogni
+ * voltata, ed e' quella fotografia che l'ha fatto togliere. Qui la
+ * fotografia la fa il BROWSER, sul compositore: a noi resta solo da dire
+ * come il vecchio deve andarsene.
+ *
+ * LA DURATA E' CORTA APPOSTA. Mentre la transizione gira il browser
+ * SOSPENDE il rendering del documento vivo: per quel tempo il filo
+ * principale e' fermo, e ogni millisecondo in piu' e' un millisecondo in
+ * cui un tocco non risponde. Trecento millisecondi bastano a leggere il
+ * gesto come una pagina che gira; mezzo secondo si sente come lentezza. */
+::view-transition-group(bc-pagina) {
+  /* la prospettiva sta sul gruppo: senza, `rotateY` schiaccia il foglio
+   * invece di girarlo, e si vede una pagina che si stringe, non una che
+   * volta */
+  perspective: 2400px;
+  perspective-origin: left center;
+}
+
+::view-transition-old(bc-pagina),
+::view-transition-new(bc-pagina) {
+  /* niente dissolvenza incrociata del browser: le due pagine si
+   * sovrappongono, e una pagina di testo che traspare da un'altra e'
+   * illeggibile */
+  animation: none;
+  mix-blend-mode: normal;
+  backface-visibility: hidden;
+  height: 100%;
+  object-fit: fill;
+}
+
+/* AVANTI: il foglio vecchio gira via attorno al dorso di sinistra e
+ * scopre quello nuovo, che sta fermo sotto. */
+.bc-volta-next::view-transition-old(bc-pagina) {
+  transform-origin: left center;
+  animation: bc-gira-via 300ms cubic-bezier(0.36, 0, 0.24, 1) forwards;
+  z-index: 2;
+}
+.bc-volta-next::view-transition-new(bc-pagina) {
+  z-index: 1;
+}
+
+/* INDIETRO: il movimento si rovescia — e' il foglio NUOVO che rientra
+ * girando, perche' tornando indietro e' lui quello che si abbassa sopra
+ * la pagina che stavi leggendo. */
+.bc-volta-prev::view-transition-new(bc-pagina) {
+  transform-origin: left center;
+  animation: bc-gira-via 300ms cubic-bezier(0.36, 0, 0.24, 1) reverse forwards;
+  z-index: 2;
+}
+.bc-volta-prev::view-transition-old(bc-pagina) {
+  z-index: 1;
+}
+
+@keyframes bc-gira-via {
+  from {
+    transform: rotateY(0deg);
+    filter: brightness(1);
+  }
+  /* la luce che scorre sul foglio mentre gira: e' quella che lo fa
+   * leggere come carta invece che come un rettangolo che ruota */
+  60% {
+    filter: brightness(0.86);
+  }
+  to {
+    transform: rotateY(-118deg);
+    filter: brightness(0.7);
+  }
+}
+
+/* «meno animazioni» del sistema si rispetta anche qui, non solo nel
+ * codice: chi l'ha acceso ha chiesto proprio di non vedere una pagina
+ * che gira. */
+@media (prefers-reduced-motion: reduce) {
+  .bc-volta-next::view-transition-old(bc-pagina),
+  .bc-volta-prev::view-transition-new(bc-pagina) {
+    animation: none;
+  }
+}
