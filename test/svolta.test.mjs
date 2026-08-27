@@ -1,11 +1,11 @@
 // LA VOLTATA RESTA DENTRO IL CAPITOLO?
 //
-// È la domanda su cui gira tutta l'animazione dello scorrimento, e vale
-// la pena provarla da sola perché la risposta decide DUE cose opposte:
-// dentro il capitolo la pagina scivola, al confine resta velata. Una
-// risposta sbagliata non è un dettaglio estetico — «dentro» detto a un
-// confine vuol dire far scivolare una pagina che poi si riassesta sotto
-// gli occhi del lettore, cioè il difetto che il velo era venuto a curare.
+// È la domanda su cui gira tutta la svolta della pagina, e vale la pena
+// provarla da sola perché la risposta decide DUE cose opposte: dentro il
+// capitolo il foglio gira, al confine resta il velo. Una risposta
+// sbagliata non è un dettaglio estetico — «dentro» detto a un confine
+// vuol dire far girare un foglio che poi si riassesta sotto gli occhi del
+// lettore, cioè il difetto che il velo era venuto a curare.
 import { leftoverScroll, dentroIlCapitolo } from "../src/lib/spread.js";
 
 // il gestore di epub.js, ridotto a quello che queste due funzioni guardano
@@ -19,7 +19,7 @@ const gestore = (o = {}) => ({
 
 export default async function (t) {
   // ---- avanti -----------------------------------------------------------
-  // in mezzo al capitolo c'è carta davanti: si scorre, e si può scivolare
+  // in mezzo al capitolo c'è carta davanti: si scorre, e il foglio può girare
   t.c("a inizio capitolo si resta dentro", dentroIlCapitolo(gestore(), "next"));
   t.c(
     "e anche a metà",
@@ -44,20 +44,20 @@ export default async function (t) {
   );
   t.c("indietro dalla PRIMA facciata si cambia capitolo", !dentroIlCapitolo(gestore(), "prev"));
 
-  // ---- dove non si scivola affatto ---------------------------------------
-  // in scorrimento continuo non ci sono facciate da far scivolare
-  t.c("a scorrimento niente scivolo", !dentroIlCapitolo(gestore({ isPaginated: false }), "next"));
+  // ---- dove non si gira affatto ------------------------------------------
+  // in scorrimento continuo non ci sono facciate da far girare
+  t.c("a scorrimento niente svolta", !dentroIlCapitolo(gestore({ isPaginated: false }), "next"));
   t.c(
-    "in verticale niente scivolo",
+    "in verticale niente svolta",
     !dentroIlCapitolo(gestore({ settings: { axis: "vertical", direction: "ltr" } }), "next")
   );
   // da destra a sinistra il segno è rovesciato: meglio il velo che un
   // movimento che va dalla parte sbagliata
   t.c(
-    "in rtl niente scivolo",
+    "in rtl niente svolta",
     !dentroIlCapitolo(gestore({ settings: { axis: "horizontal", direction: "rtl" } }), "next")
   );
-  t.c("senza facciata niente scivolo", !dentroIlCapitolo(gestore({ layout: { delta: 0 } }), "next"));
+  t.c("senza facciata niente svolta", !dentroIlCapitolo(gestore({ layout: { delta: 0 } }), "next"));
   t.c("e senza gestore non esplode", !dentroIlCapitolo(null, "next"));
   t.c("né senza contenitore", !dentroIlCapitolo(gestore({ container: null }), "next"));
 

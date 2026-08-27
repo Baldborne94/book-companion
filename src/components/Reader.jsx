@@ -1052,64 +1052,68 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // il velo resta su finche' la misura non si ferma. Un secondo tocco
   // durante l'attesa sbriga subito la voltata in coda: due tocchi svelti
   // valgono due pagine, nessuna si perde.
-  // LO SCORRIMENTO DELLA PAGINA, e perché stavolta può costare poco.
+  // LA SVOLTA DELLA PAGINA, e perché stavolta si può fare.
   //
-  // Il foglio animato di allora — palco di iframe clonati, fotografia del
-  // capitolo in un canvas — era caro perché RICOSTRUIVA la pagina a ogni
-  // voltata. Qui non si ricostruisce niente: dentro un capitolo epub.js
-  // sposta `container.scrollLeft` di una facciata e basta, il testo della
-  // pagina dopo è già lì di fianco. Si lascia fare a lui il suo salto
-  // istantaneo, poi si rimette la carta indietro di una facciata con un
-  // `transform` e la si lascia scivolare a zero: solo compositing, niente
-  // layout, nessun evento di scroll — epub.js non se ne accorge affatto.
-  // È la lezione 10 presa alla lettera: solo `transform`.
+  // Il foglio animato di allora fotografava la pagina in un canvas a ogni
+  // voltata, e quella fotografia era il costo che l'ha fatto togliere.
+  // Oggi la fotografia la fa il BROWSER, sul compositore: le View
+  // Transitions congelano lo stato vecchio e quello nuovo da sole, e a noi
+  // resta solo da dire come il vecchio deve andarsene — una rotazione
+  // attorno al dorso, che è la svolta di un foglio.
   //
-  // Il `transform` va sui FIGLI del contenitore, non sul contenitore: lui
-  // è la finestra che ritaglia, e muoverlo porterebbe via anche la
-  // cornice invece del foglio.
-  const SCIVOLO = 220;
-  const scivolo = useRef(null);
-  function scivola(r, dir, quanto) {
-    const cont = r?.manager?.container;
-    if (!cont) return;
-    const passo = quanto || r.manager.layout?.delta || cont.clientWidth || 0;
-    if (passo <= 0) return;
-    const figli = [...cont.children];
-    if (!figli.length) return;
-    // avanti la carta è andata a sinistra: per rimetterla dov'era la si
-    // spinge a destra, e da lì scivola verso zero
-    const da = dir === "next" ? passo : -passo;
-    if (scivolo.current) clearTimeout(scivolo.current);
-    for (const el of figli) {
-      el.style.transition = "none";
-      el.style.transform = `translateX(${da}px)`;
+  // Lo scorrimento laterale è stato provato e TOLTO su richiesta del
+  // lettore («o fai l'effetto svolta pagina oppure niente»): non
+  // rimetterlo. E lo scivolo non è nemmeno un ripiego onesto qui, perché
+  // il lettore ha chiesto o la svolta o la dissolvenza di sempre.
+  const svoltaViva = useRef(null);
+  const svoltaGuardia = useRef(null);
+  // oltre questo la svolta si considera persa e il reader torna a voltare
+  // e basta: una pagina che non gira e' un peccato, una pagina che non
+  // volta piu' e' un reader rotto
+  const SVOLTA_GUARDIA = 1500;
+
+  function laSvolta(r, dir, fai) {
+    const doc = document;
+    const radice = doc.documentElement;
+    // senza View Transitions (o con «meno animazioni» acceso nel sistema)
+    // si volta e basta: niente effetto, nessun difetto
+    if (typeof doc.startViewTransition !== "function" || riduciMovimento()) return fai();
+    // una voltata mentre l'altra gira: si fa senza effetto, o le due
+    // fotografie si accavallano
+    if (svoltaViva.current) return fai();
+    radice.classList.add(dir === "next" ? "bc-volta-next" : "bc-volta-prev");
+    const pulisci = () => {
+      clearTimeout(svoltaGuardia.current);
+      svoltaGuardia.current = null;
+      svoltaViva.current = null;
+      radice.classList.remove("bc-volta-next", "bc-volta-prev");
+    };
+    let vt;
+    try {
+      vt = doc.startViewTransition(fai);
+    } catch {
+      pulisci();
+      return fai();
     }
-    requestAnimationFrame(() => {
-      for (const el of figli) {
-        el.style.transition = `transform ${SCIVOLO}ms cubic-bezier(.22,.61,.36,1)`;
-        el.style.transform = "translateX(0px)";
-      }
-      // il `transform` si TOGLIE a fine corsa: lasciato addosso fa dei
-      // figli un blocco di contenimento per sempre, e le misure del
-      // ritaglio d'avanzo si prendono su una carta traslata
-      scivolo.current = setTimeout(() => {
-        scivolo.current = null;
-        for (const el of figli) {
-          el.style.transition = "";
-          el.style.transform = "";
-        }
-      }, SCIVOLO + 60);
-    });
+    svoltaViva.current = vt;
+    // LA RETE DI SICUREZZA, e non e' pignoleria: se per qualunque ragione
+    // la transizione non si chiude, senza questa il segnaposto resterebbe
+    // occupato per sempre e da li' in poi OGNI voltata prenderebbe la
+    // strada del «ne sta gia' girando una» — cioe' nessuna pagina
+    // girerebbe mai piu'. E' successo davvero (vedi il commento sulla
+    // coda di epub.js qui sotto).
+    svoltaGuardia.current = setTimeout(pulisci, SVOLTA_GUARDIA);
+    vt.finished.then(pulisci, pulisci);
   }
 
-  // un gesto nuovo mentre la carta scivola: si posa dov'è, subito, o le
-  // due voltate si accavallerebbero
-  function posaScivolo(r) {
-    if (scivolo.current) clearTimeout(scivolo.current);
-    scivolo.current = null;
-    for (const el of r?.manager?.container?.children || []) {
-      el.style.transition = "";
-      el.style.transform = "";
+  // «meno animazioni» del sistema si rispetta: chi l'ha acceso ha le sue
+  // ragioni, e una pagina che gira e' esattamente cio' che ha chiesto di
+  // non vedere
+  function riduciMovimento() {
+    try {
+      return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    } catch {
+      return false;
     }
   }
 
@@ -1120,33 +1124,47 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       inAttesa.current = null;
       subito();
     }
-    posaScivolo(r);
 
-    // LA VOLTATA COMUNE SCIVOLA, QUELLA DI CONFINE RESTA VELATA. Non sono
-    // due lingue per capriccio: dentro il capitolo la pagina dopo è già
-    // impaginata di fianco e si può mostrare mentre arriva; al confine il
-    // capitolo si smonta e la misura balla finché non arrivano i font, e
-    // far scivolare una pagina che poi si riassesta sotto gli occhi è
-    // proprio il difetto che il velo era venuto a curare.
+    // LA PAGINA SVOLTA DENTRO IL CAPITOLO, AL CONFINE RESTA IL VELO. Non
+    // sono due lingue per capriccio: dentro il capitolo la pagina dopo è
+    // già impaginata di fianco e la voltata è istantanea, quindi si può
+    // far girare il foglio sopra a un risultato che non cambierà più; al
+    // confine il capitolo si smonta e la misura balla finché non arrivano
+    // i font, e far girare un foglio che poi si riassesta sotto gli occhi
+    // è proprio il difetto che il velo era venuto a curare.
+    //
     // L'AVANZO DI CARTA SI CHIEDE PER PRIMO. È il caso in cui epub.js
     // cederebbe il passo al capitolo dopo pur restando una striscia di
     // testo da leggere: `dentroIlCapitolo` risponde «no» — e ha ragione,
     // perché è la SUA domanda — ma quella striscia è carta di questo
-    // capitolo, già impaginata di fianco, e scivola come tutte le altre.
-    const resto = settings.scivola && dir === "next" ? leftoverScroll(r.manager) : 0;
+    // capitolo, già impaginata di fianco, e svolta come tutte le altre.
+    const resto = settings.svolta && dir === "next" ? leftoverScroll(r.manager) : 0;
     if (resto) {
-      r.manager.scrollBy(resto, 0, true);
-      r.reportLocation();
-      scivola(r, dir, resto);
+      laSvolta(r, dir, () => {
+        r.manager.scrollBy(resto, 0, true);
+        r.reportLocation();
+      });
       return;
     }
-    if (settings.scivola && dentroIlCapitolo(r.manager, dir)) {
-      const p = dir === "next" ? r.next() : r.prev();
-      // il `then` cade nello stesso fotogramma in cui epub.js ha scorso
-      // (la sua coda gira dentro un rAF, e i microtask si svuotano prima
-      // che si dipinga): la carta si rimette indietro senza che la
-      // posizione nuova arrivi mai sullo schermo
-      p?.then?.(() => scivola(r, dir));
+    if (settings.svolta && dentroIlCapitolo(r.manager, dir)) {
+      // LA VOLTATA QUI DENTRO NON PASSA DALLA CODA DI EPUB.JS, e non e'
+      // una scorciatoia: e' l'unico modo che funzioni. `rendition.next()`
+      // mette il lavoro in coda e la coda gira dentro un
+      // `requestAnimationFrame`; ma `startViewTransition` SOSPENDE il
+      // rendering finche' il suo callback non ha finito, quindi il rAF
+      // non arriva mai, la coda non gira mai e la promessa non si chiude
+      // mai. Uno stallo pulito: nessun errore, la prima pagina non gira e
+      // da li' in poi non gira piu' niente.
+      //
+      // Dentro il capitolo `manager.next()` e' una riga sincrona — sposta
+      // `scrollLeft` di una facciata — e `reportLocation` e' quello che
+      // `rendition.next()` farebbe dopo. Si fa quello, dentro il
+      // callback, e la transizione si chiude nello stesso istante.
+      laSvolta(r, dir, () => {
+        if (dir === "next") r.manager.next();
+        else r.manager.prev();
+        r.reportLocation();
+      });
       return;
     }
 
@@ -1771,6 +1789,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             // il margine di lettura mostrava la copertina e staccava le
             // pagine impilate dal foglio
             background: theme.bg,
+            // il nome che dice al browser COSA fotografare quando la
+            // pagina svolta: senza, la View Transition prenderebbe tutto
+            // lo schermo — barre comprese — e a girare sarebbe la finestra
+            // invece del foglio
+            ...(settings.svolta ? { viewTransitionName: "bc-pagina" } : {}),
           }}
         />
         {/* il velo sta SOTTO il filtro caldo e la luminosita' (che vivono
@@ -2294,25 +2317,25 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           </div>
           <div style={{ marginBottom: 14 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: F.nota, color: C.muted }}>La pagina scivola</span>
+              <span style={{ fontSize: F.nota, color: C.muted }}>La pagina svolta</span>
               <button
-                onClick={() => updateSettings({ scivola: !settings.scivola })}
+                onClick={() => updateSettings({ svolta: !settings.svolta })}
                 style={{
                   padding: "6px 16px",
                   borderRadius: R.tondo,
                   fontSize: F.nota,
-                  border: `1px solid ${settings.scivola ? C.accent : C.border}`,
-                  color: settings.scivola ? C.accent : C.muted,
-                  background: settings.scivola ? `${C.accent}14` : "transparent",
+                  border: `1px solid ${settings.svolta ? C.accent : C.border}`,
+                  color: settings.svolta ? C.accent : C.muted,
+                  background: settings.svolta ? `${C.accent}14` : "transparent",
                 }}
               >
-                {settings.scivola ? "Attiva ↔" : "Spenta"}
+                {settings.svolta ? "Attiva 📖" : "Spenta"}
               </button>
             </div>
             <p style={{ margin: "5px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.45 }}>
-              {settings.scivola
-                ? "La pagina nuova entra di lato invece di comparire. Al cambio di capitolo resta la dissolvenza: lì la misura si assesta, e farla scivolare vorrebbe dire vederla riassestarsi."
-                : "Ogni voltata è una dissolvenza. Spegnila se sul tuo schermo lo scorrimento scatta."}
+              {settings.svolta
+                ? "Il foglio gira attorno al dorso, come in un libro. Al cambio di capitolo resta la dissolvenza: lì la misura si assesta, e far girare un foglio che poi si riassesta sarebbe peggio."
+                : "Ogni voltata è una dissolvenza. Tienila spenta se sul tuo schermo la svolta scatta."}
             </p>
           </div>
           {haGlossario(book) && (
