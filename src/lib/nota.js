@@ -117,12 +117,12 @@ export function bersaglio(doc, frammento) {
   }
 }
 
-export function estraiNota(doc, frammento) {
+export function trovaNota(doc, frammento) {
   const ancora = bersaglio(doc, frammento);
-  if (!ancora) return "";
+  if (!ancora) return null;
   // il frammento che punta dritto alla nota: <aside>, <li>, <p> col testo
   const marcatore = quanto(ancora) < NOTA_MINIMA || /^a$/i.test(ancora.tagName || "");
-  if (!marcatore) return puoEssereNota(ancora) ? pulisciNota(ancora.textContent) : "";
+  if (!marcatore) return puoEssereNota(ancora) ? ancora : null;
 
   // PRIMA il blocco vero che la contiene: li' una nota ci sta per davvero,
   // e la lunghezza non conta.
@@ -132,19 +132,92 @@ export function estraiNota(doc, frammento) {
   // e se nemmeno quello, la nota e' il blocco che SEGUE l'ancora nuda —
   // la forma dei convertiti da Mobi, dove l'ancora sta appesa da sola
   if (!puoEssereNota(el)) el = primoBloccoDopo(ancora);
-  return puoEssereNota(el) ? pulisciNota(el.textContent) : "";
+  return puoEssereNota(el) ? el : null;
 }
 
-const NOTA_MAX = 1500;
+export function estraiNota(doc, frammento) {
+  const el = trovaNota(doc, frammento);
+  return el ? pulisciNota(el.textContent) : "";
+}
 
-// via il ritorno («↩»), i capi a piu' spazi, e un tetto: una nota lunga
-// mezzo capitolo e' quasi sempre il contenitore preso per sbaglio
+// LE NOTE DENTRO LE NOTE. È una firma di Pratchett: una nota a piè di
+// pagina che ne porta un'altra. La scheda mostrava il testo come STRINGA,
+// quindi quell'asterisco lì dentro era un carattere morto — si vedeva e
+// non si poteva toccare, che è esattamente il difetto da cui siamo
+// partiti, un piano più sotto.
+//
+// Qui la nota si spezza nei suoi pezzi: corsa di testo, rimando, corsa di
+// testo. Il rimando resta AL SUO POSTO nella frase, dove l'autore l'ha
+// messo, invece di essere raccolto in fondo: un segno di nota fuori dal
+// suo punto non vuol dire più niente.
+export function pezziNota(el) {
+  if (!el) return [];
+  const fuori = [];
+  let corsa = "";
+  const chiudi = () => {
+    const t = corsa.replace(/\s+/g, " ");
+    if (t.trim()) fuori.push({ tipo: "testo", testo: t });
+    corsa = "";
+  };
+  const giu = (nodo) => {
+    for (const n of nodo.childNodes || []) {
+      if (n.nodeType === 3) {
+        corsa += n.nodeValue || "";
+        continue;
+      }
+      if (n.nodeType !== 1) continue;
+      const href = n.getAttribute?.("href") || "";
+      const segno = String(n.textContent || "").trim();
+      if (
+        /^a$/i.test(n.tagName || "") &&
+        eNotaRef({
+          href,
+          testo: segno,
+          tipo: n.getAttribute?.("epub:type") || n.getAttribute?.("type") || "",
+          ruolo: n.getAttribute?.("role") || "",
+        })
+      ) {
+        chiudi();
+        fuori.push({ tipo: "nota", segno: segno || "*", href });
+        continue;
+      }
+      giu(n);
+    }
+  };
+  giu(el);
+  chiudi();
+  // la stessa cura del testo nudo: via il ritorno in coda, e un tetto
+  const primo = fuori.find((p) => p.tipo === "testo");
+  if (primo) primo.testo = primo.testo.replace(/^\s+/, "");
+  const ultimo = [...fuori].reverse().find((p) => p.tipo === "testo");
+  if (ultimo) ultimo.testo = pulisciNota(ultimo.testo);
+  return fuori.filter((p) => p.tipo !== "testo" || p.testo);
+}
+
+// IL TETTO NON E' PIU' UN LIMITE DI LETTURA, E' UNA RETE DI SICUREZZA.
+//
+// Stava a 1500 caratteri, ed era nato per contenere il danno quando
+// l'estrazione prendeva il contenitore al posto della nota. Quel difetto
+// adesso e' chiuso a monte (vedi `puoEssereNota`), quindi una nota che
+// arriva lunga e' una NOTA LUNGA — e le note di Pratchett arrivano
+// tranquillamente a mezza pagina. A 1500 il tetto le tagliava la fine, e
+// il lettore non aveva modo di accorgersene: la scheda scorre gia' da
+// sola (`Panel` ha `overflowY: auto`), quindi non c'era niente da
+// risparmiare. Ora sta dove una nota non arriva mai.
+export const NOTA_MAX = 8000;
+
+// E SE PROPRIO SI TAGLIA, LO SI DICE. Tre puntini muti sono
+// indistinguibili da tre puntini scritti dall'autore: il lettore crede che
+// la nota finisca li'.
+export const TAGLIO = "… [la nota prosegue nel libro]";
+
+// via il ritorno («↩»), i capi a piu' spazi, e il tetto di sicurezza
 export function pulisciNota(testo) {
   let t = String(testo || "").replace(/\s+/g, " ").trim();
   t = t.replace(/[↩⏎←]\s*$/g, "").trim();
   if (t.length > NOTA_MAX) {
     const taglio = t.lastIndexOf(". ", NOTA_MAX);
-    t = `${t.slice(0, taglio > NOTA_MAX / 2 ? taglio + 1 : NOTA_MAX)}…`;
+    t = `${t.slice(0, taglio > NOTA_MAX / 2 ? taglio + 1 : NOTA_MAX)}${TAGLIO}`;
   }
   return t;
 }

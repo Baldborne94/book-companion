@@ -4,7 +4,10 @@
 // segno (*, †, [3]), un link di indice è una parola — e scambiare i due
 // vuol dire o un indice che non naviga più, o una nota che ti strappa
 // dalla pagina. Più il bersaglio allargato, che è geometria pura.
-import { eNotaRef, risolviHref, estraiNota, pulisciNota, piuVicina, primoBloccoDopo } from "../src/lib/nota.js";
+import {
+  eNotaRef, risolviHref, estraiNota, pulisciNota, piuVicina, primoBloccoDopo,
+  pezziNota, NOTA_MAX, TAGLIO,
+} from "../src/lib/nota.js";
 
 // un documento finto quanto basta: getElementById, closest e i FRATELLI
 // (senza i fratelli non si può provare la nota che sta dopo l'ancora)
@@ -38,6 +41,20 @@ const elemento = (tag, testo, genitore) => {
   return el;
 };
 const contenitore = (tag = "body") => ({ tagName: tag.toUpperCase(), figli: [], textContent: "" });
+
+// per `pezziNota` serve la forma vera del DOM: nodi di testo e di
+// elemento, mescolati, con gli attributi. `figli` sopra basta per i
+// fratelli, non per camminare dentro un paragrafo.
+const testo = (v) => ({ nodeType: 3, nodeValue: v, textContent: v });
+const tag = (nome, attr, dentro = []) => ({
+  nodeType: 1,
+  tagName: nome.toUpperCase(),
+  childNodes: dentro,
+  getAttribute: (k) => attr[k] ?? null,
+  get textContent() {
+    return dentro.map((n) => n.textContent || "").join("");
+  },
+});
 // `perNome` = le ancore alla vecchia maniera, `<a name="filepos1">`, che
 // `getElementById` non vede: si trovano solo con un querySelector
 const docCon = (mappa, perNome = {}) => ({
@@ -94,9 +111,25 @@ export default async function (t) {
 
   t.eq("gli spazi si stirano", pulisciNota("  una\n   nota  "), "una nota");
   t.eq("il ritorno alla fine se ne va", pulisciNota("la nota ↩"), "la nota");
-  const lunga = `${"Una frase vera. ".repeat(200)}`;
-  t.c("una nota-lenzuolo si tronca", pulisciNota(lunga).length < 1600);
-  t.c("e si tronca a fine frase, con i puntini", /\.…$|…$/.test(pulisciNota(lunga)));
+  // IL TETTO NON È PIÙ UN LIMITE DI LETTURA. Stava a 1500 caratteri per
+  // contenere il danno quando l'estrazione prendeva il contenitore al
+  // posto della nota; quel difetto ora è chiuso a monte, e a 1500 il
+  // tetto tagliava la fine delle note lunghe — quelle di Pratchett
+  // arrivano a mezza pagina — senza che il lettore potesse accorgersene.
+  const lungaVera = `${"Una frase vera. ".repeat(200)}`; // ~3200 battute
+  t.c("una nota lunga arriva INTERA", pulisciNota(lungaVera).length > 3000, String(pulisciNota(lungaVera).length));
+  t.c("e non porta il segno del taglio", !pulisciNota(lungaVera).includes(TAGLIO));
+  // la rete di sicurezza però c'è ancora, e quando scatta LO DICE: tre
+  // puntini muti sono indistinguibili da tre puntini scritti dall'autore
+  const lenzuolo = `${"Una frase vera. ".repeat(2000)}`;
+  t.c("un lenzuolo si taglia lo stesso", pulisciNota(lenzuolo).length < NOTA_MAX + TAGLIO.length + 2);
+  t.c("e il taglio si DICE", pulisciNota(lenzuolo).endsWith(TAGLIO), pulisciNota(lenzuolo).slice(-40));
+  // e «dirlo» vuol dire PAROLE: tre puntini muti sono indistinguibili da
+  // tre puntini scritti dall'autore, e il lettore crede che la nota
+  // finisca lì. (Confrontare il testo tagliato con `TAGLIO` non basta a
+  // provarlo: cambia tutt'e due i lati, e il test passerebbe anche su un
+  // taglio tornato muto — verificato rompendolo apposta.)
+  t.c("e il segno del taglio non è muto", /\p{L}{3,}/u.test(TAGLIO), TAGLIO);
 
   // ---- il bersaglio allargato -------------------------------------------
   const rett = [
@@ -211,4 +244,50 @@ export default async function (t) {
     "un paragrafo lungo resta la nota (il tetto è solo per div e section)",
     estraiNota(docCon({ fn: dentroFiume }), "fn").startsWith("* Una nota lunghissima")
   );
+
+  // ---- LE NOTE DENTRO LE NOTE -------------------------------------------
+  // È una firma di Pratchett: una nota a piè di pagina che ne porta
+  // un'altra. La scheda mostrava il testo come STRINGA, quindi
+  // quell'asterisco lì dentro era un carattere morto — si vedeva e non si
+  // poteva toccare, che è il difetto da cui siamo partiti un piano sopra.
+  const conDentro = tag("p", {}, [
+    testo("Il Bagaglio non è mai andato nelle Dimensioni Sotterranee."),
+    tag("a", { href: "#fn9" }, [testo("*")]),
+    testo(" Almeno, non da solo."),
+  ]);
+  const pezzi = pezziNota(conDentro);
+  t.eq("la nota si spezza in tre pezzi", pezzi.length, 3);
+  t.eq("il primo è testo", pezzi[0].tipo, "testo");
+  t.eq("IL SECONDO È UN RIMANDO TOCCABILE", pezzi[1].tipo, "nota");
+  t.eq("che sa dove punta", pezzi[1].href, "#fn9");
+  t.eq("e col suo segno", pezzi[1].segno, "*");
+  // e resta AL SUO POSTO nella frase: un segno di nota spostato altrove
+  // non vuol dire più niente
+  t.c("il testo dopo il rimando non si perde", /Almeno, non da solo/.test(pezzi[2].testo));
+  t.c("e quello prima nemmeno", /Dimensioni Sotterranee/.test(pezzi[0].testo));
+
+  // un LINK NORMALE dentro una nota non è un rimando: deve restare testo,
+  // o la nota si riempirebbe di bottoni che non aprono niente
+  const conLink = tag("p", {}, [
+    testo("Come si è visto nel "),
+    tag("a", { href: "cap3.xhtml" }, [testo("Capitolo 3")]),
+    testo(", il Bagaglio è testardo."),
+  ]);
+  t.c("un link d'indice dentro la nota resta testo", pezziNota(conLink).every((p) => p.tipo === "testo"));
+  t.c("e la frase resta intera", /Capitolo 3/.test(pezziNota(conLink).map((p) => p.testo).join("")));
+
+  // una nota senza niente dentro fa un pezzo solo
+  t.eq("una nota semplice è un pezzo solo", pezziNota(tag("p", {}, [testo("Nota liscia.")])).length, 1);
+  t.eq("e il niente non esplode", pezziNota(null).length, 0);
+
+  // i rimandi si trovano anche ANNIDATI dentro gli <span> con cui gli
+  // ePub vestono gli apici: è la forma vera dell'Eric del lettore
+  const vestito = tag("p", {}, [
+    testo("Il demone tremò."),
+    tag("span", {}, [tag("a", { href: "note.xhtml#n2" }, [testo("†")])]),
+    testo(" E aveva ragione."),
+  ]);
+  const sepolti = pezziNota(vestito);
+  t.eq("il rimando sepolto sotto uno <span> si trova lo stesso", sepolti[1]?.tipo, "nota");
+  t.eq("col suo href risolvibile", sepolti[1]?.href, "note.xhtml#n2");
 }
