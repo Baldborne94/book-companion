@@ -107,6 +107,81 @@ export function formaDi(text) {
   return null;
 }
 
+// UNA DEFINIZIONE CHE RIMANDA A UN'ALTRA PAROLA NON SPIEGA NIENTE.
+//
+// «gormlessness» ha come unica definizione «The quality or state of being
+// gormless»: chi non sa cosa vuol dire «gormless» chiude la scheda
+// esattamente dov'era, e il vocabolario non ha fatto il suo mestiere
+// (chiesto dal lettore: «quando succede questo ho bisogno che mi dai anche
+// la definizione della parola, in questo caso gormless»).
+//
+// E' il gemello di `formaDi`, ma per le forme DERIVATE, e la differenza
+// conta: li' la parola base e' la STESSA parola in un'altra veste, e i suoi
+// sensi si possono accodare come fossero suoi; qui e' un'ALTRA parola, e
+// accodarne i sensi direbbe che «gormlessness» significa «stupido». La sua
+// definizione va mostrata a parte, rientrata, come il rimando di un
+// vocabolario di carta.
+//
+// Le forme si riconoscono solo quando occupano la definizione INTERA: una
+// glossa che nomina un'altra parola di sfuggita («a hat worn by wizards»)
+// non e' un rimando, e inseguirla riempirebbe la scheda di parole che
+// nessuno ha chiesto.
+const DERIVATE = [
+  // gormlessness → gormless; kindness → kind
+  /^(?:the\s+)?(?:quality|state|condition|property|fact)(?:\s+or\s+(?:quality|state|condition|property))?\s+of\s+being\s+([a-z][a-z'-]*)\.?$/i,
+  // gormlessly → gormless
+  /^in\s+an?\s+([a-z][a-z'-]*)\s+(?:manner|way|fashion)\.?$/i,
+  // sylvan → of or relating to woods
+  /^(?:of\s+or\s+)?(?:relating|pertaining|related)\s+to\s+([a-z][a-z'-]*)\.?$/i,
+  // running → the act of running
+  /^(?:the\s+)?(?:act|action|process|practice)\s+of\s+([a-z][a-z'-]*)\.?$/i,
+  // characterized by gormlessness
+  /^(?:characterized|characterised|marked)\s+by\s+([a-z][a-z'-]*)\.?$/i,
+];
+
+export function derivataDa(text, parola = "") {
+  const t = String(text || "").trim();
+  for (const re of DERIVATE) {
+    const m = re.exec(t);
+    if (!m) continue;
+    const base = m[1].toLowerCase();
+    // una parola che rimanda a se stessa non e' un rimando, ed e' proprio
+    // la forma in cui girerebbe in tondo
+    if (!base || base === String(parola).toLowerCase()) return null;
+    return base;
+  }
+  return null;
+}
+
+// I sensi veri di una parola: se il vocabolario risponde solo con dei
+// rimandi di forma flessa (`gormless` potrebbe essere «alternative form
+// of…»), si segue quello — UN salto solo, come sulla parola cercata.
+async function sensiVeri(parola, lang) {
+  const sensi = await fetchSenses(parola, lang);
+  const propri = sensi.filter((e) => !formaDi(e.text));
+  if (propri.length) return propri;
+  const f = sensi.map((e) => formaDi(e.text)).find((x) => x && x.lemma !== parola);
+  if (!f) return sensi;
+  return (await fetchSenses(f.lemma, lang)).filter((e) => !formaDi(e.text));
+}
+
+// il rimando si attacca alla definizione che lo contiene, non in fondo alla
+// scheda: e' quella riga che senza di lui non si capisce
+async function seguiDerivata(entries, parola, lang) {
+  for (const e of entries) {
+    if (e.forma) continue;
+    const base = derivataDa(e.text, parola);
+    if (!base) continue;
+    try {
+      const sensi = await sensiVeri(base, lang);
+      if (sensi.length) e.rimando = { parola: base, sensi: sensi.slice(0, 3) };
+    } catch {
+      /* resta la definizione del vocabolario: gia' e' quella giusta, solo muta */
+    }
+    return;
+  }
+}
+
 async function fetchSenses(word, section) {
   const res = await fetch(
     `https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(word)}`
@@ -458,8 +533,15 @@ export async function lookup(raw, bookLang = "en") {
   await loadCache();
   const known = CACHE.get(key);
   // le voci salvate prima che i rimandi si seguissero contengono ancora il
-  // "plural of" nudo: si riprovano, cosi' si completano da sole
-  if (known && !known.entries?.some((e) => formaDi(e.text))) {
+  // "plural of" nudo: si riprovano, cosi' si completano da sole. Stessa
+  // cosa per i rimandi alle forme derivate, arrivati dopo: una voce che ne
+  // avrebbe uno ma non ce l'ha e' di prima della cura — e solo quella si
+  // ripesca, cosi' non si butta via una cache intera per una novita' che
+  // riguarda una parola su venti.
+  const vecchia =
+    known?.entries?.some((e) => formaDi(e.text)) ||
+    known?.entries?.some((e) => !e.forma && !e.rimando && derivataDa(e.text, word));
+  if (known && !vecchia) {
     known.at = Date.now();
     return known;
   }
@@ -496,6 +578,12 @@ export async function lookup(raw, bookLang = "en") {
     }
   }
 
+  // e ora il rimando alla parola DERIVATA, sulle sole voci che si mostrano:
+  // inseguirne una che il taglio a otto butterebbe via sarebbe una richiesta
+  // spesa per niente
+  const mostrate = entries.slice(0, 8);
+  await seguiDerivata(mostrate, word, lang);
+
   const out = {
     word,
     translation,
@@ -504,7 +592,7 @@ export async function lookup(raw, bookLang = "en") {
     // mostra tutte e due, come fa un vocabolario di carta.
     lemma: base?.lemma || null,
     forma: base?.label || null,
-    entries: entries.slice(0, 8),
+    entries: mostrate,
     // il libro e' straniero e la traduzione non e' arrivata: la scheda
     // avvisa che le definizioni restano in lingua originale
     foreign: lang !== "it" && !translation && entries.length > 0,

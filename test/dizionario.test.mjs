@@ -2,7 +2,7 @@
 // che conta e' come si TRATTA la risposta — e' li' che il dizionario si
 // era rotto la prima volta, con un pezzo di romanzo spacciato per una
 // traduzione.
-import { lookup, formaDi, cleanWord, wordCount } from "../src/lib/dictionary.js";
+import { lookup, formaDi, derivataDa, cleanWord, wordCount } from "../src/lib/dictionary.js";
 
 // `strip()` in dictionary.js usa DOMParser, che in Node non c'e'. Invece di
 // tirarsi dietro jsdom per otto righe, se ne mette una copia minima: qui
@@ -36,6 +36,21 @@ export default async function (t) {
     },
     gutters: { en: [{ partOfSpeech: "Noun", definitions: [{ definition: "plural of gutter" }] }] },
     gutter: { en: [{ partOfSpeech: "Noun", definitions: [{ definition: "A prepared channel in a surface." }] }] },
+    // la voce vera che ha fatto chiedere la cura: la sua UNICA definizione
+    // e' un rimando a un'altra parola, e da sola non spiega niente
+    gormlessness: {
+      en: [{ partOfSpeech: "Noun", definitions: [{ definition: "The quality or state of being <a>gormless</a>." }] }],
+    },
+    gormless: {
+      en: [
+        { partOfSpeech: "Adjective", definitions: [{ definition: "Lacking intelligence or understanding; stupid." }] },
+      ],
+    },
+    // una parola derivata la cui base e' a sua volta una forma flessa: il
+    // rimando deve arrivare ai sensi VERI, non a un secondo rimando
+    fuminess: {
+      en: [{ partOfSpeech: "Noun", definitions: [{ definition: "The state of being fuming." }] }],
+    },
   };
 
   // la risposta che aveva rovinato tutto: MyMemory pesca dalle sue memorie
@@ -110,6 +125,54 @@ export default async function (t) {
   // --- 4. formaDi da solo --------------------------------------------------
   t.eq("formaDi participio", formaDi("present participle of fume")?.lemma, "fume");
   t.c("formaDi non inventa", formaDi("A gas or vapour that smells") === null);
+
+  // --- 4-bis. UNA DEFINIZIONE CHE RIMANDA NON SPIEGA NIENTE ---------------
+  // Segnalato dal lettore su «gormlessness», la cui unica definizione è
+  // «The quality or state of being gormless»: chi non sa cosa vuol dire
+  // «gormless» chiude la scheda esattamente dov'era.
+  const gorm = await lookup("gormlessness", "en");
+  t.eq("la definizione del vocabolario resta la sua", gorm.entries.length, 1);
+  t.c("e resta scritta com'era", /quality or state of being/i.test(gorm.entries[0].text));
+  t.eq("il rimando dice quale parola", gorm.entries[0].rimando?.parola, "gormless");
+  t.c(
+    "E PORTA LA SUA DEFINIZIONE",
+    /Lacking intelligence/i.test(gorm.entries[0].rimando?.sensi?.[0]?.text || ""),
+    JSON.stringify(gorm.entries[0].rimando)
+  );
+  t.eq("con la sua categoria grammaticale", gorm.entries[0].rimando?.sensi?.[0]?.pos, "aggettivo");
+  // i sensi della parola base NON si mescolano ai sensi della parola
+  // cercata: «gormlessness» non significa «stupido», e accodarli lì lo
+  // direbbe
+  t.c("i sensi della base non finiscono fra quelli della parola",
+    !gorm.entries.some((e) => /Lacking intelligence/i.test(e.text)));
+
+  // e se la base è a sua volta una forma flessa, si arriva ai sensi veri
+  const fumi = await lookup("fuminess", "en");
+  t.eq("la base di «fuminess»", fumi.entries[0].rimando?.parola, "fuming");
+  t.c(
+    "e il rimando scavalca il secondo rinvio",
+    fumi.entries[0].rimando?.sensi?.some((s) => /A gas or vapour|great anger/i.test(s.text)),
+    JSON.stringify(fumi.entries[0].rimando)
+  );
+
+  // una parola SENZA rimando non se ne inventa uno
+  t.c("«fume» non ha rimandi", !(await lookup("fume", "en")).entries.some((e) => e.rimando));
+
+  // --- 4-ter. derivataDa da sola ------------------------------------------
+  t.eq("la qualità di essere X", derivataDa("The quality or state of being gormless."), "gormless");
+  t.eq("lo stato di essere X", derivataDa("The state of being ready"), "ready");
+  t.eq("in modo X", derivataDa("In a gormless manner."), "gormless");
+  t.eq("relativo a X", derivataDa("Of or relating to woods."), "woods");
+  t.eq("l'atto di X", derivataDa("The act of running."), "running");
+  t.eq("caratterizzato da X", derivataDa("Characterized by gormlessness."), "gormlessness");
+  // UNA GLOSSA CHE NOMINA UN'ALTRA PAROLA DI SFUGGITA NON È UN RIMANDO:
+  // inseguirla riempirebbe la scheda di parole che nessuno ha chiesto
+  t.eq("una definizione vera non è un rimando", derivataDa("A hat worn by wizards."), null);
+  t.eq("nemmeno se contiene «of being»", derivataDa("A tale of being lost at sea."), null);
+  t.eq("e nemmeno se nomina un altro termine", derivataDa("A gas or vapour that smells."), null);
+  // una parola che rimanda a se stessa girerebbe in tondo
+  t.eq("e non si rimanda a se stessa", derivataDa("The state of being ready", "ready"), null);
+  t.eq("il niente non esplode", derivataDa(undefined), null);
 
   // --- 5. le due funzioni di testo, che non devono essere cambiate --------
   t.eq("cleanWord", cleanWord("«Fuming!»"), "Fuming");

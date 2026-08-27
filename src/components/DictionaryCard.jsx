@@ -88,6 +88,44 @@ function Voce({ dict }) {
                     </span>
                   )}
                   <span style={{ fontSize: F.nota, color: C.text, lineHeight: 1.5 }}>{e.text}</span>
+                  {/* «The quality or state of being gormless» non spiega
+                      niente a chi non sa cosa vuol dire «gormless»: la sua
+                      definizione va qui, rientrata, come il rimando di un
+                      vocabolario di carta — e non fra i sensi qui sopra,
+                      che sono di un'ALTRA parola */}
+                  {e.rimando && (
+                    <div
+                      style={{
+                        marginTop: 6,
+                        paddingLeft: 9,
+                        borderLeft: `2px solid ${C.border}`,
+                      }}
+                    >
+                      <span style={{ fontSize: F.minuscolo, fontWeight: 600, color: C.accent }}>
+                        {e.rimando.parola}
+                      </span>
+                      {e.rimando.sensi.map((s, k) => (
+                        <div
+                          key={k}
+                          style={{ fontSize: F.minuscolo, color: C.muted, lineHeight: 1.45, marginTop: 2 }}
+                        >
+                          {s.pos && (
+                            <span
+                              style={{
+                                letterSpacing: 0.5,
+                                textTransform: "uppercase",
+                                color: C.arcane,
+                                marginRight: 6,
+                              }}
+                            >
+                              {s.pos}
+                            </span>
+                          )}
+                          {s.text}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
