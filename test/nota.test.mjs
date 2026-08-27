@@ -38,7 +38,15 @@ const elemento = (tag, testo, genitore) => {
   return el;
 };
 const contenitore = (tag = "body") => ({ tagName: tag.toUpperCase(), figli: [], textContent: "" });
-const docCon = (mappa) => ({ getElementById: (id) => mappa[id] || null });
+// `perNome` = le ancore alla vecchia maniera, `<a name="filepos1">`, che
+// `getElementById` non vede: si trovano solo con un querySelector
+const docCon = (mappa, perNome = {}) => ({
+  getElementById: (id) => mappa[id] || null,
+  querySelector: (sel) => {
+    const m = /^\[name="(.*)"\]$/.exec(sel);
+    return (m && perNome[m[1]]) || null;
+  },
+});
 
 export default async function (t) {
   // ---- il riconoscimento del rimando ------------------------------------
@@ -143,5 +151,64 @@ export default async function (t) {
     "l'ancora dentro un paragrafo prende il suo",
     estraiNota(docCon({ fn: dentro }), "fn"),
     "* La nota che contiene l'ancora."
+  );
+
+  // ---- L'ANCORA ALLA VECCHIA MANIERA ------------------------------------
+  // I convertiti da Mobi scrivono `<a name="filepos257551"></a>`, che
+  // `getElementById` NON vede: il frammento risultava introvabile e il
+  // tocco si ripiegava su un salto che moriva in silenzio.
+  const corpo5 = contenitore("body");
+  const vecchia = elemento("a", "", corpo5);
+  elemento("p", "* La nota trovata col vecchio name.", corpo5);
+  t.eq(
+    "l'ancora col vecchio `name` si trova lo stesso",
+    estraiNota(docCon({}, { filepos1: vecchia }), "filepos1"),
+    "* La nota trovata col vecchio name."
+  );
+
+  // ---- IL CONTENITORE NON È LA NOTA -------------------------------------
+  // Segnalato dal lettore con uno screenshot: toccato l'asterisco, la
+  // scheda mostrava l'INIZIO DEL LIBRO — «Begin Reading» più l'epigrafe —
+  // troncato a 1500 caratteri così bene da sembrare una nota vera.
+  //
+  // La causa: in Eric (convertito da Mobi) il romanzo è UN documento solo
+  // dentro un unico <div>, e l'ancora della nota è una <a name> nuda
+  // appesa lì dentro. `closest("div")` tornava quel <div> e il controllo
+  // era solo «ha abbastanza testo».
+  const IL_LIBRO = `Begin Reading${"The bees of Death are big and black. ".repeat(80)}`;
+  const corpo6 = contenitore("body");
+  const divone = elemento("div", IL_LIBRO, corpo6);
+  elemento("a", "Begin Reading", divone);
+  elemento("p", "The bees of Death are big and black.", divone);
+  const ancoraMobi = elemento("a", "", divone);
+  elemento("p", "* Il Bagaglio non è mai andato nelle Dimensioni Sotterranee.", divone);
+  t.eq(
+    "IL LIBRO INTERO NON È UNA NOTA: si prende il blocco che segue l'ancora",
+    estraiNota(docCon({}, { filepos2: ancoraMobi }), "filepos2"),
+    "* Il Bagaglio non è mai andato nelle Dimensioni Sotterranee."
+  );
+
+  // ma un <div> piccolo è una nota per davvero, e non va buttato via col
+  // resto: tanti ePub la nota la mettono proprio lì
+  const corpo7 = contenitore("body");
+  const divino = elemento("div", "* Una nota dentro un div piccolo.", corpo7);
+  const dentroDiv = elemento("a", "", divino);
+  elemento("p", "Il paragrafo dopo, che NON è la nota.", corpo7);
+  t.eq(
+    "un div piccolo resta una nota",
+    estraiNota(docCon({ fn: dentroDiv }), "fn"),
+    "* Una nota dentro un div piccolo."
+  );
+
+  // e un blocco VERO non ha tetto: una nota di Pratchett può essere lunga
+  // quanto una pagina, e resta la nota — il tetto è solo per i contenitori
+  // generici, che possono essere il libro
+  const NOTA_FIUME = `* ${"Una nota lunghissima ma pur sempre una nota. ".repeat(60)}`;
+  const corpo8 = contenitore("body");
+  const parFiume = elemento("p", NOTA_FIUME, corpo8);
+  const dentroFiume = elemento("a", "", parFiume);
+  t.c(
+    "un paragrafo lungo resta la nota (il tetto è solo per div e section)",
+    estraiNota(docCon({ fn: dentroFiume }), "fn").startsWith("* Una nota lunghissima")
   );
 }

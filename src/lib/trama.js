@@ -208,13 +208,19 @@ export async function raccogliTrama(tappe, { vivo } = {}) {
   const attivo = vivo || (() => true);
   const out = [];
   const lontani = [];
-  for (const t of tappe) {
+  // IL POSTO NELLA FRONTIERA, non quello nel raccolto: un tomo rimasto nel
+  // cloud non si sfoglia e salta il giro, quindi gli indici dei due elenchi
+  // divergono — e i numeri di volume tornano titoli contando su `tappe`
+  // (`conTitoli`). Senza il posto vero, con un volume lontano in mezzo la
+  // scheda avrebbe messo sopra a un racconto il titolo del libro sbagliato:
+  // proprio quello che non aveva potuto leggere.
+  for (const [i, t] of tappe.entries()) {
     if (!attivo()) break;
     try {
       const fino = t.tutto ? null : t.fino;
       const r =
         t.libro.fileType === "pdf" ? await tramaDaPdf(t.libro, fino) : await tramaDaEpub(t.libro, fino);
-      if (r) out.push({ libro: t.libro, ...r });
+      if (r) out.push({ libro: t.libro, posto: i, ...r });
       else lontani.push(t.libro);
     } catch {
       /* tomo che non si apre: gli altri bastano */
@@ -411,12 +417,13 @@ export function scegliPrima(raccolto) {
   // si prende una riga come tutti gli altri, per quanti passaggi gli si
   // diano — il modello non puo' sapere che sono tre libri se non glielo
   // si dice (segnalato: «la trilogia me la scarnifichi»)
+  const numero = (r, i) => (r.posto ?? i) + 1;
   const fuori = vecchi.flatMap((r, i) =>
     sparsi(r.corpo, quote[i]).map((testo) => ({
       testo,
       quando: "prima",
       libri: libri[i],
-      volume: i + 1,
+      volume: numero(r, i),
     }))
   );
   const coda = ultimo.coda.slice(-PRIMA_CODA);
@@ -426,10 +433,18 @@ export function scegliPrima(raccolto) {
     ...sparsi(corpo.slice(0, taglio), PRIMA_APERTURA),
     ...sparsi(corpo.slice(taglio), PRIMA_CORPO),
   ];
+  // ANCHE IL VOLUME PIU' RECENTE HA IL SUO NUMERO. Era l'unico senza —
+  // i suoi passaggi arrivavano marcati solo [inizio] e [ultime pagine] —
+  // quindi il modello non aveva un modo di chiamarlo e scriveva «nel
+  // volume appena chiuso»; e una frase non e' un numero, quindi `conTitoli`
+  // non aveva niente da sostituire e il titolo vero non compariva mai.
+  // Su una scheda che percorre tre volumi in fila, l'ultimo paragrafo
+  // sembrava cosi' un'aggiunta senza padrone (segnalato dal lettore).
+  const suo = numero(ultimo, vecchi.length);
   return [
     ...fuori,
-    ...scelti.map((testo) => ({ testo, quando: "qui" })),
-    ...coda.map((testo) => ({ testo, quando: "coda" })),
+    ...scelti.map((testo) => ({ testo, quando: "qui", volume: suo })),
+    ...coda.map((testo) => ({ testo, quando: "coda", volume: suo })),
   ];
 }
 
@@ -526,10 +541,17 @@ export async function chiediPrima({ passaggi, tappe }, fetcher) {
             "più recenti, quelli da cui il lettore riparte davvero. Dei più lontani basta quello che " +
             "serve a capire il presente."
     );
+    // OGNI VOLUME SI CHIAMA COL SUO NUMERO, l'ultimo compreso: solo cosi'
+    // `conTitoli` puo' rimettere i titoli veri sullo schermo. Senza questa
+    // riga il modello scriveva «nel volume appena chiuso» — una frase, non
+    // un numero — e il lettore si trovava un paragrafo che non diceva di
+    // quale libro stesse parlando.
     righe.push(
       "Quando dici dove accade una cosa, scrivi proprio «Volume 1», «Volume 2»: l'app mostrerà al " +
-        "lettore i titoli veri. Racconta quello che i passaggi mostrano, senza dedurne fatti che non " +
-        "ci sono."
+        "lettore i titoli veri. Vale per OGNI volume, anche il più recente: chiamalo col suo numero " +
+        "e non «il volume appena chiuso» o «il precedente», o il lettore non saprà di quale libro " +
+        "stai parlando. Nomina il volume ogni volta che cambi volume. Racconta quello che i passaggi " +
+        "mostrano, senza dedurne fatti che non ci sono."
     );
   }
   // un volume che ne raccoglie tre va detto, o si prende lo spazio di uno
@@ -548,7 +570,9 @@ export async function chiediPrima({ passaggi, tappe }, fetcher) {
     const dove =
       p.quando === "prima"
         ? `Volume ${p.volume}${p.libri > 1 ? `, ${p.libri} romanzi in uno` : ""}`
-        : eti[p.quando];
+        : // il volume più recente porta il numero come tutti gli altri, o
+          // resta l'unico che il modello non sa come chiamare
+          `${p.volume ? `Volume ${p.volume}, ` : ""}${eti[p.quando]}`;
     righe.push(`${i + 1}. [${dove}] «${p.testo}»`);
   });
   return chiedi({ system: SISTEMA_PRIMA, user: righe.join("\n"), tetto: TETTO_SCHEDA }, fetcher);

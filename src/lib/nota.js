@@ -48,9 +48,33 @@ export function risolviHref(rel, base = "") {
 // fino al primo blocco piccolo.
 // quanto testo basta perche' un elemento sia «la nota» e non un'ancora
 export const NOTA_MINIMA = 4;
-const BLOCCHI = "aside, li, p, dd, blockquote, div, section, td";
+
+// DUE FAMIGLIE DI BLOCCHI, e la differenza non e' cosmetica.
+//
+// `p`, `li`, `aside`… sono i posti dove una nota STA: chi scrive un ePub
+// ci mette dentro il testo della nota e basta, quindi salire fin li' e'
+// sempre giusto, per lunga che sia.
+//
+// `div` e `section` invece non dicono niente: possono essere la nota o
+// possono essere IL LIBRO INTERO. Nei convertiti da Mobi — l'Eric del
+// lettore — il romanzo e' un documento solo dentro un unico <div>, e le
+// ancore delle note sono <a name> nude appese li' dentro. `closest("div")`
+// tornava quel <div>, il controllo era solo «ha abbastanza testo», e la
+// scheda mostrava l'INIZIO DEL LIBRO: «Begin Reading» piu' l'epigrafe,
+// tagliata a 1500 caratteri cosi' bene da sembrare una nota vera.
+const BLOCCHI_VERI = "aside, li, p, dd, blockquote, td";
+const BLOCCHI_GENERICI = "div, section";
+
+// oltre questo, un contenitore generico non e' una nota: e' il capitolo,
+// o il libro. Una nota di Pratchett lunga sta sotto le mille battute.
+export const NOTA_TETTO = 1500;
 
 const quanto = (el) => String(el?.textContent || "").trim().length;
+const eGenerico = (el) => /^(div|section)$/i.test(el?.tagName || "");
+
+// un blocco vero va bene per quanto sia lungo; uno generico solo se e'
+// piccolo, o si finisce a mostrare il libro al posto della nota
+const puoEssereNota = (el) => !!el && quanto(el) >= NOTA_MINIMA && !(eGenerico(el) && quanto(el) > NOTA_TETTO);
 
 // IL PRIMO BLOCCO CHE SEGUE l'ancora, saltando i vuoti. E' la forma dei
 // libri convertiti da Mobi (l'Eric del lettore): `<a id="filepos1"></a>`
@@ -62,7 +86,7 @@ export function primoBloccoDopo(el, passi = 4) {
   let cur = el;
   for (let i = 0; i < passi && cur; i++) {
     let succ = cur.nextElementSibling;
-    while (succ && quanto(succ) < NOTA_MINIMA) succ = succ.nextElementSibling;
+    while (succ && !puoEssereNota(succ)) succ = succ.nextElementSibling;
     if (succ) return succ;
     cur = cur.parentElement;
     if (!cur || /^(body|html)$/i.test(cur.tagName || "")) return null;
@@ -73,23 +97,42 @@ export function primoBloccoDopo(el, passi = 4) {
 // L'ancora nuda non e' la nota: tanti ePub mettono l'id su una <a> vuota o
 // su un <sup>. La nota e' il blocco che li CONTIENE — oppure, quando
 // l'ancora sta fuori da ogni blocco, quello che la SEGUE.
-export function estraiNota(doc, frammento) {
-  if (!doc || !frammento) return "";
-  let el = null;
+// IL BERSAGLIO DI UN FRAMMENTO, e non basta `getElementById`: i libri
+// convertiti da Mobi scrivono spesso l'ancora alla vecchia maniera,
+// `<a name="filepos257551"></a>`, che `getElementById` NON vede — il
+// frammento risultava introvabile, la scheda restava muta e il tocco si
+// ripiegava su un salto che moriva in silenzio.
+export function bersaglio(doc, frammento) {
+  if (!doc || !frammento) return null;
   try {
-    el = doc.getElementById(frammento);
+    const perId = doc.getElementById(frammento);
+    if (perId) return perId;
   } catch {
-    el = null;
+    /* documento senza getElementById: si prova col nome */
   }
-  if (!el) return "";
-  if (quanto(el) < NOTA_MINIMA || /^a$/i.test(el.tagName || "")) {
-    // un contenitore grosso (la sezione con TUTTE le note) non va preso:
-    // si sale solo fino al primo blocco piccolo
-    const dentro = el.closest?.(BLOCCHI);
-    if (dentro && quanto(dentro) >= NOTA_MINIMA) el = dentro;
+  try {
+    return doc.querySelector(`[name="${String(frammento).replace(/["\\]/g, "\\$&")}"]`) || null;
+  } catch {
+    return null;
   }
-  if (quanto(el) < NOTA_MINIMA) el = primoBloccoDopo(el) || el;
-  return pulisciNota(el.textContent);
+}
+
+export function estraiNota(doc, frammento) {
+  const ancora = bersaglio(doc, frammento);
+  if (!ancora) return "";
+  // il frammento che punta dritto alla nota: <aside>, <li>, <p> col testo
+  const marcatore = quanto(ancora) < NOTA_MINIMA || /^a$/i.test(ancora.tagName || "");
+  if (!marcatore) return puoEssereNota(ancora) ? pulisciNota(ancora.textContent) : "";
+
+  // PRIMA il blocco vero che la contiene: li' una nota ci sta per davvero,
+  // e la lunghezza non conta.
+  let el = ancora.closest?.(BLOCCHI_VERI);
+  // poi, e solo se e' piccolo, un contenitore generico
+  if (!puoEssereNota(el)) el = ancora.closest?.(BLOCCHI_GENERICI);
+  // e se nemmeno quello, la nota e' il blocco che SEGUE l'ancora nuda —
+  // la forma dei convertiti da Mobi, dove l'ancora sta appesa da sola
+  if (!puoEssereNota(el)) el = primoBloccoDopo(ancora);
+  return puoEssereNota(el) ? pulisciNota(el.textContent) : "";
 }
 
 const NOTA_MAX = 1500;
