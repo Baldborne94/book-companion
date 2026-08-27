@@ -39,6 +39,11 @@ export function deviceDefaults(shortSide) {
     justify: true,
     // solo per i PDF: toglie i margini bianchi della carta
     ritaglia: true,
+    // la pagina scivola invece di dissolversi. Sta fra le impostazioni e
+    // non cablata perche' e' l'unico modo onesto di rimetterla dopo che
+    // il foglio animato era stato tolto: se sul tablet del lettore
+    // scattasse, la si spegne senza aspettare una versione nuova.
+    scivola: true,
     appTheme: "night",
   };
 }

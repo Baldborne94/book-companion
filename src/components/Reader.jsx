@@ -22,9 +22,9 @@ import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js
 import { explain, termIndex, normalize, wikiUrl, haGlossario } from "../lib/glossary.js";
 import { contextAround } from "../lib/oracle.js";
 import { sillaba } from "../lib/hyphens.js";
-import { eNotaRef, risolviHref, estraiNota, piuVicina } from "../lib/nota.js";
+import { eNotaRef, risolviHref, trovaNota, pezziNota, piuVicina } from "../lib/nota.js";
 import { controllaSpezzatura, saluteInCache, daRicucire, ricuciLibro, conSegni, taci } from "../lib/ricuci.js";
-import { leftoverScroll } from "../lib/spread.js";
+import { leftoverScroll, dentroIlCapitolo } from "../lib/spread.js";
 import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
@@ -1052,6 +1052,67 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // il velo resta su finche' la misura non si ferma. Un secondo tocco
   // durante l'attesa sbriga subito la voltata in coda: due tocchi svelti
   // valgono due pagine, nessuna si perde.
+  // LO SCORRIMENTO DELLA PAGINA, e perché stavolta può costare poco.
+  //
+  // Il foglio animato di allora — palco di iframe clonati, fotografia del
+  // capitolo in un canvas — era caro perché RICOSTRUIVA la pagina a ogni
+  // voltata. Qui non si ricostruisce niente: dentro un capitolo epub.js
+  // sposta `container.scrollLeft` di una facciata e basta, il testo della
+  // pagina dopo è già lì di fianco. Si lascia fare a lui il suo salto
+  // istantaneo, poi si rimette la carta indietro di una facciata con un
+  // `transform` e la si lascia scivolare a zero: solo compositing, niente
+  // layout, nessun evento di scroll — epub.js non se ne accorge affatto.
+  // È la lezione 10 presa alla lettera: solo `transform`.
+  //
+  // Il `transform` va sui FIGLI del contenitore, non sul contenitore: lui
+  // è la finestra che ritaglia, e muoverlo porterebbe via anche la
+  // cornice invece del foglio.
+  const SCIVOLO = 220;
+  const scivolo = useRef(null);
+  function scivola(r, dir, quanto) {
+    const cont = r?.manager?.container;
+    if (!cont) return;
+    const passo = quanto || r.manager.layout?.delta || cont.clientWidth || 0;
+    if (passo <= 0) return;
+    const figli = [...cont.children];
+    if (!figli.length) return;
+    // avanti la carta è andata a sinistra: per rimetterla dov'era la si
+    // spinge a destra, e da lì scivola verso zero
+    const da = dir === "next" ? passo : -passo;
+    if (scivolo.current) clearTimeout(scivolo.current);
+    for (const el of figli) {
+      el.style.transition = "none";
+      el.style.transform = `translateX(${da}px)`;
+    }
+    requestAnimationFrame(() => {
+      for (const el of figli) {
+        el.style.transition = `transform ${SCIVOLO}ms cubic-bezier(.22,.61,.36,1)`;
+        el.style.transform = "translateX(0px)";
+      }
+      // il `transform` si TOGLIE a fine corsa: lasciato addosso fa dei
+      // figli un blocco di contenimento per sempre, e le misure del
+      // ritaglio d'avanzo si prendono su una carta traslata
+      scivolo.current = setTimeout(() => {
+        scivolo.current = null;
+        for (const el of figli) {
+          el.style.transition = "";
+          el.style.transform = "";
+        }
+      }, SCIVOLO + 60);
+    });
+  }
+
+  // un gesto nuovo mentre la carta scivola: si posa dov'è, subito, o le
+  // due voltate si accavallerebbero
+  function posaScivolo(r) {
+    if (scivolo.current) clearTimeout(scivolo.current);
+    scivolo.current = null;
+    for (const el of r?.manager?.container?.children || []) {
+      el.style.transition = "";
+      el.style.transform = "";
+    }
+  }
+
   const inAttesa = useRef(null);
   function step(r, dir) {
     if (inAttesa.current) {
@@ -1059,6 +1120,36 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       inAttesa.current = null;
       subito();
     }
+    posaScivolo(r);
+
+    // LA VOLTATA COMUNE SCIVOLA, QUELLA DI CONFINE RESTA VELATA. Non sono
+    // due lingue per capriccio: dentro il capitolo la pagina dopo è già
+    // impaginata di fianco e si può mostrare mentre arriva; al confine il
+    // capitolo si smonta e la misura balla finché non arrivano i font, e
+    // far scivolare una pagina che poi si riassesta sotto gli occhi è
+    // proprio il difetto che il velo era venuto a curare.
+    // L'AVANZO DI CARTA SI CHIEDE PER PRIMO. È il caso in cui epub.js
+    // cederebbe il passo al capitolo dopo pur restando una striscia di
+    // testo da leggere: `dentroIlCapitolo` risponde «no» — e ha ragione,
+    // perché è la SUA domanda — ma quella striscia è carta di questo
+    // capitolo, già impaginata di fianco, e scivola come tutte le altre.
+    const resto = settings.scivola && dir === "next" ? leftoverScroll(r.manager) : 0;
+    if (resto) {
+      r.manager.scrollBy(resto, 0, true);
+      r.reportLocation();
+      scivola(r, dir, resto);
+      return;
+    }
+    if (settings.scivola && dentroIlCapitolo(r.manager, dir)) {
+      const p = dir === "next" ? r.next() : r.prev();
+      // il `then` cade nello stesso fotogramma in cui epub.js ha scorso
+      // (la sua coda gira dentro un rAF, e i microtask si svuotano prima
+      // che si dipinga): la carta si rimette indietro senza che la
+      // posizione nuova arrivi mai sullo schermo
+      p?.then?.(() => scivola(r, dir));
+      return;
+    }
+
     const gettone = ++assestamento.current;
     const cala = () => {
       if (gettone === assestamento.current) setVelo(false);
@@ -1431,52 +1522,91 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // da Mobi, dove i `filepos` puntano a ancore sparse — un altro
   // qualunque della spina. Si guarda in quest'ordine, e si smette al
   // primo che risponde: un capitolo alla volta, aperto e RICHIUSO.
+  //
+  // La nota si prende in PEZZI, non come stringa: dentro può esserci un
+  // altro rimando (Pratchett le annida), e da una stringa quel rimando
+  // non si può più toccare. I pezzi si costruiscono PRIMA dello
+  // `unload()`: scaricato il capitolo, il documento non c'è più.
   async function notaDaSpina(frammento, saltando) {
     const eb = epubRef.current;
     const voci = eb?.spine?.spineItems || eb?.spine?.items || [];
     for (const item of voci) {
       if (!item || item.href === saltando) continue;
-      let trovato = "";
+      let trovato = null;
       try {
         await item.load(eb.load.bind(eb));
-        trovato = estraiNota(item.document, frammento);
+        const el = trovaNota(item.document, frammento);
+        if (el) trovato = { pezzi: pezziNota(el), base: item.href };
       } catch {
-        trovato = "";
+        trovato = null;
       } finally {
         try { item.unload(); } catch { /* già scaricato */ }
       }
-      if (trovato) return trovato;
+      if (trovato?.pezzi.length) return trovato;
     }
-    return "";
+    return null;
   }
 
-  apriNotaRef.current = async (href, doc, base) => {
+  apriNotaRef.current = async (href, doc, base, incatena = false) => {
     const { file, frammento } = risolviHref(href, base);
     const capo = String(base).split("#")[0];
     // 1. la pagina che hai davanti: e' il caso comune e non costa niente
-    let testo = estraiNota(doc, frammento);
+    let trovata = null;
+    const qui = trovaNota(doc, frammento);
+    if (qui) trovata = { pezzi: pezziNota(qui), base: capo };
+    // Il capitolo si salta SOLO se l'abbiamo davvero già guardato. Aprendo
+    // una nota da DENTRO un'altra il documento non c'è più (il capitolo è
+    // stato scaricato), e senza questa distinzione una nota annidata che
+    // sta nello stesso file non veniva trovata da nessuno dei due passi:
+    // il passo 2 la saltava per «è il file che hai davanti», il passo 3 la
+    // saltava per «l'ha già vista il passo 2».
+    const giaVisto = doc ? capo : null;
     // 2. il documento che il rimando dichiara
-    if (!testo && file && file !== capo) {
+    if (!trovata?.pezzi.length && file && file !== giaVisto) {
       const eb = epubRef.current;
       const item = eb?.spine?.get?.(file);
       if (item) {
         try {
           await item.load(eb.load.bind(eb));
-          testo = estraiNota(item.document, frammento);
+          const el = trovaNota(item.document, frammento);
+          if (el) trovata = { pezzi: pezziNota(el), base: file };
         } catch {
-          testo = "";
+          trovata = null;
         } finally {
           try { item.unload(); } catch { /* già scaricato */ }
         }
       }
     }
     // 3. tutto il resto del libro, un capitolo alla volta
-    if (!testo && frammento) testo = await notaDaSpina(frammento, capo);
-    if (testo) return setNota(testo);
+    if (!trovata?.pezzi.length && frammento) trovata = await notaDaSpina(frammento, giaVisto);
     // 4. non c'e': si DICE. Un tocco che non fa niente sembra un tasto
     //    rotto — e per il lettore lo e'.
-    setNota("Questa nota non si trova nel file del libro: il rimando punta a un punto che non c'è.");
+    const nuova = trovata?.pezzi.length
+      ? trovata
+      : {
+          pezzi: [
+            {
+              tipo: "testo",
+              testo: "Questa nota non si trova nel file del libro: il rimando punta a un punto che non c'è.",
+            },
+          ],
+          base: capo,
+        };
+    // una nota aperta DA DENTRO un'altra impila: il ↩ riporta a quella di
+    // prima, non chiude tutto — la nota di partenza è il contesto in cui
+    // il rimando aveva un senso
+    setNota((prima) => ({ ...nuova, sotto: incatena && prima ? [...(prima.sotto || []), prima] : [] }));
   };
+
+  // il ↩ della nota annidata: si torna di un piano, non alla pagina
+  function tornaNota() {
+    setNota((n) => {
+      const sotto = n?.sotto || [];
+      if (!sotto.length) return null;
+      const prima = sotto[sotto.length - 1];
+      return { ...prima, sotto: sotto.slice(0, -1) };
+    });
+  }
 
   // il consenso dal banner: si ricuce ADESSO, si tiene la percentuale come
   // segno (il CFI vecchio parla di file morti), e il libro si riapre da
@@ -2162,6 +2292,29 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   : "Questo browser non sa sillabare in questa lingua — l'ho provato qui, su questo dispositivo. Giustificare senza poter spezzare le parole aprirebbe fiumi di bianco, e allora meglio il bordo a bandiera."}
             </p>
           </div>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: F.nota, color: C.muted }}>La pagina scivola</span>
+              <button
+                onClick={() => updateSettings({ scivola: !settings.scivola })}
+                style={{
+                  padding: "6px 16px",
+                  borderRadius: R.tondo,
+                  fontSize: F.nota,
+                  border: `1px solid ${settings.scivola ? C.accent : C.border}`,
+                  color: settings.scivola ? C.accent : C.muted,
+                  background: settings.scivola ? `${C.accent}14` : "transparent",
+                }}
+              >
+                {settings.scivola ? "Attiva ↔" : "Spenta"}
+              </button>
+            </div>
+            <p style={{ margin: "5px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.45 }}>
+              {settings.scivola
+                ? "La pagina nuova entra di lato invece di comparire. Al cambio di capitolo resta la dissolvenza: lì la misura si assesta, e farla scivolare vorrebbe dire vederla riassestarsi."
+                : "Ogni voltata è una dissolvenza. Spegnila se sul tuo schermo lo scorrimento scatta."}
+            </p>
+          </div>
           {haGlossario(book) && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <span style={{ fontSize: F.nota, color: C.muted }}>Segna i termini della saga</span>
@@ -2278,7 +2431,51 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           mossa, quindi «tornare al punto in cui ero» è chiudere la scheda */}
       {nota && (
         <Panel title="Nota a piè di pagina" onClose={() => setNota(null)}>
-          <p style={{ margin: 0, fontSize: F.corpo, lineHeight: 1.6, color: C.text }}>{nota}</p>
+          <p style={{ margin: 0, fontSize: F.corpo, lineHeight: 1.6, color: C.text }}>
+            {nota.pezzi.map((p, i) =>
+              p.tipo === "testo" ? (
+                <span key={i}>{p.testo}</span>
+              ) : (
+                // il rimando annidato resta AL SUO POSTO nella frase, dove
+                // l'autore l'ha messo: un segno di nota spostato altrove non
+                // vuol dire più niente. Il bersaglio però si allarga, come
+                // sulla pagina — un asterisco è alto dieci pixel.
+                <button
+                  key={i}
+                  onClick={() => apriNotaRef.current(p.href, null, nota.base, true)}
+                  style={{
+                    // il bersaglio è largo (il segno è alto dieci pixel),
+                    // ma i margini negativi glielo tolgono di dosso otticamente:
+                    // un asterisco staccato dalla frase da mezzo centimetro
+                    // non sembra più il segno di quella frase
+                    padding: "8px 9px",
+                    margin: "-8px -7px",
+                    verticalAlign: "baseline",
+                    color: C.accent,
+                    fontSize: F.corpo,
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {p.segno}
+                </button>
+              )
+            )}
+          </p>
+          {nota.sotto?.length > 0 && (
+            <button
+              onClick={tornaNota}
+              style={{
+                marginTop: 12,
+                padding: "8px 14px",
+                borderRadius: R.tondo,
+                border: `1px solid ${C.border}`,
+                color: C.text,
+                fontSize: F.piccolo,
+              }}
+            >
+              ↩ Torna alla nota di prima
+            </button>
+          )}
           <p style={{ margin: "12px 0 0", fontSize: F.minuscolo, color: C.muted }}>
             Chiudi e sei esattamente dove eri: la pagina non si è mossa.
           </p>

@@ -18,3 +18,30 @@ export function leftoverScroll(manager) {
   const rest = c.scrollWidth - c.scrollLeft - c.offsetWidth;
   return rest > 4 && rest < delta - 4 ? rest : 0;
 }
+
+// LA VOLTATA RESTA DENTRO IL CAPITOLO?
+//
+// È la domanda su cui gira tutta l'animazione, e la risposta si sa PRIMA
+// di voltare: dentro un capitolo epub.js non ricostruisce niente, sposta
+// solo `container.scrollLeft` di una facciata — il testo della pagina
+// dopo è già lì, di fianco. Quella è la voltata che può scivolare.
+//
+// Al confine invece il capitolo si smonta e si rimonta, la misura balla
+// finché non arrivano i font, e lì resta il velo color carta: è la
+// ragione per cui il velo esiste, e non si tocca.
+//
+// Il conto è lo STESSO di `DefaultViewManager.next()` — `left <=
+// scrollWidth` — perché la domanda è letteralmente «epub.js scorrerà o
+// cambierà capitolo?»: rispondere con una regola nostra vorrebbe dire
+// indovinare quello che lui poi farà davvero.
+export function dentroIlCapitolo(manager, dir) {
+  const c = manager?.container;
+  if (!c || !manager.isPaginated) return false;
+  if (manager.settings?.axis !== "horizontal") return false;
+  const d = manager.settings?.direction;
+  if (d && d !== "ltr") return false;
+  const delta = manager.layout?.delta || 0;
+  if (delta <= 0) return false;
+  if (dir === "prev") return c.scrollLeft > 0;
+  return c.scrollLeft + c.offsetWidth + delta <= c.scrollWidth;
+}
