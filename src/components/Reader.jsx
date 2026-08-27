@@ -24,7 +24,7 @@ import { contextAround } from "../lib/oracle.js";
 import { sillaba } from "../lib/hyphens.js";
 import { eNotaRef, risolviHref, trovaNota, pezziNota, piuVicina } from "../lib/nota.js";
 import { controllaSpezzatura, saluteInCache, daRicucire, ricuciLibro, conSegni, taci } from "../lib/ricuci.js";
-import { leftoverScroll } from "../lib/spread.js";
+import { leftoverScroll, dentroIlCapitolo } from "../lib/spread.js";
 import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
@@ -1052,6 +1052,67 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // il velo resta su finche' la misura non si ferma. Un secondo tocco
   // durante l'attesa sbriga subito la voltata in coda: due tocchi svelti
   // valgono due pagine, nessuna si perde.
+  // LO SCORRIMENTO DELLA PAGINA, e perché stavolta può costare poco.
+  //
+  // Il foglio animato di allora — palco di iframe clonati, fotografia del
+  // capitolo in un canvas — era caro perché RICOSTRUIVA la pagina a ogni
+  // voltata. Qui non si ricostruisce niente: dentro un capitolo epub.js
+  // sposta `container.scrollLeft` di una facciata e basta, il testo della
+  // pagina dopo è già lì di fianco. Si lascia fare a lui il suo salto
+  // istantaneo, poi si rimette la carta indietro di una facciata con un
+  // `transform` e la si lascia scivolare a zero: solo compositing, niente
+  // layout, nessun evento di scroll — epub.js non se ne accorge affatto.
+  // È la lezione 10 presa alla lettera: solo `transform`.
+  //
+  // Il `transform` va sui FIGLI del contenitore, non sul contenitore: lui
+  // è la finestra che ritaglia, e muoverlo porterebbe via anche la
+  // cornice invece del foglio.
+  const SCIVOLO = 220;
+  const scivolo = useRef(null);
+  function scivola(r, dir, quanto) {
+    const cont = r?.manager?.container;
+    if (!cont) return;
+    const passo = quanto || r.manager.layout?.delta || cont.clientWidth || 0;
+    if (passo <= 0) return;
+    const figli = [...cont.children];
+    if (!figli.length) return;
+    // avanti la carta è andata a sinistra: per rimetterla dov'era la si
+    // spinge a destra, e da lì scivola verso zero
+    const da = dir === "next" ? passo : -passo;
+    if (scivolo.current) clearTimeout(scivolo.current);
+    for (const el of figli) {
+      el.style.transition = "none";
+      el.style.transform = `translateX(${da}px)`;
+    }
+    requestAnimationFrame(() => {
+      for (const el of figli) {
+        el.style.transition = `transform ${SCIVOLO}ms cubic-bezier(.22,.61,.36,1)`;
+        el.style.transform = "translateX(0px)";
+      }
+      // il `transform` si TOGLIE a fine corsa: lasciato addosso fa dei
+      // figli un blocco di contenimento per sempre, e le misure del
+      // ritaglio d'avanzo si prendono su una carta traslata
+      scivolo.current = setTimeout(() => {
+        scivolo.current = null;
+        for (const el of figli) {
+          el.style.transition = "";
+          el.style.transform = "";
+        }
+      }, SCIVOLO + 60);
+    });
+  }
+
+  // un gesto nuovo mentre la carta scivola: si posa dov'è, subito, o le
+  // due voltate si accavallerebbero
+  function posaScivolo(r) {
+    if (scivolo.current) clearTimeout(scivolo.current);
+    scivolo.current = null;
+    for (const el of r?.manager?.container?.children || []) {
+      el.style.transition = "";
+      el.style.transform = "";
+    }
+  }
+
   const inAttesa = useRef(null);
   function step(r, dir) {
     if (inAttesa.current) {
@@ -1059,6 +1120,36 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       inAttesa.current = null;
       subito();
     }
+    posaScivolo(r);
+
+    // LA VOLTATA COMUNE SCIVOLA, QUELLA DI CONFINE RESTA VELATA. Non sono
+    // due lingue per capriccio: dentro il capitolo la pagina dopo è già
+    // impaginata di fianco e si può mostrare mentre arriva; al confine il
+    // capitolo si smonta e la misura balla finché non arrivano i font, e
+    // far scivolare una pagina che poi si riassesta sotto gli occhi è
+    // proprio il difetto che il velo era venuto a curare.
+    // L'AVANZO DI CARTA SI CHIEDE PER PRIMO. È il caso in cui epub.js
+    // cederebbe il passo al capitolo dopo pur restando una striscia di
+    // testo da leggere: `dentroIlCapitolo` risponde «no» — e ha ragione,
+    // perché è la SUA domanda — ma quella striscia è carta di questo
+    // capitolo, già impaginata di fianco, e scivola come tutte le altre.
+    const resto = settings.scivola && dir === "next" ? leftoverScroll(r.manager) : 0;
+    if (resto) {
+      r.manager.scrollBy(resto, 0, true);
+      r.reportLocation();
+      scivola(r, dir, resto);
+      return;
+    }
+    if (settings.scivola && dentroIlCapitolo(r.manager, dir)) {
+      const p = dir === "next" ? r.next() : r.prev();
+      // il `then` cade nello stesso fotogramma in cui epub.js ha scorso
+      // (la sua coda gira dentro un rAF, e i microtask si svuotano prima
+      // che si dipinga): la carta si rimette indietro senza che la
+      // posizione nuova arrivi mai sullo schermo
+      p?.then?.(() => scivola(r, dir));
+      return;
+    }
+
     const gettone = ++assestamento.current;
     const cala = () => {
       if (gettone === assestamento.current) setVelo(false);
@@ -2199,6 +2290,29 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 : !lingua?.dichiarata
                   ? "Questo tomo non dichiara la sua lingua, e senza lingua non si sillaba: giustificarlo aprirebbe fiumi di bianco fra le parole."
                   : "Questo browser non sa sillabare in questa lingua — l'ho provato qui, su questo dispositivo. Giustificare senza poter spezzare le parole aprirebbe fiumi di bianco, e allora meglio il bordo a bandiera."}
+            </p>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: F.nota, color: C.muted }}>La pagina scivola</span>
+              <button
+                onClick={() => updateSettings({ scivola: !settings.scivola })}
+                style={{
+                  padding: "6px 16px",
+                  borderRadius: R.tondo,
+                  fontSize: F.nota,
+                  border: `1px solid ${settings.scivola ? C.accent : C.border}`,
+                  color: settings.scivola ? C.accent : C.muted,
+                  background: settings.scivola ? `${C.accent}14` : "transparent",
+                }}
+              >
+                {settings.scivola ? "Attiva ↔" : "Spenta"}
+              </button>
+            </div>
+            <p style={{ margin: "5px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.45 }}>
+              {settings.scivola
+                ? "La pagina nuova entra di lato invece di comparire. Al cambio di capitolo resta la dissolvenza: lì la misura si assesta, e farla scivolare vorrebbe dire vederla riassestarsi."
+                : "Ogni voltata è una dissolvenza. Spegnila se sul tuo schermo lo scorrimento scatta."}
             </p>
           </div>
           {haGlossario(book) && (
