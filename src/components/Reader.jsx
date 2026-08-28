@@ -1082,11 +1082,20 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // fotografie si accavallano
     if (svoltaViva.current) return fai();
     radice.classList.add(dir === "next" ? "bc-volta-next" : "bc-volta-prev");
+    // A FACCIATA DOPPIA GIRA MEZZO FOGLIO, NON TUTTO IL LIBRO. Con due
+    // pagine affiancate il dorso sta in MEZZO, e quella che si solleva è
+    // una facciata sola: incernierata al centro, si alza dal bordo esterno
+    // e passa dall'altra parte. Far ruotare tutto il doppio foglio attorno
+    // al bordo esterno — quello che si faceva prima — è girare il libro,
+    // non una pagina (bocciato dal lettore, che ha mandato il video di
+    // come dev'essere). A pagina singola invece il foglio è tutto lì e il
+    // cardine torna a essere il suo bordo.
+    if (r?.manager?.layout?.divisor === 2) radice.classList.add("bc-doppia");
     const pulisci = () => {
       clearTimeout(svoltaGuardia.current);
       svoltaGuardia.current = null;
       svoltaViva.current = null;
-      radice.classList.remove("bc-volta-next", "bc-volta-prev");
+      radice.classList.remove("bc-volta-next", "bc-volta-prev", "bc-doppia");
     };
     let vt;
     try {
