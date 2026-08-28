@@ -255,17 +255,45 @@ textarea {
  * fotografia la fa il BROWSER, sul compositore: a noi resta solo da dire
  * come il vecchio deve andarsene.
  *
- * LA DURATA E' CORTA APPOSTA. Mentre la transizione gira il browser
- * SOSPENDE il rendering del documento vivo: per quel tempo il filo
- * principale e' fermo, e ogni millisecondo in piu' e' un millisecondo in
- * cui un tocco non risponde. Trecento millisecondi bastano a leggere il
- * gesto come una pagina che gira; mezzo secondo si sente come lentezza. */
+ * PRIMO GIRO BOCCIATO DAL LETTORE («non ha per nulla l'effetto pagina
+ * desiderato»), e i difetti erano tre, tutti e tre di FISICA:
+ *
+ *  (1) IL FOGLIO SPARIVA A META' GIRO. Ruotava fino a 118 gradi con la
+ *      faccia posteriore nascosta: passati i novanta il piano voltava le
+ *      spalle e svaniva nel nulla. Una pagina vera, girando, mostra il suo
+ *      rovescio e ATTERRA dall'altra parte. Ora la faccia posteriore si
+ *      vede, molto scurita — e' il dorso della carta in ombra — e il giro
+ *      arriva quasi a 180, cioe' il foglio si posa.
+ *  (2) NON FACEVA OMBRA. Un foglio che si solleva ne getta una sulla
+ *      pagina sotto, e cresce mentre si alza. Senza quell'ombra il
+ *      movimento e' un rettangolo che ruota, non carta che si stacca —
+ *      ed e' il segnale che l'occhio legge per primo.
+ *  (3) LA PROSPETTIVA ERA TROPPO LONTANA (2400px): schiacciava lo scorcio
+ *      e il giro sembrava un restringimento. Da vicino il foglio si apre
+ *      davvero in profondita'.
+ *
+ * LA DURATA. Mentre la transizione gira il browser SOSPENDE il rendering
+ * del documento vivo: per quel tempo il filo principale e' fermo, e ogni
+ * millisecondo in piu' e' un millisecondo in cui un tocco non risponde.
+ * Trecento millisecondi pero' si leggono come uno scatto, non come un
+ * gesto: una pagina vera ci mette circa mezzo secondo, e sotto quella
+ * soglia il movimento non fa in tempo a raccontare niente. 460 e' il
+ * compromesso. */
 ::view-transition-group(bc-pagina) {
   /* la prospettiva sta sul gruppo: senza, `rotateY` schiaccia il foglio
    * invece di girarlo, e si vede una pagina che si stringe, non una che
-   * volta */
-  perspective: 2400px;
-  perspective-origin: left center;
+   * volta. E il punto di fuga sta sul CARDINE, dove sta l'occhio di chi
+   * tiene il libro. */
+  perspective: 1100px;
+  /* IL PUNTO DI FUGA STA DOVE STA L'OCCHIO, NON SUL CARDINE. Messo sul
+   * cardine (0%) — che sembrava naturale — ruotare non fa girare niente:
+   * produce solo COMPRESSIONE verso la cerniera, e il foglio si stringe
+   * in una striscia sottile a sinistra invece di sollevarsi. E' il difetto
+   * che il lettore ha bocciato («non ha per nulla l'effetto pagina»),
+   * visto poi fotogramma per fotogramma in un filmato. Con l'occhio al
+   * centro il bordo esterno del foglio viene AVANTI mentre gira, e quello
+   * e' il sollevarsi della carta. */
+  perspective-origin: 50% 50%;
 }
 
 ::view-transition-old(bc-pagina),
@@ -275,16 +303,19 @@ textarea {
    * illeggibile */
   animation: none;
   mix-blend-mode: normal;
-  backface-visibility: hidden;
+  /* LA FACCIA POSTERIORE SI VEDE: e' il rovescio del foglio, ed e' quello
+   * che distingue una pagina che si gira da una che sparisce */
+  backface-visibility: visible;
   height: 100%;
   object-fit: fill;
 }
 
-/* AVANTI: il foglio vecchio gira via attorno al dorso di sinistra e
- * scopre quello nuovo, che sta fermo sotto. */
+/* AVANTI: il foglio vecchio si stacca dal bordo esterno, gira attorno al
+ * dorso di sinistra e si posa dall'altra parte, scoprendo quello nuovo
+ * che sta fermo sotto. */
 .bc-volta-next::view-transition-old(bc-pagina) {
-  transform-origin: left center;
-  animation: bc-gira-via 300ms cubic-bezier(0.36, 0, 0.24, 1) forwards;
+  transform-origin: 0% 50%;
+  animation: bc-foglio 460ms linear forwards;
   z-index: 2;
 }
 .bc-volta-next::view-transition-new(bc-pagina) {
@@ -292,30 +323,71 @@ textarea {
 }
 
 /* INDIETRO: il movimento si rovescia — e' il foglio NUOVO che rientra
- * girando, perche' tornando indietro e' lui quello che si abbassa sopra
- * la pagina che stavi leggendo. */
+ * girando e si abbassa sopra la pagina che stavi leggendo. */
 .bc-volta-prev::view-transition-new(bc-pagina) {
-  transform-origin: left center;
-  animation: bc-gira-via 300ms cubic-bezier(0.36, 0, 0.24, 1) reverse forwards;
+  transform-origin: 0% 50%;
+  animation: bc-foglio 460ms linear reverse forwards;
   z-index: 2;
 }
 .bc-volta-prev::view-transition-old(bc-pagina) {
   z-index: 1;
 }
 
-@keyframes bc-gira-via {
-  from {
+/* IL TEMPO STA DOVE IL FOGLIO SI VEDE.
+ *
+ * E' il difetto che ha fatto bocciare il primo giro, e non si vedeva
+ * guardando un fotogramma: ci e' voluto un filmato. La curva era una
+ * ease-out, quindi il movimento partiva VELOCE — e la parte veloce era
+ * proprio quella in cui il foglio e' ancora di faccia e si vede girare.
+ * Passati i novanta gradi il piano e' di taglio o mostra il rovescio: li'
+ * non c'e' piu' niente da guardare, e li' se ne andava il resto del mezzo
+ * secondo. Il risultato era «piatto, poi sparito»: nessuna svolta.
+ *
+ * Ora il tempo e' LINEARE e la forma sta tutta nei gradi: due terzi della
+ * corsa per i primi settantacinque gradi — il sollevarsi, che e' la parte
+ * che racconta — e l'ultimo terzo per il ribaltamento, che si guarda a
+ * malapena.
+ *
+ * E IL VERSO DELLA ROTAZIONE E' POSITIVO, non negativo. Col segno meno il
+ * bordo libero del foglio va INDIETRO, dentro lo schermo: la pagina
+ * affonda e si restringe. Col piu' viene AVANTI, verso chi legge — la
+ * carta si solleva dal tomo, si allarga un istante e poi si ribalta. Sono
+ * gli stessi gradi e lo stesso punto d'arrivo: cambia solo da che parte
+ * passa, ed e' tutta la differenza fra sollevare una pagina e vederla
+ * sprofondare. */
+@keyframes bc-foglio {
+  0% {
     transform: rotateY(0deg);
     filter: brightness(1);
   }
-  /* la luce che scorre sul foglio mentre gira: e' quella che lo fa
-   * leggere come carta invece che come un rettangolo che ruota */
-  60% {
-    filter: brightness(0.86);
+  /* si stacca dal bordo esterno e comincia a fare ombra sulla pagina sotto */
+  16% {
+    transform: rotateY(12deg);
+    filter: brightness(0.97) drop-shadow(10px 3px 14px rgba(0, 0, 0, 0.36));
   }
-  to {
-    transform: rotateY(-118deg);
-    filter: brightness(0.7);
+  38% {
+    transform: rotateY(34deg);
+    filter: brightness(0.92) drop-shadow(20px 4px 26px rgba(0, 0, 0, 0.46));
+  }
+  /* meta' strada: il foglio e' alzato e l'ombra e' al massimo */
+  56% {
+    transform: rotateY(56deg);
+    filter: brightness(0.84) drop-shadow(30px 5px 38px rgba(0, 0, 0, 0.54));
+  }
+  70% {
+    transform: rotateY(76deg);
+    filter: brightness(0.74) drop-shadow(30px 5px 38px rgba(0, 0, 0, 0.5));
+  }
+  /* di taglio: qui il piano e' quasi invisibile, ed e' proprio il momento
+   * in cui un foglio vero scompare per un istante */
+  80% {
+    transform: rotateY(92deg);
+    filter: brightness(0.5) drop-shadow(24px 4px 30px rgba(0, 0, 0, 0.44));
+  }
+  /* e si posa dall'altra parte, mostrando il rovescio in ombra */
+  100% {
+    transform: rotateY(172deg);
+    filter: brightness(0.24) drop-shadow(5px 2px 14px rgba(0, 0, 0, 0.26));
   }
 }
 
