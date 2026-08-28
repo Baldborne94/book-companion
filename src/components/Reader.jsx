@@ -1090,12 +1090,24 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // non una pagina (bocciato dal lettore, che ha mandato il video di
     // come dev'essere). A pagina singola invece il foglio è tutto lì e il
     // cardine torna a essere il suo bordo.
-    if (r?.manager?.layout?.divisor === 2) radice.classList.add("bc-doppia");
+    const doppia = r?.manager?.layout?.divisor === 2;
+    if (doppia) radice.classList.add("bc-doppia");
+    // LA PROSPETTIVA SI MISURA SUL FOGLIO CHE GIRA, non si sceglie a
+    // numero fisso: quanto un foglio si apre in profondità dipende da
+    // quanto è largo, e lo stesso valore che apre bene una facciata di
+    // tablet in orizzontale schiaccia la stessa app in verticale, dove il
+    // foglio è tutto lo schermo. 3,8 volte la larghezza è il rapporto
+    // provato al banco: sotto, il bordo libero cresce tanto da uscire
+    // dallo schermo; sopra, il giro torna a sembrare un restringimento.
+    const largo = viewerRef.current?.clientWidth || 0;
+    const foglio = doppia ? largo / 2 : largo;
+    if (foglio > 0) radice.style.setProperty("--bc-prof", `${Math.round(foglio * 3.8)}px`);
     const pulisci = () => {
       clearTimeout(svoltaGuardia.current);
       svoltaGuardia.current = null;
       svoltaViva.current = null;
       radice.classList.remove("bc-volta-next", "bc-volta-prev", "bc-doppia");
+      radice.style.removeProperty("--bc-prof");
     };
     let vt;
     try {
