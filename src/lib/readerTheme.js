@@ -246,6 +246,28 @@ export function spegniScenografia(doc) {
   return spente;
 }
 
+// LA CARTA IN VOLO PRENDE UN FILO DI LUCE. Il lembo della piega e' un
+// rettangolo dipinto col fondo del tema, e sul tema notte quel fondo e'
+// quasi nero: carta nera che vola su una pagina nera non si vede — lo
+// stesso buco dell'ombra, che sul nero non separa niente. Un foglio a
+// mezz'aria pero' NON e' del colore della pagina: prende la luce della
+// stanza. Qui si mescola il fondo con un dodicesimo d'inchiostro — sulla
+// notte solleva il nero di un soffio, sulla pergamena la incupisce
+// appena, e in tutt'e due i casi legge come carta vera. All'atterraggio
+// la dissolvenza del lembo riconsegna il colore alla pagina, quindi la
+// differenza non resta mai a vista da ferma.
+export const VOLO = 0.12;
+export function cartaInVolo(bg, fg, quota = VOLO) {
+  const canale = (h, i) => parseInt(h.slice(i, i + 2), 16);
+  const esa = /^#[0-9a-f]{6}$/i;
+  if (!esa.test(bg || "") || !esa.test(fg || "")) return bg;
+  const c = [1, 3, 5].map((i) => {
+    const v = canale(bg, i);
+    return Math.round(v + (canale(fg, i) - v) * quota);
+  });
+  return `#${c.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
 // Quanto respiro sopra e sotto DENTRO la pagina. Non zero: una riga
 // appiccicata al bordo della carta si legge peggio, e il velo della
 // voltata la lambisce. Sei pixel sono un soffio, non una fascia.
