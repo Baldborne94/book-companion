@@ -24,25 +24,34 @@ const FILTERS = [
   { id: "abandoned", label: "Abbandonati" },
 ];
 
-// Il titolo per primo perché è l'ordine di partenza: sullo scaffale i
-// libri stanno per ripiani, e dentro un ripiano «per data d'ingresso» è
-// di nuovo l'ordine che l'occhio non riconosce. «Recenti» resta, e serve
-// davvero a «Tutti in fila», dove la domanda è «cosa ho appena messo qui».
+// Il titolo per primo perché è l'ordine di partenza: sui ripiani «per data
+// d'ingresso» è di nuovo l'ordine che l'occhio non riconosce. «Recenti»
+// resta, e serve davvero senza raggruppamento, dove la domanda è «cosa ho
+// appena messo qui».
 const SORTS = [
   { id: "title", label: "Titolo" },
   { id: "author", label: "Autore" },
   { id: "recent", label: "Recenti" },
 ];
 
-// «Scaffale» era il nome del NESSUN raggruppamento, ed è il difetto che si
-// cura: adesso è quello che il nome promette — saghe e autori, ognuno sul
-// suo ripiano. La raccolta per saga non c'è più come voce a sé perché lo
-// scaffale la contiene tutta, e in più tiene insieme gli autori invece di
-// buttare ogni libro senza saga in un unico mucchio «Fuori saga».
+// OGNI VOCE DICE IL CRITERIO, non il mobile. «Scaffale» era il nome del
+// NESSUN raggruppamento e poi è diventato il nome di questo, ma restava
+// l'unica voce che non diceva in base a cosa raccoglie — e sullo schermo
+// si legge «Raggruppa: Scaffale» sopra a intestazioni che sono saghe
+// (segnalato dal lettore). Il criterio è saga se c'è, altrimenti autore, e
+// il nome adesso lo dice.
+//
+// «Niente» resta, e si chiama così perché è quello che è: non un
+// raggruppamento ma la sua assenza («Tutti in fila» era un raggruppamento
+// per «tutti in fila», che non vuol dire niente). Serve a due cose che i
+// ripiani per costruzione non sanno fare: vedere la biblioteca INTERA in
+// un ordine solo — i più recenti in cima, dopo un import — e ritrovare un
+// libro che i ripiani hanno messo in un posto strano perché la sua saga è
+// scritta male.
 const GROUPS = [
-  { id: "shelf", label: "Scaffale" },
+  { id: "shelf", label: "Saga e autore" },
   { id: "genre", label: "Genere", empty: "Senza genere" },
-  { id: "none", label: "Tutti in fila" },
+  { id: "none", label: "Niente" },
 ];
 
 // Una voce salvata che non esiste più — un raggruppamento che abbiamo
