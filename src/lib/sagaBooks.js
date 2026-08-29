@@ -153,7 +153,7 @@ export function fuoriSaga({ title, author, fileName } = {}) {
 
 // «Abercrombie, Joe» e «Joe Abercrombie» sono la stessa persona, e negli
 // ePub capitano tutt'e due: si confrontano le parole del nome, ordinate.
-const chiaveAutore = (a) => norm(a).split(" ").filter(Boolean).sort().join(" ");
+export const chiaveAutore = (a) => norm(a).split(" ").filter(Boolean).sort().join(" ");
 
 // LA SAGA SI IMPARA DALLA TUA BIBLIOTECA, non da una tabella.
 //

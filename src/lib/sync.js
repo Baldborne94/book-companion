@@ -78,6 +78,50 @@ export async function signIn(email) {
   if (error) throw error;
 }
 
+// EMAIL E PASSWORD, chiesto dal lettore: aspettare una mail e aprirne il
+// link ogni volta che si cambia dispositivo e' una porta che si apre solo
+// se la posta funziona — e su un tablet, dove l'app e' installata come
+// PWA, il link apre il browser invece dell'app. La password sta nel
+// portachiavi del dispositivo e si entra in due tocchi.
+//
+// Il link per posta NON se ne va: e' la strada di scorta quando la
+// password non ce l'hai piu', ed e' anche l'unica che funziona senza aver
+// mai registrato niente.
+export async function entraConPassword(email, password) {
+  const sb = await getClient();
+  if (!sb) throw new Error("sync non configurata");
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+}
+
+// La sessione puo' NON arrivare, ed e' il caso normale: se il progetto
+// Supabase chiede la conferma dell'indirizzo (impostazione di partenza),
+// `signUp` registra l'utente e manda una mail, ma dentro non ci si entra
+// finche' non si conferma. Chi chiama deve poterlo dire, o il pannello
+// resterebbe fermo senza spiegare perche'.
+export async function registraConPassword(email, password) {
+  const sb = await getClient();
+  if (!sb) throw new Error("sync non configurata");
+  const { data, error } = await sb.auth.signUp({
+    email,
+    password,
+    options: { emailRedirectTo: window.location.origin },
+  });
+  if (error) throw error;
+  return { dentro: !!data?.session };
+}
+
+// Serve a chi e' entrato col link e vuole smettere di dipenderne, ed e'
+// anche l'unica strada per rimettere una password dimenticata: si entra
+// col link, si riscrive la password, e la volta dopo si entra in due
+// tocchi. Cosi' non serve una pagina di recupero tutta sua.
+export async function cambiaPassword(password) {
+  const sb = await getClient();
+  if (!sb) throw new Error("sync non configurata");
+  const { error } = await sb.auth.updateUser({ password });
+  if (error) throw error;
+}
+
 export async function signOut() {
   const sb = await getClient();
   await sb?.auth.signOut();

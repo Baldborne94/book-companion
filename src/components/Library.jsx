@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
-import { getProgress, getStatus, combacia } from "../lib/library.js";
+import { getProgress, getStatus, combacia, leggiVista, scriviVista } from "../lib/library.js";
+import { disponi } from "../lib/ripiani.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { storageEstimate, statoPersistenza, requestPersistence, getFile, putFile } from "../lib/bookStore.js";
 import { importFiles, resoconto } from "../lib/importBook.js";
@@ -23,17 +24,38 @@ const FILTERS = [
   { id: "abandoned", label: "Abbandonati" },
 ];
 
+// Il titolo per primo perché è l'ordine di partenza: sullo scaffale i
+// libri stanno per ripiani, e dentro un ripiano «per data d'ingresso» è
+// di nuovo l'ordine che l'occhio non riconosce. «Recenti» resta, e serve
+// davvero a «Tutti in fila», dove la domanda è «cosa ho appena messo qui».
 const SORTS = [
-  { id: "recent", label: "Recenti" },
   { id: "title", label: "Titolo" },
   { id: "author", label: "Autore" },
+  { id: "recent", label: "Recenti" },
 ];
 
+// «Scaffale» era il nome del NESSUN raggruppamento, ed è il difetto che si
+// cura: adesso è quello che il nome promette — saghe e autori, ognuno sul
+// suo ripiano. La raccolta per saga non c'è più come voce a sé perché lo
+// scaffale la contiene tutta, e in più tiene insieme gli autori invece di
+// buttare ogni libro senza saga in un unico mucchio «Fuori saga».
 const GROUPS = [
-  { id: "none", label: "Scaffale" },
+  { id: "shelf", label: "Scaffale" },
   { id: "genre", label: "Genere", empty: "Senza genere" },
-  { id: "saga", label: "Saga", empty: "Fuori saga" },
+  { id: "none", label: "Tutti in fila" },
 ];
+
+// Una voce salvata che non esiste più — un raggruppamento che abbiamo
+// tolto, come «Saga» — lascerebbe il menu in bianco e la Libreria a
+// mostrare tutt'altro: quel che non si riconosce torna alla disposizione
+// di sempre.
+function vistaValida() {
+  const v = leggiVista({ group: "shelf", sort: "title" });
+  return {
+    group: GROUPS.some((g) => g.id === v.group) ? v.group : "shelf",
+    sort: SORTS.some((s) => s.id === v.sort) ? v.sort : "title",
+  };
+}
 
 function Shelf({ books, onOpenBook, localIds, showOrder }) {
   // Chi ha il dorso disegnato lo sa solo `BookCover`, che va a guardare in
@@ -76,7 +98,7 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
             }}
           >
             <div style={{ position: "relative", opacity: status === "abandoned" ? 0.55 : 1 }}>
-              <BookCover book={b} onDisegnata={(v) => segnaDorso(b.id, v)} />
+              <BookCover book={b} onDisegnata={(v) => segnaDorso(b.id, v)} numerato={showOrder && b.sagaOrder != null} />
               {status === "reading" && pct > 0 && (
                 <span
                   style={{
@@ -214,8 +236,70 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
   );
 }
 
+// L'intestazione di un ripiano, una sola per tutti i raggruppamenti: due
+// intestazioni scritte a mano prenderebbero strade diverse alla prima
+// modifica, ed è già successo. `sotto` è l'autore di una saga — e c'è solo
+// quando l'autore è uno: le saghe scritte da venti mani, con un nome solo
+// sotto, racconterebbero una bugia.
+function Ripiano({ nome, sotto, quanti, spento, children }) {
+  return (
+    <section style={{ marginBottom: 26 }}>
+      <h3
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          gap: 8,
+          flexWrap: "wrap",
+          fontFamily: FONT_TITLE,
+          fontWeight: 600,
+          fontSize: F.titoletto,
+          color: spento ? C.muted : C.accent,
+          marginBottom: 10,
+          paddingBottom: 5,
+          borderBottom: `1px solid ${C.border}`,
+        }}
+      >
+        <span>{nome}</span>
+        {sotto && (
+          <span style={{ fontSize: F.piccolo, color: C.muted, fontFamily: "inherit", fontWeight: 400 }}>
+            {sotto}
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
+        <span style={{ fontSize: F.piccolo, color: C.muted, fontFamily: "inherit" }}>{quanti}</span>
+      </h3>
+      {children}
+    </section>
+  );
+}
+
 function Grouped({ books, group, onOpenBook, localIds }) {
   if (group === "none") return <Shelf books={books} onOpenBook={onOpenBook} localIds={localIds} />;
+
+  // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
+  // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
+  // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
+  // del volume, e dove non c'è resta l'ordine che hai scelto tu.
+  if (group === "shelf") {
+    return disponi(books).map((r) => (
+      <Ripiano
+        key={r.id}
+        nome={r.nome}
+        sotto={r.autore}
+        quanti={r.libri.length}
+        spento={r.tipo === "soli"}
+      >
+        <Shelf
+          books={r.libri}
+          onOpenBook={onOpenBook}
+          localIds={localIds}
+          // il numero del volume ha senso dentro la sua saga; fra i volumi
+          // soli sarebbe un numero senza la storia che lo spiega
+          showOrder={r.tipo === "saga"}
+        />
+      </Ripiano>
+    ));
+  }
 
   const cfg = GROUPS.find((g) => g.id === group);
   const buckets = new Map();
@@ -224,53 +308,18 @@ function Grouped({ books, group, onOpenBook, localIds }) {
     // · Epico» stanno sullo stesso scaffale. Prendendo il valore intero
     // ogni sottogenere farebbe un gruppo da un libro, e uno scaffale di
     // gruppi da uno non e' un raggruppamento.
-    const key = group === "genre" ? famigliaDi(b.genre) : (b[group] || "").trim();
+    const key = famigliaDi(b.genre);
     if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key).push(b);
-  }
-  // dentro una saga comanda l'ordine di lettura; i libri senza numero in coda
-  if (group === "saga") {
-    for (const [key, list] of buckets) {
-      if (!key) continue;
-      list.sort((a, b) => {
-        const x = a.sagaOrder ?? Infinity;
-        const y = b.sagaOrder ?? Infinity;
-        return x === y ? 0 : x - y;
-      });
-    }
   }
   // i libri senza etichetta chiudono la fila
   const names = [...buckets.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b, "it"));
   if (buckets.has("")) names.push("");
 
   return names.map((name) => (
-    <section key={name || "_"} style={{ marginBottom: 26 }}>
-      <h3
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          gap: 8,
-          fontFamily: FONT_TITLE,
-          fontWeight: 600,
-          fontSize: F.titoletto,
-          color: name ? C.accent : C.muted,
-          marginBottom: 10,
-          paddingBottom: 5,
-          borderBottom: `1px solid ${C.border}`,
-        }}
-      >
-        <span>{name || cfg.empty}</span>
-        <span style={{ fontSize: F.piccolo, color: C.muted, fontFamily: "inherit" }}>
-          {buckets.get(name).length}
-        </span>
-      </h3>
-      <Shelf
-        books={buckets.get(name)}
-        onOpenBook={onOpenBook}
-        localIds={localIds}
-        showOrder={group === "saga" && !!name}
-      />
-    </section>
+    <Ripiano key={name || "_"} nome={name || cfg.empty} quanti={buckets.get(name).length} spento={!name}>
+      <Shelf books={buckets.get(name)} onOpenBook={onOpenBook} localIds={localIds} />
+    </Ripiano>
   ));
 }
 
@@ -313,8 +362,16 @@ export default function Library({
   const [dentro, setDentro] = useState(null);
   const vivo = useRef(null);
   const [filter, setFilter] = useState("all");
-  const [sort, setSort] = useState("recent");
-  const [group, setGroup] = useState("none");
+  // Come avevi lasciato lo scaffale. Il filtro NO, ed è voluto: una
+  // Libreria che si riapre con metà dei libri nascosti sembra una libreria
+  // che ha perso dei libri.
+  const vista = useRef(vistaValida());
+  const [sort, setSort] = useState(vista.current.sort);
+  const [group, setGroup] = useState(vista.current.group);
+  const ricorda = (patch) => {
+    vista.current = { ...vista.current, ...patch };
+    scriviVista(vista.current);
+  };
   const [importing, setImporting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -621,10 +678,10 @@ export default function Library({
   }
 
   // arrivo dalla home toccando una saga: la libreria si apre gia' raccolta
-  // per saghe e ristretta a quella
+  // per ripiani e ristretta a quella
   useEffect(() => {
     if (!focusSaga) return;
-    setGroup("saga");
+    setGroup("shelf");
     setQuery(focusSaga);
   }, [focusSaga]);
 
@@ -843,13 +900,16 @@ export default function Library({
         <span style={{ flex: 1 }} />
         <select
           value={group}
-          onChange={(e) => setGroup(e.target.value)}
+          onChange={(e) => { setGroup(e.target.value); ricorda({ group: e.target.value }); }}
           style={{
             padding: "6px 10px",
             borderRadius: R.piccolo,
-            border: `1px solid ${group === "none" ? C.border : C.accent}`,
+            // acceso quando NON è la disposizione di sempre: così si vede
+            // a colpo d'occhio che lo scaffale in questo momento è
+            // raccolto in un altro modo
+            border: `1px solid ${group === "shelf" ? C.border : C.accent}`,
             background: C.surface,
-            color: group === "none" ? C.muted : C.accent,
+            color: group === "shelf" ? C.muted : C.accent,
             fontSize: F.nota,
             fontFamily: "inherit",
           }}
@@ -862,7 +922,7 @@ export default function Library({
         </select>
         <select
           value={sort}
-          onChange={(e) => setSort(e.target.value)}
+          onChange={(e) => { setSort(e.target.value); ricorda({ sort: e.target.value }); }}
           style={{
             padding: "6px 10px",
             borderRadius: R.piccolo,

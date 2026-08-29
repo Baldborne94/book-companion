@@ -96,7 +96,7 @@ function accendiRisultato(flashRef, layer, pageNum) {
   }
 }
 
-export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusicStop, onMusicVolume, onMusicNext, onMusicRoom, onAlive, onClose, notify, nextBook, onReadNext }) {
+export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusicStop, onMusicVolume, onMusicNext, onMusicRoom, onAlive, onClose, notify, nextBook, onReadNext, indietro }) {
   const rootRef = useRef(null);
   const containerRef = useRef(null);
   const pageBoxRef = useRef(null);
@@ -381,6 +381,22 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [panel, handleClose, goToPage]);
+
+  // Il tasto indietro del dispositivo, girato da App: stessa fila
+  // dell'Escape — il menu della selezione, poi il pannello, e per ultimo
+  // il libro, chiuso dalla porta di sempre perche' e' li' che il numero di
+  // pagina si salva. `true` dice «l'ho chiuso io e il libro resta aperto»,
+  // ed e' quello che la' fuori fa rimettere la guardia nella storia.
+  useEffect(() => {
+    if (!indietro) return;
+    indietro.current = () => {
+      if (sel) { setSel(null); return true; }
+      if (panel) { setPanel(null); return true; }
+      handleClose();
+      return false;
+    };
+    return () => { indietro.current = null; };
+  }, [indietro, panel, sel, handleClose]);
 
   // chiuso il pannello, sfogliare il resto del tomo non serve piu' a nessuno
   useEffect(() => {

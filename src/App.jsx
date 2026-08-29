@@ -19,6 +19,7 @@ import MusicRoom from "./components/MusicRoom.jsx";
 import SyncPanel from "./components/SyncPanel.jsx";
 import { getBookMusic, setBookMusic } from "./lib/music.js";
 import { getJump, clearJump } from "./lib/annotations.js";
+import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
 import { getSession, syncNow, localFileIds } from "./lib/sync.js";
@@ -642,6 +643,53 @@ export default function App() {
     }
   }
 
+  // I LIVELLI CHE IL TASTO INDIETRO DEVE CHIUDERE, dal fondo alla cima.
+  //
+  // L'ordine e' quello in cui stanno sullo schermo, non quello in cui li
+  // ho scritti: l'indietro serve SEMPRE l'ultimo della fila. Il libro sta
+  // in cima perche' copre tutto il resto; la sezione sta in fondo perche'
+  // e' il pavimento — tornare all'ingresso e' l'ultimo passo prima di
+  // uscire davvero dall'app.
+  //
+  // Il libro chiude per mano sua (`chiudeIlLettore`): dentro ha i suoi
+  // pannelli, e soprattutto il punto di lettura si salva solo passando
+  // dalla porta di sempre.
+  const chiudeIlLettore = useRef(null);
+  const livelli = [];
+  if (section !== "home") livelli.push(() => navigate("home"));
+  if (openId) livelli.push(() => setOpenId(null));
+  if (gardenOpen) livelli.push(() => setGardenOpen(false));
+  if (diaryOpen) livelli.push(() => setDiaryOpen(false));
+  if (syncOpen) livelli.push(() => setSyncOpen(false));
+  if (themeOpen) livelli.push(() => setThemeOpen(false));
+  if (readingId) livelli.push(() => chiudeIlLettore.current?.());
+  const livelliRef = useRef(livelli);
+  livelliRef.current = livelli;
+  const indietro = useRef(null);
+
+  useEffect(() => {
+    const gestore = creaIndietro(window.history);
+    indietro.current = gestore;
+    const tornato = () => {
+      if (!gestore.tornato()) return;
+      const chiudi = livelliRef.current[livelliRef.current.length - 1];
+      // Il reader si tiene i suoi pannelli e risponde `true` quando ne ha
+      // chiuso uno restando aperto: li' dentro non cambia niente di App,
+      // quindi nessun nuovo giro di render verrebbe a rimettere la
+      // guardia, e il prossimo indietro se ne porterebbe via l'app.
+      if (chiudi && chiudi() === true) gestore.sincronizza(true);
+    };
+    window.addEventListener("popstate", tornato);
+    return () => window.removeEventListener("popstate", tornato);
+  }, []);
+
+  // A ogni giro, senza elenco di dipendenze: la guardia dipende da mezza
+  // dozzina di stati diversi, e dimenticarne uno vorrebbe dire un indietro
+  // che ogni tanto scappa fuori dall'app. E' un confronto fra due booleani.
+  useEffect(() => {
+    indietro.current?.sincronizza(livelli.length > 0);
+  });
+
   const openBook = books.find((b) => b.id === openId);
   const readingBook = books.find((b) => b.id === readingId);
   const nextBook = readingBook ? nextInSaga(readingBook, books) : null;
@@ -859,6 +907,7 @@ export default function App() {
               key={`${readingBook.id}:${readingStart || ""}`}
               book={readingBook}
               startCfi={readingStart}
+              indietro={chiudeIlLettore}
               nextBook={nextBook}
               onReadNext={handleRead}
               music={music}
@@ -881,6 +930,7 @@ export default function App() {
               key={`${readingBook.id}:${readingStart || ""}`}
               book={readingBook}
               startCfi={readingStart}
+              indietro={chiudeIlLettore}
               nextBook={nextBook}
               onReadNext={handleRead}
               music={music}
