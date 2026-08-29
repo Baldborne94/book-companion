@@ -1069,7 +1069,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // rimetterlo. E lo scivolo non è nemmeno un ripiego onesto qui, perché
   // il lettore ha chiesto o la svolta o la dissolvenza di sempre.
   const svoltaViva = useRef(null);
-  const gemelliRef = useRef(null);
   const svoltaGuardia = useRef(null);
   // oltre questo la svolta si considera persa e il reader torna a voltare
   // e basta: una pagina che non gira e' un peccato, una pagina che non
@@ -1098,36 +1097,16 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // fotografie si accavallano
     if (svoltaViva.current) return subito();
     radice.classList.add(dir === "next" ? "bc-volta-next" : "bc-volta-prev");
-    // LA SFOGLIATA E' UN GESTO SOLO, a doppia facciata come a pagina
-    // singola: la pagina vecchia si stacca INTERA e si arriccia via, come
-    // sul Kindle del video del lettore. Il foglio della prospettiva e'
-    // percio' sempre la vista intera.
-
-    // LA PROSPETTIVA SI MISURA SUL FOGLIO CHE GIRA, non si sceglie a
-    // numero fisso: quanto un foglio si apre in profondità dipende da
-    // quanto è largo, e lo stesso valore che apre bene una facciata di
-    // tablet in orizzontale schiaccia la stessa app in verticale, dove il
-    // foglio è tutto lo schermo. 1,9 volte la larghezza è il rapporto
-    // provato al banco per il foglio che RECEDE: più lontano, la
-    // rotazione si appiattisce in uno stiramento obliquo del testo — la
-    // «svolta stramba» vista dal lettore sul tablet.
-    const largo = viewerRef.current?.clientWidth || 0;
-    if (largo > 0) radice.style.setProperty("--bc-prof", `${Math.round(largo * 1.9)}px`);
     const pulisci = () => {
       // puo' arrivarci due volte (la guardia E la promessa): il lavoro
       // rimandato deve girare una volta sola
       if (!svoltaViva.current) return;
-      if (gemelliRef.current) gemelliRef.current.style.display = "none";
       clearTimeout(svoltaGuardia.current);
       svoltaGuardia.current = null;
       svoltaViva.current = null;
       radice.classList.remove("bc-volta-next", "bc-volta-prev");
-      radice.style.removeProperty("--bc-prof");
       dopo?.();
     };
-    // i gemelli dei veli si accendono PRIMA della cattura: e' il buco che
-    // devono coprire (vedi il commento dove abitano)
-    if (gemelliRef.current) gemelliRef.current.style.display = "block";
     let vt;
     try {
       vt = doc.startViewTransition(fai);
@@ -1135,8 +1114,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       // la guardia di `pulisci` qui non aiuta (la transizione non e' mai
       // esistita): le classi appese si tolgono a mano
       radice.classList.remove("bc-volta-next", "bc-volta-prev");
-      if (gemelliRef.current) gemelliRef.current.style.display = "none";
-      radice.style.removeProperty("--bc-prof");
       return subito();
     }
     svoltaViva.current = vt;
@@ -1817,27 +1794,64 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           touchAction: "manipulation",
         }}
       >
+        {/* IL NOME STA SUL GUSCIO CHE CONTIENE ANCHE I VELI, e non e' un
+            dettaglio: e' la cura definitiva del lampo di luce. I veli
+            fotografati a parte hanno tradito su TUTT'E DUE i motori, in
+            fasi diverse del sipario (su Gecko la fotografia nuova arriva
+            in ritardo, su Chromium la vecchia e' vuota e la fase d'attesa
+            mostra la pagina nuda: misurato, 100-200ms di piena luce a
+            ogni voltata). Coi veli DENTRO l'elemento fotografato, le
+            fotografie nascono gia' velate: non esiste piu' nessuna fase
+            in cui la pagina giri senza la sua luce. Prezzo dichiarato:
+            le barre — translucide e quasi sempre nascoste — non si
+            scuriscono piu' coi filtri. */}
         <div
-          ref={viewerRef}
           style={{
             position: "absolute",
             inset: FRAME,
-            // l'avanzo si toglie da SOTTO: cosi' il testo resta ancorato in
-            // alto e la pagina non balla quando la misura cambia
-            padding: `${HEAD}px ${Math.max(settings.margin, EDGE_MAX + 8)}px calc(${FOOT + avanzo}px + env(safe-area-inset-bottom))`,
-            boxSizing: "border-box",
             borderRadius: R.minimo,
-            // la carta arriva fino al bordo interno della rilegatura: senza,
-            // il margine di lettura mostrava la copertina e staccava le
-            // pagine impilate dal foglio
-            background: theme.bg,
-            // il nome che dice al browser COSA fotografare quando la
-            // pagina svolta: senza, la View Transition prenderebbe tutto
-            // lo schermo — barre comprese — e a girare sarebbe la finestra
-            // invece del foglio
+            overflow: "hidden",
             ...(settings.svolta ? { viewTransitionName: "bc-pagina" } : {}),
           }}
-        />
+        >
+          <div
+            ref={viewerRef}
+            style={{
+              position: "absolute",
+              inset: 0,
+              // l'avanzo si toglie da SOTTO: cosi' il testo resta ancorato in
+              // alto e la pagina non balla quando la misura cambia
+              padding: `${HEAD}px ${Math.max(settings.margin, EDGE_MAX + 8)}px calc(${FOOT + avanzo}px + env(safe-area-inset-bottom))`,
+              boxSizing: "border-box",
+              // la carta arriva fino al bordo interno della rilegatura: senza,
+              // il margine di lettura mostrava la copertina e staccava le
+              // pagine impilate dal foglio
+              background: theme.bg,
+            }}
+          />
+          {/* i veli del libro: l'alfa sta nel colore (un riempimento
+              uniforme rgba e' identico a tinta+opacity, ma i pixel
+              semi-trasparenti viaggiano fedeli in ogni fotografia) */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              zIndex: 9,
+              background: `rgba(255, 154, 60, ${settings.warmth})`,
+              mixBlendMode: "multiply",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              zIndex: 9,
+              background: `rgba(0, 0, 0, ${1 - settings.brightness})`,
+            }}
+          />
+        </div>
         {/* il velo sta SOTTO il filtro caldo e la luminosita' (che vivono
             in cima al reader, zIndex 5): dipinto sopra usciva pergamena
             pura contro una pagina filtrata — misurato sul video del
@@ -1941,65 +1955,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           Transitions sta sopra TUTTO, filtri compresi, e senza fotografia
           propria ogni voltata era un lampo a piena luce per chi legge di
           notte con la luminosita' abbassata */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "none",
-          zIndex: 5,
-          background: "#ff9a3c",
-          mixBlendMode: "multiply",
-          opacity: settings.warmth,
-          ...(settings.svolta ? { viewTransitionName: "bc-caldo" } : {}),
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "none",
-          zIndex: 5,
-          background: "#000",
-          opacity: 1 - settings.brightness,
-          ...(settings.svolta ? { viewTransitionName: "bc-lume" } : {}),
-        }}
-      />
-      {/* I GEMELLI DEI VELI, SENZA NOME. Firefox, nell'attimo della
-          cattura, NASCONDE dal vivo gli elementi che sta fotografando —
-          veli compresi — un paio di fotogrammi PRIMA di alzare il
-          sipario: 66ms di pagina nuda a piena luce a ogni voltata,
-          misurati sui fotogrammi del lettore (luce 11 → 30 → 11). Questi
-          due gemelli sono identici ai veli ma SENZA nome: non vengono mai
-          nascosti, coprono il buco, e appena il sipario e' su restano
-          sotto, invisibili. Si accendono solo per la voltata (laSvolta),
-          o a riposo dimmerebbero due volte. */}
-      <div
-        ref={gemelliRef}
-        style={{ display: "none" }}
-      >
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            pointerEvents: "none",
-            zIndex: 5,
-            background: "#ff9a3c",
-            mixBlendMode: "multiply",
-            opacity: settings.warmth,
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            pointerEvents: "none",
-            zIndex: 5,
-            background: "#000",
-            opacity: 1 - settings.brightness,
-          }}
-        />
-      </div>
-
       {status === "loading" && (
         <div
           style={{

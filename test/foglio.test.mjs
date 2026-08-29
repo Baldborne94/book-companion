@@ -1,26 +1,24 @@
-// LA GEOMETRIA DELLA SFOGLIATA, LETTA DAL FOGLIO DI STILE.
+// LA GEOMETRIA DELLA SPAZZATA, LETTA DAL FOGLIO DI STILE.
 //
-// Quattro giri di svolta sono passati da questo file — rotazione rigida,
-// piega alla flipbook, e ora la sfogliata del Kindle, chiesta dal lettore
-// col suo video — e la lezione che li attraversa tutti è una: i difetti
-// erano SEGNI e ASSI, invisibili nel diff e visibili solo filmando. Un
-// filmato non si mette in `npm test`; l'aritmetica sì.
+// Sei geometrie sono passate da questo file, e la lezione che le
+// attraversa tutte è una: i difetti erano SEGNI, ASSI e CORSIE DEL
+// COMPOSITORE — invisibili nel diff, visibili solo filmando. Un filmato
+// non si mette in `npm test`; l'aritmetica sì.
 //
-// Le regole della sfogliata:
-//  - l'asse è QUASI verticale ma inclinato (la componente x fa la piega
-//    diagonale del Kindle), e ha il segno del suo verso;
-//  - i gradi sono POSITIVI col cardine a sinistra: il bordo libero SI
-//    ALLONTANA e il foglio rimpicciolisce mentre volta, come sul Kindle.
-//    Il quadro decide il segno: una pagina a tutto schermo che viene
-//    AVANTI si ingrandisce fino a riempire lo schermo di testo obliquo
-//    («la svolta è stramba») — sbagliarlo si vede solo in un filmato;
-//  - la corsa passa la verticale e arriva oltre (il rovescio specchiato,
-//    che è il carattere del Kindle), e la dissolvenza comincia SOLO oltre
-//    la verticale: fino a lì un foglio di carta non è trasparente;
-//  - si anima SOLO `transform` e `opacity` — `left`/`width`/`clip-path`/
-//    `filter` nei fotogrammi tornano sul filo principale, e sul tablet
-//    l'animazione usciva a 4-5 fotogrammi invece di 18 (riprodotto al
-//    banco con la CPU strozzata 8×). L'ombra sta ferma nella regola.
+// Le regole della spazzata:
+//  - è PIATTA APPOSTA: `translateX` + `rotate` + `scale`, mai `rotate3d`
+//    né `perspective` — il 3D con prospettiva butta Gecko fuori dal
+//    compositore (misurato: 30 fotogrammi su 179 contro 42 in 2D) e sul
+//    tablet la voltata ticchettava un fotogramma sì e uno no;
+//  - il foglio SCIVOLA VERSO IL DORSO inclinandosi (il rotate è la
+//    diagonale del Kindle) e RIMPICCIOLISCE (il recedere);
+//  - la dissolvenza solo in uscita: carta piena finché il foglio è in
+//    scena, si spegne mentre esce;
+//  - l'ombra è un `box-shadow` FERMO nella regola: un `filter` si
+//    ricalcola a ogni fotogramma (misurato: 22 contro 32 su 179);
+//  - NESSUN velo nel sipario: i veli vivono dentro l'elemento
+//    fotografato (Reader.jsx), perche' fotografati a parte tradivano su
+//    tutt'e due i motori — il lampo di piena luce a ogni voltata.
 import { readFileSync } from "fs";
 
 const CSS = readFileSync(new URL("../src/index.css", import.meta.url), "utf8");
@@ -44,7 +42,6 @@ function blocco(capo) {
 
 const numeri = (testo, re) => [...testo.matchAll(re)].map((m) => Number(m[1]));
 
-// i fotogrammi di un @keyframes come [{stop, css}]
 function fotogrammi(nome) {
   const b = blocco(`@keyframes ${nome}`);
   return [...b.matchAll(/([\d.]+)%\s*\{([^}]*)\}/g)].map((m) => ({
@@ -56,115 +53,81 @@ const prop = (css, nome) => {
   const m = css.match(new RegExp(`${nome}\\s*:\\s*([^;]+);`));
   return m ? m[1].trim() : null;
 };
-// rotate3d(x, y, z, Adeg) → {x, y, z, a}
-const giro = (css) => {
+// translateX(T%) rotate(Rdeg) scale(S) → {t, r, sc}
+const mossa = (css) => {
   const m = (prop(css, "transform") || "").match(
-    /rotate3d\((-?[\d.]+),\s*(-?[\d.]+),\s*(-?[\d.]+),\s*(-?[\d.]+)deg\)/
+    /translateX\((-?[\d.]+)%\)\s+rotate\((-?[\d.]+)deg\)\s+scale\(([\d.]+)\)/
   );
-  return m ? { x: Number(m[1]), y: Number(m[2]), z: Number(m[3]), a: Number(m[4]) } : null;
+  return m ? { t: Number(m[1]), r: Number(m[2]), sc: Number(m[3]) } : null;
 };
 
 export default async function (t) {
-  for (const [nome, versoX, versoA, cardine] of [
-    ["bc-sfoglia-next", 1, 1, "0% 50%"],
-    ["bc-sfoglia-prev", -1, -1, "100% 50%"],
+  for (const [nome, verso, cardine] of [
+    ["bc-sfoglia-next", -1, "0% 50%"],
+    ["bc-sfoglia-prev", 1, "100% 50%"],
   ]) {
     const fs = fotogrammi(nome);
-    t.c(`«${nome}» ha i suoi fotogrammi`, fs.length >= 5, `${fs.length}`);
-    const giri = fs.map((f) => giro(f.css));
-    t.c(`e ogni fotogramma è un rotate3d`, giri.every(Boolean));
+    t.c(`«${nome}» ha i suoi fotogrammi`, fs.length >= 4, `${fs.length}`);
+    const giri = fs.map((f) => mossa(f.css));
+    t.c(`e ogni fotogramma è translateX + rotate + scale`, giri.every(Boolean));
     if (!giri.every(Boolean)) continue;
 
-    // ---- L'ASSE ----------------------------------------------------------
-    t.c(
-      `l'asse è quasi verticale ma INCLINATO (la diagonale del Kindle)`,
-      giri.every((g) => g.y === 1 && Math.abs(g.x) >= 0.05 && Math.abs(g.x) <= 0.35 && g.z === 0),
-      JSON.stringify(giri[1])
-    );
-    t.c(
-      `e l'inclinazione ha il verso del cardine`,
-      giri.every((g) => Math.sign(g.x) === versoX)
-    );
-    t.c(
-      `l'asse non cambia durante la corsa (l'oscillazione è un altro gesto)`,
-      giri.every((g) => g.x === giri[0].x)
-    );
+    // ---- IL VERSO ---------------------------------------------------------
+    const tx = giri.map((g) => g.t * verso);
+    t.c(`il foglio scivola verso il ${verso < 0 ? "dorso (sinistra)" : "bordo (destra)"}`,
+      giri.slice(1).every((g) => Math.sign(g.t) === verso), giri.map((g) => g.t).join(", "));
+    t.c(`e non torna mai indietro`, tx.every((v, i) => i === 0 || v > tx[i - 1]));
+    t.c(`esce davvero di scena`, Math.max(...tx) >= 105, `arriva a ${Math.max(...tx)}`);
+    // l'inclinazione: la diagonale del Kindle, dallo stesso lato dello scivolo
+    t.c(`il foglio si inclina mentre scivola`,
+      giri.slice(1).every((g) => Math.sign(g.r) === verso && Math.abs(g.r) <= 12),
+      giri.map((g) => g.r).join(", "));
+    // il recedere: rimpicciolisce, mai sotto un scorcio credibile
+    const scale = giri.map((g) => g.sc);
+    t.c(`e rimpicciolisce (recede)`,
+      scale.every((v, i) => i === 0 || v <= scale[i - 1]) && scale[scale.length - 1] < 1 && scale[scale.length - 1] >= 0.85,
+      scale.join(", "));
 
-    // ---- I GRADI ---------------------------------------------------------
-    const angoli = giri.map((g) => g.a * versoA);
-    t.c(
-      `i gradi hanno il segno del cardine (${versoA < 0 ? "negativi" : "positivi"}, il foglio recede)`,
-      giri.slice(1).every((g) => Math.sign(g.a) === versoA),
-      giri.map((g) => g.a).join(", ")
-    );
-    t.c(`e crescono sempre, senza tornare indietro`,
-      angoli.every((a, i) => i === 0 || a > angoli[i - 1]));
-    t.c(`la corsa passa la verticale (il rovescio si vede)`,
-      Math.max(...angoli) >= 140, `arriva a ${Math.max(...angoli)}`);
-
-    // ---- LA DISSOLVENZA SOLO OLTRE LA VERTICALE --------------------------
-    for (let i = 0; i < fs.length; i += 1) {
-      const o = Number(prop(fs[i].css, "opacity"));
-      if (angoli[i] <= 92) {
-        t.c(`a ${angoli[i]}° il foglio è carta piena`, o === 1, `opacity ${o}`);
-      }
+    // ---- CARTA PIENA FINCHE' IN SCENA ------------------------------------
+    for (const f of fs.slice(0, -1)) {
+      const o = Number(prop(f.css, "opacity"));
+      t.c(`al ${f.stop}% il foglio è carta (opacity ≥ 0.9)`, o >= 0.9, `${o}`);
     }
-    t.eq(`e il fantasma specchiato si spegne in fondo`,
-      Number(prop(fs[fs.length - 1].css, "opacity")), 0);
+    t.eq(`e si spegne solo uscendo`, Number(prop(fs[fs.length - 1].css, "opacity")), 0);
 
-    // ---- SOLO COMPOSITORE ------------------------------------------------
-    t.c(
-      `nei fotogrammi solo transform e opacity`,
+    // ---- SOLO LA CORSIA DEL COMPOSITORE ----------------------------------
+    t.c(`nei fotogrammi solo transform e opacity`,
       fs.every((f) => !prop(f.css, "left") && !prop(f.css, "width")
-        && !prop(f.css, "filter") && !prop(f.css, "clip-path"))
-    );
+        && !prop(f.css, "filter") && !prop(f.css, "clip-path")));
+    t.c(`e niente 3D: rotate3d o perspective riportano lo scatto`,
+      fs.every((f) => !/rotate3d|perspective|matrix3d/.test(f.css)));
 
     // ---- LA REGOLA CHE LO MONTA ------------------------------------------
-    const verso = nome.endsWith("next") ? "next" : "prev";
-    const regola = blocco(`.bc-volta-${verso}::view-transition-old(bc-pagina) {`);
-    t.c(`a sfogliarsi è la pagina VECCHIA`, new RegExp(`animation:\\s*${nome}`).test(regola), regola.trim());
-    t.c(`col cardine sul ${verso === "next" ? "dorso sinistro" : "bordo destro"}`,
-      regola.includes(`transform-origin: ${cardine}`));
-    // l'ombra cade verso il DORSO (parte opposta al bordo che recede) ed
-    // e' un BOX-SHADOW: il drop-shadow e' un filtro e si ricalcola a ogni
-    // fotogramma — misurato su Gecko, 22 fotogrammi su 179 col filtro
-    // contro 32 con la scatola. Un filter su queste regole riporta a casa
-    // lo scatto.
-    t.c(`e l'ombra e' una scatola, dalla parte giusta`,
-      /box-shadow/.test(regola)
-        && numeri(regola, /box-shadow:\s*(-?[\d.]+)px/g).every((px) => Math.sign(px) === -versoA));
-    t.c(`nessun filter sulla regola del foglio`, !/filter\s*:/.test(regola), regola.trim());
+    const dir = nome.endsWith("next") ? "next" : "prev";
+    const regola = blocco(`.bc-volta-${dir}::view-transition-old(bc-pagina) {`);
+    t.c(`a spazzarsi via è la pagina VECCHIA`, new RegExp(`animation:\\s*${nome}`).test(regola), regola.trim());
+    t.c(`col cardine giusto`, regola.includes(`transform-origin: ${cardine}`));
+    t.c(`e l'ombra è una scatola ferma, dalla parte giusta`,
+      /box-shadow/.test(regola) && !/filter\s*:/.test(regola)
+        && numeri(regola, /box-shadow:\s*(-?[\d.]+)px/g).every((px) => Math.sign(px) === verso));
   }
 
-  // ---- IL RESTO DELL'IMPALCATURA -----------------------------------------
-  t.c(
-    "la pagina nuova non si muove mai",
-    !/::view-transition-new\(bc-pagina\)[^{]*\{[^}]*animation:\s*bc-/.test(CSS)
-  );
-  const base = blocco("::view-transition-old(bc-pagina),");
-  t.c("la faccia posteriore si vede (è il rovescio del Kindle)",
-    /backface-visibility:\s*visible/.test(base));
-  // la prospettiva sta sulla COPPIA: sul gruppo non arriva al foglio e il
-  // giro si disegna piatto — tre bocciature prima di scoprirlo
-  const coppia = blocco("::view-transition-image-pair(bc-pagina) {");
-  t.c("la prospettiva sta sulla coppia", /perspective:\s*var\(--bc-prof/.test(coppia), coppia.trim());
-  t.c("con un valore di scorta", /var\(--bc-prof,\s*\d+px\)/.test(coppia));
-  t.c("e il punto di fuga in mezzo", /perspective-origin:\s*50%\s+50%/.test(coppia));
-  // ---- I VELI RESTANO ACCESI MENTRE SI SFOGLIA ---------------------------
-  // il sipario delle View Transitions sta sopra i filtri del reader:
-  // senza fotografia propria, ogni voltata era un lampo a piena luce per
-  // chi legge di notte con la luminosita' abbassata
-  for (const velo of ["bc-caldo", "bc-lume"]) {
-    const gr = blocco(`::view-transition-group(${velo})`);
-    t.c(`il velo «${velo}» sale sopra la pagina`,
-      Number((gr.match(/z-index:\s*(\d+)/) || [])[1]) > 2, gr.trim());
-    const nuovo = blocco(`::view-transition-new(${velo})`);
-    t.c(`e sta fermo, senza dissolvenze del browser`, /animation:\s*none/.test(nuovo));
-  }
-  t.c("il velo caldo rimette la sua fusione (multiply non viaggia nella fotografia)",
-    /::view-transition-new\(bc-caldo\)\s*\{[^}]*mix-blend-mode:\s*multiply/.test(CSS));
+  // ---- L'IMPALCATURA ------------------------------------------------------
+  t.c("la pagina nuova non si muove mai",
+    !/::view-transition-new\(bc-pagina\)[^{]*\{[^}]*animation:\s*bc-/.test(CSS));
+  t.c("nessuna prospettiva sul sipario: la spazzata è piatta apposta",
+    !/::view-transition[^{]*\{[^}]*perspective/.test(CSS));
 
-  // «meno animazioni» ferma la sfogliata
+  // ---- NESSUN VELO NEL SIPARIO --------------------------------------------
+  // i veli fotografati a parte hanno tradito su TUTT'E DUE i motori, in
+  // fasi diverse (Gecko: fotografia nuova in ritardo; Chromium: vecchia
+  // vuota e fase d'attesa nuda — 100-200ms di piena luce a voltata). I
+  // veli del libro vivono DENTRO l'elemento fotografato (Reader.jsx), e
+  // un nome di View Transition su un velo riapre il lampo.
+  t.c("nessun velo ha un nome nel sipario",
+    !/::view-transition[^{]*\((?:bc-caldo|bc-lume)\)/.test(CSS));
+
+  // «meno animazioni» ferma la spazzata
   const ridotto = CSS.slice(CSS.lastIndexOf("@media (prefers-reduced-motion: reduce)"));
-  t.c("col movimento ridotto non si sfoglia", /animation:\s*none/.test(ridotto));
+  t.c("col movimento ridotto non si spazza", /animation:\s*none/.test(ridotto));
 }
