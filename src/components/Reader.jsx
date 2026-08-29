@@ -15,7 +15,7 @@ import { sembraUnNome } from "../lib/nomi.js";
 import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
 } from "../lib/readerSettings.js";
-import { contentStyles, spegniVuoti, togliStacco, spegniScenografia, cartaInVolo } from "../lib/readerTheme.js";
+import { contentStyles, spegniVuoti, togliStacco, spegniScenografia } from "../lib/readerTheme.js";
 import { ritaglioAvanzo, flattenToc } from "../lib/readerLayout.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
@@ -1075,26 +1075,33 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // volta piu' e' un reader rotto
   const SVOLTA_GUARDIA = 1500;
 
-  function laSvolta(r, dir, fai) {
+  // `dopo` e' il lavoro che NON deve correre insieme alla piega:
+  // `reportLocation` fa scattare `relocated`, che aggiorna lo stato e fa
+  // ridisegnare React — e sul tablet quel lavoro occupava il filo
+  // principale proprio nei 600ms dell'animazione, che usciva a scatti
+  // (misurato: 4-5 fotogrammi al posto di 18, riprodotto al banco con la
+  // CPU strozzata 8×). La pagina e' GIA' voltata quando la piega parte —
+  // la fotografia nuova la fa il browser — quindi il conteggio puo'
+  // aspettare la fine senza che nessuno se ne accorga.
+  function laSvolta(r, dir, fai, dopo) {
     const doc = document;
     const radice = doc.documentElement;
+    const subito = () => {
+      fai();
+      dopo?.();
+    };
     // senza View Transitions (o con «meno animazioni» acceso nel sistema)
     // si volta e basta: niente effetto, nessun difetto
-    if (typeof doc.startViewTransition !== "function" || riduciMovimento()) return fai();
+    if (typeof doc.startViewTransition !== "function" || riduciMovimento()) return subito();
     // una voltata mentre l'altra gira: si fa senza effetto, o le due
     // fotografie si accavallano
-    if (svoltaViva.current) return fai();
+    if (svoltaViva.current) return subito();
     radice.classList.add(dir === "next" ? "bc-volta-next" : "bc-volta-prev");
-    // A FACCIATA DOPPIA GIRA MEZZO FOGLIO, NON TUTTO IL LIBRO. Con due
-    // pagine affiancate il dorso sta in MEZZO, e quella che si solleva è
-    // una facciata sola: incernierata al centro, si alza dal bordo esterno
-    // e passa dall'altra parte. Far ruotare tutto il doppio foglio attorno
-    // al bordo esterno — quello che si faceva prima — è girare il libro,
-    // non una pagina (bocciato dal lettore, che ha mandato il video di
-    // come dev'essere). A pagina singola invece il foglio è tutto lì e il
-    // cardine torna a essere il suo bordo.
-    const doppia = r?.manager?.layout?.divisor === 2;
-    if (doppia) radice.classList.add("bc-doppia");
+    // LA SFOGLIATA E' UN GESTO SOLO, a doppia facciata come a pagina
+    // singola: la pagina vecchia si stacca INTERA e si arriccia via, come
+    // sul Kindle del video del lettore. Il foglio della prospettiva e'
+    // percio' sempre la vista intera.
+
     // LA PROSPETTIVA SI MISURA SUL FOGLIO CHE GIRA, non si sceglie a
     // numero fisso: quanto un foglio si apre in profondità dipende da
     // quanto è largo, e lo stesso valore che apre bene una facciata di
@@ -1103,21 +1110,27 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // provato al banco: sotto, il bordo libero cresce tanto da uscire
     // dallo schermo; sopra, il giro torna a sembrare un restringimento.
     const largo = viewerRef.current?.clientWidth || 0;
-    const foglio = doppia ? largo / 2 : largo;
-    if (foglio > 0) radice.style.setProperty("--bc-prof", `${Math.round(foglio * 3.8)}px`);
+    if (largo > 0) radice.style.setProperty("--bc-prof", `${Math.round(largo * 3.8)}px`);
     const pulisci = () => {
+      // puo' arrivarci due volte (la guardia E la promessa): il lavoro
+      // rimandato deve girare una volta sola
+      if (!svoltaViva.current) return;
       clearTimeout(svoltaGuardia.current);
       svoltaGuardia.current = null;
       svoltaViva.current = null;
-      radice.classList.remove("bc-volta-next", "bc-volta-prev", "bc-doppia");
+      radice.classList.remove("bc-volta-next", "bc-volta-prev");
       radice.style.removeProperty("--bc-prof");
+      dopo?.();
     };
     let vt;
     try {
       vt = doc.startViewTransition(fai);
     } catch {
-      pulisci();
-      return fai();
+      // la guardia di `pulisci` qui non aiuta (la transizione non e' mai
+      // esistita): le classi appese si tolgono a mano
+      radice.classList.remove("bc-volta-next", "bc-volta-prev");
+      radice.style.removeProperty("--bc-prof");
+      return subito();
     }
     svoltaViva.current = vt;
     // LA RETE DI SICUREZZA, e non e' pignoleria: se per qualunque ragione
@@ -1166,8 +1179,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     if (resto) {
       laSvolta(r, dir, () => {
         r.manager.scrollBy(resto, 0, true);
-        r.reportLocation();
-      });
+      }, () => r.reportLocation());
       return;
     }
     if (settings.svolta && dentroIlCapitolo(r.manager, dir)) {
@@ -1187,8 +1199,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       laSvolta(r, dir, () => {
         if (dir === "next") r.manager.next();
         else r.manager.prev();
-        r.reportLocation();
-      });
+      }, () => r.reportLocation());
       return;
     }
 
@@ -1799,25 +1810,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           touchAction: "manipulation",
         }}
       >
-        {/* IL FOGLIO DI CARTA della piega. La svolta vorrebbe QUATTRO
-            fotografie — pagina vecchia, pagina nuova, il lembo che ripiega
-            e l'ombra della piega — ma un nome ne da' due. Il lembo e
-            l'ombra sono percio' un secondo elemento col suo nome: sta
-            SOTTO il visore, dipinge solo carta del tema, e le sue due
-            fotografie sono i due rettangoli di carta che la voltata piega
-            e scurisce. A riposo non si vede: il visore sopra e' opaco. */}
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            inset: FRAME,
-            borderRadius: R.minimo,
-            // un filo piu' chiara del fondo: e' carta A MEZZ'ARIA, e sul
-            // tema notte la carta del fondo sarebbe nero su nero
-            background: cartaInVolo(theme.bg, theme.fg),
-            ...(settings.svolta ? { viewTransitionName: "bc-carta" } : {}),
-          }}
-        />
         <div
           ref={viewerRef}
           style={{
