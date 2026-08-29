@@ -290,7 +290,7 @@ textarea {
  * mezzo secondo il gesto si legge come uno scatto («troppo veloce»), e
  * 700 e' il passo misurato sui fotogrammi del video del Kindle. */
 ::view-transition-image-pair(bc-pagina) {
-  perspective: var(--bc-prof, 4400px);
+  perspective: var(--bc-prof, 2200px);
   perspective-origin: 50% 50%;
 }
 
@@ -326,25 +326,58 @@ textarea {
   animation: bc-sfoglia-prev 700ms linear forwards;
 }
 
-/* AVANTI: cardine sul dorso a sinistra, gradi NEGATIVI perche' il bordo
- * libero venga verso il lettore (col piu' la pagina sprofonda nello
- * schermo — lezione gia' pagata). INDIETRO e' lo specchio: asse e gradi
- * rovesciati, cardine a destra. */
+/* AVANTI: cardine sul dorso a sinistra e gradi POSITIVI, perche' il
+ * bordo libero SI ALLONTANI. E' il rovescio della lezione della mezza
+ * facciata, e il quadro decide il segno: un mezzo foglio dentro il libro
+ * si solleva VERSO il lettore, ma una pagina a tutto schermo che viene
+ * avanti si ingrandisce fino a riempire lo schermo di testo obliquo
+ * gigante — «la svolta e' stramba», parole del lettore, misurato sui
+ * suoi fotogrammi. Il foglio che recede rimpicciolisce mentre volta,
+ * come sul Kindle, e la pagina nuova gli si scopre attorno. INDIETRO e'
+ * lo specchio: asse e gradi rovesciati, cardine a destra. */
 @keyframes bc-sfoglia-next {
-  0%   { transform: rotate3d(0.14, 1, 0, 0deg);    opacity: 1; }
-  18%  { transform: rotate3d(0.14, 1, 0, -22deg);  opacity: 1; }
-  38%  { transform: rotate3d(0.14, 1, 0, -55deg);  opacity: 1; }
-  56%  { transform: rotate3d(0.14, 1, 0, -92deg);  opacity: 1; }
-  74%  { transform: rotate3d(0.14, 1, 0, -125deg); opacity: 0.85; }
-  100% { transform: rotate3d(0.14, 1, 0, -160deg); opacity: 0; }
+  0%   { transform: rotate3d(0.14, 1, 0, 0deg);   opacity: 1; }
+  18%  { transform: rotate3d(0.14, 1, 0, 22deg);  opacity: 1; }
+  38%  { transform: rotate3d(0.14, 1, 0, 55deg);  opacity: 1; }
+  56%  { transform: rotate3d(0.14, 1, 0, 92deg);  opacity: 1; }
+  74%  { transform: rotate3d(0.14, 1, 0, 125deg); opacity: 0.85; }
+  100% { transform: rotate3d(0.14, 1, 0, 160deg); opacity: 0; }
 }
 @keyframes bc-sfoglia-prev {
-  0%   { transform: rotate3d(-0.14, 1, 0, 0deg);   opacity: 1; }
-  18%  { transform: rotate3d(-0.14, 1, 0, 22deg);  opacity: 1; }
-  38%  { transform: rotate3d(-0.14, 1, 0, 55deg);  opacity: 1; }
-  56%  { transform: rotate3d(-0.14, 1, 0, 92deg);  opacity: 1; }
-  74%  { transform: rotate3d(-0.14, 1, 0, 125deg); opacity: 0.85; }
-  100% { transform: rotate3d(-0.14, 1, 0, 160deg); opacity: 0; }
+  0%   { transform: rotate3d(-0.14, 1, 0, 0deg);    opacity: 1; }
+  18%  { transform: rotate3d(-0.14, 1, 0, -22deg);  opacity: 1; }
+  38%  { transform: rotate3d(-0.14, 1, 0, -55deg);  opacity: 1; }
+  56%  { transform: rotate3d(-0.14, 1, 0, -92deg);  opacity: 1; }
+  74%  { transform: rotate3d(-0.14, 1, 0, -125deg); opacity: 0.85; }
+  100% { transform: rotate3d(-0.14, 1, 0, -160deg); opacity: 0; }
+}
+
+/* I VELI DEL CALDO E DELLA LUMINOSITA' RESTANO ACCESI ANCHE MENTRE SI
+ * SFOGLIA. Il sipario delle View Transitions sta SOPRA tutto il
+ * documento, filtri compresi: senza queste regole ogni voltata era un
+ * lampo a piena luce — chi legge di notte con la luminosita' abbassata
+ * vedeva la pagina accendersi per mezzo secondo a ogni pagina («la
+ * luminosita' deve adattarsi»). I due veli hanno percio' un NOME loro:
+ * fotografati a parte, i loro gruppi salgono sopra quello della pagina e
+ * la coprono per tutta la voltata, fermi. Il velo caldo rimette qui il
+ * suo `multiply`, perche' la fusione non viaggia nella fotografia. */
+::view-transition-group(bc-caldo),
+::view-transition-group(bc-lume) {
+  z-index: 3;
+}
+::view-transition-old(bc-caldo),
+::view-transition-old(bc-lume) {
+  animation: none;
+  opacity: 0;
+}
+::view-transition-new(bc-caldo),
+::view-transition-new(bc-lume) {
+  animation: none;
+  height: 100%;
+  object-fit: fill;
+}
+::view-transition-new(bc-caldo) {
+  mix-blend-mode: multiply;
 }
 
 /* «meno animazioni» del sistema si rispetta anche qui, non solo nel
