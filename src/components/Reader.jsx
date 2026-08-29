@@ -1069,6 +1069,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // rimetterlo. E lo scivolo non è nemmeno un ripiego onesto qui, perché
   // il lettore ha chiesto o la svolta o la dissolvenza di sempre.
   const svoltaViva = useRef(null);
+  const gemelliRef = useRef(null);
   const svoltaGuardia = useRef(null);
   // oltre questo la svolta si considera persa e il reader torna a voltare
   // e basta: una pagina che non gira e' un peccato, una pagina che non
@@ -1116,6 +1117,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       // puo' arrivarci due volte (la guardia E la promessa): il lavoro
       // rimandato deve girare una volta sola
       if (!svoltaViva.current) return;
+      if (gemelliRef.current) gemelliRef.current.style.display = "none";
       clearTimeout(svoltaGuardia.current);
       svoltaGuardia.current = null;
       svoltaViva.current = null;
@@ -1123,6 +1125,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       radice.style.removeProperty("--bc-prof");
       dopo?.();
     };
+    // i gemelli dei veli si accendono PRIMA della cattura: e' il buco che
+    // devono coprire (vedi il commento dove abitano)
+    if (gemelliRef.current) gemelliRef.current.style.display = "block";
     let vt;
     try {
       vt = doc.startViewTransition(fai);
@@ -1130,6 +1135,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       // la guardia di `pulisci` qui non aiuta (la transizione non e' mai
       // esistita): le classi appese si tolgono a mano
       radice.classList.remove("bc-volta-next", "bc-volta-prev");
+      if (gemelliRef.current) gemelliRef.current.style.display = "none";
       radice.style.removeProperty("--bc-prof");
       return subito();
     }
@@ -1958,6 +1964,41 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           ...(settings.svolta ? { viewTransitionName: "bc-lume" } : {}),
         }}
       />
+      {/* I GEMELLI DEI VELI, SENZA NOME. Firefox, nell'attimo della
+          cattura, NASCONDE dal vivo gli elementi che sta fotografando —
+          veli compresi — un paio di fotogrammi PRIMA di alzare il
+          sipario: 66ms di pagina nuda a piena luce a ogni voltata,
+          misurati sui fotogrammi del lettore (luce 11 → 30 → 11). Questi
+          due gemelli sono identici ai veli ma SENZA nome: non vengono mai
+          nascosti, coprono il buco, e appena il sipario e' su restano
+          sotto, invisibili. Si accendono solo per la voltata (laSvolta),
+          o a riposo dimmerebbero due volte. */}
+      <div
+        ref={gemelliRef}
+        style={{ display: "none" }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            zIndex: 5,
+            background: "#ff9a3c",
+            mixBlendMode: "multiply",
+            opacity: settings.warmth,
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            zIndex: 5,
+            background: "#000",
+            opacity: 1 - settings.brightness,
+          }}
+        />
+      </div>
 
       {status === "loading" && (
         <div

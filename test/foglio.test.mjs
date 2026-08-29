@@ -125,11 +125,15 @@ export default async function (t) {
     t.c(`a sfogliarsi è la pagina VECCHIA`, new RegExp(`animation:\\s*${nome}`).test(regola), regola.trim());
     t.c(`col cardine sul ${verso === "next" ? "dorso sinistro" : "bordo destro"}`,
       regola.includes(`transform-origin: ${cardine}`));
-    // l'ombra cade verso il DORSO, cioe' dalla parte opposta al bordo
-    // che recede
-    t.c(`e l'ombra ferma nella regola, dalla parte giusta`,
-      /drop-shadow/.test(regola)
-        && numeri(regola, /drop-shadow\((-?[\d.]+)px/g).every((px) => Math.sign(px) === -versoA));
+    // l'ombra cade verso il DORSO (parte opposta al bordo che recede) ed
+    // e' un BOX-SHADOW: il drop-shadow e' un filtro e si ricalcola a ogni
+    // fotogramma — misurato su Gecko, 22 fotogrammi su 179 col filtro
+    // contro 32 con la scatola. Un filter su queste regole riporta a casa
+    // lo scatto.
+    t.c(`e l'ombra e' una scatola, dalla parte giusta`,
+      /box-shadow/.test(regola)
+        && numeri(regola, /box-shadow:\s*(-?[\d.]+)px/g).every((px) => Math.sign(px) === -versoA));
+    t.c(`nessun filter sulla regola del foglio`, !/filter\s*:/.test(regola), regola.trim());
   }
 
   // ---- IL RESTO DELL'IMPALCATURA -----------------------------------------
