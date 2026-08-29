@@ -1106,11 +1106,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // numero fisso: quanto un foglio si apre in profondità dipende da
     // quanto è largo, e lo stesso valore che apre bene una facciata di
     // tablet in orizzontale schiaccia la stessa app in verticale, dove il
-    // foglio è tutto lo schermo. 3,8 volte la larghezza è il rapporto
-    // provato al banco: sotto, il bordo libero cresce tanto da uscire
-    // dallo schermo; sopra, il giro torna a sembrare un restringimento.
+    // foglio è tutto lo schermo. 1,9 volte la larghezza è il rapporto
+    // provato al banco per il foglio che RECEDE: più lontano, la
+    // rotazione si appiattisce in uno stiramento obliquo del testo — la
+    // «svolta stramba» vista dal lettore sul tablet.
     const largo = viewerRef.current?.clientWidth || 0;
-    if (largo > 0) radice.style.setProperty("--bc-prof", `${Math.round(largo * 3.8)}px`);
+    if (largo > 0) radice.style.setProperty("--bc-prof", `${Math.round(largo * 1.9)}px`);
     const pulisci = () => {
       // puo' arrivarci due volte (la guardia E la promessa): il lavoro
       // rimandato deve girare una volta sola
@@ -1930,6 +1931,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         )}
       </div>
 
+      {/* i nomi sui due veli non sono decorazione: il sipario delle View
+          Transitions sta sopra TUTTO, filtri compresi, e senza fotografia
+          propria ogni voltata era un lampo a piena luce per chi legge di
+          notte con la luminosita' abbassata */}
       <div
         style={{
           position: "absolute",
@@ -1939,6 +1944,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           background: "#ff9a3c",
           mixBlendMode: "multiply",
           opacity: settings.warmth,
+          ...(settings.svolta ? { viewTransitionName: "bc-caldo" } : {}),
         }}
       />
       <div
@@ -1949,6 +1955,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           zIndex: 5,
           background: "#000",
           opacity: 1 - settings.brightness,
+          ...(settings.svolta ? { viewTransitionName: "bc-lume" } : {}),
         }}
       />
 

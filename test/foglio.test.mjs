@@ -9,9 +9,11 @@
 // Le regole della sfogliata:
 //  - l'asse è QUASI verticale ma inclinato (la componente x fa la piega
 //    diagonale del Kindle), e ha il segno del suo verso;
-//  - i gradi sono NEGATIVI col cardine a sinistra (il bordo libero viene
-//    verso il lettore; col più la pagina sprofonda) e positivi col
-//    cardine a destra — sbagliarlo si vede solo in un filmato;
+//  - i gradi sono POSITIVI col cardine a sinistra: il bordo libero SI
+//    ALLONTANA e il foglio rimpicciolisce mentre volta, come sul Kindle.
+//    Il quadro decide il segno: una pagina a tutto schermo che viene
+//    AVANTI si ingrandisce fino a riempire lo schermo di testo obliquo
+//    («la svolta è stramba») — sbagliarlo si vede solo in un filmato;
 //  - la corsa passa la verticale e arriva oltre (il rovescio specchiato,
 //    che è il carattere del Kindle), e la dissolvenza comincia SOLO oltre
 //    la verticale: fino a lì un foglio di carta non è trasparente;
@@ -64,8 +66,8 @@ const giro = (css) => {
 
 export default async function (t) {
   for (const [nome, versoX, versoA, cardine] of [
-    ["bc-sfoglia-next", 1, -1, "0% 50%"],
-    ["bc-sfoglia-prev", -1, 1, "100% 50%"],
+    ["bc-sfoglia-next", 1, 1, "0% 50%"],
+    ["bc-sfoglia-prev", -1, -1, "100% 50%"],
   ]) {
     const fs = fotogrammi(nome);
     t.c(`«${nome}» ha i suoi fotogrammi`, fs.length >= 5, `${fs.length}`);
@@ -91,7 +93,7 @@ export default async function (t) {
     // ---- I GRADI ---------------------------------------------------------
     const angoli = giri.map((g) => g.a * versoA);
     t.c(
-      `i gradi hanno il segno del cardine (${versoA < 0 ? "negativi" : "positivi"})`,
+      `i gradi hanno il segno del cardine (${versoA < 0 ? "negativi" : "positivi"}, il foglio recede)`,
       giri.slice(1).every((g) => Math.sign(g.a) === versoA),
       giri.map((g) => g.a).join(", ")
     );
@@ -123,9 +125,11 @@ export default async function (t) {
     t.c(`a sfogliarsi è la pagina VECCHIA`, new RegExp(`animation:\\s*${nome}`).test(regola), regola.trim());
     t.c(`col cardine sul ${verso === "next" ? "dorso sinistro" : "bordo destro"}`,
       regola.includes(`transform-origin: ${cardine}`));
+    // l'ombra cade verso il DORSO, cioe' dalla parte opposta al bordo
+    // che recede
     t.c(`e l'ombra ferma nella regola, dalla parte giusta`,
       /drop-shadow/.test(regola)
-        && numeri(regola, /drop-shadow\((-?[\d.]+)px/g).every((px) => Math.sign(px) === versoA));
+        && numeri(regola, /drop-shadow\((-?[\d.]+)px/g).every((px) => Math.sign(px) === -versoA));
   }
 
   // ---- IL RESTO DELL'IMPALCATURA -----------------------------------------
@@ -142,6 +146,20 @@ export default async function (t) {
   t.c("la prospettiva sta sulla coppia", /perspective:\s*var\(--bc-prof/.test(coppia), coppia.trim());
   t.c("con un valore di scorta", /var\(--bc-prof,\s*\d+px\)/.test(coppia));
   t.c("e il punto di fuga in mezzo", /perspective-origin:\s*50%\s+50%/.test(coppia));
+  // ---- I VELI RESTANO ACCESI MENTRE SI SFOGLIA ---------------------------
+  // il sipario delle View Transitions sta sopra i filtri del reader:
+  // senza fotografia propria, ogni voltata era un lampo a piena luce per
+  // chi legge di notte con la luminosita' abbassata
+  for (const velo of ["bc-caldo", "bc-lume"]) {
+    const gr = blocco(`::view-transition-group(${velo})`);
+    t.c(`il velo «${velo}» sale sopra la pagina`,
+      Number((gr.match(/z-index:\s*(\d+)/) || [])[1]) > 2, gr.trim());
+    const nuovo = blocco(`::view-transition-new(${velo})`);
+    t.c(`e sta fermo, senza dissolvenze del browser`, /animation:\s*none/.test(nuovo));
+  }
+  t.c("il velo caldo rimette la sua fusione (multiply non viaggia nella fotografia)",
+    /::view-transition-new\(bc-caldo\)\s*\{[^}]*mix-blend-mode:\s*multiply/.test(CSS));
+
   // «meno animazioni» ferma la sfogliata
   const ridotto = CSS.slice(CSS.lastIndexOf("@media (prefers-reduced-motion: reduce)"));
   t.c("col movimento ridotto non si sfoglia", /animation:\s*none/.test(ridotto));
