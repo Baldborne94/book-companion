@@ -15,7 +15,7 @@ import { sembraUnNome } from "../lib/nomi.js";
 import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
 } from "../lib/readerSettings.js";
-import { contentStyles, spegniVuoti, togliStacco } from "../lib/readerTheme.js";
+import { contentStyles, spegniVuoti, togliStacco, spegniScenografia } from "../lib/readerTheme.js";
 import { ritaglioAvanzo, flattenToc } from "../lib/readerLayout.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
@@ -520,6 +520,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // libro apposta: il frontespizio quasi mai rientra, e li' lo
         // stacco e' l'unico segnale che ha — deve restare.
         togliStacco(contents?.document);
+        // e la scena che certi ePub si portano dentro — il libro finto
+        // dipinto dietro il testo di ogni capitolo: la carta e' del tema
+        spegniScenografia(contents?.document);
       });
       applyStyles(r, s);
 
