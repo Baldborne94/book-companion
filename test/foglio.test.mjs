@@ -1,22 +1,21 @@
 // LA GEOMETRIA DELLA SVOLTA, LETTA DAL FOGLIO DI STILE.
 //
-// Tre giri di questa animazione sono stati bocciati dal lettore, e nessuno
-// dei tre difetti si vedeva leggendo il diff: erano SEGNI e META' — il
-// verso della rotazione rispetto al cardine, quale delle due facciate
-// gira, da che parte cade l'ombra. Si vedevano solo filmando l'app. Un
-// filmato però non si può mettere in `npm test`, mentre queste quattro
-// regole sì, perché sono aritmetica: col cardine a sinistra i gradi
-// devono essere negativi o il foglio sprofonda dentro lo schermo invece di
-// sollevarsi, e l'ombra deve cadere dalla parte verso cui il foglio si
-// piega o non è l'ombra di quel foglio.
+// Tre giri di rotazione sono stati bocciati dal lettore, e nessuno dei
+// difetti si vedeva leggendo il diff: erano SEGNI e METÀ — il verso della
+// rotazione rispetto al cardine, quale facciata gira, da che parte cade
+// l'ombra. Si vedevano solo filmando l'app. Un filmato però non si può
+// mettere in `npm test`, mentre queste regole sì, perché sono aritmetica.
 //
-// E il `clip-path`: guardarlo qui non è pignoleria di stile. Il `filter` si
-// applica PRIMA del ritaglio, quindi un ritaglio sulla metà del foglio si
-// porta via anche la `drop-shadow`, che per forza cade fuori. È il difetto
-// per cui il foglio girava senza ombra («ancora non ci siamo»), e chi
-// rimettesse un `clip-path` per ritagliare la facciata lo rimetterebbe
-// tale e quale.
+// Dalla quarta versione la facciata doppia è una PIEGA alla flipbook
+// (chiesta dal lettore col video di Flipsnack), e l'aritmetica sua è UNA:
+// il bordo trascinato sta a P, la piega a (P+100)/2, quindi larghezza del
+// lembo e ritaglio del fronte sono LO STESSO numero, (100−P)/2. Se i
+// fotogrammi dei due livelli non dicono lo stesso P, la piega si scuce e
+// fra lembo e fronte si apre una fessura — ed è esattamente il difetto
+// che un ritocco a occhio introdurrebbe senza che nessun diff lo dica.
 import { readFileSync } from "fs";
+import { cartaInVolo, VOLO } from "../src/lib/readerTheme.js";
+import { READER_THEMES } from "../src/lib/readerSettings.js";
 
 const CSS = readFileSync(new URL("../src/index.css", import.meta.url), "utf8");
 
@@ -39,102 +38,186 @@ function blocco(capo) {
 
 const numeri = (testo, re) => [...testo.matchAll(re)].map((m) => Number(m[1]));
 
+// i fotogrammi di un @keyframes come [{stop, dichiarazioni}]
+function fotogrammi(nome) {
+  const b = blocco(`@keyframes ${nome}`);
+  return [...b.matchAll(/([\d.]+)%\s*\{([^}]*)\}/g)].map((m) => ({
+    stop: Number(m[1]),
+    css: m[2],
+  }));
+}
+const prop = (css, nome) => {
+  const m = css.match(new RegExp(`${nome}\\s*:\\s*([^;]+);`));
+  return m ? m[1].trim() : null;
+};
+const pct = (v) => (v == null ? null : Number(String(v).replace("%", "")));
+
 export default async function (t) {
-  // ---- i due fotogrammi-chiave esistono ----------------------------------
+  // ---- LA PIEGA, avanti ---------------------------------------------------
+  const lemboN = fotogrammi("bc-lembo-next");
+  const fronteN = fotogrammi("bc-fronte-next");
+  const piegaN = fotogrammi("bc-piega-next");
+  t.c("il lembo avanti ha i suoi fotogrammi", lemboN.length >= 5, `${lemboN.length}`);
+  t.c("e il fronte pure", fronteN.length >= 5, `${fronteN.length}`);
+  t.c("e la banda della piega", piegaN.length >= 5, `${piegaN.length}`);
+
+  // IL CONTO UNICO: larghezza del lembo = (100 − P)/2, con P = il suo left
+  for (const f of lemboN) {
+    const P = pct(prop(f.css, "left"));
+    const w = pct(prop(f.css, "width"));
+    t.c(
+      `lembo avanti al ${f.stop}%: la piega sta a metà strada`,
+      P != null && w != null && Math.abs(w - (100 - P) / 2) < 0.01,
+      `left ${P}, width ${w}, atteso ${(100 - P) / 2}`
+    );
+  }
+  // e il fronte si ritaglia della STESSA misura, fotogramma per fotogramma
+  t.eq("lembo e fronte hanno gli stessi fermi", lemboN.length, fronteN.length);
+  for (let i = 0; i < Math.min(lemboN.length, fronteN.length); i += 1) {
+    const w = pct(prop(lemboN[i].css, "width"));
+    const clip = prop(fronteN[i].css, "clip-path") || "";
+    const m = clip.match(/inset\(0\s+([\d.]+)%\s+0\s+50%\)/);
+    t.c(
+      `fronte avanti al ${fronteN[i].stop}%: ritaglia quanto il lembo copre`,
+      m && Math.abs(Number(m[1]) - w) < 0.01,
+      `clip «${clip}», lembo ${w}`
+    );
+  }
+  // la corsa è intera: si parte dal bordo e si atterra sul dorso
+  t.eq("il lembo parte dal bordo libero", pct(prop(lemboN[0].css, "left")), 100);
+  t.eq("e atterra sulla facciata di sinistra", pct(prop(lemboN[lemboN.length - 1].css, "left")), 0);
+  t.eq("largo quanto la facciata", pct(prop(lemboN[lemboN.length - 1].css, "width")), 50);
+
+  // UN FOGLIO DI CARTA NON È TRASPARENTE: il velo del lembo resta pieno
+  // per tutta la corsa e si spegne SOLO all'atterraggio, quando sotto c'è
+  // già esattamente il testo su cui sta posando
+  for (const f of lemboN.slice(0, -1)) {
+    const o = Number(prop(f.css, "opacity"));
+    t.c(`il lembo resta carta al ${f.stop}%`, o >= 0.9, `opacity ${o}`);
+  }
+  t.eq("e si spegne solo atterrato", Number(prop(lemboN[lemboN.length - 1].css, "opacity")), 0);
+  // l'ombra c'è, e cade verso il dorso (a sinistra: offset negativo)
+  const ombreN = lemboN.map((f) => prop(f.css, "filter") || "");
+  t.c("il lembo fa ombra", ombreN.every((o) => o.includes("drop-shadow")));
+  t.c(
+    "e l'ombra cade verso il dorso",
+    lemboN.slice(0, -1).every((f) => numeri(f.css, /drop-shadow\((-?[\d.]+)px/g).every((x) => x < 0)),
+    ombreN.join(" | ")
+  );
+
+  // ---- LA PIEGA, indietro: lo specchio ------------------------------------
+  const lemboP = fotogrammi("bc-lembo-prev");
+  const fronteP = fotogrammi("bc-fronte-prev");
+  t.c("il lembo indietro ha i suoi fotogrammi", lemboP.length >= 5);
+  for (const f of lemboP) {
+    const P = pct(prop(f.css, "right"));
+    const w = pct(prop(f.css, "width"));
+    t.c(
+      `lembo indietro al ${f.stop}%: stessa piega, specchiata`,
+      P != null && w != null && Math.abs(w - (100 - P) / 2) < 0.01,
+      `right ${P}, width ${w}`
+    );
+  }
+  for (let i = 0; i < Math.min(lemboP.length, fronteP.length); i += 1) {
+    const w = pct(prop(lemboP[i].css, "width"));
+    const clip = prop(fronteP[i].css, "clip-path") || "";
+    const m = clip.match(/inset\(0\s+50%\s+0\s+([\d.]+)%\)/);
+    t.c(
+      `fronte indietro al ${fronteP[i].stop}%: ritaglia dal SUO lato`,
+      m && Math.abs(Number(m[1]) - w) < 0.01,
+      `clip «${clip}», lembo ${w}`
+    );
+  }
+  t.c(
+    "indietro l'ombra cade verso il SUO dorso (a destra)",
+    lemboP.slice(0, -1).every((f) => numeri(f.css, /drop-shadow\((-?[\d.]+)px/g).every((x) => x > 0))
+  );
+
+  // ---- CHI FA COSA --------------------------------------------------------
+  const dNext = blocco(".bc-doppia.bc-volta-next::view-transition-old(bc-pagina) {");
+  const dPrev = blocco(".bc-doppia.bc-volta-prev::view-transition-old(bc-pagina) {");
+  t.c("a doppia il fronte è la pagina VECCHIA", /animation:\s*bc-fronte-next/.test(dNext), dNext.trim());
+  t.c("anche indietro", /animation:\s*bc-fronte-prev/.test(dPrev));
+  const lemboRegNext = blocco(".bc-doppia.bc-volta-next::view-transition-new(bc-carta) {");
+  const lemboRegPrev = blocco(".bc-doppia.bc-volta-prev::view-transition-new(bc-carta) {");
+  t.c("il lembo è la CARTA, non il contenuto", /animation:\s*bc-lembo-next/.test(lemboRegNext));
+  t.c("anche indietro", /animation:\s*bc-lembo-prev/.test(lemboRegPrev));
+  // il lembo si ritaglia con la scatola: un clip-path gli mangerebbe l'ombra
+  t.c(
+    "niente clip-path sul lembo, o l'ombra sparisce",
+    !/clip-path/.test(lemboRegNext) && !/clip-path/.test(lemboRegPrev)
+      && !/clip-path/.test(blocco("@keyframes bc-lembo-next"))
+      && !/clip-path/.test(blocco("@keyframes bc-lembo-prev"))
+  );
+  // e la scatola si chiude, o la fotografia deborda (misurato col righello)
+  t.c(
+    "il lembo taglia davvero la sua fotografia",
+    /overflow:\s*hidden/.test(lemboRegNext) && /overflow:\s*hidden/.test(lemboRegPrev)
+  );
+
+  // ---- LA CARTA NON SI VEDE MAI A RIPOSO ----------------------------------
+  // i rettangoli di bc-carta esistono a OGNI voltata, anche singola: senza
+  // lo zero di partenza coprirebbero il libro
+  t.c(
+    "la carta parte spenta",
+    /::view-transition-old\(bc-carta\),\s*\n?::view-transition-new\(bc-carta\)\s*\{\s*[^}]*opacity:\s*0/.test(CSS)
+  );
+  const gruppoCarta = blocco("::view-transition-group(bc-carta) {");
+  const gruppoPagina = blocco("::view-transition-group(bc-pagina) {");
+  t.c(
+    "e quando vola, vola SOPRA la pagina",
+    Number((gruppoCarta.match(/z-index:\s*(\d+)/) || [])[1]) > Number((gruppoPagina.match(/z-index:\s*(\d+)/) || [])[1])
+  );
+  // «meno animazioni»: fermare la carta non basta, va rimessa a zero
+  const ridotto = CSS.slice(CSS.lastIndexOf("@media (prefers-reduced-motion: reduce)"));
+  t.c("col movimento ridotto la carta torna a zero", /bc-carta[^{]*\{[^}]*opacity:\s*0/s.test(ridotto));
+
+  // ---- PAGINA SINGOLA: la rotazione resta, con le sue lezioni -------------
   const sx = blocco("@keyframes bc-foglio-sx");
   const dx = blocco("@keyframes bc-foglio-dx");
-  t.c("c'è la svolta col cardine a sinistra", sx.length > 0);
-  t.c("e quella col cardine a destra", dx.length > 0);
-
-  // ---- IL VERSO -----------------------------------------------------------
-  // `rotateY` positivo manda indietro quello che sta a DESTRA dell'origine.
-  // Cardine a sinistra: tutto il foglio sta a destra del cardine, quindi
-  // col più sprofonda e serve il MENO. Cardine a destra: il contrario.
   const gradiSx = numeri(sx, /rotateY\((-?[\d.]+)deg\)/g);
   const gradiDx = numeri(dx, /rotateY\((-?[\d.]+)deg\)/g);
-  t.c("il cardine a sinistra ha gradi da girare", gradiSx.length >= 4, `trovati ${gradiSx.length}`);
-  t.c("e quello a destra pure", gradiDx.length >= 4, `trovati ${gradiDx.length}`);
   t.c(
     "col cardine a sinistra il foglio viene AVANTI (gradi negativi)",
-    gradiSx.every((g) => g <= 0),
+    gradiSx.length >= 4 && gradiSx.every((g) => g <= 0),
     `visti ${gradiSx.join(", ")}`
   );
   t.c(
     "col cardine a destra il foglio viene AVANTI (gradi positivi)",
-    gradiDx.every((g) => g >= 0),
-    `visti ${gradiDx.join(", ")}`
+    gradiDx.length >= 4 && gradiDx.every((g) => g >= 0)
   );
-  // e la corsa arriva davvero di taglio: fermarsi a mezza strada lascia
-  // una lastra ferma sopra la pagina nuova
-  t.c("si arriva di taglio a sinistra", Math.min(...gradiSx) <= -88, `il più lontano è ${Math.min(...gradiSx)}`);
-  t.c("e di taglio a destra", Math.max(...gradiDx) >= 88, `il più lontano è ${Math.max(...gradiDx)}`);
-  // il tempo sta dove il foglio si vede: a metà corsa dev'essere già oltre
-  // i venti gradi, o la parte che racconta se ne va in coda
-  t.c("a sinistra il sollevarsi non è tutto in coda", gradiSx.some((g) => g <= -25 && g >= -55));
-  t.c("a destra nemmeno", gradiDx.some((g) => g >= 25 && g <= 55));
-
-  // ---- L'OMBRA ------------------------------------------------------------
-  // cade dalla parte verso cui il foglio si piega, e non è decorazione: è
-  // il segnale per cui l'occhio legge «carta che si stacca» invece di
-  // «rettangolo che ruota»
-  const ombreSx = numeri(sx, /drop-shadow\((-?[\d.]+)px/g);
-  const ombreDx = numeri(dx, /drop-shadow\((-?[\d.]+)px/g);
-  t.c("il foglio col cardine a sinistra fa ombra", ombreSx.length >= 4, `trovate ${ombreSx.length}`);
-  t.c("e quello col cardine a destra pure", ombreDx.length >= 4, `trovate ${ombreDx.length}`);
-  t.c("a sinistra l'ombra cade a sinistra", ombreSx.every((x) => x <= 0), `viste ${ombreSx.join(", ")}`);
-  t.c("a destra l'ombra cade a destra", ombreDx.every((x) => x >= 0), `viste ${ombreDx.join(", ")}`);
-
-  // ---- CHI GIRA -----------------------------------------------------------
-  // sempre la pagina VECCHIA, sopra quella nuova ferma: se girasse la nuova
-  // il prezzo delle due sole fotografie si pagherebbe dal lato sbagliato
-  const avanti = blocco(".bc-volta-next::view-transition-old(bc-pagina) {");
-  const indietro = blocco(".bc-volta-prev::view-transition-old(bc-pagina) {");
-  t.c("avanti gira il foglio vecchio", /animation:\s*bc-foglio-sx/.test(avanti), avanti.trim());
-  t.c("e il suo cardine è a sinistra", /transform-origin:\s*0%\s+50%/.test(avanti));
-  t.c("indietro gira il foglio vecchio", /animation:\s*bc-foglio-dx/.test(indietro), indietro.trim());
-  t.c("e il suo cardine è a destra", /transform-origin:\s*100%\s+50%/.test(indietro));
+  t.c("si arriva di taglio", Math.min(...gradiSx) <= -88 && Math.max(...gradiDx) >= 88);
+  const next1 = blocco(".bc-volta-next::view-transition-old(bc-pagina) {");
+  const prev1 = blocco(".bc-volta-prev::view-transition-old(bc-pagina) {");
+  t.c("a pagina singola avanti gira il foglio vecchio dal cardine sinistro",
+    /animation:\s*bc-foglio-sx/.test(next1) && /transform-origin:\s*0%\s+50%/.test(next1));
+  t.c("e indietro dal cardine destro",
+    /animation:\s*bc-foglio-dx/.test(prev1) && /transform-origin:\s*100%\s+50%/.test(prev1));
   t.c(
     "la pagina nuova non gira mai",
-    !/::view-transition-new\(bc-pagina\)[^{]*\{[^}]*animation:\s*bc-foglio/.test(CSS)
+    !/::view-transition-new\(bc-pagina\)[^{]*\{[^}]*animation:\s*bc-/.test(CSS)
   );
-
-  // ---- QUALE META' ---------------------------------------------------------
-  // a facciata doppia il dorso sta in mezzo: avanti si alza la facciata di
-  // DESTRA, indietro quella di SINISTRA. Girare quella sbagliata è il gesto
-  // opposto, e all'occhio la pagina sembra mangiata dal lato storto.
-  const dueAvanti = blocco(".bc-doppia.bc-volta-next::view-transition-old(bc-pagina) {");
-  const dueIndietro = blocco(".bc-doppia.bc-volta-prev::view-transition-old(bc-pagina) {");
-  t.c("a doppia, avanti gira mezzo foglio", /width:\s*50%/.test(dueAvanti));
-  t.c("ed è la metà di DESTRA", /object-position:\s*100%\s+0/.test(dueAvanti), dueAvanti.trim());
-  t.c("indietro gira mezzo foglio", /width:\s*50%/.test(dueIndietro));
-  t.c("ed è la metà di SINISTRA", /object-position:\s*0\s+0/.test(dueIndietro), dueIndietro.trim());
-  // la metà si ritaglia con la SCATOLA, non con `clip-path`
-  t.c("la mezza facciata si mostra con object-fit", /object-fit:\s*none/.test(dueAvanti) && /object-fit:\s*none/.test(dueIndietro));
-  // e senza `overflow` la fotografia deborda: il ritaglio non ritaglia
-  t.c(
-    "la metà che avanza si taglia davvero",
-    /overflow:\s*hidden/.test(dueAvanti) && /overflow:\s*hidden/.test(dueIndietro)
-  );
-
-  // ---- NIENTE `clip-path` SUL FOGLIO --------------------------------------
-  // si porterebbe via l'ombra insieme al ritaglio
-  const regoleFoglio = [...CSS.matchAll(/::view-transition-(?:old|new)\(bc-pagina\)[^{]*\{([^}]*)\}/g)].map((m) => m[1]);
-  t.c("ci sono regole sul foglio da controllare", regoleFoglio.length >= 4, `trovate ${regoleFoglio.length}`);
-  t.c(
-    "nessun clip-path sul foglio: mangerebbe l'ombra",
-    regoleFoglio.every((r) => !/clip-path/.test(r))
-  );
-
-  // ---- LA PROSPETTIVA -----------------------------------------------------
-  // STA SULLA COPPIA, non sul gruppo: `perspective` vale per i figli
-  // DIRETTI, e fra il gruppo e il foglio c'è la coppia di mezzo. Messa sul
-  // gruppo non arriva al foglio, il `rotateY` viene disegnato piatto, e
-  // quello che si vede è una pagina che si stringe invece di girare — il
-  // difetto bocciato tre volte di fila.
+  // la prospettiva sta sulla COPPIA: sul gruppo non arriva al foglio, e il
+  // rotateY si disegna piatto (tre bocciature di fila)
   const coppia = blocco("::view-transition-image-pair(bc-pagina) {");
   t.c("la prospettiva sta sulla coppia", /perspective:\s*var\(--bc-prof/.test(coppia), coppia.trim());
-  t.c("e non sul gruppo, dove non arriverebbe al foglio", !/perspective:/.test(blocco("::view-transition-group(bc-pagina) {")));
-  // e si misura, non si sceglie: un numero fisso vale per uno schermo solo
+  t.c("e non sul gruppo", !/perspective:/.test(gruppoPagina));
   t.c("con un valore di scorta", /var\(--bc-prof,\s*\d+px\)/.test(coppia));
-  t.c("e il punto di fuga in mezzo al libro", /perspective-origin:\s*50%\s+50%/.test(coppia));
+
+  // ---- LA CARTA IN VOLO PRENDE LUCE ---------------------------------------
+  // il lembo dipinto col fondo del tema, sulla notte, e' nero che vola sul
+  // nero: la mescola con l'inchiostro deve muoverlo DAVVERO, su ogni tema
+  const luma = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).reduce((a, b) => a + b, 0);
+  for (const [nome, tema] of Object.entries(READER_THEMES)) {
+    const volo = cartaInVolo(tema.bg, tema.fg);
+    t.c(`sul tema «${nome}» il lembo non e' il fondo`, volo !== tema.bg, volo);
+    const scuro = luma(tema.bg) < luma(tema.fg);
+    t.c(
+      `e si muove VERSO l'inchiostro (${scuro ? "piu' chiaro" : "piu' scuro"})`,
+      scuro ? luma(volo) > luma(tema.bg) : luma(volo) < luma(tema.bg),
+      `${tema.bg} → ${volo}`
+    );
+  }
+  t.c("la quota e' un soffio, non un altro colore", VOLO > 0 && VOLO <= 0.2, `${VOLO}`);
+  t.eq("un colore che non e' esadecimale torna com'era", cartaInVolo("red", "#ffffff"), "red");
 }

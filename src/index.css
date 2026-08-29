@@ -251,68 +251,74 @@ textarea {
  * arrivano — come per `:active` e `:focus-visible`.
  *
  * Il foglio animato di allora fotografava la pagina in un canvas a ogni
- * voltata, ed e' quella fotografia che l'ha fatto togliere. Qui la
- * fotografia la fa il BROWSER, sul compositore: a noi resta solo da dire
- * come il vecchio deve andarsene.
+ * voltata, ed e' quella fotografia che l'ha fatto togliere. Qui le
+ * fotografie le fa il BROWSER, sul compositore: a noi resta solo da dire
+ * come si muovono.
  *
- * A GIRARE E' SEMPRE LA PAGINA VECCHIA, avanti e indietro. Il browser
- * regala DUE fotografie e questo effetto ne vorrebbe tre — la meta' ferma
- * di prima, il foglio che gira, la pagina scoperta sotto. Si e' scelto di
- * far girare il foglio VECCHIO sopra la pagina NUOVA ferma: cosi' la meta'
- * che non gira cambia all'inizio invece che alla fine, e si paga li'
- * perche' l'occhio sta sul movimento, che e' dall'altra parte. Prima
- * l'indietro faceva ruotare il foglio NUOVO al contrario, ed era lo stesso
- * prezzo pagato dal lato sbagliato.
+ * A FACCIATA DOPPIA LA VOLTATA E' UNA PIEGA, non una rotazione — chiesta
+ * dal lettore col video di Flipsnack («io voglio che faccia questo»), ed
+ * e' il trucco dei flipbook da sempre: NIENTE si flette davvero. La
+ * pagina vecchia si ritaglia lungo una linea di piega che avanza, e la
+ * parte gia' voltata e' un LEMBO di carta che ricade sulla pagina nuova,
+ * gia' ferma sotto. Tre rettangoli che si muovono insieme:
  *
- * TRE GIRI BOCCIATI DAL LETTORE prima di questo, e i difetti erano di
- * geometria, non di gusto — tutti visti fotogramma per fotogramma in un
- * filmato, nessuno visibile in una schermata ferma:
+ *   sotto  = la facciata nuova intera, ferma      (new bc-pagina)
+ *   fronte = la vecchia, ritagliata via           (old bc-pagina, clip)
+ *   lembo  = il foglio che ripiega                (new bc-carta, ombra)
+ *   piega  = la banda d'ombra sulla piega         (old bc-carta, scurita)
  *
- *  (1) GIRAVA IL DOPPIO FOGLIO INTERO attorno al bordo esterno: non e'
- *      voltare una pagina, e' girare il libro.
- *  (2) A FACCIATA DOPPIA GIRAVA LA META' SBAGLIATA. In avanti si solleva
- *      la facciata DI DESTRA e passa sopra il dorso; ruotare quella di
- *      sinistra e' il gesto dell'INDIETRO, e all'occhio sembrava che la
- *      pagina venisse mangiata da sinistra.
- *  (3) NON SI VEDEVA NESSUNA OMBRA, ed e' il segnale che l'occhio legge
- *      per primo: senza, il movimento e' un rettangolo che ruota, non
- *      carta che si stacca. La ragione sta nel commento sul RITAGLIO qui
- *      sotto, e non e' una svista di colori — e' un ordine di operazioni.
+ * DUE CONTENUTI, QUATTRO FOTOGRAFIE. La piega vorrebbe quattro livelli e
+ * un nome ne da' due: il secondo nome (`bc-carta`) sta su un elemento di
+ * SOLA CARTA sotto il visore, e le sue due fotografie sono i rettangoli
+ * che fanno lembo e ombra. Il lembo percio' non porta il testo del verso:
+ * e' carta leggermente trasparente (0.94), e il testo nuovo che traspare
+ * da sotto fa la stessa luce del verso intravisto in una voltata vera.
+ * NON e' la trasparenza bocciata dal lettore: quella dissolveva il TESTO
+ * vecchio a meta' giro, questa e' un velo di carta sopra la pagina gia'
+ * voltata, e si spegne solo negli ultimi ms quando il lembo e' atterrato
+ * esattamente dove il testo sta gia'.
  *
- * LA DURATA. Mentre la transizione gira il browser SOSPENDE il rendering
- * del documento vivo: per quel tempo il filo principale e' fermo, e ogni
- * millisecondo in piu' e' un millisecondo in cui un tocco non risponde.
- * Trecento millisecondi pero' si leggono come uno scatto, non come un
- * gesto («troppo veloce», parole del lettore su 460): una pagina vera ci
- * mette circa mezzo secondo abbondante. 680 e' il compromesso. */
-/* LA PROSPETTIVA VA SULLA COPPIA, NON SUL GRUPPO, ed è la scoperta che ha
- * finalmente fatto girare il foglio invece di stringerlo.
+ * LA GEOMETRIA E' UN CONTO SOLO: il bordo libero trascinato sta a P (da
+ * 100% a 0), la piega sta a meta' strada fra P e il bordo, quindi il
+ * lembo occupa [P, (P+100)/2] e il fronte superstite [50%, (P+100)/2].
+ * Larghezza del lembo e ritaglio del fronte sono lo stesso numero,
+ * (100−P)/2 — se i fotogrammi dei due livelli non dicono lo stesso P, la
+ * piega si scuce e si vede una fessura.
  *
- * `perspective` vale per i FIGLI DIRETTI, e l'albero degli pseudo-elementi
- * ha tre piani: gruppo › coppia › foglio. Messa sul gruppo arrivava alla
- * coppia — che non ruota — e al foglio non arrivava affatto: il suo
- * `rotateY` veniva disegnato piatto, cioè come uno `scaleX`. È il difetto
- * che il lettore ha bocciato tre volte di fila («la pagina si stringe»,
- * «non ha per nulla l'effetto pagina», «ancora non ci siamo»), e ogni
- * volta è stato attribuito ai gradi, al punto di fuga, alla durata —
- * mentre la prospettiva semplicemente non c'era. Si vede in un colpo
- * fermando l'animazione a metà: senza prospettiva le righe restano
- * verticali e alte quanto il libro, con la prospettiva il bordo libero
- * diventa più alto della pagina e il foglio è un trapezio.
+ * E LA META' SI RITAGLIA SENZA `clip-path` SUL LEMBO: il `filter` si
+ * applica PRIMA del ritaglio, quindi un clip sul lembo si porterebbe via
+ * la sua `drop-shadow` (lezione gia' pagata). Il lembo e' una SCATOLA
+ * (`left`/`width`) piu' `overflow: hidden`, che taglia il contenuto e
+ * lascia passare l'ombra; il clip sta solo sul FRONTE, che l'ombra non
+ * ce l'ha. Il fronte ritagliato con `clip-path` e non con la scatola
+ * perche' il suo contenuto deve restare ANCORATO alla pagina mentre il
+ * bordo arretra — con la scatola servirebbe un `object-position` che
+ * Gecko non sposta con la stessa misura.
  *
- * LA MISURA sta sul foglio, non a occhio: un numero fisso vale per uno
- * schermo solo, e lo stesso valore che apre bene una facciata larga 580px
- * schiaccia un tablet in verticale. Il reader scrive `--bc-prof` a ogni
- * voltata (larghezza del foglio × 3,8, il rapporto provato al banco); il
- * valore di scorta serve solo se qualcosa non l'ha scritta. */
+ * A PAGINA SINGOLA resta la rotazione rigida attorno al bordo
+ * (`bc-foglio-sx`/`dx`): senza una seconda facciata che si scopre, la
+ * piega non ha un "sotto" da mostrare e il gesto giusto e' il foglio che
+ * gira. Le sue lezioni restano scritte nei suoi fotogrammi: gradi
+ * NEGATIVI col cardine a sinistra o il foglio sprofonda, prospettiva
+ * sulla COPPIA (`::view-transition-image-pair`) perche' `perspective`
+ * vale per i figli diretti e messa sul gruppo non arriva al foglio — il
+ * `rotateY` si disegnava piatto, tre bocciature di fila — e misurata sul
+ * foglio (`--bc-prof`, larghezza × 3,8).
+ *
+ * LA DURATA (620ms): mentre la transizione gira il filo principale e'
+ * fermo, e ogni millisecondo in piu' e' un tocco che non risponde; ma
+ * sotto il mezzo secondo il gesto si legge come uno scatto («troppo
+ * veloce», parole del lettore su 460). E' il passo di Flipsnack misurato
+ * sui fotogrammi del suo video. */
 ::view-transition-image-pair(bc-pagina) {
   perspective: var(--bc-prof, 2200px);
-  /* IL PUNTO DI FUGA STA DOVE STA L'OCCHIO: in mezzo al libro aperto. */
   perspective-origin: 50% 50%;
 }
 
 ::view-transition-old(bc-pagina),
-::view-transition-new(bc-pagina) {
+::view-transition-new(bc-pagina),
+::view-transition-old(bc-carta),
+::view-transition-new(bc-carta) {
   /* niente dissolvenza incrociata del browser: le due pagine si
    * sovrappongono, e una pagina di testo che traspare da un'altra e'
    * illeggibile */
@@ -322,16 +328,25 @@ textarea {
   height: 100%;
   object-fit: fill;
 }
+/* la carta sta sopra il contenuto: lembo e ombra volano sulla pagina */
+::view-transition-group(bc-pagina) {
+  z-index: 1;
+}
+::view-transition-group(bc-carta) {
+  z-index: 2;
+}
+/* a riposo e a pagina singola la carta non si vede mai: senza queste due
+ * righe i suoi rettangoli coprirebbero il libro a ogni voltata singola */
+::view-transition-old(bc-carta),
+::view-transition-new(bc-carta) {
+  opacity: 0;
+}
 
-/* la pagina nuova sta ferma SOTTO, il foglio vecchio gira SOPRA */
+/* PAGINA SINGOLA — la rotazione rigida attorno al bordo. */
 .bc-volta-next::view-transition-new(bc-pagina),
 .bc-volta-prev::view-transition-new(bc-pagina) {
   z-index: 1;
 }
-
-/* AVANTI: cardine a SINISTRA (il dorso), il foglio si alza dal suo bordo
- * destro e passa sopra la piega. INDIETRO: e' lo specchio, cardine a
- * destra. */
 .bc-volta-next::view-transition-old(bc-pagina) {
   z-index: 2;
   transform-origin: 0% 50%;
@@ -343,71 +358,94 @@ textarea {
   animation: bc-foglio-dx 680ms linear forwards;
 }
 
-/* A FACCIATA DOPPIA IL DORSO STA IN MEZZO, e a girare e' MEZZO foglio:
- * quella di DESTRA andando avanti, quella di SINISTRA tornando indietro.
- *
- * E LA META' SI RITAGLIA CON UNA SCATOLA VERA, NON CON `clip-path`.
- * Sembrano due modi di dire la stessa cosa e non lo sono: il `filter` si
- * applica PRIMA del ritaglio, quindi la `drop-shadow` — che per forza
- * cade fuori dalla meta' tenuta — veniva tagliata via insieme al resto.
- * Il foglio girava senza ombra, e il lettore l'ha visto subito («ancora
- * non ci siamo»). Rimpicciolendo invece la scatola dello pseudo-elemento
- * (`left`/`width`) e mostrandoci dentro la meta' giusta della fotografia
- * (`object-fit: none` piu' `object-position`), il ritaglio non serve piu'
- * e l'ombra esce dalla scatola come deve. `overflow` invece taglia il
- * CONTENUTO e lascia passare l'ombra, che e' filtro dell'elemento: e' la
- * differenza fra i due, ed e' tutta li'.
- *
- * E `overflow: hidden` NON E' DI TROPPO: senza, la fotografia piu' larga
- * della scatola DEBORDA invece di essere ritagliata — misurato mettendo un
- * righello numerato al posto della pagina — e il foglio si ritrova addosso
- * tutte e due le facciate, cioe' il ritaglio non ritaglia niente. */
+/* FACCIATA DOPPIA, AVANTI: la facciata di destra si stacca dal bordo
+ * esterno e ripiega verso il dorso. */
 .bc-doppia.bc-volta-next::view-transition-old(bc-pagina) {
-  left: 50%;
-  width: 50%;
-  overflow: hidden;
-  object-fit: none;
-  object-position: 100% 0;
+  transform-origin: 50% 50%;
+  animation: bc-fronte-next 620ms linear forwards;
 }
-.bc-doppia.bc-volta-prev::view-transition-old(bc-pagina) {
-  left: 0;
-  width: 50%;
+.bc-doppia.bc-volta-next::view-transition-old(bc-carta) {
+  opacity: 1;
   overflow: hidden;
-  object-fit: none;
-  object-position: 0 0;
+  filter: brightness(0) opacity(0.22) blur(7px);
+  animation: bc-piega-next 620ms linear forwards;
+}
+.bc-doppia.bc-volta-next::view-transition-new(bc-carta) {
+  opacity: 1;
+  overflow: hidden;
+  animation: bc-lembo-next 620ms linear forwards;
+}
+@keyframes bc-fronte-next {
+  0%   { clip-path: inset(0 0%    0 50%); }
+  22%  { clip-path: inset(0 14%   0 50%); }
+  48%  { clip-path: inset(0 28%   0 50%); }
+  72%  { clip-path: inset(0 39%   0 50%); }
+  90%  { clip-path: inset(0 46.5% 0 50%); }
+  100% { clip-path: inset(0 50%   0 50%); }
+}
+@keyframes bc-piega-next {
+  0%   { left: 98%;   width: 3%; opacity: 0; }
+  22%  { left: 84%;   width: 4%; opacity: 1; }
+  48%  { left: 70%;   width: 5%; opacity: 1; }
+  72%  { left: 59.5%; width: 5%; opacity: 1; }
+  90%  { left: 52%;   width: 4%; opacity: 0.6; }
+  100% { left: 50%;   width: 3%; opacity: 0; }
+}
+@keyframes bc-lembo-next {
+  0%   { left: 100%; width: 0%;     opacity: 0.94; filter: brightness(0.9)  drop-shadow(-6px 2px 8px rgba(0, 0, 0, 0.5)); }
+  22%  { left: 72%;  width: 14%;    opacity: 0.94; filter: brightness(0.96) drop-shadow(-16px 3px 20px rgba(0, 0, 0, 0.55)); }
+  48%  { left: 44%;  width: 28%;    opacity: 0.94; filter: brightness(1)    drop-shadow(-22px 4px 26px rgba(0, 0, 0, 0.5)); }
+  72%  { left: 22%;  width: 39%;    opacity: 0.94; filter: brightness(1.02) drop-shadow(-16px 3px 20px rgba(0, 0, 0, 0.4)); }
+  90%  { left: 7%;   width: 46.5%;  opacity: 0.9;  filter: brightness(1.03) drop-shadow(-8px 2px 10px rgba(0, 0, 0, 0.25)); }
+  100% { left: 0%;   width: 50%;    opacity: 0;    filter: brightness(1.03) drop-shadow(0 0 0 rgba(0, 0, 0, 0)); }
 }
 
-/* IL TEMPO STA DOVE IL FOGLIO SI VEDE.
- *
- * La curva era una ease-out, quindi il movimento partiva VELOCE — e la
- * parte veloce era proprio quella in cui il foglio e' ancora di faccia e
- * si vede girare. Passati i novanta gradi il piano e' di taglio: li' non
- * c'e' piu' niente da guardare, e li' se ne andava il resto del mezzo
- * secondo. Il risultato era «piatto, poi sparito». Ora il tempo e'
- * LINEARE e la forma sta tutta nei gradi: due terzi della corsa per i
- * primi cinquanta — il sollevarsi, che e' la parte che racconta.
- *
- * IL VERSO DIPENDE DA DOVE STA IL CARDINE, e sbagliarlo fa affondare la
- * pagina invece di sollevarla. `rotateY` positivo manda INDIETRO quello
- * che sta a destra dell'origine: col cardine a sinistra serve il segno
- * MENO perche' il bordo libero venga avanti, col cardine a destra serve
- * il PIU'. Sono gli stessi gradi e lo stesso arrivo: cambia solo da che
- * parte passa, ed e' tutta la differenza fra sollevare una pagina e
- * vederla sprofondare nello schermo.
- *
- * E LA LUCE FA IL LAVORO CHE SUL TEMA NOTTE L'OMBRA NON PUO' FARE. Il
- * foglio si schiarisce mentre si alza e si scurisce mentre si corica: e'
- * la carta che prende luce e poi la perde. Sui temi chiari basterebbe
- * l'ombra, ma di notte pagina e sfondo sono tutt'e due quasi neri e
- * un'ombra nera sopra il nero non separa niente — la differenza di
- * luminosita' si', ed e' l'unico segnale che regge su tutti e tre i temi.
- *
- * E IL FOGLIO SI CHIUDE DI TAGLIO, NON SVANISCE. Prima girava oltre e si
- * dissolveva per non atterrare come una lastra sopra la pagina nuova, ma
- * la dissolvenza cominciava mentre era ancora ben visibile e il lettore
- * l'ha vista per quello che era: «trasparente». Un foglio di carta non e'
- * trasparente. A novanta gradi il piano e' di taglio e sparisce da solo,
- * per geometria. */
+/* FACCIATA DOPPIA, INDIETRO: lo specchio — la facciata di sinistra si
+ * stacca dal bordo esterno e ripiega verso il dorso. */
+.bc-doppia.bc-volta-prev::view-transition-old(bc-pagina) {
+  transform-origin: 50% 50%;
+  animation: bc-fronte-prev 620ms linear forwards;
+}
+.bc-doppia.bc-volta-prev::view-transition-old(bc-carta) {
+  opacity: 1;
+  overflow: hidden;
+  left: auto;
+  filter: brightness(0) opacity(0.22) blur(7px);
+  animation: bc-piega-prev 620ms linear forwards;
+}
+.bc-doppia.bc-volta-prev::view-transition-new(bc-carta) {
+  opacity: 1;
+  overflow: hidden;
+  left: auto;
+  animation: bc-lembo-prev 620ms linear forwards;
+}
+@keyframes bc-fronte-prev {
+  0%   { clip-path: inset(0 50% 0 0%); }
+  22%  { clip-path: inset(0 50% 0 14%); }
+  48%  { clip-path: inset(0 50% 0 28%); }
+  72%  { clip-path: inset(0 50% 0 39%); }
+  90%  { clip-path: inset(0 50% 0 46.5%); }
+  100% { clip-path: inset(0 50% 0 50%); }
+}
+@keyframes bc-piega-prev {
+  0%   { right: 98%;   width: 3%; opacity: 0; }
+  22%  { right: 84%;   width: 4%; opacity: 1; }
+  48%  { right: 70%;   width: 5%; opacity: 1; }
+  72%  { right: 59.5%; width: 5%; opacity: 1; }
+  90%  { right: 52%;   width: 4%; opacity: 0.6; }
+  100% { right: 50%;   width: 3%; opacity: 0; }
+}
+@keyframes bc-lembo-prev {
+  0%   { right: 100%; width: 0%;     opacity: 0.94; filter: brightness(0.9)  drop-shadow(6px 2px 8px rgba(0, 0, 0, 0.5)); }
+  22%  { right: 72%;  width: 14%;    opacity: 0.94; filter: brightness(0.96) drop-shadow(16px 3px 20px rgba(0, 0, 0, 0.55)); }
+  48%  { right: 44%;  width: 28%;    opacity: 0.94; filter: brightness(1)    drop-shadow(22px 4px 26px rgba(0, 0, 0, 0.5)); }
+  72%  { right: 22%;  width: 39%;    opacity: 0.94; filter: brightness(1.02) drop-shadow(16px 3px 20px rgba(0, 0, 0, 0.4)); }
+  90%  { right: 7%;   width: 46.5%;  opacity: 0.9;  filter: brightness(1.03) drop-shadow(8px 2px 10px rgba(0, 0, 0, 0.25)); }
+  100% { right: 0%;   width: 50%;    opacity: 0;    filter: brightness(1.03) drop-shadow(0 0 0 rgba(0, 0, 0, 0)); }
+}
+
+/* la rotazione della pagina singola — vedi il commento in testa per le
+ * sue lezioni (segno dei gradi, prospettiva sulla coppia) */
 @keyframes bc-foglio-sx {
   0% {
     transform: rotateY(0deg);
@@ -463,10 +501,18 @@ textarea {
 
 /* «meno animazioni» del sistema si rispetta anche qui, non solo nel
  * codice: chi l'ha acceso ha chiesto proprio di non vedere una pagina
- * che gira. */
+ * che gira. E la carta va rimessa a zero, non solo ferma: coi suoi
+ * rettangoli fermi a grandezza piena coprirebbe il libro. */
 @media (prefers-reduced-motion: reduce) {
   .bc-volta-next::view-transition-old(bc-pagina),
   .bc-volta-prev::view-transition-old(bc-pagina) {
     animation: none;
+  }
+  .bc-doppia.bc-volta-next::view-transition-old(bc-carta),
+  .bc-doppia.bc-volta-next::view-transition-new(bc-carta),
+  .bc-doppia.bc-volta-prev::view-transition-old(bc-carta),
+  .bc-doppia.bc-volta-prev::view-transition-new(bc-carta) {
+    animation: none;
+    opacity: 0;
   }
 }

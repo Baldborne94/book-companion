@@ -15,7 +15,7 @@ import { sembraUnNome } from "../lib/nomi.js";
 import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
 } from "../lib/readerSettings.js";
-import { contentStyles, spegniVuoti, togliStacco } from "../lib/readerTheme.js";
+import { contentStyles, spegniVuoti, togliStacco, spegniScenografia, cartaInVolo } from "../lib/readerTheme.js";
 import { ritaglioAvanzo, flattenToc } from "../lib/readerLayout.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
@@ -520,6 +520,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // libro apposta: il frontespizio quasi mai rientra, e li' lo
         // stacco e' l'unico segnale che ha — deve restare.
         togliStacco(contents?.document);
+        // e la scena che certi ePub si portano dentro — il libro finto
+        // dipinto dietro il testo di ogni capitolo: la carta e' del tema
+        spegniScenografia(contents?.document);
       });
       applyStyles(r, s);
 
@@ -1796,6 +1799,25 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           touchAction: "manipulation",
         }}
       >
+        {/* IL FOGLIO DI CARTA della piega. La svolta vorrebbe QUATTRO
+            fotografie — pagina vecchia, pagina nuova, il lembo che ripiega
+            e l'ombra della piega — ma un nome ne da' due. Il lembo e
+            l'ombra sono percio' un secondo elemento col suo nome: sta
+            SOTTO il visore, dipinge solo carta del tema, e le sue due
+            fotografie sono i due rettangoli di carta che la voltata piega
+            e scurisce. A riposo non si vede: il visore sopra e' opaco. */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: FRAME,
+            borderRadius: R.minimo,
+            // un filo piu' chiara del fondo: e' carta A MEZZ'ARIA, e sul
+            // tema notte la carta del fondo sarebbe nero su nero
+            background: cartaInVolo(theme.bg, theme.fg),
+            ...(settings.svolta ? { viewTransitionName: "bc-carta" } : {}),
+          }}
+        />
         <div
           ref={viewerRef}
           style={{

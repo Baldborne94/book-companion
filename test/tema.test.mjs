@@ -5,8 +5,9 @@
 //
 // Serve un browser. Senza, il file si dichiara SALTATO invece di fallire —
 // ma saltare non e' passare: chi tocca `readerTheme.js` deve farlo girare.
-import { contentStyles, spegniVuoti, togliStacco, rientrata, spaziatoriFitti, SEGNO_DI_SCENA,
-  RIENTRO_MINIMO, QUANTI, CAMPIONE, SPAZIATORI_FITTI, ABBASTANZA_PARAGRAFI, PAGINA_SU_GIU } from "../src/lib/readerTheme.js";
+import { contentStyles, spegniVuoti, togliStacco, spegniScenografia, rientrata, spaziatoriFitti,
+  SEGNO_DI_SCENA, RIENTRO_MINIMO, QUANTI, CAMPIONE, SPAZIATORI_FITTI, ABBASTANZA_PARAGRAFI,
+  PAGINA_SU_GIU, SCENA_COPRE, SCENA_TESTO_MINIMO } from "../src/lib/readerTheme.js";
 import { READER_THEMES } from "../src/lib/readerSettings.js";
 import { Saltato } from "./aiuto.mjs";
 import { existsSync, readdirSync } from "node:fs";
@@ -412,6 +413,53 @@ export default async function (t) {
       "e in paginato invece c'è",
       "padding-bottom" in contentStyles({ ...BASE, flow: "paginated" }, "en").body
     );
+
+    // ---- LA SCENOGRAFIA SI SPEGNE ------------------------------------
+    // L'Eric del lettore, convertito da un flipbook, dipinge un libro
+    // finto (dorso, pile di pagine) dietro il testo di OGNI capitolo,
+    // ancorato alla finestra. Il tema gli cambia solo il colore, e
+    // un'immagine copre un colore. Qui si misura la cura — e soprattutto
+    // le tre cose che NON deve toccare: il fregio piccolo, la tavola
+    // statica nel flusso, la pagina senza testo dove l'immagine E' il
+    // contenuto.
+    const GIF = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+    const sorgenteScena = `
+      const SCENA_COPRE = ${SCENA_COPRE};
+      const SCENA_TESTO_MINIMO = ${SCENA_TESTO_MINIMO};
+      return (${spegniScenografia.toString()});
+    `;
+    const spegniScena = () => p.evaluate(([src]) => new Function(src)()(document), [sorgenteScena]);
+    const PROSA = Array.from({ length: 8 }, (_, i) =>
+      `<p>Riga di prosa numero ${i}: il Bibliotecario dondolava fresco nel vapore gelido sopra i libri erotici.</p>`
+    ).join("");
+    await p.setContent(`<!doctype html><html><head><style>
+      #scena { position: fixed; inset: 0; background: #d8c8a8 url(${GIF}) center / cover no-repeat; z-index: -1; }
+      #fregio { height: 32px; background: url(${GIF}) center no-repeat; }
+      #murale { background: url(${GIF}); min-height: 100vh; }
+    </style></head><body>
+      <div id="scena"></div>
+      <img id="volante" src="${GIF}" style="position:absolute;inset:0;width:100%;height:100%">
+      <div id="murale">${PROSA}</div>
+      <div id="fregio"></div>
+      <p><img id="tavola" src="${GIF}" style="width:200px;height:850px"></p>
+    </body></html>`);
+    const scene = await spegniScena();
+    t.c("qualcosa si e' spento", scene >= 3, `${scene}`);
+    t.eq("la scena fissa non dipinge piu'", await stile("scena", "backgroundImage"), "none");
+    t.eq("nemmeno la sua carta cotta nell'immagine",
+      await stile("scena", "backgroundColor"), "rgba(0, 0, 0, 0)");
+    t.eq("il murale dietro la prosa nemmeno", await stile("murale", "backgroundImage"), "none");
+    t.eq("la figura volante si spegne", await stile("volante", "visibility"), "hidden");
+    t.c("ma il fregio piccolo resta", (await stile("fregio", "backgroundImage")).includes("url"));
+    t.eq("e la tavola nel flusso resta visibile", await stile("tavola", "visibility"), "visible");
+
+    // la pagina SENZA testo — copertina, frontespizio illustrato — non si
+    // tocca: li' l'immagine e' il contenuto
+    await p.setContent(`<!doctype html><html><head><style>
+      #cop { position: fixed; inset: 0; background: url(${GIF}) center / cover no-repeat; }
+    </style></head><body><div id="cop"></div><p>Eric</p></body></html>`);
+    t.eq("sulla pagina di sola immagine non si spegne niente", await spegniScena(), 0);
+    t.c("e la copertina dipinta resta", (await stile("cop", "backgroundImage")).includes("url"));
   } finally {
     await browser.close();
   }

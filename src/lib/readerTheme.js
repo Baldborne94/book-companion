@@ -182,6 +182,92 @@ export function togliStacco(doc) {
   return true;
 }
 
+// LA SCENOGRAFIA SI SPEGNE: LA CARTA E' QUELLA DEL TEMA, SENZA ECCEZIONI.
+//
+// Certi ePub — l'Eric del lettore, convertito da un flipbook — si portano
+// dentro la LORO scena: un'immagine di libro aperto (dorso, pile di pagine
+// ai bordi) dipinta dietro il testo di OGNI capitolo, ancorata alla
+// finestra perche' sia sempre a fuoco qualunque colonna stia mostrando. Il
+// tema le cambia solo il colore di fondo, e un'immagine copre un colore:
+// il lettore si ritrovava un libro finto dentro il libro vero, col tema
+// Rifugio dipinto sopra una carta che non era la sua. E' la lezione 1
+// dell'inchiostro, girata sulla carta.
+//
+// La scena si riconosce dalla STAZZA, non dal nome: un elemento alto quasi
+// quanto la finestra che porta un'immagine di sfondo non sta decorando un
+// capoverso, sta rifacendo la pagina. Tre cose restano intoccabili:
+//  - i FREGI (uno stacco di scena disegnato, un capolettera): sono piccoli,
+//    e la soglia d'altezza non li raggiunge;
+//  - le TAVOLE nel flusso (un'illustrazione, una mappa): sono `<img>`
+//    statiche, e qui si spengono solo le figure `fixed`/`absolute`, che
+//    e' la tecnica della scena, non dell'illustrazione;
+//  - le pagine SENZA testo (copertina, frontespizio illustrato): li'
+//    l'immagine E' il contenuto, e non si tocca niente.
+//
+// Come `spegniVuoti`, si fa in JS e non in CSS: il foglio non sa dire
+// «alto quanto la finestra». E si spegne con `visibility`, mai con
+// `display: none` — un'ancora puo' puntarci dentro, e deve restare
+// raggiungibile.
+export const SCENA_COPRE = 0.85;
+export const SCENA_TESTO_MINIMO = 200;
+
+export function spegniScenografia(doc) {
+  const vista = doc?.defaultView;
+  if (!vista?.getComputedStyle || !doc.body) return 0;
+  if ((doc.body.textContent || "").trim().length < SCENA_TESTO_MINIMO) return 0;
+  const alto = doc.documentElement?.clientHeight || 0;
+  if (!alto) return 0;
+  let spente = 0;
+  for (const el of doc.body.querySelectorAll("*")) {
+    let r;
+    try {
+      r = el.getBoundingClientRect();
+    } catch {
+      continue;
+    }
+    // il costo sta qui: il rettangolo si guarda per primo, e lo stile
+    // calcolato si paga solo sui pochi elementi a tutta pagina
+    if (r.height < alto * SCENA_COPRE) continue;
+    const cs = vista.getComputedStyle(el);
+    const tag = (el.tagName || "").toLowerCase();
+    if (tag === "img" || tag === "svg" || tag === "image" || tag === "picture" || tag === "video") {
+      if (cs.position === "fixed" || cs.position === "absolute") {
+        el.style.setProperty("visibility", "hidden", "important");
+        spente += 1;
+      }
+    } else if (cs.backgroundImage && cs.backgroundImage !== "none") {
+      // via tutta la scena, colore compreso: la carta base cotta
+      // nell'immagine e' scena quanto l'immagine, e sul tema notte
+      // resterebbe un riquadro chiaro
+      el.style.setProperty("background", "transparent", "important");
+      spente += 1;
+    }
+  }
+  return spente;
+}
+
+// LA CARTA IN VOLO PRENDE UN FILO DI LUCE. Il lembo della piega e' un
+// rettangolo dipinto col fondo del tema, e sul tema notte quel fondo e'
+// quasi nero: carta nera che vola su una pagina nera non si vede — lo
+// stesso buco dell'ombra, che sul nero non separa niente. Un foglio a
+// mezz'aria pero' NON e' del colore della pagina: prende la luce della
+// stanza. Qui si mescola il fondo con un dodicesimo d'inchiostro — sulla
+// notte solleva il nero di un soffio, sulla pergamena la incupisce
+// appena, e in tutt'e due i casi legge come carta vera. All'atterraggio
+// la dissolvenza del lembo riconsegna il colore alla pagina, quindi la
+// differenza non resta mai a vista da ferma.
+export const VOLO = 0.12;
+export function cartaInVolo(bg, fg, quota = VOLO) {
+  const canale = (h, i) => parseInt(h.slice(i, i + 2), 16);
+  const esa = /^#[0-9a-f]{6}$/i;
+  if (!esa.test(bg || "") || !esa.test(fg || "")) return bg;
+  const c = [1, 3, 5].map((i) => {
+    const v = canale(bg, i);
+    return Math.round(v + (canale(fg, i) - v) * quota);
+  });
+  return `#${c.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
 // Quanto respiro sopra e sotto DENTRO la pagina. Non zero: una riga
 // appiccicata al bordo della carta si legge peggio, e il velo della
 // voltata la lambisce. Sei pixel sono un soffio, non una fascia.
