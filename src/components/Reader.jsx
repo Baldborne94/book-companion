@@ -214,7 +214,7 @@ function Panel({ title, onClose, children }) {
   );
 }
 
-export default function Reader({ book, startCfi, nextBook, onReadNext, music, onMusicToggle, onMusicStop, onMusicVolume, onMusicNext, onMusicRoom, onAlive, onClose, notify }) {
+export default function Reader({ book, startCfi, nextBook, onReadNext, music, onMusicToggle, onMusicStop, onMusicVolume, onMusicNext, onMusicRoom, onAlive, onClose, notify, indietro }) {
   const viewerRef = useRef(null);
   const rootRef = useRef(null);
   const bookRef = useRef(null);
@@ -880,11 +880,29 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       if (e.key === "ArrowRight") turnRef.current("next");
       if (e.key === "ArrowLeft") turnRef.current("prev");
     };
+    // IL TASTO INDIETRO DEL DISPOSITIVO, che App ci gira: stessa fila
+    // dell'Escape — prima il menu della selezione, poi il pannello, e solo
+    // quando non c'e' piu' niente sopra si chiude il libro, dalla porta di
+    // sempre, o il punto di lettura non verrebbe salvato. `true` significa
+    // «l'ho chiuso io e il libro resta aperto»: la' fuori serve a sapere
+    // che la guardia va rimessa, perche' qui dentro non e' cambiato niente
+    // che faccia rifare un giro ad App. Le mire su `live` sono gia' in
+    // pari a ogni render, quindi questa funzione si registra una volta
+    // sola e legge sempre lo stato di adesso.
+    if (indietro) {
+      indietro.current = () => {
+        if (live.current.selMenu) { setSelMenu(null); return true; }
+        if (live.current.panel) { setPanel(null); return true; }
+        handleClose();
+        return false;
+      };
+    }
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("beforeunload", flush);
     window.addEventListener("keydown", onKey);
     return () => {
       dead = true;
+      if (indietro) indietro.current = null;
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("beforeunload", flush);
       window.removeEventListener("keydown", onKey);
