@@ -153,3 +153,28 @@ export function combacia(book, query) {
   if (!book) return false;
   return CAMPI_RICERCA.some((c) => piatto(book[c]).includes(q));
 }
+
+// COME AVEVI LASCIATO LO SCAFFALE. Raggruppamento e ordinamento nascevano
+// da capo a ogni apertura della Libreria: chi preferisce vedere i generi,
+// o l'ordine d'ingresso, doveva ridirlo ogni volta. Il filtro invece NON
+// si ricorda apposta — una Libreria che si riapre con meta' dei libri
+// nascosti sembra una libreria che ha perso dei libri, e non c'e' niente
+// sullo schermo che spieghi perche'.
+const VISTA_KEY = "bc_vista";
+
+export function leggiVista(dflt) {
+  try {
+    const v = JSON.parse(localStorage.getItem(VISTA_KEY));
+    return v && typeof v === "object" ? { ...dflt, ...v } : dflt;
+  } catch {
+    return dflt;
+  }
+}
+
+export function scriviVista(vista) {
+  try {
+    localStorage.setItem(VISTA_KEY, JSON.stringify(vista));
+  } catch {
+    /* memoria piena o negata: la vista di partenza va benissimo */
+  }
+}

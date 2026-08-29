@@ -13,7 +13,7 @@ import { vestito, gradinoTitolo } from "../lib/dorso.js";
 // Il colore viene dalla SAGA (vedi `lib/dorso.js`), quindi i volumi di una
 // storia stanno nello stesso quartiere e si vede da lontano che vanno
 // insieme; dentro la famiglia si distinguono per una sfumatura.
-function Disegnato({ book, radius, compact }) {
+function Disegnato({ book, radius, compact, numerato }) {
   const v = vestito(book);
   const costola = compact ? 3 : 7;
   return (
@@ -49,7 +49,11 @@ function Disegnato({ book, radius, compact }) {
             inset: 0,
             paddingLeft: costola + 11,
             paddingRight: 11,
-            paddingTop: 16,
+            // IL NUMERO DEL VOLUME STA NELL'ANGOLO IN ALTO A SINISTRA, ed
+            // è esattamente dove comincia il titolo: sul dorso disegnato
+            // la pastiglia si mangiava la prima parola. Dove il numero
+            // c'è, il titolo comincia sotto.
+            paddingTop: numerato ? 32 : 16,
             paddingBottom: 14,
             display: "flex",
             flexDirection: "column",
@@ -131,7 +135,7 @@ function Disegnato({ book, radius, compact }) {
 // noi: sullo scaffale serve a non stampare il titolo DUE VOLTE — una sul
 // dorso e una nella didascalia sotto — che era l'altra cosa che rendeva la
 // libreria confusa.
-export default function BookCover({ book, radius = 8, compact = false, version = 0, onDisegnata }) {
+export default function BookCover({ book, radius = 8, compact = false, version = 0, onDisegnata, numerato = false }) {
   const [url, setUrl] = useState(null);
 
   useEffect(() => {
@@ -175,7 +179,7 @@ export default function BookCover({ book, radius = 8, compact = false, version =
           style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
         />
       ) : (
-        <Disegnato book={book} radius={radius} compact={compact} />
+        <Disegnato book={book} radius={radius} compact={compact} numerato={numerato} />
       )}
     </div>
   );
