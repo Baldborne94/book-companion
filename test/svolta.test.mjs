@@ -7,6 +7,7 @@
 // vuol dire far girare un foglio che poi si riassesta sotto gli occhi del
 // lettore, cioè il difetto che il velo era venuto a curare.
 import { leftoverScroll, dentroIlCapitolo } from "../src/lib/spread.js";
+import { modoSvolta } from "../src/lib/readerSettings.js";
 
 // il gestore di epub.js, ridotto a quello che queste due funzioni guardano
 const gestore = (o = {}) => ({
@@ -75,4 +76,32 @@ export default async function (t) {
   // l'avanzo si chiede PER PRIMO nel reader: chiesto dopo, la voltata più
   // comune a fine capitolo finirebbe nel ramo del velo.
   t.c("col residuo epub.js cambierebbe capitolo", !dentroIlCapitolo(conResto, "next"));
+
+  // ---- E QUALE DEI TRE MODI ESCE DA UNA PREFERENZA SALVATA ---------------
+  //
+  // `modoSvolta` non aveva un solo controllo, e intanto decide cosa vede il
+  // lettore a OGNI voltata — il gesto più frequente dell'app. Legge un
+  // valore che può arrivare da tre epoche diverse: il sì/no di prima, una
+  // delle tre parole di adesso, o niente del tutto.
+  t.eq("una scelta vera si rispetta: spazzata", modoSvolta("spazzata"), "spazzata");
+  t.eq("...e dissolvenza", modoSvolta("dissolvenza"), "dissolvenza");
+  t.eq("...e nessuna", modoSvolta("nessuna"), "nessuna");
+
+  // il `false` di prima era «non voglio animazioni», e lo è ancora
+  t.eq("il vecchio no resta un no", modoSvolta(false), "nessuna");
+
+  // IL CASO CHE VALE IL TEST. Quando la preferenza era un sì/no, spazzata e
+  // dissolvenza non esistevano come scelta: quel `true` diceva «voglio
+  // vedere qualcosa quando volto», non «voglio la più cara delle tre».
+  // Tradurlo in «spazzata» attribuisce al lettore una scelta mai offerta e
+  // lo lascia sugli scatti senza che l'abbia chiesto.
+  t.eq("il vecchio sì vale come «voglio un'animazione», non «voglio la spazzata»", modoSvolta(true), "dissolvenza");
+
+  // e tutto ciò che non è nessuno dei tre finisce sul modo di partenza,
+  // perché una levetta su nessuna delle tre posizioni non è una levetta
+  t.eq("un valore mai visto ripiega sul modo di partenza", modoSvolta("piroetta"), "dissolvenza");
+  t.eq("e così una preferenza che non c'è", modoSvolta(undefined), "dissolvenza");
+  t.eq("e il null", modoSvolta(null), "dissolvenza");
+  // «spazzata» scritta a mano sopravvive anche a un giro di andata e ritorno
+  t.eq("due passaggi non cambiano la scelta", modoSvolta(modoSvolta("spazzata")), "spazzata");
 }

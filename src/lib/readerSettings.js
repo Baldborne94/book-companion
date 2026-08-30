@@ -52,22 +52,59 @@ export function deviceDefaults(shortSide) {
     // principale per ~510ms contro i ~140 di una voltata nuda, perche' le
     // View Transitions fotografano la pagina DUE volte — prima e dopo. La
     // dissolvenza non fotografa niente: il velo copre, la pagina cambia
-    // sotto, il velo scende. Chi ha uno schermo che fatica sceglie quella
-    // invece di restare senza niente.
-    svolta: "spazzata",
+    // sotto, il velo scende.
+    //
+    // DI PARTENZA C'ERA LA SPAZZATA, E NON CI STA PIU'. Il lettore ha
+    // segnalato una seconda volta che scattava, e stavolta i fotogrammi
+    // sono stati contati sul serio invece che a occhio — non dal suo video
+    // (il registratore del tablet emette ~20 fotogrammi al secondo qualunque
+    // cosa succeda: ferma o in movimento dava lo stesso numero, quindi non
+    // poteva dimostrare niente), ma in un browser strozzato quattro volte,
+    // contando i fotogrammi PRESENTATI, su cinque voltate per modo:
+    //
+    //   spazzata     37 fps mediani | 33 scatti oltre 50ms | il peggiore 330ms
+    //   dissolvenza  61 fps mediani |  1 scatto  oltre 50ms | il peggiore 265ms
+    //
+    // Il numero che si sente non e' la mediana, sono gli SCATTI: sei o sette
+    // inciampi per voltata contro nessuno. Una cosa bella che inciampa a
+    // ogni pagina, in un'app dove voltare e' il gesto che si fa piu' spesso
+    // di tutti, e' una cosa bella al posto sbagliato. La spazzata resta —
+    // su uno schermo che non fatica e' la piu' bella delle tre — ma se la
+    // sceglie chi la vuole, e ora sa cosa costa perche' c'e' scritto sotto
+    // la levetta.
+    //
+    // Il conteggio via `requestAnimationFrame` dava un divario ancora piu'
+    // largo (20 fps contro 60) ed e' stato SCARTATO: `startViewTransition`
+    // sospende il rendering nel suo callback, quindi quel metodo misurava
+    // in parte se stesso. Sono i fotogrammi presentati a valere.
+    svolta: "dissolvenza",
     appTheme: "night",
   };
 }
+
+const MODI = ["spazzata", "dissolvenza", "nessuna"];
 
 // LA SVOLTA ERA UN SÌ/NO E ADESSO SONO TRE MODI. Chi aveva già scelto se
 // la ritrova scritta come un booleano — nelle preferenze qui e nel cloud,
 // dove viaggia con tutto il resto — e un `true` confrontato con
 // «spazzata» non e' «spazzata»: senza questa riga la levetta si
 // ritroverebbe su nessuna delle tre, e la pagina volterebbe nuda.
+//
+// UN `true` NON E' MAI STATO «VOGLIO LA SPAZZATA», ed e' il punto in cui
+// prima si sbagliava. Quando la preferenza era un sì/no la scelta era
+// «animazione sì o no»: di spazzata e dissolvenza non c'era traccia, e
+// nessuna delle due aveva un nome da scegliere. Tradurre quel sì nella
+// piu' cara delle tre vuol dire attribuire al lettore una scelta che non
+// gli e' mai stata offerta — e per giunta lasciarlo sugli scatti a sua
+// insaputa. Quel sì vuol dire «voglio vedere qualcosa quando volto», e la
+// risposta giusta e' il modo di partenza.
+//
+// Una «spazzata» SCRITTA invece resta: quella e' una scelta vera, presa
+// davanti a tre tasti, e non si tocca — vale la regola di sempre, quello
+// che il lettore ha scelto comanda anche quando la pensiamo diversamente.
 export const modoSvolta = (v) => {
-  if (v === true) return "spazzata";
   if (v === false) return "nessuna";
-  return v === "dissolvenza" || v === "nessuna" ? v : "spazzata";
+  return MODI.includes(v) ? v : "dissolvenza";
 };
 
 export function loadReaderSettings(shortSide) {
