@@ -11,7 +11,8 @@ import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
 import { portaACasa, cloudUsage } from "../lib/sync.js";
 import { fmtBytes } from "../lib/bytes.js";
-import { stretto, PIANO } from "../lib/spazio.js";
+import { stretto } from "../lib/spazio.js";
+import { BarraCloud } from "./BarraCloud.jsx";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
 import { famigliaDi } from "../data/generi.js";
 import BookCover from "./BookCover.jsx";
@@ -1102,12 +1103,12 @@ export default function Library({
                   conta. */}
               {estimate?.usage ? ` · ${fmtBytes(estimate.usage)}` : ""}
               {stretto(estimate) ? ` · restano ${fmtBytes(Math.max(0, estimate.quota - estimate.usage))} sul dispositivo` : ""}
-              {/* E QUESTO E' L'UNICO SPAZIO CHE VINCOLA DAVVERO. C'era gia',
-                  ma nel pannello della sincronizzazione: un posto che si apre
-                  una volta al mese, mentre qui — dove si guarda — stava il
-                  numero inutile. Il numero giusto nel posto sbagliato e
-                  quello sbagliato nel posto giusto. */}
-              {cloud ? ` · ☁ ${fmtBytes(cloud.totale)} di ${fmtBytes(PIANO)}` : ""}
+              {/* L'unico spazio che vincola davvero non e' piu' una riga di
+                  testo qui dentro: e' la barra qui sotto, che dice anche DI
+                  COSA e' fatto quel gigabyte. Libri e melodie stanno nello
+                  stesso secchio, e un totale non dice quale dei due lo sta
+                  riempiendo — che e' esattamente la domanda («quanto spazio
+                  ho ancora per la musica»). */}
               {` · v. ${typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "?"}`}
               {aggiorna &&
                 (agg ? (
@@ -1208,6 +1209,12 @@ export default function Library({
             </button>
           </span>
         </div>
+        {/* DI COSA È FATTO IL GIGABYTE. Sta su una riga sua e non dentro
+            quella di servizio: là è una frase che scorre fra il conteggio,
+            gli avvisi e i tasti, e una barra là in mezzo non si guarderebbe.
+            C'è solo a cloud collegato, come il numero che ha sostituito:
+            senza, sarebbe una promessa che nessuno può mantenere. */}
+        {cloud && <BarraCloud dati={cloud} compatta />}
         {manutenzione && (
           <div
             style={{

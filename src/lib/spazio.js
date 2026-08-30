@@ -74,3 +74,35 @@ export function parteDelPiano(totale) {
 // biblioteca piu' grande del piano darebbe una striscia piu' lunga del suo
 // contenitore.
 export const fetta = (n) => `${Math.max(0, Math.min(1, (Number(n) || 0) / PIANO)) * 100}%`;
+
+// DI COSA E' FATTO IL GIGABYTE, in tre pezzi: i libri, le melodie, e quel che
+// resta. In Libreria si leggeva solo il totale, ed e' il numero giusto ma non
+// risponde alla domanda del lettore — «quanto spazio ho ancora per caricare
+// la mia musica» — perche' libri e melodie stanno nello STESSO secchio e un
+// totale non dice quale dei due lo riempie.
+//
+// LE COPERTINE VANNO COI LIBRI, e non e' un dettaglio di stile: contate a
+// parte, o dimenticate, i tre pezzi non tornerebbero piu' il piano e la barra
+// avrebbe un buco che nessun errore segnala — si vedrebbe solo guardandola
+// bene. Il test tiene proprio questo patto: la somma delle tre regioni fa il
+// piano esatto.
+//
+// Sta qui e non nel componente per la ragione di sempre: senza JSX un test la
+// puo' chiamare.
+export function spartisci(dati) {
+  if (!dati) return null;
+  const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const libri = n(dati.libri?.byte) + n(dati.copertine?.byte);
+  const melodie = n(dati.melodie?.byte);
+  const totale = n(dati.totale);
+  return {
+    libri,
+    melodie,
+    // il resto si prende dal TOTALE e non dalla somma dei due: il totale e'
+    // quel che il secchio pesa davvero, e se un giorno ci finisse dentro una
+    // terza specie di file la barra direbbe meno spazio libero — che e' la
+    // bugia giusta da dire, perche' quello spazio davvero non c'e' piu'
+    liberi: Math.max(0, PIANO - totale),
+    sforato: Math.max(0, totale - PIANO),
+  };
+}
