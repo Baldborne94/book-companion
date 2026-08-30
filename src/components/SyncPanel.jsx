@@ -12,38 +12,24 @@ import {
   cambiaPassword,
 } from "../lib/sync.js";
 import { spiegaAccesso, passwordCorta, MIN_PASSWORD } from "../lib/accesso.js";
-import { fmtBytes } from "../lib/bytes.js";
 // il riferimento del piano sta in UN posto solo: prima era un numero qui e
 // la stringa «1 GB» due righe sotto, due cose da cambiare insieme e da
 // dimenticare separatamente
-import { PIANO, PIENO, parteDelPiano, fetta } from "../lib/spazio.js";
+import { PIENO, parteDelPiano } from "../lib/spazio.js";
+import { BarraCloud } from "./BarraCloud.jsx";
 
 
 function Spazio({ dati }) {
   if (dati === undefined) return <p style={{ color: C.muted, fontSize: F.piccolo }}>Conto lo spazio…</p>;
   if (!dati) return null;
-  const { libri, copertine, melodie, totale } = dati;
-  const pieno = parteDelPiano(totale) ?? 0;
+  const pieno = parteDelPiano(dati.totale) ?? 0;
   return (
-    <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 7 }}>
-        <span style={{ fontSize: F.nota, color: C.text }}>{fmtBytes(totale)} lassù</span>
-        <span style={{ fontSize: F.minuscolo, color: C.muted }}>di {fmtBytes(PIANO)} del piano gratuito</span>
-      </div>
-      <div style={{ display: "flex", height: 8, borderRadius: R.minimo, overflow: "hidden", background: C.dim }}>
-        <div style={{ width: fetta(libri.byte + copertine.byte), background: C.accent }} />
-        <div style={{ width: fetta(melodie.byte), background: C.arcane }} />
-      </div>
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 8, fontSize: F.minuscolo, color: C.muted }}>
-        <span>
-          <span style={{ color: C.accent }}>■</span> {libri.quanti} {libri.quanti === 1 ? "libro" : "libri"} ·{" "}
-          {fmtBytes(libri.byte + copertine.byte)}
-        </span>
-        <span>
-          <span style={{ color: C.arcane }}>■</span> {melodie.quanti}{" "}
-          {melodie.quanti === 1 ? "melodia" : "melodie"} · {fmtBytes(melodie.byte)}
-        </span>
-      </div>
+    <div>
+      {/* la barra è la stessa che sta in Libreria, e sta in un file solo
+          perché i colori devono restare gli stessi: due grafici che
+          raccontano il medesimo secchio con due palette sarebbero peggio di
+          nessun grafico */}
+      <BarraCloud dati={dati} />
       {pieno > PIENO && (
         <p style={{ margin: "8px 0 0", fontSize: F.minuscolo, color: C.accent, lineHeight: 1.45 }}>
           Lo spazio sta finendo. Le melodie pesano molto più dei libri: quelle che non ti servono a

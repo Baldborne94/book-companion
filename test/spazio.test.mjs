@@ -7,7 +7,16 @@
 //
 // Qui si prova la decisione, non la scrittura: quando quel tetto stringe
 // davvero, e quanto della biblioteca sta nel piano del cloud.
-import { stretto, parteDelPiano, fetta, PIANO, PIENO, QUOTA_PARTE, QUOTA_RESTO } from "../src/lib/spazio.js";
+import {
+  stretto,
+  parteDelPiano,
+  fetta,
+  spartisci,
+  PIANO,
+  PIENO,
+  QUOTA_PARTE,
+  QUOTA_RESTO,
+} from "../src/lib/spazio.js";
 
 const G = 1e9;
 const M = 1e6;
@@ -88,5 +97,76 @@ export default async function (t) {
     // due cose da cambiare insieme e da dimenticare separatamente.
     t.eq("il piano gratuito", PIANO, 1e9);
     t.eq("e la soglia oltre cui la barra parla", PIENO, 0.8);
+  }
+
+  // ---- DI COSA È FATTO IL GIGABYTE ---------------------------------------
+  //
+  // In Libreria si leggeva solo il totale, ed è il numero giusto — è l'unico
+  // spazio che vincola davvero — ma non risponde alla domanda del lettore:
+  // «quanto spazio ho ancora per caricare la mia musica». Libri e melodie
+  // stanno nello STESSO secchio, e un totale non dice quale dei due lo sta
+  // riempiendo.
+  const secchio = (l, c, m) => ({
+    libri: { quanti: 53, byte: l },
+    copertine: { quanti: 41, byte: c },
+    melodie: { quanti: 12, byte: m },
+    totale: l + c + m,
+  });
+  {
+    const s = spartisci(secchio(280 * M, 6 * M, 60 * M));
+    // LE COPERTINE VANNO COI LIBRI. Contate a parte, o dimenticate, i tre
+    // pezzi non tornerebbero più il piano e la barra avrebbe un buco che
+    // nessun errore segnala: si vedrebbe solo guardandola bene.
+    t.eq("la copertina pesa sul libro, non per conto suo", s.libri, 286 * M);
+    t.eq("le melodie restano le melodie", s.melodie, 60 * M);
+    t.eq("e il resto è quel che resta", s.liberi, PIANO - 346 * M);
+    t.eq("sotto il piano non si è sforato niente", s.sforato, 0);
+    // IL PATTO CHE TIENE IN PIEDI LA BARRA: le tre regioni disegnate fanno
+    // il piano esatto. È questo che casca se qualcuno lascia indietro le
+    // copertine — non un errore, un buco silenzioso nel disegno.
+    t.eq("le tre regioni fanno il piano intero", s.libri + s.melodie + s.liberi, PIANO);
+  }
+  {
+    // il secchio vuoto: tutto libero, e non «niente»
+    const s = spartisci(secchio(0, 0, 0));
+    t.eq("un secchio vuoto è tutto libero", s.liberi, PIANO);
+    t.eq("e le tre regioni tornano lo stesso", s.libri + s.melodie + s.liberi, PIANO);
+  }
+  {
+    // OLTRE IL PIANO NON SI SCRIVE «0 LIBERI», che è vero solo per modo di
+    // dire: un numero fermo a zero nasconderebbe proprio la misura del guaio
+    const s = spartisci(secchio(900 * M, 20 * M, 400 * M));
+    t.eq("sforato, il libero è zero", s.liberi, 0);
+    t.eq("e si dice di quanto", s.sforato, 320 * M);
+  }
+  {
+    // IL RESTO SI PRENDE DAL TOTALE, NON DALLA SOMMA DEI DUE PEZZI, e la
+    // differenza si vede solo quando i due divergono: `contaSpazio` fa il
+    // totale pesando TUTTO quel che sta nel secchio, mentre i pezzi contano
+    // solo i libri, le loro copertine e le melodie. Se lassù finisse una
+    // terza specie di file, la somma dei pezzi non la vedrebbe e la barra
+    // prometterebbe spazio che non c'è più.
+    //
+    // Senza questo caso la regola è solo scritta nel commento: nel secchio
+    // ordinario il totale È la somma dei pezzi, quindi le due formule danno
+    // lo stesso numero e una mutazione che le scambia passa indisturbata —
+    // ed è successo, provando a romperlo apposta.
+    const misto = { ...secchio(280 * M, 6 * M, 60 * M), totale: 500 * M };
+    const s = spartisci(misto);
+    t.eq("il libero segue il totale vero del secchio", s.liberi, PIANO - 500 * M);
+    t.c("e non la somma dei due pezzi disegnati", s.liberi !== PIANO - 346 * M);
+    // conseguenza voluta: la barra ha un buco largo quanto quel che c'è
+    // lassù e non sappiamo nominare. È spazio davvero occupato, e mostrarlo
+    // libero sarebbe la bugia peggiore delle due.
+    t.c("il buco nella barra è quello spazio", s.libri + s.melodie + s.liberi < PIANO);
+  }
+  {
+    // un conto che non c'è non si inventa
+    t.eq("senza dati non c'è spartizione", spartisci(null), null);
+    // e i pezzi mancanti valgono zero, mai NaN: un NaN dentro `fetta`
+    // darebbe una barra larga zero senza che niente lo dica
+    const s = spartisci({ totale: 5 * M });
+    t.c("un pezzo mancante vale zero, non NaN", s.libri === 0 && s.melodie === 0 && Number.isFinite(s.liberi));
+    t.c("e la barra resta disegnabile", /^\d/.test(fetta(s.libri)));
   }
 }
