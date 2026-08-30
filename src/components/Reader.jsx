@@ -1966,6 +1966,74 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     decidiAside(t.target || e.target, t.clientX);
   }
 
+  // LA LINGUETTA DELLA BARRA: UN INTERRUTTORE, NON MEZZO.
+  //
+  // Terza forma, e le prime due erano sbagliate per due ragioni diverse che
+  // il lettore ha detto meglio di come le direi io. (1) Un trattino sfumato
+  // in cima: «ma dove sarebbe quello che hai fatto?» — c'era, e non si
+  // trovava. (2) Una pastiglia ben visibile, sempre in cima: «non ha alcun
+  // senso in quella posizione perche' viene coperto dalla barra quando
+  // aperta e non posso farlo scomparire, inoltre e' troppo visibile».
+  //
+  // La seconda critica smaschera l'errore vero: **stava in un posto fisso
+  // mentre comandava una cosa che si muove**. A barre aperte finiva SOTTO
+  // la barra, quindi apriva e non chiudeva — mezzo interruttore. E per
+  // farsi trovare a barre chiuse doveva gridare, perche' non aveva nessun
+  // contesto attorno a cui appoggiarsi.
+  //
+  // Adesso e' la linguetta della barra, e sta in DUE posti perche' e' la
+  // stessa cosa in due stati: appesa al bordo inferiore della barra quando
+  // e' aperta (`top: 100%`, cosi' scende con lei senza che nessuno debba
+  // sapere quanto e' alta — dipende dal suo contenuto e non e' una
+  // costante), e sul bordo dello schermo quando e' chiusa. Non e' coperta
+  // mai. La freccia dice il verso, come la maniglia di un cassetto.
+  //
+  // E puo' tornare discreta proprio perche' ha una FORMA: una linguetta si
+  // riconosce anche in penombra, una riga sottile no — che era il difetto
+  // della prima versione. A barre aperte fa parte della barra, a barre
+  // chiuse resta appena accennata. Bersaglio pieno (44px), come sempre.
+  const linguetta = () => (
+    <button
+      onClick={() => setChrome((v) => !v)}
+      aria-label={chrome ? "Nascondi le barre" : "Mostra le barre"}
+      style={{
+        position: "absolute",
+        top: chrome ? "100%" : 0,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 24,
+        width: 76,
+        height: 44,
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "center",
+        background: "transparent",
+        border: "none",
+        padding: 0,
+      }}
+    >
+      <span
+        style={{
+          display: "block",
+          width: 46,
+          padding: "3px 0 4px",
+          textAlign: "center",
+          borderRadius: `0 0 ${R.piccolo}px ${R.piccolo}px`,
+          background: C.surface,
+          borderBottom: `1px solid ${C.border}`,
+          borderLeft: `1px solid ${C.border}`,
+          borderRight: `1px solid ${C.border}`,
+          color: C.muted,
+          fontSize: F.minuscolo,
+          lineHeight: 1,
+          opacity: chrome ? 1 : 0.5,
+        }}
+      >
+        {chrome ? "\u2303" : "\u2304"}
+      </span>
+    </button>
+  );
+
   const pct = Math.round((progress || 0) * 100);
   const puoGiustificare = !!lingua?.sillababile;
   const paginated = settings.flow !== "scrolled";
@@ -2267,72 +2335,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           tocco. Al loro posto la rotellina, che non litiga con la selezione,
           piu' le frecce e il margine attorno al libro. */}
 
-      {/* LA MANIGLIA: L'UNICA STRADA CHE NON PUO' FALLIRE.
-          Chiesta dal lettore dopo cinque cure al tocco che sul suo tablet
-          non hanno mai funzionato («ma che stai facendo? perche' la cosa ti
-          crea cosi tanta difficolta'?»). La domanda era giusta: il tocco sul
-          testo si riconosce con un'euristica dentro l'iframe di epub.js —
-          quali eventi arrivano, quanto si e' mosso il dito, quanto e'
-          durato — e quell'euristica si e' potuta provare solo su Chromium,
-          dove il difetto non esiste. Cinque ipotesi verificate sul browser
-          sbagliato.
-          Questo invece e' un `<button>` nel documento nostro. Non dipende da
-          nessun evento sintetizzato, da nessuna soglia, da nessun iframe:
-          se un browser sa disegnare un bottone, sa anche premerlo. Il tocco
-          sul testo resta com'e' e se funziona e' un di piu'.
-          C'e' SOLO a barre nascoste — a barre accese ci sono gia' loro.
-          IL PRIMO GIRO ERA UN TRATTINO SFUMATO, E NON SI TROVAVA: il
-          lettore ha guardato lo schermo con la maniglia davanti e ha
-          chiesto «ma dove sarebbe quello che hai fatto?». Quella domanda e'
-          il verdetto — **un comando che non si vede non e' un comando** — e
-          dopo sei giri a caccia del tocco era proprio l'errore da non
-          rifare. Ora e' una pastiglia con un fondo suo e un bordo, cioe'
-          qualcosa che si legge come premibile, e la freccia dice pure da
-          che parte arrivano le barre. Discreta si', invisibile no: la
-          discrezione qui vale meno del fatto che si trovi. Il bersaglio
-          resta pieno (44px, la regola dei bersagli del dito), perche' un
-          comando di riserva che si manca non e' di riserva. */}
-      {!chrome && status === "ready" && (
-        <button
-          onClick={() => setChrome(true)}
-          aria-label="Mostra le barre"
-          style={{
-            position: "absolute",
-            top: 0,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 26,
-            width: 92,
-            height: 44,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "transparent",
-            border: "none",
-            padding: 0,
-          }}
-        >
-          <span
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6,
-              padding: "5px 14px",
-              borderRadius: R.tondo,
-              background: C.surface,
-              border: `1px solid ${C.border}`,
-              color: C.muted,
-              fontSize: F.minuscolo,
-              lineHeight: 1,
-              boxShadow: `0 2px 10px ${C.bg}99`,
-            }}
-          >
-            <span style={{ display: "block", width: 22, height: 3, borderRadius: R.tondo, background: C.muted }} />
-            <span style={{ display: "block", marginTop: -2 }}>⌄</span>
-          </span>
-        </button>
-      )}
+      {/* fuori dalla barra: la linguetta da sola, sul bordo dello schermo */}
+      {status === "ready" && !chrome && linguetta()}
 
       {chrome && (
         <>
@@ -2353,6 +2357,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               animation: "bc-fade-in 0.2s ease-out",
             }}
           >
+            {/* appesa al bordo di sotto della barra: scende con lei */}
+            {linguetta()}
             <button onClick={handleClose} style={barBtn(false)} aria-label="Chiudi il libro">✕</button>
             <span
               style={{
