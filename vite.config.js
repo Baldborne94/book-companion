@@ -1,8 +1,19 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // `@xmldom/xmldom` è il ripiego di epub.js per Node e per Internet
+      // Explorer, e in un browser di oggi non viene chiamato mai — il
+      // perché, misurato, sta scritto in `src/lib/xmldomFinto.js`. Senza
+      // questo alias sarebbero 60 kB di codice morto spediti a ogni
+      // lettore, per giunta con due avvisi ALTI di `npm audit` addosso.
+      "@xmldom/xmldom": fileURLToPath(new URL("./src/lib/xmldomFinto.js", import.meta.url)),
+    },
+  },
   // il timbro di versione visibile in app: senza, e' impossibile sapere
   // quale build gira davvero sul tablet (il service worker in modalita'
   // prompt puo' restare indietro di parecchi rilasci)

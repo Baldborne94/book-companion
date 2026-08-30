@@ -9,6 +9,7 @@ import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js"
 import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook, getProgress } from "./lib/library.js";
 import { removeBookData, requestPersistence } from "./lib/bookStore.js";
 import { cercaNuovaVersione } from "./lib/aggiornamenti.js";
+import Guasto from "./components/Guasto.jsx";
 import Home from "./components/Home.jsx";
 import Library from "./components/Library.jsx";
 import BookSheet from "./components/BookSheet.jsx";
@@ -882,6 +883,19 @@ export default function App() {
         <ReadingDiary books={books} onClose={() => setDiaryOpen(false)} onOpenBook={setOpenId} />
       )}
       {readingBook && (
+        // L'ANELLO STRETTO. Il reader è la parte più complicata dell'app,
+        // ed è quella dove un difetto è più probabile: un guasto lì dentro
+        // deve riportarti in biblioteca, non portarsi via anche lei. La
+        // chiave sul libro aperto serve a ricominciare pulito quando ne
+        // apri un altro — senza, un guasto resterebbe appeso al prossimo.
+        <Guasto
+          key={`guasto:${readingBook.id}`}
+          dentroIlLibro
+          onChiudi={() => {
+            setReadingId(null);
+            setReadingStart(null);
+          }}
+        >
         <Suspense
           fallback={
             <div
@@ -950,6 +964,7 @@ export default function App() {
             />
           )}
         </Suspense>
+        </Guasto>
       )}
       <MusicPlayer
         ref={playerRef}
