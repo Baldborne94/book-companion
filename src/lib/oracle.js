@@ -4,7 +4,7 @@
 // La chiave API e' dell'utente e non lascia mai il dispositivo: la chiamata
 // parte dal browser dritta verso l'API Anthropic, nessun server in mezzo.
 
-import { daUsage, registra } from "./spesa.js";
+import { daUsage, registra, oltreIlTetto, leggiTetto, restaDelMese } from "./spesa.js";
 
 const KEY = "bc_ai_key";
 
@@ -93,6 +93,20 @@ export const TETTO_SCHEDA = 6000;
 export async function chiedi({ system, user, tetto = TETTO_BREVE }, fetcher) {
   const chiave = getOracleKey();
   if (!chiave) return { error: "chiave" };
+  // IL TETTO SI GUARDA QUI, davanti alla porta, per la stessa ragione per cui
+  // qui si segna la spesa: e' l'unico punto da cui passano tutte le domande.
+  // Messo in ognuna, la prossima se lo dimenticherebbe — e una funzione che
+  // si dimentica il tetto e' un tetto che non c'e'.
+  //
+  // Si guarda quel che e' GIA' stato speso, non quel che costera' questa
+  // richiesta: prima di farla nessuno lo sa. Si puo' quindi sforare di una
+  // domanda sola, e la scheda lo dice invece di fingere un pareggio.
+  //
+  // E si passa in un modo solo: ALZANDO IL TETTO. Un «chiedi lo stesso» che
+  // scavalca senza toccarlo lascerebbe sullo schermo un numero che non
+  // comanda piu' niente — meglio un tetto che si sposta con un tocco e resta
+  // vero, che un tetto vero a meta'.
+  if (oltreIlTetto()) return { error: "tetto", tettoMese: leggiTetto(), resta: restaDelMese() };
   try {
     const r = await (fetcher || fetch)("https://api.anthropic.com/v1/messages", {
       method: "POST",

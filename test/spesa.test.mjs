@@ -5,7 +5,28 @@
 // speso, né quale funzione spendesse di più — e la scheda di un personaggio
 // su una saga lunga manda al modello cento passaggi, mentre una parola
 // spiegata ne manda venti righe.
-import {
+// E QUANTO NE RESTA: il tetto del mese, che è la metà mancante. «$1,20» non
+// è né poco né tanto finché non c'è un numero accanto a cui sta.
+//
+// Il finto storage sta PRIMA dell'import, e per questo l'import è dinamico:
+// `leggiTetto` legge da localStorage, e senza il finto il modulo si
+// difenderebbe da solo tornando sempre il valore di partenza — cioè il test
+// passerebbe senza aver provato niente di quel che c'è da provare.
+const memoria = {};
+for (const [nome, fn] of Object.entries({
+  getItem: (k) => (k in memoria ? memoria[k] : null),
+  setItem: (k, v) => {
+    memoria[k] = String(v);
+  },
+  removeItem: (k) => {
+    delete memoria[k];
+  },
+})) {
+  Object.defineProperty(memoria, nome, { value: fn, enumerable: false });
+}
+globalThis.localStorage = memoria;
+
+const {
   TARIFFE,
   daUsage,
   costo,
@@ -17,7 +38,15 @@ import {
   soldi,
   rigaUltima,
   MESI_TENUTI,
-} from "../src/lib/spesa.js";
+  TETTO_DEFAULT,
+  SCALINI,
+  leggiTetto,
+  scriviTetto,
+  scalinoSopra,
+  restaDelMese,
+  oltreIlTetto,
+  rigaMese,
+} = await import("../src/lib/spesa.js");
 
 const vuoto = () => ({ mesi: {}, ultima: null });
 const T = (d, m, cw = 0, cr = 0) => ({
@@ -128,4 +157,217 @@ export default async function (t) {
   // ---- somma -------------------------------------------------------------
   t.eq("sommare a niente dà il conto stesso", somma(null, { dentro: 5 }).dentro, 5);
   t.eq("e le chiamate partono da zero", somma(null, { dentro: 5 }).chiamate, 0);
+
+  // =========================================================================
+  // IL TETTO DEL MESE
+  // =========================================================================
+  const pulisci = () => {
+    for (const k of Object.keys(memoria)) delete memoria[k];
+  };
+
+  // ---- ZERO È UNA SCELTA, NON UN VUOTO ----------------------------------
+  // Ed è la trappola di questo modulo: `Number(null)` e `Number("")` valgono
+  // tutt'e due ZERO, e zero qui vuol dire «nessun tetto». Leggendo il numero
+  // senza guardare prima la stringa, uno storage in cui non è mai stato
+  // scritto niente direbbe «nessun tetto» — cioè l'esatto contrario del
+  // valore di partenza, e l'Oracolo non si fermerebbe mai.
+  {
+    pulisci();
+    t.eq("senza niente scritto vale il tetto di partenza", leggiTetto(), TETTO_DEFAULT);
+    t.eq("e il tetto di partenza è cinque dollari al mese", TETTO_DEFAULT, 5);
+    memoria.setItem("bc_ai_tetto", "");
+    t.eq("una stringa vuota non è uno zero scelto", leggiTetto(), TETTO_DEFAULT);
+    memoria.setItem("bc_ai_tetto", "   ");
+    t.eq("nemmeno degli spazi", leggiTetto(), TETTO_DEFAULT);
+    memoria.setItem("bc_ai_tetto", "boh");
+    t.eq("né qualcosa che non è un numero", leggiTetto(), TETTO_DEFAULT);
+    memoria.setItem("bc_ai_tetto", "-3");
+    t.eq("né un numero negativo", leggiTetto(), TETTO_DEFAULT);
+    // e ADESSO lo zero, che invece deve sopravvivere
+    memoria.setItem("bc_ai_tetto", "0");
+    t.eq("uno zero SCRITTO vuol dire «nessun tetto» e resta", leggiTetto(), 0);
+  }
+  {
+    pulisci();
+    scriviTetto(20);
+    t.eq("quel che si scrive si rilegge", leggiTetto(), 20);
+    scriviTetto(0);
+    t.eq("zero compreso", leggiTetto(), 0);
+    scriviTetto(-1);
+    t.eq("un tetto negativo non si scrive affatto", leggiTetto(), 0);
+    scriviTetto("boh");
+    t.eq("e nemmeno una parola", leggiTetto(), 0);
+  }
+
+  // ---- quanto resta -----------------------------------------------------
+  {
+    // un mese con dentro una scheda vera: 30k dentro + 1,5k fuori
+    let s = vuoto();
+    const q = Date.UTC(2026, 7, 21);
+    s = registra(T(30000, 1500), { ora: q, stato: s });
+    const speso = costo(daUsage(T(30000, 1500)));
+
+    t.c(
+      "col tetto di partenza resta quasi tutto",
+      Math.abs(restaDelMese({ ora: q, stato: s, tetto: 5 }) - (5 - speso)) < 1e-9
+    );
+    t.c("e l'Oracolo parla ancora", !oltreIlTetto({ ora: q, stato: s, tetto: 5 }));
+
+    // SENZA TETTO NON C'È UN RESTO: `null` e non zero, che sullo schermo si
+    // leggerebbe come «hai finito» — l'esatto contrario di «nessun limite»
+    t.eq("senza tetto non c'è niente da restare", restaDelMese({ ora: q, stato: s, tetto: 0 }), null);
+    t.c("e non si ferma mai niente", !oltreIlTetto({ ora: q, stato: s, tetto: 0 }));
+
+    // il tetto stretto: la sola scheda lo esaurisce
+    t.c("con un tetto da dieci centesimi si è già oltre", oltreIlTetto({ ora: q, stato: s, tetto: 0.1 }));
+    t.c("e il resto lo dice col segno meno", restaDelMese({ ora: q, stato: s, tetto: 0.1 }) < 0);
+
+    // IL MESE È IL MESE: quel che hai speso ad agosto non ti chiude settembre
+    t.c(
+      "un mese nuovo riparte col tetto intero",
+      Math.abs(restaDelMese({ ora: Date.UTC(2026, 8, 1), stato: s, tetto: 5 }) - 5) < 1e-9
+    );
+    t.c("e l'Oracolo riprende da solo", !oltreIlTetto({ ora: Date.UTC(2026, 8, 1), stato: s, tetto: 0.1 }));
+
+    // un mese senza domande: `riassunto().mese` è `null`, e `costo(null)`
+    // deve valere zero invece di sporcare il conto
+    t.c(
+      "un mese in cui non hai chiesto niente ha il tetto intero",
+      Math.abs(restaDelMese({ ora: Date.UTC(2030, 0, 1), stato: vuoto(), tetto: 5 }) - 5) < 1e-9
+    );
+  }
+
+  // ---- il gradino sopra --------------------------------------------------
+  {
+    t.eq("da cinque si sale a dieci", scalinoSopra(5), 10);
+    t.eq("da dieci a venti", scalinoSopra(10), 20);
+    t.eq("da venti a cinquanta", scalinoSopra(20), 50);
+    // LO ZERO DELLA SCALA NON È «SOPRA»: è «nessun tetto», che è un'altra
+    // cosa, e ci si arriva scegliendolo. Offrirlo come gradino successivo
+    // vorrebbe dire togliere il limite col tasto che dovrebbe alzarlo.
+    t.eq("oltre l'ultimo gradino si raddoppia, non si toglie il tetto", scalinoSopra(50), 100);
+    t.c("e il tasto non offre mai «nessuno»", SCALINI.filter((s) => s > 0).every((s) => scalinoSopra(s) > 0));
+    // un valore in mezzo ai gradini sale al primo che lo supera
+    t.eq("un tetto fuori scala sale al gradino che lo supera", scalinoSopra(7), 10);
+    // senza tetto non c'è un sopra
+    t.eq("senza tetto non c'è un gradino sopra", scalinoSopra(0), null);
+    t.eq("né con un valore storto", scalinoSopra("boh"), null);
+    t.c("e lo zero c'è, in fondo alla scala", SCALINI.includes(0));
+  }
+
+  // ---- la riga del mese --------------------------------------------------
+  {
+    let s = vuoto();
+    const q = Date.UTC(2026, 7, 21);
+    s = registra(T(30000, 1500), { ora: q, stato: s });
+
+    const con = rigaMese({ ora: q, stato: s, tetto: 5 });
+    t.c("dice quanto hai speso", /questo mese \$0,1\d/.test(con), con);
+    t.c("in quante domande", /in 1 domanda/.test(con), con);
+    t.c("E QUANTO TI RESTA, che è la metà che mancava", /restano \$4,8\d di \$5/.test(con), con);
+
+    // SENZA TETTO NON SI SCRIVE «RESTANO»: senza un limite quella parola non
+    // vuol dire niente, e un «restano $0» suonerebbe come «hai finito»
+    const senza = rigaMese({ ora: q, stato: s, tetto: 0 });
+    t.c("senza tetto resta il solo speso", /questo mese/.test(senza) && !/restano/.test(senza), senza);
+
+    // OLTRE IL TETTO NON SI SCRIVE UN RESTO NEGATIVO: si dice che è finito
+    const finito = rigaMese({ ora: q, stato: s, tetto: 0.1 });
+    t.c("finito il tetto lo si dice a parole", /il tetto di \$0,10 è finito/.test(finito), finito);
+    t.c("e non con un numero negativo", !/-/.test(finito), finito);
+
+    // un mese muto non ha una riga: non c'è ancora niente da dire
+    t.eq("un mese senza domande non ha una riga", rigaMese({ ora: Date.UTC(2030, 0, 1), stato: vuoto() }), null);
+
+    // le domande si contano al plurale quando sono più d'una
+    let due = vuoto();
+    due = registra(T(1000, 100), { ora: q, stato: due });
+    due = registra(T(1000, 100), { ora: q, stato: due });
+    t.c("due domande sono «domande»", /in 2 domande/.test(rigaMese({ ora: q, stato: due, tetto: 5 })));
+  }
+
+  // ---- IL FRENO: LA DOMANDA NON PARTE ------------------------------------
+  //
+  // È la parte che rende il tetto un tetto. Un limite che lascia partire la
+  // richiesta e poi si lamenta ha già speso i soldi: quel che si prova qui
+  // non è il messaggio, è che il `fetch` NON viene chiamato.
+  //
+  // Il freno sta in `chiedi`, che è l'unico punto da cui passano tutte le
+  // domande — spiegazione, scheda personaggio, «Dove eravamo rimasti»,
+  // «Prima di cominciare». Messo in ognuna, la prossima se lo dimentica.
+  {
+    const { chiedi, setOracleKey } = await import("../src/lib/oracle.js");
+    const risposta = {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        content: [{ type: "text", text: "eccomi" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 30000, output_tokens: 1500 },
+      }),
+    };
+    const spia = () => {
+      const f = async () => {
+        f.chiamate++;
+        return risposta;
+      };
+      f.chiamate = 0;
+      return f;
+    };
+
+    pulisci();
+    // SENZA CHIAVE NON C'È NIENTE DA SPENDERE: il controllo della chiave
+    // resta davanti a quello del tetto, o chi non ha ancora una chiave si
+    // vedrebbe dire che ha finito il budget
+    {
+      const f = spia();
+      const out = await chiedi({ system: "s", user: "u" }, f);
+      t.eq("senza chiave si chiede la chiave", out.error, "chiave");
+      t.eq("e non si chiama nessuno", f.chiamate, 0);
+    }
+
+    setOracleKey("sk-ant-finta");
+    scriviTetto(5);
+
+    // sotto il tetto la domanda parte
+    {
+      const f = spia();
+      const out = await chiedi({ system: "s", user: "u" }, f);
+      t.eq("sotto il tetto l'Oracolo risponde", out.answer, "eccomi");
+      t.eq("e la domanda è partita davvero", f.chiamate, 1);
+      // e la spesa si è segnata: è il giro che porta il mese verso il tetto
+      t.c("la spesa si segna", riassunto().mese.chiamate >= 1);
+    }
+
+    // ora si sfonda il tetto a mano, e la domanda NON deve partire
+    {
+      scriviTetto(0.001);
+      const f = spia();
+      const out = await chiedi({ system: "s", user: "u" }, f);
+      t.eq("finito il tetto, l'Oracolo si ferma", out.error, "tetto");
+      t.eq("E LA DOMANDA NON PARTE: il conto non si paga per sentirsi dire di no", f.chiamate, 0);
+      t.eq("la scheda riceve il tetto per poterlo dire", out.tettoMese, 0.001);
+      t.c("e quanto si è sforato", out.resta < 0, String(out.resta));
+    }
+
+    // ALZARE IL TETTO È L'UNICA STRADA, ed è quella che il tasto offre: si
+    // prova che rimette davvero in cammino, o il tasto sarebbe un ornamento
+    {
+      scriviTetto(scalinoSopra(5));
+      const f = spia();
+      const out = await chiedi({ system: "s", user: "u" }, f);
+      t.eq("alzato il tetto si riparte", out.answer, "eccomi");
+      t.eq("e stavolta la domanda parte", f.chiamate, 1);
+    }
+
+    // e «nessun tetto» non ferma mai niente
+    {
+      scriviTetto(0);
+      const f = spia();
+      const out = await chiedi({ system: "s", user: "u" }, f);
+      t.eq("senza tetto non ci si ferma mai", out.answer, "eccomi");
+      t.eq("nemmeno con un mese già speso", f.chiamate, 1);
+    }
+  }
+  pulisci();
 }

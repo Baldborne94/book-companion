@@ -143,3 +143,106 @@ export function rigaUltima(conto) {
   if (!conto) return null;
   return `${tokenCorti(conto.dentro)} dentro · ${tokenCorti(conto.fuori)} fuori · ${soldi(costo(conto))}`;
 }
+
+// ---------------------------------------------------------------------------
+// IL TETTO DEL MESE.
+//
+// Sapere quanto hai speso e' meta' della risposta: l'altra meta' e' quanto ti
+// RESTA, e senza un limite quella meta' non esiste — «$1,20» non e' ne' poco
+// ne' tanto finche' non c'e' un numero accanto a cui sta. Il tetto lo sceglie
+// il lettore (di partenza cinque dollari al mese, chiesto da lui), e non e'
+// una decorazione: quando e' finito l'Oracolo si FERMA. Un tetto che si
+// limita a raccontare non e' un tetto, e' una didascalia.
+//
+// Sta sul dispositivo come la chiave, e per la stessa ragione: chi paga e'
+// chi ha la chiave in mano, e la chiave non viaggia.
+
+// Cinque dollari al mese. E' un valore di partenza, non una regola.
+export const TETTO_DEFAULT = 5;
+
+// I gradini offerti col dito. Sul tablet scrivere un numero vuol dire aprire
+// la tastiera, che copre mezza scheda — la stessa ragione per cui i generi si
+// scelgono a tasti. Lo zero e' l'ultimo gradino ed e' una scelta vera:
+// «nessun tetto», non un campo lasciato vuoto.
+export const SCALINI = [5, 10, 20, 50, 0];
+
+// IL TETTO SI SCRIVE COME LO SI SCEGLIE. E' un numero tondo preso a tasti, e
+// stamparlo «$5,00» accanto a un tasto che dice «$5» vuol dire chiamare la
+// stessa cosa in due modi nella stessa schermata. I centesimi restano dove
+// servono davvero, cioe' sulla spesa.
+export const soldiTetto = (d) => (Number.isInteger(Number(d)) ? `$${Number(d)}` : soldi(d));
+
+// Il gradino subito sopra quello che hai adesso: e' quel che offre il tasto
+// quando il tetto e' finito, cosi' rimetterlo in cammino e' un tocco solo e
+// non una scelta da rifare da capo. Oltre l'ultimo gradino non si inventa un
+// numero tondo a caso: si raddoppia, che e' la stessa decisione che uno
+// prenderebbe da se'. Lo zero della scala non conta come «sopra»: e' «nessun
+// tetto», che e' un'altra cosa, e ci si arriva scegliendolo.
+export function scalinoSopra(t) {
+  const v = Number(t);
+  if (!Number.isFinite(v) || v <= 0) return null;
+  return SCALINI.filter((s) => s > v).sort((a, b) => a - b)[0] ?? Math.round(v * 2);
+}
+
+const CHIAVE_TETTO = "bc_ai_tetto";
+
+// ZERO E' UNA SCELTA, NON UN VUOTO, e qui sta la trappola: `Number(null)` e
+// `Number("")` valgono tutt'e due ZERO. Leggendo il numero senza guardare
+// prima la stringa, uno storage in cui non e' mai stato scritto niente
+// direbbe «nessun tetto» — cioe' l'esatto contrario del valore di partenza.
+export function leggiTetto() {
+  try {
+    const raw = localStorage.getItem(CHIAVE_TETTO);
+    if (raw === null || String(raw).trim() === "") return TETTO_DEFAULT;
+    const v = Number(raw);
+    return Number.isFinite(v) && v >= 0 ? v : TETTO_DEFAULT;
+  } catch {
+    return TETTO_DEFAULT;
+  }
+}
+
+export function scriviTetto(d) {
+  const v = Number(d);
+  if (!Number.isFinite(v) || v < 0) return;
+  try {
+    localStorage.setItem(CHIAVE_TETTO, String(v));
+  } catch {
+    /* storage negato: si resta al tetto di prima, non si perde una risposta */
+  }
+}
+
+// Quanto resta del mese, in dollari. `null` quando non c'e' un tetto: li' un
+// «resto» non vuol dire niente, e scrivere zero suonerebbe come «hai finito».
+// Puo' tornare NEGATIVO, ed e' giusto che lo faccia: sforare di poco succede
+// (vedi `oltreIlTetto`), e un resto bloccato a zero nasconderebbe di quanto.
+export function restaDelMese({ ora = Date.now(), stato, tetto } = {}) {
+  const t = Number(tetto === undefined ? leggiTetto() : tetto);
+  if (!Number.isFinite(t) || t <= 0) return null;
+  const speso = costo(riassunto({ ora, stato }).mese);
+  return t - speso;
+}
+
+// L'Oracolo puo' ancora parlare? La domanda si fa PRIMA di partire, e la
+// risposta guarda quel che e' gia' stato speso — non quel che costera'
+// questa richiesta, che nessuno puo' sapere prima di averla fatta. Il
+// prezzo di questa onesta' e' che si puo' sforare di UNA domanda, e infatti
+// la scheda dice «hai speso $5,12 di $5» invece di fingere un pareggio.
+export function oltreIlTetto(opzioni) {
+  const resta = restaDelMese(opzioni);
+  return resta !== null && resta <= 0;
+}
+
+// La riga del mese in corso: quanto hai speso, e quanto ti resta di quel che
+// ti eri dato. Senza tetto resta il solo speso.
+export function rigaMese({ ora = Date.now(), stato, tetto } = {}) {
+  const r = riassunto({ ora, stato });
+  if (!r.mese) return null;
+  const n = r.mese.chiamate;
+  const base = `questo mese ${soldi(costo(r.mese))} in ${n} ${n === 1 ? "domanda" : "domande"}`;
+  const t = Number(tetto === undefined ? leggiTetto() : tetto);
+  const resta = restaDelMese({ ora, stato, tetto: t });
+  if (resta === null) return base;
+  return resta > 0
+    ? `${base} · restano ${soldi(resta)} di ${soldiTetto(t)}`
+    : `${base} · il tetto di ${soldiTetto(t)} è finito`;
+}
