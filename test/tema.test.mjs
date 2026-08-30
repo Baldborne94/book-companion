@@ -5,7 +5,7 @@
 //
 // Serve un browser. Senza, il file si dichiara SALTATO invece di fallire —
 // ma saltare non e' passare: chi tocca `readerTheme.js` deve farlo girare.
-import { contentStyles, spegniVuoti, togliStacco, spegniScenografia, rientrata, spaziatoriFitti,
+import { contentStyles, spegniVuoti, togliStacco, staccaParagrafi, STACCO, spegniScenografia, rientrata, spaziatoriFitti,
   SEGNO_DI_SCENA, RIENTRO_MINIMO, QUANTI, CAMPIONE, SPAZIATORI_FITTI, ABBASTANZA_PARAGRAFI,
   PAGINA_SU_GIU, SCENA_COPRE, SCENA_TESTO_MINIMO } from "../src/lib/readerTheme.js";
 import { READER_THEMES } from "../src/lib/readerSettings.js";
@@ -158,6 +158,14 @@ export default async function (t) {
     return (${togliStacco.toString()});
   `;
   const staccaVia = () => p.evaluate(([src]) => new Function(src)()(document), [sorgenteStacco]);
+  // la gemella: toglie il rientro e mette il respiro
+  const sorgenteParagrafi = `
+    const STACCO = ${JSON.stringify(STACCO)};
+    const SEGNO_DI_SCENA = ${SEGNO_DI_SCENA.toString()};
+    return (${staccaParagrafi.toString()});
+  `;
+  const staccaParagrafiVia = () =>
+    p.evaluate(([src]) => new Function(src)()(document), [sorgenteParagrafi]);
   // la distanza fra due elementi, che e' quello che il lettore vede
   const fra = (a, b) =>
     p.evaluate(([x, y]) => {
@@ -385,6 +393,64 @@ export default async function (t) {
 
     t.c("niente documento, niente da fare", !togliStacco(null));
     t.c("e un documento senza vista nemmeno", !togliStacco({ querySelectorAll: () => [] }));
+
+    // ---- L'ALTRA META': I PARAGRAFI STACCATI ---------------------------
+    //
+    // La strada opposta, chiesta dal lettore guardando un Pratchett: via il
+    // rientro che il libro si porta dietro, e il respiro al suo posto. Il
+    // rientro arriva da una CLASSE (`.calibre2 { text-indent: 1.2em }`),
+    // che un foglio di stile senza `!important` non batte: per questo la
+    // cura lavora sugli elementi, e questo è il controllo che lo prova.
+    await p.setContent(CALIBRE);
+    const rientroPrima = await stile("p0", "textIndent");
+    t.c("il rientro del libro c'è", parseFloat(rientroPrima) > 5, rientroPrima);
+    const quanti = await staccaParagrafiVia();
+    t.c("la cura passa su tutti i paragrafi di prosa", quanti >= 8, `${quanti}`);
+    t.eq("il rientro se ne va, malgrado la classe", await stile("p0", "textIndent"), "0px");
+    // E IL RESPIRO ARRIVA INSIEME: senza rientro e senza stacco la prosa
+    // diventerebbe un muro, perché non resterebbe nessun segnale di
+    // paragrafo — la cura sarebbe peggio del difetto.
+    const respiro = await fra("p0", "p1");
+    t.c("e al suo posto c'è il respiro", respiro > 8, `${respiro}px`);
+    // e il respiro è il NOSTRO, non quello che il libro aveva già: su un
+    // libro coi margini azzerati — il caso del lettore — restare senza
+    // vorrebbe dire un muro di testo
+    const quantoRespiro = await p.evaluate(([q]) => {
+      const el = document.createElement("p");
+      el.style.marginTop = q;
+      document.body.appendChild(el);
+      const v = getComputedStyle(el).marginTop;
+      el.remove();
+      return v;
+    }, [STACCO]);
+    t.eq("ed è quello della cura, non quello del libro", await stile("p0", "marginTop"), quantoRespiro);
+    // uno stacco solo fra due paragrafi: il margine di sotto è azzerato
+    // apposta, o i due si sommerebbero
+    t.eq("il margine di sotto resta a zero", await stile("p0", "marginBottom"), "0px");
+
+    // il segno di scena non si tocca: un respiro attorno ce l'ha per
+    // mestiere, e il rientro glielo lascia il libro
+    t.c(
+      "il segno di scena resta come il libro l'ha vestito",
+      parseFloat(await stile("segno", "textIndent")) > 5,
+      await stile("segno", "textIndent")
+    );
+
+    // e gli spaziatori restano spaziatori: sono la pausa fra due scene, e
+    // un margine nostro addosso li trasformerebbe in un buco
+    await p.setContent(`<!doctype html><html><body>
+      <p id="q0">Un paragrafo vero, lungo abbastanza da valere una riga.</p>
+      <p id="sp2">&nbsp;</p>
+      <p id="q1">Un altro paragrafo vero, lungo abbastanza da valere una riga.</p>
+    </body></html>`);
+    const spazioPrima = await stile("sp2", "marginTop");
+    await staccaParagrafiVia();
+    t.eq("lo spaziatore resta com'era", await stile("sp2", "marginTop"), spazioPrima);
+    t.eq("i paragrafi veri prendono lo stesso respiro", await stile("q1", "marginTop"), await stile("q0", "marginTop"));
+    t.c("e il respiro non è zero", parseFloat(await stile("q0", "marginTop")) > 8);
+
+    t.eq("niente documento, niente paragrafi staccati", staccaParagrafi(null), 0);
+    t.eq("e un documento senza query nemmeno", staccaParagrafi({}), 0);
 
     // I 20px DI EPUB.JS DENTRO LA PAGINA. Li mette lui, in orizzontale,
     // e sono 40px di carta bianca per facciata che nessuno ha scelto: su
