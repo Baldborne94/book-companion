@@ -2280,11 +2280,18 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           nessun evento sintetizzato, da nessuna soglia, da nessun iframe:
           se un browser sa disegnare un bottone, sa anche premerlo. Il tocco
           sul testo resta com'e' e se funziona e' un di piu'.
-          C'e' SOLO a barre nascoste — a barre accese ci sono gia' loro — ed
-          e' un trattino sfumato, non un tasto: deve potersi ignorare mentre
-          si legge. Il bersaglio pero' e' pieno (44px, la regola dei bersagli
-          del dito), perche' un comando di riserva che si manca non e' di
-          riserva. */}
+          C'e' SOLO a barre nascoste — a barre accese ci sono gia' loro.
+          IL PRIMO GIRO ERA UN TRATTINO SFUMATO, E NON SI TROVAVA: il
+          lettore ha guardato lo schermo con la maniglia davanti e ha
+          chiesto «ma dove sarebbe quello che hai fatto?». Quella domanda e'
+          il verdetto — **un comando che non si vede non e' un comando** — e
+          dopo sei giri a caccia del tocco era proprio l'errore da non
+          rifare. Ora e' una pastiglia con un fondo suo e un bordo, cioe'
+          qualcosa che si legge come premibile, e la freccia dice pure da
+          che parte arrivano le barre. Discreta si', invisibile no: la
+          discrezione qui vale meno del fatto che si trovi. Il bersaglio
+          resta pieno (44px, la regola dei bersagli del dito), perche' un
+          comando di riserva che si manca non e' di riserva. */}
       {!chrome && status === "ready" && (
         <button
           onClick={() => setChrome(true)}
@@ -2295,7 +2302,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 26,
-            width: 88,
+            width: 92,
             height: 44,
             display: "flex",
             alignItems: "center",
@@ -2307,14 +2314,23 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         >
           <span
             style={{
-              display: "block",
-              width: 38,
-              height: 4,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              padding: "5px 14px",
               borderRadius: R.tondo,
-              background: C.muted,
-              opacity: 0.32,
+              background: C.surface,
+              border: `1px solid ${C.border}`,
+              color: C.muted,
+              fontSize: F.minuscolo,
+              lineHeight: 1,
+              boxShadow: `0 2px 10px ${C.bg}99`,
             }}
-          />
+          >
+            <span style={{ display: "block", width: 22, height: 3, borderRadius: R.tondo, background: C.muted }} />
+            <span style={{ display: "block", marginTop: -2 }}>⌄</span>
+          </span>
         </button>
       )}
 
