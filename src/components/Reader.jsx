@@ -225,6 +225,19 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const viewerRef = useRef(null);
   const rootRef = useRef(null);
   const bookRef = useRef(null);
+  // L'ORA DELL'ULTIMO TOCCO SERVITO, UNA SOLA PER TUTTO IL READER.
+  //
+  // Era una variabile chiusa dentro il gestore dell'iframe, e li' bastava
+  // finche' il tocco fuori dal libro non esisteva. Ma i due posti non sono
+  // separati: un dito che si posa sul testo puo' far nascere un `click`
+  // sintetico che atterra sulla CORNICE, e con due guardiani distinti quel
+  // click passerebbe per un tocco nuovo — le barre si accenderebbero e si
+  // rispegnerebbero nello stesso gesto, cioe' di nuovo «non succede
+  // niente», che e' il difetto che stiamo curando.
+  const ditoRef = useRef(0);
+  // dove si e' posato il dito sulla cornice, per distinguere il tocco dal
+  // trascinamento e dalla pressione lunga
+  const asideRef = useRef(null);
   const epubRef = useRef(null);
   const rendRef = useRef(null);
   const saveTimer = useRef(null);
@@ -631,7 +644,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // barre si nasconderebbero e ricomparirebbero nello stesso gesto:
         // servito dal dito, il `click` che segue si lascia cadere.
         let giu = null;
-        let servitoDalDito = 0;
         const tocco = (bersaglio, x, y) => {
           if (bersaglio?.closest?.("a")) return;
           const sel = view.contents.window.getSelection();
@@ -688,8 +700,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           if (!partenza) return;
           if (Math.abs(x - partenza.x) > MOSSA || Math.abs(y - partenza.y) > MOSSA) return;
           if (Date.now() - partenza.quando > PRESSIONE) return;
-          if (Date.now() - servitoDalDito < DOPPIONE) return;
-          servitoDalDito = Date.now();
+          if (Date.now() - ditoRef.current < DOPPIONE) return;
+          ditoRef.current = Date.now();
           tocco(bersaglio, x, y);
         };
         doc.addEventListener(
@@ -732,8 +744,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           { passive: true }
         );
         doc.addEventListener("click", (e) => {
-          if (Date.now() - servitoDalDito < DOPPIONE) return;
-          servitoDalDito = Date.now();
+          if (Date.now() - ditoRef.current < DOPPIONE) return;
+          ditoRef.current = Date.now();
           tocco(e.target, e.clientX, e.clientY);
         });
         // La rotellina volta la pagina col mouse. In pagine impaginate
@@ -1863,17 +1875,59 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // si appoggia tenendo il tablet. Qui arrivano solo i tocchi sul libro o
   // sullo sfondo — barre, pannelli e menu sono altri elementi e si fermano
   // da soli, altrimenti ogni loro bottone avrebbe cambiato pagina.
-  function tapAside(e) {
+  // E QUI FUORI VALEVA ANCORA LA REGOLA VECCHIA. Dentro l'iframe il tocco
+  // si serve da se' da tre canali (`pointerup`, `touchend`, `click`) da
+  // quando si e' scoperto che col dito il `click` e' un favore del motore e
+  // non una garanzia. Questa meta' era rimasta indietro col solo `onClick`,
+  // e nessuno se n'era accorto perche' il difetto si vede uguale da tutt'e
+  // due le parti: tocchi e non succede niente.
+  //
+  // Ed e' la meta' che spiega il «a pagina singola», che sembrava un
+  // dettaglio e invece era l'indizio: a colonna singola il libro e' piu'
+  // stretto e attorno resta piu' cornice, quindi molti tocchi cadono
+  // proprio qui — dove c'era solo il canale fragile. A due pagine il libro
+  // riempie la larghezza e quasi tutti i tocchi finiscono sul testo, dove
+  // la cura c'era gia'.
+  function decidiAside(target, clientX) {
     const root = rootRef.current;
-    const target = e.target;
     if (target !== root && !bookRef.current?.contains(target)) return;
     if (selMenu) return setSelMenu(null);
     if (paginated && status === "ready") {
-      const rel = e.clientX / (window.innerWidth || 1);
+      const rel = clientX / (window.innerWidth || 1);
       if (rel < TAP_PREV) return turn("prev");
       if (rel > TAP_NEXT) return turn("next");
     }
     setChrome((v) => !v);
+  }
+
+  function tapAside(e) {
+    if (Date.now() - ditoRef.current < DOPPIONE) return;
+    ditoRef.current = Date.now();
+    decidiAside(e.target, e.clientX);
+  }
+
+  function asideGiu(e) {
+    asideRef.current =
+      e.touches?.length === 1
+        ? { x: e.touches[0].clientX, y: e.touches[0].clientY, quando: Date.now() }
+        : null;
+  }
+
+  // Qui NON si sfoglia: la sfogliata col dito vive dentro il capitolo, dove
+  // c'e' il testo. Qui si riconosce solo il tocco fermo e breve, con le
+  // stesse due soglie di dentro — oltre `MOSSA` stava trascinando, oltre
+  // `PRESSIONE` stava premendo per selezionare.
+  function asideSu(e) {
+    const p0 = asideRef.current;
+    asideRef.current = null;
+    if (!p0) return;
+    const t = e.changedTouches?.[0];
+    if (!t) return;
+    if (Math.abs(t.clientX - p0.x) > MOSSA || Math.abs(t.clientY - p0.y) > MOSSA) return;
+    if (Date.now() - p0.quando > PRESSIONE) return;
+    if (Date.now() - ditoRef.current < DOPPIONE) return;
+    ditoRef.current = Date.now();
+    decidiAside(t.target || e.target, t.clientX);
   }
 
   const pct = Math.round((progress || 0) * 100);
@@ -1916,6 +1970,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     <div
       ref={rootRef}
       onClick={tapAside}
+      onTouchStart={asideGiu}
+      onTouchEnd={asideSu}
+      onTouchCancel={() => {
+        asideRef.current = null;
+      }}
       onWheel={(e) => {
         // la stessa rotellina anche fuori dall'iframe: sul margine attorno
         // al libro il gesto deve rispondere uguale
