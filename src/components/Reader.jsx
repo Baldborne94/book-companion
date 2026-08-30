@@ -644,10 +644,54 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // barre si nasconderebbero e ricomparirebbero nello stesso gesto:
         // servito dal dito, il `click` che segue si lascia cadere.
         let giu = null;
+        // C'ERA GIA' UNA SELEZIONE PRIMA CHE IL DITO SI POSASSE?
+        //
+        // Non e' la stessa domanda di «c'e' una selezione adesso», ed e' la
+        // differenza su cui il tocco e' morto per tre giri. Vedi il commento
+        // dentro `tocco`.
+        let selPrima = false;
+        const selezione = () => {
+          try { return view.contents.window.getSelection(); } catch { return null; }
+        };
+        const cSelezione = () => !!selezione()?.toString();
         const tocco = (bersaglio, x, y) => {
           if (bersaglio?.closest?.("a")) return;
-          const sel = view.contents.window.getSelection();
-          if (sel && sel.toString()) return;
+          // IL TOCCO SUL TESTO MORIVA QUI, E I TRE CANALI NON C'ENTRAVANO.
+          //
+          // Terza segnalazione, e stavolta col dettaglio che l'ha risolta:
+          // «in modalita 2 pagine bastava cliccare al centro». Non era la
+          // POSIZIONE a cambiare — la fascia centrale e' la stessa nei due
+          // modi — ma COSA C'E' SOTTO IL DITO: a due pagine il centro dello
+          // schermo e' il corridoio fra le colonne, spazio vuoto; a pagina
+          // singola e' testo.
+          //
+          // E qui c'era `if (sel.toString()) return`, cioe' «se c'e' una
+          // selezione questo tocco non e' per noi». Ragionevole guardando
+          // Chromium, dove un tocco breve sul testo non seleziona niente.
+          // Su Firefox Android invece toccare del testo una selezione la
+          // CREA — o ne lascia viva una da prima — quindi: tocchi il testo,
+          // il browser seleziona, noi usciamo. E non succede piu' niente per
+          // sempre, perche' quella selezione resta li'. Sul corridoio non
+          // c'e' niente da selezionare, la selezione resta vuota, e infatti
+          // li' funzionava.
+          //
+          // Aggiungere canali non poteva curarlo: `pointerup`, `touchend` e
+          // `click` passano tutti e tre da questa riga. Per due volte la
+          // cura e' andata a coprire l'evento che non arrivava, mentre
+          // l'evento arrivava e veniva buttato via un passo dopo.
+          //
+          // La domanda giusta e' al PASSATO: c'era una selezione PRIMA che
+          // il dito si posasse? Se sì il tocco e' per disfarla, e non e'
+          // roba nostra. Se no, quello che e' comparso durante il tocco
+          // l'ha messo il browser, non il lettore, e non deve rubarci il
+          // gesto. La pressione lunga — che e' come si seleziona davvero —
+          // e' gia' filtrata prima di arrivare qui (`PRESSIONE`).
+          if (selPrima) return;
+          // e quel che il browser si e' selezionato da solo si disfa, o il
+          // lettore si ritroverebbe le maniglie di selezione addosso a ogni
+          // tocco sulle barre
+          const sel = selezione();
+          if (sel?.toString()) { try { sel.removeAllRanges(); } catch { /* selezione non disfabile */ } }
           const ix = termsRef.current;
           if (ix) {
             const hit = termAt(doc, x, y, ix);
@@ -708,6 +752,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           "pointerdown",
           (e) => {
             if (e.isPrimary === false) return;
+            // la fotografia della selezione si prende QUI, prima che il
+            // browser abbia potuto reagire al dito
+            selPrima = cSelezione();
             giu = { x: e.clientX, y: e.clientY, quando: Date.now() };
           },
           { passive: true }
@@ -727,8 +774,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           (e) => {
             if (e.touches.length !== 1) { giu = null; return; }
             // il `pointerdown` di solito e' gia' passato: si tiene il piu'
-            // vecchio dei due, che e' quello dove il dito si e' posato
-            giu = giu || { x: e.touches[0].clientX, y: e.touches[0].clientY, quando: Date.now() };
+            // vecchio dei due, che e' quello dove il dito si e' posato — e
+            // con lui la sua fotografia della selezione, che e' la piu'
+            // vecchia e quindi la sola non ancora sporcata dal tocco
+            if (!giu) {
+              selPrima = cSelezione();
+              giu = { x: e.touches[0].clientX, y: e.touches[0].clientY, quando: Date.now() };
+            }
           },
           { passive: true }
         );
