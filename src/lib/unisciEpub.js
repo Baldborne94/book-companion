@@ -20,10 +20,16 @@
 
 const XHTML = "application/xhtml+xml";
 
-const dir = (p) => p.replace(/[^/]*$/, "");
+// I QUATTRO CONTI SUI PERCORSI SI ESPORTANO PER ESSERE PROVATI, come
+// `contentStyles` e `ritaglioAvanzo` altrove. Non sono contorno: la
+// ricucitura sposta i documenti dentro altre cartelle, e se uno di questi
+// sbaglia il libro entra in biblioteca con TUTTE le immagini rotte e tutti
+// i rimandi che portano da nessuna parte — in silenzio, perche' nessuno
+// controlla che un `src` punti a qualcosa.
+export const dir = (p) => p.replace(/[^/]*$/, "");
 
 // percorso di `rel` visto da `base` (una cartella), senza URL assoluti
-function risolvi(base, rel) {
+export function risolvi(base, rel) {
   if (!rel || /^[a-z][a-z0-9+.-]*:/i.test(rel) || rel.startsWith("#")) return null;
   const parti = (base + rel.split("#")[0]).split("/");
   const fuori = [];
@@ -314,10 +320,10 @@ export async function unisciPezzi(blob) {
   return { blob: bytes, cuciti };
 }
 
-const ancoraDi = (path) => `bc-${path.replace(/[^a-zA-Z0-9]+/g, "-")}`;
+export const ancoraDi = (path) => `bc-${path.replace(/[^a-zA-Z0-9]+/g, "-")}`;
 
 // da una cartella a un file, risalendo quanto serve
-function relativo(daDir, aPath) {
+export function relativo(daDir, aPath) {
   const a = daDir.split("/").filter(Boolean);
   const b = aPath.split("/").filter(Boolean);
   let i = 0;
