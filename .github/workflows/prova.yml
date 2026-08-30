@@ -1,0 +1,47 @@
+# I TEST LI LANCIA LA MACCHINA, NON LA MEMORIA DI CHI COMMITTA.
+#
+# I controlli automatici erano 1299 e non li eseguiva nessuno su GitHub:
+# l'unico segnale sui PR era il deploy di Vercel, che diventa verde anche
+# con la suite rossa. Finora la garanzia era la disciplina di chi scriveva
+# — «npm run build e npm test sempre verdi prima di ogni commit», sta
+# scritto in CLAUDE.md — cioè una garanzia che dipende da una persona.
+#
+# IL BROWSER SI INSTALLA APPOSTA. `test/tema.test.mjs` ha bisogno di un
+# browser vero (il CSS non si prova a mente) e senza si dichiara SALTATO.
+# Saltare non è passare: in una macchina che parte pulita ogni volta,
+# senza questo passo la guardia di `readerTheme.js` non girerebbe MAI —
+# e il file che difende è quello che tiene l'inchiostro leggibile sul
+# tema notte.
+name: Prova
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  prova:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `ci` e non `install`: si installa quello che dice il lockfile,
+      # senza aggiornare niente per conto suo
+      - run: npm ci
+
+      # playwright non sta fra le dipendenze del progetto apposta (chi
+      # clona non deve tirarsi dietro un browser per far girare i test di
+      # tutti i giorni): qui lo si aggiunge solo alla macchina della prova
+      - name: Il browser per la guardia del tema
+        run: |
+          npm i -D --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - run: npm test
+
+      - run: npm run build

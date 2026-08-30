@@ -1,0 +1,39 @@
+Book Companion
+Copyright (c) 2025-2026 Baldborne94. Tutti i diritti riservati.
+All rights reserved.
+
+Questo software è proprietario. Il codice sorgente è pubblicamente
+leggibile su GitHub, ma leggibile non vuol dire libero: nessuna licenza,
+espressa o implicita, è concessa a chi lo consulta.
+
+In particolare, senza il permesso scritto del titolare del copyright NON
+sono consentiti:
+
+  - la copia, la ridistribuzione o la pubblicazione del codice o di sue
+    parti, in forma sorgente o compilata;
+  - la modifica, la traduzione o la creazione di opere derivate;
+  - l'uso commerciale, la vendita, il noleggio o la sublicenza;
+  - la pubblicazione dell'applicazione, compilata da questo codice, su
+    qualunque negozio o piattaforma di distribuzione.
+
+È consentito, e anzi benvenuto: leggere il codice, studiarlo, citarne
+frammenti a scopo di discussione o didattica, e proporre modifiche
+tramite pull request su questo stesso repository. Chi apre una pull
+request concede al titolare del copyright il diritto non esclusivo,
+perpetuo e gratuito di usare il proprio contributo dentro Book Companion,
+anche nelle sue versioni distribuite commercialmente.
+
+Il software è fornito «così com'è», senza garanzie di alcun tipo, esplicite
+o implicite, comprese fra l'altro le garanzie di commerciabilità, idoneità
+a uno scopo particolare e non violazione di diritti altrui. In nessun caso
+il titolare del copyright potrà essere ritenuto responsabile per danni,
+perdite di dati o altre pretese derivanti dal software o dal suo uso.
+
+Book Companion incorpora componenti di terze parti, ciascuno con la
+propria licenza: l'elenco e le note obbligatorie sono in TERZE-PARTI.md.
+Questa licenza riguarda il codice di Book Companion, non quei componenti.
+
+Il trattamento dei dati di chi usa l'applicazione è descritto in
+PRIVACY.md.
+
+Contatti: https://github.com/Baldborne94/book-companion
