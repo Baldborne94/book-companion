@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { consultaOracolo, hasOracle, setOracleKey } from "../lib/oracle.js";
-import { rigaUltima } from "../lib/spesa.js";
+import { rigaUltima, rigaMese, riassunto, costo, leggiTetto } from "../lib/spesa.js";
+import { TettoFinito } from "./TettoOracolo.jsx";
 import { chiaveGlossario, vociDi, salvaVoci, aggiungi, togli, cerca } from "../lib/glossarioMio.js";
 
 // La scheda del dizionario e' identica nei due reader: qui una volta sola,
@@ -455,6 +456,7 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
                 {oracolo.uso && (
                   <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: C.dim }}>
                     {rigaUltima(oracolo.uso)}
+                    {rigaMese() ? ` · ${rigaMese()}` : ""}
                   </p>
                 )}
               </>
@@ -472,6 +474,15 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
                   Cambia chiave
                 </button>
               </div>
+            ) : oracolo?.error === "tetto" ? (
+              // il tetto del mese non e' un guasto dell'Oracolo: e' la
+              // decisione del lettore che sta funzionando, e si dice coi
+              // numeri veri invece che con «non ha risposto»
+              <TettoFinito
+                speso={costo(riassunto().mese)}
+                tetto={oracolo.tettoMese ?? leggiTetto()}
+                onRiprova={() => { setOracolo(null); chiedi(); }}
+              />
             ) : oracolo?.error ? (
               <div>
                 <p style={{ fontSize: F.piccolo, color: C.muted, margin: "0 0 8px" }}>

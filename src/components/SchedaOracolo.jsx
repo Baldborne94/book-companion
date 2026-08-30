@@ -3,7 +3,8 @@ import { C, F, R } from "../data/constants.js";
 import { setOracleKey } from "../lib/oracle.js";
 import { raccontaFrontiera } from "../lib/frontiera.js";
 import { movimenti, conTitoli, TITOLETTI } from "../lib/chiSono.js";
-import { rigaUltima, riassunto, costo, soldi, TARIFFE, MODELLO } from "../lib/spesa.js";
+import { rigaUltima, riassunto, costo, rigaMese, leggiTetto, TARIFFE, MODELLO } from "../lib/spesa.js";
+import { Tetto, TettoFinito } from "./TettoOracolo.jsx";
 
 // Il corpo delle schede dell'Oracolo — «Chi è costui?» e «Dove eravamo
 // rimasti» — condiviso fra i due reader. Cambia la domanda, non la scheda:
@@ -20,21 +21,31 @@ import { rigaUltima, riassunto, costo, soldi, TARIFFE, MODELLO } from "../lib/sp
 // perche' un numero in valuta che non si puo' verificare vale poco — e
 // perche' quando Anthropic la cambia, quella riga dice ancora la verita'
 // su come e' stato fatto il conto.
+//
+// E DICE QUANTO RESTA, non solo quanto e' andato. «$1,20» da solo non e' ne'
+// poco ne' tanto: lo diventa accanto al tetto che ti sei dato. Il comando per
+// cambiarlo sta qui sotto e non in un pannello di impostazioni, perche' e'
+// qui che il numero si guarda ed e' qui che viene voglia di muoverlo.
 function Costo({ uso }) {
+  // il tetto si cambia due righe piu' sotto, e la riga del mese lo NOMINA:
+  // senza questo giro cambierebbe l'etichetta del comando e non la frase che
+  // dice quanto resta, cioe' proprio il numero che si era andati a muovere
+  const [, setGiro] = useState(0);
   if (!uso) return null;
   const riga = rigaUltima(uso);
-  const r = riassunto();
+  const mese = rigaMese();
   return (
-    <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.5 }}>
-      Questa risposta: {riga}
-      {r.mese
-        ? ` · questo mese ${soldi(costo(r.mese))} in ${r.mese.chiamate} ${r.mese.chiamate === 1 ? "domanda" : "domande"}`
-        : ""}
-      <span style={{ opacity: 0.75 }}>
-        {" "}
-        ({MODELLO}: ${TARIFFE.dentro} e ${TARIFFE.fuori} per milione di token)
-      </span>
-    </p>
+    <>
+      <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.5 }}>
+        Questa risposta: {riga}
+        {mese ? ` · ${mese}` : ""}
+        <span style={{ opacity: 0.75 }}>
+          {" "}
+          ({MODELLO}: ${TARIFFE.dentro} e ${TARIFFE.fuori} per milione di token)
+        </span>
+      </p>
+      <Tetto onCambia={() => setGiro((v) => v + 1)} />
+    </>
   );
 }
 
@@ -154,6 +165,17 @@ export default function SchedaOracolo({ scheda, attese, vuoto, onRiprova }) {
     );
   }
   if (fase === "errore") {
+    // IL TETTO FINITO NON E' UN GUASTO: e' la tua decisione che funziona, e
+    // si racconta coi numeri veri invece che con «l'Oracolo non ha risposto»
+    if (scheda.error === "tetto") {
+      return (
+        <TettoFinito
+          speso={costo(riassunto().mese)}
+          tetto={scheda.tettoMese ?? leggiTetto()}
+          onRiprova={onRiprova}
+        />
+      );
+    }
     return scheda.error === "chiave" ? (
       <Chiave onSalva={onRiprova} />
     ) : (
