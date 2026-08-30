@@ -1156,8 +1156,13 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
           {marks.length === 0 ? (
             <p style={{ color: C.muted }}>Nessun segnalibro ancora.</p>
           ) : (
+            // L'ultimo messo in cima, come nell'EPUB: erano ordinati per
+            // numero di pagina, che è un ordine sensato ma non è quello
+            // che serve quando apri il pannello — lì stai cercando quasi
+            // sempre l'ultimo che hai riposto. La pagina resta scritta su
+            // ogni riga, quindi non si perde niente.
             [...marks]
-              .sort((a, b) => (parseInt(a.cfi, 10) || 0) - (parseInt(b.cfi, 10) || 0))
+              .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
               .map((m) => (
                 <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.border}44` }}>
                   <button

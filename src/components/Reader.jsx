@@ -2607,7 +2607,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           {marks.length === 0 ? (
             <p style={{ color: C.muted }}>Nessun segnalibro ancora.</p>
           ) : (
-            marks.map((m) => {
+            // L'ULTIMO MESSO STA IN CIMA (chiesto dal lettore). L'elenco
+            // seguiva l'ordine di inserimento, quindi il segnalibro appena
+            // riposto finiva in fondo, sotto tutti quelli di mesi fa —
+            // e quello che si va a riprendere quasi sempre è l'ultimo.
+            // Si ordina solo per mostrare: nello storage l'ordine di
+            // nascita resta, ed è quello su cui si fondono i dispositivi.
+            [...marks]
+              .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+              .map((m) => {
               const pct = markPct(m.cfi);
               const stale = /^Segnalibro( al \d+%)?$/.test(m.label);
               const title = stale && pct ? `Segnalibro al ${pct}%` : m.label;
