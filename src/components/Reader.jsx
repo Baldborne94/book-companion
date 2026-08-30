@@ -2143,7 +2143,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               inset: 0,
               // l'avanzo si toglie da SOTTO: cosi' il testo resta ancorato in
               // alto e la pagina non balla quando la misura cambia
-              padding: `${HEAD}px ${Math.max(settings.margin, EDGE_MAX + 8)}px calc(${FOOT + avanzo}px + env(safe-area-inset-bottom))`,
+              padding: `${HEAD}px ${paginated ? Math.max(settings.margin, EDGE_MAX + 8) : settings.margin}px calc(${FOOT + avanzo}px + env(safe-area-inset-bottom))`,
               boxSizing: "border-box",
               // la carta arriva fino al bordo interno della rilegatura: senza,
               // il margine di lettura mostrava la copertina e staccava le
@@ -2192,66 +2192,88 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             transition: `opacity ${velo ? 90 : 300}ms ease-in-out`,
           }}
         />
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            left: FRAME,
-            top: FRAME,
-            bottom: FRAME,
-            width: edgeRead,
-            zIndex: 7,
-            pointerEvents: "none",
-            // stessa altezza e stesso raggio della carta: staccata anche di
-            // pochi px, la pila lasciava toppe scoperte verso gli angoli
-            borderRadius: "3px 2px 2px 3px",
-            backgroundColor: theme.bg,
-            backgroundImage: EDGE_STRIPES,
-            boxShadow: "inset -7px 0 9px -7px #00000066, 1px 0 2px #00000033",
-          }}
-        />
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            right: FRAME,
-            top: FRAME,
-            bottom: FRAME,
-            width: edgeLeftToRead,
-            zIndex: 7,
-            pointerEvents: "none",
-            borderRadius: "2px 3px 3px 2px",
-            backgroundColor: theme.bg,
-            backgroundImage: EDGE_STRIPES,
-            boxShadow: "inset 7px 0 9px -7px #00000066, -1px 0 2px #00000033",
-          }}
-        />
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            top: FRAME,
-            bottom: FRAME,
-            left: FRAME,
-            width: 16,
-            zIndex: 7,
-            pointerEvents: "none",
-            background: "linear-gradient(90deg, #00000033, transparent)",
-          }}
-        />
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            top: FRAME,
-            bottom: FRAME,
-            right: FRAME,
-            width: 16,
-            zIndex: 7,
-            pointerEvents: "none",
-            background: "linear-gradient(270deg, #00000033, transparent)",
-          }}
-        />
+        {/* IL TAGLIO DELLE PAGINE NON HA SENSO IN SCORRIMENTO, e la
+            domanda l'ha fatta il lettore guardando lo schermo: «quando e' in
+            mod scorrimento ha senso tenere le pagine ai lati?».
+            No. Queste due pile fanno DUE lavori, e in scorrimento solo uno
+            regge. Non sono simmetriche: la sinistra si ingrossa man mano che
+            leggi (`edgeRead`), la destra si assottiglia — cioe' sono il
+            progresso disegnato come lo spessore di un libro, e quello resta
+            vero anche scorrendo. Ma quel progresso e' gia' scritto altre due
+            volte, nella percentuale e nella barra in basso. Il lavoro UNICO
+            delle pile e' l'illusione del volume rilegato con le facciate di
+            fianco — ed e' esattamente cio' che lo scorrimento contraddice:
+            li' non c'e' una facciata, c'e' un nastro. Resta solo la parte
+            che mente, e si toglie.
+            La cornice invece resta: quella e' la rilegatura, e un libro
+            scorrevole e' pur sempre un libro. */}
+        {/* tolte le pile, in scorrimento il rientro laterale torna a
+            essere quello scelto dal lettore: quei 25px per lato esistevano
+            solo per non finirci sotto */}
+        {paginated && (
+          <>
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              left: FRAME,
+              top: FRAME,
+              bottom: FRAME,
+              width: edgeRead,
+              zIndex: 7,
+              pointerEvents: "none",
+              // stessa altezza e stesso raggio della carta: staccata anche di
+              // pochi px, la pila lasciava toppe scoperte verso gli angoli
+              borderRadius: "3px 2px 2px 3px",
+              backgroundColor: theme.bg,
+              backgroundImage: EDGE_STRIPES,
+              boxShadow: "inset -7px 0 9px -7px #00000066, 1px 0 2px #00000033",
+            }}
+          />
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              right: FRAME,
+              top: FRAME,
+              bottom: FRAME,
+              width: edgeLeftToRead,
+              zIndex: 7,
+              pointerEvents: "none",
+              borderRadius: "2px 3px 3px 2px",
+              backgroundColor: theme.bg,
+              backgroundImage: EDGE_STRIPES,
+              boxShadow: "inset 7px 0 9px -7px #00000066, -1px 0 2px #00000033",
+            }}
+          />
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: FRAME,
+              bottom: FRAME,
+              left: FRAME,
+              width: 16,
+              zIndex: 7,
+              pointerEvents: "none",
+              background: "linear-gradient(90deg, #00000033, transparent)",
+            }}
+          />
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: FRAME,
+              bottom: FRAME,
+              right: FRAME,
+              width: 16,
+              zIndex: 7,
+              pointerEvents: "none",
+              background: "linear-gradient(270deg, #00000033, transparent)",
+            }}
+          />
+          </>
+        )}
         {twoUp && (
           <div
             aria-hidden="true"
