@@ -72,16 +72,33 @@ export default async function (t) {
     t.eq("dove c'è davvero", titoli(r[1]).join(""), "Solo suo");
   }
   {
-    // vale anche per una saga di cui possiedi un volume solo: una
-    // intestazione con sotto un dorso solo costa due righe per non dire
-    // niente, e il giorno che arriva il secondo il ripiano nasce da sé
+    // MA UNA SAGA SI', ANCHE DA UN VOLUME SOLO, e la differenza la fa chi
+    // l'ha detto: l'autore lo deduciamo noi dai metadati, la saga la
+    // dichiara il lettore a mano. «Dune · 1 volume» dice che di quel ciclo
+    // ne ha un pezzo; lo stesso libro buttato fra i soli non dice piu'
+    // niente (chiesto dal lettore).
     const r = disponi([
       libro("Dune", "Frank Herbert", "Dune", 1),
       libro("Primo", "Tale", "Saga", 1),
       libro("Secondo", "Tale", "Saga", 2),
     ]);
-    t.eq("una saga con un volume solo non fa ripiano", r.length, 2);
-    t.eq("e Dune sta fra i soli", r[1].libri[0].title, "Dune");
+    t.eq("una saga da un volume solo TIENE il suo ripiano", r.length, 2);
+    t.eq("e il ripiano porta il nome della saga", r[0].nome, "Dune");
+    t.eq("ed è di tipo saga", r[0].tipo, "saga");
+    t.eq("con dentro il suo unico volume", titoli(r[0]).join(""), "Dune");
+    t.c("quindi non c'è nessun ripiano dei soli", !r.some((x) => x.id === SOLI));
+  }
+  {
+    // e la distinzione regge nello stesso scaffale: la saga da uno resta,
+    // l'autore da uno no
+    const r = disponi([
+      libro("Dune", "Frank Herbert", "Dune", 1),
+      libro("Piranesi", "Susanna Clarke"),
+      libro("Primo", "Tale", "Saga", 1),
+      libro("Secondo", "Tale", "Saga", 2),
+    ]);
+    t.eq("saga da uno: ripiano; autore da uno: soli", nomi(r).join(" · "), "Dune · Saga · Volumi soli");
+    t.eq("e fra i soli c'è solo il libro senza saga", titoli(r[2]).join(""), "Piranesi");
   }
 
   // ---- l'autore sotto il nome SOLO se è uno -----------------------------

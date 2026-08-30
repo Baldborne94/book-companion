@@ -17,11 +17,25 @@ import { chiaveAutore } from "./sagaBooks.js";
 // L'ultimo ripiano, quello dei libri che non stanno con nessuno.
 export const SOLI = "__soli__";
 
-// UN RIPIANO DA UN LIBRO SOLO NON E' UN RIPIANO. Un'intestazione con
-// sotto un unico dorso costa due righe di schermo per non dire niente, e
-// una biblioteca fatta di autori con un libro a testa diventerebbe un
-// elenco di titoletti. Chi non ha fratelli scende fra i volumi soli.
+// UN RIPIANO DA UN LIBRO SOLO NON E' UN RIPIANO — MA UNA SAGA SI'.
+//
+// Un'intestazione con sotto un unico dorso costa due righe di schermo per
+// non dire niente, e una biblioteca fatta di autori con un libro a testa
+// diventerebbe un elenco di titoletti. Chi non ha fratelli scende fra i
+// volumi soli.
+//
+// La saga pero' e' un'altra cosa, e la differenza la fa CHI L'HA DETTO:
+// l'autore e' un ripiego che deduciamo noi dai metadati, la saga la
+// dichiara il lettore a mano nella scheda del libro. Quando scrive
+// «Malazan» sta dicendo che quel romanzo appartiene a una storia piu'
+// grande, e quell'informazione resta vera anche se di quella storia ha un
+// volume solo — anzi, e' proprio li' che serve: «Malazan · 1 volume» dice
+// che di quel ciclo hai un pezzo, mentre lo stesso libro buttato fra i
+// soli non dice piu' niente. Chiesto dal lettore.
 const MINIMO = 2;
+
+// Quanti libri servono a tenere in piedi un ripiano, secondo com'e' nato.
+const bastano = (g) => g.tipo === "saga" || g.libri.length >= MINIMO;
 
 const testo = (v) => String(v || "").trim();
 
@@ -72,7 +86,7 @@ export function disponi(libri = [], confronta = null) {
 
   const ripiani = [];
   for (const g of gruppi.values()) {
-    if (g.libri.length < MINIMO) {
+    if (!bastano(g)) {
       soli.push(...g.libri);
       continue;
     }
