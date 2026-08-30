@@ -15,7 +15,7 @@ import { sembraUnNome } from "../lib/nomi.js";
 import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
 } from "../lib/readerSettings.js";
-import { contentStyles, spegniVuoti, togliStacco, spegniScenografia } from "../lib/readerTheme.js";
+import { contentStyles, spegniVuoti, togliStacco, staccaParagrafi, spegniScenografia } from "../lib/readerTheme.js";
 import { ritaglioAvanzo, flattenToc } from "../lib/readerLayout.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
@@ -56,6 +56,13 @@ const EDGE_STRIPES =
 // cornice e taglio delle pagine compresi, non solo dentro al capitolo
 const TAP_PREV = 0.28;
 const TAP_NEXT = 0.72;
+// Quanto puo' muoversi un dito e restare un tocco: sopra, sta trascinando.
+const MOSSA = 12;
+// e quanto puo' restare giu': sopra, sta selezionando una parola
+const PRESSIONE = 500;
+// la finestra in cui il `click` che segue un tocco e' lo STESSO gesto, e
+// quindi si lascia cadere. Larga: il motore lo sintetizza con calma.
+const DOPPIONE = 700;
 // tetto ai segni per capitolo: la pagina resta una pagina, non un elenco
 const MARKS_PER_CHAPTER = 60;
 // Oltre questa lunghezza la selezione non e' piu' una frase ma un brano, e
@@ -515,11 +522,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       // ritaglio dell'avanzo ha gia' pagato.
       r.hooks.content.register((contents) => {
         spegniVuoti(contents?.document);
-        // e lo stacco di troppo, quando il libro il paragrafo lo segna
-        // gia' col rientro. Si decide per DOCUMENTO e non una volta per
-        // libro apposta: il frontespizio quasi mai rientra, e li' lo
-        // stacco e' l'unico segnale che ha — deve restare.
-        togliStacco(contents?.document);
+        // Il paragrafo si segna UNA volta sola, e qui si sceglie come.
+        // «Staccati» toglie il rientro che il libro si porta dietro e mette
+        // il respiro al suo posto; «rientrati» — quel che il libro dice —
+        // toglie invece lo stacco di troppo dove il rientro c'e' gia'. Si
+        // decide per DOCUMENTO e non una volta per libro apposta: il
+        // frontespizio quasi mai rientra, e li' lo stacco e' l'unico
+        // segnale che ha — deve restare.
+        if (s.paragrafi === "stacco") staccaParagrafi(contents?.document);
+        else togliStacco(contents?.document);
         // e la scena che certi ePub si portano dentro — il libro finto
         // dipinto dietro il testo di ogni capitolo: la carta e' del tema
         spegniScenografia(contents?.document);
@@ -598,13 +609,33 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             return false;
           };
         }
-        doc.addEventListener("click", (e) => {
-          if (e.target.closest?.("a")) return;
+        // IL DITO NON PASSA SEMPRE DAL `click`.
+        //
+        // Segnalato dal lettore sul tablet: toccando il testo non succedeva
+        // NIENTE — ne' la voltata ne' le barre che si nascondono. Qui su
+        // Chromium, col tocco vero, funziona in ogni combinazione (pagina
+        // singola, doppia, a schermo intero, in mezzo a un capitolo): il
+        // `click` sintetizzato dopo il tocco e' un favore che il motore fa,
+        // non una garanzia, e dentro un iframe traslato di trentamila
+        // pixel — quello delle colonne di epub.js — puo' non arrivare mai.
+        //
+        // Allora il tocco si serve DA SE': `touchend` e' l'evento che il
+        // dito alza davvero. Le soglie tengono fuori quello che tocco non
+        // e': un trascinamento (piu' di MOSSA px) e una pressione lunga
+        // (piu' di PRESSIONE ms), che e' come si seleziona una parola.
+        //
+        // E i due eventi non devono servire lo stesso tocco due volte, o le
+        // barre si nasconderebbero e ricomparirebbero nello stesso gesto:
+        // servito dal dito, il `click` che segue si lascia cadere.
+        let giu = null;
+        let servitoDalDito = 0;
+        const tocco = (bersaglio, x, y) => {
+          if (bersaglio?.closest?.("a")) return;
           const sel = view.contents.window.getSelection();
           if (sel && sel.toString()) return;
           const ix = termsRef.current;
           if (ix) {
-            const hit = termAt(doc, e.clientX, e.clientY, ix);
+            const hit = termAt(doc, x, y, ix);
             if (hit) return openTerm(hit);
           }
           // l'asterisco è un bersaglio da pochi pixel, e pretendere il
@@ -614,13 +645,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           // non per la voltata
           const vicino = piuVicina(
             [...doc.querySelectorAll("a[href]")]
-              .filter((x) => eNotaRef(infoRimando(x)))
-              .map((x) => {
-                const rc = x.getBoundingClientRect();
-                return { left: rc.left, top: rc.top, right: rc.right, bottom: rc.bottom, href: x.getAttribute("href") || "" };
+              .filter((el) => eNotaRef(infoRimando(el)))
+              .map((el) => {
+                const rc = el.getBoundingClientRect();
+                return { left: rc.left, top: rc.top, right: rc.right, bottom: rc.bottom, href: el.getAttribute("href") || "" };
               }),
-            e.clientX,
-            e.clientY
+            x,
+            y
           );
           if (vicino) return apriNotaRef.current(vicino.href, doc, view.section?.href || "");
           if (isTouch() && live.current.settings.flow !== "scrolled") {
@@ -629,12 +660,39 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             // schermo, dove le fasce sono le stesse del bordo del libro
             const frameEl = view.contents.window.frameElement;
             if (frameEl && window.innerWidth) {
-              const rel = (frameEl.getBoundingClientRect().left + e.clientX) / window.innerWidth;
+              const rel = (frameEl.getBoundingClientRect().left + x) / window.innerWidth;
               if (rel < TAP_PREV) return turnRef.current("prev");
               if (rel > TAP_NEXT) return turnRef.current("next");
             }
           }
           setChrome((v) => !v);
+        };
+        doc.addEventListener(
+          "touchstart",
+          (e) => {
+            giu = e.touches.length === 1
+              ? { x: e.touches[0].clientX, y: e.touches[0].clientY, quando: Date.now() }
+              : null;
+          },
+          { passive: true }
+        );
+        doc.addEventListener(
+          "touchend",
+          (e) => {
+            const p = giu;
+            giu = null;
+            if (!p || e.changedTouches.length !== 1) return;
+            const t = e.changedTouches[0];
+            if (Math.abs(t.clientX - p.x) > MOSSA || Math.abs(t.clientY - p.y) > MOSSA) return;
+            if (Date.now() - p.quando > PRESSIONE) return;
+            servitoDalDito = Date.now();
+            tocco(t.target || e.target, t.clientX, t.clientY);
+          },
+          { passive: true }
+        );
+        doc.addEventListener("click", (e) => {
+          if (Date.now() - servitoDalDito < DOPPIONE) return;
+          tocco(e.target, e.clientX, e.clientY);
         });
         // La rotellina volta la pagina col mouse. In pagine impaginate
         // l'iframe non scorre, quindi il gesto e' libero — e a differenza di
@@ -1306,7 +1364,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       // vale la pena rifare il libro da capo per un interruttore
       if (next.terms) rendRef.current?.manager?.views?.forEach?.((v) => markTerms(v));
     }
-    if ("flow" in patch || "spread" in patch || "font" in patch) makeRendition(next);
+    // `paragrafi` sta con gli altri tre: la cura vive in `hooks.content`,
+    // che gira quando un documento si carica — senza rifare la rendition
+    // la levetta non si vedrebbe fino al capitolo dopo.
+    if ("flow" in patch || "spread" in patch || "font" in patch || "paragrafi" in patch) makeRendition(next);
     else if (rendRef.current && ("theme" in patch || "fontSize" in patch || "lineHeight" in patch || "justify" in patch)) {
       applyStyles(rendRef.current, next);
       // corpo e interlinea cambiano l'altezza di RIGA: il ritaglio di prima
@@ -2369,6 +2430,35 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 : !lingua?.dichiarata
                   ? "Questo tomo non dichiara la sua lingua, e senza lingua non si sillaba: giustificarlo aprirebbe fiumi di bianco fra le parole."
                   : "Questo browser non sa sillabare in questa lingua — l'ho provato qui, su questo dispositivo. Giustificare senza poter spezzare le parole aprirebbe fiumi di bianco, e allora meglio il bordo a bandiera."}
+            </p>
+          </div>
+          {/* Come si segna un paragrafo nuovo. Il rientro lo mette il
+              LIBRO, non noi: su una pagina di dialoghi diventa una scaletta
+              di righe che partono tutte spostate, e da lì è nata la
+              domanda del lettore. */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: F.nota, color: C.muted }}>Paragrafi</span>
+              <button
+                onClick={() =>
+                  updateSettings({ paragrafi: settings.paragrafi === "stacco" ? "rientro" : "stacco" })
+                }
+                style={{
+                  padding: "6px 16px",
+                  borderRadius: R.tondo,
+                  fontSize: F.nota,
+                  border: `1px solid ${settings.paragrafi === "stacco" ? C.accent : C.border}`,
+                  color: settings.paragrafi === "stacco" ? C.accent : C.muted,
+                  background: settings.paragrafi === "stacco" ? `${C.accent}14` : "transparent",
+                }}
+              >
+                {settings.paragrafi === "stacco" ? "Staccati" : "Rientrati"}
+              </button>
+            </div>
+            <p style={{ margin: "5px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.45 }}>
+              {settings.paragrafi === "stacco"
+                ? "Tutte le righe partono dallo stesso punto, e fra un paragrafo e l'altro c'è un respiro."
+                : "La prima riga rientra, come in un romanzo stampato: è il rientro che il libro si porta dietro."}
             </p>
           </div>
           <div style={{ marginBottom: 14 }}>

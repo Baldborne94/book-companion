@@ -182,6 +182,51 @@ export function togliStacco(doc) {
   return true;
 }
 
+// L'ALTRA META' DELLA STESSA SCELTA: I PARAGRAFI STACCATI.
+//
+// Due modi di dire «qui comincia un paragrafo nuovo», e i libri ne usano
+// uno solo: il RIENTRO di prima riga (la stampa) o lo STACCO verticale (lo
+// schermo). `togliStacco` serve chi vuole il primo — toglie il respiro di
+// troppo dove il libro rientra gia'. Questa e' la strada opposta, chiesta
+// dal lettore guardando un Pratchett: «perche' il testo e' impaginato
+// cosi' e non e' tutto sulla stessa linea?».
+//
+// Il rientro non e' nostro: sta scritto nel foglio di stile dell'ePub
+// (`.calibre23 { text-indent: 5% }`, misurato), e su una pagina di
+// dialoghi — dove ogni battuta e' un paragrafo di una riga — diventa una
+// scaletta di righe che partono tutte spostate.
+//
+// SI FA SUGLI ELEMENTI, non in CSS, per la ragione di `togliStacco`: il
+// rientro arriva da una CLASSE, e una classe batte un tag. In foglio
+// servirebbe `!important`, che poi calpesterebbe anche gli spaziatori che
+// `spegniVuoti` ha appena spento — un `!important` in un foglio batte uno
+// stile in linea. Sugli elementi la specificita' non conta e non c'e'
+// nessuna guerra da vincere.
+//
+// E TOGLIERE IL RIENTRO NON BASTA: senza rientro e senza stacco la prosa
+// diventa un muro, perche' non resta nessun segnale di paragrafo — su
+// questi libri i margini verticali il foglio del libro li azzera
+// (`margin: 0`). Il rientro se ne va e il respiro arriva insieme, o la
+// cura sarebbe peggio del difetto.
+export const STACCO = "0.8em";
+
+export function staccaParagrafi(doc) {
+  if (!doc?.querySelectorAll) return 0;
+  let staccati = 0;
+  for (const p of doc.querySelectorAll("p")) {
+    const testo = (p.textContent || "").trim();
+    // gli spaziatori restano spaziatori (li ha appena spenti `spegniVuoti`,
+    // e sono la pausa fra due scene), e i segni di scena — asterischi,
+    // fregi — un respiro attorno ce l'hanno per mestiere
+    if (!testo || SEGNO_DI_SCENA.test(testo)) continue;
+    p.style.textIndent = "0";
+    p.style.marginTop = STACCO;
+    p.style.marginBottom = "0";
+    staccati += 1;
+  }
+  return staccati;
+}
+
 // LA SCENOGRAFIA SI SPEGNE: LA CARTA E' QUELLA DEL TEMA, SENZA ECCEZIONI.
 //
 // Certi ePub — l'Eric del lettore, convertito da un flipbook — si portano
