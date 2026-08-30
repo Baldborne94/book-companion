@@ -24,34 +24,32 @@ const FILTERS = [
   { id: "abandoned", label: "Abbandonati" },
 ];
 
-// Il titolo per primo perché è l'ordine di partenza: sui ripiani «per data
-// d'ingresso» è di nuovo l'ordine che l'occhio non riconosce. «Recenti»
-// resta, e serve davvero senza raggruppamento, dove la domanda è «cosa ho
-// appena messo qui».
+// Il titolo per primo perché è l'ordine di partenza: dentro un ripiano
+// «per data d'ingresso» è l'ordine che l'occhio non riconosce.
 const SORTS = [
   { id: "title", label: "Titolo" },
   { id: "author", label: "Autore" },
   { id: "recent", label: "Recenti" },
 ];
 
-// OGNI VOCE DICE IL CRITERIO, non il mobile. «Scaffale» era il nome del
-// NESSUN raggruppamento e poi è diventato il nome di questo, ma restava
-// l'unica voce che non diceva in base a cosa raccoglie — e sullo schermo
-// si legge «Raggruppa: Scaffale» sopra a intestazioni che sono saghe
-// (segnalato dal lettore). Il criterio è saga se c'è, altrimenti autore, e
-// il nome adesso lo dice.
+// OGNI VOCE DICE IL CRITERIO, non il mobile: «Scaffale» era l'unica che
+// non diceva in base a cosa raccoglie, e sullo schermo si leggeva
+// «Raggruppa: Scaffale» sopra a intestazioni che sono saghe (segnalato dal
+// lettore). Il criterio è la saga se c'è, altrimenti l'autore.
 //
-// «Niente» resta, e si chiama così perché è quello che è: non un
-// raggruppamento ma la sua assenza («Tutti in fila» era un raggruppamento
-// per «tutti in fila», che non vuol dire niente). Serve a due cose che i
-// ripiani per costruzione non sanno fare: vedere la biblioteca INTERA in
-// un ordine solo — i più recenti in cima, dopo un import — e ritrovare un
-// libro che i ripiani hanno messo in un posto strano perché la sua saga è
-// scritta male.
+// E DUE VOCI, NON TRE. La terza era il NON raggruppamento: «Tutti in
+// fila», poi «Niente» — un raggruppamento che spegne il raggruppamento,
+// che è una voce di menu che non vuol dire niente (chiesto dal lettore di
+// toglierla). Le due ragioni per cui l'avevo tenuta reggevano male:
+// ritrovare un libro finito in un ripiano strano lo fa meglio la casella
+// di ricerca, che cerca anche fra le note; e i libri appena arrivati
+// meritano una casa vera — una fila sull'Ingresso — non una modalità che
+// spegne lo scaffale. Chi aveva scelto «Niente» non resta impigliato:
+// `vistaValida` non riconosce più quell'id e torna alla disposizione di
+// sempre.
 const GROUPS = [
   { id: "shelf", label: "Saga e autore" },
   { id: "genre", label: "Genere", empty: "Senza genere" },
-  { id: "none", label: "Niente" },
 ];
 
 // Una voce salvata che non esiste più — un raggruppamento che abbiamo
@@ -283,8 +281,6 @@ function Ripiano({ nome, sotto, quanti, spento, children }) {
 }
 
 function Grouped({ books, group, onOpenBook, localIds }) {
-  if (group === "none") return <Shelf books={books} onOpenBook={onOpenBook} localIds={localIds} />;
-
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
