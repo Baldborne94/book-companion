@@ -13,24 +13,22 @@ import {
 } from "../lib/sync.js";
 import { spiegaAccesso, passwordCorta, MIN_PASSWORD } from "../lib/accesso.js";
 import { fmtBytes } from "../lib/bytes.js";
+// il riferimento del piano sta in UN posto solo: prima era un numero qui e
+// la stringa «1 GB» due righe sotto, due cose da cambiare insieme e da
+// dimenticare separatamente
+import { PIANO, PIENO, parteDelPiano, fetta } from "../lib/spazio.js";
 
-// Il piano gratuito di Supabase da' un gigabyte. Non e' una quota che si
-// possa chiedere al server — dipende dal piano — quindi qui e' un
-// RIFERIMENTO dichiarato, non una misura: la barra dice «quanto ci sta in un
-// piano gratuito», e chi ne ha uno piu' grande sa di avere piu' margine.
-const GRATIS = 1e9;
 
 function Spazio({ dati }) {
   if (dati === undefined) return <p style={{ color: C.muted, fontSize: F.piccolo }}>Conto lo spazio…</p>;
   if (!dati) return null;
   const { libri, copertine, melodie, totale } = dati;
-  const fetta = (n) => `${Math.min(100, (n / GRATIS) * 100)}%`;
-  const pieno = totale / GRATIS;
+  const pieno = parteDelPiano(totale) ?? 0;
   return (
     <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 7 }}>
         <span style={{ fontSize: F.nota, color: C.text }}>{fmtBytes(totale)} lassù</span>
-        <span style={{ fontSize: F.minuscolo, color: C.muted }}>di 1 GB del piano gratuito</span>
+        <span style={{ fontSize: F.minuscolo, color: C.muted }}>di {fmtBytes(PIANO)} del piano gratuito</span>
       </div>
       <div style={{ display: "flex", height: 8, borderRadius: R.minimo, overflow: "hidden", background: C.dim }}>
         <div style={{ width: fetta(libri.byte + copertine.byte), background: C.accent }} />
@@ -46,7 +44,7 @@ function Spazio({ dati }) {
           {melodie.quanti === 1 ? "melodia" : "melodie"} · {fmtBytes(melodie.byte)}
         </span>
       </div>
-      {pieno > 0.8 && (
+      {pieno > PIENO && (
         <p style={{ margin: "8px 0 0", fontSize: F.minuscolo, color: C.accent, lineHeight: 1.45 }}>
           Lo spazio sta finendo. Le melodie pesano molto più dei libri: quelle che non ti servono a
           schermo spento possono tornare a essere un link YouTube, che non occupa niente.

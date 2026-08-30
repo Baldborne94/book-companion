@@ -9,8 +9,9 @@ import { exportLibrary, ultimoArchivio, promemoriaArchivio } from "../lib/export
 import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
 import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
-import { portaACasa } from "../lib/sync.js";
+import { portaACasa, cloudUsage } from "../lib/sync.js";
 import { fmtBytes } from "../lib/bytes.js";
+import { stretto, PIANO } from "../lib/spazio.js";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
 import { famigliaDi } from "../data/generi.js";
 import BookCover from "./BookCover.jsx";
@@ -394,6 +395,9 @@ export default function Library({
   const filoVisita = useRef(null);
   const archiveRef = useRef(null);
   const [estimate, setEstimate] = useState(null);
+  // Quanto pesi lassu'. Si chiede una volta sola, all'apertura dello
+  // scaffale e solo a cloud collegato.
+  const [cloud, setCloud] = useState(null);
   const inputRef = useRef(null);
   // Le melodie caricate da file vivono solo qui, come i libri: chi ne ha
   // deve poter fare un archivio anche senza avere un libro in libreria.
@@ -410,6 +414,20 @@ export default function Library({
     storageEstimate().then(setEstimate);
     statoPersistenza().then(setPersist);
   }, [books]);
+
+  // NON si aggancia a `books` come i due qui sopra: quello e' un giro di
+  // rete che elenca il secchio, e rifarlo a ogni import o a ogni voto messo
+  // a un romanzo sarebbe traffico buttato — per giunta sul piano gratuito,
+  // dove anche il traffico e' contato. Un errore lascia la riga senza la
+  // parte del cloud: non e' un guasto da raccontare, e' un numero in meno.
+  useEffect(() => {
+    if (!collegato) return setCloud(null);
+    let vivo = true;
+    cloudUsage()
+      .then((d) => vivo && setCloud(d || null))
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [collegato]);
 
   async function richiediPersistenza() {
     // riprovare ha senso davvero: Android la concede quando la PWA viene
@@ -1072,8 +1090,24 @@ export default function Library({
             <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {books.length} {books.length === 1 ? "libro custodito" : "libri custoditi"}
               {melodie ? ` · ${melodie} ${melodie === 1 ? "melodia" : "melodie"}` : ""}
-              {estimate?.usage ? ` · ${fmtBytes(estimate.usage)} usati` : ""}
-              {estimate?.quota ? ` di ${fmtBytes(estimate.quota)}` : ""}
+              {/* IL PESO SI DICE SEMPRE, IL TETTO SOLO QUANDO STRINGE.
+                  «152 MB usati di 499,6 GB» — segnalato dal lettore: «cosa
+                  sarebbero sti 500 GB?». Non e' lo spazio del tablet ne' una
+                  promessa: e' un tetto che il browser ricalcola su quanto
+                  disco e' libero adesso, e a persistenza negata non protegge
+                  da niente — cioe' contraddiceva l'avviso che sta due righe
+                  sotto. Vale la regola del promemoria dell'archivio: sotto
+                  soglia si tace, perche' un numero che non chiede niente si
+                  impara a ignorare e poi non si legge nemmeno il giorno che
+                  conta. */}
+              {estimate?.usage ? ` · ${fmtBytes(estimate.usage)}` : ""}
+              {stretto(estimate) ? ` · restano ${fmtBytes(Math.max(0, estimate.quota - estimate.usage))} sul dispositivo` : ""}
+              {/* E QUESTO E' L'UNICO SPAZIO CHE VINCOLA DAVVERO. C'era gia',
+                  ma nel pannello della sincronizzazione: un posto che si apre
+                  una volta al mese, mentre qui — dove si guarda — stava il
+                  numero inutile. Il numero giusto nel posto sbagliato e
+                  quello sbagliato nel posto giusto. */}
+              {cloud ? ` · ☁ ${fmtBytes(cloud.totale)} di ${fmtBytes(PIANO)}` : ""}
               {` · v. ${typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "?"}`}
               {aggiorna &&
                 (agg ? (

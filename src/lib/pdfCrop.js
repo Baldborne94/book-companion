@@ -77,8 +77,17 @@ export function misuraInchiostro({ data, width, height }) {
   return { l: l / width, t: t / height, r: (r + 1) / width, b: (b + 1) / height };
 }
 
-export const unisci = (a, b) =>
-  !a ? b : { l: Math.min(a.l, b.l), t: Math.min(a.t, b.t), r: Math.max(a.r, b.r), b: Math.max(a.b, b.b) };
+// Una pagina senza misura non deve poter rovinare quelle di prima. Il
+// chiamante gia' la scarta (`if (uno)`), quindi questo `!b` oggi non serve
+// a nessuno — ma senza, `unisci(box, null)` ESPLODE leggendo `b.l`, e
+// basterebbe che un domani qualcuno chiamasse questa funzione da un altro
+// punto per portarsi via il ritaglio di tutto il libro. L'ha trovato il
+// test, non la lettura del codice.
+export const unisci = (a, b) => {
+  if (!a) return b || null;
+  if (!b) return a;
+  return { l: Math.min(a.l, b.l), t: Math.min(a.t, b.t), r: Math.max(a.r, b.r), b: Math.max(a.b, b.b) };
+};
 
 export function rifinisci(box) {
   if (!box) return TUTTA;
