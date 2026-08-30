@@ -249,6 +249,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [searchState, setSearchState] = useState({ busy: false, results: null });
   const [pages, setPages] = useState(1);
   const [isFs, setIsFs] = useState(false);
+  // il tablet in piedi: la doppia pagina li' non esiste, e la levetta che
+  // la governa non ha niente da governare
+  const [inPiedi, setInPiedi] = useState(() => window.innerWidth < window.innerHeight);
   // il velo color carta sul passo indietro oltre il confine: copre la
   // ricostruzione del capitolo (vedi step) e cade a misura ferma
   const [velo, setVelo] = useState(false);
@@ -667,12 +670,53 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           }
           setChrome((v) => !v);
         };
+        // TRE CANALI PER LO STESSO GESTO, e il primo che arriva vince.
+        //
+        // Il lettore ha segnalato due volte che toccando il testo non
+        // succede niente, e qui su Chromium — tocco vero, pagina singola,
+        // in piedi e sdraiato — succede sempre. Non e' una cosa che si
+        // indovina: si copre. `pointerup` e' l'evento unificato dei
+        // browser moderni, `touchend` quello del dito, `click` quello che
+        // il motore sintetizza dopo — e quel terzo e' un favore, non una
+        // garanzia. Basta che ne arrivi UNO.
+        //
+        // Il guardiano e' l'ora dell'ultimo servito: gli altri due, che
+        // per lo stesso gesto arrivano subito dopo, si lasciano cadere. Se
+        // saltasse, un tocco solo nasconderebbe e rimostrerebbe le barre
+        // nello stesso gesto — cioe' di nuovo «non succede niente».
+        const scattato = (bersaglio, x, y, partenza) => {
+          if (!partenza) return;
+          if (Math.abs(x - partenza.x) > MOSSA || Math.abs(y - partenza.y) > MOSSA) return;
+          if (Date.now() - partenza.quando > PRESSIONE) return;
+          if (Date.now() - servitoDalDito < DOPPIONE) return;
+          servitoDalDito = Date.now();
+          tocco(bersaglio, x, y);
+        };
+        doc.addEventListener(
+          "pointerdown",
+          (e) => {
+            if (e.isPrimary === false) return;
+            giu = { x: e.clientX, y: e.clientY, quando: Date.now() };
+          },
+          { passive: true }
+        );
+        doc.addEventListener(
+          "pointerup",
+          (e) => {
+            const p = giu;
+            giu = null;
+            if (e.isPrimary === false) return;
+            scattato(e.target, e.clientX, e.clientY, p);
+          },
+          { passive: true }
+        );
         doc.addEventListener(
           "touchstart",
           (e) => {
-            giu = e.touches.length === 1
-              ? { x: e.touches[0].clientX, y: e.touches[0].clientY, quando: Date.now() }
-              : null;
+            if (e.touches.length !== 1) { giu = null; return; }
+            // il `pointerdown` di solito e' gia' passato: si tiene il piu'
+            // vecchio dei due, che e' quello dove il dito si e' posato
+            giu = giu || { x: e.touches[0].clientX, y: e.touches[0].clientY, quando: Date.now() };
           },
           { passive: true }
         );
@@ -681,17 +725,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           (e) => {
             const p = giu;
             giu = null;
-            if (!p || e.changedTouches.length !== 1) return;
+            if (e.changedTouches.length !== 1) return;
             const t = e.changedTouches[0];
-            if (Math.abs(t.clientX - p.x) > MOSSA || Math.abs(t.clientY - p.y) > MOSSA) return;
-            if (Date.now() - p.quando > PRESSIONE) return;
-            servitoDalDito = Date.now();
-            tocco(t.target || e.target, t.clientX, t.clientY);
+            scattato(t.target || e.target, t.clientX, t.clientY, p);
           },
           { passive: true }
         );
         doc.addEventListener("click", (e) => {
           if (Date.now() - servitoDalDito < DOPPIONE) return;
+          servitoDalDito = Date.now();
           tocco(e.target, e.clientX, e.clientY);
         });
         // La rotellina volta la pagina col mouse. In pagine impaginate
@@ -1045,8 +1087,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
   useEffect(() => {
     const onFs = () => setIsFs(!!document.fullscreenElement);
+    const onGira = () => setInPiedi(window.innerWidth < window.innerHeight);
+    window.addEventListener("resize", onGira);
+    window.addEventListener("orientationchange", onGira);
     document.addEventListener("fullscreenchange", onFs);
     return () => {
+      window.removeEventListener("resize", onGira);
+      window.removeEventListener("orientationchange", onGira);
       document.removeEventListener("fullscreenchange", onFs);
     };
   }, []);
@@ -1146,6 +1193,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // il lettore ha chiesto o la svolta o la dissolvenza di sempre.
   const svoltaViva = useRef(null);
   const svoltaGuardia = useRef(null);
+  // il gettone della dissolvenza: l'ultimo gesto comanda
+  const dissolvenza = useRef(0);
+  // quanto ci mette il velo a coprire davvero. La transizione in CSS dura
+  // 90ms: si aspetta un soffio in piu', o la pagina cambierebbe mentre il
+  // velo e' ancora trasparente — cioe' a vista.
+  const VELO_SU = 110;
   // oltre questo la svolta si considera persa e il reader torna a voltare
   // e basta: una pagina che non gira e' un peccato, una pagina che non
   // volta piu' e' un reader rotto
@@ -1169,6 +1222,33 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // senza View Transitions (o con «meno animazioni» acceso nel sistema)
     // si volta e basta: niente effetto, nessun difetto
     if (typeof doc.startViewTransition !== "function" || riduciMovimento()) return subito();
+    if (live.current.settings.svolta === "nessuna") return subito();
+    // LA DISSOLVENZA NON FOTOGRAFA NIENTE, ed e' tutta la differenza.
+    //
+    // La spazzata e' bella e costa: le View Transitions fotografano la
+    // pagina due volte — prima e dopo il cambio — e ognuna e' un'immagine
+    // grande quanto lo schermo per la densita' dello schermo. Misurato col
+    // processore strozzato sei volte: ~510ms di filo principale occupato
+    // per voltata, contro i ~140 di una voltata nuda. Il tempo in piu' non
+    // si vede come uno scatto dentro il movimento (quello corre sul
+    // compositore) ma come un'ATTESA prima che il movimento cominci.
+    //
+    // Qui invece il velo color carta sale in un soffio, la pagina cambia
+    // sotto di lui — l'attesa e' coperta, che e' esattamente il mestiere
+    // di un velo — e poi scende piano. Nessuna fotografia, nessun tempo
+    // in piu': la voltata costa quanto voltare.
+    if (live.current.settings.svolta === "dissolvenza") {
+      const mio = ++dissolvenza.current;
+      setVelo(true);
+      setTimeout(() => {
+        // un gesto piu' recente comanda: due dissolvenze accavallate
+        // lascerebbero il velo alzato sulla pagina sbagliata
+        if (mio !== dissolvenza.current) return;
+        subito();
+        setVelo(false);
+      }, VELO_SU);
+      return;
+    }
     // una voltata mentre l'altra gira: si fa senza effetto, o le due
     // fotografie si accavallano
     if (svoltaViva.current) return subito();
@@ -1235,14 +1315,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // testo da leggere: `dentroIlCapitolo` risponde «no» — e ha ragione,
     // perché è la SUA domanda — ma quella striscia è carta di questo
     // capitolo, già impaginata di fianco, e svolta come tutte le altre.
-    const resto = settings.svolta && dir === "next" ? leftoverScroll(r.manager) : 0;
+    const resto = settings.svolta !== "nessuna" && dir === "next" ? leftoverScroll(r.manager) : 0;
     if (resto) {
       laSvolta(r, dir, () => {
         r.manager.scrollBy(resto, 0, true);
       }, () => r.reportLocation());
       return;
     }
-    if (settings.svolta && dentroIlCapitolo(r.manager, dir)) {
+    if (settings.svolta !== "nessuna" && dentroIlCapitolo(r.manager, dir)) {
       // LA VOLTATA QUI DENTRO NON PASSA DALLA CODA DI EPUB.JS, e non e'
       // una scorciatoia: e' l'unico modo che funzioni. `rendition.next()`
       // mette il lavoro in coda e la coda gira dentro un
@@ -1890,7 +1970,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             inset: FRAME,
             borderRadius: R.minimo,
             overflow: "hidden",
-            ...(settings.svolta ? { viewTransitionName: "bc-pagina" } : {}),
+            ...(settings.svolta === "spazzata" ? { viewTransitionName: "bc-pagina" } : {}),
           }}
         >
           <div
@@ -2394,17 +2474,26 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             >
               Scorrimento
             </button>
-            <button
-              onClick={() => updateSettings({ spread: settings.spread === "auto" ? "none" : "auto" })}
-              disabled={!paginated}
-              style={{
-                flex: 1, padding: "9px 0", borderRadius: R.piccolo, fontSize: F.nota,
-                border: `1px solid ${C.border}`,
-                color: paginated ? C.muted : C.dim,
-              }}
-            >
-              {settings.spread === "auto" ? "Doppia: auto" : "Pagina singola"}
-            </button>
+            {/* IN PIEDI LA DOPPIA PAGINA NON ESISTE, e la levetta non
+                decide niente: `minSpreadWidth` sta a metà fra il lato
+                corto e quello lungo dello schermo, quindi col tablet in
+                verticale la facciata è una sola comunque sia messa. Un
+                comando che non cambia nulla e' peggio di un comando che
+                manca (chiesto dal lettore di toglierlo). Sdraiando il
+                tablet ricompare da solo. */}
+            {!inPiedi && (
+              <button
+                onClick={() => updateSettings({ spread: settings.spread === "auto" ? "none" : "auto" })}
+                disabled={!paginated}
+                style={{
+                  flex: 1, padding: "9px 0", borderRadius: R.piccolo, fontSize: F.nota,
+                  border: `1px solid ${C.border}`,
+                  color: paginated ? C.muted : C.dim,
+                }}
+              >
+                {settings.spread === "auto" ? "Doppia: auto" : "Pagina singola"}
+              </button>
+            )}
           </div>
           <div style={{ marginBottom: 14 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -2464,24 +2553,35 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           <div style={{ marginBottom: 14 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span style={{ fontSize: F.nota, color: C.muted }}>La pagina svolta</span>
-              <button
-                onClick={() => updateSettings({ svolta: !settings.svolta })}
-                style={{
-                  padding: "6px 16px",
-                  borderRadius: R.tondo,
-                  fontSize: F.nota,
-                  border: `1px solid ${settings.svolta ? C.accent : C.border}`,
-                  color: settings.svolta ? C.accent : C.muted,
-                  background: settings.svolta ? `${C.accent}14` : "transparent",
-                }}
-              >
-                {settings.svolta ? "Attiva 📖" : "Spenta"}
-              </button>
+              <div style={{ display: "flex", gap: 6 }}>
+                {[
+                  ["spazzata", "Spazzata"],
+                  ["dissolvenza", "Dissolvenza"],
+                  ["nessuna", "Nessuna"],
+                ].map(([id, nome]) => (
+                  <button
+                    key={id}
+                    onClick={() => updateSettings({ svolta: id })}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: R.tondo,
+                      fontSize: F.nota,
+                      border: `1px solid ${settings.svolta === id ? C.accent : C.border}`,
+                      color: settings.svolta === id ? C.accent : C.muted,
+                      background: settings.svolta === id ? `${C.accent}14` : "transparent",
+                    }}
+                  >
+                    {nome}
+                  </button>
+                ))}
+              </div>
             </div>
             <p style={{ margin: "5px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.45 }}>
-              {settings.svolta
-                ? "Il foglio gira attorno al dorso, come in un libro. Al cambio di capitolo resta la dissolvenza: lì la misura si assesta, e far girare un foglio che poi si riassesta sarebbe peggio."
-                : "Ogni voltata è una dissolvenza. Tienila spenta se sul tuo schermo la svolta scatta."}
+              {settings.svolta === "spazzata"
+                ? "Il foglio scorre via come sfogliato. È la più bella e la più cara: il browser fotografa la pagina due volte, e su uno schermo che fatica l'attesa prima del movimento si sente."
+                : settings.svolta === "dissolvenza"
+                  ? "Un velo color carta copre, la pagina cambia sotto, il velo scende. Non fotografa niente: costa quanto voltare e basta."
+                  : "La pagina cambia e via. Al cambio di capitolo resta comunque il velo: lì la misura si assesta, e mostrarla mentre si assesta sarebbe peggio."}
             </p>
           </div>
           {haGlossario(book) && (

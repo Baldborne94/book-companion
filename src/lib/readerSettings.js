@@ -45,21 +45,37 @@ export function deviceDefaults(shortSide) {
     paragrafi: "rientro",
     // solo per i PDF: toglie i margini bianchi della carta
     ritaglia: true,
-    // il foglio gira attorno al dorso invece di dissolversi. Sta fra le
-    // impostazioni e non cablata perche' e' l'unico modo onesto di
-    // rimettere un'animazione dopo che il foglio animato era stato tolto:
-    // se sul tablet del lettore scattasse, la si spegne senza aspettare
-    // una versione nuova.
-    svolta: true,
+    // COME VOLTA LA PAGINA, e sono TRE, non due (chiesto dal lettore:
+    // «l'animazione e' un po' scattosa, non si puo' rendere piu' fluida e
+    // meno pesante?»). La spazzata e' bella e costa: misurata col
+    // processore strozzato sei volte, una voltata blocca il filo
+    // principale per ~510ms contro i ~140 di una voltata nuda, perche' le
+    // View Transitions fotografano la pagina DUE volte — prima e dopo. La
+    // dissolvenza non fotografa niente: il velo copre, la pagina cambia
+    // sotto, il velo scende. Chi ha uno schermo che fatica sceglie quella
+    // invece di restare senza niente.
+    svolta: "spazzata",
     appTheme: "night",
   };
 }
+
+// LA SVOLTA ERA UN SÌ/NO E ADESSO SONO TRE MODI. Chi aveva già scelto se
+// la ritrova scritta come un booleano — nelle preferenze qui e nel cloud,
+// dove viaggia con tutto il resto — e un `true` confrontato con
+// «spazzata» non e' «spazzata»: senza questa riga la levetta si
+// ritroverebbe su nessuna delle tre, e la pagina volterebbe nuda.
+export const modoSvolta = (v) => {
+  if (v === true) return "spazzata";
+  if (v === false) return "nessuna";
+  return v === "dissolvenza" || v === "nessuna" ? v : "spazzata";
+};
 
 export function loadReaderSettings(shortSide) {
   const defaults = deviceDefaults(shortSide);
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) || "{}");
-    return { ...defaults, ...saved };
+    const fuse = { ...defaults, ...saved };
+    return { ...fuse, svolta: modoSvolta(fuse.svolta) };
   } catch {
     return defaults;
   }
