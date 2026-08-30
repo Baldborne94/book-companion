@@ -182,6 +182,72 @@ export function withRepush({ push, pull, removeLocal, localRows }) {
   return [...push, ...localRows.filter((r) => !already.has(r.id) && !held.has(r.id))];
 }
 
+// LE EVIDENZIAZIONI NON SONO UN CAMPO DELLA RIGA: SONO UN INSIEME.
+//
+// Il resto di un libro — lo stato, la pagina, il voto — si fonde a riga
+// intera con «vince chi ha scritto per ultimo», ed e' giusto: sono valori
+// singoli, e di due valori uno dev'essere piu' recente. Segnalibri ed
+// evidenziazioni no. Viaggiavano dentro quella riga, e in ricezione
+// venivano SOSTITUITI in blocco: evidenziando un passaggio sul tablet e un
+// altro sul telefono prima che i due si parlassero, il dispositivo con
+// l'orologio piu' vecchio perdeva tutte le sue — in silenzio, e te ne
+// accorgevi settimane dopo cercando una citazione che non c'era piu'.
+//
+// L'app sapeva gia' come si fa: le melodie si fondono per id qui sotto,
+// col commento «unione, non sostituzione». Questa e' la stessa regola
+// portata dove serve di piu'. Vince la versione col timbro piu' recente,
+// e una LAPIDE e' una versione come le altre — cosi' una cancellazione
+// batte la copia viva rimasta sull'altro dispositivo, invece di farsela
+// rimandare indietro.
+const chiaveNota = (x) => x?.id || x?.cfi || "";
+// la lapide porta l'ora della cancellazione, l'annotazione modificata
+// quella della modifica, e tutto il resto la sua nascita
+const quandoNota = (x) => x?.deleted || x?.updatedAt || x?.createdAt || 0;
+const stessaNota = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+export function fondiAnnotazioni(locali = [], remote = []) {
+  const per = new Map();
+  const daNoi = new Set();
+  // il locale entra per primo e il remoto lo scalza solo se e' piu'
+  // recente: a parita' di orologio vince quello che gia' c'e', o due
+  // dispositivi fermi si rimbalzerebbero la stessa riga a ogni giro
+  for (const x of locali || []) {
+    const k = chiaveNota(x);
+    if (!k) continue;
+    if (!per.has(k) || quandoNota(x) > quandoNota(per.get(k))) {
+      per.set(k, x);
+      daNoi.add(k);
+    }
+  }
+  const suo = new Map();
+  for (const x of remote || []) {
+    const k = chiaveNota(x);
+    if (!k) continue;
+    suo.set(k, x);
+    if (!per.has(k) || quandoNota(x) > quandoNota(per.get(k))) {
+      per.set(k, x);
+      daNoi.delete(k);
+    }
+  }
+  // Quel che il cloud non ha, o ha diverso, va rimandato su: senza questo
+  // conto le annotazioni di questo dispositivo resterebbero qui per
+  // sempre, perche' la sua riga e' piu' vecchia e non verra' mai spinta.
+  let daMandare = 0;
+  for (const k of daNoi) {
+    if (!stessaNota(per.get(k), suo.get(k))) daMandare += 1;
+  }
+  const tutte = [...per.values()];
+  return {
+    // i vivi in ordine di nascita, le lapidi in coda: cosi' la parte che
+    // il lettore vede resta quella di sempre
+    lista: [
+      ...tutte.filter((x) => !x.deleted).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)),
+      ...tutte.filter((x) => x.deleted),
+    ],
+    daMandare,
+  };
+}
+
 const favStamp = (f) => f.updatedAt || f.addedAt || 0;
 
 // Unione, non sostituzione: melodie salvate su dispositivi diversi

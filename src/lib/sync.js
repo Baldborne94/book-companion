@@ -6,11 +6,12 @@ import {
   getStarted, getFinished, setDates,
 } from "./library.js";
 import {
-  getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights, removeAnnotations, setJump,
+  getCfi, setCfi, removeAnnotations, setJump,
+  segnalibriInteri, evidenziazioniIntere, posaSegnalibri, posaEvidenziazioni,
 } from "./annotations.js";
 import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, getListsRaw, writeLists } from "./music.js";
 import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
-import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, percheMelodia } from "./syncCore.js";
+import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, percheMelodia, fondiAnnotazioni } from "./syncCore.js";
 
 const LAST_SYNC_KEY = "bc_lastsync";
 const REPUSH_KEY = "bc_repush";
@@ -179,12 +180,19 @@ function readLocalState(id) {
     finished: getFinished(id),
     progress: getProgress(id),
     cfi: getCfi(id),
-    marks: getMarks(id),
-    highlights: getHighlights(id),
+    // INTERI, lapidi comprese: se lassu' salissero solo i vivi, l'altro
+    // dispositivo non saprebbe mai che un'evidenziazione l'hai cancellata
+    // e te la rimanderebbe indietro al primo giro
+    marks: segnalibriInteri(id),
+    highlights: evidenziazioniIntere(id),
     music: getBookMusic(id),
   };
 }
 
+// Torna `true` se la fusione ha lasciato qui dentro qualcosa che il cloud
+// non ha: quella riga va rimandata su, o le annotazioni di questo
+// dispositivo resterebbero qui per sempre — la sua riga e' piu' vecchia,
+// quindi non verra' mai spinta da sola.
 function writeLocalState(id, state) {
   setStatus(id, state.status);
   // dopo setStatus, che altrimenti le riscriverebbe con l'ora locale
@@ -193,9 +201,15 @@ function writeLocalState(id, state) {
   }
   setProgress(id, state.progress);
   if (state.cfi) setCfi(id, state.cfi);
-  saveMarks(id, state.marks);
-  saveHighlights(id, state.highlights);
+  // SI FONDONO, NON SI SOSTITUISCONO: qui prima si scriveva addosso al
+  // locale quello che arrivava dal cloud, e chi aveva evidenziato di qua
+  // fra due sincronizzazioni perdeva tutto senza un avviso.
+  const segni = fondiAnnotazioni(segnalibriInteri(id), state.marks);
+  const evid = fondiAnnotazioni(evidenziazioniIntere(id), state.highlights);
+  posaSegnalibri(id, segni.lista);
+  posaEvidenziazioni(id, evid.lista);
   if (state.music) setBookMusic(id, state.music);
+  return segni.daMandare + evid.daMandare > 0;
 }
 
 function localPrefs() {
@@ -233,6 +247,10 @@ export async function syncNow({ onProgress } = {}) {
   const { data: remoteRows, error } = await sb.from("books").select("*").eq("user_id", uid);
   if (error) throw error;
 
+  // i libri che la fusione delle annotazioni arricchisce e che vanno
+  // rimandati su a fine ricezione
+  const daRimandare = [];
+
   const { pull, push, removeLocal } = planSync({
     localRows,
     tombstones,
@@ -247,6 +265,32 @@ export async function syncNow({ onProgress } = {}) {
     if (r && !r.deleted && r.cfi && (r.progress || 0) > (row.progress || 0) + 0.02) {
       setJump(row.id, { cfi: r.cfi, progress: r.progress });
     }
+  }
+
+  // LA FUSIONE VALE ANCHE IN PARTENZA, non solo in ricezione.
+  //
+  // Il caso: leggo sul tablet alle 10, e sul telefono avevo evidenziato
+  // alle 9:50. La riga del tablet e' piu' recente, quindi PARTE — e senza
+  // questa fusione si porterebbe dietro solo le sue annotazioni,
+  // cancellando dal cloud quelle del telefono. Non sarebbero perse per
+  // sempre (il telefono ce le ha ancora, e alla sua prossima
+  // sincronizzazione le rimanderebbe su), ma per un po' il cloud
+  // racconterebbe una bugia — e su un dispositivo che non si accende piu'
+  // quella bugia diventa definitiva.
+  //
+  // Quel che si fonde si scrive anche qui, senza timbrare l'ora: e' il
+  // nostro stesso invio, non roba nuova, e ri-timbrare farebbe ripartire
+  // la stessa riga al giro dopo.
+  for (const row of push) {
+    if (row.deleted) continue;
+    const r = (remoteRows || []).find((x) => x.id === row.id);
+    if (!r || r.deleted) continue;
+    const segni = fondiAnnotazioni(row.marks, Array.isArray(r.marks) ? r.marks : []);
+    const evid = fondiAnnotazioni(row.highlights, Array.isArray(r.highlights) ? r.highlights : []);
+    row.marks = segni.lista;
+    row.highlights = evid.lista;
+    posaSegnalibri(row.id, segni.lista);
+    posaEvidenziazioni(row.id, evid.lista);
   }
 
   // Finche' lo schema resta indietro il flag non si chiude: al primo invio
@@ -369,8 +413,15 @@ export async function syncNow({ onProgress } = {}) {
       const i = next.findIndex((b) => b.id === book.id);
       if (i >= 0) next[i] = { ...next[i], ...book };
       else next.push(book);
-      writeLocalState(book.id, state);
+      const arricchita = writeLocalState(book.id, state);
       touchBook(book.id, row.updated_at);
+      // La fusione ha aggiunto roba nostra: da adesso questa riga e' piu'
+      // recente di quella lassu', cosi' anche se il viaggio di ritorno
+      // qui sotto non riesce, la prossima sincronizzazione la manda.
+      if (arricchita) {
+        touchBook(book.id);
+        daRimandare.push(book.id);
+      }
       // UNA COPERTINA NON VALE UN RIPRISTINO. Stava dentro il giro senza
       // rete di sicurezza: un solo scaricamento andato storto — e sono
       // cinquantaquattro, su una connessione qualunque — buttava via
@@ -384,6 +435,27 @@ export async function syncNow({ onProgress } = {}) {
         }
       } catch {
         /* si riprova alla prossima sincronizzazione */
+      }
+    }
+
+    // IL VIAGGIO DI RITORNO. Senza, la fusione salverebbe le annotazioni
+    // di questo dispositivo qui e basta: l'altro non le vedrebbe mai,
+    // perche' la nostra riga era la piu' vecchia. Se non parte non si
+    // perde niente — il locale e' gia' salvo e il segno del tempo dice
+    // che tocca a noi.
+    if (daRimandare.length) {
+      say(`Rimando ${daRimandare.length === 1 ? "un libro" : `${daRimandare.length} libri`} con le annotazioni fuse…`);
+      try {
+        const rows = daRimandare
+          .map((id) => next.find((b) => b.id === id))
+          .filter(Boolean)
+          .map((b) => ({
+            ...normalizeRow(rowFromLocal(b, readLocalState(b.id), getUpdatedAt(b.id, b.addedAt || 1))),
+            user_id: uid,
+          }));
+        if (rows.length) await upsertBooks(sb, rows);
+      } catch {
+        /* la prossima sincronizzazione riprova: qui non si e' perso niente */
       }
     }
 
