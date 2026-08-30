@@ -2267,6 +2267,57 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           tocco. Al loro posto la rotellina, che non litiga con la selezione,
           piu' le frecce e il margine attorno al libro. */}
 
+      {/* LA MANIGLIA: L'UNICA STRADA CHE NON PUO' FALLIRE.
+          Chiesta dal lettore dopo cinque cure al tocco che sul suo tablet
+          non hanno mai funzionato («ma che stai facendo? perche' la cosa ti
+          crea cosi tanta difficolta'?»). La domanda era giusta: il tocco sul
+          testo si riconosce con un'euristica dentro l'iframe di epub.js —
+          quali eventi arrivano, quanto si e' mosso il dito, quanto e'
+          durato — e quell'euristica si e' potuta provare solo su Chromium,
+          dove il difetto non esiste. Cinque ipotesi verificate sul browser
+          sbagliato.
+          Questo invece e' un `<button>` nel documento nostro. Non dipende da
+          nessun evento sintetizzato, da nessuna soglia, da nessun iframe:
+          se un browser sa disegnare un bottone, sa anche premerlo. Il tocco
+          sul testo resta com'e' e se funziona e' un di piu'.
+          C'e' SOLO a barre nascoste — a barre accese ci sono gia' loro — ed
+          e' un trattino sfumato, non un tasto: deve potersi ignorare mentre
+          si legge. Il bersaglio pero' e' pieno (44px, la regola dei bersagli
+          del dito), perche' un comando di riserva che si manca non e' di
+          riserva. */}
+      {!chrome && status === "ready" && (
+        <button
+          onClick={() => setChrome(true)}
+          aria-label="Mostra le barre"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 26,
+            width: 88,
+            height: 44,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "transparent",
+            border: "none",
+            padding: 0,
+          }}
+        >
+          <span
+            style={{
+              display: "block",
+              width: 38,
+              height: 4,
+              borderRadius: R.tondo,
+              background: C.muted,
+              opacity: 0.32,
+            }}
+          />
+        </button>
+      )}
+
       {chrome && (
         <>
           <div
