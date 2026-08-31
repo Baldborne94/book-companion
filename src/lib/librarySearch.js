@@ -23,8 +23,19 @@ export const abbastanzaLunga = (q) => (q || "").trim().length >= 3;
 // Il passaggio arriva in una riga sola, ma nell'elenco l'occhio deve
 // trovare subito la parola cercata. La si ritrova con la stessa espressione
 // che l'ha trovata nel libro — quella con le forme flesse — cosi' si accende
-// «pergamene» anche a chi ha chiesto «pergamena».
-function spezza(testo, re) {
+// «scrolls» anche a chi ha chiesto «scroll».
+//
+// QUI C'ERA SCRITTO «pergamene» PER «pergamena», e non e' vero: `wordForms`
+// conosce solo la morfologia INGLESE, quindi un plurale italiano non si
+// flette ne' si accende. Il commento prometteva una cosa che il codice non
+// fa, ed e' peggio di un commento assente: chi lo legge smette di guardare.
+// La verita' sta nel test, che pinna tutt'e due i lati — «scroll» trova
+// «scrolls», «libro» non trova «libri».
+//
+// ESPORTATA PER ESSERE PROVATA: se non ritrova il pezzo, il passaggio finisce
+// tutto in `prima` e sullo schermo non si accende niente — nessun errore, solo
+// una riga di testo piatta dove l'occhio non trova piu' la parola.
+export function spezza(testo, re) {
   if (!re) return { prima: testo, dentro: "", dopo: "" };
   re.lastIndex = 0;
   const m = re.exec(testo);
@@ -67,7 +78,21 @@ async function cercaPdf(blob, query, limite, vivo) {
   }
 }
 
-export async function cercaOvunque(libri, query, { onLibro, onTrovato, vivo, perLibro = 6 } = {}) {
+// `leggiByte` arriva da fuori — di norma e' `getFile` di `bookStore` — per la
+// ragione di sempre: cosi' un test lo chiama con un finto invece di tirarsi
+// dietro IndexedDB.
+//
+// Qui si chiama DRITTO, e non serve il giro `Promise.resolve().then(…)` che
+// `ripassaImpronte` si porta dietro per lo stesso mestiere: la' la chiamata
+// sta fuori da ogni `try`, e un `leggiByte` che esplode in modo sincrono si
+// porterebbe via la funzione intera; qui sta DENTRO il `try`, quindi il
+// `catch` lo prende gia'. Provato mettendocelo: nessuna differenza, ed e'
+// stato tolto invece di restare li' a sembrare necessario.
+export async function cercaOvunque(
+  libri,
+  query,
+  { onLibro, onTrovato, vivo, perLibro = 6, leggiByte = getFile } = {}
+) {
   const attivo = vivo || (() => true);
   let lontani = 0;
   let esaminati = 0;
@@ -76,7 +101,7 @@ export async function cercaOvunque(libri, query, { onLibro, onTrovato, vivo, per
     onLibro?.({ i, totale: libri.length, titolo: libro.title });
     let blob = null;
     try {
-      blob = await getFile(libro.id);
+      blob = await leggiByte?.(libro.id);
     } catch {
       /* archivio che non risponde: il libro si salta */
     }
