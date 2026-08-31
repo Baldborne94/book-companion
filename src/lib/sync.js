@@ -116,6 +116,24 @@ export async function registraConPassword(email, password) {
   return { dentro: !!data?.session };
 }
 
+// LA CONFERMA CHE NON ARRIVA PIU' E' UN VICOLO CIECO. Se il progetto
+// chiede di confermare l'indirizzo, chi si e' registrato e poi ha perso
+// quel messaggio — cestinato, finito nello spam, aperto su un altro
+// dispositivo e mai piu' ritrovato — non ha NESSUNA strada dentro l'app:
+// «Entra» risponde per sempre che l'indirizzo non e' confermato,
+// «Registrati» che l'email c'e' gia', e il link per posta non conferma
+// niente. L'unico modo era andare a rovistare nel pannello di Supabase.
+export async function rimandaConferma(email) {
+  const sb = await getClient();
+  if (!sb) throw new Error("sync non configurata");
+  const { error } = await sb.auth.resend({
+    type: "signup",
+    email,
+    options: { emailRedirectTo: window.location.origin },
+  });
+  if (error) throw error;
+}
+
 // Serve a chi e' entrato col link e vuole smettere di dipenderne, ed e'
 // anche l'unica strada per rimettere una password dimenticata: si entra
 // col link, si riscrive la password, e la volta dopo si entra in due

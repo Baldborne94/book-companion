@@ -4,7 +4,7 @@
 // arriva qui come un `TypeError` senza codice e senza stato, e se lo si
 // tratta come una credenziale rifiutata si manda il lettore a riscrivere
 // all'infinito una password che era giusta.
-import { spiegaAccesso, passwordCorta, MIN_PASSWORD } from "../src/lib/accesso.js";
+import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD } from "../src/lib/accesso.js";
 
 // come li manda supabase-js: un oggetto con `code`, `status` e `message`
 const errore = (code, message = "", status = 400) => ({ code, message, status });
@@ -64,6 +64,42 @@ export default async function (t) {
     t.c("un errore muto non lascia il pannello vuoto", !!m && m.length > 5, m);
   }
   t.eq("niente errore, niente da dire", spiegaAccesso(null), null);
+
+  // ---- l'unico guaio con una via d'uscita ------------------------------
+  //
+  // `daConfermare` fa comparire un tasto, quindi sbaglia in due modi
+  // opposti e tutt'e due silenziosi: se dice di no dove doveva dire di si',
+  // il lettore resta chiuso fuori per sempre col messaggio «apri la mail
+  // che ti ho mandato» e nessuna mail in mano; se dice di si' dove doveva
+  // dire di no, gli si offre di rimandare una conferma che non c'entra
+  // niente col suo problema.
+  t.c(
+    "l'indirizzo non confermato si riconosce dal codice",
+    // messaggio VOLUTAMENTE diverso: col testo giusto accanto, questo
+    // controllo passerebbe anche togliendo il codice, e non proverebbe niente
+    daConfermare(errore("email_not_confirmed", "Signups require a valid address")) === true
+  );
+  t.c(
+    "e anche dal solo testo, per le versioni che il codice non lo mandano",
+    daConfermare({ status: 400, message: "Email not confirmed" }) === true
+  );
+  t.c(
+    "una password sbagliata NON e' un indirizzo da confermare",
+    daConfermare(errore("invalid_credentials", "Invalid login credentials")) === false
+  );
+  t.c(
+    "e nemmeno un'email gia' registrata",
+    daConfermare(errore("user_already_exists")) === false
+  );
+  // La stretta che serve: `/confirm/` da solo prenderebbe anche questo, e
+  // il tasto comparirebbe a chi sta cambiando indirizzo — dove rimandare
+  // la conferma della REGISTRAZIONE non fa assolutamente niente.
+  t.c(
+    "il cambio d'indirizzo non confermato resta fuori",
+    daConfermare({ status: 400, message: "Confirmation token expired" }) === false
+  );
+  t.c("un buco di rete non e' una conferma mancante", daConfermare(new TypeError("Failed to fetch")) === false);
+  t.c("e senza errore non c'e' niente da offrire", daConfermare(null) === false);
 
   // ---- il controllo che si fa senza chiedere niente al server -----------
   t.c("una password corta si ferma qui", passwordCorta("abc") === true);
