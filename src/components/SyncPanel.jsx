@@ -9,9 +9,10 @@ import {
   cloudUsage,
   entraConPassword,
   registraConPassword,
+  rimandaConferma,
   cambiaPassword,
 } from "../lib/sync.js";
-import { spiegaAccesso, passwordCorta, MIN_PASSWORD } from "../lib/accesso.js";
+import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD } from "../lib/accesso.js";
 // il riferimento del piano sta in UN posto solo: prima era un numero qui e
 // la stringa «1 GB» due righe sotto, due cose da cambiare insieme e da
 // dimenticare separatamente
@@ -77,6 +78,9 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
   // rileggere il perche' mentre la riscrive.
   const [guaio, setGuaio] = useState(null);
   const [confermare, setConfermare] = useState(false);
+  // il guaio dell'indirizzo non confermato e' l'unico che ha una via
+  // d'uscita, e sta a parte perche' e' l'unico che fa comparire un tasto
+  const [rimanda, setRimanda] = useState(false);
   // la password si cambia da dentro, ed e' anche il modo di darsene una
   // dopo essere entrati col link
   const [nuova, setNuova] = useState(null);
@@ -118,6 +122,7 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
     const e = email.trim();
     if (!e || busy) return;
     setGuaio(null);
+    setRimanda(false);
     if (passwordCorta(password)) {
       setGuaio(`La password vuole almeno ${MIN_PASSWORD} caratteri.`);
       return;
@@ -139,6 +144,26 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
       setSession(await getSession());
       notify("Dentro. La biblioteca comincia a sincronizzarsi 🕯️");
       onSync?.();
+    } catch (err) {
+      setGuaio(spiegaAccesso(err));
+      setRimanda(daConfermare(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Rimandare la conferma non e' «riprovare»: e' l'unica cosa che sblocca
+  // un indirizzo registrato e mai confermato, e finisce nello stesso stato
+  // di quando ci si e' appena registrati — cioe' «adesso guarda la posta».
+  async function rimandaLaConferma() {
+    const e = email.trim();
+    if (!e || busy) return;
+    setBusy(true);
+    setGuaio(null);
+    try {
+      await rimandaConferma(e);
+      setRimanda(false);
+      setConfermare(true);
     } catch (err) {
       setGuaio(spiegaAccesso(err));
     } finally {
@@ -310,7 +335,8 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
             ✉️ Registrato. Ti ho mandato una conferma a <strong>{email.trim()}</strong>.<br />
             <span style={{ color: C.muted, fontSize: F.nota }}>
               Apri quel messaggio una volta sola: da lì in poi entri con email e password, su
-              questo dispositivo e su ogni altro.
+              questo dispositivo e su ogni altro. Se non lo trovi, guarda nella posta
+              indesiderata.
             </span>
           </p>
         ) : sent ? (
@@ -388,6 +414,26 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
             </form>
             {guaio && (
               <p style={{ marginTop: 10, color: C.red, fontSize: F.nota, lineHeight: 1.45 }}>{guaio}</p>
+            )}
+            {/* Il tasto compare SOLO sull'indirizzo non confermato, ed è
+                l'unica uscita da un vicolo cieco: senza, il messaggio qui
+                sopra dice «apri la mail che ti ho mandato» a chi quella
+                mail non ce l'ha più, e non resta niente da fare. */}
+            {rimanda && (
+              <button
+                onClick={rimandaLaConferma}
+                disabled={busy}
+                style={{
+                  marginTop: 10,
+                  padding: "10px 18px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.arcane}66`,
+                  color: C.arcane,
+                  fontSize: F.corpo,
+                }}
+              >
+                {busy ? "…" : "✉️ Rimandami la conferma"}
+              </button>
             )}
             {/* La strada di prima resta, ed e' quella che serve quando la
                 password non ce l'hai piu': si entra col link e da dentro se

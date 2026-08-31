@@ -50,6 +50,23 @@ export function spiegaAccesso(err) {
   return testo ? `Non ha funzionato: ${testo}` : "Non ha funzionato, riprova.";
 }
 
+// L'INDIRIZZO MAI CONFERMATO E' L'UNICO GUAIO CON UNA VIA D'USCITA, e va
+// riconosciuto per poterla offrire. Gli altri messaggi si leggono e si
+// riprova; questo no — finche' quella mail non si apre, «Entra» rispondera'
+// sempre la stessa cosa e «Registrati» dira' che l'email c'e' gia'. Sopra
+// c'e' scritto «apri il messaggio che ti ho mandato»: se quel messaggio non
+// esiste piu', e' una porta in faccia.
+//
+// Si guarda il CODICE e, come ripiego, il testo — le versioni vecchie della
+// libreria il codice non lo mandano — ma il testo si stringe a «confirm» +
+// «email»: `/confirm/` da solo prenderebbe anche il cambio d'indirizzo.
+export function daConfermare(err) {
+  if (!err) return false;
+  if (err.code === "email_not_confirmed") return true;
+  const testo = String(err.message || "");
+  return /not confirmed/i.test(testo) && /e-?mail/i.test(testo);
+}
+
 // Il controllo che si puo' fare senza chiedere niente a nessuno: dirlo
 // prima del viaggio e' piu' gentile che farlo dire al server.
 export function passwordCorta(pw) {
