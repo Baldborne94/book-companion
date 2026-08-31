@@ -70,21 +70,21 @@ export default async function (t) {
     t.eq("dentro un'altra parola non conta", prende("musclein"), null);
   }
   {
-    // IL MOTORE CONOSCE SOLO L'INGLESE, e va detto qui perché nel sorgente
-    // c'era scritto il contrario: un commento prometteva che chi cerca
-    // «pergamena» vede accendersi «pergamene». Non è vero, e un commento che
-    // promette quel che il codice non fa è peggio di un commento assente.
-    // Misurato: «libro» non trova «libri», «strega» non trova «streghe»,
-    // «cane» non trova «cani».
+    // LE LINGUE SONO DUE, e si generano sempre tutt'e due: indovinare la
+    // lingua da una parola sola non si può. Qui c'era scritto che il motore
+    // conosceva solo l'inglese — era vero, ed era un limite: «libro» non
+    // trovava «libri». Adesso li trova, e le regole italiane hanno un file
+    // di prove tutto loro (`forme-italiane.test.mjs`), col prezzo che
+    // costano scritto accanto.
     for (const [domanda, testo] of [
       ["libro", "due libri"],
       ["strega", "tre streghe"],
       ["cane", "i cani"],
     ]) {
-      t.eq(`«${domanda}» non trova «${testo}»`, testo.match(queryRegex(domanda)), null);
+      t.c(`«${domanda}» trova «${testo}»`, !!testo.match(queryRegex(domanda)));
     }
-    // mentre la parola esatta si trova sempre, in qualunque lingua
-    t.c("ma la parola esatta si trova comunque", "due libri".match(queryRegex("libri"))?.length === 1);
+    // e la parola esatta si trova sempre, in qualunque lingua
+    t.c("la parola esatta si trova comunque", "due libri".match(queryRegex("libri"))?.length === 1);
   }
   {
     const re = queryRegex("Scroll");
