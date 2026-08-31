@@ -23,14 +23,14 @@ export const abbastanzaLunga = (q) => (q || "").trim().length >= 3;
 // Il passaggio arriva in una riga sola, ma nell'elenco l'occhio deve
 // trovare subito la parola cercata. La si ritrova con la stessa espressione
 // che l'ha trovata nel libro — quella con le forme flesse — cosi' si accende
-// «scrolls» anche a chi ha chiesto «scroll».
+// «scrolls» a chi ha chiesto «scroll», e «pergamene» a chi ha chiesto
+// «pergamena».
 //
-// QUI C'ERA SCRITTO «pergamene» PER «pergamena», e non e' vero: `wordForms`
-// conosce solo la morfologia INGLESE, quindi un plurale italiano non si
-// flette ne' si accende. Il commento prometteva una cosa che il codice non
-// fa, ed e' peggio di un commento assente: chi lo legge smette di guardare.
-// La verita' sta nel test, che pinna tutt'e due i lati — «scroll» trova
-// «scrolls», «libro» non trova «libri».
+// E VALE IN TUTT'E DUE LE LINGUE: qui c'era scritto «pergamene» per
+// «pergamena» quando `wordForms` conosceva il solo inglese, cioe' il
+// commento prometteva una cosa che il codice non faceva. Adesso la promessa
+// e' vera perche' e' stata aggiunta la morfologia italiana, non perche' si
+// e' abbassata la promessa.
 //
 // ESPORTATA PER ESSERE PROVATA: se non ritrova il pezzo, il passaggio finisce
 // tutto in `prima` e sullo schermo non si accende niente — nessun errore, solo
