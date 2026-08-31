@@ -126,7 +126,10 @@ export const FONT_BODY = '"EB Garamond", Georgia, serif';
 // Otto gradini, ognuno con un mestiere. Il valore in se' conta meno del
 // fatto che sia UNO SOLO: adesso ritoccare tutta l'app e' cambiare un
 // numero qui, non rincorrerne duecento nei file.
-export const F = {
+// I gradini a grandezza naturale. Restano il metro: la levetta della
+// dimensione li moltiplica, non li riscrive, cosi' la gerarchia fra un
+// gradino e l'altro e' la stessa a ogni misura.
+const SCALA_BASE = {
   minuscolo: 12, // conteggi e nuvolette sulle copertine
   piccolo: 13, // etichette dei campi, righe di servizio
   nota: 14, // testo secondario: date, autori, spiegazioni sotto
@@ -137,14 +140,91 @@ export const F = {
   grande: 27, // i titoli grossi delle schermate vuote
 };
 
+// Scala viva, come `C`: i componenti la leggono al render, quindi mutarla
+// e ridisegnare basta a cambiare misura senza un context.
+export const F = { ...SCALA_BASE };
+
 // Stessa storia per gli angoli: quattro raggi piu' il tondo.
-export const R = {
+const RAGGI_BASE = {
   minimo: 3, // barrette di avanzamento e segni sottili
   piccolo: 10, // tasti e campi
   medio: 14, // schede e riquadri
   grande: 18, // i pannelli che si aprono sopra tutto
   tondo: 999, // pastiglie
 };
+
+export const R = { ...RAGGI_BASE };
+
+// ---------------------------------------------------------------------------
+// QUANTO E' GRANDE L'INTERFACCIA.
+//
+// Tutti i corpi sono in pixel fissi e non hanno mai guardato lo schermo. Su
+// un tablet dove un pixel CSS e' un pixel VERO — densita' 1, che sui tablet
+// da 1280×800 e' la norma — quei 15px sono fisicamente la meta' di quanto
+// sarebbero su uno schermo a densita' doppia, e l'app si legge piccola
+// (segnalato dal lettore: «come mai e' piu' piccolo rispetto a prima?»).
+// Il libro una levetta ce l'aveva gia'; tutto il resto dell'app no.
+//
+// SI MOLTIPLICA LA SCALA, NON SI ZOOMA LA PAGINA. Un `zoom` sul guscio
+// prenderebbe anche le copertine e le spaziature — sarebbe piu' completo —
+// ma andrebbe a toccare `100dvh`, i pannelli in `position: fixed` e
+// soprattutto il reader, dove epub.js misura il riquadro in pixel e ci
+// costruisce le colonne, l'avanzo di riga e il ritaglio. Quella e' proprio
+// la macchina che non si puo' provare da qui, perche' il motore del lettore
+// e' Gecko e qui c'e' solo Chromium. Numeri diversi invece si comportano
+// allo stesso modo su ogni motore: e' la strada che si puo' garantire.
+// Prezzo dichiarato: cresce la scrittura, non le copertine.
+export const SCALE_UI = [
+  { id: "normale", label: "Normale", fattore: 1 },
+  { id: "grande", label: "Grande", fattore: 1.15 },
+  { id: "piuGrande", label: "Più grande", fattore: 1.3 },
+  { id: "enorme", label: "Molto grande", fattore: 1.5 },
+];
+
+export const SCALA_DEFAULT = "normale";
+
+// STA SUL DISPOSITIVO, e non nelle preferenze che viaggiano nel cloud —
+// come il volume della musica e per la stessa ragione. Questa levetta non
+// dice come vedi tu: dice quanto e' fitto QUESTO schermo. Lo stesso lettore
+// sul telefono a densita' tripla e sul tablet a densita' uno vuole due
+// valori diversi, e sincronizzarla porterebbe su un dispositivo il rimedio
+// del difetto di un altro.
+const SCALA_KEY = "bc_ui_scala";
+
+export const scalaDi = (id) => SCALE_UI.find((s) => s.id === id) || SCALE_UI[0];
+
+// Il corpo del testo a un fattore qualunque, che non e' quello in vigore:
+// serve ai tasti della levetta, dove ognuno si scrive nella misura che
+// offre. Sta qui e non nel componente perche' il valore di partenza deve
+// restare in UN posto solo — scriverci 15 a mano la' sarebbe l'inizio dello
+// sfarinamento che la scala e' venuta a fermare.
+export const corpoAlFattore = (fattore) => Math.round(SCALA_BASE.corpo * fattore);
+
+export function leggiScalaUI() {
+  try {
+    const v = localStorage.getItem(SCALA_KEY);
+    return SCALE_UI.some((s) => s.id === v) ? v : SCALA_DEFAULT;
+  } catch {
+    return SCALA_DEFAULT;
+  }
+}
+
+// Il `tondo` NON si scala: 999 non e' una misura, e' il modo di dire
+// «pastiglia» al browser. Moltiplicarlo darebbe un numero piu' grosso e
+// nessuna differenza, cioe' un valore che sembra vivo e non lo e'.
+export function applicaScalaUI(id) {
+  const s = scalaDi(id);
+  for (const k of Object.keys(SCALA_BASE)) F[k] = Math.round(SCALA_BASE[k] * s.fattore);
+  for (const k of Object.keys(RAGGI_BASE)) {
+    R[k] = k === "tondo" ? RAGGI_BASE[k] : Math.round(RAGGI_BASE[k] * s.fattore);
+  }
+  try {
+    localStorage.setItem(SCALA_KEY, s.id);
+  } catch {
+    /* storage negato: la misura vale per questa sessione, e basta */
+  }
+  return s;
+}
 
 export const SECTIONS = [
   { id: "home", label: "Ingresso" },

@@ -98,7 +98,10 @@ function Chiave({ onSalva }) {
   );
 }
 
-const riga = { color: C.muted, fontSize: F.nota, lineHeight: 1.55, margin: 0 };
+// LETTA AL RENDER, NON AL CARICAMENTO DEL MODULO: un oggetto costante
+// congela quello che legge, e questo file gira prima che il tema scelto
+// venga applicato. Come funzione segue anche la levetta della dimensione.
+const riga = () => ({ color: C.muted, fontSize: F.nota, lineHeight: 1.55, margin: 0 });
 
 // I tomi che non sono su questo dispositivo NON sono stati letti: la
 // frontiera li elenca perche' il lettore li ha finiti, ma i byte stanno
@@ -152,12 +155,12 @@ export default function SchedaOracolo({ scheda, attese, vuoto, onRiprova }) {
   const { fase, passaggi = [], tappe = [] } = scheda;
 
   if (fase !== "fatto" && fase !== "errore" && fase !== "vuoto") {
-    return <p style={riga}>{attese[fase]}</p>;
+    return <p style={riga()}>{attese[fase]}</p>;
   }
   if (fase === "vuoto") {
     return (
       <>
-        <p style={riga}>{vuoto}</p>
+        <p style={riga()}>{vuoto}</p>
         {/* «non l'ho trovato» detto senza dire che tre volumi sono rimasti
             chiusi e' una mezza verita' */}
         <Lontani libri={scheda.lontani} />
@@ -180,7 +183,7 @@ export default function SchedaOracolo({ scheda, attese, vuoto, onRiprova }) {
       <Chiave onSalva={onRiprova} />
     ) : (
       <div>
-        <p style={riga}>
+        <p style={riga()}>
           {scheda.error === "rete"
             ? "L'Oracolo ha bisogno della rete: riprova quando sei online."
             : "L'Oracolo non ha risposto. Riprova fra un momento."}

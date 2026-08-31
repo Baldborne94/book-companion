@@ -1,6 +1,19 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { registerSW } from "virtual:pwa-register";
-import { C, FONT_TITLE, SECTIONS, THEMES, DEFAULT_THEME, applyAppTheme, F, R } from "./data/constants.js";
+import {
+  C,
+  FONT_TITLE,
+  SECTIONS,
+  THEMES,
+  DEFAULT_THEME,
+  applyAppTheme,
+  SCALE_UI,
+  leggiScalaUI,
+  applicaScalaUI,
+  corpoAlFattore,
+  F,
+  R,
+} from "./data/constants.js";
 import Foliage from "./components/Foliage.jsx";
 import Scrolls from "./components/Scrolls.jsx";
 import { CandleIcon, BooksIcon, MusicIcon, LeafIcon, ScrollIcon, CloudIcon } from "./components/Icons.jsx";
@@ -344,7 +357,63 @@ function Toast({ toast, onDismiss }) {
   );
 }
 
-function ThemePicker({ current, onPick, onClose }) {
+// QUANTO E' GRANDE LA SCRITTURA, e sta qui dentro perche' e' la stessa
+// domanda del tema: com'e' fatta l'app da guardare. Un pannello a parte
+// vorrebbe dire un'altra voce nel menu, un altro livello per il tasto
+// indietro, e due posti dove cercare la stessa cosa.
+//
+// Si sceglie a tasti, come i generi e il tetto dell'Oracolo: su un tablet
+// un cursore da trascinare e' il comando piu' difficile che ci sia, e qui
+// i gradini sono quattro.
+function MisuraPicker({ current, onPick }) {
+  return (
+    <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+      <h3
+        style={{
+          fontFamily: FONT_TITLE,
+          fontSize: F.titoletto,
+          fontWeight: 600,
+          color: C.text,
+          marginBottom: 4,
+        }}
+      >
+        Quanto grande?
+      </h3>
+      <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 10, lineHeight: 1.45 }}>
+        La scrittura di tutta l'app. Vale per questo dispositivo: il testo dei libri ha la sua
+        misura, nelle impostazioni del lettore.
+      </p>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {SCALE_UI.map((s) => {
+          const attivo = s.id === current;
+          return (
+            <button
+              key={s.id}
+              onClick={() => onPick(s.id)}
+              style={{
+                // il bersaglio non scala con la levetta: 44px e' il dito,
+                // e il dito non cambia misura
+                minHeight: 44,
+                padding: "8px 14px",
+                borderRadius: R.tondo,
+                border: `1px solid ${attivo ? C.accent : C.border}`,
+                background: attivo ? `${C.accent}22` : "transparent",
+                color: attivo ? C.accent : C.muted,
+                // OGNI TASTO SI SCRIVE NELLA MISURA CHE OFFRE: e' il solo
+                // modo di scegliere guardando invece che indovinando
+                fontSize: corpoAlFattore(s.fattore),
+              }}
+            >
+              {s.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ThemePicker({ current, onPick, onClose, misura, onMisura }) {
   return (
     <div
       onClick={onClose}
@@ -419,6 +488,7 @@ function ThemePicker({ current, onPick, onClose }) {
             </button>
           );
         })}
+        <MisuraPicker current={misura} onPick={onMisura} />
         <div style={{ marginTop: 8, textAlign: "right" }}>
           <button onClick={onClose} style={{ color: C.muted, fontSize: F.nota }}>
             Chiudi
@@ -458,6 +528,22 @@ export default function App() {
   });
   const [themeOpen, setThemeOpen] = useState(false);
   const theme = THEMES[themeId];
+
+  // La misura si applica PRIMA del primo render, come il tema: `F` e `R`
+  // sono oggetti vivi, e chi legge dopo trova gia' i numeri giusti. Non
+  // serve lo script in testa a `index.html` che il colore di fondo si porta
+  // dietro — li' il body e' gia' dipinto prima che il bundle parta, qui non
+  // c'e' una sola parola sullo schermo finche' React non disegna.
+  const [misura, setMisura] = useState(() => {
+    const id = leggiScalaUI();
+    applicaScalaUI(id);
+    return id;
+  });
+
+  function pickMisura(id) {
+    applicaScalaUI(id);
+    setMisura(id);
+  }
 
   function pickTheme(id) {
     applyAppTheme(id);
@@ -862,7 +948,13 @@ export default function App() {
         />
       )}
       {themeOpen && (
-        <ThemePicker current={themeId} onPick={pickTheme} onClose={() => setThemeOpen(false)} />
+        <ThemePicker
+          current={themeId}
+          onPick={pickTheme}
+          onClose={() => setThemeOpen(false)}
+          misura={misura}
+          onMisura={pickMisura}
+        />
       )}
       {syncOpen && (
         <SyncPanel
