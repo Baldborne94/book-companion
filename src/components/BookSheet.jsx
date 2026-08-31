@@ -46,7 +46,13 @@ function fraseTace(t) {
   return `${t.quanti === 1 ? "il volume precedente letto dichiara" : `i ${t.quanti} volumi precedenti letti dichiarano`} una Serie diversa da «${t.serie}» — correggi la loro, o svuota questa per contare tutta la saga`;
 }
 
-const fieldStyle = {
+// LETTO AL RENDER, NON AL CARICAMENTO DEL MODULO. Era un oggetto costante,
+// e un oggetto costante congela i valori che legge: questo file e' importato
+// in cima ad `App.jsx`, quindi girava PRIMA che il tema scelto venisse
+// applicato — sul Rifugio Silvano e sulla Cittadella il campo restava col
+// bordo viola della notte. Adesso e' una funzione, cosi' segue anche la
+// levetta della dimensione dell'interfaccia, che muta `F` e `R` da viva.
+const fieldStyle = () => ({
   width: "100%",
   padding: "9px 12px",
   borderRadius: R.piccolo,
@@ -55,7 +61,7 @@ const fieldStyle = {
   color: C.text,
   fontSize: F.corpo,
   outline: "none",
-};
+});
 
 function Stars({ value, onChange }) {
   const half = (n) => Math.min(1, Math.max(0, value - (n - 1)));
@@ -123,7 +129,7 @@ function Field({ label, value, onChange, placeholder, options, listId }) {
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         list={listId}
-        style={fieldStyle}
+        style={fieldStyle()}
       />
       {options && (
         <datalist id={listId}>
@@ -586,7 +592,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                   onChange={(e) => setSagaOrder(e.target.value.replace(/[^\d]/g, ""))}
                   inputMode="numeric"
                   placeholder="1"
-                  style={{ ...fieldStyle, textAlign: "center" }}
+                  style={{ ...fieldStyle(), textAlign: "center" }}
                 />
               </label>
             </div>
@@ -612,7 +618,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                   onChange={(e) => setGenre(e.target.value)}
                   placeholder="es. Fantasy"
                   list="bc-genres"
-                  style={{ ...fieldStyle, flex: 1, minWidth: 0 }}
+                  style={{ ...fieldStyle(), flex: 1, minWidth: 0 }}
                 />
                 <button
                   onClick={() => setSceltaGenere((v) => !v)}
@@ -725,7 +731,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
             placeholder="Pensieri, citazioni, dove l'hai lasciato…"
-            style={{ ...fieldStyle, resize: "vertical", fontFamily: "inherit", lineHeight: 1.4 }}
+            style={{ ...fieldStyle(), resize: "vertical", fontFamily: "inherit", lineHeight: 1.4 }}
           />
         </label>
 

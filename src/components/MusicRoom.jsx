@@ -17,7 +17,13 @@ const SLEEP_CHOICES = [
   { min: 180, label: "3 ore" },
 ];
 
-const inputStyle = {
+// LETTO AL RENDER, NON AL CARICAMENTO DEL MODULO. Era un oggetto costante,
+// e un oggetto costante congela i valori che legge: questo file e' importato
+// in cima ad `App.jsx`, quindi girava PRIMA che il tema scelto venisse
+// applicato — sul Rifugio Silvano e sulla Cittadella il campo restava col
+// bordo viola della notte. Adesso e' una funzione, cosi' segue anche la
+// levetta della dimensione dell'interfaccia, che muta `F` e `R` da viva.
+const inputStyle = () => ({
   flex: 1,
   minWidth: 160,
   padding: "10px 14px",
@@ -27,7 +33,7 @@ const inputStyle = {
   color: C.text,
   fontSize: F.corpo,
   outline: "none",
-};
+});
 
 export default function MusicRoom({ music, playerRef, notify }) {
   const [link, setLink] = useState("");
@@ -195,7 +201,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
           onChange={(e) => setLink(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && playLink()}
           placeholder="Incolla un link YouTube (video o playlist)…"
-          style={inputStyle}
+          style={inputStyle()}
         />
         <button
           onClick={playLink}
@@ -267,7 +273,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
                 onChange={(e) => setFavName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && saveCurrentAsFav()}
                 placeholder="Un nome per questa melodia… («Pioggia e camino»)"
-                style={{ ...inputStyle, background: C.bg }}
+                style={{ ...inputStyle(), background: C.bg }}
               />
               <button
                 onClick={saveCurrentAsFav}
@@ -353,7 +359,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
             onChange={(e) => setNomeNuova(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && creaRaccolta()}
             placeholder="Come la chiami? («Notti d'inverno»)"
-            style={inputStyle}
+            style={inputStyle()}
           />
           <button
             onClick={creaRaccolta}
@@ -404,7 +410,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
                         if (e.key === "Escape") setRinomina(null);
                       }}
                       onBlur={commitRinominaRac}
-                      style={{ ...inputStyle, minWidth: 0, padding: "6px 10px", background: C.bg }}
+                      style={{ ...inputStyle(), minWidth: 0, padding: "6px 10px", background: C.bg }}
                     />
                   ) : (
                     <>
@@ -576,14 +582,14 @@ export default function MusicRoom({ music, playerRef, notify }) {
             onChange={(e) => setNewUrl(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addMelody()}
             placeholder="Link YouTube della melodia…"
-            style={{ ...inputStyle, flexBasis: "100%" }}
+            style={{ ...inputStyle(), flexBasis: "100%" }}
           />
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addMelody()}
             placeholder="Nome («Pioggia e camino»)"
-            style={inputStyle}
+            style={inputStyle()}
           />
           <button
             onClick={addMelody}

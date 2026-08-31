@@ -56,7 +56,13 @@ const fmtWhen = (ts) => {
 
 // Il campo, uguale per email e password: due caselle scritte a mano
 // prenderebbero strade diverse alla prima modifica.
-const campo = {
+// LETTO AL RENDER, NON AL CARICAMENTO DEL MODULO. Era un oggetto costante,
+// e un oggetto costante congela i valori che legge: questo file e' importato
+// in cima ad `App.jsx`, quindi girava PRIMA che il tema scelto venisse
+// applicato — sul Rifugio Silvano e sulla Cittadella il campo restava col
+// bordo viola della notte. Adesso e' una funzione, cosi' segue anche la
+// levetta della dimensione dell'interfaccia, che muta `F` e `R` da viva.
+const campo = () => ({
   width: "100%",
   padding: "10px 14px",
   borderRadius: R.piccolo,
@@ -65,7 +71,7 @@ const campo = {
   color: C.text,
   fontSize: F.corpo,
   outline: "none",
-};
+});
 
 export default function SyncPanel({ status, onClose, onSync, notify }) {
   const [session, setSession] = useState(undefined);
@@ -305,7 +311,7 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
                   type="password"
                   autoComplete="new-password"
                   placeholder="Nuova password"
-                  style={{ ...campo, flex: 1, minWidth: 160, width: "auto" }}
+                  style={{ ...campo(), flex: 1, minWidth: 160, width: "auto" }}
                 />
                 <button
                   onClick={salvaPassword}
@@ -369,7 +375,7 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
                 inputMode="email"
                 autoComplete="username"
                 placeholder="la-tua@email.it"
-                style={campo}
+                style={campo()}
               />
               <input
                 value={password}
@@ -377,7 +383,7 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
                 type="password"
                 autoComplete="current-password"
                 placeholder="password"
-                style={campo}
+                style={campo()}
               />
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
