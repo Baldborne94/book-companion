@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { C, FONT_TITLE, F, R } from "../data/constants.js";
+import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getProgress, getStatus, combacia, leggiVista, scriviVista } from "../lib/library.js";
 import { disponi } from "../lib/ripiani.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
@@ -982,7 +982,7 @@ export default function Library({
             </h3>
             <span style={{ flex: 1 }} />
             {dentro.cercando ? (
-              <span style={{ fontSize: F.piccolo, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 320 }}>
+              <span style={{ fontSize: F.piccolo, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: px(320) }}>
                 sfoglio «{dentro.dove || "…"}» · {dentro.fatti + 1} di {dentro.totale}
               </span>
             ) : (
@@ -1356,7 +1356,7 @@ function Referto({ esito, onChiudi, onRicuci, ricucendo }) {
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%",
-          maxWidth: 520,
+          maxWidth: px(520),
           maxHeight: "84vh",
           overflowY: "auto",
           borderRadius: R.grande,
@@ -1516,7 +1516,7 @@ function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%",
-          maxWidth: 420,
+          maxWidth: px(420),
           borderRadius: R.grande,
           border: `1px solid ${C.border}`,
           background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,

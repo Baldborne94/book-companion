@@ -1,5 +1,5 @@
 import { Component } from "react";
-import { C, FONT_TITLE, F, R } from "../data/constants.js";
+import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 
 // QUANDO SI ROMPE QUALCOSA, LO SCHERMO NON DEVE RESTARE BIANCO.
 //
@@ -68,7 +68,7 @@ export default class Guasto extends Component {
         <h2 style={{ fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.titolo, color: C.text }}>
           La candela si è spenta
         </h2>
-        <p style={{ color: C.muted, fontSize: F.corpo, lineHeight: 1.55, maxWidth: 460 }}>
+        <p style={{ color: C.muted, fontSize: F.corpo, lineHeight: 1.55, maxWidth: px(460) }}>
           {this.props.dentroIlLibro
             ? "Qualcosa si è rotto mentre leggevi. Il punto in cui eri è salvato: torna in biblioteca e riapri il tomo."
             : "Qualcosa si è rotto. "}

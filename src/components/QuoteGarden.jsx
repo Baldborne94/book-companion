@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { C, TEMA, FONT_TITLE, F, R } from "../data/constants.js";
+import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getHighlights, saveHighlights, getMarks } from "../lib/annotations.js";
 import { raccogli, filtra, conta, testoCitazione, esporta } from "../lib/citazioni.js";
 
@@ -131,7 +131,7 @@ export default function QuoteGarden({ books, onClose, onReadAt }) {
         )}
       </div>
 
-      <div style={{ maxWidth: 720, margin: "0 auto", padding: "18px 16px 48px" }}>
+      <div style={{ maxWidth: px(720), margin: "0 auto", padding: "18px 16px 48px" }}>
         {groups.length === 0 ? (
           <div style={{ textAlign: "center", padding: "56px 24px" }}>
             <div style={{ fontSize: 60, marginBottom: 14, filter: `drop-shadow(0 0 22px ${C.arcane}66)` }}>
@@ -140,7 +140,7 @@ export default function QuoteGarden({ books, onClose, onReadAt }) {
             <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text, marginBottom: 8 }}>
               {cercando ? "Niente che somigli a questo" : "Il giardino attende i primi semi…"}
             </h3>
-            <p style={{ color: C.muted, maxWidth: 420, margin: "0 auto" }}>
+            <p style={{ color: C.muted, maxWidth: px(420), margin: "0 auto" }}>
               {cercando
                 ? "La ricerca guarda il testo delle citazioni, le tue note e le etichette dei segnalibri."
                 : "Mentre leggi, seleziona un passaggio che ti incanta e scegli un colore: la citazione fiorirà qui, insieme a tutte le altre, di ogni libro."}

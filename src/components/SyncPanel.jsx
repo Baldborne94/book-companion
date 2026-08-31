@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { C, FONT_TITLE, F, R } from "../data/constants.js";
+import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { isSyncConfigured } from "../lib/supabase.js";
 import {
   getSession,
@@ -222,7 +222,7 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%",
-          maxWidth: 460,
+          maxWidth: px(460),
           // IL PANNELLO DEVE STARE DENTRO LO SCHERMO, SEMPRE. A due volte
           // la scala questa scheda arriva a 1084px in un'area alta 730 e
           // sbordava sopra E sotto: i tasti per tornare a una misura più

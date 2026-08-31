@@ -492,7 +492,7 @@ function ThemePicker({ current, onPick, onClose, misura, onMisura, consigliata }
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%",
-          maxWidth: 440,
+          maxWidth: px(440),
           // IL PANNELLO DEVE STARE DENTRO LO SCHERMO, SEMPRE. A due volte
           // la scala questa scheda arriva a 1084px in un'area alta 730 e
           // sbordava sopra E sotto: i tasti per tornare a una misura più
@@ -967,7 +967,7 @@ export default function App() {
           zIndex: 2,
           flex: 1,
           width: "100%",
-          maxWidth: 960,
+          maxWidth: px(960),
           margin: "0 auto",
           padding: "8px 16px 26px",
           animation: "bc-fade-in 0.35s ease-out",

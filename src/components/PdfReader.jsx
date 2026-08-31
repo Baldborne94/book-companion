@@ -970,7 +970,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                   onClick={() => { handleClose(); onMusicRoom?.(); }}
                   title={`${music.current.name || "Musica di sottofondo"} — vai alla sala della musica`}
                   style={{
-                    maxWidth: 150,
+                    maxWidth: px(150),
                     padding: "0 8px",
                     height: 40,
                     borderRadius: R.piccolo,

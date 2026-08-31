@@ -1,4 +1,4 @@
-import { C, FONT_TITLE, F, R } from "../data/constants.js";
+import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 
 export default function EmptyState({ emoji, title, text, action, onAction }) {
   return (
@@ -29,7 +29,7 @@ export default function EmptyState({ emoji, title, text, action, onAction }) {
       >
         {title}
       </h2>
-      <p style={{ color: C.muted, maxWidth: 420, margin: "0 auto 24px" }}>{text}</p>
+      <p style={{ color: C.muted, maxWidth: px(420), margin: "0 auto 24px" }}>{text}</p>
       {action && (
         <button
           onClick={onAction}
