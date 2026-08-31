@@ -23,12 +23,21 @@
 
 // Un nome, non una frase: la scheda ha senso su «Logen Novedita», non su
 // mezzo paragrafo.
+//
+// LA MAIUSCOLA SI CHIEDE A UNICODE, non a un intervallo di caratteri. Qui
+// c'era `[A-ZÀ-Þ]`, mentre tutto il resto del file — `utile`, `PAROLA`,
+// `FILA` — usa gia' `\p{Lu}`: due modi di dire «maiuscola» nello stesso file,
+// e quello stretto stava proprio sul cancello. Misurato: «Łukasz», «Šárka»,
+// «Żeleński», «Ольга», «Δημήτρης» non offrivano la scheda affatto, IN
+// SILENZIO — nessun errore, il tasto semplicemente non compariva — mentre
+// `utile()` due righe sotto li avrebbe accettati senza storie. E l'intervallo
+// prendeva per una lettera anche «×», che sta fra Ö e Ø.
 export function sembraUnNome(s) {
   const t = String(s || "").trim();
   if (!t || t.length > 42) return false;
   const parole = t.split(/\s+/);
   if (parole.length > 4) return false;
-  return parole.some((p) => /^[A-ZÀ-Þ]/.test(p));
+  return parole.some((p) => /^\p{Lu}/u.test(p));
 }
 
 // Articoli, particelle e titoli: da soli acchiapperebbero mezzo libro, e come
