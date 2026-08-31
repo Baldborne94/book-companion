@@ -188,7 +188,81 @@ export const SCALE_UI = [
   { id: "massima", label: "Massima", fattore: 2 },
 ];
 
+// Il gradino di ripiego: quello che si usa quando non c'e' niente da
+// adattare, o quando il browser non sa dire niente del suo schermo.
 export const SCALA_DEFAULT = "normale";
+
+// ---------------------------------------------------------------------------
+// LA MISURA SCELTA DALLO SCHERMO.
+//
+// Chiesto dal lettore: «non riesci a farlo adattare in automatico?». Si puo',
+// ma va detto fino a dove arriva, perche' la domanda a cui servirebbe
+// rispondere — «quanto e' GRANDE questo testo in millimetri?» — il browser
+// non la sa. Le unita' fisiche del CSS non aiutano: `in` e `mm` sono definiti
+// per specifica come 96px per pollice, cioe' sono px travestiti. Nessuna API
+// dice i pollici dello schermo.
+//
+// L'UNICO SEGNALE ONESTO E' LA COMPENSAZIONE DEL COSTRUTTORE. Il rapporto fra
+// pixel del dispositivo e pixel CSS (`devicePixelRatio`) esiste apposta per
+// tenere il px CSS a una misura fisica piu' o meno costante: su un pannello
+// fitto il costruttore dichiara 2 o 3, e il testo torna della misura giusta.
+// I tablet economici saltano quel passo — dichiarano 1 su un pannello da 150
+// punti per pollice — ed e' esattamente li' che il px CSS viene fuori piccolo
+// e l'app si legge in miniatura. Quindi:
+//
+//   · dispositivo non a dito (un computer): non si tocca niente. Una finestra
+//     larga non dice niente della densita', e da un metro di distanza la
+//     misura di partenza va bene.
+//   · `dpr` da 1,5 in su: il costruttore ha gia' fatto il suo lavoro, e
+//     rifarlo noi raddoppierebbe la correzione. Fuori i tablet grandi ben
+//     tarati, che sul lato lungo di px CSS ne hanno tanti ma fitti.
+//   · `dpr` 1 a dito: la compensazione non c'e', e quanto manca si legge da
+//     quanti px CSS stanno sul lato lungo.
+//
+// IL LATO LUNGO E' QUELLO DELLO SCHERMO, NON DELLA FINESTRA: ruotando il
+// tablet la densita' non cambia di un capello, e misurare la finestra
+// rimpicciolirebbe il testo in verticale senza nessuna ragione fisica.
+//
+// 1024 e' il riferimento perche' e' il lato lungo del tablet tarato bene di
+// sempre: li' la scala a grandezza naturale si legge come e' stata disegnata.
+const LATO_RIFERIMENTO = 1024;
+const DPR_COMPENSATO = 1.5;
+
+export const AUTO = "auto";
+
+// Pura, e con tutto quel che le serve passato da fuori: cosi' un test la
+// interroga su un tablet che non c'e', che e' l'unico modo di provare una
+// regola che parla di dispositivi diversi da quello su cui gira.
+export function misuraConsigliata({ lato, dpr = 1, dito = true } = {}) {
+  const l = Number(lato);
+  if (!dito || !Number.isFinite(l) || l <= 0) return SCALA_DEFAULT;
+  if (Number(dpr) >= DPR_COMPENSATO) return SCALA_DEFAULT;
+  const ideale = l / LATO_RIFERIMENTO;
+  // Il gradino piu' vicino. Sotto la grandezza naturale non si scende mai, e
+  // NON c'e' una guardia che lo impedisca: e' una proprieta' della scala, che
+  // parte da 1. Ce n'era una, ed era codice morto travestito da guardia — un
+  // test l'ha presa, perche' rompendola non falliva niente. Chi un giorno
+  // aggiungesse un gradino sotto 1 (un «Piccola») la deve rimettere qui,
+  // insieme al controllo che la prova: un'app che si rimpicciolisce da sola
+  // senza che nessuno gliel'abbia chiesto e' un difetto, non un adattamento.
+  let scelto = SCALE_UI[0];
+  for (const s of SCALE_UI) {
+    if (Math.abs(s.fattore - ideale) < Math.abs(scelto.fattore - ideale)) scelto = s;
+  }
+  return scelto.id;
+}
+
+// Quel che il browser sa dire di questo schermo, raccolto in un punto solo.
+export function datiSchermo() {
+  if (typeof window === "undefined") return {};
+  const s = window.screen || {};
+  return {
+    lato: Math.max(s.width || 0, s.height || 0),
+    dpr: window.devicePixelRatio || 1,
+    // «a dito»: un computer non si tocca, e li' non si scala niente
+    dito: window.matchMedia?.("(pointer: coarse)")?.matches ?? false,
+  };
+}
 
 // STA SUL DISPOSITIVO, e non nelle preferenze che viaggiano nel cloud —
 // come il volume della musica e per la stessa ragione. Questa levetta non
@@ -207,13 +281,41 @@ export const scalaDi = (id) => SCALE_UI.find((s) => s.id === id) || SCALE_UI[0];
 // sfarinamento che la scala e' venuta a fermare.
 export const corpoAlFattore = (fattore) => Math.round(SCALA_BASE.corpo * fattore);
 
+// LA SCELTA E IL GRADINO SONO DUE COSE DIVERSE, e tenerle separate e' tutto.
+// «Automatica» e' una scelta che non ha un fattore suo: si risolve in un
+// gradino ogni volta che serve. Scrivendo nello storage il gradino RISOLTO
+// invece della scelta, «Automatica» durerebbe fino al primo riavvio e poi
+// resterebbe congelata sul numero di allora — cioe' smetterebbe di essere
+// automatica proprio quando cambi dispositivo, che e' l'unico momento in cui
+// serviva a qualcosa.
+// E CHI NON HA MAI SCELTO PARTE DA «AUTOMATICA», che e' la richiesta presa
+// alla lettera: «non riesci a farlo adattare in automatico?». Lasciarla come
+// un'opzione da andare a scovare nel pannello dell'aspetto vorrebbe dire che
+// il tablet dove serve continua a mostrare l'app in miniatura finche' non la
+// si trova — cioe' esattamente il difetto di partenza. Chi un gradino l'ha
+// scelto a mano se lo tiene: la sua scelta e' scritta, e non si tocca.
+export const SCELTA_DEFAULT = AUTO;
+
 export function leggiScalaUI() {
   try {
     const v = localStorage.getItem(SCALA_KEY);
-    return SCALE_UI.some((s) => s.id === v) ? v : SCALA_DEFAULT;
+    if (v === AUTO) return AUTO;
+    if (v === null) return SCELTA_DEFAULT;
+    return SCALE_UI.some((s) => s.id === v) ? v : SCELTA_DEFAULT;
   } catch {
-    return SCALA_DEFAULT;
+    // storage negato: non si sa cosa avesse scelto, e lo schermo lo si puo'
+    // ancora guardare
+    return SCELTA_DEFAULT;
   }
+}
+
+// Da scelta a gradino vero. Fuori da `applicaScalaUI` perche' la scheda deve
+// poter dire QUALE misura ha scelto lo schermo senza applicare niente: un
+// automatismo che non dice cosa ha deciso e' un automatismo su cui non si
+// puo' essere d'accordo.
+export function risolviScala(scelta, dati) {
+  if (scelta !== AUTO) return scalaDi(scelta).id;
+  return misuraConsigliata(dati || datiSchermo());
 }
 
 // LA SCALA VALE ANCHE PER QUEL CHE NON E' UN CORPO. Con i soli `F` e `R`,
@@ -233,15 +335,16 @@ export const fattoreCorrente = () => fattoreVivo;
 // Il `tondo` NON si scala: 999 non e' una misura, e' il modo di dire
 // «pastiglia» al browser. Moltiplicarlo darebbe un numero piu' grosso e
 // nessuna differenza, cioe' un valore che sembra vivo e non lo e'.
-export function applicaScalaUI(id) {
-  const s = scalaDi(id);
+export function applicaScalaUI(scelta, dati) {
+  const s = scalaDi(risolviScala(scelta, dati));
   fattoreVivo = s.fattore;
   for (const k of Object.keys(SCALA_BASE)) F[k] = Math.round(SCALA_BASE[k] * s.fattore);
   for (const k of Object.keys(RAGGI_BASE)) {
     R[k] = k === "tondo" ? RAGGI_BASE[k] : Math.round(RAGGI_BASE[k] * s.fattore);
   }
   try {
-    localStorage.setItem(SCALA_KEY, s.id);
+    // si scrive la SCELTA, non il gradino risolto: vedi `leggiScalaUI`
+    localStorage.setItem(SCALA_KEY, scelta === AUTO ? AUTO : s.id);
   } catch {
     /* storage negato: la misura vale per questa sessione, e basta */
   }
