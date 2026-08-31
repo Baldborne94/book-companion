@@ -11,7 +11,11 @@ import {
 } from "./annotations.js";
 import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, getListsRaw, writeLists } from "./music.js";
 import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
-import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, percheMelodia, fondiAnnotazioni } from "./syncCore.js";
+import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, percheMelodia, fondiAnnotazioni, upsertBooks, contaSpazio } from "./syncCore.js";
+
+// `contaSpazio` viveva qui ed e' passata in `syncCore` con le altre
+// decisioni pure; si riesporta perche' chi la cercava la trovi dov'era.
+export { contaSpazio };
 
 const LAST_SYNC_KEY = "bc_lastsync";
 const REPUSH_KEY = "bc_repush";
@@ -130,49 +134,6 @@ export async function signOut() {
 
 // Schema non ancora migrato: invece di rompere tutta la sincronizzazione,
 // si rinuncia al singolo campo e si salva il resto.
-const DEGRADE = [
-  {
-    test: (m) => /started_at|finished_at/i.test(m),
-    label: "diario di lettura",
-    apply: (rows) => rows.map(({ started_at, finished_at, ...r }) => r),
-  },
-  {
-    test: (m) => /genre|saga/i.test(m),
-    label: "genere e saga",
-    apply: (rows) => rows.map(({ genre, saga, saga_order, ...r }) => r),
-  },
-  {
-    test: (m) => /impronta/i.test(m),
-    label: "impronta dei doppioni",
-    apply: (rows) => rows.map(({ impronta, ...r }) => r),
-  },
-  {
-    test: (m) => /'fav'/i.test(m),
-    label: "cuore dei preferiti",
-    apply: (rows) => rows.map(({ fav, ...r }) => r),
-  },
-  {
-    test: (m) => /rating/i.test(m) || /invalid input syntax for type integer/i.test(m),
-    label: "mezze stelle",
-    apply: (rows) => rows.map((r) => ({ ...r, rating: Math.round(r.rating || 0) })),
-  },
-];
-
-async function upsertBooks(sb, rows) {
-  let payload = rows;
-  const dropped = [];
-  for (let i = 0; i <= DEGRADE.length; i++) {
-    const { error } = await sb.from("books").upsert(payload);
-    if (!error) return dropped;
-    const msg = `${error.message || ""} ${error.details || ""}`;
-    const step = DEGRADE.find((d) => !dropped.includes(d.label) && d.test(msg));
-    if (!step) throw error;
-    payload = step.apply(payload);
-    dropped.push(step.label);
-  }
-  return dropped;
-}
-
 function readLocalState(id) {
   return {
     status: getStatus(id),
@@ -302,7 +263,7 @@ export async function syncNow({ onProgress } = {}) {
   if (toPush.length) {
     say(`Invio ${toPush.length} ${toPush.length === 1 ? "libro" : "libri"}…`);
     const rows = toPush.map((r) => ({ ...normalizeRow(r), user_id: uid }));
-    const missing = await upsertBooks(sb, rows);
+    const missing = await upsertBooks((p) => sb.from("books").upsert(p), rows);
     degraded = missing.length > 0;
     if (degraded) say(`Sincronizzato (${missing.join(", ")}: aggiorna lo schema)`);
     const deletedIds = push.filter((r) => r.deleted).map((r) => r.id);
@@ -453,7 +414,7 @@ export async function syncNow({ onProgress } = {}) {
             ...normalizeRow(rowFromLocal(b, readLocalState(b.id), getUpdatedAt(b.id, b.addedAt || 1))),
             user_id: uid,
           }));
-        if (rows.length) await upsertBooks(sb, rows);
+        if (rows.length) await upsertBooks((p) => sb.from("books").upsert(p), rows);
       } catch {
         /* la prossima sincronizzazione riprova: qui non si e' perso niente */
       }
@@ -647,26 +608,6 @@ async function elenca(sb, cartella) {
     if (data.length < 100) break;
   }
   return dentro;
-}
-
-// la parte che sa contare, separata da quella che sa chiedere: cosi' si puo'
-// provare senza un secchio vero sotto
-export function contaSpazio(radiceGrezza, braniGrezzi) {
-  // Le cartelle compaiono nell'elenco senza metadati. Lo scarto si fa QUI e
-  // non solo in chi chiede: una cartella contata come libro non si vede —
-  // pesa zero — ma fa dire «4 libri» dove ce ne sono tre.
-  const file = (lista) => (lista || []).filter((o) => o?.metadata);
-  const radice = file(radiceGrezza);
-  const brani = file(braniGrezzi);
-  const peso = (lista) => lista.reduce((s, o) => s + (o.metadata?.size || 0), 0);
-  const copertine = radice.filter((o) => o.name.endsWith(".cover"));
-  const libri = radice.filter((o) => !o.name.endsWith(".cover"));
-  return {
-    libri: { quanti: libri.length, byte: peso(libri) },
-    copertine: { quanti: copertine.length, byte: peso(copertine) },
-    melodie: { quanti: brani.length, byte: peso(brani) },
-    totale: peso(radice) + peso(brani),
-  };
 }
 
 export async function cloudUsage() {
