@@ -223,6 +223,13 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
         style={{
           width: "100%",
           maxWidth: 460,
+          // IL PANNELLO DEVE STARE DENTRO LO SCHERMO, SEMPRE. A due volte
+          // la scala questa scheda arriva a 1084px in un'area alta 730 e
+          // sbordava sopra E sotto: i tasti per tornare a una misura più
+          // piccola finivano fuori, cioè scegliere «Massima» era una porta
+          // che si chiudeva alle spalle. Misurato, non temuto.
+          maxHeight: "100%",
+          overflowY: "auto",
           borderRadius: R.grande,
           border: `1px solid ${C.border}`,
           background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,

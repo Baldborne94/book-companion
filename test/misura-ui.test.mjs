@@ -25,8 +25,9 @@ for (const [nome, fn] of Object.entries({
 }
 globalThis.localStorage = memoria;
 
-const { F, R, SCALE_UI, SCALA_DEFAULT, scalaDi, leggiScalaUI, applicaScalaUI, corpoAlFattore } =
-  await import("../src/data/constants.js");
+const {
+  F, R, SCALE_UI, SCALA_DEFAULT, scalaDi, leggiScalaUI, applicaScalaUI, corpoAlFattore, px,
+} = await import("../src/data/constants.js");
 
 // i valori a grandezza naturale, presi PRIMA di toccare qualunque cosa:
 // sono il metro contro cui si misura tutto il resto
@@ -126,6 +127,43 @@ export default async function (t) {
     new Set(aNormale).size === SCALE_UI.length,
     aNormale.join(" ")
   );
+
+  // ---- `px`: le misure che non sono corpi ------------------------------
+  //
+  // È l'ESATTO CONTRARIO di `corpoAlFattore`: quella deve ignorare la misura
+  // in vigore (è l'anteprima di un altro gradino), questa deve seguirla. Se
+  // `px` leggesse la base, la barra in basso resterebbe alta 40 mentre la
+  // sua scritta arriva a 26px, coi glifi fermi a 20 — cioè esattamente il
+  // difetto fotografato a due volte la scala.
+  applicaScalaUI("normale");
+  t.eq("a grandezza naturale `px` non tocca niente", px(40), 40);
+  t.eq("nemmeno i numeri dispari", px(27), 27);
+  applicaScalaUI("massima");
+  t.eq("al massimo la barra raddoppia", px(40), 80);
+  // L'INTERO SI CONTROLLA DOVE IL CONTO NON TORNA GIÀ DA SÉ. A due volte
+  // ogni misura è intera per conto suo, e il controllo passerebbe anche
+  // senza arrotondare — cioè non proverebbe niente (mutazione provata: a
+  // «massima» sopravviveva). 27 × 1,75 fa 47,25, e lì si vede.
+  applicaScalaUI("gigante");
+  t.c("e torna sempre un intero, anche dove il conto non torna", Number.isInteger(px(27)), String(px(27)));
+  applicaScalaUI("grande");
+  t.eq("e a ogni gradino segue il fattore", px(40), Math.round(40 * scalaDi("grande").fattore));
+
+  // il glifo della barra non deve mai restare indietro rispetto alla scritta
+  // che gli sta accanto: e' quello il sintomo che si vede in fotografia
+  for (const s of SCALE_UI) {
+    applicaScalaUI(s.id);
+    t.c(
+      `«${s.label}»: la scatola del glifo resta più alta della scritta accanto`,
+      px(27) >= F.piccolo,
+      `scatola ${px(27)} contro scritta ${F.piccolo}`
+    );
+    t.c(
+      `«${s.label}»: e la barra contiene la sua scatola`,
+      px(40) > px(27),
+      `barra ${px(40)} contro scatola ${px(27)}`
+    );
+  }
 
   // ---- quel che si legge dallo storage ---------------------------------
   localStorage.removeItem("bc_ui_scala");

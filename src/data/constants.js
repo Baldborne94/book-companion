@@ -179,6 +179,13 @@ export const SCALE_UI = [
   { id: "grande", label: "Grande", fattore: 1.15 },
   { id: "piuGrande", label: "Più grande", fattore: 1.3 },
   { id: "enorme", label: "Molto grande", fattore: 1.5 },
+  // I DUE DI SOPRA SONO ARRIVATI DOPO, chiesti dal lettore («permettimi di
+  // ingrandire di piu'»): sul suo tablet a densita' 1 nemmeno una volta e
+  // mezzo bastava. Gli id e i fattori dei quattro di prima NON si toccano —
+  // cambiare il significato di `enorme` sposterebbe sotto i piedi la misura
+  // gia' scelta da chi l'aveva messa, senza che nessuno gliel'abbia chiesto.
+  { id: "gigante", label: "Enorme", fattore: 1.75 },
+  { id: "massima", label: "Massima", fattore: 2 },
 ];
 
 export const SCALA_DEFAULT = "normale";
@@ -209,11 +216,26 @@ export function leggiScalaUI() {
   }
 }
 
+// LA SCALA VALE ANCHE PER QUEL CHE NON E' UN CORPO. Con i soli `F` e `R`,
+// a due volte la scritta della barra in basso diventava 30px dentro una
+// barra alta 40, accanto a glifi rimasti di 20: testo gigante, icone
+// minuscole, e la barra che non cresceva — misurato a 2× e visto in
+// fotografia. Le poche altezze che devono seguire la scrittura passano di
+// qui, e restano numeri scritti UNA volta nel loro componente invece di
+// diventare otto voci nuove in una scala che e' fatta di corpi.
+//
+// `px` legge il fattore VIVO, aggiornato da `applicaScalaUI`: chiamarla al
+// render e' l'unico modo di seguire la levetta, come per `F` e `R`.
+let fattoreVivo = 1;
+export const px = (n) => Math.round(n * fattoreVivo);
+export const fattoreCorrente = () => fattoreVivo;
+
 // Il `tondo` NON si scala: 999 non e' una misura, e' il modo di dire
 // «pastiglia» al browser. Moltiplicarlo darebbe un numero piu' grosso e
 // nessuna differenza, cioe' un valore che sembra vivo e non lo e'.
 export function applicaScalaUI(id) {
   const s = scalaDi(id);
+  fattoreVivo = s.fattore;
   for (const k of Object.keys(SCALA_BASE)) F[k] = Math.round(SCALA_BASE[k] * s.fattore);
   for (const k of Object.keys(RAGGI_BASE)) {
     R[k] = k === "tondo" ? RAGGI_BASE[k] : Math.round(RAGGI_BASE[k] * s.fattore);

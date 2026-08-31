@@ -11,6 +11,7 @@ import {
   leggiScalaUI,
   applicaScalaUI,
   corpoAlFattore,
+  px,
   F,
   R,
 } from "./data/constants.js";
@@ -123,7 +124,7 @@ function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
           filter: `drop-shadow(0 0 10px ${C.accent}66)`,
         }}
       >
-        <I size={26} active />
+        <I size={px(26)} active />
       </span>
       <span style={{ flex: 1, minWidth: 0, fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
         Book Companion
@@ -135,7 +136,7 @@ function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
         onClick={onTheme}
         aria-label="Aspetto: tema e dimensione"
         style={{
-          height: 40,
+          height: px(40),
           padding: "0 12px",
           borderRadius: R.tondo,
           border: `1px solid ${C.border}`,
@@ -147,15 +148,15 @@ function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
           fontSize: F.piccolo,
         }}
       >
-        <I size={19} />
+        <I size={px(19)} />
         Aspetto
       </button>
       <button
         onClick={onSync}
         aria-label="Sincronizzazione"
         style={{
-          width: 40,
-          height: 40,
+          width: px(40),
+          height: px(40),
           borderRadius: R.piccolo,
           display: "flex",
           alignItems: "center",
@@ -165,7 +166,7 @@ function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
           animation: syncing ? "bc-flicker 1.6s ease-in-out infinite" : "none",
         }}
       >
-        <CloudIcon size={21} active={signedIn} />
+        <CloudIcon size={px(21)} active={signedIn} />
       </button>
     </header>
   );
@@ -194,7 +195,7 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
           position: "absolute",
           top: 16,
           left: 14,
-          height: 42,
+          height: px(42),
           padding: "0 13px",
           borderRadius: R.tondo,
           border: `1px solid ${C.border}`,
@@ -207,7 +208,7 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
       >
         {(() => {
           const I = themeIcon(theme.id);
-          return <I size={20} />;
+          return <I size={px(20)} />;
         })()}
         Aspetto
       </button>
@@ -218,8 +219,8 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
           position: "absolute",
           top: 16,
           right: 14,
-          width: 42,
-          height: 42,
+          width: px(42),
+          height: px(42),
           borderRadius: R.piccolo,
           display: "flex",
           alignItems: "center",
@@ -229,13 +230,17 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
           animation: syncing ? "bc-flicker 1.6s ease-in-out infinite" : "none",
         }}
       >
-        <CloudIcon size={22} active={signedIn} />
+        <CloudIcon size={px(22)} active={signedIn} />
       </button>
       <h1
         style={{
           fontFamily: FONT_TITLE,
           fontWeight: 700,
-          fontSize: 30,
+          // TESTO, non illustrazione. Sopra i 28px la scala lascia
+          // passare i numeri a mano perche' li' ci sono le emoji grosse
+          // delle schermate vuote — ma questo e' il titolo dell'app, e
+          // restava fermo mentre tutto il resto raddoppiava.
+          fontSize: px(30),
           letterSpacing: "0.04em",
           color: C.text,
           textShadow: `0 0 18px ${C.accent}55, 0 0 42px ${C.accent}22`,
@@ -253,7 +258,7 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
         >
           {(() => {
             const I = themeIcon(theme.id);
-            return <I size={26} active />;
+            return <I size={px(26)} active />;
           })()}
         </span>
         Book Companion
@@ -281,7 +286,11 @@ function BottomNav({ section, goTo, themeId }) {
         display: "flex",
         justifyContent: "space-around",
         alignItems: "stretch",
-        height: 40,
+        // LA BARRA CRESCE CON LA SUA SCRITTA. Ferma a 40 con la levetta al
+        // massimo, la scritta da 26px ci stava dentro per il rotto della
+        // cuffia e i glifi restavano quelli di prima: testo gigante e icone
+        // minuscole in una barra che non si muoveva.
+        height: px(40),
         flexShrink: 0,
         boxSizing: "content-box",
         background: `${C.surface}f2`,
@@ -304,7 +313,7 @@ function BottomNav({ section, goTo, themeId }) {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: 7,
+              gap: px(7),
               color: active ? C.accent : C.muted,
               transition: "color 0.2s ease-out",
             }}
@@ -314,8 +323,8 @@ function BottomNav({ section, goTo, themeId }) {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                width: 32,
-                height: 27,
+                width: px(32),
+                height: px(27),
                 borderRadius: R.piccolo,
                 background: active ? `${C.accent}1c` : "transparent",
                 filter: active ? `drop-shadow(0 0 7px ${C.accent}66)` : "none",
@@ -324,7 +333,7 @@ function BottomNav({ section, goTo, themeId }) {
             >
               {(() => {
                 const I = navIcon(s.id, themeId);
-                return <I size={20} active={active} />;
+                return <I size={px(20)} active={active} />;
               })()}
             </span>
             <span style={{ fontSize: F.piccolo, fontWeight: active ? 600 : 400 }}>{s.label}</span>
@@ -341,7 +350,8 @@ function Toast({ toast, onDismiss }) {
     <div
       style={{
         position: "fixed",
-        bottom: 86,
+        // sta sopra la barra in basso, che adesso cresce con la levetta
+        bottom: px(86),
         left: "50%",
         transform: "translateX(-50%)",
         zIndex: 60,
@@ -459,6 +469,13 @@ function ThemePicker({ current, onPick, onClose, misura, onMisura }) {
         style={{
           width: "100%",
           maxWidth: 440,
+          // IL PANNELLO DEVE STARE DENTRO LO SCHERMO, SEMPRE. A due volte
+          // la scala questa scheda arriva a 1084px in un'area alta 730 e
+          // sbordava sopra E sotto: i tasti per tornare a una misura più
+          // piccola finivano fuori, cioè scegliere «Massima» era una porta
+          // che si chiudeva alle spalle. Misurato, non temuto.
+          maxHeight: "100%",
+          overflowY: "auto",
           borderRadius: R.grande,
           border: `1px solid ${C.border}`,
           background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
@@ -505,7 +522,7 @@ function ThemePicker({ current, onPick, onClose, misura, onMisura }) {
               <span style={{ color: t.colors.accent, flexShrink: 0 }}>
                 {(() => {
                   const I = themeIcon(t.id);
-                  return <I size={26} active={active} />;
+                  return <I size={px(26)} active={active} />;
                 })()}
               </span>
               <span style={{ flex: 1 }}>
