@@ -114,6 +114,90 @@ export function senzaColonna(riga, nome) {
   return resto;
 }
 
+// LA SCALA DI RINUNCIA DEI LIBRI, sorella di `colonnaMancante`.
+//
+// `senzaColonna` cura le preferenze una colonna alla volta, leggendo il nome
+// dall'errore. Per i libri non basta: certe rinunce ne toccano PIU' D'UNA
+// insieme (genere e saga stanno o non stanno), e una — le mezze stelle — non
+// e' una colonna che manca ma un tipo che non regge i decimali, quindi non
+// si toglie niente, si arrotonda. Da qui una scala scritta a mano.
+//
+// Sta QUI e non in `sync.js` perche' e' la stessa materia di `colonnaMancante`
+// e `senzaColonna`, che stanno gia' qui: come loro non tocca la rete, decide
+// soltanto. E come loro si puo' provare.
+export const DEGRADE = [
+  {
+    test: (m) => /started_at|finished_at/i.test(m),
+    label: "diario di lettura",
+    apply: (rows) => rows.map(({ started_at, finished_at, ...r }) => r),
+  },
+  {
+    test: (m) => /genre|saga/i.test(m),
+    label: "genere e saga",
+    apply: (rows) => rows.map(({ genre, saga, saga_order, ...r }) => r),
+  },
+  {
+    test: (m) => /impronta/i.test(m),
+    label: "impronta dei doppioni",
+    apply: (rows) => rows.map(({ impronta, ...r }) => r),
+  },
+  {
+    test: (m) => /'fav'/i.test(m),
+    label: "cuore dei preferiti",
+    apply: (rows) => rows.map(({ fav, ...r }) => r),
+  },
+  {
+    test: (m) => /rating/i.test(m) || /invalid input syntax for type integer/i.test(m),
+    label: "mezze stelle",
+    apply: (rows) => rows.map((r) => ({ ...r, rating: Math.round(r.rating || 0) })),
+  },
+];
+
+// `manda` arriva da fuori — di norma `(p) => sb.from("books").upsert(p)` — per
+// la ragione di sempre: cosi' un test la chiama con un finto invece di
+// tirarsi dietro un database. Torna l'elenco di quel che si e' dovuto
+// lasciare per strada, che il pannello mostra al lettore: una rinuncia
+// taciuta e' un pezzo di biblioteca che non sale e nessuno lo sa.
+export async function upsertBooks(manda, rows) {
+  let payload = rows;
+  const dropped = [];
+  // UN GIRO IN PIU' DEI GRADINI: l'ultimo tentativo e' quello DOPO aver
+  // sceso l'ultimo scalino, o l'ultima rinuncia si applicherebbe senza mai
+  // essere provata.
+  for (let i = 0; i <= DEGRADE.length; i++) {
+    const { error } = await manda(payload);
+    if (!error) return dropped;
+    const msg = `${error.message || ""} ${error.details || ""}`;
+    const step = DEGRADE.find((d) => !dropped.includes(d.label) && d.test(msg));
+    // un errore che non e' una colonna mancante non si cura scendendo: e'
+    // un guasto vero, e va detto invece di girare a vuoto
+    if (!step) throw error;
+    payload = step.apply(payload);
+    dropped.push(step.label);
+  }
+  return dropped;
+}
+
+// LA PARTE CHE SA CONTARE, separata da quella che sa chiedere: cosi' si puo'
+// provare senza un secchio vero sotto.
+export function contaSpazio(radiceGrezza, braniGrezzi) {
+  // Le cartelle compaiono nell'elenco senza metadati. Lo scarto si fa QUI e
+  // non solo in chi chiede: una cartella contata come libro non si vede —
+  // pesa zero — ma fa dire «4 libri» dove ce ne sono tre.
+  const file = (lista) => (lista || []).filter((o) => o?.metadata);
+  const radice = file(radiceGrezza);
+  const brani = file(braniGrezzi);
+  const peso = (lista) => lista.reduce((s, o) => s + (o.metadata?.size || 0), 0);
+  const copertine = radice.filter((o) => o.name.endsWith(".cover"));
+  const libri = radice.filter((o) => !o.name.endsWith(".cover"));
+  return {
+    libri: { quanti: libri.length, byte: peso(libri) },
+    copertine: { quanti: copertine.length, byte: peso(copertine) },
+    melodie: { quanti: brani.length, byte: peso(brani) },
+    totale: peso(radice) + peso(brani),
+  };
+}
+
 // IL PERCHE' DI UNA MELODIA CHE NON SALE. L'errore del server veniva
 // buttato via e al lettore si diceva «forse lo spazio e' finito» — un
 // indovinello, e sbagliato: il pannello mostrava 102 MB su 1 GB. Le
