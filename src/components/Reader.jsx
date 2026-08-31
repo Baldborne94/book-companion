@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { C, FONT_TITLE, F, R } from "../data/constants.js";
+import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getAux, putAux, getFile } from "../lib/bookStore.js";
 import { ensureLocalFile } from "../lib/sync.js";
 import {
@@ -138,9 +138,15 @@ function termAt(doc, x, y, ix) {
 
 
 
+// Il riquadro segue la scritta che ci sta dentro: con `F.titoletto` a due
+// volte la scala il glifo e' 38px in una scatola da 40, cioe' un tasto
+// scritto male proprio nella barra dove si sta piu' a lungo. I margini
+// della PAGINA (HEAD/FOOT) restano fermi e non si scalano mai: li' un
+// pixel in piu' reimpagina ogni libro, ed e' da li' che erano cominciati
+// i salti.
 const barBtn = (active) => ({
-  width: 40,
-  height: 40,
+  width: px(40),
+  height: px(40),
   borderRadius: R.piccolo,
   fontSize: F.titoletto,
   display: "flex",
@@ -2411,9 +2417,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   onClick={() => { handleClose(); onMusicRoom?.(); }}
                   title={`${music.current.name || "Musica di sottofondo"} — vai alla sala della musica`}
                   style={{
-                    maxWidth: 150,
+                    maxWidth: px(150),
                     padding: "0 8px",
-                    height: 40,
+                    height: px(40),
                     borderRadius: R.piccolo,
                     fontSize: F.piccolo,
                     color: C.muted,
