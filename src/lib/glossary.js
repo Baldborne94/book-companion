@@ -25,7 +25,10 @@ const norm = (s) =>
 // esserci sia «the death of the king» sia «Death said». E la maiuscola va
 // cercata nel testo com'e' scritto, non ricostruita: «Ankh-Morpork» ne ha
 // due, e confrontarla con «Ankh-morpork» non la trovava mai.
-const capitalized = (raw, word) => {
+// ESPORTATA PER ESSERE PROVATA, come `contentStyles` e `ritaglioAvanzo`: e'
+// la regola che tiene «Death» il personaggio separato da «the death of the
+// king», e ritagliarla dal sorgente per provarla varrebbe meno che chiamarla.
+export const capitalized = (raw, word) => {
   const esc = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const re = new RegExp(`(^|[^\\p{L}])(${esc})`, "giu");
   for (const m of String(raw).matchAll(re)) {
@@ -35,7 +38,7 @@ const capitalized = (raw, word) => {
   return false;
 };
 
-function buildIndex(entries) {
+export function buildIndex(entries) {
   const map = new Map();
   let max = 1;
   for (const e of entries) {
@@ -66,12 +69,19 @@ const OGGETTI = new Set([
   "herself", "themselves", "myself", "yourself", "ourselves", "one",
 ]);
 
-function scan(indexes, raw) {
+export function scan(indexes, raw) {
   const words = norm(raw).split(" ").filter(Boolean);
   const out = [];
   const seen = new Set();
   const alone = words.length === 1;
-  const longest = Math.max(1, ...indexes.map(([, ix]) => (ix ? ix.max : 1)));
+  // LA FINESTRA ARRIVA A TRE ANCHE SE NESSUNA VOCE È LUNGA TRE, e non è un
+  // di piu': la regola del verbo separabile qui sotto scatta a `n === 3`, e
+  // senza questo minimo il ciclo non ci arriva mai — «egg them on» sta in un
+  // indice il cui termine piu' lungo e' «egg on», due parole. Oggi funziona
+  // per caso, perche' nello slang c'e' «take the mickey»: la regola dipendeva
+  // dalla lunghezza di una voce che non c'entra niente, e potandola sarebbe
+  // sparita in silenzio. Trovato scrivendo il test su un indice isolato.
+  const longest = Math.max(3, ...indexes.map(([, ix]) => (ix ? ix.max : 1)));
   let i = 0;
   while (i < words.length) {
     let hit = null;
@@ -181,7 +191,7 @@ export function indiceMio(book) {
 // sole nel corpo del testo farebbero solo rumore.
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const espressione = (map) => {
+export const espressione = (map) => {
   const keys = [...map.keys()].filter((k) => k.length >= 4).sort((a, b) => b.length - a.length);
   return keys.length
     ? new RegExp(`(?<![\\p{L}\\p{N}])(${keys.map(escapeRe).join("|")})(?![\\p{L}\\p{N}])`, "giu")
