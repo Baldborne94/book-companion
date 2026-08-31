@@ -30,9 +30,28 @@ body {
    position:fixed su Android segue il viewport di layout e balla con la
    barra degli indirizzi. Guscio alto quanto lo schermo, scorre solo il
    contenuto. */
+/* IL GUSCIO NON DEVE MAI ESSERE PIU' ALTO DI QUEL CHE SI VEDE, o la barra
+   in basso — che sta in fondo al guscio — finisce sotto il bordo dello
+   schermo e SPARISCE (segnalato: «che è successo alla barra sotto?»).
+   Riprodotto in browser: guscio 830 dentro un'area visibile di 730, e il
+   fondo della barra atterra a 830, cioè fuori.
+
+   `dvh` è il viewport DINAMICO: su Android cresce e cala con le barre di
+   sistema, e in una PWA a tutto schermo può venire più alto dell'area
+   davvero visibile — succede tipicamente a freddo, dopo un riavvio, che è
+   esattamente quando il difetto si è visto. `svh` è il viewport PICCOLO,
+   cioè quello che c'è SEMPRE: più basso è sempre visibile, più alto non
+   può essere. Le tre righe sono una scala di ripiego, e vince l'ultima che
+   il browser capisce.
+
+   Prezzo dichiarato: in una scheda del browser, quando la barra degli
+   indirizzi si ritira, in fondo resta una striscia del colore di fondo —
+   che è il colore del tema, quindi si nota appena. Una striscia è molto
+   meno di una barra di navigazione irraggiungibile. */
 .bc-shell {
   height: 100vh;
   height: 100dvh;
+  height: 100svh;
   overflow: hidden;
 }
 

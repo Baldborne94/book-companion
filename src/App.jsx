@@ -128,12 +128,27 @@ function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
       <span style={{ flex: 1, minWidth: 0, fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
         Book Companion
       </span>
+      {/* stessa cura dell'intestazione grande: la parola scritta accanto al
+          glifo. Qui il titolo ha gia' `minWidth: 0`, quindi si stringe lui
+          se lo schermo e' corto. */}
       <button
         onClick={onTheme}
-        aria-label="Cambia atmosfera"
-        style={{ width: 40, height: 40, borderRadius: R.piccolo, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted }}
+        aria-label="Aspetto: tema e dimensione"
+        style={{
+          height: 40,
+          padding: "0 12px",
+          borderRadius: R.tondo,
+          border: `1px solid ${C.border}`,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          flexShrink: 0,
+          color: C.muted,
+          fontSize: F.piccolo,
+        }}
       >
-        <I size={21} />
+        <I size={19} />
+        Aspetto
       </button>
       <button
         onClick={onSync}
@@ -166,26 +181,35 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
         textAlign: "center",
       }}
     >
+      {/* UN'ICONA SPENTA IN MEZZO ALLE FOGLIE NON SI TROVA. Era una foglia
+          grigia nell'angolo, e sul Rifugio Silvano lo sfondo E' fatto di
+          foglie: il lettore cercava dove regolare la misura e non trovava
+          niente da toccare («dove regolo le dimensioni?»). Adesso porta la
+          parola scritta — un bersaglio con un nome sopra si trova sempre,
+          un glifo muto no. */}
       <button
         onClick={onTheme}
-        aria-label="Cambia atmosfera"
+        aria-label="Aspetto: tema e dimensione"
         style={{
           position: "absolute",
           top: 16,
           left: 14,
-          width: 42,
           height: 42,
-          borderRadius: R.piccolo,
+          padding: "0 13px",
+          borderRadius: R.tondo,
+          border: `1px solid ${C.border}`,
           display: "flex",
           alignItems: "center",
-          justifyContent: "center",
+          gap: 7,
           color: C.muted,
+          fontSize: F.piccolo,
         }}
       >
         {(() => {
           const I = themeIcon(theme.id);
-          return <I size={22} />;
+          return <I size={20} />;
         })()}
+        Aspetto
       </button>
       <button
         onClick={onSync}
@@ -442,9 +466,23 @@ function ThemePicker({ current, onPick, onClose, misura, onMisura }) {
           padding: 22,
         }}
       >
-        <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text, marginBottom: 14 }}>
-          Dove vuoi leggere?
+        {/* il pannello porta il nome del tasto che lo apre, e il tema
+            diventa una sezione fra due: da quando c'e' anche la misura,
+            «Dove vuoi leggere?» ne descriveva solo meta' */}
+        <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
+          Aspetto
         </h2>
+        <h3
+          style={{
+            fontFamily: FONT_TITLE,
+            fontSize: F.titoletto,
+            fontWeight: 600,
+            color: C.text,
+            margin: "12px 0 10px",
+          }}
+        >
+          Dove vuoi leggere?
+        </h3>
         {Object.values(THEMES).map((t) => {
           const active = t.id === current;
           return (
