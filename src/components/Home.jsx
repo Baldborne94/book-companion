@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { C, FONT_TITLE, F, R } from "../data/constants.js";
+import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { useViewport } from "../lib/viewport.js";
 import { getLastOpened, getProgress, getStatus, getUpdatedAt } from "../lib/library.js";
 import { nextInSaga } from "../lib/saga.js";
@@ -63,7 +63,12 @@ function SagaCard({ saga, onOpen }) {
       onClick={() => onOpen(saga.name)}
       style={{
         flexShrink: 0,
-        width: 214,
+        // LA SCHEDA CRESCE COL SUO TITOLO. Ferma a 214 con la scrittura
+        // ingrandita, il nome della saga finiva tagliato («Realm of the
+        // Eld…») mentre ai lati dello schermo restava spazio vuoto: una
+        // larghezza fissa che tiene del testo NON e' una misura del disegno,
+        // e' un limite alla lunghezza della riga, e quello va col testo.
+        width: px(214),
         textAlign: "left",
         padding: 13,
         borderRadius: R.medio,
@@ -73,7 +78,7 @@ function SagaCard({ saga, onOpen }) {
     >
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
         {saga.books.slice(0, 3).map((b) => (
-          <div key={b.id} style={{ width: 42 }}>
+          <div key={b.id} style={{ width: px(42) }}>
             <BookCover book={b} radius={5} compact />
           </div>
         ))}
@@ -203,7 +208,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
               boxShadow: `0 0 30px ${C.arcane}14`,
             }}
           >
-            <div style={{ width: 84, flexShrink: 0 }}>
+            <div style={{ width: px(84), flexShrink: 0 }}>
               {/* qui il titolo e l'autore stanno già scritti accanto, e il
                   riquadro è alto ottantaquattro pixel: il dorso fa la sua
                   parte col colore e basta */}

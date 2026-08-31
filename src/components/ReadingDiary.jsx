@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { C, TEMA, FONT_TITLE, F, R } from "../data/constants.js";
+import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getStarted, getFinished, getStatus } from "../lib/library.js";
 import { buildDiary, yearStats, dayCount } from "../lib/diary.js";
 import BookCover from "./BookCover.jsx";
@@ -97,7 +97,7 @@ export default function ReadingDiary({ books, onClose, onOpenBook }) {
         </button>
       </div>
 
-      <div style={{ maxWidth: 760, margin: "0 auto", padding: "16px 18px 40px" }}>
+      <div style={{ maxWidth: px(760), margin: "0 auto", padding: "16px 18px 40px" }}>
         {diary.total === 0 && diary.reading.length === 0 ? (
           <p style={{ color: C.muted, fontSize: F.corpo, lineHeight: 1.6, marginTop: 20 }}>
             Il diario è ancora bianco. Da qui in avanti, ogni libro che cominci e che finisci

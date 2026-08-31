@@ -247,6 +247,46 @@ export default async function (t) {
   t.eq("sullo stesso profilo, un telefono torna a grandezza naturale", F.corpo, corpoAlFattore(1));
   t.eq("e la scelta resta «Automatica»", leggiScalaUI(), AUTO);
 
+  // ---- UNA LARGHEZZA CHE TIENE DEL TESTO VA COL TESTO -------------------
+  //
+  // È la stessa specie di difetto che `scala.test.mjs` tiene lontana dai
+  // corpi, e si è vista dal vero: con la scrittura ingrandita, la colonna
+  // del contenuto restava ferma a 960px su uno schermo da 1280 — titoli
+  // troncati e 320px di schermo vuoto ai lati (segnalato: «non si sta
+  // adattando allo schermo quando lo metto in orizzontale»).
+  //
+  // Una `maxWidth` fissa che contiene del testo NON è una misura del
+  // disegno: è un limite alla lunghezza della riga, e se il testo cresce e
+  // lei no, la riga si accorcia in caratteri mentre lo schermo resta vuoto.
+  // Nessun errore, nessun avviso: si vede e basta, e solo se qualcuno
+  // guarda. Il prossimo pannello che nasce con un numero a mano
+  // ripeterebbe tutto.
+  const { readdirSync, readFileSync } = await import("node:fs");
+  // L'UNICA ECCEZIONE, e va nominata: il filetto sotto il titolo del dorso
+  // disegnato. Lì 44px non tiene testo, è un tratto dentro un disegno di
+  // misura fissa — cresciuto col resto sfonderebbe la copertina.
+  const AMMESSE = ["src/components/BookCover.jsx"];
+  const fuori = [];
+  const file = [["src/App.jsx", readFileSync("src/App.jsx", "utf8")]];
+  for (const f of readdirSync("src/components")) {
+    if (f.endsWith(".jsx")) file.push([`src/components/${f}`, readFileSync(`src/components/${f}`, "utf8")]);
+  }
+  for (const [nome, testo] of file) {
+    if (AMMESSE.includes(nome)) continue;
+    for (const m of testo.matchAll(/maxWidth: (\d+)/g)) fuori.push(`${nome}: maxWidth ${m[1]}`);
+  }
+  t.c(
+    "nessuna larghezza di testo scritta a mano: passano tutte per `px`",
+    fuori.length === 0,
+    fuori.join(" · ")
+  );
+  // e la regola si usa davvero, o passerebbe perché nessuno limita niente
+  t.c(
+    "e le larghezze scalate ci sono",
+    file.some(([, s]) => /maxWidth: px\(\d+\)/.test(s)),
+    "nessun `maxWidth: px(...)` in giro"
+  );
+
   // ---- quel che si legge dallo storage ---------------------------------
   // CHI NON HA MAI SCELTO PARTE DA «AUTOMATICA»: è la richiesta presa alla
   // lettera. Lasciarla come un'opzione da scovare nel pannello vorrebbe dire

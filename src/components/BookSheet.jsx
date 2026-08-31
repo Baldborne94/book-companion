@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { C, FONT_TITLE, F, R } from "../data/constants.js";
+import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getProgress, getStatus, setStatus, touchBook } from "../lib/library.js";
 import { getCover, getFile, putCover, removeCover } from "../lib/bookStore.js";
 import { recupera, senzaEtichetta } from "../lib/sinossi.js";
@@ -430,7 +430,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%",
-          maxWidth: 600,
+          maxWidth: px(600),
           maxHeight: "90vh",
           overflowY: "auto",
           borderRadius: R.grande,
