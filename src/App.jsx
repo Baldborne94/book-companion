@@ -10,6 +10,9 @@ import {
   SCALE_UI,
   leggiScalaUI,
   applicaScalaUI,
+  risolviScala,
+  scalaDi,
+  AUTO,
   corpoAlFattore,
   px,
   F,
@@ -399,7 +402,7 @@ function Toast({ toast, onDismiss }) {
 // Si sceglie a tasti, come i generi e il tetto dell'Oracolo: su un tablet
 // un cursore da trascinare e' il comando piu' difficile che ci sia, e qui
 // i gradini sono quattro.
-function MisuraPicker({ current, onPick }) {
+function MisuraPicker({ current, onPick, consigliata }) {
   return (
     <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
       <h3
@@ -418,6 +421,27 @@ function MisuraPicker({ current, onPick }) {
         misura, nelle impostazioni del lettore.
       </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {/* L'AUTOMATICA DICE COSA HA DECISO. Un automatismo muto è un
+            automatismo su cui non si può essere d'accordo: se sbaglia, chi
+            guarda non sa nemmeno che c'è stata una scelta. E si scrive nella
+            misura che ha scelto, come tutti gli altri tasti. */}
+        <button
+          onClick={() => onPick(AUTO)}
+          style={{
+            minHeight: 44,
+            padding: "8px 14px",
+            borderRadius: R.tondo,
+            border: `1px solid ${current === AUTO ? C.accent : C.border}`,
+            background: current === AUTO ? `${C.accent}22` : "transparent",
+            color: current === AUTO ? C.accent : C.muted,
+            fontSize: corpoAlFattore(scalaDi(consigliata).fattore),
+          }}
+        >
+          Automatica
+          <span style={{ opacity: 0.75, fontSize: F.minuscolo }}>
+            {" "}· {scalaDi(consigliata).label.toLowerCase()}
+          </span>
+        </button>
         {SCALE_UI.map((s) => {
           const attivo = s.id === current;
           return (
@@ -447,7 +471,7 @@ function MisuraPicker({ current, onPick }) {
   );
 }
 
-function ThemePicker({ current, onPick, onClose, misura, onMisura }) {
+function ThemePicker({ current, onPick, onClose, misura, onMisura, consigliata }) {
   return (
     <div
       onClick={onClose}
@@ -543,7 +567,7 @@ function ThemePicker({ current, onPick, onClose, misura, onMisura }) {
             </button>
           );
         })}
-        <MisuraPicker current={misura} onPick={onMisura} />
+        <MisuraPicker current={misura} onPick={onMisura} consigliata={consigliata} />
         <div style={{ marginTop: 8, textAlign: "right" }}>
           <button onClick={onClose} style={{ color: C.muted, fontSize: F.nota }}>
             Chiudi
@@ -1009,6 +1033,7 @@ export default function App() {
           onClose={() => setThemeOpen(false)}
           misura={misura}
           onMisura={pickMisura}
+          consigliata={risolviScala(AUTO)}
         />
       )}
       {syncOpen && (
