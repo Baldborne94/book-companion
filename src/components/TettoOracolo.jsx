@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { C, F, R } from "../data/constants.js";
-import { SCALINI, leggiTetto, scriviTetto, scalinoSopra, soldi, soldiTetto } from "../lib/spesa.js";
+import { SCALINI, leggiTetto, scriviTetto, scalinoSopra, soldi, soldiTetto, rigaMese } from "../lib/spesa.js";
 import { setOracleKey, hasOracle, leggiScadenza, scriviScadenza, statoChiave, frasScadenza } from "../lib/oracle.js";
 
 // IL TETTO DEL MESE, DA CAMBIARE COL DITO.
@@ -245,6 +245,46 @@ export function CambiaChiave() {
           Chiave sostituita 🔑
         </p>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// L'ORACOLO NELLE IMPOSTAZIONI.
+//
+// La chiave, la sua scadenza, il tetto del mese e quanto hai speso: erano
+// quattro cose sparse dentro le schede dell'Oracolo, cioe' raggiungibili
+// solo mentre l'Oracolo lo stavi usando. Ma la chiave si cambia PRIMA che
+// smetta di funzionare, e chi la deve cambiare sta leggendo, non
+// interrogando (chiesto dal lettore: «si' fai la schermata delle
+// impostazioni»).
+//
+// Qui la chiave si vede sempre, anche quando non c'e' niente che non va: e'
+// il posto dove uno va a cercarla, e trovarla spenta e' un'informazione
+// quanto trovarla accesa.
+export function SezioneOracolo() {
+  const [giro, setGiro] = useState(0);
+  const ce = hasOracle();
+  return (
+    <div key={giro}>
+      <p style={{ margin: 0, fontSize: F.piccolo, color: C.muted, lineHeight: 1.5 }}>
+        {ce
+          ? "La chiave è salvata su questo dispositivo e non esce mai da qui: le domande partono dal browser dritte all'API di Anthropic, e paghi solo quel che chiedi."
+          : "Senza una chiave API di Anthropic l'Oracolo resta spento: «Chi è costui?», «Dove eravamo rimasti» e «Prima di cominciare» non compaiono. La chiave resta solo su questo dispositivo."}
+      </p>
+      {ce && <ScadenzaChiave />}
+      {ce && rigaMese() && (
+        <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.5 }}>
+          Hai speso {rigaMese()}.
+        </p>
+      )}
+      {/* IL CAMPO STA SEMPRE APERTO QUI DENTRO, non ripiegato dietro un
+          tasto: questa e' la stanza della chiave, e in una stanza dedicata
+          nascondere l'unica cosa che ci si viene a fare sarebbe assurdo. Il
+          comando ripiegato resta nelle schede dell'Oracolo, dove invece e'
+          un di piu' accanto alla risposta. */}
+      <CampoChiave onSalva={() => setGiro((n) => n + 1)} />
+      <Tetto onCambia={() => setGiro((n) => n + 1)} />
     </div>
   );
 }
