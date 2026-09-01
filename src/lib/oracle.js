@@ -28,6 +28,83 @@ export function setOracleKey(k) {
 
 export const hasOracle = () => !!getOracleKey();
 
+// ---------------------------------------------------------------------------
+// QUANDO SCADE LA CHIAVE.
+//
+// LA DATA NON SI PUO' CHIEDERE, e va detto invece di far finta. La scadenza
+// di una chiave vive nell'Admin API di Anthropic
+// (`/v1/organizations/api_keys`), che vuole una chiave di AMMINISTRAZIONE —
+// non quella normale che sta qui — e mandare una chiave di amministrazione
+// dal browser sarebbe una pessima idea a prescindere. Con la chiave normale
+// l'unica cosa che si scopre e' che NON vale piu', e la si scopre il giorno
+// dopo, con un 401 in faccia mentre stavi leggendo.
+//
+// Quindi la data la scrive il lettore quando salva la chiave, ed e'
+// FACOLTATIVA: una funzione che pretende una data prima di lasciarti
+// incollare una chiave e' peggio del problema che risolve. Sta sul
+// dispositivo accanto alla chiave, e con lei se ne va.
+const KEY_SCADE = "bc_ai_key_scade";
+
+export function leggiScadenza() {
+  try {
+    const v = localStorage.getItem(KEY_SCADE) || "";
+    return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "";
+  } catch {
+    return "";
+  }
+}
+
+export function scriviScadenza(iso) {
+  try {
+    const v = String(iso || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) localStorage.setItem(KEY_SCADE, v);
+    else localStorage.removeItem(KEY_SCADE);
+  } catch {
+    /* storage negato: si perde il promemoria, non la chiave */
+  }
+}
+
+// Quanti giorni prima si comincia a dirlo. Dieci: il lettore ha chiesto di
+// poterla mettere «il giorno prima», e un avviso che arriva il giorno prima
+// e basta e' un avviso che, se quel giorno non apri l'app, non arriva mai.
+export const GIORNI_AVVISO = 10;
+
+const aMezzogiorno = (iso) => Date.parse(`${iso}T12:00:00`);
+
+// I GIORNI SI CONTANO SUL CALENDARIO, NON SULLE ORE. Con la sottrazione fra
+// istanti, una chiave che scade domani mattina e una che scade domani sera
+// darebbero «0 giorni» e «1 giorno» — e in mezzo ci passa il cambio d'ora,
+// che sposta di sessanta minuti e fa saltare un giorno intero. Fissando
+// tutt'e due a mezzogiorno resta un numero di giorni vero: oggi e' 0,
+// domani e' 1, e ieri e' -1 comunque vada l'orologio.
+export function statoChiave({ scade, ora = Date.now() } = {}) {
+  const s = scade === undefined ? leggiScadenza() : scade;
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return { stato: "ignota", giorni: null };
+  const fine = aMezzogiorno(s);
+  if (!Number.isFinite(fine)) return { stato: "ignota", giorni: null };
+  const oggi = new Date(ora);
+  const inizio = aMezzogiorno(
+    `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, "0")}-${String(oggi.getDate()).padStart(2, "0")}`
+  );
+  const giorni = Math.round((fine - inizio) / 86400000);
+  if (giorni < 0) return { stato: "scaduta", giorni };
+  if (giorni <= GIORNI_AVVISO) return { stato: "inScadenza", giorni };
+  return { stato: "valida", giorni };
+}
+
+// La frase, che non e' un dettaglio: «scade fra 0 giorni» non lo direbbe
+// nessuno, e «1 giorni» si legge come un guasto.
+export function frasScadenza(st) {
+  if (!st || st.stato === "ignota") return null;
+  if (st.stato === "scaduta") {
+    const g = -st.giorni;
+    return g === 1 ? "La chiave è scaduta ieri." : `La chiave è scaduta ${g} giorni fa.`;
+  }
+  if (st.giorni === 0) return "La chiave scade oggi.";
+  if (st.giorni === 1) return "La chiave scade domani.";
+  return `La chiave scade fra ${st.giorni} giorni.`;
+}
+
 // Il paragrafo attorno alla selezione va colto quando la selezione esiste
 // ancora: al primo tocco sul menu e' gia' svanita, e con lei il contesto.
 // Nei PDF il blocco piu' vicino e' l'intero livello testo della pagina,
@@ -164,4 +241,33 @@ export async function consultaOracolo({ text, context, book }, fetcher) {
   const out = await chiedi({ system: SISTEMA, user: righe.join("\n") }, fetcher);
   if (out.answer) cache.set(k, out);
   return out;
+}
+
+// IL PROMEMORIA ALL'AVVIO, UNA VOLTA AL GIORNO.
+//
+// «Almeno dimmi quando scade, cosi' posso gia' inserirla il giorno prima»:
+// la riga dentro la scheda dell'Oracolo la vedi solo se apri l'Oracolo, e
+// chi deve sostituire una chiave che ancora funziona l'Oracolo non lo sta
+// aprendo — sta leggendo. Quindi lo si dice all'avvio.
+//
+// UNA VOLTA AL GIORNO, non a ogni avvio: un avviso che torna ogni volta che
+// apri l'app si impara a chiudere senza leggerlo, ed e' proprio il giorno
+// che conta che non lo guarderesti. La data dell'ultimo avviso sta accanto
+// alle altre, sul dispositivo.
+const KEY_AVVISO = "bc_ai_key_avviso";
+
+export function daAvvisare({ ora = Date.now(), stato } = {}) {
+  const st = stato || statoChiave({ ora });
+  if (st.stato !== "inScadenza" && st.stato !== "scaduta") return null;
+  const oggi = new Date(ora);
+  const chiave = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, "0")}-${String(oggi.getDate()).padStart(2, "0")}`;
+  try {
+    if (localStorage.getItem(KEY_AVVISO) === chiave) return null;
+    localStorage.setItem(KEY_AVVISO, chiave);
+  } catch {
+    // senza storage non si puo' ricordare di averlo gia' detto: meglio
+    // dirlo di nuovo che non dirlo affatto, perche' e' l'unico avviso che
+    // arriva PRIMA che la funzione smetta di rispondere
+  }
+  return frasScadenza(st);
 }

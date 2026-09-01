@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { C, F, R } from "../data/constants.js";
 import { SCALINI, leggiTetto, scriviTetto, scalinoSopra, soldi, soldiTetto } from "../lib/spesa.js";
-import { setOracleKey, hasOracle } from "../lib/oracle.js";
+import { setOracleKey, hasOracle, leggiScadenza, scriviScadenza, statoChiave, frasScadenza } from "../lib/oracle.js";
 
 // IL TETTO DEL MESE, DA CAMBIARE COL DITO.
 //
@@ -125,14 +125,20 @@ export function TettoFinito({ speso, tetto, onRiprova }) {
 // fa due volte l'anno.
 export function CampoChiave({ onSalva, autoFocus }) {
   const [bozza, setBozza] = useState("");
+  // LA DATA E' FACOLTATIVA, e lo resta. Pretenderla prima di lasciar
+  // incollare una chiave sarebbe peggio del problema che risolve: chi non
+  // la sa, o ha fretta, deve poter salvare e basta.
+  const [quando, setQuando] = useState(() => leggiScadenza());
   const salva = () => {
     const k = bozza.trim();
     if (!k) return;
     setOracleKey(k);
+    scriviScadenza(quando);
     setBozza("");
     onSalva?.();
   };
   return (
+    <>
     <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
       <input
         type="password"
@@ -166,6 +172,42 @@ export function CampoChiave({ onSalva, autoFocus }) {
         Salva
       </button>
     </div>
+    <label style={{ display: "block", marginTop: 8, fontSize: F.minuscolo, color: C.dim }}>
+      Scade il (facoltativo — la data sta scritta accanto alla chiave nella console)
+      <input
+        type="date"
+        value={quando}
+        onChange={(e) => setQuando(e.target.value)}
+        style={{
+          display: "block",
+          marginTop: 4,
+          background: "transparent",
+          border: `1px solid ${C.border}`,
+          borderRadius: R.piccolo,
+          padding: "6px 10px",
+          fontSize: F.nota,
+          color: C.text,
+        }}
+      />
+    </label>
+    </>
+  );
+}
+
+// Il promemoria, dove la chiave si guarda. Detto sempre quando la data c'e':
+// una riga che compare solo all'ultimo momento e' una riga di cui non ci si
+// puo' fidare.
+export function ScadenzaChiave() {
+  const st = statoChiave({});
+  const frase = frasScadenza(st);
+  if (!frase) return null;
+  const colore = st.stato === "scaduta" ? C.red : st.stato === "inScadenza" ? C.accent : C.dim;
+  return (
+    <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: colore, lineHeight: 1.5 }}>
+      {st.stato === "valida" ? "🔑 " : "⚠️ "}
+      {frase}
+      {st.stato !== "valida" ? " Creane una nuova nella console e incollala qui sotto." : ""}
+    </p>
   );
 }
 
@@ -187,6 +229,7 @@ export function CambiaChiave() {
       >
         🔑 Cambia la chiave {aperto ? "⌃" : "⌄"}
       </button>
+      <ScadenzaChiave />
       {aperto && (
         <>
           <p style={{ margin: "8px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.5 }}>

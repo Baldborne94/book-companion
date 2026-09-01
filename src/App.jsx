@@ -37,6 +37,7 @@ import MusicRoom from "./components/MusicRoom.jsx";
 import SyncPanel from "./components/SyncPanel.jsx";
 import { getBookMusic, setBookMusic } from "./lib/music.js";
 import { getJump, clearJump } from "./lib/annotations.js";
+import { daAvvisare } from "./lib/oracle.js";
 import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
@@ -734,6 +735,16 @@ export default function App() {
       if (!quiet) notify("Sincronizzazione fallita — riprovo più tardi");
     }
   };
+
+  // LA CHIAVE DELL'ORACOLO SCADE, E LO SI DICE PRIMA che smetta di
+  // rispondere. La riga dentro la scheda dell'Oracolo la vede solo chi
+  // l'Oracolo lo sta aprendo — e chi deve sostituire una chiave che ancora
+  // funziona sta leggendo, non interrogando. Una volta al giorno: un avviso
+  // che torna a ogni avvio si impara a chiudere senza leggerlo.
+  useEffect(() => {
+    const frase = daAvvisare();
+    if (frase) notify(`🔑 ${frase} La cambi dalla scheda dell'Oracolo, sotto la riga della spesa.`);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!isSyncConfigured()) return;
