@@ -267,9 +267,26 @@ export function SezioneOracolo() {
   const ce = hasOracle();
   return (
     <div key={giro}>
-      <p style={{ margin: 0, fontSize: F.piccolo, color: C.muted, lineHeight: 1.5 }}>
+      {/* PRIMA LO STATO, POI LA SPIEGAZIONE. La riga c'era gia' e diceva la
+          cosa giusta, ma era un paragrafo di prosa: chi arriva qui ha in
+          testa UNA domanda — «la chiave ce l'ho o no?» — e la risposta
+          stava annegata in mezzo a una frase sulla riservatezza (chiesto
+          dal lettore: «dove vedo se mi ha salvato la password?»). Adesso e'
+          una riga sola, in colore, che si legge senza leggere. */}
+      <p
+        style={{
+          margin: 0,
+          fontSize: F.corpo,
+          fontWeight: 600,
+          color: ce ? C.green : C.muted,
+          lineHeight: 1.4,
+        }}
+      >
+        {ce ? "🔑 Chiave salvata" : "🔒 Nessuna chiave salvata"}
+      </p>
+      <p style={{ margin: "4px 0 0", fontSize: F.piccolo, color: C.muted, lineHeight: 1.5 }}>
         {ce
-          ? "La chiave è salvata su questo dispositivo e non esce mai da qui: le domande partono dal browser dritte all'API di Anthropic, e paghi solo quel che chiedi."
+          ? "Sta su questo dispositivo e non esce mai da qui: le domande partono dal browser dritte all'API di Anthropic, e paghi solo quel che chiedi. Per sostituirla, incolla la nuova qui sotto."
           : "Senza una chiave API di Anthropic l'Oracolo resta spento: «Chi è costui?», «Dove eravamo rimasti» e «Prima di cominciare» non compaiono. La chiave resta solo su questo dispositivo."}
       </p>
       {ce && <ScadenzaChiave />}
