@@ -173,20 +173,33 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   // da dove viene il retro, perché l'etichetta lo dica: «file» è la quarta
   // dell'editore, «rete» il catalogo, «oracolo» le prime pagine lette
   const [fonte, setFonte] = useState(book.sinossiMia ? "oracolo" : book.sinossiFonte || "file");
+  // FINCHÉ SI CERCA NON SI DICE CHE NON C'È. Il giro nel catalogo sono
+  // fino a tre domande, e intanto il retro mostrava già «non l'ho
+  // trovata»: una risposta data prima di aver guardato.
+  const [cercando, setCercando] = useState(typeof book.sinossi !== "string" || !book.sinossi);
   useEffect(() => {
     let vivo = true;
     (async () => {
+     try {
       // 1. il file: l'ha scritta l'editore, funziona offline, vince sempre
       let testo = typeof book.sinossi === "string" ? book.sinossi : null;
       if (testo === null) {
         testo = await recupera(book, getFile);
-        if (!vivo || testo === null) return;
-        setRetro(testo);
-        if (testo) {
-          onSaveMeta?.({ ...book, sinossi: testo });
-          return;
+        if (!vivo) return;
+        // `null` VUOL DIRE «il file non ho potuto guardarlo»: i byte sono
+        // rimasti nel cloud, o l'archivio non si apre. Prima si tornava
+        // indietro di qui, e il CATALOGO — a cui bastano titolo e autore,
+        // e che il file non lo tocca nemmeno — non veniva mai provato.
+        // Non si scrive niente sul libro: il file si riguarderà la
+        // prossima volta che i suoi byte sono qui.
+        if (testo !== null) {
+          setRetro(testo);
+          if (testo) {
+            onSaveMeta?.({ ...book, sinossi: testo });
+            return;
+          }
+          onSaveMeta?.({ ...book, sinossi: "" });
         }
-        onSaveMeta?.({ ...book, sinossi: "" });
       } else if (testo) {
         // il retro salvato prima della cura dell'etichetta puo' portarsi
         // ancora il suo «SUMMARY:» in testa: si pulisce una volta e si
@@ -205,7 +218,17 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
       if (!vivo || !inRete) return;
       setRetro(inRete.testo);
       setFonte("rete");
+      // `girata` si decide al montaggio, quando il retro non c'è ancora:
+      // un libro che il retro ce l'ha solo dal catalogo non si girava MAI
+      // da solo, cioè proprio il caso per cui la regola esiste. Vale la
+      // stessa condizione: solo su un libro che non hai mai aperto.
+      if (getProgress(book.id) <= 0) setGirata(true);
       onSaveMeta?.({ ...book, sinossi: inRete.testo, sinossiFonte: "rete" });
+     } finally {
+      // in un `finally` perché le uscite sono cinque: una sola dimenticata
+      // lascerebbe il retro a girare la clessidra per sempre
+      if (vivo) setCercando(false);
+     }
     })();
     return () => {
       vivo = false;
@@ -503,7 +526,11 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                     <div style={{ fontSize: F.minuscolo, color: C.muted, lineHeight: 1.45 }}>
                       {retroBusy
                         ? "✨ Leggo le prime pagine…"
-                        : "Il file non porta la quarta di copertina, e nel catalogo non l'ho ancora trovata."}
+                        : cercando
+                          ? "Cerco nel catalogo…"
+                          : book.fileType === "pdf"
+                            ? "Il file non porta la quarta di copertina, e nel catalogo non l'ho trovata."
+                            : "Il file non porta la quarta di copertina, e nel catalogo non l'ho trovata. Tocca «✨ Di cosa parla?» qui sotto."}
                     </div>
                   )}
                 </div>
