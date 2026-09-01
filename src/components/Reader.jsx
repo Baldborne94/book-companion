@@ -16,7 +16,7 @@ import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
 } from "../lib/readerSettings.js";
 import { contentStyles, spegniVuoti, togliStacco, staccaParagrafi, spegniScenografia } from "../lib/readerTheme.js";
-import { ritaglioAvanzo, flattenToc } from "../lib/readerLayout.js";
+import { ritaglioAvanzo, flattenToc, cfiLeggibile } from "../lib/readerLayout.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
 import { explain, termIndex, normalize, wikiUrl, haGlossario } from "../lib/glossary.js";
@@ -249,6 +249,20 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const saveTimer = useRef(null);
   const turnRef = useRef(() => {});
   const moved = useRef(false);
+  // IL SEGNO NON SI PERDE PER UN'APERTURA ANDATA STORTA.
+  //
+  // `display(cfi)` puo' fallire — un CFI che parla di una struttura che il
+  // libro non ha piu' — e li' si ripiegava sull'inizio del libro IN
+  // SILENZIO. Il guaio vero non e' ritrovarsi a pagina uno: e' che dopo un
+  // secondo e mezzo `relocated` porta il flush a scrivere QUELLA posizione
+  // sopra il segno buono, che a quel punto e' perso per sempre. Chiudere e
+  // riaprire non lo riporta indietro, perche' non c'e' piu'.
+  //
+  // Finche' questa mira tiene un CFI, il flush non scrive: il segno salvato
+  // resta quello, e riaprendo il libro si riprova. Si libera solo quando il
+  // lettore si sposta APPOSTA — voltata, indice, segnalibro, cursore — che
+  // e' il momento in cui ha scelto lui da dove leggere.
+  const segnoDaTenere = useRef(null);
   const fixTimers = useRef([]);
   const live = useRef({ cfi: startCfi || getCfi(book.id), progress: getProgress(book.id), locReady: false, settings: null });
 
@@ -287,6 +301,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // offre il tasto — e dopo la cura il segno torna alla stessa
   // percentuale, perché il CFI vecchio parla di file che non ci sono più.
   const [cucitura, setCucitura] = useState(null);
+  const [ritornoFallito, setRitornoFallito] = useState(false);
   const [giro, setGiro] = useState(0);
   const saltaPct = useRef(null);
 
@@ -432,6 +447,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
   const flush = useCallback(() => {
     const s = live.current;
+    // il ritorno al punto e' fallito: la posizione di ripiego non deve
+    // scrivere sopra il segno buono (vedi `segnoDaTenere`)
+    if (segnoDaTenere.current) return;
     if (s.cfi) setCfi(book.id, s.cfi);
     setProgress(book.id, s.progress || 0);
   }, [book.id]);
@@ -854,8 +872,27 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       fixTimers.current.forEach(clearTimeout);
       const target = live.current.cfi;
       avanzoPronto.current = false;
-      r.display(target || undefined)
-        .catch(() => r.display())
+      // UN CFI STORTO ESPLODE IN MODO SINCRONO, E COSI' SCAVALCA IL `catch`.
+      // E' la stessa trappola gia' presa in `ripassaImpronte`: `display` non
+      // torna una promessa rifiutata, LANCIA mentre la analizza, quindi il
+      // `.catch` qui sotto non si attaccava nemmeno. L'errore risaliva fino
+      // al giro che apre il libro e il lettore si vedeva «questo tomo non si
+      // lascia aprire… il file potrebbe essere danneggiato»: un romanzo
+      // perfettamente sano dichiarato rotto per colpa di un segnalibro, con
+      // l'unica via d'uscita di cancellare il libro e reimportarlo. Il giro
+      // per `Promise.resolve()` fa diventare rifiuto anche lo scoppio
+      // sincrono, e da li' in poi c'e' un solo modo di fallire da gestire.
+      Promise.resolve()
+        .then(() => r.display(target || undefined))
+        .catch(() => {
+          // non si e' potuto tornare dov'era: si riparte dall'inizio, ma il
+          // segno salvato resta intatto e il lettore lo viene a sapere
+          if (target) {
+            segnoDaTenere.current = target;
+            setRitornoFallito(true);
+          }
+          return r.display();
+        })
         .then(() => {
           if (rendRef.current !== r) return setStatusUi("ready");
           // solo ADESSO epub.js e' fermo: la misura dell'avanzo puo'
@@ -884,7 +921,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           reflowing.current = true;
           clearTimeout(reflowTimer.current);
           reflowTimer.current = setTimeout(() => { reflowing.current = false; }, 1500);
-          r.display(target).catch(() => { reflowing.current = false; });
+          // stessa cura del primo `display`: uno scoppio sincrono qui
+          // lascerebbe `reflowing` acceso per sempre
+          Promise.resolve()
+            .then(() => r.display(target))
+            .catch(() => { reflowing.current = false; });
         };
         fixTimers.current = [setTimeout(fix, 1500), setTimeout(fix, 3500)];
       }
@@ -913,6 +954,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         linguaRef.current = dichiarata && sillaba(dichiarata) ? dichiarata : null;
         setLingua({ dichiarata, sillababile: !!linguaRef.current });
         eb.loaded.navigation.then((nav) => !dead && setToc(flattenToc(nav.toc)));
+        // il segno si controlla PRIMA di darlo a epub.js: uno storto non si
+        // puo' prendere, si puo' solo non consegnare (vedi `cfiLeggibile`)
+        if (live.current.cfi && !cfiLeggibile(ePub.CFI, live.current.cfi)) {
+          segnoDaTenere.current = live.current.cfi;
+          live.current.cfi = null;
+          setRitornoFallito(true);
+        }
         makeRendition(live.current.settings);
         const cached = await getAux(`loc_${book.id}`);
         if (dead) return;
@@ -1483,6 +1531,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const r = rendRef.current;
     if (!r || status !== "ready") return;
     moved.current = true;
+    segnoDaTenere.current = null;
     step(r, dir);
   }
   turnRef.current = turn;
@@ -1890,6 +1939,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const r = rendRef.current;
     if (!r) return;
     moved.current = true;
+    segnoDaTenere.current = null;
     assestamento.current++;
     setVelo(false);
     const arrivo = r.display(target);
@@ -2492,6 +2542,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 if (!locReady) return;
                 const cfi = epubRef.current.locations.cfiFromPercentage(parseInt(e.target.value, 10) / 1000);
                 moved.current = true;
+                segnoDaTenere.current = null;
                 assestamento.current++;
                 setVelo(false);
                 if (cfi) rendRef.current?.display(cfi);
@@ -2838,6 +2889,65 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             onRiprova={() => (chi.nome ? chiE(chi.nome) : dovEravamo())}
           />
         </Panel>
+      )}
+
+      {/* NON SONO TORNATO DOV'ERI, E TE LO DICO. Un ripiego silenzioso è la
+          metà peggiore del difetto: senza questa riga il lettore si ritrova
+          a pagina uno e non ha modo di sapere se il suo segno è ancora da
+          qualche parte — e col vecchio flush infatti non c'era più. */}
+      {ritornoFallito && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            transform: "translateX(-50%)",
+            bottom: px(84),
+            zIndex: 26,
+            width: "min(640px, 92vw)",
+            padding: "12px 16px",
+            borderRadius: R.medio,
+            border: `1px solid ${C.border}`,
+            background: C.card,
+            boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
+            animation: "bc-fade-in 0.25s ease-out",
+          }}
+        >
+          <p style={{ margin: 0, fontSize: F.nota, color: C.text, lineHeight: 1.5 }}>
+            🔖 Non sono riuscito a tornare al punto dov'eri, e riparto dall'inizio.{" "}
+            <strong>Il tuo segno è ancora salvato</strong>: chiudi e riapri il libro per riprovare.
+          </p>
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <button
+              onClick={() => {
+                // adottare questa posizione è una scelta, e va fatta a mano:
+                // da qui in poi il segno vecchio non serve più
+                segnoDaTenere.current = null;
+                setRitornoFallito(false);
+              }}
+              style={{
+                padding: "8px 14px",
+                borderRadius: R.tondo,
+                border: `1px solid ${C.arcane}66`,
+                color: C.arcane,
+                fontSize: F.piccolo,
+              }}
+            >
+              Riparto da qui
+            </button>
+            <button
+              onClick={() => setRitornoFallito(false)}
+              style={{
+                padding: "8px 14px",
+                borderRadius: R.tondo,
+                border: `1px solid ${C.border}`,
+                color: C.muted,
+                fontSize: F.piccolo,
+              }}
+            >
+              Ho capito
+            </button>
+          </div>
+        </div>
       )}
 
       {/* il libro spezzato si dice DOVE si legge, non in un referto da

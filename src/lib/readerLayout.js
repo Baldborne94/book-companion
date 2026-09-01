@@ -42,3 +42,34 @@ export function flattenToc(items, depth = 0, out = []) {
   }
   return out;
 }
+
+// UN SEGNO CHE NON SI LASCIA NEMMENO LEGGERE NON SI DA' A EPUB.JS.
+//
+// Misurato in un browser vero: dando a `rendition.display()` un CFI
+// malformato, epub.js non torna una promessa rifiutata — esplode DENTRO LA
+// SUA CODA (`Queue.dequeue` → `Spine.get` → `new EpubCFI`), fuori da
+// qualunque catena di promesse che noi possiamo agganciare. Nessun `catch`
+// arriva li': l'errore risale come «non gestito» e il lettore si vede
+// «questo tomo non si lascia aprire… il file potrebbe essere danneggiato»
+// su un romanzo perfettamente sano, con l'unica via d'uscita di cancellarlo
+// e reimportarlo. Quindi non c'e' niente da PRENDERE: c'e' da non darglielo.
+//
+// La classe arriva da fuori (`ePub.CFI`) per la ragione di sempre: cosi' un
+// test la chiama con un finto invece di tirarsi dietro epub.js.
+//
+// Attenzione a cosa NON fa: un CFI *ben formato* che parla di un pezzo che
+// il libro non ha piu' passa di qui senza un graffio, ed e' giusto — quello
+// `display` lo rifiuta come si deve, e lo gestisce il `catch` la'.
+export function cfiLeggibile(CFI, cfi) {
+  // Scorciatoia, non guardia: `String(null)` fa «null», che il parser
+  // rifiuta lo stesso — provato togliendola, e non falliva niente. Resta
+  // perche' un libro mai aperto e' il caso normale e non merita un giro
+  // dentro un parser per sentirsi dire di no.
+  if (!cfi) return false;
+  try {
+    new CFI(String(cfi));
+    return true;
+  } catch {
+    return false;
+  }
+}
