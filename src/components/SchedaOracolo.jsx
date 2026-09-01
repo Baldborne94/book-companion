@@ -45,7 +45,6 @@ function Costo({ uso }) {
         </span>
       </p>
       <Tetto onCambia={() => setGiro((v) => v + 1)} />
-      <CambiaChiave />
     </>
   );
 }
@@ -133,6 +132,7 @@ export default function SchedaOracolo({ scheda, attese, vuoto, onRiprova }) {
     return (
       <>
         <p style={riga()}>{vuoto}</p>
+        <CambiaChiave />
         {/* «non l'ho trovato» detto senza dire che tre volumi sono rimasti
             chiusi e' una mezza verita' */}
         <Lontani libri={scheda.lontani} />
@@ -228,6 +228,13 @@ export default function SchedaOracolo({ scheda, attese, vuoto, onRiprova }) {
             vedeva non c'era modo di saperlo. Sta qui e non in cima perché
             è una nota a piè di pagina, non il titolo della scheda. */}
         <Costo uso={scheda.uso} />
+        {/* LA CHIAVE SI CAMBIA ANCHE SENZA AVER PAGATO NIENTE. Stava dentro
+            `Costo`, che si disegna solo quando una risposta e' arrivata e ha
+            dichiarato dei token: chi voleva sostituire una chiave ancora
+            valida — il caso di chi la vede scadere — doveva prima farne una
+            a pagamento per far comparire il comando. Qui il piede della
+            scheda c'e' sempre. */}
+        <CambiaChiave />
         <button
           onClick={() => setFonti((v) => !v)}
           style={{

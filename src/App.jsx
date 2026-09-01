@@ -21,6 +21,7 @@ import {
 import Foliage from "./components/Foliage.jsx";
 import Scrolls from "./components/Scrolls.jsx";
 import { CandleIcon, BooksIcon, MusicIcon, LeafIcon, ScrollIcon, CloudIcon } from "./components/Icons.jsx";
+import { SezioneOracolo } from "./components/TettoOracolo.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
 import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook, getProgress } from "./lib/library.js";
@@ -138,7 +139,7 @@ function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
           se lo schermo e' corto. */}
       <button
         onClick={onTheme}
-        aria-label="Aspetto: tema e dimensione"
+        aria-label="Impostazioni: aspetto, Oracolo, sincronizzazione"
         style={{
           height: px(40),
           padding: "0 12px",
@@ -153,7 +154,7 @@ function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
         }}
       >
         <I size={px(19)} />
-        Aspetto
+        Impostazioni
       </button>
       <button
         onClick={onSync}
@@ -194,7 +195,7 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
           un glifo muto no. */}
       <button
         onClick={onTheme}
-        aria-label="Aspetto: tema e dimensione"
+        aria-label="Impostazioni: aspetto, Oracolo, sincronizzazione"
         style={{
           position: "absolute",
           top: 16,
@@ -214,7 +215,7 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
           const I = themeIcon(theme.id);
           return <I size={px(20)} />;
         })()}
-        Aspetto
+        Impostazioni
       </button>
       <button
         onClick={onSync}
@@ -472,7 +473,7 @@ function MisuraPicker({ current, onPick, consigliata }) {
   );
 }
 
-function ThemePicker({ current, onPick, onClose, misura, onMisura, consigliata }) {
+function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync }) {
   return (
     <div
       onClick={onClose}
@@ -508,11 +509,15 @@ function ThemePicker({ current, onPick, onClose, misura, onMisura, consigliata }
           padding: 22,
         }}
       >
-        {/* il pannello porta il nome del tasto che lo apre, e il tema
-            diventa una sezione fra due: da quando c'e' anche la misura,
-            «Dove vuoi leggere?» ne descriveva solo meta' */}
+        {/* UNA STANZA SOLA PER LE COSE DELL'APP. Il pannello era «Aspetto»
+            e teneva tema e misura; la chiave dell'Oracolo, la sua scadenza e
+            il tetto del mese vivevano invece dentro le schede dell'Oracolo,
+            cioe' raggiungibili solo mentre l'Oracolo lo stavi usando — e la
+            chiave si cambia PRIMA che smetta di funzionare, quando l'Oracolo
+            non lo stai aprendo affatto. Adesso c'e' un posto dove andare a
+            cercarle, ed e' quello che il lettore ha chiesto. */}
         <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
-          Aspetto
+          Impostazioni
         </h2>
         <h3
           style={{
@@ -569,6 +574,52 @@ function ThemePicker({ current, onPick, onClose, misura, onMisura, consigliata }
           );
         })}
         <MisuraPicker current={misura} onPick={onMisura} consigliata={consigliata} />
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            L'Oracolo
+          </h3>
+          <SezioneOracolo />
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            La sincronizzazione
+          </h3>
+          {/* NON si ricopia qui dentro: e' un pannello suo, con l'accesso, lo
+              spazio e i tomi da portare a casa. Qui ci sta la porta, perche'
+              questa e' la stanza dove uno viene a cercare le impostazioni —
+              non trovarci nemmeno un rimando vorrebbe dire mandarlo via. */}
+          <button
+            onClick={onSync}
+            style={{
+              minHeight: 44,
+              padding: "8px 14px",
+              borderRadius: R.tondo,
+              border: `1px solid ${C.border}`,
+              color: C.muted,
+              fontSize: F.corpo,
+            }}
+          >
+            ☁ Apri la sincronizzazione
+          </button>
+        </div>
         <div style={{ marginTop: 8, textAlign: "right" }}>
           <button onClick={onClose} style={{ color: C.muted, fontSize: F.nota }}>
             Chiudi
@@ -743,7 +794,7 @@ export default function App() {
   // che torna a ogni avvio si impara a chiudere senza leggerlo.
   useEffect(() => {
     const frase = daAvvisare();
-    if (frase) notify(`🔑 ${frase} La cambi dalla scheda dell'Oracolo, sotto la riga della spesa.`);
+    if (frase) notify(`🔑 ${frase} La cambi da Impostazioni, in alto.`);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -1038,13 +1089,14 @@ export default function App() {
         />
       )}
       {themeOpen && (
-        <ThemePicker
+        <Impostazioni
           current={themeId}
           onPick={pickTheme}
           onClose={() => setThemeOpen(false)}
           misura={misura}
           onMisura={pickMisura}
           consigliata={risolviScala(AUTO)}
+          onSync={() => { setThemeOpen(false); setSyncOpen(true); }}
         />
       )}
       {syncOpen && (
