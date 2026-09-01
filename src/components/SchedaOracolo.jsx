@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { C, F, R } from "../data/constants.js";
-import { setOracleKey } from "../lib/oracle.js";
+import { hasOracle } from "../lib/oracle.js";
 import { raccontaFrontiera } from "../lib/frontiera.js";
 import { movimenti, conTitoli, TITOLETTI } from "../lib/chiSono.js";
 import { rigaUltima, riassunto, costo, rigaMese, leggiTetto, TARIFFE, MODELLO } from "../lib/spesa.js";
-import { Tetto, TettoFinito } from "./TettoOracolo.jsx";
+import { Tetto, TettoFinito, CampoChiave, CambiaChiave } from "./TettoOracolo.jsx";
 
 // Il corpo delle schede dell'Oracolo — «Chi è costui?» e «Dove eravamo
 // rimasti» — condiviso fra i due reader. Cambia la domanda, non la scheda:
@@ -45,55 +45,27 @@ function Costo({ uso }) {
         </span>
       </p>
       <Tetto onCambia={() => setGiro((v) => v + 1)} />
+      <CambiaChiave />
     </>
   );
 }
 
+// «Non c'e' una chiave» e «la chiave che hai non vale piu'» arrivano
+// tutt'e due come `error: "chiave"`, ma per chi legge sono due cose
+// diverse: la prima e' una funzione mai accesa, la seconda e' una cosa che
+// funzionava e si e' rotta — e in quel caso «serve una chiave» suona come
+// se l'app se ne fosse dimenticata. Chi ce l'ha lo sappiamo (`hasOracle`),
+// quindi glielo si dice.
 function Chiave({ onSalva }) {
-  const [bozza, setBozza] = useState("");
+  const rifiutata = hasOracle();
   return (
     <div>
       <p style={{ fontSize: F.piccolo, color: C.muted, margin: "0 0 8px", lineHeight: 1.45 }}>
-        Serve una chiave API di Anthropic (console.anthropic.com). Resta solo su questo dispositivo
-        e paghi solo quel che chiedi.
+        {rifiutata
+          ? "La chiave che hai salvato non è più valida: probabilmente è scaduta. Creane una nuova su console.anthropic.com (Chiavi API → Crea chiave) e incollala qui."
+          : "Serve una chiave API di Anthropic (console.anthropic.com). Resta solo su questo dispositivo e paghi solo quel che chiedi."}
       </p>
-      <div style={{ display: "flex", gap: 8 }}>
-        <input
-          type="password"
-          value={bozza}
-          onChange={(e) => setBozza(e.target.value)}
-          placeholder="sk-ant-…"
-          style={{
-            flex: 1,
-            minWidth: 0,
-            background: "transparent",
-            border: `1px solid ${C.border}`,
-            borderRadius: R.piccolo,
-            padding: "7px 10px",
-            fontSize: F.nota,
-            color: C.text,
-          }}
-        />
-        <button
-          onClick={() => {
-            const k = bozza.trim();
-            if (!k) return;
-            setOracleKey(k);
-            setBozza("");
-            onSalva();
-          }}
-          style={{
-            flexShrink: 0,
-            fontSize: F.piccolo,
-            color: C.arcane,
-            border: `1px solid ${C.arcane}55`,
-            borderRadius: R.tondo,
-            padding: "5px 12px",
-          }}
-        >
-          Salva e chiedi
-        </button>
-      </div>
+      <CampoChiave onSalva={onSalva} />
     </div>
   );
 }

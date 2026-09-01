@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { C, F, R } from "../data/constants.js";
 import { SCALINI, leggiTetto, scriviTetto, scalinoSopra, soldi, soldiTetto } from "../lib/spesa.js";
+import { setOracleKey, hasOracle, leggiScadenza, scriviScadenza, statoChiave, frasScadenza } from "../lib/oracle.js";
 
 // IL TETTO DEL MESE, DA CAMBIARE COL DITO.
 //
@@ -103,6 +104,147 @@ export function TettoFinito({ speso, tetto, onRiprova }) {
         </button>
       )}
       <Tetto onCambia={onRiprova} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LA CHIAVE SI CAMBIA ANCHE QUANDO FUNZIONA.
+//
+// Il campo per la chiave compariva SOLO quando l'Oracolo rispondeva
+// «chiave» — cioe' quando non ce n'era una, o quando l'API l'aveva appena
+// rifiutata. Finche' la vecchia funzionava non c'era nessun posto dove
+// sostituirla: e le chiavi di Anthropic hanno una SCADENZA, quindi «devo
+// cambiarla prima che smetta» e' il caso normale, non un guasto. L'unico
+// modo era aspettare che si rompesse (segnalato: «come aggiorno la
+// chiave?», con la sua a un giorno dalla scadenza).
+//
+// Sta sotto la riga della spesa, accanto al tetto, per la stessa ragione per
+// cui ci sta il tetto: e' li' che si guarda quanto costa l'Oracolo, ed e' li'
+// che viene in mente di metterci mano. Ripiegato, perche' e' una cosa che si
+// fa due volte l'anno.
+export function CampoChiave({ onSalva, autoFocus }) {
+  const [bozza, setBozza] = useState("");
+  // LA DATA E' FACOLTATIVA, e lo resta. Pretenderla prima di lasciar
+  // incollare una chiave sarebbe peggio del problema che risolve: chi non
+  // la sa, o ha fretta, deve poter salvare e basta.
+  const [quando, setQuando] = useState(() => leggiScadenza());
+  const salva = () => {
+    const k = bozza.trim();
+    if (!k) return;
+    setOracleKey(k);
+    scriviScadenza(quando);
+    setBozza("");
+    onSalva?.();
+  };
+  return (
+    <>
+    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+      <input
+        type="password"
+        value={bozza}
+        autoFocus={autoFocus}
+        onChange={(e) => setBozza(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && salva()}
+        placeholder="sk-ant-…"
+        style={{
+          flex: 1,
+          minWidth: 0,
+          background: "transparent",
+          border: `1px solid ${C.border}`,
+          borderRadius: R.piccolo,
+          padding: "7px 10px",
+          fontSize: F.nota,
+          color: C.text,
+        }}
+      />
+      <button
+        onClick={salva}
+        style={{
+          flexShrink: 0,
+          fontSize: F.piccolo,
+          color: C.arcane,
+          border: `1px solid ${C.arcane}55`,
+          borderRadius: R.tondo,
+          padding: "5px 12px",
+        }}
+      >
+        Salva
+      </button>
+    </div>
+    <label style={{ display: "block", marginTop: 8, fontSize: F.minuscolo, color: C.dim }}>
+      Scade il (facoltativo — la data sta scritta accanto alla chiave nella console)
+      <input
+        type="date"
+        value={quando}
+        onChange={(e) => setQuando(e.target.value)}
+        style={{
+          display: "block",
+          marginTop: 4,
+          background: "transparent",
+          border: `1px solid ${C.border}`,
+          borderRadius: R.piccolo,
+          padding: "6px 10px",
+          fontSize: F.nota,
+          color: C.text,
+        }}
+      />
+    </label>
+    </>
+  );
+}
+
+// Il promemoria, dove la chiave si guarda. Detto sempre quando la data c'e':
+// una riga che compare solo all'ultimo momento e' una riga di cui non ci si
+// puo' fidare.
+export function ScadenzaChiave() {
+  const st = statoChiave({});
+  const frase = frasScadenza(st);
+  if (!frase) return null;
+  const colore = st.stato === "scaduta" ? C.red : st.stato === "inScadenza" ? C.accent : C.dim;
+  return (
+    <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: colore, lineHeight: 1.5 }}>
+      {st.stato === "valida" ? "🔑 " : "⚠️ "}
+      {frase}
+      {st.stato !== "valida" ? " Creane una nuova nella console e incollala qui sotto." : ""}
+    </p>
+  );
+}
+
+export function CambiaChiave() {
+  const [aperto, setAperto] = useState(false);
+  const [fatto, setFatto] = useState(false);
+  if (!hasOracle()) return null;
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button
+        onClick={() => { setAperto((v) => !v); setFatto(false); }}
+        style={{
+          fontSize: F.minuscolo,
+          color: C.muted,
+          border: `1px solid ${C.border}`,
+          borderRadius: R.tondo,
+          padding: "4px 10px",
+        }}
+      >
+        🔑 Cambia la chiave {aperto ? "⌃" : "⌄"}
+      </button>
+      <ScadenzaChiave />
+      {aperto && (
+        <>
+          <p style={{ margin: "8px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.5 }}>
+            Le chiavi di Anthropic scadono. Creane una nuova su console.anthropic.com (Chiavi API →
+            Crea chiave) e incollala qui: quella vecchia viene sostituita e resta solo su questo
+            dispositivo.
+          </p>
+          <CampoChiave autoFocus onSalva={() => { setFatto(true); setAperto(false); }} />
+        </>
+      )}
+      {fatto && (
+        <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: C.green }}>
+          Chiave sostituita 🔑
+        </p>
+      )}
     </div>
   );
 }
