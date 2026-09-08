@@ -57,7 +57,11 @@ function Voce({ dict }) {
     >
       {entries.length > 0 && (
         <>
-          {banda(`Wiktionary ${lingua}`)}
+          {/* la banda dice la fonte, come sul Collins: una definizione di
+              WordNet è più scarna di una di Wiktionary, e sapere da dove
+              viene è la differenza fra «il dizionario oggi dice poco» e
+              «questa è la voce che sta sul dispositivo» */}
+          {banda(dict.dalDisco ? "WordNet · sul dispositivo" : `Wiktionary ${lingua}`)}
           <div style={{ padding: "9px 12px 11px" }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
               <span style={{ fontSize: F.corpo, fontWeight: 600, color: C.text }}>

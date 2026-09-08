@@ -16,7 +16,7 @@ import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
 } from "../lib/readerSettings.js";
 import { contentStyles, spegniVuoti, togliStacco, staccaParagrafi, spegniScenografia } from "../lib/readerTheme.js";
-import { ritaglioAvanzo, flattenToc, cfiLeggibile } from "../lib/readerLayout.js";
+import { ritaglioAvanzo, flattenToc, cfiLeggibile, ultimoSegnalibro } from "../lib/readerLayout.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
 import { explain, termIndex, normalize, wikiUrl, haGlossario } from "../lib/glossary.js";
@@ -263,6 +263,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // lettore si sposta APPOSTA — voltata, indice, segnalibro, cursore — che
   // e' il momento in cui ha scelto lui da dove leggere.
   const segnoDaTenere = useRef(null);
+  // dove si atterra quando il segno non si puo' usare: l'ultimo segnalibro,
+  // gia' controllato, o `null` se non ce n'e' uno buono (vedi
+  // `ultimoSegnalibro`). E' un ref e non uno stato perche' serve dentro il
+  // `catch` del `display`, che gira fuori dal giro di React.
+  const ripiego = useRef(null);
   const fixTimers = useRef([]);
   const live = useRef({ cfi: startCfi || getCfi(book.id), progress: getProgress(book.id), locReady: false, settings: null });
 
@@ -302,6 +307,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // percentuale, perché il CFI vecchio parla di file che non ci sono più.
   const [cucitura, setCucitura] = useState(null);
   const [ritornoFallito, setRitornoFallito] = useState(false);
+  // e l'avviso deve dire dove sei atterrato DAVVERO: «riparto dall'inizio»
+  // sopra una pagina che e' il tuo segnalibro di due capitoli fa sarebbe
+  // una bugia, e per giunta ti farebbe cercare un guasto che non c'e'
+  const [daSegnalibro, setDaSegnalibro] = useState(false);
   const [giro, setGiro] = useState(0);
   const saltaPct = useRef(null);
 
@@ -885,13 +894,25 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       Promise.resolve()
         .then(() => r.display(target || undefined))
         .catch(() => {
-          // non si e' potuto tornare dov'era: si riparte dall'inizio, ma il
-          // segno salvato resta intatto e il lettore lo viene a sapere
+          // non si e' potuto tornare dov'era — il CFI e' ben formato ma
+          // parla di un pezzo che il libro non ha piu'. Si ripiega
+          // sull'ultimo segnalibro se c'e', e solo in mancanza di quello
+          // sulla prima pagina; il segno salvato resta intatto e il lettore
+          // lo viene a sapere.
           if (target) {
             segnoDaTenere.current = target;
             setRitornoFallito(true);
           }
-          return r.display();
+          // il segnalibro puo' ESSERE il punto che ha appena fallito: se il
+          // segno era malformato ci siamo gia' ripiegati sopra piu' su.
+          // Riproporlo qui vorrebbe dire farlo fallire una seconda volta,
+          // e quella seconda non la prende nessuno — il rifiuto uscirebbe
+          // da questa catena e il libro non si aprirebbe affatto.
+          const alt = ripiego.current && ripiego.current !== target ? ripiego.current : null;
+          setDaSegnalibro(!!alt);
+          return Promise.resolve()
+            .then(() => r.display(alt || undefined))
+            .catch(() => r.display());
         })
         .then(() => {
           if (rendRef.current !== r) return setStatusUi("ready");
@@ -954,12 +975,25 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         linguaRef.current = dichiarata && sillaba(dichiarata) ? dichiarata : null;
         setLingua({ dichiarata, sillababile: !!linguaRef.current });
         eb.loaded.navigation.then((nav) => !dead && setToc(flattenToc(nav.toc)));
+        // IL RIPIEGO E' L'ULTIMO SEGNALIBRO, non la prima pagina. Passa dal
+        // solito controllo: un segnalibro storto e' storto come ogni altro
+        // CFI, e darlo a epub.js farebbe scoppiare l'apertura allo stesso
+        // modo. La mira per il ripiego si tiene qui perche' serve anche al
+        // `catch` del `display`, che sta dentro `makeRendition`.
+        const s = ultimoSegnalibro(getMarks(book.id));
+        ripiego.current = s && cfiLeggibile(ePub.CFI, s) ? s : null;
         // il segno si controlla PRIMA di darlo a epub.js: uno storto non si
         // puo' prendere, si puo' solo non consegnare (vedi `cfiLeggibile`)
         if (live.current.cfi && !cfiLeggibile(ePub.CFI, live.current.cfi)) {
           segnoDaTenere.current = live.current.cfi;
-          live.current.cfi = null;
+          live.current.cfi = ripiego.current;
           setRitornoFallito(true);
+          setDaSegnalibro(!!ripiego.current);
+        } else if (!live.current.cfi && ripiego.current) {
+          // mai letto qui, o il segno e' andato perduto per strada: un
+          // segnalibro c'e', e vale piu' della prima pagina. Non e' un
+          // guasto, quindi non si annuncia niente.
+          live.current.cfi = ripiego.current;
         }
         makeRendition(live.current.settings);
         const cached = await getAux(`loc_${book.id}`);
@@ -2913,7 +2947,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           }}
         >
           <p style={{ margin: 0, fontSize: F.nota, color: C.text, lineHeight: 1.5 }}>
-            🔖 Non sono riuscito a tornare al punto dov'eri, e riparto dall'inizio.{" "}
+            🔖 Non sono riuscito a tornare al punto dov'eri, e riparto{" "}
+            {daSegnalibro ? "dal tuo ultimo segnalibro" : "dall'inizio"}.{" "}
             <strong>Il tuo segno è ancora salvato</strong>: chiudi e riapri il libro per riprovare.
           </p>
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>

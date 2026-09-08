@@ -22,7 +22,7 @@
 // Il secondo non si può PRENDERE: si può solo non consegnare. Ed è quello
 // che fa `cfiLeggibile`, che sta fuori dal JSX apposta per essere provata
 // qui — la classe le arriva da fuori, così non ci si tira dietro epub.js.
-import { cfiLeggibile } from "../src/lib/readerLayout.js";
+import { cfiLeggibile, ultimoSegnalibro } from "../src/lib/readerLayout.js";
 
 // Il finto sta dalla parte giusta della trappola: si comporta come
 // `ePub.CFI` per davvero, cioè LANCIA su quel che non sa leggere invece di
@@ -86,4 +86,51 @@ export default async function (t) {
     esploso = true;
   }
   t.c("prende l'errore invece di lasciarlo passare", esploso === false);
+
+  // ---- IL SEGNALIBRO COME RIPIEGO ---------------------------------------
+  //
+  // Chiesto dal lettore: «fai in modo che il libro riapra dalla posizione
+  // dell'ultimo segnalibro». Preso alla lettera sarebbe un danno, quindi
+  // comanda sempre il segno automatico e il segnalibro entra solo dove
+  // oggi si atterrava a pagina uno. Qui si prova la SCELTA del segnalibro;
+  // che il ripiego scatti nei tre punti giusti sta in `Reader.jsx` e si
+  // vede solo in un browser.
+  const M = (id, createdAt, cfi = `epubcfi(/6/${id})`) => ({ id, cfi, createdAt });
+
+  t.eq(
+    "fra due segnalibri vince il più RECENTE, non il più avanti nel libro",
+    ultimoSegnalibro([M("a", 3000), M("b", 1000)]),
+    "epubcfi(/6/a)"
+  );
+  t.eq(
+    "e l'ordine dell'elenco non conta, conta la data",
+    ultimoSegnalibro([M("vecchio", 1000), M("nuovo", 9000)]),
+    "epubcfi(/6/nuovo)"
+  );
+  // I segnalibri messi prima che esistesse `createdAt` valgono zero: uno
+  // nuovo deve batterli sempre, o il ripiego sarebbe il più antico di tutti.
+  t.eq(
+    "un segnalibro senza data non batte uno datato",
+    ultimoSegnalibro([{ id: "muto", cfi: "epubcfi(/6/muto)" }, M("datato", 5)]),
+    "epubcfi(/6/datato)"
+  );
+  // A parità di data vince l'ULTIMO dell'elenco, che è l'ordine in cui sono
+  // stati messi: con `>` al posto di `>=` vincerebbe il primo.
+  t.eq(
+    "a parità di data vince l'ultimo messo",
+    ultimoSegnalibro([M("primo", 7), M("secondo", 7)]),
+    "epubcfi(/6/secondo)"
+  );
+  // Un segnalibro senza CFI non è un posto dove andare: saltarlo NON deve
+  // far perdere quello buono che gli sta accanto.
+  t.eq(
+    "un segnalibro senza posizione si salta, non ferma la scelta",
+    ultimoSegnalibro([M("buono", 10), { id: "rotto", cfi: null, createdAt: 99 }]),
+    "epubcfi(/6/buono)"
+  );
+  // `null` e non `""`: chi chiama lo passa a `cfiLeggibile` e poi a
+  // `display`, e una stringa vuota è un CFI che non esiste.
+  for (const niente of [[], null, undefined, [{ id: "x" }]]) {
+    t.eq(`senza segnalibri utili non c'è ripiego (${JSON.stringify(niente)})`, ultimoSegnalibro(niente), null);
+  }
 }

@@ -47,6 +47,27 @@ export const removeTrack = (id) => withStore("tracks", "readwrite", (s) => s.del
 export const listFileIds = () => withStore("files", "readonly", (s) => s.getAllKeys());
 export const putAux = (key, value) => withStore("aux", "readwrite", (s) => s.put(value, key));
 export const getAux = (key) => withStore("aux", "readonly", (s) => s.get(key));
+export const removeAux = (key) => withStore("aux", "readwrite", (s) => s.delete(key));
+export const chiaviAux = () => withStore("aux", "readonly", (s) => s.getAllKeys());
+
+// TANTE SCRITTURE IN UNA TRANSAZIONE SOLA. Il dizionario offline entra in
+// settecento sacchi, e settecento transazioni separate su un tablet sono
+// secondi di attesa a schermo fermo. Qui si aspetta la TRANSAZIONE e non la
+// singola richiesta, che e' anche l'unico modo di sapere che sono arrivate
+// davvero tutte: `put` risponde presto, la transazione risponde quando il
+// disco ha finito — e se una sola fallisce si annulla tutto insieme, invece
+// di lasciare un dizionario a meta' che sembrerebbe intero.
+export async function putAuxMolti(voci) {
+  const d = await db();
+  return new Promise((resolve, reject) => {
+    const tx = d.transaction("aux", "readwrite");
+    const s = tx.objectStore("aux");
+    for (const [k, v] of voci) s.put(v, k);
+    tx.oncomplete = () => resolve(voci.length);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
 
 export async function removeBookData(id) {
   await withStore("files", "readwrite", (s) => s.delete(id));
