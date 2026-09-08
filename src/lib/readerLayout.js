@@ -73,3 +73,30 @@ export function cfiLeggibile(CFI, cfi) {
     return false;
   }
 }
+
+// IL SEGNALIBRO E' IL RIPIEGO DEL SEGNO, MAI IL SUO PADRONE.
+//
+// Chiesto dal lettore: «fai in modo che il libro riapra dalla posizione
+// dell'ultimo segnalibro». Preso alla lettera sarebbe un danno — chi legge
+// centocinquanta pagine senza spostare il segnalibro, riaprendo tornerebbe
+// indietro — quindi comanda sempre il segno automatico, e il segnalibro
+// entra SOLO dove oggi si ripiega sulla prima pagina: segno assente, segno
+// malformato, segno che `display` rifiuta perche' quel pezzo il libro non
+// ce l'ha piu'. In tutti e tre i casi il lettore atterrava all'inizio del
+// romanzo, ed e' il posto peggiore possibile: l'ultimo segnalibro e' quasi
+// sempre a pochi capitoli da dov'era.
+//
+// «Ultimo» e' il piu' RECENTE, non il piu' avanti nel libro: e' l'ultima
+// volta che il lettore ha detto «questo punto conta», e chi torna indietro
+// a rileggere un capitolo e lo segna vuole ritrovarsi li'.
+export function ultimoSegnalibro(segnalibri) {
+  let scelto = null;
+  for (const s of segnalibri || []) {
+    if (!s?.cfi) continue;
+    // `>=` e non `>`: a parita' di data vince l'ULTIMO dell'elenco, che e'
+    // l'ordine in cui sono stati messi. I segnalibri vecchi non hanno
+    // `createdAt` e valgono zero, quindi uno nuovo li batte sempre.
+    if (!scelto || (s.createdAt || 0) >= (scelto.createdAt || 0)) scelto = s;
+  }
+  return scelto?.cfi || null;
+}
