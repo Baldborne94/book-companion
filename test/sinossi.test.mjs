@@ -6,7 +6,7 @@
 //
 // Il pezzo dove si sbaglia è la ripulitura: quella descrizione è HTML,
 // spesso scappato, dentro un attributo XML.
-import { ripulisci, buona, dalMetadata, MAX, MINIMO } from "../src/lib/sinossi.js";
+import { ripulisci, buona, dalMetadata, senzaEtichetta, MAX, MINIMO } from "../src/lib/sinossi.js";
 
 export default async function (t) {
   // ---- il caso di tutti i giorni ---------------------------------------
@@ -96,4 +96,42 @@ export default async function (t) {
   t.eq("una descrizione-spazzatura pure", dalMetadata({ description: "Unknown" }), "");
   t.eq("e nessun metadato", dalMetadata(undefined), "");
   t.c("ed è sempre una stringa, mai `undefined`", typeof dalMetadata({}) === "string");
+
+  // ---- L'ETICHETTA REDAZIONALE IN TESTA --------------------------------
+  //
+  // Certi editori scrivono «SUMMARY:» o «Product Description» davanti alla
+  // quarta, e sullo schermo quella diventa la prima parola del libro. Non
+  // era coperta da niente, ed è così che è passato il caso vero: sul
+  // catalogo «Product Description» arriva su una RIGA SUA, senza due punti,
+  // e restava in testa (visto in fotografia sul tablet).
+  t.eq(
+    "l'etichetta su una riga sua se ne va",
+    senzaEtichetta("Product Description\n\nStrikingly original in its conception."),
+    "Strikingly original in its conception."
+  );
+  t.eq("e anche col solo a capo", senzaEtichetta("SUMMARY\nUn romanzo."), "Un romanzo.");
+  t.eq("coi due punti come sempre", senzaEtichetta("SUMMARY: Un romanzo."), "Un romanzo.");
+  t.eq("col trattino pure", senzaEtichetta("Trama — Un romanzo."), "Un romanzo.");
+  t.eq("le maiuscole non contano", senzaEtichetta("product description: Un romanzo."), "Un romanzo.");
+
+  // MA LA GUARDIA CHE CONTA È L'ALTRA METÀ: una frase che COMINCIA per una
+  // di quelle parole è prosa, non un'etichetta, e toglierla mangerebbe
+  // l'inizio del libro. È il caso che l'a capo poteva rompere.
+  t.eq(
+    "«Summary justice» è prosa e non si tocca",
+    senzaEtichetta("Summary justice was swift in those days."),
+    "Summary justice was swift in those days."
+  );
+  t.eq(
+    "e nemmeno «Overview» dentro una frase",
+    senzaEtichetta("Overview of the war is what he wanted."),
+    "Overview of the war is what he wanted."
+  );
+  // l'etichetta vale solo IN TESTA: in mezzo al testo è una parola come le altre
+  t.eq(
+    "in mezzo non è un'etichetta",
+    senzaEtichetta("Il libro. Trama: quella che sai."),
+    "Il libro. Trama: quella che sai."
+  );
+  t.eq("il niente non esplode", senzaEtichetta(undefined), "");
 }
