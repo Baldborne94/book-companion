@@ -53,8 +53,32 @@ const entita = (s) =>
 // `ripulisci` perche' serve anche ai retri GIA' salvati: Eric il suo
 // «SUMMARY:» ce l'aveva in casa da prima della cura, e rifargli tutta la
 // ripulitura vorrebbe dire scappare le entita' una seconda volta.
+// E IL SEPARATORE PUO' ESSERE UN A CAPO. L'etichetta si toglieva solo col
+// suo due punti, e su «Darkness That Comes Before» il catalogo manda
+// «Product Description» su una RIGA SUA, seguita da una riga vuota — nessun
+// separatore, quindi l'etichetta restava in testa alla quarta di copertina
+// (visto in fotografia sul tablet, e questa funzione non era coperta da
+// nessun test).
+//
+// Un a capo e' un separatore quanto i due punti — anzi di piu': e' cosi'
+// che si scrive un titoletto. E NON indebolisce la guardia che conta, che
+// e' l'altra meta' della regola: il separatore resta OBBLIGATORIO, quindi
+// «Summary justice was swift» — che dopo la parola ha uno spazio e poi
+// una lettera — non si tocca.
+//
+// Detto onestamente: `[ \t]*` invece di `\s*` e' esplicito ma NON e'
+// portante, e la mutazione che li scambia sopravvive. Con `\s*` il motore
+// torna indietro e fa combaciare lo stesso l'a capo col separatore, quindi
+// le due forme si comportano uguale. Resta scritto cosi' perche' dice a
+// occhio dove finisce l'etichetta e dove comincia il separatore; chi lo
+// cambia non rompe niente, e chi cerca la guardia vera la trova nel
+// separatore obbligatorio, che invece e' provato (togliendolo cascano tre
+// controlli).
 export const senzaEtichetta = (t) =>
-  String(t || "").replace(/^(summary|sinossi|descrizione|trama|overview|(product|book) description)\s*[:\-–—]\s*/i, "");
+  String(t || "").replace(
+    /^(summary|sinossi|descrizione|trama|overview|(product|book) description)[ \t]*(?:[:\-–—][ \t]*|\r?\n)\s*/i,
+    ""
+  );
 
 export function ripulisci(grezzo, max = MAX) {
   if (!grezzo) return "";
