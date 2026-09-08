@@ -1,5 +1,6 @@
 import DISCWORLD, { SAGA, CICLI_NOSTRI } from "../data/discworldBooks.js";
 import HORUS, { SAGA as SAGA_HH } from "../data/horusHeresy.js";
+import APOCALISSE, { SAGA as SAGA_SA, FUORI as FUORI_BAKKER } from "../data/secondApocalypse.js";
 
 // Riconoscere il romanzo dal titolo: i metadati degli EPUB sono spesso vuoti,
 // storti o pieni di roba dell'editore («Guards! Guards! (Discworld Novels
@@ -51,6 +52,11 @@ const TAVOLE = [
   // `o` e non `n`: l'ordine e' quello del percorso CD8D, non la numerazione
   // della collana. Vedi il commento in testa a `horusHeresy.js`.
   { saga: SAGA_HH, libri: HORUS, ordine: (b) => b.o, autore: null, fuori: [], stretta: true },
+  // Bakker sta in mezzo ai due: ha scritto quasi solo questa saga — quindi
+  // il ripiego sull'autore vale, coi suoi thriller in `fuori` — ma i titoli
+  // non sono insegne inconfondibili («The Great Ordeal»), quindi il
+  // riconoscimento per titolo resta `stretto` e chiede l'autore.
+  { saga: SAGA_SA, libri: APOCALISSE, ordine: (b) => b.n, autore: "bakker", fuori: FUORI_BAKKER, stretta: true },
 ];
 
 // I titoli lunghi per primi, e da TUTTE le tavole insieme: «Garro» non
@@ -60,8 +66,17 @@ const TAVOLE = [
 // difesa che vale anche per le tavole LARGHE, dove la copertura non si
 // applica: nel Mondo Disco una coppia cosi' non c'e', e il giorno che
 // arriva non deve dipendere dall'ordine con cui e' scritto un file.
+// UN LIBRO PUO' AVERE PIU' NOMI, e si dichiarano a mano. Il titolo si cerca
+// DENTRO il campo, quindi «The Darkness That Comes Before» non combacia con
+// un file che si chiama «Darkness That Comes Before» — che e' esattamente
+// come e' scritto quello del lettore. Togliere l'articolo a TUTTI i titoli
+// sarebbe la cura sbagliata: «The Truth» del Mondo Disco diventerebbe
+// «truth», che sta dentro qualunque titolo. Gli alias invece li mette chi
+// scrive la tavola, uno per uno, dove sa che sono innocui.
 const INDICE = TAVOLE.flatMap((tav) =>
-  tav.libri.map((b) => ({ ...b, k: norm(b.t), tav }))
+  tav.libri.flatMap((b) =>
+    [b.t, ...(b.alias || [])].map((nome) => ({ ...b, k: norm(nome), tav }))
+  )
 ).sort((a, b) => b.k.length - a.k.length);
 
 // QUANDO IL CONTENIMENTO NON BASTA.

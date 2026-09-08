@@ -2,6 +2,7 @@
 // biblioteca, e la saga imparata dalla tua biblioteca.
 import DISCWORLD, { SAGA, CICLI_NOSTRI } from "../src/data/discworldBooks.js";
 import { riconosci, ripassa, sagaDaBiblioteca, fuoriSaga } from "../src/lib/sagaBooks.js";
+import APOCALISSE, { SAGA as SAGA_SA } from "../src/data/secondApocalypse.js";
 
 export default async function (t) {
   const cicloDi = (t) => DISCWORLD.find((b) => b.t === t)?.c;
@@ -176,4 +177,62 @@ export default async function (t) {
   t.c("la mappa punta solo a nomi veri (o al vuoto)",
     Object.values(CICLI_NOSTRI).every((n) => n === null || ATTESI.has(n)));
 
+  // ---- LA SECONDA APOCALISSE, e perché ha una tavola sua ---------------
+  //
+  // Chiesto due volte dal lettore. La strada di sempre — la saga copiata da
+  // un altro libro dello stesso autore — non poteva funzionare: di Bakker
+  // ne ha UN volume solo, quindi non c'era da dove copiarla, e il tasto
+  // rispondeva «erano già tutti a posto» dicendo il vero.
+  const bakker = (t2, a = "R. Scott Bakker") => riconosci({ title: t2, author: a });
+
+  t.eq("il titolo intero si riconosce", bakker("The Darkness That Comes Before")?.sagaOrder, 1);
+  t.eq("con la sua saga", bakker("The Darkness That Comes Before")?.saga, SAGA_SA);
+  t.eq("e il suo ciclo", bakker("The Darkness That Comes Before")?.ciclo, "The Prince of Nothing");
+  // IL CASO DEL LETTORE: il suo file si chiama senza «The», e il titolo si
+  // cerca DENTRO il campo — la forma lunga non ci starebbe mai.
+  t.eq("e anche il titolo senza l'articolo", bakker("Darkness That Comes Before")?.sagaOrder, 1);
+  t.eq(
+    "il rumore dell'editore non lo nasconde",
+    bakker("The Unholy Consult (The Aspect-Emperor Book 4).epub", "Bakker, R. Scott")?.sagaOrder,
+    7
+  );
+  t.eq("il secondo ciclo si chiama col suo nome", bakker("The Judging Eye")?.ciclo, "The Aspect-Emperor");
+
+  // LA TAVOLA È `stretta`, ed è questa la ragione: «The Great Ordeal» non è
+  // un'insegna inconfondibile, e di un ALTRO autore non è il suo.
+  t.eq("un omonimo di un altro autore non passa", bakker("The Great Ordeal", "Qualcun Altro"), null);
+  t.eq("ma il suo sì", bakker("The Great Ordeal")?.sagaOrder, 6);
+
+  // I THRILLER DI BAKKER NON SONO LA SAGA: senza `fuori`, il ripiego
+  // sull'autore darebbe «The Second Apocalypse» anche a quelli.
+  t.eq("«Neuropath» non è la saga", bakker("Neuropath"), null);
+  t.eq("nemmeno «Disciple of the Dog»", bakker("Disciple of the Dog"), null);
+  // ...mentre un titolo che non conosciamo prende la saga senza numero:
+  // meglio della saga mancante, e il numero non si inventa
+  const ignoto = bakker("Un romanzo che la tavola non conosce");
+  t.eq("un titolo ignoto del suo autore prende la saga", ignoto?.saga, SAGA_SA);
+  t.eq("ma senza numero, che non si inventa", ignoto?.sagaOrder, null);
+
+  // la tavola in sé: numeri di fila, nessun doppione, ogni voce col ciclo
+  t.eq("sette romanzi", APOCALISSE.length, 7);
+  t.c("numerati di fila da 1", APOCALISSE.every((b, i) => b.n === i + 1));
+  t.eq("nessun titolo doppio", new Set(APOCALISSE.map((b) => b.t)).size, APOCALISSE.length);
+  t.c("ogni volume dichiara il suo ciclo", APOCALISSE.every((b) => !!b.c));
+  t.c("e il suo autore, che è quel che rende la tavola stretta", APOCALISSE.every((b) => !!b.a));
+
+  // GLI ALIAS NON DEVONO ALLARGARE LE ALTRE TAVOLE: togliere l'articolo a
+  // tutti farebbe di «The Truth» un «truth» che sta dentro qualunque cosa.
+  t.eq("«The Truth» resta il Mondo Disco", riconosci({ title: "The Truth", author: "Terry Pratchett" })?.saga, SAGA);
+  // ...e la chiave del Disco resta «the truth», con l'articolo: è questo che
+  // l'alias non deve toccare.
+  t.eq(
+    "«Truth» da solo non prende il Mondo Disco",
+    riconosci({ title: "Truth", author: "Qualcun Altro" }),
+    null
+  );
+  // LIMITE DICHIARATO, e non è mio: il Mondo Disco è una tavola LARGA, e
+  // «The Truth About Cats» di chiunque si prende «The Truth» per solo
+  // contenimento. Misurato prima e dopo questa modifica: identico. Curarlo
+  // vorrebbe dire rendere `stretta` anche quella tavola, che è un'altra
+  // faccenda e tocca quarantun romanzi già in libreria.
 }
