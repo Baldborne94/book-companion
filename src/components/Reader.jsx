@@ -293,6 +293,20 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // il velo color carta sul passo indietro oltre il confine: copre la
   // ricostruzione del capitolo (vedi step) e cade a misura ferma
   const [velo, setVelo] = useState(false);
+  // IL VELO SI ALZA A MANO, e non e' un vezzo: dentro il callback di
+  // `startViewTransition` il browser fotografa lo stato NUOVO appena la
+  // funzione torna, e uno `setVelo(true)` di React arriverebbe dopo — la
+  // fotografia nuova sarebbe la pagina, non il velo. Qui si tocca il DOM e
+  // si spegne la transizione, cosi' il velo e' gia' pieno quando lo scatto
+  // parte. Lo stato di React si mette in pari subito dopo, e il render che
+  // segue riscrive gli stessi valori.
+  const veloRef = useRef(null);
+  const alzaIlVelo = () => {
+    const el = veloRef.current;
+    if (!el) return;
+    el.style.transition = "none";
+    el.style.opacity = "1";
+  };
   const [dict, setDict] = useState(null);
   const [endCard, setEndCard] = useState(null);
   // la nota a piè di pagina, letta SUL POSTO: il testo della nota o null.
@@ -1490,6 +1504,31 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       volta();
     };
     inAttesa.current = via;
+    // ANCHE IL CONFINE SVOLTA, ma il foglio scopre il VELO e non il
+    // capitolo (chiesto dal lettore: «come mai la spazzata a volte funziona
+    // e a volte no» → «provaci, ma senza lo scatto»).
+    //
+    // E il capitolo cambia DOPO che la spazzata e' finita, non durante.
+    // Non e' prudenza: cambiare capitolo e' il lavoro piu' pesante che il
+    // reader faccia — e' la stessa ragione per cui `reportLocation` si
+    // rimanda a transizione chiusa — e farlo correre insieme all'animazione
+    // la ridurrebbe a scatti, cioe' si guadagnerebbe la svolta perdendo la
+    // fluidita' per cui la svolta esiste. Il prezzo e' dichiarato: al
+    // confine la voltata dura la spazzata PIU' l'assestamento, che prima
+    // era il solo assestamento. Sotto c'e' sempre la rete di `laSvolta`
+    // (1,5 s): se la transizione non si chiude, `dopo` gira lo stesso e la
+    // pagina non resta appesa.
+    // si chiede a `live.current.settings`, non a `settings`: e' la stessa
+    // copia che legge `laSvolta` per scegliere il modo, e le due domande
+    // devono dare la stessa risposta — se divergessero, qui si entrerebbe
+    // aspettandosi una spazzata e la' partirebbe la dissolvenza, che il
+    // velo lo fa CADERE prima che il capitolo sia cambiato
+    if (live.current.settings.svolta === "spazzata") {
+      laSvolta(r, dir, alzaIlVelo, () => {
+        if (inAttesa.current === via) via();
+      });
+      return;
+    }
     setTimeout(() => {
       if (inAttesa.current === via) via();
     }, PASSO);
@@ -2241,6 +2280,33 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               background: theme.bg,
             }}
           />
+          {/* IL VELO COLOR CARTA STA DENTRO LA FOTOGRAFIA, e da qui viene
+              la spazzata al confine di capitolo. Prima era fuori
+              dall'elemento `bc-pagina`, e finche' al confine non si
+              svoltava andava bene lo stesso. Ma la spazzata scopre la
+              fotografia NUOVA, e al confine quella e' un capitolo che si
+              sta ancora assestando: il foglio se ne andava mostrando la
+              pagina che balla — cioe' proprio lo scatto. Col velo qui
+              dentro la fotografia nuova E' il velo, il capitolo si
+              assesta dietro di lui e non lo vede nessuno.
+              Resta SOTTO il filtro caldo e la luminosita' (zIndex 9):
+              dipinto sopra usciva pergamena pura contro una pagina
+              filtrata — misurato sul video del lettore, ed era il lampo.
+              Viaggia di opacita': entra in 90ms per coprire in tempo,
+              esce in 300 che e' la parte che si vede. */}
+          <div
+            ref={veloRef}
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 4,
+              background: theme.bg,
+              pointerEvents: "none",
+              opacity: velo ? 1 : 0,
+              transition: `opacity ${velo ? 90 : 300}ms ease-in-out`,
+            }}
+          />
           {/* i veli del libro: l'alfa sta nel colore (un riempimento
               uniforme rgba e' identico a tinta+opacity, ma i pixel
               semi-trasparenti viaggiano fedeli in ogni fotografia) */}
@@ -2264,24 +2330,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             }}
           />
         </div>
-        {/* il velo sta SOTTO il filtro caldo e la luminosita' (che vivono
-            in cima al reader, zIndex 5): dipinto sopra usciva pergamena
-            pura contro una pagina filtrata — misurato sul video del
-            lettore, ed era il lampo. Viaggia di opacita': entra in 90ms
-            per coprire in tempo, esce in 300 che e' la parte che si vede. */}
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            inset: FRAME,
-            zIndex: 4,
-            borderRadius: R.minimo,
-            background: theme.bg,
-            pointerEvents: "none",
-            opacity: velo ? 1 : 0,
-            transition: `opacity ${velo ? 90 : 300}ms ease-in-out`,
-          }}
-        />
         {/* IL TAGLIO DELLE PAGINE NON HA SENSO IN SCORRIMENTO, e la
             domanda l'ha fatta il lettore guardando lo schermo: «quando e' in
             mod scorrimento ha senso tenere le pagine ai lati?».
