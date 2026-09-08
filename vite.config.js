@@ -35,11 +35,22 @@ export default defineConfig({
       manifest: false,
       includeAssets: ["icon.svg", "manifest.json", "icons/*.png"],
       workbox: {
+        // IL DIZIONARIO OFFLINE NON STA QUI DENTRO, ed e' voluto: sono 3,3 MB
+        // e il lettore li scarica quando li chiede lui (Impostazioni › Il
+        // dizionario). Il `.gz`, il `.json` del cartellino e il `.txt` della
+        // licenza restano fuori dai `globPatterns` proprio per questo —
+        // precacharli vorrebbe dire spedirli a tutti al primo avvio, cioe'
+        // togliere la scelta che il tasto promette.
         globPatterns: ["**/*.{js,mjs,css,html,svg,png}"],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         skipWaiting: false,
         clientsClaim: false,
         navigateFallback: "index.html",
+        // ...ma restare fuori dal precache non basta: aprire la licenza in
+        // una scheda nuova E' una navigazione, e il ripiego le servirebbe
+        // `index.html` — cioe' l'app al posto del documento, senza un
+        // errore che lo dica.
+        navigateFallbackDenylist: [/^\/dizionario\//],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/,

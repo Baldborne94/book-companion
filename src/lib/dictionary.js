@@ -1,4 +1,5 @@
 import { getAux, putAux } from "./bookStore.js";
+import { sensiOffline, POS_WORDNET } from "./dizionarioOffline.js";
 
 const CACHE = new Map();
 const AUX_KEY = "dict_cache";
@@ -202,6 +203,31 @@ async function fetchSenses(word, section) {
   return out
     .filter((e, i, all) => all.findIndex((x) => x.text === e.text) === i)
     .sort((a, b) => a.order - b.order);
+}
+
+// IL DIZIONARIO CHE STA SUL DISPOSITIVO, quando quello in rete non risponde.
+//
+// WordNet indicizza i LEMMI: «gutters» non c'e', «gutter» si'. Le basi
+// possibili le sa gia' fare `basiDi`, che serve alla stessa identica cosa
+// per Wiktionary — si riusa quella invece di scriverne un'altra, e la prima
+// che il dizionario conosce vince. Solo per l'inglese: WordNet e' un
+// dizionario inglese, e su un libro italiano risponderebbe a vanvera.
+async function sensiDalDisco(word, lang) {
+  if (lang !== "en") return [];
+  for (const p of [word, ...basiDi(word)]) {
+    let sensi = [];
+    try {
+      sensi = await sensiOffline(p);
+    } catch {
+      return [];
+    }
+    if (!sensi.length) continue;
+    return sensi.map(([lettera, text]) => {
+      const nome = POS_WORDNET[lettera] || lettera;
+      return { pos: POS_IT[nome] || nome, order: rank(nome), text, lemma: p };
+    });
+  }
+  return [];
 }
 
 async function fetchTranslation(word, from, intera = false) {
@@ -559,6 +585,19 @@ export async function lookup(raw, bookLang = "en") {
   }
   await Promise.all(jobs);
 
+  // IL DIZIONARIO DI QUI, se quello in rete non ha detto niente. Non prende
+  // mai il posto di Wiktionary quando Wiktionary risponde: la' ci sono le
+  // locuzioni, i verbi frasali e i rimandi delle forme flesse, che WordNet
+  // non ha.
+  let dalDisco = false;
+  if (!entries.length) {
+    const locali = await sensiDalDisco(word, lang);
+    if (locali.length) {
+      entries = locali;
+      dalDisco = true;
+    }
+  }
+
   // si segue il primo rimando (un salto solo: basta e non gira in tondo),
   // le altre righe-rimando si dicono almeno in italiano
   let base = null;
@@ -597,11 +636,23 @@ export async function lookup(raw, bookLang = "en") {
     // avvisa che le definizioni restano in lingua originale
     foreign: lang !== "it" && !translation && entries.length > 0,
     offline: offline && !entries.length && !translation,
+    // la banda della scheda deve dire da dove viene la risposta: «WordNet»
+    // e «Wiktionary» non sono la stessa cosa, e chi legge una definizione
+    // piu' scarna del solito ha diritto di sapere perche'
+    dalDisco,
     at: Date.now(),
   };
   // un buco di rete non diventa una risposta definitiva: senza salvarlo,
   // la stessa parola riprova appena la connessione torna
   if (out.offline) return out;
+  // E VALE ANCHE PER LA RISPOSTA ARRIVATA DAL DISCO PERCHE' LA RETE MANCAVA:
+  // salvarla vorrebbe dire tenersi la voce piu' scarna per sempre, e non
+  // rivedere mai piu' quella di Wiktionary su quella parola — la stessa
+  // trappola del buco di rete, con la differenza che qui una risposta c'e'
+  // e nessuno si accorgerebbe di niente. Se invece la rete c'era e
+  // Wiktionary quella parola non ce l'ha, allora e' la risposta migliore
+  // che esista e si tiene.
+  if (dalDisco && offline) return out;
   CACHE.set(key, out);
   await persist();
   return out;
