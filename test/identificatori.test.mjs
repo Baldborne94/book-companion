@@ -110,7 +110,19 @@ function raccogli(albero) {
           !genitore.computed;
         // `import.meta`: esbuild lo lascia com'è, e non sono due nomi
         const eMeta = genitore?.type === "MetaProperty";
-        if (!eProprieta && !eChiave && !eEtichetta && !eCampo && !eMeta && !usati.has(nodo.name))
+        // IN `{ X as Y }` IL NOME X È UN'ETICHETTA, NON UN USO: è il nome
+        // che l'altro file esporta, e in questo file non esiste. Contarlo
+        // come letto fa gridare il guardiano su un import perfettamente
+        // sano — successo davvero, su `{ FUORI as FUORI_BAKKER }`. Fino ad
+        // allora era passato per CASO: l'unico alias in giro era `{ SAGA as
+        // SAGA_HH }`, e `SAGA` risultava dichiarato solo perché lo stesso
+        // file lo importava da un'altra tavola. Vale nei due versi: in
+        // `export { x as y }` è `y` l'etichetta, mentre `x` è un uso vero e
+        // deve continuare a essere preteso.
+        const eAlias =
+          (genitore?.type === "ImportSpecifier" && chiave === "imported") ||
+          (genitore?.type === "ExportSpecifier" && chiave === "exported");
+        if (!eProprieta && !eChiave && !eEtichetta && !eCampo && !eMeta && !eAlias && !usati.has(nodo.name))
           usati.set(nodo.name, nodo.loc?.start?.line ?? 0);
         return;
       }
@@ -158,6 +170,26 @@ export default async function (t) {
     orfani(`const libri = []; export const alte = () => libri.filter((b) => b.rating >= FAV_MIN);`)[0]?.nome,
     "FAV_MIN"
   );
+
+  // GLI ALIAS NON SONO USI, e il guardiano ci ha gridato sopra per davvero
+  // (`import { FUORI as FUORI_BAKKER }`): il nome a sinistra è quello che
+  // l'ALTRO file esporta, e qui dentro non esiste.
+  t.eq(
+    "un import con alias non è un nome orfano",
+    orfani(`import { FUORI as FUORI_BAKKER } from "./x.js"; export const a = FUORI_BAKKER;`).length,
+    0
+  );
+  t.eq(
+    "e nemmeno un export con alias",
+    orfani(`const x = 1; export { x as y };`).length,
+    0
+  );
+  // L'ALTRA METÀ — «e un `export { sparito as y }` chi lo prende?» — NON è
+  // di questo guardiano, e provarlo qui è impossibile: esbuild rifiuta il
+  // file prima ancora di trasformarlo («"sparito" is not declared in this
+  // file»), quindi ad acorn non arriva niente. È il caso raro in cui il
+  // compilatore vede già il difetto; quello che lui NON vede — un nome
+  // letto in un ramo di UI — resta il mestiere di questo test.
 
   // ---- e nessun falso allarme sulle forme sane --------------------------
   const sano = `

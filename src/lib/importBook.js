@@ -1,6 +1,7 @@
 import { putFile, putCover } from "./bookStore.js";
 import { riconosci } from "./sagaBooks.js";
 import { dalMetadata } from "./sinossi.js";
+import { collana } from "./collana.js";
 
 // oltre questa taglia il libro non si ricuce: tenere in memoria due
 // copie dell'archivio, su un tablet, vale piu' di qualche pagina bianca
@@ -208,6 +209,20 @@ export async function importFiles(fileList, libri = []) {
     // saga e numero d'ordine dal titolo, senza chiederli a mano: e' quello
     // che accende il glossario e fa funzionare il «prossimo della saga»
     const saga = riconosci({ title: meta.title, author: meta.author, fileName: file.name });
+    // LA COLLANA SCRITTA NEL FILE VIENE DOPO LA TAVOLA, e non prima: la
+    // tavola conosce l'ORDINE DI LETTURA (l'Eresia rimescola apposta la
+    // collana) e sa anche il ciclo, che il file non dice mai. Ma dove la
+    // tavola non arriva — cioe' su quasi tutti i libri — la collana del
+    // file e' l'unica che sappia rispondere, e risponde gratis: niente
+    // rete, nessun modello, e funziona sul primo libro di un autore che
+    // non conosciamo (chiesto dal lettore: «per ogni libro che inserisci
+    // devi gia' riconoscere se appartiene a una saga e che numero e'»).
+    if (!saga && letto?.collana) {
+      riconosciuti += 1;
+      meta.saga = letto.collana.serie;
+      // il numero non si inventa: una collana senza posto resta una collana
+      if (letto.collana.numero != null) meta.sagaOrder = letto.collana.numero;
+    }
     if (saga) {
       riconosciuti += 1;
       meta.saga = saga.saga;
@@ -307,6 +322,27 @@ async function enrichEpub(meta, file) {
     // riga, non costa rete, e non passa da nessun modello: l'ha scritto
     // l'editore, ed è senza spoiler per mestiere.
     meta.sinossi = dalMetadata(md);
+    // E LA COLLANA ERA LÌ ACCANTO, buttata via allo stesso modo. epub.js
+    // legge titolo, autore e descrizione e basta: `calibre:series` e
+    // `belongs-to-collection` non li guarda nessuno. Si prende l'OPF com'è
+    // scritto — `book.archive` è già aperto, non si riapre niente — e lo
+    // legge una funzione pura (vedi `collana.js`).
+    // LO SLASH DAVANTI NON È UN DETTAGLIO: `Archive.getText` fa `url.substr(1)`
+    // perché si aspetta un percorso assoluto, e senza lo slash cerca
+    // «EBPS/content.opf» — non lo trova, e torna `undefined` SENZA alzare
+    // niente. Il `catch` qui sotto non serviva a prenderlo: la collana
+    // restava vuota su ogni libro e l'import sembrava funzionare. Preso in
+    // un browser vero, non leggendo il diff.
+    try {
+      const percorso = book.container?.packagePath;
+      const opf =
+        percorso && book.archive?.getText
+          ? await book.archive.getText(`/${String(percorso).replace(/^\/+/, "")}`)
+          : "";
+      esito.collana = collana(opf);
+    } catch {
+      /* un OPF che non si legge non è un import fallito: la saga si mette a mano */
+    }
     // Una sola strada per tutt'e due i punti dove serve una copertina:
     // qui all'import e nel tasto ↺ della scheda. Prima erano due copie
     // della stessa logica, e potevano divergere — infatti divergevano.
