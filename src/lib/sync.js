@@ -1,4 +1,5 @@
 import { getClient, isSyncConfigured, BUCKET } from "./supabase.js";
+import { esitoRegistrazione } from "./accesso.js";
 import { putFile, getFile, putCover, getCover, removeBookData, listFileIds, getTrack, putTrack } from "./bookStore.js";
 import {
   loadBooks, saveBooks, getProgress, setProgress, getStatus, setStatus,
@@ -113,7 +114,37 @@ export async function registraConPassword(email, password) {
     options: { emailRedirectTo: window.location.origin },
   });
   if (error) throw error;
-  return { dentro: !!data?.session };
+  // «dentro» | «conferma» | «esiste» — il terzo e' l'email gia' registrata,
+  // che Supabase NON segnala come errore: vedi `esitoRegistrazione`
+  return { esito: esitoRegistrazione(data) };
+}
+
+// LA SESSIONE PUO' CADERE SENZA CHE NESSUNO ABBIA PREMUTO «ESCI»: la
+// libreria di Supabase la butta via da sola quando il refresh token viene
+// rifiutato dal server e l'access token e' gia' scaduto (`_removeSession`
+// nel giro di rinfresco), e fin qui l'app se ne accorgeva solo al prossimo
+// sguardo — la nuvoletta restava accesa e il pannello riproponeva i campi
+// dell'accesso senza una riga a dire perche' («avevo già fatto accesso,
+// perché mi chiede di nuovo…»). Chi ascolta qui puo' dirlo. L'uscita
+// voluta si distingue da quella subita, o si direbbe «scaduta» a chi ha
+// appena premuto il tasto.
+let uscitaVoluta = false;
+export function onAuthChange(cb) {
+  let sub = null;
+  let vivo = true;
+  getClient().then((sb) => {
+    if (!sb || !vivo) return;
+    sub = sb.auth.onAuthStateChange((evento, sessione) => {
+      const voluta = uscitaVoluta;
+      if (evento === "SIGNED_OUT") uscitaVoluta = false;
+      cb(evento, sessione, voluta);
+    }).data?.subscription;
+    if (!vivo) sub?.unsubscribe();
+  });
+  return () => {
+    vivo = false;
+    sub?.unsubscribe();
+  };
 }
 
 // LA CONFERMA CHE NON ARRIVA PIU' E' UN VICOLO CIECO. Se il progetto
@@ -146,6 +177,7 @@ export async function cambiaPassword(password) {
 }
 
 export async function signOut() {
+  uscitaVoluta = true;
   const sb = await getClient();
   await sb?.auth.signOut();
 }

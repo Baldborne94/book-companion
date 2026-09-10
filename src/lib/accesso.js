@@ -72,3 +72,32 @@ export function daConfermare(err) {
 export function passwordCorta(pw) {
   return (pw || "").length < MIN_PASSWORD;
 }
+
+// «REGISTRATI» SU UN'EMAIL CHE ESISTE GIA' NON E' UN ERRORE, ED E' PEGGIO.
+//
+// Segnalato dal lettore: «avevo già fatto accesso, perché mi chiede di
+// nuovo di registrarmi e inoltre non funziona la password che ho scelto».
+// Era entrato col link per posta — quindi un account SENZA password — e
+// vedendo i campi nuovi ha fatto la cosa piu' naturale: «Registrati» con la
+// password che voleva. Supabase, per non raccontare a chiunque provi chi e'
+// registrato, su un'email gia' presente NON risponde con un errore: risponde
+// con un utente finto, senza sessione, e la password scritta NON viene
+// salvata da nessuna parte. Noi leggevamo «nessuna sessione» e dicevamo
+// «registrato, controlla la posta» — una mail che non sarebbe mai arrivata,
+// sopra una password che non esisteva. Da li' «non funziona la password che
+// ho scelto» e' esatto alla lettera.
+//
+// L'utente finto si riconosce da UN segno solo, documentato da Supabase:
+// `identities` e' un elenco VUOTO. Un utente vero appena registrato ne ha
+// almeno una (quella email). Tre esiti, e vanno detti tutt'e tre.
+export function esitoRegistrazione(data) {
+  if (data?.session) return "dentro";
+  const identita = data?.user?.identities;
+  if (Array.isArray(identita) && identita.length === 0) return "esiste";
+  return "conferma";
+}
+
+export const GIA_REGISTRATA =
+  "Quest'email è già registrata, e la password che hai appena scritto NON è stata salvata. " +
+  "Se ne avevi una, entra con quella. Se finora sei entrato col link per email, la password non " +
+  "ce l'hai ancora: chiedi il link qui sotto e, una volta dentro, impostala con «Cambia la password».";

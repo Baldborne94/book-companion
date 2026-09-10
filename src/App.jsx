@@ -43,7 +43,7 @@ import { daAvvisare } from "./lib/oracle.js";
 import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
-import { getSession, syncNow, localFileIds } from "./lib/sync.js";
+import { getSession, syncNow, localFileIds, onAuthChange } from "./lib/sync.js";
 import { FRASI_MELODIA } from "./lib/syncCore.js";
 import { useViewport } from "./lib/viewport.js";
 
@@ -816,10 +816,32 @@ export default function App() {
   useEffect(() => {
     if (!isSyncConfigured()) return;
     let alive = true;
+    // «dentro» vive fuori dallo stato apposta: serve a distinguere la
+    // sessione CADUTA da quella che non c'e' mai stata, e un updater di
+    // React non deve fare toast (StrictMode lo chiamerebbe due volte)
+    let dentro = false;
     getSession().then((s) => {
       if (!alive || !s) return;
+      dentro = true;
       setSync((v) => ({ ...v, signedIn: true }));
       runSync.current(true);
+    });
+    // LA SESSIONE CHE CADE SI DICE: la libreria di Supabase la butta via da
+    // sola quando il server rifiuta il refresh token, e fin qui la nuvoletta
+    // restava accesa e il pannello riproponeva l'accesso senza una riga di
+    // spiegazione. L'uscita premuta col dito ha gia' il suo toast nel
+    // pannello, e qui si tace.
+    const viaAuth = onAuthChange((evento, sessione, voluta) => {
+      if (!alive) return;
+      if (evento === "SIGNED_OUT") {
+        const era = dentro;
+        dentro = false;
+        setSync((v) => (v.signedIn ? { ...v, signedIn: false } : v));
+        if (era && !voluta) notify("☁ La sessione nel cloud è scaduta: rientra dal pannello della nuvola. I libri restano qui.");
+      } else if (sessione) {
+        dentro = true;
+        setSync((v) => (v.signedIn ? v : { ...v, signedIn: true }));
+      }
     });
     localFileIds().then((ids) => alive && setLocalIds(ids));
     const onOnline = () => runSync.current(true);
@@ -828,6 +850,7 @@ export default function App() {
     document.addEventListener("visibilitychange", onVis);
     return () => {
       alive = false;
+      viaAuth();
       window.removeEventListener("online", onOnline);
       document.removeEventListener("visibilitychange", onVis);
     };
