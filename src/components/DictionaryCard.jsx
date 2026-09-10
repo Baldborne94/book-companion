@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import { C, FONT_TITLE, F, R } from "../data/constants.js";
+import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
+import { lemmaDoppione } from "../lib/dictionary.js";
 import { consultaOracolo, hasOracle, setOracleKey } from "../lib/oracle.js";
 import { rigaUltima, rigaMese, riassunto, costo, leggiTetto } from "../lib/spesa.js";
 import { TettoFinito } from "./TettoOracolo.jsx";
@@ -40,10 +41,12 @@ function banda(testo) {
   );
 }
 
-function Voce({ dict }) {
+function Voce({ dict, titolo }) {
   const entries = dict.entries || [];
   if (!entries.length && !dict.translation) return null;
   const lingua = (dict.lang || "en") === "en" ? "Inglese" : (dict.lang || "").toUpperCase();
+  const lemma = dict.lemma || dict.word;
+  const dueVolte = lemmaDoppione(dict, titolo);
 
   return (
     <div
@@ -63,16 +66,16 @@ function Voce({ dict }) {
               «questa è la voce che sta sul dispositivo» */}
           {banda(dict.dalDisco ? "WordNet · sul dispositivo" : `Wiktionary ${lingua}`)}
           <div style={{ padding: "9px 12px 11px" }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
-              <span style={{ fontSize: F.corpo, fontWeight: 600, color: C.text }}>
-                {dict.lemma || dict.word}
-              </span>
-              {dict.forma && (
-                <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>
-                  ({dict.forma} «{dict.lemma}»)
-                </span>
-              )}
-            </div>
+            {!dueVolte && (
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: F.corpo, fontWeight: 600, color: C.text }}>{lemma}</span>
+                {dict.forma && (
+                  <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>
+                    ({dict.forma} «{dict.lemma}»)
+                  </span>
+                )}
+              </div>
+            )}
             {entries.map((e, i) => (
               <div key={i} style={{ display: "flex", gap: 8, marginBottom: 7 }}>
                 <span style={{ flexShrink: 0, fontSize: F.piccolo, color: C.accent, minWidth: 12 }}>
@@ -267,7 +270,11 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "min(94%, 460px)",
+          // LA COLONNA DI UNA VOCE DI VOCABOLARIO E' UNA LUNGHEZZA DI RIGA:
+          // ferma a 460 mentre la scrittura cresce, la riga si accorcia in
+          // caratteri e la definizione si spezza in tre pezzi con mezzo
+          // schermo vuoto ai lati. Passa per `px` come le altre colonne.
+          width: `min(94%, ${px(460)}px)`,
           marginBottom: bottom,
           maxHeight: "52%",
           overflowY: "auto",
@@ -345,7 +352,7 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
           </a>
         )}
 
-        <Voce dict={dict} />
+        <Voce dict={dict} titolo={titolo} />
 
         {secondaria && (
           <div

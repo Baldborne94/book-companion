@@ -1374,7 +1374,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             transform: "translateX(-50%)",
             bottom: chrome ? 96 : 30,
             zIndex: 32,
-            width: "min(94%, 440px)",
+            width: `min(94%, ${px(440)}px)`,
             display: "flex",
             gap: 14,
             alignItems: "center",

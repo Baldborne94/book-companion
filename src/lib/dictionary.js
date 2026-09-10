@@ -96,6 +96,26 @@ const FORME = [
   [/(?:alternative|archaic|obsolete|dated|nonstandard|informal) (?:form|spelling|letter-case form)|alternative case form|pronunciation spelling|eye dialect/, "variante di"],
 ];
 
+// IL LEMMA NON SI SCRIVE DUE VOLTE. Sul Collins il lemma compare una volta
+// sola, in testa alla voce; il titolo del pannello e' una nostra aggiunta, e
+// quando i due dicono la stessa parola la seconda e' un inciampo — la leggi,
+// capisci che e' la stessa, tiri avanti. Resta invece quando ha qualcosa da
+// dire che il titolo non dice, e sono DUE casi distinti: la forma flessa
+// («fuming» in cima, «fume, participio presente» qui) e il lemma diverso
+// dalla parola toccata («mice» → «mouse»).
+//
+// Sta fuori dal componente per la ragione di sempre: senza JSX un test la
+// puo' chiamare. Ed e' il caso raro quello che sbaglierebbe in silenzio —
+// su una parola comune il titolo e il lemma coincidono e non si vede
+// niente, mentre nascondere «fume» dietro a «fuming» toglie proprio la
+// riga per cui quel rigo esiste.
+export function lemmaDoppione(dict, titolo) {
+  if (!dict || dict.forma) return false;
+  const pari = (s) => String(s ?? "").trim().toLowerCase();
+  const lemma = pari(dict.lemma || dict.word);
+  return !!lemma && lemma === pari(titolo);
+}
+
 export function formaDi(text) {
   const m = /^(.*?\bof)\s+([a-z' -]+?)[.;,]?$/i.exec(String(text || "").trim());
   if (!m) return null;

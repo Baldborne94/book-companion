@@ -2985,7 +2985,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             transform: "translateX(-50%)",
             bottom: px(84),
             zIndex: 26,
-            width: "min(640px, 92vw)",
+            width: `min(${px(640)}px, 92vw)`,
             padding: "12px 16px",
             borderRadius: R.medio,
             border: `1px solid ${C.border}`,
@@ -3041,9 +3041,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             position: "absolute",
             left: "50%",
             transform: "translateX(-50%)",
-            bottom: 84,
+            // come il gemello qui sopra: sta SOPRA la barra in basso, e la
+            // barra cresce con la levetta — un 84 nudo a scala doppia
+            // finisce sotto la barra
+            bottom: px(84),
             zIndex: 26,
-            width: "min(640px, 92vw)",
+            width: `min(${px(640)}px, 92vw)`,
             padding: "12px 16px",
             borderRadius: R.medio,
             border: `1px solid ${C.border}`,
@@ -3241,7 +3244,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             transform: "translateX(-50%)",
             bottom: chrome ? 96 : 30,
             zIndex: 32,
-            width: "min(94%, 440px)",
+            width: `min(94%, ${px(440)}px)`,
             display: "flex",
             gap: 14,
             alignItems: "center",

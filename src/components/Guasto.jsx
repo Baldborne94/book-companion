@@ -79,7 +79,7 @@ export default class Guasto extends Component {
         {messaggio && (
           <code
             style={{
-              maxWidth: "min(92vw, 520px)",
+              maxWidth: `min(92vw, ${px(520)}px)`,
               padding: "8px 12px",
               borderRadius: R.piccolo,
               border: `1px solid ${C.border}`,
