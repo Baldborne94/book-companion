@@ -274,6 +274,15 @@ export default async function (t) {
   for (const [nome, testo] of file) {
     if (AMMESSE.includes(nome)) continue;
     for (const m of testo.matchAll(/maxWidth: (\d+)/g)) fuori.push(`${nome}: maxWidth ${m[1]}`);
+    // E LO STESSO DIFETTO SI SCRIVE IN UN'ALTRA FORMA, che passava
+    // indisturbata: `width: "min(94%, 460px)"`. Il guardiano cercava la
+    // sola parola `maxWidth` seguita da un numero, quindi otto colonne di
+    // testo — la scheda del dizionario, i due banner dei reader, il toast,
+    // la striscia della musica, il riquadro del guasto — se ne stavano
+    // ferme mentre la scrittura cresceva. Un pixel scritto a mano dentro
+    // una larghezza E' una lunghezza di riga comunque lo si scriva.
+    for (const m of testo.matchAll(/(?:max)?[Ww]idth: ["'][^"']*?(\d+)px/g))
+      fuori.push(`${nome}: larghezza ${m[1]}px scritta a mano`);
   }
   t.c(
     "nessuna larghezza di testo scritta a mano: passano tutte per `px`",
