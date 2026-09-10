@@ -76,6 +76,8 @@ export async function removeBookData(id) {
   // le schede dell'Oracolo di questo libro: senza, resterebbero in giro a
   // occupare spazio per un romanzo che non c'e' piu'
   await withStore("aux", "readwrite", (s) => s.delete(`schede_${id}`));
+  // la memoria «la collana di questo file l'ho gia' guardata»
+  await withStore("aux", "readwrite", (s) => s.delete(`collana_${id}`));
 }
 
 // LA PERSISTENZA SI CHIEDE, MA SOPRATTUTTO SI GUARDA.
