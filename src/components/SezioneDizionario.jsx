@@ -81,8 +81,8 @@ export default function SezioneDizionario() {
         {stato === undefined
           ? "…"
           : stato
-            ? `📖 Dizionario sul dispositivo · ${voci(stato.voci)} voci`
-            : "☁ Il dizionario funziona solo con la rete"}
+            ? `📖 Dizionario inglese→italiano sul dispositivo · ${voci(stato.voci)} voci`
+            : "☁ Il dizionario funziona solo con la rete, e solo in inglese"}
       </p>
 
       {avanzamento && (
@@ -123,19 +123,26 @@ export default function SezioneDizionario() {
 
       <p style={nota}>
         {cartellino ? `${voci(cartellino.voci)} voci` : "Un dizionario inglese completo"}, locuzioni
-        e verbi frasali compresi. Una volta sceso risponde <strong>senza rete</strong> e all'istante.
+        e verbi frasali compresi
+        {cartellino?.italiano ? `, ${voci(cartellino.italiano)} con la resa italiana` : ""}. Una volta
+        sceso risponde <strong>subito e senza rete</strong>: la scheda del dizionario mostra la parola
+        in italiano in cima, poi le definizioni in inglese, e la rete — quando c'è — arriva dopo ad
+        arricchire.
       </p>
       <p style={nota}>
-        Le definizioni sono <strong>in inglese</strong> — è già la scelta dell'app, perché tradotte a
-        macchina uscivano storte. Senza rete resta fuori solo la resa italiana della parola. E finché
-        la rete c'è comanda Wiktionary, che ne sa di più: questo risponde quando l'altro tace.
+        La resa italiana è quella di un dizionario, senso per senso, non una traduzione a macchina: le
+        definizioni restano <strong>in inglese</strong>, perché tradotte a macchina uscivano storte.
       </p>
       <p style={{ ...nota, opacity: 0.8 }}>
-        Da <strong>WordNet 3.0</strong>, Princeton University —{" "}
+        Da <strong>WordNet 3.0</strong>, Princeton University (
         <a href="/dizionario/LICENZA-WordNet.txt" target="_blank" rel="noreferrer" style={{ color: C.arcane }}>
           licenza
         </a>
-        .
+        ) e <strong>MultiWordNet 1.5</strong>, Fondazione Bruno Kessler, CC BY 3.0 (
+        <a href="/dizionario/LICENZA-MultiWordNet.txt" target="_blank" rel="noreferrer" style={{ color: C.arcane }}>
+          attribuzione
+        </a>
+        ).
       </p>
     </div>
   );

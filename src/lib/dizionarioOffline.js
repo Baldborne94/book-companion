@@ -143,6 +143,7 @@ export async function scaricaDizionario({ onProgress, fetcher, deposito = DEPOSI
   // dizionario dichiarato intero e mezzo vuoto, che risponde «non lo so» su
   // meta' delle parole senza che niente lo dica.
   await deposito.scriviMolti([...sacchi.entries()]);
+  APERTI.clear();
   const meta = { voci, sacchi: sacchi.size, byte: byte.length, quando: Date.now() };
   await deposito.scrivi(META, meta);
   return meta;
@@ -157,14 +158,37 @@ export async function sensiOffline(parola, deposito = DEPOSITO) {
   const s = sacco(p);
   if (!s) return [];
   try {
-    const dentro = await deposito.leggi(s);
+    const dentro = await leggiSacco(s, deposito);
     return dentro?.[p] || [];
   } catch {
     return [];
   }
 }
 
+// I SACCHI APERTI RESTANO APERTI un po'. Su un modo di dire si provano fino
+// a cinquanta finestre, e quasi tutte stanno in due o tre sacchi: rileggerli
+// da IndexedDB cinquanta volte e' lavoro buttato. Pochi sacchi, i piu'
+// recenti: un dizionario non ha bisogno di stare tutto in memoria.
+const APERTI = new Map();
+const APERTI_MAX = 12;
+async function leggiSacco(s, deposito) {
+  // la cache vale solo per il deposito vero: con uno finto (i test) si
+  // legge sempre, o un test inquinerebbe il successivo
+  if (deposito !== DEPOSITO) return deposito.leggi(s);
+  if (APERTI.has(s)) {
+    const v = APERTI.get(s);
+    APERTI.delete(s);
+    APERTI.set(s, v);
+    return v;
+  }
+  const v = await deposito.leggi(s);
+  APERTI.set(s, v);
+  if (APERTI.size > APERTI_MAX) APERTI.delete(APERTI.keys().next().value);
+  return v;
+}
+
 export async function rimuoviDizionario(deposito = DEPOSITO) {
+  APERTI.clear();
   // il cartellino se ne va per PRIMO: se la cancellazione dei sacchi si
   // interrompe, quel che resta e' un dizionario spento e incompleto, non uno
   // acceso e bucato

@@ -78,7 +78,9 @@ export default async function (t) {
   // in un altro non alza nessun errore: risponde «non la conosco» su una
   // parola che il dizionario ha, e nessuno se ne accorge mai.
   const DIZIONARIO = {
-    gutter: [["n", "a channel at the edge of a street"]],
+    // il terzo campo e' la resa italiana del senso, da MultiWordNet: deve
+    // attraversare i sacchi intatta, o la scheda resterebbe muta in cima
+    gutter: [["n", "a channel at the edge of a street", "grondaia, doccia"]],
     gut: [["n", "the part of the alimentary canal"], ["v", "empty the insides of"]],
     a: [["n", "the 1st letter of the Roman alphabet"]],
     "kick the bucket": [["v", "pass from physical life"]],
@@ -92,6 +94,8 @@ export default async function (t) {
   t.c("e i sacchi sono meno delle voci", meta.sacchi < meta.voci, `${meta.sacchi} sacchi`);
 
   t.eq("una parola si ritrova", (await sensiOffline("gutter", d))[0][1], "a channel at the edge of a street");
+  t.eq("con la sua resa italiana", (await sensiOffline("gutter", d))[0][2], "grondaia, doccia");
+  t.eq("e un senso senza resa resta a due campi", (await sensiOffline("gut", d))[0].length, 2);
   t.eq("con tutti i suoi sensi", (await sensiOffline("gut", d)).length, 2);
   t.eq("la parola di una lettera pure", (await sensiOffline("a", d))[0][0], "n");
   t.eq("e la locuzione col suo spazio", (await sensiOffline("kick the bucket", d))[0][1], "pass from physical life");
