@@ -12,7 +12,7 @@ import {
   rimandaConferma,
   cambiaPassword,
 } from "../lib/sync.js";
-import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD } from "../lib/accesso.js";
+import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, GIA_REGISTRATA } from "../lib/accesso.js";
 // il riferimento del piano sta in UN posto solo: prima era un numero qui e
 // la stringa «1 GB» due righe sotto, due cose da cambiare insieme e da
 // dimenticare separatamente
@@ -136,10 +136,18 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
     setBusy(true);
     try {
       if (registra) {
-        const { dentro } = await registraConPassword(e, password);
+        const { esito } = await registraConPassword(e, password);
+        // L'EMAIL GIA' REGISTRATA NON E' UN ERRORE PER SUPABASE, e la
+        // password appena scritta non e' stata salvata: dire «controlla la
+        // posta» qui era la bugia che ha lasciato il lettore con una
+        // password che non esisteva (vedi `esitoRegistrazione`)
+        if (esito === "esiste") {
+          setGuaio(GIA_REGISTRATA);
+          return;
+        }
         // se il progetto chiede la conferma dell'indirizzo la sessione non
         // arriva: senza dirlo, il pannello resterebbe fermo senza motivo
-        if (!dentro) {
+        if (esito === "conferma") {
           setConfermare(true);
           return;
         }
@@ -364,7 +372,10 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
           <>
             <p style={{ color: C.muted, fontSize: F.nota, lineHeight: 1.5, marginBottom: 14 }}>
               Entra con email e password: libri, segnalibri, evidenziazioni, note e progressi ti
-              seguiranno su ogni dispositivo. La prima volta scegli «Registrati».
+              seguiranno su ogni dispositivo. «Registrati» serve solo a chi non ha mai avuto un
+              account. Se finora sei entrato col link per email, la password non ce l'hai
+              ancora: chiedi il link qui sotto e, una volta dentro, impostala con «Cambia la
+              password».
             </p>
             {/* Un `form` vero, non due caselle sciolte: e' cosi' che il
                 portachiavi del tablet capisce che c'e' un accesso da
