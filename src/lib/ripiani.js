@@ -71,6 +71,49 @@ const perLettura = (confronta) => (a, b) => {
   return confronta ? confronta(a, b) : 0;
 };
 
+// DENTRO LA SAGA, I CICLI. Chiesto dal lettore («le saghe posso vederle
+// raggruppate anche per serie se ci sono?») guardando il Circle of the
+// World: dieci volumi in fila, dove la trilogia della Prima Legge, i
+// romanzi a se' e l'Eta' della Follia stanno uno dopo l'altro senza una
+// riga a dire dove finisce una storia e ne comincia un'altra. Il ciclo e'
+// gia' scritto nella scheda (la Serie) e «Prima di cominciare» lo usa da
+// un pezzo: qui lo usa anche lo scaffale.
+//
+// Il ripiano resta UNO per saga — e' la saga il legame forte — e i cicli
+// sono sotto-ripiani dentro di lui, nell'ordine in cui la storia li
+// incontra: ogni ciclo sta dove sta il suo primo volume, cosi' la Prima
+// Legge (1-3) viene prima dei romanzi a se' (4-7) e l'Eta' della Follia
+// (8-10) chiude. Nel Mondo Disco, dove i cicli si intrecciano, Rincewind
+// apre perche' apre il primo romanzo. I volumi che un ciclo non lo
+// dichiarano stanno insieme sotto `nome: null`, e ci stanno per due ragioni
+// che si assomigliano: o sono romanzi a se' — ed e' giusto cosi' — o il
+// campo e' vuoto, e vederli raccolti a parte e' il modo di accorgersene.
+//
+// Se nessun volume dichiara un ciclo si torna `null`, non un solo
+// sotto-ripiano senza nome: una saga senza cicli non ha niente da
+// suddividere, e una riga in piu' li' sarebbe rumore.
+export function raccogliCicli(libri = []) {
+  if (!libri.some((b) => testo(b.series))) return null;
+  const gruppi = new Map();
+  for (const b of libri) {
+    const nome = testo(b.series) || null;
+    const k = nome === null ? null : nome.toLowerCase();
+    if (!gruppi.has(k)) gruppi.set(k, { nome, libri: [], primo: null });
+    const g = gruppi.get(k);
+    g.libri.push(b);
+    const n = b.sagaOrder ?? null;
+    if (n !== null && (g.primo === null || n < g.primo)) g.primo = n;
+  }
+  // chi non ha nessun numero chiude, come i volumi senza numero dentro un
+  // ripiano; a parita' resta l'ordine d'arrivo, che e' quello di lettura
+  return [...gruppi.values()].sort((a, b) => {
+    if (a.primo === b.primo) return 0;
+    if (a.primo === null) return 1;
+    if (b.primo === null) return -1;
+    return a.primo - b.primo;
+  });
+}
+
 export function disponi(libri = [], confronta = null) {
   const gruppi = new Map();
   const soli = [];
@@ -100,6 +143,9 @@ export function disponi(libri = [], confronta = null) {
       // solo sotto racconterebbero una bugia.
       autore: g.tipo === "saga" ? autoreUnico(g.libri) : null,
       libri: g.libri,
+      // i cicli si raccolgono DOPO l'ordinamento: cosi' dentro ogni ciclo
+      // i volumi restano in ordine di lettura senza rifare il conto
+      cicli: g.tipo === "saga" ? raccogliCicli(g.libri) : null,
     });
   }
   ripiani.sort((a, b) => a.nome.localeCompare(b.nome, "it"));

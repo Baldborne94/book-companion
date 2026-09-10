@@ -296,14 +296,40 @@ function Grouped({ books, group, onOpenBook, localIds }) {
         quanti={r.libri.length}
         spento={r.tipo === "soli"}
       >
-        <Shelf
-          books={r.libri}
-          onOpenBook={onOpenBook}
-          localIds={localIds}
-          // il numero del volume ha senso dentro la sua saga; fra i volumi
-          // soli sarebbe un numero senza la storia che lo spiega
-          showOrder={r.tipo === "saga"}
-        />
+        {r.cicli ? (
+          // I CICLI DENTRO LA SAGA (chiesto dal lettore): un sotto-ripiano
+          // per ciclo, nell'ordine in cui la storia li incontra. Il nome
+          // del ciclo sta in una riga piu' discreta dell'intestazione della
+          // saga, o le due gerarchie si confonderebbero.
+          r.cicli.map((c) => (
+            <div key={c.nome ?? "_"} style={{ marginBottom: 14 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: 8,
+                  fontFamily: FONT_TITLE,
+                  fontSize: F.nota,
+                  color: c.nome ? C.text : C.muted,
+                  marginBottom: 8,
+                }}
+              >
+                <span>{c.nome ?? "Volumi a sé"}</span>
+                <span style={{ fontSize: F.minuscolo, color: C.muted }}>{c.libri.length}</span>
+              </div>
+              <Shelf books={c.libri} onOpenBook={onOpenBook} localIds={localIds} showOrder />
+            </div>
+          ))
+        ) : (
+          <Shelf
+            books={r.libri}
+            onOpenBook={onOpenBook}
+            localIds={localIds}
+            // il numero del volume ha senso dentro la sua saga; fra i volumi
+            // soli sarebbe un numero senza la storia che lo spiega
+            showOrder={r.tipo === "saga"}
+          />
+        )}
       </Ripiano>
     ));
   }
