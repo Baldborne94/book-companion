@@ -8,7 +8,7 @@
 // È la parte che sbaglia in silenzio: una collana letta storta non alza
 // nessun errore, mette il libro in una saga sbagliata, e da lì «Prima di
 // cominciare» racconta la storia di altri libri.
-import { collana, numeroDiCollana } from "../src/lib/collana.js";
+import { collana, numeroDiCollana, ripassaCollane } from "../src/lib/collana.js";
 
 const opf = (dentro) => `<?xml version="1.0"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
@@ -118,4 +118,130 @@ export default async function (t) {
     collana(opf(`<meta property="belongs-to-collection">Sword &amp; Sorcery</meta>`))?.serie,
     "Sword & Sorcery"
   );
+
+  // ---- LA PASSATA SUI LIBRI GIA' IN CASA -------------------------------
+  // La collana si leggeva solo all'import, quindi la biblioteca di prima
+  // restava senza e il tasto rispondeva «erano già tutti a posto» dicendo
+  // il vero. Qui si sbaglia in silenzio: una saga scritta sul libro
+  // sbagliato non alza nessun errore, sposta il volume di ripiano.
+  const serie = (nome, n) =>
+    opf(`<meta name="calibre:series" content="${nome}"/>
+      ${n == null ? "" : `<meta name="calibre:series_index" content="${n}"/>`}`);
+
+  {
+    const libri = [
+      { id: "a", title: "Empire in Black and Gold", fileType: "epub" },
+      { id: "b", title: "Un romanzo solo", fileType: "epub" },
+    ];
+    const esito = await ripassaCollane(libri, {
+      leggiOpf: (id) => (id === "a" ? serie("Shadows of the Apt", 1) : opf("")),
+    });
+    t.eq("la collana si legge dal file", esito.campi.a?.saga, "Shadows of the Apt");
+    t.eq("col suo numero", esito.campi.a?.sagaOrder, 1);
+    t.eq("e si contano quelle scritte", esito.scritte, 1);
+    // un file che la collana non ce l'ha non è un guasto di nessuno
+    t.eq("il libro che tace non prende niente", esito.campi.b, undefined);
+    t.eq("e si conta fra i muti", esito.mute, 1);
+  }
+
+  // LA SAGA GIA' SCRITTA COMANDA SEMPRE, e il file non si apre nemmeno:
+  // l'ha messa il lettore a mano o l'ha riconosciuta la tavola, e riaprire
+  // trenta megabyte per confermarla sarebbe lavoro buttato.
+  {
+    const aperti = [];
+    const esito = await ripassaCollane(
+      [
+        { id: "a", title: "Eric", saga: "Discworld", fileType: "epub" },
+        { id: "b", title: "Vuota", saga: "   ", fileType: "epub" },
+      ],
+      { leggiOpf: (id) => (aperti.push(id), serie("Un'altra saga", 3)) }
+    );
+    t.eq("un libro con la saga non si riapre", aperti.join(","), "b");
+    t.eq("e la sua saga resta intatta", esito.campi.a, undefined);
+    t.eq("mentre una saga di soli spazi non è una saga", esito.campi.b?.saga, "Un'altra saga");
+  }
+
+  // IL NUMERO NON SI SOVRASCRIVE: se un posto gliel'avevi già dato, quello
+  // comanda — la saga invece mancava, quindi quella si scrive.
+  {
+    const esito = await ripassaCollane([{ id: "a", title: "T", fileType: "epub", sagaOrder: 9 }], {
+      leggiOpf: () => serie("Malazan", 2),
+    });
+    t.eq("la saga si scrive", esito.campi.a?.saga, "Malazan");
+    t.eq("ma il numero che avevi resta", esito.campi.a?.sagaOrder, undefined);
+  }
+  // e una collana senza numero non ne inventa uno
+  {
+    const esito = await ripassaCollane([{ id: "a", title: "T", fileType: "epub" }], {
+      leggiOpf: () => serie("Malazan", null),
+    });
+    t.eq("una collana senza numero dà la sola saga", esito.campi.a?.saga, "Malazan");
+    t.eq("e nessun numero", "sagaOrder" in (esito.campi.a || {}), false);
+  }
+
+  // UN PDF UN OPF NON CE L'HA: contarlo fra i muti direbbe «guardato, non
+  // c'era», mentre non c'era niente da guardare — e aprirlo è tempo buttato
+  {
+    const aperti = [];
+    const esito = await ripassaCollane([{ id: "p", title: "Un PDF", fileType: "pdf" }], {
+      leggiOpf: (id) => (aperti.push(id), serie("Mai", 1)),
+    });
+    t.eq("un PDF non si apre nemmeno", aperti.length, 0);
+    t.eq("e non finisce fra i muti", esito.mute, 0);
+  }
+
+  // ---- I TRE MODI DI NON RIUSCIRCI SONO TRE COSE DIVERSE ---------------
+  // chiedono al lettore cose diverse: il tomo lassù si risolve con «Porta
+  // qui i tomi», il file rotto è un guasto suo, la collana che non c'è non
+  // è un guasto di nessuno
+  {
+    const esito = await ripassaCollane(
+      [
+        { id: "cloud", title: "Lassù", fileType: "epub" },
+        { id: "rotto", title: "Rotto", fileType: "epub" },
+        { id: "muto", title: "Muto", fileType: "epub" },
+      ],
+      {
+        leggiOpf: (id) => {
+          if (id === "cloud") return null;
+          // ESPLODE SUBITO, senza tornare una promessa: è il caso che
+          // scavalcherebbe un `try` scritto male e si porterebbe via il
+          // giro intero con tutte le collane già lette
+          if (id === "rotto") throw new Error("archivio illeggibile");
+          return opf("");
+        },
+      }
+    );
+    t.eq("il tomo rimasto nel cloud si conta a parte", esito.senzaByte, 1);
+    t.eq("il file che non si apre pure", esito.illeggibili, 1);
+    t.eq("e quello che tace pure", esito.mute, 1);
+    t.eq("e nessuno dei tre ferma il giro", esito.fermato, false);
+  }
+
+  // ---- fermabile a metà, e quel che è fatto resta fatto ----------------
+  {
+    let visti = 0;
+    const libri = [1, 2, 3, 4].map((n) => ({ id: `x${n}`, title: `T${n}`, fileType: "epub" }));
+    const esito = await ripassaCollane(libri, {
+      leggiOpf: () => ((visti += 1), serie("Saga", 1)),
+      vivo: () => visti < 2,
+    });
+    t.eq("il giro si ferma", esito.fermato, true);
+    t.eq("e quel che era letto resta letto", esito.scritte, 2);
+    t.eq("senza toccare i successivi", esito.campi.x4, undefined);
+  }
+
+  // l'avanzamento dice il titolo, o una passata lunga è una barra muta
+  {
+    const passi = [];
+    await ripassaCollane([{ id: "a", title: "Empire in Black and Gold", fileType: "epub" }], {
+      leggiOpf: () => opf(""),
+      onProgress: (p) => passi.push(`${p.i + 1}/${p.totale} ${p.titolo}`),
+    });
+    t.eq("l'avanzamento porta il titolo", passi.join(" · "), "1/1 Empire in Black and Gold");
+  }
+
+  // il niente non esplode
+  t.eq("nessun libro, nessun guaio", (await ripassaCollane([], {})).scritte, 0);
+  t.eq("e nemmeno senza argomenti", (await ripassaCollane()).fermato, false);
 }

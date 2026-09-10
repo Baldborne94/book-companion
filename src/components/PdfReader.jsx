@@ -853,7 +853,10 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
         <div
           style={{
             position: "absolute",
-            bottom: chrome ? 92 : 24,
+            // in cima come nell'EPUB, e per la stessa ragione: la scheda di
+            // dizionario che Android apre sulla selezione sta appoggiata al
+            // bordo di sotto e si mangiava questo menu per intero
+            top: chrome ? px(96) : px(24),
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 35,
@@ -1363,7 +1366,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
       )}
 
       {panel === "dict" && (
-        <DictionaryCard dict={dict} book={book} bottom={chrome ? 92 : 26} onClose={() => setPanel(null)} />
+        <DictionaryCard dict={dict} book={book} alto={chrome ? px(96) : px(26)} onClose={() => setPanel(null)} />
       )}
 
       {endCard === "shown" && nextBook && (
@@ -1372,7 +1375,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             position: "absolute",
             left: "50%",
             transform: "translateX(-50%)",
-            bottom: chrome ? 96 : 30,
+            bottom: chrome ? px(96) : px(30),
             zIndex: 32,
             width: `min(94%, ${px(440)}px)`,
             display: "flex",

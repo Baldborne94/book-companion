@@ -119,3 +119,81 @@ export function collana(opf) {
   if (!nome || SPAZZATURA.test(nome)) return null;
   return { serie: nome, numero: numeroDiCollana(calibre.numero) };
 }
+
+// E I LIBRI CHE ERANO GIA' IN CASA NON TORNANO INDIETRO A FARSI GUARDARE.
+//
+// La collana si legge SOLO sulla strada dell'import, quindi tutta la
+// biblioteca di chi c'era prima resta senza — e «Riconosci saghe e cicli»
+// rispondeva «erano gia' tutti a posto» dicendo il vero e lasciando
+// «Empire in Black and Gold» fra i volumi soli (segnalato: «continui a non
+// riconoscermi automaticamente le saghe»). Il limite era dichiarato in
+// `CLAUDE.md` e questa e' la passata che lo chiude.
+//
+// Forma di ogni passata lunga: un tomo per volta, avanzamento col titolo,
+// fermabile a meta' con quel che e' fatto che resta fatto, e i tomi rimasti
+// nel cloud contati e detti invece di scaricare mezza biblioteca.
+//
+// `leggiOpf` si passa da fuori come `leggiByte` altrove, cosi' il giro si
+// prova con una mappa invece di tirarsi dietro epub.js — ed e' proprio
+// questo giro la parte che sbaglierebbe in silenzio, perche' una saga
+// scritta sul libro sbagliato non alza nessun errore: sposta il volume su
+// un altro ripiano e da li' «Prima di cominciare» racconta un'altra storia.
+//
+// I TRE MODI DI NON RIUSCIRCI SONO TRE COSE DIVERSE, e si contano
+// separate perche' chiedono al lettore cose diverse: il tomo rimasto
+// lassu' si risolve con «Porta qui i tomi», il file che non si apre e' un
+// guasto suo, e la collana che nel file non c'e' non e' un guasto di
+// nessuno — la saga si scrive a mano nella scheda.
+export async function ripassaCollane(libri = [], { leggiOpf, onProgress, vivo } = {}) {
+  const attivo = vivo || (() => true);
+  const esito = { scritte: 0, senzaByte: 0, illeggibili: 0, mute: 0, fermato: false, campi: {} };
+  // Solo chi la saga non ce l'ha. Quella scritta comanda sempre — l'abbia
+  // messa il lettore a mano o riconosciuta la tavola — e riaprire trenta
+  // megabyte per confermare quel che sappiamo gia' sarebbe lavoro buttato.
+  // E un PDF un OPF non ce l'ha: contarlo fra i muti direbbe «guardato, non
+  // c'era», mentre non c'era niente da guardare.
+  const senza = libri.filter(
+    (b) => b && b.fileType !== "pdf" && !String(b.saga || "").trim()
+  );
+  for (const [i, b] of senza.entries()) {
+    if (!attivo()) {
+      esito.fermato = true;
+      break;
+    }
+    onProgress?.({ i, totale: senza.length, titolo: b.title });
+    let opf;
+    try {
+      // QUI BASTA L'`await` NUDO, e la differenza con `ripassaImpronte` va
+      // detta o il prossimo ci ricasca: la' la guardia e' un `.catch()`
+      // sulla catena, e un `leggiOpf` che esplode SUBITO — senza tornare
+      // una promessa — lo scavalcherebbe portandosi via il giro intero,
+      // quindi serve il `Promise.resolve().then()`. Un `try/catch` invece
+      // prende anche il lancio sincrono, e il test lo prova col caso
+      // «rotto». Provato: messo qui, quel giro di promessa non fa cascare
+      // niente — non e' portante, e non si scrive.
+      opf = await leggiOpf?.(b.id);
+    } catch {
+      esito.illeggibili += 1;
+      continue;
+    }
+    // `null` vuol dire «i byte non sono qui», una stringa vuota «aperto, e
+    // l'OPF non si e' letto»: sono due risposte diverse e la seconda passa
+    // da `collana`, che dira' che non c'e' niente
+    if (opf == null) {
+      esito.senzaByte += 1;
+      continue;
+    }
+    const c = collana(opf);
+    if (!c) {
+      esito.mute += 1;
+      continue;
+    }
+    const campi = { saga: c.serie };
+    // il numero non si inventa e non si sovrascrive: se il lettore un posto
+    // gliel'aveva gia' dato, quello comanda
+    if (c.numero != null && b.sagaOrder == null) campi.sagaOrder = c.numero;
+    esito.campi[b.id] = campi;
+    esito.scritte += 1;
+  }
+  return esito;
+}
