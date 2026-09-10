@@ -1081,7 +1081,14 @@ export default function Library({
       <input
         ref={inputRef}
         type="file"
-        accept=".epub,.pdf"
+        // IL SELETTORE DI ANDROID FILTRA PER TIPO MIME, NON PER ESTENSIONE:
+        // con le sole estensioni, un ePub scaricato dal browser e registrato
+        // come «application/octet-stream» (o come zip, che e' quel che un
+        // ePub e') compare in grigio e non si lascia scegliere — e il lettore
+        // vede un libro che «non si importa» senza nessun messaggio. I tipi si
+        // elencano larghi: a filtrare per davvero e' `importFiles`, che guarda
+        // l'estensione e rifiuta quel che non e' un libro.
+        accept=".epub,.pdf,application/epub+zip,application/pdf,application/zip,application/octet-stream"
         multiple
         style={{ display: "none" }}
         onChange={(e) => handleFiles(e.target.files)}

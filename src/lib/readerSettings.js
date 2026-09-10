@@ -78,6 +78,16 @@ export function deviceDefaults(shortSide) {
     // sospende il rendering nel suo callback, quindi quel metodo misurava
     // in parte se stesso. Sono i fotogrammi presentati a valere.
     svolta: "dissolvenza",
+    // IL DIZIONARIO DELL'APP SI PUO' SPEGNERE (chiesto dal lettore: «metti
+    // un'opzione nel reader dove posso scegliere se attivare il mio
+    // dizionario o meno, un po' come succede per l'animazione della
+    // pagina»). Sulla parola selezionata ci sono DUE dizionari: la nostra
+    // scheda, dal tasto «Definisci» del menu di selezione, e quello del
+    // tablet, che Android apre da se' sulla selezione. Chi preferisce il
+    // secondo si ritrovava il primo comunque, un tasto in piu' in mezzo ai
+    // colori dell'evidenziazione. Spento, il tasto sparisce: il glossario
+    // della saga e «Chi e'» restano, perche' quelli non li ha nessun altro.
+    dizionario: true,
     appTheme: "night",
   };
 }

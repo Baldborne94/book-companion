@@ -892,7 +892,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                 }}
               />
             ))}
-          {wordCount(sel.text) <= PHRASE_WORDS && (
+          {settings.dizionario !== false && wordCount(sel.text) <= PHRASE_WORDS && (
             <button
               onClick={defineSelection}
               style={{
@@ -1187,6 +1187,33 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
               : vuoto(crop)
                 ? "Questo tomo non ha margini da togliere."
                 : `Qui se ne va ${Math.round((1 - (crop.r - crop.l) * (crop.b - crop.t)) * 100)}% di carta bianca.`}
+          </div>
+
+          {/* la stessa levetta del reader EPUB: e' una preferenza sola,
+              condivisa in `bc_reader`, e da qui si legge e si cambia */}
+          <button
+            onClick={() => updateSettings({ dizionario: settings.dizionario === false })}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              marginTop: 10,
+              padding: "8px 10px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${settings.dizionario !== false ? C.arcane : C.border}`,
+              color: settings.dizionario !== false ? C.arcane : C.muted,
+              fontSize: F.nota,
+              textAlign: "left",
+            }}
+          >
+            <span style={{ fontSize: F.corpo }}>{settings.dizionario !== false ? "☑" : "☐"}</span>
+            <span style={{ flex: 1 }}>Dizionario dell'app</span>
+          </button>
+          <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 6, lineHeight: 1.45 }}>
+            {settings.dizionario !== false
+              ? "Sulla parola selezionata compare «Definisci»."
+              : "Resta solo il dizionario del tablet, quello che Android apre da sé."}
           </div>
         </div>
       )}
