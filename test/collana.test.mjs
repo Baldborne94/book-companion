@@ -241,6 +241,74 @@ export default async function (t) {
     t.eq("l'avanzamento porta il titolo", passi.join(" · "), "1/1 Empire in Black and Gold");
   }
 
+  // ---- LA MEMORIA, che è quel che rende la passata automatica ---------
+  // All'apertura della Libreria si aprono SOLO i tomi mai visti: senza
+  // questa memoria ogni apertura riaprirebbe gli stessi cinquanta file per
+  // ritrovare le stesse collane assenti.
+  {
+    const visti = new Map();
+    const aperti = [];
+    const opzioni = {
+      leggiOpf: (id) => (aperti.push(id), id === "a" ? serie("Saga A", 1) : opf("")),
+      giaVista: (b) => visti.has(b.id),
+      segnaVista: (b, cosa) => visti.set(b.id, cosa),
+    };
+    const libri = [
+      { id: "a", title: "Con collana", fileType: "epub" },
+      { id: "m", title: "Muto", fileType: "epub" },
+    ];
+    const primo = await ripassaCollane(libri, opzioni);
+    t.eq("al primo giro si aprono tutti", aperti.join(","), "a,m");
+    t.eq("e la memoria si scrive per chi ha risposto", visti.get("a")?.serie, "Saga A");
+    t.eq("e per chi ha taciuto, che è una risposta anche quella", visti.get("m")?.muta, true);
+    t.eq("nessuno saltato la prima volta", primo.saltati, 0);
+
+    aperti.length = 0;
+    const secondo = await ripassaCollane(libri, opzioni);
+    t.eq("al secondo giro non si apre nessuno", aperti.length, 0);
+    t.eq("e si contano i saltati", secondo.saltati, 2);
+    t.eq("senza riscrivere niente", secondo.scritte, 0);
+  }
+  // IL TOMO RIMASTO LASSU' NON SI SEGNA: i byte non c'erano, e quando
+  // scenderanno va guardato — segnarlo vorrebbe dire non guardarlo mai più
+  {
+    const visti = new Map();
+    await ripassaCollane([{ id: "c", title: "Lassù", fileType: "epub" }], {
+      leggiOpf: () => null,
+      giaVista: (b) => visti.has(b.id),
+      segnaVista: (b, cosa) => visti.set(b.id, cosa),
+    });
+    t.eq("il tomo senza byte non entra nella memoria", visti.has("c"), false);
+  }
+  // il file che non si apre invece sì: domani non si aprirà lo stesso
+  {
+    const visti = new Map();
+    await ripassaCollane([{ id: "r", title: "Rotto", fileType: "epub" }], {
+      leggiOpf: () => { throw new Error("no"); },
+      giaVista: () => false,
+      segnaVista: (b, cosa) => visti.set(b.id, cosa),
+    });
+    t.eq("il file rotto si segna, o si riproverebbe a ogni apertura", visti.get("r")?.illeggibile, true);
+  }
+  // una memoria che esplode non si porta via il giro: si riguarda, che è
+  // il lato sicuro, e quel che si legge resta letto
+  {
+    const esito = await ripassaCollane([{ id: "a", title: "T", fileType: "epub" }], {
+      leggiOpf: () => serie("Saga", 1),
+      giaVista: () => { throw new Error("memoria rotta"); },
+      segnaVista: () => { throw new Error("memoria rotta"); },
+    });
+    t.eq("con la memoria rotta si legge lo stesso", esito.campi.a?.saga, "Saga");
+  }
+  // e senza memoria (il tasto premuto a mano) si apre tutto, sempre
+  {
+    const aperti = [];
+    await ripassaCollane([{ id: "a", title: "T", fileType: "epub" }], {
+      leggiOpf: (id) => (aperti.push(id), opf("")),
+    });
+    t.eq("senza memoria si apre", aperti.length, 1);
+  }
+
   // il niente non esplode
   t.eq("nessun libro, nessun guaio", (await ripassaCollane([], {})).scritte, 0);
   t.eq("e nemmeno senza argomenti", (await ripassaCollane()).fermato, false);

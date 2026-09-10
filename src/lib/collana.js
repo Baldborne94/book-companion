@@ -144,9 +144,29 @@ export function collana(opf) {
 // lassu' si risolve con «Porta qui i tomi», il file che non si apre e' un
 // guasto suo, e la collana che nel file non c'e' non e' un guasto di
 // nessuno — la saga si scrive a mano nella scheda.
-export async function ripassaCollane(libri = [], { leggiOpf, onProgress, vivo } = {}) {
+//
+// E LA PASSATA GIRA DA SE' (`giaVista`/`segnaVista`): il lettore ha scritto
+// «automaticamente» due volte, e un tasto in un pannello ripiegato non lo
+// e'. Chi chiama puo' passare una memoria — «questo file l'ho gia'
+// guardato» — cosi' all'apertura della Libreria si aprono SOLO i tomi mai
+// visti, una volta nella vita del file, e il resto e' gratis. Il tomo
+// rimasto lassu' NON si segna come visto: i byte non c'erano, e quando
+// scenderanno va guardato.
+export async function ripassaCollane(
+  libri = [],
+  { leggiOpf, onProgress, vivo, giaVista, segnaVista } = {}
+) {
   const attivo = vivo || (() => true);
-  const esito = { scritte: 0, senzaByte: 0, illeggibili: 0, mute: 0, fermato: false, campi: {} };
+  const esito = { scritte: 0, senzaByte: 0, illeggibili: 0, mute: 0, saltati: 0, fermato: false, campi: {} };
+  // segnare la memoria non deve mai portarsi via il giro: senza memoria si
+  // riguardera', che costa e non rompe
+  const segna = async (b, cosa) => {
+    try {
+      await segnaVista?.(b, cosa);
+    } catch {
+      /* si riguardera' */
+    }
+  };
   // Solo chi la saga non ce l'ha. Quella scritta comanda sempre — l'abbia
   // messa il lettore a mano o riconosciuta la tavola — e riaprire trenta
   // megabyte per confermare quel che sappiamo gia' sarebbe lavoro buttato.
@@ -161,6 +181,18 @@ export async function ripassaCollane(libri = [], { leggiOpf, onProgress, vivo } 
       break;
     }
     onProgress?.({ i, totale: senza.length, titolo: b.title });
+    if (giaVista) {
+      let vista = false;
+      try {
+        vista = !!(await giaVista(b));
+      } catch {
+        /* memoria illeggibile: si riguarda, che e' il lato sicuro */
+      }
+      if (vista) {
+        esito.saltati += 1;
+        continue;
+      }
+    }
     let opf;
     try {
       // QUI BASTA L'`await` NUDO, e la differenza con `ripassaImpronte` va
@@ -174,6 +206,9 @@ export async function ripassaCollane(libri = [], { leggiOpf, onProgress, vivo } 
       opf = await leggiOpf?.(b.id);
     } catch {
       esito.illeggibili += 1;
+      // un file che non si apre non si aprira' domani: si segna, o la
+      // passata automatica lo riproverebbe a ogni apertura della Libreria
+      await segna(b, { illeggibile: true });
       continue;
     }
     // `null` vuol dire «i byte non sono qui», una stringa vuota «aperto, e
@@ -186,6 +221,7 @@ export async function ripassaCollane(libri = [], { leggiOpf, onProgress, vivo } 
     const c = collana(opf);
     if (!c) {
       esito.mute += 1;
+      await segna(b, { muta: true });
       continue;
     }
     const campi = { saga: c.serie };
@@ -194,6 +230,7 @@ export async function ripassaCollane(libri = [], { leggiOpf, onProgress, vivo } 
     if (c.numero != null && b.sagaOrder == null) campi.sagaOrder = c.numero;
     esito.campi[b.id] = campi;
     esito.scritte += 1;
+    await segna(b, { serie: c.serie, numero: c.numero });
   }
   return esito;
 }

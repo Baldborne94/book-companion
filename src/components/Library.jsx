@@ -3,7 +3,7 @@ import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getProgress, getStatus, combacia, leggiVista, scriviVista } from "../lib/library.js";
 import { disponi } from "../lib/ripiani.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
-import { storageEstimate, statoPersistenza, requestPersistence, getFile, putFile } from "../lib/bookStore.js";
+import { storageEstimate, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux } from "../lib/bookStore.js";
 import { importFiles, resoconto } from "../lib/importBook.js";
 import { exportLibrary, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
 import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
@@ -395,6 +395,11 @@ export default function Library({
   // avanzamento col titolo e fermabile a meta'
   const [collane, setCollane] = useState(null);
   const filoCollane = useRef(null);
+  // la biblioteca di ADESSO, per chi scrive a fine di un giro lungo: un
+  // giro che dura un minuto non deve riscrivere sopra un voto messo nel
+  // frattempo con la copia di quando e' partito
+  const booksRef = useRef(books);
+  booksRef.current = books;
   // la visita: terza passata lunga, stessa forma delle altre due
   const [visitando, setVisitando] = useState(null);
   const [referto, setReferto] = useState(null);
@@ -484,6 +489,62 @@ export default function Library({
     }
   }
 
+  // LA MEMORIA DELLA COLLANA («collana_<id>» nello store aux, con la misura
+  // del file come impronta, come `salute_<id>`): e' quel che rende la
+  // passata automatica sostenibile. Senza, ogni apertura della Libreria
+  // riaprirebbe gli stessi tomi per ritrovare le stesse collane assenti.
+  // Cambiano i byte — una ricucitura, un reimport — cambia la misura, e si
+  // riguarda. Un tomo senza byte non entra mai: quando scendera' va guardato.
+  const ricordoCollana = (id) => `collana_${id}`;
+  async function collanaVista(b) {
+    const [ricordo, file] = await Promise.all([getAux(ricordoCollana(b.id)), getFile(b.id)]);
+    return !!file && !!ricordo && ricordo.size === file.size;
+  }
+  async function segnaCollana(b, cosa) {
+    const file = await getFile(b.id);
+    if (file) await putAux(ricordoCollana(b.id), { size: file.size, ...cosa });
+  }
+
+  // E LA PASSATA GIRA DA SE', all'apertura della Libreria. Il lettore ha
+  // scritto «automaticamente» due volte, e aveva ragione: un tasto in un
+  // pannello ripiegato non lo e'. Qui si aprono SOLO i tomi senza saga che
+  // non abbiamo mai guardato — una volta nella vita del file, poi e' gratis
+  // — in silenzio, e si parla solo se si e' trovato qualcosa. Il tasto
+  // resta per chi vuole rifare tutto adesso, e quello i file li riapre.
+  //
+  // NESSUNA GUARDIA «GIA' PARTITO» IN UN REF, ed e' una lezione presa da un
+  // banco end-to-end e non dalla lettura del codice: in sviluppo React monta
+  // gli effetti DUE volte (`StrictMode` in `main.jsx`) — monta, smonta,
+  // rimonta — e un ref sopravvive a quel giro. Con la guardia, il primo
+  // giro partiva e veniva fermato dalla pulizia, il secondo trovava la
+  // guardia alzata e non partiva: nessun errore, nessuna saga, nessun
+  // toast. La memoria su disco rende il giro ripetibile e quasi gratis, e
+  // ripetibile e' l'unica forma che regge: riparte a ogni montaggio e a
+  // ogni libro in piu', e riapre solo quel che non ha mai visto.
+  useEffect(() => {
+    const candidati = books.filter((b) => b.fileType !== "pdf" && !String(b.saga || "").trim());
+    if (!candidati.length) return;
+    let vivo = true;
+    (async () => {
+      const { ripassaCollane } = await import("../lib/collana.js");
+      const esito = await ripassaCollane(candidati, {
+        leggiOpf,
+        giaVista: collanaVista,
+        segnaVista: segnaCollana,
+        // il tasto premuto a mano ha la precedenza: due giri sugli stessi
+        // file sarebbero lavoro doppio
+        vivo: () => vivo && !filoCollane.current,
+      });
+      if (!vivo || !esito.scritte) return;
+      updateBooks(booksRef.current.map((b) => (esito.campi[b.id] ? { ...b, ...esito.campi[b.id] } : b)));
+      notify?.(`${esito.scritte} ${esito.scritte === 1 ? "saga letta" : "saghe lette"} dal file`);
+    })().catch(() => {
+      /* un giro silenzioso che fallisce resta silenzioso: si riprova al prossimo montaggio */
+    });
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [books.length]);
+
   async function riconosciSaghe() {
     if (collane) {
       filoCollane.current = null;
@@ -518,8 +579,12 @@ export default function Library({
     const mio = {};
     filoCollane.current = mio;
     setCollane({ i: 0, totale: next.filter((b) => b.fileType !== "pdf" && !b.saga).length, titolo: next[0]?.title || "" });
+    // col tasto si riapre TUTTO (niente `giaVista`): chi lo preme vuole la
+    // risposta di adesso, non quella di ieri — ma la memoria si aggiorna,
+    // cosi' la passata automatica non rifa' questo lavoro
     const daiFile = await ripassaCollane(next, {
       leggiOpf,
+      segnaVista: segnaCollana,
       vivo: () => filoCollane.current === mio,
       onProgress: (p) => filoCollane.current === mio && setCollane(p),
     });
@@ -571,6 +636,17 @@ export default function Library({
       );
     if (daiFile.illeggibili)
       parti.push(`${daiFile.illeggibili} non si ${daiFile.illeggibili === 1 ? "è" : "sono"} ${daiFile.illeggibili === 1 ? "aperto" : "aperti"}`);
+    // E I MUTI SI DICONO, o «erano già tutti a posto» sarebbe una bugia
+    // detta sopra un volume che sta ancora fra i soli (successo: il file di
+    // «Empire in Black and Gold» puo' non dichiarare nessuna collana, e il
+    // messaggio non lo diceva). Qui non c'e' un guasto: c'e' un file che
+    // la saga non la sa, e la sola strada che resta e' scriverla nella
+    // scheda — il messaggio deve dire ANCHE questo, o il lettore cerca un
+    // guasto che non c'e'.
+    if (daiFile.mute)
+      parti.push(
+        `${daiFile.mute} ${daiFile.mute === 1 ? "tomo non dichiara" : "tomi non dichiarano"} nessuna saga nel file — scrivila nella scheda`
+      );
     notify?.(parti.length ? parti.join(", ") : "Erano già tutti a posto");
   }
 
