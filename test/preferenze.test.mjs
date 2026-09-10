@@ -49,6 +49,9 @@ export default async function (t) {
     paragrafi: "stacco",
     terms: false,
     ritaglia: false,
+    // il dizionario dell'app spento: chi preferisce quello del tablet non
+    // deve ritrovarsi il tasto «Definisci» a ogni riapertura del libro
+    dizionario: false,
     warmth: 3,
     brightness: 0.7,
   };

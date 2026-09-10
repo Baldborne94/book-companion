@@ -2727,7 +2727,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               👤 Chi è
             </button>
           )}
-          {wordCount(selMenu.text) <= PHRASE_WORDS && (
+          {settings.dizionario !== false && wordCount(selMenu.text) <= PHRASE_WORDS && (
             <button
               onClick={defineSelection}
               style={{
@@ -2938,6 +2938,32 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 : settings.svolta === "dissolvenza"
                   ? "Un velo color carta copre, la pagina cambia sotto, il velo scende. Non fotografa niente: costa quanto voltare e basta."
                   : "La pagina cambia e via. Al cambio di capitolo resta comunque il velo: lì la misura si assesta, e mostrarla mentre si assesta sarebbe peggio."}
+            </p>
+          </div>
+          {/* Il dizionario dell'app si spegne: chi preferisce quello del
+              tablet, che Android apre da sé sulla selezione, non deve
+              trovarsi il nostro tasto in mezzo ai colori. */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: F.nota, color: C.muted }}>Dizionario dell'app</span>
+              <button
+                onClick={() => updateSettings({ dizionario: settings.dizionario === false })}
+                style={{
+                  padding: "6px 16px",
+                  borderRadius: R.tondo,
+                  fontSize: F.nota,
+                  border: `1px solid ${settings.dizionario !== false ? C.arcane : C.border}`,
+                  color: settings.dizionario !== false ? C.arcane : C.muted,
+                  background: settings.dizionario !== false ? `${C.arcane}14` : "transparent",
+                }}
+              >
+                {settings.dizionario !== false ? "Attivo 📖" : "Spento"}
+              </button>
+            </div>
+            <p style={{ margin: "5px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.45 }}>
+              {settings.dizionario !== false
+                ? "Sulla parola selezionata compare «Definisci»: la scheda dell'app, con la resa italiana e il dizionario sul dispositivo."
+                : "Sulla selezione resta solo il dizionario del tablet, quello che Android apre da sé. Il glossario della saga e «Chi è» restano."}
             </p>
           </div>
           {haGlossario(book) && (
