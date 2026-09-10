@@ -1842,7 +1842,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       setDict((d) => (d && d.raw === mio ? { ...d, loading: false, frase } : d));
       return;
     }
-    const res = await (frase ? lookupPhrase(raw, langRef.current) : lookup(word, langRef.current))
+    // PRIMA IL DISCO: la risposta del dizionario sul dispositivo arriva in
+    // pochi millisecondi e si disegna subito, con la resa italiana; la rete
+    // completa la scheda dopo, e `cercando` lo dice
+    const lingua = langRef.current;
+    const onParziale = (p) =>
+      setDict((d) => (d && d.raw === mio ? { ...d, ...p, loading: false, frase, lang: lingua } : d));
+    const res = await (frase ? lookupPhrase(raw, lingua, { onParziale }) : lookup(word, lingua, { onParziale }))
       .catch(() => ({ entries: [], offline: true }));
     setDict((d) =>
       d && d.raw === mio
@@ -1850,10 +1856,13 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             ...d,
             word: res.word || word,
             loading: false,
+            cercando: false,
             frase,
-            lang: langRef.current,
+            lang: lingua,
             entries: res.entries,
             translation: res.translation,
+            italiano: res.italiano,
+            dalDisco: res.dalDisco,
             lemma: res.lemma,
             forma: res.forma,
             offline: res.offline,

@@ -613,20 +613,25 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
       setDict((d) => (d && d.raw === mio ? { ...d, loading: false, frase } : d));
       return;
     }
-    const res = await (frase ? lookupPhrase(raw, "en") : lookup(word, "en")).catch(() => ({
-      entries: [],
-      offline: true,
-    }));
+    // prima il disco, poi la rete: come nel reader EPUB
+    const onParziale = (p) =>
+      setDict((d) => (d && d.raw === mio ? { ...d, ...p, loading: false, frase, lang: "en" } : d));
+    const res = await (frase ? lookupPhrase(raw, "en", { onParziale }) : lookup(word, "en", { onParziale })).catch(
+      () => ({ entries: [], offline: true })
+    );
     setDict((d) =>
       d && d.raw === mio
         ? {
             ...d,
             word: res.word || word,
             loading: false,
+            cercando: false,
             frase,
             lang: "en",
             entries: res.entries,
             translation: res.translation,
+            italiano: res.italiano,
+            dalDisco: res.dalDisco,
             lemma: res.lemma,
             forma: res.forma,
             offline: res.offline,

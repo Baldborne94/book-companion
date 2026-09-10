@@ -1,28 +1,32 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { lemmaDoppione } from "../lib/dictionary.js";
+import { lemmaDoppione, lookup, lookupPhrase, wordCount } from "../lib/dictionary.js";
+import { statoDizionario, scaricaDizionario, cartellinoInRete } from "../lib/dizionarioOffline.js";
 import { consultaOracolo, hasOracle, setOracleKey } from "../lib/oracle.js";
 import { rigaUltima, rigaMese, riassunto, costo, leggiTetto } from "../lib/spesa.js";
 import { TettoFinito } from "./TettoOracolo.jsx";
 import { chiaveGlossario, vociDi, salvaVoci, aggiungi, togli, cerca } from "../lib/glossarioMio.js";
 
 // La scheda del dizionario e' identica nei due reader: qui una volta sola,
-// cosi' EPUB e PDF non divergono.
-// Le definizioni parola per parola non stanno piu' qui: il dizionario del
-// tablet, nel menu di selezione, e' migliore del nostro (scelta del
-// lettore, e il dizionario in rete e' stato congedato). La scheda risponde
-// con quello che il tablet non puo' sapere: glossario della saga, modi di
-// dire, e l'Oracolo.
-// La voce di vocabolario, impaginata come il Collins del tablet (scelta
-// del lettore: «usa lo stile che si presenta usando il dizionario collins
-// che mi sembra fatto bene»). Le due cose che la rendono leggibile sono
-// la BANDA che dice da dove viene la risposta, e i sensi NUMERATI con la
-// categoria grammaticale davanti — non un muro di prosa.
+// cosi' EPUB e PDF non divergono. Risponde con quello che il tablet non puo'
+// sapere — glossario della saga, modi di dire, l'Oracolo — e con la voce di
+// vocabolario, prima dal disco e poi dalla rete.
+// LA VOCE, RIFATTA (chiesto dal lettore: «il dizionario non mi piace come
+// e' stato fatto» — le definizioni, l'impaginazione, la lentezza).
 //
-// E il primo riquadro resta IN LINGUA, come nel Collins: tradurre a
-// macchina le definizioni e' esattamente il difetto che aveva fatto
-// congedare questo dizionario. La resa italiana sta nel secondo riquadro,
-// dove il Collins mette la sua, e riguarda la parola — non la glossa.
+// L'ordine e' quello con cui uno legge una voce bilingue: PRIMA la resa
+// italiana, grande, per categoria grammaticale — e' la risposta alla
+// domanda che si fa toccando una parola — e POI le definizioni in inglese,
+// numerate, con la loro resa accanto quando il senso ce l'ha. Le prime
+// quattro in vista, il resto ripiegato: otto sensi in fila erano il muro
+// che rendeva la scheda illeggibile.
+//
+// La resa italiana viene da MultiWordNet, sul dispositivo: e' un dizionario,
+// non una traduzione a macchina, e per questo sta in cima senza avvisi.
+// MyMemory resta solo dove il disco tace, con la sua banda che lo dice.
+const SENSI_IN_VISTA = 4;
+
+// la BANDA dice da dove viene la risposta, come sul Collins del tablet
 function banda(testo) {
   return (
     <div
@@ -30,6 +34,7 @@ function banda(testo) {
         padding: "5px 12px",
         background: `${C.surface}e6`,
         borderBottom: `1px solid ${C.border}`,
+        borderTop: `1px solid ${C.border}`,
         fontSize: F.minuscolo,
         letterSpacing: 0.6,
         textTransform: "uppercase",
@@ -43,10 +48,27 @@ function banda(testo) {
 
 function Voce({ dict, titolo }) {
   const entries = dict.entries || [];
-  if (!entries.length && !dict.translation) return null;
-  const lingua = (dict.lang || "en") === "en" ? "Inglese" : (dict.lang || "").toUpperCase();
+  const italiano = dict.italiano || [];
+  const [tutte, setTutte] = useState(false);
+  if (!entries.length && !dict.translation && !italiano.length) return null;
+  const lingua = (dict.lang || "en") === "en" ? "inglese" : (dict.lang || "").toUpperCase();
   const lemma = dict.lemma || dict.word;
   const dueVolte = lemmaDoppione(dict, titolo);
+  const mostrate = tutte ? entries : entries.slice(0, SENSI_IN_VISTA);
+  const nascoste = entries.length - mostrate.length;
+  const etichetta = (pos) => (
+    <span
+      style={{
+        flexShrink: 0,
+        fontSize: F.minuscolo,
+        letterSpacing: 0.5,
+        textTransform: "uppercase",
+        color: C.arcane,
+      }}
+    >
+      {pos}
+    </span>
+  );
 
   return (
     <div
@@ -58,44 +80,69 @@ function Voce({ dict, titolo }) {
         background: `${C.surface}55`,
       }}
     >
+      {!dueVolte && (
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "9px 12px 0" }}>
+          <span style={{ fontSize: F.corpo, fontWeight: 600, color: C.text }}>{lemma}</span>
+          {dict.forma && (
+            <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>
+              ({dict.forma} «{dict.lemma}»)
+            </span>
+          )}
+        </div>
+      )}
+
+      {italiano.length > 0 ? (
+        <div style={{ padding: "9px 12px 11px" }}>
+          {italiano.map((g) => (
+            <div key={g.pos} style={{ display: "flex", gap: 10, alignItems: "baseline", marginBottom: 4 }}>
+              {g.pos && etichetta(g.pos)}
+              <span style={{ fontSize: F.rilievo, fontWeight: 600, color: C.text, lineHeight: 1.4 }}>
+                {g.parole.join(", ")}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : dict.translation ? (
+        <>
+          {banda(dict.machine ? "Reso a macchina, dall'inglese" : "Dall'inglese all'italiano")}
+          <div style={{ padding: "8px 12px 10px" }}>
+            <span style={{ fontSize: F.rilievo, fontWeight: 600, color: C.text, lineHeight: 1.4 }}>
+              {dict.translation}
+            </span>
+            {dict.machine && (
+              <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 5, lineHeight: 1.4 }}>
+                Nessuna voce di vocabolario per questo passaggio: qui sopra c'è una traduzione
+                automatica, non il senso del modo di dire.
+              </div>
+            )}
+          </div>
+        </>
+      ) : null}
+
       {entries.length > 0 && (
         <>
           {/* la banda dice la fonte, come sul Collins: una definizione di
               WordNet è più scarna di una di Wiktionary, e sapere da dove
               viene è la differenza fra «il dizionario oggi dice poco» e
-              «questa è la voce che sta sul dispositivo» */}
-          {banda(dict.dalDisco ? "WordNet · sul dispositivo" : `Wiktionary ${lingua}`)}
+              «questa è la voce che sta sul dispositivo» — e dice anche se
+              la rete sta ancora cercando */}
+          {banda(
+            `${dict.dalDisco ? "WordNet · sul dispositivo" : `Wiktionary · ${lingua}`}${dict.cercando ? " · cerco anche in rete…" : ""}`
+          )}
           <div style={{ padding: "9px 12px 11px" }}>
-            {!dueVolte && (
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
-                <span style={{ fontSize: F.corpo, fontWeight: 600, color: C.text }}>{lemma}</span>
-                {dict.forma && (
-                  <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>
-                    ({dict.forma} «{dict.lemma}»)
-                  </span>
-                )}
-              </div>
-            )}
-            {entries.map((e, i) => (
+            {mostrate.map((e, i) => (
               <div key={i} style={{ display: "flex", gap: 8, marginBottom: 7 }}>
                 <span style={{ flexShrink: 0, fontSize: F.piccolo, color: C.accent, minWidth: 12 }}>
                   {i + 1}
                 </span>
                 <div style={{ minWidth: 0 }}>
-                  {e.pos && (
-                    <span
-                      style={{
-                        fontSize: F.minuscolo,
-                        letterSpacing: 0.5,
-                        textTransform: "uppercase",
-                        color: C.arcane,
-                        marginRight: 7,
-                      }}
-                    >
-                      {e.pos}
-                    </span>
-                  )}
+                  {e.pos && <span style={{ marginRight: 7 }}>{etichetta(e.pos)}</span>}
                   <span style={{ fontSize: F.nota, color: C.text, lineHeight: 1.5 }}>{e.text}</span>
+                  {/* la resa del SINGOLO senso, quando c'è: è quel che dice
+                      quale dei cinque sensi è «gatto» e quale «vomitare» */}
+                  {e.ita?.length > 0 && (
+                    <span style={{ fontSize: F.nota, color: C.accent, marginLeft: 6 }}>— {e.ita.join(", ")}</span>
+                  )}
                   {/* «The quality or state of being gormless» non spiega
                       niente a chi non sa cosa vuol dire «gormless»: la sua
                       definizione va qui, rientrata, come il rimando di un
@@ -117,18 +164,7 @@ function Voce({ dict, titolo }) {
                           key={k}
                           style={{ fontSize: F.minuscolo, color: C.muted, lineHeight: 1.45, marginTop: 2 }}
                         >
-                          {s.pos && (
-                            <span
-                              style={{
-                                letterSpacing: 0.5,
-                                textTransform: "uppercase",
-                                color: C.arcane,
-                                marginRight: 6,
-                              }}
-                            >
-                              {s.pos}
-                            </span>
-                          )}
+                          {s.pos && <span style={{ marginRight: 6 }}>{etichetta(s.pos)}</span>}
                           {s.text}
                         </div>
                       ))}
@@ -137,22 +173,13 @@ function Voce({ dict, titolo }) {
                 </div>
               </div>
             ))}
-          </div>
-        </>
-      )}
-
-      {dict.translation && (
-        <>
-          {banda(dict.machine ? "Reso a macchina, dall'inglese" : "Dall'inglese all'italiano")}
-          <div style={{ padding: "8px 12px 10px" }}>
-            <span style={{ fontSize: F.nota, color: C.text, lineHeight: 1.5 }}>
-              {dict.translation}
-            </span>
-            {dict.machine && (
-              <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 5, lineHeight: 1.4 }}>
-                Nessuna voce di vocabolario per questo passaggio: qui sopra c'è una traduzione
-                automatica, non il senso del modo di dire.
-              </div>
+            {nascoste > 0 && (
+              <button
+                onClick={() => setTutte(true)}
+                style={{ fontSize: F.piccolo, color: C.muted, padding: "4px 0 0 20px", minHeight: 32 }}
+              >
+                {nascoste === 1 ? "un altro senso" : `altri ${nascoste} sensi`} ▾
+              </button>
             )}
           </div>
         </>
@@ -161,7 +188,58 @@ function Voce({ dict, titolo }) {
   );
 }
 
-export default function DictionaryCard({ dict, book, alto, onClose }) {
+// IL DIZIONARIO SI SCARICA ANCHE DA QUI. Stava solo nelle Impostazioni — e
+// il ragionamento era giusto: si scarica PRIMA di averne bisogno. Ma da
+// quando la resa italiana viene dal disco, chi non l'ha scaricato apre la
+// scheda e non capisce perche' la parola gli arriva solo in inglese: il
+// posto dove si nota la mancanza e' anche il posto dove va offerto il
+// rimedio. Un tocco, e la scheda si rilegge da sola.
+function ScaricaQui({ cartellino, onFatto }) {
+  const [avanzamento, setAvanzamento] = useState(null);
+  const [guaio, setGuaio] = useState("");
+  const mb = (n) => `${(n / 1048576).toFixed(1)} MB`;
+  async function scarica() {
+    if (avanzamento) return;
+    setGuaio("");
+    setAvanzamento({ scaricati: 0, totale: cartellino?.byte || null });
+    try {
+      await scaricaDizionario({ onProgress: setAvanzamento });
+      onFatto();
+    } catch (e) {
+      setGuaio(e?.message || "non sono riuscito a scaricarlo");
+    } finally {
+      setAvanzamento(null);
+    }
+  }
+  return (
+    <div style={{ marginBottom: 12, padding: "9px 12px", border: `1px dashed ${C.border}`, borderRadius: R.piccolo }}>
+      <p style={{ margin: "0 0 8px", fontSize: F.piccolo, color: C.muted, lineHeight: 1.45 }}>
+        Col dizionario sul dispositivo la scheda dice la parola <strong>in italiano</strong>, subito e
+        anche senza rete.
+      </p>
+      {guaio && <p style={{ margin: "0 0 8px", fontSize: F.minuscolo, color: C.red }}>{guaio}</p>}
+      <button
+        onClick={scarica}
+        disabled={!!avanzamento}
+        style={{
+          minHeight: 40,
+          fontSize: F.piccolo,
+          color: avanzamento ? C.muted : C.arcane,
+          border: `1px solid ${C.arcane}55`,
+          borderRadius: R.tondo,
+          padding: "6px 14px",
+        }}
+      >
+        {avanzamento
+          ? `Scarico… ${mb(avanzamento.scaricati)}${avanzamento.totale ? ` di ${mb(avanzamento.totale)}` : ""}`
+          : `📖 Scarica il dizionario${cartellino?.byte ? ` · ${mb(cartellino.byte)}` : ""}`}
+      </button>
+    </div>
+  );
+}
+
+
+export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) {
   // {loading} | {answer} | {error}; la chiave si chiede qui dentro, dove
   // l'Oracolo si usa, non in un pannello di impostazioni da scoprire
   const [oracolo, setOracolo] = useState(null);
@@ -172,15 +250,41 @@ export default function DictionaryCard({ dict, book, alto, onClose }) {
   const [glossOpen, setGlossOpen] = useState(false);
   const [glossDraft, setGlossDraft] = useState("");
   const [, setGiro] = useState(0);
+  // il dizionario sul dispositivo: `null` = non c'e', e allora la scheda
+  // offre di scaricarlo; `extra` e' la voce riletta dopo lo scaricamento,
+  // che il reader non sa rifare da solo
+  const [installato, setInstallato] = useState(undefined);
+  const [cartellino, setCartellino] = useState(null);
+  const [extra, setExtra] = useState(null);
   // la scheda resta montata tra una selezione e l'altra: la risposta della
   // frase di prima non deve comparire sotto la frase nuova
   const tagRef = useRef();
-  const tag = dict ? `${dict.raw || ""}|${dict.word || ""}` : "";
+  const tag = dictProp ? `${dictProp.raw || ""}|${dictProp.word || ""}` : "";
   if (tagRef.current !== tag) {
     tagRef.current = tag;
     if (oracolo) setOracolo(null);
     if (keyOpen) setKeyOpen(false);
     if (glossOpen) setGlossOpen(false);
+  }
+  const dict = extra && extra.tag === tag ? { ...dictProp, ...extra.res, loading: false, cercando: false } : dictProp;
+
+  useEffect(() => {
+    let vivo = true;
+    statoDizionario().then((s) => vivo && setInstallato(s));
+    cartellinoInRete().then((c) => vivo && setCartellino(c));
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  async function riletta() {
+    setInstallato(await statoDizionario());
+    const raw = dictProp?.raw?.trim() || dictProp?.word || "";
+    if (!raw) return;
+    const mio = tag;
+    const cerca = wordCount(raw) > 1 ? lookupPhrase : lookup;
+    const res = await cerca(raw, dictProp.lang || "en").catch(() => null);
+    if (res && tagRef.current === mio) setExtra({ tag: mio, res });
   }
 
   async function chiedi() {
@@ -280,9 +384,12 @@ export default function DictionaryCard({ dict, book, alto, onClose }) {
           // ferma a 460 mentre la scrittura cresce, la riga si accorcia in
           // caratteri e la definizione si spezza in tre pezzi con mezzo
           // schermo vuoto ai lati. Passa per `px` come le altre colonne.
-          width: `min(94%, ${px(460)}px)`,
+          // una voce bilingue ha due colonne di roba da dire: piu' larga di
+          // prima, e piu' alta, o la resa italiana in cima spingeva le
+          // definizioni sotto la piega
+          width: `min(94%, ${px(560)}px)`,
           marginTop: alto,
-          maxHeight: "52%",
+          maxHeight: "62%",
           overflowY: "auto",
           background: `${C.card}fa`,
           border: `1px solid ${C.border}`,
@@ -358,7 +465,13 @@ export default function DictionaryCard({ dict, book, alto, onClose }) {
           </a>
         )}
 
-        <Voce dict={dict} titolo={titolo} />
+        <Voce key={tag} dict={dict} titolo={titolo} />
+
+        {/* il dizionario manca e la parola e' inglese: qui si vede la
+            mancanza, e qui si offre il rimedio */}
+        {installato === null && !dict.loading && (dict.lang || "en") === "en" && !!dict.word && (
+          <ScaricaQui cartellino={cartellino} onFatto={riletta} />
+        )}
 
         {secondaria && (
           <div
@@ -445,7 +558,7 @@ export default function DictionaryCard({ dict, book, alto, onClose }) {
         )}
 
         {dict.loading ? (
-          <p style={{ color: C.muted, fontSize: F.nota }}>Sfoglio il glossario…</p>
+          <p style={{ color: C.muted, fontSize: F.nota }}>Cerco…</p>
         ) : local ? null : (
           // il glossario che tace non chiude la scheda: resta l'Oracolo, e
           // per la definizione nuda c'e' il dizionario del tablet

@@ -2,7 +2,10 @@
 // che conta e' come si TRATTA la risposta — e' li' che il dizionario si
 // era rotto la prima volta, con un pezzo di romanzo spacciato per una
 // traduzione.
-import { lookup, formaDi, derivataDa, cleanWord, wordCount } from "../src/lib/dictionary.js";
+import {
+  lookup, lookupPhrase, formaDi, derivataDa, cleanWord, wordCount,
+  resaItaliana, usaDizionarioLocale,
+} from "../src/lib/dictionary.js";
 
 // `strip()` in dictionary.js usa DOMParser, che in Node non c'e'. Invece di
 // tirarsi dietro jsdom per otto righe, se ne mette una copia minima: qui
@@ -189,4 +192,89 @@ export default async function (t) {
   const dallaCache = await lookup("fume", "en");
   t.eq("dalla cache, ancora buona", dallaCache.entries.length, 3);
 
+  // --- 7. PRIMA IL DISCO, POI LA RETE ---------------------------------------
+  // Chiesto dal lettore («lentezza o risposte vuote», «le definizioni»): il
+  // dizionario sul dispositivo risponde in pochi millisecondi con la resa
+  // italiana, e la scheda lo mostra SUBITO; la rete arriva dopo. Qui il
+  // disco è una mappa, nella stessa forma dei sacchi: [pos, glossa, resa].
+  const DISCO = {
+    gutter: [["n", "a channel along the eaves", "grondaia, doccia"], ["v", "flow in small streams"]],
+    gutters: [],
+    cat: [["n", "feline mammal", "gatto"], ["v", "eject the contents of the stomach", "vomitare, rigettare"]],
+    "kick the bucket": [["v", "pass from physical life", "morire, crepare"]],
+  };
+  usaDizionarioLocale(async (p) => DISCO[p] || []);
+  let mymemoryChiamate = 0;
+  global.fetch = async (url) => {
+    if (String(url).includes("mymemory")) mymemoryChiamate++;
+    return vecchioFetch(url);
+  };
+
+  {
+    // la risposta parziale arriva PRIMA che la rete abbia risposto, e porta
+    // la resa italiana; la finale tiene i sensi di Wiktionary E la resa
+    const tappe = [];
+    const finale = await lookup("gutter", "en", { onParziale: (p) => tappe.push(p) });
+    t.eq("il disco risponde per primo, una volta", tappe.length, 1);
+    t.c("e dice che sta ancora cercando", tappe[0].cercando === true);
+    t.c("con la resa italiana", tappe[0].italiano?.[0]?.parole.includes("grondaia"), JSON.stringify(tappe[0].italiano));
+    t.c("dal disco", tappe[0].dalDisco === true);
+    t.c("la finale ha i sensi di Wiktionary", /prepared channel/i.test(finale.entries[0]?.text || ""), JSON.stringify(finale.entries));
+    t.c("e tiene la resa italiana del disco", finale.italiano?.[0]?.parole.includes("grondaia"), JSON.stringify(finale.italiano));
+    t.eq("la resa e' per categoria", finale.italiano[0].pos, "sostantivo");
+    // MYMEMORY NON SERVE PIU' quando il disco ha una resa vera: una parola
+    // tradotta da una memoria di traduzione non batte un dizionario
+    t.eq("MyMemory non si chiama", mymemoryChiamate, 0);
+  }
+  {
+    // la forma flessa passa dal disco con la sua base («gutters» qui no:
+    // e' gia' in cache dalla sezione 3, e dalla cache non c'e' nessuna
+    // tappa parziale — la risposta e' gia' immediata)
+    const tappe = [];
+    await lookup("cats", "en", { onParziale: (p) => tappe.push(p) });
+    t.eq("«cats» dal disco si spiega sotto «cat»", tappe[0]?.lemma, "cat");
+    t.eq("e lo dice", tappe[0]?.forma, "forma di");
+  }
+  {
+    // WIKTIONARY NON CONOSCE «cat» (nel finto): resta il disco, coi suoi
+    // sensi e la resa per senso — e la scheda deve saperlo
+    const finale = await lookup("cat", "en");
+    t.c("senza Wiktionary vale il disco", finale.dalDisco === true);
+    t.eq("coi sensi del disco", finale.entries.length, 2);
+    t.eq("ognuno con la sua resa", finale.entries[1].ita.join(", "), "vomitare, rigettare");
+    t.eq("e la resa raccolta per categoria, due categorie", finale.italiano.length, 2);
+    t.eq("il verbo sotto il sostantivo", finale.italiano[1].pos, "verbo");
+  }
+  {
+    // e senza resa dal disco MyMemory torna a servire
+    await lookup("fumi", "en");
+    const prima = mymemoryChiamate;
+    await lookup("zzzaltra", "en");
+    t.c("MyMemory si chiama quando il disco tace", mymemoryChiamate > prima);
+  }
+  {
+    // IL MODO DI DIRE DAL DISCO: Wiktionary (finto) non lo ha, il disco sì
+    const tappe = [];
+    const finale = await lookupPhrase("he kicked the bucket", "en", { onParziale: (p) => tappe.push(p) });
+    t.eq("la finestra buona arriva dal disco", tappe[0]?.word, "kick the bucket");
+    t.c("come modo di dire", tappe[0]?.idiom === true);
+    t.eq("e la finale tiene la voce del disco", finale.word, "kick the bucket");
+    t.c("con la resa", finale.italiano?.[0]?.parole.includes("morire"), JSON.stringify(finale.italiano));
+    t.c("senza dirsi offline: una risposta c'e'", finale.offline !== true);
+  }
+
+  // --- 7-bis. resaItaliana da sola ---------------------------------------
+  const gruppi = resaItaliana([
+    { pos: "sostantivo", ita: ["gatto", "micio"] },
+    { pos: "verbo", ita: ["vomitare"] },
+    { pos: "sostantivo", ita: ["gatto", "felino"] },
+    { pos: "aggettivo", ita: [] },
+  ]);
+  t.eq("una categoria, un gruppo", gruppi.length, 2);
+  t.eq("senza doppioni e nell'ordine dei sensi", gruppi[0].parole.join(","), "gatto,micio,felino");
+  t.eq("una categoria senza resa non compare", gruppi.some((g) => g.pos === "aggettivo"), false);
+  t.eq("il niente non esplode", resaItaliana(undefined).length, 0);
+
+  usaDizionarioLocale(null);
+  global.fetch = vecchioFetch;
 }

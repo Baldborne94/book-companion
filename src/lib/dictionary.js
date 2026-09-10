@@ -5,6 +5,37 @@ const CACHE = new Map();
 const AUX_KEY = "dict_cache";
 const MAX_WORDS = 600;
 
+// IL DIZIONARIO LOCALE SI PASSA DA FUORI, come il deposito in
+// `dizionarioOffline.js`: cosi' un test lo sostituisce con una mappa e prova
+// il giro «prima il disco, poi la rete» senza IndexedDB — ed e' proprio
+// quel giro la parte che sbaglia in silenzio (una resa italiana che non
+// arriva non alza errori: la scheda resta muta su una parola che il
+// dizionario conosce).
+let sensiLocali = sensiOffline;
+export function usaDizionarioLocale(fn) {
+  sensiLocali = fn || sensiOffline;
+}
+
+// LA RESA ITALIANA, raccolta dai sensi: per categoria grammaticale,
+// nell'ordine in cui i sensi arrivano (che e' quello di frequenza), senza
+// doppioni. E' quello che il lettore vuole leggere per primo — «cat:
+// SOSTANTIVO gatto» — e sta in cima alla scheda, sopra le definizioni.
+export function resaItaliana(entries = []) {
+  const gruppi = [];
+  for (const e of entries) {
+    const parole = Array.isArray(e?.ita) ? e.ita : [];
+    if (!parole.length) continue;
+    const pos = e.pos || "";
+    let g = gruppi.find((x) => x.pos === pos);
+    if (!g) {
+      g = { pos, parole: [] };
+      gruppi.push(g);
+    }
+    for (const p of parole) if (p && !g.parole.includes(p)) g.parole.push(p);
+  }
+  return gruppi.filter((g) => g.parole.length);
+}
+
 // L'endpoint /page/definition esiste SOLO su en.wiktionary: sugli altri
 // Wiktionary risponde 404, quindi il vecchio ripiego "prima l'italiano"
 // falliva in silenzio su ogni parola. Le definizioni arrivano da
@@ -237,17 +268,39 @@ async function sensiDalDisco(word, lang) {
   for (const p of [word, ...basiDi(word)]) {
     let sensi = [];
     try {
-      sensi = await sensiOffline(p);
+      sensi = await sensiLocali(p);
     } catch {
       return [];
     }
     if (!sensi.length) continue;
-    return sensi.map(([lettera, text]) => {
+    // il terzo campo e' la resa italiana del senso, da MultiWordNet: manca
+    // sui sensi che l'italiano non copre, e li' resta la sola definizione
+    return sensi.map(([lettera, text, ita]) => {
       const nome = POS_WORDNET[lettera] || lettera;
-      return { pos: POS_IT[nome] || nome, order: rank(nome), text, lemma: p };
+      return {
+        pos: POS_IT[nome] || nome,
+        order: rank(nome),
+        text,
+        lemma: p,
+        ita: ita ? String(ita).split(", ").filter(Boolean) : [],
+      };
     });
   }
   return [];
+}
+
+// La risposta del disco, nella forma che la scheda mostra: e' quella che
+// arriva PRIMA della rete, e la scheda la disegna subito.
+function rispostaDalDisco(word, locali) {
+  const base = locali[0]?.lemma && locali[0].lemma !== word ? locali[0].lemma : null;
+  return {
+    word,
+    lemma: base,
+    forma: base ? "forma di" : null,
+    entries: locali.slice(0, 8),
+    italiano: resaItaliana(locali),
+    dalDisco: true,
+  };
 }
 
 async function fetchTranslation(word, from, intera = false) {
@@ -510,13 +563,34 @@ async function esistenti(titoli) {
   return titoli.filter((t) => vive.has(t.toLowerCase()));
 }
 
-export async function lookupPhrase(raw, bookLang = "en") {
+export async function lookupPhrase(raw, bookLang = "en", { onParziale } = {}) {
   const lang = (bookLang || "en").slice(0, 2).toLowerCase();
   const words = cleanWord(raw).toLowerCase().split(" ").filter(Boolean);
-  if (words.length < 2) return lookup(raw, bookLang);
+  if (words.length < 2) return lookup(raw, bookLang, { onParziale });
   await loadCache();
 
   const cands = subPhrases(words);
+  // PRIMA IL DISCO anche sui modi di dire: WordNet conosce «kick the
+  // bucket» e «egg on», e le finestre stanno gia' dalla piu' lunga alla piu'
+  // corta — la prima che il disco conosce e' la migliore che il disco ha
+  let locale = null;
+  if (lang === "en") {
+    for (const c of cands) {
+      let sensi = [];
+      try {
+        sensi = await sensiLocali(c);
+      } catch {
+        break;
+      }
+      if (!sensi.length) continue;
+      locale = { c, entries: sensiDalDisco(c, lang) };
+      break;
+    }
+  }
+  if (locale) {
+    locale.entries = await locale.entries;
+    onParziale?.({ ...rispostaDalDisco(locale.c, locale.entries), idiom: true, cercando: true });
+  }
   const noti = cands.filter((c) => CACHE.get(`${c}|${lang}`)?.entries?.length);
   let offline = false;
   let vive = noti;
@@ -545,10 +619,17 @@ export async function lookupPhrase(raw, bookLang = "en") {
     }
   }
 
-  const vinta = entries.length ? { c: scelta, entries } : null;
+  // la rete non ha risposto, o non conosce la frase: vale quel che sa il
+  // disco, che per un modo di dire e' comunque una voce vera
+  const vinta = entries.length
+    ? { c: scelta, entries }
+    : locale
+      ? { c: locale.c, entries: locale.entries, dalDisco: true }
+      : null;
+  const italiano = locale && vinta?.c === locale.c ? resaItaliana(locale.entries) : [];
   const testo = vinta ? vinta.c : cleanWord(raw);
   let translation = "";
-  if (lang !== "it" && !translation) {
+  if (lang !== "it" && !italiano.length) {
     translation = await fetchTranslation(testo, lang, !vinta).catch(() => "");
   }
 
@@ -556,22 +637,34 @@ export async function lookupPhrase(raw, bookLang = "en") {
     word: testo,
     entries: (vinta?.entries || []).slice(0, 8),
     translation,
+    italiano,
+    dalDisco: !!vinta?.dalDisco,
     // senza una voce, la resa è una traduzione a macchina dell'intero
     // passaggio: va detto, o si scambia per il significato del modo di dire
     machine: !vinta && !!translation,
     idiom: !!vinta,
     foreign: false,
-    offline,
+    offline: offline && !vinta,
     at: Date.now(),
   };
-  if (vinta && !out.offline) {
+  // la voce del disco non si salva in cache: e' gia' sul disco, e salvarla
+  // vorrebbe dire non rivedere mai piu' quella di Wiktionary
+  if (vinta && !vinta.dalDisco && !offline) {
     CACHE.set(`${vinta.c}|${lang}`, { ...out, foreign: false });
     await persist();
   }
   return out;
 }
 
-export async function lookup(raw, bookLang = "en") {
+// PRIMA IL DISCO, POI LA RETE. Chiesto dal lettore («lentezza o risposte
+// vuote»): la scheda aspettava tre chiamate di rete — Wiktionary, MyMemory,
+// e i rimandi — prima di dire una parola, e senza rete diceva «aspetta».
+// Il dizionario sul dispositivo risponde in pochi millisecondi: la sua
+// risposta si consegna SUBITO a `onParziale`, con la resa italiana, e la
+// rete arriva dopo ad arricchire — o non arriva, e la scheda e' piena lo
+// stesso. La resa italiana del disco si tiene anche quando Wiktionary
+// risponde: e' un'informazione di dizionario, e MyMemory non serve piu'.
+export async function lookup(raw, bookLang = "en", { onParziale } = {}) {
   const word = cleanWord(raw).toLowerCase();
   if (!word) return { word: "", entries: [] };
   const lang = (bookLang || "en").slice(0, 2).toLowerCase();
@@ -589,8 +682,23 @@ export async function lookup(raw, bookLang = "en") {
     known?.entries?.some((e) => !e.forma && !e.rimando && derivataDa(e.text, word));
   if (known && !vecchia) {
     known.at = Date.now();
+    // una voce salvata senza resa italiana se la prende dal disco adesso,
+    // senza rifare la rete: costa una lettura e vale la riga in cima. Vale
+    // anche per la voce salvata mentre il dizionario NON c'era ancora — e'
+    // il caso di chi lo scarica dalla scheda e si aspetta di vederla subito.
+    if (!known.italiano?.length) {
+      const adesso = resaItaliana(await sensiDalDisco(word, lang));
+      if (adesso.length) {
+        known.italiano = adesso;
+        await persist();
+      } else if (known.italiano === undefined) known.italiano = [];
+    }
     return known;
   }
+
+  const locali = await sensiDalDisco(word, lang);
+  const subito = locali.length ? rispostaDalDisco(word, locali) : null;
+  if (subito) onParziale?.({ ...subito, cercando: true });
 
   let entries = [];
   let translation = "";
@@ -600,7 +708,9 @@ export async function lookup(raw, bookLang = "en") {
       .then((r) => (entries = r))
       .catch(() => (offline = true)),
   ];
-  if (lang !== "it") {
+  // la resa a macchina si chiede solo se il disco non ha una resa vera: una
+  // parola tradotta da una memoria di traduzione non batte un dizionario
+  if (lang !== "it" && !subito?.italiano.length) {
     jobs.push(fetchTranslation(word, lang).then((r) => (translation = r)).catch(() => {}));
   }
   await Promise.all(jobs);
@@ -610,12 +720,9 @@ export async function lookup(raw, bookLang = "en") {
   // locuzioni, i verbi frasali e i rimandi delle forme flesse, che WordNet
   // non ha.
   let dalDisco = false;
-  if (!entries.length) {
-    const locali = await sensiDalDisco(word, lang);
-    if (locali.length) {
-      entries = locali;
-      dalDisco = true;
-    }
+  if (!entries.length && locali.length) {
+    entries = locali;
+    dalDisco = true;
   }
 
   // si segue il primo rimando (un salto solo: basta e non gira in tondo),
@@ -646,11 +753,15 @@ export async function lookup(raw, bookLang = "en") {
   const out = {
     word,
     translation,
+    // la resa italiana viene dal disco e resta anche sotto i sensi di
+    // Wiktionary: e' un'informazione di dizionario, non dipende da chi ha
+    // scritto le definizioni
+    italiano: subito?.italiano || [],
     // la parola cercata e la voce sotto cui il dizionario la spiega non
     // sono sempre la stessa: «fuming» si spiega sotto «fume». La scheda
     // mostra tutte e due, come fa un vocabolario di carta.
-    lemma: base?.lemma || null,
-    forma: base?.label || null,
+    lemma: base?.lemma || subito?.lemma || null,
+    forma: base?.label || subito?.forma || null,
     entries: mostrate,
     // il libro e' straniero e la traduzione non e' arrivata: la scheda
     // avvisa che le definizioni restano in lingua originale
