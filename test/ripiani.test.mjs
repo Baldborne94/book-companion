@@ -159,6 +159,63 @@ export default async function (t) {
     t.eq("senza confronto resta l'ordine d'arrivo", titoli(r[0]).join(" · "), "Zeta · Alfa");
   }
 
+  // ---- DENTRO LA SAGA, I CICLI ------------------------------------------
+  // Chiesto dal lettore guardando il Circle of the World: dieci volumi in
+  // fila senza una riga a dire dove finisce la Prima Legge e comincia
+  // l'Età della Follia. Il ciclo è la Serie della scheda.
+  const conCiclo = (title, n, series) => ({ ...libro(title, "Joe Abercrombie", "Circle of the World", n), series });
+  {
+    const r = disponi([
+      conCiclo("A Little Hatred", 8, "The Age of Madness"),
+      conCiclo("The Blade Itself", 1, "The First Law"),
+      conCiclo("Best Served Cold", 5, ""),
+      conCiclo("Sharp Ends", 4, ""),
+      conCiclo("Last Argument of Kings", 3, "The First Law"),
+      conCiclo("The Trouble with Peace", 9, "The Age of Madness"),
+      conCiclo("Before They Are Hanged", 2, "The First Law"),
+    ]);
+    t.eq("il ripiano resta UNO per saga", r.length, 1);
+    const cicli = r[0].cicli;
+    t.eq("tre sotto-ripiani", cicli.length, 3);
+    // OGNI CICLO STA DOVE STA IL SUO PRIMO VOLUME: la Prima Legge apre, i
+    // romanzi a sé stanno in mezzo, l'Età della Follia chiude
+    t.eq(
+      "nell'ordine in cui la storia li incontra",
+      cicli.map((c) => c.nome ?? "—").join(" · "),
+      "The First Law · — · The Age of Madness"
+    );
+    t.eq(
+      "e dentro ogni ciclo l'ordine di lettura",
+      cicli[0].libri.map((b) => b.title).join(" · "),
+      "The Blade Itself · Before They Are Hanged · Last Argument of Kings"
+    );
+    t.eq("i volumi senza ciclo stanno insieme", cicli[1].libri.map((b) => b.title).join(" · "), "Sharp Ends · Best Served Cold");
+    t.eq("e non hanno nome", cicli[1].nome, null);
+    t.eq("nessun libro si perde nei cicli", cicli.reduce((n, c) => n + c.libri.length, 0), r[0].libri.length);
+  }
+  {
+    // una saga SENZA cicli non ha niente da suddividere: `null`, non un
+    // sotto-ripiano solo senza nome, o ogni saga porterebbe una riga in più
+    const r = disponi([
+      libro("Dune", "Frank Herbert", "Dune", 1),
+      libro("Dune Messiah", "Frank Herbert", "Dune", 2),
+    ]);
+    t.eq("senza cicli niente sotto-ripiani", r[0].cicli, null);
+  }
+  {
+    // le maiuscole non fanno due cicli, e un ciclo senza nessun numero
+    // chiude la fila come i volumi senza numero
+    const r = disponi([
+      conCiclo("Uno", 1, "Prima Legge"),
+      conCiclo("Due", 2, "prima legge"),
+      conCiclo("Senza", null, "Racconti"),
+    ]);
+    t.eq("due cicli, non tre", r[0].cicli.length, 2);
+    t.eq("e chi non ha numeri chiude", r[0].cicli[1].nome, "Racconti");
+  }
+  // un ripiano d'autore non ha cicli: il ciclo vive dentro una saga
+  t.eq("l'autore non ha cicli", disponi([libro("A", "X"), libro("B", "X")])[0].cicli, null);
+
   // ---- una biblioteca vuota non inventa ripiani -------------------------
   t.eq("niente libri, niente ripiani", disponi([]).length, 0);
 }
