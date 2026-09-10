@@ -2654,7 +2654,25 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         <div
           style={{
             position: "absolute",
-            bottom: chrome ? 92 : 24,
+            // IL MENU DELLA SELEZIONE STA IN CIMA, e non e' una questione di
+            // gusto: Android, quando selezioni una parola, apre la SUA
+            // scheda di dizionario appoggiata al bordo di sotto — sempre lo
+            // stesso posto, sempre la stessa altezza. Il nostro menu stava
+            // a `bottom: 24`, cioe' esattamente li' sotto, e quella scheda
+            // se lo mangiava: «Dizionario», «Chi è costui?» e i colori
+            // dell'evidenziazione diventavano irraggiungibili proprio nel
+            // momento in cui servono (segnalato con la fotografia: «continuano
+            // a sovrapporsi», col nostro menu che spuntava per trenta pixel
+            // da dietro la scheda di Google).
+            //
+            // In cima invece la scheda di sistema non ci arriva mai. Resta la
+            // barretta degli strumenti di Android, che pero' **si sposta col
+            // testo selezionato** invece di stare inchiodata a un bordo:
+            // quella la si incontra ogni tanto, non tutte le volte. Non si
+            // puo' misurare l'una ne' l'altra da dentro la pagina — sono
+            // finestre del sistema — quindi la scelta e' fra un incontro
+            // garantito e uno occasionale.
+            top: chrome ? px(96) : px(24),
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 35,
@@ -3242,7 +3260,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             position: "absolute",
             left: "50%",
             transform: "translateX(-50%)",
-            bottom: chrome ? 96 : 30,
+            bottom: chrome ? px(96) : px(30),
             zIndex: 32,
             width: `min(94%, ${px(440)}px)`,
             display: "flex",
@@ -3293,7 +3311,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       )}
 
       {panel === "dict" && (
-        <DictionaryCard dict={dict} book={book} bottom={chrome ? 92 : 26} onClose={() => setPanel(null)} />
+        <DictionaryCard dict={dict} book={book} alto={chrome ? px(96) : px(26)} onClose={() => setPanel(null)} />
       )}
       {panel === "search" && (
         <Panel title="Cerca nel libro" onClose={() => setPanel(null)}>

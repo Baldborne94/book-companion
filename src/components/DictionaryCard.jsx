@@ -161,7 +161,7 @@ function Voce({ dict, titolo }) {
   );
 }
 
-export default function DictionaryCard({ dict, book, bottom, onClose }) {
+export default function DictionaryCard({ dict, book, alto, onClose }) {
   // {loading} | {answer} | {error}; la chiave si chiede qui dentro, dove
   // l'Oracolo si usa, non in un pannello di impostazioni da scoprire
   const [oracolo, setOracolo] = useState(null);
@@ -263,7 +263,13 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
         zIndex: 30,
         background: "#0806115e",
         display: "flex",
-        alignItems: "flex-end",
+        // LA SCHEDA STA IN CIMA, come il menu da cui si apre: sotto c'è la
+        // scheda di dizionario che Android apre sulla selezione, appoggiata
+        // al bordo e sempre alla stessa altezza, e le due si coprivano a
+        // vicenda. Sopra non ci arriva. Il passaggio che stai leggendo resta
+        // scoperto lo stesso — prima restava scoperto quello sopra, adesso
+        // quello sotto — quindi non si perde niente.
+        alignItems: "flex-start",
         justifyContent: "center",
       }}
     >
@@ -275,7 +281,7 @@ export default function DictionaryCard({ dict, book, bottom, onClose }) {
           // caratteri e la definizione si spezza in tre pezzi con mezzo
           // schermo vuoto ai lati. Passa per `px` come le altre colonne.
           width: `min(94%, ${px(460)}px)`,
-          marginBottom: bottom,
+          marginTop: alto,
           maxHeight: "52%",
           overflowY: "auto",
           background: `${C.card}fa`,

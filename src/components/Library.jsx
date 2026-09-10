@@ -390,6 +390,11 @@ export default function Library({
   // stesso modo di fermarla
   const [improntando, setImprontando] = useState(null);
   const filoImpronte = useRef(null);
+  // il riconoscimento delle saghe adesso apre i file dei tomi che una saga
+  // non ce l'hanno, quindi e' diventato una passata lunga come le altre:
+  // avanzamento col titolo e fermabile a meta'
+  const [collane, setCollane] = useState(null);
+  const filoCollane = useRef(null);
   // la visita: terza passata lunga, stessa forma delle altre due
   const [visitando, setVisitando] = useState(null);
   const [referto, setReferto] = useState(null);
@@ -453,23 +458,101 @@ export default function Library({
   // quando il riconoscimento la pensa diversamente — su questi campi
   // l'ultima parola e' del lettore. Il conto dice le due cose separate,
   // perche' «rinominati» e' un intervento su roba che c'era gia'.
+  // L'OPF DI UN TOMO CHE E' GIA' IN CASA. Aprire il libro sta qui e non in
+  // `collana.js` per la stessa ragione della visita: la' si decide soltanto,
+  // e senza epub.js quel giro si prova con una mappa.
+  //
+  // `null` vuol dire «i byte non sono qui» e `""` «aperto, e l'OPF non si e'
+  // letto»: sono due risposte diverse, e chi legge il conto deve poterle
+  // distinguere. Quel che esplode arriva a chi chiama come guasto del file.
+  async function leggiOpf(id) {
+    const file = await getFile(id);
+    if (!file) return null;
+    const { default: ePub } = await import("epubjs");
+    const book = ePub(await file.arrayBuffer());
+    try {
+      await book.opened;
+      const percorso = book.container?.packagePath;
+      if (!percorso || !book.archive?.getText) return "";
+      // lo slash davanti non e' un dettaglio: `Archive.getText` fa
+      // `url.substr(1)`, e senza torna `undefined` SENZA alzare niente
+      return (await book.archive.getText(`/${String(percorso).replace(/^\/+/, "")}`)) || "";
+    } finally {
+      // un ePub aperto e non chiuso resta in memoria, e qui se ne aprono
+      // cinquanta di fila
+      book.destroy?.();
+    }
+  }
+
   async function riconosciSaghe() {
+    if (collane) {
+      filoCollane.current = null;
+      setCollane(null);
+      return;
+    }
     const { ripassa } = await import("../lib/sagaBooks.js");
     let sistemati = 0;
     let rinominati = 0;
     let dedotte = 0;
+    const conta = (b, esito) => {
+      if (esito.dedotta) dedotte += 1;
+      else if ((b.series || "").trim() && "series" in esito.campi) rinominati += 1;
+      else sistemati += 1;
+    };
     const next = books.map((b) => {
       // la biblioteca intera va passata: e' da li' che si impara la saga di
       // un autore che la nostra tabella non conosce
       const esito = ripassa(b, books);
       if (!esito) return b;
-      if (esito.dedotta) dedotte += 1;
-      else if ((b.series || "").trim() && "series" in esito.campi) rinominati += 1;
-      else sistemati += 1;
+      conta(b, esito);
       return { ...b, ...esito.campi };
     });
-    if (sistemati || rinominati || dedotte) updateBooks(next);
+
+    // E POI SI APRONO I FILE. La tavola conosce tre saghe e la deduzione ha
+    // bisogno di un ALTRO libro dello stesso autore: per «Empire in Black
+    // and Gold», unico Tchaikovsky in casa, nessuna delle due poteva dire
+    // niente — e il tasto rispondeva «erano gia' tutti a posto» dicendo il
+    // vero. La collana pero' sta scritta nel file, e fin qui la leggevamo
+    // solo all'import.
+    const { ripassaCollane } = await import("../lib/collana.js");
+    const mio = {};
+    filoCollane.current = mio;
+    setCollane({ i: 0, totale: next.filter((b) => b.fileType !== "pdf" && !b.saga).length, titolo: next[0]?.title || "" });
+    const daiFile = await ripassaCollane(next, {
+      leggiOpf,
+      vivo: () => filoCollane.current === mio,
+      onProgress: (p) => filoCollane.current === mio && setCollane(p),
+    });
+    if (filoCollane.current !== mio) return;
+    filoCollane.current = null;
+    setCollane(null);
+
+    // quel che e' stato letto resta scritto anche se il giro e' stato
+    // fermato: e' la promessa di ogni passata lunga
+    let conCollane = next.map((b) => (daiFile.campi[b.id] ? { ...b, ...daiFile.campi[b.id] } : b));
+
+    // UN GIRO IN PIU', GRATIS: adesso che quelle saghe le sappiamo, un
+    // altro libro dello stesso autore puo' ereditarle — e senza questo
+    // secondo passaggio il lettore dovrebbe premere il tasto due volte per
+    // ottenere quel che il primo tocco poteva gia' dargli. Non apre niente:
+    // e' la sola deduzione dalla biblioteca.
+    if (daiFile.scritte) {
+      conCollane = conCollane.map((b) => {
+        const esito = ripassa(b, conCollane);
+        if (!esito) return b;
+        conta(b, esito);
+        return { ...b, ...esito.campi };
+      });
+    }
+
+    if (sistemati || rinominati || dedotte || daiFile.scritte) updateBooks(conCollane);
     const parti = [];
+    // le collane lette si dicono a parte: non le abbiamo riconosciute né
+    // dedotte, le abbiamo trovate scritte dentro il file
+    if (daiFile.scritte)
+      parti.push(
+        `${daiFile.scritte} ${daiFile.scritte === 1 ? "saga letta" : "saghe lette"} dal file`
+      );
     if (sistemati) parti.push(`${sistemati} ${sistemati === 1 ? "libro sistemato" : "libri sistemati"}`);
     if (rinominati)
       parti.push(`${rinominati} ${rinominati === 1 ? "serie rinominata" : "serie rinominate"}`);
@@ -479,6 +562,15 @@ export default function Library({
       parti.push(
         `${dedotte} ${dedotte === 1 ? "saga dedotta" : "saghe dedotte"} dalla tua biblioteca`
       );
+    // i tomi rimasti lassù si contano e si dicono, come ovunque: lì non c'è
+    // un guasto, c'è un file che su questo dispositivo non c'è — e la cura
+    // è il tasto qui accanto
+    if (daiFile.senzaByte)
+      parti.push(
+        `${daiFile.senzaByte} ${daiFile.senzaByte === 1 ? "non è" : "non sono"} su questo dispositivo`
+      );
+    if (daiFile.illeggibili)
+      parti.push(`${daiFile.illeggibili} non si ${daiFile.illeggibili === 1 ? "è" : "sono"} ${daiFile.illeggibili === 1 ? "aperto" : "aperti"}`);
     notify?.(parti.length ? parti.join(", ") : "Erano già tutti a posto");
   }
 
@@ -1087,6 +1179,10 @@ export default function Library({
             <span style={{ color: C.arcane }}>
               👯 Guardo «{improntando.titolo}» — {improntando.i + 1} di {improntando.totale}
             </span>
+          ) : collane ? (
+            <span style={{ color: C.arcane }}>
+              🔖 Guardo «{collane.titolo}» — {collane.i + 1} di {collane.totale}
+            </span>
           ) : (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {books.length} {books.length === 1 ? "libro custodito" : "libri custoditi"}
@@ -1258,7 +1354,9 @@ export default function Library({
                 fontSize: F.nota,
               }}
             >
-              🔖 Riconosci saghe e cicli
+              {collane
+                ? `Fermo qui (${collane.i + 1} di ${collane.totale})`
+                : "🔖 Riconosci saghe e cicli"}
             </button>
             {/* Il ripasso delle impronte c'e' solo se qualcuno ne ha bisogno:
                 a biblioteca gia' a posto sarebbe un tasto che non fa niente.
