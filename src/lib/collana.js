@@ -1,3 +1,5 @@
+import { nomeInBiblioteca } from "./sagaBooks.js";
+
 // LA SAGA ERA GIÀ DENTRO IL FILE, e la buttavamo via.
 //
 // Chiesto dal lettore: «per ogni libro che inserisci devi sempre
@@ -224,7 +226,10 @@ export async function ripassaCollane(
       await segna(b, { muta: true });
       continue;
     }
-    const campi = { saga: c.serie };
+    // la saga si scrive COME E' GIA' SCRITTA in casa: il file di un volume
+    // dice «Wheel of Time» e quello del volume accanto «The Wheel of Time»,
+    // e presi alla lettera facevano due ripiani (segnalato dal lettore)
+    const campi = { saga: nomeInBiblioteca(c.serie, libri) };
     // il numero non si inventa e non si sovrascrive: se il lettore un posto
     // gliel'aveva gia' dato, quello comanda
     if (c.numero != null && b.sagaOrder == null) campi.sagaOrder = c.numero;

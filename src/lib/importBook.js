@@ -1,5 +1,5 @@
 import { putFile, putCover } from "./bookStore.js";
-import { riconosci } from "./sagaBooks.js";
+import { riconosci, nomeInBiblioteca } from "./sagaBooks.js";
 import { dalMetadata } from "./sinossi.js";
 import { collana } from "./collana.js";
 
@@ -219,7 +219,9 @@ export async function importFiles(fileList, libri = []) {
     // devi gia' riconoscere se appartiene a una saga e che numero e'»).
     if (!saga && letto?.collana) {
       riconosciuti += 1;
-      meta.saga = letto.collana.serie;
+      // scritta COME E' GIA' SCRITTA in casa: due file della stessa saga
+      // la scrivono con e senza l'articolo, e alla lettera erano due ripiani
+      meta.saga = nomeInBiblioteca(letto.collana.serie, [...libri, ...added]);
       // il numero non si inventa: una collana senza posto resta una collana
       if (letto.collana.numero != null) meta.sagaOrder = letto.collana.numero;
     }

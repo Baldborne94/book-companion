@@ -144,6 +144,21 @@ export default async function (t) {
     t.eq("e si conta fra i muti", esito.mute, 1);
   }
 
+  {
+    // LA GRAFIA DI CASA: il file di un volume dice «Wheel of Time», quello
+    // del volume accanto diceva «The Wheel of Time» — presi alla lettera
+    // facevano due ripiani (segnalato dal lettore)
+    const libri = [
+      { id: "c", title: "New Spring", fileType: "epub", saga: "The Wheel of Time" },
+      { id: "a", title: "The Eye of the World", fileType: "epub" },
+    ];
+    const esito = await ripassaCollane(libri, {
+      leggiOpf: () => serie("Wheel of Time", 1),
+    });
+    t.eq("la saga si scrive come in casa", esito.campi.a?.saga, "The Wheel of Time");
+    t.eq("col numero del file", esito.campi.a?.sagaOrder, 1);
+  }
+
   // LA SAGA GIA' SCRITTA COMANDA SEMPRE, e il file non si apre nemmeno:
   // l'ha messa il lettore a mano o l'ha riconosciuta la tavola, e riaprire
   // trenta megabyte per confermarla sarebbe lavoro buttato.
