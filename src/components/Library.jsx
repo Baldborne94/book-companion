@@ -521,23 +521,65 @@ export default function Library({
   // toast. La memoria su disco rende il giro ripetibile e quasi gratis, e
   // ripetibile e' l'unica forma che regge: riparte a ogni montaggio e a
   // ogni libro in piu', e riapre solo quel che non ha mai visto.
+  //
+  // E LA STESSA SAGA SCRITTA IN DUE MODI SI RIUNISCE QUI, prima di tutto il
+  // resto: «The Wheel of Time» e «Wheel of Time» facevano due ripiani, e i
+  // due volumi senza saga restavano soli perche' la deduzione vedeva «due
+  // saghe dello stesso autore» (segnalato). Riunite le grafie, la deduzione
+  // torna a funzionare, e chiude il giro da sola: chi ha gia' la saga sugli
+  // altri volumi non deve premere un tasto per darla anche a questi.
   useEffect(() => {
-    const candidati = books.filter((b) => b.fileType !== "pdf" && !String(b.saga || "").trim());
-    if (!candidati.length) return;
     let vivo = true;
     (async () => {
-      const { ripassaCollane } = await import("../lib/collana.js");
-      const esito = await ripassaCollane(candidati, {
-        leggiOpf,
-        giaVista: collanaVista,
-        segnaVista: segnaCollana,
-        // il tasto premuto a mano ha la precedenza: due giri sugli stessi
-        // file sarebbero lavoro doppio
-        vivo: () => vivo && !filoCollane.current,
-      });
-      if (!vivo || !esito.scritte) return;
-      updateBooks(booksRef.current.map((b) => (esito.campi[b.id] ? { ...b, ...esito.campi[b.id] } : b)));
-      notify?.(`${esito.scritte} ${esito.scritte === 1 ? "saga letta" : "saghe lette"} dal file`);
+      const { unificaSaghe, deduciSaghe } = await import("../lib/sagaBooks.js");
+      if (!vivo) return;
+      // I TOCCHI SI ACCUMULANO, e si riapplicano ogni volta sulla biblioteca
+      // di ADESSO: `booksRef` resta quella vecchia finche' React non
+      // ridisegna, quindi il passo dopo un `updateBooks` leggerebbe i libri
+      // di prima — e un import arrivato durante il giro lungo non va
+      // sovrascritto con la copia di quando si e' partiti
+      const tocchi = {};
+      const applica = (campi) => {
+        Object.assign(tocchi, campi);
+        const adesso = booksRef.current.map((b) => (tocchi[b.id] ? { ...b, ...tocchi[b.id] } : b));
+        updateBooks(adesso);
+        return adesso;
+      };
+      const parti = [];
+      let attuale = booksRef.current;
+      const unite = unificaSaghe(attuale);
+      if (unite.unificate) {
+        attuale = applica(unite.campi);
+        parti.push(
+          `la stessa saga era scritta in ${unite.unificate === 1 ? "due modi" : "più modi"}: ora è «${unite.nomi.join("», «")}»`
+        );
+      }
+      if (attuale.some((b) => b.fileType !== "pdf" && !String(b.saga || "").trim())) {
+        const { ripassaCollane } = await import("../lib/collana.js");
+        // la biblioteca INTERA, non i soli candidati: la grafia di casa si
+        // cerca sui libri che la saga ce l'hanno gia'
+        const esito = await ripassaCollane(attuale, {
+          leggiOpf,
+          giaVista: collanaVista,
+          segnaVista: segnaCollana,
+          // il tasto premuto a mano ha la precedenza: due giri sugli stessi
+          // file sarebbero lavoro doppio
+          vivo: () => vivo && !filoCollane.current,
+        });
+        if (!vivo) return;
+        if (esito.scritte) {
+          attuale = applica(esito.campi);
+          parti.push(`${esito.scritte} ${esito.scritte === 1 ? "saga letta" : "saghe lette"} dal file`);
+        }
+      }
+      const dedotte = deduciSaghe(attuale);
+      if (dedotte.dedotte) {
+        applica(dedotte.campi);
+        parti.push(
+          `${dedotte.dedotte} ${dedotte.dedotte === 1 ? "saga dedotta" : "saghe dedotte"} dalla tua biblioteca`
+        );
+      }
+      if (parti.length) notify?.(parti.join(", "));
     })().catch(() => {
       /* un giro silenzioso che fallisce resta silenzioso: si riprova al prossimo montaggio */
     });
@@ -551,7 +593,7 @@ export default function Library({
       setCollane(null);
       return;
     }
-    const { ripassa } = await import("../lib/sagaBooks.js");
+    const { ripassa, unificaSaghe } = await import("../lib/sagaBooks.js");
     let sistemati = 0;
     let rinominati = 0;
     let dedotte = 0;
@@ -560,10 +602,14 @@ export default function Library({
       else if ((b.series || "").trim() && "series" in esito.campi) rinominati += 1;
       else sistemati += 1;
     };
-    const next = books.map((b) => {
+    // PRIMA le grafie, poi tutto il resto: la deduzione confronta le saghe
+    // degli altri libri dell'autore, e due grafie della stessa la fermano
+    const unite = unificaSaghe(books);
+    const unificati = books.map((b) => (unite.campi[b.id] ? { ...b, ...unite.campi[b.id] } : b));
+    const next = unificati.map((b) => {
       // la biblioteca intera va passata: e' da li' che si impara la saga di
       // un autore che la nostra tabella non conosce
-      const esito = ripassa(b, books);
+      const esito = ripassa(b, unificati);
       if (!esito) return b;
       conta(b, esito);
       return { ...b, ...esito.campi };
@@ -610,8 +656,14 @@ export default function Library({
       });
     }
 
-    if (sistemati || rinominati || dedotte || daiFile.scritte) updateBooks(conCollane);
+    if (sistemati || rinominati || dedotte || daiFile.scritte || unite.unificate) updateBooks(conCollane);
     const parti = [];
+    // le grafie riunite si dicono col nome scelto: una saga riscritta in
+    // silenzio e' esattamente il genere di cosa che poi «non torna»
+    if (unite.unificate)
+      parti.push(
+        `la stessa saga era scritta in ${unite.unificate === 1 ? "due modi" : "più modi"}: ora è «${unite.nomi.join("», «")}»`
+      );
     // le collane lette si dicono a parte: non le abbiamo riconosciute né
     // dedotte, le abbiamo trovate scritte dentro il file
     if (daiFile.scritte)

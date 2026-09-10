@@ -13,6 +13,7 @@
 --   alter table public.books add column if not exists impronta text;  -- doppioni
 --   alter table public.books add column if not exists fav boolean not null default false;  -- cuore dei preferiti
 --   alter table public.prefs add column if not exists glossari jsonb not null default '{}'::jsonb;
+--   alter table public.books alter column saga_order type real;  -- numero di collana coi decimali (2.5 = la novella)
 -- Senza, l'app sincronizza comunque tutto il resto: rinuncia solo al
 -- campo mancante e lo tiene in locale. Dopo la migrazione i libri gia'
 -- salvati si ricaricano da soli alla prima sincronizzazione.
@@ -25,7 +26,9 @@ create table if not exists public.books (
   series text not null default '',
   genre text not null default '',
   saga text not null default '',
-  saga_order int,
+  -- coi decimali: Calibre scrive 2.5 per la novella fra il secondo e il
+  -- terzo, e un `int` la rifiuterebbe insieme a tutta la sincronizzazione
+  saga_order real,
   file_type text not null default 'epub',
   added_at bigint not null default 0,
   rating real not null default 0,
@@ -53,6 +56,8 @@ create table if not exists public.books (
 -- colonne nuove
 alter table public.books add column if not exists impronta text;
 alter table public.books add column if not exists fav boolean not null default false;
+-- e il numero di collana regge i decimali (su una colonna gia' `real` non fa niente)
+alter table public.books alter column saga_order type real;
 
 create index if not exists books_user_idx on public.books(user_id);
 alter table public.books enable row level security;

@@ -1,7 +1,10 @@
 // Le saghe: la tabella del Mondo Disco, il ripasso dei libri gia' in
 // biblioteca, e la saga imparata dalla tua biblioteca.
 import DISCWORLD, { SAGA, CICLI_NOSTRI } from "../src/data/discworldBooks.js";
-import { riconosci, ripassa, sagaDaBiblioteca, fuoriSaga } from "../src/lib/sagaBooks.js";
+import {
+  riconosci, ripassa, sagaDaBiblioteca, fuoriSaga,
+  chiaveSaga, nomeInBiblioteca, unificaSaghe, deduciSaghe,
+} from "../src/lib/sagaBooks.js";
 import APOCALISSE, { SAGA as SAGA_SA } from "../src/data/secondApocalypse.js";
 
 export default async function (t) {
@@ -168,6 +171,75 @@ export default async function (t) {
     sagaDaBiblioteca({ id: "x", author: "" }, ABER) === null);
   t.c("e nemmeno con un autore di due lettere",
     sagaDaBiblioteca({ id: "x", author: "Jo" }, [{ id: "z", author: "Jo", saga: "Qualcosa" }]) === null);
+
+  // ---- 5c. LA STESSA SAGA SCRITTA IN DUE MODI E' UNA SAGA SOLA ------------
+  // Il caso del lettore: tre ripiani di Robert Jordan — «The Wheel of
+  // Time», «Wheel of Time», e due volumi soli sotto l'autore, perché la
+  // deduzione vedeva «due saghe dello stesso autore» e si fermava.
+  const JORDAN = [
+    { id: "j1", title: "The Eye of the World", author: "Robert Jordan", saga: "Wheel of Time", sagaOrder: 1 },
+    { id: "j2", title: "The Great Hunt", author: "Robert Jordan", saga: "", sagaOrder: null },
+    { id: "j0", title: "New Spring", author: "Robert Jordan", saga: "The Wheel of Time", sagaOrder: 0 },
+    { id: "j4", title: "The Shadow Rising", author: "Robert Jordan", saga: "The Wheel of Time", sagaOrder: 4 },
+    { id: "j5", title: "The Fires of Heaven", author: "Robert Jordan", saga: "", sagaOrder: null },
+  ];
+  t.eq("l'articolo non fa due saghe", chiaveSaga("The Wheel of Time"), chiaveSaga("Wheel of Time"));
+  t.eq("e nemmeno le maiuscole", chiaveSaga("WHEEL OF TIME"), chiaveSaga("wheel of time"));
+  t.c("ma due saghe diverse restano diverse", chiaveSaga("First Law") !== chiaveSaga("Shattered Sea"));
+  // LIMITE DICHIARATO: «First Law» e «First Law Trilogy» restano due, perché
+  // da qui non si può sapere se sono la stessa, e mescolare due storie è
+  // peggio di un ripiano in più
+  t.c("un suffisso è una differenza vera", chiaveSaga("First Law") !== chiaveSaga("First Law Trilogy"));
+
+  {
+    const u = unificaSaghe(JORDAN);
+    t.eq("una saga da riunire", u.unificate, 1);
+    // vince la grafia PIÙ USATA (due contro uno)
+    t.eq("vince la più usata", JSON.stringify(u.nomi), '["The Wheel of Time"]');
+    t.eq("e si riscrive solo chi era scritto diversamente", JSON.stringify(Object.keys(u.campi)), '["j1"]');
+    t.eq("con la grafia scelta", u.campi.j1.saga, "The Wheel of Time");
+    // i libri senza saga non c'entrano: unificare non è dedurre
+    t.c("i vuoti restano vuoti", !("j2" in u.campi) && !("j5" in u.campi));
+  }
+  {
+    // A PARITÀ vince la più lunga, cioè quella con l'articolo — e il
+    // criterio non dipende dall'ordine dei libri, o cambierebbe a ogni import
+    const pari = [
+      { id: "a", saga: "Wheel of Time" },
+      { id: "b", saga: "The Wheel of Time" },
+    ];
+    t.eq("a parità la forma piena", unificaSaghe(pari).nomi[0], "The Wheel of Time");
+    t.eq("in qualunque ordine", unificaSaghe([...pari].reverse()).nomi[0], "The Wheel of Time");
+    t.eq("e si riscrive l'altra", unificaSaghe(pari).campi.a?.saga, "The Wheel of Time");
+  }
+  t.eq("una biblioteca già in ordine non muove niente", unificaSaghe(ABER).unificate, 0);
+  t.eq("e nemmeno una vuota", unificaSaghe([]).unificate, 0);
+
+  // LA DEDUZIONE ORA VEDE UNA SAGA SOLA: con le due grafie si fermava
+  t.eq("prima della cura la deduzione si fermava... e adesso no",
+    sagaDaBiblioteca({ id: "j2", author: "Robert Jordan" }, JORDAN), "Wheel of Time");
+  {
+    // la passata automatica: si riuniscono le grafie, poi si deduce
+    const u = unificaSaghe(JORDAN);
+    const uniti = JORDAN.map((b) => (u.campi[b.id] ? { ...b, ...u.campi[b.id] } : b));
+    const d = deduciSaghe(uniti);
+    t.eq("i due volumi soli prendono la saga", d.dedotte, 2);
+    t.eq("quella dei fratelli", d.campi.j2?.saga, "The Wheel of Time");
+    t.eq("tutt'e due", d.campi.j5?.saga, "The Wheel of Time");
+    // e chi ce l'aveva non si tocca
+    t.c("chi ce l'aveva non è nei campi", !("j0" in d.campi) && !("j4" in d.campi));
+  }
+  // la deduzione automatica tiene le stesse guardie del tasto
+  t.eq("Good Omens non prende Discworld nemmeno da sola",
+    deduciSaghe([...PRATCHETT, { id: "g", title: "Good Omens", author: "Terry Pratchett", saga: "" }]).dedotte, 0);
+  t.eq("con due saghe dello stesso autore non si deduce",
+    deduciSaghe([...DUE, { id: "x", author: "Joe Abercrombie", saga: "" }]).dedotte, 0);
+
+  // LA GRAFIA DI CASA ALL'INGRESSO: il file dice «Wheel of Time», la
+  // biblioteca ha già «The Wheel of Time» — si scrive come in casa
+  t.eq("il file si adegua alla casa", nomeInBiblioteca("Wheel of Time", [JORDAN[2]]), "The Wheel of Time");
+  t.eq("una saga nuova entra com'è", nomeInBiblioteca("Malazan", JORDAN), "Malazan");
+  t.eq("e il vuoto resta vuoto", nomeInBiblioteca("", JORDAN), "");
 
   // ---- 6. la mappa dei nomi vecchi e' completa ----------------------------
   for (const vecchio of ["Streghe", "Guardie", "Morte", "Maghi", "Moist", "Tiffany", "Rincewind", "Autoconclusivo"])

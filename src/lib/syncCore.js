@@ -146,12 +146,45 @@ export const DEGRADE = [
     label: "cuore dei preferiti",
     apply: (rows) => rows.map(({ fav, ...r }) => r),
   },
+  // IL NUMERO DI COLLANA CON I DECIMALI, e va PRIMA delle mezze stelle.
+  //
+  // Segnalato dal lettore col pannello in mano: «Sincronizzazione fallita:
+  // invalid input syntax for type integer: "0.18"». Da quando la collana si
+  // legge dal file, il numero tiene i decimali di Calibre (2.5 e' la novella
+  // fra il secondo e il terzo) — ma `saga_order` nello schema di chi c'era
+  // prima e' `int`. Postgres rifiuta con LO STESSO messaggio delle mezze
+  // stelle, senza dire la colonna: il gradino delle stelle lo prendeva per
+  // suo, arrotondava un voto che non c'entrava, riprovava, e al secondo
+  // errore identico non restava nessun gradino — l'errore usciva nudo e con
+  // lui moriva tutto il giro.
+  //
+  // Postgres pero' dice il VALORE rifiutato, fra virgolette, e quello basta
+  // a sapere di chi e': se e' un numero di collana non intero che stiamo
+  // mandando, e' questo gradino; se no e' un voto. E non si arrotonda —
+  // 2.5 arrotondato a 3 metterebbe la novella sopra a un romanzo vero —
+  // si lascia il posto vuoto lassu' finche' lo schema non si aggiorna, e la
+  // rinuncia si dice per nome. I numeri interi salgono come sempre.
+  {
+    test: (m, rows) => {
+      const v = valoreRifiutato(m);
+      return v != null && rows.some((r) => nonIntero(r.saga_order) && String(r.saga_order) === v);
+    },
+    label: "numero di collana con decimali",
+    apply: (rows) => rows.map((r) => (nonIntero(r.saga_order) ? { ...r, saga_order: null } : r)),
+  },
   {
     test: (m) => /rating/i.test(m) || /invalid input syntax for type integer/i.test(m),
     label: "mezze stelle",
     apply: (rows) => rows.map((r) => ({ ...r, rating: Math.round(r.rating || 0) })),
   },
 ];
+
+function valoreRifiutato(msg) {
+  const m = /invalid input syntax for type integer:\s*"([^"]*)"/i.exec(msg);
+  return m ? m[1] : null;
+}
+
+const nonIntero = (n) => typeof n === "number" && Number.isFinite(n) && !Number.isInteger(n);
 
 // `manda` arriva da fuori — di norma `(p) => sb.from("books").upsert(p)` — per
 // la ragione di sempre: cosi' un test la chiama con un finto invece di
@@ -168,7 +201,7 @@ export async function upsertBooks(manda, rows) {
     const { error } = await manda(payload);
     if (!error) return dropped;
     const msg = `${error.message || ""} ${error.details || ""}`;
-    const step = DEGRADE.find((d) => !dropped.includes(d.label) && d.test(msg));
+    const step = DEGRADE.find((d) => !dropped.includes(d.label) && d.test(msg, payload));
     // un errore che non e' una colonna mancante non si cura scendendo: e'
     // un guasto vero, e va detto invece di girare a vuoto
     if (!step) throw error;

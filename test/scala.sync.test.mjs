@@ -137,6 +137,80 @@ export default async function (t) {
   }
 
   // =======================================================================
+  // IL NUMERO DI COLLANA CON I DECIMALI NON È UNA MEZZA STELLA
+  // =======================================================================
+  //
+  // Segnalato dal lettore: «Sincronizzazione fallita: invalid input syntax
+  // for type integer: "0.18"». Postgres rifiuta un `saga_order` decimale su
+  // una colonna `int` con LO STESSO messaggio delle mezze stelle, e il
+  // gradino delle stelle se lo prendeva: arrotondava un voto che non
+  // c'entrava, riprovava, e al secondo errore identico non restava nessun
+  // gradino — l'errore usciva nudo e con lui moriva tutto il giro.
+  //
+  // Il messaggio però porta il VALORE rifiutato, ed è quello che dice di chi
+  // è. Il database finto qui sotto fa quel che fa Postgres: rifiuta la
+  // prima colonna intera che trova con un decimale, citandolo.
+  const soloInteriSu = (...colonne) => {
+    const visti = [];
+    const f = async (p) => {
+      visti.push(JSON.parse(JSON.stringify(p)));
+      for (const r of p) {
+        for (const c of colonne) {
+          if (typeof r[c] === "number" && r[c] % 1) {
+            return { error: { message: `invalid input syntax for type integer: "${r[c]}"` } };
+          }
+        }
+      }
+      return { error: null };
+    };
+    f.visti = visti;
+    return f;
+  };
+  {
+    // `saga_order` intera nel cloud, `rating` già migrata a real: il caso
+    // del lettore
+    const db = soloInteriSu("saga_order");
+    let rinunce = null;
+    try {
+      rinunce = await upsertBooks(db, [{ ...riga(), saga_order: 0.18 }, { ...riga(), id: "b2", saga_order: 3 }]);
+    } catch (e) {
+      t.c(`la sincronizzazione non muore più: ${e.message}`, false);
+    }
+    t.eq("la rinuncia si chiama per nome", JSON.stringify(rinunce), '["numero di collana con decimali"]');
+    t.eq("due tentativi", db.visti.length, 2);
+    const ultima = db.visti.at(-1);
+    t.eq("il numero decimale sale vuoto, non arrotondato", ultima[0].saga_order, null);
+    t.eq("quello intero sale com'è", ultima[1].saga_order, 3);
+    // ED È QUI CHE SI VEDE LA DIFFERENZA: prima il gradino delle stelle si
+    // prendeva l'errore e arrotondava un voto che non c'entrava niente
+    t.eq("il voto non si tocca", ultima[0].rating, 3.5);
+  }
+  {
+    // IL VALORE DICE DI CHI È: un "3.5" rifiutato mentre nessun numero di
+    // collana vale 3.5 è un voto, e il numero di collana resta dov'è. Senza
+    // questa guardia ogni errore di tipo intero nullerebbe le novelle anche
+    // su uno schema che le regge benissimo.
+    const db = soloInteriSu("rating");
+    const rinunce = await upsertBooks(db, [{ ...riga(), saga_order: 2.5 }]);
+    t.eq("è il gradino delle stelle", JSON.stringify(rinunce), '["mezze stelle"]');
+    t.eq("e la novella tiene il suo posto", db.visti.at(-1)[0].saga_order, 2.5);
+  }
+  {
+    // tutt'e due le colonne intere e tutt'e due i decimali: si scendono
+    // tutt'e due i gradini, ognuno sul suo campo
+    const db = soloInteriSu("saga_order", "rating");
+    const rinunce = await upsertBooks(db, [{ ...riga(), saga_order: 2.5 }]);
+    t.eq(
+      "due rinunce, prima la collana",
+      JSON.stringify(rinunce),
+      '["numero di collana con decimali","mezze stelle"]'
+    );
+    const ultima = db.visti.at(-1)[0];
+    t.eq("posto vuoto", ultima.saga_order, null);
+    t.eq("voto arrotondato", ultima.rating, 4);
+  }
+
+  // =======================================================================
   // UN GUASTO VERO NON SI CURA SCENDENDO
   // =======================================================================
   //
@@ -165,30 +239,38 @@ export default async function (t) {
     t.c("un database che non accetta mai fa alzare un errore", alzato);
   }
   {
-    // LO SCHEMA PIÙ VECCHIO POSSIBILE: si scendono tutti e cinque i gradini,
-    // e il tentativo buono è quello DOPO l'ultimo.
+    // LO SCHEMA PIÙ VECCHIO POSSIBILE: si scendono TUTTI i gradini, e il
+    // tentativo buono è quello DOPO l'ultimo.
     //
     // È il caso che dimostra a cosa serve il `<=` nel ciclo: con un `<` si
-    // farebbero cinque tentativi, l'ultima rinuncia si applicherebbe senza
-    // mai essere provata, e `upsertBooks` tornerebbe NORMALMENTE con cinque
-    // rinunce in mano — il pannello direbbe «sincronizzato», e lassù non
-    // sarebbe arrivato niente. Senza un caso che arriva in fondo alla scala
-    // la mutazione sopravvive: provato.
+    // farebbero tanti tentativi quanti i gradini, l'ultima rinuncia si
+    // applicherebbe senza mai essere provata, e `upsertBooks` tornerebbe
+    // NORMALMENTE con tutte le rinunce in mano — il pannello direbbe
+    // «sincronizzato», e lassù non sarebbe arrivato niente. Senza un caso
+    // che arriva in fondo alla scala la mutazione sopravvive: provato. Per
+    // questo la riga porta ANCHE un numero di collana decimale: un gradino
+    // che questo caso non scende è un gradino che il `<=` non difende più.
     const visti = [];
+    const decimale = (r, c) =>
+      typeof r[c] === "number" && r[c] % 1
+        ? { error: { message: `invalid input syntax for type integer: "${r[c]}"` } }
+        : null;
     const antico = async (p) => {
       visti.push(JSON.parse(JSON.stringify(p)));
       const r = p[0];
+      // il numero di collana si lamenta per PRIMO: il gradino «genere e
+      // saga» si porta via anche `saga_order`, e lamentato dopo non ci
+      // sarebbe più niente da scendere
+      const collana = decimale(r, "saga_order");
+      if (collana) return collana;
       for (const v of ["started_at", "genre", "impronta", "fav"]) {
         if (v in r) return { error: { message: `Could not find the '${v}' column of 'books'` } };
       }
-      if (typeof r.rating === "number" && r.rating % 1) {
-        return { error: { message: "invalid input syntax for type integer" } };
-      }
-      return { error: null };
+      return decimale(r, "rating") || { error: null };
     };
-    const rinunce = await upsertBooks(antico, [riga()]);
-    t.eq("cinque rinunce", rinunce.length, 5);
-    t.eq("e sei tentativi: l'ultimo è quello che riesce", visti.length, 6);
+    const rinunce = await upsertBooks(antico, [{ ...riga(), saga_order: 2.5 }]);
+    t.eq("una rinuncia per gradino", rinunce.length, DEGRADE.length);
+    t.eq("e un tentativo in più dei gradini: l'ultimo è quello che riesce", visti.length, DEGRADE.length + 1);
     t.c("in fondo resta di che riconoscere il libro", "user_id" in visti.at(-1)[0] && "title" in visti.at(-1)[0]);
   }
   {

@@ -191,9 +191,102 @@ export function sagaDaBiblioteca(libro = {}, libri = []) {
     const s = String(b.saga || "").trim();
     if (!s) continue;
     if (!scelta) scelta = s;
-    else if (s.toLowerCase() !== scelta.toLowerCase()) return null;
+    else if (chiaveSaga(s) !== chiaveSaga(scelta)) return null;
   }
   return scelta;
+}
+
+// LA STESSA SAGA SCRITTA IN DUE MODI E' UNA SAGA SOLA.
+//
+// Segnalato dal lettore con la Libreria in mano: «come mai la stessa saga
+// del The Wheel of Time me l'ha divisa cosi'». Sullo scaffale c'erano TRE
+// ripiani di Robert Jordan: «The Wheel of Time», «Wheel of Time», e due
+// volumi soli sotto il nome dell'autore. La collana la leggiamo dal file, e
+// chi impacchetta i file la scrive come gli pare — con l'articolo su un
+// volume e senza sull'altro. E la saga nell'app si confronta lettera per
+// lettera OVUNQUE: lo scaffale, il «prossimo della saga», la frontiera di
+// «Chi e' costui?», «Prima di cominciare», la chiave del glossario. Due
+// grafie non sono due ripiani: sono due storie per ogni funzione che
+// attraversa la saga.
+//
+// E i due volumi soli erano la STESSA ferita un gradino piu' in la': la
+// deduzione dalla biblioteca vedeva «due saghe diverse dello stesso autore»
+// e, per la sua regola timida, non toccava niente — la regola giusta,
+// applicata a una differenza che non c'era.
+//
+// La chiave si costruisce come per i titoli — minuscole, punteggiatura via —
+// piu' l'articolo davanti, che e' l'unica cosa che i file cambiano davvero.
+// Niente di piu': «First Law» e «First Law Trilogy» restano due, perche' da
+// qui non si puo' sapere se sono la stessa e mescolare due storie e' peggio
+// di un ripiano in piu'.
+export const chiaveSaga = (s) => senzaArticolo(s);
+
+// La grafia di casa: se in biblioteca quella saga e' gia' scritta, si
+// scrive COME e' gia' scritta, qualunque cosa dica il file nuovo. E' la
+// cura all'ingresso; `unificaSaghe` e' la stessa cura per chi era gia'
+// dentro.
+export function nomeInBiblioteca(saga, libri = []) {
+  const k = chiaveSaga(saga);
+  if (!k) return saga;
+  for (const b of libri) {
+    const s = String(b?.saga || "").trim();
+    if (s && chiaveSaga(s) === k) return s;
+  }
+  return saga;
+}
+
+// Le grafie di una stessa saga si riportano a UNA: vince la piu' usata, a
+// parita' la piu' lunga (quella con l'articolo, di norma la forma piena), e
+// a parita' ancora l'ordine alfabetico — un criterio che dipendesse
+// dall'ordine dei libri cambierebbe scelta a ogni import. Si tocca SOLO la
+// grafia: il libro resta nella saga in cui era, scritta come i suoi
+// fratelli. Torna i campi da scrivere e i nomi scelti, che il resoconto
+// dice per esteso: una saga riscritta in silenzio e' esattamente il genere
+// di cosa che poi «non torna».
+export function unificaSaghe(libri = []) {
+  const gruppi = new Map();
+  for (const b of libri) {
+    const s = String(b?.saga || "").trim();
+    if (!s) continue;
+    const k = chiaveSaga(s);
+    if (!k) continue;
+    if (!gruppi.has(k)) gruppi.set(k, new Map());
+    const grafie = gruppi.get(k);
+    grafie.set(s, (grafie.get(s) || 0) + 1);
+  }
+  const campi = {};
+  const nomi = [];
+  for (const [k, grafie] of gruppi) {
+    if (grafie.size < 2) continue;
+    const scelta = [...grafie.entries()].sort(
+      (a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0])
+    )[0][0];
+    nomi.push(scelta);
+    for (const b of libri) {
+      const s = String(b?.saga || "").trim();
+      if (s && s !== scelta && chiaveSaga(s) === k) campi[b.id] = { saga: scelta };
+    }
+  }
+  return { campi, unificate: nomi.length, nomi };
+}
+
+// LA SOLA DEDUZIONE, per la passata automatica: ai libri senza saga si
+// propone quella degli altri libri dello stesso autore, con le stesse
+// guardie di `ripassa` (`fuoriSaga`, la regola timida di
+// `sagaDaBiblioteca`). Niente tavole e niente cicli: quelli restano al
+// tasto, perche' rinominano roba che c'e' gia'. Qui si riempie solo il
+// vuoto, che e' l'unica cosa che una passata silenziosa puo' permettersi.
+export function deduciSaghe(libri = []) {
+  const campi = {};
+  let dedotte = 0;
+  for (const b of libri) {
+    if (!b || String(b.saga || "").trim() || fuoriSaga(b)) continue;
+    const dalla = sagaDaBiblioteca(b, libri);
+    if (!dalla) continue;
+    campi[b.id] = { saga: dalla };
+    dedotte += 1;
+  }
+  return { campi, dedotte };
 }
 
 // Il ripasso dei libri gia' in biblioteca. Riempire i campi vuoti non
