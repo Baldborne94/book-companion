@@ -38,10 +38,12 @@ export function deviceDefaults(shortSide) {
     // la colonna come in stampa: giustificata E sillabata, mai una sola
     justify: true,
     // Come si segna un paragrafo nuovo: col RIENTRO di prima riga (la
-    // stampa) o con uno STACCO verticale (lo schermo). Di partenza vale
-    // quel che dice il libro, che quasi sempre e' il rientro — cambiarlo
-    // di nostra iniziativa vorrebbe dire reimpaginare ogni romanzo per una
-    // preferenza che non ci ha chiesto nessuno.
+    // stampa), con uno STACCO verticale (lo schermo), o come nel LIBRO,
+    // senza toccare niente. Di partenza vale il rientro — quel che quasi
+    // ogni libro dice — con lo stacco di troppo tolto: cambiarlo di nostra
+    // iniziativa vorrebbe dire reimpaginare ogni romanzo per una preferenza
+    // che non ci ha chiesto nessuno. Chi vuole il file com'e' sceglie
+    // «Come nel libro» dal pannello.
     paragrafi: "rientro",
     // solo per i PDF: toglie i margini bianchi della carta
     ritaglia: true,

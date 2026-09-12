@@ -2,9 +2,54 @@
 // codice e due trappole, e tutt'e due ci sono gia' cascate una volta: al
 // primo tentativo il libro non si apriva affatto.
 import { ritaglioAvanzo, flattenToc } from "../src/lib/readerLayout.js";
-import { rientrata, spaziatoriFitti, SEGNO_DI_SCENA, RIENTRO_MINIMO, ABBASTANZA_PARAGRAFI } from "../src/lib/readerTheme.js";
+import {
+  rientrata, spaziatoriFitti, SEGNO_DI_SCENA, RIENTRO_MINIMO, ABBASTANZA_PARAGRAFI,
+  curaParagrafi, MODI_PARAGRAFI,
+} from "../src/lib/readerTheme.js";
 
 export default async function (t) {
+  // ---- I TRE MODI DEL PARAGRAFO, E IL TERZO NON TOCCA NIENTE -----------
+  // Chiesto dal lettore: «non si può avere il file originale com'è, e
+  // quindi avere gli spazi dei paragrafi solo dove previsti dal libro?».
+  // Le due cure di prima curano sempre; «libro» deve lasciare stare. È la
+  // decisione che sbaglia in silenzio — un modo che cura quando non deve
+  // non alza errori, reimpagina e basta — quindi si prova con due cure
+  // finte che contano quante volte vengono chiamate.
+  const conta = () => {
+    const c = { togli: 0, stacca: 0 };
+    return { c, cure: { togli: () => { c.togli += 1; }, stacca: () => { c.stacca += 1; } } };
+  };
+  const doc = {};
+  {
+    const { c, cure } = conta();
+    t.eq("«libro» risponde libro", curaParagrafi(doc, "libro", cure), "libro");
+    t.eq("e non toglie lo stacco", c.togli, 0);
+    t.eq("e non stacca i paragrafi", c.stacca, 0);
+  }
+  {
+    const { c, cure } = conta();
+    t.eq("«stacco» risponde stacco", curaParagrafi(doc, "stacco", cure), "stacco");
+    t.eq("e stacca una volta", c.stacca, 1);
+    t.eq("senza togliere lo stacco", c.togli, 0);
+  }
+  {
+    const { c, cure } = conta();
+    t.eq("«rientro» risponde rientro", curaParagrafi(doc, "rientro", cure), "rientro");
+    t.eq("e toglie lo stacco una volta", c.togli, 1);
+    t.eq("senza staccare", c.stacca, 0);
+  }
+  // una preferenza scritta male non è nessuno dei tre e vale il modo di
+  // partenza, come per la svolta: non deve spegnere la cura per sbaglio
+  for (const storto of [undefined, null, "", true, "originale"]) {
+    const { c, cure } = conta();
+    t.eq(`«${String(storto)}» vale rientro`, curaParagrafi(doc, storto, cure), "rientro");
+    t.eq(`e cura come rientro`, c.togli + c.stacca * 10, 1);
+  }
+  t.eq("i modi sono tre, e «libro» è fra loro", [...MODI_PARAGRAFI].sort().join(","), "libro,rientro,stacco");
+  // e con le cure vere non esplode su un documento che non c'è
+  t.eq("senza documento, «rientro» non esplode", curaParagrafi(null, "rientro"), "rientro");
+  t.eq("senza documento, «stacco» non esplode", curaParagrafi(null, "stacco"), "stacco");
+
   // ---- il conto normale --------------------------------------------------
   t.eq("colonna 735, riga 24 → avanzo 15", ritaglioAvanzo({ colonna: 735, riga: 24 }), 15);
   t.eq("una colonna gia' multipla non ha avanzo", ritaglioAvanzo({ colonna: 720, riga: 24 }), 0);
