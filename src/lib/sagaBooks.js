@@ -1,6 +1,7 @@
 import DISCWORLD, { SAGA, CICLI_NOSTRI } from "../data/discworldBooks.js";
 import HORUS, { SAGA as SAGA_HH } from "../data/horusHeresy.js";
 import APOCALISSE, { SAGA as SAGA_SA, FUORI as FUORI_BAKKER } from "../data/secondApocalypse.js";
+import { sagaDalTitolo } from "./sagaDalTitolo.js";
 
 // Riconoscere il romanzo dal titolo: i metadati degli EPUB sono spesso vuoti,
 // storti o pieni di roba dell'editore («Guards! Guards! (Discworld Novels
@@ -276,17 +277,50 @@ export function unificaSaghe(libri = []) {
 // `sagaDaBiblioteca`). Niente tavole e niente cicli: quelli restano al
 // tasto, perche' rinominano roba che c'e' gia'. Qui si riempie solo il
 // vuoto, che e' l'unica cosa che una passata silenziosa puo' permettersi.
+//
+// PRIMA IL TITOLO, POI LA BIBLIOTECA (segnalato: quattro John Gwynne sotto
+// il nome dell'autore, con «Malice: The Faithful and the Fallen Series
+// Book 1» fra loro). La deduzione ha bisogno di un fratello che la saga ce
+// l'abbia gia', e su un autore nuovo quel fratello non c'e' mai — ma se
+// UNO dei quattro la saga la porta scritta nel titolo, letta quella gli
+// altri tre la ereditano nello stesso giro. Per questo le due passate
+// stanno in fila e la seconda legge i libri gia' toccati dalla prima.
 export function deduciSaghe(libri = []) {
   const campi = {};
   let dedotte = 0;
+  let dalTitolo = 0;
+  const vuota = (b) => !b || String(b.saga || "").trim() || fuoriSaga(b);
+  const conTitolo = [];
   for (const b of libri) {
-    if (!b || String(b.saga || "").trim() || fuoriSaga(b)) continue;
-    const dalla = sagaDaBiblioteca(b, libri);
+    if (vuota(b)) {
+      conTitolo.push(b);
+      continue;
+    }
+    const letto = sagaDalTitolo(b);
+    if (!letto?.saga) {
+      conTitolo.push(b);
+      continue;
+    }
+    // scritta come e' gia' scritta in casa — e «casa» comprende i fratelli
+    // appena toccati, o due titoli con due grafie farebbero due ripiani
+    const tocco = { saga: nomeInBiblioteca(letto.saga, conTitolo.concat(libri)) };
+    if (b.sagaOrder == null && letto.sagaOrder != null) tocco.sagaOrder = letto.sagaOrder;
+    campi[b.id] = tocco;
+    dalTitolo += 1;
+    conTitolo.push({ ...b, ...tocco });
+  }
+  for (const b of conTitolo) {
+    if (vuota(b)) continue;
+    const dalla = sagaDaBiblioteca(b, conTitolo);
     if (!dalla) continue;
     campi[b.id] = { saga: dalla };
+    // «02 Valour»: il numero in testa al titolo non dice la saga, dice il
+    // posto — e vale solo adesso che una saga c'e'
+    const n = b.sagaOrder == null ? sagaDalTitolo(b)?.sagaOrder : null;
+    if (n != null) campi[b.id].sagaOrder = n;
     dedotte += 1;
   }
-  return { campi, dedotte };
+  return { campi, dedotte, dalTitolo };
 }
 
 // Il ripasso dei libri gia' in biblioteca. Riempire i campi vuoti non
@@ -305,17 +339,32 @@ export function ripassa(libro = {}, libri = []) {
   const serie = String(libro.series || "").trim();
   const tocchi = {};
   let dedotta = false;
+  let dalTitolo = false;
 
   if (trovato) {
     if (!saga) tocchi.saga = trovato.saga;
     if (libro.sagaOrder == null && trovato.sagaOrder != null) tocchi.sagaOrder = trovato.sagaOrder;
   } else if (!saga && !fuoriSaga(libro)) {
-    // la tabella non lo conosce: glielo puo' dire la tua biblioteca
-    const dalla = sagaDaBiblioteca(libro, libri);
-    if (dalla) {
-      tocchi.saga = dalla;
-      dedotta = true;
+    // la tabella non lo conosce: la saga puo' stare scritta nel titolo, e
+    // se no glielo puo' dire la tua biblioteca
+    const letto = sagaDalTitolo(libro);
+    if (letto?.saga) {
+      tocchi.saga = nomeInBiblioteca(letto.saga, libri);
+      dalTitolo = true;
+    } else {
+      const dalla = sagaDaBiblioteca(libro, libri);
+      if (dalla) {
+        tocchi.saga = dalla;
+        dedotta = true;
+      }
     }
+  }
+  // il numero scritto nel titolo («02 Valour») si prende solo se una saga
+  // c'e' — sua o appena data — e il posto e' ancora vuoto: un numero senza
+  // saga non dice niente, e un posto gia' dato non si sovrascrive
+  if (!trovato && (saga || tocchi.saga) && libro.sagaOrder == null) {
+    const n = sagaDalTitolo(libro)?.sagaOrder;
+    if (n != null) tocchi.sagaOrder = n;
   }
 
   if (!serie) {
@@ -337,5 +386,5 @@ export function ripassa(libro = {}, libri = []) {
   // `campi` sono i valori da scrivere; `dedotta` dice che la saga non
   // l'abbiamo riconosciuta ma DEDOTTA dagli altri libri dello stesso
   // autore — e' un'informazione del lettore, e il resoconto la dice a parte
-  return Object.keys(tocchi).length ? { campi: tocchi, dedotta } : null;
+  return Object.keys(tocchi).length ? { campi: tocchi, dedotta, dalTitolo } : null;
 }
