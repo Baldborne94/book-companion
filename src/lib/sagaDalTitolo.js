@@ -35,7 +35,12 @@ function numero(s) {
 // una saga e' un nome, non un'etichetta ne' un numero: «Book», «Vol 2» o
 // «3» non sono saghe, e senza questa guardia lo diventerebbero
 function sagaBuona(s) {
-  const nome = String(s || "").replace(CODA, "").replace(SERIE, "").trim();
+  // «Winter, Evan - The Burning 01 - The Rage of Dragons»: quando il
+  // titolo E' il nome del file, davanti alla saga c'e' l'autore, e la saga
+  // usciva «Winter, Evan - The Burning» (visto in fotografia). Una saga
+  // non contiene mai un « - »: si tiene l'ultimo pezzo.
+  const pezzi = String(s || "").split(/\s+-\s+/);
+  const nome = pezzi[pezzi.length - 1].replace(CODA, "").replace(SERIE, "").trim();
   if (nome.length < 3 || nome.length > 60) return null;
   if (!/[a-z]/i.test(nome)) return null;
   if (new RegExp(`^${ETICHETTA}\\s*\\d*$`, "i").test(nome)) return null;

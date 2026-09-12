@@ -74,6 +74,10 @@ export default async function (t) {
     ["Mistborn 1: The Final Empire", "Mistborn", 1],
     ["[Wheel of Time 03] The Dragon Reborn", "Wheel of Time", 3],
     ["[Wheel of Time #3] The Dragon Reborn", "Wheel of Time", 3],
+    // il titolo che E' il nome del file, autore compreso (visto in
+    // fotografia: la saga usciva «Winter, Evan - The Burning»)
+    ["Winter, Evan - The Burning 01 - The Rage of Dragons", "The Burning", 1],
+    ["Evan Winter - The Burning 01 - The Rage of Dragons", "The Burning", 1],
     // in italiano
     ["Il nome del vento (Le cronache dell'assassino del re Vol. 1)", "Le cronache dell'assassino del re", 1],
     ["La paura del saggio: Le cronache dell'assassino del re, Libro 2", "Le cronache dell'assassino del re", 2],
