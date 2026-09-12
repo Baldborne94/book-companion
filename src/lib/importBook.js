@@ -1,5 +1,6 @@
 import { putFile, putCover } from "./bookStore.js";
 import { riconosci, nomeInBiblioteca } from "./sagaBooks.js";
+import { sagaDalTitolo } from "./sagaDalTitolo.js";
 import { dalMetadata } from "./sinossi.js";
 import { collana } from "./collana.js";
 
@@ -224,6 +225,18 @@ export async function importFiles(fileList, libri = []) {
       meta.saga = nomeInBiblioteca(letto.collana.serie, [...libri, ...added]);
       // il numero non si inventa: una collana senza posto resta una collana
       if (letto.collana.numero != null) meta.sagaOrder = letto.collana.numero;
+    }
+    // E DOPO LA COLLANA, IL TITOLO: «Malice: The Faithful and the Fallen
+    // Series Book 1» la saga ce l'ha scritta addosso, ed e' l'unica strada
+    // sul primo libro di un autore nuovo quando il file la collana non ce
+    // l'ha. Il solo numero («02 Valour») si prende se una saga c'e' gia'.
+    if (!saga) {
+      const nelTitolo = sagaDalTitolo({ title: meta.title, fileName: file.name, author: meta.author });
+      if (!meta.saga && nelTitolo?.saga) {
+        riconosciuti += 1;
+        meta.saga = nomeInBiblioteca(nelTitolo.saga, [...libri, ...added]);
+      }
+      if (meta.saga && meta.sagaOrder == null && nelTitolo?.sagaOrder != null) meta.sagaOrder = nelTitolo.sagaOrder;
     }
     if (saga) {
       riconosciuti += 1;

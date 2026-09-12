@@ -599,12 +599,15 @@ export default function Library({
         }
       }
       const dedotte = deduciSaghe(attuale);
-      if (dedotte.dedotte) {
-        applica(dedotte.campi);
+      if (dedotte.dedotte || dedotte.dalTitolo) applica(dedotte.campi);
+      // la saga letta dal titolo si dice a parte da quella dedotta: una
+      // sta scritta sul libro, l'altra e' copiata dai suoi fratelli
+      if (dedotte.dalTitolo)
+        parti.push(`${dedotte.dalTitolo} ${dedotte.dalTitolo === 1 ? "saga letta" : "saghe lette"} dal titolo`);
+      if (dedotte.dedotte)
         parti.push(
           `${dedotte.dedotte} ${dedotte.dedotte === 1 ? "saga dedotta" : "saghe dedotte"} dalla tua biblioteca`
         );
-      }
       if (parti.length) notify?.(parti.join(", "));
     })().catch(() => {
       /* un giro silenzioso che fallisce resta silenzioso: si riprova al prossimo montaggio */
@@ -623,8 +626,10 @@ export default function Library({
     let sistemati = 0;
     let rinominati = 0;
     let dedotte = 0;
+    let dalTitolo = 0;
     const conta = (b, esito) => {
-      if (esito.dedotta) dedotte += 1;
+      if (esito.dalTitolo) dalTitolo += 1;
+      else if (esito.dedotta) dedotte += 1;
       else if ((b.series || "").trim() && "series" in esito.campi) rinominati += 1;
       else sistemati += 1;
     };
@@ -682,7 +687,7 @@ export default function Library({
       });
     }
 
-    if (sistemati || rinominati || dedotte || daiFile.scritte || unite.unificate) updateBooks(conCollane);
+    if (sistemati || rinominati || dedotte || dalTitolo || daiFile.scritte || unite.unificate) updateBooks(conCollane);
     const parti = [];
     // le grafie riunite si dicono col nome scelto: una saga riscritta in
     // silenzio e' esattamente il genere di cosa che poi «non torna»
@@ -696,6 +701,8 @@ export default function Library({
       parti.push(
         `${daiFile.scritte} ${daiFile.scritte === 1 ? "saga letta" : "saghe lette"} dal file`
       );
+    if (dalTitolo)
+      parti.push(`${dalTitolo} ${dalTitolo === 1 ? "saga letta" : "saghe lette"} dal titolo`);
     if (sistemati) parti.push(`${sistemati} ${sistemati === 1 ? "libro sistemato" : "libri sistemati"}`);
     if (rinominati)
       parti.push(`${rinominati} ${rinominati === 1 ? "serie rinominata" : "serie rinominate"}`);
