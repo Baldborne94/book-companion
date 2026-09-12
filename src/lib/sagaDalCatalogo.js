@@ -79,8 +79,21 @@ export function candidato(stringa) {
   return { saga: s[0].toUpperCase() + s.slice(1), n };
 }
 
-// spezza «The First Law #1, First Law World #1» e «A; B» in piu' voci
-const spezza = (s) => String(s || "").split(/;|,\s*(?=[^,]*#\s*\d)/);
+// spezza «The First Law #1, First Law World #1» e «A; B» in piu' voci —
+// ma «The Goblin Emperor, #1» e' UNA voce: la virgola divide solo se quel
+// che le sta prima ha gia' il suo «#N» (preso dal vivo: il numero restava
+// da solo e si perdeva)
+function spezza(s) {
+  const fuori = [];
+  for (const pezzo of String(s || "").split(";")) {
+    for (const parte of pezzo.split(",")) {
+      const prima = fuori[fuori.length - 1];
+      if (prima != null && !/#\s*\d/.test(prima)) fuori[fuori.length - 1] = `${prima},${parte}`;
+      else fuori.push(parte);
+    }
+  }
+  return fuori;
+}
 
 // Le edizioni di un'opera → la saga piu' votata, col numero piu' votato
 // fra chi l'ha votata. `null` se nessuna arriva a `MIN_VOTI`.
@@ -143,11 +156,17 @@ const pulisci = (s) =>
 // prima, il prefisso poi, e l'autore — se lo sappiamo — deve comparire.
 // E' la stessa scelta della quarta di copertina, e per la stessa ragione:
 // la saga di un ALTRO libro e' peggio di nessuna.
-export function scegliOpera(docs = [], { title, author } = {}) {
+//
+// MA SE LA RICERCA ERA GIA' FILTRATA PER AUTORE (`filtrata`), l'autore non
+// si ricontrolla: «The Goblin Emperor» sta nel catalogo sotto «Sarah
+// Monette», il nome vero dietro lo pseudonimo Katherine Addison — il
+// catalogo lo sa e la ricerca con l'autore lo trova, e la seconda guardia
+// lo buttava via (preso dal vivo sui «Volumi soli» del lettore).
+export function scegliOpera(docs = [], { title, author, filtrata = false } = {}) {
   const t = pulisci(title);
   if (!t) return null;
   const a = pulisci(autorePerIlCatalogo(author));
-  const cognome = a.split(" ").filter(Boolean).pop() || "";
+  const cognome = filtrata ? "" : a.split(" ").filter(Boolean).pop() || "";
   const buone = docs.filter((d) => {
     if (!d?.key) return false;
     if (!cognome) return true;
@@ -180,13 +199,13 @@ export async function cercaSaga({ title, author } = {}, fetcher) {
     if (autore) q.set("author", autore);
     const risposta = await json(f, `https://openlibrary.org/search.json?${q}`);
     const docs = risposta?.docs || [];
-    const opera = scegliOpera(docs, { title: variante, author });
+    const opera = scegliOpera(docs, { title: variante, author, filtrata: !!autore });
     if (!opera) continue;
     const ed = await json(f, `https://openlibrary.org${opera.key}/editions.json?limit=${EDIZIONI}`);
     // i titoli di TUTTE le opere che rispondono al titolo cercato, non solo
     // di quella scelta: lo stesso romanzo sta spesso in piu' schede, e la
     // saga puo' stare nel titolo di una qualunque
-    const titoli = docs.filter((d) => scegliOpera([d], { title: variante, author })).map((d) => d.title);
+    const titoli = docs.filter((d) => scegliOpera([d], { title: variante, author, filtrata: !!autore })).map((d) => d.title);
     const trovata = sagaDalleEdizioni(ed?.entries || [], titoli);
     if (trovata) return trovata;
   }
