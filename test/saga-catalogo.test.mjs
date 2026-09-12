@@ -99,6 +99,13 @@ export default async function (t) {
   t.eq("un autore diverso e' una smentita", scegliOpera([docs[2]], { title: "Eric", author: "Terry Pratchett" }), null);
   t.eq("un autore mancante non lo e'", scegliOpera([{ key: "/works/D", title: "Eric" }], { title: "Eric", author: "Terry Pratchett" })?.key, "/works/D");
   t.eq("«Unknown» non e' un autore", scegliOpera([docs[2]], { title: "Eric", author: "Unknown" })?.key, "/works/C");
+  // LO PSEUDONIMO: «The Goblin Emperor» sta nel catalogo sotto «Sarah
+  // Monette», e la ricerca filtrata per «Katherine Addison» lo trova lo
+  // stesso perche' il catalogo conosce l'alias — la seconda guardia sul
+  // cognome lo buttava via (preso dal vivo)
+  const monette = [{ key: "/works/G", title: "The Goblin Emperor", author_name: ["Sarah Monette"] }];
+  t.eq("ricerca filtrata: l'autore non si ricontrolla", scegliOpera(monette, { title: "The Goblin Emperor", author: "Katherine Addison", filtrata: true })?.key, "/works/G");
+  t.eq("non filtrata: la guardia resta", scegliOpera(monette, { title: "The Goblin Emperor", author: "Katherine Addison" }), null);
 
   // ---- il giro di rete, con un catalogo finto -----------------------------
   const finto = (risposte) => async (url) => {
@@ -111,6 +118,15 @@ export default async function (t) {
     "/works/OL1W/editions.json": { entries: ed("The Black Company", "The Black Company", "A Tor book") },
   });
   t.eq("Cook → The Black Company", (await cercaSaga({ title: "Shadows Linger", author: "Glen Cook" }, cook))?.saga, "The Black Company");
+  const addison = finto({
+    "search.json": { docs: [{ key: "/works/G", title: "The Goblin Emperor", author_name: ["Sarah Monette"] }] },
+    "/works/G/editions.json": { entries: ed("The Goblin Emperor, #1", "The Goblin Emperor, #1", "The Chronicles of Osreth, 1") },
+  });
+  const trovataAddison = await cercaSaga({ title: "The Goblin Emperor", author: "Katherine Addison" }, addison);
+  t.eq("Addison → trovata sotto il nome vero", trovataAddison?.saga, "The Goblin Emperor");
+  // «The Goblin Emperor, #1» e' UNA voce: la virgola che spezza «A #1, B #1»
+  // qui lasciava il numero da solo, e si perdeva (preso dal vivo)
+  t.eq("…col numero, che la virgola non spezza", trovataAddison?.sagaOrder, 1);
   // Lynch dal vivo: tre opere per lo stesso romanzo, la saga nei titoli
   const lynchRete = finto({
     "search.json": { docs: [
