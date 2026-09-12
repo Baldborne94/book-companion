@@ -26,6 +26,7 @@
 // due voti ce li ha e i fratelli la ereditano.
 import { varianti, autorePerIlCatalogo } from "./retroInRete.js";
 import { chiaveSaga } from "./sagaBooks.js";
+import { sagaDalTitolo } from "./sagaDalTitolo.js";
 
 export const MIN_VOTI = 2;
 const EDIZIONI = 50;
@@ -83,22 +84,36 @@ const spezza = (s) => String(s || "").split(/;|,\s*(?=[^,]*#\s*\d)/);
 
 // Le edizioni di un'opera → la saga piu' votata, col numero piu' votato
 // fra chi l'ha votata. `null` se nessuna arriva a `MIN_VOTI`.
-export function sagaDalleEdizioni(edizioni = []) {
+//
+// E VOTANO ANCHE I TITOLI DELLE OPERE del catalogo (`titoli`): su Lynch le
+// edizioni portano solo l'editore, ma l'opera si chiama «Red Seas Under
+// Red Skies (Gentlemen Bastards #2)» — la saga sta nel titolo, nella forma
+// che `sagaDalTitolo` legge gia'. E un titolo d'opera cosi' VALE DA SOLO
+// (`MIN_VOTI` voti): e' lo stesso segnale che si accetta da solo sul
+// titolo del lettore, e dal vivo Lynch ne ha una scheda sola — con un voto
+// per titolo restava fuori lo stesso.
+export function sagaDalleEdizioni(edizioni = [], titoli = []) {
   const voti = new Map();
+  const vota = (c, peso = 1) => {
+    const k = chiaveSaga(c.saga);
+    if (!k) return;
+    if (!voti.has(k)) voti.set(k, { voti: 0, grafie: new Map(), numeri: new Map() });
+    const v = voti.get(k);
+    v.voti += peso;
+    v.grafie.set(c.saga, (v.grafie.get(c.saga) || 0) + peso);
+    if (c.n != null) v.numeri.set(c.n, (v.numeri.get(c.n) || 0) + peso);
+  };
   for (const e of edizioni) {
     for (const grezza of e?.series || []) {
       for (const pezzo of spezza(grezza)) {
         const c = candidato(pezzo);
-        if (!c) continue;
-        const k = chiaveSaga(c.saga);
-        if (!k) continue;
-        if (!voti.has(k)) voti.set(k, { voti: 0, grafie: new Map(), numeri: new Map() });
-        const v = voti.get(k);
-        v.voti += 1;
-        v.grafie.set(c.saga, (v.grafie.get(c.saga) || 0) + 1);
-        if (c.n != null) v.numeri.set(c.n, (v.numeri.get(c.n) || 0) + 1);
+        if (c) vota(c);
       }
     }
+  }
+  for (const titolo of titoli) {
+    const letto = sagaDalTitolo({ title: titolo });
+    if (letto?.saga) vota({ saga: letto.saga, n: letto.sagaOrder }, MIN_VOTI);
   }
   const piu = (m) => [...m.entries()].sort((a, b) => b[1] - a[1] || String(b[0]).length - String(a[0]).length || String(a[0]).localeCompare(String(b[0])))[0]?.[0];
   const vincente = [...voti.values()].sort(
@@ -164,10 +179,15 @@ export async function cercaSaga({ title, author } = {}, fetcher) {
     const q = new URLSearchParams({ title: variante, fields: "key,title,author_name", limit: "5" });
     if (autore) q.set("author", autore);
     const risposta = await json(f, `https://openlibrary.org/search.json?${q}`);
-    const opera = scegliOpera(risposta?.docs || [], { title: variante, author });
+    const docs = risposta?.docs || [];
+    const opera = scegliOpera(docs, { title: variante, author });
     if (!opera) continue;
     const ed = await json(f, `https://openlibrary.org${opera.key}/editions.json?limit=${EDIZIONI}`);
-    const trovata = sagaDalleEdizioni(ed?.entries || []);
+    // i titoli di TUTTE le opere che rispondono al titolo cercato, non solo
+    // di quella scelta: lo stesso romanzo sta spesso in piu' schede, e la
+    // saga puo' stare nel titolo di una qualunque
+    const titoli = docs.filter((d) => scegliOpera([d], { title: variante, author })).map((d) => d.title);
+    const trovata = sagaDalleEdizioni(ed?.entries || [], titoli);
     if (trovata) return trovata;
   }
   return null;

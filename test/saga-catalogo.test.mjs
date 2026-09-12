@@ -71,6 +71,18 @@ export default async function (t) {
   // distingue da una saga, e a tenerla fuori e' il voto — un'edizione sola
   t.eq("Good Omens resta senza", sagaDalleEdizioni(ed("Strade blu")), null);
   t.eq("nessuna edizione, niente", sagaDalleEdizioni([]), null);
+  // E I TITOLI DELLE OPERE VOTANO: su Lynch le edizioni portano solo
+  // l'editore, ma le opere si chiamano «Red Seas Under Red Skies (Gentlemen
+  // Bastards #2)» — trovato nei dati veri, non immaginato
+  const lynch = sagaDalleEdizioni(ed("A Bantam spectra book"), ["Red Seas Under Red Skies (Gentlemen Bastards #2)", "Red Seas under Red Skies"]);
+  t.eq("Lynch dai titoli delle opere → Gentlemen Bastards", lynch?.saga, "Gentlemen Bastards");
+  t.eq("…numero 2", lynch?.sagaOrder, 2);
+  // e VALE DA SOLO: dal vivo e' l'unica scheda che porta la saga, e con un
+  // voto per titolo Lynch restava fuori (mutazione provata: a peso 1 casca)
+  t.eq("un titolo d'opera con la saga basta da solo", sagaDalleEdizioni([], ["Red Seas Under Red Skies (Gentlemen Bastards #2)"])?.saga, "Gentlemen Bastards");
+  t.eq("e un titolo senza saga non vota", sagaDalleEdizioni(ed("The Sun Eater"), ["Howling Dark"]), null);
+  // ma non batte la collana delle edizioni quando questa e' piu' votata
+  t.eq("le edizioni votate battono un titolo d'opera", sagaDalleEdizioni(ed("Wheel of Time (1)", "Wheel of Time (1)", "Wheel of Time (1)"), ["The Eye of the World (Discworld Novels Book 8)"])?.saga, "Wheel of Time");
   t.c("la soglia e' due", MIN_VOTI === 2);
   // il numero piu' votato, non il primo
   const num = sagaDalleEdizioni(ed("Dune (1)", "Dune (1)", "Duna #1", "The Dune Chronicles, Book 1;", "Dune, Book 1;"));
@@ -99,6 +111,17 @@ export default async function (t) {
     "/works/OL1W/editions.json": { entries: ed("The Black Company", "The Black Company", "A Tor book") },
   });
   t.eq("Cook → The Black Company", (await cercaSaga({ title: "Shadows Linger", author: "Glen Cook" }, cook))?.saga, "The Black Company");
+  // Lynch dal vivo: tre opere per lo stesso romanzo, la saga nei titoli
+  const lynchRete = finto({
+    "search.json": { docs: [
+      { key: "/works/L1", title: "Red Seas Under Red Skies (Gentlemen Bastards #2)", author_name: ["Scott Lynch"] },
+      { key: "/works/L2", title: "Red Seas under Red Skies", author_name: ["Scott Lynch"] },
+      { key: "/works/X", title: "Red Seas Under Red Skies: A Study Guide", author_name: ["Qualcun Altro"] },
+    ] },
+    // l'opera scelta e' L2 (titolo esatto), e le sue edizioni non dicono niente
+    "/works/L2/editions.json": { entries: ed("A Bantam spectra book") },
+  });
+  t.eq("Lynch → Gentlemen Bastards dai titoli delle opere", (await cercaSaga({ title: "Red Seas Under Red Skies", author: "Scott Lynch" }, lynchRete))?.saga, "Gentlemen Bastards");
   t.eq("un catalogo che non la sa torna null", await cercaSaga({ title: "Tigana", author: "Kay" }, finto({ "search.json": { docs: [] } })), null);
   // UN BUCO DI RETE ESPLODE, non torna null: su null si scrive una memoria
   // «il catalogo non la sa», e una rete caduta non e' quella risposta
