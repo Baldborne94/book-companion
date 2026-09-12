@@ -227,6 +227,41 @@ export function staccaParagrafi(doc) {
   return staccati;
 }
 
+// E IL TERZO MODO E' NON TOCCARE NIENTE: «COME NEL LIBRO».
+//
+// Chiesto dal lettore guardando la levetta a due posizioni: «invece di
+// avere paragrafi rientrati o meno non si puo' avere il file originale
+// com'e', e quindi avere gli spazi dei paragrafi solo dove previsti dal
+// libro?». Aveva ragione: tutt'e due i modi di prima CURANO — «rientrati»
+// azzera lo stacco dove il libro rientra gia', «staccati» toglie il rientro
+// e mette il respiro — e non c'era un modo per dire «lascia stare». Chi
+// vuole l'impaginazione dell'editore, con i suoi stacchi dove li ha messi
+// lui, non aveva un tasto.
+//
+// Sta qui e non nel componente per la ragione di sempre: e' una decisione
+// che sbaglia in silenzio (un modo che cura quando non dovrebbe non alza
+// nessun errore, cambia la pagina e basta), e da qui un test in Node la
+// prova con due cure finte senza tirarsi dietro un documento. Le due cure
+// si INIETTANO come `leggiByte` altrove.
+//
+// Cosa resta acceso anche «come nel libro»: `spegniVuoti`, che sta un passo
+// prima. Le ancore di pagina vuote non sono spazi previsti dal libro, sono
+// residui della conversione — e gli stacchi voluti (spazio unificatore,
+// `<br>`) le passano intatti. Quel che il libro ha scritto resta scritto.
+export const MODI_PARAGRAFI = ["rientro", "stacco", "libro"];
+
+export function curaParagrafi(doc, modo, { togli = togliStacco, stacca = staccaParagrafi } = {}) {
+  if (modo === "libro") return "libro";
+  if (modo === "stacco") {
+    stacca(doc);
+    return "stacco";
+  }
+  // «rientro» e tutto quello che non e' un modo: vale il modo di partenza,
+  // come per la svolta — una preferenza scritta male non spegne la cura
+  togli(doc);
+  return "rientro";
+}
+
 // LA SCENOGRAFIA SI SPEGNE: LA CARTA E' QUELLA DEL TEMA, SENZA ECCEZIONI.
 //
 // Certi ePub — l'Eric del lettore, convertito da un flipbook — si portano
