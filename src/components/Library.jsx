@@ -530,6 +530,16 @@ export default function Library({
     const file = await getFile(b.id);
     if (file) await putAux(ricordoCollana(b.id), { size: file.size, ...cosa });
   }
+  // la memoria del catalogo non guarda i byte: la domanda e' su titolo e
+  // autore, e cambiano quelli — nella scheda — non il file
+  const ricordoCatalogo = (id) => `catalogo_${id}`;
+  async function catalogoVisto(b) {
+    const ricordo = await getAux(ricordoCatalogo(b.id));
+    return !!ricordo && ricordo.titolo === b.title && ricordo.autore === (b.author || "");
+  }
+  async function segnaCatalogo(b, cosa) {
+    await putAux(ricordoCatalogo(b.id), { titolo: b.title, autore: b.author || "", quando: Date.now(), ...cosa });
+  }
 
   // E LA PASSATA GIRA DA SE', all'apertura della Libreria. Il lettore ha
   // scritto «automaticamente» due volte, e aveva ragione: un tasto in un
@@ -599,7 +609,7 @@ export default function Library({
         }
       }
       const dedotte = deduciSaghe(attuale);
-      if (dedotte.dedotte || dedotte.dalTitolo) applica(dedotte.campi);
+      if (dedotte.dedotte || dedotte.dalTitolo) attuale = applica(dedotte.campi);
       // la saga letta dal titolo si dice a parte da quella dedotta: una
       // sta scritta sul libro, l'altra e' copiata dai suoi fratelli
       if (dedotte.dalTitolo)
@@ -608,6 +618,34 @@ export default function Library({
         parti.push(
           `${dedotte.dedotte} ${dedotte.dedotte === 1 ? "saga dedotta" : "saghe dedotte"} dalla tua biblioteca`
         );
+      // E PER ULTIMO IL CATALOGO, sui soli tomi rimasti senza saga dopo
+      // tutto il resto (chiesto dal lettore: «perche' non hai riconosciuto
+      // la saga di Cook, Ruocchio e Lynch?»). Una domanda per tomo, una
+      // volta nella vita del tomo — la memoria si scrive su una risposta,
+      // trovata o «non la so», mai su un buco di rete. Poi la deduzione
+      // rifa' il suo giro: trovata la saga di un volume, i fratelli la
+      // ereditano senza chiedere niente al catalogo.
+      if (attuale.some((b) => !String(b.saga || "").trim())) {
+        const { ripassaCatalogo, cercaSaga } = await import("../lib/sagaDalCatalogo.js");
+        const { nomeInBiblioteca } = await import("../lib/sagaBooks.js");
+        const dalCatalogo = await ripassaCatalogo(attuale, {
+          cerca: (b) => cercaSaga({ title: b.title, author: b.author }),
+          giaVista: catalogoVisto,
+          segnaVista: segnaCatalogo,
+          nomeInCasa: nomeInBiblioteca,
+          vivo: () => vivo && !filoCollane.current,
+        });
+        if (!vivo) return;
+        if (dalCatalogo.trovate) {
+          attuale = applica(dalCatalogo.campi);
+          parti.push(`${dalCatalogo.trovate} ${dalCatalogo.trovate === 1 ? "saga trovata" : "saghe trovate"} nel catalogo`);
+          const ereditate = deduciSaghe(attuale);
+          if (ereditate.dedotte) {
+            applica(ereditate.campi);
+            parti.push(`${ereditate.dedotte} ${ereditate.dedotte === 1 ? "saga dedotta" : "saghe dedotte"} dalla tua biblioteca`);
+          }
+        }
+      }
       if (parti.length) notify?.(parti.join(", "));
     })().catch(() => {
       /* un giro silenzioso che fallisce resta silenzioso: si riprova al prossimo montaggio */
@@ -673,12 +711,29 @@ export default function Library({
     // fermato: e' la promessa di ogni passata lunga
     let conCollane = next.map((b) => (daiFile.campi[b.id] ? { ...b, ...daiFile.campi[b.id] } : b));
 
+    // E IL CATALOGO, su chi e' rimasto senza: col tasto si richiede tutto,
+    // memoria o no, perche' chi lo preme vuole la risposta di adesso
+    const { ripassaCatalogo, cercaSaga } = await import("../lib/sagaDalCatalogo.js");
+    const { nomeInBiblioteca } = await import("../lib/sagaBooks.js");
+    filoCollane.current = mio;
+    const dalCatalogo = await ripassaCatalogo(conCollane, {
+      cerca: (b) => cercaSaga({ title: b.title, author: b.author }),
+      segnaVista: segnaCatalogo,
+      nomeInCasa: nomeInBiblioteca,
+      vivo: () => filoCollane.current === mio,
+      onProgress: (p) => filoCollane.current === mio && setCollane({ ...p, catalogo: true }),
+    });
+    if (filoCollane.current !== mio) return;
+    filoCollane.current = null;
+    setCollane(null);
+    conCollane = conCollane.map((b) => (dalCatalogo.campi[b.id] ? { ...b, ...dalCatalogo.campi[b.id] } : b));
+
     // UN GIRO IN PIU', GRATIS: adesso che quelle saghe le sappiamo, un
     // altro libro dello stesso autore puo' ereditarle — e senza questo
     // secondo passaggio il lettore dovrebbe premere il tasto due volte per
     // ottenere quel che il primo tocco poteva gia' dargli. Non apre niente:
     // e' la sola deduzione dalla biblioteca.
-    if (daiFile.scritte) {
+    if (daiFile.scritte || dalCatalogo.trovate) {
       conCollane = conCollane.map((b) => {
         const esito = ripassa(b, conCollane);
         if (!esito) return b;
@@ -687,7 +742,8 @@ export default function Library({
       });
     }
 
-    if (sistemati || rinominati || dedotte || dalTitolo || daiFile.scritte || unite.unificate) updateBooks(conCollane);
+    if (sistemati || rinominati || dedotte || dalTitolo || daiFile.scritte || dalCatalogo.trovate || unite.unificate)
+      updateBooks(conCollane);
     const parti = [];
     // le grafie riunite si dicono col nome scelto: una saga riscritta in
     // silenzio e' esattamente il genere di cosa che poi «non torna»
@@ -728,9 +784,18 @@ export default function Library({
     // la saga non la sa, e la sola strada che resta e' scriverla nella
     // scheda — il messaggio deve dire ANCHE questo, o il lettore cerca un
     // guasto che non c'e'.
-    if (daiFile.mute)
+    if (dalCatalogo.trovate)
+      parti.push(`${dalCatalogo.trovate} ${dalCatalogo.trovate === 1 ? "saga trovata" : "saghe trovate"} nel catalogo`);
+    // la rete caduta si dice: quei tomi non sono muti, non sono stati chiesti
+    if (dalCatalogo.rete)
+      parti.push(`${dalCatalogo.rete} non ${dalCatalogo.rete === 1 ? "chiesto" : "chiesti"} al catalogo: manca la rete`);
+    // e chi resta senza si conta ALLA FINE, dopo file e catalogo: e' la
+    // sola strada rimasta, e va detta — un «erano gia' tutti a posto» sopra
+    // un volume ancora fra i soli sarebbe una bugia
+    const ancoraSenza = conCollane.filter((b) => !String(b.saga || "").trim()).length - dalCatalogo.rete;
+    if (ancoraSenza > 0)
       parti.push(
-        `${daiFile.mute} ${daiFile.mute === 1 ? "tomo non dichiara" : "tomi non dichiarano"} nessuna saga nel file — scrivila nella scheda`
+        `${ancoraSenza} ${ancoraSenza === 1 ? "tomo resta" : "tomi restano"} senza saga: né il file né il catalogo la sanno — scrivila nella scheda`
       );
     notify?.(parti.length ? parti.join(", ") : "Erano già tutti a posto");
   }
@@ -1349,7 +1414,7 @@ export default function Library({
             </span>
           ) : collane ? (
             <span style={{ color: C.arcane }}>
-              🔖 Guardo «{collane.titolo}» — {collane.i + 1} di {collane.totale}
+              {collane.catalogo ? "🌐 Chiedo al catalogo" : "🔖 Guardo"} «{collane.titolo}» — {collane.i + 1} di {collane.totale}
             </span>
           ) : (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
