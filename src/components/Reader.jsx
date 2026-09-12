@@ -15,7 +15,7 @@ import { sembraUnNome } from "../lib/nomi.js";
 import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
 } from "../lib/readerSettings.js";
-import { contentStyles, spegniVuoti, togliStacco, staccaParagrafi, spegniScenografia } from "../lib/readerTheme.js";
+import { contentStyles, spegniVuoti, curaParagrafi, MODI_PARAGRAFI, spegniScenografia } from "../lib/readerTheme.js";
 import { ritaglioAvanzo, flattenToc, cfiLeggibile, ultimoSegnalibro } from "../lib/readerLayout.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
@@ -588,12 +588,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // Il paragrafo si segna UNA volta sola, e qui si sceglie come.
         // «Staccati» toglie il rientro che il libro si porta dietro e mette
         // il respiro al suo posto; «rientrati» — quel che il libro dice —
-        // toglie invece lo stacco di troppo dove il rientro c'e' gia'. Si
-        // decide per DOCUMENTO e non una volta per libro apposta: il
-        // frontespizio quasi mai rientra, e li' lo stacco e' l'unico
-        // segnale che ha — deve restare.
-        if (s.paragrafi === "stacco") staccaParagrafi(contents?.document);
-        else togliStacco(contents?.document);
+        // toglie invece lo stacco di troppo dove il rientro c'e' gia'; e
+        // «come nel libro» non tocca niente. Si decide per DOCUMENTO e non
+        // una volta per libro apposta: il frontespizio quasi mai rientra, e
+        // li' lo stacco e' l'unico segnale che ha — deve restare.
+        curaParagrafi(contents?.document, s.paragrafi);
         // e la scena che certi ePub si portano dentro — il libro finto
         // dipinto dietro il testo di ogni capitolo: la carta e' del tema
         spegniScenografia(contents?.document);
@@ -2880,30 +2879,47 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           {/* Come si segna un paragrafo nuovo. Il rientro lo mette il
               LIBRO, non noi: su una pagina di dialoghi diventa una scaletta
               di righe che partono tutte spostate, e da lì è nata la
-              domanda del lettore. */}
+              domanda del lettore. E il terzo modo non tocca niente: gli
+              stacchi restano solo dove li ha messi l'editore. Tre tasti
+              come la svolta: una preferenza scritta male non è nessuno
+              dei tre, e vale «Rientrati». */}
           <div style={{ marginBottom: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
               <span style={{ fontSize: F.nota, color: C.muted }}>Paragrafi</span>
-              <button
-                onClick={() =>
-                  updateSettings({ paragrafi: settings.paragrafi === "stacco" ? "rientro" : "stacco" })
-                }
-                style={{
-                  padding: "6px 16px",
-                  borderRadius: R.tondo,
-                  fontSize: F.nota,
-                  border: `1px solid ${settings.paragrafi === "stacco" ? C.accent : C.border}`,
-                  color: settings.paragrafi === "stacco" ? C.accent : C.muted,
-                  background: settings.paragrafi === "stacco" ? `${C.accent}14` : "transparent",
-                }}
-              >
-                {settings.paragrafi === "stacco" ? "Staccati" : "Rientrati"}
-              </button>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {[
+                  ["rientro", "Rientrati"],
+                  ["stacco", "Staccati"],
+                  ["libro", "Come nel libro"],
+                ].map(([id, nome]) => {
+                  const scelto = MODI_PARAGRAFI.includes(settings.paragrafi)
+                    ? settings.paragrafi === id
+                    : id === "rientro";
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => updateSettings({ paragrafi: id })}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: R.tondo,
+                        fontSize: F.nota,
+                        border: `1px solid ${scelto ? C.accent : C.border}`,
+                        color: scelto ? C.accent : C.muted,
+                        background: scelto ? `${C.accent}14` : "transparent",
+                      }}
+                    >
+                      {nome}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <p style={{ margin: "5px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.45 }}>
               {settings.paragrafi === "stacco"
                 ? "Tutte le righe partono dallo stesso punto, e fra un paragrafo e l'altro c'è un respiro."
-                : "La prima riga rientra, come in un romanzo stampato: è il rientro che il libro si porta dietro."}
+                : settings.paragrafi === "libro"
+                  ? "Rientri e spazi restano come li ha messi l'editore: uno stacco c'è solo dove il libro l'ha previsto. Nei convertiti male può venire arioso — è il file, non l'app."
+                  : "La prima riga rientra, come in un romanzo stampato: è il rientro che il libro si porta dietro, e lo stacco di troppo se ne va."}
             </p>
           </div>
           <div style={{ marginBottom: 14 }}>
