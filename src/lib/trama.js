@@ -64,13 +64,17 @@ const SISTEMA = [
 // Un paragrafo per volta, e la lista non cresce all'infinito: quando supera
 // il tetto si dirada tenendo uno su due. Il passo raddoppia, la copertura
 // resta distesa su tutto il letto, e la memoria non se ne accorge.
-function nuovaRaccolta() {
+// Esportate per essere provate, come `contentStyles`: il diradamento e la
+// finestra di coda sono la parte che sbaglia in silenzio — una coda che
+// cresce senza limite o un corpo che non si dirada non alzano errori,
+// mandano al modello la storia sbagliata.
+export function nuovaRaccolta() {
   // `esteso` = quanto testo si e' scorso davvero: e' la misura del volume,
   // e serve a capire quanti LIBRI tiene dentro un file solo
   return { corpo: [], coda: [], passo: 1, visti: 0, esteso: 0 };
 }
 
-function raccogli(r, testo) {
+export function raccogli(r, testo) {
   const t = String(testo || "").replace(/\s+/g, " ").trim();
   if (t.length < MIN_PARAGRAFO) return;
   r.esteso += t.length;

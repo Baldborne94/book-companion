@@ -230,7 +230,11 @@ async function nuoveDaPdf(libro, nomi, da, a) {
 // adesso. Nel dubbio si risponde «si'»: una scheda vecchia mostrata come
 // nuova e' peggio di una chiamata in piu'.
 export async function nuoveMenzioni(libro, nomi, da, a) {
-  if (!libro || !da || !a || da === a) return !da || !a;
+  // senza libro non c'e' niente da guardare, e «nel dubbio si'» vale anche
+  // qui: rispondere «niente di nuovo» sarebbe una scheda vecchia mostrata
+  // come nuova (preso dal test, non dalla lettura)
+  if (!libro || !da || !a) return true;
+  if (da === a) return false;
   const elenco = [].concat(nomi).filter(Boolean);
   const re = regexNome(elenco);
   if (!re) return true;
