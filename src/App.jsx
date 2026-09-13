@@ -1111,7 +1111,7 @@ export default function App() {
             }}
           />
         )}
-        {section === "music" && <MusicRoom music={music} playerRef={playerRef} notify={notify} />}
+        {section === "music" && <MusicRoom music={music} playerRef={playerRef} notify={notify} collegato={sync.signedIn} />}
       </main>
       </div>
       <BottomNav section={section} goTo={navigate} themeId={themeId} />

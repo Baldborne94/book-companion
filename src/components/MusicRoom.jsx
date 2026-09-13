@@ -1,9 +1,11 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import {
   getFavoritesRaw, saveFavorites, isFile, addTrackFile, dropTrack, parseYouTube,
   getListsRaw, saveLists, nuovaRaccolta, braniDi,
 } from "../lib/music.js";
+import { localTrackIds, portaACasaMelodie } from "../lib/sync.js";
+import { melodieLassu } from "../lib/syncCore.js";
 import EmptyState from "./EmptyState.jsx";
 
 const SLEEP_CHOICES = [
@@ -35,9 +37,26 @@ const inputStyle = () => ({
   outline: "none",
 });
 
-export default function MusicRoom({ music, playerRef, notify }) {
+export default function MusicRoom({ music, playerRef, notify, collegato }) {
   const [link, setLink] = useState("");
   const [favs, setFavs] = useState(() => getFavoritesRaw());
+  // CHI E' IN CASA. Una melodia da file arrivata dalla sincronizzazione ha
+  // qui il nome e basta: i byte scendono la prima volta che la tocchi. Fin
+  // qui l'elenco non lo diceva — una che parte subito e una che deve
+  // viaggiare si disegnavano identiche, e la differenza la scoprivi
+  // toccando (segnalato dal lettore dal browser: «se tanto non posso
+  // accedervi?»). Come le copertine in Libreria: la nuvoletta sulle voci
+  // rimaste lassu', e un tasto che le porta giu' tutte insieme.
+  const [qui, setQui] = useState(null);
+  const riconta = () => localTrackIds().then(setQui);
+  useEffect(() => {
+    let vivo = true;
+    localTrackIds().then((ids) => vivo && setQui(ids));
+    return () => { vivo = false; };
+  }, []);
+  // {i, totale, titolo} mentre scende; `filoMel` e' il modo di fermarlo
+  const [portando, setPortando] = useState(null);
+  const filoMel = useRef(null);
   const [favName, setFavName] = useState("");
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState("");
@@ -81,8 +100,34 @@ export default function MusicRoom({ music, playerRef, notify }) {
   function removeFav(f) {
     // la lapide resta (serve a propagare l'eliminazione), ma i byte se ne
     // vanno subito: sono la cosa pesante
-    if (isFile(f)) dropTrack(f.trackId);
+    if (isFile(f)) dropTrack(f.trackId).then(riconta);
     commit(favs.map((x) => (x.id === f.id ? { ...x, deleted: true, updatedAt: Date.now() } : x)));
+  }
+
+  async function richiamaMelodie() {
+    if (!nelCloud.length || portando) return;
+    const mio = {};
+    filoMel.current = mio;
+    setPortando({ i: 0, totale: nelCloud.length, titolo: nelCloud[0].name });
+    const esito = await portaACasaMelodie(nelCloud, {
+      vivo: () => filoMel.current === mio,
+      onProgress: (p) => filoMel.current === mio && setPortando(p),
+    });
+    if (filoMel.current !== mio) return;
+    filoMel.current = null;
+    setPortando(null);
+    // quel che e' sceso resta sceso anche se il giro e' stato fermato: si
+    // dice quanto si e' fatto, non «annullato»
+    const parti = [];
+    if (esito.scesi) parti.push(`${esito.scesi} ${esito.scesi === 1 ? "melodia è" : "melodie sono"} qui`);
+    if (esito.falliti)
+      parti.push(`${esito.falliti} non ${esito.falliti === 1 ? "è scesa" : "sono scese"} — se lassù non c'è, va ricaricata dal dispositivo che ha il file`);
+    notify(
+      parti.length
+        ? `${parti.join(", ")}${esito.fermato ? " — giro fermato" : ""}`
+        : "Non c'era niente da portare a casa"
+    );
+    riconta();
   }
 
   async function addFiles(lista) {
@@ -99,6 +144,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
     setCaricando(false);
     if (nuovi.length) {
       commit([...favs, ...nuovi]);
+      riconta();
       notify(
         nuovi.length === 1
           ? `«${nuovi[0].name}» custodita ✨ Questa suona anche a tablet spento.`
@@ -188,6 +234,14 @@ export default function MusicRoom({ music, playerRef, notify }) {
 
   const liveFavs = favs.filter((f) => !f.deleted);
   const liveRac = raccolte.filter((r) => !r.deleted);
+  const nelCloud = melodieLassu(liveFavs, qui, collegato);
+  const lassu = new Set(nelCloud.map((f) => f.trackId));
+  // suonata una melodia rimasta lassu', il lettore l'ha scaricata: la
+  // nuvoletta si spegne senza aspettare una riapertura della sala
+  const suonaLassu = current?.trackId && lassu.has(current.trackId) ? current.trackId : null;
+  useEffect(() => {
+    if (suonaLassu) riconta();
+  }, [suonaLassu]);
   const inScelta = liveRac.find((r) => r.id === scegliendo) || null;
   const alreadySaved =
     current &&
@@ -557,7 +611,31 @@ export default function MusicRoom({ music, playerRef, notify }) {
         >
           {adding ? "Annulla" : "＋ Da YouTube"}
         </button>
+        {/* Il richiamo delle melodie: c'e' solo se qualcosa e' rimasto
+            lassu', e il numero sta nel tasto perche' chi lo tocca sappia in
+            anticipo quanta connessione ci vuole — come per i tomi. */}
+        {nelCloud.length > 0 && (
+          <button
+            onClick={portando ? () => { filoMel.current = null; setPortando(null); } : richiamaMelodie}
+            style={{
+              padding: "6px 14px",
+              borderRadius: R.tondo,
+              fontSize: F.nota,
+              border: `1px solid ${C.arcane}66`,
+              color: C.arcane,
+            }}
+          >
+            {portando
+              ? `Fermo qui (${portando.i + 1} di ${portando.totale})`
+              : `☁ Porta qui ${nelCloud.length} ${nelCloud.length === 1 ? "melodia" : "melodie"}`}
+          </button>
+        )}
       </div>
+      {portando && (
+        <p style={{ fontSize: F.minuscolo, color: C.arcane, margin: "-4px 0 10px" }}>
+          ☁ Porto qui «{portando.titolo}» — {portando.i + 1} di {portando.totale}
+        </p>
+      )}
       <p style={{ fontSize: F.minuscolo, color: C.muted, margin: "-4px 0 14px", lineHeight: 1.5 }}>
         ♫ Le melodie dai tuoi file vanno avanti a tablet spento, fino allo scadere del timer.
         ♪ YouTube no: quel lettore si mette in pausa da solo quando lo schermo si spegne, e non è in nostro potere.
@@ -717,20 +795,40 @@ export default function MusicRoom({ music, playerRef, notify }) {
                   <button
                     onClick={() => playerRef.current?.play(f)}
                     style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, textAlign: "left", minWidth: 0 }}
-                    title={isFile(f) ? "Dal tuo archivio: va avanti a schermo spento" : "Da YouTube: solo a schermo acceso"}
+                    title={
+                      lassu.has(f.trackId)
+                        ? "Nel cloud — si scarica quando la suoni"
+                        : isFile(f) ? "Dal tuo archivio: va avanti a schermo spento" : "Da YouTube: solo a schermo acceso"
+                    }
                   >
                     <span
                       style={{
                         fontSize: F.titolo,
                         filter: `drop-shadow(0 0 8px ${isFile(f) ? C.accent : C.arcane}66)`,
                         color: isFile(f) ? C.accent : "inherit",
+                        opacity: lassu.has(f.trackId) ? 0.55 : 1,
                       }}
                     >
                       {isFile(f) ? "♫" : "♪"}
                     </span>
-                    <span style={{ flex: 1, fontSize: F.corpo, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <span style={{ flex: 1, fontSize: F.corpo, color: lassu.has(f.trackId) ? C.muted : C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {f.name}
                     </span>
+                    {lassu.has(f.trackId) && (
+                      <span
+                        style={{
+                          padding: "1px 6px",
+                          borderRadius: R.piccolo,
+                          fontSize: F.minuscolo,
+                          background: `${C.bg}cc`,
+                          border: `1px solid ${C.arcane}77`,
+                          color: C.arcane,
+                          flexShrink: 0,
+                        }}
+                      >
+                        ☁
+                      </span>
+                    )}
                   </button>
                   <button onClick={() => startRename(f)} aria-label={`Rinomina ${f.name}`} style={{ color: C.muted, padding: 4, fontSize: F.corpo }}>
                     ✎
