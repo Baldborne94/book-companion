@@ -110,7 +110,10 @@ un'altra, finché non ha firmato niente che sia uscito di casa.
 Se il `build` cade su «Could not reserve enough space for … object heap»,
 Gradle vuole 1,5 GB per il suo processo e Windows non glieli dà: in
 `gradle.properties` del progetto abbassa `org.gradle.jvmargs=-Xmx1536m`
-a `-Xmx1024m` (o `768m`) e rilancia.
+a `-Xmx1024m` (o `768m`) e rilancia. **La modifica va fatta DOPO
+`bubblewrap update`**: l'update rigenera il progetto Android, e con lui
+`gradle.properties`, quindi una modifica fatta prima sparisce e l'errore
+torna identico.
 
 ## Collegare il guscio al sito
 
