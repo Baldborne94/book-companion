@@ -178,3 +178,40 @@ export function scriviVista(vista) {
     /* memoria piena o negata: la vista di partenza va benissimo */
   }
 }
+
+// Una voce salvata che non esiste piu' — un raggruppamento che abbiamo
+// tolto, come «Saga» o «Niente» — lascerebbe il menu in bianco e la
+// Libreria a mostrare tutt'altro: quel che non si riconosce torna alla
+// disposizione di sempre, che e' la PRIMA voce di ogni elenco (il titolo
+// sta per primo fra gli ordinamenti proprio perche' e' l'ordine di
+// partenza). Le voci si passano da fuori: le conosce la Libreria, e cosi'
+// un test le finge invece di importare un componente.
+export function vistaValida(gruppi, ordini) {
+  const dflt = { group: gruppi[0].id, sort: ordini[0].id };
+  const v = leggiVista(dflt);
+  return {
+    group: gruppi.some((g) => g.id === v.group) ? v.group : dflt.group,
+    sort: ordini.some((s) => s.id === v.sort) ? v.sort : dflt.sort,
+  };
+}
+
+// IL NUMERO DI LETTURA TIENE I DECIMALI: il file lo scrive cosi' (Calibre
+// mette 2.5 alla novella fra il secondo e il terzo) e la scheda lo
+// mostrava, ma al primo tocco strappava il punto — quel che l'app aveva
+// letto da sola non si poteva riscrivere a mano. Quel che non e' un numero
+// vale «nessuno», mai NaN: un NaN salvato non torna piu' indietro. E la
+// virgola vale come il punto: la tastiera decimale di un tablet italiano
+// da' quella.
+export function numeroLettura(s) {
+  const t = String(s ?? "").trim().replace(",", ".");
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+// mentre si scrive nella casella: via tutto quel che non e' cifra o
+// punto, e la virgola diventa punto. Resta una stringa, perche' «2.» a
+// meta' battitura e' legittimo e un numero non saprebbe tenerlo.
+export function pulisciNumero(s) {
+  return String(s ?? "").replace(",", ".").replace(/[^\d.]/g, "");
+}

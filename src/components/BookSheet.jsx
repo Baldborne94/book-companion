@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { getProgress, getStatus, setStatus, touchBook } from "../lib/library.js";
+import { getProgress, getStatus, setStatus, touchBook, numeroLettura, pulisciNumero } from "../lib/library.js";
 import { getCover, getFile, putCover, removeCover } from "../lib/bookStore.js";
 import { recupera, senzaEtichetta } from "../lib/sinossi.js";
 import { preparaCopertina, copertinaOriginale } from "../lib/copertina.js";
@@ -30,18 +30,6 @@ const STATUSES = [
 ];
 
 // le parole per ogni anello rotto della catena di «Prima di cominciare»:
-// IL NUMERO DI LETTURA TIENE I DECIMALI: il file lo scrive cosi' (Calibre
-// mette 2.5 alla novella fra il secondo e il terzo) e la scheda lo
-// mostrava, ma al primo tocco strappava il punto — quel che l'app aveva
-// letto da sola non si poteva riscrivere a mano. Quel che non e' un numero
-// vale «nessuno», mai NaN: un NaN salvato non torna piu' indietro.
-function numeroLettura(s) {
-  const t = String(s ?? "").trim();
-  if (!t) return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : null;
-}
-
 // ognuna dice cosa manca E dove si mette a posto, o la riga sarebbe solo
 // un mistero spiegato con un altro mistero
 function fraseTace(t) {
@@ -628,7 +616,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                 </span>
                 <input
                   value={sagaOrder}
-                  onChange={(e) => setSagaOrder(e.target.value.replace(",", ".").replace(/[^\d.]/g, ""))}
+                  onChange={(e) => setSagaOrder(pulisciNumero(e.target.value))}
                   inputMode="decimal"
                   placeholder="1"
                   style={{ ...fieldStyle(), textAlign: "center" }}
