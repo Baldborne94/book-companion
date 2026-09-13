@@ -45,6 +45,7 @@ export const getTrack = (id) => withStore("tracks", "readonly", (s) => s.get(id)
 export const removeTrack = (id) => withStore("tracks", "readwrite", (s) => s.delete(id));
 
 export const listFileIds = () => withStore("files", "readonly", (s) => s.getAllKeys());
+export const listTrackIds = () => withStore("tracks", "readonly", (s) => s.getAllKeys());
 export const putAux = (key, value) => withStore("aux", "readwrite", (s) => s.put(value, key));
 export const getAux = (key) => withStore("aux", "readonly", (s) => s.get(key));
 export const removeAux = (key) => withStore("aux", "readwrite", (s) => s.delete(key));

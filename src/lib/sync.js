@@ -1,6 +1,6 @@
 import { getClient, isSyncConfigured, BUCKET } from "./supabase.js";
 import { esitoRegistrazione } from "./accesso.js";
-import { putFile, getFile, putCover, getCover, removeBookData, listFileIds, getTrack, putTrack } from "./bookStore.js";
+import { putFile, getFile, putCover, getCover, removeBookData, listFileIds, listTrackIds, getTrack, putTrack } from "./bookStore.js";
 import {
   loadBooks, saveBooks, getProgress, setProgress, getStatus, setStatus,
   getUpdatedAt, touchBook, getTombstones, clearTombstones, getLastOpened,
@@ -12,7 +12,7 @@ import {
 } from "./annotations.js";
 import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, getListsRaw, writeLists } from "./music.js";
 import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
-import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, percheMelodia, fondiAnnotazioni, upsertBooks, contaSpazio } from "./syncCore.js";
+import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, percheMelodia, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu } from "./syncCore.js";
 
 // `contaSpazio` viveva qui ed e' passata in `syncCore` con le altre
 // decisioni pure; si riesporta perche' chi la cercava la trovi dov'era.
@@ -583,39 +583,53 @@ export async function ensureLocalFile(book) {
 // scaricamenti in parallelo su una connessione da tablet sono il modo di
 // non finirne nessuno. Il filo `vivo` e' l'unico modo di fermarlo a meta',
 // e quel che e' gia' sceso resta sceso.
-export async function portaACasa(libri, { onProgress, vivo } = {}) {
-  const attivo = vivo || (() => true);
-  const esito = { scesi: 0, falliti: 0, fermato: false };
-  if (!isSyncConfigured()) return esito;
+// Il giro vero sta in `portaGiu` (syncCore), che i due richiami — tomi e
+// melodie — condividono: qui si dice solo dove sono i byte e come si
+// scaricano.
+const NIENTE = { scesi: 0, falliti: 0, fermato: false };
+
+async function daScaricare() {
+  if (!isSyncConfigured()) return null;
   const session = await getSession();
-  if (!session) return esito;
+  if (!session) return null;
   const sb = await getClient();
-  // si guarda adesso chi manca davvero: fra il conto della Libreria e
-  // questo giro il lettore puo' aver aperto un libro
-  const mancanti = [];
-  for (const b of libri) {
-    if (!(await getFile(b.id).catch(() => null))) mancanti.push(b);
-  }
-  for (const [i, b] of mancanti.entries()) {
-    if (!attivo()) {
-      esito.fermato = true;
-      break;
-    }
-    onProgress?.({ i, totale: mancanti.length, titolo: b.title });
-    try {
-      const { data, error } = await sb.storage
-        .from(BUCKET)
-        .download(filePath(session.user.id, b));
-      if (error || !data) esito.falliti += 1;
-      else {
-        await putFile(b.id, data);
-        esito.scesi += 1;
-      }
-    } catch {
-      esito.falliti += 1;
-    }
-  }
-  return esito;
+  const scarica = async (percorso) => {
+    const { data, error } = await sb.storage.from(BUCKET).download(percorso);
+    return error || !data ? null : data;
+  };
+  return { uid: session.user.id, scarica };
+}
+
+export async function portaACasa(libri, { onProgress, vivo } = {}) {
+  const cloud = await daScaricare();
+  if (!cloud) return { ...NIENTE };
+  return portaGiu(libri, {
+    manca: async (b) => !(await getFile(b.id).catch(() => null)),
+    scarica: (b) => cloud.scarica(filePath(cloud.uid, b)),
+    posa: (b, byte) => putFile(b.id, byte),
+    titolo: (b) => b.title,
+    onProgress,
+    vivo,
+  });
+}
+
+// PORTARE A CASA LE MELODIE RIMASTE NEL CLOUD (chiesto dal lettore, che
+// sul browser vedeva tre melodie da file identiche a quelle del tablet e
+// nessuna suonava). Stessa storia dei tomi: la voce arriva con la
+// sincronizzazione, i byte scendono la prima volta che la tocchi, e
+// finche' non sono qui la voce e' una promessa. Un brano per volta, come
+// i tomi, e per lo stesso motivo.
+export async function portaACasaMelodie(voci, { onProgress, vivo } = {}) {
+  const cloud = await daScaricare();
+  if (!cloud) return { ...NIENTE };
+  return portaGiu(voci, {
+    manca: async (f) => !(await getTrack(f.trackId).catch(() => null)),
+    scarica: (f) => cloud.scarica(trackPath(cloud.uid, f.trackId)),
+    posa: (f, byte) => putTrack(f.trackId, byte),
+    titolo: (f) => f.name,
+    onProgress,
+    vivo,
+  });
 }
 
 // Come `ensureLocalFile` per i libri: i byte si scaricano quando servono
@@ -676,6 +690,16 @@ export async function cloudUsage() {
 export async function localFileIds() {
   try {
     return new Set(await listFileIds());
+  } catch {
+    return new Set();
+  }
+}
+
+// chi e' in casa fra le melodie da file: e' la nuvoletta della sala della
+// musica, come `localFileIds` lo e' delle copertine
+export async function localTrackIds() {
+  try {
+    return new Set(await listTrackIds());
   } catch {
     return new Set();
   }

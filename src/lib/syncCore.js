@@ -231,6 +231,54 @@ export function contaSpazio(radiceGrezza, braniGrezzi) {
   };
 }
 
+// PORTARE GIU' UNO PER VOLTA. E' il giro di «Porta qui i tomi», staccato
+// da Supabase e da IndexedDB cosi' lo condividono i libri e le melodie e
+// un test lo prova con dei finti: `manca` dice se i byte NON sono qui
+// (guardato ADESSO, non al conto di prima — fra il conto e il tocco il
+// lettore puo' aver aperto un libro), `scarica` li prende dal cloud e torna
+// null se non ci sono, `posa` li scrive in casa. Un elemento per volta,
+// come ogni passata lunga di questa app: venti scaricamenti in parallelo
+// su una connessione da tablet sono il modo di non finirne nessuno. Il
+// filo `vivo` e' l'unico modo di fermarlo a meta', e quel che e' gia'
+// sceso resta sceso.
+export async function portaGiu(voci, { manca, scarica, posa, titolo, onProgress, vivo }) {
+  const attivo = vivo || (() => true);
+  const esito = { scesi: 0, falliti: 0, fermato: false };
+  const mancanti = [];
+  for (const v of voci) {
+    if (await manca(v)) mancanti.push(v);
+  }
+  for (const [i, v] of mancanti.entries()) {
+    if (!attivo()) {
+      esito.fermato = true;
+      break;
+    }
+    onProgress?.({ i, totale: mancanti.length, titolo: titolo(v) });
+    try {
+      const byte = await scarica(v);
+      if (!byte) esito.falliti += 1;
+      else {
+        await posa(v, byte);
+        esito.scesi += 1;
+      }
+    } catch {
+      esito.falliti += 1;
+    }
+  }
+  return esito;
+}
+
+// LE MELODIE RIMASTE LASSU'. Come la nuvoletta sulle copertine: solo a
+// cloud collegato (senza, un file mancante e' una melodia rotta, non una
+// melodia «lassu'»), solo le melodie da FILE (YouTube non ha byte da
+// nessuna parte), e solo finche' il conto di chi e' in casa e' arrivato —
+// prima di allora `null`, e su `null` non si disegna niente, o al primo
+// disegno ogni melodia avrebbe la nuvoletta per un attimo.
+export function melodieLassu(favs, localTrackIds, collegato) {
+  if (!collegato || !localTrackIds) return [];
+  return (favs || []).filter((f) => f && !f.deleted && f.trackId && !localTrackIds.has(f.trackId));
+}
+
 // IL PERCHE' DI UNA MELODIA CHE NON SALE. L'errore del server veniva
 // buttato via e al lettore si diceva «forse lo spazio e' finito» — un
 // indovinello, e sbagliato: il pannello mostrava 102 MB su 1 GB. Le
