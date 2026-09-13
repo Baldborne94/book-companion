@@ -1,6 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { C, F, R } from "../data/constants.js";
-import { ensureLocalTrack } from "../lib/sync.js";
 import {
   parseYouTube, embedUrl, isFile, loadTrack, getVolume, saveVolume, restaDa, getFavorites,
 } from "../lib/music.js";
@@ -233,16 +232,11 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
   }
 
   async function suonaFile(voce) {
-    let blob = await loadTrack(voce.trackId).catch(() => null);
+    const blob = await loadTrack(voce.trackId).catch(() => null);
     if (!blob) {
-      // La melodia e' arrivata dalla sincronizzazione come voce d'elenco e i
-      // byte stanno ancora nel cloud: si scaricano ora, una volta sola, e
-      // dalla prossima resta qui. L'avviso serve perche' un file di musica
-      // non arriva istantaneo e il silenzio sembrerebbe un guasto.
-      blob = await ensureLocalTrack(voce.trackId, () => notify(`Scarico «${voce.name}»…`)).catch(() => null);
-    }
-    if (!blob) {
-      notify(`«${voce.name}» non è ancora arrivata qui: accendi la sincronizzazione, oppure ricaricala da questo dispositivo 🎵`);
+      // i file audio non viaggiano nel cloud: se i byte non sono qui, la
+      // melodia va ricaricata da questo dispositivo
+      notify(`«${voce.name}» non è su questo dispositivo: i file audio restano dove li carichi. Ricaricala da qui 🎵`);
       return false;
     }
     liberaUrl();

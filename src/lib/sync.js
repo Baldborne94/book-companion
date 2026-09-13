@@ -1,6 +1,6 @@
 import { getClient, isSyncConfigured, BUCKET } from "./supabase.js";
 import { esitoRegistrazione } from "./accesso.js";
-import { putFile, getFile, putCover, getCover, removeBookData, listFileIds, listTrackIds, getTrack, putTrack } from "./bookStore.js";
+import { putFile, getFile, putCover, getCover, removeBookData, listFileIds } from "./bookStore.js";
 import {
   loadBooks, saveBooks, getProgress, setProgress, getStatus, setStatus,
   getUpdatedAt, touchBook, getTombstones, clearTombstones, getLastOpened,
@@ -12,7 +12,7 @@ import {
 } from "./annotations.js";
 import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, getListsRaw, writeLists } from "./music.js";
 import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
-import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, percheMelodia, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu } from "./syncCore.js";
+import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu } from "./syncCore.js";
 
 // `contaSpazio` viveva qui ed e' passata in `syncCore` con le altre
 // decisioni pure; si riesporta perche' chi la cercava la trovi dov'era.
@@ -62,10 +62,10 @@ const segnaCopertina = (id) =>
 
 const filePath = (uid, book) => `${uid}/${book.id}.${book.fileType || "epub"}`;
 const coverPath = (uid, id) => `${uid}/${id}.cover`;
-// Le melodie stanno nello stesso secchio dei libri: il permesso guarda solo
-// la prima cartella (`uid/…`), quindi una sottocartella non chiede niente a
-// nessuno.
-const trackPath = (uid, trackId) => `${uid}/melodie/${trackId}`;
+// per un pezzo le melodie sono salite in `uid/melodie/`: la cartella resta
+// nel conto dello spazio finche' non e' vuota, e la spazzata qui sotto la
+// svuota una volta per dispositivo
+const MELODIE_SVUOTATE_KEY = "bc_melodie_svuotate";
 
 export async function getSession() {
   const sb = await getClient();
@@ -376,45 +376,26 @@ export async function syncNow({ onProgress } = {}) {
     if (copertineNuove === 1) say("Mando su le copertine…");
   }
 
-  // LE MELODIE SONO BYTE COME I LIBRI, e vanno dove vanno i libri. Finora
-  // viaggiava solo la voce dell'elenco: sull'altro dispositivo compariva il
-  // nome e non suonava niente, che e' il modo peggiore di sincronizzare una
-  // cosa. Il caricamento si fa una volta sola per melodia (`uploaded`), e
-  // chi non riesce ci riprova al giro dopo.
-  const melodie = getFavoritesRaw();
-  let melodieSu = 0;
-  let melodieNo = 0;
-  // il PERCHE' di ogni rifiuto, non buttato via: al lettore si dice la
-  // causa vera, non «forse lo spazio e' finito» (che era un indovinello,
-  // e sul suo pannello era pure smentito dal contatore)
-  const melodiePerche = new Set();
-  for (const f of melodie) {
-    if (f.deleted || !f.trackId || already.has(f.trackId)) continue;
-    const blob = await getTrack(f.trackId).catch(() => null);
-    // i byte stanno su un altro dispositivo: da qui non c'e' niente da
-    // caricare, e non e' un guaio
-    if (!blob) continue;
-    say(`Carico «${f.name || "una melodia"}»…`);
-    const { error: mErr } = await sb.storage
-      .from(BUCKET)
-      .upload(trackPath(uid, f.trackId), blob, { upsert: true, contentType: blob.type || undefined });
-    // spazio finito o rete che cade: la melodia resta non caricata e ci si
-    // riprova, ma il resto della sincronizzazione non deve saltare per aria.
-    // Va pero' DETTO: un caricamento che fallisce in silenzio ti lascia a
-    // credere che la musica sia al sicuro lassu' quando non c'e'.
-    if (mErr && mErr.statusCode !== "409") {
-      melodieNo++;
-      melodiePerche.add(percheMelodia(mErr));
-      continue;
+  // I FILE AUDIO NON SALGONO PIU' (deciso dal lettore: «ogni dispositivo ha
+  // i suoi file e condivide solo i link»). Per un pezzo sono saliti nella
+  // cartella `melodie/` del secchio, e quei byte adesso non li scarica piu'
+  // nessuno: si tolgono, una volta per dispositivo, cosi' non restano a
+  // pesare sul gigabyte del piano. Chi ha i file ce li ha ancora in casa.
+  if (!localStorage.getItem(MELODIE_SVUOTATE_KEY)) {
+    try {
+      const avanzi = (await elenca(sb, `${uid}/melodie`))
+        .filter((o) => o?.metadata)
+        .map((o) => `${uid}/melodie/${o.name}`);
+      if (avanzi.length) {
+        say("Tolgo dal cloud le melodie di una volta…");
+        const { error } = await sb.storage.from(BUCKET).remove(avanzi);
+        if (error) throw error;
+      }
+      localStorage.setItem(MELODIE_SVUOTATE_KEY, "1");
+    } catch {
+      /* si riprova al giro dopo: il resto della sincronizzazione non aspetta */
     }
-    markUploaded(f.trackId);
-    melodieSu++;
   }
-  // le lapidi valgono anche lassu': una melodia dimenticata non deve restare
-  // a occupare spazio per sempre. Si cancella da qualunque dispositivo,
-  // perche' chi ha caricato i byte puo' essere un altro.
-  const spente = melodie.filter((f) => f.deleted && f.trackId).map((f) => trackPath(uid, f.trackId));
-  if (spente.length) await sb.storage.from(BUCKET).remove(spente).catch(() => {});
 
   if (pull.length || removeLocal.length) say("Ricevo le novità…");
   let next = loadBooks();
@@ -484,11 +465,13 @@ export async function syncNow({ onProgress } = {}) {
   }
 
   const { data: remotePrefsRows } = await sb.from("prefs").select("*").eq("user_id", uid).limit(1);
-  const { merged, applyLocal, pushRemote } = mergePrefs(localPrefs(), remotePrefsRows?.[0] || null);
+  const { merged, favsLocali, applyLocal, pushRemote } = mergePrefs(localPrefs(), remotePrefsRows?.[0] || null);
   const stamp = pushRemote ? Date.now() : merged.updated_at;
   if (applyLocal) {
     if (merged.reader) localStorage.setItem("bc_reader", JSON.stringify(merged.reader));
-    writeFavorites(merged.music_favs);
+    // qui si scrivono i link fusi PIU' i file di questo dispositivo, che
+    // non sono mai partiti; lassu' (`merged`) vanno i soli link
+    writeFavorites(favsLocali);
     writeLists(merged.music_lists);
     scriviGlossari(merged.glossari || {});
     if (merged.last_opened) localStorage.setItem("bc_lastopen", merged.last_opened);
@@ -518,9 +501,6 @@ export async function syncNow({ onProgress } = {}) {
     pushed: toPush.length,
     pulled: pull.length,
     removed: removeLocal.length,
-    melodieSu,
-    melodieNo,
-    melodiePerche: [...melodiePerche],
     books: loadBooks(),
   };
 }
@@ -583,9 +563,8 @@ export async function ensureLocalFile(book) {
 // scaricamenti in parallelo su una connessione da tablet sono il modo di
 // non finirne nessuno. Il filo `vivo` e' l'unico modo di fermarlo a meta',
 // e quel che e' gia' sceso resta sceso.
-// Il giro vero sta in `portaGiu` (syncCore), che i due richiami — tomi e
-// melodie — condividono: qui si dice solo dove sono i byte e come si
-// scaricano.
+// Il giro vero sta in `portaGiu` (syncCore): qui si dice solo dove sono i
+// byte e come si scaricano.
 const NIENTE = { scesi: 0, falliti: 0, fermato: false };
 
 async function daScaricare() {
@@ -611,44 +590,6 @@ export async function portaACasa(libri, { onProgress, vivo } = {}) {
     onProgress,
     vivo,
   });
-}
-
-// PORTARE A CASA LE MELODIE RIMASTE NEL CLOUD (chiesto dal lettore, che
-// sul browser vedeva tre melodie da file identiche a quelle del tablet e
-// nessuna suonava). Stessa storia dei tomi: la voce arriva con la
-// sincronizzazione, i byte scendono la prima volta che la tocchi, e
-// finche' non sono qui la voce e' una promessa. Un brano per volta, come
-// i tomi, e per lo stesso motivo.
-export async function portaACasaMelodie(voci, { onProgress, vivo } = {}) {
-  const cloud = await daScaricare();
-  if (!cloud) return { ...NIENTE };
-  return portaGiu(voci, {
-    manca: async (f) => !(await getTrack(f.trackId).catch(() => null)),
-    scarica: (f) => cloud.scarica(trackPath(cloud.uid, f.trackId)),
-    posa: (f, byte) => putTrack(f.trackId, byte),
-    titolo: (f) => f.name,
-    onProgress,
-    vivo,
-  });
-}
-
-// Come `ensureLocalFile` per i libri: i byte si scaricano quando servono
-// davvero, non a ogni sincronizzazione. Su un portatile che apri una volta
-// al mese non ha senso tirare giu' mezzo giga di musica per sport.
-export async function ensureLocalTrack(trackId, onScarico) {
-  const local = await getTrack(trackId).catch(() => null);
-  if (local) return local;
-  if (!isSyncConfigured()) return null;
-  const session = await getSession();
-  if (!session) return null;
-  const sb = await getClient();
-  // l'avviso parte solo adesso, che si scarica per davvero: annunciarlo
-  // prima di sapere se c'e' un cloud da cui prendere e' una bugia breve
-  onScarico?.();
-  const { data, error } = await sb.storage.from(BUCKET).download(trackPath(session.user.id, trackId));
-  if (error || !data) return null;
-  await putTrack(trackId, data);
-  return data;
 }
 
 // QUANTO PESI LASSU'.
@@ -690,16 +631,6 @@ export async function cloudUsage() {
 export async function localFileIds() {
   try {
     return new Set(await listFileIds());
-  } catch {
-    return new Set();
-  }
-}
-
-// chi e' in casa fra le melodie da file: e' la nuvoletta della sala della
-// musica, come `localFileIds` lo e' delle copertine
-export async function localTrackIds() {
-  try {
-    return new Set(await listTrackIds());
   } catch {
     return new Set();
   }

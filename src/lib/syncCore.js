@@ -232,8 +232,8 @@ export function contaSpazio(radiceGrezza, braniGrezzi) {
 }
 
 // PORTARE GIU' UNO PER VOLTA. E' il giro di «Porta qui i tomi», staccato
-// da Supabase e da IndexedDB cosi' lo condividono i libri e le melodie e
-// un test lo prova con dei finti: `manca` dice se i byte NON sono qui
+// da Supabase e da IndexedDB cosi' un test lo prova con dei finti (e chi
+// un giorno avra' altri byte da portare giu' lo riusa): `manca` dice se i byte NON sono qui
 // (guardato ADESSO, non al conto di prima — fra il conto e il tocco il
 // lettore puo' aver aperto un libro), `scarica` li prende dal cloud e torna
 // null se non ci sono, `posa` li scrive in casa. Un elemento per volta,
@@ -267,48 +267,6 @@ export async function portaGiu(voci, { manca, scarica, posa, titolo, onProgress,
   }
   return esito;
 }
-
-// LE MELODIE RIMASTE LASSU'. Come la nuvoletta sulle copertine: solo a
-// cloud collegato (senza, un file mancante e' una melodia rotta, non una
-// melodia «lassu'»), solo le melodie da FILE (YouTube non ha byte da
-// nessuna parte), e solo finche' il conto di chi e' in casa e' arrivato —
-// prima di allora `null`, e su `null` non si disegna niente, o al primo
-// disegno ogni melodia avrebbe la nuvoletta per un attimo.
-export function melodieLassu(favs, localTrackIds, collegato) {
-  if (!collegato || !localTrackIds) return [];
-  return (favs || []).filter((f) => f && !f.deleted && f.trackId && !localTrackIds.has(f.trackId));
-}
-
-// IL PERCHE' DI UNA MELODIA CHE NON SALE. L'errore del server veniva
-// buttato via e al lettore si diceva «forse lo spazio e' finito» — un
-// indovinello, e sbagliato: il pannello mostrava 102 MB su 1 GB. Le
-// cause vere sono poche e distinguibili, e ognuna chiede una cosa
-// diversa al lettore: un file oltre il limite non salira' MAI (inutile
-// riprovare), un permesso rifiutato si cura rilanciando lo schema, la
-// rete caduta si cura da sola al giro dopo.
-export function percheMelodia(err) {
-  const testo = `${err?.message || ""} ${err?.error || ""}`.toLowerCase();
-  const codice = String(err?.statusCode ?? err?.status ?? "");
-  if (codice === "413" || /maximum allowed size|payload too large|entity too large/.test(testo))
-    return "grande";
-  if (codice === "403" || /row-level security|unauthorized|not authorized|violates.*policy|invalid signature|jwt/.test(testo))
-    return "permesso";
-  if (/quota|storage.*(full|exceeded)|exceeded.*(quota|storage)/.test(testo)) return "spazio";
-  if (codice === "404" || /bucket not found/.test(testo)) return "secchio";
-  if (/failed to fetch|network|timeout|load failed|fetch/.test(testo)) return "rete";
-  return "boh";
-}
-
-// le parole per ogni causa, qui e non nel componente: una causa senza la
-// sua frase e' un errore che torna a essere un indovinello
-export const FRASI_MELODIA = {
-  grande: "il file supera il limite per singolo file del piano cloud",
-  permesso: "il cloud rifiuta il permesso: prova a uscire e rientrare, o rilancia supabase/schema.sql",
-  spazio: "lo spazio nel cloud è davvero finito",
-  secchio: "nel cloud manca il secchio «books»: va creato come dice supabase/schema.sql",
-  rete: "la rete è caduta a metà: riproverò al prossimo giro",
-  boh: "il cloud ha risposto con un errore inatteso",
-};
 
 export function planSync({ localRows, tombstones, remoteRows }) {
   const remote = new Map(remoteRows.map((r) => [r.id, r]));
@@ -438,8 +396,27 @@ function fondiGlossari(local, remote, remoteNewer) {
   return fondi(a || {}, b || {}).glossari;
 }
 
+// I FILE AUDIO NON VIAGGIANO: OGNI DISPOSITIVO HA I SUOI, e nel cloud
+// passano solo i link YouTube (deciso dal lettore: «ogni dispositivo ha i
+// suoi file e condivide solo i link»). Prima la voce di un file saliva col
+// resto dell'elenco e sull'altro dispositivo compariva un nome che non
+// suonava — e i byte, portati su per rimediare, erano la cosa piu' pesante
+// del secchio. Quindi: una voce con `trackId` resta dov'e' nata, non sale,
+// e se ne arriva una da lassu' (scritta da una versione vecchia dell'app)
+// non entra. Le lapidi dei file seguono la stessa regola: sono del
+// dispositivo.
+const eFile = (f) => !!f?.trackId;
+
 export function mergePrefs(local, remote) {
-  const music_favs = mergeFavorites(local.music_favs, remote?.music_favs);
+  const mieiFile = (local.music_favs || []).filter(eFile);
+  const link = mergeFavorites(
+    (local.music_favs || []).filter((f) => !eFile(f)),
+    (remote?.music_favs || []).filter((f) => !eFile(f))
+  );
+  // quel che si scrive QUI: i link fusi piu' i miei file, nell'ordine di
+  // nascita come sempre; quel che sale (`merged.music_favs`) sono i soli link
+  const music_favs = link;
+  const favsLocali = [...link, ...mieiFile].sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));
   // le raccolte hanno la stessa forma dei preferiti (id, addedAt,
   // updatedAt, deleted), quindi si fondono con la stessa regola
   const music_lists = mergeFavorites(local.music_lists, remote?.music_lists);
@@ -457,8 +434,9 @@ export function mergePrefs(local, remote) {
   const eq = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
   return {
     merged,
+    favsLocali,
     applyLocal:
-      !eq(merged.music_favs, local.music_favs) ||
+      !eq(favsLocali, local.music_favs) ||
       !eq(merged.music_lists, local.music_lists) ||
       !eq(merged.reader, local.reader) ||
       !eq(merged.glossari, local.glossari) ||

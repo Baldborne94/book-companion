@@ -1,11 +1,8 @@
-// PORTARE GIU' UNO PER VOLTA, e chi sta lassu'. È il giro di «Porta qui i
-// tomi», ora condiviso con le melodie (chiesto dal lettore dal browser:
-// tre melodie da file identiche a quelle del tablet, e nessuna suonava).
-// Staccato da Supabase e da IndexedDB apposta: qui si prova con dei finti
-// quel che sbaglia in silenzio — un giro che non si ferma, un conto che
-// dice «sceso» su un byte che non c'è, una nuvoletta su una melodia che è
-// già in casa.
-import { portaGiu, melodieLassu } from "../src/lib/syncCore.js";
+// PORTARE GIU' UNO PER VOLTA. È il giro di «Porta qui i tomi», staccato da
+// Supabase e da IndexedDB apposta: qui si prova con dei finti quel che
+// sbaglia in silenzio — un giro che non si ferma, un conto che dice
+// «sceso» su un byte che non c'è, un tomo già in casa scaricato di nuovo.
+import { portaGiu } from "../src/lib/syncCore.js";
 
 const voci = (n) => Array.from({ length: n }, (_, i) => ({ id: `v${i}`, name: `Melodia ${i}` }));
 
@@ -89,22 +86,4 @@ export default async function (t) {
     t.eq("senza filo il giro è intero", e.scesi, 1);
   }
   t.eq("niente da portare → zeri", JSON.stringify(await portaGiu([], banco().deps)), '{"scesi":0,"falliti":0,"fermato":false}');
-
-  // ---- CHI STA LASSÙ (la nuvoletta) -----------------------------------------
-  const favs = [
-    { id: "a", name: "File qui", trackId: "t1" },
-    { id: "b", name: "File lassù", trackId: "t2" },
-    { id: "c", name: "YouTube", url: "https://youtu.be/x" },
-    { id: "d", name: "Cancellata", trackId: "t3", deleted: true },
-  ];
-  const qui = new Set(["t1"]);
-  t.eq("lassù c'è solo il file senza byte in casa", melodieLassu(favs, qui, true).map((f) => f.id).join(","), "b");
-  t.eq("YouTube non ha byte da nessuna parte", melodieLassu(favs, new Set(), true).some((f) => f.id === "c"), false);
-  t.eq("una lapide non è lassù", melodieLassu(favs, new Set(), true).some((f) => f.id === "d"), false);
-  // senza cloud collegato un file mancante è una melodia rotta, non «lassù»
-  t.eq("senza cloud niente nuvolette", melodieLassu(favs, qui, false).length, 0);
-  // e finché il conto di chi è in casa non è arrivato non si dice niente, o
-  // al primo disegno ogni melodia avrebbe la nuvoletta per un attimo
-  t.eq("senza il conto di casa niente nuvolette", melodieLassu(favs, null, true).length, 0);
-  t.eq("un elenco assente non esplode", melodieLassu(null, qui, true).length, 0);
 }
