@@ -19,6 +19,9 @@ export default async function (t) {
   t.c("`start_url` sta nello scope", String(manifest.start_url).startsWith(manifest.scope));
   t.c("display standalone", manifest.display === "standalone");
   t.c("nome, nome corto e descrizione", manifest.name && manifest.short_name && manifest.description);
+  // il nome corto e' l'etichetta sotto l'icona: Android lo tronca oltre i
+  // dodici caratteri, e Bubblewrap lo rifiuta — «Book Companion» ne ha 14
+  t.c("il nome corto sta in dodici caratteri", manifest.short_name.length <= 12, manifest.short_name);
   t.c("colori di fondo e di tema", /^#[0-9a-f]{6}$/i.test(manifest.background_color) && /^#[0-9a-f]{6}$/i.test(manifest.theme_color));
   t.c("lingua italiana", manifest.lang === "it");
 

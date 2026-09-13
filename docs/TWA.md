@@ -55,7 +55,13 @@ bubblewrap init --manifest https://book-companion-ruddy.vercel.app/manifest.json
 Alle domande di `init`:
 
 - **Application ID**: `it.bookcompanion.app` — è quello scritto in
-  `assetlinks.json`; se lo cambi, cambialo anche lì.
+  `assetlinks.json`; se lo cambi, cambialo anche lì. Il valore proposto
+  è il dominio di Vercel rovesciato: NON accettarlo.
+- **Short name**: `Companion` (massimo 12 caratteri: «Book Companion» ne
+  ha 14 e Bubblewrap propone «BkC»). È l'etichetta sotto l'icona.
+- Una risposta sbagliata si corregge dopo, senza rifare `init`: in
+  `twa-manifest.json` (`packageId`, `shortName`…), poi `bubblewrap update`
+  e `bubblewrap build`.
 - **Display mode**: `standalone`. **Orientation**: `default`.
 - **Status bar color / splash**: lascia quelli del manifest (`#0f0d1a`).
 - **Signing key**: lascialo creare un keystore nuovo e **conserva il file e
