@@ -82,6 +82,17 @@ bubblewrap build
 produce `app-release-signed.apk` (per provarlo sul tablet: `adb install`) e
 `app-release-bundle.aab` (per lo store).
 
+Le due password le chiede PRIMA di guardare se il keystore esiste: se non
+esiste, con quelle lo crea. Vanno scelte lì e segnate fuori dal PC: non
+stanno scritte in nessun file, e non si recuperano. Nel certificato
+(nome, organizzazione) va `Baldborne94`, non il nome vero: chiunque abbia
+l'APK lo può leggere.
+
+Se il `build` cade su «Could not reserve enough space for … object heap»,
+Gradle vuole 1,5 GB per il suo processo e Windows non glieli dà: in
+`gradle.properties` del progetto abbassa `org.gradle.jvmargs=-Xmx1536m`
+a `-Xmx1024m` (o `768m`) e rilancia.
+
 ## Collegare il guscio al sito
 
 Finché Android non trova il collegamento, l'app parte con la barra di Chrome
