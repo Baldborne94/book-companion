@@ -88,6 +88,22 @@ stanno scritte in nessun file, e non si recuperano. Nel certificato
 (nome, organizzazione) va `Baldborne94`, non il nome vero: chiunque abbia
 l'APK lo può leggere.
 
+Se il `build` cade su «Failed to load signer» e «android.keystore
+(Impossibile trovare il file specificato)», il keystore non è mai stato
+creato: `build` firma soltanto, la creazione sta nel giro di `init`. Si
+fa a mano dalla cartella del progetto, col `keytool` del JDK scaricato da
+Bubblewrap:
+
+```powershell
+& "$env:USERPROFILE\.bubblewrap\jdk\jdk-17.0.11+9\bin\keytool.exe" -genkeypair -v -keystore android.keystore -alias android -keyalg RSA -keysize 2048 -validity 10000
+```
+
+**E se il `build` fallisce nella firma, la password finisce IN CHIARO a
+schermo**: l'errore riporta l'intera riga di comando di `apksigner`,
+`--ks-pass pass:"…"` compreso. Una password vista in un terminale (o in
+uno screenshot) è da considerare bruciata: si rifà il keystore con
+un'altra, finché non ha firmato niente che sia uscito di casa.
+
 Se il `build` cade su «Could not reserve enough space for … object heap»,
 Gradle vuole 1,5 GB per il suo processo e Windows non glieli dà: in
 `gradle.properties` del progetto abbassa `org.gradle.jvmargs=-Xmx1536m`
