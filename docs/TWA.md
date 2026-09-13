@@ -126,10 +126,16 @@ in cima: non è un errore del guscio, è che manca la firma.
    keytool -list -v -keystore android.keystore -alias android | grep SHA256
    ```
 
-   Su PowerShell `grep` non c'è: `… | Select-String SHA256`. Se `keytool`
-   non si trova, sta nel JDK che Bubblewrap ha scaricato
-   (`~\.bubblewrap\jdk\…\bin\keytool.exe`), oppure usa
-   `bubblewrap fingerprint list`, che lo cerca da sé. Se pubblichi sul Play Store con
+   Su PowerShell, col `keytool` del JDK scaricato da Bubblewrap e senza
+   `grep`:
+
+   ```powershell
+   & "$env:USERPROFILE\.bubblewrap\jdk\jdk-17.0.11+9\bin\keytool.exe" -list -v -keystore android.keystore -alias android | Select-String SHA256
+   ```
+
+   **`bubblewrap fingerprint list` non serve a questo**: elenca le impronte
+   registrate in `twa-manifest.json`, che all'inizio sono zero, e risponde
+   senza dire niente. Se pubblichi sul Play Store con
    la firma gestita da Google, l'impronta giusta è quella in Play Console →
    *Integrità dell'app* → *Certificato della chiave di firma dell'app*, e
    di norma vanno messe **tutt'e due**, la tua e quella di Google.
