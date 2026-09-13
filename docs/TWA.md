@@ -57,8 +57,9 @@ Alle domande di `init`:
 - **Application ID**: `it.bookcompanion.app` — è quello scritto in
   `assetlinks.json`; se lo cambi, cambialo anche lì. Il valore proposto
   è il dominio di Vercel rovesciato: NON accettarlo.
-- **Short name**: `Companion` (massimo 12 caratteri: «Book Companion» ne
-  ha 14 e Bubblewrap propone «BkC»). È l'etichetta sotto l'icona.
+- **Short name**: `Grimorio` (massimo 12 caratteri: «Book Companion» ne
+  ha 14 e Bubblewrap propone «BkC»). È l'etichetta sotto l'icona, e nel
+  `twa-manifest.json` il campo si chiama `launcherName`.
 - Una risposta sbagliata si corregge dopo, senza rifare `init`: in
   `twa-manifest.json`, poi `bubblewrap update` e `bubblewrap build`. I campi
   non si chiamano come le domande: il nome corto è **`launcherName`**,
