@@ -8,7 +8,7 @@ import { caricaCopertina } from "../lib/sync.js";
 import { chiaveGlossario, vociDi, salvaVoci, togli } from "../lib/glossarioMio.js";
 import { getCfi } from "../lib/annotations.js";
 import { frontiera } from "../lib/frontiera.js";
-import { soloDellaSerie, perchePrimaTace } from "../lib/trama.js";
+import { soloDellaSerie, perchePrimaTace, fraseTace } from "../lib/trama.js";
 import { TUTTI } from "../data/generi.js";
 import BookCover from "./BookCover.jsx";
 
@@ -28,23 +28,6 @@ const STATUSES = [
   { id: "read", label: "Letto", color: "green" },
   { id: "abandoned", label: "Abbandonato", color: "red" },
 ];
-
-// le parole per ogni anello rotto della catena di «Prima di cominciare»:
-// ognuna dice cosa manca E dove si mette a posto, o la riga sarebbe solo
-// un mistero spiegato con un altro mistero
-function fraseTace(t) {
-  if (t.perche === "soli")
-    return `nessun altro libro in biblioteca ha «${t.saga}» nel campo Saga — se i volumi precedenti ci sono, guarda com'è scritta la saga sulle loro schede`;
-  if (t.perche === "senzaNumero")
-    return "questo volume non ha il numero di lettura, e senza numero non so cosa viene prima";
-  if (t.perche === "numeri")
-    return `nessun altro volume di «${t.saga}» ha un numero di lettura minore di ${t.ordine} — metti i numeri sulle loro schede e saprò cosa viene prima`;
-  if (t.perche === "stato")
-    return t.quanti === 1
-      ? "il volume precedente non risulta «Letto», né «In lettura» con un segno di pagina"
-      : `nessuno dei ${t.quanti} volumi precedenti risulta «Letto», né «In lettura» con un segno di pagina`;
-  return `${t.quanti === 1 ? "il volume precedente letto dichiara" : `i ${t.quanti} volumi precedenti letti dichiarano`} una Serie diversa da «${t.serie}» — correggi la loro, o svuota questa per contare tutta la saga`;
-}
 
 // LETTO AL RENDER, NON AL CARICAMENTO DEL MODULO. Era un oggetto costante,
 // e un oggetto costante congela i valori che legge: questo file e' importato
