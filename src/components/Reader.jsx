@@ -19,7 +19,7 @@ import { contentStyles, spegniVuoti, curaParagrafi, MODI_PARAGRAFI, spegniScenog
 import { ritaglioAvanzo, flattenToc, cfiLeggibile, ultimoSegnalibro } from "../lib/readerLayout.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
-import { explain, termIndex, normalize, wikiUrl, haGlossario } from "../lib/glossary.js";
+import { explain, termIndex, normalize, wikiUrl, haGlossario, termAt } from "../lib/glossary.js";
 import { contextAround } from "../lib/oracle.js";
 import { sillaba } from "../lib/hyphens.js";
 import { eNotaRef, risolviHref, trovaNota, pezziNota, piuVicina } from "../lib/nota.js";
@@ -77,65 +77,6 @@ const POSIZIONI_PER_PAGINA = 3;
 const isTouch = () => navigator.maxTouchPoints > 0;
 const GOOGLE_FONT_CSS =
   "@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap');";
-
-// La parola sotto il dito, non il segno disegnato sopra: cosi' risponde ogni
-// occorrenza e non solo quella marcata, e il tocco non deve contendersi
-// l'evento con la fascia del cambio pagina.
-function termAt(doc, x, y, ix) {
-  let node = null;
-  let offset = 0;
-  if (doc.caretRangeFromPoint) {
-    const r = doc.caretRangeFromPoint(x, y);
-    if (r) {
-      node = r.startContainer;
-      offset = r.startOffset;
-    }
-  } else if (doc.caretPositionFromPoint) {
-    const pos = doc.caretPositionFromPoint(x, y);
-    if (pos) {
-      node = pos.offsetNode;
-      offset = pos.offset;
-    }
-  }
-  if (!node || node.nodeType !== 3) return null;
-  const text = node.nodeValue || "";
-  const parola = /[\p{L}\p{N}'’-]/u;
-  let da = offset;
-  let a = offset;
-  while (da > 0 && parola.test(text[da - 1])) da -= 1;
-  while (a < text.length && parola.test(text[a])) a += 1;
-  if (a <= da) return null;
-  // un nome puo' essere composto: si guarda anche una parola prima e due dopo
-  let sinistra = da;
-  for (let i = 0; i < 1 && sinistra > 0; i++) {
-    let j = sinistra - 1;
-    while (j > 0 && !parola.test(text[j - 1]) && text[j - 1] === " ") j -= 1;
-    while (j > 0 && parola.test(text[j - 1])) j -= 1;
-    sinistra = j;
-  }
-  let destra = a;
-  for (let i = 0; i < 2 && destra < text.length; i++) {
-    let j = destra;
-    while (j < text.length && text[j] === " ") j += 1;
-    while (j < text.length && parola.test(text[j])) j += 1;
-    destra = j;
-  }
-  const candidati = [
-    text.slice(sinistra, destra),
-    text.slice(da, destra),
-    text.slice(sinistra, a),
-    text.slice(da, a),
-  ];
-  for (const c of candidati) {
-    const pulito = c.trim();
-    if (!pulito) continue;
-    const e = ix.map.get(normalize(pulito));
-    // il nome proprio vale solo se nel testo e' scritto con la maiuscola
-    if (e && (!/^\p{Lu}/u.test(e.t) || /^\p{Lu}/u.test(pulito))) return e;
-  }
-  return null;
-}
-
 
 
 // Il riquadro segue la scritta che ci sta dentro: con `F.titoletto` a due
