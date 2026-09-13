@@ -75,4 +75,35 @@ export default async function (t) {
     const pari = mergePrefs({ ...local, music_favs: merged.music_favs, music_lists: merged.music_lists, updated_at: 150 }, { ...remote, music_favs: merged.music_favs, music_lists: merged.music_lists });
     t.c("in pari non si riscrive qui", !pari.applyLocal);
   }
+
+  // ---- I FILE NON VIAGGIANO: OGNI DISPOSITIVO HA I SUOI ---------------------
+  // Deciso dal lettore: «ogni dispositivo ha i suoi file e condivide solo i
+  // link». Una voce con `trackId` resta dov'è nata — non sale, e se ne
+  // arriva una da lassù (scritta da una versione vecchia dell'app) non
+  // entra. Sbaglia in silenzio da tutt'e due i lati: un file che sale è un
+  // nome che non suona sull'altro dispositivo, un file che non si riscrive
+  // qui è una melodia che sparisce alla prima sincronizzazione.
+  {
+    const mioFile = { id: "f1", name: "Pioggia", trackId: "t1", addedAt: 105, updatedAt: 105 };
+    const suoFile = { id: "f2", name: "Camino (dal tablet)", trackId: "t2", addedAt: 120, updatedAt: 120 };
+    const lapideFile = { id: "f3", name: "Vento", trackId: "t3", deleted: true, addedAt: 90, updatedAt: 130 };
+    const local = { music_favs: [mioFile, f("a"), lapideFile], music_lists: [], glossari: {}, updated_at: 100 };
+    const remote = { music_favs: [suoFile, f("b", { addedAt: 110 })], music_lists: [], glossari: {}, updated_at: 150 };
+    const { merged, favsLocali, applyLocal, pushRemote } = mergePrefs(local, remote);
+    t.eq("lassù vanno i soli link", insieme(merged.music_favs), "a,b");
+    t.c("il mio file non sale", !merged.music_favs.some((x) => x.trackId));
+    t.c("e nemmeno la sua lapide", !merged.music_favs.some((x) => x.id === "f3"));
+    t.eq("qui si scrivono i link fusi più i miei file", insieme(favsLocali), "a,b,f1,f3");
+    t.c("il file dell'altro dispositivo non entra", !favsLocali.some((x) => x.id === "f2"));
+    t.c("la lapide del mio file resta qui (serve a non farlo risorgere dall'archivio)", favsLocali.some((x) => x.id === "f3" && x.deleted));
+    t.c("qui c'è da scrivere: è arrivato «b»", applyLocal);
+    t.c("e lassù pure: manca «a», e c'è un file da togliere", pushRemote);
+    // in pari: il cloud coi soli link, qui link più file — non si riscrive
+    const pari = mergePrefs({ ...local, music_favs: favsLocali, updated_at: 150 }, { ...remote, music_favs: merged.music_favs });
+    t.c("in pari non si riscrive qui", !pari.applyLocal);
+    t.c("né lassù", !pari.pushRemote);
+    // l'ordine resta quello di nascita anche coi file rimessi dentro: il
+    // mio file (105) sta fra «a» (100) e «b» (110), non in coda
+    t.eq("l'ordine di nascita si tiene", ids(favsLocali), "f3,a,f1,b");
+  }
 }

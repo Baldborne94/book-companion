@@ -44,7 +44,6 @@ import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
 import { getSession, syncNow, localFileIds, onAuthChange } from "./lib/sync.js";
-import { FRASI_MELODIA } from "./lib/syncCore.js";
 import { useViewport } from "./lib/viewport.js";
 
 // L'ingresso porta l'insegna dell'atmosfera scelta: candela di notte,
@@ -774,29 +773,13 @@ export default function App() {
       if (res.books) setBooks(res.books);
       setLocalIds(await localFileIds());
       const moved = (res.pulled || 0) + (res.pushed || 0) + (res.removed || 0);
-      // le melodie hanno un conto loro: sono poche e pesanti, e quando una
-      // non sale bisogna dirlo invece di lasciar credere che sia al sicuro
-      const musica = res.melodieSu
-        ? ` · ${res.melodieSu} ${res.melodieSu === 1 ? "melodia portata" : "melodie portate"} nel cloud`
-        : "";
-      // la causa e' quella che ha risposto il server, mai un indovinello:
-      // «forse lo spazio e' finito» era una frase di ripiego, e sbagliata
-      const perche = (res.melodiePerche || [])
-        .map((p) => FRASI_MELODIA[p])
-        .filter(Boolean)
-        .join("; ");
-      const guai = res.melodieNo
-        ? ` · ${res.melodieNo} ${res.melodieNo === 1 ? "melodia non è salita" : "melodie non sono salite"}: ${perche || FRASI_MELODIA.boh}`
-        : "";
       setSync({
         busy: false,
-        message: `${moved ? `Aggiornati ${moved} elementi` : "Tutto già allineato"}${musica}${guai}`,
+        message: moved ? `Aggiornati ${moved} elementi` : "Tutto già allineato",
         at: Date.now(),
         signedIn: true,
       });
-      if (!quiet && res.melodieNo) {
-        notify(`${res.melodieNo === 1 ? "Una melodia non è salita" : `${res.melodieNo} melodie non sono salite`} nel cloud: ${perche || FRASI_MELODIA.boh}`);
-      } else if (!quiet && moved) notify("Biblioteca sincronizzata ✨");
+      if (!quiet && moved) notify("Biblioteca sincronizzata ✨");
     } catch (e) {
       setSync((s) => ({ ...s, busy: false, message: `Sincronizzazione fallita: ${e?.message || "errore"}` }));
       if (!quiet) notify("Sincronizzazione fallita — riprovo più tardi");
@@ -1111,7 +1094,7 @@ export default function App() {
             }}
           />
         )}
-        {section === "music" && <MusicRoom music={music} playerRef={playerRef} notify={notify} collegato={sync.signedIn} />}
+        {section === "music" && <MusicRoom music={music} playerRef={playerRef} notify={notify} />}
       </main>
       </div>
       <BottomNav section={section} goTo={navigate} themeId={themeId} />

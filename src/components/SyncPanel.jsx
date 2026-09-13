@@ -33,8 +33,8 @@ function Spazio({ dati }) {
       <BarraCloud dati={dati} />
       {pieno > PIENO && (
         <p style={{ margin: "8px 0 0", fontSize: F.minuscolo, color: C.accent, lineHeight: 1.45 }}>
-          Lo spazio sta finendo. Le melodie pesano molto più dei libri: quelle che non ti servono a
-          schermo spento possono tornare a essere un link YouTube, che non occupa niente.
+          Lo spazio sta finendo. Un libro che non rileggerai può uscire dalla biblioteca, e i file
+          audio non salgono più: se lassù ne restano, la prossima sincronizzazione li toglie.
         </p>
       )}
     </div>
