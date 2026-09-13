@@ -22,12 +22,33 @@ Quello che il repository fornisce già:
 
 ## Costruire l'APK
 
-Serve Node, il JDK 17 e l'SDK Android; Bubblewrap li scarica da sé alla
-prima chiamata.
+Serve **Node** (LTS, da <https://nodejs.org> o `winget install
+OpenJS.NodeJS.LTS`); il JDK 17 e l'SDK Android li scarica Bubblewrap da sé
+alla prima chiamata. Si lavora in una cartella tua (`cd ~`), in una
+PowerShell **normale**, non da amministratore — quella si apre in
+`C:\WINDOWS\system32` e non è un posto dove tenere un progetto. Dopo aver
+installato Node, e di nuovo dopo `npm i -g`, apri una finestra nuova: il
+percorso dei comandi si legge solo all'apertura, e finché non lo fai
+`npm` o `bubblewrap` risultano «non riconosciuti». E se `npm -v` risponde
+«L'esecuzione di script è disabilitata nel sistema in uso», è la politica
+di esecuzione di PowerShell (`npm` è uno script `.ps1`): si sblocca una
+volta sola con `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`,
+oppure si chiama la versione `.cmd` (`npm.cmd`, `bubblewrap.cmd`), che
+non passa da PowerShell.
 
 ```sh
 npm i -g @bubblewrap/cli
 mkdir book-companion-twa && cd book-companion-twa
+bubblewrap init --manifest https://book-companion-ruddy.vercel.app/manifest.json
+```
+
+Su **Windows PowerShell** (5.1, quella di sistema) il `&&` non esiste: i
+comandi vanno uno per riga.
+
+```powershell
+npm i -g @bubblewrap/cli
+mkdir book-companion-twa
+cd book-companion-twa
 bubblewrap init --manifest https://book-companion-ruddy.vercel.app/manifest.json
 ```
 
@@ -62,7 +83,10 @@ in cima: non è un errore del guscio, è che manca la firma.
    keytool -list -v -keystore android.keystore -alias android | grep SHA256
    ```
 
-   (oppure `bubblewrap fingerprint list`). Se pubblichi sul Play Store con
+   Su PowerShell `grep` non c'è: `… | Select-String SHA256`. Se `keytool`
+   non si trova, sta nel JDK che Bubblewrap ha scaricato
+   (`~\.bubblewrap\jdk\…\bin\keytool.exe`), oppure usa
+   `bubblewrap fingerprint list`, che lo cerca da sé. Se pubblichi sul Play Store con
    la firma gestita da Google, l'impronta giusta è quella in Play Console →
    *Integrità dell'app* → *Certificato della chiave di firma dell'app*, e
    di norma vanno messe **tutt'e due**, la tua e quella di Google.
@@ -75,8 +99,11 @@ in cima: non è un errore del guscio, è che manca la firma.
    curl https://book-companion-ruddy.vercel.app/.well-known/assetlinks.json
    ```
 
-   Deve tornare il JSON, non l'HTML dell'app (il service worker lo esclude
-   apposta dal ripiego, `navigateFallbackDenylist`).
+   Su PowerShell `curl` è un alias di `Invoke-WebRequest` e chiede
+   conferma con un avviso sugli script: rispondi `S`, oppure scrivi
+   `curl.exe`, che è il curl vero. Deve tornare il JSON, non l'HTML
+   dell'app (il service worker lo esclude apposta dal ripiego,
+   `navigateFallbackDenylist`).
 4. Reinstalla l'APK: al primo avvio dopo il deploy la barra sparisce.
 
 ## Aggiornare
