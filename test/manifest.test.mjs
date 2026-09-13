@@ -19,6 +19,9 @@ export default async function (t) {
   t.c("`start_url` sta nello scope", String(manifest.start_url).startsWith(manifest.scope));
   t.c("display standalone", manifest.display === "standalone");
   t.c("nome, nome corto e descrizione", manifest.name && manifest.short_name && manifest.description);
+  // il nome corto e' l'etichetta sotto l'icona: Android lo tronca oltre i
+  // dodici caratteri, e Bubblewrap lo rifiuta — «Book Companion» ne ha 14
+  t.c("il nome corto sta in dodici caratteri", manifest.short_name.length <= 12, manifest.short_name);
   t.c("colori di fondo e di tema", /^#[0-9a-f]{6}$/i.test(manifest.background_color) && /^#[0-9a-f]{6}$/i.test(manifest.theme_color));
   t.c("lingua italiana", manifest.lang === "it");
 
@@ -30,6 +33,10 @@ export default async function (t) {
   for (const i of manifest.icons) {
     t.c(`l'icona ${i.src} sta in public/`, existsSync(new URL(`public${i.src}`, radice)), i.src);
   }
+  // Bubblewrap prende la PRIMA icona adatta e la rasterizza con una
+  // libreria che l'SVG non lo legge: con l'SVG in testa `init` lo sceglie
+  // e il `build` casca su «could not load icon» (visto dal vivo)
+  t.c("la prima icona e' un PNG, non l'SVG", manifest.icons[0].type === "image/png", manifest.icons[0].src);
   for (const s of manifest.shortcuts || []) {
     for (const i of s.icons || []) t.c(`l'icona della scorciatoia «${s.name}» esiste`, existsSync(new URL(`public${i.src}`, radice)));
   }
