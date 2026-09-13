@@ -12,7 +12,7 @@ App PWA per la biblioteca personale dell'utente: carica i **suoi** EPUB/PDF, li 
 
 **Scope di questa milestone (deciso dall'utente):** Libreria + Reader + Player **solo YouTube**. Niente Spotify (vedi §6), niente Supabase/login per ora: tutto **local-first** (IndexedDB + localStorage). Sync cloud, statistiche e i18n verranno dopo.
 
-**Dispositivo principale dell'utente: tablet Android.** La strada scelta è PWA installata da Chrome (niente APK per ora): su Android una PWA installata ha schermo intero, storage persistente e offline completo. Se un domani servissero vantaggi nativi (audio a schermo spento, "Apri con" per gli EPUB), si aggiunge una fase dedicata TWA/Capacitor **senza riscrivere nulla** — la decisione non è irreversibile.
+**Dispositivo principale dell'utente: tablet Android.** La strada scelta è PWA installata da Chrome: su Android una PWA installata ha schermo intero, storage persistente e offline completo. Dalla Fase H la stessa PWA ha anche un **guscio TWA** (`docs/TWA.md`): l'APK apre il sito, niente è stato riscritto, e l'«Apri con» per EPUB e PDF arriva dal manifest. L'audio a schermo spento resterebbe una fase Capacitor, e non risolve YouTube.
 
 ## 2. Stato del repo
 
@@ -144,7 +144,18 @@ Chi legge in inglese inciampa in due cose che il dizionario non copre: i nomi pr
 - **G3 ✅ (Oracolo)** — Quando glossario e dizionario non bastano, il senso sta nel **contesto**: `lib/oracle.js` manda passaggio + paragrafo + titolo del libro all'API Anthropic (modello `claude-opus-5`, chiamata diretta dal browser con l'header `anthropic-dangerous-direct-browser-access`) e riceve una spiegazione in italiano, 2–5 frasi, senza spoiler oltre il punto mostrato. La chiave API è dell'utente, sta in `bc_ai_key` sul dispositivo e si imposta **dentro la scheda del dizionario**, dove serve, non in un pannello da scoprire. Il paragrafo attorno si cattura al momento della selezione (`contextAround`) perché al primo tocco sul menu la selezione è già svanita. Risposte in cache di sessione; errori distinti: chiave rifiutata (si ripropone il campo), rete assente, API muta (riprova).
 - **G4** (da valutare) — Estratto del wiki dal vivo via API MediaWiki, con ripiego sulla voce locale quando la rete o il CORS non collaborano.
 
-### Dopo (fuori scope, non iniziare): statistiche di lettura, obiettivi, i18n EN, suite E2E Playwright (riusare l'harness di wh-companion), eventuale wrap TWA/Capacitor per APK (audio a schermo spento, "Apri con" per EPUB).
+### Fase H — Il guscio Android (TWA) ✅
+
+Deciso dal lettore («vai di TWA»). L'app resta la PWA: il guscio è un APK che la apre a schermo intero e la fa comparire fra le app. Nel repository sta tutto quello che il guscio pretende dal sito; l'APK si costruisce fuori, con Bubblewrap, e la guida è `docs/TWA.md`.
+- `public/manifest.json`: `id`, `scope`, `display_override`, `launch_handler: focus-existing`, `categories`, icona **monocroma** (temi di Android 13), **`shortcuts`** (Libreria, Musica) e **`file_handlers`** per `.epub`/`.pdf` — l'«Apri con» che il piano nominava come primo vantaggio nativo.
+- `lib/lancio.js`: `sezioneDaUrl` (le scorciatoie arrivano come `/?apri=libreria`, si legge prima del primo render e poi l'URL si ripulisce tenendo lo `state`, dove `indietro.js` segna la guardia), `fileDaLancio` (dai `FileSystemFileHandle` di `launchQueue` ai `File`, un handle rotto non porta via gli altri). `App.jsx` registra il consumatore una volta per tutta la vita dell'app e passa i file alla Libreria (`daImportare`/`onImportati`), che li fa entrare dalla stessa porta dell'input.
+- `public/.well-known/assetlinks.json` con package `it.bookcompanion.app` e il **segnaposto** dell'impronta: quella ce l'ha solo chi firma l'APK. Fuori dal ripiego del service worker (`navigateFallbackDenylist`), o Android leggerebbe l'HTML dell'app e terrebbe la barra del browser in cima per sempre.
+- **La privacy a un URL**: `public/privacy.html` generata da `PRIVACY.md` a ogni build (`scripts/privacy.mjs`, convertitore minimo in `scripts/markdown.mjs`), fuori dal ripiego e dal guscio React. `PRIVACY.md` aggiornato: le melodie da file non salgono più, la saga chiesta al catalogo, il dizionario offline, il guscio stesso.
+- `version` in `package.json` (1.0.0) dentro il timbro in fondo alla Libreria e nel reader.
+- Test: `manifest.test.mjs` (il contratto col sistema: scope, icone che esistono, scorciatoie verso sezioni vere, «Apri con» che accetta quel che `importFiles` accetta, forma di `assetlinks`, denylist), `lancio.test.mjs`, `markdown.test.mjs` (il documento vero passa senza segni crudi e la pagina in `public/` è in pari).
+- Fuori, e dichiarato in `docs/TWA.md`: `share_target` con POST (vorrebbe un service worker scritto a mano), la musica a schermo spento (Capacitor, e non per YouTube).
+
+### Dopo (fuori scope, non iniziare): statistiche di lettura, obiettivi, i18n EN, suite E2E Playwright (riusare l'harness di wh-companion), Capacitor per l'audio in primo piano.
 
 ## 5. Ordine e granularità
 
@@ -179,6 +190,6 @@ Su wh-companion l'embed Spotify dava problemi: il controllo `postMessage` dell'i
 
 A ogni fase completata, spunta qui lo stato (✅) così le sessioni successive sanno dove siamo.
 
-Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ · F-sync ✅ · G1-glossario ✅ · G2-segni ✅ · G3-oracolo ✅ — milestone completa 🎉
+Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ · F-sync ✅ · G1-glossario ✅ · G2-segni ✅ · G3-oracolo ✅ · H-guscio ✅ — milestone completa 🎉
 
 Dopo la milestone, sulla frontiera di lettura (`lib/frontiera.js`): «Chi è costui?» in tutti e due i reader e «Dove eravamo rimasti» (`lib/trama.js`), scheda condivisa in `components/SchedaOracolo.jsx` con dentro il campo per la chiave. Il dettaglio sta in `CLAUDE.md`.

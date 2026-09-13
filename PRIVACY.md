@@ -1,6 +1,6 @@
 # Informativa sulla privacy — Book Companion
 
-Ultimo aggiornamento: 30 agosto 2026
+Ultimo aggiornamento: 13 settembre 2026
 
 Book Companion è un lettore di ebook **local-first**: i tuoi libri, i tuoi
 segni di lettura e le tue annotazioni stanno sul tuo dispositivo, e ci
@@ -28,9 +28,17 @@ locale**, dentro il browser:
 - le **melodie** che carichi come file, e le raccolte musicali.
 
 Questi dati non vengono inviati da nessuna parte, non li legge nessuno, e
-si cancellano cancellando i dati del sito dal browser o disinstallando la
-PWA. Il tasto **«Esporta biblioteca»** ne fa un archivio `.zip` che resta
+si cancellano cancellando i dati del sito dal browser o disinstallando
+l'app. Il tasto **«Esporta biblioteca»** ne fa un archivio `.zip` che resta
 tuo: dove lo salvi lo decidi tu, l'app non lo vede più.
+
+L'app installata dallo store Android è **la stessa pagina web** dentro un
+guscio (Trusted Web Activity): i dati stanno nel profilo del browser del
+dispositivo, esattamente come nella versione installata da Chrome, e il
+guscio non aggiunge nessun accesso, nessun permesso e nessun servizio.
+Quando apri un file EPUB o PDF «con» Book Companion, il sistema passa
+all'app quel solo file, che entra in biblioteca come se l'avessi caricato
+dal tasto.
 
 ## 2. Quello che esce solo se lo accendi tu
 
@@ -44,11 +52,14 @@ da Row Level Security — questi dati:
 
 - **i file dei libri e le loro copertine**, in un bucket privato;
 - i metadati della biblioteca e i segni di lettura elencati al punto 1;
-- le preferenze, le raccolte musicali, il glossario che hai scritto;
-- **le melodie che hai caricato come file**;
+- le preferenze, le raccolte musicali, i **link YouTube** salvati e il
+  glossario che hai scritto;
 - il tuo **indirizzo e-mail** e la password (gestiti da Supabase Auth: la
   password è conservata da loro sotto forma di hash, l'app non la vede mai
   e non la salva).
+
+**Le melodie caricate come file NON salgono**: ogni dispositivo tiene i
+suoi, e nel cloud viaggiano solo i link.
 
 Puoi non accenderla mai: l'app funziona identica senza. Se la spegni e
 cancelli l'account, quei dati vanno via con lui.
@@ -97,6 +108,8 @@ qualunque richiesta web porta con sé.
 | Tocchi «cerca su Google» nella scheda del dizionario | `www.google.com` | la parola (apri tu il link) |
 | Un termine ha la voce sul wiki del Mondo Disco | `discworld.fandom.com` | il termine (apri tu il link) |
 | Un libro non ha la quarta di copertina nel file | `www.googleapis.com/books`, `openlibrary.org` | titolo e autore di quel libro |
+| Un libro non dichiara la saga né nel file né nel titolo | `openlibrary.org` | titolo e autore di quel libro |
+| Scarichi il dizionario offline dalle Impostazioni | il nostro stesso sito | niente: è un file statico, come l'app |
 | Sempre, per i caratteri della pagina | `fonts.googleapis.com`, `fonts.gstatic.com` | niente, oltre alla richiesta stessa |
 
 Due avvertenze oneste:
@@ -104,10 +117,11 @@ Due avvertenze oneste:
 - **MyMemory è una memoria di traduzione condivisa.** Le richieste
   anonime possono finire nel loro archivio pubblico. Esce una parola
   singola alla volta, mai una frase del libro, ma vale la pena saperlo.
-- **La ricerca del retro di copertina fa uscire titolo e autore** di quel
-  libro verso un catalogo bibliografico. È l'unico punto in cui un titolo
-  esce dal dispositivo, ed è dichiarato nell'app sotto il testo trovato
-  («Dal catalogo in rete»).
+- **La ricerca del retro di copertina e della saga fa uscire titolo e
+  autore** di quel libro verso un catalogo bibliografico. Sono gli unici
+  punti in cui un titolo esce dal dispositivo, e sono dichiarati nell'app
+  («Dal catalogo in rete» sotto il testo trovato, «saga letta dal
+  catalogo» nel resoconto).
 
 ## 4. Quello che non c'è
 
