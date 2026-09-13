@@ -4,52 +4,47 @@
       <stop offset="0" stop-color="#1a1430"/>
       <stop offset="1" stop-color="#0d0b16"/>
     </linearGradient>
-    <radialGradient id="alone" cx="50%" cy="46%" r="50%">
-      <stop offset="0" stop-color="#d9a94e" stop-opacity="0.34"/>
-      <stop offset="0.55" stop-color="#9b7fd4" stop-opacity="0.12"/>
+    <radialGradient id="alone" cx="50%" cy="46%" r="52%">
+      <stop offset="0" stop-color="#d9a94e" stop-opacity="0.30"/>
+      <stop offset="0.6" stop-color="#9b7fd4" stop-opacity="0.10"/>
       <stop offset="1" stop-color="#9b7fd4" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="copertina" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#3a2b56"/>
+      <stop offset="0" stop-color="#3d2d5c"/>
       <stop offset="1" stop-color="#241a3a"/>
     </linearGradient>
     <linearGradient id="oro" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f0cf82"/>
+      <stop offset="0" stop-color="#f3d489"/>
       <stop offset="1" stop-color="#c08f35"/>
     </linearGradient>
   </defs>
 
   <rect width="512" height="512" rx="104" fill="url(#fondo)"/>
-  <circle cx="256" cy="236" r="230" fill="url(#alone)"/>
+  <circle cx="256" cy="248" r="226" fill="url(#alone)"/>
 
-  <!-- taglio delle pagine, a destra -->
-  <path d="M366 118 h26 a10 10 0 0 1 10 10 v256 a10 10 0 0 1 -10 10 h-26 z" fill="#e9dcbd"/>
-  <path d="M392 132 h10 M392 168 h10 M392 204 h10 M392 240 h10 M392 276 h10 M392 312 h10 M392 348 h10"
-        stroke="#c4b088" stroke-width="4" stroke-linecap="round"/>
-
-  <!-- dorso -->
-  <path d="M112 118 h34 v276 h-34 a10 10 0 0 1 -10 -10 v-256 a10 10 0 0 1 10 -10 z" fill="#1d1531"/>
-  <path d="M120 160 h18 M120 200 h18 M120 240 h18 M120 280 h18 M120 320 h18"
-        stroke="url(#oro)" stroke-width="7" stroke-linecap="round" opacity="0.75"/>
-
-  <!-- copertina -->
-  <rect x="146" y="118" width="226" height="276" rx="12" fill="url(#copertina)"
-        stroke="url(#oro)" stroke-width="11"/>
-  <rect x="172" y="146" width="174" height="220" rx="7" fill="none"
-        stroke="url(#oro)" stroke-width="5" opacity="0.65"/>
-
-  <!-- sigillo: stella a otto punte -->
-  <g transform="translate(259 256)">
-    <circle r="56" fill="none" stroke="url(#oro)" stroke-width="6" opacity="0.85"/>
-    <path d="M0 -72 L13 -20 L64 -36 L27 0 L64 36 L13 20 L0 72 L-13 20 L-64 36 L-27 0 L-64 -36 L-13 -20 Z"
-          fill="url(#oro)"/>
-    <circle r="13" fill="#1d1531"/>
+  <!-- il tomo, centrato: nessun taglio di pagine chiaro, tutto oro su notte -->
+  <g>
+    <!-- dorso -->
+    <path d="M128 108 h40 v296 h-40 a14 14 0 0 1 -14 -14 v-268 a14 14 0 0 1 14 -14 z"
+          fill="#1d1531" stroke="url(#oro)" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M134 168 h28 M134 216 h28 M134 296 h28 M134 344 h28"
+          stroke="url(#oro)" stroke-width="8" stroke-linecap="round" opacity="0.8"/>
+    <!-- copertina -->
+    <rect x="168" y="108" width="216" height="296" rx="14" fill="url(#copertina)"
+          stroke="url(#oro)" stroke-width="11"/>
+    <!-- filetto interno -->
+    <rect x="194" y="136" width="164" height="240" rx="8" fill="none"
+          stroke="url(#oro)" stroke-width="5" opacity="0.6"/>
   </g>
 
-  <!-- fermaglio -->
-  <path d="M352 238 h38 a12 12 0 0 1 12 12 v12 a12 12 0 0 1 -12 12 h-38 z" fill="url(#oro)"/>
+  <!-- sigillo a otto punte -->
+  <g transform="translate(276 256)">
+    <circle r="58" fill="none" stroke="url(#oro)" stroke-width="6" opacity="0.8"/>
+    <path d="M0 -74 L13 -21 L66 -37 L28 0 L66 37 L13 21 L0 74 L-13 21 L-66 37 L-28 0 L-66 -37 L-13 -21 Z"
+          fill="url(#oro)"/>
+    <circle r="14" fill="#241a3a"/>
+  </g>
 
-  <!-- scintille -->
-  <path d="M404 92 l9 24 24 9 -24 9 -9 24 -9 -24 -24 -9 24 -9 z" fill="#c9b0f0" opacity="0.95"/>
-  <path d="M96 402 l6 16 16 6 -16 6 -6 16 -6 -16 -16 -6 16 -6 z" fill="#d9a94e" opacity="0.9"/>
+  <!-- scintilla, una sola -->
+  <path d="M408 104 l9 24 24 9 -24 9 -9 24 -9 -24 -24 -9 24 -9 z" fill="#c9b0f0" opacity="0.9"/>
 </svg>
