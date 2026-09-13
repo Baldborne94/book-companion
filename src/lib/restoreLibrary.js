@@ -21,8 +21,12 @@ export function planRestore({ archiveBooks = [], localBooks = [], localFileIds =
   const kept = [];
   for (const b of archiveBooks) {
     if (!b?.id) continue;
-    if (!known.has(b.id)) add.push(b);
-    else {
+    if (!known.has(b.id)) {
+      add.push(b);
+      // lo stesso id due volte nell'archivio entrava due volte, cioe' due
+      // schede con lo stesso id in biblioteca (preso dal test)
+      known.add(b.id);
+    } else {
       kept.push(b);
       if (!localFileIds.has(b.id)) fill.push(b);
     }
