@@ -120,6 +120,90 @@ export function scan(indexes, raw) {
   return out;
 }
 
+// LA PAROLA SOTTO IL DITO, non il segno disegnato sopra: cosi' risponde ogni
+// occorrenza e non solo quella marcata, e il tocco non deve contendersi
+// l'evento con la fascia del cambio pagina. Stava in `Reader.jsx`, fuori
+// dalla portata di ogni test, ed e' una regola che sbaglia in silenzio da
+// tutt'e due i lati: un nome composto letto a meta' non alza errori, apre
+// la scheda sbagliata o non la apre affatto.
+//
+// La parte pura prende il TESTO del nodo e l'offset del caret: dal caret si
+// allarga alla parola, poi si guarda una parola prima e due dopo — un nome
+// puo' essere composto («Sam Vimes», «Lord Havelock Vetinari») — e si
+// prova dal candidato piu' lungo al piu' corto. Solo lo SPAZIO unisce due
+// parole: una virgola in mezzo e' un confine, o «Vimes, Carrot» farebbe un
+// nome solo.
+//
+// E SI PROVANO TUTTE LE FINESTRE, non quattro: prima i candidati erano i
+// soli quattro angoli (tutto, senza la parola prima, senza le due dopo,
+// la parola sola), quindi toccando «Sam» in «Sam Vimes walked in» si
+// provavano «Sam Vimes walked» e «Sam» ma MAI «Sam Vimes» — il nome
+// composto rispondeva solo toccato sull'ultima parola, o a fine frase.
+// Nessun errore: la scheda semplicemente non si apriva (preso dal test).
+const PAROLA = /[\p{L}\p{N}'’-]/u;
+
+export function termineIn(text, offset, ix) {
+  text = String(text || "");
+  let da = offset;
+  let a = offset;
+  while (da > 0 && PAROLA.test(text[da - 1])) da -= 1;
+  while (a < text.length && PAROLA.test(text[a])) a += 1;
+  if (a <= da) return null;
+  // i confini possibili a sinistra (una parola prima) e a destra (due dopo)
+  const inizi = [da];
+  if (da > 0) {
+    let j = da - 1;
+    while (j > 0 && text[j - 1] === " ") j -= 1;
+    while (j > 0 && PAROLA.test(text[j - 1])) j -= 1;
+    if (j < da && PAROLA.test(text[j])) inizi.push(j);
+  }
+  const fini = [a];
+  let destra = a;
+  for (let i = 0; i < 2 && destra < text.length; i++) {
+    let j = destra;
+    while (j < text.length && text[j] === " ") j += 1;
+    if (j >= text.length || !PAROLA.test(text[j])) break;
+    while (j < text.length && PAROLA.test(text[j])) j += 1;
+    destra = j;
+    fini.push(j);
+  }
+  const candidati = [];
+  for (const i of inizi) for (const f of fini) candidati.push(text.slice(i, f));
+  candidati.sort((p, q) => q.length - p.length);
+  for (const c of candidati) {
+    const pulito = c.trim();
+    if (!pulito) continue;
+    const e = ix.map.get(norm(pulito));
+    // il nome proprio vale solo se nel testo e' scritto con la maiuscola
+    if (e && (!/^\p{Lu}/u.test(e.t) || /^\p{Lu}/u.test(pulito))) return e;
+  }
+  return null;
+}
+
+// La parte che chiede al documento dov'e' il caret sotto il punto: Chromium
+// ha `caretRangeFromPoint`, Gecko — che e' il browser del lettore — solo
+// `caretPositionFromPoint`, e vanno servite tutt'e due. Fuori da un nodo di
+// testo non c'e' una parola.
+export function termAt(doc, x, y, ix) {
+  let node = null;
+  let offset = 0;
+  if (doc.caretRangeFromPoint) {
+    const r = doc.caretRangeFromPoint(x, y);
+    if (r) {
+      node = r.startContainer;
+      offset = r.startOffset;
+    }
+  } else if (doc.caretPositionFromPoint) {
+    const pos = doc.caretPositionFromPoint(x, y);
+    if (pos) {
+      node = pos.offsetNode;
+      offset = pos.offset;
+    }
+  }
+  if (!node || node.nodeType !== 3) return null;
+  return termineIn(node.nodeValue, offset, ix);
+}
+
 const SAGA_HINTS = ["discworld", "disc world", "mondo disco", "mondo dei dischi"];
 
 // Il legame libro → glossario passa dall'autore, che l'import legge dai

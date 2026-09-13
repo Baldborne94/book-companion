@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { getProgress, getStatus, combacia, leggiVista, scriviVista } from "../lib/library.js";
+import { getProgress, getStatus, combacia, vistaValida, scriviVista } from "../lib/library.js";
 import { disponi } from "../lib/ripiani.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { storageEstimate, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux } from "../lib/bookStore.js";
@@ -53,18 +53,6 @@ const GROUPS = [
   { id: "shelf", label: "Saga e autore" },
   { id: "genre", label: "Genere", empty: "Senza genere" },
 ];
-
-// Una voce salvata che non esiste più — un raggruppamento che abbiamo
-// tolto, come «Saga» — lascerebbe il menu in bianco e la Libreria a
-// mostrare tutt'altro: quel che non si riconosce torna alla disposizione
-// di sempre.
-function vistaValida() {
-  const v = leggiVista({ group: "shelf", sort: "title" });
-  return {
-    group: GROUPS.some((g) => g.id === v.group) ? v.group : "shelf",
-    sort: SORTS.some((s) => s.id === v.sort) ? v.sort : "title",
-  };
-}
 
 function Shelf({ books, onOpenBook, localIds, showOrder }) {
   // Chi ha il dorso disegnato lo sa solo `BookCover`, che va a guardare in
@@ -398,7 +386,7 @@ export default function Library({
   // Come avevi lasciato lo scaffale. Il filtro NO, ed è voluto: una
   // Libreria che si riapre con metà dei libri nascosti sembra una libreria
   // che ha perso dei libri.
-  const vista = useRef(vistaValida());
+  const vista = useRef(vistaValida(GROUPS, SORTS));
   const [sort, setSort] = useState(vista.current.sort);
   const [group, setGroup] = useState(vista.current.group);
   const ricorda = (patch) => {

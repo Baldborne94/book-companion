@@ -498,6 +498,34 @@ export function perchePrimaTace(corrente, libri, { statusOf, cfiOf }) {
   return null;
 }
 
+// Gli anelli che `perchePrimaTace` sa nominare. Stanno in un elenco per
+// la stessa ragione di `GUAI` ed `ESITI_CONTROLLO`: il test pretende che
+// ognuno abbia una frase, cosi' un anello nuovo senza parole non passa.
+export const PERCHE_TACE = ["soli", "senzaNumero", "numeri", "stato", "serie"];
+
+// LE PAROLE PER OGNI ANELLO ROTTO: ognuna dice cosa manca E dove si mette
+// a posto, o la riga sarebbe solo un mistero spiegato con un altro
+// mistero. Sta qui e non nella scheda perche' un test in Node non importa
+// un `.jsx` — e qui accanto a chi produce le cause, cosi' chi ne aggiunge
+// una vede subito dove va la frase. Una causa che non si riconosce non si
+// traveste da «serie» (prima era il ramo di ripiego, e avrebbe scritto
+// «una Serie diversa da «undefined»»): si dice il generico.
+export function fraseTace(t) {
+  if (t.perche === "soli")
+    return `nessun altro libro in biblioteca ha «${t.saga}» nel campo Saga — se i volumi precedenti ci sono, guarda com'è scritta la saga sulle loro schede`;
+  if (t.perche === "senzaNumero")
+    return "questo volume non ha il numero di lettura, e senza numero non so cosa viene prima";
+  if (t.perche === "numeri")
+    return `nessun altro volume di «${t.saga}» ha un numero di lettura minore di ${t.ordine} — metti i numeri sulle loro schede e saprò cosa viene prima`;
+  if (t.perche === "stato")
+    return t.quanti === 1
+      ? "il volume precedente non risulta «Letto», né «In lettura» con un segno di pagina"
+      : `nessuno dei ${t.quanti} volumi precedenti risulta «Letto», né «In lettura» con un segno di pagina`;
+  if (t.perche === "serie")
+    return `${t.quanti === 1 ? "il volume precedente letto dichiara" : `i ${t.quanti} volumi precedenti letti dichiarano`} una Serie diversa da «${t.serie}» — correggi la loro, o svuota questa per contare tutta la saga`;
+  return "non riesco a ricostruire i volumi precedenti — controlla saga, numero di lettura e serie nella scheda";
+}
+
 export async function schedaPrima({ book, libri, statusOf, cfiOf, vivo, passo }) {
   const tappe = soloDellaSerie(
     book,
