@@ -60,8 +60,11 @@ Alle domande di `init`:
 - **Short name**: `Companion` (massimo 12 caratteri: «Book Companion» ne
   ha 14 e Bubblewrap propone «BkC»). È l'etichetta sotto l'icona.
 - Una risposta sbagliata si corregge dopo, senza rifare `init`: in
-  `twa-manifest.json` (`packageId`, `shortName`, `iconUrl`…), poi `bubblewrap update`
-  e `bubblewrap build`.
+  `twa-manifest.json`, poi `bubblewrap update` e `bubblewrap build`. I campi
+  non si chiamano come le domande: il nome corto è **`launcherName`**,
+  l'icona `iconUrl` (che dev'essere il PNG), l'ID `packageId`. Vale la pena
+  mettere anche `"enableNotifications": false`: l'app non manda notifiche,
+  e acceso l'APK dichiara un permesso che non usa.
 - **Display mode**: `standalone`. **Orientation**: `default`.
 - **Status bar color / splash**: lascia quelli del manifest (`#0f0d1a`).
 - **Icon URL**: dev'essere il PNG (`/icons/icon-512.png`), non `icon.svg`:
@@ -82,6 +85,36 @@ bubblewrap build
 produce `app-release-signed.apk` (per provarlo sul tablet: `adb install`) e
 `app-release-bundle.aab` (per lo store).
 
+Le due password le chiede PRIMA di guardare se il keystore esiste: se non
+esiste, con quelle lo crea. Vanno scelte lì e segnate fuori dal PC: non
+stanno scritte in nessun file, e non si recuperano. Nel certificato
+(nome, organizzazione) va `Baldborne94`, non il nome vero: chiunque abbia
+l'APK lo può leggere.
+
+Se il `build` cade su «Failed to load signer» e «android.keystore
+(Impossibile trovare il file specificato)», il keystore non è mai stato
+creato: `build` firma soltanto, la creazione sta nel giro di `init`. Si
+fa a mano dalla cartella del progetto, col `keytool` del JDK scaricato da
+Bubblewrap:
+
+```powershell
+& "$env:USERPROFILE\.bubblewrap\jdk\jdk-17.0.11+9\bin\keytool.exe" -genkeypair -v -keystore android.keystore -alias android -keyalg RSA -keysize 2048 -validity 10000
+```
+
+**E se il `build` fallisce nella firma, la password finisce IN CHIARO a
+schermo**: l'errore riporta l'intera riga di comando di `apksigner`,
+`--ks-pass pass:"…"` compreso. Una password vista in un terminale (o in
+uno screenshot) è da considerare bruciata: si rifà il keystore con
+un'altra, finché non ha firmato niente che sia uscito di casa.
+
+Se il `build` cade su «Could not reserve enough space for … object heap»,
+Gradle vuole 1,5 GB per il suo processo e Windows non glieli dà: in
+`gradle.properties` del progetto abbassa `org.gradle.jvmargs=-Xmx1536m`
+a `-Xmx1024m` (o `768m`) e rilancia. **La modifica va fatta DOPO
+`bubblewrap update`**: l'update rigenera il progetto Android, e con lui
+`gradle.properties`, quindi una modifica fatta prima sparisce e l'errore
+torna identico.
+
 ## Collegare il guscio al sito
 
 Finché Android non trova il collegamento, l'app parte con la barra di Chrome
@@ -93,10 +126,16 @@ in cima: non è un errore del guscio, è che manca la firma.
    keytool -list -v -keystore android.keystore -alias android | grep SHA256
    ```
 
-   Su PowerShell `grep` non c'è: `… | Select-String SHA256`. Se `keytool`
-   non si trova, sta nel JDK che Bubblewrap ha scaricato
-   (`~\.bubblewrap\jdk\…\bin\keytool.exe`), oppure usa
-   `bubblewrap fingerprint list`, che lo cerca da sé. Se pubblichi sul Play Store con
+   Su PowerShell, col `keytool` del JDK scaricato da Bubblewrap e senza
+   `grep`:
+
+   ```powershell
+   & "$env:USERPROFILE\.bubblewrap\jdk\jdk-17.0.11+9\bin\keytool.exe" -list -v -keystore android.keystore -alias android | Select-String SHA256
+   ```
+
+   **`bubblewrap fingerprint list` non serve a questo**: elenca le impronte
+   registrate in `twa-manifest.json`, che all'inizio sono zero, e risponde
+   senza dire niente. Se pubblichi sul Play Store con
    la firma gestita da Google, l'impronta giusta è quella in Play Console →
    *Integrità dell'app* → *Certificato della chiave di firma dell'app*, e
    di norma vanno messe **tutt'e due**, la tua e quella di Google.
