@@ -29,7 +29,12 @@ PowerShell **normale**, non da amministratore — quella si apre in
 `C:\WINDOWS\system32` e non è un posto dove tenere un progetto. Dopo aver
 installato Node, e di nuovo dopo `npm i -g`, apri una finestra nuova: il
 percorso dei comandi si legge solo all'apertura, e finché non lo fai
-`npm` o `bubblewrap` risultano «non riconosciuti».
+`npm` o `bubblewrap` risultano «non riconosciuti». E se `npm -v` risponde
+«L'esecuzione di script è disabilitata nel sistema in uso», è la politica
+di esecuzione di PowerShell (`npm` è uno script `.ps1`): si sblocca una
+volta sola con `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`,
+oppure si chiama la versione `.cmd` (`npm.cmd`, `bubblewrap.cmd`), che
+non passa da PowerShell.
 
 ```sh
 npm i -g @bubblewrap/cli
