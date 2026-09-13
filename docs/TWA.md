@@ -60,10 +60,14 @@ Alle domande di `init`:
 - **Short name**: `Companion` (massimo 12 caratteri: «Book Companion» ne
   ha 14 e Bubblewrap propone «BkC»). È l'etichetta sotto l'icona.
 - Una risposta sbagliata si corregge dopo, senza rifare `init`: in
-  `twa-manifest.json` (`packageId`, `shortName`…), poi `bubblewrap update`
+  `twa-manifest.json` (`packageId`, `shortName`, `iconUrl`…), poi `bubblewrap update`
   e `bubblewrap build`.
 - **Display mode**: `standalone`. **Orientation**: `default`.
 - **Status bar color / splash**: lascia quelli del manifest (`#0f0d1a`).
+- **Icon URL**: dev'essere il PNG (`/icons/icon-512.png`), non `icon.svg`:
+  Bubblewrap rasterizza con una libreria che l'SVG non lo legge, e il
+  `build` si ferma su «could not load icon». Il manifest tiene i PNG per
+  primi apposta, e `init` propone il primo.
 - **Signing key**: lascialo creare un keystore nuovo e **conserva il file e
   le due password**: perdere il keystore vuol dire non poter più aggiornare
   l'app sullo store, mai. Non va nel repository.

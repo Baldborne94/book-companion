@@ -33,6 +33,10 @@ export default async function (t) {
   for (const i of manifest.icons) {
     t.c(`l'icona ${i.src} sta in public/`, existsSync(new URL(`public${i.src}`, radice)), i.src);
   }
+  // Bubblewrap prende la PRIMA icona adatta e la rasterizza con una
+  // libreria che l'SVG non lo legge: con l'SVG in testa `init` lo sceglie
+  // e il `build` casca su «could not load icon» (visto dal vivo)
+  t.c("la prima icona e' un PNG, non l'SVG", manifest.icons[0].type === "image/png", manifest.icons[0].src);
   for (const s of manifest.shortcuts || []) {
     for (const i of s.icons || []) t.c(`l'icona della scorciatoia «${s.name}» esiste`, existsSync(new URL(`public${i.src}`, radice)));
   }
