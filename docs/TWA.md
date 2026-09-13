@@ -60,8 +60,11 @@ Alle domande di `init`:
 - **Short name**: `Companion` (massimo 12 caratteri: «Book Companion» ne
   ha 14 e Bubblewrap propone «BkC»). È l'etichetta sotto l'icona.
 - Una risposta sbagliata si corregge dopo, senza rifare `init`: in
-  `twa-manifest.json` (`packageId`, `shortName`, `iconUrl`…), poi `bubblewrap update`
-  e `bubblewrap build`.
+  `twa-manifest.json`, poi `bubblewrap update` e `bubblewrap build`. I campi
+  non si chiamano come le domande: il nome corto è **`launcherName`**,
+  l'icona `iconUrl` (che dev'essere il PNG), l'ID `packageId`. Vale la pena
+  mettere anche `"enableNotifications": false`: l'app non manda notifiche,
+  e acceso l'APK dichiara un permesso che non usa.
 - **Display mode**: `standalone`. **Orientation**: `default`.
 - **Status bar color / splash**: lascia quelli del manifest (`#0f0d1a`).
 - **Icon URL**: dev'essere il PNG (`/icons/icon-512.png`), non `icon.svg`:
