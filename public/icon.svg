@@ -1,15 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <linearGradient id="fondo" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1a1430"/>
-      <stop offset="1" stop-color="#0d0b16"/>
+      <stop offset="0" stop-color="#2e2450"/>
+      <stop offset="1" stop-color="#181233"/>
     </linearGradient>
-    <radialGradient id="alone" cx="50%" cy="46%" r="52%">
+    <radialGradient id="alone" cx="50%" cy="50%" r="52%">
       <stop offset="0" stop-color="#d9a94e" stop-opacity="0.30"/>
       <stop offset="0.6" stop-color="#9b7fd4" stop-opacity="0.10"/>
       <stop offset="1" stop-color="#9b7fd4" stop-opacity="0"/>
     </radialGradient>
-    <linearGradient id="copertina" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="copertina" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#3d2d5c"/>
       <stop offset="1" stop-color="#241a3a"/>
     </linearGradient>
@@ -20,31 +20,30 @@
   </defs>
 
   <rect width="512" height="512" rx="104" fill="url(#fondo)"/>
-  <circle cx="256" cy="248" r="226" fill="url(#alone)"/>
+  <circle cx="256" cy="256" r="230" fill="url(#alone)"/>
 
-  <!-- il tomo, centrato: nessun taglio di pagine chiaro, tutto oro su notte -->
-  <g>
-    <!-- dorso -->
-    <path d="M128 108 h40 v296 h-40 a14 14 0 0 1 -14 -14 v-268 a14 14 0 0 1 14 -14 z"
-          fill="#1d1531" stroke="url(#oro)" stroke-width="10" stroke-linejoin="round"/>
-    <path d="M134 168 h28 M134 216 h28 M134 296 h28 M134 344 h28"
-          stroke="url(#oro)" stroke-width="8" stroke-linecap="round" opacity="0.8"/>
-    <!-- copertina -->
-    <rect x="168" y="108" width="216" height="296" rx="14" fill="url(#copertina)"
-          stroke="url(#oro)" stroke-width="11"/>
-    <!-- filetto interno -->
-    <rect x="194" y="136" width="164" height="240" rx="8" fill="none"
-          stroke="url(#oro)" stroke-width="5" opacity="0.6"/>
+  <!-- la copertina, centrata: margini uguali a sinistra e a destra (132),
+       sopra e sotto (94) -->
+  <rect x="132" y="94" width="248" height="324" rx="16" fill="url(#copertina)"
+        stroke="url(#oro)" stroke-width="12"/>
+  <rect x="160" y="122" width="192" height="268" rx="9" fill="none"
+        stroke="url(#oro)" stroke-width="5" opacity="0.6"/>
+
+  <!-- fermagli, uno per lato -->
+  <path d="M126 236 h-14 a10 10 0 0 0 -10 10 v20 a10 10 0 0 0 10 10 h14 z" fill="url(#oro)"/>
+  <path d="M386 236 h14 a10 10 0 0 1 10 10 v20 a10 10 0 0 1 -10 10 h-14 z" fill="url(#oro)"/>
+
+  <!-- borchie agli angoli -->
+  <g fill="url(#oro)" opacity="0.9">
+    <circle cx="174" cy="136" r="9"/><circle cx="338" cy="136" r="9"/>
+    <circle cx="174" cy="376" r="9"/><circle cx="338" cy="376" r="9"/>
   </g>
 
-  <!-- sigillo a otto punte -->
-  <g transform="translate(276 256)">
-    <circle r="58" fill="none" stroke="url(#oro)" stroke-width="6" opacity="0.8"/>
-    <path d="M0 -74 L13 -21 L66 -37 L28 0 L66 37 L13 21 L0 74 L-13 21 L-66 37 L-28 0 L-66 -37 L-13 -21 Z"
+  <!-- il sigillo, al centro esatto -->
+  <g transform="translate(256 256)">
+    <circle r="62" fill="none" stroke="url(#oro)" stroke-width="6" opacity="0.8"/>
+    <path d="M0 -80 L14 -23 L72 -40 L30 0 L72 40 L14 23 L0 80 L-14 23 L-72 40 L-30 0 L-72 -40 L-14 -23 Z"
           fill="url(#oro)"/>
-    <circle r="14" fill="#241a3a"/>
+    <circle r="15" fill="#241a3a"/>
   </g>
-
-  <!-- scintilla, una sola -->
-  <path d="M408 104 l9 24 24 9 -24 9 -9 24 -9 -24 -24 -9 24 -9 z" fill="#c9b0f0" opacity="0.9"/>
 </svg>
