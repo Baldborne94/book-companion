@@ -31,6 +31,16 @@ mkdir book-companion-twa && cd book-companion-twa
 bubblewrap init --manifest https://book-companion-ruddy.vercel.app/manifest.json
 ```
 
+Su **Windows PowerShell** (5.1, quella di sistema) il `&&` non esiste: i
+comandi vanno uno per riga.
+
+```powershell
+npm i -g @bubblewrap/cli
+mkdir book-companion-twa
+cd book-companion-twa
+bubblewrap init --manifest https://book-companion-ruddy.vercel.app/manifest.json
+```
+
 Alle domande di `init`:
 
 - **Application ID**: `it.bookcompanion.app` — è quello scritto in
@@ -62,7 +72,10 @@ in cima: non è un errore del guscio, è che manca la firma.
    keytool -list -v -keystore android.keystore -alias android | grep SHA256
    ```
 
-   (oppure `bubblewrap fingerprint list`). Se pubblichi sul Play Store con
+   Su PowerShell `grep` non c'è: `… | Select-String SHA256`. Se `keytool`
+   non si trova, sta nel JDK che Bubblewrap ha scaricato
+   (`~\.bubblewrap\jdk\…\bin\keytool.exe`), oppure usa
+   `bubblewrap fingerprint list`, che lo cerca da sé. Se pubblichi sul Play Store con
    la firma gestita da Google, l'impronta giusta è quella in Play Console →
    *Integrità dell'app* → *Certificato della chiave di firma dell'app*, e
    di norma vanno messe **tutt'e due**, la tua e quella di Google.
@@ -75,8 +88,11 @@ in cima: non è un errore del guscio, è che manca la firma.
    curl https://book-companion-ruddy.vercel.app/.well-known/assetlinks.json
    ```
 
-   Deve tornare il JSON, non l'HTML dell'app (il service worker lo esclude
-   apposta dal ripiego, `navigateFallbackDenylist`).
+   Su PowerShell `curl` è un alias di `Invoke-WebRequest` e chiede
+   conferma con un avviso sugli script: rispondi `S`, oppure scrivi
+   `curl.exe`, che è il curl vero. Deve tornare il JSON, non l'HTML
+   dell'app (il service worker lo esclude apposta dal ripiego,
+   `navigateFallbackDenylist`).
 4. Reinstalla l'APK: al primo avvio dopo il deploy la barra sparisce.
 
 ## Aggiornare
