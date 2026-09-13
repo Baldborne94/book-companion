@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
@@ -16,16 +17,19 @@ export default defineConfig({
   },
   // il timbro di versione visibile in app: senza, e' impossibile sapere
   // quale build gira davvero sul tablet (il service worker in modalita'
-  // prompt puo' restare indietro di parecchi rilasci)
+  // prompt puo' restare indietro di parecchi rilasci). Da quando l'app ha
+  // un guscio Android il timbro porta anche la VERSIONE di `package.json`:
+  // e' quella che si dichiara allo store, e la data della build da sola
+  // non dice a quale rilascio corrisponde.
   define: {
     __BC_VERSIONE__: JSON.stringify(
-      new Date().toLocaleString("it-IT", {
+      `${JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version} · ${new Date().toLocaleString("it-IT", {
         timeZone: "Europe/Rome",
         day: "2-digit",
         month: "2-digit",
         hour: "2-digit",
         minute: "2-digit",
-      })
+      })}`
     ),
   },
   plugins: [
@@ -50,7 +54,12 @@ export default defineConfig({
         // una scheda nuova E' una navigazione, e il ripiego le servirebbe
         // `index.html` — cioe' l'app al posto del documento, senza un
         // errore che lo dica.
-        navigateFallbackDenylist: [/^\/dizionario\//],
+        // ...e lo stesso vale per la privacy, che e' una pagina a se' — lo
+        // store la vuole a un indirizzo pubblico — e per `.well-known`,
+        // dove Android viene a leggere `assetlinks.json` per fidarsi del
+        // guscio: servirgli l'app al posto del file lascerebbe la barra
+        // del browser in cima per sempre.
+        navigateFallbackDenylist: [/^\/dizionario\//, /^\/privacy/, /^\/\.well-known\//],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/,

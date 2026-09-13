@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Informativa sulla privacy — Book Companion</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0 auto; max-width: 42rem; padding: 2rem 1.25rem 4rem; font: 17px/1.55 Georgia, "Times New Roman", serif; }
+  h1 { font-size: 1.7rem; line-height: 1.2; }
+  h2 { font-size: 1.25rem; margin-top: 2.2rem; }
+  h3 { font-size: 1.05rem; margin-top: 1.6rem; }
+  code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, monospace; padding: 0 0.2em; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92em; }
+  th, td { text-align: left; vertical-align: top; padding: 0.4em 0.5em; border-bottom: 1px solid rgba(128,128,128,0.4); }
+  hr { border: 0; border-top: 1px solid rgba(128,128,128,0.4); margin: 2rem 0; }
+  a { color: inherit; }
+  li { margin: 0.3em 0; }
+  .app { margin-top: 3rem; font-size: 0.9em; opacity: 0.75; }
+</style>
+</head>
+<body>
+<h1>Informativa sulla privacy — Book Companion</h1>
+<p>Ultimo aggiornamento: 13 settembre 2026</p>
+<p>Book Companion è un lettore di ebook <strong>local-first</strong>: i tuoi libri, i tuoi segni di lettura e le tue annotazioni stanno sul tuo dispositivo, e ci restano. Non esiste un nostro server che li riceva, non c'è un account obbligatorio, non c'è telemetria e non c'è pubblicità.</p>
+<p>Questo documento dice, in concreto, <strong>quali dati esistono, dove stanno, e in quali momenti precisi qualcosa esce dal dispositivo</strong>. La regola che attraversa tutto è una sola: <em>niente esce se non lo accendi tu</em>.</p>
+<hr>
+<h2>1. Quello che resta sul dispositivo, sempre</h2>
+<p>Appena installata e senza toccare nient'altro, l'app conserva <strong>solo in locale</strong>, dentro il browser:</p>
+<ul><li>i <strong>file dei libri</strong> che carichi (EPUB e PDF) e le loro copertine, in IndexedDB;</li><li>i <strong>metadati</strong> che li descrivono: titolo, autore, saga, ciclo, genere, voto, note tue, stato di lettura, date di inizio e fine;</li><li>i <strong>segni di lettura</strong>: punto in cui sei arrivato, segnalibri, evidenziazioni, citazioni, voci di glossario che hai scritto tu;</li><li>le <strong>preferenze</strong> del reader e del tema;</li><li>le <strong>melodie</strong> che carichi come file, e le raccolte musicali.</li></ul>
+<p>Questi dati non vengono inviati da nessuna parte, non li legge nessuno, e si cancellano cancellando i dati del sito dal browser o disinstallando l'app. Il tasto <strong>«Esporta biblioteca»</strong> ne fa un archivio <code>.zip</code> che resta tuo: dove lo salvi lo decidi tu, l'app non lo vede più.</p>
+<p>L'app installata dallo store Android è <strong>la stessa pagina web</strong> dentro un guscio (Trusted Web Activity): i dati stanno nel profilo del browser del dispositivo, esattamente come nella versione installata da Chrome, e il guscio non aggiunge nessun accesso, nessun permesso e nessun servizio. Quando apri un file EPUB o PDF «con» Book Companion, il sistema passa all'app quel solo file, che entra in biblioteca come se l'avessi caricato dal tasto.</p>
+<h2>2. Quello che esce solo se lo accendi tu</h2>
+<p>Tre funzioni, tutte facoltative, tutte spente finché non le attivi.</p>
+<h3>2.1 La sincronizzazione fra dispositivi (Supabase)</h3>
+<p>Se crei un account e accendi la sincronizzazione, salgono su un database <a href="https://supabase.com" rel="noopener">Supabase</a> — in una riga che è <strong>solo tua</strong>, protetta da Row Level Security — questi dati:</p>
+<ul><li><strong>i file dei libri e le loro copertine</strong>, in un bucket privato;</li><li>i metadati della biblioteca e i segni di lettura elencati al punto 1;</li><li>le preferenze, le raccolte musicali, i <strong>link YouTube</strong> salvati e il glossario che hai scritto;</li><li>il tuo <strong>indirizzo e-mail</strong> e la password (gestiti da Supabase Auth: la password è conservata da loro sotto forma di hash, l'app non la vede mai e non la salva).</li></ul>
+<p><strong>Le melodie caricate come file NON salgono</strong>: ogni dispositivo tiene i suoi, e nel cloud viaggiano solo i link.</p>
+<p>Puoi non accenderla mai: l'app funziona identica senza. Se la spegni e cancelli l'account, quei dati vanno via con lui.</p>
+<h3>2.2 L'Oracolo (Anthropic)</h3>
+<p>Le funzioni «Chi è costui?», «Dove eravamo rimasti» e «Prima di cominciare» chiedono a un modello di Anthropic. <strong>Funzionano solo se incolli una chiave API tua</strong>: la chiave resta sul dispositivo, non passa da nessun nostro server, e la spesa la vedi in fondo alla scheda.</p>
+<p>Quando fai una di queste domande, escono dal dispositivo verso <code>api.anthropic.com</code>:</p>
+<ul><li><strong>i passaggi del libro</strong> che servono a rispondere — paragrafi interi, scelti fra quelli che hai già letto;</li><li>il nome del personaggio, quando è una scheda-personaggio.</li></ul>
+<p><strong>Non escono i titoli dei libri né i nomi delle saghe</strong>: i volumi vengono numerati («Volume 2»), e i titoli veri li rimette lo schermo. È una scelta tecnica contro gli spoiler, ma vale anche qui.</p>
+<p>L'uso dei dati da parte di Anthropic è regolato dal contratto fra te e loro, non da noi: vedi la <a href="https://www.anthropic.com/legal/privacy" rel="noopener">privacy policy di Anthropic</a>.</p>
+<h3>2.3 La musica da YouTube</h3>
+<p>Se aggiungi un brano tramite un link YouTube, la riproduzione avviene in un iframe <code>youtube-nocookie.com</code>. È la modalità «privacy avanzata» di YouTube: non registra la visualizzazione nella cronologia e non piazza cookie di profilazione <strong>prima</strong> che tu prema play. Da quel momento in poi vale la <a href="https://policies.google.com/privacy" rel="noopener">privacy policy di Google</a>. Le melodie caricate come file non contattano nessuno.</p>
+<h2>3. Quello che esce quando usi una funzione, senza account</h2>
+<p>Alcune funzioni interrogano servizi pubblici. Nessuna manda un identificatore tuo: vanno solo la parola o il titolo, e l'indirizzo IP che qualunque richiesta web porta con sé.</p>
+<table><thead><tr><th>Quando</th><th>Dove va</th><th>Cosa esce</th></tr></thead><tbody><tr><td>Cerchi una parola nel dizionario</td><td><code>en.wiktionary.org</code></td><td>la parola</td></tr><tr><td>...e serve la traduzione della parola</td><td><code>api.mymemory.translated.net</code></td><td>la parola</td></tr><tr><td>Tocchi «cerca su Google» nella scheda del dizionario</td><td><code>www.google.com</code></td><td>la parola (apri tu il link)</td></tr><tr><td>Un termine ha la voce sul wiki del Mondo Disco</td><td><code>discworld.fandom.com</code></td><td>il termine (apri tu il link)</td></tr><tr><td>Un libro non ha la quarta di copertina nel file</td><td><code>www.googleapis.com/books</code>, <code>openlibrary.org</code></td><td>titolo e autore di quel libro</td></tr><tr><td>Un libro non dichiara la saga né nel file né nel titolo</td><td><code>openlibrary.org</code></td><td>titolo e autore di quel libro</td></tr><tr><td>Scarichi il dizionario offline dalle Impostazioni</td><td>il nostro stesso sito</td><td>niente: è un file statico, come l'app</td></tr><tr><td>Sempre, per i caratteri della pagina</td><td><code>fonts.googleapis.com</code>, <code>fonts.gstatic.com</code></td><td>niente, oltre alla richiesta stessa</td></tr></tbody></table>
+<p>Due avvertenze oneste:</p>
+<ul><li><strong>MyMemory è una memoria di traduzione condivisa.</strong> Le richieste anonime possono finire nel loro archivio pubblico. Esce una parola singola alla volta, mai una frase del libro, ma vale la pena saperlo.</li><li><strong>La ricerca del retro di copertina e della saga fa uscire titolo e autore</strong> di quel libro verso un catalogo bibliografico. Sono gli unici punti in cui un titolo esce dal dispositivo, e sono dichiarati nell'app («Dal catalogo in rete» sotto il testo trovato, «saga letta dal catalogo» nel resoconto).</li></ul>
+<h2>4. Quello che non c'è</h2>
+<p>Per essere espliciti su ciò che spesso si dà per scontato:</p>
+<ul><li><strong>nessuna analitica</strong>, nessun SDK di tracciamento, nessun crash reporter: quando qualcosa si rompe, l'errore finisce nella console del tuo browser e basta;</li><li><strong>nessuna pubblicità</strong> e nessun profilo pubblicitario;</li><li><strong>nessun cookie nostro</strong>: l'app usa <code>localStorage</code> e IndexedDB, che restano sul dispositivo e non viaggiano in nessuna richiesta;</li><li><strong>nessuna vendita o cessione di dati</strong> a terzi;</li><li><strong>nessun accesso</strong> ai tuoi libri da parte nostra, neanche con la sincronizzazione accesa: le regole del database non permettono a nessun altro utente di leggere la tua riga.</li></ul>
+<h2>5. Minori</h2>
+<p>L'app non è rivolta ai minori di 13 anni e non raccoglie consapevolmente i loro dati. Non chiede l'età perché, senza account, non raccoglie nulla.</p>
+<h2>6. I tuoi diritti sui dati</h2>
+<ul><li><strong>Vederli</strong>: sono sul tuo dispositivo; «Esporta biblioteca» te ne dà una copia completa in un <code>.zip</code>.</li><li><strong>Correggerli</strong>: ogni campo della scheda di un libro è modificabile.</li><li><strong>Cancellarli</strong>: cancella il singolo libro, oppure i dati del sito dal browser, oppure — con la sincronizzazione accesa — l'account, che porta via anche quello che sta nel cloud.</li><li><strong>Portarli altrove</strong>: l'archivio <code>.zip</code> contiene i file originali dei tuoi libri, non un formato nostro.</li></ul>
+<p>Per esercitarli non serve chiedere il permesso a nessuno: sono tutti tasti dentro l'app.</p>
+<h2>7. Modifiche e contatti</h2>
+<p>Se questa informativa cambia, la data in cima cambia con lei, e la storia delle modifiche resta pubblica nel repository.</p>
+<p>Per domande: <a href="https://github.com/Baldborne94/book-companion" rel="noopener">github.com/Baldborne94/book-companion</a></p>
+<p class="app"><a href="/">← Torna all'app</a></p>
+</body>
+</html>

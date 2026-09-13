@@ -352,6 +352,8 @@ export default function Library({
   notify,
   localIds,
   onImported,
+  daImportare,
+  onImportati,
   focusSaga,
   collegato,
   onFileLocali,
@@ -1014,6 +1016,17 @@ export default function Library({
     setGroup("shelf");
     setQuery(focusSaga);
   }, [focusSaga]);
+
+  // «Apri con»: i file passati dal sistema entrano dalla stessa porta
+  // dell'input. Il ref tiene l'ultimo elenco servito, perche' in sviluppo
+  // React monta gli effetti due volte e lo stesso libro entrerebbe due
+  // volte — sarebbe un doppione saltato, ma con due toast.
+  const lancioServito = useRef(null);
+  useEffect(() => {
+    if (!daImportare?.length || lancioServito.current === daImportare) return;
+    lancioServito.current = daImportare;
+    handleFiles(daImportare).finally(() => onImportati?.());
+  }, [daImportare]);
 
   async function handleFiles(fileList) {
     const files = Array.from(fileList || []);

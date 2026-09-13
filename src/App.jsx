@@ -45,6 +45,7 @@ import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
 import { getSession, syncNow, localFileIds, onAuthChange } from "./lib/sync.js";
 import { useViewport } from "./lib/viewport.js";
+import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
 
 // L'ingresso porta l'insegna dell'atmosfera scelta: candela di notte,
 // foglia nel boschetto, pergamena nell'archivio.
@@ -646,8 +647,13 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
 }
 
 export default function App() {
-  const [section, setSection] = useState("home");
+  // la sezione la puo' dire l'URL: sono le scorciatoie dell'icona
+  // («Libreria», «Musica»), e si legge prima del primo render
+  const [section, setSection] = useState(() => sezioneDaUrl(window.location.search, SECTIONS) || "home");
   const [focusSaga, setFocusSaga] = useState(null);
+  // «Apri con»: i file che il sistema ci passa entrano in Libreria dalla
+  // stessa porta dell'input, e la Libreria dice quando ha finito
+  const [daImportare, setDaImportare] = useState(null);
   const { tall } = useViewport();
   // la saga vale solo per il salto dalla home: tornando dal menu la
   // libreria deve ritrovarsi intera
@@ -705,6 +711,26 @@ export default function App() {
   const [updateReady, setUpdateReady] = useState(false);
   const flags = useRef({ reading: false, updateReady: false });
   const swReg = useRef(null);
+
+  useEffect(() => {
+    pulisciUrl();
+    // «Apri con» e la condivisione: il sistema apre l'app (o richiama
+    // quella aperta, `focus-existing` nel manifest) e passa i file di qui.
+    // Il consumatore resta registrato per tutta la vita dell'app: il
+    // secondo file condiviso arriva sulla stessa finestra.
+    try {
+      window.launchQueue?.setConsumer?.((params) => {
+        fileDaLancio(params).then((files) => {
+          if (!files.length) return;
+          setFocusSaga(null);
+          setDaImportare(files);
+          setSection("library");
+        });
+      });
+    } catch {
+      /* senza launchQueue si importa dal tasto, come sempre */
+    }
+  }, []);
 
   useEffect(() => {
     requestPersistence();
@@ -1080,6 +1106,8 @@ export default function App() {
             notify={notify}
             localIds={localIds}
             onImported={() => runSync.current(true)}
+            daImportare={daImportare}
+            onImportati={() => setDaImportare(null)}
             focusSaga={focusSaga}
             collegato={sync.signedIn}
             // i byte scesi in casa non sono roba da sincronizzare: basta

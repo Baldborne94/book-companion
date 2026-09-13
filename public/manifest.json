@@ -1,13 +1,18 @@
 {
+  "id": "/",
   "name": "Book Companion",
   "short_name": "Book Companion",
   "description": "La tua biblioteca personale: libri, lettura e musica in un unico regno.",
   "lang": "it",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "any",
   "background_color": "#0f0d1a",
   "theme_color": "#0f0d1a",
+  "categories": ["books", "education"],
+  "launch_handler": { "client_mode": "focus-existing" },
   "icons": [
     {
       "src": "/icon.svg",
@@ -32,6 +37,37 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-mono-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "monochrome"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Libreria",
+      "short_name": "Libreria",
+      "description": "Apri lo scaffale dei tuoi libri",
+      "url": "/?apri=libreria",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Musica",
+      "short_name": "Musica",
+      "description": "Apri la sala della musica",
+      "url": "/?apri=musica",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
+  "file_handlers": [
+    {
+      "action": "/?apri=libreria",
+      "accept": {
+        "application/epub+zip": [".epub"],
+        "application/pdf": [".pdf"]
+      }
     }
   ]
 }
