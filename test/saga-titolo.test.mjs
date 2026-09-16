@@ -74,6 +74,13 @@ export default async function (t) {
     ["Mistborn 1: The Final Empire", "Mistborn", 1],
     ["[Wheel of Time 03] The Dragon Reborn", "Wheel of Time", 3],
     ["[Wheel of Time #3] The Dragon Reborn", "Wheel of Time", 3],
+    // il solo NUMERO fra parentesi, in mezzo: è la forma dei Jordan del
+    // lettore, e nessuna delle altre la leggeva — le quadre in testa
+    // vogliono la parentesi al primo carattere, la saga davanti il numero
+    // nudo. Coi due punti e senza.
+    ["Wheel of Time [02]: The Great Hunt", "Wheel of Time", 2],
+    ["Wheel of Time [05] The Fires of Heaven", "Wheel of Time", 5],
+    ["Mistborn (2) - The Well of Ascension", "Mistborn", 2],
     // il titolo che E' il nome del file, autore compreso (visto in
     // fotografia: la saga usciva «Winter, Evan - The Burning»)
     ["Winter, Evan - The Burning 01 - The Rage of Dragons", "The Burning", 1],
