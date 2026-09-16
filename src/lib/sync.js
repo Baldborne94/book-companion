@@ -12,7 +12,7 @@ import {
 } from "./annotations.js";
 import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, getListsRaw, writeLists } from "./music.js";
 import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
-import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu } from "./syncCore.js";
+import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, daCaricare, nonCeLassu } from "./syncCore.js";
 
 // `contaSpazio` viveva qui ed e' passata in `syncCore` con le altre
 // decisioni pure; si riesporta perche' chi la cercava la trovi dov'era.
@@ -23,6 +23,8 @@ const REPUSH_KEY = "bc_repush";
 const UPLOADED_KEY = "bc_uploaded";
 // Le copertine hanno un registro loro, e non e' un capriccio: vedi sotto.
 const UPLOADED_COV_KEY = "bc_uploaded_cov";
+// I file cambiati in casa: vedi `daRicaricare`.
+const RIPORTA_KEY = "bc_riporta";
 const PREFS_UPD_KEY = "bc_prefs_upd";
 
 export const getLastSync = () => parseInt(localStorage.getItem(LAST_SYNC_KEY), 10) || 0;
@@ -30,12 +32,26 @@ export const getLastSync = () => parseInt(localStorage.getItem(LAST_SYNC_KEY), 1
 // I BYTE DI UN LIBRO SONO CAMBIATI IN CASA (la visita l'ha ricucito): la
 // copia nel cloud e' quella vecchia, e i file salgono una volta per sempre
 // — senza togliere il libro dal registro non risalirebbe mai piu'.
+//
+// E NON BASTA PIU' TOGLIERLO DAL REGISTRO, da quando il giro guarda anche
+// il secchio: lassu' il file c'e' eccome, e' solo quello di prima — chi
+// decide guardando il secchio lo salterebbe per sempre. Il segno dice
+// l'unica cosa che nessuno dei due elenchi sa: questo file e' cambiato QUI,
+// e risale comunque.
 export function daRicaricare(id) {
   try {
     const su = JSON.parse(localStorage.getItem(UPLOADED_KEY)) || [];
     localStorage.setItem(UPLOADED_KEY, JSON.stringify(su.filter((x) => x !== id)));
   } catch {
     /* senza registro non c'e' niente da dimenticare */
+  }
+  // il segno sta in un `try` SUO: un registro corrotto non deve portarsi
+  // via l'unica riga che sa che questo file e' cambiato — la' il libro
+  // lassu' c'e' ancora, e senza il segno nessuno lo riguarderebbe
+  try {
+    localStorage.setItem(RIPORTA_KEY, JSON.stringify([...daRimandareSu(), id]));
+  } catch {
+    /* senza storage il rimando si perde, e il file resta quello di prima */
   }
 }
 export const touchPrefs = () => localStorage.setItem(PREFS_UPD_KEY, String(Date.now()));
@@ -49,6 +65,18 @@ const uploaded = () => {
 };
 const markUploaded = (id) =>
   localStorage.setItem(UPLOADED_KEY, JSON.stringify([...uploaded(), id]));
+
+const daRimandareSu = () => {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(RIPORTA_KEY)) || []);
+  } catch {
+    return new Set();
+  }
+};
+const scordaRimando = (id) => {
+  const resta = [...daRimandareSu()].filter((x) => x !== id);
+  localStorage.setItem(RIPORTA_KEY, JSON.stringify(resta));
+};
 
 const copertineSu = () => {
   try {
@@ -329,20 +357,48 @@ export async function syncNow({ onProgress } = {}) {
   }
   if (!degraded) localStorage.setItem(REPUSH_KEY, "done");
 
-  const already = uploaded();
-  const localFiles = new Set(await listFileIds());
-  for (const row of push) {
-    if (row.deleted || already.has(row.id)) continue;
-    const book = books.find((b) => b.id === row.id);
-    if (!book || !localFiles.has(row.id)) continue;
-    const blob = await getFile(row.id);
+  // I FILE NON POSSONO SALIRE DENTRO IL GIRO DI `push`.
+  //
+  // Stavano li', e il difetto era muto. `push` sono le righe che questo
+  // dispositivo deve insegnare al cloud, e un libro ci passa una volta
+  // sola; se in quell'attimo i byte non erano in casa — un tomo sceso dopo,
+  // un import finito a meta', una ricucitura in mezzo — il file si saltava
+  // SENZA segnare niente, e da li' in poi la riga era in pari ovunque:
+  // non rientrava mai piu' in `push`, quindi nessuno riguardava quel libro
+  // e i suoi byte restavano da una parte sola per sempre. Nessun errore,
+  // nessuna nuvoletta, e la biblioteca che sull'altro dispositivo mostra un
+  // romanzo che non si potra' mai aprire (misurato sul tablet del lettore:
+  // 115 libri in casa, 108 file lassu' — sette scoperti, e due di quelli
+  // non li aveva nemmeno piu' il tablet).
+  //
+  // Adesso si guarda ogni libro che i byte ce li ha QUI, come fa il giro
+  // delle copertine qui sotto, che questa lezione l'aveva gia' imparata.
+  // Chi deve salire lo dice `daCaricare`, in `syncCore`, dove un test lo
+  // puo' chiedere: qui resta solo il mandare.
+  const rimandi = daRimandareSu();
+  let suNelSecchio = null;
+  try {
+    suNelSecchio = contaSpazio(await elenca(sb, uid), []).idLibri;
+  } catch {
+    /* senza l'elenco non si indovina: si riprova al giro dopo */
+  }
+  const daMandare = daCaricare(books, {
+    qui: new Set(await listFileIds()),
+    lassu: suNelSecchio,
+    gia: uploaded(),
+    rimandi,
+    inUscita: new Set(removeLocal),
+  });
+  for (const book of daMandare) {
+    const blob = await getFile(book.id);
     if (!blob) continue;
     say(`Carico «${book.title}»…`);
     const { error: sErr } = await sb.storage
       .from(BUCKET)
       .upload(filePath(uid, book), blob, { upsert: true, contentType: blob.type || undefined });
     if (sErr && sErr.statusCode !== "409") throw sErr;
-    markUploaded(row.id);
+    markUploaded(book.id);
+    if (rimandi.has(book.id)) scordaRimando(book.id);
   }
 
   // LE COPERTINE HANNO UN REGISTRO LORO.
@@ -565,7 +621,7 @@ export async function ensureLocalFile(book) {
 // e quel che e' gia' sceso resta sceso.
 // Il giro vero sta in `portaGiu` (syncCore): qui si dice solo dove sono i
 // byte e come si scaricano.
-const NIENTE = { scesi: 0, falliti: 0, fermato: false };
+const NIENTE = { scesi: 0, assenti: 0, falliti: 0, fermato: false };
 
 async function daScaricare() {
   if (!isSyncConfigured()) return null;
@@ -574,7 +630,9 @@ async function daScaricare() {
   const sb = await getClient();
   const scarica = async (percorso) => {
     const { data, error } = await sb.storage.from(BUCKET).download(percorso);
-    return error || !data ? null : data;
+    if (data) return data;
+    if (nonCeLassu(error)) return null;
+    throw error || new Error("scaricamento senza byte");
   };
   return { uid: session.user.id, scarica };
 }

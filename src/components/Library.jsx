@@ -10,6 +10,7 @@ import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
 import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
 import { portaACasa, cloudUsage } from "../lib/sync.js";
+import { frasePortata, senzaCopia, fraseSenzaCopia } from "../lib/syncCore.js";
 import { fmtBytes } from "../lib/bytes.js";
 import { stretto } from "../lib/spazio.js";
 import { BarraCloud } from "./BarraCloud.jsx";
@@ -467,6 +468,11 @@ export default function Library({
   // collegato non c'e' niente da richiamare: offrirlo lo stesso sarebbe una
   // promessa che nessuno puo' mantenere.
   const nelCloud = collegato && localIds ? books.filter((b) => !localIds.has(b.id)) : [];
+
+  // La nuvoletta promette uno scaricamento, e su qualche tomo quella
+  // promessa non si puo' mantenere: i byte non sono ne' qui ne' lassu'.
+  // Finche' non si diceva, «Porta qui i tomi» falliva e basta.
+  const perduti = fraseSenzaCopia(senzaCopia(nelCloud, cloud?.idLibri));
 
   // IL RICONOSCIMENTO GIRA SOLO ALL'IMPORT, e i libri entrati prima non
   // tornano indietro a farsi guardare. Chi ha importato i Pratchett prima
@@ -961,16 +967,9 @@ export default function Library({
     filoTomi.current = null;
     setPortando(null);
     // quel che e' sceso resta sceso anche se il giro e' stato fermato: si
-    // dice quanto si e' fatto, non «annullato»
-    const parti = [];
-    if (esito.scesi) parti.push(`${esito.scesi} ${esito.scesi === 1 ? "tomo è" : "tomi sono"} qui`);
-    if (esito.falliti)
-      parti.push(`${esito.falliti} non ${esito.falliti === 1 ? "è sceso" : "sono scesi"}`);
-    notify?.(
-      parti.length
-        ? `${parti.join(", ")}${esito.fermato ? " — giro fermato" : ""}`
-        : "Non c'era niente da portare a casa"
-    );
+    // dice quanto si e' fatto, non «annullato». Le parole stanno in
+    // `syncCore` perche' un test le possa chiamare.
+    notify?.(frasePortata(esito));
     // le nuvolette si spengono qui, senza aspettare una sincronizzazione
     // intera: quel che e' cambiato sta tutto in casa
     if (esito.scesi) onFileLocali?.();
@@ -1497,6 +1496,13 @@ export default function Library({
             <span style={{ color: C.muted }}>
               ⧗ {promemoria} <span style={{ color: C.arcane }}>Esportala qui accanto.</span>
             </span>
+          )}
+          {/* Sta IN VISTA come gli altri due avvisi, e per la stessa
+              ragione: è un guaio che solo il lettore può risolvere, e la
+              strada è una sola — il file originale. Ripiegato sotto la
+              cassetta degli attrezzi sarebbe un romanzo perso in silenzio. */}
+          {perduti && !portando && (
+            <span style={{ color: C.accent }}>⚠ {perduti}</span>
           )}
           {/* IN VISTA RESTANO SOLO L'ARCHIVIO E LA CASSETTA DEGLI ATTREZZI.
               I tasti di manutenzione erano arrivati a sei tutti in fila —

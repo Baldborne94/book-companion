@@ -336,4 +336,28 @@ export default async function (t) {
     t.c("una dimensione mancante vale zero", Number.isFinite(monco.totale) && monco.totale === 0);
     t.eq("ma il libro si conta lo stesso", monco.libri.quanti, 1);
   }
+
+  // -----------------------------------------------------------------------
+  // CHI C'È DAVVERO LASSÙ, per nome e non per conteggio. È il conto che
+  // decide due cose che sbagliano in silenzio: quali file vanno rimandati
+  // su (un id di troppo qui vuol dire un libro senza copia PER SEMPRE) e
+  // quali tomi non sono da nessuna parte.
+  // -----------------------------------------------------------------------
+  {
+    const c = contaSpazio(
+      [F("a.epub", 100), F("a.cover", 10), cartella("melodie"), F("b.pdf", 50)],
+      [F("m1.mp3", 300)]
+    );
+    t.eq("gli id sono quelli dei libri", [...c.idLibri].sort().join(","), "a,b");
+    // LA COPERTINA PORTA LO STESSO ID DEL LIBRO: contata fra i file, un
+    // tomo con la sola copertina lassù sembrerebbe al sicuro — e i suoi
+    // byte non risalirebbero mai
+    t.c("e una copertina non fa esistere il libro", !contaSpazio([F("z.cover", 10)], []).idLibri.has("z"));
+    t.c("la cartella non è un id", !c.idLibri.has("melodie"));
+    // l'estensione se ne va, qualunque sia: i due formati stanno nello
+    // stesso secchio
+    t.c("l'epub si riconosce", c.idLibri.has("a"));
+    t.c("e il pdf pure", c.idLibri.has("b"));
+    t.eq("un secchio vuoto non conosce nessuno", contaSpazio(null, null).idLibri.size, 0);
+  }
 }

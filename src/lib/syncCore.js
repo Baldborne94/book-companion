@@ -228,6 +228,11 @@ export function contaSpazio(radiceGrezza, braniGrezzi) {
     copertine: { quanti: copertine.length, byte: peso(copertine) },
     melodie: { quanti: brani.length, byte: peso(brani) },
     totale: peso(radice) + peso(brani),
+    // CHI C'E' DAVVERO LASSU', per nome e non per conteggio. Lo stesso
+    // elenco che si stava gia' pesando risponde anche alla domanda che
+    // conta — «questo libro ha una copia?» — e sapere che i file sono 108
+    // su 115 libri non dice QUALI sette sono scoperti.
+    idLibri: new Set(libri.map((o) => o.name.replace(/\.[^.]+$/, ""))),
   };
 }
 
@@ -241,9 +246,19 @@ export function contaSpazio(radiceGrezza, braniGrezzi) {
 // su una connessione da tablet sono il modo di non finirne nessuno. Il
 // filo `vivo` e' l'unico modo di fermarlo a meta', e quel che e' gia'
 // sceso resta sceso.
+//
+// «NON C'E' LASSU'» NON E' «NON HO POTUTO CHIEDERE», e per un pezzo sono
+// state la stessa cosa: `scarica` tornava `null` sia sul 404 sia sulla rete
+// caduta, e il lettore leggeva «2 non sono scesi» su due file che lassu'
+// non c'erano mai stati — un messaggio che non suggerisce niente se non
+// premere ancora, cosa che non potra' mai funzionare. Adesso il contratto
+// e' quello del vocabolario: `null` e' una RISPOSTA («guardato, non c'e'»),
+// e un guasto di passaggio si ALZA. Chi conta tiene i due numeri separati,
+// perche' chiedono al lettore due cose diverse: l'assente si ricarica dal
+// file, il fallito si riprova.
 export async function portaGiu(voci, { manca, scarica, posa, titolo, onProgress, vivo }) {
   const attivo = vivo || (() => true);
-  const esito = { scesi: 0, falliti: 0, fermato: false };
+  const esito = { scesi: 0, assenti: 0, falliti: 0, fermato: false };
   const mancanti = [];
   for (const v of voci) {
     if (await manca(v)) mancanti.push(v);
@@ -256,7 +271,7 @@ export async function portaGiu(voci, { manca, scarica, posa, titolo, onProgress,
     onProgress?.({ i, totale: mancanti.length, titolo: titolo(v) });
     try {
       const byte = await scarica(v);
-      if (!byte) esito.falliti += 1;
+      if (!byte) esito.assenti += 1;
       else {
         await posa(v, byte);
         esito.scesi += 1;
@@ -266,6 +281,104 @@ export async function portaGiu(voci, { manca, scarica, posa, titolo, onProgress,
     }
   }
   return esito;
+}
+
+// IL SECCHIO CHE DICE «NON CE L'HO» STA RISPONDENDO, NON ROMPENDOSI, ed e'
+// la domanda da cui dipende cosa si dice al lettore: un 404 e' definitivo
+// — quel file va ricaricato dal dispositivo che ce l'ha — mentre tutto il
+// resto e' un guasto di passaggio, dove riprovare ha senso. Sbagliare da
+// questo lato manda a reimportare un romanzo che sta benissimo.
+//
+// Si guarda in tre posti perche' il codice del servizio arriva scritto in
+// tre modi diversi (`statusCode` come STRINGA, `status` come numero, il
+// messaggio in parole), e non e' detto quale dei tre ci sara'.
+export const nonCeLassu = (e) =>
+  `${e?.statusCode ?? ""}` === "404" ||
+  e?.status === 404 ||
+  /not.?found/i.test(`${e?.message || ""} ${e?.error || ""}`);
+
+// QUALI FILE DEVONO SALIRE. Sta qui e non dentro `syncNow` per la ragione
+// di sempre: e' una decisione, non una scrittura, e sbaglia in silenzio da
+// tutt'e due i lati — un «no» di troppo e' un romanzo senza copia PER
+// SEMPRE, un «sì» di troppo sono centinaia di megabyte rispediti lassu' da
+// un tablet, sul traffico contato del piano gratuito.
+//
+// I quattro elenchi non dicono la stessa cosa:
+//   `qui`       — i byte sono su questo dispositivo (senza, non c'e' niente
+//                 da mandare);
+//   `inUscita`  — il cloud dice che questo libro e' stato cancellato
+//                 altrove, e fra poco se ne va anche da qui: caricarlo
+//                 adesso lo farebbe rinascere;
+//   `gia`       — chi QUESTO dispositivo ha gia' mandato;
+//   `lassu`     — chi c'e' davvero nel secchio, che e' l'unica risposta
+//                 buona per un libro sceso dal cloud o ripristinato da un
+//                 archivio, di cui `gia` non sa niente;
+//   `rimandi`   — i file cambiati in casa (una ricucitura): quelli risalgono
+//                 ANCHE se lassu' c'e' gia' qualcosa, perche' quel qualcosa
+//                 e' la copia di prima.
+//
+// Senza l'elenco del secchio non si carica NIENTE: e' il lato sicuro — un
+// giro saltato si rifa' al prossimo, un rinvio in massa no.
+export function daCaricare(libri, { qui, lassu, gia, rimandi, inUscita } = {}) {
+  if (!lassu) return [];
+  const dentro = (s, id) => !!s && s.has(id);
+  return (libri || []).filter((b) => {
+    if (!b?.id || !dentro(qui, b.id) || dentro(inUscita, b.id)) return false;
+    if (dentro(rimandi, b.id)) return true;
+    return !dentro(gia, b.id) && !lassu.has(b.id);
+  });
+}
+
+// I TOMI CHE NON SONO DA NESSUNA PARTE.
+//
+// Un libro senza byte in casa e senza copia nel secchio non e' «nel
+// cloud»: e' un romanzo che non hai piu', e la nuvoletta sulla copertina
+// gli promette uno scaricamento che non potra' mai riuscire. Riceve i soli
+// tomi che qui non ci sono — quelli con la nuvoletta — e tiene quelli che
+// il secchio non ha.
+//
+// Quelli che i byte ce li hanno QUI non si contano, ed e' la regola di
+// casa: da soli risalgono alla prima sincronizzazione, e cio' che l'app
+// cura da se' non si segnala.
+//
+// Senza l'elenco del secchio si TACE invece di accusare: non sapere non e'
+// un allarme, come per la persistenza e per lo spazio.
+export function senzaCopia(soloNelCloud, idLassu) {
+  if (!idLassu) return [];
+  return (soloNelCloud || []).filter((b) => b?.id && !idLassu.has(b.id));
+}
+
+// E si dicono per NOME: in una biblioteca da cento volumi «2 tomi» lascia
+// il lettore a cercare quali. Tre titoli e poi il conto — un elenco intero
+// in una riga di servizio diventa un muro.
+export function fraseSenzaCopia(libri) {
+  const l = libri || [];
+  if (!l.length) return null;
+  const nomi = l.slice(0, 3).map((b) => `«${b.title || "senza titolo"}»`);
+  const resto = l.length - nomi.length;
+  const elenco = resto ? `${nomi.join(", ")} e altri ${resto}` : nomi.join(", ");
+  return `${elenco} ${l.length === 1 ? "non è" : "non sono"} né qui né nel cloud: ${
+    l.length === 1 ? "ricaricalo" : "ricaricali"
+  } dal file.`;
+}
+
+// LE PAROLE DEL GIRO, fuori dal componente per la ragione di sempre: un
+// test in Node non importa un `.jsx`, e una frase che dice la cosa
+// sbagliata non alza nessun errore. Gli zeri non si dicono — «0 non sono
+// scesi» a ogni giro si impara a saltare — e l'assente porta con se' cosa
+// farci, perche' un guaio senza la cura accanto lascia il lettore dov'era.
+export function frasePortata(esito) {
+  const { scesi = 0, assenti = 0, falliti = 0, fermato = false } = esito || {};
+  const parti = [];
+  if (scesi) parti.push(`${scesi} ${scesi === 1 ? "tomo è" : "tomi sono"} qui`);
+  if (assenti)
+    parti.push(
+      `${assenti} ${assenti === 1 ? "non ha" : "non hanno"} copia lassù — ` +
+        `${assenti === 1 ? "ricaricalo" : "ricaricali"} dal file`
+    );
+  if (falliti) parti.push(`${falliti} non ${falliti === 1 ? "è sceso" : "sono scesi"}`);
+  if (!parti.length) return "Non c'era niente da portare a casa";
+  return `${parti.join(", ")}${fermato ? " — giro fermato" : ""}`;
 }
 
 export function planSync({ localRows, tombstones, remoteRows }) {
