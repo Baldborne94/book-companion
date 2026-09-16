@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { getProgress, getStatus, combacia, vistaValida, scriviVista } from "../lib/library.js";
+import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook } from "../lib/library.js";
 import { disponi } from "../lib/ripiani.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { storageEstimate, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux } from "../lib/bookStore.js";
@@ -1080,6 +1080,34 @@ export default function Library({
   // ritrovava in casa anche le melodie. Qui si legge il solo indice — non
   // si estrae un byte — e si mostra cosa c'e' dentro.
   const [archivio, setArchivio] = useState(null);
+  // I titoli proposti e quelli spuntati: `null` = pannello chiuso
+  const [titoli, setTitoli] = useState(null);
+
+  async function proponiTitoliOra() {
+    const { proponiTitoli } = await import("../lib/titoli.js");
+    const proposte = proponiTitoli(booksRef.current);
+    if (!proposte.length) {
+      notify?.("I titoli erano già tutti puliti");
+      return;
+    }
+    // partono tutti spuntati: chi conferma senza leggere ottiene la cura
+    // intera, e chi legge toglie quello che non gli torna
+    setTitoli({ proposte, scelti: new Set(proposte.map((p) => p.id)) });
+  }
+
+  function rinominaTitoli() {
+    const { proposte, scelti } = titoli;
+    const nuovi = new Map(
+      proposte.filter((p) => scelti.has(p.id)).map((p) => [p.id, p.a])
+    );
+    setTitoli(null);
+    if (!nuovi.size) return;
+    // la biblioteca di ADESSO, non quella di quando il pannello si è
+    // aperto: nel frattempo può essere entrato un libro
+    updateBooks(booksRef.current.map((b) => (nuovi.has(b.id) ? { ...b, title: nuovi.get(b.id) } : b)));
+    for (const id of nuovi.keys()) touchBook(id);
+    notify?.(`${nuovi.size} ${nuovi.size === 1 ? "titolo ripulito" : "titoli ripuliti"}`);
+  }
 
   async function apriArchivio(file) {
     if (!file || restoring) return;
@@ -1598,6 +1626,21 @@ export default function Library({
                 ? `Fermo qui (${collane.i + 1} di ${collane.totale})`
                 : "🔖 Riconosci saghe e cicli"}
             </button>
+            {/* Sta accanto al riconoscimento delle saghe perché legge la
+                stessa etichettatura: là si tiene la saga, qui quel che
+                resta. */}
+            <button
+              onClick={proponiTitoliOra}
+              style={{
+                padding: "7px 16px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.border}`,
+                color: C.text,
+                fontSize: F.nota,
+              }}
+            >
+              ✍ Ripulisci i titoli
+            </button>
             {/* Il ripasso delle impronte c'e' solo se qualcuno ne ha bisogno:
                 a biblioteca gia' a posto sarebbe un tasto che non fa niente.
                 Il numero sta scritto sopra perche' e' un giro che legge i
@@ -1651,6 +1694,23 @@ export default function Library({
       )}
 
       {referto && <Referto esito={referto} onChiudi={() => setReferto(null)} onRicuci={ricuciForzato} ricucendo={ricucendo} />}
+      {titoli && (
+        <SceltaTitoli
+          proposte={titoli.proposte}
+          scelti={titoli.scelti}
+          onCambia={(id) =>
+            setTitoli((t) => {
+              if (!t) return t;
+              const scelti = new Set(t.scelti);
+              if (scelti.has(id)) scelti.delete(id);
+              else scelti.add(id);
+              return { ...t, scelti };
+            })
+          }
+          onChiudi={() => setTitoli(null)}
+          onVai={rinominaTitoli}
+        />
+      )}
       {archivio && (
         <SceltaArchivio
           archivio={archivio}
@@ -1805,6 +1865,127 @@ function Referto({ esito, onChiudi, onRicuci, ricucendo }) {
         >
           Chiudi
         </button>
+      </div>
+    </div>
+  );
+}
+
+// I TITOLI SI PROPONGONO, NON SI RISCRIVONO. La ragione sta in
+// `lib/titoli.js`: il parser sbaglia in silenzio, e un romanzo
+// ribattezzato male non alza nessun errore. Qui si vede «da → a» riga per
+// riga e si spunta — un titolo sbagliato non passa perché lo guardi prima.
+function SceltaTitoli({ proposte, scelti, onCambia, onChiudi, onVai }) {
+  const quanti = scelti.size;
+  return (
+    <div
+      onClick={onChiudi}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 55,
+        background: "#080611cc",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        animation: "bc-fade-in 0.25s ease-out",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: px(520),
+          // un pannello deve stare dentro lo schermo SEMPRE: qui l'elenco
+          // è lungo quanto la biblioteca, e senza questo i tasti in fondo
+          // finirebbero fuori
+          maxHeight: "100%",
+          overflowY: "auto",
+          borderRadius: R.grande,
+          border: `1px solid ${C.border}`,
+          background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
+          boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
+          padding: 22,
+        }}
+      >
+        <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
+          ✍ Titoli da ripulire
+        </h2>
+        <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 16 }}>
+          Davanti a questi titoli c'è l'etichettatura di chi ha impacchettato il file.
+          Guarda e spunta: quello che lasci non si tocca.
+        </p>
+
+        {proposte.map((p) => {
+          const on = scelti.has(p.id);
+          return (
+            <button
+              key={p.id}
+              onClick={() => onCambia(p.id)}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 12,
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 12px",
+                marginBottom: 6,
+                borderRadius: R.piccolo,
+                border: `1px solid ${on ? `${C.accent}88` : C.border}`,
+                background: on ? `${C.accent}14` : "transparent",
+              }}
+            >
+              <span style={{ fontSize: F.rilievo, color: on ? C.accent : C.muted }}>
+                {on ? "☑" : "☐"}
+              </span>
+              <span style={{ minWidth: 0 }}>
+                <span
+                  style={{
+                    display: "block",
+                    color: C.muted,
+                    fontSize: F.minuscolo,
+                    textDecoration: "line-through",
+                  }}
+                >
+                  {p.da}
+                </span>
+                <span style={{ display: "block", color: C.text, fontSize: F.corpo, marginTop: 2 }}>
+                  {p.a}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+
+        <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "flex-end" }}>
+          <button
+            onClick={onChiudi}
+            style={{
+              padding: "10px 18px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.border}`,
+              color: C.muted,
+              fontSize: F.nota,
+            }}
+          >
+            Lascia stare
+          </button>
+          <button
+            onClick={onVai}
+            disabled={!quanti}
+            style={{
+              padding: "10px 20px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${quanti ? `${C.accent}88` : C.border}`,
+              background: quanti ? `${C.accent}22` : "transparent",
+              color: quanti ? C.accent : C.muted,
+              fontSize: F.nota,
+            }}
+          >
+            {quanti ? `Rinomina ${quanti}` : "Nessuno spuntato"}
+          </button>
+        </div>
       </div>
     </div>
   );

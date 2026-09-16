@@ -91,34 +91,58 @@ const QUADRE_IN_TESTA = new RegExp(
   `^[\\[(]\\s*(.+?)\\s+(?:${ETICHETTA}\\s*)?${NUMERO}\\s*[\\])]\\s*(.{2,})$`,
   "i"
 );
+// F. il solo NUMERO fra parentesi, in mezzo: «Wheel of Time [02]: The Great
+//    Hunt». E' la forma dei Jordan del lettore, e non la leggeva nessuna
+//    delle altre — le quadre in testa vogliono la parentesi al primo
+//    carattere, e la forma B (`PRIMA`) il numero nudo. Qui i due punti
+//    sono FACOLTATIVI, e si puo' perche' la parentesi chiusa fa gia' da
+//    separatore: col numero nudo servono, o «Halo 2 Anniversary» sarebbe
+//    la saga «Halo».
+const PRIMA_QUADRE = new RegExp(
+  `^(.+?)\\s*[\\[(]\\s*(?:${ETICHETTA}\\s*)?${NUMERO}\\s*[\\])]\\s*[:\\-–—]?\\s*(.{2,})$`,
+  "i"
+);
 
+// QUEL CHE RESTA TOLTA L'ETICHETTA E' IL TITOLO VERO, e nelle stesse
+// espressioni sta gia' catturato: dove il numero e la saga se ne vanno,
+// il gruppo rimasto e' il nome del romanzo. Si tiene perche' sullo
+// scaffale «Wheel of Time [02]: The Great Hunt» tronca a «Wheel of Time
+// [02]:…» e i sei volumi di una saga diventano indistinguibili — la
+// copertina il titolo ce l'ha stampato sopra, la didascalia no.
 function leggi(campo) {
   const s = String(campo || "").trim();
   if (!s) return null;
   let m = DOPO_PARENTESI.exec(s) || DOPO_SEPARATORE.exec(s);
   if (m) {
     const saga = sagaBuona(m[2]);
-    if (saga) return { saga, sagaOrder: numero(m[3]) };
+    if (saga) return { saga, sagaOrder: numero(m[3]), resto: m[1] };
   }
   m = DI_IN_CODA.exec(s);
   if (m) {
     const saga = sagaBuona(m[3]);
-    if (saga) return { saga, sagaOrder: numero(m[2]) };
+    if (saga) return { saga, sagaOrder: numero(m[2]), resto: m[1] };
   }
   m = DI_IN_TESTA.exec(s);
   if (m) {
     const saga = sagaBuona(m[2]);
-    if (saga) return { saga, sagaOrder: numero(m[1]) };
+    if (saga) return { saga, sagaOrder: numero(m[1]), resto: m[3] };
   }
-  m = QUADRE_IN_TESTA.exec(s) || PRIMA.exec(s);
+  m = QUADRE_IN_TESTA.exec(s) || PRIMA_QUADRE.exec(s) || PRIMA.exec(s);
   if (m) {
     const saga = sagaBuona(m[1]);
-    if (saga) return { saga, sagaOrder: numero(m[2]) };
+    if (saga) return { saga, sagaOrder: numero(m[2]), resto: m[3] };
   }
   m = IN_TESTA.exec(s);
-  if (m) return { saga: null, sagaOrder: numero(m[1]) };
+  // qui l'espressione e' un PREFISSO e non tiene il resto in un gruppo:
+  // il titolo e' quel che sta dopo il pezzo consumato
+  if (m) return { saga: null, sagaOrder: numero(m[1]), resto: s.slice(m[0].length) };
   return null;
 }
+
+// I pezzi di un campo, com'e' scritto: serve a chi il titolo lo vuole
+// ripulire, non a chi cerca la saga. `sagaDalTitolo` resta la porta di
+// prima e non cambia forma.
+export const pezziDalTitolo = (campo) => leggi(campo);
 
 // Il nome del file senza l'estensione, e con l'autore davanti tolto quando
 // il file e' scritto «Autore - Saga 09 - Titolo»: il primo segmento che
