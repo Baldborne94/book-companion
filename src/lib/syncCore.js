@@ -233,7 +233,32 @@ export function contaSpazio(radiceGrezza, braniGrezzi) {
     // conta — «questo libro ha una copia?» — e sapere che i file sono 108
     // su 115 libri non dice QUALI sette sono scoperti.
     idLibri: new Set(libri.map((o) => o.name.replace(/\.[^.]+$/, ""))),
+    // E LE COPERTINE HANNO IL LORO ELENCO, per la stessa ragione: dice
+    // quali si possono andare a prendere senza bussare a vuoto su
+    // centocinquanta indirizzi che non esistono.
+    idCopertine: new Set(copertine.map((o) => o.name.replace(/\.cover$/, ""))),
   };
+}
+
+// QUALI COPERTINE DEVONO SCENDERE.
+//
+// Scendevano SOLO dentro il giro di `pull`, cioe' mentre la riga di quel
+// libro passava di li' perche' nel cloud era piu' recente — ed e' la stessa
+// trappola del caricamento dei file, che ci e' costata sette romanzi
+// scoperti: una riga in pari non ci ripassa MAI PIU'. Bastava perdere la
+// copertina qui — la memoria del browser sfrattata, un ripristino, un
+// dispositivo nuovo che ha gia' ricevuto tutto — e il dorso disegnato
+// restava per sempre, con l'immagine ferma lassu' a un indirizzo che
+// nessuno andava piu' a guardare (segnalato: «su tablet alcune copertine
+// non caricano piu' o non si vedono»).
+//
+// Adesso e' un giro suo, come per i file: si guarda chi la copertina qui
+// non ce l'ha e lassu' si'. Senza l'elenco del secchio non si chiede
+// niente — bussare a vuoto su ogni libro sarebbe una raffica di 404 a ogni
+// sincronizzazione.
+export function copertineDaScaricare(libri, { qui, lassu } = {}) {
+  if (!lassu) return [];
+  return (libri || []).filter((b) => b?.id && lassu.has(b.id) && !(qui && qui.has(b.id)));
 }
 
 // PORTARE GIU' UNO PER VOLTA. E' il giro di «Porta qui i tomi», staccato
@@ -296,6 +321,71 @@ export const nonCeLassu = (e) =>
   `${e?.statusCode ?? ""}` === "404" ||
   e?.status === 404 ||
   /not.?found/i.test(`${e?.message || ""} ${e?.error || ""}`);
+
+// E UN FILE TROPPO GRANDE E' UNA RISPOSTA, NON UN GUASTO.
+//
+// Il secchio ha un tetto per OGGETTO (cinquanta megabyte sul piano
+// gratuito), e un tomo che lo supera si sente rispondere «The object
+// exceeded the maximum allowed size». Fin qui e' un limite. Il guasto era
+// cosa succedeva dopo: quell'errore veniva ALZATO, e il giro moriva li' —
+// i libri dopo di lui non salivano, le copertine nemmeno, le preferenze
+// neanche, e non si scaricava niente di quel che aspettava lassu'. Un solo
+// romanzo grosso teneva in ostaggio l'intera biblioteca a ogni giro, e la
+// riga «ultima sincronizzazione» restava indietro senza dire perche'
+// (segnalato col pannello in mano: «Sincronizzazione fallita: The object
+// exceeded the maximum allowed size»).
+//
+// E' la stessa lezione delle copertine tre righe piu' in la' — «una
+// copertina che non sale non ferma niente» — e dello scaricamento dei
+// tomi: si riconosce, si salta, e si dice per nome.
+//
+// Tre posti come per il 404, e il codice si confronta INTERO: cercato per
+// contenimento, un 4130 passerebbe.
+export const eTroppoGrande = (e) =>
+  `${e?.statusCode ?? ""}` === "413" ||
+  e?.status === 413 ||
+  /maximum allowed size|payload too large|entity too large/i.test(
+    `${e?.message || ""} ${e?.error || ""}`
+  );
+
+// E IL BOCCIATO SI RICORDA CON LA SUA MISURA.
+//
+// Senza memoria quel tomo riproverebbe a salire a OGNI giro, e sul piano
+// gratuito anche il traffico e' contato: sono decine di megabyte spediti
+// per farseli rifiutare, da un tablet. La misura sta nel segno apposta —
+// e' il modo di riprovare quando i byte cambiano davvero (una ricucitura,
+// un file sostituito a mano), senza tenersi un «no» per sempre su un file
+// che non e' piu' quello.
+export const giaBocciato = (id, byte, registro) =>
+  !!id && Number.isFinite(byte) && registro?.[id] === byte;
+
+// Chi e' bocciato FRA I LIBRI DI ADESSO: il registro puo' portarsi dietro
+// dei tomi cancellati, e un avviso su un libro che non c'e' piu' e' rumore.
+export function troppoGrandiInBiblioteca(libri, registro) {
+  const r = registro || {};
+  return (libri || [])
+    .filter((b) => b?.id && Number.isFinite(r[b.id]))
+    .map((b) => ({ id: b.id, title: b.title, byte: r[b.id] }));
+}
+
+// E si dice per NOME e con la MISURA, che e' l'unica cosa che rende la riga
+// utile: senza il numero, «troppo grande» non dice di quanto — e la misura
+// la formatta chi disegna, perche' `fmtBytes` vive con la UI.
+//
+// Non promette nessuna cura, perche' non ce n'e' una: su quel piano quel
+// file lassu' non ci va. Dice dove resta, che e' l'informazione vera.
+export function fraseTroppoGrandi(libri, misura) {
+  const l = libri || [];
+  if (!l.length) return null;
+  const nome = (b) =>
+    `«${b.title || "senza titolo"}»${misura && Number.isFinite(b.byte) ? ` (${misura(b.byte)})` : ""}`;
+  const nomi = l.slice(0, 3).map(nome);
+  const resto = l.length - nomi.length;
+  const elenco = resto ? `${nomi.join(", ")} e altri ${resto}` : nomi.join(", ");
+  return `${elenco} ${l.length === 1 ? "è troppo grande" : "sono troppo grandi"} per il cloud: ${
+    l.length === 1 ? "resta" : "restano"
+  } solo su questo dispositivo.`;
+}
 
 // QUALI FILE DEVONO SALIRE. Sta qui e non dentro `syncNow` per la ragione
 // di sempre: e' una decisione, non una scrittura, e sbaglia in silenzio da
