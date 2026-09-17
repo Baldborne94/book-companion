@@ -1,6 +1,6 @@
 import { getClient, isSyncConfigured, BUCKET } from "./supabase.js";
 import { esitoRegistrazione } from "./accesso.js";
-import { putFile, getFile, putCover, getCover, removeBookData, listFileIds } from "./bookStore.js";
+import { putFile, getFile, putCover, getCover, removeBookData, listFileIds, listCoverIds } from "./bookStore.js";
 import {
   loadBooks, saveBooks, getProgress, setProgress, getStatus, setStatus,
   getUpdatedAt, touchBook, getTombstones, clearTombstones, getLastOpened,
@@ -12,7 +12,7 @@ import {
 } from "./annotations.js";
 import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, getListsRaw, writeLists } from "./music.js";
 import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
-import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, daCaricare, nonCeLassu } from "./syncCore.js";
+import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, daCaricare, nonCeLassu, eTroppoGrande, giaBocciato, copertineDaScaricare } from "./syncCore.js";
 
 // `contaSpazio` viveva qui ed e' passata in `syncCore` con le altre
 // decisioni pure; si riesporta perche' chi la cercava la trovi dov'era.
@@ -25,6 +25,8 @@ const UPLOADED_KEY = "bc_uploaded";
 const UPLOADED_COV_KEY = "bc_uploaded_cov";
 // I file cambiati in casa: vedi `daRicaricare`.
 const RIPORTA_KEY = "bc_riporta";
+// I tomi che il secchio ha rifiutato perche' troppo grandi: vedi sotto.
+const TROPPO_GRANDI_KEY = "bc_troppo_grandi";
 const PREFS_UPD_KEY = "bc_prefs_upd";
 
 export const getLastSync = () => parseInt(localStorage.getItem(LAST_SYNC_KEY), 10) || 0;
@@ -87,6 +89,26 @@ const copertineSu = () => {
 };
 const segnaCopertina = (id) =>
   localStorage.setItem(UPLOADED_COV_KEY, JSON.stringify([...copertineSu(), id]));
+
+// I TOMI CHE IL SECCHIO HA RIFIUTATO PER LA MISURA, con la misura accanto:
+// e' quella che li fa riprovare il giorno che i byte cambiano davvero.
+// Sta sul dispositivo come `bc_uploaded`, perche' e' un fatto di QUESTA
+// copia della biblioteca, non della biblioteca.
+export const troppoGrandi = () => {
+  try {
+    const r = JSON.parse(localStorage.getItem(TROPPO_GRANDI_KEY));
+    return r && typeof r === "object" && !Array.isArray(r) ? r : {};
+  } catch {
+    return {};
+  }
+};
+const segnaTroppoGrande = (id, byte) => {
+  try {
+    localStorage.setItem(TROPPO_GRANDI_KEY, JSON.stringify({ ...troppoGrandi(), [id]: byte }));
+  } catch {
+    /* senza il segno si riprova al giro dopo: si perde traffico, non un libro */
+  }
+};
 
 const filePath = (uid, book) => `${uid}/${book.id}.${book.fileType || "epub"}`;
 const coverPath = (uid, id) => `${uid}/${id}.cover`;
@@ -376,27 +398,43 @@ export async function syncNow({ onProgress } = {}) {
   // Chi deve salire lo dice `daCaricare`, in `syncCore`, dove un test lo
   // puo' chiedere: qui resta solo il mandare.
   const rimandi = daRimandareSu();
-  let suNelSecchio = null;
+  let secchio = null;
   try {
-    suNelSecchio = contaSpazio(await elenca(sb, uid), []).idLibri;
+    secchio = contaSpazio(await elenca(sb, uid), []);
   } catch {
     /* senza l'elenco non si indovina: si riprova al giro dopo */
   }
   const daMandare = daCaricare(books, {
     qui: new Set(await listFileIds()),
-    lassu: suNelSecchio,
+    lassu: secchio?.idLibri,
     gia: uploaded(),
     rimandi,
     inUscita: new Set(removeLocal),
   });
+  const bocciati = troppoGrandi();
   for (const book of daMandare) {
     const blob = await getFile(book.id);
     if (!blob) continue;
+    // gia' bocciato, e gli stessi byte: non si rispedisce per farselo
+    // rifiutare un'altra volta — sul piano gratuito il traffico e' contato
+    if (giaBocciato(book.id, blob.size, bocciati)) continue;
     say(`Carico «${book.title}»…`);
     const { error: sErr } = await sb.storage
       .from(BUCKET)
       .upload(filePath(uid, book), blob, { upsert: true, contentType: blob.type || undefined });
-    if (sErr && sErr.statusCode !== "409") throw sErr;
+    if (sErr && sErr.statusCode !== "409") {
+      // UN FILE TROPPO GRANDE NON FERMA IL GIRO (vedi `eTroppoGrande`): si
+      // segna, si salta, e in Libreria si dice per nome. Alzarlo qui voleva
+      // dire che un romanzo da sessanta megabyte teneva ferma tutta la
+      // sincronizzazione — copertine, preferenze e scaricamenti compresi —
+      // a ogni singolo giro, e il pannello mostrava l'errore nudo senza
+      // nemmeno dire di quale libro parlasse.
+      if (eTroppoGrande(sErr)) {
+        segnaTroppoGrande(book.id, blob.size);
+        continue;
+      }
+      throw sErr;
+    }
     markUploaded(book.id);
     if (rimandi.has(book.id)) scordaRimando(book.id);
   }
@@ -518,6 +556,33 @@ export async function syncNow({ onProgress } = {}) {
     // biblioteca. Rifare cinquanta libri da capo per un intoppo al
     // quarantanovesimo non lo merita nessuno.
     if (pull.length || removeLocal.length) saveBooks(next);
+  }
+
+  // LE COPERTINE CHE MANCANO QUI SI VANNO A RIPRENDERE, fuori dal giro di
+  // `pull` (vedi `copertineDaScaricare`): dentro, una riga gia' in pari non
+  // ci ripassava mai piu' e il dorso disegnato restava per sempre sopra
+  // un'immagine che lassu' c'e' eccome.
+  //
+  // Una copertina che non scende non ferma niente — e' la stessa regola del
+  // giro che le manda su: senza, si vede il dorso disegnato, che e'
+  // infinitamente meglio di una ricezione buttata via.
+  if (secchio?.idCopertine?.size) {
+    try {
+      const qui = new Set(await listCoverIds());
+      const mancanti = copertineDaScaricare(next, { qui, lassu: secchio.idCopertine });
+      if (mancanti.length)
+        say(`Riprendo ${mancanti.length === 1 ? "una copertina" : `${mancanti.length} copertine`}…`);
+      for (const b of mancanti) {
+        try {
+          const { data } = await sb.storage.from(BUCKET).download(coverPath(uid, b.id));
+          if (data) await putCover(b.id, data);
+        } catch {
+          /* si riprova alla prossima sincronizzazione */
+        }
+      }
+    } catch {
+      /* senza l'elenco di casa non si indovina: si riprova al giro dopo */
+    }
   }
 
   const { data: remotePrefsRows } = await sb.from("prefs").select("*").eq("user_id", uid).limit(1);

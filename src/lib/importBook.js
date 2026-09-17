@@ -1,4 +1,6 @@
-import { putFile, putCover } from "./bookStore.js";
+import { putFile, getFile, putCover, getCover, removeBookData, removeAux } from "./bookStore.js";
+import { getProgress } from "./library.js";
+import { getMarks, getHighlights } from "./annotations.js";
 import { riconosci, nomeInBiblioteca } from "./sagaBooks.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 import { dalMetadata } from "./sinossi.js";
@@ -126,12 +128,93 @@ export function sembraGiaLetto({ title, author } = {}, libri = []) {
   );
 }
 
+// UN DOPPIONE SENZA BYTE NON E' UN DOPPIONE: E' IL FILE CHE TORNA A CASA.
+//
+// Segnalato dal lettore davanti a trentasette tomi che non hanno copia né
+// qui né nel cloud: «in che senso non c'è copia, li ho importati io». La
+// scheda e i byte vivono in due posti diversi — la scheda in
+// `localStorage`, il file in IndexedDB — e il file può sparire da tutt'e
+// due i lati (mai salito perché il giro moriva, e sfrattato di qui dal
+// browser) lasciando la scheda intatta sullo scaffale. La strada per
+// rimediare è una sola: reimportare il file.
+//
+// E proprio lì l'import gli sbatteva la porta in faccia, in due modi
+// opposti e tutt'e due sbagliati. **Con l'impronta scritta** riconosceva
+// il doppione e SALTAVA il file — «era già in libreria» — senza mai
+// guardare se quei byte ci fossero davvero: la scheda restava vuota
+// com'era. **Senza impronta** (ed è il caso dei tomi entrati prima che
+// l'impronta esistesse, cioè proprio questi) entrava come libro NUOVO, e
+// la scheda vecchia restava lì morta a tenersi punto di lettura ed
+// evidenziazioni che non si sarebbero più aperti.
+//
+// Le due regole non sono la stessa, e la differenza è cosa si può
+// spostare per sbaglio:
+//
+//   `stessiByte` — l'impronta combacia, quindi è provatamente lo stesso
+//   file: evidenziazioni e punto di lettura restano al loro posto, e si
+//   adotta sempre.
+//
+//   altrimenti è un'ALTRA EDIZIONE dello stesso romanzo, e lì i CFI non
+//   valgono più: adottarla su una scheda che porta dei segni metterebbe
+//   le evidenziazioni su righe che non hai scelto — il difetto silenzioso
+//   peggiore che ci sia. Si adotta solo una scheda `segnato: false`, dove
+//   non c'è niente da spostare; con dei segni entra come libro nuovo e si
+//   dichiara, che è la regola di sempre (tenerne una sola è una scelta
+//   del lettore).
+//
+// E se i byte QUI ci sono, allora è un doppione vero e si salta come prima.
+export function ritornaACasa({ stessiByte = false, byteQui = false, segnato = false } = {}) {
+  if (byteQui) return false;
+  if (stessiByte) return true;
+  return !segnato;
+}
+
+// I byte di quel libro sono QUI? E' l'altra meta' della domanda: senza,
+// «l'ho gia'» e' una risposta data senza guardare.
+const byteInCasa = async (id) => !!(await getFile(id).catch(() => null));
+
+// Una scheda porta dei SEGNI se ci hai evidenziato, messo un segnalibro o
+// anche solo letto: sono tutte cose ancorate ai byte di PRIMA.
+const schedaSegnata = (id) => {
+  try {
+    return getHighlights(id).length > 0 || getMarks(id).length > 0 || getProgress(id) > 0;
+  } catch {
+    // nel dubbio si tratta come segnata: il lato sicuro e' non adottare
+    return true;
+  }
+};
+
+// IL TRASLOCO, per il gemello riconosciuto DOPO aver scritto il file sotto
+// un id nuovo (il titolo si sa solo a metadati letti). La scheda non si
+// tocca: torna solo il corpo del libro.
+async function traslocaSu(scheda, tempId) {
+  const blob = await getFile(tempId).catch(() => null);
+  if (!blob) return null;
+  await putFile(scheda.id, blob);
+  // la copertina segue SOLO se la scheda non ne ha gia' una: quella puo'
+  // essere la copertina che ti sei messo a mano, e sovrascriverla di
+  // nascosto sarebbe un dispetto
+  if (!(await getCover(scheda.id).catch(() => null))) {
+    const cov = await getCover(tempId).catch(() => null);
+    if (cov) await putCover(scheda.id, cov).catch(() => {});
+  }
+  // quel che era calcolato sui byte di prima non vale piu': le posizioni
+  // cachate di epub.js darebbero percentuali sballate per sempre, e il
+  // verdetto sulla spezzatura parla di un altro file
+  await removeAux(`loc_${scheda.id}`).catch(() => {});
+  await removeAux(`salute_${scheda.id}`).catch(() => {});
+  await removeBookData(tempId).catch(() => {});
+  return scheda;
+}
+
 export async function importFiles(fileList, libri = []) {
   const added = [];
   const errors = [];
   // i due modi di essere un doppione: saltati e segnalati
   const saltati = [];
   const sospetti = [];
+  // i file tornati dentro una scheda che era rimasta senza byte
+  const ritrovati = [];
   let cuciti = 0;
   // Quello che l'import faceva in silenzio. Il piu' importante non e' il
   // numero dei libri: e' quante volte i METADATI non si sono letti, perche'
@@ -154,11 +237,23 @@ export async function importFiles(fileList, libri = []) {
     // trascinata due volte e' il modo piu' facile di farlo.
     const imp = await impronta(await file.arrayBuffer().catch(() => null));
     const noto = giaInLibreria(imp, [...libri, ...added]);
+    // IL DOPPIONE VERO si salta prima di `putFile`, o occuperebbe uno
+    // spazio da liberare dopo. Ma se di quel libro i byte qui NON ci sono,
+    // questo file non e' un doppione: e' la sua copia che torna a casa, e
+    // l'impronta dice che e' lo stesso identico file — segni e punto di
+    // lettura restano dov'erano (vedi `ritornaACasa`).
+    let ritorno = null;
     if (noto) {
-      saltati.push({ name: file.name, title: noto.title });
-      continue;
+      if (!ritornaACasa({ stessiByte: true, byteQui: await byteInCasa(noto.id) })) {
+        saltati.push({ name: file.name, title: noto.title });
+        continue;
+      }
+      ritorno = noto;
     }
-    const id = crypto.randomUUID();
+    const id = ritorno ? ritorno.id : crypto.randomUUID();
+    // l'estrazione non deve coprire la copertina che c'e' gia': puo' essere
+    // quella che ti sei messo a mano
+    const copertinaSua = ritorno ? await getCover(ritorno.id).catch(() => null) : null;
     // I PEZZI SI RICUCIONO ALL'INGRESSO. Un ePub spezzato in piu'
     // documenti lascia una facciata bianca a ogni giuntura, in mezzo a
     // una scena: qui il libro entra gia' intero. Si fa SOLO ora, perche'
@@ -199,13 +294,31 @@ export async function importFiles(fileList, libri = []) {
     } catch {
       /* estrazione fallita: il libro resta col filename come titolo */
     }
-    if (!letto?.titolo) senzaMetadati += 1;
-    if (!letto?.copertina) senzaCopertina += 1;
+    if (copertinaSua) await putCover(ritorno.id, copertinaSua).catch(() => {});
     // il titolo si sa solo adesso: un'altra edizione dello stesso romanzo
     // entra comunque — tenerne una sola e' una scelta tua, non nostra — ma
-    // non entra di nascosto
-    const gemello = sembraGiaLetto(meta, [...libri, ...added]);
-    if (gemello) sospetti.push({ title: meta.title });
+    // non entra di nascosto. A meno che la scheda del gemello i byte non
+    // ce li abbia piu': allora questo file e' il suo, e fondare un libro
+    // nuovo lascerebbe quella scheda morta a tenersi i tuoi segni.
+    const gemello = !ritorno ? sembraGiaLetto(meta, [...libri, ...added]) : null;
+    if (gemello) {
+      const adottabile = ritornaACasa({
+        byteQui: await byteInCasa(gemello.id),
+        segnato: schedaSegnata(gemello.id),
+      });
+      ritorno = adottabile ? await traslocaSu(gemello, id) : null;
+      if (!ritorno) sospetti.push({ title: meta.title });
+    }
+    // La scheda ritrovata NON si tocca — titolo, saga, voto e note sono
+    // tuoi, e comandano come sempre: torna solo il file. Quel che si
+    // scrive e' l'impronta, cosi' la prossima volta il libro si riconosce
+    // dai byte invece che dal titolo.
+    if (ritorno) {
+      ritrovati.push({ id: ritorno.id, title: ritorno.title || meta.title, impronta: imp || null });
+      continue;
+    }
+    if (!letto?.titolo) senzaMetadati += 1;
+    if (!letto?.copertina) senzaCopertina += 1;
     if (imp) meta.impronta = imp;
     // saga e numero d'ordine dal titolo, senza chiederli a mano: e' quello
     // che accende il glossario e fa funzionare il «prossimo della saga»
@@ -249,7 +362,7 @@ export async function importFiles(fileList, libri = []) {
     }
     added.push(meta);
   }
-  return { added, errors, saltati, sospetti, cuciti, riconosciuti, senzaMetadati, senzaCopertina };
+  return { added, errors, saltati, sospetti, ritrovati, cuciti, riconosciuti, senzaMetadati, senzaCopertina };
 }
 
 // IL RESOCONTO DELL'IMPORT, in una riga sola.
@@ -268,6 +381,7 @@ export function resoconto({
   errors = [],
   saltati = [],
   sospetti = [],
+  ritrovati = [],
   cuciti = 0,
   riconosciuti = 0,
   senzaMetadati = 0,
@@ -276,6 +390,17 @@ export function resoconto({
   const parti = [];
   if (added.length)
     parti.push(added.length === 1 ? "Un nuovo tomo sullo scaffale ✨" : `${added.length} nuovi tomi sullo scaffale ✨`);
+  // IL FILE TORNATO A CASA si dice per primo fra i doppioni, perche' e' il
+  // rovescio esatto del «saltato»: li' il file non e' entrato perche' c'era
+  // gia', qui e' entrato DENTRO la scheda che era rimasta senza. Senza
+  // questa riga il lettore vedrebbe «nessun nuovo tomo» dopo aver
+  // reimportato un romanzo, che e' il contrario di quel che e' successo.
+  if (ritrovati.length)
+    parti.push(
+      ritrovati.length === 1
+        ? `«${ritrovati[0].title || "un tomo"}» ha ritrovato il suo file 🏠`
+        : `${ritrovati.length} tomi hanno ritrovato il loro file 🏠`
+    );
   // il doppione dei byte si dice SUBITO dopo il conto, perche' e' quello
   // che spiega perche' i tomi entrati sono meno dei file che hai passato
   if (saltati.length)

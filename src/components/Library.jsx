@@ -9,8 +9,11 @@ import { exportLibrary, ultimoArchivio, promemoriaArchivio } from "../lib/export
 import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
 import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
-import { portaACasa, cloudUsage } from "../lib/sync.js";
-import { frasePortata, senzaCopia, fraseSenzaCopia, daPortare } from "../lib/syncCore.js";
+import { portaACasa, cloudUsage, troppoGrandi, daRicaricare } from "../lib/sync.js";
+import {
+  frasePortata, senzaCopia, fraseSenzaCopia, daPortare,
+  troppoGrandiInBiblioteca, fraseTroppoGrandi,
+} from "../lib/syncCore.js";
 import { fmtBytes } from "../lib/bytes.js";
 import { stretto } from "../lib/spazio.js";
 import { BarraCloud } from "./BarraCloud.jsx";
@@ -477,6 +480,14 @@ export default function Library({
   // anche i perduti offriva di scaricare file che l'app sapeva gia' non
   // esserci, e la riga qui sopra lo diceva a mezzo centimetro di distanza.
   const daScendere = daPortare(nelCloud, cloud?.idLibri);
+
+  // E I TOMI CHE IL SECCHIO HA RIFIUTATO PER LA MISURA. Non e' un guasto da
+  // riparare — sul piano gratuito quel file lassu' non ci va — ed e'
+  // proprio per questo che va detto: senza la riga, il lettore vede un
+  // libro che «non si sincronizza» e non ha modo di sapere perche'. Prima
+  // l'errore usciva nudo nel pannello della nuvola, senza nemmeno dire di
+  // quale libro parlasse.
+  const grossi = fraseTroppoGrandi(troppoGrandiInBiblioteca(books, troppoGrandi()), fmtBytes);
 
   // IL RICONOSCIMENTO GIRA SOLO ALL'IMPORT, e i libri entrati prima non
   // tornano indietro a farsi guardare. Chi ha importato i Pratchett prima
@@ -1039,8 +1050,24 @@ export default function Library({
       // la libreria di adesso serve a riconoscere i doppioni: senza, lo
       // stesso file importato due volte fa due libri distinti
       const esito = await importFiles(files, books);
-      if (esito.added.length) {
-        updateBooks([...books, ...esito.added]);
+      // I FILE TORNATI A CASA dentro una scheda che era rimasta senza byte.
+      // La scheda non si tocca — titolo, saga, voto e note sono del lettore
+      // — si scrive la sola impronta, e si timbra perché la riga risalga.
+      // E si toglie dai «già caricati» (`daRicaricare`): lassù quel file
+      // non c'è, ma il registro di questo dispositivo può dire di sì da
+      // anni, e senza il segno non risalirebbe mai — che è esattamente il
+      // buco per cui quel libro era rimasto senza copia da nessuna parte.
+      const ritrovati = esito.ritrovati || [];
+      const conImpronta = new Map(ritrovati.filter((r) => r.impronta).map((r) => [r.id, r.impronta]));
+      for (const r of ritrovati) {
+        touchBook(r.id);
+        daRicaricare(r.id);
+      }
+      const base = conImpronta.size
+        ? books.map((b) => (conImpronta.has(b.id) ? { ...b, impronta: conImpronta.get(b.id) } : b))
+        : books;
+      if (esito.added.length || ritrovati.length) {
+        updateBooks([...base, ...esito.added]);
         onImported?.();
       }
       notify(resoconto(esito));
@@ -1536,6 +1563,11 @@ export default function Library({
           {perduti && !portando && (
             <span style={{ color: C.accent }}>⚠ {perduti}</span>
           )}
+          {/* E il rovescio: non un libro perduto, ma uno che lassù non ci
+              andrà mai. Sta qui e non fra i perduti perché i byte ce li hai
+              — è al sicuro su questo dispositivo, ed è l'archivio la sua
+              rete, non il cloud. */}
+          {grossi && !portando && <span style={{ color: C.muted }}>☁ {grossi}</span>}
           {/* IN VISTA RESTANO SOLO L'ARCHIVIO E LA CASSETTA DEGLI ATTREZZI.
               I tasti di manutenzione erano arrivati a sei tutti in fila —
               saghe, visita, doppioni, tomi dal cloud, ripristino — e sono
