@@ -261,6 +261,30 @@ export function copertineDaScaricare(libri, { qui, lassu } = {}) {
   return (libri || []).filter((b) => b?.id && lassu.has(b.id) && !(qui && qui.has(b.id)));
 }
 
+// E QUALI DEVONO SALIRE, che e' la stessa domanda girata.
+//
+// Salivano guardando un REGISTRO di questo dispositivo (`bc_uploaded_cov`):
+// «questa copertina l'ho gia' mandata», e da li' in poi nessuno la
+// riguardava. E' la forma esatta del difetto che ci e' costato quattro
+// giri — i file dentro `push`, le copertine dentro `pull`, e queste — cioe'
+// **una decisione presa su un registro invece che sullo stato**: il
+// registro non sa niente di un secchio svuotato, di un dispositivo nuovo,
+// di una copia che lassu' non e' mai arrivata perche' il giro moriva
+// prima. Adesso decide l'elenco del secchio, come per i file: la copertina
+// sale se ce l'ho QUI e lassu' non c'e'.
+//
+// Senza l'elenco non si carica niente — stesso lato sicuro di `daCaricare`:
+// un giro saltato si rifa', un rinvio in massa no.
+//
+// Limite dichiarato: una copertina CAMBIATA qui, che lassu' c'e' gia' nella
+// versione di prima, questo giro non la rimanda — la manda subito
+// `caricaCopertina` al momento del cambio. Chi vuole chiudere anche quello
+// aggiunga un segno come `bc_riporta` fa per i file.
+export function copertineDaCaricare(libri, { qui, lassu } = {}) {
+  if (!lassu) return [];
+  return (libri || []).filter((b) => b?.id && qui?.has(b.id) && !lassu.has(b.id));
+}
+
 // PORTARE GIU' UNO PER VOLTA. E' il giro di «Porta qui i tomi», staccato
 // da Supabase e da IndexedDB cosi' un test lo prova con dei finti (e chi
 // un giorno avra' altri byte da portare giu' lo riusa): `manca` dice se i byte NON sono qui
@@ -399,23 +423,31 @@ export function fraseTroppoGrandi(libri, misura) {
 //   `inUscita`  — il cloud dice che questo libro e' stato cancellato
 //                 altrove, e fra poco se ne va anche da qui: caricarlo
 //                 adesso lo farebbe rinascere;
-//   `gia`       — chi QUESTO dispositivo ha gia' mandato;
-//   `lassu`     — chi c'e' davvero nel secchio, che e' l'unica risposta
-//                 buona per un libro sceso dal cloud o ripristinato da un
-//                 archivio, di cui `gia` non sa niente;
+//   `lassu`     — chi c'e' davvero nel secchio, e adesso e' l'UNICA cosa
+//                 che dice se un file ha una copia;
 //   `rimandi`   — i file cambiati in casa (una ricucitura): quelli risalgono
 //                 ANCHE se lassu' c'e' gia' qualcosa, perche' quel qualcosa
 //                 e' la copia di prima.
 //
 // Senza l'elenco del secchio non si carica NIENTE: e' il lato sicuro — un
 // giro saltato si rifa' al prossimo, un rinvio in massa no.
-export function daCaricare(libri, { qui, lassu, gia, rimandi, inUscita } = {}) {
+// E IL REGISTRO DI QUESTO DISPOSITIVO NON VOTA PIU'.
+//
+// C'era un `gia` — `bc_uploaded`, «questo l'ho gia' mandato» — e restava
+// mezzo difetto in piedi: un libro segnato nel registro ma ASSENTE dal
+// secchio non risaliva mai, che e' esattamente il caso dei sette romanzi
+// scoperti (registro scritto, giro morto prima, secchio svuotato altrove:
+// il registro non sa niente di nessuna delle tre cose). Da quando l'elenco
+// del secchio c'e', il registro non aggiunge niente e puo' solo mentire:
+// e' stato tolto, qui e nelle copertine. Lo dice il test della convergenza,
+// che prima cascava.
+export function daCaricare(libri, { qui, lassu, rimandi, inUscita } = {}) {
   if (!lassu) return [];
   const dentro = (s, id) => !!s && s.has(id);
   return (libri || []).filter((b) => {
     if (!b?.id || !dentro(qui, b.id) || dentro(inUscita, b.id)) return false;
     if (dentro(rimandi, b.id)) return true;
-    return !dentro(gia, b.id) && !lassu.has(b.id);
+    return !lassu.has(b.id);
   });
 }
 

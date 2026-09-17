@@ -191,7 +191,7 @@ export default async function (t) {
     const tomi = ["a", "b", "c"].map((id) => ({ id, title: id }));
     const tutti = new Set(["a", "b", "c"]);
     const su = (l) => l.map((b) => b.id).join(",");
-    const chiedi = (o) => su(daCaricare(tomi, { qui: tutti, lassu: new Set(), gia: new Set(), ...o }));
+    const chiedi = (o) => su(daCaricare(tomi, { qui: tutti, lassu: new Set(), ...o }));
 
     t.eq("nessuno lassù, salgono tutti", chiedi({}), "a,b,c");
     // IL DIFETTO CHE HA APERTO TUTTO QUESTO: i byte non sono in casa, e
@@ -199,9 +199,14 @@ export default async function (t) {
     // guardarlo, non dimenticarselo per sempre
     t.eq("senza i byte qui non si manda niente", chiedi({ qui: new Set(["a"]) }), "a");
     t.eq("chi è già nel secchio non risale", chiedi({ lassu: new Set(["a", "b"]) }), "c");
-    // `bc_uploaded` da solo non basta — non sa niente di un libro sceso dal
-    // cloud o ripristinato da un archivio — ma quel che dice vale
-    t.eq("e nemmeno chi questo dispositivo ha già mandato", chiedi({ gia: new Set(["b"]) }), "a,c");
+    // IL REGISTRO DI QUESTO DISPOSITIVO NON VOTA PIÙ, ed è un dietrofront
+    // voluto: qui c'era un controllo che pinnava «chi `bc_uploaded` dà per
+    // mandato non risale». Era mezzo difetto rimasto in piedi — un libro
+    // segnato nel registro ma ASSENTE dal secchio non risaliva mai, che è
+    // esattamente il caso dei sette romanzi scoperti. L'ha preso il test
+    // della convergenza (`giro-sync`), non la lettura. Adesso decide solo
+    // l'elenco del secchio, e il registro è stato tolto.
+    t.eq("un registro non esiste più: comanda il secchio", chiedi({ lassu: new Set(["b"]) }), "a,c");
     // IL LIBRO CHE IL CLOUD DICE CANCELLATO fra poco se ne va anche da qui:
     // caricarlo adesso lo farebbe rinascere
     t.eq("chi sta per essere cancellato non sale", chiedi({ inUscita: new Set(["a"]) }), "b,c");

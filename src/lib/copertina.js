@@ -185,3 +185,101 @@ export async function preparaCopertina(file, max = LATO) {
     return file;
   }
 }
+
+// LE COPERTINE CHE MANCANO SI RITROVANO NEL FILE CHE HAI GIA'.
+//
+// Segnalato con lo scaffale in mano: «perche' da tablet non vedo le
+// copertine». Un dorso disegnato vuol dire una cosa sola — in IndexedDB
+// quell'immagine non c'e' — e le strade per cui e' sparita sono tre, che
+// portano tutte allo stesso posto: l'estrazione all'import non l'ha
+// trovata, la memoria del browser e' stata sfrattata, o non e' mai tornata
+// giu' dal cloud perche' scendeva solo dentro `pull`. E lassu' spesso non
+// c'e' nemmeno: il giro delle copertine sta DOPO quello dei file, e il
+// `throw` del tomo troppo grande lo uccideva prima che ci arrivasse.
+//
+// Ma il file ce l'hai qui, e la copertina sta dentro di lui: e' lo stesso
+// giro del tasto ↺ della scheda, fatto su tutta la biblioteca invece che
+// un libro per volta.
+//
+// `conCopertina` arriva da fuori come un INSIEME e non come una domanda
+// per libro: le copertine di casa si chiedono in un colpo solo
+// (`listCoverIds`), o sarebbe una transazione IndexedDB per ogni tomo.
+// `giaGuardati` sono i tomi che abbiamo gia' aperto e che dentro
+// un'immagine non ce l'hanno: senza quella memoria il tasto continuerebbe a
+// offrire «ritrova una copertina» per sempre su un libro che non ce l'ha —
+// cioe' un tasto che promette quel che non puo' dare, che e' lo stesso
+// difetto di «Porta qui i tomi» con dentro i perduti.
+//
+// Limite dichiarato: il segno e' per ID, non per byte. Sostituito il file a
+// mano, il tasto non lo ripropone — ma il ↺ della scheda c'e' sempre, e un
+// file che entra dall'import la copertina se la fa estrarre da solo.
+export const senzaCopertina = (libri, conCopertina, giaGuardati) =>
+  (libri || []).filter(
+    (b) => b?.id && !(conCopertina && conCopertina.has(b.id)) && !(giaGuardati && giaGuardati.has(b.id))
+  );
+
+export async function ritrovaCopertine(libri, { leggiByte, estrai, posa, segnaGuardato, onProgress, vivo } = {}) {
+  const attivo = vivo || (() => true);
+  const esito = { ritrovate: 0, senzaByte: 0, senzaImmagine: 0, fermato: false };
+  const da = libri || [];
+  for (const [i, b] of da.entries()) {
+    if (!attivo()) {
+      esito.fermato = true;
+      break;
+    }
+    onProgress?.({ i, totale: da.length, titolo: b.title });
+    // UN TOMO RIMASTO NEL CLOUD NON E' UN GUASTO, ed e' un conto a parte:
+    // non c'e' niente da guardare, quindi dire «non ha una copertina nel
+    // file» sarebbe una risposta data senza aver aperto niente. Il
+    // `Promise.resolve().then` e' la lezione di `ripassaImpronte`: un
+    // `leggiByte` che esplode SUBITO scavalcherebbe il `catch` e si
+    // porterebbe via il giro con tutte le copertine gia' ritrovate.
+    const file = await Promise.resolve()
+      .then(() => leggiByte?.(b.id))
+      .catch(() => null);
+    if (!file) {
+      esito.senzaByte += 1;
+      continue;
+    }
+    const cover = await Promise.resolve()
+      .then(() => estrai?.(b, file))
+      .catch(() => null);
+    if (!cover) {
+      // guardato dentro, e l'immagine non c'e' (o il file non si e'
+      // lasciato aprire): in tutt'e due i casi la strada e' la stessa,
+      // mettercela a mano dalla scheda. Si segna, o il tasto lo
+      // riproporrebbe a ogni apertura della Libreria.
+      esito.senzaImmagine += 1;
+      await Promise.resolve().then(() => segnaGuardato?.(b.id)).catch(() => {});
+      continue;
+    }
+    try {
+      await posa(b.id, cover);
+      esito.ritrovate += 1;
+    } catch {
+      // una copertina che non si scrive non ferma il giro: le altre valgono
+      esito.senzaImmagine += 1;
+    }
+  }
+  return esito;
+}
+
+// E il giro dice cosa ha fatto, con le stesse regole di ogni resoconto:
+// gli zeri non si dicono, e la voce su cui il lettore ha qualcosa da fare
+// si porta dietro la strada.
+export function resocontoCopertine(esito = {}) {
+  const { ritrovate = 0, senzaByte = 0, senzaImmagine = 0, fermato = false } = esito;
+  const parti = [];
+  if (ritrovate)
+    parti.push(ritrovate === 1 ? "una copertina ritrovata 🖼" : `${ritrovate} copertine ritrovate 🖼`);
+  if (senzaImmagine)
+    parti.push(
+      senzaImmagine === 1
+        ? "un tomo non ce l'ha nel file — puoi mettergliela tu dalla scheda"
+        : `${senzaImmagine} tomi non ce l'hanno nel file — puoi mettergliele tu dalla scheda`
+    );
+  if (senzaByte)
+    parti.push(`${senzaByte} ${senzaByte === 1 ? "non è" : "non sono"} su questo dispositivo`);
+  if (!parti.length) return "Le copertine erano già tutte al loro posto";
+  return `${parti.join(", ")}${fermato ? " — giro fermato" : ""}`;
+}

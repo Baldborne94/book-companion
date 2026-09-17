@@ -3,7 +3,7 @@ import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook } from "../lib/library.js";
 import { disponi } from "../lib/ripiani.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
-import { storageEstimate, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux } from "../lib/bookStore.js";
+import { storageEstimate, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
 import { importFiles, resoconto } from "../lib/importBook.js";
 import { exportLibrary, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
 import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
@@ -15,6 +15,7 @@ import {
   troppoGrandiInBiblioteca, fraseTroppoGrandi,
 } from "../lib/syncCore.js";
 import { fmtBytes } from "../lib/bytes.js";
+import { senzaCopertina } from "../lib/copertina.js";
 import { stretto } from "../lib/spazio.js";
 import { BarraCloud } from "./BarraCloud.jsx";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
@@ -58,7 +59,14 @@ const GROUPS = [
   { id: "genre", label: "Genere", empty: "Senza genere" },
 ];
 
-function Shelf({ books, onOpenBook, localIds, showOrder }) {
+// I tomi gia' aperti che dentro una copertina non ce l'hanno: stanno nello
+// store `aux` come `copertina_<id>`, e le chiavi si chiedono tutte insieme.
+const guardate = () =>
+  chiaviAux()
+    .then((k) => new Set(k.filter((x) => typeof x === "string" && x.startsWith("copertina_")).map((x) => x.slice(10))))
+    .catch(() => null);
+
+function Shelf({ books, onOpenBook, localIds, showOrder, coverV = 0 }) {
   // Chi ha il dorso disegnato lo sa solo `BookCover`, che va a guardare in
   // IndexedDB se una copertina c'è: lo dice qui, e lo scaffale evita di
   // ristampare titolo e autore sotto una copertina che li porta già.
@@ -99,7 +107,7 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
             }}
           >
             <div style={{ position: "relative", opacity: status === "abandoned" ? 0.55 : 1 }}>
-              <BookCover book={b} onDisegnata={(v) => segnaDorso(b.id, v)} numerato={showOrder && b.sagaOrder != null} />
+              <BookCover book={b} version={coverV} onDisegnata={(v) => segnaDorso(b.id, v)} numerato={showOrder && b.sagaOrder != null} />
               {status === "reading" && pct > 0 && (
                 <span
                   style={{
@@ -274,7 +282,7 @@ function Ripiano({ nome, sotto, quanti, spento, children }) {
   );
 }
 
-function Grouped({ books, group, onOpenBook, localIds }) {
+function Grouped({ books, group, onOpenBook, localIds, coverV = 0 }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -309,7 +317,7 @@ function Grouped({ books, group, onOpenBook, localIds }) {
                 <span>{c.nome ?? "Volumi a sé"}</span>
                 <span style={{ fontSize: F.minuscolo, color: C.muted }}>{c.libri.length}</span>
               </div>
-              <Shelf books={c.libri} onOpenBook={onOpenBook} localIds={localIds} showOrder />
+              <Shelf books={c.libri} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} showOrder />
             </div>
           ))
         ) : (
@@ -317,6 +325,7 @@ function Grouped({ books, group, onOpenBook, localIds }) {
             books={r.libri}
             onOpenBook={onOpenBook}
             localIds={localIds}
+            coverV={coverV}
             // il numero del volume ha senso dentro la sua saga; fra i volumi
             // soli sarebbe un numero senza la storia che lo spiega
             showOrder={r.tipo === "saga"}
@@ -343,7 +352,7 @@ function Grouped({ books, group, onOpenBook, localIds }) {
 
   return names.map((name) => (
     <Ripiano key={name || "_"} nome={name || cfg.empty} quanti={buckets.get(name).length} spento={!name}>
-      <Shelf books={buckets.get(name)} onOpenBook={onOpenBook} localIds={localIds} />
+      <Shelf books={buckets.get(name)} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} />
     </Ripiano>
   ));
 }
@@ -410,6 +419,17 @@ export default function Library({
   // stesso modo di fermarla
   const [improntando, setImprontando] = useState(null);
   const filoImpronte = useRef(null);
+  const [copertinando, setCopertinando] = useState(null);
+  const filoCopertine = useRef(null);
+  // quali libri il dorso disegnato ce l'hanno per davvero: si chiede una
+  // volta all'apertura dello scaffale, non un libro per volta
+  const [conCopertina, setConCopertina] = useState(null);
+  // i tomi gia' aperti che dentro una copertina non ce l'hanno: le chiavi
+  // dello store `aux` si chiedono in un colpo solo, come le copertine
+  const [copGuardate, setCopGuardate] = useState(null);
+  // cambia dopo un ripasso: senza, `BookCover` non torna a guardare in
+  // IndexedDB e resteresti davanti ai dorsi disegnati di prima
+  const [coverV, setCoverV] = useState(0);
   // il riconoscimento delle saghe adesso apre i file dei tomi che una saga
   // non ce l'hanno, quindi e' diventato una passata lunga come le altre:
   // avanzamento col titolo e fermabile a meta'
@@ -444,6 +464,12 @@ export default function Library({
   useEffect(() => {
     storageEstimate().then(setEstimate);
     statoPersistenza().then(setPersist);
+    // chi la copertina ce l'ha qui, in un colpo solo: chiederlo un libro
+    // per volta sarebbe una transazione IndexedDB per tomo
+    listCoverIds()
+      .then((ids) => setConCopertina(new Set(ids)))
+      .catch(() => setConCopertina(null));
+    guardate().then(setCopGuardate);
   }, [books]);
 
   // NON si aggancia a `books` come i due qui sopra: quello e' un giro di
@@ -816,6 +842,50 @@ export default function Library({
   // stesso file non lo fa SALTARE: resta solo il sospetto per titolo e
   // autore, che si limita a dirtelo.
   const senzaImpronta = books.filter((b) => !b.impronta);
+
+  // I tomi col dorso disegnato. `conCopertina` è `null` finché l'elenco non
+  // è arrivato, e lì NON si offre niente: un tasto «ritrova 115 copertine»
+  // su una biblioteca che ce l'ha già tutte sarebbe una promessa a vuoto.
+  const mancaLaCopertina = conCopertina ? senzaCopertina(books, conCopertina, copGuardate) : [];
+
+  // LE COPERTINE CHE MANCANO SI RITROVANO NEL FILE. Il dorso disegnato vuol
+  // dire che quell'immagine qui non c'e' — l'estrazione all'import non l'ha
+  // trovata, la memoria del browser e' stata sfrattata, o non e' mai tornata
+  // giu' — e il file ce l'hai: e' lo stesso giro del tasto ↺ della scheda,
+  // fatto su tutta la biblioteca.
+  async function ritrovaLeCopertine() {
+    if (copertinando) return;
+    const mancanti = senzaCopertina(books, conCopertina, copGuardate);
+    if (!mancanti.length) {
+      notify?.("Le copertine erano già tutte al loro posto");
+      return;
+    }
+    const mio = {};
+    filoCopertine.current = mio;
+    setCopertinando({ i: 0, totale: mancanti.length, titolo: mancanti[0].title });
+    const { ritrovaCopertine, resocontoCopertine, copertinaOriginale } = await import("../lib/copertina.js");
+    const esito = await ritrovaCopertine(mancanti, {
+      leggiByte: (id) => getFile(id),
+      // aprire il tomo sta QUI e non dentro la passata, come nella visita:
+      // così il giro si prova in Node con dei finti, senza epub.js
+      estrai: (b, bytes) => copertinaOriginale(b, bytes),
+      posa: (id, blob) => putCover(id, blob),
+      // «guardato, e dentro non c'era»: senza il segno il tasto lo
+      // riproporrebbe a ogni apertura della Libreria
+      segnaGuardato: (id) => putAux(`copertina_${id}`, 1),
+      vivo: () => filoCopertine.current === mio,
+      onProgress: (p) => filoCopertine.current === mio && setCopertinando(p),
+    });
+    if (filoCopertine.current !== mio) return;
+    filoCopertine.current = null;
+    setCopertinando(null);
+    if (esito.ritrovate) {
+      setConCopertina(new Set(await listCoverIds().catch(() => [])));
+      setCoverV((v) => v + 1);
+    }
+    if (esito.senzaImmagine) setCopGuardate(await guardate());
+    notify?.(resocontoCopertine(esito));
+  }
 
   async function ripassaLeImpronte() {
     if (!senzaImpronta.length || improntando) return;
@@ -1438,7 +1508,7 @@ export default function Library({
           Nessun tomo risponde all'appello con questi filtri…
         </p>
       ) : (
-        <Grouped books={visible} group={group} onOpenBook={onOpenBook} localIds={localIds} />
+        <Grouped books={visible} group={group} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} />
       )}
 
       {(books.length > 0 || melodie > 0) && (
@@ -1590,8 +1660,8 @@ export default function Library({
                   lavoro che aspetta (tomi nel cloud, impronte da fare):
                   senza, ripiegare i tasti nasconderebbe anche il bisogno */}
               🧰 Manutenzione
-              {!manutenzione && daScendere.length + senzaImpronta.length > 0
-                ? ` · ${daScendere.length + senzaImpronta.length}`
+              {!manutenzione && daScendere.length + senzaImpronta.length + mancaLaCopertina.length > 0
+                ? ` · ${daScendere.length + senzaImpronta.length + mancaLaCopertina.length}`
                 : ""}{" "}
               {manutenzione ? "▾" : "▸"}
             </button>
@@ -1677,6 +1747,26 @@ export default function Library({
             >
               ✍ Ripulisci i titoli
             </button>
+            {/* LE COPERTINE CHE MANCANO SI RITROVANO NEL FILE. Compare solo
+                se qualcuno ne ha bisogno, e col numero sopra: è un giro che
+                apre ogni tomo senza copertina, e chi lo tocca deve sapere
+                quanto dura. */}
+            {mancaLaCopertina.length > 0 && (
+              <button
+                onClick={copertinando ? () => { filoCopertine.current = null; setCopertinando(null); } : ritrovaLeCopertine}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.border}`,
+                  color: C.text,
+                  fontSize: F.nota,
+                }}
+              >
+                {copertinando
+                  ? `Fermo qui (${copertinando.i + 1} di ${copertinando.totale})`
+                  : `🖼 Ritrova ${mancaLaCopertina.length === 1 ? "una copertina" : `${mancaLaCopertina.length} copertine`}`}
+              </button>
+            )}
             {/* Il ripasso delle impronte c'e' solo se qualcuno ne ha bisogno:
                 a biblioteca gia' a posto sarebbe un tasto che non fa niente.
                 Il numero sta scritto sopra perche' e' un giro che legge i
