@@ -10,7 +10,7 @@ import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
 import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
 import { portaACasa, cloudUsage } from "../lib/sync.js";
-import { frasePortata, senzaCopia, fraseSenzaCopia } from "../lib/syncCore.js";
+import { frasePortata, senzaCopia, fraseSenzaCopia, daPortare } from "../lib/syncCore.js";
 import { fmtBytes } from "../lib/bytes.js";
 import { stretto } from "../lib/spazio.js";
 import { BarraCloud } from "./BarraCloud.jsx";
@@ -473,6 +473,10 @@ export default function Library({
   // promessa non si puo' mantenere: i byte non sono ne' qui ne' lassu'.
   // Finche' non si diceva, «Porta qui i tomi» falliva e basta.
   const perduti = fraseSenzaCopia(senzaCopia(nelCloud, cloud?.idLibri));
+  // E il tasto conta solo quelli che puo' DAVVERO portare giu': contando
+  // anche i perduti offriva di scaricare file che l'app sapeva gia' non
+  // esserci, e la riga qui sopra lo diceva a mezzo centimetro di distanza.
+  const daScendere = daPortare(nelCloud, cloud?.idLibri);
 
   // IL RICONOSCIMENTO GIRA SOLO ALL'IMPORT, e i libri entrati prima non
   // tornano indietro a farsi guardare. Chi ha importato i Pratchett prima
@@ -955,11 +959,11 @@ export default function Library({
   }
 
   async function richiamaTomi() {
-    if (!nelCloud.length || portando) return;
+    if (!daScendere.length || portando) return;
     const mio = {};
     filoTomi.current = mio;
-    setPortando({ i: 0, totale: nelCloud.length, titolo: nelCloud[0].title });
-    const esito = await portaACasa(nelCloud, {
+    setPortando({ i: 0, totale: daScendere.length, titolo: daScendere[0].title });
+    const esito = await portaACasa(daScendere, {
       vivo: () => filoTomi.current === mio,
       onProgress: (p) => filoTomi.current === mio && setPortando(p),
     });
@@ -1554,8 +1558,8 @@ export default function Library({
                   lavoro che aspetta (tomi nel cloud, impronte da fare):
                   senza, ripiegare i tasti nasconderebbe anche il bisogno */}
               🧰 Manutenzione
-              {!manutenzione && nelCloud.length + senzaImpronta.length > 0
-                ? ` · ${nelCloud.length + senzaImpronta.length}`
+              {!manutenzione && daScendere.length + senzaImpronta.length > 0
+                ? ` · ${daScendere.length + senzaImpronta.length}`
                 : ""}{" "}
               {manutenzione ? "▾" : "▸"}
             </button>
@@ -1596,7 +1600,7 @@ export default function Library({
             {/* Il richiamo dei tomi: c'e' solo se qualcosa e' rimasto lassu',
                 e il numero sta nel tasto perche' chi lo tocca sappia in
                 anticipo quanta connessione ci vuole. */}
-            {nelCloud.length > 0 && (
+            {daScendere.length > 0 && (
               <button
                 onClick={portando ? () => { filoTomi.current = null; setPortando(null); } : richiamaTomi}
                 style={{
@@ -1609,7 +1613,7 @@ export default function Library({
               >
                 {portando
                   ? `Fermo qui (${portando.i + 1} di ${portando.totale})`
-                  : `☁ Porta qui ${nelCloud.length} ${nelCloud.length === 1 ? "tomo" : "tomi"}`}
+                  : `☁ Porta qui ${daScendere.length} ${daScendere.length === 1 ? "tomo" : "tomi"}`}
               </button>
             )}
             <button

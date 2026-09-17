@@ -4,7 +4,7 @@
 // che dice «sceso» su un byte che non c'è, un tomo già in casa scaricato di
 // nuovo, un file che non risale PER SEMPRE, e una frase che manda a
 // reimportare un romanzo sano.
-import { portaGiu, frasePortata, senzaCopia, fraseSenzaCopia, daCaricare, nonCeLassu } from "../src/lib/syncCore.js";
+import { portaGiu, frasePortata, senzaCopia, fraseSenzaCopia, daCaricare, daPortare, nonCeLassu } from "../src/lib/syncCore.js";
 
 const voci = (n) => Array.from({ length: n }, (_, i) => ({ id: `v${i}`, name: `Melodia ${i}` }));
 
@@ -122,6 +122,51 @@ export default async function (t) {
   );
   t.eq("il giro fermato si dichiara in coda", frasePortata({ scesi: 1, fermato: true }), "1 tomo è qui — giro fermato");
   t.c("ma su un giro senza niente non si aggiunge nulla", frasePortata({ fermato: true }) === "Non c'era niente da portare a casa");
+
+  // «NON HO POTUTO CHIEDERE» NON È «NON C'ERA NIENTE DA FARE» — lo stesso
+  // errore di `portaGiu` un piano più su. Segnalato con la Libreria in
+  // mano: «perché mi dice porta qui 18 tomi e se lo clicco mi fa "non c'è
+  // niente da portare a casa"?». Caduto l'accesso al cloud non si chiede
+  // nulla al secchio (zero scaricamenti tentati) e il lettore si sentiva
+  // rispondere il contrario del tasto che aveva appena toccato.
+  {
+    const f = frasePortata({ scollegato: true });
+    t.c("lo scollegato dice che non ha potuto chiedere", f.includes("Non ho potuto chiedere al cloud"));
+    t.c("e dice cosa farci", f.includes("Rientra dal pannello della nuvola"));
+    t.c("e che i libri restano qui", f.includes("restano qui"));
+    t.c("non è «non c'era niente»", !f.includes("niente da portare"));
+    // gli zeri accanto NON lo fanno tornare la frase di prima: è il caso
+    // che si distingue proprio perché tutti i conti sono a zero
+    t.eq(
+      "e vince su ogni conto",
+      frasePortata({ scollegato: true, scesi: 0, assenti: 0, falliti: 0 }),
+      frasePortata({ scollegato: true })
+    );
+    t.c("mentre collegato e a mani vuote resta la frase di sempre",
+      frasePortata({ scollegato: false }) === "Non c'era niente da portare a casa");
+  }
+
+  // ---- QUELLI CHE IL TASTO PUÒ DAVVERO PORTARE --------------------------
+  // Il tasto contava i tomi senza byte QUI, e fra quelli ci stanno anche i
+  // perduti: offriva di scaricare file che l'app sapeva già non esserci,
+  // con la riga d'avviso che lo diceva a mezzo centimetro di distanza.
+  {
+    const tomi = [{ id: "a" }, { id: "b" }, { id: "c" }];
+    t.eq("scendono solo quelli che il secchio ha", daPortare(tomi, new Set(["a", "c"])).map((b) => b.id).join(","), "a,c");
+    t.eq("nessuno lassù → il tasto non ha niente da offrire", daPortare(tomi, new Set()).length, 0);
+    // IL VERSO OPPOSTO DI `senzaCopia`: senza l'elenco del secchio quella
+    // non accusa nessuno, questa li offre TUTTI — non sapere non è un
+    // allarme, ma non è nemmeno una ragione per togliere il tasto: lì
+    // l'unico modo di scoprirlo è provare
+    t.eq("senza l'elenco si offrono tutti", daPortare(tomi, null).length, 3);
+    t.eq("e senza nemmeno i tomi non esplode", daPortare().length, 0);
+    t.eq("una voce senza id non si offre", daPortare([{ nome: "storto" }], new Set()).length, 0);
+    // le due funzioni spartiscono lo stesso elenco senza sovrapporsi: un
+    // tomo o si può portare giù, o è perduto
+    const lassu = new Set(["a"]);
+    t.eq("insieme fanno l'elenco intero", daPortare(tomi, lassu).length + senzaCopia(tomi, lassu).length, tomi.length);
+    t.c("e nessuno sta in tutt'e due", !daPortare(tomi, lassu).some((x) => senzaCopia(tomi, lassu).includes(x)));
+  }
 
   // ---- «NON CE L'HO» CONTRO «NON HO POTUTO RISPONDERE» ----------------------
   // La riga che traduce la risposta del secchio nelle due strade: sbagliata

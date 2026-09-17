@@ -621,7 +621,10 @@ export async function ensureLocalFile(book) {
 // e quel che e' gia' sceso resta sceso.
 // Il giro vero sta in `portaGiu` (syncCore): qui si dice solo dove sono i
 // byte e come si scaricano.
-const NIENTE = { scesi: 0, assenti: 0, falliti: 0, fermato: false };
+// `scollegato` NON e' uno zero come gli altri: dice che al secchio non si e'
+// nemmeno chiesto. Senza, chi legge l'esito non puo' distinguere «guardato,
+// non c'era niente» da «non ho potuto guardare» — vedi `frasePortata`.
+const NIENTE = { scesi: 0, assenti: 0, falliti: 0, fermato: false, scollegato: true };
 
 async function daScaricare() {
   if (!isSyncConfigured()) return null;
