@@ -2,7 +2,7 @@
 // l'app ha fatto in silenzio. Il pezzo che conta e' il titolo preso dal
 // nome del file — e' il guasto che si scopre settimane dopo, da una saga
 // che non si accende.
-import { resoconto, impronta, giaInLibreria, sembraGiaLetto, ripassaImpronte } from "../src/lib/importBook.js";
+import { resoconto, impronta, giaInLibreria, sembraGiaLetto, ripassaImpronte, ritornaACasa } from "../src/lib/importBook.js";
 
 const libri = (n) => Array.from({ length: n }, (_, i) => ({ id: String(i) }));
 const byte = (s) => new TextEncoder().encode(s).buffer;
@@ -224,4 +224,45 @@ export default async function (t) {
   t.eq("e nemmeno una vuota", e.scritte, 0);
   e = await ripassaImpronte([{ id: "1" }], {});
   t.eq("senza un modo di leggere i byte non esplode", e.senzaByte, 1);
+  // ---- IL FILE CHE TORNA A CASA ----------------------------------------
+  // Un doppione i cui byte QUI non ci sono non è un doppione: è la copia
+  // che torna. Sbagliare da un lato lascia il lettore senza il libro
+  // («era già in libreria, saltato» sopra una scheda vuota), dall'altro
+  // gli fonda un doppione lasciando morta la scheda coi suoi segni.
+  t.c("byte identici e scheda senza file: torna a casa",
+    ritornaACasa({ stessiByte: true, byteQui: false, segnato: true }));
+  // i byte ci sono già: è il doppione vero di sempre, e si salta
+  t.c("byte identici e file già qui: è un doppione",
+    !ritornaACasa({ stessiByte: true, byteQui: true }));
+  t.c("altra edizione su scheda senza file né segni: torna a casa",
+    ritornaACasa({ stessiByte: false, byteQui: false, segnato: false }));
+  // QUI STA LA GUARDIA CHE CONTA: un'altra edizione ha CFI diversi, e
+  // adottarla su una scheda che porta evidenziazioni le metterebbe su
+  // righe che il lettore non ha scelto — e non lo direbbe nessun errore.
+  t.c("altra edizione su scheda CON segni: non si adotta",
+    !ritornaACasa({ stessiByte: false, byteQui: false, segnato: true }));
+  t.c("altra edizione col file già qui: non si adotta",
+    !ritornaACasa({ stessiByte: false, byteQui: true, segnato: false }));
+  // i byte in casa vincono su tutto: è la prima domanda che si fa
+  t.c("il file in casa batte anche l'impronta uguale",
+    !ritornaACasa({ stessiByte: true, byteQui: true, segnato: false }));
+  t.c("senza niente non si decide di saltare", ritornaACasa({}));
+  t.c("senza argomenti non esplode", ritornaACasa() === true);
+
+  // ---- e si DICE, o «nessun nuovo tomo» sembrerebbe un import fallito ---
+  t.c("il ritorno si dice per nome",
+    /«Eric» ha ritrovato il suo file/.test(resoconto({ ritrovati: [{ id: "a", title: "Eric" }] })));
+  t.c("più di uno si conta",
+    /2 tomi hanno ritrovato il loro file/.test(
+      resoconto({ ritrovati: [{ id: "a" }, { id: "b" }] })));
+  t.c("un tomo senza titolo non scrive «undefined»",
+    !/undefined/.test(resoconto({ ritrovati: [{ id: "a" }] })));
+  t.eq("nessun ritorno, nessuna riga", resoconto({ ritrovati: [] }), "Nessun file importato");
+  // il ritorno sta PRIMA del saltato: sono la stessa famiglia e il lettore
+  // deve leggere per primo quello su cui è successo qualcosa
+  t.c("il ritorno viene prima del saltato",
+    resoconto({ ritrovati: [{ id: "a", title: "Eric" }], saltati: [{ title: "Altro" }] })
+      .indexOf("ritrovato") <
+      resoconto({ ritrovati: [{ id: "a", title: "Eric" }], saltati: [{ title: "Altro" }] })
+        .indexOf("saltato"));
 }

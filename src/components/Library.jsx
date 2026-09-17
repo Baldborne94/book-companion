@@ -9,7 +9,7 @@ import { exportLibrary, ultimoArchivio, promemoriaArchivio } from "../lib/export
 import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
 import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
-import { portaACasa, cloudUsage, troppoGrandi } from "../lib/sync.js";
+import { portaACasa, cloudUsage, troppoGrandi, daRicaricare } from "../lib/sync.js";
 import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare,
   troppoGrandiInBiblioteca, fraseTroppoGrandi,
@@ -1050,8 +1050,24 @@ export default function Library({
       // la libreria di adesso serve a riconoscere i doppioni: senza, lo
       // stesso file importato due volte fa due libri distinti
       const esito = await importFiles(files, books);
-      if (esito.added.length) {
-        updateBooks([...books, ...esito.added]);
+      // I FILE TORNATI A CASA dentro una scheda che era rimasta senza byte.
+      // La scheda non si tocca — titolo, saga, voto e note sono del lettore
+      // — si scrive la sola impronta, e si timbra perché la riga risalga.
+      // E si toglie dai «già caricati» (`daRicaricare`): lassù quel file
+      // non c'è, ma il registro di questo dispositivo può dire di sì da
+      // anni, e senza il segno non risalirebbe mai — che è esattamente il
+      // buco per cui quel libro era rimasto senza copia da nessuna parte.
+      const ritrovati = esito.ritrovati || [];
+      const conImpronta = new Map(ritrovati.filter((r) => r.impronta).map((r) => [r.id, r.impronta]));
+      for (const r of ritrovati) {
+        touchBook(r.id);
+        daRicaricare(r.id);
+      }
+      const base = conImpronta.size
+        ? books.map((b) => (conImpronta.has(b.id) ? { ...b, impronta: conImpronta.get(b.id) } : b))
+        : books;
+      if (esito.added.length || ritrovati.length) {
+        updateBooks([...base, ...esito.added]);
         onImported?.();
       }
       notify(resoconto(esito));
