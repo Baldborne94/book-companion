@@ -182,7 +182,32 @@ export const chiaveAutore = (a) => norm(a).split(" ").filter(Boolean).sort().joi
 // mescola due storie: si propone solo se TUTTI i libri di quell'autore che
 // una saga ce l'hanno dichiarano LA STESSA. Due saghe diverse dello stesso
 // autore, e non si tocca niente.
-export function sagaDaBiblioteca(libro = {}, libri = []) {
+//
+// MA LA TIMIDEZZA NON BASTA, E IL CASO CHE LA SMONTA E' UN AUTORE CON UNA
+// SAGA E UN ROMANZO A SE' (segnalato con lo scaffale in mano: «perche' mi
+// deduci Between Two Fires in una saga che non c'entra nulla?»). Dei tre
+// Buehlman, due portano «The Blacktongue Thief» scritta addosso dal file;
+// il terzo e' un romanzo a se', e la regola timida trovava «tutti e due
+// dicono la stessa» e gliela dava. Il difetto non e' nella regola: e' nella
+// PREMESSA, «un autore, una saga», che vale per Pratchett e per quasi
+// nessun altro — e l'unica difesa era una lista scritta a mano dei suoi
+// fuori-saga, che non potra' mai conoscere tutti gli autori.
+//
+// QUESTA E' LA SOLA STRADA CHE NON GUARDA IL LIBRO. Tavola, collana nel
+// file, titolo e catalogo dicono qualcosa di QUEL volume; la deduzione
+// copia dai fratelli e basta. Quindi e' l'ultima a parlare, e cede a chi il
+// libro l'ha guardato: `senzaTraccia` sono i tomi di cui il catalogo ha
+// letto le edizioni senza trovare **nessuna** collana (`tracce === 0`), e a
+// quelli non si eredita niente.
+//
+// E' una veto, non un permesso: un tomo che il catalogo non ha mai visto —
+// perche' la rete mancava, perche' l'opera non c'e', perche' l'app e'
+// offline da sempre — non sta in quell'insieme e la deduzione lo serve come
+// ha sempre fatto. Pretendere una conferma positiva spegnerebbe la
+// deduzione su un dispositivo senza rete, che e' il contrario di
+// local-first.
+export function sagaDaBiblioteca(libro = {}, libri = [], senzaTraccia) {
+  if (libro.id && senzaTraccia?.has?.(libro.id)) return null;
   const mio = chiaveAutore(libro.author);
   if (mio.length < 3) return null;
   let scelta = null;
@@ -285,7 +310,13 @@ export function unificaSaghe(libri = []) {
 // UNO dei quattro la saga la porta scritta nel titolo, letta quella gli
 // altri tre la ereditano nello stesso giro. Per questo le due passate
 // stanno in fila e la seconda legge i libri gia' toccati dalla prima.
-export function deduciSaghe(libri = []) {
+//
+// E LE DUE PASSATE SI POSSONO CHIEDERE SEPARATE (`dallaBiblioteca: false`),
+// perche' in mezzo ci va il catalogo: il titolo si legge sul libro e viene
+// prima, la deduzione copia dai fratelli e viene per ultima — dopo che chi
+// il libro l'ha guardato ha detto la sua. Chiamarla due volte e' innocuo:
+// la passata dei titoli e' idempotente, chi una saga ce l'ha gia' non entra.
+export function deduciSaghe(libri = [], { senzaTraccia, dallaBiblioteca = true } = {}) {
   const campi = {};
   let dedotte = 0;
   let dalTitolo = 0;
@@ -309,9 +340,10 @@ export function deduciSaghe(libri = []) {
     dalTitolo += 1;
     conTitolo.push({ ...b, ...tocco });
   }
+  if (!dallaBiblioteca) return { campi, dedotte, dalTitolo };
   for (const b of conTitolo) {
     if (vuota(b)) continue;
-    const dalla = sagaDaBiblioteca(b, conTitolo);
+    const dalla = sagaDaBiblioteca(b, conTitolo, senzaTraccia);
     if (!dalla) continue;
     campi[b.id] = { saga: dalla };
     // «02 Valour»: il numero in testa al titolo non dice la saga, dice il
@@ -333,7 +365,7 @@ export function deduciSaghe(libri = []) {
 // no: quello che il lettore ha scritto a mano non si tocca mai, nemmeno
 // quando il riconoscimento la pensa diversamente, perche' su questi campi
 // l'ultima parola e' sua.
-export function ripassa(libro = {}, libri = []) {
+export function ripassa(libro = {}, libri = [], { senzaTraccia, dallaBiblioteca = true } = {}) {
   const trovato = riconosci({ title: libro.title, author: libro.author });
   const saga = String(libro.saga || "").trim();
   const serie = String(libro.series || "").trim();
@@ -351,8 +383,8 @@ export function ripassa(libro = {}, libri = []) {
     if (letto?.saga) {
       tocchi.saga = nomeInBiblioteca(letto.saga, libri);
       dalTitolo = true;
-    } else {
-      const dalla = sagaDaBiblioteca(libro, libri);
+    } else if (dallaBiblioteca) {
+      const dalla = sagaDaBiblioteca(libro, libri, senzaTraccia);
       if (dalla) {
         tocchi.saga = dalla;
         dedotta = true;
