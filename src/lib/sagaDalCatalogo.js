@@ -105,7 +105,7 @@ function spezza(s) {
 // (`MIN_VOTI` voti): e' lo stesso segnale che si accetta da solo sul
 // titolo del lettore, e dal vivo Lynch ne ha una scheda sola — con un voto
 // per titolo restava fuori lo stesso.
-export function sagaDalleEdizioni(edizioni = [], titoli = []) {
+function raccogliVoti(edizioni = [], titoli = []) {
   const voti = new Map();
   const vota = (c, peso = 1) => {
     const k = chiaveSaga(c.saga);
@@ -128,6 +128,29 @@ export function sagaDalleEdizioni(edizioni = [], titoli = []) {
     const letto = sagaDalTitolo({ title: titolo });
     if (letto?.saga) vota({ saga: letto.saga, n: letto.sagaOrder }, MIN_VOTI);
   }
+  return voti;
+}
+
+// LE TRACCE: quante collane DIVERSE il catalogo ha intravisto, sotto la
+// soglia dei voti compresa. Non serve a dare una saga — per quello c'e'
+// `sagaDalleEdizioni` — serve a distinguere due silenzi che oggi si
+// somigliano e non sono affatto la stessa cosa:
+//
+//   • UNA traccia = il catalogo la collana l'ha vista, solo non abbastanza
+//     volte per fidarsene. E' «Howling Dark», dove «The Sun Eater» compare
+//     su un'edizione sola (misurato dal vivo): li' la deduzione dai
+//     fratelli fa bene il suo mestiere, ed e' il caso per cui esiste.
+//   • ZERO tracce = il catalogo ha guardato le edizioni e nessuna nomina
+//     una collana. E' «Between Two Fires» (zero su sette edizioni,
+//     misurato): un romanzo a se' di un autore che una saga ce l'ha.
+//
+// Misurato su dodici opere: i sette volumi di saga veri hanno tutti da una
+// a otto tracce, mai zero; lo zero e' uscito solo sui romanzi a se'.
+export const tracceDalleEdizioni = (edizioni = [], titoli = []) =>
+  raccogliVoti(edizioni, titoli).size;
+
+export function sagaDalleEdizioni(edizioni = [], titoli = []) {
+  const voti = raccogliVoti(edizioni, titoli);
   const piu = (m) => [...m.entries()].sort((a, b) => b[1] - a[1] || String(b[0]).length - String(a[0]).length || String(a[0]).localeCompare(String(b[0])))[0]?.[0];
   const vincente = [...voti.values()].sort(
     (a, b) => b.voti - a.voti || b.numeri.size - a.numeri.size || piu(b.grafie).length - piu(a.grafie).length
@@ -191,9 +214,21 @@ async function json(f, url) {
 
 // Un buco di rete ESPLODE, non torna `null`: `null` vuol dire «il catalogo
 // non la sa», e su quello si scrive una memoria — sulla rete caduta no.
+//
+// E I SILENZI SONO DUE, come «non c'e' lassu'» e «non ho potuto chiedere»:
+//   • `null` = l'opera non si e' trovata affatto. Del libro non sappiamo
+//     niente, e chi legge questa risposta non deve dedurne niente.
+//   • `{ saga: null, tracce: N }` = l'opera c'era, le edizioni le abbiamo
+//     guardate, e questo e' quanto ci hanno detto. `tracce: 0` e' l'unica
+//     risposta che autorizza qualcuno a dire «questo libro una collana non
+//     ce l'ha».
+// Fonderli in un `null` solo e' esattamente l'errore che ha messo «Between
+// Two Fires» dentro «The Blacktongue Thief».
 export async function cercaSaga({ title, author } = {}, fetcher) {
   const f = fetcher || fetch;
   const autore = autorePerIlCatalogo(author);
+  let guardato = false;
+  let tracce = 0;
   for (const variante of varianti(title, author)) {
     const q = new URLSearchParams({ title: variante, fields: "key,title,author_name", limit: "5" });
     if (autore) q.set("author", autore);
@@ -208,8 +243,14 @@ export async function cercaSaga({ title, author } = {}, fetcher) {
     const titoli = docs.filter((d) => scegliOpera([d], { title: variante, author, filtrata: !!autore })).map((d) => d.title);
     const trovata = sagaDalleEdizioni(ed?.entries || [], titoli);
     if (trovata) return trovata;
+    // l'opera c'era e le edizioni le abbiamo lette: quel che hanno detto
+    // conta anche quando non basta a dare una saga. Il MASSIMO fra le
+    // varianti, non l'ultimo: una variante che non ha visto niente non
+    // cancella la traccia che un'altra aveva visto.
+    guardato = true;
+    tracce = Math.max(tracce, tracceDalleEdizioni(ed?.entries || [], titoli));
   }
-  return null;
+  return guardato ? { saga: null, tracce } : null;
 }
 
 // La passata sui libri senza saga, nella forma di ogni passata lunga: un
@@ -218,7 +259,7 @@ export async function cercaSaga({ title, author } = {}, fetcher) {
 // trovata o «non la so» — mai su un buco di rete, che domani non c'e' piu'.
 export async function ripassaCatalogo(libri = [], { cerca, onProgress, vivo, giaVista, segnaVista, nomeInCasa } = {}) {
   const attivo = vivo || (() => true);
-  const esito = { trovate: 0, mute: 0, rete: 0, saltati: 0, fermato: false, campi: {} };
+  const esito = { trovate: 0, mute: 0, rete: 0, saltati: 0, senzaTraccia: 0, fermato: false, campi: {} };
   const segna = async (b, cosa) => {
     try {
       await segnaVista?.(b, cosa);
@@ -255,7 +296,13 @@ export async function ripassaCatalogo(libri = [], { cerca, onProgress, vivo, gia
     }
     if (!r?.saga) {
       esito.mute += 1;
-      await segna(b, { muta: true });
+      // `tracce` viaggia nella memoria perche' la veto della deduzione deve
+      // valere anche domani, a sessione nuova e senza rete: chiederlo di
+      // nuovo a ogni apertura sarebbe una domanda per tomo per sempre.
+      // `null` quando l'opera non si e' trovata — «non so», che non veta.
+      const tracce = Number.isFinite(r?.tracce) ? r.tracce : null;
+      if (tracce === 0) esito.senzaTraccia += 1;
+      await segna(b, { muta: true, tracce });
       continue;
     }
     const saga = nomeInCasa ? nomeInCasa(r.saga, [...libri, ...trovati]) : r.saga;

@@ -577,6 +577,27 @@ export default function Library({
   async function segnaCatalogo(b, cosa) {
     await putAux(ricordoCatalogo(b.id), { titolo: b.title, autore: b.author || "", quando: Date.now(), ...cosa });
   }
+  // I TOMI SU CUI IL CATALOGO HA GIA' DETTO «nessuna collana, su nessuna
+  // edizione»: sono i soli a cui la deduzione dai fratelli non deve dare
+  // niente. La risposta sta su disco perché la veto vale anche domani e
+  // senza rete — richiederla a ogni apertura sarebbe una domanda per tomo
+  // per sempre. Una memoria illeggibile NON veta: il lato sicuro è lasciar
+  // fare quel che si è sempre fatto.
+  async function senzaTracce(libri) {
+    const fuori = new Set();
+    await Promise.all(
+      (libri || []).map(async (b) => {
+        if (!b?.id || String(b.saga || "").trim()) return;
+        try {
+          const r = await getAux(ricordoCatalogo(b.id));
+          if (r && r.tracce === 0 && r.titolo === b.title && r.autore === (b.author || "")) fuori.add(b.id);
+        } catch {
+          /* non veta */
+        }
+      })
+    );
+    return fuori;
+  }
 
   // E LA PASSATA GIRA DA SE', all'apertura della Libreria. Il lettore ha
   // scritto «automaticamente» due volte, e aveva ragione: un tasto in un
@@ -645,17 +666,18 @@ export default function Library({
           parti.push(`${esito.scritte} ${esito.scritte === 1 ? "saga letta" : "saghe lette"} dal file`);
         }
       }
-      const dedotte = deduciSaghe(attuale);
-      if (dedotte.dedotte || dedotte.dalTitolo) attuale = applica(dedotte.campi);
-      // la saga letta dal titolo si dice a parte da quella dedotta: una
-      // sta scritta sul libro, l'altra e' copiata dai suoi fratelli
-      if (dedotte.dalTitolo)
-        parti.push(`${dedotte.dalTitolo} ${dedotte.dalTitolo === 1 ? "saga letta" : "saghe lette"} dal titolo`);
-      if (dedotte.dedotte)
-        parti.push(
-          `${dedotte.dedotte} ${dedotte.dedotte === 1 ? "saga dedotta" : "saghe dedotte"} dalla tua biblioteca`
-        );
-      // E PER ULTIMO IL CATALOGO, sui soli tomi rimasti senza saga dopo
+      // PRIMA IL TITOLO, che sta scritto sul libro. La deduzione dai
+      // fratelli NON si fa qui: è la sola strada che il libro non lo
+      // guarda affatto, e va in fondo — dopo il catalogo, che invece lo
+      // guarda. Con l'ordine di prima si prendeva il posto del catalogo
+      // senza nemmeno lasciarglielo dire, ed è così che «Between Two
+      // Fires» è finito dentro «The Blacktongue Thief».
+      const daiTitoli = deduciSaghe(attuale, { dallaBiblioteca: false });
+      if (daiTitoli.dalTitolo) {
+        attuale = applica(daiTitoli.campi);
+        parti.push(`${daiTitoli.dalTitolo} ${daiTitoli.dalTitolo === 1 ? "saga letta" : "saghe lette"} dal titolo`);
+      }
+      // E POI IL CATALOGO, sui soli tomi rimasti senza saga dopo
       // tutto il resto (chiesto dal lettore: «perche' non hai riconosciuto
       // la saga di Cook, Ruocchio e Lynch?»). Una domanda per tomo, una
       // volta nella vita del tomo — la memoria si scrive su una risposta,
@@ -676,12 +698,21 @@ export default function Library({
         if (dalCatalogo.trovate) {
           attuale = applica(dalCatalogo.campi);
           parti.push(`${dalCatalogo.trovate} ${dalCatalogo.trovate === 1 ? "saga trovata" : "saghe trovate"} nel catalogo`);
-          const ereditate = deduciSaghe(attuale);
-          if (ereditate.dedotte) {
-            applica(ereditate.campi);
-            parti.push(`${ereditate.dedotte} ${ereditate.dedotte === 1 ? "saga dedotta" : "saghe dedotte"} dalla tua biblioteca`);
-          }
         }
+      }
+      // E PER ULTIMA LA DEDUZIONE DAI FRATELLI, che adesso sa di chi non
+      // deve parlare: un tomo di cui il catalogo ha letto le edizioni senza
+      // trovare nessuna collana una saga non la eredita. Chi il catalogo
+      // non l'ha mai visto — rete assente, opera introvabile — resta
+      // servito come sempre.
+      const senzaTraccia = await senzaTracce(attuale);
+      if (!vivo) return;
+      const dedotte = deduciSaghe(attuale, { senzaTraccia });
+      if (dedotte.dedotte) {
+        applica(dedotte.campi);
+        // la saga dedotta si dice a parte da quella letta dal titolo: una
+        // sta scritta sul libro, l'altra è copiata dai suoi fratelli
+        parti.push(`${dedotte.dedotte} ${dedotte.dedotte === 1 ? "saga dedotta" : "saghe dedotte"} dalla tua biblioteca`);
       }
       if (parti.length) notify?.(parti.join(", "));
     })().catch(() => {
@@ -714,8 +745,10 @@ export default function Library({
     const unificati = books.map((b) => (unite.campi[b.id] ? { ...b, ...unite.campi[b.id] } : b));
     const next = unificati.map((b) => {
       // la biblioteca intera va passata: e' da li' che si impara la saga di
-      // un autore che la nostra tabella non conosce
-      const esito = ripassa(b, unificati);
+      // un autore che la nostra tabella non conosce — ma la DEDUZIONE dai
+      // fratelli no, non ancora: è la sola strada che il libro non lo
+      // guarda, e parla per ultima, in fondo, dopo il file e il catalogo
+      const esito = ripassa(b, unificati, { dallaBiblioteca: false });
       if (!esito) return b;
       conta(b, esito);
       return { ...b, ...esito.campi };
@@ -765,19 +798,20 @@ export default function Library({
     setCollane(null);
     conCollane = conCollane.map((b) => (dalCatalogo.campi[b.id] ? { ...b, ...dalCatalogo.campi[b.id] } : b));
 
-    // UN GIRO IN PIU', GRATIS: adesso che quelle saghe le sappiamo, un
-    // altro libro dello stesso autore puo' ereditarle — e senza questo
-    // secondo passaggio il lettore dovrebbe premere il tasto due volte per
-    // ottenere quel che il primo tocco poteva gia' dargli. Non apre niente:
-    // e' la sola deduzione dalla biblioteca.
-    if (daiFile.scritte || dalCatalogo.trovate) {
-      conCollane = conCollane.map((b) => {
-        const esito = ripassa(b, conCollane);
-        if (!esito) return b;
-        conta(b, esito);
-        return { ...b, ...esito.campi };
-      });
-    }
+    // E PER ULTIMA LA DEDUZIONE DAI FRATELLI. Adesso che le saghe del file
+    // e del catalogo le sappiamo, un altro libro dello stesso autore può
+    // ereditarle — e senza questo passaggio il lettore dovrebbe premere il
+    // tasto due volte per ottenere quel che il primo tocco poteva già
+    // dargli. Non apre niente ed è l'unico posto dove la deduzione parla:
+    // per questo gira SEMPRE, e non più solo se il file o il catalogo
+    // avevano trovato qualcosa.
+    const senzaTraccia = await senzaTracce(conCollane);
+    conCollane = conCollane.map((b) => {
+      const esito = ripassa(b, conCollane, { senzaTraccia });
+      if (!esito) return b;
+      conta(b, esito);
+      return { ...b, ...esito.campi };
+    });
 
     if (sistemati || rinominati || dedotte || dalTitolo || daiFile.scritte || dalCatalogo.trovate || unite.unificate)
       updateBooks(conCollane);
