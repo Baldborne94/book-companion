@@ -348,6 +348,25 @@ export function senzaCopia(soloNelCloud, idLassu) {
   return (soloNelCloud || []).filter((b) => b?.id && !idLassu.has(b.id));
 }
 
+// E QUELLI CHE UN TASTO PUO' DAVVERO PORTARE GIU' SONO GLI ALTRI.
+//
+// Segnalato con la Libreria in mano: «☁ Porta qui 18 tomi», e accanto la
+// riga che diceva che quei diciotto non sono ne' qui ne' nel cloud. Il
+// tasto contava `nelCloud` — i tomi che i byte qui non ce li hanno — e fra
+// quelli ci stanno anche i perduti: offriva di scaricare diciotto file che
+// **l'app sapeva gia'** non esistere lassu'. Un tasto che promette una cosa
+// impossibile e' peggio di un tasto che manca, e le due righe si
+// contraddicevano a mezzo centimetro di distanza.
+//
+// **Senza l'elenco del secchio si offrono TUTTI**, ed e' il verso opposto
+// di `senzaCopia`, che senza elenco non accusa nessuno: non sapere non e'
+// un allarme, ma non e' nemmeno una ragione per togliere il tasto — li'
+// l'unico modo di scoprirlo e' provare.
+export function daPortare(soloNelCloud, idLassu) {
+  const l = soloNelCloud || [];
+  return idLassu ? l.filter((b) => b?.id && idLassu.has(b.id)) : l;
+}
+
 // E si dicono per NOME: in una biblioteca da cento volumi «2 tomi» lascia
 // il lettore a cercare quali. Tre titoli e poi il conto — un elenco intero
 // in una riga di servizio diventa un muro.
@@ -368,7 +387,15 @@ export function fraseSenzaCopia(libri) {
 // scesi» a ogni giro si impara a saltare — e l'assente porta con se' cosa
 // farci, perche' un guaio senza la cura accanto lascia il lettore dov'era.
 export function frasePortata(esito) {
-  const { scesi = 0, assenti = 0, falliti = 0, fermato = false } = esito || {};
+  const { scesi = 0, assenti = 0, falliti = 0, fermato = false, scollegato = false } = esito || {};
+  // E «NON HO POTUTO CHIEDERE» NON E' «NON C'ERA NIENTE DA FARE», che e' lo
+  // stesso errore di `portaGiu` un piano piu' su: caduto l'accesso al
+  // cloud non si chiede niente al secchio — zero scaricamenti tentati — e
+  // il lettore che ha appena toccato «Porta qui 18 tomi» si sentiva
+  // rispondere che non c'era niente da portare, cioe' il contrario del
+  // tasto che aveva davanti. La frase dice cos'e' successo e cosa farci.
+  if (scollegato)
+    return "Non ho potuto chiedere al cloud: l'accesso non è più valido. Rientra dal pannello della nuvola — i tuoi libri restano qui.";
   const parti = [];
   if (scesi) parti.push(`${scesi} ${scesi === 1 ? "tomo è" : "tomi sono"} qui`);
   if (assenti)
