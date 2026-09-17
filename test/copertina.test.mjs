@@ -2,7 +2,7 @@
 // `copertina.js` che si puo' provare senza un canvas, ed e' anche l'unico
 // dove si sbaglia in silenzio: una copertina schiacciata si nota subito,
 // ma un errore di un pixel no.
-import { misura, LATO, copertinaDaEpub, primaImmagine, risolviAccanto } from "../src/lib/copertina.js";
+import { misura, LATO, copertinaDaEpub, primaImmagine, risolviAccanto, senzaCopertina, ritrovaCopertine, resocontoCopertine } from "../src/lib/copertina.js";
 
 const rapporto = (m) => m.w / m.h;
 
@@ -217,4 +217,77 @@ export default async function (t) {
   t.eq("un'immagine scritta dentro", risolviAccanto("/c.xhtml", "data:image/png;base64,AAA"), null);
   t.eq("niente da risolvere", risolviAccanto("/c.xhtml", ""), null);
   t.eq("e niente documento", risolviAccanto(null, "c.jpg"), "c.jpg");
+
+  // ---- LE COPERTINE CHE MANCANO SI RITROVANO NEL FILE --------------------
+  // Un dorso disegnato vuol dire una cosa sola: quell'immagine in IndexedDB
+  // non c'è. Il file però ce l'hai, e la copertina sta dentro di lui.
+  {
+    const libri = [{ id: "a" }, { id: "b" }, { id: "c" }];
+    t.eq("chi ha la copertina non si riapre", senzaCopertina(libri, new Set(["a"])).map((b) => b.id).join(","), "b,c");
+    t.eq("senza elenco si guardano tutti", senzaCopertina(libri, null).length, 3);
+    t.eq("niente libri, niente giro", senzaCopertina(null, new Set()).length, 0);
+    t.eq("un libro senza id si salta", senzaCopertina([{}], new Set()).length, 0);
+  }
+
+  // il giro: byte finti, estrazione finta, deposito finto — come la visita
+  {
+    const posate = [];
+    const banco = (o = {}) => ({
+      leggiByte: async (id) => (id === "senza" ? null : `byte di ${id}`),
+      estrai: async (b) => (b.id === "nuda" ? null : `img di ${b.id}`),
+      posa: async (id, blob) => posate.push(`${id}=${blob}`),
+      ...o,
+    });
+
+    posate.length = 0;
+    const e = await ritrovaCopertine([{ id: "a" }, { id: "nuda" }, { id: "senza" }], banco());
+    t.eq("una ritrovata", e.ritrovate, 1);
+    t.eq("e posata col suo id", posate.join(","), "a=img di a");
+    // UN TOMO SENZA BYTE NON È «non ce l'ha nel file»: non c'era niente da
+    // aprire, e dirlo sarebbe una risposta data senza aver guardato
+    t.eq("il tomo lassù si conta a parte", e.senzaByte, 1);
+    t.eq("e non fra quelli senza immagine", e.senzaImmagine, 1);
+
+    // un `leggiByte` che esplode SUBITO — la lezione di `ripassaImpronte`:
+    // senza il giro di promessa scavalcherebbe il catch e si porterebbe via
+    // tutto quello già ritrovato
+    posate.length = 0;
+    const e2 = await ritrovaCopertine([{ id: "boom" }, { id: "a" }], banco({
+      leggiByte: (id) => { if (id === "boom") throw new Error("storage rotto"); return `byte di ${id}`; },
+    }));
+    t.eq("l'esplosione non porta via il giro", e2.ritrovate, 1);
+    t.eq("e si conta come tomo senza byte", e2.senzaByte, 1);
+
+    // e nemmeno un'estrazione che esplode
+    const e3 = await ritrovaCopertine([{ id: "x" }, { id: "y" }], banco({
+      estrai: (b) => { if (b.id === "x") throw new Error("epub rotto"); return "img"; },
+    }));
+    t.eq("un file che non si apre non ferma le altre", e3.ritrovate, 1);
+    t.eq("e si conta con quelli senza immagine", e3.senzaImmagine, 1);
+
+    // il filo: fermato a metà, quel che è ritrovato resta ritrovato
+    let giri = 0;
+    const e4 = await ritrovaCopertine([{ id: "a" }, { id: "b" }, { id: "c" }], banco({ vivo: () => giri++ < 2 }));
+    t.eq("due prima dello stop", e4.ritrovate, 2);
+    t.c("e dichiarato fermato", e4.fermato);
+
+    // l'avanzamento dice a che punto siamo e su quale tomo
+    const passi = [];
+    await ritrovaCopertine([{ id: "a", title: "Alfa" }], banco({ onProgress: (p) => passi.push(p) }));
+    t.eq("l'avanzamento porta il titolo", passi[0].titolo, "Alfa");
+    t.eq("e il totale", passi[0].totale, 1);
+  }
+
+  // le parole: gli zeri non si dicono, e la voce su cui c'è da fare qualcosa
+  // si porta dietro la strada
+  {
+    t.eq("niente da ritrovare", resocontoCopertine({}), "Le copertine erano già tutte al loro posto");
+    t.eq("una sola, al singolare", resocontoCopertine({ ritrovate: 1 }), "una copertina ritrovata 🖼");
+    t.eq("più d'una", resocontoCopertine({ ritrovate: 4 }), "4 copertine ritrovate 🖼");
+    t.c("lo zero dei senza-byte tace", !resocontoCopertine({ ritrovate: 2 }).includes("dispositivo"));
+    t.c("chi non ce l'ha nel file sa cosa fare",
+      resocontoCopertine({ senzaImmagine: 2 }).includes("dalla scheda"));
+    t.c("il giro fermato si dichiara", resocontoCopertine({ ritrovate: 1, fermato: true }).includes("giro fermato"));
+    t.c("ma non su un giro a mani vuote", !resocontoCopertine({ fermato: true }).includes("fermato"));
+  }
 }

@@ -12,7 +12,7 @@ import {
 } from "./annotations.js";
 import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, getListsRaw, writeLists } from "./music.js";
 import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
-import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, daCaricare, nonCeLassu, eTroppoGrande, giaBocciato, copertineDaScaricare } from "./syncCore.js";
+import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, daCaricare, nonCeLassu, eTroppoGrande, giaBocciato, copertineDaScaricare, copertineDaCaricare } from "./syncCore.js";
 
 // `contaSpazio` viveva qui ed e' passata in `syncCore` con le altre
 // decisioni pure; si riesporta perche' chi la cercava la trovi dov'era.
@@ -20,9 +20,6 @@ export { contaSpazio };
 
 const LAST_SYNC_KEY = "bc_lastsync";
 const REPUSH_KEY = "bc_repush";
-const UPLOADED_KEY = "bc_uploaded";
-// Le copertine hanno un registro loro, e non e' un capriccio: vedi sotto.
-const UPLOADED_COV_KEY = "bc_uploaded_cov";
 // I file cambiati in casa: vedi `daRicaricare`.
 const RIPORTA_KEY = "bc_riporta";
 // I tomi che il secchio ha rifiutato perche' troppo grandi: vedi sotto.
@@ -42,31 +39,12 @@ export const getLastSync = () => parseInt(localStorage.getItem(LAST_SYNC_KEY), 1
 // e risale comunque.
 export function daRicaricare(id) {
   try {
-    const su = JSON.parse(localStorage.getItem(UPLOADED_KEY)) || [];
-    localStorage.setItem(UPLOADED_KEY, JSON.stringify(su.filter((x) => x !== id)));
-  } catch {
-    /* senza registro non c'e' niente da dimenticare */
-  }
-  // il segno sta in un `try` SUO: un registro corrotto non deve portarsi
-  // via l'unica riga che sa che questo file e' cambiato — la' il libro
-  // lassu' c'e' ancora, e senza il segno nessuno lo riguarderebbe
-  try {
     localStorage.setItem(RIPORTA_KEY, JSON.stringify([...daRimandareSu(), id]));
   } catch {
     /* senza storage il rimando si perde, e il file resta quello di prima */
   }
 }
 export const touchPrefs = () => localStorage.setItem(PREFS_UPD_KEY, String(Date.now()));
-
-const uploaded = () => {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(UPLOADED_KEY)) || []);
-  } catch {
-    return new Set();
-  }
-};
-const markUploaded = (id) =>
-  localStorage.setItem(UPLOADED_KEY, JSON.stringify([...uploaded(), id]));
 
 const daRimandareSu = () => {
   try {
@@ -79,16 +57,6 @@ const scordaRimando = (id) => {
   const resta = [...daRimandareSu()].filter((x) => x !== id);
   localStorage.setItem(RIPORTA_KEY, JSON.stringify(resta));
 };
-
-const copertineSu = () => {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(UPLOADED_COV_KEY)) || []);
-  } catch {
-    return new Set();
-  }
-};
-const segnaCopertina = (id) =>
-  localStorage.setItem(UPLOADED_COV_KEY, JSON.stringify([...copertineSu(), id]));
 
 // I TOMI CHE IL SECCHIO HA RIFIUTATO PER LA MISURA, con la misura accanto:
 // e' quella che li fa riprovare il giorno che i byte cambiano davvero.
@@ -407,11 +375,12 @@ export async function syncNow({ onProgress } = {}) {
   const daMandare = daCaricare(books, {
     qui: new Set(await listFileIds()),
     lassu: secchio?.idLibri,
-    gia: uploaded(),
     rimandi,
     inUscita: new Set(removeLocal),
   });
   const bocciati = troppoGrandi();
+  let falliti = 0;
+  let prefsGuaste = "";
   for (const book of daMandare) {
     const blob = await getFile(book.id);
     if (!blob) continue;
@@ -424,18 +393,20 @@ export async function syncNow({ onProgress } = {}) {
       .upload(filePath(uid, book), blob, { upsert: true, contentType: blob.type || undefined });
     if (sErr && sErr.statusCode !== "409") {
       // UN FILE TROPPO GRANDE NON FERMA IL GIRO (vedi `eTroppoGrande`): si
-      // segna, si salta, e in Libreria si dice per nome. Alzarlo qui voleva
-      // dire che un romanzo da sessanta megabyte teneva ferma tutta la
-      // sincronizzazione — copertine, preferenze e scaricamenti compresi —
-      // a ogni singolo giro, e il pannello mostrava l'errore nudo senza
-      // nemmeno dire di quale libro parlasse.
+      // segna, si salta, e in Libreria si dice per nome.
       if (eTroppoGrande(sErr)) {
         segnaTroppoGrande(book.id, blob.size);
         continue;
       }
-      throw sErr;
+      // E NEMMENO UN FILE CHE NON SALE PER UN'ALTRA RAGIONE. Qui c'era un
+      // `throw`, e si portava via il giro intero: i libri dopo di lui, le
+      // copertine, le preferenze, gli scaricamenti. Un intoppo su UN tomo
+      // e' di quel tomo — si conta e si dice, come fa `portaGiu` con quelli
+      // che non scendono. Il giro prosegue e al prossimo si riprova, perche'
+      // il libro resta scoperto nel secchio e `daCaricare` lo ripesca.
+      falliti += 1;
+      continue;
     }
-    markUploaded(book.id);
     if (rimandi.has(book.id)) scordaRimando(book.id);
   }
 
@@ -454,10 +425,9 @@ export async function syncNow({ onProgress } = {}) {
   // registro separato serve proprio a questo — legare le copertine al
   // registro dei file vorrebbe dire, per farne salire una, rispedire lassu'
   // trenta megabyte di romanzo.
-  const covGia = copertineSu();
   let copertineNuove = 0;
-  for (const b of books) {
-    if (covGia.has(b.id)) continue;
+  const copertineQui = new Set(await listCoverIds().catch(() => []));
+  for (const b of copertineDaCaricare(books, { qui: copertineQui, lassu: secchio?.idCopertine })) {
     const cover = await getCover(b.id).catch(() => null);
     if (!cover) continue;
     const { error: cErr } = await sb.storage
@@ -465,7 +435,6 @@ export async function syncNow({ onProgress } = {}) {
       .upload(coverPath(uid, b.id), cover, { upsert: true });
     // una copertina che non sale non ferma niente: si riprova al giro dopo
     if (cErr && cErr.statusCode !== "409") continue;
-    segnaCopertina(b.id);
     copertineNuove += 1;
     if (copertineNuove === 1) say("Mando su le copertine…");
   }
@@ -604,16 +573,30 @@ export async function syncNow({ onProgress } = {}) {
     // «mai» anche quando i libri erano saliti e scesi senza un graffio.
     let riga = { ...merged, updated_at: stamp, user_id: uid };
     const persi = [];
-    for (let i = 0; i <= 8; i += 1) {
-      const { error } = await sb.from("prefs").upsert(riga);
-      if (!error) break;
-      const manca = colonnaMancante(error);
-      const ridotta = manca ? senzaColonna(riga, manca) : null;
-      if (!ridotta) throw error;
-      riga = ridotta;
-      persi.push(manca);
+    // E NEMMENO LE PREFERENZE SI PORTANO VIA IL GIRO. Qui c'era un `throw`,
+    // ed era l'ultimo rimasto: un errore che non e' una colonna mancante
+    // saltava il timbro dell'ora e il resoconto, quindi il pannello diceva
+    // «Sincronizzazione fallita» sopra a libri, file e copertine arrivati
+    // tutti a destinazione. Quel che e' andato storto e' delle preferenze:
+    // si conta, si dice, e il giro finisce.
+    try {
+      for (let i = 0; i <= 8; i += 1) {
+        const { error } = await sb.from("prefs").upsert(riga);
+        if (!error) break;
+        const manca = colonnaMancante(error);
+        const ridotta = manca ? senzaColonna(riga, manca) : null;
+        if (!ridotta) {
+          prefsGuaste = error?.message || "errore";
+          break;
+        }
+        riga = ridotta;
+        persi.push(manca);
+      }
+    } catch (e) {
+      prefsGuaste = e?.message || "errore";
     }
     if (persi.length) say(`Sincronizzato (${persi.join(", ")}: aggiorna lo schema)`);
+    if (prefsGuaste) say(`Preferenze non sincronizzate: ${prefsGuaste}`);
   }
   localStorage.setItem(PREFS_UPD_KEY, String(stamp));
 
@@ -622,6 +605,9 @@ export async function syncNow({ onProgress } = {}) {
     pushed: toPush.length,
     pulled: pull.length,
     removed: removeLocal.length,
+    // i file che non sono saliti: si contano e si dicono, non alzano piu'
+    falliti,
+    prefsGuaste,
     books: loadBooks(),
   };
 }
