@@ -783,7 +783,7 @@ export default function Library({
 
     // E IL CATALOGO, su chi e' rimasto senza: col tasto si richiede tutto,
     // memoria o no, perche' chi lo preme vuole la risposta di adesso
-    const { ripassaCatalogo, cercaSaga } = await import("../lib/sagaDalCatalogo.js");
+    const { ripassaCatalogo, cercaSaga, frasiSenzaSaga } = await import("../lib/sagaDalCatalogo.js");
     const { nomeInBiblioteca } = await import("../lib/sagaBooks.js");
     filoCollane.current = mio;
     const dalCatalogo = await ripassaCatalogo(conCollane, {
@@ -862,12 +862,17 @@ export default function Library({
       parti.push(`${dalCatalogo.rete} non ${dalCatalogo.rete === 1 ? "chiesto" : "chiesti"} al catalogo: manca la rete`);
     // e chi resta senza si conta ALLA FINE, dopo file e catalogo: e' la
     // sola strada rimasta, e va detta — un «erano gia' tutti a posto» sopra
-    // un volume ancora fra i soli sarebbe una bugia
+    // un volume ancora fra i soli sarebbe una bugia.
+    //
+    // MA I TOMI SENZA SAGA SONO DUE SPECIE, e dirgli la stessa cosa era
+    // l'errore: a chi il catalogo ha letto le edizioni senza trovare
+    // nessuna collana non si chiede niente, perché una saga da scrivere non
+    // c'è. La riga con la strada da prendere resta agli altri.
     const ancoraSenza = conCollane.filter((b) => !String(b.saga || "").trim()).length - dalCatalogo.rete;
-    if (ancoraSenza > 0)
-      parti.push(
-        `${ancoraSenza} ${ancoraSenza === 1 ? "tomo resta" : "tomi restano"} senza saga: né il file né il catalogo la sanno — scrivila nella scheda`
-      );
+    if (ancoraSenza > 0) {
+      const aSe = Math.min(dalCatalogo.senzaTraccia, ancoraSenza);
+      parti.push(...frasiSenzaSaga({ aSe, daScrivere: ancoraSenza - aSe }));
+    }
     notify?.(parti.length ? parti.join(", ") : "Erano già tutti a posto");
   }
 

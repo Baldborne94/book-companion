@@ -35,7 +35,7 @@
 // sotto la soglia dei due voti e' esattamente il caso per cui la deduzione
 // dai fratelli esiste.
 import {
-  tracceDalleEdizioni, cercaSaga, ripassaCatalogo,
+  tracceDalleEdizioni, cercaSaga, ripassaCatalogo, frasiSenzaSaga,
 } from "../src/lib/sagaDalCatalogo.js";
 import { sagaDaBiblioteca, deduciSaghe, ripassa } from "../src/lib/sagaBooks.js";
 
@@ -238,6 +238,34 @@ export default async function (t) {
   // raddoppiare niente
   const gia = deduciSaghe([{ ...misto[0], saga: "The Faithful and the Fallen" }, misto[1]], { dallaBiblioteca: false });
   t.eq("chi la saga ce l'ha gia' non si rilegge", gia.dalTitolo, 0);
+
+  // ---- UN LIBRO SENZA SAGA NON E' UN LAVORO A META' ----------------------
+  // Detto dal lettore dopo la cura: «alcuni volumi possono anche essere
+  // singoli, senza saga». Il messaggio di fine giro diceva a TUTTI i tomi
+  // rimasti senza la stessa cosa — «scrivila nella scheda» — cioe' la
+  // stessa premessa che ha causato il difetto, spostata addosso al lettore.
+  const nessuna = frasiSenzaSaga({ aSe: 0, daScrivere: 0 });
+  t.eq("niente da dire, niente si dice", nessuna.length, 0);
+
+  const soloASe = frasiSenzaSaga({ aSe: 2, daScrivere: 0 });
+  t.eq("i romanzi a sé si dicono", soloASe.length, 1);
+  t.c("…e NON si chiede di scrivere niente", !/scrivila/.test(soloASe[0]), soloASe[0]);
+  t.c("…si dice invece cosa si e' guardato", /edizione/.test(soloASe[0]), soloASe[0]);
+
+  const soloDaScrivere = frasiSenzaSaga({ aSe: 0, daScrivere: 3 });
+  t.eq("chi una saga potrebbe averla resta con la sua strada", soloDaScrivere.length, 1);
+  t.c("…e la strada e' la scheda", /scrivila nella scheda/.test(soloDaScrivere[0]), soloDaScrivere[0]);
+
+  const tutt2 = frasiSenzaSaga({ aSe: 1, daScrivere: 1 });
+  t.eq("le due specie si dicono separate", tutt2.length, 2);
+  t.c("…prima quel che non chiede niente", !/scrivila/.test(tutt2[0]), tutt2[0]);
+  // il singolare non e' «1 tomi», che si legge come un guasto
+  t.c("singolare sui romanzi a sé", /^1 tomo sembra un romanzo a sé/.test(tutt2[0]), tutt2[0]);
+  t.c("singolare sull'altra riga", /^1 tomo resta/.test(tutt2[1]), tutt2[1]);
+  t.c("plurale sui romanzi a sé", /^2 tomi sembrano romanzi a sé/.test(soloASe[0]), soloASe[0]);
+  // e nessuna delle due dev'essere una frase muta o rotta
+  for (const f of [...soloASe, ...soloDaScrivere, ...tutt2])
+    t.c(`«${f}» e' una frase intera`, f.length > 20 && !/undefined|NaN/.test(f));
 
   // ---- E LO STESSO SUL TASTO (`ripassa`) ---------------------------------
   const conLibri = BUEHLMAN();

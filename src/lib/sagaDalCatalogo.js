@@ -253,6 +253,36 @@ export async function cercaSaga({ title, author } = {}, fetcher) {
   return guardato ? { saga: null, tracce } : null;
 }
 
+// UN LIBRO SENZA SAGA NON E' UN LAVORO A META'.
+//
+// Detto dal lettore dopo la cura di «Between Two Fires»: «alcuni volumi
+// possono anche essere singoli, senza saga». Il messaggio di fine giro
+// invece contava TUTTI i tomi rimasti senza e diceva a tutti la stessa
+// cosa — «scrivila nella scheda» — cioe' trattava il vuoto come una casella
+// da riempire. E' la stessa premessa che ha messo «Between Two Fires»
+// dentro «The Blacktongue Thief», solo spostata addosso al lettore: se
+// l'app insiste che una saga ci vuole, prima o poi gliene scrive una.
+//
+// La distinzione la fa il segnale che c'e' gia': `tracce === 0` vuol dire
+// che il catalogo ha letto le edizioni e nessuna nomina una collana. Li'
+// non c'e' niente da fare e non si chiede niente — si dice quel che si sa,
+// e si sta zitti. La riga con la strada da prendere resta agli altri, dove
+// una saga potrebbe esserci e nessuno l'ha saputa dire.
+export function frasiSenzaSaga({ aSe = 0, daScrivere = 0 } = {}) {
+  const fuori = [];
+  if (aSe > 0)
+    fuori.push(
+      aSe === 1
+        ? "1 tomo sembra un romanzo a sé: nessuna sua edizione dichiara una collana"
+        : `${aSe} tomi sembrano romanzi a sé: nessuna loro edizione dichiara una collana`
+    );
+  if (daScrivere > 0)
+    fuori.push(
+      `${daScrivere} ${daScrivere === 1 ? "tomo resta" : "tomi restano"} senza saga: né il file né il catalogo la sanno — scrivila nella scheda`
+    );
+  return fuori;
+}
+
 // La passata sui libri senza saga, nella forma di ogni passata lunga: un
 // tomo per volta, fermabile, quel che e' trovato resta. La memoria
 // (`giaVista`/`segnaVista`) si scrive SOLO su una risposta del catalogo —
