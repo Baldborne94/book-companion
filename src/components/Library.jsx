@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook } from "../lib/library.js";
+import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, scaffaleVuoto } from "../lib/library.js";
 import { disponi, aEtichette, criterioVoto, criterioStato } from "../lib/ripiani.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { storageEstimate, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
@@ -1548,9 +1548,46 @@ export default function Library({
           onAction={() => inputRef.current?.click()}
         />
       ) : visible.length === 0 ? (
-        <p style={{ textAlign: "center", color: C.muted, padding: "32px 0" }}>
-          Nessun tomo risponde all'appello con questi filtri…
-        </p>
+        /* NON È PIÙ UN VICOLO CIECO. C'era una riga sola — «Nessun tomo
+           risponde all'appello con questi filtri…» — che dice il vero e non
+           serve a niente: lo scaffale sembra aver perso i libri e non c'è
+           niente da toccare per riaverli. Adesso dice QUALE delle due leve
+           sta nascondendo, e la molla con un tocco. */
+        (() => {
+          const vuoto = scaffaleVuoto({
+            totale: books.length,
+            query,
+            filtro: filter,
+            nomeFiltro: FILTERS.find((f) => f.id === filter)?.label,
+            // quanti risponderebbero alla SOLA ricerca: è il numero che
+            // dice «la ricerca trova, è il filtro a nascondere»
+            conLaSolaRicerca: query ? books.filter((b) => combacia(b, query)).length : null,
+          });
+          return (
+            <div style={{ textAlign: "center", padding: "32px 0" }}>
+              <p style={{ color: C.muted, margin: "0 0 14px" }}>{vuoto.frase}</p>
+              <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                {vuoto.vie.map((v) => (
+                  <button
+                    key={v.id}
+                    onClick={() => (v.id === "query" ? setQuery("") : setFilter("all"))}
+                    style={{
+                      minHeight: 44,
+                      padding: "10px 16px",
+                      borderRadius: R.tondo,
+                      border: `1px solid ${C.accent}`,
+                      color: C.accent,
+                      background: `${C.accent}14`,
+                      fontSize: F.nota,
+                    }}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()
       ) : (
         <Grouped books={visible} group={group} sort={sort} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} />
       )}

@@ -247,3 +247,56 @@ export function numeroLettura(s) {
 export function pulisciNumero(s) {
   return String(s ?? "").replace(",", ".").replace(/[^\d.]/g, "");
 }
+
+// PERCHÉ LO SCAFFALE È VUOTO, e come tornare a vederlo.
+//
+// C'era una riga sola: «Nessun tomo risponde all'appello con questi
+// filtri…». Dice il vero e non serve a niente — **è un vicolo cieco**: lo
+// scaffale sembra aver perso i libri e non c'è niente da toccare per
+// riaverli. È esattamente la ragione per cui il filtro NON si ricorda fra
+// un'apertura e l'altra («una Libreria che si riapre con metà dei libri
+// nascosti sembra una libreria che ha perso dei libri, e non c'è niente
+// sullo schermo che spieghi perché») — solo che dentro la sessione quella
+// ragione vale uguale: filtri, cerchi, ti distrai, e lo scaffale è vuoto.
+//
+// **LA RIGA UTILE DICE QUALE DELLE DUE LEVE STA NASCONDENDO**, e non è un
+// dettaglio: con la ricerca E il filtro accesi, sapere che tre tomi
+// rispondono alla ricerca ma nessuno è fra i «Letti» dice quale delle due
+// mollare. Una riga che dice solo «non c'è niente» lascia a indovinare.
+//
+// Sta qui e non nel componente per la ragione di sempre: un test in Node
+// non importa un `.jsx`, e una frase che dice la cosa sbagliata non alza
+// nessun errore.
+export function scaffaleVuoto({ totale = 0, query = "", filtro = "all", conLaSolaRicerca = null, nomeFiltro = "" } = {}) {
+  const cerca = String(query || "").trim();
+  const filtra = filtro && filtro !== "all";
+  // nessuna leva tirata e lo scaffale è vuoto lo stesso: non sappiamo
+  // perché, e non si inventa una causa — si dice quel che si vede
+  if (!cerca && !filtra)
+    return { frase: "Nessun tomo sullo scaffale.", vie: [] };
+
+  const vie = [];
+  if (cerca) vie.push({ id: "query", label: "Cancella la ricerca" });
+  if (filtra) vie.push({ id: "filtro", label: "Mostra tutti i tomi" });
+
+  const nome = nomeFiltro || "questo filtro";
+  if (cerca && filtra) {
+    // il caso che vale la pena distinguere: la ricerca TROVA, ed è il
+    // filtro a nascondere. Senza questo ramo si molla la leva sbagliata.
+    if (Number.isFinite(conLaSolaRicerca) && conLaSolaRicerca > 0)
+      return {
+        frase: `${conLaSolaRicerca === 1 ? "Un tomo risponde" : `${conLaSolaRicerca} tomi rispondono`} a «${cerca}», ma ${conLaSolaRicerca === 1 ? "non è" : "nessuno è"} fra i «${nome}».`,
+        vie,
+      };
+    return { frase: `Nessun tomo risponde a «${cerca}» fra i «${nome}».`, vie };
+  }
+  if (cerca) return { frase: `Nessun tomo risponde a «${cerca}».`, vie };
+  // solo il filtro: il conto dice quanti ne stai nascondendo, che è
+  // l'informazione che spiega lo scaffale vuoto
+  return {
+    frase: totale
+      ? `Nessuno dei tuoi ${totale} tomi è fra i «${nome}».`
+      : `Nessun tomo è fra i «${nome}».`,
+    vie,
+  };
+}
