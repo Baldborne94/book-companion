@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook } from "../lib/library.js";
-import { disponi } from "../lib/ripiani.js";
+import { disponi, aEtichette, criterioVoto, criterioStato } from "../lib/ripiani.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { storageEstimate, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
 import { importFiles, resoconto } from "../lib/importBook.js";
@@ -54,9 +54,31 @@ const SORTS = [
 // spegne lo scaffale. Chi aveva scelto «Niente» non resta impigliato:
 // `vistaValida` non riconosce più quell'id e torna alla disposizione di
 // sempre.
+//
+// E I DUE CRITERI SI POSSONO CHIEDERE ANCHE DA SOLI (chiesto dal lettore:
+// «il raggruppamento me lo dividi per saga o per autore e non tutto
+// assieme»). «Saga e autore» resta la prima voce e la disposizione di
+// sempre — è quella che sa cavarsela su una biblioteca mista — ma ognuna
+// delle due metà ha un lavoro che l'altra non fa: «Saga» tiene insieme
+// solo le storie dichiarate, «Autore» scioglie le saghe e rimette i volumi
+// sotto chi li ha scritti, che su una saga a venti mani come l'Eresia di
+// Horus è proprio l'informazione che la voce combinata nasconde.
 const GROUPS = [
-  { id: "shelf", label: "Saga e autore" },
-  { id: "genre", label: "Genere", empty: "Senza genere" },
+  { id: "shelf", label: "Saga e autore", per: "auto" },
+  { id: "saga", label: "Saga", per: "saga" },
+  // `autore` e non `author`: fra gli ORDINAMENTI esiste già un `author`, e
+  // i due elenchi si leggono dallo stesso `bc_vista`. Non collidono (ognuno
+  // si controlla sul suo elenco), ma due chiavi uguali con due mestieri
+  // diversi nello stesso oggetto sono una trappola per chi legge dopo.
+  { id: "autore", label: "Autore", per: "autore" },
+  // Le tre a ETICHETTA passano tutte dalla stessa porta (`aEtichette`): una
+  // chiave per libro, un mucchio per chiave, e chi non ce l'ha chiude la
+  // fila. Quel che cambia è solo il PESO che mette i ripiani in ordine —
+  // alfabetico per il genere, dal voto più alto, e per lo stato l'ordine
+  // della vita di un libro.
+  { id: "genre", label: "Genere" },
+  { id: "rating", label: "Voto" },
+  { id: "status", label: "Stato" },
 ];
 
 // I tomi gia' aperti che dentro una copertina non ce l'hanno: stanno nello
@@ -287,8 +309,9 @@ function Grouped({ books, group, onOpenBook, localIds, coverV = 0 }) {
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
   // del volume, e dove non c'è resta l'ordine che hai scelto tu.
-  if (group === "shelf") {
-    return disponi(books).map((r) => (
+  const criterio = GROUPS.find((g) => g.id === group)?.per;
+  if (criterio) {
+    return disponi(books, null, criterio).map((r) => (
       <Ripiano
         key={r.id}
         nome={r.nome}
@@ -335,24 +358,21 @@ function Grouped({ books, group, onOpenBook, localIds, coverV = 0 }) {
     ));
   }
 
-  const cfg = GROUPS.find((g) => g.id === group);
-  const buckets = new Map();
-  for (const b of books) {
-    // il genere si raggruppa per FAMIGLIA: «Fantasy · Grimdark» e «Fantasy
-    // · Epico» stanno sullo stesso scaffale. Prendendo il valore intero
-    // ogni sottogenere farebbe un gruppo da un libro, e uno scaffale di
-    // gruppi da uno non e' un raggruppamento.
-    const key = famigliaDi(b.genre);
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key).push(b);
-  }
-  // i libri senza etichetta chiudono la fila
-  const names = [...buckets.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b, "it"));
-  if (buckets.has("")) names.push("");
+  // il genere si raggruppa per FAMIGLIA: «Fantasy · Grimdark» e «Fantasy ·
+  // Epico» stanno sullo stesso scaffale. Prendendo il valore intero ogni
+  // sottogenere farebbe un gruppo da un libro, e uno scaffale di gruppi da
+  // uno non è un raggruppamento.
+  const CRITERIO = {
+    genre: { chiave: (b) => famigliaDi(b.genre), vuoto: "Senza genere" },
+    rating: criterioVoto(),
+    // lo stato vive in `localStorage`, non sul libro: la funzione che lo
+    // legge si passa da fuori, come `leggiByte` altrove
+    status: criterioStato((b) => getStatus(b.id)),
+  }[group];
 
-  return names.map((name) => (
-    <Ripiano key={name || "_"} nome={name || cfg.empty} quanti={buckets.get(name).length} spento={!name}>
-      <Shelf books={buckets.get(name)} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} />
+  return aEtichette(books, CRITERIO).map((r) => (
+    <Ripiano key={r.id || "_"} nome={r.nome} quanti={r.libri.length} spento={!!r.spento}>
+      <Shelf books={r.libri} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} />
     </Ripiano>
   ));
 }
