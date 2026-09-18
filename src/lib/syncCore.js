@@ -731,3 +731,121 @@ export function mergePrefs(local, remote) {
       merged.last_opened !== (remote.last_opened || null),
   };
 }
+
+// COSA E' ANDATO STORTO SINCRONIZZANDO, detto in italiano.
+//
+// Segnalato due volte in un'ora, col pannello della nuvola in mano:
+// «Sincronizzazione fallita: null value in column "fav" of relation
+// "books" violates not-null constraint» e «invalid input syntax for type
+// integer: "0.18"». Quel testo e' il messaggio GREZZO di Postgres, che
+// `App.jsx` incollava sullo schermo cosi' com'era.
+//
+// E' il punto piu' ostile che l'app abbia: tutto il resto ha frasi scritte
+// apposta — `GUAI`, `ESITI_CONTROLLO`, `fraseTace`, le frasi qui sopra — e
+// proprio dove qualcosa si e' appena rotto si passava all'inglese e al
+// gergo del database. **Nel momento in cui il lettore ha piu' bisogno di
+// capire, gli si dava la cosa meno leggibile che l'app avesse.**
+//
+// Tre regole, tutte prese da `spiegaAccesso`, che questo mestiere lo fa
+// gia' per l'accesso:
+//
+//  1. Ogni guasto riconosciuto dice COSA E' SUCCESSO **e cosa farci**: un
+//     guasto senza la strada accanto lascia il lettore dov'era.
+//  2. Quel che non sappiamo tradurre **si mostra com'e'**: una frase in
+//     inglese e' brutta, nasconderla toglie l'unico appiglio.
+//  3. Il testo grezzo NON si butta — va in `dettaglio`, ripiegato: e' quel
+//     che serve a chi deve ripararlo quando gli arriva la fotografia.
+//
+// QUATTRO MESSAGGI DIVERSI DI POSTGRES VOGLIONO DIRE LA STESSA COSA al
+// lettore — la colonna che manca, il tipo che non regge, il `not null`, la
+// policy — e la strada e' una sola: rilanciare `supabase/schema.sql`. Si
+// raggruppano, e **il nome della colonna finisce nella frase**, perche' e'
+// l'unica cosa del testo grezzo che al lettore serva davvero.
+// IL NOME SI CERCA NEI DUE POSTI DOVE LO SCRIVONO, e la forma di PostgREST
+// si chiede a `colonnaMancante`, che quel mestiere lo fa gia' — scriverla
+// qui sarebbe la stessa espressione in due file, da cambiare insieme e da
+// dimenticare separatamente.
+//
+// E LE VIRGOLETTE SONO OBBLIGATORIE nella forma di Postgres: senza,
+// «Could not find the 'music_lists' column **of** 'prefs'» da' la colonna
+// «of», cioe' una frase che nomina con sicurezza una colonna che non
+// esiste — peggio di una frase che non la nomina affatto. Preso provando
+// la funzione sui messaggi veri, non rileggendola.
+//
+// E LA FORMA DI POSTGRES SI CHIEDE PER PRIMA, che non e' indifferente: col
+// ripiego davanti, sul messaggio di PostgREST rispondeva `colonnaMancante`
+// e la guardia sulle virgolette non veniva raggiunta mai — una guardia che
+// non guarda niente, che e' peggio di nessuna guardia perche' il prossimo
+// le crede (stessa lezione di `senzaAutore` in `titoli.js`). L'ha detto una
+// mutazione sopravvissuta, non la rilettura.
+function nomeColonna(err, testo) {
+  const m = /(?:column|colonna)\s+["']([a-z_]+)["']/i.exec(testo);
+  return (m ? m[1] : null) || colonnaMancante(err);
+}
+
+const SCHEMA_INDIETRO = (col) =>
+  `Lo schema del database è indietro rispetto all'app${col ? `: la colonna «${col}» non c'è o non regge il valore` : ""}. ` +
+  "Rilancia «supabase/schema.sql» sul progetto Supabase, poi riprova. I tuoi libri restano qui intanto.";
+
+export function spiegaSync(err) {
+  const testo = String(err?.message || err?.error_description || "").trim();
+  const dettagli = `${testo} ${err?.details || ""} ${err?.hint || ""}`;
+  const stato = Number(err?.status ?? err?.statusCode) || 0;
+  // quel che diciamo noi e' gia' italiano e non ha un testo grezzo utile
+  if (/sync non configurata/i.test(testo))
+    return { frase: "La sincronizzazione non è configurata su questa copia dell'app.", dettaglio: null };
+
+  // LA RETE PRIMA DI TUTTO: cade come un TypeError senza codice ne' stato,
+  // e scambiata per un guasto del database manderebbe a rilanciare uno
+  // schema che sta benissimo.
+  if (stato === 0 && /fetch|network|load failed|connessione/i.test(testo))
+    return {
+      frase: "Non riesco a raggiungere il cloud: controlla la rete e riprova. I tuoi libri restano qui.",
+      dettaglio: testo,
+    };
+
+  if (/row-level security|violates row-level/i.test(dettagli) || stato === 401 || stato === 403 || /jwt|token/i.test(testo)) {
+    // 401 e JWT sono la sessione, la RLS e' lo schema: due cose diverse con
+    // due strade diverse, e confonderle manda dalla parte sbagliata
+    if (/row-level security|violates row-level/i.test(dettagli))
+      return { frase: SCHEMA_INDIETRO(null), dettaglio: testo };
+    return {
+      frase: "L'accesso al cloud è scaduto: rientra dal pannello della nuvola. I tuoi libri restano qui.",
+      dettaglio: testo,
+    };
+  }
+
+  if (
+    /violates not-null|null value in column|invalid input syntax|could not find the|schema cache|does not exist/i.test(dettagli)
+  )
+    return { frase: SCHEMA_INDIETRO(nomeColonna(err, dettagli)), dettaglio: testo };
+
+  if (/exceeded the maximum allowed size|payload too large|entity too large/i.test(dettagli) || stato === 413)
+    return {
+      frase: "Un file è troppo grande per il piano del cloud: resta qui, al sicuro. La sua rete è l'archivio.",
+      dettaglio: testo,
+    };
+
+  if (/quota|storage limit|exceeded.*quota/i.test(dettagli) || stato === 507)
+    return {
+      frase: "Lo spazio nel cloud è finito: guarda la barra in fondo alla Libreria per vedere cosa lo occupa.",
+      dettaglio: testo,
+    };
+
+  if (/paused|project is paused/i.test(dettagli))
+    return {
+      frase: "Il progetto Supabase è in pausa: riattivalo dalla sua dashboard e riprova.",
+      dettaglio: testo,
+    };
+
+  if (stato >= 500)
+    return { frase: "Il cloud ha risposto male: riprovo più tardi da solo. I tuoi libri restano qui.", dettaglio: testo };
+
+  // QUEL CHE NON SAPPIAMO TRADURRE SI MOSTRA COM'E' — ma allora il testo
+  // grezzo E' gia' la frase, e ripeterlo sotto «dettagli» lo scriverebbe
+  // due volte.
+  return {
+    frase: testo ? `Sincronizzazione fallita: ${testo}` : "Sincronizzazione fallita, riprovo più tardi.",
+    dettaglio: null,
+  };
+}

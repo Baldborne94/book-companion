@@ -44,6 +44,7 @@ import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
 import { getSession, syncNow, localFileIds, onAuthChange } from "./lib/sync.js";
+import { spiegaSync } from "./lib/syncCore.js";
 import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
 
@@ -794,7 +795,11 @@ export default function App() {
     setSync((s) => ({ ...s, busy: true, message: quiet ? s.message : "Sincronizzo…" }));
     try {
       const res = await syncNow({
-        onProgress: (message) => setSync((s) => ({ ...s, message })),
+        // il dettaglio si azzera insieme al messaggio: senza, il testo
+        // tecnico del guasto di prima resterebbe ripiegato sotto la riga
+        // di avanzamento del giro nuovo — un «dettagli» che racconta
+        // un'altra storia
+        onProgress: (message) => setSync((s) => ({ ...s, message, dettaglio: null })),
       });
       if (res.books) setBooks(res.books);
       setLocalIds(await localFileIds());
@@ -807,7 +812,14 @@ export default function App() {
       });
       if (!quiet && moved) notify("Biblioteca sincronizzata ✨");
     } catch (e) {
-      setSync((s) => ({ ...s, busy: false, message: `Sincronizzazione fallita: ${e?.message || "errore"}` }));
+      // IL TESTO GREZZO DI POSTGRES NON ARRIVA PIÙ SULLO SCHERMO: qui
+      // c'era `e.message` incollato com'era, e il lettore si è ritrovato
+      // davanti «null value in column "fav" … violates not-null
+      // constraint». Ora `spiegaSync` dice cos'è successo e cosa farci, e
+      // il testo tecnico resta sotto «dettagli» per quando arriva la
+      // fotografia a chi deve ripararlo.
+      const guaio = spiegaSync(e);
+      setSync((s) => ({ ...s, busy: false, message: guaio.frase, dettaglio: guaio.dettaglio }));
       if (!quiet) notify("Sincronizzazione fallita — riprovo più tardi");
     }
   };
