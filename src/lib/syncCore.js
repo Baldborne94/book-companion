@@ -10,6 +10,15 @@ const EMPTY_ROW = {
   added_at: 0,
   rating: 0,
   notes: "",
+  // L'IMPRONTA E IL CUORE MANCAVANO, e il cuore ha fatto fallire la
+  // sincronizzazione del lettore: «null value in column "fav" of relation
+  // "books" violates not-null constraint». Vedi il commento qui sotto — il
+  // meccanismo era gia' scritto, ma chi ha aggiunto le due colonne a
+  // `rowFromLocal` non e' passato di qui, e il difetto resta INVISIBILE
+  // finche' nessuno cancella un libro: senza una lapide nel lotto tutte le
+  // righe hanno le stesse chiavi e non c'e' niente da riempire.
+  impronta: null,
+  fav: false,
   status: "unread",
   started_at: 0,
   finished_at: 0,
@@ -25,6 +34,16 @@ const EMPTY_ROW = {
 
 // PostgREST unisce le chiavi di un batch: una riga con meno colonne
 // (le lapidi) le riceverebbe come null, non come default.
+//
+// QUINDI `EMPTY_ROW` DEVE COPRIRE OGNI COLONNA CHE `rowFromLocal` SA
+// MANDARE, e il patto lo tiene un test (`test/lapidi.test.mjs`) perche' a
+// mano non lo tiene nessuno: aggiungere una colonna la' sopra e scordarsi
+// di qui non alza niente finche' il lotto e' fatto di sole righe piene —
+// tutte con le stesse chiavi, niente da riempire. Il giorno che il lettore
+// cancella un libro, la lapide entra nello stesso lotto con due chiavi in
+// meno e Postgres rifiuta l'INTERA sincronizzazione. E' successo con `fav`,
+// che e' `not null`: `impronta` era passata liscia solo perche' e'
+// nullable, cioe' scriveva un null in silenzio invece di lamentarsi.
 export const normalizeRow = (row) => ({ ...EMPTY_ROW, ...row });
 
 export const rowFromLocal = (book, state, updatedAt) => ({
