@@ -275,7 +275,31 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
               Ultima sincronizzazione: {fmtWhen(getLastSync())}
             </p>
             {status.message && (
-              <p style={{ color: C.arcane, fontSize: F.nota, marginBottom: 12 }}>{status.message}</p>
+              <div style={{ marginBottom: 12 }}>
+                <p style={{ color: C.arcane, fontSize: F.nota, margin: 0 }}>{status.message}</p>
+                {/* IL TESTO GREZZO NON SI BUTTA, SI RIPIEGA: la frase sopra
+                    serve a chi legge, questo a chi deve ripararlo quando gli
+                    arriva la fotografia. In vista sarebbe il difetto di
+                    prima; buttato via, la fotografia non direbbe niente. */}
+                {status.dettaglio && (
+                  <details style={{ marginTop: 6 }}>
+                    <summary style={{ color: C.muted, fontSize: F.piccolo, cursor: "pointer" }}>
+                      Dettagli tecnici
+                    </summary>
+                    <p
+                      style={{
+                        color: C.muted,
+                        fontSize: F.piccolo,
+                        margin: "6px 0 0",
+                        wordBreak: "break-word",
+                        fontFamily: "monospace",
+                      }}
+                    >
+                      {status.dettaglio}
+                    </p>
+                  </details>
+                )}
+              </div>
             )}
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button

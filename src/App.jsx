@@ -34,6 +34,7 @@ import Library from "./components/Library.jsx";
 import BookSheet from "./components/BookSheet.jsx";
 import QuoteGarden from "./components/QuoteGarden.jsx";
 import ReadingDiary from "./components/ReadingDiary.jsx";
+import Mappa from "./components/Mappa.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
 import MusicRoom from "./components/MusicRoom.jsx";
 import SyncPanel from "./components/SyncPanel.jsx";
@@ -44,6 +45,7 @@ import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
 import { getSession, syncNow, localFileIds, onAuthChange } from "./lib/sync.js";
+import { spiegaSync } from "./lib/syncCore.js";
 import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
 
@@ -474,7 +476,7 @@ function MisuraPicker({ current, onPick, consigliata }) {
   );
 }
 
-function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync }) {
+function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa }) {
   return (
     <div
       onClick={onClose}
@@ -607,6 +609,33 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
         </div>
 
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          {/* COSA SA FARE L'APP, e sta qui perché è la stanza dove uno
+              viene quando si chiede qualcosa sull'app invece che sui suoi
+              libri. Non compare mai da sé e non si mette in mezzo: una
+              mappa serve il giorno che la cerchi, e un tutorial che si
+              apre da solo lo si impara a chiudere senza leggerlo. */}
+          <button
+            onClick={onMappa}
+            style={{
+              width: "100%",
+              minHeight: 44,
+              padding: "10px 14px",
+              textAlign: "left",
+              borderRadius: R.medio,
+              border: `1px solid ${C.border}`,
+              background: C.surface,
+              color: C.text,
+              fontSize: F.corpo,
+            }}
+          >
+            📖 Cosa sa fare l'app
+            <span style={{ display: "block", color: C.muted, fontSize: F.piccolo, marginTop: 2 }}>
+              Le funzioni raccolte per dove stanno, con accanto da dove si aprono
+            </span>
+          </button>
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
           <h3
             style={{
               fontFamily: FONT_TITLE,
@@ -667,6 +696,7 @@ export default function App() {
   const [readingStart, setReadingStart] = useState(null);
   const [gardenOpen, setGardenOpen] = useState(false);
   const [diaryOpen, setDiaryOpen] = useState(false);
+  const [mappaOpen, setMappaOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [music, setMusic] = useState({ current: null, playing: false, timerEnd: null });
   const [syncOpen, setSyncOpen] = useState(false);
@@ -794,7 +824,11 @@ export default function App() {
     setSync((s) => ({ ...s, busy: true, message: quiet ? s.message : "Sincronizzo…" }));
     try {
       const res = await syncNow({
-        onProgress: (message) => setSync((s) => ({ ...s, message })),
+        // il dettaglio si azzera insieme al messaggio: senza, il testo
+        // tecnico del guasto di prima resterebbe ripiegato sotto la riga
+        // di avanzamento del giro nuovo — un «dettagli» che racconta
+        // un'altra storia
+        onProgress: (message) => setSync((s) => ({ ...s, message, dettaglio: null })),
       });
       if (res.books) setBooks(res.books);
       setLocalIds(await localFileIds());
@@ -807,7 +841,14 @@ export default function App() {
       });
       if (!quiet && moved) notify("Biblioteca sincronizzata ✨");
     } catch (e) {
-      setSync((s) => ({ ...s, busy: false, message: `Sincronizzazione fallita: ${e?.message || "errore"}` }));
+      // IL TESTO GREZZO DI POSTGRES NON ARRIVA PIÙ SULLO SCHERMO: qui
+      // c'era `e.message` incollato com'era, e il lettore si è ritrovato
+      // davanti «null value in column "fav" … violates not-null
+      // constraint». Ora `spiegaSync` dice cos'è successo e cosa farci, e
+      // il testo tecnico resta sotto «dettagli» per quando arriva la
+      // fotografia a chi deve ripararlo.
+      const guaio = spiegaSync(e);
+      setSync((s) => ({ ...s, busy: false, message: guaio.frase, dettaglio: guaio.dettaglio }));
       if (!quiet) notify("Sincronizzazione fallita — riprovo più tardi");
     }
   };
@@ -938,6 +979,7 @@ export default function App() {
   if (diaryOpen) livelli.push(() => setDiaryOpen(false));
   if (syncOpen) livelli.push(() => setSyncOpen(false));
   if (themeOpen) livelli.push(() => setThemeOpen(false));
+  if (mappaOpen) livelli.push(() => setMappaOpen(false));
   if (readingId) livelli.push(() => chiudeIlLettore.current?.());
   const livelliRef = useRef(livelli);
   livelliRef.current = livelli;
@@ -1147,8 +1189,10 @@ export default function App() {
           onMisura={pickMisura}
           consigliata={risolviScala(AUTO)}
           onSync={() => { setThemeOpen(false); setSyncOpen(true); }}
+          onMappa={() => setMappaOpen(true)}
         />
       )}
+      {mappaOpen && <Mappa onClose={() => setMappaOpen(false)} />}
       {syncOpen && (
         <SyncPanel
           status={sync}
