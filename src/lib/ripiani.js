@@ -179,6 +179,39 @@ export function raccogliCicli(libri = [], campo = "series") {
   });
 }
 
+// L'ORDINE DEI RIPIANI FRA LORO, che fin qui non seguiva niente.
+//
+// «Ordina» in Libreria comandava DENTRO i ripiani e mai FRA loro: i
+// ripiani uscivano sempre in alfabetico. Scegliendo «Recenti» — che vuol
+// dire «fammi vedere quel che e' appena entrato» — non si muoveva niente,
+// perche' dentro una saga vince comunque il numero di lettura e i ripiani
+// restavano dov'erano. Segnalato dal lettore come confusione fra i due
+// menu: «serve avere sia raggruppa che ordina?». Serviva: mancava la
+// meta' del lavoro, non il comando.
+//
+// QUI C'E' UNA SOLA VOCE, e non e' una svista: «Titolo» e «Autore»
+// ordinano gia' i ripiani per il loro nome — sotto «Raggruppa: Autore» il
+// nome del ripiano E' l'autore — quindi l'alfabetico e' la loro risposta
+// giusta, e chi non e' in questa tavola la riceve. «Recenti» e' l'unico
+// che ha qualcosa di diverso da dire.
+const ingresso = (r) => r.libri.reduce((max, b) => Math.max(max, Number(b.addedAt) || 0), 0);
+
+export const ORDINI = {
+  recent: (a, b) => ingresso(b) - ingresso(a),
+};
+
+const perNome = (a, b) => String(a.nome).localeCompare(String(b.nome), "it");
+
+// A PARITA' DECIDE SEMPRE L'ALFABETO: senza, due ripiani con lo stesso
+// ultimo ingresso resterebbero nell'ordine in cui la biblioteca li ha
+// prodotti, che cambia a ogni import — e' la stessa regola che i pesi di
+// `aEtichette` hanno gia'.
+function ordinaRipiani(ripiani, ordine) {
+  const cmp = ORDINI[ordine];
+  ripiani.sort(cmp ? (a, b) => cmp(a, b) || perNome(a, b) : perNome);
+  return ripiani;
+}
+
 // I RIPIANI A ETICHETTA: genere, voto, stato.
 //
 // Qui non c'e' niente da tenere insieme — nessuna saga, nessun ordine di
@@ -192,7 +225,14 @@ export function raccogliCicli(libri = [], campo = "series") {
 //
 // Quindi ogni criterio porta il suo PESO, e chi non ha etichetta chiude
 // sempre la fila — come i «Volumi soli» e i volumi senza numero.
-export function aEtichette(libri = [], criterio = {}) {
+//
+// E IL PESO E' ANCHE QUEL CHE DECIDE SE «Ordina» PUO' PARLARE: dove i
+// ripiani hanno una scala loro — il voto scende da cinque stelle, lo stato
+// segue la vita di un libro — la scala comanda, e riordinarli per data
+// d'ingresso cancellerebbe proprio l'informazione per cui li hai chiesti.
+// Dove invece l'ordine era solo alfabetico per mancanza di meglio (il
+// genere), comanda l'ordinamento scelto in Libreria.
+export function aEtichette(libri = [], criterio = {}, ordine = null) {
   const { chiave, nome = (k) => k, peso = null, vuoto = "Senza etichetta" } = criterio;
   const gruppi = new Map();
   for (const b of libri) {
@@ -200,11 +240,11 @@ export function aEtichette(libri = [], criterio = {}) {
     if (!gruppi.has(k)) gruppi.set(k, []);
     gruppi.get(k).push(b);
   }
-  const chiavi = [...gruppi.keys()].filter(Boolean);
-  chiavi.sort((a, b) =>
-    peso ? peso(b) - peso(a) || a.localeCompare(b, "it") : a.localeCompare(b, "it")
-  );
-  const fuori = chiavi.map((k) => ({ id: k, nome: nome(k), libri: gruppi.get(k) }));
+  const fuori = [...gruppi.keys()]
+    .filter(Boolean)
+    .map((k) => ({ id: k, nome: nome(k), libri: gruppi.get(k) }));
+  if (peso) fuori.sort((a, b) => peso(b.id) - peso(a.id) || perNome(a, b));
+  else ordinaRipiani(fuori, ordine);
   if (gruppi.has("")) fuori.push({ id: "", nome: vuoto, libri: gruppi.get(""), spento: true });
   return fuori;
 }
@@ -260,7 +300,7 @@ export const criterioStato = (leggiStato) => ({
   vuoto: "Senza stato",
 });
 
-export function disponi(libri = [], confronta = null, per = "auto") {
+export function disponi(libri = [], confronta = null, per = "auto", ordine = null) {
   // un criterio che non conosciamo vale la disposizione di sempre: e' la
   // stessa regola di `vistaValida` e della svolta — un valore storto non
   // deve spegnere lo scaffale
@@ -305,8 +345,12 @@ export function disponi(libri = [], confronta = null, per = "auto") {
             : null,
     });
   }
-  ripiani.sort((a, b) => a.nome.localeCompare(b.nome, "it"));
+  ordinaRipiani(ripiani, ordine);
 
+  // e il mucchio di scarto chiude SEMPRE la fila, qualunque ordine si sia
+  // scelto: non e' un ripiano fra gli altri, e' quel che resta — mandarlo
+  // in cima perche' ci e' appena entrato un libro sarebbe uno scaffale che
+  // si apre dai leftover.
   if (soli.length) {
     soli.sort(confronta || (() => 0));
     ripiani.push({ id: SOLI, tipo: "soli", nome: nomeSoli, autore: null, libri: soli });

@@ -304,14 +304,18 @@ function Ripiano({ nome, sotto, quanti, spento, children }) {
   );
 }
 
-function Grouped({ books, group, onOpenBook, localIds, coverV = 0 }) {
+function Grouped({ books, group, sort, onOpenBook, localIds, coverV = 0 }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
   // del volume, e dove non c'è resta l'ordine che hai scelto tu.
+  //
+  // E `sort` scende fino in fondo perché deve ordinare anche i RIPIANI:
+  // prima si fermava ai libri, quindi «Ordina: Recenti» non spostava mai
+  // un'intestazione e il comando sembrava non fare niente.
   const criterio = GROUPS.find((g) => g.id === group)?.per;
   if (criterio) {
-    return disponi(books, null, criterio).map((r) => (
+    return disponi(books, null, criterio, sort).map((r) => (
       <Ripiano
         key={r.id}
         nome={r.nome}
@@ -370,7 +374,7 @@ function Grouped({ books, group, onOpenBook, localIds, coverV = 0 }) {
     status: criterioStato((b) => getStatus(b.id)),
   }[group];
 
-  return aEtichette(books, CRITERIO).map((r) => (
+  return aEtichette(books, CRITERIO, sort).map((r) => (
     <Ripiano key={r.id || "_"} nome={r.nome} quanti={r.libri.length} spento={!!r.spento}>
       <Shelf books={r.libri} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} />
     </Ripiano>
@@ -1567,7 +1571,7 @@ export default function Library({
           Nessun tomo risponde all'appello con questi filtri…
         </p>
       ) : (
-        <Grouped books={visible} group={group} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} />
+        <Grouped books={visible} group={group} sort={sort} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} />
       )}
 
       {(books.length > 0 || melodie > 0) && (
