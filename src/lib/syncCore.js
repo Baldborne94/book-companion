@@ -19,6 +19,7 @@ const EMPTY_ROW = {
   // righe hanno le stesse chiavi e non c'e' niente da riempire.
   impronta: null,
   fav: false,
+  saga_tolta: false,
   status: "unread",
   started_at: 0,
   finished_at: 0,
@@ -66,6 +67,11 @@ export const rowFromLocal = (book, state, updatedAt) => ({
   // stelle, quindi deve viaggiare — e `false` deve poter spegnere un
   // `true` sull'altro dispositivo
   fav: !!book.fav,
+  // la saga tolta a mano: e' una scelta del lettore, e deve viaggiare o
+  // l'altro dispositivo gliela rimetterebbe al primo giro — e' l'unica cosa
+  // che ferma le cinque strade della saga. `false` come il cuore, per la
+  // stessa ragione: deve poter spegnere un `true` sceso da lassu'.
+  saga_tolta: !!book.sagaTolta,
   status: state.status || "unread",
   started_at: state.started || 0,
   finished_at: state.finished || 0,
@@ -94,6 +100,7 @@ export const localFromRow = (row) => ({
     notes: row.notes || "",
     ...(row.impronta ? { impronta: row.impronta } : {}),
     ...(row.fav ? { fav: true } : {}),
+    ...(row.saga_tolta ? { sagaTolta: true } : {}),
   },
   state: {
     status: row.status || "unread",
@@ -149,6 +156,17 @@ export const DEGRADE = [
     test: (m) => /started_at|finished_at/i.test(m),
     label: "diario di lettura",
     apply: (rows) => rows.map(({ started_at, finished_at, ...r }) => r),
+  },
+  // LA SAGA TOLTA A MANO, e va PRIMA di «genere e saga» per la stessa
+  // ragione del numero di collana coi decimali: il gradino di sotto prova
+  // `/genre|saga/i`, che dentro «saga_tolta» ci sta — si porterebbe via
+  // genere, saga e numero lasciando in piedi la colonna di cui il database
+  // si lamentava, e al secondo errore identico non resterebbe nessun
+  // gradino. Il piu' specifico parla per primo.
+  {
+    test: (m) => /saga_tolta/i.test(m),
+    label: "saga tolta a mano",
+    apply: (rows) => rows.map(({ saga_tolta, ...r }) => r),
   },
   {
     test: (m) => /genre|saga/i.test(m),

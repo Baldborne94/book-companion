@@ -25,7 +25,7 @@
 // (un voto) — e li' ci pensa la deduzione, perche' «Empire of Silence» i
 // due voti ce li ha e i fratelli la ereditano.
 import { varianti, autorePerIlCatalogo } from "./retroInRete.js";
-import { chiaveSaga } from "./sagaBooks.js";
+import { chiaveSaga, nienteSaga } from "./sagaBooks.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 
 export const MIN_VOTI = 2;
@@ -297,7 +297,10 @@ export async function ripassaCatalogo(libri = [], { cerca, onProgress, vivo, gia
       /* si richiedera' */
     }
   };
-  const senza = libri.filter((b) => b && !String(b.saga || "").trim());
+  // Chi la saga se l'e' tolta a mano non si chiede nemmeno: la risposta non
+  // andrebbe scritta da nessuna parte, e sarebbe un giro di rete per tomo
+  // per tenersi un parere che il lettore ha gia' smentito (`nienteSaga`).
+  const senza = libri.filter((b) => b && !String(b.saga || "").trim() && !nienteSaga(b));
   const trovati = [];
   for (const [i, b] of senza.entries()) {
     if (!attivo()) {

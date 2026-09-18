@@ -1,4 +1,4 @@
-import { nomeInBiblioteca } from "./sagaBooks.js";
+import { nomeInBiblioteca, nienteSaga } from "./sagaBooks.js";
 
 // LA SAGA ERA GIÀ DENTRO IL FILE, e la buttavamo via.
 //
@@ -174,8 +174,11 @@ export async function ripassaCollane(
   // megabyte per confermare quel che sappiamo gia' sarebbe lavoro buttato.
   // E un PDF un OPF non ce l'ha: contarlo fra i muti direbbe «guardato, non
   // c'era», mentre non c'era niente da guardare.
+  // E chi la saga se l'e' tolta a mano non si riapre affatto: la collana
+  // scritta nel file e' il parere dell'editore, e su questo campo l'ultima
+  // parola e' del lettore (`nienteSaga`).
   const senza = libri.filter(
-    (b) => b && b.fileType !== "pdf" && !String(b.saga || "").trim()
+    (b) => b && b.fileType !== "pdf" && !String(b.saga || "").trim() && !nienteSaga(b)
   );
   for (const [i, b] of senza.entries()) {
     if (!attivo()) {

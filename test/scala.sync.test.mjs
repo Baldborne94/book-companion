@@ -27,6 +27,11 @@ const riga = () => ({
   saga_order: 1,
   impronta: "abc",
   fav: true,
+  // la saga tolta a mano: sta qui perché lo schema più vecchio possibile
+  // deve poter scendere ANCHE il suo gradino — una colonna che la riga non
+  // porta è un gradino che quel caso non prova, e il `<=` del ciclo non
+  // difende più
+  saga_tolta: false,
 });
 
 // un database che rifiuta finché non gli si tolgono certe colonne, e che si
@@ -263,7 +268,7 @@ export default async function (t) {
       // sarebbe più niente da scendere
       const collana = decimale(r, "saga_order");
       if (collana) return collana;
-      for (const v of ["started_at", "genre", "impronta", "fav"]) {
+      for (const v of ["started_at", "genre", "impronta", "fav", "saga_tolta"]) {
         if (v in r) return { error: { message: `Could not find the '${v}' column of 'books'` } };
       }
       return decimale(r, "rating") || { error: null };
