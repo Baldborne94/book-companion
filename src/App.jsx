@@ -34,6 +34,7 @@ import Library from "./components/Library.jsx";
 import BookSheet from "./components/BookSheet.jsx";
 import QuoteGarden from "./components/QuoteGarden.jsx";
 import ReadingDiary from "./components/ReadingDiary.jsx";
+import Mappa from "./components/Mappa.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
 import MusicRoom from "./components/MusicRoom.jsx";
 import SyncPanel from "./components/SyncPanel.jsx";
@@ -475,7 +476,7 @@ function MisuraPicker({ current, onPick, consigliata }) {
   );
 }
 
-function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync }) {
+function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa }) {
   return (
     <div
       onClick={onClose}
@@ -608,6 +609,33 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
         </div>
 
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          {/* COSA SA FARE L'APP, e sta qui perché è la stanza dove uno
+              viene quando si chiede qualcosa sull'app invece che sui suoi
+              libri. Non compare mai da sé e non si mette in mezzo: una
+              mappa serve il giorno che la cerchi, e un tutorial che si
+              apre da solo lo si impara a chiudere senza leggerlo. */}
+          <button
+            onClick={onMappa}
+            style={{
+              width: "100%",
+              minHeight: 44,
+              padding: "10px 14px",
+              textAlign: "left",
+              borderRadius: R.medio,
+              border: `1px solid ${C.border}`,
+              background: C.surface,
+              color: C.text,
+              fontSize: F.corpo,
+            }}
+          >
+            📖 Cosa sa fare l'app
+            <span style={{ display: "block", color: C.muted, fontSize: F.piccolo, marginTop: 2 }}>
+              Le funzioni raccolte per dove stanno, con accanto da dove si aprono
+            </span>
+          </button>
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
           <h3
             style={{
               fontFamily: FONT_TITLE,
@@ -668,6 +696,7 @@ export default function App() {
   const [readingStart, setReadingStart] = useState(null);
   const [gardenOpen, setGardenOpen] = useState(false);
   const [diaryOpen, setDiaryOpen] = useState(false);
+  const [mappaOpen, setMappaOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [music, setMusic] = useState({ current: null, playing: false, timerEnd: null });
   const [syncOpen, setSyncOpen] = useState(false);
@@ -950,6 +979,7 @@ export default function App() {
   if (diaryOpen) livelli.push(() => setDiaryOpen(false));
   if (syncOpen) livelli.push(() => setSyncOpen(false));
   if (themeOpen) livelli.push(() => setThemeOpen(false));
+  if (mappaOpen) livelli.push(() => setMappaOpen(false));
   if (readingId) livelli.push(() => chiudeIlLettore.current?.());
   const livelliRef = useRef(livelli);
   livelliRef.current = livelli;
@@ -1159,8 +1189,10 @@ export default function App() {
           onMisura={pickMisura}
           consigliata={risolviScala(AUTO)}
           onSync={() => { setThemeOpen(false); setSyncOpen(true); }}
+          onMappa={() => setMappaOpen(true)}
         />
       )}
+      {mappaOpen && <Mappa onClose={() => setMappaOpen(false)} />}
       {syncOpen && (
         <SyncPanel
           status={sync}
