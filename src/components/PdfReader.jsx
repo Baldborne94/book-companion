@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
+import TastoBarra, { barBtn, useNomiNeiTasti } from "./TastoBarra.jsx";
 import { ensureLocalFile } from "../lib/sync.js";
 import { getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights } from "../lib/annotations.js";
 import { getProgress, setProgress, setStatus, getStatus, loadBooks } from "../lib/library.js";
@@ -40,18 +41,6 @@ const isTouch = () => navigator.maxTouchPoints > 0;
 // della PAGINA (HEAD/FOOT) restano fermi e non si scalano mai: li' un
 // pixel in piu' reimpagina ogni libro, ed e' da li' che erano cominciati
 // i salti.
-const barBtn = (active) => ({
-  width: px(40),
-  height: px(40),
-  borderRadius: R.piccolo,
-  fontSize: F.titoletto,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  color: active ? C.accent : C.text,
-  background: active ? `${C.accent}1a` : "transparent",
-});
-
 function Panel({ title, onClose, children }) {
   return (
     <div
@@ -136,6 +125,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   const [pages, setPages] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [isFs, setIsFs] = useState(false);
+  const nomiNeiTasti = useNomiNeiTasti();
   const [endCard, setEndCard] = useState(null);
   const [marks, setMarks] = useState(() => getMarks(book.id));
   const [hls, setHls] = useState(() => getHighlights(book.id));
@@ -940,6 +930,12 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
               zIndex: 25,
               display: "flex",
               alignItems: "center",
+              // stessa rete di sicurezza della barra dell'ePub, e accesa
+              // solo colle parole: senza, a stringersi non sono i tasti ma
+              // il TITOLO, che arriva a zero lasciandoli interi — col
+              // `wrap` sempre acceso un telefono passava da una riga (57px)
+              // a due (101px) senza averne bisogno. Misurato, non supposto.
+              flexWrap: nomiNeiTasti ? "wrap" : "nowrap",
               gap: 4,
               padding: "8px 10px",
               background: `${C.surface}f2`,
@@ -1017,20 +1013,36 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
               </>
             )}
             {outline.length > 0 && (
-              <button onClick={() => setPanel(panel === "toc" ? null : "toc")} style={barBtn(panel === "toc")} aria-label="Indice">
-                ☰
-              </button>
+              <TastoBarra
+                onClick={() => setPanel(panel === "toc" ? null : "toc")}
+                attivo={panel === "toc"}
+                conNome={nomiNeiTasti}
+                nome="Indice"
+                glifo="☰"
+              />
             )}
-            <button onClick={() => setPanel(panel === "search" ? null : "search")} style={barBtn(panel === "search")} aria-label="Cerca">
-              🔍
-            </button>
-            <button onClick={() => setPanel(panel === "marks" ? null : "marks")} style={barBtn(panel === "marks")} aria-label="Segnalibri">
-              📑
-            </button>
-            <button onClick={() => setPanel(panel === "hl" ? null : "hl")} style={barBtn(panel === "hl")} aria-label="Evidenziazioni">
-              🖍️
-            </button>
-            <button onClick={dovEravamo} style={barBtn(false)} aria-label="Dove eravamo rimasti">🧭</button>
+            <TastoBarra
+              onClick={() => setPanel(panel === "search" ? null : "search")}
+              attivo={panel === "search"}
+              conNome={nomiNeiTasti}
+              nome="Cerca"
+              glifo="🔍"
+            />
+            <TastoBarra
+              onClick={() => setPanel(panel === "marks" ? null : "marks")}
+              attivo={panel === "marks"}
+              conNome={nomiNeiTasti}
+              nome="Segnalibri"
+              glifo="📑"
+            />
+            <TastoBarra
+              onClick={() => setPanel(panel === "hl" ? null : "hl")}
+              attivo={panel === "hl"}
+              conNome={nomiNeiTasti}
+              nome="Evidenziazioni"
+              glifo="🖍️"
+            />
+            <TastoBarra onClick={dovEravamo} conNome={nomiNeiTasti} nome="Dove eravamo" glifo="🧭" />
             <button
               onClick={() => setZoom((z) => Math.max(1, +(z - 0.25).toFixed(2)))}
               style={barBtn(false)}
@@ -1049,17 +1061,24 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                 non lo permette (un iframe senza permesso, certi iOS) un tasto
                 che non fa niente e' peggio di un tasto che non c'e' */}
             {document.fullscreenEnabled && (
-              <button
+              <TastoBarra
                 onClick={toggleFullscreen}
-                style={barBtn(isFs)}
-                aria-label={isFs ? "Esci da schermo intero" : "Schermo intero"}
-              >
-                ⛶
-              </button>
+                attivo={isFs}
+                conNome={nomiNeiTasti}
+                nome={isFs ? "Esci" : "Schermo"}
+                glifo="⛶"
+              />
             )}
-            <button onClick={() => setPanel(panel === "night" ? null : "night")} style={{ ...barBtn(panel === "night"), fontSize: F.rilievo }} aria-label="Filtro notte">
-              🌙
-            </button>
+            {/* 🌙 apre il filtro notte E il ritaglio dei margini: una luna
+                da sola non lo dice a nessuno */}
+            <TastoBarra
+              onClick={() => setPanel(panel === "night" ? null : "night")}
+              attivo={panel === "night"}
+              conNome={nomiNeiTasti}
+              nome="Notte"
+              glifo="🌙"
+              stile={{ fontSize: F.rilievo }}
+            />
           </div>
 
           <div

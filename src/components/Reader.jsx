@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
+import TastoBarra, { barBtn, useNomiNeiTasti } from "./TastoBarra.jsx";
 import { getAux, putAux, getFile } from "../lib/bookStore.js";
 import { ensureLocalFile } from "../lib/sync.js";
 import {
@@ -85,18 +86,6 @@ const GOOGLE_FONT_CSS =
 // della PAGINA (HEAD/FOOT) restano fermi e non si scalano mai: li' un
 // pixel in piu' reimpagina ogni libro, ed e' da li' che erano cominciati
 // i salti.
-const barBtn = (active) => ({
-  width: px(40),
-  height: px(40),
-  borderRadius: R.piccolo,
-  fontSize: F.titoletto,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  color: active ? C.accent : C.text,
-  background: active ? `${C.accent}1a` : "transparent",
-});
-
 function Stepper({ label, value, onDec, onInc }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -231,6 +220,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // il tablet in piedi: la doppia pagina li' non esiste, e la levetta che
   // la governa non ha niente da governare
   const [inPiedi, setInPiedi] = useState(() => window.innerWidth < window.innerHeight);
+  const nomiNeiTasti = useNomiNeiTasti();
   // il velo color carta sul passo indietro oltre il confine: copre la
   // ricostruzione del capitolo (vedi step) e cade a misura ferma
   const [velo, setVelo] = useState(false);
@@ -2458,6 +2448,21 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               zIndex: 25,
               display: "flex",
               alignItems: "center",
+              // LA RETE DI SICUREZZA VA ACCESA SOLO COLLE PAROLE, e l'ha
+              // detto la misura, non il ragionamento. Supponevo che senza
+              // `wrap` i tasti si stringessero sotto il bersaglio: falso —
+              // a stringersi è il TITOLO, che ha `flex: 1` e arriva a zero
+              // lasciando i tasti a 40 (misurato a 412px: una riga, barra
+              // 57, tasti 40/40/40…). Col `wrap` sempre acceso, lo stesso
+              // telefono passava a DUE righe e 101px di barra: la rete
+              // peggiorava il caso che non aveva bisogno di lei.
+              //
+              // Serve invece colle parole accese E la musica che suona:
+              // sette tasti etichettati più i comandi della musica passano
+              // la larghezza, il titolo è già a zero e i tasti hanno un
+              // `minWidth` — lì andrebbero FUORI dalla barra, e un comando
+              // fuori dallo schermo è peggio di una barra a due righe.
+              flexWrap: nomiNeiTasti ? "wrap" : "nowrap",
               gap: 4,
               padding: "8px 10px",
               background: `${C.surface}f2`,
@@ -2536,17 +2541,56 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 </button>
               </>
             )}
-            <button onClick={() => setPanel(panel === "search" ? null : "search")} style={barBtn(panel === "search")} aria-label="Cerca">🔍</button>
-            <button onClick={() => setPanel(panel === "toc" ? null : "toc")} style={barBtn(panel === "toc")} aria-label="Indice">☰</button>
-            <button onClick={() => setPanel(panel === "marks" ? null : "marks")} style={barBtn(panel === "marks")} aria-label="Segnalibri">📑</button>
-            <button onClick={() => setPanel(panel === "hl" ? null : "hl")} style={barBtn(panel === "hl")} aria-label="Evidenziazioni">🖍️</button>
-            <button onClick={dovEravamo} style={barBtn(false)} aria-label="Dove eravamo rimasti">🧭</button>
+            {/* I NOMI SONO QUELLI DEI PANNELLI CHE APRONO: «Indice»,
+                «Segnalibri», «Evidenziazioni». La bussola è il caso che
+                conta — 🧭 apre il riassunto della storia fin dove sei, e
+                non lo indovina nessuno. «Aa» resta senza parola: è la
+                convenzione dei lettori di libri, quella la si riconosce. */}
+            <TastoBarra
+              onClick={() => setPanel(panel === "search" ? null : "search")}
+              attivo={panel === "search"}
+              conNome={nomiNeiTasti}
+              nome="Cerca"
+              glifo="🔍"
+            />
+            <TastoBarra
+              onClick={() => setPanel(panel === "toc" ? null : "toc")}
+              attivo={panel === "toc"}
+              conNome={nomiNeiTasti}
+              nome="Indice"
+              glifo="☰"
+            />
+            <TastoBarra
+              onClick={() => setPanel(panel === "marks" ? null : "marks")}
+              attivo={panel === "marks"}
+              conNome={nomiNeiTasti}
+              nome="Segnalibri"
+              glifo="📑"
+            />
+            <TastoBarra
+              onClick={() => setPanel(panel === "hl" ? null : "hl")}
+              attivo={panel === "hl"}
+              conNome={nomiNeiTasti}
+              nome="Evidenziazioni"
+              glifo="🖍️"
+            />
+            <TastoBarra onClick={dovEravamo} conNome={nomiNeiTasti} nome="Dove eravamo" glifo="🧭" />
             {document.fullscreenEnabled && (
-              <button onClick={toggleFullscreen} style={barBtn(isFs)} aria-label={isFs ? "Esci da schermo intero" : "Schermo intero"}>
-                {isFs ? "⛶" : "⛶"}
-              </button>
+              <TastoBarra
+                onClick={toggleFullscreen}
+                attivo={isFs}
+                conNome={nomiNeiTasti}
+                nome={isFs ? "Esci" : "Schermo"}
+                glifo="⛶"
+              />
             )}
-            <button onClick={() => setPanel(panel === "settings" ? null : "settings")} style={{ ...barBtn(panel === "settings"), fontFamily: FONT_TITLE, fontSize: F.rilievo }} aria-label="Impostazioni">Aa</button>
+            <TastoBarra
+              onClick={() => setPanel(panel === "settings" ? null : "settings")}
+              attivo={panel === "settings"}
+              nome="Il tuo modo di leggere"
+              glifo="Aa"
+              stile={{ fontFamily: FONT_TITLE, fontSize: F.rilievo }}
+            />
           </div>
 
           <div
