@@ -19,7 +19,8 @@ for (const [nome, fn] of Object.entries({
 }
 globalThis.localStorage = memoria;
 
-const { vistaValida, scriviVista, numeroLettura, pulisciNumero } = await import("../src/lib/library.js");
+const { vistaValida, scriviVista, numeroLettura, pulisciNumero, etichettaVista, vistaDiSempre } =
+  await import("../src/lib/library.js");
 
 // le voci come le conosce la Libreria: la prima di ogni elenco e' la
 // disposizione di partenza
@@ -99,4 +100,43 @@ export default async function (t) {
   // la casella e la lettura si parlano: quel che esce dalla casella si
   // legge come numero, virgola compresa
   t.eq("dalla casella alla lettura", numeroLettura(pulisciNumero("2,5x")), 2.5);
+
+  // ---- IL TASTO UNICO DELLA DISPOSIZIONE ----------------------------------
+  //
+  // Le due tendine affiancate sono diventate un tasto solo (segnalato:
+  // «li vedo ancora tutti e due»), e quel tasto deve DIRE la scelta in
+  // corso: sostituire due comandi che almeno si leggevano con la porta
+  // chiusa con una parola sola sarebbe un passo indietro. Le parole
+  // vengono dagli stessi elenchi del menu, passati da fuori come in
+  // `vistaValida`: scritte a mano nel componente sarebbero due posti da
+  // cambiare insieme e da dimenticare separatamente.
+  {
+    const G = [{ id: "shelf", label: "Saga e autore" }, { id: "saga", label: "Saga" }];
+    const O = [{ id: "title", label: "Titolo" }, { id: "recent", label: "Recenti" }];
+    t.eq("il tasto dice tutt'e due le scelte", etichettaVista({ group: "saga", sort: "recent" }, G, O), "Saga · Recenti");
+    t.eq("…e la partenza si legge uguale", etichettaVista({ group: "shelf", sort: "title" }, G, O), "Saga e autore · Titolo");
+    // una voce che non esiste piu' mostra il suo id invece di sparire:
+    // `vistaValida` quel caso lo chiude gia' a monte, ma un buco
+    // nell'etichetta sarebbe un tasto che non dice piu' niente
+    t.eq("una voce ignota si mostra com'e'", etichettaVista({ group: "meringa", sort: "title" }, G, O), "meringa · Titolo");
+    t.eq("e una vista mancante non esplode", etichettaVista(null, G, O), "? · ?");
+  }
+  {
+    // l'ACCESO del tasto: serve solo a dire «lo scaffale adesso non e'
+    // come al solito», e la partenza e' la PRIMA voce di ogni elenco —
+    // la stessa regola di `vistaValida`, non un nome scritto a mano
+    const G = [{ id: "shelf", label: "Saga e autore" }, { id: "saga", label: "Saga" }];
+    const O = [{ id: "title", label: "Titolo" }, { id: "recent", label: "Recenti" }];
+    t.c("la partenza e' la disposizione di sempre", vistaDiSempre({ group: "shelf", sort: "title" }, G, O));
+    t.c("un raggruppamento diverso accende", !vistaDiSempre({ group: "saga", sort: "title" }, G, O));
+    // e l'ORDINE conta quanto il raggruppamento: da quando «Ordina»
+    // sposta anche i ripiani, uno scaffale per data non e' «come al
+    // solito» piu' di quanto lo sia uno raggruppato per genere
+    t.c("un ordinamento diverso accende lo stesso", !vistaDiSempre({ group: "shelf", sort: "recent" }, G, O));
+    t.c("e una vista mancante non e' la partenza", !vistaDiSempre(null, G, O));
+    // le due funzioni e `vistaValida` leggono la stessa partenza: se un
+    // giorno le voci cambiano ordine, si muovono insieme
+    const primo = { group: G[0].id, sort: O[0].id };
+    t.c("la partenza e' la prima voce di ogni elenco", vistaDiSempre(primo, G, O));
+  }
 }

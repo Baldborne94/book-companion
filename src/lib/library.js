@@ -195,6 +195,38 @@ export function vistaValida(gruppi, ordini) {
   };
 }
 
+// E UN TASTO SOLO AL POSTO DI DUE TENDINE, che e' quel che il lettore
+// vedeva: «serve avere sia raggruppa che ordina? mi sembra un po'
+// confusionario averli entrambi» — e, dopo la prima cura, «li vedo ancora
+// tutti e due». Le due scelte restano, perche' sono ortogonali (una dice
+// QUALI ripiani, l'altra IN CHE ORDINE) e fonderle darebbe diciotto voci
+// di menu; a sparire e' la coppia di comandi sull'intestazione.
+//
+// IL TASTO DEVE DIRE LA SCELTA IN CORSO, o si sostituirebbero due tendine
+// che almeno si leggevano con una porta chiusa: «Saga · Titolo» si legge
+// senza aprire niente.
+//
+// E LE PAROLE VENGONO DAGLI STESSI ELENCHI del menu di prima, passati da
+// fuori come in `vistaValida`: scritte a mano qui sarebbero due posti da
+// cambiare insieme e da dimenticare separatamente. Una voce che non
+// esiste piu' mostra il suo id invece di sparire — `vistaValida` quel
+// caso lo chiude gia' a monte, e un buco nell'etichetta sarebbe un tasto
+// che non dice piu' niente.
+export function etichettaVista(vista, gruppi, ordini) {
+  const nome = (elenco, id) => elenco.find((x) => x.id === id)?.label || id || "?";
+  return `${nome(gruppi, vista?.group)} · ${nome(ordini, vista?.sort)}`;
+}
+
+// «E' la disposizione di sempre?» — serve solo ad accendere il tasto
+// quando NON lo e', cosi' si vede a colpo d'occhio che lo scaffale in
+// questo momento e' raccolto o ordinato in un altro modo. La partenza e'
+// la PRIMA voce di ogni elenco, la stessa regola di `vistaValida`: un
+// nome scritto a mano qui si dimenticherebbe il giorno che le voci
+// cambiano ordine.
+export function vistaDiSempre(vista, gruppi, ordini) {
+  return vista?.group === gruppi[0]?.id && vista?.sort === ordini[0]?.id;
+}
+
 // IL NUMERO DI LETTURA TIENE I DECIMALI: il file lo scrive cosi' (Calibre
 // mette 2.5 alla novella fra il secondo e il terzo) e la scheda lo
 // mostrava, ma al primo tocco strappava il punto — quel che l'app aveva
