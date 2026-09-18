@@ -21,6 +21,7 @@ import { BarraCloud } from "./BarraCloud.jsx";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
 import { famigliaDi } from "../data/generi.js";
 import BookCover from "./BookCover.jsx";
+import Disposizione from "./Disposizione.jsx";
 import EmptyState from "./EmptyState.jsx";
 
 const FILTERS = [
@@ -428,6 +429,11 @@ export default function Library({
   const vista = useRef(vistaValida(GROUPS, SORTS));
   const [sort, setSort] = useState(vista.current.sort);
   const [group, setGroup] = useState(vista.current.group);
+  // il pannello della disposizione resta aperto finché non lo richiudi:
+  // le scelte sono DUE, e chiudersi al primo tocco vorrebbe dire riaprirlo
+  // per fare la seconda. Non si ricorda però fra un'apertura e l'altra
+  // della Libreria — quella che si ricorda è la scelta, non il comando.
+  const [vistaAperta, setVistaAperta] = useState(false);
   const ricorda = (patch) => {
     vista.current = { ...vista.current, ...patch };
     scriviVista(vista.current);
@@ -1439,47 +1445,22 @@ export default function Library({
           );
         })}
         <span style={{ flex: 1 }} />
-        <select
-          value={group}
-          onChange={(e) => { setGroup(e.target.value); ricorda({ group: e.target.value }); }}
-          style={{
-            padding: "6px 10px",
-            borderRadius: R.piccolo,
-            // acceso quando NON è la disposizione di sempre: così si vede
-            // a colpo d'occhio che lo scaffale in questo momento è
-            // raccolto in un altro modo
-            border: `1px solid ${group === "shelf" ? C.border : C.accent}`,
-            background: C.surface,
-            color: group === "shelf" ? C.muted : C.accent,
-            fontSize: F.nota,
-            fontFamily: "inherit",
+        {/* UN TASTO SOLO al posto delle due tendine affiancate: le due
+            scelte restano — sono ortogonali, e fonderle darebbe diciotto
+            voci di menu — ma a stare sempre in vista è la SCELTA IN CORSO,
+            non i due comandi (segnalato: «li vedo ancora tutti e due»). */}
+        <Disposizione
+          vista={{ group, sort }}
+          gruppi={GROUPS}
+          ordini={SORTS}
+          aperto={vistaAperta}
+          onApri={setVistaAperta}
+          onCambia={(v) => {
+            if (v.group !== undefined) setGroup(v.group);
+            if (v.sort !== undefined) setSort(v.sort);
+            ricorda(v);
           }}
-        >
-          {GROUPS.map((g) => (
-            <option key={g.id} value={g.id}>
-              Raggruppa: {g.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={sort}
-          onChange={(e) => { setSort(e.target.value); ricorda({ sort: e.target.value }); }}
-          style={{
-            padding: "6px 10px",
-            borderRadius: R.piccolo,
-            border: `1px solid ${C.border}`,
-            background: C.surface,
-            color: C.muted,
-            fontSize: F.nota,
-            fontFamily: "inherit",
-          }}
-        >
-          {SORTS.map((s) => (
-            <option key={s.id} value={s.id}>
-              Ordina: {s.label}
-            </option>
-          ))}
-        </select>
+        />
       </div>
 
       {dentro && (
