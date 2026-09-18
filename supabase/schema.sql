@@ -14,6 +14,7 @@
 --   alter table public.books add column if not exists fav boolean not null default false;  -- cuore dei preferiti
 --   alter table public.prefs add column if not exists glossari jsonb not null default '{}'::jsonb;
 --   alter table public.books alter column saga_order type real;  -- numero di collana coi decimali (2.5 = la novella)
+--   alter table public.books add column if not exists saga_tolta boolean not null default false;  -- la saga tolta a mano
 -- Senza, l'app sincronizza comunque tutto il resto: rinuncia solo al
 -- campo mancante e lo tiene in locale. Dopo la migrazione i libri gia'
 -- salvati si ricaricano da soli alla prima sincronizzazione.
@@ -49,13 +50,19 @@ create table if not exists public.books (
   -- dispositivi si puo' solo segnalare per titolo e autore, non saltare.
   impronta text,
   -- il cuore dei preferiti: una scelta del lettore, non una soglia di stelle
-  fav boolean not null default false
+  fav boolean not null default false,
+  -- LA SAGA TOLTA A MANO: un libro senza saga perche' il lettore gliel'ha
+  -- tolta e uno senza saga perche' nessuno gliel'ha mai data sono lo stesso
+  -- record, e le cinque strade della saga guardano proprio quello. Senza
+  -- questa colonna l'altro dispositivo la rimette al primo giro.
+  saga_tolta boolean not null default false
 );
 
 -- per i database gia' creati: `create table if not exists` non aggiunge le
 -- colonne nuove
 alter table public.books add column if not exists impronta text;
 alter table public.books add column if not exists fav boolean not null default false;
+alter table public.books add column if not exists saga_tolta boolean not null default false;
 -- e il numero di collana regge i decimali (su una colonna gia' `real` non fa niente)
 alter table public.books alter column saga_order type real;
 

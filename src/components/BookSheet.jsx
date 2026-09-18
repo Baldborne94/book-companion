@@ -9,6 +9,7 @@ import { chiaveGlossario, vociDi, salvaVoci, togli } from "../lib/glossarioMio.j
 import { getCfi } from "../lib/annotations.js";
 import { frontiera } from "../lib/frontiera.js";
 import { soloDellaSerie, perchePrimaTace, fraseTace } from "../lib/trama.js";
+import { scritturaSaga } from "../lib/sagaBooks.js";
 import { TUTTI } from "../data/generi.js";
 import BookCover from "./BookCover.jsx";
 
@@ -379,19 +380,24 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
     if (vivo() && finito) setPrima(finito);
   }
 
+  // I due salvataggi scrivono gli stessi campi, e la saga passa da
+  // `scritturaSaga`: svuotare il campo è una SCELTA, e va scritta o nessuna
+  // delle cinque strade può saperla (vedi `nienteSaga` in `sagaBooks.js`).
+  const metaEditata = () => ({
+    ...book,
+    title: title.trim() || book.title,
+    author: author.trim(),
+    series: series.trim(),
+    genre: genre.trim(),
+    ...scritturaSaga(book, saga),
+    sagaOrder: numeroLettura(sagaOrder),
+    notes,
+    rating,
+    fav,
+  });
+
   function commitAndClose() {
-    onSaveMeta({
-      ...book,
-      title: title.trim() || book.title,
-      author: author.trim(),
-      series: series.trim(),
-      genre: genre.trim(),
-      saga: saga.trim(),
-      sagaOrder: numeroLettura(sagaOrder),
-      notes,
-      rating,
-      fav,
-    });
+    onSaveMeta(metaEditata());
     onClose();
   }
 
@@ -401,18 +407,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   }
 
   function openBook() {
-    onSaveMeta({
-      ...book,
-      title: title.trim() || book.title,
-      author: author.trim(),
-      series: series.trim(),
-      genre: genre.trim(),
-      saga: saga.trim(),
-      sagaOrder: numeroLettura(sagaOrder),
-      notes,
-      rating,
-      fav,
-    });
+    onSaveMeta(metaEditata());
     onRead(book.id);
   }
 

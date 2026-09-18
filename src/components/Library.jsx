@@ -655,8 +655,13 @@ export default function Library({
   useEffect(() => {
     let vivo = true;
     (async () => {
-      const { unificaSaghe, deduciSaghe } = await import("../lib/sagaBooks.js");
+      const { unificaSaghe, deduciSaghe, nienteSaga } = await import("../lib/sagaBooks.js");
       if (!vivo) return;
+      // chi ha ancora una strada davanti: la saga non ce l'ha E non se l'è
+      // tolta a mano. Le due passate lunghe la ricontrollano da sé, ma
+      // senza questa riga si aprirebbero i file e si chiamerebbe il
+      // catalogo per un elenco vuoto.
+      const daCercare = (b) => !String(b.saga || "").trim() && !nienteSaga(b);
       // I TOCCHI SI ACCUMULANO, e si riapplicano ogni volta sulla biblioteca
       // di ADESSO: `booksRef` resta quella vecchia finche' React non
       // ridisegna, quindi il passo dopo un `updateBooks` leggerebbe i libri
@@ -678,7 +683,7 @@ export default function Library({
           `la stessa saga era scritta in ${unite.unificate === 1 ? "due modi" : "più modi"}: ora è «${unite.nomi.join("», «")}»`
         );
       }
-      if (attuale.some((b) => b.fileType !== "pdf" && !String(b.saga || "").trim())) {
+      if (attuale.some((b) => b.fileType !== "pdf" && daCercare(b))) {
         const { ripassaCollane } = await import("../lib/collana.js");
         // la biblioteca INTERA, non i soli candidati: la grafia di casa si
         // cerca sui libri che la saga ce l'hanno gia'
@@ -714,7 +719,7 @@ export default function Library({
       // trovata o «non la so», mai su un buco di rete. Poi la deduzione
       // rifa' il suo giro: trovata la saga di un volume, i fratelli la
       // ereditano senza chiedere niente al catalogo.
-      if (attuale.some((b) => !String(b.saga || "").trim())) {
+      if (attuale.some(daCercare)) {
         const { ripassaCatalogo, cercaSaga } = await import("../lib/sagaDalCatalogo.js");
         const { nomeInBiblioteca } = await import("../lib/sagaBooks.js");
         const dalCatalogo = await ripassaCatalogo(attuale, {
@@ -758,7 +763,7 @@ export default function Library({
       setCollane(null);
       return;
     }
-    const { ripassa, unificaSaghe } = await import("../lib/sagaBooks.js");
+    const { ripassa, unificaSaghe, nienteSaga } = await import("../lib/sagaBooks.js");
     let sistemati = 0;
     let rinominati = 0;
     let dedotte = 0;
@@ -898,7 +903,12 @@ export default function Library({
     // l'errore: a chi il catalogo ha letto le edizioni senza trovare
     // nessuna collana non si chiede niente, perché una saga da scrivere non
     // c'è. La riga con la strada da prendere resta agli altri.
-    const ancoraSenza = conCollane.filter((b) => !String(b.saga || "").trim()).length - dalCatalogo.rete;
+    //
+    // E CHI LA SAGA SE L'È TOLTA A MANO NON SI CONTA AFFATTO: non è un
+    // lavoro che aspetta né una scoperta nostra — è una scelta già presa, e
+    // ridirgliela a ogni giro è il modo di insegnargli a non leggere la riga.
+    const ancoraSenza =
+      conCollane.filter((b) => !String(b.saga || "").trim() && !nienteSaga(b)).length - dalCatalogo.rete;
     if (ancoraSenza > 0) {
       const aSe = Math.min(dalCatalogo.senzaTraccia, ancoraSenza);
       parti.push(...frasiSenzaSaga({ aSe, daScrivere: ancoraSenza - aSe }));

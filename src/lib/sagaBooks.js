@@ -171,6 +171,59 @@ export function fuoriSaga({ title, author, fileName } = {}) {
 // ePub capitano tutt'e due: si confrontano le parole del nome, ordinate.
 export const chiaveAutore = (a) => norm(a).split(" ").filter(Boolean).sort().join(" ");
 
+// UNA SAGA TOLTA A MANO RESTA TOLTA.
+//
+// Segnalato dal lettore per la seconda volta sullo stesso libro: «devi
+// smettere di dedurre automaticamente che Between Two Fires fa parte della
+// saga The Blacktongue Thief». Aveva ragione alla lettera, e il difetto non
+// era dove l'avevamo curato.
+//
+// La regola di casa dice da sempre che «quello che il lettore ha scritto a
+// mano non si tocca mai», e vale per ogni campo — ma il CAMPO SVUOTATO NON
+// SI VEDE: un libro senza saga perche' il lettore gliel'ha tolta e uno senza
+// saga perche' nessuno gliel'ha mai data sono lo stesso identico record, e
+// le cinque strade della saga guardano proprio quello per decidere chi
+// servire. Toglierla era percio' un gesto che durava fino alla prossima
+// apertura della Libreria.
+//
+// La veto del catalogo (`senzaTraccia`) curava il caso, ma solo con la RETE
+// e solo dopo: un tomo che una saga ce l'ha non viene mai chiesto al
+// catalogo — quella memoria non esiste — quindi appena svuotato il campo la
+// deduzione lo ritrovava senza nessuno che la fermasse, e su un tablet
+// offline la ritrovera' per sempre. Il vuoto voluto va scritto, o non lo sa
+// nessuno.
+//
+// E' l'unico segnale che l'app non puo' dedurre da se': il lettore sa che
+// quel romanzo sta da solo, noi no. Vale contro TUTTE le strade — tavola,
+// collana nel file, titolo, catalogo, fratelli — perche' su questo campo
+// l'ultima parola e' sua, e una strada lasciata fuori rimetterebbe la saga
+// esattamente come prima.
+//
+// IL SEGNO PARLA SOLO DEL VUOTO: se una saga c'e' — riscritta a mano qui, o
+// arrivata dall'altro dispositivo — comanda lei, e il segno non blocca
+// niente. Cosi' un segno rimasto addosso per una fusione non puo' mai
+// spegnere una saga viva.
+export const nienteSaga = (b) => !!b?.sagaTolta && !String(b?.saga || "").trim();
+
+// Quel che la scheda del libro scrive quando tocchi il campo Saga. Il
+// segno si accende svuotando un campo che qualcosa conteneva — quello e' il
+// gesto che dice «questo romanzo sta da solo» — e si spegne appena ci
+// riscrivi dentro.
+//
+// APRIRE LA SCHEDA E CHIUDERLA NON E' UN GESTO: su un libro che la saga non
+// ce l'aveva gia' prima non si accende niente e il segno che c'era resta
+// dov'e'. Senza questa riga bastava aprire una scheda per cancellare la
+// scelta di ieri — in silenzio, e con la saga di ritorno al giro dopo.
+//
+// `false` e non un campo tolto: deve poter spegnere un `true` sceso
+// dall'altro dispositivo, come il cuore dei preferiti.
+export function scritturaSaga(libro = {}, scritta = "") {
+  const saga = String(scritta || "").trim();
+  if (saga) return { saga, sagaTolta: false };
+  const aveva = !!String(libro.saga || "").trim();
+  return { saga: "", sagaTolta: aveva || !!libro.sagaTolta };
+}
+
 // LA SAGA SI IMPARA DALLA TUA BIBLIOTECA, non da una tabella.
 //
 // La tabella conosce un autore solo (Pratchett) e non potra' mai conoscerli
@@ -207,6 +260,8 @@ export const chiaveAutore = (a) => norm(a).split(" ").filter(Boolean).sort().joi
 // deduzione su un dispositivo senza rete, che e' il contrario di
 // local-first.
 export function sagaDaBiblioteca(libro = {}, libri = [], senzaTraccia) {
+  // il vuoto voluto batte tutto: vedi `nienteSaga`
+  if (nienteSaga(libro)) return null;
   if (libro.id && senzaTraccia?.has?.(libro.id)) return null;
   const mio = chiaveAutore(libro.author);
   if (mio.length < 3) return null;
@@ -320,7 +375,10 @@ export function deduciSaghe(libri = [], { senzaTraccia, dallaBiblioteca = true }
   const campi = {};
   let dedotte = 0;
   let dalTitolo = 0;
-  const vuota = (b) => !b || String(b.saga || "").trim() || fuoriSaga(b);
+  // chi non e' candidato: senza libro, con la saga gia' scritta, fuori
+  // saga per tavola, o con la saga tolta a mano — e quest'ultimo tiene
+  // fuori anche la passata dei titoli, o «02 Valour» gliela riscriverebbe
+  const vuota = (b) => !b || String(b.saga || "").trim() || fuoriSaga(b) || nienteSaga(b);
   const conTitolo = [];
   for (const b of libri) {
     if (vuota(b)) {
@@ -366,6 +424,10 @@ export function deduciSaghe(libri = [], { senzaTraccia, dallaBiblioteca = true }
 // quando il riconoscimento la pensa diversamente, perche' su questi campi
 // l'ultima parola e' sua.
 export function ripassa(libro = {}, libri = [], { senzaTraccia, dallaBiblioteca = true } = {}) {
+  // LA SAGA TOLTA A MANO FERMA ANCHE IL TASTO, e anche la tavola: se il
+  // riconoscimento la pensa diversamente dal lettore, comanda il lettore.
+  // E niente ciclo, che senza la sua saga non vuol dire niente.
+  if (nienteSaga(libro)) return null;
   const trovato = riconosci({ title: libro.title, author: libro.author });
   const saga = String(libro.saga || "").trim();
   const serie = String(libro.series || "").trim();
