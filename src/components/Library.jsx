@@ -54,8 +54,23 @@ const SORTS = [
 // spegne lo scaffale. Chi aveva scelto «Niente» non resta impigliato:
 // `vistaValida` non riconosce più quell'id e torna alla disposizione di
 // sempre.
+//
+// E I DUE CRITERI SI POSSONO CHIEDERE ANCHE DA SOLI (chiesto dal lettore:
+// «il raggruppamento me lo dividi per saga o per autore e non tutto
+// assieme»). «Saga e autore» resta la prima voce e la disposizione di
+// sempre — è quella che sa cavarsela su una biblioteca mista — ma ognuna
+// delle due metà ha un lavoro che l'altra non fa: «Saga» tiene insieme
+// solo le storie dichiarate, «Autore» scioglie le saghe e rimette i volumi
+// sotto chi li ha scritti, che su una saga a venti mani come l'Eresia di
+// Horus è proprio l'informazione che la voce combinata nasconde.
 const GROUPS = [
-  { id: "shelf", label: "Saga e autore" },
+  { id: "shelf", label: "Saga e autore", per: "auto" },
+  { id: "saga", label: "Saga", per: "saga" },
+  // `autore` e non `author`: fra gli ORDINAMENTI esiste già un `author`, e
+  // i due elenchi si leggono dallo stesso `bc_vista`. Non collidono (ognuno
+  // si controlla sul suo elenco), ma due chiavi uguali con due mestieri
+  // diversi nello stesso oggetto sono una trappola per chi legge dopo.
+  { id: "autore", label: "Autore", per: "autore" },
   { id: "genre", label: "Genere", empty: "Senza genere" },
 ];
 
@@ -287,8 +302,9 @@ function Grouped({ books, group, onOpenBook, localIds, coverV = 0 }) {
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
   // del volume, e dove non c'è resta l'ordine che hai scelto tu.
-  if (group === "shelf") {
-    return disponi(books).map((r) => (
+  const criterio = GROUPS.find((g) => g.id === group)?.per;
+  if (criterio) {
+    return disponi(books, null, criterio).map((r) => (
       <Ripiano
         key={r.id}
         nome={r.nome}
