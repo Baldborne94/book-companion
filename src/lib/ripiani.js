@@ -179,6 +179,87 @@ export function raccogliCicli(libri = [], campo = "series") {
   });
 }
 
+// I RIPIANI A ETICHETTA: genere, voto, stato.
+//
+// Qui non c'e' niente da tenere insieme — nessuna saga, nessun ordine di
+// lettura — c'e' solo una chiave per libro e un mucchio per chiave. La
+// parte che sbaglia in silenzio e' **l'ORDINE DEI RIPIANI**: il genere si
+// legge in alfabetico e va bene, ma un voto e uno stato no. «5 stelle»
+// dopo «4 stelle» perche' il «5» viene dopo il «4» nell'alfabeto sarebbe
+// uno scaffale che nessuno ha chiesto, e «Abbandonati, Da leggere, In
+// lettura, Letti» mette la fine della storia in cima. Nessuna delle due
+// alza un errore: si legge e basta.
+//
+// Quindi ogni criterio porta il suo PESO, e chi non ha etichetta chiude
+// sempre la fila — come i «Volumi soli» e i volumi senza numero.
+export function aEtichette(libri = [], criterio = {}) {
+  const { chiave, nome = (k) => k, peso = null, vuoto = "Senza etichetta" } = criterio;
+  const gruppi = new Map();
+  for (const b of libri) {
+    const k = String(chiave?.(b) ?? "").trim();
+    if (!gruppi.has(k)) gruppi.set(k, []);
+    gruppi.get(k).push(b);
+  }
+  const chiavi = [...gruppi.keys()].filter(Boolean);
+  chiavi.sort((a, b) =>
+    peso ? peso(b) - peso(a) || a.localeCompare(b, "it") : a.localeCompare(b, "it")
+  );
+  const fuori = chiavi.map((k) => ({ id: k, nome: nome(k), libri: gruppi.get(k) }));
+  if (gruppi.has("")) fuori.push({ id: "", nome: vuoto, libri: gruppi.get(""), spento: true });
+  return fuori;
+}
+
+// IL VOTO. Le mezze stelle esistono (la scheda le sa dare, e lo schema del
+// cloud ha un gradino apposta per chi non le regge), quindi il ripiano e'
+// per valore ESATTO: 4 e 4½ sono due voti diversi, e fonderli riscriverebbe
+// sullo scaffale una scelta che il lettore ha fatto a mezza stella.
+// **Il singolare si scrive a mano**: «1 stelle» si legge come un guasto,
+// come «1 volumi» in `fraseTace`.
+export const criterioVoto = () => ({
+  chiave: (b) => (Number(b?.rating) > 0 ? String(Number(b.rating)) : ""),
+  nome: (k) => {
+    const v = Number(k);
+    const mezza = v % 1 !== 0;
+    const intero = Math.floor(v);
+    const testo = mezza ? `${intero || ""}½` : `${v}`;
+    // singolare fino a UNA stella compresa: «½ stella» e «1 stella», ma
+    // «1½ stelle». Guardare il solo `=== 1` scriveva «½ stelle», che e'
+    // la stessa specie di guasto di «1 volumi» — preso dal test.
+    return `${testo} ${v <= 1 ? "stella" : "stelle"}`;
+  },
+  peso: (k) => Number(k),
+  vuoto: "Senza voto",
+});
+
+// LO STATO. Le parole sono quelle dei FILTRI che stanno due righe sopra
+// sullo schermo — «Letti», non «Letto»: un'intestazione con un conto
+// accanto parla di piu' libri, e due nomi diversi per la stessa cosa nella
+// stessa schermata si leggono come due cose diverse.
+//
+// `leggiStato` si passa da fuori come `leggiByte`: lo stato di un libro
+// sta in `localStorage` e un test in Node non ce l'ha.
+export const STATI = [
+  { id: "unread", nome: "Da leggere" },
+  { id: "reading", nome: "In lettura" },
+  { id: "read", nome: "Letti" },
+  { id: "abandoned", nome: "Abbandonati" },
+];
+
+export const criterioStato = (leggiStato) => ({
+  // uno stato che non conosciamo non e' «senza stato»: e' un valore che
+  // qualcuno ha scritto e che noi non sappiamo nominare, e si mostra com'e'
+  // invece di sparire in un mucchio che dice un'altra cosa
+  chiave: (b) => String(leggiStato?.(b) || ""),
+  nome: (k) => STATI.find((s) => s.id === k)?.nome || k,
+  peso: (k) => {
+    const i = STATI.findIndex((s) => s.id === k);
+    // l'ordine e' quello della vita di un libro, e `peso` ordina al
+    // contrario (il piu' alto per primo): il primo della lista pesa di piu'
+    return i < 0 ? -1 : STATI.length - i;
+  },
+  vuoto: "Senza stato",
+});
+
 export function disponi(libri = [], confronta = null, per = "auto") {
   // un criterio che non conosciamo vale la disposizione di sempre: e' la
   // stessa regola di `vistaValida` e della svolta — un valore storto non

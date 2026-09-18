@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook } from "../lib/library.js";
-import { disponi } from "../lib/ripiani.js";
+import { disponi, aEtichette, criterioVoto, criterioStato } from "../lib/ripiani.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { storageEstimate, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
 import { importFiles, resoconto } from "../lib/importBook.js";
@@ -71,7 +71,14 @@ const GROUPS = [
   // si controlla sul suo elenco), ma due chiavi uguali con due mestieri
   // diversi nello stesso oggetto sono una trappola per chi legge dopo.
   { id: "autore", label: "Autore", per: "autore" },
-  { id: "genre", label: "Genere", empty: "Senza genere" },
+  // Le tre a ETICHETTA passano tutte dalla stessa porta (`aEtichette`): una
+  // chiave per libro, un mucchio per chiave, e chi non ce l'ha chiude la
+  // fila. Quel che cambia è solo il PESO che mette i ripiani in ordine —
+  // alfabetico per il genere, dal voto più alto, e per lo stato l'ordine
+  // della vita di un libro.
+  { id: "genre", label: "Genere" },
+  { id: "rating", label: "Voto" },
+  { id: "status", label: "Stato" },
 ];
 
 // I tomi gia' aperti che dentro una copertina non ce l'hanno: stanno nello
@@ -351,24 +358,21 @@ function Grouped({ books, group, onOpenBook, localIds, coverV = 0 }) {
     ));
   }
 
-  const cfg = GROUPS.find((g) => g.id === group);
-  const buckets = new Map();
-  for (const b of books) {
-    // il genere si raggruppa per FAMIGLIA: «Fantasy · Grimdark» e «Fantasy
-    // · Epico» stanno sullo stesso scaffale. Prendendo il valore intero
-    // ogni sottogenere farebbe un gruppo da un libro, e uno scaffale di
-    // gruppi da uno non e' un raggruppamento.
-    const key = famigliaDi(b.genre);
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key).push(b);
-  }
-  // i libri senza etichetta chiudono la fila
-  const names = [...buckets.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b, "it"));
-  if (buckets.has("")) names.push("");
+  // il genere si raggruppa per FAMIGLIA: «Fantasy · Grimdark» e «Fantasy ·
+  // Epico» stanno sullo stesso scaffale. Prendendo il valore intero ogni
+  // sottogenere farebbe un gruppo da un libro, e uno scaffale di gruppi da
+  // uno non è un raggruppamento.
+  const CRITERIO = {
+    genre: { chiave: (b) => famigliaDi(b.genre), vuoto: "Senza genere" },
+    rating: criterioVoto(),
+    // lo stato vive in `localStorage`, non sul libro: la funzione che lo
+    // legge si passa da fuori, come `leggiByte` altrove
+    status: criterioStato((b) => getStatus(b.id)),
+  }[group];
 
-  return names.map((name) => (
-    <Ripiano key={name || "_"} nome={name || cfg.empty} quanti={buckets.get(name).length} spento={!name}>
-      <Shelf books={buckets.get(name)} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} />
+  return aEtichette(books, CRITERIO).map((r) => (
+    <Ripiano key={r.id || "_"} nome={r.nome} quanti={r.libri.length} spento={!!r.spento}>
+      <Shelf books={r.libri} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} />
     </Ripiano>
   ));
 }
