@@ -178,20 +178,27 @@ export default async function (t) {
   //
   // Le due risposte vanno guardate tutt'e due: lo stato lo dichiari tu, il
   // progresso lo dice il libro.
+  //
+  // E IL VOLUME CHE HAI IN MANO NON SI SCAVALCA (seconda segnalazione: «solo
+  // i libri successivi ai libri già letti, non volumi a caso»): al primo giro
+  // il secondo in lettura faceva proporre il TERZO — un volume che viene
+  // dopo un libro che non hai ancora letto. Adesso il seguito è quello che
+  // SEGUE, e se lo stai leggendo non c'è un «prossimo» da dire.
   {
-    t.eq("quello in lettura si scavalca", nextInSaga(trilogia[0], trilogia, letti(), intatti)?.id, "due");
+    t.eq("intatto, il secondo è il prossimo", nextInSaga(trilogia[0], trilogia, letti(), intatti)?.id, "due");
     const inLettura = (id) => (id === "due" ? "reading" : "unread");
     t.eq(
-      "…e non si propone il volume che stai leggendo",
-      nextInSaga(trilogia[0], trilogia, inLettura, intatti)?.id,
-      "tre"
+      "…e se lo stai leggendo non si salta al terzo",
+      nextInSaga(trilogia[0], trilogia, inLettura, intatti),
+      null
     );
-    // il caso della segnalazione: lo stato non dice niente, il progresso sì
+    // il caso della prima segnalazione: lo stato non dice niente, il
+    // progresso sì — e vale lo stesso: non si propone, e non si salta
     const aMeta = (id) => (id === "due" ? 0.27 : 0);
     t.eq(
       "un volume al 27% è già aperto, anche se lo stato tace",
-      nextInSaga(trilogia[0], trilogia, nuovi, aMeta)?.id,
-      "tre"
+      nextInSaga(trilogia[0], trilogia, nuovi, aMeta),
+      null
     );
     // ABBANDONATO NON È «DA LEGGERE»: quella storia l'hai lasciata apposta,
     // e riproportela è il difetto per cui quello stato esiste
@@ -237,5 +244,19 @@ export default async function (t) {
     t.eq("nemmeno a metà del filo", nextInSaga(cosmo[0], cosmo, nuovi), null);
     // ma una saga che numera dritto non si tocca
     t.eq("i numeri in fila non silenziano niente", nextInSaga(trilogia[0], trilogia, nuovi)?.id, "due");
+  }
+  {
+    // IL CICLO SI CONFRONTA ANCHE QUANDO È VUOTO: un volume senza ciclo in
+    // una saga dove gli altri ce l'hanno cerca il seguito fra i senza-ciclo,
+    // non in tutta la saga — dalla fotografia, «Fall of Light» proposto
+    // anche da un volume del Malazan rimasto senza ciclo.
+    const C = (id, ciclo, n) => ({ ...V(id, "Malazan", n), series: ciclo });
+    // i numeri del ciclo stanno SOPRA il senza-ciclo, o «non pesca nel ciclo
+    // altrui» passerebbe anche pescandoci: non ci sarebbe niente dopo il 5
+    const misti = [C("k1", "Kharkanas", 7), C("k2", "Kharkanas", 8), C("x1", "", 5), C("x2", "", 6)];
+    t.eq("il senza-ciclo resta fra i senza-ciclo", nextInSaga(misti[2], misti, nuovi)?.id, "x2");
+    t.eq("…e non pesca nel ciclo altrui", nextInSaga(misti[2], misti.slice(0, 3), nuovi), null);
+    // su una saga senza cicli il gruppo è la saga intera: non cambia niente
+    t.eq("senza cicli è la saga intera", nextInSaga(trilogia[0], trilogia, nuovi)?.id, "due");
   }
 }
