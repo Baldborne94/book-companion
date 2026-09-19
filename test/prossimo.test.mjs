@@ -246,16 +246,20 @@ export default async function (t) {
     t.eq("i numeri in fila non silenziano niente", nextInSaga(trilogia[0], trilogia, nuovi)?.id, "due");
   }
   {
-    // IL CICLO SI CONFRONTA ANCHE QUANDO È VUOTO: un volume senza ciclo in
-    // una saga dove gli altri ce l'hanno cerca il seguito fra i senza-ciclo,
-    // non in tutta la saga — dalla fotografia, «Fall of Light» proposto
-    // anche da un volume del Malazan rimasto senza ciclo.
+    // IL CICLO ENTRA IN GIOCO SOLO DOVE I NUMERI SI INTERLACCIANO (chiesto
+    // dal lettore su Pratchett: «consigliami solo il volume successivo
+    // all'ultimo già letto nell'ordine segnato»). Coi numeri unici la saga è
+    // una fila sola e il ciclo non c'entra: dal 5 si va al 6 anche se il 6
+    // è di un altro ciclo, e dal 6 al 7.
     const C = (id, ciclo, n) => ({ ...V(id, "Malazan", n), series: ciclo });
-    // i numeri del ciclo stanno SOPRA il senza-ciclo, o «non pesca nel ciclo
-    // altrui» passerebbe anche pescandoci: non ci sarebbe niente dopo il 5
     const misti = [C("k1", "Kharkanas", 7), C("k2", "Kharkanas", 8), C("x1", "", 5), C("x2", "", 6)];
-    t.eq("il senza-ciclo resta fra i senza-ciclo", nextInSaga(misti[2], misti, nuovi)?.id, "x2");
-    t.eq("…e non pesca nel ciclo altrui", nextInSaga(misti[2], misti.slice(0, 3), nuovi), null);
+    t.eq("coi numeri unici il prossimo è il numero dopo", nextInSaga(misti[2], misti, nuovi)?.id, "x2");
+    t.eq("…anche se sta in un altro ciclo", nextInSaga(misti[3], misti, nuovi)?.id, "k1");
+    // coi numeri DOPPI invece il ciclo comanda, e un volume senza ciclo in
+    // una saga spartita resta fra i senza-ciclo
+    const doppi = [C("k1", "Kharkanas", 1), C("k2", "Kharkanas", 2), C("x1", "", 1), C("x2", "", 2)];
+    t.eq("coi numeri doppi si resta nel ciclo", nextInSaga(doppi[0], doppi, nuovi)?.id, "k2");
+    t.eq("…e il senza-ciclo fra i senza-ciclo", nextInSaga(doppi[2], doppi, nuovi)?.id, "x2");
     // su una saga senza cicli il gruppo è la saga intera: non cambia niente
     t.eq("senza cicli è la saga intera", nextInSaga(trilogia[0], trilogia, nuovi)?.id, "due");
   }
