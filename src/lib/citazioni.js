@@ -59,6 +59,19 @@ export function conta(gruppi = []) {
   );
 }
 
+// E LA PORTA DEL GIARDINO DICE QUANTO CI HAI DENTRO, per la stessa ragione
+// di `rigaDiario`: «i passaggi che hai evidenziato, in un unico posto»
+// descrive la stanza, il numero descrive la TUA. I segnalibri non si
+// contano — nel giardino a riposo non compaiono, e il conto deve dire
+// quello che poi ci trovi.
+export function rigaGiardino(n = {}) {
+  const c = n.citazioni || 0;
+  if (!c) return null;
+  const l = n.libri || 0;
+  const quante = `${c} ${c === 1 ? "citazione" : "citazioni"}`;
+  return l ? `${quante} da ${l} ${l === 1 ? "libro" : "libri"}` : quante;
+}
+
 const dataIt = (ts) =>
   ts ? new Date(ts).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" }) : "";
 

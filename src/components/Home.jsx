@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { useViewport } from "../lib/viewport.js";
-import { getLastOpened, getProgress, getStatus, getUpdatedAt } from "../lib/library.js";
-import { nextInSaga } from "../lib/saga.js";
+import { getFinished, getLastOpened, getProgress, getStarted, getStatus, getUpdatedAt } from "../lib/library.js";
+import { getHighlights } from "../lib/annotations.js";
+import { buildDiary, rigaDiario } from "../lib/diary.js";
+import { raccogli, conta, rigaGiardino } from "../lib/citazioni.js";
+import { nextInSaga, prossimiPassi } from "../lib/saga.js";
 import BookCover from "./BookCover.jsx";
 import { BookmarkIcon, LeafIcon, SparkIcon, StarIcon } from "./Icons.jsx";
 import EmptyState from "./EmptyState.jsx";
@@ -16,7 +19,9 @@ import EmptyState from "./EmptyState.jsx";
 // saga sullo scaffale, quindi la prova senza saghe non l'aveva preso)
 const STELLE_ALTE = 4;
 
-const stars = (v) => String(v).replace(".", ",");
+// il numero all'italiana: la mezza stella e la novella fra il secondo e il
+// terzo volume si scrivono tutt'e due «2,5»
+const virgola = (v) => String(v).replace(".", ",");
 
 function SectionTitle({ children }) {
   return (
@@ -52,7 +57,7 @@ function Rating({ value }) {
       }}
     >
       <StarIcon size={12} />
-      {stars(value)}
+      {virgola(value)}
     </span>
   );
 }
@@ -106,12 +111,69 @@ function SagaCard({ saga, onOpen }) {
   );
 }
 
+// UN LIBRO IN FILA: la copertina, il titolo e una riga che dice perché sta
+// lì. Il titolo si stampa SOLO sotto una copertina vera — sul dorso
+// disegnato è già scritto sopra, e ristamparlo è rumore (stessa regola dei
+// preferiti). La nota invece c'è sempre: sulla copertina non sta.
+function LibroInFila({ book, nota, disegnato, onDisegnata, onClick }) {
+  const riga = {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  };
+  return (
+    <button onClick={onClick} style={{ flexShrink: 0, width: px(96), textAlign: "left" }}>
+      <BookCover book={book} onDisegnata={onDisegnata} />
+      {!disegnato && (
+        <div style={{ ...riga, marginTop: 6, fontSize: F.piccolo, color: C.text }}>{book.title}</div>
+      )}
+      <div style={{ ...riga, marginTop: 3, fontSize: F.minuscolo, color: C.muted }}>{nota}</div>
+    </button>
+  );
+}
+
+// le due file nuove scorrono come quella delle saghe: su uno schermo largo
+// vanno a capo, su un tablet in verticale si trascinano di lato
+const fila = (wide) => ({
+  display: "flex",
+  gap: 14,
+  overflowX: "auto",
+  paddingBottom: 4,
+  flexWrap: wide ? "wrap" : "nowrap",
+});
+
 export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onSaga }) {
   // chi ha il dorso disegnato lo sa solo `BookCover`: lo dice qui, così i
   // preferiti non ristampano un titolo che sta già sulla copertina
   const [dorsi, setDorsi] = useState({});
   const segnaDorso = (id, v) => setDorsi((d) => (d[id] === v ? d : { ...d, [id]: v }));
   const { wide } = useViewport();
+
+  // I CONTI DELLE DUE PORTE STANNO SOPRA IL `return` ANTICIPATO, e non è
+  // pignoleria: un hook chiamato dopo un `return` è un hook che sparisce
+  // quando la biblioteca è vuota, e al primo import React si troverebbe due
+  // hook dove prima ce n'erano zero — errore vero, non un difetto muto.
+  //
+  // Le citazioni si contano leggendo le evidenziazioni di ogni libro dallo
+  // storage: si passa il solo `getHighlights` e non anche i segni, che qui
+  // non si contano — metà delle letture, e il numero dice quel che poi trovi
+  // nel giardino. `useMemo` perché è un giro per libro e l'Ingresso è la
+  // prima schermata che si apre.
+  const rigaCitazioni = useMemo(
+    () => rigaGiardino(conta(raccogli(books, (id) => ({ highlights: getHighlights(id) })))),
+    [books]
+  );
+  const rigaAnno = useMemo(
+    () =>
+      rigaDiario(
+        buildDiary(books, (id) => ({
+          started: getStarted(id),
+          finished: getFinished(id),
+          status: getStatus(id),
+        }))
+      ),
+    [books]
+  );
 
   if (books.length === 0) {
     return (
@@ -178,6 +240,26 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
   const sagas = [...bySaga.values()].sort(
     (a, b) => b.best - a.best || b.books.length - a.books.length || a.name.localeCompare(b.name, "it")
   );
+
+  // GLI ALTRI CHE STAI LEGGENDO. Il riquadro in cima ne mostra UNO — l'ultimo
+  // aperto — mentre lo stato «in lettura» l'app lo tiene su quanti ne vuoi:
+  // con tre romanzi in corso, due erano invisibili proprio nella schermata
+  // che promette «ritroverai il libro che stai leggendo». Sono già in
+  // `started`, ordinati per ultimo tocco; qui si toglie solo quello che sta
+  // già in cima, o si leggerebbe due volte a mezzo centimetro di distanza.
+  //
+  // NESSUN TETTO, come per le saghe: la fila scorre, e sono libri che hai
+  // aperto tu — tagliarne via uno vorrebbe dire nasconderti un romanzo che
+  // stai davvero leggendo.
+  const altriInLettura = started.filter((b) => b.id !== last?.id);
+
+  // E I PROSSIMI PASSI DELLE SAGHE (vedi `prossimiPassi`): la domanda «e
+  // adesso cosa leggo» non aspetta che tu chiuda un volume.
+  const passi = prossimiPassi(books, {
+    statusOf: getStatus,
+    tocco: (id) => getUpdatedAt(id, 0),
+    escludi: last?.id || null,
+  });
 
   return (
     <div
@@ -254,6 +336,50 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
         </>
       )}
 
+      {altriInLettura.length > 0 && (
+        <>
+          <SectionTitle>Stai leggendo anche</SectionTitle>
+          <div style={fila(wide)}>
+            {altriInLettura.map((b) => {
+              const p = Math.round(getProgress(b.id) * 100);
+              return (
+                <LibroInFila
+                  key={b.id}
+                  book={b}
+                  nota={p > 0 ? `${p}% letto` : "in lettura"}
+                  disegnato={dorsi[b.id]}
+                  onDisegnata={(v) => segnaDorso(b.id, v)}
+                  onClick={() => onRead(b.id)}
+                />
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {passi.length > 0 && (
+        <>
+          <SectionTitle>Il prossimo passo</SectionTitle>
+          <div style={fila(wide)}>
+            {passi.map((p) => (
+              <LibroInFila
+                key={p.libro.id}
+                book={p.libro}
+                // il numero c'è sempre: `nextInSaga` un volume senza posto
+                // non lo propone affatto
+                nota={`${p.saga} n° ${virgola(p.libro.sagaOrder)}`}
+                disegnato={dorsi[p.libro.id]}
+                onDisegnata={(v) => segnaDorso(p.libro.id, v)}
+                // qui si APRE LA SCHEDA e non il libro: un volume che non hai
+                // ancora cominciato si guarda prima — c'è la quarta di
+                // copertina, e «Prima di cominciare» sta lì
+                onClick={() => onOpenBook(p.libro.id)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
       <button
         onClick={onGarden}
         style={{
@@ -277,7 +403,9 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
             Il giardino delle citazioni
           </span>
           <span style={{ display: "block", fontSize: F.piccolo, color: C.muted }}>
-            I passaggi che hai evidenziato, di ogni libro, in un unico posto
+            {/* il conto se ce n'è uno, la descrizione della stanza se il
+                giardino è ancora vuoto: gli zeri non si dicono */}
+            {rigaCitazioni || "I passaggi che hai evidenziato, di ogni libro, in un unico posto"}
           </span>
         </span>
         <span style={{ fontSize: F.titoletto, color: C.arcane }}>›</span>
@@ -306,7 +434,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
             Il diario di lettura
           </span>
           <span style={{ display: "block", fontSize: F.piccolo, color: C.muted }}>
-            Quando hai cominciato e finito ogni libro, anno per anno
+            {rigaAnno || "Quando hai cominciato e finito ogni libro, anno per anno"}
           </span>
         </span>
         <span style={{ fontSize: F.titoletto, color: C.accent }}>›</span>
