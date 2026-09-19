@@ -32,6 +32,27 @@ export function buildDiary(books, dates) {
   return { years, reading, total: done.length };
 }
 
+// LA PORTA DEL DIARIO DICE UN NUMERO.
+//
+// «Quando hai cominciato e finito ogni libro, anno per anno» descrive la
+// stanza e non dice niente di TUO: il conto l'app ce l'ha gia' — lo mostra
+// dentro — e sull'Ingresso restava un cartello. Una porta che porta il suo
+// numero e' una risposta.
+//
+// PRIMA L'ANNO IN CORSO, che e' la domanda che uno si fa davvero; a gennaio
+// — o su chi quest'anno non ha ancora chiuso niente — si ripiega sul totale
+// invece di tacere, perche' «23 libri finiti» e' comunque suo. E gli zeri
+// non si dicono: chi non ha finito niente tiene la descrizione di sempre,
+// o la porta scriverebbe «0 libri» a ogni apertura e si imparerebbe a non
+// leggerla — proprio il giorno che il numero arriva.
+export function rigaDiario(diario, anno = new Date().getFullYear()) {
+  const quest = diario?.years?.find((y) => y.year === anno)?.entries?.length || 0;
+  if (quest) return `Quest'anno hai finito ${quest} ${quest === 1 ? "libro" : "libri"}`;
+  const tutti = diario?.total || 0;
+  if (tutti) return `${tutti} ${tutti === 1 ? "libro finito" : "libri finiti"} in tutto`;
+  return null;
+}
+
 export function yearStats(entries) {
   const withDays = entries.filter((e) => e.days != null);
   const media = withDays.length
