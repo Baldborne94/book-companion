@@ -244,19 +244,31 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
   // GLI ALTRI CHE STAI LEGGENDO. Il riquadro in cima ne mostra UNO — l'ultimo
   // aperto — mentre lo stato «in lettura» l'app lo tiene su quanti ne vuoi:
   // con tre romanzi in corso, due erano invisibili proprio nella schermata
-  // che promette «ritroverai il libro che stai leggendo». Sono già in
-  // `started`, ordinati per ultimo tocco; qui si toglie solo quello che sta
-  // già in cima, o si leggerebbe due volte a mezzo centimetro di distanza.
+  // che promette «ritroverai il libro che stai leggendo».
+  //
+  // «IN LETTURA» DEVE VOLER DIRE LA STESSA COSA CHE IN LIBRERIA, e non era
+  // così (segnalato: «se in lettura nella libreria vedo questi, perché nella
+  // pagina principale mi dice che ci sono anche questi altri?»). Il filtro
+  // della Libreria guarda lo STATO che hai dichiarato tu; `started` qui
+  // guarda anche il progresso, quindi ogni romanzo aperto una volta e
+  // lasciato lì finiva in questa fila — nove contro tre, e con l'etichetta
+  // «in lettura» addosso, che era pure una bugia. `started` resta com'è
+  // perché serve al riquadro in cima, che è un'altra domanda: quello deve
+  // sempre proporre qualcosa da riaprire, e un romanzo al 46% è la risposta
+  // giusta anche se non l'hai dichiarato. Ma una SEZIONE che si chiama come
+  // un filtro deve contenere quel che contiene il filtro: due schermate che
+  // dicono «in lettura» su due elenchi diversi sono due cose diverse.
   //
   // NESSUN TETTO, come per le saghe: la fila scorre, e sono libri che hai
-  // aperto tu — tagliarne via uno vorrebbe dire nasconderti un romanzo che
-  // stai davvero leggendo.
-  const altriInLettura = started.filter((b) => b.id !== last?.id);
+  // dichiarato tu — tagliarne via uno vorrebbe dire nasconderti un romanzo
+  // che stai davvero leggendo.
+  const altriInLettura = books.filter((b) => getStatus(b.id) === "reading" && b.id !== last?.id).sort(byRecent);
 
   // E I PROSSIMI PASSI DELLE SAGHE (vedi `prossimiPassi`): la domanda «e
   // adesso cosa leggo» non aspetta che tu chiuda un volume.
   const passi = prossimiPassi(books, {
     statusOf: getStatus,
+    progressoOf: getProgress,
     tocco: (id) => getUpdatedAt(id, 0),
     escludi: last?.id || null,
   });
@@ -365,9 +377,11 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
               <LibroInFila
                 key={p.libro.id}
                 book={p.libro}
-                // il numero c'è sempre: `nextInSaga` un volume senza posto
-                // non lo propone affatto
-                nota={`${p.saga} n° ${virgola(p.libro.sagaOrder)}`}
+                // il CICLO quando c'è, la saga quando non c'è: dentro una
+                // saga grande «Cosmoverse n° 4» non si può verificare a
+                // occhio, «Mistborn n° 4» sì. Il numero c'è sempre —
+                // `nextInSaga` un volume senza posto non lo propone affatto.
+                nota={`${p.nome} n° ${virgola(p.libro.sagaOrder)}`}
                 disegnato={dorsi[p.libro.id]}
                 onDisegnata={(v) => segnaDorso(p.libro.id, v)}
                 // qui si APRE LA SCHEDA e non il libro: un volume che non hai

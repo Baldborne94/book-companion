@@ -10,11 +10,25 @@
 // sbagliato di una saga è uno spoiler servito dall'app stessa.
 import { nextInSaga } from "../src/lib/saga.js";
 
+// LO STORAGE FINTO SERVE, E VA DICHIARATO QUI. Da quando il filtro guarda
+// anche il PROGRESSO, il quarto argomento di `nextInSaga` ha per default il
+// `getProgress` vero, che legge `localStorage` — e in Node non c'è. Senza
+// questa riga il file passava lo stesso nel giro completo, perché un altro
+// test lascia il suo stub sul `globalThis`: verde per l'ORDINE dei file, e
+// rosso da solo. Un test che dipende da chi gira prima non difende niente.
+globalThis.localStorage = {
+  getItem: () => null,
+  setItem: () => {},
+  removeItem: () => {},
+};
+
 // un volume di libreria come lo vede questa funzione
 const V = (id, saga, sagaOrder, addedAt = 0) => ({ id, saga, sagaOrder, addedAt, title: id });
 // nessuno letto, se non detto altrimenti
 const nuovi = () => "unread";
 const letti = (...ids) => (id) => (ids.includes(id) ? "read" : "unread");
+// quanto sei dentro un volume: qui nessuno è mai stato aperto
+const intatti = () => 0;
 
 export default async function (t) {
   const trilogia = [V("uno", "First Law", 1), V("due", "First Law", 2), V("tre", "First Law", 3)];
@@ -148,5 +162,39 @@ export default async function (t) {
   {
     const conCofanetto = [V("cofanetto", "First Law", 1), V("quarto", "First Law", 2)];
     t.eq("dopo il cofanetto viene il numero dopo", nextInSaga(conCofanetto[0], conCofanetto, nuovi)?.id, "quarto");
+  }
+
+  // =======================================================================
+  // UN VOLUME CHE HAI GIÀ APERTO NON È «IL PROSSIMO»
+  // =======================================================================
+  //
+  // Segnalato con l'Ingresso in mano: «Moving Pictures» compariva fra i
+  // libri che stava leggendo E fra i prossimi passi, a due righe di
+  // distanza. Il filtro guardava il solo STATO, e un romanzo al 27% mai
+  // dichiarato «in lettura» risultava intatto.
+  //
+  // Le due risposte vanno guardate tutt'e due: lo stato lo dichiari tu, il
+  // progresso lo dice il libro.
+  {
+    t.eq("quello in lettura si scavalca", nextInSaga(trilogia[0], trilogia, letti(), intatti)?.id, "due");
+    const inLettura = (id) => (id === "due" ? "reading" : "unread");
+    t.eq(
+      "…e non si propone il volume che stai leggendo",
+      nextInSaga(trilogia[0], trilogia, inLettura, intatti)?.id,
+      "tre"
+    );
+    // il caso della segnalazione: lo stato non dice niente, il progresso sì
+    const aMeta = (id) => (id === "due" ? 0.27 : 0);
+    t.eq(
+      "un volume al 27% è già aperto, anche se lo stato tace",
+      nextInSaga(trilogia[0], trilogia, nuovi, aMeta)?.id,
+      "tre"
+    );
+    // ABBANDONATO NON È «DA LEGGERE»: quella storia l'hai lasciata apposta,
+    // e riproportela è il difetto per cui quello stato esiste
+    const mollato = (id) => (id === "due" ? "abandoned" : "unread");
+    t.eq("l'abbandonato non si ripropone", nextInSaga(trilogia[0], trilogia, mollato, intatti)?.id, "tre");
+    // e un progresso a zero non toglie niente a nessuno
+    t.eq("il progresso a zero non scarta", nextInSaga(trilogia[0], trilogia, nuovi, () => 0)?.id, "due");
   }
 }

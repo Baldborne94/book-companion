@@ -12,6 +12,12 @@ import { prossimiPassi, nextInSaga } from "../src/lib/saga.js";
 import { rigaDiario, buildDiary } from "../src/lib/diary.js";
 import { rigaGiardino, conta, raccogli } from "../src/lib/citazioni.js";
 
+// lo storage finto: il `progressoOf` di `prossimiPassi` ha per default il
+// `getProgress` vero, che legge `localStorage`. Senza questa riga il file
+// passa nel giro completo — un altro test lascia il suo stub sul
+// `globalThis` — e casca da solo: verde per l'ORDINE dei file.
+globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+
 const L = (id, saga, ordine, extra = {}) => ({ id, title: id, saga, sagaOrder: ordine, ...extra });
 
 // la biblioteca di prova: due saghe cominciate, una mai aperta, un romanzo
@@ -119,7 +125,112 @@ export default async function (t) {
     // sarebbe la prima cosa a marcire in silenzio
     const [primo] = prossimiPassi(LIBRI, { statusOf });
     t.eq("porta il volume di riferimento", primo.da.id, "d2");
-    t.eq("…e il libro proposto è quello di `nextInSaga`", primo.libro.id, nextInSaga(primo.da, LIBRI, statusOf).id);
+    t.eq(
+      "…e il libro proposto è quello di `nextInSaga`",
+      primo.libro.id,
+      nextInSaga(primo.da, LIBRI, statusOf, () => 0).id
+    );
+  }
+
+  // ---- IL PROGRESSO VALE QUANTO LO STATO ---------------------------------
+  {
+    // Segnalato con l'Ingresso in mano: «Moving Pictures» compariva fra i
+    // libri in corso E fra i prossimi passi. Un romanzo aperto e lasciato a
+    // metà, senza mai dichiarare «in lettura», risultava intatto: non faceva
+    // da riferimento, e si proponeva da solo come passo successivo.
+    const aperto = (id) => (id === "d3" ? 0.27 : 0);
+    const p = prossimiPassi(LIBRI, { statusOf, progressoOf: aperto });
+    t.c("un volume al 27% non si propone", !ids(p).includes("d3"), ids(p));
+    // e fa da riferimento: il passo dopo è quello che lo segue
+    t.c("…e conta come «già lì», quindi il passo dopo è il suo", ids(p).includes("m2"), ids(p));
+  }
+  {
+    // il progresso da solo apre il filo: una saga dove non hai dichiarato
+    // niente ma un volume l'hai aperto è una saga cominciata
+    const soli = [L("s1", "Ombre", 1), L("s2", "Ombre", 2)];
+    const p = prossimiPassi(soli, { statusOf: () => "unread", progressoOf: (id) => (id === "s1" ? 0.4 : 0) });
+    t.eq("il solo progresso apre il filo", ids(p), "s2");
+  }
+  {
+    // L'ABBANDONATO NON APRE NIENTE: quella storia l'hai lasciata apposta,
+    // e proporne il seguito è il difetto per cui quello stato esiste.
+    //
+    // E IL CASO CHE CONTA È L'ABBANDONATO CON DEL PROGRESSO ADDOSSO, che è
+    // come succede davvero: si molla un romanzo a metà, non a pagina zero.
+    // Con progresso zero lo tiene fuori già «non l'hai cominciato», e la
+    // guardia sullo stato non viene nemmeno raggiunta (mutazione provata).
+    const soli = [L("s1", "Ombre", 1), L("s2", "Ombre", 2)];
+    const mollato = (id) => (id === "s1" ? "abandoned" : "unread");
+    const aMeta = (id) => (id === "s1" ? 0.46 : 0);
+    t.eq(
+      "una saga solo abbandonata non propone niente",
+      prossimiPassi(soli, { statusOf: mollato, progressoOf: aMeta }).length,
+      0
+    );
+  }
+
+  // ---- IL CICLO, NON LA SAGA ---------------------------------------------
+  {
+    // IL CASO DELLA SEGNALAZIONE: «sanderson mi sta suggerendo il numero 4
+    // del cosmoverso a caso». Una saga grande tiene più storie, e dentro una
+    // saga così i numeri si INTERLACCIANO — due cicli numerati tutt'e due da
+    // uno. Col solo `sagaOrder` il «più avanti» salta da una storia
+    // all'altra e propone un volume che col filo che hai in mano non
+    // c'entra niente.
+    const C = (id, ciclo, n) => ({ ...L(id, "Cosmoverse", n), series: ciclo });
+    const cosmo = [
+      C("mb1", "Mistborn", 1),
+      C("mb2", "Mistborn", 2),
+      C("mb3", "Mistborn", 3),
+      C("sl1", "Stormlight", 1),
+      C("sl4", "Stormlight", 4),
+    ];
+    // ha letto i primi due Mistborn: il passo è il TERZO Mistborn
+    const letti = (id) => (id === "mb1" || id === "mb2" ? "read" : "unread");
+    const p = prossimiPassi(cosmo, { statusOf: letti });
+    t.eq("il passo resta dentro il ciclo", ids(p), "mb3");
+    t.c("…e non salta all'altra storia", !ids(p).includes("sl4"), ids(p));
+    // e il nome mostrato è quello del ciclo: «Cosmoverse n° 3» non si può
+    // verificare a occhio, «Mistborn n° 3» sì
+    t.eq("il nome è quello del ciclo", p[0].nome, "Mistborn");
+
+    // LA FOTOGRAFIA DEL LETTORE, ALLA LETTERA. Finito il ciclo che aveva in
+    // mano (tutti e tre i Mistborn) e mai aperta la Folgoluce, il «più
+    // avanti» della SAGA era il numero 3, e il primo non letto dopo di lui
+    // era «Rhythm of War» — il numero 4 di un'ALTRA storia. Dentro il ciclo
+    // non resta niente da proporre, ed è la risposta giusta: quel filo l'hai
+    // finito, e la Folgoluce non l'hai ancora cominciata.
+    const finiti = (id) => (id.startsWith("mb") ? "read" : "unread");
+    const q = prossimiPassi(cosmo, { statusOf: finiti });
+    t.c("finito il ciclo non si salta all'altro", !ids(q).includes("sl4"), ids(q));
+    t.eq("…e non si propone niente", q.length, 0);
+  }
+  {
+    // DUE CICLI COMINCIATI FANNO DUE PASSI, ed è giusto: chi legge Mistborn
+    // e la Folgoluce insieme ha due fili in mano.
+    const C = (id, ciclo, n) => ({ ...L(id, "Cosmoverse", n), series: ciclo });
+    const cosmo = [C("mb1", "Mistborn", 1), C("mb2", "Mistborn", 2), C("sl1", "Stormlight", 1), C("sl2", "Stormlight", 2)];
+    const letti = (id) => (id === "mb1" || id === "sl1" ? "read" : "unread");
+    const p = prossimiPassi(cosmo, { statusOf: letti, tocco: (id) => (id === "sl1" ? 100 : 1) });
+    t.eq("un passo per ciclo, il più toccato per primo", ids(p), "sl2+mb2");
+  }
+  {
+    // UNA SAGA SENZA CICLI NON CAMBIA DI UNA VIRGOLA: lì i due
+    // raggruppamenti coincidono, ed è il caso più comune.
+    const p = prossimiPassi(LIBRI, { statusOf });
+    t.eq("senza cicli resta la saga", ids(p), "d3+m2");
+    t.eq("…e il nome è quello della saga", p[0].nome, "Discworld");
+  }
+  {
+    // LE MAIUSCOLE NON FANNO UN ALTRO CICLO, e il caso che lo dimostra vuole
+    // DUE volumi cominciati con due grafie: con uno solo il raggruppamento
+    // non conta, perché il candidato si cerca comunque senza guardare le
+    // maiuscole e la risposta viene giusta per caso (mutazione provata).
+    // Separati, quei due fili proporrebbero lo stesso volume due volte.
+    const C = (id, ciclo, n) => ({ ...L(id, "Cosmoverse", n), series: ciclo });
+    const cosmo = [C("a", "Mistborn", 1), C("b", "mistborn", 2), C("c", "MISTBORN", 3)];
+    const letti = (id) => (id === "a" || id === "b" ? "read" : "unread");
+    t.eq("una grafia diversa non è un altro ciclo", ids(prossimiPassi(cosmo, { statusOf: letti })), "c");
   }
 
   // ---- LA PORTA DEL DIARIO ----------------------------------------------
