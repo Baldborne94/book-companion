@@ -130,12 +130,15 @@ export default async function (t) {
   // Due edizioni dello stesso volume, o un doppione dichiarato: senza una
   // regola, quale dei due esce dipenderebbe dall'ordine dello scaffale, e
   // cambierebbe da un giorno all'altro.
+  //
+  // LO STESSO VOLUME VUOL DIRE LO STESSO TITOLO, e la fixture prima non lo
+  // diceva: dava due titoli diversi allo stesso numero, cioè la firma di
+  // due STORIE numerate ognuna da uno, che è il caso opposto e adesso fa
+  // tacere la proposta (vedi `numeriMescolati`). Contraddiceva la sua
+  // stessa intenzione, e a scoprirlo è stata la cura, non la rilettura.
   {
-    const doppi = [
-      V("uno", "First Law", 1),
-      V("secondaCopia", "First Law", 2, 5000),
-      V("primaCopia", "First Law", 2, 1000),
-    ];
+    const copia = (id, addedAt) => ({ ...V(id, "First Law", 2, addedAt), title: "Before They Are Hanged" });
+    const doppi = [V("uno", "First Law", 1), copia("secondaCopia", 5000), copia("primaCopia", 1000)];
     t.eq("vince quella entrata per prima", nextInSaga(doppi[0], doppi, nuovi)?.id, "primaCopia");
     // e la risposta non dipende dall'ordine dell'elenco
     const girati = [doppi[0], doppi[2], doppi[1]];
@@ -196,5 +199,43 @@ export default async function (t) {
     t.eq("l'abbandonato non si ripropone", nextInSaga(trilogia[0], trilogia, mollato, intatti)?.id, "tre");
     // e un progresso a zero non toglie niente a nessuno
     t.eq("il progresso a zero non scarta", nextInSaga(trilogia[0], trilogia, nuovi, () => 0)?.id, "due");
+  }
+
+  // =======================================================================
+  // DENTRO UNA SAGA GRANDE CI SONO PIÙ STORIE
+  // =======================================================================
+  //
+  // Le due regole stanno QUI e non nei chiamanti. Il primo giro le aveva
+  // messe in `prossimiPassi`, e curavano la sola fila dell'Ingresso: il
+  // riquadro in cima e la proposta a libro chiuso in `App.jsx` chiamano
+  // `nextInSaga` diretta, e restavano indietro — misurato al banco, il
+  // riquadro diceva ancora «Rhythm of War · il passo n° 4 di Cosmoverse»,
+  // che sono le parole esatte della segnalazione.
+  {
+    const C = (id, ciclo, n) => ({ ...V(id, "Cosmoverse", n), series: ciclo });
+    const cosmo = [
+      C("mb1", "Mistborn", 1),
+      C("mb2", "Mistborn", 2),
+      C("mb3", "Mistborn", 3),
+      C("sl1", "Stormlight", 1),
+      C("sl4", "Stormlight", 4),
+    ];
+    // IL CICLO: dal secondo Mistborn si va al terzo, non al numero 4
+    // dell'altra storia
+    t.eq("il passo resta dentro il ciclo", nextInSaga(cosmo[1], cosmo, nuovi)?.id, "mb3");
+    t.eq("e finito il ciclo non si salta all'altro", nextInSaga(cosmo[2], cosmo, letti("mb1", "mb2")), null);
+    // le maiuscole non fanno un altro ciclo
+    const storto = [...cosmo, { ...V("mb4", "Cosmoverse", 4), series: "MISTBORN" }];
+    t.eq("una grafia diversa non è un altro ciclo", nextInSaga(cosmo[2], storto, letti("mb1", "mb2"))?.id, "mb4");
+  }
+  {
+    // I NUMERI, quando il ciclo non è scritto: due titoli diversi sullo
+    // stesso posto non sono una fila, e «il prossimo» non esiste.
+    const N = (id, n) => V(id, "Cosmoverse", n);
+    const cosmo = [N("mb1", 1), N("mb2", 2), N("mb3", 3), N("sl1", 1), N("sl4", 4)];
+    t.eq("col campo Serie vuoto non si indovina", nextInSaga(cosmo[2], cosmo, letti("mb1", "mb2")), null);
+    t.eq("nemmeno a metà del filo", nextInSaga(cosmo[0], cosmo, nuovi), null);
+    // ma una saga che numera dritto non si tocca
+    t.eq("i numeri in fila non silenziano niente", nextInSaga(trilogia[0], trilogia, nuovi)?.id, "due");
   }
 }

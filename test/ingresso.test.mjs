@@ -8,7 +8,7 @@
 // Qui non casca niente da sé: una fila che propone il volume sbagliato di
 // una saga è uno SPOILER servito dall'app, e una porta che scrive «1 libri»
 // o «0 citazioni» si legge e basta.
-import { prossimiPassi, nextInSaga } from "../src/lib/saga.js";
+import { prossimiPassi, nextInSaga, numeriMescolati } from "../src/lib/saga.js";
 import { rigaDiario, buildDiary } from "../src/lib/diary.js";
 import { rigaGiardino, conta, raccogli } from "../src/lib/citazioni.js";
 
@@ -231,6 +231,114 @@ export default async function (t) {
     const cosmo = [C("a", "Mistborn", 1), C("b", "mistborn", 2), C("c", "MISTBORN", 3)];
     const letti = (id) => (id === "a" || id === "b" ? "read" : "unread");
     t.eq("una grafia diversa non è un altro ciclo", ids(prossimiPassi(cosmo, { statusOf: letti })), "c");
+  }
+
+  // ---- E SE IL CAMPO «SERIE» È VUOTO, LO DICONO I NUMERI ------------------
+  {
+    // LA CURA DEL CICLO FUNZIONA SOLO SE IL CICLO È SCRITTO, e quel campo lo
+    // riempiono le tavole (Mondo Disco, Eresia) o il lettore a mano: su
+    // Sanderson — che nessuna tavola conosce — è quasi sempre vuoto, e la
+    // fotografia della segnalazione tornerebbe identica. Misurato prima di
+    // curare: col campo pieno niente (giusto), col campo VUOTO «Rhythm of
+    // War — Cosmoverse n° 4».
+    //
+    // Il secondo segnale è già nei dati: due TITOLI DIVERSI con lo stesso
+    // numero di lettura non sono una fila, sono due storie numerate ognuna
+    // da uno. Non si indovina quale filo hai in mano: si tace.
+    const N = (id, n) => L(id, "Cosmoverse", n);
+    const cosmo = [N("mb1", 1), N("mb2", 2), N("mb3", 3), N("sl1", 1), N("sl4", 4)];
+    const letti = (id) => (id.startsWith("mb") ? "read" : "unread");
+    const p = prossimiPassi(cosmo, { statusOf: letti });
+    t.c("col campo Serie vuoto non si salta all'altra storia", !ids(p).includes("sl4"), ids(p));
+    t.eq("…e non si propone niente", p.length, 0);
+    // e non si propone niente NEMMENO a metà del primo filo: il numero non
+    // è una fila, quindi «il prossimo» non esiste da nessuna parte
+    const meta = (id) => (id === "mb1" ? "read" : "unread");
+    t.eq("nemmeno a metà del filo", prossimiPassi(cosmo, { statusOf: meta }).length, 0);
+  }
+  {
+    // UNA SAGA CHE NUMERA DRITTO NON SI TOCCA, ed è il caso comune: la
+    // guardia deve tacere dove i numeri sono una fila sola.
+    const p = prossimiPassi(LIBRI, { statusOf });
+    t.eq("i numeri in fila non silenziano niente", ids(p), "d3+m2");
+    const conBuco = [L("a", "Saga", 1), L("b", "Saga", 3), L("c", "Saga", 7)];
+    t.eq(
+      "e nemmeno i buchi nella numerazione",
+      ids(prossimiPassi(conBuco, { statusOf: (id) => (id === "a" ? "read" : "unread") })),
+      "b"
+    );
+  }
+  {
+    // DUE COPIE DELLO STESSO TITOLO NON SONO DUE STORIE: due edizioni, o un
+    // doppione dichiarato, condividono il numero perché sono lo stesso
+    // volume — e quel caso ha già la sua regola («a pari ordine vince chi è
+    // arrivato prima»). Si confrontano i TITOLI, non gli id: guardando gli
+    // id questa saga si zittirebbe da sola.
+    const doppia = [
+      L("a", "Saga", 1),
+      { ...L("b", "Saga", 2), title: "Il secondo" },
+      { ...L("b2", "Saga", 2), title: "Il secondo" },
+    ];
+    t.eq(
+      "due edizioni dello stesso volume non silenziano la saga",
+      ids(prossimiPassi(doppia, { statusOf: (id) => (id === "a" ? "read" : "unread") })),
+      "b"
+    );
+    // e le maiuscole non fanno due titoli
+    const maiuscole = [
+      L("a", "Saga", 1),
+      { ...L("b", "Saga", 2), title: "Il Secondo" },
+      { ...L("b2", "Saga", 2), title: "il secondo " },
+    ];
+    t.eq(
+      "né le maiuscole",
+      ids(prossimiPassi(maiuscole, { statusOf: (id) => (id === "a" ? "read" : "unread") })),
+      "b"
+    );
+  }
+  {
+    // E COL CICLO DICHIARATO LA GUARDIA NON DEVE ZITTIRE NIENTE: i numeri
+    // doppi sono quel che ci si aspetta lì — è proprio la loro presenza ad
+    // aver reso necessario il raggruppamento — e il filtro per ciclo li ha
+    // già separati, quindi la domanda arriva a una fila pulita. Zittire
+    // anche qui butterebbe via la cura di ieri.
+    const C = (id, ciclo, n) => ({ ...L(id, "Cosmoverse", n), series: ciclo });
+    const cosmo = [C("mb1", "Mistborn", 1), C("mb2", "Mistborn", 2), C("sl1", "Stormlight", 1), C("sl4", "Stormlight", 4)];
+    const letti = (id) => (id === "mb1" ? "read" : "unread");
+    t.eq("col ciclo dichiarato i numeri doppi non zittiscono", ids(prossimiPassi(cosmo, { statusOf: letti })), "mb2");
+  }
+  {
+    // I VOLUMI SENZA NUMERO NON VOTANO: due tomi a cui nessuno ha dato un
+    // posto non sono due storie, sono due tomi senza posto — e `nextInSaga`
+    // li scarta già per conto suo. Contandoli, ogni saga con due volumi da
+    // sistemare si zittirebbe da sola, cioè proprio quella che ha bisogno
+    // di aiuto.
+    const conIgnoti = [L("a", "Saga", 1), L("b", "Saga", 2), L("x", "Saga", null), L("y", "Saga", null)];
+    t.eq(
+      "due volumi senza numero non sono due storie",
+      ids(prossimiPassi(conIgnoti, { statusOf: (id) => (id === "a" ? "read" : "unread") })),
+      "b"
+    );
+    // e la funzione risponde anche chiamata da sola: la saga è obbligatoria,
+    // o si confronterebbero i numeri di tutta la biblioteca. Il caso che
+    // rende portante quella riga vuole i libri SENZA saga: senza il
+    // controllo il filtro li lascerebbe passare tutti e due, e due romanzi a
+    // sé numerati uno risulterebbero «due storie».
+    const senzaSaga = [L("a", "", 1), L("b", "", 1)];
+    t.eq("senza il nome della saga non si giudica", numeriMescolati(senzaSaga, ""), false);
+    t.eq("…nemmeno con la saga fatta di spazi", numeriMescolati(senzaSaga, "   "), false);
+    t.eq("una saga che non c'è non è mescolata", numeriMescolati(conIgnoti, "Altra"), false);
+    t.eq(
+      "e due titoli sullo stesso numero sì",
+      numeriMescolati([L("a", "Saga", 1), L("b", "Saga", 1)], "Saga"),
+      true
+    );
+    // gli spazi attorno al nome non fanno un'altra saga, qui come ovunque
+    t.eq(
+      "gli spazi attorno al nome non contano",
+      numeriMescolati([L("a", "Saga", 1), L("b", "Saga", 1)], "  Saga  "),
+      true
+    );
   }
 
   // ---- LA PORTA DEL DIARIO ----------------------------------------------
