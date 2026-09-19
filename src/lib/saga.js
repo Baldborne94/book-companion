@@ -75,33 +75,53 @@ export const cicloDi = (b) => (b?.series || "").trim();
 // Una regola che vale per «il prossimo volume» vale ovunque lo si proponga:
 // sta nella funzione che risponde a quella domanda, e chi ne aggiunge un
 // quarto chiamante la eredita senza doverlo sapere.
+//
+// E IL PROSSIMO E' QUELLO SUBITO DOPO, NON IL PRIMO LIBERO PIU' IN LA'
+// (chiesto dal lettore con l'Ingresso in mano: «ha senso suggerire solo i
+// libri successivi alle saghe gia' iniziate e libri gia' letti, e non
+// numeri o volumi a caso come succede ora»). Prima si SCAVALCAVA tutto quel
+// che non era intatto: finito il primo e aperto il secondo, si proponeva il
+// terzo — cioe' un volume che viene dopo un libro che non hai ancora letto.
+// Nella sua fotografia: «Warrior Prophet» proposto con «The Darkness That
+// Comes Before» al 2%. Adesso si guarda il volume che SEGUE, e se quello lo
+// stai gia' leggendo — o l'hai aperto e lasciato li' — non c'e' un «prossimo»
+// da dire: il passo dopo ce l'hai gia' in mano, e sta nella fila di quelli
+// in lettura. I LETTI si scavalcano ancora (chi rilegge il primo di una saga
+// letta fino al terzo vuole il quarto), e l'abbandonato pure, come sempre.
+//
+// E IL CICLO SI CONFRONTA SEMPRE, ANCHE QUANDO E' VUOTO: un volume senza
+// ciclo in una saga dove gli altri il ciclo ce l'hanno cercava il seguito in
+// TUTTA la saga, e finiva sul volume di un'altra storia — nella fotografia
+// «Fall of Light» compariva due volte, una dal ciclo dei Kharkanas e una da
+// un volume del Malazan rimasto senza ciclo. I senza-ciclo sono un gruppo
+// come gli altri («Volumi a se'» sullo scaffale, `raccogliCicli`), e su una
+// saga senza cicli il gruppo e' la saga intera: li' non cambia niente.
 export function nextInSaga(book, books, statusOf = getStatus, progressoOf = getProgress) {
   const saga = (book?.saga || "").trim();
   if (!saga) return null;
-  // il passo successivo sta dentro il CICLO del volume che hai in mano; se
-  // non ne dichiara uno resta la saga intera, come in `soloDellaSerie`
-  const ciclo = cicloDi(book);
-  const dove = ciclo
-    ? books.filter((b) => cicloDi(b).toLowerCase() === ciclo.toLowerCase())
-    : books;
+  const ciclo = cicloDi(book).toLowerCase();
+  const dove = books.filter((b) => b && cicloDi(b).toLowerCase() === ciclo);
   // e dove i numeri non sono una fila sola non c'e' un «prossimo» da dire
   if (numeriMescolati(dove, saga)) return null;
   const ord = (b) => (b.sagaOrder ?? Infinity);
   const cur = book.sagaOrder ?? null;
-  return (
-    dove
-      .filter(
-        (b) =>
-          b.id !== book.id &&
-          (b.saga || "").trim() === saga &&
-          maiAperto(b, statusOf, progressoOf) &&
-          // senza numero d'ordine non si indovina: meglio nessuna proposta
-          // di una sbagliata
-          b.sagaOrder != null &&
-          (cur == null || ord(b) > cur)
-      )
-      .sort((a, b) => ord(a) - ord(b) || (a.addedAt || 0) - (b.addedAt || 0))[0] || null
-  );
+  const dopo = dove
+    .filter(
+      (b) =>
+        b.id !== book.id &&
+        (b.saga || "").trim() === saga &&
+        // senza numero d'ordine non si indovina: meglio nessuna proposta
+        // di una sbagliata
+        b.sagaOrder != null &&
+        (cur == null || ord(b) > cur)
+    )
+    .sort((a, b) => ord(a) - ord(b) || (a.addedAt || 0) - (b.addedAt || 0));
+  for (const b of dopo) {
+    const stato = statusOf(b.id);
+    if (stato === "read" || stato === "abandoned") continue;
+    return maiAperto(b, statusOf, progressoOf) ? b : null;
+  }
+  return null;
 }
 
 // I PROSSIMI PASSI DI TUTTE LE SAGHE CHE HAI COMINCIATO.
@@ -112,14 +132,19 @@ export function nextInSaga(book, books, statusOf = getStatus, progressoOf = getP
 // dieci saghe in corso la risposta non e' una sola (chiesto dal lettore
 // guardando l'Ingresso).
 //
-// SOLO LE SAGHE GIA' COMINCIATE. Proporre il primo volume di una saga mai
-// aperta non e' «il prossimo passo», e' un consiglio di lettura — e quello
-// lo fa la Libreria, dove i libri stanno tutti. Qui si riprende un filo che
-// hai gia' in mano, e «cominciata» vuol dire che di quella storia un volume
-// l'hai letto, lo stai leggendo o l'hai comunque APERTO — il progresso vale
-// quanto lo stato, o un romanzo al 27% mai dichiarato «in lettura» farebbe
-// da riferimento a nessuno e verrebbe per giunta proposto come prossimo.
-// L'abbandonato no: quella storia l'hai lasciata apposta.
+// SOLO LE SAGHE GIA' COMINCIATE, E «COMINCIATA» VUOL DIRE UN VOLUME FINITO.
+// Proporre il primo volume di una saga mai aperta non e' «il prossimo
+// passo», e' un consiglio di lettura — e quello lo fa la Libreria, dove i
+// libri stanno tutti. Al primo giro bastava aver APERTO un volume (stato o
+// progresso), e il lettore si e' trovato in fila «The Eye of the World»
+// perche' New Spring era stato aperto per un attimo, allo 0,4%: «volumi a
+// caso», parole sue. Un'apertura non e' un filo in mano; un libro finito
+// si'. Quindi la storia comincia col primo volume LETTO; il riferimento e'
+// il piu' avanti fra quelli DICHIARATI, letti o in lettura, e se e' in
+// lettura non c'e' un passo dopo — lo hai in mano (letto il primo e in
+// lettura il terzo, il secondo saltato non e' «il prossimo» e il terzo ce
+// l'hai gia'). L'abbandonato non apre niente, come sempre: quella storia
+// l'hai lasciata apposta.
 //
 // E IL PASSO SUCCESSIVO STA DENTRO IL CICLO, NON NELLA SAGA (segnalato dal
 // lettore: «sanderson mi sta suggerendo il numero 4 del cosmoverso a
@@ -131,8 +156,8 @@ export function nextInSaga(book, books, statusOf = getStatus, progressoOf = getP
 // E' la stessa trappola gia' scritta per i ripiani della Libreria, un
 // piano piu' in la', e la regola e' quella di `soloDellaSerie`: se il
 // volume dichiara un ciclo, il prossimo e' del SUO ciclo; se non lo
-// dichiara resta la saga intera, che e' il caso di una saga senza cicli —
-// li' i due raggruppamenti coincidono.
+// dichiara resta il gruppo dei senza-ciclo, che su una saga senza cicli e'
+// la saga intera — li' i due raggruppamenti coincidono (vedi `nextInSaga`).
 //
 // Quindi una saga puo' proporre PIU' passi, uno per ciclo cominciato, ed
 // e' giusto: chi legge Mistborn e la Folgoluce insieme ha due fili in mano
@@ -140,11 +165,12 @@ export function nextInSaga(book, books, statusOf = getStatus, progressoOf = getP
 // — «Mistborn n° 4» dice qualcosa, «Cosmoverse n° 4» era proprio la riga
 // che non si poteva verificare a occhio.
 //
-// IL RIFERIMENTO E' IL VOLUME PIU' AVANTI CHE HAI TOCCATO, non l'ultimo che
+// IL RIFERIMENTO E' IL VOLUME PIU' AVANTI CHE HAI DICHIARATO, non l'ultimo che
 // hai aperto: chi rilegge il secondo di una saga letta fino al settimo non
 // vuole sentirsi proporre il terzo. Da li' in poi comanda `nextInSaga` con
-// le sue guardie — senza numero d'ordine non si indovina, e in una saga il
-// volume sbagliato e' uno spoiler servito dall'app.
+// le sue guardie — senza numero d'ordine non si indovina, il volume che
+// segue dev'essere intatto, e in una saga il volume sbagliato e' uno
+// spoiler servito dall'app.
 //
 // L'ORDINE E' L'ULTIMO TOCCO SULLA SAGA, mai il titolo: la saga che stai
 // leggendo stasera sta per prima e quella lasciata a meta' l'anno scorso
@@ -159,10 +185,10 @@ export function prossimiPassi(
   for (const b of books) {
     const saga = (b?.saga || "").trim();
     if (!saga) continue;
+    // contano i volumi DICHIARATI, letti o in lettura: un'apertura di
+    // passaggio non e' niente, e l'abbandonato e' una storia lasciata
     const stato = statusOf(b.id);
-    const cominciato = stato === "read" || stato === "reading" || progressoOf(b.id) > 0;
-    // l'abbandonato non apre nessun filo: vedi `maiAperto`
-    if (!cominciato || stato === "abandoned") continue;
+    if (stato !== "read" && stato !== "reading") continue;
     const ciclo = cicloDi(b);
     // due cicli della stessa saga sono due fili distinti, e le maiuscole non
     // ne fanno un terzo
@@ -178,6 +204,11 @@ export function prossimiPassi(
 
   const passi = [];
   for (const e of storie.values()) {
+    // il filo si apre con un volume FINITO, e se il piu' avanti lo stai
+    // ancora leggendo il passo dopo ce l'hai in mano: niente da proporre.
+    // Le due cose sono UNA domanda: col piu' avanti letto, un volume letto
+    // c'e' per forza (un `letto` a parte era una guardia che non guardava)
+    if (statusOf(e.avanti.id) !== "read") continue;
     // il ciclo qui serve a RAGGRUPPARE le storie e a dare il nome alla riga;
     // a cercare il candidato dentro il ciclo giusto — e a tacere dove i
     // numeri non sono una fila — ci pensa `nextInSaga`, che il ciclo lo

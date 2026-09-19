@@ -31,7 +31,10 @@ const LIBRI = [
   L("w1", "Wheel of Time", 1),
   L("solo", "", null),
 ];
-const STATI = { d1: "read", d2: "read", m1: "reading" };
+// tutt'e due le saghe cominciate con un volume FINITO: da quando «in
+// lettura» non apre un filo, un `m1: "reading"` qui lascerebbe Malazan
+// fuori da ogni caso a due saghe
+const STATI = { d1: "read", d2: "read", m1: "read" };
 const statusOf = (id) => STATI[id] || "unread";
 const ids = (p) => p.map((x) => x.libro.id).join("+");
 
@@ -132,24 +135,79 @@ export default async function (t) {
     );
   }
 
-  // ---- IL PROGRESSO VALE QUANTO LO STATO ---------------------------------
+  // ---- UN VOLUME APERTO NON È UN VOLUME LETTO ----------------------------
+  //
+  // Segnalato due volte con l'Ingresso in mano. La prima: «Moving Pictures»
+  // compariva fra i libri in corso E fra i prossimi passi — un romanzo
+  // aperto e lasciato a metà risultava intatto e si proponeva da solo. La
+  // seconda, dopo la cura: «ha senso suggerire solo i libri successivi alle
+  // saghe già iniziate e libri già letti, non volumi a caso» — «The Eye of
+  // the World» in fila perché New Spring era stato aperto allo 0,4%, e
+  // «Warrior Prophet» proposto col primo volume al 2%.
+  //
+  // La regola nuova sta tutta qui: apre un filo solo un volume FINITO, e il
+  // passo dopo è quello che SEGUE l'ultimo letto — se lo stai leggendo, o
+  // l'hai aperto e lasciato lì, non c'è niente da proporre: ce l'hai in mano.
   {
-    // Segnalato con l'Ingresso in mano: «Moving Pictures» compariva fra i
-    // libri in corso E fra i prossimi passi. Un romanzo aperto e lasciato a
-    // metà, senza mai dichiarare «in lettura», risultava intatto: non faceva
-    // da riferimento, e si proponeva da solo come passo successivo.
+    // il 27% su `d3` non lo propone (era il primo difetto) e non fa nemmeno
+    // saltare a un volume più in là: Discworld non propone niente
     const aperto = (id) => (id === "d3" ? 0.27 : 0);
     const p = prossimiPassi(LIBRI, { statusOf, progressoOf: aperto });
     t.c("un volume al 27% non si propone", !ids(p).includes("d3"), ids(p));
-    // e fa da riferimento: il passo dopo è quello che lo segue
-    t.c("…e conta come «già lì», quindi il passo dopo è il suo", ids(p).includes("m2"), ids(p));
+    t.eq("…e la sua saga tace, perché il passo dopo ce l'hai già in mano", ids(p), "m2");
   }
   {
-    // il progresso da solo apre il filo: una saga dove non hai dichiarato
-    // niente ma un volume l'hai aperto è una saga cominciata
+    // un'apertura di passaggio NON apre il filo: New Spring allo 0,4% non
+    // vuol dire che stai leggendo la Ruota del Tempo
     const soli = [L("s1", "Ombre", 1), L("s2", "Ombre", 2)];
-    const p = prossimiPassi(soli, { statusOf: () => "unread", progressoOf: (id) => (id === "s1" ? 0.4 : 0) });
-    t.eq("il solo progresso apre il filo", ids(p), "s2");
+    const p = prossimiPassi(soli, { statusOf: () => "unread", progressoOf: (id) => (id === "s1" ? 0.004 : 0) });
+    t.eq("il solo progresso non apre il filo", p.length, 0);
+    // e nemmeno «in lettura» da solo: il passo dopo lo stai facendo
+    const inCorso = prossimiPassi(soli, { statusOf: (id) => (id === "s1" ? "reading" : "unread") });
+    t.eq("una saga solo in lettura non ha ancora un passo dopo", inCorso.length, 0);
+    // un volume FINITO sì
+    t.eq("un volume finito apre il filo", ids(prossimiPassi(soli, { statusOf: (id) => (id === "s1" ? "read" : "unread") })), "s2");
+  }
+  {
+    // IL RIFERIMENTO È IL PIÙ AVANTI FRA I LETTI, e un volume in lettura più
+    // avanti non lo sposta: letto il primo, in lettura il terzo — il secondo
+    // saltato non è «il prossimo» (si guarda solo avanti), e il terzo ce
+    // l'hai in mano, quindi non c'è niente da proporre
+    const tre = [L("a", "Ombre", 1), L("b", "Ombre", 2), L("c", "Ombre", 3), L("d", "Ombre", 4)];
+    const stati = { a: "read", c: "reading" };
+    t.eq(
+      "in lettura più avanti non fa da riferimento",
+      prossimiPassi(tre, { statusOf: (id) => stati[id] || "unread" }).length,
+      0
+    );
+    // finito anche il terzo, il passo è il quarto
+    const finiti = { a: "read", c: "read" };
+    t.eq("finito, il passo è il suo seguito", ids(prossimiPassi(tre, { statusOf: (id) => finiti[id] || "unread" })), "d");
+    // e un'apertura di passaggio più avanti NON è un riferimento: letto il
+    // primo e il terzo sfogliato per un attimo, il passo resta il secondo
+    // (col progresso a fare da riferimento, la saga tacerebbe: provato)
+    t.eq(
+      "il volume sfogliato più avanti non sposta il riferimento",
+      ids(prossimiPassi(tre, { statusOf: (id) => (id === "a" ? "read" : "unread"), progressoOf: (id) => (id === "c" ? 0.3 : 0) })),
+      "b"
+    );
+  }
+  {
+    // E LO STESSO LIBRO NON SI PROPONE DUE VOLTE (dalla fotografia: «Fall
+    // of Light» in fila due volte, una dal ciclo dei Kharkanas e una da un
+    // volume del Malazan rimasto senza ciclo). Un volume senza ciclo cerca
+    // il seguito fra i senza-ciclo, non in tutta la saga.
+    //
+    // I NUMERI DEL CICLO STANNO SOPRA quelli del senza-ciclo, apposta: con
+    // il ciclo sotto, il senza-ciclo non troverebbe niente «dopo di sé» in
+    // tutta la saga e la mutazione che torna a pescarci sopravvive (provata).
+    const C = (id, ciclo, n) => ({ ...L(id, "Malazan", n), series: ciclo });
+    const malazan = [C("k1", "Kharkanas", 7), C("k2", "Kharkanas", 8), C("x1", "", 5), C("x2", "", 6)];
+    const stati = { k1: "read", x1: "read" };
+    const p = prossimiPassi(malazan, { statusOf: (id) => stati[id] || "unread" });
+    t.eq("ogni gruppo propone il suo, e un libro compare una volta sola", ids(p), "k2+x2");
+    const soloK = prossimiPassi([C("k1", "Kharkanas", 7), C("k2", "Kharkanas", 8), C("x1", "", 5)], { statusOf: (id) => stati[id] || "unread" });
+    t.eq("il senza-ciclo non pesca nel ciclo altrui", ids(soloK), "k2");
   }
   {
     // L'ABBANDONATO NON APRE NIENTE: quella storia l'hai lasciata apposta,
