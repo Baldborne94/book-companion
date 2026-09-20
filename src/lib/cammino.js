@@ -32,7 +32,22 @@ import { riconosci, TAVOLE } from "./sagaBooks.js";
 // ogni ripiano a ogni render sarebbe lo stesso giro moltiplicato per venti.
 const chiave = (saga, titolo) => `${saga}\u0000${titolo}`;
 
-export function camminoDi(libri = [], { tavole = TAVOLE, riconosce } = {}) {
+// E I LIBRI SI CERCANO IN TUTTA LA BIBLIOTECA, NON SUL RIPIANO DA CUI
+// PARTE IL TASTO. Preso al banco e non leggendo il codice: seminata la
+// scena del lettore, il cammino diceva «hai 1 delle 71 tappe» su dieci
+// volumi dell'Eresia in casa. La ragione e' che il tasto vive
+// sull'intestazione di un ripiano e gli passava i libri di QUEL ripiano —
+// ma i ripiani li fa la saga, e basta che un volume stia sotto un'altra
+// grafia («The Horus Heresy» scritta dal riconoscimento accanto al
+// «Warhammer 40K» scritto a mano) perche' finisca su un altro ripiano e
+// sparisca dal cammino. Cioe' il caso che il cammino deve proprio aiutare
+// a vedere era l'unico che non poteva vedere.
+//
+// `scaffale` resta il ripiano, e serve a una riga sola: «altri N dei tuoi
+// libri non stanno in questo percorso». Contata su tutta la biblioteca
+// direbbe «altri 242», che non e' un'informazione — e' rumore. Senza
+// `scaffale` si conta su quel che si e' ricevuto, com'era prima.
+export function camminoDi(libri = [], { tavole = TAVOLE, riconosce, scaffale } = {}) {
   const sapere = riconosce || ((b) => riconosci({ title: b?.title, author: b?.author }));
   const miei = new Map();
   const conti = new Map();
@@ -67,14 +82,20 @@ export function camminoDi(libri = [], { tavole = TAVOLE, riconosce } = {}) {
     voce,
     libro: miei.get(chiave(scelta.tav.saga, voce.t)) || null,
   }));
+  const dentro = new Set(tappe.filter((t) => t.libro).map((t) => t.libro.id));
+  const contati = (scaffale || libri).filter(Boolean);
   return {
     saga: scelta.tav.saga,
     tappe,
-    tue: tappe.filter((t) => t.libro).length,
+    tue: dentro.size,
+    // quanti ne ha QUESTO ripiano: da quando le tappe si cercano in tutta
+    // la biblioteca, `tue` non puo' piu' decidere se il tasto compare —
+    // direbbe di si' su ogni scaffale, anche su quello di Piranesi
+    dalRipiano: contati.filter((b) => dentro.has(b.id)).length,
     // i tuoi libri che in questo cammino non ci sono: non e' un guaio, e'
     // un'informazione — su un ripiano da trentaquattro volumi dice quanti
     // stanno fuori dalla guida invece di lasciarli contare a mano
-    fuori: libri.filter(Boolean).length - scelta.quanti,
+    fuori: contati.filter((b) => !dentro.has(b.id)).length,
   };
 }
 

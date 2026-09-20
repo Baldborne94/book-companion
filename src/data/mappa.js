@@ -257,6 +257,12 @@ export const MAPPA = [
   },
   {
     luogo: "libreria",
+    nome: "Numerare i volumi come la guida",
+    cosa: "Scrive su ogni tuo volume il posto che ha nella guida, antologie comprese: è il numero che dice all'Oracolo cosa viene prima e cosa viene dopo, quindi da lì in poi le schede non escono dal percorso che hai letto. Propone «da → a» una riga per volta, e quello che lasci non si tocca.",
+    dove: "Dentro «Il cammino», il tasto 🔢 sotto il conto delle tappe.",
+  },
+  {
+    luogo: "libreria",
     nome: "Come è disposto lo scaffale",
     cosa: "Raggruppa per saga e autore, solo saga, solo autore, genere, voto o stato; e l'ordine dentro e fra i ripiani.",
     dove: "Il tasto ⇅ in fondo alla riga dei filtri.",

@@ -820,6 +820,19 @@ export default function App() {
     setBooks(next);
   }
 
+  // I NUMERI DELLA GUIDA, scritti dal pannello del cammino. Si scrive la
+  // biblioteca di ADESSO e non la copia che il pannello aveva davanti: nel
+  // frattempo puo' essere entrato un libro. E ogni volume toccato si
+  // timbra, o il numero nuovo resterebbe su questo dispositivo.
+  function scriviNumeriCammino(campi) {
+    if (!campi?.size) return;
+    updateBooks(books.map((b) => (campi.has(b.id) ? { ...b, ...campi.get(b.id) } : b)));
+    for (const id of campi.keys()) touchBook(id);
+    setCammino(null);
+    notify(`${campi.size} ${campi.size === 1 ? "volume messo" : "volumi messi"} nell'ordine della guida`);
+    runSync.current?.(true);
+  }
+
   const runSync = useRef(() => {});
   runSync.current = async (quiet = false) => {
     if (!isSyncConfigured() || sync.busy) return;
@@ -1237,7 +1250,14 @@ export default function App() {
         />
       )}
       {mappaOpen && <Mappa onClose={() => setMappaOpen(false)} />}
-      {cammino && <Cammino cammino={cammino} onClose={() => setCammino(null)} onOpenBook={setOpenId} />}
+      {cammino && (
+        <Cammino
+          cammino={cammino}
+          onClose={() => setCammino(null)}
+          onOpenBook={setOpenId}
+          onNumera={scriviNumeriCammino}
+        />
+      )}
       {syncOpen && (
         <SyncPanel
           status={sync}

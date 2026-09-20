@@ -302,12 +302,17 @@ function Shelf({ books, onOpenBook, localIds, showOrder, coverV = 0 }) {
 // sul tablet del lettore i volumi dell'Eresia stanno sotto una saga
 // scritta a mano («Warhammer 40K») che nessuna tavola conosce, e un tasto
 // legato al nome non sarebbe mai comparso proprio dov'è nato il bisogno.
-function TastoCammino({ libri, riconosciuti, onCammino }) {
+function TastoCammino({ libri, tutti, riconosciuti, onCammino }) {
   const cammino = useMemo(
-    () => (onCammino && riconosciuti ? camminoDi(libri, { riconosce: (b) => riconosciuti.get(b.id) }) : null),
-    [libri, riconosciuti, onCammino]
+    () =>
+      onCammino && riconosciuti
+        ? camminoDi(tutti || libri, { riconosce: (b) => riconosciuti.get(b.id), scaffale: libri })
+        : null,
+    [libri, tutti, riconosciuti, onCammino]
   );
-  if (!cammino?.tue) return null;
+  // il tasto sta dove ci sono i suoi volumi: `tue` conta tutta la
+  // biblioteca, quindi da solo lo farebbe comparire su ogni ripiano
+  if (!cammino?.dalRipiano) return null;
   return (
     <button
       onClick={() => onCammino(cammino)}
@@ -365,7 +370,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   );
 }
 
-function Grouped({ books, group, sort, onOpenBook, localIds, coverV = 0, riconosciuti, onCammino }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, coverV = 0, riconosciuti, onCammino }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -383,7 +388,7 @@ function Grouped({ books, group, sort, onOpenBook, localIds, coverV = 0, riconos
         sotto={r.autore}
         quanti={r.libri.length}
         spento={r.tipo === "soli"}
-        azione={<TastoCammino libri={r.libri} riconosciuti={riconosciuti} onCammino={onCammino} />}
+        azione={<TastoCammino libri={r.libri} tutti={tutti} riconosciuti={riconosciuti} onCammino={onCammino} />}
       >
         {r.cicli ? (
           // I CICLI DENTRO LA SAGA (chiesto dal lettore): un sotto-ripiano
@@ -1683,6 +1688,7 @@ export default function Library({
       ) : (
         <Grouped
           books={visible}
+          tutti={books}
           group={group}
           sort={sort}
           onOpenBook={onOpenBook}
