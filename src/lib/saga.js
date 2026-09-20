@@ -58,19 +58,40 @@ export function numeriMescolati(libri = [], saga = "") {
 
 export const cicloDi = (b) => (b?.series || "").trim();
 
-// I volumi fra cui cercare «il prossimo» di un libro: la saga intera se i
-// suoi numeri sono una fila sola, il suo ciclo se si interlacciano, niente
-// se si interlacciano anche dentro il ciclo (vedi `nextInSaga`). Serve anche
-// a `prossimiPassi`, che con la stessa domanda decide quanti fili tiene una
-// saga — uno solo, o uno per ciclo.
+// I volumi fra cui cercare «il prossimo» di un libro: quelli della sua
+// SERIE, dentro la sua saga. Niente se li' dentro i numeri si interlacciano.
+//
+// QUESTA REGOLA E' STATA GIRATA DUE VOLTE, e la ragione va scritta per
+// intero o il prossimo la gira una terza. Per un giro il gruppo e' stato la
+// SAGA INTERA dove i numeri erano una fila sola — i quarantun Pratchett
+// numerati da 1 a 41 — e la serie entrava in gioco solo dove i numeri si
+// ripetevano, come nel Cosmoverse. L'aveva chiesto il lettore con quattro
+// Pratchett in fila, e l'ha disdetto lui stesso guardando il Malazan: «per
+// malazan pero' o altre saghe considera non tutto il ciclo ma la singola
+// serie per sapere cosa devo leggere dopo; ho sbagliato prima a bloccarti,
+// era giusto suggerirmi i volumi successivi alle serie che avevo gia'
+// iniziato».
+//
+// Ha ragione, e il perche' sta nei dati: IL NUMERO E LA SERIE RISPONDONO A
+// DUE DOMANDE DIVERSE. Il numero dice in che ordine leggere, la serie dice
+// DI QUALE STORIA stiamo parlando — e in un universo come il Malazan i
+// numeri sono una fila sola solo perche' se li e' scritti lui in un ordine
+// di lettura unico, mentre le storie restano quattro. Chi ha in mano il
+// Path to Ascendancy non aspetta «il numero dopo», aspetta il prossimo di
+// QUELLA storia; il numero dopo puo' essere un Kharkanas che col filo in
+// mano non c'entra niente. Raggruppare e' mestiere della serie, sempre.
+//
+// I senza-serie sono un gruppo come gli altri — «Volumi a se'» sullo
+// scaffale — e su una saga che la serie non ce l'ha su nessuno il gruppo e'
+// la saga intera: li' i due raggruppamenti coincidono e non cambia niente.
 export function gruppoDi(book, books = []) {
   const saga = (book?.saga || "").trim();
   if (!saga) return null;
-  const dellaSaga = books.filter((b) => b && (b.saga || "").trim() === saga);
-  if (!numeriMescolati(dellaSaga, saga)) return dellaSaga;
   const ciclo = cicloDi(book).toLowerCase();
-  const delCiclo = dellaSaga.filter((b) => cicloDi(b).toLowerCase() === ciclo);
-  return numeriMescolati(delCiclo, saga) ? null : delCiclo;
+  const dove = books.filter(
+    (b) => b && (b.saga || "").trim() === saga && cicloDi(b).toLowerCase() === ciclo
+  );
+  return numeriMescolati(dove, saga) ? null : dove;
 }
 
 // Il prossimo passo dentro la stessa saga: la voce di libreria non ancora
@@ -104,22 +125,11 @@ export function gruppoDi(book, books = []) {
 // in lettura. I LETTI si scavalcano ancora (chi rilegge il primo di una saga
 // letta fino al terzo vuole il quarto), e l'abbandonato pure, come sempre.
 //
-// E IL CICLO ENTRA IN GIOCO SOLO DOVE I NUMERI SI INTERLACCIANO (chiesto
-// dal lettore, con quattro Pratchett in fila: «per la saga di Discworld
-// consigliami solo il volume successivo all'ultimo gia' letto nell'ordine
-// segnato, cosi' come stai facendo per gli altri»). Nel Mondo Disco i numeri
-// sono UNA fila sola, da 1 a 41, e gli otto cicli sono un raggruppamento
-// dentro quella fila: letti i primi dieci, il prossimo e' l'undicesimo e
-// basta — mentre la regola del ciclo ne proponeva quattro, uno per ciclo
-// cominciato, «Small Gods n° 13» e «Men at Arms n° 15» compresi, cioe'
-// volumi che saltano tre e cinque posti di una fila che il lettore ha scelto
-// di seguire. Il ciclo serve dove i numeri NON sono una fila: nel Cosmoverse
-// Mistborn e la Folgoluce sono numerate tutt'e due da uno, e li' «dopo il
-// 2» non vuol dire niente finche' non si dice di quale storia. Quindi:
-// numeri unici in tutta la saga → si guarda la saga intera, ciclo o no;
-// numeri doppi → si guarda il ciclo del volume, e se anche li' sono doppi
-// si tace. E' `numeriMescolati` a decidere, sulla saga prima e sul ciclo
-// poi — non il fatto che un ciclo sia scritto.
+// E IL PROSSIMO STA DENTRO LA SERIE: lo decide `gruppoDi`, dove sta scritto
+// perche' quella regola e' stata girata due volte. Qui basta sapere che il
+// gruppo arriva di li' e che `null` vuol dire «non si puo' dire»: dentro
+// quella serie due titoli diversi portano lo stesso numero, e indovinare
+// vorrebbe dire servire uno spoiler.
 export function nextInSaga(book, books, statusOf = getStatus, progressoOf = getProgress) {
   const saga = (book?.saga || "").trim();
   if (!saga) return null;
@@ -168,20 +178,25 @@ export function nextInSaga(book, books, statusOf = getStatus, progressoOf = getP
 // l'hai gia'). L'abbandonato non apre niente, come sempre: quella storia
 // l'hai lasciata apposta.
 //
-// E IL PASSO SUCCESSIVO STA DENTRO IL CICLO SOLO DOVE I NUMERI SI
-// INTERLACCIANO (segnalato dal lettore: «sanderson mi sta suggerendo il
-// numero 4 del cosmoverso a caso», e poi, su Pratchett, «consigliami solo
-// il volume successivo all'ultimo gia' letto nell'ordine segnato»). Nel
-// Cosmoverse Mistborn e la Folgoluce sono numerate tutt'e due da uno, e sul
-// solo numero il «piu' avanti» salta da una storia all'altra: li' i fili
-// sono due, uno per ciclo cominciato, e il nome mostrato e' quello del ciclo
-// — «Mistborn n° 4» dice qualcosa, «Cosmoverse n° 4» non si poteva
-// verificare a occhio. Nel Mondo Disco invece i numeri sono una fila sola e
-// gli otto cicli stanno DENTRO quella fila: il filo e' uno, il prossimo e'
-// quello dopo l'ultimo letto, e il nome e' la saga — «Discworld n° 11» e'
-// esattamente il numero che il lettore vede sul dorso. A decidere e' la
-// stessa domanda di `nextInSaga` (`gruppoDi`): un ciclo scritto non basta a
-// spartire una saga, ci vogliono i numeri doppi.
+// UN FILO PER SERIE COMINCIATA, ED E' LA SERIE A SPARTIRE (chiesto dal
+// lettore guardando il Malazan: «considera non tutto il ciclo ma la singola
+// serie per sapere cosa devo leggere dopo... era giusto suggerirmi i volumi
+// successivi alle serie che avevo gia' iniziato»). Chi tiene in mano due
+// storie dello stesso universo ha due prossimi volumi, e sono due righe:
+// il perche' sta per esteso in `gruppoDi`.
+//
+// MA IL NOME DELLA RIGA NON SEGUE IL GRUPPO: SEGUE IL NUMERO. Il numero
+// mostrato accanto e' quello che il lettore ha scritto sul volume, e va
+// letto sotto l'etichetta giusta. Dove ogni serie si numera da se' — nel
+// Cosmoverse Mistborn e la Folgoluce partono tutt'e due da uno — l'etichetta
+// e' la serie: «Mistborn n° 4» dice qualcosa, «Cosmoverse n° 4» non si
+// poteva verificare a occhio, ed e' il difetto segnalato allora («sanderson
+// mi sta suggerendo il numero 4 del cosmoverso a caso»). Dove invece il
+// numero e' della SAGA, come nel Mondo Disco che corre da 1 a 41, l'etichetta
+// e' la saga: «Rincewind n° 13» direbbe «il tredicesimo Rincewind», che non
+// e' vero — il tredici e' il numero sul dorso, e sul dorso c'e' scritto
+// Discworld. Le due righe di una stessa saga si distinguono dal titolo e
+// dalla copertina, che sono li' accanto; un'etichetta che mente no.
 //
 // IL RIFERIMENTO E' IL VOLUME PIU' AVANTI CHE HAI DICHIARATO, non l'ultimo che
 // hai aperto: chi rilegge il secondo di una saga letta fino al settimo non
@@ -199,11 +214,14 @@ export function prossimiPassi(
   books = [],
   { statusOf = getStatus, progressoOf = getProgress, tocco = () => 0, escludi = null } = {}
 ) {
-  // le saghe coi numeri interlacciati si spartiscono per ciclo, le altre no
-  const spartita = new Set();
+  // dove ogni serie si numera da se', il numero e' della SERIE e l'etichetta
+  // pure; dove la fila e' una sola, il numero e' della saga. Non decide come
+  // si raggruppa — quello e' mestiere della serie, sempre — decide come si
+  // chiama la riga.
+  const suoi = new Set();
   for (const b of books) {
     const saga = (b?.saga || "").trim();
-    if (saga && !spartita.has(saga) && numeriMescolati(books, saga)) spartita.add(saga);
+    if (saga && !suoi.has(saga) && numeriMescolati(books, saga)) suoi.add(saga);
   }
   const storie = new Map();
   for (const b of books) {
@@ -213,10 +231,10 @@ export function prossimiPassi(
     // passaggio non e' niente, e l'abbandonato e' una storia lasciata
     const stato = statusOf(b.id);
     if (stato !== "read" && stato !== "reading") continue;
-    // un filo per saga, o uno per ciclo dove i numeri si interlacciano (e le
-    // maiuscole non ne fanno un terzo); il volume che non sta in nessun
-    // gruppo — numeri doppi anche nel suo ciclo — lo zittisce `nextInSaga`
-    const ciclo = spartita.has(saga) ? cicloDi(b) : "";
+    // un filo per serie cominciata, e le maiuscole non ne fanno un secondo;
+    // il volume che non sta in nessun gruppo — numeri doppi dentro la sua
+    // stessa serie — lo zittisce `nextInSaga`
+    const ciclo = cicloDi(b);
     const chiave = `${saga}\u0000${ciclo.toLowerCase()}`;
     const e = storie.get(chiave) || { saga, ciclo, avanti: null, quando: 0 };
     // il piu' avanti: `-Infinity` tiene i senza-numero sotto a chiunque
@@ -241,7 +259,18 @@ export function prossimiPassi(
     const libro = nextInSaga(e.avanti, books, statusOf, progressoOf);
     // il libro gia' in cima all'Ingresso non si ripete due righe piu' sotto
     if (!libro || libro.id === escludi) continue;
-    passi.push({ saga: e.saga, ciclo: e.ciclo, nome: e.ciclo || e.saga, libro, da: e.avanti, quando: e.quando });
+    const nome = suoi.has(e.saga) ? e.ciclo || e.saga : e.saga;
+    passi.push({ saga: e.saga, ciclo: e.ciclo, nome, libro, da: e.avanti, quando: e.quando });
   }
-  return passi.sort((a, b) => b.quando - a.quando || a.nome.localeCompare(b.nome, "it"));
+  // e a parita' di nome decide il NUMERO del volume proposto: da quando due
+  // serie della stessa saga possono chiamarsi tutt'e due come la saga
+  // («Discworld» due volte), l'alfabeto non le distingue piu' e senza questo
+  // terzo criterio l'ordine sarebbe quello in cui i libri sono entrati in
+  // biblioteca, cioe' diverso a ogni import
+  return passi.sort(
+    (a, b) =>
+      b.quando - a.quando ||
+      a.nome.localeCompare(b.nome, "it") ||
+      (a.libro.sagaOrder ?? Infinity) - (b.libro.sagaOrder ?? Infinity)
+  );
 }

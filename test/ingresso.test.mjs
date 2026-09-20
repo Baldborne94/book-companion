@@ -193,28 +193,46 @@ export default async function (t) {
     );
   }
   {
-    // E LO STESSO LIBRO NON SI PROPONE DUE VOLTE (dalla fotografia: «Fall
-    // of Light» in fila due volte, una dal ciclo dei Kharkanas e una da un
-    // volume del Malazan rimasto senza ciclo). Coi numeri UNICI la saga è un
-    // filo solo, ciclo o no: il prossimo è quello dopo l'ultimo letto e
-    // basta — qui k1 (7) è il più avanti, quindi k2, una volta.
+    // DUE STORIE COMINCIATE, DUE PASSI — e questo controllo è GIRATO di
+    // proposito. Pinnava «coi numeri unici la saga è un filo solo»: la
+    // regola durò un giorno, e l'ha disdetta il lettore guardando proprio
+    // il Malazan («considera non tutto il ciclo ma la singola serie per
+    // sapere cosa devo leggere dopo... era giusto suggerirmi i volumi
+    // successivi alle serie che avevo già iniziato»). Qui ha in mano i
+    // Kharkanas (k1 letto) e i senza-serie (x1 letto): sono due fili, e il
+    // prossimo di ognuno è il prossimo della SUA storia, non il numero dopo.
+    //
+    // E lo stesso libro non si propone due volte, che era il difetto da cui
+    // questo blocco è nato («Fall of Light» in fila due volte): i
+    // senza-serie sono un gruppo a sé, quindi da x1 non si arriva a k2.
     const C = (id, ciclo, n) => ({ ...L(id, "Malazan", n), series: ciclo });
     const malazan = [C("k1", "Kharkanas", 7), C("k2", "Kharkanas", 8), C("x1", "", 5), C("x2", "", 6)];
     const stati = { k1: "read", x1: "read" };
     const p = prossimiPassi(malazan, { statusOf: (id) => stati[id] || "unread" });
-    t.eq("coi numeri unici la saga è un filo solo, e un libro compare una volta", ids(p), "k2");
+    t.eq("due serie cominciate danno due passi", ids(p), "x2+k2");
+    t.eq("il filo dei Kharkanas propone il suo", p.find((x) => x.ciclo === "Kharkanas").libro.id, "k2");
+    t.eq("e i senza-serie il loro, senza scavalcare nell'altra storia", p.find((x) => !x.ciclo).libro.id, "x2");
+    // IL NOME SEGUE IL NUMERO, NON IL GRUPPO: qui i numeri sono una fila
+    // sola del Malazan, quindi «Malazan n° 8» — «Kharkanas n° 8» direbbe
+    // «l'ottavo Kharkanas», e i Kharkanas sono tre.
     t.eq("…col nome della saga, che è il numero sul dorso", p[0].nome, "Malazan");
+    t.eq("…tutt'e due", p[1].nome, "Malazan");
   }
 
-  // ---- IL MONDO DISCO È UNA FILA SOLA, E I CICLI STANNO DENTRO ------------
+  // ---- IL MONDO DISCO: UN PASSO PER OGNI CICLO COMINCIATO ----------------
   {
-    // Chiesto dal lettore con quattro Pratchett in fila: «per la saga di
-    // Discworld consigliami solo il volume successivo all'ultimo già letto
-    // nell'ordine segnato, così come stai facendo per gli altri». I numeri
-    // del Disco vanno da 1 a 41 senza doppioni, e gli otto cicli sono un
-    // raggruppamento DENTRO quella fila: letti i primi dieci, il prossimo è
-    // l'undicesimo — la regola del ciclo ne proponeva quattro, uno per ciclo
-    // cominciato, «Small Gods n° 13» e «Men at Arms n° 15» compresi.
+    // QUESTO BLOCCO È GIRATO, e il perché va letto prima di girarlo una
+    // terza volta. Pinnava «letti i primi dieci, il prossimo è l'undicesimo
+    // e basta»: l'aveva chiesto il lettore con quattro Pratchett in fila, e
+    // l'ha disdetto lui stesso un giorno dopo, guardando il Malazan e un
+    // Disco diventato muto («era giusto suggerirmi i volumi successivi alle
+    // serie che avevo già iniziato»).
+    //
+    // Il numero e la serie rispondono a due domande diverse: il numero dice
+    // in che ordine leggere, la serie dice di quale storia si parla. Chi ha
+    // finito i primi dieci ha in mano cinque storie, e ognuna ha il suo
+    // prossimo volume; il numero resta quello della saga, ed è per questo
+    // che l'etichetta dice «Discworld» e non «Death» (vedi sotto).
     const D = (id, n, ciclo) => ({ ...L(id, "Discworld", n), series: ciclo });
     const disco = [
       D("cm", 1, "Rincewind"), D("lf", 2, "Rincewind"), D("er", 3, "The Witches"), D("mo", 4, "Death"),
@@ -225,12 +243,26 @@ export default async function (t) {
     ];
     const primiDieci = new Set(["cm", "lf", "er", "mo", "so", "ws", "py", "gg", "ec", "mp"]);
     const p = prossimiPassi(disco, { statusOf: (id) => (primiDieci.has(id) ? "read" : "unread") });
-    t.eq("letti i primi dieci, il prossimo è l'undicesimo e basta", ids(p), "rm");
+    // cinque cicli cominciati, cinque passi: Morte → Reaper Man (11),
+    // Streghe → Witches Abroad (12), Civiltà → Small Gods (13), Guardie →
+    // Men at Arms (15). Rincewind e la Rivoluzione industriale non hanno un
+    // seguito in questa biblioteca e tacciono.
+    t.eq("un passo per ogni ciclo cominciato", ids(p), "rm+wa+sg+ma");
+    // IL NOME SEGUE IL NUMERO: nel Disco la fila è una sola, da 1 a 41, e il
+    // numero accanto è quello del dorso. «Death n° 11» direbbe «l'undicesimo
+    // della Morte», che è falso — i romanzi della Morte sono cinque.
     t.eq("…e si chiama col numero della saga", `${p[0].nome} n° ${p[0].libro.sagaOrder}`, "Discworld n° 11");
-    // e non conta che l'undicesimo sia di un ciclo che non hai «cominciato
-    // per ultimo»: la fila è una, il ciclo non c'entra
+    t.c("…tutte le righe", p.every((x) => x.nome === "Discworld"), JSON.stringify(p.map((x) => x.nome)));
+    // a parità di nome e di tocco comanda il numero, o l'ordine delle righe
+    // sarebbe quello d'ingresso in biblioteca, diverso a ogni import
+    t.eq("…in ordine di numero", p.map((x) => x.libro.sagaOrder).join(","), "11,12,13,15");
+    // e il ciclo è quello del volume che hai finito, non il primo che si
+    // incontra scorrendo: letto solo Guards! Guards! (Guardie), il passo è
+    // Men at Arms, non il numero dopo di un'altra storia
     const solo = new Set(["gg"]);
-    t.eq("letto solo Guards! Guards!, il prossimo è Eric", ids(prossimiPassi(disco, { statusOf: (id) => (solo.has(id) ? "read" : "unread") })), "ec");
+    const q = prossimiPassi(disco, { statusOf: (id) => (solo.has(id) ? "read" : "unread") });
+    t.eq("letto solo Guards! Guards!, il prossimo è Men at Arms", ids(q), "ma");
+    t.eq("…che è il seguito della SUA storia", q[0].ciclo, "City Watch");
   }
 
   // ---- IL CICLO, NON LA SAGA ---------------------------------------------
