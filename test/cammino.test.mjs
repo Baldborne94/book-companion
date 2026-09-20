@@ -111,6 +111,65 @@ export default async (t) => {
     // fuori dalla guida invece di lasciarli contare a mano
     t.eq("e l'altro si conta fra i tuoi libri fuori dal cammino", c.fuori, 1);
   }
+  // ── E I LIBRI SI CERCANO IN TUTTA LA BIBLIOTECA ───────────────────────
+  //
+  // Il tasto vive sull'intestazione di un RIPIANO, e i ripiani li fa la
+  // saga: basta che un volume stia sotto un'altra grafia perché finisca su
+  // un altro ripiano. Preso al banco sulla scena del lettore — dieci
+  // volumi dell'Eresia in casa e «hai 1 delle 71 tappe», perché il tasto
+  // vedeva solo i libri del suo ripiano. Ora `scaffale` serve alla sola
+  // riga «altri N dei tuoi libri»: contata su tutta la biblioteca direbbe
+  // «altri 242», che non è un'informazione, è rumore.
+  {
+    const tutti = [L("a", "Alfa"), L("b", "Beta"), L("z", "Zeta"), L("x", "Un romanzo qualunque")];
+    const sapere = sa({
+      Alfa: { saga: "Finta", titolo: "Alfa" },
+      Beta: { saga: "Finta", titolo: "Beta" },
+      Zeta: { saga: "Altra", titolo: "Zeta" },
+    });
+    const c = camminoDi(tutti, {
+      tavole: TAVOLE_FINTE,
+      riconosce: sapere,
+      // il ripiano ne contiene uno solo: gli altri stanno altrove
+      scaffale: [L("a", "Alfa"), L("x", "Un romanzo qualunque")],
+    });
+    t.eq("le tappe si trovano in tutta la biblioteca", c.tue, 2);
+    t.eq("…anche quelle che stanno su un altro ripiano", !!c.tappe[3].libro, true);
+    t.eq("ma «altri N» si conta sul ripiano", c.fuori, 1);
+    // e il tasto sta dove ci sono i suoi volumi: `tue` da solo lo farebbe
+    // comparire su OGNI ripiano, anche su quello di un romanzo che col
+    // percorso non c'entra niente
+    t.eq("il ripiano dice quanti ne ha lui", c.dalRipiano, 1);
+    const altrove = camminoDi(tutti, {
+      tavole: TAVOLE_FINTE,
+      riconosce: sapere,
+      scaffale: [L("x", "Un romanzo qualunque")],
+    });
+    t.eq("un ripiano senza tappe non ne ha nessuna", altrove.dalRipiano, 0);
+    t.eq("…anche se la biblioteca ne ha eccome", altrove.tue, 2);
+  }
+  {
+    // senza ripiano si conta su quel che si è ricevuto, com'era prima
+    const c = camminoDi([L("a", "Alfa"), L("x", "Altro")], {
+      tavole: TAVOLE_FINTE,
+      riconosce: sa({ Alfa: { saga: "Finta", titolo: "Alfa" } }),
+    });
+    t.eq("senza ripiano il conto è su tutti i libri dati", c.fuori, 1);
+  }
+  {
+    // due edizioni dello stesso volume sono una tappa sola, quindi «hai N
+    // tappe» non è «hai N libri»: si contano le TAPPE
+    const c = camminoDi([L("uno", "Alfa"), L("due", "Alfa (altra edizione)")], {
+      tavole: TAVOLE_FINTE,
+      riconosce: sa({
+        Alfa: { saga: "Finta", titolo: "Alfa" },
+        "Alfa (altra edizione)": { saga: "Finta", titolo: "Alfa" },
+      }),
+    });
+    t.eq("due copie fanno una tappa", c.tue, 1);
+    t.eq("…e la copia scartata sta fra i libri fuori dal percorso", c.fuori, 1);
+  }
+
   {
     // a parità vince la PRIMA dichiarata: un criterio che dipendesse
     // dall'ordine dei libri cambierebbe cammino a ogni import

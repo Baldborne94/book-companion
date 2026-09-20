@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getStatus } from "../lib/library.js";
 import { perParte } from "../lib/cammino.js";
+import { numerazioneGuida, sagaComune, campiDaScrivere } from "../lib/numeraCammino.js";
 
 // I FILTRI SONO TRE, e il terzo è quello per cui la pagina esiste: su una
 // guida da settantuno tappe «cosa mi manca» è la domanda vera, e senza un
@@ -88,9 +89,144 @@ function Tappa({ t, onOpenBook }) {
   );
 }
 
-export default function Cammino({ cammino, onClose, onOpenBook }) {
+// IL PANNELLO CHE PROPONE I NUMERI. Stessa forma di «Titoli da ripulire»,
+// e per la stessa ragione: un numero storto non alza nessun errore, sposta
+// soltanto il confine di quel che l'Oracolo puo' raccontare — quindi si
+// guarda prima, una riga per volta, e quel che togli non si tocca.
+function SceltaNumeri({ numeri, saga, scelti, sagaScelta, onCambia, onSaga, onChiudi, onVai }) {
+  const quanti = scelti.size + (saga && sagaScelta ? saga.quali.length : 0);
+  const riga = (on) => ({
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 12,
+    width: "100%",
+    textAlign: "left",
+    padding: "10px 12px",
+    marginBottom: 6,
+    borderRadius: R.piccolo,
+    border: `1px solid ${on ? `${C.accent}88` : C.border}`,
+    background: on ? `${C.accent}14` : "transparent",
+  });
+  return (
+    <div
+      onClick={onChiudi}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 55,
+        background: "#080611cc",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        animation: "bc-fade-in 0.25s ease-out",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: px(520),
+          maxHeight: "100%",
+          overflowY: "auto",
+          borderRadius: R.grande,
+          border: `1px solid ${C.border}`,
+          background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
+          boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
+          padding: 22,
+        }}
+      >
+        <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
+          🔢 Numera come la guida
+        </h2>
+        <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 16, lineHeight: 1.5 }}>
+          Il numero di lettura è l'unico campo che dice all'Oracolo cosa viene prima e cosa viene
+          dopo. Qui diventa il posto nella guida — antologie comprese — così la frontiera delle
+          schede combacia col percorso. Guarda e spunta: quello che lasci non si tocca.
+        </p>
+
+        {saga && (
+          <button onClick={onSaga} style={riga(sagaScelta)}>
+            <span style={{ fontSize: F.rilievo, color: sagaScelta ? C.accent : C.muted }}>
+              {sagaScelta ? "☑" : "☐"}
+            </span>
+            <span style={{ minWidth: 0 }}>
+              <span style={{ display: "block", color: C.text, fontSize: F.corpo }}>
+                Scrivi «{saga.nome}» su {saga.quali.length}{" "}
+                {saga.quali.length === 1 ? "volume" : "volumi"}
+              </span>
+              <span style={{ display: "block", color: C.muted, fontSize: F.minuscolo, marginTop: 2 }}>
+                Stanno in un'altra saga, e la frontiera confronta la saga lettera per lettera: così
+                come sono, per l'Oracolo sono due storie diverse.
+              </span>
+            </span>
+          </button>
+        )}
+
+        {numeri.map((p) => {
+          const on = scelti.has(p.id);
+          return (
+            <button key={p.id} onClick={() => onCambia(p.id)} style={riga(on)}>
+              <span style={{ fontSize: F.rilievo, color: on ? C.accent : C.muted }}>
+                {on ? "☑" : "☐"}
+              </span>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: "block", color: C.text, fontSize: F.corpo }}>{p.title}</span>
+                <span style={{ display: "block", color: C.muted, fontSize: F.minuscolo, marginTop: 2 }}>
+                  {p.da == null ? "senza numero" : `n° ${p.da}`} → <b style={{ color: C.accent }}>n° {p.a}</b>
+                </span>
+              </span>
+            </button>
+          );
+        })}
+
+        <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "flex-end" }}>
+          <button
+            onClick={onChiudi}
+            style={{
+              padding: "10px 18px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.border}`,
+              color: C.muted,
+              fontSize: F.nota,
+            }}
+          >
+            Lascia stare
+          </button>
+          <button
+            onClick={onVai}
+            disabled={!quanti}
+            style={{
+              padding: "10px 20px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${quanti ? `${C.accent}88` : C.border}`,
+              background: quanti ? `${C.accent}22` : "transparent",
+              color: quanti ? C.accent : C.muted,
+              fontSize: F.nota,
+            }}
+          >
+            {quanti ? `Scrivi ${quanti}` : "Niente spuntato"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function Cammino({ cammino, onClose, onOpenBook, onNumera }) {
   const [filtro, setFiltro] = useState("tutte");
+  const [numerare, setNumerare] = useState(null);
   const { tappe, tue, fuori, saga } = cammino;
+
+  // le due proposte si calcolano a ogni giro e non alla pressione: servono
+  // gia' per sapere se il tasto ha qualcosa da offrire, e un tasto che
+  // promette quel che non puo' dare e' il difetto di «Porta qui 18 tomi»
+  const daFare = useMemo(() => {
+    const numeri = numerazioneGuida(cammino);
+    const sagaDa = sagaComune(cammino);
+    return numeri.length || sagaDa ? { numeri, saga: sagaDa } : null;
+  }, [cammino]);
 
   const parti = useMemo(() => {
     const scelte =
@@ -134,6 +270,30 @@ export default function Cammino({ cammino, onClose, onOpenBook }) {
           {`Hai ${tue} delle ${tappe.length} tappe.`}
           {fuori > 0 ? ` Altri ${fuori} dei tuoi libri non stanno in questo percorso.` : ""}
         </p>
+        {onNumera && daFare && (
+          <button
+            onClick={() =>
+              setNumerare({
+                ...daFare,
+                scelti: new Set(daFare.numeri.map((p) => p.id)),
+                sagaScelta: true,
+              })
+            }
+            style={{
+              minHeight: 44,
+              marginTop: 8,
+              padding: "0 14px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.accent}66`,
+              background: `${C.accent}14`,
+              color: C.accent,
+              fontSize: F.piccolo,
+            }}
+          >
+            🔢 Numera come la guida
+            {daFare.numeri.length ? ` · ${daFare.numeri.length}` : ""}
+          </button>
+        )}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
           {FILTRI.map((f) => {
             const acceso = filtro === f.id;
@@ -185,6 +345,30 @@ export default function Cammino({ cammino, onClose, onOpenBook }) {
             ))}
           </section>
         ))}
+        {numerare && (
+          <SceltaNumeri
+            numeri={numerare.numeri}
+            saga={numerare.saga}
+            scelti={numerare.scelti}
+            sagaScelta={numerare.sagaScelta}
+            onCambia={(id) =>
+              setNumerare((n) => {
+                if (!n) return n;
+                const scelti = new Set(n.scelti);
+                if (scelti.has(id)) scelti.delete(id);
+                else scelti.add(id);
+                return { ...n, scelti };
+              })
+            }
+            onSaga={() => setNumerare((n) => (n ? { ...n, sagaScelta: !n.sagaScelta } : n))}
+            onChiudi={() => setNumerare(null)}
+            onVai={() => {
+              const campi = campiDaScrivere(numerare);
+              setNumerare(null);
+              onNumera(campi);
+            }}
+          />
+        )}
         {parti.length === 0 && (
           <p style={{ color: C.muted, fontSize: F.corpo, lineHeight: 1.6, marginTop: 20 }}>
             {filtro === "tue"
