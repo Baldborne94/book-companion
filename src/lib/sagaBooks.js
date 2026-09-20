@@ -48,7 +48,9 @@ const FUORI_SAGA = [
 // di Horus la scrivono venti autori che scrivono anche moltissimo altro:
 // col ripiego sull'autore, i Gaunt's Ghosts di Abnett diventerebbero
 // Eresia. Per questo `autore` li' e' `null`.
-const TAVOLE = [
+// esportate perche' il CAMMINO (`lib/cammino.js`) mostra la guida INTERA,
+// non i soli libri che hai: gli serve la tavola, non il riconoscimento
+export const TAVOLE = [
   { saga: SAGA, libri: DISCWORLD, ordine: (b) => b.n, autore: "pratchett", fuori: FUORI_SAGA, stretta: false },
   // `o` e non `n`: l'ordine e' quello del percorso CD8D, non la numerazione
   // della collana. Vedi il commento in testa a `horusHeresy.js`.
