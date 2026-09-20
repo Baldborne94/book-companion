@@ -42,11 +42,15 @@ function Riga({ e, onOpenBook }) {
           {e.book.title}
         </span>
         <span style={{ display: "block", fontSize: F.piccolo, color: C.muted, marginTop: 2 }}>
-          {e.finished
-            ? e.started
-              ? `${breve(e.started)} → ${breve(e.finished)} · ${giorni(e.days)}`
-              : `finito il ${data(e.finished)}`
-            : `cominciato il ${data(e.started)} · ${giorni(dayCount(e.started, Date.now()))}`}
+          {/* senza data non si scrive «cominciato il 1 gennaio 1970»: quel
+              libro l'hai letto, non sappiamo quando, e si dice cosi' */}
+          {e.senza
+            ? "letto — l'anno non è segnato"
+            : e.finished
+              ? e.started
+                ? `${breve(e.started)} → ${breve(e.finished)} · ${giorni(e.days)}`
+                : `finito il ${data(e.finished)}`
+              : `cominciato il ${data(e.started)} · ${giorni(dayCount(e.started, Date.now()))}`}
         </span>
       </span>
     </button>
@@ -155,6 +159,37 @@ export default function ReadingDiary({ books, onClose, onOpenBook }) {
             </section>
           );
         })}
+
+        {/* IN FONDO, come i «Volumi soli» dello scaffale: sono libri finiti
+            a cui manca solo una cosa, e la riga dice dove si mette. */}
+        {diary.senzaData.length > 0 && (
+          <section style={{ marginBottom: 30 }}>
+            <h3
+              style={{
+                display: "flex",
+                alignItems: "baseline",
+                gap: 10,
+                fontFamily: FONT_TITLE,
+                fontSize: F.titolo,
+                fontWeight: 600,
+                color: C.text,
+                marginBottom: 4,
+              }}
+            >
+              Letti, senza anno
+              <span style={{ fontSize: F.nota, color: C.accent, fontFamily: "inherit" }}>
+                {diary.senzaData.length} {diary.senzaData.length === 1 ? "libro" : "libri"}
+              </span>
+            </h3>
+            <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 10, lineHeight: 1.5 }}>
+              Li hai letti prima di metterli qui. Scrivi l'anno nella scheda del libro, sotto lo
+              stato, e saliranno fra le annate.
+            </p>
+            {diary.senzaData.map((e) => (
+              <Riga key={e.book.id} e={e} onOpenBook={onOpenBook} />
+            ))}
+          </section>
+        )}
       </div>
     </div>
   );

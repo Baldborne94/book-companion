@@ -70,6 +70,26 @@ export function setDates(id, { started, finished }) {
   else if (finished === 0) localStorage.removeItem(`bc_end_${id}`);
 }
 
+// LETTO NON VUOL DIRE LETTO ADESSO.
+//
+// «Letto» scriveva la data di OGGI, sempre, e il diario raccoglie i libri
+// per anno di fine: un romanzo vecchio, messo in biblioteca adesso per
+// dire che l'hai gia' letto, finiva fra i libri di quest'anno e gonfiava
+// il conto dell'anno in corso (segnalato: «non mi aggiungere ogni volta
+// libri che metto come letto nel 2026, magari sono libri vecchi che sto
+// aggiungendo per dire che li ho gia' letti»).
+//
+// La data di oggi si scrive solo dove l'app ti ha VISTO leggere: una data
+// d'inizio — che nasce quando il libro passa «in lettura», cioe' quando lo
+// apri — oppure del progresso. Un libro che salta da «da leggere» a
+// «letto» senza essere mai stato aperto e' una dichiarazione sul PASSATO,
+// e QUANDO sia successo l'app non lo sa: oggi e' la sola data che non puo'
+// essere vera. Non si scrive niente, e l'anno lo scrivi tu nella scheda.
+//
+// Non e' una data che si perde: il libro resta fra i letti e nel conto
+// totale, e il diario lo raccoglie a parte (`senzaData` in `diary.js`).
+export const lettoQui = (id) => getStarted(id) > 0 || getProgress(id) > 0;
+
 export function setStatus(id, status) {
   const prev = getStatus(id);
   localStorage.setItem(`bc_status_${id}`, status);
@@ -77,10 +97,7 @@ export function setStatus(id, status) {
     const now = Date.now();
     if (status === "reading" && !getStarted(id)) setDates(id, { started: now });
     // un libro ripreso e finito di nuovo aggiorna la data di fine
-    if (status === "read") {
-      if (!getStarted(id)) setDates(id, { started: now });
-      setDates(id, { finished: now });
-    }
+    if (status === "read" && lettoQui(id)) setDates(id, { finished: now });
     // tornare a "da leggere" e' un azzeramento esplicito
     if (status === "unread") setDates(id, { started: 0, finished: 0 });
     // ABBANDONARE NON E' FINIRE. La data d'inizio resta — quel libro l'hai
@@ -88,12 +105,54 @@ export function setStatus(id, status) {
     // quella di fine se ne va: senza toglierla, un romanzo prima dichiarato
     // letto e poi mollato resterebbe nel diario fra i finiti, e il conto
     // dell'anno direbbe una cosa che non e' successa.
-    if (status === "abandoned") {
-      if (!getStarted(id)) setDates(id, { started: now });
-      setDates(id, { finished: 0 });
-    }
+    //
+    // La data d'inizio pero' non si INVENTA (qui e nel ramo di sopra si
+    // scriveva `started: now` quando mancava): un libro mollato senza
+    // averlo mai aperto non l'hai cominciato oggi, e quella data finta
+    // riaprirebbe la porta dall'altra parte — dichiarato «letto» un minuto
+    // dopo, `lettoQui` la troverebbe e scriverebbe di nuovo l'anno in corso.
+    if (status === "abandoned") setDates(id, { finished: 0 });
   }
   touchBook(id);
+}
+
+// L'ANNO SI SCRIVE A MANO, E SI FISSA A META' ANNO.
+//
+// L'unica cosa che il lettore ricorda di un libro letto anni fa e'
+// l'anno — non il giorno — quindi il campo chiede quello. La data si posa
+// al primo di LUGLIO, a mezzogiorno: un fuso orario puo' spostare un
+// istante di mezza giornata, e il 1° gennaio o il 31 dicembre finirebbero
+// nell'anno sbagliato: proprio il difetto che questo campo viene a curare.
+// E' la stessa ragione per cui la scadenza della chiave fissa i due capi a
+// mezzogiorno.
+//
+// Tre regole: vuoto TOGLIE la data (il libro resta letto, senza anno);
+// un anno che non sta in piedi — nel futuro, o prima che esistessero i
+// libri stampati — non si scrive affatto, invece di scriverne uno storto;
+// e se l'anno e' gia' quello **non si tocca niente**, o la data esatta di
+// un libro letto qui («12 marzo, in sei giorni») diventerebbe un primo
+// luglio qualunque solo perche' hai riaperto la scheda.
+const MEZZO_ANNO = 6;
+export const ANNO_MIN = 1000;
+
+export const annoFinito = (id) => {
+  const t = getFinished(id);
+  return t ? new Date(t).getFullYear() : 0;
+};
+
+export function segnaAnnoFine(id, anno) {
+  const testo = String(anno ?? "").trim();
+  if (!testo) {
+    setDates(id, { finished: 0 });
+    touchBook(id);
+    return true;
+  }
+  const n = parseInt(testo, 10);
+  if (!Number.isFinite(n) || n < ANNO_MIN || n > new Date().getFullYear()) return false;
+  if (annoFinito(id) === n) return true;
+  setDates(id, { finished: new Date(n, MEZZO_ANNO, 1, 12).getTime() });
+  touchBook(id);
+  return true;
 }
 
 export function getLastOpened() {

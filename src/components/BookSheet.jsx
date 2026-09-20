@@ -1,6 +1,15 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { getProgress, getStatus, setStatus, touchBook, numeroLettura, pulisciNumero } from "../lib/library.js";
+import {
+  getProgress,
+  getStatus,
+  setStatus,
+  touchBook,
+  numeroLettura,
+  pulisciNumero,
+  annoFinito,
+  segnaAnnoFine,
+} from "../lib/library.js";
 import { getCover, getFile, putCover, removeCover } from "../lib/bookStore.js";
 import { recupera, senzaEtichetta } from "../lib/sinossi.js";
 import { preparaCopertina, copertinaOriginale } from "../lib/copertina.js";
@@ -147,6 +156,10 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   const [fav, setFav] = useState(!!book.fav);
   const [status, setStatusState] = useState(getStatus(book.id));
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // l'anno di fine, come stringa perché mentre lo scrivi passa per «2», «20»,
+  // «201»: sono anni che non stanno in piedi, e `segnaAnnoFine` li rifiuta
+  // senza toccare quello salvato — si scrive solo quando ne esce uno vero
+  const [anno, setAnno] = useState(() => String(annoFinito(book.id) || ""));
 
   // IL RETRO DEL LIBRO. Nei libri importati da adesso arriva già scritto;
   // per quelli entrati prima si va a prenderlo qui, una volta sola, e si
@@ -404,6 +417,15 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   function changeStatus(s) {
     setStatus(book.id, s);
     setStatusState(s);
+    // `setStatus` può aver scritto (finito qui, ora) o tolto (abbandonato)
+    // la data: il campo racconta quello che c'è, non quello che c'era
+    setAnno(String(annoFinito(book.id) || ""));
+  }
+
+  function cambiaAnno(v) {
+    const solo = v.replace(/\D/g, "").slice(0, 4);
+    setAnno(solo);
+    segnaAnnoFine(book.id, solo);
   }
 
   function openBook() {
@@ -698,6 +720,28 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                   );
                 })}
               </div>
+              {/* L'ANNO, E SOLO SU «Letto». Sotto lo stato perché è la sua
+                  seconda metà: dire «letto» senza dire quando mandava il
+                  libro nel conto dell'anno in corso. Vuoto è una risposta
+                  buona — il libro resta fra i letti, in fondo al diario. */}
+              {status === "read" && (
+                <label style={{ display: "block", marginTop: 10 }}>
+                  <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 3 }}>
+                    Finito nell'anno
+                  </span>
+                  <input
+                    value={anno}
+                    onChange={(e) => cambiaAnno(e.target.value)}
+                    inputMode="numeric"
+                    maxLength={4}
+                    placeholder="—"
+                    style={{ ...fieldStyle(), width: 110, textAlign: "center" }}
+                  />
+                  <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginTop: 3 }}>
+                    Lascialo vuoto se non ricordi l'anno.
+                  </span>
+                </label>
+              )}
             </div>
           </div>
         </div>
