@@ -18,6 +18,7 @@ import {
 } from "../lib/readerSettings.js";
 import { contentStyles, spegniVuoti, curaParagrafi, MODI_PARAGRAFI, spegniScenografia } from "../lib/readerTheme.js";
 import { ritaglioAvanzo, flattenToc, cfiLeggibile, ultimoSegnalibro } from "../lib/readerLayout.js";
+import { misuraPagine, conAttesa, ATTESA } from "../lib/misuraPagine.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
 import { explain, termIndex, normalize, wikiUrl, haGlossario, termAt } from "../lib/glossary.js";
@@ -209,6 +210,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [panel, setPanel] = useState(null);
   const [progress, setProgressUi] = useState(() => getProgress(book.id));
   const [locReady, setLocReady] = useState(false);
+  // il libro che le pagine non si e' lasciate contare: non e' «sto ancora
+  // misurando», ed e' l'unica differenza che il lettore puo' vedere
+  const [pagineMute, setPagineMute] = useState(false);
   const [toc, setToc] = useState([]);
   const [marks, setMarks] = useState(() => getMarks(book.id));
   const [hls, setHls] = useState(() => getHighlights(book.id));
@@ -940,16 +944,41 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           live.current.cfi = ripiego.current;
         }
         makeRendition(live.current.settings);
-        const cached = await getAux(`loc_${book.id}`);
+        // anche la misura salvata si aspetta con un tetto: da qui in giu' c'e'
+        // tutto quel che accende la percentuale, e un'attesa senza fondo qui
+        // lascerebbe «misuro le pagine…» acceso per sempre come prima —
+        // soltanto un passo piu' su. Chi non risponde vale «non ce l'ho»:
+        // rimisurare si puo' sempre.
+        const cached = await conAttesa(getAux(`loc_${book.id}`), ATTESA).catch(() => null);
         if (dead) return;
-        if (cached) eb.locations.load(cached);
-        else {
-          await eb.locations.generate(600);
-          putAux(`loc_${book.id}`, eb.locations.save());
+        // una misura salvata che non si lascia rileggere non deve portarsi
+        // via il libro: si butta e si rifa' (`load` fa `JSON.parse`, e una
+        // scrittura troncata basterebbe a far scoppiare l'apertura)
+        let misurato = false;
+        if (cached) {
+          try {
+            eb.locations.load(cached);
+            misurato = true;
+          } catch {
+            /* misura andata a male: si rifa' */
+          }
+        }
+        if (!misurato) {
+          const misura = await misuraPagine(eb);
+          if (dead) return;
+          eb.locations.load(misura.locations);
+          // una misura MONCA si usa e non si scrive: il capitolo che oggi
+          // non si e' lasciato leggere non deve restare non misurato per
+          // sempre — e quella vuota non si scrive di sicuro
+          if (misura.intera) putAux(`loc_${book.id}`, eb.locations.save());
         }
         if (dead) return;
-        live.current.locReady = true;
-        setLocReady(true);
+        // e se non c'e' proprio niente da contare, lo si DICE: un lavoro
+        // finito male non puo' continuare a dire che sta lavorando
+        const misurate = eb.locations.length() > 0;
+        setPagineMute(!misurate);
+        live.current.locReady = misurate;
+        setLocReady(misurate);
         // la misura stantia dell'apertura si riprende QUI, sotto la
         // candela ancora accesa: il lettore non vede nessuno scatto
         if (scartoRiquadro() >= 8) {
@@ -1027,7 +1056,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           // atterrando sull'ancora vecchia (l'inizio) si rimangiava il
           // salto un attimo dopo. Con l'ancora già sul segno, qualunque
           // reimpaginamento successivo atterra lì da solo.
-          if (dove) {
+          // `-1` e' il modo di `cfiFromLocation` di dire «non ho pagine»:
+          // e' un numero, quindi passa per vero, e da quando una misura puo'
+          // uscire vuota quel caso si raggiunge davvero
+          if (dove && dove !== -1) {
             anchor.current = dove;
             live.current.cfi = dove;
             // atterraggio RIPETUTO, come al confine di capitolo: la prima
@@ -2625,7 +2657,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               style={{ width: "100%", accentColor: C.accent }}
             />
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: F.minuscolo, color: C.muted, marginTop: 2 }}>
-              <span>{locReady ? `${pct}%` : "misuro le pagine…"}</span>
+              <span>{locReady ? `${pct}%` : pagineMute ? "pagine non misurabili" : "misuro le pagine…"}</span>
               <span>
                 {[
                   capitolo,
