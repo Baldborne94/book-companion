@@ -1,6 +1,15 @@
 import { getClient, isSyncConfigured, BUCKET } from "./supabase.js";
 import { esitoRegistrazione } from "./accesso.js";
-import { putFile, getFile, putCover, getCover, removeBookData, listFileIds, listCoverIds } from "./bookStore.js";
+import {
+  putFile,
+  getFile,
+  putCover,
+  getCover,
+  removeBookData,
+  removeFileOnly,
+  listFileIds,
+  listCoverIds,
+} from "./bookStore.js";
 import {
   loadBooks, saveBooks, getProgress, setProgress, getStatus, setStatus,
   getUpdatedAt, touchBook, getTombstones, clearTombstones, getLastOpened,
@@ -470,6 +479,13 @@ export async function syncNow({ onProgress } = {}) {
       else next.push(book);
       const arricchita = writeLocalState(book.id, state);
       touchBook(book.id, row.updated_at);
+      // L'EBOOK TOLTO ALTROVE SE NE VA ANCHE DA QUI. «Togli l'ebook, tieni
+      // la scheda» e' una scelta sul LIBRO, non su un dispositivo: se i
+      // byte restassero qui, questo tablet si terrebbe un file che la sua
+      // stessa scheda dichiara sparito — invisibile e a occupare spazio,
+      // cioe' il contrario di quel che il comando promette. La copertina e
+      // i tuoi segni non si toccano, e il file si rimette reimportandolo.
+      if (book.fileTolto) await removeFileOnly(book.id).catch(() => {});
       // La fusione ha aggiunto roba nostra: da adesso questa riga e' piu'
       // recente di quella lassu', cosi' anche se il viaggio di ritorno
       // qui sotto non riesce, la prossima sincronizzazione la manda.
@@ -637,6 +653,31 @@ export async function caricaCopertina(bookId) {
     const { error } = await sb.storage
       .from(BUCKET)
       .upload(coverPath(uid, bookId), cover, { upsert: true });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+// L'EBOOK TOLTO A MANO SE NE VA ANCHE DAL SECCHIO.
+//
+// «Togli l'ebook, tieni la scheda» vuol dire togliere il file, non
+// nasconderlo: lasciandone una copia lassu' il libro resterebbe con la
+// nuvoletta addosso e «Porta qui i tomi» si offrirebbe di riscaricarlo —
+// cioe' il tasto che disfa la scelta appena fatta — e quei megabyte
+// continuerebbero a pesare sul gigabyte del piano.
+//
+// LA COPERTINA RESTA, e non e' una dimenticanza: e' lei che tiene il libro
+// sullo scaffale, ed e' anche quella che l'altro dispositivo va a
+// riprendersi. Senza cloud non c'e' niente da fare e non e' un guasto: i
+// byte di qui se ne sono andati lo stesso, che e' il grosso del lavoro.
+export async function togliFileDalCloud(book) {
+  if (!isSyncConfigured() || !book?.id) return false;
+  try {
+    const session = await getSession();
+    if (!session) return false;
+    const sb = await getClient();
+    const { error } = await sb.storage.from(BUCKET).remove([filePath(session.user.id, book)]);
     return !error;
   } catch {
     return false;

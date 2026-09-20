@@ -201,6 +201,18 @@ export const MAPPA = [
   },
   {
     luogo: "scheda",
+    nome: "L'anno in cui l'hai finito",
+    cosa: "Sui libri vecchi, che hai letto prima di metterli qui, l'app non inventa una data: l'anno lo scrivi tu, e lasciarlo vuoto va bene lo stesso.",
+    dove: "Sotto lo stato, quando il libro è segnato «Letto».",
+  },
+  {
+    luogo: "scheda",
+    nome: "Togli l'ebook, tieni la scheda",
+    cosa: "Il file se ne va da qui e dal cloud; copertina, voto, note, evidenziazioni e il posto sullo scaffale restano. Per rileggerlo, reimporta il file: torna nella stessa scheda.",
+    dove: "In fondo alla scheda, sopra «Elimina questo libro».",
+  },
+  {
+    luogo: "scheda",
     nome: "Saga, serie e numero",
     cosa: "L'app prova a riconoscerli da sola in cinque modi, ma quel che scrivi tu comanda sempre. Da qui dipendono lo scaffale e i riassunti.",
     dove: "I campi della scheda.",

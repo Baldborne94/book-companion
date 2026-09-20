@@ -135,7 +135,7 @@ function Field({ label, value, onChange, placeholder, options, listId }) {
   );
 }
 
-export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDelete, onRead, notify }) {
+export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDelete, onTogliEbook, onRead, notify }) {
   const [title, setTitle] = useState(book.title);
   const [author, setAuthor] = useState(book.author || "");
   const [series, setSeries] = useState(book.series || "");
@@ -156,6 +156,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   const [fav, setFav] = useState(!!book.fav);
   const [status, setStatusState] = useState(getStatus(book.id));
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confermaEbook, setConfermaEbook] = useState(false);
   // l'anno di fine, come stringa perché mentre lo scrivi passa per «2», «20»,
   // «201»: sono anni che non stanno in piedi, e `segnaAnnoFine` li rifiuta
   // senza toccare quello salvato — si scrive solo quando ne esce uno vero
@@ -431,6 +432,15 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   function openBook() {
     onSaveMeta(metaEditata());
     onRead(book.id);
+  }
+
+  // i campi editati si salvano PRIMA: il giro dell'ebook riscrive il libro
+  // in biblioteca, e un titolo appena corretto e non ancora salvato
+  // finirebbe sotto quella riscrittura
+  function togliEbook() {
+    setConfermaEbook(false);
+    onSaveMeta(metaEditata());
+    onTogliEbook(book.id);
   }
 
   return (
@@ -901,24 +911,45 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
         )}
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <button
-            onClick={openBook}
-            style={{
-              flex: 1,
-              minWidth: 170,
-              padding: "12px 20px",
-              borderRadius: R.piccolo,
-              background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
-              color: C.onAccent,
-              fontWeight: 700,
-              fontSize: F.corpo,
-              fontFamily: FONT_TITLE,
-              letterSpacing: "0.02em",
-              boxShadow: `0 0 24px ${C.accent}33`,
-            }}
-          >
-            📖 Apri il libro
-          </button>
+          {/* SENZA EBOOK IL TASTO NON C'È, e al suo posto c'è la ragione.
+              Lasciarlo sarebbe un tasto che si apre su un guasto; toglierlo
+              e basta lascerebbe a chiedersi dove è finito. */}
+          {book.fileTolto ? (
+            <span
+              style={{
+                flex: 1,
+                minWidth: 170,
+                padding: "10px 14px",
+                borderRadius: R.piccolo,
+                border: `1px dashed ${C.border}`,
+                color: C.muted,
+                fontSize: F.piccolo,
+                lineHeight: 1.45,
+              }}
+            >
+              📗 Di questo libro tieni la scheda, non l'ebook. Per rileggerlo, reimportane il file
+              dalla Libreria: tornerà in questa stessa scheda, coi tuoi segni al loro posto.
+            </span>
+          ) : (
+            <button
+              onClick={openBook}
+              style={{
+                flex: 1,
+                minWidth: 170,
+                padding: "12px 20px",
+                borderRadius: R.piccolo,
+                background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+                color: C.onAccent,
+                fontWeight: 700,
+                fontSize: F.corpo,
+                fontFamily: FONT_TITLE,
+                letterSpacing: "0.02em",
+                boxShadow: `0 0 24px ${C.accent}33`,
+              }}
+            >
+              📖 Apri il libro
+            </button>
+          )}
           <button
             onClick={commitAndClose}
             style={{
@@ -933,7 +964,20 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
           </button>
         </div>
 
-        <div style={{ marginTop: 14, textAlign: "center" }}>
+        <div style={{ marginTop: 14, textAlign: "center", display: "grid", gap: 8 }}>
+          {/* TOGLIERE L'EBOOK NON È ELIMINARE IL LIBRO, e le due cose stanno
+              vicine perché è lì che uno le cerca — ma dicono per intero cosa
+              se ne va e cosa resta, che è l'unica differenza che conta. */}
+          {!book.fileTolto && onTogliEbook && (
+            <button
+              onClick={() => (confermaEbook ? togliEbook() : setConfermaEbook(true))}
+              style={{ fontSize: F.piccolo, color: confermaEbook ? C.accent : C.muted, textDecoration: "underline" }}
+            >
+              {confermaEbook
+                ? "Confermi? L'ebook sparisce da qui e dal cloud, la scheda e la copertina restano — tocca di nuovo"
+                : "Togli l'ebook, tieni la scheda"}
+            </button>
+          )}
           <button
             onClick={() => (confirmDelete ? onDelete(book.id) : setConfirmDelete(true))}
             style={{ fontSize: F.piccolo, color: confirmDelete ? C.red : C.muted, textDecoration: "underline" }}
