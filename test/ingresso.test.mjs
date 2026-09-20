@@ -195,36 +195,42 @@ export default async function (t) {
   {
     // E LO STESSO LIBRO NON SI PROPONE DUE VOLTE (dalla fotografia: «Fall
     // of Light» in fila due volte, una dal ciclo dei Kharkanas e una da un
-    // volume del Malazan rimasto senza ciclo). Un volume senza ciclo cerca
-    // il seguito fra i senza-ciclo, non in tutta la saga.
-    //
-    // I NUMERI DEL CICLO STANNO SOPRA quelli del senza-ciclo, apposta: con
-    // il ciclo sotto, il senza-ciclo non troverebbe niente «dopo di sé» in
-    // tutta la saga e la mutazione che torna a pescarci sopravvive (provata).
+    // volume del Malazan rimasto senza ciclo). Coi numeri UNICI la saga è un
+    // filo solo, ciclo o no: il prossimo è quello dopo l'ultimo letto e
+    // basta — qui k1 (7) è il più avanti, quindi k2, una volta.
     const C = (id, ciclo, n) => ({ ...L(id, "Malazan", n), series: ciclo });
     const malazan = [C("k1", "Kharkanas", 7), C("k2", "Kharkanas", 8), C("x1", "", 5), C("x2", "", 6)];
     const stati = { k1: "read", x1: "read" };
     const p = prossimiPassi(malazan, { statusOf: (id) => stati[id] || "unread" });
-    t.eq("ogni gruppo propone il suo, e un libro compare una volta sola", ids(p), "k2+x2");
-    const soloK = prossimiPassi([C("k1", "Kharkanas", 7), C("k2", "Kharkanas", 8), C("x1", "", 5)], { statusOf: (id) => stati[id] || "unread" });
-    t.eq("il senza-ciclo non pesca nel ciclo altrui", ids(soloK), "k2");
+    t.eq("coi numeri unici la saga è un filo solo, e un libro compare una volta", ids(p), "k2");
+    t.eq("…col nome della saga, che è il numero sul dorso", p[0].nome, "Malazan");
   }
+
+  // ---- IL MONDO DISCO È UNA FILA SOLA, E I CICLI STANNO DENTRO ------------
   {
-    // L'ABBANDONATO NON APRE NIENTE: quella storia l'hai lasciata apposta,
-    // e proporne il seguito è il difetto per cui quello stato esiste.
-    //
-    // E IL CASO CHE CONTA È L'ABBANDONATO CON DEL PROGRESSO ADDOSSO, che è
-    // come succede davvero: si molla un romanzo a metà, non a pagina zero.
-    // Con progresso zero lo tiene fuori già «non l'hai cominciato», e la
-    // guardia sullo stato non viene nemmeno raggiunta (mutazione provata).
-    const soli = [L("s1", "Ombre", 1), L("s2", "Ombre", 2)];
-    const mollato = (id) => (id === "s1" ? "abandoned" : "unread");
-    const aMeta = (id) => (id === "s1" ? 0.46 : 0);
-    t.eq(
-      "una saga solo abbandonata non propone niente",
-      prossimiPassi(soli, { statusOf: mollato, progressoOf: aMeta }).length,
-      0
-    );
+    // Chiesto dal lettore con quattro Pratchett in fila: «per la saga di
+    // Discworld consigliami solo il volume successivo all'ultimo già letto
+    // nell'ordine segnato, così come stai facendo per gli altri». I numeri
+    // del Disco vanno da 1 a 41 senza doppioni, e gli otto cicli sono un
+    // raggruppamento DENTRO quella fila: letti i primi dieci, il prossimo è
+    // l'undicesimo — la regola del ciclo ne proponeva quattro, uno per ciclo
+    // cominciato, «Small Gods n° 13» e «Men at Arms n° 15» compresi.
+    const D = (id, n, ciclo) => ({ ...L(id, "Discworld", n), series: ciclo });
+    const disco = [
+      D("cm", 1, "Rincewind"), D("lf", 2, "Rincewind"), D("er", 3, "The Witches"), D("mo", 4, "Death"),
+      D("so", 5, "Rincewind"), D("ws", 6, "The Witches"), D("py", 7, "Ancient Civilizations"),
+      D("gg", 8, "City Watch"), D("ec", 9, "Rincewind"), D("mp", 10, "Industrial Revolution"),
+      D("rm", 11, "Death"), D("wa", 12, "The Witches"), D("sg", 13, "Ancient Civilizations"),
+      D("ll", 14, "The Witches"), D("ma", 15, "City Watch"),
+    ];
+    const primiDieci = new Set(["cm", "lf", "er", "mo", "so", "ws", "py", "gg", "ec", "mp"]);
+    const p = prossimiPassi(disco, { statusOf: (id) => (primiDieci.has(id) ? "read" : "unread") });
+    t.eq("letti i primi dieci, il prossimo è l'undicesimo e basta", ids(p), "rm");
+    t.eq("…e si chiama col numero della saga", `${p[0].nome} n° ${p[0].libro.sagaOrder}`, "Discworld n° 11");
+    // e non conta che l'undicesimo sia di un ciclo che non hai «cominciato
+    // per ultimo»: la fila è una, il ciclo non c'entra
+    const solo = new Set(["gg"]);
+    t.eq("letto solo Guards! Guards!, il prossimo è Eric", ids(prossimiPassi(disco, { statusOf: (id) => (solo.has(id) ? "read" : "unread") })), "ec");
   }
 
   // ---- IL CICLO, NON LA SAGA ---------------------------------------------
