@@ -32,6 +32,8 @@ const riga = () => ({
   // porta è un gradino che quel caso non prova, e il `<=` del ciclo non
   // difende più
   saga_tolta: false,
+  // e l'ebook tolto a mano, per la stessa ragione
+  file_tolto: false,
 });
 
 // un database che rifiuta finché non gli si tolgono certe colonne, e che si
@@ -268,7 +270,7 @@ export default async function (t) {
       // sarebbe più niente da scendere
       const collana = decimale(r, "saga_order");
       if (collana) return collana;
-      for (const v of ["started_at", "genre", "impronta", "fav", "saga_tolta"]) {
+      for (const v of ["started_at", "genre", "impronta", "fav", "saga_tolta", "file_tolto"]) {
         if (v in r) return { error: { message: `Could not find the '${v}' column of 'books'` } };
       }
       return decimale(r, "rating") || { error: null };

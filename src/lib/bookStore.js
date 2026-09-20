@@ -73,6 +73,21 @@ export async function putAuxMolti(voci) {
   });
 }
 
+// SOLO I BYTE DEL LIBRO, E NIENT'ALTRO.
+//
+// «Togli l'ebook, tieni la scheda»: la copertina resta (e' lei che tiene
+// il libro sullo scaffale), e restano le evidenziazioni, i segnalibri, le
+// schede dell'Oracolo e il punto di lettura — sono tuoi, e il giardino
+// delle citazioni vive di quelli. Se ne vanno solo le due cose CALCOLATE
+// su questi byte: le posizioni cachate di epub.js, che senza il file non
+// valgono piu' niente, e il verdetto sulla spezzatura, che parla di un
+// file che non c'e'.
+export async function removeFileOnly(id) {
+  await withStore("files", "readwrite", (s) => s.delete(id));
+  await withStore("aux", "readwrite", (s) => s.delete(`loc_${id}`));
+  await withStore("aux", "readwrite", (s) => s.delete(`salute_${id}`));
+}
+
 export async function removeBookData(id) {
   await withStore("files", "readwrite", (s) => s.delete(id));
   await withStore("covers", "readwrite", (s) => s.delete(id));

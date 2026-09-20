@@ -20,6 +20,7 @@ const EMPTY_ROW = {
   impronta: null,
   fav: false,
   saga_tolta: false,
+  file_tolto: false,
   status: "unread",
   started_at: 0,
   finished_at: 0,
@@ -72,6 +73,12 @@ export const rowFromLocal = (book, state, updatedAt) => ({
   // che ferma le cinque strade della saga. `false` come il cuore, per la
   // stessa ragione: deve poter spegnere un `true` sceso da lassu'.
   saga_tolta: !!book.sagaTolta,
+  // l'ebook tolto a mano: e' una scelta del lettore («tengo la scheda, il
+  // file no»), quindi deve viaggiare — se no l'altro dispositivo
+  // rispedirebbe i byte nel secchio al primo giro e la nuvoletta tornerebbe
+  // a promettere uno scaricamento che il lettore ha appena rifiutato.
+  // `false` come il cuore: deve poter spegnere un `true` sceso da lassu'.
+  file_tolto: !!book.fileTolto,
   status: state.status || "unread",
   started_at: state.started || 0,
   finished_at: state.finished || 0,
@@ -101,6 +108,16 @@ export const localFromRow = (row) => ({
     ...(row.impronta ? { impronta: row.impronta } : {}),
     ...(row.fav ? { fav: true } : {}),
     ...(row.saga_tolta ? { sagaTolta: true } : {}),
+    // QUESTO SCENDE SEMPRE, anche da spento, e non e' una svista: un libro
+    // riceve i byte scendendo le scale nell'altro verso (il file si
+    // reimporta), e allora il segno DEVE potersi spegnere — la riga di
+    // sotto fonde con `{...vecchio, ...nuovo}`, quindi una chiave assente
+    // lascerebbe in piedi il «senza ebook» di prima e quel libro resterebbe
+    // chiuso per sempre su questo dispositivo. Prezzo dichiarato: su uno
+    // schema non migrato la colonna non c'e', quindi arriva `false` e il
+    // segno si spegne — e' il lato giusto dove sbagliare, perche' fa
+    // ricomparire un libro invece di nasconderlo.
+    fileTolto: !!row.file_tolto,
   },
   state: {
     status: row.status || "unread",
@@ -167,6 +184,11 @@ export const DEGRADE = [
     test: (m) => /saga_tolta/i.test(m),
     label: "saga tolta a mano",
     apply: (rows) => rows.map(({ saga_tolta, ...r }) => r),
+  },
+  {
+    test: (m) => /file_tolto/i.test(m),
+    label: "ebook tolto a mano",
+    apply: (rows) => rows.map(({ file_tolto, ...r }) => r),
   },
   {
     test: (m) => /genre|saga/i.test(m),
@@ -478,10 +500,20 @@ export function fraseTroppoGrandi(libri, misura) {
 // del secchio c'e', il registro non aggiunge niente e puo' solo mentire:
 // e' stato tolto, qui e nelle copertine. Lo dice il test della convergenza,
 // che prima cascava.
+// E L'EBOOK TOLTO A MANO NON RISALE, ED E' L'ALTRA META' DI QUEL COMANDO.
+//
+// «Togli l'ebook, tieni la scheda» cancella i byte di qui e la copia nel
+// secchio. Ma il segno viaggia, e sull'ALTRO dispositivo quei byte possono
+// esserci ancora: senza questa riga, il primo giro li' vedrebbe un libro
+// con i byte in casa e senza copia lassu' — cioe' esattamente la forma di
+// un file scoperto — e lo rispedirebbe nel secchio. Il lettore si
+// ritroverebbe la nuvoletta addosso al libro che aveva appena svuotato, e
+// non saprebbe nemmeno da dove viene.
 export function daCaricare(libri, { qui, lassu, rimandi, inUscita } = {}) {
   if (!lassu) return [];
   const dentro = (s, id) => !!s && s.has(id);
   return (libri || []).filter((b) => {
+    if (b?.fileTolto) return false;
     if (!b?.id || !dentro(qui, b.id) || dentro(inUscita, b.id)) return false;
     if (dentro(rimandi, b.id)) return true;
     return !lassu.has(b.id);
@@ -502,9 +534,15 @@ export function daCaricare(libri, { qui, lassu, rimandi, inUscita } = {}) {
 //
 // Senza l'elenco del secchio si TACE invece di accusare: non sapere non e'
 // un allarme, come per la persistenza e per lo spazio.
+// E L'EBOOK TOLTO A MANO NON E' UN TOMO PERDUTO. E' la stessa lezione
+// della saga tolta: un libro senza byte perche' il lettore li ha buttati e
+// uno senza byte perche' sono andati persi sono lo STESSO record, e le due
+// cose chiedono l'opposto — uno va ricaricato dal file, l'altro sta come
+// vuole lui. Senza questa riga l'app gli griderebbe dietro per sempre di
+// rimettere il file che ha appena deciso di togliere.
 export function senzaCopia(soloNelCloud, idLassu) {
   if (!idLassu) return [];
-  return (soloNelCloud || []).filter((b) => b?.id && !idLassu.has(b.id));
+  return (soloNelCloud || []).filter((b) => b?.id && !b.fileTolto && !idLassu.has(b.id));
 }
 
 // E QUELLI CHE UN TASTO PUO' DAVVERO PORTARE GIU' SONO GLI ALTRI.
@@ -521,8 +559,13 @@ export function senzaCopia(soloNelCloud, idLassu) {
 // di `senzaCopia`, che senza elenco non accusa nessuno: non sapere non e'
 // un allarme, ma non e' nemmeno una ragione per togliere il tasto — li'
 // l'unico modo di scoprirlo e' provare.
+//
+// E QUI l'ebook tolto a mano si toglie da tutt'e due i rami, anche da
+// quello senza elenco: «Porta qui N tomi» non deve mai contare un libro
+// che il lettore ha svuotato apposta — sarebbe il tasto che disfa la sua
+// scelta, e per giunta su un file che nel secchio non c'e' piu'.
 export function daPortare(soloNelCloud, idLassu) {
-  const l = soloNelCloud || [];
+  const l = (soloNelCloud || []).filter((b) => !b?.fileTolto);
   return idLassu ? l.filter((b) => b?.id && idLassu.has(b.id)) : l;
 }
 

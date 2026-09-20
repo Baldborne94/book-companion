@@ -119,6 +119,26 @@ export default async function (t) {
     t.eq("e al secondo giro non si rispedisce", m.mosse, 0);
   }
 
+  // ---- l'ebook tolto a mano: il giro NON lo rimette su ---------------------
+  {
+    // L'ALTRO DISPOSITIVO È IL CASO CHE CONTA: lì i byte ci sono ancora,
+    // lassù la copia non c'è più (l'ha cancellata chi ha dato il comando),
+    // e senza il segno quel libro ha la forma esatta di un file scoperto.
+    // Il giro lo rispedirebbe nel secchio, e il lettore si ritroverebbe la
+    // nuvoletta addosso al libro che aveva appena svuotato — con dentro i
+    // megabyte che voleva togliersi.
+    const m = mondo({
+      libri: [{ id: "L0", fileTolto: true }, { id: "L1" }],
+      casa: ["L0", "L1"],
+      secchio: [],
+    });
+    giro(m);
+    t.c("l'ebook tolto a mano non risale", !m.secchio.has("L0"));
+    t.c("e il libro accanto sale come sempre", m.secchio.has("L1"));
+    giro(m);
+    t.eq("e il giro resta fermo, senza pendoli", m.mosse, 0);
+  }
+
   // ---- e non si muove quel che non si può muovere --------------------------
   {
     // un tomo senza byte qui e senza copia lassù: non c'è niente da fare, e

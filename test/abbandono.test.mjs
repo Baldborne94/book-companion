@@ -53,12 +53,23 @@ export default async function (t) {
   t.eq("mollandolo la fine se ne va", getFinished("b"), 0);
   t.c("ma l'inizio no", getStarted("b") > 0);
 
-  // abbandonare un libro mai aperto: l'inizio si segna adesso, perché
-  // mollarlo è comunque un momento della tua lettura
+  // ABBANDONARE UN LIBRO MAI APERTO NON SEGNA PIÙ L'INIZIO, e questo
+  // controllo è girato di proposito: diceva «l'inizio si segna adesso,
+  // perché mollarlo è comunque un momento della tua lettura», che suona
+  // bene e non è vero — quel libro non l'hai cominciato oggi, e nel diario
+  // quella data non si vede nemmeno (gli abbandonati non ci entrano).
+  //
+  // A farla togliere è stata la porta di servizio che apriva: con un inizio
+  // finto addosso, lo stesso libro dichiarato «letto» un minuto dopo si
+  // prendeva la data di OGGI — `lettoQui` trovava quella data e diceva di
+  // sì — cioè esattamente il difetto dei libri vecchi finiti nell'anno in
+  // corso (`letto-quando.test.mjs`).
   pulisci();
   setStatus("c", "abandoned");
-  t.c("un abbandono a freddo segna comunque l'inizio", getStarted("c") > 0);
+  t.eq("un abbandono a freddo non inventa un inizio", getStarted("c"), 0);
   t.eq("e nessuna fine", getFinished("c"), 0);
+  setStatus("c", "read");
+  t.eq("e dichiararlo letto non gli dà l'anno in corso", getFinished("c"), 0);
 
   // ---- ripensarci --------------------------------------------------------
   pulisci();

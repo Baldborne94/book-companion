@@ -15,6 +15,7 @@
 --   alter table public.prefs add column if not exists glossari jsonb not null default '{}'::jsonb;
 --   alter table public.books alter column saga_order type real;  -- numero di collana coi decimali (2.5 = la novella)
 --   alter table public.books add column if not exists saga_tolta boolean not null default false;  -- la saga tolta a mano
+--   alter table public.books add column if not exists file_tolto boolean not null default false;  -- l'ebook tolto a mano
 -- Senza, l'app sincronizza comunque tutto il resto: rinuncia solo al
 -- campo mancante e lo tiene in locale. Dopo la migrazione i libri gia'
 -- salvati si ricaricano da soli alla prima sincronizzazione.
@@ -55,7 +56,12 @@ create table if not exists public.books (
   -- tolta e uno senza saga perche' nessuno gliel'ha mai data sono lo stesso
   -- record, e le cinque strade della saga guardano proprio quello. Senza
   -- questa colonna l'altro dispositivo la rimette al primo giro.
-  saga_tolta boolean not null default false
+  saga_tolta boolean not null default false,
+  -- L'EBOOK TOLTO A MANO: «tengo la scheda, il file no». Senza questa
+  -- colonna l'altro dispositivo rispedirebbe i byte nel secchio al primo
+  -- giro, e la nuvoletta tornerebbe a offrire uno scaricamento che il
+  -- lettore aveva appena rifiutato.
+  file_tolto boolean not null default false
 );
 
 -- per i database gia' creati: `create table if not exists` non aggiunge le
@@ -63,6 +69,7 @@ create table if not exists public.books (
 alter table public.books add column if not exists impronta text;
 alter table public.books add column if not exists fav boolean not null default false;
 alter table public.books add column if not exists saga_tolta boolean not null default false;
+alter table public.books add column if not exists file_tolto boolean not null default false;
 -- e il numero di collana regge i decimali (su una colonna gia' `real` non fa niente)
 alter table public.books alter column saga_order type real;
 

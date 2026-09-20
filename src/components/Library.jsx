@@ -205,7 +205,28 @@ function Shelf({ books, onOpenBook, localIds, showOrder, coverV = 0 }) {
                   {b.sagaOrder}
                 </span>
               )}
-              {localIds && !localIds.has(b.id) && (
+              {/* L'EBOOK TOLTO A MANO NON È «NEL CLOUD»: la nuvoletta
+                  prometterebbe uno scaricamento che il lettore ha appena
+                  rifiutato. Porta un segno suo, perché da lontano si veda
+                  che quel libro c'è ma non si apre. */}
+              {b.fileTolto ? (
+                <span
+                  title="Tieni la scheda, non l'ebook"
+                  style={{
+                    position: "absolute",
+                    bottom: 6,
+                    left: 6,
+                    padding: "1px 6px",
+                    borderRadius: R.piccolo,
+                    fontSize: F.minuscolo,
+                    background: `${C.bg}cc`,
+                    border: `1px solid ${C.border}`,
+                    color: C.muted,
+                  }}
+                >
+                  📗
+                </span>
+              ) : localIds && !localIds.has(b.id) && (
                 <span
                   title="Nel cloud — si scarica quando lo apri"
                   style={{
@@ -1212,8 +1233,20 @@ export default function Library({
         touchBook(r.id);
         daRicaricare(r.id);
       }
-      const base = conImpronta.size
-        ? books.map((b) => (conImpronta.has(b.id) ? { ...b, impronta: conImpronta.get(b.id) } : b))
+      // e il segno «tieni la scheda, non l'ebook» si spegne: il file è
+      // appena tornato dentro quella scheda, quindi il libro si riapre —
+      // `false` scritto e non tolto, o lassù resterebbe acceso per sempre
+      const tornati = new Set(ritrovati.map((r) => r.id));
+      const base = tornati.size
+        ? books.map((b) =>
+            tornati.has(b.id)
+              ? {
+                  ...b,
+                  ...(conImpronta.has(b.id) ? { impronta: conImpronta.get(b.id) } : {}),
+                  fileTolto: false,
+                }
+              : b
+          )
         : books;
       if (esito.added.length || ritrovati.length) {
         updateBooks([...base, ...esito.added]);

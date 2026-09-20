@@ -26,7 +26,7 @@ import SezioneDizionario from "./components/SezioneDizionario.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
 import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook, getProgress } from "./lib/library.js";
-import { removeBookData, requestPersistence } from "./lib/bookStore.js";
+import { removeBookData, removeFileOnly, requestPersistence } from "./lib/bookStore.js";
 import { cercaNuovaVersione } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
 import Home from "./components/Home.jsx";
@@ -44,7 +44,7 @@ import { daAvvisare } from "./lib/oracle.js";
 import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
-import { getSession, syncNow, localFileIds, onAuthChange } from "./lib/sync.js";
+import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud } from "./lib/sync.js";
 import { spiegaSync } from "./lib/syncCore.js";
 import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
@@ -924,9 +924,44 @@ export default function App() {
     runSync.current(true);
   }
 
+  // TOGLIERE L'EBOOK NON È ELIMINARE IL LIBRO (chiesto dal lettore: «se
+  // decidessi di togliere l'ebook vorrei che comunque rimanesse la
+  // copertina per tenerlo nella libreria, semplicemente non potrei aprirlo
+  // per leggerlo»). Se ne vanno i byte — di qui e dal secchio — e restano
+  // la scheda, la copertina, il voto, le note, le evidenziazioni e il punto
+  // di lettura: un libro letto resta nella tua biblioteca anche quando il
+  // file non ti serve più.
+  //
+  // IL SEGNO SI SCRIVE, o non lo sa nessuno: un libro senza byte perché li
+  // hai buttati e uno senza byte perché sono andati persi sono lo stesso
+  // record, e l'app griderebbe all'infinito di ricaricare il file. È la
+  // lezione della saga tolta a mano, sul campo vuoto che non si vede.
+  async function handleTogliEbook(id) {
+    const b = books.find((x) => x.id === id);
+    if (!b) return;
+    touchBook(id);
+    updateBooks(books.map((x) => (x.id === id ? { ...x, fileTolto: true } : x)));
+    try {
+      await removeFileOnly(id);
+    } catch {
+      /* i byte restano orfani: la scheda dice già che l'ebook non c'è */
+    }
+    await togliFileDalCloud(b).catch(() => {});
+    notify(`«${b.title}» resta in biblioteca, senza ebook 📗`);
+    runSync.current(true);
+  }
+
   function handleRead(id, startCfi = null) {
     const b = books.find((x) => x.id === id);
     if (!b) return;
+    // un libro svuotato apposta non si apre e non si va a cercare nel
+    // cloud: `ensureLocalFile` bussherebbe a vuoto e il reader finirebbe
+    // sulla schermata del guasto, che qui sarebbe una bugia
+    if (b.fileTolto) {
+      notify("Di questo libro tieni la scheda, non l'ebook 📗");
+      setOpenId(id);
+      return;
+    }
     setLastOpened(id);
     if (getStatus(id) === "unread") setStatus(id, "reading");
     setOpenId(null);
@@ -1176,6 +1211,7 @@ export default function App() {
           onClose={() => setOpenId(null)}
           onSaveMeta={handleSaveMeta}
           onDelete={handleDelete}
+          onTogliEbook={handleTogliEbook}
           onRead={handleRead}
           notify={notify}
         />
