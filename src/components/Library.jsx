@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, scaffaleVuoto } from "../lib/library.js";
 import { disponi, aEtichette, criterioVoto, criterioStato } from "../lib/ripiani.js";
@@ -20,6 +20,8 @@ import { stretto } from "../lib/spazio.js";
 import { BarraCloud } from "./BarraCloud.jsx";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
 import { famigliaDi } from "../data/generi.js";
+import { riconosci } from "../lib/sagaBooks.js";
+import { camminoDi } from "../lib/cammino.js";
 import BookCover from "./BookCover.jsx";
 import Disposizione from "./Disposizione.jsx";
 import EmptyState from "./EmptyState.jsx";
@@ -289,12 +291,48 @@ function Shelf({ books, onOpenBook, localIds, showOrder, coverV = 0 }) {
   );
 }
 
+// LA PORTA DEL CAMMINO, sull'intestazione del ripiano.
+//
+// Sta lì perché è lì che guardi quella saga, e compare solo dove c'è una
+// guida da mostrare: un ripiano di romanzi che nessuna tavola conosce non
+// ha un percorso, e un tasto che apre una pagina vuota è peggio di un
+// tasto che manca.
+//
+// E il tasto NON guarda il nome della saga sul ripiano, guarda i titoli:
+// sul tablet del lettore i volumi dell'Eresia stanno sotto una saga
+// scritta a mano («Warhammer 40K») che nessuna tavola conosce, e un tasto
+// legato al nome non sarebbe mai comparso proprio dov'è nato il bisogno.
+function TastoCammino({ libri, riconosciuti, onCammino }) {
+  const cammino = useMemo(
+    () => (onCammino && riconosciuti ? camminoDi(libri, { riconosce: (b) => riconosciuti.get(b.id) }) : null),
+    [libri, riconosciuti, onCammino]
+  );
+  if (!cammino?.tue) return null;
+  return (
+    <button
+      onClick={() => onCammino(cammino)}
+      style={{
+        fontSize: F.piccolo,
+        fontFamily: "inherit",
+        fontWeight: 400,
+        color: C.muted,
+        padding: "2px 8px",
+        minHeight: 32,
+        borderRadius: R.tondo,
+        border: `1px solid ${C.border}`,
+      }}
+    >
+      📜 Il cammino
+    </button>
+  );
+}
+
 // L'intestazione di un ripiano, una sola per tutti i raggruppamenti: due
 // intestazioni scritte a mano prenderebbero strade diverse alla prima
 // modifica, ed è già successo. `sotto` è l'autore di una saga — e c'è solo
 // quando l'autore è uno: le saghe scritte da venti mani, con un nome solo
 // sotto, racconterebbero una bugia.
-function Ripiano({ nome, sotto, quanti, spento, children }) {
+function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   return (
     <section style={{ marginBottom: 26 }}>
       <h3
@@ -319,6 +357,7 @@ function Ripiano({ nome, sotto, quanti, spento, children }) {
           </span>
         )}
         <span style={{ flex: 1 }} />
+        {azione}
         <span style={{ fontSize: F.piccolo, color: C.muted, fontFamily: "inherit" }}>{quanti}</span>
       </h3>
       {children}
@@ -326,7 +365,7 @@ function Ripiano({ nome, sotto, quanti, spento, children }) {
   );
 }
 
-function Grouped({ books, group, sort, onOpenBook, localIds, coverV = 0 }) {
+function Grouped({ books, group, sort, onOpenBook, localIds, coverV = 0, riconosciuti, onCammino }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -344,6 +383,7 @@ function Grouped({ books, group, sort, onOpenBook, localIds, coverV = 0 }) {
         sotto={r.autore}
         quanti={r.libri.length}
         spento={r.tipo === "soli"}
+        azione={<TastoCammino libri={r.libri} riconosciuti={riconosciuti} onCammino={onCammino} />}
       >
         {r.cicli ? (
           // I CICLI DENTRO LA SAGA (chiesto dal lettore): un sotto-ripiano
@@ -417,6 +457,7 @@ export default function Library({
   collegato,
   onFileLocali,
   aggiorna,
+  onCammino,
 }) {
   const [query, setQuery] = useState("");
   // il controllo aggiornamenti col dito: `agg` e' l'esito in corso, e le
@@ -1361,6 +1402,14 @@ export default function Library({
     }
   }
 
+  // IL RICONOSCIMENTO SI FA UNA VOLTA SOLA, qui: `riconosci` scorre tutto
+  // l'indice delle tavole per ogni libro, e rifarlo dentro ogni ripiano a
+  // ogni render sarebbe lo stesso giro moltiplicato per venti.
+  const riconosciuti = useMemo(
+    () => new Map(books.map((b) => [b.id, riconosci({ title: b.title, author: b.author })])),
+    [books]
+  );
+
   const visible = books
     .filter((b) => combacia(b, query))
     .filter((b) => filter === "all" || getStatus(b.id) === filter)
@@ -1632,7 +1681,16 @@ export default function Library({
           );
         })()
       ) : (
-        <Grouped books={visible} group={group} sort={sort} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} />
+        <Grouped
+          books={visible}
+          group={group}
+          sort={sort}
+          onOpenBook={onOpenBook}
+          localIds={localIds}
+          coverV={coverV}
+          riconosciuti={riconosciuti}
+          onCammino={onCammino}
+        />
       )}
 
       {(books.length > 0 || melodie > 0) && (

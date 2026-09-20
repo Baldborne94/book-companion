@@ -251,6 +251,12 @@ export const MAPPA = [
   },
   {
     luogo: "libreria",
+    nome: "Il cammino di una saga",
+    cosa: "La guida di lettura per intero — anche i volumi che non hai — con dentro i tuoi, in ordine e divisa per parti. Per l'Eresia di Horus è il percorso CD8D: settantuno tappe, antologie e romanzi 40K al loro posto.",
+    dove: "Il tasto 📜 sull'intestazione del ripiano, dove la saga è una di quelle riconosciute.",
+  },
+  {
+    luogo: "libreria",
     nome: "Come è disposto lo scaffale",
     cosa: "Raggruppa per saga e autore, solo saga, solo autore, genere, voto o stato; e l'ordine dentro e fra i ripiani.",
     dove: "Il tasto ⇅ in fondo alla riga dei filtri.",

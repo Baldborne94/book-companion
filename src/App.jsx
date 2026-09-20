@@ -35,6 +35,7 @@ import BookSheet from "./components/BookSheet.jsx";
 import QuoteGarden from "./components/QuoteGarden.jsx";
 import ReadingDiary from "./components/ReadingDiary.jsx";
 import Mappa from "./components/Mappa.jsx";
+import Cammino from "./components/Cammino.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
 import MusicRoom from "./components/MusicRoom.jsx";
 import SyncPanel from "./components/SyncPanel.jsx";
@@ -697,6 +698,8 @@ export default function App() {
   const [gardenOpen, setGardenOpen] = useState(false);
   const [diaryOpen, setDiaryOpen] = useState(false);
   const [mappaOpen, setMappaOpen] = useState(false);
+  // il cammino di una saga: la guida intera con dentro i tuoi volumi
+  const [cammino, setCammino] = useState(null);
   const [toast, setToast] = useState(null);
   const [music, setMusic] = useState({ current: null, playing: false, timerEnd: null });
   const [syncOpen, setSyncOpen] = useState(false);
@@ -1009,6 +1012,10 @@ export default function App() {
   const chiudeIlLettore = useRef(null);
   const livelli = [];
   if (section !== "home") livelli.push(() => navigate("home"));
+  // prima della scheda, che il cammino sa aprire: l'ultimo livello si
+  // chiude per primo, e con la scheda aperta sopra dev'essere lei ad
+  // andarsene col primo indietro
+  if (cammino) livelli.push(() => setCammino(null));
   if (openId) livelli.push(() => setOpenId(null));
   if (gardenOpen) livelli.push(() => setGardenOpen(false));
   if (diaryOpen) livelli.push(() => setDiaryOpen(false));
@@ -1190,6 +1197,7 @@ export default function App() {
             // i byte scesi in casa non sono roba da sincronizzare: basta
             // ricontare chi c'e', e le nuvolette si spengono subito
             onFileLocali={async () => setLocalIds(await localFileIds())}
+            onCammino={setCammino}
             // il controllo aggiornamenti col dito: qui siamo in Libreria,
             // nessun libro aperto, quindi installare subito e' lecito —
             // e' l'unico posto dove il reload non costa niente
@@ -1229,6 +1237,7 @@ export default function App() {
         />
       )}
       {mappaOpen && <Mappa onClose={() => setMappaOpen(false)} />}
+      {cammino && <Cammino cammino={cammino} onClose={() => setCammino(null)} onOpenBook={setOpenId} />}
       {syncOpen && (
         <SyncPanel
           status={sync}
