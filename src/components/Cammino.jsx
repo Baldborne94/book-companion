@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getStatus } from "../lib/library.js";
-import { perParte } from "../lib/cammino.js";
+import { perParte, prossimoPasso, lettiDelCammino } from "../lib/cammino.js";
 import { numerazioneGuida, sagaComune, campiDaScrivere } from "../lib/numeraCammino.js";
 
 // I FILTRI SONO TRE, e il terzo è quello per cui la pagina esiste: su una
@@ -14,6 +14,105 @@ const FILTRI = [
 ];
 
 const STATO = { read: "letto", reading: "in lettura", abandoned: "abbandonato" };
+
+// IL TUO PROSSIMO PASSO, in cima e prima di tutto il resto.
+//
+// La pagina diceva soltanto «Hai 10 delle 71 tappe» — un conto di
+// POSSESSO — e su settantuno righe «dove sono arrivato, cosa apro adesso»
+// restava da scorrere a occhio.
+//
+// Le righe sono due perché le domande sono due: il passo della GUIDA (che
+// può essere un libro che non hai, ed è metà del valore di una guida:
+// «vallo a prendere») e il primo che puoi APRIRE davvero. Quando
+// coincidono la seconda non si scrive, o sarebbe lo stesso titolo due
+// volte a mezzo centimetro di distanza.
+function Passo({ passo, onOpenBook }) {
+  const { tappa, inCorso, apribile, prologo } = passo;
+  const { voce, libro } = tappa;
+  const riga = [voce.a, voce.nota].filter(Boolean).join(" · ");
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        padding: "10px 12px",
+        borderRadius: R.piccolo,
+        border: `1px solid ${C.accent}44`,
+        background: `${C.accent}0f`,
+      }}
+    >
+      <div style={{ fontFamily: FONT_TITLE, fontSize: F.minuscolo, color: C.accent, letterSpacing: 1 }}>
+        {inCorso ? "LO STAI LEGGENDO" : "IL TUO PROSSIMO PASSO"}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.rilievo, color: C.text }}>
+            {voce.o ? `n° ${voce.o} · ` : ""}
+            {voce.t}
+          </span>
+          <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginTop: 2 }}>
+            {[riga, libro ? null : "non ce l'hai"].filter(Boolean).join(" · ")}
+          </span>
+        </span>
+        {libro && (
+          <button
+            onClick={() => onOpenBook(libro.id)}
+            style={{
+              flexShrink: 0,
+              minHeight: 44,
+              padding: "0 14px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.accent}66`,
+              background: `${C.accent}1a`,
+              color: C.accent,
+              fontSize: F.piccolo,
+            }}
+          >
+            Aprilo
+          </button>
+        )}
+      </div>
+      {apribile && (
+        <button
+          onClick={() => onOpenBook(apribile.libro.id)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            width: "100%",
+            minHeight: 44,
+            marginTop: 4,
+            textAlign: "left",
+            fontSize: F.piccolo,
+            color: C.muted,
+          }}
+        >
+          <span style={{ color: C.accent }}>↳</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            {/* un libro che hai gia' in mano non e' «il primo che puoi
+                aprire»: offerto cosi' si legge come una novita', mentre e'
+                quello che stai leggendo da ieri sera */}
+            {/* «INTANTO» fa un lavoro che «il primo che puoi aprire» non
+                faceva: dice che la riga sopra è un buco da colmare e questa
+                è la sera di stasera. Senza, la riga sopra — ferma su un
+                volume che non hai — si legge come un guasto. */}
+            {getStatus(apribile.libro.id) === "reading" ? "Intanto stai leggendo: " : "Intanto puoi aprire: "}
+            <span style={{ color: C.text }}>{apribile.voce.t}</span>
+          </span>
+        </button>
+      )}
+      {/* il prologo si nomina solo quando sei PROPRIO all'inizio: più
+          avanti sarebbe una riga che torna a ogni apertura e si impara a
+          saltare */}
+      {prologo === "scelta" && (
+        <p style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 6, lineHeight: 1.5 }}>
+          Il prologo qui sotto sono quattro percorsi alternativi: ne cominci uno, non tutti. Appena ne apri un volume il
+          cammino ti propone il suo seguito.
+        </p>
+      )}
+    </div>
+  );
+}
 
 function Tappa({ t, onOpenBook }) {
   const { voce, libro } = t;
@@ -228,6 +327,12 @@ export default function Cammino({ cammino, onClose, onOpenBook, onNumera }) {
     return numeri.length || sagaDa ? { numeri, saga: sagaDa } : null;
   }, [cammino]);
 
+  // il passo e i conti si rifanno quando cambia il cammino: dentro stanno
+  // `getStatus`/`getProgress`, che leggono lo storage, e chiamarli a ogni
+  // render per settantuno tappe sarebbe lo stesso giro moltiplicato
+  const passo = useMemo(() => prossimoPasso(cammino), [cammino]);
+  const quanti = useMemo(() => lettiDelCammino(cammino), [cammino]);
+
   const parti = useMemo(() => {
     const scelte =
       filtro === "tue" ? tappe.filter((t) => t.libro) : filtro === "mancano" ? tappe.filter((t) => !t.libro) : tappe;
@@ -268,8 +373,13 @@ export default function Cammino({ cammino, onClose, onOpenBook, onNumera }) {
         </div>
         <p style={{ fontSize: F.piccolo, color: C.muted, marginTop: 2, lineHeight: 1.5 }}>
           {`Hai ${tue} delle ${tappe.length} tappe.`}
+          {/* POSSEDERE NON È AVER LETTO, e sono due domande diverse: si
+              può avere mezzo percorso sullo scaffale e non averne aperto
+              uno. Lo zero non si dice, come nel resoconto dell'import. */}
+          {quanti.letti > 0 ? ` Ne hai lette ${quanti.letti} di ${quanti.quante}.` : ""}
           {fuori > 0 ? ` Altri ${fuori} dei tuoi libri non stanno in questo percorso.` : ""}
         </p>
+        {passo && <Passo passo={passo} onOpenBook={onOpenBook} />}
         {onNumera && daFare && (
           <button
             onClick={() =>

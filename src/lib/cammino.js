@@ -1,4 +1,5 @@
 import { riconosci, TAVOLE } from "./sagaBooks.js";
+import { getStatus, getProgress } from "./library.js";
 
 // IL CAMMINO DI UNA SAGA: la guida per intero, e dentro i TUOI libri.
 //
@@ -97,6 +98,171 @@ export function camminoDi(libri = [], { tavole = TAVOLE, riconosce, scaffale } =
     // stanno fuori dalla guida invece di lasciarli contare a mano
     fuori: contati.filter((b) => !dentro.has(b.id)).length,
   };
+}
+
+// IL TUO PROSSIMO PASSO NEL CAMMINO.
+//
+// Chiesto dal lettore indicando il wh-companion: «per la Horus Heresy
+// sarebbe possibile usare la stessa logica usata nel progetto del Warhammer
+// Companion per il suggerimento dell'ordine di lettura?». Di la' e'
+// `getHHNextFromGuide` in `src/lib/readingHelpers.js`: percorre la guida
+// parte per parte e torna la prima voce che non hai ancora letto.
+//
+// Qui la pagina del cammino diceva soltanto «Hai 10 delle 71 tappe»: un
+// conto di POSSESSO, non di lettura, e su settantuno righe la domanda vera
+// («dove sono arrivato, cosa apro adesso») restava da scorrere a occhio.
+//
+// TRE COSE NON SI PORTANO DI PESO, e sono quelle che sbagliano in silenzio.
+//
+// (1) IL PROLOGO NON E' UNA FILA, E' UNA SCELTA. Nella guida sono QUATTRO
+// percorsi alternativi — Inquisition, Night Lords, Dark Angels,
+// Ultramarines — e ne leggi UNO. Nella nostra tavola sono tredici tappe una
+// dietro l'altra, perche' li' servivano a collocare un file sullo scaffale,
+// e una camminata «primo non letto» te le infilerebbe tutte e tredici:
+// finito Eisenhorn ti direbbe Malleus, poi Hereticus, poi Soul Hunter,
+// cioe' il percorso di un'altra fazione. Nessun errore, solo tre romanzi
+// che la guida non ti ha mai chiesto.
+//
+// La referenza risolve saltando il prologo SEMPRE (`if (part.pickOne)
+// continue`). Qui si fa un passo meglio, e la ragione e' che le due
+// situazioni sono diverse: finche' non ne hai cominciato nessuno la scelta
+// e' tua e proporne uno vorrebbe dire sceglierla al posto tuo; ma una volta
+// che un percorso l'hai cominciato la scelta l'hai gia' fatta, e il seguito
+// di quel percorso e' quel che la guida dice. Quindi: percorso cominciato →
+// si segue quello; nessuno cominciato → il prologo non propone niente, e lo
+// DICE (`prologo: "scelta"`) invece di tacere, perche' un passo mancante
+// senza spiegazione si legge come un guasto.
+//
+// (2) IL PASSO E' UN ROMANZO. Non si propongono i sette 40K, che la guida
+// stessa marca «fuori dall'Eresia» — spingerti su un libro dichiarato
+// fuori dalla storia non e' un consiglio, e' un'interruzione (stessa
+// scelta della referenza, `if (entry.b40k) continue`) — e non si
+// propongono le antologie, e la ragione sta gia' scritta nella tavola:
+// «stanno nel percorso per UN racconto alla volta, metterle davanti a un
+// romanzo per via di una novella vuol dire rubargli il posto». E' la
+// regola per cui un'antologia non ha numero di lettura, e vale identica
+// qui. Al banco si vedeva il danno: il passo restava su «Eye of Terra, non
+// ce l'hai» mentre il lettore si leggeva mezza Eresia — un'antologia che
+// non possiedi non si puo' dichiarare letta, quindi avrebbe bloccato la
+// scheda per sempre. Restano tutt'e due nell'elenco, dove il filtro «Ti
+// mancano» le mostra: non si propongono, non si nascondono.
+//
+// Il passo e' quindi sempre o una tappa NUMERATA o il seguito del percorso
+// che hai scelto — cioe' esattamente quel che «o» conta nella tavola.
+//
+// (3) E IL PROSSIMO PASSO PUO' ESSERE UN LIBRO CHE NON HAI. Di la' il
+// catalogo e' fisso e ogni voce della guida e' un libro con uno stato; qui
+// la biblioteca e' quel che hai importato, e su settantuno tappe il lettore
+// ne ha dieci. Un passo che nomina solo quel che possiedi non direbbe mai
+// «il prossimo e' Eye of Terra, vallo a prendere», che e' meta' del valore
+// di una guida; ma un passo che nomina solo la guida ti lascerebbe senza
+// niente da aprire stasera. Sono due domande, e si rispondono tutt'e due:
+// `tappa` e' il passo della guida, `apribile` il primo che puoi aprire
+// davvero. Quando coincidono la seconda riga non si scrive.
+//
+// Una tappa e' FATTA se l'hai letta o abbandonata — l'abbandonata per la
+// ragione di `maiAperto`: quella storia l'hai lasciata apposta. Quella che
+// stai leggendo ADESSO non si scavalca: e' il tuo passo, e si dice
+// (`inCorso`). Senza quella riga il cammino ti proporrebbe il volume dopo
+// mentre hai questo in mano.
+const FATTA = new Set(["read", "abandoned"]);
+
+const tocca = (libro, statoDi, progressoDi) =>
+  !!libro && (statoDi(libro.id) !== "unread" || progressoDi(libro.id) > 0);
+
+// `statoDi`/`progressoDi` si passano da fuori come `leggiByte`: stanno in
+// `localStorage`, e un test in Node non ce l'ha. I default restano quelli
+// VERI — un default finto sarebbe una guardia che non guarda, e il test
+// passerebbe grazie a chi ha girato prima.
+export function prossimoPasso(cammino, { statoDi = getStatus, progressoDi = getProgress } = {}) {
+  const tappe = cammino?.tappe || [];
+  if (!tappe.length) return null;
+
+  // i percorsi alternativi del prologo, raccolti per nome: e' `nota` a
+  // dirlo, ed e' l'unica cosa che le distingue l'una dall'altra
+  const cominciati = new Set();
+  for (const t of tappe) {
+    if (t?.voce?.tipo !== "prologo") continue;
+    if (tocca(t.libro, statoDi, progressoDi)) cominciati.add(t.voce.nota || "");
+  }
+
+  const fatta = (t) => !!t.libro && FATTA.has(statoDi(t.libro.id));
+
+  // E IL PROLOGO E' PREPARAZIONE, NON UN CANCELLO. Preso al banco e non
+  // leggendo il codice: letto Eisenhorn e senza Malleus in casa — che e'
+  // la scena del lettore — il passo restava inchiodato su «Malleus, non ce
+  // l'hai» per sempre, anche leggendo l'Eresia intera. Un percorso che non
+  // puoi finire avrebbe bloccato la scheda a vita. Una volta che una tappa
+  // della storia vera l'hai letta sei dentro, e la fondazione e' dietro:
+  // da li' il prologo non e' piu' il tuo prossimo passo.
+  const entrato = tappe.some((t) => {
+    const tipo = t?.voce?.tipo;
+    return tipo !== "prologo" && tipo !== "fuori" && fatta(t);
+  });
+
+  const inGioco = (t) => {
+    const tipo = t?.voce?.tipo;
+    if (tipo === "fuori" || tipo === "antologia") return false;
+    if (tipo === "prologo") return !entrato && cominciati.has(t.voce.nota || "");
+    return true;
+  };
+
+  let passo = null;
+  let apribile = null;
+  for (const t of tappe) {
+    if (!inGioco(t) || fatta(t)) continue;
+    if (!passo) passo = t;
+    if (t.libro) { apribile = t; break; }
+  }
+  if (!passo) return null;
+
+  // il prologo si nomina solo quando sei PROPRIO all'inizio — nessun
+  // percorso cominciato e niente della storia ancora letto. Piu' avanti
+  // sarebbe una riga che torna a ogni apertura e si impara a saltare, e a
+  // forza di saltarla non si legge nemmeno quella accanto.
+  return {
+    tappa: passo,
+    inCorso: !!passo.libro && statoDi(passo.libro.id) === "reading",
+    apribile: apribile === passo ? null : apribile,
+    prologo: !cominciati.size && !entrato ? "scelta" : null,
+  };
+}
+
+// QUANTE NE HAI LETTE, che non e' quante ne hai. Il conto in cima diceva il
+// possesso («Hai 10 delle 71 tappe») e va benissimo per sapere cosa ti
+// manca di comprare, ma non risponde a «a che punto sono»: si puo' avere
+// mezzo percorso sullo scaffale e non averne aperto uno. Si contano le
+// tappe che il cammino ti CHIEDE di leggere — le stesse che `prossimoPasso`
+// propone, senza i «fuori», senza le antologie e senza i percorsi del
+// prologo che non hai scelto — o il denominatore prometterebbe un lavoro
+// che la guida non ti ha mai chiesto. E non si conta nemmeno quel che non
+// potresti mai spuntare: un'antologia che non possiedi non si puo'
+// dichiarare letta, e terrebbe il conto sotto al massimo per sempre.
+//
+// QUI IL PROLOGO SCELTO CONTA SEMPRE, anche quando `prossimoPasso` ha
+// smesso di proporlo perche' sei entrato nella storia: sono due domande
+// diverse. «Cosa apro adesso» guarda avanti, e un percorso che ti sei
+// lasciato alle spalle non e' avanti; «a che punto sono» guarda il
+// cammino che hai scelto, e quei volumi ne fanno parte — toglierli dal
+// denominatore quando leggi il primo romanzo lo farebbe CALARE sotto gli
+// occhi, che e' il modo piu' sicuro di far sembrare rotto un conto giusto.
+export function lettiDelCammino(cammino, { statoDi = getStatus, progressoDi = getProgress } = {}) {
+  const tappe = cammino?.tappe || [];
+  const cominciati = new Set();
+  for (const t of tappe) {
+    if (t?.voce?.tipo !== "prologo") continue;
+    if (tocca(t.libro, statoDi, progressoDi)) cominciati.add(t.voce.nota || "");
+  }
+  let letti = 0;
+  let quante = 0;
+  for (const t of tappe) {
+    const tipo = t?.voce?.tipo;
+    if (tipo === "fuori" || tipo === "antologia") continue;
+    if (tipo === "prologo" && !cominciati.has(t.voce.nota || "")) continue;
+    quante += 1;
+    if (t.libro && statoDi(t.libro.id) === "read") letti += 1;
+  }
+  return { letti, quante };
 }
 
 // Le tappe raccolte per PARTE, nell'ordine in cui la guida le incontra.
