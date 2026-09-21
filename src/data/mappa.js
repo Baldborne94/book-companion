@@ -263,9 +263,15 @@ export const MAPPA = [
   },
   {
     luogo: "libreria",
-    nome: "Numerare i volumi come la guida",
-    cosa: "Scrive su ogni tuo volume il posto che ha nella guida, antologie comprese: è il numero che dice all'Oracolo cosa viene prima e cosa viene dopo, quindi da lì in poi le schede non escono dal percorso che hai letto. Propone «da → a» una riga per volta, e quello che lasci non si tocca.",
-    dove: "Dentro «Il cammino», il tasto 🔢 sotto il conto delle tappe.",
+    nome: "I racconti delle antologie",
+    cosa: "Nel cammino ogni racconto e audiodramma ha la sua riga, nel punto in cui la guida lo chiede, e dice da quale antologia si pesca: non sono file, quindi si spuntano invece di aprirsi. La spunta viaggia col resto delle preferenze.",
+    dove: "Dentro «Il cammino», fra un volume e l'altro.",
+  },
+  {
+    luogo: "libreria",
+    nome: "Mettere i volumi in ordine di guida",
+    cosa: "Scrive su ogni tuo volume il posto e la parte che ha nella guida: il numero è quel che dice all'Oracolo cosa viene prima e cosa viene dopo, la parte è quel che divide lo scaffale nei capitoli della storia. Propone «da → a» una riga per volta, e quello che lasci non si tocca.",
+    dove: "Dentro «Il cammino», il tasto 🔢 sotto il conto dei volumi.",
   },
   {
     luogo: "libreria",

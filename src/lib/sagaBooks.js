@@ -54,13 +54,26 @@ export const TAVOLE = [
   { saga: SAGA, libri: DISCWORLD, ordine: (b) => b.n, autore: "pratchett", fuori: FUORI_SAGA, stretta: false },
   // `o` e non `n`: l'ordine e' quello del percorso CD8D, non la numerazione
   // della collana. Vedi il commento in testa a `horusHeresy.js`.
-  { saga: SAGA_HH, libri: HORUS, ordine: (b) => b.o, autore: null, fuori: [], stretta: true },
+  // `parti: true` = il campo `c` di questa tavola non sono CICLI ma i
+  // capitoli di una storia sola, letti in fila. Lo dichiara la tavola
+  // perche' dai dati non si distingue (vedi `parteDiUnaStoria`).
+  { saga: SAGA_HH, libri: HORUS, ordine: (b) => b.o, autore: null, fuori: [], stretta: true, parti: true },
   // Bakker sta in mezzo ai due: ha scritto quasi solo questa saga — quindi
   // il ripiego sull'autore vale, coi suoi thriller in `fuori` — ma i titoli
   // non sono insegne inconfondibili («The Great Ordeal»), quindi il
   // riconoscimento per titolo resta `stretto` e chiede l'autore.
   { saga: SAGA_SA, libri: APOCALISSE, ordine: (b) => b.n, autore: "bakker", fuori: FUORI_BAKKER, stretta: true },
 ];
+
+// I capitoli di tutte le guide, in minuscolo: `parteDiUnaStoria` guarda
+// qui per sapere se una Serie scritta su un libro e' una parte di un
+// cammino nostro o un ciclo del lettore. Si costruisce una volta sola
+// dalle tavole, cosi' una guida nuova entra da se'.
+export const PARTI_DI_GUIDA = new Set(
+  TAVOLE.filter((t) => t.parti).flatMap((t) =>
+    t.libri.map((v) => String(v.c || "").trim().toLowerCase()).filter(Boolean)
+  )
+);
 
 // I titoli lunghi per primi, e da TUTTE le tavole insieme: «Garro» non
 // deve prendersi «Garro: Knight of the Grey». Oggi quella coppia la

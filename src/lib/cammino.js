@@ -1,5 +1,6 @@
 import { riconosci, TAVOLE } from "./sagaBooks.js";
 import { getStatus, getProgress } from "./library.js";
+import { raccontiLetti, chiaveRacconto } from "./racconti.js";
 
 // IL CAMMINO DI UNA SAGA: la guida per intero, e dentro i TUOI libri.
 //
@@ -79,16 +80,34 @@ export function camminoDi(libri = [], { tavole = TAVOLE, riconosce, scaffale } =
   }
   if (!scelta) return null;
 
+  // UN RACCONTO NON E' UN FILE, e il suo «ce l'hai» e' quello della sua
+  // ANTOLOGIA: «The Aurelian» sta dentro «Eye of Terra», e possederlo vuol
+  // dire possedere quel volume. Cercarlo per titolo non troverebbe mai
+  // niente, e la guida direbbe «ti manca» su un racconto che hai in mano.
   const tappe = scelta.tav.libri.map((voce) => ({
     voce,
-    libro: miei.get(chiave(scelta.tav.saga, voce.t)) || null,
+    libro:
+      miei.get(chiave(scelta.tav.saga, voce.tipo === "racconto" ? voce.in || "" : voce.t)) || null,
   }));
+  // NON si filtrano qui i racconti, e la ragione va scritta o il prossimo
+  // ce la rimette: un racconto porta il libro della sua ANTOLOGIA, che sta
+  // gia' in questo insieme per via della propria riga — e un insieme non
+  // conta due volte lo stesso id. Il filtro sembrerebbe prudenza e non
+  // toglierebbe niente: una guardia che non guarda e' peggio di nessuna
+  // guardia (la lezione di `senzaAutore`), e infatti nessuna mutazione la
+  // faceva cascare. I conti di possesso restano sui VOLUMI perche' li'
+  // ogni tappa-file porta il suo, e i racconti non ne aggiungono.
   const dentro = new Set(tappe.filter((t) => t.libro).map((t) => t.libro.id));
   const contati = (scaffale || libri).filter(Boolean);
   return {
     saga: scelta.tav.saga,
     tappe,
     tue: dentro.size,
+    // QUANTI VOLUMI HA LA GUIDA, che non e' quante righe ha la tavola: da
+    // quando i racconti hanno una riga per uno, `tappe.length` risponde
+    // «110» a una domanda sui libri da avere. Il possesso si conta sui
+    // FILE, ed e' questo il numero che sta accanto a `tue`.
+    volumi: tappe.filter((t) => t.voce?.tipo !== "racconto").length,
     // quanti ne ha QUESTO ripiano: da quando le tappe si cercano in tutta
     // la biblioteca, `tue` non puo' piu' decidere se il tasto compare —
     // direbbe di si' su ogni scaffale, anche su quello di Piranesi
@@ -174,9 +193,13 @@ const tocca = (libro, statoDi, progressoDi) =>
 // `localStorage`, e un test in Node non ce l'ha. I default restano quelli
 // VERI — un default finto sarebbe una guardia che non guarda, e il test
 // passerebbe grazie a chi ha girato prima.
-export function prossimoPasso(cammino, { statoDi = getStatus, progressoDi = getProgress } = {}) {
+export function prossimoPasso(
+  cammino,
+  { statoDi = getStatus, progressoDi = getProgress, spuntati = null } = {}
+) {
   const tappe = cammino?.tappe || [];
   if (!tappe.length) return null;
+  const letti = spuntati || raccontiLetti();
 
   // i percorsi alternativi del prologo, raccolti per nome: e' `nota` a
   // dirlo, ed e' l'unica cosa che le distingue l'una dall'altra
@@ -186,7 +209,14 @@ export function prossimoPasso(cammino, { statoDi = getStatus, progressoDi = getP
     if (tocca(t.libro, statoDi, progressoDi)) cominciati.add(t.voce.nota || "");
   }
 
-  const fatta = (t) => !!t.libro && FATTA.has(statoDi(t.libro.id));
+  // UN RACCONTO E' FATTO QUANDO L'HAI SPUNTATO, e non c'e' altro modo:
+  // non e' un file, non ha uno stato, e l'antologia che lo contiene resta
+  // «da leggere» finche' non hai finito tutti e undici i suoi racconti,
+  // sparsi su mezza guida.
+  const fatta = (t) =>
+    t.voce?.tipo === "racconto"
+      ? letti.has(chiaveRacconto(t.voce))
+      : !!t.libro && FATTA.has(statoDi(t.libro.id));
 
   // E IL PROLOGO E' PREPARAZIONE, NON UN CANCELLO. Preso al banco e non
   // leggendo il codice: letto Eisenhorn e senza Malleus in casa — che e'
@@ -246,8 +276,12 @@ export function prossimoPasso(cammino, { statoDi = getStatus, progressoDi = getP
 // cammino che hai scelto, e quei volumi ne fanno parte — toglierli dal
 // denominatore quando leggi il primo romanzo lo farebbe CALARE sotto gli
 // occhi, che e' il modo piu' sicuro di far sembrare rotto un conto giusto.
-export function lettiDelCammino(cammino, { statoDi = getStatus, progressoDi = getProgress } = {}) {
+export function lettiDelCammino(
+  cammino,
+  { statoDi = getStatus, progressoDi = getProgress, spuntati = null } = {}
+) {
   const tappe = cammino?.tappe || [];
+  const letti0 = spuntati || raccontiLetti();
   const cominciati = new Set();
   for (const t of tappe) {
     if (t?.voce?.tipo !== "prologo") continue;
@@ -260,7 +294,12 @@ export function lettiDelCammino(cammino, { statoDi = getStatus, progressoDi = ge
     if (tipo === "fuori" || tipo === "antologia") continue;
     if (tipo === "prologo" && !cominciati.has(t.voce.nota || "")) continue;
     quante += 1;
-    if (t.libro && statoDi(t.libro.id) === "read") letti += 1;
+    // i racconti entrano nel conto come i romanzi: la guida li chiede
+    // allo stesso modo, e lasciarli fuori direbbe «42» su un cammino che
+    // di passi ne ha ottantuno
+    if (tipo === "racconto") {
+      if (letti0.has(chiaveRacconto(t.voce))) letti += 1;
+    } else if (t.libro && statoDi(t.libro.id) === "read") letti += 1;
   }
   return { letti, quante };
 }

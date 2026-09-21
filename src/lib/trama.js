@@ -1,6 +1,7 @@
 import { getFile } from "./bookStore.js";
 import { pageText } from "./pdfSearch.js";
 import { chiedi, getOracleKey, TETTO_SCHEDA } from "./oracle.js";
+import { parteDiUnaStoria } from "./saga.js";
 import { frontiera } from "./frontiera.js";
 
 // «DOVE ERAVAMO RIMASTI» — la storia fin qui, e non una riga oltre.
@@ -465,9 +466,16 @@ export function scegliPrima(raccolto) {
 // chiedere di Vetinari leggendo le Streghe deve poter pescare dalle
 // Guardie — e la difesa dagli spoiler regge lo stesso, perche' i volumi
 // dopo il corrente restano fuori in ogni caso.
+// E UNA PARTE NON E' UN CICLO: su una guida di lettura le «serie» sono i
+// capitoli di una storia sola, e restringersi al capitolo in cui stai
+// toglierebbe il racconto di tutto quel che viene prima — cioe' proprio
+// quel che questo tasto deve dare. La differenza la dicono i numeri e la
+// misura `parteDiUnaStoria`; qui si guarda la stessa domanda con gli
+// stessi dati, o le due risposte potrebbero divergere.
 export function soloDellaSerie(book, tappe) {
   const serie = (book.series || "").trim().toLowerCase();
   if (!serie) return tappe;
+  if (parteDiUnaStoria(book)) return tappe;
   return tappe.filter((t) => (t.libro.series || "").trim().toLowerCase() === serie);
 }
 

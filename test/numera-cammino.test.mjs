@@ -142,7 +142,7 @@ export default async (t) => {
       { id: "b", title: "Beta", da: 7, a: 2 },
     ];
     const saga = { nome: "Warhammer 40K", quali: ["b", "c"] };
-    const campi = campiDaScrivere({ numeri, saga, scelti: new Set(["a", "b"]) });
+    const campi = campiDaScrivere({ numeri, saga, scelti: new Set(["n:a", "n:b"]) });
     // IL LIBRO CHE HA TUTT'E DUE I GUAI riceve UNA riga sola: due
     // scritture separate sullo stesso libro si sovrascriverebbero, e il
     // numero (o la saga) sparirebbe senza che nessuno lo dica
@@ -157,7 +157,7 @@ export default async (t) => {
       { id: "a", title: "Alfa", da: null, a: 1 },
       { id: "b", title: "Beta", da: null, a: 2 },
     ];
-    const campi = campiDaScrivere({ numeri, saga: null, scelti: new Set(["a"]) });
+    const campi = campiDaScrivere({ numeri, saga: null, scelti: new Set(["n:a"]) });
     t.eq("il volume non spuntato resta com'era", campi.has("b"), false);
     t.eq("…e l'altro no", campi.get("a").sagaOrder, 1);
   }

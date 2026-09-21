@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getStatus } from "../lib/library.js";
 import { perParte, prossimoPasso, lettiDelCammino } from "../lib/cammino.js";
-import { numerazioneGuida, sagaComune, campiDaScrivere } from "../lib/numeraCammino.js";
+import { numerazioneGuida, partiDaScrivere, sagaComune, campiDaScrivere } from "../lib/numeraCammino.js";
+import { raccontiLetti, segnaRacconto, chiaveRacconto } from "../lib/racconti.js";
 
 // I FILTRI SONO TRE, e il terzo è quello per cui la pagina esiste: su una
 // guida da settantuno tappe «cosa mi manca» è la domanda vera, e senza un
@@ -26,10 +27,15 @@ const STATO = { read: "letto", reading: "in lettura", abandoned: "abbandonato" }
 // «vallo a prendere») e il primo che puoi APRIRE davvero. Quando
 // coincidono la seconda non si scrive, o sarebbe lo stesso titolo due
 // volte a mezzo centimetro di distanza.
-function Passo({ passo, onOpenBook }) {
+function Passo({ passo, onOpenBook, letto, onSegna }) {
   const { tappa, inCorso, apribile, prologo } = passo;
   const { voce, libro } = tappa;
-  const riga = [voce.a, voce.nota].filter(Boolean).join(" · ");
+  const racconto = voce.tipo === "racconto";
+  // su un racconto la riga PIÙ importante è dove trovarlo: «leggi The
+  // Aurelian» senza «in Eye of Terra» è un passo che non puoi eseguire
+  const riga = [voce.a, racconto && voce.in ? `in «${voce.in}»` : voce.nota]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div
@@ -51,10 +57,33 @@ function Passo({ passo, onOpenBook }) {
             {voce.t}
           </span>
           <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginTop: 2 }}>
-            {[riga, libro ? null : "non ce l'hai"].filter(Boolean).join(" · ")}
+            {[riga, libro ? null : racconto ? "l'antologia non ce l'hai" : "non ce l'hai"]
+              .filter(Boolean)
+              .join(" · ")}
           </span>
         </span>
-        {libro && (
+        {/* un racconto non si apre: si spunta. Il tasto che lo dichiara
+            letto sta QUI, dove il passo si legge — mandare a cercarlo
+            nell'elenco sarebbe un passo che non si può chiudere da dove
+            lo si incontra. */}
+        {racconto && (
+          <button
+            onClick={() => onSegna(voce, !letto)}
+            style={{
+              flexShrink: 0,
+              minHeight: 44,
+              padding: "0 14px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.accent}66`,
+              background: `${C.accent}1a`,
+              color: C.accent,
+              fontSize: F.piccolo,
+            }}
+          >
+            L'ho letto
+          </button>
+        )}
+        {libro && !racconto && (
           <button
             onClick={() => onOpenBook(libro.id)}
             style={{
@@ -111,6 +140,65 @@ function Passo({ passo, onOpenBook }) {
         </p>
       )}
     </div>
+  );
+}
+
+// UN RACCONTO SI SPUNTA, NON SI APRE. È quaranta pagine dentro
+// un'antologia: la biblioteca conosce il volume, non la storia, quindi
+// l'unico modo di dire «questa l'ho letta» è una casella. La riga dice da
+// quale antologia si pesca e se quel volume ce l'hai — senza, la guida
+// direbbe «leggi The Aurelian» senza dire dove trovarlo.
+function Racconto({ t, letto, onSegna }) {
+  const { voce, libro } = t;
+  return (
+    <button
+      onClick={() => onSegna(voce, !letto)}
+      aria-pressed={letto}
+      style={{
+        display: "flex",
+        width: "100%",
+        gap: 10,
+        alignItems: "center",
+        textAlign: "left",
+        minHeight: 44,
+        padding: "6px 4px",
+        borderBottom: `1px solid ${C.border}44`,
+        opacity: letto ? 0.75 : 1,
+      }}
+    >
+      <span
+        style={{
+          width: px(46),
+          flexShrink: 0,
+          textAlign: "center",
+          fontSize: F.piccolo,
+          color: letto ? C.green : C.muted,
+        }}
+      >
+        {letto ? "☑" : "☐"}
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span
+          style={{
+            display: "block",
+            fontSize: F.piccolo,
+            color: libro ? C.text : C.muted,
+            textDecoration: letto ? "line-through" : "none",
+          }}
+        >
+          {voce.nota === "audiodramma" ? "🎧 " : "📄 "}
+          {voce.t}
+        </span>
+        <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginTop: 2 }}>
+          {[voce.a, voce.in ? `in «${voce.in}»` : "non è raccolto in nessun volume"]
+            .filter(Boolean)
+            .join(" · ")}
+        </span>
+      </span>
+      <span style={{ flexShrink: 0, fontSize: F.minuscolo, color: libro ? C.green : C.muted, opacity: 0.8 }}>
+        {libro ? "ce l'hai" : "manca"}
+      </span>
+    </button>
   );
 }
 
@@ -192,7 +280,7 @@ function Tappa({ t, onOpenBook }) {
 // e per la stessa ragione: un numero storto non alza nessun errore, sposta
 // soltanto il confine di quel che l'Oracolo puo' raccontare — quindi si
 // guarda prima, una riga per volta, e quel che togli non si tocca.
-function SceltaNumeri({ numeri, saga, scelti, sagaScelta, onCambia, onSaga, onChiudi, onVai }) {
+function SceltaNumeri({ numeri, parti, saga, scelti, sagaScelta, onCambia, onSaga, onChiudi, onVai }) {
   const quanti = scelti.size + (saga && sagaScelta ? saga.quali.length : 0);
   const riga = (on) => ({
     display: "flex",
@@ -237,7 +325,7 @@ function SceltaNumeri({ numeri, saga, scelti, sagaScelta, onCambia, onSaga, onCh
         }}
       >
         <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
-          🔢 Numera come la guida
+          🔢 Mettili in ordine di guida
         </h2>
         <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 16, lineHeight: 1.5 }}>
           Il numero di lettura è l'unico campo che dice all'Oracolo cosa viene prima e cosa viene
@@ -264,9 +352,9 @@ function SceltaNumeri({ numeri, saga, scelti, sagaScelta, onCambia, onSaga, onCh
         )}
 
         {numeri.map((p) => {
-          const on = scelti.has(p.id);
+          const on = scelti.has(`n:${p.id}`);
           return (
-            <button key={p.id} onClick={() => onCambia(p.id)} style={riga(on)}>
+            <button key={`n:${p.id}`} onClick={() => onCambia(`n:${p.id}`)} style={riga(on)}>
               <span style={{ fontSize: F.rilievo, color: on ? C.accent : C.muted }}>
                 {on ? "☑" : "☐"}
               </span>
@@ -274,6 +362,31 @@ function SceltaNumeri({ numeri, saga, scelti, sagaScelta, onCambia, onSaga, onCh
                 <span style={{ display: "block", color: C.text, fontSize: F.corpo }}>{p.title}</span>
                 <span style={{ display: "block", color: C.muted, fontSize: F.minuscolo, marginTop: 2 }}>
                   {p.da == null ? "senza numero" : `n° ${p.da}`} → <b style={{ color: C.accent }}>n° {p.a}</b>
+                </span>
+              </span>
+            </button>
+          );
+        })}
+
+        {parti.length > 0 && (
+          <p style={{ color: C.muted, fontSize: F.minuscolo, margin: "14px 0 8px", lineHeight: 1.5 }}>
+            E le <b style={{ color: C.text }}>parti</b>: la guida divide la storia in capitoli, e
+            scriverli nel campo Serie è quel che li fa comparire sullo scaffale. Sono parti di una
+            storia sola, quindi «Prima di cominciare» continua a raccontarti tutto quel che viene
+            prima.
+          </p>
+        )}
+        {parti.map((p) => {
+          const on = scelti.has(`p:${p.id}`);
+          return (
+            <button key={`p:${p.id}`} onClick={() => onCambia(`p:${p.id}`)} style={riga(on)}>
+              <span style={{ fontSize: F.rilievo, color: on ? C.accent : C.muted }}>
+                {on ? "☑" : "☐"}
+              </span>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: "block", color: C.text, fontSize: F.corpo }}>{p.title}</span>
+                <span style={{ display: "block", color: C.muted, fontSize: F.minuscolo, marginTop: 2 }}>
+                  {p.da ? `«${p.da}»` : "senza parte"} → <b style={{ color: C.accent }}>«{p.a}»</b>
                 </span>
               </span>
             </button>
@@ -316,22 +429,24 @@ function SceltaNumeri({ numeri, saga, scelti, sagaScelta, onCambia, onSaga, onCh
 export default function Cammino({ cammino, onClose, onOpenBook, onNumera }) {
   const [filtro, setFiltro] = useState("tutte");
   const [numerare, setNumerare] = useState(null);
-  const { tappe, tue, fuori, saga } = cammino;
+  const [spuntati, setSpuntati] = useState(() => raccontiLetti());
+  const { tappe, tue, volumi, fuori, saga } = cammino;
 
-  // le due proposte si calcolano a ogni giro e non alla pressione: servono
+  // le tre proposte si calcolano a ogni giro e non alla pressione: servono
   // gia' per sapere se il tasto ha qualcosa da offrire, e un tasto che
   // promette quel che non puo' dare e' il difetto di «Porta qui 18 tomi»
   const daFare = useMemo(() => {
     const numeri = numerazioneGuida(cammino);
+    const parti = partiDaScrivere(cammino);
     const sagaDa = sagaComune(cammino);
-    return numeri.length || sagaDa ? { numeri, saga: sagaDa } : null;
+    return numeri.length || parti.length || sagaDa ? { numeri, parti, saga: sagaDa } : null;
   }, [cammino]);
 
   // il passo e i conti si rifanno quando cambia il cammino: dentro stanno
   // `getStatus`/`getProgress`, che leggono lo storage, e chiamarli a ogni
   // render per settantuno tappe sarebbe lo stesso giro moltiplicato
-  const passo = useMemo(() => prossimoPasso(cammino), [cammino]);
-  const quanti = useMemo(() => lettiDelCammino(cammino), [cammino]);
+  const passo = useMemo(() => prossimoPasso(cammino, { spuntati }), [cammino, spuntati]);
+  const quanti = useMemo(() => lettiDelCammino(cammino, { spuntati }), [cammino, spuntati]);
 
   const parti = useMemo(() => {
     const scelte =
@@ -372,20 +487,34 @@ export default function Cammino({ cammino, onClose, onOpenBook, onNumera }) {
           </button>
         </div>
         <p style={{ fontSize: F.piccolo, color: C.muted, marginTop: 2, lineHeight: 1.5 }}>
-          {`Hai ${tue} delle ${tappe.length} tappe.`}
+          {/* IL POSSESSO SI CONTA SUI VOLUMI, non sulle righe: da quando i
+              racconti hanno una riga per uno, «delle 110 tappe» sarebbe un
+              numero che risponde a una domanda che nessuno ha fatto —
+              quanti VOLUMI della guida hai è quel che serve a comprare. */}
+          {`Hai ${tue} dei ${volumi ?? tappe.length} volumi della guida.`}
           {/* POSSEDERE NON È AVER LETTO, e sono due domande diverse: si
               può avere mezzo percorso sullo scaffale e non averne aperto
               uno. Lo zero non si dice, come nel resoconto dell'import. */}
           {quanti.letti > 0 ? ` Ne hai lette ${quanti.letti} di ${quanti.quante}.` : ""}
           {fuori > 0 ? ` Altri ${fuori} dei tuoi libri non stanno in questo percorso.` : ""}
         </p>
-        {passo && <Passo passo={passo} onOpenBook={onOpenBook} />}
+        {passo && (
+          <Passo
+            passo={passo}
+            onOpenBook={onOpenBook}
+            letto={spuntati.has(chiaveRacconto(passo.tappa.voce))}
+            onSegna={(voce, l) => setSpuntati(segnaRacconto(voce, l))}
+          />
+        )}
         {onNumera && daFare && (
           <button
             onClick={() =>
               setNumerare({
                 ...daFare,
-                scelti: new Set(daFare.numeri.map((p) => p.id)),
+                scelti: new Set([
+                  ...daFare.numeri.map((p) => `n:${p.id}`),
+                  ...daFare.parti.map((p) => `p:${p.id}`),
+                ]),
                 sagaScelta: true,
               })
             }
@@ -400,8 +529,10 @@ export default function Cammino({ cammino, onClose, onOpenBook, onNumera }) {
               fontSize: F.piccolo,
             }}
           >
-            🔢 Numera come la guida
-            {daFare.numeri.length ? ` · ${daFare.numeri.length}` : ""}
+            🔢 Mettili in ordine di guida
+            {daFare.numeri.length + daFare.parti.length
+              ? ` · ${daFare.numeri.length + daFare.parti.length}`
+              : ""}
           </button>
         )}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
@@ -450,14 +581,24 @@ export default function Cammino({ cammino, onClose, onOpenBook, onNumera }) {
                 {dentro.filter((t) => t.libro).length}/{dentro.length}
               </span>
             </h3>
-            {dentro.map((t) => (
-              <Tappa key={t.voce.t} t={t} onOpenBook={onOpenBook} />
-            ))}
+            {dentro.map((t) =>
+              t.voce.tipo === "racconto" ? (
+                <Racconto
+                  key={t.voce.t}
+                  t={t}
+                  letto={spuntati.has(chiaveRacconto(t.voce))}
+                  onSegna={(voce, letto) => setSpuntati(segnaRacconto(voce, letto))}
+                />
+              ) : (
+                <Tappa key={t.voce.t} t={t} onOpenBook={onOpenBook} />
+              )
+            )}
           </section>
         ))}
         {numerare && (
           <SceltaNumeri
             numeri={numerare.numeri}
+            parti={numerare.parti}
             saga={numerare.saga}
             scelti={numerare.scelti}
             sagaScelta={numerare.sagaScelta}
