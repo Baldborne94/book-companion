@@ -34,6 +34,66 @@ import { raccontiLetti, chiaveRacconto } from "./racconti.js";
 // ogni ripiano a ogni render sarebbe lo stesso giro moltiplicato per venti.
 const chiave = (saga, titolo) => `${saga}\u0000${titolo}`;
 
+// IL NUMERO DI LETTURA E' QUELLO CHE LA TAVOLA DICHIARA, MAI IL POSTO
+// DELLA RIGA.
+//
+// Segnalato dal lettore due volte, a un anno di distanza e per due porte
+// diverse: «perche' mi dice numero lettura 15 quando e' il primo?» e poi
+// «i numeri di lettura riesci a mettermeli giusti?». La prima volta la
+// cura fu fare di `o` il numero dei soli ROMANZI, cosi' «Horus Rising» e'
+// il primo dell'Eresia e il prologo non gli ruba il posto. La seconda
+// volta il quindici era tornato: `numerazioneGuida` contava le righe-file
+// del cammino, e davanti a Horus Rising ce ne stanno quattordici — tredici
+// di prologo piu' un'antologia.
+//
+// QUINDI IL NUMERO NON SI CONTA, SI CHIEDE ALLA TAVOLA (`ordine`), che e'
+// la stessa funzione da cui lo prende `riconosci` all'import. E' l'unica
+// forma che chiude il difetto alla radice: con due numerazioni — 1-39
+// dall'import, 1-71 dal pannello — meta' biblioteca finisce su una scala e
+// meta' sull'altra, l'ordine non vuol dire piu' niente **e la frontiera
+// dell'Oracolo ci crede**. Adesso le due porte scrivono lo stesso numero.
+//
+// E QUEL CHE LA GUIDA NON NUMERA SI INFILA CON UN DECIMALE, invece di
+// restare senza: un volume senza numero la frontiera non lo sa collocare e
+// resta FUORI — non e' uno spoiler, e' un buco, e il personaggio conosciuto
+// li' per la scheda non esiste. Il prologo, le antologie e i sette 40K sono
+// file veri che il lettore ha in mano, e stanno fra due romanzi: prendono
+// il numero del romanzo precedente piu' un centesimo per ognuno, nell'ordine
+// del cammino. Eisenhorn diventa 0,01 e «Horus Rising» resta 1 — che e'
+// esattamente quel che il lettore aveva chiesto tutt'e due le volte. I
+// decimali questo campo li regge gia' (Calibre scrive 2.5 per la novella
+// fra il secondo e il terzo, e la colonna nel cloud e' `real` apposta).
+//
+// Il passo e' un centesimo e il vuoto piu' largo della guida ne vale
+// quattordici: si resta lontanissimi dal romanzo dopo. L'arrotondamento
+// serve perche' 0,1+0,01 in virgola mobile non fa 0,11 tondo, e un numero
+// con quindici decimali addosso non e' un numero di lettura.
+//
+// UN RACCONTO NON HA POSTO, e non e' una svista: non e' un file, non sta in
+// nessuna biblioteca, e non c'e' niente su cui scrivere un numero.
+const PASSO = 0.01;
+
+export function postiDelCammino(tappe = [], ordine = () => null) {
+  let ultimo = 0;
+  let quanti = 0;
+  return tappe.map((t) => {
+    if (t?.voce?.tipo === "racconto") return { ...t, posto: null };
+    // e non c'e' nessun controllo che il numero sia un numero: `ordine` e'
+    // nostra e le tre tavole tornano un numero o niente. Una guardia in
+    // piu' qui non guarderebbe nulla, e una guardia che non guarda e'
+    // peggio di nessuna guardia — il prossimo le crede (la lezione di
+    // `senzaAutore`): provata, nessuna mutazione la faceva cascare.
+    const suo = ordine ? ordine(t?.voce) : null;
+    if (suo != null) {
+      ultimo = Number(suo);
+      quanti = 0;
+      return { ...t, posto: ultimo };
+    }
+    quanti += 1;
+    return { ...t, posto: Math.round((ultimo + quanti * PASSO) * 100) / 100 };
+  });
+}
+
 // E I LIBRI SI CERCANO IN TUTTA LA BIBLIOTECA, NON SUL RIPIANO DA CUI
 // PARTE IL TASTO. Preso al banco e non leggendo il codice: seminata la
 // scena del lettore, il cammino diceva «hai 1 delle 71 tappe» su dieci
@@ -84,11 +144,14 @@ export function camminoDi(libri = [], { tavole = TAVOLE, riconosce, scaffale } =
   // ANTOLOGIA: «The Aurelian» sta dentro «Eye of Terra», e possederlo vuol
   // dire possedere quel volume. Cercarlo per titolo non troverebbe mai
   // niente, e la guida direbbe «ti manca» su un racconto che hai in mano.
-  const tappe = scelta.tav.libri.map((voce) => ({
-    voce,
-    libro:
-      miei.get(chiave(scelta.tav.saga, voce.tipo === "racconto" ? voce.in || "" : voce.t)) || null,
-  }));
+  const tappe = postiDelCammino(
+    scelta.tav.libri.map((voce) => ({
+      voce,
+      libro:
+        miei.get(chiave(scelta.tav.saga, voce.tipo === "racconto" ? voce.in || "" : voce.t)) || null,
+    })),
+    scelta.tav.ordine
+  );
   // NON si filtrano qui i racconti, e la ragione va scritta o il prossimo
   // ce la rimette: un racconto porta il libro della sua ANTOLOGIA, che sta
   // gia' in questo insieme per via della propria riga — e un insieme non

@@ -14,14 +14,19 @@
 // cominciare».
 import { chiaveRacconto, fondiRacconti } from "../src/lib/racconti.js";
 import { partiDaScrivere, numerazioneGuida, campiDaScrivere } from "../src/lib/numeraCammino.js";
-import { lettiDelCammino, camminoDi } from "../src/lib/cammino.js";
+import { lettiDelCammino, camminoDi, postiDelCammino } from "../src/lib/cammino.js";
 import { parteDiUnaStoria, gruppoDi } from "../src/lib/saga.js";
 import { soloDellaSerie } from "../src/lib/trama.js";
 import HORUS from "../src/data/horusHeresy.js";
 
 const cammino = (righe) => ({
   saga: "Finta",
-  tappe: righe.map(([voce, libro]) => ({ voce, libro: libro || null })),
+  // il posto si chiede alla tavola come in `camminoDi`, o il test proverebbe
+  // una numerazione che nell'app non esiste
+  tappe: postiDelCammino(
+    righe.map(([voce, libro]) => ({ voce, libro: libro || null })),
+    (v) => v?.o
+  ),
 });
 const L = (id, extra = {}) => ({ id, title: id, ...extra });
 const con = (m = {}, r = []) => ({
@@ -94,9 +99,9 @@ export default async (t) => {
     // gli stanno davanti — e la frontiera dell'Oracolo ci crede.
     const c = cammino([
       [{ t: "Racconto", a: "A", tipo: "racconto", in: "X" }, null],
-      [{ t: "Alfa" }, L("a")],
+      [{ t: "Alfa", o: 1 }, L("a")],
       [{ t: "Racconto due", a: "B", tipo: "racconto", in: "X" }, null],
-      [{ t: "Beta" }, L("b")],
+      [{ t: "Beta", o: 2 }, L("b")],
     ]);
     const n = numerazioneGuida(c);
     t.eq("i racconti non prendono un numero", n.length, 2);
@@ -104,11 +109,15 @@ export default async (t) => {
     t.eq("…e il secondo il n° 2, non il n° 4", n[1].a, 2);
   }
   {
-    // e sulla guida VERA: «Horus Rising» resta il quindicesimo file, che è
-    // il numero che il lettore si è già scritto addosso
+    // E SULLA GUIDA VERA «Horus Rising» È IL PRIMO. Questo controllo
+    // pinnava il quindicesimo posto — il numero della RIGA — ed è girato
+    // con dentro la ragione: era il difetto che il lettore aveva già fatto
+    // togliere una volta e che da questa porta era tornato. Il prologo è
+    // una scelta fra quattro percorsi, non una fila di tredici, e un
+    // numero che conta le righe lo fa pagare al primo romanzo della saga.
     const suoi = [{ id: "1", title: "Horus Rising", author: "", saga: "Warhammer 40K" }];
     const n = numerazioneGuida(camminoDi(suoi));
-    t.eq("sulla guida vera il numero non si è mosso", n[0].a, 15);
+    t.eq("sulla guida vera «Horus Rising» è il n° 1", n[0].a, 1);
   }
 
   // ── «CE L'HAI» DI UN RACCONTO È LA SUA ANTOLOGIA ──────────────────────
