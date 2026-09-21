@@ -378,8 +378,10 @@ function SceltaNumeri({ numeri, serie, saga, scelti, sagaScelta, onCambia, onSag
             e i capitoli della guida lo scaffale li legge da sé. Sono volumi di una
             storia sola, quindi «Prima di cominciare» continua a raccontarti tutto quel che viene
             prima. Chi resta <b style={{ color: C.text }}>senza serie</b> è quel che la guida
-            stessa dichiara fuori dalla storia — il prologo e i titoli fuori dal ciclo: restano
-            nel percorso e nell’universo, ma non sono un capitolo di questa storia.
+            stessa dichiara fuori dalla storia — il prologo e i titoli fuori dal ciclo. Nel
+            percorso ci stanno lo stesso: sullo scaffale i romanzi che la guida mette in un
+            punto preciso li trovi sotto la loro parte, il prologo e gli omnibus sotto
+            «Letture di sfondo».
           </p>
         )}
         {serie.map((p) => {

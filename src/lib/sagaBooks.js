@@ -215,26 +215,59 @@ function combacia(campo, voce, autoreNorm) {
 export const fuoriDallaStoria = (voce) =>
   voce?.tipo === "prologo" || voce?.tipo === "fuori";
 
+// E FRA QUESTE DUE SPECIE NE STA UNA TERZA: chi la guida non colloca in un
+// PUNTO della storia, ma nomina come lettura di contorno.
+//
+// La distinzione l'ha fatta il lettore, guardando lo scaffale, in due
+// messaggi: «Scythes of the Emperor appartiene alla parte 5, the Hunt for
+// Magnus appartiene alla parte 8 cosi' come Battle of the Fang», e poi
+// «anche eisenhorn lascialo senza parte e gli altri omnibus che sono
+// segnati solo come riempitivi della saga: quelli li metti sotto
+// l'universo del 40K ma non sotto la Heresy». Ha ragione, e i due gruppi
+// sono diversi davvero: «Battle of the Fang» e' un romanzo solo, che la
+// guida mette accanto alla parte dei Wolves perche' e' li' che quella
+// storia si incrocia coll'Eresia; «Night Lords Omnibus» e' una serie
+// intera, e nessun capitolo e' un posto dove sta — la guida lo nomina per
+// dire «se ti va, questi qui». Il prologo e' di sfondo per mestiere
+// (quattro percorsi ALTERNATIVI, la fondazione del 40K), e lo dice gia'
+// il suo `tipo`; gli omnibus lo dichiarano con `sfondo` nella tavola.
+//
+// E SI CHIEDE ALLA TAVOLA, non al titolo: cercare «omnibus» dentro il
+// nome funzionerebbe oggi sui tre che ci sono e sbaglierebbe il giorno che
+// una guida nomina una raccolta chiamata altrimenti — e' la regola di
+// `tipo`, che la nota non si legge con un'espressione.
+export const lettureDiSfondo = (voce) =>
+  voce?.tipo === "prologo" || voce?.sfondo === true;
+
 // IL CAPITOLO COL SUO POSTO NELLA GUIDA, pronto per lo scaffale. Sta qui e
 // non nel componente per la ragione di sempre: un test in Node non importa
 // un `.jsx`, e qui c'e' qualcosa da difendere — l'ordine dei capitoli non
 // si puo' prendere dai volumi che possiedi (un racconto non ha numero di
 // lettura, e il suo capitolo scivolerebbe in fondo) ne' dai nomi (in
 // alfabetico «Part 12» viene prima di «Part 4»).
-// E UNA TAPPA SENZA CAPITOLO NON E' «FUORI DAL PERCORSO»: ci sta dentro
-// eccome. Segnalato con lo scaffale in mano, coi tre 40K sotto quel titolo:
-// «questi 3 non dovrebbero essere fuori dal percorso» — e sulla stessa
-// schermata i loro dorsi portavano il numero del cammino (13.01, 20.01,
-// 20.02), cioe' il posto che occupano NEL percorso. Due righe che si
-// smentiscono a mezzo centimetro di distanza.
+// E I MODI DI NON AVERE UN CAPITOLO SONO DUE, E VOGLIONO DUE NOMI. La
+// guida non colloca affatto il libro — e allora «Fuori dal percorso» e' la
+// verita', ed e' l'informazione che quel nome deve dare — oppure lo nomina
+// come lettura di contorno, e allora quel nome sarebbe falso: nel percorso
+// ci sta, i suoi dorsi ne portano perfino il numero (13.01, 20.01, 20.02).
+// Segnalato con lo scaffale in mano, coi tre sotto quel titolo: «questi 3
+// non dovrebbero essere fuori dal percorso».
 //
-// Le ragioni per non avere un capitolo sono DUE e vogliono due nomi:
-// la guida non colloca affatto il libro (e allora e' davvero fuori dal
-// percorso), oppure lo colloca e dichiara che non fa parte della storia —
-// il prologo e i titoli marcati «fuori dall'Eresia». Un nome solo per
-// tutt'e due dice il falso sulla meta' di loro, e un titolo sbagliato non
-// alza nessun errore.
-export const FUORI_STORIA = "Nel percorso, fuori dalla storia";
+// CHI CI STA DENTRO PERO' E' CAMBIATO DUE VOLTE, e la seconda l'ha detta
+// il lettore stesso: per un giorno qui e' finito TUTTO quel che la guida
+// dichiara fuori dall'Eresia — compresi i romanzi che la guida mette
+// accanto a una parte precisa — e su quelli il gruppo toglieva
+// un'informazione vera («Scythes of the Emperor appartiene alla parte 5»).
+// Il gruppo non era sbagliato, era sbagliato chi ci metteva dentro: ci
+// stanno le LETTURE DI SFONDO e basta.
+export const FUORI_STORIA = "Letture di sfondo";
+
+// e sta DOPO ogni capitolo, perche' la storia viene prima del contorno.
+// I valori di `PARTI_DI_GUIDA` sono l'indice della PRIMA comparsa nella
+// tavola — Part 12 vale 71 — quindi `size` (13) non e' «dopo tutti»: con
+// quello il gruppo si infilava in mezzo alla guida, e il test lo dava per
+// buono perche' chiedeva `>= size`.
+const DOPO_I_CAPITOLI = Math.max(0, ...PARTI_DI_GUIDA.values()) + 1;
 
 export const capitoloDi = (riconosciuto) => {
   const nome = String(riconosciuto?.parte || "").trim();
@@ -243,9 +276,7 @@ export const capitoloDi = (riconosciuto) => {
   // tavola capitoli non ne dichiara — li' un capitolo non ce l'ha NESSUNO,
   // e questo gruppo non deve nemmeno esistere.
   if (!riconosciuto?.guida) return null;
-  // dopo ogni capitolo, e prima di chi la guida non colloca affatto (che
-  // resta senza nome, quindi chiude la fila)
-  return { nome: FUORI_STORIA, ordine: PARTI_DI_GUIDA.size };
+  return { nome: FUORI_STORIA, ordine: DOPO_I_CAPITOLI };
 };
 
 export function riconosci({ title, author, fileName } = {}) {
@@ -278,17 +309,32 @@ export function riconosci({ title, author, fileName } = {}) {
         // E' la stessa regola di `tipo`: quel che la guida sa non si scrive
         // addosso al libro, si chiede alla guida.
         //
-        // E QUEL CHE LA GUIDA DICHIARA FUORI DALLA STORIA NON PRENDE NE'
-        // L'UNA NE' L'ALTRO: resta nell'universo (la saga) e basta. Non e'
-        // un capitolo dell'Eresia — la guida lo dice lei — e non e'
-        // nemmeno un volume della sua storia, quindi «Prima di cominciare»
-        // non deve raccontarlo insieme ai romanzi dell'Eresia.
+        // E QUEL CHE LA GUIDA DICHIARA FUORI DALLA STORIA NON PRENDE LA
+        // STORIA: resta nell'universo (la saga) e basta. Non e' un volume
+        // dell'Eresia — la guida lo dice lei — quindi «Prima di
+        // cominciare» non deve raccontarlo insieme ai romanzi dell'Eresia.
           ciclo: fuoriDallaStoria(b) ? null : b.tav.parti ? b.tav.saga : b.c,
-          parte: fuoriDallaStoria(b) || !b.tav.parti ? null : b.c || null,
+          // MA IL CAPITOLO SI', PER CHI LA GUIDA METTE IN UN PUNTO: «Scythes
+          // of the Emperor appartiene alla parte 5, the Hunt for Magnus
+          // appartiene alla parte 8 cosi' come Battle of the Fang». Quel
+          // che il lettore aveva fatto togliere e' cio' che SCRIVIAMO
+          // addosso al suo libro — la Serie, un campo suo — e il capitolo
+          // non e' un campo: e' dove la guida li mette, e li' ce li mette
+          // per davvero (i loro dorsi ne portano il numero). Sullo scaffale
+          // i due livelli insieme dicono la verita' intera: sotto «Volumi a
+          // se'», perche' la storia non sono loro, e dentro «Part 5»,
+          // perche' il percorso li colloca li'.
+          //
+          // Le LETTURE DI SFONDO no, e le separa lo stesso lettore: «anche
+          // eisenhorn lascialo senza parte e gli altri omnibus». Un capitolo
+          // non e' un posto dove sta una serie intera — vanno nel gruppo
+          // loro (vedi `FUORI_STORIA`), sotto l'universo e non dentro la
+          // storia.
+          parte: b.tav.parti && !lettureDiSfondo(b) ? b.c || null : null,
           // «questo libro e' una tappa di una GUIDA», che non e' «lo
-          // riconosco»: senza, lo scaffale non saprebbe distinguere un
-          // volume che la guida colloca fuori dalla storia da uno che la
-          // guida non conosce affatto — e li chiamerebbe con lo stesso nome
+          // riconosco»: senza, lo scaffale non saprebbe distinguere una
+          // lettura di sfondo da un volume che la guida non conosce affatto
+          // — e li chiamerebbe con lo stesso nome
           guida: !!b.tav.parti,
           titolo: b.t,
         };

@@ -54,6 +54,20 @@
 // Adesso ogni racconto ha la sua riga nel punto in cui la guida lo
 // chiede, e `in` dice da quale antologia si pesca.
 //
+// E `sfondo` DICE CHI NON STA IN UN PUNTO DELLA STORIA. Fra i titoli 40K
+// ce ne sono di due specie, e la nota non le distingue: «Battle of the
+// Fang» e' un romanzo solo, che la guida mette accanto alla parte dei
+// Wolves perche' li' se ne parla; «Night Lords Omnibus» e' una serie
+// intera, lettura di contorno, e un capitolo dell'Eresia non e' un posto
+// dove sta — la guida lo nomina per dire «se vuoi, questi qui». Il
+// lettore le ha separate lui, guardando lo scaffale: «Scythes of the
+// Emperor appartiene alla parte 5, the Hunt for Magnus appartiene alla
+// parte 8», e poi «anche eisenhorn lascialo senza parte e gli altri
+// omnibus che sono segnati solo come riempitivi della saga: quelli li
+// metti sotto l'universo del 40K ma non sotto la Heresy». Il PROLOGO e'
+// di sfondo per mestiere (quattro percorsi alternativi, la fondazione del
+// 40K) e lo dice gia' il suo `tipo`: qui si segnano i tre omnibus.
+//
 // LE RIGHE-FILE RESTANO NELL ORDINE DI PRIMA, ed e' un patto e non un
 // caso: il numero di lettura che il lettore si e' scritto addosso e' il
 // posto del volume fra i FILE della guida, quindi infilare i racconti in
@@ -106,7 +120,7 @@ export default [
   { o: null, tipo: "racconto", t: "Master of the First", a: "Gav Thorpe", in: "Eye of Terra", c: "Part 4 · The Lion and the Prince", nota: "racconto" },
   { o: null, tipo: "racconto", t: "The Long Night", a: "Aaron Dembski-Bowden", in: "Eye of Terra", c: "Part 4 · The Lion and the Prince", nota: "racconto" },
   { o: null, tipo: "fuori", t: "Lord of the Night", a: "Simon Spurrier", c: "Part 4 · The Lion and the Prince", nota: "40k, fuori dall'Eresia" },
-  { o: null, tipo: "fuori", t: "Night Lords Omnibus", a: "Aaron Dembski-Bowden", c: "Part 4 · The Lion and the Prince", nota: "40k, fuori dall'Eresia" },
+  { o: null, tipo: "fuori", t: "Night Lords Omnibus", sfondo: true, a: "Aaron Dembski-Bowden", c: "Part 4 · The Lion and the Prince", nota: "40k, fuori dall'Eresia" },
   { o: 10, t: "The Unremembered Empire", a: "Dan Abnett", n: 27, c: "Part 5 · Imperium Secondus" },
   { o: null, tipo: "racconto", t: "A Safe and Shadowed Place", a: "Guy Haley", in: "War Without End", c: "Part 5 · Imperium Secondus", nota: "racconto" },
   { o: null, tipo: "antologia", t: "Burden of Loyalty", n: 48, c: "Part 5 · Imperium Secondus", nota: "antologia" },
@@ -132,8 +146,8 @@ export default [
   { o: null, tipo: "racconto", t: "Thief of Revelations", a: "Graham McNeill", in: "Legacies of Betrayal", c: "Part 7 · Mars & Magnus", nota: "audiodramma" },
   { o: 17, t: "The Master of Mankind", a: "Aaron Dembski-Bowden", n: 41, c: "Part 7 · Mars & Magnus" },
   { o: 18, t: "The Crimson King", a: "Graham McNeill", n: 44, c: "Part 7 · Mars & Magnus" },
-  { o: null, tipo: "fuori", t: "Ahriman Omnibus", a: "John French", c: "Part 7 · Mars & Magnus", nota: "40k, fuori dall'Eresia" },
-  { o: null, tipo: "fuori", t: "Forges of Mars Omnibus", a: "Graham McNeill", c: "Part 7 · Mars & Magnus", nota: "40k, fuori dall'Eresia" },
+  { o: null, tipo: "fuori", t: "Ahriman Omnibus", sfondo: true, a: "John French", c: "Part 7 · Mars & Magnus", nota: "40k, fuori dall'Eresia" },
+  { o: null, tipo: "fuori", t: "Forges of Mars Omnibus", sfondo: true, a: "Graham McNeill", c: "Part 7 · Mars & Magnus", nota: "40k, fuori dall'Eresia" },
   { o: 19, t: "Prospero Burns", a: "Dan Abnett", n: 15, c: "Part 8 · Wolves" },
   { o: null, tipo: "racconto", t: "Wolf's Claw", a: "Chris Wraight", in: "Legacies of Betrayal", c: "Part 8 · Wolves", nota: "audiodramma" },
   { o: null, tipo: "racconto", t: "Wolf King", a: "Chris Wraight", in: "Burden of Loyalty", c: "Part 8 · Wolves", nota: "audiodramma" },
