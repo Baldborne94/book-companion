@@ -142,8 +142,42 @@ const senzaRumore = (campo, saga) =>
 // piu' lunga, non il titolo del libro che hai in mano
 const COPERTURA = 0.5;
 
+// E LE PAROLINE NON SONO IL TITOLO.
+//
+// Segnalato guardando i «Fuori dal percorso»: «anche Garro the Knight of
+// Grey non dovrebbe essere fuori percorso», e poi «controlla bene perche'
+// tutti questi racconti o libri sono presenti nella guida». Aveva ragione
+// su tutt'e due: la tavola scrive «Garro: Knight of THE Grey», il suo file
+// «Garro: Knight of Grey», e per il contenimento sono due titoli diversi.
+//
+// Non e' un alias che manca, ed e' la misura a dirlo: provando le forme in
+// cui un file vero si presenta — l'articolo interno caduto, quello
+// iniziale caduto, i due punti diventati un trattino, «and» diventato «&» —
+// **37 grafie su 71 titoli non si riconoscevano**. Aggiungerne una per una
+// vuol dire rincorrere per sempre chi impacchetta i file.
+//
+// Quindi si confrontano le PAROLE PIENE: articoli e congiunzioni via da
+// tutt'e due i lati, e il resto deve combaciare come prima, nello stesso
+// ordine e a confine di parola.
+//
+// **E SERVE UN PAVIMENTO DI DUE PAROLE**, che e' quel che tiene in piedi la
+// regola: senza, «The Truth» del Mondo Disco diventerebbe «truth», che sta
+// dentro qualunque titolo — la stessa trappola per cui gli articoli non si
+// tolgono a tappeto. Il prezzo e' dichiarato: «The Unforgiven» e «The
+// Primarchs» scritti senza articolo restano fuori, perche' quel che
+// avanza e' una parola sola.
+const PAROLINE = /\b(the|a|an|of|and|to|in|on|for)\b/g;
+const PAROLE_PIENE = 2;
+const scheletro = (s) => s.replace(PAROLINE, " ").replace(/\s+/g, " ").trim();
+
+function combaciaScheletro(campo, chiave) {
+  const nudo = scheletro(chiave);
+  if (nudo.split(" ").filter(Boolean).length < PAROLE_PIENE) return false;
+  return contiene(scheletro(campo), nudo);
+}
+
 function combacia(campo, voce, autoreNorm) {
-  if (!contiene(campo, voce.k)) return false;
+  if (!contiene(campo, voce.k) && !combaciaScheletro(campo, voce.k)) return false;
   if (!voce.tav.stretta) return true;
   const cogn = voce.a ? cognome(voce.a) : "";
   const suo = cogn && (autoreNorm.includes(cogn) || campo.includes(cogn));
@@ -187,10 +221,31 @@ export const fuoriDallaStoria = (voce) =>
 // si puo' prendere dai volumi che possiedi (un racconto non ha numero di
 // lettura, e il suo capitolo scivolerebbe in fondo) ne' dai nomi (in
 // alfabetico «Part 12» viene prima di «Part 4»).
+// E UNA TAPPA SENZA CAPITOLO NON E' «FUORI DAL PERCORSO»: ci sta dentro
+// eccome. Segnalato con lo scaffale in mano, coi tre 40K sotto quel titolo:
+// «questi 3 non dovrebbero essere fuori dal percorso» — e sulla stessa
+// schermata i loro dorsi portavano il numero del cammino (13.01, 20.01,
+// 20.02), cioe' il posto che occupano NEL percorso. Due righe che si
+// smentiscono a mezzo centimetro di distanza.
+//
+// Le ragioni per non avere un capitolo sono DUE e vogliono due nomi:
+// la guida non colloca affatto il libro (e allora e' davvero fuori dal
+// percorso), oppure lo colloca e dichiara che non fa parte della storia —
+// il prologo e i titoli marcati «fuori dall'Eresia». Un nome solo per
+// tutt'e due dice il falso sulla meta' di loro, e un titolo sbagliato non
+// alza nessun errore.
+export const FUORI_STORIA = "Nel percorso, fuori dalla storia";
+
 export const capitoloDi = (riconosciuto) => {
   const nome = String(riconosciuto?.parte || "").trim();
-  if (!nome) return null;
-  return { nome, ordine: PARTI_DI_GUIDA.get(nome.toLowerCase()) ?? null };
+  if (nome) return { nome, ordine: PARTI_DI_GUIDA.get(nome.toLowerCase()) ?? null };
+  // `guida` e non `titolo`: un Pratchett si riconosce eccome, ma la sua
+  // tavola capitoli non ne dichiara — li' un capitolo non ce l'ha NESSUNO,
+  // e questo gruppo non deve nemmeno esistere.
+  if (!riconosciuto?.guida) return null;
+  // dopo ogni capitolo, e prima di chi la guida non colloca affatto (che
+  // resta senza nome, quindi chiude la fila)
+  return { nome: FUORI_STORIA, ordine: PARTI_DI_GUIDA.size };
 };
 
 export function riconosci({ title, author, fileName } = {}) {
@@ -230,6 +285,11 @@ export function riconosci({ title, author, fileName } = {}) {
         // non deve raccontarlo insieme ai romanzi dell'Eresia.
           ciclo: fuoriDallaStoria(b) ? null : b.tav.parti ? b.tav.saga : b.c,
           parte: fuoriDallaStoria(b) || !b.tav.parti ? null : b.c || null,
+          // «questo libro e' una tappa di una GUIDA», che non e' «lo
+          // riconosco»: senza, lo scaffale non saprebbe distinguere un
+          // volume che la guida colloca fuori dalla storia da uno che la
+          // guida non conosce affatto — e li chiamerebbe con lo stesso nome
+          guida: !!b.tav.parti,
           titolo: b.t,
         };
       }
@@ -241,7 +301,8 @@ export function riconosci({ title, author, fileName } = {}) {
   for (const tav of TAVOLE) {
     if (!tav.autore || !chiAutore.includes(tav.autore)) continue;
     if (campi.some((campo) => tav.fuori.some((t) => contiene(campo, t)))) continue;
-    return { saga: tav.saga, sagaOrder: null, ciclo: null, parte: null, titolo: null };
+    // e qui la guida non ha collocato niente: si sa solo di chi e' il libro
+    return { saga: tav.saga, sagaOrder: null, ciclo: null, parte: null, guida: false, titolo: null };
   }
   return null;
 }

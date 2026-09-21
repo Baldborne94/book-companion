@@ -14,7 +14,7 @@
 // Quel che sbaglia in silenzio qui è tutto di vista: un capitolo nel posto
 // sbagliato, o un'intestazione che si ripete, non alzano nessun errore.
 import { disponi, raccogliCicli } from "../src/lib/ripiani.js";
-import { riconosci, capitoloDi } from "../src/lib/sagaBooks.js";
+import { riconosci, capitoloDi, FUORI_STORIA, PARTI_DI_GUIDA } from "../src/lib/sagaBooks.js";
 
 const L = (id, extra = {}) => ({ id, title: id, addedAt: 1, ...extra });
 // la guida finta: il capitolo si chiede a una mappa, come in Libreria si
@@ -275,8 +275,17 @@ export default async (t) => {
       const r = hh(titolo);
       t.eq(`${cosa} resta nell'universo`, r?.saga, "The Horus Heresy");
       t.eq(`…ma senza la storia nella Serie («${titolo}»)`, r?.ciclo, null);
-      t.eq(`…e senza capitolo («${titolo}»)`, capitoloDi(r), null);
+      // QUESTO CONTROLLO ERA GIRATO e pretendeva `null`, cioè lo stesso
+      // gruppo di chi la guida non colloca affatto — che sullo scaffale si
+      // chiama «Fuori dal percorso» e su questi tre dice il falso: il
+      // percorso li contiene eccome, e i loro dorsi ne portano il numero
+      // («questi 3 non dovrebbero essere fuori dal percorso»).
+      t.eq(`…e in un gruppo suo, non «fuori dal percorso» («${titolo}»)`, capitoloDi(r)?.nome, FUORI_STORIA);
+      t.c(`…che sta dopo ogni capitolo («${titolo}»)`, capitoloDi(r).ordine >= PARTI_DI_GUIDA.size);
     }
+    // e chi la guida non conosce affatto resta senza gruppo: lì «Fuori dal
+    // percorso» è la verità, ed è l'informazione che quel nome deve dare
+    t.eq("un libro che la guida non colloca non ha gruppo", capitoloDi(riconosci({ title: "Mort", author: "Terry Pratchett" })), null);
     // e la storia vera non si muove: romanzi e antologie restano com'erano
     const romanzo = hh("Horus Rising");
     t.eq("il romanzo tiene la storia", romanzo?.ciclo, "The Horus Heresy");
@@ -286,6 +295,49 @@ export default async (t) => {
     t.c("…e il suo capitolo", !!capitoloDi(antologia)?.nome, `${capitoloDi(antologia)?.nome}`);
     // e una tavola SENZA capitoli continua a scrivere il ciclo nella Serie
     t.eq("nel Mondo Disco il ciclo resta il ciclo", riconosci({ title: "Mort", author: "Terry Pratchett" })?.ciclo, "Death");
+  }
+
+  // ── LE PAROLINE NON SONO IL TITOLO ────────────────────────────────────
+  //
+  // Segnalato coi «Fuori dal percorso» in mano: «anche Garro the Knight of
+  // Grey non dovrebbe essere fuori percorso», e poi «controlla bene perché
+  // tutti questi racconti o libri sono presenti nella guida». La tavola
+  // scrive «Garro: Knight of THE Grey» e il suo file «Garro: Knight of
+  // Grey»: per il contenimento sono due titoli diversi, e il volume
+  // spariva dal cammino senza che nessun errore lo dicesse.
+  {
+    const hh = (titolo, autore = "") => riconosci({ title: titolo, author: autore })?.titolo ?? null;
+    // il caso della sua fotografia, alla lettera
+    t.eq("«Garro: Knight Of Grey» è il volume della guida", hh("Garro: Knight Of Grey", "James Swallow"), "Garro: Knight of the Grey");
+    // e le altre forme in cui un file vero si presenta
+    t.eq("l'articolo interno può cadere", hh("The Flight of Eisenstein", "James Swallow"), "The Flight of the Eisenstein");
+    t.eq("…e anche quello iniziale", hh("First Heretic", "Aaron Dembski-Bowden"), "The First Heretic");
+    t.eq("…e «and» scritto «&»", hh("The Lost & the Damned", "Guy Haley"), "The Lost and the Damned");
+    t.eq("…e i due punti diventati un trattino", hh("Perturabo - The Hammer of Olympia", "Guy Haley"), "Perturabo: The Hammer of Olympia");
+    // e il titolo esatto non si muove
+    t.eq("il titolo esatto resta quello", hh("Battle of the Fang", "Chris Wraight"), "Battle of the Fang");
+  }
+  {
+    // IL PAVIMENTO DI DUE PAROLE È QUEL CHE TIENE IN PIEDI LA REGOLA: senza,
+    // «The Truth» del Mondo Disco diventerebbe «truth» — una parola che sta
+    // dentro qualunque titolo — e si mangerebbe libri di chiunque. È la
+    // stessa trappola per cui gli articoli non si tolgono a tappeto.
+    t.eq(
+      "una parola sola non si sfoglia",
+      riconosci({ title: "Truth and Lies", author: "Tizio Qualunque" }),
+      null
+    );
+    // prezzo dichiarato: quel pavimento lascia fuori anche le forme buone
+    // di un titolo che, tolto l'articolo, è una parola sola
+    t.eq("e il prezzo è dichiarato", riconosci({ title: "Unforgiven", author: "Gav Thorpe" })?.titolo ?? null, null);
+    // E IL CONFINE DI PAROLA VALE ANCHE NELLO SCHELETRO: «solar war» sta
+    // dentro «Solar Warden» come sequenza di lettere, e senza il confine
+    // un romanzo di chiunque si prenderebbe il posto di «The Solar War».
+    t.eq(
+      "una parola tagliata a metà non è un titolo",
+      riconosci({ title: "Solar Warden", author: "" }),
+      null
+    );
   }
 
   // ── E IL MUCCHIO SENZA NOME STA DOVE LO METTE IL NUMERO ───────────────
