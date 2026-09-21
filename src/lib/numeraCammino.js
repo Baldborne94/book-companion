@@ -20,15 +20,17 @@ import { chiaveSaga, nienteSaga } from "./sagaBooks.js";
 // gia' scritti diventerebbero bugie. Cosi' invece il posto di «Fulgrim» e'
 // lo stesso oggi e fra un anno.
 //
-// E QUESTO NUMERO NON E' QUELLO CHE SCRIVE `riconosci`: li' l'ordine della
-// tavola dell'Eresia e' `o`, che conta i soli ROMANZI (39 su 71 tappe), e
-// lascia senza numero il prologo, le dodici antologie e i sette 40K — di
-// proposito, perche' il prologo sono quattro percorsi ALTERNATIVI e
-// un'antologia sta nel cammino per un racconto alla volta. Qui invece si
-// numera il cammino intero, che e' quel che il lettore ha chiesto: la
-// frontiera combacia con la guida riga per riga. **Le due numerazioni non
-// si mischiano**: meta' biblioteca a 1-39 e meta' a 1-71 fa un ordine che
-// non vuol dire niente, e la frontiera ci crede.
+// ED E' LO STESSO NUMERO CHE SCRIVE `riconosci`, che e' la cura di un
+// difetto vero e non un'eleganza. Qui si contavano le righe-file del
+// cammino (1-71) mentre l'import chiedeva il numero alla tavola (1-39): due
+// numerazioni per la stessa guida, e meta' biblioteca su una scala e meta'
+// sull'altra fa un ordine che non vuol dire niente — **e la frontiera ci
+// crede**. Per giunta il quindicesimo posto di «Horus Rising» era proprio
+// quello che il lettore aveva gia' fatto togliere una volta («perche' mi
+// dice numero lettura 15 quando e' il primo?»), e tornava da questa porta.
+// Il posto lo calcola adesso `postiDelCammino`, in un punto solo, e quel
+// che la guida non numera si infila con un decimale invece di restare
+// senza: il perche' sta scritto per esteso li'.
 //
 // NON SI RISCRIVE NIENTE IN SILENZIO, come per i titoli: qui si calcola
 // soltanto, e il pannello mostra «da → a» una riga per volta. Un numero
@@ -39,22 +41,23 @@ import { chiaveSaga, nienteSaga } from "./sagaBooks.js";
 // il numero CAMBIA: chi ce l'ha gia' giusto non e' una proposta, e' lavoro
 // gia' fatto — cosi' al secondo giro non resta niente da spuntare.
 export function numerazioneGuida(cammino) {
-  // IL NUMERO SI CONTA SUI SOLI FILE. I racconti delle antologie hanno una
-  // riga per uno nella tavola, ma non sono volumi e non ne portano via il
-  // posto: contandoli, il numero di ogni libro si sposterebbe in avanti di
-  // quanti racconti gli stanno davanti — cioe' OGNI numero gia' scritto
-  // diventerebbe una bugia, e la frontiera ci crede. Il numero e' il posto
-  // del volume fra i VOLUMI della guida, e cosi' resta lo stesso oggi e il
-  // giorno che la guida aggiunge un racconto.
-  const volumi = (cammino?.tappe || []).filter((t) => t?.voce?.tipo !== "racconto");
+  // IL POSTO NON SI RICONTA QUI. Arriva da `postiDelCammino`, che lo chiede
+  // alla tavola: ricontarlo su queste righe vorrebbe dire una seconda
+  // numerazione accanto a quella dell'import, ed e' il difetto che questa
+  // cura chiude.
+  //
+  // E UN RACCONTO NON HA POSTO (`null`), quindi si salta: la sua riga porta
+  // il libro della sua ANTOLOGIA — che un numero ce l'ha, preso dalla
+  // propria riga — e senza questa guardia gli si proporrebbe `null`, cioe'
+  // di CANCELLARGLI il numero che ha appena preso.
   const fuori = [];
-  volumi.forEach((t, i) => {
-    if (!t?.libro) return;
-    const a = i + 1;
+  for (const t of cammino?.tappe || []) {
+    if (!t?.libro || t.posto == null) continue;
+    const a = t.posto;
     const da = t.libro.sagaOrder == null ? null : Number(t.libro.sagaOrder);
-    if (da === a) return;
+    if (da === a) continue;
     fuori.push({ id: t.libro.id, title: t.libro.title || t.voce?.t || "senza titolo", da, a });
-  });
+  }
   return fuori;
 }
 

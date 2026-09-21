@@ -53,7 +53,7 @@ function Passo({ passo, onOpenBook, letto, onSegna }) {
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
         <span style={{ flex: 1, minWidth: 0 }}>
           <span style={{ display: "block", fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.rilievo, color: C.text }}>
-            {voce.o ? `n° ${voce.o} · ` : ""}
+            {tappa.posto == null ? "" : `n° ${tappa.posto} · `}
             {voce.t}
           </span>
           <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginTop: 2 }}>
@@ -209,20 +209,24 @@ function Tappa({ t, onOpenBook }) {
     <>
       {/* IL NUMERO È QUELLO DEL CAMMINO, non quello della collana: la guida
           rimescola apposta, e «The First Heretic» è il 14 in copertina e il
-          6 qui. Dove il numero non c'è — antologie, prologo, i 40K — al suo
-          posto va il trattino e la ragione sta nella nota. */}
+          6 qui. Ed è LO STESSO che il pannello scrive sui tuoi volumi — due
+          numeri per lo stesso libro nella stessa app erano il difetto, non
+          un dettaglio: qui «n° 1 · Horus Rising» e sullo scaffale 15. Quel
+          che la guida non numera porta il suo decimale (0,01: sta prima del
+          primo), e il trattino resta ai soli racconti, che non sono file e
+          un numero non ce l'hanno da nessuna parte. */}
       <span
         style={{
-          width: px(46),
+          width: px(58),
           flexShrink: 0,
           textAlign: "center",
           fontFamily: FONT_TITLE,
           fontSize: F.piccolo,
-          color: voce.o ? (libro ? C.accent : C.muted) : C.muted,
-          opacity: voce.o ? 1 : 0.6,
+          color: t.posto == null ? C.muted : libro ? C.accent : C.muted,
+          opacity: t.posto == null ? 0.6 : 1,
         }}
       >
-        {voce.o ? `n° ${voce.o}` : "—"}
+        {t.posto == null ? "—" : `n° ${t.posto}`}
       </span>
       <span style={{ flex: 1, minWidth: 0 }}>
         <span

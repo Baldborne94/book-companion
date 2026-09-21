@@ -11,55 +11,115 @@
 // dalla scheda — e in tutt'e due i casi sullo scaffale sembra tutto a
 // posto.
 import { numerazioneGuida, sagaComune, campiDaScrivere } from "../src/lib/numeraCammino.js";
-import { camminoDi } from "../src/lib/cammino.js";
+import { camminoDi, postiDelCammino } from "../src/lib/cammino.js";
 
 // la forma che `camminoDi` produce: una tappa per voce della guida, col
-// libro dentro se ce l'hai
+// libro dentro se ce l'hai. IL POSTO SI CALCOLA COME LÀ — chiedendolo alla
+// tavola — o il test proverebbe una numerazione che nell'app non esiste.
 const cammino = (righe, saga = "Finta") => ({
   saga,
-  tappe: righe.map(([t, libro]) => ({ voce: { t }, libro: libro || null })),
+  tappe: postiDelCammino(
+    righe.map(([t, libro, o = null, tipo]) => ({ voce: { t, o, tipo }, libro: libro || null })),
+    (v) => v?.o
+  ),
   tue: righe.filter(([, l]) => l).length,
   fuori: 0,
 });
 const L = (id, title, extra = {}) => ({ id, title, ...extra });
 
 export default async (t) => {
-  // ── IL POSTO È QUELLO DELLA GUIDA ─────────────────────────────────────
+  // ── IL NUMERO È QUELLO CHE LA GUIDA DICHIARA ──────────────────────────
   {
-    // cinque tappe, e il lettore ha la seconda e la quinta: i numeri sono
-    // 2 e 5, non 1 e 2. È LA RIGA CHE CONTA — contando solo i tuoi,
-    // importare un volume in mezzo rinumererebbe tutti gli altri e i
-    // numeri già scritti diventerebbero bugie.
+    // cinque tappe, e la guida numera solo i romanzi: il prologo e
+    // l'antologia non portano via il posto a nessuno. IL NUMERO NON SI
+    // CONTA, SI CHIEDE — contando le righe, «Alfa» uscirebbe secondo e
+    // «Gamma» quinto, che è il quindicesimo posto di «Horus Rising» in
+    // piccolo: il difetto che il lettore ha segnalato due volte.
     const c = cammino([
       ["Prologo", null],
-      ["Alfa", L("a", "Alfa")],
+      ["Alfa", L("a", "Alfa"), 1],
       ["Antologia", null],
-      ["Beta", null],
-      ["Gamma", L("g", "Gamma")],
+      ["Beta", null, 2],
+      ["Gamma", L("g", "Gamma"), 3],
     ]);
     const n = numerazioneGuida(c);
     t.eq("si numerano solo i volumi che hai", n.length, 2);
-    t.eq("e il numero è il posto nella guida", n.map((p) => `${p.title}=${p.a}`).join(" "), "Alfa=2 Gamma=5");
+    t.eq("e il numero è quello della guida", n.map((p) => `${p.title}=${p.a}`).join(" "), "Alfa=1 Gamma=3");
     t.eq("chi non ne aveva lo dichiara", n[0].da, null);
   }
 
-  // le antologie e il prologo contano come tappe anche se non le hai: è
-  // tutta la differenza con il numero che scrive `riconosci`, che salta
-  // quel che non è un romanzo
+  // QUEL CHE LA GUIDA NON NUMERA SI INFILA CON UN DECIMALE, e non resta
+  // senza: un volume senza numero la frontiera non lo colloca e resta
+  // fuori — un buco, non una prudenza. Ma non ruba il posto al romanzo,
+  // che è la ragione per cui un numero suo non ce l'ha.
   {
     const c = cammino([
       ["Antologia", L("x", "Antologia")],
-      ["Romanzo", L("r", "Romanzo")],
+      ["Romanzo", L("r", "Romanzo"), 1],
     ]);
-    t.eq("un'antologia è una tappa come le altre", numerazioneGuida(c)[0].a, 1);
-    t.eq("…e il romanzo dopo viene dopo", numerazioneGuida(c)[1].a, 2);
+    const n = numerazioneGuida(c);
+    t.eq("l'antologia si infila prima del primo", n[0].a, 0.01);
+    t.eq("…e il romanzo resta il primo", n[1].a, 1);
+    t.c("…cioè l'antologia viene prima", n[0].a < n[1].a);
+  }
+  {
+    // DUE FILE DI TAPPE SENZA NUMERO, una davanti al primo romanzo e una
+    // in mezzo: il conto dei centesimi RIPARTE a ogni romanzo. Senza il
+    // ritorno a zero la seconda fila comincerebbe da dove aveva finito la
+    // prima, e con un vuoto lungo davanti scavalcherebbe il romanzo dopo —
+    // cioè l'ordine sbagliato, in silenzio. Ci vogliono tutt'e due le
+    // file: con una sola il difetto non si vede.
+    const c = cammino([
+      ["Prologo", L("p", "Prologo")],
+      ["Alfa", L("a", "Alfa"), 1],
+      ["Uno", L("u1", "Uno")],
+      ["Due", L("u2", "Due")],
+      ["Tre", L("u3", "Tre")],
+      ["Beta", L("b", "Beta"), 2],
+    ]);
+    const n = numerazioneGuida(c);
+    t.eq(
+      "le tappe non numerate stanno in fila fra i due",
+      n.map((p) => p.a).join(" "),
+      "0.01 1 1.01 1.02 1.03 2"
+    );
+  }
+  {
+    // E IL DECIMALE DEV'ESSERE UN DECIMALE. In virgola mobile 1 + 14×0,01
+    // fa 1.1400000000000001, e senza l'arrotondamento è quello che
+    // finirebbe scritto sul libro e mostrato sullo scaffale. Quattordici
+    // perché è il vuoto più largo che la guida abbia (il prologo intero),
+    // e perché è l'unico conto in cui lo scarto si vede.
+    const fila = [["Alfa", L("a", "Alfa"), 1]];
+    for (let i = 1; i <= 14; i++) fila.push([`Vuoto ${i}`, L(`v${i}`, `Vuoto ${i}`)]);
+    const n = numerazioneGuida(cammino(fila));
+    t.eq("e il decimale è un decimale", String(n[14].a), "1.14");
+  }
+  {
+    // UN RACCONTO NON È UN FILE E NON SI NUMERA. La sua riga porta il libro
+    // della sua ANTOLOGIA, che il numero ce l'ha già dalla propria riga:
+    // senza la guardia gli si proporrebbe `null` — cioè di cancellarglielo
+    // — e il volume uscirebbe dalla frontiera dell'Oracolo. Il numero
+    // addosso all'antologia è quel che rende il controllo portante: a
+    // scheda vuota `null` e `null` pareggiano e non succede niente.
+    const antologia = L("x", "Antologia", { sagaOrder: 0.01 });
+    const c = cammino([
+      ["Antologia", antologia],
+      ["Alfa", L("a", "Alfa"), 1],
+      ["Un racconto", antologia, null, "racconto"],
+      ["Beta", L("b", "Beta"), 2],
+    ]);
+    const n = numerazioneGuida(c);
+    t.eq("il racconto non prende un posto", n.length, 2);
+    t.c("…e non propone di cancellare quello dell'antologia", !n.some((p) => p.a == null));
+    t.eq("…né lo toglie a chi viene dopo", n[1].a, 2);
   }
 
   // ── CHI È GIÀ A POSTO NON È UNA PROPOSTA ──────────────────────────────
   {
     const c = cammino([
-      ["Alfa", L("a", "Alfa", { sagaOrder: 1 })],
-      ["Beta", L("b", "Beta", { sagaOrder: 9 })],
+      ["Alfa", L("a", "Alfa", { sagaOrder: 1 }), 1],
+      ["Beta", L("b", "Beta", { sagaOrder: 9 }), 2],
     ]);
     const n = numerazioneGuida(c);
     t.eq("chi ha già il numero giusto non compare", n.length, 1);
@@ -68,8 +128,8 @@ export default async (t) => {
     // al secondo giro non resta niente da spuntare: è la prova che il
     // tasto sa sparire invece di riproporsi per sempre
     const dopo = cammino([
-      ["Alfa", L("a", "Alfa", { sagaOrder: 1 })],
-      ["Beta", L("b", "Beta", { sagaOrder: 2 })],
+      ["Alfa", L("a", "Alfa", { sagaOrder: 1 }), 1],
+      ["Beta", L("b", "Beta", { sagaOrder: 2 }), 2],
     ]);
     t.eq("e al secondo giro non c'è più niente da fare", numerazioneGuida(dopo).length, 0);
   }
@@ -77,7 +137,7 @@ export default async (t) => {
     // il numero salvato può essere arrivato come stringa (una scheda
     // scritta a mano, un archivio vecchio): «2» e 2 sono lo stesso posto,
     // e proporne il cambio sarebbe una riga che non cambia niente
-    const c = cammino([["Alfa", L("a", "Alfa", { sagaOrder: "1" })]]);
+    const c = cammino([["Alfa", L("a", "Alfa", { sagaOrder: "1" }), 1]]);
     t.eq("«1» e 1 sono lo stesso numero", numerazioneGuida(c).length, 0);
   }
 
@@ -127,9 +187,9 @@ export default async (t) => {
     // rientrerebbe da qui. Il volume resta nel cammino — quello si
     // riconosce dal titolo — e il suo numero lo prende lo stesso.
     const c = cammino([
-      ["Alfa", L("a", "Alfa", { saga: "Warhammer 40K" })],
-      ["Beta", L("b", "Beta", { saga: "Warhammer 40K" })],
-      ["Gamma", L("g", "Gamma", { saga: "", sagaTolta: true })],
+      ["Alfa", L("a", "Alfa", { saga: "Warhammer 40K" }), 1],
+      ["Beta", L("b", "Beta", { saga: "Warhammer 40K" }), 2],
+      ["Gamma", L("g", "Gamma", { saga: "", sagaTolta: true }), 3],
     ]);
     t.eq("a chi la saga se l'è tolta non si riscrive", sagaComune(c), null);
     t.eq("…ma il numero della guida lo prende", numerazioneGuida(c).find((p) => p.id === "g").a, 3);
@@ -184,14 +244,22 @@ export default async (t) => {
     const c = camminoDi(suoi);
     const n = numerazioneGuida(c);
     t.eq("i tre volumi ricevono un numero", n.length, 3);
-    // Eisenhorn apre il prologo della guida: per `riconosci` non ha
-    // numero (non è un romanzo dell'Eresia) e resterebbe fuori dalla
-    // frontiera — qui invece è la prima tappa
+    // Eisenhorn apre il prologo della guida: un numero di lettura suo non
+    // ce l'ha (non è un romanzo dell'Eresia) e senza il decimale
+    // resterebbe fuori dalla frontiera, che è un buco e non una prudenza
     const eisenhorn = n.find((p) => p.title === "Eisenhorn");
-    t.eq("e il prologo è la prima tappa", eisenhorn.a, 1);
+    t.eq("e il prologo si infila prima del primo", eisenhorn.a, 0.01);
     t.eq("…anche se per la tavola non ha un numero di lettura", eisenhorn.da, null);
+    // IL CONTROLLO CHE IL LETTORE HA CHIESTO DUE VOLTE. Pinnava il
+    // contrario («horus.a > 13») ed è girato con dentro la ragione: il
+    // prologo sono quattro percorsi ALTERNATIVI, ne leggi uno e non
+    // tredici, e numerarli di fila faceva uscire «Horus Rising»
+    // quindicesimo del suo stesso inizio — «perché mi dice numero lettura
+    // 15 quando è il primo?», e poi «i numeri di lettura riesci a
+    // mettermeli giusti?».
     const horus = n.find((p) => p.title === "Horus Rising");
-    t.c("«Horus Rising» sta dopo il prologo", horus.a > 13);
+    t.eq("«Horus Rising» è il PRIMO, non il quindicesimo", horus.a, 1);
+    t.c("…e sta dopo il prologo lo stesso", horus.a > eisenhorn.a);
     t.c("…e prima di «False Gods»", horus.a < n.find((p) => p.title === "False Gods").a);
     t.eq("la saga scritta a mano non si tocca", sagaComune(c), null);
   }
