@@ -185,6 +185,62 @@ export default async (t) => {
     t.eq("il racconto col suo file prende la serie", p.find((x) => x.id === "x")?.a, "The Horus Heresy");
     t.eq("e nessun libro compare due volte", new Set(p.map((x) => x.id)).size, p.length);
   }
+
+  // ── QUEL CHE LA GUIDA DICHIARA FUORI DALLA STORIA ─────────────────────
+  //
+  // Segnalato dal lettore con lo scaffale in mano: «non mi convince che i
+  // libri opzionali me li metti tu come parte di qualcosa quando io voglio
+  // metterli solo che facciano parte dell'universo di Warhammer 40K». Il
+  // prologo sono quattro percorsi ALTERNATIVI e i sette 40K la guida li
+  // marca «fuori dall'Eresia»: sono nel percorso per accompagnare la
+  // storia, non per farne parte. Scriverci sopra la Serie non alza nessun
+  // errore — li raggruppa sullo scaffale come volumi dell'Eresia e fa
+  // raccontare «Prima di cominciare» su libri di un'altra storia.
+  {
+    const c = cammino([
+      [{ t: "Alfa", c: "Part 1 · Uno", o: 1 }, L("a")],
+      [{ t: "Eisenhorn", c: "Prologo · 40K", tipo: "prologo" }, L("p", { series: "The Horus Heresy" })],
+      [{ t: "Night Lords", c: "Part 1 · Uno", tipo: "fuori" }, L("f", { series: "The Horus Heresy" })],
+      // un'antologia invece la storia la fa eccome: tiene i racconti del
+      // percorso, e la sua Serie si scrive come quella dei romanzi
+      [{ t: "Antologia", c: "Part 1 · Uno", tipo: "antologia" }, L("n")],
+    ]);
+    const p = serieDaScrivere({ ...c, saga: "The Horus Heresy", parti: true });
+    const dove = (id) => p.find((x) => x.id === id);
+    t.eq("al romanzo si scrive la storia", dove("a")?.a, "The Horus Heresy");
+    t.eq("e all'antologia anche", dove("n")?.a, "The Horus Heresy");
+    // LE DUE RIGHE CHE CURANO LA SEGNALAZIONE: la Serie che avevamo
+    // scritto noi si toglie, e la riga lo dice «da → senza serie»
+    t.eq("al prologo la storia si TOGLIE", dove("p")?.a, "");
+    t.eq("…e la riga dice da dove viene", dove("p")?.da, "The Horus Heresy");
+    t.eq("e al titolo fuori dall'Eresia pure", dove("f")?.a, "");
+  }
+  {
+    // MA QUEL CHE HA SCRITTO IL LETTORE NON SI TOCCA, nemmeno per
+    // togliere: si propone solo dove il campo tiene il nome che avremmo
+    // scritto noi (la stessa regola di `CICLI_NOSTRI`). Senza questa
+    // guardia il pannello proporrebbe di cancellare una Serie sua —
+    // «Night Lords» sul suo omnibus — e sarebbe una perdita, non una cura.
+    const c = cammino([
+      [{ t: "Night Lords", c: "Part 1 · Uno", tipo: "fuori" }, L("f", { series: "Night Lords" })],
+      [{ t: "Eisenhorn", c: "Prologo · 40K", tipo: "prologo" }, L("p")],
+    ]);
+    const p = serieDaScrivere({ ...c, saga: "The Horus Heresy", parti: true });
+    t.eq("una serie sua non si propone di togliere", p.find((x) => x.id === "f"), undefined);
+    t.eq("e chi è già senza serie non è una proposta", p.find((x) => x.id === "p"), undefined);
+    t.eq("quindi non c'è niente da fare", p.length, 0);
+  }
+  {
+    // E SU UNA TAVOLA CHE NON DICHIARA CAPITOLI NON SI TOGLIE MAI NIENTE.
+    // Lì quel che scriviamo è il CICLO della voce, non il nome della
+    // storia, quindi «il campo tiene il nome che avremmo scritto noi» non
+    // si può decidere confrontandolo con la saga: sarebbe la domanda
+    // sbagliata, e la risposta un campo cancellato. La fixture deve avere
+    // la Serie UGUALE alla saga, o la guardia non viene nemmeno raggiunta
+    // (mutazione sopravvissuta al primo giro).
+    const c = cammino([[{ t: "Fuori", c: "Death", tipo: "fuori" }, L("x", { series: "Finta" })]]);
+    t.eq("senza capitoli non si tocca niente", serieDaScrivere({ ...c, saga: "Finta" }).length, 0);
+  }
   {
     // e su una tavola che NON dichiara capitoli si scrive il ciclo, che lì
     // è proprio quel che il lettore chiama Serie (Rincewind, le Guardie)

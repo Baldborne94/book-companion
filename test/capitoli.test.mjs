@@ -237,12 +237,14 @@ export default async (t) => {
     // diversi e nell'ordine della guida — senza, lo scaffale li mostrerebbe
     // nell'ordine d'arrivo e nessun errore lo direbbe.
     const dove = (titolo) => capitoloDi(riconosci({ title: titolo, author: "" }));
-    const prologo = dove("Eisenhorn");
     const primo = dove("Horus Rising");
     const quarta = dove("Savage Weapons");
     const dodicesima = dove("The End And The Death, Volume 1");
-    t.eq("il prologo apre la guida", prologo.ordine, 0);
-    t.c("e il primo romanzo viene dopo", prologo.ordine < primo.ordine);
+    // QUESTO CONTROLLO ERA GIRATO, e diceva «il prologo apre la guida» su
+    // `dove("Eisenhorn").ordine === 0`. Adesso un libro di prologo un
+    // capitolo non ce l'ha affatto (vedi il blocco qui sotto): stava
+    // pinnando proprio il difetto che il lettore ha segnalato.
+    t.c("il primo capitolo della storia apre la fila", primo.ordine >= 0, `${primo.nome} (${primo.ordine})`);
     t.c("e i capitoli dopo hanno posti crescenti", primo.ordine < quarta.ordine, `${primo.ordine} < ${quarta.ordine}`);
     t.c(
       "…fino all'ultimo, che in alfabetico verrebbe prima",
@@ -252,6 +254,55 @@ export default async (t) => {
     // chi la guida non lo colloca non ha nemmeno un capitolo
     t.eq("e un libro fuori dalla guida non ha capitolo", capitoloDi(riconosci({ title: "Mort", author: "Terry Pratchett" })), null);
     t.eq("né una voce vuota", capitoloDi(null), null);
+  }
+
+  // ── E QUEL CHE LA GUIDA DICHIARA FUORI DALLA STORIA ───────────────────
+  //
+  // Segnalato dal lettore: «non mi convince che i libri opzionali me li
+  // metti tu come parte di qualcosa quando io voglio metterli solo che
+  // facciano parte dell'universo di Warhammer 40K». Il prologo sono
+  // quattro percorsi ALTERNATIVI e i sette 40K la tavola li marca «40k,
+  // fuori dall'Eresia» — e l'import gli scriveva addosso la storia e il
+  // capitolo lo stesso. Si prova sulla TAVOLA VERA, coi titoli della sua
+  // fotografia: su una finta il difetto non si vedrebbe.
+  {
+    const hh = (titolo) => riconosci({ title: titolo, author: "" });
+    for (const [titolo, cosa] of [
+      ["Eisenhorn", "il prologo"],
+      ["Night Lords Omnibus", "il titolo fuori dall'Eresia"],
+      ["Forges of Mars Omnibus", "l'altro fuori dall'Eresia"],
+    ]) {
+      const r = hh(titolo);
+      t.eq(`${cosa} resta nell'universo`, r?.saga, "The Horus Heresy");
+      t.eq(`…ma senza la storia nella Serie («${titolo}»)`, r?.ciclo, null);
+      t.eq(`…e senza capitolo («${titolo}»)`, capitoloDi(r), null);
+    }
+    // e la storia vera non si muove: romanzi e antologie restano com'erano
+    const romanzo = hh("Horus Rising");
+    t.eq("il romanzo tiene la storia", romanzo?.ciclo, "The Horus Heresy");
+    t.c("…e il suo capitolo", !!capitoloDi(romanzo)?.nome, `${capitoloDi(romanzo)?.nome}`);
+    const antologia = hh("Eye of Terra");
+    t.eq("l'antologia tiene la storia", antologia?.ciclo, "The Horus Heresy");
+    t.c("…e il suo capitolo", !!capitoloDi(antologia)?.nome, `${capitoloDi(antologia)?.nome}`);
+    // e una tavola SENZA capitoli continua a scrivere il ciclo nella Serie
+    t.eq("nel Mondo Disco il ciclo resta il ciclo", riconosci({ title: "Mort", author: "Terry Pratchett" })?.ciclo, "Death");
+  }
+
+  // ── E IL MUCCHIO SENZA NOME STA DOVE LO METTE IL NUMERO ───────────────
+  {
+    // Provata e SCARTATA la regola «lo scarto chiude sempre», che sarebbe
+    // quella dei «Volumi soli» e di «Fuori dal percorso»: nel Circle of
+    // the World i romanzi a sé si leggono FRA le due trilogie, e mandarli
+    // in fondo racconta un ordine che non è quello vero (il controllo che
+    // lo dice sta in `ripiani.test.mjs` e ha smentito la modifica).
+    // Quindi nel 40K «Volumi a sé» apre lo scaffale, ed è giusto: il
+    // prologo, nella guida, viene PRIMA dell'Eresia.
+    const libri = [
+      L("a", { saga: "S", series: "", sagaOrder: 0.01 }),
+      L("b", { saga: "S", series: "Storia", sagaOrder: 1 }),
+    ];
+    const [ripiano] = disponi(libri, null, "auto", null, null);
+    t.eq("lo scarto sta dove cade il suo numero", ripiano.cicli.map((c) => c.nome ?? "—").join("|"), "—|Storia");
   }
 
   // ── RACCOGLIERE I CICLI RESTA QUEL CHE ERA ────────────────────────────

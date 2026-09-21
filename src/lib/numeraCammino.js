@@ -1,4 +1,4 @@
-import { chiaveSaga, nienteSaga } from "./sagaBooks.js";
+import { chiaveSaga, nienteSaga, fuoriDallaStoria } from "./sagaBooks.js";
 
 // NUMERARE I TUOI VOLUMI COME LA GUIDA.
 //
@@ -88,21 +88,44 @@ export function numerazioneGuida(cammino) {
 //
 // Le tavole che NON dichiarano capitoli continuano a scrivere il ciclo, che
 // li' e' proprio quel che il lettore chiama Serie (Rincewind, le Guardie).
+//
+// E QUEL CHE LA GUIDA DICHIARA FUORI DALLA STORIA NON PRENDE NESSUNA SERIE,
+// e quella che avevamo scritto noi si TOGLIE (segnalato: «non mi convince
+// che i libri opzionali me li metti tu come parte di qualcosa quando io
+// voglio metterli solo che facciano parte dell'universo di Warhammer
+// 40K»). Il prologo sono quattro percorsi alternativi e i sette 40K la
+// guida li marca «fuori dall'Eresia»: sono nel percorso per accompagnare
+// la storia, non per farne parte, e scriverci sopra «The Horus Heresy»
+// vuol dire che «Prima di cominciare», aperto un romanzo dell'Eresia, li
+// racconta come volumi precedenti della stessa storia.
+//
+// TOGLIERE E' UNA PROPOSTA COME LE ALTRE, e non si fa in silenzio: la riga
+// dice «da → senza serie» e si puo' spuntare via. E si propone SOLO dove
+// il campo tiene il nome che avremmo scritto noi — la stessa regola di
+// `CICLI_NOSTRI`: quel che il lettore si e' scritto a mano non si tocca
+// mai, nemmeno per togliere.
 export function serieDaScrivere(cammino) {
   const fuori = [];
   const visti = new Set();
+  const storia = String(cammino?.saga || "").trim();
   for (const t of cammino?.tappe || []) {
     if (!t?.libro) continue;
     // lo stesso libro puo' comparire su piu' righe — l'antologia e i suoi
     // racconti, o due copie dello stesso volume — e una riga sola basta:
     // la Serie e' del LIBRO, non della tappa
     if (visti.has(t.libro.id)) continue;
-    const a = cammino?.parti
-      ? String(cammino.saga || "").trim()
-      : String(t.voce?.c || "").trim();
+    const da = String(t.libro.series || "").trim();
+    if (fuoriDallaStoria(t.voce)) {
+      // una tavola senza capitoli non ha una storia da scrivere qui, quindi
+      // non c'e' niente di nostro da togliere: il campo e' tutto suo
+      if (!cammino?.parti || !storia || da !== storia) continue;
+      visti.add(t.libro.id);
+      fuori.push({ id: t.libro.id, title: t.libro.title || t.voce?.t || "senza titolo", da, a: "" });
+      continue;
+    }
+    const a = cammino?.parti ? storia : String(t.voce?.c || "").trim();
     if (!a) continue;
     visti.add(t.libro.id);
-    const da = String(t.libro.series || "").trim();
     if (da === a) continue;
     fuori.push({ id: t.libro.id, title: t.libro.title || t.voce?.t || "senza titolo", da, a });
   }

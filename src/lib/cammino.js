@@ -1,4 +1,4 @@
-import { riconosci, TAVOLE } from "./sagaBooks.js";
+import { riconosci, TAVOLE, fuoriDallaStoria } from "./sagaBooks.js";
 import { getStatus, getProgress } from "./library.js";
 import { raccontiLetti, chiaveRacconto } from "./racconti.js";
 
@@ -310,10 +310,10 @@ export function prossimoPasso(
   // puoi finire avrebbe bloccato la scheda a vita. Una volta che una tappa
   // della storia vera l'hai letta sei dentro, e la fondazione e' dietro:
   // da li' il prologo non e' piu' il tuo prossimo passo.
-  const entrato = tappe.some((t) => {
-    const tipo = t?.voce?.tipo;
-    return tipo !== "prologo" && tipo !== "fuori" && fatta(t);
-  });
+  // la domanda «e' della storia?» si fa in un posto solo (`fuoriDallaStoria`):
+  // la stessa decide cosa si scrive nella Serie, e due copie della stessa
+  // regola possono divergere senza che nessun errore lo dica
+  const entrato = tappe.some((t) => !fuoriDallaStoria(t?.voce) && fatta(t));
 
   const inGioco = (t) => {
     const tipo = t?.voce?.tipo;

@@ -214,6 +214,16 @@ export function raccogliCicli(libri = [], campo = "series", parteDi = null) {
   }
   // chi non ha nessun numero chiude, come i volumi senza numero dentro un
   // ripiano; a parita' resta l'ordine d'arrivo, che e' quello di lettura
+  //
+  // E IL MUCCHIO SENZA NOME NON FA ECCEZIONE, benche' sia un mucchio di
+  // scarto: si e' provato a farlo chiudere sempre — come i «Volumi soli»
+  // sullo scaffale e «Fuori dal percorso» dentro un ciclo — e il test del
+  // Circle of the World l'ha smentito. Li' i romanzi a se' si leggono FRA
+  // le due trilogie, e mandarli in fondo racconta un ordine che non e'
+  // quello vero. Vale anche dove sembrava sbagliato: nel 40K «Volumi a
+  // se'» apre lo scaffale perche' il prologo, nella guida, viene PRIMA
+  // dell'Eresia. Il numero dice il posto anche per chi un nome non ce
+  // l'ha.
   const fuori = [...gruppi.values()].sort((a, b) => {
     if (a.primo === b.primo) return 0;
     if (a.primo === null) return 1;

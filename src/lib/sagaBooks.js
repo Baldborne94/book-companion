@@ -158,6 +158,29 @@ function combacia(campo, voce, autoreNorm) {
   return voce.k.length >= nudo.length * COPERTURA;
 }
 
+// QUEL CHE LA GUIDA DICHIARA FUORI DALLA STORIA.
+//
+// Una guida porta due specie di tappe. Le une sono la storia: i romanzi
+// dell'Eresia e le antologie da cui si pescano i racconti. Le altre stanno
+// nel percorso per accompagnarla e la guida stessa lo dice — il PROLOGO
+// sono quattro percorsi ALTERNATIVI (ne leggi uno, non tutti e tredici i
+// libri) e i sette titoli 40K li marca «fuori dall'Eresia».
+//
+// Segnalato dal lettore con lo scaffale in mano: «non mi convince che i
+// libri opzionali me li metti tu come parte di qualcosa quando io voglio
+// metterli solo che facciano parte dell'universo di Warhammer 40K». Aveva
+// ragione alla lettera: «Night Lords Omnibus» — che la tavola marca
+// «40k, fuori dall'Eresia» — gli finiva sotto «Part 4 · The Lion and the
+// Prince», cioe' l'app gli diceva che quel libro e' un capitolo di una
+// storia di cui la guida dichiara che non fa parte.
+//
+// Il concetto c'era gia' e lo usava `prossimoPasso` (un passo non si
+// propone mai su queste due specie): mancava di qua, dove si decide cosa
+// si SCRIVE addosso al libro. Una riga sola adesso, o le due meta'
+// possono divergere senza che nessun errore lo dica.
+export const fuoriDallaStoria = (voce) =>
+  voce?.tipo === "prologo" || voce?.tipo === "fuori";
+
 // IL CAPITOLO COL SUO POSTO NELLA GUIDA, pronto per lo scaffale. Sta qui e
 // non nel componente per la ragione di sempre: un test in Node non importa
 // un `.jsx`, e qui c'e' qualcosa da difendere — l'ordine dei capitoli non
@@ -199,8 +222,14 @@ export function riconosci({ title, author, fileName } = {}) {
         // dalla tavola quando serve — sullo scaffale, come terzo livello.
         // E' la stessa regola di `tipo`: quel che la guida sa non si scrive
         // addosso al libro, si chiede alla guida.
-          ciclo: b.tav.parti ? b.tav.saga : b.c,
-          parte: b.tav.parti ? b.c || null : null,
+        //
+        // E QUEL CHE LA GUIDA DICHIARA FUORI DALLA STORIA NON PRENDE NE'
+        // L'UNA NE' L'ALTRO: resta nell'universo (la saga) e basta. Non e'
+        // un capitolo dell'Eresia — la guida lo dice lei — e non e'
+        // nemmeno un volume della sua storia, quindi «Prima di cominciare»
+        // non deve raccontarlo insieme ai romanzi dell'Eresia.
+          ciclo: fuoriDallaStoria(b) ? null : b.tav.parti ? b.tav.saga : b.c,
+          parte: fuoriDallaStoria(b) || !b.tav.parti ? null : b.c || null,
           titolo: b.t,
         };
       }
