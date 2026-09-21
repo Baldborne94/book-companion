@@ -684,6 +684,19 @@ export default function App() {
   // «Apri con»: i file che il sistema ci passa entrano in Libreria dalla
   // stessa porta dell'input, e la Libreria dice quando ha finito
   const [daImportare, setDaImportare] = useState(null);
+  // I BYTE SONO APPENA CAMBIATI, e lo dice chi li ha cambiati.
+  //
+  // Segnalato dal lettore: «ho tolto un po' di ebook e tenuto solo la
+  // scheda, non dovrei vedere aggiornarsi lo spazio di archiviazione?».
+  // La Libreria le sue due misure le chiede una volta sola — il peso sul
+  // dispositivo quando cambia la biblioteca, il secchio all'apertura dello
+  // scaffale — e togliere un ebook non e' ne' l'una ne' l'altra cosa: la
+  // scheda resta, quindi lassu' un file in meno e qui una riga identica.
+  // Peggio: `updateBooks` cambia `books` PRIMA che il file sia sparito,
+  // quindi quella misura si rileggeva anche troppo presto, sui byte ancora
+  // al loro posto. Questo numero cresce quando i byte sono andati via
+  // davvero, e la Libreria rilegge tutt'e due.
+  const [spazioCambiato, setSpazioCambiato] = useState(0);
   const { tall } = useViewport();
   // la saga vale solo per il salto dalla home: tornando dal menu la
   // libreria deve ritrovarsi intera
@@ -936,6 +949,7 @@ export default function App() {
     } catch {
       /* i metadati sono già rimossi: i bytes orfani non sono raggiungibili dalla UI */
     }
+    setSpazioCambiato((n) => n + 1);
     notify("Il tomo è tornato alla polvere 🕯️");
     runSync.current(true);
   }
@@ -963,6 +977,7 @@ export default function App() {
       /* i byte restano orfani: la scheda dice già che l'ebook non c'è */
     }
     await togliFileDalCloud(b).catch(() => {});
+    setSpazioCambiato((n) => n + 1);
     notify(`«${b.title}» resta in biblioteca, senza ebook 📗`);
     runSync.current(true);
   }
@@ -1210,6 +1225,7 @@ export default function App() {
             // i byte scesi in casa non sono roba da sincronizzare: basta
             // ricontare chi c'e', e le nuvolette si spengono subito
             onFileLocali={async () => setLocalIds(await localFileIds())}
+            spazioCambiato={spazioCambiato}
             onCammino={setCammino}
             // il controllo aggiornamenti col dito: qui siamo in Libreria,
             // nessun libro aperto, quindi installare subito e' lecito —
