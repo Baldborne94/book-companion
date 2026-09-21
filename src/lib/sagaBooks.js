@@ -221,31 +221,24 @@ export const fuoriDallaStoria = (voce) =>
 // si puo' prendere dai volumi che possiedi (un racconto non ha numero di
 // lettura, e il suo capitolo scivolerebbe in fondo) ne' dai nomi (in
 // alfabetico «Part 12» viene prima di «Part 4»).
-// E UNA TAPPA SENZA CAPITOLO NON E' «FUORI DAL PERCORSO»: ci sta dentro
-// eccome. Segnalato con lo scaffale in mano, coi tre 40K sotto quel titolo:
-// «questi 3 non dovrebbero essere fuori dal percorso» — e sulla stessa
-// schermata i loro dorsi portavano il numero del cammino (13.01, 20.01,
-// 20.02), cioe' il posto che occupano NEL percorso. Due righe che si
-// smentiscono a mezzo centimetro di distanza.
+// E UNA TAPPA DELLA GUIDA IL CAPITOLO CE L'HA SEMPRE. Qui per un giorno e'
+// vissuto un gruppo in piu' — «Nel percorso, fuori dalla storia» — che
+// raccoglieva i libri che la guida colloca ma dichiara fuori dall'Eresia:
+// era nato per non chiamarli «Fuori dal percorso», che su di loro e' falso.
+// Il lettore l'ha disdetto il giorno dopo, e con la ragione in mano:
+// «Scythes of the Emperor appartiene alla parte 5, the Hunt for Magnus
+// appartiene alla parte 8 cosi' come Battle of the Fang». Un nome nostro
+// che dice «sta fuori» e' un'informazione in meno del nome che la guida
+// gli da' gia'. Vedi `parte` in `riconosci`.
 //
-// Le ragioni per non avere un capitolo sono DUE e vogliono due nomi:
-// la guida non colloca affatto il libro (e allora e' davvero fuori dal
-// percorso), oppure lo colloca e dichiara che non fa parte della storia —
-// il prologo e i titoli marcati «fuori dall'Eresia». Un nome solo per
-// tutt'e due dice il falso sulla meta' di loro, e un titolo sbagliato non
-// alza nessun errore.
-export const FUORI_STORIA = "Nel percorso, fuori dalla storia";
-
+// Quindi qui non c'e' piu' nessun ripiego: ogni voce di una tavola a
+// capitoli ne dichiara uno, quindi chi non ha capitolo non e' una tappa —
+// e un ramo che non si raggiunge e' peggio di nessun ramo, perche' il
+// prossimo gli crede.
 export const capitoloDi = (riconosciuto) => {
   const nome = String(riconosciuto?.parte || "").trim();
-  if (nome) return { nome, ordine: PARTI_DI_GUIDA.get(nome.toLowerCase()) ?? null };
-  // `guida` e non `titolo`: un Pratchett si riconosce eccome, ma la sua
-  // tavola capitoli non ne dichiara — li' un capitolo non ce l'ha NESSUNO,
-  // e questo gruppo non deve nemmeno esistere.
-  if (!riconosciuto?.guida) return null;
-  // dopo ogni capitolo, e prima di chi la guida non colloca affatto (che
-  // resta senza nome, quindi chiude la fila)
-  return { nome: FUORI_STORIA, ordine: PARTI_DI_GUIDA.size };
+  if (!nome) return null;
+  return { nome, ordine: PARTI_DI_GUIDA.get(nome.toLowerCase()) ?? null };
 };
 
 export function riconosci({ title, author, fileName } = {}) {
@@ -278,18 +271,22 @@ export function riconosci({ title, author, fileName } = {}) {
         // E' la stessa regola di `tipo`: quel che la guida sa non si scrive
         // addosso al libro, si chiede alla guida.
         //
-        // E QUEL CHE LA GUIDA DICHIARA FUORI DALLA STORIA NON PRENDE NE'
-        // L'UNA NE' L'ALTRO: resta nell'universo (la saga) e basta. Non e'
-        // un capitolo dell'Eresia — la guida lo dice lei — e non e'
-        // nemmeno un volume della sua storia, quindi «Prima di cominciare»
-        // non deve raccontarlo insieme ai romanzi dell'Eresia.
+        // E QUEL CHE LA GUIDA DICHIARA FUORI DALLA STORIA NON PRENDE LA
+        // STORIA: resta nell'universo (la saga) e basta. Non e' un volume
+        // dell'Eresia — la guida lo dice lei — quindi «Prima di
+        // cominciare» non deve raccontarlo insieme ai romanzi dell'Eresia.
           ciclo: fuoriDallaStoria(b) ? null : b.tav.parti ? b.tav.saga : b.c,
-          parte: fuoriDallaStoria(b) || !b.tav.parti ? null : b.c || null,
-          // «questo libro e' una tappa di una GUIDA», che non e' «lo
-          // riconosco»: senza, lo scaffale non saprebbe distinguere un
-          // volume che la guida colloca fuori dalla storia da uno che la
-          // guida non conosce affatto — e li chiamerebbe con lo stesso nome
-          guida: !!b.tav.parti,
+          // MA IL CAPITOLO SI', ed e' la meta' che era stata tolta di
+          // troppo: «Scythes of the Emperor appartiene alla parte 5, the
+          // Hunt for Magnus appartiene alla parte 8 cosi' come Battle of
+          // the Fang». Quel che il lettore aveva fatto togliere e' cio' che
+          // SCRIVIAMO addosso al suo libro — la Serie, un campo suo — e il
+          // capitolo non e' un campo: e' dove la guida li mette, e la guida
+          // ce li mette per davvero (i loro dorsi ne portano il numero).
+          // Sullo scaffale i due livelli insieme dicono la verita' intera:
+          // sotto «Volumi a se'», perche' la storia non sono loro, e dentro
+          // «Part 5», perche' il percorso li colloca li'.
+          parte: b.tav.parti ? b.c || null : null,
           titolo: b.t,
         };
       }
@@ -302,7 +299,7 @@ export function riconosci({ title, author, fileName } = {}) {
     if (!tav.autore || !chiAutore.includes(tav.autore)) continue;
     if (campi.some((campo) => tav.fuori.some((t) => contiene(campo, t)))) continue;
     // e qui la guida non ha collocato niente: si sa solo di chi e' il libro
-    return { saga: tav.saga, sagaOrder: null, ciclo: null, parte: null, guida: false, titolo: null };
+    return { saga: tav.saga, sagaOrder: null, ciclo: null, parte: null, titolo: null };
   }
   return null;
 }

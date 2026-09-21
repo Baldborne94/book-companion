@@ -14,7 +14,7 @@
 // Quel che sbaglia in silenzio qui è tutto di vista: un capitolo nel posto
 // sbagliato, o un'intestazione che si ripete, non alzano nessun errore.
 import { disponi, raccogliCicli } from "../src/lib/ripiani.js";
-import { riconosci, capitoloDi, FUORI_STORIA, PARTI_DI_GUIDA } from "../src/lib/sagaBooks.js";
+import { riconosci, capitoloDi } from "../src/lib/sagaBooks.js";
 
 const L = (id, extra = {}) => ({ id, title: id, addedAt: 1, ...extra });
 // la guida finta: il capitolo si chiede a una mappa, come in Libreria si
@@ -240,11 +240,13 @@ export default async (t) => {
     const primo = dove("Horus Rising");
     const quarta = dove("Savage Weapons");
     const dodicesima = dove("The End And The Death, Volume 1");
-    // QUESTO CONTROLLO ERA GIRATO, e diceva «il prologo apre la guida» su
-    // `dove("Eisenhorn").ordine === 0`. Adesso un libro di prologo un
-    // capitolo non ce l'ha affatto (vedi il blocco qui sotto): stava
-    // pinnando proprio il difetto che il lettore ha segnalato.
-    t.c("il primo capitolo della storia apre la fila", primo.ordine >= 0, `${primo.nome} (${primo.ordine})`);
+    // E IL PROLOGO APRE DAVVERO LA GUIDA: questo controllo era girato due
+    // volte, prima su `ordine === 0` e poi (quando un libro di prologo il
+    // capitolo non ce l'aveva) su «non ha capitolo». Torna com'era perché
+    // il capitolo è dove la guida ti mette, e il prologo la guida ce lo
+    // mette per primo.
+    t.eq("il prologo apre la guida", dove("Eisenhorn").ordine, 0);
+    t.c("il primo capitolo della storia apre la fila", primo.ordine > 0, `${primo.nome} (${primo.ordine})`);
     t.c("e i capitoli dopo hanno posti crescenti", primo.ordine < quarta.ordine, `${primo.ordine} < ${quarta.ordine}`);
     t.c(
       "…fino all'ultimo, che in alfabetico verrebbe prima",
@@ -267,23 +269,44 @@ export default async (t) => {
   // fotografia: su una finta il difetto non si vedrebbe.
   {
     const hh = (titolo) => riconosci({ title: titolo, author: "" });
-    for (const [titolo, cosa] of [
-      ["Eisenhorn", "il prologo"],
-      ["Night Lords Omnibus", "il titolo fuori dall'Eresia"],
-      ["Forges of Mars Omnibus", "l'altro fuori dall'Eresia"],
+    for (const [titolo, cosa, atteso] of [
+      ["Eisenhorn", "il prologo", "Prologo · 40K Foundation"],
+      ["Night Lords Omnibus", "il titolo fuori dall'Eresia", "Part 4 · The Lion and the Prince"],
+      ["Forges of Mars Omnibus", "l'altro fuori dall'Eresia", "Part 7 · Mars & Magnus"],
+      // i tre che il lettore ha nominato uno per uno, coi capitoli che ha
+      // scritto lui: se un giorno la cura smette di prenderli, il difetto
+      // è tornato identico
+      ["Scythes of the Emperor", "l'antologia fuori dall'Eresia", "Part 5 · Imperium Secondus"],
+      ["The Hunt for Magnus", "il primo dei Wolves", "Part 8 · Wolves"],
+      ["Battle of the Fang", "l'altro dei Wolves", "Part 8 · Wolves"],
     ]) {
       const r = hh(titolo);
       t.eq(`${cosa} resta nell'universo`, r?.saga, "The Horus Heresy");
       t.eq(`…ma senza la storia nella Serie («${titolo}»)`, r?.ciclo, null);
-      // QUESTO CONTROLLO ERA GIRATO e pretendeva `null`, cioè lo stesso
-      // gruppo di chi la guida non colloca affatto — che sullo scaffale si
-      // chiama «Fuori dal percorso» e su questi tre dice il falso: il
-      // percorso li contiene eccome, e i loro dorsi ne portano il numero
-      // («questi 3 non dovrebbero essere fuori dal percorso»).
-      t.eq(`…e in un gruppo suo, non «fuori dal percorso» («${titolo}»)`, capitoloDi(r)?.nome, FUORI_STORIA);
-      t.c(`…che sta dopo ogni capitolo («${titolo}»)`, capitoloDi(r).ordine >= PARTI_DI_GUIDA.size);
+      // QUESTO CONTROLLO È STATO GIRATO DUE VOLTE. Prima pretendeva
+      // `null` — lo stesso gruppo di chi la guida non colloca affatto,
+      // che sullo scaffale si chiama «Fuori dal percorso» e su questi
+      // libri dice il falso. Poi un gruppo tutto nostro, «Nel percorso,
+      // fuori dalla storia», che è vissuto un giorno: il lettore l'ha
+      // disdetto nominando i capitoli veri («Scythes of the Emperor
+      // appartiene alla parte 5, the Hunt for Magnus appartiene alla
+      // parte 8 così come Battle of the Fang»). Il capitolo è dove la
+      // guida ti mette, e un nome nostro che dice «sta fuori» è
+      // un'informazione in meno di quello che la guida gli dà già: a dire
+      // che la storia non sono loro ci pensa la Serie vuota, cioè il
+      // livello sopra.
+      t.eq(`…e il capitolo è quello della guida («${titolo}»)`, capitoloDi(r)?.nome, atteso);
+      // e col POSTO di quel capitolo, non senza: un `ordine` nullo manda
+      // il gruppo in coda allo scaffale, che è il difetto di ieri in
+      // un'altra veste
+      t.c(`…col suo posto nella guida («${titolo}»)`, Number.isInteger(capitoloDi(r).ordine), `${capitoloDi(r).ordine}`);
     }
-    // e chi la guida non conosce affatto resta senza gruppo: lì «Fuori dal
+    // e il posto è quello vero: i Wolves stanno fra la caduta di Horus e
+    // l'assedio di Terra, non in fondo né in mezzo a caso
+    const posto = (titolo) => capitoloDi(hh(titolo)).ordine;
+    t.c("i Wolves vengono dopo la prima parte", posto("Horus Rising") < posto("Battle of the Fang"), `${posto("Horus Rising")} < ${posto("Battle of the Fang")}`);
+    t.c("…e prima dell'assedio", posto("Battle of the Fang") < posto("The Solar War"), `${posto("Battle of the Fang")} < ${posto("The Solar War")}`);
+    // e chi la guida non conosce affatto resta senza capitolo: lì «Fuori dal
     // percorso» è la verità, ed è l'informazione che quel nome deve dare
     t.eq("un libro che la guida non colloca non ha gruppo", capitoloDi(riconosci({ title: "Mort", author: "Terry Pratchett" })), null);
     // e la storia vera non si muove: romanzi e antologie restano com'erano
