@@ -21,6 +21,7 @@ import {
 } from "./annotations.js";
 import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, getListsRaw, writeLists } from "./music.js";
 import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
+import { raccontiLetti, scriviRacconti } from "./racconti.js";
 import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, daCaricare, nonCeLassu, eTroppoGrande, giaBocciato, copertineDaScaricare, copertineDaCaricare } from "./syncCore.js";
 
 // `contaSpazio` viveva qui ed e' passata in `syncCore` con le altre
@@ -262,6 +263,7 @@ function localPrefs() {
     music_favs: getFavoritesRaw(),
     music_lists: getListsRaw(),
     glossari: tuttiIGlossari(),
+    racconti: [...raccontiLetti()],
     last_opened: getLastOpened(),
     updated_at: parseInt(localStorage.getItem(PREFS_UPD_KEY), 10) || 0,
   };
@@ -580,6 +582,7 @@ export async function syncNow({ onProgress } = {}) {
     writeFavorites(favsLocali);
     writeLists(merged.music_lists);
     scriviGlossari(merged.glossari || {});
+    scriviRacconti(merged.racconti || []);
     if (merged.last_opened) localStorage.setItem("bc_lastopen", merged.last_opened);
   }
   if (pushRemote) {

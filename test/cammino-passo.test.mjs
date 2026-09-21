@@ -19,7 +19,10 @@ const cammino = (righe) => ({
 const L = (id) => ({ id, title: id });
 const stati = (m) => (id) => m[id] || "unread";
 const prog = (m = {}) => (id) => m[id] || 0;
-const con = (m, p) => ({ statoDi: stati(m), progressoDi: prog(p) });
+// `spuntati` si passa SEMPRE, anche vuoto: il default vero legge
+// `localStorage`, che in Node non c'è — e un test che passa grazie allo
+// stub lasciato da un altro file non difende niente.
+const con = (m, p, r = []) => ({ statoDi: stati(m), progressoDi: prog(p), spuntati: new Set(r) });
 
 export default async (t) => {
   // ── LA CAMMINATA ──────────────────────────────────────────────────────
@@ -236,15 +239,26 @@ export default async (t) => {
       { id: "3", title: "Eisenhorn", author: "", saga: "Warhammer 40K" },
     ];
     const c = camminoDi(suoi);
+    // IL PRIMO PASSO DELLA GUIDA È UN RACCONTO, non un romanzo: il
+    // percorso CD8D apre con «The Wolf of Ash and Fire», che sta dentro
+    // «Eye of Terra». È esattamente l'informazione che l'app non dava —
+    // prima l'antologia veniva scavalcata e la guida cominciava dal
+    // secondo passo senza dirlo.
     t.eq(
-      "mai letto niente: il passo salta il prologo e va al primo romanzo",
+      "mai letto niente: il passo salta il prologo e va al primo racconto",
       prossimoPasso(c, con({})).tappa.voce.t,
-      "Horus Rising"
+      "The Wolf of Ash and Fire"
     );
-    // e quel romanzo ce l'ha, quindi non c'è nessuna seconda riga: è
-    // l'antologia scavalcata a rendere la scheda utile invece che
-    // inchiodata su un libro che non possiede
-    t.eq("…che ce l'ha, quindi niente seconda riga", prossimoPasso(c, con({})).apribile, null);
+    t.eq("…e dice dove trovarlo", prossimoPasso(c, con({})).tappa.voce.in, "Eye of Terra");
+    // l'antologia non ce l'ha, quindi la seconda riga offre il primo che
+    // può davvero aprire stasera
+    t.eq("…l'antologia non ce l'ha", prossimoPasso(c, con({})).tappa.libro, null);
+    t.eq("…e intanto può aprire il romanzo", prossimoPasso(c, con({})).apribile.voce.t, "Horus Rising");
+    // spuntato il racconto, il passo avanza: è l'unico modo, perché un
+    // racconto non è un file e non ha uno stato da leggere
+    const dopoSpunta = prossimoPasso(c, con({}, {}, ["The Wolf of Ash and Fire__Graham McNeill"]));
+    t.eq("spuntato il racconto, il passo avanza", dopoSpunta.tappa.voce.t, "Horus Rising");
+    t.eq("…e quello ce l'ha", dopoSpunta.apribile, null);
     t.eq("…e il prologo si dichiara una scelta", prossimoPasso(c, con({})).prologo, "scelta");
     // letto Eisenhorn, il percorso Inquisition è cominciato: il passo
     // diventa il suo seguito, che non ha

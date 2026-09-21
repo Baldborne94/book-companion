@@ -228,11 +228,27 @@ export default async (t) => {
   {
     const hh = TAVOLE.find((tv) => tv.saga === SAGA_HH);
     t.c("la tavola dell'Eresia è fra quelle esportate", !!hh);
-    t.eq("e il cammino è la guida intera", HORUS.length, 71);
+    t.eq("e il cammino è la guida intera", HORUS.length, 110);
+    // i conti della guida, uno per uno: 71 sono FILE (13 di prologo, 39
+    // romanzi, 12 antologie, 7 titoli 40K) e 39 sono racconti, che file
+    // non sono. Il patto dei numeri vive su questa riga: se le righe-file
+    // diventano 72, ogni numero già scritto in biblioteca è una bugia.
+    const conta = (f) => HORUS.filter(f).length;
+    t.eq("tredici libri di prologo", conta((b) => b.tipo === "prologo"), 13);
+    t.eq("dodici antologie", conta((b) => b.tipo === "antologia"), 12);
+    t.eq("sette titoli fuori dall'Eresia", conta((b) => b.tipo === "fuori"), 7);
+    t.eq("trentanove racconti e audiodrammi", conta((b) => b.tipo === "racconto"), 39);
+    t.eq("trentanove romanzi numerati", conta((b) => b.o != null), 39);
+    t.eq("e settantuno FILE in tutto", conta((b) => b.tipo !== "racconto"), 71);
     t.eq("si apre col prologo", HORUS[0].c, "Prologo · 40K Foundation");
     const primo = HORUS.findIndex((b) => b.o === 1);
     t.eq("il primo romanzo è Horus Rising", HORUS[primo].t, "Horus Rising");
-    t.c("e l'antologia della sua parte lo precede", HORUS[primo - 1].nota === "antologia");
+    // OGNI RACCONTO SA DOVE TROVARLO, o è un passo che non puoi eseguire.
+    // L'unico senza antologia è dichiarato dalla guida stessa come mai
+    // stampato, e la scheda lo dice a parole invece di tacere.
+    const orfani = HORUS.filter((b) => b.tipo === "racconto" && !b.in);
+    t.eq("i racconti dicono da quale antologia si pescano", orfani.length, 1);
+    t.eq("…e l'unico che non c'è è quello mai stampato", orfani[0].t, "Two Metaphysical Blades");
     const eretico = HORUS.find((b) => b.t === "The First Heretic");
     t.eq("il numero è quello del CAMMINO", eretico.o, 6);
     t.eq("…non quello della collana", eretico.n, 14);
@@ -252,7 +268,8 @@ export default async (t) => {
     t.eq("il cammino si trova lo stesso", c.saga, SAGA_HH);
     t.eq("e riconosce i suoi due volumi", c.tue, 2);
     t.eq("l'altro sta fuori dal percorso", c.fuori, 1);
-    t.eq("le tappe restano settantuno", c.tappe.length, 71);
+    t.eq("le tappe sono la guida intera", c.tappe.length, 110);
+    t.eq("…ma i VOLUMI da avere restano settantuno", c.volumi, 71);
     t.c("e «Horus Rising» è segnata come tua", !!c.tappe.find((x) => x.voce.t === "Horus Rising")?.libro);
   }
 };

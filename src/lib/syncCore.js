@@ -1,4 +1,5 @@
 import { fondi } from "./glossarioMio.js";
+import { fondiRacconti } from "./racconti.js";
 const EMPTY_ROW = {
   title: "",
   author: "",
@@ -771,6 +772,11 @@ export function mergePrefs(local, remote) {
     music_favs,
     music_lists,
     glossari: fondiGlossari(local.glossari, remote?.glossari, remoteNewer),
+    // I RACCONTI SPUNTATI SI UNISCONO, e ordinati: l'ordine di un insieme
+    // non vuol dire niente, ma `eq` confronta il JSON — senza, due
+    // dispositivi con le stesse spunte in ordine diverso si
+    // rimbalzerebbero le preferenze a ogni giro.
+    racconti: fondiRacconti(local.racconti, remote?.racconti).sort(),
     updated_at: Math.max(local.updated_at || 0, remote?.updated_at || 0),
   };
   const eq = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -782,6 +788,7 @@ export function mergePrefs(local, remote) {
       !eq(merged.music_lists, local.music_lists) ||
       !eq(merged.reader, local.reader) ||
       !eq(merged.glossari, local.glossari) ||
+      !eq(merged.racconti, [...(local.racconti || [])].sort()) ||
       merged.last_opened !== (local.last_opened || null),
     pushRemote:
       !remote ||
@@ -789,6 +796,7 @@ export function mergePrefs(local, remote) {
       !eq(merged.music_lists, remote.music_lists) ||
       !eq(merged.reader, remote.reader) ||
       !eq(merged.glossari, remote.glossari) ||
+      !eq(merged.racconti, [...(remote.racconti || [])].sort()) ||
       merged.last_opened !== (remote.last_opened || null),
   };
 }

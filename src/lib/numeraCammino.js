@@ -39,15 +39,51 @@ import { chiaveSaga, nienteSaga } from "./sagaBooks.js";
 // il numero CAMBIA: chi ce l'ha gia' giusto non e' una proposta, e' lavoro
 // gia' fatto — cosi' al secondo giro non resta niente da spuntare.
 export function numerazioneGuida(cammino) {
-  const tappe = cammino?.tappe || [];
+  // IL NUMERO SI CONTA SUI SOLI FILE. I racconti delle antologie hanno una
+  // riga per uno nella tavola, ma non sono volumi e non ne portano via il
+  // posto: contandoli, il numero di ogni libro si sposterebbe in avanti di
+  // quanti racconti gli stanno davanti — cioe' OGNI numero gia' scritto
+  // diventerebbe una bugia, e la frontiera ci crede. Il numero e' il posto
+  // del volume fra i VOLUMI della guida, e cosi' resta lo stesso oggi e il
+  // giorno che la guida aggiunge un racconto.
+  const volumi = (cammino?.tappe || []).filter((t) => t?.voce?.tipo !== "racconto");
   const fuori = [];
-  tappe.forEach((t, i) => {
+  volumi.forEach((t, i) => {
     if (!t?.libro) return;
     const a = i + 1;
     const da = t.libro.sagaOrder == null ? null : Number(t.libro.sagaOrder);
     if (da === a) return;
     fuori.push({ id: t.libro.id, title: t.libro.title || t.voce?.t || "senza titolo", da, a });
   });
+  return fuori;
+}
+
+// LE PARTI DELLA GUIDA, SUI TUOI VOLUMI.
+//
+// Chiesto dal lettore con lo scaffale in mano: «rimettimi a posto tutta la
+// Horus Heresy sotto la saga Warhammer 40K con le parti corrette». Sul suo
+// ripiano cinquanta volumi stavano sotto un ciclo solo, «The Horus
+// Heresy» — che e' il nome della COLLANA letto dal file, non una parte del
+// cammino — e la guida invece ne ha tredici, che sono i capitoli della
+// storia.
+//
+// Il tasto «Riconosci saghe e cicli» non poteva farlo, e la sua guardia ha
+// ragione: aggiorna i cicli VUOTI e quelli che avevamo scritto noi, e
+// «The Horus Heresy» non e' ne' l'uno ne' l'altro — per lui e' un nome
+// scritto da qualcun altro, e su quel campo l'ultima parola e' del
+// lettore. Quindi qui si PROPONE, riga per riga, come per i numeri e per
+// i titoli: un ciclo sbagliato non alza nessun errore, cambia solo come
+// si raggruppa lo scaffale e cosa racconta «Prima di cominciare».
+export function partiDaScrivere(cammino) {
+  const fuori = [];
+  for (const t of cammino?.tappe || []) {
+    if (!t?.libro || t.voce?.tipo === "racconto") continue;
+    const a = String(t.voce?.c || "").trim();
+    if (!a) continue;
+    const da = String(t.libro.series || "").trim();
+    if (da === a) continue;
+    fuori.push({ id: t.libro.id, title: t.libro.title || t.voce.t || "senza titolo", da, a });
+  }
   return fuori;
 }
 
@@ -94,15 +130,32 @@ export function sagaComune(cammino) {
 // pezzi toccano lo STESSO libro — un volume puo' avere insieme la saga
 // sbagliata e il numero sbagliato, e due scritture separate si
 // sovrascriverebbero a vicenda.
-export function campiDaScrivere({ numeri = [], saga = null, scelti, sagaScelta = true } = {}) {
+export function campiDaScrivere({
+  numeri = [],
+  parti = [],
+  saga = null,
+  scelti,
+  sagaScelta = true,
+} = {}) {
   const campi = new Map();
   const dentro = (id) => {
     if (!campi.has(id)) campi.set(id, {});
     return campi.get(id);
   };
+  // LA SPUNTA E' PER RIGA, NON PER LIBRO: lo stesso volume puo' comparire
+  // due volte — una per il numero e una per la parte — e con un insieme di
+  // soli id togliendo la spunta a una si toglierebbe anche all'altra, in
+  // silenzio. Da qui le chiavi `n:` e `p:`.
   for (const p of numeri) {
-    if (scelti && !scelti.has(p.id)) continue;
+    if (scelti && !scelti.has(`n:${p.id}`)) continue;
     dentro(p.id).sagaOrder = p.a;
+  }
+  // la parte passa dalla STESSA mappa del numero e della saga, per la
+  // ragione di sempre: uno stesso volume puo' avere tutt'e tre i campi
+  // storti, e tre scritture separate si sovrascriverebbero a vicenda
+  for (const p of parti) {
+    if (scelti && !scelti.has(`p:${p.id}`)) continue;
+    dentro(p.id).series = p.a;
   }
   if (saga && sagaScelta) for (const id of saga.quali) dentro(id).saga = saga.nome;
   return campi;

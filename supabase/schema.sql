@@ -13,6 +13,7 @@
 --   alter table public.books add column if not exists impronta text;  -- doppioni
 --   alter table public.books add column if not exists fav boolean not null default false;  -- cuore dei preferiti
 --   alter table public.prefs add column if not exists glossari jsonb not null default '{}'::jsonb;
+--   alter table public.prefs add column if not exists racconti jsonb not null default '[]'::jsonb;
 --   alter table public.books alter column saga_order type real;  -- numero di collana coi decimali (2.5 = la novella)
 --   alter table public.books add column if not exists saga_tolta boolean not null default false;  -- la saga tolta a mano
 --   alter table public.books add column if not exists file_tolto boolean not null default false;  -- l'ebook tolto a mano
@@ -89,6 +90,10 @@ create table if not exists public.prefs (
   -- saga: la chiave e' la saga, non il singolo volume, quindi stanno qui
   -- e non con i libri
   glossari jsonb not null default '{}'::jsonb,
+  -- i racconti delle antologie che il lettore ha spuntato nel cammino:
+  -- non sono file e non hanno uno stato, quindi la spunta e' l'unico
+  -- segno che dice «questa l'ho letta» (chiave: titolo__autore)
+  racconti jsonb not null default '[]'::jsonb,
   last_opened text,
   updated_at bigint not null default 0
 );
@@ -97,6 +102,7 @@ create table if not exists public.prefs (
 -- colonne nuove, e senza questa riga le raccolte non salirebbero mai
 alter table public.prefs add column if not exists music_lists jsonb not null default '[]'::jsonb;
 alter table public.prefs add column if not exists glossari jsonb not null default '{}'::jsonb;
+alter table public.prefs add column if not exists racconti jsonb not null default '[]'::jsonb;
 
 alter table public.prefs enable row level security;
 

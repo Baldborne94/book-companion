@@ -1,4 +1,5 @@
 import { getStatus, getProgress } from "./library.js";
+import { PARTI_DI_GUIDA } from "./sagaBooks.js";
 
 // UN VOLUME CHE HAI GIA' APERTO NON E' «IL PROSSIMO».
 //
@@ -84,13 +85,50 @@ export const cicloDi = (b) => (b?.series || "").trim();
 // I senza-serie sono un gruppo come gli altri — «Volumi a se'» sullo
 // scaffale — e su una saga che la serie non ce l'ha su nessuno il gruppo e'
 // la saga intera: li' i due raggruppamenti coincidono e non cambia niente.
+// MA UNA PARTE NON E' UN CICLO, E NON LO SI PUO' INDOVINARE.
+//
+// La regola qui sopra da' per scontato che una serie scritta sia sempre una
+// STORIA A SE'. Nel Malazan e nel Cosmoverse e' vero; su una GUIDA DI
+// LETTURA non lo e' affatto — l'Eresia di Horus e' divisa in tredici
+// «parti», ma sono i capitoli di una storia sola, letti in fila. Trattarle
+// da cicli vorrebbe dire che «Prima di cominciare», aperto il volume 25,
+// riassume i due volumi della sua parte e tace sui ventidue che vengono
+// prima: cioe' proprio il racconto per cui quel tasto esiste.
+//
+// LA STRADA DEI NUMERI E' STATA PROVATA E SCARTATA, e va scritta o la
+// riprova il prossimo. L'idea era: due storie parallele si INTERLACCIANO
+// nell'ordine di lettura (Mistborn 1, Folgoluce 1, Mistborn 2) mentre le
+// parti di una storia sola sono blocchi CONTIGUI. Misurata sulle tavole,
+// sembrava perfetta — nel Mondo Disco tutti e otto i cicli con piu' volumi
+// sono sparsi, nell'Eresia tutte e dodici le parti sono contigue. Ma il
+// Malazan del lettore la smentisce: i suoi numeri se li e' scritti lui in
+// un ordine di lettura unico, quindi Book of the Fallen 1-3 e Path to
+// Ascendancy 7-8 sono blocchi contigui esattamente come le parti — e la
+// regola avrebbe rifatto proprio il difetto che lui aveva fatto togliere.
+// Dalla forma dei numeri le due cose non si distinguono.
+//
+// La differenza vera e' un'altra e la sappiamo per davvero: LE PARTI LE
+// DICHIARA UNA GUIDA CHE SPEDIAMO NOI, i cicli li scrive il lettore. Quindi
+// non si indovina: si guarda se quel nome e' una parte di una delle nostre
+// guide. Una tavola nuova lo dichiara con `parti: true` e i suoi capitoli
+// entrano qui dentro; tutto il resto resta un ciclo, che e' il lato giusto
+// in cui sbagliare — al massimo si racconta piu' storia del necessario,
+// mai di meno.
+export function parteDiUnaStoria(book) {
+  const serie = cicloDi(book).toLowerCase();
+  return !!serie && PARTI_DI_GUIDA.has(serie);
+}
+
 export function gruppoDi(book, books = []) {
   const saga = (book?.saga || "").trim();
   if (!saga) return null;
-  const ciclo = cicloDi(book).toLowerCase();
-  const dove = books.filter(
-    (b) => b && (b.saga || "").trim() === saga && cicloDi(b).toLowerCase() === ciclo
-  );
+  const dellaSaga = books.filter((b) => b && (b.saga || "").trim() === saga);
+  // dove la serie e' la PARTE di una guida il filo e' la saga intera: «il
+  // prossimo» di un cammino in tredici capitoli e' il capitolo dopo, non
+  // il prossimo volume del capitolo in cui stai
+  const dove = parteDiUnaStoria(book)
+    ? dellaSaga
+    : dellaSaga.filter((b) => cicloDi(b).toLowerCase() === cicloDi(book).toLowerCase());
   return numeriMescolati(dove, saga) ? null : dove;
 }
 
