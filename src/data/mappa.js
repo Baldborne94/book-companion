@@ -257,6 +257,12 @@ export const MAPPA = [
   },
   {
     luogo: "libreria",
+    nome: "Il tuo prossimo passo nel cammino",
+    cosa: "In cima al cammino, dove sei arrivato e cosa viene dopo: il passo della guida — anche quando è un volume che non hai — e, quando non ce l'hai, il primo che puoi aprire stasera. Il prologo dell'Eresia sono quattro percorsi alternativi, quindi ne propone uno solo dopo che ne hai cominciato uno tu.",
+    dove: "In cima a «Il cammino», sopra i filtri.",
+  },
+  {
+    luogo: "libreria",
     nome: "Numerare i volumi come la guida",
     cosa: "Scrive su ogni tuo volume il posto che ha nella guida, antologie comprese: è il numero che dice all'Oracolo cosa viene prima e cosa viene dopo, quindi da lì in poi le schede non escono dal percorso che hai letto. Propone «da → a» una riga per volta, e quello che lasci non si tocca.",
     dove: "Dentro «Il cammino», il tasto 🔢 sotto il conto delle tappe.",
