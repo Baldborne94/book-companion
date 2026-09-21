@@ -77,15 +77,34 @@ export function numerazioneGuida(cammino) {
 // lettore. Quindi qui si PROPONE, riga per riga, come per i numeri e per
 // i titoli: un ciclo sbagliato non alza nessun errore, cambia solo come
 // si raggruppa lo scaffale e cosa racconta «Prima di cominciare».
-export function partiDaScrivere(cammino) {
+// E QUEL CHE SI SCRIVE E' LA STORIA, NON IL CAPITOLO (chiesto dal lettore:
+// «vorrei che questi libri fossero identificati come parte della Horus
+// Heresy dell'universo 40K, ma che ce ne sono altre di serie al suo
+// interno»). I livelli sono tre — universo, storia, capitoli — e i campi
+// due: se le tredici parti si prendono la Serie, non resta un posto dove
+// dire «questa e' l'Eresia», e il giorno che sotto «Warhammer 40K»
+// arrivano i Gaunt's Ghosts «Prima di cominciare» li racconta insieme.
+// Il capitolo non si perde: lo sa la tavola, e lo scaffale lo legge da li'.
+//
+// Le tavole che NON dichiarano capitoli continuano a scrivere il ciclo, che
+// li' e' proprio quel che il lettore chiama Serie (Rincewind, le Guardie).
+export function serieDaScrivere(cammino) {
   const fuori = [];
+  const visti = new Set();
   for (const t of cammino?.tappe || []) {
-    if (!t?.libro || t.voce?.tipo === "racconto") continue;
-    const a = String(t.voce?.c || "").trim();
+    if (!t?.libro) continue;
+    // lo stesso libro puo' comparire su piu' righe — l'antologia e i suoi
+    // racconti, o due copie dello stesso volume — e una riga sola basta:
+    // la Serie e' del LIBRO, non della tappa
+    if (visti.has(t.libro.id)) continue;
+    const a = cammino?.parti
+      ? String(cammino.saga || "").trim()
+      : String(t.voce?.c || "").trim();
     if (!a) continue;
+    visti.add(t.libro.id);
     const da = String(t.libro.series || "").trim();
     if (da === a) continue;
-    fuori.push({ id: t.libro.id, title: t.libro.title || t.voce.t || "senza titolo", da, a });
+    fuori.push({ id: t.libro.id, title: t.libro.title || t.voce?.t || "senza titolo", da, a });
   }
   return fuori;
 }
@@ -135,7 +154,7 @@ export function sagaComune(cammino) {
 // sovrascriverebbero a vicenda.
 export function campiDaScrivere({
   numeri = [],
-  parti = [],
+  serie = [],
   saga = null,
   scelti,
   sagaScelta = true,
@@ -146,18 +165,18 @@ export function campiDaScrivere({
     return campi.get(id);
   };
   // LA SPUNTA E' PER RIGA, NON PER LIBRO: lo stesso volume puo' comparire
-  // due volte — una per il numero e una per la parte — e con un insieme di
+  // due volte — una per il numero e una per la serie — e con un insieme di
   // soli id togliendo la spunta a una si toglierebbe anche all'altra, in
-  // silenzio. Da qui le chiavi `n:` e `p:`.
+  // silenzio. Da qui le chiavi `n:` e `s:`.
   for (const p of numeri) {
     if (scelti && !scelti.has(`n:${p.id}`)) continue;
     dentro(p.id).sagaOrder = p.a;
   }
-  // la parte passa dalla STESSA mappa del numero e della saga, per la
+  // la serie passa dalla STESSA mappa del numero e della saga, per la
   // ragione di sempre: uno stesso volume puo' avere tutt'e tre i campi
   // storti, e tre scritture separate si sovrascriverebbero a vicenda
-  for (const p of parti) {
-    if (scelti && !scelti.has(`p:${p.id}`)) continue;
+  for (const p of serie) {
+    if (scelti && !scelti.has(`s:${p.id}`)) continue;
     dentro(p.id).series = p.a;
   }
   if (saga && sagaScelta) for (const id of saga.quali) dentro(id).saga = saga.nome;

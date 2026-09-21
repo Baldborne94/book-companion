@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getStatus } from "../lib/library.js";
 import { perParte, prossimoPasso, lettiDelCammino } from "../lib/cammino.js";
-import { numerazioneGuida, partiDaScrivere, sagaComune, campiDaScrivere } from "../lib/numeraCammino.js";
+import { numerazioneGuida, serieDaScrivere, sagaComune, campiDaScrivere } from "../lib/numeraCammino.js";
 import { raccontiLetti, segnaRacconto, chiaveRacconto } from "../lib/racconti.js";
 
 // I FILTRI SONO TRE, e il terzo è quello per cui la pagina esiste: su una
@@ -284,7 +284,7 @@ function Tappa({ t, onOpenBook }) {
 // e per la stessa ragione: un numero storto non alza nessun errore, sposta
 // soltanto il confine di quel che l'Oracolo puo' raccontare — quindi si
 // guarda prima, una riga per volta, e quel che togli non si tocca.
-function SceltaNumeri({ numeri, parti, saga, scelti, sagaScelta, onCambia, onSaga, onChiudi, onVai }) {
+function SceltaNumeri({ numeri, serie, saga, scelti, sagaScelta, onCambia, onSaga, onChiudi, onVai }) {
   const quanti = scelti.size + (saga && sagaScelta ? saga.quali.length : 0);
   const riga = (on) => ({
     display: "flex",
@@ -372,25 +372,25 @@ function SceltaNumeri({ numeri, parti, saga, scelti, sagaScelta, onCambia, onSag
           );
         })}
 
-        {parti.length > 0 && (
+        {serie.length > 0 && (
           <p style={{ color: C.muted, fontSize: F.minuscolo, margin: "14px 0 8px", lineHeight: 1.5 }}>
-            E le <b style={{ color: C.text }}>parti</b>: la guida divide la storia in capitoli, e
-            scriverli nel campo Serie è quel che li fa comparire sullo scaffale. Sono parti di una
+            E la <b style={{ color: C.text }}>serie</b>: il campo dice di quale STORIA si tratta,
+            e i capitoli della guida lo scaffale li legge da sé. Sono volumi di una
             storia sola, quindi «Prima di cominciare» continua a raccontarti tutto quel che viene
             prima.
           </p>
         )}
-        {parti.map((p) => {
-          const on = scelti.has(`p:${p.id}`);
+        {serie.map((p) => {
+          const on = scelti.has(`s:${p.id}`);
           return (
-            <button key={`p:${p.id}`} onClick={() => onCambia(`p:${p.id}`)} style={riga(on)}>
+            <button key={`s:${p.id}`} onClick={() => onCambia(`s:${p.id}`)} style={riga(on)}>
               <span style={{ fontSize: F.rilievo, color: on ? C.accent : C.muted }}>
                 {on ? "☑" : "☐"}
               </span>
               <span style={{ minWidth: 0 }}>
                 <span style={{ display: "block", color: C.text, fontSize: F.corpo }}>{p.title}</span>
                 <span style={{ display: "block", color: C.muted, fontSize: F.minuscolo, marginTop: 2 }}>
-                  {p.da ? `«${p.da}»` : "senza parte"} → <b style={{ color: C.accent }}>«{p.a}»</b>
+                  {p.da ? `«${p.da}»` : "senza serie"} → <b style={{ color: C.accent }}>«{p.a}»</b>
                 </span>
               </span>
             </button>
@@ -441,9 +441,9 @@ export default function Cammino({ cammino, onClose, onOpenBook, onNumera }) {
   // promette quel che non puo' dare e' il difetto di «Porta qui 18 tomi»
   const daFare = useMemo(() => {
     const numeri = numerazioneGuida(cammino);
-    const parti = partiDaScrivere(cammino);
+    const serie = serieDaScrivere(cammino);
     const sagaDa = sagaComune(cammino);
-    return numeri.length || parti.length || sagaDa ? { numeri, parti, saga: sagaDa } : null;
+    return numeri.length || serie.length || sagaDa ? { numeri, serie, saga: sagaDa } : null;
   }, [cammino]);
 
   // il passo e i conti si rifanno quando cambia il cammino: dentro stanno
@@ -517,7 +517,7 @@ export default function Cammino({ cammino, onClose, onOpenBook, onNumera }) {
                 ...daFare,
                 scelti: new Set([
                   ...daFare.numeri.map((p) => `n:${p.id}`),
-                  ...daFare.parti.map((p) => `p:${p.id}`),
+                  ...daFare.serie.map((p) => `s:${p.id}`),
                 ]),
                 sagaScelta: true,
               })
@@ -534,8 +534,8 @@ export default function Cammino({ cammino, onClose, onOpenBook, onNumera }) {
             }}
           >
             🔢 Mettili in ordine di guida
-            {daFare.numeri.length + daFare.parti.length
-              ? ` · ${daFare.numeri.length + daFare.parti.length}`
+            {daFare.numeri.length + daFare.serie.length
+              ? ` · ${daFare.numeri.length + daFare.serie.length}`
               : ""}
           </button>
         )}
@@ -602,7 +602,7 @@ export default function Cammino({ cammino, onClose, onOpenBook, onNumera }) {
         {numerare && (
           <SceltaNumeri
             numeri={numerare.numeri}
-            parti={numerare.parti}
+            serie={numerare.serie}
             saga={numerare.saga}
             scelti={numerare.scelti}
             sagaScelta={numerare.sagaScelta}

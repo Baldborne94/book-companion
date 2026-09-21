@@ -144,28 +144,50 @@ export function camminoDi(libri = [], { tavole = TAVOLE, riconosce, scaffale } =
   // ANTOLOGIA: «The Aurelian» sta dentro «Eye of Terra», e possederlo vuol
   // dire possedere quel volume. Cercarlo per titolo non troverebbe mai
   // niente, e la guida direbbe «ti manca» su un racconto che hai in mano.
+  // UN RACCONTO SI COMPRA ANCHE DA SOLO, e il lettore ne ha tre. Prima la
+  // sua riga cercava SOLO l'antologia che lo contiene — dato per scontato
+  // che un racconto non sia mai un file — e «Savage Weapons» comprato
+  // singolo restava fuori dal cammino, con la guida che diceva «ti manca»
+  // su una storia che aveva in mano. Si cerca prima il racconto per il suo
+  // titolo, e l'antologia resta il ripiego: e' la strada normale, perche'
+  // quasi sempre e' li' che lo si possiede.
+  const suo = (voce) =>
+    miei.get(chiave(scelta.tav.saga, voce.t)) ||
+    (voce.tipo === "racconto" ? miei.get(chiave(scelta.tav.saga, voce.in || "")) : null) ||
+    null;
   const tappe = postiDelCammino(
-    scelta.tav.libri.map((voce) => ({
-      voce,
-      libro:
-        miei.get(chiave(scelta.tav.saga, voce.tipo === "racconto" ? voce.in || "" : voce.t)) || null,
-    })),
+    scelta.tav.libri.map((voce) => ({ voce, libro: suo(voce) })),
     scelta.tav.ordine
   );
-  // NON si filtrano qui i racconti, e la ragione va scritta o il prossimo
-  // ce la rimette: un racconto porta il libro della sua ANTOLOGIA, che sta
-  // gia' in questo insieme per via della propria riga — e un insieme non
-  // conta due volte lo stesso id. Il filtro sembrerebbe prudenza e non
-  // toglierebbe niente: una guardia che non guarda e' peggio di nessuna
-  // guardia (la lezione di `senzaAutore`), e infatti nessuna mutazione la
-  // faceva cascare. I conti di possesso restano sui VOLUMI perche' li'
-  // ogni tappa-file porta il suo, e i racconti non ne aggiungono.
-  const dentro = new Set(tappe.filter((t) => t.libro).map((t) => t.libro.id));
+  // E ADESSO I DUE INSIEMI SONO DUE, dove prima uno bastava.
+  //
+  // Il filtro sui racconti era stato TOLTO perche' non guardava niente: un
+  // racconto portava il libro della sua antologia, gia' dentro per via
+  // della propria riga, e nessuna mutazione lo faceva cascare. Da quando un
+  // racconto puo' portare il PROPRIO file, quello stesso filtro e' tornato
+  // portante — ed e' una lezione sulle guardie morte: non lo erano per
+  // sempre, lo erano per i dati di allora.
+  //
+  // `dentro` e' «questo libro e' una tappa», e serve a dire quanti dei tuoi
+  // stanno FUORI dal percorso: li' il racconto comprato singolo e' dentro
+  // eccome. `volumiTuoi` e' «questo libro e' uno dei volumi della guida»,
+  // e sta sotto al conto del possesso, che ha 71 al denominatore: contarci
+  // un racconto direbbe «hai 12 dei 71 volumi» su undici volumi e una
+  // storia breve.
+  const conLibro = tappe.filter((t) => t.libro);
+  const dentro = new Set(conLibro.map((t) => t.libro.id));
+  const volumiTuoi = new Set(
+    conLibro.filter((t) => t.voce?.tipo !== "racconto").map((t) => t.libro.id)
+  );
   const contati = (scaffale || libri).filter(Boolean);
   return {
     saga: scelta.tav.saga,
+    // la tavola dichiara che i suoi `c` sono CAPITOLI di una storia sola e
+    // non cicli del lettore: e' quel che decide cosa si scrive nel campo
+    // Serie — la storia, non il capitolo
+    parti: !!scelta.tav.parti,
     tappe,
-    tue: dentro.size,
+    tue: volumiTuoi.size,
     // QUANTI VOLUMI HA LA GUIDA, che non e' quante righe ha la tavola: da
     // quando i racconti hanno una riga per uno, `tappe.length` risponde
     // «110» a una domanda sui libri da avere. Il possesso si conta sui

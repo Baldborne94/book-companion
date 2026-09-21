@@ -69,10 +69,18 @@ export const TAVOLE = [
 // qui per sapere se una Serie scritta su un libro e' una parte di un
 // cammino nostro o un ciclo del lettore. Si costruisce una volta sola
 // dalle tavole, cosi' una guida nuova entra da se'.
-export const PARTI_DI_GUIDA = new Set(
-  TAVOLE.filter((t) => t.parti).flatMap((t) =>
-    t.libri.map((v) => String(v.c || "").trim().toLowerCase()).filter(Boolean)
-  )
+// E IL VALORE E' IL POSTO NELLA GUIDA, non un semplice «c'e'». I capitoli
+// hanno un ordine — il loro, quello in cui la storia li incontra — e non e'
+// quello dei volumi che possiedi: i racconti un numero di lettura non ce
+// l'hanno, quindi ordinando i capitoli sul primo volume numerato «Part 12»
+// finiva prima di «Part 4» (preso al banco, non rileggendo il codice).
+// L'ordine della tavola invece e' la guida stessa.
+export const PARTI_DI_GUIDA = new Map(
+  TAVOLE.filter((t) => t.parti)
+    .flatMap((t) => t.libri.map((v) => String(v.c || "").trim().toLowerCase()))
+    .filter(Boolean)
+    .map((nome, i) => [nome, i])
+    .filter(([nome], i, tutti) => tutti.findIndex(([n]) => n === nome) === i)
 );
 
 // I titoli lunghi per primi, e da TUTTE le tavole insieme: «Garro» non
@@ -150,13 +158,51 @@ function combacia(campo, voce, autoreNorm) {
   return voce.k.length >= nudo.length * COPERTURA;
 }
 
+// IL CAPITOLO COL SUO POSTO NELLA GUIDA, pronto per lo scaffale. Sta qui e
+// non nel componente per la ragione di sempre: un test in Node non importa
+// un `.jsx`, e qui c'e' qualcosa da difendere — l'ordine dei capitoli non
+// si puo' prendere dai volumi che possiedi (un racconto non ha numero di
+// lettura, e il suo capitolo scivolerebbe in fondo) ne' dai nomi (in
+// alfabetico «Part 12» viene prima di «Part 4»).
+export const capitoloDi = (riconosciuto) => {
+  const nome = String(riconosciuto?.parte || "").trim();
+  if (!nome) return null;
+  return { nome, ordine: PARTI_DI_GUIDA.get(nome.toLowerCase()) ?? null };
+};
+
 export function riconosci({ title, author, fileName } = {}) {
   const campi = [title, fileName].filter(Boolean).map(norm);
   const chiAutore = norm(author);
   for (const campo of campi) {
     for (const b of INDICE) {
       if (combacia(campo, b, chiAutore)) {
-        return { saga: b.tav.saga, sagaOrder: b.tav.ordine(b) ?? null, ciclo: b.c, titolo: b.t };
+        return {
+          saga: b.tav.saga,
+          sagaOrder: b.tav.ordine(b) ?? null,
+          // UNA GUIDA SA DUE COSE DIVERSE, E IL CAMPO SERIE NE TIENE UNA SOLA.
+        //
+        // Chiesto dal lettore guardando il suo scaffale: «vorrei che questi
+        // libri fossero identificati come parte della Horus Heresy
+        // dell'universo 40K, ma che comunque ce ne sono altre di serie al
+        // suo interno e non solo quella, e potrei volerle aggiungere in
+        // futuro». Sono TRE livelli — universo, storia, capitoli — e i campi
+        // sono DUE: `saga` e `series`.
+        //
+        // Finche' le tredici parti stavano in `series`, il posto per dire
+        // «questa e' l'Eresia» non c'era: se lo prendevano loro. E il giorno
+        // che sotto «Warhammer 40K» arrivano i Gaunt's Ghosts, «Prima di
+        // cominciare» — che restringe il racconto alla SERIE — sull'Eresia
+        // ripiegherebbe sulla saga intera e racconterebbe anche quelli.
+        //
+        // Quindi nel campo va la STORIA (il nome della tavola) e il CAPITOLO
+        // torna a essere quel che e': un fatto della guida, che si legge
+        // dalla tavola quando serve — sullo scaffale, come terzo livello.
+        // E' la stessa regola di `tipo`: quel che la guida sa non si scrive
+        // addosso al libro, si chiede alla guida.
+          ciclo: b.tav.parti ? b.tav.saga : b.c,
+          parte: b.tav.parti ? b.c || null : null,
+          titolo: b.t,
+        };
       }
     }
   }
@@ -166,7 +212,7 @@ export function riconosci({ title, author, fileName } = {}) {
   for (const tav of TAVOLE) {
     if (!tav.autore || !chiAutore.includes(tav.autore)) continue;
     if (campi.some((campo) => tav.fuori.some((t) => contiene(campo, t)))) continue;
-    return { saga: tav.saga, sagaOrder: null, ciclo: null, titolo: null };
+    return { saga: tav.saga, sagaOrder: null, ciclo: null, parte: null, titolo: null };
   }
   return null;
 }
