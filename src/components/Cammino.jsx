@@ -377,7 +377,9 @@ function SceltaNumeri({ numeri, serie, saga, scelti, sagaScelta, onCambia, onSag
             E la <b style={{ color: C.text }}>serie</b>: il campo dice di quale STORIA si tratta,
             e i capitoli della guida lo scaffale li legge da sé. Sono volumi di una
             storia sola, quindi «Prima di cominciare» continua a raccontarti tutto quel che viene
-            prima.
+            prima. Chi resta <b style={{ color: C.text }}>senza serie</b> è quel che la guida
+            stessa dichiara fuori dalla storia — il prologo e i titoli fuori dal ciclo: restano
+            nel percorso e nell’universo, ma non sono un capitolo di questa storia.
           </p>
         )}
         {serie.map((p) => {
@@ -390,7 +392,8 @@ function SceltaNumeri({ numeri, serie, saga, scelti, sagaScelta, onCambia, onSag
               <span style={{ minWidth: 0 }}>
                 <span style={{ display: "block", color: C.text, fontSize: F.corpo }}>{p.title}</span>
                 <span style={{ display: "block", color: C.muted, fontSize: F.minuscolo, marginTop: 2 }}>
-                  {p.da ? `«${p.da}»` : "senza serie"} → <b style={{ color: C.accent }}>«{p.a}»</b>
+                  {p.da ? `«${p.da}»` : "senza serie"} →{" "}
+                  <b style={{ color: C.accent }}>{p.a ? `«${p.a}»` : "senza serie"}</b>
                 </span>
               </span>
             </button>
