@@ -20,7 +20,7 @@ import { stretto } from "../lib/spazio.js";
 import { BarraCloud } from "./BarraCloud.jsx";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
 import { famigliaDi } from "../data/generi.js";
-import { riconosci } from "../lib/sagaBooks.js";
+import { riconosci, capitoloDi } from "../lib/sagaBooks.js";
 import { camminoDi } from "../lib/cammino.js";
 import BookCover from "./BookCover.jsx";
 import Disposizione from "./Disposizione.jsx";
@@ -379,9 +379,15 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, coverV = 0, 
   // E `sort` scende fino in fondo perché deve ordinare anche i RIPIANI:
   // prima si fermava ai libri, quindi «Ordina: Recenti» non spostava mai
   // un'intestazione e il comando sembrava non fare niente.
+  // IL CAPITOLO DELLA GUIDA NON STA SUL LIBRO: lo sa la tavola, e il
+  // riconoscimento è già fatto una volta per tutta la biblioteca qui sopra.
+  // e l'ORDINE del capitolo è quello della guida, non quello dei volumi che
+  // possiedi: un racconto non ha numero di lettura, e senza il posto della
+  // tavola il suo capitolo scivolava in fondo.
+  const parteDi = riconosciuti ? (b) => capitoloDi(riconosciuti.get(b.id)) : null;
   const criterio = GROUPS.find((g) => g.id === group)?.per;
   if (criterio) {
-    return disponi(books, null, criterio, sort).map((r) => (
+    return disponi(books, null, criterio, sort, parteDi).map((r) => (
       <Ripiano
         key={r.id}
         nome={r.nome}
@@ -411,7 +417,32 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, coverV = 0, 
                 <span>{c.nome ?? "Volumi a sé"}</span>
                 <span style={{ fontSize: F.minuscolo, color: C.muted }}>{c.libri.length}</span>
               </div>
-              <Shelf books={c.libri} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} showOrder />
+              {/* E DENTRO, I CAPITOLI DELLA GUIDA — il terzo livello. Il
+                  rientro e il corpo più piccolo sono tutto quel che li
+                  distingue dal ciclo che li contiene: tre intestazioni
+                  della stessa misura non sarebbero una gerarchia. */}
+              {c.parti ? (
+                c.parti.map((p) => (
+                  <div key={p.nome ?? "_"} style={{ marginLeft: 12, marginBottom: 12 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "baseline",
+                        gap: 8,
+                        fontSize: F.minuscolo,
+                        color: C.muted,
+                        marginBottom: 6,
+                      }}
+                    >
+                      <span>{p.nome ?? "Fuori dal percorso"}</span>
+                      <span>{p.libri.length}</span>
+                    </div>
+                    <Shelf books={p.libri} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} showOrder />
+                  </div>
+                ))
+              ) : (
+                <Shelf books={c.libri} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} showOrder />
+              )}
             </div>
           ))
         ) : (

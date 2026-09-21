@@ -13,7 +13,7 @@
 // cambia come si raggruppa lo scaffale e quanto racconta «Prima di
 // cominciare».
 import { chiaveRacconto, fondiRacconti } from "../src/lib/racconti.js";
-import { partiDaScrivere, numerazioneGuida, campiDaScrivere } from "../src/lib/numeraCammino.js";
+import { serieDaScrivere, numerazioneGuida, campiDaScrivere } from "../src/lib/numeraCammino.js";
 import { lettiDelCammino, camminoDi, postiDelCammino } from "../src/lib/cammino.js";
 import { parteDiUnaStoria, gruppoDi } from "../src/lib/saga.js";
 import { soloDellaSerie } from "../src/lib/trama.js";
@@ -136,6 +136,24 @@ export default async (t) => {
     // antologia non fanno undici volumi
     t.eq("e l'antologia vale UN volume, non undici", c.tue, 1);
   }
+  {
+    // MA UN RACCONTO SI COMPRA ANCHE DA SOLO, e il lettore ne ha tre.
+    // Cercando SOLO l'antologia — dato per scontato che un racconto non sia
+    // mai un file — «Savage Weapons» comprato singolo restava fuori dal
+    // cammino, con la guida che diceva «ti manca» su una storia in mano.
+    const suoi = [{ id: "sw", title: "Savage Weapons", author: "", saga: "Warhammer 40K" }];
+    const c = camminoDi(suoi);
+    const r = c.tappe.find((x) => x.voce.t === "Savage Weapons");
+    t.eq("il racconto comprato singolo è una tappa", r.libro?.id, "sw");
+    // E I DUE CONTI SONO DUE. «Hai N dei 71 volumi» guarda i volumi, e un
+    // racconto non è uno di quei 71: contarcelo direbbe «hai 1 di 71» su
+    // una storia breve. «Altri N dei tuoi non stanno nel percorso» invece
+    // guarda le tappe, e lì il racconto è dentro eccome — è il filtro che
+    // era stato tolto perché non guardava niente, e che questi dati hanno
+    // reso di nuovo portante.
+    t.eq("ma non conta come volume", c.tue, 0);
+    t.eq("e non è «fuori dal percorso»", c.fuori, 0);
+  }
 
   // ── LE PARTI ──────────────────────────────────────────────────────────
   {
@@ -143,32 +161,49 @@ export default async (t) => {
       [{ t: "Alfa", c: "Part 1 · Uno" }, L("a", { series: "The Horus Heresy" })],
       [{ t: "Beta", c: "Part 2 · Due" }, L("b", { series: "Part 2 · Due" })],
       [{ t: "Gamma", c: "Part 2 · Due" }, L("g")],
+      // il racconto col suo file, e uno che porta l'antologia «Alfa»: lo
+      // stesso libro su due righe è il caso che la deduplica deve prendere
       [{ t: "Racconto", a: "A", tipo: "racconto", in: "X", c: "Part 1 · Uno" }, L("x")],
+      [{ t: "Dentro Beta", a: "B", tipo: "racconto", in: "Beta", c: "Part 2 · Due" }, L("b", { series: "Part 2 · Due" })],
     ]);
-    const p = partiDaScrivere(c);
-    t.eq("si propone solo chi ha la parte storta o vuota", p.length, 2);
-    t.eq("chi ce l'ha già giusta non compare", p.find((x) => x.id === "b"), undefined);
-    t.eq("dicendo da dove viene", `${p[0].da}→${p[0].a}`, "The Horus Heresy→Part 1 · Uno");
+    // IL CAMPO TIENE LA STORIA, NON IL CAPITOLO: i livelli sono tre
+    // (universo, storia, capitoli) e i campi due, quindi se le tredici
+    // parti si prendono la Serie non resta un posto dove dire «questa è
+    // l'Eresia» — e «Prima di cominciare», che restringe il racconto alla
+    // Serie, sotto un «Warhammer 40K» con altre serie le racconta tutte.
+    const p = serieDaScrivere({ ...c, saga: "The Horus Heresy", parti: true });
+    t.eq("si propone solo chi ha la serie storta o vuota", p.length, 3);
+    t.eq("chi ce l'ha già giusta non compare", p.find((x) => x.id === "a"), undefined);
+    // il capitolo scritto ieri è proprio quel che va sostituito, e il
+    // pannello lo dice «da → a» invece di riscriverlo in silenzio
+    t.eq("e il capitolo di ieri diventa la storia", `${p[0].da}→${p[0].a}`, "Part 2 · Due→The Horus Heresy");
     t.eq("e chi non ne aveva lo dichiara", p[1].da, "");
-    // UN RACCONTO NON HA UNA SCHEDA: la sua riga porta il libro
-    // dell'ANTOLOGIA, e scriverle addosso la parte del racconto vorrebbe
-    // dire cambiare il ciclo del volume per via di una delle sue undici
-    // storie.
-    t.eq("e un racconto non riscrive la parte della sua antologia", p.find((x) => x.id === "x"), undefined);
+    // UN RACCONTO COMPRATO SINGOLO È UN LIBRO TUO, e prende la serie come
+    // gli altri: sullo scaffale è un volume dell'Eresia. Quel che non deve
+    // succedere è che lo stesso libro compaia DUE volte — l'antologia ha
+    // già una riga sua, e la Serie è del libro, non della tappa.
+    t.eq("il racconto col suo file prende la serie", p.find((x) => x.id === "x")?.a, "The Horus Heresy");
+    t.eq("e nessun libro compare due volte", new Set(p.map((x) => x.id)).size, p.length);
+  }
+  {
+    // e su una tavola che NON dichiara capitoli si scrive il ciclo, che lì
+    // è proprio quel che il lettore chiama Serie (Rincewind, le Guardie)
+    const c = cammino([[{ t: "Mort", c: "Death" }, L("m")]]);
+    t.eq("senza capitoli si scrive il ciclo", serieDaScrivere({ ...c, parti: false })[0].a, "Death");
   }
   {
     // numero, parte e saga dello STESSO libro si scrivono in una riga
     // sola, o due scritture separate si sovrascriverebbero
     const campi = campiDaScrivere({
       numeri: [{ id: "a", a: 3 }],
-      parti: [{ id: "a", a: "Part 1 · Uno" }],
+      serie: [{ id: "a", a: "The Horus Heresy" }],
       saga: { nome: "Warhammer 40K", quali: ["a"] },
-      scelti: new Set(["n:a", "p:a"]),
+      scelti: new Set(["n:a", "s:a"]),
     });
     t.eq(
-      "numero, parte e saga arrivano insieme",
+      "numero, serie e saga arrivano insieme",
       JSON.stringify(campi.get("a")),
-      '{"sagaOrder":3,"series":"Part 1 · Uno","saga":"Warhammer 40K"}'
+      '{"sagaOrder":3,"series":"The Horus Heresy","saga":"Warhammer 40K"}'
     );
   }
   {
@@ -177,10 +212,10 @@ export default async (t) => {
     // spunta a una si toglierebbe anche all'altra, in silenzio.
     const campi = campiDaScrivere({
       numeri: [{ id: "a", a: 3 }],
-      parti: [{ id: "a", a: "Part 1 · Uno" }],
+      serie: [{ id: "a", a: "The Horus Heresy" }],
       scelti: new Set(["n:a"]),
     });
-    t.eq("si può scrivere il numero e lasciare la parte", JSON.stringify(campi.get("a")), '{"sagaOrder":3}');
+    t.eq("si può scrivere il numero e lasciare la serie", JSON.stringify(campi.get("a")), '{"sagaOrder":3}');
   }
 
   // ── UNA PARTE NON È UN CICLO ──────────────────────────────────────────

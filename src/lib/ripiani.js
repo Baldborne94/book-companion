@@ -157,7 +157,50 @@ const perLettura = (confronta) => (a, b) => {
 // sarebbe una fila di quattordici dorsi senza una riga a dire dove
 // finisce Mistborn e comincia l'Archivio delle Tempeste — lo stesso
 // difetto per cui i cicli sono nati, un piano piu' in la'.
-export function raccogliCicli(libri = [], campo = "series") {
+// E DENTRO IL CICLO, I CAPITOLI DELLA GUIDA — il TERZO livello.
+//
+// Chiesto dal lettore: «vorrei che questi libri fossero identificati come
+// parte della Horus Heresy dell'universo 40K, ma che comunque ce ne sono
+// altre di serie al suo interno e non solo quella, e potrei volerle
+// aggiungere in futuro». Sono tre piani — universo, storia, capitoli — e i
+// campi del libro sono due. Il terzo non serve che sia un campo: **il
+// capitolo lo sa la guida**, e si chiede a lei (`parteDi`, che in Libreria
+// legge il riconoscimento gia' fatto una volta per tutta la biblioteca).
+//
+// Si passa da fuori come `leggiStato` e `leggiByte`: `ripiani.js` non
+// importa le tavole, e un test lo chiama con una mappa.
+//
+// Chi un capitolo non ce l'ha sta in coda sotto `nome: null`, come i
+// volumi senza ciclo: dentro l'Eresia sono i libri che la guida non
+// colloca, e vederli raccolti a parte e' il modo di accorgersene.
+// `parteDi` torna `{ nome, ordine }`: il NOME da scrivere e il posto che
+// quel capitolo ha NELLA GUIDA. L'ordine non si puo' prendere dai volumi —
+// e' il difetto che il banco ha visto — perche' un racconto non ha numero
+// di lettura e il suo capitolo finiva in coda: «Part 12» prima di «Part 4».
+const capitoli = (libri, parteDi) => {
+  if (!parteDi) return null;
+  const gruppi = new Map();
+  for (const b of libri) {
+    const p = parteDi(b) || null;
+    const nome = testo(p?.nome) || null;
+    const k = nome === null ? null : nome.toLowerCase();
+    if (!gruppi.has(k)) gruppi.set(k, { nome, libri: [], ordine: p?.ordine ?? null });
+    gruppi.get(k).libri.push(b);
+  }
+  // un capitolo solo non divide niente: e' il ciclo stesso con un nome in
+  // piu', e una riga che non separa e' rumore
+  if (gruppi.size < 2) return null;
+  // chi un posto nella guida non ce l'ha chiude la fila, come i volumi
+  // senza numero dentro un ripiano
+  return [...gruppi.values()].sort((a, b) => {
+    if (a.ordine === b.ordine) return 0;
+    if (a.ordine == null) return 1;
+    if (b.ordine == null) return -1;
+    return a.ordine - b.ordine;
+  });
+};
+
+export function raccogliCicli(libri = [], campo = "series", parteDi = null) {
   if (!libri.some((b) => testo(b[campo]))) return null;
   const gruppi = new Map();
   for (const b of libri) {
@@ -171,12 +214,18 @@ export function raccogliCicli(libri = [], campo = "series") {
   }
   // chi non ha nessun numero chiude, come i volumi senza numero dentro un
   // ripiano; a parita' resta l'ordine d'arrivo, che e' quello di lettura
-  return [...gruppi.values()].sort((a, b) => {
+  const fuori = [...gruppi.values()].sort((a, b) => {
     if (a.primo === b.primo) return 0;
     if (a.primo === null) return 1;
     if (b.primo === null) return -1;
     return a.primo - b.primo;
   });
+  // i capitoli si raccolgono DOPO, sui libri gia' in ordine di lettura:
+  // cosi' escono nell'ordine in cui la storia li incontra senza rifare
+  // nessun conto — la stessa ragione per cui i cicli si raccolgono dopo
+  // l'ordinamento del ripiano
+  for (const g of fuori) g.parti = capitoli(g.libri, parteDi);
+  return fuori;
 }
 
 // L'ORDINE DEI RIPIANI FRA LORO, che fin qui non seguiva niente.
@@ -300,7 +349,26 @@ export const criterioStato = (leggiStato) => ({
   vuoto: "Senza stato",
 });
 
-export function disponi(libri = [], confronta = null, per = "auto", ordine = null) {
+// UN SOTTO-RIPIANO CHE SI CHIAMA COME IL RIPIANO NON E' UN SOTTO-RIPIANO.
+//
+// Chi importa l'Eresia senza scriversi un universo suo si ritrova la saga
+// «The Horus Heresy» e — da quando il campo Serie tiene la STORIA — anche
+// la serie «The Horus Heresy»: due intestazioni identiche una sopra
+// l'altra, e la seconda non divide niente. Il lettore invece ha scritto
+// «Warhammer 40K» a mano, e li' le due righe dicono due cose. I capitoli
+// restano in tutt'e due i casi: si perde l'intestazione di mezzo, non il
+// livello sotto.
+const senzaDoppione = (cicli, nomeRipiano) => {
+  if (!cicli || cicli.length !== 1) return cicli;
+  const solo = testo(cicli[0].nome).toLowerCase();
+  if (!solo || solo !== testo(nomeRipiano).toLowerCase()) return cicli;
+  // e i capitoli SALGONO di un piano invece di sparire col loro
+  // contenitore: quel che si toglie e' l'intestazione che ripeteva il nome
+  // del ripiano, non il livello sotto
+  return cicli[0].parti || null;
+};
+
+export function disponi(libri = [], confronta = null, per = "auto", ordine = null, parteDi = null) {
   // un criterio che non conosciamo vale la disposizione di sempre: e' la
   // stessa regola di `vistaValida` e della svolta — un valore storto non
   // deve spegnere lo scaffale
@@ -337,9 +405,12 @@ export function disponi(libri = [], confronta = null, per = "auto", ordine = nul
       // i sotto-ripiani si raccolgono DOPO l'ordinamento: cosi' dentro
       // ognuno i volumi restano in ordine di lettura senza rifare il conto.
       // Dentro una saga sono i suoi cicli; dentro un autore, le sue saghe.
+      // e i CAPITOLI della guida solo dentro una saga: dentro un autore i
+      // sotto-ripiani sono le sue saghe, e spezzarne una nei capitoli di
+      // una guida direbbe una cosa che li' non si sta chiedendo
       cicli:
         g.tipo === "saga"
-          ? raccogliCicli(g.libri)
+          ? senzaDoppione(raccogliCicli(g.libri, "series", parteDi), g.nome)
           : modo === "autore"
             ? raccogliCicli(g.libri, "saga")
             : null,

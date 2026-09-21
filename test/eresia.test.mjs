@@ -152,7 +152,15 @@ export default async function (t) {
   // ---- e il ripasso dei libri già in libreria --------------------------
   const tocchi = ripassa({ title: "Betrayer", author: "Aaron Dembski-Bowden", saga: "", series: "" });
   t.eq("il ripasso gli dà la saga", tocchi?.campi.saga, SAGA_HH);
-  t.c("e la parte del percorso", /^Part /.test(tocchi?.campi.series || ""), tocchi?.campi.series);
+  // LA SERIE È LA STORIA, NON IL CAPITOLO. Questo controllo pinnava
+  // «Part …» ed è girato con dentro la ragione: i livelli sono tre —
+  // universo, storia, capitoli — e i campi due, quindi se le tredici parti
+  // si prendono la Serie non resta un posto dove dire «questa è l'Eresia»,
+  // e «Prima di cominciare» (che restringe il racconto alla Serie) sotto un
+  // «Warhammer 40K» pieno di altre serie le racconterebbe tutte insieme.
+  // Il capitolo lo sa la tavola, e lo scaffale lo legge da lì.
+  t.eq("e la SERIE è la storia, non il capitolo", tocchi?.campi.series, SAGA_HH);
+  t.c("il capitolo resta nella guida", /^Part /.test(riconosci({ title: "Betrayer", author: "Aaron Dembski-Bowden" })?.parte || ""));
   t.c("più il posto nel cammino", Number.isInteger(tocchi?.campi.sagaOrder));
   // quello che hai scritto tu non si tocca mai
   const gia = ripassa({ title: "Betrayer", author: "Aaron Dembski-Bowden", saga: "La mia saga", series: "Il mio ciclo" });
