@@ -176,15 +176,28 @@ export default async function (t) {
     t.eq("un volume finito apre il filo", ids(prossimiPassi(soli, { statusOf: (id) => (id === "s1" ? "read" : "unread") })), "s2");
   }
   {
-    // IL RIFERIMENTO È IL PIÙ AVANTI FRA I LETTI, e un volume in lettura più
-    // avanti non lo sposta: letto il primo, in lettura il terzo — il secondo
-    // saltato non è «il prossimo» (si guarda solo avanti), e il terzo ce
-    // l'hai in mano, quindi non c'è niente da proporre
+    // IL RIFERIMENTO È IL PIÙ AVANTI CHE HAI DICHIARATO, letto o in lettura:
+    // letto il primo, in lettura il terzo, il passo è il quarto. Il secondo
+    // saltato non è «il prossimo» (si guarda solo avanti).
+    //
+    // QUESTO CONTROLLO È STATO GIRATO: pinnava «se il più avanti lo stai
+    // leggendo la saga tace», e su un filo aperto è la regola sbagliata —
+    // segnalato tre volte sul 40K, con l'ottavo volume letto e il
+    // quindicesimo al 12%: «dopo Mechanicum ci sono altri libri». Aprire un
+    // filo vuole un volume FINITO (resta, ed è il caso qui sotto), ma
+    // «finito» è una proprietà del FILO, non del volume più avanti.
     const tre = [L("a", "Ombre", 1), L("b", "Ombre", 2), L("c", "Ombre", 3), L("d", "Ombre", 4)];
     const stati = { a: "read", c: "reading" };
     t.eq(
-      "in lettura più avanti non fa da riferimento",
-      prossimiPassi(tre, { statusOf: (id) => stati[id] || "unread" }).length,
+      "in lettura più avanti fa da riferimento, e il passo è il suo seguito",
+      ids(prossimiPassi(tre, { statusOf: (id) => stati[id] || "unread" })),
+      "d"
+    );
+    // ma senza NIENTE di finito il filo non si apre: in lettura il terzo e
+    // basta, e il quarto non si propone
+    t.eq(
+      "in lettura da solo non apre il filo",
+      prossimiPassi(tre, { statusOf: (id) => (id === "c" ? "reading" : "unread") }).length,
       0
     );
     // finito anche il terzo, il passo è il quarto
@@ -560,8 +573,17 @@ export default async function (t) {
     const solo = (libri, stati, prog) => motivi(libri, stati, prog)[0];
 
     // le sei ragioni, una per una, coi nomi che il lettore vedrà
-    t.eq("stai leggendo il più avanti", solo([uno, due], { a: "read", b: "reading" })?.motivo, "inMano");
-    t.eq("…e la frase nomina quel volume", frasePassoTace(solo([uno, due], { a: "read", b: "reading" })).includes("Secondo"), true);
+    //
+    // `inMano` vuol dire «di questa storia non hai finito NIENTE»: è
+    // l'apertura di passaggio (New Spring allo 0,4%), non il filo aperto in
+    // cui stai leggendo — lì il passo si propone (controllo girato più su).
+    t.eq("niente di finito in questa storia", solo([uno, due], { a: "reading" })?.motivo, "inMano");
+    t.eq("…e la frase nomina il volume aperto", frasePassoTace(solo([uno, due], { a: "reading" })).includes("Primo"), true);
+    // e con un volume finito dietro, lo stesso filo NON è muto: è la scena
+    // del suo 40K — l'ottavo letto, il quindicesimo in mano, il sedicesimo
+    // da aprire — e il passo è il seguito di quello che stai leggendo
+    const terzo = V("c", "Terzo", 3);
+    t.eq("…mentre col primo finito il filo parla", motivi([uno, due, terzo], { a: "read", b: "reading" }).length, 0);
     t.eq("il seguito l'hai aperto", solo([uno, due], { a: "read" }, { b: 0.3 })?.motivo, "aperto");
     // …e la frase nomina IL SEGUITO, non il volume da cui si è partiti:
     // sono due libri diversi e scambiarli manda a cercare il volume

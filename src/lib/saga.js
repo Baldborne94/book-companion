@@ -422,7 +422,16 @@ function raccogliStorie(books, statusOf, tocco, contorno) {
     // stessa serie — lo zittisce `nextInSaga`
     const ciclo = cicloDi(b);
     const chiave = `${saga}\u0000${ciclo.toLowerCase()}`;
-    const e = storie.get(chiave) || { saga, ciclo, avanti: null, quando: 0 };
+    // `finito: false` qui e' cintura e bretelle e NON e' portante (mutazione
+    // provata, sopravvive): il campo assente e' falso lo stesso. Sta scritto
+    // perche' dice la forma dell'oggetto a chi legge.
+    const e = storie.get(chiave) || { saga, ciclo, avanti: null, finito: false, quando: 0 };
+    // UN FILO SI APRE CON UN VOLUME FINITO, e «finito» e' una proprieta' del
+    // FILO, non del volume piu' avanti: chi ha chiuso l'ottavo e sta al 12%
+    // del quindicesimo questa storia l'ha cominciata eccome, e il passo dopo
+    // glielo si puo' dire. Pretendendolo sul riferimento si zittiva proprio
+    // il filo che hai in mano.
+    if (stato === "read") e.finito = true;
     // il piu' avanti: `-Infinity` tiene i senza-numero sotto a chiunque
     // ne abbia uno, cosi' un volume non numerato non fa da riferimento
     // finche' c'e' di meglio
@@ -448,11 +457,11 @@ export function prossimiPassi(
 
   const passi = [];
   for (const e of storie.values()) {
-    // il filo si apre con un volume FINITO, e se il piu' avanti lo stai
-    // ancora leggendo il passo dopo ce l'hai in mano: niente da proporre.
-    // Le due cose sono UNA domanda: col piu' avanti letto, un volume letto
-    // c'e' per forza (un `letto` a parte era una guardia che non guardava)
-    if (statusOf(e.avanti.id) !== "read") continue;
+    // il filo si apre con un volume FINITO: un'apertura di passaggio non e'
+    // una storia cominciata. Ma il riferimento resta il piu' avanti che hai
+    // DICHIARATO, anche se lo stai leggendo — il passo dopo e' quello che
+    // segue lui.
+    if (!e.finito) continue;
     // il ciclo qui serve a RAGGRUPPARE le storie e a dare il nome alla riga;
     // a cercare il candidato dentro il ciclo giusto — e a tacere dove i
     // numeri non sono una fila — ci pensa `nextInSaga`, che il ciclo lo
@@ -505,9 +514,9 @@ export function perchePassoTace(
   const storie = raccogliStorie(books, statusOf, tocco, contorno);
   const muti = [];
   for (const e of storie.values()) {
-    // il piu' avanti che hai dichiarato lo stai ancora leggendo: il passo
-    // dopo ce l'hai in mano, e la riga lo dice invece di sparire
-    if (statusOf(e.avanti.id) !== "read") {
+    // di questa storia non hai ancora finito niente: e' un'apertura di
+    // passaggio, non un filo in mano, e la riga lo dice invece di sparire
+    if (!e.finito) {
       muti.push({ ...e, motivo: "inMano", da: e.avanti });
       continue;
     }
@@ -535,7 +544,8 @@ export function perchePassoTace(
 // «undefined» dentro una riga in italiano — e il test pretende che ognuno
 // sappia parlare.
 export const MOTIVI_PASSO = {
-  inMano: (t) => `stai ancora leggendo «${t.da?.title || "il volume più avanti"}».`,
+  inMano: (t) =>
+    `non hai ancora finito nessun volume di questa storia: stai leggendo «${t.da?.title || "il primo che hai aperto"}».`,
   aperto: (t) => `il seguito «${t.volume?.title || "che viene dopo"}» l'hai già aperto: il passo ce l'hai in mano.`,
   ultimo: (t) => `«${t.da?.title || "l'ultimo che hai letto"}» è l'ultimo volume che hai di questa storia.`,
   tuttiLetti: (t) => `dopo «${t.da?.title || "l'ultimo"}» hai già letto tutto quello che hai.`,
