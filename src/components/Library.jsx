@@ -492,6 +492,7 @@ export default function Library({
   focusSaga,
   collegato,
   onFileLocali,
+  spazioCambiato = 0,
   aggiorna,
   onCammino,
 }) {
@@ -589,6 +590,20 @@ export default function Library({
   // permesso a sorpresa — e la richiesta vera resta quella dell'avvio.
   const [persist, setPersist] = useState("concessa");
 
+  // i byte cambiati da dentro la Libreria (uno scaricamento in massa):
+  // `spazioCambiato` porta quelli cambiati da fuori, questo quelli di qui
+  const [giroSpazio, setGiroSpazio] = useState(0);
+
+  // E SI RILEGGE ANCHE QUANDO I BYTE CAMBIANO SENZA CHE CAMBI LA
+  // BIBLIOTECA. Togliendo un ebook la scheda resta, quindi `books` cambia
+  // per il solo segno `fileTolto` — e cambia PRIMA che il file sia
+  // sparito, quindi questa misura si rileggeva sui byte ancora al loro
+  // posto. Da sapere, perche' e' meta' della risposta: `storage.estimate`
+  // e' del BROWSER e non si sbriga — misurato in Chromium, scritti e poi
+  // cancellati 20 MB, la stima non cala nemmeno dieci secondi dopo, con
+  // lo store gia' vuoto. Quel numero quindi puo' restare fermo lo stesso,
+  // e non c'e' niente da curare di nostro: chi lo rimisura di piu' non lo
+  // fa scendere prima.
   useEffect(() => {
     storageEstimate().then(setEstimate);
     statoPersistenza().then(setPersist);
@@ -598,13 +613,23 @@ export default function Library({
       .then((ids) => setConCopertina(new Set(ids)))
       .catch(() => setConCopertina(null));
     guardate().then(setCopGuardate);
-  }, [books]);
+  }, [books, spazioCambiato, giroSpazio]);
 
   // NON si aggancia a `books` come i due qui sopra: quello e' un giro di
   // rete che elenca il secchio, e rifarlo a ogni import o a ogni voto messo
   // a un romanzo sarebbe traffico buttato — per giunta sul piano gratuito,
   // dove anche il traffico e' contato. Un errore lascia la riga senza la
   // parte del cloud: non e' un guasto da raccontare, e' un numero in meno.
+  //
+  // MA SI RIFA' QUANDO IL SECCHIO E' CAMBIATO PER MANO NOSTRA, e non e'
+  // contro quella ragione: e' la stessa regola vista dall'altra parte.
+  // Togliere un ebook cancella il file anche lassu' (`togliFileDalCloud`),
+  // quindi questa barra resta a raccontare un secchio che non esiste piu'
+  // — e siccome la Libreria non si smonta finche' non cambi sezione, per
+  // il lettore quel numero non si muove mai («ho tolto un po' di ebook e
+  // tenuto solo la scheda, non dovrei vedere aggiornarsi lo spazio di
+  // archiviazione?»). Non e' un giro a ogni tocco: e' un giro per un
+  // gesto raro che sposta dei megabyte.
   useEffect(() => {
     if (!collegato) return setCloud(null);
     let vivo = true;
@@ -612,7 +637,7 @@ export default function Library({
       .then((d) => vivo && setCloud(d || null))
       .catch(() => {});
     return () => { vivo = false; };
-  }, [collegato]);
+  }, [collegato, spazioCambiato]);
 
   async function richiediPersistenza() {
     // riprovare ha senso davvero: Android la concede quando la PWA viene
@@ -1233,8 +1258,10 @@ export default function Library({
     // `syncCore` perche' un test le possa chiamare.
     notify?.(frasePortata(esito));
     // le nuvolette si spengono qui, senza aspettare una sincronizzazione
-    // intera: quel che e' cambiato sta tutto in casa
-    if (esito.scesi) onFileLocali?.();
+    // intera: quel che e' cambiato sta tutto in casa — e col peso del
+    // dispositivo vale il rovescio di «togli l'ebook»: sono appena scesi
+    // dei byte, quindi la misura di prima non vale piu'
+    if (esito.scesi) { onFileLocali?.(); setGiroSpazio((n) => n + 1); }
   }
 
   // uscendo dalla libreria la ricerca in corso non serve piu' a nessuno, e
