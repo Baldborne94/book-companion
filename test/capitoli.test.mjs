@@ -14,7 +14,7 @@
 // Quel che sbaglia in silenzio qui è tutto di vista: un capitolo nel posto
 // sbagliato, o un'intestazione che si ripete, non alzano nessun errore.
 import { disponi, raccogliCicli } from "../src/lib/ripiani.js";
-import { riconosci, capitoloDi, FUORI_STORIA } from "../src/lib/sagaBooks.js";
+import { riconosci, capitoloDi, contornoDiUnaGuida, FUORI_STORIA } from "../src/lib/sagaBooks.js";
 
 const L = (id, extra = {}) => ({ id, title: id, addedAt: 1, ...extra });
 // la guida finta: il capitolo si chiede a una mappa, come in Libreria si
@@ -390,6 +390,46 @@ export default async (t) => {
     ];
     const [ripiano] = disponi(libri, null, "auto", null, null);
     t.eq("lo scarto sta dove cade il suo numero", ripiano.cicli.map((c) => c.nome ?? "—").join("|"), "—|Storia");
+  }
+
+  // ── E UN CONTORNO NON È UNA TAPPA ─────────────────────────────────────
+  //
+  // Segnalato con l'Ingresso in mano: «perché come prossimo passo per il
+  // 40K mi suggerisce Night Lords invece del numero successivo dopo
+  // Mechanicum? Night Lords è solo successivo alla Horus Heresy».
+  //
+  // La risposta la dà la tavola: il numero di lettura ce l'hanno i romanzi
+  // del cammino e nessun altro. Sbaglia in silenzio da tutt'e due i lati —
+  // troppo largo e un romanzo vero sparisce dalle proposte, troppo stretto
+  // e torna il difetto segnalato — quindi i titoli stanno qui alla lettera.
+  {
+    const c = (titolo, autore = "") => contornoDiUnaGuida({ title: titolo, author: autore });
+    // i tre della sua fotografia, e il prologo che apre la fila
+    t.eq("«Night Lords Omnibus» è un contorno", c("Night Lords Omnibus", "Aaron Dembski-Bowden"), true);
+    t.eq("…come gli altri omnibus", c("Forges of Mars Omnibus", "Graham McNeill"), true);
+    t.eq("…e il prologo", c("Eisenhorn", "Dan Abnett"), true);
+    // UN'ANTOLOGIA NEMMENO: ci stai dentro un racconto alla volta, e messa
+    // davanti a un romanzo gli ruba il posto — è la regola per cui un
+    // numero di lettura non ce l'ha
+    t.eq("…e nemmeno un'antologia è una tappa", c("Tales of Heresy", ""), true);
+    // mentre i romanzi del cammino restano tappe, anche quelli che la
+    // guida accosta a una parte senza che siano dell'Eresia
+    t.eq("«Mechanicum» è una tappa", c("Mechanicum", "Graham McNeill"), false);
+    t.eq("«A Thousand Sons» pure", c("A Thousand Sons", "Graham McNeill"), false);
+    t.eq("e «Horus Rising» apre la storia", c("Horus Rising", "Dan Abnett"), false);
+    // `titolo` E NON `saga`: il ripiego sull'autore risponde «questo è un
+    // Pratchett» senza collocare niente, e lì «non è un passo» sarebbe una
+    // cosa che non sappiamo — col ramo dentro, ogni Pratchett dal titolo
+    // irriconoscibile sparirebbe dalle proposte
+    t.eq("un Pratchett che la tavola non colloca non è un contorno", c("Un Titolo Tradotto Chissà Come", "Terry Pratchett"), false);
+    t.eq("e un libro che nessuna guida conosce nemmeno", c("Between Two Fires", "Christopher Buehlman"), false);
+    // e una tavola senza righe di contorno non ne produce
+    t.eq("nel Mondo Disco è tutto una tappa", c("Mort", "Terry Pratchett"), false);
+    // la risposta si tiene in memoria: a chiave uguale deve restare uguale
+    t.eq("la risposta tenuta è la stessa", c("Night Lords Omnibus", "Aaron Dembski-Bowden"), true);
+    t.eq("…e vale anche per il no", c("Mechanicum", "Graham McNeill"), false);
+    // e senza niente in mano non si accusa nessuno
+    t.eq("senza libro non è un contorno", contornoDiUnaGuida(), false);
   }
 
   // ── RACCOGLIERE I CICLI RESTA QUEL CHE ERA ────────────────────────────

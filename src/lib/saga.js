@@ -1,5 +1,5 @@
 import { getStatus, getProgress } from "./library.js";
-import { PARTI_DI_GUIDA } from "./sagaBooks.js";
+import { PARTI_DI_GUIDA, contornoDiUnaGuida } from "./sagaBooks.js";
 
 // UN VOLUME CHE HAI GIA' APERTO NON E' «IL PROSSIMO».
 //
@@ -168,7 +168,13 @@ export function gruppoDi(book, books = []) {
 // gruppo arriva di li' e che `null` vuol dire «non si puo' dire»: dentro
 // quella serie due titoli diversi portano lo stesso numero, e indovinare
 // vorrebbe dire servire uno spoiler.
-export function nextInSaga(book, books, statusOf = getStatus, progressoOf = getProgress) {
+export function nextInSaga(
+  book,
+  books,
+  statusOf = getStatus,
+  progressoOf = getProgress,
+  contorno = contornoDiUnaGuida
+) {
   const saga = (book?.saga || "").trim();
   if (!saga) return null;
   const dove = gruppoDi(book, books);
@@ -187,6 +193,12 @@ export function nextInSaga(book, books, statusOf = getStatus, progressoOf = getP
     )
     .sort((a, b) => ord(a) - ord(b) || (a.addedAt || 0) - (b.addedAt || 0));
   for (const b of dopo) {
+    // QUEL CHE LA GUIDA NON CONTA COME TAPPA SI SCAVALCA, non ferma la
+    // ricerca: non sta in questo filo affatto, quindi non e' il passo dopo
+    // e nemmeno il volume che te lo trattiene in mano. Chiuso «Fallen
+    // Angels» (9) con «Night Lords Omnibus» (9,04) sullo scaffale, il passo
+    // resta il numero 10.
+    if (contorno(b)) continue;
     const stato = statusOf(b.id);
     if (stato === "read" || stato === "abandoned") continue;
     return maiAperto(b, statusOf, progressoOf) ? b : null;
@@ -250,7 +262,13 @@ export function nextInSaga(book, books, statusOf = getStatus, progressoOf = getP
 
 export function prossimiPassi(
   books = [],
-  { statusOf = getStatus, progressoOf = getProgress, tocco = () => 0, escludi = null } = {}
+  {
+    statusOf = getStatus,
+    progressoOf = getProgress,
+    tocco = () => 0,
+    escludi = null,
+    contorno = contornoDiUnaGuida,
+  } = {}
 ) {
   // dove ogni serie si numera da se', il numero e' della SERIE e l'etichetta
   // pure; dove la fila e' una sola, il numero e' della saga. Non decide come
@@ -269,6 +287,13 @@ export function prossimiPassi(
     // passaggio non e' niente, e l'abbandonato e' una storia lasciata
     const stato = statusOf(b.id);
     if (stato !== "read" && stato !== "reading") continue;
+    // E NON APRE UN FILO NEMMENO DA RIFERIMENTO. Era la meta' che si vedeva
+    // nella fotografia: l'unico volume letto senza Serie era «Eisenhorn»
+    // — il prologo, che la guida chiama fondazione del 40K e non tappa
+    // dell'Eresia — e bastava lui a far nascere una riga «Warhammer 40K»
+    // che poi proponeva la lettura di sfondo dopo di lui. Un libro che la
+    // guida non conta come tappa non e' un filo in mano.
+    if (contorno(b)) continue;
     // un filo per serie cominciata, e le maiuscole non ne fanno un secondo;
     // il volume che non sta in nessun gruppo — numeri doppi dentro la sua
     // stessa serie — lo zittisce `nextInSaga`
@@ -294,7 +319,7 @@ export function prossimiPassi(
     // a cercare il candidato dentro il ciclo giusto — e a tacere dove i
     // numeri non sono una fila — ci pensa `nextInSaga`, che il ciclo lo
     // legge dal volume che le si passa
-    const libro = nextInSaga(e.avanti, books, statusOf, progressoOf);
+    const libro = nextInSaga(e.avanti, books, statusOf, progressoOf, contorno);
     // il libro gia' in cima all'Ingresso non si ripete due righe piu' sotto
     if (!libro || libro.id === escludi) continue;
     const nome = suoi.has(e.saga) ? e.ciclo || e.saga : e.saga;
