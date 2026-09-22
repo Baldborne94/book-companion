@@ -5,7 +5,7 @@ import { getFinished, getLastOpened, getProgress, getStarted, getStatus, getUpda
 import { getHighlights } from "../lib/annotations.js";
 import { buildDiary, rigaDiario } from "../lib/diary.js";
 import { raccogli, conta, rigaGiardino } from "../lib/citazioni.js";
-import { nextInSaga, prossimiPassi } from "../lib/saga.js";
+import { nextInSaga, prossimiPassi, perchePassoTace, frasePassoTace } from "../lib/saga.js";
 import BookCover from "./BookCover.jsx";
 import { BookmarkIcon, LeafIcon, SparkIcon, StarIcon } from "./Icons.jsx";
 import EmptyState from "./EmptyState.jsx";
@@ -147,6 +147,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
   // preferiti non ristampano un titolo che sta già sulla copertina
   const [dorsi, setDorsi] = useState({});
   const segnaDorso = (id, v) => setDorsi((d) => (d[id] === v ? d : { ...d, [id]: v }));
+  const [perche, setPerche] = useState(false);
   const { wide } = useViewport();
 
   // I CONTI DELLE DUE PORTE STANNO SOPRA IL `return` ANTICIPATO, e non è
@@ -266,12 +267,19 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
 
   // E I PROSSIMI PASSI DELLE SAGHE (vedi `prossimiPassi`): la domanda «e
   // adesso cosa leggo» non aspetta che tu chiuda un volume.
-  const passi = prossimiPassi(books, {
+  const opzioniPasso = {
     statusOf: getStatus,
     progressoOf: getProgress,
     tocco: (id) => getUpdatedAt(id, 0),
     escludi: last?.id || null,
-  });
+  };
+  const passi = prossimiPassi(books, opzioniPasso);
+  // E LE SAGHE CHE TACCIONO DICONO PERCHÉ, ma solo a chi lo chiede: le
+  // ragioni sono tante quante le storie che hai finito, e in vista sarebbero
+  // un muro sotto la fila. Ripiegate, invece, rispondono alla domanda che
+  // uno si fa una volta ogni tanto — «e la mia saga?» — senza mettersi in
+  // mezzo tutte le altre volte.
+  const muti = perchePassoTace(books, opzioniPasso);
 
   return (
     <div
@@ -392,6 +400,37 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
             ))}
           </div>
         </>
+      )}
+
+      {muti.length > 0 && (
+        <div style={{ marginTop: passi.length ? 10 : 0, marginBottom: 18 }}>
+          <button
+            onClick={() => setPerche((v) => !v)}
+            style={{
+              background: "none",
+              border: "none",
+              padding: "8px 0",
+              cursor: "pointer",
+              fontSize: F.nota,
+              color: C.muted,
+              fontFamily: "inherit",
+            }}
+          >
+            {perche ? "▾" : "▸"} E le altre saghe? ({muti.length})
+          </button>
+          {perche && (
+            <ul style={{ margin: "2px 0 0", padding: "0 0 0 18px", listStyle: "disc" }}>
+              {muti.map((t) => (
+                <li
+                  key={`${t.saga}\u0000${t.ciclo}`}
+                  style={{ fontSize: F.nota, color: C.muted, lineHeight: 1.55, marginBottom: 4 }}
+                >
+                  {frasePassoTace(t)}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       <button

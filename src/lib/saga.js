@@ -175,10 +175,35 @@ export function nextInSaga(
   progressoOf = getProgress,
   contorno = contornoDiUnaGuida
 ) {
+  return passoDentro(book, books, statusOf, progressoOf, contorno).libro;
+}
+
+// LO STESSO CAMMINO, MA DICE ANCHE PERCHE' SI E' FERMATO.
+//
+// Segnalato con l'Ingresso in mano, il giorno dopo aver tolto la proposta
+// sbagliata del 40K: «adesso non mi proponi piu' nulla?». Sette righe
+// c'erano, e la sua non c'era — e una riga che sparisce in silenzio
+// trasforma una regola in un mistero. E' la lezione di `perchePrimaTace`,
+// dove un tasto che non compare spiega quale anello si e' rotto.
+//
+// LA RAGIONE ESCE DALLA STESSA CAMMINATA che sceglie il volume, non da una
+// seconda funzione che la ricostruisce: due copie della stessa regola
+// divergono senza che nessun errore lo dica, e qui la copia sbagliata
+// direbbe al lettore una cosa che non e' successa. `nextInSaga` e'
+// diventata una riga sopra questa.
+export function passoDentro(
+  book,
+  books,
+  statusOf = getStatus,
+  progressoOf = getProgress,
+  contorno = contornoDiUnaGuida
+) {
   const saga = (book?.saga || "").trim();
-  if (!saga) return null;
+  if (!saga) return { libro: null, motivo: "senzaSaga" };
   const dove = gruppoDi(book, books);
-  if (!dove) return null;
+  // `gruppoDi` tace quando dentro il gruppo due titoli diversi portano lo
+  // stesso numero: li' «il prossimo» non si puo' calcolare
+  if (!dove) return { libro: null, motivo: "mescolati" };
   const ord = (b) => (b.sagaOrder ?? Infinity);
   const cur = book.sagaOrder ?? null;
   // `dove` e' gia' della sola saga del libro: lo garantisce `gruppoDi`
@@ -192,18 +217,44 @@ export function nextInSaga(
         (cur == null || ord(b) > cur)
     )
     .sort((a, b) => ord(a) - ord(b) || (a.addedAt || 0) - (b.addedAt || 0));
+  let sfondo = 0;
+  let letti = 0;
+  let mollati = 0;
   for (const b of dopo) {
     // QUEL CHE LA GUIDA NON CONTA COME TAPPA SI SCAVALCA, non ferma la
     // ricerca: non sta in questo filo affatto, quindi non e' il passo dopo
     // e nemmeno il volume che te lo trattiene in mano. Chiuso «Fallen
     // Angels» (9) con «Night Lords Omnibus» (9,04) sullo scaffale, il passo
     // resta il numero 10.
-    if (contorno(b)) continue;
+    if (contorno(b)) {
+      sfondo += 1;
+      continue;
+    }
     const stato = statusOf(b.id);
-    if (stato === "read" || stato === "abandoned") continue;
-    return maiAperto(b, statusOf, progressoOf) ? b : null;
+    // letto e abbandonato si scavalcano tutt'e due, ma NON vogliono dire la
+    // stessa cosa a chi legge la riga: «li hai letti» e «li hai lasciati»
+    // sono due storie diverse, e contarli insieme farebbe dire all'app una
+    // cosa che non e' successa
+    if (stato === "read") {
+      letti += 1;
+      continue;
+    }
+    if (stato === "abandoned") {
+      mollati += 1;
+      continue;
+    }
+    if (maiAperto(b, statusOf, progressoOf)) return { libro: b, motivo: null };
+    // il seguito c'e' e l'hai gia' aperto: il passo ce l'hai in mano, e
+    // dirlo per nome e' meglio che tacere
+    return { libro: null, motivo: "aperto", volume: b };
   }
-  return null;
+  // i tre silenzi non sono la stessa cosa, e chiedono al lettore tre cose
+  // diverse: comprare il volume dopo, non cercarlo perche' l'hai letto,
+  // sapere che quel che resta la guida non te lo chiede
+  if (letti) return { libro: null, motivo: "tuttiLetti" };
+  if (mollati) return { libro: null, motivo: "abbandonati" };
+  if (sfondo) return { libro: null, motivo: "soloSfondo" };
+  return { libro: null, motivo: "ultimo" };
 }
 
 // I PROSSIMI PASSI DI TUTTE LE SAGHE CHE HAI COMINCIATO.
@@ -260,16 +311,11 @@ export function nextInSaga(
 // chiude la fila. A parita' decide l'alfabeto, o due saghe ferme allo
 // stesso istante cambierebbero posto a ogni apertura.
 
-export function prossimiPassi(
-  books = [],
-  {
-    statusOf = getStatus,
-    progressoOf = getProgress,
-    tocco = () => 0,
-    escludi = null,
-    contorno = contornoDiUnaGuida,
-  } = {}
-) {
+// I FILI CHE HAI IN MANO, raccolti una volta sola: li leggono sia chi
+// propone il passo sia chi spiega perche' non lo propone, e devono vedere
+// gli stessi gruppi — se divergessero, la spiegazione parlerebbe di una
+// storia diversa da quella che e' rimasta muta.
+function raccogliStorie(books, statusOf, tocco, contorno) {
   // dove ogni serie si numera da se', il numero e' della SERIE e l'etichetta
   // pure; dove la fila e' una sola, il numero e' della saga. Non decide come
   // si raggruppa — quello e' mestiere della serie, sempre — decide come si
@@ -307,6 +353,21 @@ export function prossimiPassi(
     e.quando = Math.max(e.quando, tocco(b.id) || 0);
     storie.set(chiave, e);
   }
+  for (const e of storie.values()) e.nome = suoi.has(e.saga) ? e.ciclo || e.saga : e.saga;
+  return storie;
+}
+
+export function prossimiPassi(
+  books = [],
+  {
+    statusOf = getStatus,
+    progressoOf = getProgress,
+    tocco = () => 0,
+    escludi = null,
+    contorno = contornoDiUnaGuida,
+  } = {}
+) {
+  const storie = raccogliStorie(books, statusOf, tocco, contorno);
 
   const passi = [];
   for (const e of storie.values()) {
@@ -322,8 +383,7 @@ export function prossimiPassi(
     const libro = nextInSaga(e.avanti, books, statusOf, progressoOf, contorno);
     // il libro gia' in cima all'Ingresso non si ripete due righe piu' sotto
     if (!libro || libro.id === escludi) continue;
-    const nome = suoi.has(e.saga) ? e.ciclo || e.saga : e.saga;
-    passi.push({ saga: e.saga, ciclo: e.ciclo, nome, libro, da: e.avanti, quando: e.quando });
+    passi.push({ saga: e.saga, ciclo: e.ciclo, nome: e.nome, libro, da: e.avanti, quando: e.quando });
   }
   // e a parita' di nome decide il NUMERO del volume proposto: da quando due
   // serie della stessa saga possono chiamarsi tutt'e due come la saga
@@ -336,4 +396,78 @@ export function prossimiPassi(
       a.nome.localeCompare(b.nome, "it") ||
       (a.libro.sagaOrder ?? Infinity) - (b.libro.sagaOrder ?? Infinity)
   );
+}
+
+// E LE SAGHE CHE TACCIONO DICONO PERCHE'.
+//
+// Segnalato con l'Ingresso in mano: «adesso non mi proponi piu' nulla?».
+// Sette righe c'erano, e quella del 40K no — e da fuori le ragioni per cui
+// un filo non propone niente sono indistinguibili fra loro: il volume dopo
+// non ce l'hai, l'hai gia' aperto, stai ancora leggendo quello di prima,
+// due volumi portano lo stesso numero. Tutte e quattro si vedono uguali:
+// una riga che non c'e'.
+//
+// E' la lezione di `perchePrimaTace`, dove il tasto che non compare nomina
+// il PRIMO anello rotto e dice dove si mette a posto. Qui la ragione non si
+// ricostruisce: viene da `passoDentro`, la stessa camminata che sceglie il
+// volume.
+//
+// TACE CHI NON HA NIENTE DA DIRE: una saga mai cominciata non compare (non
+// e' un filo in mano), e nemmeno una che il passo ce l'ha — quella sta gia'
+// nella fila sopra. Resta solo chi un filo lo ha e non riceve una proposta.
+export function perchePassoTace(
+  books = [],
+  {
+    statusOf = getStatus,
+    progressoOf = getProgress,
+    tocco = () => 0,
+    escludi = null,
+    contorno = contornoDiUnaGuida,
+  } = {}
+) {
+  const storie = raccogliStorie(books, statusOf, tocco, contorno);
+  const muti = [];
+  for (const e of storie.values()) {
+    // il piu' avanti che hai dichiarato lo stai ancora leggendo: il passo
+    // dopo ce l'hai in mano, e la riga lo dice invece di sparire
+    if (statusOf(e.avanti.id) !== "read") {
+      muti.push({ ...e, motivo: "inMano", da: e.avanti });
+      continue;
+    }
+    const { libro, motivo, volume } = passoDentro(e.avanti, books, statusOf, progressoOf, contorno);
+    // chi un passo ce l'ha non si spiega: o sta nella fila qui sopra, o e'
+    // il libro gia' in cima all'Ingresso (`escludi`), che la fila salta
+    // apposta per non dirlo due volte. In tutt'e due i casi la riga c'e',
+    // ed e' per questo che il confronto con `escludi` NON si scrive: una
+    // guardia che non guarda e' peggio di nessuna guardia (mutazione
+    // provata, sopravviveva)
+    if (libro) continue;
+    muti.push({ ...e, motivo, volume, da: e.avanti });
+  }
+  return muti.sort((a, b) => b.quando - a.quando || a.nome.localeCompare(b.nome, "it"));
+}
+
+// Le parole, una per ragione. Stanno in un elenco per la ragione di `GUAI` e
+// di `PERCHE_TACE`: un motivo senza frase non alza nessun errore, scrive
+// «undefined» dentro una riga in italiano — e il test pretende che ognuno
+// sappia parlare.
+export const MOTIVI_PASSO = {
+  inMano: (t) => `stai ancora leggendo «${t.da?.title || "il volume più avanti"}».`,
+  aperto: (t) => `il seguito «${t.volume?.title || "che viene dopo"}» l'hai già aperto: il passo ce l'hai in mano.`,
+  ultimo: (t) => `«${t.da?.title || "l'ultimo che hai letto"}» è l'ultimo volume che hai di questa storia.`,
+  tuttiLetti: (t) => `dopo «${t.da?.title || "l'ultimo"}» hai già letto tutto quello che hai.`,
+  abbandonati: (t) => `dopo «${t.da?.title || "l'ultimo"}» hai solo volumi che avevi lasciato.`,
+  soloSfondo: (t) =>
+    `dopo «${t.da?.title || "l'ultimo"}» ti restano solo letture di sfondo, che la guida non chiede come tappa.`,
+  mescolati: () =>
+    "due volumi portano lo stesso numero di lettura: finché è così non so dire qual è il prossimo — correggi i numeri nella scheda.",
+  senzaSaga: () => "non ha una saga scritta nella scheda.",
+};
+
+// La frase intera, col nome del filo davanti. Un motivo che non conosciamo
+// si dice com'e' invece di sparire: e' la regola di `spiegaSync` — quel che
+// non sappiamo tradurre resta l'unico appiglio.
+export function frasePassoTace(t) {
+  const dillo = MOTIVI_PASSO[t?.motivo];
+  return `${t?.nome || "Questa storia"}: ${dillo ? dillo(t) : `non ho un passo da proporti (${t?.motivo}).`}`;
 }
