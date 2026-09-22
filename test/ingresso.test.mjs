@@ -586,11 +586,75 @@ export default async function (t) {
     ];
     t.eq("hai letto tutto quello che hai", solo(parti, { a: "read", b: "read" })?.motivo, "tuttiLetti");
     // i numeri mescolati zittiscono il filo, ed è l'unica ragione che
-    // chiede al lettore di mettere mano a un campo
+    // chiede al lettore di mettere mano a un campo. IL DOPPIONE CHE CONTA
+    // È QUELLO SUL PASSO: due titoli sul numero che si starebbe per
+    // proporre sono un sorteggio, e in una saga il volume sbagliato è uno
+    // spoiler servito dall'app.
+    const litigio = solo([uno, due, V("x", "Altro", 2)], { a: "read" });
+    t.eq("due titoli sul numero del passo", litigio?.motivo, "mescolati");
+    // …e la riga li NOMINA: «due volumi portano lo stesso numero» senza
+    // dire quali lascia a cercarli fra settanta schede
+    const frase = frasePassoTace(litigio);
+    t.eq("…e la frase nomina il primo", frase.includes("Secondo"), true);
+    t.eq("…e anche l'altro", frase.includes("Altro"), true);
+    t.eq("…col numero che litiga", frase.includes("n° 2"), true);
+    // MA UN DOPPIONE LONTANO NON ZITTISCE PIÙ NIENTE, dove la Serie è
+    // scritta e uguale su tutto il gruppo: lì il filo è uno solo per
+    // dichiarazione del lettore, e un numero sbagliato venti volumi più in
+    // là è un campo storto, non una seconda storia (segnalato: «dopo
+    // Mechanicum ci sono altri libri»).
+    const lontano = [uno, due, V("c", "Terzo", 3), V("y", "Gemello", 3)];
     t.eq(
-      "due titoli sullo stesso numero",
-      solo([uno, V("x", "Altro", 1)], { a: "read" })?.motivo,
+      "il doppione lontano lascia parlare il filo",
+      prossimiPassi(lontano, { statusOf: (id) => (id === "a" ? "read" : "unread"), progressoOf: () => 0 })[0]?.libro?.id,
+      "b"
+    );
+    // …mentre col campo Serie VUOTO il veto resta intero: lì due fili si
+    // distinguono solo dai numeri, e i numeri mentono
+    const senzaSerie = lontano.map((b) => ({ ...b, series: "" }));
+    t.eq(
+      "senza Serie dichiarata si tace su tutto",
+      solo(senzaSerie, { a: "read" })?.motivo,
       "mescolati"
+    );
+    // …e nemmeno DUE Serie diverse sono una dichiarazione: succede dove la
+    // Serie è una PARTE di una guida, perché lì `gruppoDi` allarga alla
+    // saga intera e nel gruppo finiscono capitoli diversi
+    const dueParti = [
+      { ...uno, series: "Part 1 · The Fall of Horus" },
+      { ...due, series: "Part 7 · Mars & Magnus" },
+      { ...V("y", "Gemello", 3), series: "Part 7 · Mars & Magnus" },
+      { ...V("c", "Terzo", 3), series: "Part 1 · The Fall of Horus" },
+    ];
+    t.eq("due capitoli diversi non sono una storia dichiarata", solo(dueParti, { a: "read" })?.motivo, "mescolati");
+
+    // UN CONTORNO NON È UN RIVALE, né da vicino né da lontano: non è una
+    // tappa, quindi il suo numero non fa una seconda sequenza — e questo
+    // vale tutt'e due le volte che si guarda (sul passo e su tutto il
+    // gruppo), o le due domande direbbero cose diverse
+    const conSfondo = (serie) => [
+      { ...uno, series: serie },
+      { ...due, series: serie },
+      { ...V("s", "Lettura di sfondo", 2), series: serie },
+    ];
+    const soloIlContorno = (b) => b.id === "s";
+    t.eq(
+      "un contorno sullo stesso numero non ferma il passo",
+      prossimiPassi(conSfondo("Storia"), {
+        statusOf: (id) => (id === "a" ? "read" : "unread"),
+        progressoOf: () => 0,
+        contorno: soloIlContorno,
+      })[0]?.libro?.id,
+      "b"
+    );
+    t.eq(
+      "…e nemmeno dove la Serie non è dichiarata",
+      prossimiPassi(conSfondo(""), {
+        statusOf: (id) => (id === "a" ? "read" : "unread"),
+        progressoOf: () => 0,
+        contorno: soloIlContorno,
+      })[0]?.libro?.id,
+      "b"
     );
     // e un contorno della guida non è «un volume che viene dopo»: lì il
     // filo tace, ma per una ragione sua

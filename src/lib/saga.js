@@ -129,8 +129,69 @@ export function gruppoDi(book, books = []) {
   const dove = parteDiUnaStoria(book)
     ? dellaSaga
     : dellaSaga.filter((b) => cicloDi(b).toLowerCase() === cicloDi(book).toLowerCase());
-  return numeriMescolati(dove, saga) ? null : dove;
+  // IL VETO NON STA PIU' QUI: raggruppare e' una cosa, decidere se il numero
+  // si puo' leggere e' un'altra. La domanda «e' una fila sola?» si fa in
+  // `passoDentro`, dove si sa anche quale volume si starebbe per proporre.
+  return dove;
 }
+
+// UN DOPPIONE LONTANO NON E' «DUE STORIE».
+//
+// Segnalato con l'Ingresso in mano: «controlla le saghe perche' dopo
+// Mechanicum ci sono altri libri, usa la stessa logica che hai usato per le
+// altre saghe». Misurato al banco sull'Eresia intera — settantun volumi coi
+// numeri del cammino, letti fino al quindici: **propone il sedici**. Ma
+// basta UN secondo titolo sul numero 24 — un racconto comprato da solo col
+// numero della collana addosso, un numero scritto a mano male — e tutta la
+// saga ammutolisce, per sempre, da un doppione che sta ventiquattro volumi
+// piu' in la' di dove stai leggendo.
+//
+// Era il veto di `numeriMescolati`, e la sua ragione resta buona: nel
+// Cosmoverse Mistborn e la Folgoluce sono numerate tutt'e due da uno, e li'
+// «il prossimo» non si puo' proprio calcolare. Ma quella e' una saga in cui
+// il lettore NON ha dichiarato le storie: col campo Serie vuoto due fili si
+// distinguono solo dai numeri, e i numeri mentono.
+//
+// QUANDO LA SERIE E' SCRITTA, E UGUALE SU TUTTO IL GRUPPO, il lettore ha
+// gia' detto che quella e' UNA storia: li' due titoli sullo stesso numero
+// non sono due sequenze, sono un campo sbagliato su un volume. E un campo
+// sbagliato lontano non deve zittire una fila che si legge benissimo.
+const unaStoriaSola = (dove) => {
+  const primo = cicloDi(dove[0] || {}).toLowerCase();
+  return !!primo && dove.every((b) => cicloDi(b).toLowerCase() === primo);
+};
+
+// LA COPPIA CHE LITIGA, per nome. «Due volumi portano lo stesso numero»
+// senza dire QUALI lascia il lettore a cercarli fra settanta schede: e' la
+// regola di `spiegaSync` — il guasto dice cos'e' successo E cosa farci, e
+// qui il cosa farci sono due titoli e un numero.
+const coppiaDoppia = (dove, contorno) => {
+  const visti = new Map();
+  for (const b of dove) {
+    if (b.sagaOrder == null || contorno(b)) continue;
+    const titolo = String(b.title || "").trim().toLowerCase();
+    const gia = visti.get(b.sagaOrder);
+    if (!gia) visti.set(b.sagaOrder, b);
+    else if (String(gia.title || "").trim().toLowerCase() !== titolo) return { uno: gia, due: b };
+  }
+  return {};
+};
+
+// Chi altro, nel gruppo, porta il numero di questo volume. Sono i RIVALI
+// del passo: se ce n'e' uno, qual e' «il prossimo» non lo sa nessuno — e
+// allora si tace, ma dicendo QUALI, che e' l'unica cosa che il lettore puo'
+// mettere a posto.
+const rivaliDi = (libro, dove, contorno) => {
+  const titolo = String(libro?.title || "").trim().toLowerCase();
+  return dove.filter(
+    (b) =>
+      b.id !== libro.id &&
+      b.sagaOrder === libro.sagaOrder &&
+      String(b.title || "").trim().toLowerCase() !== titolo &&
+      // un contorno non e' una tappa, quindi non e' un rivale del passo
+      !contorno(b)
+  );
+};
 
 // Il prossimo passo dentro la stessa saga: la voce di libreria non ancora
 // aperta con l'ordine di lettura piu' basso dopo quella corrente. Un omnibus
@@ -201,9 +262,19 @@ export function passoDentro(
   const saga = (book?.saga || "").trim();
   if (!saga) return { libro: null, motivo: "senzaSaga" };
   const dove = gruppoDi(book, books);
-  // `gruppoDi` tace quando dentro il gruppo due titoli diversi portano lo
-  // stesso numero: li' «il prossimo» non si puo' calcolare
-  if (!dove) return { libro: null, motivo: "mescolati" };
+  if (!dove) return { libro: null, motivo: "senzaSaga" };
+  // DOVE LA STORIA NON E' DICHIARATA, un numero ripetuto vuol dire due fili
+  // numerati ognuno da uno, e «il prossimo» non si puo' calcolare: si tace
+  // su tutto il gruppo, come si e' sempre fatto. Dove invece la Serie e'
+  // scritta e uguale su tutti, il filo e' uno solo per dichiarazione del
+  // lettore, e basta guardare il passo che si starebbe per proporre.
+  //
+  // E LA DOMANDA E' UNA SOLA, `coppiaDoppia`, non `numeriMescolati`: quella
+  // conta anche i contorni, e un'antologia che porta per sbaglio il numero
+  // di un romanzo non fa due sequenze — non e' una tappa. `numeriMescolati`
+  // resta dov'e' serve, a decidere come si CHIAMA la riga.
+  const coppia = unaStoriaSola(dove) ? {} : coppiaDoppia(dove, contorno);
+  if (coppia.uno) return { libro: null, motivo: "mescolati", ...coppia };
   const ord = (b) => (b.sagaOrder ?? Infinity);
   const cur = book.sagaOrder ?? null;
   // `dove` e' gia' della sola saga del libro: lo garantisce `gruppoDi`
@@ -243,6 +314,12 @@ export function passoDentro(
       mollati += 1;
       continue;
     }
+    // e sul passo che si sta per proporre il numero dev'essere di UNO solo:
+    // se un altro titolo lo porta, proporre l'uno o l'altro e' tirare a
+    // sorte — e in una saga il volume sbagliato e' uno spoiler servito
+    // dall'app
+    const rivali = rivaliDi(b, dove, contorno);
+    if (rivali.length) return { libro: null, motivo: "mescolati", uno: b, due: rivali[0] };
     if (maiAperto(b, statusOf, progressoOf)) return { libro: b, motivo: null };
     // il seguito c'e' e l'hai gia' aperto: il passo ce l'hai in mano, e
     // dirlo per nome e' meglio che tacere
@@ -434,7 +511,13 @@ export function perchePassoTace(
       muti.push({ ...e, motivo: "inMano", da: e.avanti });
       continue;
     }
-    const { libro, motivo, volume } = passoDentro(e.avanti, books, statusOf, progressoOf, contorno);
+    // SI SPREME TUTTO L'ESITO, non i campi che oggi mi vengono in mente:
+    // `passoDentro` porta con se' i volumi che la frase deve nominare
+    // (`volume`, `uno`, `due`), e un motivo nuovo ne portera' altri —
+    // elencandoli a mano, il prossimo li perde per strada e la riga torna
+    // generica senza che nessun errore lo dica (preso dal test)
+    const esito = passoDentro(e.avanti, books, statusOf, progressoOf, contorno);
+    const { libro } = esito;
     // chi un passo ce l'ha non si spiega: o sta nella fila qui sopra, o e'
     // il libro gia' in cima all'Ingresso (`escludi`), che la fila salta
     // apposta per non dirlo due volte. In tutt'e due i casi la riga c'e',
@@ -442,7 +525,7 @@ export function perchePassoTace(
     // guardia che non guarda e' peggio di nessuna guardia (mutazione
     // provata, sopravviveva)
     if (libro) continue;
-    muti.push({ ...e, motivo, volume, da: e.avanti });
+    muti.push({ ...e, ...esito, da: e.avanti });
   }
   return muti.sort((a, b) => b.quando - a.quando || a.nome.localeCompare(b.nome, "it"));
 }
@@ -459,8 +542,10 @@ export const MOTIVI_PASSO = {
   abbandonati: (t) => `dopo «${t.da?.title || "l'ultimo"}» hai solo volumi che avevi lasciato.`,
   soloSfondo: (t) =>
     `dopo «${t.da?.title || "l'ultimo"}» ti restano solo letture di sfondo, che la guida non chiede come tappa.`,
-  mescolati: () =>
-    "due volumi portano lo stesso numero di lettura: finché è così non so dire qual è il prossimo — correggi i numeri nella scheda.",
+  mescolati: (t) =>
+    t?.uno && t?.due
+      ? `«${t.uno.title}» e «${t.due.title}» portano tutt'e due il n° ${t.uno.sagaOrder}: finché è così non so dire qual è il prossimo — correggi il numero di uno dei due nella scheda.`
+      : "due volumi portano lo stesso numero di lettura: finché è così non so dire qual è il prossimo — correggi i numeri nella scheda.",
   senzaSaga: () => "non ha una saga scritta nella scheda.",
 };
 
