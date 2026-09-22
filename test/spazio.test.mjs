@@ -12,6 +12,7 @@ import {
   parteDelPiano,
   fetta,
   spartisci,
+  spartisciQui,
   PIANO,
   PIENO,
   QUOTA_PARTE,
@@ -168,5 +169,48 @@ export default async function (t) {
     const s = spartisci({ totale: 5 * M });
     t.c("un pezzo mancante vale zero, non NaN", s.libri === 0 && s.melodie === 0 && Number.isFinite(s.liberi));
     t.c("e la barra resta disegnabile", /^\d/.test(fetta(s.libri)));
+  }
+
+  // ── E QUEL CHE STA SU QUESTO DISPOSITIVO ──────────────────────────────
+  //
+  // Segnalato con la fotografia della riga in fondo alla Libreria: «queste
+  // diciture mi confondono sempre». Sullo schermo c'erano «286 libri
+  // custoditi · 978 MB» e, due righe sotto, «274 libri · 940 MB» — quattro
+  // numeri vicini che sembrano parlare della stessa cosa. Il 978 non è il
+  // peso dei libri: è la stima del browser su TUTTO quel che l'app tiene
+  // qui, dizionario offline e cache comprese.
+  //
+  // QUI SI DICE SOLO QUEL CHE SI È MISURATO, e questa regola è stata
+  // decisa al banco contro l'idea di partenza. Il primo giro teneva la
+  // stima come totale, con «altro» a nominare quel che avanzava: misurato
+  // sull'app intera, togliendo una melodia da 5 MB «altro» CRESCEVA — da 4
+  // a 9 — perché i Blob li pesiamo subito e la stima resta indietro. Un
+  // numero che si muove al contrario del gesto appena fatto è la confusione
+  // da curare, non un di più. Per questo `spartisciQui` prende solo le
+  // misure e non l'`estimate`.
+  {
+    const qui = (libri, cop, mel) => ({
+      libri: { quanti: 3, byte: libri },
+      copertine: { quanti: 3, byte: cop },
+      melodie: { quanti: 2, byte: mel },
+    });
+    const p = spartisciQui(qui(900 * M, 2 * M, 38 * M));
+    // LE COPERTINE VANNO COI LIBRI, come lassù: sono il libro, non una terza
+    // specie — e contarle a parte vorrebbe dire una voce che nessuno ha
+    // chiesto e due righe che non si assomigliano più
+    t.eq("le copertine pesano coi libri", p.libri, 902 * M);
+    t.eq("le melodie stanno per conto loro", p.melodie, 38 * M);
+    // e la stima del browser non entra: la riga non ha un totale, perché
+    // l'unico totale che potremmo dire sarebbe quello che ha confuso
+    t.c("non c'è nessun totale da mostrare", p.totale === undefined && p.altro === undefined);
+  }
+  {
+    // niente da misurare non si inventa, come per il secchio
+    t.eq("senza misure non c'è riga", spartisciQui(null), null);
+    // e uno store che non abbiamo potuto pesare vale zero e non NaN: un NaN
+    // dentro `fmtBytes` scriverebbe una misura che non vuol dire niente
+    const zoppo = spartisciQui({ libri: null, melodie: { byte: 4 * M } });
+    t.c("uno store non pesato vale zero", zoppo.libri === 0);
+    t.eq("e gli altri si contano lo stesso", zoppo.melodie, 4 * M);
   }
 }
