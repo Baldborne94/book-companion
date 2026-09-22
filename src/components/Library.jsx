@@ -3,7 +3,7 @@ import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, scaffaleVuoto } from "../lib/library.js";
 import { disponi, aEtichette, criterioVoto, criterioStato } from "../lib/ripiani.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
-import { storageEstimate, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
+import { storageEstimate, spazioQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
 import { importFiles, resoconto } from "../lib/importBook.js";
 import { exportLibrary, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
 import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
@@ -16,8 +16,8 @@ import {
 } from "../lib/syncCore.js";
 import { fmtBytes } from "../lib/bytes.js";
 import { senzaCopertina } from "../lib/copertina.js";
-import { stretto } from "../lib/spazio.js";
-import { BarraCloud } from "./BarraCloud.jsx";
+import { spartisciQui } from "../lib/spazio.js";
+import { BarraCloud, PesoQui } from "./BarraCloud.jsx";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
 import { famigliaDi } from "../data/generi.js";
 import { riconosci, capitoloDi } from "../lib/sagaBooks.js";
@@ -575,6 +575,9 @@ export default function Library({
   const filoVisita = useRef(null);
   const archiveRef = useRef(null);
   const [estimate, setEstimate] = useState(null);
+  // quanto pesa, per specie, quel che sta QUI: si misura dai Blob e non si
+  // chiede al browser, che del dettaglio non sa niente
+  const [qui, setQui] = useState(null);
   // Quanto pesi lassu'. Si chiede una volta sola, all'apertura dello
   // scaffale e solo a cloud collegato.
   const [cloud, setCloud] = useState(null);
@@ -606,6 +609,7 @@ export default function Library({
   // fa scendere prima.
   useEffect(() => {
     storageEstimate().then(setEstimate);
+    spazioQui().then(setQui).catch(() => setQui(null));
     statoPersistenza().then(setPersist);
     // chi la copertina ce l'ha qui, in un colpo solo: chiederlo un libro
     // per volta sarebbe una transazione IndexedDB per tomo
@@ -1795,18 +1799,17 @@ export default function Library({
             <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {books.length} {books.length === 1 ? "libro custodito" : "libri custoditi"}
               {melodie ? ` · ${melodie} ${melodie === 1 ? "melodia" : "melodie"}` : ""}
-              {/* IL PESO SI DICE SEMPRE, IL TETTO SOLO QUANDO STRINGE.
-                  «152 MB usati di 499,6 GB» — segnalato dal lettore: «cosa
-                  sarebbero sti 500 GB?». Non e' lo spazio del tablet ne' una
-                  promessa: e' un tetto che il browser ricalcola su quanto
-                  disco e' libero adesso, e a persistenza negata non protegge
-                  da niente — cioe' contraddiceva l'avviso che sta due righe
-                  sotto. Vale la regola del promemoria dell'archivio: sotto
-                  soglia si tace, perche' un numero che non chiede niente si
-                  impara a ignorare e poi non si legge nemmeno il giorno che
-                  conta. */}
-              {estimate?.usage ? ` · ${fmtBytes(estimate.usage)}` : ""}
-              {stretto(estimate) ? ` · restano ${fmtBytes(Math.max(0, estimate.quota - estimate.usage))} sul dispositivo` : ""}
+              {/* IL PESO NON STA PIU' QUI, ed e' la cura di un numero che
+                  diceva il falso per posizione: «286 libri custoditi · 978
+                  MB» si legge come «i tuoi libri pesano 978 MB», mentre
+                  quella e' la stima del browser su TUTTO quel che l'app
+                  tiene qui — copertine, melodie, dizionario offline, cache.
+                  E due righe sotto la barra del cloud dice «274 libri · 940
+                  MB»: quattro numeri vicini che sembrano parlare della
+                  stessa cosa (segnalato: «queste diciture mi confondono
+                  sempre»). Adesso sta nella riga sua, qui sotto, col nome
+                  del posto che misura e spartito per specie — la stessa
+                  forma della barra di lassu'. */}
               {/* L'unico spazio che vincola davvero non e' piu' una riga di
                   testo qui dentro: e' la barra qui sotto, che dice anche DI
                   COSA e' fatto quel gigabyte. Libri e melodie stanno nello
@@ -1925,6 +1928,13 @@ export default function Library({
             </button>
           </span>
         </div>
+        {/* E PRIMA DI QUEL CHE STA LASSÙ, QUEL CHE STA QUI. Le due righe
+            stanno una sopra l'altra apposta: sono la stessa domanda in due
+            posti, e finché il peso locale era un numero nudo in mezzo alla
+            riga di servizio nessuno poteva accorgersi che misurava un'altra
+            cosa. Stesso vocabolario, stessi colori: i libri sono i libri in
+            tutt'e due. */}
+        <PesoQui parti={spartisciQui(qui)} estimate={estimate} />
         {/* DI COSA È FATTO IL GIGABYTE. Sta su una riga sua e non dentro
             quella di servizio: là è una frase che scorre fra il conteggio,
             gli avvisi e i tasti, e una barra là in mezzo non si guarderebbe.

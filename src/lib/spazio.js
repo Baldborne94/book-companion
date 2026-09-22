@@ -106,3 +106,43 @@ export function spartisci(dati) {
     sforato: Math.max(0, totale - PIANO),
   };
 }
+
+// E LO STESSO VALE PER IL DISPOSITIVO, dove il difetto era peggio: lassu' il
+// totale almeno era spartito, qui c'era UN numero solo — e stava attaccato a
+// «286 libri custoditi», cioe' si leggeva come il peso dei libri. Dentro
+// pero' ci sono anche le copertine, le melodie, il dizionario offline e la
+// cache dell'app; e due righe sotto la barra del cloud diceva «274 libri ·
+// 940 MB», quindi sullo schermo stavano quattro numeri che sembravano
+// parlare della stessa cosa (segnalato: «queste diciture mi confondono
+// sempre»).
+//
+// E LA STIMA DEL BROWSER NON COMPARE PIU' IN QUESTA RIGA, che e' la parte
+// decisa al banco contro l'idea di partenza. Il primo giro la teneva come
+// totale e chiamava «altro» quel che avanzava (dizionario offline, cache):
+// onesto sulla carta, e misurato e' venuto fuori che **togliendo una
+// melodia da 5 MB «altro» CRESCE** — da 4 a 9 — perche' i pezzi li
+// misuriamo subito e la stima resta indietro. Un quarto numero che si muove
+// al contrario del gesto appena fatto e' esattamente la confusione da
+// curare, non un di piu'.
+//
+// Quindi si dice solo quel che si e' MISURATO: la somma delle misure dei
+// Blob, esatta, sempre in pari col gesto. La stima resta dov'e' utile —
+// `stretto`, cioe' «il dispositivo si sta riempiendo» — e non pretende piu'
+// di descrivere la biblioteca.
+//
+// Prezzo dichiarato: il dizionario offline e la cache dell'app non sono
+// nominati, quindi questa riga puo' dire meno di quel che Android mostra
+// alla voce dell'app. E' il verso giusto in cui essere incompleti: qui
+// ogni numero e' vero e riguarda roba tua, mentre un totale gonfio di cache
+// era il numero che ha confuso due volte.
+//
+// Le copertine vanno coi libri, come lassu': sono il libro, non una terza
+// specie, e separarle vorrebbe dire una voce in piu' che nessuno ha chiesto.
+export function spartisciQui(qui) {
+  if (!qui) return null;
+  const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  return {
+    libri: n(qui.libri?.byte) + n(qui.copertine?.byte),
+    melodie: n(qui.melodie?.byte),
+  };
+}

@@ -49,6 +49,64 @@ export const listFileIds = () => withStore("files", "readonly", (s) => s.getAllK
 // ripescare dal cloud deve sapere chi manca, e chiederlo una per una
 // sarebbe una transazione a libro.
 export const listCoverIds = () => withStore("covers", "readonly", (s) => s.getAllKeys());
+// QUANTO PESA QUEL CHE STA QUI, per specie.
+//
+// La riga in fondo alla Libreria diceva un numero solo — quello del browser
+// — e lo diceva subito dopo «286 libri custoditi», cioe' come se fossero i
+// libri a pesarlo: dentro pero' ci stanno anche le copertine, le melodie, il
+// dizionario offline e la cache dell'app. Segnalato: «queste diciture mi
+// confondono sempre», con la fotografia dove «978 MB» sta accanto a «286
+// libri» e due righe sotto si legge «274 libri · 940 MB» — quattro numeri
+// che sembrano parlare della stessa cosa e non lo fanno.
+//
+// SI SOMMA `size`, NON SI LEGGONO I BYTE: un Blob in IndexedDB e' un
+// riferimento al file su disco, e la sua misura e' un dato che sta li' —
+// chiederla non tira su un megabyte. Un `getAll` invece materializzerebbe
+// tutti i valori insieme, e su una biblioteca da un gigabyte e' la scheda
+// che si chiude: si passa col cursore, uno per volta.
+//
+// Un valore senza misura (una chiave scritta da una versione vecchia, o un
+// record che non e' un Blob) conta zero e non rompe il giro: qui si misura,
+// non si valida.
+async function pesaStore(nome) {
+  const d = await db();
+  return new Promise((resolve) => {
+    let quanti = 0;
+    let byte = 0;
+    try {
+      const tx = d.transaction(nome, "readonly");
+      const req = tx.objectStore(nome).openCursor();
+      req.onsuccess = () => {
+        const cur = req.result;
+        if (!cur) return resolve({ quanti, byte });
+        quanti += 1;
+        byte += Number(cur.value?.size) || 0;
+        cur.continue();
+      };
+      // un guasto non e' uno zero: chi legge deve poter distinguere «non ho
+      // potuto guardare» da «non c'e' niente», come per l'elenco del secchio
+      req.onerror = () => resolve(null);
+      tx.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+// I tre pesi di casa, nella stessa forma che `contaSpazio` da' per il secchio
+// (`{quanti, byte}` per specie), cosi' la riga di qui e la barra di lassu'
+// si leggono con lo stesso vocabolario invece di essere due grafici diversi
+// sullo stesso argomento.
+export async function spazioQui() {
+  const [libri, copertine, melodie] = await Promise.all([
+    pesaStore("files"),
+    pesaStore("covers"),
+    pesaStore("tracks"),
+  ]);
+  if (!libri && !copertine && !melodie) return null;
+  return { libri, copertine, melodie };
+}
+
 export const putAux = (key, value) => withStore("aux", "readwrite", (s) => s.put(value, key));
 export const getAux = (key) => withStore("aux", "readonly", (s) => s.get(key));
 export const removeAux = (key) => withStore("aux", "readwrite", (s) => s.delete(key));
