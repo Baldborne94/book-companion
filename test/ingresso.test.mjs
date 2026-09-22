@@ -8,7 +8,14 @@
 // Qui non casca niente da sé: una fila che propone il volume sbagliato di
 // una saga è uno SPOILER servito dall'app, e una porta che scrive «1 libri»
 // o «0 citazioni» si legge e basta.
-import { prossimiPassi, nextInSaga, numeriMescolati } from "../src/lib/saga.js";
+import {
+  prossimiPassi,
+  nextInSaga,
+  numeriMescolati,
+  perchePassoTace,
+  frasePassoTace,
+  MOTIVI_PASSO,
+} from "../src/lib/saga.js";
 import { rigaDiario, buildDiary } from "../src/lib/diary.js";
 import { rigaGiardino, conta, raccogli } from "../src/lib/citazioni.js";
 
@@ -521,6 +528,106 @@ export default async function (t) {
       "…e dopo Mechanicum arriva A Thousand Sons",
       ids(prossimiPassi(conSedici, { statusOf: letto, progressoOf: () => 0 })),
       "ats"
+    );
+  }
+
+  // ── E UNA SAGA CHE TACE DICE PERCHÉ ──────────────────────────────────
+  //
+  // Segnalato con l'Ingresso in mano, il giorno dopo la cura del 40K:
+  // «adesso non mi proponi più nulla?». Sette righe c'erano e la sua no —
+  // e da fuori le ragioni per cui un filo non propone niente si vedono
+  // tutte uguali: una riga che non c'è.
+  //
+  // La ragione sbaglia in silenzio come ogni frase dell'app: un motivo
+  // senza parole scrive «undefined» dentro una riga in italiano, e uno
+  // sbagliato racconta al lettore una cosa che non è successa.
+  {
+    const V = (id, titolo, n, serie = "Storia") => ({
+      id,
+      title: titolo,
+      saga: "Universo",
+      series: serie,
+      sagaOrder: n,
+      addedAt: 1,
+    });
+    const uno = V("a", "Primo", 1);
+    const due = V("b", "Secondo", 2);
+    const motivi = (libri, stati, prog = {}) =>
+      perchePassoTace(libri, {
+        statusOf: (id) => stati[id] || "unread",
+        progressoOf: (id) => prog[id] || 0,
+      });
+    const solo = (libri, stati, prog) => motivi(libri, stati, prog)[0];
+
+    // le sei ragioni, una per una, coi nomi che il lettore vedrà
+    t.eq("stai leggendo il più avanti", solo([uno, due], { a: "read", b: "reading" })?.motivo, "inMano");
+    t.eq("…e la frase nomina quel volume", frasePassoTace(solo([uno, due], { a: "read", b: "reading" })).includes("Secondo"), true);
+    t.eq("il seguito l'hai aperto", solo([uno, due], { a: "read" }, { b: 0.3 })?.motivo, "aperto");
+    // …e la frase nomina IL SEGUITO, non il volume da cui si è partiti:
+    // sono due libri diversi e scambiarli manda a cercare il volume
+    // sbagliato (mutazione provata)
+    const apertoQui = frasePassoTace(solo([uno, due], { a: "read" }, { b: 0.3 }));
+    t.eq("…e nomina il seguito", apertoQui.includes("Secondo"), true);
+    t.eq("…e non il volume di partenza", apertoQui.includes("Primo"), false);
+    t.eq("dopo di te non hai altro", solo([uno], { a: "read" })?.motivo, "ultimo");
+    // L'ABBANDONATO SI SCAVALCA COME IL LETTO, ma non vuol dire la stessa
+    // cosa a chi legge la riga: «li hai letti» e «li hai lasciati» sono due
+    // storie diverse
+    t.eq("dopo di te solo quel che avevi lasciato", solo([uno, due], { a: "read", b: "abandoned" })?.motivo, "abbandonati");
+    // E «tuttiLetti» È RAGGIUNGIBILE SOLO DOVE IL GRUPPO È PIÙ LARGO DELLA
+    // CHIAVE: il riferimento è il più avanti DELLA SUA SERIE, ma dove la
+    // Serie è una PARTE di una nostra guida `gruppoDi` allarga alla saga
+    // intera — così davanti al riferimento ci possono stare volumi letti di
+    // un'altra parte. È il caso di chi ha ancora i capitoli scritti nel
+    // campo, e senza questa scena il ramo non lo prova nessuno.
+    const parti = [
+      { ...uno, series: "Part 1 · The Fall of Horus" },
+      { ...due, series: "Part 7 · Mars & Magnus" },
+    ];
+    t.eq("hai letto tutto quello che hai", solo(parti, { a: "read", b: "read" })?.motivo, "tuttiLetti");
+    // i numeri mescolati zittiscono il filo, ed è l'unica ragione che
+    // chiede al lettore di mettere mano a un campo
+    t.eq(
+      "due titoli sullo stesso numero",
+      solo([uno, V("x", "Altro", 1)], { a: "read" })?.motivo,
+      "mescolati"
+    );
+    // e un contorno della guida non è «un volume che viene dopo»: lì il
+    // filo tace, ma per una ragione sua
+    t.eq(
+      "dopo di te solo letture di sfondo",
+      perchePassoTace([uno, V("s", "Sfondo", 1.04)], {
+        statusOf: (id) => (id === "a" ? "read" : "unread"),
+        progressoOf: () => 0,
+        contorno: (b) => b.id === "s",
+      })[0]?.motivo,
+      "soloSfondo"
+    );
+
+    // CHI NON HA NIENTE DA DIRE TACE: una saga che il passo ce l'ha sta
+    // già nella fila sopra, e ridirla qui sarebbe lo stesso libro due
+    // volte; una saga mai cominciata non è un filo in mano.
+    t.eq("il filo che propone non si spiega", motivi([uno, due, V("c", "Terzo", 3)], { a: "read" }).length, 0);
+    t.eq("una saga mai cominciata non compare", motivi([uno, due], {}).length, 0);
+    // e nemmeno quella il cui passo è il libro in cima all'Ingresso
+    t.eq(
+      "il volume già in cima non si spiega",
+      perchePassoTace([uno, due], { statusOf: (id) => (id === "a" ? "read" : "unread"), progressoOf: () => 0, escludi: "b" }).length,
+      0
+    );
+
+    // OGNI MOTIVO SA PARLARE, e nessuna frase lascia un «undefined» in
+    // mezzo: è la regola di `GUAI` e di `PERCHE_TACE`
+    for (const motivo of Object.keys(MOTIVI_PASSO)) {
+      const frase = frasePassoTace({ nome: "Universo", motivo, da: uno, volume: due });
+      t.eq(`«${motivo}» ha una frase`, frase.length > 20 && !frase.includes("undefined"), true);
+      t.eq(`«${motivo}» porta il nome del filo`, frase.startsWith("Universo: "), true);
+    }
+    // e un motivo che non conosciamo si dice com'è invece di sparire
+    t.eq(
+      "un motivo ignoto resta visibile",
+      frasePassoTace({ nome: "Universo", motivo: "boh" }).includes("boh"),
+      true
     );
   }
 
