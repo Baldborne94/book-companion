@@ -336,6 +336,15 @@ export function riconosci({ title, author, fileName } = {}) {
           // lettura di sfondo da un volume che la guida non conosce affatto
           // — e li chiamerebbe con lo stesso nome
           guida: !!b.tav.parti,
+          // «LA GUIDA TI CHIEDE DI LEGGERLO COME TAPPA DELLA STORIA?», e la
+          // risposta e' il NUMERO DI LETTURA: la tavola lo da' ai romanzi
+          // del cammino e lo nega a tutto il resto — il prologo (quattro
+          // percorsi ALTERNATIVI), le antologie (ci stai dentro un racconto
+          // alla volta), i sette titoli che la guida stessa marca «fuori
+          // dall'Eresia». E' scritto da un pezzo in testa a
+          // `horusHeresy.js`; qui gli si da' un nome, invece di rileggerlo
+          // ogni volta dalla forma dei dati.
+          passo: (b.tav.ordine(b) ?? null) != null,
           titolo: b.t,
         };
       }
@@ -348,10 +357,72 @@ export function riconosci({ title, author, fileName } = {}) {
     if (!tav.autore || !chiAutore.includes(tav.autore)) continue;
     if (campi.some((campo) => tav.fuori.some((t) => contiene(campo, t)))) continue;
     // e qui la guida non ha collocato niente: si sa solo di chi e' il libro
-    return { saga: tav.saga, sagaOrder: null, ciclo: null, parte: null, guida: false, titolo: null };
+    // `passo: false` qui non vuol dire «la guida non te lo chiede»: vuol
+    // dire che non ha collocato niente. Le due cose le distingue `titolo`,
+    // ed e' quel che `contornoDiUnaGuida` guarda per primo.
+    return {
+      saga: tav.saga,
+      sagaOrder: null,
+      ciclo: null,
+      parte: null,
+      guida: false,
+      passo: false,
+      titolo: null,
+    };
   }
   return null;
 }
+
+// UN VOLUME CHE LA GUIDA NON CONTA COME TAPPA NON E' «IL PROSSIMO PASSO».
+//
+// Segnalato con l'Ingresso in mano: «perche' come prossimo passo per il 40K
+// mi suggerisce Night Lords invece del numero successivo dopo Mechanicum?
+// Night Lords e' solo successivo alla Horus Heresy». Ha ragione, e lo dice
+// la tavola stessa: quel volume lo marca «40k, fuori dall'Eresia» e non gli
+// da' nessun numero di lettura — la guida lo nomina per dire «se ti va,
+// questi qui», non per metterlo in fila fra due romanzi.
+//
+// IL CONCETTO C'ERA GIA', DA UN'ALTRA PARTE, ed e' la terza volta che si
+// ripete questa lezione: `prossimoPasso` (la pagina del cammino) un passo su
+// queste specie non lo propone mai, e `nextInSaga` — che risponde alla
+// STESSA domanda, dall'Ingresso e dal riquadro in cima — non ne sapeva
+// niente. Una regola che vale per «qual e' il prossimo volume» sta nella
+// funzione che risponde a quella domanda, o le due meta' divergono senza
+// che nessun errore lo dica.
+//
+// E IL NUMERO DEL CAMMINO LO RENDE INVISIBILE invece che innocuo: da quando
+// le tappe senza numero ne prendono uno col decimale (Night Lords e' 9,04),
+// quei volumi si infilano fra i romanzi nell'ordinamento — e' proprio quel
+// decimale che li ha portati in fila.
+//
+// `titolo` E NON `saga`: il ripiego sull'autore risponde «questo e' un
+// Pratchett» senza collocare niente, e li' «non e' un passo» sarebbe una
+// cosa che non sappiamo — con quel ramo dentro, ogni Pratchett dal titolo
+// irriconoscibile sparirebbe dalle proposte.
+//
+// E LA RISPOSTA SI TIENE, perche' la domanda e' cara e non cambia mai:
+// `riconosci` percorre l'indice di tutte le tavole — misurato, 0,17 ms a
+// libro, cioe' 45 ms su una biblioteca da trecento, e sul tablet del lettore
+// quattro o cinque volte tanto — e l'Ingresso la chiede a ogni ridisegno
+// della fila. Si puo' tenere perche' e' una funzione PURA di titolo e
+// autore sopra tavole che spediamo noi: a chiave uguale la risposta e'
+// uguale per sempre, e un titolo corretto a mano cambia la chiave. Il
+// conto e' quindi limitato dalla biblioteca, non dal tempo.
+//
+// E DICHIARATO: `gia !== undefined` invece di `gia` e' cintura e bretelle,
+// e nessuna mutazione lo fa cascare — un «no» non ritrovato si ricalcola e
+// torna «no», perche' la funzione e' pura. Costa tempo, non verita'.
+const CONTORNO = new Map();
+
+export const contornoDiUnaGuida = (libro = {}) => {
+  const chiave = `${libro?.title || ""}\u0000${libro?.author || ""}`;
+  const gia = CONTORNO.get(chiave);
+  if (gia !== undefined) return gia;
+  const r = riconosci({ title: libro?.title, author: libro?.author });
+  const esito = !!r?.titolo && !r.passo;
+  CONTORNO.set(chiave, esito);
+  return esito;
+};
 
 // L'autore lo conosciamo, ma QUESTO titolo sta fuori dalla sua saga. Serve
 // alla deduzione dalla biblioteca: senza, a Good Omens finirebbe «Discworld»

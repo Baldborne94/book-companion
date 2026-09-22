@@ -436,6 +436,93 @@ export default async function (t) {
       true
     );
   }
+  {
+    // UN CONTORNO DELLA GUIDA NON APRE UN FILO, ED È LA METÀ CHE SI VEDEVA
+    // NELLA FOTOGRAFIA: «perché come prossimo passo per il 40K mi suggerisce
+    // Night Lords invece del numero successivo dopo Mechanicum?».
+    //
+    // L'unico volume letto senza Serie era il prologo — che la guida chiama
+    // fondazione del 40K, non tappa dell'Eresia — e bastava lui a far
+    // nascere una riga «Warhammer 40K» che poi proponeva la lettura di
+    // sfondo venuta dopo di lui. Il contorno si passa da fuori: qui si
+    // prova la REGOLA, i titoli veri stanno in `capitoli.test.mjs`.
+    const G = (id, serie, n) => ({ ...L(id, "Warhammer 40K", n), series: serie });
+    const scena = [
+      G("prologo", "", 0.01),
+      G("sfondo", "", 9.04),
+      G("uno", "Eresia", 1),
+      G("quindici", "Eresia", 15),
+      G("sedici", "Eresia", 16),
+    ];
+    const contorno = (b) => b.id === "prologo" || b.id === "sfondo";
+    const letto = (id) => (id === "prologo" || id === "uno" || id === "quindici" ? "read" : "unread");
+    t.eq("il contorno non apre un filo", ids(prossimiPassi(scena, { statusOf: letto, contorno })), "sedici");
+    // e senza la guardia torna il difetto identico, con la sua riga in più
+    t.eq(
+      "senza la guardia la riga di troppo torna",
+      ids(prossimiPassi(scena, { statusOf: letto, contorno: () => false })),
+      "sfondo+sedici"
+    );
+    // E LA DOMANDA DEVE ARRIVARE FIN DENTRO `nextInSaga`: qui il filo lo
+    // apre un romanzo vero e il contorno è un CANDIDATO, non il
+    // riferimento — è il solo caso che prova il passaggio (mutazione
+    // provata: senza, la riga propone la lettura di sfondo)
+    const dentro = [G("uno", "", 1), G("sfondo", "", 1.04), G("due", "", 2)];
+    t.eq(
+      "il contorno si scavalca anche fra i candidati",
+      ids(prossimiPassi(dentro, { statusOf: (id) => (id === "uno" ? "read" : "unread"), contorno })),
+      "due"
+    );
+    // E NON FA NEMMENO DA RIFERIMENTO, e qui la guardia RESTITUISCE una
+    // proposta invece di toglierla: il riferimento è il volume PIÙ AVANTI
+    // che hai dichiarato, quindi un contorno letto col numero più alto se
+    // lo prende lui e dopo di sé non ha niente — la storia vera resta senza
+    // il suo passo. Il caso vuole un contorno letto OLTRE l'ultimo romanzo
+    // dichiarato, o le due strade danno la stessa risposta.
+    const oltre = [G("g1", "", 1), G("g2", "", 2), G("sfondo", "", 9.04)];
+    const statiOltre = (id) => (id === "g1" || id === "sfondo" ? "read" : "unread");
+    t.eq(
+      "un contorno letto non ruba il riferimento",
+      ids(prossimiPassi(oltre, { statusOf: statiOltre, contorno })),
+      "g2"
+    );
+  }
+  {
+    // LA SCENA DELLA FOTOGRAFIA, COI TITOLI VERI E SENZA FINGERE NIENTE.
+    // I controlli qui sopra provano la regola col contorno iniettato;
+    // questo pinna il DEFAULT — senza, la cura resterebbe scritta e la fila
+    // dell'Ingresso non la vedrebbe mai (mutazione provata).
+    const W = (id, titolo, autore, n, serie = "") => ({
+      id,
+      title: titolo,
+      author: autore,
+      saga: "Warhammer 40K",
+      series: serie,
+      sagaOrder: n,
+      addedAt: 1,
+    });
+    const suoi = [
+      // il prologo, letto: l'unico volume senza Serie che aveva uno stato,
+      // ed è lui che faceva nascere la riga
+      W("eis", "Eisenhorn", "Dan Abnett", 0.01),
+      W("nl", "Night Lords Omnibus", "Aaron Dembski-Bowden", 9.04),
+      W("hr", "Horus Rising", "Dan Abnett", 1, "The Horus Heresy"),
+      W("mec", "Mechanicum", "Graham McNeill", 15, "The Horus Heresy"),
+    ];
+    const letto = (id) => (id === "eis" || id === "hr" || id === "mec" ? "read" : "unread");
+    t.eq(
+      "il prologo letto non propone la lettura di sfondo",
+      ids(prossimiPassi(suoi, { statusOf: letto, progressoOf: () => 0 })),
+      ""
+    );
+    // e il romanzo che viene dopo si propone eccome
+    const conSedici = [...suoi, W("ats", "A Thousand Sons", "Graham McNeill", 16, "The Horus Heresy")];
+    t.eq(
+      "…e dopo Mechanicum arriva A Thousand Sons",
+      ids(prossimiPassi(conSedici, { statusOf: letto, progressoOf: () => 0 })),
+      "ats"
+    );
+  }
 
   // ---- LA PORTA DEL DIARIO ----------------------------------------------
   {

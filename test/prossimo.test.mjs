@@ -268,4 +268,90 @@ export default async function (t) {
     // su una saga senza cicli il gruppo è la saga intera: non cambia niente
     t.eq("senza cicli è la saga intera", nextInSaga(trilogia[0], trilogia, nuovi)?.id, "due");
   }
+
+  // ── QUEL CHE LA GUIDA NON CONTA COME TAPPA NON È IL PROSSIMO PASSO ────
+  //
+  // Segnalato con l'Ingresso in mano: «perché come prossimo passo per il
+  // 40K mi suggerisce Night Lords invece del numero successivo dopo
+  // Mechanicum? Night Lords è solo successivo alla Horus Heresy».
+  //
+  // Il concetto c'era già, da un'altra parte: `prossimoPasso` — la pagina
+  // del cammino — un passo su queste specie non lo propone mai. Qui, dove
+  // si risponde alla STESSA domanda per l'Ingresso e per il riquadro in
+  // cima, non se ne sapeva niente.
+  //
+  // E IL NUMERO DEL CAMMINO LO RENDE INVISIBILE invece che innocuo: da
+  // quando le tappe senza numero ne prendono uno col decimale, quei volumi
+  // si infilano FRA i romanzi nell'ordinamento — è quel decimale che li ha
+  // portati in fila.
+  {
+    // il contorno si passa da fuori come `leggiByte`: qui si finge, così il
+    // controllo prova la REGOLA e non la tavola (quella ha i suoi, in
+    // `capitoli.test.mjs`, coi titoli veri)
+    const G = (id, n) => ({ ...V(id, "Warhammer 40K", n), series: "" });
+    const contorno = (b) => b.id === "sfondo" || b.id === "prologo";
+    const scena = [G("prologo", 0.01), G("uno", 1), G("sfondo", 1.04), G("due", 2)];
+    t.eq(
+      "il contorno si scavalca, non ferma la ricerca",
+      nextInSaga(scena[1], scena, nuovi, () => 0, contorno)?.id,
+      "due"
+    );
+    // ED È UN SALTO, NON UNO STOP: senza il `continue` il passo dopo «uno»
+    // sarebbe «niente», perché un volume che non hai aperto ti trattiene
+    // in mano il filo. Il caso lo prova solo con un romanzo vero DOPO il
+    // contorno — con «due» tolto, le due regole danno la stessa risposta.
+    t.eq(
+      "…e senza un romanzo dopo non si propone niente",
+      nextInSaga(scena[1], [scena[0], scena[1], scena[2]], nuovi, () => 0, contorno),
+      null
+    );
+    // e nemmeno da lui si riparte per la storia: il contorno non è un filo
+    t.eq(
+      "dal contorno non si continua la storia",
+      nextInSaga(scena[0], scena, nuovi, () => 0, contorno)?.id,
+      "uno"
+    );
+    // e il contorno già letto si scavalca come prima. DICHIARATO: questo
+    // controllo non è portante, e lo dice una mutazione sopravvissuta —
+    // spostando la guardia sotto quella dello stato le due strade fanno
+    // `continue` lo stesso, quindi l'ordine fra le due righe non cambia
+    // niente. Resta perché la regola vale su ogni stato, non perché
+    // difenda una riga.
+    t.eq(
+      "vale anche sul contorno già letto",
+      nextInSaga(scena[1], scena, letti("sfondo"), () => 0, contorno)?.id,
+      "due"
+    );
+    // senza guida che dica niente, tutto resta com'era
+    t.eq("senza contorni non cambia niente", nextInSaga(scena[1], scena, nuovi, () => 0, () => false)?.id, "sfondo");
+  }
+  {
+    // E LA TAVOLA VERA È COLLEGATA DAVVERO, coi titoli della sua
+    // fotografia. I controlli qui sopra fingono il contorno per provare la
+    // REGOLA; questo non finge niente, e pinna il default — senza, la
+    // regola resterebbe scritta e non arriverebbe mai all'Ingresso né al
+    // riquadro in cima (mutazione provata: col default a «nessuno è un
+    // contorno» tutto il resto del file passava).
+    const W = (id, titolo, autore, n, serie = "") => ({
+      id,
+      title: titolo,
+      author: autore,
+      saga: "Warhammer 40K",
+      series: serie,
+      sagaOrder: n,
+      addedAt: 1,
+    });
+    const suoi = [
+      W("mec", "Mechanicum", "Graham McNeill", 15, "The Horus Heresy"),
+      // il numero col decimale è quello che il cammino scrive alle tappe
+      // che la guida non numera: è lui che li infila FRA i romanzi
+      W("nl", "Night Lords Omnibus", "Aaron Dembski-Bowden", 15.01, "The Horus Heresy"),
+      W("ats", "A Thousand Sons", "Graham McNeill", 16, "The Horus Heresy"),
+    ];
+    t.eq(
+      "dopo Mechanicum viene A Thousand Sons, non Night Lords",
+      nextInSaga(suoi[0], suoi, letti("mec"), () => 0)?.id,
+      "ats"
+    );
+  }
 }
