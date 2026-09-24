@@ -356,6 +356,12 @@ export const MAPPA = [
   },
   {
     luogo: "ingresso",
+    nome: "Il quaderno delle parole",
+    cosa: "Ogni parola che cerchi col dizionario finisce qui da sola, con la resa italiana e la frase in cui l'hai incontrata. Si ripassa a giri di dieci, si cerca e si esporta.",
+    dove: "Il tasto nell'Ingresso; nella scheda del dizionario «Non tenerla» la toglie subito.",
+  },
+  {
+    luogo: "ingresso",
     nome: "Obiettivo e tempo di lettura",
     cosa: "Quanti libri vuoi finire quest'anno e se sei al passo, più il tempo passato a leggere, i giorni di lettura e quanti di fila.",
     dove: "In cima al diario di lettura, «Il tuo anno». Il tempo si conta voltando le pagine, anche fra tablet e telefono.",

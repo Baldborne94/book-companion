@@ -16,6 +16,7 @@
 --   alter table public.prefs add column if not exists racconti jsonb not null default '[]'::jsonb;
 --   alter table public.prefs add column if not exists tempo jsonb not null default '{}'::jsonb;      -- tempo di lettura
 --   alter table public.prefs add column if not exists obiettivi jsonb not null default '{}'::jsonb;  -- obiettivo dell'anno
+--   alter table public.prefs add column if not exists quaderno jsonb not null default '[]'::jsonb;   -- il quaderno delle parole
 --   alter table public.books alter column saga_order type real;  -- numero di collana coi decimali (2.5 = la novella)
 --   alter table public.books add column if not exists saga_tolta boolean not null default false;  -- la saga tolta a mano
 --   alter table public.books add column if not exists file_tolto boolean not null default false;  -- l'ebook tolto a mano
@@ -101,6 +102,8 @@ create table if not exists public.prefs (
   tempo jsonb not null default '{}'::jsonb,
   -- l'obiettivo di libri per anno: anno -> { n, t }
   obiettivi jsonb not null default '{}'::jsonb,
+  -- il quaderno delle parole: una voce per parola, con lapidi, fuse per ora
+  quaderno jsonb not null default '[]'::jsonb,
   last_opened text,
   updated_at bigint not null default 0
 );
@@ -112,6 +115,7 @@ alter table public.prefs add column if not exists glossari jsonb not null defaul
 alter table public.prefs add column if not exists racconti jsonb not null default '[]'::jsonb;
 alter table public.prefs add column if not exists tempo jsonb not null default '{}'::jsonb;
 alter table public.prefs add column if not exists obiettivi jsonb not null default '{}'::jsonb;
+alter table public.prefs add column if not exists quaderno jsonb not null default '[]'::jsonb;
 
 alter table public.prefs enable row level security;
 

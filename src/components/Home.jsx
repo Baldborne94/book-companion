@@ -6,6 +6,7 @@ import { getHighlights } from "../lib/annotations.js";
 import { buildDiary, rigaDiario } from "../lib/diary.js";
 import { leggiObiettivi, obiettivoDi } from "../lib/obiettivo.js";
 import { raccogli, conta, rigaGiardino } from "../lib/citazioni.js";
+import { leggiQuaderno, rigaQuaderno } from "../lib/quaderno.js";
 import { nextInSaga, prossimiPassi, perchePassoTace, frasePassoTace } from "../lib/saga.js";
 import BookCover from "./BookCover.jsx";
 import { BookmarkIcon, LeafIcon, SparkIcon, StarIcon } from "./Icons.jsx";
@@ -143,7 +144,7 @@ const fila = (wide) => ({
   flexWrap: wide ? "wrap" : "nowrap",
 });
 
-export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onSaga }) {
+export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onQuaderno, onSaga }) {
   // chi ha il dorso disegnato lo sa solo `BookCover`: lo dice qui, così i
   // preferiti non ristampano un titolo che sta già sulla copertina
   const [dorsi, setDorsi] = useState({});
@@ -179,6 +180,9 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
   // sono cambiati — memorizzato, la porta direbbe ancora quello di prima
   const annoOra = new Date().getFullYear();
   const rigaAnno = rigaDiario(diarioAnno, annoOra, obiettivoDi(leggiObiettivi(), annoOra));
+  // il quaderno si rilegge a ogni disegno per la stessa ragione: si riempie
+  // dentro il reader e si svuota nel quaderno, e i libri non cambiano
+  const rigaParole = rigaQuaderno(leggiQuaderno());
 
   if (books.length === 0) {
     return (
@@ -495,6 +499,33 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
           </span>
         </span>
         <span style={{ fontSize: F.titoletto, color: C.accent }}>›</span>
+      </button>
+
+      <button
+        onClick={onQuaderno}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          marginTop: 10,
+          padding: "13px 16px",
+          borderRadius: R.medio,
+          border: `1px solid ${C.green}44`,
+          background: `linear-gradient(135deg, ${C.green}10, transparent)`,
+          textAlign: "left",
+        }}
+      >
+        <span style={{ fontSize: F.titoletto, filter: `drop-shadow(0 0 10px ${C.green}55)` }}>📒</span>
+        <span style={{ flex: 1 }}>
+          <span style={{ display: "block", fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.rilievo, color: C.text }}>
+            Il quaderno delle parole
+          </span>
+          <span style={{ display: "block", fontSize: F.piccolo, color: C.muted }}>
+            {rigaParole || "Le parole che cerchi col dizionario, con la frase in cui le hai incontrate, da ripassare"}
+          </span>
+        </span>
+        <span style={{ fontSize: F.titoletto, color: C.green }}>›</span>
       </button>
       </div>
 
