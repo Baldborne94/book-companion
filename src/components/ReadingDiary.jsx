@@ -9,6 +9,7 @@ import {
   obiettivoDi,
   conObiettivo,
   passoObiettivo,
+  numeroObiettivo,
   SCELTE_OBIETTIVO,
 } from "../lib/obiettivo.js";
 import BookCover from "./BookCover.jsx";
@@ -93,6 +94,7 @@ function IlTuoAnno({ finiti }) {
   const anno = new Date().getFullYear();
   const [obiettivi, setObiettivi] = useState(leggiObiettivi);
   const [scegli, setScegli] = useState(false);
+  const [scritto, setScritto] = useState("");
   const ob = obiettivoDi(obiettivi, anno);
   const passo = passoObiettivo(finiti, ob, anno);
   const st = useMemo(() => statisticheAnno(leggiTempo(), anno), [anno]);
@@ -102,7 +104,9 @@ function IlTuoAnno({ finiti }) {
     scriviObiettivi(nuovi);
     setObiettivi(nuovi);
     setScegli(false);
+    setScritto("");
   };
+  const numeroScritto = numeroObiettivo(scritto);
   const aperto = scegli || !ob;
 
   return (
@@ -165,6 +169,38 @@ function IlTuoAnno({ finiti }) {
               </>
             )}
           </div>
+          {/* un form vero: l'invio della tastiera fissa il numero senza
+              cercare il tasto */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (numeroScritto) fissa(numeroScritto);
+            }}
+            style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}
+          >
+            <input
+              value={scritto}
+              onChange={(e) => setScritto(e.target.value.replace(/\D/g, "").slice(0, 3))}
+              inputMode="numeric"
+              placeholder="Oppure scrivi il numero"
+              aria-label="Quanti libri vuoi finire quest'anno"
+              style={{
+                flex: 1,
+                minWidth: 0,
+                maxWidth: px(240),
+                minHeight: 44,
+                padding: "8px 14px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.border}`,
+                background: C.card,
+                color: C.text,
+                fontSize: F.nota,
+              }}
+            />
+            <button type="submit" disabled={!numeroScritto} style={{ ...chip(false), opacity: numeroScritto ? 1 : 0.5 }}>
+              Fissa
+            </button>
+          </form>
         </div>
       )}
 
