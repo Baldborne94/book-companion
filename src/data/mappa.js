@@ -142,8 +142,8 @@ export const MAPPA = [
   {
     luogo: "libro",
     nome: "Schermo intero",
-    cosa: "Toglie di mezzo la barra del browser: su un PDF è un terzo di pagina in più.",
-    dove: "Il tasto ⛶ nella barra.",
+    cosa: "L'app installata si apre già a tutto schermo, senza le barre di Android. Nella scheda del browser toglie di mezzo la barra degli indirizzi: su un PDF è un terzo di pagina in più.",
+    dove: "Da installata non serve niente; nel browser, il tasto ⛶ nella barra del libro.",
   },
   {
     luogo: "libro",

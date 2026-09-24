@@ -22,6 +22,7 @@ import BookCover from "./BookCover.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
 import HighlightList from "./HighlightList.jsx";
 import SchedaOracolo, { attese } from "./SchedaOracolo.jsx";
+import { apertaATuttoSchermo, serveTastoSchermo } from "../lib/schermoIntero.js";
 
 // stesse fasce del reader EPUB, misurate sullo schermo: cosi' anche il
 // margine attorno alla pagina volta, non solo il foglio
@@ -1060,7 +1061,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             {/* dietro a `fullscreenEnabled` come nell'EPUB: dove il browser
                 non lo permette (un iframe senza permesso, certi iOS) un tasto
                 che non fa niente e' peggio di un tasto che non c'e' */}
-            {document.fullscreenEnabled && (
+            {serveTastoSchermo({ abilitato: document.fullscreenEnabled, giaTuttoSchermo: apertaATuttoSchermo() }) && (
               <TastoBarra
                 onClick={toggleFullscreen}
                 attivo={isFs}

@@ -33,6 +33,7 @@ import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
 import SchedaOracolo, { attese } from "./SchedaOracolo.jsx";
+import { apertaATuttoSchermo, serveTastoSchermo } from "../lib/schermoIntero.js";
 
 // sotto i 7px la pila di fogli diventa un filo che sembra un difetto,
 // non l'orlo delle pagine: il minimo deve leggersi come carta impilata
@@ -2623,7 +2624,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               glifo="🖍️"
             />
             <TastoBarra onClick={dovEravamo} conNome={nomiNeiTasti} nome="Dove eravamo" glifo="🧭" />
-            {document.fullscreenEnabled && (
+            {serveTastoSchermo({ abilitato: document.fullscreenEnabled, giaTuttoSchermo: apertaATuttoSchermo() }) && (
               <TastoBarra
                 onClick={toggleFullscreen}
                 attivo={isFs}
