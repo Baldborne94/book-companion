@@ -25,6 +25,8 @@ import { explain, termIndex, normalize, wikiUrl, haGlossario, termAt } from "../
 import { contextAround } from "../lib/oracle.js";
 import { sillaba } from "../lib/hyphens.js";
 import { eNotaRef, risolviHref, trovaNota, pezziNota, piuVicina } from "../lib/nota.js";
+import { immagineDaIngrandire, sceltaDelTocco } from "../lib/tavola.js";
+import Tavola from "./Tavola.jsx";
 import { controllaSpezzatura, saluteInCache, daRicucire, ricuciLibro, conSegni, taci } from "../lib/ricuci.js";
 import { leftoverScroll, dentroIlCapitolo } from "../lib/spread.js";
 import BookCover from "./BookCover.jsx";
@@ -248,6 +250,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // Niente navigazione: chiusa la scheda sei dove eri (chiesto dal
   // lettore: «vorrei che poi letto mi riporti al punto in cui ero»)
   const [nota, setNota] = useState(null);
+  // la mappa o l'illustrazione aperta a tutto schermo: { src, alt } o null
+  const [tavola, setTavola] = useState(null);
   const apriNotaRef = useRef(() => {});
   // LO STANDARD DELLA LETTURA: il testo copre la pagina. Alla prima
   // apertura si guarda (una volta, verdetto su disco) se il libro è
@@ -401,6 +405,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   live.current.settings = settings;
   live.current.panel = panel;
   live.current.selMenu = selMenu;
+  live.current.tavola = tavola;
   const theme = READER_THEMES[settings.theme];
 
   const flush = useCallback(() => {
@@ -686,17 +691,24 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             y
           );
           if (vicino) return apriNotaRef.current(vicino.href, doc, view.section?.href || "");
+          // dentro il capitolo le coordinate vivono nello spazio delle
+          // colonne, largo quanto tutto il testo: vanno riportate allo
+          // schermo, dove le fasce sono le stesse del bordo del libro
+          let rel = null;
           if (isTouch() && live.current.settings.flow !== "scrolled") {
-            // dentro il capitolo le coordinate vivono nello spazio delle
-            // colonne, largo quanto tutto il testo: vanno riportate allo
-            // schermo, dove le fasce sono le stesse del bordo del libro
             const frameEl = view.contents.window.frameElement;
-            if (frameEl && window.innerWidth) {
-              const rel = (frameEl.getBoundingClientRect().left + x) / window.innerWidth;
-              if (rel < TAP_PREV) return turnRef.current("prev");
-              if (rel > TAP_NEXT) return turnRef.current("next");
-            }
+            if (frameEl && window.innerWidth) rel = (frameEl.getBoundingClientRect().left + x) / window.innerWidth;
           }
+          // LA MAPPA SI APRE DAL TOCCO SU DI LEI, MA I BORDI VOLTANO ANCORA:
+          // una mappa a tutta pagina copre anche le fasce della voltata, e
+          // se il tocco li' aprisse la tavola non ci sarebbe piu' modo di
+          // passare oltre. Sopra un'immagine le fasce si stringono
+          // (`BORDO_TAVOLA` in lib/tavola.js), non spariscono.
+          const im = immagineDaIngrandire(bersaglio, doc.baseURI);
+          const scelta = sceltaDelTocco(rel, !!im, TAP_PREV, TAP_NEXT);
+          if (scelta === "prev") return turnRef.current("prev");
+          if (scelta === "next") return turnRef.current("next");
+          if (scelta === "tavola") return setTavola(im);
           setChrome((v) => !v);
         };
         // TRE CANALI PER LO STESSO GESTO, e il primo che arriva vince.
@@ -1081,7 +1093,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     };
     const onKey = (e) => {
       if (e.key === "Escape") {
-        if (live.current.selMenu) setSelMenu(null);
+        if (live.current.tavola) setTavola(null);
+        else if (live.current.selMenu) setSelMenu(null);
         else if (live.current.panel) setPanel(null);
         else handleClose();
       }
@@ -1089,6 +1102,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       // frecce muovono il cursore, non il libro
       const t = e.target;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      // con la tavola aperta la pagina dietro non si volta: tornando al
+      // libro la si ritroverebbe spostata senza averla vista andare
+      if (live.current.tavola) return;
       if (e.key === "ArrowRight") turnRef.current("next");
       if (e.key === "ArrowLeft") turnRef.current("prev");
     };
@@ -1103,6 +1119,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // sola e legge sempre lo stato di adesso.
     if (indietro) {
       indietro.current = () => {
+        if (live.current.tavola) { setTavola(null); return true; }
         if (live.current.selMenu) { setSelMenu(null); return true; }
         if (live.current.panel) { setPanel(null); return true; }
         handleClose();
@@ -3174,6 +3191,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           </div>
         </div>
       )}
+      {tavola && <Tavola src={tavola.src} alt={tavola.alt} onClose={() => setTavola(null)} />}
       {/* la nota a piè di pagina, sul posto: la pagina sotto non si è
           mossa, quindi «tornare al punto in cui ero» è chiudere la scheda */}
       {nota && (

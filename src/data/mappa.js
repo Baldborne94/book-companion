@@ -70,6 +70,12 @@ export const MAPPA = [
   },
   {
     luogo: "libro",
+    nome: "Mappe e illustrazioni da vicino",
+    cosa: "Una mappa o un'illustrazione del libro si apre a tutto schermo: due dita o un doppio tocco per avvicinarti, il dito per spostarti.",
+    dove: "Tocca l'immagine al centro della pagina (ai bordi il tocco volta pagina). Negli ePub; nei PDF c'è già lo zoom.",
+  },
+  {
+    luogo: "libro",
     nome: "Indice",
     cosa: "I capitoli del libro, per saltare dove vuoi.",
     dove: "Il tasto ☰ nella barra in alto.",
