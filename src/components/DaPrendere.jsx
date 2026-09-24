@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
 import {
   IN_VISTA,
@@ -15,6 +15,7 @@ import {
   vive,
 } from "../lib/daPrendere.js";
 import { chiediConsigli, daMostrare, leggiConsigliSalvati, scriviConsigli } from "../lib/consigli.js";
+import { consigliDalCatalogo, leggiConsigliLiberi, scriviConsigliLiberi, scaduti } from "../lib/consigliLiberi.js";
 import { chiedi, hasOracle } from "../lib/oracle.js";
 import { costo, soldi, riassunto, leggiTetto } from "../lib/spesa.js";
 import { CampoChiave, TettoFinito } from "./TettoOracolo.jsx";
@@ -112,6 +113,85 @@ const riga = () => ({ color: C.muted, fontSize: F.nota, lineHeight: 1.55, margin
 const quandoFu = (t) =>
   new Date(t).toLocaleDateString("it-IT", { day: "numeric", month: "long" });
 
+const FASI_CATALOGO = {
+  saghe: "Cerco i volumi dopo i tuoi",
+  autori: "Guardo gli altri libri dei tuoi autori",
+  gusti: "Leggo gli argomenti dei libri che hai amato",
+  scoperte: "Scelgo le scoperte",
+};
+
+// I CONSIGLI DAL CATALOGO: gratis e senza chiave, quindi partono da soli
+// all'apertura — ma una volta a settimana, non a ogni apertura: sono
+// decine di domande a Open Library, e il catalogo cambia piano. Mentre
+// cercano, quelli della volta prima restano in vista.
+function Catalogo({ books, giro, setGiro, gia, onTieni, onScarta }) {
+  const [fase, setFase] = useState(null);
+  const vivo = useRef(true);
+  const sezioni = useMemo(() => daMostrare(giro?.consigli, books, gia), [giro, books, gia]);
+
+  async function cerca() {
+    setFase({ passo: "saghe" });
+    const r = await consigliDalCatalogo(books, { onFase: (passo, a, b) => vivo.current && setFase({ passo, a, b }) });
+    if (!vivo.current) return;
+    if (r.error) {
+      setFase({ passo: "errore" });
+      return;
+    }
+    scriviConsigliLiberi(r);
+    setGiro(r);
+    setFase(null);
+  }
+
+  useEffect(() => {
+    vivo.current = true;
+    if (books.length && scaduti(giro)) cerca();
+    return () => {
+      vivo.current = false;
+    };
+    // una volta all'apertura: i libri importati mentre la pagina e' aperta
+    // spariscono dai consigli da soli (`daMostrare`), non serve rifare il giro
+  }, []);
+
+  const lavora = fase && fase.passo !== "errore";
+  return (
+    <section style={{ marginBottom: 26 }}>
+      <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.titoletto, color: C.accent, marginBottom: 4 }}>Dal catalogo</h3>
+      <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 12, lineHeight: 1.45 }}>
+        Gratis e senza chiave, da Open Library: il volume dopo l'ultimo che hai letto di ogni saga, altri libri dei tuoi
+        autori, e i più votati sui generi dei libri che hai amato — questi ultimi sono i preferiti di tutti, non scelti su
+        di te: per consigli su misura c'è l'Oracolo, qui sotto.
+      </p>
+      {lavora && (
+        <p style={{ ...riga(), marginBottom: 12 }}>
+          🔎 {FASI_CATALOGO[fase.passo] || "Cerco nel catalogo"}
+          {fase.b ? ` · ${fase.a} di ${fase.b}` : "…"}
+        </p>
+      )}
+      {fase?.passo === "errore" && (
+        <p style={{ ...riga(), marginBottom: 12 }}>
+          Il catalogo non ha risposto: serve la rete. {giro ? "Qui sotto restano quelli dell'ultima volta." : ""}
+        </p>
+      )}
+      {giro &&
+        (sezioni.length === 0 ? (
+          <p style={{ ...riga(), marginBottom: 12 }}>
+            Il catalogo non ha niente da proporti adesso: le tue saghe sono in pari, o i libri li hai già.
+          </p>
+        ) : (
+          sezioni.map((g) => <GruppoProposte key={g.chiave} gruppo={g} sotto onTieni={onTieni} onScarta={onScarta} />)
+        ))}
+      {!lavora && (
+        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, marginTop: 4 }}>
+          {giro && <span style={{ fontSize: F.minuscolo, color: C.muted }}>Cercati il {quandoFu(giro.quando)}</span>}
+          <button onClick={cerca} style={tasto(C.accent)}>
+            {giro ? "↻ Cerca di nuovo" : "🔎 Cerca nel catalogo"}
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 // I CONSIGLI DELL'ORACOLO: si chiedono a mano, mai da soli — costano, e
 // una pagina che spende aprendosi e' una pagina che non si apre piu'.
 // La risposta resta sul dispositivo e si rilegge gratis finche' non la
@@ -185,8 +265,8 @@ function Consigli({ books, lista, gia, onTieni, onScarta }) {
       </h3>
       {!giro && (
         <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 12, lineHeight: 1.45 }}>
-          I volumi che ti mancano delle tue saghe, altri libri degli autori che leggi e qualche scoperta sui
-          tuoi gusti. Per rispondere l'Oracolo riceve titoli, autori, saghe, stato e voto dei tuoi libri —
+          Consigli su misura, a pagamento: l'Oracolo legge la tua biblioteca intera — voti, preferiti,
+          abbandoni — e sceglie saghe, autori e scoperte pensando a te. Per rispondere l'Oracolo riceve titoli, autori, saghe, stato e voto dei tuoi libri —
           nessuna pagina — e ogni titolo lo ricontrollo nel catalogo di Open Library.
         </p>
       )}
@@ -244,6 +324,13 @@ export default function DaPrendere({ books, onClose }) {
   const gruppi = useMemo(() => proposte(books, lista), [books, lista]);
   // quel che una guida propone gia' non si ripete fra i consigli
   const gruppiVoci = useMemo(() => gruppi.flatMap((g) => g.voci), [gruppi]);
+  const [giroCat, setGiroCat] = useState(leggiConsigliLiberi);
+  const giaCat = useMemo(() => [...lista, ...gruppiVoci], [lista, gruppiVoci]);
+  // l'Oracolo non ripete quel che il catalogo ha gia' proposto
+  const giaOracolo = useMemo(
+    () => [...gruppiVoci, ...daMostrare(giroCat?.consigli, books, giaCat).flatMap((g) => g.voci)],
+    [gruppiVoci, giroCat, books, giaCat]
+  );
   // gli arrivati in fondo: sono quelli da togliere, non da cercare
   const voci = useMemo(
     () =>
@@ -376,10 +463,19 @@ export default function DaPrendere({ books, onClose }) {
           </div>
         )}
 
+        <Catalogo
+          books={books}
+          giro={giroCat}
+          setGiro={setGiroCat}
+          gia={giaCat}
+          onTieni={(v) => salva(tieni(leggiDaPrendere(), v))}
+          onScarta={(v) => salva(scarta(leggiDaPrendere(), v.id))}
+        />
+
         <Consigli
           books={books}
           lista={lista}
-          gia={gruppiVoci}
+          gia={giaOracolo}
           onTieni={(v) => salva(tieni(leggiDaPrendere(), v))}
           onScarta={(v) => salva(scarta(leggiDaPrendere(), v.id))}
         />

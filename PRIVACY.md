@@ -117,6 +117,7 @@ qualunque richiesta web porta con sé.
 | Un termine ha la voce sul wiki del Mondo Disco | `discworld.fandom.com` | il termine (apri tu il link) |
 | Un libro non ha la quarta di copertina nel file | `www.googleapis.com/books`, `openlibrary.org` | titolo e autore di quel libro |
 | Un libro non dichiara la saga né nel file né nel titolo | `openlibrary.org` | titolo e autore di quel libro |
+| Apri «Da prendere» (al massimo una volta a settimana, o col tasto «Cerca di nuovo») | `openlibrary.org` | il nome degli autori che leggi, e il titolo e l'autore dei libri che hai amato e dei volumi delle saghe che hai cominciato — una domanda per volta, mai l'elenco della biblioteca |
 | Scarichi il dizionario offline dalle Impostazioni | il nostro stesso sito | niente: è un file statico, come l'app |
 | Sempre, per i caratteri della pagina | `fonts.googleapis.com`, `fonts.gstatic.com` | niente, oltre alla richiesta stessa |
 
