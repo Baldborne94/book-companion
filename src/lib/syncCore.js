@@ -1,5 +1,7 @@
 import { fondi } from "./glossarioMio.js";
 import { fondiRacconti } from "./racconti.js";
+import { fondiTempo } from "./tempo.js";
+import { fondiObiettivi } from "./obiettivo.js";
 const EMPTY_ROW = {
   title: "",
   author: "",
@@ -777,6 +779,13 @@ export function mergePrefs(local, remote) {
     // dispositivi con le stesse spunte in ordine diverso si
     // rimbalzerebbero le preferenze a ogni giro.
     racconti: fondiRacconti(local.racconti, remote?.racconti).sort(),
+    // IL TEMPO DI LETTURA E L'OBIETTIVO NON SEGUONO L'OROLOGIO DELLE
+    // PREFERENZE: il tempo e' un'unione dei cassetti dei dispositivi (ognuno
+    // scrive solo nel suo), l'obiettivo vince per l'ora in cui e' stato
+    // scelto. «Vince chi ha scritto per ultimo» su tutto il blocco
+    // butterebbe via le sere lette sull'altro dispositivo.
+    tempo: fondiTempo(local.tempo, remote?.tempo),
+    obiettivi: fondiObiettivi(local.obiettivi, remote?.obiettivi),
     updated_at: Math.max(local.updated_at || 0, remote?.updated_at || 0),
   };
   const eq = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -789,6 +798,11 @@ export function mergePrefs(local, remote) {
       !eq(merged.reader, local.reader) ||
       !eq(merged.glossari, local.glossari) ||
       !eq(merged.racconti, [...(local.racconti || [])].sort()) ||
+      // si confronta con la forma NORMALIZZATA di ciascun lato: jsonb di
+      // Postgres riordina le chiavi, e senza questo passaggio due registri
+      // identici risulterebbero diversi a ogni giro
+      !eq(merged.tempo, fondiTempo(local.tempo)) ||
+      !eq(merged.obiettivi, fondiObiettivi(local.obiettivi)) ||
       merged.last_opened !== (local.last_opened || null),
     pushRemote:
       !remote ||
@@ -797,6 +811,8 @@ export function mergePrefs(local, remote) {
       !eq(merged.reader, remote.reader) ||
       !eq(merged.glossari, remote.glossari) ||
       !eq(merged.racconti, [...(remote.racconti || [])].sort()) ||
+      !eq(merged.tempo, fondiTempo(remote.tempo)) ||
+      !eq(merged.obiettivi, fondiObiettivi(remote.obiettivi)) ||
       merged.last_opened !== (remote.last_opened || null),
   };
 }
