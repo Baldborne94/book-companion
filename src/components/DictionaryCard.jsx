@@ -5,6 +5,7 @@ import { statoDizionario, scaricaDizionario, cartellinoInRete } from "../lib/diz
 import { consultaOracolo, hasOracle, setOracleKey } from "../lib/oracle.js";
 import { rigaUltima, rigaMese, riassunto, costo, leggiTetto } from "../lib/spesa.js";
 import { TettoFinito } from "./TettoOracolo.jsx";
+import { daAnnotare, fraseAttorno, annota, togliParola, leggiQuaderno, scriviQuaderno } from "../lib/quaderno.js";
 import { chiaveGlossario, vociDi, salvaVoci, aggiungi, togli, cerca } from "../lib/glossarioMio.js";
 
 // La scheda del dizionario e' identica nei due reader: qui una volta sola,
@@ -277,6 +278,27 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
     };
   }, []);
 
+  // IL QUADERNO DELLE PAROLE si scrive da se', a risposta completa: la
+  // ricerca e' gia' il gesto che dice «questa non la sapevo». Una volta per
+  // selezione — la scheda si ridisegna a ogni tappa della risposta, e senza
+  // il registro la stessa parola si conterebbe tre volte in un tocco solo.
+  const annotate = useRef(new Set());
+  const [quaderno, setQuaderno] = useState(null);
+  useEffect(() => {
+    const voce = daAnnotare(dict);
+    if (!voce || annotate.current.has(tag)) return;
+    annotate.current.add(tag);
+    const forma = String(dict.raw || dict.word || "").trim();
+    scriviQuaderno(annota(leggiQuaderno(), voce, { libro: book, frase: fraseAttorno(dict.context, forma), forma }));
+    setQuaderno({ tag, id: voce.id, tolta: false });
+  });
+
+  function togliDalQuaderno() {
+    if (!quaderno) return;
+    scriviQuaderno(togliParola(leggiQuaderno(), quaderno.id));
+    setQuaderno({ ...quaderno, tolta: true });
+  }
+
   async function riletta() {
     setInstallato(await statoDizionario());
     const raw = dictProp?.raw?.trim() || dictProp?.word || "";
@@ -466,6 +488,22 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
         )}
 
         <Voce key={tag} dict={dict} titolo={titolo} />
+
+        {/* la parola e' finita nel quaderno: detto, e reversibile. Senza
+            questa riga il quaderno si riempirebbe a tua insaputa, e l'unico
+            modo di scoprirlo sarebbe trovarlo pieno */}
+        {quaderno?.tag === tag && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "-4px 0 12px", fontSize: F.minuscolo, color: C.muted }}>
+            <span style={{ flex: 1 }}>
+              {quaderno.tolta ? "Tolta dal quaderno delle parole." : "📒 Tenuta nel quaderno delle parole, per ripassarla."}
+            </span>
+            {!quaderno.tolta && (
+              <button onClick={togliDalQuaderno} style={{ fontSize: F.minuscolo, color: C.muted, padding: "6px 8px", textDecoration: "underline" }}>
+                Non tenerla
+              </button>
+            )}
+          </div>
+        )}
 
         {/* il dizionario manca e la parola e' inglese: qui si vede la
             mancanza, e qui si offre il rimedio */}

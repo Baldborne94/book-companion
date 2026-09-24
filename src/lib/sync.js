@@ -24,6 +24,7 @@ import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
 import { raccontiLetti, scriviRacconti } from "./racconti.js";
 import { leggiTempo, scriviTempo, fondiTempo } from "./tempo.js";
 import { leggiObiettivi, scriviObiettivi, fondiObiettivi } from "./obiettivo.js";
+import { leggiQuaderno, scriviQuaderno, fondiQuaderno } from "./quaderno.js";
 import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, daCaricare, nonCeLassu, eTroppoGrande, giaBocciato, copertineDaScaricare, copertineDaCaricare } from "./syncCore.js";
 
 // `contaSpazio` viveva qui ed e' passata in `syncCore` con le altre
@@ -268,6 +269,7 @@ function localPrefs() {
     racconti: [...raccontiLetti()],
     tempo: leggiTempo(),
     obiettivi: leggiObiettivi(),
+    quaderno: leggiQuaderno(),
     last_opened: getLastOpened(),
     updated_at: parseInt(localStorage.getItem(PREFS_UPD_KEY), 10) || 0,
   };
@@ -592,6 +594,7 @@ export async function syncNow({ onProgress } = {}) {
     // copia letta all'inizio del giro lo perderebbe
     scriviTempo(fondiTempo(leggiTempo(), merged.tempo));
     scriviObiettivi(fondiObiettivi(leggiObiettivi(), merged.obiettivi));
+    scriviQuaderno(fondiQuaderno(leggiQuaderno(), merged.quaderno));
     if (merged.last_opened) localStorage.setItem("bc_lastopen", merged.last_opened);
   }
   if (pushRemote) {
