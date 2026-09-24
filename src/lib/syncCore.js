@@ -3,6 +3,7 @@ import { fondiRacconti } from "./racconti.js";
 import { fondiTempo } from "./tempo.js";
 import { fondiObiettivi } from "./obiettivo.js";
 import { fondiQuaderno } from "./quaderno.js";
+import { fondiDaPrendere } from "./daPrendere.js";
 const EMPTY_ROW = {
   title: "",
   author: "",
@@ -790,6 +791,8 @@ export function mergePrefs(local, remote) {
     // IL QUADERNO si fonde parola per parola, per l'ora di ciascuna: le
     // parole cercate sull'altro dispositivo nella stessa sera non si perdono
     quaderno: fondiQuaderno(local.quaderno, remote?.quaderno),
+    // i libri da prendere: stessa forma e stessa regola del quaderno
+    da_prendere: fondiDaPrendere(local.da_prendere, remote?.da_prendere),
     updated_at: Math.max(local.updated_at || 0, remote?.updated_at || 0),
   };
   const eq = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -808,6 +811,7 @@ export function mergePrefs(local, remote) {
       !eq(merged.tempo, fondiTempo(local.tempo)) ||
       !eq(merged.obiettivi, fondiObiettivi(local.obiettivi)) ||
       !eq(merged.quaderno, fondiQuaderno(local.quaderno)) ||
+      !eq(merged.da_prendere, fondiDaPrendere(local.da_prendere)) ||
       merged.last_opened !== (local.last_opened || null),
     pushRemote:
       !remote ||
@@ -819,6 +823,7 @@ export function mergePrefs(local, remote) {
       !eq(merged.tempo, fondiTempo(remote.tempo)) ||
       !eq(merged.obiettivi, fondiObiettivi(remote.obiettivi)) ||
       !eq(merged.quaderno, fondiQuaderno(remote.quaderno)) ||
+      !eq(merged.da_prendere, fondiDaPrendere(remote.da_prendere)) ||
       merged.last_opened !== (remote.last_opened || null),
   };
 }

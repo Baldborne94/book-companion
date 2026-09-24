@@ -35,6 +35,7 @@ import BookSheet from "./components/BookSheet.jsx";
 import QuoteGarden from "./components/QuoteGarden.jsx";
 import ReadingDiary from "./components/ReadingDiary.jsx";
 import Quaderno from "./components/Quaderno.jsx";
+import DaPrendere from "./components/DaPrendere.jsx";
 import Mappa from "./components/Mappa.jsx";
 import Cammino from "./components/Cammino.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
@@ -713,6 +714,7 @@ export default function App() {
   const [gardenOpen, setGardenOpen] = useState(false);
   const [diaryOpen, setDiaryOpen] = useState(false);
   const [quadernoOpen, setQuadernoOpen] = useState(false);
+  const [prendereOpen, setPrendereOpen] = useState(false);
   const [mappaOpen, setMappaOpen] = useState(false);
   // il cammino di una saga: la guida intera con dentro i tuoi volumi
   const [cammino, setCammino] = useState(null);
@@ -1051,6 +1053,7 @@ export default function App() {
   if (gardenOpen) livelli.push(() => setGardenOpen(false));
   if (diaryOpen) livelli.push(() => setDiaryOpen(false));
   if (quadernoOpen) livelli.push(() => setQuadernoOpen(false));
+  if (prendereOpen) livelli.push(() => setPrendereOpen(false));
   if (syncOpen) livelli.push(() => setSyncOpen(false));
   if (themeOpen) livelli.push(() => setThemeOpen(false));
   if (mappaOpen) livelli.push(() => setMappaOpen(false));
@@ -1223,6 +1226,7 @@ export default function App() {
             onGarden={() => setGardenOpen(true)}
             onDiary={() => setDiaryOpen(true)}
             onQuaderno={() => setQuadernoOpen(true)}
+            onDaPrendere={() => setPrendereOpen(true)}
             onSaga={(name) => {
               setFocusSaga(name);
               setSection("library");
@@ -1313,6 +1317,7 @@ export default function App() {
         <ReadingDiary books={books} onClose={() => setDiaryOpen(false)} onOpenBook={setOpenId} />
       )}
       {quadernoOpen && <Quaderno onClose={() => setQuadernoOpen(false)} />}
+      {prendereOpen && <DaPrendere books={books} onClose={() => setPrendereOpen(false)} />}
       {readingBook && (
         // L'ANELLO STRETTO. Il reader è la parte più complicata dell'app,
         // ed è quella dove un difetto è più probabile: un guasto lì dentro

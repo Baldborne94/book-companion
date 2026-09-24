@@ -362,6 +362,12 @@ export const MAPPA = [
   },
   {
     luogo: "ingresso",
+    nome: "Da prendere",
+    cosa: "La lista dei libri da procurarti: quelli che scrivi tu e quelli che ti propongono le tue saghe (il volume dopo l'ultimo letto, i buchi nella numerazione). Si copia per portarla in libreria, e ti dice quando un libro è arrivato.",
+    dove: "Il tasto nell'Ingresso.",
+  },
+  {
+    luogo: "ingresso",
     nome: "Obiettivo e tempo di lettura",
     cosa: "Quanti libri vuoi finire quest'anno e se sei al passo, più il tempo passato a leggere, i giorni di lettura e quanti di fila.",
     dove: "In cima al diario di lettura, «Il tuo anno». Il tempo si conta voltando le pagine, anche fra tablet e telefono.",
