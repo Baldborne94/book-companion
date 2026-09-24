@@ -49,6 +49,7 @@ import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud } fr
 import { spiegaSync } from "./lib/syncCore.js";
 import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
+import { comincia, segnaVita, smetti } from "./lib/tempo.js";
 
 // L'ingresso porta l'insegna dell'atmosfera scelta: candela di notte,
 // foglia nel boschetto, pergamena nell'archivio.
@@ -1099,6 +1100,21 @@ export default function App() {
   // Ma non per sempre. Se per un quarto d'ora non tocchi niente non stai
   // leggendo, ti sei addormentato sopra il libro: il blocco si arrende e
   // lascia che sia il tablet a decidere. Al primo tocco torna.
+  // IL TEMPO DI LETTURA si conta da qui, sugli stessi segnali della veglia
+  // (le voltate dei due reader, `lib/tempo.js`): si comincia ad aprire il
+  // libro, ci si ferma a chiuderlo e quando l'app va in secondo piano — il
+  // libro aperto dietro un'altra app non si sta leggendo.
+  useEffect(() => {
+    if (!readingId) return;
+    comincia();
+    const vis = () => (document.visibilityState === "visible" ? comincia() : smetti());
+    document.addEventListener("visibilitychange", vis);
+    return () => {
+      document.removeEventListener("visibilitychange", vis);
+      smetti();
+    };
+  }, [readingId]);
+
   useEffect(() => {
     if (!readingId || !navigator.wakeLock) return;
     let attivo = true;
@@ -1340,7 +1356,7 @@ export default function App() {
               onMusicVolume={(v) => playerRef.current?.setVolume(v)}
               onMusicNext={() => playerRef.current?.next()}
               onMusicRoom={() => navigate("music")}
-              onAlive={() => svegliaRef.current()}
+              onAlive={() => { svegliaRef.current(); segnaVita(); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);
@@ -1363,7 +1379,7 @@ export default function App() {
               onMusicVolume={(v) => playerRef.current?.setVolume(v)}
               onMusicNext={() => playerRef.current?.next()}
               onMusicRoom={() => navigate("music")}
-              onAlive={() => svegliaRef.current()}
+              onAlive={() => { svegliaRef.current(); segnaVita(); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);

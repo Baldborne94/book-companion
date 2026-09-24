@@ -59,8 +59,11 @@ export function buildDiary(books, dates) {
 // non si dicono: chi non ha finito niente tiene la descrizione di sempre,
 // o la porta scriverebbe «0 libri» a ogni apertura e si imparerebbe a non
 // leggerla — proprio il giorno che il numero arriva.
-export function rigaDiario(diario, anno = new Date().getFullYear()) {
+export function rigaDiario(diario, anno = new Date().getFullYear(), obiettivo = 0) {
   const quest = diario?.years?.find((y) => y.year === anno)?.entries?.length || 0;
+  // con un obiettivo la porta dice a che punto sei, anche a zero: «0 di 24»
+  // a gennaio e' l'obiettivo appena scelto, non un conto vuoto da tacere
+  if (obiettivo > 0) return `${quest} di ${obiettivo} libri quest'anno`;
   if (quest) return `Quest'anno hai finito ${quest} ${quest === 1 ? "libro" : "libri"}`;
   const tutti = diario?.total || 0;
   if (tutti) return `${tutti} ${tutti === 1 ? "libro finito" : "libri finiti"} in tutto`;

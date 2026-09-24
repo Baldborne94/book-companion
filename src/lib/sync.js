@@ -22,6 +22,8 @@ import {
 import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, getListsRaw, writeLists } from "./music.js";
 import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
 import { raccontiLetti, scriviRacconti } from "./racconti.js";
+import { leggiTempo, scriviTempo, fondiTempo } from "./tempo.js";
+import { leggiObiettivi, scriviObiettivi, fondiObiettivi } from "./obiettivo.js";
 import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, daCaricare, nonCeLassu, eTroppoGrande, giaBocciato, copertineDaScaricare, copertineDaCaricare } from "./syncCore.js";
 
 // `contaSpazio` viveva qui ed e' passata in `syncCore` con le altre
@@ -264,6 +266,8 @@ function localPrefs() {
     music_lists: getListsRaw(),
     glossari: tuttiIGlossari(),
     racconti: [...raccontiLetti()],
+    tempo: leggiTempo(),
+    obiettivi: leggiObiettivi(),
     last_opened: getLastOpened(),
     updated_at: parseInt(localStorage.getItem(PREFS_UPD_KEY), 10) || 0,
   };
@@ -583,6 +587,11 @@ export async function syncNow({ onProgress } = {}) {
     writeLists(merged.music_lists);
     scriviGlossari(merged.glossari || {});
     scriviRacconti(merged.racconti || []);
+    // si rifonde con quel che c'e' ADESSO: una voltata arrivata mentre il
+    // giro era in rete ha gia' scritto il suo minuto, e sovrascriverlo con la
+    // copia letta all'inizio del giro lo perderebbe
+    scriviTempo(fondiTempo(leggiTempo(), merged.tempo));
+    scriviObiettivi(fondiObiettivi(leggiObiettivi(), merged.obiettivi));
     if (merged.last_opened) localStorage.setItem("bc_lastopen", merged.last_opened);
   }
   if (pushRemote) {

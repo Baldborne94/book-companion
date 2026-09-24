@@ -4,6 +4,7 @@ import { useViewport } from "../lib/viewport.js";
 import { getFinished, getLastOpened, getProgress, getStarted, getStatus, getUpdatedAt } from "../lib/library.js";
 import { getHighlights } from "../lib/annotations.js";
 import { buildDiary, rigaDiario } from "../lib/diary.js";
+import { leggiObiettivi, obiettivoDi } from "../lib/obiettivo.js";
 import { raccogli, conta, rigaGiardino } from "../lib/citazioni.js";
 import { nextInSaga, prossimiPassi, perchePassoTace, frasePassoTace } from "../lib/saga.js";
 import BookCover from "./BookCover.jsx";
@@ -164,17 +165,20 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
     () => rigaGiardino(conta(raccogli(books, (id) => ({ highlights: getHighlights(id) })))),
     [books]
   );
-  const rigaAnno = useMemo(
+  const diarioAnno = useMemo(
     () =>
-      rigaDiario(
-        buildDiary(books, (id) => ({
-          started: getStarted(id),
-          finished: getFinished(id),
-          status: getStatus(id),
-        }))
-      ),
+      buildDiary(books, (id) => ({
+        started: getStarted(id),
+        finished: getFinished(id),
+        status: getStatus(id),
+      })),
     [books]
   );
+  // l'obiettivo si rilegge a ogni disegno e non dentro il `useMemo`: si
+  // sceglie nel diario, che sta sopra l'Ingresso, e al ritorno i libri non
+  // sono cambiati — memorizzato, la porta direbbe ancora quello di prima
+  const annoOra = new Date().getFullYear();
+  const rigaAnno = rigaDiario(diarioAnno, annoOra, obiettivoDi(leggiObiettivi(), annoOra));
 
   if (books.length === 0) {
     return (
