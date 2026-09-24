@@ -1,5 +1,6 @@
 import { Component } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
+import { pezzoMancante } from "../lib/guasto.js";
 
 // QUANDO SI ROMPE QUALCOSA, LO SCHERMO NON DEVE RESTARE BIANCO.
 //
@@ -48,6 +49,22 @@ export default class Guasto extends Component {
   render() {
     if (!this.state.guaio) return this.props.children;
     const messaggio = String(this.state.guaio?.message || this.state.guaio || "").slice(0, 300);
+    const vecchio = pezzoMancante(this.state.guaio);
+    const primario = {
+      padding: "11px 22px",
+      borderRadius: R.piccolo,
+      background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+      color: C.onAccent,
+      fontWeight: 600,
+      fontSize: F.corpo,
+    };
+    const secondario = {
+      padding: "11px 22px",
+      borderRadius: R.piccolo,
+      border: `1px solid ${C.border}`,
+      color: C.muted,
+      fontSize: F.corpo,
+    };
     return (
       <div
         style={{
@@ -69,9 +86,11 @@ export default class Guasto extends Component {
           La candela si è spenta
         </h2>
         <p style={{ color: C.muted, fontSize: F.corpo, lineHeight: 1.55, maxWidth: px(460) }}>
-          {this.props.dentroIlLibro
-            ? "Qualcosa si è rotto mentre leggevi. Il punto in cui eri è salvato: torna in biblioteca e riapri il tomo."
-            : "Qualcosa si è rotto. "}
+          {vecchio
+            ? "È arrivata una versione nuova dell'app e questa pagina cerca un pezzo che non c'è più. Ricarica e torna tutto a posto. "
+            : this.props.dentroIlLibro
+              ? "Qualcosa si è rotto mentre leggevi. Il punto in cui eri è salvato: torna in biblioteca e riapri il tomo."
+              : "Qualcosa si è rotto. "}
           <strong style={{ color: C.text }}>
             I tuoi libri, i segnalibri e le evidenziazioni sono al sicuro su questo dispositivo.
           </strong>
@@ -96,28 +115,16 @@ export default class Guasto extends Component {
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 4 }}>
           <button
             onClick={this.riprova}
-            style={{
-              padding: "11px 22px",
-              borderRadius: R.piccolo,
-              background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
-              color: C.onAccent,
-              fontWeight: 600,
-              fontSize: F.corpo,
-            }}
+            style={vecchio ? secondario : primario}
           >
             {this.props.dentroIlLibro ? "Torna in biblioteca" : "Riprova"}
           </button>
           {/* L'ultima spiaggia, e sta scritta chiara: ricaricare la pagina
-              non cancella niente: i dati non stanno nella pagina. */}
+              non cancella niente: i dati non stanno nella pagina. Col pezzo
+              mancante diventa la strada principale. */}
           <button
             onClick={() => window.location.reload()}
-            style={{
-              padding: "11px 22px",
-              borderRadius: R.piccolo,
-              border: `1px solid ${C.border}`,
-              color: C.muted,
-              fontSize: F.corpo,
-            }}
+            style={vecchio ? primario : secondario}
           >
             Ricarica l'app
           </button>
