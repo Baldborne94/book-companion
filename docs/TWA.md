@@ -66,7 +66,11 @@ Alle domande di `init`:
   l'icona `iconUrl` (che dev'essere il PNG), l'ID `packageId`. Vale la pena
   mettere anche `"enableNotifications": false`: l'app non manda notifiche,
   e acceso l'APK dichiara un permesso che non usa.
-- **Display mode**: `standalone`. **Orientation**: `default`.
+- **Display mode**: `fullscreen`, come il manifest del sito. **Orientation**: `default`.
+  Nel guscio il modo lo decide il SUO `twa-manifest.json` (campo `display`),
+  non il manifest del sito: un APK costruito con `standalone` resta con la
+  barra di stato di Android anche dopo che il sito e' passato a tutto
+  schermo, finche' non lo si ricostruisce (vedi «Aggiornare»).
 - **Status bar color / splash**: lascia quelli del manifest (`#0f0d1a`).
 - **Icon URL**: dev'essere il PNG (`/icons/icon-512.png`), non `icon.svg`:
   Bubblewrap rasterizza con una libreria che l'SVG non lo legge, e il
@@ -159,6 +163,11 @@ in cima: non è un errore del guscio, è che manca la firma.
 ## Aggiornare
 
 - **Il sito**: come sempre, merge su `main`. Il guscio non c'entra.
+- **Il guscio a tutto schermo** (per chi l'aveva costruito in `standalone`):
+  in `twa-manifest.json` metti `"display": "fullscreen"`, poi
+  `bubblewrap update` e `bubblewrap build` con lo STESSO `android.keystore`
+  e le stesse password, e installa sopra il nuovo `app-release-signed.apk`
+  (senza disinstallare: la firma e' la stessa, i dati restano).
 - **Il guscio** (nuova icona, nuovo nome, `file_handlers` cambiati): alza
   `version` in `package.json`, poi `bubblewrap update && bubblewrap build`
   e carica il nuovo `.aab`. Bubblewrap aggiorna `versionCode` da sé.
