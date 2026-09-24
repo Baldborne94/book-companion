@@ -14,6 +14,10 @@ import {
   togli,
   vive,
 } from "../lib/daPrendere.js";
+import { chiediConsigli, daMostrare, leggiConsigliSalvati, scriviConsigli } from "../lib/consigli.js";
+import { chiedi, hasOracle } from "../lib/oracle.js";
+import { costo, soldi, riassunto, leggiTetto } from "../lib/spesa.js";
+import { CampoChiave, TettoFinito } from "./TettoOracolo.jsx";
 
 const campo = () => ({
   flex: 1,
@@ -39,13 +43,15 @@ const tasto = (colore) => ({
 
 // Una saga fra le proposte: le prime in vista, il resto dietro un tasto col
 // conto — una guida da settantun tappe ne proporrebbe venti in fila.
-function GruppoProposte({ gruppo, onTieni, onScarta }) {
+function GruppoProposte({ gruppo, onTieni, onScarta, sotto }) {
   const [tutte, setTutte] = useState(false);
   const mostrate = tutte ? gruppo.voci : gruppo.voci.slice(0, IN_VISTA);
   const altre = gruppo.voci.length - mostrate.length;
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: F.nota, fontWeight: 600, color: C.text }}>{gruppo.nome}</div>
+      <div style={{ fontSize: F.nota, fontWeight: 600, color: sotto ? C.accent : C.text, marginBottom: sotto ? 6 : 0 }}>
+        {gruppo.nome}
+      </div>
       {gruppo.dopo?.title && (
         <div style={{ fontSize: F.minuscolo, color: C.muted, marginBottom: 6 }}>dopo «{gruppo.dopo.title}»</div>
       )}
@@ -64,9 +70,23 @@ function GruppoProposte({ gruppo, onTieni, onScarta }) {
         >
           <span style={{ flex: 1, minWidth: 0 }}>
             <span style={{ display: "block", fontSize: F.nota, color: C.text }}>{nomeVoce(v)}</span>
-            {(v.autore || (v.titolo && v.numero != null)) && (
+            {(v.autore || v.saga || (v.titolo && v.numero != null)) && (
               <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted }}>
-                {[v.autore, v.titolo && v.numero != null ? `n° ${v.numero}` : ""].filter(Boolean).join(" · ")}
+                {[v.autore, v.saga ? `${v.saga}${v.numero != null ? ` n° ${v.numero}` : ""}` : v.numero != null ? `n° ${v.numero}` : ""]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            )}
+            {v.perche && (
+              <span style={{ display: "block", fontSize: F.piccolo, color: C.text, opacity: 0.85, marginTop: 2, lineHeight: 1.4 }}>
+                {v.perche}
+              </span>
+            )}
+            {/* il catalogo non ha tutto: un titolo che non ritrova si dice,
+                non si butta — ma chi lo va a cercare deve saperlo */}
+            {v.verificato === false && (
+              <span style={{ display: "block", fontSize: F.minuscolo, color: C.accent, marginTop: 2 }}>
+                ⚠ non l'ho trovato nel catalogo: controlla prima di cercarlo
               </span>
             )}
           </span>
@@ -87,6 +107,130 @@ function GruppoProposte({ gruppo, onTieni, onScarta }) {
   );
 }
 
+const riga = () => ({ color: C.muted, fontSize: F.nota, lineHeight: 1.55, margin: 0 });
+
+const quandoFu = (t) =>
+  new Date(t).toLocaleDateString("it-IT", { day: "numeric", month: "long" });
+
+// I CONSIGLI DELL'ORACOLO: si chiedono a mano, mai da soli — costano, e
+// una pagina che spende aprendosi e' una pagina che non si apre piu'.
+// La risposta resta sul dispositivo e si rilegge gratis finche' non la
+// richiedi.
+function Consigli({ books, lista, gia, onTieni, onScarta }) {
+  const [giro, setGiro] = useState(leggiConsigliSalvati);
+  const [fase, setFase] = useState(null);
+  const [, setChiave] = useState(0);
+  const sezioni = useMemo(() => daMostrare(giro?.consigli, books, [...lista, ...gia]), [giro, books, lista, gia]);
+
+  async function chiediOra() {
+    setFase({ passo: "chiedo" });
+    const r = await chiediConsigli(books, {
+      chiedi,
+      onFase: (passo, a, b) => setFase({ passo, a, b }),
+    });
+    if (r.error) {
+      setFase({ passo: "errore", ...r });
+      return;
+    }
+    scriviConsigli(r);
+    setGiro(r);
+    setFase(null);
+  }
+
+  let stato = null;
+  if (fase?.passo === "chiedo") {
+    stato = <p style={riga()}>✨ L'Oracolo sta sfogliando la tua biblioteca…</p>;
+  } else if (fase?.passo === "controllo") {
+    stato = (
+      <p style={riga()}>
+        🔎 Controllo i titoli nel catalogo{fase.b ? ` · ${fase.a} di ${fase.b}` : "…"}
+      </p>
+    );
+  } else if (fase?.passo === "errore") {
+    stato =
+      fase.error === "tetto" ? (
+        <TettoFinito speso={costo(riassunto().mese)} tetto={fase.tettoMese ?? leggiTetto()} onRiprova={chiediOra} />
+      ) : fase.error === "chiave" ? (
+        <div>
+          <p style={{ ...riga(), marginBottom: 8 }}>
+            {hasOracle()
+              ? "La chiave salvata non è più valida: probabilmente è scaduta. Incollane una nuova."
+              : "Serve una chiave API di Anthropic (console.anthropic.com): resta solo su questo dispositivo."}
+          </p>
+          <CampoChiave onSalva={chiediOra} />
+        </div>
+      ) : (
+        <div>
+          <p style={riga()}>
+            {fase.error === "rete"
+              ? "L'Oracolo ha bisogno della rete: riprova quando sei online."
+              : fase.error === "tagliata"
+                ? "La risposta si è interrotta a metà: riprova."
+                : fase.error === "illeggibile"
+                  ? "La risposta non si lasciava leggere: riprova."
+                  : "L'Oracolo non ha risposto. Riprova fra un momento."}
+          </p>
+          <button onClick={chiediOra} style={{ ...tasto(C.arcane), marginTop: 8 }}>
+            Riprova
+          </button>
+        </div>
+      );
+  }
+  const lavora = fase && fase.passo !== "errore";
+
+  return (
+    <section style={{ marginBottom: 26 }}>
+      <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.titoletto, color: C.arcane, marginBottom: 4 }}>
+        Consigli dell'Oracolo
+      </h3>
+      {!giro && (
+        <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 12, lineHeight: 1.45 }}>
+          I volumi che ti mancano delle tue saghe, altri libri degli autori che leggi e qualche scoperta sui
+          tuoi gusti. Per rispondere l'Oracolo riceve titoli, autori, saghe, stato e voto dei tuoi libri —
+          nessuna pagina — e ogni titolo lo ricontrollo nel catalogo di Open Library.
+        </p>
+      )}
+      {stato}
+      {!fase && !hasOracle() && !giro && (
+        <div>
+          <p style={{ ...riga(), marginBottom: 8 }}>
+            Serve una chiave API di Anthropic (console.anthropic.com): resta solo su questo dispositivo e paghi
+            solo quel che chiedi.
+          </p>
+          <CampoChiave onSalva={() => setChiave((n) => n + 1)} />
+        </div>
+      )}
+      {!lavora && hasOracle() && !giro && fase?.passo !== "errore" && (
+        <button onClick={chiediOra} style={tasto(C.arcane)}>
+          ✨ Chiedi consigli
+        </button>
+      )}
+      {giro && !lavora && (
+        <>
+          {sezioni.length === 0 ? (
+            <p style={{ ...riga(), marginBottom: 12 }}>
+              Dei consigli di questo giro non ne resta nessuno: li hai tenuti, scartati o sono già in libreria.
+            </p>
+          ) : (
+            sezioni.map((g) => (
+              <GruppoProposte key={g.chiave} gruppo={g} sotto onTieni={onTieni} onScarta={onScarta} />
+            ))
+          )}
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, marginTop: 4 }}>
+            <span style={{ fontSize: F.minuscolo, color: C.muted }}>
+              Consigli del {quandoFu(giro.quando)}
+              {giro.uso ? ` · costati ${soldi(costo(giro.uso))}` : ""}
+            </span>
+            <button onClick={chiediOra} style={tasto(C.arcane)}>
+              ↻ Chiedine di nuovi
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 export default function DaPrendere({ books, onClose }) {
   const [lista, setLista] = useState(leggiDaPrendere);
   const [titolo, setTitolo] = useState("");
@@ -98,6 +242,8 @@ export default function DaPrendere({ books, onClose }) {
     setLista(nuova);
   };
   const gruppi = useMemo(() => proposte(books, lista), [books, lista]);
+  // quel che una guida propone gia' non si ripete fra i consigli
+  const gruppiVoci = useMemo(() => gruppi.flatMap((g) => g.voci), [gruppi]);
   // gli arrivati in fondo: sono quelli da togliere, non da cercare
   const voci = useMemo(
     () =>
@@ -187,7 +333,7 @@ export default function DaPrendere({ books, onClose }) {
         <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.titoletto, color: C.accent, marginBottom: 10 }}>La tua lista</h3>
         {voci.length === 0 ? (
           <p style={{ color: C.muted, marginBottom: 24 }}>
-            Ancora vuota. Scrivi qui sopra un titolo, o tieni una delle proposte che vengono dalle tue saghe.
+            Ancora vuota. Scrivi qui sopra un titolo, o tieni uno dei consigli qui sotto.
           </p>
         ) : (
           <div style={{ marginBottom: 26 }}>
@@ -230,12 +376,20 @@ export default function DaPrendere({ books, onClose }) {
           </div>
         )}
 
+        <Consigli
+          books={books}
+          lista={lista}
+          gia={gruppiVoci}
+          onTieni={(v) => salva(tieni(leggiDaPrendere(), v))}
+          onScarta={(v) => salva(scarta(leggiDaPrendere(), v.id))}
+        />
+
         {gruppi.length > 0 && (
           <>
-            <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.titoletto, color: C.arcane, marginBottom: 4 }}>Dalle tue saghe</h3>
+            <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.titoletto, color: C.arcane, marginBottom: 4 }}>Dalle guide che conosco</h3>
             <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 12, lineHeight: 1.45 }}>
-              I volumi che ti mancano per andare avanti, dopo l'ultimo che hai letto. Dove la saga non la conosco
-              dico solo il numero.
+              I volumi che ti mancano per andare avanti, dopo l'ultimo che hai letto, dalle guide di lettura che
+              l'app conosce già — senza chiedere niente a nessuno.
             </p>
             {gruppi.map((g) => (
               <GruppoProposte

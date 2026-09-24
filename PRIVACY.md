@@ -82,6 +82,14 @@ Quando fai una di queste domande, escono dal dispositivo verso
 numerati («Volume 2»), e i titoli veri li rimette lo schermo. È una scelta
 tecnica contro gli spoiler, ma vale anche qui.
 
+**L'eccezione sono i consigli di lettura** («Consigli dell'Oracolo», nella
+pagina «Da prendere»), che partono solo quando li chiedi: lì il modello
+riceve l'elenco della tua biblioteca — titolo, autore, saga col numero,
+stato di lettura, voto e cuore dei preferiti — perché consigliare libri
+senza sapere quali hai letto non si può. Nessuna pagina dei libri. I titoli
+che propone vengono poi cercati su Open Library (`openlibrary.org`) per
+controllare che esistano.
+
 L'uso dei dati da parte di Anthropic è regolato dal contratto fra te e
 loro, non da noi: vedi la [privacy policy di
 Anthropic](https://www.anthropic.com/legal/privacy).

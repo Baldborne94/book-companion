@@ -363,7 +363,7 @@ export const MAPPA = [
   {
     luogo: "ingresso",
     nome: "Da prendere",
-    cosa: "La lista dei libri da procurarti: quelli che scrivi tu e quelli che ti propongono le tue saghe (il volume dopo l'ultimo letto, i buchi nella numerazione). Si copia per portarla in libreria, e ti dice quando un libro è arrivato.",
+    cosa: "La lista dei libri da procurarti: quelli che scrivi tu e i consigli dell'Oracolo — i volumi che ti mancano delle tue saghe, altri libri degli autori che leggi, e scoperte sui tuoi gusti, ogni titolo ricontrollato nel catalogo. Si copia per portarla in libreria, e ti dice quando un libro è arrivato.",
     dove: "Il tasto nell'Ingresso.",
   },
   {
