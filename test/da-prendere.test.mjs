@@ -76,79 +76,22 @@ export default async function (t) {
     0
   );
 
-  // ---- dai numeri: le saghe che nessuna tavola conosce -----------------------
-  const fl = (id, n, extra = {}) => libro(id, `First ${n}`, { saga: "First Law", sagaOrder: n, ...extra });
-  g = proposte([fl("1", 1), fl("2", 2), fl("4", 4)], [], opzioni({ 1: "read" }));
-  t.eq("il buco fra il letto e l'ultimo che hai", g[0].voci.map((v) => v.numero).join(","), "3");
-  t.eq("… senza titolo, col nome della saga", nomeVoce(g[0].voci[0]), "First Law n° 3");
-  t.eq("… e non il seguito: hai ancora volumi da leggere", g[0].voci.some((v) => v.forse), false);
-  g = proposte([fl("1", 1), fl("2", 2)], [], opzioni({ 2: "read" }));
-  t.eq("arrivato all'ultimo che hai: il seguito, se esiste", nomeVoce(g[0].voci[0]), "First Law n° 3 (se esiste)");
-  g = proposte([fl("1", 1), fl("3", 3), fl("5", 5)], [], opzioni({ 3: "read" }));
-  t.eq("i buchi dietro al letto non si propongono", g[0].voci.map((v) => v.numero).join(","), "4");
-  t.eq("una saga di numeri mai cominciata tace", proposte([fl("1", 1), fl("3", 3)], [], opzioni({})).length, 0);
-  t.eq(
-    "i decimali non sono buchi né riferimenti",
-    proposte([fl("1", 1), fl("h", 1.5), fl("2", 2)], [], opzioni({ h: "read" })).length,
-    0
-  );
-  t.eq(
-    "… nemmeno quando la novella e' l'ultimo che hai: non si propone un «n° 2,5»",
-    proposte([fl("1", 1), fl("h", 1.5)], [], opzioni({ h: "read" })).length,
-    0
-  );
 
-  // due storie numerate ognuna da uno: si raggruppa per serie
-  const cosmo = (id, title, serie, n) => libro(id, title, { saga: "Cosmere", series: serie, sagaOrder: n });
-  const cosmoLibri = [
-    cosmo("m1", "Final Empire", "Mistborn", 1),
-    cosmo("m2", "Well of Ascension", "Mistborn", 2),
-    cosmo("s1", "Way of Kings", "Stormlight", 1),
-    cosmo("s3", "Oathbringer", "Stormlight", 3),
-  ];
-  g = proposte(cosmoLibri, [], opzioni({ m2: "read", s1: "read" }));
-  t.eq("numeri doppi: un filo per serie", g.map((x) => x.nome).join(","), "Mistborn,Stormlight");
-  t.eq(
-    "… e un volume senza serie li' non fa un filo: i numeri sono di due storie",
-    proposte([...cosmoLibri, cosmo("w", "Warbreaker", "", 5)], [], opzioni({ m2: "read", s1: "read", w: "read" }))
-      .map((x) => x.nome)
-      .join(","),
-    "Mistborn,Stormlight"
-  );
-  t.eq("… ognuno coi suoi numeri", g.map((x) => x.voci.map((v) => v.numero).join("")).join(","), "3,2");
-  t.eq("… e il nome della serie", nomeVoce(g[1].voci[0]), "Stormlight n° 2");
-  // una fila sola (il Malazan del lettore): le serie NON spartiscono
-  const mal = (id, serie, n) => libro(id, `M${n}`, { saga: "Malazan", series: serie, sagaOrder: n });
-  g = proposte([mal("a", "Fallen", 1), mal("b", "Fallen", 2), mal("c", "Path", 7)], [], opzioni({ b: "read" }));
-  t.eq(
-    "numeri della saga: niente buchi inventati dentro una serie",
-    g[0].voci.map((v) => v.numero).join(","),
-    "3,4,5,6"
-  );
-  t.eq("… col nome della saga", g[0].nome, "Malazan");
-  t.eq(
-    "una saga di tavola non passa dai numeri",
-    proposte([libro("a", "Primo", { saga: "Guida", sagaOrder: 1 })], [], opzioni({ a: "read" }))
-      .flatMap((x) => x.voci)
-      .some((v) => v.titolo == null),
-    false
-  );
-  t.eq(
-    "il contorno di una guida non apre un filo",
-    proposte([fl("1", 1)], [], opzioni({ 1: "read" }, { contorno: () => true })).length,
-    0
-  );
+  // una fila di numeri senza titoli non si propone piu': «n° 3 (se esiste)»
+  // non e' un libro che si possa chiedere in libreria (detto dal lettore)
+  const fl = (id, n, extra = {}) => libro(id, `First ${n}`, { saga: "First Law", sagaOrder: n, ...extra });
+  t.eq("i soli numeri non fanno proposte", proposte([fl("1", 1), fl("2", 2), fl("4", 4)], [], opzioni({ 1: "read" })).length, 0);
 
   // ---- la lista e le proposte si parlano -------------------------------------
-  const base = [fl("1", 1), fl("2", 2), fl("4", 4)];
-  const [p3] = proposte(base, [], opzioni({ 1: "read" }))[0].voci;
+  const base = [libro("1", "Primo"), libro("3", "Terzo")];
+  const [p3] = proposte(base, [], opzioni({ 1: "read", 3: "read" }))[0].voci;
   let lista = tieni([], p3, 100);
   t.eq("tenuta, la proposta sta nella lista", vive(lista).length, 1);
-  t.eq("… e sparisce dalle proposte", proposte(base, lista, opzioni({ 1: "read" })).length, 0);
+  t.eq("… e sparisce dalle proposte", proposte(base, lista, opzioni({ 1: "read", 3: "read" })).length, 0);
   lista = togli(lista, p3.id, 200);
-  t.eq("tolta dalla lista, torna fra le proposte", proposte(base, lista, opzioni({ 1: "read" })).length, 1);
+  t.eq("tolta dalla lista, torna fra le proposte", proposte(base, lista, opzioni({ 1: "read", 3: "read" })).length, 1);
   lista = scarta(lista, p3.id, 300);
-  t.eq("scartata, non si ripropone", proposte(base, lista, opzioni({ 1: "read" })).length, 0);
+  t.eq("scartata, non si ripropone", proposte(base, lista, opzioni({ 1: "read", 3: "read" })).length, 0);
   t.eq("… e nella lista non compare", vive(lista).length, 0);
   t.eq("lo scarto e' un segno solo, non si accumula", scarta(lista, p3.id, 400).filter((v) => v.id === p3.id).length, 1);
 
@@ -174,7 +117,7 @@ export default async function (t) {
   t.eq("… non lo stesso numero di un'altra saga", arrivato(buco, [libro("z", "Z", { saga: "Dune", sagaOrder: 3 })]), null);
   t.eq(
     "… e dove conta la serie, non un'altra serie",
-    arrivato({ saga: "Cosmere", ciclo: "Stormlight", numero: 2 }, [cosmo("x", "Hero", "Mistborn", 2)]),
+    arrivato({ saga: "Cosmere", ciclo: "Stormlight", numero: 2 }, [libro("x", "Hero", { saga: "Cosmere", series: "Mistborn", sagaOrder: 2 })]),
     null
   );
 

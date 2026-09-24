@@ -562,7 +562,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
             Da prendere
           </span>
           <span style={{ display: "block", fontSize: F.piccolo, color: C.muted }}>
-            {rigaPrendere || "I libri che ti mancano, scritti da te o proposti dalle tue saghe"}
+            {rigaPrendere || "I libri che ti mancano, e i consigli dell'Oracolo sui tuoi gusti"}
           </span>
         </span>
         <span style={{ fontSize: F.titoletto, color: C.arcane }}>›</span>

@@ -22,9 +22,9 @@
 // e non te ne accorgeresti.
 
 import { getStatus } from "./library.js";
-import { riconosci, TAVOLE, contornoDiUnaGuida, chiaveSaga } from "./sagaBooks.js";
+import { riconosci, TAVOLE, chiaveSaga } from "./sagaBooks.js";
 import { sembraGiaLetto } from "./importBook.js";
-import { numeriMescolati, cicloDi } from "./saga.js";
+import { cicloDi } from "./saga.js";
 import { fondiQuaderno } from "./quaderno.js";
 
 const KEY = "bc_da_prendere";
@@ -98,78 +98,15 @@ function daTavole(books, statusOf, riconosce, tavole) {
   return out;
 }
 
-// Le saghe che nessuna tavola conosce: i titoli non li sa nessuno, ma i
-// NUMERI si'. Due cose si propongono, e sono due certezze diverse:
-//   - il BUCO: il n° 3 fra il 2 che hai letto e il 4 che hai in casa —
-//     quello esiste di sicuro, il tuo 4 lo dimostra;
-//   - il SEGUITO: il numero dopo l'ultimo che hai, e solo quando l'ultimo
-//     che hai e' anche quello a cui sei arrivato — se hai ancora volumi da
-//     leggere il seguito non ti serve stasera. Questo NON e' sicuro (la
-//     saga puo' essere finita), e la voce lo dice («se esiste»).
-// Si guarda dopo il volume piu' avanti che hai letto: i buchi dietro di te
-// sono libri che hai saltato apposta, o letto altrove.
-function daNumeri(books, statusOf, riconosce, contorno) {
-  const saghe = new Map();
-  for (const b of books) {
-    const saga = String(b?.saga || "").trim();
-    if (!saga || contorno(b)) continue;
-    // una saga che una tavola conosce la fa `daTavole`, coi titoli veri
-    const r = riconosce(b);
-    if (r?.titolo) continue;
-    if (!saghe.has(saga)) saghe.set(saga, []);
-    saghe.get(saga).push(b);
-  }
-  const out = [];
-  for (const [saga, libri] of saghe) {
-    // DOVE OGNI SERIE SI NUMERA DA SE' (due titoli diversi sullo stesso
-    // numero) il filo e' la serie; dove la fila e' una sola, il numero e'
-    // della saga e raggruppare per serie inventerebbe dei buchi — nel
-    // Malazan del lettore il Path to Ascendancy va dal 7 all'8, e per
-    // serie mancherebbero dall'1 al 6
-    const perSerie = numeriMescolati(libri, saga);
-    const fili = new Map();
-    for (const b of libri) {
-      const ciclo = perSerie ? cicloDi(b) : "";
-      // numeri doppi e nessuna serie: il numero non dice niente
-      if (perSerie && !ciclo) continue;
-      const k = ciclo.toLowerCase();
-      if (!fili.has(k)) fili.set(k, { ciclo, libri: [] });
-      fili.get(k).libri.push(b);
-    }
-    for (const { ciclo, libri: suoi } of fili.values()) {
-      const interi = suoi.filter((b) => Number.isInteger(b.sagaOrder) && b.sagaOrder > 0);
-      const rif = interi
-        .filter((b) => letto(statusOf(b.id)))
-        .sort((a, b) => b.sagaOrder - a.sagaOrder)[0];
-      if (!rif) continue;
-      const ho = new Set(interi.map((b) => b.sagaOrder));
-      const ultimo = Math.max(...ho);
-      const nome = ciclo || saga;
-      const voci = [];
-      for (let k = rif.sagaOrder + 1; k < ultimo; k++) {
-        if (!ho.has(k)) voci.push({ id: idNumero(saga, ciclo, k), titolo: null, saga, ciclo, nome, numero: k });
-      }
-      if (ultimo === rif.sagaOrder) {
-        voci.push({ id: idNumero(saga, ciclo, ultimo + 1), titolo: null, saga, ciclo, nome, numero: ultimo + 1, forse: true });
-      }
-      if (voci.length) out.push({ saga, nome, voci, dopo: rif });
-    }
-  }
-  return out;
-}
-
 // Le proposte, raggruppate per saga. Quel che sta gia' nella lista — tenuto
 // o scartato — non si ripropone: tenuto e' gia' la', scartato hai detto di no.
 export function proposte(
   books = [],
   lista = [],
-  { statusOf = getStatus, riconosce = riconosci, tavole = TAVOLE, contorno = contornoDiUnaGuida } = {}
+  { statusOf = getStatus, riconosce = riconosci, tavole = TAVOLE } = {}
 ) {
   const noti = new Set((lista || []).filter((v) => v && v.id && !v.deleted).map((v) => v.id));
-  const gruppi = [
-    ...daTavole(books, statusOf, riconosce, tavole),
-    ...daNumeri(books, statusOf, riconosce, contorno),
-  ];
+  const gruppi = daTavole(books, statusOf, riconosce, tavole);
   return gruppi
     .map((g) => ({ ...g, voci: g.voci.filter((v) => !noti.has(v.id)) }))
     .filter((g) => g.voci.length)

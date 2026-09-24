@@ -14,6 +14,21 @@ const KEY = "bc_obiettivi";
 
 export const SCELTE_OBIETTIVO = [6, 12, 24, 36, 52];
 
+// Il numero scritto a mano (chiesto dal lettore: i tasti arrivano a 52, e
+// per 80 servivano ventotto tocchi di «+»). Si accettano solo cifre, e un
+// numero che non ha senso NON si scrive affatto invece di scriverne uno
+// storto: zero ha il suo tasto («Nessun obiettivo»), e oltre il tetto e' un
+// dito scivolato — un obiettivo di 5000 libri renderebbe «in pari» e
+// «indietro» parole senza senso per tutto l'anno.
+export const MAX_OBIETTIVO = 999;
+
+export function numeroObiettivo(testo) {
+  const t = String(testo ?? "").trim();
+  if (!/^\d+$/.test(t)) return null;
+  const n = Number(t);
+  return n >= 1 && n <= MAX_OBIETTIVO ? n : null;
+}
+
 export function leggiObiettivi() {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) || "{}");
