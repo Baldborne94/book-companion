@@ -7,6 +7,7 @@ import { buildDiary, rigaDiario } from "../lib/diary.js";
 import { leggiObiettivi, obiettivoDi } from "../lib/obiettivo.js";
 import { raccogli, conta, rigaGiardino } from "../lib/citazioni.js";
 import { leggiQuaderno, rigaQuaderno } from "../lib/quaderno.js";
+import { leggiDaPrendere, proposte, rigaDaPrendere } from "../lib/daPrendere.js";
 import { nextInSaga, prossimiPassi, perchePassoTace, frasePassoTace } from "../lib/saga.js";
 import BookCover from "./BookCover.jsx";
 import { BookmarkIcon, LeafIcon, SparkIcon, StarIcon } from "./Icons.jsx";
@@ -144,7 +145,7 @@ const fila = (wide) => ({
   flexWrap: wide ? "wrap" : "nowrap",
 });
 
-export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onQuaderno, onSaga }) {
+export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onQuaderno, onDaPrendere, onSaga }) {
   // chi ha il dorso disegnato lo sa solo `BookCover`: lo dice qui, così i
   // preferiti non ristampano un titolo che sta già sulla copertina
   const [dorsi, setDorsi] = useState({});
@@ -183,6 +184,18 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
   // il quaderno si rilegge a ogni disegno per la stessa ragione: si riempie
   // dentro il reader e si svuota nel quaderno, e i libri non cambiano
   const rigaParole = rigaQuaderno(leggiQuaderno());
+  // le proposte costano un giro di riconoscimento per libro, quindi si
+  // calcolano coi libri; la lista invece si rilegge a ogni disegno (si
+  // cambia nella sua pagina), e cosi' le proposte gia' tenute o scartate
+  // spariscono dal conto appena torni qui
+  const propostePrendere = useMemo(() => proposte(books, []), [books]);
+  const listaPrendere = leggiDaPrendere();
+  const notiPrendere = new Set(listaPrendere.filter((v) => v && !v.deleted).map((v) => v.id));
+  const rigaPrendere = rigaDaPrendere(
+    listaPrendere,
+    books,
+    propostePrendere.reduce((n, g) => n + g.voci.filter((v) => !notiPrendere.has(v.id)).length, 0)
+  );
 
   if (books.length === 0) {
     return (
@@ -526,6 +539,33 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
           </span>
         </span>
         <span style={{ fontSize: F.titoletto, color: C.green }}>›</span>
+      </button>
+
+      <button
+        onClick={onDaPrendere}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          marginTop: 10,
+          padding: "13px 16px",
+          borderRadius: R.medio,
+          border: `1px solid ${C.arcane}44`,
+          background: `linear-gradient(135deg, ${C.arcane}10, transparent)`,
+          textAlign: "left",
+        }}
+      >
+        <span style={{ fontSize: F.titoletto, filter: `drop-shadow(0 0 10px ${C.arcane}55)` }}>🛒</span>
+        <span style={{ flex: 1 }}>
+          <span style={{ display: "block", fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.rilievo, color: C.text }}>
+            Da prendere
+          </span>
+          <span style={{ display: "block", fontSize: F.piccolo, color: C.muted }}>
+            {rigaPrendere || "I libri che ti mancano, scritti da te o proposti dalle tue saghe"}
+          </span>
+        </span>
+        <span style={{ fontSize: F.titoletto, color: C.arcane }}>›</span>
       </button>
       </div>
 
