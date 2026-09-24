@@ -127,6 +127,13 @@ export const MAPPA = [
   },
   {
     luogo: "libro",
+    nome: "Carattere",
+    cosa: "Il carattere del testo: quello del libro, oppure Literata (fatto per lo schermo), EB Garamond, Atkinson Hyperlegible (le lettere che si confondono ridisegnate apposta), un serif classico o uno moderno.",
+    dove: "Il tasto «Aa» → «Carattere».",
+    chiave: "font",
+  },
+  {
+    luogo: "libro",
     nome: "Caldo e luminosità",
     cosa: "Due veli sulla pagina, per leggere al buio senza cambiare tema.",
     dove: "Il tasto «Aa».",

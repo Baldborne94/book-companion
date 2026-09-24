@@ -9,12 +9,51 @@ export const READER_THEMES = {
   oled: { label: "Nero", bg: "#000000", fg: "#c9c2b2", link: "#a98fdd", cover: "#1b1b1b" },
 };
 
+// `google` e' la famiglia da chiedere a Google Fonts, coi soli pesi che il
+// testo usa (normale, grassetto, corsivo): ogni peso in piu' e' un file in
+// piu' da scaricare e da tenere nella cache per leggere senza rete. Chi non
+// ha `google` usa i caratteri del sistema e non scarica niente.
+//
+// LITERATA e ATKINSON HYPERLEGIBLE sono disegnati per lo schermo, non per la
+// carta: Literata e' il carattere di Google Play Libri, con occhio grande e
+// grazie robuste che reggono a densita' 1; Atkinson e' fatto per chi legge a
+// fatica, con le lettere che si confondono (I l 1, O 0, b d) ridisegnate
+// apposta. EB Garamond resta: su carta e' il piu' bello dei quattro, ma sul
+// tablet del lettore — un pixel CSS e' un pixel vero — le sue aste sottili
+// si impastano, ed e' per questo che servivano gli altri due.
 export const READER_FONTS = [
   { id: "original", label: "Originale del libro", css: null },
-  { id: "garamond", label: "EB Garamond", css: '"EB Garamond", Georgia, "Noto Serif", serif' },
+  {
+    id: "literata",
+    label: "Literata",
+    css: 'Literata, Georgia, "Noto Serif", serif',
+    google: "Literata:ital,wght@0,400;0,600;1,400",
+  },
+  {
+    id: "garamond",
+    label: "EB Garamond",
+    css: '"EB Garamond", Georgia, "Noto Serif", serif',
+    google: "EB+Garamond:ital,wght@0,400;0,500;0,600;1,400",
+  },
+  {
+    id: "atkinson",
+    label: "Atkinson Hyperlegible",
+    css: '"Atkinson Hyperlegible", system-ui, Roboto, sans-serif',
+    google: "Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400",
+  },
   { id: "serif", label: "Serif classico", css: 'Georgia, "Noto Serif", "Times New Roman", serif' },
   { id: "sans", label: "Moderno", css: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' },
 ];
+
+// Il foglio da iniettare nel capitolo per il carattere scelto, o `null` se
+// il carattere non si scarica. Il capitolo vive in un iframe e non vede i
+// font della pagina: il suo @font-face gli va dato dentro. Un id che non
+// esiste piu' vale «niente da scaricare», non un import rotto.
+export function importDelFont(id) {
+  const f = READER_FONTS.find((x) => x.id === id);
+  if (!f?.google) return null;
+  return `@import url('https://fonts.googleapis.com/css2?family=${f.google}&display=swap');`;
+}
 
 export const HL_COLORS = [
   { id: "gold", label: "Oro", value: "#d9a94e" },

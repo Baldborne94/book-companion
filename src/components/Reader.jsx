@@ -14,7 +14,7 @@ import { schedaChiE, nuoveMenzioni } from "../lib/chiSono.js";
 import { schedaRiassunto } from "../lib/trama.js";
 import { sembraUnNome } from "../lib/nomi.js";
 import {
-  READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings,
+  READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings, importDelFont,
 } from "../lib/readerSettings.js";
 import { contentStyles, spegniVuoti, curaParagrafi, MODI_PARAGRAFI, spegniScenografia } from "../lib/readerTheme.js";
 import { ritaglioAvanzo, flattenToc, cfiLeggibile, ultimoSegnalibro } from "../lib/readerLayout.js";
@@ -79,8 +79,6 @@ const PHRASE_WORDS = 300;
 // tre locations da 600 caratteri fanno all'incirca una facciata stampata
 const POSIZIONI_PER_PAGINA = 3;
 const isTouch = () => navigator.maxTouchPoints > 0;
-const GOOGLE_FONT_CSS =
-  "@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap');";
 
 
 // Il riquadro segue la scritta che ci sta dentro: con `F.titoletto` a due
@@ -590,8 +588,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             catch { /* documento che non vuole il namespace: basta `lang` */ }
           }
         }
-        if (live.current.settings.font === "garamond") {
-          try { view.contents.addStylesheetCss(GOOGLE_FONT_CSS, "bc-font"); } catch { /* offline: fallback serif */ }
+        const foglioFont = importDelFont(live.current.settings.font);
+        if (foglioFont) {
+          try { view.contents.addStylesheetCss(foglioFont, "bc-font"); } catch { /* offline: fallback serif */ }
         }
         // Su touch il cambio pagina nasce da qui, non da bottoni sovrapposti:
         // quelli intercettavano il tocco prolungato e rendevano impossibile

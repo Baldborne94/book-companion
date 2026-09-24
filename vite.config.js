@@ -71,7 +71,11 @@ export default defineConfig({
             handler: "CacheFirst",
             options: {
               cacheName: "google-fonts-files",
-              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              // quattro famiglie coi loro pesi e i sottoinsiemi di carattere
+              // (latino, latino esteso) sono una trentina di file: con 20 la
+              // cache buttava via un peso del carattere scelto, e senza rete il
+              // corsivo tornava Georgia a meta' pagina
+              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 365 },
               cacheableResponse: { statuses: [0, 200] },
             },
           },
