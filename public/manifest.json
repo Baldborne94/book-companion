@@ -6,8 +6,9 @@
   "lang": "it",
   "start_url": "/",
   "scope": "/",
-  "display": "standalone",
+  "display": "fullscreen",
   "display_override": [
+    "fullscreen",
     "standalone",
     "minimal-ui"
   ],

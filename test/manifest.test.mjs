@@ -17,7 +17,15 @@ export default async function (t) {
   t.eq("`id` c'e' e sta nello scope", manifest.id, "/");
   t.eq("`scope` e' la radice", manifest.scope, "/");
   t.c("`start_url` sta nello scope", String(manifest.start_url).startsWith(manifest.scope));
-  t.c("display standalone", manifest.display === "standalone");
+  // L'APP INSTALLATA SI APRE GIA' A TUTTO SCHERMO (chiesto dal lettore: il
+  // tasto ⛶ del reader fa comparire a ogni ingresso l'avviso di Chrome «per
+  // uscire dalla modalita' a schermo intero…», e dalla pagina non si spegne).
+  // Il modo di visualizzazione del manifest quell'avviso non lo mostra. E
+  // dove «fullscreen» non c'e' si ripiega su «standalone», non sulla scheda
+  // del browser: per questo sta per primo in `display_override`, col
+  // «standalone» subito dietro.
+  t.eq("display a tutto schermo", manifest.display, "fullscreen");
+  t.eq("… e prima fra le scelte, col ripiego subito dietro", (manifest.display_override || []).slice(0, 2).join(","), "fullscreen,standalone");
   t.c("nome, nome corto e descrizione", manifest.name && manifest.short_name && manifest.description);
   // il nome corto e' l'etichetta sotto l'icona: Android lo tronca oltre i
   // dodici caratteri, e Bubblewrap lo rifiuta — «Book Companion» ne ha 14
