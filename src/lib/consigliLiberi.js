@@ -8,8 +8,15 @@
 // fare quasi tutto il lavoro, gratis e senza chiave: le OPERE di un autore
 // con l'anno, la COLLANA scritta sulle edizioni (la stessa lettura del
 // catalogo delle saghe, che dice anche il numero), e ARGOMENTI e VOTI dei
-// suoi lettori. Tre sezioni, come l'Oracolo, e la stessa forma delle voci,
-// cosi' la pagina le mostra con lo stesso componente.
+// suoi lettori. Due sezioni — le tue saghe e «potrebbero piacerti» — con
+// la stessa forma delle voci dell'Oracolo, cosi' la pagina le mostra con lo
+// stesso componente. LA TERZA, «DAGLI AUTORI CHE LEGGI», E' STATA TOLTA
+// (chiesto dal lettore: «dal catalogo mettimi solo consigli su quello che
+// potrebbe piacermi e togli la parte degli autori che leggo»): gli altri
+// libri di un autore che segui li conosci gia', e dal catalogo si vogliono
+// le scoperte. L'Oracolo la sua sezione degli autori la tiene; e i
+// consigli-autore di un giro salvato prima non si mostrano piu'
+// (`SEZIONI_CATALOGO`, letta da `daMostrare`).
 //
 // LE SAGHE NON SI CHIEDONO PER NOME, ed e' misurato: la ricerca
 // `series:"…"` di Open Library conosce 3 volumi su 10 del Malazan e
@@ -32,12 +39,13 @@
 // pagina: sono i libri meglio votati sugli argomenti dei libri che hai
 // amato — i piu' amati del tuo genere, non quelli scelti per te. Filtrati
 // perche' non siano rumore: almeno `MIN_VOTI` voti (con cinque voti un
-// 4,8 non dice niente), autori che non hai gia' in biblioteca (quelli li
-// copre la sezione di sopra), e un libro per autore, il piu' vecchio fra
+// 4,8 non dice niente), autori che non hai gia' in biblioteca (una
+// scoperta e' un nome nuovo), niente volumi delle saghe che segui (quelli
+// li propone la sezione delle saghe, al posto giusto), e un libro per autore, il piu' vecchio fra
 // quelli trovati — di solito il primo di una serie, non il quinto.
 //
 // Il catalogo non riceve mai la biblioteca intera: una domanda per saga,
-// una per autore, una per libro amato — titolo e autore, come per il retro
+// una per libro amato, una per genere — titolo e autore, come per il retro
 // del libro (PRIVACY.md).
 import { getStatus } from "./library.js";
 import { sembraGiaLetto, giaInCasa } from "./importBook.js";
@@ -51,12 +59,13 @@ const KEY = "bc_consigli_catalogo";
 const OL = "https://openlibrary.org/search.json";
 
 export const MAX_SAGHE = 8;
-export const MAX_AUTORI = 8;
 export const PER_SAGA = 3;
-export const PER_AUTORE = 2;
 export const MAX_PROVE = 6;
 export const MAX_AMATI = 6;
 export const MAX_GUSTI = 8;
+// Le sezioni che il catalogo mostra, nell'ordine: le chiavi di `SEZIONI`
+// di `consigli.js` che qui hanno un senso.
+export const SEZIONI_CATALOGO = ["saghe", "gusti"];
 export const MIN_VOTI = 30;
 // Una settimana: il catalogo cambia piano, e ogni giro sono decine di
 // richieste. Prima si rifa' solo col tasto.
@@ -115,7 +124,7 @@ export function stessaSaga(a, b) {
 // ---- chi guardare -----------------------------------------------------------
 
 // QUANTO TI E' PIACIUTO UN LIBRO, in un numero solo: e' la misura su cui
-// si decide da CHI partire (quali saghe, quali autori, quali generi). Il
+// si decide da CHI partire (quali saghe, quali generi). Il
 // voto pesa piu' di tutto, il cuore quanto un voto pieno, un libro letto e
 // basta un po'; un abbandono toglie. Chiesto dal lettore: «cerca in base ai
 // miei autori, libri e saghe preferiti, cosi' sai gia' cosa prediligo».
@@ -171,27 +180,6 @@ export function saghePartite(books = [], { statusOf = getStatus } = {}) {
   return out
     .sort((a, b) => b.gusto - a.gusto || b.peso - a.peso || a.saga.localeCompare(b.saga))
     .slice(0, MAX_SAGHE);
-}
-
-// Gli autori che hai apprezzato: il voto pesa piu' di tutto, il cuore
-// quanto un voto pieno, un libro letto e basta un po'. Un abbandono toglie.
-export function autoriAmati(books = [], { statusOf = getStatus } = {}) {
-  const per = new Map();
-  for (const b of books) {
-    const a = autorePerIlCatalogo(b?.author);
-    if (!a) continue;
-    const st = statusOf(b.id);
-    const k = chiaveAutore(a);
-    const g = per.get(k) || { autore: a, peso: 0, voto: 0, cuore: false };
-    g.peso += pesoLibro(b, st);
-    g.voto = Math.max(g.voto, b.rating || 0);
-    if (b.fav && st !== "abandoned") g.cuore = true;
-    per.set(k, g);
-  }
-  return [...per.values()]
-    .filter((g) => g.peso > 0)
-    .sort((a, b) => b.peso - a.peso || a.autore.localeCompare(b.autore))
-    .slice(0, MAX_AUTORI);
 }
 
 // Quanto un libro amato pesa nella scelta dei GENERI: il cuore il doppio,
@@ -325,44 +313,7 @@ export function inFila(membri = [], ordine = null) {
   return out;
 }
 
-// ---- gli autori ------------------------------------------------------------------
-
-// Dalle opere dell'autore, le piu' conosciute che non hai, e fra quelle la
-// piu' vecchia per prima: di un ciclo che non hai cominciato, meglio il
-// primo che il terzo. Torna i CANDIDATI in ordine, non la scelta: chi e'
-// il seguito di qualcosa lo dice il catalogo (`primiDiSerie`).
-export function daAutore(autore, docs = [], books = [], escludi = new Set()) {
-  const casa = puliti(books);
-  const noti = docs
-    .filter((d) => d?.title && !eRaccolta(d.title))
-    .filter((d) => {
-      const n = Number(pezziDalTitolo(d.title)?.sagaOrder);
-      return !(Number.isFinite(n) && n > 1);
-    })
-    .map((d) => ({ ...d, pulito: titoloDi(d) }))
-    .filter((d) => !escludi.has(idTitolo(d.pulito, "")) && !tuo(d.pulito, autore.autore, casa))
-    .sort((a, b) => (b.edition_count || 0) - (a.edition_count || 0))
-    .slice(0, 8)
-    .sort((a, b) => (a.first_publish_year || 9999) - (b.first_publish_year || 9999));
-  const viste = new Set();
-  const out = [];
-  for (const d of noti) {
-    const k = idTitolo(d.pulito, "");
-    if (viste.has(k)) continue;
-    viste.add(k);
-    out.push({
-      id: idTitolo(d.pulito, autore.autore),
-      titolo: d.pulito,
-      autore: autore.autore,
-      saga: "",
-      numero: null,
-      perche: autore.cuore
-        ? `di ${autore.autore}, fra i tuoi preferiti`
-        : autore.voto >= 4 ? `di ${autore.autore}, che hai votato ${String(autore.voto).replace(".", ",")}/5` : `di ${autore.autore}, che hai letto`,
-    });
-  }
-  return out;
-}
+// ---- i seguiti ------------------------------------------------------------------
 
 // UN SEGUITO NON E' UNA SCOPERTA. «House of Chains» e' il quarto Malazan e
 // «The Blood of Olympus» il quinto di un ciclo: proposti da soli dicono
@@ -374,14 +325,7 @@ export function daAutore(autore, docs = [], books = [], escludi = new Set()) {
 // volume di una saga che stai gia' seguendo: quello e' mestiere della
 // sezione delle saghe, che lo propone nel posto giusto. Ogni domanda sono
 // due giri di rete, quindi ci si ferma a `max` tenuti o `prove` fatte.
-//
-// E CHI UNA SAGA LA STA GIA' SEGUENDO NON SI FIDA DEL SILENZIO: fra le
-// opere di Erikson «Reaper's Gale» e «The Bonehunters» (Malazan 7 e 6)
-// passavano perche' le loro edizioni non dicevano niente — misurato dal
-// vivo. Per un autore di cui segui una saga (`muti: false`) un'opera
-// muta resta fuori; per gli altri passa, o per un catalogo incompleto
-// non si consiglierebbe piu' niente.
-export async function primiDiSerie(voci = [], { sagaDi = cercaSaga, saghe = [], max = PER_AUTORE, prove = 4, muti = true } = {}) {
+export async function primiDiSerie(voci = [], { sagaDi = cercaSaga, saghe = [], max = MAX_GUSTI, prove = 4 } = {}) {
   const out = [];
   let fatte = 0;
   for (const v of voci) {
@@ -399,7 +343,7 @@ export async function primiDiSerie(voci = [], { sagaDi = cercaSaga, saghe = [], 
       if (saghe.some((s) => chiaveSaga(s) === chiaveSaga(trovata.saga))) continue;
       const n = Number(trovata.sagaOrder);
       if (Number.isFinite(n) && n > 1) continue;
-    } else if (!muti) continue;
+    }
     out.push(v);
   }
   return out;
@@ -585,7 +529,7 @@ export async function consigliDalCatalogo(books = [], { fetcher, sagaDi, statusO
   };
 
   const saghe = saghePartite(books, { statusOf });
-  const consigli = { saghe: [], autori: [], gusti: [] };
+  const consigli = { saghe: [], gusti: [] };
   let tick = avanti("saghe", saghe.length);
   const perSaga = await aGruppi(saghe, async (s) => {
     const docs = await opereDi(s.autore);
@@ -600,23 +544,7 @@ export async function consigliDalCatalogo(books = [], { fetcher, sagaDi, statusO
     tick();
     return r;
   });
-  const nelleSaghe = new Set();
-  for (const r of perSaga) {
-    for (const d of r?.membri || []) nelleSaghe.add(idTitolo(titoloDi(d), ""));
-    consigli.saghe.push(...(r?.voci || []));
-  }
-
-  const autori = autoriAmati(books, { statusOf });
-  tick = avanti("autori", autori.length);
-  const perAutore = await aGruppi(autori, async (au) => {
-    const docs = await opereDi(au.autore);
-    const candidati = daAutore(au, docs, books, nelleSaghe);
-    const segue = saghe.some((s) => chiaveAutore(s.autore) === chiaveAutore(au.autore));
-    const r = await primiDiSerie(candidati, { sagaDi: cerca, saghe: saghe.map((s) => s.saga), muti: !segue, prove: segue ? 6 : 4 });
-    tick();
-    return r;
-  });
-  consigli.autori = perAutore.flat();
+  for (const r of perSaga) consigli.saghe.push(...(r?.voci || []));
 
   const amati = libriAmati(books, { statusOf });
   tick = avanti("gusti", amati.length);
@@ -643,7 +571,12 @@ export async function consigliDalCatalogo(books = [], { fetcher, sagaDi, statusO
     })
   ).filter(Boolean);
   onFase?.("scoperte");
-  consigli.gusti = await primiDiSerie(daGusti(risultati, books), { sagaDi: cerca, max: MAX_GUSTI, prove: MAX_GUSTI * 2 });
+  consigli.gusti = await primiDiSerie(daGusti(risultati, books), {
+    sagaDi: cerca,
+    saghe: saghe.map((s) => s.saga),
+    max: MAX_GUSTI,
+    prove: MAX_GUSTI * 2,
+  });
 
   if (!riuscite && mancate) return { error: "rete" };
   return { consigli, quando: Date.now(), mancate };

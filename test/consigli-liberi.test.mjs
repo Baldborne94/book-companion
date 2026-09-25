@@ -7,14 +7,12 @@ import {
   titoloDi,
   stessaSaga,
   saghePartite,
-  autoriAmati,
   libriAmati,
   soloDellAutore,
   opereInOrdine,
   annoDiPartenza,
   prossimiDellaSaga,
   inFila,
-  daAutore,
   primiDiSerie,
   argomentiComuni,
   daGusti,
@@ -28,6 +26,7 @@ import {
   MAX_PROVE,
   MIN_VOTI,
   SCADENZA,
+  SEZIONI_CATALOGO,
 } from "../src/lib/consigliLiberi.js";
 import { giaInCasa } from "../src/lib/importBook.js";
 
@@ -66,10 +65,6 @@ export default async function (t) {
   t.eq("una saga mai cominciata non si guarda", saghe.map((s) => s.saga).join(","), "First Law,Malazan");
   t.eq("… la prima e' quella con piu' volumi letti", saghe[0].peso, 2);
   t.eq("… l'ordine e' il piu' avanti fra i letti o in lettura", saghe[0].ordine, 2);
-  let amati = autoriAmati(casa, { statusOf: st });
-  t.c("l'abbandono toglie peso: il cinque di un libro lasciato non basta", !amati.some((a) => a.autore === "Tizio"));
-  t.c("… e le due grafie dello stesso autore sono una", amati.filter((a) => /Abercrombie/.test(a.autore)).length === 1);
-  t.eq("il voto si ricorda per dirlo", amati.find((a) => a.autore === "Steven Erikson").voto, 5);
   t.eq(
     "i libri amati: cuore e voti alti, mai gli abbandonati",
     libriAmati(casa, { statusOf: st }).map((b) => b.id).join(","),
@@ -113,6 +108,7 @@ export default async function (t) {
     "Deadhouse Gates": { saga: "The Malazan Book of the Fallen", sagaOrder: 2 },
     "Memories of Ice": { saga: "Malazan Book of the Fallen", sagaOrder: 3 },
     "Forge of Darkness": { saga: "Kharkanas", sagaOrder: 1 },
+    "Night of Knives": { saga: "Malazan", sagaOrder: 1 },
   };
   const chieste = [];
   const sagaDi = async ({ title }) => {
@@ -177,25 +173,7 @@ export default async function (t) {
   );
   t.eq("… e li' passano in ordine d'uscita", inFila([{ numero: null }, { numero: null }], 1).length, 2);
 
-  // ---- gli autori -----------------------------------------------------------------
-  const abercrombie = { autore: "Joe Abercrombie", voto: 4.5 };
-  const suoiLibri = [
-    doc("The Blade Itself", 2006, { edition_count: 30 }),
-    doc("Half a King", 2014, { edition_count: 14 }),
-    doc("Half the World (Shattered Sea Book 2)", 2015, { edition_count: 12 }),
-    doc("Best Served Cold", 2009, { edition_count: 16 }),
-    doc("Last Argument of Kings", 2008, { edition_count: 19 }),
-    doc("Sharp Ends", 2016, { edition_count: 7 }),
-  ];
-  let cand = daAutore(abercrombie, suoiLibri, casa, new Set(["t:last argument of kings|"]));
-  t.eq(
-    "dall'autore: senza quel che hai, senza la saga proposta sopra, senza i «Book 2», dal piu' vecchio",
-    cand.map((v) => v.titolo).join(","),
-    "Best Served Cold,Half a King,Sharp Ends"
-  );
-  t.eq("… col perche' in italiano", cand[0].perche, "di Joe Abercrombie, che hai votato 4,5/5");
-  t.eq("… o «che hai letto» se il voto non e' alto", daAutore({ autore: "X", voto: 0 }, [doc("Y", 2000)], [])[0].perche, "di X, che hai letto");
-
+  // ---- i seguiti -----------------------------------------------------------------
   const serie = {
     "Best Served Cold": { saga: "World of the First Law", sagaOrder: 1 },
     "The Heroes": { saga: "World of the First Law", sagaOrder: 2 },
@@ -219,8 +197,6 @@ export default async function (t) {
   );
   tenuti = await primiDiSerie([v("Best Served Cold")], { sagaDi: sagaDiSerie, saghe: ["First Law"], max: 5 });
   t.eq("«World of the First Law» non e' la tua «First Law»: si confronta a lettere uguali", tenuti.length, 1);
-  tenuti = await primiDiSerie([v("Muto"), v("Best Served Cold")], { sagaDi: sagaDiSerie, max: 5, muti: false });
-  t.eq("per chi segui gia' una saga il muto resta fuori (Reaper's Gale, dal vivo)", tenuti.map((x) => x.titolo).join(","), "Best Served Cold");
   tenuti = await primiDiSerie([v("Esplode")], { sagaDi: sagaDiSerie, max: 5 });
   t.eq("una domanda che esplode non si porta via il libro", tenuti.length, 1);
   tenuti = await primiDiSerie([v("a"), v("b"), v("c")], { sagaDi: sagaDiSerie, max: 2 });
@@ -304,17 +280,6 @@ export default async function (t) {
   molte.push(libro("amata", "Amata", "Autore Z", { saga: "Saga Z", sagaOrder: 1, fav: true }));
   const tagliate = saghePartite(molte, { statusOf: () => "read" });
   t.c("al taglio delle saghe resta quella del tuo preferito", tagliate.length === 8 && tagliate[0].saga === "Saga Z");
-  const cuori = autoriAmati([libro("h", "Uno", "Chi Ama", { fav: true })], { statusOf: () => "read" });
-  t.c("un autore col cuore lo sa", cuori[0].cuore === true);
-  t.c(
-    "… ma non per un libro lasciato",
-    !autoriAmati([libro("h", "Uno", "Chi Ama", { fav: true, rating: 5 })], { statusOf: () => "abandoned" })[0]?.cuore
-  );
-  t.eq(
-    "il perche' dell'autore dice che e' un preferito",
-    daAutore({ autore: "Chi Ama", voto: 5, cuore: true }, [doc("Altro", 2001)], [])[0].perche,
-    "di Chi Ama, fra i tuoi preferiti"
-  );
   t.eq("il peso dei generi: il cuore il doppio", pesoGusto({ fav: true, rating: 5 }), 3);
   t.eq("… un quattro vale uno", pesoGusto({ rating: 4 }), 1);
   const pesati = argomentiPesati([
@@ -363,10 +328,18 @@ export default async function (t) {
   t.c("… ne' a meta' parola", !giaInCasa({ title: "Engine", author: "Philip Reeve" }, scaffale));
   t.c("… ne' un titolo troppo corto", !giaInCasa({ title: "Eng", author: "Philip Reeve" }, [libro("q", "Mortal Eng Stuff", "Philip Reeve")]));
   t.c("… e il titolo uguale resta tuo come prima", giaInCasa({ title: "Mortal Engines", author: "" }, scaffale));
-  const daErikson = daAutore({ autore: "Steven Erikson", voto: 5 }, [doc("Gardens of the Moon", 1999), doc("Forge of Darkness", 2012)], scaffale);
-  t.eq("l'autore non ripropone il libro che hai con l'etichetta", daErikson.map((v) => v.titolo).join(","), "Forge of Darkness");
-  const daJoe = daAutore({ autore: "Joe Abercrombie", voto: 5 }, [doc("Before They Are Hanged", 2007), doc("Half a King", 2014)], scaffale);
-  t.eq("… ne' quello che sta dentro un tuo omnibus", daJoe.map((v) => v.titolo).join(","), "Half a King");
+  // la saga non ripropone il volume che hai dentro un omnibus
+  const omni = [
+    libro("o1", "Gardens of the Moon", "Steven Erikson", { saga: "Malazan", sagaOrder: 1 }),
+    libro("o2", "Malazan Omnibus: Deadhouse Gates, Memories of Ice", "Steven Erikson"),
+  ];
+  const rOmni = await prossimiDellaSaga(
+    { saga: "Malazan", autore: "Steven Erikson", letti: [omni[0]], ordine: 1 },
+    opereInOrdine([doc("Gardens of the Moon", 1999), doc("Deadhouse Gates", 2000), doc("Memories of Ice", 2001)]),
+    omni,
+    { sagaDi }
+  );
+  t.eq("la saga non ripropone i volumi che hai dentro un omnibus", rOmni.voci.length, 0);
 
   // ---- il giro ---------------------------------------------------------------------
   t.eq("a gruppi, nell'ordine degli ingressi", (await aGruppi([30, 10, 20], async (x) => {
@@ -388,12 +361,20 @@ export default async function (t) {
     fetcher: finto([
       [(q) => q.get("author") === "Steven Erikson" && q.get("sort") === "editions", [doc("Gardens of the Moon", 1999), doc("Deadhouse Gates", 2000), doc("Memories of Ice", 2001)]],
       [(q) => q.get("title") === "Gardens of the Moon", [{ key: "/w/1", title: "Gardens of the Moon", author_name: ["Steven Erikson"], subject: ["Fantasy", "epic"] }]],
-      [(q) => /subject:"Fantasy"/.test(q.get("q") || ""), [d("A Game of Thrones", "George R. R. Martin")]],
+      [
+        (q) => /subject:"Fantasy"/.test(q.get("q") || ""),
+        [d("Night of Knives", "Ian C. Esslemont", { ratings_average: 4.6 }), d("A Game of Thrones", "George R. R. Martin")],
+      ],
     ]),
   });
   t.eq("il giro intero: le saghe", g.consigli?.saghe.map((x) => x.titolo).join(","), "Deadhouse Gates,Memories of Ice");
-  t.eq("… gli autori non ripetono la saga", g.consigli.autori.length, 0);
-  t.eq("… i gusti", g.consigli.gusti.map((x) => x.titolo).join(","), "A Game of Thrones");
+  t.eq("… e la sezione degli autori non c'e' piu' (chiesto dal lettore)", g.consigli.autori, undefined);
+  t.eq(
+    "… i gusti, senza il volume di una saga che segui scritto da un'altra mano (sta nella sezione delle saghe)",
+    g.consigli.gusti.map((x) => x.titolo).join(","),
+    "A Game of Thrones"
+  );
+  t.eq("il catalogo mostra solo saghe e gusti", SEZIONI_CATALOGO.join(","), "saghe,gusti");
   t.eq(
     "… e le opere dell'autore si chiedono una volta sola",
     urls.filter((u) => /sort=editions/.test(u)).length,

@@ -15,7 +15,7 @@ import {
   vive,
 } from "../lib/daPrendere.js";
 import { chiediConsigli, daMostrare, leggiConsigliSalvati, scriviConsigli } from "../lib/consigli.js";
-import { consigliDalCatalogo, leggiConsigliLiberi, scriviConsigliLiberi, scaduti } from "../lib/consigliLiberi.js";
+import { consigliDalCatalogo, leggiConsigliLiberi, scriviConsigliLiberi, scaduti, SEZIONI_CATALOGO } from "../lib/consigliLiberi.js";
 import { chiedi, hasOracle } from "../lib/oracle.js";
 import { costo, soldi, riassunto, leggiTetto } from "../lib/spesa.js";
 import { CampoChiave, TettoFinito } from "./TettoOracolo.jsx";
@@ -115,7 +115,6 @@ const quandoFu = (t) =>
 
 const FASI_CATALOGO = {
   saghe: "Cerco i volumi dopo i tuoi",
-  autori: "Guardo gli altri libri dei tuoi autori",
   gusti: "Leggo gli argomenti dei libri che hai amato",
   scoperte: "Scelgo le scoperte",
 };
@@ -127,7 +126,7 @@ const FASI_CATALOGO = {
 function Catalogo({ books, giro, setGiro, gia, onTieni, onScarta }) {
   const [fase, setFase] = useState(null);
   const vivo = useRef(true);
-  const sezioni = useMemo(() => daMostrare(giro?.consigli, books, gia), [giro, books, gia]);
+  const sezioni = useMemo(() => daMostrare(giro?.consigli, books, gia, SEZIONI_CATALOGO), [giro, books, gia]);
 
   async function cerca() {
     setFase({ passo: "saghe" });
@@ -157,9 +156,9 @@ function Catalogo({ books, giro, setGiro, gia, onTieni, onScarta }) {
     <section style={{ marginBottom: 26 }}>
       <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.titoletto, color: C.accent, marginBottom: 4 }}>Dal catalogo</h3>
       <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 12, lineHeight: 1.45 }}>
-        Gratis e senza chiave, da Open Library: il volume dopo l'ultimo che hai letto di ogni saga, altri libri dei tuoi
-        autori, e i più votati sui generi dei libri che hai amato. Si parte dai tuoi preferiti — il cuore e i voti alti
-        pesano più di tutto — ma gli ultimi restano i preferiti di tutti su quei generi: per consigli su misura c'è
+        Gratis e senza chiave, da Open Library: il volume dopo l'ultimo che hai letto di ogni saga, e i più votati sui
+        generi dei libri che hai amato, di autori che non hai ancora. Si parte dai tuoi preferiti — il cuore e i voti
+        alti pesano più di tutto — ma i secondi restano i preferiti di tutti su quei generi: per consigli su misura c'è
         l'Oracolo, qui sotto.
       </p>
       {lavora && (
@@ -329,7 +328,7 @@ export default function DaPrendere({ books, onClose }) {
   const giaCat = useMemo(() => [...lista, ...gruppiVoci], [lista, gruppiVoci]);
   // l'Oracolo non ripete quel che il catalogo ha gia' proposto
   const giaOracolo = useMemo(
-    () => [...gruppiVoci, ...daMostrare(giroCat?.consigli, books, giaCat).flatMap((g) => g.voci)],
+    () => [...gruppiVoci, ...daMostrare(giroCat?.consigli, books, giaCat, SEZIONI_CATALOGO).flatMap((g) => g.voci)],
     [gruppiVoci, giroCat, books, giaCat]
   );
   // gli arrivati in fondo: sono quelli da togliere, non da cercare
