@@ -128,6 +128,26 @@ export function sembraGiaLetto({ title, author } = {}, libri = []) {
   );
 }
 
+// IL TITOLO DENTRO UN TITOLO PIU' LUNGO, DELLO STESSO AUTORE, E' UN LIBRO
+// CHE HAI (`giaInCasa`; segnalato dal lettore con «Gardens of the Moon»
+// proposto fra i consigli mentre stava sul suo scaffale). Il confronto dei
+// doppioni vuole i titoli UGUALI, ed e' giusto all'import, dove un falso
+// positivo salterebbe un file; ma sullo scaffale i titoli portano
+// l'etichettatura di chi ha impacchettato il file («Malazan 01 - Gardens
+// of the Moon», un omnibus coi tre titoli dentro) e un consiglio va
+// scartato anche li'. Per non mangiarsi i libri veri: l'autore dev'essere
+// CONOSCIUTO e uguale da tutt'e due i lati (non basta che uno manchi, come
+// nei doppioni), il titolo cercato almeno `TITOLO_MIN` lettere, e a parole
+// intere — «Mort» non sta dentro «Mortal Engines».
+const TITOLO_MIN = 5;
+export function giaInCasa({ title, author } = {}, libri = []) {
+  if (sembraGiaLetto({ title, author }, libri)) return true;
+  const t = chiave(title);
+  const a = chiaveAutore(author);
+  if (t.length < TITOLO_MIN || !a) return false;
+  return libri.some((b) => chiaveAutore(b?.author) === a && ` ${chiave(b?.title)} `.includes(` ${t} `));
+}
+
 // UN DOPPIONE SENZA BYTE NON E' UN DOPPIONE: E' IL FILE CHE TORNA A CASA.
 //
 // Segnalato dal lettore davanti a trentasette tomi che non hanno copia né

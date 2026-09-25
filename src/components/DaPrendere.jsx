@@ -158,8 +158,9 @@ function Catalogo({ books, giro, setGiro, gia, onTieni, onScarta }) {
       <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.titoletto, color: C.accent, marginBottom: 4 }}>Dal catalogo</h3>
       <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 12, lineHeight: 1.45 }}>
         Gratis e senza chiave, da Open Library: il volume dopo l'ultimo che hai letto di ogni saga, altri libri dei tuoi
-        autori, e i più votati sui generi dei libri che hai amato — questi ultimi sono i preferiti di tutti, non scelti su
-        di te: per consigli su misura c'è l'Oracolo, qui sotto.
+        autori, e i più votati sui generi dei libri che hai amato. Si parte dai tuoi preferiti — il cuore e i voti alti
+        pesano più di tutto — ma gli ultimi restano i preferiti di tutti su quei generi: per consigli su misura c'è
+        l'Oracolo, qui sotto.
       </p>
       {lavora && (
         <p style={{ ...riga(), marginBottom: 12 }}>

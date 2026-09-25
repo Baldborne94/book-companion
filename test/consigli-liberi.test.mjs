@@ -18,6 +18,9 @@ import {
   primiDiSerie,
   argomentiComuni,
   daGusti,
+  argomentiPesati,
+  pesoLibro,
+  pesoGusto,
   consigliDalCatalogo,
   aGruppi,
   scaduti,
@@ -26,6 +29,7 @@ import {
   MIN_VOTI,
   SCADENZA,
 } from "../src/lib/consigliLiberi.js";
+import { giaInCasa } from "../src/lib/importBook.js";
 
 const libro = (id, title, author, extra = {}) => ({ id, title, author, ...extra });
 const stati = (m) => (id) => m[id] || "unread";
@@ -118,6 +122,8 @@ export default async function (t) {
   let r = await prossimiDellaSaga(malazan, opere, casa, { sagaDi });
   t.eq("il seguito della saga, in fila", r.voci.map((v) => `${v.titolo} ${v.numero}`).join(","), "Deadhouse Gates 2,Memories of Ice 3");
   t.eq("… col perche'", r.voci[0].perche, "dopo «Gardens of the Moon», che hai letto");
+  const rAmata = await prossimiDellaSaga({ ...malazan, preferita: true }, opere, casa, { sagaDi });
+  t.eq("… che dice quando la saga e' fra le preferite", rAmata.voci[0].perche, "dopo «Gardens of the Moon», che hai letto · fra le tue saghe preferite");
   t.eq("… e il nome della TUA saga, non quello del catalogo", r.voci[0].saga, "Malazan");
   t.c("… e il volume che hai non si chiede nemmeno", !chieste.includes("Gardens of the Moon"));
   t.c("un'altra saga dello stesso autore non entra", !r.voci.some((v) => v.titolo === "Forge of Darkness"));
@@ -276,6 +282,92 @@ export default async function (t) {
     1
   );
 
+  // ---- i preferiti comandano ------------------------------------------------------
+  t.eq("il cuore vale un voto pieno", pesoLibro({ fav: true }, "unread"), 2.5);
+  t.eq("… e si somma al voto", pesoLibro({ fav: true, rating: 5 }, "read"), 5);
+  t.eq("un letto senza voto vale uno", pesoLibro({}, "read"), 1);
+  t.eq("un abbandono toglie", pesoLibro({ rating: 3 }, "abandoned"), -2.5);
+  const lunga = [
+    libro("w1", "The Eye of the World", "Robert Jordan", { saga: "Wheel of Time", sagaOrder: 1 }),
+    libro("w2", "The Great Hunt", "Robert Jordan", { saga: "Wheel of Time", sagaOrder: 2 }),
+    libro("w3", "The Dragon Reborn", "Robert Jordan", { saga: "Wheel of Time", sagaOrder: 3 }),
+    libro("m1", "Gardens of the Moon", "Steven Erikson", { saga: "Malazan", sagaOrder: 1, fav: true, rating: 5 }),
+  ];
+  const stLunga = stati({ w1: "read", w2: "read", w3: "read", m1: "read" });
+  const ordinate = saghePartite(lunga, { statusOf: stLunga });
+  t.eq("la saga amata viene prima di quella lunga che trascini", ordinate.map((s) => s.saga).join(","), "Malazan,Wheel of Time");
+  t.c("… e sa di avere un preferito", ordinate[0].preferita && !ordinate[1].preferita);
+  t.eq("… il peso resta il conto dei volumi letti", ordinate[1].peso, 3);
+  const molte = Array.from({ length: 9 }, (_, i) =>
+    libro(`s${i}`, `Volume ${i}`, `Autore ${i}`, { saga: `Saga ${i}`, sagaOrder: 1 })
+  );
+  molte.push(libro("amata", "Amata", "Autore Z", { saga: "Saga Z", sagaOrder: 1, fav: true }));
+  const tagliate = saghePartite(molte, { statusOf: () => "read" });
+  t.c("al taglio delle saghe resta quella del tuo preferito", tagliate.length === 8 && tagliate[0].saga === "Saga Z");
+  const cuori = autoriAmati([libro("h", "Uno", "Chi Ama", { fav: true })], { statusOf: () => "read" });
+  t.c("un autore col cuore lo sa", cuori[0].cuore === true);
+  t.c(
+    "… ma non per un libro lasciato",
+    !autoriAmati([libro("h", "Uno", "Chi Ama", { fav: true, rating: 5 })], { statusOf: () => "abandoned" })[0]?.cuore
+  );
+  t.eq(
+    "il perche' dell'autore dice che e' un preferito",
+    daAutore({ autore: "Chi Ama", voto: 5, cuore: true }, [doc("Altro", 2001)], [])[0].perche,
+    "di Chi Ama, fra i tuoi preferiti"
+  );
+  t.eq("il peso dei generi: il cuore il doppio", pesoGusto({ fav: true, rating: 5 }), 3);
+  t.eq("… un quattro vale uno", pesoGusto({ rating: 4 }), 1);
+  const pesati = argomentiPesati([
+    { argomenti: ["Fantasy"], peso: 1, titolo: "Tre" },
+    { argomenti: ["Grimdark", "Fantasy"], peso: 3, titolo: "Gardens of the Moon" },
+    { argomenti: ["Romance"], peso: 1, titolo: "Uno" },
+    { argomenti: ["Romance"], peso: 1, titolo: "Due" },
+  ]);
+  t.eq("un genere del preferito batte uno di due libri da quattro", pesati.map((a) => a.nome).join(","), "Fantasy,Grimdark,Romance");
+  t.eq("… e si ricorda il libro amato per primo", pesati[0].fonti.join(","), "Gardens of the Moon,Tre");
+  t.eq("un elenco nudo vale uno, come prima", argomentiPesati([["Fantasy"], ["Fantasy"]])[0].peso, 2);
+  // tre generi, ognuno dei due libri ne tocca due: Scuro quello del
+  // preferito, Tenero no. L'autore di Scuro viene dopo in alfabetico, cosi'
+  // senza i pesi vincerebbe Tenero.
+  const pesiGusti = daGusti(
+    [
+      { argomento: "Grimdark", peso: 3, fonti: ["Gardens of the Moon"], docs: [d("Scuro", "Zeta", { subject: ["Grimdark", "Romance"] })] },
+      { argomento: "Romance", peso: 1, fonti: ["Uno"], docs: [d("Tenero", "Alfa", { subject: ["Romance", "Cozy"] })] },
+      { argomento: "Cozy", peso: 1, fonti: ["Due"], docs: [] },
+    ],
+    []
+  );
+  t.eq("a pari voto sale chi tocca il genere del preferito", pesiGusti[0].titolo, "Scuro");
+  const soli = daGusti(
+    [
+      { argomento: "Grimdark", peso: 3, fonti: ["Gardens of the Moon"], docs: [d("Scuro", "Autore A", { subject: ["Grimdark"] })] },
+      { argomento: "Romance", peso: 1, fonti: ["Uno"], docs: [d("Tenero", "Autore B", { subject: ["Romance"], ratings_average: 4.3 })] },
+    ],
+    []
+  );
+  t.eq("… ma due argomenti restano due: con uno solo non passa nessuno", soli.length, 0);
+  t.c("il perche' nomina il libro amato", pesiGusti[0].perche.endsWith("· come «Gardens of the Moon»"));
+
+  // ---- quel che hai non torna, scritto in qualunque modo ------------------------
+  const scaffale = [
+    libro("g", "Malazan Book of the Fallen 01 - Gardens of the Moon", "Erikson, Steven"),
+    libro("o", "The First Law Trilogy: The Blade Itself, Before They Are Hanged", "Joe Abercrombie"),
+    libro("p", "Mortal Engines", "Philip Reeve"),
+    libro("z", "Saga X 02 - Nameless Book", ""),
+  ];
+  t.c("il titolo dentro l'etichetta dello scaffale e' tuo (segnalato)", giaInCasa({ title: "Gardens of the Moon", author: "Steven Erikson" }, scaffale));
+  t.c("… anche dentro un omnibus", giaInCasa({ title: "Before They Are Hanged", author: "Abercrombie, Joe" }, scaffale));
+  t.c("… ma non di un altro autore", !giaInCasa({ title: "Gardens of the Moon", author: "Qualcuno" }, scaffale));
+  t.c("… ne' senza autore", !giaInCasa({ title: "Gardens of the Moon", author: "" }, scaffale));
+  t.c("… nemmeno quando manca da tutt'e due i lati", !giaInCasa({ title: "Nameless Book", author: "" }, scaffale));
+  t.c("… ne' a meta' parola", !giaInCasa({ title: "Engine", author: "Philip Reeve" }, scaffale));
+  t.c("… ne' un titolo troppo corto", !giaInCasa({ title: "Eng", author: "Philip Reeve" }, [libro("q", "Mortal Eng Stuff", "Philip Reeve")]));
+  t.c("… e il titolo uguale resta tuo come prima", giaInCasa({ title: "Mortal Engines", author: "" }, scaffale));
+  const daErikson = daAutore({ autore: "Steven Erikson", voto: 5 }, [doc("Gardens of the Moon", 1999), doc("Forge of Darkness", 2012)], scaffale);
+  t.eq("l'autore non ripropone il libro che hai con l'etichetta", daErikson.map((v) => v.titolo).join(","), "Forge of Darkness");
+  const daJoe = daAutore({ autore: "Joe Abercrombie", voto: 5 }, [doc("Before They Are Hanged", 2007), doc("Half a King", 2014)], scaffale);
+  t.eq("… ne' quello che sta dentro un tuo omnibus", daJoe.map((v) => v.titolo).join(","), "Half a King");
+
   // ---- il giro ---------------------------------------------------------------------
   t.eq("a gruppi, nell'ordine degli ingressi", (await aGruppi([30, 10, 20], async (x) => {
     await new Promise((ok) => setTimeout(ok, x));
@@ -327,6 +419,32 @@ export default async function (t) {
   t.eq("una domanda caduta non si porta via le altre", mezza.consigli?.saghe.map((x) => x.titolo).join(","), "Deadhouse Gates");
   t.eq("… e si conta", mezza.mancate, 1);
   t.eq("biblioteca vuota: nessuna domanda, nessun errore", (await consigliDalCatalogo([], { fetcher: async () => { throw new Error("x"); } })).error, undefined);
+
+  // I GENERI DEI PREFERITI ENTRANO NEL TAGLIO: senza i pesi i due generi
+  // dei quattro stelle («Yak», «Zeta», due libri ciascuno) e «Wolf» si
+  // prenderebbero i tre posti, e quello del libro col cuore resterebbe fuori.
+  urls.length = 0;
+  const gusti6 = [
+    libro("f", "Amato", "A Uno", { fav: true, rating: 5 }),
+    libro("y1", "Yak Uno", "A Due", { rating: 4 }),
+    libro("y2", "Yak Due", "A Tre", { rating: 4 }),
+    libro("z1", "Zeta Uno", "A Quattro", { rating: 4 }),
+    libro("z2", "Zeta Due", "A Cinque", { rating: 4 }),
+    libro("w1", "Wolf Uno", "A Sei", { rating: 4 }),
+  ];
+  const argomentiDi = { Amato: ["Xenon"], "Yak Uno": ["Yak"], "Yak Due": ["Yak"], "Zeta Uno": ["Zeta"], "Zeta Due": ["Zeta"], "Wolf Uno": ["Wolf"] };
+  await consigliDalCatalogo(gusti6, {
+    statusOf: () => "read",
+    sagaDi,
+    fetcher: async (u) => {
+      urls.push(u);
+      const q = new URL(u).searchParams;
+      const t0 = q.get("title");
+      const docs = argomentiDi[t0] ? [{ key: "/w", title: t0, author_name: [q.get("author")], subject: argomentiDi[t0] }] : [];
+      return { ok: true, json: async () => ({ docs }) };
+    },
+  });
+  t.c("il genere del libro col cuore si chiede al catalogo", urls.some((u) => new URL(u).searchParams.get("q") === 'subject:"Xenon"'));
 
   t.c("mai cercati: da cercare", scaduti(null));
   t.c("cercati ieri: si tengono", !scaduti({ quando: 1000 }, 1000 + 86400000));

@@ -40,7 +40,7 @@
 // una per autore, una per libro amato — titolo e autore, come per il retro
 // del libro (PRIVACY.md).
 import { getStatus } from "./library.js";
-import { sembraGiaLetto } from "./importBook.js";
+import { sembraGiaLetto, giaInCasa } from "./importBook.js";
 import { idTitolo } from "./daPrendere.js";
 import { chiaveSaga, chiaveAutore } from "./sagaBooks.js";
 import { cercaSaga, scegliOpera } from "./sagaDalCatalogo.js";
@@ -90,8 +90,15 @@ export function titoloDi(doc) {
 }
 
 const lettoO = (s) => s === "read" || s === "reading";
-const puliti = (books) => books.map((b) => ({ ...b, title: titoloDi(b) }));
-const tuo = (titolo, autore, casa) => !!sembraGiaLetto({ title: titolo, author: autore }, casa);
+const puliti = (books) => {
+  const out = books.map((b) => ({ ...b, title: titoloDi(b) }));
+  out.grezzi = books;
+  return out;
+};
+// `casa` e' la biblioteca coi titoli ripuliti: si guarda li' a titoli
+// uguali, e sui titoli COME SONO SCRITTI a parole intere (`giaInCasa`).
+const tuo = (titolo, autore, casa) =>
+  !!sembraGiaLetto({ title: titolo, author: autore }, casa) || giaInCasa({ title: titolo, author: autore }, casa.grezzi || casa);
 
 // Il posto nella saga dice la stessa saga anche scritta un po' diversa:
 // «Malazan» nella tua scheda, «The Malazan Book of the Fallen» sulle
@@ -107,9 +114,29 @@ export function stessaSaga(a, b) {
 
 // ---- chi guardare -----------------------------------------------------------
 
+// QUANTO TI E' PIACIUTO UN LIBRO, in un numero solo: e' la misura su cui
+// si decide da CHI partire (quali saghe, quali autori, quali generi). Il
+// voto pesa piu' di tutto, il cuore quanto un voto pieno, un libro letto e
+// basta un po'; un abbandono toglie. Chiesto dal lettore: «cerca in base ai
+// miei autori, libri e saghe preferiti, cosi' sai gia' cosa prediligo».
+export function pesoLibro(b, st) {
+  let p = 0;
+  if (b?.rating > 0) p += b.rating - 2.5;
+  else if (st === "read") p += 1;
+  if (b?.fav) p += 2.5;
+  if (st === "abandoned") p -= 3;
+  return p;
+}
+
 // Le saghe cominciate: almeno un volume letto o in lettura. L'autore e'
 // quello che ne ha scritti di piu' — l'Eresia a venti mani si segue
 // dall'autore del volume piu' avanti, ed e' un ripiego dichiarato.
+//
+// E L'ORDINE E' QUELLO DEI TUOI GUSTI, non dei volumi letti: con piu' di
+// `MAX_SAGHE` saghe in corso il taglio decide quali si chiedono al
+// catalogo, e contare i volumi farebbe vincere la saga lunga che trascini
+// su quella che ami. Il gusto e' la somma di `pesoLibro` sui suoi volumi;
+// a parita' decidono i volumi letti.
 export function saghePartite(books = [], { statusOf = getStatus } = {}) {
   const per = new Map();
   for (const b of books) {
@@ -137,9 +164,13 @@ export function saghePartite(books = [], { statusOf = getStatus } = {}) {
       letti: letti.map((x) => x.b),
       ordine: ordini.length ? Math.max(...ordini) : null,
       peso: letti.length,
+      gusto: g.libri.reduce((t, x) => t + pesoLibro(x.b, x.st), 0),
+      preferita: g.libri.some((x) => x.b.fav),
     });
   }
-  return out.sort((a, b) => b.peso - a.peso || a.saga.localeCompare(b.saga)).slice(0, MAX_SAGHE);
+  return out
+    .sort((a, b) => b.gusto - a.gusto || b.peso - a.peso || a.saga.localeCompare(b.saga))
+    .slice(0, MAX_SAGHE);
 }
 
 // Gli autori che hai apprezzato: il voto pesa piu' di tutto, il cuore
@@ -150,15 +181,11 @@ export function autoriAmati(books = [], { statusOf = getStatus } = {}) {
     const a = autorePerIlCatalogo(b?.author);
     if (!a) continue;
     const st = statusOf(b.id);
-    let p = 0;
-    if (b.rating > 0) p += b.rating - 2.5;
-    else if (st === "read") p += 1;
-    if (b.fav) p += 2.5;
-    if (st === "abandoned") p -= 3;
     const k = chiaveAutore(a);
-    const g = per.get(k) || { autore: a, peso: 0, voto: 0 };
-    g.peso += p;
+    const g = per.get(k) || { autore: a, peso: 0, voto: 0, cuore: false };
+    g.peso += pesoLibro(b, st);
     g.voto = Math.max(g.voto, b.rating || 0);
+    if (b.fav && st !== "abandoned") g.cuore = true;
     per.set(k, g);
   }
   return [...per.values()]
@@ -166,6 +193,12 @@ export function autoriAmati(books = [], { statusOf = getStatus } = {}) {
     .sort((a, b) => b.peso - a.peso || a.autore.localeCompare(b.autore))
     .slice(0, MAX_AUTORI);
 }
+
+// Quanto un libro amato pesa nella scelta dei GENERI: il cuore il doppio,
+// e il mezzo punto sopra il quattro in piu'. Un cinque col cuore vale tre
+// quattro senza — i generi devono essere quelli dei tuoi preferiti, non
+// quelli dei libri che ti sono piaciuti in tanti.
+export const pesoGusto = (b) => (b?.fav ? 2 : 1) + Math.max(0, (b?.rating || 0) - 4);
 
 // I libri che dicono i tuoi gusti: preferiti e votati alti per primi.
 export function libriAmati(books = [], { statusOf = getStatus } = {}) {
@@ -222,7 +255,7 @@ export function opereInOrdine(docs = []) {
 export function annoDiPartenza(saga, opere) {
   const casa = puliti(saga.letti);
   const anni = opere
-    .filter((d) => d.first_publish_year && tuo(d.pulito, "", casa))
+    .filter((d) => d.first_publish_year && tuo(d.pulito, saga.autore, casa))
     .map((d) => d.first_publish_year);
   return anni.length ? Math.max(...anni) : null;
 }
@@ -263,7 +296,7 @@ export async function prossimiDellaSaga(saga, opere, books, { sagaDi = cercaSaga
     autore: saga.autore,
     saga: saga.saga,
     numero,
-    perche: ultimo ? `dopo «${titoloDi(ultimo)}», che hai letto` : "",
+    perche: ultimo ? `dopo «${titoloDi(ultimo)}», che hai letto${saga.preferita ? " · fra le tue saghe preferite" : ""}` : "",
   }));
   return { voci, membri: membri.map((m) => m.d) };
 }
@@ -323,7 +356,9 @@ export function daAutore(autore, docs = [], books = [], escludi = new Set()) {
       autore: autore.autore,
       saga: "",
       numero: null,
-      perche: autore.voto >= 4 ? `di ${autore.autore}, che hai votato ${String(autore.voto).replace(".", ",")}/5` : `di ${autore.autore}, che hai letto`,
+      perche: autore.cuore
+        ? `di ${autore.autore}, fra i tuoi preferiti`
+        : autore.voto >= 4 ? `di ${autore.autore}, che hai votato ${String(autore.voto).replace(".", ",")}/5` : `di ${autore.autore}, che hai letto`,
     });
   }
   return out;
@@ -376,27 +411,35 @@ export async function primiDiSerie(voci = [], { sagaDi = cercaSaga, saghe = [], 
 const GENERICI =
   /^(.*,\s*general|fiction|fiction,? general|general|novel|novels|literature|english literature|american literature|large type books|accessible book|protected daisy|in library|lending library|open library staff picks|reading level.*|nyt:.*|new york times.*|bestseller.*|textual|translations.*|juvenile.*|english fiction|american fiction)$/i;
 
-// I tre argomenti piu' frequenti fra i libri amati, contati una volta per
+// I tre argomenti piu' pesanti fra i libri amati, contati una volta per
 // libro: un libro con venti argomenti non deve votare venti volte lo stesso.
-export function argomentiComuni(elenchi = [], quanti = 3) {
+// Ogni libro vota col suo PESO (`pesoGusto`, un elenco nudo vale uno), e
+// l'argomento si ricorda da quali libri e' venuto, il piu' amato per primo:
+// e' quel titolo che il perche' della scoperta nomina.
+export function argomentiPesati(elenchi = [], quanti = 3) {
   const conti = new Map();
-  for (const argomenti of elenchi) {
+  for (const voce of elenchi) {
+    const argomenti = Array.isArray(voce) ? voce : voce?.argomenti;
+    const peso = Array.isArray(voce) ? 1 : Number(voce?.peso) > 0 ? Number(voce.peso) : 1;
+    const titolo = Array.isArray(voce) ? "" : voce?.titolo || "";
     const visti = new Set();
     for (const a of argomenti || []) {
       const s = String(a || "").trim();
       const k = s.toLowerCase();
       if (!s || GENERICI.test(s) || visti.has(k)) continue;
       visti.add(k);
-      const c = conti.get(k) || { nome: s, n: 0 };
-      c.n++;
+      const c = conti.get(k) || { nome: s, peso: 0, fonti: [] };
+      c.peso += peso;
+      if (titolo) c.fonti.push({ titolo, peso });
       conti.set(k, c);
     }
   }
   return [...conti.values()]
-    .sort((a, b) => b.n - a.n || a.nome.localeCompare(b.nome))
+    .sort((a, b) => b.peso - a.peso || a.nome.localeCompare(b.nome))
     .slice(0, quanti)
-    .map((c) => c.nome);
+    .map((c) => ({ nome: c.nome, peso: c.peso, fonti: c.fonti.sort((x, y) => y.peso - x.peso).map((f) => f.titolo) }));
 }
+export const argomentiComuni = (elenchi = [], quanti = 3) => argomentiPesati(elenchi, quanti).map((c) => c.nome);
 
 // Ordinati per voto, i primi della lista sono libri per ragazzi e fumetti:
 // hanno lettori entusiasti e tanti voti, e a chi legge Erikson non dicono
@@ -414,9 +457,19 @@ const voto = (r) => Math.round(r * 10) / 10;
 // usciti dal vivo. Dove gli argomenti sono piu' d'uno si vuole un libro che
 // ne porti almeno DUE, contati sui suoi argomenti e non sulla domanda che
 // l'ha trovato (lo stesso libro risponde a una domanda sola e ne porta tre).
+//
+// E I GENERI DEI PREFERITI CONTANO DI PIU': un risultato porta il `peso`
+// del suo argomento, e un candidato che tocca l'argomento dei tuoi libri
+// col cuore sale sopra uno che tocca quello di un quattro stelle. Con i
+// pesi tutti uguali il conto torna quello di prima. Il perche' nomina il
+// libro amato da cui quel genere e' venuto («come «Gardens of the Moon»»),
+// che e' la ragione vera del consiglio.
 export function daGusti(risultati = [], books = []) {
   const casa = puliti(books);
   const scelti0 = risultati.map((r) => r.argomento);
+  const pesi = new Map(risultati.map((r) => [r.argomento, Number(r.peso) > 0 ? Number(r.peso) : 1]));
+  const fonti = new Map(risultati.map((r) => [r.argomento, r.fonti || []]));
+  const pesoMax = Math.max(1, ...pesi.values());
   const serve = scelti0.length >= 2 ? 2 : 1;
   const autoriCasa = new Set(books.map((b) => chiaveAutore(autorePerIlCatalogo(b.author))).filter(Boolean));
   const perAutore = new Map();
@@ -446,18 +499,21 @@ export function daGusti(risultati = [], books = []) {
     const libri = [...g.libri.values()];
     const primo = libri.sort((a, b) => (a.first_publish_year || 9999) - (b.first_publish_year || 9999))[0];
     const media = Math.max(...libri.map((l) => l.ratings_average || 0));
-    return { g, primo, punti: media + 0.3 * (g.argomenti.size - 1) };
+    const colpo = [...g.argomenti].reduce((t, a) => t + pesi.get(a) / pesoMax, 0);
+    // la fonte del genere piu' pesante fra quelli toccati
+    const via = [...g.argomenti].sort((a, b) => pesi.get(b) - pesi.get(a)).map((a) => fonti.get(a)?.[0]).find(Boolean);
+    return { g, primo, via, punti: media + 0.3 * (colpo - 1) };
   });
   return scelti
     .sort((a, b) => b.punti - a.punti || a.g.autore.localeCompare(b.g.autore))
     .slice(0, MAX_GUSTI * 2)
-    .map(({ g, primo }) => ({
+    .map(({ g, primo, via }) => ({
       id: idTitolo(primo.titolo, g.autore),
       titolo: primo.titolo,
       autore: g.autore,
       saga: "",
       numero: null,
-      perche: `★ ${String(voto(primo.ratings_average || 0)).replace(".", ",")} su Open Library · ${[...g.argomenti].join(", ")}`,
+      perche: `★ ${String(voto(primo.ratings_average || 0)).replace(".", ",")} su Open Library · ${[...g.argomenti].join(", ")}${via ? ` · come «${via}»` : ""}`,
     }));
 }
 
@@ -570,10 +626,11 @@ export async function consigliDalCatalogo(books = [], { fetcher, sagaDi, statusO
       leggi(f, { title: titoloDi(b), ...(a ? { author: a } : {}), fields: "key,title,author_name,subject", limit: "5" })
     );
     tick();
-    return scegliOpera(docs || [], { title: titoloDi(b), author: b.author, filtrata: !!a })?.subject || null;
+    const argomenti = scegliOpera(docs || [], { title: titoloDi(b), author: b.author, filtrata: !!a })?.subject;
+    return argomenti ? { argomenti, peso: pesoGusto(b), titolo: titoloDi(b) } : null;
   });
   const risultati = (
-    await aGruppi(argomentiComuni(elenchi.filter(Boolean)), async (argomento) => {
+    await aGruppi(argomentiPesati(elenchi.filter(Boolean)), async ({ nome: argomento, peso, fonti }) => {
       const docs = await prova(() =>
         leggi(f, {
           q: `subject:"${argomento.replace(/"/g, "")}"`,
@@ -582,7 +639,7 @@ export async function consigliDalCatalogo(books = [], { fetcher, sagaDi, statusO
           fields: "title,author_name,first_publish_year,ratings_average,ratings_count,subject",
         })
       );
-      return docs ? { argomento, docs } : null;
+      return docs ? { argomento, peso, fonti, docs } : null;
     })
   ).filter(Boolean);
   onFase?.("scoperte");

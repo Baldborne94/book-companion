@@ -71,6 +71,12 @@ export default async function (t) {
   t.eq("il doppione fra due sezioni sta nella prima", m.find((s) => s.chiave === "autori").voci.map((v) => v.titolo).join(","), "Red Country");
   m = daMostrare(cons, [libro("x", "Tigana", { author: "Kay, Guy Gavriel" })], []);
   t.eq("quel che hai gia' (altra edizione) non si propone", m.find((s) => s.chiave === "gusti").voci.map((v) => v.titolo).join(","), "Il nome della rosa");
+  m = daMostrare(cons, [libro("y", "The First Law 03 - Red Country (retail)", { author: "Abercrombie, Joe" })], []);
+  t.eq(
+    "… anche col titolo dentro l'etichetta dello scaffale (segnalato con Gardens of the Moon): vale gia' per i consigli salvati",
+    m.find((s) => s.chiave === "autori"),
+    undefined
+  );
   m = daMostrare(cons, [], scarta([], idTitolo("Il nome della rosa", "Umberto Eco")));
   t.eq("uno scartato non torna", m.find((s) => s.chiave === "gusti").voci.length, 1);
   m = daMostrare(cons, [], tieni([], cons.saghe[0]));
