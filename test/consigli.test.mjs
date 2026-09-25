@@ -83,6 +83,12 @@ export default async function (t) {
   t.eq("uno tenuto sta nella lista, non nei consigli", m.some((s) => s.chiave === "saghe"), false);
   t.eq("una sezione svuotata non si mostra", m.map((s) => s.chiave).join(","), "autori,gusti");
   t.eq("niente consigli, niente sezioni", daMostrare(null, [], []).length, 0);
+  t.eq(
+    "un giro salvato con la sezione degli autori non la mostra piu' dove non si vuole",
+    daMostrare(cons, [], [], ["saghe", "gusti"]).map((g) => g.chiave).join(","),
+    "saghe,gusti"
+  );
+  t.eq("… e senza restrizione le mostra tutte, per l'Oracolo", daMostrare(cons, [], []).map((g) => g.chiave).join(","), "saghe,autori,gusti");
 
   // ---- il catalogo ------------------------------------------------------------------
   const url = [];

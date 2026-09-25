@@ -363,7 +363,7 @@ export const MAPPA = [
   {
     luogo: "ingresso",
     nome: "Da prendere",
-    cosa: "La lista dei libri da procurarti: quelli che scrivi tu, i consigli gratuiti dal catalogo di Open Library — il volume dopo l'ultimo che hai letto di ogni saga, altri libri dei tuoi autori, i più votati sui tuoi generi — e, se vuoi, quelli su misura dell'Oracolo. Si copia per portarla in libreria, e ti dice quando un libro è arrivato.",
+    cosa: "La lista dei libri da procurarti: quelli che scrivi tu, i consigli gratuiti dal catalogo di Open Library — il volume dopo l'ultimo che hai letto di ogni saga e i più votati sui tuoi generi — e, se vuoi, quelli su misura dell'Oracolo. Si copia per portarla in libreria, e ti dice quando un libro è arrivato.",
     dove: "Il tasto nell'Ingresso.",
   },
   {

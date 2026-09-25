@@ -152,11 +152,14 @@ export function leggiConsigli(testo) {
 // Quel che si mostra: via quel che hai gia', quel che sta nella lista
 // (tenuto o scartato), e i doppioni fra una sezione e l'altra — lo stesso
 // libro sta nella PRIMA sezione che lo nomina, che e' la piu' vicina a te.
-export function daMostrare(consigli, books = [], lista = []) {
+// `solo` restringe alle sezioni che chi chiama mostra: il catalogo ha
+// tolto quella degli autori, e un giro salvato prima la porta ancora.
+export function daMostrare(consigli, books = [], lista = [], solo = null) {
   const noti = new Set((lista || []).filter((v) => v && v.id && !v.deleted).map((v) => v.id));
   const visti = new Set();
   const out = [];
   for (const { chiave, nome } of SEZIONI) {
+    if (solo && !solo.includes(chiave)) continue;
     const voci = (consigli?.[chiave] || []).filter((v) => {
       if (!v?.id || noti.has(v.id) || visti.has(v.id)) return false;
       visti.add(v.id);
