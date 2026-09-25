@@ -30,7 +30,7 @@
 // Si filtra a ogni disegno e non al salvataggio: un volume importato stasera
 // deve sparire dai consigli di ieri senza richiederli.
 import { getStatus } from "./library.js";
-import { sembraGiaLetto } from "./importBook.js";
+import { giaInCasa } from "./importBook.js";
 import { idTitolo } from "./daPrendere.js";
 import { scegliOpera } from "./sagaDalCatalogo.js";
 import { autorePerIlCatalogo } from "./retroInRete.js";
@@ -160,7 +160,7 @@ export function daMostrare(consigli, books = [], lista = []) {
     const voci = (consigli?.[chiave] || []).filter((v) => {
       if (!v?.id || noti.has(v.id) || visti.has(v.id)) return false;
       visti.add(v.id);
-      return !sembraGiaLetto({ title: v.titolo, author: v.autore }, books);
+      return !giaInCasa({ title: v.titolo, author: v.autore }, books);
     });
     if (voci.length) out.push({ chiave, nome, voci });
   }
