@@ -152,6 +152,7 @@ const quandoFu = (t) =>
 
 const FASI_CATALOGO = {
   saghe: "Cerco i volumi dopo i tuoi",
+  stile: "Confronto i tuoi autori preferiti con altri",
   gusti: "Leggo gli argomenti dei libri che hai amato",
   scoperte: "Scelgo le scoperte",
 };
@@ -193,9 +194,10 @@ function Catalogo({ books, giro, setGiro, gia, onTieni, onScarta }) {
     <section style={{ marginBottom: 26 }}>
       <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.titoletto, color: C.accent, marginBottom: 4 }}>Dal catalogo</h3>
       <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 12, lineHeight: 1.45 }}>
-        Gratis e senza chiave, da Open Library: il volume dopo l'ultimo che hai letto di ogni saga, e i più votati sui
-        generi dei libri che hai amato, di autori che non hai ancora. Si parte dai tuoi preferiti — il cuore e i voti
-        alti pesano più di tutto — ma i secondi restano i preferiti di tutti su quei generi: per consigli su misura c'è
+        Gratis e senza chiave, da Open Library: il volume dopo l'ultimo che hai letto di ogni saga, autori che scrivono
+        degli stessi argomenti dei tuoi preferiti, e i più votati sui generi dei libri che hai amato — sempre di autori
+        che non hai ancora. Si parte da chi ami di più: il cuore e i voti alti pesano più di tutto. Il catalogo misura
+        gli argomenti, non la scrittura, quindi qualche proposta può essere lontana: per consigli su misura c'è
         l'Oracolo, qui sotto.
       </p>
       {lavora && (

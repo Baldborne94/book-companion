@@ -65,7 +65,11 @@ export const MAX_AMATI = 6;
 export const MAX_GUSTI = 8;
 // Le sezioni che il catalogo mostra, nell'ordine: le chiavi di `SEZIONI`
 // di `consigli.js` che qui hanno un senso.
-export const SEZIONI_CATALOGO = ["saghe", "gusti"];
+export const SEZIONI_CATALOGO = ["saghe", "stile", "gusti"];
+export const MAX_STILE = 4;
+export const PER_STILE = 3;
+export const CANDIDATI_STILE = 10;
+export const ANNO_MIN = 1900;
 export const MIN_VOTI = 30;
 // Una settimana: il catalogo cambia piano, e ogni giro sono decine di
 // richieste. Prima si rifa' solo col tasto.
@@ -366,6 +370,157 @@ export async function primiDiSerie(voci = [], { sagaDi = cercaSaga, saghe = [], 
   return out;
 }
 
+// ---- lo stile dei tuoi autori ------------------------------------------------------
+
+// NELLO STILE DEI TUOI AUTORI (chiesto dal lettore: «suggeriscimi anche
+// altri libri, non per forza delle mie saghe, basta che siano inerenti ai
+// generi che mi piacciono o allo stile dei miei autori preferiti»).
+//
+// Il catalogo non sa cosa sia uno stile, ma per ogni AUTORE sa gli
+// argomenti che tornano nei suoi libri (`top_subjects`): Abercrombie porta
+// «Kings and rulers», Pratchett «Fiction, humorous», Lynch «Swindlers and
+// swindling». Da li' si chiedono i libri piu' letti che portano il GENERE
+// dell'autore E uno dei suoi argomenti distintivi — due condizioni insieme,
+// mai una (`domandeStile`) — e di chi li ha scritto si controlla solo che
+// scriva nello stesso genere. Misurato dal vivo: dietro Lynch Skovron e
+// Asprin, dietro Pratchett Adams e Klune, dietro Abercrombie Martin e
+// Sanderson. Con una condizione sola uscivano Dostoevskij e Dorian Gray, e
+// confrontando le impronte intere degli autori si perdeva Skovron. Il
+// catalogo misura gli argomenti e non la scrittura, e la pagina lo dice.
+
+// Via cio' che non distingue un autore da un altro, e cio' che e' di UNA
+// sua saga: «Discworld (Imaginary place)» direbbe che somiglia a Pratchett
+// solo chi scrive del Mondo Disco.
+const NON_IMPRONTA = /^series:|imaginary place|fictitious character|^english|^american|^literature$|^fiction, general$/i;
+
+export function improntaDi(argomenti = []) {
+  const out = [];
+  const visti = new Set();
+  for (const a of argomenti || []) {
+    const nome = String(a || "").trim();
+    // «FICTION / Fantasy / Epic» e «Fiction, fantasy, epic» sono la stessa
+    // voce scritta da due cataloghi diversi
+    const k = nome.toLowerCase().replace(/\s*\/\s*/g, ", ");
+    if (!nome || GENERICI.test(nome) || NON_IMPRONTA.test(k) || visti.has(k)) continue;
+    visti.add(k);
+    out.push({ nome, k });
+  }
+  return out;
+}
+
+// IL GENERE e' la famiglia, e da solo non distingue niente: «Fantasy» e'
+// mezzo catalogo. Si riconosce su tutti gli argomenti dell'autore, anche su
+// quelli generici («Fiction, fantasy, general» dice fantasy e basta).
+const FAMIGLIE = ["fantasy", "science fiction", "horror", "humorous", "mystery", "detective", "thrillers", "historical", "romance"];
+const FAMIGLIA_RE = new RegExp(`\\b(${FAMIGLIE.join("|")})\\b`, "gi");
+const RUMORE_GENERE = /\b(fiction|general|and|&)\b|[,/]/gi;
+
+export function famiglieDi(argomenti = []) {
+  const conti = new Map();
+  for (const a of argomenti || []) {
+    for (const m of String(a || "").toLowerCase().matchAll(FAMIGLIA_RE)) conti.set(m[1], (conti.get(m[1]) || 0) + 1);
+  }
+  return [...conti].sort((a, b) => b[1] - a[1]).map(([f]) => f);
+}
+
+// Un argomento DISTINTIVO dice qualcosa oltre al genere: tolti «fiction»,
+// il genere e la punteggiatura, resta una parola («epic», «Kings and
+// rulers», «Swindlers and swindling»). «Fantasy fiction» non lascia niente.
+export const distintivo = (x) => !!String(x?.k || x || "").toLowerCase().replace(FAMIGLIA_RE, " ").replace(RUMORE_GENERE, " ").trim();
+
+// Le domande al catalogo per un autore: SEMPRE due condizioni insieme, mai
+// una sola — con una sola i piu' letti erano Dostoevskij e Dorian Gray
+// (misurato). Prima il genere con ognuno dei due argomenti distintivi piu'
+// frequenti, POI i due generi insieme se sono due: per Pratchett, che
+// distintivi non ne ha, fantasy E umoristico e' proprio la sua nicchia;
+// per Bakker fantasy E fantascienza sono Dune e Dracula, quindi in coda.
+// Ogni domanda si porta il suo PERCHE', che e' quel che la voce dira'.
+export function domandeStile(impronta = [], famiglie = []) {
+  const q = (x) => `subject:"${String(x).replace(/"/g, "")}"`;
+  const out = [];
+  const dist = impronta.filter(distintivo).slice(0, 2);
+  if (famiglie.length) for (const d of dist) out.push({ q: `${q(famiglie[0])} AND ${q(d.nome)}`, perche: [famiglie[0], d.nome] });
+  else if (dist.length >= 2) out.push({ q: `${q(dist[0].nome)} AND ${q(dist[1].nome)}`, perche: [dist[0].nome, dist[1].nome] });
+  if (famiglie.length >= 2) out.push({ q: `${q(famiglie[0])} AND ${q(famiglie[1])}`, perche: [famiglie[0], famiglie[1]] });
+  return out;
+}
+
+// I tuoi autori, ordinati per quanto ti piacciono: la somma di `pesoLibro`
+// sui loro libri. Chi non ha niente di positivo (solo libri mai aperti o
+// abbandonati) non e' un autore preferito.
+export function autoriPreferiti(books = [], { statusOf = getStatus, max = MAX_STILE } = {}) {
+  const per = new Map();
+  for (const b of books) {
+    const autore = autorePerIlCatalogo(b?.author);
+    const k = chiaveAutore(autore);
+    if (!k || !b.title) continue;
+    const g = per.get(k) || { autore, gusto: 0, preferito: false };
+    g.gusto += pesoLibro(b, statusOf(b.id));
+    if (b.fav) g.preferito = true;
+    per.set(k, g);
+  }
+  return [...per.values()]
+    .filter((g) => g.gusto > 0)
+    .sort((a, b) => b.gusto - a.gusto || a.autore.localeCompare(b.autore))
+    .slice(0, max);
+}
+
+// L'autore giusto fra gli omonimi: stesso nome, e fra quelli chi ha scritto
+// di piu' (il «Glen Cook» con un libro solo e' un altro).
+export function autoreDelCatalogo(docs = [], nome = "") {
+  const k = chiaveAutore(nome);
+  return (
+    (docs || [])
+      .filter((d) => d?.name && chiaveAutore(d.name) === k)
+      .sort((a, b) => (b.work_count || 0) - (a.work_count || 0))[0] || null
+  );
+}
+
+// Dai libri che il catalogo propone sull'impronta, gli autori da mettere a
+// confronto: nell'ordine in cui arrivano (i piu' letti per primi), uno per
+// autore, senza chi hai gia' in casa e senza i libri per ragazzi. Per
+// ognuno si tiene il libro piu' vecchio fra quelli trovati — di solito il
+// primo, non il quinto di una serie.
+export function candidatiStile(docs = [], books = [], { escludi = new Set(), max = CANDIDATI_STILE } = {}) {
+  const casa = puliti(books);
+  const autoriCasa = new Set(books.map((b) => chiaveAutore(autorePerIlCatalogo(b.author))).filter(Boolean));
+  const per = new Map();
+  for (const d of docs || []) {
+    const autore = d?.author_name?.[0];
+    if (!d?.title || !autore || eRaccolta(d.title)) continue;
+    const ka = chiaveAutore(autore);
+    if (!ka || autoriCasa.has(ka) || escludi.has(ka)) continue;
+    if ((d.subject || []).some((x) => PER_RAGAZZI.test(x))) continue;
+    const n = Number(pezziDalTitolo(d.title)?.sagaOrder);
+    if (Number.isFinite(n) && n > 1) continue;
+    // un classico dell'Ottocento non e' «nello stile» di nessuno dei tuoi:
+    // Moby Dick porta «Fiction, fantasy, epic» nel catalogo (misurato)
+    if (d.first_publish_year && d.first_publish_year < ANNO_MIN) continue;
+    const titolo = titoloDi(d);
+    if (tuo(titolo, autore, casa)) continue;
+    if (!per.has(ka)) {
+      if (per.size >= max) continue;
+      per.set(ka, { autore, libro: { ...d, titolo }, perche: d.perche || [] });
+    } else if ((d.first_publish_year || 9999) < (per.get(ka).libro.first_publish_year || 9999)) {
+      per.get(ka).libro = { ...d, titolo };
+    }
+  }
+  return [...per.values()];
+}
+
+export function vocePerStile(c, di) {
+  const cosa = (c.perche || []).map((x) => String(x).toLowerCase()).join(" e ");
+  return {
+    id: idTitolo(c.libro.titolo, c.autore),
+    titolo: c.libro.titolo,
+    autore: c.autore,
+    saga: "",
+    numero: null,
+    copertina: copertinaDi(c.libro),
+    perche: cosa ? `Se ti piace ${di} · ${cosa}` : `Se ti piace ${di}`,
+  };
+}
+
 // ---- i gusti ---------------------------------------------------------------------
 
 // Argomenti che dicono tutto e quindi niente, o che non sono argomenti.
@@ -496,8 +651,10 @@ export async function aGruppi(voci = [], fn, insieme = 4) {
   return out;
 }
 
-async function leggi(f, params) {
-  const r = await f(`${OL}?${new URLSearchParams(params)}`);
+const AUTORI = "https://openlibrary.org/search/authors.json";
+
+async function leggi(f, params, dove = OL) {
+  const r = await f(`${dove}?${new URLSearchParams(params)}`);
   if (!r?.ok) throw new Error(`catalogo ${r?.status || "?"}`);
   const j = await r.json();
   return j?.docs || [];
@@ -547,7 +704,7 @@ export async function consigliDalCatalogo(books = [], { fetcher, sagaDi, statusO
   };
 
   const saghe = saghePartite(books, { statusOf });
-  const consigli = { saghe: [], gusti: [] };
+  const consigli = { saghe: [], stile: [], gusti: [] };
   let tick = avanti("saghe", saghe.length);
   const perSaga = await aGruppi(saghe, async (s) => {
     const docs = await opereDi(s.autore);
@@ -563,6 +720,72 @@ export async function consigliDalCatalogo(books = [], { fetcher, sagaDi, statusO
     return r;
   });
   for (const r of perSaga) consigli.saghe.push(...(r?.voci || []));
+
+  // LO STILE: per ogni autore preferito, la sua impronta, i libri piu'
+  // letti che ne toccano gli argomenti, e il confronto con l'impronta di chi
+  // li ha scritti. Le impronte si chiedono una volta per autore anche se
+  // tornano in piu' confronti.
+  const preferiti = autoriPreferiti(books, { statusOf });
+  const impronte = new Map();
+  const improntaAutore = (nome) => {
+    const k = chiaveAutore(nome);
+    if (!impronte.has(k))
+      impronte.set(
+        k,
+        prova(() => leggi(f, { q: nome, limit: "5" }, AUTORI)).then((docs) => {
+          const tutti = autoreDelCatalogo(docs || [], nome)?.top_subjects || [];
+          return docs ? { impronta: improntaDi(tutti), famiglie: famiglieDi(tutti) } : null;
+        })
+      );
+    return impronte.get(k);
+  };
+  tick = avanti("stile", preferiti.length);
+  const giaStile = new Set(preferiti.map((p) => chiaveAutore(p.autore)));
+  const perStile = await aGruppi(
+    preferiti,
+    async (p) => {
+      const { impronta: mia, famiglie } = (await improntaAutore(p.autore)) || { impronta: [], famiglie: [] };
+      const domande = domandeStile(mia, famiglie);
+      if (!domande.length) {
+        tick();
+        return [];
+      }
+      const risposte = await Promise.all(
+        domande.map((d) =>
+          prova(() => leggi(f, { q: d.q, sort: "readinglog", limit: "40", fields: "title,author_name,first_publish_year,subject,cover_i" }))
+        )
+      );
+      // NELL'ORDINE DELLE DOMANDE, non a turno: la prima e' la piu'
+      // precisa, e un argomento arrivato da un omonimo dell'autore
+      // («Hiking» sotto Scott Lynch) sta in fondo e non si prende i posti
+      const docs = risposte.flatMap((r, i) => (r || []).map((d) => ({ ...d, perche: domande[i].perche })));
+      const trovati = [];
+      for (const c of candidatiStile(docs, books, { escludi: giaStile })) {
+        if (trovati.length >= PER_STILE) break;
+        // il libro risponde gia' a due condizioni; all'autore si chiede
+        // solo di scrivere nello stesso genere — confrontare le impronte
+        // intere scartava Skovron dopo Lynch, che e' la proposta giusta
+        const sue = (await improntaAutore(c.autore))?.famiglie || [];
+        if (sue.some((x) => famiglie.includes(x))) trovati.push(vocePerStile(c, p.autore));
+      }
+      tick();
+      return trovati;
+    },
+    2
+  );
+  // uno per autore anche fra due preferiti diversi: vince il preferito piu'
+  // amato, che sta prima
+  const autoriStile = new Set();
+  const stile = [];
+  for (const v of perStile.flat()) {
+    const ka = chiaveAutore(v.autore);
+    if (autoriStile.has(ka)) continue;
+    autoriStile.add(ka);
+    stile.push(v);
+  }
+  // e i seguiti se ne vanno come fra i gusti: di Adams il catalogo dava
+  // «Life, the Universe and Everything», che e' il terzo (preso dal vivo)
+  consigli.stile = await primiDiSerie(stile, { sagaDi: cerca, saghe: saghe.map((s) => s.saga), max: MAX_STILE * PER_STILE, prove: stile.length });
 
   const amati = libriAmati(books, { statusOf });
   tick = avanti("gusti", amati.length);
@@ -589,7 +812,9 @@ export async function consigliDalCatalogo(books = [], { fetcher, sagaDi, statusO
     })
   ).filter(Boolean);
   onFase?.("scoperte");
-  consigli.gusti = await primiDiSerie(daGusti(risultati, books), {
+  // un autore gia' proposto per lo stile non si ripropone fra i gusti: e'
+  // la stessa scoperta, e il perche' dello stile e' il piu' preciso dei due
+  consigli.gusti = await primiDiSerie(daGusti(risultati, books).filter((v) => !autoriStile.has(chiaveAutore(v.autore))), {
     sagaDi: cerca,
     saghe: saghe.map((s) => s.saga),
     max: MAX_GUSTI,

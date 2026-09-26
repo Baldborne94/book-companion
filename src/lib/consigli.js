@@ -43,6 +43,8 @@ const KEY = "bc_consigli";
 export const SEZIONI = [
   { chiave: "saghe", nome: "Per andare avanti nelle tue saghe" },
   { chiave: "autori", nome: "Dagli autori che leggi" },
+  // solo dal catalogo: l'Oracolo questa sezione non la riceve
+  { chiave: "stile", nome: "Nello stile dei tuoi autori" },
   { chiave: "gusti", nome: "Potrebbero piacerti" },
 ];
 

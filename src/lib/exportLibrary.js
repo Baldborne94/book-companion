@@ -3,6 +3,7 @@ import { loadBooks, getProgress, getStatus, getStarted, getFinished } from "./li
 import { getCfi, getMarks, getHighlights } from "./annotations.js";
 import { getBookMusic, getFavoritesRaw, getListsRaw, isFile, loadTrack } from "./music.js";
 import { tuttiIGlossari } from "./glossarioMio.js";
+import { diarioPerArchivio } from "./archivioDiario.js";
 
 // v1 conteneva solo metadati e file: un ripristino avrebbe perso segnalibri,
 // evidenziazioni e punto di lettura. Da v2 l'archivio si basta da solo.
@@ -12,7 +13,10 @@ import { tuttiIGlossari } from "./glossarioMio.js";
 // Da v4 porta anche i termini che il lettore ha scritto nel suo glossario:
 // se li scrivi a mano e il backup non li porta con se', te ne accorgi il
 // giorno che ripristini — cioe' il giorno peggiore.
-export const ARCHIVE_VERSION = 4;
+// Da v5 porta anche il diario: quaderno delle parole, lista «Da prendere»,
+// tempo di lettura, obiettivo dell'anno e racconti spuntati — viaggiavano
+// nel cloud e non qui, e chi si affidava al solo archivio li perdeva.
+export const ARCHIVE_VERSION = 5;
 
 // DA QUANTO NON FAI UN ARCHIVIO.
 //
@@ -113,6 +117,7 @@ export async function exportLibrary() {
         melodie,
         raccolte: getListsRaw(),
         glossari: tuttiIGlossari(),
+        diario: diarioPerArchivio(),
       },
       null,
       2

@@ -7,6 +7,7 @@ import { storageEstimate, spazioQui, statoPersistenza, requestPersistence, getFi
 import { importFiles, resoconto } from "../lib/importBook.js";
 import { exportLibrary, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
 import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
+import { frasiDiario } from "../lib/archivioDiario.js";
 import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
 import { portaACasa, cloudUsage, troppoGrandi, daRicaricare } from "../lib/sync.js";
@@ -1434,7 +1435,7 @@ export default function Library({
     if (!file || restoring) return;
     try {
       const dentro = await sbircia(file);
-      setArchivio({ file, dentro, prendi: { libri: dentro.libri > 0, melodie: dentro.melodie > 0 } });
+      setArchivio({ file, dentro, prendi: { libri: dentro.libri > 0, melodie: dentro.melodie > 0, diario: !!dentro.diario } });
     } catch (err) {
       notify(err?.message || "Archivio illeggibile");
     } finally {
@@ -1456,6 +1457,7 @@ export default function Library({
         r.melodie ? `${r.melodie} ${r.melodie === 1 ? "melodia tornata" : "melodie tornate"}` : null,
         r.raccolte ? `${r.raccolte} ${r.raccolte === 1 ? "raccolta" : "raccolte"}` : null,
         r.termini ? `${r.termini} ${r.termini === 1 ? "termine" : "termini"} di glossario` : null,
+        ...frasiDiario(r.diario),
         r.kept ? `${r.kept} gia' in libreria` : null,
       ].filter(Boolean);
       notify(parts.length ? `Ripristino: ${parts.join(", ")} 🕯️` : "Nell'archivio non c'era nulla di nuovo");
@@ -2375,7 +2377,7 @@ function SceltaTitoli({ proposte, scelti, onCambia, onChiudi, onVai }) {
 
 function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
   const { dentro, prendi } = archivio;
-  const niente = !prendi.libri && !prendi.melodie;
+  const niente = !prendi.libri && !prendi.melodie && !prendi.diario;
   const righe = [
     dentro.libri && {
       id: "libri",
@@ -2394,6 +2396,11 @@ function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
       sotto: dentro.raccolte
         ? `con ${dentro.raccolte} ${dentro.raccolte === 1 ? "raccolta" : "raccolte"}`
         : "i file caricati da te",
+    },
+    dentro.diario && {
+      id: "diario",
+      testo: "Il tuo diario di lettura",
+      sotto: frasiDiario(dentro.diario).join(" · "),
     },
   ].filter(Boolean);
 
