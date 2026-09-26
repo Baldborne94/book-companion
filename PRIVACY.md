@@ -118,6 +118,7 @@ qualunque richiesta web porta con sé.
 | Un libro non ha la quarta di copertina nel file | `www.googleapis.com/books`, `openlibrary.org` | titolo e autore di quel libro |
 | Un libro non dichiara la saga né nel file né nel titolo | `openlibrary.org` | titolo e autore di quel libro |
 | Apri «Da prendere» (al massimo una volta a settimana, o col tasto «Cerca di nuovo») | `openlibrary.org` | il nome degli autori delle saghe che hai cominciato, i generi dei libri che hai amato, e il titolo e l'autore di quei libri e dei volumi delle saghe — una domanda per volta, mai l'elenco della biblioteca |
+| ...e i consigli del catalogo hanno una copertina | `covers.openlibrary.org` | il numero della copertina di quel libro consigliato (l'immagine), niente di tuo |
 | Scarichi il dizionario offline dalle Impostazioni | il nostro stesso sito | niente: è un file statico, come l'app |
 | Sempre, per i caratteri della pagina | `fonts.googleapis.com`, `fonts.gstatic.com` | niente, oltre alla richiesta stessa |
 
