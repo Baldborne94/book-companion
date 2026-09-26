@@ -45,7 +45,8 @@ export default defineConfig({
         // licenza restano fuori dai `globPatterns` proprio per questo —
         // precacharli vorrebbe dire spedirli a tutti al primo avvio, cioe'
         // togliere la scelta che il tasto promette.
-        globPatterns: ["**/*.{js,mjs,css,html,svg,png}"],
+        // il wasm e' quello di unrar, 200 KB: precacharlo vuol dire aprire un CBR anche senza rete
+        globPatterns: ["**/*.{js,mjs,css,html,svg,png,wasm}"],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         skipWaiting: false,
         clientsClaim: false,

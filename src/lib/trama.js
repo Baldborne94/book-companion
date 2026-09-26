@@ -1,5 +1,6 @@
 import { getFile } from "./bookStore.js";
 import { pageText } from "./pdfSearch.js";
+import { eFumetto } from "./fumetto.js";
 import { chiedi, getOracleKey, TETTO_SCHEDA } from "./oracle.js";
 import { parteDiUnaStoria } from "./saga.js";
 import { frontiera } from "./frontiera.js";
@@ -221,6 +222,8 @@ export async function raccogliTrama(tappe, { vivo } = {}) {
   // proprio quello che non aveva potuto leggere.
   for (const [i, t] of tappe.entries()) {
     if (!attivo()) break;
+    // un fumetto non ha una storia scritta da campionare
+    if (eFumetto(t.libro)) continue;
     try {
       const fino = t.tutto ? null : t.fino;
       const r =

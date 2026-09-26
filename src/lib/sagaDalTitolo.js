@@ -103,6 +103,17 @@ const PRIMA_QUADRE = new RegExp(
   "i"
 );
 
+// G. IL VOLUME DI UN FUMETTO: «Berserk v01», «One Piece 042 (2010)
+//    (Digital)», «Vinland Saga - Volume 03». Non c'e' un titolo dopo il
+//    numero: il nome E' la saga, e quel che segue fra parentesi e' rumore
+//    di chi ha impacchettato il file. Il numero nudo si prende SOLO con lo
+//    zero davanti («042», «01»): «Fahrenheit 451» e «Slaughterhouse 5» non
+//    ne hanno, e sono romanzi.
+const FUMETTO = new RegExp(
+  `^(.+?)(?:\\s*[-–—:]\\s*|\\s+)(?:(?:v|vol\\.?|volume|tomo|t\\.)\\s*(\\d{1,3})|(0\\d{1,2}))(?:\\s*[(\\[].*)?$`,
+  "i"
+);
+
 // QUEL CHE RESTA TOLTA L'ETICHETTA E' IL TITOLO VERO, e nelle stesse
 // espressioni sta gia' catturato: dove il numero e la saga se ne vanno,
 // il gruppo rimasto e' il nome del romanzo. Si tiene perche' sullo
@@ -132,6 +143,12 @@ function leggi(campo) {
     const saga = sagaBuona(m[1]);
     if (saga) return { saga, sagaOrder: numero(m[2]), resto: m[3] };
   }
+  m = FUMETTO.exec(s);
+  // il nome E' la saga: non c'e' un titolo da tenere
+  if (m) {
+    const saga = sagaBuona(m[1]);
+    if (saga) return { saga, sagaOrder: numero(m[2] || m[3]), resto: null };
+  }
   m = IN_TESTA.exec(s);
   // qui l'espressione e' un PREFISSO e non tiene il resto in un gruppo:
   // il titolo e' quel che sta dopo il pezzo consumato
@@ -149,7 +166,7 @@ export const pezziDalTitolo = (campo) => leggi(campo);
 // non porta numeri e' quasi sempre lui, e lasciandolo la forma B lo
 // prenderebbe per la saga.
 function pulisciFile(fileName, author) {
-  let s = String(fileName || "").replace(/\.(epub|pdf|mobi|azw3|kepub)$/i, "").trim();
+  let s = String(fileName || "").replace(/\.(epub|pdf|mobi|azw3|kepub|cbz|cbr)$/i, "").trim();
   const pezzi = s.split(/\s+-\s+/);
   if (pezzi.length >= 3 && !/\d/.test(pezzi[0])) {
     const primo = pezzi[0].toLowerCase();

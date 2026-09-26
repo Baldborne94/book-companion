@@ -91,6 +91,12 @@
         ],
         "application/pdf": [
           ".pdf"
+        ],
+        "application/vnd.comicbook+zip": [
+          ".cbz"
+        ],
+        "application/vnd.comicbook-rar": [
+          ".cbr"
         ]
       }
     }

@@ -1,4 +1,5 @@
 import { getFile } from "./bookStore.js";
+import { eFumetto } from "./fumetto.js";
 import { pageText, findMatches } from "./pdfSearch.js";
 import { chiedi, getOracleKey, TETTO_SCHEDA } from "./oracle.js";
 import { varianti, regexNome, nuovoRegistro, annota, decidi } from "./nomi.js";
@@ -438,6 +439,8 @@ export async function trovaAlias(nome, tappa) {
   const reg = nuovoRegistro(nome);
   try {
     const fino = tappa.tutto ? null : tappa.fino;
+    // un fumetto non ha testo: nessun alias da trovarci
+    if (eFumetto(tappa.libro)) return [];
     if (tappa.libro.fileType === "pdf") await aliasDaPdf(tappa.libro, reg, fino);
     else await aliasDaEpub(tappa.libro, reg, fino);
   } catch {
@@ -467,8 +470,11 @@ export async function raccogliPassaggi(nomi, tappe, { vivo } = {}) {
   for (const t of tappe) {
     if (!attivo()) break;
     try {
-      const pezzi =
-        t.libro.fileType === "pdf"
+      // un fumetto c'e' ma non ha testo: e' un volume dove il nome non
+      // compare, non un volume muto
+      const pezzi = eFumetto(t.libro)
+        ? []
+        : t.libro.fileType === "pdf"
           ? await daPdf(t.libro, elenco, t.tutto ? null : t.fino)
           : await daEpub(t.libro, re, t.tutto ? null : t.fino);
       // niente byte, niente lettura: e' un volume muto, non un volume

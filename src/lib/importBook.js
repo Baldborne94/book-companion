@@ -5,6 +5,7 @@ import { riconosci, nomeInBiblioteca, chiaveSaga } from "./sagaBooks.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 import { dalMetadata } from "./sinossi.js";
 import { collana } from "./collana.js";
+import { formatoDaByte, tipoImmagine } from "./fumetto.js";
 
 // oltre questa taglia il libro non si ricuce: tenere in memoria due
 // copie dell'archivio, su un tablet, vale piu' di qualche pagina bianca
@@ -287,7 +288,17 @@ export async function importFiles(fileList, libri = []) {
   let senzaCopertina = 0;
   for (const file of Array.from(fileList)) {
     const lower = file.name.toLowerCase();
-    const fileType = lower.endsWith(".epub") ? "epub" : lower.endsWith(".pdf") ? "pdf" : null;
+    let fileType = lower.endsWith(".epub") ? "epub" : lower.endsWith(".pdf") ? "pdf" : null;
+    // I FUMETTI SI RICONOSCONO DAI BYTE, non dal nome: moltissimi «.cbr» in
+    // giro sono zip rinominati, e viceversa. Il formato scritto sul libro e'
+    // quello VERO, cosi' il lettore apre col lettore giusto.
+    if (!fileType && (lower.endsWith(".cbz") || lower.endsWith(".cbr"))) {
+      fileType = formatoDaByte(new Uint8Array(await file.slice(0, 8).arrayBuffer().catch(() => new ArrayBuffer(0))));
+      if (!fileType) {
+        errors.push({ name: file.name, reason: "archivio non leggibile" });
+        continue;
+      }
+    }
     if (!fileType) {
       errors.push({ name: file.name, reason: "formato non supportato" });
       continue;
@@ -341,7 +352,7 @@ export async function importFiles(fileList, libri = []) {
     }
     const meta = {
       id,
-      title: file.name.replace(/\.(epub|pdf)$/i, ""),
+      title: file.name.replace(/\.(epub|pdf|cbz|cbr)$/i, ""),
       author: "",
       series: "",
       fileType,
@@ -351,7 +362,8 @@ export async function importFiles(fileList, libri = []) {
     };
     let letto = null;
     try {
-      letto = fileType === "epub" ? await enrichEpub(meta, daSalvare) : await enrichPdf(meta, file);
+      letto =
+        fileType === "epub" ? await enrichEpub(meta, daSalvare) : fileType === "pdf" ? await enrichPdf(meta, file) : await enrichFumetto(meta, file);
     } catch {
       /* estrazione fallita: il libro resta col filename come titolo */
     }
@@ -566,4 +578,37 @@ async function enrichPdf(meta, file) {
   // un PDF il titolo non lo dichiara quasi mai: il nome del file e' la
   // norma, non un guasto, e non va contato fra i silenzi da segnalare
   return { titolo: true, copertina: !!thumb };
+}
+
+// UN FUMETTO: la copertina e' la prima pagina, e la scheda — se c'e' — sta
+// in `ComicInfo.xml` dentro l'archivio (serie, numero, autore, sinossi, e
+// il verso di lettura dei manga). Senza scheda il nome del file e' la
+// norma, come nei PDF: non si conta fra i silenzi da segnalare.
+async function enrichFumetto(meta, file) {
+  const { apriFumetto } = await import("./archivioFumetto.js");
+  const a = await apriFumetto(await file.arrayBuffer());
+  if (!a.pagine.length) throw new Error("nessuna pagina");
+  const esito = { titolo: true, copertina: false };
+  const info = a.info;
+  if (info) {
+    if (info.titolo) meta.title = info.titolo;
+    if (info.autore) meta.author = info.autore;
+    if (info.sinossi) meta.sinossi = info.sinossi;
+    if (info.verso) meta.verso = info.verso;
+    // la serie e il numero passano dalla stessa porta della collana degli
+    // ePub: chi chiama li scrive dopo la tavola, come sempre
+    if (info.serie) esito.collana = { serie: info.serie, numero: info.numero ?? null };
+  }
+  try {
+    const bytes = await a.leggi(0);
+    const { preparaCopertina } = await import("./copertina.js");
+    const cover = await preparaCopertina(new Blob([bytes], { type: tipoImmagine(a.pagine[0]) || "image/jpeg" }));
+    if (cover) {
+      await putCover(meta.id, cover);
+      esito.copertina = true;
+    }
+  } catch {
+    /* prima pagina che non si legge: il fumetto entra col dorso disegnato */
+  }
+  return esito;
 }

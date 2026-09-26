@@ -1,4 +1,5 @@
 import { getFile } from "./bookStore.js";
+import { eFumetto } from "./fumetto.js";
 import { searchBook } from "./epubSearch.js";
 import { searchPdf } from "./pdfSearch.js";
 import { queryRegex } from "./wordForms.js";
@@ -97,6 +98,8 @@ export async function cercaOvunque(
   let lontani = 0;
   let esaminati = 0;
   for (const [i, libro] of libri.entries()) {
+    // un fumetto non ha testo in cui cercare
+    if (eFumetto(libro)) continue;
     if (!attivo()) break;
     onLibro?.({ i, totale: libri.length, titolo: libro.title });
     let blob = null;

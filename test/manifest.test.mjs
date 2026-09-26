@@ -65,7 +65,7 @@ export default async function (t) {
   const fh = manifest.file_handlers || [];
   t.eq("un gestore di file", fh.length, 1);
   const estensioni = Object.values(fh[0]?.accept || {}).flat().sort().join(",");
-  t.eq("epub e pdf, e basta", estensioni, ".epub,.pdf");
+  t.eq("epub, pdf e i fumetti (cbz, cbr), e basta", estensioni, ".cbr,.cbz,.epub,.pdf");
   const importa = leggi("src/lib/importBook.js");
   for (const e of estensioni.split(",")) t.c(`${e} e' un'estensione che importFiles conosce`, importa.includes(`"${e}"`));
   t.c("l'azione sta nello scope", String(fh[0].action).startsWith(manifest.scope));
