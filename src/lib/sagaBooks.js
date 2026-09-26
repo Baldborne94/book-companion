@@ -51,18 +51,18 @@ const FUORI_SAGA = [
 // esportate perche' il CAMMINO (`lib/cammino.js`) mostra la guida INTERA,
 // non i soli libri che hai: gli serve la tavola, non il riconoscimento
 export const TAVOLE = [
-  { saga: SAGA, libri: DISCWORLD, ordine: (b) => b.n, autore: "pratchett", fuori: FUORI_SAGA, stretta: false },
+  { saga: SAGA, libri: DISCWORLD, ordine: (b) => b.n, autore: "pratchett", fuori: FUORI_SAGA },
   // `o` e non `n`: l'ordine e' quello del percorso CD8D, non la numerazione
   // della collana. Vedi il commento in testa a `horusHeresy.js`.
   // `parti: true` = il campo `c` di questa tavola non sono CICLI ma i
   // capitoli di una storia sola, letti in fila. Lo dichiara la tavola
   // perche' dai dati non si distingue (vedi `parteDiUnaStoria`).
-  { saga: SAGA_HH, libri: HORUS, ordine: (b) => b.o, autore: null, fuori: [], stretta: true, parti: true },
+  { saga: SAGA_HH, libri: HORUS, ordine: (b) => b.o, autore: null, fuori: [], parti: true },
   // Bakker sta in mezzo ai due: ha scritto quasi solo questa saga — quindi
   // il ripiego sull'autore vale, coi suoi thriller in `fuori` — ma i titoli
   // non sono insegne inconfondibili («The Great Ordeal»), quindi il
   // riconoscimento per titolo resta `stretto` e chiede l'autore.
-  { saga: SAGA_SA, libri: APOCALISSE, ordine: (b) => b.n, autore: "bakker", fuori: FUORI_BAKKER, stretta: true },
+  { saga: SAGA_SA, libri: APOCALISSE, ordine: (b) => b.n, autore: "bakker", fuori: FUORI_BAKKER },
 ];
 
 // I capitoli di tutte le guide, in minuscolo: `parteDiUnaStoria` guarda
@@ -86,10 +86,10 @@ export const PARTI_DI_GUIDA = new Map(
 // I titoli lunghi per primi, e da TUTTE le tavole insieme: «Garro» non
 // deve prendersi «Garro: Knight of the Grey». Oggi quella coppia la
 // fermerebbe anche la regola della copertura — l'antologia non porta
-// l'autore, e «garro» copre un quinto di quel campo — ma l'ordine e' la
-// difesa che vale anche per le tavole LARGHE, dove la copertura non si
-// applica: nel Mondo Disco una coppia cosi' non c'e', e il giorno che
-// arriva non deve dipendere dall'ordine con cui e' scritto un file.
+// l'autore, e «garro» copre un quinto di quel campo — ma l'ordine e' una
+// difesa che non dipende dalla copertura: nel Mondo Disco una coppia cosi'
+// non c'e', e il giorno che arriva non deve dipendere dall'ordine con cui
+// e' scritto un file.
 // UN LIBRO PUO' AVERE PIU' NOMI, e si dichiarano a mano. Il titolo si cerca
 // DENTRO il campo, quindi «The Darkness That Comes Before» non combacia con
 // un file che si chiama «Darkness That Comes Before» — che e' esattamente
@@ -103,17 +103,22 @@ const INDICE = TAVOLE.flatMap((tav) =>
   )
 ).sort((a, b) => b.k.length - a.k.length);
 
-// QUANDO IL CONTENIMENTO NON BASTA.
+// IL CONTENIMENTO NON BASTA MAI.
 //
-// Il Mondo Disco se la cava col solo contenimento: i titoli sono
-// distintivi e c'e' il ripiego sull'autore a raccogliere quel che scappa.
-// L'Eresia no. Sedici delle sue voci sono parole comuni — «Scars»,
-// «Mortis», «Betrayer», «Fulgrim» — e venti autori diversi la scrivono
-// mentre scrivono anche moltissimo altro: presa per contenimento, «Scars»
-// si mangerebbe «Scars of the Past» di chiunque.
+// L'Eresia lo sapeva da subito: sedici delle sue voci sono parole comuni —
+// «Scars», «Mortis», «Betrayer», «Fulgrim» — e venti autori diversi la
+// scrivono mentre scrivono anche moltissimo altro: presa per contenimento,
+// «Scars» si mangerebbe «Scars of the Past» di chiunque. Il Mondo Disco
+// invece per un pezzo e' stato una tavola «larga», col ragionamento che i
+// suoi titoli fossero distintivi. Non lo erano: misurato su 37 titoli di
+// altri autori che ne contengono uno del Disco («The Truth About Cats»,
+// «Mort Cinder», «Eric Clapton: The Autobiography»), 37 su 37 finivano nel
+// Disco, ANCHE con l'autore sbagliato scritto accanto — e da li' «Prima di
+// cominciare» e «Chi e' costui?» li avrebbero raccontati come volumi del
+// Disco.
 //
-// Le tavole `strette` chiedono un secondo segnale, e ne basta uno dei due:
-// o l'AUTORE conferma, o il titolo e' il GROSSO di quello che c'e' scritto.
+// Ogni tavola chiede quindi un secondo segnale, e ne basta uno dei due: o
+// l'AUTORE conferma, o il titolo e' il GROSSO di quello che c'e' scritto.
 // L'autore si cerca anche nel campo, perche' nei nomi dei file ci sta quasi
 // sempre e nei metadati quasi mai.
 const cognome = (a) => norm(a).split(" ").filter(Boolean).pop() || "";
@@ -133,7 +138,10 @@ const senzaRumore = (campo, saga) =>
   campo
     .replace(senzaArticolo(saga), " ")
     .replace(/\b(book|vol|volume|no|n)\s*\d+\b/g, " ")
-    .replace(/\b(epub|mobi|azw3|pdf|retail|ebook)\b/g, " ")
+    // «Novels» e «Series» sono rumore come «Book 4»: senza, «Mort (Discworld
+    // Novels Book 4)» senza autore copriva meno di meta' del campo e cinque
+    // titoli corti del Disco non si riconoscevano piu' (misurato)
+    .replace(/\b(epub|mobi|azw3|pdf|retail|ebook|novels?|series)\b/g, " ")
     .replace(/\b\d+\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -178,8 +186,9 @@ function combaciaScheletro(campo, chiave) {
 
 function combacia(campo, voce, autoreNorm) {
   if (!contiene(campo, voce.k) && !combaciaScheletro(campo, voce.k)) return false;
-  if (!voce.tav.stretta) return true;
-  const cogn = voce.a ? cognome(voce.a) : "";
+  // l'autore del volume se la tavola lo scrive volume per volume (l'Eresia,
+  // a venti mani), altrimenti quello della tavola intera
+  const cogn = voce.a ? cognome(voce.a) : voce.tav.autore || "";
   const suo = cogn && (autoreNorm.includes(cogn) || campo.includes(cogn));
   if (suo) return true;
   // UN AUTORE SBAGLIATO E' UNA PROVA; UN AUTORE MANCANTE NON E' NIENTE.

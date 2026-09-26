@@ -10,13 +10,12 @@
 // Sette romanzi in due cicli, ed e' l'ordine di pubblicazione perche' qui
 // coincide con quello di lettura: la storia e' una sola e va avanti dritta.
 //
-// LA TAVOLA E' `stretta`, come l'Eresia e diversamente dal Mondo Disco.
 // «The Great Ordeal», «The Judging Eye», «The Warrior Prophet» non sono
 // parole comuni come «Scars», ma nemmeno insegne inconfondibili come
 // «Ankh-Morpork»: preso per solo contenimento, «The Great Ordeal» si
-// mangerebbe un romanzo di chiunque altro che si chiami cosi'. Con
-// `stretta` serve un secondo segnale — l'autore, che qui e' sempre lo
-// stesso — e un titolo omonimo di un ALTRO autore viene rifiutato.
+// mangerebbe un romanzo di chiunque altro che si chiami cosi'. Come ogni
+// tavola serve un secondo segnale — l'autore, che qui e' sempre lo stesso
+// — e un titolo omonimo di un ALTRO autore viene rifiutato.
 //
 // L'ARTICOLO IN TESTA E' UN ALIAS, e non e' un vezzo: il libro del lettore
 // si chiama «Darkness That Comes Before», senza «The», perche' cosi'
