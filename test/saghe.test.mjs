@@ -270,8 +270,8 @@ export default async function (t) {
   );
   t.eq("il secondo ciclo si chiama col suo nome", bakker("The Judging Eye")?.ciclo, "The Aspect-Emperor");
 
-  // LA TAVOLA È `stretta`, ed è questa la ragione: «The Great Ordeal» non è
-  // un'insegna inconfondibile, e di un ALTRO autore non è il suo.
+  // LA TAVOLA CHIEDE L'AUTORE, ed è questa la ragione: «The Great Ordeal»
+  // non è un'insegna inconfondibile, e di un ALTRO autore non è il suo.
   t.eq("un omonimo di un altro autore non passa", bakker("The Great Ordeal", "Qualcun Altro"), null);
   t.eq("ma il suo sì", bakker("The Great Ordeal")?.sagaOrder, 6);
 
@@ -290,7 +290,7 @@ export default async function (t) {
   t.c("numerati di fila da 1", APOCALISSE.every((b, i) => b.n === i + 1));
   t.eq("nessun titolo doppio", new Set(APOCALISSE.map((b) => b.t)).size, APOCALISSE.length);
   t.c("ogni volume dichiara il suo ciclo", APOCALISSE.every((b) => !!b.c));
-  t.c("e il suo autore, che è quel che rende la tavola stretta", APOCALISSE.every((b) => !!b.a));
+  t.c("e il suo autore, che è il secondo segnale", APOCALISSE.every((b) => !!b.a));
 
   // GLI ALIAS NON DEVONO ALLARGARE LE ALTRE TAVOLE: togliere l'articolo a
   // tutti farebbe di «The Truth» un «truth» che sta dentro qualunque cosa.
@@ -302,9 +302,26 @@ export default async function (t) {
     riconosci({ title: "Truth", author: "Qualcun Altro" }),
     null
   );
-  // LIMITE DICHIARATO, e non è mio: il Mondo Disco è una tavola LARGA, e
-  // «The Truth About Cats» di chiunque si prende «The Truth» per solo
-  // contenimento. Misurato prima e dopo questa modifica: identico. Curarlo
-  // vorrebbe dire rendere `stretta` anche quella tavola, che è un'altra
-  // faccenda e tocca quarantun romanzi già in libreria.
+  // ERA UN LIMITE DICHIARATO, E ORA È CHIUSO: il Mondo Disco era l'unica
+  // tavola «larga», e «The Truth About Cats» di chiunque si prendeva «The
+  // Truth» per solo contenimento — misurato: 37 titoli altrui su 37, anche
+  // con l'autore sbagliato scritto accanto. Adesso ogni tavola chiede un
+  // secondo segnale: l'autore, o il titolo che è il grosso del campo.
+  t.eq("«The Truth About Cats» di un altro non è il Disco", riconosci({ title: "The Truth About Cats", author: "Tizio Qualunque" }), null);
+  t.eq("…nemmeno senza autore: «the truth» è meno di metà del titolo", riconosci({ title: "The Truth About Cats" }), null);
+  t.eq("un «Mort» di un altro autore è una smentita", riconosci({ title: "Mort", author: "Tizio Qualunque" }), null);
+  t.eq("…e il suo resta il suo", riconosci({ title: "Mort", author: "Terry Pratchett" })?.sagaOrder, 4);
+  t.eq("senza autore il titolo intero basta", riconosci({ title: "Mort" })?.sagaOrder, 4);
+  t.eq("…anche dentro il nome del file", riconosci({ fileName: "04 - Mort.epub" })?.sagaOrder, 4);
+  // «Novels» è rumore dell'editore come «Book 4»: senza quella parola nel
+  // rumore, «Mort (Discworld Novels Book 4)» senza autore copriva meno di
+  // metà del campo e cinque titoli corti del Disco sparivano (misurato)
+  t.eq("il rumore dell'editore non conta nella copertura", riconosci({ title: "Mort (Discworld Novels Book 4)" })?.sagaOrder, 4);
+  t.eq("…e «A Discworld Novel» nemmeno", riconosci({ title: "Mort: A Discworld Novel" })?.sagaOrder, 4);
+  // prezzo dichiarato, lo stesso dell'Eresia: SENZA autore, un titolo che
+  // ne contiene uno del Disco più una parola corta passa per copertura —
+  // chiuderlo vorrebbe dire pretendere il titolo esatto, e allora i nomi
+  // di file veri non si riconoscerebbero più
+  t.eq("prezzo dichiarato: «Snuff Box» senza autore passa", riconosci({ title: "Snuff Box" })?.sagaOrder, 39);
+  t.eq("…ma con un altro autore no", riconosci({ title: "Snuff Box", author: "Tizio Qualunque" }), null);
 }
