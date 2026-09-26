@@ -331,6 +331,10 @@ export function spegniScenografia(doc) {
 // voltata la lambisce. Sei pixel sono un soffio, non una fascia.
 export const PAGINA_SU_GIU = 6;
 
+// Il lato del testo in scorrimento, uguale a quello della pagina: epub.js
+// impaginando lascia meta' del `column-gap`, che e' larghezza/12.
+export const SCORRIMENTO_LATI = "calc(100vw / 24)";
+
 export function contentStyles(s, lingua) {
   const t = READER_THEMES[s.theme];
   const font = READER_FONTS.find((f) => f.id === s.font)?.css;
@@ -381,10 +385,20 @@ export function contentStyles(s, lingua) {
       // intera di lettura (misurato: +1 riga a corpo normale). Il
       // margine laterale invece resta a epub.js: li' il padding e' meta'
       // del `column-gap`, e toccarlo sfascerebbe il conto delle colonne.
-      // In scorrimento non si tocca niente: la' epub.js usa l'asse
+      // In scorrimento sopra e sotto non si tocca: la' epub.js usa l'asse
       // verticale e questi due valori sono un'altra cosa.
+      //
+      // MA IN SCORRIMENTO SI TOCCANO I LATI (`SCORRIMENTO_LATI`): li'
+      // epub.js mette `padding: 0 larghezza/12` (`Contents.size`), mentre
+      // impaginando ai lati resta meta' del `column-gap`, cioe'
+      // larghezza/24 — la stessa levetta del margine dava due colonne di
+      // testo diverse secondo il modo (segnalato: «in modalita' scorrimento
+      // i margini sono diversi rispetto alla modalita' pagina»). In
+      // scorrimento non ci sono colonne da tenere in conto, quindi il lato
+      // si puo' riportare a quello della pagina; `vw` dentro l'iframe e'
+      // la larghezza dell'iframe, che e' quella che epub.js divide.
       ...(s.flow === "scrolled"
-        ? {}
+        ? { "padding-left": `${SCORRIMENTO_LATI} !important`, "padding-right": `${SCORRIMENTO_LATI} !important` }
         : { "padding-top": `${PAGINA_SU_GIU}px !important`, "padding-bottom": `${PAGINA_SU_GIU}px !important` }),
     },
     [textSel]: {
