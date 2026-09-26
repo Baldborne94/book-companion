@@ -19,6 +19,10 @@ import { consigliDalCatalogo, leggiConsigliLiberi, scriviConsigliLiberi, scaduti
 import { chiedi, hasOracle } from "../lib/oracle.js";
 import { costo, soldi, riassunto, leggiTetto } from "../lib/spesa.js";
 import { CampoChiave, TettoFinito } from "./TettoOracolo.jsx";
+import { copertinaNota, nuovoCercatore } from "../lib/copertineRete.js";
+
+// uno per tutta la pagina: poche domande alla volta, mai due uguali
+const copertinaDiVoce = nuovoCercatore();
 
 const campo = () => ({
   flex: 1,
@@ -42,13 +46,23 @@ const tasto = (colore) => ({
   whiteSpace: "nowrap",
 });
 
-// Una saga fra le proposte: le prime in vista, il resto dietro un tasto col
-// conto — una guida da settantun tappe ne proporrebbe venti in fila.
 // La copertina del catalogo, piccola accanto alla voce. Un'immagine che
 // non arriva (rete, id senza file) sparisce invece di lasciare l'icona
-// rotta: senza copertina la voce resta com'era sempre stata.
-function CopertinaVoce({ id }) {
+// rotta: senza copertina la voce resta com'era sempre stata. Se la voce il
+// numero non ce l'ha (consigli di prima, Oracolo, guide, scritte a mano) si
+// chiede al catalogo per titolo e autore, una volta sola.
+function CopertinaVoce({ voce }) {
+  const [id, setId] = useState(() => copertinaNota(voce));
   const [rotta, setRotta] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    const nota = copertinaNota(voce);
+    setId(nota);
+    if (nota === undefined) copertinaDiVoce(voce).then((c) => vivo && setId(c || 0));
+    return () => {
+      vivo = false;
+    };
+  }, [voce.id, voce.titolo, voce.autore, voce.copertina]);
   const src = urlCopertina(id);
   if (!src || rotta) return null;
   return (
@@ -64,6 +78,8 @@ function CopertinaVoce({ id }) {
   );
 }
 
+// Una saga fra le proposte: le prime in vista, il resto dietro un tasto col
+// conto — una guida da settantun tappe ne proporrebbe venti in fila.
 function GruppoProposte({ gruppo, onTieni, onScarta, sotto }) {
   const [tutte, setTutte] = useState(false);
   const mostrate = tutte ? gruppo.voci : gruppo.voci.slice(0, IN_VISTA);
@@ -89,7 +105,7 @@ function GruppoProposte({ gruppo, onTieni, onScarta, sotto }) {
             border: `1px dashed ${C.border}`,
           }}
         >
-          <CopertinaVoce id={v.copertina} />
+          <CopertinaVoce voce={v} />
           <span style={{ flex: 1, minWidth: 0 }}>
             <span style={{ display: "block", fontSize: F.nota, color: C.text }}>{nomeVoce(v)}</span>
             {(v.autore || v.saga || (v.titolo && v.numero != null)) && (
@@ -459,6 +475,7 @@ export default function DaPrendere({ books, onClose }) {
                   background: `linear-gradient(135deg, ${C.card}, ${C.surface})`,
                 }}
               >
+                <CopertinaVoce voce={v} />
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: "block", fontSize: F.corpo, color: C.text, fontWeight: 600 }}>{nomeVoce(v)}</span>
                   <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted }}>
