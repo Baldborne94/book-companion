@@ -121,6 +121,16 @@ export function spaziatoriFitti(pieni, spaziatori) {
 // misura NON ancora presa. Cambiare i margini sposta l'impaginazione,
 // quindi va fatto prima che epub.js misuri — rientrarci dopo gli
 // distruggerebbe le viste.
+// il valore piu' frequente; a parita', il piu' piccolo
+export function moda(valori) {
+  const conta = new Map();
+  for (const v of valori) conta.set(v, (conta.get(v) || 0) + 1);
+  let m = 0;
+  let n = -1;
+  for (const [v, c] of conta) if (c > n || (c === n && v < m)) { n = c; m = v; }
+  return m;
+}
+
 export function togliStacco(doc) {
   if (!doc?.querySelectorAll) return false;
   const vista = doc.defaultView;
@@ -165,11 +175,28 @@ export function togliStacco(doc) {
   // e' un paragrafo di prosa»: i vuoti non si toccano (sono gli stacchi),
   // e nemmeno i SEGNI di scena, quei paragrafi corti fatti solo di
   // asterischi o fregi, che una riga vuota attorno ce l'hanno per mestiere.
-  for (const p of pieni) {
-    if (SEGNO_DI_SCENA.test((p.textContent || "").trim())) continue;
-    p.style.marginTop = "0";
-    p.style.marginBottom = "0";
-  }
+  //
+  // E SI TOGLIE IL MARGINE SISTEMATICO, NON QUELLO ECCEZIONALE (segnalato
+  // dal lettore su «Between Two Fires»: «gli spazi previsti tra paragrafi a
+  // volte te li mangi»). Certi libri lo stacco di scena lo mettono come
+  // MARGINE piu' largo sul primo paragrafo della scena (`p.break
+  // { margin-top: 2em }`), che ha testo e non e' un segno: la cura lo
+  // azzerava con tutti gli altri, e la scena nuova cominciava incollata
+  // alla vecchia. Lo stacco di prosa e' quello che quasi ogni paragrafo ha
+  // — la MODA dei margini misurati, sopra e sotto a parte — e va via; chi
+  // ne ha uno piu' largo l'ha voluto, e lo tiene. A parita' di conto vince
+  // il valore piu' piccolo: nel dubbio si toglie meno.
+  const misure = pieni.map((p) => {
+    const cs = vista.getComputedStyle(p);
+    return [Math.round(parseFloat(cs.marginTop) || 0), Math.round(parseFloat(cs.marginBottom) || 0)];
+  });
+  const modaSopra = moda(misure.map((m) => m[0]));
+  const modaSotto = moda(misure.map((m) => m[1]));
+  pieni.forEach((p, i) => {
+    if (SEGNO_DI_SCENA.test((p.textContent || "").trim())) return;
+    if (misure[i][0] <= modaSopra) p.style.marginTop = "0";
+    if (misure[i][1] <= modaSotto) p.style.marginBottom = "0";
+  });
 
   // una volta sola per documento: `hooks.content` oggi gira una volta, ma
   // un foglio impilato due volte e' il genere di cosa che nessuno nota
