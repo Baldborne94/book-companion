@@ -30,6 +30,7 @@ export const LUNGHEZZA_MAX = 60;
 // frasi, e la ventesima non insegna niente che la terza non dica.
 export const INCONTRI_MAX = 3;
 export const FRASE_MAX = 240;
+export const DOVE_MAX = 600;
 // Un giro di ripasso: dieci parole si fanno in un minuto, e un minuto e'
 // quello che uno concede prima di tornare al libro.
 export const GIRO = 10;
@@ -167,7 +168,7 @@ export { vive as paroleVive };
 // falso proprio sulla parola che ti serve. Una parola cancellata e cercata
 // di nuovo rinasce: cancellarla voleva dire «non mi serve», cercarla dice
 // il contrario, e il gesto piu' recente vince.
-export function annota(tutte, voce, { libro = null, frase = "", forma = "", ora = Date.now() } = {}) {
+export function annota(tutte, voce, { libro = null, frase = "", forma = "", dove = "", ora = Date.now() } = {}) {
   const elenco = Array.isArray(tutte) ? tutte : [];
   if (!voce || !voce.id) return elenco;
   const incontro = {
@@ -177,6 +178,12 @@ export function annota(tutte, voce, { libro = null, frase = "", forma = "", ora 
     forma: String(forma || voce.parola || "").trim(),
     quando: ora,
   };
+  // IL PUNTO DEL LIBRO dove l'hai incontrata: il CFI della selezione
+  // nell'ePub, il numero di pagina nel PDF. Intero o niente — un CFI
+  // tagliato non porta da nessuna parte, e il segno che lo riceve lo
+  // rifiuterebbe; e sulle voci di prima semplicemente non c'e'.
+  const punto = typeof dove === "number" ? String(dove) : dove;
+  if (typeof punto === "string" && punto.trim() && punto.length <= DOVE_MAX) incontro.dove = punto.trim();
   const vecchia = elenco.find((v) => v && v.id === voce.id);
   if (vecchia && !vecchia.deleted) {
     const altri = (vecchia.incontri || []).filter(
@@ -210,6 +217,16 @@ export function annota(tutte, voce, { libro = null, frase = "", forma = "", ora 
     updatedAt: ora,
   };
   return [...elenco.filter((v) => !(v && v.id === voce.id)), nuova];
+}
+
+// Si torna al punto solo se il libro c'e' ancora e si puo' aprire: un
+// tasto che porta a un libro cancellato, o a uno di cui hai tolto l'ebook,
+// e' un tasto che promette quel che non puo' dare.
+export function doveTornare(incontro, books = []) {
+  if (!incontro?.libroId || !incontro.dove) return null;
+  const libro = (books || []).find((b) => b && b.id === incontro.libroId);
+  if (!libro || libro.fileTolto) return null;
+  return { id: libro.id, dove: incontro.dove };
 }
 
 // Togliere lascia una LAPIDE, o l'altro dispositivo la rimanderebbe su al

@@ -4,6 +4,7 @@ import {
   GIRO,
   STATI,
   daRipassare,
+  doveTornare,
   esportaQuaderno,
   filtraQuaderno,
   leggiQuaderno,
@@ -139,7 +140,7 @@ function Ripasso({ giro, onFatto, onEsito }) {
   );
 }
 
-export default function Quaderno({ onClose }) {
+export default function Quaderno({ books = [], onClose, onReadAt }) {
   const [tutte, setTutte] = useState(leggiQuaderno);
   const [query, setQuery] = useState("");
   const [stato, setStato] = useState("tutte");
@@ -323,15 +324,28 @@ export default function Quaderno({ onClose }) {
                 {v.definizione && (
                   <div style={{ fontSize: F.nota, color: C.muted, lineHeight: 1.45, marginTop: 3 }}>{v.definizione}</div>
                 )}
-                {(v.incontri || []).map((x, i) => (
-                  <div key={i} style={{ marginTop: 8, paddingLeft: 10, borderLeft: `2px solid ${C.arcane}66` }}>
-                    <Frase incontro={x} />
-                    <span style={{ fontSize: F.minuscolo, color: C.muted }}>
-                      {x.titolo ? `«${x.titolo}»` : ""}
-                      {x.quando ? ` · ${new Date(x.quando).toLocaleDateString("it-IT", { day: "numeric", month: "short" })}` : ""}
-                    </span>
-                  </div>
-                ))}
+                {(v.incontri || []).map((x, i) => {
+                  const torna = onReadAt && doveTornare(x, books);
+                  return (
+                    <div key={i} style={{ marginTop: 8, paddingLeft: 10, borderLeft: `2px solid ${C.arcane}66` }}>
+                      <Frase incontro={x} />
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ flex: 1, minWidth: 0, fontSize: F.minuscolo, color: C.muted }}>
+                          {x.titolo ? `«${x.titolo}»` : ""}
+                          {x.quando ? ` · ${new Date(x.quando).toLocaleDateString("it-IT", { day: "numeric", month: "short" })}` : ""}
+                        </span>
+                        {torna && (
+                          <button
+                            onClick={() => onReadAt(torna.id, torna.dove)}
+                            style={{ minHeight: 44, padding: "6px 10px", fontSize: F.piccolo, color: C.accent }}
+                          >
+                            ↩ Torna al punto
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
                   <span style={{ flex: 1, fontSize: F.minuscolo, color: C.dim }}>
                     {v.volte > 1 ? `cercata ${v.volte} volte` : ""}

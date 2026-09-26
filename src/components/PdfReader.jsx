@@ -591,11 +591,13 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   async function defineSelection() {
     const raw = sel?.text || "";
     const context = sel?.context || "";
+    // il PDF mostra una pagina per volta: e' quella il punto dove torna il quaderno
+    const dove = String(page);
     const word = cleanWord(raw);
     if (!word) return;
     setSel(null);
     const frase = wordCount(raw) > 1;
-    setDict({ word, raw, context, loading: true });
+    setDict({ word, raw, context, dove, loading: true });
     setPanel("dict");
     const mio = raw;
     const local = await explain(raw, book);

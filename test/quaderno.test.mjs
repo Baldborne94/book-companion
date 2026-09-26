@@ -20,6 +20,8 @@ import {
   paroleVive,
   INCONTRI_MAX,
   FRASE_MAX,
+  DOVE_MAX,
+  doveTornare,
 } from "../src/lib/quaderno.js";
 import { mergePrefs } from "../src/lib/syncCore.js";
 
@@ -133,6 +135,29 @@ export default async function (t) {
   const vuota = annota(q, { ...v, resa: "", definizione: "" }, { ora: 5000 });
   t.eq("una risposta piu' scarna non cancella la resa che c'era", vuota[0].resa, "stupido, tonto, ottuso");
   t.eq("senza voce non cambia niente", annota(q, null), q);
+
+  // ---- il punto del libro --------------------------------------------------
+  // Dal quaderno si torna dove l'hai incontrata: il CFI nell'ePub, la pagina
+  // nel PDF. Intero o niente: un CFI tagliato non porta da nessuna parte.
+  const cfi = "epubcfi(/6/14!/4/2/8,/1:10,/1:18)";
+  const conPunto = annota([], v, { libro: ERIC, frase: "The demon looked gormless.", dove: cfi, ora: 1 });
+  t.eq("l'incontro si tiene il punto", conPunto[0].incontri[0].dove, cfi);
+  t.eq("la pagina di un PDF, anche come numero", annota([], v, { libro: ERIC, dove: 42, ora: 1 })[0].incontri[0].dove, "42");
+  t.c("senza punto la chiave non c'e' affatto", !("dove" in annota([], v, { libro: ERIC, ora: 1 })[0].incontri[0]));
+  t.c("… nemmeno con gli spazi", !("dove" in annota([], v, { libro: ERIC, dove: "   ", ora: 1 })[0].incontri[0]));
+  t.c("un punto troppo lungo non si tronca: si lascia", !("dove" in annota([], v, { libro: ERIC, dove: "x".repeat(DOVE_MAX + 1), ora: 1 })[0].incontri[0]));
+  t.c("… ma fino al tetto si tiene", annota([], v, { libro: ERIC, dove: "x".repeat(DOVE_MAX), ora: 1 })[0].incontri[0].dove.length === DOVE_MAX);
+  const ritrovata = annota(conPunto, v, { libro: ERIC, frase: "The demon looked gormless.", dove: "epubcfi(/6/14!/4/2/9)", ora: 2 });
+  t.eq("la stessa frase ritrovata tiene il punto NUOVO", ritrovata[0].incontri[0].dove, "epubcfi(/6/14!/4/2/9)");
+
+  const scaffale = [ERIC, { ...MORT, fileTolto: true }];
+  const x = conPunto[0].incontri[0];
+  t.eq("si torna al libro giusto e al suo punto", JSON.stringify(doveTornare(x, scaffale)), JSON.stringify({ id: ERIC.id, dove: cfi }));
+  t.eq("senza punto non si torna", doveTornare({ ...x, dove: undefined }, scaffale), null);
+  t.eq("… ne' senza libro", doveTornare({ ...x, libroId: null }, scaffale), null);
+  t.eq("un libro cancellato non si apre", doveTornare(x, [MORT]), null);
+  t.eq("un libro senza ebook nemmeno", doveTornare({ ...x, libroId: MORT.id }, scaffale), null);
+  t.eq("… e nemmeno con la biblioteca assente (null, non undefined: il default la copre gia')", doveTornare(x, null), null);
 
   // ---- togliere -------------------------------------------------------------
   const tolta = togliParola(q, "gormless", 6000);
