@@ -236,6 +236,26 @@ export function copertinaDi(d) {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+// IL TITOLO ITALIANO DELLA STESSA OPERA, quando il catalogo ce l'ha. Con
+// `lang=it` Open Library mette in testa l'edizione italiana se esiste, ma
+// se non esiste ne mette un'altra — misurato: «The Way of Kings» torna
+// tedesco — quindi vale solo quella che dichiara l'italiano, e solo se il
+// titolo e' davvero un altro. Misurato su otto opere note: l'italiano c'e'
+// per due («Il nome del vento», «Il Grande Inverno»); per il resto resta
+// `stessoPosto`, che la lingua non la guarda.
+export function titoliTradotti(d) {
+  const originale = idTitolo(titoloDi(d), "");
+  const fuori = [];
+  for (const e of d?.editions?.docs || []) {
+    const lingue = Array.isArray(e?.language) ? e.language : [];
+    const t = typeof e?.title === "string" ? e.title.trim() : "";
+    if (!t || !lingue.includes("ita")) continue;
+    if (idTitolo(t, "") === originale || fuori.includes(t)) continue;
+    fuori.push(t);
+  }
+  return fuori;
+}
+
 export function urlCopertina(id, misura = "M") {
   const n = Number(id);
   return Number.isInteger(n) && n > 0 ? `https://covers.openlibrary.org/b/id/${n}-${misura}.jpg` : null;
@@ -305,6 +325,7 @@ export async function prossimiDellaSaga(saga, opere, books, { sagaDi = cercaSaga
     saga: saga.saga,
     numero,
     copertina: copertinaDi(d),
+    altri: titoliTradotti(d),
     perche: ultimo ? `dopo «${titoloDi(ultimo)}», che hai letto${saga.preferita ? " · fra le tue saghe preferite" : ""}` : "",
   }));
   return { voci, membri: membri.map((m) => m.d) };
@@ -691,7 +712,11 @@ export async function consigliDalCatalogo(books = [], { fetcher, sagaDi, statusO
             author: autore,
             sort: "editions",
             limit: "100",
-            fields: "key,title,author_name,author_key,first_publish_year,edition_count,cover_i",
+            fields: "key,title,author_name,author_key,first_publish_year,edition_count,cover_i,editions,editions.title,editions.language",
+            // l'edizione che il catalogo mette in testa a ogni opera: con
+            // `lang` preferisce quella italiana, e il suo titolo serve a
+            // riconoscere il volume che hai in casa tradotto
+            lang: "it",
           })
         )
       );

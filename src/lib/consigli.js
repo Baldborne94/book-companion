@@ -165,7 +165,7 @@ export function daMostrare(consigli, books = [], lista = [], solo = null) {
     const voci = (consigli?.[chiave] || []).filter((v) => {
       if (!v?.id || noti.has(v.id) || visti.has(v.id)) return false;
       visti.add(v.id);
-      return !giaInCasa({ title: v.titolo, author: v.autore }, books);
+      return !giaInCasa({ title: v.titolo, author: v.autore, saga: v.saga, numero: v.numero, altri: v.altri }, books);
     });
     if (voci.length) out.push({ chiave, nome, voci });
   }

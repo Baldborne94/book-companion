@@ -1,7 +1,7 @@
 import { putFile, getFile, putCover, getCover, removeBookData, removeAux } from "./bookStore.js";
 import { getProgress } from "./library.js";
 import { getMarks, getHighlights } from "./annotations.js";
-import { riconosci, nomeInBiblioteca } from "./sagaBooks.js";
+import { riconosci, nomeInBiblioteca, chiaveSaga } from "./sagaBooks.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 import { dalMetadata } from "./sinossi.js";
 import { collana } from "./collana.js";
@@ -140,12 +140,53 @@ export function sembraGiaLetto({ title, author } = {}, libri = []) {
 // nei doppioni), il titolo cercato almeno `TITOLO_MIN` lettere, e a parole
 // intere — «Mort» non sta dentro «Mortal Engines».
 const TITOLO_MIN = 5;
-export function giaInCasa({ title, author } = {}, libri = []) {
-  if (sembraGiaLetto({ title, author }, libri)) return true;
-  const t = chiave(title);
+//
+// E UN TITOLO TRADOTTO E' LO STESSO LIBRO (chiesto dal lettore: «vai con la
+// 4», era un limite dichiarato). Da un titolo solo non si puo' sapere che
+// «I giardini della luna» e' «Gardens of the Moon», e le strade sono due:
+// `altri` — i titoli che il catalogo conosce per la stessa opera, cioe'
+// l'edizione italiana quando Open Library ce l'ha — e `stessoPosto`, che la
+// lingua non la guarda affatto.
+export function giaInCasa({ title, author, saga, numero, altri } = {}, libri = []) {
+  for (const titolo of [title, ...(Array.isArray(altri) ? altri : [])]) {
+    if (!titolo) continue;
+    if (sembraGiaLetto({ title: titolo, author }, libri)) return true;
+    const t = chiave(titolo);
+    const a = chiaveAutore(author);
+    if (t.length < TITOLO_MIN || !a) continue;
+    if (libri.some((b) => chiaveAutore(b?.author) === a && ` ${chiave(b?.title)} `.includes(` ${t} `))) return true;
+  }
+  return stessoPosto({ author, saga, numero }, libri);
+}
+
+// LO STESSO POSTO NELLA STESSA SAGA E' LO STESSO LIBRO, in qualunque lingua
+// sia scritto il titolo: «Malazan n° 1» in casa col titolo italiano e il
+// consiglio «Gardens of the Moon, Malazan n° 1» sono un volume solo. Due
+// guardie, perche' sbagliare qui fa sparire un consiglio buono:
+// - dove nella tua saga uno stesso numero porta DUE titoli diversi i numeri
+//   non sono una fila sola (il Cosmoverse numera Mistborn e la Folgoluce da
+//   uno) e il numero non dice piu' quale libro — si tace;
+// - un autore CONOSCIUTO da tutt'e due i lati e diverso e' una smentita,
+//   uno mancante no, come nei doppioni.
+export function stessoPosto({ author, saga, numero } = {}, libri = []) {
+  const n = Number(numero);
+  const k = saga ? chiaveSaga(saga) : "";
+  if (!k || !Number.isFinite(n) || n <= 0) return false;
+  const fratelli = (libri || []).filter((b) => b?.saga && chiaveSaga(b.saga) === k);
+  const perNumero = new Map();
+  for (const b of fratelli) {
+    const m = Number(b.sagaOrder);
+    if (b.sagaOrder == null || b.sagaOrder === "" || !Number.isFinite(m)) continue;
+    if (!perNumero.has(m)) perNumero.set(m, new Set());
+    perNumero.get(m).add(chiave(b.title));
+  }
+  if ([...perNumero.values()].some((titoli) => titoli.size > 1)) return false;
   const a = chiaveAutore(author);
-  if (t.length < TITOLO_MIN || !a) return false;
-  return libri.some((b) => chiaveAutore(b?.author) === a && ` ${chiave(b?.title)} `.includes(` ${t} `));
+  return fratelli.some((b) => {
+    if (Number(b.sagaOrder) !== n) return false;
+    const suo = chiaveAutore(b.author);
+    return !a || !suo || suo === a;
+  });
 }
 
 // UN DOPPIONE SENZA BYTE NON E' UN DOPPIONE: E' IL FILE CHE TORNA A CASA.
