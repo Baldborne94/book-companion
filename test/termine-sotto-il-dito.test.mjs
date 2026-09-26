@@ -1,6 +1,6 @@
 // LA PAROLA SOTTO IL DITO. Toccando il testo di un capitolo il reader chiede
-// al documento dov'è il caret e da lì allarga alla parola, poi a una prima
-// e due dopo, per riconoscere un termine del glossario anche quando è un
+// al documento dov'è il caret e da lì allarga alla parola, poi a quelle
+// attorno, per riconoscere un termine del glossario anche quando è un
 // nome composto. Stava in `Reader.jsx`, fuori dalla portata di ogni test, e
 // sbaglia in silenzio da tutt'e due i lati: un nome letto a metà non alza
 // errori, apre la scheda sbagliata o non la apre affatto.
@@ -40,10 +40,32 @@ export default async function (t) {
   const lord = "the Lord Havelock Vetinari smiled thinly";
   t.eq("una parola prima e due dopo bastano a tre parole, toccando la prima", termineIn(lord, su(lord, "Lord"), ix)?.t, "Lord Havelock Vetinari");
   t.eq("e toccando quella in mezzo", termineIn(lord, su(lord, "Havelock"), ix)?.t, "Lord Havelock Vetinari");
-  // DICHIARATO: a sinistra si guarda UNA parola sola, quindi toccando
-  // l'ultima di un nome di tre non lo si ricompone — è il prezzo di non
-  // allargare troppo, e il lettore tocca il nome dove lo vede intero
-  t.eq("toccando l'ultima di tre, una parola prima non basta (dichiarato)", termineIn(lord, su(lord, "Vetinari"), ix), null);
+  // ERA UN LIMITE DICHIARATO: a sinistra si guardava una parola sola, e
+  // toccando l'ultima di un nome di tre il nome non si ricomponeva
+  t.eq("toccando l'ultima di tre si prende il nome intero", termineIn(lord, su(lord, "Vetinari"), ix)?.t, "Lord Havelock Vetinari");
+  t.eq("… anche a fine testo", termineIn("said Lord Havelock Vetinari", su("said Lord Havelock Vetinari", "Vetinari"), ix)?.t, "Lord Havelock Vetinari");
+  // una voce di quattro parole allarga la finestra a quattro, dai due lati
+  const ix4 = buildIndex([{ t: "The Lord of the Rings", d: "x" }, { t: "Rings", d: "anelli" }]);
+  const libro = "he read The Lord of the Rings twice";
+  t.eq("la finestra segue la voce piu' lunga: cinque parole, toccando l'ultima", termineIn(libro, su(libro, "Rings"), ix4)?.t, "The Lord of the Rings");
+  t.eq("… e toccando la prima", termineIn(libro, su(libro, "The"), ix4)?.t, "The Lord of the Rings");
+  // nessuna finestra oltre la voce piu' lunga: con voci di una parola sola
+  // si guarda comunque fino a tre, ma non di piu'
+  const corto = buildIndex([{ t: "Vimes", d: "x" }, { t: "a b c d", d: "quattro" }]);
+  t.eq("una finestra di quattro esiste solo se una voce ne ha quattro", termineIn("a b c d", su("a b c d", "d"), corto)?.t, "a b c d");
+  // il tetto e' la voce piu' lunga dell'indice: una voce di quattro parole
+  // che l'indice non conta non si prende (qui la si infila a mano)
+  const tre = buildIndex([{ t: "Sam Vimes", d: "x" }, { t: "Lord Havelock Vetinari", d: "y" }]);
+  tre.map.set("a b c d", { t: "a b c d" });
+  t.eq("… altrimenti il tetto e' la voce piu' lunga", termineIn("a b c d", su("a b c d", "d"), tre), null);
+  t.eq("… nemmeno toccando in mezzo, dove i due lati insieme ne farebbero quattro", termineIn("a b c d", su("a b c d", "b"), tre), null);
+  // un indice che la lunghezza non la dice guarda fino a tre
+  t.eq("un indice senza `max` guarda fino a tre", termineIn(lord, su(lord, "Vetinari"), { map: ix.map })?.t, "Lord Havelock Vetinari");
+  // con voci di due parole al massimo, tre non si provano: con «max» a due
+  // la finestra si ferma a due anche dove una voce di tre starebbe
+  const due = buildIndex([{ t: "Sam Vimes", d: "x" }]);
+  due.map.set("lord havelock vetinari", { t: "Lord Havelock Vetinari" });
+  t.eq("… e con voci di due parole si guarda fino a due", termineIn(lord, su(lord, "Vetinari"), due), null);
 
   // ---- SOLO LO SPAZIO UNISCE ------------------------------------------------
   t.eq("una virgola in mezzo è un confine: resta la parola sola", termineIn("Sam, Vimes", su("Sam, Vimes", "Vimes"), ix)?.t, "Vimes");
