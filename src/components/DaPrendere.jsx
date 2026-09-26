@@ -15,7 +15,7 @@ import {
   vive,
 } from "../lib/daPrendere.js";
 import { chiediConsigli, daMostrare, leggiConsigliSalvati, scriviConsigli } from "../lib/consigli.js";
-import { consigliDalCatalogo, leggiConsigliLiberi, scriviConsigliLiberi, scaduti, SEZIONI_CATALOGO } from "../lib/consigliLiberi.js";
+import { consigliDalCatalogo, leggiConsigliLiberi, scriviConsigliLiberi, scaduti, SEZIONI_CATALOGO, urlCopertina } from "../lib/consigliLiberi.js";
 import { chiedi, hasOracle } from "../lib/oracle.js";
 import { costo, soldi, riassunto, leggiTetto } from "../lib/spesa.js";
 import { CampoChiave, TettoFinito } from "./TettoOracolo.jsx";
@@ -44,6 +44,26 @@ const tasto = (colore) => ({
 
 // Una saga fra le proposte: le prime in vista, il resto dietro un tasto col
 // conto — una guida da settantun tappe ne proporrebbe venti in fila.
+// La copertina del catalogo, piccola accanto alla voce. Un'immagine che
+// non arriva (rete, id senza file) sparisce invece di lasciare l'icona
+// rotta: senza copertina la voce resta com'era sempre stata.
+function CopertinaVoce({ id }) {
+  const [rotta, setRotta] = useState(false);
+  const src = urlCopertina(id);
+  if (!src || rotta) return null;
+  return (
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => setRotta(true)}
+      style={{ width: px(44), height: px(66), objectFit: "cover", borderRadius: R.minimo, flexShrink: 0, background: C.border }}
+    />
+  );
+}
+
 function GruppoProposte({ gruppo, onTieni, onScarta, sotto }) {
   const [tutte, setTutte] = useState(false);
   const mostrate = tutte ? gruppo.voci : gruppo.voci.slice(0, IN_VISTA);
@@ -69,6 +89,7 @@ function GruppoProposte({ gruppo, onTieni, onScarta, sotto }) {
             border: `1px dashed ${C.border}`,
           }}
         >
+          <CopertinaVoce id={v.copertina} />
           <span style={{ flex: 1, minWidth: 0 }}>
             <span style={{ display: "block", fontSize: F.nota, color: C.text }}>{nomeVoce(v)}</span>
             {(v.autore || v.saga || (v.titolo && v.numero != null)) && (

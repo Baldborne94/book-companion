@@ -27,6 +27,8 @@ import {
   MIN_VOTI,
   SCADENZA,
   SEZIONI_CATALOGO,
+  copertinaDi,
+  urlCopertina,
 } from "../src/lib/consigliLiberi.js";
 import { giaInCasa } from "../src/lib/importBook.js";
 
@@ -359,11 +361,11 @@ export default async function (t) {
     statusOf: stati({ 1: "read" }),
     sagaDi,
     fetcher: finto([
-      [(q) => q.get("author") === "Steven Erikson" && q.get("sort") === "editions", [doc("Gardens of the Moon", 1999), doc("Deadhouse Gates", 2000), doc("Memories of Ice", 2001)]],
+      [(q) => q.get("author") === "Steven Erikson" && q.get("sort") === "editions", [doc("Gardens of the Moon", 1999), doc("Deadhouse Gates", 2000, { cover_i: 240727 }), doc("Memories of Ice", 2001)]],
       [(q) => q.get("title") === "Gardens of the Moon", [{ key: "/w/1", title: "Gardens of the Moon", author_name: ["Steven Erikson"], subject: ["Fantasy", "epic"] }]],
       [
         (q) => /subject:"Fantasy"/.test(q.get("q") || ""),
-        [d("Night of Knives", "Ian C. Esslemont", { ratings_average: 4.6 }), d("A Game of Thrones", "George R. R. Martin")],
+        [d("Night of Knives", "Ian C. Esslemont", { ratings_average: 4.6 }), d("A Game of Thrones", "George R. R. Martin", { cover_i: 9269962 })],
       ],
     ]),
   });
@@ -374,6 +376,25 @@ export default async function (t) {
     g.consigli.gusti.map((x) => x.titolo).join(","),
     "A Game of Thrones"
   );
+  // LA COPERTINA: il numero del catalogo viaggia sulla voce, e chi non ce
+  // l'ha resta senza invece di prendersi quella di un altro.
+  t.eq("la saga porta la copertina del suo volume", g.consigli.saghe.map((x) => x.copertina).join(","), "240727,");
+  t.eq("… e chi non ce l'ha vale null", g.consigli.saghe[1].copertina, null);
+  t.eq("i gusti portano la copertina", g.consigli.gusti[0].copertina, 9269962);
+  t.c(
+    "la copertina si chiede al catalogo, nelle opere e nei generi",
+    urls.filter((u) => /sort=editions|subject%3A/.test(u)).every((u) => new URL(u).searchParams.get("fields").split(",").includes("cover_i"))
+  );
+  t.c("… e le domande ci sono davvero", urls.some((u) => /subject%3A/.test(u)) && urls.some((u) => /sort=editions/.test(u)));
+  t.eq("il numero del catalogo e' la copertina", copertinaDi({ cover_i: 12 }), 12);
+  t.eq("… anche scritto come stringa", copertinaDi({ cover_i: "12" }), 12);
+  t.eq("… senza: null", copertinaDi({}), null);
+  t.eq("… zero o negativo: null (-1 e' il «niente» del catalogo)", [copertinaDi({ cover_i: 0 }), copertinaDi({ cover_i: -1 })].join(","), ",");
+  t.eq("… un decimale o una parola: null", [copertinaDi({ cover_i: 1.5 }), copertinaDi({ cover_i: "abc" })].join(","), ",");
+  t.eq("… nessun documento: null", copertinaDi(null), null);
+  t.eq("l'indirizzo dell'immagine", urlCopertina(240727), "https://covers.openlibrary.org/b/id/240727-M.jpg");
+  t.eq("… in un'altra misura", urlCopertina(5, "S"), "https://covers.openlibrary.org/b/id/5-S.jpg");
+  t.eq("… senza copertina nessun indirizzo", [urlCopertina(null), urlCopertina(undefined), urlCopertina(0), urlCopertina("x"), urlCopertina(-1), urlCopertina(1.5)].join(","), ",,,,,");
   t.eq("il catalogo mostra solo saghe e gusti", SEZIONI_CATALOGO.join(","), "saghe,gusti");
   t.eq(
     "… e le opere dell'autore si chiedono una volta sola",

@@ -221,6 +221,22 @@ export function soloDellAutore(docs = [], books = [], autore = "") {
   return chiave ? docs.filter((d) => (d.author_key || []).includes(chiave)) : docs;
 }
 
+// ---- la copertina ----------------------------------------------------------------
+
+// Il catalogo la dice come un numero (`cover_i`), e l'immagine sta su un
+// altro indirizzo. Si salva il NUMERO, non l'indirizzo: e' quel che il
+// catalogo ha detto, e l'indirizzo si costruisce quando si disegna. Solo
+// interi positivi: un id storto farebbe un'immagine rotta sulla voce.
+export function copertinaDi(d) {
+  const n = Number(d?.cover_i);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+export function urlCopertina(id, misura = "M") {
+  const n = Number(id);
+  return Number.isInteger(n) && n > 0 ? `https://covers.openlibrary.org/b/id/${n}-${misura}.jpg` : null;
+}
+
 // ---- le saghe -------------------------------------------------------------------
 
 // Le opere dell'autore, dalla piu' vecchia: senza raccolte, una per titolo.
@@ -284,6 +300,7 @@ export async function prossimiDellaSaga(saga, opere, books, { sagaDi = cercaSaga
     autore: saga.autore,
     saga: saga.saga,
     numero,
+    copertina: copertinaDi(d),
     perche: ultimo ? `dopo «${titoloDi(ultimo)}», che hai letto${saga.preferita ? " · fra le tue saghe preferite" : ""}` : "",
   }));
   return { voci, membri: membri.map((m) => m.d) };
@@ -457,6 +474,7 @@ export function daGusti(risultati = [], books = []) {
       autore: g.autore,
       saga: "",
       numero: null,
+      copertina: copertinaDi(primo),
       perche: `★ ${String(voto(primo.ratings_average || 0)).replace(".", ",")} su Open Library · ${[...g.argomenti].join(", ")}${via ? ` · come «${via}»` : ""}`,
     }));
 }
@@ -516,7 +534,7 @@ export async function consigliDalCatalogo(books = [], { fetcher, sagaDi, statusO
             author: autore,
             sort: "editions",
             limit: "100",
-            fields: "key,title,author_name,author_key,first_publish_year,edition_count",
+            fields: "key,title,author_name,author_key,first_publish_year,edition_count,cover_i",
           })
         )
       );
@@ -564,7 +582,7 @@ export async function consigliDalCatalogo(books = [], { fetcher, sagaDi, statusO
           q: `subject:"${argomento.replace(/"/g, "")}"`,
           sort: "rating",
           limit: "50",
-          fields: "title,author_name,first_publish_year,ratings_average,ratings_count,subject",
+          fields: "title,author_name,first_publish_year,ratings_average,ratings_count,subject,cover_i",
         })
       );
       return docs ? { argomento, peso, fonti, docs } : null;
