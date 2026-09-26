@@ -128,9 +128,18 @@ export function scan(indexes, raw) {
 // la scheda sbagliata o non la apre affatto.
 //
 // La parte pura prende il TESTO del nodo e l'offset del caret: dal caret si
-// allarga alla parola, poi si guarda una parola prima e due dopo — un nome
-// puo' essere composto («Sam Vimes», «Lord Havelock Vetinari») — e si
-// prova dal candidato piu' lungo al piu' corto. Solo lo SPAZIO unisce due
+// allarga alla parola, poi alle parole attorno — un nome puo' essere
+// composto («Sam Vimes», «Lord Havelock Vetinari») — e si prova dal
+// candidato piu' lungo al piu' corto.
+//
+// E I DUE LATI SONO UGUALI (era un limite dichiarato, scelto dal lettore:
+// «vai con la 5»): a sinistra si guardava UNA parola sola e a destra due,
+// quindi toccando l'ultima parola di «Lord Havelock Vetinari» il nome non
+// si ricomponeva mai, mentre toccando la prima si'. Adesso da tutt'e due i
+// lati si guardano tante parole quante ne ha la voce piu' lunga del
+// glossario (`ix.max`), e nessuna finestra ne tiene di piu':
+// una finestra piu' lunga di ogni voce non combacia con niente, e
+// provarla e' solo lavoro. Solo lo SPAZIO unisce due
 // parole: una virgola in mezzo e' un confine, o «Vimes, Carrot» farebbe un
 // nome solo.
 //
@@ -149,26 +158,33 @@ export function termineIn(text, offset, ix) {
   while (da > 0 && PAROLA.test(text[da - 1])) da -= 1;
   while (a < text.length && PAROLA.test(text[a])) a += 1;
   if (a <= da) return null;
-  // i confini possibili a sinistra (una parola prima) e a destra (due dopo)
+  // i confini possibili ai due lati, tante parole quante ne ha la voce piu'
+  // lunga del glossario, e una finestra non ne tiene di piu'; tre se
+  // l'indice non lo dice
+  const quante = ix?.max || 3;
   const inizi = [da];
-  if (da > 0) {
-    let j = da - 1;
+  let sinistra = da;
+  while (inizi.length < quante && sinistra > 0) {
+    let j = sinistra;
     while (j > 0 && text[j - 1] === " ") j -= 1;
+    if (j === sinistra || j === 0 || !PAROLA.test(text[j - 1])) break;
     while (j > 0 && PAROLA.test(text[j - 1])) j -= 1;
-    if (j < da && PAROLA.test(text[j])) inizi.push(j);
+    sinistra = j;
+    inizi.push(j);
   }
   const fini = [a];
   let destra = a;
-  for (let i = 0; i < 2 && destra < text.length; i++) {
+  while (fini.length < quante && destra < text.length) {
     let j = destra;
     while (j < text.length && text[j] === " ") j += 1;
-    if (j >= text.length || !PAROLA.test(text[j])) break;
+    if (j === destra || j >= text.length || !PAROLA.test(text[j])) break;
     while (j < text.length && PAROLA.test(text[j])) j += 1;
     destra = j;
     fini.push(j);
   }
   const candidati = [];
-  for (const i of inizi) for (const f of fini) candidati.push(text.slice(i, f));
+  for (let i = 0; i < inizi.length; i++)
+    for (let f = 0; f < fini.length; f++) if (i + f + 1 <= quante) candidati.push(text.slice(inizi[i], fini[f]));
   candidati.sort((p, q) => q.length - p.length);
   for (const c of candidati) {
     const pulito = c.trim();
