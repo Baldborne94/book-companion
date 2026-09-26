@@ -143,6 +143,9 @@ export function tieni(lista, voce, ora = Date.now()) {
     ciclo: voce.ciclo || "",
     numero: voce.numero ?? null,
     forse: !!voce.forse,
+    // il numero della copertina del catalogo viaggia con la voce: tenuta dai
+    // consigli, la lista la mostra senza richiederla
+    copertina: Number.isInteger(voce.copertina) && voce.copertina > 0 ? voce.copertina : vecchia?.copertina ?? null,
     nota: voce.nota || vecchia?.nota || "",
     aggiunta: vecchia?.aggiunta || ora,
     updatedAt: ora,
