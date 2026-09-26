@@ -12,7 +12,7 @@ import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
 import { portaACasa, cloudUsage, troppoGrandi, daRicaricare } from "../lib/sync.js";
 import {
-  frasePortata, senzaCopia, fraseSenzaCopia, daPortare,
+  frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso,
   troppoGrandiInBiblioteca, fraseTroppoGrandi,
 } from "../lib/syncCore.js";
 import { fmtBytes } from "../lib/bytes.js";
@@ -92,7 +92,18 @@ const guardate = () =>
     .then((k) => new Set(k.filter((x) => typeof x === "string" && x.startsWith("copertina_")).map((x) => x.slice(10))))
     .catch(() => null);
 
-function Shelf({ books, onOpenBook, localIds, showOrder, coverV = 0 }) {
+// I SEGNI SUL DORSO. L'ebook tolto a mano non e' «nel cloud» (la nuvoletta
+// prometterebbe uno scaricamento che il lettore ha appena rifiutato), e il
+// tomo che non e' ne' qui ne' lassu' nemmeno: a lui la nuvoletta prometteva
+// uno scaricamento impossibile, a mezzo centimetro dalla riga che lo diceva
+// perduto. Il colore si legge quando si disegna (`C` cambia col tema).
+const SEGNI_DORSO = {
+  tolto: { glifo: "📗", titolo: "Tieni la scheda, non l'ebook", colore: () => C.muted },
+  cloud: { glifo: "☁", titolo: "Nel cloud — si scarica quando lo apri", colore: () => C.arcane },
+  perduto: { glifo: "⚠", titolo: "Né qui né nel cloud — reimporta il file", colore: () => C.accent },
+};
+
+function Shelf({ books, onOpenBook, localIds, idLassu, showOrder, coverV = 0 }) {
   // Chi ha il dorso disegnato lo sa solo `BookCover`, che va a guardare in
   // IndexedDB se una copertina c'è: lo dice qui, e lo scaffale evita di
   // ristampare titolo e autore sotto una copertina che li porta già.
@@ -212,41 +223,27 @@ function Shelf({ books, onOpenBook, localIds, showOrder, coverV = 0 }) {
                   prometterebbe uno scaricamento che il lettore ha appena
                   rifiutato. Porta un segno suo, perché da lontano si veda
                   che quel libro c'è ma non si apre. */}
-              {b.fileTolto ? (
-                <span
-                  title="Tieni la scheda, non l'ebook"
-                  style={{
-                    position: "absolute",
-                    bottom: 6,
-                    left: 6,
-                    padding: "1px 6px",
-                    borderRadius: R.piccolo,
-                    fontSize: F.minuscolo,
-                    background: `${C.bg}cc`,
-                    border: `1px solid ${C.border}`,
-                    color: C.muted,
-                  }}
-                >
-                  📗
-                </span>
-              ) : localIds && !localIds.has(b.id) && (
-                <span
-                  title="Nel cloud — si scarica quando lo apri"
-                  style={{
-                    position: "absolute",
-                    bottom: 6,
-                    left: 6,
-                    padding: "1px 6px",
-                    borderRadius: R.piccolo,
-                    fontSize: F.minuscolo,
-                    background: `${C.bg}cc`,
-                    border: `1px solid ${C.arcane}77`,
-                    color: C.arcane,
-                  }}
-                >
-                  ☁
-                </span>
-              )}
+              {(() => {
+                const segno = SEGNI_DORSO[segnoDorso(b, localIds, idLassu)];
+                return segno && (
+                  <span
+                    title={segno.titolo}
+                    style={{
+                      position: "absolute",
+                      bottom: 6,
+                      left: 6,
+                      padding: "1px 6px",
+                      borderRadius: R.piccolo,
+                      fontSize: F.minuscolo,
+                      background: `${C.bg}cc`,
+                      border: `1px solid ${segno.colore()}77`,
+                      color: segno.colore(),
+                    }}
+                  >
+                    {segno.glifo}
+                  </span>
+                );
+              })()}
             </div>
             <div
               style={{
@@ -371,7 +368,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   );
 }
 
-function Grouped({ books, tutti, group, sort, onOpenBook, localIds, coverV = 0, riconosciuti, onCammino }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, coverV = 0, riconosciuti, onCammino }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -438,11 +435,11 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, coverV = 0, 
                       <span>{p.nome ?? "Fuori dal percorso"}</span>
                       <span>{p.libri.length}</span>
                     </div>
-                    <Shelf books={p.libri} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} showOrder />
+                    <Shelf books={p.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} showOrder />
                   </div>
                 ))
               ) : (
-                <Shelf books={c.libri} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} showOrder />
+                <Shelf books={c.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} showOrder />
               )}
             </div>
           ))
@@ -450,7 +447,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, coverV = 0, 
           <Shelf
             books={r.libri}
             onOpenBook={onOpenBook}
-            localIds={localIds}
+            localIds={localIds} idLassu={idLassu}
             coverV={coverV}
             // il numero del volume ha senso dentro la sua saga; fra i volumi
             // soli sarebbe un numero senza la storia che lo spiega
@@ -475,7 +472,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, coverV = 0, 
 
   return aEtichette(books, CRITERIO, sort).map((r) => (
     <Ripiano key={r.id || "_"} nome={r.nome} quanti={r.libri.length} spento={!!r.spento}>
-      <Shelf books={r.libri} onOpenBook={onOpenBook} localIds={localIds} coverV={coverV} />
+      <Shelf books={r.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} />
     </Ripiano>
   ));
 }
@@ -655,6 +652,10 @@ export default function Library({
   // collegato non c'e' niente da richiamare: offrirlo lo stesso sarebbe una
   // promessa che nessuno puo' mantenere.
   const nelCloud = collegato && localIds ? books.filter((b) => !localIds.has(b.id)) : [];
+  // L'elenco del secchio arriva allo scaffale per il segno sul dorso: e' lo
+  // stesso che decide la riga dei perduti qui sotto, cosi' le due non si
+  // smentiscono.
+  const idLassu = collegato ? cloud?.idLibri || null : null;
 
   // La nuvoletta promette uno scaricamento, e su qualche tomo quella
   // promessa non si puo' mantenere: i byte non sono ne' qui ne' lassu'.
@@ -1756,7 +1757,7 @@ export default function Library({
           group={group}
           sort={sort}
           onOpenBook={onOpenBook}
-          localIds={localIds}
+          localIds={localIds} idLassu={idLassu}
           coverV={coverV}
           riconosciuti={riconosciuti}
           onCammino={onCammino}

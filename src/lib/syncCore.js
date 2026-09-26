@@ -574,6 +574,22 @@ export function daPortare(soloNelCloud, idLassu) {
   return idLassu ? l.filter((b) => b?.id && idLassu.has(b.id)) : l;
 }
 
+// IL SEGNO SUL DORSO, e la nuvoletta sul tomo perduto non ci va piu'.
+//
+// Tre stati si vedevano uguali a due: un libro senza byte qui poteva essere
+// lassu' (e la nuvoletta diceva il vero: si scarica quando lo apri) o da
+// nessuna parte — e la nuvoletta gli prometteva lo stesso uno scaricamento
+// che non potra' mai riuscire, mentre la riga d'avviso in Libreria diceva il
+// contrario. Qui si decide in un punto solo, con la STESSA regola di
+// `senzaCopia`: senza l'elenco del secchio non si accusa nessuno e resta la
+// nuvoletta, che al peggio promette un tentativo.
+export function segnoDorso(b, localIds, idLassu) {
+  if (b?.fileTolto) return "tolto";
+  if (!localIds || !b?.id || localIds.has(b.id)) return null;
+  if (idLassu && !idLassu.has(b.id)) return "perduto";
+  return "cloud";
+}
+
 // E si dicono per NOME: in una biblioteca da cento volumi «2 tomi» lascia
 // il lettore a cercare quali. Tre titoli e poi il conto — un elenco intero
 // in una riga di servizio diventa un muro.
