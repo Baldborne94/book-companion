@@ -480,6 +480,27 @@ export default async function (t) {
       "padding-bottom" in contentStyles({ ...BASE, flow: "paginated" }, "en").body
     );
 
+    // I LATI IN SCORRIMENTO: epub.js scrive in linea `padding: 0 w/12`,
+    // il doppio di quel che lascia impaginando (w/24). Il nostro foglio
+    // deve vincere, e sopra/sotto restare i suoi.
+    await p.setViewportSize({ width: 720, height: 400 });
+    await p.setContent(`<!doctype html><html><body><p>uno</p></body></html>`);
+    await p.evaluate(() => {
+      document.body.style.padding = `0 ${720 / 12}px`;
+    });
+    await p.addStyleTag({ content: inCss(contentStyles({ ...BASE, flow: "scrolled" }, "en")) });
+    const lati = await p.evaluate(() => {
+      const c = getComputedStyle(document.body);
+      return [c.paddingLeft, c.paddingRight, c.paddingTop];
+    });
+    t.eq("in scorrimento il lato e' quello della pagina (w/24), a sinistra", lati[0], "30px");
+    t.eq("e a destra", lati[1], "30px");
+    t.eq("sopra resta di epub.js", lati[2], "0px");
+    t.c(
+      "in paginato i lati restano di epub.js (sono meta' del column-gap)",
+      !("padding-left" in contentStyles({ ...BASE, flow: "paginated" }, "en").body)
+    );
+
     // ---- LA SCENOGRAFIA SI SPEGNE ------------------------------------
     // L'Eric del lettore, convertito da un flipbook, dipinge un libro
     // finto (dorso, pile di pagine) dietro il testo di OGNI capitolo,
