@@ -117,7 +117,7 @@ qualunque richiesta web porta con sé.
 | Un termine ha la voce sul wiki del Mondo Disco | `discworld.fandom.com` | il termine (apri tu il link) |
 | Un libro non ha la quarta di copertina nel file | `www.googleapis.com/books`, `openlibrary.org` | titolo e autore di quel libro |
 | Un libro non dichiara la saga né nel file né nel titolo | `openlibrary.org` | titolo e autore di quel libro |
-| Apri «Da prendere» (al massimo una volta a settimana, o col tasto «Cerca di nuovo») | `openlibrary.org` | il nome degli autori delle saghe che hai cominciato, i generi dei libri che hai amato, e il titolo e l'autore di quei libri e dei volumi delle saghe — una domanda per volta, mai l'elenco della biblioteca |
+| Apri «Da prendere» (al massimo una volta a settimana, o col tasto «Cerca di nuovo») | `openlibrary.org` | il nome degli autori delle saghe che hai cominciato e dei tuoi autori preferiti (per trovarne di simili), i generi dei libri che hai amato, e il titolo e l'autore di quei libri e dei volumi delle saghe — una domanda per volta, mai l'elenco della biblioteca |
 | Una voce di «Da prendere» (consiglio o lista) non ha ancora la copertina | `openlibrary.org` | titolo e autore di quel libro, una volta sola |
 | ...e i consigli del catalogo hanno una copertina | `covers.openlibrary.org` | il numero della copertina di quel libro (l'immagine), niente di tuo |
 | Scarichi il dizionario offline dalle Impostazioni | il nostro stesso sito | niente: è un file statico, come l'app |

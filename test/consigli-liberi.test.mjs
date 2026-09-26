@@ -395,7 +395,7 @@ export default async function (t) {
   t.eq("l'indirizzo dell'immagine", urlCopertina(240727), "https://covers.openlibrary.org/b/id/240727-M.jpg");
   t.eq("… in un'altra misura", urlCopertina(5, "S"), "https://covers.openlibrary.org/b/id/5-S.jpg");
   t.eq("… senza copertina nessun indirizzo", [urlCopertina(null), urlCopertina(undefined), urlCopertina(0), urlCopertina("x"), urlCopertina(-1), urlCopertina(1.5)].join(","), ",,,,,");
-  t.eq("il catalogo mostra solo saghe e gusti", SEZIONI_CATALOGO.join(","), "saghe,gusti");
+  t.eq("il catalogo mostra saghe, stile e gusti (gli autori che leggi no, chiesto dal lettore)", SEZIONI_CATALOGO.join(","), "saghe,stile,gusti");
   t.eq(
     "… e le opere dell'autore si chiedono una volta sola",
     urls.filter((u) => /sort=editions/.test(u)).length,
