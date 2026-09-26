@@ -3,6 +3,7 @@ import { loadBooks, saveBooks, setProgress, setStatus, touchBook, clearTombstone
 import { setCfi, saveMarks, saveHighlights } from "./annotations.js";
 import { setBookMusic, getFavoritesRaw, saveFavorites, getListsRaw, saveLists } from "./music.js";
 import { tuttiIGlossari, fondi, scriviGlossari, quantiTermini } from "./glossarioMio.js";
+import { contaDiario, ripristinaDiario } from "./archivioDiario.js";
 
 // Come per i libri: quello che c'e' gia' resta, dall'archivio si prende
 // solo cio' che manca. Una melodia si riconosce dal suo id.
@@ -75,6 +76,8 @@ export async function sbircia(archive) {
     melodie: Array.isArray(data.melodie) ? data.melodie.length : 0,
     raccolte: Array.isArray(data.raccolte) ? data.raccolte.length : 0,
     termini: quantiTermini(data.glossari),
+    // null su un archivio senza diario (fino alla v4) o col diario vuoto
+    diario: contaDiario(data.diario),
     // gli archivi v1 non portavano segnalibri ed evidenziazioni: si dice
     // prima, non dopo aver ripristinato
     parziale: !(data.version >= 2),
@@ -84,7 +87,7 @@ export async function sbircia(archive) {
 // `cosa` dice quali meta' prendere. Le raccolte seguono le melodie: sono
 // nomi ed elenchi di id di brani, e senza i brani non suonerebbero.
 export async function restoreLibrary(archive, { onProgress, cosa } = {}) {
-  const prendi = { libri: true, melodie: true, ...(cosa || {}) };
+  const prendi = { libri: true, melodie: true, diario: true, ...(cosa || {}) };
   const say = (m) => onProgress?.(m);
 
   say("Apro l'archivio…");
@@ -168,8 +171,14 @@ export async function restoreLibrary(archive, { onProgress, cosa } = {}) {
     }
   }
 
+  // Il diario ha la sua casella: non e' fatto di libri ne' di musica, e chi
+  // riporta dentro i soli libri di un vecchio archivio puo' non volere il
+  // tempo di lettura di allora mescolato a quello di adesso.
+  const diario = prendi.diario && data.diario ? ripristinaDiario(data.diario) : null;
+
   return {
     added: add.length,
+    diario,
     kept: kept.length,
     files: restoredFiles,
     melodie: melodieRipristinate,
