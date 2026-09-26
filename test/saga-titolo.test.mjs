@@ -10,7 +10,7 @@
 // Qui si sbaglia in silenzio da tutt'e due i lati: una saga non letta e'
 // un ripiano senza nome, una saga INVENTATA («Fahrenheit» volume 451)
 // mette un libro in una storia che non esiste — ed e' il danno peggiore.
-import { sagaDalTitolo } from "../src/lib/sagaDalTitolo.js";
+import { sagaDalTitolo, pezziDalTitolo } from "../src/lib/sagaDalTitolo.js";
 import { deduciSaghe, ripassa } from "../src/lib/sagaBooks.js";
 
 export default async function (t) {
@@ -90,6 +90,15 @@ export default async function (t) {
     ["La paura del saggio: Le cronache dell'assassino del re, Libro 2", "Le cronache dell'assassino del re", 2],
     ["Il trono di spade: Cronache del ghiaccio e del fuoco, Libro 1", "Cronache del ghiaccio e del fuoco", 1],
     ["Cronache del ghiaccio e del fuoco 2 - Il grande inverno", "Cronache del ghiaccio e del fuoco", 2],
+    // I FUMETTI: il nome E' la saga, dopo c'e' solo il numero del volume e
+    // il rumore di chi ha impacchettato il file (chiesto dal lettore: i
+    // manga in CBZ/CBR). Il numero nudo vale solo con lo zero davanti.
+    ["Berserk v01", "Berserk", 1],
+    ["Berserk v01 (2003) (Digital) (LuCaZ)", "Berserk", 1],
+    ["One Piece 042 (2010) (Digital)", "One Piece", 42],
+    ["Blue Lock - Volume 03", "Blue Lock", 3],
+    ["Chainsaw Man - v03", "Chainsaw Man", 3],
+    ["Dragon Ball Tomo 12", "Dragon Ball", 12],
   ];
   for (const [titolo, saga, n] of FORME) {
     const r = s(titolo);
@@ -104,6 +113,10 @@ export default async function (t) {
     ["The Dragon Reborn (Wheel of Time, #3).epub", "Wheel of Time", 3],
     ["The Wheel of Time, Book 3 - The Dragon Reborn.pdf", "The Wheel of Time", 3],
   ];
+  const cbz = s({ title: "One Piece 042", fileName: "One Piece 042 (2010) (Digital).cbz", author: "" });
+  t.eq("un fumetto legge la saga dal nome", cbz?.saga, "One Piece");
+  t.eq("… col numero del volume", cbz?.sagaOrder, 42);
+  t.eq("… e il titolo resta com'e' (non c'e' un titolo dopo il numero)", pezziDalTitolo("One Piece 042")?.resto, null);
   for (const [fileName, saga, n] of FILE) {
     const r = s({ title: "The Dragon Reborn", fileName, author: "Robert Jordan" });
     t.eq(`file «${fileName}» → saga`, r?.saga, saga);
@@ -127,6 +140,8 @@ export default async function (t) {
     // un sottotitolo non e' una saga, e nemmeno una parte
     "The Lord of the Rings: The Fellowship of the Ring", "A Storm of Swords: Part 1 Steel and Snow",
     "Dune Messiah", "Dune 2 Messiah", "Part 2 of 3",
+    // il numero nudo in coda vuole lo zero davanti, o questi sarebbero saghe
+    "Room 101", "Apollo 13", "Ocean's 11", "District 9",
   ]) {
     t.c(`«${titolo}» non e' una saga`, s(titolo) === null, JSON.stringify(s(titolo)));
   }

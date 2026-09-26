@@ -358,6 +358,8 @@ export async function syncNow({ onProgress } = {}) {
       const paths = deletedIds.flatMap((id) => [
         `${uid}/${id}.epub`,
         `${uid}/${id}.pdf`,
+        `${uid}/${id}.cbz`,
+        `${uid}/${id}.cbr`,
         coverPath(uid, id),
       ]);
       await sb.storage.from(BUCKET).remove(paths).catch(() => {});

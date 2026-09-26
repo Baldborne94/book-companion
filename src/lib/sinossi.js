@@ -134,7 +134,7 @@ export function dalMetadata(md) {
 // la scheda. `undefined` vuol dire «non abbiamo mai guardato».
 export async function recupera(book, leggiByte) {
   if (!book || typeof book.sinossi === "string") return null;
-  if (book.fileType === "pdf") return "";
+  if (book.fileType !== "epub") return "";
   let file = null;
   try {
     file = await Promise.resolve().then(() => leggiByte?.(book.id));
@@ -179,7 +179,7 @@ export const PARAGRAFI = 30;
 const PARAGRAFO_MINIMO = 60;
 
 export async function raccogliApertura(book, leggiByte, { max = PARAGRAFI } = {}) {
-  if (!book || book.fileType === "pdf") return [];
+  if (!book || book.fileType !== "epub") return [];
   let file = null;
   try {
     file = await Promise.resolve().then(() => leggiByte?.(book.id));

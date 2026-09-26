@@ -76,6 +76,12 @@ export const MAPPA = [
   },
   {
     luogo: "libro",
+    nome: "Fumetti e manga",
+    cosa: "Un fumetto (CBZ o CBR) si legge una pagina per volta: un tocco ai bordi volta, due dita o un doppio tocco avvicinano. «Verso» lo gira da destra a sinistra come un manga, «Adatta» lo allarga quanto lo schermo per scorrerlo in verticale.",
+    dove: "I tasti ⇨/⇦ e ⤢ nella barra in alto, che compare toccando il centro della pagina.",
+  },
+  {
+    luogo: "libro",
     nome: "Indice",
     cosa: "I capitoli del libro, per saltare dove vuoi.",
     dove: "Il tasto ☰ nella barra in alto.",
@@ -250,6 +256,12 @@ export const MAPPA = [
   },
 
   // ---- IN LIBRERIA -------------------------------------------------------
+  {
+    luogo: "libreria",
+    nome: "Fumetti in CBZ e CBR",
+    cosa: "Entrano come i libri, con la prima pagina per copertina; se l'archivio porta la sua scheda (ComicInfo) arrivano anche serie, numero e autore, e i manga si aprono già nel verso giusto.",
+    dove: "«+ Aggiungi libri», o trascinali sulla pagina; «Apri con» da Android.",
+  },
   {
     luogo: "libreria",
     nome: "La ricerca cerca anche le tue note",

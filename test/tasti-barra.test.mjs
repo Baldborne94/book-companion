@@ -24,7 +24,10 @@ const require = createRequire(import.meta.url);
 const esbuild = require("esbuild");
 const acorn = require("acorn");
 
-const FILE = ["src/components/Reader.jsx", "src/components/PdfReader.jsx"];
+const FILE = ["src/components/Reader.jsx", "src/components/PdfReader.jsx", "src/components/ComicReader.jsx"];
+// la bussola apre «Dove eravamo rimasti», che legge il TESTO: un fumetto
+// non ne ha, e il suo lettore non la porta
+const CON_TESTO = FILE.slice(0, 2);
 const COMUNE = "src/components/TastoBarra.jsx";
 
 // LA SOGLIA SI LEGGE DAL FILE, NON SI IMPORTA: un test in Node non importa
@@ -104,9 +107,11 @@ export default async function (t) {
     for (const f of FILE) {
       const grezzo = readFileSync(f, "utf8");
       t.c(`${f} prende i tasti dal file comune`, /from "\.\/TastoBarra\.jsx"/.test(grezzo));
+    }
+    for (const f of CON_TESTO) {
       // la bussola è il tasto che nessuno indovina: se sparisce da un
       // reader, è sparita la funzione più preziosa dell'app da metà app
-      t.c(`${f} nomina la bussola`, /nome="Dove eravamo"/.test(grezzo));
+      t.c(`${f} nomina la bussola`, /nome="Dove eravamo"/.test(readFileSync(f, "utf8")));
     }
   }
 

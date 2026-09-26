@@ -178,7 +178,7 @@ export async function ripassaCollane(
   // scritta nel file e' il parere dell'editore, e su questo campo l'ultima
   // parola e' del lettore (`nienteSaga`).
   const senza = libri.filter(
-    (b) => b && b.fileType !== "pdf" && !String(b.saga || "").trim() && !nienteSaga(b)
+    (b) => b && b.fileType === "epub" && !String(b.saga || "").trim() && !nienteSaga(b)
   );
   for (const [i, b] of senza.entries()) {
     if (!attivo()) {

@@ -16,6 +16,7 @@ import {
   troppoGrandiInBiblioteca, fraseTroppoGrandi,
 } from "../lib/syncCore.js";
 import { fmtBytes } from "../lib/bytes.js";
+import { eFumetto } from "../lib/fumetto.js";
 import { senzaCopertina } from "../lib/copertina.js";
 import { spartisciQui } from "../lib/spazio.js";
 import { BarraCloud, PesoQui } from "./BarraCloud.jsx";
@@ -812,7 +813,7 @@ export default function Library({
           `la stessa saga era scritta in ${unite.unificate === 1 ? "due modi" : "più modi"}: ora è «${unite.nomi.join("», «")}»`
         );
       }
-      if (attuale.some((b) => b.fileType !== "pdf" && daCercare(b))) {
+      if (attuale.some((b) => b.fileType === "epub" && daCercare(b))) {
         const { ripassaCollane } = await import("../lib/collana.js");
         // la biblioteca INTERA, non i soli candidati: la grafia di casa si
         // cerca sui libri che la saga ce l'hanno gia'
@@ -927,7 +928,7 @@ export default function Library({
     const { ripassaCollane } = await import("../lib/collana.js");
     const mio = {};
     filoCollane.current = mio;
-    setCollane({ i: 0, totale: next.filter((b) => b.fileType !== "pdf" && !b.saga).length, titolo: next[0]?.title || "" });
+    setCollane({ i: 0, totale: next.filter((b) => b.fileType === "epub" && !b.saga).length, titolo: next[0]?.title || "" });
     // col tasto si riapre TUTTO (niente `giaVista`): chi lo preme vuole la
     // risposta di adesso, non quella di ieri — ma la memoria si aggiorna,
     // cosi' la passata automatica non rifa' questo lavoro
@@ -1127,12 +1128,14 @@ export default function Library({
   // è entrato e poi tace per sempre, ma i guai di un ePub si scoprono a
   // pagina duecento — e lì non sai nemmeno se è colpa del file o dell'app.
   async function visitaLibri() {
-    if (!books.length || visitando) return;
+    // i fumetti non hanno testo ne' spina: la visita non sa che guardarci
+    const daVisitare = books.filter((b) => !eFumetto(b));
+    if (!daVisitare.length || visitando) return;
     const mio = {};
     filoVisita.current = mio;
-    setVisitando({ i: 0, totale: books.length, titolo: books[0].title });
+    setVisitando({ i: 0, totale: daVisitare.length, titolo: daVisitare[0].title });
     const { visita, fattiDaEpub, resocontoVisita } = await import("../lib/visita.js");
-    const esito = await visita(books, {
+    const esito = await visita(daVisitare, {
       leggiByte: (id) => getFile(id),
       // aprire il tomo sta QUI e non dentro `visita` perché così la
       // passata si prova in Node con un finto, senza epub.js
@@ -1200,7 +1203,7 @@ export default function Library({
   // la ricucitura vera e propria: la usa la visita (sui libri non protetti)
   // e il consenso esplicito del lettore dal referto
   async function ricuciDavvero(b, file) {
-    if (b.fileType === "pdf") return null;
+    if (b.fileType !== "epub") return null;
     // il giro condiviso (`ricuciLibro`): riscrive i byte, rimette il libro
     // in coda per il cloud e butta le locations cachate del libro vecchio
     const { ricuciLibro } = await import("../lib/ricuci.js");
@@ -1520,7 +1523,7 @@ export default function Library({
         // vede un libro che «non si importa» senza nessun messaggio. I tipi si
         // elencano larghi: a filtrare per davvero e' `importFiles`, che guarda
         // l'estensione e rifiuta quel che non e' un libro.
-        accept=".epub,.pdf,application/epub+zip,application/pdf,application/zip,application/octet-stream"
+        accept=".epub,.pdf,.cbz,.cbr,application/epub+zip,application/pdf,application/vnd.comicbook+zip,application/vnd.comicbook-rar,application/x-cbz,application/x-cbr,application/vnd.rar,application/x-rar-compressed,application/zip,application/octet-stream"
         multiple
         style={{ display: "none" }}
         onChange={(e) => handleFiles(e.target.files)}
@@ -1705,7 +1708,7 @@ export default function Library({
         <EmptyState
           emoji="📜"
           title="Il tuo grimorio è ancora vuoto…"
-          text="Porta qui i tuoi EPUB e PDF: appariranno come tomi su uno scaffale incantato, con le loro copertine. Puoi anche trascinarli direttamente in questa pagina."
+          text="Porta qui i tuoi EPUB, PDF e fumetti (CBZ e CBR): appariranno come tomi su uno scaffale incantato, con le loro copertine. Puoi anche trascinarli direttamente in questa pagina."
           action="Aggiungi il primo libro"
           onAction={() => inputRef.current?.click()}
         />

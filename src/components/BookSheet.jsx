@@ -538,7 +538,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                         ? "✨ Leggo le prime pagine…"
                         : cercando
                           ? "Cerco nel catalogo…"
-                          : book.fileType === "pdf"
+                          : book.fileType !== "epub"
                             ? "Il file non porta la quarta di copertina, e nel catalogo non l'ho trovata."
                             : "Il file non porta la quarta di copertina, e nel catalogo non l'ho trovata. Tocca «✨ Di cosa parla?» qui sotto."}
                     </div>
@@ -766,7 +766,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
             SOLO dalle prime pagine e senza mandargli il titolo — se
             riconoscesse il libro risponderebbe a memoria, cioè con tutta
             la trama, finale compreso. L'etichetta dice da dove viene. */}
-        {!retro && book.fileType !== "pdf" && (
+        {!retro && book.fileType === "epub" && (
           <button
             onClick={chiediIlRetro}
             disabled={retroBusy}

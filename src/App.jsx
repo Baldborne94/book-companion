@@ -62,6 +62,7 @@ const navIcon = (sectionId, themeId) =>
 
 const Reader = lazy(() => import("./components/Reader.jsx"));
 const PdfReader = lazy(() => import("./components/PdfReader.jsx"));
+const ComicReader = lazy(() => import("./components/ComicReader.jsx"));
 
 const reducedMotion = () =>
   typeof window !== "undefined" &&
@@ -1379,8 +1380,31 @@ export default function App() {
               }}
               notify={notify}
             />
-          ) : (
+          ) : readingBook.fileType === "pdf" ? (
             <PdfReader
+              key={`${readingBook.id}:${readingStart || ""}`}
+              book={readingBook}
+              startCfi={readingStart}
+              indietro={chiudeIlLettore}
+              nextBook={nextBook}
+              onReadNext={handleRead}
+              music={music}
+              onMusicToggle={() => (music.playing ? playerRef.current?.pause() : playerRef.current?.resume())}
+              onMusicStop={() => playerRef.current?.stop()}
+              onMusicVolume={(v) => playerRef.current?.setVolume(v)}
+              onMusicNext={() => playerRef.current?.next()}
+              onMusicRoom={() => navigate("music")}
+              onAlive={() => { svegliaRef.current(); segnaVita(); }}
+              onClose={() => {
+                setReadingId(null);
+                setReadingStart(null);
+                localFileIds().then(setLocalIds);
+                runSync.current(true);
+              }}
+              notify={notify}
+            />
+          ) : (
+            <ComicReader
               key={`${readingBook.id}:${readingStart || ""}`}
               book={readingBook}
               startCfi={readingStart}

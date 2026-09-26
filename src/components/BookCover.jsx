@@ -107,7 +107,7 @@ function Disegnato({ book, radius, compact, numerato }) {
               </div>
             </>
           )}
-          {book.fileType === "pdf" && (
+          {book.fileType && book.fileType !== "epub" && (
             <div
               style={{
                 position: "absolute",
@@ -118,7 +118,7 @@ function Disegnato({ book, radius, compact, numerato }) {
                 color: `${v.tenue}aa`,
               }}
             >
-              PDF
+              {String(book.fileType).toUpperCase()}
             </div>
           )}
         </div>

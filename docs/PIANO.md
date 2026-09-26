@@ -193,3 +193,5 @@ A ogni fase completata, spunta qui lo stato (✅) così le sessioni successive s
 Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ · F-sync ✅ · G1-glossario ✅ · G2-segni ✅ · G3-oracolo ✅ · H-guscio ✅ — milestone completa 🎉
 
 Dopo la milestone, sulla frontiera di lettura (`lib/frontiera.js`): «Chi è costui?» in tutti e due i reader e «Dove eravamo rimasti» (`lib/trama.js`), scheda condivisa in `components/SchedaOracolo.jsx` con dentro il campo per la chiave. Il dettaglio sta in `CLAUDE.md`.
+
+I fumetti (CBZ e CBR, manga compresi): `lib/fumetto.js` e `components/ComicReader.jsx`. Il dettaglio sta in `CLAUDE.md`.
