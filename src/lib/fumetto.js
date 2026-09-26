@@ -20,6 +20,8 @@
 // prova in Node con JSZip e con la build Node di node-unrar-js, che e' la
 // stessa libreria (e lo stesso wasm) che gira nel browser.
 
+import { TUTTA, unisci, rifinisci } from "./pdfCrop.js";
+
 export const FORMATI = ["cbz", "cbr"];
 export const ESTENSIONI = [".cbz", ".cbr"];
 export const eFumetto = (b) => b?.fileType === "cbz" || b?.fileType === "cbr";
@@ -228,4 +230,72 @@ export async function apriArchivio(bytes, { zip, rar } = {}) {
     return { formato, pagine, info, leggi: (i) => estrai(pagine[i]), chiudi() {} };
   }
   throw new Error("archivio non leggibile");
+}
+
+// I BORDI DELLA SCANSIONE SI TOLGONO, E LA TAVOLA RIEMPIE LO SCHERMO
+// (chiesto dal lettore col video in mano: «fare adattare la pagina in
+// automatico allo schermo cosi' che la riempia al meglio»). La pagina
+// disegnata con `object-fit: contain` riempiva gia' il vetro — ma il FILE
+// no: le scansioni si portano dentro una cornice nera o bianca, e sul suo
+// Hellboy quella cornice era il 5% per lato (misurato sui fotogrammi:
+// tavola larga 973 pixel su 1080 di schermo). Riempire lo schermo con una
+// cornice di carta morta non e' riempirlo.
+//
+// E' lo stesso mestiere del ritaglio dei margini nei PDF, con le stesse
+// regole: si misura UNA VOLTA per libro su cinque pagine sparse, la
+// misura e' l'UNIONE delle tavole (nessuna pagina campionata perde un
+// pixel d'arte), c'e' un tetto per lato (una pagina quasi vuota nel
+// campione non puo' mangiarsi il libro), e si salva sul dispositivo. La
+// differenza sta nel respiro: nel PDF un filo di bianco attorno al testo
+// aiuta a leggere, qui la tavola vuole arrivare al bordo. La misura si fa
+// su una tavola ridotta a 180 pixel, e il pixel a cavallo fra bordo e
+// arte conta come «disegnato» solo se l'arte ci sta per un quinto: quindi
+// puo' mangiarsi al massimo quella frazione di un pixel ridotto — misurato
+// sulla tavola finta: 36,7 contro 36 su 600, cioe' un pixel o due su una
+// scansione da duemila, che a schermo non esistono.
+export const BORDI = { respiro: 0, maxLato: 0.2 };
+
+export const bordiDaMisure = (misure) => {
+  let box = null;
+  for (const m of misure || []) if (m) box = unisci(box, m);
+  return rifinisci(box, BORDI);
+};
+
+const KEY_BORDI = (id) => `bc_fumetto_bordi_${id}`;
+const bordiBuoni = (b) => !!b && [b.l, b.t, b.r, b.b].every((n) => Number.isFinite(n)) && b.r > b.l && b.b > b.t;
+
+export function leggiBordi(id) {
+  try {
+    const v = JSON.parse(localStorage.getItem(KEY_BORDI(id)));
+    return bordiBuoni(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export function scriviBordi(id, b) {
+  try {
+    localStorage.setItem(KEY_BORDI(id), JSON.stringify(b));
+  } catch {
+    /* senza storage si rimisura alla prossima apertura */
+  }
+}
+
+// COME SI DISEGNA LA PAGINA: il FOGLIO e' la parte della tavola che si
+// vede (la scansione meno i bordi), l'IMMAGINE e' il file intero, spostato
+// dentro il foglio cosi' che il bordo resti fuori dal ritaglio. «intera»
+// fa stare il foglio nel riquadro, «larghezza» lo fa largo quanto il
+// riquadro e lascia scorrere il resto. Tutto in pixel: e' quel che poi
+// misurano lo zoom e la scorsa (`foglio` per `limita`/`zoomAttorno`).
+export function disegnaPagina({ nat, riquadro, bordi, modo = "intera" } = {}) {
+  if (!(nat?.w > 0 && nat?.h > 0 && riquadro?.w > 0 && riquadro?.h > 0)) return null;
+  const c = bordiBuoni(bordi) ? bordi : TUTTA;
+  const cw = nat.w * (c.r - c.l);
+  const ch = nat.h * (c.b - c.t);
+  const k = modo === "larghezza" ? riquadro.w / cw : Math.min(riquadro.w / cw, riquadro.h / ch);
+  const tondo = (n) => Math.round(n * 100) / 100;
+  return {
+    foglio: { w: tondo(cw * k), h: tondo(ch * k) },
+    immagine: { w: tondo(nat.w * k), h: tondo(nat.h * k), x: tondo(-c.l * nat.w * k), y: tondo(-c.t * nat.h * k) },
+  };
 }

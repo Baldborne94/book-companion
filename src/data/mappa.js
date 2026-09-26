@@ -77,7 +77,7 @@ export const MAPPA = [
   {
     luogo: "libro",
     nome: "Fumetti e manga",
-    cosa: "Un fumetto (CBZ o CBR) si legge una pagina per volta: un tocco ai bordi volta, due dita o un doppio tocco avvicinano. «Verso» lo gira da destra a sinistra come un manga, «Adatta» lo allarga quanto lo schermo per scorrerlo in verticale.",
+    cosa: "Un fumetto (CBZ o CBR) si legge una pagina per volta: un tocco ai bordi volta, due dita o un doppio tocco avvicinano. «Verso» lo gira da destra a sinistra come un manga, «Adatta» lo allarga quanto lo schermo per scorrerlo in verticale. I bordi neri o bianchi della scansione si tolgono da soli (levetta nel pannello 🌙).",
     dove: "I tasti ⇨/⇦ e ⤢ nella barra in alto, che compare toccando il centro della pagina.",
   },
   {

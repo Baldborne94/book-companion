@@ -24,7 +24,13 @@ import {
   eFumetto,
   ESTENSIONI,
   FORMATI,
+  bordiDaMisure,
+  disegnaPagina,
+  leggiBordi,
+  scriviBordi,
+  BORDI,
 } from "../src/lib/fumetto.js";
+import { TUTTA } from "../src/lib/pdfCrop.js";
 
 const require = createRequire(import.meta.url);
 const JSZip = require("jszip");
@@ -180,8 +186,62 @@ export default async (t) => {
   t.eq("… e si ricorda", leggiAdatta(), "larghezza");
   scriviAdatta("boh");
   t.eq("… un valore storto torna a «intera»", leggiAdatta(), "intera");
+  // ---- i bordi della scansione ---------------------------------------------
+  // le misure sono quelle di `misuraInchiostro`: frazioni della tavola
+  const stretta = { l: 0.06, t: 0.06, r: 0.94, b: 0.94 };
+  const larga = { l: 0.03, t: 0.05, r: 0.97, b: 0.96 };
+  const b = bordiDaMisure([stretta, null, larga]);
+  t.c("i bordi sono l'UNIONE delle tavole: nessuna pagina perde arte", b.l <= 0.03 && b.r >= 0.97 && b.t <= 0.05 && b.b >= 0.96, JSON.stringify(b));
+  t.c("… senza il respiro del PDF: il bordo misurato e' il bordo tenuto", b.l === 0.03 && b.t === 0.05 && BORDI.respiro === 0, String(b.l));
+  t.eq("senza nessuna misura si tiene tutta la tavola", JSON.stringify(bordiDaMisure([null, null])), JSON.stringify(TUTTA));
+  t.eq("… e anche senza elenco", JSON.stringify(bordiDaMisure()), JSON.stringify(TUTTA));
+  const vuota = bordiDaMisure([{ l: 0.45, t: 0.45, r: 0.55, b: 0.55 }]);
+  t.c("una pagina quasi vuota nel campione non si mangia il libro: c'e' un tetto per lato", vuota.l === BORDI.maxLato && vuota.r === 1 - BORDI.maxLato, JSON.stringify(vuota));
+
+  // il disegno: una scansione 600x900 con un bordo del 6% ai lati, in un
+  // riquadro alto quanto un telefono (540x900)
+  const nat = { w: 600, h: 900 };
+  const riquadro = { w: 540, h: 900 };
+  const bordo = { l: 0.06, t: 0.06, r: 0.94, b: 0.94 };
+  const senza = disegnaPagina({ nat, riquadro, bordi: null });
+  t.eq("senza bordi la tavola sta nel riquadro come prima (contain)", `${senza.foglio.w}x${senza.foglio.h}`, "540x810");
+  t.eq("… e l'immagine E' il foglio", `${senza.immagine.w},${senza.immagine.x},${senza.immagine.y}`, "540,0,0");
+  const con = disegnaPagina({ nat, riquadro, bordi: bordo });
+  // Il foglio ha la stessa misura di prima (540x810: bordo e tavola hanno
+  // la stessa proporzione, e la larghezza era gia' il limite), ma dentro
+  // ci sta l'ARTE e non la cornice: l'immagine intera e' piu' larga del
+  // foglio di quanto vale il bordo, quindi la parte disegnata passa da
+  // 475 px (l'88% di 540) a 540. E' tutto il punto.
+  t.eq("coi bordi tolti il foglio sta ancora nel riquadro", `${con.foglio.w}x${con.foglio.h}`, "540x810");
+  t.c("… MA L'ARTE E' CRESCIUTA: l'immagine intera supera il foglio di quanto vale il bordo", con.immagine.w > senza.immagine.w && Math.abs(con.immagine.w * 0.88 - con.foglio.w) < 0.05, JSON.stringify(con.immagine));
+  t.c("… e l'immagine intera e' spostata di quanto basta a lasciare fuori il bordo", Math.abs(con.immagine.x + 0.06 * con.immagine.w) < 0.02 && Math.abs(con.immagine.y + 0.06 * con.immagine.h) < 0.02, JSON.stringify(con.immagine));
+  t.c("… e sborda dal foglio esattamente del bordo", Math.abs(con.immagine.w - con.foglio.w / 0.88) < 0.02, `${con.immagine.w} vs ${con.foglio.w / 0.88}`);
+  // in un riquadro basso (il tablet sdraiato) «intera» rimpicciolisce e
+  // «larghezza» no: il foglio resta largo quanto il riquadro e scorre
+  const basso = { w: 540, h: 600 };
+  t.c("in un riquadro basso «intera» limita dall'altezza", disegnaPagina({ nat, riquadro: basso, bordi: bordo }).foglio.h === 600, "");
+  const larghezza = disegnaPagina({ nat, riquadro: basso, bordi: bordo, modo: "larghezza" });
+  t.eq("«larghezza» fa il foglio largo quanto il riquadro anche quando viene piu' alto", larghezza.foglio.w, 540);
+  t.c("… e piu' alto del riquadro, che scorre", larghezza.foglio.h > basso.h, String(larghezza.foglio.h));
+  const alto = disegnaPagina({ nat: { w: 900, h: 600 }, riquadro, bordi: null });
+  t.eq("una tavola larga si limita dalla larghezza", `${alto.foglio.w}x${alto.foglio.h}`, "540x360");
+  t.eq("senza la misura del file non si disegna niente", disegnaPagina({ nat: null, riquadro, bordi: bordo }), null);
+  t.eq("… ne' senza il riquadro", disegnaPagina({ nat, riquadro: { w: 0, h: 0 }, bordi: bordo }), null);
+  t.eq("dei bordi storti valgono come nessun bordo", JSON.stringify(disegnaPagina({ nat, riquadro, bordi: { l: 0.5, t: 0, r: 0.4, b: 1 } }).foglio), JSON.stringify(senza.foglio));
+
+  // la memoria sul dispositivo
+  t.eq("bordi mai misurati: null (e non «tutta la tavola»)", leggiBordi("f1"), null);
+  scriviBordi("f1", bordo);
+  t.eq("… scritti si rileggono", JSON.stringify(leggiBordi("f1")), JSON.stringify(bordo));
+  memoria.bc_fumetto_bordi_f2 = '{"l":"x"}';
+  t.eq("… e una memoria storta vale «mai misurati»", leggiBordi("f2"), null);
+  memoria.bc_fumetto_bordi_f3 = "non json";
+  t.eq("… anche illeggibile", leggiBordi("f3"), null);
+
   delete globalThis.localStorage;
   t.eq("senza storage non esplode", leggiVerso("a", "rtl"), "rtl");
+  t.eq("… nemmeno i bordi", leggiBordi("f1"), null);
+  scriviBordi("f1", bordo);
   t.eq("… nemmeno l'adattamento", leggiAdatta(), "intera");
 
   // ---- l'archivio intero, nei due formati ----------------------------------

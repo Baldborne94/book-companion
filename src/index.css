@@ -4,6 +4,14 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  /* IL TOCCO RISPONDE CON LA NOSTRA FACCIA, non con quella di Android.
+     Chrome dipinge il suo rettangolo grigio-azzurro su QUALUNQUE elemento
+     che risponda a un tocco, non solo sui tasti: stava spento sui soli
+     `button`, e nel lettore dei fumetti — dove il tocco cade sul riquadro
+     della pagina — ogni voltata era un lampo blu su tutta la tavola
+     (visto nel video del lettore, ~100ms pieni e 200ms di dissolvenza,
+     il colore di sistema). Su `*` si spegne dovunque, una volta sola. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 html,
@@ -72,11 +80,8 @@ button {
   border: none;
   background: none;
   color: inherit;
-  /* IL TOCCO RISPONDE CON LA NOSTRA FACCIA, non con quella di Android.
-     Senza questa riga Chrome dipinge il suo rettangolo grigio-azzurro a
-     ogni tocco: in un'app di candele e pergamena è la cosa più fuori
-     posto che ci sia, e la vedi a ogni singolo tocco. */
-  -webkit-tap-highlight-color: transparent;
+  /* il lampo di sistema e' gia' spento su `*` (vedi in cima): qui resta
+     solo la nostra risposta al tocco, in `button:active` */
   transition: opacity 0.18s ease-out;
 }
 
@@ -104,7 +109,6 @@ button:active {
 input,
 textarea {
   font-family: inherit;
-  -webkit-tap-highlight-color: transparent;
 }
 
 @keyframes bc-rise {
