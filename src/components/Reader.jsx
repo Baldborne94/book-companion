@@ -1806,11 +1806,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   async function defineSelection() {
     const raw = selMenu?.text || "";
     const context = selMenu?.context || "";
+    const dove = selMenu?.cfi || "";
     const word = cleanWord(raw);
     if (!word) return;
     setSelMenu(null);
     const frase = wordCount(raw) > 1;
-    setDict({ word, raw, context, loading: true });
+    setDict({ word, raw, context, dove, loading: true });
     setPanel("dict");
     const mio = raw;
     const local = await explain(raw, book);

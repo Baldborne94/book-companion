@@ -1316,7 +1316,11 @@ export default function App() {
       {diaryOpen && (
         <ReadingDiary books={books} onClose={() => setDiaryOpen(false)} onOpenBook={setOpenId} />
       )}
-      {quadernoOpen && <Quaderno onClose={() => setQuadernoOpen(false)} />}
+      {quadernoOpen && (
+        // come il giardino: il libro si apre SOPRA il quaderno, e chiuso il
+        // libro si torna al quaderno da cui si era partiti
+        <Quaderno books={books} onClose={() => setQuadernoOpen(false)} onReadAt={(id, dove) => handleRead(id, dove)} />
+      )}
       {prendereOpen && <DaPrendere books={books} onClose={() => setPrendereOpen(false)} />}
       {readingBook && (
         // L'ANELLO STRETTO. Il reader è la parte più complicata dell'app,

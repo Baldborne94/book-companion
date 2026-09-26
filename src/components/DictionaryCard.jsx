@@ -289,7 +289,7 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
     if (!voce || annotate.current.has(tag)) return;
     annotate.current.add(tag);
     const forma = String(dict.raw || dict.word || "").trim();
-    scriviQuaderno(annota(leggiQuaderno(), voce, { libro: book, frase: fraseAttorno(dict.context, forma), forma }));
+    scriviQuaderno(annota(leggiQuaderno(), voce, { libro: book, frase: fraseAttorno(dict.context, forma), forma, dove: dict.dove }));
     setQuaderno({ tag, id: voce.id, tolta: false });
   });
 
