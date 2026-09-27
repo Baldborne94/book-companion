@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, scaffaleVuoto, TIPI, delTipo, serveFiltroTipo } from "../lib/library.js";
+import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, scaffaleVuoto, TIPI, delTipo, tipiDi, tipiPresenti } from "../lib/library.js";
 import { disponi, aEtichette, criterioVoto, criterioStato } from "../lib/ripiani.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { storageEstimate, spazioQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
@@ -1516,10 +1516,13 @@ export default function Library({
     [books]
   );
 
+  const tipi = useMemo(() => tipiDi(books), [books]);
+  const chipTipi = tipiPresenti(books, tipi);
+
   const visible = books
     .filter((b) => combacia(b, query))
     .filter((b) => filter === "all" || getStatus(b.id) === filter)
-    .filter((b) => delTipo(b, tipo))
+    .filter((b) => delTipo(b, tipo, tipi))
     .sort((a, b) =>
       sort === "title"
         ? a.title.localeCompare(b.title, "it")
@@ -1650,10 +1653,10 @@ export default function Library({
         {/* LIBRI E FUMETTI, quando ci sono tutt'e due: un filtro a parte
             dallo stato (un fumetto letto e' letto), con un filetto a
             dividerli — sono due domande diverse sulla stessa riga */}
-        {serveFiltroTipo(books) && (
+        {chipTipi.length > 0 && (
           <>
             <span aria-hidden style={{ width: 1, height: 22, background: C.border, margin: "0 4px" }} />
-            {TIPI.map((f) => {
+            {chipTipi.map((f) => {
               const active = tipo === f.id;
               return (
                 <button

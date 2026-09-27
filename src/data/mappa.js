@@ -300,8 +300,8 @@ export const MAPPA = [
   },
   {
     luogo: "libreria",
-    nome: "Libri e fumetti separati",
-    cosa: "Quando in casa ci sono tutt'e due, due chip filtrano lo scaffale: «📚 Libri» e «💬 Fumetti» (CBZ e CBR). Vale anche insieme allo stato e alla ricerca, e non si ricorda fra un'apertura e l'altra.",
+    nome: "Libri, fumetti e manga separati",
+    cosa: "Quando in casa ci sono almeno due tipi, i chip filtrano lo scaffale: «📚 Libri», «💬 Fumetti» e «🏮 Manga». Un manga si riconosce dal genere «Fumetti · Manga» (basta metterlo a un volume: gli altri della stessa saga seguono) o dalla scheda del CBZ. Vale anche insieme allo stato e alla ricerca, e non si ricorda fra un'apertura e l'altra.",
     dove: "Nella riga dei filtri, dopo «Abbandonati».",
   },
   {

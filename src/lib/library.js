@@ -374,21 +374,58 @@ export const TIPI = [
   { id: "tutti", label: "Tutti" },
   { id: "libri", label: "📚 Libri" },
   { id: "fumetti", label: "💬 Fumetti" },
+  { id: "manga", label: "🏮 Manga" },
 ];
 
-export const tipoDi = (b) => (eFumetto(b) ? "fumetti" : "libri");
-export const delTipo = (b, tipo) => !tipo || tipo === "tutti" || tipoDi(b) === tipo;
+// E I MANGA DAI FUMETTI (chiesto dal lettore: «mi metteresti anche manga
+// cosi li differenziamo bene?»). Qui il file non basta: un manga e un
+// fumetto sono tutt'e due CBZ o CBR. I segni sono due, e si leggono dal
+// libro: il verso da destra che la scheda del CBZ dichiara (`verso`), e il
+// GENERE — «Fumetti · Manga» dal selettore, o qualunque genere scritto a
+// mano che dica manga. Il genere vale anche su un PDF: una scansione di
+// manga resta un manga.
+const MANGA = /\bmanga\b/i;
+export const eManga = (b) => b?.verso === "rtl" || MANGA.test(b?.genre || "");
 
-// I due chip compaiono solo quando in casa ci sono TUTT'E DUE i tipi: con
-// soli libri «Fumetti» sarebbe uno scaffale vuoto garantito, e un comando
-// che non cambia niente e' peggio di un comando che manca.
-export function serveFiltroTipo(books) {
-  let libri = false;
-  let fumetti = false;
+const chiaveSaga = (b) => String(b?.saga || "").trim().toLowerCase();
+
+// E LA SAGA SI PORTA DIETRO I SUOI VOLUMI: segnare manga uno solo dei
+// quaranta One Piece deve bastare, o il lettore dovrebbe aprire quaranta
+// schede. Si propaga solo ai FUMETTI della stessa saga — un romanzo in
+// ePub della stessa storia resta un libro — e solo da un volume che manga
+// lo e' per un segno suo, mai per eredita', o due saghe si contagerebbero.
+export function tipiDi(books) {
+  const sagheManga = new Set();
   for (const b of books || []) {
-    if (eFumetto(b)) fumetti = true;
-    else libri = true;
-    if (libri && fumetti) return true;
+    const k = chiaveSaga(b);
+    if (k && eManga(b)) sagheManga.add(k);
   }
-  return false;
+  const mappa = new Map();
+  for (const b of books || []) {
+    const tipo = eManga(b)
+      ? "manga"
+      : eFumetto(b)
+        ? sagheManga.has(chiaveSaga(b))
+          ? "manga"
+          : "fumetti"
+        : "libri";
+    mappa.set(b.id, tipo);
+  }
+  return mappa;
 }
+
+export const tipoDi = (b, mappa) =>
+  mappa?.get(b?.id) ?? (eManga(b) ? "manga" : eFumetto(b) ? "fumetti" : "libri");
+export const delTipo = (b, tipo, mappa) => !tipo || tipo === "tutti" || tipoDi(b, mappa) === tipo;
+
+// I chip compaiono solo quando in casa ci sono ALMENO DUE tipi, e solo
+// quelli che ci sono: con libri e manga soltanto, «Fumetti» sarebbe uno
+// scaffale vuoto garantito, e un comando che non cambia niente e' peggio
+// di un comando che manca.
+export function tipiPresenti(books, mappa = tipiDi(books)) {
+  const ci = new Set();
+  for (const b of books || []) ci.add(tipoDi(b, mappa));
+  if (ci.size < 2) return [];
+  return TIPI.filter((t) => t.id === "tutti" || ci.has(t.id));
+}
+export const serveFiltroTipo = (books) => tipiPresenti(books).length > 0;

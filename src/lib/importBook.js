@@ -633,6 +633,10 @@ async function enrichFumetto(meta, file) {
     if (info.autore) meta.author = info.autore;
     if (info.sinossi) meta.sinossi = info.sinossi;
     if (info.verso) meta.verso = info.verso;
+    // la scheda dice che e' un manga: lo si scrive nel genere, che e' il
+    // campo che il lettore vede e puo' correggere, e da cui lo scaffale
+    // lo mette fra i «Manga»
+    if (info.manga && !meta.genre) meta.genre = "Fumetti · Manga";
     // la serie e il numero passano dalla stessa porta della collana degli
     // ePub: chi chiama li scrive dopo la tavola, come sempre
     if (info.serie) esito.collana = { serie: info.serie, numero: info.numero ?? null };
