@@ -22,6 +22,7 @@
 
 import { TUTTA, unisci, rifinisci } from "./pdfCrop.js";
 import { apriZip } from "./zipAFette.js";
+import { apriRar } from "./rarAFette.js";
 
 // UN CBR NON SI LEGGE A FETTE, e allora ha un tetto. La libreria RAR per il
 // browser (unrar compilato in wasm) vuole l'archivio INTERO in memoria, e
@@ -32,10 +33,25 @@ import { apriZip } from "./zipAFette.js";
 // i 300 MB i CBR veri entrano (un volume normale ne pesa 50-150), sopra si
 // rifiuta PRIMA di leggere un byte, con la strada scritta accanto. Il CBZ
 // il tetto non ce l'ha: si legge a fette (`zipAFette.js`).
+//
+// MA IL TETTO VALE SOLO PER I CBR COMPRESSI DAVVERO. Quasi sempre le pagine
+// stanno nel RAR «memorizzate», cioe' cosi' come sono, e allora si leggono a
+// fette come in un CBZ (`rarAFette.js`), senza libreria e senza limite:
+// `cbrTroppoGrande` si chiede solo quando quella strada non c'e'.
 export const CBR_MAX = 300 * 1024 * 1024;
 export const cbrTroppoGrande = (formato, byte) => formato === "cbr" && Number(byte) > CBR_MAX;
 export const PERCHE_CBR_GRANDE =
-  "un CBR così grande non si apre nel browser (il RAR va letto tutto in memoria): convertilo in CBZ — estrai le immagini e comprimile in uno zip rinominato .cbz — e il volume entra";
+  "questo CBR ha le pagine compresse ed è troppo grande per il browser (un RAR compresso va letto tutto in memoria): convertilo in CBZ — estrai le immagini e comprimile in uno zip rinominato .cbz — e il volume entra";
+
+const ePagina = (nome) => pagineDa([nome]).length > 0;
+const rarAFette = (blob) => apriRar(blob, { eImmagine: ePagina }).catch(() => null);
+
+// Un CBR entra se si legge a fette, o se e' abbastanza piccolo da stare in
+// memoria. Chiede solo le testate: non legge le pagine.
+export async function cbrApribile(blob) {
+  if (!cbrTroppoGrande("cbr", blob?.size)) return true;
+  return !!(await rarAFette(blob));
+}
 
 export const FORMATI = ["cbz", "cbr"];
 export const ESTENSIONI = [".cbz", ".cbr"];
@@ -214,7 +230,7 @@ export function scriviAdatta(v) {
 // L'archivio aperto: le pagine in ordine, la scheda se c'e', e `leggi(i)`
 // che torna i byte della pagina i (Uint8Array). Il RAR estrae un file per
 // volta — non si tira fuori tutto il volume per guardare una pagina.
-export async function apriArchivio(sorgente, { rar } = {}) {
+export async function apriArchivio(sorgente, { rar, aFette = true } = {}) {
   // Un Blob (il File scelto, o quel che torna da IndexedDB) si legge a
   // fette e NON si carica mai intero; dei byte gia' in mano si avvolgono in
   // un Blob, che non li copia. Il RAR invece i byte li vuole tutti.
@@ -228,6 +244,16 @@ export async function apriArchivio(sorgente, { rar } = {}) {
     return { formato, pagine, info, leggi: (i) => z.leggi(pagine[i]), chiudi() {} };
   }
   if (formato === "cbr") {
+    // prima la strada a fette: niente wasm da scaricare e niente tetto
+    // (`aFette: false` serve ai test, per provare anche la strada della
+    // libreria sullo stesso archivio)
+    const f = aFette ? await rarAFette(blob) : null;
+    if (f) {
+      const pagine = pagineDa(f.nomi);
+      const scheda = f.nomi.find(eComicInfo);
+      const info = scheda ? leggiComicInfo(new TextDecoder().decode(await f.leggi(scheda))) : null;
+      return { formato, pagine, info, leggi: (i) => f.leggi(pagine[i]), chiudi() {} };
+    }
     if (!rar) throw new Error("manca il lettore rar");
     if (cbrTroppoGrande(formato, blob.size)) throw new Error(PERCHE_CBR_GRANDE);
     const buf = await blob.arrayBuffer();

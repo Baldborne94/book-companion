@@ -17,6 +17,8 @@ import {
   spazioDrive,
   spartisciDrive,
   pesoDeiLibri,
+  ripulisciIdClient,
+  idClientValido,
 } from "../src/lib/driveCore.js";
 import { fmtGoogle } from "../src/lib/bytes.js";
 
@@ -217,6 +219,20 @@ export default async (t) => {
   t.eq("e quanti", pesoDeiLibri({ a: { byte: 3 }, b: {} }).quanti, 2);
   t.eq("senza mappa", pesoDeiLibri(null).quanti, 0);
 
+  // ---- L'ID DEL CLIENT ---------------------------------------------------
+  const ID = "274387944132-52qis27ka9f2nbkg0p4b3r2fvgpc0cjb.apps.googleusercontent.com";
+  t.c("l'ID vero ha la forma giusta", idClientValido(ID));
+  // la tastiera del tablet: spazi, a capo, uno spazio a meta'
+  t.eq("spazi e a capo si tolgono", ripulisciIdClient(` ${ID.slice(0, 20)} ${ID.slice(20)}\n`), ID);
+  t.c("… e dopo la ripulitura e' valido", idClientValido(` ${ID}\n`));
+  t.c("senza la coda di Google no", !idClientValido(ID.replace(".apps.googleusercontent.com", "")));
+  t.c("con la coda tagliata no", !idClientValido(ID.slice(0, -3)));
+  t.c("senza il numero davanti no", !idClientValido(ID.replace(/^\d+-/, "")));
+  t.c("una maiuscola corretta dalla tastiera no", !idClientValido(ID.replace("52qis", "52Qis")));
+  t.c("il client secret incollato al posto dell'ID no", !idClientValido("GOCSPX-abcdefghijklmnop"));
+  t.c("niente no", !idClientValido(""));
+  t.c("con qualcosa dopo la coda no", !idClientValido(ID + "/x"));
+
   // ---- IL GIRO CON UN DRIVE FINTO ------------------------------------------
   await giroFinto(t);
 };
@@ -332,6 +348,14 @@ async function giroFinto(t) {
   t.c("e la chiave si dimentica", !drive.driveProntoOra());
   const senza = await drive.giroDrive(libri, { tipo: () => "libri", qui: new Set(), leggiByte: async () => null });
   t.eq("senza chiave non si bussa nemmeno", senza.saltato, "scaduto");
+  // L'ID STORTO SI FERMA QUI, prima di chiamare Google: niente pagina in
+  // inglese col 401, la ragione in italiano (e niente script di Google
+  // caricato — in Node non c'e' un document, quindi arrivarci esploderebbe)
+  drive.scriviClientId("274387944132-abc.apps.googleusercontent")
+  const perche = await drive.collegaDrive().then(() => "collegato", (e) => e.message);
+  t.c("l'ID storto si dice prima di chiamare Google", /forma giusta/.test(perche), perche);
+  drive.scriviClientId(" 274387944132-abc.apps. googleusercontent.com \n");
+  t.eq("l'ID si salva ripulito", mem.get("bc_drive_client"), "274387944132-abc.apps.googleusercontent.com");
   mem.delete("bc_drive_on");
   t.eq("Drive spento: niente giro", (await drive.giroDrive(libri, {})).saltato, "spento");
   t.eq("e nessuna mappa da mostrare", drive.idSuDrive(), null);

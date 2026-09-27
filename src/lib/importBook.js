@@ -5,7 +5,7 @@ import { riconosci, nomeInBiblioteca, chiaveSaga } from "./sagaBooks.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 import { dalMetadata } from "./sinossi.js";
 import { collana } from "./collana.js";
-import { formatoDaByte, tipoImmagine, cbrTroppoGrande, PERCHE_CBR_GRANDE } from "./fumetto.js";
+import { formatoDaByte, tipoImmagine, cbrApribile, PERCHE_CBR_GRANDE } from "./fumetto.js";
 
 // oltre questa taglia il libro non si ricuce: tenere in memoria due
 // copie dell'archivio, su un tablet, vale piu' di qualche pagina bianca
@@ -330,9 +330,10 @@ export async function importFiles(fileList, libri = []) {
       errors.push({ name: file.name, reason: "formato non supportato" });
       continue;
     }
-    // il CBR troppo grande si rifiuta QUI, prima di leggerne un byte: piu'
-    // avanti l'import lo caricherebbe intero e la scheda morirebbe muta
-    if (cbrTroppoGrande(fileType, file.size)) {
+    // il CBR che non si puo' aprire si rifiuta QUI, leggendone le sole
+    // testate: piu' avanti l'import lo caricherebbe intero e la scheda
+    // morirebbe muta. Quello con le pagine memorizzate entra a ogni misura.
+    if (fileType === "cbr" && !(await cbrApribile(file))) {
       errors.push({ name: file.name, reason: PERCHE_CBR_GRANDE });
       continue;
     }
