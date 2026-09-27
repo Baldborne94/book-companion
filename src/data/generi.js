@@ -66,7 +66,7 @@ export const FAMIGLIE = [
   },
   {
     nome: "Fumetti",
-    sotto: ["Graphic novel", "Manga", "Supereroi", "Bande dessinée", "Strisce"],
+    sotto: ["Graphic novel", "Supereroi", "Bande dessinée", "Strisce"],
   },
   {
     nome: "Ragazzi",

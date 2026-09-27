@@ -10,7 +10,9 @@ import {
   pulisciNumero,
   annoFinito,
   segnaAnnoFine,
+  tipiDi,
 } from "../lib/library.js";
+import { eFumetto } from "../lib/fumetto.js";
 import { getCover, getFile, putCover, removeCover } from "../lib/bookStore.js";
 import { recupera, senzaEtichetta } from "../lib/sinossi.js";
 import { preparaCopertina, copertinaOriginale } from "../lib/copertina.js";
@@ -155,6 +157,11 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   // i libri da quattro stelle in su», e il lettore non poteva sceglierli
   // (chiesto: «metto io quali sono i miei preferiti»).
   const [fav, setFav] = useState(!!book.fav);
+  // fumetto o manga: `null` finche' il lettore non sceglie, e allora
+  // decide l'app (la scheda del CBZ, la saga) — il tasto acceso dice cosa
+  // ha deciso, perche' un automatismo muto non si puo' correggere
+  const [tipo, setTipo] = useState(book.tipo || null);
+  const tipoDeciso = useMemo(() => tipiDi(books.some((b) => b.id === book.id) ? books : [...books, book]).get(book.id), [books, book]);
   const [status, setStatusState] = useState(getStatus(book.id));
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confermaEbook, setConfermaEbook] = useState(false);
@@ -409,6 +416,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
     notes,
     rating,
     fav,
+    tipo,
   });
 
   function commitAndClose() {
@@ -687,6 +695,48 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
               <Suspense fallback={null}>
                 <GenrePicker value={genre} onChange={setGenre} miei={uniq("genre")} />
               </Suspense>
+            )}
+
+            {/* IL TIPO NON E' UN GENERE («non dovrebbe essere un genere il
+                manga»): un manga fantasy e' fantasy nel genere e manga qui.
+                Solo sui fumetti, perche' un ePub e' un libro e basta. */}
+            {eFumetto(book) && (
+              <div style={{ marginBottom: 10 }}>
+                <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 3 }}>Tipo</span>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {[
+                    { id: "fumetti", label: "💬 Fumetto" },
+                    { id: "manga", label: "🏮 Manga" },
+                  ].map((o) => {
+                    const acceso = (tipo || tipoDeciso) === o.id;
+                    return (
+                      <button
+                        key={o.id}
+                        onClick={() => setTipo(o.id)}
+                        aria-pressed={acceso}
+                        style={{
+                          padding: "8px 14px",
+                          minHeight: 44,
+                          borderRadius: R.tondo,
+                          fontSize: F.piccolo,
+                          border: `1px solid ${acceso ? C.accent : C.border}`,
+                          color: acceso ? C.accent : C.muted,
+                          background: acceso ? `${C.accent}14` : "transparent",
+                        }}
+                      >
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {!tipo && (
+                  <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginTop: 3 }}>
+                    {tipoDeciso === "manga"
+                      ? "Riconosciuto come manga. Segnane uno: gli altri volumi della saga seguono."
+                      : "Segnane uno come manga: gli altri volumi della saga seguono."}
+                  </span>
+                )}
+              </div>
             )}
 
             <div style={{ marginBottom: 10 }}>

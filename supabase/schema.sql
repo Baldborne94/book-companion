@@ -21,6 +21,7 @@
 --   alter table public.books alter column saga_order type real;  -- numero di collana coi decimali (2.5 = la novella)
 --   alter table public.books add column if not exists saga_tolta boolean not null default false;  -- la saga tolta a mano
 --   alter table public.books add column if not exists file_tolto boolean not null default false;  -- l'ebook tolto a mano
+--   alter table public.books add column if not exists tipo text;  -- fumetto o manga, scelto nella scheda
 -- Senza, l'app sincronizza comunque tutto il resto: rinuncia solo al
 -- campo mancante e lo tiene in locale. Dopo la migrazione i libri gia'
 -- salvati si ricaricano da soli alla prima sincronizzazione.
@@ -66,7 +67,10 @@ create table if not exists public.books (
   -- colonna l'altro dispositivo rispedirebbe i byte nel secchio al primo
   -- giro, e la nuvoletta tornerebbe a offrire uno scaricamento che il
   -- lettore aveva appena rifiutato.
-  file_tolto boolean not null default false
+  file_tolto boolean not null default false,
+  -- FUMETTO O MANGA, scelto nella scheda: un manga e un fumetto sono tutt'e
+  -- due CBZ, e a dirli diversi e' il lettore. Vuoto = decide l'app.
+  tipo text
 );
 
 -- per i database gia' creati: `create table if not exists` non aggiunge le
@@ -75,6 +79,7 @@ alter table public.books add column if not exists impronta text;
 alter table public.books add column if not exists fav boolean not null default false;
 alter table public.books add column if not exists saga_tolta boolean not null default false;
 alter table public.books add column if not exists file_tolto boolean not null default false;
+alter table public.books add column if not exists tipo text;
 -- e il numero di collana regge i decimali (su una colonna gia' `real` non fa niente)
 alter table public.books alter column saga_order type real;
 

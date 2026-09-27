@@ -384,8 +384,26 @@ export const TIPI = [
 // GENERE — «Fumetti · Manga» dal selettore, o qualunque genere scritto a
 // mano che dica manga. Il genere vale anche su un PDF: una scansione di
 // manga resta un manga.
+//
+// E IL MANGA E' UN TIPO, NON UN GENERE (detto dal lettore davanti al
+// consiglio di scriverlo nel genere: «non dovrebbe essere un genere il
+// manga»). Il genere dice di cosa parla una storia — fantasy, giallo —
+// mentre libro, fumetto e manga dicono che oggetto hai in mano, e i due
+// campi non si mescolano: un manga fantasy e' fantasy nel genere e manga
+// nel tipo. Il segno vero e' quindi `tipo` sul libro, scelto nella scheda:
+// «manga» o «fumetti», e la scelta scritta COMANDA — anche «fumetti» su un
+// volume di una saga manga, o su un CBZ che si dichiara da destra. Senza
+// una scelta restano i segni di prima: il verso della scheda del CBZ e un
+// genere che dica manga, perche' chi l'ha gia' scritto li' non deve
+// vedersi sparire i manga dallo scaffale.
 const MANGA = /\bmanga\b/i;
-export const eManga = (b) => b?.verso === "rtl" || MANGA.test(b?.genre || "");
+export const TIPI_SCELTI = ["fumetti", "manga"];
+const tipoScelto = (b) => (TIPI_SCELTI.includes(b?.tipo) ? b.tipo : null);
+export const eManga = (b) => {
+  const scelto = tipoScelto(b);
+  if (scelto) return scelto === "manga";
+  return b?.verso === "rtl" || MANGA.test(b?.genre || "");
+};
 
 const chiaveSaga = (b) => String(b?.saga || "").trim().toLowerCase();
 
@@ -402,10 +420,11 @@ export function tipiDi(books) {
   }
   const mappa = new Map();
   for (const b of books || []) {
+    // un «fumetti» scelto a mano non eredita niente: e' una scelta
     const tipo = eManga(b)
       ? "manga"
       : eFumetto(b)
-        ? sagheManga.has(chiaveSaga(b))
+        ? !tipoScelto(b) && sagheManga.has(chiaveSaga(b))
           ? "manga"
           : "fumetti"
         : "libri";
