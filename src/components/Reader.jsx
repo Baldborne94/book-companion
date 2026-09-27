@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import TastoBarra, { barBtn, useNomiNeiTasti } from "./TastoBarra.jsx";
+import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
 import { getAux, putAux, getFile } from "../lib/bookStore.js";
 import { ensureLocalFile } from "../lib/sync.js";
 import {
@@ -226,6 +226,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // la governa non ha niente da governare
   const [inPiedi, setInPiedi] = useState(() => window.innerWidth < window.innerHeight);
   const nomiNeiTasti = useNomiNeiTasti();
+  const dueRighe = useDueRighe();
+  // quanto e' alta la barra in cima: chi si appoggia sotto di lei non puo'
+  // piu' supporre un numero, con due righe dipende da cosa c'e' dentro
+  const [altezzaBarra, setAltezzaBarra] = useState(0);
   // il velo color carta sul passo indietro oltre il confine: copre la
   // ricostruzione del capitolo (vedi step) e cade a misura ferma
   const [velo, setVelo] = useState(false);
@@ -351,6 +355,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // per tenere accesa la candela finche' la pagina non si e' assestata
   const misuraAvanzo = useCallback(() => {
     if (!avanzoPronto.current) return false;
+    // in scorrimento non c'e' una colonna da far tornare multipla della
+    // riga: il capitolo e' alto quanto il suo testo, e col gestore
+    // continuo il primo iframe puo' essere il capitolo PRIMA di quello che
+    // leggi — misurarlo ritaglierebbe il riquadro e rifarebbe le viste per
+    // un avanzo che non esiste
+    if (live.current.settings.flow === "scrolled") return false;
     const doc = viewerRef.current?.querySelector("iframe")?.contentDocument;
     if (!doc?.body) return false;
     const orli = getComputedStyle(doc.body);
@@ -506,7 +516,15 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       const r = eb.renderTo(viewerRef.current, {
         width: "100%",
         height: "100%",
-        flow: s.flow === "scrolled" ? "scrolled-doc" : "paginated",
+        flow: s.flow === "scrolled" ? "scrolled" : "paginated",
+        // IN SCORRIMENTO SI SCORRE TUTTO IL LIBRO, non un capitolo per
+        // volta: il gestore «continuous» tiene a schermo il capitolo che
+        // leggi piu' quello prima e quello dopo, e ne aggiunge e toglie
+        // mentre scorri. Con «scrolled-doc» (il gestore di partenza) lo
+        // scorrimento si fermava a fine capitolo e per andare avanti
+        // bisognava «voltare» (segnalato: «non mi mostri solo un capitolo
+        // per volta ma tutto il libro»).
+        manager: s.flow === "scrolled" ? "continuous" : "default",
         // in scorrimento non esistono facciate: senza questo, in orizzontale
         // epub.js dichiara comunque un layout a due colonne e compare il dorso
         spread: s.flow === "scrolled" ? "none" : s.spread,
@@ -2504,159 +2522,71 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
 
       {chrome && (
         <>
-          <div
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              zIndex: 25,
-              display: "flex",
-              alignItems: "center",
-              // LA RETE DI SICUREZZA VA ACCESA SOLO COLLE PAROLE, e l'ha
-              // detto la misura, non il ragionamento. Supponevo che senza
-              // `wrap` i tasti si stringessero sotto il bersaglio: falso —
-              // a stringersi è il TITOLO, che ha `flex: 1` e arriva a zero
-              // lasciando i tasti a 40 (misurato a 412px: una riga, barra
-              // 57, tasti 40/40/40…). Col `wrap` sempre acceso, lo stesso
-              // telefono passava a DUE righe e 101px di barra: la rete
-              // peggiorava il caso che non aveva bisogno di lei.
-              //
-              // Serve invece colle parole accese E la musica che suona:
-              // sette tasti etichettati più i comandi della musica passano
-              // la larghezza, il titolo è già a zero e i tasti hanno un
-              // `minWidth` — lì andrebbero FUORI dalla barra, e un comando
-              // fuori dallo schermo è peggio di una barra a due righe.
-              flexWrap: nomiNeiTasti ? "wrap" : "nowrap",
-              gap: 4,
-              padding: "8px 10px",
-              background: `${C.surface}f2`,
-              backdropFilter: "blur(8px)",
-              borderBottom: `1px solid ${C.border}`,
-              animation: "bc-fade-in 0.2s ease-out",
-            }}
-          >
-            {/* appesa al bordo di sotto della barra: scende con lei */}
-            {linguetta()}
-            <button onClick={handleClose} style={barBtn(false)} aria-label="Chiudi il libro">✕</button>
-            <span
-              style={{
-                flex: 1,
-                fontFamily: FONT_TITLE,
-                fontSize: F.rilievo,
-                fontWeight: 600,
-                color: C.text,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {book.title}
-            </span>
-            {music?.current && (
+          <BarraDelLibro
+            titolo={book.title}
+            onClose={handleClose}
+            linguetta={linguetta()}
+            conNome={nomiNeiTasti}
+            dueRighe={dueRighe}
+            onAltezza={setAltezzaBarra}
+            musica={<MusicaInBarra music={music} onMusicToggle={onMusicToggle} onMusicNext={onMusicNext} onMusicVolume={onMusicVolume} onMusicStop={onMusicStop} onMusicRoom={onMusicRoom} onClose={handleClose} />}
+            tasti={
               <>
-                {music.manca && (
-                  <span title="Quanto manca allo spegnimento della musica" style={{ fontSize: F.minuscolo, color: C.muted, whiteSpace: "nowrap" }}>
-                    🌙 {music.manca}
-                  </span>
-                )}
-                {/* Cosa sta suonando, e la via per andare a sceglierne
-                    un'altra. Il libro si chiude passando dalla porta di
-                    sempre, non sparendo: il punto di lettura va salvato
-                    come per ogni altra uscita. */}
-                <button
-                  onClick={() => { handleClose(); onMusicRoom?.(); }}
-                  title={`${music.current.name || "Musica di sottofondo"} — vai alla sala della musica`}
-                  style={{
-                    maxWidth: px(150),
-                    padding: "0 8px",
-                    height: px(40),
-                    borderRadius: R.piccolo,
-                    fontSize: F.piccolo,
-                    color: C.muted,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  <span style={{ color: music.current.src ? C.accent : C.arcane, marginRight: 5 }}>
-                    {music.current.src ? "♫" : "♪"}
-                  </span>
-                  {music.current.name || "Musica di sottofondo"}
-                </button>
-                <button onClick={onMusicToggle} style={barBtn(false)} aria-label={music.playing ? "Pausa musica" : "Riprendi musica"}>
-                  {music.playing ? "⏸" : "▶"}
-                </button>
-                <button onClick={onMusicNext} style={{ ...barBtn(false), fontSize: F.corpo }} aria-label="Melodia successiva">
-                  ⏭
-                </button>
-                {/* il volume qui e' quello della sola musica: sotto la lettura
-                    si abbassa lei, non le notifiche e la sveglia del tablet */}
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={Math.round((music.volume ?? 1) * 100)}
-                  onChange={(e) => onMusicVolume?.(parseInt(e.target.value, 10) / 100)}
-                  aria-label="Volume della musica"
-                  style={{ width: 64, flexShrink: 0, accentColor: C.accent }}
+                {/* I NOMI SONO QUELLI DEI PANNELLI CHE APRONO: «Indice»,
+                    «Segnalibri», «Evidenziazioni». La bussola è il caso che
+                    conta — 🧭 apre il riassunto della storia fin dove sei, e
+                    non lo indovina nessuno. «Aa» resta senza parola: è la
+                    convenzione dei lettori di libri, quella la si riconosce. */}
+                <TastoBarra
+                  onClick={() => setPanel(panel === "search" ? null : "search")}
+                  attivo={panel === "search"}
+                  conNome={nomiNeiTasti}
+                  nome="Cerca"
+                  glifo="🔍"
                 />
-                <button onClick={onMusicStop} style={{ ...barBtn(false), fontSize: F.corpo, color: C.muted }} aria-label="Spegni musica">
-                  🔇
-                </button>
+                <TastoBarra
+                  onClick={() => setPanel(panel === "toc" ? null : "toc")}
+                  attivo={panel === "toc"}
+                  conNome={nomiNeiTasti}
+                  nome="Indice"
+                  glifo="☰"
+                />
+                <TastoBarra
+                  onClick={() => setPanel(panel === "marks" ? null : "marks")}
+                  attivo={panel === "marks"}
+                  conNome={nomiNeiTasti}
+                  nome="Segnalibri"
+                  glifo="📑"
+                />
+                <TastoBarra
+                  onClick={() => setPanel(panel === "hl" ? null : "hl")}
+                  attivo={panel === "hl"}
+                  conNome={nomiNeiTasti}
+                  nome="Evidenziazioni"
+                  glifo="🖍️"
+                />
+                <TastoBarra onClick={dovEravamo} conNome={nomiNeiTasti} nome="Dove eravamo" glifo="🧭" />
+                {serveTastoSchermo({ abilitato: document.fullscreenEnabled, giaTuttoSchermo: apertaATuttoSchermo() }) && (
+                  <TastoBarra
+                    onClick={toggleFullscreen}
+                    attivo={isFs}
+                    conNome={nomiNeiTasti}
+                    nome={isFs ? "Esci" : "Schermo"}
+                    glifo="⛶"
+                  />
+                )}
               </>
-            )}
-            {/* I NOMI SONO QUELLI DEI PANNELLI CHE APRONO: «Indice»,
-                «Segnalibri», «Evidenziazioni». La bussola è il caso che
-                conta — 🧭 apre il riassunto della storia fin dove sei, e
-                non lo indovina nessuno. «Aa» resta senza parola: è la
-                convenzione dei lettori di libri, quella la si riconosce. */}
-            <TastoBarra
-              onClick={() => setPanel(panel === "search" ? null : "search")}
-              attivo={panel === "search"}
-              conNome={nomiNeiTasti}
-              nome="Cerca"
-              glifo="🔍"
-            />
-            <TastoBarra
-              onClick={() => setPanel(panel === "toc" ? null : "toc")}
-              attivo={panel === "toc"}
-              conNome={nomiNeiTasti}
-              nome="Indice"
-              glifo="☰"
-            />
-            <TastoBarra
-              onClick={() => setPanel(panel === "marks" ? null : "marks")}
-              attivo={panel === "marks"}
-              conNome={nomiNeiTasti}
-              nome="Segnalibri"
-              glifo="📑"
-            />
-            <TastoBarra
-              onClick={() => setPanel(panel === "hl" ? null : "hl")}
-              attivo={panel === "hl"}
-              conNome={nomiNeiTasti}
-              nome="Evidenziazioni"
-              glifo="🖍️"
-            />
-            <TastoBarra onClick={dovEravamo} conNome={nomiNeiTasti} nome="Dove eravamo" glifo="🧭" />
-            {serveTastoSchermo({ abilitato: document.fullscreenEnabled, giaTuttoSchermo: apertaATuttoSchermo() }) && (
+            }
+            coda={
               <TastoBarra
-                onClick={toggleFullscreen}
-                attivo={isFs}
-                conNome={nomiNeiTasti}
-                nome={isFs ? "Esci" : "Schermo"}
-                glifo="⛶"
+                onClick={() => setPanel(panel === "settings" ? null : "settings")}
+                attivo={panel === "settings"}
+                nome="Il tuo modo di leggere"
+                glifo="Aa"
+                stile={{ fontFamily: FONT_TITLE, fontSize: F.rilievo }}
               />
-            )}
-            <TastoBarra
-              onClick={() => setPanel(panel === "settings" ? null : "settings")}
-              attivo={panel === "settings"}
-              nome="Il tuo modo di leggere"
-              glifo="Aa"
-              stile={{ fontFamily: FONT_TITLE, fontSize: F.rilievo }}
-            />
-          </div>
+            }
+          />
 
           <div
             style={{
@@ -2730,7 +2660,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             // puo' misurare l'una ne' l'altra da dentro la pagina — sono
             // finestre del sistema — quindi la scelta e' fra un incontro
             // garantito e uno occasionale.
-            top: chrome ? px(96) : px(24),
+            top: chrome ? altezzaBarra + px(12) : px(24),
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 35,
@@ -3413,7 +3343,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       )}
 
       {panel === "dict" && (
-        <DictionaryCard dict={dict} book={book} alto={chrome ? px(96) : px(26)} onClose={() => setPanel(null)} />
+        <DictionaryCard dict={dict} book={book} alto={chrome ? altezzaBarra + px(12) : px(26)} onClose={() => setPanel(null)} />
       )}
       {panel === "search" && (
         <Panel title="Cerca nel libro" onClose={() => setPanel(null)}>

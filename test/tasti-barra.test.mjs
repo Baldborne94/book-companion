@@ -140,13 +140,60 @@ export default async function (t) {
     // stesso telefono passava a due righe e 101px — la rete peggiorava il
     // caso che non ne aveva bisogno. Serve solo colle parole accese, dove
     // i tasti hanno un `minWidth` e finirebbero fuori dalla barra.
+    // LA BARRA E' UN COMPONENTE SOLO (`BarraDelLibro`): la regola sta li', e
+    // i reader non ne hanno una loro — tre barre gemelle con tre `flexWrap`
+    // scritti a mano divergono, ed e' gia' successo (il tasto del brano era
+    // alto 40 in un file e `px(40)` nell'altro).
+    const comune = readFileSync(COMUNE, "utf8");
+    t.c(
+      "la barra comune accende il «wrap» solo colle parole",
+      /flexWrap:\s*conNome\s*\?\s*"wrap"\s*:\s*"nowrap"/.test(comune),
+      "flexWrap non è legato a `conNome`"
+    );
     for (const f of FILE) {
       const grezzo = readFileSync(f, "utf8");
-      t.c(
-        `${f} accende il «wrap» solo colle parole`,
-        /flexWrap:\s*nomiNeiTasti\s*\?\s*"wrap"\s*:\s*"nowrap"/.test(grezzo),
-        "flexWrap non è legato a `nomiNeiTasti`"
-      );
+      t.c(`${f} disegna la barra col componente comune`, chiama(f, "BarraDelLibro"), "nessuna chiamata a BarraDelLibro");
+      t.c(`${f} non ha un «wrap» suo per la barra`, !/flexWrap:\s*nomiNeiTasti/.test(grezzo));
     }
   }
+
+  // ---- E LE RIGHE SONO DUE DOVE IL TITOLO NON HA POSTO ---------------------
+  {
+    // Segnalato col tablet in piedi («la barra sembra un po' sacrificata
+    // in verticale»): misurato a 800×1280 con la scala ×1,3, una riga sola
+    // lasciava 156px al titolo. La soglia e' una larghezza NORMALIZZATA
+    // (divisa per il fattore della scala): i tasti crescono con la
+    // scrittura, lo schermo no.
+    const comune = readFileSync(COMUNE, "utf8");
+    const SOGLIA = (() => {
+      const js = esbuild.transformSync(comune, { loader: "jsx", jsx: "automatic" }).code;
+      const m = js.match(/SOGLIA_UNA_RIGA\s*=\s*(\d+)/);
+      return m ? Number(m[1]) : null;
+    })();
+    t.c("la soglia delle due righe e' un numero di pixel", Number.isFinite(SOGLIA), String(SOGLIA));
+    // sopra il tablet in piedi a scala normale (768 → due righe) e sotto
+    // quello sdraiato con la scrittura grande (1280 / 1,3 = 985 → una)
+    t.c("… che manda a due righe il tablet in piedi", SOGLIA > 768, String(SOGLIA));
+    t.c("… e lascia una riga al tablet sdraiato con la scrittura grande", SOGLIA < 985, String(SOGLIA));
+    t.c("… ed e' divisa per il fattore vivo della scala", /SOGLIA_UNA_RIGA\s*\*\s*px\(1\)/.test(comune));
+    for (const f of FILE) t.c(`${f} non ha una soglia sua per le righe`, !/SOGLIA_UNA_RIGA\s*=/.test(readFileSync(f, "utf8")));
+  }
+}
+
+// c'e' una chiamata `jsx(Nome, …)` nel file? (esbuild trasforma cosi' un
+// `<Nome …/>`; si guarda l'albero come per i tasti)
+function chiama(file, nome) {
+  const js = esbuild.transformSync(readFileSync(file, "utf8"), { loader: "jsx", jsx: "automatic" }).code;
+  const albero = acorn.parse(js, { ecmaVersion: "latest", sourceType: "module" });
+  let si = false;
+  (function gira(n) {
+    if (!n || typeof n !== "object" || si) return;
+    if (n.type === "CallExpression" && n.arguments?.[0]?.type === "Identifier" && n.arguments[0].name === nome) si = true;
+    for (const k of Object.keys(n)) {
+      const v = n[k];
+      if (Array.isArray(v)) v.forEach(gira);
+      else if (v && typeof v === "object" && v.type) gira(v);
+    }
+  })(albero);
+  return si;
 }
