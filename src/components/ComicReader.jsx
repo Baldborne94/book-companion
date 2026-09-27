@@ -181,7 +181,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
       try {
         const blob = await ensureLocalFile(book);
         if (!blob) throw new Error("file mancante");
-        const a = await apriFumetto(await blob.arrayBuffer());
+        const a = await apriFumetto(blob);
         if (dead) return;
         if (!a.pagine.length) throw new Error("nessuna pagina");
         archivio.current = a;

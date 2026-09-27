@@ -1,7 +1,8 @@
 // I lettori degli archivi, per il BROWSER: e' l'unico posto che importa
-// JSZip e node-unrar-js, e lo fa pigramente — il wasm di unrar (200 KB) si
-// scarica solo alla prima apertura di un CBR. `lib/fumetto.js` riceve
-// questi due da fuori e non li conosce, cosi' resta provabile in Node.
+// node-unrar-js, e lo fa pigramente — il wasm di unrar (200 KB) si
+// scarica solo alla prima apertura di un CBR. `lib/fumetto.js` lo riceve
+// da fuori e non lo conosce, cosi' resta provabile in Node (il CBZ lo legge
+// da se', a fette: `lib/zipAFette.js`).
 //
 // IL WASM SI PASSA A MANO (`wasmBinary`): la colla di Emscripten lo
 // cercherebbe accanto al proprio script, e dopo la build di Vite quel
@@ -11,8 +12,6 @@ import wasmUrl from "node-unrar-js/esm/js/unrar.wasm?url";
 import { apriArchivio, tipoImmagine } from "./fumetto.js";
 import { misuraInchiostro, pagineDaMisurare } from "./pdfCrop.js";
 
-const zip = async () => (await import("jszip")).default;
-
 let wasm = null;
 const rar = async () => {
   const mod = await import("node-unrar-js");
@@ -20,7 +19,9 @@ const rar = async () => {
   return { createExtractorFromData: (o) => mod.createExtractorFromData({ ...o, wasmBinary: wasm }) };
 };
 
-export const apriFumetto = (bytes) => apriArchivio(bytes, { zip, rar });
+// Si passa il Blob, non i suoi byte: un CBZ si legge a fette e resta sul
+// disco, e solo un CBR (sotto il suo tetto) si carica intero.
+export const apriFumetto = (blob) => apriArchivio(blob, { rar });
 
 // larga cosi' la tavola basta a trovare i bordi, e cinque pagine si
 // decodificano in una frazione di secondo alla PRIMA apertura del libro
