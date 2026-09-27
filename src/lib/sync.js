@@ -27,7 +27,7 @@ import { leggiObiettivi, scriviObiettivi, fondiObiettivi } from "./obiettivo.js"
 import { leggiQuaderno, scriviQuaderno, fondiQuaderno } from "./quaderno.js";
 import { leggiDaPrendere, scriviDaPrendere, fondiDaPrendere } from "./daPrendere.js";
 import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare } from "./syncCore.js";
-import { daTogliereDalSecchio } from "./driveCore.js";
+import { daTogliereDalSecchio, avanziDelSecchio } from "./driveCore.js";
 import { giroDrive, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive } from "./drive.js";
 import { tipiDi, tipoDi } from "./library.js";
 import { misureFile } from "./bookStore.js";
@@ -391,6 +391,23 @@ export async function syncNow({ onProgress } = {}) {
         .slice(i, i + 100)
         .flatMap((id) => ["epub", "pdf", "cbz", "cbr"].map((ext) => `${uid}/${id}.${ext}`));
       // uno sgombero non riuscito non ferma niente: si riprova al giro dopo
+      await sb.storage.from(BUCKET).remove(percorsi).catch(() => {});
+    }
+  }
+  // e quel che non e' di nessun libro vivo se ne va con o senza Drive
+  // (vedi `avanziDelSecchio`)
+  if (secchio?.idLibri) {
+    const avanzi = avanziDelSecchio(secchio.idLibri, {
+      libri: books,
+      righe: remoteRows || [],
+      lapidi: Object.keys(tombstones || {}),
+      inUscita: removeLocal,
+    });
+    if (avanzi.length) say(`Tolgo dal cloud ${avanzi.length === 1 ? "un file" : `${avanzi.length} file`} che non è più di nessun libro…`);
+    for (let i = 0; i < avanzi.length; i += 100) {
+      const percorsi = avanzi
+        .slice(i, i + 100)
+        .flatMap((id) => ["epub", "pdf", "cbz", "cbr"].map((ext) => `${uid}/${id}.${ext}`));
       await sb.storage.from(BUCKET).remove(percorsi).catch(() => {});
     }
   }
