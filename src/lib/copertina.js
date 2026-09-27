@@ -145,18 +145,20 @@ export async function copertinaDaEpub(eb) {
 export async function copertinaOriginale(book, bytes) {
   if (!bytes) return null;
   try {
+    // un fumetto: la prima pagina, rimpicciolita come una copertina messa
+    // a mano — PRIMA di `arrayBuffer`, che su un CBZ da un giga caricherebbe
+    // in memoria tutto il volume per guardarne una pagina
+    if (eFumetto(book)) {
+      const { apriFumetto } = await import("./archivioFumetto.js");
+      const a = await apriFumetto(bytes);
+      if (!a.pagine.length) return null;
+      const blob = new Blob([await a.leggi(0)], { type: tipoImmagine(a.pagine[0]) || "image/jpeg" });
+      return (await preparaCopertina(blob)) || null;
+    }
     const buf = await bytes.arrayBuffer();
     if (book?.fileType === "pdf") {
       const { renderPdfThumb } = await import("./pdfThumb.js");
       return (await renderPdfThumb(buf)) || null;
-    }
-    // un fumetto: la prima pagina, rimpicciolita come una copertina messa a mano
-    if (eFumetto(book)) {
-      const { apriFumetto } = await import("./archivioFumetto.js");
-      const a = await apriFumetto(buf);
-      if (!a.pagine.length) return null;
-      const blob = new Blob([await a.leggi(0)], { type: tipoImmagine(a.pagine[0]) || "image/jpeg" });
-      return (await preparaCopertina(blob)) || null;
     }
     const { default: ePub } = await import("epubjs");
     return await copertinaDaEpub(ePub(buf));

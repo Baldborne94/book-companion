@@ -15,12 +15,27 @@
 //   `Thumbs.db`, `ComicInfo.xml`. Contati, sarebbero pagine bianche o
 //   un'immagine rotta in mezzo alla lettura.
 //
-// `apriArchivio` riceve i lettori (`zip`, `rar`) da fuori, come `leggiByte`
+// `apriArchivio` riceve il lettore RAR da fuori, come `leggiByte`
 // altrove: cosi' il giro intero — formato, elenco, ordine, estrazione — si
 // prova in Node con JSZip e con la build Node di node-unrar-js, che e' la
 // stessa libreria (e lo stesso wasm) che gira nel browser.
 
 import { TUTTA, unisci, rifinisci } from "./pdfCrop.js";
+import { apriZip } from "./zipAFette.js";
+
+// UN CBR NON SI LEGGE A FETTE, e allora ha un tetto. La libreria RAR per il
+// browser (unrar compilato in wasm) vuole l'archivio INTERO in memoria, e
+// se ne fa una copia dentro il wasm: un volume da un giga sono due giga
+// prima di vedere una pagina, e la scheda del tablet si arrende senza dire
+// niente (segnalato: «il volume 3 di hellboy e' piu' di un gb e non riesco
+// a caricarlo»). Il numero e' una scelta, non una misura sul tablet: sotto
+// i 300 MB i CBR veri entrano (un volume normale ne pesa 50-150), sopra si
+// rifiuta PRIMA di leggere un byte, con la strada scritta accanto. Il CBZ
+// il tetto non ce l'ha: si legge a fette (`zipAFette.js`).
+export const CBR_MAX = 300 * 1024 * 1024;
+export const cbrTroppoGrande = (formato, byte) => formato === "cbr" && Number(byte) > CBR_MAX;
+export const PERCHE_CBR_GRANDE =
+  "un CBR così grande non si apre nel browser (il RAR va letto tutto in memoria): convertilo in CBZ — estrai le immagini e comprimile in uno zip rinominato .cbz — e il volume entra";
 
 export const FORMATI = ["cbz", "cbr"];
 export const ESTENSIONI = [".cbz", ".cbr"];
@@ -197,21 +212,23 @@ export function scriviAdatta(v) {
 // L'archivio aperto: le pagine in ordine, la scheda se c'e', e `leggi(i)`
 // che torna i byte della pagina i (Uint8Array). Il RAR estrae un file per
 // volta — non si tira fuori tutto il volume per guardare una pagina.
-export async function apriArchivio(bytes, { zip, rar } = {}) {
-  const buf = bytes instanceof ArrayBuffer ? bytes : bytes?.buffer?.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-  const formato = formatoDaByte(new Uint8Array(buf || new ArrayBuffer(0), 0, Math.min(8, buf?.byteLength || 0)));
+export async function apriArchivio(sorgente, { rar } = {}) {
+  // Un Blob (il File scelto, o quel che torna da IndexedDB) si legge a
+  // fette e NON si carica mai intero; dei byte gia' in mano si avvolgono in
+  // un Blob, che non li copia. Il RAR invece i byte li vuole tutti.
+  const blob = sorgente instanceof Blob ? sorgente : new Blob([sorgente || new ArrayBuffer(0)]);
+  const formato = formatoDaByte(new Uint8Array(await blob.slice(0, 8).arrayBuffer()));
   if (formato === "cbz") {
-    if (!zip) throw new Error("manca il lettore zip");
-    const JSZip = await zip();
-    const z = await JSZip.loadAsync(buf);
-    const nomi = Object.keys(z.files).filter((n) => !z.files[n].dir);
-    const pagine = pagineDa(nomi);
-    const scheda = nomi.find(eComicInfo);
-    const info = scheda ? leggiComicInfo(await z.file(scheda).async("string")) : null;
-    return { formato, pagine, info, leggi: (i) => z.file(pagine[i]).async("uint8array"), chiudi() {} };
+    const z = await apriZip(blob);
+    const pagine = pagineDa(z.nomi);
+    const scheda = z.nomi.find(eComicInfo);
+    const info = scheda ? leggiComicInfo(new TextDecoder().decode(await z.leggi(scheda))) : null;
+    return { formato, pagine, info, leggi: (i) => z.leggi(pagine[i]), chiudi() {} };
   }
   if (formato === "cbr") {
     if (!rar) throw new Error("manca il lettore rar");
+    if (cbrTroppoGrande(formato, blob.size)) throw new Error(PERCHE_CBR_GRANDE);
+    const buf = await blob.arrayBuffer();
     const r = await rar();
     // UN ESTRATTORE SERVE UNA PAGINA SOLA (misurato: la seconda `extract`
     // di un file diverso sullo stesso estrattore risponde «File read

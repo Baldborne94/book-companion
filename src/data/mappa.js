@@ -259,7 +259,7 @@ export const MAPPA = [
   {
     luogo: "libreria",
     nome: "Fumetti in CBZ e CBR",
-    cosa: "Entrano come i libri, con la prima pagina per copertina; se l'archivio porta la sua scheda (ComicInfo) arrivano anche serie, numero e autore, e i manga si aprono già nel verso giusto.",
+    cosa: "Entrano come i libri, con la prima pagina per copertina; se l'archivio porta la sua scheda (ComicInfo) arrivano anche serie, numero e autore, e i manga si aprono già nel verso giusto. Un CBZ si legge a pezzi, anche da un giga; un CBR oltre i 300 MB va convertito in CBZ.",
     dove: "«+ Aggiungi libri», o trascinali sulla pagina; «Apri con» da Android.",
   },
   {

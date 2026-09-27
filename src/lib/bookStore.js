@@ -22,15 +22,37 @@ function db() {
   return dbPromise;
 }
 
-async function withStore(name, mode, fn) {
-  const d = await db();
+// UNA SCRITTURA E' FATTA QUANDO LA TRANSAZIONE SI CHIUDE, non quando la
+// richiesta risponde. Prima si risolveva su `req.onsuccess`: la richiesta
+// dice di si' subito, e la transazione puo' ancora ABORTIRE dopo — ed e'
+// proprio li' che un file grosso si sente dire «spazio esaurito». L'import
+// diceva «nuovo tomo sullo scaffale» sopra un volume che su disco non
+// c'era, e il lettore rispondeva «non si lascia aprire» (preso al banco con
+// un CBZ da un giga, non dalla lettura). In lettura la differenza non
+// conta, e si resta sulla risposta della richiesta.
+export function attendi(tx, req, mode) {
   return new Promise((resolve, reject) => {
-    const tx = d.transaction(name, mode);
-    const req = fn(tx.objectStore(name));
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    const errore = () => reject(tx.error || req.error || new Error("scrittura annullata"));
+    if (mode === "readwrite") {
+      tx.oncomplete = () => resolve(req.result);
+      tx.onabort = errore;
+      tx.onerror = errore;
+    } else {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    }
   });
 }
+
+async function withStore(name, mode, fn) {
+  const d = await db();
+  const tx = d.transaction(name, mode);
+  return attendi(tx, fn(tx.objectStore(name)), mode);
+}
+
+// Lo spazio esaurito ha un nome suo, perche' chiede al lettore una cosa
+// diversa da «riprova»: fare posto, o togliere l'ebook di un libro finito.
+export const spazioEsaurito = (e) => e?.name === "QuotaExceededError" || /quota/i.test(e?.message || "");
 
 export const putFile = (id, blob) => withStore("files", "readwrite", (s) => s.put(blob, id));
 export const getFile = (id) => withStore("files", "readonly", (s) => s.get(id));

@@ -1,11 +1,11 @@
-import { putFile, getFile, putCover, getCover, removeBookData, removeAux } from "./bookStore.js";
+import { putFile, getFile, putCover, getCover, removeBookData, removeAux, spazioEsaurito } from "./bookStore.js";
 import { getProgress } from "./library.js";
 import { getMarks, getHighlights } from "./annotations.js";
 import { riconosci, nomeInBiblioteca, chiaveSaga } from "./sagaBooks.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 import { dalMetadata } from "./sinossi.js";
 import { collana } from "./collana.js";
-import { formatoDaByte, tipoImmagine } from "./fumetto.js";
+import { formatoDaByte, tipoImmagine, cbrTroppoGrande, PERCHE_CBR_GRANDE } from "./fumetto.js";
 
 // oltre questa taglia il libro non si ricuce: tenere in memoria due
 // copie dell'archivio, su un tablet, vale piu' di qualche pagina bianca
@@ -40,6 +40,33 @@ export async function impronta(bytes) {
     // fastidio, un libro non importato e' un danno
     return null;
   }
+}
+
+// L'IMPRONTA DI UN FILE ENORME SI PRENDE A CAMPIONI. SHA-256 del browser
+// non va a flusso: vuole tutti i byte in un colpo, e su un fumetto da un
+// giga vuol dire caricarlo intero solo per riconoscere un doppione — la
+// cosa che faceva morire l'import prima ancora di aprire il volume. Sopra
+// `IMPRONTA_INTERA` si digeriscono la misura e poche fette sparse (testa,
+// coda, e otto in mezzo): due file diversi con la stessa misura e le stesse
+// fette non si incontrano per caso. Il prefisso «c:» tiene le due specie
+// separate, e sotto la soglia non cambia niente — cosi' le impronte gia'
+// scritte sui libri di prima restano buone.
+export const IMPRONTA_INTERA = 256 * 1024 * 1024;
+const FETTA = 1024 * 1024;
+
+export async function improntaDi(blob) {
+  if (!blob) return null;
+  // una misura che non si conosce vale «piccolo»: e' la strada di sempre
+  if (!(Number(blob.size) > IMPRONTA_INTERA)) return impronta(await blob.arrayBuffer().catch(() => null));
+  const punti = [0, blob.size - FETTA, ...Array.from({ length: 8 }, (_, i) => Math.floor(((i + 1) * blob.size) / 9))];
+  const pezzi = [new TextEncoder().encode(String(blob.size))];
+  try {
+    for (const p of punti) pezzi.push(new Uint8Array(await blob.slice(p, p + FETTA).arrayBuffer()));
+  } catch {
+    return null;
+  }
+  const dentro = await impronta(await new Blob(pezzi).arrayBuffer());
+  return dentro ? `c:${dentro}` : null;
 }
 
 export const giaInLibreria = (imp, libri = []) =>
@@ -89,7 +116,7 @@ export async function ripassaImpronte(libri = [], { leggiByte, onProgress, vivo 
       esito.senzaByte += 1;
       continue;
     }
-    const imp = await impronta(await file.arrayBuffer().catch(() => null));
+    const imp = await improntaDi(file);
     if (!imp) {
       esito.illeggibili += 1;
       continue;
@@ -303,11 +330,17 @@ export async function importFiles(fileList, libri = []) {
       errors.push({ name: file.name, reason: "formato non supportato" });
       continue;
     }
+    // il CBR troppo grande si rifiuta QUI, prima di leggerne un byte: piu'
+    // avanti l'import lo caricherebbe intero e la scheda morirebbe muta
+    if (cbrTroppoGrande(fileType, file.size)) {
+      errors.push({ name: file.name, reason: PERCHE_CBR_GRANDE });
+      continue;
+    }
     // L'impronta si prende PRIMA di salvare: un doppione dei byte non deve
     // nemmeno occupare lo spazio che poi andrebbe liberato. E si confronta
     // anche coi libri entrati in questo stesso giro — la stessa cartella
     // trascinata due volte e' il modo piu' facile di farlo.
-    const imp = await impronta(await file.arrayBuffer().catch(() => null));
+    const imp = await improntaDi(file);
     const noto = giaInLibreria(imp, [...libri, ...added]);
     // IL DOPPIONE VERO si salta prima di `putFile`, o occuperebbe uno
     // spazio da liberare dopo. Ma se di quel libro i byte qui NON ci sono,
@@ -346,8 +379,13 @@ export async function importFiles(fileList, libri = []) {
     }
     try {
       await putFile(id, daSalvare);
-    } catch {
-      errors.push({ name: file.name, reason: "salvataggio fallito" });
+    } catch (e) {
+      errors.push({
+        name: file.name,
+        reason: spazioEsaurito(e)
+          ? "non c'è più spazio per salvarlo su questo dispositivo — fai posto, o togli l'ebook di qualche libro finito"
+          : "salvataggio fallito",
+      });
       continue;
     }
     const meta = {
@@ -586,7 +624,7 @@ async function enrichPdf(meta, file) {
 // norma, come nei PDF: non si conta fra i silenzi da segnalare.
 async function enrichFumetto(meta, file) {
   const { apriFumetto } = await import("./archivioFumetto.js");
-  const a = await apriFumetto(await file.arrayBuffer());
+  const a = await apriFumetto(file);
   if (!a.pagine.length) throw new Error("nessuna pagina");
   const esito = { titolo: true, copertina: false };
   const info = a.info;
