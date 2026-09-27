@@ -164,6 +164,34 @@ export function daTogliereDalSecchio(idSecchio, idDrive) {
   return [...idSecchio].filter((id) => idDrive.has(id));
 }
 
+// E GLI AVANZI SE NE VANNO ANCHE SENZA DRIVE: un file nel secchio che non
+// appartiene a nessun libro vivo non ha niente da aspettare. Sono i libri
+// cancellati quando lo sgombero e' andato storto — la lapide si toglie
+// comunque, e da li' nessuno guardava piu' quel file — e gli ebook tolti
+// dalla scheda (`fileTolto`), dove il lettore ha gia' detto che il file non
+// lo vuole. `daTogliereDalSecchio` non li vede mai, perche' su Drive non ci
+// vanno, e restavano a pesare sul piano gratuito per sempre (segnalato:
+// «come mai dice che ci sono ancora 5 libri su supabase», a giro finito).
+//
+// VIVO e' chi c'e' qui O lassu' nella tabella: un libro importato
+// sull'altro dispositivo e non ancora sceso e' vivo anche se qui non c'e'.
+// E senza nessun vivo non si toglie niente: una biblioteca che risulta
+// vuota da tutt'e due i lati e' piu' spesso una lettura andata storta che
+// una biblioteca vuota, e nel dubbio il file resta.
+export function avanziDelSecchio(idSecchio, { libri = [], righe = [], lapidi = [], inUscita = [] } = {}) {
+  if (!idSecchio) return [];
+  const morti = new Set([...(lapidi || []), ...(inUscita || [])]);
+  const vivi = new Set();
+  for (const b of libri || []) if (b?.id && !b.fileTolto && !morti.has(b.id)) vivi.add(b.id);
+  for (const r of righe || []) if (r?.id && !r.deleted && !r.file_tolto && !morti.has(r.id)) vivi.add(r.id);
+  const tolti = new Set([
+    ...(libri || []).filter((b) => b?.fileTolto).map((b) => b.id),
+    ...(righe || []).filter((r) => r?.file_tolto && !r.deleted).map((r) => r.id),
+  ]);
+  if (!vivi.size && !tolti.size) return [];
+  return [...idSecchio].filter((id) => !vivi.has(id));
+}
+
 // I libri che stanno SOLO nel secchio: niente byte qui, niente copia su
 // Drive. Si scaricano dal secchio e si mandano su Drive senza passare dal
 // dispositivo — il tablet si voleva libero, non riempito di nuovo.
