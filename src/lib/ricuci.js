@@ -60,16 +60,13 @@ export async function taci(id) {
   }
 }
 
-// La ricucitura vera: riscrive i byte, rimette il libro in coda per il
-// cloud, e butta le locations cachate — sono del libro vecchio, e
+// La ricucitura vera: riscrive i byte e butta le locations cachate — sono del libro vecchio, e
 // tenerle vorrebbe dire percentuali sballate per sempre.
 export async function ricuciLibro(id, blob) {
   const { unisciPezzi } = await import("./unisciEpub.js");
   const cucito = await unisciPezzi(blob);
   if (!cucito?.blob || !cucito.cuciti) return null;
   await putFile(id, cucito.blob);
-  const { daRicaricare } = await import("./sync.js");
-  daRicaricare(id);
   try {
     await putAux(`loc_${id}`, null);
     await putAux(chiave(id), null);

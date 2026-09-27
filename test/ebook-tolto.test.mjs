@@ -15,13 +15,13 @@
 //
 // È la lezione della saga tolta a mano, sullo stesso campo vuoto che non si
 // vede.
+import { daCaricare } from "../src/lib/driveCore.js";
 import { banco } from "./aiuto.mjs";
 import {
   rowFromLocal,
   localFromRow,
   normalizeRow,
   DEGRADE,
-  daCaricare,
   senzaCopia,
   daPortare,
 } from "../src/lib/syncCore.js";
@@ -78,14 +78,6 @@ export default async (t) => {
     const su = daCaricare(libri, { qui: new Set(["tolto", "normale"]), lassu: new Set() });
     t.eq("sale solo quello che l'ebook ce l'ha", su.length, 1);
     t.eq("e non e' quello svuotato", su[0].id, "normale");
-    // nemmeno un «rimando» lo riporta su: quello dice «il file qui e'
-    // cambiato», e qui il file non c'e' piu' per scelta
-    const forzato = daCaricare(libri, {
-      qui: new Set(["tolto"]),
-      lassu: new Set(),
-      rimandi: new Set(["tolto"]),
-    });
-    t.eq("nemmeno segnato come «da rimandare»", forzato.length, 0);
   }
 
   // ── NON È UN TOMO PERDUTO ─────────────────────────────────────────────

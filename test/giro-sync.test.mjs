@@ -30,7 +30,8 @@
 //   (b) dentro i cicli per-elemento del giro non c'e' NESSUN `throw`.
 import { readFileSync } from "fs";
 import { createRequire } from "module";
-import { daCaricare, copertineDaCaricare, copertineDaScaricare } from "../src/lib/syncCore.js";
+import { copertineDaCaricare, copertineDaScaricare } from "../src/lib/syncCore.js";
+import { daCaricare } from "../src/lib/driveCore.js";
 
 const require = createRequire(import.meta.url);
 const acorn = require("acorn");
@@ -55,8 +56,6 @@ function giro(m) {
   for (const b of daCaricare(m.libri, {
     qui: m.casa,
     lassu: m.secchio,
-    gia: m.registro,
-    rimandi: new Set(),
     inUscita: new Set(),
   })) {
     m.secchio.add(b.id);

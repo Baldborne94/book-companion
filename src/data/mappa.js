@@ -427,8 +427,14 @@ export const MAPPA = [
   {
     luogo: "impostazioni",
     nome: "La sincronizzazione",
-    cosa: "Facoltativa: i libri restano tuoi e sul dispositivo, e nel cloud ci va una copia per ritrovarli altrove.",
+    cosa: "Facoltativa: schede, progressi, evidenziazioni e copertine viaggiano fra i tuoi dispositivi.",
     dove: "Impostazioni → il rimando al pannello della nuvola.",
+  },
+  {
+    luogo: "impostazioni",
+    nome: "I libri su Google Drive",
+    cosa: "I file dei libri stanno sul tuo Drive: l'app riconosce quelli che hai già caricato, manda su i nuovi, li riporta sul tablet quando li apri e ti dice quanto spazio resta.",
+    dove: "Impostazioni → Sincronizzazione e Google Drive.",
   },
 ];
 

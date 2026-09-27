@@ -11,16 +11,16 @@ import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
 import { frasiDiario } from "../lib/archivioDiario.js";
 import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
-import { portaACasa, cloudUsage, troppoGrandi, daRicaricare } from "../lib/sync.js";
+import { portaACasa, cloudUsage } from "../lib/sync.js";
 import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso,
-  troppoGrandiInBiblioteca, fraseTroppoGrandi,
 } from "../lib/syncCore.js";
-import { fmtBytes } from "../lib/bytes.js";
+import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive } from "../lib/drive.js";
+import { pesoDeiLibri } from "../lib/driveCore.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { senzaCopertina } from "../lib/copertina.js";
 import { spartisciQui } from "../lib/spazio.js";
-import { BarraCloud, PesoQui } from "./BarraCloud.jsx";
+import { BarraCloud, BarraDrive, PesoQui } from "./BarraCloud.jsx";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
 import { famigliaDi } from "../data/generi.js";
 import { riconosci, capitoloDi } from "../lib/sagaBooks.js";
@@ -492,6 +492,7 @@ export default function Library({
   focusSaga,
   collegato,
   onFileLocali,
+  onRicollegaDrive,
   spazioCambiato = 0,
   aggiorna,
   onCammino,
@@ -583,6 +584,9 @@ export default function Library({
   // Quanto pesi lassu'. Si chiede una volta sola, all'apertura dello
   // scaffale e solo a cloud collegato.
   const [cloud, setCloud] = useState(null);
+  // e quanto pesa il Drive, dove adesso stanno i libri: una domanda sola
+  // all'apertura, come il secchio, e solo con la chiave di Google valida
+  const [driveSpazio, setDriveSpazio] = useState(null);
   const inputRef = useRef(null);
   // Le melodie caricate da file vivono solo qui, come i libri: chi ne ha
   // deve poter fare un archivio anche senza avere un libro in libreria.
@@ -645,6 +649,15 @@ export default function Library({
     return () => { vivo = false; };
   }, [collegato, spazioCambiato]);
 
+  useEffect(() => {
+    if (!driveAcceso() || !driveProntoOra()) return setDriveSpazio(null);
+    let vivo = true;
+    spazioSuDrive()
+      .then((d) => vivo && setDriveSpazio(d))
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [spazioCambiato, localIds]);
+
   async function richiediPersistenza() {
     // riprovare ha senso davvero: Android la concede quando la PWA viene
     // installata o quando l'app se l'e' guadagnata con l'uso
@@ -655,28 +668,32 @@ export default function Library({
   // quelli che le domande sulla saga non possono sfogliare. Senza un cloud
   // collegato non c'e' niente da richiamare: offrirlo lo stesso sarebbe una
   // promessa che nessuno puo' mantenere.
-  const nelCloud = collegato && localIds ? books.filter((b) => !localIds.has(b.id)) : [];
+  const drive = driveAcceso();
+  const nelCloud = (collegato || drive) && localIds ? books.filter((b) => !localIds.has(b.id)) : [];
   // L'elenco del secchio arriva allo scaffale per il segno sul dorso: e' lo
   // stesso che decide la riga dei perduti qui sotto, cosi' le due non si
   // smentiscono.
-  const idLassu = collegato ? cloud?.idLibri || null : null;
+  //
+  // «LASSU'» ADESSO SONO DUE POSTI: Google Drive, dove stanno i libri, e il
+  // secchio di Supabase, che tiene quel che Drive non ha ancora. Un libro e'
+  // al sicuro se sta in uno dei due. Finche' di uno dei due non si sa
+  // niente (elenco non ancora arrivato, Drive mai guardato) si risponde
+  // «non so», che non accusa nessuno.
+  const idDrive = idSuDrive();
+  const idLassu =
+    (collegato && !cloud?.idLibri) || (drive && !idDrive) || (!collegato && !drive)
+      ? null
+      : new Set([...(collegato ? cloud.idLibri : []), ...(idDrive || [])]);
 
   // La nuvoletta promette uno scaricamento, e su qualche tomo quella
   // promessa non si puo' mantenere: i byte non sono ne' qui ne' lassu'.
   // Finche' non si diceva, «Porta qui i tomi» falliva e basta.
-  const perduti = fraseSenzaCopia(senzaCopia(nelCloud, cloud?.idLibri));
+  const perduti = fraseSenzaCopia(senzaCopia(nelCloud, idLassu));
   // E il tasto conta solo quelli che puo' DAVVERO portare giu': contando
   // anche i perduti offriva di scaricare file che l'app sapeva gia' non
   // esserci, e la riga qui sopra lo diceva a mezzo centimetro di distanza.
-  const daScendere = daPortare(nelCloud, cloud?.idLibri);
+  const daScendere = daPortare(nelCloud, idLassu);
 
-  // E I TOMI CHE IL SECCHIO HA RIFIUTATO PER LA MISURA. Non e' un guasto da
-  // riparare — sul piano gratuito quel file lassu' non ci va — ed e'
-  // proprio per questo che va detto: senza la riga, il lettore vede un
-  // libro che «non si sincronizza» e non ha modo di sapere perche'. Prima
-  // l'errore usciva nudo nel pannello della nuvola, senza nemmeno dire di
-  // quale libro parlasse.
-  const grossi = fraseTroppoGrandi(troppoGrandiInBiblioteca(books, troppoGrandi()), fmtBytes);
 
   // IL RICONOSCIMENTO GIRA SOLO ALL'IMPORT, e i libri entrati prima non
   // tornano indietro a farsi guardare. Chi ha importato i Pratchett prima
@@ -1339,15 +1356,12 @@ export default function Library({
       // I FILE TORNATI A CASA dentro una scheda che era rimasta senza byte.
       // La scheda non si tocca — titolo, saga, voto e note sono del lettore
       // — si scrive la sola impronta, e si timbra perché la riga risalga.
-      // E si toglie dai «già caricati» (`daRicaricare`): lassù quel file
-      // non c'è, ma il registro di questo dispositivo può dire di sì da
-      // anni, e senza il segno non risalirebbe mai — che è esattamente il
-      // buco per cui quel libro era rimasto senza copia da nessuna parte.
+      // Su Drive sale da solo al prossimo giro: `daCaricare` guarda chi ha
+      // i byte qui e non su Drive, che e' esattamente questo libro.
       const ritrovati = esito.ritrovati || [];
       const conImpronta = new Map(ritrovati.filter((r) => r.impronta).map((r) => [r.id, r.impronta]));
       for (const r of ritrovati) {
         touchBook(r.id);
-        daRicaricare(r.id);
       }
       // e il segno «tieni la scheda, non l'ebook» si spegne: il file è
       // appena tornato dentro quella scheda, quindi il libro si riapre —
@@ -1969,11 +1983,18 @@ export default function Library({
           {perduti && !portando && (
             <span style={{ color: C.accent }}>⚠ {perduti}</span>
           )}
-          {/* E il rovescio: non un libro perduto, ma uno che lassù non ci
-              andrà mai. Sta qui e non fra i perduti perché i byte ce li hai
-              — è al sicuro su questo dispositivo, ed è l'archivio la sua
-              rete, non il cloud. */}
-          {grossi && !portando && <span style={{ color: C.muted }}>☁ {grossi}</span>}
+          {/* LA CHIAVE DI GOOGLE DURA UN'ORA, e Google la ridà solo dopo un
+              tocco: finché non la si rinnova, i libri nuovi non salgono su
+              Drive e quelli lassù non scendono. Si dice qui, accanto agli
+              altri avvisi, col tasto che la rinnova. */}
+          {drive && !driveProntoOra() && !portando && onRicollegaDrive && (
+            <span style={{ color: C.muted }}>
+              🗂 Google Drive aspetta un tocco per continuare.{" "}
+              <button onClick={onRicollegaDrive} style={{ color: C.arcane, textDecoration: "underline", fontSize: "inherit" }}>
+                Ricollega
+              </button>
+            </span>
+          )}
           {/* IN VISTA RESTANO SOLO L'ARCHIVIO E LA CASSETTA DEGLI ATTREZZI.
               I tasti di manutenzione erano arrivati a sei tutti in fila —
               saghe, visita, doppioni, tomi dal cloud, ripristino — e sono
@@ -2028,6 +2049,7 @@ export default function Library({
             C'è solo a cloud collegato, come il numero che ha sostituito:
             senza, sarebbe una promessa che nessuno può mantenere. */}
         {cloud && <BarraCloud dati={cloud} compatta />}
+        {driveSpazio && <BarraDrive spazio={driveSpazio} libri={pesoDeiLibri(mappaDrive())} compatta />}
         {manutenzione && (
           <div
             style={{
