@@ -4,6 +4,12 @@ import { fondiTempo } from "./tempo.js";
 import { fondiObiettivi } from "./obiettivo.js";
 import { fondiQuaderno } from "./quaderno.js";
 import { fondiDaPrendere } from "./daPrendere.js";
+
+// gli stessi valori di `TIPI_SCELTI` in `library.js`, che da qui non si
+// importa: e' il modulo dello storage, e il nucleo della sincronizzazione
+// resta puro
+const TIPI_SCELTI = ["fumetti", "manga"];
+
 const EMPTY_ROW = {
   title: "",
   author: "",
@@ -26,6 +32,7 @@ const EMPTY_ROW = {
   fav: false,
   saga_tolta: false,
   file_tolto: false,
+  tipo: null,
   status: "unread",
   started_at: 0,
   finished_at: 0,
@@ -84,6 +91,9 @@ export const rowFromLocal = (book, state, updatedAt) => ({
   // a promettere uno scaricamento che il lettore ha appena rifiutato.
   // `false` come il cuore: deve poter spegnere un `true` sceso da lassu'.
   file_tolto: !!book.fileTolto,
+  // fumetto o manga, scelto nella scheda: sale anche vuoto, cosi' una
+  // scelta tolta si spegne anche lassu'
+  tipo: TIPI_SCELTI.includes(book.tipo) ? book.tipo : null,
   status: state.status || "unread",
   started_at: state.started || 0,
   finished_at: state.finished || 0,
@@ -123,6 +133,11 @@ export const localFromRow = (row) => ({
     // segno si spegne — e' il lato giusto dove sbagliare, perche' fa
     // ricomparire un libro invece di nasconderlo.
     fileTolto: !!row.file_tolto,
+    // scende solo se la colonna c'e': su uno schema non migrato manca, e
+    // un `null` inventato qui cancellerebbe la scelta fatta su questo
+    // dispositivo a ogni giro. Se c'e', scende anche vuota — o una scelta
+    // tolta sull'altro dispositivo resterebbe accesa qui per sempre.
+    ...("tipo" in row ? { tipo: TIPI_SCELTI.includes(row.tipo) ? row.tipo : null } : {}),
   },
   state: {
     status: row.status || "unread",
@@ -189,6 +204,11 @@ export const DEGRADE = [
     test: (m) => /saga_tolta/i.test(m),
     label: "saga tolta a mano",
     apply: (rows) => rows.map(({ saga_tolta, ...r }) => r),
+  },
+  {
+    test: (m) => /tipo/i.test(m),
+    label: "fumetto o manga",
+    apply: (rows) => rows.map(({ tipo, ...r }) => r),
   },
   {
     test: (m) => /file_tolto/i.test(m),
