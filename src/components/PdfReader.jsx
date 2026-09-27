@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import TastoBarra, { barBtn, useNomiNeiTasti } from "./TastoBarra.jsx";
+import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
 import { ensureLocalFile } from "../lib/sync.js";
 import { getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights } from "../lib/annotations.js";
 import { getProgress, setProgress, setStatus, getStatus, loadBooks } from "../lib/library.js";
@@ -127,6 +127,10 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   const [zoom, setZoom] = useState(1);
   const [isFs, setIsFs] = useState(false);
   const nomiNeiTasti = useNomiNeiTasti();
+  const dueRighe = useDueRighe();
+  // quanto e' alta la barra in cima: chi si appoggia sotto di lei non puo'
+  // piu' supporre un numero, con due righe dipende da cosa c'e' dentro
+  const [altezzaBarra, setAltezzaBarra] = useState(0);
   const [endCard, setEndCard] = useState(null);
   const [marks, setMarks] = useState(() => getMarks(book.id));
   const [hls, setHls] = useState(() => getHighlights(book.id));
@@ -854,7 +858,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             // in cima come nell'EPUB, e per la stessa ragione: la scheda di
             // dizionario che Android apre sulla selezione sta appoggiata al
             // bordo di sotto e si mangiava questo menu per intero
-            top: chrome ? px(96) : px(24),
+            top: chrome ? altezzaBarra + px(12) : px(24),
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 35,
@@ -924,165 +928,87 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
 
       {chrome && (
         <>
-          <div
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              zIndex: 25,
-              display: "flex",
-              alignItems: "center",
-              // stessa rete di sicurezza della barra dell'ePub, e accesa
-              // solo colle parole: senza, a stringersi non sono i tasti ma
-              // il TITOLO, che arriva a zero lasciandoli interi — col
-              // `wrap` sempre acceso un telefono passava da una riga (57px)
-              // a due (101px) senza averne bisogno. Misurato, non supposto.
-              flexWrap: nomiNeiTasti ? "wrap" : "nowrap",
-              gap: 4,
-              padding: "8px 10px",
-              background: `${C.surface}f2`,
-              backdropFilter: "blur(8px)",
-              borderBottom: `1px solid ${C.border}`,
-              animation: "bc-fade-in 0.2s ease-out",
-            }}
-          >
-            <button onClick={handleClose} style={barBtn(false)} aria-label="Chiudi il libro">✕</button>
-            <span
-              style={{
-                flex: 1,
-                fontFamily: FONT_TITLE,
-                fontSize: F.rilievo,
-                fontWeight: 600,
-                color: C.text,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {book.title}
-            </span>
-            {music?.current && (
+          <BarraDelLibro
+            titolo={book.title}
+            onClose={handleClose}
+            conNome={nomiNeiTasti}
+            dueRighe={dueRighe}
+            onAltezza={setAltezzaBarra}
+            musica={<MusicaInBarra music={music} onMusicToggle={onMusicToggle} onMusicNext={onMusicNext} onMusicVolume={onMusicVolume} onMusicStop={onMusicStop} onMusicRoom={onMusicRoom} onClose={handleClose} />}
+            tasti={
               <>
-                {music.manca && (
-                  <span title="Quanto manca allo spegnimento della musica" style={{ fontSize: F.minuscolo, color: C.muted, whiteSpace: "nowrap" }}>
-                    🌙 {music.manca}
-                  </span>
+                {outline.length > 0 && (
+                  <TastoBarra
+                    onClick={() => setPanel(panel === "toc" ? null : "toc")}
+                    attivo={panel === "toc"}
+                    conNome={nomiNeiTasti}
+                    nome="Indice"
+                    glifo="☰"
+                  />
                 )}
-                {/* Cosa sta suonando, e la via per andare a sceglierne
-                    un'altra. Il libro si chiude passando dalla porta di
-                    sempre, non sparendo: la pagina va salvata come per ogni
-                    altra uscita. */}
-                <button
-                  onClick={() => { handleClose(); onMusicRoom?.(); }}
-                  title={`${music.current.name || "Musica di sottofondo"} — vai alla sala della musica`}
-                  style={{
-                    maxWidth: px(150),
-                    padding: "0 8px",
-                    height: 40,
-                    borderRadius: R.piccolo,
-                    fontSize: F.piccolo,
-                    color: C.muted,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  <span style={{ color: music.current.src ? C.accent : C.arcane, marginRight: 5 }}>
-                    {music.current.src ? "♫" : "♪"}
-                  </span>
-                  {music.current.name || "Musica di sottofondo"}
-                </button>
-                <button onClick={onMusicToggle} style={barBtn(false)} aria-label={music.playing ? "Pausa musica" : "Riprendi musica"}>
-                  {music.playing ? "⏸" : "▶"}
-                </button>
-                <button onClick={onMusicNext} style={{ ...barBtn(false), fontSize: F.corpo }} aria-label="Melodia successiva">
-                  ⏭
-                </button>
-                {/* il volume qui e' quello della sola musica: sotto la lettura
-                    si abbassa lei, non le notifiche e la sveglia del tablet */}
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={Math.round((music.volume ?? 1) * 100)}
-                  onChange={(e) => onMusicVolume?.(parseInt(e.target.value, 10) / 100)}
-                  aria-label="Volume della musica"
-                  style={{ width: 64, flexShrink: 0, accentColor: C.accent }}
+                <TastoBarra
+                  onClick={() => setPanel(panel === "search" ? null : "search")}
+                  attivo={panel === "search"}
+                  conNome={nomiNeiTasti}
+                  nome="Cerca"
+                  glifo="🔍"
                 />
-                <button onClick={onMusicStop} style={{ ...barBtn(false), fontSize: F.corpo, color: C.muted }} aria-label="Spegni musica">
-                  🔇
+                <TastoBarra
+                  onClick={() => setPanel(panel === "marks" ? null : "marks")}
+                  attivo={panel === "marks"}
+                  conNome={nomiNeiTasti}
+                  nome="Segnalibri"
+                  glifo="📑"
+                />
+                <TastoBarra
+                  onClick={() => setPanel(panel === "hl" ? null : "hl")}
+                  attivo={panel === "hl"}
+                  conNome={nomiNeiTasti}
+                  nome="Evidenziazioni"
+                  glifo="🖍️"
+                />
+                <TastoBarra onClick={dovEravamo} conNome={nomiNeiTasti} nome="Dove eravamo" glifo="🧭" />
+                <button
+                  onClick={() => setZoom((z) => Math.max(1, +(z - 0.25).toFixed(2)))}
+                  style={barBtn(false)}
+                  aria-label="Riduci zoom"
+                >
+                  −
                 </button>
+                <button
+                  onClick={() => setZoom((z) => Math.min(3, +(z + 0.25).toFixed(2)))}
+                  style={barBtn(false)}
+                  aria-label="Aumenta zoom"
+                >
+                  ＋
+                </button>
+                {/* dietro a `fullscreenEnabled` come nell'EPUB: dove il browser
+                    non lo permette (un iframe senza permesso, certi iOS) un tasto
+                    che non fa niente e' peggio di un tasto che non c'e' */}
+                {serveTastoSchermo({ abilitato: document.fullscreenEnabled, giaTuttoSchermo: apertaATuttoSchermo() }) && (
+                  <TastoBarra
+                    onClick={toggleFullscreen}
+                    attivo={isFs}
+                    conNome={nomiNeiTasti}
+                    nome={isFs ? "Esci" : "Schermo"}
+                    glifo="⛶"
+                  />
+                )}
               </>
-            )}
-            {outline.length > 0 && (
+            }
+            // 🌙 apre il filtro notte E il ritaglio dei margini: una luna da
+            // sola non lo dice a nessuno
+            coda={
               <TastoBarra
-                onClick={() => setPanel(panel === "toc" ? null : "toc")}
-                attivo={panel === "toc"}
+                onClick={() => setPanel(panel === "night" ? null : "night")}
+                attivo={panel === "night"}
                 conNome={nomiNeiTasti}
-                nome="Indice"
-                glifo="☰"
+                nome="Notte"
+                glifo="🌙"
+                stile={{ fontSize: F.rilievo }}
               />
-            )}
-            <TastoBarra
-              onClick={() => setPanel(panel === "search" ? null : "search")}
-              attivo={panel === "search"}
-              conNome={nomiNeiTasti}
-              nome="Cerca"
-              glifo="🔍"
-            />
-            <TastoBarra
-              onClick={() => setPanel(panel === "marks" ? null : "marks")}
-              attivo={panel === "marks"}
-              conNome={nomiNeiTasti}
-              nome="Segnalibri"
-              glifo="📑"
-            />
-            <TastoBarra
-              onClick={() => setPanel(panel === "hl" ? null : "hl")}
-              attivo={panel === "hl"}
-              conNome={nomiNeiTasti}
-              nome="Evidenziazioni"
-              glifo="🖍️"
-            />
-            <TastoBarra onClick={dovEravamo} conNome={nomiNeiTasti} nome="Dove eravamo" glifo="🧭" />
-            <button
-              onClick={() => setZoom((z) => Math.max(1, +(z - 0.25).toFixed(2)))}
-              style={barBtn(false)}
-              aria-label="Riduci zoom"
-            >
-              −
-            </button>
-            <button
-              onClick={() => setZoom((z) => Math.min(3, +(z + 0.25).toFixed(2)))}
-              style={barBtn(false)}
-              aria-label="Aumenta zoom"
-            >
-              ＋
-            </button>
-            {/* dietro a `fullscreenEnabled` come nell'EPUB: dove il browser
-                non lo permette (un iframe senza permesso, certi iOS) un tasto
-                che non fa niente e' peggio di un tasto che non c'e' */}
-            {serveTastoSchermo({ abilitato: document.fullscreenEnabled, giaTuttoSchermo: apertaATuttoSchermo() }) && (
-              <TastoBarra
-                onClick={toggleFullscreen}
-                attivo={isFs}
-                conNome={nomiNeiTasti}
-                nome={isFs ? "Esci" : "Schermo"}
-                glifo="⛶"
-              />
-            )}
-            {/* 🌙 apre il filtro notte E il ritaglio dei margini: una luna
-                da sola non lo dice a nessuno */}
-            <TastoBarra
-              onClick={() => setPanel(panel === "night" ? null : "night")}
-              attivo={panel === "night"}
-              conNome={nomiNeiTasti}
-              nome="Notte"
-              glifo="🌙"
-              stile={{ fontSize: F.rilievo }}
-            />
-          </div>
+            }
+          />
 
           <div
             style={{
@@ -1420,7 +1346,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
       )}
 
       {panel === "dict" && (
-        <DictionaryCard dict={dict} book={book} alto={chrome ? px(96) : px(26)} onClose={() => setPanel(null)} />
+        <DictionaryCard dict={dict} book={book} alto={chrome ? altezzaBarra + px(12) : px(26)} onClose={() => setPanel(null)} />
       )}
 
       {endCard === "shown" && nextBook && (

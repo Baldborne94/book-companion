@@ -34,6 +34,19 @@ body {
   overscroll-behavior-y: none;
 }
 
+/* IN SCORRIMENTO CONTINUO IL CONTENITORE DI EPUB.JS NON SI ANCORA DA SE'.
+   Quando il lettore risale e il capitolo prima viene aggiunto SOPRA, epub.js
+   sposta lo scroll di quanto e' alto il capitolo nuovo (`counter`) per
+   tenere ferma la pagina sotto gli occhi — ma Chrome e Firefox lo fanno
+   gia' da soli (scroll anchoring, del 2017: epub.js e' di prima), quindi
+   la compensazione arrivava DUE volte e la pagina saltava avanti di un
+   capitolo (misurato con le pile di chiamata: `counter` +2470 e +503 sopra
+   un ancoraggio del browser che aveva gia' fatto +503). L'elemento lo
+   costruisce la libreria, come `.textLayer`: da qui, non in linea. */
+.epub-container {
+  overflow-anchor: none;
+}
+
 /* La barra in basso deve stare ai piedi del visibile, non del documento:
    position:fixed su Android segue il viewport di layout e balla con la
    barra degli indirizzi. Guscio alto quanto lo schermo, scorre solo il

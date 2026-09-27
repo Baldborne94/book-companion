@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import TastoBarra, { barBtn, useNomiNeiTasti } from "./TastoBarra.jsx";
+import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
 import { ensureLocalFile } from "../lib/sync.js";
 import { getCfi, setCfi, getMarks, saveMarks } from "../lib/annotations.js";
 import { setProgress, setStatus } from "../lib/library.js";
@@ -113,6 +113,9 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const [endCard, setEndCard] = useState(null);
   const [jump, setJump] = useState("");
   const nomiNeiTasti = useNomiNeiTasti();
+  const dueRighe = useDueRighe();
+  // quanto e' alta la barra in cima: il pannello della luce le sta sotto
+  const [altezzaBarra, setAltezzaBarra] = useState(0);
 
   const flush = useCallback(() => {
     const s = live.current;
@@ -594,103 +597,44 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
 
       {chrome && (
         <>
-          <div
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              zIndex: 25,
-              display: "flex",
-              alignItems: "center",
-              flexWrap: nomiNeiTasti ? "wrap" : "nowrap",
-              gap: 4,
-              padding: "8px 10px",
-              background: `${C.surface}f2`,
-              backdropFilter: "blur(8px)",
-              borderBottom: `1px solid ${C.border}`,
-              animation: "bc-fade-in 0.2s ease-out",
-            }}
-          >
-            <button onClick={handleClose} style={barBtn(false)} aria-label="Chiudi il libro">✕</button>
-            <span
-              style={{
-                flex: 1,
-                fontFamily: FONT_TITLE,
-                fontSize: F.rilievo,
-                fontWeight: 600,
-                color: C.text,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {book.title}
-            </span>
-            {music?.current && (
+          <BarraDelLibro
+            titolo={book.title}
+            onClose={handleClose}
+            conNome={nomiNeiTasti}
+            dueRighe={dueRighe}
+            onAltezza={setAltezzaBarra}
+            musica={<MusicaInBarra music={music} onMusicToggle={onMusicToggle} onMusicNext={onMusicNext} onMusicVolume={onMusicVolume} onMusicStop={onMusicStop} onMusicRoom={onMusicRoom} onClose={handleClose} />}
+            tasti={
               <>
-                {music.manca && (
-                  <span title="Quanto manca allo spegnimento della musica" style={{ fontSize: F.minuscolo, color: C.muted, whiteSpace: "nowrap" }}>
-                    🌙 {music.manca}
-                  </span>
-                )}
-                <button
-                  onClick={() => { handleClose(); onMusicRoom?.(); }}
-                  title={`${music.current.name || "Musica di sottofondo"} — vai alla sala della musica`}
-                  style={{
-                    maxWidth: px(150),
-                    padding: "0 8px",
-                    height: 40,
-                    borderRadius: R.piccolo,
-                    fontSize: F.piccolo,
-                    color: C.muted,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  <span style={{ color: music.current.src ? C.accent : C.arcane, marginRight: 5 }}>{music.current.src ? "♫" : "♪"}</span>
-                  {music.current.name || "Musica di sottofondo"}
-                </button>
-                <button onClick={onMusicToggle} style={barBtn(false)} aria-label={music.playing ? "Pausa musica" : "Riprendi musica"}>
-                  {music.playing ? "⏸" : "▶"}
-                </button>
-                <button onClick={onMusicNext} style={{ ...barBtn(false), fontSize: F.corpo }} aria-label="Melodia successiva">⏭</button>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={Math.round((music.volume ?? 1) * 100)}
-                  onChange={(e) => onMusicVolume?.(parseInt(e.target.value, 10) / 100)}
-                  aria-label="Volume della musica"
-                  style={{ width: 64, flexShrink: 0, accentColor: C.accent }}
+                {/* IL VERSO: un manga si legge da destra, e il tasto lo dice
+                    col glifo — la freccia punta dove sta la pagina dopo */}
+                <TastoBarra onClick={cambiaVerso} attivo={verso === "rtl"} conNome={nomiNeiTasti} nome="Verso" glifo={verso === "rtl" ? "⇦" : "⇨"} />
+                <TastoBarra onClick={cambiaAdatta} attivo={!intera} conNome={nomiNeiTasti} nome="Adatta" glifo="⤢" />
+                <TastoBarra
+                  onClick={() => setPanel(panel === "marks" ? null : "marks")}
+                  attivo={panel === "marks"}
+                  conNome={nomiNeiTasti}
+                  nome="Segnalibri"
+                  glifo="📑"
                 />
-                <button onClick={onMusicStop} style={{ ...barBtn(false), fontSize: F.corpo, color: C.muted }} aria-label="Spegni musica">🔇</button>
+                {serveTastoSchermo({ abilitato: document.fullscreenEnabled, giaTuttoSchermo: apertaATuttoSchermo() }) && (
+                  <TastoBarra onClick={toggleFullscreen} attivo={isFs} conNome={nomiNeiTasti} nome={isFs ? "Esci" : "Schermo"} glifo="⛶" />
+                )}
               </>
-            )}
-            {/* IL VERSO: un manga si legge da destra, e il tasto lo dice
-                col glifo — la freccia punta dove sta la pagina dopo */}
-            <TastoBarra onClick={cambiaVerso} attivo={verso === "rtl"} conNome={nomiNeiTasti} nome="Verso" glifo={verso === "rtl" ? "⇦" : "⇨"} />
-            <TastoBarra onClick={cambiaAdatta} attivo={!intera} conNome={nomiNeiTasti} nome="Adatta" glifo="⤢" />
-            <TastoBarra
-              onClick={() => setPanel(panel === "marks" ? null : "marks")}
-              attivo={panel === "marks"}
-              conNome={nomiNeiTasti}
-              nome="Segnalibri"
-              glifo="📑"
-            />
-            <TastoBarra
-              onClick={() => setPanel(panel === "luce" ? null : "luce")}
-              attivo={panel === "luce"}
-              conNome={nomiNeiTasti}
-              nome="Luce"
-              glifo="🌙"
-              stile={{ fontSize: F.rilievo }}
-            />
-            {serveTastoSchermo({ abilitato: document.fullscreenEnabled, giaTuttoSchermo: apertaATuttoSchermo() }) && (
-              <TastoBarra onClick={toggleFullscreen} attivo={isFs} conNome={nomiNeiTasti} nome={isFs ? "Esci" : "Schermo"} glifo="⛶" />
-            )}
-          </div>
+            }
+            // 🌙 apre la luce E il ritaglio dei bordi: sta in coda come la
+            // «Notte» del PDF
+            coda={
+              <TastoBarra
+                onClick={() => setPanel(panel === "luce" ? null : "luce")}
+                attivo={panel === "luce"}
+                conNome={nomiNeiTasti}
+                nome="Luce"
+                glifo="🌙"
+                stile={{ fontSize: F.rilievo }}
+              />
+            }
+          />
 
           <div
             style={{
@@ -759,7 +703,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           style={{
             position: "absolute",
             right: 10,
-            top: 62,
+            top: altezzaBarra + px(6),
             zIndex: 30,
             width: `min(92%, ${px(260)}px)`,
             padding: 16,
