@@ -51,7 +51,7 @@ function blocco(tipo, flags, corpo) {
   crc.writeUInt16LE(crc16(dentro), 0);
   return Buffer.concat([crc, dentro]);
 }
-function rar(voci) {
+function rar(voci, metodo = 0x30) {
   const pezzi = [Buffer.from("Rar!\x1a\x07\x00", "binary"), blocco(0x73, 0, Buffer.alloc(6))];
   for (const [nome, dati] of voci) {
     const n = Buffer.from(nome, "utf8");
@@ -62,7 +62,7 @@ function rar(voci) {
     corpo.writeUInt32LE(zlib.crc32(dati) >>> 0, 9); // FILE_CRC
     corpo.writeUInt32LE(0, 13); // FTIME
     corpo.writeUInt8(20, 17); // UNP_VER
-    corpo.writeUInt8(0x30, 18); // METHOD: storing
+    corpo.writeUInt8(metodo, 18); // METHOD: storing, o un compresso finto
     corpo.writeUInt16LE(n.length, 19); // NAME_SIZE
     corpo.writeUInt32LE(0x20, 21); // ATTR
     n.copy(corpo, 25);
@@ -245,11 +245,13 @@ export default async (t) => {
   t.eq("… nemmeno l'adattamento", leggiAdatta(), "intera");
 
   // ---- l'archivio intero, nei due formati ----------------------------------
-  for (const [nome, bytes] of [
-    ["cbz", await cbz(VOCI)],
-    ["cbr", aBuffer(rar(VOCI))],
+  for (const [nome, bytes, opzioni] of [
+    ["cbz", await cbz(VOCI), lettori],
+    ["cbr", aBuffer(rar(VOCI)), lettori],
+    // lo stesso CBR dalla libreria RAR: e' la strada dei compressi
+    ["cbr", aBuffer(rar(VOCI)), { ...lettori, aFette: false }],
   ]) {
-    const a = await apriArchivio(bytes, lettori);
+    const a = await apriArchivio(bytes, opzioni);
     t.eq(`${nome}: il formato letto dai byte`, a.formato, nome);
     t.eq(`${nome}: le pagine, in ordine e senza rumore`, a.pagine.join(","), "vol/p1.png,vol/p2.png,vol/p10.png");
     t.eq(`${nome}: la scheda si legge`, a.info?.serie, "Prova");
@@ -273,7 +275,10 @@ export default async (t) => {
   t.eq("un file che non e' un archivio lo dice", errore, "archivio non leggibile");
   errore = "";
   try {
-    await apriArchivio(aBuffer(rar(VOCI)), { zip: lettori.zip });
+    // un RAR MEMORIZZATO si apre senza il lettore (a fette, `rarAFette.js`):
+    // serve un metodo compresso — qui finto, il lettore non arriva nemmeno
+    // a guardarlo — per arrivare alla strada della libreria
+    await apriArchivio(aBuffer(rar(VOCI, 0x33)), { zip: lettori.zip });
   } catch (e) {
     errore = e.message;
   }

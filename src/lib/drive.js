@@ -17,7 +17,7 @@
 // Le decisioni — cosa e' gia' su Drive, cosa sale, cosa lascia il secchio —
 // stanno in `driveCore.js`, dove un test le prova.
 
-import { abbina, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi } from "./driveCore.js";
+import { abbina, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO } from "./driveCore.js";
 
 const TOKEN_KEY = "bc_drive_token";
 const ACCESO_KEY = "bc_drive_on";
@@ -57,8 +57,8 @@ const scrivi = (k, v) => {
 // L'identificativo del client OAuth: non e' un segreto (sta scritto nella
 // pagina di ogni sito che usa l'accesso Google). Arriva dalla build o si
 // incolla nel pannello, cosi' non serve rifare il deploy per provarlo.
-export const clientId = () => import.meta.env?.VITE_GOOGLE_CLIENT_ID || leggi(CLIENT_KEY) || "";
-export const scriviClientId = (v) => scrivi(CLIENT_KEY, String(v || "").trim() || null);
+export const clientId = () => ripulisciIdClient(import.meta.env?.VITE_GOOGLE_CLIENT_ID || leggi(CLIENT_KEY) || "");
+export const scriviClientId = (v) => scrivi(CLIENT_KEY, ripulisciIdClient(v) || null);
 export const driveConfigurato = () => !!clientId();
 // «acceso» e' la scelta del lettore, e resta vera anche a chiave scaduta:
 // la nuvoletta sui dorsi deve continuare a dire che il libro sta lassu'
@@ -108,6 +108,7 @@ function caricaGis() {
 export async function collegaDrive() {
   const id = clientId();
   if (!id) throw new Error("Manca l'ID client di Google: incollalo qui sopra.");
+  if (!idClientValido(id)) throw new Error(PERCHE_ID_STORTO);
   await caricaGis();
   const risposta = await new Promise((ok, ko) => {
     const client = globalThis.google.accounts.oauth2.initTokenClient({
@@ -302,8 +303,11 @@ async function giro(libri, { tipo, qui, misure, inUscita, secchio, leggiByte, sa
   };
   salva();
   let falliti = 0;
-  for (const { bookId, fileId } of daSegnare) {
+  // una scrittura per libro riconosciuto: con trecento libri sono minuti, e
+  // una riga ferma su «Guardo i libri» per tutto quel tempo sembra un blocco
+  for (const [k, { bookId, fileId }] of daSegnare.entries()) {
     if (!vivo()) break;
+    if (k % 10 === 0) say(`Segno i libri riconosciuti su Drive: ${k} di ${daSegnare.length}…`);
     try {
       await segna(fileId, bookId);
     } catch (e) {

@@ -221,3 +221,14 @@ export function spartisciDrive(spazio, byteLibri) {
   const parte = (n) => `${Math.max(0, Math.min(1, n / spazio.limite)) * 100}%`;
   return { libri, altro, liberi: spazio.liberi, parte };
 }
+
+// L'ID DEL CLIENT SI RIPULISCE E SI GUARDA PRIMA DI MANDARLO A GOOGLE.
+// Incollato sul tablet arrivava con dentro qualcosa di storto, e Google
+// rispondeva con una pagina in inglese, «Errore 401: invalid_client», che
+// non dice cosa toccare. Spazi e a capo li mette la tastiera e si tolgono
+// da se'; il resto si controlla sulla FORMA — numeri, un trattino, lettere e
+// cifre, e la coda di Google — e se non torna lo si dice qui, in italiano.
+export const ripulisciIdClient = (v) => String(v || "").replace(/\s+/g, "");
+export const idClientValido = (v) => /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/.test(ripulisciIdClient(v));
+export const PERCHE_ID_STORTO =
+  "L'ID client non ha la forma giusta: sono numeri, un trattino, lettere e cifre, e finisce con .apps.googleusercontent.com. Copialo col tasto accanto all'ID su Google Cloud invece di riscriverlo a mano.";
