@@ -1,12 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import TastoBarra, { barBtn, useNomiNeiTasti } from "./TastoBarra.jsx";
+import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
 import { ensureLocalFile } from "../lib/sync.js";
 import { getCfi, setCfi, getMarks, saveMarks } from "../lib/annotations.js";
 import { setProgress, setStatus } from "../lib/library.js";
 import { loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
-import { apriFumetto } from "../lib/archivioFumetto.js";
-import { paginaDaAprire, tocco, leggiVerso, scriviVerso, leggiAdatta, scriviAdatta, tipoImmagine } from "../lib/fumetto.js";
+import { apriFumetto, misuraBordi } from "../lib/archivioFumetto.js";
+import {
+  paginaDaAprire,
+  tocco,
+  leggiVerso,
+  scriviVerso,
+  leggiAdatta,
+  scriviAdatta,
+  tipoImmagine,
+  bordiDaMisure,
+  disegnaPagina,
+  leggiBordi,
+  scriviBordi,
+} from "../lib/fumetto.js";
+import { vuoto } from "../lib/pdfCrop.js";
 import { doppioTocco, limita, zoomAttorno } from "../lib/tavola.js";
 import { apertaATuttoSchermo, serveTastoSchermo } from "../lib/schermoIntero.js";
 import BookCover from "./BookCover.jsx";
@@ -75,6 +88,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const pizzico = useRef(null);
   const partenza = useRef(null);
   const ultimoTocco = useRef(null);
+  const attesaBarre = useRef(null);
   const primoGiro = useRef(true);
 
   const [settings, setSettings] = useState(() => loadReaderSettings(Math.min(window.innerWidth, window.innerHeight)));
@@ -86,11 +100,22 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const [src, setSrc] = useState(null);
   const [verso, setVerso] = useState(() => leggiVerso(book.id, book.verso));
   const [adatta, setAdatta] = useState(() => leggiAdatta());
+  // I BORDI DELLA SCANSIONE (`lib/fumetto.js`): misurati una volta per
+  // libro alla prima apertura, sotto la candela, e poi letti dal
+  // dispositivo. `null` = non ancora misurati.
+  const [bordi, setBordi] = useState(() => leggiBordi(book.id));
+  // la misura del file aperto e quella del riquadro: il disegno della
+  // pagina (`disegnaPagina`) e' aritmetica su questi due
+  const [nat, setNat] = useState(null);
+  const [riquadro, setRiquadro] = useState(null);
   const [isFs, setIsFs] = useState(false);
   const [marks, setMarks] = useState(() => getMarks(book.id));
   const [endCard, setEndCard] = useState(null);
   const [jump, setJump] = useState("");
   const nomiNeiTasti = useNomiNeiTasti();
+  const dueRighe = useDueRighe();
+  // quanto e' alta la barra in cima: il pannello della luce le sta sotto
+  const [altezzaBarra, setAltezzaBarra] = useState(0);
 
   const flush = useCallback(() => {
     const s = live.current;
@@ -165,6 +190,18 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         live.current.page = paginaDaAprire(startCfi, getCfi(book.id), n);
         setPages(n);
         setPage(live.current.page);
+        // i bordi si misurano PRIMA di mostrare la prima pagina, cosi' la
+        // tavola compare gia' della misura giusta invece di assestarsi
+        // sotto gli occhi — una volta nella vita del libro
+        if (leggiBordi(book.id) === null) {
+          const misure = await misuraBordi(a);
+          if (dead) return;
+          const b = bordiDaMisure(misure);
+          // una misura che non ha guardato nessuna pagina non si scrive:
+          // si riprova alla prossima apertura
+          if (misure.some(Boolean)) scriviBordi(book.id, b);
+          setBordi(b);
+        }
         setStatusUi("ready");
       } catch {
         if (!dead) setStatusUi("error");
@@ -250,6 +287,22 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     };
     window.addEventListener("resize", riassesta);
     return () => window.removeEventListener("resize", riassesta);
+  }, []);
+
+  // il riquadro si misura da se': ruotando il tablet o entrando a schermo
+  // intero cambia lui, e la pagina si ridisegna sulla sua misura nuova
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const misura = () => setRiquadro({ w: el.clientWidth, h: el.clientHeight });
+    misura();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", misura);
+      return () => window.removeEventListener("resize", misura);
+    }
+    const ro = new ResizeObserver(misura);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   function updateSettings(patch) {
@@ -376,6 +429,9 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     const u = ultimoTocco.current;
     ultimoTocco.current = { x: e.clientX, y: e.clientY, quando: Date.now() };
     if (intera && u && Date.now() - u.quando < DOPPIO && Math.hypot(e.clientX - u.x, e.clientY - u.y) < 24) {
+      // il primo tocco della coppia aveva messo in attesa le barre: il
+      // secondo dice che era uno zoom, e le barre non si toccano
+      clearTimeout(attesaBarre.current);
       ultimoTocco.current = null;
       const m = misure();
       if (m) {
@@ -388,13 +444,30 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     if (st.current.s > 1.01) return;
     const rel = e.pointerType === "mouse" ? null : e.clientX / (window.innerWidth || 1);
     const cosa = tocco(rel, verso);
-    if (cosa === "next") avanti();
-    else if (cosa === "prev") indietroDiUna();
-    else setChrome((c) => !c);
+    // LA VOLTATA E' SUBITO, LE BARRE ASPETTANO UN SOFFIO. Il doppio tocco
+    // e' due tocchi, e il primo dei due arrivava qui come un tocco
+    // qualunque: al centro accendeva le barre (e il secondo zoomava con
+    // le barre accese), ai bordi voltava pagina e lo zoom finiva sulla
+    // pagina dopo — preso dal banco, non dal video. Una voltata non puo'
+    // aspettare trecento millisecondi per sapere se ne arriva un altro,
+    // quindi ai bordi si volta e basta e il doppio tocco li' non esiste
+    // (`ultimoTocco` azzerato); le barre invece un soffio lo reggono, e
+    // aspettano `DOPPIO` — se nel frattempo arriva il secondo tocco, era
+    // uno zoom.
+    if (cosa === "next" || cosa === "prev") {
+      ultimoTocco.current = null;
+      (cosa === "next" ? avanti : indietroDiUna)();
+      return;
+    }
+    clearTimeout(attesaBarre.current);
+    attesaBarre.current = setTimeout(() => setChrome((c) => !c), DOPPIO);
   };
 
   const pct = pages ? Math.round((page / pages) * 100) : 0;
   const nomePagina = archivio.current?.pagine?.[page - 1] || "";
+  // la levetta e' quella del PDF («Togli i margini»), condivisa in
+  // `bc_reader`: spenta, la scansione si vede com'e', bordo compreso
+  const disegno = disegnaPagina({ nat, riquadro, bordi: settings.ritaglia !== false ? bordi : null, modo: adatta });
 
   return (
     <div
@@ -430,18 +503,43 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           cursor: "pointer",
         }}
       >
+        {/* IL FOGLIO E' LA TAVOLA SENZA I BORDI DELLA SCANSIONE: un
+            riquadro che ritaglia, e dentro l'immagine intera spostata di
+            quanto basta a lasciare fuori la cornice. E' il foglio che lo
+            zoom misura e trasforma (`imgRef`), non l'immagine. Finche' non
+            si sa quanto e' grande il file (`onLoad`) il foglio resta
+            invisibile: un fotogramma a misura sbagliata e' peggio di uno
+            vuoto. */}
         {src && (
-          <img
+          <div
             ref={imgRef}
-            src={src}
-            alt={nomePagina}
-            draggable={false}
-            style={
-              intera
-                ? { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", transformOrigin: "center", willChange: "transform" }
-                : { width: "100%", height: "auto", display: "block" }
-            }
-          />
+            style={{
+              position: "relative",
+              overflow: "hidden",
+              flexShrink: 0,
+              transformOrigin: "center",
+              willChange: "transform",
+              width: disegno?.foglio.w,
+              height: disegno?.foglio.h,
+              visibility: disegno ? "visible" : "hidden",
+            }}
+          >
+            <img
+              src={src}
+              alt={nomePagina}
+              draggable={false}
+              onLoad={(e) => setNat({ w: e.target.naturalWidth, h: e.target.naturalHeight })}
+              style={{
+                position: "absolute",
+                display: "block",
+                maxWidth: "none",
+                left: disegno?.immagine.x,
+                top: disegno?.immagine.y,
+                width: disegno?.immagine.w,
+                height: disegno?.immagine.h,
+              }}
+            />
+          </div>
         )}
       </div>
 
@@ -499,103 +597,44 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
 
       {chrome && (
         <>
-          <div
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              zIndex: 25,
-              display: "flex",
-              alignItems: "center",
-              flexWrap: nomiNeiTasti ? "wrap" : "nowrap",
-              gap: 4,
-              padding: "8px 10px",
-              background: `${C.surface}f2`,
-              backdropFilter: "blur(8px)",
-              borderBottom: `1px solid ${C.border}`,
-              animation: "bc-fade-in 0.2s ease-out",
-            }}
-          >
-            <button onClick={handleClose} style={barBtn(false)} aria-label="Chiudi il libro">✕</button>
-            <span
-              style={{
-                flex: 1,
-                fontFamily: FONT_TITLE,
-                fontSize: F.rilievo,
-                fontWeight: 600,
-                color: C.text,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {book.title}
-            </span>
-            {music?.current && (
+          <BarraDelLibro
+            titolo={book.title}
+            onClose={handleClose}
+            conNome={nomiNeiTasti}
+            dueRighe={dueRighe}
+            onAltezza={setAltezzaBarra}
+            musica={<MusicaInBarra music={music} onMusicToggle={onMusicToggle} onMusicNext={onMusicNext} onMusicVolume={onMusicVolume} onMusicStop={onMusicStop} onMusicRoom={onMusicRoom} onClose={handleClose} />}
+            tasti={
               <>
-                {music.manca && (
-                  <span title="Quanto manca allo spegnimento della musica" style={{ fontSize: F.minuscolo, color: C.muted, whiteSpace: "nowrap" }}>
-                    🌙 {music.manca}
-                  </span>
-                )}
-                <button
-                  onClick={() => { handleClose(); onMusicRoom?.(); }}
-                  title={`${music.current.name || "Musica di sottofondo"} — vai alla sala della musica`}
-                  style={{
-                    maxWidth: px(150),
-                    padding: "0 8px",
-                    height: 40,
-                    borderRadius: R.piccolo,
-                    fontSize: F.piccolo,
-                    color: C.muted,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  <span style={{ color: music.current.src ? C.accent : C.arcane, marginRight: 5 }}>{music.current.src ? "♫" : "♪"}</span>
-                  {music.current.name || "Musica di sottofondo"}
-                </button>
-                <button onClick={onMusicToggle} style={barBtn(false)} aria-label={music.playing ? "Pausa musica" : "Riprendi musica"}>
-                  {music.playing ? "⏸" : "▶"}
-                </button>
-                <button onClick={onMusicNext} style={{ ...barBtn(false), fontSize: F.corpo }} aria-label="Melodia successiva">⏭</button>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={Math.round((music.volume ?? 1) * 100)}
-                  onChange={(e) => onMusicVolume?.(parseInt(e.target.value, 10) / 100)}
-                  aria-label="Volume della musica"
-                  style={{ width: 64, flexShrink: 0, accentColor: C.accent }}
+                {/* IL VERSO: un manga si legge da destra, e il tasto lo dice
+                    col glifo — la freccia punta dove sta la pagina dopo */}
+                <TastoBarra onClick={cambiaVerso} attivo={verso === "rtl"} conNome={nomiNeiTasti} nome="Verso" glifo={verso === "rtl" ? "⇦" : "⇨"} />
+                <TastoBarra onClick={cambiaAdatta} attivo={!intera} conNome={nomiNeiTasti} nome="Adatta" glifo="⤢" />
+                <TastoBarra
+                  onClick={() => setPanel(panel === "marks" ? null : "marks")}
+                  attivo={panel === "marks"}
+                  conNome={nomiNeiTasti}
+                  nome="Segnalibri"
+                  glifo="📑"
                 />
-                <button onClick={onMusicStop} style={{ ...barBtn(false), fontSize: F.corpo, color: C.muted }} aria-label="Spegni musica">🔇</button>
+                {serveTastoSchermo({ abilitato: document.fullscreenEnabled, giaTuttoSchermo: apertaATuttoSchermo() }) && (
+                  <TastoBarra onClick={toggleFullscreen} attivo={isFs} conNome={nomiNeiTasti} nome={isFs ? "Esci" : "Schermo"} glifo="⛶" />
+                )}
               </>
-            )}
-            {/* IL VERSO: un manga si legge da destra, e il tasto lo dice
-                col glifo — la freccia punta dove sta la pagina dopo */}
-            <TastoBarra onClick={cambiaVerso} attivo={verso === "rtl"} conNome={nomiNeiTasti} nome="Verso" glifo={verso === "rtl" ? "⇦" : "⇨"} />
-            <TastoBarra onClick={cambiaAdatta} attivo={!intera} conNome={nomiNeiTasti} nome="Adatta" glifo="⤢" />
-            <TastoBarra
-              onClick={() => setPanel(panel === "marks" ? null : "marks")}
-              attivo={panel === "marks"}
-              conNome={nomiNeiTasti}
-              nome="Segnalibri"
-              glifo="📑"
-            />
-            <TastoBarra
-              onClick={() => setPanel(panel === "luce" ? null : "luce")}
-              attivo={panel === "luce"}
-              conNome={nomiNeiTasti}
-              nome="Luce"
-              glifo="🌙"
-              stile={{ fontSize: F.rilievo }}
-            />
-            {serveTastoSchermo({ abilitato: document.fullscreenEnabled, giaTuttoSchermo: apertaATuttoSchermo() }) && (
-              <TastoBarra onClick={toggleFullscreen} attivo={isFs} conNome={nomiNeiTasti} nome={isFs ? "Esci" : "Schermo"} glifo="⛶" />
-            )}
-          </div>
+            }
+            // 🌙 apre la luce E il ritaglio dei bordi: sta in coda come la
+            // «Notte» del PDF
+            coda={
+              <TastoBarra
+                onClick={() => setPanel(panel === "luce" ? null : "luce")}
+                attivo={panel === "luce"}
+                conNome={nomiNeiTasti}
+                nome="Luce"
+                glifo="🌙"
+                stile={{ fontSize: F.rilievo }}
+              />
+            }
+          />
 
           <div
             style={{
@@ -664,7 +703,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           style={{
             position: "absolute",
             right: 10,
-            top: 62,
+            top: altezzaBarra + px(6),
             zIndex: 30,
             width: `min(92%, ${px(260)}px)`,
             padding: 16,
@@ -688,6 +727,35 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           />
           <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 8, lineHeight: 1.45 }}>
             {intera ? "Pagina intera: due dita o un doppio tocco per avvicinarti." : "Larga quanto lo schermo: scorri in verticale."}
+          </div>
+
+          <div style={{ height: 1, background: C.border, margin: "14px 0 12px" }} />
+          {/* la stessa levetta del PDF, e la stessa preferenza: la' toglie
+              il bianco attorno al testo, qui la cornice della scansione */}
+          <button
+            onClick={() => updateSettings({ ritaglia: settings.ritaglia === false })}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "8px 10px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${settings.ritaglia !== false ? C.accent : C.border}`,
+              color: settings.ritaglia !== false ? C.accent : C.muted,
+              fontSize: F.nota,
+              textAlign: "left",
+            }}
+          >
+            <span style={{ fontSize: F.corpo }}>{settings.ritaglia !== false ? "☑" : "☐"}</span>
+            <span style={{ flex: 1 }}>Togli i bordi della scansione</span>
+          </button>
+          <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 6, lineHeight: 1.45 }}>
+            {bordi === null
+              ? "Sto misurando i bordi di questo volume…"
+              : vuoto(bordi)
+                ? "Queste tavole arrivano già al bordo: non c'è niente da togliere."
+                : `Qui se ne va ${Math.round((1 - (bordi.r - bordi.l) * (bordi.b - bordi.t)) * 100)}% di cornice, e la tavola cresce.`}
           </div>
         </div>
       )}

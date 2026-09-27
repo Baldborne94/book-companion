@@ -118,6 +118,13 @@ export default async function (t) {
     // niente da misurare (tutte le pagine bianche, o un PDF che non si
     // disegna): si tiene la pagina intera, che e' non ritagliare
     t.eq("senza misura si tiene tutta la pagina", JSON.stringify(rifinisci(null)), JSON.stringify(TUTTA));
+    // respiro e tetto passati da fuori (e' quel che fa il fumetto): con
+    // respiro zero il bordo misurato e' il bordo tenuto, e il tetto si
+    // rispetta anche quando e' un altro
+    const s = rifinisci({ l: 0.3, t: 0.05, r: 0.7, b: 0.95 }, { respiro: 0, maxLato: 0.25 });
+    t.eq("respiro zero: il lato misurato resta com'e'", s.t, 0.05);
+    t.eq("… e il tetto passato da fuori vale", s.l, 0.25);
+    t.eq("… da tutt'e due i lati", s.r, 0.75);
     t.c("e «tutta la pagina» vale come «nessun ritaglio»", vuoto(TUTTA));
     t.c("mentre un ritaglio vero non e' vuoto", !vuoto({ l: 0.09, t: 0.05, r: 0.91, b: 0.95 }));
   }

@@ -1,3 +1,5 @@
+import { eFumetto } from "./fumetto.js";
+
 const BOOKS_KEY = "bc_books";
 const LAST_KEY = "bc_lastopen";
 const TOMBS_KEY = "bc_tombs";
@@ -358,4 +360,35 @@ export function scaffaleVuoto({ totale = 0, query = "", filtro = "all", conLaSol
       : `Nessun tomo è fra i «${nome}».`,
     vie,
   };
+}
+
+// LIBRI E FUMETTI NON SI MESCOLANO QUANDO LI CERCHI (chiesto dal lettore:
+// «visto che sto caricando sia libri che manga che fumetti fai in modo
+// che l'applicazione mi differenzi tra questi due generi quando li voglio
+// cercare cosi' non ci confondiamo»). Il tipo lo dice il file
+// (`fileType`: cbz e cbr sono fumetti, il resto libri), e sullo scaffale
+// e' un filtro come lo stato — che, come lo stato, NON si ricorda fra
+// un'apertura e l'altra: una Libreria che si riapre coi soli fumetti
+// sembra una libreria che ha perso i libri.
+export const TIPI = [
+  { id: "tutti", label: "Tutti" },
+  { id: "libri", label: "📚 Libri" },
+  { id: "fumetti", label: "💬 Fumetti" },
+];
+
+export const tipoDi = (b) => (eFumetto(b) ? "fumetti" : "libri");
+export const delTipo = (b, tipo) => !tipo || tipo === "tutti" || tipoDi(b) === tipo;
+
+// I due chip compaiono solo quando in casa ci sono TUTT'E DUE i tipi: con
+// soli libri «Fumetti» sarebbe uno scaffale vuoto garantito, e un comando
+// che non cambia niente e' peggio di un comando che manca.
+export function serveFiltroTipo(books) {
+  let libri = false;
+  let fumetti = false;
+  for (const b of books || []) {
+    if (eFumetto(b)) fumetti = true;
+    else libri = true;
+    if (libri && fumetti) return true;
+  }
+  return false;
 }

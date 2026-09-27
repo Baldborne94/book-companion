@@ -77,7 +77,7 @@ export const MAPPA = [
   {
     luogo: "libro",
     nome: "Fumetti e manga",
-    cosa: "Un fumetto (CBZ o CBR) si legge una pagina per volta: un tocco ai bordi volta, due dita o un doppio tocco avvicinano. «Verso» lo gira da destra a sinistra come un manga, «Adatta» lo allarga quanto lo schermo per scorrerlo in verticale.",
+    cosa: "Un fumetto (CBZ o CBR) si legge una pagina per volta: un tocco ai bordi volta, due dita o un doppio tocco avvicinano. «Verso» lo gira da destra a sinistra come un manga, «Adatta» lo allarga quanto lo schermo per scorrerlo in verticale. I bordi neri o bianchi della scansione si tolgono da soli (levetta nel pannello 🌙).",
     dove: "I tasti ⇨/⇦ e ⤢ nella barra in alto, che compare toccando il centro della pagina.",
   },
   {
@@ -297,6 +297,12 @@ export const MAPPA = [
     nome: "Mettere i volumi in ordine di guida",
     cosa: "Scrive su ogni tuo volume il posto e la parte che ha nella guida: il numero è quel che dice all'Oracolo cosa viene prima e cosa viene dopo, la parte è quel che divide lo scaffale nei capitoli della storia. Propone «da → a» una riga per volta, e quello che lasci non si tocca.",
     dove: "Dentro «Il cammino», il tasto 🔢 sotto il conto dei volumi.",
+  },
+  {
+    luogo: "libreria",
+    nome: "Libri e fumetti separati",
+    cosa: "Quando in casa ci sono tutt'e due, due chip filtrano lo scaffale: «📚 Libri» e «💬 Fumetti» (CBZ e CBR). Vale anche insieme allo stato e alla ricerca, e non si ricorda fra un'apertura e l'altra.",
+    dove: "Nella riga dei filtri, dopo «Abbandonati».",
   },
   {
     luogo: "libreria",

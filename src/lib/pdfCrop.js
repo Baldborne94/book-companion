@@ -89,13 +89,16 @@ export const unisci = (a, b) => {
   return { l: Math.min(a.l, b.l), t: Math.min(a.t, b.t), r: Math.max(a.r, b.r), b: Math.max(a.b, b.b) };
 };
 
-export function rifinisci(box) {
+// Respiro e tetto si possono passare da fuori: il fumetto (`lib/fumetto.js`)
+// usa la stessa misura con un respiro quasi nullo — li' il bordo della
+// scansione e' carta morta e la tavola vuole arrivare al vetro.
+export function rifinisci(box, { respiro = RESPIRO, maxLato = MAX_LATO } = {}) {
   if (!box) return TUTTA;
   return {
-    l: round(Math.min(MAX_LATO, Math.max(0, box.l - RESPIRO))),
-    t: round(Math.min(MAX_LATO, Math.max(0, box.t - RESPIRO))),
-    r: round(Math.max(1 - MAX_LATO, Math.min(1, box.r + RESPIRO))),
-    b: round(Math.max(1 - MAX_LATO, Math.min(1, box.b + RESPIRO))),
+    l: round(Math.min(maxLato, Math.max(0, box.l - respiro))),
+    t: round(Math.min(maxLato, Math.max(0, box.t - respiro))),
+    r: round(Math.max(1 - maxLato, Math.min(1, box.r + respiro))),
+    b: round(Math.max(1 - maxLato, Math.min(1, box.b + respiro))),
   };
 }
 
