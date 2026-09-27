@@ -121,15 +121,28 @@ async function sciogli(blob) {
 // extra puo' essere lungo diversamente da quello della directory centrale:
 // fidarsi del secondo sposterebbe l'inizio dei dati di qualche byte, e la
 // pagina uscirebbe rotta senza un errore che lo dica.
-export async function leggiVoce(blob, voce) {
+async function datiDi(blob, voce) {
   if (voce.cifrato) throw new Error(`pagina cifrata: ${voce.nome}`);
   const t = await fetta(blob, voce.posizione, voce.posizione + 30);
   if (t.getUint32(0, true) !== LOCALE) throw new Error(`testata rotta: ${voce.nome}`);
   const inizio = voce.posizione + 30 + t.getUint16(26, true) + t.getUint16(28, true);
-  const dati = blob.slice(inizio, inizio + voce.compressa);
+  if (voce.metodo !== 0 && voce.metodo !== 8) throw new Error(`compressione non supportata (${voce.metodo}): ${voce.nome}`);
+  return blob.slice(inizio, inizio + voce.compressa);
+}
+
+export async function leggiVoce(blob, voce) {
+  const dati = await datiDi(blob, voce);
   if (voce.metodo === 0) return new Uint8Array(await dati.arrayBuffer());
-  if (voce.metodo === 8) return sciogli(dati);
-  throw new Error(`compressione non supportata (${voce.metodo}): ${voce.nome}`);
+  return sciogli(dati);
+}
+
+// La voce come Blob. Memorizzata e' una FETTA dell'archivio e non costa
+// niente: un libro da un giga dentro un vecchio archivio passa in
+// IndexedDB senza entrare nella memoria della pagina. Compressa va sciolta.
+export async function blobVoce(blob, voce) {
+  const dati = await datiDi(blob, voce);
+  if (voce.metodo === 0) return dati;
+  return new Blob([await sciogli(dati)]);
 }
 
 // L'archivio aperto, con la stessa forma che `apriArchivio` si aspetta:
@@ -143,6 +156,11 @@ export async function apriZip(blob) {
       const v = perNome.get(nome);
       if (!v) return Promise.reject(new Error(`voce assente: ${nome}`));
       return leggiVoce(blob, v);
+    },
+    blob: (nome) => {
+      const v = perNome.get(nome);
+      if (!v) return Promise.reject(new Error(`voce assente: ${nome}`));
+      return blobVoce(blob, v);
     },
   };
 }

@@ -5,7 +5,8 @@ import { disponi, aEtichette, criterioVoto, criterioStato } from "../lib/ripiani
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { storageEstimate, spazioQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
 import { importFiles, resoconto } from "../lib/importBook.js";
-import { exportLibrary, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
+import { preparaArchivio, segnaArchivio, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
+import PezziArchivio from "./PezziArchivio.jsx";
 import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
 import { frasiDiario } from "../lib/archivioDiario.js";
 import { getFavorites, isFile } from "../lib/music.js";
@@ -1385,21 +1386,47 @@ export default function Library({
     persistenza: persist,
   });
 
+  // L'ARCHIVIO A PEZZI: una biblioteca coi fumetti pesa giga, e uno zip
+  // solo costruito in memoria fa chiudere la scheda del tablet. Piccola,
+  // resta un file solo e parte subito come sempre; grande, si apre il
+  // pannello e i pezzi si scaricano uno per volta.
+  const [pezzi, setPezzi] = useState(null);
+
   async function handleExport() {
     // anche una biblioteca senza libri vale un archivio, se ci sono melodie
     // caricate da file: quei byte stanno solo qui
     if (!books.length && !melodie) return;
     notify("Preparo il backup…");
     try {
-      const r = await exportLibrary();
+      const prep = await preparaArchivio();
+      if (prep.piano.di > 1) {
+        setPezzi({ prep, fatti: new Set(), lavora: null });
+        return;
+      }
+      await prep.scarica(1);
+      segnaArchivio();
       setUltimoArch(Date.now());
-      const parti = [
-        r.libri ? `${r.libri} ${r.libri === 1 ? "libro" : "libri"}` : null,
-        r.melodie ? `${r.melodie} ${r.melodie === 1 ? "melodia" : "melodie"}` : null,
-      ].filter(Boolean);
-      notify(`Backup scaricato: ${parti.join(" e ")} al sicuro 🕯️`);
+      notify(`Backup scaricato: ${quantoArchivio(prep)} al sicuro 🕯️`);
     } catch {
       notify("Esportazione fallita, riprova");
+    }
+  }
+
+  async function scaricaPezzo(n) {
+    if (!pezzi || pezzi.lavora) return;
+    setPezzi((p) => ({ ...p, lavora: n }));
+    try {
+      await pezzi.prep.scarica(n);
+      const fatti = new Set(pezzi.fatti).add(n);
+      setPezzi((p) => (p ? { ...p, fatti, lavora: null } : p));
+      if (fatti.size === pezzi.prep.piano.di && pezzi.fatti.size < fatti.size) {
+        segnaArchivio();
+        setUltimoArch(Date.now());
+        notify(`Archivio completo: ${quantoArchivio(pezzi.prep)} in ${fatti.size} pezzi 🕯️`);
+      }
+    } catch (err) {
+      setPezzi((p) => (p ? { ...p, lavora: null } : p));
+      notify(err?.message || `Il pezzo ${n} non si è scaricato, riprova`);
     }
   }
 
@@ -1437,11 +1464,11 @@ export default function Library({
     notify?.(`${nuovi.size} ${nuovi.size === 1 ? "titolo ripulito" : "titoli ripuliti"}`);
   }
 
-  async function apriArchivio(file) {
-    if (!file || restoring) return;
+  async function apriArchivio(files) {
+    if (!files?.length || restoring) return;
     try {
-      const dentro = await sbircia(file);
-      setArchivio({ file, dentro, prendi: { libri: dentro.libri > 0, melodie: dentro.melodie > 0, diario: !!dentro.diario } });
+      const dentro = await sbircia(files);
+      setArchivio({ dentro, prendi: { libri: dentro.libri > 0, melodie: dentro.melodie > 0, diario: !!dentro.diario } });
     } catch (err) {
       notify(err?.message || "Archivio illeggibile");
     } finally {
@@ -1449,12 +1476,12 @@ export default function Library({
     }
   }
 
-  async function handleRestore(file, cosa) {
-    if (!file || restoring) return;
+  async function handleRestore(dentro, cosa) {
+    if (!dentro || restoring) return;
     setArchivio(null);
     setRestoring(true);
     try {
-      const r = await restoreLibrary(file, { onProgress: notify, cosa });
+      const r = await restoreLibrary(dentro, { onProgress: notify, cosa });
       updateBooks(r.books);
       onImported?.();
       const parts = [
@@ -1465,6 +1492,10 @@ export default function Library({
         r.termini ? `${r.termini} ${r.termini === 1 ? "termine" : "termini"} di glossario` : null,
         ...frasiDiario(r.diario),
         r.kept ? `${r.kept} gia' in libreria` : null,
+        // detto per ultimo perche' e' l'unica voce che chiede qualcosa
+        r.senzaFile
+          ? `${r.senzaFile} ${r.senzaFile === 1 ? "tomo aspetta" : "tomi aspettano"} il file dal pezzo che manca`
+          : null,
       ].filter(Boolean);
       notify(parts.length ? `Ripristino: ${parts.join(", ")} 🕯️` : "Nell'archivio non c'era nulla di nuovo");
       // l'avviso sull'archivio vecchio ora lo da' il pannello, PRIMA di
@@ -1534,9 +1565,13 @@ export default function Library({
       <input
         ref={archiveRef}
         type="file"
-        accept=".zip"
+        // I PEZZI SI SCELGONO TUTTI INSIEME, e non sono solo zip: un fumetto
+        // grosso esce dall'archivio com'e' (.cbz, .epub, .mp3). Nessun filtro
+        // sui tipi — il selettore di Android ne metterebbe in grigio qualcuno
+        // — e a riconoscere i pezzi e' `sbircia`, dal contenuto e dal nome.
+        multiple
         style={{ display: "none" }}
-        onChange={(e) => apriArchivio(e.target.files?.[0])}
+        onChange={(e) => apriArchivio(e.target.files ? [...e.target.files] : [])}
       />
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
@@ -2147,7 +2182,17 @@ export default function Library({
           archivio={archivio}
           onCambia={(prendi) => setArchivio((a) => (a ? { ...a, prendi } : a))}
           onChiudi={() => setArchivio(null)}
-          onVai={() => handleRestore(archivio.file, archivio.prendi)}
+          onVai={() => handleRestore(archivio.dentro, archivio.prendi)}
+        />
+      )}
+      {pezzi && (
+        <PezziArchivio
+          piano={pezzi.prep.piano}
+          nome={pezzi.prep.nome}
+          fatti={pezzi.fatti}
+          lavora={pezzi.lavora}
+          onScarica={scaricaPezzo}
+          onChiudi={() => !pezzi.lavora && setPezzi(null)}
         />
       )}
     </div>
@@ -2517,6 +2562,24 @@ function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
           </button>
         ))}
 
+        {/* Quali pezzi hai scelto e quale manca: un pezzo dimenticato non e'
+            un errore — quei tomi entrano e aspettano il loro file — ma va
+            detto PRIMA, con quanti sono, o sembrerebbe un ripristino rotto. */}
+        {dentro.pezzi && (
+          <p style={{ color: dentro.insieme?.mancanti?.length ? C.accent : C.muted, fontSize: F.minuscolo, marginTop: 10 }}>
+            🧩 {dentro.pezzi}
+            {dentro.insieme?.mancanti?.length
+              ? ". Quel che sta nei pezzi mancanti entra senza file: sceglili dopo, insieme a uno .zip, e il file torna al suo posto."
+              : ""}
+          </p>
+        )}
+        {dentro.estranei > 0 && (
+          <p style={{ color: C.muted, fontSize: F.minuscolo, marginTop: 6 }}>
+            {dentro.estranei === 1
+              ? "Un file scelto non è di questo archivio: lo lascio stare."
+              : `${dentro.estranei} file scelti non sono di questo archivio: li lascio stare.`}
+          </p>
+        )}
         {/* Detto prima, non dopo: a ripristino fatto sarebbe solo un rimpianto. */}
         {dentro.parziale && dentro.libri > 0 && prendi.libri && (
           <p style={{ color: C.accent, fontSize: F.minuscolo, marginTop: 10 }}>
@@ -2555,4 +2618,12 @@ function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
       </div>
     </div>
   );
+}
+
+function quantoArchivio(prep) {
+  const parti = [
+    prep.libri ? `${prep.libri} ${prep.libri === 1 ? "libro" : "libri"}` : null,
+    prep.melodie ? `${prep.melodie} ${prep.melodie === 1 ? "melodia" : "melodie"}` : null,
+  ].filter(Boolean);
+  return parti.join(" e ");
 }
