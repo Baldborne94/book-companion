@@ -5,7 +5,7 @@
 //
 // Serve un browser. Senza, il file si dichiara SALTATO invece di fallire —
 // ma saltare non e' passare: chi tocca `readerTheme.js` deve farlo girare.
-import { contentStyles, spegniVuoti, togliStacco, staccaParagrafi, STACCO, spegniScenografia, rientrata, spaziatoriFitti,
+import { contentStyles, spegniVuoti, togliStacco, staccaParagrafi, STACCO, spegniScenografia, rientrata, spaziatoriFitti, moda,
   SEGNO_DI_SCENA, RIENTRO_MINIMO, QUANTI, CAMPIONE, SPAZIATORI_FITTI, ABBASTANZA_PARAGRAFI,
   PAGINA_SU_GIU, SCENA_COPRE, SCENA_TESTO_MINIMO } from "../src/lib/readerTheme.js";
 import { READER_THEMES } from "../src/lib/readerSettings.js";
@@ -154,6 +154,7 @@ export default async function (t) {
     const ABBASTANZA_PARAGRAFI = ${ABBASTANZA_PARAGRAFI};
     const rientrata = ${rientrata.toString()};
     const spaziatoriFitti = ${spaziatoriFitti.toString()};
+    const moda = ${moda.toString()};
     const SEGNO_DI_SCENA = ${SEGNO_DI_SCENA.toString()};
     return (${togliStacco.toString()});
   `;
@@ -390,6 +391,75 @@ export default async function (t) {
     const attornoAlSegno = await fra("p7", "segno");
     t.c("«* * *» resta staccato dalla prosa", attornoAlSegno > 5, `${attornoAlSegno}px`);
     t.c("da tutt'e due i lati", (await fra("segno", "dopo")) > 5);
+
+    // ---- LO STACCO DI SCENA SCRITTO COME MARGINE -----------------------
+    //
+    // Segnalato dal lettore su «Between Two Fires»: «gli spazi previsti
+    // tra paragrafi a volte te li mangi». Lì la scena nuova non è un
+    // paragrafo vuoto né un segno: è il PRIMO paragrafo della scena, con un
+    // margine più largo dalla sua classe. Aveva testo, quindi la cura lo
+    // azzerava con tutti gli altri. Si toglie il margine SISTEMATICO — la
+    // moda — e chi ne ha uno più largo l'ha voluto.
+    const SCENE = `<!doctype html><html><head><style>
+      p { text-indent: 1.4em; margin: 1em 0; }
+      p.scene { margin-top: 2.2em; text-indent: 0; }
+    </style></head><body>
+      ${Array.from({ length: 9 }, (_, i) => `<p id="r${i}">Prosa numero ${i}, lunga abbastanza da valere una riga intera.</p>`).join("")}
+      <p class="scene" id="scena">La scena nuova comincia qui, dopo uno stacco.</p>
+      <p id="r9">E la prosa riprende, rientrata come prima.</p>
+    </body></html>`;
+    await p.setContent(SCENE);
+    const staccoDiScena = await fra("r8", "scena");
+    t.c("lo stacco di scena c'è, ed è più largo dello stacco di prosa", staccoDiScena > (await fra("r0", "r1")), `${staccoDiScena}px`);
+    await staccaVia();
+    t.eq("lo stacco di prosa se ne va", await fra("r0", "r1"), 0);
+    t.eq("… anche dopo la scena", await fra("scena", "r9"), 0);
+    t.c("MA LO STACCO DI SCENA RESTA", (await fra("r8", "scena")) >= 30, `${await fra("r8", "scena")}px`);
+    // a parità di conto vince il margine più piccolo: nel dubbio si toglie
+    // meno. Cinque e cinque, e il primo è quello largo — senza la regola
+    // vincerebbe il primo visto, e gli stacchi sparirebbero tutti.
+    const PARI = `<!doctype html><html><head><style>
+      p { text-indent: 1.4em; margin: 1em 0; }
+      p.scene { margin-top: 2.2em; }
+    </style></head><body>
+      ${Array.from({ length: 10 }, (_, i) => `<p id="q${i}"${i % 2 === 0 ? ' class="scene"' : ""}>Paragrafo ${i}, lungo abbastanza da valere una riga intera.</p>`).join("")}
+    </body></html>`;
+    await p.setContent(PARI);
+    await staccaVia();
+    t.c("a parità vince il margine più piccolo: quello largo resta", (await fra("q1", "q2")) >= 30, `${await fra("q1", "q2")}px`);
+    t.eq("… e quello piccolo se ne va", await fra("q0", "q1"), 0);
+    // lo stacco puo' stare anche SOTTO l'ultimo paragrafo della scena
+    // (`p.fine { margin-bottom: 2.2em }`), e un margine piu' PICCOLO della
+    // moda — la battuta di dialogo a mezzo em — se ne va con gli altri:
+    // non e' uno stacco voluto, e' meno dello stacco di prosa
+    const SOTTO = `<!doctype html><html><head><style>
+      p { text-indent: 1.4em; margin: 1em 0; }
+      p.fine { margin-bottom: 2.2em; }
+      p.battuta { margin: 0.5em 0; }
+    </style></head><body>
+      ${Array.from({ length: 8 }, (_, i) => `<p id="s${i}"${i === 3 ? ' class="fine"' : i === 5 ? ' class="battuta"' : ""}>Paragrafo ${i}, lungo abbastanza da valere una riga intera.</p>`).join("")}
+    </body></html>`;
+    await p.setContent(SOTTO);
+    await staccaVia();
+    t.c("lo stacco sotto l'ultimo paragrafo della scena resta", (await fra("s3", "s4")) >= 30, `${await fra("s3", "s4")}px`);
+    t.eq("un margine piu' piccolo della moda se ne va come gli altri", await fra("s4", "s5"), 0);
+    t.eq("… da tutt'e due i lati", await fra("s5", "s6"), 0);
+    // sopra e sotto si misurano A PARTE: un libro che stacca la prosa col
+    // solo margine di sotto (`margin: 0 0 1em`) ha la moda a zero sopra e a
+    // un em sotto, e con una moda sola lo stacco di prosa resterebbe
+    const SOLO_SOTTO = `<!doctype html><html><head><style>
+      p { text-indent: 1.4em; margin: 0 0 1em; }
+      p.scene { margin-top: 2.2em; }
+    </style></head><body>
+      ${Array.from({ length: 8 }, (_, i) => `<p id="u${i}"${i === 4 ? ' class="scene"' : ""}>Paragrafo ${i}, lungo abbastanza da valere una riga intera.</p>`).join("")}
+    </body></html>`;
+    await p.setContent(SOLO_SOTTO);
+    await staccaVia();
+    t.eq("col solo margine di sotto, lo stacco di prosa se ne va lo stesso", await fra("u0", "u1"), 0);
+    t.c("… e lo stacco di scena sopra resta", (await fra("u3", "u4")) >= 30, `${await fra("u3", "u4")}px`);
+    t.eq("la moda: il valore più frequente", moda([16, 16, 35, 16, 0]), 16);
+    t.eq("… a parità il più piccolo", moda([35, 16, 35, 16]), 16);
+    t.eq("… e di niente vale zero", moda([]), 0);
 
     t.c("niente documento, niente da fare", !togliStacco(null));
     t.c("e un documento senza vista nemmeno", !togliStacco({ querySelectorAll: () => [] }));

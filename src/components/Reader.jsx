@@ -517,6 +517,21 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         allowScriptedContent: false,
       });
       rendRef.current = r;
+      // LA PAGINA VUOTA FRA I CAPITOLI NON E' NOSTRA (segnalato: «come mai
+      // tra un capitolo e l'altro mi metti sempre una pagina vuota?»): di
+      // partenza epub.js allunga ogni capitolo a un numero PARI di colonne
+      // (`forceEvenPages`), e in doppia pagina un capitolo che finisce sulla
+      // facciata sinistra si porta dietro una destra bianca — misurato, due
+      // su undici facciate. NON e' un'opzione di `renderTo`: sta cablata
+      // nei `viewSettings` del gestore, che nasce dentro `start()` — quindi
+      // si spegne a gestore nato e prima che la prima vista sia costruita
+      // (`started` e' emesso in fondo a `start`, e `display` sta in coda
+      // dopo). Provato l'altro modo, l'opzione: l'iframe restava a sei
+      // colonne su cinque di testo. Il residuo dispari lo scorre
+      // `leftoverScroll`, che esiste apposta.
+      r.on("started", () => {
+        if (r.manager?.viewSettings) r.manager.viewSettings.forceEvenPages = false;
+      });
       // Le ancore delle pagine di carta si spengono PRIMA che il capitolo
       // venga impaginato: `content` gira a documento caricato e a misura
       // non ancora presa, quindi non c'e' niente da reimpaginare dopo — e
