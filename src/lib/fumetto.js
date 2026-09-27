@@ -145,6 +145,8 @@ export function leggiComicInfo(xml) {
     // «YesAndRightToLeft» e' il verso dei manga; «Yes» da solo dice che e'
     // un manga ma non da che parte si legge, e li' non si inventa niente
     verso: /^YesAndRightToLeft$/i.test(manga) ? "rtl" : null,
+    // «Yes» o «YesAndRightToLeft»: e' un manga, qualunque sia il verso
+    manga: /^Yes/i.test(manga),
   };
 }
 
