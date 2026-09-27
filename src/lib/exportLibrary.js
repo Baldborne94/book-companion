@@ -4,6 +4,7 @@ import { getCfi, getMarks, getHighlights } from "./annotations.js";
 import { getBookMusic, getFavoritesRaw, getListsRaw, isFile, loadTrack } from "./music.js";
 import { tuttiIGlossari } from "./glossarioMio.js";
 import { diarioPerArchivio } from "./archivioDiario.js";
+import { pianoPezzi, nomePezzo, mappaPezzi, costruisciPezzo } from "./archivioPezzi.js";
 
 // v1 conteneva solo metadati e file: un ripristino avrebbe perso segnalibri,
 // evidenziazioni e punto di lettura. Da v2 l'archivio si basta da solo.
@@ -60,11 +61,42 @@ export function promemoriaArchivio({ ultimo = 0, ora = Date.now(), roba = 0, per
 const safeName = (s) =>
   (s || "senza-titolo").replace(/[^\p{L}\p{N} _-]/gu, "").trim().slice(0, 60) || "senza-titolo";
 
-export async function exportLibrary() {
-  const { default: JSZip } = await import("jszip");
+// l'estensione di una melodia dal suo tipo: un grezzo esce col nome che il
+// telefono sa aprire, non con un «.bin» che nessuno riconosce
+const EXT_AUDIO = { mpeg: "mp3", mp3: "mp3", mp4: "m4a", "x-m4a": "m4a", aac: "aac", ogg: "ogg", opus: "opus", wav: "wav", "x-wav": "wav", flac: "flac", webm: "webm" };
+export const estensioneAudio = (mime) => EXT_AUDIO[String(mime || "").split("/")[1]?.toLowerCase()] || "bin";
+
+export function segnaArchivio(ora = Date.now()) {
+  // La data si segna quando l'ultimo pezzo e' partito, che e' il piu' in
+  // la' dove arriviamo: dove il file sia andato a finire dopo il click il
+  // browser non ce lo dice, e fingere di saperlo sarebbe peggio che segnare
+  // il tentativo. Un archivio a meta' non e' un archivio.
+  try {
+    localStorage.setItem(ULTIMO_KEY, String(ora));
+  } catch {}
+}
+
+function scaricaBlob(blob, nome) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nome;
+  a.click();
+  // un grezzo da un giga ci mette a partire: il link si tiene vivo a lungo
+  setTimeout(() => URL.revokeObjectURL(url), 120000);
+}
+
+// L'ARCHIVIO SI PREPARA, POI SI SCARICA A PEZZI (lib/archivioPezzi.js).
+// Qui si raccoglie tutto — i byte restano in IndexedDB, si tengono solo i
+// riferimenti — e si decide la spartizione; ogni pezzo si costruisce solo
+// quando lo si chiede. Una biblioteca piccola resta UN pezzo col nome di
+// sempre, e l'archivio e' identico a prima.
+// `misure` serve ai test: con le soglie vere servirebbe un file da 50 MB.
+export async function preparaArchivio(misure) {
   const books = loadBooks();
-  const zip = new JSZip();
   const manifest = [];
+  const voci = [];
+  const byte = new Map();
 
   for (const b of books) {
     const entry = {
@@ -81,12 +113,14 @@ export async function exportLibrary() {
     const blob = await getFile(b.id);
     if (blob) {
       entry.file = `libri/${safeName(b.title)}-${b.id.slice(0, 8)}.${b.fileType}`;
-      zip.file(entry.file, blob);
+      byte.set(entry.file, blob);
+      voci.push({ specie: "libro", id: b.id, byte: blob.size, nome: b.title, ext: b.fileType, percorso: entry.file, voce: entry });
     }
     const cover = await getCover(b.id);
     if (cover) {
       entry.cover = `copertine/${b.id}.bin`;
-      zip.file(entry.cover, cover);
+      byte.set(entry.cover, cover);
+      voci.push({ specie: "copertina", id: b.id, byte: cover.size || 0, percorso: entry.cover });
     }
     manifest.push(entry);
   }
@@ -99,41 +133,58 @@ export async function exportLibrary() {
       const blob = await loadTrack(f.trackId).catch(() => null);
       if (blob) {
         voce.track = `melodie/${f.trackId}.bin`;
-        zip.file(voce.track, blob);
+        byte.set(voce.track, blob);
+        voci.push({ specie: "melodia", id: f.id, byte: blob.size, nome: f.name, ext: estensioneAudio(f.mime || blob.type), percorso: voce.track, voce });
         melodieConByte++;
       }
     }
     melodie.push(voce);
   }
 
-  zip.file(
-    "biblioteca.json",
-    JSON.stringify(
-      {
-        app: "book-companion",
-        version: ARCHIVE_VERSION,
-        exportedAt: new Date().toISOString(),
-        books: manifest,
-        melodie,
-        raccolte: getListsRaw(),
-        glossari: tuttiIGlossari(),
-        diario: diarioPerArchivio(),
-      },
-      null,
-      2
-    )
-  );
+  const ora = new Date();
+  const data = ora.toISOString().slice(0, 10);
+  const piano = pianoPezzi(voci, misure);
+  // un grezzo non sta in uno zip: la voce dell'indice lo dice per nome
+  for (const p of piano.pezzi) {
+    if (p.tipo !== "grezzo") continue;
+    const v = p.voci[0];
+    const nome = nomePezzo({ data, n: p.n, di: p.di, tipo: "grezzo", voce: v });
+    const campo = v.specie === "melodia" ? "track" : "file";
+    delete v.voce[campo];
+    v.voce[v.specie === "melodia" ? "trackGrezzo" : "grezzo"] = nome;
+    v.voce.pezzo = p.n;
+  }
 
-  const out = await zip.generateAsync({ type: "blob" });
-  const url = URL.createObjectURL(out);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `book-companion-backup-${new Date().toISOString().slice(0, 10)}.zip`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 30000);
-  // La data si segna qui, che e' il piu' in la' dove arriviamo: dove il
-  // file sia andato a finire dopo il click il browser non ce lo dice, e
-  // fingere di saperlo sarebbe peggio che segnare il tentativo.
-  localStorage.setItem(ULTIMO_KEY, String(Date.now()));
-  return { libri: books.length, melodie: melodieConByte };
+  const indice = {
+    app: "book-companion",
+    version: ARCHIVE_VERSION,
+    exportedAt: ora.toISOString(),
+    books: manifest,
+    melodie,
+    raccolte: getListsRaw(),
+    glossari: tuttiIGlossari(),
+    diario: diarioPerArchivio(),
+    ...(piano.di > 1 ? { pezzi: mappaPezzi(piano, data) } : {}),
+  };
+
+  return {
+    piano,
+    libri: books.length,
+    melodie: melodieConByte,
+    nome: (n) => nomePezzo({ data, ...piano.pezzi[n - 1], voce: piano.pezzi[n - 1].voci[0] }),
+    async scarica(n) {
+      const pezzo = piano.pezzi[n - 1];
+      const nome = nomePezzo({ data, ...pezzo, voce: pezzo.voci[0] });
+      if (pezzo.tipo === "grezzo") {
+        // il Blob di IndexedDB si scarica com'e': non passa dalla memoria
+        const blob = byte.get(pezzo.voci[0].percorso);
+        if (!blob) throw new Error("Il file non c'è più su questo dispositivo");
+        scaricaBlob(blob, nome);
+        return;
+      }
+      const { default: JSZip } = await import("jszip");
+      const out = await costruisciPezzo({ pezzo, indice, JSZip, leggi: (v) => byte.get(v.percorso) || null });
+      scaricaBlob(out, nome);
+    },
+  };
 }

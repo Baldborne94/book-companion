@@ -343,7 +343,7 @@ export const MAPPA = [
   {
     luogo: "libreria",
     nome: "Esporta e ripristina",
-    cosa: "Un archivio con libri, segni, glossari e melodie. Ripristinando puoi scegliere cosa far entrare.",
+    cosa: "Un archivio con libri, segni, glossari e melodie. Se la biblioteca è grande esce in più pezzi da scaricare uno per volta: per ripristinare li scegli tutti insieme, e un pezzo dimenticato si aggiunge dopo. Ripristinando puoi scegliere cosa far entrare.",
     dove: "«Esporta biblioteca» in vista, «↩ Ripristina» nella cassetta degli attrezzi.",
   },
 

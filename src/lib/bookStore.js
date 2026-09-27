@@ -17,6 +17,11 @@ function db() {
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
+    }).catch((e) => {
+      // un'apertura andata storta non resta in memoria: tenerla vorrebbe
+      // dire che un intoppo di un attimo spegne IndexedDB fino al riavvio
+      dbPromise = null;
+      throw e;
     });
   }
   return dbPromise;
