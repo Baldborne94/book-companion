@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, scaffaleVuoto } from "../lib/library.js";
+import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, scaffaleVuoto, TIPI, delTipo, serveFiltroTipo } from "../lib/library.js";
 import { disponi, aEtichette, criterioVoto, criterioStato } from "../lib/ripiani.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { storageEstimate, spazioQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
@@ -521,6 +521,8 @@ export default function Library({
   const [dentro, setDentro] = useState(null);
   const vivo = useRef(null);
   const [filter, setFilter] = useState("all");
+  // libri o fumetti: un filtro come lo stato, e come lo stato non si ricorda
+  const [tipo, setTipo] = useState("tutti");
   // Come avevi lasciato lo scaffale. Il filtro NO, ed è voluto: una
   // Libreria che si riapre con metà dei libri nascosti sembra una libreria
   // che ha perso dei libri.
@@ -1486,6 +1488,7 @@ export default function Library({
   const visible = books
     .filter((b) => combacia(b, query))
     .filter((b) => filter === "all" || getStatus(b.id) === filter)
+    .filter((b) => delTipo(b, tipo))
     .sort((a, b) =>
       sort === "title"
         ? a.title.localeCompare(b.title, "it")
@@ -1609,6 +1612,34 @@ export default function Library({
             </button>
           );
         })}
+        {/* LIBRI E FUMETTI, quando ci sono tutt'e due: un filtro a parte
+            dallo stato (un fumetto letto e' letto), con un filetto a
+            dividerli — sono due domande diverse sulla stessa riga */}
+        {serveFiltroTipo(books) && (
+          <>
+            <span aria-hidden style={{ width: 1, height: 22, background: C.border, margin: "0 4px" }} />
+            {TIPI.map((f) => {
+              const active = tipo === f.id;
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => setTipo(f.id)}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: R.tondo,
+                    fontSize: F.nota,
+                    border: `1px solid ${active ? C.accent : C.border}`,
+                    color: active ? C.accent : C.muted,
+                    background: active ? `${C.accent}14` : "transparent",
+                    transition: "color 0.2s ease-out, border-color 0.2s ease-out",
+                  }}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </>
+        )}
         <span style={{ flex: 1 }} />
         {/* UN TASTO SOLO al posto delle due tendine affiancate: le due
             scelte restano — sono ortogonali, e fonderle darebbe diciotto
@@ -1719,11 +1750,17 @@ export default function Library({
            niente da toccare per riaverli. Adesso dice QUALE delle due leve
            sta nascondendo, e la molla con un tocco. */
         (() => {
+          // il tipo e' una leva come lo stato: allo scaffale vuoto si
+          // dicono tutt'e due per nome, e «Mostra tutti i tomi» le molla insieme
+          const leve = [
+            filter !== "all" ? FILTERS.find((f) => f.id === filter)?.label : null,
+            tipo !== "tutti" ? TIPI.find((f) => f.id === tipo)?.label : null,
+          ].filter(Boolean);
           const vuoto = scaffaleVuoto({
             totale: books.length,
             query,
-            filtro: filter,
-            nomeFiltro: FILTERS.find((f) => f.id === filter)?.label,
+            filtro: leve.length ? (filter !== "all" ? filter : tipo) : "all",
+            nomeFiltro: leve.join(" · "),
             // quanti risponderebbero alla SOLA ricerca: è il numero che
             // dice «la ricerca trova, è il filtro a nascondere»
             conLaSolaRicerca: query ? books.filter((b) => combacia(b, query)).length : null,
@@ -1735,7 +1772,13 @@ export default function Library({
                 {vuoto.vie.map((v) => (
                   <button
                     key={v.id}
-                    onClick={() => (v.id === "query" ? setQuery("") : setFilter("all"))}
+                    onClick={() => {
+                      if (v.id === "query") setQuery("");
+                      else {
+                        setFilter("all");
+                        setTipo("tutti");
+                      }
+                    }}
                     style={{
                       minHeight: 44,
                       padding: "10px 16px",

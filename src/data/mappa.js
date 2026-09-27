@@ -300,6 +300,12 @@ export const MAPPA = [
   },
   {
     luogo: "libreria",
+    nome: "Libri e fumetti separati",
+    cosa: "Quando in casa ci sono tutt'e due, due chip filtrano lo scaffale: «📚 Libri» e «💬 Fumetti» (CBZ e CBR). Vale anche insieme allo stato e alla ricerca, e non si ricorda fra un'apertura e l'altra.",
+    dove: "Nella riga dei filtri, dopo «Abbandonati».",
+  },
+  {
+    luogo: "libreria",
     nome: "Come è disposto lo scaffale",
     cosa: "Raggruppa per saga e autore, solo saga, solo autore, genere, voto o stato; e l'ordine dentro e fra i ripiani.",
     dove: "Il tasto ⇅ in fondo alla riga dei filtri.",
