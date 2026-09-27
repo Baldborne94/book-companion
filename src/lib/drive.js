@@ -17,12 +17,13 @@
 // Le decisioni — cosa e' gia' su Drive, cosa sale, cosa lascia il secchio —
 // stanno in `driveCore.js`, dove un test le prova.
 
-import { abbina, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO } from "./driveCore.js";
+import { abbina, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive } from "./driveCore.js";
 
 const TOKEN_KEY = "bc_drive_token";
 const ACCESO_KEY = "bc_drive_on";
 const CLIENT_KEY = "bc_drive_client";
 const MAPPA_KEY = "bc_drive_libri";
+const MAPPA_MUSICA_KEY = "bc_drive_melodie";
 const SCOPE = "https://www.googleapis.com/auth/drive";
 const API = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3";
@@ -133,6 +134,7 @@ export async function scollegaDrive() {
   dimenticaToken();
   scrivi(ACCESO_KEY, null);
   scrivi(MAPPA_KEY, null);
+  scrivi(MAPPA_MUSICA_KEY, null);
   try {
     if (t && globalThis.google?.accounts?.oauth2) globalThis.google.accounts.oauth2.revoke(t, () => {});
   } catch {
@@ -203,12 +205,15 @@ async function creaCartella(nome) {
 
 // Il segno che dice al prossimo dispositivo «questo file e' quel libro».
 // Sta nelle proprieta' private dell'app, che il lettore su Drive non vede.
-const segna = (fileId, bookId) =>
+// Il segno che dice al prossimo dispositivo «questo file e' quel libro» — o
+// quella melodia, con `bcTrack` al posto di `bcId`.
+const segnaCon = (fileId, props) =>
   chiama(`${API}/files/${fileId}?fields=id`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ appProperties: { bc: "1", bcId: bookId } }),
+    body: JSON.stringify({ appProperties: { bc: "1", ...props } }),
   });
+const segna = (fileId, bookId) => segnaCon(fileId, { bcId: bookId });
 
 export async function scaricaDaDrive(fileId) {
   const r = await chiama(`${API}/files/${fileId}?alt=media`);
@@ -219,7 +224,7 @@ export async function scaricaDaDrive(fileId) {
 // perderebbe intero al primo buco di rete. Si apre una sessione, e i byte
 // partono a pezzi con `Blob.slice`, che non copia niente finche' non tocca
 // a quel pezzo — cosi' il volume non entra mai tutto nella memoria.
-export async function caricaSuDrive(blob, { nome, cartella, bookId }) {
+export async function caricaSuDrive(blob, { nome, cartella, bookId, props }) {
   const inizio = await chiama(`${UPLOAD}/files?uploadType=resumable&fields=id,size`, {
     method: "POST",
     headers: {
@@ -230,7 +235,7 @@ export async function caricaSuDrive(blob, { nome, cartella, bookId }) {
     body: JSON.stringify({
       name: nome,
       ...(cartella ? { parents: [cartella] } : {}),
-      appProperties: { bc: "1", bcId: bookId },
+      appProperties: { bc: "1", ...(props || { bcId: bookId }) },
     }),
   });
   const dove = inizio.headers.get("Location");
@@ -355,4 +360,115 @@ async function giro(libri, { tipo, qui, misure, inUscita, secchio, leggiByte, sa
     }
   }
   return { mappa: new Set(mappa.keys()), ambigui, falliti, caricati };
+}
+
+// LA MUSICA SU DRIVE (le decisioni in `driveCore.js`, vedi `abbinaMelodie`).
+//
+// Si elencano i file AUDIO per tipo, non per estensione: un brano caricato
+// dall'app porta il tipo del file che il lettore ha scelto, e un'estensione
+// che non conosciamo non deve farlo sparire dall'elenco — al giro dopo
+// sembrerebbe mancante e ripartirebbe, ogni volta.
+const elencaAudio = () =>
+  elencaTutto(`trashed=false and mimeType contains 'audio/'`, "id,name,size,appProperties,parents");
+
+export function mappaMelodie() {
+  try {
+    const m = JSON.parse(leggi(MAPPA_MUSICA_KEY));
+    return m && typeof m === "object" && !Array.isArray(m) ? m : {};
+  } catch {
+    return {};
+  }
+}
+const scriviMappaMelodie = (m) => scrivi(MAPPA_MUSICA_KEY, JSON.stringify(m));
+
+// IL GIRO DELLA MUSICA: riconoscere, segnare, mandare su. Stesse regole del
+// giro dei libri — la chiave scaduta aspetta, un intoppo su UN brano e' di
+// quel brano. Torna le melodie che stanno su Drive (`trackId`).
+export async function giroMelodie(favs, opzioni = {}) {
+  if (!driveAcceso() || !driveConfigurato()) return { saltato: "spento" };
+  if (!tokenValido()) return { saltato: "scaduto" };
+  try {
+    return await giroDellaMusica(favs, opzioni);
+  } catch (e) {
+    if (e instanceof DriveScollegato) return { saltato: "scaduto" };
+    throw e;
+  }
+}
+
+async function giroDellaMusica(favs, { qui, leggiTrack, say = () => {}, vivo = () => true } = {}) {
+  const melodie = melodieFile(favs);
+  if (!melodie.length) {
+    scriviMappaMelodie({});
+    return { melodie: new Set(), caricate: 0, falliti: 0, ambigui: 0 };
+  }
+  say("Guardo la musica su Google Drive…");
+  const file = await elencaAudio();
+  const { mappa, daSegnare, ambigui } = abbinaMelodie(melodie, file);
+  const salva = () => {
+    const m = {};
+    for (const [id, f] of mappa) m[id] = { id: f.id, byte: Number(f.size) || 0 };
+    scriviMappaMelodie(m);
+  };
+  salva();
+  for (const { trackId, fileId } of daSegnare) {
+    if (!vivo()) break;
+    try {
+      await segnaCon(fileId, { bcTrack: trackId });
+    } catch (e) {
+      if (e instanceof DriveScollegato) throw e;
+      /* il segno manca e basta: al prossimo giro lo si riconosce di nuovo */
+    }
+  }
+  const mandare = melodieDaCaricare(melodie, { qui, lassu: new Set(mappa.keys()) });
+  let caricate = 0;
+  let falliti = 0;
+  if (mandare.length) {
+    const genitori = [...mappa.values()].map((f) => f.parents?.[0]);
+    let cartella = scegliCartella("musica", { genitori, cartelle: await elencaCartelle() });
+    if (!cartella) cartella = (await creaCartella(cartellaDelTipo("musica"))).id;
+    for (const m of mandare) {
+      if (!vivo()) break;
+      try {
+        const blob = await leggiTrack(m.trackId);
+        if (!blob) continue;
+        say(`Carico su Drive la melodia «${m.name}»…`);
+        const f = await caricaSuDrive(blob, { nome: nomeMelodiaSuDrive(m), cartella, props: { bcTrack: m.trackId } });
+        mappa.set(m.trackId, { id: f.id, size: f.size ?? blob.size });
+        salva();
+        caricate += 1;
+      } catch (e) {
+        if (e instanceof DriveScollegato) throw e;
+        falliti += 1;
+      }
+    }
+  }
+  return { melodie: new Set(mappa.keys()), caricate, falliti, ambigui };
+}
+
+// UNA MELODIA CHE QUI NON C'E' SI PRENDE DA DRIVE QUANDO LA SUONI.
+//
+// Si cerca nella mappa di questo dispositivo, e se il giro qui non l'ha
+// ancora vista — l'ha caricata l'altro dispositivo un'ora fa — la si chiede
+// a Drive per il suo segno: aspettare una sincronizzazione per suonare un
+// brano che lassu' c'e' gia' sarebbe un'attesa che nessuno capirebbe.
+// La chiave, se e' scaduta, si chiede qui: si arriva da un tocco su «suona».
+// `null` = non c'e' su Drive (e allora si dice), un guasto si alza.
+export async function melodiaDalDrive(trackId) {
+  if (!driveAcceso() || !driveConfigurato() || !trackId) return null;
+  if (!tokenValido()) await collegaDrive();
+  let fileId = mappaMelodie()[trackId]?.id || null;
+  if (!fileId) {
+    const trovati = await elencaTutto(
+      `trashed=false and appProperties has { key='bcTrack' and value='${String(trackId).replace(/[^\w-]/g, "")}' }`,
+      "id,size"
+    );
+    fileId = trovati[0]?.id || null;
+  }
+  if (!fileId) return null;
+  try {
+    return await scaricaDaDrive(fileId);
+  } catch (e) {
+    if (e?.status === 404) return null;
+    throw e;
+  }
 }

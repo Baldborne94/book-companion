@@ -1,7 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { C, F, R } from "../data/constants.js";
+import { driveAcceso } from "../lib/drive.js";
 import {
-  parseYouTube, embedUrl, isFile, loadTrack, getVolume, saveVolume, restaDa, getFavorites,
+  parseYouTube, embedUrl, isFile, loadTrack, portaQuiMelodia, getVolume, saveVolume, restaDa, getFavorites,
 } from "../lib/music.js";
 
 // Gli ultimi trenta secondi prima dello scadere del timer la musica scende
@@ -232,11 +233,28 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
   }
 
   async function suonaFile(voce) {
-    const blob = await loadTrack(voce.trackId).catch(() => null);
+    let blob = await loadTrack(voce.trackId).catch(() => null);
+    if (!blob && voce.drive && !driveAcceso()) {
+      // la melodia c'e', lassu': e' questo dispositivo a non avere la porta
+      notify(`«${voce.name}» sta su Google Drive: collegalo dal pannello della nuvola per ascoltarla qui 🎵`);
+      return false;
+    }
+    if (!blob && voce.drive) {
+      // i byte stanno su Google Drive: scendono adesso, e poi restano qui
+      notify(`Scarico «${voce.name}» da Google Drive… 🎵`);
+      try {
+        blob = await portaQuiMelodia(voce);
+      } catch {
+        notify(`Non riesco a scaricare «${voce.name}» da Google Drive: controlla la connessione e riprova 🎵`);
+        return false;
+      }
+    }
     if (!blob) {
-      // i file audio non viaggiano nel cloud: se i byte non sono qui, la
-      // melodia va ricaricata da questo dispositivo
-      notify(`«${voce.name}» non è su questo dispositivo: i file audio restano dove li carichi. Ricaricala da qui 🎵`);
+      notify(
+        voce.drive
+          ? `«${voce.name}» non è più su Google Drive: ricaricala dal dispositivo dove ce l'hai 🎵`
+          : `«${voce.name}» non è su questo dispositivo, e su Google Drive non è ancora salita: sale alla prossima sincronizzazione del dispositivo dove l'hai caricata 🎵`
+      );
       return false;
     }
     liberaUrl();

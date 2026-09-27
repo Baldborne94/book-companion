@@ -673,25 +673,33 @@ function fondiGlossari(local, remote, remoteNewer) {
   return fondi(a || {}, b || {}).glossari;
 }
 
-// I FILE AUDIO NON VIAGGIANO: OGNI DISPOSITIVO HA I SUOI, e nel cloud
-// passano solo i link YouTube (deciso dal lettore: «ogni dispositivo ha i
-// suoi file e condivide solo i link»). Prima la voce di un file saliva col
-// resto dell'elenco e sull'altro dispositivo compariva un nome che non
-// suonava — e i byte, portati su per rimediare, erano la cosa piu' pesante
-// del secchio. Quindi: una voce con `trackId` resta dov'e' nata, non sale,
-// e se ne arriva una da lassu' (scritta da una versione vecchia dell'app)
-// non entra. Le lapidi dei file seguono la stessa regola: sono del
-// dispositivo.
+// I FILE AUDIO VIAGGIANO SOLO DA QUANDO STANNO SU DRIVE. Per un pezzo non
+// viaggiavano affatto (deciso dal lettore: «ogni dispositivo ha i suoi
+// file»): la voce di un file saliva col resto dell'elenco e sull'altro
+// dispositivo compariva un nome che non suonava, e i byte, portati nel
+// secchio per rimediare, erano la cosa piu' pesante del piano gratuito. Con
+// Drive quei byte hanno un posto, e il lettore li ha voluti la': una voce
+// con `trackId` sale solo col segno `drive` (lo scrive il giro della musica
+// quando il brano e' lassu'), e l'altro dispositivo la scarica quando la
+// suoni. Senza il segno resta dov'e' nata, come prima — e resta anche la
+// regola di prima per quel che arriva da lassu' senza segno (scritto da una
+// versione vecchia dell'app): non entra. Le lapidi seguono la voce: quella
+// di un brano che viaggiava viaggia anche lei.
 const eFile = (f) => !!f?.trackId;
+const viaggia = (f) => !eFile(f) || !!f.drive;
 
 export function mergePrefs(local, remote) {
-  const mieiFile = (local.music_favs || []).filter(eFile);
   const link = mergeFavorites(
-    (local.music_favs || []).filter((f) => !eFile(f)),
-    (remote?.music_favs || []).filter((f) => !eFile(f))
+    (local.music_favs || []).filter(viaggia),
+    (remote?.music_favs || []).filter(viaggia)
   );
-  // quel che si scrive QUI: i link fusi piu' i miei file, nell'ordine di
-  // nascita come sempre; quel che sale (`merged.music_favs`) sono i soli link
+  // i file di questo dispositivo che non sono ancora su Drive: restano qui,
+  // salvo che lassu' ci sia gia' la loro versione segnata
+  const giaFuse = new Set(link.map((f) => f.id));
+  const mieiFile = (local.music_favs || []).filter((f) => !viaggia(f) && !giaFuse.has(f.id));
+  // quel che si scrive QUI: le voci fuse piu' i miei file ancora fermi,
+  // nell'ordine di nascita; quel che sale (`merged.music_favs`) sono le sole
+  // voci che viaggiano
   const music_favs = link;
   const favsLocali = [...link, ...mieiFile].sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));
   // le raccolte hanno la stessa forma dei preferiti (id, addedAt,

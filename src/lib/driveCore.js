@@ -106,7 +106,7 @@ export function abbina(libri, file, { misure } = {}) {
 }
 
 // LE CARTELLE DEL LETTORE HANNO GIA' UN NOME, e i libri nuovi vanno li'.
-export const CARTELLE = { libri: "Libri", fumetti: "Fumetti", manga: "Manga" };
+export const CARTELLE = { libri: "Libri", fumetti: "Fumetti", manga: "Manga", musica: "Musica" };
 export const cartellaDelTipo = (tipo) => CARTELLE[tipo] || CARTELLE.libri;
 
 // Dove mettere un libro nuovo di un certo tipo: nella cartella in cui stanno
@@ -200,6 +200,113 @@ export function daTraslocare(libri, { secchio, drive, qui } = {}) {
   return (libri || []).filter(
     (b) => b?.id && !b.fileTolto && secchio.has(b.id) && !drive.has(b.id) && !(qui && qui.has(b.id))
   );
+}
+
+// E LA MUSICA SALE SU DRIVE COME I LIBRI, E SCENDE QUANDO LA SUONI.
+//
+// I file audio non viaggiavano: il secchio di Supabase era un gigabyte, e
+// un brano da tenere a schermo spento pesa quanto dieci romanzi (deciso dal
+// lettore, allora: «ogni dispositivo ha i suoi file»). Con Drive lo spazio
+// non manca piu', e il lettore ha chiesto di portarceli: salgono nella
+// cartella «Musica», e sull'altro dispositivo si scaricano solo quando li
+// suoni — scaricarli tutti subito riempirebbe il tablet di brani che forse
+// non ascolterai mai li'.
+//
+// La chiave di una melodia su Drive e' il suo `trackId`, cioe' i BYTE: la
+// voce dell'elenco si puo' rinominare, i byte sono quelli.
+export const melodieFile = (favs) =>
+  (favs || []).filter((f) => f?.trackId && !f.deleted);
+
+// RICONOSCERE PRIMA DI MANDARE, come per i libri: chi i brani li ha gia'
+// messi su Drive a mano non deve ritrovarseli doppi. Tre modi, dal piu'
+// sicuro: il segno nostro (`appProperties.bcTrack`), la MISURA al byte se
+// e' di un file solo (se sono di piu' decide il nome), e il NOME se e' di
+// uno solo. Nel dubbio non si abbina: un brano caricato due volte si vede,
+// uno abbinato male suona la canzone sbagliata.
+export function abbinaMelodie(melodie, file) {
+  const mappa = new Map();
+  const daSegnare = [];
+  let ambigui = 0;
+  const vive = (melodie || []).filter((m) => m?.trackId);
+  const perTrack = new Map(vive.map((m) => [m.trackId, m]));
+  const buoni = (file || []).filter((f) => f?.id);
+  const usati = new Set();
+  const prendi = (m, f, segna) => {
+    mappa.set(m.trackId, f);
+    usati.add(f.id);
+    if (segna) daSegnare.push({ trackId: m.trackId, fileId: f.id });
+  };
+  const liberi = () => buoni.filter((f) => !usati.has(f.id));
+
+  for (const f of buoni) {
+    const m = perTrack.get(f.appProperties?.bcTrack);
+    if (m && !mappa.has(m.trackId) && !usati.has(f.id)) prendi(m, f, false);
+  }
+  for (const m of vive) {
+    if (mappa.has(m.trackId) || !(Number(m.size) > 0)) continue;
+    const c = liberi().filter((f) => Number(f.size) === Number(m.size));
+    const scelti = c.length > 1 ? c.filter((f) => nomeNudo(f.name) === nomeNudo(m.name)) : c;
+    if (scelti.length === 1) prendi(m, scelti[0], true);
+    else if (c.length > 1) ambigui += 1;
+  }
+  for (const m of vive) {
+    if (mappa.has(m.trackId)) continue;
+    const nome = nomeNudo(m.name);
+    if (!nome) continue;
+    const c = liberi().filter((f) => nomeNudo(f.name) === nome);
+    if (c.length === 1) prendi(m, c[0], true);
+    else if (c.length > 1) ambigui += 1;
+  }
+  return { mappa, daSegnare, ambigui };
+}
+
+// Salgono le melodie che hanno i byte QUI e che Drive non ha. Al buio —
+// senza l'elenco di Drive — non sale niente, per la stessa ragione dei libri.
+export function melodieDaCaricare(melodie, { qui, lassu } = {}) {
+  if (!lassu) return [];
+  return melodieFile(melodie).filter((m) => !!qui && qui.has(m.trackId) && !lassu.has(m.trackId));
+}
+
+const EST_MIME = {
+  "audio/mpeg": "mp3",
+  "audio/mp3": "mp3",
+  "audio/mp4": "m4a",
+  "audio/x-m4a": "m4a",
+  "audio/aac": "aac",
+  "audio/ogg": "ogg",
+  "audio/opus": "opus",
+  "audio/flac": "flac",
+  "audio/x-flac": "flac",
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
+  "audio/wave": "wav",
+  "audio/webm": "webm",
+};
+// Il nome del file su Drive: il nome della melodia piu' l'estensione del suo
+// tipo, perche' il lettore la cartella la apre anche dal PC
+export function nomeMelodiaSuDrive(m) {
+  const t = String(m?.name || "Melodia senza nome")
+    .replace(/[\\/:*?"<>|]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 150);
+  return `${t || "Melodia senza nome"}.${EST_MIME[String(m?.mime || "").toLowerCase()] || "mp3"}`;
+}
+
+// UNA MELODIA SU DRIVE SI DICE SULLA SUA VOCE (`drive: true`), ed e' quel
+// segno che la fa viaggiare nelle preferenze: una voce che l'altro
+// dispositivo non potrebbe suonare resta dov'e' nata, come prima — era
+// proprio il rumore che il lettore non voleva vedere. Anche le lapidi si
+// segnano: la cancellazione di un brano che viaggiava deve arrivare di la'.
+// Il timbro si rinnova, o la fusione per ora terrebbe la voce vecchia.
+export function segnaSuDrive(favs, suDrive, adesso = Date.now()) {
+  let cambiate = 0;
+  const lista = (favs || []).map((f) => {
+    if (!f?.trackId || f.drive || !suDrive?.has(f.trackId)) return f;
+    cambiate += 1;
+    return { ...f, drive: true, updatedAt: adesso };
+  });
+  return { lista, cambiate };
 }
 
 // QUANTO SPAZIO C'E' SU DRIVE, dalla risposta di `about.storageQuota`.

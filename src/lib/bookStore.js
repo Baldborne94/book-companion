@@ -70,6 +70,7 @@ export const removeCover = (id) => withStore("covers", "readwrite", (s) => s.del
 export const putTrack = (id, blob) => withStore("tracks", "readwrite", (s) => s.put(blob, id));
 export const getTrack = (id) => withStore("tracks", "readonly", (s) => s.get(id));
 export const removeTrack = (id) => withStore("tracks", "readwrite", (s) => s.delete(id));
+export const listTrackIds = () => withStore("tracks", "readonly", (s) => s.getAllKeys());
 
 export const listFileIds = () => withStore("files", "readonly", (s) => s.getAllKeys());
 // Le copertine che stanno QUI, in un colpo solo: il giro che le va a
