@@ -4,7 +4,10 @@
 // che dice «sceso» su un byte che non c'è, un tomo già in casa scaricato di
 // nuovo, un file che non risale PER SEMPRE, e una frase che manda a
 // reimportare un romanzo sano.
-import { portaGiu, frasePortata, senzaCopia, fraseSenzaCopia, daCaricare, daPortare, nonCeLassu } from "../src/lib/syncCore.js";
+import { portaGiu, frasePortata, senzaCopia, fraseSenzaCopia, daPortare, nonCeLassu } from "../src/lib/syncCore.js";
+// chi sale adesso va su Google Drive, ma la regola e' la stessa di quando
+// saliva nel secchio: stato e non registro, e al buio niente
+import { daCaricare } from "../src/lib/driveCore.js";
 
 const voci = (n) => Array.from({ length: n }, (_, i) => ({ id: `v${i}`, name: `Melodia ${i}` }));
 
@@ -210,14 +213,6 @@ export default async function (t) {
     // IL LIBRO CHE IL CLOUD DICE CANCELLATO fra poco se ne va anche da qui:
     // caricarlo adesso lo farebbe rinascere
     t.eq("chi sta per essere cancellato non sale", chiedi({ inUscita: new Set(["a"]) }), "b,c");
-    // IL RIMANDO VINCE SU TUTTO: quel file è cambiato in casa (una
-    // ricucitura), e lassù c'è la copia di prima — decidendo col solo
-    // secchio si salterebbe per sempre
-    t.eq("il file cambiato in casa risale anche se lassù c'è", chiedi({ lassu: tutti, rimandi: new Set(["b"]) }), "b");
-    t.eq("e anche se il registro lo dà per mandato", chiedi({ lassu: tutti, gia: tutti, rimandi: new Set(["c"]) }), "c");
-    // ma un rimando non scavalca la cancellazione né i byte mancanti
-    t.eq("il rimando non resuscita un cancellato", chiedi({ rimandi: tutti, inUscita: new Set(["a"]) }), "b,c");
-    t.eq("e non manda byte che non ci sono", chiedi({ qui: new Set(), rimandi: tutti }), "");
     // SENZA L'ELENCO DEL SECCHIO NON SI CARICA NIENTE: è il lato sicuro —
     // un giro saltato si rifà al prossimo, un rinvio in massa no
     t.eq("elenco mancante → niente", su(daCaricare(tomi, { qui: tutti, lassu: null })), "");

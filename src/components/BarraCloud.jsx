@@ -1,6 +1,7 @@
 import { C, F, R } from "../data/constants.js";
-import { fmtBytes } from "../lib/bytes.js";
+import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
 import { PIANO, fetta, spartisci, stretto } from "../lib/spazio.js";
+import { spartisciDrive } from "../lib/driveCore.js";
 
 // La voce della legenda: un quadretto del colore della sua regione e il
 // testo accanto. Sta qui e la usano tutt'e due le righe, perché è proprio
@@ -104,6 +105,40 @@ export function BarraCloud({ dati, compatta }) {
             per modo di dire: si dice di quanto — un numero fermo a zero
             nasconderebbe proprio la misura del guaio. */}
         {sforato > 0 ? voce(C.accent, `${fmtBytes(sforato)} oltre il piano`) : voce(C.dim, `${fmtBytes(liberi)} liberi`)}
+      </div>
+    </div>
+  );
+}
+
+// IL PIANO DI GOOGLE DRIVE, dove adesso stanno i libri. Stessi colori della
+// barra di Supabase — l'oro sono i libri in tutt'e due — e una regione in
+// piu', perche' il piano di Google e' condiviso con la posta, le foto e gli
+// altri file del lettore: quello che non sono libri dell'app si dice a
+// parte, o un Drive pieno di foto sembrerebbe pieno di romanzi.
+export function BarraDrive({ spazio, libri, compatta }) {
+  const parti = spartisciDrive(spazio, libri?.byte);
+  if (!parti) return null;
+  return (
+    <div style={compatta ? { marginTop: 10 } : { marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 7, flexWrap: "wrap" }}>
+        <span style={{ fontSize: compatta ? F.piccolo : F.nota, color: C.text }}>
+          🗂 Google Drive · {fmtGoogle(spazio.usati)} usati
+        </span>
+        {spazio.limite && (
+          <span style={{ fontSize: F.minuscolo, color: C.muted }}>di {fmtGoogle(spazio.limite)} del tuo piano</span>
+        )}
+      </div>
+      {parti.parte && (
+        <div style={{ display: "flex", height: 8, borderRadius: R.minimo, overflow: "hidden", background: C.dim }}>
+          <div style={{ width: parti.parte(parti.libri), background: C.accent }} />
+          <div style={{ width: parti.parte(parti.altro), background: C.muted }} />
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 8, fontSize: F.minuscolo, color: C.muted }}>
+        {libri?.quanti > 0 &&
+          voce(C.accent, `${libri.quanti} ${libri.quanti === 1 ? "libro" : "libri"} dell'app · ${fmtGoogle(parti.libri)}`)}
+        {parti.altro > 0 && voce(C.muted, `altri file, posta e foto · ${fmtGoogle(parti.altro)}`)}
+        {parti.liberi !== null && voce(C.dim, `${fmtGoogle(parti.liberi)} liberi`)}
       </div>
     </div>
   );

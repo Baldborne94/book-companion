@@ -47,7 +47,8 @@ import { daAvvisare } from "./lib/oracle.js";
 import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
-import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud } from "./lib/sync.js";
+import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive } from "./lib/sync.js";
+import { driveAcceso, mappaDrive, collegaDrive } from "./lib/drive.js";
 import { spiegaSync } from "./lib/syncCore.js";
 import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
@@ -667,7 +668,7 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
               fontSize: F.corpo,
             }}
           >
-            ☁ Apri la sincronizzazione
+            ☁ Sincronizzazione e Google Drive
           </button>
         </div>
         <div style={{ marginTop: 8, textAlign: "right" }}>
@@ -854,8 +855,15 @@ export default function App() {
 
   const runSync = useRef(() => {});
   runSync.current = async (quiet = false) => {
-    if (!isSyncConfigured() || sync.busy) return;
-    if (!(await getSession())) return;
+    if (sync.busy) return;
+    // SENZA SUPABASE, DRIVE LAVORA LO STESSO: le schede restano su questo
+    // dispositivo, ma i file si riconoscono e salgono su Drive
+    if (!isSyncConfigured() || !(await getSession())) {
+      if (!driveAcceso()) return;
+      await sincronizzaSoloDrive().catch(() => {});
+      setLocalIds(await localFileIds());
+      return;
+    }
     setSync((s) => ({ ...s, busy: true, message: quiet ? s.message : "Sincronizzo…" }));
     try {
       const res = await syncNow({
@@ -941,6 +949,17 @@ export default function App() {
     };
   }, []);
 
+  // SENZA SUPABASE MA CON DRIVE: l'effetto qui sopra si ferma subito se il
+  // cloud delle schede non c'e', e con lui il conto dei byte di casa — cioe'
+  // le nuvolette sui libri che stanno solo su Drive. Qui si fa quel poco.
+  useEffect(() => {
+    if (isSyncConfigured() || !driveAcceso()) return;
+    let alive = true;
+    localFileIds().then((ids) => alive && setLocalIds(ids));
+    runSync.current(true);
+    return () => { alive = false; };
+  }, []);
+
   function handleSaveMeta(patch) {
     touchBook(patch.id);
     updateBooks(books.map((b) => (b.id === patch.id ? { ...b, ...patch } : b)));
@@ -975,6 +994,22 @@ export default function App() {
   async function handleTogliEbook(id) {
     const b = books.find((x) => x.id === id);
     if (!b) return;
+    // SE IL LIBRO STA SU DRIVE, TOGLIERLO DAL TABLET NON LO TOGLIE A TE: e'
+    // proprio quel che Drive e' venuto a fare — il tablet libero, e i file
+    // al sicuro lassu'. Il libro resta con la nuvoletta, si riscarica
+    // quando lo apri, e il segno «senza ebook» non si scrive.
+    if (driveAcceso() && mappaDrive()[id]) {
+      try {
+        await removeFileOnly(id);
+      } catch {
+        /* i byte restano qui: il libro si apre lo stesso */
+      }
+      await togliFileDalCloud(b).catch(() => {});
+      setLocalIds(await localFileIds());
+      setSpazioCambiato((n) => n + 1);
+      notify(`«${b.title}» tolto dal tablet: resta su Google Drive 🗂`);
+      return;
+    }
     touchBook(id);
     updateBooks(books.map((x) => (x.id === id ? { ...x, fileTolto: true } : x)));
     try {
@@ -1250,6 +1285,16 @@ export default function App() {
             // i byte scesi in casa non sono roba da sincronizzare: basta
             // ricontare chi c'e', e le nuvolette si spengono subito
             onFileLocali={async () => setLocalIds(await localFileIds())}
+            // la chiave di Google si rinnova solo da un tocco, e questo lo e'
+            onRicollegaDrive={async () => {
+              try {
+                await collegaDrive();
+                runSync.current(false);
+                setSpazioCambiato((n) => n + 1);
+              } catch (e) {
+                notify(e?.message || "Google Drive non ha risposto");
+              }
+            }}
             spazioCambiato={spazioCambiato}
             onCammino={setCammino}
             // il controllo aggiornamenti col dito: qui siamo in Libreria,

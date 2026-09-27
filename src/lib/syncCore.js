@@ -410,120 +410,14 @@ export const nonCeLassu = (e) =>
   e?.status === 404 ||
   /not.?found/i.test(`${e?.message || ""} ${e?.error || ""}`);
 
-// E UN FILE TROPPO GRANDE E' UNA RISPOSTA, NON UN GUASTO.
-//
-// Il secchio ha un tetto per OGGETTO (cinquanta megabyte sul piano
-// gratuito), e un tomo che lo supera si sente rispondere «The object
-// exceeded the maximum allowed size». Fin qui e' un limite. Il guasto era
-// cosa succedeva dopo: quell'errore veniva ALZATO, e il giro moriva li' —
-// i libri dopo di lui non salivano, le copertine nemmeno, le preferenze
-// neanche, e non si scaricava niente di quel che aspettava lassu'. Un solo
-// romanzo grosso teneva in ostaggio l'intera biblioteca a ogni giro, e la
-// riga «ultima sincronizzazione» restava indietro senza dire perche'
-// (segnalato col pannello in mano: «Sincronizzazione fallita: The object
-// exceeded the maximum allowed size»).
-//
-// E' la stessa lezione delle copertine tre righe piu' in la' — «una
-// copertina che non sale non ferma niente» — e dello scaricamento dei
-// tomi: si riconosce, si salta, e si dice per nome.
-//
-// Tre posti come per il 404, e il codice si confronta INTERO: cercato per
-// contenimento, un 4130 passerebbe.
-export const eTroppoGrande = (e) =>
-  `${e?.statusCode ?? ""}` === "413" ||
-  e?.status === 413 ||
-  /maximum allowed size|payload too large|entity too large/i.test(
-    `${e?.message || ""} ${e?.error || ""}`
-  );
-
-// E IL BOCCIATO SI RICORDA CON LA SUA MISURA.
-//
-// Senza memoria quel tomo riproverebbe a salire a OGNI giro, e sul piano
-// gratuito anche il traffico e' contato: sono decine di megabyte spediti
-// per farseli rifiutare, da un tablet. La misura sta nel segno apposta —
-// e' il modo di riprovare quando i byte cambiano davvero (una ricucitura,
-// un file sostituito a mano), senza tenersi un «no» per sempre su un file
-// che non e' piu' quello.
-export const giaBocciato = (id, byte, registro) =>
-  !!id && Number.isFinite(byte) && registro?.[id] === byte;
-
-// Chi e' bocciato FRA I LIBRI DI ADESSO: il registro puo' portarsi dietro
-// dei tomi cancellati, e un avviso su un libro che non c'e' piu' e' rumore.
-export function troppoGrandiInBiblioteca(libri, registro) {
-  const r = registro || {};
-  return (libri || [])
-    .filter((b) => b?.id && Number.isFinite(r[b.id]))
-    .map((b) => ({ id: b.id, title: b.title, byte: r[b.id] }));
-}
-
-// E si dice per NOME e con la MISURA, che e' l'unica cosa che rende la riga
-// utile: senza il numero, «troppo grande» non dice di quanto — e la misura
-// la formatta chi disegna, perche' `fmtBytes` vive con la UI.
-//
-// Non promette nessuna cura, perche' non ce n'e' una: su quel piano quel
-// file lassu' non ci va. Dice dove resta, che e' l'informazione vera.
-export function fraseTroppoGrandi(libri, misura) {
-  const l = libri || [];
-  if (!l.length) return null;
-  const nome = (b) =>
-    `«${b.title || "senza titolo"}»${misura && Number.isFinite(b.byte) ? ` (${misura(b.byte)})` : ""}`;
-  const nomi = l.slice(0, 3).map(nome);
-  const resto = l.length - nomi.length;
-  const elenco = resto ? `${nomi.join(", ")} e altri ${resto}` : nomi.join(", ");
-  return `${elenco} ${l.length === 1 ? "è troppo grande" : "sono troppo grandi"} per il cloud: ${
-    l.length === 1 ? "resta" : "restano"
-  } solo su questo dispositivo.`;
-}
-
-// QUALI FILE DEVONO SALIRE. Sta qui e non dentro `syncNow` per la ragione
-// di sempre: e' una decisione, non una scrittura, e sbaglia in silenzio da
-// tutt'e due i lati — un «no» di troppo e' un romanzo senza copia PER
-// SEMPRE, un «sì» di troppo sono centinaia di megabyte rispediti lassu' da
-// un tablet, sul traffico contato del piano gratuito.
-//
-// I quattro elenchi non dicono la stessa cosa:
-//   `qui`       — i byte sono su questo dispositivo (senza, non c'e' niente
-//                 da mandare);
-//   `inUscita`  — il cloud dice che questo libro e' stato cancellato
-//                 altrove, e fra poco se ne va anche da qui: caricarlo
-//                 adesso lo farebbe rinascere;
-//   `lassu`     — chi c'e' davvero nel secchio, e adesso e' l'UNICA cosa
-//                 che dice se un file ha una copia;
-//   `rimandi`   — i file cambiati in casa (una ricucitura): quelli risalgono
-//                 ANCHE se lassu' c'e' gia' qualcosa, perche' quel qualcosa
-//                 e' la copia di prima.
-//
-// Senza l'elenco del secchio non si carica NIENTE: e' il lato sicuro — un
-// giro saltato si rifa' al prossimo, un rinvio in massa no.
-// E IL REGISTRO DI QUESTO DISPOSITIVO NON VOTA PIU'.
-//
-// C'era un `gia` — `bc_uploaded`, «questo l'ho gia' mandato» — e restava
-// mezzo difetto in piedi: un libro segnato nel registro ma ASSENTE dal
-// secchio non risaliva mai, che e' esattamente il caso dei sette romanzi
-// scoperti (registro scritto, giro morto prima, secchio svuotato altrove:
-// il registro non sa niente di nessuna delle tre cose). Da quando l'elenco
-// del secchio c'e', il registro non aggiunge niente e puo' solo mentire:
-// e' stato tolto, qui e nelle copertine. Lo dice il test della convergenza,
-// che prima cascava.
-// E L'EBOOK TOLTO A MANO NON RISALE, ED E' L'ALTRA META' DI QUEL COMANDO.
-//
-// «Togli l'ebook, tieni la scheda» cancella i byte di qui e la copia nel
-// secchio. Ma il segno viaggia, e sull'ALTRO dispositivo quei byte possono
-// esserci ancora: senza questa riga, il primo giro li' vedrebbe un libro
-// con i byte in casa e senza copia lassu' — cioe' esattamente la forma di
-// un file scoperto — e lo rispedirebbe nel secchio. Il lettore si
-// ritroverebbe la nuvoletta addosso al libro che aveva appena svuotato, e
-// non saprebbe nemmeno da dove viene.
-export function daCaricare(libri, { qui, lassu, rimandi, inUscita } = {}) {
-  if (!lassu) return [];
-  const dentro = (s, id) => !!s && s.has(id);
-  return (libri || []).filter((b) => {
-    if (b?.fileTolto) return false;
-    if (!b?.id || !dentro(qui, b.id) || dentro(inUscita, b.id)) return false;
-    if (dentro(rimandi, b.id)) return true;
-    return !lassu.has(b.id);
-  });
-}
+// I FILE DEI LIBRI SALGONO SU GOOGLE DRIVE, NON PIU' NEL SECCHIO: chi
+// decide cosa sale sta in `driveCore.js` (`daCaricare`), con le regole che
+// qui erano costate quattro giri — si decide sullo STATO e non su un
+// registro, e senza l'elenco di lassu' non parte niente. Con i file sono
+// andati via anche il «troppo grande per il piano gratuito» e il rimando
+// dei file ricuciti: Drive un tetto da cinquanta megabyte non ce l'ha, e
+// la copia lassu' resta quella originale, che il reader ricuce da se' alla
+// prima apertura.
 
 // I TOMI CHE NON SONO DA NESSUNA PARTE.
 //

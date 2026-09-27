@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { driveAcceso, mappaDrive } from "../lib/drive.js";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import {
   getProgress,
@@ -437,6 +438,8 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   // i campi editati si salvano PRIMA: il giro dell'ebook riscrive il libro
   // in biblioteca, e un titolo appena corretto e non ancora salvato
   // finirebbe sotto quella riscrittura
+  const suDrive = driveAcceso() && !!mappaDrive()[book.id];
+
   function togliEbook() {
     setConfermaEbook(false);
     onSaveMeta(metaEditata());
@@ -968,21 +971,31 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
           {/* TOGLIERE L'EBOOK NON È ELIMINARE IL LIBRO, e le due cose stanno
               vicine perché è lì che uno le cerca — ma dicono per intero cosa
               se ne va e cosa resta, che è l'unica differenza che conta. */}
+          {/* E SE IL LIBRO STA SU GOOGLE DRIVE, il file se ne va solo dal
+              tablet: su Drive resta, e si riscarica quando lo riapri. */}
           {!book.fileTolto && onTogliEbook && (
             <button
               onClick={() => (confermaEbook ? togliEbook() : setConfermaEbook(true))}
               style={{ fontSize: F.piccolo, color: confermaEbook ? C.accent : C.muted, textDecoration: "underline" }}
             >
-              {confermaEbook
-                ? "Confermi? L'ebook sparisce da qui e dal cloud, la scheda e la copertina restano — tocca di nuovo"
-                : "Togli l'ebook, tieni la scheda"}
+              {suDrive
+                ? confermaEbook
+                  ? "Confermi? Il file lascia il tablet e resta su Google Drive — tocca di nuovo"
+                  : "Togli dal tablet, resta su Google Drive"
+                : confermaEbook
+                  ? "Confermi? L'ebook sparisce da qui e dal cloud, la scheda e la copertina restano — tocca di nuovo"
+                  : "Togli l'ebook, tieni la scheda"}
             </button>
           )}
           <button
             onClick={() => (confirmDelete ? onDelete(book.id) : setConfirmDelete(true))}
             style={{ fontSize: F.piccolo, color: confirmDelete ? C.red : C.muted, textDecoration: "underline" }}
           >
-            {confirmDelete ? "Confermi? Il file verrà rimosso per sempre — tocca di nuovo" : "Elimina questo libro"}
+            {confirmDelete
+              ? suDrive
+                ? "Confermi? Il libro esce dall'app; il file su Google Drive resta dov'è — tocca di nuovo"
+                : "Confermi? Il file verrà rimosso per sempre — tocca di nuovo"
+              : "Elimina questo libro"}
           </button>
         </div>
       </div>

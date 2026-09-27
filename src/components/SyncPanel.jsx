@@ -18,6 +18,7 @@ import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, GIA_REGISTRAT
 // dimenticare separatamente
 import { PIENO, parteDelPiano } from "../lib/spazio.js";
 import { BarraCloud } from "./BarraCloud.jsx";
+import SezioneDrive from "./SezioneDrive.jsx";
 
 
 function Spazio({ dati }) {
@@ -495,6 +496,8 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
             </button>
           </>
         )}
+
+        <SezioneDrive onCollegato={onSync} notify={notify} />
 
         <div style={{ marginTop: 18, textAlign: "right" }}>
           <button onClick={onClose} style={{ color: C.muted, fontSize: F.nota }}>

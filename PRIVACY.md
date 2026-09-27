@@ -50,7 +50,9 @@ Se crei un account e accendi la sincronizzazione, salgono su un database
 [Supabase](https://supabase.com) — in una riga che è **solo tua**, protetta
 da Row Level Security — questi dati:
 
-- **i file dei libri e le loro copertine**, in un bucket privato;
+- **le copertine dei libri**, in un bucket privato (i file dei libri no:
+  stanno su Google Drive, vedi sotto — nel bucket resta solo quel che Drive
+  non ha ancora, il tempo di portarcelo);
 - i metadati della biblioteca e i segni di lettura elencati al punto 1;
 - le preferenze, le raccolte musicali, i **link YouTube** salvati e il
   glossario che hai scritto;
@@ -63,6 +65,26 @@ suoi, e nel cloud viaggiano solo i link.
 
 Puoi non accenderla mai: l'app funziona identica senza. Se la spegni e
 cancelli l'account, quei dati vanno via con lui.
+
+### 2.1 bis I file dei libri su Google Drive
+
+Se colleghi Google Drive, l'app chiede a Google il permesso di **leggere e
+scrivere nel tuo Drive** (è il permesso intero, perché i libri che hai
+caricato a mano stanno in cartelle tue che l'app deve poter vedere). La
+chiave di accesso la consegna Google a questo browser, dura un'ora, resta
+sul dispositivo e non passa da nessun server dell'app — non ce ne sono.
+
+Con quella chiave l'app parla **solo con Google** (`accounts.google.com`,
+`www.googleapis.com`) e fa queste cose: elenca i file del tuo Drive per
+riconoscere i libri (nome, misura, impronta dei byte), scrive su quei file
+un segno privato che dice a quale libro corrispondono, carica i libri
+nuovi nelle cartelle Libri, Fumetti e Manga, scarica un libro quando lo
+apri, e chiede quanto spazio usi e hai libero. Non legge il contenuto di
+nessun altro file e non cancella niente: eliminando un libro dall'app, il
+suo file su Drive resta dov'è.
+
+Puoi scollegarlo quando vuoi dal pannello della nuvola, e ritirare il
+permesso anche da myaccount.google.com → Sicurezza → App di terze parti.
 
 ### 2.2 L'Oracolo (Anthropic)
 

@@ -120,6 +120,31 @@ async function pesaStore(nome) {
   });
 }
 
+// QUANTO PESA OGNI LIBRO QUI, per id: e' uno dei modi in cui un libro si
+// riconosce fra i file che il lettore ha caricato a mano su Drive. Stesso
+// cursore di `pesaStore`, e per la stessa ragione — `size` si legge senza
+// tirare su un byte.
+export async function misureFile() {
+  const d = await db();
+  return new Promise((resolve) => {
+    const misure = new Map();
+    try {
+      const tx = d.transaction("files", "readonly");
+      const req = tx.objectStore("files").openCursor();
+      req.onsuccess = () => {
+        const cur = req.result;
+        if (!cur) return resolve(misure);
+        const n = Number(cur.value?.size);
+        if (n > 0) misure.set(cur.key, n);
+        cur.continue();
+      };
+      req.onerror = () => resolve(misure);
+    } catch {
+      resolve(misure);
+    }
+  });
+}
+
 // I tre pesi di casa, nella stessa forma che `contaSpazio` da' per il secchio
 // (`{quanti, byte}` per specie), cosi' la riga di qui e la barra di lassu'
 // si leggono con lo stesso vocabolario invece di essere due grafici diversi

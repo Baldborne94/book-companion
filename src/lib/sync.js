@@ -26,7 +26,11 @@ import { leggiTempo, scriviTempo, fondiTempo } from "./tempo.js";
 import { leggiObiettivi, scriviObiettivi, fondiObiettivi } from "./obiettivo.js";
 import { leggiQuaderno, scriviQuaderno, fondiQuaderno } from "./quaderno.js";
 import { leggiDaPrendere, scriviDaPrendere, fondiDaPrendere } from "./daPrendere.js";
-import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, daCaricare, nonCeLassu, eTroppoGrande, giaBocciato, copertineDaScaricare, copertineDaCaricare } from "./syncCore.js";
+import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare } from "./syncCore.js";
+import { daTogliereDalSecchio } from "./driveCore.js";
+import { giroDrive, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive } from "./drive.js";
+import { tipiDi, tipoDi } from "./library.js";
+import { misureFile } from "./bookStore.js";
 
 // `contaSpazio` viveva qui ed e' passata in `syncCore` con le altre
 // decisioni pure; si riesporta perche' chi la cercava la trovi dov'era.
@@ -34,63 +38,11 @@ export { contaSpazio };
 
 const LAST_SYNC_KEY = "bc_lastsync";
 const REPUSH_KEY = "bc_repush";
-// I file cambiati in casa: vedi `daRicaricare`.
-const RIPORTA_KEY = "bc_riporta";
-// I tomi che il secchio ha rifiutato perche' troppo grandi: vedi sotto.
-const TROPPO_GRANDI_KEY = "bc_troppo_grandi";
 const PREFS_UPD_KEY = "bc_prefs_upd";
 
 export const getLastSync = () => parseInt(localStorage.getItem(LAST_SYNC_KEY), 10) || 0;
 
-// I BYTE DI UN LIBRO SONO CAMBIATI IN CASA (la visita l'ha ricucito): la
-// copia nel cloud e' quella vecchia, e i file salgono una volta per sempre
-// — senza togliere il libro dal registro non risalirebbe mai piu'.
-//
-// E NON BASTA PIU' TOGLIERLO DAL REGISTRO, da quando il giro guarda anche
-// il secchio: lassu' il file c'e' eccome, e' solo quello di prima — chi
-// decide guardando il secchio lo salterebbe per sempre. Il segno dice
-// l'unica cosa che nessuno dei due elenchi sa: questo file e' cambiato QUI,
-// e risale comunque.
-export function daRicaricare(id) {
-  try {
-    localStorage.setItem(RIPORTA_KEY, JSON.stringify([...daRimandareSu(), id]));
-  } catch {
-    /* senza storage il rimando si perde, e il file resta quello di prima */
-  }
-}
 export const touchPrefs = () => localStorage.setItem(PREFS_UPD_KEY, String(Date.now()));
-
-const daRimandareSu = () => {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(RIPORTA_KEY)) || []);
-  } catch {
-    return new Set();
-  }
-};
-const scordaRimando = (id) => {
-  const resta = [...daRimandareSu()].filter((x) => x !== id);
-  localStorage.setItem(RIPORTA_KEY, JSON.stringify(resta));
-};
-
-// I TOMI CHE IL SECCHIO HA RIFIUTATO PER LA MISURA, con la misura accanto:
-// e' quella che li fa riprovare il giorno che i byte cambiano davvero.
-// Sta sul dispositivo come `bc_uploaded`, perche' e' un fatto di QUESTA
-// copia della biblioteca, non della biblioteca.
-export const troppoGrandi = () => {
-  try {
-    const r = JSON.parse(localStorage.getItem(TROPPO_GRANDI_KEY));
-    return r && typeof r === "object" && !Array.isArray(r) ? r : {};
-  } catch {
-    return {};
-  }
-};
-const segnaTroppoGrande = (id, byte) => {
-  try {
-    localStorage.setItem(TROPPO_GRANDI_KEY, JSON.stringify({ ...troppoGrandi(), [id]: byte }));
-  } catch {
-    /* senza il segno si riprova al giro dopo: si perde traffico, non un libro */
-  }
-};
 
 const filePath = (uid, book) => `${uid}/${book.id}.${book.fileType || "epub"}`;
 const coverPath = (uid, id) => `${uid}/${id}.cover`;
@@ -277,6 +229,41 @@ function localPrefs() {
   };
 }
 
+// IL GIRO DI DRIVE, con quel che sa solo questo dispositivo: quali libri
+// hanno i byte qui, quanto pesano, e di che tipo sono (la cartella dove va
+// un libro nuovo). Un Drive che esplode non si porta via la sincronizzazione
+// delle schede: si conta come un file non salito, e al giro dopo si riprova.
+async function giroDelDrive(books, { say, inUscita, secchio = null, altrove = null } = {}) {
+  if (!driveAcceso()) return {};
+  try {
+    const qui = new Set(await listFileIds().catch(() => []));
+    const misure = await misureFile().catch(() => new Map());
+    const tipi = tipiDi(books);
+    return await giroDrive(books, {
+      tipo: (b) => tipoDi(b, tipi),
+      qui,
+      misure,
+      inUscita,
+      secchio,
+      leggiByte: async (id) => {
+        const qua = await getFile(id).catch(() => null);
+        if (qua) return qua;
+        const b = books.find((x) => x.id === id);
+        return b && altrove ? altrove(b) : null;
+      },
+      say,
+    });
+  } catch {
+    return { falliti: 1 };
+  }
+}
+
+// Senza un accesso a Supabase i libri su Drive si riconoscono e salgono lo
+// stesso: le schede restano su questo dispositivo, i file vanno al sicuro.
+export async function sincronizzaSoloDrive({ onProgress } = {}) {
+  return giroDelDrive(loadBooks(), { say: (m) => onProgress?.(m) });
+}
+
 export async function syncNow({ onProgress } = {}) {
   if (!isSyncConfigured()) return { skipped: "non configurata" };
   const sb = await getClient();
@@ -368,67 +355,44 @@ export async function syncNow({ onProgress } = {}) {
   }
   if (!degraded) localStorage.setItem(REPUSH_KEY, "done");
 
-  // I FILE NON POSSONO SALIRE DENTRO IL GIRO DI `push`.
-  //
-  // Stavano li', e il difetto era muto. `push` sono le righe che questo
-  // dispositivo deve insegnare al cloud, e un libro ci passa una volta
-  // sola; se in quell'attimo i byte non erano in casa — un tomo sceso dopo,
-  // un import finito a meta', una ricucitura in mezzo — il file si saltava
-  // SENZA segnare niente, e da li' in poi la riga era in pari ovunque:
-  // non rientrava mai piu' in `push`, quindi nessuno riguardava quel libro
-  // e i suoi byte restavano da una parte sola per sempre. Nessun errore,
-  // nessuna nuvoletta, e la biblioteca che sull'altro dispositivo mostra un
-  // romanzo che non si potra' mai aprire (misurato sul tablet del lettore:
-  // 115 libri in casa, 108 file lassu' — sette scoperti, e due di quelli
-  // non li aveva nemmeno piu' il tablet).
-  //
-  // Adesso si guarda ogni libro che i byte ce li ha QUI, come fa il giro
-  // delle copertine qui sotto, che questa lezione l'aveva gia' imparata.
-  // Chi deve salire lo dice `daCaricare`, in `syncCore`, dove un test lo
-  // puo' chiedere: qui resta solo il mandare.
-  const rimandi = daRimandareSu();
+  // I FILE DEI LIBRI NON SALGONO PIU' SU SUPABASE: stanno su Google Drive
+  // (deciso dal lettore, che li' ha 100 GB e qui uno). Il secchio si tiene
+  // le copertine, e dei libri solo quel che Drive non ha ancora — il tempo
+  // di portarlo su (vedi `giroDrive` e `daTogliereDalSecchio`).
   let secchio = null;
   try {
     secchio = contaSpazio(await elenca(sb, uid), []);
   } catch {
     /* senza l'elenco non si indovina: si riprova al giro dopo */
   }
-  const daMandare = daCaricare(books, {
-    qui: new Set(await listFileIds()),
-    lassu: secchio?.idLibri,
-    rimandi,
-    inUscita: new Set(removeLocal),
-  });
-  const bocciati = troppoGrandi();
   let falliti = 0;
   let prefsGuaste = "";
-  for (const book of daMandare) {
-    const blob = await getFile(book.id);
-    if (!blob) continue;
-    // gia' bocciato, e gli stessi byte: non si rispedisce per farselo
-    // rifiutare un'altra volta — sul piano gratuito il traffico e' contato
-    if (giaBocciato(book.id, blob.size, bocciati)) continue;
-    say(`Carico «${book.title}»…`);
-    const { error: sErr } = await sb.storage
-      .from(BUCKET)
-      .upload(filePath(uid, book), blob, { upsert: true, contentType: blob.type || undefined });
-    if (sErr && sErr.statusCode !== "409") {
-      // UN FILE TROPPO GRANDE NON FERMA IL GIRO (vedi `eTroppoGrande`): si
-      // segna, si salta, e in Libreria si dice per nome.
-      if (eTroppoGrande(sErr)) {
-        segnaTroppoGrande(book.id, blob.size);
-        continue;
-      }
-      // E NEMMENO UN FILE CHE NON SALE PER UN'ALTRA RAGIONE. Qui c'era un
-      // `throw`, e si portava via il giro intero: i libri dopo di lui, le
-      // copertine, le preferenze, gli scaricamenti. Un intoppo su UN tomo
-      // e' di quel tomo — si conta e si dice, come fa `portaGiu` con quelli
-      // che non scendono. Il giro prosegue e al prossimo si riprova, perche'
-      // il libro resta scoperto nel secchio e `daCaricare` lo ripesca.
-      falliti += 1;
-      continue;
+  const drive = await giroDelDrive(books, {
+    say,
+    inUscita: new Set(removeLocal),
+    secchio: secchio?.idLibri || null,
+    // un libro che sta solo nel secchio si scarica da li' e sale su Drive
+    // senza passare dal dispositivo: il tablet si voleva libero
+    altrove: async (b) => {
+      const { data } = await sb.storage.from(BUCKET).download(filePath(uid, b));
+      return data || null;
+    },
+  });
+  falliti += drive.falliti || 0;
+  // E QUEL CHE DRIVE HA, IL SECCHIO LO LASCIA: e' spazio del piano gratuito
+  // occupato da una seconda copia. Solo dopo un giro di Drive riuscito —
+  // con la chiave scaduta la mappa e' quella di ieri, e nel dubbio il
+  // secchio si tiene la sua copia.
+  if (drive.mappa && secchio?.idLibri) {
+    const via = daTogliereDalSecchio(secchio.idLibri, drive.mappa);
+    if (via.length) say(`Libero il cloud da ${via.length === 1 ? "un libro" : `${via.length} libri`} che stanno su Drive…`);
+    for (let i = 0; i < via.length; i += 100) {
+      const percorsi = via
+        .slice(i, i + 100)
+        .flatMap((id) => ["epub", "pdf", "cbz", "cbr"].map((ext) => `${uid}/${id}.${ext}`));
+      // uno sgombero non riuscito non ferma niente: si riprova al giro dopo
+      await sb.storage.from(BUCKET).remove(percorsi).catch(() => {});
     }
-    if (rimandi.has(book.id)) scordaRimando(book.id);
   }
 
   // LE COPERTINE HANNO UN REGISTRO LORO.
@@ -704,9 +668,32 @@ export async function togliFileDalCloud(book) {
   }
 }
 
+// UN LIBRO SI PRENDE PRIMA DA DRIVE, poi dal secchio: da quando i file
+// stanno su Drive il secchio ha solo quel che non e' ancora stato portato
+// lassu'. A chiave scaduta si chiede la chiave nuova — chi apre un libro ha
+// appena toccato lo schermo, e Google la finestra la apre solo dopo un tocco.
+// Un file che Drive non ha piu' (tolto a mano dal lettore) e' «non c'e'»,
+// non un guasto: si prova il secchio.
+async function dalDrive(book) {
+  const voce = driveAcceso() ? mappaDrive()[book.id] : null;
+  if (!voce) return null;
+  if (!driveProntoOra()) await collegaDrive();
+  try {
+    return await scaricaDaDrive(voce.id);
+  } catch (e) {
+    if (e?.status === 404) return null;
+    throw e;
+  }
+}
+
 export async function ensureLocalFile(book) {
   const local = await getFile(book.id);
   if (local) return local;
+  const daDrive = await dalDrive(book).catch(() => null);
+  if (daDrive) {
+    await putFile(book.id, daDrive);
+    return daDrive;
+  }
   if (!isSyncConfigured()) return null;
   const session = await getSession();
   if (!session) return null;
@@ -753,11 +740,26 @@ async function daScaricare() {
 }
 
 export async function portaACasa(libri, { onProgress, vivo } = {}) {
+  const suDrive = driveAcceso() ? mappaDrive() : {};
+  const dalDriveServe = (libri || []).some((b) => suDrive[b.id]);
+  // il tasto e' un tocco: e' il momento buono per rinnovare la chiave di
+  // Google, se e' scaduta — piu' avanti il browser la finestra la blocca
+  if (dalDriveServe && !driveProntoOra()) await collegaDrive().catch(() => {});
+  const drive = dalDriveServe && driveProntoOra();
   const cloud = await daScaricare();
-  if (!cloud) return { ...NIENTE };
+  if (!cloud && !drive) return { ...NIENTE };
   return portaGiu(libri, {
     manca: async (b) => !(await getFile(b.id).catch(() => null)),
-    scarica: (b) => cloud.scarica(filePath(cloud.uid, b)),
+    scarica: async (b) => {
+      if (drive && suDrive[b.id]) {
+        try {
+          return await scaricaDaDrive(suDrive[b.id].id);
+        } catch (e) {
+          if (e?.status !== 404) throw e;
+        }
+      }
+      return cloud ? cloud.scarica(filePath(cloud.uid, b)) : null;
+    },
     posa: (b, byte) => putFile(b.id, byte),
     titolo: (b) => b.title,
     onProgress,
