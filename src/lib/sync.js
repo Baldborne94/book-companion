@@ -19,7 +19,7 @@ import {
   getCfi, setCfi, removeAnnotations, setJump,
   segnalibriInteri, evidenziazioniIntere, posaSegnalibri, posaEvidenziazioni,
 } from "./annotations.js";
-import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, getListsRaw, writeLists } from "./music.js";
+import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, saveFavorites, getListsRaw, writeLists, loadTrack, dropTrack } from "./music.js";
 import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
 import { raccontiLetti, scriviRacconti } from "./racconti.js";
 import { leggiTempo, scriviTempo, fondiTempo } from "./tempo.js";
@@ -27,10 +27,10 @@ import { leggiObiettivi, scriviObiettivi, fondiObiettivi } from "./obiettivo.js"
 import { leggiQuaderno, scriviQuaderno, fondiQuaderno } from "./quaderno.js";
 import { leggiDaPrendere, scriviDaPrendere, fondiDaPrendere } from "./daPrendere.js";
 import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare } from "./syncCore.js";
-import { daTogliereDalSecchio, avanziDelSecchio } from "./driveCore.js";
-import { giroDrive, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive } from "./drive.js";
+import { daTogliereDalSecchio, avanziDelSecchio, segnaSuDrive } from "./driveCore.js";
+import { giroDrive, giroMelodie, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive } from "./drive.js";
 import { tipiDi, tipoDi } from "./library.js";
-import { misureFile } from "./bookStore.js";
+import { misureFile, listTrackIds } from "./bookStore.js";
 
 // `contaSpazio` viveva qui ed e' passata in `syncCore` con le altre
 // decisioni pure; si riesporta perche' chi la cercava la trovi dov'era.
@@ -239,7 +239,7 @@ async function giroDelDrive(books, { say, inUscita, secchio = null, altrove = nu
     const qui = new Set(await listFileIds().catch(() => []));
     const misure = await misureFile().catch(() => new Map());
     const tipi = tipiDi(books);
-    return await giroDrive(books, {
+    const esito = await giroDrive(books, {
       tipo: (b) => tipoDi(b, tipi),
       qui,
       misure,
@@ -253,8 +253,31 @@ async function giroDelDrive(books, { say, inUscita, secchio = null, altrove = nu
       },
       say,
     });
+    if (esito.saltato) return esito;
+    return { ...esito, falliti: (esito.falliti || 0) + (await giroDellaMusica(say)) };
   } catch {
     return { falliti: 1 };
+  }
+}
+
+// LA MUSICA DOPO I LIBRI: sale quel che ha i byte qui, e le voci che stanno
+// su Drive si segnano (`segnaSuDrive`) — e' quel segno a farle viaggiare
+// nelle preferenze fino all'altro dispositivo, che le scarica quando le
+// suoni. Torna quante non sono salite; un giro della musica che esplode non
+// si porta via quello dei libri.
+async function giroDellaMusica(say) {
+  try {
+    const qui = new Set(await listTrackIds().catch(() => []));
+    const m = await giroMelodie(getFavoritesRaw(), { qui, leggiTrack: (id) => loadTrack(id).catch(() => null), say });
+    if (m.melodie) {
+      // si rilegge l'elenco di ADESSO: una melodia aggiunta mentre il giro
+      // caricava non va sovrascritta con la copia di quando e' partito
+      const { lista, cambiate } = segnaSuDrive(getFavoritesRaw(), m.melodie);
+      if (cambiate) saveFavorites(lista);
+    }
+    return m.falliti || 0;
+  } catch {
+    return 1;
   }
 }
 
@@ -571,6 +594,9 @@ export async function syncNow({ onProgress } = {}) {
     // qui si scrivono i link fusi PIU' i file di questo dispositivo, che
     // non sono mai partiti; lassu' (`merged`) vanno i soli link
     writeFavorites(favsLocali);
+    // una melodia cancellata sull'altro dispositivo se ne va anche da qui,
+    // byte compresi: sono la cosa pesante, e nessuna voce li suonera' piu'
+    for (const f of favsLocali) if (f.deleted && f.trackId) dropTrack(f.trackId);
     writeLists(merged.music_lists);
     scriviGlossari(merged.glossari || {});
     scriviRacconti(merged.racconti || []);

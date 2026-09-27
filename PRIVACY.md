@@ -79,9 +79,12 @@ Con quella chiave l'app parla **solo con Google** (`accounts.google.com`,
 riconoscere i libri (nome, misura, impronta dei byte), scrive su quei file
 un segno privato che dice a quale libro corrispondono, carica i libri
 nuovi nelle cartelle Libri, Fumetti e Manga, scarica un libro quando lo
-apri, e chiede quanto spazio usi e hai libero. Non legge il contenuto di
-nessun altro file e non cancella niente: eliminando un libro dall'app, il
-suo file su Drive resta dov'è.
+apri, e chiede quanto spazio usi e hai libero. Lo stesso vale per le
+melodie che carichi come file: l'app elenca i file audio del tuo Drive per
+riconoscerle (nome e misura), le carica nella cartella Musica e le scarica
+su un altro dispositivo solo quando le suoni. Non legge il contenuto di
+nessun altro file e non cancella niente: eliminando un libro o una melodia
+dall'app, il suo file su Drive resta dov'è.
 
 Puoi scollegarlo quando vuoi dal pannello della nuvola, e ritirare il
 permesso anche da myaccount.google.com → Sicurezza → App di terze parti.

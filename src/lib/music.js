@@ -1,4 +1,5 @@
 import { putTrack, getTrack, removeTrack } from "./bookStore.js";
+import { melodiaDalDrive } from "./drive.js";
 
 const FAVS_KEY = "bc_music_favs";
 
@@ -40,6 +41,19 @@ export async function addTrackFile(file) {
 }
 
 export const loadTrack = (trackId) => getTrack(trackId);
+
+// UNA MELODIA CHE QUI NON C'E' SCENDE DA DRIVE QUANDO LA SUONI, e poi resta
+// qui (chiesto dal lettore: «scaricali solo quando li suono»). `null` vuol
+// dire che su Drive non c'e' — il brano e' salito solo dal dispositivo
+// dove l'hai caricato, e non ancora; un guasto (rete, chiave rifiutata) si
+// alza, perche' chi suona deve poter dire le due cose in modo diverso.
+export async function portaQuiMelodia(voce, { prendi = melodiaDalDrive } = {}) {
+  if (!voce?.trackId) return null;
+  const blob = await prendi(voce.trackId);
+  if (!blob) return null;
+  await putTrack(voce.trackId, blob).catch(() => {});
+  return blob;
+}
 export const dropTrack = (trackId) => removeTrack(trackId).catch(() => {});
 
 export function parseYouTube(input) {

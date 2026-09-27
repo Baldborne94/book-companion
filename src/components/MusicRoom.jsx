@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { listTrackIds } from "../lib/bookStore.js";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import {
   getFavoritesRaw, saveFavorites, isFile, addTrackFile, dropTrack, parseYouTube,
@@ -47,6 +48,10 @@ export default function MusicRoom({ music, playerRef, notify }) {
   const fileRef = useRef(null);
   const [caricando, setCaricando] = useState(false);
   const [raccolte, setRaccolte] = useState(() => getListsRaw());
+  // quali melodie da file hanno i byte QUI: le altre stanno su Google Drive
+  // e scendono quando le suoni — la nuvoletta lo dice prima del tocco, che
+  // su una connessione lenta e' qualche secondo di attesa
+  const [qui, setQui] = useState(null);
   // l'id della raccolta di cui si stanno scegliendo i brani: finche' e'
   // acceso, l'elenco delle melodie diventa una lista di spunte
   const [scegliendo, setScegliendo] = useState(null);
@@ -56,6 +61,17 @@ export default function MusicRoom({ music, playerRef, notify }) {
   const [bozzaRac, setBozzaRac] = useState("");
 
   const { current, playing, timerEnd, sleepMin, queue, volume = 1, manca } = music;
+  // si rilegge quando cambia l'elenco o il brano: una melodia appena scesa
+  // da Drive perde la nuvoletta appena comincia a suonare
+  useEffect(() => {
+    let vivo = true;
+    listTrackIds()
+      .then((ids) => vivo && setQui(new Set(ids)))
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [favs, current?.trackId]);
   const volPerCento = Math.round(volume * 100);
 
   function playLink() {
@@ -731,6 +747,14 @@ export default function MusicRoom({ music, playerRef, notify }) {
                     <span style={{ flex: 1, fontSize: F.corpo, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {f.name}
                     </span>
+                    {isFile(f) && qui && !qui.has(f.trackId) && (
+                      <span
+                        title={f.drive ? "Su Google Drive: si scarica quando la suoni" : "Non è su questo dispositivo"}
+                        style={{ fontSize: F.corpo, color: C.muted, flexShrink: 0 }}
+                      >
+                        {f.drive ? "☁" : "⚠"}
+                      </span>
+                    )}
                   </button>
                   <button onClick={() => startRename(f)} aria-label={`Rinomina ${f.name}`} style={{ color: C.muted, padding: 4, fontSize: F.corpo }}>
                     ✎
