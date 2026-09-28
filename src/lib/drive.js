@@ -192,7 +192,9 @@ export const elencaFile = () =>
     "id,name,size,sha256Checksum,appProperties,parents"
   ).then((l) => l.filter((f) => estensioneDi(f.name)));
 
-export const elencaCartelle = () => elencaTutto(`trashed=false and mimeType='${CARTELLA}'`, "id,name");
+// col genitore: e' quel che permette di risalire da una cartella alla radice
+// («book-companion»), e di scrivere un percorso invece di un nome solo
+export const elencaCartelle = () => elencaTutto(`trashed=false and mimeType='${CARTELLA}'`, "id,name,parents");
 
 async function creaCartella(nome) {
   const r = await chiama(`${API}/files?fields=id,name`, {
