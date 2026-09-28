@@ -1,9 +1,9 @@
-// IL SEGUITO CHE SCENDE DA SE', nella stanza delle impostazioni
+// I LIBRI IN LETTURA E IL SEGUITO CHE SCENDONO DA SE', nella stanza delle impostazioni
 // (`lib/anticipo.js`). Sta sul dispositivo come il volume della musica: dice
 // che rete ha QUESTO tablet, non come leggi tu.
 import { useState } from "react";
 import { C, F, R } from "../data/constants.js";
-import { SCELTE_ANTICIPO, leggiAnticipo, scriviAnticipo, fraseAnticipo, ANTICIPO_DA } from "../lib/anticipo.js";
+import { SCELTE_ANTICIPO, leggiAnticipo, scriviAnticipo, fraseAnticipo, ANTICIPO_DA, IN_LETTURA_MAX } from "../lib/anticipo.js";
 
 export default function SezioneAnticipo() {
   const [scelta, setScelta] = useState(leggiAnticipo);
@@ -14,8 +14,10 @@ export default function SezioneAnticipo() {
   return (
     <>
       <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 10, lineHeight: 1.45 }}>
-        Quando sei a {Math.round(ANTICIPO_DA * 100)}% di un volume, il prossimo della saga scende da
-        Google Drive o dal cloud, così lo apri anche senza rete. Un ebook che hai tolto non scende.
+        I libri che stai leggendo (gli ultimi {IN_LETTURA_MAX} toccati) restano sul tablet, e quando sei a{" "}
+        {Math.round(ANTICIPO_DA * 100)}% di un volume scende anche il prossimo della saga: così li apri senza
+        rete. Scendono da Google Drive o dal cloud; un ebook che hai tolto non scende, e quelli finiti li
+        toglie «Libera spazio».
       </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {SCELTE_ANTICIPO.map((s) => {

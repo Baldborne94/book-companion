@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { useViewport } from "../lib/viewport.js";
-import { getFinished, getLastOpened, getProgress, getStarted, getStatus, getUpdatedAt, letturaUnica } from "../lib/library.js";
+import { getFinished, getLastOpened, getProgress, getStarted, getStatus, getUpdatedAt, letturaUnica, appenaArrivati, quandoArrivato } from "../lib/library.js";
 import { getHighlights } from "../lib/annotations.js";
 import { buildDiary, rigaDiario } from "../lib/diary.js";
 import { leggiObiettivi, obiettivoDi, passoObiettivo } from "../lib/obiettivo.js";
@@ -279,6 +279,14 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
     });
   }
 
+  // GLI APPENA ARRIVATI (vedi `appenaArrivati`): un libro importato ieri da
+  // Drive si ritrovava solo cercandolo in Libreria. Chi sta gia' in vista
+  // sopra non si ripete; il tocco apre la scheda, come per un seguito.
+  const arrivati = appenaArrivati(books, {
+    statusOf: statoDi,
+    escludi: new Set([...(last ? [last.id] : []), ...visti]),
+  });
+
   // I PREFERITI IN UNA FILA, e tutti a richiesta: la griglia intera cresceva
   // col tempo e spingeva in fondo il resto della pagina
   const favInVista = tuttiFav ? favorites : favorites.slice(0, FAV_FILA);
@@ -429,6 +437,24 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
             </ul>
           )}
         </div>
+      )}
+
+      {arrivati.length > 0 && (
+        <>
+          <SectionTitle>Appena arrivati</SectionTitle>
+          <div style={fila(wide)}>
+            {arrivati.map((b) => (
+              <LibroInFila
+                key={b.id}
+                book={b}
+                nota={quandoArrivato(b.addedAt)}
+                disegnato={dorsi[b.id]}
+                onDisegnata={(v) => segnaDorso(b.id, v)}
+                onClick={() => onOpenBook(b.id)}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       {/* LE STANZE SONO NAVIGAZIONE, NON CONTENUTO: quattro pulsanti larghi

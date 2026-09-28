@@ -1,5 +1,5 @@
 // LA SCHEDA PERSONAGGIO: le regole di «Chi è costui?» che decidono QUALI
-// passaggi arrivano al modello. Erano le regole più raccontate di CLAUDE.md
+// passaggi arrivano al modello. Erano le regole più raccontate di docs/STORIA.md
 // e le meno difese: una quota sbagliata non dà un errore, dà una scheda che
 // salta un volume, e nessuno se ne accorge finché non manca proprio
 // l'incontro che il lettore non ricordava.

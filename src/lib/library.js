@@ -464,3 +464,38 @@ export function letturaUnica(leggi) {
     return v;
   };
 }
+
+// GLI APPENA ARRIVATI, per la fila dell'Ingresso. Adesso che i libri entrano
+// da Drive a gruppi, un libro appena importato si ritrovava solo cercandolo
+// in Libreria. Entro `ARRIVATI_GIORNI`, dal piu' nuovo, al massimo
+// `ARRIVATI_MAX`; chi e' gia' in vista altrove sull'Ingresso (`escludi`) non
+// si ripete, e un libro chiuso — letto o lasciato — non e' una novita' da
+// guardare, e' un libro gia' vissuto.
+export const ARRIVATI_GIORNI = 14;
+export const ARRIVATI_MAX = 12;
+const GIORNO = 24 * 60 * 60 * 1000;
+
+export function appenaArrivati(books, { ora = Date.now(), statusOf = getStatus, escludi = new Set(), giorni = ARRIVATI_GIORNI, max = ARRIVATI_MAX } = {}) {
+  const da = ora - giorni * GIORNO;
+  return (books || [])
+    .filter((b) => b?.id && Number(b.addedAt) > da && Number(b.addedAt) <= ora && !escludi.has(b.id))
+    .filter((b) => {
+      const s = statusOf(b.id);
+      return s !== "read" && s !== "abandoned";
+    })
+    .sort((a, b) => Number(b.addedAt) - Number(a.addedAt))
+    .slice(0, max);
+}
+
+// «oggi», «ieri», «3 giorni fa»: sui giorni del CALENDARIO, non sulle ore,
+// o un libro entrato ieri sera sarebbe «oggi» fino a stasera
+export function quandoArrivato(ms, ora = Date.now()) {
+  const giornoDi = (t) => {
+    const d = new Date(t);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12).getTime();
+  };
+  const n = Math.round((giornoDi(ora) - giornoDi(ms)) / GIORNO);
+  if (n <= 0) return "arrivato oggi";
+  if (n === 1) return "arrivato ieri";
+  return `arrivato ${n} giorni fa`;
+}
