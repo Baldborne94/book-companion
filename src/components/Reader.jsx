@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
 import { getAux, putAux, getFile } from "../lib/bookStore.js";
-import { ensureLocalFile } from "../lib/sync.js";
+import { fileDaLeggere } from "../lib/sync.js";
 import {
   getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights,
 } from "../lib/annotations.js";
@@ -27,7 +27,7 @@ import { sillaba } from "../lib/hyphens.js";
 import { eNotaRef, risolviHref, trovaNota, pezziNota, piuVicina } from "../lib/nota.js";
 import { immagineDaIngrandire, sceltaDelTocco } from "../lib/tavola.js";
 import Tavola from "./Tavola.jsx";
-import { controllaSpezzatura, saluteInCache, daRicucire, ricuciLibro, conSegni, taci } from "../lib/ricuci.js";
+import { controllaSpezzatura, saluteInCache, daRicucire, ricuciLibro, ricuciInMemoria, conSegni, taci } from "../lib/ricuci.js";
 import { leftoverScroll, dentroIlCapitolo } from "../lib/spread.js";
 import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
@@ -268,6 +268,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // una bugia, e per giunta ti farebbe cercare un guasto che non c'e'
   const [daSegnalibro, setDaSegnalibro] = useState(false);
   const [giro, setGiro] = useState(0);
+  // il ricucito in memoria del libro lontano, per il giro che lo riapre
+  const byteRef = useRef(null);
   const saltaPct = useRef(null);
 
   const anchor = useRef(null);
@@ -953,8 +955,22 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     let dead = false;
     (async () => {
       try {
-        const blob = await ensureLocalFile(book);
+        // IL LIBRO CHE STA SU DRIVE E QUI NON C'E' arriva in memoria
+        // (`lontano`) e non si scrive: e' la situazione pulita chiesta dal
+        // lettore. Un ricucito in memoria fatto un attimo fa (`byteRef`)
+        // vale piu' di un altro giro di rete.
+        let blob = byteRef.current || (await fileDaLeggere(book));
+        byteRef.current = null;
         if (!blob) throw new Error("file mancante");
+        // e se il verdetto e' gia' scritto e dice «spezzato», sul libro
+        // lontano si ricuce PRIMA di rendere: non c'e' un disco che tenga
+        // la cura, quindi la si rifa' a ogni apertura — in memoria, in un
+        // attimo — e senza questa riga la pagina comparirebbe spezzata e
+        // si riassesterebbe un secondo dopo, a ogni apertura
+        if (blob.lontano) {
+          const salute = await saluteInCache(book.id, blob.size);
+          if (salute && daRicucire(salute)) blob = (await ricuciInMemoria(book.id, blob))?.blob || blob;
+        }
         const { default: ePub } = await import("epubjs");
         const eb = ePub(await blob.arrayBuffer());
         epubRef.current = eb;
@@ -1057,12 +1073,16 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               salute = await controllaSpezzatura(book.id, ebScan, blob.size);
             }
             if (dead || !salute || !daRicucire(salute)) return;
-            if (conSegni(book.id)) {
+            // sul libro lontano non c'e' un «piu' tardi»: la ricucitura in
+            // memoria e' deterministica, quindi i segni presi su un giro
+            // valgono sul prossimo, e si ricuce anche con dei segni
+            if (!blob.lontano && conSegni(book.id)) {
               if (!salute.taciuto) setCucitura("offri");
               return;
             }
-            const r = await ricuciLibro(book.id, blob);
+            const r = blob.lontano ? await ricuciInMemoria(book.id, blob) : await ricuciLibro(book.id, blob);
             if (!r?.blob || dead) return;
+            if (blob.lontano) byteRef.current = r.blob;
             notify?.("Questo libro era spezzato: l'ho ricucito 🪡");
             saltaPct.current = live.current.progress || 0;
             setStatusUi("loading");

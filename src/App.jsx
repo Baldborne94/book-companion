@@ -48,9 +48,9 @@ import { daAvvisare } from "./lib/oracle.js";
 import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
-import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile } from "./lib/sync.js";
+import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare } from "./lib/anticipo.js";
-import { driveAcceso, mappaDrive, collegaDrive, smarcaSuDrive } from "./lib/drive.js";
+import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive } from "./lib/drive.js";
 import { spiegaSync } from "./lib/syncCore.js";
 import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
@@ -1105,6 +1105,29 @@ export default function App() {
     runSync.current(true);
   }
 
+  // TENERE UN LIBRO SUL TABLET, a richiesta: e' l'unica strada per cui una
+  // lettura da Drive diventa una copia qui. Si arriva da un tocco, quindi
+  // la chiave di Google si puo' chiedere.
+  async function handleTieniQui(id) {
+    const b = books.find((x) => x.id === id);
+    if (!b) return false;
+    try {
+      if (driveAcceso() && mappaDrive()[id] && !driveProntoOra()) await collegaDrive();
+      const f = await ensureLocalFile(b);
+      if (!f) {
+        notify("Non ho trovato il file né su Google Drive né nel cloud");
+        return false;
+      }
+      setLocalIds(await localFileIds());
+      setSpazioCambiato((n) => n + 1);
+      notify(`«${b.title}» è sul tablet: lo leggi anche senza rete 📥`);
+      return true;
+    } catch (e) {
+      notify(e?.name === "DriveScollegato" ? "Google Drive aspetta un tocco: riprova." : e?.message || "Non sono riuscito a scaricarlo");
+      return false;
+    }
+  }
+
   function handleRead(id, startCfi = null) {
     const b = books.find((x) => x.id === id);
     if (!b) return;
@@ -1429,6 +1452,7 @@ export default function App() {
           onSaveMeta={handleSaveMeta}
           onDelete={handleDelete}
           onTogliEbook={handleTogliEbook}
+          onTieniQui={handleTieniQui}
           onRead={handleRead}
           notify={notify}
         />

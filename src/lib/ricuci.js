@@ -60,6 +60,26 @@ export async function taci(id) {
   }
 }
 
+// LA RICUCITURA IN MEMORIA, per il libro che sta su Drive e qui non c'e':
+// gli stessi pezzi uniti allo stesso modo, ma niente scritto su disco —
+// scriverlo farebbe del tablet la copia «diversa» da Drive che «Libera
+// spazio» deve poi spiegare. E' deterministica: lo stesso file da' lo
+// stesso ricucito a ogni apertura, quindi i CFI dei segni presi su una
+// lettura valgono sulla prossima. Le locations cachate si buttano lo
+// stesso: sono del file com'era.
+export async function ricuciInMemoria(id, blob) {
+  const { unisciPezzi } = await import("./unisciEpub.js");
+  const cucito = await unisciPezzi(blob);
+  if (!cucito?.blob || !cucito.cuciti) return null;
+  try {
+    await putAux(`loc_${id}`, null);
+  } catch {
+    /* la cache sbagliata cadra' al prossimo confronto di misura */
+  }
+  cucito.blob.lontano = true;
+  return { blob: cucito.blob, cuciti: cucito.cuciti };
+}
+
 // La ricucitura vera: riscrive i byte e butta le locations cachate — sono del libro vecchio, e
 // tenerle vorrebbe dire percentuali sballate per sempre.
 export async function ricuciLibro(id, blob) {

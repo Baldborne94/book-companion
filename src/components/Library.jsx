@@ -17,7 +17,7 @@ import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso,
 } from "../lib/syncCore.js";
 import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, DriveScollegato } from "../lib/drive.js";
-import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, pesoDaScendere } from "../lib/driveCore.js";
+import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere } from "../lib/driveCore.js";
 import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { senzaCopertina } from "../lib/copertina.js";
@@ -1407,10 +1407,10 @@ export default function Library({
       const e = daLiberare(books, { misureQui, mappa: mappaDrive(), lassu, stato: getStatus, toccato: (b) => getUpdatedAt(b.id, b.addedAt || 0) });
       if (!e.voci.length) {
         setLibera(null);
-        notify("Non c'è niente da togliere: i libri qui o li stai leggendo, o su Drive non hanno una copia identica");
+        notify("Non c'è niente da togliere: i libri qui li stai leggendo, o su Drive non hanno una copia");
         return;
       }
-      setLibera({ ...e, scelti: new Set(PERCHE_LIBERARE) });
+      setLibera({ ...e, scelti: new Set(LIBERARE_DI_PARTENZA) });
     } catch (err) {
       setLibera(null);
       notify(err instanceof DriveScollegato ? "Google Drive aspetta un tocco: riprova." : err?.message || "Google Drive non ha risposto");
@@ -2752,9 +2752,11 @@ const GRUPPI_LIBERA = {
   letto: "📖 I letti",
   lasciato: "⏸ I lasciati",
   fermo: "🕰 Fermi da tre mesi",
+  altri: "📚 Da leggere e in lettura",
+  diverso: "⚠ Diversi da quelli su Drive",
 };
 function SceltaLibera({ esito, onCambia, onChiudi, onVai }) {
-  const { voci, scelti, diversi } = esito;
+  const { voci, scelti } = esito;
   const peso = (l) => l.reduce((n, v) => n + v.byte, 0);
   const presi = voci.filter((v) => scelti.has(v.perche));
   return (
@@ -2789,8 +2791,9 @@ function SceltaLibera({ esito, onCambia, onChiudi, onVai }) {
       >
         <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>🧹 Libera spazio</h2>
         <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 14 }}>
-          Questi libri hanno su Google Drive una copia identica. Tolti da qui restano sullo scaffale con la nuvoletta,
-          con segnalibri, evidenziazioni e punto di lettura, e scendono da Drive quando li riapri — serve la rete.
+          Questi libri hanno una copia su Google Drive. Tolti da qui restano sullo scaffale con la nuvoletta,
+          con segnalibri, evidenziazioni e punto di lettura, e si leggono da Drive quando li riapri — serve la
+          rete. Per riaverne uno sul tablet c'è «Tieni sul tablet» nella sua scheda.
         </p>
         {PERCHE_LIBERARE.map((perche) => {
           const del = voci.filter((v) => v.perche === perche);
@@ -2824,16 +2827,22 @@ function SceltaLibera({ esito, onCambia, onChiudi, onVai }) {
                   {titoli}
                   {del.length > 4 ? ` e altri ${del.length - 4}` : ""}
                 </span>
+                {perche === "altri" && (
+                  <span style={{ display: "block", color: C.muted, fontSize: F.minuscolo, marginTop: 4, lineHeight: 1.4 }}>
+                    Non li hai finiti: si leggono da Drive lo stesso, ma senza rete non si aprono.
+                  </span>
+                )}
+                {perche === "diverso" && (
+                  <span style={{ display: "block", color: C.accent, fontSize: F.minuscolo, marginTop: 4, lineHeight: 1.4 }}>
+                    Su Drive c'è un file diverso da quello qui (di solito l'originale, mentre qui c'è la versione
+                    ricucita). Riaprendoli scende quello: evidenziazioni, segnalibri e punto di lettura possono finire
+                    su righe diverse.
+                  </span>
+                )}
               </span>
             </button>
           );
         })}
-        {diversi > 0 && (
-          <p style={{ color: C.muted, fontSize: F.minuscolo, marginTop: 6 }}>
-            {diversi === 1 ? "Un libro resta" : `${diversi} libri restano`}: su Drive c'è un file diverso da quello qui (di
-            solito l'originale, mentre qui c'è la versione ricucita), e riaprirli da lì sposterebbe i tuoi segni.
-          </p>
-        )}
         <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "flex-end" }}>
           <button
             onClick={onChiudi}
