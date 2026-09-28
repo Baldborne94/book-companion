@@ -545,6 +545,43 @@ export const idClientValido = (v) => /^\d+-[a-z0-9]+\.apps\.googleusercontent\.c
 export const PERCHE_ID_STORTO =
   "L'ID client non ha la forma giusta: sono numeri, un trattino, lettere e cifre, e finisce con .apps.googleusercontent.com. Copialo col tasto accanto all'ID su Google Cloud invece di riscriverlo a mano.";
 
+// IL SELETTORE DI GOOGLE (chiesto dal lettore: «non puoi mettermi
+// direttamente un collegamento al Drive, invece di scrivermi tutto tu, e da
+// li' mi fai fare l'import?»). Il Picker di Google e' la finestra di Drive
+// stessa, aperta dentro l'app: si sfoglia la cartella «book-companion» come
+// su Drive e si toccano i file che si vogliono. Vuole una CHIAVE API oltre
+// all'ID del client — un'altra voce da creare su Google Cloud, non un
+// segreto: sta scritta in chiaro nella pagina di ogni sito che usa il
+// selettore. Quel che il selettore restituisce sono documenti con id, nome
+// e misura; qui si tengono i soli file che sono un libro (il selettore non
+// sa filtrare per estensione: il tipo MIME di un CBZ caricato a mano e'
+// quel che il sistema del lettore gli ha dato) e si dicono per nome gli
+// altri, o un file toccato che non entra sparirebbe in silenzio.
+export const ripulisciChiaveApi = (v) => String(v || "").replace(/\s+/g, "");
+export const chiaveApiValida = (v) => /^AIza[0-9A-Za-z_-]{30,}$/.test(ripulisciChiaveApi(v));
+export const PERCHE_CHIAVE_STORTA =
+  "La chiave API non ha la forma giusta: comincia con «AIza» ed e' una riga sola di lettere, cifre, trattini e trattini bassi. Copiala col tasto accanto alla chiave su Google Cloud invece di riscriverla a mano.";
+
+export function vociDalPicker(docs) {
+  const voci = [];
+  const scartati = [];
+  const visti = new Set();
+  for (const d of docs || []) {
+    if (!d?.id || visti.has(d.id)) continue;
+    visti.add(d.id);
+    if (!EST.includes(estensioneDi(d.name))) {
+      scartati.push(String(d.name || d.id));
+      continue;
+    }
+    voci.push({ id: d.id, name: String(d.name || ""), size: Number(d.sizeBytes ?? d.size) || 0 });
+  }
+  return { voci, scartati };
+}
+
+// la cartella da cui il selettore parte: la radice se c'e', o niente (e
+// allora si apre su tutto il Drive)
+export const idRadice = (cartelle) => (cartelle || []).find((c) => nomeRadice(c?.name))?.id || null;
+
 // QUANTO PESA «PORTA QUI». Da quando i libri si aggiungono da Drive senza
 // scendere, un tomo lassu' e' lo stato normale e non un lavoro che aspetta:
 // il tasto serve a chi vuole leggerli senza rete, e chi lo tocca deve sapere

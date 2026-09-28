@@ -16,8 +16,8 @@ import { portaACasa, cloudUsage } from "../lib/sync.js";
 import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso,
 } from "../lib/syncCore.js";
-import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, DriveScollegato } from "../lib/drive.js";
-import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, cercaVoci, RADICE } from "../lib/driveCore.js";
+import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, DriveScollegato, scegliSuDrive, dettagliFile } from "../lib/drive.js";
+import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, cercaVoci, RADICE, vociDalPicker, idRadice } from "../lib/driveCore.js";
 import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { senzaCopertina } from "../lib/copertina.js";
@@ -547,6 +547,7 @@ export default function Library({
   // «Aggiungi da Drive»: l'elenco dei file lassu' che non sono ancora
   // libri, con le spunte, e il filo per fermare il giro a meta'
   const [daDrive, setDaDrive] = useState(null);
+  const [scegliendo, setScegliendo] = useState(false);
   const filoDrive = useRef(null);
   const [dragOver, setDragOver] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -1448,6 +1449,47 @@ export default function Library({
   async function aggiungiDaDrive() {
     const scelte = (daDrive?.voci || []).filter((v) => daDrive.scelti.has(v.id));
     setDaDrive(null);
+    await importaScelte(scelte);
+  }
+
+  // IL SELETTORE DI GOOGLE: la finestra di Drive stessa, aperta sulla
+  // cartella «book-companion», e i file toccati entrano come da «Da Google
+  // Drive». Quel che il selettore non sa — se il file e' gia' un libro, la
+  // sua impronta — si chiede a Drive dopo, file per file, e `daAggiungere`
+  // decide con le stesse regole della lista: un file gia' sullo scaffale
+  // si dice, non si raddoppia.
+  async function scegliDaDrive() {
+    if (importing || daDrive || scegliendo) return;
+    setScegliendo(true);
+    try {
+      if (!driveProntoOra()) await collegaDrive();
+      const cartelle = await elencaCartelle();
+      const docs = await scegliSuDrive({ cartellaId: idRadice(cartelle) });
+      if (!docs) return;
+      const { voci: toccati, scartati } = vociDalPicker(docs);
+      const note = [];
+      if (scartati.length) note.push(`${scartati.length === 1 ? "un file non è un libro" : `${scartati.length} file non sono libri`} (${scartati.slice(0, 3).join(", ")}${scartati.length > 3 ? "…" : ""})`);
+      if (!toccati.length) {
+        notify(note.length ? `Nessun libro fra i file scelti: ${note[0]}` : "Non hai scelto nessun file");
+        return;
+      }
+      const file = await dettagliFile(toccati.map((v) => v.id));
+      const voci = daAggiungere(books, file, { lapidi: Object.keys(getTombstones()), cartelle });
+      const gia = toccati.length - voci.length;
+      if (gia > 0) note.push(gia === 1 ? "uno era già sullo scaffale" : `${gia} erano già sullo scaffale`);
+      if (!voci.length) {
+        notify(`${toccati.length === 1 ? "Il file scelto è" : "I file scelti sono"} già sullo scaffale ✨${note.length > 1 ? ` · ${note[0]}` : ""}`);
+        return;
+      }
+      await importaScelte(voci, note);
+    } catch (e) {
+      notify(e instanceof DriveScollegato ? "Google Drive aspetta un tocco: riprova." : e?.message || "Google Drive non ha risposto");
+    } finally {
+      setScegliendo(false);
+    }
+  }
+
+  async function importaScelte(scelte, note = []) {
     if (!scelte.length || importing) return;
     setImporting(true);
     filoDrive.current = true;
@@ -1477,7 +1519,7 @@ export default function Library({
         : esito.fermato
           ? "fermato: il resto lo aggiungi riprovando"
           : "";
-      notify([resoconto(esito), coda].filter((x) => x && x !== "Nessun file importato").join(" · ") || "Nessun tomo aggiunto");
+      notify([resoconto(esito), ...note, coda].filter((x) => x && x !== "Nessun file importato").join(" · ") || "Nessun tomo aggiunto");
     } finally {
       filoDrive.current = null;
       setImporting(false);
@@ -1769,6 +1811,24 @@ export default function Library({
             }}
           >
             {daDrive?.cercando ? "Guardo su Drive…" : "☁ Da Google Drive"}
+          </button>
+        )}
+        {/* la finestra di Drive stessa, per chi sa gia' quali file vuole:
+            si sfoglia «book-companion» com'e' su Drive e si toccano i libri */}
+        {drive && !importing && (
+          <button
+            onClick={scegliDaDrive}
+            disabled={scegliendo || !!daDrive}
+            style={{
+              padding: "10px 18px",
+              minHeight: 44,
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.arcane}66`,
+              color: C.arcane,
+              fontSize: F.corpo,
+            }}
+          >
+            {scegliendo ? "Apro Drive…" : "📂 Scegli su Drive"}
           </button>
         )}
         {importing && filoDrive.current && (
