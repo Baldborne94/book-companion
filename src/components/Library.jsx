@@ -5,6 +5,7 @@ import { disponi, aEtichette, criterioVoto, criterioStato } from "../lib/ripiani
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { storageEstimate, spazioQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
 import { importFiles, resoconto } from "../lib/importBook.js";
+import { chiaveCollana } from "../lib/collana.js";
 import { preparaArchivio, segnaArchivio, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
 import PezziArchivio from "./PezziArchivio.jsx";
 import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
@@ -541,6 +542,7 @@ export default function Library({
     scriviVista(vista.current);
   };
   const [importing, setImporting] = useState(false);
+  const [giroImport, setGiroImport] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [restoring, setRestoring] = useState(false);
   // il richiamo dei tomi dal cloud: {i, totale, titolo} mentre scende, e
@@ -738,7 +740,7 @@ export default function Library({
   // riaprirebbe gli stessi tomi per ritrovare le stesse collane assenti.
   // Cambiano i byte — una ricucitura, un reimport — cambia la misura, e si
   // riguarda. Un tomo senza byte non entra mai: quando scendera' va guardato.
-  const ricordoCollana = (id) => `collana_${id}`;
+  const ricordoCollana = chiaveCollana;
   async function collanaVista(b) {
     const [ricordo, file] = await Promise.all([getAux(ricordoCollana(b.id)), getFile(b.id)]);
     return !!file && !!ricordo && ricordo.size === file.size;
@@ -1352,7 +1354,7 @@ export default function Library({
     try {
       // la libreria di adesso serve a riconoscere i doppioni: senza, lo
       // stesso file importato due volte fa due libri distinti
-      const esito = await importFiles(files, books);
+      const esito = await importFiles(files, books, { onProgress: setGiroImport });
       // I FILE TORNATI A CASA dentro una scheda che era rimasta senza byte.
       // La scheda non si tocca — titolo, saga, voto e note sono del lettore
       // — si scrive la sola impronta, e si timbra perché la riga risalga.
@@ -1385,6 +1387,7 @@ export default function Library({
       notify(resoconto(esito));
     } finally {
       setImporting(false);
+      setGiroImport(null);
       if (inputRef.current) inputRef.current.value = "";
     }
   }
@@ -1605,7 +1608,11 @@ export default function Library({
             boxShadow: importing ? "none" : `0 0 20px ${C.accent}2e`,
           }}
         >
-          {importing ? "Sto rilegando i tomi…" : "＋ Aggiungi libri"}
+          {importing
+            ? giroImport?.totale > 1
+              ? `Rilego ${giroImport.fatti + 1} di ${giroImport.totale}…`
+              : "Sto rilegando i tomi…"
+            : "＋ Aggiungi libri"}
         </button>
         <input
           value={query}

@@ -18,6 +18,8 @@
 // segnalibri, evidenziazioni e punto di lettura — di un libro gia' letto
 // non si ritroverebbero. Per questo si ricuce solo all'ingresso.
 
+import { apriZipInMemoria } from "./zipAFette.js";
+
 const XHTML = "application/xhtml+xml";
 
 // I QUATTRO CONTI SUI PERCORSI SI ESPORTANO PER ESSERE PROVATI, come
@@ -48,6 +50,79 @@ function leggi(testo, tipo = XHTML) {
   if (!doc.querySelector("parsererror")) return doc;
   if (tipo === "application/xml") return null;
   return new DOMParser().parseFromString(testo, "text/html");
+}
+// IL TESTO DI UN DOCUMENTO, SENZA COSTRUIRNE L'ALBERO. Per decidere se un
+// libro e' spezzato servono l'inizio e la fine del testo di OGNI capitolo,
+// e costruirli con DOMParser era il grosso dell'import: su un romanzo sano
+// da settanta capitoli, 1,5 dei 2,1 secondi col processore di un tablet
+// (segnalato: «quando importi i file dal tablet e' veramente lento»). Qui
+// si toglie il markup a stringa, e deve dire quello che direbbe
+// `body.textContent`: i commenti e i marcatori CDATA non sono testo, un
+// `>` dentro un attributo non chiude il tag, e le entita' si sciolgono —
+// «&rdquo;» in fondo a un capitolo e' una virgoletta chiusa, e letta come
+// «;» il capitolo sembrerebbe finire a meta' frase.
+const ENTITA = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\u00a0",
+  ldquo: "\u201c", rdquo: "\u201d", lsquo: "\u2018", rsquo: "\u2019",
+  laquo: "\u00ab", raquo: "\u00bb", hellip: "\u2026", mdash: "\u2014", ndash: "\u2013",
+};
+const sciogli = (s) =>
+  s.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (tutto, e) => {
+    if (e[0] === "#") {
+      const n = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      try {
+        return String.fromCodePoint(n);
+      } catch {
+        return tutto;
+      }
+    }
+    return ENTITA[e.toLowerCase()] ?? tutto;
+  });
+const APRE_CORPO = /<body\b(?:"[^"]*"|'[^']*'|[^'">])*>/i;
+const testoDi = (markup) =>
+  sciogli(
+    markup
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+      .replace(/<(?:"[^"]*"|'[^']*'|[^'">])*>/g, "")
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+function corpoDi(xml) {
+  const s = String(xml || "");
+  const apre = APRE_CORPO.exec(s.replace(/<!--[\s\S]*?-->/g, (c) => " ".repeat(c.length)));
+  if (!apre) return null;
+  const da = apre.index + apre[0].length;
+  const chiude = /<\/body\s*>/i.exec(s.slice(da));
+  return s.slice(da, chiude ? da + chiude.index : s.length);
+}
+export function testoDelCorpo(xml) {
+  const corpo = corpoDi(xml);
+  return corpo == null ? "" : testoDi(corpo);
+}
+
+// E DI UN CAPITOLO SERVONO SOLO I DUE CAPI. `tagliaAMetaFrase` guarda come
+// finisce un documento e come comincia il successivo, piu' una misura
+// minima: il mezzo non lo legge nessuno, e ripulirlo era ancora un terzo
+// del controllo. Oltre `CAPO` caratteri di markup per parte si tengono la
+// testa e la coda, e in mezzo tre puntini — che non sono ne' un inizio ne'
+// una fine. La coda puo' cominciare dentro un tag o un'entita' tagliati a
+// meta': quel residuo si butta, o finirebbe contato come testo.
+export const CAPO = 8000;
+export function capiDelCorpo(xml, capo = CAPO) {
+  const corpo = corpoDi(xml);
+  if (corpo == null) return "";
+  if (corpo.length <= capo * 2) return testoDi(corpo);
+  let coda = corpo.slice(-capo);
+  const segno = coda.search(/[<>]/);
+  if (segno >= 0 && coda[segno] === ">") coda = coda.slice(segno + 1);
+  coda = coda.replace(/^[^\s<&;]*;/, "");
+  const testa = testoDi(corpo.slice(0, capo));
+  const fine = testoDi(coda);
+  // un capo senza testo (una tavola grande in testa o in fondo) non dice
+  // come comincia o come finisce il capitolo: li' serve tutto
+  if (!testa || !fine) return testoDi(corpo);
+  return `${testa} … ${fine}`;
 }
 const scrivi = (doc) => new XMLSerializer().serializeToString(doc);
 const HTML_NS = "http://www.w3.org/1999/xhtml";
@@ -84,18 +159,42 @@ function bersagliIndice(navDoc, cartellaNav) {
   return fuori;
 }
 
+const utf8 = new TextDecoder("utf-8");
 export async function unisciPezzi(blob) {
-  const { default: JSZip } = await import("jszip");
   const { tagliaAMetaFrase } = await import("./visita.js");
-  const zip = await JSZip.loadAsync(blob);
+  // LA DIAGNOSI SI LEGGE A FETTE, LA CURA CON JSZIP. Quasi ogni libro
+  // importato e' sano, e per saperlo basta leggere i capitoli: lo fa
+  // `apriZipInMemoria` col decompressore del browser, che e' codice nativo, mentre
+  // JSZip scioglie in JavaScript — su un tablet era un altro terzo
+  // dell'import. JSZip si carica solo se c'e' davvero da ricucire, perche'
+  // e' lui che sa riscrivere l'archivio; e se lo zip non si lascia leggere
+  // a fette, si torna a lui per tutto.
+  const archivio = await apriZipInMemoria(blob).catch(() => null);
+  const presenti = archivio ? new Set(archivio.nomi) : null;
+  let JSZip = null;
+  let zip = null;
+  const conJSZip = async () => {
+    if (!zip) {
+      JSZip = (await import("jszip")).default;
+      zip = await JSZip.loadAsync(blob);
+    }
+    return zip;
+  };
+  if (!archivio) await conJSZip();
+  const esiste = (nome) => (presenti ? presenti.has(nome) : !!zip.file(nome));
+  const leggiTesto = async (nome) => {
+    if (!esiste(nome)) return null;
+    if (presenti) return utf8.decode(await archivio.leggi(nome));
+    return zip.file(nome).async("string");
+  };
 
-  const contenitore = await zip.file("META-INF/container.xml")?.async("string");
+  const contenitore = await leggiTesto("META-INF/container.xml");
   if (!contenitore) return null;
   const opfPath = leggi(contenitore, "application/xml")
     ?.querySelector("rootfile")?.getAttribute("full-path");
-  if (!opfPath || !zip.file(opfPath)) return null;
+  if (!opfPath || !esiste(opfPath)) return null;
   const opfDir = dir(opfPath);
-  const opf = leggi(await zip.file(opfPath).async("string"), "application/xml");
+  const opf = leggi(await leggiTesto(opfPath), "application/xml");
   if (!opf) return null;
 
   // manifesto e spina, con i percorsi veri dentro l'archivio
@@ -124,8 +223,8 @@ export async function unisciPezzi(blob) {
     navVoce = idNcx ? perId.get(idNcx) : [...perId.values()].find((v) => /dtbncx/.test(v.tipo));
   }
   let bersagli = new Set();
-  if (navVoce && zip.file(navVoce.path)) {
-    const testo = await zip.file(navVoce.path).async("string");
+  if (navVoce && esiste(navVoce.path)) {
+    const testo = await leggiTesto(navVoce.path);
     bersagli = bersagliIndice(leggi(testo), dir(navVoce.path));
   }
   if (!bersagli.size) return null;
@@ -139,15 +238,11 @@ export async function unisciPezzi(blob) {
   // continuazione della stessa frase, comunque la pensi l'indice; e le
   // voci d'indice sopravvivono, perche' il giro in fondo riscrive anche
   // loro, frammento compreso.
-  const testi = new Map();
-  for (const s of spina) {
-    try {
-      const d = zip.file(s.voce.path) ? leggi(await zip.file(s.voce.path).async("string")) : null;
-      testi.set(s.voce.path, (d?.querySelector("body")?.textContent || "").replace(/\s+/g, " ").trim());
-    } catch {
-      testi.set(s.voce.path, "");
-    }
-  }
+  const testi = new Map(
+    await Promise.all(
+      spina.map(async (s) => [s.voce.path, capiDelCorpo(await leggiTesto(s.voce.path).catch(() => ""))])
+    )
+  );
   // i gruppi: un documento che l'indice non apre — o che comincia a meta'
   // frase — e' la continuazione del precedente
   const gruppi = [];
@@ -163,6 +258,7 @@ export async function unisciPezzi(blob) {
   }
   const daCucire = gruppi.filter((g) => g.length > 1);
   if (!daCucire.length) return null;
+  await conJSZip();
 
   const rinominati = new Map(); // path#idVecchio -> idNuovo
   let cuciti = 0;
