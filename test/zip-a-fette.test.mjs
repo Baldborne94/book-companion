@@ -29,7 +29,7 @@ async function zipDi(voci, opzioni = {}) {
 // nella directory centrale e i numeri veri nel campo extra, poi il record
 // ZIP64 di chiusura, il suo localizzatore e la chiusura classica coi campi
 // pieni. JSZip non ne scrive, e quelli veri pesano quattro giga.
-function zip64(nome, dati) {
+export function zip64(nome, dati) {
   const n = testo(nome);
   const parti = [];
   let pos = 0;

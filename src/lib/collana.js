@@ -154,6 +154,10 @@ export function collana(opf) {
 // visti, una volta nella vita del file, e il resto e' gratis. Il tomo
 // rimasto lassu' NON si segna come visto: i byte non c'erano, e quando
 // scenderanno va guardato.
+// la memoria della passata («questo file l'ho gia' guardato»): una chiave
+// sola per chi la scrive — la Libreria e l'import — o le due si perdono
+export const chiaveCollana = (id) => `collana_${id}`;
+
 export async function ripassaCollane(
   libri = [],
   { leggiOpf, onProgress, vivo, giaVista, segnaVista } = {}

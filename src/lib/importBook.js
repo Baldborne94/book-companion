@@ -1,10 +1,10 @@
-import { putFile, getFile, putCover, getCover, removeBookData, removeAux, spazioEsaurito } from "./bookStore.js";
+import { putFile, getFile, putCover, getCover, removeBookData, removeAux, putAux, spazioEsaurito } from "./bookStore.js";
 import { getProgress } from "./library.js";
 import { getMarks, getHighlights } from "./annotations.js";
 import { riconosci, nomeInBiblioteca, chiaveSaga } from "./sagaBooks.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 import { dalMetadata } from "./sinossi.js";
-import { collana } from "./collana.js";
+import { collana, chiaveCollana } from "./collana.js";
 import { formatoDaByte, tipoImmagine, cbrApribile, PERCHE_CBR_GRANDE } from "./fumetto.js";
 
 // oltre questa taglia il libro non si ricuce: tenere in memoria due
@@ -296,7 +296,7 @@ async function traslocaSu(scheda, tempId) {
   return scheda;
 }
 
-export async function importFiles(fileList, libri = []) {
+export async function importFiles(fileList, libri = [], { onProgress } = {}) {
   const added = [];
   const errors = [];
   // i due modi di essere un doppione: saltati e segnalati
@@ -313,7 +313,11 @@ export async function importFiles(fileList, libri = []) {
   let riconosciuti = 0;
   let senzaMetadati = 0;
   let senzaCopertina = 0;
-  for (const file of Array.from(fileList)) {
+  const tutti = Array.from(fileList);
+  for (const [i, file] of tutti.entries()) {
+    // venti file sono minuti su un tablet, e un tasto fermo su «rilego»
+    // per minuti sembra un blocco: si dice a che punto si e'
+    onProgress?.({ fatti: i, totale: tutti.length, nome: file.name });
     const lower = file.name.toLowerCase();
     let fileType = lower.endsWith(".epub") ? "epub" : lower.endsWith(".pdf") ? "pdf" : null;
     // I FUMETTI SI RICONOSCONO DAI BYTE, non dal nome: moltissimi «.cbr» in
@@ -472,6 +476,14 @@ export async function importFiles(fileList, libri = []) {
       // successo prima» sono le Guardie, non tutti e quarantuno i romanzi.
       if (saga.ciclo && !meta.series) meta.series = saga.ciclo;
     }
+    // L'OPF l'abbiamo appena letto: se la collana non c'era, lo si scrive
+    // nella stessa memoria della passata automatica della Libreria — o,
+    // finito l'import, quella riaprirebbe da capo ogni libro appena
+    // entrato per scoprire quel che sappiamo gia' (lo stesso lavoro due
+    // volte, sul tablet, subito dopo un import che gia' si fa aspettare)
+    if (fileType === "epub" && letto?.opfLetto && !letto.collana && !meta.saga) {
+      await putAux(chiaveCollana(id), { size: daSalvare.size, muta: true }).catch(() => {});
+    }
     added.push(meta);
   }
   return { added, errors, saltati, sospetti, ritrovati, cuciti, riconosciuti, senzaMetadati, senzaCopertina };
@@ -592,6 +604,7 @@ async function enrichEpub(meta, file) {
           ? await book.archive.getText(`/${String(percorso).replace(/^\/+/, "")}`)
           : "";
       esito.collana = collana(opf);
+      esito.opfLetto = !!opf;
     } catch {
       /* un OPF che non si legge non è un import fallito: la saga si mette a mano */
     }
