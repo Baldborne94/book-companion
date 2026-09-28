@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, getTombstones, getUpdatedAt, scaffaleVuoto, TIPI, delTipo, tipiDi, tipiPresenti } from "../lib/library.js";
 import { disponi, aEtichette, criterioVoto, criterioStato } from "../lib/ripiani.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
+import { ascoltaCopertine } from "../lib/miniature.js";
 import { storageEstimate, spazioQui, misureFile, togliByteQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
-import { importFiles, importaDaDrive, resoconto } from "../lib/importBook.js";
+import { importFiles, importaDaDrive, resoconto, impronteDaFare } from "../lib/importBook.js";
 import { chiaveCollana } from "../lib/collana.js";
 import { preparaArchivio, segnaArchivio, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
 import PezziArchivio from "./PezziArchivio.jsx";
@@ -107,7 +108,7 @@ const SEGNI_DORSO = {
   perduto: { glifo: "⚠", titolo: "Né qui né nel cloud — reimporta il file", colore: () => C.accent },
 };
 
-function Shelf({ books, onOpenBook, localIds, idLassu, showOrder, coverV = 0 }) {
+function Shelf({ books, onOpenBook, localIds, idLassu, showOrder, coverV = 0, conCopertina = null }) {
   // Chi ha il dorso disegnato lo sa solo `BookCover`, che va a guardare in
   // IndexedDB se una copertina c'è: lo dice qui, e lo scaffale evita di
   // ristampare titolo e autore sotto una copertina che li porta già.
@@ -136,7 +137,10 @@ function Shelf({ books, onOpenBook, localIds, idLassu, showOrder, coverV = 0 }) 
         // giunta faceva venire le righe sfrangiate perché certe didascalie
         // andavano a capo e altre no. Con una copertina VERA invece la
         // didascalia è l'unico posto dove il titolo si legge, e resta.
-        const disegnato = dorsi[b.id];
+        // quel che la Libreria sa gia' in un colpo solo vince sull'avviso
+        // di ogni copertina: con 400 libri erano 400 avvisi, e ognuno
+        // ridisegnava lo scaffale intero
+        const disegnato = conCopertina ? !conCopertina.has(b.id) : dorsi[b.id];
         return (
           <button
             key={b.id}
@@ -148,7 +152,13 @@ function Shelf({ books, onOpenBook, localIds, idLassu, showOrder, coverV = 0 }) 
             }}
           >
             <div style={{ position: "relative", opacity: status === "abandoned" ? 0.55 : 1 }}>
-              <BookCover book={b} version={coverV} onDisegnata={(v) => segnaDorso(b.id, v)} numerato={showOrder && b.sagaOrder != null} />
+              <BookCover
+                book={b}
+                version={coverV}
+                haCopertina={conCopertina ? conCopertina.has(b.id) : undefined}
+                onDisegnata={conCopertina ? undefined : (v) => segnaDorso(b.id, v)}
+                numerato={showOrder && b.sagaOrder != null}
+              />
               {status === "reading" && pct > 0 && (
                 <span
                   style={{
@@ -372,7 +382,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   );
 }
 
-function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, coverV = 0, riconosciuti, onCammino }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, coverV = 0, conCopertina = null, riconosciuti, onCammino }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -439,11 +449,11 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, cov
                       <span>{p.nome ?? "Fuori dal percorso"}</span>
                       <span>{p.libri.length}</span>
                     </div>
-                    <Shelf books={p.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} showOrder />
+                    <Shelf books={p.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} conCopertina={conCopertina} showOrder />
                   </div>
                 ))
               ) : (
-                <Shelf books={c.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} showOrder />
+                <Shelf books={c.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} conCopertina={conCopertina} showOrder />
               )}
             </div>
           ))
@@ -453,6 +463,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, cov
             onOpenBook={onOpenBook}
             localIds={localIds} idLassu={idLassu}
             coverV={coverV}
+            conCopertina={conCopertina}
             // il numero del volume ha senso dentro la sua saga; fra i volumi
             // soli sarebbe un numero senza la storia che lo spiega
             showOrder={r.tipo === "saga"}
@@ -476,7 +487,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, cov
 
   return aEtichette(books, CRITERIO, sort).map((r) => (
     <Ripiano key={r.id || "_"} nome={r.nome} quanti={r.libri.length} spento={!!r.spento}>
-      <Shelf books={r.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} />
+      <Shelf books={r.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} conCopertina={conCopertina} />
     </Ripiano>
   ));
 }
@@ -636,6 +647,18 @@ export default function Library({
       .catch(() => setConCopertina(null));
     guardate().then(setCopGuardate);
   }, [books, spazioCambiato, giroSpazio]);
+  // una copertina messa o tolta altrove (la scheda del libro, la
+  // sincronizzazione) cambia chi ce l'ha: senza, lo scaffale
+  // disegnerebbe il dorso sopra un libro che la copertina l'ha appena avuta
+  useEffect(
+    () =>
+      ascoltaCopertine(() =>
+        listCoverIds()
+          .then((ids) => setConCopertina(new Set(ids)))
+          .catch(() => {})
+      ),
+    []
+  );
   useEffect(() => {
     if (!driveAcceso()) return setLiberabili(null);
     let vivo = true;
@@ -1095,7 +1118,7 @@ export default function Library({
   // di chi c'era prima della cura sui doppioni. Senza, rimettere dentro lo
   // stesso file non lo fa SALTARE: resta solo il sospetto per titolo e
   // autore, che si limita a dirtelo.
-  const senzaImpronta = books.filter((b) => !b.impronta);
+  const senzaImpronta = impronteDaFare(books, { qui: localIds, lassu: idSuDrive() });
 
   // I tomi col dorso disegnato. `conCopertina` è `null` finché l'elenco non
   // è arrivato, e lì NON si offre niente: un tasto «ritrova 115 copertine»
@@ -1146,9 +1169,23 @@ export default function Library({
     const mio = {};
     filoImpronte.current = mio;
     setImprontando({ i: 0, totale: senzaImpronta.length, titolo: senzaImpronta[0].title });
-    const { ripassaImpronte } = await import("../lib/importBook.js");
+    const { ripassaImpronte, improntaLassu } = await import("../lib/importBook.js");
+    // un tomo che sta su Drive l'impronta ce l'ha lassu': la chiave di
+    // Google si chiede qui, perche' si arriva da un tocco
+    const mappa = mappaDrive();
+    const serveDrive = senzaImpronta.some((b) => mappa?.[b.id]?.id && !localIds?.has?.(b.id));
+    if (serveDrive && !driveProntoOra()) {
+      try {
+        await collegaDrive();
+      } catch {
+        /* senza chiave quei tomi si contano fra i «non su questo dispositivo» */
+      }
+    }
     const esito = await ripassaImpronte(senzaImpronta, {
       leggiByte: (id) => getFile(id),
+      improntaLassu: driveProntoOra()
+        ? (b) => improntaLassu(mappa?.[b.id]?.id, { dettagli: dettagliFile, remoto: (id, misura) => fileRemoto(id, misura) })
+        : undefined,
       vivo: () => filoImpronte.current === mio,
       onProgress: (p) => filoImpronte.current === mio && setImprontando(p),
     });
@@ -1692,8 +1729,24 @@ export default function Library({
   const tipi = useMemo(() => tipiDi(books), [books]);
   const chipTipi = tipiPresenti(books, tipi);
 
+  // LA RICERCA NON ASPETTA LO SCAFFALE (chiesto dal lettore: «la ricerca
+  // e la visualizzazione delle copertine sono lente»). Misurato con 400
+  // libri e il processore rallentato quattro volte: ogni lettera teneva il
+  // campo fermo 220-300 ms, perche' ridisegnava lo scaffale intero prima di
+  // mostrare la lettera. Adesso lo scaffale filtra su `cercata`, che React
+  // aggiorna un attimo dopo e a bassa priorita', e il giro nato da una
+  // lettera appena scritta NON ridisegna lo scaffale (`giroScaffale`): quel
+  // giro ha ancora la ricerca di prima, quindi lo scaffale sarebbe identico.
+  // Ogni altro giro — un libro cambiato, un filtro, un lettore chiuso — lo
+  // ridisegna come sempre, o spunte e percentuali, che si leggono da fuori
+  // dell'elenco dei libri, resterebbero quelle di prima.
+  const cercata = useDeferredValue(query);
+  const giroScaffale = useRef({ q: query, n: 0 });
+  if (giroScaffale.current.q === query) giroScaffale.current.n += 1;
+  else giroScaffale.current.q = query;
+
   const visible = books
-    .filter((b) => combacia(b, query))
+    .filter((b) => combacia(b, cercata))
     .filter((b) => filter === "all" || getStatus(b.id) === filter)
     .filter((b) => delTipo(b, tipo, tipi))
     .sort((a, b) =>
@@ -1703,6 +1756,25 @@ export default function Library({
           ? (a.author || "~").localeCompare(b.author || "~", "it")
           : b.addedAt - a.addedAt
     );
+
+  const scaffale = useMemo(
+    () => (
+      <Grouped
+        books={visible}
+        tutti={books}
+        group={group}
+        sort={sort}
+        onOpenBook={onOpenBook}
+        localIds={localIds} idLassu={idLassu}
+        coverV={coverV}
+        conCopertina={conCopertina}
+        riconosciuti={riconosciuti}
+        onCammino={onCammino}
+      />
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [giroScaffale.current.n, cercata]
+  );
 
   return (
     <div
@@ -2040,12 +2112,12 @@ export default function Library({
           ].filter(Boolean);
           const vuoto = scaffaleVuoto({
             totale: books.length,
-            query,
+            query: cercata,
             filtro: leve.length ? (filter !== "all" ? filter : tipo) : "all",
             nomeFiltro: leve.join(" · "),
             // quanti risponderebbero alla SOLA ricerca: è il numero che
             // dice «la ricerca trova, è il filtro a nascondere»
-            conLaSolaRicerca: query ? books.filter((b) => combacia(b, query)).length : null,
+            conLaSolaRicerca: cercata ? books.filter((b) => combacia(b, cercata)).length : null,
           });
           return (
             <div style={{ textAlign: "center", padding: "32px 0" }}>
@@ -2079,17 +2151,7 @@ export default function Library({
           );
         })()
       ) : (
-        <Grouped
-          books={visible}
-          tutti={books}
-          group={group}
-          sort={sort}
-          onOpenBook={onOpenBook}
-          localIds={localIds} idLassu={idLassu}
-          coverV={coverV}
-          riconosciuti={riconosciuti}
-          onCammino={onCammino}
-        />
+        scaffale
       )}
 
       {(books.length > 0 || melodie > 0) && (

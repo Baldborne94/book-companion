@@ -543,7 +543,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                 }}
               >
                 <div style={{ position: "absolute", inset: 0, backfaceVisibility: "hidden" }}>
-                  <BookCover book={book} radius={10} version={coverV} />
+                  <BookCover book={book} radius={10} version={coverV} intera />
                 </div>
                 <div
                   style={{

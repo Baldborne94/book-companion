@@ -1,3 +1,4 @@
+import { copertinaCambiata, chiaveMin } from "./miniature.js";
 const DB_NAME = "bc_library";
 
 let dbPromise;
@@ -61,11 +62,16 @@ export const spazioEsaurito = (e) => e?.name === "QuotaExceededError" || /quota/
 
 export const putFile = (id, blob) => withStore("files", "readwrite", (s) => s.put(blob, id));
 export const getFile = (id) => withStore("files", "readonly", (s) => s.get(id));
-export const putCover = (id, blob) => withStore("covers", "readwrite", (s) => s.put(blob, id));
+// chi scrive o toglie una copertina fa dimenticare quella che lo scaffale
+// ricordava (`lib/miniature.js`): e' il solo punto da cui passano tutte —
+// la scheda, l'import, la sincronizzazione, «Ritrova le copertine»
+export const putCover = (id, blob) =>
+  withStore("covers", "readwrite", (s) => s.put(blob, id)).then((r) => (copertinaCambiata(id), r));
 export const getCover = (id) => withStore("covers", "readonly", (s) => s.get(id));
 // togliere la copertina scelta a mano non e' cancellare il libro: si torna
 // al dorso disegnato, che e' quello che c'era prima
-export const removeCover = (id) => withStore("covers", "readwrite", (s) => s.delete(id));
+export const removeCover = (id) =>
+  withStore("covers", "readwrite", (s) => s.delete(id)).then((r) => (copertinaCambiata(id), r));
 
 export const putTrack = (id, blob) => withStore("tracks", "readwrite", (s) => s.put(blob, id));
 export const getTrack = (id) => withStore("tracks", "readonly", (s) => s.get(id));
@@ -210,7 +216,10 @@ export const togliByteQui = (id) => withStore("files", "readwrite", (s) => s.del
 export async function removeBookData(id) {
   await withStore("files", "readwrite", (s) => s.delete(id));
   await withStore("covers", "readwrite", (s) => s.delete(id));
+  copertinaCambiata(id);
   await withStore("aux", "readwrite", (s) => s.delete(`loc_${id}`));
+  // la miniatura della copertina per lo scaffale
+  await withStore("aux", "readwrite", (s) => s.delete(chiaveMin(id)));
   // le schede dell'Oracolo di questo libro: senza, resterebbero in giro a
   // occupare spazio per un romanzo che non c'e' piu'
   await withStore("aux", "readwrite", (s) => s.delete(`schede_${id}`));
