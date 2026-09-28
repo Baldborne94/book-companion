@@ -129,7 +129,7 @@ export function collana(opf) {
 // rispondeva «erano gia' tutti a posto» dicendo il vero e lasciando
 // «Empire in Black and Gold» fra i volumi soli (segnalato: «continui a non
 // riconoscermi automaticamente le saghe»). Il limite era dichiarato in
-// `CLAUDE.md` e questa e' la passata che lo chiude.
+// `docs/STORIA.md` e questa e' la passata che lo chiude.
 //
 // Forma di ogni passata lunga: un tomo per volta, avanzamento col titolo,
 // fermabile a meta' con quel che e' fatto che resta fatto, e i tomi rimasti

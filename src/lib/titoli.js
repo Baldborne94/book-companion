@@ -14,7 +14,7 @@ import { pezziDalTitolo } from "./sagaDalTitolo.js";
 // che la saga di quei volumi e' finita sul ripiano giusto. Quel che qui si
 // tiene e' l'altra meta': cio' che RESTA tolta l'etichetta.
 //
-// **E NON SI RISCRIVE NIENTE IN SILENZIO.** In `CLAUDE.md` sta scritto che
+// **E NON SI RISCRIVE NIENTE IN SILENZIO.** In `docs/STORIA.md` sta scritto che
 // il titolo non si ripulisce, con una ragione che vale ancora: sbagliare
 // un titolo e' peggio che lasciarlo lungo, e il parser sbaglierebbe in
 // silenzio — un romanzo ribattezzato male non alza nessun errore, si

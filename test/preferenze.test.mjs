@@ -1,6 +1,6 @@
 // I DEFAULT DEL DISPOSITIVO STANNO SOTTO, MAI SOPRA.
 //
-// È la lezione 9 di `CLAUDE.md`, scritta a lettere chiare e difesa da
+// È la lezione 9 di `CLAUDE.md` (la storia in `docs/STORIA.md`), scritta a lettere chiare e difesa da
 // niente. In codice è una riga sola:
 //
 //     const fuse = { ...defaults, ...saved };

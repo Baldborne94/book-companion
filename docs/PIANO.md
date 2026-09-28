@@ -184,7 +184,7 @@ Su wh-companion l'embed Spotify dava problemi: il controllo `postMessage` dell'i
 - Branch `claude/*` → PR draft → **squash merge** su `main`; dopo lo squash, `git rebase origin/main` prima del push successivo.
 - Stili 100% inline JSX (le keyframes CSS globali in `index.css` sono l'unica eccezione). Nessuna libreria UI. Stato locale `useState`/`useEffect`.
 - UI in **italiano**. Niente commenti nel codice salvo WHY non ovvi.
-- Aggiorna `CLAUDE.md` del repo quando una fase introduce architettura nuova (il file tramanda le lezioni di §7 — se manca, crealo con quel contenuto).
+- Aggiorna `CLAUDE.md` (le regole vive, in breve) e `docs/STORIA.md` (il perché, un paragrafo per cambiamento) quando una fase introduce architettura nuova.
 
 ## 9. Come usare questo file
 
@@ -192,6 +192,6 @@ A ogni fase completata, spunta qui lo stato (✅) così le sessioni successive s
 
 Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ · F-sync ✅ · G1-glossario ✅ · G2-segni ✅ · G3-oracolo ✅ · H-guscio ✅ — milestone completa 🎉
 
-Dopo la milestone, sulla frontiera di lettura (`lib/frontiera.js`): «Chi è costui?» in tutti e due i reader e «Dove eravamo rimasti» (`lib/trama.js`), scheda condivisa in `components/SchedaOracolo.jsx` con dentro il campo per la chiave. Il dettaglio sta in `CLAUDE.md`.
+Dopo la milestone, sulla frontiera di lettura (`lib/frontiera.js`): «Chi è costui?» in tutti e due i reader e «Dove eravamo rimasti» (`lib/trama.js`), scheda condivisa in `components/SchedaOracolo.jsx` con dentro il campo per la chiave. Il dettaglio sta in `docs/STORIA.md`.
 
-I fumetti (CBZ e CBR, manga compresi): `lib/fumetto.js` e `components/ComicReader.jsx`. Il dettaglio sta in `CLAUDE.md`.
+I fumetti (CBZ e CBR, manga compresi): `lib/fumetto.js` e `components/ComicReader.jsx`. Il dettaglio sta in `docs/STORIA.md`.

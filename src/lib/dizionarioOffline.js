@@ -11,7 +11,7 @@
 // `scripts/dizionarioOffline.mjs`: 147.478 voci, locuzioni comprese, in
 // 3,35 MB compressi. Le definizioni sono in INGLESE, e non e' una rinuncia:
 // e' gia' la scelta dell'app — la glossa non si traduce a macchina, perche'
-// tradotta usciva storta (vedi la cura del dizionario in CLAUDE.md). Quel
+// tradotta usciva storta (vedi la cura del dizionario in docs/STORIA.md). Quel
 // che offline manca davvero e' la resa italiana della PAROLA, che arriva da
 // MyMemory ed e' rete per forza.
 //
