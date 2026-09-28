@@ -29,6 +29,9 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
   // o allo scadere del timer il volume salvato resterebbe a zero
   const volRef = useRef(volume);
   const dissRef = useRef(1);
+  // e la voce che legge il libro: la musica si fa da parte finché parla, e
+  // anche questo e' un fattore a se', mai il volume salvato
+  const sottoRef = useRef(1);
 
   useEffect(() => {
     onInfo({ current, playing, timerEnd, sleepMin, queue, volume, manca });
@@ -199,9 +202,14 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
   // Un solo posto da cui esce il volume vero, per tutt'e due le sorgenti:
   // il nostro <audio> lo vuole da 0 a 1, YouTube da 0 a 100.
   function applicaVolume() {
-    const v = Math.min(1, Math.max(0, volRef.current * dissRef.current));
+    const v = Math.min(1, Math.max(0, volRef.current * dissRef.current * sottoRef.current));
     if (audioRef.current) audioRef.current.volume = v;
     command("setVolume", [Math.round(v * 100)]);
+  }
+
+  function sottovoce(si) {
+    sottoRef.current = si ? 0.3 : 1;
+    applicaVolume();
   }
 
   function setVolume(v) {
@@ -431,7 +439,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
     } catch { /* si resta ai comandi in app */ }
   }, [current, playing]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useImperativeHandle(ref, () => ({ play, playQueue, pause, resume, stop, setSleep, setVolume, next }));
+  useImperativeHandle(ref, () => ({ play, playQueue, pause, resume, stop, setSleep, setVolume, sottovoce, next }));
 
   return (
     <>

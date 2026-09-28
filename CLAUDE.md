@@ -58,6 +58,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 - Il tocco ha tre canali (`pointerup`, `touchend`, `click`) con un solo guardiano (`ditoRef`); un tocco breve fa sempre qualcosa. C'è la linguetta come comando che non dipende da euristiche.
 - Il segno non si perde per un'apertura andata storta: `cfiLeggibile` prima di consegnarlo a epub.js, il flush non scrive finché il lettore non si sposta apposta, ripiego sull'ultimo segnalibro, e il ripiego si dice.
 - Ricucitura dei libri spezzati (`unisciEpub`, `ricuci.js`): all'import, e alla prima apertura se il libro non ha segni. Un libro letto da Drive si ricuce **in memoria** a ogni apertura (deterministico: i CFI restano validi).
+- Leggi ad alta voce (`lib/voce.js`): la pagina a schermo, **a frasi**, girata con la voltata di sempre; la frase che scavalca il bordo aspetta la pagina dopo. Solo a pagine. La musica si abbassa con un fattore suo (`sottovoce`), mai col volume salvato.
 - Note a piè di pagina lette sul posto (`lib/nota.js`), mappe ingrandibili (`lib/tavola.js`), glossario con annotazioni di epub.js (mai `<span>` nel testo: cambierebbero i CFI).
 
 ### PDF e fumetti

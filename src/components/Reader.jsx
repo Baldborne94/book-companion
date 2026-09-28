@@ -31,6 +31,7 @@ import { controllaSpezzatura, saluteInCache, daRicucire, ricuciLibro, ricuciInMe
 import { leftoverScroll, dentroIlCapitolo } from "../lib/spread.js";
 import { chiaveAvanzo, avanzoRicordato, ricordaAvanzo } from "../lib/avanzoRicordato.js";
 import { misuraBuona, misuraDaSalvare } from "../lib/misuraSalvata.js";
+import { pezziDaLeggere, scegliVoce, testoFra, leggiVelocita, scriviVelocita, prossimaVelocita } from "../lib/voce.js";
 import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
@@ -161,7 +162,7 @@ function Panel({ title, onClose, children }) {
   );
 }
 
-export default function Reader({ book, startCfi, nextBook, onReadNext, music, onMusicToggle, onMusicStop, onMusicVolume, onMusicNext, onMusicRoom, onAlive, onClose, notify, indietro }) {
+export default function Reader({ book, startCfi, nextBook, onReadNext, music, onMusicToggle, onMusicStop, onMusicVolume, onMusicNext, onMusicRoom, onMusicSottovoce, onAlive, onClose, notify, indietro }) {
   const viewerRef = useRef(null);
   const rootRef = useRef(null);
   const bookRef = useRef(null);
@@ -270,6 +271,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // una bugia, e per giunta ti farebbe cercare un guasto che non c'e'
   const [daSegnalibro, setDaSegnalibro] = useState(false);
   const [giro, setGiro] = useState(0);
+  // la voce che legge: null (zitta), "legge", "pausa"
+  const [voce, setVoce] = useState(null);
+  const [velocita, setVelocita] = useState(() => leggiVelocita());
+  const voceRef = useRef({ stato: null, frasi: [], i: 0, coda: "", gettone: 0, giro: null, quiete: null, pagina: null, frase: null });
+  const voceVista = useRef(null);
   // il ricucito in memoria del libro lontano, per il giro che lo riapre
   const byteRef = useRef(null);
   const saltaPct = useRef(null);
@@ -587,6 +593,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // una voltata e' la prova che qualcuno sta leggendo: e' da qui che
         // lo schermo si guadagna un altro quarto d'ora di veglia
         aliveRef.current?.();
+        voceVista.current?.();
         st.cfi = loc.start.cfi;
         st.href = loc.start.href;
         // l'ancora segue solo le pagine scelte dal lettore: quelle rese da un
@@ -1657,6 +1664,186 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   }
   turnRef.current = turn;
 
+  // ---- LEGGI AD ALTA VOCE (le decisioni stanno in lib/voce.js) ----------
+  //
+  // La voce legge la pagina a schermo e gira pagina da sé, con la stessa
+  // voltata del dito. Il gettone è il guardiano: ogni frase, ogni attesa
+  // sa di che giro è, e una fermata o una pagina girata a mano fanno
+  // cadere tutto quel che era in volo.
+  const sintesi = typeof window !== "undefined" && window.speechSynthesis && typeof window.SpeechSynthesisUtterance === "function" ? window.speechSynthesis : null;
+  const velRef = useRef(velocita);
+  velRef.current = velocita;
+  const sottoRef = useRef(onMusicSottovoce);
+  sottoRef.current = onMusicSottovoce;
+  // una pagina girata dalla voce deve arrivare entro questo; se no la voce
+  // tace e lo dice, invece di aspettare per sempre una pagina che non viene
+  const VOCE_GIRO_MAX = 6000;
+  // quanto la pagina nuova deve stare ferma prima di leggerla: al confine
+  // di capitolo `relocated` arriva più volte mentre la carta si assesta
+  const VOCE_QUIETE = 450;
+
+  function voceTaci(perche) {
+    const v = voceRef.current;
+    v.gettone += 1;
+    v.stato = null;
+    clearTimeout(v.giro);
+    clearTimeout(v.quiete);
+    v.giro = null;
+    v.frasi = [];
+    v.coda = "";
+    v.pagina = null;
+    sintesi?.cancel();
+    sottoRef.current?.(false);
+    setVoce(null);
+    if (perche) notify?.(perche);
+  }
+
+  function voceLeggiQui() {
+    const v = voceRef.current;
+    const r = rendRef.current;
+    if (!r || v.stato !== "legge") return;
+    let loc = null;
+    try {
+      loc = r.currentLocation?.() || r.location;
+    } catch {
+      loc = r.location;
+    }
+    if (!loc?.start?.cfi) return voceTaci("🔇 Non trovo il testo di questa pagina");
+    // la stessa pagina due volte di fila: la voltata non ha voltato niente
+    if (v.pagina === loc.start.cfi) return voceTaci();
+    v.pagina = loc.start.cfi;
+    let testo = "";
+    try {
+      const a = r.getRange(loc.start.cfi);
+      const b = loc.end?.cfi ? r.getRange(loc.end.cfi) : null;
+      const doc = a?.startContainer?.ownerDocument;
+      if (doc) {
+        const da = { container: a.startContainer, offset: a.startOffset };
+        const fine = b && b.endContainer.ownerDocument === doc
+          ? { container: b.endContainer, offset: b.endOffset }
+          : { container: doc.body, offset: doc.body.childNodes.length };
+        testo = testoFra(doc, da, fine);
+      }
+    } catch {
+      testo = "";
+    }
+    const { frasi, coda } = pezziDaLeggere(testo, v.coda);
+    v.frasi = loc.atEnd && coda ? [...frasi, coda] : frasi;
+    v.coda = loc.atEnd ? "" : coda;
+    v.i = 0;
+    v.fine = !!loc.atEnd;
+    voceParla();
+  }
+
+  function voceParla() {
+    const v = voceRef.current;
+    if (v.stato !== "legge") return;
+    if (v.i >= v.frasi.length) return voceAvanti();
+    const mio = v.gettone;
+    const u = new window.SpeechSynthesisUtterance(v.frasi[v.i]);
+    u.lang = langRef.current || "en";
+    const scelta = scegliVoce(sintesi.getVoices(), langRef.current);
+    if (scelta) u.voice = scelta;
+    u.rate = velRef.current;
+    u.onend = () => {
+      if (mio !== v.gettone) return;
+      v.i += 1;
+      voceParla();
+    };
+    u.onerror = (e) => {
+      if (mio !== v.gettone || e.error === "interrupted" || e.error === "canceled") return;
+      voceTaci(`🔇 La voce si è fermata (${e.error || "errore"})`);
+    };
+    // Chrome butta la frase se nessuno la tiene in mano, e allora `onend`
+    // non arriva mai: la voce resterebbe muta a metà pagina
+    v.frase = u;
+    sintesi.speak(u);
+  }
+
+  function voceAvanti() {
+    const v = voceRef.current;
+    if (v.fine) return voceTaci("📖 Fine del libro");
+    clearTimeout(v.giro);
+    v.giro = setTimeout(() => voceTaci("🔇 La pagina non gira: la voce si ferma"), VOCE_GIRO_MAX);
+    turnRef.current("next");
+  }
+
+  // Ogni `relocated` passa di qui. Se la pagina l'ha girata la voce, si
+  // legge quella nuova appena sta ferma; se l'ha girata il dito, la voce
+  // smette la frase e riparte da dove sei (la coda della pagina prima non
+  // c'entra più niente).
+  voceVista.current = () => {
+    const v = voceRef.current;
+    if (!v.stato) return;
+    if (v.giro) {
+      clearTimeout(v.giro);
+      v.giro = null;
+    } else {
+      v.gettone += 1;
+      sintesi?.cancel();
+      v.coda = "";
+      v.pagina = null;
+      v.frasi = [];
+      if (v.stato === "pausa") return;
+    }
+    clearTimeout(v.quiete);
+    v.quiete = setTimeout(voceLeggiQui, VOCE_QUIETE);
+  };
+
+  function voceComincia() {
+    if (!sintesi) return;
+    const v = voceRef.current;
+    sintesi.cancel();
+    v.gettone += 1;
+    v.stato = "legge";
+    setVoce("legge");
+    sottoRef.current?.(true);
+    // riprendere dopo la pausa: dalla frase in cui si era
+    if (v.frasi.length && v.i < v.frasi.length) return voceParla();
+    v.pagina = null;
+    voceLeggiQui();
+  }
+
+  function vocePausa() {
+    const v = voceRef.current;
+    v.gettone += 1;
+    v.stato = "pausa";
+    clearTimeout(v.quiete);
+    sintesi?.cancel();
+    sottoRef.current?.(false);
+    setVoce("pausa");
+  }
+
+  function voceVelocita() {
+    const n = prossimaVelocita(velocita);
+    setVelocita(n);
+    scriviVelocita(n);
+    velRef.current = n;
+    // la frase in corso riparte alla velocità nuova
+    const v = voceRef.current;
+    if (v.stato === "legge") {
+      v.gettone += 1;
+      sintesi.cancel();
+      voceParla();
+    }
+  }
+
+  useEffect(() => {
+    if (settings.flow === "scrolled" && voceRef.current.stato) voceTaci();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.flow]);
+
+  useEffect(() => () => {
+    const v = voceRef.current;
+    v.gettone += 1;
+    clearTimeout(v.giro);
+    clearTimeout(v.quiete);
+    if (v.stato) {
+      window.speechSynthesis?.cancel();
+      sottoRef.current?.(false);
+    }
+  }, []);
+
   function updateSettings(patch) {
     const next = { ...settings, ...patch };
     setSettings(next);
@@ -2556,6 +2743,52 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       {/* fuori dalla barra: la linguetta da sola, sul bordo dello schermo */}
       {status === "ready" && !chrome && linguetta()}
 
+      {/* I COMANDI DELLA VOCE restano a schermo anche a barre nascoste:
+          chi ascolta posa il tablet, e per fermarlo non deve cercare prima
+          la barra */}
+      {voce && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            bottom: chrome ? px(84) : px(16),
+            transform: "translateX(-50%)",
+            zIndex: 26,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            padding: 4,
+            borderRadius: R.tondo,
+            background: `${C.card}f2`,
+            border: `1px solid ${C.border}`,
+            boxShadow: "0 6px 24px #00000066",
+            animation: "bc-fade-in 0.2s ease-out",
+          }}
+        >
+          <button
+            onClick={() => (voce === "legge" ? vocePausa() : voceComincia())}
+            aria-label={voce === "legge" ? "Pausa" : "Riprendi a leggere"}
+            style={{ minWidth: 44, height: 44, borderRadius: R.tondo, color: C.accent, fontSize: F.rilievo }}
+          >
+            {voce === "legge" ? "⏸" : "▶"}
+          </button>
+          <button
+            onClick={voceVelocita}
+            aria-label={`Velocità ${velocita}×, tocca per cambiarla`}
+            style={{ minWidth: 52, height: 44, borderRadius: R.tondo, color: C.text, fontSize: F.nota }}
+          >
+            {String(velocita).replace(".", ",")}×
+          </button>
+          <button
+            onClick={() => voceTaci()}
+            aria-label="Smetti di leggere"
+            style={{ minWidth: 44, height: 44, borderRadius: R.tondo, color: C.muted, fontSize: F.rilievo }}
+          >
+            ■
+          </button>
+        </div>
+      )}
+
       {chrome && (
         <>
           <BarraDelLibro
@@ -2602,6 +2835,17 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                   glifo="🖍️"
                 />
                 <TastoBarra onClick={dovEravamo} conNome={nomiNeiTasti} nome="Dove eravamo" glifo="🧭" />
+                {/* il tasto c'e' solo dove la voce sa girare pagina: nello
+                    scorrimento continuo una «pagina» non esiste */}
+                {sintesi && paginated && (
+                  <TastoBarra
+                    onClick={() => (voce ? voceTaci() : voceComincia())}
+                    attivo={!!voce}
+                    conNome={nomiNeiTasti}
+                    nome={voce ? "Smetti" : "Ascolta"}
+                    glifo="🔊"
+                  />
+                )}
                 {serveTastoSchermo({ abilitato: document.fullscreenEnabled, giaTuttoSchermo: apertaATuttoSchermo() }) && (
                   <TastoBarra
                     onClick={toggleFullscreen}
