@@ -7,10 +7,10 @@
 //
 // Tre cose si decidono qui perche' sbagliano in silenzio:
 //
-// 1. LA RETE. Il browser del lettore e' Firefox, e Firefox NON DICE che rete
-//    usi (`navigator.connection` non c'e'). Quindi «solo in Wi‑Fi» li' non
-//    scatta mai, e la pagina lo dice invece di fingere; chi vuole lo stesso
-//    sceglie «Sempre». Dove il browser lo dice, il cellulare e il «risparmio
+// 1. LA RETE. Chrome Android (il browser del lettore, anche dentro l'APK)
+//    dice che rete usi (`navigator.connection.type`); un browser che non lo
+//    dice (Firefox) non fa mai scattare «solo in Wi‑Fi», e la pagina lo
+//    dice invece di fingere; chi vuole lo stesso sceglie «Sempre». Dove il browser lo dice, il cellulare e il «risparmio
 //    dati» chiesto dal sistema fermano tutto — anche su «Sempre»: il
 //    risparmio dati e' una scelta del lettore fatta altrove, e vale.
 // 2. IL VOLUME. E' `nextInSaga`, lo stesso «prossimo» che la scheda di fine
@@ -117,12 +117,43 @@ export function daRiprovare(tentato, adesso = Date.now()) {
 // che non scende.
 export function fraseAnticipo(scelta, connessione) {
   const s = sceltaAnticipo(scelta);
-  if (s === "mai") return "Il seguito scende solo quando lo apri.";
+  if (s === "mai") return "Niente scende da sé: un libro scende solo quando lo apri.";
   if (connessione?.saveData) return "Il risparmio dati del dispositivo è acceso: finché resta acceso non scende niente da sé.";
   const rete = comeRete(connessione);
   if (s === "wifi" && rete === "ignota")
     return "Questo browser non dice che rete stai usando, quindi così non scende niente da sé. Scegli «Sempre» se vuoi che scenda comunque.";
-  if (rete === "a consumo") return "Adesso sei su una rete a consumo: il seguito aspetta il Wi‑Fi.";
+  if (rete === "a consumo") return "Adesso sei su una rete a consumo: i libri aspettano il Wi‑Fi.";
   if (rete === "ignota") return "Scende su qualunque rete: questo browser non dice se sei sul cellulare.";
-  return "Sei in Wi‑Fi: il seguito scende quando ci arrivi.";
+  return "Sei in Wi‑Fi: i libri in lettura scendono al prossimo giro, il seguito quando ci arrivi.";
+}
+
+// I LIBRI CHE STAI LEGGENDO RESTANO SUL TABLET DA SOLI.
+//
+// Da quando i libri si leggono da Drive senza scriverli qui, senza rete non
+// si apre niente — salvo il seguito, che scende al 70%. Chi legge in treno
+// vuole in tasca i libri che ha IN MANO: quelli con lo stato «in lettura»,
+// cioe' quello che il lettore ha dichiarato e che la Libreria filtra con lo
+// stesso nome. Pochi (`IN_LETTURA_MAX`, i toccati piu' di recente) e mai
+// oltre `ANTICIPO_MAX`: un fumetto da un giga non si scarica di nascosto.
+// Un ebook tolto a mano non scende mai. Quando li finisci restano: li toglie
+// «Libera spazio», che i letti li propone gia'.
+export const IN_LETTURA_MAX = 5;
+
+// Quali libri portare giu' adesso, in ordine. Il tetto conta anche quelli
+// gia' qui: «cinque libri in tasca», non «cinque in piu' a ogni giro».
+export function daTenereInLettura(books, { statusOf, qui, lassu, tocco = () => 0, max = IN_LETTURA_MAX, tetto = ANTICIPO_MAX } = {}) {
+  const inLettura = (books || [])
+    .filter((b) => b?.id && statusOf?.(b.id) === "reading")
+    .sort((a, b) => (tocco(b.id) || 0) - (tocco(a.id) || 0))
+    .slice(0, max);
+  const out = [];
+  for (const b of inLettura) {
+    if (b.fileTolto) continue;
+    if (qui?.(b.id)) continue;
+    const dove = lassu?.(b.id);
+    if (!dove) continue;
+    if (Number(dove?.byte) > tetto) continue;
+    out.push(b);
+  }
+  return out;
 }

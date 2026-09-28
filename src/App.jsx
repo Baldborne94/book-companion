@@ -26,7 +26,7 @@ import SezioneAnticipo from "./components/SezioneAnticipo.jsx";
 import SezioneDizionario from "./components/SezioneDizionario.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
-import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook, getProgress } from "./lib/library.js";
+import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook, getProgress, getUpdatedAt } from "./lib/library.js";
 import { removeBookData, removeFileOnly, requestPersistence } from "./lib/bookStore.js";
 import { cercaNuovaVersione } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
@@ -41,7 +41,7 @@ import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile } from "./lib/sync.js";
-import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare } from "./lib/anticipo.js";
+import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
 import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive } from "./lib/drive.js";
 import { spiegaSync } from "./lib/syncCore.js";
 import { ebookRitrovati } from "./lib/driveCore.js";
@@ -722,7 +722,7 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
               marginBottom: 8,
             }}
           >
-            Il volume dopo
+            Senza rete
           </h3>
           <SezioneAnticipo />
         </div>
@@ -997,6 +997,7 @@ export default function App() {
       await sincronizzaSoloDrive().catch(() => {});
       setLocalIds(await localFileIds());
       ritrovaEbook();
+      tieniInLettura.current();
       return;
     }
     setSync((s) => ({ ...s, busy: true, message: quiet ? s.message : "Sincronizzo…" }));
@@ -1011,6 +1012,7 @@ export default function App() {
       if (res.books) setBooks(res.books);
       setLocalIds(await localFileIds());
       ritrovaEbook(res.books || null);
+      tieniInLettura.current(res.books || null);
       const moved = (res.pulled || 0) + (res.pushed || 0) + (res.removed || 0);
       setSync({
         busy: false,
@@ -1313,6 +1315,49 @@ export default function App() {
       notify(`📥 «${libro.title}» è sceso: lo leggi anche senza rete`);
       localFileIds().then(setLocalIds);
     });
+  };
+
+  // I LIBRI IN LETTURA RESTANO SUL TABLET (`daTenereInLettura`): a ogni giro
+  // della sincronizzazione, con la stessa scelta di rete del seguito. Uno
+  // per volta, con la stessa mappa dei tentativi: un libro andato storto si
+  // riprova piu' tardi, uno sceso non si richiede. Si legge la biblioteca di
+  // ADESSO, non lo stato di React, che dentro il giro e' quello di prima.
+  const tieniInLettura = useRef(async () => {});
+  tieniInLettura.current = async (libri = null) => {
+    if (tieniInLettura.inCorso) return;
+    if (!reteBuona(leggiAnticipo(), globalThis.navigator?.connection)) return;
+    const qui = await localFileIds().catch(() => null);
+    if (!qui) return;
+    const suDrive = driveAcceso() ? mappaDrive() : {};
+    const scelti = daTenereInLettura(libri || loadBooks(), {
+      statusOf: getStatus,
+      tocco: (id) => getUpdatedAt(id, 0),
+      qui: (id) => qui.has(id),
+      lassu: (id) => suDrive[id] || isSyncConfigured(),
+    }).filter((b) => daRiprovare(tentativi.current.get(b.id)));
+    if (!scelti.length) return;
+    tieniInLettura.inCorso = true;
+    const scesi = [];
+    try {
+      for (const libro of scelti) {
+        tentativi.current.set(libro.id, { ora: Date.now() });
+        const esito = await anticipaFile(libro);
+        tentativi.current.set(libro.id, { ora: Date.now(), esito });
+        if (esito === "sceso") scesi.push(libro);
+        // la chiave di Google scaduta vale per tutti: gli altri al giro dopo
+        if (esito === "chiave") break;
+      }
+    } finally {
+      tieniInLettura.inCorso = false;
+    }
+    if (!scesi.length) return;
+    setLocalIds(await localFileIds());
+    setSpazioCambiato((n) => n + 1);
+    notify(
+      scesi.length === 1
+        ? `📥 «${scesi[0].title}», che stai leggendo, è sul tablet: lo apri anche senza rete`
+        : `📥 ${scesi.length} libri che stai leggendo sono sul tablet: li apri anche senza rete`
+    );
   };
 
   useEffect(() => {

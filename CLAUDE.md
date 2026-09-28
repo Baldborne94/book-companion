@@ -84,11 +84,11 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 - Decisioni pure in `syncCore.js`/`driveCore.js`, rete iniettata: si provano in Node. **Si decide sullo STATO**, mai su un registro o su un passaggio che capita una volta sola; un intoppo su un elemento è di quell'elemento (nessun `throw` nei cicli per-elemento).
 - Last-write-wins per riga (`bc_upd_<id>`), ma segnalibri ed evidenziazioni sono **insiemi** fusi per id con lapidi. Il timbro lo mette chi salva, non chi riceve.
 - Scala di rinuncia `DEGRADE` per gli schemi non migrati; gli errori di Postgres si traducono (`spiegaSync`) e il grezzo si ripiega.
-- Drive: si riconosce prima di mandare (`abbina`: segno, impronta, misura, nome; nel dubbio non si abbina). La chiave dura un'ora e si rinnova solo da un tocco. I libri si leggono **da Drive** senza scriverli sul tablet (`prendiFile`); resta sul tablet solo ciò che il lettore chiede («Tieni sul tablet», anticipo del seguito).
+- Drive: si riconosce prima di mandare (`abbina`: segno, impronta, misura, nome; nel dubbio non si abbina). La chiave dura un'ora e si rinnova solo da un tocco. I libri si leggono **da Drive** senza scriverli sul tablet (`prendiFile`); restano sul tablet solo quel che il lettore chiede («Tieni sul tablet»), i libri «in lettura» (`daTenereInLettura`, cinque al massimo) e il seguito della saga al 70%, con la scelta di rete di `bc_anticipo`.
 
 ### Ingresso e Libreria
 
-- Ingresso su una colonna: libro in mano, riga di oggi, cosa leggere dopo, stanze 2×2, preferiti (cuore, `fav`). Una sezione che si chiama come un filtro contiene ciò che contiene il filtro.
+- Ingresso su una colonna: libro in mano, riga di oggi, cosa leggere dopo, appena arrivati (`appenaArrivati`: 14 giorni, niente libri chiusi, niente doppioni sopra), stanze 2×2, preferiti (cuore, `fav`). Una sezione che si chiama come un filtro contiene ciò che contiene il filtro.
 - Scaffale a ripiani (`disponi` in `ripiani.js`): saga o autore, cicli e capitoli come sotto-ripiani, ripiani lontani non costruiti (`useVicino`), miniature e non copertine intere.
 - Un tasto non promette ciò che non può dare; gli zeri non si dicono; un avviso sta accanto al tasto che lo risolve.
 
