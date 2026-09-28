@@ -157,7 +157,12 @@ export function daAggiungere(libri, file, { lapidi = [], cartelle = [] } = {}) {
 // evidenziazioni e punto di lettura sono CFI misurati su QUESTI byte, e un
 // file diverso — tipicamente l'originale caricato a mano, mentre qui c'e'
 // la versione ricucita — li riaprirebbe su righe che non avevi scelto.
-// Quelli si contano a parte (`diversi`) e restano.
+// Quelli si contano a parte (`diversi`) e NON partono spuntati: stanno in
+// un gruppo loro («diverso», col `motivo` accanto), e chi li sceglie lo fa
+// davanti all'avviso. Erano semplicemente esclusi, e il lettore li ha visti
+// restare fra i letti senza una strada per toglierli («diversi libri letti
+// li ha tolti, su diversi no»): su un libro FINITO il segno che si sposta
+// costa poco, e la scelta e' sua.
 //
 // Chi si propone, e perche': i LETTI, i LASCIATI, e i FERMI — nessun tocco
 // da `FERMO_DA` (tre mesi), qualunque sia lo stato. `toccato` riceve il
@@ -171,7 +176,9 @@ export function daAggiungere(libri, file, { lapidi = [], cartelle = [] } = {}) {
 // a mano da Drive nel frattempo lascerebbe il libro perduto. Senza `lassu`
 // si risponde con la sola mappa, che va bene per contare, non per togliere.
 export const FERMO_DA = 90 * 86_400_000;
-export const PERCHE_LIBERARE = ["letto", "lasciato", "fermo"];
+export const PERCHE_LIBERARE = ["letto", "lasciato", "fermo", "diverso"];
+// quelli che partono spuntati: il gruppo dei diversi si sceglie a mano
+export const LIBERARE_DI_PARTENZA = ["letto", "lasciato", "fermo"];
 export function daLiberare(libri, { misureQui, mappa, lassu = null, stato = () => "", toccato = () => 0, adesso = Date.now(), fermoDa = FERMO_DA } = {}) {
   const voci = [];
   let diversi = 0;
@@ -187,6 +194,7 @@ export function daLiberare(libri, { misureQui, mappa, lassu = null, stato = () =
     if (!perche) continue;
     if (Number(su) !== qui) {
       diversi += 1;
+      voci.push({ id: b.id, title: b.title || "", byte: qui, perche: "diverso", motivo: perche });
       continue;
     }
     voci.push({ id: b.id, title: b.title || "", byte: qui, perche });

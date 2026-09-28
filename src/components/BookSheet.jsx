@@ -447,11 +447,35 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   // in biblioteca, e un titolo appena corretto e non ancora salvato
   // finirebbe sotto quella riscrittura
   const suDrive = driveAcceso() && !!mappaDrive()[book.id];
+  // QUANTO PESA IL FILE QUI, se c'e': serve al tasto «Togli dal tablet».
+  // Senza file qui, su un libro che sta su Drive, quel tasto non avrebbe
+  // niente da togliere e direbbe «tolto» lo stesso. E se la copia su Drive
+  // ha un'altra misura — l'originale, mentre qui c'e' la versione ricucita
+  // — riaprendo scende quella, e i segni possono spostarsi: «Libera spazio»
+  // lo dice, e lo stesso deve dirlo il tasto a mano. `undefined` = non
+  // ancora guardato, `0` = qui non c'e'.
+  const [pesoQui, setPesoQui] = useState(undefined);
+  useEffect(() => {
+    let vivo = true;
+    getFile(book.id)
+      .then((f) => vivo && setPesoQui(f?.size || 0))
+      .catch(() => vivo && setPesoQui(0));
+    return () => {
+      vivo = false;
+    };
+  }, [book.id]);
+  const diversoDaDrive = suDrive && pesoQui > 0 && Number(mappaDrive()[book.id]?.byte) > 0 && Number(mappaDrive()[book.id].byte) !== pesoQui;
 
   function togliEbook() {
     setConfermaEbook(false);
     onSaveMeta(metaEditata());
-    onTogliEbook(book.id);
+    // E LA SCHEDA LO DEVE VEDERE: resta aperta, e col tasto di prima ancora
+    // li' sembrava che il gesto non fosse successo («non me l'ha eseguito»)
+    // mentre il file se n'era andato davvero. Si riguarda a lavoro finito.
+    Promise.resolve(onTogliEbook(book.id))
+      .then(() => getFile(book.id))
+      .then((f) => setPesoQui(f?.size || 0))
+      .catch(() => {});
   }
 
   return (
@@ -1023,14 +1047,21 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
               se ne va e cosa resta, che è l'unica differenza che conta. */}
           {/* E SE IL LIBRO STA SU GOOGLE DRIVE, il file se ne va solo dal
               tablet: su Drive resta, e si riscarica quando lo riapri. */}
-          {!book.fileTolto && onTogliEbook && (
+          {!book.fileTolto && suDrive && pesoQui === 0 && (
+            <span style={{ fontSize: F.piccolo, color: C.muted }}>
+              ☁ Il file non è sul tablet: sta su Google Drive e scende quando apri il libro.
+            </span>
+          )}
+          {!book.fileTolto && onTogliEbook && !(suDrive && pesoQui === 0) && (
             <button
               onClick={() => (confermaEbook ? togliEbook() : setConfermaEbook(true))}
               style={{ fontSize: F.piccolo, color: confermaEbook ? C.accent : C.muted, textDecoration: "underline" }}
             >
               {suDrive
                 ? confermaEbook
-                  ? "Confermi? Il file lascia il tablet e resta su Google Drive — tocca di nuovo"
+                  ? diversoDaDrive
+                    ? "Confermi? Su Drive c'è un file diverso da questo (qui è la versione ricucita): riaprendolo, evidenziazioni e segno possono spostarsi — tocca di nuovo"
+                    : "Confermi? Il file lascia il tablet e resta su Google Drive — tocca di nuovo"
                   : "Togli dal tablet, resta su Google Drive"
                 : confermaEbook
                   ? "Confermi? L'ebook sparisce da qui e dal cloud, la scheda e la copertina restano — tocca di nuovo"
