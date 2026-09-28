@@ -17,8 +17,8 @@ import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso,
 } from "../lib/syncCore.js";
 import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, DriveScollegato } from "../lib/drive.js";
-import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE } from "../lib/driveCore.js";
-import { fmtBytes } from "../lib/bytes.js";
+import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, pesoDaScendere } from "../lib/driveCore.js";
+import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { senzaCopertina } from "../lib/copertina.js";
 import { spartisciQui } from "../lib/spazio.js";
@@ -2190,11 +2190,16 @@ export default function Library({
               }}
             >
               {/* il conto accanto al nome dice che la' dentro c'e' del
-                  lavoro che aspetta (tomi nel cloud, impronte da fare):
-                  senza, ripiegare i tasti nasconderebbe anche il bisogno */}
+                  lavoro che aspetta (impronte da fare, copertine da
+                  ritrovare): senza, ripiegare i tasti nasconderebbe anche il
+                  bisogno. I TOMI LASSU' NON CONTANO PIU': da quando si
+                  aggiungono da Drive senza scendere, un libro che sta la' e
+                  scende quando lo apri e' lo stato normale, e un «· 508»
+                  fisso sul tasto diceva al lettore che c'era del lavoro
+                  arretrato dove non ce n'era («è corretto?»). */}
               🧰 Manutenzione
-              {!manutenzione && daScendere.length + senzaImpronta.length + mancaLaCopertina.length > 0
-                ? ` · ${daScendere.length + senzaImpronta.length + mancaLaCopertina.length}`
+              {!manutenzione && senzaImpronta.length + mancaLaCopertina.length > 0
+                ? ` · ${senzaImpronta.length + mancaLaCopertina.length}`
                 : ""}{" "}
               {manutenzione ? "▾" : "▸"}
             </button>
@@ -2241,12 +2246,18 @@ export default function Library({
             }}
           >
             {/* Il richiamo dei tomi: c'e' solo se qualcosa e' rimasto lassu',
-                e il numero sta nel tasto perche' chi lo tocca sappia in
-                anticipo quanta connessione ci vuole. */}
-            {daScendere.length > 0 && (
+                e il numero E IL PESO stanno nel tasto perche' chi lo tocca
+                sappia in anticipo quanta connessione e quanto tablet ci
+                vogliono. Non e' un lavoro da fare: e' per leggerli senza
+                rete, e lo dice. */}
+            {daScendere.length > 0 && (() => {
+              const peso = pesoDaScendere(daScendere, mappaDrive());
+              return (
+              <span style={{ display: "flex", flexDirection: "column", gap: 4, flexBasis: "100%" }}>
               <button
                 onClick={portando ? () => { filoTomi.current = null; setPortando(null); } : richiamaTomi}
                 style={{
+                  alignSelf: "flex-start",
                   padding: "7px 16px",
                   borderRadius: R.piccolo,
                   border: `1px solid ${C.arcane}66`,
@@ -2256,9 +2267,17 @@ export default function Library({
               >
                 {portando
                   ? `Fermo qui (${portando.i + 1} di ${portando.totale})`
-                  : `☁ Porta qui ${daScendere.length} ${daScendere.length === 1 ? "tomo" : "tomi"}`}
+                  : `⬇ Scarica qui ${daScendere.length === 1 ? "il tomo" : `tutti i ${daScendere.length} tomi`} rimasti lassù${peso.byte ? ` · ${peso.tutti ? "" : "almeno "}${fmtGoogle(peso.byte)}` : ""}`}
               </button>
-            )}
+              {!portando && (
+                <span style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.4 }}>
+                  Non serve per leggerli: scendono da soli quando li apri. Serve solo per averli sul
+                  tablet senza rete.
+                </span>
+              )}
+              </span>
+              );
+            })()}
             <button
               onClick={riconosciSaghe}
               style={{
