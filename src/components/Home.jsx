@@ -9,7 +9,7 @@ import { leggiTempo, pezziDiOggi } from "../lib/tempo.js";
 import { raccogli, conta, rigaGiardino } from "../lib/citazioni.js";
 import { leggiQuaderno, rigaQuaderno } from "../lib/quaderno.js";
 import { leggiDaPrendere, proposte, rigaDaPrendere } from "../lib/daPrendere.js";
-import { nextInSaga, prossimiPassi, perchePassoTace, frasePassoTace } from "../lib/saga.js";
+import { nextInSaga, prossimiPassi, perchePassoTace, frasePassoTace, inCorsoESeguiti } from "../lib/saga.js";
 import BookCover from "./BookCover.jsx";
 import { BookmarkIcon, LeafIcon, SparkIcon, StarIcon } from "./Icons.jsx";
 import EmptyState from "./EmptyState.jsx";
@@ -252,32 +252,13 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
   const finitiAnno = diarioAnno?.years?.find((y) => y.year === annoOra)?.entries?.length || 0;
   const oggi = pezziDiOggi(leggiTempo(), passoObiettivo(finitiAnno, obiettivoAnno, annoOra));
 
-  // IN CORSO E PROSSIMI PASSI IN UNA FILA SOLA: tutt'e due rispondono a
-  // «e poi cosa apro», e due file di copertine una sotto l'altra, uguali di
-  // forma, non dicevano quale contasse. Prima i libri che hai in mano, poi i
-  // seguiti; la nota dice di che specie e' ognuno. Un libro non sta due volte.
-  const visti = new Set();
-  const dopo = [];
-  for (const b of altriInLettura) {
-    if (visti.has(b.id)) continue;
-    visti.add(b.id);
-    const p = Math.round(progressoDi(b.id) * 100);
-    dopo.push({ book: b, nota: p > 0 ? `${p}% letto` : "in lettura", apri: () => onRead(b.id) });
-  }
-  for (const p of passi) {
-    if (visti.has(p.libro.id)) continue;
-    visti.add(p.libro.id);
-    dopo.push({
-      book: p.libro,
-      // il CICLO quando c'è, la saga quando non c'è: dentro una saga grande
-      // «Cosmoverse n° 4» non si può verificare a occhio, «Mistborn n° 4» sì
-      nota: `${p.nome} n° ${virgola(p.libro.sagaOrder)}`,
-      // qui si APRE LA SCHEDA e non il libro: un volume che non hai ancora
-      // cominciato si guarda prima — c'è la quarta di copertina, e «Prima di
-      // cominciare» sta lì
-      apri: () => onOpenBook(p.libro.id),
-    });
-  }
+  // IN CORSO E SEGUITI IN DUE FILE (vedi `inCorsoESeguiti`): il tocco
+  // riapre un libro cominciato, e di un seguito mai aperto mostra la scheda
+  // (c'e' la quarta di copertina, e «Prima di cominciare» sta li')
+  const file = inCorsoESeguiti(altriInLettura, passi, progressoDi);
+  const inCorso = file.inCorso.map((d) => ({ ...d, apri: () => onRead(d.book.id) }));
+  const seguiti = file.seguiti.map((d) => ({ ...d, apri: () => onOpenBook(d.book.id) }));
+  const visti = new Set([...inCorso, ...seguiti].map((d) => d.book.id));
 
   // GLI APPENA ARRIVATI (vedi `appenaArrivati`): un libro importato ieri da
   // Drive si ritrovava solo cercandolo in Libreria. Chi sta gia' in vista
@@ -390,11 +371,29 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
         </div>
       )}
 
-      {dopo.length > 0 && (
+      {inCorso.length > 0 && (
         <>
-          <SectionTitle>Cosa leggere dopo</SectionTitle>
+          <SectionTitle>Stai leggendo anche</SectionTitle>
           <div style={fila(wide)}>
-            {dopo.map((d) => (
+            {inCorso.map((d) => (
+              <LibroInFila
+                key={d.book.id}
+                book={d.book}
+                nota={d.nota}
+                disegnato={dorsi[d.book.id]}
+                onDisegnata={(v) => segnaDorso(d.book.id, v)}
+                onClick={d.apri}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {seguiti.length > 0 && (
+        <>
+          <SectionTitle>Il seguito delle tue saghe</SectionTitle>
+          <div style={fila(wide)}>
+            {seguiti.map((d) => (
               <LibroInFila
                 key={d.book.id}
                 book={d.book}
@@ -409,7 +408,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
       )}
 
       {muti.length > 0 && (
-        <div style={{ marginTop: dopo.length ? 8 : 16 }}>
+        <div style={{ marginTop: seguiti.length ? 8 : 16 }}>
           <button
             onClick={() => setPerche((v) => !v)}
             style={{

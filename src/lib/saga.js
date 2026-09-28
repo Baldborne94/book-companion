@@ -573,3 +573,31 @@ export function frasePassoTace(t) {
   const dillo = MOTIVI_PASSO[t?.motivo];
   return `${t?.nome || "Questa storia"}: ${dillo ? dillo(t) : `non ho un passo da proporti (${t?.motivo}).`}`;
 }
+
+// LE DUE FILE DELL'INGRESSO (chiesto dal lettore: «dividere in due parti,
+// da una parte i libri in corso e dall'altra i suggerimenti delle saghe»):
+// i libri cominciati, che il tocco riapre, e i seguiti mai aperti, che il
+// tocco mostra nella scheda. Nella stessa fila avevano la stessa faccia e
+// due gesti diversi. Un libro non sta due volte, e vince la fila «in corso»:
+// un volume che stai gia' leggendo non e' un consiglio. Gli zeri non si
+// dicono («0% letto» sotto un libro appena aperto).
+export function inCorsoESeguiti(inLettura = [], passi = [], progressoOf = getProgress) {
+  const visti = new Set();
+  const inCorso = [];
+  for (const b of inLettura || []) {
+    if (!b || visti.has(b.id)) continue;
+    visti.add(b.id);
+    const p = Math.round((Number(progressoOf(b.id)) || 0) * 100);
+    inCorso.push({ book: b, nota: p > 0 ? `${p}% letto` : "appena cominciato" });
+  }
+  const seguiti = [];
+  for (const p of passi || []) {
+    const b = p?.libro;
+    if (!b || visti.has(b.id)) continue;
+    visti.add(b.id);
+    // il CICLO quando c'e', la saga quando non c'e': dentro una saga grande
+    // «Cosmoverse n° 4» non si puo' verificare a occhio, «Mistborn n° 4» si'
+    seguiti.push({ book: b, nota: `${p.nome} n° ${String(b.sagaOrder).replace(".", ",")}` });
+  }
+  return { inCorso, seguiti };
+}
