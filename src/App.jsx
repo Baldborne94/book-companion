@@ -1452,10 +1452,6 @@ export default function App() {
             onDiary={() => setDiaryOpen(true)}
             onQuaderno={() => setQuadernoOpen(true)}
             onDaPrendere={() => setPrendereOpen(true)}
-            onSaga={(name) => {
-              setFocusSaga(name);
-              setSection("library");
-            }}
           />
         )}
         {section === "library" && (
