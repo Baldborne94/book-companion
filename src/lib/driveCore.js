@@ -503,3 +503,16 @@ export function pesoDaScendere(libri, mappa) {
   }
   return { byte, tutti: noti === (libri || []).length };
 }
+
+// «SCHEDA SENZA EBOOK» HA SENSO SOLO SE IL FILE NON STA DA NESSUNA PARTE
+// (chiesto dal lettore: «ad alcuni libri si vede solo la scheda e non c'e'
+// l'ebook, non ha molto senso adesso che puntiamo direttamente al Drive»).
+// Il segno `fileTolto` e' nato col secchio, dove «togli l'ebook» buttava i
+// byte di qui e di lassu': il file spariva davvero. Con Drive il file e'
+// l'archivio del lettore, si legge da li' e si riconosce a ogni giro
+// (`abbina`): un libro col segno addosso e il suo file nella mappa e' una
+// scheda che dice «non c'e'» sopra un file che c'e'. Qui si dice quali sono;
+// chi chiama spegne il segno e timbra il libro, cosi' la scelta viaggia.
+export function ebookRitrovati(libri, mappa) {
+  return (libri || []).filter((b) => b?.id && b.fileTolto && mappa?.[b.id]?.id).map((b) => b.id);
+}

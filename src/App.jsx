@@ -52,6 +52,7 @@ import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sin
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare } from "./lib/anticipo.js";
 import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive } from "./lib/drive.js";
 import { spiegaSync } from "./lib/syncCore.js";
+import { ebookRitrovati } from "./lib/driveCore.js";
 import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
 import { comincia, segnaVita, smetti } from "./lib/tempo.js";
@@ -934,6 +935,26 @@ export default function App() {
     runSync.current?.(true);
   }
 
+  // L'EBOOK «TOLTO» CHE STA SU DRIVE E' RITROVATO: dopo ogni giro di Drive
+  // la mappa dice quali file ci sono, e una scheda col segno «senza ebook»
+  // sopra un file che c'e' e' una bugia — si spegne il segno, si timbra il
+  // libro (cosi' viaggia) e si dice una volta. Si legge la biblioteca di
+  // ADESSO, non lo stato di React, che dentro `runSync` e' quello di prima.
+  function ritrovaEbook(base) {
+    if (!driveAcceso()) return;
+    const libri = base || loadBooks();
+    const ids = new Set(ebookRitrovati(libri, mappaDrive()));
+    if (!ids.size) return;
+    const next = libri.map((b) => (ids.has(b.id) ? { ...b, fileTolto: false } : b));
+    for (const id of ids) touchBook(id);
+    updateBooks(next);
+    notify(
+      ids.size === 1
+        ? "Un libro ha ritrovato il suo ebook su Google Drive 🗂"
+        : `${ids.size} libri hanno ritrovato il loro ebook su Google Drive 🗂`
+    );
+  }
+
   const runSync = useRef(() => {});
   runSync.current = async (quiet = false) => {
     if (sync.busy) return;
@@ -943,6 +964,7 @@ export default function App() {
       if (!driveAcceso()) return;
       await sincronizzaSoloDrive().catch(() => {});
       setLocalIds(await localFileIds());
+      ritrovaEbook();
       return;
     }
     setSync((s) => ({ ...s, busy: true, message: quiet ? s.message : "Sincronizzo…" }));
@@ -956,6 +978,7 @@ export default function App() {
       });
       if (res.books) setBooks(res.books);
       setLocalIds(await localFileIds());
+      ritrovaEbook(res.books || null);
       const moved = (res.pulled || 0) + (res.pushed || 0) + (res.removed || 0);
       setSync({
         busy: false,
@@ -1134,7 +1157,8 @@ export default function App() {
     // un libro svuotato apposta non si apre e non si va a cercare nel
     // cloud: `ensureLocalFile` bussherebbe a vuoto e il reader finirebbe
     // sulla schermata del guasto, che qui sarebbe una bugia
-    if (b.fileTolto) {
+    // e su Drive il file c'e': il segno e' vecchio, e il libro si legge da li'
+    if (b.fileTolto && !(driveAcceso() && mappaDrive()[id])) {
       notify("Di questo libro tieni la scheda, non l'ebook 📗");
       setOpenId(id);
       return;
