@@ -31,6 +31,9 @@ import { daTogliereDalSecchio, avanziDelSecchio, segnaSuDrive, leggereDaLontano 
 import { giroDrive, giroMelodie, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto } from "./drive.js";
 import { tipiDi, tipoDi } from "./library.js";
 import { misureFile, listTrackIds } from "./bookStore.js";
+import { nuovaMemoria, firmaLontana } from "./ultimiLontani.js";
+
+const LONTANI = nuovaMemoria();
 
 // `contaSpazio` viveva qui ed e' passata in `syncCore` con le altre
 // decisioni pure; si riesporta perche' chi la cercava la trovi dov'era.
@@ -772,8 +775,16 @@ export async function fileDaLeggere(book) {
     f.daLontano = true;
     return f;
   }
+  // l'ultimo libro letto da lontano si riapre dalla memoria, senza
+  // riscaricarlo (`lib/ultimiLontani.js`): stesso file lassu', stessa copia
+  const firma = firmaLontana(voce);
+  const ricordato = LONTANI.prendi(book.id, firma);
+  if (ricordato) return ricordato;
   const preso = await prendiFile(book);
-  if (preso) preso.lontano = true;
+  if (preso) {
+    preso.lontano = true;
+    LONTANI.tieni(book.id, firma, preso);
+  }
   return preso;
 }
 
