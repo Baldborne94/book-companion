@@ -241,6 +241,46 @@ export default async (t) => {
 // richieste vere, contro un server che si comporta come quello di Google
 // per le cinque cose che il giro gli chiede.
 async function giroFinto(t) {
+  // l'elenco di Drive si tiene in IndexedDB: un finto con le quattro mosse
+  // che bookStore fa, se un altro file non ne ha gia' messo uno
+  if (!globalThis.indexedDB) {
+    const stores = new Map();
+    const db = {
+      objectStoreNames: { contains: (n) => stores.has(n) },
+      createObjectStore: (n) => stores.set(n, new Map()),
+      transaction: (nome) => {
+        const tx = {};
+        const m = stores.get(nome);
+        const req = (fai) => {
+          const r = {};
+          setTimeout(() => {
+            r.result = fai();
+            r.onsuccess?.();
+            tx.oncomplete?.();
+          });
+          return r;
+        };
+        tx.objectStore = () => ({
+          put: (v, k) => req(() => m.set(k, v)),
+          get: (k) => req(() => m.get(k)),
+          delete: (k) => req(() => m.delete(k)),
+          getAllKeys: () => req(() => [...m.keys()]),
+        });
+        return tx;
+      },
+    };
+    globalThis.indexedDB = {
+      open() {
+        const r = {};
+        setTimeout(() => {
+          r.result = db;
+          r.onupgradeneeded?.();
+          r.onsuccess?.();
+        });
+        return r;
+      },
+    };
+  }
   const mem = new Map();
   globalThis.localStorage = {
     getItem: (k) => (mem.has(k) ? mem.get(k) : null),
@@ -255,7 +295,12 @@ async function giroFinto(t) {
   const file = [
     { id: "fMort", name: "Mort.epub", size: "10", parents: ["LIBRI"] },
     { id: "fFoto", name: "gatto.jpg", size: "10", parents: ["root"] },
+    { id: "LIBRI", name: "Libri", mimeType: "application/vnd.google-apps.folder" },
+    { id: "fDoc", name: "Appunti", mimeType: "application/vnd.google-apps.document" },
   ];
+  // il registro dei cambiamenti di Google: quel che si chiede al secondo giro
+  let cambiamenti = [];
+  const domande = { elenco: 0, cambi: 0, segni: [] };
   const segni = [];
   const pezzi = [];
   let createCartelle = 0;
@@ -275,9 +320,15 @@ async function giroFinto(t) {
     if (scadi) return risposta({}, 401);
     const u = new URL(url);
     if (u.pathname === "/drive/v3/files" && (opz.method || "GET") === "GET") {
-      const q = u.searchParams.get("q");
-      if (q.includes("mimeType='application/vnd.google-apps.folder'")) return risposta({ files: [{ id: "LIBRI", name: "Libri" }] });
+      domande.elenco += 1;
       return risposta({ files: file });
+    }
+    if (u.pathname === "/drive/v3/changes/startPageToken") return risposta({ startPageToken: "S1" });
+    if (u.pathname === "/drive/v3/changes") {
+      domande.cambi += 1;
+      domande.segni.push(u.searchParams.get("pageToken"));
+      if (u.searchParams.get("pageToken") === "VECCHIO") return risposta({}, 410);
+      return risposta({ changes: cambiamenti, newStartPageToken: "S2" });
     }
     if (u.pathname === "/drive/v3/files" && opz.method === "POST") {
       createCartelle += 1;
@@ -299,7 +350,14 @@ async function giroFinto(t) {
       // accetta un chilobyte solo, e il pezzo dopo deve ripartire da li'
       if (pezzi.length === 1 && Number(m[2]) + 1 < Number(m[3])) return risposta({}, 308, { Range: "bytes=0-1023" });
       if (Number(m[2]) + 1 < Number(m[3])) return risposta({}, 308, { Range: `bytes=0-${m[2]}` });
-      return risposta({ id: "fNuovo", size: String(sessione.totale) });
+      // come Google: i campi chiesti del file appena nato
+      return risposta({
+        id: `fNuovo${sessioni.length}`,
+        size: String(sessione.totale),
+        name: sessione.meta.name,
+        parents: sessione.meta.parents,
+        appProperties: sessione.meta.appProperties,
+      });
     }
     return risposta({}, 404);
   };
@@ -340,6 +398,50 @@ async function giroFinto(t) {
   t.eq("il file finto non è un libro", [...esito.mappa].includes("fFoto"), false);
   t.eq("la mappa resta sul dispositivo", Object.keys(drive.mappaDrive()).sort().join(","), "lassu,mort,nuovo");
   t.c("e il Drive dice che i libri li ha guardati", drive.idSuDrive()?.size === 3);
+
+  t.eq("il primo giro elenca il Drive una volta sola, per libri e cartelle", domande.elenco, 1);
+  t.eq("…e non chiede cambiamenti", domande.cambi, 0);
+
+  // IL SECONDO GIRO CHIEDE SOLO I CAMBIAMENTI: il libro caricato altrove
+  // arriva dal registro, il file tolto se ne va, e nessun elenco da capo
+  cambiamenti = [
+    { fileId: "fAltro", file: { id: "fAltro", name: "Guards.epub", size: "7", parents: ["LIBRI"], appProperties: { bc: "1", bcId: "guards" } } },
+    { fileId: "fMort", removed: true },
+    { fileId: "fCestino", file: { id: "fCestino", name: "Eric.epub", size: "3", trashed: true } },
+  ];
+  const secondo = await drive.giroDrive([...libri, { id: "guards", title: "Guards" }], {
+    tipo: () => "libri",
+    qui: new Set(),
+    leggiByte: async () => null,
+  });
+  t.eq("il secondo giro non elenca il Drive da capo", domande.elenco, 1);
+  t.eq("…chiede i cambiamenti dal segno del primo", domande.segni.join(), "S1");
+  t.c("il libro caricato altrove si riconosce dal registro", secondo.mappa.has("guards"));
+  t.c("…e quello tolto da Drive non c'e' piu'", !secondo.mappa.has("mort"));
+  t.c("…e il caricato in questo giro resta, anche se il registro non lo nomina", secondo.mappa.has("nuovo"));
+  cambiamenti = [];
+  await drive.giroDrive(libri, { tipo: () => "libri", qui: new Set(), leggiByte: async () => null });
+  t.eq("il segno dopo e' quello nuovo", domande.segni.join(), "S1,S2");
+
+  // UN SEGNO CHE GOOGLE NON RICONOSCE PIU' NON FERMA IL GIRO: si rifa' da capo
+  const { putAux, getAux } = await import("../src/lib/bookStore.js");
+  await putAux("drive_elenco", { ...(await getAux("drive_elenco")), segno: "VECCHIO" });
+  const rifatto = await drive.giroDrive(libri, { tipo: () => "libri", qui: new Set(), leggiByte: async () => null });
+  t.eq("un segno scaduto rifa' l'elenco da capo", domande.elenco, 2);
+  t.c("…e il giro va a buon fine", rifatto.mappa instanceof Set && !rifatto.saltato);
+  t.eq("…col segno nuovo", (await getAux("drive_elenco")).segno, "S1");
+
+  // SCOLLEGARSI DIMENTICA L'ELENCO: ricollegandosi con un altro account
+  // sarebbe il Drive di qualcun altro
+  await drive.scollegaDrive();
+  await new Promise((r) => setTimeout(r, 20));
+  t.eq("scollegato, l'elenco tenuto se ne va", await getAux("drive_elenco"), undefined);
+  mem.set("bc_drive_on", "1");
+  mem.set("bc_drive_token", JSON.stringify({ chiave: "T", scade: Date.now() + 3600e3 }));
+  // fuori da un giro (lo «Scegli su Drive» della Libreria), e subito dopo:
+  // nemmeno la memoria di pochi secondi deve sopravvivere
+  await drive.elencaFile();
+  t.eq("…e la domanda dopo lo rifa' da capo, anche nello stesso momento", domande.elenco, 3);
 
   // LA CHIAVE SCADUTA NON E' UN ERRORE: il giro aspetta e lo dice
   scadi = true;

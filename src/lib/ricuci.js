@@ -124,6 +124,8 @@ export async function ricuciLibro(id, blob) {
   try {
     await putAux(`loc_${id}`, null);
     await putAux(chiave(id), null);
+    // il testo tenuto per la ricerca e l'Oracolo e' del file di prima
+    await putAux(`testo_${id}`, null);
   } catch {
     /* la cache sbagliata cadrà al prossimo confronto di misura */
   }

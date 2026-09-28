@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { useViewport } from "../lib/viewport.js";
-import { getFinished, getLastOpened, getProgress, getStarted, getStatus, getUpdatedAt } from "../lib/library.js";
+import { getFinished, getLastOpened, getProgress, getStarted, getStatus, getUpdatedAt, letturaUnica } from "../lib/library.js";
 import { getHighlights } from "../lib/annotations.js";
 import { buildDiary, rigaDiario } from "../lib/diary.js";
 import { leggiObiettivi, obiettivoDi } from "../lib/obiettivo.js";
@@ -212,30 +212,42 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
   // bc_lastopen vale solo per questo dispositivo: se manca (perche' il libro
   // e' stato aperto altrove) si ripiega sui libri gia' iniziati e infine sul
   // piu' recente, cosi' la home propone sempre qualcosa da aprire.
-  const byRecent = (a, b) => getUpdatedAt(b.id, b.addedAt || 0) - getUpdatedAt(a.id, a.addedAt || 0);
+  //
+  // UNA LETTURA PER LIBRO A OGNI DISEGNO (`letturaUnica`): lo stato, il
+  // progresso e l'ultimo tocco stanno nello storage, e questa schermata li
+  // chiedeva decine di volte per libro — ogni confronto di un ordinamento,
+  // ogni proposta di ogni saga, ogni ragione di una saga muta. Misurato con
+  // 650 libri: 41 mila letture a un avvio, 22 mila dei soli stati. La memoria
+  // vive quanto questa funzione, cioe' un disegno: al disegno dopo si rilegge
+  // tutto, quindi non puo' restare indietro di niente.
+  const statoDi = letturaUnica(getStatus);
+  const progressoDi = letturaUnica(getProgress);
+  const toccoDi = letturaUnica((id) => getUpdatedAt(id, 0));
+  const byRecent = (a, b) => Math.max(toccoDi(b.id), b.addedAt || 0) - Math.max(toccoDi(a.id), a.addedAt || 0);
   // Un libro chiuso non si ripropone, e «chiuso» sono DUE cose: finito e
   // abbandonato. Senza il secondo, il romanzo che hai mollato resterebbe qui
   // in cima per sempre — che e' proprio il motivo per cui quello stato esiste.
   const chiuso = (b) => {
-    const s = getStatus(b.id);
+    const s = statoDi(b.id);
     return s === "read" || s === "abandoned";
   };
   const started = books
-    .filter((b) => !chiuso(b) && (getStatus(b.id) === "reading" || getProgress(b.id) > 0))
+    .filter((b) => !chiuso(b) && (statoDi(b.id) === "reading" || progressoDi(b.id) > 0))
     .sort(byRecent);
   const unread = books.filter((b) => !chiuso(b)).sort(byRecent);
   // se l'ultimo aperto e' stato finito, il riquadro propone il passo
   // successivo della sua saga invece di riproporre un libro chiuso
-  const apertoOra = books.find((b) => b.id === getLastOpened());
+  const idAperto = getLastOpened();
+  const apertoOra = books.find((b) => b.id === idAperto);
   // l'ultimo aperto vale solo se non l'hai chiuso: un libro abbandonato non
   // torna in cima solo perche' era l'ultimo che avevi in mano
-  const lastOpened = apertoOra && getStatus(apertoOra.id) === "abandoned" ? null : apertoOra;
-  const lastDone = lastOpened && getStatus(lastOpened.id) === "read" ? lastOpened : null;
-  const followUp = lastDone ? nextInSaga(lastDone, books) : null;
+  const lastOpened = apertoOra && statoDi(apertoOra.id) === "abandoned" ? null : apertoOra;
+  const lastDone = lastOpened && statoDi(lastOpened.id) === "read" ? lastOpened : null;
+  const followUp = lastDone ? nextInSaga(lastDone, books, statoDi, progressoDi) : null;
   const last =
     (lastDone ? null : lastOpened) || followUp || started[0] || unread[0] || [...books].sort(byRecent)[0];
   const followedFrom = followUp && last === followUp ? lastDone : null;
-  const pct = last ? Math.round(getProgress(last.id) * 100) : 0;
+  const pct = last ? Math.round(progressoDi(last.id) * 100) : 0;
   const resuming = pct > 0;
 
   // I PREFERITI SONO QUELLI COL CUORE, non «tutti i libri da quattro
@@ -284,14 +296,14 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
   // NESSUN TETTO, come per le saghe: la fila scorre, e sono libri che hai
   // dichiarato tu — tagliarne via uno vorrebbe dire nasconderti un romanzo
   // che stai davvero leggendo.
-  const altriInLettura = books.filter((b) => getStatus(b.id) === "reading" && b.id !== last?.id).sort(byRecent);
+  const altriInLettura = books.filter((b) => statoDi(b.id) === "reading" && b.id !== last?.id).sort(byRecent);
 
   // E I PROSSIMI PASSI DELLE SAGHE (vedi `prossimiPassi`): la domanda «e
   // adesso cosa leggo» non aspetta che tu chiuda un volume.
   const opzioniPasso = {
-    statusOf: getStatus,
-    progressoOf: getProgress,
-    tocco: (id) => getUpdatedAt(id, 0),
+    statusOf: statoDi,
+    progressoOf: progressoDi,
+    tocco: toccoDi,
     escludi: last?.id || null,
   };
   const passi = prossimiPassi(books, opzioniPasso);

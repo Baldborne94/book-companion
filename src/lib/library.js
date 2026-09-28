@@ -449,3 +449,18 @@ export function tipiPresenti(books, mappa = tipiDi(books)) {
   return TIPI.filter((t) => t.id === "tutti" || ci.has(t.id));
 }
 export const serveFiltroTipo = (books) => tipiPresenti(books).length > 0;
+
+// UNA LETTURA PER CHIAVE, PER QUANTO DURA CHI LA CHIEDE: la risposta si
+// ricorda per la vita della funzione che torna. Serve a una schermata che
+// chiede lo stesso stato decine di volte in un disegno (l'Ingresso); fuori
+// da un disegno non si tiene, perche' una memoria che sopravvive a una
+// scrittura direbbe il falso.
+export function letturaUnica(leggi) {
+  const memoria = new Map();
+  return (id) => {
+    if (memoria.has(id)) return memoria.get(id);
+    const v = leggi(id);
+    memoria.set(id, v);
+    return v;
+  };
+}

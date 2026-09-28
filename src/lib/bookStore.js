@@ -225,6 +225,8 @@ export async function removeBookData(id) {
   await withStore("aux", "readwrite", (s) => s.delete(`schede_${id}`));
   // la memoria «la collana di questo file l'ho gia' guardata»
   await withStore("aux", "readwrite", (s) => s.delete(`collana_${id}`));
+  // il testo estratto per la ricerca e per l'Oracolo (`testoLibro.js`)
+  await withStore("aux", "readwrite", (s) => s.delete(`testo_${id}`));
 }
 
 // LA PERSISTENZA SI CHIEDE, MA SOPRATTUTTO SI GUARDA.
