@@ -630,3 +630,80 @@ export function pesoDaScendere(libri, mappa) {
 export function ebookRitrovati(libri, mappa) {
   return (libri || []).filter((b) => b?.id && b.fileTolto && mappa?.[b.id]?.id).map((b) => b.id);
 }
+
+// L'ELENCO DI DRIVE SI TIENE, E SI CHIEDONO SOLO I CAMBIAMENTI (chiesto dal
+// lettore fra le cose da rendere piu' veloci: «fai tutti e 4 i punti»).
+//
+// Ogni giro elencava da capo TUTTO il Drive — i file, poi le cartelle, poi
+// l'audio: con cinquecento libri sono piu' pagine per ognuna delle tre
+// domande, a ogni sincronizzazione, per scoprire quasi sempre che non era
+// cambiato niente. Google tiene per ogni utente un registro dei cambiamenti
+// (`changes`) con un segno a cui si torna: l'elenco si fa per intero la prima
+// volta e si tiene su questo dispositivo, e da li' in poi si chiede a Google
+// solo quel che e' successo dall'ultimo segno.
+//
+// Qui le decisioni pure; la rete sta in `drive.js`.
+
+// i campi che le tre domande guardavano, piu' quel che serve a distinguerle
+export const CAMPI_ELENCO = "id,name,size,sha256Checksum,appProperties,parents,mimeType";
+
+// Si tiene quel che le tre domande di prima prendevano, e nient'altro: le
+// cartelle, i file audio (per tipo) e i file con un'estensione (per nome).
+// Un file cestinato non si tiene: le domande di prima chiedevano
+// `trashed=false`.
+export function daTenereNellElenco(f) {
+  if (!f?.id || f.trashed) return false;
+  if (f.mimeType === CARTELLA_MIME) return true;
+  if (String(f.mimeType || "").startsWith("audio/")) return true;
+  return !!estensioneDi(f.name);
+}
+
+// i cambiamenti sull'elenco tenuto, senza toccare quello che arriva:
+// un file tolto, cestinato o diventato irrilevante se ne va; uno nuovo o
+// cambiato prende il posto di quello di prima
+export function applicaCambiamenti(elenco, cambiamenti) {
+  const out = { ...(elenco || {}) };
+  for (const c of cambiamenti || []) {
+    const id = c?.fileId || c?.file?.id;
+    if (!id) continue; // un cambiamento di un'unita' condivisa, non di un file
+    // un file tolto dal registro arriva SENZA il file, quindi non si tiene:
+    // `removed` non ha bisogno di una riga sua
+    if (!daTenereNellElenco(c.file)) delete out[id];
+    else {
+      const { trashed, ...f } = c.file;
+      out[id] = f;
+    }
+  }
+  return out;
+}
+
+// Una volta a settimana l'elenco si rifa' comunque da capo: il registro dei
+// cambiamenti e' la strada veloce, non la verita', e una settimana di
+// cambiamenti persi per strada (un giro interrotto a meta', un'altra app che
+// ha rimesso a posto le cose) si ricuce da se'.
+export const RIFAI_ELENCO = 7 * 24 * 60 * 60 * 1000;
+export const VERSIONE_ELENCO = 1;
+
+export function elencoBuono(salvato, ora = Date.now()) {
+  return (
+    !!salvato &&
+    salvato.v === VERSIONE_ELENCO &&
+    typeof salvato.segno === "string" &&
+    !!salvato.segno &&
+    !!salvato.file &&
+    typeof salvato.file === "object" &&
+    Number.isFinite(salvato.quando) &&
+    ora - salvato.quando >= 0 &&
+    ora - salvato.quando < RIFAI_ELENCO
+  );
+}
+
+// un segno che Google non riconosce piu' (troppo vecchio, di un altro
+// account) risponde cosi': si rifa' l'elenco da capo invece di fermare il giro
+export const segnoScaduto = (e) => [400, 403, 404, 410].includes(e?.status);
+
+// le tre domande di prima, sull'elenco tenuto
+export const fileDellElenco = (tutti) =>
+  tutti.filter((f) => f.mimeType !== CARTELLA_MIME && estensioneDi(f.name));
+export const cartelleDellElenco = (tutti) => tutti.filter((f) => f.mimeType === CARTELLA_MIME);
+export const audioDellElenco = (tutti) => tutti.filter((f) => String(f.mimeType || "").startsWith("audio/"));

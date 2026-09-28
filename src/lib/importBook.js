@@ -341,6 +341,7 @@ async function traslocaSu(scheda, tempId) {
   // verdetto sulla spezzatura parla di un altro file
   await removeAux(`loc_${scheda.id}`).catch(() => {});
   await removeAux(`salute_${scheda.id}`).catch(() => {});
+  await removeAux(`testo_${scheda.id}`).catch(() => {});
   await removeBookData(tempId).catch(() => {});
   return scheda;
 }

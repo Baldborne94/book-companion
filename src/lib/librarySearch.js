@@ -1,7 +1,7 @@
 import { getFile } from "./bookStore.js";
 import { eFumetto } from "./fumetto.js";
-import { searchBook } from "./epubSearch.js";
-import { searchPdf } from "./pdfSearch.js";
+import { findMatches } from "./pdfSearch.js";
+import { testoDelLibro, puntoNelNodo } from "./testoLibro.js";
 import { queryRegex } from "./wordForms.js";
 
 // CERCARE IN TUTTA LA BIBLIOTECA.
@@ -48,35 +48,42 @@ export function spezza(testo, re) {
   };
 }
 
-async function cercaEpub(blob, query, limite) {
-  const { default: ePub } = await import("epubjs");
-  const eb = ePub(await blob.arrayBuffer());
-  try {
-    await eb.ready;
-    const trovati = await searchBook(eb, query, limite);
-    const re = queryRegex(query);
-    return trovati.map((r) => ({ punto: r.cfi, ...spezza(r.excerpt, re) }));
-  } finally {
-    try { eb.destroy(); } catch { /* gia' chiuso */ }
+// LA RICERCA SI FA SUL TESTO TENUTO, non sul libro aperto (`testoLibro.js`):
+// dalla seconda domanda non si apre piu' niente, e un libro tornato su Drive
+// si cerca lo stesso se il suo testo era gia' stato letto. Il passaggio e il
+// punto sono quelli di prima — la stessa finestra di 55 caratteri per l'ePub,
+// le stesse tre per pagina del PDF — cosi' l'elenco non cambia faccia.
+export function cercaNelTesto(testo, query, limite = 6) {
+  const re = queryRegex(query);
+  if (!re || !testo) return [];
+  const out = [];
+  if (testo.tipo === "pdf") {
+    for (const [i, pagina] of (testo.pagine || []).entries()) {
+      for (const m of findMatches(pagina, query)) {
+        out.push({ punto: String(i + 1), dove: `pag. ${i + 1}`, prima: m.before, dentro: m.hit, dopo: m.after });
+        if (out.length >= limite) return out;
+      }
+    }
+    return out;
   }
-}
-
-async function cercaPdf(blob, query, limite, vivo) {
-  const mod = await import("./pdfThumb.js");
-  const pdf = await mod.loadPdf(await blob.arrayBuffer());
-  try {
-    const { results } = await searchPdf(pdf, query, { limit: limite, alive: vivo });
-    // il PDF il passaggio lo consegna gia' spezzato nei tre pezzi
-    return results.map((r) => ({
-      punto: String(r.page),
-      dove: `pag. ${r.page}`,
-      prima: r.before,
-      dentro: r.hit,
-      dopo: r.after,
-    }));
-  } finally {
-    mod.chiudiPdf(pdf);
+  for (const cap of testo.capitoli || []) {
+    for (const nodo of cap.nodi) {
+      const text = nodo.t;
+      if (!text || !text.trim() || !nodo.c) continue;
+      re.lastIndex = 0;
+      for (const m of text.matchAll(re)) {
+        const punto = puntoNelNodo(nodo, m.index);
+        if (!punto) continue;
+        const a = Math.max(0, m.index - 55);
+        const b = Math.min(text.length, m.index + m[0].length + 55);
+        const passo =
+          (a > 0 ? "…" : "") + text.slice(a, b).replace(/\s+/g, " ").trim() + (b < text.length ? "…" : "");
+        out.push({ punto, ...spezza(passo, re) });
+        if (out.length >= limite) return out;
+      }
+    }
   }
+  return out;
 }
 
 // `leggiByte` arriva da fuori — di norma e' `getFile` di `bookStore` — per la
@@ -92,7 +99,7 @@ async function cercaPdf(blob, query, limite, vivo) {
 export async function cercaOvunque(
   libri,
   query,
-  { onLibro, onTrovato, vivo, perLibro = 6, leggiByte = getFile } = {}
+  { onLibro, onTrovato, vivo, perLibro = 6, leggiByte = getFile, leggiTesto = testoDelLibro } = {}
 ) {
   const attivo = vivo || (() => true);
   let lontani = 0;
@@ -102,26 +109,20 @@ export async function cercaOvunque(
     if (eFumetto(libro)) continue;
     if (!attivo()) break;
     onLibro?.({ i, totale: libri.length, titolo: libro.title });
-    let blob = null;
+    let testo = null;
     try {
-      blob = await leggiByte?.(libro.id);
+      testo = await leggiTesto(libro, { leggiByte });
     } catch {
-      /* archivio che non risponde: il libro si salta */
+      /* tomo che non si lascia aprire: gli altri non c'entrano */
+      continue;
     }
-    if (!blob) {
+    if (!testo) {
       lontani++;
       continue;
     }
-    try {
-      const trovati =
-        libro.fileType === "pdf"
-          ? await cercaPdf(blob, query, perLibro, attivo)
-          : await cercaEpub(blob, query, perLibro);
-      esaminati++;
-      if (trovati.length && attivo()) onTrovato?.({ libro, trovati });
-    } catch {
-      /* tomo che non si lascia aprire: gli altri non c'entrano */
-    }
+    esaminati++;
+    const trovati = cercaNelTesto(testo, query, perLibro);
+    if (trovati.length && attivo()) onTrovato?.({ libro, trovati });
   }
   return { lontani, esaminati };
 }

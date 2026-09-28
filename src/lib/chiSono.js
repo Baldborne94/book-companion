@@ -1,6 +1,6 @@
-import { getFile } from "./bookStore.js";
 import { eFumetto } from "./fumetto.js";
-import { pageText, findMatches } from "./pdfSearch.js";
+import { findMatches } from "./pdfSearch.js";
+import { testoDelLibro, puntoNelNodo, testoCapitolo, testoBlocco } from "./testoLibro.js";
 import { chiedi, getOracleKey, TETTO_SCHEDA } from "./oracle.js";
 import { varianti, regexNome, nuovoRegistro, annota, decidi } from "./nomi.js";
 import { frontiera } from "./frontiera.js";
@@ -125,11 +125,11 @@ export function conTitoli(testo, tappe) {
 }
 
 // Il paragrafo attorno alla menzione, non mezzo rigo: «…alzo' lo sguardo
-// verso…» non dice niente ne' al lettore ne' al modello.
-function paragrafo(node, colpito, maxLen = PARAGRAFO) {
-  const blocco =
-    node.parentElement?.closest?.("p, li, blockquote, dd, td, h1, h2, h3") || node.parentElement;
-  const tutto = String(blocco?.textContent || node.textContent || "").replace(/\s+/g, " ").trim();
+// verso…» non dice niente ne' al lettore ne' al modello. Il blocco e' quello
+// che l'estrazione ha tenuto per il nodo (`testoLibro.js`): paragrafo, voce,
+// citazione o titolo, e se non ce n'e' uno il genitore.
+function paragrafo(testoBlocco, testoNodo, colpito, maxLen = PARAGRAFO) {
+  const tutto = String(testoBlocco || testoNodo || "").replace(/\s+/g, " ").trim();
   if (tutto.length <= maxLen) return tutto;
   const at = tutto.indexOf(colpito);
   const centro = at >= 0 ? at + colpito.length / 2 : tutto.length / 2;
@@ -137,6 +137,16 @@ function paragrafo(node, colpito, maxLen = PARAGRAFO) {
   const pezzo = tutto.slice(from, from + maxLen);
   return (from > 0 ? "…" : "") + pezzo + (from + maxLen < tutto.length ? "…" : "");
 }
+
+// Tutto quel che segue si fa sul TESTO TENUTO del libro (`testoLibro.js`),
+// non sul libro aperto: i volumi finiti di una saga non cambiano piu', e
+// rileggerli da capo a ogni scheda era il grosso dell'attesa. Le regole sono
+// quelle di quando si apriva il libro, una per una.
+const confronta = async () => {
+  const { default: ePub } = await import("epubjs");
+  const cfi = new ePub.CFI();
+  return (a, b) => cfi.compare(a, b);
+};
 
 // C'E' DEL NUOVO SU DI LUI, DA ALLORA?
 //
@@ -148,89 +158,51 @@ function paragrafo(node, colpito, maxLen = PARAGRAFO) {
 //
 // Si guarda solo il libro aperto, e solo il tratto letto DA ALLORA: e'
 // l'unico pezzo di storia che si e' mosso.
-async function nuoveDaEpub(libro, re, da, a) {
-  const blob = await getFile(libro.id);
-  if (!blob) return true;
-  const { default: ePub } = await import("epubjs");
-  const eb = ePub(await blob.arrayBuffer());
-  try {
-    await eb.ready;
-    const cfi = new ePub.CFI();
-    const spina = eb.spine.spineItems;
-    for (let i = 0; i < spina.length; i++) {
-      const item = spina[i];
-      const inizio = `epubcfi(${item.cfiBase}!/0)`;
-      try {
-        // i capitoli che cominciano oltre il segno di adesso non li hai letti
-        if (cfi.compare(inizio, a) > 0) break;
-        // e quelli che finiscono prima di «allora» sono roba gia' pesata:
-        // se il capitolo dopo comincia prima di «allora», questo e' tutto dietro
-        const dopo = spina[i + 1];
-        if (dopo && cfi.compare(`epubcfi(${dopo.cfiBase}!/0)`, da) <= 0) continue;
-      } catch { /* segni illeggibili: si guarda dentro, per sicurezza */ }
-      try {
-        await item.load(eb.load.bind(eb));
-        const doc = item.document;
-        if (doc?.body) {
-          const walker = doc.createTreeWalker(doc.body, 4);
-          let node;
-          while ((node = walker.nextNode())) {
-            const text = node.textContent;
-            if (!text || !text.trim()) continue;
-            re.lastIndex = 0;
-            const m = re.exec(text);
-            if (!m) continue;
-            try {
-              const range = doc.createRange();
-              range.setStart(node, m.index);
-              range.setEnd(node, m.index + m[0].length);
-              const c = item.cfiFromRange(range);
-              if (cfi.compare(c, da) > 0 && cfi.compare(c, a) <= 0) return true;
-            } catch { /* range fuori misura: si tira dritto */ }
-          }
-        }
-      } catch { /* capitolo illeggibile: nel dubbio si continua */ } finally {
-        try { item.unload(); } catch { /* gia' scaricato */ }
-      }
-    }
-    return false;
-  } finally {
-    try { eb.destroy(); } catch { /* gia' chiuso */ }
-  }
-}
-
-async function nuoveDaPdf(libro, nomi, da, a) {
-  const blob = await getFile(libro.id);
-  if (!blob) return true;
-  const mod = await import("./pdfThumb.js");
-  const pdf = await mod.loadPdf(await blob.arrayBuffer());
-  try {
-    const cache = new Map();
+export function nuoveNelTesto(testo, { re, nomi, da, a, cmp }) {
+  if (testo.tipo === "pdf") {
+    const pagine = testo.pagine || [];
     const cercati = [...new Set([].concat(nomi).flatMap(varianti))];
     const primo = Math.max(1, (parseInt(da, 10) || 0) + 1);
-    const ultimo = Math.min(parseInt(a, 10) || 0, pdf.numPages);
+    const ultimo = Math.min(parseInt(a, 10) || 0, pagine.length);
     for (let n = primo; n <= ultimo; n++) {
-      let testoPag;
-      try {
-        testoPag = await pageText(pdf, n, cache);
-      } catch {
-        continue;
-      }
       // basta trovarne una: qui non si raccoglie, si risponde si'/no
       for (const v of cercati) {
-        if (findMatches(testoPag, v, 1, 0).length) return true;
+        if (findMatches(pagine[n - 1], v, 1, 0).length) return true;
       }
     }
     return false;
-  } finally {
-    mod.chiudiPdf(pdf);
   }
+  const spina = testo.capitoli || [];
+  for (let i = 0; i < spina.length; i++) {
+    const cap = spina[i];
+    try {
+      // i capitoli che cominciano oltre il segno di adesso non li hai letti
+      if (cmp(`epubcfi(${cap.base}!/0)`, a) > 0) break;
+      // e quelli che finiscono prima di «allora» sono roba gia' pesata:
+      // se il capitolo dopo comincia prima di «allora», questo e' tutto dietro
+      const dopo = spina[i + 1];
+      if (dopo && cmp(`epubcfi(${dopo.base}!/0)`, da) <= 0) continue;
+    } catch { /* segni illeggibili: si guarda dentro, per sicurezza */ }
+    for (const nodo of cap.nodi) {
+      const text = nodo.t;
+      if (!text || !text.trim()) continue;
+      re.lastIndex = 0;
+      const m = re.exec(text);
+      if (!m) continue;
+      const c = puntoNelNodo(nodo, m.index);
+      if (!c) continue;
+      try {
+        if (cmp(c, da) > 0 && cmp(c, a) <= 0) return true;
+      } catch { /* segno fuori misura: si tira dritto */ }
+    }
+  }
+  return false;
 }
 
 // `da` = il segno di quando la scheda e' stata fatta, `a` = dove sei
 // adesso. Nel dubbio si risponde «si'»: una scheda vecchia mostrata come
 // nuova e' peggio di una chiamata in piu'.
-export async function nuoveMenzioni(libro, nomi, da, a) {
+export async function nuoveMenzioni(libro, nomi, da, a, { leggiTesto = testoDelLibro } = {}) {
   // senza libro non c'e' niente da guardare, e «nel dubbio si'» vale anche
   // qui: rispondere «niente di nuovo» sarebbe una scheda vecchia mostrata
   // come nuova (preso dal test, non dalla lettura)
@@ -240,116 +212,44 @@ export async function nuoveMenzioni(libro, nomi, da, a) {
   const re = regexNome(elenco);
   if (!re) return true;
   try {
+    let cmp = null;
     if (libro.fileType === "pdf") {
       // sei tornato indietro: la scheda di allora sa cose che adesso non
       // hai ancora letto, e mostrarla sarebbe uno spoiler
       if ((parseInt(a, 10) || 0) < (parseInt(da, 10) || 0)) return true;
-      return await nuoveDaPdf(libro, elenco, da, a);
+    } else {
+      cmp = await confronta();
+      try {
+        if (cmp(a, da) < 0) return true;
+      } catch { /* segni non confrontabili: decide la scansione */ }
     }
-    const { default: ePub } = await import("epubjs");
-    try {
-      if (new ePub.CFI().compare(a, da) < 0) return true;
-    } catch { /* segni non confrontabili: decide la scansione */ }
-    return await nuoveDaEpub(libro, re, da, a);
+    const testo = await leggiTesto(libro);
+    if (!testo) return true;
+    return nuoveNelTesto(testo, { re, nomi: elenco, da, a, cmp });
   } catch {
     return true;
   }
 }
 
-async function daEpub(libro, re, fino) {
-  // null = il tomo non e' su questo dispositivo, e va detto; [] = c'e' ma
-  // il nome non ci compare. Confonderli faceva sparire un volume intero
-  // dalla scheda senza che nessuno se ne accorgesse.
-  const blob = await getFile(libro.id);
-  if (!blob) return null;
-  const { default: ePub } = await import("epubjs");
-  const eb = ePub(await blob.arrayBuffer());
+// null = il tomo non e' su questo dispositivo, e va detto; [] = c'e' ma il
+// nome non ci compare. Confonderli faceva sparire un volume intero dalla
+// scheda senza che nessuno se ne accorgesse.
+export function menzioniNelTesto(testo, { libro, re, nomi, fino, cmp }) {
   let out = [];
   // quanto testo si e' scorso davvero: e' la misura del volume, e serve a
   // dargli la sua quota (un tomo con tre romanzi dentro non e' un volume
   // come gli altri)
   let esteso = 0;
-  let visti = 0;
   let passo = 1;
-  try {
-    await eb.ready;
-    const cfi = new ePub.CFI();
-    const dentro = (c) => {
-      try { return cfi.compare(c, fino) <= 0; } catch { return false; }
-    };
-    for (const item of eb.spine.spineItems) {
-      // La spina e' in ordine di lettura: il primo capitolo che comincia
-      // oltre il segno chiude il giro, e i capitoli dopo non si aprono
-      // nemmeno. Prima si scorreva dall'inizio con un tetto sulle menzioni:
-      // per un protagonista il tetto si esauriva nei primi capitoli e «gli
-      // ultimi passaggi» venivano in realta' da meta' libro.
-      if (fino) {
-        try {
-          if (cfi.compare(`epubcfi(${item.cfiBase}!/0)`, fino) > 0) break;
-        } catch { /* base illeggibile: si scorre e filtra per menzione */ }
-      }
-      try {
-        await item.load(eb.load.bind(eb));
-        const doc = item.document;
-        if (doc?.body) {
-          const walker = doc.createTreeWalker(doc.body, 4 /* solo nodi di testo */);
-          let node;
-          while ((node = walker.nextNode())) {
-            const text = node.textContent;
-            if (!text || !text.trim()) continue;
-            esteso += text.length;
-            re.lastIndex = 0;
-            // una menzione per nodo: il paragrafo attorno e' lo stesso
-            const m = re.exec(text);
-            if (!m) continue;
-            visti += 1;
-            if (visti % passo) continue;
-            try {
-              const range = doc.createRange();
-              range.setStart(node, m.index);
-              range.setEnd(node, m.index + m[0].length);
-              const c = item.cfiFromRange(range);
-              if (fino && !dentro(c)) continue;
-              out.push({ libro, cfi: c, testo: paragrafo(node, m[0]) });
-              if (out.length >= MAX_MENZIONI) {
-                out = out.filter((_, i) => i % 2 === 0);
-                passo *= 2;
-              }
-            } catch { /* range fuori misura: si passa oltre */ }
-          }
-        }
-      } catch { /* capitolo illeggibile: gli altri bastano */ } finally {
-        try { item.unload(); } catch { /* gia' scaricato */ }
-      }
-    }
-  } finally {
-    try { eb.destroy(); } catch { /* gia' chiuso */ }
-  }
-  return out.map((m) => ({ ...m, esteso }));
-}
-
-async function daPdf(libro, nomi, fino) {
-  const blob = await getFile(libro.id);
-  if (!blob) return null;
-  const mod = await import("./pdfThumb.js");
-  const pdf = await mod.loadPdf(await blob.arrayBuffer());
-  let out = [];
-  let esteso = 0;
-  let contate = 0;
-  let passo = 1;
-  try {
+  if (testo.tipo === "pdf") {
+    const pagine = testo.pagine || [];
+    let contate = 0;
     // nei PDF il segno e' un numero di pagina: le pagine oltre non si
     // leggono proprio, ed e' anche questo che rende giusti gli «ultimi»
-    const limite = fino ? Math.min(parseInt(fino, 10) || pdf.numPages, pdf.numPages) : pdf.numPages;
-    const cache = new Map();
+    const limite = fino ? Math.min(parseInt(fino, 10) || pagine.length, pagine.length) : pagine.length;
     const cercati = [...new Set([].concat(nomi).flatMap(varianti))];
     for (let n = 1; n <= limite; n++) {
-      let testoPag;
-      try {
-        testoPag = await pageText(pdf, n, cache);
-      } catch {
-        continue;
-      }
+      const testoPag = pagine[n - 1] || "";
       esteso += testoPag.length;
       const visti = new Set();
       for (const v of cercati) {
@@ -359,12 +259,7 @@ async function daPdf(libro, nomi, fino) {
           visti.add(chiave);
           contate += 1;
           if (contate % passo) continue;
-          out.push({
-            libro,
-            cfi: String(n),
-            dove: `pag. ${n}`,
-            testo: `${m.before}${m.hit}${m.after}`.trim(),
-          });
+          out.push({ libro, cfi: String(n), dove: `pag. ${n}`, testo: `${m.before}${m.hit}${m.after}`.trim() });
           if (out.length >= MAX_MENZIONI) {
             out = out.filter((_, i) => i % 2 === 0);
             passo *= 2;
@@ -372,8 +267,41 @@ async function daPdf(libro, nomi, fino) {
         }
       }
     }
-  } finally {
-    mod.chiudiPdf(pdf);
+    return out.map((m) => ({ ...m, esteso }));
+  }
+  let visti = 0;
+  const dentro = (c) => {
+    try { return cmp(c, fino) <= 0; } catch { return false; }
+  };
+  for (const cap of testo.capitoli || []) {
+    // La spina e' in ordine di lettura: il primo capitolo che comincia oltre
+    // il segno chiude il giro. Prima si scorreva dall'inizio con un tetto
+    // sulle menzioni: per un protagonista il tetto si esauriva nei primi
+    // capitoli e «gli ultimi passaggi» venivano in realta' da meta' libro.
+    if (fino) {
+      try {
+        if (cmp(`epubcfi(${cap.base}!/0)`, fino) > 0) break;
+      } catch { /* base illeggibile: si scorre e filtra per menzione */ }
+    }
+    for (const nodo of cap.nodi) {
+      const text = nodo.t;
+      if (!text || !text.trim()) continue;
+      esteso += text.length;
+      re.lastIndex = 0;
+      // una menzione per nodo: il paragrafo attorno e' lo stesso
+      const m = re.exec(text);
+      if (!m) continue;
+      visti += 1;
+      if (visti % passo) continue;
+      const c = puntoNelNodo(nodo, m.index);
+      if (!c) continue;
+      if (fino && !dentro(c)) continue;
+      out.push({ libro, cfi: c, testo: paragrafo(nodo.b != null ? testoBlocco(cap, nodo.b) : null, text, m[0]) });
+      if (out.length >= MAX_MENZIONI) {
+        out = out.filter((_, i) => i % 2 === 0);
+        passo *= 2;
+      }
+    }
   }
   return out.map((m) => ({ ...m, esteso }));
 }
@@ -386,63 +314,36 @@ async function daPdf(libro, nomi, fino) {
 // per esteso. Aprire tutta la saga per trovare un cognome vorrebbe dire
 // raddoppiare l'attesa su ogni scheda.
 //
-// E' una passata di sola conta — niente CFI, niente paragrafi — quindi costa
-// una frazione della raccolta vera. Nel capitolo dove sta il segno si legge
-// tutto il capitolo: un nome non e' un fatto, e i passaggi restano comunque
-// tagliati sul segno.
-async function aliasDaEpub(libro, reg, fino) {
-  const blob = await getFile(libro.id);
-  if (!blob) return;
-  const { default: ePub } = await import("epubjs");
-  const eb = ePub(await blob.arrayBuffer());
-  try {
-    await eb.ready;
-    const cfi = new ePub.CFI();
-    for (const item of eb.spine.spineItems) {
-      if (fino) {
-        try {
-          if (cfi.compare(`epubcfi(${item.cfiBase}!/0)`, fino) > 0) break;
-        } catch { /* base illeggibile: si tira dritto */ }
-      }
+// E' una passata di sola conta — niente CFI, niente paragrafi. Nel capitolo
+// dove sta il segno si legge tutto il capitolo: un nome non e' un fatto, e i
+// passaggi restano comunque tagliati sul segno.
+export function aliasNelTesto(testo, reg, fino, cmp) {
+  if (testo.tipo === "pdf") {
+    const pagine = testo.pagine || [];
+    const limite = fino ? Math.min(parseInt(fino, 10) || pagine.length, pagine.length) : pagine.length;
+    for (let n = 0; n < limite; n++) annota(reg, pagine[n]);
+    return;
+  }
+  for (const cap of testo.capitoli || []) {
+    if (fino) {
       try {
-        await item.load(eb.load.bind(eb));
-        annota(reg, item.document?.body?.textContent);
-      } catch { /* capitolo illeggibile: gli altri bastano */ } finally {
-        try { item.unload(); } catch { /* gia' scaricato */ }
-      }
+        if (cmp(`epubcfi(${cap.base}!/0)`, fino) > 0) break;
+      } catch { /* base illeggibile: si tira dritto */ }
     }
-  } finally {
-    try { eb.destroy(); } catch { /* gia' chiuso */ }
+    annota(reg, testoCapitolo(cap));
   }
 }
 
-async function aliasDaPdf(libro, reg, fino) {
-  const blob = await getFile(libro.id);
-  if (!blob) return;
-  const mod = await import("./pdfThumb.js");
-  const pdf = await mod.loadPdf(await blob.arrayBuffer());
-  try {
-    const limite = fino ? Math.min(parseInt(fino, 10) || pdf.numPages, pdf.numPages) : pdf.numPages;
-    const cache = new Map();
-    for (let n = 1; n <= limite; n++) {
-      try {
-        annota(reg, await pageText(pdf, n, cache));
-      } catch { /* pagina illeggibile: le altre bastano */ }
-    }
-  } finally {
-    mod.chiudiPdf(pdf);
-  }
-}
-
-export async function trovaAlias(nome, tappa) {
+export async function trovaAlias(nome, tappa, { leggiTesto = testoDelLibro } = {}) {
   if (!tappa?.libro) return [];
   const reg = nuovoRegistro(nome);
   try {
     const fino = tappa.tutto ? null : tappa.fino;
     // un fumetto non ha testo: nessun alias da trovarci
     if (eFumetto(tappa.libro)) return [];
-    if (tappa.libro.fileType === "pdf") await aliasDaPdf(tappa.libro, reg, fino);
-    else await aliasDaEpub(tappa.libro, reg, fino);
+    const testo = await leggiTesto(tappa.libro);
+    if (!testo) return [];
+    aliasNelTesto(testo, reg, fino, testo.tipo === "pdf" ? null : await confronta());
   } catch {
     return [];
   }
@@ -458,7 +359,7 @@ export async function trovaAlias(nome, tappa) {
 // tutta la saga» mentre la risposta veniva da un libro solo. Come la
 // ricerca in biblioteca, i tomi lontani si contano e si dicono; scaricarli
 // per una domanda sola, su una connessione da tablet, non si fa.
-export async function raccogliPassaggi(nomi, tappe, { vivo } = {}) {
+export async function raccogliPassaggi(nomi, tappe, { vivo, leggiTesto = testoDelLibro } = {}) {
   const attivo = vivo || (() => true);
   const tutti = [];
   const lontani = [];
@@ -472,11 +373,19 @@ export async function raccogliPassaggi(nomi, tappe, { vivo } = {}) {
     try {
       // un fumetto c'e' ma non ha testo: e' un volume dove il nome non
       // compare, non un volume muto
-      const pezzi = eFumetto(t.libro)
-        ? []
-        : t.libro.fileType === "pdf"
-          ? await daPdf(t.libro, elenco, t.tutto ? null : t.fino)
-          : await daEpub(t.libro, re, t.tutto ? null : t.fino);
+      let pezzi = [];
+      if (!eFumetto(t.libro)) {
+        const testo = await leggiTesto(t.libro);
+        pezzi = !testo
+          ? null
+          : menzioniNelTesto(testo, {
+              libro: t.libro,
+              re,
+              nomi: elenco,
+              fino: t.tutto ? null : t.fino,
+              cmp: testo.tipo === "pdf" ? null : await confronta(),
+            });
+      }
       // niente byte, niente lettura: e' un volume muto, non un volume
       // dove il personaggio non compare
       if (pezzi === null) lontani.push(t.libro);

@@ -1,5 +1,4 @@
-import { getFile } from "./bookStore.js";
-import { pageText } from "./pdfSearch.js";
+import { testoDelLibro, eContorno, testoBlocco, puntoBlocco } from "./testoLibro.js";
 import { eFumetto } from "./fumetto.js";
 import { chiedi, getOracleKey, TETTO_SCHEDA } from "./oracle.js";
 import { parteDiUnaStoria } from "./saga.js";
@@ -90,19 +89,6 @@ export function raccogli(r, testo) {
   }
 }
 
-// il paragrafo sta oltre il segno? Un paragrafo che non sa dire dove si trova
-// si considera oltre: nel dubbio si taglia, perche' qui l'errore per
-// generosita' e' uno spoiler.
-function oltre(doc, item, cfi, el, fino) {
-  try {
-    const range = doc.createRange();
-    range.selectNodeContents(el);
-    return cfi.compare(item.cfiFromRange(range), fino) > 0;
-  } catch {
-    return true;
-  }
-}
-
 // LE ULTIME PAGINE DEL FILE NON SONO IL FINALE DELLA STORIA.
 //
 // In fondo a un romanzo ci sono l'elenco dei personaggi, i ringraziamenti,
@@ -114,103 +100,86 @@ function oltre(doc, item, cfi, el, fino) {
 //
 // Si riconosce dal titolo del documento o dalla sua prima intestazione:
 // quando comincia il materiale di contorno, la storia è finita lì.
-const CONTORNO =
-  /^\s*(dramatis\s+personae|cast\s+of\s+characters|personaggi|acknowledge?ments?|ringraziamenti|appendix|appendice|glossary|glossario|about\s+the\s+author|l['’]autore|nota\s+dell['’]autore|author['’]s\s+note|note\s+dell['’]editore|extract|estratto|anteprima|excerpt|also\s+by|dello\s+stesso\s+autore|copyright|indice|contents|table\s+of\s+contents|bibliograf)/i;
+// (la regola sta in `testoLibro.js`: l'estrazione segna il contorno una volta
+// sola per capitolo, e qui si legge il segno)
+export { eContorno };
 
-export function eContorno(doc) {
-  const titolo = doc?.title || "";
-  const testa = doc?.querySelector?.("h1, h2, h3, h4")?.textContent || "";
-  return CONTORNO.test(titolo.trim()) || CONTORNO.test(testa.trim());
+// La raccolta si fa sul TESTO TENUTO (`testoLibro.js`): i volumi finiti non
+// cambiano piu', e rileggerli da capo a ogni scheda era il grosso dell'attesa.
+// Le regole sono quelle di quando si apriva il libro — lo stesso ordine dei
+// paragrafi, lo stesso taglio sul segno, lo stesso contorno che chiude.
+export function tramaDaTesto(testo, fino, cmp) {
+  const r = nuovaRaccolta();
+  if (testo?.tipo === "pdf") {
+    const pagine = testo.pagine || [];
+    const limite = fino ? Math.min(parseInt(fino, 10) || pagine.length, pagine.length) : pagine.length;
+    // nei PDF non c'e' un paragrafo: la pagina e' l'unita' piu' piccola di
+    // cui si conosca con certezza il posto nella lettura
+    for (let n = 0; n < limite; n++) raccogli(r, pagine[n]);
+    return r;
+  }
+  const spina = testo?.capitoli || [];
+  const dopoIlSegno = (c) => {
+    try {
+      return cmp(c, fino) > 0;
+    } catch {
+      return null;
+    }
+  };
+  for (let i = 0; i < spina.length; i++) {
+    const cap = spina[i];
+    if (fino && dopoIlSegno(`epubcfi(${cap.base}!/0)`) === true) break;
+    // Il confronto col segno si fa SOLO nel capitolo dove sta il segno, cioe'
+    // quello dopo il quale la spina esce dalla frontiera. Negli altri il
+    // capitolo intero e' dietro al segno e non c'e' niente da tagliare.
+    let taglia = false;
+    if (fino) {
+      const dopo = spina[i + 1];
+      taglia = !dopo || dopoIlSegno(`epubcfi(${dopo.base}!/0)`) !== false;
+    }
+    // Il materiale di contorno chiude la storia: da li' in poi non e' piu'
+    // romanzo, e la coda deve fermarsi prima. Ma le stesse parole stanno
+    // anche in TESTA a un libro — indice, copyright, «dello stesso autore» —
+    // e fermarsi li' vorrebbe dire non raccogliere niente: in apertura si
+    // salta e si tira dritto, in fondo si chiude.
+    if (cap.contorno) {
+      if (r.corpo.length >= DENTRO_LA_STORIA) break;
+      continue;
+    }
+    for (const k of cap.prosa) {
+      const t = testoBlocco(cap, k);
+      // un paragrafo senza testo non ha un posto, e non ha niente da dare:
+      // si salta prima di chiedergli dove sta (una spaziatura vuota prima del
+      // segno non deve chiudere la raccolta)
+      if (!t || !t.trim()) continue;
+      // un paragrafo che non sa dire dove si trova si considera oltre: nel
+      // dubbio si taglia, perche' qui l'errore per generosita' e' uno spoiler
+      if (taglia) {
+        const c = puntoBlocco(cap, k);
+        if (!c || dopoIlSegno(c) !== false) break;
+      }
+      raccogli(r, t);
+    }
+  }
+  return r;
 }
 
-async function tramaDaEpub(libro, fino) {
-  const blob = await getFile(libro.id);
-  if (!blob) return null;
+async function cmpCfi() {
   const { default: ePub } = await import("epubjs");
-  const eb = ePub(await blob.arrayBuffer());
-  const r = nuovaRaccolta();
-  let finito = false;
-  try {
-    await eb.ready;
-    const cfi = new ePub.CFI();
-    const spina = eb.spine.spineItems;
-    for (let i = 0; i < spina.length && !finito; i++) {
-      const item = spina[i];
-      if (fino) {
-        try {
-          if (cfi.compare(`epubcfi(${item.cfiBase}!/0)`, fino) > 0) break;
-        } catch { /* base illeggibile: si scorre e si filtra dopo */ }
-      }
-      // Il CFI di ogni paragrafo costa: si paga SOLO nel capitolo dove sta il
-      // segno, cioe' quello dopo il quale la spina esce dalla frontiera. Negli
-      // altri il capitolo intero e' dietro al segno e non c'e' niente da
-      // tagliare — e sono quasi tutti.
-      let taglia = false;
-      if (fino) {
-        const dopo = spina[i + 1];
-        try {
-          taglia = !dopo || cfi.compare(`epubcfi(${dopo.cfiBase}!/0)`, fino) > 0;
-        } catch {
-          taglia = true;
-        }
-      }
-      try {
-        await item.load(eb.load.bind(eb));
-        const doc = item.document;
-        // Il materiale di contorno chiude la storia: da lì in poi non è
-        // più romanzo, e la coda deve fermarsi prima. Ma le stesse parole
-        // stanno anche in TESTA a un libro — indice, copyright, «dello
-        // stesso autore» — e fermarsi lì vorrebbe dire non raccogliere
-        // niente: in apertura si salta e si tira dritto, in fondo si
-        // chiude.
-        if (eContorno(doc)) {
-          if (r.corpo.length >= DENTRO_LA_STORIA) {
-            finito = true;
-          }
-          continue;
-        }
-        if (doc?.body) {
-          for (const el of doc.querySelectorAll("p, blockquote, dd")) {
-            if (taglia && oltre(doc, item, cfi, el, fino)) break;
-            raccogli(r, el.textContent);
-          }
-        }
-      } catch { /* capitolo illeggibile: gli altri bastano */ } finally {
-        try { item.unload(); } catch { /* gia' scaricato */ }
-      }
-    }
-  } finally {
-    try { eb.destroy(); } catch { /* gia' chiuso */ }
-  }
-  return r;
+  const cfi = new ePub.CFI();
+  return (a, b) => cfi.compare(a, b);
 }
 
-async function tramaDaPdf(libro, fino) {
-  const blob = await getFile(libro.id);
-  if (!blob) return null;
-  const mod = await import("./pdfThumb.js");
-  const pdf = await mod.loadPdf(await blob.arrayBuffer());
-  const r = nuovaRaccolta();
-  try {
-    const limite = fino ? Math.min(parseInt(fino, 10) || pdf.numPages, pdf.numPages) : pdf.numPages;
-    const cache = new Map();
-    for (let n = 1; n <= limite; n++) {
-      try {
-        // nei PDF non c'e' un paragrafo: la pagina e' l'unita' piu' piccola
-        // di cui si conosca con certezza il posto nella lettura
-        raccogli(r, await pageText(pdf, n, cache));
-      } catch { /* pagina illeggibile: le altre bastano */ }
-    }
-  } finally {
-    mod.chiudiPdf(pdf);
-  }
-  return r;
+async function tramaDaLibro(libro, fino, leggiTesto) {
+  const testo = await leggiTesto(libro);
+  if (!testo) return null;
+  return tramaDaTesto(testo, fino, testo.tipo === "pdf" ? null : await cmpCfi());
 }
 
 // Come nella scheda personaggio: un tomo che non e' su questo dispositivo
 // non si legge, e non dirlo significa dichiarare nella provenienza un
 // volume che nessuno ha aperto.
-export async function raccogliTrama(tappe, { vivo } = {}) {
+export async function raccogliTrama(tappe, { vivo, leggiTesto = testoDelLibro } = {}) {
   const attivo = vivo || (() => true);
   const out = [];
   const lontani = [];
@@ -226,8 +195,7 @@ export async function raccogliTrama(tappe, { vivo } = {}) {
     if (eFumetto(t.libro)) continue;
     try {
       const fino = t.tutto ? null : t.fino;
-      const r =
-        t.libro.fileType === "pdf" ? await tramaDaPdf(t.libro, fino) : await tramaDaEpub(t.libro, fino);
+      const r = await tramaDaLibro(t.libro, fino, leggiTesto);
       if (r) out.push({ libro: t.libro, posto: i, ...r });
       else lontani.push(t.libro);
     } catch {

@@ -17,7 +17,8 @@
 // Le decisioni — cosa e' gia' su Drive, cosa sale, cosa lascia il secchio —
 // stanno in `driveCore.js`, dove un test le prova.
 
-import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive } from "./driveCore.js";
+import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive, CAMPI_ELENCO, daTenereNellElenco, applicaCambiamenti, elencoBuono, segnoScaduto, VERSIONE_ELENCO, fileDellElenco, cartelleDellElenco, audioDellElenco } from "./driveCore.js";
+import { getAux, putAux, removeAux } from "./bookStore.js";
 
 const TOKEN_KEY = "bc_drive_token";
 const ACCESO_KEY = "bc_drive_on";
@@ -212,6 +213,9 @@ export async function scollegaDrive() {
   scrivi(ACCESO_KEY, null);
   scrivi(MAPPA_KEY, null);
   scrivi(MAPPA_MUSICA_KEY, null);
+  // l'elenco tenuto e' di QUESTO account: ricollegandosi con un altro
+  // sarebbe il Drive di qualcun altro
+  dimenticaElenco();
   try {
     if (t && globalThis.google?.accounts?.oauth2) globalThis.google.accounts.oauth2.revoke(t, () => {});
   } catch {
@@ -263,23 +267,96 @@ async function elencaTutto(query, campi) {
   return tutti;
 }
 
-export const elencaFile = () =>
-  elencaTutto(
-    `trashed=false and mimeType!='${CARTELLA}'`,
-    "id,name,size,sha256Checksum,appProperties,parents"
-  ).then((l) => l.filter((f) => estensioneDi(f.name)));
+// L'ELENCO TENUTO, E I CAMBIAMENTI (le regole in `driveCore.js`). Sta in
+// IndexedDB e non in `localStorage`: con qualche migliaio di file sono
+// centinaia di chilobyte, e `localStorage` ha un tetto che la biblioteca usa
+// gia'. Nella stessa pagina l'elenco si chiede UNA volta per giro: libri,
+// cartelle e musica lo leggono insieme (`VIVO`, pochi secondi), e quel che il
+// giro stesso crea o carica ci si aggiunge a mano.
+const ELENCO_KEY = "drive_elenco";
+const VIVO_PER = 20 * 1000;
+let VIVO = null;
+
+async function elencoDaCapo() {
+  const segno = (await (await chiama(`${API}/changes/startPageToken?fields=startPageToken`)).json()).startPageToken;
+  const file = {};
+  for (const f of await elencaTutto("trashed=false", CAMPI_ELENCO)) if (daTenereNellElenco(f)) file[f.id] = f;
+  return { v: VERSIONE_ELENCO, segno, quando: Date.now(), file };
+}
+
+async function cambiamentiDa(salvato) {
+  const tutti = [];
+  let pagina = salvato.segno;
+  let segno = salvato.segno;
+  for (let giro = 0; giro < 200 && pagina; giro += 1) {
+    const url =
+      `${API}/changes?pageToken=${q(pagina)}&pageSize=1000&spaces=drive&includeRemoved=true` +
+      `&fields=${q(`nextPageToken,newStartPageToken,changes(fileId,removed,file(${CAMPI_ELENCO},trashed))`)}`;
+    const d = await (await chiama(url)).json();
+    tutti.push(...(d.changes || []));
+    if (d.newStartPageToken) segno = d.newStartPageToken;
+    pagina = d.nextPageToken || null;
+  }
+  return { ...salvato, segno, file: applicaCambiamenti(salvato.file, tutti) };
+}
+
+async function elencoDrive() {
+  if (VIVO && Date.now() - VIVO.quando < VIVO_PER) return VIVO.elenco;
+  let salvato = null;
+  try {
+    salvato = await getAux(ELENCO_KEY);
+  } catch {
+    salvato = null;
+  }
+  let elenco = null;
+  if (elencoBuono(salvato)) {
+    try {
+      elenco = await cambiamentiDa(salvato);
+    } catch (e) {
+      if (!segnoScaduto(e)) throw e;
+    }
+  }
+  if (!elenco) elenco = await elencoDaCapo();
+  VIVO = { quando: Date.now(), elenco };
+  try {
+    await putAux(ELENCO_KEY, elenco);
+  } catch {
+    /* senza memoria si rifa' da capo la prossima volta: costa e non rompe */
+  }
+  return elenco;
+}
+
+// quel che il giro stesso ha creato, perche' la domanda dopo lo veda
+function aggiungiAllElenco(f) {
+  if (!f?.id || !daTenereNellElenco(f)) return;
+  if (VIVO) VIVO.elenco.file[f.id] = f;
+  getAux(ELENCO_KEY)
+    .then((e) => (e?.file ? putAux(ELENCO_KEY, { ...e, file: { ...e.file, [f.id]: f } }) : null))
+    .catch(() => {});
+}
+
+function dimenticaElenco() {
+  VIVO = null;
+  removeAux(ELENCO_KEY).catch(() => {});
+}
+
+const tuttiDellElenco = async () => Object.values((await elencoDrive()).file);
+
+export const elencaFile = async () => fileDellElenco(await tuttiDellElenco());
 
 // col genitore: e' quel che permette di risalire da una cartella alla radice
 // («book-companion»), e di scrivere un percorso invece di un nome solo
-export const elencaCartelle = () => elencaTutto(`trashed=false and mimeType='${CARTELLA}'`, "id,name,parents");
+export const elencaCartelle = async () => cartelleDellElenco(await tuttiDellElenco());
 
 async function creaCartella(nome) {
-  const r = await chiama(`${API}/files?fields=id,name`, {
+  const r = await chiama(`${API}/files?fields=id,name,parents,mimeType`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: nome, mimeType: CARTELLA }),
   });
-  return r.json();
+  const f = await r.json();
+  aggiungiAllElenco({ mimeType: CARTELLA, ...f });
+  return f;
 }
 
 // Il segno che dice al prossimo dispositivo «questo file e' quel libro».
@@ -389,7 +466,7 @@ export function mettiNellaMappa(bookId, fileId, byte) {
 // partono a pezzi con `Blob.slice`, che non copia niente finche' non tocca
 // a quel pezzo — cosi' il volume non entra mai tutto nella memoria.
 export async function caricaSuDrive(blob, { nome, cartella, bookId, props }) {
-  const inizio = await chiama(`${UPLOAD}/files?uploadType=resumable&fields=id,size`, {
+  const inizio = await chiama(`${UPLOAD}/files?uploadType=resumable&fields=${q(CAMPI_ELENCO)}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json; charset=UTF-8",
@@ -412,7 +489,11 @@ export async function caricaSuDrive(blob, { nome, cartella, bookId, props }) {
       headers: { "Content-Range": totale ? `bytes ${da}-${a - 1}/${totale}` : "bytes */0" },
       body: blob.slice(da, a),
     });
-    if (r.status !== 308) return r.json();
+    if (r.status !== 308) {
+      const f = await r.json();
+      aggiungiAllElenco(f);
+      return f;
+    }
     const ricevuti = /bytes=0-(\d+)/.exec(r.headers.get("Range") || "");
     da = ricevuti ? Number(ricevuti[1]) + 1 : a;
   }
@@ -463,6 +544,9 @@ export async function giroDrive(libri, opzioni = {}) {
 
 async function giro(libri, { tipo, qui, misure, inUscita, secchio, leggiByte, say = () => {}, vivo = () => true } = {}) {
   say("Guardo i libri su Google Drive…");
+  // un giro nuovo chiede i cambiamenti a Google: l'elenco vivo serve solo a
+  // non chiederli tre volte dentro lo stesso giro
+  VIVO = null;
   const file = await elencaFile();
   const { mappa, daSegnare, ambigui } = abbina(libri, file, { misure });
   const salva = () => {
@@ -532,8 +616,7 @@ async function giro(libri, { tipo, qui, misure, inUscita, secchio, leggiByte, sa
 // dall'app porta il tipo del file che il lettore ha scelto, e un'estensione
 // che non conosciamo non deve farlo sparire dall'elenco — al giro dopo
 // sembrerebbe mancante e ripartirebbe, ogni volta.
-const elencaAudio = () =>
-  elencaTutto(`trashed=false and mimeType contains 'audio/'`, "id,name,size,appProperties,parents");
+const elencaAudio = async () => audioDellElenco(await tuttiDellElenco());
 
 export function mappaMelodie() {
   try {
