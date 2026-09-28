@@ -33,15 +33,7 @@ import Guasto from "./components/Guasto.jsx";
 import Home from "./components/Home.jsx";
 import Library from "./components/Library.jsx";
 import BookSheet from "./components/BookSheet.jsx";
-import QuoteGarden from "./components/QuoteGarden.jsx";
-import ReadingDiary from "./components/ReadingDiary.jsx";
-import Quaderno from "./components/Quaderno.jsx";
-import DaPrendere from "./components/DaPrendere.jsx";
-import Mappa from "./components/Mappa.jsx";
-import Cammino from "./components/Cammino.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
-import MusicRoom from "./components/MusicRoom.jsx";
-import SyncPanel from "./components/SyncPanel.jsx";
 import { getBookMusic, setBookMusic } from "./lib/music.js";
 import { getJump, clearJump } from "./lib/annotations.js";
 import { daAvvisare } from "./lib/oracle.js";
@@ -64,6 +56,45 @@ const themeIcon = (id) => THEME_ICON[id] || CandleIcon;
 const navIcon = (sectionId, themeId) =>
   sectionId === "home" ? themeIcon(themeId) : sectionId === "library" ? BooksIcon : MusicIcon;
 
+// LE STANZE CHE SI APRONO DI RADO NON STANNO NEL PACCHETTO DELL'AVVIO: il
+// cammino, «Da prendere» coi suoi consigli, il quaderno, la mappa, il
+// diario, il giardino, la sala della musica e il pannello della nuvola.
+// Misurato: tolte, il pacchetto che il tablet legge e compila a ogni avvio
+// scende di un quarto. Per non pagarle al primo tocco si scaricano DOPO,
+// quando l'app e' ferma (`precaricaStanze`): chi apre il quaderno un minuto
+// dopo l'avvio lo trova gia' pronto, e senza rete le serve il service
+// worker, che le tiene tutte.
+const STANZE = {
+  QuoteGarden: () => import("./components/QuoteGarden.jsx"),
+  ReadingDiary: () => import("./components/ReadingDiary.jsx"),
+  Quaderno: () => import("./components/Quaderno.jsx"),
+  DaPrendere: () => import("./components/DaPrendere.jsx"),
+  Mappa: () => import("./components/Mappa.jsx"),
+  Cammino: () => import("./components/Cammino.jsx"),
+  MusicRoom: () => import("./components/MusicRoom.jsx"),
+  SyncPanel: () => import("./components/SyncPanel.jsx"),
+};
+const QuoteGarden = lazy(STANZE.QuoteGarden);
+const ReadingDiary = lazy(STANZE.ReadingDiary);
+const Quaderno = lazy(STANZE.Quaderno);
+const DaPrendere = lazy(STANZE.DaPrendere);
+const Mappa = lazy(STANZE.Mappa);
+const Cammino = lazy(STANZE.Cammino);
+const MusicRoom = lazy(STANZE.MusicRoom);
+const SyncPanel = lazy(STANZE.SyncPanel);
+function precaricaStanze() {
+  // una alla volta e a riposo: scaricarle tutte insieme appena partiti
+  // toglierebbe al primo disegno proprio il tempo che si voleva liberare
+  const coda = Object.values(STANZE);
+  const prossima = () => {
+    const f = coda.shift();
+    if (!f) return;
+    f().catch(() => {}).finally(() => aRiposo(prossima));
+  };
+  aRiposo(prossima);
+}
+const aRiposo = (f) =>
+  typeof window.requestIdleCallback === "function" ? window.requestIdleCallback(f, { timeout: 4000 }) : setTimeout(f, 300);
 const Reader = lazy(() => import("./components/Reader.jsx"));
 const PdfReader = lazy(() => import("./components/PdfReader.jsx"));
 const ComicReader = lazy(() => import("./components/ComicReader.jsx"));
@@ -869,6 +900,7 @@ export default function App() {
 
   useEffect(() => {
     requestPersistence();
+    precaricaStanze();
     try {
       swUpdate.current = registerSW({
         onNeedRefresh: () => {
@@ -1463,7 +1495,11 @@ export default function App() {
             }}
           />
         )}
-        {section === "music" && <MusicRoom music={music} playerRef={playerRef} notify={notify} />}
+        {section === "music" && (
+          <Suspense fallback={null}>
+            <MusicRoom music={music} playerRef={playerRef} notify={notify} />
+          </Suspense>
+        )}
       </main>
       </div>
       <BottomNav section={section} goTo={navigate} themeId={themeId} />
@@ -1493,6 +1529,9 @@ export default function App() {
           onMappa={() => setMappaOpen(true)}
         />
       )}
+      {/* le stanze di rado arrivano da un pacchetto loro: finche' non c'e',
+          niente al posto loro — si apre un attimo dopo, gia' completa */}
+      <Suspense fallback={null}>
       {mappaOpen && <Mappa onClose={() => setMappaOpen(false)} />}
       {cammino && (
         <Cammino
@@ -1526,6 +1565,7 @@ export default function App() {
         <Quaderno books={books} onClose={() => setQuadernoOpen(false)} onReadAt={(id, dove) => handleRead(id, dove)} />
       )}
       {prendereOpen && <DaPrendere books={books} onClose={() => setPrendereOpen(false)} />}
+      </Suspense>
       {readingBook && (
         // L'ANELLO STRETTO. Il reader è la parte più complicata dell'app,
         // ed è quella dove un difetto è più probabile: un guasto lì dentro

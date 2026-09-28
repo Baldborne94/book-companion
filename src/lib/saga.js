@@ -397,10 +397,17 @@ function raccogliStorie(books, statusOf, tocco, contorno) {
   // pure; dove la fila e' una sola, il numero e' della saga. Non decide come
   // si raggruppa — quello e' mestiere della serie, sempre — decide come si
   // chiama la riga.
+  // UNA DOMANDA PER SAGA, NON PER LIBRO: chi non aveva i numeri doppi non si
+  // segnava da nessuna parte, e la stessa domanda — un giro sull'intera
+  // biblioteca — si rifaceva per ogni suo volume. Misurato con 650 libri e
+  // il processore rallentato quattro volte: 140 ms dell'Ingresso solo qui.
   const suoi = new Set();
+  const guardate = new Set();
   for (const b of books) {
     const saga = (b?.saga || "").trim();
-    if (saga && !suoi.has(saga) && numeriMescolati(books, saga)) suoi.add(saga);
+    if (!saga || guardate.has(saga)) continue;
+    guardate.add(saga);
+    if (numeriMescolati(books, saga)) suoi.add(saga);
   }
   const storie = new Map();
   for (const b of books) {
