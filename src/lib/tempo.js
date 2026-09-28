@@ -125,6 +125,26 @@ export function statisticheAnno(registro, anno, oggi = Date.now()) {
   };
 }
 
+// LA RIGA DI OGGI SULL'INGRESSO: quanto hai letto oggi, da quanti giorni di
+// fila, e a che punto sei col passo dell'obiettivo. Stavano tutti e tre
+// dentro il diario, cioe' dietro una porta; qui sono un'occhiata. Gli zeri
+// non si dicono — «Oggi 0 min» a ogni mattina si imparerebbe a non
+// leggerlo — e un giorno di fila da solo non e' una serie. `passo` e'
+// quel che torna `passoObiettivo` (o `null` senza obiettivo).
+export function pezziDiOggi(registro, passo = null, oggi = Date.now()) {
+  const pezzi = [];
+  const minuti = Math.floor((perGiorno(registro)[giornoDi(oggi)] || 0) / 60);
+  if (minuti > 0) pezzi.push(`Oggi ${durata(minuti)}`);
+  const { serie } = statisticheAnno(registro, new Date(oggi).getFullYear(), oggi);
+  if (serie >= 2) pezzi.push(`${serie} giorni di fila`);
+  if (passo) {
+    // il conto «7 di 24» lo dice gia' la porta del diario due righe sotto:
+    // qui il passo, che e' la notizia
+    pezzi.push(passo.finiti >= passo.obiettivo ? "obiettivo raggiunto ✨" : `obiettivo: ${passo.passo}`);
+  }
+  return pezzi;
+}
+
 export function durata(minuti) {
   const m = Math.max(0, Math.round(minuti || 0));
   if (m < 60) return `${m} min`;

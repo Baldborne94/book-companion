@@ -4,7 +4,8 @@ import { useViewport } from "../lib/viewport.js";
 import { getFinished, getLastOpened, getProgress, getStarted, getStatus, getUpdatedAt, letturaUnica } from "../lib/library.js";
 import { getHighlights } from "../lib/annotations.js";
 import { buildDiary, rigaDiario } from "../lib/diary.js";
-import { leggiObiettivi, obiettivoDi } from "../lib/obiettivo.js";
+import { leggiObiettivi, obiettivoDi, passoObiettivo } from "../lib/obiettivo.js";
+import { leggiTempo, pezziDiOggi } from "../lib/tempo.js";
 import { raccogli, conta, rigaGiardino } from "../lib/citazioni.js";
 import { leggiQuaderno, rigaQuaderno } from "../lib/quaderno.js";
 import { leggiDaPrendere, proposte, rigaDaPrendere } from "../lib/daPrendere.js";
@@ -13,18 +14,12 @@ import BookCover from "./BookCover.jsx";
 import { BookmarkIcon, LeafIcon, SparkIcon, StarIcon } from "./Icons.jsx";
 import EmptyState from "./EmptyState.jsx";
 
-// da quante stelle in su la CARTA DI UNA SAGA si accende (bordo dorato e
-// voto in vista). Non c'entra coi preferiti, che sono quelli col cuore:
-// qui è solo «questa saga ha un voto alto, mostralo» — ed è il punto che
-// ha rotto l'app quando i preferiti hanno smesso di usare le stelle: la
-// costante era stata tolta ma le carte-saga la usavano ancora, e Vite non
-// si accorge di un identificatore libero (la pagina moriva SOLO con una
-// saga sullo scaffale, quindi la prova senza saghe non l'aveva preso)
-const STELLE_ALTE = 4;
-
 // il numero all'italiana: la mezza stella e la novella fra il secondo e il
 // terzo volume si scrivono tutt'e due «2,5»
 const virgola = (v) => String(v).replace(".", ",");
+
+// quanti preferiti stanno nella fila prima di «Vedi tutti»
+const FAV_FILA = 8;
 
 function SectionTitle({ children }) {
   return (
@@ -65,55 +60,6 @@ function Rating({ value }) {
   );
 }
 
-function SagaCard({ saga, onOpen }) {
-  return (
-    <button
-      onClick={() => onOpen(saga.name)}
-      style={{
-        flexShrink: 0,
-        // LA SCHEDA CRESCE COL SUO TITOLO. Ferma a 214 con la scrittura
-        // ingrandita, il nome della saga finiva tagliato («Realm of the
-        // Eld…») mentre ai lati dello schermo restava spazio vuoto: una
-        // larghezza fissa che tiene del testo NON e' una misura del disegno,
-        // e' un limite alla lunghezza della riga, e quello va col testo.
-        width: px(214),
-        textAlign: "left",
-        padding: 13,
-        borderRadius: R.medio,
-        border: `1px solid ${saga.best >= STELLE_ALTE ? `${C.accent}66` : C.border}`,
-        background: `linear-gradient(135deg, ${C.card}, ${C.surface})`,
-      }}
-    >
-      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-        {saga.books.slice(0, 3).map((b) => (
-          <div key={b.id} style={{ width: px(42) }}>
-            <BookCover book={b} radius={5} compact />
-          </div>
-        ))}
-      </div>
-      <div
-        style={{
-          fontFamily: FONT_TITLE,
-          fontWeight: 600,
-          fontSize: F.rilievo,
-          color: C.text,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {saga.name}
-      </div>
-      <div style={{ fontSize: F.piccolo, color: C.muted, marginTop: 2, display: "flex", gap: 8 }}>
-        <span>
-          {saga.books.length} {saga.books.length === 1 ? "libro" : "libri"}
-        </span>
-        {saga.best >= STELLE_ALTE && <Rating value={saga.best} />}
-      </div>
-    </button>
-  );
-}
-
 // UN LIBRO IN FILA: la copertina, il titolo e una riga che dice perché sta
 // lì. Il titolo si stampa SOLO sotto una copertina vera — sul dorso
 // disegnato è già scritto sopra, e ristamparlo è rumore (stessa regola dei
@@ -135,7 +81,7 @@ function LibroInFila({ book, nota, disegnato, onDisegnata, onClick }) {
   );
 }
 
-// le due file nuove scorrono come quella delle saghe: su uno schermo largo
+// le file scorrono: su uno schermo largo
 // vanno a capo, su un tablet in verticale si trascinano di lato
 const fila = (wide) => ({
   display: "flex",
@@ -145,12 +91,13 @@ const fila = (wide) => ({
   flexWrap: wide ? "wrap" : "nowrap",
 });
 
-export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onQuaderno, onDaPrendere, onSaga }) {
+export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onQuaderno, onDaPrendere }) {
   // chi ha il dorso disegnato lo sa solo `BookCover`: lo dice qui, così i
   // preferiti non ristampano un titolo che sta già sulla copertina
   const [dorsi, setDorsi] = useState({});
   const segnaDorso = (id, v) => setDorsi((d) => (d[id] === v ? d : { ...d, [id]: v }));
   const [perche, setPerche] = useState(false);
+  const [tuttiFav, setTuttiFav] = useState(false);
   const { wide } = useViewport();
 
   // I CONTI DELLE DUE PORTE STANNO SOPRA IL `return` ANTICIPATO, e non è
@@ -180,7 +127,8 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
   // sceglie nel diario, che sta sopra l'Ingresso, e al ritorno i libri non
   // sono cambiati — memorizzato, la porta direbbe ancora quello di prima
   const annoOra = new Date().getFullYear();
-  const rigaAnno = rigaDiario(diarioAnno, annoOra, obiettivoDi(leggiObiettivi(), annoOra));
+  const obiettivoAnno = obiettivoDi(leggiObiettivi(), annoOra);
+  const rigaAnno = rigaDiario(diarioAnno, annoOra, obiettivoAnno);
   // il quaderno si rilegge a ogni disegno per la stessa ragione: si riempie
   // dentro il reader e si svuota nel quaderno, e i libri non cambiano
   const rigaParole = rigaQuaderno(leggiQuaderno());
@@ -202,7 +150,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
       <EmptyState
         emoji="🔮"
         title="Benvenuto nel tuo regno"
-        text="Qui ritroverai il libro che stai leggendo e le saghe a cui tieni di più. Tutto comincia portando il primo tomo in Libreria."
+        text="Qui ritroverai il libro che stai leggendo e i tuoi preferiti. Tutto comincia portando il primo tomo in Libreria."
         action="Vai alla Libreria"
         onAction={() => goTo("library")}
       />
@@ -259,22 +207,6 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
     .filter((b) => b.fav)
     .sort((a, b) => (b.rating || 0) - (a.rating || 0) || (a.sagaOrder ?? Infinity) - (b.sagaOrder ?? Infinity));
 
-  const bySaga = new Map();
-  for (const b of books) {
-    const name = (b.saga || "").trim();
-    if (!name) continue;
-    const e = bySaga.get(name) || { name, books: [], best: 0 };
-    e.books.push(b);
-    e.best = Math.max(e.best, b.rating || 0);
-    bySaga.set(name, e);
-  }
-  for (const e of bySaga.values()) {
-    e.books.sort((a, b) => (a.sagaOrder ?? Infinity) - (b.sagaOrder ?? Infinity));
-  }
-  const sagas = [...bySaga.values()].sort(
-    (a, b) => b.best - a.best || b.books.length - a.books.length || a.name.localeCompare(b.name, "it")
-  );
-
   // GLI ALTRI CHE STAI LEGGENDO. Il riquadro in cima ne mostra UNO — l'ultimo
   // aperto — mentre lo stato «in lettura» l'app lo tiene su quanti ne vuoi:
   // con tre romanzi in corso, due erano invisibili proprio nella schermata
@@ -314,17 +246,55 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
   // mezzo tutte le altre volte.
   const muti = perchePassoTace(books, opzioniPasso);
 
+  // LA RIGA DI OGGI (vedi `pezziDiOggi`): tempo, serie e passo erano tutti
+  // dietro la porta del diario; qui bastano uno sguardo. Si rilegge a ogni
+  // disegno come l'obiettivo, perche' si riempie dentro il reader.
+  const finitiAnno = diarioAnno?.years?.find((y) => y.year === annoOra)?.entries?.length || 0;
+  const oggi = pezziDiOggi(leggiTempo(), passoObiettivo(finitiAnno, obiettivoAnno, annoOra));
+
+  // IN CORSO E PROSSIMI PASSI IN UNA FILA SOLA: tutt'e due rispondono a
+  // «e poi cosa apro», e due file di copertine una sotto l'altra, uguali di
+  // forma, non dicevano quale contasse. Prima i libri che hai in mano, poi i
+  // seguiti; la nota dice di che specie e' ognuno. Un libro non sta due volte.
+  const visti = new Set();
+  const dopo = [];
+  for (const b of altriInLettura) {
+    if (visti.has(b.id)) continue;
+    visti.add(b.id);
+    const p = Math.round(progressoDi(b.id) * 100);
+    dopo.push({ book: b, nota: p > 0 ? `${p}% letto` : "in lettura", apri: () => onRead(b.id) });
+  }
+  for (const p of passi) {
+    if (visti.has(p.libro.id)) continue;
+    visti.add(p.libro.id);
+    dopo.push({
+      book: p.libro,
+      // il CICLO quando c'è, la saga quando non c'è: dentro una saga grande
+      // «Cosmoverse n° 4» non si può verificare a occhio, «Mistborn n° 4» sì
+      nota: `${p.nome} n° ${virgola(p.libro.sagaOrder)}`,
+      // qui si APRE LA SCHEDA e non il libro: un volume che non hai ancora
+      // cominciato si guarda prima — c'è la quarta di copertina, e «Prima di
+      // cominciare» sta lì
+      apri: () => onOpenBook(p.libro.id),
+    });
+  }
+
+  // I PREFERITI IN UNA FILA, e tutti a richiesta: la griglia intera cresceva
+  // col tempo e spingeva in fondo il resto della pagina
+  const favInVista = tuttiFav ? favorites : favorites.slice(0, FAV_FILA);
+
+  const stanze = [
+    { chi: "giardino", titolo: "Il giardino", riga: rigaCitazioni || "Le tue citazioni", colore: C.arcane, icona: <LeafIcon size={22} active />, apri: onGarden },
+    { chi: "diario", titolo: "Il diario", riga: rigaAnno || "Libri finiti, anno per anno", colore: C.accent, icona: <BookmarkIcon size={22} />, apri: onDiary },
+    { chi: "quaderno", titolo: "Il quaderno", riga: rigaParole || "Le parole cercate, da ripassare", colore: C.green, icona: <span style={{ fontSize: F.titoletto }}>📒</span>, apri: onQuaderno },
+    { chi: "prendere", titolo: "Da prendere", riga: rigaPrendere || "I libri che ti mancano", colore: C.arcane, icona: <span style={{ fontSize: F.titoletto }}>🛒</span>, apri: onDaPrendere },
+  ];
+
+  // UNA COLONNA SOLA, anche sullo schermo largo (chiesto dal lettore): a due
+  // colonne la sinistra portava sei sezioni e la destra due, e l'occhio non
+  // sapeva da dove cominciare
   return (
-    <div
-      style={{
-        animation: "bc-fade-in 0.4s ease-out",
-        display: wide ? "grid" : "block",
-        gridTemplateColumns: wide ? "minmax(0, 1fr) minmax(0, 1fr)" : undefined,
-        gap: wide ? "0 28px" : undefined,
-        alignItems: "start",
-      }}
-    >
-      <div style={{ gridColumn: wide ? 1 : "auto" }}>
+    <div style={{ animation: "bc-fade-in 0.4s ease-out" }}>
       {last && (
         <>
           <SectionTitle>{followedFrom ? "Il prossimo della saga" : "Continua da dove ti sei fermato"}</SectionTitle>
@@ -333,20 +303,21 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
             style={{
               width: "100%",
               display: "flex",
-              gap: 16,
+              gap: 18,
               alignItems: "center",
               textAlign: "left",
-              padding: 14,
+              padding: 16,
               borderRadius: R.medio,
               border: `1px solid ${C.border}`,
               background: `linear-gradient(135deg, ${C.card}, ${C.surface})`,
               boxShadow: `0 0 30px ${C.arcane}14`,
             }}
           >
-            <div style={{ width: px(84), flexShrink: 0 }}>
-              {/* qui il titolo e l'autore stanno già scritti accanto, e il
-                  riquadro è alto ottantaquattro pixel: il dorso fa la sua
-                  parte col colore e basta */}
+            {/* LA COSA PIU' IMPORTANTE DELLA PAGINA SI VEDE: era grande
+                quanto le miniature delle file sotto. Qui titolo e autore
+                stanno gia' scritti accanto, quindi il dorso disegnato resta
+                muto (`compact`) */}
+            <div style={{ width: px(118), flexShrink: 0 }}>
               <BookCover book={last} compact />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -354,18 +325,20 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
                 style={{
                   fontFamily: FONT_TITLE,
                   fontWeight: 600,
-                  fontSize: F.titoletto,
+                  fontSize: F.titolo,
                   color: C.text,
+                  lineHeight: 1.2,
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
                   overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
                 }}
               >
                 {last.title}
               </div>
-              {last.author && <div style={{ fontSize: F.nota, color: C.muted, marginBottom: 8 }}>{last.author}</div>}
+              {last.author && <div style={{ fontSize: F.nota, color: C.muted, margin: "4px 0 10px" }}>{last.author}</div>}
               {resuming && (
-                <div style={{ height: 5, borderRadius: R.minimo, background: C.dim, overflow: "hidden", marginBottom: 5 }}>
+                <div style={{ height: 6, borderRadius: R.minimo, background: C.dim, overflow: "hidden", marginBottom: 6 }}>
                   <div
                     style={{
                       width: `${Math.max(pct, 2)}%`,
@@ -376,59 +349,51 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
                   />
                 </div>
               )}
-              <div style={{ fontSize: F.piccolo, color: C.muted }}>
+              <div style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 12 }}>
                 {resuming
-                  ? `${pct}% — riprendi da dove eri`
+                  ? `${pct}% letto`
                   : followedFrom
-                    ? `il passo n° ${last.sagaOrder} di ${last.saga}`
-                    : "apri e comincia il primo capitolo"}
+                    ? `il passo n° ${virgola(last.sagaOrder)} di ${last.saga}`
+                    : "non l'hai ancora cominciato"}
               </div>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  minHeight: 40,
+                  padding: "0 18px",
+                  borderRadius: R.tondo,
+                  background: `linear-gradient(135deg, ${C.accent}, ${C.accentDeep})`,
+                  color: C.onAccent,
+                  fontWeight: 600,
+                  fontSize: F.nota,
+                }}
+              >
+                {resuming ? "Riprendi ›" : "Comincia ›"}
+              </span>
             </div>
-            <span style={{ fontSize: F.titolo, color: C.accent }}>›</span>
           </button>
         </>
       )}
 
-      {altriInLettura.length > 0 && (
-        <>
-          <SectionTitle>Stai leggendo anche</SectionTitle>
-          <div style={fila(wide)}>
-            {altriInLettura.map((b) => {
-              const p = Math.round(getProgress(b.id) * 100);
-              return (
-                <LibroInFila
-                  key={b.id}
-                  book={b}
-                  nota={p > 0 ? `${p}% letto` : "in lettura"}
-                  disegnato={dorsi[b.id]}
-                  onDisegnata={(v) => segnaDorso(b.id, v)}
-                  onClick={() => onRead(b.id)}
-                />
-              );
-            })}
-          </div>
-        </>
+      {oggi.length > 0 && (
+        <div style={{ marginTop: 12, fontSize: F.nota, color: C.muted, textAlign: "center" }}>
+          {oggi.join(" · ")}
+        </div>
       )}
 
-      {passi.length > 0 && (
+      {dopo.length > 0 && (
         <>
-          <SectionTitle>Il prossimo passo</SectionTitle>
+          <SectionTitle>Cosa leggere dopo</SectionTitle>
           <div style={fila(wide)}>
-            {passi.map((p) => (
+            {dopo.map((d) => (
               <LibroInFila
-                key={p.libro.id}
-                book={p.libro}
-                // il CICLO quando c'è, la saga quando non c'è: dentro una
-                // saga grande «Cosmoverse n° 4» non si può verificare a
-                // occhio, «Mistborn n° 4» sì. Il numero c'è sempre —
-                // `nextInSaga` un volume senza posto non lo propone affatto.
-                nota={`${p.nome} n° ${virgola(p.libro.sagaOrder)}`}
-                disegnato={dorsi[p.libro.id]}
-                onDisegnata={(v) => segnaDorso(p.libro.id, v)}
-                // qui si APRE LA SCHEDA e non il libro: un volume che non hai
-                // ancora cominciato si guarda prima — c'è la quarta di
-                // copertina, e «Prima di cominciare» sta lì
-                onClick={() => onOpenBook(p.libro.id)}
+                key={d.book.id}
+                book={d.book}
+                nota={d.nota}
+                disegnato={dorsi[d.book.id]}
+                onDisegnata={(v) => segnaDorso(d.book.id, v)}
+                onClick={d.apri}
               />
             ))}
           </div>
@@ -436,7 +401,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
       )}
 
       {muti.length > 0 && (
-        <div style={{ marginTop: passi.length ? 10 : 0, marginBottom: 18 }}>
+        <div style={{ marginTop: dopo.length ? 8 : 16 }}>
           <button
             onClick={() => setPerche((v) => !v)}
             style={{
@@ -466,182 +431,127 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
         </div>
       )}
 
-      <button
-        onClick={onGarden}
+      {/* LE STANZE SONO NAVIGAZIONE, NON CONTENUTO: quattro pulsanti larghi
+          quanto la pagina erano trecento pixel d'altezza; in una griglia due
+          per due stanno nella metà, e il conto di ognuna resta in vista */}
+      <div
         style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          gap: 10,
           marginTop: 22,
-          padding: "13px 16px",
-          borderRadius: R.medio,
-          border: `1px solid ${C.arcane}55`,
-          background: `linear-gradient(135deg, ${C.arcane}14, transparent)`,
-          textAlign: "left",
         }}
       >
-        <span style={{ color: C.arcane, filter: `drop-shadow(0 0 10px ${C.arcane}66)` }}>
-          <LeafIcon size={24} active />
-        </span>
-        <span style={{ flex: 1 }}>
-          <span style={{ display: "block", fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.rilievo, color: C.text }}>
-            Il giardino delle citazioni
-          </span>
-          <span style={{ display: "block", fontSize: F.piccolo, color: C.muted }}>
-            {/* il conto se ce n'è uno, la descrizione della stanza se il
-                giardino è ancora vuoto: gli zeri non si dicono */}
-            {rigaCitazioni || "I passaggi che hai evidenziato, di ogni libro, in un unico posto"}
-          </span>
-        </span>
-        <span style={{ fontSize: F.titoletto, color: C.arcane }}>›</span>
-      </button>
-
-      <button
-        onClick={onDiary}
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          marginTop: 10,
-          padding: "13px 16px",
-          borderRadius: R.medio,
-          border: `1px solid ${C.accent}44`,
-          background: `linear-gradient(135deg, ${C.accent}10, transparent)`,
-          textAlign: "left",
-        }}
-      >
-        <span style={{ color: C.accent, filter: `drop-shadow(0 0 10px ${C.accent}55)` }}>
-          <BookmarkIcon size={24} />
-        </span>
-        <span style={{ flex: 1 }}>
-          <span style={{ display: "block", fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.rilievo, color: C.text }}>
-            Il diario di lettura
-          </span>
-          <span style={{ display: "block", fontSize: F.piccolo, color: C.muted }}>
-            {rigaAnno || "Quando hai cominciato e finito ogni libro, anno per anno"}
-          </span>
-        </span>
-        <span style={{ fontSize: F.titoletto, color: C.accent }}>›</span>
-      </button>
-
-      <button
-        onClick={onQuaderno}
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          marginTop: 10,
-          padding: "13px 16px",
-          borderRadius: R.medio,
-          border: `1px solid ${C.green}44`,
-          background: `linear-gradient(135deg, ${C.green}10, transparent)`,
-          textAlign: "left",
-        }}
-      >
-        <span style={{ fontSize: F.titoletto, filter: `drop-shadow(0 0 10px ${C.green}55)` }}>📒</span>
-        <span style={{ flex: 1 }}>
-          <span style={{ display: "block", fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.rilievo, color: C.text }}>
-            Il quaderno delle parole
-          </span>
-          <span style={{ display: "block", fontSize: F.piccolo, color: C.muted }}>
-            {rigaParole || "Le parole che cerchi col dizionario, con la frase in cui le hai incontrate, da ripassare"}
-          </span>
-        </span>
-        <span style={{ fontSize: F.titoletto, color: C.green }}>›</span>
-      </button>
-
-      <button
-        onClick={onDaPrendere}
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          marginTop: 10,
-          padding: "13px 16px",
-          borderRadius: R.medio,
-          border: `1px solid ${C.arcane}44`,
-          background: `linear-gradient(135deg, ${C.arcane}10, transparent)`,
-          textAlign: "left",
-        }}
-      >
-        <span style={{ fontSize: F.titoletto, filter: `drop-shadow(0 0 10px ${C.arcane}55)` }}>🛒</span>
-        <span style={{ flex: 1 }}>
-          <span style={{ display: "block", fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.rilievo, color: C.text }}>
-            Da prendere
-          </span>
-          <span style={{ display: "block", fontSize: F.piccolo, color: C.muted }}>
-            {rigaPrendere || "I libri che ti mancano delle tue saghe, e cosa leggere dopo"}
-          </span>
-        </span>
-        <span style={{ fontSize: F.titoletto, color: C.arcane }}>›</span>
-      </button>
-      </div>
-
-      <div style={{ gridColumn: wide ? 2 : "auto" }}>
-      {sagas.length > 0 && (
-        <>
-          <SectionTitle>Le tue saghe</SectionTitle>
-          <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4, flexWrap: wide ? "wrap" : "nowrap" }}>
-            {sagas.map((s) => (
-              <SagaCard key={s.name} saga={s} onOpen={onSaga} />
-            ))}
-          </div>
-        </>
-      )}
-
-      {favorites.length > 0 && (
-        <>
-          <SectionTitle>I tuoi preferiti</SectionTitle>
-          <div
+        {stanze.map((s) => (
+          <button
+            key={s.chi}
+            onClick={s.apri}
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))",
-              gap: "16px 14px",
-              // I LIBRI SI ALLINEANO IN ALTO. Un `<button>` più basso della sua
-              // riga centra il contenuto — è il browser che lo fa — e da quando la
-              // didascalia compare solo sotto le copertine VERE le righe hanno
-              // altezze diverse: i dorsi disegnati scivolavano in basso di
-              // quaranta pixel, e lo scaffale sembrava storto.
-              alignItems: "start",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              gap: 6,
+              minHeight: 44,
+              padding: "12px 14px",
+              borderRadius: R.medio,
+              border: `1px solid ${s.colore}44`,
+              background: `linear-gradient(135deg, ${s.colore}12, transparent)`,
+              textAlign: "left",
             }}
           >
-            {favorites.map((b) => (
-              <button key={b.id} onClick={() => onOpenBook(b.id)} style={{ textAlign: "center" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 8, color: s.colore }}>
+              <span style={{ display: "inline-flex", filter: `drop-shadow(0 0 8px ${s.colore}55)` }}>{s.icona}</span>
+              <span style={{ fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.rilievo, color: C.text }}>{s.titolo}</span>
+            </span>
+            <span
+              style={{
+                fontSize: F.piccolo,
+                color: C.muted,
+                lineHeight: 1.35,
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+            >
+              {s.riga}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <SectionTitle>I tuoi preferiti</SectionTitle>
+      {favorites.length > 0 ? (
+        <>
+          <div
+            style={
+              tuttiFav
+                ? {
+                    display: "grid",
+                    gridTemplateColumns: `repeat(auto-fill, minmax(${px(96)}px, 1fr))`,
+                    gap: "16px 14px",
+                    // I LIBRI SI ALLINEANO IN ALTO: un `<button>` più basso
+                    // della sua riga centra il contenuto, e i dorsi disegnati
+                    // (senza didascalia) scivolerebbero in basso
+                    alignItems: "start",
+                  }
+                : { ...fila(false), alignItems: "flex-start" }
+            }
+          >
+            {favInVista.map((b) => (
+              <button
+                key={b.id}
+                onClick={() => onOpenBook(b.id)}
+                style={{ flexShrink: 0, width: tuttiFav ? "auto" : px(96), textAlign: "center" }}
+              >
                 <BookCover book={b} onDisegnata={(v) => segnaDorso(b.id, v)} />
                 {!dorsi[b.id] && (
-                <div
-                  style={{
-                    marginTop: 6,
-                    fontSize: F.piccolo,
-                    lineHeight: 1.25,
-                    color: C.text,
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical",
-                    overflow: "hidden",
-                  }}
-                >
-                  {b.title}
-                </div>
+                  <div
+                    style={{
+                      marginTop: 6,
+                      fontSize: F.piccolo,
+                      lineHeight: 1.25,
+                      color: C.text,
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {b.title}
+                  </div>
                 )}
-                <div style={{ marginTop: 3 }}>
-                  <Rating value={b.rating} />
-                </div>
+                {b.rating > 0 && (
+                  <div style={{ marginTop: 3 }}>
+                    <Rating value={b.rating} />
+                  </div>
+                )}
               </button>
             ))}
           </div>
+          {favorites.length > FAV_FILA && (
+            <button
+              onClick={() => setTuttiFav((v) => !v)}
+              style={{
+                marginTop: 8,
+                minHeight: 44,
+                background: "none",
+                border: "none",
+                padding: "0",
+                cursor: "pointer",
+                fontSize: F.nota,
+                color: C.accent,
+                fontFamily: "inherit",
+              }}
+            >
+              {tuttiFav ? "Mostra meno" : `Vedi tutti i ${favorites.length} preferiti ›`}
+            </button>
+          )}
         </>
-      )}
-
-      {sagas.length === 0 && favorites.length === 0 && (
+      ) : (
         <div
           style={{
-            marginTop: 22,
-            padding: "16px 18px",
+            padding: "14px 16px",
             borderRadius: R.medio,
             border: `1px dashed ${C.border}`,
             fontSize: F.nota,
@@ -649,11 +559,9 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
             color: C.muted,
           }}
         >
-          Qui vivranno le tue saghe e i tuoi preferiti. Apri la scheda di un libro dalla Libreria:
-          indica la saga a cui appartiene, e tocca ♡ accanto alla valutazione — col cuore lo ritrovi qui.
+          Qui vivranno i tuoi libri preferiti: apri la scheda di un libro e tocca ♡ accanto alla valutazione.
         </div>
       )}
-      </div>
     </div>
   );
 }
