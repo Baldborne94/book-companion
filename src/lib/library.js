@@ -174,6 +174,7 @@ export function removeBookMeta(id) {
   localStorage.removeItem(`bc_prog_${id}`);
   localStorage.removeItem(`bc_status_${id}`);
   localStorage.removeItem(`bc_cfi_${id}`);
+  localStorage.removeItem(`bc_avanzo_${id}`);
   localStorage.removeItem(`bc_marks_${id}`);
   localStorage.removeItem(`bc_hl_${id}`);
   localStorage.removeItem(`bc_start_${id}`);

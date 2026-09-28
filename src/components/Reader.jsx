@@ -29,6 +29,8 @@ import { immagineDaIngrandire, sceltaDelTocco } from "../lib/tavola.js";
 import Tavola from "./Tavola.jsx";
 import { controllaSpezzatura, saluteInCache, daRicucire, ricuciLibro, ricuciInMemoria, conSegni, taci } from "../lib/ricuci.js";
 import { leftoverScroll, dentroIlCapitolo } from "../lib/spread.js";
+import { chiaveAvanzo, avanzoRicordato, ricordaAvanzo } from "../lib/avanzoRicordato.js";
+import { misuraBuona, misuraDaSalvare } from "../lib/misuraSalvata.js";
 import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
@@ -328,8 +330,14 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // rimessa da sola, su richiesta esplicita del lettore. Le tre regole che
   // la tengono innocua stanno qui sotto, e sono quelle che mancavano al
   // primo tentativo — che impediva al libro di aprirsi.
-  const [avanzo, setAvanzo] = useState(0);
-  const avanzoRef = useRef(0);
+  // IL LIBRO NASCE COL RITAGLIO DI IERI (`lib/avanzoRicordato.js`): stessa
+  // finestra e stesse impostazioni vogliono lo stesso avanzo, e partire da
+  // zero voleva dire rifare a ogni apertura il giro che teneva accesa la
+  // candela ~700 ms dopo che il testo era gia' pronto
+  const geometria = (s) => chiaveAvanzo({ larghezza: window.innerWidth, altezza: window.innerHeight, settings: s });
+  const [ricordato] = useState(() => avanzoRicordato(book.id, geometria(live.current.settings || settings)));
+  const [avanzo, setAvanzo] = useState(ricordato ?? 0);
+  const avanzoRef = useRef(ricordato ?? 0);
   const avanzoTimer = useRef(null);
   // LA CANDELA NON PUO' DIPENDERE DA UN TIMER CHE ALTRI AZZERANO. Il giro
   // che la spegne aspettava sul timer dell'avanzo, e `chiediAvanzo` lo
@@ -377,6 +385,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // rimpalla all'infinito, e a meno di un pixel dalla riga piena non si
     // toglie niente
     const resto = ritaglioAvanzo({ colonna, riga, attuale: avanzoRef.current });
+    if (resto !== null) ricordaAvanzo(book.id, geometria(live.current.settings), resto);
     if (resto === null || resto === avanzoRef.current) return false;
     avanzoRef.current = resto;
     setAvanzo(resto);
@@ -386,7 +395,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     viewerRef.current.style.paddingBottom = `calc(${FOOT + resto}px + env(safe-area-inset-bottom))`;
     relayout(anchor.current || live.current.cfi);
     return true;
-  }, [relayout]);
+  }, [relayout, book.id]);
 
   // il ritardo lascia finire a epub.js il reimpaginamento che ha gia' per
   // le mani: si misura sopra il suo risultato, non mentre lo scrive
@@ -922,7 +931,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             const ritagliato = rendRef.current === r && misuraAvanzoRef.current();
             if (!ritagliato) return setStatusUi("ready");
             prontoTimer.current = setTimeout(() => setStatusUi("ready"), 300);
-          }, 350);
+            // col ritaglio ricordato la misura di solito conferma e basta: non
+            // c'e' un reimpaginamento da aspettare. Se non conferma, si
+            // ritaglia qui sotto la candela come prima
+          }, ricordato != null ? 60 : 350);
           // e comunque, qualunque cosa succeda: passato questo tempo la
           // pagina si mostra. Un velo che resta e' peggio di una pagina
           // che si assesta sotto gli occhi.
@@ -1010,7 +1022,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // lascerebbe «misuro le pagine…» acceso per sempre come prima —
         // soltanto un passo piu' su. Chi non risponde vale «non ce l'ho»:
         // rimisurare si puo' sempre.
-        const cached = await conAttesa(getAux(`loc_${book.id}`), ATTESA).catch(() => null);
+        // e la misura dev'essere di QUESTO file (`lib/misuraSalvata.js`)
+        const cached = misuraBuona(await conAttesa(getAux(`loc_${book.id}`), ATTESA).catch(() => null), blob.size);
         if (dead) return;
         // una misura salvata che non si lascia rileggere non deve portarsi
         // via il libro: si butta e si rifa' (`load` fa `JSON.parse`, e una
@@ -1031,7 +1044,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           // una misura MONCA si usa e non si scrive: il capitolo che oggi
           // non si e' lasciato leggere non deve restare non misurato per
           // sempre — e quella vuota non si scrive di sicuro
-          if (misura.intera) putAux(`loc_${book.id}`, eb.locations.save());
+          if (misura.intera) putAux(`loc_${book.id}`, misuraDaSalvare(eb.locations.save(), blob.size));
         }
         if (dead) return;
         // e se non c'e' proprio niente da contare, lo si DICE: un lavoro
@@ -1065,6 +1078,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // la candela torna un attimo, una volta nella vita del libro.
         (async () => {
           let ebScan = null;
+          // il ricucito in memoria non si controlla: il verdetto e' del file
+          // vero, e scriverne uno sul ricucito lo cancellerebbe
+          if (blob.ricucito) return;
           try {
             let salute = await saluteInCache(book.id, blob.size);
             if (!salute) {

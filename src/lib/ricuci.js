@@ -14,6 +14,7 @@
 // quanto generare le locations, e una volta basta.
 import { getAux, putAux, putFile } from "./bookStore.js";
 import { fattiDaEpub, GIUNTURE_TANTE } from "./visita.js";
+import { daButtareRicucendo } from "./misuraSalvata.js";
 
 const chiave = (id) => `salute_${id}`;
 
@@ -67,16 +68,49 @@ export async function taci(id) {
 // stesso ricucito a ogni apertura, quindi i CFI dei segni presi su una
 // lettura valgono sulla prossima. Le locations cachate si buttano lo
 // stesso: sono del file com'era.
-export async function ricuciInMemoria(id, blob) {
-  const { unisciPezzi } = await import("./unisciEpub.js");
-  const cucito = await unisciPezzi(blob);
+// E IL RICUCITO SI RICORDA, legato al file da cui viene (una `WeakMap`
+// sul Blob): il file scaricato resta in memoria per la sessione
+// (`lib/ultimiLontani.js`) e riaprendolo e' lo STESSO oggetto, quindi non
+// si ricuce di nuovo — misurato ~2 s a ogni riapertura col processore
+// rallentato quattro volte. Quando il file esce da quella memoria, esce
+// anche il suo ricucito.
+//
+// E LA MISURA DELLE PAGINE NON SI BUTTA PIU' A OGNI APERTURA: porta la
+// grandezza del file misurato (`lib/misuraSalvata.js`) e si scarta da se'
+// se non e' di questo. Si butta solo quella scritta prima, che non dice di
+// chi e'.
+const CUCITI = new WeakMap();
+export function ricuciInMemoria(id, blob, opzioni = {}) {
+  // si ricorda anche la ricucitura IN CORSO, non solo quella finita: chiuso
+  // il libro a meta' cura e riaperto subito, la seconda apertura aspetta
+  // quella invece di ricominciarne un'altra
+  const tienila = blob && typeof blob === "object";
+  if (tienila && CUCITI.has(blob)) return CUCITI.get(blob);
+  const p = ricuci(id, blob, opzioni).catch((e) => {
+    if (tienila) CUCITI.delete(blob);
+    throw e;
+  });
+  if (tienila) CUCITI.set(blob, p);
+  return p;
+}
+
+async function ricuci(id, blob, { leggiMisura = (k) => getAux(k), scriviMisura = (k, v) => putAux(k, v), unisci } = {}) {
+  const cuci = unisci || (await import("./unisciEpub.js")).unisciPezzi;
+  const cucito = await cuci(blob);
   if (!cucito?.blob || !cucito.cuciti) return null;
   try {
-    await putAux(`loc_${id}`, null);
+    if (daButtareRicucendo(await leggiMisura(`loc_${id}`))) await scriviMisura(`loc_${id}`, null);
   } catch {
     /* la cache sbagliata cadra' al prossimo confronto di misura */
   }
   cucito.blob.lontano = true;
+  // IL RICUCITO NON SI VISITA: il verdetto «spezzato» e' del file vero, e
+  // un controllo sul ricucito scriverebbe «sano» con la sua grandezza al
+  // posto di quello. All'apertura dopo il verdetto non combacerebbe piu',
+  // il libro si mostrerebbe spezzato e si ricucirebbe sotto gli occhi —
+  // una volta si' e una no (misurato, ed era cosi' anche prima di questa
+  // memoria)
+  cucito.blob.ricucito = true;
   return { blob: cucito.blob, cuciti: cucito.cuciti };
 }
 
