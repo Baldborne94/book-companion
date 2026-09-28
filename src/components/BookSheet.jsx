@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { driveAcceso, mappaDrive } from "../lib/drive.js";
+import { fmtGoogle } from "../lib/bytes.js";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import {
   getProgress,
@@ -138,7 +139,7 @@ function Field({ label, value, onChange, placeholder, options, listId }) {
   );
 }
 
-export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDelete, onTogliEbook, onRead, notify }) {
+export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDelete, onTogliEbook, onTieniQui, onRead, notify }) {
   const [title, setTitle] = useState(book.title);
   const [author, setAuthor] = useState(book.author || "");
   const [series, setSeries] = useState(book.series || "");
@@ -465,6 +466,18 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
     };
   }, [book.id]);
   const diversoDaDrive = suDrive && pesoQui > 0 && Number(mappaDrive()[book.id]?.byte) > 0 && Number(mappaDrive()[book.id].byte) !== pesoQui;
+
+  const [tenendo, setTenendo] = useState(false);
+  async function tieniQui() {
+    if (tenendo || !onTieniQui) return;
+    setTenendo(true);
+    try {
+      const ok = await onTieniQui(book.id);
+      if (ok) setPesoQui((await getFile(book.id).catch(() => null))?.size || 0);
+    } finally {
+      setTenendo(false);
+    }
+  }
 
   function togliEbook() {
     setConfermaEbook(false);
@@ -1047,10 +1060,32 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
               se ne va e cosa resta, che è l'unica differenza che conta. */}
           {/* E SE IL LIBRO STA SU GOOGLE DRIVE, il file se ne va solo dal
               tablet: su Drive resta, e si riscarica quando lo riapri. */}
+          {/* LA SITUAZIONE PULITA: il libro sta su Drive, si legge da li',
+              e sul tablet arriva SOLO se lo chiedi — qui, con la misura
+              scritta sul tasto perche' e' spazio e connessione tuoi. */}
           {!book.fileTolto && suDrive && pesoQui === 0 && (
-            <span style={{ fontSize: F.piccolo, color: C.muted }}>
-              ☁ Il file non è sul tablet: sta su Google Drive e scende quando apri il libro.
-            </span>
+            <>
+              <button
+                onClick={tieniQui}
+                disabled={tenendo}
+                style={{
+                  justifySelf: "center",
+                  minHeight: 44,
+                  padding: "8px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.arcane}66`,
+                  color: C.arcane,
+                  fontSize: F.nota,
+                }}
+              >
+                {tenendo
+                  ? "Scarico…"
+                  : `⬇ Tieni sul tablet${Number(mappaDrive()[book.id]?.byte) > 0 ? ` · ${fmtGoogle(Number(mappaDrive()[book.id].byte))}` : ""}`}
+              </button>
+              <span style={{ fontSize: F.piccolo, color: C.muted }}>
+                Sta su Google Drive e si legge da lì. Tienilo qui solo se vuoi leggerlo senza rete.
+              </span>
+            </>
           )}
           {!book.fileTolto && onTogliEbook && !(suDrive && pesoQui === 0) && (
             <button

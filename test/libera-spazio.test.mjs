@@ -48,8 +48,9 @@ export default async function (t) {
   t.eq("i letti", per.letto, "letto");
   t.eq("i lasciati", per.lasciato, "lasciato");
   t.eq("i fermi da tre mesi, qualunque sia lo stato", per.fermo, "fermo");
-  t.c("il libro che stai leggendo adesso resta", !per.inLettura);
-  t.c("il libro appena entrato resta: conta l'ingresso, non lo zero", !per.nuovo);
+  t.eq("il libro in lettura sta fra gli «altri», non fra i fermi", per.inLettura, "altri");
+  t.eq("il libro appena entrato pure: conta l'ingresso, non lo zero", per.nuovo, "altri");
+  t.c("e gli «altri» non partono spuntati", !LIBERARE_DI_PARTENZA.includes("altri"));
   t.c("un libro senza copia su Drive resta", !per.senzaDrive);
   t.c("un libro che i byte qui non li ha non c'e' da togliere", !per.lassu);
   t.c("un ebook gia' tolto non si ripropone", !per.tolto);
@@ -84,12 +85,12 @@ export default async function (t) {
     mappa: { x: { id: "fx", byte: 1 } },
     toccato: () => ADESSO - FERMO_DA + 1,
   });
-  t.eq("un attimo prima no", quasi.voci.length, 0);
+  t.eq("un attimo prima non e' fermo: e' fra gli altri", quasi.voci[0]?.perche, "altri");
   const ignota = daLiberare([{ id: "x" }], { ...base, misureQui: new Map([["x", 1]]), mappa: { x: { id: "fx", byte: 0 } }, stato: () => "read" });
   t.c("una misura su Drive che non si sa non e' «diversa» e non si toglie", !ignota.voci.length && !ignota.diversi);
-  t.eq("le ragioni hanno tutte un gruppo nel pannello", PERCHE_LIBERARE.join(","), "letto,lasciato,fermo,diverso");
+  t.eq("le ragioni hanno tutte un gruppo nel pannello", PERCHE_LIBERARE.join(","), "letto,lasciato,fermo,altri,diverso");
   t.c("e quelle di partenza sono un pezzo di quelle", LIBERARE_DI_PARTENZA.every((p) => PERCHE_LIBERARE.includes(p)));
   const inCorso = daLiberare([{ id: "x" }], { ...base, misureQui: new Map([["x", 1]]), mappa: { x: { id: "fx", byte: 2 } }, stato: () => "reading", toccato: () => ADESSO });
-  t.eq("un libro che stai leggendo non e' «diverso»: non si propone affatto", inCorso.voci.length + inCorso.diversi, 0);
+  t.eq("un libro in lettura con la copia diversa sta fra i diversi, col suo motivo", inCorso.voci[0]?.perche + "/" + inCorso.voci[0]?.motivo, "diverso/altri");
   t.eq("senza niente, niente", daLiberare([], {}).voci.length, 0);
 }

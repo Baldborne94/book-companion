@@ -176,7 +176,7 @@ export function daAggiungere(libri, file, { lapidi = [], cartelle = [] } = {}) {
 // a mano da Drive nel frattempo lascerebbe il libro perduto. Senza `lassu`
 // si risponde con la sola mappa, che va bene per contare, non per togliere.
 export const FERMO_DA = 90 * 86_400_000;
-export const PERCHE_LIBERARE = ["letto", "lasciato", "fermo", "diverso"];
+export const PERCHE_LIBERARE = ["letto", "lasciato", "fermo", "altri", "diverso"];
 // quelli che partono spuntati: il gruppo dei diversi si sceglie a mano
 export const LIBERARE_DI_PARTENZA = ["letto", "lasciato", "fermo"];
 export function daLiberare(libri, { misureQui, mappa, lassu = null, stato = () => "", toccato = () => 0, adesso = Date.now(), fermoDa = FERMO_DA } = {}) {
@@ -189,9 +189,13 @@ export function daLiberare(libri, { misureQui, mappa, lassu = null, stato = () =
     const su = lassu ? lassu.get(f.id) : Number(f.byte);
     if (!(Number(su) > 0)) continue;
     const s = stato(b.id);
+    // E GLI ALTRI — da leggere, in lettura, appena entrati — sono un gruppo
+    // anche loro, non spuntato: e' la situazione pulita chiesta dal lettore
+    // («tutti i libri li tieni su Drive»), dove sul tablet resta solo quel
+    // che ha scelto. Il libro che ha in mano non c'e' mai: si toglie dalla
+    // Libreria, e li' il lettore e' chiuso.
     const perche =
-      s === "read" ? "letto" : s === "abandoned" ? "lasciato" : adesso - (Number(toccato(b)) || 0) >= fermoDa ? "fermo" : null;
-    if (!perche) continue;
+      s === "read" ? "letto" : s === "abandoned" ? "lasciato" : adesso - (Number(toccato(b)) || 0) >= fermoDa ? "fermo" : "altri";
     if (Number(su) !== qui) {
       diversi += 1;
       voci.push({ id: b.id, title: b.title || "", byte: qui, perche: "diverso", motivo: perche });

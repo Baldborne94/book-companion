@@ -729,13 +729,37 @@ async function dalDrive(book) {
   }
 }
 
-// IL FILE CHE UN READER DEVE APRIRE: quello di casa se c'e'; se no, per un
-// fumetto o un PDF grossi che stanno su Drive, il file LONTANO letto a
-// pezzi (`leggereDaLontano`), che non si salva qui — riaprendolo si rilegge
-// da Drive, e chi lo vuole in tasca per il treno lo porta giu' con «Porta
-// qui i tomi»; per tutto il resto il file intero, come sempre. Il file
-// lontano porta `daLontano`, cosi' il reader sa che una pagina puo'
-// mancare perche' la chiave di Google e' scaduta, e chiedere un tocco.
+// I byte di un libro che qui non c'e', PRESI E BASTA: da Drive, poi dal
+// secchio, e niente scritto su disco. E' la strada di chi legge — vedi
+// `fileDaLeggere` — e di chi vuole tenerlo (`ensureLocalFile`), che ci
+// aggiunge la scrittura.
+async function prendiFile(book) {
+  const daDrive = await dalDrive(book).catch(() => null);
+  if (daDrive) return daDrive;
+  if (!isSyncConfigured()) return null;
+  const session = await getSession();
+  if (!session) return null;
+  const sb = await getClient();
+  const { data, error } = await sb.storage.from(BUCKET).download(filePath(session.user.id, book));
+  if (error || !data) return null;
+  return data;
+}
+
+// IL FILE CHE UN READER DEVE APRIRE, E LA SITUAZIONE PULITA (chiesta dal
+// lettore: «tutti i libri, fumetti e manga li tieni su Drive e me li leggo
+// puntando lì, e solo se voglio leggerli offline me li scarichi in
+// locale»). Tre casi, in quest'ordine:
+// - i byte sono QUI: quelli, come sempre;
+// - un fumetto o un PDF grossi su Drive: il file LONTANO letto a pezzi
+//   (`leggereDaLontano`), col segno `daLontano` per il banner della chiave;
+// - tutto il resto che sta lassu' (l'ePub, che epub.js vuole intero; il
+//   CBR; i piccoli): scende in MEMORIA per questa lettura, col segno
+//   `lontano`, e NON si scrive su disco. Riaprendolo si riprende da Drive.
+// Prima di questa cura la terza strada era `ensureLocalFile`: ogni libro
+// aperto restava sul tablet per sempre, e la «situazione pulita» durava
+// fino alla prima lettura. Sul tablet resta solo quel che il lettore ha
+// CHIESTO: «Tieni sul tablet» nella scheda, «Scarica qui» in Libreria, o
+// il volume dopo se ha acceso l'anticipo.
 // il pezzo di un PDF: lo stesso che pdf.js chiede da se' (`rangeChunkSize`)
 const PEZZO_PDF = 64 * 1024;
 export async function fileDaLeggere(book) {
@@ -748,7 +772,9 @@ export async function fileDaLeggere(book) {
     f.daLontano = true;
     return f;
   }
-  return ensureLocalFile(book);
+  const preso = await prendiFile(book);
+  if (preso) preso.lontano = true;
+  return preso;
 }
 
 // IL SEGUITO CHE SCENDE DA SE' (`lib/anticipo.js`): come `ensureLocalFile`
@@ -785,22 +811,16 @@ export async function anticipaFile(book) {
   }
 }
 
+// TENERE IL LIBRO SUL TABLET: gli stessi byte di `prendiFile`, scritti su
+// disco. Da qui passano i soli gesti che lo CHIEDONO — la scheda, «Scarica
+// qui», il ripristino — mai una lettura.
 export async function ensureLocalFile(book) {
   const local = await getFile(book.id);
   if (local) return local;
-  const daDrive = await dalDrive(book).catch(() => null);
-  if (daDrive) {
-    await putFile(book.id, daDrive);
-    return daDrive;
-  }
-  if (!isSyncConfigured()) return null;
-  const session = await getSession();
-  if (!session) return null;
-  const sb = await getClient();
-  const { data, error } = await sb.storage.from(BUCKET).download(filePath(session.user.id, book));
-  if (error || !data) return null;
-  await putFile(book.id, data);
-  return data;
+  const preso = await prendiFile(book);
+  if (!preso) return null;
+  await putFile(book.id, preso);
+  return preso;
 }
 
 // PORTARE A CASA I TOMI RIMASTI NEL CLOUD.

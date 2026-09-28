@@ -2752,6 +2752,7 @@ const GRUPPI_LIBERA = {
   letto: "📖 I letti",
   lasciato: "⏸ I lasciati",
   fermo: "🕰 Fermi da tre mesi",
+  altri: "📚 Da leggere e in lettura",
   diverso: "⚠ Diversi da quelli su Drive",
 };
 function SceltaLibera({ esito, onCambia, onChiudi, onVai }) {
@@ -2791,7 +2792,8 @@ function SceltaLibera({ esito, onCambia, onChiudi, onVai }) {
         <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>🧹 Libera spazio</h2>
         <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 14 }}>
           Questi libri hanno una copia su Google Drive. Tolti da qui restano sullo scaffale con la nuvoletta,
-          con segnalibri, evidenziazioni e punto di lettura, e scendono da Drive quando li riapri — serve la rete.
+          con segnalibri, evidenziazioni e punto di lettura, e si leggono da Drive quando li riapri — serve la
+          rete. Per riaverne uno sul tablet c'è «Tieni sul tablet» nella sua scheda.
         </p>
         {PERCHE_LIBERARE.map((perche) => {
           const del = voci.filter((v) => v.perche === perche);
@@ -2825,6 +2827,11 @@ function SceltaLibera({ esito, onCambia, onChiudi, onVai }) {
                   {titoli}
                   {del.length > 4 ? ` e altri ${del.length - 4}` : ""}
                 </span>
+                {perche === "altri" && (
+                  <span style={{ display: "block", color: C.muted, fontSize: F.minuscolo, marginTop: 4, lineHeight: 1.4 }}>
+                    Non li hai finiti: si leggono da Drive lo stesso, ma senza rete non si aprono.
+                  </span>
+                )}
                 {perche === "diverso" && (
                   <span style={{ display: "block", color: C.accent, fontSize: F.minuscolo, marginTop: 4, lineHeight: 1.4 }}>
                     Su Drive c'è un file diverso da quello qui (di solito l'originale, mentre qui c'è la versione
