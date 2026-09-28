@@ -17,7 +17,7 @@ import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso,
 } from "../lib/syncCore.js";
 import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, DriveScollegato, scegliSuDrive, dettagliFile } from "../lib/drive.js";
-import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, cercaVoci, RADICE, vociDalPicker, idRadice } from "../lib/driveCore.js";
+import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, sceltaDalPicker, libriSotto, idRadice } from "../lib/driveCore.js";
 import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { senzaCopertina } from "../lib/copertina.js";
@@ -546,7 +546,6 @@ export default function Library({
   const [giroImport, setGiroImport] = useState(null);
   // «Aggiungi da Drive»: l'elenco dei file lassu' che non sono ancora
   // libri, con le spunte, e il filo per fermare il giro a meta'
-  const [daDrive, setDaDrive] = useState(null);
   const [scegliendo, setScegliendo] = useState(false);
   const filoDrive = useRef(null);
   const [dragOver, setDragOver] = useState(false);
@@ -1371,33 +1370,6 @@ export default function Library({
     handleFiles(daImportare).finally(() => onImportati?.());
   }, [daImportare]);
 
-  // AGGIUNGI DA DRIVE. La chiave di Google si chiede qui perche' si arriva
-  // da un tocco, e da un tocco soltanto il browser lascia aprire la sua
-  // finestra. Si guarda tutto Drive una volta, si propone quel che non e'
-  // ancora sullo scaffale, e si lascia scegliere: il lettore sa quali di
-  // quei file sono libri da leggere e quali no.
-  async function apriDaDrive() {
-    if (importing || daDrive) return;
-    try {
-      if (!driveProntoOra()) await collegaDrive();
-      setDaDrive({ cercando: true });
-      const [file, cartelle] = await Promise.all([elencaFile(), elencaCartelle()]);
-      const voci = daAggiungere(books, file, { lapidi: Object.keys(getTombstones()), cartelle });
-      if (!voci.length) {
-        setDaDrive(null);
-        notify("Su Google Drive non c'è niente che non sia già sullo scaffale ✨");
-        return;
-      }
-      // spuntati di partenza i soli file della cartella del lettore: il resto
-      // di Drive si aggiunge a mano, se lo vuole
-      const dentro = voci.filter((v) => v.dentro);
-      setDaDrive({ voci, scelti: new Set((dentro.length ? dentro : voci).map((v) => v.id)) });
-    } catch (e) {
-      setDaDrive(null);
-      notify(e instanceof DriveScollegato ? "Google Drive aspetta un tocco: riprova." : e?.message || "Google Drive non ha risposto");
-    }
-  }
-
   // LIBERA SPAZIO. Si ricontrolla su Drive ADESSO — la mappa e' dell'ultimo
   // giro, e un file cancellato a mano lassu' nel frattempo lascerebbe il
   // libro perduto — e per farlo serve la chiave, che si chiede da un tocco.
@@ -1446,39 +1418,43 @@ export default function Library({
     );
   }
 
-  async function aggiungiDaDrive() {
-    const scelte = (daDrive?.voci || []).filter((v) => daDrive.scelti.has(v.id));
-    setDaDrive(null);
-    await importaScelte(scelte);
-  }
-
   // IL SELETTORE DI GOOGLE: la finestra di Drive stessa, aperta sulla
-  // cartella «book-companion», e i file toccati entrano come da «Da Google
-  // Drive». Quel che il selettore non sa — se il file e' gia' un libro, la
-  // sua impronta — si chiede a Drive dopo, file per file, e `daAggiungere`
-  // decide con le stesse regole della lista: un file gia' sullo scaffale
-  // si dice, non si raddoppia.
+  // cartella «book-companion», a scelta multipla — file e CARTELLE INTERE,
+  // che portano dentro tutti i libri che stanno sotto di loro. E' l'unica
+  // porta da Drive: la lista «Da Google Drive» e' stata tolta (chiesto dal
+  // lettore: «tieni solo Scegli su Drive e permettimi di scegliere o
+  // un'intera cartella o piu' elementi assieme»). Quel che il selettore non
+  // sa — se il file e' gia' un libro, la sua impronta, cosa c'e' in una
+  // cartella — si chiede a Drive dopo, e `daAggiungere` decide: un file gia'
+  // sullo scaffale si dice, non si raddoppia.
   async function scegliDaDrive() {
-    if (importing || daDrive || scegliendo) return;
+    if (importing || scegliendo) return;
     setScegliendo(true);
     try {
       if (!driveProntoOra()) await collegaDrive();
       const cartelle = await elencaCartelle();
       const docs = await scegliSuDrive({ cartellaId: idRadice(cartelle) });
       if (!docs) return;
-      const { voci: toccati, scartati } = vociDalPicker(docs);
+      const { sciolti, cartelle: scelte, scartati } = sceltaDalPicker(docs);
       const note = [];
       if (scartati.length) note.push(`${scartati.length === 1 ? "un file non è un libro" : `${scartati.length} file non sono libri`} (${scartati.slice(0, 3).join(", ")}${scartati.length > 3 ? "…" : ""})`);
-      if (!toccati.length) {
-        notify(note.length ? `Nessun libro fra i file scelti: ${note[0]}` : "Non hai scelto nessun file");
+      const perId = new Map();
+      if (sciolti.length) for (const f of await dettagliFile(sciolti.map((v) => v.id))) perId.set(f.id, f);
+      if (scelte.length) {
+        const { file: sotto, vuote } = libriSotto(scelte, await elencaFile(), cartelle);
+        for (const f of sotto) perId.set(f.id, f);
+        if (vuote.length) note.push(`${vuote.length === 1 ? "nella cartella" : "nelle cartelle"} ${vuote.slice(0, 3).map((n) => `«${n}»`).join(", ")}${vuote.length > 3 ? "…" : ""} non c'è nessun libro`);
+      }
+      const trovati = [...perId.values()];
+      if (!trovati.length) {
+        notify(note.length ? `Nessun libro fra quel che hai scelto: ${note.join(" · ")}` : "Non hai scelto nessun file");
         return;
       }
-      const file = await dettagliFile(toccati.map((v) => v.id));
-      const voci = daAggiungere(books, file, { lapidi: Object.keys(getTombstones()), cartelle });
-      const gia = toccati.length - voci.length;
+      const voci = daAggiungere(books, trovati, { lapidi: Object.keys(getTombstones()), cartelle });
+      const gia = trovati.length - voci.length;
       if (gia > 0) note.push(gia === 1 ? "uno era già sullo scaffale" : `${gia} erano già sullo scaffale`);
       if (!voci.length) {
-        notify(`${toccati.length === 1 ? "Il file scelto è" : "I file scelti sono"} già sullo scaffale ✨${note.length > 1 ? ` · ${note[0]}` : ""}`);
+        notify(`${trovati.length === 1 ? "Il libro scelto è" : `I ${trovati.length} libri scelti sono`} già sullo scaffale ✨${note.length > 1 ? ` · ${note.slice(0, -1).join(" · ")}` : ""}`);
         return;
       }
       await importaScelte(voci, note);
@@ -1794,31 +1770,12 @@ export default function Library({
               : "Sto rilegando i tomi…"
             : "＋ Aggiungi libri"}
         </button>
-        {/* i libri che stanno gia' su Drive entrano senza passare dal
-            tablet: se ne leggono titolo, autore e copertina, e il file
-            scende la prima volta che lo apri */}
-        {drive && !importing && (
-          <button
-            onClick={apriDaDrive}
-            disabled={!!daDrive}
-            style={{
-              padding: "10px 18px",
-              minHeight: 44,
-              borderRadius: R.piccolo,
-              border: `1px solid ${C.arcane}66`,
-              color: C.arcane,
-              fontSize: F.corpo,
-            }}
-          >
-            {daDrive?.cercando ? "Guardo su Drive…" : "☁ Da Google Drive"}
-          </button>
-        )}
-        {/* la finestra di Drive stessa, per chi sa gia' quali file vuole:
-            si sfoglia «book-companion» com'e' su Drive e si toccano i libri */}
+        {/* la finestra di Drive stessa: si sfoglia «book-companion» com'e'
+            su Drive e si toccano i libri, o le cartelle intere */}
         {drive && !importing && (
           <button
             onClick={scegliDaDrive}
-            disabled={scegliendo || !!daDrive}
+            disabled={scegliendo}
             style={{
               padding: "10px 18px",
               minHeight: 44,
@@ -1846,23 +1803,57 @@ export default function Library({
             Fermo qui
           </button>
         )}
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && cercaDentro()}
-          placeholder="Titolo, autore, saga, genere, le tue note…"
-          style={{
-            flex: 1,
-            minWidth: 180,
-            padding: "10px 14px",
-            borderRadius: R.piccolo,
-            border: `1px solid ${C.border}`,
-            background: C.surface,
-            color: C.text,
-            fontSize: F.corpo,
-            outline: "none",
-          }}
-        />
+        {/* LA ✕ SVUOTA LA RICERCA IN UN COLPO (chiesto dal lettore: «invece di
+            farmi selezionare e cancellare una lettera per volta»). Sta dentro
+            il campo, a destra, e c'e' solo quando c'e' qualcosa da togliere;
+            il bersaglio e' da 44px anche se il glifo e' piccolo. Non riprende
+            il fuoco: sul tablet farebbe salire la tastiera a chi voleva solo
+            tornare allo scaffale intero. */}
+        <div style={{ position: "relative", flex: 1, minWidth: 180, display: "flex" }}>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && cercaDentro()}
+            placeholder="Titolo, autore, saga, genere, le tue note…"
+            style={{
+              flex: 1,
+              minWidth: 0,
+              padding: "10px 14px",
+              paddingRight: query ? 44 : 14,
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.border}`,
+              background: C.surface,
+              color: C.text,
+              fontSize: F.corpo,
+              outline: "none",
+            }}
+          />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              aria-label="Cancella la ricerca"
+              title="Cancella la ricerca"
+              style={{
+                position: "absolute",
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: 44,
+                minHeight: 44,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "transparent",
+                border: "none",
+                color: C.muted,
+                fontSize: F.corpo,
+                cursor: "pointer",
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
         {/* lo scaffale risponde subito su titoli e autori; questo va a
             guardare dentro, ed e' un altro mestiere: si chiede a mano */}
         {abbastanzaLunga(query) && books.length > 0 && (
@@ -2480,22 +2471,6 @@ export default function Library({
           onVai={liberaOra}
         />
       )}
-      {daDrive?.voci && (
-        <SceltaDaDrive
-          voci={daDrive.voci}
-          scelti={daDrive.scelti}
-          onCambia={(ids, acceso) =>
-            setDaDrive((d) => {
-              if (!d?.voci) return d;
-              const scelti = new Set(d.scelti);
-              for (const id of ids) acceso ? scelti.add(id) : scelti.delete(id);
-              return { ...d, scelti };
-            })
-          }
-          onChiudi={() => setDaDrive(null)}
-          onVai={aggiungiDaDrive}
-        />
-      )}
       {titoli && (
         <SceltaTitoli
           proposte={titoli.proposte}
@@ -2927,174 +2902,6 @@ function SceltaLibera({ esito, onCambia, onChiudi, onVai }) {
             }}
           >
             {presi.length ? `Libera ${fmtBytes(peso(presi))}` : "Niente scelto"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SceltaDaDrive({ voci, scelti, onCambia, onChiudi, onVai }) {
-  const quanti = scelti.size;
-  // LA LISTA PARTE DALLA CARTELLA DEL LETTORE. `dentro` lo decide
-  // `daAggiungere` (sotto «book-companion», o tutto se quella cartella non
-  // c'e'); il resto di Drive sta dietro un tasto, non sparisce — un file
-  // nella cartella sbagliata e' comunque un libro suo. E si cerca: nome e
-  // percorso, senza accenti, e «Tutti»/«Nessuno» toccano solo quel che si
-  // vede, o una ricerca su «Hellboy» spunterebbe l'intero Drive.
-  const [testo, setTesto] = useState("");
-  const [ancheFuori, setAncheFuori] = useState(false);
-  const dentro = voci.filter((v) => v.dentro);
-  const fuori = voci.length - dentro.length;
-  const base = dentro.length && !ancheFuori ? dentro : voci;
-  const visibili = cercaVoci(base, testo);
-  const gruppi = [];
-  for (const v of visibili) {
-    const nome = v.dentro ? v.cartella || RADICE : v.cartella || "Senza cartella";
-    const g = gruppi[gruppi.length - 1];
-    if (g?.nome === nome && g.dentro === v.dentro) g.voci.push(v);
-    else gruppi.push({ nome, dentro: v.dentro, voci: [v] });
-  }
-  const idVisibili = visibili.map((v) => v.id);
-  const tasto = {
-    padding: "8px 14px",
-    minHeight: 44,
-    borderRadius: R.piccolo,
-    border: `1px solid ${C.border}`,
-    color: C.muted,
-    fontSize: F.nota,
-  };
-  return (
-    <div
-      onClick={onChiudi}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 55,
-        background: "#080611cc",
-        backdropFilter: "blur(4px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 16,
-        animation: "bc-fade-in 0.25s ease-out",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "100%",
-          maxWidth: px(560),
-          maxHeight: "100%",
-          overflowY: "auto",
-          borderRadius: R.grande,
-          border: `1px solid ${C.border}`,
-          background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
-          boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
-          padding: 22,
-        }}
-      >
-        <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
-          ☁ Da Google Drive
-        </h2>
-        <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 12 }}>
-          {dentro.length
-            ? `${dentro.length === 1 ? "Un file" : `${dentro.length} file`} nella cartella «${RADICE}» non ${dentro.length === 1 ? "è" : "sono"} ancora sullo scaffale.`
-            : `${voci.length === 1 ? "Questo file è" : `Questi ${voci.length} file sono`} su Drive e non ancora sullo scaffale.`}{" "}
-          Entrano con titolo, autore e copertina; il libro si legge da Drive.
-        </p>
-        <input
-          type="search"
-          value={testo}
-          onChange={(e) => setTesto(e.target.value)}
-          placeholder="Cerca per nome o cartella…"
-          aria-label="Cerca fra i file di Drive"
-          style={{
-            width: "100%",
-            minHeight: 44,
-            padding: "8px 12px",
-            marginBottom: 10,
-            borderRadius: R.piccolo,
-            border: `1px solid ${C.border}`,
-            background: `${C.bg}66`,
-            color: C.text,
-            fontSize: F.corpo,
-            outline: "none",
-          }}
-        />
-        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-          <button onClick={() => onCambia(idVisibili, true)} style={tasto}>
-            {!testo.trim() ? "Tutti" : visibili.length === 1 ? "L'unico trovato" : `Tutti i ${visibili.length} trovati`}
-          </button>
-          <button onClick={() => onCambia(idVisibili, false)} style={tasto}>
-            Nessuno
-          </button>
-          {dentro.length > 0 && fuori > 0 && (
-            <button onClick={() => setAncheFuori((x) => !x)} style={{ ...tasto, marginLeft: "auto" }}>
-              {ancheFuori ? `Solo «${RADICE}»` : `Mostra anche il resto di Drive · ${fuori}`}
-            </button>
-          )}
-        </div>
-        {!visibili.length && (
-          <p style={{ color: C.muted, fontSize: F.piccolo, margin: "8px 0 14px" }}>
-            Nessun file risponde a «{testo.trim()}»{dentro.length && !ancheFuori && fuori ? ` in «${RADICE}»: prova a mostrare anche il resto di Drive` : ""}.
-          </p>
-        )}
-
-        {gruppi.map((g) => (
-          <div key={`${g.dentro ? "in" : "out"}:${g.nome}`} style={{ marginBottom: 10 }}>
-            <div style={{ color: C.muted, fontSize: F.minuscolo, margin: "8px 0 6px", letterSpacing: 0.4 }}>
-              {g.dentro ? "🗂" : "☁"} {g.nome} · {g.voci.length}
-            </div>
-            {g.voci.map((v) => {
-              const on = scelti.has(v.id);
-              return (
-                <button
-                  key={v.id}
-                  onClick={() => onCambia([v.id], !on)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    width: "100%",
-                    minHeight: 44,
-                    textAlign: "left",
-                    padding: "8px 12px",
-                    marginBottom: 6,
-                    borderRadius: R.piccolo,
-                    border: `1px solid ${on ? `${C.accent}88` : C.border}`,
-                    background: on ? `${C.accent}14` : "transparent",
-                  }}
-                >
-                  <span style={{ fontSize: F.rilievo, color: on ? C.accent : C.muted }}>{on ? "☑" : "☐"}</span>
-                  <span style={{ minWidth: 0, flex: 1, color: C.text, fontSize: F.corpo, overflowWrap: "anywhere" }}>
-                    {v.name}
-                  </span>
-                  <span style={{ color: C.muted, fontSize: F.minuscolo, whiteSpace: "nowrap" }}>{v.size < 1e6 ? `${Math.max(1, Math.round(v.size / 1e3))} KB` : fmtBytes(v.size)}</span>
-                </button>
-              );
-            })}
-          </div>
-        ))}
-
-        <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "flex-end" }}>
-          <button onClick={onChiudi} style={{ ...tasto, padding: "10px 18px" }}>
-            Lascia stare
-          </button>
-          <button
-            onClick={onVai}
-            disabled={!quanti}
-            style={{
-              padding: "10px 20px",
-              minHeight: 44,
-              borderRadius: R.piccolo,
-              border: `1px solid ${quanti ? `${C.accent}88` : C.border}`,
-              background: quanti ? `${C.accent}22` : "transparent",
-              color: quanti ? C.accent : C.muted,
-              fontSize: F.nota,
-            }}
-          >
-            {quanti ? `Aggiungi ${quanti}` : "Nessuno spuntato"}
           </button>
         </div>
       </div>

@@ -113,8 +113,9 @@ function caricaGis() {
 // IL SELETTORE DI GOOGLE: la finestra di Drive dentro l'app. Si carica
 // come GIS, da uno script di Google, e si apre solo da un tocco con la
 // chiave d'accesso in mano (e' un iframe di docs.google.com, e senza il
-// gesto il browser non lo lascerebbe aprire). Torna i documenti toccati,
-// o `null` se il lettore ha chiuso senza scegliere.
+// gesto il browser non lo lascerebbe aprire). Torna i documenti toccati —
+// file e cartelle, perche' una cartella si sceglie intera — o `null` se il
+// lettore ha chiuso senza scegliere.
 let gapiPronto = null;
 function caricaPicker() {
   if (globalThis.google?.picker?.PickerBuilder) return Promise.resolve();
@@ -150,14 +151,14 @@ export async function scegliSuDrive({ cartellaId = null } = {}) {
   await caricaPicker();
   const gp = globalThis.google.picker;
   return new Promise((ok) => {
-    const vista = new gp.DocsView(gp.ViewId.DOCS).setIncludeFolders(true).setSelectFolderEnabled(false).setMode(gp.DocsViewMode.LIST);
+    const vista = new gp.DocsView(gp.ViewId.DOCS).setIncludeFolders(true).setSelectFolderEnabled(true).setMode(gp.DocsViewMode.LIST);
     if (cartellaId) vista.setParent(cartellaId);
     const picker = new gp.PickerBuilder()
       .setOAuthToken(t)
       .setDeveloperKey(chiave)
       .setLocale("it")
       .setOrigin(`${location.protocol}//${location.host}`)
-      .setTitle("Scegli i libri da aggiungere")
+      .setTitle("Scegli libri o cartelle intere")
       .enableFeature(gp.Feature.MULTISELECT_ENABLED)
       .addView(vista)
       .setCallback((d) => {
