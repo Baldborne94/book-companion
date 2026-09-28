@@ -82,9 +82,14 @@ nuovi nelle cartelle Libri, Fumetti e Manga, scarica un libro quando lo
 apri, e chiede quanto spazio usi e hai libero. Lo stesso vale per le
 melodie che carichi come file: l'app elenca i file audio del tuo Drive per
 riconoscerle (nome e misura), le carica nella cartella Musica e le scarica
-su un altro dispositivo solo quando le suoni. Non legge il contenuto di
-nessun altro file e non cancella niente: eliminando un libro o una melodia
-dall'app, il suo file su Drive resta dov'è.
+su un altro dispositivo solo quando le suoni. Con «Da Google Drive», in
+Libreria, l'app ti mostra i libri del tuo Drive che non sono ancora sullo
+scaffale e, per quelli che scegli, ne legge solo un pezzo — i metadati
+(titolo, autore, retro, collana) e la copertina — per crearne la scheda,
+senza scaricare il file intero. Non legge il contenuto di nessun altro file
+e non cancella niente: eliminando un libro o una melodia dall'app, il suo
+file su Drive resta dov'è (il libro eliminato perde solo il segno privato,
+così puoi ritrovarlo con «Da Google Drive»).
 
 Puoi scollegarlo quando vuoi dal pannello della nuvola, e ritirare il
 permesso anche da myaccount.google.com → Sicurezza → App di terze parti.

@@ -192,7 +192,7 @@ export const elencaFile = () =>
     "id,name,size,sha256Checksum,appProperties,parents"
   ).then((l) => l.filter((f) => estensioneDi(f.name)));
 
-const elencaCartelle = () => elencaTutto(`trashed=false and mimeType='${CARTELLA}'`, "id,name");
+export const elencaCartelle = () => elencaTutto(`trashed=false and mimeType='${CARTELLA}'`, "id,name");
 
 async function creaCartella(nome) {
   const r = await chiama(`${API}/files?fields=id,name`, {
@@ -213,11 +213,92 @@ const segnaCon = (fileId, props) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ appProperties: { bc: "1", ...props } }),
   });
-const segna = (fileId, bookId) => segnaCon(fileId, { bcId: bookId });
+export const segna = (fileId, bookId) => segnaCon(fileId, { bcId: bookId });
 
 export async function scaricaDaDrive(fileId) {
   const r = await chiama(`${API}/files/${fileId}?alt=media`);
   return r.blob();
+}
+
+// UN FILE DI DRIVE LETTO A PEZZI. Ha la forma che i lettori a fette si
+// aspettano da un Blob — `size`, e `slice(da, a)` che da' `arrayBuffer()` e
+// `stream()` — e ogni pezzo e' una richiesta con `Range`: di un ePub da
+// venti megabyte per titolo, autore, saga e copertina ne scendono poche
+// centinaia di chilobyte. Ogni richiesta pero' costa un viaggio, e i
+// lettori chiedono pezzi piccolissimi (una testata di trenta byte, poi i
+// suoi dati): si chiede sempre almeno `LETTURA_MINIMA` e si tengono gli
+// ultimi pezzi, cosi' la testata e i dati che la seguono arrivano insieme.
+const LETTURA_MINIMA = 256 * 1024;
+const PEZZI_TENUTI = 8;
+export function fileRemoto(fileId, size, { prendi } = {}) {
+  const totale = Number(size) || 0;
+  const tenuti = [];
+  const scarica =
+    prendi ||
+    (async (da, a) => {
+      const r = await chiama(`${API}/files/${fileId}?alt=media`, { headers: { Range: `bytes=${da}-${a - 1}` } });
+      const buf = new Uint8Array(await r.arrayBuffer());
+      // un server che ignora `Range` manda il file intero: lo si tiene
+      // intero, invece di chiederlo di nuovo a ogni pezzo
+      return r.status === 206 ? { da, buf } : { da: 0, buf };
+    });
+  const leggi = async (da, a) => {
+    if (a <= da) return new Uint8Array(0);
+    const t = tenuti.find((p) => p.da <= da && p.da + p.buf.length >= a);
+    if (t) return t.buf.slice(da - t.da, a - t.da);
+    const fine = Math.min(totale || a, Math.max(a, da + LETTURA_MINIMA));
+    const p = await scarica(da, fine);
+    tenuti.unshift(p);
+    if (tenuti.length > PEZZI_TENUTI) tenuti.pop();
+    if (p.da > da || p.da + p.buf.length < a) throw new Error("Google Drive ha mandato meno di quel che serviva.");
+    return p.buf.slice(da - p.da, a - p.da);
+  };
+  const pezzo = (da = 0, a = totale) => {
+    const i = Math.max(0, Math.min(totale, da < 0 ? totale + da : da));
+    const f = Math.max(i, Math.min(totale, a < 0 ? totale + a : a));
+    return {
+      size: f - i,
+      arrayBuffer: async () => (await leggi(i, f)).buffer,
+      stream: () =>
+        new ReadableStream({
+          async start(c) {
+            try {
+              c.enqueue(await leggi(i, f));
+              c.close();
+            } catch (e) {
+              c.error(e);
+            }
+          },
+        }),
+      slice: (x = 0, y = f - i) => pezzo(i + x, i + Math.min(y, f - i)),
+    };
+  };
+  return pezzo(0, totale);
+}
+
+// UN LIBRO ELIMINATO LASCIA IL SUO FILE SU DRIVE (e' l'archivio del
+// lettore), ma col segno addosso quel file resterebbe «di un libro»:
+// «Aggiungi da Drive» non lo proporrebbe mai piu', perche' un file segnato
+// che qui non ha una scheda sembra di un altro dispositivo. Si toglie il
+// segno, e il file torna un file qualunque. Con la chiave scaduta non si
+// puo': finche' la lapide vive il file resta proponibile lo stesso.
+export async function smarcaSuDrive(bookId) {
+  const m = mappaDrive();
+  const f = m[bookId];
+  if (!f) return;
+  delete m[bookId];
+  scriviMappa(m);
+  if (!tokenValido()) return;
+  await segnaCon(f.id, { bcId: null }).catch(() => {});
+}
+
+// Il libro nuovo nato da un file di Drive entra subito nella mappa: e'
+// «lassu'» da adesso, con la nuvoletta, e si apre scaricandolo — senza
+// aspettare il prossimo giro della sincronizzazione.
+export function mettiNellaMappa(bookId, fileId, byte) {
+  const m = mappaDrive();
+  m[bookId] = { id: fileId, byte: Number(byte) || 0 };
+  scriviMappa(m);
 }
 
 // IL CARICAMENTO A RIPRESA: un fumetto da un giga in una richiesta sola si

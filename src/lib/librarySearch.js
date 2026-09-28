@@ -75,7 +75,7 @@ async function cercaPdf(blob, query, limite, vivo) {
       dopo: r.after,
     }));
   } finally {
-    try { pdf.destroy(); } catch { /* gia' chiuso */ }
+    mod.chiudiPdf(pdf);
   }
 }
 

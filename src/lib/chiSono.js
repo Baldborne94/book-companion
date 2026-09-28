@@ -223,7 +223,7 @@ async function nuoveDaPdf(libro, nomi, da, a) {
     }
     return false;
   } finally {
-    try { pdf.destroy(); } catch { /* gia' chiuso */ }
+    mod.chiudiPdf(pdf);
   }
 }
 
@@ -373,7 +373,7 @@ async function daPdf(libro, nomi, fino) {
       }
     }
   } finally {
-    try { pdf.destroy(); } catch { /* gia' chiuso */ }
+    mod.chiudiPdf(pdf);
   }
   return out.map((m) => ({ ...m, esteso }));
 }
@@ -430,7 +430,7 @@ async function aliasDaPdf(libro, reg, fino) {
       } catch { /* pagina illeggibile: le altre bastano */ }
     }
   } finally {
-    try { pdf.destroy(); } catch { /* gia' chiuso */ }
+    mod.chiudiPdf(pdf);
   }
 }
 

@@ -105,6 +105,51 @@ export function abbina(libri, file, { misure } = {}) {
   return { mappa, daSegnare, ambigui };
 }
 
+// I FILE DI DRIVE CHE NON SONO ANCORA LIBRI: quel che «Aggiungi da Drive»
+// propone (chiesto dal lettore: portare i libri sul tablet «ci mette una
+// vita», e lassu' ci sono gia'). Le regole di `abbina` al contrario, e
+// sempre dal lato del silenzio — un file proposto per sbaglio diventa un
+// DOPPIONE in biblioteca, con due punti di lettura e due scaffali di
+// evidenziazioni, mentre uno taciuto si vede e si importa a mano:
+//   - quel che `abbina` riconosce e' gia' un libro;
+//   - un file col segno nostro e' il libro di QUALCUNO: se qui non c'e', e'
+//     di un altro dispositivo e scendera' con la sincronizzazione — tranne
+//     quando quel libro l'hai cancellato (lapide), e allora e' un file tuo
+//     come un altro, e ripescarlo e' una scelta;
+//   - la stessa impronta di un libro, o di un file gia' proposto (due copie
+//     identiche su Drive fanno un libro solo);
+//   - il nome uguale al titolo di un libro con la stessa estensione: e' il
+//     caso che `abbina` lascia ambiguo, e ambiguo vuol dire «forse c'e' gia'».
+// La cartella «Manga» e' un'organizzazione del lettore: un fumetto che sta
+// li' entra gia' col tipo giusto.
+export function daAggiungere(libri, file, { lapidi = [], cartelle = [] } = {}) {
+  const vivi = (libri || []).filter((b) => b?.id);
+  const { mappa } = abbina(vivi, file);
+  const presi = new Set([...mappa.values()].map((f) => f.id));
+  const morti = new Set(lapidi || []);
+  const impronte = new Set(vivi.map((b) => b.impronta).filter(Boolean));
+  const titoli = new Set(vivi.map((b) => `${estDelLibro(b)}|${nomeNudo(b.title)}`));
+  const nomeCartella = new Map((cartelle || []).map((c) => [c.id, c.name]));
+  const visti = new Set();
+  const fuori = [];
+  for (const f of file || []) {
+    const est = estensioneDi(f?.name);
+    if (!f?.id || !EST.includes(est) || presi.has(f.id)) continue;
+    const segno = f.appProperties?.bcId;
+    if (segno && !morti.has(segno)) continue;
+    const sha = String(f.sha256Checksum || "").toLowerCase();
+    if (sha && (impronte.has(sha) || visti.has(sha))) continue;
+    if (titoli.has(`${est}|${nomeNudo(f.name)}`)) continue;
+    if (sha) visti.add(sha);
+    const cartella = nomeCartella.get(f.parents?.[0]) || "";
+    const manga = (est === "cbz" || est === "cbr") && /\bmanga\b/i.test(cartella);
+    fuori.push({ id: f.id, name: f.name, size: Number(f.size) || 0, sha256Checksum: sha || null, cartella, ...(manga ? { tipo: "manga" } : {}) });
+  }
+  return fuori.sort(
+    (a, b) => a.cartella.localeCompare(b.cartella, "it") || a.name.localeCompare(b.name, "it", { numeric: true })
+  );
+}
+
 // LE CARTELLE DEL LETTORE HANNO GIA' UN NOME, e i libri nuovi vanno li'.
 export const CARTELLE = { libri: "Libri", fumetti: "Fumetti", manga: "Manga", musica: "Musica" };
 export const cartellaDelTipo = (tipo) => CARTELLE[tipo] || CARTELLE.libri;

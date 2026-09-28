@@ -234,7 +234,11 @@ export async function apriArchivio(sorgente, { rar, aFette = true } = {}) {
   // Un Blob (il File scelto, o quel che torna da IndexedDB) si legge a
   // fette e NON si carica mai intero; dei byte gia' in mano si avvolgono in
   // un Blob, che non li copia. Il RAR invece i byte li vuole tutti.
-  const blob = sorgente instanceof Blob ? sorgente : new Blob([sorgente || new ArrayBuffer(0)]);
+  // anche cio' che a un Blob somiglia soltanto — `size` e `slice` — come un
+  // file di Drive letto a pezzi (`fileRemoto`): avvolto in un Blob vero
+  // diventerebbe un archivio di zero byte
+  const aFetta = (x) => x instanceof Blob || (!!x && typeof x.size === "number" && typeof x.slice === "function" && !ArrayBuffer.isView(x));
+  const blob = aFetta(sorgente) ? sorgente : new Blob([sorgente || new ArrayBuffer(0)]);
   const formato = formatoDaByte(new Uint8Array(await blob.slice(0, 8).arrayBuffer()));
   if (formato === "cbz") {
     const z = await apriZip(blob);
