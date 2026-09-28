@@ -22,6 +22,7 @@ import Foliage from "./components/Foliage.jsx";
 import Scrolls from "./components/Scrolls.jsx";
 import { CandleIcon, BooksIcon, MusicIcon, LeafIcon, ScrollIcon, CloudIcon } from "./components/Icons.jsx";
 import { SezioneOracolo } from "./components/TettoOracolo.jsx";
+import SezioneAnticipo from "./components/SezioneAnticipo.jsx";
 import SezioneDizionario from "./components/SezioneDizionario.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
@@ -47,7 +48,8 @@ import { daAvvisare } from "./lib/oracle.js";
 import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
-import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive } from "./lib/sync.js";
+import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile } from "./lib/sync.js";
+import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare } from "./lib/anticipo.js";
 import { driveAcceso, mappaDrive, collegaDrive, smarcaSuDrive } from "./lib/drive.js";
 import { spiegaSync } from "./lib/syncCore.js";
 import { useViewport } from "./lib/viewport.js";
@@ -615,6 +617,21 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
         </div>
 
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            Il volume dopo
+          </h3>
+          <SezioneAnticipo />
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
           {/* COSA SA FARE L'APP, e sta qui perché è la stanza dove uno
               viene quando si chiede qualcosa sull'app invece che sui suoi
               libri. Non compare mai da sé e non si mette in mezzo: una
@@ -1127,6 +1144,34 @@ export default function App() {
   const nextBook = readingBook ? nextInSaga(readingBook, books) : null;
   flags.current.reading = !!readingBook;
 
+  // IL SEGUITO SCENDE MENTRE LEGGI (`lib/anticipo.js`): a ogni voltata si
+  // guarda se e' il momento di portare giu' il volume dopo. Un ref e non
+  // un effetto, perche' il segnale e' la voltata (`onAlive`), non un
+  // cambio di stato; e i tentativi stanno in una mappa della sessione, cosi'
+  // un volume sceso non si richiede e uno andato storto si riprova piu' tardi.
+  const tentativi = useRef(new Map());
+  const anticipa = useRef(() => {});
+  anticipa.current = () => {
+    if (!readingBook || !nextBook) return;
+    if (!daRiprovare(tentativi.current.get(nextBook.id))) return;
+    if (!reteBuona(leggiAnticipo(), globalThis.navigator?.connection)) return;
+    const suDrive = driveAcceso() ? mappaDrive() : {};
+    const libro = daAnticipare(readingBook, {
+      prossimo: nextBook,
+      progresso: getProgress(readingBook.id),
+      qui: (id) => !!localIds?.has(id),
+      lassu: (id) => suDrive[id] || isSyncConfigured(),
+    });
+    if (!libro) return;
+    tentativi.current.set(libro.id, { ora: Date.now() });
+    anticipaFile(libro).then((esito) => {
+      tentativi.current.set(libro.id, { ora: Date.now(), esito });
+      if (esito !== "sceso") return;
+      notify(`📥 «${libro.title}» è sceso: lo leggi anche senza rete`);
+      localFileIds().then(setLocalIds);
+    });
+  };
+
   useEffect(() => {
     if (readingId && music.current) {
       setBookMusic(readingId, { url: music.current.url, trackId: music.current.trackId, name: music.current.name });
@@ -1417,7 +1462,7 @@ export default function App() {
               onMusicVolume={(v) => playerRef.current?.setVolume(v)}
               onMusicNext={() => playerRef.current?.next()}
               onMusicRoom={() => navigate("music")}
-              onAlive={() => { svegliaRef.current(); segnaVita(); }}
+              onAlive={() => { svegliaRef.current(); segnaVita(); anticipa.current(); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);
@@ -1440,7 +1485,7 @@ export default function App() {
               onMusicVolume={(v) => playerRef.current?.setVolume(v)}
               onMusicNext={() => playerRef.current?.next()}
               onMusicRoom={() => navigate("music")}
-              onAlive={() => { svegliaRef.current(); segnaVita(); }}
+              onAlive={() => { svegliaRef.current(); segnaVita(); anticipa.current(); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);
@@ -1463,7 +1508,7 @@ export default function App() {
               onMusicVolume={(v) => playerRef.current?.setVolume(v)}
               onMusicNext={() => playerRef.current?.next()}
               onMusicRoom={() => navigate("music")}
-              onAlive={() => { svegliaRef.current(); segnaVita(); }}
+              onAlive={() => { svegliaRef.current(); segnaVita(); anticipa.current(); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);

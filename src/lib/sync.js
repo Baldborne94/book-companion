@@ -751,6 +751,40 @@ export async function fileDaLeggere(book) {
   return ensureLocalFile(book);
 }
 
+// IL SEGUITO CHE SCENDE DA SE' (`lib/anticipo.js`): come `ensureLocalFile`
+// ma SENZA CHIEDERE NIENTE A NESSUNO. Qui non c'e' un tocco dietro — si
+// arriva da una voltata — quindi a chiave di Google scaduta non si apre la
+// finestra (il browser la bloccherebbe, e se non la bloccasse sarebbe peggio:
+// un accesso a Google in faccia a chi sta leggendo). Si dice «chiave» e ci
+// si riprova alla prossima occasione. Esiti: «gia'» (era qui), «sceso»,
+// «chiave», «assente» (lassu' non c'e'), «errore».
+export async function anticipaFile(book) {
+  if (await getFile(book.id).catch(() => null)) return "gia";
+  try {
+    const voce = driveAcceso() ? mappaDrive()[book.id] : null;
+    if (voce) {
+      if (!driveProntoOra()) return "chiave";
+      try {
+        await putFile(book.id, await scaricaDaDrive(voce.id));
+        return "sceso";
+      } catch (e) {
+        if (e?.name === "DriveScollegato") return "chiave";
+        if (e?.status !== 404) throw e;
+      }
+    }
+    if (!isSyncConfigured()) return "assente";
+    const session = await getSession();
+    if (!session) return "assente";
+    const sb = await getClient();
+    const { data, error } = await sb.storage.from(BUCKET).download(filePath(session.user.id, book));
+    if (!data) return error && !nonCeLassu(error) ? "errore" : "assente";
+    await putFile(book.id, data);
+    return "sceso";
+  } catch {
+    return "errore";
+  }
+}
+
 export async function ensureLocalFile(book) {
   const local = await getFile(book.id);
   if (local) return local;
