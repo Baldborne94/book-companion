@@ -178,14 +178,31 @@ const PAROLINE = /\b(the|a|an|of|and|to|in|on|for)\b/g;
 const PAROLE_PIENE = 2;
 const scheletro = (s) => s.replace(PAROLINE, " ").replace(/\s+/g, " ").trim();
 
-function combaciaScheletro(campo, chiave) {
-  const nudo = scheletro(chiave);
-  if (nudo.split(" ").filter(Boolean).length < PAROLE_PIENE) return false;
-  return contiene(scheletro(campo), nudo);
+// LO SCHELETRO DI UNA VOCE DELLA TAVOLA SI FA UNA VOLTA SOLA, e quello del
+// titolo una volta per libro (chiesto dal lettore: «rendi l'app piu' veloce
+// nel caricamento»). Rifarli per ogni coppia libro-voce era il grosso
+// dell'Ingresso: misurato con 650 libri e il processore rallentato quattro
+// volte, ~400 ms solo qui dentro per riconoscere la biblioteca. `null` =
+// sotto il pavimento delle due parole, cioe' «non si confronta».
+const SCHELETRI = new Map();
+function nudoDi(chiave) {
+  let nudo = SCHELETRI.get(chiave);
+  if (nudo === undefined) {
+    const s = scheletro(chiave);
+    nudo = s.split(" ").filter(Boolean).length < PAROLE_PIENE ? null : s;
+    SCHELETRI.set(chiave, nudo);
+  }
+  return nudo;
 }
 
-function combacia(campo, voce, autoreNorm) {
-  if (!contiene(campo, voce.k) && !combaciaScheletro(campo, voce.k)) return false;
+function combaciaScheletro(campo, chiave, scheletroCampo) {
+  const nudo = nudoDi(chiave);
+  if (!nudo) return false;
+  return contiene(scheletroCampo ?? scheletro(campo), nudo);
+}
+
+function combacia(campo, voce, autoreNorm, scheletroCampo) {
+  if (!contiene(campo, voce.k) && !combaciaScheletro(campo, voce.k, scheletroCampo)) return false;
   // l'autore del volume se la tavola lo scrive volume per volume (l'Eresia,
   // a venti mani), altrimenti quello della tavola intera
   const cogn = voce.a ? cognome(voce.a) : voce.tav.autore || "";
@@ -317,8 +334,9 @@ function riconosciDaCapo({ title, author, fileName } = {}) {
   const campi = [title, fileName].filter(Boolean).map(norm);
   const chiAutore = norm(author);
   for (const campo of campi) {
+    const scheletroCampo = scheletro(campo);
     for (const b of INDICE) {
-      if (combacia(campo, b, chiAutore)) {
+      if (combacia(campo, b, chiAutore, scheletroCampo)) {
         return {
           saga: b.tav.saga,
           sagaOrder: b.tav.ordine(b) ?? null,
