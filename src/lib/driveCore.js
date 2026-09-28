@@ -472,3 +472,22 @@ export const ripulisciIdClient = (v) => String(v || "").replace(/\s+/g, "");
 export const idClientValido = (v) => /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/.test(ripulisciIdClient(v));
 export const PERCHE_ID_STORTO =
   "L'ID client non ha la forma giusta: sono numeri, un trattino, lettere e cifre, e finisce con .apps.googleusercontent.com. Copialo col tasto accanto all'ID su Google Cloud invece di riscriverlo a mano.";
+
+// QUANTO PESA «PORTA QUI». Da quando i libri si aggiungono da Drive senza
+// scendere, un tomo lassu' e' lo stato normale e non un lavoro che aspetta:
+// il tasto serve a chi vuole leggerli senza rete, e chi lo tocca deve sapere
+// PRIMA quanta connessione e quanto tablet ci vogliono. La misura la dice la
+// mappa di Drive; un tomo che sta solo nel secchio non ha misura qui, e
+// allora il conto dice «almeno» (`tutti` falso) invece di fingere un totale.
+export function pesoDaScendere(libri, mappa) {
+  let byte = 0;
+  let noti = 0;
+  for (const b of libri || []) {
+    const n = Number(mappa?.[b?.id]?.byte);
+    if (n > 0) {
+      byte += n;
+      noti += 1;
+    }
+  }
+  return { byte, tutti: noti === (libri || []).length };
+}
