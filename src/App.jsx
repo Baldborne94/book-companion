@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { registerSW } from "virtual:pwa-register";
 import {
   C,
@@ -22,6 +22,7 @@ import Foliage from "./components/Foliage.jsx";
 import Scrolls from "./components/Scrolls.jsx";
 import { CandleIcon, BooksIcon, MusicIcon, LeafIcon, ScrollIcon, CloudIcon } from "./components/Icons.jsx";
 import { SezioneOracolo } from "./components/TettoOracolo.jsx";
+import SezioneAnticipo from "./components/SezioneAnticipo.jsx";
 import SezioneDizionario from "./components/SezioneDizionario.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
@@ -47,7 +48,8 @@ import { daAvvisare } from "./lib/oracle.js";
 import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
-import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive } from "./lib/sync.js";
+import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile } from "./lib/sync.js";
+import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare } from "./lib/anticipo.js";
 import { driveAcceso, mappaDrive, collegaDrive, smarcaSuDrive } from "./lib/drive.js";
 import { spiegaSync } from "./lib/syncCore.js";
 import { useViewport } from "./lib/viewport.js";
@@ -186,14 +188,52 @@ function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
   );
 }
 
+const GIOCO = 8;
+
 function Header({ onSync, syncing, signedIn, theme, onTheme }) {
+  // IL TITOLO STA FRA I TASTI SOLO SE CI STA. I due tasti stavano in
+  // `position: absolute` in cima, e il titolo nel flusso, largo quanto lo
+  // schermo: sul tablet non si toccavano per caso, sul telefono la candela
+  // del titolo — che ha un `filter`, quindi un suo contesto di
+  // sovrapposizione dipinto DOPO i tasti — copriva «Impostazioni» e si
+  // prendeva il tocco (misurato a 412: il centro del tasto restituiva lo svg
+  // dell'h1). Adesso e' una griglia a tre colonne con le laterali uguali,
+  // cosi' il titolo resta al centro dello schermo; se non ci sta fra i due
+  // tasti scende sotto, a tutta riga. Si misura, non si indovina una soglia:
+  // la scala della scrittura cambia la larghezza del titolo e dei tasti.
+  const testaRef = useRef(null);
+  const impRef = useRef(null);
+  const nuvolaRef = useRef(null);
+  const titoloRef = useRef(null);
+  const [affiancato, setAffiancato] = useState(true);
+  useLayoutEffect(() => {
+    const misura = () => {
+      const testa = testaRef.current;
+      if (!testa || !titoloRef.current || !impRef.current || !nuvolaRef.current) return;
+      const cs = getComputedStyle(testa);
+      const dentro = testa.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      const lato = Math.max(impRef.current.offsetWidth, nuvolaRef.current.offsetWidth);
+      // la copia nascosta sta su una riga sola: e' la larghezza che il
+      // titolo vorrebbe, qualunque sia la riga su cui sta adesso
+      setAffiancato(dentro - 2 * (lato + GIOCO) >= titoloRef.current.offsetWidth);
+    };
+    misura();
+    const ro = new ResizeObserver(misura);
+    ro.observe(testaRef.current);
+    return () => ro.disconnect();
+  }, [theme.id]);
   return (
     <header
+      ref={testaRef}
       style={{
         position: "relative",
         zIndex: 2,
-        padding: "26px 20px 14px",
+        padding: "16px 14px 14px",
         textAlign: "center",
+        display: "grid",
+        gridTemplateColumns: "1fr auto 1fr",
+        alignItems: "center",
+        columnGap: GIOCO,
       }}
     >
       {/* UN'ICONA SPENTA IN MEZZO ALLE FOGLIE NON SI TROVA. Era una foglia
@@ -202,13 +242,12 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
           niente da toccare («dove regolo le dimensioni?»). Adesso porta la
           parola scritta — un bersaglio con un nome sopra si trova sempre,
           un glifo muto no. */}
+      <div style={{ gridColumn: "1", gridRow: "1", justifySelf: "start" }}>
       <button
+        ref={impRef}
         onClick={onTheme}
         aria-label="Impostazioni: aspetto, Oracolo, sincronizzazione"
         style={{
-          position: "absolute",
-          top: 16,
-          left: 14,
           height: px(42),
           padding: "0 13px",
           borderRadius: R.tondo,
@@ -226,13 +265,13 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
         })()}
         Impostazioni
       </button>
+      </div>
+      <div style={{ gridColumn: "3", gridRow: "1", justifySelf: "end" }}>
       <button
+        ref={nuvolaRef}
         onClick={onSync}
         aria-label="Sincronizzazione"
         style={{
-          position: "absolute",
-          top: 16,
-          right: 14,
           width: px(42),
           height: px(42),
           borderRadius: R.piccolo,
@@ -246,8 +285,34 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
       >
         <CloudIcon size={px(22)} active={signedIn} />
       </button>
+      </div>
+      {/* dentro un riquadro nullo che taglia: a scala doppia la copia su
+          una riga e' piu' larga del telefono, e senza il taglio farebbe
+          scorrere la pagina di lato */}
+      <div aria-hidden="true" style={{ position: "absolute", top: 0, left: 0, width: 0, height: 0, overflow: "hidden" }}>
+      <span
+        ref={titoloRef}
+        style={{
+          display: "inline-block",
+          visibility: "hidden",
+          whiteSpace: "nowrap",
+          fontFamily: FONT_TITLE,
+          fontWeight: 700,
+          fontSize: px(30),
+          letterSpacing: "0.04em",
+          // la candela davanti al titolo: il glifo piu' il suo margine
+          paddingLeft: px(26) + 8,
+        }}
+      >
+        Book Companion
+      </span>
+      </div>
       <h1
         style={{
+          gridColumn: affiancato ? "2" : "1 / -1",
+          gridRow: affiancato ? "1" : "2",
+          marginTop: affiancato ? 0 : 10,
+          minWidth: 0,
           fontFamily: FONT_TITLE,
           fontWeight: 700,
           // TESTO, non illustrazione. Sopra i 28px la scala lascia
@@ -279,6 +344,7 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
       </h1>
       <p
         style={{
+          gridColumn: "1 / -1",
           marginTop: 2,
           fontSize: F.corpo,
           fontStyle: "italic",
@@ -612,6 +678,21 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
             Il dizionario
           </h3>
           <SezioneDizionario />
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            Il volume dopo
+          </h3>
+          <SezioneAnticipo />
         </div>
 
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
@@ -1127,6 +1208,34 @@ export default function App() {
   const nextBook = readingBook ? nextInSaga(readingBook, books) : null;
   flags.current.reading = !!readingBook;
 
+  // IL SEGUITO SCENDE MENTRE LEGGI (`lib/anticipo.js`): a ogni voltata si
+  // guarda se e' il momento di portare giu' il volume dopo. Un ref e non
+  // un effetto, perche' il segnale e' la voltata (`onAlive`), non un
+  // cambio di stato; e i tentativi stanno in una mappa della sessione, cosi'
+  // un volume sceso non si richiede e uno andato storto si riprova piu' tardi.
+  const tentativi = useRef(new Map());
+  const anticipa = useRef(() => {});
+  anticipa.current = () => {
+    if (!readingBook || !nextBook) return;
+    if (!daRiprovare(tentativi.current.get(nextBook.id))) return;
+    if (!reteBuona(leggiAnticipo(), globalThis.navigator?.connection)) return;
+    const suDrive = driveAcceso() ? mappaDrive() : {};
+    const libro = daAnticipare(readingBook, {
+      prossimo: nextBook,
+      progresso: getProgress(readingBook.id),
+      qui: (id) => !!localIds?.has(id),
+      lassu: (id) => suDrive[id] || isSyncConfigured(),
+    });
+    if (!libro) return;
+    tentativi.current.set(libro.id, { ora: Date.now() });
+    anticipaFile(libro).then((esito) => {
+      tentativi.current.set(libro.id, { ora: Date.now(), esito });
+      if (esito !== "sceso") return;
+      notify(`📥 «${libro.title}» è sceso: lo leggi anche senza rete`);
+      localFileIds().then(setLocalIds);
+    });
+  };
+
   useEffect(() => {
     if (readingId && music.current) {
       setBookMusic(readingId, { url: music.current.url, trackId: music.current.trackId, name: music.current.name });
@@ -1417,7 +1526,7 @@ export default function App() {
               onMusicVolume={(v) => playerRef.current?.setVolume(v)}
               onMusicNext={() => playerRef.current?.next()}
               onMusicRoom={() => navigate("music")}
-              onAlive={() => { svegliaRef.current(); segnaVita(); }}
+              onAlive={() => { svegliaRef.current(); segnaVita(); anticipa.current(); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);
@@ -1440,7 +1549,7 @@ export default function App() {
               onMusicVolume={(v) => playerRef.current?.setVolume(v)}
               onMusicNext={() => playerRef.current?.next()}
               onMusicRoom={() => navigate("music")}
-              onAlive={() => { svegliaRef.current(); segnaVita(); }}
+              onAlive={() => { svegliaRef.current(); segnaVita(); anticipa.current(); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);
@@ -1463,7 +1572,7 @@ export default function App() {
               onMusicVolume={(v) => playerRef.current?.setVolume(v)}
               onMusicNext={() => playerRef.current?.next()}
               onMusicRoom={() => navigate("music")}
-              onAlive={() => { svegliaRef.current(); segnaVita(); }}
+              onAlive={() => { svegliaRef.current(); segnaVita(); anticipa.current(); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);
