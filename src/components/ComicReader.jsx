@@ -20,6 +20,18 @@ import {
   disegnaPagina,
   leggiBordi,
   scriviBordi,
+  eLarga,
+  coppiaDi,
+  coppiaVicina,
+  leggiDoppia,
+  scriviDoppia,
+  doppiaAccesa,
+  orientamento,
+  leggiLarghe,
+  scriviLarghe,
+  leggiSposta,
+  scriviSposta,
+  disegnaCoppia,
 } from "../lib/fumetto.js";
 import { vuoto } from "../lib/pdfCrop.js";
 import { doppioTocco, limita, zoomAttorno } from "../lib/tavola.js";
@@ -44,8 +56,9 @@ const MOSSA = 12;
 const PRESSIONE = 500;
 const DOPPIO = 300;
 const SCORSA = 60;
-// quante pagine tenere pronte attorno a quella aperta
-const VICINE = 2;
+// quante pagine tenere pronte attorno a quella aperta: in doppia pagina la
+// coppia dopo e quella prima sono quattro
+const VICINE = 4;
 
 function Panel({ title, onClose, children }) {
   return (
@@ -99,7 +112,8 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const [panel, setPanel] = useState(null);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(0);
-  const [src, setSrc] = useState(null);
+  // le pagine a schermo, una o due, ognuna col suo object URL
+  const [srcs, setSrcs] = useState([]);
   const [verso, setVerso] = useState(() => leggiVerso(book.id, book.verso));
   const [adatta, setAdatta] = useState(() => leggiAdatta());
   // I BORDI DELLA SCANSIONE (`lib/fumetto.js`): misurati una volta per
@@ -108,7 +122,14 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const [bordi, setBordi] = useState(() => leggiBordi(book.id));
   // la misura del file aperto e quella del riquadro: il disegno della
   // pagina (`disegnaPagina`) e' aritmetica su questi due
-  const [nat, setNat] = useState(null);
+  // la misura di ogni file aperto (per pagina): serve al disegno e dice
+  // quali tavole sono larghe
+  const natRef = useRef(new Map());
+  const [nats, setNats] = useState({});
+  // la scelta si rilegge a ogni disegno per l'orientamento di adesso
+  const [, setSceltaDoppia] = useState(0);
+  const [larghe, setLarghe] = useState(() => leggiLarghe(book.id));
+  const [sposta, setSposta] = useState(() => leggiSposta(book.id));
   const [riquadro, setRiquadro] = useState(null);
   const [isFs, setIsFs] = useState(false);
   const [marks, setMarks] = useState(() => getMarks(book.id));
@@ -125,17 +146,28 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const [senzaChiave, setSenzaChiave] = useState(false);
   const [riprova, setRiprova] = useState(0);
 
+  const intera = adatta === "intera";
+  // LA DOPPIA PAGINA (vedi `coppie` in lib/fumetto.js) vale solo a pagina
+  // intera: «Adatta» fa gia' una pagina larga quanto lo schermo
+  const doppia = intera && pages > 1 && doppiaAccesa(leggiDoppia(orientamento(riquadro)), riquadro);
+  const opzioni = { larghe, sposta };
+  const mostrate = doppia ? coppiaDi(page, pages, opzioni) : [page];
+  const chiaveMostrate = mostrate.join(",");
+  live.current.doppia = doppia;
+  live.current.opzioni = opzioni;
+
   const flush = useCallback(() => {
     const s = live.current;
     if (s.pages > 0) {
       setCfi(book.id, String(s.page));
-      setProgress(book.id, s.page / s.pages);
+      // in doppia pagina hai davanti anche la seconda: il progresso e' fin li'
+      setProgress(book.id, (s.ultima || s.page) / s.pages);
     }
   }, [book.id]);
 
   const handleClose = useCallback(() => {
     flush();
-    if (live.current.pages > 0 && live.current.page / live.current.pages >= 0.97) setStatus(book.id, "read");
+    if (live.current.pages > 0 && (live.current.ultima || live.current.page) / live.current.pages >= 0.97) setStatus(book.id, "read");
     onClose();
   }, [book.id, flush, onClose]);
 
@@ -144,9 +176,20 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     setPage(Math.min(max, Math.max(1, n)));
   }, []);
 
-  // avanti e indietro nel senso della LETTURA, non dello schermo
-  const avanti = useCallback(() => goToPage(live.current.page + 1), [goToPage]);
-  const indietroDiUna = useCallback(() => goToPage(live.current.page - 1), [goToPage]);
+  // avanti e indietro nel senso della LETTURA, non dello schermo; in doppia
+  // pagina di una coppia per volta
+  const avanti = useCallback(() => {
+    const l = live.current;
+    if (!l.doppia) return goToPage(l.page + 1);
+    const n = coppiaVicina(l.page, l.pages, l.opzioni, 1);
+    if (n) goToPage(n);
+  }, [goToPage]);
+  const indietroDiUna = useCallback(() => {
+    const l = live.current;
+    if (!l.doppia) return goToPage(l.page - 1);
+    const n = coppiaVicina(l.page, l.pages, l.opzioni, -1);
+    if (n) goToPage(n);
+  }, [goToPage]);
 
   // l'object URL di una pagina, estratta se non e' gia' pronta
   const urlDi = useCallback(async (n) => {
@@ -182,6 +225,34 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
       }
     }
   }, []);
+
+  // la misura di un file: la da' il <img> a schermo (`onLoad`) o una
+  // decodifica fuori schermo per le vicine. Una tavola larga si ricorda
+  // per il libro: e' quella che cambia le coppie.
+  const segnaMisura = useCallback((n, m) => {
+    if (!(m?.w > 0 && m?.h > 0) || natRef.current.has(n)) return;
+    natRef.current.set(n, m);
+    setNats((v) => ({ ...v, [n]: m }));
+    if (eLarga(m)) {
+      setLarghe((prima) => {
+        if (prima.has(n)) return prima;
+        const dopo = new Set(prima);
+        dopo.add(n);
+        scriviLarghe(book.id, dopo);
+        return dopo;
+      });
+    }
+  }, [book.id]);
+
+  const misuraDi = useCallback(async (n) => {
+    if (natRef.current.has(n)) return;
+    const url = await urlDi(n);
+    if (!url) return;
+    const im = new Image();
+    im.src = url;
+    await im.decode();
+    segnaMisura(n, { w: im.naturalWidth, h: im.naturalHeight });
+  }, [urlDi, segnaMisura]);
 
   useEffect(() => {
     let dead = false;
@@ -227,18 +298,27 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   useEffect(() => {
     if (status !== "ready") return;
     live.current.page = page;
+    live.current.ultima = mostrate.at(-1);
     const mio = ++gettone.current;
     applica({ s: 1, x: 0, y: 0 });
     if (boxRef.current) boxRef.current.scrollTop = 0;
-    urlDi(page)
-      .then((url) => {
+    Promise.all(mostrate.map((n) => urlDi(n)))
+      .then((us) => {
         if (gettone.current !== mio) return;
-        setSrc(url);
+        setSrcs(mostrate.map((n, i) => ({ n, url: us[i] })));
         sfoltisci(page);
         // le vicine si preparano DOPO quella che si guarda, nel verso in
-        // cui si legge: la prossima per prima
-        urlDi(page + 1).catch(() => {});
-        urlDi(page - 1).catch(() => {});
+        // cui si legge: la prossima per prima. In doppia pagina si MISURANO
+        // anche, perche' una tavola larga cambia la coppia prima di arrivarci
+        const primo = mostrate[0];
+        const ultimo = mostrate.at(-1);
+        // (misurate anche a pagina singola: con la misura gia' in mano la
+        // pagina dopo compare subito, senza un fotogramma vuoto)
+        const vicine = doppia ? [ultimo + 1, ultimo + 2, primo - 1, primo - 2] : [page + 1, page - 1];
+        for (const n of vicine) {
+          if (n < 1 || n > pages) continue;
+          misuraDi(n).catch(() => {});
+        }
       })
       .catch(() => {
         if (gettone.current !== mio) return;
@@ -246,7 +326,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         else notify?.("Questa pagina non si lascia aprire");
       });
     flush();
-    if (pages > 0 && page === pages) {
+    if (pages > 0 && mostrate.includes(pages)) {
       setStatus(book.id, "read");
       setEndCard((v) => (v === null ? "shown" : v));
     }
@@ -254,7 +334,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     // sveglio e il tempo di lettura si conta da qui
     if (primoGiro.current) primoGiro.current = false;
     else onAlive?.();
-  }, [status, page, pages, book.id, urlDi, sfoltisci, flush, riprova]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, chiaveMostrate, pages, book.id, urlDi, sfoltisci, flush, riprova]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const onFs = () => setIsFs(!!document.fullscreenElement);
@@ -366,7 +446,6 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     if (imgRef.current) imgRef.current.style.transform = `translate(${nuovo.x}px, ${nuovo.y}px) scale(${nuovo.s})`;
   };
   const dalCentro = (m, cx, cy) => ({ x: cx - (m.rect.left + m.rect.width / 2), y: cy - (m.rect.top + m.rect.height / 2) });
-  const intera = adatta === "intera";
 
   const giu = (e) => {
     if (e.target.closest("button, input, a")) return;
@@ -475,10 +554,32 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   };
 
   const pct = pages ? Math.round((page / pages) * 100) : 0;
-  const nomePagina = archivio.current?.pagine?.[page - 1] || "";
   // la levetta e' quella del PDF («Togli i margini»), condivisa in
   // `bc_reader`: spenta, la scansione si vede com'e', bordo compreso
-  const disegno = disegnaPagina({ nat, riquadro, bordi: settings.ritaglia !== false ? bordi : null, modo: adatta });
+  const bordiVivi = settings.ritaglia !== false ? bordi : null;
+  // le pagine si disegnano quando tutte quelle a schermo hanno una misura
+  // e un indirizzo: una coppia mezza pronta e' peggio di un fotogramma vuoto
+  const pronte = srcs.length === mostrate.length && srcs.every((x, i) => x.n === mostrate[i] && nats[x.n]);
+  const disegno = !pronte
+    ? null
+    : doppia
+      ? disegnaCoppia({ nats: mostrate.map((n) => nats[n]), riquadro, bordi: bordiVivi, verso })
+      : (() => {
+          const d = disegnaPagina({ nat: nats[page], riquadro, bordi: bordiVivi, modo: adatta });
+          return d && { foglio: d.foglio, pagine: [{ indice: 0, x: 0, foglio: d.foglio, immagine: d.immagine }] };
+        })();
+
+  function cambiaDoppia() {
+    scriviDoppia(orientamento(riquadro), doppia ? "no" : "si");
+    setSceltaDoppia((n) => n + 1);
+    applica({ s: 1, x: 0, y: 0 });
+  }
+
+  function cambiaSposta() {
+    const v = sposta ? 0 : 1;
+    setSposta(v);
+    scriviSposta(book.id, v);
+  }
 
   return (
     <div
@@ -514,19 +615,19 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           cursor: "pointer",
         }}
       >
-        {/* IL FOGLIO E' LA TAVOLA SENZA I BORDI DELLA SCANSIONE: un
-            riquadro che ritaglia, e dentro l'immagine intera spostata di
-            quanto basta a lasciare fuori la cornice. E' il foglio che lo
-            zoom misura e trasforma (`imgRef`), non l'immagine. Finche' non
+        {/* IL FOGLIO E' LA TAVOLA SENZA I BORDI DELLA SCANSIONE (o la
+            coppia, in doppia pagina): per ogni pagina un riquadro che
+            ritaglia, e dentro l'immagine intera spostata di quanto basta a
+            lasciare fuori la cornice. E' il foglio che lo zoom misura e
+            trasforma (`imgRef`), non l'immagine. Finche' non
             si sa quanto e' grande il file (`onLoad`) il foglio resta
             invisibile: un fotogramma a misura sbagliata e' peggio di uno
             vuoto. */}
-        {src && (
+        {srcs.length > 0 && (
           <div
             ref={imgRef}
             style={{
               position: "relative",
-              overflow: "hidden",
               flexShrink: 0,
               transformOrigin: "center",
               willChange: "transform",
@@ -535,21 +636,38 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
               visibility: disegno ? "visible" : "hidden",
             }}
           >
-            <img
-              src={src}
-              alt={nomePagina}
-              draggable={false}
-              onLoad={(e) => setNat({ w: e.target.naturalWidth, h: e.target.naturalHeight })}
-              style={{
-                position: "absolute",
-                display: "block",
-                maxWidth: "none",
-                left: disegno?.immagine.x,
-                top: disegno?.immagine.y,
-                width: disegno?.immagine.w,
-                height: disegno?.immagine.h,
-              }}
-            />
+            {srcs.map((x, i) => {
+              const d = disegno?.pagine.find((q) => q.indice === i);
+              return (
+                <div
+                  key={x.n}
+                  style={{
+                    position: "absolute",
+                    overflow: "hidden",
+                    top: 0,
+                    left: d?.x ?? 0,
+                    width: d?.foglio.w,
+                    height: d?.foglio.h,
+                  }}
+                >
+                  <img
+                    src={x.url}
+                    alt={archivio.current?.pagine?.[x.n - 1] || ""}
+                    draggable={false}
+                    onLoad={(e) => segnaMisura(x.n, { w: e.target.naturalWidth, h: e.target.naturalHeight })}
+                    style={{
+                      position: "absolute",
+                      display: "block",
+                      maxWidth: "none",
+                      left: d?.immagine.x,
+                      top: d?.immagine.y,
+                      width: d?.immagine.w,
+                      height: d?.immagine.h,
+                    }}
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -630,6 +748,10 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
                     col glifo — la freccia punta dove sta la pagina dopo */}
                 <TastoBarra onClick={cambiaVerso} attivo={verso === "rtl"} conNome={nomiNeiTasti} nome="Verso" glifo={verso === "rtl" ? "⇦" : "⇨"} />
                 <TastoBarra onClick={cambiaAdatta} attivo={!intera} conNome={nomiNeiTasti} nome="Adatta" glifo="⤢" />
+                {/* due pagine affiancate: solo a pagina intera, dove ha senso */}
+                {intera && pages > 1 && (
+                  <TastoBarra onClick={cambiaDoppia} attivo={doppia} conNome={nomiNeiTasti} nome="Doppia" glifo="📖" />
+                )}
                 <TastoBarra
                   onClick={() => setPanel(panel === "marks" ? null : "marks")}
                   attivo={panel === "marks"}
@@ -697,7 +819,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
                   value={jump}
                   onChange={(e) => setJump(e.target.value.replace(/\D/g, ""))}
                   inputMode="numeric"
-                  placeholder={String(page)}
+                  placeholder={mostrate.join("–")}
                   aria-label="Vai a pagina"
                   style={{
                     width: 58,
@@ -748,6 +870,35 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 8, lineHeight: 1.45 }}>
             {intera ? "Pagina intera: due dita o un doppio tocco per avvicinarti." : "Larga quanto lo schermo: scorri in verticale."}
           </div>
+
+          {doppia && (
+            <>
+              <div style={{ height: 1, background: C.border, margin: "14px 0 12px" }} />
+              {/* le coppie si sfasano quando una tavola larga non e' ancora
+                  stata aperta: qui si rimettono a posto a mano */}
+              <button
+                onClick={cambiaSposta}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "8px 10px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${sposta ? C.accent : C.border}`,
+                  color: sposta ? C.accent : C.muted,
+                  fontSize: F.nota,
+                  textAlign: "left",
+                }}
+              >
+                <span style={{ fontSize: F.corpo }}>{sposta ? "☑" : "☐"}</span>
+                <span style={{ flex: 1 }}>Sposta le coppie di una pagina</span>
+              </button>
+              <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 6, lineHeight: 1.45 }}>
+                Se una tavola doppia appare spezzata su due coppie, le pagine sono sfasate: questo le rimette insieme.
+              </div>
+            </>
+          )}
 
           <div style={{ height: 1, background: C.border, margin: "14px 0 12px" }} />
           {/* la stessa levetta del PDF, e la stessa preferenza: la' toglie

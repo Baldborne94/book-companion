@@ -348,3 +348,156 @@ export function disegnaPagina({ nat, riquadro, bordi, modo = "intera" } = {}) {
     immagine: { w: tondo(nat.w * k), h: tondo(nat.h * k), x: tondo(-c.l * nat.w * k), y: tondo(-c.t * nat.h * k) },
   };
 }
+
+// LA DOPPIA PAGINA (chiesto dal lettore: «avere due pagine una di fianco
+// all'altra… o nel caso che proprio un panel occupi entrambe le pagine in
+// un colpo solo»). Sul tablet sdraiato una pagina sola lascia vuoti due
+// terzi del vetro.
+//
+// LE COPPIE SONO QUELLE DEL VOLUME STAMPATO: la copertina da sola, poi 2-3,
+// 4-5… E UNA TAVOLA LARGA STA DA SOLA — e' la doppia pagina stampata,
+// scansionata in un file unico — e dopo di lei le coppie RIPARTONO: nel
+// volume stampato quella tavola occupava due facciate, quindi la pagina
+// dopo torna a sinistra. Si calcolano DA CAPO ogni volta (sono poche
+// centinaia di pagine), cosi' la coppia di una pagina e' sempre la stessa
+// da qualunque parte ci si arrivi: avanti, indietro, cursore o segnalibro.
+//
+// LE PAGINE LARGHE SI SCOPRONO APRENDOLE (la misura sta nel file, non
+// nell'archivio): chi salta lontano col cursore puo' trovare le coppie
+// sfasate da una tavola larga che nessuno ha ancora aperto. Per quello c'e'
+// `sposta`, che fa partire le coppie una pagina piu' in la'.
+export const LARGA = 1;
+export const eLarga = (nat) => nat?.w > 0 && nat?.h > 0 && nat.w / nat.h >= LARGA;
+
+export function coppie(totale, { larghe = new Set(), sposta = 0 } = {}) {
+  const n = Math.max(0, Math.floor(Number(totale) || 0));
+  const out = [];
+  if (!n) return out;
+  out.push([1]);
+  let i = 2;
+  if (sposta && i <= n) out.push([i++]);
+  while (i <= n) {
+    if (larghe.has(i) || i === n || larghe.has(i + 1)) {
+      out.push([i]);
+      i += 1;
+    } else {
+      out.push([i, i + 1]);
+      i += 2;
+    }
+  }
+  return out;
+}
+
+export function coppiaDi(pagina, totale, opzioni) {
+  const tutte = coppie(totale, opzioni);
+  const p = Math.min(Math.max(1, parseInt(pagina, 10) || 1), Math.max(1, tutte.length ? tutte[tutte.length - 1].at(-1) : 1));
+  return tutte.find((c) => c.includes(p)) || [p];
+}
+
+// una pagina della coppia dopo, o di quella prima (la coppia a schermo la
+// decide `coppiaDi`, qualunque delle sue pagine si chieda); `null` in fondo
+// e in cima, dove non si va da nessuna parte
+export function coppiaVicina(pagina, totale, opzioni, dir) {
+  const c = coppiaDi(pagina, totale, opzioni);
+  if (dir > 0) return c.at(-1) < totale ? c.at(-1) + 1 : null;
+  return c[0] > 1 ? c[0] - 1 : null;
+}
+
+// Doppia o singola e' del DISPOSITIVO (dipende da quanto vetro c'e'), come
+// «Adatta», e di piu': dell'ORIENTAMENTO. Chi accende la doppia col tablet
+// sdraiato e poi lo gira in piedi non vuole due francobolli — preso dal
+// banco: la scelta unica seguiva il tablet in piedi. Senza una scelta,
+// doppia quando il riquadro e' piu' largo che alto.
+export const orientamento = (riquadro) => (riquadro?.w > riquadro?.h ? "largo" : "alto");
+const KEY_DOPPIA = (o) => `bc_fumetto_doppia_${o === "largo" ? "largo" : "alto"}`;
+export function leggiDoppia(o, storage = globalThis.localStorage) {
+  try {
+    const v = storage.getItem(KEY_DOPPIA(o));
+    return v === "si" || v === "no" ? v : null;
+  } catch {
+    return null;
+  }
+}
+export function scriviDoppia(o, v, storage = globalThis.localStorage) {
+  try {
+    storage.setItem(KEY_DOPPIA(o), v === "si" ? "si" : "no");
+  } catch {
+    /* senza storage dura quanto la lettura */
+  }
+}
+export function doppiaAccesa(scelta, riquadro) {
+  if (scelta === "si") return true;
+  if (scelta === "no") return false;
+  return riquadro?.w > 0 && riquadro?.h > 0 && riquadro.w > riquadro.h;
+}
+
+// Le pagine larghe e lo sfasamento sono del LIBRO: si ricordano per il
+// prossimo giro, cosi' le coppie non si riassestano ogni volta che lo apri.
+const KEY_LARGHE = (id) => `bc_fumetto_larghe_${id}`;
+const KEY_SPOSTA = (id) => `bc_fumetto_sposta_${id}`;
+export function leggiLarghe(id) {
+  try {
+    const v = JSON.parse(localStorage.getItem(KEY_LARGHE(id)));
+    return new Set(Array.isArray(v) ? v.filter((n) => Number.isInteger(n) && n > 0) : []);
+  } catch {
+    return new Set();
+  }
+}
+export function scriviLarghe(id, larghe) {
+  try {
+    localStorage.setItem(KEY_LARGHE(id), JSON.stringify([...larghe].sort((a, b) => a - b)));
+  } catch {
+    /* si riscoprono aprendole */
+  }
+}
+export function leggiSposta(id) {
+  try {
+    return localStorage.getItem(KEY_SPOSTA(id)) === "1" ? 1 : 0;
+  } catch {
+    return 0;
+  }
+}
+export function scriviSposta(id, v) {
+  try {
+    localStorage.setItem(KEY_SPOSTA(id), v ? "1" : "0");
+  } catch {
+    /* dura quanto la lettura */
+  }
+}
+
+// COME SI DISEGNA UNA COPPIA: le due tavole (meno i bordi) alla STESSA
+// altezza, una accanto all'altra, e la coppia intera dentro il riquadro.
+// Torna il foglio della coppia (quel che lo zoom misura) e, per ogni
+// pagina nell'ordine dello SCHERMO, dove sta e come si disegna — in un
+// manga la pagina dopo sta a sinistra.
+export function disegnaCoppia({ nats, riquadro, bordi, verso = "ltr" } = {}) {
+  if (!Array.isArray(nats) || !nats.length || !nats.every((n) => n?.w > 0 && n?.h > 0)) return null;
+  if (!(riquadro?.w > 0 && riquadro?.h > 0)) return null;
+  const c = bordiBuoni(bordi) ? bordi : TUTTA;
+  const tagli = nats.map((n) => ({ n, cw: n.w * (c.r - c.l), ch: n.h * (c.b - c.t) }));
+  const somma = tagli.reduce((s, t) => s + t.cw / t.ch, 0);
+  const h = Math.min(riquadro.h, riquadro.w / somma);
+  const tondo = (x) => Math.round(x * 100) / 100;
+  let x = 0;
+  const pagine = tagli.map((t, i) => {
+    const k = h / t.ch;
+    const p = {
+      indice: i,
+      x: tondo(x),
+      foglio: { w: tondo(t.cw * k), h: tondo(h) },
+      immagine: { w: tondo(t.n.w * k), h: tondo(t.n.h * k), x: tondo(-c.l * t.n.w * k), y: tondo(-c.t * t.n.h * k) },
+    };
+    x += t.cw * k;
+    return p;
+  });
+  if (verso === "rtl") {
+    let y = 0;
+    const rovescio = [...pagine].reverse();
+    for (const p of rovescio) {
+      p.x = tondo(y);
+      y += p.foglio.w;
+    }
+    return { foglio: { w: tondo(x), h: tondo(h) }, pagine: rovescio };
+  }
+  return { foglio: { w: tondo(x), h: tondo(h) }, pagine };
+}
