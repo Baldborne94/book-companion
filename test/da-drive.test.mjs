@@ -249,7 +249,11 @@ export default async function (t) {
       slice: (a, b) => ({
         arrayBuffer: async () => {
           pezziGrosso.push([a, b]);
-          return new Uint8Array(Math.max(0, Math.min(b, IMPRONTA_INTERA + 1) - a)).fill(a % 251).buffer;
+          // pochi byte e non un mega: il test guarda QUALI pezzi si chiedono,
+          // e digerire dieci mega vere dentro il tetto di 50 ms del giro
+          // (`attesa`) sotto carico non ci stava — l'impronta si perdeva e
+          // il test cadeva una volta su due senza che il codice c'entrasse
+          return new Uint8Array(16).fill(a % 251).buffer;
         },
       }),
     };

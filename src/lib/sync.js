@@ -26,7 +26,7 @@ import { leggiTempo, scriviTempo, fondiTempo } from "./tempo.js";
 import { leggiObiettivi, scriviObiettivi, fondiObiettivi } from "./obiettivo.js";
 import { leggiQuaderno, scriviQuaderno, fondiQuaderno } from "./quaderno.js";
 import { leggiDaPrendere, scriviDaPrendere, fondiDaPrendere } from "./daPrendere.js";
-import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare } from "./syncCore.js";
+import { leggiRigheLeggere, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare } from "./syncCore.js";
 import { daTogliereDalSecchio, avanziDelSecchio, segnaSuDrive, leggereDaLontano } from "./driveCore.js";
 import { giroDrive, giroMelodie, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto } from "./drive.js";
 import { tipiDi, tipoDi } from "./library.js";
@@ -305,24 +305,40 @@ export async function syncNow({ onProgress } = {}) {
   );
   const tombstones = getTombstones();
 
-  const { data: remoteRows, error } = await sb.from("books").select("*").eq("user_id", uid);
-  if (error) throw error;
+  // LE RIGHE LEGGERE PER DECIDERE, INTERE SOLO QUELLE CHE SI MUOVONO (vedi
+  // `leggiRigheLeggere` in `syncCore.js`): la biblioteca intera a ogni giro
+  // erano seicento righe con tutte le evidenziazioni, per scoprire quasi
+  // sempre che non era cambiato niente
+  const tabella = () => sb.from("books");
+  const lette = await leggiRigheLeggere((colonne) => tabella().select(colonne).eq("user_id", uid));
+  const remoteRows = lette.righe;
 
   // i libri che la fusione delle annotazioni arricchisce e che vanno
   // rimandati su a fine ricezione
   const daRimandare = [];
 
-  const { pull, push, removeLocal } = planSync({
+  const piano = planSync({
     localRows,
     tombstones,
     remoteRows: remoteRows || [],
   });
+  const { push, removeLocal } = piano;
+  let pull = piano.pull;
+  // chi scende e chi sale sopra una riga che c'e' gia' si legge intero; una
+  // riga che doveva scendere e non e' arrivata intera resta al giro dopo
+  let intere = new Map();
+  if (lette.intere) intere = new Map(remoteRows.map((r) => [r.id, r]));
+  else {
+    const ids = idDaLeggereInteri({ pull, push, remote: remoteRows });
+    if (ids.length) intere = await leggiRigheIntere((lotto) => tabella().select("*").eq("user_id", uid).in("id", lotto), ids);
+    pull = completaPull(pull, intere);
+  }
 
   // Se questo dispositivo e' piu' recente ma piu' indietro, la posizione
   // remota non va persa: la teniamo da parte e la proponiamo all'apertura.
   for (const row of push) {
     if (row.deleted) continue;
-    const r = (remoteRows || []).find((x) => x.id === row.id);
+    const r = intere.get(row.id);
     if (r && !r.deleted && r.cfi && (r.progress || 0) > (row.progress || 0) + 0.02) {
       setJump(row.id, { cfi: r.cfi, progress: r.progress });
     }
@@ -344,7 +360,7 @@ export async function syncNow({ onProgress } = {}) {
   // la stessa riga al giro dopo.
   for (const row of push) {
     if (row.deleted) continue;
-    const r = (remoteRows || []).find((x) => x.id === row.id);
+    const r = intere.get(row.id);
     if (!r || r.deleted) continue;
     const segni = fondiAnnotazioni(row.marks, Array.isArray(r.marks) ? r.marks : []);
     const evid = fondiAnnotazioni(row.highlights, Array.isArray(r.highlights) ? r.highlights : []);
@@ -357,7 +373,10 @@ export async function syncNow({ onProgress } = {}) {
   // Finche' lo schema resta indietro il flag non si chiude: al primo invio
   // completo i campi persi tornano nel cloud da soli.
   const repairing = localStorage.getItem(REPUSH_KEY) !== "done";
-  const toPush = repairing ? withRepush({ push, pull, removeLocal, localRows }) : push;
+  // `piano.pull` e non `pull`: una riga che doveva scendere e non e' arrivata
+  // intera e' comunque piu' nuova lassu', e il rinvio di riparazione non
+  // deve rimandarci sopra la copia vecchia di qui
+  const toPush = repairing ? withRepush({ push, pull: piano.pull, removeLocal, localRows }) : push;
   let degraded = false;
 
   if (toPush.length) {

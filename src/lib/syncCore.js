@@ -883,3 +883,62 @@ export function spiegaSync(err) {
     dettaglio: null,
   };
 }
+
+// IL GIRO LEGGE LE RIGHE LEGGERE, E INTERE SOLO QUELLE CHE SI MUOVONO.
+//
+// Chiesto dal lettore fra le cose da rendere piu' veloci («fai il 2», il
+// giro di sincronizzazione). A ogni giro si scaricava `select("*")` della
+// biblioteca INTERA — seicento righe con dentro segnalibri, evidenziazioni,
+// punto di lettura e note — per scoprire, quasi sempre, che non era
+// cambiato niente. Per decidere (`planSync`) bastano quattro colonne: chi
+// c'e', quando e' stato toccato, se e' cancellato, se l'ebook e' stato tolto
+// (lo guarda `avanziDelSecchio`). Le righe intere servono solo a chi SCENDE
+// e a chi SALE esistendo gia' lassu' (le sue annotazioni si fondono con le
+// nostre prima di partire, e il punto di lettura piu' avanti si propone).
+//
+// La trappola e' una sola ed e' grave: una riga LEGGERA applicata come se
+// fosse intera cancellerebbe qui titolo, saga, voto e note. Quindi una riga
+// che doveva scendere e non e' arrivata intera NON si applica: resta per il
+// giro dopo (`completaPull`).
+export const COLONNE_LEGGERE = "id,updated_at,deleted,file_tolto";
+
+// chi va letto intero: chi scende, e chi sale esistendo gia' lassu'
+export function idDaLeggereInteri({ pull = [], push = [], remote = [] } = {}) {
+  const lassu = new Map((remote || []).map((r) => [r.id, r]));
+  const ids = new Set((pull || []).map((r) => r.id));
+  for (const row of push || []) {
+    if (row.deleted) continue;
+    const r = lassu.get(row.id);
+    if (r && !r.deleted) ids.add(row.id);
+  }
+  return [...ids];
+}
+
+// le righe da ricevere, INTERE: chi non e' arrivato resta fuori
+export function completaPull(pull = [], intere = new Map()) {
+  return (pull || []).map((r) => intere.get(r.id)).filter(Boolean);
+}
+
+// `leggi(colonne)` -> { data, error }, `leggiIds(ids)` -> { data, error }:
+// il database si passa da fuori come in `upsertBooks`. Se la lettura
+// leggera non riesce (uno schema senza `file_tolto`, un guasto qualunque)
+// si legge tutto come prima: e' piu' lento, e sbagliato mai.
+export async function leggiRigheLeggere(leggi) {
+  const leggere = await leggi(COLONNE_LEGGERE);
+  if (!leggere?.error) return { righe: leggere?.data || [], intere: false };
+  const tutte = await leggi("*");
+  if (tutte?.error) throw tutte.error;
+  return { righe: tutte?.data || [], intere: true };
+}
+
+export const LOTTO_IDS = 100;
+
+export async function leggiRigheIntere(leggiIds, ids = []) {
+  const intere = new Map();
+  for (let i = 0; i < ids.length; i += LOTTO_IDS) {
+    const { data, error } = await leggiIds(ids.slice(i, i + LOTTO_IDS));
+    if (error) throw error;
+    for (const r of data || []) intere.set(r.id, r);
+  }
+  return intere;
+}
