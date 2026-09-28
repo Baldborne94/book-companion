@@ -150,6 +150,51 @@ export function daAggiungere(libri, file, { lapidi = [], cartelle = [] } = {}) {
   );
 }
 
+// LIBERARE IL TABLET SENZA PERDERE NIENTE (chiesto dal lettore: i romanzi
+// finiti occupano il tablet, e stanno gia' su Drive). Si propongono i libri
+// che hanno i byte QUI e una copia su Drive **identica al byte**, perche'
+// dopo, quando lo riapri, il libro scende da li': segnalibri,
+// evidenziazioni e punto di lettura sono CFI misurati su QUESTI byte, e un
+// file diverso — tipicamente l'originale caricato a mano, mentre qui c'e'
+// la versione ricucita — li riaprirebbe su righe che non avevi scelto.
+// Quelli si contano a parte (`diversi`) e restano.
+//
+// Chi si propone, e perche': i LETTI, i LASCIATI, e i FERMI — nessun tocco
+// da `FERMO_DA` (tre mesi), qualunque sia lo stato. `toccato` riceve il
+// LIBRO e non l'id: un libro mai toccato dopo l'import non ha un'ora sua,
+// e contato da zero sembrerebbe fermo da cinquant'anni — il libro appena
+// entrato se ne andrebbe dal tablet prima di averlo aperto. Il libro che stai
+// leggendo adesso non c'e' mai: e' quello che vuoi aprire in treno.
+//
+// `lassu` e' Drive guardato ADESSO (id del file → misura): al momento di
+// togliere non basta la mappa dell'ultimo giro, perche' un file cancellato
+// a mano da Drive nel frattempo lascerebbe il libro perduto. Senza `lassu`
+// si risponde con la sola mappa, che va bene per contare, non per togliere.
+export const FERMO_DA = 90 * 86_400_000;
+export const PERCHE_LIBERARE = ["letto", "lasciato", "fermo"];
+export function daLiberare(libri, { misureQui, mappa, lassu = null, stato = () => "", toccato = () => 0, adesso = Date.now(), fermoDa = FERMO_DA } = {}) {
+  const voci = [];
+  let diversi = 0;
+  for (const b of libri || []) {
+    const qui = Number(misureQui?.get?.(b?.id));
+    const f = mappa?.[b?.id];
+    if (!b?.id || b.fileTolto || !(qui > 0) || !f?.id) continue;
+    const su = lassu ? lassu.get(f.id) : Number(f.byte);
+    if (!(Number(su) > 0)) continue;
+    const s = stato(b.id);
+    const perche =
+      s === "read" ? "letto" : s === "abandoned" ? "lasciato" : adesso - (Number(toccato(b)) || 0) >= fermoDa ? "fermo" : null;
+    if (!perche) continue;
+    if (Number(su) !== qui) {
+      diversi += 1;
+      continue;
+    }
+    voci.push({ id: b.id, title: b.title || "", byte: qui, perche });
+  }
+  voci.sort((a, b) => b.byte - a.byte);
+  return { voci, diversi };
+}
+
 // LE CARTELLE DEL LETTORE HANNO GIA' UN NOME, e i libri nuovi vanno li'.
 export const CARTELLE = { libri: "Libri", fumetti: "Fumetti", manga: "Manga", musica: "Musica" };
 export const cartellaDelTipo = (tipo) => CARTELLE[tipo] || CARTELLE.libri;

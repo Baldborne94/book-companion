@@ -199,6 +199,14 @@ export async function removeFileOnly(id) {
   await withStore("aux", "readwrite", (s) => s.delete(`salute_${id}`));
 }
 
+// E I SOLI BYTE, QUANDO TORNANO IDENTICI. «Libera spazio» toglie dal
+// tablet un libro la cui copia su Drive e' la STESSA al byte: quando
+// riscende, le posizioni misurate da epub.js e il verdetto sulla
+// spezzatura valgono ancora, e buttarli vorrebbe dire rimisurare le pagine
+// di ogni libro riaperto per niente. Per questo non passa da
+// `removeFileOnly`, che quei calcoli li butta perche' li' il file cambia.
+export const togliByteQui = (id) => withStore("files", "readwrite", (s) => s.delete(id));
+
 export async function removeBookData(id) {
   await withStore("files", "readwrite", (s) => s.delete(id));
   await withStore("covers", "readwrite", (s) => s.delete(id));

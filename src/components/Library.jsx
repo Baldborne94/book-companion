@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, getTombstones, scaffaleVuoto, TIPI, delTipo, tipiDi, tipiPresenti } from "../lib/library.js";
+import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, getTombstones, getUpdatedAt, scaffaleVuoto, TIPI, delTipo, tipiDi, tipiPresenti } from "../lib/library.js";
 import { disponi, aEtichette, criterioVoto, criterioStato } from "../lib/ripiani.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
-import { storageEstimate, spazioQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
+import { storageEstimate, spazioQui, misureFile, togliByteQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
 import { importFiles, importaDaDrive, resoconto } from "../lib/importBook.js";
 import { chiaveCollana } from "../lib/collana.js";
 import { preparaArchivio, segnaArchivio, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
@@ -17,7 +17,7 @@ import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso,
 } from "../lib/syncCore.js";
 import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, DriveScollegato } from "../lib/drive.js";
-import { pesoDeiLibri, daAggiungere } from "../lib/driveCore.js";
+import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE } from "../lib/driveCore.js";
 import { fmtBytes } from "../lib/bytes.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { senzaCopertina } from "../lib/copertina.js";
@@ -609,6 +609,11 @@ export default function Library({
   // i byte cambiati da dentro la Libreria (uno scaricamento in massa):
   // `spazioCambiato` porta quelli cambiati da fuori, questo quelli di qui
   const [giroSpazio, setGiroSpazio] = useState(0);
+  // «Libera spazio»: quanti libri si potrebbero togliere dal tablet perche'
+  // Drive li ha identici — contati sulla mappa dell'ultimo giro, e
+  // ricontrollati su Drive vero solo quando li togli
+  const [liberabili, setLiberabili] = useState(null);
+  const [libera, setLibera] = useState(null);
 
   // E SI RILEGGE ANCHE QUANDO I BYTE CAMBIANO SENZA CHE CAMBI LA
   // BIBLIOTECA. Togliendo un ebook la scheda resta, quindi `books` cambia
@@ -631,6 +636,19 @@ export default function Library({
       .catch(() => setConCopertina(null));
     guardate().then(setCopGuardate);
   }, [books, spazioCambiato, giroSpazio]);
+  useEffect(() => {
+    if (!driveAcceso()) return setLiberabili(null);
+    let vivo = true;
+    misureFile()
+      .then((misureQui) => {
+        if (!vivo) return;
+        setLiberabili(daLiberare(books, { misureQui, mappa: mappaDrive(), stato: getStatus, toccato: (b) => getUpdatedAt(b.id, b.addedAt || 0) }));
+      })
+      .catch(() => vivo && setLiberabili(null));
+    return () => {
+      vivo = false;
+    };
+  }, [books, spazioCambiato, giroSpazio, localIds]);
 
   // NON si aggancia a `books` come i due qui sopra: quello e' un giro di
   // rete che elenca il secchio, e rifarlo a ogni import o a ogni voto messo
@@ -1374,6 +1392,54 @@ export default function Library({
       setDaDrive(null);
       notify(e instanceof DriveScollegato ? "Google Drive aspetta un tocco: riprova." : e?.message || "Google Drive non ha risposto");
     }
+  }
+
+  // LIBERA SPAZIO. Si ricontrolla su Drive ADESSO — la mappa e' dell'ultimo
+  // giro, e un file cancellato a mano lassu' nel frattempo lascerebbe il
+  // libro perduto — e per farlo serve la chiave, che si chiede da un tocco.
+  async function apriLibera() {
+    if (libera) return;
+    try {
+      if (!driveProntoOra()) await collegaDrive();
+      setLibera({ controllando: true });
+      const [file, misureQui] = await Promise.all([elencaFile(), misureFile()]);
+      const lassu = new Map(file.map((f) => [f.id, Number(f.size) || 0]));
+      const e = daLiberare(books, { misureQui, mappa: mappaDrive(), lassu, stato: getStatus, toccato: (b) => getUpdatedAt(b.id, b.addedAt || 0) });
+      if (!e.voci.length) {
+        setLibera(null);
+        notify("Non c'è niente da togliere: i libri qui o li stai leggendo, o su Drive non hanno una copia identica");
+        return;
+      }
+      setLibera({ ...e, scelti: new Set(PERCHE_LIBERARE) });
+    } catch (err) {
+      setLibera(null);
+      notify(err instanceof DriveScollegato ? "Google Drive aspetta un tocco: riprova." : err?.message || "Google Drive non ha risposto");
+    }
+  }
+
+  async function liberaOra() {
+    const via = (libera?.voci || []).filter((v) => libera.scelti.has(v.perche));
+    setLibera({ togliendo: 0, totale: via.length });
+    let byte = 0;
+    let tolti = 0;
+    for (const [i, v] of via.entries()) {
+      setLibera({ togliendo: i, totale: via.length });
+      try {
+        await togliByteQui(v.id);
+        byte += v.byte;
+        tolti += 1;
+      } catch {
+        /* quel libro resta qui: si apre lo stesso */
+      }
+    }
+    setLibera(null);
+    onFileLocali?.();
+    setGiroSpazio((n) => n + 1);
+    notify(
+      tolti
+        ? `Liberati ${fmtBytes(byte)} 🧹 · ${tolti === 1 ? "il tomo resta" : `${tolti} tomi restano`} sullo scaffale e ${tolti === 1 ? "scende" : "scendono"} da Drive quando ${tolti === 1 ? "lo apri" : "li apri"}`
+        : "Non sono riuscito a togliere niente"
+    );
   }
 
   async function aggiungiDaDrive() {
@@ -2242,6 +2308,27 @@ export default function Library({
                   : `🖼 Ritrova ${mancaLaCopertina.length === 1 ? "una copertina" : `${mancaLaCopertina.length} copertine`}`}
               </button>
             )}
+            {/* LIBERA SPAZIO: c'e' solo con Drive e solo se c'e' qualcosa da
+                togliere, e dice quanto si libera prima di toccarlo */}
+            {liberabili?.voci.length > 0 && (
+              <button
+                onClick={apriLibera}
+                disabled={!!libera}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.arcane}66`,
+                  color: C.arcane,
+                  fontSize: F.nota,
+                }}
+              >
+                {libera?.controllando
+                  ? "Controllo su Drive…"
+                  : libera?.totale
+                    ? `Tolgo ${libera.togliendo + 1} di ${libera.totale}…`
+                    : `🧹 Libera spazio · ${fmtBytes(liberabili.voci.reduce((n, v) => n + v.byte, 0))}`}
+              </button>
+            )}
             {/* Il ripasso delle impronte c'e' solo se qualcuno ne ha bisogno:
                 a biblioteca gia' a posto sarebbe un tasto che non fa niente.
                 Il numero sta scritto sopra perche' e' un giro che legge i
@@ -2295,6 +2382,22 @@ export default function Library({
       )}
 
       {referto && <Referto esito={referto} onChiudi={() => setReferto(null)} onRicuci={ricuciForzato} ricucendo={ricucendo} />}
+      {libera?.voci && (
+        <SceltaLibera
+          esito={libera}
+          onCambia={(perche) =>
+            setLibera((l) => {
+              if (!l?.voci) return l;
+              const scelti = new Set(l.scelti);
+              if (scelti.has(perche)) scelti.delete(perche);
+              else scelti.add(perche);
+              return { ...l, scelti };
+            })
+          }
+          onChiudi={() => setLibera(null)}
+          onVai={liberaOra}
+        />
+      )}
       {daDrive?.voci && (
         <SceltaDaDrive
           voci={daDrive.voci}
@@ -2622,6 +2725,124 @@ function SceltaTitoli({ proposte, scelti, onCambia, onChiudi, onVai }) {
 // lettore li ha messi lassu'. Partono tutti spuntati — chi apre questo
 // pannello vuole portarli sullo scaffale — e si tolgono quelli che libri
 // da leggere non sono.
+// Quali libri togliere dal tablet, per ragione: i letti, i lasciati, i
+// fermi da tre mesi. Si sceglie per gruppo e non libro per libro — sono
+// decine, e la domanda che uno ha in testa e' «i finiti si', quelli in
+// sospeso no» — ma i titoli si vedono, perche' si toglie sapendo cosa.
+const GRUPPI_LIBERA = {
+  letto: "📖 I letti",
+  lasciato: "⏸ I lasciati",
+  fermo: "🕰 Fermi da tre mesi",
+};
+function SceltaLibera({ esito, onCambia, onChiudi, onVai }) {
+  const { voci, scelti, diversi } = esito;
+  const peso = (l) => l.reduce((n, v) => n + v.byte, 0);
+  const presi = voci.filter((v) => scelti.has(v.perche));
+  return (
+    <div
+      onClick={onChiudi}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 55,
+        background: "#080611cc",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        animation: "bc-fade-in 0.25s ease-out",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: px(520),
+          maxHeight: "100%",
+          overflowY: "auto",
+          borderRadius: R.grande,
+          border: `1px solid ${C.border}`,
+          background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
+          boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
+          padding: 22,
+        }}
+      >
+        <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>🧹 Libera spazio</h2>
+        <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 14 }}>
+          Questi libri hanno su Google Drive una copia identica. Tolti da qui restano sullo scaffale con la nuvoletta,
+          con segnalibri, evidenziazioni e punto di lettura, e scendono da Drive quando li riapri — serve la rete.
+        </p>
+        {PERCHE_LIBERARE.map((perche) => {
+          const del = voci.filter((v) => v.perche === perche);
+          if (!del.length) return null;
+          const on = scelti.has(perche);
+          const titoli = del.slice(0, 4).map((v) => `«${v.title}»`).join(", ");
+          return (
+            <button
+              key={perche}
+              onClick={() => onCambia(perche)}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 12,
+                width: "100%",
+                minHeight: 44,
+                textAlign: "left",
+                padding: "10px 12px",
+                marginBottom: 8,
+                borderRadius: R.piccolo,
+                border: `1px solid ${on ? `${C.accent}88` : C.border}`,
+                background: on ? `${C.accent}14` : "transparent",
+              }}
+            >
+              <span style={{ fontSize: F.rilievo, color: on ? C.accent : C.muted }}>{on ? "☑" : "☐"}</span>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: "block", color: C.text, fontSize: F.corpo }}>
+                  {GRUPPI_LIBERA[perche]} · {del.length} · {fmtBytes(peso(del))}
+                </span>
+                <span style={{ display: "block", color: C.muted, fontSize: F.minuscolo, marginTop: 2 }}>
+                  {titoli}
+                  {del.length > 4 ? ` e altri ${del.length - 4}` : ""}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+        {diversi > 0 && (
+          <p style={{ color: C.muted, fontSize: F.minuscolo, marginTop: 6 }}>
+            {diversi === 1 ? "Un libro resta" : `${diversi} libri restano`}: su Drive c'è un file diverso da quello qui (di
+            solito l'originale, mentre qui c'è la versione ricucita), e riaprirli da lì sposterebbe i tuoi segni.
+          </p>
+        )}
+        <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "flex-end" }}>
+          <button
+            onClick={onChiudi}
+            style={{ padding: "10px 18px", minHeight: 44, borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.muted, fontSize: F.nota }}
+          >
+            Lascia stare
+          </button>
+          <button
+            onClick={onVai}
+            disabled={!presi.length}
+            style={{
+              padding: "10px 20px",
+              minHeight: 44,
+              borderRadius: R.piccolo,
+              border: `1px solid ${presi.length ? `${C.accent}88` : C.border}`,
+              background: presi.length ? `${C.accent}22` : "transparent",
+              color: presi.length ? C.accent : C.muted,
+              fontSize: F.nota,
+            }}
+          >
+            {presi.length ? `Libera ${fmtBytes(peso(presi))}` : "Niente scelto"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SceltaDaDrive({ voci, scelti, onCambia, onChiudi, onVai }) {
   const quanti = scelti.size;
   const gruppi = [];
