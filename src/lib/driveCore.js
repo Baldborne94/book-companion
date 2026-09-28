@@ -122,6 +122,44 @@ export function abbina(libri, file, { misure } = {}) {
 //     caso che `abbina` lascia ambiguo, e ambiguo vuol dire «forse c'e' gia'».
 // La cartella «Manga» e' un'organizzazione del lettore: un fumetto che sta
 // li' entra gia' col tipo giusto.
+// LA CARTELLA DEL LETTORE HA UN NOME, E L'ELENCO PARTE DA LI' (chiesto dal
+// lettore davanti a «Da Google Drive»: «fammi vedere una lista organizzata
+// solo di cio' che sta nella cartella book-companion, perche' altrimenti
+// non ci capisco niente»). Drive dice di ogni cartella il genitore, quindi
+// da una cartella si risale fino in cima: se lungo la strada c'e' la
+// RADICE, il file e' «dentro» e la sua cartella si scrive come percorso da
+// li' («Libri», «Fumetti / Hellboy»); se no e' «fuori», col percorso intero,
+// e sta ripiegato dietro un tasto — non sparisce, perche' un file messo
+// nella cartella sbagliata e' comunque un libro del lettore. Senza nessuna
+// cartella con quel nome tutto e' «dentro»: la radice e' un'abitudine, non
+// un obbligo.
+export const RADICE = "book-companion";
+const nomeRadice = (n) => String(n || "").trim().toLowerCase() === RADICE;
+
+// il percorso di una cartella dalla cima: nomi dal piu' alto al piu' basso.
+// Un giro chiuso (un genitore che porta a se stesso) si ferma invece di
+// non finire mai.
+export function percorsoDi(cartellaId, cartelle) {
+  const per = new Map((cartelle || []).map((c) => [c.id, c]));
+  const nomi = [];
+  const visti = new Set();
+  let c = per.get(cartellaId);
+  while (c && !visti.has(c.id)) {
+    visti.add(c.id);
+    nomi.unshift(c.name || "");
+    c = per.get(c.parents?.[0]);
+  }
+  return nomi;
+}
+
+// dove sta un file: il percorso sotto la radice se c'e', o quello intero
+export function cartellaDi(parentId, cartelle) {
+  const nomi = percorsoDi(parentId, cartelle);
+  const i = nomi.findIndex(nomeRadice);
+  if (i < 0) return { cartella: nomi.join(" / "), dentro: false };
+  return { cartella: nomi.slice(i + 1).join(" / "), dentro: true };
+}
+
 export function daAggiungere(libri, file, { lapidi = [], cartelle = [] } = {}) {
   const vivi = (libri || []).filter((b) => b?.id);
   const { mappa } = abbina(vivi, file);
@@ -129,7 +167,7 @@ export function daAggiungere(libri, file, { lapidi = [], cartelle = [] } = {}) {
   const morti = new Set(lapidi || []);
   const impronte = new Set(vivi.map((b) => b.impronta).filter(Boolean));
   const titoli = new Set(vivi.map((b) => `${estDelLibro(b)}|${nomeNudo(b.title)}`));
-  const nomeCartella = new Map((cartelle || []).map((c) => [c.id, c.name]));
+  const conRadice = (cartelle || []).some((c) => nomeRadice(c?.name));
   const visti = new Set();
   const fuori = [];
   for (const f of file || []) {
@@ -141,13 +179,35 @@ export function daAggiungere(libri, file, { lapidi = [], cartelle = [] } = {}) {
     if (sha && (impronte.has(sha) || visti.has(sha))) continue;
     if (titoli.has(`${est}|${nomeNudo(f.name)}`)) continue;
     if (sha) visti.add(sha);
-    const cartella = nomeCartella.get(f.parents?.[0]) || "";
-    const manga = (est === "cbz" || est === "cbr") && /\bmanga\b/i.test(cartella);
-    fuori.push({ id: f.id, name: f.name, size: Number(f.size) || 0, sha256Checksum: sha || null, cartella, ...(manga ? { tipo: "manga" } : {}) });
+    const dove = cartellaDi(f.parents?.[0], cartelle);
+    const dentro = conRadice ? dove.dentro : true;
+    const manga = (est === "cbz" || est === "cbr") && /\bmanga\b/i.test(dove.cartella);
+    fuori.push({ id: f.id, name: f.name, size: Number(f.size) || 0, sha256Checksum: sha || null, cartella: dove.cartella, dentro, ...(manga ? { tipo: "manga" } : {}) });
   }
   return fuori.sort(
-    (a, b) => a.cartella.localeCompare(b.cartella, "it") || a.name.localeCompare(b.name, "it", { numeric: true })
+    (a, b) =>
+      Number(b.dentro) - Number(a.dentro) ||
+      a.cartella.localeCompare(b.cartella, "it") ||
+      a.name.localeCompare(b.name, "it", { numeric: true })
   );
+}
+
+// LA RICERCA NEL PANNELLO (chiesto dal lettore: «permettimi di fare una
+// ricerca al suo interno, cosi' e' piu' facile aggiungere elementi
+// specifici»): sul nome del file e sul percorso, senza badare a maiuscole
+// e accenti — la tastiera del tablet l'accento lo scrive, nessuno lo cerca.
+// Ogni parola cercata deve stare da qualche parte, in qualunque ordine.
+const piano = (s) =>
+  String(s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+export function cercaVoci(voci, testo) {
+  const parole = piano(testo).split(/\s+/).filter(Boolean);
+  return (voci || []).filter((v) => {
+    const dove = piano(`${v.name} ${v.cartella}`);
+    return parole.every((p) => dove.includes(p));
+  });
 }
 
 // LIBERARE IL TABLET SENZA PERDERE NIENTE (chiesto dal lettore: i romanzi
@@ -502,4 +562,17 @@ export function pesoDaScendere(libri, mappa) {
     }
   }
   return { byte, tutti: noti === (libri || []).length };
+}
+
+// «SCHEDA SENZA EBOOK» HA SENSO SOLO SE IL FILE NON STA DA NESSUNA PARTE
+// (chiesto dal lettore: «ad alcuni libri si vede solo la scheda e non c'e'
+// l'ebook, non ha molto senso adesso che puntiamo direttamente al Drive»).
+// Il segno `fileTolto` e' nato col secchio, dove «togli l'ebook» buttava i
+// byte di qui e di lassu': il file spariva davvero. Con Drive il file e'
+// l'archivio del lettore, si legge da li' e si riconosce a ogni giro
+// (`abbina`): un libro col segno addosso e il suo file nella mappa e' una
+// scheda che dice «non c'e'» sopra un file che c'e'. Qui si dice quali sono;
+// chi chiama spegne il segno e timbra il libro, cosi' la scelta viaggia.
+export function ebookRitrovati(libri, mappa) {
+  return (libri || []).filter((b) => b?.id && b.fileTolto && mappa?.[b.id]?.id).map((b) => b.id);
 }

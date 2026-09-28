@@ -17,7 +17,7 @@ import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso,
 } from "../lib/syncCore.js";
 import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, DriveScollegato } from "../lib/drive.js";
-import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere } from "../lib/driveCore.js";
+import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, cercaVoci, RADICE } from "../lib/driveCore.js";
 import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { senzaCopertina } from "../lib/copertina.js";
@@ -1387,7 +1387,10 @@ export default function Library({
         notify("Su Google Drive non c'è niente che non sia già sullo scaffale ✨");
         return;
       }
-      setDaDrive({ voci, scelti: new Set(voci.map((v) => v.id)) });
+      // spuntati di partenza i soli file della cartella del lettore: il resto
+      // di Drive si aggiunge a mano, se lo vuole
+      const dentro = voci.filter((v) => v.dentro);
+      setDaDrive({ voci, scelti: new Set((dentro.length ? dentro : voci).map((v) => v.id)) });
     } catch (e) {
       setDaDrive(null);
       notify(e instanceof DriveScollegato ? "Google Drive aspetta un tocco: riprova." : e?.message || "Google Drive non ha risposto");
@@ -2873,14 +2876,26 @@ function SceltaLibera({ esito, onCambia, onChiudi, onVai }) {
 
 function SceltaDaDrive({ voci, scelti, onCambia, onChiudi, onVai }) {
   const quanti = scelti.size;
+  // LA LISTA PARTE DALLA CARTELLA DEL LETTORE. `dentro` lo decide
+  // `daAggiungere` (sotto «book-companion», o tutto se quella cartella non
+  // c'e'); il resto di Drive sta dietro un tasto, non sparisce — un file
+  // nella cartella sbagliata e' comunque un libro suo. E si cerca: nome e
+  // percorso, senza accenti, e «Tutti»/«Nessuno» toccano solo quel che si
+  // vede, o una ricerca su «Hellboy» spunterebbe l'intero Drive.
+  const [testo, setTesto] = useState("");
+  const [ancheFuori, setAncheFuori] = useState(false);
+  const dentro = voci.filter((v) => v.dentro);
+  const fuori = voci.length - dentro.length;
+  const base = dentro.length && !ancheFuori ? dentro : voci;
+  const visibili = cercaVoci(base, testo);
   const gruppi = [];
-  for (const v of voci) {
-    const nome = v.cartella || "Senza cartella";
+  for (const v of visibili) {
+    const nome = v.dentro ? v.cartella || RADICE : v.cartella || "Senza cartella";
     const g = gruppi[gruppi.length - 1];
-    if (g?.nome === nome) g.voci.push(v);
-    else gruppi.push({ nome, voci: [v] });
+    if (g?.nome === nome && g.dentro === v.dentro) g.voci.push(v);
+    else gruppi.push({ nome, dentro: v.dentro, voci: [v] });
   }
-  const tutti = voci.map((v) => v.id);
+  const idVisibili = visibili.map((v) => v.id);
   const tasto = {
     padding: "8px 14px",
     minHeight: 44,
@@ -2923,22 +2938,53 @@ function SceltaDaDrive({ voci, scelti, onCambia, onChiudi, onVai }) {
           ☁ Da Google Drive
         </h2>
         <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 12 }}>
-          {voci.length === 1 ? "Questo file è" : `Questi ${voci.length} file sono`} su Drive e non ancora sullo
-          scaffale. Entrano con titolo, autore e copertina; il libro scende la prima volta che lo apri.
+          {dentro.length
+            ? `${dentro.length === 1 ? "Un file" : `${dentro.length} file`} nella cartella «${RADICE}» non ${dentro.length === 1 ? "è" : "sono"} ancora sullo scaffale.`
+            : `${voci.length === 1 ? "Questo file è" : `Questi ${voci.length} file sono`} su Drive e non ancora sullo scaffale.`}{" "}
+          Entrano con titolo, autore e copertina; il libro si legge da Drive.
         </p>
-        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-          <button onClick={() => onCambia(tutti, true)} style={tasto}>
-            Tutti
+        <input
+          type="search"
+          value={testo}
+          onChange={(e) => setTesto(e.target.value)}
+          placeholder="Cerca per nome o cartella…"
+          aria-label="Cerca fra i file di Drive"
+          style={{
+            width: "100%",
+            minHeight: 44,
+            padding: "8px 12px",
+            marginBottom: 10,
+            borderRadius: R.piccolo,
+            border: `1px solid ${C.border}`,
+            background: `${C.bg}66`,
+            color: C.text,
+            fontSize: F.corpo,
+            outline: "none",
+          }}
+        />
+        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <button onClick={() => onCambia(idVisibili, true)} style={tasto}>
+            {!testo.trim() ? "Tutti" : visibili.length === 1 ? "L'unico trovato" : `Tutti i ${visibili.length} trovati`}
           </button>
-          <button onClick={() => onCambia(tutti, false)} style={tasto}>
+          <button onClick={() => onCambia(idVisibili, false)} style={tasto}>
             Nessuno
           </button>
+          {dentro.length > 0 && fuori > 0 && (
+            <button onClick={() => setAncheFuori((x) => !x)} style={{ ...tasto, marginLeft: "auto" }}>
+              {ancheFuori ? `Solo «${RADICE}»` : `Mostra anche il resto di Drive · ${fuori}`}
+            </button>
+          )}
         </div>
+        {!visibili.length && (
+          <p style={{ color: C.muted, fontSize: F.piccolo, margin: "8px 0 14px" }}>
+            Nessun file risponde a «{testo.trim()}»{dentro.length && !ancheFuori && fuori ? ` in «${RADICE}»: prova a mostrare anche il resto di Drive` : ""}.
+          </p>
+        )}
 
         {gruppi.map((g) => (
-          <div key={g.nome} style={{ marginBottom: 10 }}>
+          <div key={`${g.dentro ? "in" : "out"}:${g.nome}`} style={{ marginBottom: 10 }}>
             <div style={{ color: C.muted, fontSize: F.minuscolo, margin: "8px 0 6px", letterSpacing: 0.4 }}>
-              🗂 {g.nome} · {g.voci.length}
+              {g.dentro ? "🗂" : "☁"} {g.nome} · {g.voci.length}
             </div>
             {g.voci.map((v) => {
               const on = scelti.has(v.id);

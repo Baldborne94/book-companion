@@ -12,7 +12,7 @@
 //     perde il suo file al primo giro, un segno senza scheda nasconde il
 //     file per sempre.
 import { createRequire } from "module";
-import { daAggiungere } from "../src/lib/driveCore.js";
+import { daAggiungere, percorsoDi, cartellaDi, cercaVoci, RADICE } from "../src/lib/driveCore.js";
 import { fileRemoto } from "../src/lib/drive.js";
 import { apriEpubAFette, leggiOpf } from "../src/lib/epubAFette.js";
 import { trovaCopertina } from "../src/lib/copertina.js";
@@ -115,6 +115,57 @@ export default async function (t) {
     );
     t.eq("la cartella viaggia col file", v.find((x) => x.id === "f12")?.cartella, "Manga");
     t.eq("senza libri si propone tutto quel che e' un libro", daAggiungere([], file.slice(4, 6)).length, 1);
+  }
+
+  // ---- la cartella del lettore, e la ricerca ------------------------------------
+  {
+    const cartelle = [
+      { id: "R", name: "Book-Companion" }, // il nome si confronta senza badare alle maiuscole
+      { id: "L", name: "Libri", parents: ["R"] },
+      { id: "F", name: "Fumetti", parents: ["R"] },
+      { id: "H", name: "Hellboy", parents: ["F"] },
+      { id: "MG", name: "Manga", parents: ["R"] },
+      { id: "X", name: "Altro", parents: ["Y"] },
+      { id: "Y", name: "Documenti" },
+      { id: "G1", name: "Giro", parents: ["G2"] },
+      { id: "G2", name: "Giro bis", parents: ["G1"] }, // un genitore che torna su se stesso
+    ];
+    t.eq("il percorso di una cartella si legge dalla cima", percorsoDi("H", cartelle).join("/"), "Book-Companion/Fumetti/Hellboy");
+    t.eq("una cartella che non si conosce non ha percorso", percorsoDi("zz", cartelle).length, 0);
+    t.c("un giro chiuso si ferma", percorsoDi("G1", cartelle).length === 2);
+    t.eq("dentro la radice il percorso e' relativo", JSON.stringify(cartellaDi("H", cartelle)), JSON.stringify({ cartella: "Fumetti / Hellboy", dentro: true }));
+    t.eq("la radice stessa e' «dentro» con la cartella vuota", JSON.stringify(cartellaDi("R", cartelle)), JSON.stringify({ cartella: "", dentro: true }));
+    t.eq("fuori dalla radice il percorso e' intero", JSON.stringify(cartellaDi("X", cartelle)), JSON.stringify({ cartella: "Documenti / Altro", dentro: false }));
+    t.eq("senza cartella: fuori, senza percorso", JSON.stringify(cartellaDi(undefined, cartelle)), JSON.stringify({ cartella: "", dentro: false }));
+
+    const file = [
+      { id: "a", name: "Zeta.epub", size: 10, parents: ["L"] },
+      { id: "b", name: "Alfa.epub", size: 10, parents: ["X"] }, // fuori, ma per nome verrebbe primo
+      { id: "c", name: "Hellboy v02.cbz", size: 10, parents: ["H"] },
+      { id: "d", name: "Berserk v01.cbz", size: 10, parents: ["MG"] },
+      { id: "e", name: "Sciolto.epub", size: 10 },
+      { id: "f", name: "Alla radice.epub", size: 10, parents: ["R"] },
+      { id: "g", name: "Café.epub", size: 10, parents: ["L"] },
+    ];
+    const v = daAggiungere([], file, { cartelle });
+    t.eq("prima quel che sta dentro la radice, per cartella e poi per nome", v.map((x) => x.id).join(","), "f,c,g,a,d,e,b");
+    t.eq("il manga si riconosce dal percorso sotto la radice", v.find((x) => x.id === "d")?.tipo, "manga");
+    t.eq("chi sta fuori lo dice", v.filter((x) => !x.dentro).map((x) => x.id).join(","), "e,b");
+    t.eq("e porta il percorso intero", v.find((x) => x.id === "b")?.cartella, "Documenti / Altro");
+    const senza = daAggiungere([], file, { cartelle: cartelle.filter((c) => c.id !== "R").map((c) => (c.parents?.[0] === "R" ? { ...c, parents: [] } : c)) });
+    t.c("senza nessuna radice tutto e' dentro: la radice e' un'abitudine, non un obbligo", senza.every((x) => x.dentro));
+    t.eq("e allora l'ordine e' quello di sempre", senza.map((x) => x.id).join(","), "f,e,b,c,g,a,d");
+    t.eq("il nome della radice e' uno solo", RADICE, "book-companion");
+
+    t.eq("senza testo si vede tutto", cercaVoci(v, "  ").length, v.length);
+    t.eq("si cerca nel nome", cercaVoci(v, "hellboy").map((x) => x.id).join(","), "c");
+    t.eq("e nel percorso", cercaVoci(v, "fumetti").map((x) => x.id).join(","), "c");
+    // l'accento cercato e' un altro (grave contro acuto): senza appianare i
+    // due lati, «cafe» nudo starebbe comunque dentro «café» scomposto
+    t.eq("senza badare ad accenti e maiuscole, da tutt'e due i lati", cercaVoci(v, "CAFE").map((x) => x.id).join(",") + "|" + cercaVoci(v, "cafè").map((x) => x.id).join(","), "g|g");
+    t.eq("piu' parole: tutte, in qualunque ordine", cercaVoci(v, "v02 hellboy").map((x) => x.id).join(","), "c");
+    t.eq("una parola che non c'e' svuota l'elenco", cercaVoci(v, "hellboy zzz").length, 0);
+    t.eq("una voce senza cartella si cerca lo stesso", cercaVoci(v, "sciolto").map((x) => x.id).join(","), "e");
   }
 
   // ---- il file letto a pezzi ------------------------------------------------------

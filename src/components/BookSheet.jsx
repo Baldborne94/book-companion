@@ -1004,7 +1004,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
           {/* SENZA EBOOK IL TASTO NON C'È, e al suo posto c'è la ragione.
               Lasciarlo sarebbe un tasto che si apre su un guasto; toglierlo
               e basta lascerebbe a chiedersi dove è finito. */}
-          {book.fileTolto ? (
+          {book.fileTolto && !suDrive ? (
             <span
               style={{
                 flex: 1,
@@ -1017,8 +1017,9 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                 lineHeight: 1.45,
               }}
             >
-              📗 Di questo libro tieni la scheda, non l'ebook. Per rileggerlo, reimportane il file
-              dalla Libreria: tornerà in questa stessa scheda, coi tuoi segni al loro posto.
+              📗 Di questo libro tieni la scheda, non l'ebook: non è sul tablet né su Google Drive.
+              Per rileggerlo reimportane il file dalla Libreria, o mettilo su Drive nella cartella dei
+              libri — l'app lo riconosce al prossimo giro e la scheda torna a leggersi.
             </span>
           ) : (
             <button
@@ -1063,7 +1064,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
           {/* LA SITUAZIONE PULITA: il libro sta su Drive, si legge da li',
               e sul tablet arriva SOLO se lo chiedi — qui, con la misura
               scritta sul tasto perche' e' spazio e connessione tuoi. */}
-          {!book.fileTolto && suDrive && pesoQui === 0 && (
+          {(!book.fileTolto || suDrive) && suDrive && pesoQui === 0 && (
             <>
               <button
                 onClick={tieniQui}
@@ -1087,7 +1088,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
               </span>
             </>
           )}
-          {!book.fileTolto && onTogliEbook && !(suDrive && pesoQui === 0) && (
+          {(!book.fileTolto || suDrive) && onTogliEbook && !(suDrive && pesoQui === 0) && (
             <button
               onClick={() => (confermaEbook ? togliEbook() : setConfermaEbook(true))}
               style={{ fontSize: F.piccolo, color: confermaEbook ? C.accent : C.muted, textDecoration: "underline" }}
