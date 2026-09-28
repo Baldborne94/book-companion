@@ -202,7 +202,7 @@ async function tramaDaPdf(libro, fino) {
       } catch { /* pagina illeggibile: le altre bastano */ }
     }
   } finally {
-    try { pdf.destroy(); } catch { /* gia' chiuso */ }
+    mod.chiudiPdf(pdf);
   }
   return r;
 }

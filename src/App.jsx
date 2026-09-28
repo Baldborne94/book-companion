@@ -48,7 +48,7 @@ import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive } from "./lib/sync.js";
-import { driveAcceso, mappaDrive, collegaDrive } from "./lib/drive.js";
+import { driveAcceso, mappaDrive, collegaDrive, smarcaSuDrive } from "./lib/drive.js";
 import { spiegaSync } from "./lib/syncCore.js";
 import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
@@ -969,6 +969,7 @@ export default function App() {
     setOpenId(null);
     removeBookMeta(id);
     setBooks(loadBooks());
+    smarcaSuDrive(id).catch(() => {});
     try {
       await removeBookData(id);
     } catch {

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, scaffaleVuoto, TIPI, delTipo, tipiDi, tipiPresenti } from "../lib/library.js";
+import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, getTombstones, scaffaleVuoto, TIPI, delTipo, tipiDi, tipiPresenti } from "../lib/library.js";
 import { disponi, aEtichette, criterioVoto, criterioStato } from "../lib/ripiani.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { storageEstimate, spazioQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
-import { importFiles, resoconto } from "../lib/importBook.js";
+import { importFiles, importaDaDrive, resoconto } from "../lib/importBook.js";
 import { chiaveCollana } from "../lib/collana.js";
 import { preparaArchivio, segnaArchivio, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
 import PezziArchivio from "./PezziArchivio.jsx";
@@ -16,8 +16,9 @@ import { portaACasa, cloudUsage } from "../lib/sync.js";
 import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso,
 } from "../lib/syncCore.js";
-import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive } from "../lib/drive.js";
-import { pesoDeiLibri } from "../lib/driveCore.js";
+import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, DriveScollegato } from "../lib/drive.js";
+import { pesoDeiLibri, daAggiungere } from "../lib/driveCore.js";
+import { fmtBytes } from "../lib/bytes.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { senzaCopertina } from "../lib/copertina.js";
 import { spartisciQui } from "../lib/spazio.js";
@@ -543,6 +544,10 @@ export default function Library({
   };
   const [importing, setImporting] = useState(false);
   const [giroImport, setGiroImport] = useState(null);
+  // «Aggiungi da Drive»: l'elenco dei file lassu' che non sono ancora
+  // libri, con le spunte, e il filo per fermare il giro a meta'
+  const [daDrive, setDaDrive] = useState(null);
+  const filoDrive = useRef(null);
   const [dragOver, setDragOver] = useState(false);
   const [restoring, setRestoring] = useState(false);
   // il richiamo dei tomi dal cloud: {i, totale, titolo} mentre scende, e
@@ -1164,7 +1169,7 @@ export default function Library({
       apri: async (b, file) => {
         const buf = await file.arrayBuffer();
         if (b.fileType === "pdf") {
-          const { loadPdf, pageText } = await import("../lib/pdfThumb.js");
+          const { loadPdf, pageText, chiudiPdf } = await import("../lib/pdfThumb.js");
           const pdf = await loadPdf(buf);
           try {
             // in un PDF il guaio vero è la scansione senza livello di
@@ -1177,7 +1182,7 @@ export default function Library({
             // sembrerebbe vuoto per via del campione
             return { caratteri: Math.round((caratteri / quante) * pdf.numPages), documenti: pdf.numPages, indice: 2 };
           } finally {
-            try { pdf.destroy(); } catch { /* già chiuso */ }
+            chiudiPdf(pdf);
           }
         }
         const { default: ePub } = await import("epubjs");
@@ -1346,6 +1351,70 @@ export default function Library({
     lancioServito.current = daImportare;
     handleFiles(daImportare).finally(() => onImportati?.());
   }, [daImportare]);
+
+  // AGGIUNGI DA DRIVE. La chiave di Google si chiede qui perche' si arriva
+  // da un tocco, e da un tocco soltanto il browser lascia aprire la sua
+  // finestra. Si guarda tutto Drive una volta, si propone quel che non e'
+  // ancora sullo scaffale, e si lascia scegliere: il lettore sa quali di
+  // quei file sono libri da leggere e quali no.
+  async function apriDaDrive() {
+    if (importing || daDrive) return;
+    try {
+      if (!driveProntoOra()) await collegaDrive();
+      setDaDrive({ cercando: true });
+      const [file, cartelle] = await Promise.all([elencaFile(), elencaCartelle()]);
+      const voci = daAggiungere(books, file, { lapidi: Object.keys(getTombstones()), cartelle });
+      if (!voci.length) {
+        setDaDrive(null);
+        notify("Su Google Drive non c'è niente che non sia già sullo scaffale ✨");
+        return;
+      }
+      setDaDrive({ voci, scelti: new Set(voci.map((v) => v.id)) });
+    } catch (e) {
+      setDaDrive(null);
+      notify(e instanceof DriveScollegato ? "Google Drive aspetta un tocco: riprova." : e?.message || "Google Drive non ha risposto");
+    }
+  }
+
+  async function aggiungiDaDrive() {
+    const scelte = (daDrive?.voci || []).filter((v) => daDrive.scelti.has(v.id));
+    setDaDrive(null);
+    if (!scelte.length || importing) return;
+    setImporting(true);
+    filoDrive.current = true;
+    try {
+      const esito = await importaDaDrive(scelte, books, {
+        apri: (v) => fileRemoto(v.id, v.size),
+        // il segno PRIMA della scheda: senza, al prossimo giro la mappa
+        // di Drive non riconoscerebbe il libro e gli toglierebbe il file
+        segna: async (fileId, bookId, v) => {
+          try {
+            await segnaSuDrive(fileId, bookId);
+            mettiNellaMappa(bookId, fileId, v.size);
+            return true;
+          } catch (e) {
+            return e instanceof DriveScollegato ? "scollegato" : false;
+          }
+        },
+        onProgress: setGiroImport,
+        vivo: () => filoDrive.current,
+      });
+      if (esito.added.length) {
+        updateBooks([...books, ...esito.added]);
+        onImported?.();
+      }
+      const coda = esito.scollegato
+        ? "Google Drive aspetta un tocco: il resto lo aggiungi riprovando"
+        : esito.fermato
+          ? "fermato: il resto lo aggiungi riprovando"
+          : "";
+      notify([resoconto(esito), coda].filter((x) => x && x !== "Nessun file importato").join(" · ") || "Nessun tomo aggiunto");
+    } finally {
+      filoDrive.current = null;
+      setImporting(false);
+      setGiroImport(null);
+    }
+  }
 
   async function handleFiles(fileList) {
     const files = Array.from(fileList || []);
@@ -1614,6 +1683,40 @@ export default function Library({
               : "Sto rilegando i tomi…"
             : "＋ Aggiungi libri"}
         </button>
+        {/* i libri che stanno gia' su Drive entrano senza passare dal
+            tablet: se ne leggono titolo, autore e copertina, e il file
+            scende la prima volta che lo apri */}
+        {drive && !importing && (
+          <button
+            onClick={apriDaDrive}
+            disabled={!!daDrive}
+            style={{
+              padding: "10px 18px",
+              minHeight: 44,
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.arcane}66`,
+              color: C.arcane,
+              fontSize: F.corpo,
+            }}
+          >
+            {daDrive?.cercando ? "Guardo su Drive…" : "☁ Da Google Drive"}
+          </button>
+        )}
+        {importing && filoDrive.current && (
+          <button
+            onClick={() => (filoDrive.current = false)}
+            style={{
+              padding: "10px 18px",
+              minHeight: 44,
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.border}`,
+              color: C.muted,
+              fontSize: F.corpo,
+            }}
+          >
+            Fermo qui
+          </button>
+        )}
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -2192,6 +2295,22 @@ export default function Library({
       )}
 
       {referto && <Referto esito={referto} onChiudi={() => setReferto(null)} onRicuci={ricuciForzato} ricucendo={ricucendo} />}
+      {daDrive?.voci && (
+        <SceltaDaDrive
+          voci={daDrive.voci}
+          scelti={daDrive.scelti}
+          onCambia={(ids, acceso) =>
+            setDaDrive((d) => {
+              if (!d?.voci) return d;
+              const scelti = new Set(d.scelti);
+              for (const id of ids) acceso ? scelti.add(id) : scelti.delete(id);
+              return { ...d, scelti };
+            })
+          }
+          onChiudi={() => setDaDrive(null)}
+          onVai={aggiungiDaDrive}
+        />
+      )}
       {titoli && (
         <SceltaTitoli
           proposte={titoli.proposte}
@@ -2492,6 +2611,135 @@ function SceltaTitoli({ proposte, scelti, onCambia, onChiudi, onVai }) {
             }}
           >
             {quanti ? `Rinomina ${quanti}` : "Nessuno spuntato"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// I file di Drive che non sono ancora libri, raccolti per cartella come il
+// lettore li ha messi lassu'. Partono tutti spuntati — chi apre questo
+// pannello vuole portarli sullo scaffale — e si tolgono quelli che libri
+// da leggere non sono.
+function SceltaDaDrive({ voci, scelti, onCambia, onChiudi, onVai }) {
+  const quanti = scelti.size;
+  const gruppi = [];
+  for (const v of voci) {
+    const nome = v.cartella || "Senza cartella";
+    const g = gruppi[gruppi.length - 1];
+    if (g?.nome === nome) g.voci.push(v);
+    else gruppi.push({ nome, voci: [v] });
+  }
+  const tutti = voci.map((v) => v.id);
+  const tasto = {
+    padding: "8px 14px",
+    minHeight: 44,
+    borderRadius: R.piccolo,
+    border: `1px solid ${C.border}`,
+    color: C.muted,
+    fontSize: F.nota,
+  };
+  return (
+    <div
+      onClick={onChiudi}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 55,
+        background: "#080611cc",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        animation: "bc-fade-in 0.25s ease-out",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: px(560),
+          maxHeight: "100%",
+          overflowY: "auto",
+          borderRadius: R.grande,
+          border: `1px solid ${C.border}`,
+          background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
+          boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
+          padding: 22,
+        }}
+      >
+        <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
+          ☁ Da Google Drive
+        </h2>
+        <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 12 }}>
+          {voci.length === 1 ? "Questo file è" : `Questi ${voci.length} file sono`} su Drive e non ancora sullo
+          scaffale. Entrano con titolo, autore e copertina; il libro scende la prima volta che lo apri.
+        </p>
+        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+          <button onClick={() => onCambia(tutti, true)} style={tasto}>
+            Tutti
+          </button>
+          <button onClick={() => onCambia(tutti, false)} style={tasto}>
+            Nessuno
+          </button>
+        </div>
+
+        {gruppi.map((g) => (
+          <div key={g.nome} style={{ marginBottom: 10 }}>
+            <div style={{ color: C.muted, fontSize: F.minuscolo, margin: "8px 0 6px", letterSpacing: 0.4 }}>
+              🗂 {g.nome} · {g.voci.length}
+            </div>
+            {g.voci.map((v) => {
+              const on = scelti.has(v.id);
+              return (
+                <button
+                  key={v.id}
+                  onClick={() => onCambia([v.id], !on)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    width: "100%",
+                    minHeight: 44,
+                    textAlign: "left",
+                    padding: "8px 12px",
+                    marginBottom: 6,
+                    borderRadius: R.piccolo,
+                    border: `1px solid ${on ? `${C.accent}88` : C.border}`,
+                    background: on ? `${C.accent}14` : "transparent",
+                  }}
+                >
+                  <span style={{ fontSize: F.rilievo, color: on ? C.accent : C.muted }}>{on ? "☑" : "☐"}</span>
+                  <span style={{ minWidth: 0, flex: 1, color: C.text, fontSize: F.corpo, overflowWrap: "anywhere" }}>
+                    {v.name}
+                  </span>
+                  <span style={{ color: C.muted, fontSize: F.minuscolo, whiteSpace: "nowrap" }}>{v.size < 1e6 ? `${Math.max(1, Math.round(v.size / 1e3))} KB` : fmtBytes(v.size)}</span>
+                </button>
+              );
+            })}
+          </div>
+        ))}
+
+        <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "flex-end" }}>
+          <button onClick={onChiudi} style={{ ...tasto, padding: "10px 18px" }}>
+            Lascia stare
+          </button>
+          <button
+            onClick={onVai}
+            disabled={!quanti}
+            style={{
+              padding: "10px 20px",
+              minHeight: 44,
+              borderRadius: R.piccolo,
+              border: `1px solid ${quanti ? `${C.accent}88` : C.border}`,
+              background: quanti ? `${C.accent}22` : "transparent",
+              color: quanti ? C.accent : C.muted,
+              fontSize: F.nota,
+            }}
+          >
+            {quanti ? `Aggiungi ${quanti}` : "Nessuno spuntato"}
           </button>
         </div>
       </div>

@@ -262,7 +262,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
         modRef.current = mod;
         const pdf = await mod.loadPdf(await blob.arrayBuffer());
         if (dead) {
-          pdf.destroy();
+          mod.chiudiPdf(pdf);
           return;
         }
         pdfRef.current = pdf;
@@ -321,7 +321,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
       window.removeEventListener("beforeunload", flush);
       renderTask.current?.cancel();
       flush();
-      try { pdfRef.current?.destroy(); } catch { /* già distrutto */ }
+      modRef.current?.chiudiPdf(pdfRef.current);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

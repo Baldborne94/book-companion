@@ -436,46 +436,7 @@ export async function importFiles(fileList, libri = [], { onProgress } = {}) {
     if (!letto?.titolo) senzaMetadati += 1;
     if (!letto?.copertina) senzaCopertina += 1;
     if (imp) meta.impronta = imp;
-    // saga e numero d'ordine dal titolo, senza chiederli a mano: e' quello
-    // che accende il glossario e fa funzionare il «prossimo della saga»
-    const saga = riconosci({ title: meta.title, author: meta.author, fileName: file.name });
-    // LA COLLANA SCRITTA NEL FILE VIENE DOPO LA TAVOLA, e non prima: la
-    // tavola conosce l'ORDINE DI LETTURA (l'Eresia rimescola apposta la
-    // collana) e sa anche il ciclo, che il file non dice mai. Ma dove la
-    // tavola non arriva — cioe' su quasi tutti i libri — la collana del
-    // file e' l'unica che sappia rispondere, e risponde gratis: niente
-    // rete, nessun modello, e funziona sul primo libro di un autore che
-    // non conosciamo (chiesto dal lettore: «per ogni libro che inserisci
-    // devi gia' riconoscere se appartiene a una saga e che numero e'»).
-    if (!saga && letto?.collana) {
-      riconosciuti += 1;
-      // scritta COME E' GIA' SCRITTA in casa: due file della stessa saga
-      // la scrivono con e senza l'articolo, e alla lettera erano due ripiani
-      meta.saga = nomeInBiblioteca(letto.collana.serie, [...libri, ...added]);
-      // il numero non si inventa: una collana senza posto resta una collana
-      if (letto.collana.numero != null) meta.sagaOrder = letto.collana.numero;
-    }
-    // E DOPO LA COLLANA, IL TITOLO: «Malice: The Faithful and the Fallen
-    // Series Book 1» la saga ce l'ha scritta addosso, ed e' l'unica strada
-    // sul primo libro di un autore nuovo quando il file la collana non ce
-    // l'ha. Il solo numero («02 Valour») si prende se una saga c'e' gia'.
-    if (!saga) {
-      const nelTitolo = sagaDalTitolo({ title: meta.title, fileName: file.name, author: meta.author });
-      if (!meta.saga && nelTitolo?.saga) {
-        riconosciuti += 1;
-        meta.saga = nomeInBiblioteca(nelTitolo.saga, [...libri, ...added]);
-      }
-      if (meta.saga && meta.sagaOrder == null && nelTitolo?.sagaOrder != null) meta.sagaOrder = nelTitolo.sagaOrder;
-    }
-    if (saga) {
-      riconosciuti += 1;
-      meta.saga = saga.saga;
-      if (saga.sagaOrder != null) meta.sagaOrder = saga.sagaOrder;
-      // il CICLO era riconosciuto e poi buttato via. E' l'informazione che
-      // dice quale storia continua un volume: nel Mondo Disco «cosa e'
-      // successo prima» sono le Guardie, non tutti e quarantuno i romanzi.
-      if (saga.ciclo && !meta.series) meta.series = saga.ciclo;
-    }
+    if (completaSaga(meta, letto, file.name, [...libri, ...added])) riconosciuti += 1;
     // L'OPF l'abbiamo appena letto: se la collana non c'era, lo si scrive
     // nella stessa memoria della passata automatica della Libreria — o,
     // finito l'import, quella riaprirebbe da capo ogni libro appena
@@ -487,6 +448,192 @@ export async function importFiles(fileList, libri = [], { onProgress } = {}) {
     added.push(meta);
   }
   return { added, errors, saltati, sospetti, ritrovati, cuciti, riconosciuti, senzaMetadati, senzaCopertina };
+}
+
+// LA SECONDA PORTA: I LIBRI CHE STANNO GIA' SU DRIVE (chiesto dal
+// lettore: portare i libri sul tablet «ci mette una vita», e caricarli
+// dopo pure). La scheda nasce leggendo del file solo quel che serve —
+// l'OPF e la copertina, la scheda e la prima pagina di un fumetto, la prima
+// pagina di un PDF — e il libro intero scende la prima volta che lo apri.
+// Niente ricucitura qui: la fa il reader alla prima apertura, come per
+// ogni libro, perche' e' li' che i byte ci sono.
+//
+// Le due trappole sono il SEGNO e l'ORDINE: il file si segna su Drive col
+// nome del libro nuovo (`segna`) solo DOPO averlo letto, e la scheda entra
+// solo se il segno e' riuscito — la mappa di Drive si riscrive a ogni giro
+// da `abbina`, e un libro che lassu' non si riconosce perderebbe il suo
+// file al primo giro, diventando «perduto»; e un segno scritto su un file
+// che poi non diventa scheda lo nasconderebbe per sempre da questo elenco.
+// `segna` torna `"scollegato"` quando la chiave di Google e' scaduta: il
+// giro si ferma, e quel che e' entrato resta entrato.
+export const ATTESA_SCHEDA = 30_000;
+const conTetto = (p, ms) =>
+  Promise.race([p, new Promise((_, ko) => setTimeout(() => ko(new Error("tempo scaduto")), ms))]);
+
+export async function importaDaDrive(voci, libri = [], { apri, segna, onProgress, vivo = () => true, leggi = leggiDaLontano, attesa = ATTESA_SCHEDA } = {}) {
+  const added = [];
+  const errors = [];
+  const sospetti = [];
+  let riconosciuti = 0;
+  let senzaMetadati = 0;
+  let senzaCopertina = 0;
+  let fermato = false;
+  let scollegato = false;
+  const tutte = Array.from(voci || []);
+  for (const [i, v] of tutte.entries()) {
+    if (!vivo()) {
+      fermato = true;
+      break;
+    }
+    onProgress?.({ fatti: i, totale: tutte.length, nome: v.name });
+    const est = (/\.([a-z0-9]+)$/i.exec(v.name || "") || [])[1]?.toLowerCase() || "";
+    const blob = apri(v);
+    let fileType = est === "epub" || est === "pdf" ? est : null;
+    if (est === "cbz" || est === "cbr") {
+      try {
+        fileType = formatoDaByte(new Uint8Array(await blob.slice(0, 8).arrayBuffer()));
+      } catch {
+        fileType = null;
+      }
+    }
+    if (!fileType) {
+      errors.push({ name: v.name, reason: "archivio non leggibile" });
+      continue;
+    }
+    const id = crypto.randomUUID();
+    const meta = {
+      id,
+      title: String(v.name || "").replace(/\.(epub|pdf|cbz|cbr)$/i, ""),
+      author: "",
+      series: "",
+      fileType,
+      addedAt: Date.now(),
+      rating: 0,
+      notes: "",
+      ...(v.tipo ? { tipo: v.tipo } : {}),
+    };
+    // l'impronta la dice Drive, ed e' la stessa SHA-256 dell'import: cosi'
+    // lo stesso file importato un giorno dal tablet si riconosce doppione.
+    // Oltre `IMPRONTA_INTERA` l'import la prende a campioni, e quella di
+    // Drive non pareggerebbe mai: meglio nessuna che una che non combacia.
+    const sha = String(v.sha256Checksum || "").toLowerCase();
+    if (/^[0-9a-f]{64}$/.test(sha) && Number(v.size) <= IMPRONTA_INTERA) meta.impronta = sha;
+    let letto = null;
+    try {
+      letto = await conTetto(leggi(meta, blob, fileType), attesa);
+    } catch {
+      /* letto male o troppo lento: la scheda entra col nome del file */
+    }
+    const conta = completaSaga(meta, letto, v.name, [...libri, ...added]);
+    const esito = await segna(v.id, id, v).catch(() => false);
+    if (esito === "scollegato") {
+      scollegato = true;
+      break;
+    }
+    if (!esito) {
+      errors.push({ name: v.name, reason: "non sono riuscito a segnarlo su Google Drive" });
+      continue;
+    }
+    // si contano solo le schede entrate: un file rifiutato non e' un
+    // titolo da controllare nella scheda, perche' la scheda non c'e'
+    if (conta) riconosciuti += 1;
+    if (!letto?.titolo) senzaMetadati += 1;
+    if (!letto?.copertina) senzaCopertina += 1;
+    if (sembraGiaLetto(meta, [...libri, ...added])) sospetti.push({ title: meta.title });
+    added.push(meta);
+  }
+  return { added, errors, sospetti, riconosciuti, senzaMetadati, senzaCopertina, fermato, scollegato };
+}
+
+// Quel che si legge di un file lontano. Il CBR resta col nome del file: la
+// lettura a fette di un RAR cammina di testata in testata attraverso tutto
+// l'archivio, e da Drive sarebbe una richiesta per pagina — il fumetto
+// entra, e la copertina la ritrova la manutenzione quando e' sceso.
+async function leggiDaLontano(meta, blob, fileType) {
+  if (fileType === "epub") return leggiEpubLontano(meta, blob);
+  if (fileType === "pdf") {
+    const { renderPdfThumbDa } = await import("./pdfThumb.js");
+    const thumb = await renderPdfThumbDa(blob);
+    if (thumb) await putCover(meta.id, thumb);
+    return { titolo: true, copertina: !!thumb };
+  }
+  if (fileType === "cbz") return enrichFumetto(meta, blob);
+  return { titolo: true, copertina: false };
+}
+
+export async function leggiEpubLontano(meta, blob) {
+  const { apriEpubAFette } = await import("./epubAFette.js");
+  const e = await apriEpubAFette(blob);
+  const esito = { titolo: false, copertina: false };
+  if (!e) return esito;
+  if (e.info.title) {
+    meta.title = e.info.title;
+    esito.titolo = true;
+  }
+  if (e.info.creator) meta.author = e.info.creator;
+  meta.sinossi = dalMetadata({ description: e.info.description });
+  esito.collana = collana(e.opf);
+  esito.opfLetto = !!e.opf;
+  try {
+    const { trovaCopertina } = await import("./copertina.js");
+    const cover = await trovaCopertina(e.libro);
+    if (cover) {
+      await putCover(meta.id, cover);
+      esito.copertina = true;
+    }
+  } catch {
+    /* senza copertina il libro entra col dorso disegnato */
+  }
+  return esito;
+}
+
+// SAGA E NUMERO, dalle tre fonti e nel loro ordine: la tavola, la collana
+// scritta nel file, il titolo. Una funzione sola per le due porte da cui un
+// libro entra — il file scelto dal tablet e quello che sta su Drive — o
+// le due porte riconoscerebbero le saghe in due modi.
+function completaSaga(meta, letto, fileName, libri) {
+  let riconosciuto = false;
+  // saga e numero d'ordine dal titolo, senza chiederli a mano: e' quello
+  // che accende il glossario e fa funzionare il «prossimo della saga»
+  const saga = riconosci({ title: meta.title, author: meta.author, fileName });
+  // LA COLLANA SCRITTA NEL FILE VIENE DOPO LA TAVOLA, e non prima: la
+  // tavola conosce l'ORDINE DI LETTURA (l'Eresia rimescola apposta la
+  // collana) e sa anche il ciclo, che il file non dice mai. Ma dove la
+  // tavola non arriva — cioe' su quasi tutti i libri — la collana del
+  // file e' l'unica che sappia rispondere, e risponde gratis: niente
+  // rete, nessun modello, e funziona sul primo libro di un autore che
+  // non conosciamo (chiesto dal lettore: «per ogni libro che inserisci
+  // devi gia' riconoscere se appartiene a una saga e che numero e'»).
+  if (!saga && letto?.collana) {
+    riconosciuto = true;
+    // scritta COME E' GIA' SCRITTA in casa: due file della stessa saga
+    // la scrivono con e senza l'articolo, e alla lettera erano due ripiani
+    meta.saga = nomeInBiblioteca(letto.collana.serie, libri);
+    // il numero non si inventa: una collana senza posto resta una collana
+    if (letto.collana.numero != null) meta.sagaOrder = letto.collana.numero;
+  }
+  // E DOPO LA COLLANA, IL TITOLO: «Malice: The Faithful and the Fallen
+  // Series Book 1» la saga ce l'ha scritta addosso, ed e' l'unica strada
+  // sul primo libro di un autore nuovo quando il file la collana non ce
+  // l'ha. Il solo numero («02 Valour») si prende se una saga c'e' gia'.
+  if (!saga) {
+    const nelTitolo = sagaDalTitolo({ title: meta.title, fileName, author: meta.author });
+    if (!meta.saga && nelTitolo?.saga) {
+      riconosciuto = true;
+      meta.saga = nomeInBiblioteca(nelTitolo.saga, libri);
+    }
+    if (meta.saga && meta.sagaOrder == null && nelTitolo?.sagaOrder != null) meta.sagaOrder = nelTitolo.sagaOrder;
+  }
+  if (saga) {
+    riconosciuto = true;
+    meta.saga = saga.saga;
+    if (saga.sagaOrder != null) meta.sagaOrder = saga.sagaOrder;
+    // il CICLO era riconosciuto e poi buttato via. E' l'informazione che
+    // dice quale storia continua un volume: nel Mondo Disco «cosa e'
+    // successo prima» sono le Guardie, non tutti e quarantuno i romanzi.
+    if (saga.ciclo && !meta.series) meta.series = saga.ciclo;
+  }
+  return riconosciuto;
 }
 
 // IL RESOCONTO DELL'IMPORT, in una riga sola.
