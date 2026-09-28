@@ -122,17 +122,12 @@ export function abbina(libri, file, { misure } = {}) {
 //     caso che `abbina` lascia ambiguo, e ambiguo vuol dire «forse c'e' gia'».
 // La cartella «Manga» e' un'organizzazione del lettore: un fumetto che sta
 // li' entra gia' col tipo giusto.
-// LA CARTELLA DEL LETTORE HA UN NOME, E L'ELENCO PARTE DA LI' (chiesto dal
-// lettore davanti a «Da Google Drive»: «fammi vedere una lista organizzata
-// solo di cio' che sta nella cartella book-companion, perche' altrimenti
-// non ci capisco niente»). Drive dice di ogni cartella il genitore, quindi
-// da una cartella si risale fino in cima: se lungo la strada c'e' la
-// RADICE, il file e' «dentro» e la sua cartella si scrive come percorso da
-// li' («Libri», «Fumetti / Hellboy»); se no e' «fuori», col percorso intero,
-// e sta ripiegato dietro un tasto — non sparisce, perche' un file messo
-// nella cartella sbagliata e' comunque un libro del lettore. Senza nessuna
-// cartella con quel nome tutto e' «dentro»: la radice e' un'abitudine, non
-// un obbligo.
+// LA CARTELLA DEL LETTORE HA UN NOME: il selettore si apre li'
+// (`idRadice`), e la cartella di un file si scrive come percorso da li'
+// («Libri», «Fumetti / Hellboy»), che e' quel che dice se un fumetto sta
+// fra i manga. Senza nessuna cartella con quel nome il percorso e' intero.
+// (La lista «Da Google Drive» che partiva da qui e' stata TOLTA: resta il
+// solo selettore, che sceglie anche le cartelle intere.)
 export const RADICE = "book-companion";
 const nomeRadice = (n) => String(n || "").trim().toLowerCase() === RADICE;
 
@@ -156,8 +151,7 @@ export function percorsoDi(cartellaId, cartelle) {
 export function cartellaDi(parentId, cartelle) {
   const nomi = percorsoDi(parentId, cartelle);
   const i = nomi.findIndex(nomeRadice);
-  if (i < 0) return { cartella: nomi.join(" / "), dentro: false };
-  return { cartella: nomi.slice(i + 1).join(" / "), dentro: true };
+  return (i < 0 ? nomi : nomi.slice(i + 1)).join(" / ");
 }
 
 export function daAggiungere(libri, file, { lapidi = [], cartelle = [] } = {}) {
@@ -167,7 +161,6 @@ export function daAggiungere(libri, file, { lapidi = [], cartelle = [] } = {}) {
   const morti = new Set(lapidi || []);
   const impronte = new Set(vivi.map((b) => b.impronta).filter(Boolean));
   const titoli = new Set(vivi.map((b) => `${estDelLibro(b)}|${nomeNudo(b.title)}`));
-  const conRadice = (cartelle || []).some((c) => nomeRadice(c?.name));
   const visti = new Set();
   const fuori = [];
   for (const f of file || []) {
@@ -179,35 +172,15 @@ export function daAggiungere(libri, file, { lapidi = [], cartelle = [] } = {}) {
     if (sha && (impronte.has(sha) || visti.has(sha))) continue;
     if (titoli.has(`${est}|${nomeNudo(f.name)}`)) continue;
     if (sha) visti.add(sha);
-    const dove = cartellaDi(f.parents?.[0], cartelle);
-    const dentro = conRadice ? dove.dentro : true;
-    const manga = (est === "cbz" || est === "cbr") && /\bmanga\b/i.test(dove.cartella);
-    fuori.push({ id: f.id, name: f.name, size: Number(f.size) || 0, sha256Checksum: sha || null, cartella: dove.cartella, dentro, ...(manga ? { tipo: "manga" } : {}) });
+    const cartella = cartellaDi(f.parents?.[0], cartelle);
+    const manga = (est === "cbz" || est === "cbr") && /\bmanga\b/i.test(cartella);
+    fuori.push({ id: f.id, name: f.name, size: Number(f.size) || 0, sha256Checksum: sha || null, cartella, ...(manga ? { tipo: "manga" } : {}) });
   }
   return fuori.sort(
     (a, b) =>
-      Number(b.dentro) - Number(a.dentro) ||
       a.cartella.localeCompare(b.cartella, "it") ||
       a.name.localeCompare(b.name, "it", { numeric: true })
   );
-}
-
-// LA RICERCA NEL PANNELLO (chiesto dal lettore: «permettimi di fare una
-// ricerca al suo interno, cosi' e' piu' facile aggiungere elementi
-// specifici»): sul nome del file e sul percorso, senza badare a maiuscole
-// e accenti — la tastiera del tablet l'accento lo scrive, nessuno lo cerca.
-// Ogni parola cercata deve stare da qualche parte, in qualunque ordine.
-const piano = (s) =>
-  String(s || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-export function cercaVoci(voci, testo) {
-  const parole = piano(testo).split(/\s+/).filter(Boolean);
-  return (voci || []).filter((v) => {
-    const dove = piano(`${v.name} ${v.cartella}`);
-    return parole.every((p) => dove.includes(p));
-  });
 }
 
 // LIBERARE IL TABLET SENZA PERDERE NIENTE (chiesto dal lettore: i romanzi
@@ -562,20 +535,64 @@ export const chiaveApiValida = (v) => /^AIza[0-9A-Za-z_-]{30,}$/.test(ripulisciC
 export const PERCHE_CHIAVE_STORTA =
   "La chiave API non ha la forma giusta: comincia con «AIza» ed e' una riga sola di lettere, cifre, trattini e trattini bassi. Copiala col tasto accanto alla chiave su Google Cloud invece di riscriverla a mano.";
 
-export function vociDalPicker(docs) {
-  const voci = [];
+// E UNA CARTELLA SI SCEGLIE INTERA (chiesto dal lettore: «tieni solo
+// Scegli su Drive e permettimi di scegliere o un'intera cartella o piu'
+// elementi assieme»). Il selettore torna cartelle e file mescolati: le
+// cartelle si dicono a parte (`cartelle`), perche' quel che contengono il
+// selettore non lo dice — si chiede a Drive dopo (`libriSotto`).
+const CARTELLA_MIME = "application/vnd.google-apps.folder";
+export const eCartella = (d) => d?.mimeType === CARTELLA_MIME || d?.type === "folder";
+
+export function sceltaDalPicker(docs) {
+  const sciolti = [];
+  const cartelle = [];
   const scartati = [];
   const visti = new Set();
   for (const d of docs || []) {
     if (!d?.id || visti.has(d.id)) continue;
     visti.add(d.id);
+    if (eCartella(d)) {
+      cartelle.push({ id: d.id, name: String(d.name || "") });
+      continue;
+    }
     if (!EST.includes(estensioneDi(d.name))) {
       scartati.push(String(d.name || d.id));
       continue;
     }
-    voci.push({ id: d.id, name: String(d.name || ""), size: Number(d.sizeBytes ?? d.size) || 0 });
+    sciolti.push({ id: d.id, name: String(d.name || ""), size: Number(d.sizeBytes ?? d.size) || 0 });
   }
-  return { voci, scartati };
+  return { sciolti, cartelle, scartati };
+}
+
+// i libri che stanno SOTTO le cartelle scelte, a qualunque profondita':
+// «Fumetti» scelta intera porta dentro anche «Fumetti / Hellboy». Si risale
+// da ogni genitore del file (un file di Drive puo' averne piu' d'uno) fino in
+// cima, e un giro chiuso fra cartelle si ferma invece di non finire mai. Una
+// cartella senza nessun libro sotto si dice per nome (`vuote`): scelta col
+// dito e sparita in silenzio sarebbe il difetto peggiore di questa porta.
+export function libriSotto(scelte, file, cartelle) {
+  const ids = new Set((scelte || []).map((c) => c.id));
+  const genitore = new Map((cartelle || []).map((c) => [c.id, c.parents?.[0]]));
+  const trovate = new Set();
+  const sotto = [];
+  for (const f of file || []) {
+    if (!f?.id || !EST.includes(estensioneDi(f.name))) continue;
+    // si risale fino in cima anche dopo aver trovato una scelta: con
+    // «Fumetti» e «Fumetti / Hellboy» scelte insieme, i libri di Hellboy
+    // sono anche di Fumetti, e Fumetti non e' una cartella vuota
+    const prese = new Set();
+    for (const p of f.parents || []) {
+      const visti = new Set();
+      for (let c = p; c && !visti.has(c); c = genitore.get(c)) {
+        visti.add(c);
+        if (ids.has(c)) prese.add(c);
+      }
+    }
+    if (!prese.size) continue;
+    for (const c of prese) trovate.add(c);
+    sotto.push(f);
+  }
+  return { file: sotto, vuote: (scelte || []).filter((c) => !trovate.has(c.id)).map((c) => c.name || c.id) };
 }
 
 // la cartella da cui il selettore parte: la radice se c'e', o niente (e
