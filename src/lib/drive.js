@@ -17,11 +17,12 @@
 // Le decisioni — cosa e' gia' su Drive, cosa sale, cosa lascia il secchio —
 // stanno in `driveCore.js`, dove un test le prova.
 
-import { abbina, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive } from "./driveCore.js";
+import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive } from "./driveCore.js";
 
 const TOKEN_KEY = "bc_drive_token";
 const ACCESO_KEY = "bc_drive_on";
 const CLIENT_KEY = "bc_drive_client";
+const API_KEY = "bc_drive_api_key";
 const MAPPA_KEY = "bc_drive_libri";
 const MAPPA_MUSICA_KEY = "bc_drive_melodie";
 const SCOPE = "https://www.googleapis.com/auth/drive";
@@ -61,6 +62,11 @@ const scrivi = (k, v) => {
 export const clientId = () => ripulisciIdClient(import.meta.env?.VITE_GOOGLE_CLIENT_ID || leggi(CLIENT_KEY) || "");
 export const scriviClientId = (v) => scrivi(CLIENT_KEY, ripulisciIdClient(v) || null);
 export const driveConfigurato = () => !!clientId();
+// la chiave API serve al solo selettore di Google: senza, il resto di
+// Drive lavora come sempre
+export const apiKey = () => ripulisciChiaveApi(import.meta.env?.VITE_GOOGLE_API_KEY || leggi(API_KEY) || "");
+export const scriviApiKey = (v) => scrivi(API_KEY, ripulisciChiaveApi(v) || null);
+export const pickerConfigurato = () => !!apiKey();
 // «acceso» e' la scelta del lettore, e resta vera anche a chiave scaduta:
 // la nuvoletta sui dorsi deve continuare a dire che il libro sta lassu'
 export const driveAcceso = () => leggi(ACCESO_KEY) === "1";
@@ -102,6 +108,76 @@ function caricaGis() {
     });
   }
   return gis;
+}
+
+// IL SELETTORE DI GOOGLE: la finestra di Drive dentro l'app. Si carica
+// come GIS, da uno script di Google, e si apre solo da un tocco con la
+// chiave d'accesso in mano (e' un iframe di docs.google.com, e senza il
+// gesto il browser non lo lascerebbe aprire). Torna i documenti toccati,
+// o `null` se il lettore ha chiuso senza scegliere.
+let gapiPronto = null;
+function caricaPicker() {
+  if (globalThis.google?.picker?.PickerBuilder) return Promise.resolve();
+  if (!gapiPronto) {
+    gapiPronto = new Promise((ok, ko) => {
+      const fallito = () => {
+        gapiPronto = null;
+        ko(new Error("Non riesco a raggiungere Google: controlla la connessione."));
+      };
+      const avvia = () => {
+        const g = globalThis.gapi;
+        if (!g?.load) return fallito();
+        g.load("picker", { callback: () => ok(), onerror: fallito });
+      };
+      if (globalThis.gapi?.load) return avvia();
+      const s = document.createElement("script");
+      s.src = "https://apis.google.com/js/api.js";
+      s.async = true;
+      s.onload = avvia;
+      s.onerror = fallito;
+      document.head.appendChild(s);
+    });
+  }
+  return gapiPronto;
+}
+
+export async function scegliSuDrive({ cartellaId = null } = {}) {
+  const chiave = apiKey();
+  if (!chiave) throw new Error("Manca la chiave API di Google: incollala nel pannello della nuvola, sotto Google Drive.");
+  if (!chiaveApiValida(chiave)) throw new Error(PERCHE_CHIAVE_STORTA);
+  const t = tokenValido();
+  if (!t) throw new DriveScollegato();
+  await caricaPicker();
+  const gp = globalThis.google.picker;
+  return new Promise((ok) => {
+    const vista = new gp.DocsView(gp.ViewId.DOCS).setIncludeFolders(true).setSelectFolderEnabled(false).setMode(gp.DocsViewMode.LIST);
+    if (cartellaId) vista.setParent(cartellaId);
+    const picker = new gp.PickerBuilder()
+      .setOAuthToken(t)
+      .setDeveloperKey(chiave)
+      .setLocale("it")
+      .setOrigin(`${location.protocol}//${location.host}`)
+      .setTitle("Scegli i libri da aggiungere")
+      .enableFeature(gp.Feature.MULTISELECT_ENABLED)
+      .addView(vista)
+      .setCallback((d) => {
+        if (d?.action === gp.Action.PICKED) ok(d.docs || []);
+        else if (d?.action === gp.Action.CANCEL) ok(null);
+      })
+      .build();
+    picker.setVisible(true);
+  });
+}
+
+// i dettagli che al selettore mancano e a `daAggiungere` servono:
+// impronta, segno nostro, cartella
+export async function dettagliFile(ids) {
+  const out = [];
+  for (const id of ids || []) {
+    const r = await chiama(`${API}/files/${encodeURIComponent(id)}?fields=${q("id,name,size,sha256Checksum,appProperties,parents")}`);
+    out.push(await r.json());
+  }
+  return out;
 }
 
 // LA CHIAVE SI CHIEDE SOLO DA UN TOCCO: Google la consegna in una finestra,

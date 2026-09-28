@@ -3,6 +3,8 @@ import { C, F, R } from "../data/constants.js";
 import {
   clientId,
   scriviClientId,
+  apiKey,
+  scriviApiKey,
   driveConfigurato,
   driveAcceso,
   driveProntoOra,
@@ -33,12 +35,14 @@ const tasto = (colore) => ({
 export default function SezioneDrive({ onCollegato, notify }) {
   const [, ridisegna] = useState(0);
   const [id, setId] = useState(clientId());
+  const [chiave, setChiave] = useState(apiKey());
   const [busy, setBusy] = useState(false);
   const [guaio, setGuaio] = useState(null);
   const [spazio, setSpazio] = useState(null);
   const acceso = driveAcceso();
   const pronto = driveProntoOra();
   const daBuild = !!import.meta.env?.VITE_GOOGLE_CLIENT_ID;
+  const chiaveDaBuild = !!import.meta.env?.VITE_GOOGLE_API_KEY;
 
   useEffect(() => {
     if (!acceso || !pronto) return setSpazio(null);
@@ -74,6 +78,43 @@ export default function SezioneDrive({ onCollegato, notify }) {
 
   const libri = pesoDeiLibri(mappaDrive());
 
+  // LA CHIAVE API SERVE AL SOLO SELETTORE («Scegli su Drive» in Libreria):
+  // e' un'altra voce di Google Cloud, non un segreto, e si salva da sola
+  // appena la si incolla — senza un tasto, perche' un campo con un tasto
+  // «salva» accanto a un altro campo con «Collega» e' due gesti per una
+  // cosa che ne vuole uno
+  function scriviChiave(v) {
+    setChiave(v);
+    scriviApiKey(v);
+  }
+  const campo = {
+    display: "block",
+    width: "100%",
+    marginTop: 6,
+    padding: "10px 14px",
+    borderRadius: R.piccolo,
+    border: `1px solid ${C.border}`,
+    background: C.bg,
+    color: C.text,
+    fontSize: F.nota,
+    outline: "none",
+  };
+  const campoChiave = !chiaveDaBuild && (
+    <label style={{ display: "block", marginTop: 12, fontSize: F.minuscolo, color: C.muted }}>
+      Chiave API di Google (comincia con AIza) · serve solo a «Scegli su Drive», la finestra di Drive dentro l'app
+      <input
+        value={chiave}
+        onChange={(e) => scriviChiave(e.target.value)}
+        placeholder="AIza…"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+        aria-label="Chiave API di Google"
+        style={campo}
+      />
+    </label>
+  );
+
   return (
     <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
       <div style={{ fontSize: F.corpo, color: C.text, marginBottom: 6 }}>🗂 Google Drive</div>
@@ -90,6 +131,7 @@ export default function SezioneDrive({ onCollegato, notify }) {
               : "Collegato, ma Google chiede un tocco per continuare (l'accesso dura un'ora)."}
           </p>
           {spazio && <BarraDrive spazio={spazio} libri={libri} compatta />}
+          {campoChiave}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
             {!pronto && (
               <button onClick={collega} disabled={busy} style={tasto(C.arcane)}>
@@ -113,21 +155,11 @@ export default function SezioneDrive({ onCollegato, notify }) {
                 autoCapitalize="off"
                 autoCorrect="off"
                 spellCheck={false}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  marginTop: 6,
-                  padding: "10px 14px",
-                  borderRadius: R.piccolo,
-                  border: `1px solid ${C.border}`,
-                  background: C.bg,
-                  color: C.text,
-                  fontSize: F.nota,
-                  outline: "none",
-                }}
+                style={campo}
               />
             </label>
           )}
+          {campoChiave}
           <div style={{ marginTop: 12 }}>
             <button
               onClick={collega}

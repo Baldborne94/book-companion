@@ -86,7 +86,11 @@ su un altro dispositivo solo quando le suoni. Con «Da Google Drive», in
 Libreria, l'app ti mostra i libri del tuo Drive che non sono ancora sullo
 scaffale e, per quelli che scegli, ne legge solo un pezzo — i metadati
 (titolo, autore, retro, collana) e la copertina — per crearne la scheda,
-senza scaricare il file intero. Non legge il contenuto di nessun altro file
+senza scaricare il file intero. Con «Scegli su Drive» si apre invece la
+finestra di Drive di Google stessa dentro l'app (il *Picker*, caricato da
+`apis.google.com` e mostrato da `docs.google.com`), che ti fa sfogliare la
+cartella e toccare i file: vuole una chiave API di Google, che resta sul
+dispositivo, e all'app arrivano solo i file che hai toccato. Non legge il contenuto di nessun altro file
 e non cancella niente: eliminando un libro o una melodia dall'app, il suo
 file su Drive resta dov'è (il libro eliminato perde solo il segno privato,
 così puoi ritrovarlo con «Da Google Drive»).
