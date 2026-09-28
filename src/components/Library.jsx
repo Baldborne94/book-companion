@@ -13,7 +13,7 @@ import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
 import { frasiDiario } from "../lib/archivioDiario.js";
 import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
-import { portaACasa, cloudUsage } from "../lib/sync.js";
+import { portaACasa, cloudUsage, localFileIds } from "../lib/sync.js";
 import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso,
 } from "../lib/syncCore.js";
@@ -874,6 +874,16 @@ export default function Library({
       };
       const parti = [];
       let attuale = booksRef.current;
+      // LA MEMORIA DEL GIRO (`lib/giroSaghe.js`): se da quello di ieri non e'
+      // cambiato niente di quel che il giro guarda, il giro non ha niente da
+      // dire — e per saperlo tomo per tomo erano centinaia di letture di
+      // IndexedDB a ogni apertura. I byte si chiedono in un colpo solo.
+      const { firmaGiro, leggiGiro, ricordaGiro, giroFinito } = await import("../lib/giroSaghe.js");
+      const conByte = await localFileIds();
+      if (!vivo) return;
+      const versione = typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "";
+      if (leggiGiro() === firmaGiro(attuale, { conByte, versione })) return;
+      const giro = {};
       const unite = unificaSaghe(attuale);
       if (unite.unificate) {
         attuale = applica(unite.campi);
@@ -894,6 +904,7 @@ export default function Library({
           vivo: () => vivo && !filoCollane.current,
         });
         if (!vivo) return;
+        giro.collane = esito;
         if (esito.scritte) {
           attuale = applica(esito.campi);
           parti.push(`${esito.scritte} ${esito.scritte === 1 ? "saga letta" : "saghe lette"} dal file`);
@@ -928,6 +939,7 @@ export default function Library({
           vivo: () => vivo && !filoCollane.current,
         });
         if (!vivo) return;
+        giro.catalogo = dalCatalogo;
         if (dalCatalogo.trovate) {
           attuale = applica(dalCatalogo.campi);
           parti.push(`${dalCatalogo.trovate} ${dalCatalogo.trovate === 1 ? "saga trovata" : "saghe trovate"} nel catalogo`);
@@ -942,11 +954,14 @@ export default function Library({
       if (!vivo) return;
       const dedotte = deduciSaghe(attuale, { senzaTraccia });
       if (dedotte.dedotte) {
-        applica(dedotte.campi);
+        attuale = applica(dedotte.campi);
         // la saga dedotta si dice a parte da quella letta dal titolo: una
         // sta scritta sul libro, l'altra è copiata dai suoi fratelli
         parti.push(`${dedotte.dedotte} ${dedotte.dedotte === 1 ? "saga dedotta" : "saghe dedotte"} dalla tua biblioteca`);
       }
+      // la firma di DOPO il giro, cioe' della biblioteca che la prossima
+      // apertura trovera': e solo se il giro ha detto tutto
+      if (giroFinito(giro)) ricordaGiro(firmaGiro(attuale, { conByte, versione }));
       if (parti.length) notify?.(parti.join(", "));
     })().catch(() => {
       /* un giro silenzioso che fallisce resta silenzioso: si riprova al prossimo montaggio */
