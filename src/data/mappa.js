@@ -112,6 +112,12 @@ export const MAPPA = [
   },
   {
     luogo: "libro",
+    nome: "Leggi ad alta voce",
+    cosa: "La voce del tablet legge la pagina e la gira da sé, con la voce della lingua del libro (quelle del dispositivo parlano anche senza rete). La musica si abbassa mentre parla. Pausa, velocità e stop restano a schermo anche a barre nascoste; se giri pagina col dito riparte da lì. Negli ePub a pagine, non nello scorrimento.",
+    dove: "Il tasto 🔊 «Ascolta» nella barra.",
+  },
+  {
+    luogo: "libro",
     nome: "Come volta la pagina",
     cosa: "Dissolvenza, spazzata o niente. La spazzata è la più bella e costa: sotto la levetta c'è scritto quanto.",
     dove: "Il tasto «Aa» → «La pagina svolta».",
