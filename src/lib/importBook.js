@@ -69,6 +69,34 @@ export async function improntaDi(blob) {
   return dentro ? `c:${dentro}` : null;
 }
 
+// L'IMPRONTA DI UN FILE CHE STA SU DRIVE, senza scaricarlo. Sotto
+// `IMPRONTA_INTERA` e' la SHA-256 che Drive calcola da se', la stessa
+// dell'import; sopra, i dieci campioni di `improntaDi` letti a pezzi dal
+// file lontano — una decina di richieste, non un giga. La misura si chiede
+// a Drive e non alla mappa: una mappa senza misura manderebbe un file da un
+// giga per la strada della SHA intera, che non pareggerebbe mai con
+// l'impronta a campioni di chi lo importa dal tablet.
+export async function improntaLassu(fileId, { dettagli, remoto } = {}) {
+  if (!fileId || !dettagli) return null;
+  const [d] = (await dettagli([fileId])) || [];
+  const misura = Number(d?.size) || 0;
+  if (!misura) return null;
+  if (misura <= IMPRONTA_INTERA) {
+    const sha = String(d?.sha256Checksum || "").toLowerCase();
+    return /^[0-9a-f]{64}$/.test(sha) ? sha : null;
+  }
+  return remoto ? improntaDi(remoto(fileId, misura)) : null;
+}
+
+// I TOMI DA RICONOSCERE sono solo quelli che si possono servire: i byte
+// qui, o il file su Drive. Uno che non sta da nessuna parte non ha niente
+// da leggere, e contarlo nel tasto vorrebbe dire promettere per sempre un
+// lavoro che nessun tocco puo' fare — «ci clicco e non succede nulla».
+// `qui` a `null` vuol dire «non lo so» (niente sincronizzazione: i byte
+// stanno qui per forza) e allora si conta.
+export const impronteDaFare = (libri = [], { qui = null, lassu = null } = {}) =>
+  (libri || []).filter((b) => b?.id && !b.impronta && (!qui || qui.has(b.id) || !!lassu?.has(b.id)));
+
 export const giaInLibreria = (imp, libri = []) =>
   (imp && libri.find((b) => b?.impronta === imp)) || null;
 
@@ -90,7 +118,7 @@ export const giaInLibreria = (imp, libri = []) =>
 // `leggiByte` arriva da fuori (e' `getFile` di `bookStore`) per la
 // ragione di sempre: cosi' un test la chiama con un finto invece di
 // tirarsi dietro IndexedDB.
-export async function ripassaImpronte(libri = [], { leggiByte, onProgress, vivo } = {}) {
+export async function ripassaImpronte(libri = [], { leggiByte, improntaLassu: daLassu, onProgress, vivo } = {}) {
   const attivo = vivo || (() => true);
   const esito = { scritte: 0, senzaByte: 0, illeggibili: 0, fermato: false, campi: {} };
   // solo quelli che non ce l'hanno: chi l'ha gia' non si ri-legge: sono
@@ -113,6 +141,27 @@ export async function ripassaImpronte(libri = [], { leggiByte, onProgress, vivo 
       .then(() => leggiByte?.(b.id))
       .catch(() => null);
     if (!file) {
+      // E IL TOMO CHE STA SU GOOGLE DRIVE L'IMPRONTA CE L'HA LASSU'
+      // (segnalato: «perche' mi dice che ci sono i doppioni di tre tomi e
+      // se ci clicco non succede nulla?»). Da quando i libri si leggono da
+      // Drive, un tomo senza byte qui e' lo stato normale, e contarlo fra
+      // «non e' su questo dispositivo» lasciava il tasto a promettere lo
+      // stesso lavoro per sempre. Un guasto lassu' e' «non letto», non
+      // «non c'e'»: sono due cose diverse e si dicono in due modi.
+      if (daLassu) {
+        let lassu = null;
+        try {
+          lassu = await daLassu(b);
+        } catch {
+          esito.illeggibili += 1;
+          continue;
+        }
+        if (lassu) {
+          esito.campi[b.id] = lassu;
+          esito.scritte += 1;
+          continue;
+        }
+      }
       esito.senzaByte += 1;
       continue;
     }
@@ -518,6 +567,15 @@ export async function importaDaDrive(voci, libri = [], { apri, segna, onProgress
     // Drive non pareggerebbe mai: meglio nessuna che una che non combacia.
     const sha = String(v.sha256Checksum || "").toLowerCase();
     if (/^[0-9a-f]{64}$/.test(sha) && Number(v.size) <= IMPRONTA_INTERA) meta.impronta = sha;
+    // e sopra si prende a campioni dal file lontano, come fa l'import dal
+    // tablet: senza, il tomo grosso entrava senza impronta e il tasto dei
+    // doppioni lo contava per sempre senza poterlo servire
+    // (la misura si chiede al file che si legge: sotto la soglia `improntaDi`
+    // scaricherebbe il file intero, che e' proprio quel che qui non si fa)
+    else if (Number(blob?.size) > IMPRONTA_INTERA) {
+      const imp = await conTetto(improntaDi(blob), attesa).catch(() => null);
+      if (imp) meta.impronta = imp;
+    }
     let letto = null;
     try {
       letto = await conTetto(leggi(meta, blob, fileType), attesa);

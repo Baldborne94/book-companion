@@ -241,7 +241,19 @@ export default async function (t) {
     const zip = new JSZip();
     zip.file("p1.jpg", new Uint8Array([1]));
     const cbz = await zip.generateAsync({ type: "uint8array" });
-    const apri = (v) => remoto(v.byte || new Uint8Array(0)).f;
+    // un file oltre la soglia, letto a pezzi: si contano i pezzi chiesti,
+    // perche' la cura e' proprio non scaricarlo intero
+    const pezziGrosso = [];
+    const grosso = {
+      size: IMPRONTA_INTERA + 1,
+      slice: (a, b) => ({
+        arrayBuffer: async () => {
+          pezziGrosso.push([a, b]);
+          return new Uint8Array(Math.max(0, Math.min(b, IMPRONTA_INTERA + 1) - a)).fill(a % 251).buffer;
+        },
+      }),
+    };
+    const apri = (v) => (v.id === "v3" ? grosso : remoto(v.byte || new Uint8Array(0)).f);
     const ordine = [];
     const leggi = async (meta, blob, tipo) => {
       ordine.push(`leggi:${meta.title}`);
@@ -285,7 +297,13 @@ export default async function (t) {
     const per = (n) => e.added.find((b) => b.title === n);
     t.eq("il titolo letto dal file", !!per("Il Titolo Vero"), true);
     t.eq("l'impronta di Drive diventa quella del libro", per("Il Titolo Vero")?.impronta, SHA("b"));
-    t.eq("oltre la soglia dell'import l'impronta non si scrive (l'import la prende a campioni)", per("Muto")?.impronta, undefined);
+    // era «oltre la soglia l'impronta non si scrive», ed e' il difetto
+    // segnalato: il tomo grosso entrava senza, e il tasto dei doppioni lo
+    // contava per sempre senza poterlo servire. Adesso si prende a campioni
+    // dal file lontano, come l'import dal tablet — e con quella di Drive,
+    // che e' la SHA del file intero, non si mescola.
+    t.c("oltre la soglia l'impronta si prende a campioni dal file lontano", /^c:[0-9a-f]{64}$/.test(per("Muto")?.impronta || ""), per("Muto")?.impronta);
+    t.c("…senza scaricarlo intero: dieci pezzi da un mega", pezziGrosso.length === 10 && pezziGrosso.every(([a, b]) => b - a <= 1024 * 1024));
     t.eq("un'impronta che non e' uno SHA-256 non si scrive", per("Lento")?.impronta, undefined);
     const berserk = per("Berserk v01");
     t.eq("un «cbr» che e' uno zip entra come cbz", berserk?.fileType, "cbz");

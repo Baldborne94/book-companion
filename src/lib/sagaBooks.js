@@ -288,7 +288,32 @@ export const capitoloDi = (riconosciuto) => {
   return { nome: FUORI_STORIA, ordine: DOPO_I_CAPITOLI };
 };
 
+// IL RICONOSCIMENTO SI RICORDA (chiesto dal lettore: «la ricerca e la
+// visualizzazione delle copertine sono lente»). `riconosci` scorre l'indice
+// intero delle tavole per ogni libro, e lo scaffale, l'Ingresso, la
+// deduzione e il cammino lo richiedono sugli stessi titoli a ogni giro:
+// misurato con 400 libri e il processore rallentato quattro volte, 230 ms
+// all'apertura della Libreria solo qui dentro. La risposta e' una funzione
+// PURA di titolo e autore sopra tavole che spediamo noi, quindi a chiave
+// uguale e' uguale per sempre, e un titolo corretto a mano cambia la
+// chiave. Il nome del file resta fuori dalla memoria: lo passa solo
+// l'import, una volta per libro. Si torna una COPIA: chi la riceve la puo'
+// guardare e spargere, e un oggetto condiviso toccato da uno cambierebbe
+// la risposta a tutti gli altri senza che nessun errore lo dica.
+const RICONOSCIUTI = new Map();
+
 export function riconosci({ title, author, fileName } = {}) {
+  if (fileName) return riconosciDaCapo({ title, author, fileName });
+  const chiave = `${title || ""}\u0000${author || ""}`;
+  let r = RICONOSCIUTI.get(chiave);
+  if (r === undefined) {
+    r = riconosciDaCapo({ title, author });
+    RICONOSCIUTI.set(chiave, r);
+  }
+  return r && { ...r };
+}
+
+function riconosciDaCapo({ title, author, fileName } = {}) {
   const campi = [title, fileName].filter(Boolean).map(norm);
   const chiAutore = norm(author);
   for (const campo of campi) {

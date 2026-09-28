@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
-import { getCover } from "../lib/bookStore.js";
+import { getCover, getAux, putAux } from "../lib/bookStore.js";
+import { caricaCopertina, giaVista, ascoltaCopertine, chiaveMin, LATO_MIN, generazione } from "../lib/miniature.js";
+import { preparaCopertina } from "../lib/copertina.js";
 import { vestito, gradinoTitolo } from "../lib/dorso.js";
 
 // IL DORSO DISEGNATO, per i libri che una copertina non ce l'hanno.
@@ -127,6 +129,21 @@ function Disegnato({ book, radius, compact, numerato }) {
   );
 }
 
+// Le dipendenze della memoria delle miniature (`lib/miniature.js`): qui il
+// database e il canvas, la' la regola.
+const DEPS = {
+  leggiCover: (id) => getCover(id),
+  leggiMin: (id) => getAux(chiaveMin(id)),
+  scriviMin: (id, v) => putAux(chiaveMin(id), v),
+  riduci: (blob) => preparaCopertina(blob, LATO_MIN),
+  creaUrl: (blob) => URL.createObjectURL(blob),
+  revoca: (url) => URL.revokeObjectURL(url),
+};
+
+// quanto prima dello schermo si comincia a leggere: una schermata e mezza,
+// cosi' scorrendo la copertina e' gia' pronta quando arriva
+const ANTICIPO = "900px 0px";
+
 // `version` serve a chi la copertina la CAMBIA: l'id del libro non cambia,
 // quindi senza un secondo appiglio l'effetto non ripartirebbe e resteresti
 // a guardare quella di prima.
@@ -135,33 +152,85 @@ function Disegnato({ book, radius, compact, numerato }) {
 // noi: sullo scaffale serve a non stampare il titolo DUE VOLTE — una sul
 // dorso e una nella didascalia sotto — che era l'altra cosa che rendeva la
 // libreria confusa.
-export default function BookCover({ book, radius = 8, compact = false, version = 0, onDisegnata, numerato = false }) {
-  const [url, setUrl] = useState(null);
+//
+// LA COPERTINA SI LEGGE QUANDO STA PER ENTRARE NELLO SCHERMO, e sullo
+// scaffale e' una MINIATURA ricordata (`lib/miniature.js`): leggere e
+// decodificare tutte le copertine intere all'apertura era il grosso dei
+// sei secondi misurati con 400 libri. `intera` e' per chi la mostra grande
+// — la scheda del libro — e li' si legge l'originale, come prima.
+// `haCopertina` e' quel che la Libreria sa gia' in un colpo solo
+// (`listCoverIds`): `false` disegna il dorso senza chiedere niente.
+export default function BookCover({ book, radius = 8, compact = false, version = 0, onDisegnata, numerato = false, intera = false, haCopertina }) {
+  const nota = intera ? undefined : haCopertina === false ? null : giaVista(book.id);
+  const [url, setUrl] = useState(nota);
+  const [vicina, setVicina] = useState(intera || nota !== undefined || typeof IntersectionObserver === "undefined");
+  const [giro, setGiro] = useState(0);
+  const scatola = useRef(null);
 
   useEffect(() => {
+    if (vicina || !scatola.current) return;
+    const oss = new IntersectionObserver(
+      (voci) => {
+        if (voci.some((v) => v.isIntersecting)) {
+          setVicina(true);
+          oss.disconnect();
+        }
+      },
+      { rootMargin: ANTICIPO }
+    );
+    oss.observe(scatola.current);
+    return () => oss.disconnect();
+  }, [vicina]);
+
+  // una copertina cambiata altrove (la scheda, la sincronizzazione) si
+  // rilegge anche qui, o lo scaffale mostrerebbe quella di prima
+  useEffect(() => ascoltaCopertine((id) => id === book.id && setGiro((g) => g + 1)), [book.id]);
+
+  useEffect(() => {
+    if (!intera && haCopertina === false) {
+      setUrl(null);
+      onDisegnata?.(true);
+      return;
+    }
+    if (!vicina) return;
     let alive = true;
-    let objectUrl = null;
-    getCover(book.id).then((blob) => {
-      if (!alive) return;
-      if (blob) {
-        objectUrl = URL.createObjectURL(blob);
-        setUrl(objectUrl);
-        onDisegnata?.(false);
-      } else {
-        // tolta la copertina si torna al dorso disegnato: senza questo, la
-        // vecchia immagine resterebbe appesa allo schermo
-        setUrl(null);
-        onDisegnata?.(true);
-      }
-    });
+    if (intera) {
+      let objectUrl = null;
+      getCover(book.id).then((blob) => {
+        if (!alive) return;
+        if (blob) {
+          objectUrl = URL.createObjectURL(blob);
+          setUrl(objectUrl);
+          onDisegnata?.(false);
+        } else {
+          // tolta la copertina si torna al dorso disegnato: senza questo,
+          // la vecchia immagine resterebbe appesa allo schermo
+          setUrl(null);
+          onDisegnata?.(true);
+        }
+      });
+      return () => {
+        alive = false;
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+      };
+    }
+    // l'indirizzo della miniatura lo tiene la memoria, e non si revoca
+    // allo smontaggio: lo riusa il prossimo che disegna lo stesso libro
+    caricaCopertina(book.id, DEPS)
+      .catch(() => null)
+      .then((u) => {
+        if (!alive) return;
+        setUrl(u || null);
+        onDisegnata?.(!u);
+      });
     return () => {
       alive = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [book.id, version]);
+  }, [book.id, version, vicina, intera, haCopertina, giro, generazione(book.id)]);
 
   return (
     <div
+      ref={scatola}
       style={{
         position: "relative",
         width: "100%",
@@ -176,11 +245,12 @@ export default function BookCover({ book, radius = 8, compact = false, version =
         <img
           src={url}
           alt=""
+          decoding="async"
           style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
         />
-      ) : (
+      ) : url === null ? (
         <Disegnato book={book} radius={radius} compact={compact} numerato={numerato} />
-      )}
+      ) : null}
     </div>
   );
 }
