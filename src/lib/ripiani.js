@@ -452,3 +452,27 @@ function autoreUnico(libri) {
   }
   return nome;
 }
+
+// QUANTO E' ALTO UN RIPIANO CHE NON SI E' ANCORA COSTRUITO. Lo scaffale
+// costruisce i ripiani solo quando si avvicinano allo schermo, e al posto
+// dei libri tiene uno spazio: se la stima sbaglia di molto, scorrendo la
+// pagina salta sotto il dito quando il ripiano vero prende il suo posto.
+// La griglia e' quella di `Shelf` — colonne da 108px con 16 di spazio fra
+// l'una e l'altra — e la scheda, mai disegnata, vale `ALTEZZA_SCHEDA` piu'
+// i 20px fra una riga e l'altra. Misurata: 183px col dorso disegnato (il
+// titolo sta sul dorso, niente didascalia), ~245 con una copertina vera e
+// la didascalia sotto — la stima sta nel mezzo. Sbagliare di poco non fa
+// saltare niente: il browser tiene fermo il punto che stai guardando
+// (misurato scorrendo 400 libri a 1280 e a 412, zero salti).
+export const ALTEZZA_SCHEDA = 220;
+export const COLONNA = 108;
+export const SPAZIO_COLONNE = 16;
+export const SPAZIO_RIGHE = 20;
+
+export function altezzaStimata(quanti, larghezza) {
+  const n = Math.max(0, Number(quanti) || 0);
+  if (!n) return 0;
+  const colonne = Math.max(1, Math.floor((Math.max(0, Number(larghezza) || 0) + SPAZIO_COLONNE) / (COLONNA + SPAZIO_COLONNE)));
+  const righe = Math.ceil(n / colonne);
+  return righe * ALTEZZA_SCHEDA + (righe - 1) * SPAZIO_RIGHE;
+}

@@ -1,7 +1,7 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, getTombstones, getUpdatedAt, scaffaleVuoto, TIPI, delTipo, tipiDi, tipiPresenti } from "../lib/library.js";
-import { disponi, aEtichette, criterioVoto, criterioStato } from "../lib/ripiani.js";
+import { disponi, aEtichette, criterioVoto, criterioStato, altezzaStimata, ALTEZZA_SCHEDA, COLONNA, SPAZIO_COLONNE, SPAZIO_RIGHE } from "../lib/ripiani.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { ascoltaCopertine } from "../lib/miniature.js";
 import { storageEstimate, spazioQui, misureFile, togliByteQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
@@ -119,8 +119,8 @@ function Shelf({ books, onOpenBook, localIds, idLassu, showOrder, coverV = 0, co
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(108px, 1fr))",
-        gap: "20px 16px",
+        gridTemplateColumns: `repeat(auto-fill, minmax(${COLONNA}px, 1fr))`,
+        gap: `${SPAZIO_RIGHE}px ${SPAZIO_COLONNE}px`,
         // I LIBRI SI ALLINEANO IN ALTO. Un `<button>` più basso della sua
         // riga centra il contenuto — è il browser che lo fa — e da quando la
         // didascalia compare solo sotto le copertine VERE le righe hanno
@@ -149,6 +149,14 @@ function Shelf({ books, onOpenBook, localIds, idLassu, showOrder, coverV = 0, co
               display: "block",
               textAlign: "center",
               animation: "bc-fade-in 0.4s ease-out",
+              // LA SCHEDA FUORI SCHERMO NON SI IMPAGINA (`content-visibility`):
+              // con centinaia di libri il grosso dell'apertura era il browser
+              // che disponeva schede che nessuno guardava. La larghezza la
+              // dice la griglia; l'altezza, finche' la scheda non e' stata
+              // disegnata una volta, e' una stima — poi il browser ricorda
+              // quella vera (`auto`), e scorrendo non salta niente.
+              contentVisibility: "auto",
+              containIntrinsicBlockSize: `auto ${ALTEZZA_SCHEDA}px`,
             }}
           >
             <div style={{ position: "relative", opacity: status === "abandoned" ? 0.55 : 1 }}>
@@ -344,14 +352,52 @@ function TastoCammino({ libri, tutti, riconosciuti, onCammino }) {
   );
 }
 
+// UN RIPIANO LONTANO DALLO SCHERMO NON SI COSTRUISCE: misurato con 400
+// libri, il grosso dell'apertura era React che creava schede che nessuno
+// guardava. Finche' il ripiano non arriva a una schermata e mezza di
+// distanza, al posto dei libri c'e' uno spazio alto quanto la stima delle
+// sue righe — cosi' la barra di scorrimento dice il vero — e una volta
+// costruito resta costruito. Senza IntersectionObserver si costruisce
+// subito, come prima.
+const ANTICIPO_RIPIANO = "1200px 0px";
+function useVicino() {
+  const rif = useRef(null);
+  const [vicino, setVicino] = useState(() => typeof IntersectionObserver === "undefined");
+  // PRIMA DI OGNI DISEGNO, finche' non e' costruito: un ripiano che si
+  // ritrova sullo schermo — alla nascita, o perche' una ricerca ha tolto
+  // quelli sopra di lui — non deve lampeggiare vuoto per un fotogramma
+  // aspettando l'osservatore, che risponde dopo
+  useLayoutEffect(() => {
+    if (vicino || !rif.current) return;
+    const r = rif.current.getBoundingClientRect();
+    if (r.top < window.innerHeight + 1200 && r.bottom > -1200) setVicino(true);
+  });
+  useEffect(() => {
+    if (vicino || !rif.current) return;
+    const oss = new IntersectionObserver(
+      (voci) => {
+        if (voci.some((v) => v.isIntersecting)) {
+          setVicino(true);
+          oss.disconnect();
+        }
+      },
+      { rootMargin: ANTICIPO_RIPIANO }
+    );
+    oss.observe(rif.current);
+    return () => oss.disconnect();
+  }, [vicino]);
+  return [rif, vicino];
+}
+
 // L'intestazione di un ripiano, una sola per tutti i raggruppamenti: due
 // intestazioni scritte a mano prenderebbero strade diverse alla prima
 // modifica, ed è già successo. `sotto` è l'autore di una saga — e c'è solo
 // quando l'autore è uno: le saghe scritte da venti mani, con un nome solo
 // sotto, racconterebbero una bugia.
 function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
+  const [rif, vicino] = useVicino();
   return (
-    <section style={{ marginBottom: 26 }}>
+    <section ref={rif} style={{ marginBottom: 26 }}>
       <h3
         style={{
           display: "flex",
@@ -377,7 +423,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
         {azione}
         <span style={{ fontSize: F.piccolo, color: C.muted, fontFamily: "inherit" }}>{quanti}</span>
       </h3>
-      {children}
+      {vicino ? children : <div style={{ height: altezzaStimata(quanti, rif.current?.clientWidth || window.innerWidth - 32) }} />}
     </section>
   );
 }
