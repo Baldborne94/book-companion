@@ -27,8 +27,8 @@ import { leggiObiettivi, scriviObiettivi, fondiObiettivi } from "./obiettivo.js"
 import { leggiQuaderno, scriviQuaderno, fondiQuaderno } from "./quaderno.js";
 import { leggiDaPrendere, scriviDaPrendere, fondiDaPrendere } from "./daPrendere.js";
 import { planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare } from "./syncCore.js";
-import { daTogliereDalSecchio, avanziDelSecchio, segnaSuDrive } from "./driveCore.js";
-import { giroDrive, giroMelodie, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive } from "./drive.js";
+import { daTogliereDalSecchio, avanziDelSecchio, segnaSuDrive, leggereDaLontano } from "./driveCore.js";
+import { giroDrive, giroMelodie, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto } from "./drive.js";
 import { tipiDi, tipoDi } from "./library.js";
 import { misureFile, listTrackIds } from "./bookStore.js";
 
@@ -727,6 +727,28 @@ async function dalDrive(book) {
     if (e?.status === 404) return null;
     throw e;
   }
+}
+
+// IL FILE CHE UN READER DEVE APRIRE: quello di casa se c'e'; se no, per un
+// fumetto o un PDF grossi che stanno su Drive, il file LONTANO letto a
+// pezzi (`leggereDaLontano`), che non si salva qui — riaprendolo si rilegge
+// da Drive, e chi lo vuole in tasca per il treno lo porta giu' con «Porta
+// qui i tomi»; per tutto il resto il file intero, come sempre. Il file
+// lontano porta `daLontano`, cosi' il reader sa che una pagina puo'
+// mancare perche' la chiave di Google e' scaduta, e chiedere un tocco.
+// il pezzo di un PDF: lo stesso che pdf.js chiede da se' (`rangeChunkSize`)
+const PEZZO_PDF = 64 * 1024;
+export async function fileDaLeggere(book) {
+  const local = await getFile(book.id);
+  if (local) return local;
+  const voce = driveAcceso() ? mappaDrive()[book.id] : null;
+  if (leggereDaLontano(book, voce)) {
+    if (!driveProntoOra()) await collegaDrive();
+    const f = fileRemoto(voce.id, voce.byte, book.fileType === "pdf" ? { minimo: PEZZO_PDF } : {});
+    f.daLontano = true;
+    return f;
+  }
+  return ensureLocalFile(book);
 }
 
 export async function ensureLocalFile(book) {

@@ -27,25 +27,39 @@ export async function renderPdfThumb(arrayBuffer) {
 // intervalli invece dei byte. `disableAutoFetch` e' quel che gli impedisce
 // di scaricare il resto in sottofondo, che e' proprio quel che si evita.
 export async function renderPdfThumbDa(blob) {
+  return disegnaPrima(apriAIntervalli(blob).promise);
+}
+
+// Il documento lontano aperto per leggerlo. Un pezzo che non arriva (la
+// chiave di Google scaduta a meta' lettura) lascerebbe pdf.js in attesa per
+// sempre, con la pagina bianca: si tiene da parte, si dice a chi legge
+// (`onGuasto`), e `riprova` lo richiede quando la chiave e' tornata.
+export function loadPdfDa(blob, { onGuasto } = {}) {
+  const t = apriAIntervalli(blob, onGuasto);
+  return { promise: t.promise, riprova: t.riprova };
+}
+
+function apriAIntervalli(blob, onGuasto) {
   const trasporto = new pdfjs.PDFDataRangeTransport(blob.size, null);
-  trasporto.requestDataRange = (da, a) => {
+  const falliti = [];
+  const chiedi = (da, a) =>
     blob
       .slice(da, a)
       .arrayBuffer()
       .then((b) => trasporto.onDataRange(da, new Uint8Array(b)))
-      .catch(() => {
-        /* pdf.js resta in attesa e scade da se': la copertina manca e basta */
+      .catch((e) => {
+        falliti.push([da, a]);
+        onGuasto?.(e);
       });
-  };
-  return disegnaPrima(
-    pdfjs.getDocument({
-      range: trasporto,
-      length: blob.size,
-      disableAutoFetch: true,
-      disableStream: true,
-      rangeChunkSize: 256 * 1024,
-    }).promise
-  );
+  trasporto.requestDataRange = chiedi;
+  const promise = pdfjs.getDocument({
+    range: trasporto,
+    length: blob.size,
+    disableAutoFetch: true,
+    disableStream: true,
+    rangeChunkSize: 64 * 1024,
+  }).promise;
+  return { promise, riprova: () => falliti.splice(0).forEach(([da, a]) => chiedi(da, a)) };
 }
 
 async function disegnaPrima(aperto) {

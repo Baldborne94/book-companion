@@ -228,9 +228,13 @@ export async function scaricaDaDrive(fileId) {
 // lettori chiedono pezzi piccolissimi (una testata di trenta byte, poi i
 // suoi dati): si chiede sempre almeno `LETTURA_MINIMA` e si tengono gli
 // ultimi pezzi, cosi' la testata e i dati che la seguono arrivano insieme.
+// Un PDF lo chiede piu' piccolo (`minimo`): pdf.js per arrivare a una pagina
+// attraversa l'albero delle pagine oggetto per oggetto, e ogni oggetto sta
+// fra due immagini — 256 KB per ognuno sono pagine intere scaricate per
+// leggerne tre righe.
 const LETTURA_MINIMA = 256 * 1024;
 const PEZZI_TENUTI = 8;
-export function fileRemoto(fileId, size, { prendi } = {}) {
+export function fileRemoto(fileId, size, { prendi, minimo = LETTURA_MINIMA } = {}) {
   const totale = Number(size) || 0;
   const tenuti = [];
   const scarica =
@@ -246,7 +250,7 @@ export function fileRemoto(fileId, size, { prendi } = {}) {
     if (a <= da) return new Uint8Array(0);
     const t = tenuti.find((p) => p.da <= da && p.da + p.buf.length >= a);
     if (t) return t.buf.slice(da - t.da, a - t.da);
-    const fine = Math.min(totale || a, Math.max(a, da + LETTURA_MINIMA));
+    const fine = Math.min(totale || a, Math.max(a, da + minimo));
     const p = await scarica(da, fine);
     tenuti.unshift(p);
     if (tenuti.length > PEZZI_TENUTI) tenuti.pop();
