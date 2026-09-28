@@ -195,6 +195,21 @@ export function daLiberare(libri, { misureQui, mappa, lassu = null, stato = () =
   return { voci, diversi };
 }
 
+// LEGGERE DA DRIVE SENZA SCARICARE (chiesto dal lettore: aprire un fumetto
+// da un giga voleva dire aspettarlo intero). Un fumetto e' uno zip con una
+// pagina per voce e un PDF si lascia leggere a intervalli, quindi di tutti
+// e due si puo' chiedere solo la pagina che si guarda. Si fa solo sopra
+// `LEGGI_DA_LONTANO`: un romanzo da pochi megabyte scende intero in un
+// attimo e poi si legge anche in treno, che e' meglio.
+// Fuori restano l'ePub, che epub.js vuole intero, e il CBR: la sua lettura
+// a fette cammina di testata in testata per tutto l'archivio, cioe' da
+// Drive una richiesta per pagina prima di mostrarne una.
+export const LEGGI_DA_LONTANO = 20 * 1024 * 1024;
+export function leggereDaLontano(book, voce, soglia = LEGGI_DA_LONTANO) {
+  if (!voce?.id || !(Number(voce.byte) > soglia)) return false;
+  return book?.fileType === "cbz" || book?.fileType === "pdf";
+}
+
 // LE CARTELLE DEL LETTORE HANNO GIA' UN NOME, e i libri nuovi vanno li'.
 export const CARTELLE = { libri: "Libri", fumetti: "Fumetti", manga: "Manga", musica: "Musica" };
 export const cartellaDelTipo = (tipo) => CARTELLE[tipo] || CARTELLE.libri;

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
-import { ensureLocalFile } from "../lib/sync.js";
+import { fileDaLeggere } from "../lib/sync.js";
+import { driveProntoOra } from "../lib/drive.js";
+import RicollegaDrive from "./RicollegaDrive.jsx";
 import { getCfi, setCfi, getMarks, saveMarks } from "../lib/annotations.js";
 import { setProgress, setStatus } from "../lib/library.js";
 import { loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
@@ -116,6 +118,12 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const dueRighe = useDueRighe();
   // quanto e' alta la barra in cima: il pannello della luce le sta sotto
   const [altezzaBarra, setAltezzaBarra] = useState(0);
+  // un fumetto grosso che sta su Drive si legge da li' a pagine (vedi
+  // `fileDaLeggere`): una pagina che non arriva a chiave scaduta chiede un
+  // tocco, e `riprova` la richiede quando la chiave e' tornata
+  const lontano = useRef(false);
+  const [senzaChiave, setSenzaChiave] = useState(false);
+  const [riprova, setRiprova] = useState(0);
 
   const flush = useCallback(() => {
     const s = live.current;
@@ -179,8 +187,9 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     let dead = false;
     (async () => {
       try {
-        const blob = await ensureLocalFile(book);
+        const blob = await fileDaLeggere(book);
         if (!blob) throw new Error("file mancante");
+        lontano.current = !!blob.daLontano;
         const a = await apriFumetto(blob);
         if (dead) return;
         if (!a.pagine.length) throw new Error("nessuna pagina");
@@ -232,7 +241,9 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         urlDi(page - 1).catch(() => {});
       })
       .catch(() => {
-        if (gettone.current === mio) notify?.("Questa pagina non si lascia aprire");
+        if (gettone.current !== mio) return;
+        if (lontano.current && !driveProntoOra()) setSenzaChiave(true);
+        else notify?.("Questa pagina non si lascia aprire");
       });
     flush();
     if (pages > 0 && page === pages) {
@@ -243,7 +254,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     // sveglio e il tempo di lettura si conta da qui
     if (primoGiro.current) primoGiro.current = false;
     else onAlive?.();
-  }, [status, page, pages, book.id, urlDi, sfoltisci, flush]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, page, pages, book.id, urlDi, sfoltisci, flush, riprova]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const onFs = () => setIsFs(!!document.fullscreenElement);
@@ -567,6 +578,15 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         </div>
       )}
 
+      {senzaChiave && (
+        <RicollegaDrive
+          alto={chrome ? altezzaBarra : 0}
+          onFatto={() => {
+            setSenzaChiave(false);
+            setRiprova((n) => n + 1);
+          }}
+        />
+      )}
       {status === "error" && (
         <div
           style={{
