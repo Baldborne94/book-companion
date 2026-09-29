@@ -33,6 +33,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 - `src/lib/`: moduli senza JSX. `src/components/`: sezioni e pannelli. `src/data/`: tavole (saghe, generi, mappa delle funzioni, costanti).
 - `epubjs`, `pdfjs-dist`, `jszip` si importano solo lazy.
 - PWA con `vite-plugin-pwa` in modalità **prompt**: mai reload automatico a libro aperto. Guscio Android: `docs/TWA.md`, `public/.well-known/assetlinks.json`, «Apri con» via `launchQueue` (`lib/lancio.js`).
+- L'APK lo costruisce e pubblica la CI (`apk.yml`, `scripts/apk.mjs`): `twa-manifest.json` generato dal manifest del sito, versionCode = numero di commit, chiave solo nei segreti (`TWA_KEYSTORE*`), e si pubblica solo se la firma è quella di `assetlinks.json`.
 
 ### Storage
 

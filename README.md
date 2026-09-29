@@ -81,11 +81,7 @@ npm run build      # build di produzione in dist/
 
 ### Pubblicare un APK nuovo
 
-1. Costruiscilo come in [`docs/TWA.md`](docs/TWA.md) (Bubblewrap, **sempre con lo stesso keystore**).
-2. Su GitHub: **Releases → Draft a new release**, tag `apk-vX.Y` (per esempio `apk-v1.1`), e trascina il file `app-release-signed.apk` rinominato `Grimorio-X.Y.apk` fra gli allegati.
-3. **Publish release**: il link di download qui sopra punta sempre all'ultima.
-
-Serve rifarlo solo quando cambia il guscio (nome, icona, modo di visualizzazione); gli aggiornamenti dell'app arrivano da soli.
+Lo fa GitHub da solo (`.github/workflows/apk.yml`): a ogni merge su `main` che cambia il guscio (manifest, icone, `assetlinks.json`), o da **Actions → APK → Run workflow**, l'APK si costruisce, si firma con la chiave di sempre e compare fra le **Releases**. La chiave va messa una volta fra i segreti del repository: vedi [`docs/TWA.md`](docs/TWA.md), «L'APK che si pubblica da solo».
 
 ---
 
