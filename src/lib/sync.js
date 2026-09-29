@@ -9,6 +9,7 @@ import {
   removeFileOnly,
   listFileIds,
   listCoverIds,
+  misureCopertine,
 } from "./bookStore.js";
 import {
   loadBooks, saveBooks, getProgress, setProgress, getStatus, setStatus,
@@ -27,7 +28,7 @@ import { leggiTempo, scriviTempo, fondiTempo } from "./tempo.js";
 import { leggiObiettivi, scriviObiettivi, fondiObiettivi } from "./obiettivo.js";
 import { leggiQuaderno, scriviQuaderno, fondiQuaderno } from "./quaderno.js";
 import { leggiDaPrendere, scriviDaPrendere, fondiDaPrendere } from "./daPrendere.js";
-import { leggiRigheLeggere, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare } from "./syncCore.js";
+import { leggiRigheLeggere, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare, copertineInAttesa, segnaInAttesa } from "./syncCore.js";
 import { daTogliereDalSecchio, avanziDelSecchio, segnaSuDrive, leggereDaLontano } from "./driveCore.js";
 import { giroDrive, giroMelodie, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto } from "./drive.js";
 import { tipiDi, tipoDi } from "./library.js";
@@ -476,7 +477,8 @@ export async function syncNow({ onProgress } = {}) {
   // trenta megabyte di romanzo.
   let copertineNuove = 0;
   const copertineQui = new Set(await listCoverIds().catch(() => []));
-  for (const b of copertineDaCaricare(books, { qui: copertineQui, lassu: secchio?.idCopertine })) {
+  const inAttesa = copertineInAttesa();
+  for (const b of copertineDaCaricare(books, { qui: copertineQui, lassu: secchio?.idCopertine, inAttesa })) {
     const cover = await getCover(b.id).catch(() => null);
     if (!cover) continue;
     const { error: cErr } = await sb.storage
@@ -484,8 +486,28 @@ export async function syncNow({ onProgress } = {}) {
       .upload(coverPath(uid, b.id), cover, { upsert: true });
     // una copertina che non sale non ferma niente: si riprova al giro dopo
     if (cErr && cErr.statusCode !== "409") continue;
+    segnaInAttesa(b.id, false);
+    // l'elenco del secchio e' di prima del viaggio: senza, la copertina
+    // appena salita sembrerebbe un'altra, e scenderebbe quella vecchia
+    secchio.idCopertine.add(b.id);
+    secchio.misureCopertine.set(b.id, cover.size);
     copertineNuove += 1;
     if (copertineNuove === 1) say("Mando su le copertine…");
+  }
+  // una copertina tolta qui (tornata al dorso) mentre il cloud non
+  // rispondeva: lassu' c'e' ancora quella di prima, e si toglie adesso
+  if (secchio) {
+    for (const id of copertineInAttesa()) {
+      if (copertineQui.has(id)) continue;
+      try {
+        const { error } = await sb.storage.from(BUCKET).remove([coverPath(uid, id)]);
+        if (error) continue;
+        segnaInAttesa(id, false);
+        secchio.idCopertine.delete(id);
+      } catch {
+        /* si riprova al giro dopo */
+      }
+    }
   }
 
   // I FILE AUDIO NON SALGONO PIU' (deciso dal lettore: «ogni dispositivo ha
@@ -540,7 +562,7 @@ export async function syncNow({ onProgress } = {}) {
       // arrivava mai. Il libro si tiene comunque: senza copertina si vede
       // il dorso disegnato, ed e' infinitamente meglio di niente.
       try {
-        if (!(await getCover(book.id))) {
+        if (!copertineInAttesa().has(book.id) && !(await getCover(book.id))) {
           const { data } = await sb.storage.from(BUCKET).download(coverPath(uid, book.id));
           if (data) await putCover(book.id, data);
         }
@@ -594,7 +616,13 @@ export async function syncNow({ onProgress } = {}) {
   if (secchio?.idCopertine?.size) {
     try {
       const qui = new Set(await listCoverIds());
-      const mancanti = copertineDaScaricare(next, { qui, lassu: secchio.idCopertine });
+      const mancanti = copertineDaScaricare(next, {
+        qui,
+        lassu: secchio.idCopertine,
+        misureQui: await misureCopertine(),
+        misureLassu: secchio.misureCopertine,
+        inAttesa: copertineInAttesa(),
+      });
       if (mancanti.length)
         say(`Riprendo ${mancanti.length === 1 ? "una copertina" : `${mancanti.length} copertine`}…`);
       for (const b of mancanti) {
@@ -693,6 +721,9 @@ export async function syncNow({ onProgress } = {}) {
 // lettore ha chiesto.
 export async function caricaCopertina(bookId) {
   if (!isSyncConfigured()) return false;
+  // segnata PRIMA del viaggio: se non arriva, il giro la manda dopo invece
+  // di coprirla con quella di prima che sta ancora lassu'
+  segnaInAttesa(bookId, true);
   try {
     const session = await getSession();
     if (!session) return false;
@@ -700,12 +731,14 @@ export async function caricaCopertina(bookId) {
     const uid = session.user.id;
     const cover = await getCover(bookId);
     if (!cover) {
-      await sb.storage.from(BUCKET).remove([coverPath(uid, bookId)]);
-      return true;
+      const { error } = await sb.storage.from(BUCKET).remove([coverPath(uid, bookId)]);
+      if (!error) segnaInAttesa(bookId, false);
+      return !error;
     }
     const { error } = await sb.storage
       .from(BUCKET)
       .upload(coverPath(uid, bookId), cover, { upsert: true });
+    if (!error) segnaInAttesa(bookId, false);
     return !error;
   } catch {
     return false;

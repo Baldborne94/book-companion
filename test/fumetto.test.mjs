@@ -167,6 +167,10 @@ export default async (t) => {
   t.eq("… e a destra indietro", tocco(0.9, "rtl"), "prev");
   t.eq("col mouse (nessuna fascia) le barre", tocco(null, "ltr"), "barre");
   t.eq("un NaN non e' un lato", tocco(NaN, "rtl"), "barre");
+  // nel nastro si scorre col dito: un tocco al bordo che salta di uno
+  // schermo porta via la vignetta che si leggeva (segnalato dal lettore)
+  t.eq("nel nastro il tocco a destra non scorre", tocco(0.9, "ltr", { nastro: true }), "barre");
+  t.eq("…ne' a sinistra", tocco(0.1, "ltr", { nastro: true }), "barre");
 
   // ---- il verso sta sul dispositivo, per libro -----------------------------
   const memoria = {};
