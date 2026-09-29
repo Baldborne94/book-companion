@@ -45,6 +45,7 @@ const EMPTY_ROW = {
   file_ext: null,
   deleted: false,
   updated_at: 0,
+  scheda_at: 0,
 };
 
 // PostgREST unisce le chiavi di un batch: una riga con meno colonne
@@ -61,7 +62,7 @@ const EMPTY_ROW = {
 // nullable, cioe' scriveva un null in silenzio invece di lamentarsi.
 export const normalizeRow = (row) => ({ ...EMPTY_ROW, ...row });
 
-export const rowFromLocal = (book, state, updatedAt) => ({
+export const rowFromLocal = (book, state, updatedAt, schedaAt = 0) => ({
   id: book.id,
   title: book.title || "",
   author: book.author || "",
@@ -106,6 +107,7 @@ export const rowFromLocal = (book, state, updatedAt) => ({
   file_ext: book.fileType || "epub",
   deleted: false,
   updated_at: updatedAt,
+  scheda_at: schedaAt || 0,
 });
 
 export const localFromRow = (row) => ({
@@ -190,6 +192,12 @@ export function senzaColonna(riga, nome) {
 // e `senzaColonna`, che stanno gia' qui: come loro non tocca la rete, decide
 // soltanto. E come loro si puo' provare.
 export const DEGRADE = [
+  // l'ora della scheda: senza, la scheda torna a seguire la riga intera
+  {
+    test: (m) => /scheda_at/i.test(m),
+    label: "ora della scheda",
+    apply: (rows) => rows.map(({ scheda_at, ...r }) => r),
+  },
   {
     test: (m) => /started_at|finished_at/i.test(m),
     label: "diario di lettura",
@@ -591,6 +599,77 @@ export function frasePortata(esito) {
   if (falliti) parti.push(`${falliti} non ${falliti === 1 ? "è sceso" : "sono scesi"}`);
   if (!parti.length) return "Non c'era niente da portare a casa";
   return `${parti.join(", ")}${fermato ? " — giro fermato" : ""}`;
+}
+
+// LA SCHEDA E LA LETTURA HANNO DUE OROLOGI (segnalato: saghe scritte a mano
+// sul PC, sparite dopo la sincronizzazione perche' il tablet aveva LETTO
+// quei libri dopo). La riga intera va a chi l'ha toccata per ultimo — e
+// leggere la tocca a ogni pagina — ma i campi della SCHEDA vanno a chi ha
+// cambiato la scheda per ultimo. `null` = non si sa (orologi uguali, o lassu'
+// la colonna non c'e'): decide la riga, come prima.
+export const CAMPI_SCHEDA = ["title", "author", "series", "genre", "saga", "saga_order", "rating", "notes", "impronta", "fav", "saga_tolta", "file_tolto", "tipo"];
+
+export function schedaPiuNuova(mia, sua) {
+  if (!mia || !sua || sua.scheda_at == null) return null;
+  const a = Number(mia.scheda_at) || 0;
+  const b = Number(sua.scheda_at) || 0;
+  if (a === b) return null;
+  return a > b ? "mia" : "sua";
+}
+
+// `riga` con la scheda di `fonte`: la lettura resta quella di `riga`
+export function conSchedaDi(riga, fonte) {
+  const out = { ...riga };
+  for (const k of CAMPI_SCHEDA) if (k in fonte) out[k] = fonte[k];
+  out.scheda_at = Number(fonte.scheda_at) || 0;
+  return out;
+}
+
+// LE DUE SCHEDE DI UN GIRO, decise insieme: chi sale sopra una riga che
+// lassu' ha la scheda piu' nuova sale con quella (e la si posa qui:
+// `scese`); chi scende sopra una scheda piu' nuova qui scende con la nostra
+// (e la riga fusa risale: `tenute`). `intere` sono le righe lette intere
+// lassu', `locali` quelle di qui.
+export function fondiSchede({ push = [], pull = [], intere = new Map(), locali = [] } = {}) {
+  const scese = new Map();
+  const suSu = push.map((row) => {
+    if (row.deleted) return row;
+    const r = intere.get(row.id);
+    if (!r || r.deleted || schedaPiuNuova(row, r) !== "sua") return row;
+    const fusa = conSchedaDi(row, r);
+    scese.set(row.id, fusa);
+    return fusa;
+  });
+  const qui = new Map(locali.map((r) => [r.id, r]));
+  const tenute = new Set();
+  const giu = pull.map((row) => {
+    const mia = qui.get(row.id);
+    if (schedaPiuNuova(mia, row) !== "mia") return row;
+    tenute.add(row.id);
+    return conSchedaDi(row, mia);
+  });
+  return { push: suSu, pull: giu, scese, tenute };
+}
+
+// LA SCHEDA COM'E' CAMBIATA, letta come viaggia: due libri hanno la stessa
+// scheda se darebbero gli stessi campi della scheda nella riga. Quel che
+// non viaggia (la quarta di copertina, le memorie del riconoscimento) non
+// cambia la scheda: timbrarla farebbe vincere questa copia, saga vecchia
+// compresa, sulla scheda cambiata altrove.
+const schedaDi = (b) => {
+  const r = rowFromLocal(b || {}, {}, 0);
+  return JSON.stringify(CAMPI_SCHEDA.map((k) => r[k] ?? null));
+};
+export const schedaDiversa = (a, b) => schedaDi(a) !== schedaDi(b);
+
+// LE SCHEDE CHE UN GIRO HA CAMBIATO, da timbrare: la sincronizzazione
+// manda solo i libri timbrati, e una saga trovata da sola — dal file, dal
+// catalogo, dai fratelli — senza timbro restava su questo dispositivo
+// (segnalato: undici libri messi in saga sul PC, «Fuori saga» sul tablet).
+// Un libro nuovo non e' «cambiato»: lo timbra chi lo importa.
+export function schedeCambiate(prima, dopo) {
+  const vecchie = new Map((prima || []).filter((b) => b?.id).map((b) => [b.id, b]));
+  return (dopo || []).filter((b) => b?.id && vecchie.has(b.id) && schedaDiversa(vecchie.get(b.id), b)).map((b) => b.id);
 }
 
 export function planSync({ localRows, tombstones, remoteRows }) {

@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, schedeCambiate, getTombstones, getUpdatedAt, scaffaleVuoto, TIPI, delTipo, tipiDi, tipiPresenti } from "../lib/library.js";
+import { getProgress, getStatus, combacia, vistaValida, scriviVista, timbraScheda, getTombstones, getUpdatedAt, scaffaleVuoto, TIPI, delTipo, tipiDi, tipiPresenti } from "../lib/library.js";
 import { disponi, aEtichette, criterioVoto, criterioStato, altezzaStimata, ALTEZZA_SCHEDA, COLONNA, SPAZIO_COLONNE, SPAZIO_RIGHE, inRaccolte, copertinaDi, contoRaccolta, nellOrdineScelto } from "../lib/ripiani.js";
 import { leggiPreferite, scriviPreferite, preferiteVive, segnaPreferita, puoEssereFavorita, ePreferito } from "../lib/raccoltePreferite.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
@@ -16,7 +16,7 @@ import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
 import { portaACasa, cloudUsage, localFileIds } from "../lib/sync.js";
 import {
-  frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso,
+  frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso, schedeCambiate
 } from "../lib/syncCore.js";
 import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, DriveScollegato, scegliSuDrive, dettagliFile } from "../lib/drive.js";
 import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, sceltaDalPicker, libriSotto, idRadice } from "../lib/driveCore.js";
@@ -1081,7 +1081,7 @@ export default function Library({
         const prima = booksRef.current;
         const adesso = prima.map((b) => (tocchi[b.id] ? { ...b, ...tocchi[b.id] } : b));
         const cambiati = new Set(Object.keys(campi));
-        for (const id of schedeCambiate(prima, adesso)) if (cambiati.has(id)) touchBook(id);
+        for (const id of schedeCambiate(prima, adesso)) if (cambiati.has(id)) timbraScheda(id);
         updateBooks(adesso);
         return adesso;
       };
@@ -1275,7 +1275,7 @@ export default function Library({
     });
 
     if (sistemati || rinominati || dedotte || dalTitolo || daiFile.scritte || dalCatalogo.trovate || unite.unificate) {
-      for (const id of schedeCambiate(books, conCollane)) touchBook(id);
+      for (const id of schedeCambiate(books, conCollane)) timbraScheda(id);
       updateBooks(conCollane);
     }
     const parti = [];
@@ -1786,7 +1786,7 @@ export default function Library({
       const ritrovati = esito.ritrovati || [];
       const conImpronta = new Map(ritrovati.filter((r) => r.impronta).map((r) => [r.id, r.impronta]));
       for (const r of ritrovati) {
-        touchBook(r.id);
+        timbraScheda(r.id);
       }
       // e il segno «tieni la scheda, non l'ebook» si spegne: il file è
       // appena tornato dentro quella scheda, quindi il libro si riapre —
@@ -1900,7 +1900,7 @@ export default function Library({
     // la biblioteca di ADESSO, non quella di quando il pannello si è
     // aperto: nel frattempo può essere entrato un libro
     updateBooks(booksRef.current.map((b) => (nuovi.has(b.id) ? { ...b, title: nuovi.get(b.id) } : b)));
-    for (const id of nuovi.keys()) touchBook(id);
+    for (const id of nuovi.keys()) timbraScheda(id);
     notify?.(`${nuovi.size} ${nuovi.size === 1 ? "titolo ripulito" : "titoli ripuliti"}`);
   }
 

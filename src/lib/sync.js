@@ -14,7 +14,7 @@ import {
 import {
   loadBooks, saveBooks, getProgress, setProgress, getStatus, setStatus,
   getUpdatedAt, touchBook, getTombstones, clearTombstones, getLastOpened,
-  getStarted, getFinished, setDates,
+  getStarted, getFinished, setDates, getSchedaAt, posaScheda,
 } from "./library.js";
 import {
   getCfi, setCfi, removeAnnotations, setJump,
@@ -28,7 +28,7 @@ import { leggiTempo, scriviTempo, fondiTempo } from "./tempo.js";
 import { leggiObiettivi, scriviObiettivi, fondiObiettivi } from "./obiettivo.js";
 import { leggiQuaderno, scriviQuaderno, fondiQuaderno } from "./quaderno.js";
 import { leggiDaPrendere, scriviDaPrendere, fondiDaPrendere } from "./daPrendere.js";
-import { leggiRigheLeggere, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare, copertineInAttesa, segnaInAttesa } from "./syncCore.js";
+import { leggiRigheLeggere, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare, copertineInAttesa, segnaInAttesa, fondiSchede } from "./syncCore.js";
 import { daTogliereDalSecchio, avanziDelSecchio, segnaSuDrive, leggereDaLontano } from "./driveCore.js";
 import { giroDrive, giroMelodie, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto } from "./drive.js";
 import { tipiDi, tipoDi } from "./library.js";
@@ -304,7 +304,7 @@ export async function syncNow({ onProgress } = {}) {
   say("Leggo la biblioteca…");
   const books = loadBooks();
   const localRows = books.map((b) =>
-    rowFromLocal(b, readLocalState(b.id), getUpdatedAt(b.id, b.addedAt || 1))
+    rowFromLocal(b, readLocalState(b.id), getUpdatedAt(b.id, b.addedAt || 1), getSchedaAt(b.id))
   );
   const tombstones = getTombstones();
 
@@ -371,6 +371,18 @@ export async function syncNow({ onProgress } = {}) {
     row.highlights = evid.lista;
     posaSegnalibri(row.id, segni.lista);
     posaEvidenziazioni(row.id, evid.lista);
+  }
+
+  // LA SCHEDA PIU' NUOVA LASSU' NON SI COPRE (vedi `schedaPiuNuova`): la
+  // riga sale perche' la lettura di qui e' piu' recente, ma coi campi della
+  // scheda di lassu', che si posano anche qui
+  const schede = fondiSchede({ push, pull, intere, locali: localRows });
+  push.splice(0, push.length, ...schede.push);
+  pull = schede.pull;
+  const schedeScese = schede.scese;
+  if (schedeScese.size) {
+    saveBooks(loadBooks().map((b) => (schedeScese.has(b.id) ? { ...b, ...localFromRow(schedeScese.get(b.id)).book } : b)));
+    for (const [id, riga] of schedeScese) posaScheda(id, riga.scheda_at);
   }
 
   // Finche' lo schema resta indietro il flag non si chiude: al primo invio
@@ -535,12 +547,16 @@ export async function syncNow({ onProgress } = {}) {
   let next = loadBooks();
   try {
     for (const row of pull) {
+      // e la scheda piu' nuova QUI resta: la lettura scende, la scheda no,
+      // e la riga fusa risale (vedi `fondiSchede`)
+      const tieniScheda = schede.tenute.has(row.id);
       const { book, state } = localFromRow(row);
       const i = next.findIndex((b) => b.id === book.id);
       if (i >= 0) next[i] = { ...next[i], ...book };
       else next.push(book);
       const arricchita = writeLocalState(book.id, state);
       touchBook(book.id, row.updated_at);
+      posaScheda(book.id, Number(row.scheda_at) || 0);
       // L'EBOOK TOLTO ALTROVE SE NE VA ANCHE DA QUI. «Togli l'ebook, tieni
       // la scheda» e' una scelta sul LIBRO, non su un dispositivo: se i
       // byte restassero qui, questo tablet si terrebbe un file che la sua
@@ -551,7 +567,7 @@ export async function syncNow({ onProgress } = {}) {
       // La fusione ha aggiunto roba nostra: da adesso questa riga e' piu'
       // recente di quella lassu', cosi' anche se il viaggio di ritorno
       // qui sotto non riesce, la prossima sincronizzazione la manda.
-      if (arricchita) {
+      if (arricchita || tieniScheda) {
         touchBook(book.id);
         daRimandare.push(book.id);
       }
@@ -583,7 +599,7 @@ export async function syncNow({ onProgress } = {}) {
           .map((id) => next.find((b) => b.id === id))
           .filter(Boolean)
           .map((b) => ({
-            ...normalizeRow(rowFromLocal(b, readLocalState(b.id), getUpdatedAt(b.id, b.addedAt || 1))),
+            ...normalizeRow(rowFromLocal(b, readLocalState(b.id), getUpdatedAt(b.id, b.addedAt || 1), getSchedaAt(b.id))),
             user_id: uid,
           }));
         if (rows.length) await upsertBooks((p) => sb.from("books").upsert(p), rows);

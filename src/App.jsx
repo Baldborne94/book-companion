@@ -26,7 +26,7 @@ import SezioneAnticipo from "./components/SezioneAnticipo.jsx";
 import SezioneDizionario from "./components/SezioneDizionario.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
-import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook, getProgress, getUpdatedAt } from "./lib/library.js";
+import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, timbraScheda, getProgress, getUpdatedAt } from "./lib/library.js";
 import { removeBookData, removeFileOnly, requestPersistence } from "./lib/bookStore.js";
 import { cercaNuovaVersione } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
@@ -43,7 +43,7 @@ import { isSyncConfigured } from "./lib/supabase.js";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
 import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive } from "./lib/drive.js";
-import { spiegaSync } from "./lib/syncCore.js";
+import { spiegaSync, schedaDiversa } from "./lib/syncCore.js";
 import { ebookRitrovati } from "./lib/driveCore.js";
 import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
@@ -976,7 +976,7 @@ export default function App() {
   function scriviNumeriCammino(campi) {
     if (!campi?.size) return;
     updateBooks(books.map((b) => (campi.has(b.id) ? { ...b, ...campi.get(b.id) } : b)));
-    for (const id of campi.keys()) touchBook(id);
+    for (const id of campi.keys()) timbraScheda(id);
     setCammino(null);
     notify(`${campi.size} ${campi.size === 1 ? "volume messo" : "volumi messi"} nell'ordine della guida`);
     runSync.current?.(true);
@@ -993,7 +993,7 @@ export default function App() {
     const ids = new Set(ebookRitrovati(libri, mappaDrive()));
     if (!ids.size) return;
     const next = libri.map((b) => (ids.has(b.id) ? { ...b, fileTolto: false } : b));
-    for (const id of ids) touchBook(id);
+    for (const id of ids) timbraScheda(id);
     updateBooks(next);
     notify(
       ids.size === 1
@@ -1113,8 +1113,12 @@ export default function App() {
     return () => { alive = false; };
   }, []);
 
+  // si timbra solo quel che viaggia: la quarta di copertina scaricata
+  // aprendo la scheda non e' una scheda cambiata, e timbrarla farebbe
+  // vincere questa copia (saga vecchia compresa) su quella cambiata altrove
   function handleSaveMeta(patch) {
-    touchBook(patch.id);
+    const prima = books.find((b) => b.id === patch.id);
+    if (schedaDiversa(prima, { ...prima, ...patch })) timbraScheda(patch.id);
     updateBooks(books.map((b) => (b.id === patch.id ? { ...b, ...patch } : b)));
   }
 
@@ -1164,7 +1168,7 @@ export default function App() {
       notify(`«${b.title}» tolto dal tablet: resta su Google Drive 🗂`);
       return;
     }
-    touchBook(id);
+    timbraScheda(id);
     updateBooks(books.map((x) => (x.id === id ? { ...x, fileTolto: true } : x)));
     try {
       await removeFileOnly(id);
