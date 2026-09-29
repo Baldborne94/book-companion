@@ -26,7 +26,8 @@ import SezioneAnticipo from "./components/SezioneAnticipo.jsx";
 import SezioneDizionario from "./components/SezioneDizionario.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
-import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook, getProgress, getUpdatedAt } from "./lib/library.js";
+import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook, getProgress, getUpdatedAt, leggiVista, scriviVista } from "./lib/library.js";
+import { vistaPerRaccolta } from "./lib/raccoltePreferite.js";
 import { removeBookData, removeFileOnly, requestPersistence } from "./lib/bookStore.js";
 import { cercaNuovaVersione } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
@@ -820,6 +821,9 @@ export default function App() {
   // libreria deve ritrovarsi intera
   const navigate = (id) => {
     setFocusSaga(null);
+    // uscendo dalla Libreria la raccolta aperta si chiude: rientrando si
+    // riparte da tutte le raccolte
+    if (id !== "library") setRaccolta(null);
     setSection(id);
   };
   const [books, setBooks] = useState(() => loadBooks());
@@ -1503,6 +1507,13 @@ export default function App() {
             onDiary={() => setDiaryOpen(true)}
             onQuaderno={() => setQuadernoOpen(true)}
             onDaPrendere={() => setPrendereOpen(true)}
+            // una raccolta preferita si apre in Libreria, a raccolte e col
+            // raggruppamento in cui quella raccolta esiste
+            onApriRaccolta={(id) => {
+              scriviVista(vistaPerRaccolta(id, leggiVista({})));
+              setRaccolta(id);
+              navigate("library");
+            }}
           />
         )}
         {section === "library" && (
