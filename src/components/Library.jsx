@@ -2,6 +2,7 @@ import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, getTombstones, getUpdatedAt, scaffaleVuoto, TIPI, delTipo, tipiDi, tipiPresenti } from "../lib/library.js";
 import { disponi, aEtichette, criterioVoto, criterioStato, altezzaStimata, ALTEZZA_SCHEDA, COLONNA, SPAZIO_COLONNE, SPAZIO_RIGHE, inRaccolte, copertinaDi, contoRaccolta } from "../lib/ripiani.js";
+import { leggiPreferite, scriviPreferite, preferiteVive, segnaPreferita, puoEssereFavorita, ePreferito } from "../lib/raccoltePreferite.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { ascoltaCopertine } from "../lib/miniature.js";
 import { storageEstimate, spazioQui, misureFile, togliByteQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
@@ -38,6 +39,8 @@ const FILTERS = [
   { id: "reading", label: "In lettura" },
   { id: "read", label: "Letti" },
   { id: "abandoned", label: "Abbandonati" },
+  // i libri col cuore, e quelli delle raccolte col cuore (`ePreferito`)
+  { id: "fav", label: "♥ Preferiti" },
 ];
 
 // Il titolo per primo perché è l'ordine di partenza: dentro un ripiano
@@ -428,7 +431,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   );
 }
 
-function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -544,19 +547,48 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, cov
   // il suo ripiano com'era sullo scaffale, coi cicli e i numeri.
   const dentro = aperta != null ? ripiani.find((r) => r.id === aperta) : null;
   if (dentro) {
+    const amata = preferite.has(dentro.id);
     return (
       <>
-        <button
-          onClick={() => onApri(null)}
-          style={{ display: "inline-flex", alignItems: "center", gap: 8, minHeight: 44, padding: "0 14px", marginBottom: 12, borderRadius: R.tondo, border: `1px solid ${C.border}`, color: C.muted, fontSize: F.nota }}
-        >
-          ‹ Tutte le raccolte
-        </button>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+          <button
+            onClick={() => onApri(null)}
+            style={{ display: "inline-flex", alignItems: "center", gap: 8, minHeight: 44, padding: "0 14px", borderRadius: R.tondo, border: `1px solid ${C.border}`, color: C.muted, fontSize: F.nota }}
+          >
+            ‹ Tutte le raccolte
+          </button>
+          {/* il cuore di una raccolta: solo saghe e autori (vedi
+              `puoEssereFavorita`), lo stesso gesto della scheda del libro */}
+          {puoEssereFavorita(dentro.id) && (
+            <button
+              onClick={() => onCuore?.(dentro, !amata)}
+              aria-pressed={amata}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                minHeight: 44,
+                padding: "0 14px",
+                borderRadius: R.tondo,
+                border: `1px solid ${amata ? C.accent : C.border}`,
+                background: amata ? `${C.accent}1f` : "transparent",
+                color: amata ? C.accent : C.muted,
+                fontSize: F.nota,
+              }}
+            >
+              {amata ? "♥ Fra i preferiti" : "♡ Metti fra i preferiti"}
+            </button>
+          )}
+        </div>
         {mostra(dentro)}
       </>
     );
   }
-  const { raccolte: cartelle, sciolti } = inRaccolte(ripiani);
+  const divise = inRaccolte(ripiani);
+  // le preferite in cima, nell'ordine di sempre fra loro: sono quelle a cui
+  // si torna, e non si devono cercare
+  const cartelle = [...divise.raccolte.filter((r) => preferite.has(r.id)), ...divise.raccolte.filter((r) => !preferite.has(r.id))];
+  const { sciolti } = divise;
   return (
     <>
       {cartelle.length > 0 && (
@@ -570,7 +602,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, cov
           }}
         >
           {cartelle.map((r) => (
-            <Raccolta key={r.id} r={r} onApri={() => onApri(r.id)} coverV={coverV} conCopertina={conCopertina} />
+            <Raccolta key={r.id} r={r} amata={preferite.has(r.id)} onApri={() => onApri(r.id)} coverV={coverV} conCopertina={conCopertina} />
           ))}
         </div>
       )}
@@ -582,7 +614,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, cov
 // UNA RACCOLTA: la copertina del volume da cui ripartire (`copertinaDi`),
 // due dorsi dietro che dicono «qui dentro ce n'e' piu' d'uno» — il segno
 // delle cartelle del Kindle — il numero dei volumi, e quanti ne hai letti.
-function Raccolta({ r, onApri, coverV, conCopertina }) {
+function Raccolta({ r, amata = false, onApri, coverV, conCopertina }) {
   const b = copertinaDi(r.libri, getStatus);
   const { quanti, letti } = contoRaccolta(r.libri, getStatus);
   if (!b) return null;
@@ -597,6 +629,16 @@ function Raccolta({ r, onApri, coverV, conCopertina }) {
         <div aria-hidden style={{ position: "absolute", top: 5, left: "7%", right: "7%", height: 3, borderRadius: R.minimo, background: C.muted }} />
         <div style={{ position: "relative" }}>
           <BookCover book={b} version={coverV} haCopertina={conCopertina ? conCopertina.has(b.id) : undefined} />
+          {/* un segno, non un tasto: un bersaglio minuscolo sopra una
+              copertina da toccare si prende per sbaglio */}
+          {amata && (
+            <span
+              aria-label="fra i preferiti"
+              style={{ position: "absolute", left: 6, top: 6, padding: "1px 6px", borderRadius: R.tondo, fontSize: F.minuscolo, background: `${C.bg}e6`, border: `1px solid ${C.accent}88`, color: C.accent }}
+            >
+              ♥
+            </span>
+          )}
           <span
             style={{
               // in basso a DESTRA: a sinistra il dorso disegnato scrive
@@ -703,6 +745,15 @@ export default function Library({
   const [group, setGroup] = useState(vista.current.group);
   // scaffale coi libri esposti o raccolte: si ricorda come il resto
   const [aspetto, setAspetto] = useState(vista.current.aspetto);
+  // IL CUORE DELLE RACCOLTE si rilegge a ogni disegno: lo scrive anche la
+  // sincronizzazione, e una copia tenuta qui resterebbe quella di prima
+  const [, setCuori] = useState(0);
+  const preferite = preferiteVive(leggiPreferite());
+  const cuore = (r, si) => {
+    scriviPreferite(segnaPreferita(leggiPreferite(), r.id, si, { nome: r.nome }));
+    setCuori((n) => n + 1);
+    notify?.(si ? `♥ «${r.nome}» fra i preferiti` : `«${r.nome}» non è più fra i preferiti`);
+  };
   // il pannello della disposizione resta aperto finché non lo richiudi:
   // le scelte sono DUE, e chiudersi al primo tocco vorrebbe dire riaprirlo
   // per fare la seconda. Non si ricorda però fra un'apertura e l'altra
@@ -1921,7 +1972,7 @@ export default function Library({
 
   const visible = books
     .filter((b) => combacia(b, cercata))
-    .filter((b) => filter === "all" || getStatus(b.id) === filter)
+    .filter((b) => filter === "all" || (filter === "fav" ? ePreferito(b, preferite) : getStatus(b.id) === filter))
     .filter((b) => delTipo(b, tipo, tipi))
     .sort((a, b) =>
       sort === "title"
@@ -1949,6 +2000,8 @@ export default function Library({
         raccolte={aspetto === "raccolte" && !cercata.trim()}
         aperta={raccolta}
         onApri={onRaccolta}
+        preferite={preferite}
+        onCuore={cuore}
       />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps

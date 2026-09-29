@@ -10,6 +10,8 @@ import { raccogli, conta, rigaGiardino } from "../lib/citazioni.js";
 import { leggiQuaderno, rigaQuaderno } from "../lib/quaderno.js";
 import { leggiDaPrendere, proposte, rigaDaPrendere } from "../lib/daPrendere.js";
 import { nextInSaga, prossimiPassi, perchePassoTace, frasePassoTace, inCorsoESeguiti } from "../lib/saga.js";
+import { leggiPreferite, libriDellaRaccolta } from "../lib/raccoltePreferite.js";
+import { copertinaDi } from "../lib/ripiani.js";
 import BookCover from "./BookCover.jsx";
 import { BookmarkIcon, LeafIcon, SparkIcon, StarIcon } from "./Icons.jsx";
 import EmptyState from "./EmptyState.jsx";
@@ -91,7 +93,7 @@ const fila = (wide) => ({
   flexWrap: wide ? "wrap" : "nowrap",
 });
 
-export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onQuaderno, onDaPrendere }) {
+export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onQuaderno, onDaPrendere, onApriRaccolta }) {
   // chi ha il dorso disegnato lo sa solo `BookCover`: lo dice qui, così i
   // preferiti non ristampano un titolo che sta già sulla copertina
   const [dorsi, setDorsi] = useState({});
@@ -203,6 +205,16 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
   // sceglierla tocca al lettore (chiesto: «metto io quali sono i miei
   // preferiti»). Il cuore si mette nella scheda del libro, accanto alla
   // valutazione.
+  // E LE RACCOLTE COL CUORE (vedi `lib/raccoltePreferite.js`) aprono la
+  // fila: una saga amata e' la cosa a cui si torna piu' spesso, e dentro
+  // la cartella c'e' gia' il volume da cui ripartire. Una raccolta che non
+  // ha piu' libri qui (tolti, o su un altro dispositivo) non si mostra.
+  const raccolteFav = leggiPreferite()
+    .filter((v) => !v.deleted)
+    .map((v) => ({ id: v.id, nome: v.nome || v.id.split(":").slice(1).join(":"), libri: libriDellaRaccolta(books, v.id) }))
+    .filter((r) => r.libri.length)
+    .sort((a, b) => a.nome.localeCompare(b.nome, "it"));
+
   const favorites = books
     .filter((b) => b.fav)
     .sort((a, b) => (b.rating || 0) - (a.rating || 0) || (a.sagaOrder ?? Infinity) - (b.sagaOrder ?? Infinity));
@@ -506,7 +518,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
       </div>
 
       <SectionTitle>I tuoi preferiti</SectionTitle>
-      {favorites.length > 0 ? (
+      {favorites.length + raccolteFav.length > 0 ? (
         <>
           <div
             style={
@@ -523,6 +535,32 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
                 : { ...fila(false), alignItems: "flex-start" }
             }
           >
+            {raccolteFav.map((r) => {
+              const b = copertinaDi(r.libri, statoDi);
+              return (
+                <button
+                  key={r.id}
+                  onClick={() => onApriRaccolta?.(r.id)}
+                  aria-label={`Raccolta ${r.nome}: ${r.libri.length} ${r.libri.length === 1 ? "volume" : "volumi"}`}
+                  style={{ flexShrink: 0, width: tuttiFav ? "auto" : px(96), textAlign: "center" }}
+                >
+                  {/* i due dorsi dietro: e' una cartella, non un libro */}
+                  <div style={{ position: "relative", paddingTop: 8 }}>
+                    <div aria-hidden style={{ position: "absolute", top: 0, left: "14%", right: "14%", height: 3, borderRadius: R.minimo, background: C.border }} />
+                    <div aria-hidden style={{ position: "absolute", top: 4, left: "7%", right: "7%", height: 3, borderRadius: R.minimo, background: C.muted }} />
+                    <div style={{ position: "relative" }}>
+                      <BookCover book={b} />
+                      <span style={{ position: "absolute", right: 5, bottom: 5, minWidth: 22, padding: "1px 6px", borderRadius: R.tondo, fontSize: F.minuscolo, fontWeight: 700, background: `${C.bg}e6`, border: `1px solid ${C.accent}88`, color: C.accent }}>
+                        {r.libri.length}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: F.piccolo, lineHeight: 1.25, color: C.text, fontWeight: 600, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                    {r.nome}
+                  </div>
+                </button>
+              );
+            })}
             {favInVista.map((b) => (
               <button
                 key={b.id}
@@ -584,7 +622,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
             color: C.muted,
           }}
         >
-          Qui vivranno i tuoi libri preferiti: apri la scheda di un libro e tocca ♡ accanto alla valutazione.
+          Qui vivranno i tuoi preferiti: apri la scheda di un libro e tocca ♡ accanto alla valutazione, oppure apri una raccolta in Libreria e tocca «♡ Metti fra i preferiti».
         </div>
       )}
     </div>

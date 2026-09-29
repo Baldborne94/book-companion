@@ -1,5 +1,6 @@
 import { fondi } from "./glossarioMio.js";
 import { fondiRacconti } from "./racconti.js";
+import { fondiPreferite } from "./raccoltePreferite.js";
 import { fondiTempo } from "./tempo.js";
 import { fondiObiettivi } from "./obiettivo.js";
 import { fondiQuaderno } from "./quaderno.js";
@@ -731,6 +732,8 @@ export function mergePrefs(local, remote) {
     quaderno: fondiQuaderno(local.quaderno, remote?.quaderno),
     // i libri da prendere: stessa forma e stessa regola del quaderno
     da_prendere: fondiDaPrendere(local.da_prendere, remote?.da_prendere),
+    // il cuore delle raccolte: voce per voce, con le lapidi
+    raccolte_fav: fondiPreferite(local.raccolte_fav, remote?.raccolte_fav),
     updated_at: Math.max(local.updated_at || 0, remote?.updated_at || 0),
   };
   const eq = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -750,6 +753,7 @@ export function mergePrefs(local, remote) {
       !eq(merged.obiettivi, fondiObiettivi(local.obiettivi)) ||
       !eq(merged.quaderno, fondiQuaderno(local.quaderno)) ||
       !eq(merged.da_prendere, fondiDaPrendere(local.da_prendere)) ||
+      !eq(merged.raccolte_fav, fondiPreferite(local.raccolte_fav)) ||
       merged.last_opened !== (local.last_opened || null),
     pushRemote:
       !remote ||
@@ -762,6 +766,7 @@ export function mergePrefs(local, remote) {
       !eq(merged.obiettivi, fondiObiettivi(remote.obiettivi)) ||
       !eq(merged.quaderno, fondiQuaderno(remote.quaderno)) ||
       !eq(merged.da_prendere, fondiDaPrendere(remote.da_prendere)) ||
+      !eq(merged.raccolte_fav, fondiPreferite(remote.raccolte_fav)) ||
       merged.last_opened !== (remote.last_opened || null),
   };
 }

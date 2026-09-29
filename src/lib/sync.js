@@ -22,6 +22,7 @@ import {
 import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, saveFavorites, getListsRaw, writeLists, loadTrack, dropTrack } from "./music.js";
 import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
 import { raccontiLetti, scriviRacconti } from "./racconti.js";
+import { leggiPreferite, scriviPreferite, fondiPreferite } from "./raccoltePreferite.js";
 import { leggiTempo, scriviTempo, fondiTempo } from "./tempo.js";
 import { leggiObiettivi, scriviObiettivi, fondiObiettivi } from "./obiettivo.js";
 import { leggiQuaderno, scriviQuaderno, fondiQuaderno } from "./quaderno.js";
@@ -227,6 +228,7 @@ function localPrefs() {
     obiettivi: leggiObiettivi(),
     quaderno: leggiQuaderno(),
     da_prendere: leggiDaPrendere(),
+    raccolte_fav: leggiPreferite(),
     last_opened: getLastOpened(),
     updated_at: parseInt(localStorage.getItem(PREFS_UPD_KEY), 10) || 0,
   };
@@ -629,6 +631,8 @@ export async function syncNow({ onProgress } = {}) {
     scriviObiettivi(fondiObiettivi(leggiObiettivi(), merged.obiettivi));
     scriviQuaderno(fondiQuaderno(leggiQuaderno(), merged.quaderno));
     scriviDaPrendere(fondiDaPrendere(leggiDaPrendere(), merged.da_prendere));
+    // il cuore delle raccolte: rifuso con quel che c'e' adesso, come la lista
+    scriviPreferite(fondiPreferite(leggiPreferite(), merged.raccolte_fav));
     if (merged.last_opened) localStorage.setItem("bc_lastopen", merged.last_opened);
   }
   if (pushRemote) {
