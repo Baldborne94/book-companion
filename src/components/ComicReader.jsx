@@ -34,6 +34,7 @@ import {
   disegnaCoppia,
 } from "../lib/fumetto.js";
 import { vuoto } from "../lib/pdfCrop.js";
+import { conAttesa } from "../lib/misuraPagine.js";
 import { doppioTocco, limita, zoomAttorno } from "../lib/tavola.js";
 import { apertaATuttoSchermo, serveTastoSchermo } from "../lib/schermoIntero.js";
 import BookCover from "./BookCover.jsx";
@@ -59,6 +60,8 @@ const SCORSA = 60;
 // quante pagine tenere pronte attorno a quella aperta: in doppia pagina la
 // coppia dopo e quella prima sono quattro
 const VICINE = 4;
+// quanto si aspetta la misura dei bordi prima di mostrare la prima pagina
+const MISURA_MAX = 4000;
 
 function Panel({ title, onClose, children }) {
   return (
@@ -270,17 +273,30 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         live.current.page = paginaDaAprire(startCfi, getCfi(book.id), n);
         setPages(n);
         setPage(live.current.page);
+        // la pagina da cui si riparte si chiede SUBITO, insieme alle pagine
+        // della misura qui sotto: in fila dopo di loro era un viaggio in piu'
+        urlDi(live.current.page).catch(() => {});
         // i bordi si misurano PRIMA di mostrare la prima pagina, cosi' la
         // tavola compare gia' della misura giusta invece di assestarsi
         // sotto gli occhi — una volta nella vita del libro
+        //
+        // MA LA MISURA HA UN TETTO (`MISURA_MAX`): da Drive le cinque pagine
+        // sono cinque viaggi in rete, e una che non torna teneva il lettore
+        // fermo su «Apro il tomo…» per sempre (segnalato: «c'e' un motivo per
+        // cui non riesco a leggere i manga?»). Oltre il tetto la tavola
+        // compare coi bordi, e la misura, quando arriva, li toglie.
         if (leggiBordi(book.id) === null) {
-          const misure = await misuraBordi(a);
+          const misura = misuraBordi(a).then((misure) => {
+            const b = bordiDaMisure(misure);
+            // una misura che non ha guardato nessuna pagina non si scrive:
+            // si riprova alla prossima apertura
+            if (misure.some(Boolean)) scriviBordi(book.id, b);
+            return b;
+          });
+          const b = await conAttesa(misura, MISURA_MAX).catch(() => null);
           if (dead) return;
-          const b = bordiDaMisure(misure);
-          // una misura che non ha guardato nessuna pagina non si scrive:
-          // si riprova alla prossima apertura
-          if (misure.some(Boolean)) scriviBordi(book.id, b);
-          setBordi(b);
+          if (b) setBordi(b);
+          else misura.then((x) => { if (!dead) setBordi(x); }).catch(() => {});
         }
         setStatusUi("ready");
       } catch {

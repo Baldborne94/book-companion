@@ -33,12 +33,19 @@ const LARGHEZZA = 180;
 export async function misuraBordi(a) {
   const tela = document.createElement("canvas");
   const ctx = tela.getContext("2d", { willReadFrequently: true });
+  // LE CINQUE PAGINE SI CHIEDONO INSIEME: da Google Drive ogni lettura e'
+  // un viaggio in rete, e una dopo l'altra erano cinque attese in fila
+  // prima di vedere la prima pagina. Il disegno resta in fila (la tela e'
+  // una sola), ed e' la parte che non aspetta nessuno.
+  const numeri = pagineDaMisurare(a.pagine.length);
+  const letti = await Promise.all(numeri.map((n) => a.leggi(n - 1).catch(() => null)));
   const misure = [];
-  for (const n of pagineDaMisurare(a.pagine.length)) {
+  for (let k = 0; k < numeri.length; k++) {
+    const n = numeri[k];
     let url = null;
     try {
-      const bytes = await a.leggi(n - 1);
-      url = URL.createObjectURL(new Blob([bytes], { type: tipoImmagine(a.pagine[n - 1]) || "image/jpeg" }));
+      if (!letti[k]) throw new Error("pagina non letta");
+      url = URL.createObjectURL(new Blob([letti[k]], { type: tipoImmagine(a.pagine[n - 1]) || "image/jpeg" }));
       const img = new Image();
       img.src = url;
       await img.decode();
