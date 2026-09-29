@@ -83,9 +83,28 @@ export default async function (t) {
     const altra = riga({ saga: "Altra", updated_at: 1100 });
     t.eq("due saghe diverse non si mescolano", fondiSchede({ push: [altra], intere: new Map([["a", pcVecchio]]) }).push[0].saga, "Altra");
     t.eq("e se tutt'e due sono vuote non succede niente", fondiSchede({ push: [tabletVecchio], intere: new Map([["a", riga({ saga: "" })]]) }).scese.size, 0);
-    // e dove un orologio sa, decide l'orologio: la scheda piu' nuova col vuoto vince
-    const svuotata = riga({ saga: "", updated_at: 1100, scheda_at: 1100 });
-    t.eq("una scheda piu' nuova non si riempie", fondiSchede({ push: [svuotata], intere: new Map([["a", pcVecchio]]) }).push[0].saga, "");
+    // IL CASO CHE LA PRIMA CURA NON PRENDEVA (il lettore ha dovuto
+    // riscriverle a mano): la scheda del tablet e' piu' nuova per un altro
+    // campo (l'ebook ritrovato su Drive), e la sua saga e' un vuoto che
+    // nessuno ha scelto
+    const ritrovato = riga({ saga: "", file_tolto: false, updated_at: 1100, scheda_at: 1100 });
+    const su2 = fondiSchede({ push: [ritrovato], intere: new Map([["a", pcVecchio]]) });
+    t.eq("una scheda piu' nuova col vuoto non cancella la saga", su2.push[0].saga, "Miti di Cthulhu");
+    t.eq("…ma il resto della scheda piu' nuova resta suo", su2.push[0].scheda_at, 1100);
+    t.eq("…e la saga si posa anche qui", su2.scese.get("a")?.saga, "Miti di Cthulhu");
+    const giu2 = fondiSchede({ pull: [ritrovato], locali: [pcVecchio] });
+    t.eq("…anche scendendo sul PC", `${giu2.pull[0].saga} ${giu2.pull[0].scheda_at}`, "Miti di Cthulhu 1100");
+    t.c("…e la riga risale con la saga", giu2.tenute.has("a"));
+    // e dall'altro lato: il PC sale sopra la scheda piu' nuova di lassu', vuota
+    const su3 = fondiSchede({ push: [pcVecchio], intere: new Map([["a", ritrovato]]) });
+    t.eq("il PC sale con la scheda di lassu' ma tiene la sua saga", `${su3.push[0].saga} ${su3.push[0].scheda_at}`, "Miti di Cthulhu 1100");
+    // una saga TOLTA a mano, piu' nuova, vince come ogni scheda
+    const toltaNuova = riga({ saga: "", saga_tolta: true, updated_at: 1100, scheda_at: 1100 });
+    t.eq("una saga tolta piu' nuova resta tolta", fondiSchede({ push: [toltaNuova], intere: new Map([["a", pcVecchio]]) }).push[0].saga, "");
+    t.eq("…e scende tolta sul PC", fondiSchede({ pull: [toltaNuova], locali: [pcVecchio] }).pull[0].saga_tolta, true);
+    // e dove la scheda piu' nuova ha la sua saga, vince la sua
+    const cambiata = riga({ saga: "Altra ancora", updated_at: 1100, scheda_at: 1100 });
+    t.eq("due saghe: vince la scheda piu' nuova", fondiSchede({ pull: [cambiata], locali: [pcVecchio] }).pull[0].saga, "Altra ancora");
   }
   {
     // una lapide non si fonde, e un libro nuovo nemmeno

@@ -668,10 +668,11 @@ function Raccolta({ r, amata = false, onApri, coverV, conCopertina }) {
           fontSize: F.nota,
           color: C.text,
           lineHeight: 1.2,
-          display: "-webkit-box",
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
+          // IL NOME INTERO (chiesto dal lettore: «far vedere il nome per
+          // intero delle saghe e non tagliarli»): due righe troncavano «The
+          // Blacktongue…», «The Realm of the…», e il nome di una raccolta e'
+          // l'unica cosa che la distingue da un'altra con la stessa faccia
+          overflowWrap: "anywhere",
         }}
       >
         {r.nome}
