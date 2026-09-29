@@ -833,6 +833,9 @@ export default function App() {
   const [mappaOpen, setMappaOpen] = useState(false);
   // il cammino di una saga: la guida intera con dentro i tuoi volumi
   const [cammino, setCammino] = useState(null);
+  // la raccolta aperta in Libreria (vedi `Grouped`): qui perche' e' un
+  // livello del tasto indietro
+  const [raccolta, setRaccolta] = useState(null);
   const [toast, setToast] = useState(null);
   const [music, setMusic] = useState({ current: null, playing: false, timerEnd: null });
   const [syncOpen, setSyncOpen] = useState(false);
@@ -1244,6 +1247,9 @@ export default function App() {
   const chiudeIlLettore = useRef(null);
   const livelli = [];
   if (section !== "home") livelli.push(() => navigate("home"));
+  // la raccolta aperta in Libreria: l'indietro torna a tutte le raccolte
+  // prima di lasciare la Libreria
+  if (section === "library" && raccolta != null) livelli.push(() => setRaccolta(null));
   // prima della scheda, che il cammino sa aprire: l'ultimo livello si
   // chiude per primo, e con la scheda aperta sopra dev'essere lei ad
   // andarsene col primo indietro
@@ -1527,6 +1533,8 @@ export default function App() {
             }}
             spazioCambiato={spazioCambiato}
             onCammino={setCammino}
+            raccolta={raccolta}
+            onRaccolta={setRaccolta}
             // il controllo aggiornamenti col dito: qui siamo in Libreria,
             // nessun libro aperto, quindi installare subito e' lecito —
             // e' l'unico posto dove il reload non costa niente

@@ -248,12 +248,19 @@ export function scriviVista(vista) {
 // sta per primo fra gli ordinamenti proprio perche' e' l'ordine di
 // partenza). Le voci si passano da fuori: le conosce la Libreria, e cosi'
 // un test le finge invece di importare un componente.
+//
+// E L'ASPETTO — lo scaffale coi libri tutti esposti, o le raccolte — si
+// ricorda insieme (chiesto dal lettore: «quando seleziono una modalita' mi
+// tieni quella ogni volta che apro l'applicazione»). La partenza e' lo
+// scaffale, che e' come la Libreria e' sempre stata.
+export const ASPETTI = ["scaffale", "raccolte"];
 export function vistaValida(gruppi, ordini) {
-  const dflt = { group: gruppi[0].id, sort: ordini[0].id };
+  const dflt = { group: gruppi[0].id, sort: ordini[0].id, aspetto: ASPETTI[0] };
   const v = leggiVista(dflt);
   return {
     group: gruppi.some((g) => g.id === v.group) ? v.group : dflt.group,
     sort: ordini.some((s) => s.id === v.sort) ? v.sort : dflt.sort,
+    aspetto: ASPETTI.includes(v.aspetto) ? v.aspetto : dflt.aspetto,
   };
 }
 

@@ -93,6 +93,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 ### Ingresso e Libreria
 
 - Ingresso su una colonna: libro in mano, riga di oggi, «Stai leggendo anche» e «Il seguito delle tue saghe» in due file (`inCorsoESeguiti`: un libro in lettura non è un seguito), appena arrivati (`appenaArrivati`: 14 giorni, niente libri chiusi, niente doppioni sopra), stanze 2×2, preferiti (cuore, `fav`). Una sezione che si chiama come un filtro contiene ciò che contiene il filtro.
+- Libreria a «Scaffale» o a «Raccolte» (`inRaccolte`, `copertinaDi`): ogni ripiano una cartella con la copertina del volume da cui ripartire, i volumi soli sciolti sotto; con una ricerca in corso niente cartelle. La scelta si ricorda in `bc_vista` (`aspetto`); la raccolta aperta sta in App, perché è un livello del tasto indietro.
 - Scaffale a ripiani (`disponi` in `ripiani.js`): saga o autore, cicli e capitoli come sotto-ripiani, ripiani lontani non costruiti (`useVicino`), miniature e non copertine intere.
 - Un tasto non promette ciò che non può dare; gli zeri non si dicono; un avviso sta accanto al tasto che lo risolve.
 

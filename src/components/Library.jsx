@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, getTombstones, getUpdatedAt, scaffaleVuoto, TIPI, delTipo, tipiDi, tipiPresenti } from "../lib/library.js";
-import { disponi, aEtichette, criterioVoto, criterioStato, altezzaStimata, ALTEZZA_SCHEDA, COLONNA, SPAZIO_COLONNE, SPAZIO_RIGHE } from "../lib/ripiani.js";
+import { disponi, aEtichette, criterioVoto, criterioStato, altezzaStimata, ALTEZZA_SCHEDA, COLONNA, SPAZIO_COLONNE, SPAZIO_RIGHE, inRaccolte, copertinaDi, contoRaccolta } from "../lib/ripiani.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { ascoltaCopertine } from "../lib/miniature.js";
 import { storageEstimate, spazioQui, misureFile, togliByteQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
@@ -428,7 +428,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   );
 }
 
-function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, coverV = 0, conCopertina = null, riconosciuti, onCammino }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -444,81 +444,6 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, cov
   // tavola il suo capitolo scivolava in fondo.
   const parteDi = riconosciuti ? (b) => capitoloDi(riconosciuti.get(b.id)) : null;
   const criterio = GROUPS.find((g) => g.id === group)?.per;
-  if (criterio) {
-    return disponi(books, null, criterio, sort, parteDi).map((r) => (
-      <Ripiano
-        key={r.id}
-        nome={r.nome}
-        sotto={r.autore}
-        quanti={r.libri.length}
-        spento={r.tipo === "soli"}
-        azione={<TastoCammino libri={r.libri} tutti={tutti} riconosciuti={riconosciuti} onCammino={onCammino} />}
-      >
-        {r.cicli ? (
-          // I CICLI DENTRO LA SAGA (chiesto dal lettore): un sotto-ripiano
-          // per ciclo, nell'ordine in cui la storia li incontra. Il nome
-          // del ciclo sta in una riga piu' discreta dell'intestazione della
-          // saga, o le due gerarchie si confonderebbero.
-          r.cicli.map((c) => (
-            <div key={c.nome ?? "_"} style={{ marginBottom: 14 }}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "baseline",
-                  gap: 8,
-                  fontFamily: FONT_TITLE,
-                  fontSize: F.nota,
-                  color: c.nome ? C.text : C.muted,
-                  marginBottom: 8,
-                }}
-              >
-                <span>{c.nome ?? "Volumi a sé"}</span>
-                <span style={{ fontSize: F.minuscolo, color: C.muted }}>{c.libri.length}</span>
-              </div>
-              {/* E DENTRO, I CAPITOLI DELLA GUIDA — il terzo livello. Il
-                  rientro e il corpo più piccolo sono tutto quel che li
-                  distingue dal ciclo che li contiene: tre intestazioni
-                  della stessa misura non sarebbero una gerarchia. */}
-              {c.parti ? (
-                c.parti.map((p) => (
-                  <div key={p.nome ?? "_"} style={{ marginLeft: 12, marginBottom: 12 }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "baseline",
-                        gap: 8,
-                        fontSize: F.minuscolo,
-                        color: C.muted,
-                        marginBottom: 6,
-                      }}
-                    >
-                      <span>{p.nome ?? "Fuori dal percorso"}</span>
-                      <span>{p.libri.length}</span>
-                    </div>
-                    <Shelf books={p.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} conCopertina={conCopertina} showOrder />
-                  </div>
-                ))
-              ) : (
-                <Shelf books={c.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} conCopertina={conCopertina} showOrder />
-              )}
-            </div>
-          ))
-        ) : (
-          <Shelf
-            books={r.libri}
-            onOpenBook={onOpenBook}
-            localIds={localIds} idLassu={idLassu}
-            coverV={coverV}
-            conCopertina={conCopertina}
-            // il numero del volume ha senso dentro la sua saga; fra i volumi
-            // soli sarebbe un numero senza la storia che lo spiega
-            showOrder={r.tipo === "saga"}
-          />
-        )}
-      </Ripiano>
-    ));
-  }
-
   // il genere si raggruppa per FAMIGLIA: «Fantasy · Grimdark» e «Fantasy ·
   // Epico» stanno sullo stesso scaffale. Prendendo il valore intero ogni
   // sottogenere farebbe un gruppo da un libro, e uno scaffale di gruppi da
@@ -531,11 +456,193 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, cov
     status: criterioStato((b) => getStatus(b.id)),
   }[group];
 
-  return aEtichette(books, CRITERIO, sort).map((r) => (
-    <Ripiano key={r.id || "_"} nome={r.nome} quanti={r.libri.length} spento={!!r.spento}>
-      <Shelf books={r.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} conCopertina={conCopertina} />
-    </Ripiano>
-  ));
+  const ripiani = criterio ? disponi(books, null, criterio, sort, parteDi) : aEtichette(books, CRITERIO, sort);
+  // un ripiano disegnato sempre dallo stesso posto, esposto o dentro la sua
+  // raccolta: due strade scritte a mano divergerebbero alla prima modifica
+  const mostra = (r) =>
+    criterio ? (
+        <Ripiano
+          key={r.id}
+          nome={r.nome}
+          sotto={r.autore}
+          quanti={r.libri.length}
+          spento={r.tipo === "soli"}
+          azione={<TastoCammino libri={r.libri} tutti={tutti} riconosciuti={riconosciuti} onCammino={onCammino} />}
+        >
+          {r.cicli ? (
+            // I CICLI DENTRO LA SAGA (chiesto dal lettore): un sotto-ripiano
+            // per ciclo, nell'ordine in cui la storia li incontra. Il nome
+            // del ciclo sta in una riga piu' discreta dell'intestazione della
+            // saga, o le due gerarchie si confonderebbero.
+            r.cicli.map((c) => (
+              <div key={c.nome ?? "_"} style={{ marginBottom: 14 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 8,
+                    fontFamily: FONT_TITLE,
+                    fontSize: F.nota,
+                    color: c.nome ? C.text : C.muted,
+                    marginBottom: 8,
+                  }}
+                >
+                  <span>{c.nome ?? "Volumi a sé"}</span>
+                  <span style={{ fontSize: F.minuscolo, color: C.muted }}>{c.libri.length}</span>
+                </div>
+                {/* E DENTRO, I CAPITOLI DELLA GUIDA — il terzo livello. Il
+                    rientro e il corpo più piccolo sono tutto quel che li
+                    distingue dal ciclo che li contiene: tre intestazioni
+                    della stessa misura non sarebbero una gerarchia. */}
+                {c.parti ? (
+                  c.parti.map((p) => (
+                    <div key={p.nome ?? "_"} style={{ marginLeft: 12, marginBottom: 12 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "baseline",
+                          gap: 8,
+                          fontSize: F.minuscolo,
+                          color: C.muted,
+                          marginBottom: 6,
+                        }}
+                      >
+                        <span>{p.nome ?? "Fuori dal percorso"}</span>
+                        <span>{p.libri.length}</span>
+                      </div>
+                      <Shelf books={p.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} conCopertina={conCopertina} showOrder />
+                    </div>
+                  ))
+                ) : (
+                  <Shelf books={c.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} conCopertina={conCopertina} showOrder />
+                )}
+              </div>
+            ))
+          ) : (
+            <Shelf
+              books={r.libri}
+              onOpenBook={onOpenBook}
+              localIds={localIds} idLassu={idLassu}
+              coverV={coverV}
+              conCopertina={conCopertina}
+              // il numero del volume ha senso dentro la sua saga; fra i volumi
+              // soli sarebbe un numero senza la storia che lo spiega
+              showOrder={r.tipo === "saga"}
+            />
+          )}
+        </Ripiano>
+    ) : (
+      <Ripiano key={r.id || "_"} nome={r.nome} quanti={r.libri.length} spento={!!r.spento}>
+        <Shelf books={r.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} conCopertina={conCopertina} />
+      </Ripiano>
+    );
+
+  if (!raccolte) return ripiani.map(mostra);
+
+  // LE RACCOLTE (vedi `inRaccolte`): una cartella per ripiano, e i libri
+  // che non stanno con nessuno sciolti sotto. Aperta una cartella, si vede
+  // il suo ripiano com'era sullo scaffale, coi cicli e i numeri.
+  const dentro = aperta != null ? ripiani.find((r) => r.id === aperta) : null;
+  if (dentro) {
+    return (
+      <>
+        <button
+          onClick={() => onApri(null)}
+          style={{ display: "inline-flex", alignItems: "center", gap: 8, minHeight: 44, padding: "0 14px", marginBottom: 12, borderRadius: R.tondo, border: `1px solid ${C.border}`, color: C.muted, fontSize: F.nota }}
+        >
+          ‹ Tutte le raccolte
+        </button>
+        {mostra(dentro)}
+      </>
+    );
+  }
+  const { raccolte: cartelle, sciolti } = inRaccolte(ripiani);
+  return (
+    <>
+      {cartelle.length > 0 && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(auto-fill, minmax(${COLONNA}px, 1fr))`,
+            gap: `${SPAZIO_RIGHE}px ${SPAZIO_COLONNE}px`,
+            alignItems: "start",
+            marginBottom: 26,
+          }}
+        >
+          {cartelle.map((r) => (
+            <Raccolta key={r.id} r={r} onApri={() => onApri(r.id)} coverV={coverV} conCopertina={conCopertina} />
+          ))}
+        </div>
+      )}
+      {sciolti.map(mostra)}
+    </>
+  );
+}
+
+// UNA RACCOLTA: la copertina del volume da cui ripartire (`copertinaDi`),
+// due dorsi dietro che dicono «qui dentro ce n'e' piu' d'uno» — il segno
+// delle cartelle del Kindle — il numero dei volumi, e quanti ne hai letti.
+function Raccolta({ r, onApri, coverV, conCopertina }) {
+  const b = copertinaDi(r.libri, getStatus);
+  const { quanti, letti } = contoRaccolta(r.libri, getStatus);
+  if (!b) return null;
+  return (
+    <button
+      onClick={onApri}
+      aria-label={`${r.nome}: ${quanti} ${quanti === 1 ? "volume" : "volumi"}`}
+      style={{ display: "block", textAlign: "center", animation: "bc-fade-in 0.4s ease-out" }}
+    >
+      <div style={{ position: "relative", paddingTop: 10 }}>
+        <div aria-hidden style={{ position: "absolute", top: 0, left: "14%", right: "14%", height: 3, borderRadius: R.minimo, background: C.border }} />
+        <div aria-hidden style={{ position: "absolute", top: 5, left: "7%", right: "7%", height: 3, borderRadius: R.minimo, background: C.muted }} />
+        <div style={{ position: "relative" }}>
+          <BookCover book={b} version={coverV} haCopertina={conCopertina ? conCopertina.has(b.id) : undefined} />
+          <span
+            style={{
+              // in basso a DESTRA: a sinistra il dorso disegnato scrive
+              // l'autore, e il numero ci finiva sopra
+              position: "absolute",
+              right: 6,
+              bottom: 6,
+              minWidth: 26,
+              padding: "2px 7px",
+              borderRadius: R.tondo,
+              fontSize: F.minuscolo,
+              fontWeight: 700,
+              background: `${C.bg}e6`,
+              border: `1px solid ${C.accent}88`,
+              color: C.accent,
+            }}
+          >
+            {quanti}
+          </span>
+        </div>
+      </div>
+      <div
+        style={{
+          marginTop: 6,
+          fontFamily: FONT_TITLE,
+          fontWeight: 600,
+          fontSize: F.nota,
+          color: C.text,
+          lineHeight: 1.2,
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}
+      >
+        {r.nome}
+      </div>
+      {/* gli zeri non si dicono: «0 letti» sotto una saga appena arrivata
+          sarebbe rumore */}
+      {letti > 0 && (
+        <div style={{ fontSize: F.minuscolo, color: letti === quanti ? C.green : C.muted, marginTop: 2 }}>
+          {letti === quanti ? "tutti letti ✓" : `${letti} di ${quanti} letti`}
+        </div>
+      )}
+    </button>
+  );
 }
 
 export default function Library({
@@ -555,6 +662,10 @@ export default function Library({
   spazioCambiato = 0,
   aggiorna,
   onCammino,
+  // la raccolta aperta sta in App: e' un livello che il tasto indietro del
+  // tablet deve saper chiudere, e i livelli li conosce App
+  raccolta = null,
+  onRaccolta = () => {},
 }) {
   const [query, setQuery] = useState("");
   // il controllo aggiornamenti col dito: `agg` e' l'esito in corso, e le
@@ -590,6 +701,8 @@ export default function Library({
   const vista = useRef(vistaValida(GROUPS, SORTS));
   const [sort, setSort] = useState(vista.current.sort);
   const [group, setGroup] = useState(vista.current.group);
+  // scaffale coi libri esposti o raccolte: si ricorda come il resto
+  const [aspetto, setAspetto] = useState(vista.current.aspetto);
   // il pannello della disposizione resta aperto finché non lo richiudi:
   // le scelte sono DUE, e chiudersi al primo tocco vorrebbe dire riaprirlo
   // per fare la seconda. Non si ricorda però fra un'apertura e l'altra
@@ -1831,6 +1944,11 @@ export default function Library({
         conCopertina={conCopertina}
         riconosciuti={riconosciuti}
         onCammino={onCammino}
+        // CHI CERCA VUOLE IL VOLUME, NON LA CARTELLA: con una ricerca in
+        // corso le raccolte si aprono tutte, e «v07» trova il settimo
+        raccolte={aspetto === "raccolte" && !cercata.trim()}
+        aperta={raccolta}
+        onApri={onRaccolta}
       />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2056,6 +2174,36 @@ export default function Library({
           </>
         )}
         <span style={{ flex: 1 }} />
+        {/* SCAFFALE O RACCOLTE (chiesto dal lettore, col Kindle in mano):
+            due tasti attaccati, quindi da 44px, e la scelta si ricorda */}
+        <div role="group" aria-label="Come mostrare i libri" style={{ display: "flex", borderRadius: R.tondo, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+          {[
+            { id: "scaffale", label: "Scaffale", glifo: "▦" },
+            { id: "raccolte", label: "Raccolte", glifo: "🗂" },
+          ].map((a) => {
+            const attivo = aspetto === a.id;
+            return (
+              <button
+                key={a.id}
+                aria-pressed={attivo}
+                onClick={() => {
+                  setAspetto(a.id);
+                  ricorda({ aspetto: a.id });
+                  onRaccolta(null);
+                }}
+                style={{
+                  minHeight: 44,
+                  padding: "0 14px",
+                  fontSize: F.nota,
+                  color: attivo ? C.accent : C.muted,
+                  background: attivo ? `${C.accent}1f` : "transparent",
+                }}
+              >
+                {a.glifo} {a.label}
+              </button>
+            );
+          })}
+        </div>
         {/* UN TASTO SOLO al posto delle due tendine affiancate: le due
             scelte restano — sono ortogonali, e fonderle darebbe diciotto
             voci di menu — ma a stare sempre in vista è la SCELTA IN CORSO,
@@ -2070,6 +2218,9 @@ export default function Library({
             if (v.group !== undefined) setGroup(v.group);
             if (v.sort !== undefined) setSort(v.sort);
             ricorda(v);
+            // un altro raggruppamento, altre raccolte: quella aperta non
+            // esiste piu'
+            if (v.group !== undefined) onRaccolta(null);
           }}
         />
       </div>
