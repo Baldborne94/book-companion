@@ -143,7 +143,7 @@ function caricaPicker() {
   return gapiPronto;
 }
 
-export async function scegliSuDrive({ cartellaId = null } = {}) {
+export async function scegliSuDrive({ cartellaId = null, titolo = "Scegli libri o cartelle intere" } = {}) {
   const chiave = apiKey();
   if (!chiave) throw new Error("Manca la chiave API di Google: incollala nel pannello della nuvola, sotto Google Drive.");
   if (!chiaveApiValida(chiave)) throw new Error(PERCHE_CHIAVE_STORTA);
@@ -159,7 +159,7 @@ export async function scegliSuDrive({ cartellaId = null } = {}) {
       .setDeveloperKey(chiave)
       .setLocale("it")
       .setOrigin(`${location.protocol}//${location.host}`)
-      .setTitle("Scegli libri o cartelle intere")
+      .setTitle(titolo)
       .enableFeature(gp.Feature.MULTISELECT_ENABLED)
       .addView(vista)
       .setCallback((d) => {
@@ -176,7 +176,7 @@ export async function scegliSuDrive({ cartellaId = null } = {}) {
 export async function dettagliFile(ids) {
   const out = [];
   for (const id of ids || []) {
-    const r = await chiama(`${API}/files/${encodeURIComponent(id)}?fields=${q("id,name,size,sha256Checksum,appProperties,parents")}`);
+    const r = await chiama(`${API}/files/${encodeURIComponent(id)}?fields=${q("id,name,size,sha256Checksum,appProperties,parents,mimeType")}`);
     out.push(await r.json());
   }
   return out;
@@ -616,7 +616,7 @@ async function giro(libri, { tipo, qui, misure, inUscita, secchio, leggiByte, sa
 // dall'app porta il tipo del file che il lettore ha scelto, e un'estensione
 // che non conosciamo non deve farlo sparire dall'elenco — al giro dopo
 // sembrerebbe mancante e ripartirebbe, ogni volta.
-const elencaAudio = async () => audioDellElenco(await tuttiDellElenco());
+export const elencaAudio = async () => audioDellElenco(await tuttiDellElenco());
 
 export function mappaMelodie() {
   try {
@@ -690,6 +690,29 @@ async function giroDellaMusica(favs, { qui, leggiTrack, say = () => {}, vivo = (
     }
   }
   return { melodie: new Set(mappa.keys()), caricate, falliti, ambigui };
+}
+
+// LE MELODIE SCELTE DAL SELETTORE diventano melodie di Drive: il segno sul
+// file (`bcTrack`) e' quel che le fa trovare all'altro dispositivo e al
+// prossimo giro, e la mappa le fa suonare subito qui. Il segno che non si
+// scrive non ferma la melodia: la mappa basta a questo dispositivo, e il
+// giro della musica la riconosce per misura e nome e la segna lui.
+export async function adottaMelodie(scelte) {
+  const m = mappaMelodie();
+  for (const { fileId, voce } of scelte || []) m[voce.trackId] = { id: fileId, byte: Number(voce.size) || 0 };
+  scriviMappaMelodie(m);
+  let segnate = 0;
+  for (const { fileId, voce } of scelte || []) {
+    try {
+      await segnaCon(fileId, { bcTrack: voce.trackId });
+      segnate += 1;
+    } catch (e) {
+      // senza chiave il resto dei segni li scrive il giro della musica, che
+      // li riconosce per misura e nome
+      if (e instanceof DriveScollegato) return { segnate, scollegato: true };
+    }
+  }
+  return { segnate, scollegato: false };
 }
 
 // UNA MELODIA CHE QUI NON C'E' SI PRENDE DA DRIVE QUANDO LA SUONI.

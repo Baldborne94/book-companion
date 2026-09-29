@@ -571,12 +571,16 @@ export function sceltaDalPicker(docs) {
 // cartella senza nessun libro sotto si dice per nome (`vuote`): scelta col
 // dito e sparita in silenzio sarebbe il difetto peggiore di questa porta.
 export function libriSotto(scelte, file, cartelle) {
+  return sottoLeCartelle(scelte, file, cartelle, (f) => EST.includes(estensioneDi(f.name)));
+}
+
+function sottoLeCartelle(scelte, file, cartelle, tiene) {
   const ids = new Set((scelte || []).map((c) => c.id));
   const genitore = new Map((cartelle || []).map((c) => [c.id, c.parents?.[0]]));
   const trovate = new Set();
   const sotto = [];
   for (const f of file || []) {
-    if (!f?.id || !EST.includes(estensioneDi(f.name))) continue;
+    if (!f?.id || !tiene(f)) continue;
     // si risale fino in cima anche dopo aver trovato una scelta: con
     // «Fumetti» e «Fumetti / Hellboy» scelte insieme, i libri di Hellboy
     // sono anche di Fumetti, e Fumetti non e' una cartella vuota
@@ -593,6 +597,60 @@ export function libriSotto(scelte, file, cartelle) {
     sotto.push(f);
   }
   return { file: sotto, vuote: (scelte || []).filter((c) => !trovate.has(c.id)).map((c) => c.name || c.id) };
+}
+
+// E LA MUSICA SI PRENDE DA DRIVE COME I LIBRI (chiesto dal lettore: «mi
+// metti che posso recuperare la musica da Drive come hai fatto per i libri,
+// puntando sempre alla cartella book companion?»). Stesso selettore, aperto
+// sulla cartella «Musica» di «book-companion»; file e cartelle intere. Un
+// brano scelto NON scende: diventa una melodia che sta su Drive, e scende
+// quando la suoni (`melodiaDalDrive`), come i brani saliti dall'altro
+// dispositivo. Audio si dice dal tipo, e se il tipo manca dall'estensione:
+// un file caricato a mano dal PC puo' non averlo.
+const EST_AUDIO = ["mp3", "m4a", "aac", "ogg", "oga", "opus", "flac", "wav", "webm"];
+export const eAudio = (d) => String(d?.mimeType || "").startsWith("audio/") || EST_AUDIO.includes(estensioneDi(d?.name));
+
+export function sceltaMusicaDalPicker(docs) {
+  const sciolti = [];
+  const cartelle = [];
+  const scartati = [];
+  const visti = new Set();
+  for (const d of docs || []) {
+    if (!d?.id || visti.has(d.id)) continue;
+    visti.add(d.id);
+    if (eCartella(d)) cartelle.push({ id: d.id, name: String(d.name || "") });
+    else if (eAudio(d)) sciolti.push({ id: d.id, name: String(d.name || "") });
+    else scartati.push(String(d.name || d.id));
+  }
+  return { sciolti, cartelle, scartati };
+}
+
+export const audioSotto = (scelte, file, cartelle) => sottoLeCartelle(scelte, file, cartelle, eAudio);
+
+// Le melodie nuove per i file scelti. Un file che e' gia' una melodia non
+// si raddoppia: il segno nostro (`bcTrack` di una melodia viva), o la stessa
+// misura col nome uguale. Il nome della melodia e' quello del file senza
+// estensione; `drive: true` la fa viaggiare nelle preferenze fino all'altro
+// dispositivo, che la suona scaricandola da Drive.
+export function melodieDaAggiungere(favs, trovati, { nuovoId = () => crypto.randomUUID(), adesso = Date.now() } = {}) {
+  const vive = melodieFile(favs);
+  const tracce = new Set(vive.map((m) => m.trackId));
+  const gia = new Set(vive.map((m) => `${Number(m.size) || 0}|${nomeNudo(m.name)}`));
+  const out = [];
+  for (const f of trovati || []) {
+    if (!f?.id || !eAudio(f)) continue;
+    if (tracce.has(f.appProperties?.bcTrack)) continue;
+    const size = Number(f.size) || 0;
+    const chiave = `${size}|${nomeNudo(f.name)}`;
+    if (size && gia.has(chiave)) continue;
+    gia.add(chiave);
+    const nome = String(f.name || "").replace(/\.[a-z0-9]{2,5}$/i, "").trim() || "Melodia senza nome";
+    out.push({
+      fileId: f.id,
+      voce: { id: nuovoId(), name: nome, trackId: nuovoId(), mime: f.mimeType || "", size, drive: true, addedAt: adesso, updatedAt: adesso },
+    });
+  }
+  return out;
 }
 
 // la cartella da cui il selettore parte: la radice se c'e', o niente (e
