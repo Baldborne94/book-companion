@@ -35,6 +35,8 @@ import {
   altezzeNastro,
   cimeNastro,
   paginaAlPunto,
+  pagineAvanti,
+  daPreparare,
 } from "../lib/fumetto.js";
 import { vuoto } from "../lib/pdfCrop.js";
 import { conAttesa } from "../lib/misuraPagine.js";
@@ -76,6 +78,8 @@ const NASTRO_MAX = 1280;
 // piu' avanti che indietro, perche' si scorre in avanti
 const NASTRO_DIETRO = 2;
 const NASTRO_AVANTI = 4;
+// quante pagine avanti si chiedono insieme (vedi `preparaAvanti`)
+const IN_VOLO = 3;
 
 function Panel({ title, onClose, children }) {
   return (
@@ -249,9 +253,12 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
 
   // le pagine lontane si lasciano andare: l'immagine resta nell'archivio,
   // da dove si riestrae in un attimo
+  // la finestra tiene anche le pagine preparate avanti (`pagineAvanti`):
+  // sfoltite appena preparate, il lavoro sarebbe buttato
   const sfoltisci = useCallback((attorno) => {
+    const avanti = Math.max(VICINE, (live.current.avanti || 0) + 2);
     for (const [n, url] of urls.current) {
-      if (Math.abs(n - attorno) > VICINE) {
+      if (n < attorno - VICINE || n > attorno + avanti) {
         URL.revokeObjectURL(url);
         urls.current.delete(n);
       }
@@ -286,6 +293,21 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     segnaMisura(n, { w: im.naturalWidth, h: im.naturalHeight });
   }, [urlDi, segnaMisura]);
 
+  // LE PAGINE AVANTI (vedi `pagineAvanti`): dopo quella a schermo, in
+  // ordine, e il giro si ferma quando si volta — la voltata ne fa partire
+  // uno nuovo da dove sei, e quel che e' gia' pronto resta pronto. IN VOLO
+  // NE STANNO `IN_VOLO` alla volta, non una: misurato col Drive finto, una
+  // alla volta ogni richiesta aspettava la sua latenza con la banda ferma,
+  // e le voltate svelte aspettavano lo stesso.
+  const preparaAvanti = useCallback(async (ultima, mio) => {
+    const l = live.current;
+    const coda = daPreparare(ultima, l.pages, l.avanti || 0, new Set(urls.current.keys()));
+    const lavora = async () => {
+      while (coda.length && gettone.current === mio) await urlDi(coda.shift()).catch(() => {});
+    };
+    await Promise.all(Array.from({ length: IN_VOLO }, lavora));
+  }, [urlDi]);
+
   useEffect(() => {
     let dead = false;
     (async () => {
@@ -293,6 +315,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         const blob = await fileDaLeggere(book);
         if (!blob) throw new Error("file mancante");
         lontano.current = !!blob.daLontano;
+        live.current.avanti = pagineAvanti({ lontano: lontano.current, connessione: navigator.connection });
         const a = await apriFumetto(blob);
         if (dead) return;
         if (!a.pagine.length) throw new Error("nessuna pagina");
@@ -379,6 +402,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           if (n < 1 || n > pages) continue;
           misuraDi(n).catch(() => {});
         }
+        preparaAvanti(ultimo, mio);
       });
     flush();
     if (pages > 0 && mostrate.includes(pages)) {
@@ -443,6 +467,8 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         });
     }
     sfoltisci(page);
+    // e oltre la finestra montata, le pagine avanti si preparano in fila
+    preparaAvanti(a, ++gettone.current);
     // chi e' uscito dalla finestra perde l'immagine (il suo indirizzo e'
     // appena stato revocato) ma non il posto: l'altezza resta
     setVista((v) => {
