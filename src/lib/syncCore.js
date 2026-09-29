@@ -322,6 +322,8 @@ export function contaSpazio(radiceGrezza, braniGrezzi) {
     // quali si possono andare a prendere senza bussare a vuoto su
     // centocinquanta indirizzi che non esistono.
     idCopertine: new Set(copertine.map((o) => o.name.replace(/\.cover$/, ""))),
+    // e quanto pesa ognuna: dice se quella qui e' la stessa
+    misureCopertine: new Map(copertine.map((o) => [o.name.replace(/\.cover$/, ""), Number(o.metadata?.size) || 0])),
   };
 }
 
@@ -341,9 +343,32 @@ export function contaSpazio(radiceGrezza, braniGrezzi) {
 // non ce l'ha e lassu' si'. Senza l'elenco del secchio non si chiede
 // niente — bussare a vuoto su ogni libro sarebbe una raffica di 404 a ogni
 // sincronizzazione.
-export function copertineDaScaricare(libri, { qui, lassu } = {}) {
+//
+// E SCENDE ANCHE QUELLA CHE QUI C'E' MA E' UN'ALTRA (segnalato: «perche' le
+// copertine modificate da PC non se le e' portate dietro?», con la
+// fotografia di Alice in Borderland v01 rivestito sul PC e ancora con la
+// prima pagina sul tablet). Si scendeva solo dove qui non c'era niente, e
+// il tablet una copertina ce l'aveva gia': quella di prima. Adesso si
+// confronta la MISURA di qua e di la' — due immagini diverse non pesano
+// mai uguale al byte, e la copia scesa pesa quanto quella lassu', quindi
+// al giro dopo tutto e' fermo. Una misura che non si conosce non decide
+// niente. Lassu' vince, salvo la copertina cambiata QUI che non e' ancora
+// partita (`inAttesa`): quella deve salire, non essere coperta.
+const altraCopertina = (id, misureQui, misureLassu) => {
+  const a = Number(misureQui?.get(id)) || 0;
+  const b = Number(misureLassu?.get(id)) || 0;
+  return a > 0 && b > 0 && a !== b;
+};
+
+export function copertineDaScaricare(libri, { qui, lassu, misureQui, misureLassu, inAttesa } = {}) {
   if (!lassu) return [];
-  return (libri || []).filter((b) => b?.id && lassu.has(b.id) && !(qui && qui.has(b.id)));
+  return (libri || []).filter(
+    (b) =>
+      b?.id &&
+      lassu.has(b.id) &&
+      !inAttesa?.has(b.id) &&
+      (!(qui && qui.has(b.id)) || altraCopertina(b.id, misureQui, misureLassu)),
+  );
 }
 
 // E QUALI DEVONO SALIRE, che e' la stessa domanda girata.
@@ -361,13 +386,35 @@ export function copertineDaScaricare(libri, { qui, lassu } = {}) {
 // Senza l'elenco non si carica niente — stesso lato sicuro di `daCaricare`:
 // un giro saltato si rifa', un rinvio in massa no.
 //
-// Limite dichiarato: una copertina CAMBIATA qui, che lassu' c'e' gia' nella
-// versione di prima, questo giro non la rimanda — la manda subito
-// `caricaCopertina` al momento del cambio. Chi vuole chiudere anche quello
-// aggiunga un segno come `bc_riporta` fa per i file.
-export function copertineDaCaricare(libri, { qui, lassu } = {}) {
+// Una copertina CAMBIATA qui, che lassu' c'e' gia' nella versione di
+// prima, la manda `caricaCopertina` al momento del cambio; se quel viaggio
+// non riesce resta `inAttesa` (`bc_cov_attesa`) e sale qui, al primo giro
+// buono.
+const ATTESA_KEY = "bc_cov_attesa";
+
+export function copertineInAttesa(storage = globalThis.localStorage) {
+  try {
+    const v = JSON.parse(storage.getItem(ATTESA_KEY) || "[]");
+    return new Set(Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function segnaInAttesa(id, si, storage = globalThis.localStorage) {
+  const v = copertineInAttesa(storage);
+  if (si) v.add(id);
+  else v.delete(id);
+  try {
+    storage.setItem(ATTESA_KEY, JSON.stringify([...v]));
+  } catch {
+    /* storage pieno: al peggio la copertina sale al prossimo cambio */
+  }
+}
+
+export function copertineDaCaricare(libri, { qui, lassu, inAttesa } = {}) {
   if (!lassu) return [];
-  return (libri || []).filter((b) => b?.id && qui?.has(b.id) && !lassu.has(b.id));
+  return (libri || []).filter((b) => b?.id && qui?.has(b.id) && (!lassu.has(b.id) || inAttesa?.has(b.id)));
 }
 
 // PORTARE GIU' UNO PER VOLTA. E' il giro di «Porta qui i tomi», staccato

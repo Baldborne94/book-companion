@@ -130,14 +130,18 @@ async function pesaStore(nome) {
 // QUANTO PESA OGNI LIBRO QUI, per id: e' uno dei modi in cui un libro si
 // riconosce fra i file che il lettore ha caricato a mano su Drive. Stesso
 // cursore di `pesaStore`, e per la stessa ragione — `size` si legge senza
-// tirare su un byte.
-export async function misureFile() {
+// tirare su un byte. Lo stesso per le copertine: la misura dice se quella
+// qui e' la stessa che sta nel secchio.
+export const misureFile = () => misureDi("files");
+export const misureCopertine = () => misureDi("covers");
+
+async function misureDi(nome) {
   const d = await db();
   return new Promise((resolve) => {
     const misure = new Map();
     try {
-      const tx = d.transaction("files", "readonly");
-      const req = tx.objectStore("files").openCursor();
+      const tx = d.transaction(nome, "readonly");
+      const req = tx.objectStore(nome).openCursor();
       req.onsuccess = () => {
         const cur = req.result;
         if (!cur) return resolve(misure);
