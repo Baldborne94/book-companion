@@ -510,3 +510,23 @@ export function copertinaDi(libri = [], statusOf = () => "unread") {
 export function contoRaccolta(libri = [], statusOf = () => "unread") {
   return { quanti: libri.length, letti: libri.filter((b) => statusOf(b.id) === "read").length };
 }
+
+// «PREFERITI PRIMA» E' UN ORDINE, E SOLO QUANDO LO SI SCEGLIE (segnalato
+// dal lettore con la fotografia delle raccolte: «l'ordine pero' tienimelo
+// corretto per come scelgo e non mettere prima i preferiti se non l'ho
+// richiesto»). Al primo giro le raccolte col cuore salivano in cima
+// sempre, scavalcando l'ordine scelto. Adesso stanno in cima solo con
+// «Preferiti prima», e fra loro — e fra le altre — resta l'ordine che i
+// ripiani avevano gia' (alfabetico). Il mucchio di scarto chiude comunque.
+export function preferitiPrima(ripiani = [], vive = new Set()) {
+  const su = ripiani.filter((r) => vive.has(r.id));
+  const giu = ripiani.filter((r) => !vive.has(r.id));
+  return [...su, ...giu];
+}
+
+// LA DECISIONE STA QUI, non nel componente: e' proprio una scelta presa in
+// un componente — «le preferite in cima» — che scavalcava l'ordine scelto
+// senza che nessun test potesse vederla.
+export const ORDINE_PREFERITI = "preferiti";
+export const nellOrdineScelto = (ripiani, ordine, vive) =>
+  ordine === ORDINE_PREFERITI ? preferitiPrima(ripiani, vive) : ripiani;

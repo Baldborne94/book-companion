@@ -10,18 +10,13 @@ import { raccogli, conta, rigaGiardino } from "../lib/citazioni.js";
 import { leggiQuaderno, rigaQuaderno } from "../lib/quaderno.js";
 import { leggiDaPrendere, proposte, rigaDaPrendere } from "../lib/daPrendere.js";
 import { nextInSaga, prossimiPassi, perchePassoTace, frasePassoTace, inCorsoESeguiti } from "../lib/saga.js";
-import { leggiPreferite, libriDellaRaccolta } from "../lib/raccoltePreferite.js";
-import { copertinaDi } from "../lib/ripiani.js";
 import BookCover from "./BookCover.jsx";
-import { BookmarkIcon, LeafIcon, SparkIcon, StarIcon } from "./Icons.jsx";
+import { BookmarkIcon, LeafIcon, SparkIcon } from "./Icons.jsx";
 import EmptyState from "./EmptyState.jsx";
 
 // il numero all'italiana: la mezza stella e la novella fra il secondo e il
 // terzo volume si scrivono tutt'e due «2,5»
 const virgola = (v) => String(v).replace(".", ",");
-
-// quanti preferiti stanno nella fila prima di «Vedi tutti»
-const FAV_FILA = 8;
 
 function SectionTitle({ children }) {
   return (
@@ -45,27 +40,10 @@ function SectionTitle({ children }) {
   );
 }
 
-function Rating({ value }) {
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 3,
-        fontSize: F.minuscolo,
-        color: C.accent,
-      }}
-    >
-      <StarIcon size={12} />
-      {virgola(value)}
-    </span>
-  );
-}
-
 // UN LIBRO IN FILA: la copertina, il titolo e una riga che dice perché sta
 // lì. Il titolo si stampa SOLO sotto una copertina vera — sul dorso
-// disegnato è già scritto sopra, e ristamparlo è rumore (stessa regola dei
-// preferiti). La nota invece c'è sempre: sulla copertina non sta.
+// disegnato è già scritto sopra, e ristamparlo è rumore. La nota invece
+// c'è sempre: sulla copertina non sta.
 function LibroInFila({ book, nota, disegnato, onDisegnata, onClick }) {
   const riga = {
     overflow: "hidden",
@@ -93,13 +71,12 @@ const fila = (wide) => ({
   flexWrap: wide ? "wrap" : "nowrap",
 });
 
-export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onQuaderno, onDaPrendere, onApriRaccolta }) {
+export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onQuaderno, onDaPrendere }) {
   // chi ha il dorso disegnato lo sa solo `BookCover`: lo dice qui, così i
   // preferiti non ristampano un titolo che sta già sulla copertina
   const [dorsi, setDorsi] = useState({});
   const segnaDorso = (id, v) => setDorsi((d) => (d[id] === v ? d : { ...d, [id]: v }));
   const [perche, setPerche] = useState(false);
-  const [tuttiFav, setTuttiFav] = useState(false);
   const { wide } = useViewport();
 
   // I CONTI DELLE DUE PORTE STANNO SOPRA IL `return` ANTICIPATO, e non è
@@ -152,7 +129,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
       <EmptyState
         emoji="🔮"
         title="Benvenuto nel tuo regno"
-        text="Qui ritroverai il libro che stai leggendo e i tuoi preferiti. Tutto comincia portando il primo tomo in Libreria."
+        text="Qui ritroverai il libro che stai leggendo e cosa leggere dopo. Tutto comincia portando il primo tomo in Libreria."
         action="Vai alla Libreria"
         onAction={() => goTo("library")}
       />
@@ -199,25 +176,6 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
   const followedFrom = followUp && last === followUp ? lastDone : null;
   const pct = last ? Math.round(progressoDi(last.id) * 100) : 0;
   const resuming = pct > 0;
-
-  // I PREFERITI SONO QUELLI COL CUORE, non «tutti i libri da quattro
-  // stelle in su»: le stelle sono un voto, la vetrina è una scelta, e
-  // sceglierla tocca al lettore (chiesto: «metto io quali sono i miei
-  // preferiti»). Il cuore si mette nella scheda del libro, accanto alla
-  // valutazione.
-  // E LE RACCOLTE COL CUORE (vedi `lib/raccoltePreferite.js`) aprono la
-  // fila: una saga amata e' la cosa a cui si torna piu' spesso, e dentro
-  // la cartella c'e' gia' il volume da cui ripartire. Una raccolta che non
-  // ha piu' libri qui (tolti, o su un altro dispositivo) non si mostra.
-  const raccolteFav = leggiPreferite()
-    .filter((v) => !v.deleted)
-    .map((v) => ({ id: v.id, nome: v.nome || v.id.split(":").slice(1).join(":"), libri: libriDellaRaccolta(books, v.id) }))
-    .filter((r) => r.libri.length)
-    .sort((a, b) => a.nome.localeCompare(b.nome, "it"));
-
-  const favorites = books
-    .filter((b) => b.fav)
-    .sort((a, b) => (b.rating || 0) - (a.rating || 0) || (a.sagaOrder ?? Infinity) - (b.sagaOrder ?? Infinity));
 
   // GLI ALTRI CHE STAI LEGGENDO. Il riquadro in cima ne mostra UNO — l'ultimo
   // aperto — mentre lo stato «in lettura» l'app lo tiene su quanti ne vuoi:
@@ -279,10 +237,6 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
     statusOf: statoDi,
     escludi: new Set([...(last ? [last.id] : []), ...visti]),
   });
-
-  // I PREFERITI IN UNA FILA, e tutti a richiesta: la griglia intera cresceva
-  // col tempo e spingeva in fondo il resto della pagina
-  const favInVista = tuttiFav ? favorites : favorites.slice(0, FAV_FILA);
 
   const stanze = [
     { chi: "giardino", titolo: "Il giardino", riga: rigaCitazioni || "Le tue citazioni", colore: C.arcane, icona: <LeafIcon size={22} active />, apri: onGarden },
@@ -516,115 +470,6 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
           </button>
         ))}
       </div>
-
-      <SectionTitle>I tuoi preferiti</SectionTitle>
-      {favorites.length + raccolteFav.length > 0 ? (
-        <>
-          <div
-            style={
-              tuttiFav
-                ? {
-                    display: "grid",
-                    gridTemplateColumns: `repeat(auto-fill, minmax(${px(96)}px, 1fr))`,
-                    gap: "16px 14px",
-                    // I LIBRI SI ALLINEANO IN ALTO: un `<button>` più basso
-                    // della sua riga centra il contenuto, e i dorsi disegnati
-                    // (senza didascalia) scivolerebbero in basso
-                    alignItems: "start",
-                  }
-                : { ...fila(false), alignItems: "flex-start" }
-            }
-          >
-            {raccolteFav.map((r) => {
-              const b = copertinaDi(r.libri, statoDi);
-              return (
-                <button
-                  key={r.id}
-                  onClick={() => onApriRaccolta?.(r.id)}
-                  aria-label={`Raccolta ${r.nome}: ${r.libri.length} ${r.libri.length === 1 ? "volume" : "volumi"}`}
-                  style={{ flexShrink: 0, width: tuttiFav ? "auto" : px(96), textAlign: "center" }}
-                >
-                  {/* i due dorsi dietro: e' una cartella, non un libro */}
-                  <div style={{ position: "relative", paddingTop: 8 }}>
-                    <div aria-hidden style={{ position: "absolute", top: 0, left: "14%", right: "14%", height: 3, borderRadius: R.minimo, background: C.border }} />
-                    <div aria-hidden style={{ position: "absolute", top: 4, left: "7%", right: "7%", height: 3, borderRadius: R.minimo, background: C.muted }} />
-                    <div style={{ position: "relative" }}>
-                      <BookCover book={b} />
-                      <span style={{ position: "absolute", right: 5, bottom: 5, minWidth: 22, padding: "1px 6px", borderRadius: R.tondo, fontSize: F.minuscolo, fontWeight: 700, background: `${C.bg}e6`, border: `1px solid ${C.accent}88`, color: C.accent }}>
-                        {r.libri.length}
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: F.piccolo, lineHeight: 1.25, color: C.text, fontWeight: 600, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                    {r.nome}
-                  </div>
-                </button>
-              );
-            })}
-            {favInVista.map((b) => (
-              <button
-                key={b.id}
-                onClick={() => onOpenBook(b.id)}
-                style={{ flexShrink: 0, width: tuttiFav ? "auto" : px(96), textAlign: "center" }}
-              >
-                <BookCover book={b} onDisegnata={(v) => segnaDorso(b.id, v)} />
-                {!dorsi[b.id] && (
-                  <div
-                    style={{
-                      marginTop: 6,
-                      fontSize: F.piccolo,
-                      lineHeight: 1.25,
-                      color: C.text,
-                      display: "-webkit-box",
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {b.title}
-                  </div>
-                )}
-                {b.rating > 0 && (
-                  <div style={{ marginTop: 3 }}>
-                    <Rating value={b.rating} />
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-          {favorites.length > FAV_FILA && (
-            <button
-              onClick={() => setTuttiFav((v) => !v)}
-              style={{
-                marginTop: 8,
-                minHeight: 44,
-                background: "none",
-                border: "none",
-                padding: "0",
-                cursor: "pointer",
-                fontSize: F.nota,
-                color: C.accent,
-                fontFamily: "inherit",
-              }}
-            >
-              {tuttiFav ? "Mostra meno" : `Vedi tutti i ${favorites.length} preferiti ›`}
-            </button>
-          )}
-        </>
-      ) : (
-        <div
-          style={{
-            padding: "14px 16px",
-            borderRadius: R.medio,
-            border: `1px dashed ${C.border}`,
-            fontSize: F.nota,
-            lineHeight: 1.5,
-            color: C.muted,
-          }}
-        >
-          Qui vivranno i tuoi preferiti: apri la scheda di un libro e tocca ♡ accanto alla valutazione, oppure apri una raccolta in Libreria e tocca «♡ Metti fra i preferiti».
-        </div>
-      )}
     </div>
   );
 }

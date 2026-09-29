@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, getTombstones, getUpdatedAt, scaffaleVuoto, TIPI, delTipo, tipiDi, tipiPresenti } from "../lib/library.js";
-import { disponi, aEtichette, criterioVoto, criterioStato, altezzaStimata, ALTEZZA_SCHEDA, COLONNA, SPAZIO_COLONNE, SPAZIO_RIGHE, inRaccolte, copertinaDi, contoRaccolta } from "../lib/ripiani.js";
+import { disponi, aEtichette, criterioVoto, criterioStato, altezzaStimata, ALTEZZA_SCHEDA, COLONNA, SPAZIO_COLONNE, SPAZIO_RIGHE, inRaccolte, copertinaDi, contoRaccolta, nellOrdineScelto } from "../lib/ripiani.js";
 import { leggiPreferite, scriviPreferite, preferiteVive, segnaPreferita, puoEssereFavorita, ePreferito } from "../lib/raccoltePreferite.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { ascoltaCopertine } from "../lib/miniature.js";
@@ -49,6 +49,9 @@ const SORTS = [
   { id: "title", label: "Titolo" },
   { id: "author", label: "Autore" },
   { id: "recent", label: "Recenti" },
+  // le raccolte e i libri col cuore in cima, e sotto l'alfabeto: un ordine
+  // da scegliere, non un'abitudine dello scaffale (vedi `preferitiPrima`)
+  { id: "preferiti", label: "Preferiti prima" },
 ];
 
 // OGNI VOCE DICE IL CRITERIO, non il mobile: «Scaffale» era l'unica che
@@ -459,7 +462,8 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, cov
     status: criterioStato((b) => getStatus(b.id)),
   }[group];
 
-  const ripiani = criterio ? disponi(books, null, criterio, sort, parteDi) : aEtichette(books, CRITERIO, sort);
+  const disposti = criterio ? disponi(books, null, criterio, sort, parteDi) : aEtichette(books, CRITERIO, sort);
+  const ripiani = nellOrdineScelto(disposti, sort, preferite);
   // un ripiano disegnato sempre dallo stesso posto, esposto o dentro la sua
   // raccolta: due strade scritte a mano divergerebbero alla prima modifica
   const mostra = (r) =>
@@ -584,11 +588,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, cov
       </>
     );
   }
-  const divise = inRaccolte(ripiani);
-  // le preferite in cima, nell'ordine di sempre fra loro: sono quelle a cui
-  // si torna, e non si devono cercare
-  const cartelle = [...divise.raccolte.filter((r) => preferite.has(r.id)), ...divise.raccolte.filter((r) => !preferite.has(r.id))];
-  const { sciolti } = divise;
+  const { raccolte: cartelle, sciolti } = inRaccolte(ripiani);
   return (
     <>
       {cartelle.length > 0 && (
@@ -1975,7 +1975,9 @@ export default function Library({
     .filter((b) => filter === "all" || (filter === "fav" ? ePreferito(b, preferite) : getStatus(b.id) === filter))
     .filter((b) => delTipo(b, tipo, tipi))
     .sort((a, b) =>
-      sort === "title"
+      sort === "preferiti"
+        ? Number(!!b.fav) - Number(!!a.fav) || a.title.localeCompare(b.title, "it")
+        : sort === "title"
         ? a.title.localeCompare(b.title, "it")
         : sort === "author"
           ? (a.author || "~").localeCompare(b.author || "~", "it")
