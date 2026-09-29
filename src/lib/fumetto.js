@@ -520,34 +520,37 @@ export function scriviSposta(id, v) {
 // Torna il foglio della coppia (quel che lo zoom misura) e, per ogni
 // pagina nell'ordine dello SCHERMO, dove sta e come si disegna — in un
 // manga la pagina dopo sta a sinistra.
-export function disegnaCoppia({ nats, riquadro, bordi, verso = "ltr" } = {}) {
+// FRA LE DUE PAGINE C'E' UNA PIEGA (chiesto dal lettore con la fotografia
+// di Kingdom: «puoi non mettermele appiccicate le due pagine?»). Attaccate,
+// le vignette di una pagina finivano contro quelle dell'altra e sembravano
+// una tavola sola; uno spazio scuro fra le due, come il dorso di un volume
+// aperto, le separa senza rubare quasi niente al disegno. Lo spazio entra
+// nel conto della misura: la coppia intera, piega compresa, sta nel
+// riquadro. Una pagina sola (la copertina, una tavola larga) non ne ha.
+export const PIEGA = 16;
+export function disegnaCoppia({ nats, riquadro, bordi, verso = "ltr", piega = PIEGA } = {}) {
   if (!Array.isArray(nats) || !nats.length || !nats.every((n) => n?.w > 0 && n?.h > 0)) return null;
   if (!(riquadro?.w > 0 && riquadro?.h > 0)) return null;
   const c = bordiBuoni(bordi) ? bordi : TUTTA;
   const tagli = nats.map((n) => ({ n, cw: n.w * (c.r - c.l), ch: n.h * (c.b - c.t) }));
   const somma = tagli.reduce((s, t) => s + t.cw / t.ch, 0);
-  const h = Math.min(riquadro.h, riquadro.w / somma);
+  const spazio = Math.max(0, piega) * (tagli.length - 1);
+  const h = Math.min(riquadro.h, Math.max(1, riquadro.w - spazio) / somma);
   const tondo = (x) => Math.round(x * 100) / 100;
-  let x = 0;
   const pagine = tagli.map((t, i) => {
     const k = h / t.ch;
-    const p = {
+    return {
       indice: i,
-      x: tondo(x),
       foglio: { w: tondo(t.cw * k), h: tondo(h) },
       immagine: { w: tondo(t.n.w * k), h: tondo(t.n.h * k), x: tondo(-c.l * t.n.w * k), y: tondo(-c.t * t.n.h * k) },
     };
-    x += t.cw * k;
-    return p;
   });
-  if (verso === "rtl") {
-    let y = 0;
-    const rovescio = [...pagine].reverse();
-    for (const p of rovescio) {
-      p.x = tondo(y);
-      y += p.foglio.w;
-    }
-    return { foglio: { w: tondo(x), h: tondo(h) }, pagine: rovescio };
-  }
-  return { foglio: { w: tondo(x), h: tondo(h) }, pagine };
+  // nell'ordine dello SCHERMO: in un manga la pagina dopo sta a sinistra
+  const aSchermo = verso === "rtl" ? [...pagine].reverse() : pagine;
+  let x = 0;
+  aSchermo.forEach((p, i) => {
+    p.x = tondo(x);
+    x += p.foglio.w + (i < aSchermo.length - 1 ? Math.max(0, piega) : 0);
+  });
+  return { foglio: { w: tondo(x), h: tondo(h) }, pagine: aSchermo };
 }

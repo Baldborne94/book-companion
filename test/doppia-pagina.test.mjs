@@ -3,7 +3,7 @@
 // silenzio: una coppia sfasata spezza a meta' la tavola doppia del volume
 // stampato, e una pagina saltata in avanti non alza nessun errore.
 import {
-  coppie, coppiaDi, coppiaVicina, disegnaCoppia, doppiaAccesa, eLarga, orientamento,
+  coppie, coppiaDi, coppiaVicina, disegnaCoppia, doppiaAccesa, eLarga, orientamento, PIEGA,
   leggiDoppia, scriviDoppia,
 } from "../src/lib/fumetto.js";
 
@@ -38,9 +38,18 @@ export default async function (t) {
   t.c("le due tavole alla stessa altezza", d.pagine[0].foglio.h === d.pagine[1].foglio.h, JSON.stringify(d.pagine.map((p) => p.foglio)));
   t.c("la coppia sta nel riquadro", d.foglio.w <= 1280 && d.foglio.h <= 800, JSON.stringify(d.foglio));
   t.c("…e lo riempie da un lato", Math.abs(d.foglio.w - 1280) < 1 || Math.abs(d.foglio.h - 800) < 1, JSON.stringify(d.foglio));
-  t.eq("la seconda comincia dove finisce la prima", d.pagine[1].x, d.pagine[0].foglio.w);
+  // LA PIEGA: le due pagine non si toccano (chiesto dal lettore: «puoi non
+  // mettermele appiccicate?»), e la coppia con la piega sta nel riquadro
+  t.c("fra le due pagine c'e' una piega", PIEGA > 0);
+  t.eq("la seconda comincia dopo la piega", d.pagine[1].x, Math.round((d.pagine[0].foglio.w + PIEGA) * 100) / 100);
+  t.c("…e la coppia, piega compresa, sta nel riquadro", d.foglio.w <= 1280 + 0.01, String(d.foglio.w));
+  t.vicino("…largo quanto le pagine piu' la piega", d.foglio.w, d.pagine[0].foglio.w + d.pagine[1].foglio.w + PIEGA, 0.05);
+  const stretto = disegnaCoppia({ nats: [{ w: 600, h: 900 }, { w: 600, h: 900 }], riquadro: { w: 500, h: 2000 } });
+  t.vicino("su un riquadro stretto la piega si toglie alla larghezza delle pagine", stretto.foglio.w, 500, 0.05);
+  const sola = disegnaCoppia({ nats: [{ w: 600, h: 900 }], riquadro: { w: 1280, h: 800 } });
+  t.eq("una pagina sola non ha piega", sola.foglio.w, sola.pagine[0].foglio.w);
   const m = disegnaCoppia({ nats: [{ w: 600, h: 900 }, { w: 600, h: 900 }], riquadro: { w: 1280, h: 800 }, verso: "rtl" });
-  t.eq("in un manga la pagina dopo sta a sinistra", m.pagine.map((p) => `${p.indice}@${p.x}`).join(" "), `1@0 0@${m.pagine[0].foglio.w}`);
+  t.eq("in un manga la pagina dopo sta a sinistra", m.pagine.map((p) => `${p.indice}@${p.x}`).join(" "), `1@0 0@${Math.round((m.pagine[0].foglio.w + PIEGA) * 100) / 100}`);
   const b = disegnaCoppia({ nats: [{ w: 1000, h: 1000 }], riquadro: { w: 500, h: 500 }, bordi: { l: 0.1, t: 0, r: 0.9, b: 1 } });
   t.eq("i bordi della scansione restano fuori", `${b.foglio.w}x${b.foglio.h} ${b.pagine[0].immagine.x}`, "400x500 -50");
   t.eq("senza misure non si disegna", disegnaCoppia({ nats: [null], riquadro: { w: 1, h: 1 } }), null);
