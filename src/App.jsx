@@ -48,6 +48,7 @@ import { ebookRitrovati } from "./lib/driveCore.js";
 import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
 import { comincia, segnaVita, smetti } from "./lib/tempo.js";
+import { sincronizzaPresto } from "./lib/presto.js";
 
 // L'ingresso porta l'insegna dell'atmosfera scelta: candela di notte,
 // foglia nel boschetto, pergamena nell'archivio.
@@ -955,9 +956,17 @@ export default function App() {
     toastTimer.current = setTimeout(() => setToast(null), action ? 8000 : 4500);
   }
 
+  // una scheda cambiata parte da sola dopo un attimo (`lib/presto.js`)
+  const occupato = useRef(false);
+  occupato.current = sync.busy;
+  const presto = useRef(null);
+  if (!presto.current) presto.current = sincronizzaPresto(() => runSync.current(true), { occupato: () => occupato.current });
+  useEffect(() => () => presto.current?.ferma(), []);
+
   function updateBooks(next) {
     saveBooks(next);
     setBooks(next);
+    presto.current?.();
   }
 
   // I NUMERI DELLA GUIDA, scritti dal pannello del cammino. Si scrive la
