@@ -182,8 +182,10 @@ export default async (t) => {
   memoria.bc_verso_c = "strano";
   t.eq("… e uno storto in memoria vale il ripiego", leggiVerso("c", "rtl"), "rtl");
   t.eq("l'adattamento parte da «intera»", leggiAdatta(), "intera");
-  scriviAdatta("larghezza");
-  t.eq("… e si ricorda", leggiAdatta(), "larghezza");
+  scriviAdatta("nastro");
+  t.eq("… e si ricorda", leggiAdatta(), "nastro");
+  memoria.bc_fumetto_adatta = "larghezza";
+  t.eq("… e chi aveva «larghezza» si ritrova il nastro", leggiAdatta(), "nastro");
   scriviAdatta("boh");
   t.eq("… un valore storto torna a «intera»", leggiAdatta(), "intera");
   // ---- i bordi della scansione ---------------------------------------------

@@ -207,24 +207,74 @@ export function scriviVerso(id, verso) {
   }
 }
 
-// Come si adatta la pagina allo schermo — intera, o larga quanto lo
-// schermo con lo scorrimento in verticale (i webtoon, le tavole fitte).
+// Come si adatta la pagina allo schermo — intera, o il NASTRO: le pagine
+// una sotto l'altra, larghe quanto lo schermo, e si scorre col dito da una
+// all'altra senza voltare (chiesto dal lettore: «la modalita' scorrimento
+// verticale dove l'immagine mi diventa un po' piu' grande e riesco a
+// leggerla meglio»). Il nastro ha preso il posto di «larghezza», che era
+// una pagina sola larga quanto lo schermo e poi da voltare: chi l'aveva
+// scelta si ritrova il nastro, che e' la stessa cosa senza la voltata.
 // E' del dispositivo, non del libro: dipende da quanto vetro c'e'.
-export const ADATTA = ["intera", "larghezza"];
-export function leggiAdatta() {
+export const ADATTA = ["intera", "nastro"];
+export function leggiAdatta(storage = globalThis.localStorage) {
   try {
-    const v = localStorage.getItem("bc_fumetto_adatta");
+    const v = storage.getItem("bc_fumetto_adatta");
+    if (v === "larghezza") return "nastro";
     return ADATTA.includes(v) ? v : "intera";
   } catch {
     return "intera";
   }
 }
-export function scriviAdatta(v) {
+export function scriviAdatta(v, storage = globalThis.localStorage) {
   try {
-    localStorage.setItem("bc_fumetto_adatta", ADATTA.includes(v) ? v : "intera");
+    storage.setItem("bc_fumetto_adatta", ADATTA.includes(v) ? v : "intera");
   } catch {
     /* senza storage dura quanto la lettura */
   }
+}
+
+// LA GEOMETRIA DEL NASTRO. Ogni pagina e' alta quanto viene larga quanto
+// lo schermo (la stessa aritmetica di `disegnaPagina` in «larghezza»); una
+// pagina non ancora aperta non ha misura, e vale la proporzione MEDIANA di
+// quelle gia' viste — in un volume le pagine sono quasi tutte uguali, e
+// una stima giusta vuol dire un nastro che non salta quando la misura vera
+// arriva. Senza nessuna misura, la proporzione di una pagina di fumetto.
+export const PROPORZIONE_TIPICA = 1.5;
+export function altezzeNastro({ totale, nats = {}, bordi = null, larghezza } = {}) {
+  const n = Math.max(0, Math.floor(Number(totale) || 0));
+  const riquadro = { w: larghezza, h: 1 };
+  const note = [];
+  const vere = [];
+  for (let i = 1; i <= n; i++) {
+    const d = disegnaPagina({ nat: nats[i], riquadro, bordi, modo: "larghezza" });
+    vere.push(d ? d.foglio.h : null);
+    if (d) note.push(d.foglio.h / larghezza);
+  }
+  note.sort((a, b) => a - b);
+  const mediana = note.length ? note[Math.floor(note.length / 2)] : PROPORZIONE_TIPICA;
+  const stima = Math.round(larghezza * mediana * 100) / 100;
+  return vere.map((h) => (h == null ? stima : h));
+}
+
+// dove comincia ogni pagina nel nastro (e, in fondo, dove finisce l'ultima)
+export function cimeNastro(altezze) {
+  const cime = [0];
+  for (const h of altezze || []) cime.push(cime[cime.length - 1] + h);
+  return cime;
+}
+
+// la pagina sotto un punto del nastro (1 = la prima); fuori dal nastro, la
+// prima o l'ultima
+export function paginaAlPunto(cime, y) {
+  const n = (cime?.length || 1) - 1;
+  let lo = 0;
+  let hi = n - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (cime[mid] <= y) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo + 1;
 }
 
 // L'archivio aperto: le pagine in ordine, la scheda se c'e', e `leggi(i)`
