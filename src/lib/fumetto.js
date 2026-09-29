@@ -179,8 +179,14 @@ export function paginaDaAprire(chiesta, salvata, totale) {
 // sinistra va avanti. `null` (col mouse) apre le barre e basta.
 export const TAP_PREV = 0.28;
 export const TAP_NEXT = 0.72;
-export function tocco(rel, verso) {
-  if (rel == null || !Number.isFinite(rel)) return "barre";
+//
+// NEL NASTRO UN TOCCO NON SCORRE (chiesto dal lettore: «con un tocco si
+// muove come se andasse nella prossima pagina, e io vorrei uno scorrimento
+// continuo in base al dito»): li' si va avanti col dito, e un tocco al bordo
+// che salta di uno schermo porta via la vignetta che si stava leggendo.
+// Resta alle barre; la rotella e le frecce scorrono ancora.
+export function tocco(rel, verso, { nastro = false } = {}) {
+  if (nastro || rel == null || !Number.isFinite(rel)) return "barre";
   if (rel < TAP_PREV) return verso === "rtl" ? "next" : "prev";
   if (rel > TAP_NEXT) return verso === "rtl" ? "prev" : "next";
   return "barre";

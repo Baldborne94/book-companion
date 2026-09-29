@@ -699,7 +699,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     // da vicino il tocco non volta: si sta guardando
     if (st.current.s > 1.01) return;
     const rel = e.pointerType === "mouse" ? null : e.clientX / (window.innerWidth || 1);
-    const cosa = tocco(rel, verso);
+    const cosa = tocco(rel, verso, { nastro });
     // LA VOLTATA E' SUBITO, LE BARRE ASPETTANO UN SOFFIO. Il doppio tocco
     // e' due tocchi, e il primo dei due arrivava qui come un tocco
     // qualunque: al centro accendeva le barre (e il secondo zoomava con
@@ -717,6 +717,18 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     }
     clearTimeout(attesaBarre.current);
     attesaBarre.current = setTimeout(() => setChrome((c) => !c), DOPPIO);
+  };
+
+  // IL DITO PRESO DAL BROWSER NON E' UN TOCCO. Nel nastro lo scorrimento e'
+  // del browser: appena il dito passa la sua soglia arriva `pointercancel`
+  // (a 0,0), e trattato come un `pointerup` sembrava un tocco breve sul
+  // bordo sinistro — e il nastro saltava di uno schermo contro il dito.
+  // Riprodotto sull'app intera con la sequenza di Chrome Android: ogni
+  // trascinata, 720 px all'indietro.
+  const annulla = (e) => {
+    dita.current.delete(e.pointerId);
+    pizzico.current = null;
+    partenza.current = null;
   };
 
   const pct = pages ? Math.round((page / pages) * 100) : 0;
@@ -765,7 +777,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         onPointerDown={giu}
         onPointerMove={muovi}
         onPointerUp={su}
-        onPointerCancel={su}
+        onPointerCancel={annulla}
         onWheel={(e) => {
           if (intera) (e.deltaY > 0 ? avanti : indietroDiUna)();
         }}
