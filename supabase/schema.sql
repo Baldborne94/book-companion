@@ -23,6 +23,7 @@
 --   alter table public.books add column if not exists saga_tolta boolean not null default false;  -- la saga tolta a mano
 --   alter table public.books add column if not exists file_tolto boolean not null default false;  -- l'ebook tolto a mano
 --   alter table public.books add column if not exists tipo text;  -- fumetto o manga, scelto nella scheda
+--   alter table public.books add column if not exists scheda_at bigint not null default 0;  -- l'ora della scheda
 -- Senza, l'app sincronizza comunque tutto il resto: rinuncia solo al
 -- campo mancante e lo tiene in locale. Dopo la migrazione i libri gia'
 -- salvati si ricaricano da soli alla prima sincronizzazione.
@@ -71,7 +72,11 @@ create table if not exists public.books (
   file_tolto boolean not null default false,
   -- FUMETTO O MANGA, scelto nella scheda: un manga e un fumetto sono tutt'e
   -- due CBZ, e a dirli diversi e' il lettore. Vuoto = decide l'app.
-  tipo text
+  tipo text,
+  -- L'ORA DELLA SCHEDA (titolo, saga, voto, note…), separata da
+  -- `updated_at`, che si muove anche leggendo: senza, la lettura di un
+  -- dispositivo si portava via la saga scritta sull'altro.
+  scheda_at bigint not null default 0
 );
 
 -- per i database gia' creati: `create table if not exists` non aggiunge le
@@ -81,6 +86,7 @@ alter table public.books add column if not exists fav boolean not null default f
 alter table public.books add column if not exists saga_tolta boolean not null default false;
 alter table public.books add column if not exists file_tolto boolean not null default false;
 alter table public.books add column if not exists tipo text;
+alter table public.books add column if not exists scheda_at bigint not null default 0;
 -- e il numero di collana regge i decimali (su una colonna gia' `real` non fa niente)
 alter table public.books alter column saga_order type real;
 

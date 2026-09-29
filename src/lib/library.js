@@ -7,14 +7,23 @@ const TOMBS_KEY = "bc_tombs";
 export const touchBook = (id, ts = Date.now()) =>
   localStorage.setItem(`bc_upd_${id}`, String(ts));
 
-// LE SCHEDE CHE UN GIRO HA CAMBIATO, da timbrare: la sincronizzazione
-// manda solo i libri col timbro piu' recente, e una saga trovata da sola —
-// dal file, dal catalogo, dai fratelli — senza timbro restava su questo
-// dispositivo (segnalato: undici libri messi in saga sul PC, «Fuori saga»
-// sul tablet). Un libro nuovo non e' «cambiato»: lo timbra chi lo importa.
-export function schedeCambiate(prima, dopo) {
-  const vecchie = new Map((prima || []).filter((b) => b?.id).map((b) => [b.id, JSON.stringify(b)]));
-  return (dopo || []).filter((b) => b?.id && vecchie.has(b.id) && vecchie.get(b.id) !== JSON.stringify(b)).map((b) => b.id);
+// L'ORA DELLA SCHEDA, separata da quella della riga. La riga si timbra
+// anche leggendo (pagina, stato, date), e un solo orario per tutto faceva
+// vincere la lettura sul tablet sulla saga scritta prima sul PC
+// (segnalato: saghe messe a mano sul PC, sparite dopo la sincronizzazione).
+// Chi cambia la SCHEDA — titolo, autore, saga, voto, note, cuore — timbra
+// tutt'e due; chi legge solo la riga. Vedi `schedaPiuNuova` in `syncCore.js`.
+const schedaKey = (id) => `bc_sch_${id}`;
+export function timbraScheda(id, ts = Date.now()) {
+  localStorage.setItem(schedaKey(id), String(ts));
+  touchBook(id, ts);
+}
+export function posaScheda(id, ts) {
+  if (ts > 0) localStorage.setItem(schedaKey(id), String(ts));
+}
+export function getSchedaAt(id) {
+  const v = parseInt(localStorage.getItem(schedaKey(id)), 10);
+  return Number.isFinite(v) ? v : 0;
 }
 
 export function getUpdatedAt(id, fallback = 0) {

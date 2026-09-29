@@ -36,6 +36,8 @@ const riga = () => ({
   file_tolto: false,
   // e il tipo scelto nella scheda (fumetto o manga)
   tipo: "manga",
+  // e l'ora della scheda
+  scheda_at: 1,
 });
 
 // un database che rifiuta finché non gli si tolgono certe colonne, e che si
@@ -272,7 +274,7 @@ export default async function (t) {
       // sarebbe più niente da scendere
       const collana = decimale(r, "saga_order");
       if (collana) return collana;
-      for (const v of ["started_at", "genre", "impronta", "fav", "saga_tolta", "file_tolto", "tipo"]) {
+      for (const v of ["started_at", "genre", "impronta", "fav", "saga_tolta", "file_tolto", "tipo", "scheda_at"]) {
         if (v in r) return { error: { message: `Could not find the '${v}' column of 'books'` } };
       }
       return decimale(r, "rating") || { error: null };
