@@ -4,7 +4,7 @@
 // piu' quando le arriva un volume nuovo, non alzano nessun errore.
 import {
   fondiPreferite, segnaPreferita, preferiteVive, puoEssereFavorita, chiaviDelLibro,
-  libriDellaRaccolta, ePreferito, vistaPerRaccolta, leggiPreferite, scriviPreferite,
+  ePreferito, leggiPreferite, scriviPreferite,
 } from "../src/lib/raccoltePreferite.js";
 import { disponi } from "../src/lib/ripiani.js";
 import { mergePrefs } from "../src/lib/syncCore.js";
@@ -20,9 +20,7 @@ export default async function (t) {
   const saga = disponi(libri, null, "saga").find((r) => r.tipo === "saga");
   t.eq("la chiave di un libro e' quella del suo ripiano di saga", chiaviDelLibro(libri[0])[0], saga.id);
   const autore = disponi(libri, null, "autore").find((r) => r.tipo === "autore");
-  t.eq("…e di autore", chiaviDelLibro(libri[2])[1] ?? chiaviDelLibro(libri[2])[0], autore.id);
-  t.eq("la raccolta preferita ritrova i suoi libri", libriDellaRaccolta(libri, saga.id).map((b) => b.id).join(), "a,b");
-  t.eq("anche con l'autore scritto al contrario", libriDellaRaccolta(libri, autore.id).length, 4);
+  t.eq("…e di autore, anche scritto al contrario", chiaviDelLibro(libri[2])[0], autore.id);
   t.c("solo saghe e autori prendono il cuore", puoEssereFavorita("saga:x") && puoEssereFavorita("autore:y") && !puoEssereFavorita("Fantasy") && !puoEssereFavorita("saga:"));
 
   // ---- mettere e togliere ------------------------------------------------
@@ -58,15 +56,11 @@ export default async function (t) {
   const vuoti = mergePrefs({ ...base, raccolte_fav: [] }, { ...base });
   t.c("uno schema senza la colonna non fa risalire le preferenze a ogni giro", !vuoti.pushRemote && !vuoti.applyLocal);
 
-  // ---- il filtro e l'apertura dall'Ingresso ------------------------------
+  // ---- il filtro «♥ Preferiti» -------------------------------------------
   const vive = new Set([saga.id]);
   t.c("un volume di una raccolta col cuore e' fra i preferiti", ePreferito(libri[0], vive));
   t.c("un libro col suo cuore pure", ePreferito({ id: "z", fav: true }, new Set()));
   t.c("un altro no", !ePreferito({ id: "q", title: "Q", author: "Altri" }, vive));
-  t.eq("una saga si apre a «Saga e autore» se c'eri gia'", vistaPerRaccolta("saga:x", { group: "shelf" }).group, "shelf");
-  t.eq("…o a «Saga»", vistaPerRaccolta("saga:x", { group: "genre" }).group, "saga");
-  t.eq("un autore a «Autore»", vistaPerRaccolta("autore:y", { group: "shelf" }).group, "autore");
-  t.eq("e sempre a raccolte", vistaPerRaccolta("saga:x", {}).aspetto, "raccolte");
 
   const mem = new Map();
   const st = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v) };

@@ -77,18 +77,6 @@ export function chiaviDelLibro(b) {
   return out;
 }
 
-export const libriDellaRaccolta = (books, chiave) => (books || []).filter((b) => chiaviDelLibro(b).includes(chiave));
-
 // «Preferiti» in Libreria: i libri col cuore, e quelli che stanno in una
 // raccolta col cuore
 export const ePreferito = (b, vive) => !!b?.fav || chiaviDelLibro(b).some((k) => vive.has(k));
-
-// APRIRE UNA RACCOLTA PREFERITA DALL'INGRESSO vuol dire portare la Libreria
-// dove quella raccolta esiste: le saghe stanno sia in «Saga e autore» sia
-// in «Saga», gli autori solo in «Autore» (in «Saga e autore» un autore ha
-// il suo ripiano soltanto coi libri che una saga non ce l'hanno).
-export function vistaPerRaccolta(chiave, vista) {
-  const tipo = String(chiave || "").split(":")[0];
-  const group = tipo === "saga" ? (["shelf", "saga"].includes(vista?.group) ? vista.group : "saga") : "autore";
-  return { ...vista, group, aspetto: "raccolte" };
-}

@@ -221,7 +221,7 @@ export const MAPPA = [
   {
     luogo: "scheda",
     nome: "Stato, voto, cuore",
-    cosa: "Da leggere · In lettura · Letto · Abbandonato; le stelle sono un voto, il cuore sceglie i preferiti dell'Ingresso.",
+    cosa: "Da leggere · In lettura · Letto · Abbandonato; le stelle sono un voto, il cuore mette il libro fra i preferiti: in Libreria li trovi col filtro «♥ Preferiti», o in cima con l'ordine «Preferiti prima».",
     dove: "In cima alla scheda.",
   },
   {
