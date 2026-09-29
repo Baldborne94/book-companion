@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
 import { fileDaLeggere } from "../lib/sync.js";
@@ -32,6 +32,9 @@ import {
   leggiSposta,
   scriviSposta,
   disegnaCoppia,
+  altezzeNastro,
+  cimeNastro,
+  paginaAlPunto,
 } from "../lib/fumetto.js";
 import { vuoto } from "../lib/pdfCrop.js";
 import { conAttesa } from "../lib/misuraPagine.js";
@@ -62,6 +65,14 @@ const SCORSA = 60;
 const VICINE = 4;
 // quanto si aspetta la misura dei bordi prima di mostrare la prima pagina
 const MISURA_MAX = 4000;
+// IL NASTRO NON E' PIU' LARGO DI COSI': sul tablet (1280) e' lo schermo
+// intero, su un monitor largo una pagina da due metri d'altezza non si
+// legge meglio, si scorre di piu'
+const NASTRO_MAX = 1280;
+// le pagine del nastro con l'immagine dentro, attorno a quella che guardi:
+// piu' avanti che indietro, perche' si scorre in avanti
+const NASTRO_DIETRO = 2;
+const NASTRO_AVANTI = 4;
 
 function Panel({ title, onClose, children }) {
   return (
@@ -150,14 +161,18 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const [riprova, setRiprova] = useState(0);
 
   const intera = adatta === "intera";
+  const nastro = adatta === "nastro";
   // LA DOPPIA PAGINA (vedi `coppie` in lib/fumetto.js) vale solo a pagina
-  // intera: «Adatta» fa gia' una pagina larga quanto lo schermo
+  // intera: nel nastro le pagine stanno una sotto l'altra
   const doppia = intera && pages > 1 && doppiaAccesa(leggiDoppia(orientamento(riquadro)), riquadro);
   const opzioni = { larghe, sposta };
   const mostrate = doppia ? coppiaDi(page, pages, opzioni) : [page];
   const chiaveMostrate = mostrate.join(",");
   live.current.doppia = doppia;
   live.current.opzioni = opzioni;
+  live.current.nastro = nastro;
+  // le pagine del nastro che hanno l'immagine (n → object URL)
+  const [vista, setVista] = useState({});
 
   const flush = useCallback(() => {
     const s = live.current;
@@ -181,14 +196,22 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
 
   // avanti e indietro nel senso della LETTURA, non dello schermo; in doppia
   // pagina di una coppia per volta
+  // nel nastro «avanti» e' uno schermo piu' giu' (un tocco al bordo, una
+  // freccia): la pagina segue lo scorrimento
+  const scorri = (dir) => {
+    const b = boxRef.current;
+    if (b) b.scrollBy({ top: dir * b.clientHeight * 0.9, behavior: "smooth" });
+  };
   const avanti = useCallback(() => {
     const l = live.current;
+    if (l.nastro) return scorri(1);
     if (!l.doppia) return goToPage(l.page + 1);
     const n = coppiaVicina(l.page, l.pages, l.opzioni, 1);
     if (n) goToPage(n);
   }, [goToPage]);
   const indietroDiUna = useCallback(() => {
     const l = live.current;
+    if (l.nastro) return scorri(-1);
     if (!l.doppia) return goToPage(l.page - 1);
     const n = coppiaVicina(l.page, l.pages, l.opzioni, -1);
     if (n) goToPage(n);
@@ -312,7 +335,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (status !== "ready") return;
+    if (status !== "ready" || nastro) return;
     live.current.page = page;
     live.current.ultima = mostrate.at(-1);
     const mio = ++gettone.current;
@@ -350,7 +373,89 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     // sveglio e il tempo di lettura si conta da qui
     if (primoGiro.current) primoGiro.current = false;
     else onAlive?.();
-  }, [status, chiaveMostrate, pages, book.id, urlDi, sfoltisci, flush, riprova]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, chiaveMostrate, nastro, pages, book.id, urlDi, sfoltisci, flush, riprova]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---- IL NASTRO (vedi `altezzeNastro` in lib/fumetto.js) ----------------
+  // La pagina segue lo scorrimento: quella sotto il primo terzo dello
+  // schermo e' «quella che leggi». Il cursore, un segnalibro o il numero
+  // scritto a mano invece portano il nastro alla pagina: `daScorrere` dice
+  // da che parte e' arrivata la pagina nuova.
+  const larghezzaNastro = Math.min(riquadro?.w || 0, NASTRO_MAX);
+  const altezze = nastro ? altezzeNastro({ totale: pages, nats, bordi: settings.ritaglia !== false ? bordi : null, larghezza: larghezzaNastro }) : null;
+  const cime = altezze ? cimeNastro(altezze) : null;
+  const cimeRef = useRef(null);
+  cimeRef.current = cime;
+  const daScorrere = useRef(null);
+  const cimaVista = useRef(null);
+  const quadro = useRef(0);
+
+  const alloScorrere = () => {
+    if (!nastro || quadro.current) return;
+    quadro.current = requestAnimationFrame(() => {
+      quadro.current = 0;
+      const b = boxRef.current;
+      const c = cimeRef.current;
+      if (!b || !c) return;
+      const n = paginaAlPunto(c, b.scrollTop + b.clientHeight / 3);
+      if (n !== live.current.page) {
+        daScorrere.current = n;
+        live.current.page = n;
+        setPage(n);
+      }
+    });
+  };
+
+  useEffect(() => {
+    if (status !== "ready" || !nastro || !cime) return;
+    live.current.page = page;
+    live.current.ultima = page;
+    // arrivata da fuori (cursore, segnalibro, apertura): il nastro ci va
+    if (daScorrere.current !== page && boxRef.current) {
+      boxRef.current.scrollTop = cime[page - 1] || 0;
+      cimaVista.current = { n: page, y: cime[page - 1] || 0 };
+    }
+    daScorrere.current = page;
+    const da = Math.max(1, page - NASTRO_DIETRO);
+    const a = Math.min(pages, page + NASTRO_AVANTI);
+    for (let n = da; n <= a; n++) {
+      urlDi(n)
+        .then((url) => {
+          if (url) setVista((v) => (v[n] === url ? v : { ...v, [n]: url }));
+        })
+        .catch(() => {
+          if (lontano.current && !driveProntoOra()) setSenzaChiave(true);
+        });
+    }
+    sfoltisci(page);
+    // chi e' uscito dalla finestra perde l'immagine (il suo indirizzo e'
+    // appena stato revocato) ma non il posto: l'altezza resta
+    setVista((v) => {
+      const dentro = Object.fromEntries(Object.entries(v).filter(([n]) => Math.abs(n - page) <= VICINE));
+      return Object.keys(dentro).length === Object.keys(v).length ? v : dentro;
+    });
+    flush();
+    if (pages > 0 && page === pages) {
+      setStatus(book.id, "read");
+      setEndCard((v) => (v === null ? "shown" : v));
+    }
+    if (primoGiro.current) primoGiro.current = false;
+    else onAlive?.();
+  }, [status, nastro, page, pages, !!cime, riprova]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // L'ANCORA DEL NASTRO: quando una pagina SOPRA quella che leggi riceve la
+  // sua misura vera (era una stima), tutto il nastro sotto si sposta, e la
+  // pagina che stavi leggendo scapperebbe di qualche centinaio di pixel. Si
+  // sposta lo scorrimento della stessa quantita', prima che si veda.
+  useLayoutEffect(() => {
+    if (!nastro || !cime || !boxRef.current) return;
+    // la stessa pagina di prima, e la sua cima si e' mossa: e' il nastro
+    // sopra di lei che e' cresciuto (una pagina nuova non e' uno spostamento)
+    const n = live.current.page;
+    const cima = cime[n - 1];
+    const prima = cimaVista.current;
+    if (prima && prima.n === n && cima !== prima.y) boxRef.current.scrollTop += cima - prima.y;
+    cimaVista.current = { n, y: cima };
+  });
 
   useEffect(() => {
     const onFs = () => setIsFs(!!document.fullscreenElement);
@@ -426,10 +531,13 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   }
 
   function cambiaAdatta() {
-    const v = adatta === "intera" ? "larghezza" : "intera";
+    const v = intera ? "nastro" : "intera";
     setAdatta(v);
     scriviAdatta(v);
     applica({ s: 1, x: 0, y: 0 });
+    // entrando nel nastro si parte dalla pagina che si guardava
+    daScorrere.current = null;
+    cimaVista.current = null;
   }
 
   function addMark() {
@@ -576,12 +684,12 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   // le pagine si disegnano quando tutte quelle a schermo hanno una misura
   // e un indirizzo: una coppia mezza pronta e' peggio di un fotogramma vuoto
   const pronte = srcs.length === mostrate.length && srcs.every((x, i) => x.n === mostrate[i] && nats[x.n]);
-  const disegno = !pronte
+  const disegno = !pronte || nastro
     ? null
     : doppia
       ? disegnaCoppia({ nats: mostrate.map((n) => nats[n]), riquadro, bordi: bordiVivi, verso })
       : (() => {
-          const d = disegnaPagina({ nat: nats[page], riquadro, bordi: bordiVivi, modo: adatta });
+          const d = disegnaPagina({ nat: nats[page], riquadro, bordi: bordiVivi });
           return d && { foglio: d.foglio, pagine: [{ indice: 0, x: 0, foglio: d.foglio, immagine: d.immagine }] };
         })();
 
@@ -619,10 +727,11 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         onWheel={(e) => {
           if (intera) (e.deltaY > 0 ? avanti : indietroDiUna)();
         }}
+        onScroll={alloScorrere}
         style={{
           position: "absolute",
           inset: 0,
-          display: "flex",
+          display: nastro ? "block" : "flex",
           alignItems: intera ? "center" : "flex-start",
           justifyContent: "center",
           overflowY: intera ? "hidden" : "auto",
@@ -639,7 +748,38 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
             si sa quanto e' grande il file (`onLoad`) il foglio resta
             invisibile: un fotogramma a misura sbagliata e' peggio di uno
             vuoto. */}
-        {srcs.length > 0 && (
+        {nastro && cime && (
+          <div style={{ position: "relative", width: larghezzaNastro, height: cime.at(-1), margin: "0 auto" }}>
+            {Object.entries(vista).map(([k, url]) => {
+              const n = Number(k);
+              const d = disegnaPagina({ nat: nats[n], riquadro: { w: larghezzaNastro, h: 1 }, bordi: bordiVivi, modo: "larghezza" });
+              return (
+                <div
+                  key={n}
+                  style={{ position: "absolute", overflow: "hidden", left: 0, top: cime[n - 1], width: larghezzaNastro, height: altezze[n - 1] }}
+                >
+                  <img
+                    src={url}
+                    alt={archivio.current?.pagine?.[n - 1] || ""}
+                    draggable={false}
+                    onLoad={(e) => segnaMisura(n, { w: e.target.naturalWidth, h: e.target.naturalHeight })}
+                    style={{
+                      position: "absolute",
+                      display: "block",
+                      maxWidth: "none",
+                      visibility: d ? "visible" : "hidden",
+                      left: d?.immagine.x,
+                      top: d?.immagine.y,
+                      width: d?.immagine.w,
+                      height: d?.immagine.h,
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {!nastro && srcs.length > 0 && (
           <div
             ref={imgRef}
             style={{
@@ -763,7 +903,8 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
                 {/* IL VERSO: un manga si legge da destra, e il tasto lo dice
                     col glifo — la freccia punta dove sta la pagina dopo */}
                 <TastoBarra onClick={cambiaVerso} attivo={verso === "rtl"} conNome={nomiNeiTasti} nome="Verso" glifo={verso === "rtl" ? "⇦" : "⇨"} />
-                <TastoBarra onClick={cambiaAdatta} attivo={!intera} conNome={nomiNeiTasti} nome="Adatta" glifo="⤢" />
+                {/* il NASTRO: le pagine una sotto l'altra, e si scorre */}
+                <TastoBarra onClick={cambiaAdatta} attivo={nastro} conNome={nomiNeiTasti} nome="Scorri" glifo="↕" />
                 {/* due pagine affiancate: solo a pagina intera, dove ha senso */}
                 {intera && pages > 1 && (
                   <TastoBarra onClick={cambiaDoppia} attivo={doppia} conNome={nomiNeiTasti} nome="Doppia" glifo="📖" />
@@ -884,7 +1025,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
             style={{ width: "100%", accentColor: C.accent }}
           />
           <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 8, lineHeight: 1.45 }}>
-            {intera ? "Pagina intera: due dita o un doppio tocco per avvicinarti." : "Larga quanto lo schermo: scorri in verticale."}
+            {intera ? "Pagina intera: due dita o un doppio tocco per avvicinarti." : "Il nastro: scorri col dito da una pagina all'altra, senza voltare."}
           </div>
 
           {doppia && (

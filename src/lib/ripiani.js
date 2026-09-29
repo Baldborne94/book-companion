@@ -476,3 +476,37 @@ export function altezzaStimata(quanti, larghezza) {
   const righe = Math.ceil(n / colonne);
   return righe * ALTEZZA_SCHEDA + (righe - 1) * SPAZIO_RIGHE;
 }
+
+// LE RACCOLTE (chiesto dal lettore, col Kindle in mano: «i libri
+// visualizzati solo come cartelle di raccolta dove mostri solo un'immagine
+// principale e poi aprendo vedi tutti i volumi»). Ogni ripiano diventa una
+// cartella; il mucchio di chi non sta con nessuno — i «Volumi soli», il
+// «Senza genere» — NON e' una raccolta, e i suoi libri restano sciolti
+// sotto le cartelle: una cartella «Volumi soli» sarebbe un posto dove i
+// libri si nascondono, non dove stanno insieme.
+export const eRaccolta = (r) => !!r && r.tipo !== "soli" && !r.spento;
+
+export function inRaccolte(ripiani = []) {
+  return {
+    raccolte: ripiani.filter(eRaccolta),
+    sciolti: ripiani.filter((r) => !eRaccolta(r)),
+  };
+}
+
+// LA COPERTINA DI UNA RACCOLTA E' IL VOLUME CHE LEGGERAI ADESSO: quello che
+// hai in mano, se c'e'; se no il primo che non hai ancora chiuso; e a saga
+// finita la prima. Sul Kindle la cartella e' grigia e muta; qui, fra venti
+// copertine uguali di 20th Century Boys, quella che conta e' quella da cui
+// riparti. L'ordine e' quello del ripiano (di lettura, per le saghe).
+export function copertinaDi(libri = [], statusOf = () => "unread") {
+  return (
+    libri.find((b) => statusOf(b.id) === "reading") ||
+    libri.find((b) => !["read", "abandoned"].includes(statusOf(b.id))) ||
+    libri[0] ||
+    null
+  );
+}
+
+export function contoRaccolta(libri = [], statusOf = () => "unread") {
+  return { quanti: libri.length, letti: libri.filter((b) => statusOf(b.id) === "read").length };
+}

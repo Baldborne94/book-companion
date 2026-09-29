@@ -31,10 +31,10 @@ const vista = () => vistaValida(GRUPPI, ORDINI);
 export default async function (t) {
   // ---- LA DISPOSIZIONE DELLA LIBRERIA -------------------------------------
   delete memoria.bc_vista;
-  t.eq("mai salvata → la disposizione di sempre", JSON.stringify(vista()), '{"group":"shelf","sort":"title"}');
+  t.eq("mai salvata → la disposizione di sempre", JSON.stringify(vista()), '{"group":"shelf","sort":"title","aspetto":"scaffale"}');
 
   scriviVista({ group: "genre", sort: "recent" });
-  t.eq("salvata e riconosciuta → si rilegge", JSON.stringify(vista()), '{"group":"genre","sort":"recent"}');
+  t.eq("salvata e riconosciuta → si rilegge", JSON.stringify(vista()), '{"group":"genre","sort":"recent","aspetto":"scaffale"}');
 
   // LA VOCE CHE NON ESISTE PIU': «Niente» e «Saga» sono state tolte, e chi
   // le aveva scelte non deve restare impigliato in un menu in bianco
@@ -44,6 +44,15 @@ export default async function (t) {
   scriviVista({ group: "genre", sort: "saga" });
   t.eq("un ordinamento sconosciuto torna alla partenza", vista().sort, "title");
   t.eq("e il raggruppamento buono resta", vista().group, "genre");
+
+  // L'ASPETTO — scaffale o raccolte — si ricorda con il resto, e uno
+  // storto torna allo scaffale senza toccare le altre due scelte
+  scriviVista({ group: "genre", sort: "title", aspetto: "raccolte" });
+  t.eq("le raccolte si ricordano", vista().aspetto, "raccolte");
+  t.eq("…insieme al raggruppamento", vista().group, "genre");
+  scriviVista({ group: "genre", sort: "title", aspetto: "cartelline" });
+  t.eq("un aspetto sconosciuto torna allo scaffale", vista().aspetto, "scaffale");
+  t.eq("…e il raggruppamento resta", vista().group, "genre");
 
   // una vista scritta a meta': la parte che manca prende la partenza
   memoria.bc_vista = JSON.stringify({ group: "genre" });
@@ -57,16 +66,16 @@ export default async function (t) {
   // quei due (mutazione provata: sopravvive). Tiene pulito l'oggetto, non
   // difende l'esito.
   memoria.bc_vista = "{non è json";
-  t.eq("json rotto → partenza", JSON.stringify(vista()), '{"group":"shelf","sort":"title"}');
+  t.eq("json rotto → partenza", JSON.stringify(vista()), '{"group":"shelf","sort":"title","aspetto":"scaffale"}');
   memoria.bc_vista = '"shelf"';
-  t.eq("una stringa al posto dell'oggetto → partenza", JSON.stringify(vista()), '{"group":"shelf","sort":"title"}');
+  t.eq("una stringa al posto dell'oggetto → partenza", JSON.stringify(vista()), '{"group":"shelf","sort":"title","aspetto":"scaffale"}');
   memoria.bc_vista = "null";
-  t.eq("null → partenza", JSON.stringify(vista()), '{"group":"shelf","sort":"title"}');
+  t.eq("null → partenza", JSON.stringify(vista()), '{"group":"shelf","sort":"title","aspetto":"scaffale"}');
 
   // la partenza e' la PRIMA voce degli elenchi, non un nome scritto a mano:
   // con altri elenchi cambia con loro
   delete memoria.bc_vista;
-  t.eq("la partenza segue gli elenchi", JSON.stringify(vistaValida([{ id: "x" }], [{ id: "y" }])), '{"group":"x","sort":"y"}');
+  t.eq("la partenza segue gli elenchi", JSON.stringify(vistaValida([{ id: "x" }], [{ id: "y" }])), '{"group":"x","sort":"y","aspetto":"scaffale"}');
 
   // ---- IL NUMERO DI LETTURA -----------------------------------------------
   t.eq("un intero", numeroLettura("3"), 3);
