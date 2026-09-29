@@ -65,6 +65,8 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 
 - PDF: livello testo di pdf.js, evidenziazioni in **frazioni di pagina** (i rettangoli che arrivano non si toccano), ritaglio dei margini misurato una volta per libro. Si chiude sempre da `chiudiPdf`.
 - Fumetti CBZ/CBR: formato dai **byte**, ordine naturale delle pagine, ComicInfo letto a mano. Si leggono **a fette** (`zipAFette`, `rarAFette` per i RAR memorizzati): mai l'intero volume in memoria. Manga = verso da destra; il tipo si sceglie nella scheda.
+- Da Drive ogni lettura è un viaggio in rete: una voce dello zip si legge in **una** richiesta (`leggiVoce`: testata e dati insieme), la misura dei bordi chiede le sue pagine in parallelo e ha un tetto (`MISURA_MAX`), la prima pagina si chiede subito.
+- Doppia pagina dei fumetti (`coppie` in `fumetto.js`): copertina sola, poi 2-3, 4-5; una tavola larga sta da sola e le coppie ripartono dopo di lei. Si calcolano da capo, così la coppia di una pagina è la stessa da ogni strada. Doppia o singola si sceglie **per orientamento**; senza scelta, doppia a schermo sdraiato. Solo a pagina intera.
 
 ### Dizionario e Oracolo
 

@@ -103,6 +103,8 @@ export async function voci(blob) {
       compressa: dv.getUint32(o + 20, true),
       misura: dv.getUint32(o + 24, true),
       posizione: dv.getUint32(o + 42, true),
+      lnome,
+      lextra,
     };
     zip64Extra(dv, o + 46 + lnome, lextra, voce);
     voce.dir = nome.endsWith("/");
@@ -130,10 +132,31 @@ async function datiDi(blob, voce) {
   return blob.slice(inizio, inizio + voce.compressa);
 }
 
+// UNA LETTURA PER VOCE, testata e dati insieme. Letti in due tempi — prima
+// i trenta byte della testata, poi i dati — erano due letture, e su un file
+// letto da Google Drive due viaggi in rete per ogni pagina di un fumetto,
+// col primo che si portava dietro un quarto di mega solo per trenta byte
+// (misurato: 16 richieste una dopo l'altra prima della prima pagina). La
+// testata locale si stima da quella della directory centrale piu' un
+// margine; se il suo campo extra e' piu' lungo del previsto — capita, ed e'
+// il motivo per cui la testata si rilegge — si torna alla strada in due tempi.
+export const MARGINE_TESTATA = 1024;
 export async function leggiVoce(blob, voce) {
-  const dati = await datiDi(blob, voce);
-  if (voce.metodo === 0) return new Uint8Array(await dati.arrayBuffer());
-  return sciogli(dati);
+  if (voce.cifrato) throw new Error(`pagina cifrata: ${voce.nome}`);
+  if (voce.metodo !== 0 && voce.metodo !== 8) throw new Error(`compressione non supportata (${voce.metodo}): ${voce.nome}`);
+  const stima = 30 + (voce.lnome || 0) + (voce.lextra || 0) + MARGINE_TESTATA + voce.compressa;
+  const buf = new Uint8Array(await blob.slice(voce.posizione, voce.posizione + stima).arrayBuffer());
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  if (buf.length < 30 || dv.getUint32(0, true) !== LOCALE) throw new Error(`testata rotta: ${voce.nome}`);
+  const inizio = 30 + dv.getUint16(26, true) + dv.getUint16(28, true);
+  if (inizio + voce.compressa > buf.length) {
+    const dati = await datiDi(blob, voce);
+    if (voce.metodo === 0) return new Uint8Array(await dati.arrayBuffer());
+    return sciogli(dati);
+  }
+  const dati = buf.subarray(inizio, inizio + voce.compressa);
+  if (voce.metodo === 0) return dati.slice();
+  return sciogli(new Blob([dati]));
 }
 
 // La voce come Blob. Memorizzata e' una FETTA dell'archivio e non costa
