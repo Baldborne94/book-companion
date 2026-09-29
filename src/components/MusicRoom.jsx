@@ -6,6 +6,8 @@ import {
   getListsRaw, saveLists, nuovaRaccolta, braniDi,
 } from "../lib/music.js";
 import EmptyState from "./EmptyState.jsx";
+import { driveAcceso, driveProntoOra, collegaDrive, elencaCartelle, elencaAudio, scegliSuDrive, dettagliFile, adottaMelodie, DriveScollegato } from "../lib/drive.js";
+import { sceltaMusicaDalPicker, audioSotto, melodieDaAggiungere, scegliCartella, idRadice } from "../lib/driveCore.js";
 
 const SLEEP_CHOICES = [
   { min: 0, label: "∞" },
@@ -47,6 +49,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
   const [newName, setNewName] = useState("");
   const fileRef = useRef(null);
   const [caricando, setCaricando] = useState(false);
+  const [daDrive, setDaDrive] = useState(false);
   const [raccolte, setRaccolte] = useState(() => getListsRaw());
   // quali melodie da file hanno i byte QUI: le altre stanno su Google Drive
   // e scendono quando le suoni — la nuvoletta lo dice prima del tocco, che
@@ -122,6 +125,47 @@ export default function MusicRoom({ music, playerRef, notify }) {
       );
     }
     if (scartati) notify(`${scartati} file non sono audio e li ho lasciati fuori 🎵`);
+  }
+
+  // DA GOOGLE DRIVE, come i libri: il selettore si apre sulla cartella
+  // «Musica» di «book-companion» (o sulla radice), file e cartelle intere.
+  // I brani non scendono: scendono quando li suoni.
+  async function scegliMusicaSuDrive() {
+    if (daDrive) return;
+    setDaDrive(true);
+    try {
+      if (!driveProntoOra()) await collegaDrive();
+      const cartelle = await elencaCartelle();
+      const docs = await scegliSuDrive({
+        cartellaId: scegliCartella("musica", { cartelle }) || idRadice(cartelle),
+        titolo: "Scegli melodie o cartelle intere",
+      });
+      if (!docs) return;
+      const { sciolti, cartelle: scelte, scartati } = sceltaMusicaDalPicker(docs);
+      const note = [];
+      if (scartati.length) note.push(`${scartati.length === 1 ? "un file non è audio" : `${scartati.length} file non sono audio`} (${scartati.slice(0, 3).join(", ")}${scartati.length > 3 ? "…" : ""})`);
+      const trovati = sciolti.length ? await dettagliFile(sciolti.map((f) => f.id)) : [];
+      if (scelte.length) {
+        const { file: sotto, vuote } = audioSotto(scelte, await elencaAudio(), cartelle);
+        trovati.push(...sotto);
+        if (vuote.length) note.push(`${vuote.length === 1 ? "nella cartella" : "nelle cartelle"} ${vuote.slice(0, 3).map((n) => `«${n}»`).join(", ")} non c'è musica`);
+      }
+      const nuove = melodieDaAggiungere(favs, trovati);
+      const gia = new Set(trovati.map((f) => f.id)).size - nuove.length;
+      if (gia > 0) note.push(gia === 1 ? "una c'era già" : `${gia} c'erano già`);
+      if (!nuove.length) {
+        notify(note.length ? `Nessuna melodia nuova: ${note.join(" · ")}` : "Non hai scelto nessun file");
+        return;
+      }
+      const esito = await adottaMelodie(nuove);
+      commit([...favs, ...nuove.map((n) => n.voce)]);
+      const quante = nuove.length === 1 ? `«${nuove[0].voce.name}» aggiunta` : `${nuove.length} melodie aggiunte`;
+      notify([`${quante} da Google Drive ☁ si scaricano quando le suoni`, ...note, esito.scollegato ? "Google Drive aspetta un tocco: il resto dei segni lo scrive la prossima sincronizzazione" : ""].filter(Boolean).join(" · "));
+    } catch (e) {
+      notify(e instanceof DriveScollegato ? "Google Drive aspetta un tocco: riprova." : e?.message || "Google Drive non ha risposto");
+    } finally {
+      setDaDrive(false);
+    }
   }
 
   function addMelody() {
@@ -431,7 +475,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
                   ) : (
                     <>
                       <span style={{ fontSize: F.titoletto, color: C.accent }}>✧</span>
-                      <span style={{ flex: 1, fontSize: F.corpo, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: F.corpo, color: C.text, lineHeight: 1.3, overflowWrap: "anywhere" }}>
                         {r.name}
                       </span>
                       <button
@@ -560,6 +604,23 @@ export default function MusicRoom({ music, playerRef, notify }) {
         >
           {caricando ? "…custodisco" : "♫ Dai tuoi file"}
         </button>
+        {driveAcceso() && (
+          <button
+            onClick={scegliMusicaSuDrive}
+            disabled={daDrive}
+            style={{
+              padding: "6px 14px",
+              borderRadius: R.tondo,
+              fontSize: F.nota,
+              border: `1px solid ${C.accent}88`,
+              color: C.accent,
+              background: `${C.accent}14`,
+              opacity: daDrive ? 0.6 : 1,
+            }}
+          >
+            {daDrive ? "…apro Drive" : "☁ Da Google Drive"}
+          </button>
+        )}
         <button
           onClick={() => setAdding((v) => !v)}
           style={{
@@ -575,7 +636,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
         </button>
       </div>
       <p style={{ fontSize: F.minuscolo, color: C.muted, margin: "-4px 0 14px", lineHeight: 1.5 }}>
-        ♫ Le melodie dai tuoi file vanno avanti a tablet spento, fino allo scadere del timer, e restano su questo dispositivo: nel cloud viaggiano solo i link.
+        ♫ Le melodie dai tuoi file vanno avanti a tablet spento, fino allo scadere del timer.{driveAcceso() ? " Salgono su Google Drive, e sull'altro dispositivo scendono quando le suoni." : " Restano su questo dispositivo: nel cloud viaggiano solo i link."}{" "}
         ♪ YouTube no: quel lettore si mette in pausa da solo quando lo schermo si spegne, e non è in nostro potere.
       </p>
 
@@ -687,11 +748,11 @@ export default function MusicRoom({ music, playerRef, notify }) {
                       <span
                         style={{
                           flex: 1,
+                          minWidth: 0,
                           fontSize: F.corpo,
                           color: dentro ? C.text : C.muted,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
+                          lineHeight: 1.3,
+                          overflowWrap: "anywhere",
                         }}
                       >
                         {f.name}
@@ -744,7 +805,12 @@ export default function MusicRoom({ music, playerRef, notify }) {
                     >
                       {isFile(f) ? "♫" : "♪"}
                     </span>
-                    <span style={{ flex: 1, fontSize: F.corpo, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {/* IL NOME INTERO (chiesto dal lettore: «i testi dei file
+                        che importo, posso leggere praticamente nulla»): su una
+                        riga sola il nome di un file importato si troncava a
+                        «Pioggi…», e il nome e' tutto quel che distingue un
+                        brano dall'altro */}
+                    <span style={{ flex: 1, minWidth: 0, fontSize: F.corpo, color: C.text, lineHeight: 1.3, overflowWrap: "anywhere" }}>
                       {f.name}
                     </span>
                     {isFile(f) && qui && !qui.has(f.trackId) && (
