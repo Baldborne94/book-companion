@@ -63,6 +63,9 @@ const SCORSA = 60;
 // quante pagine tenere pronte attorno a quella aperta: in doppia pagina la
 // coppia dopo e quella prima sono quattro
 const VICINE = 4;
+// una pagina che non si e' lasciata leggere si richiede una volta, dopo un
+// respiro: su Drive un intoppo della rete passa quasi sempre in un attimo
+const RIPROVA = 600;
 // quanto si aspetta la misura dei bordi prima di mostrare la prima pagina
 const MISURA_MAX = 4000;
 // IL NASTRO NON E' PIU' LARGO DI COSI': sul tablet (1280) e' lo schermo
@@ -128,6 +131,9 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const [pages, setPages] = useState(0);
   // le pagine a schermo, una o due, ognuna col suo object URL
   const [srcs, setSrcs] = useState([]);
+  // per quale coppia sono quelle pagine: una coppia a cui ne manca una (non
+  // si e' lasciata leggere) si disegna con quella che c'e'
+  const [srcsDi, setSrcsDi] = useState("");
   const [verso, setVerso] = useState(() => leggiVerso(book.id, book.verso));
   const [adatta, setAdatta] = useState(() => leggiAdatta());
   // I BORDI DELLA SCANSIONE (`lib/fumetto.js`): misurati una volta per
@@ -341,10 +347,25 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     const mio = ++gettone.current;
     applica({ s: 1, x: 0, y: 0 });
     if (boxRef.current) boxRef.current.scrollTop = 0;
-    Promise.all(mostrate.map((n) => urlDi(n)))
-      .then((us) => {
+    // UNA PAGINA CHE NON ARRIVA NON SI PORTA VIA LA COPPIA (segnalato dal
+    // lettore con Kill Six Billion Demons: schermo nero e «Questa pagina non
+    // si lascia aprire» sulle pagine 6-7). Con `Promise.all` bastava una
+    // delle due per spegnere tutt'e due; adesso chi non arriva si riprova
+    // una volta, e se non arriva ancora si mostra l'altra e si dice QUALE
+    // manca.
+    const prova = (n) => urlDi(n).catch(() => new Promise((r) => setTimeout(r, RIPROVA)).then(() => urlDi(n)));
+    Promise.allSettled(mostrate.map(prova))
+      .then((esiti) => {
         if (gettone.current !== mio) return;
-        setSrcs(mostrate.map((n, i) => ({ n, url: us[i] })));
+        const rotte = mostrate.filter((_, i) => esiti[i].status !== "fulfilled" || !esiti[i].value);
+        if (rotte.length) {
+          if (lontano.current && !driveProntoOra()) setSenzaChiave(true);
+          else notify?.(rotte.length === mostrate.length ? "Questa pagina non si lascia aprire" : `La pagina ${rotte.join(" e ")} non si lascia aprire`);
+        }
+        const buone = mostrate.map((n, i) => ({ n, url: esiti[i].status === "fulfilled" ? esiti[i].value : null })).filter((x) => x.url);
+        if (!buone.length) return;
+        setSrcs(buone);
+        setSrcsDi(chiaveMostrate);
         sfoltisci(page);
         // le vicine si preparano DOPO quella che si guarda, nel verso in
         // cui si legge: la prossima per prima. In doppia pagina si MISURANO
@@ -358,11 +379,6 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           if (n < 1 || n > pages) continue;
           misuraDi(n).catch(() => {});
         }
-      })
-      .catch(() => {
-        if (gettone.current !== mio) return;
-        if (lontano.current && !driveProntoOra()) setSenzaChiave(true);
-        else notify?.("Questa pagina non si lascia aprire");
       });
     flush();
     if (pages > 0 && mostrate.includes(pages)) {
@@ -683,11 +699,11 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const bordiVivi = settings.ritaglia !== false ? bordi : null;
   // le pagine si disegnano quando tutte quelle a schermo hanno una misura
   // e un indirizzo: una coppia mezza pronta e' peggio di un fotogramma vuoto
-  const pronte = srcs.length === mostrate.length && srcs.every((x, i) => x.n === mostrate[i] && nats[x.n]);
+  const pronte = srcsDi === chiaveMostrate && srcs.length > 0 && srcs.every((x) => nats[x.n]);
   const disegno = !pronte || nastro
     ? null
     : doppia
-      ? disegnaCoppia({ nats: mostrate.map((n) => nats[n]), riquadro, bordi: bordiVivi, verso })
+      ? disegnaCoppia({ nats: srcs.map((x) => nats[x.n]), riquadro, bordi: bordiVivi, verso })
       : (() => {
           const d = disegnaPagina({ nat: nats[page], riquadro, bordi: bordiVivi });
           return d && { foglio: d.foglio, pagine: [{ indice: 0, x: 0, foglio: d.foglio, immagine: d.immagine }] };
