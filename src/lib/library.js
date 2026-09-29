@@ -7,6 +7,16 @@ const TOMBS_KEY = "bc_tombs";
 export const touchBook = (id, ts = Date.now()) =>
   localStorage.setItem(`bc_upd_${id}`, String(ts));
 
+// LE SCHEDE CHE UN GIRO HA CAMBIATO, da timbrare: la sincronizzazione
+// manda solo i libri col timbro piu' recente, e una saga trovata da sola —
+// dal file, dal catalogo, dai fratelli — senza timbro restava su questo
+// dispositivo (segnalato: undici libri messi in saga sul PC, «Fuori saga»
+// sul tablet). Un libro nuovo non e' «cambiato»: lo timbra chi lo importa.
+export function schedeCambiate(prima, dopo) {
+  const vecchie = new Map((prima || []).filter((b) => b?.id).map((b) => [b.id, JSON.stringify(b)]));
+  return (dopo || []).filter((b) => b?.id && vecchie.has(b.id) && vecchie.get(b.id) !== JSON.stringify(b)).map((b) => b.id);
+}
+
 export function getUpdatedAt(id, fallback = 0) {
   const v = parseInt(localStorage.getItem(`bc_upd_${id}`), 10);
   return Number.isFinite(v) ? Math.max(v, fallback) : fallback;

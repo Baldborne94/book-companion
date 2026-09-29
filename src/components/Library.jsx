@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, getTombstones, getUpdatedAt, scaffaleVuoto, TIPI, delTipo, tipiDi, tipiPresenti } from "../lib/library.js";
+import { getProgress, getStatus, combacia, vistaValida, scriviVista, touchBook, schedeCambiate, getTombstones, getUpdatedAt, scaffaleVuoto, TIPI, delTipo, tipiDi, tipiPresenti } from "../lib/library.js";
 import { disponi, aEtichette, criterioVoto, criterioStato, altezzaStimata, ALTEZZA_SCHEDA, COLONNA, SPAZIO_COLONNE, SPAZIO_RIGHE, inRaccolte, copertinaDi, contoRaccolta, nellOrdineScelto } from "../lib/ripiani.js";
 import { leggiPreferite, scriviPreferite, preferiteVive, segnaPreferita, puoEssereFavorita, ePreferito } from "../lib/raccoltePreferite.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
@@ -1078,7 +1078,10 @@ export default function Library({
       const tocchi = {};
       const applica = (campi) => {
         Object.assign(tocchi, campi);
-        const adesso = booksRef.current.map((b) => (tocchi[b.id] ? { ...b, ...tocchi[b.id] } : b));
+        const prima = booksRef.current;
+        const adesso = prima.map((b) => (tocchi[b.id] ? { ...b, ...tocchi[b.id] } : b));
+        const cambiati = new Set(Object.keys(campi));
+        for (const id of schedeCambiate(prima, adesso)) if (cambiati.has(id)) touchBook(id);
         updateBooks(adesso);
         return adesso;
       };
@@ -1271,8 +1274,10 @@ export default function Library({
       return { ...b, ...esito.campi };
     });
 
-    if (sistemati || rinominati || dedotte || dalTitolo || daiFile.scritte || dalCatalogo.trovate || unite.unificate)
+    if (sistemati || rinominati || dedotte || dalTitolo || daiFile.scritte || dalCatalogo.trovate || unite.unificate) {
+      for (const id of schedeCambiate(books, conCollane)) touchBook(id);
       updateBooks(conCollane);
+    }
     const parti = [];
     // le grafie riunite si dicono col nome scelto: una saga riscritta in
     // silenzio e' esattamente il genere di cosa che poi «non torna»
