@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { listTrackIds } from "../lib/bookStore.js";
-import { C, FONT_TITLE, F, R } from "../data/constants.js";
+import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import {
   getFavoritesRaw, saveFavorites, isFile, addTrackFile, dropTrack, parseYouTube,
   getListsRaw, saveLists, nuovaRaccolta, braniDi,
@@ -475,7 +475,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
                   ) : (
                     <>
                       <span style={{ fontSize: F.titoletto, color: C.accent }}>✧</span>
-                      <span style={{ flex: 1, minWidth: 0, fontSize: F.corpo, color: C.text, lineHeight: 1.3, overflowWrap: "anywhere" }}>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: F.corpo, color: C.text, lineHeight: 1.3, overflowWrap: "break-word" }}>
                         {r.name}
                       </span>
                       <button
@@ -718,7 +718,12 @@ export default function MusicRoom({ music, playerRef, notify }) {
           text="Porta qui i tuoi file audio — pioggia e camino, arpe celtiche, cori lontani: li suona l'app, e ti accompagnano anche a tablet spento fino allo scadere del timer. Un link YouTube va bene lo stesso, ma solo a schermo acceso."
         />
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
+        // SCHEDE LARGHE, E OGNUNA ALTA QUANTO IL SUO NOME (segnalato dal
+        // lettore con la fotografia: «visto cosi' fa schifo»). A 200 px, col
+        // nome intero, le icone si prendevano meta' della scheda e il nome
+        // andava a capo una sillaba alla volta; e la riga si allungava fino
+        // al nome piu' lungo, con sei schede vuote alte mezzo schermo
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${px(300)}px), 1fr))`, gap: 12, alignItems: "start" }}>
           {liveFavs.map((f) => (
             <div
               key={f.id}
@@ -752,7 +757,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
                           fontSize: F.corpo,
                           color: dentro ? C.text : C.muted,
                           lineHeight: 1.3,
-                          overflowWrap: "anywhere",
+                          overflowWrap: "break-word",
                         }}
                       >
                         {f.name}
@@ -810,7 +815,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
                         riga sola il nome di un file importato si troncava a
                         «Pioggi…», e il nome e' tutto quel che distingue un
                         brano dall'altro */}
-                    <span style={{ flex: 1, minWidth: 0, fontSize: F.corpo, color: C.text, lineHeight: 1.3, overflowWrap: "anywhere" }}>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: F.corpo, color: C.text, lineHeight: 1.3, overflowWrap: "break-word" }}>
                       {f.name}
                     </span>
                     {isFile(f) && qui && !qui.has(f.trackId) && (

@@ -672,7 +672,7 @@ function Raccolta({ r, amata = false, onApri, coverV, conCopertina }) {
           // intero delle saghe e non tagliarli»): due righe troncavano «The
           // Blacktongue…», «The Realm of the…», e il nome di una raccolta e'
           // l'unica cosa che la distingue da un'altra con la stessa faccia
-          overflowWrap: "anywhere",
+          overflowWrap: "break-word",
         }}
       >
         {r.nome}
