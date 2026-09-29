@@ -630,19 +630,32 @@ export function conSchedaDi(riga, fonte) {
 // `scese`); chi scende sopra una scheda piu' nuova qui scende con la nostra
 // (e la riga fusa risale: `tenute`). `intere` sono le righe lette intere
 // lassu', `locali` quelle di qui.
-// UNA SAGA VINCE SUL VUOTO, quando gli orologi della scheda non sanno dire
-// chi e' piu' nuovo (segnalato dopo la migrazione: sul PC le saghe c'erano,
-// sul tablet no). Le schede cambiate prima che la scheda avesse un orologio
-// hanno `scheda_at` a zero di qua e di la', e la riga intera andava ancora
-// a chi aveva letto per ultimo — che poteva riportare la saga vuota anche
-// sul PC. Una saga vuota e' uno stato legittimo solo se e' stata TOLTA
-// (`saga_tolta`): quella resta tolta. Torna la riga col vuoto riempito, o
-// `null` se non c'e' niente da riempire.
+// UNA SAGA VUOTA NON CANCELLA MAI UNA SAGA (segnalato due volte: dopo la
+// migrazione sul PC le saghe c'erano e sul tablet no, e il lettore ha
+// dovuto riscriverle a mano). La prima cura valeva solo quando nessuno dei
+// due orologi della scheda sapeva niente; ma una scheda si timbra anche per
+// un campo che con la saga non c'entra (l'ebook ritrovato su Drive, il
+// cuore), e allora la scheda «piu' nuova» portava con se' una saga vuota
+// che nessuno aveva scelto. Una saga vuota e' una scelta solo se e' stata
+// TOLTA (`saga_tolta`, che `scritturaSaga` scrive a ogni svuotamento a
+// mano): quella vince come ogni scheda piu' nuova. Tutte le altre sono un
+// «non lo so», e non cancellano quel che l'altro lato sa. Torna la riga
+// col vuoto riempito, o `null` se non c'e' niente da riempire.
 function riempiSaga(riga, altra) {
   if (!riga || !altra) return null;
   if (String(riga.saga || "").trim() || riga.saga_tolta) return null;
   if (!String(altra.saga || "").trim()) return null;
   return { ...riga, saga: altra.saga, saga_order: altra.saga_order ?? null };
+}
+
+// la riga che vince (per orologio), col vuoto della saga riempito da quella
+// che perde; `null` se resta com'era
+function vincitrice(riga, altra, chi, mioLato) {
+  const scheda = chi === mioLato ? conSchedaDi(riga, altra) : riga;
+  const perdente = chi === mioLato ? riga : altra;
+  const piena = riempiSaga(scheda, perdente);
+  if (piena) return piena;
+  return chi === mioLato ? scheda : null;
 }
 
 export function fondiSchede({ push = [], pull = [], intere = new Map(), locali = [] } = {}) {
@@ -651,8 +664,7 @@ export function fondiSchede({ push = [], pull = [], intere = new Map(), locali =
     if (row.deleted) return row;
     const r = intere.get(row.id);
     if (!r || r.deleted) return row;
-    const chi = schedaPiuNuova(row, r);
-    const fusa = chi === "sua" ? conSchedaDi(row, r) : chi === null ? riempiSaga(row, r) : null;
+    const fusa = vincitrice(row, r, schedaPiuNuova(row, r), "sua");
     if (!fusa) return row;
     scese.set(row.id, fusa);
     return fusa;
@@ -661,8 +673,7 @@ export function fondiSchede({ push = [], pull = [], intere = new Map(), locali =
   const tenute = new Set();
   const giu = pull.map((row) => {
     const mia = qui.get(row.id);
-    const chi = schedaPiuNuova(mia, row);
-    const fusa = chi === "mia" ? conSchedaDi(row, mia) : chi === null ? riempiSaga(row, mia) : null;
+    const fusa = vincitrice(row, mia, schedaPiuNuova(mia, row), "mia");
     if (!fusa) return row;
     tenute.add(row.id);
     return fusa;
