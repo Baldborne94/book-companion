@@ -23,6 +23,7 @@
 import { TUTTA, unisci, rifinisci } from "./pdfCrop.js";
 import { apriZip } from "./zipAFette.js";
 import { apriRar } from "./rarAFette.js";
+import { comeRete } from "./anticipo.js";
 
 // UN CBR NON SI LEGGE A FETTE, e allora ha un tetto. La libreria RAR per il
 // browser (unrar compilato in wasm) vuole l'archivio INTERO in memoria, e
@@ -553,4 +554,35 @@ export function disegnaCoppia({ nats, riquadro, bordi, verso = "ltr", piega = PI
     x += p.foglio.w + (i < aSchermo.length - 1 ? Math.max(0, piega) : 0);
   });
   return { foglio: { w: tondo(x), h: tondo(h) }, pagine: aSchermo };
+}
+
+// LE PAGINE AVANTI, PRONTE PRIMA CHE SI VOLTI (chiesto dal lettore:
+// «le pagine ci mettono molto a caricare», sui manga letti da Drive). Il
+// lettore teneva pronte solo le vicine — la pagina dopo, la coppia dopo —
+// e un manga non si legge a passo costante: una tavola densa per qualche
+// secondo, poi tre voltate svelte. La tavola densa lasciava la rete ferma,
+// e le voltate svelte aspettavano un viaggio a Drive ciascuna (misurato col
+// Drive finto a 800 ms e 1 MB/s: 11 voltate su 16 sopra il secondo).
+//
+// DA LONTANO SI PREPARANO PIU' PAGINE, una alla volta e dopo quella che si
+// guarda: la banda e' una, e chiederle tutte insieme rallenterebbe proprio
+// quella a schermo. Sulla rete a consumo (il browser lo dice: cellulare o
+// «risparmio dati») poche, perche' quei byte si pagano; sul disco del
+// tablet bastano le vicine, perche' leggere e' gia' istantaneo. Una rete
+// che il browser non dice (il PC) vale libera: sono pagine del volume che
+// stai leggendo, non un volume intero preso di nascosto.
+export const AVANTI_DA_LONTANO = 10;
+export const AVANTI_A_CONSUMO = 3;
+export const AVANTI_QUI = 2;
+export function pagineAvanti({ lontano = false, connessione = null } = {}) {
+  if (!lontano) return AVANTI_QUI;
+  return comeRete(connessione) === "a consumo" ? AVANTI_A_CONSUMO : AVANTI_DA_LONTANO;
+}
+
+// le pagine da preparare dopo `ultima` (l'ultima a schermo), in ordine, fino
+// alla fine del volume, saltando quelle gia' pronte
+export function daPreparare(ultima, totale, quante, pronte = new Set()) {
+  const out = [];
+  for (let n = ultima + 1; n <= Math.min(totale, ultima + quante); n++) if (!pronte.has(n)) out.push(n);
+  return out;
 }
