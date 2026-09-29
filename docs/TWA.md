@@ -20,6 +20,51 @@ Quello che il repository fornisce già:
 | pagina della privacy | `public/privacy.html`, generata da `PRIVACY.md` a ogni build | lo store la vuole a un URL pubblico |
 | versione | `package.json` → timbro in fondo alla Libreria | quale rilascio del sito gira |
 
+## L'APK che si pubblica da solo
+
+Il guscio lo costruisce GitHub (`.github/workflows/apk.yml`): a ogni
+merge su `main` che tocca quel che il guscio porta con sé (manifest del
+sito, icone, `assetlinks.json`), oppure a comando da **Actions → APK →
+Run workflow**, costruisce l'APK con Bubblewrap, lo firma con la chiave di
+sempre, controlla che la firma sia quella di `assetlinks.json` e lo
+pubblica fra le **Releases** come `Grimorio-<numero>.apk`. Il link del
+README punta sempre all'ultima.
+
+Il `twa-manifest.json` non si tiene da nessuna parte: si genera a ogni giro
+dal manifest del sito (`scripts/apk.mjs`), con sopra le risposte che `init`
+chiedeva — pacchetto `it.bookcompanion.app`, notifiche spente,
+orientamento `default`. Il numero di versione è il numero di commit di
+`main`: cresce sempre, quindi il nuovo APK si installa **sopra** quello di
+prima, e i libri restano.
+
+### Una volta sola: la chiave a GitHub
+
+La chiave sta nel progetto del PC (`book-companion-twa\android.keystore` nella tua cartella utente)
+e **non va nel repository**: va nei segreti, che GitHub non mostra a
+nessuno, nemmeno nei log. Da PowerShell, per copiarla in testo:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\book-companion-twa\android.keystore")) | Set-Clipboard
+```
+
+Poi su GitHub: **Settings → Secrets and variables → Actions → New
+repository secret**, tre volte:
+
+| Nome | Valore |
+| --- | --- |
+| `TWA_KEYSTORE` | quel che hai appena copiato (Ctrl+V) |
+| `TWA_KEYSTORE_PASSWORD` | la password del keystore |
+| `TWA_KEY_PASSWORD` | la password della chiave (spesso la stessa) |
+
+Fatto questo, **Actions → APK → Run workflow** su `main` pubblica il primo.
+Se la chiave caricata non è quella dell'impronta in `assetlinks.json`, il
+giro si ferma prima di pubblicare e lo dice: un APK firmato con un'altra
+chiave non si installerebbe sopra il tuo.
+
+Senza segreti, nei PR il giro firma con una chiave usa e getta: prova che
+il guscio si costruisce, e l'APK resta fra gli artefatti del giro, mai fra
+le Releases. Su `main` senza segreti si ferma.
+
 ## Costruire l'APK
 
 Serve **Node** (LTS, da <https://nodejs.org> o `winget install
@@ -168,9 +213,10 @@ in cima: non è un errore del guscio, è che manca la firma.
   `bubblewrap update` e `bubblewrap build` con lo STESSO `android.keystore`
   e le stesse password, e installa sopra il nuovo `app-release-signed.apk`
   (senza disinstallare: la firma e' la stessa, i dati restano).
-- **Il guscio** (nuova icona, nuovo nome, `file_handlers` cambiati): alza
-  `version` in `package.json`, poi `bubblewrap update && bubblewrap build`
-  e carica il nuovo `.aab`. Bubblewrap aggiorna `versionCode` da sé.
+- **Il guscio** (nuova icona, nuovo nome, `file_handlers` cambiati): il
+  merge su `main` basta, l'APK nuovo esce da solo fra le Releases (vedi
+  sopra). A mano, dal PC, resta la strada di prima: `bubblewrap update &&
+  bubblewrap build`.
 
 ## Quel che il guscio NON cambia
 

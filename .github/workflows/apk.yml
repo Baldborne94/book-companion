@@ -1,0 +1,137 @@
+# L'APK SI PUBBLICA DA SOLO.
+#
+# Prima il guscio si costruiva a mano sul PC del lettore (Bubblewrap, JDK,
+# SDK Android, le password a ogni giro) e si caricava a mano fra le
+# Releases. Qui lo fa la macchina: a ogni cambio di cio' che il guscio
+# porta con se' (manifest, icone, assetlinks) su main, oppure a comando
+# (Actions → APK → Run workflow), costruisce, firma con la chiave di
+# sempre e pubblica `Grimorio-<codice>.apk` come ultima Release.
+#
+# LA CHIAVE NON STA NEL REPOSITORY: arriva dai segreti di GitHub
+# (TWA_KEYSTORE in base64, TWA_KEYSTORE_PASSWORD, TWA_KEY_PASSWORD), e
+# GitHub li oscura nei log anche quando una firma fallita stampa la riga di
+# comando di apksigner con la password dentro. Nei PR, senza segreti, il
+# giro firma con una chiave usa e getta: prova che il guscio si costruisce,
+# ma quell'APK non si pubblica mai (si installerebbe accanto all'app vera,
+# e partirebbe con la barra di Chrome).
+name: APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - public/manifest.json
+      - public/icons/**
+      - public/.well-known/assetlinks.json
+      - scripts/apk.mjs
+      - .github/workflows/apk.yml
+  pull_request:
+    paths:
+      - public/manifest.json
+      - public/icons/**
+      - public/.well-known/assetlinks.json
+      - scripts/apk.mjs
+      - .github/workflows/apk.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    env:
+      # la versione di Bubblewrap e' fissata: una nuova cambia il progetto
+      # Android che genera, e si prova in un PR prima di pubblicarla
+      BUBBLEWRAP: 1.25.0
+      PUBBLICA: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # il versionCode e' il numero di commit: serve la storia intera
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Bubblewrap
+        run: |
+          mkdir guscio && cd guscio
+          npm init -y > /dev/null
+          npm i "@bubblewrap/cli@$BUBBLEWRAP"
+          echo "ATTREZZI=$(node -p "require('@bubblewrap/core/dist/lib/androidSdk/AndroidSdkTools').BUILD_TOOLS_VERSION")" >> "$GITHUB_ENV"
+
+      # Bubblewrap chiede JDK e SDK con una domanda a schermo, che qui non
+      # ha nessuno a cui rispondere: si trovano gia' scritti nella sua
+      # configurazione. Vuole l'SDK con `bin/` o `tools/` alla radice.
+      - name: JDK e SDK Android
+        run: |
+          SDK="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDK" --licenses > /dev/null
+          "$SDK" "build-tools;$ATTREZZI" "platforms;android-36" > /dev/null
+          [ -e "$ANDROID_HOME/bin" ] || [ -e "$ANDROID_HOME/tools" ] || ln -s cmdline-tools/latest/bin "$ANDROID_HOME/bin"
+          mkdir -p ~/.bubblewrap
+          printf '{"jdkPath":"%s","androidSdkPath":"%s"}' "$JAVA_HOME" "$ANDROID_HOME" > ~/.bubblewrap/config.json
+
+      - name: La chiave
+        id: chiave
+        env:
+          KEYSTORE: ${{ secrets.TWA_KEYSTORE }}
+        run: |
+          if [ -n "$KEYSTORE" ]; then
+            echo "$KEYSTORE" | base64 -d > guscio/android.keystore
+            echo "vera=si" >> "$GITHUB_OUTPUT"
+          elif [ "$PUBBLICA" = "true" ]; then
+            echo "::error::Manca il segreto TWA_KEYSTORE: senza la chiave di sempre l'APK non si installa sopra quello del tablet. Vedi docs/TWA.md, «L'APK che si pubblica da solo»."
+            exit 1
+          else
+            keytool -genkeypair -keystore guscio/android.keystore -alias android -keyalg RSA -keysize 2048 \
+              -validity 1 -storepass usaegetta -keypass usaegetta -dname "CN=prova" > /dev/null
+            echo "::notice::Nessun segreto TWA_KEYSTORE: firmo con una chiave usa e getta, e questo APK non si pubblica."
+            echo "vera=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Il guscio
+        env:
+          BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ steps.chiave.outputs.vera == 'si' && secrets.TWA_KEYSTORE_PASSWORD || 'usaegetta' }}
+          BUBBLEWRAP_KEY_PASSWORD: ${{ steps.chiave.outputs.vera == 'si' && secrets.TWA_KEY_PASSWORD || 'usaegetta' }}
+        run: |
+          CODICE=$(git rev-list --count HEAD)
+          VERSIONE="$(node -p "require('./package.json').version") ($CODICE)"
+          echo "CODICE=$CODICE" >> "$GITHUB_ENV"
+          echo "VERSIONE=$VERSIONE" >> "$GITHUB_ENV"
+          cd guscio
+          node ../scripts/apk.mjs "$CODICE" "$VERSIONE"
+          npx bubblewrap update --skipVersionUpgrade
+          npx bubblewrap build
+          "$ANDROID_HOME/build-tools/$ATTREZZI/apksigner" verify --print-certs app-release-signed.apk | tee firma.txt
+          mv app-release-signed.apk "Grimorio-$CODICE.apk"
+
+      - name: La firma e' quella di assetlinks
+        if: steps.chiave.outputs.vera == 'si'
+        run: node scripts/apk.mjs impronta guscio/firma.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Grimorio-${{ env.CODICE }}
+          path: guscio/Grimorio-${{ env.CODICE }}.apk
+          retention-days: 14
+
+      - name: La Release
+        if: env.PUBBLICA == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "apk-$CODICE" "guscio/Grimorio-$CODICE.apk" \
+            --target "$GITHUB_SHA" --latest \
+            --title "Grimorio $VERSIONE" \
+            --notes "Il guscio Android di Book Companion, costruito da \`$(git rev-parse --short HEAD)\`. Si installa sopra quello di prima: la firma e' la stessa, i libri restano."
