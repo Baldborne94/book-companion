@@ -869,6 +869,16 @@ export function cbzDaAdottare(libri, mappa, file) {
   return out;
 }
 
+// IL GEMELLO CBZ DI UN FILE SU DRIVE, di chiunque sia (segnalato dal
+// lettore: il giro dei CBR riconvertiva e ricaricava un Walking Dead che
+// aveva gia' il suo CBZ di Colab, entrato come un'altra scheda). Stessa
+// cartella, stesso nome, fuori dal cestino.
+export function gemelloCbzDi(fileId, file) {
+  const f = (file || []).find((x) => x.id === fileId);
+  if (!f) return null;
+  return (file || []).find((g) => g.id !== f.id && !g.trashed && /\.cbz$/i.test(g.name || "") && g.parents?.[0] === f.parents?.[0] && radiceDelNome(g.name) === radiceDelNome(f.name)) || null;
+}
+
 // L'ADOZIONE A META' (trovata sul Drive del lettore dopo il primo giro di
 // Colab: i CBZ col segno, i CBR nel cestino, e le schede ancora «CBR»).
 // Su Drive l'adozione e' fatta in un attimo, la scheda cambia dopo: un'app
