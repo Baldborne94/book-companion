@@ -78,6 +78,30 @@ export function fraseGiro(voci) {
     .join(" · ");
 }
 
+// L'AVVISO DI QUEL CHE E' ARRIVATO (chiesto dal lettore): il giro parte da
+// solo all'avvio e in silenzio, e il resoconto lo vedeva solo chi apriva la
+// nuvola — la saga scritta sul PC arrivava, e il tablet non lo diceva.
+// Adesso, se dall'altro dispositivo e' sceso qualcosa, una riga lo dice:
+// il libro per nome se e' uno solo, i conti per specie se sono tanti. Quel
+// che parte da qui non si avvisa: l'ha fatto il lettore, lo sa.
+const SPECIE = [
+  ["saga", (c) => /^(saga «|fuori saga|n° |senza numero)/.test(c), "saga", "saghe"],
+  ["letto", (c) => c === "letto", "letto", "letti"],
+  ["nuovo", (c) => c === "nuovo", "nuovo", "nuovi"],
+  ["tolto", (c) => c.startsWith("tolto:"), "tolto", "tolti"],
+  ["copertina", (c) => c === "copertina nuova", "copertina", "copertine"],
+];
+export function avvisoArrivi(voci) {
+  const qui = (voci || []).filter((v) => v?.verso === "qui");
+  if (!qui.length) return null;
+  if (qui.length === 1) return `☁ Dall'altro dispositivo: «${qui[0].titolo}» — ${qui[0].cose.join(" · ")}`;
+  const conti = SPECIE.map(([, e, uno, tanti]) => {
+    const n = qui.filter((v) => v.cose.some(e)).length;
+    return n ? quanti(n, uno, tanti) : null;
+  }).filter(Boolean);
+  return `☁ Dall'altro dispositivo: ${qui.length} libri${conti.length ? ` — ${conti.join(", ")}` : " aggiornati"}. I dettagli nella nuvola.`;
+}
+
 // l'ultimo resoconto resta: il giro parte da solo all'avvio, e il lettore
 // apre il pannello dopo
 const CHIAVE = "bc_sync_racconto";

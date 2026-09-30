@@ -40,7 +40,7 @@ import { daAvvisare } from "./lib/oracle.js";
 import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
-import { fraseGiro, ricordaGiro } from "./lib/resoconto.js";
+import { fraseGiro, ricordaGiro, avvisoArrivi } from "./lib/resoconto.js";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
 import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive } from "./lib/drive.js";
@@ -1040,7 +1040,10 @@ export default function App() {
         at: Date.now(),
         signedIn: true,
       });
-      if (!quiet && racconto.length) notify(`Biblioteca sincronizzata ✨ ${fraseGiro(racconto)}`);
+      // quel che e' arrivato si dice anche dal giro silenzioso dell'avvio
+      const arrivi = avvisoArrivi(racconto);
+      if (arrivi) notify(arrivi);
+      else if (!quiet && racconto.length) notify(`Biblioteca sincronizzata ✨ ${fraseGiro(racconto)}`);
     } catch (e) {
       // IL TESTO GREZZO DI POSTGRES NON ARRIVA PIÙ SULLO SCHERMO: qui
       // c'era `e.message` incollato com'era, e il lettore si è ritrovato
