@@ -826,6 +826,8 @@ export function fraseDiscesa({ presi = 0, totale = 0 } = {}, apertura = "Scende 
 // lo stesso sul tasto «Tieni sul tablet» (segnalato: «come mai ci mette una
 // vita a scaricarmi in locale?», davanti a un «Scarico…» muto)
 export const fraseScarico = (p) => (p ? fraseDiscesa(p, "Scarico…") : "Scarico…");
+// e sul CBZ convertito che sale al posto del CBR (`sostituisciSuDrive`)
+export const fraseCarico = (p) => fraseDiscesa(p, "Carico su Google Drive:");
 
 // ogni quanto dirlo: a ogni mega, o in fondo — a ogni pezzo della rete
 // sarebbero migliaia di disegni per un file grosso

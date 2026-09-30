@@ -1744,6 +1744,7 @@ export default function App() {
               key={`${readingBook.id}:${readingStart || ""}`}
               book={readingBook}
               startCfi={readingStart}
+              onCambiaLibro={(patch) => handleSaveMeta({ id: readingBook.id, ...patch })}
               indietro={chiudeIlLettore}
               nextBook={nextBook}
               onReadNext={handleRead}

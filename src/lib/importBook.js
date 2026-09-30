@@ -5,7 +5,7 @@ import { riconosci, nomeInBiblioteca, chiaveSaga } from "./sagaBooks.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 import { dalMetadata } from "./sinossi.js";
 import { collana, chiaveCollana } from "./collana.js";
-import { formatoDaByte, tipoImmagine, cbrApribile, PERCHE_CBR_GRANDE } from "./fumetto.js";
+import { formatoDaByte, tipoImmagine, cbrApribile, cbrLontanoApribile, PERCHE_CBR_GRANDE } from "./fumetto.js";
 
 // oltre questa taglia il libro non si ricuce: tenere in memoria due
 // copie dell'archivio, su un tablet, vale piu' di qualche pagina bianca
@@ -346,7 +346,14 @@ async function traslocaSu(scheda, tempId) {
   return scheda;
 }
 
-export async function importFiles(fileList, libri = [], { onProgress } = {}) {
+// la conversione vive nel browser (un worker e il wasm di unrar): i test
+// la sostituiscono, o la lasciano mancare
+const convertiNelBrowser = async (file, onProgress) => {
+  const { convertiInCbz } = await import("./archivioFumetto.js");
+  return convertiInCbz({ blob: file }, { onProgress });
+};
+
+export async function importFiles(fileList, libri = [], { onProgress, converti = convertiNelBrowser } = {}) {
   const added = [];
   const errors = [];
   // i due modi di essere un doppione: saltati e segnalati
@@ -364,7 +371,7 @@ export async function importFiles(fileList, libri = [], { onProgress } = {}) {
   let senzaMetadati = 0;
   let senzaCopertina = 0;
   const tutti = Array.from(fileList);
-  for (const [i, file] of tutti.entries()) {
+  for (let [i, file] of tutti.entries()) {
     // venti file sono minuti su un tablet, e un tasto fermo su «rilego»
     // per minuti sembra un blocco: si dice a che punto si e'
     onProgress?.({ fatti: i, totale: tutti.length, nome: file.name });
@@ -384,12 +391,23 @@ export async function importFiles(fileList, libri = [], { onProgress } = {}) {
       errors.push({ name: file.name, reason: "formato non supportato" });
       continue;
     }
-    // il CBR che non si puo' aprire si rifiuta QUI, leggendone le sole
-    // testate: piu' avanti l'import lo caricherebbe intero e la scheda
-    // morirebbe muta. Quello con le pagine memorizzate entra a ogni misura.
+    // IL CBR CHE COSI' NON SI APRIREBBE SI CONVERTE IN CBZ, qui: compresso
+    // e oltre `CBR_MAX`, la libreria RAR lo vorrebbe intero in memoria, e
+    // la scheda morirebbe muta. Lo si attraversa invece una volta a
+    // finestre (`rarInCbz.js`) e il tomo entra come CBZ, con le stesse
+    // pagine nello stesso ordine. Quello con le pagine memorizzate entra a
+    // ogni misura com'e'.
     if (fileType === "cbr" && !(await cbrApribile(file))) {
-      errors.push({ name: file.name, reason: PERCHE_CBR_GRANDE });
-      continue;
+      const nome = file.name;
+      const cbz = await Promise.resolve()
+        .then(() => converti(file, (p) => onProgress?.({ fatti: i, totale: tutti.length, nome, conversione: p })))
+        .catch((e) => {
+          errors.push({ name: nome, reason: `${PERCHE_CBR_GRANDE} — la conversione qui non è riuscita (${e?.message || e})` });
+          return null;
+        });
+      if (!cbz) continue;
+      file = new File([cbz], nome.replace(/\.cbr$/i, ".cbz"), { type: cbz.type || "application/zip" });
+      fileType = "cbz";
     }
     // L'impronta si prende PRIMA di salvare: un doppione dei byte non deve
     // nemmeno occupare lo spazio che poi andrebbe liberato. E si confronta
@@ -520,7 +538,11 @@ export const ATTESA_SCHEDA = 30_000;
 const conTetto = (p, ms) =>
   Promise.race([p, new Promise((_, ko) => setTimeout(() => ko(new Error("tempo scaduto")), ms))]);
 
-export async function importaDaDrive(voci, libri = [], { apri, segna, onProgress, vivo = () => true, leggi = leggiDaLontano, attesa = ATTESA_SCHEDA } = {}) {
+// `converti(v, onProgress)` e `sostituisci(v, bookId, cbz)`: il CBR
+// compresso troppo grande si converte leggendolo da Drive, e il CBZ prende
+// il suo posto lassu' (vedi `sostituisciSuDrive`). Senza, entra com'e' e
+// la conversione si offre quando lo apri.
+export async function importaDaDrive(voci, libri = [], { apri, segna, converti, sostituisci, onProgress, vivo = () => true, leggi = leggiDaLontano, attesa = ATTESA_SCHEDA } = {}) {
   const added = [];
   const errors = [];
   const sospetti = [];
@@ -537,7 +559,7 @@ export async function importaDaDrive(voci, libri = [], { apri, segna, onProgress
     }
     onProgress?.({ fatti: i, totale: tutte.length, nome: v.name });
     const est = (/\.([a-z0-9]+)$/i.exec(v.name || "") || [])[1]?.toLowerCase() || "";
-    const blob = apri(v);
+    let blob = apri(v);
     let fileType = est === "epub" || est === "pdf" ? est : null;
     if (est === "cbz" || est === "cbr") {
       try {
@@ -549,6 +571,20 @@ export async function importaDaDrive(voci, libri = [], { apri, segna, onProgress
     if (!fileType) {
       errors.push({ name: v.name, reason: "archivio non leggibile" });
       continue;
+    }
+    // il CBR che il browser non aprira' mai si converte ADESSO, una volta
+    // (vedi `rarInCbz.js`): da qui in poi e' un CBZ che sta in mano
+    let convertito = null;
+    if (fileType === "cbr" && converti && sostituisci && !(await cbrLontanoApribile(blob).catch(() => true))) {
+      convertito = await Promise.resolve()
+        .then(() => converti(v, (p) => onProgress?.({ fatti: i, totale: tutte.length, nome: v.name, conversione: p })))
+        .catch((e) => {
+          errors.push({ name: v.name, reason: `la conversione in CBZ non è riuscita (${e?.message || e})` });
+          return null;
+        });
+      if (!convertito) continue;
+      blob = convertito;
+      fileType = "cbz";
     }
     const id = crypto.randomUUID();
     const meta = {
@@ -567,7 +603,9 @@ export async function importaDaDrive(voci, libri = [], { apri, segna, onProgress
     // Oltre `IMPRONTA_INTERA` l'import la prende a campioni, e quella di
     // Drive non pareggerebbe mai: meglio nessuna che una che non combacia.
     const sha = String(v.sha256Checksum || "").toLowerCase();
-    if (/^[0-9a-f]{64}$/.test(sha) && Number(v.size) <= IMPRONTA_INTERA) meta.impronta = sha;
+    // del convertito l'impronta e' quella dei byte nuovi: li ha in mano
+    if (convertito) meta.impronta = await improntaDi(convertito).catch(() => undefined);
+    else if (/^[0-9a-f]{64}$/.test(sha) && Number(v.size) <= IMPRONTA_INTERA) meta.impronta = sha;
     // e sopra si prende a campioni dal file lontano, come fa l'import dal
     // tablet: senza, il tomo grosso entrava senza impronta e il tasto dei
     // doppioni lo contava per sempre senza poterlo servire
@@ -584,7 +622,7 @@ export async function importaDaDrive(voci, libri = [], { apri, segna, onProgress
       /* letto male o troppo lento: la scheda entra col nome del file */
     }
     const conta = completaSaga(meta, letto, v.name, [...libri, ...added]);
-    const esito = await segna(v.id, id, v).catch(() => false);
+    const esito = await (convertito ? sostituisci(v, id, convertito) : segna(v.id, id, v)).catch(() => false);
     if (esito === "scollegato") {
       scollegato = true;
       break;

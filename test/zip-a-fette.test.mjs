@@ -194,7 +194,7 @@ export default async (t) => {
   t.eq("senza leggerlo", rarGrande.intere, 0);
   t.eq("e senza scaricare il wasm", wasm, 0);
 
-  // ---- e l'import lo rifiuta prima di leggerlo ----------------------------------
+  // ---- e l'import lo converte, senza leggerlo intero ------------------------------
   // il caso del lettore, alla lettera: un «.cbr» da piu' di un giga. Senza
   // la guardia l'import chiederebbe subito i byte interi per l'impronta
   class FileGrande extends File {
@@ -212,10 +212,23 @@ export default async (t) => {
     }
   }
   const hellboy = new FileGrande("Hellboy v03.cbr", 1.2 * 1024 ** 3, new Uint8Array([0x52, 0x61, 0x72, 0x21, 0x1a, 7, 1, 0]));
-  const esito = await importFiles([hellboy], []);
-  t.eq("l'import non lo fa entrare", esito.added.length, 0);
-  t.eq("e dice perche'", esito.errors[0]?.reason, PERCHE_CBR_GRANDE);
-  t.eq("senza averlo letto", hellboy.intere, 0);
+  // e adesso non si rifiuta: si passa alla conversione in CBZ (`rarInCbz.js`,
+  // provata in `rar-in-cbz.test.mjs`), che qui e' finta e non riesce
+  const passati = [];
+  const detti = [];
+  const esito = await importFiles([hellboy], [], {
+    onProgress: (p) => p.conversione && detti.push(p),
+    converti: async (f, onProgress) => {
+      passati.push(f);
+      onProgress({ letti: 1, misura: 2, pagine: 1 });
+      throw new Error("finta");
+    },
+  });
+  t.eq("l'import lo passa alla conversione", passati[0], hellboy);
+  t.eq("…e ne racconta l'avanzamento, col nome del file", detti[0]?.nome, "Hellboy v03.cbr");
+  t.eq("se la conversione non riesce non entra", esito.added.length, 0);
+  t.c("…e dice perche', e che la conversione non e' riuscita", esito.errors[0]?.reason?.startsWith(PERCHE_CBR_GRANDE) && /conversione qui non è riuscita \(finta\)/.test(esito.errors[0]?.reason), esito.errors[0]?.reason);
+  t.eq("senza averlo letto intero", hellboy.intere, 0);
 
   // ---- l'impronta a campioni ----------------------------------------------------
   const piccolo = new Blob([testo("un fumetto piccolo")]);

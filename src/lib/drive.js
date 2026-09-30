@@ -491,7 +491,7 @@ export function mettiNellaMappa(bookId, fileId, byte) {
 // perderebbe intero al primo buco di rete. Si apre una sessione, e i byte
 // partono a pezzi con `Blob.slice`, che non copia niente finche' non tocca
 // a quel pezzo — cosi' il volume non entra mai tutto nella memoria.
-export async function caricaSuDrive(blob, { nome, cartella, bookId, props }) {
+export async function caricaSuDrive(blob, { nome, cartella, bookId, props, onProgress }) {
   const inizio = await chiama(`${UPLOAD}/files?uploadType=resumable&fields=${q(CAMPI_ELENCO)}`, {
     method: "POST",
     headers: {
@@ -522,8 +522,33 @@ export async function caricaSuDrive(blob, { nome, cartella, bookId, props }) {
     }
     const ricevuti = /bytes=0-(\d+)/.exec(r.headers.get("Range") || "");
     da = ricevuti ? Number(ricevuti[1]) + 1 : a;
+    onProgress?.({ presi: da, totale });
   }
 }
+
+// IL CBR COMPRESSO CONVERTITO PRENDE IL SUO POSTO SU DRIVE (scelto dal
+// lettore: «fai la 1»). Il CBZ sale nella stessa cartella col segno del
+// libro, POI il CBR va nel cestino col segno tolto: al contrario, un
+// intoppo a meta' lascerebbe il libro senza file; cosi' al peggio restano
+// tutti e due, e il CBR senza segno torna un file qualunque. Dal cestino di
+// Drive il CBR si riprende per un mese. Torna il file nuovo.
+export async function sostituisciSuDrive(vecchioId, blob, { nome, bookId, onProgress }) {
+  const vecchio = await (await chiama(`${API}/files/${encodeURIComponent(vecchioId)}?fields=parents`)).json();
+  const f = await caricaSuDrive(blob, { nome, cartella: vecchio.parents?.[0], bookId, onProgress });
+  mettiNellaMappa(bookId, f.id, f.size ?? blob.size);
+  await chiama(`${API}/files/${encodeURIComponent(vecchioId)}?fields=id`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ trashed: true, appProperties: { bcId: null } }),
+  }).catch((e) => {
+    if (e instanceof DriveScollegato) throw e;
+  });
+  if (VIVO) delete VIVO.elenco.file[vecchioId];
+  return f;
+}
+
+// la chiave per chi legge Drive fuori da qui (il worker della conversione)
+export const chiaveDrive = () => tokenValido();
 
 export async function spazioSuDrive() {
   const d = await (await chiama(`${API}/about?fields=storageQuota`)).json();

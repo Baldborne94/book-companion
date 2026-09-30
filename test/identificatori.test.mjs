@@ -34,7 +34,7 @@ const AMBIENTE = new Set([
   "fetch", "Request", "Response", "Headers", "FormData", "Blob", "File",
   "FileReader", "URL", "URLSearchParams", "AbortController", "Image",
   "Audio", "Event", "CustomEvent", "MutationObserver", "ResizeObserver",
-  "IntersectionObserver", "requestAnimationFrame", "cancelAnimationFrame",
+  "IntersectionObserver", "Worker", "FileReaderSync", "XMLHttpRequest", "self", "requestAnimationFrame", "cancelAnimationFrame",
   "getComputedStyle", "matchMedia", "alert", "confirm", "prompt",
   "HTMLElement", "Node", "Range", "Selection", "DOMParser", "XMLSerializer",
   "TextEncoder", "TextDecoder", "CompressionStream", "DecompressionStream",
