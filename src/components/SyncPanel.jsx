@@ -19,6 +19,7 @@ import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, GIA_REGISTRAT
 import { PIENO, parteDelPiano } from "../lib/spazio.js";
 import { BarraCloud } from "./BarraCloud.jsx";
 import SezioneDrive from "./SezioneDrive.jsx";
+import { ultimoGiro } from "../lib/resoconto.js";
 
 
 function Spazio({ dati }) {
@@ -302,6 +303,7 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
                 )}
               </div>
             )}
+            <Racconto voci={status.racconto || ultimoGiro()?.voci || []} />
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button
                 onClick={onSync}
@@ -505,6 +507,30 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// COSA HA FATTO L'ULTIMO GIRO, libro per libro (`raccontaGiro`): ↓ quel che
+// e' arrivato qui, ↑ quel che e' partito. Il nome intero, come sullo
+// scaffale; l'elenco scorre dentro il pannello invece di allungarlo.
+const MOSTRATE = 40;
+function Racconto({ voci }) {
+  if (!voci.length) return null;
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <p style={{ color: C.muted, fontSize: F.piccolo, margin: "0 0 6px" }}>Nell'ultimo giro</p>
+      <ul style={{ listStyle: "none", margin: 0, padding: 0, maxHeight: px(220), overflowY: "auto" }}>
+        {voci.slice(0, MOSTRATE).map((v, i) => (
+          <li key={i} style={{ fontSize: F.piccolo, color: C.muted, padding: "3px 0", overflowWrap: "break-word" }}>
+            <span style={{ color: v.verso === "qui" ? C.arcane : C.accent }}>{v.verso === "qui" ? "↓" : "↑"}</span>{" "}
+            <span style={{ color: C.text }}>{v.titolo}</span>: {v.cose.join(" · ")}
+          </li>
+        ))}
+        {voci.length > MOSTRATE && (
+          <li style={{ fontSize: F.piccolo, color: C.muted, padding: "3px 0" }}>e altri {voci.length - MOSTRATE}</li>
+        )}
+      </ul>
     </div>
   );
 }

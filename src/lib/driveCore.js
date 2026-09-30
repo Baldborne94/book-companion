@@ -765,3 +765,38 @@ export const fileDellElenco = (tutti) =>
   tutti.filter((f) => f.mimeType !== CARTELLA_MIME && estensioneDi(f.name));
 export const cartelleDellElenco = (tutti) => tutti.filter((f) => f.mimeType === CARTELLA_MIME);
 export const audioDellElenco = (tutti) => tutti.filter((f) => String(f.mimeType || "").startsWith("audio/"));
+
+// L'ARCHIVIO DELLE SCHEDE SU DRIVE (chiesto dal lettore: un archivio che si
+// fa da solo). I file dei libri e delle melodie stanno gia' su Drive; quel che
+// viveva solo nel browser e su Supabase — schede, saghe, punto di lettura,
+// segni, evidenziazioni, raccolte, glossari, diario — scende in un piccolo zip
+// nella cartella «Archivi» di «book-companion», una volta al giorno, e se ne
+// tengono gli ultimi `TIENI_ARCHIVI`. E' lo stesso zip dell'«Esporta» senza i
+// byte: si ripristina dalla strada di sempre.
+export const ARCHIVI = "Archivi";
+export const TIENI_ARCHIVI = 10;
+export const OGNI_ARCHIVIO = 86_400_000;
+
+// un orologio tornato indietro (un «ultimo» nel futuro) non ferma gli
+// archivi per sempre
+export function archivioDovuto({ ultimo = 0, ora = Date.now(), roba = 0 } = {}) {
+  if (!roba) return false;
+  const passato = ora - (Number(ultimo) || 0);
+  return !(passato >= 0 && passato < OGNI_ARCHIVIO);
+}
+
+const quandoDi = (a) => Date.parse(a?.createdTime || "") || 0;
+export const piuRecenti = (archivi) => [...(archivi || [])].filter((a) => a?.id).sort((a, b) => quandoDi(b) - quandoDi(a));
+export const archiviDaTogliere = (archivi, tieni = TIENI_ARCHIVI) => piuRecenti(archivi).slice(tieni);
+
+export function nomeArchivio(ora = Date.now()) {
+  const d = new Date(ora);
+  const due = (n) => String(n).padStart(2, "0");
+  return `book-companion-schede-${d.getFullYear()}-${due(d.getMonth() + 1)}-${due(d.getDate())}.zip`;
+}
+
+// la cartella «Archivi» dentro la radice; `null` = da creare
+export function cartellaArchivi(cartelle) {
+  const radice = idRadice(cartelle);
+  return (cartelle || []).find((c) => c?.name === ARCHIVI && c.parents?.[0] === radice)?.id || null;
+}

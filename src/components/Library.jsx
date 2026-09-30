@@ -18,7 +18,7 @@ import { portaACasa, cloudUsage, localFileIds } from "../lib/sync.js";
 import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso, schedeCambiate
 } from "../lib/syncCore.js";
-import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, DriveScollegato, scegliSuDrive, dettagliFile } from "../lib/drive.js";
+import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, DriveScollegato, scegliSuDrive, dettagliFile, ultimoArchivioSuDrive, ultimoArchivioDaDrive } from "../lib/drive.js";
 import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, sceltaDalPicker, libriSotto, idRadice } from "../lib/driveCore.js";
 import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
 import { eFumetto } from "../lib/fumetto.js";
@@ -288,10 +288,11 @@ function Shelf({ books, onOpenBook, localIds, idLassu, showOrder, coverV = 0, co
                   fontSize: F.nota,
                   lineHeight: 1.25,
                   color: C.text,
-                  display: "-webkit-box",
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: "vertical",
-                  overflow: "hidden",
+                  // IL TITOLO INTERO (scelto dal lettore fra le proposte:
+                  // «Cthulhu. I racconti del..», «Il peggiore dei mondi…»
+                  // dicevano meta' del libro), a capo fra le parole: la
+                  // riga si allunga, i libri restano in alto
+                  overflowWrap: "break-word",
                 }}
               >
                 {b.title}
@@ -301,10 +302,9 @@ function Shelf({ books, onOpenBook, localIds, idLassu, showOrder, coverV = 0, co
               <div
                 style={{
                   fontSize: F.minuscolo,
+                  lineHeight: 1.25,
                   color: C.muted,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  overflowWrap: "break-word",
                 }}
               >
                 {b.author}
@@ -1821,8 +1821,10 @@ export default function Library({
   // uno dice che il browser puo' sfrattarti, l'altro da quanto non hai una
   // copia fuori dal browser.
   const [ultimoArch, setUltimoArch] = useState(ultimoArchivio);
+  // l'archivio che si fa da solo su Drive vale come copia: i file stanno
+  // gia' lassu', e le schede ci vanno ogni giorno
   const promemoria = promemoriaArchivio({
-    ultimo: ultimoArch,
+    ultimo: Math.max(ultimoArch, driveAcceso() ? ultimoArchivioSuDrive() : 0),
     roba: books.length + melodie,
     persistenza: persist,
   });
@@ -1914,6 +1916,21 @@ export default function Library({
       notify(err?.message || "Archivio illeggibile");
     } finally {
       if (archiveRef.current) archiveRef.current.value = "";
+    }
+  }
+
+  async function apriArchivioDaDrive() {
+    if (restoring) return;
+    notify("Cerco l'ultimo archivio su Drive…");
+    try {
+      const a = await ultimoArchivioDaDrive();
+      if (!a) {
+        notify("Su Drive non c'è ancora un archivio: si fa da solo alla prossima sincronizzazione");
+        return;
+      }
+      await apriArchivio([a.file]);
+    } catch (err) {
+      notify(err instanceof DriveScollegato ? "Google Drive non è collegato" : err?.message || "Non riesco a leggere l'archivio su Drive");
     }
   }
 
@@ -2363,13 +2380,28 @@ export default function Library({
       )}
 
       {books.length === 0 ? (
-        <EmptyState
-          emoji="📜"
-          title="Il tuo grimorio è ancora vuoto…"
-          text="Porta qui i tuoi EPUB, PDF e fumetti (CBZ e CBR): appariranno come tomi su uno scaffale incantato, con le loro copertine. Puoi anche trascinarli direttamente in questa pagina."
-          action="Aggiungi il primo libro"
-          onAction={() => inputRef.current?.click()}
-        />
+        <>
+          <EmptyState
+            emoji="📜"
+            title="Il tuo grimorio è ancora vuoto…"
+            text="Porta qui i tuoi EPUB, PDF e fumetti (CBZ e CBR): appariranno come tomi su uno scaffale incantato, con le loro copertine. Puoi anche trascinarli direttamente in questa pagina."
+            action="Aggiungi il primo libro"
+            onAction={() => inputRef.current?.click()}
+          />
+          {/* il dispositivo nuovo e' proprio quello che ha bisogno
+              dell'archivio: qui la riga dei tasti non c'e' */}
+          {driveAcceso() && (
+            <div style={{ textAlign: "center" }}>
+              <button
+                onClick={apriArchivioDaDrive}
+                disabled={restoring}
+                style={{ minHeight: 44, padding: "10px 16px", borderRadius: R.tondo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}
+              >
+                ☁ Ripristina da Drive
+              </button>
+            </div>
+          )}
+        </>
       ) : visible.length === 0 ? (
         /* NON È PIÙ UN VICOLO CIECO. C'era una riga sola — «Nessun tomo
            risponde all'appello con questi filtri…» — che dice il vero e non
@@ -2784,6 +2816,21 @@ export default function Library({
             >
               {restoring ? "Ripristino…" : "↩ Ripristina"}
             </button>
+            {driveAcceso() && (
+              <button
+                onClick={apriArchivioDaDrive}
+                disabled={restoring}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.border}`,
+                  color: restoring ? C.muted : C.text,
+                  fontSize: F.nota,
+                }}
+              >
+                ☁ Ripristina da Drive
+              </button>
+            )}
           </div>
         )}
       </>
@@ -3348,6 +3395,11 @@ function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
             {dentro.insieme?.mancanti?.length
               ? ". Quel che sta nei pezzi mancanti entra senza file: sceglili dopo, insieme a uno .zip, e il file torna al suo posto."
               : ""}
+          </p>
+        )}
+        {dentro.soloSchede && (
+          <p style={{ color: C.muted, fontSize: F.minuscolo, marginTop: 10 }}>
+            ☁ Archivio delle schede{dentro.quando ? ` del ${new Date(dentro.quando).toLocaleDateString("it-IT", { day: "numeric", month: "long" })}` : ""}: i file dei libri non ci sono, li ritrova Drive.
           </p>
         )}
         {dentro.estranei > 0 && (

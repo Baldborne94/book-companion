@@ -40,6 +40,7 @@ import { daAvvisare } from "./lib/oracle.js";
 import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
+import { fraseGiro, ricordaGiro } from "./lib/resoconto.js";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
 import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive } from "./lib/drive.js";
@@ -1028,14 +1029,18 @@ export default function App() {
       setLocalIds(await localFileIds());
       ritrovaEbook(res.books || null);
       tieniInLettura.current(res.books || null);
-      const moved = (res.pulled || 0) + (res.pushed || 0) + (res.removed || 0);
+      // DETTO LIBRO PER LIBRO (`raccontaGiro`): «Aggiornati 12 elementi»
+      // non diceva se la saga scritta sul PC fosse arrivata
+      const racconto = res.racconto || [];
+      ricordaGiro(racconto);
       setSync({
         busy: false,
-        message: moved ? `Aggiornati ${moved} elementi` : "Tutto già allineato",
+        message: fraseGiro(racconto),
+        racconto,
         at: Date.now(),
         signedIn: true,
       });
-      if (!quiet && moved) notify("Biblioteca sincronizzata ✨");
+      if (!quiet && racconto.length) notify(`Biblioteca sincronizzata ✨ ${fraseGiro(racconto)}`);
     } catch (e) {
       // IL TESTO GREZZO DI POSTGRES NON ARRIVA PIÙ SULLO SCHERMO: qui
       // c'era `e.message` incollato com'era, e il lettore si è ritrovato
@@ -1703,6 +1708,7 @@ export default function App() {
               onMusicVolume={(v) => playerRef.current?.setVolume(v)}
               onMusicNext={() => playerRef.current?.next()}
               onMusicRoom={() => navigate("music")}
+              onMusicSottovoce={(si) => playerRef.current?.sottovoce(si)}
               onAlive={() => { svegliaRef.current(); segnaVita(); anticipa.current(); }}
               onClose={() => {
                 setReadingId(null);
