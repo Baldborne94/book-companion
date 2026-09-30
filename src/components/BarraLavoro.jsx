@@ -1,11 +1,11 @@
 // LA RIGA DEL LAVORO LUNGO, sopra la barra delle sezioni (vedi il giro dei
-// CBR in `App.jsx`): da ogni sezione si vede a che punto e', e si ferma. Ad
-// app riaperta con un giro lasciato a meta', la stessa riga offre di
-// riprenderlo.
+// CBR e l'importazione da Drive in `App.jsx`): da ogni sezione si vede a
+// che punto e', e si ferma. Ad app riaperta con un giro dei CBR lasciato a
+// meta', la stessa riga offre di riprenderlo.
 import { C, F, R, px } from "../data/constants.js";
-import { fraseLavoro } from "../lib/convertiCbr.js";
+import { fraseLavoro, fraseImport } from "../lib/convertiCbr.js";
 
-export default function BarraLavoro({ lavoro, restanti = 0, onFerma, onRiprendi, onLascia }) {
+export default function BarraLavoro({ importo = null, onFermaImport, lavoro, restanti = 0, onFerma, onRiprendi, onLascia }) {
   const tasto = {
     minHeight: 44,
     padding: "6px 14px",
@@ -15,23 +15,41 @@ export default function BarraLavoro({ lavoro, restanti = 0, onFerma, onRiprendi,
     fontSize: F.nota,
     flexShrink: 0,
   };
+  const riga = {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "6px 16px",
+    minHeight: px(40),
+    background: C.surface,
+    borderTop: `1px solid ${C.border}`,
+    color: C.muted,
+    fontSize: F.nota,
+    fontVariantNumeric: "tabular-nums",
+    flexShrink: 0,
+  };
+  const giro = lavoro || restanti > 0;
   return (
-    <div
-      role="status"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "6px 16px",
-        minHeight: px(40),
-        background: C.surface,
-        borderTop: `1px solid ${C.border}`,
-        color: C.muted,
-        fontSize: F.nota,
-        fontVariantNumeric: "tabular-nums",
-        flexShrink: 0,
-      }}
-    >
+    <>
+      {importo && (
+        <div role="status" style={riga}>
+          <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
+            <span style={{ color: C.text }}>📥 Da Google Drive: {fraseImport(importo)}</span>
+            {importo.nome ? ` · «${importo.nome}»` : ""}
+          </span>
+          <button onClick={onFermaImport} style={tasto}>
+            Ferma
+          </button>
+        </div>
+      )}
+      {giro && <GiroCbr {...{ riga, tasto, lavoro, restanti, onFerma, onRiprendi, onLascia }} />}
+    </>
+  );
+}
+
+function GiroCbr({ riga, tasto, lavoro, restanti, onFerma, onRiprendi, onLascia }) {
+  return (
+    <div role="status" style={riga}>
       {lavoro ? (
         <>
           <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>

@@ -125,6 +125,31 @@ export default async function (t) {
     t.eq("senza libri si propone tutto quel che e' un libro", daAggiungere([], file.slice(4, 6)).length, 1);
   }
 
+  // ---- i gemelli di Colab: il CBZ accanto al suo CBR -------------------
+  {
+    const TWD = "The Walking Dead Deluxe Vol. 01- Days Gone Bye (2021)";
+    const file = [
+      { id: "r1", name: `${TWD}.cbr`, size: 268329011, parents: ["W"] },
+      { id: "z1", name: `${TWD}.cbz`, size: 274220901, parents: ["W"] },
+      { id: "r2", name: "Solo RAR.cbr", size: 10, parents: ["W"] },
+      { id: "r3", name: "Altrove.cbr", size: 10, parents: ["W"] },
+      { id: "z3", name: "Altrove.cbz", size: 11, parents: ["X"] },
+      { id: "r4", name: "Buttato.cbr", size: 10, parents: ["W"] },
+      { id: "z4", name: "Buttato.cbz", size: 12, parents: ["W"], trashed: true },
+      { id: "r5", name: "Gia' mio.cbr", size: 10, parents: ["W"], appProperties: { bcId: "b5" } },
+      { id: "z5", name: "Gia' mio.cbz", size: 13, parents: ["W"] },
+      { id: "r6", name: "Libro.cbr", size: 10, parents: ["W"] },
+      { id: "p6", name: "Libro.pdf", size: 14, parents: ["W"] },
+    ];
+    const ids = daAggiungere([{ id: "b5", title: "Gia' mio", fileType: "cbr" }], file).map((x) => x.id);
+    t.c("di una coppia CBR e CBZ entra solo il CBZ", ids.includes("z1") && !ids.includes("r1"));
+    t.c("un CBR senza gemello entra", ids.includes("r2"));
+    t.c("il gemello e' nella stessa cartella", ids.includes("r3") && ids.includes("z3"));
+    t.c("un CBZ nel cestino non e' un gemello", ids.includes("r4"));
+    t.c("il CBZ di un CBR che e' gia' un libro non entra: lo adotta il giro", !ids.includes("z5"));
+    t.c("un altro formato con lo stesso nome non e' un gemello", ids.includes("r6") && ids.includes("p6"));
+  }
+
   // ---- la cartella del lettore ------------------------------------
   {
     const cartelle = [

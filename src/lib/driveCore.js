@@ -174,9 +174,19 @@ export function daAggiungere(libri, file, { lapidi = [], cartelle = [], schedeIn
   const titoli = new Set(vivi.map((b) => `${estDelLibro(b)}|${nomeNudo(b.title)}`));
   const visti = new Set();
   const fuori = [];
+  // I GEMELLI DI COLAB (segnalato dal lettore coi Walking Dead: «ci mette
+  // davvero troppo a convertire»): accanto a ogni CBR il quaderno lascia il
+  // suo CBZ, stesso nome. Scegliendo la cartella entravano tutt'e due —
+  // doppioni, e il CBR riconvertito da capo sul tablet. Di una coppia entra
+  // solo il CBZ; e il CBZ di un CBR che e' gia' un libro non entra, lo
+  // adotta il giro (`cbzDaAdottare`).
+  const sulDrive = (file || []).filter((f) => f?.id && !f.trashed);
+  const gemello = (f, est) => sulDrive.find((g) => estensioneDi(g.name) === est && g.parents?.[0] === f.parents?.[0] && radiceDelNome(g.name) === radiceDelNome(f.name));
   for (const f of file || []) {
     const est = estensioneDi(f?.name);
     if (!f?.id || !EST.includes(est) || presi.has(f.id)) continue;
+    if (est === "cbr" && gemello(f, "cbz")) continue;
+    if (est === "cbz" && presi.has(gemello(f, "cbr")?.id)) continue;
     const segno = f.appProperties?.bcId;
     if (segno && !morti.has(segno) && schedeInArrivo) continue;
     const sha = String(f.sha256Checksum || "").toLowerCase();
