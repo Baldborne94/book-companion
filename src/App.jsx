@@ -46,6 +46,8 @@ import SezioneGuasti from "./components/SezioneGuasti.jsx";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile, convertiLibroInCbz } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
 import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive } from "./lib/drive.js";
+import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
+import BarraLavoro from "./components/BarraLavoro.jsx";
 import { spiegaSync, schedaDiversa } from "./lib/syncCore.js";
 import { ebookRitrovati } from "./lib/driveCore.js";
 import { useViewport } from "./lib/viewport.js";
@@ -1173,6 +1175,84 @@ export default function App() {
     }
   }
 
+  // IL GIRO DEI CBR VIVE QUI, SOPRA LE SEZIONI (chiesto dal lettore: «tutti
+  // caricamenti e lavorazioni in generale possono sempre tenersi in
+  // background…?»). Stava nella Libreria: uscendo il giro continuava di
+  // nascosto, il tasto tornava «Converti», e un secondo tocco faceva partire
+  // due giri insieme sugli stessi volumi. Qui ce n'e' uno solo, lo si vede
+  // da ogni sezione (`BarraLavoro`), e i libri chiesti si ricordano
+  // (`ricordaLavoro`) perche' un'app chiusa a meta' possa riprendere.
+  const [lavoro, setLavoro] = useState(null);
+  const filoLavoro = useRef(null);
+  const [sospeso, setSospeso] = useState(() => lavoroSospeso());
+  const cbrDaFare = cbrDaConvertire(books, { qui: localIds || new Set(), suDrive: new Set(Object.keys(mappaDrive())) });
+  const restanti = sospeso && !lavoro && localIds ? restantiDelLavoro(sospeso, cbrDaFare) : [];
+  useEffect(() => {
+    // ricordati tutti convertiti (o tolti): non c'e' niente da riprendere
+    if (sospeso && !lavoro && localIds && !restanti.length) {
+      dimenticaLavoro();
+      setSospeso(null);
+    }
+  }, [sospeso, lavoro, localIds, restanti.length]);
+
+  async function convertiICbr(lista) {
+    if (filoLavoro.current || !lista.length) return;
+    const mio = {};
+    filoLavoro.current = mio;
+    ricordaLavoro(lista.map((b) => b.id));
+    setSospeso(null);
+    setLavoro({ i: 0, totale: lista.length, titolo: lista[0].title, passo: null });
+    try {
+      if (lista.some((b) => mappaDrive()[b.id]) && !driveProntoOra()) await collegaDrive();
+      const esito = await convertiTutti(lista, {
+        converti: (b, onProgress) => convertiLibroInCbz(b, { onProgress, chiedi: false }),
+        applica: applicaConversione,
+        vivo: () => filoLavoro.current === mio,
+        onProgress: (p) => filoLavoro.current === mio && setLavoro(p),
+      });
+      // fermato o a chiave scaduta resta da riprendere; finito, si dimentica
+      if (esito.fermato || esito.chiave) setSospeso(lavoroSospeso());
+      else dimenticaLavoro();
+      notify(resocontoConversioni(esito));
+    } catch (e) {
+      setSospeso(lavoroSospeso());
+      notify(e?.name === "DriveScollegato" ? "Google Drive aspetta un tocco: riprendi quando vuoi." : e?.message || "La conversione non è partita");
+    } finally {
+      if (filoLavoro.current === mio) filoLavoro.current = null;
+      setLavoro(null);
+      setLocalIds(await localFileIds().catch(() => null));
+    }
+  }
+  const fermaLavoro = () => {
+    filoLavoro.current = null;
+  };
+  // LO SCHERMO RESTA ACCESO MENTRE IL GIRO LAVORA: spento, Android congela
+  // la pagina dopo qualche minuto e il giro si ferma li'. Il sistema toglie
+  // il blocco quando la pagina va in secondo piano: tornando lo si richiede.
+  const lavorando = !!lavoro;
+  useEffect(() => {
+    if (!lavorando || !navigator.wakeLock) return;
+    let presa = null;
+    let attivo = true;
+    const chiedi = async () => {
+      if (!attivo || presa || document.visibilityState !== "visible") return;
+      try {
+        presa = await navigator.wakeLock.request("screen");
+        presa.addEventListener?.("release", () => (presa = null));
+        if (!attivo) presa.release().catch(() => {});
+      } catch {
+        /* negato: il giro va lo stesso finche' lo schermo resta acceso */
+      }
+    };
+    chiedi();
+    document.addEventListener("visibilitychange", chiedi);
+    return () => {
+      attivo = false;
+      document.removeEventListener("visibilitychange", chiedi);
+      presa?.release?.().catch(() => {});
+    };
+  }, [lavorando]);
+
   async function handleDelete(id) {
     setOpenId(null);
     removeBookMeta(id);
@@ -1576,7 +1656,10 @@ export default function App() {
           <Library
             books={books}
             updateBooks={updateBooks}
-            onConvertito={applicaConversione}
+            lavoroCbr={lavoro}
+            cbrDaFare={cbrDaFare}
+            onConvertiTutti={() => convertiICbr(cbrDaFare)}
+            onFermaLavoro={fermaLavoro}
             onOpenBook={setOpenId}
             onReadAt={(id, punto) => handleRead(id, punto)}
             notify={notify}
@@ -1619,6 +1702,18 @@ export default function App() {
         )}
       </main>
       </div>
+      {(lavoro || restanti.length > 0) && (
+        <BarraLavoro
+          lavoro={lavoro}
+          restanti={restanti.length}
+          onFerma={fermaLavoro}
+          onRiprendi={() => convertiICbr(restanti)}
+          onLascia={() => {
+            dimenticaLavoro();
+            setSospeso(null);
+          }}
+        />
+      )}
       <BottomNav section={section} goTo={navigate} themeId={themeId} />
       {openBook && (
         <BookSheet
