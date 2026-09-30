@@ -1708,6 +1708,7 @@ export default function App() {
               onMusicVolume={(v) => playerRef.current?.setVolume(v)}
               onMusicNext={() => playerRef.current?.next()}
               onMusicRoom={() => navigate("music")}
+              onMusicSottovoce={(si) => playerRef.current?.sottovoce(si)}
               onAlive={() => { svegliaRef.current(); segnaVita(); anticipa.current(); }}
               onClose={() => {
                 setReadingId(null);

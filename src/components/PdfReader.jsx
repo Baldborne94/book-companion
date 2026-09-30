@@ -25,6 +25,8 @@ import DictionaryCard from "./DictionaryCard.jsx";
 import HighlightList from "./HighlightList.jsx";
 import SchedaOracolo, { attese } from "./SchedaOracolo.jsx";
 import { apertaATuttoSchermo, serveTastoSchermo } from "../lib/schermoIntero.js";
+import { creaVoce, testoDellaPagina } from "../lib/vocePdf.js";
+import { leggiVelocita, scriviVelocita, prossimaVelocita } from "../lib/voce.js";
 
 // stesse fasce del reader EPUB, misurate sullo schermo: cosi' anche il
 // margine attorno alla pagina volta, non solo il foglio
@@ -94,7 +96,7 @@ function accendiRisultato(flashRef, layer, pageNum) {
   }
 }
 
-export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusicStop, onMusicVolume, onMusicNext, onMusicRoom, onAlive, onClose, notify, nextBook, onReadNext, indietro }) {
+export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusicStop, onMusicVolume, onMusicNext, onMusicRoom, onMusicSottovoce, onAlive, onClose, notify, nextBook, onReadNext, indietro }) {
   const rootRef = useRef(null);
   const containerRef = useRef(null);
   const pageBoxRef = useRef(null);
@@ -174,6 +176,44 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     const max = live.current.pages || 1;
     setPage(Math.min(max, Math.max(1, n)));
   }, []);
+
+  // LEGGI AD ALTA VOCE (le decisioni in lib/vocePdf.js): la pagina a
+  // schermo, a frasi, e la pagina si gira da sola come col dito
+  const sintesi = typeof window !== "undefined" && window.speechSynthesis && typeof window.SpeechSynthesisUtterance === "function" ? window.speechSynthesis : null;
+  const [voce, setVoce] = useState(null);
+  const [velocita, setVelocita] = useState(() => leggiVelocita());
+  const velRef = useRef(velocita);
+  velRef.current = velocita;
+  const sottoRef = useRef(onMusicSottovoce);
+  sottoRef.current = onMusicSottovoce;
+  const linguaRef = useRef("");
+  const voceRef = useRef(null);
+  if (sintesi && !voceRef.current) {
+    voceRef.current = creaVoce({
+      sintesi,
+      Frase: window.SpeechSynthesisUtterance,
+      testo: async (n) => testoDellaPagina((await (await pdfRef.current.getPage(n)).getTextContent()).items),
+      gira: goToPage,
+      pagine: () => live.current.pages,
+      // la lingua dichiarata dal PDF, e senza quella la lingua del tablet
+      lingua: () => linguaRef.current || navigator.language || "",
+      velocita: () => velRef.current,
+      cambia: setVoce,
+      avvisa: (m) => notify?.(m),
+      sottovoce: (si) => sottoRef.current?.(si),
+    });
+  }
+  useEffect(() => {
+    voceRef.current?.vista(page);
+  }, [page]);
+  useEffect(() => () => voceRef.current?.chiudi(), []);
+  function voceVelocita() {
+    const n = prossimaVelocita(velocita);
+    setVelocita(n);
+    scriviVelocita(n);
+    velRef.current = n;
+    voceRef.current?.rifrasa();
+  }
 
   const renderPage = useCallback(
     async (pageNum, zoomLevel) => {
@@ -281,6 +321,9 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
           return;
         }
         pdfRef.current = pdf;
+        pdf.getMetadata().then((m) => {
+          linguaRef.current = String(m?.info?.Language || "");
+        }).catch(() => {});
         live.current.pages = pdf.numPages;
         live.current.page = Math.min(live.current.page, pdf.numPages);
         setPages(pdf.numPages);
@@ -950,6 +993,51 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
         </div>
       )}
 
+      {/* I COMANDI DELLA VOCE restano a schermo anche a barre nascoste, come
+          nell'ePub: chi ascolta posa il tablet */}
+      {voce && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            bottom: chrome ? px(84) : px(16),
+            transform: "translateX(-50%)",
+            zIndex: 26,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            padding: 4,
+            borderRadius: R.tondo,
+            background: `${C.card}f2`,
+            border: `1px solid ${C.border}`,
+            boxShadow: "0 6px 24px #00000066",
+            animation: "bc-fade-in 0.2s ease-out",
+          }}
+        >
+          <button
+            onClick={() => (voce === "legge" ? voceRef.current.pausa() : voceRef.current.comincia(live.current.page))}
+            aria-label={voce === "legge" ? "Pausa" : "Riprendi a leggere"}
+            style={{ minWidth: 44, height: 44, borderRadius: R.tondo, color: C.accent, fontSize: F.rilievo }}
+          >
+            {voce === "legge" ? "⏸" : "▶"}
+          </button>
+          <button
+            onClick={voceVelocita}
+            aria-label={`Velocità ${velocita}×, tocca per cambiarla`}
+            style={{ minWidth: 52, height: 44, borderRadius: R.tondo, color: C.text, fontSize: F.nota }}
+          >
+            {String(velocita).replace(".", ",")}×
+          </button>
+          <button
+            onClick={() => voceRef.current.taci()}
+            aria-label="Smetti di leggere"
+            style={{ minWidth: 44, height: 44, borderRadius: R.tondo, color: C.muted, fontSize: F.rilievo }}
+          >
+            ■
+          </button>
+        </div>
+      )}
+
       {chrome && (
         <>
           <BarraDelLibro
@@ -992,6 +1080,15 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                   glifo="🖍️"
                 />
                 <TastoBarra onClick={dovEravamo} conNome={nomiNeiTasti} nome="Dove eravamo" glifo="🧭" />
+                {sintesi && status === "ready" && (
+                  <TastoBarra
+                    onClick={() => (voce ? voceRef.current.taci() : voceRef.current.comincia(live.current.page))}
+                    attivo={!!voce}
+                    conNome={nomiNeiTasti}
+                    nome={voce ? "Smetti" : "Ascolta"}
+                    glifo="🔊"
+                  />
+                )}
                 <button
                   onClick={() => setZoom((z) => Math.max(1, +(z - 0.25).toFixed(2)))}
                   style={barBtn(false)}
