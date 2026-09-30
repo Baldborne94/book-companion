@@ -8,7 +8,7 @@
 //
 // La terza è quella che costa di più a sbagliarsi: proporre il volume
 // sbagliato di una saga è uno spoiler servito dall'app stessa.
-import { nextInSaga } from "../src/lib/saga.js";
+import { nextInSaga, passoDentro } from "../src/lib/saga.js";
 
 // LO STORAGE FINTO SERVE, E VA DICHIARATO QUI. Da quando il filtro guarda
 // anche il PROGRESSO, il quarto argomento di `nextInSaga` ha per default il
@@ -192,14 +192,13 @@ export default async function (t) {
       nextInSaga(trilogia[0], trilogia, inLettura, intatti),
       null
     );
-    // il caso della prima segnalazione: lo stato non dice niente, il
-    // progresso sì — e vale lo stesso: non si propone, e non si salta
+    // il caso della prima segnalazione, GIRATO: un volume al 27% con lo
+    // stato «Da leggere» e' uno rimesso li' a mano (aprire un libro lo
+    // dichiara «in lettura» da solo), e si propone — senza saltare al terzo
     const aMeta = (id) => (id === "due" ? 0.27 : 0);
-    t.eq(
-      "un volume al 27% è già aperto, anche se lo stato tace",
-      nextInSaga(trilogia[0], trilogia, nuovi, aMeta),
-      null
-    );
+    t.eq("un volume rimesso «Da leggere» al 27% si propone", nextInSaga(trilogia[0], trilogia, nuovi, aMeta)?.id, "due");
+    // e la ragione «l'hai già aperto» resta per chi lo ha in mano
+    t.eq("in lettura: il passo ce l'hai in mano", passoDentro(trilogia[0], trilogia, inLettura, intatti).motivo, "aperto");
     // ABBANDONATO NON È «DA LEGGERE»: quella storia l'hai lasciata apposta,
     // e riproportela è il difetto per cui quello stato esiste
     const mollato = (id) => (id === "due" ? "abandoned" : "unread");

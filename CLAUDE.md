@@ -81,7 +81,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 
 - Strade in ordine: tavola (`TAVOLE`: Mondo Disco, Eresia di Horus, Seconda Apocalisse), collana nel file (`collana.js`), titolo (`sagaDalTitolo.js`, forme nella tavola del test), catalogo Open Library (`sagaDalCatalogo.js`, due voti), e **per ultima** la deduzione dai fratelli (`sagaDaBiblioteca`, vetata da `tracce: 0`). La saga vuota è uno stato legittimo; una saga tolta a mano resta tolta (`sagaTolta`).
 - Quel che il lettore ha scritto a mano non si tocca. Si **propone** riga per riga (titoli, numeri del cammino, parti), mai si riscrive in silenzio.
-- Il prossimo volume è `nextInSaga`/`passoDentro` (in `saga.js`): il filo è la **serie**, si apre dopo un volume finito, i contorni di una guida non sono passi, e chi tace dice perché (`perchePassoTace`). Una regola sul «prossimo volume» va nella funzione che risponde a quella domanda, non in un chiamante.
+- Il prossimo volume è `nextInSaga`/`passoDentro` (in `saga.js`): il filo è la **serie**, si apre dopo un volume finito, i contorni di una guida non sono passi, e chi tace dice perché (`perchePassoTace`). «Da leggere» conta lo **stato** (un volume aperto e rimesso lì a mano torna seguito, «già al 12%»), e in una saga cominciata si propone anche l'inizio del primo ciclo non cominciato (`iniziDeiCicli`, uno per saga). Una regola sul «prossimo volume» va nella funzione che risponde a quella domanda, non in un chiamante.
 - Eresia di Horus: percorso CD8D, il numero di lettura si chiede alla tavola (`postiDelCammino`), prologo e letture di sfondo non sono tappe.
 
 ### Sincronizzazione

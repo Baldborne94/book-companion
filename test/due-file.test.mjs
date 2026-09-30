@@ -27,6 +27,13 @@ export default async function (t) {
   t.eq("il seguito dice saga e numero", seguiti[0].nota, "Mistborn n° 4");
   t.eq("…col numero all'italiana", seguiti[1].nota, "Discworld n° 2,5");
 
+  // l'inizio di un ciclo nuovo lo dice, e un volume rimesso «Da leggere»
+  // dopo averlo aperto dice dove eri arrivato
+  const mp = { id: "mp", title: "Moving Pictures", sagaOrder: 10 };
+  const note = inCorsoESeguiti([], [{ libro: mp, nome: "Discworld", inizio: "Industrial Revolution" }], (id) => (id === "mp" ? 0.12 : 0));
+  t.eq("inizio del ciclo e punto raggiunto", note.seguiti[0].nota, "Discworld n° 10 · inizia Industrial Revolution · già al 12%");
+  t.eq("…e senza niente da dire, il solo numero", seguiti[0].nota, "Mistborn n° 4");
+
   const doppi = inCorsoESeguiti([a, a], [{ libro: c, nome: "M" }, { libro: c, nome: "M" }], progressoOf);
   t.eq("un libro non sta due volte nella stessa fila", ids(doppi.inCorso) + "|" + ids(doppi.seguiti), "a|c");
 

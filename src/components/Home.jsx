@@ -43,15 +43,14 @@ function SectionTitle({ children }) {
 // UN LIBRO IN FILA: la copertina, il titolo e una riga che dice perché sta
 // lì. Il titolo si stampa SOLO sotto una copertina vera — sul dorso
 // disegnato è già scritto sopra, e ristamparlo è rumore. La nota invece
-// c'è sempre: sulla copertina non sta.
+// c'è sempre: sulla copertina non sta. Titolo e nota vanno A CAPO fra le
+// parole, come sullo scaffale: «Red Seas Under …» e «Discworld n° 10 …»
+// tagliavano proprio la parte che dice qualcosa («inizia Industrial
+// Revolution · già al 12%»).
 function LibroInFila({ book, nota, disegnato, onDisegnata, onClick }) {
-  const riga = {
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  };
+  const riga = { overflowWrap: "break-word" };
   return (
-    <button onClick={onClick} style={{ flexShrink: 0, width: px(96), textAlign: "left" }}>
+    <button onClick={onClick} style={{ flexShrink: 0, alignSelf: "flex-start", width: px(96), textAlign: "left" }}>
       <BookCover book={book} onDisegnata={onDisegnata} />
       {!disegnato && (
         <div style={{ ...riga, marginTop: 6, fontSize: F.piccolo, color: C.text }}>{book.title}</div>
