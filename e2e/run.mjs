@@ -102,7 +102,18 @@ const SCENE = [
       await pc.p.getByText("Racconti").first().click();
       await pc.p.locator('input[placeholder="es. The Realm of the Elderlings"]').fill("Miti di Cthulhu");
       await pc.p.getByRole("button", { name: "Chiudi", exact: true }).click();
-      await finche(() => db.righe().some((r) => r.title === "Racconti" && r.saga === "Miti di Cthulhu"), 20000, "la saga non sale nel cloud");
+      // la scheda si salva CHIUDENDOSI: se resta aperta la saga non e' scritta
+      await finche(async () => !(await pc.p.locator('input[placeholder="es. The Realm of the Elderlings"]').count()), 10000, "la scheda non si chiude");
+      await finche(() => db.righe().some((r) => r.title === "Racconti" && r.saga === "Miti di Cthulhu"), 30000, "la saga non sale nel cloud").catch(async (e) => {
+        // quando cade, dice dove: la scheda sul PC, il suo timbro, la riga
+        // lassu', l'ultimo giro e i guasti del PC
+        const qui = await pc.p.evaluate(() => {
+          const b = JSON.parse(localStorage.getItem("bc_books") || "[]").find((x) => x.title === "Racconti");
+          return { saga: b?.saga, sch: b && localStorage.getItem(`bc_sch_${b.id}`), giro: localStorage.getItem("bc_sync_racconto"), errori: localStorage.getItem("bc_errori") };
+        });
+        const lassu = db.righe().find((r) => r.title === "Racconti");
+        throw new Error(`${e.message} — PC: ${JSON.stringify(qui)} · cloud: saga=${lassu?.saga} scheda_at=${lassu?.scheda_at}`);
+      });
 
       await tab.p.goto(URL_APP);
       await finche(async () => (await libriDi(tab.p)).find((b) => b.title === "Racconti")?.saga === "Miti di Cthulhu", 20000, "la saga non arriva sul tablet");
