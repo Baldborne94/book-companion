@@ -14,7 +14,7 @@ import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
 import { frasiDiario } from "../lib/archivioDiario.js";
 import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
-import { portaACasa, cloudUsage, localFileIds, getLastSync } from "../lib/sync.js";
+import { portaACasa, cloudUsage, localFileIds, getLastSync, convertiLibroInCbz } from "../lib/sync.js";
 import { isSyncConfigured } from "../lib/supabase.js";
 import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso, schedeCambiate
@@ -23,6 +23,7 @@ import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, coll
 import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, sceltaDalPicker, libriSotto, idRadice, fraseCarico } from "../lib/driveCore.js";
 import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
 import { eFumetto, fraseConversione } from "../lib/fumetto.js";
+import { cbrDaConvertire, convertiTutti, resocontoConversioni, fraseDelPasso } from "../lib/convertiCbr.js";
 import { senzaCopertina } from "../lib/copertina.js";
 import { spartisciQui } from "../lib/spazio.js";
 import { BarraCloud, BarraDrive, PesoQui } from "./BarraCloud.jsx";
@@ -692,6 +693,7 @@ function Raccolta({ r, amata = false, onApri, coverV, conCopertina }) {
 export default function Library({
   books,
   updateBooks,
+  onConvertito,
   onOpenBook,
   onReadAt,
   notify,
@@ -781,6 +783,8 @@ export default function Library({
   // stesso modo di fermarla
   const [improntando, setImprontando] = useState(null);
   const filoImpronte = useRef(null);
+  const [convertendo, setConvertendo] = useState(null);
+  const filoConversioni = useRef(null);
   const [copertinando, setCopertinando] = useState(null);
   const filoCopertine = useRef(null);
   // quali libri il dorso disegnato ce l'hanno per davvero: si chiede una
@@ -1427,6 +1431,33 @@ export default function Library({
     }
     if (esito.senzaImmagine) setCopGuardate(await guardate());
     notify?.(resocontoCopertine(esito));
+  }
+
+  // TUTTI I CBR IN CBZ, uno alla volta (vedi `lib/convertiCbr.js`). Si
+  // arriva da un tocco, quindi la chiave di Google si chiede qui; a meta'
+  // giro non si chiede piu' (`chiedi: false`): scaduta, il giro si ferma.
+  const cbrDaFare = cbrDaConvertire(books, { qui: localIds || new Set(), suDrive: idSuDrive() || new Set() });
+  async function convertiTuttiICbr() {
+    if (convertendo || !cbrDaFare.length) return;
+    const mio = {};
+    filoConversioni.current = mio;
+    const lista = cbrDaFare;
+    setConvertendo({ i: 0, totale: lista.length, titolo: lista[0].title, passo: null });
+    try {
+      if (lista.some((b) => mappaDrive()[b.id]) && !driveProntoOra()) await collegaDrive();
+      const esito = await convertiTutti(lista, {
+        converti: (b, onProgress) => convertiLibroInCbz(b, { onProgress, chiedi: false }),
+        applica: (id, patch) => onConvertito?.(id, patch),
+        vivo: () => filoConversioni.current === mio,
+        onProgress: (p) => filoConversioni.current === mio && setConvertendo(p),
+      });
+      notify?.(resocontoConversioni(esito));
+    } catch (e) {
+      notify?.(e instanceof DriveScollegato ? "Google Drive aspetta un tocco: riprova." : e?.message || "La conversione non è partita");
+    } finally {
+      if (filoConversioni.current === mio) filoConversioni.current = null;
+      setConvertendo(null);
+    }
   }
 
   async function ripassaLeImpronte() {
@@ -2676,8 +2707,8 @@ export default function Library({
                   fisso sul tasto diceva al lettore che c'era del lavoro
                   arretrato dove non ce n'era («è corretto?»). */}
               🧰 Manutenzione
-              {!manutenzione && senzaImpronta.length + mancaLaCopertina.length > 0
-                ? ` · ${senzaImpronta.length + mancaLaCopertina.length}`
+              {!manutenzione && senzaImpronta.length + mancaLaCopertina.length + cbrDaFare.length > 0
+                ? ` · ${senzaImpronta.length + mancaLaCopertina.length + cbrDaFare.length}`
                 : ""}{" "}
               {manutenzione ? "▾" : "▸"}
             </button>
@@ -2844,6 +2875,27 @@ export default function Library({
                 ? `Fermo qui (${visitando.i + 1} di ${visitando.totale})`
                 : "🩺 Controlla i tuoi libri"}
             </button>
+            {/* I CBR CHE SCENDONO INTERI A OGNI APERTURA, tutti in CBZ: una
+                discesa ciascuno, una volta sola. Col numero sopra, perche'
+                e' un giro lungo; fermarlo lascia convertito quel che e'
+                gia' convertito. */}
+            {(cbrDaFare.length > 0 || convertendo) && (
+              <button
+                onClick={convertendo ? () => { filoConversioni.current = null; } : convertiTuttiICbr}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.border}`,
+                  color: C.text,
+                  fontSize: F.nota,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {convertendo
+                  ? `Fermo qui (${convertendo.i + 1} di ${convertendo.totale}) · ${fraseDelPasso(convertendo.passo)}`
+                  : `🔁 Converti ${cbrDaFare.length === 1 ? "un CBR" : `${cbrDaFare.length} CBR`} in CBZ`}
+              </button>
+            )}
             {senzaImpronta.length > 0 && (
               <button
                 onClick={improntando ? () => { filoImpronte.current = null; setImprontando(null); } : ripassaLeImpronte}
