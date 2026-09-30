@@ -4,7 +4,7 @@
 // arriva qui come un `TypeError` senza codice e senza stato, e se lo si
 // tratta come una credenziale rifiutata si manda il lettore a riscrivere
 // all'infinito una password che era giusta.
-import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD } from "../src/lib/accesso.js";
+import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, PERCHE_GOOGLE_SPENTO } from "../src/lib/accesso.js";
 
 // come li manda supabase-js: un oggetto con `code`, `status` e `message`
 const errore = (code, message = "", status = 400) => ({ code, message, status });
@@ -107,4 +107,8 @@ export default async function (t) {
   t.c("un carattere sotto no", passwordCorta("a".repeat(MIN_PASSWORD - 1)) === true);
   t.c("e il campo vuoto e' corto, non un errore", passwordCorta("") === true);
   t.c("nemmeno se la password non c'e' proprio", passwordCorta(undefined) === true);
+
+  // «Entra con Google» prima di averlo acceso su Supabase: il testo che manda
+  // il server (validation_failed, 400)
+  t.eq("Google spento su Supabase si dice, e dove accenderlo", spiegaAccesso(errore("validation_failed", "Unsupported provider: provider is not enabled")), PERCHE_GOOGLE_SPENTO);
 }

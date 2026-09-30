@@ -295,6 +295,40 @@ const SCENE = [
       }
     },
   },
+  {
+    // chiesto dal lettore: il login «non mi convince» — due accessi separati,
+    // Google che chiede di nuovo ogni ora, il pannello confuso
+    nome: "si entra con Google una volta sola, e la chiave di Drive si rinnova senza finestre",
+    async fai({ browser, db }) {
+      const d = await dispositivo(browser);
+      let rinnovi = 0;
+      await d.ctx.route("**/api/google-token", (route) => {
+        rinnovi += 1;
+        const auth = route.request().headers().authorization;
+        return route.fulfill({ json: auth === "Bearer a.b.c" ? { chiave: "ya29.dal-server", scade: Date.now() + 3_600_000 } : { motivo: "sessione" }, status: auth === "Bearer a.b.c" ? 200 : 401 });
+      });
+      const finestre = [];
+      d.p.on("request", (r) => /accounts\.google\.com/.test(r.url()) && finestre.push(r.url()));
+      const chiave = () => d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_drive_token") || "null")?.chiave || "");
+      await d.p.goto(URL_APP);
+      await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
+      await d.p.getByRole("button", { name: "Entra con Google" }).first().click();
+      // da Google (il Supabase finto) e ritorno, gia' dentro
+      await finche(async () => (await chiave()) === "ya29.dal-google", 20000, "tornando da Google la chiave di Drive non arriva");
+      await finche(() => db.permessi().some((r) => r.user_id === "u1" && r.token === "rt-google"), 10000, "il permesso a lungo termine non si salva nel Supabase");
+      const a = db.accessi()[0] || {};
+      if (a.provider !== "google" || !/auth\/drive/.test(a.scopes || "") || a.access_type !== "offline" || a.prompt !== "consent") throw new Error(`l'accesso chiesto a Google non e' quello giusto: ${JSON.stringify(a)}`);
+
+      // un'ora dopo: la chiave e' scaduta, e si riapre l'app
+      await d.p.evaluate(() => localStorage.setItem("bc_drive_token", JSON.stringify({ chiave: "ya29.dal-google", scade: Date.now() - 1000 })));
+      await d.p.goto(URL_APP);
+      await finche(async () => (await chiave()) === "ya29.dal-server", 15000, "la chiave scaduta non si rinnova da sola");
+      if (finestre.length) throw new Error(`si e' aperta la finestra di Google: ${finestre[0]}`);
+      await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
+      const stato = await finche(() => testoAvviso(d.p, /la chiave si rinnova da sola/), 10000, "il pannello non dice che Drive si rinnova da solo");
+      return { guasti: d.guasti, nota: `${rinnovi} ${rinnovi === 1 ? "rinnovo" : "rinnovi"} dal server, nessuna finestra · «${stato}»` };
+    },
+  },
 ];
 
 // OGNI ATTESA HA UN TETTO, anche quelle delle prove: una scena che non

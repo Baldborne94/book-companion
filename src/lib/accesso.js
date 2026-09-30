@@ -31,11 +31,17 @@ const VOCI = {
   signup_disabled: "Su questo progetto le registrazioni sono chiuse.",
 };
 
+export const PERCHE_GOOGLE_SPENTO = "L'accesso con Google non è ancora acceso su Supabase: Authentication → Sign In / Providers → Google (i passi sono in docs/ACCESSO.md).";
+
 export function spiegaAccesso(err) {
   if (!err) return null;
   const codice = err.code || "";
-  if (VOCI[codice]) return VOCI[codice];
   const testo = String(err.message || "");
+  // «Entra con Google» prima di aver acceso Google su Supabase: e' un passo
+  // da fare una volta, e va detto dove. Prima dei codici, perche' arriva
+  // come `validation_failed`, che altrimenti direbbe «controlla l'email»
+  if (/provider is not enabled|unsupported provider/i.test(testo)) return PERCHE_GOOGLE_SPENTO;
+  if (VOCI[codice]) return VOCI[codice];
   // LA RETE CHE MANCA NON E' UNA PASSWORD SBAGLIATA. `fetch` che cade
   // arriva qui come un TypeError con un messaggio del browser, senza ne'
   // codice ne' stato: trattarlo come una credenziale rifiutata manderebbe

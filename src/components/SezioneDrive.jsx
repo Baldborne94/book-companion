@@ -14,6 +14,7 @@ import {
   spazioSuDrive,
 } from "../lib/drive.js";
 import { pesoDeiLibri } from "../lib/driveCore.js";
+import { statoRinnovo } from "../lib/accessoGoogle.js";
 import { BarraDrive } from "./BarraCloud.jsx";
 
 // GOOGLE DRIVE NEL PANNELLO DELLA NUVOLA: e' la stessa domanda — dove stanno
@@ -128,7 +129,9 @@ export default function SezioneDrive({ onCollegato, notify }) {
           <p style={{ margin: "10px 0 0", fontSize: F.nota, color: pronto ? C.accent : C.text }}>
             {pronto
               ? `Collegato · ${libri.quanti} ${libri.quanti === 1 ? "libro riconosciuto" : "libri riconosciuti"} su Drive`
-              : "Collegato, ma Google chiede un tocco per continuare (l'accesso dura un'ora)."}
+              : statoRinnovo() === "ok"
+                ? "Collegato · rinnovo la chiave…"
+                : "Collegato, ma Google chiede un tocco per continuare. Entra con Google qui sopra e non lo chiederà più."}
           </p>
           {spazio && <BarraDrive spazio={spazio} libri={libri} compatta />}
           {campoChiave}
@@ -145,6 +148,11 @@ export default function SezioneDrive({ onCollegato, notify }) {
         </>
       ) : (
         <>
+          {(!daBuild || campoChiave) && (
+          <details open={!driveConfigurato()} style={{ marginTop: 10 }}>
+            <summary style={{ color: C.muted, fontSize: F.nota, cursor: "pointer", padding: "12px 0" }}>
+              Impostazioni di Google (una volta sola)
+            </summary>
           {!daBuild && (
             <label style={{ display: "block", marginTop: 12, fontSize: F.minuscolo, color: C.muted }}>
               ID client di Google (finisce con .apps.googleusercontent.com)
@@ -160,6 +168,8 @@ export default function SezioneDrive({ onCollegato, notify }) {
             </label>
           )}
           {campoChiave}
+          </details>
+          )}
           <div style={{ marginTop: 12 }}>
             <button
               onClick={collega}

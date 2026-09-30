@@ -71,8 +71,23 @@ cancelli l'account, quei dati vanno via con lui.
 Se colleghi Google Drive, l'app chiede a Google il permesso di **leggere e
 scrivere nel tuo Drive** (è il permesso intero, perché i libri che hai
 caricato a mano stanno in cartelle tue che l'app deve poter vedere). La
-chiave di accesso la consegna Google a questo browser, dura un'ora, resta
-sul dispositivo e non passa da nessun server dell'app — non ce ne sono.
+chiave di accesso la consegna Google a questo browser, dura un'ora e resta
+sul dispositivo.
+
+Se entri con Google («Entra con Google»), Google consegna anche un permesso
+a lungo termine, che serve ad avere una chiave nuova senza richiedertelo
+ogni ora. Il permesso si salva nel **tuo** Supabase (tabella
+`google_refresh`), in una riga che le regole del database lasciano leggere
+solo a te. Quando la chiave sta per scadere, l'app chiede una chiave nuova
+all'**unico pezzo di server dell'app**: una funzione su Vercel
+(`api/google-token`, nel progetto dove l'app è pubblicata). La funzione
+controlla chi sei con la tua sessione di Supabase, legge il tuo permesso con
+quella stessa sessione, lo presenta a Google (`oauth2.googleapis.com`)
+insieme al segreto del client, che sta solo nelle impostazioni di Vercel, e
+ti restituisce la chiave nuova. Non salva niente e non vede altro. Uscendo
+dall'app, quel dispositivo smette di chiedere chiavi; il permesso resta nel
+tuo Supabase per gli altri dispositivi finché non lo ritiri da
+myaccount.google.com.
 
 Con quella chiave l'app parla **solo con Google** (`accounts.google.com`,
 `www.googleapis.com`) e fa queste cose: elenca i file del tuo Drive per
