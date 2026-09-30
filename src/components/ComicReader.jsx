@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
-import { fileDaLeggere } from "../lib/sync.js";
-import { driveProntoOra } from "../lib/drive.js";
-import { fraseDiscesa } from "../lib/driveCore.js";
+import { fileDaLeggere, convertiLibroInCbz } from "../lib/sync.js";
+import { driveProntoOra, mappaDrive } from "../lib/drive.js";
+import { fraseDiscesa, fraseCarico } from "../lib/driveCore.js";
 import RicollegaDrive from "./RicollegaDrive.jsx";
 import { getCfi, setCfi, getMarks, saveMarks } from "../lib/annotations.js";
 import { setProgress, setStatus } from "../lib/library.js";
@@ -40,6 +40,7 @@ import {
   daPreparare,
   daLasciare,
   PERCHE_CBR_GRANDE,
+  fraseConversione,
 } from "../lib/fumetto.js";
 import { vuoto } from "../lib/pdfCrop.js";
 import { conAttesa } from "../lib/misuraPagine.js";
@@ -113,7 +114,7 @@ function Panel({ title, onClose, children }) {
   );
 }
 
-export default function ComicReader({ book, startCfi, music, onMusicToggle, onMusicStop, onMusicVolume, onMusicNext, onMusicRoom, onAlive, onClose, notify, nextBook, onReadNext, indietro }) {
+export default function ComicReader({ book, startCfi, music, onMusicToggle, onMusicStop, onMusicVolume, onMusicNext, onMusicRoom, onAlive, onClose, notify, nextBook, onReadNext, indietro, onCambiaLibro }) {
   const rootRef = useRef(null);
   const boxRef = useRef(null);
   const imgRef = useRef(null);
@@ -135,6 +136,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const [status, setStatusUi] = useState("loading");
   const [discesa, setDiscesa] = useState("");
   const [perche, setPerche] = useState("");
+  const [apertura, setApertura] = useState(0);
   const [chrome, setChrome] = useState(() => !isTouch());
   const [panel, setPanel] = useState(null);
   const [page, setPage] = useState(1);
@@ -371,7 +373,27 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
       pesi.current.clear();
       archivio.current?.chiudi?.();
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [apertura]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // IL CBR COMPRESSO TROPPO GRANDE SI CONVERTE DA QUI (`convertiLibroInCbz`):
+  // un tocco, l'avanzamento sotto la candela, e il fumetto si riapre CBZ
+  // allo stesso punto — i nomi delle pagine restano, e con loro l'ordine.
+  const [convertendo, setConvertendo] = useState(null);
+  async function convertiQui() {
+    if (convertendo) return;
+    setConvertendo({ letti: 0, misura: 0, pagine: 0 });
+    try {
+      const patch = await convertiLibroInCbz(book, { onProgress: setConvertendo });
+      onCambiaLibro?.(patch);
+      setPerche("");
+      setStatusUi("loading");
+      setApertura((n) => n + 1);
+    } catch (e) {
+      notify?.(`La conversione non è riuscita: ${e?.message || e}`);
+    } finally {
+      setConvertendo(null);
+    }
+  }
 
   useEffect(() => {
     if (status !== "ready" || nastro) return;
@@ -946,9 +968,25 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           <span style={{ fontSize: 40 }}>📕</span>
           <span style={{ maxWidth: px(560) }}>
             {perche
-              ? `Q${perche.slice(1)}.`
+              ? "Questo CBR ha le pagine compresse ed è troppo grande per aprirlo così: il browser dovrebbe tenerlo tutto in memoria. Lo converto in CBZ, una volta sola — le pagine restano le stesse, nello stesso ordine."
               : "Questo fumetto non si lascia aprire… l'archivio potrebbe essere danneggiato o senza immagini dentro, oppure è nel cloud e ora sei offline."}
           </span>
+          {perche && (
+            <>
+              <button
+                onClick={convertiQui}
+                disabled={!!convertendo}
+                style={{ minHeight: 44, padding: "10px 22px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontVariantNumeric: "tabular-nums" }}
+              >
+                {convertendo ? (convertendo.carico ? fraseCarico(convertendo) : fraseConversione(convertendo)) : "Converti in CBZ"}
+              </button>
+              {mappaDrive()[book.id] && (
+                <span style={{ fontSize: F.piccolo, color: C.muted, maxWidth: px(520) }}>
+                  Su Google Drive il CBZ prende il posto del CBR, che va nel cestino di Drive: da lì lo riprendi per un mese.
+                </span>
+              )}
+            </>
+          )}
           <button onClick={handleClose} style={{ padding: "10px 22px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.muted }}>
             Torna alla Libreria
           </button>

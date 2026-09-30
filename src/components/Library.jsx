@@ -19,10 +19,10 @@ import { isSyncConfigured } from "../lib/supabase.js";
 import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso, schedeCambiate
 } from "../lib/syncCore.js";
-import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, DriveScollegato, scegliSuDrive, dettagliFile, ultimoArchivioSuDrive, ultimoArchivioDaDrive } from "../lib/drive.js";
-import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, sceltaDalPicker, libriSotto, idRadice } from "../lib/driveCore.js";
+import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, DriveScollegato, scegliSuDrive, dettagliFile, ultimoArchivioSuDrive, ultimoArchivioDaDrive, sostituisciSuDrive, chiaveDrive } from "../lib/drive.js";
+import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, sceltaDalPicker, libriSotto, idRadice, fraseCarico } from "../lib/driveCore.js";
 import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
-import { eFumetto } from "../lib/fumetto.js";
+import { eFumetto, fraseConversione } from "../lib/fumetto.js";
 import { senzaCopertina } from "../lib/copertina.js";
 import { spartisciQui } from "../lib/spazio.js";
 import { BarraCloud, BarraDrive, PesoQui } from "./BarraCloud.jsx";
@@ -1788,6 +1788,24 @@ export default function Library({
             return e instanceof DriveScollegato ? "scollegato" : false;
           }
         },
+        // il CBR compresso troppo grande: convertito leggendolo da Drive, e
+        // il CBZ al suo posto lassu' (il CBR nel cestino di Drive)
+        converti: async (v, onProgress) => {
+          const { convertiInCbz } = await import("../lib/archivioFumetto.js");
+          return convertiInCbz({ drive: { id: v.id, chiave: chiaveDrive() }, misura: Number(v.size) }, { onProgress });
+        },
+        sostituisci: async (v, bookId, cbz) => {
+          try {
+            await sostituisciSuDrive(v.id, cbz, {
+              nome: String(v.name).replace(/\.cbr$/i, "") + ".cbz",
+              bookId,
+              onProgress: (p) => setGiroImport((g) => ({ ...g, conversione: null, caricamento: p })),
+            });
+            return true;
+          } catch (e) {
+            return e instanceof DriveScollegato ? "scollegato" : false;
+          }
+        },
         onProgress: setGiroImport,
         vivo: () => filoDrive.current,
       });
@@ -2131,7 +2149,9 @@ export default function Library({
           }}
         >
           {importing
-            ? giroImport?.totale > 1
+            ? giroImport?.conversione || giroImport?.caricamento
+              ? `${giroImport.totale > 1 ? `${giroImport.fatti + 1} di ${giroImport.totale} · ` : ""}${giroImport.caricamento ? fraseCarico(giroImport.caricamento) : fraseConversione(giroImport.conversione)}`
+              : giroImport?.totale > 1
               ? `Rilego ${giroImport.fatti + 1} di ${giroImport.totale}…`
               : "Sto rilegando i tomi…"
             : "＋ Aggiungi libri"}

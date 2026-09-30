@@ -44,6 +44,13 @@ export const cbrTroppoGrande = (formato, byte) => formato === "cbr" && Number(by
 export const PERCHE_CBR_GRANDE =
   "questo CBR ha le pagine compresse ed è troppo grande per il browser (un RAR compresso va letto tutto in memoria): convertilo in CBZ — estrai le immagini e comprimile in uno zip rinominato .cbz — e il volume entra";
 
+// Il CBR compresso troppo grande non si rifiuta piu': si converte in CBZ
+// (`rarInCbz.js`). Mentre lo fa, si dice a che punto e'.
+export function fraseConversione({ letti = 0, misura = 0, pagine = 0 } = {}) {
+  const cento = misura > 0 ? Math.min(100, Math.floor((letti / misura) * 100)) : 0;
+  return `Converto in CBZ: ${cento}%${pagine ? ` · ${pagine} ${pagine === 1 ? "pagina" : "pagine"}` : ""}`;
+}
+
 const ePagina = (nome) => pagineDa([nome]).length > 0;
 const rarAFette = (blob) => apriRar(blob, { eImmagine: ePagina }).catch(() => null);
 

@@ -19,6 +19,28 @@ const rar = async () => {
   return { createExtractorFromData: (o) => mod.createExtractorFromData({ ...o, wasmBinary: wasm }) };
 };
 
+// UN CBR COMPRESSO SI CONVERTE IN CBZ in un worker (`cbrInCbz.worker.js`,
+// `rarInCbz.js`), leggendo l'archivio a finestre: dal tablet (`blob`) o da
+// Drive (`drive: { id, chiave }`), senza caricarlo intero. Torna il Blob
+// del CBZ; `onProgress({ letti, misura, pagine })`.
+export async function convertiInCbz({ blob, drive, misura }, { onProgress } = {}) {
+  if (!wasm) wasm = await fetch(wasmUrl).then((r) => r.arrayBuffer());
+  const w = new Worker(new URL("./cbrInCbz.worker.js", import.meta.url), { type: "module" });
+  try {
+    return await new Promise((ok, ko) => {
+      w.onmessage = ({ data }) => {
+        if (data.avanzamento) onProgress?.(data.avanzamento);
+        else if (data.cbz) ok(data.cbz);
+        else ko(new Error(data.errore || "conversione fallita"));
+      };
+      w.onerror = (e) => ko(new Error(e?.message || "il worker della conversione non parte"));
+      w.postMessage({ blob, drive, misura: misura ?? blob?.size, wasm });
+    });
+  } finally {
+    w.terminate();
+  }
+}
+
 // Si passa il Blob, non i suoi byte: un CBZ si legge a fette e resta sul
 // disco, e solo un CBR (sotto il suo tetto) si carica intero.
 export const apriFumetto = (blob) => apriArchivio(blob, { rar });

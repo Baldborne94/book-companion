@@ -29,9 +29,9 @@ import { leggiObiettivi, scriviObiettivi, fondiObiettivi } from "./obiettivo.js"
 import { leggiQuaderno, scriviQuaderno, fondiQuaderno } from "./quaderno.js";
 import { leggiDaPrendere, scriviDaPrendere, fondiDaPrendere } from "./daPrendere.js";
 import { leggiRigheLeggere, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare, copertineInAttesa, segnaInAttesa, fondiSchede } from "./syncCore.js";
-import { daTogliereDalSecchio, avanziDelSecchio, segnaSuDrive, leggereDaLontano } from "./driveCore.js";
+import { daTogliereDalSecchio, avanziDelSecchio, segnaSuDrive, leggereDaLontano, nomeSuDrive } from "./driveCore.js";
 import { raccontaGiro } from "./resoconto.js";
-import { giroDrive, giroMelodie, archiviaSuDrive, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto, fermaCbrCompresso } from "./drive.js";
+import { giroDrive, giroMelodie, archiviaSuDrive, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto, fermaCbrCompresso, sostituisciSuDrive, chiaveDrive } from "./drive.js";
 import { tipiDi, tipoDi } from "./library.js";
 import { misureFile, listTrackIds } from "./bookStore.js";
 import { nuovaMemoria, firmaLontana } from "./ultimiLontani.js";
@@ -905,6 +905,37 @@ export async function fileDaLeggere(book, { onProgress } = {}) {
     LONTANI.tieni(book.id, firma, preso);
   }
   return preso;
+}
+
+// UN CBR GIA' IN BIBLIOTECA CHE IL BROWSER NON APRIRA' MAI (compresso e
+// oltre `CBR_MAX`: vedi `rarInCbz.js`) si converte in CBZ dal lettore, con
+// un tocco. Se sta su Drive si legge da li' a finestre e il CBZ prende il
+// suo posto lassu' (`sostituisciSuDrive`, il CBR nel cestino); se sta qui,
+// il CBZ prende il suo posto qui. I nomi delle pagine restano, quindi anche
+// l'ordine e il segno di lettura. Torna quel che cambia nella scheda.
+export async function convertiLibroInCbz(book, { onProgress } = {}) {
+  const { convertiInCbz } = await import("./archivioFumetto.js");
+  const { improntaDi } = await import("./importBook.js");
+  const qui = await getFile(book.id).catch(() => null);
+  const voce = driveAcceso() ? mappaDrive()[book.id] : null;
+  let cbz;
+  if (qui) {
+    cbz = await convertiInCbz({ blob: qui }, { onProgress });
+    await putFile(book.id, cbz);
+  } else if (voce?.id) {
+    if (!driveProntoOra()) await collegaDrive();
+    cbz = await convertiInCbz({ drive: { id: voce.id, chiave: chiaveDrive() }, misura: voce.byte }, { onProgress });
+  } else throw new Error("il file di questo libro non c'è, né qui né su Google Drive");
+  if (voce?.id) {
+    await sostituisciSuDrive(voce.id, cbz, {
+      nome: nomeSuDrive({ ...book, fileType: "cbz" }),
+      bookId: book.id,
+      onProgress: (p) => onProgress?.({ ...p, carico: true }),
+    });
+  }
+  LONTANI.dimentica?.(book.id);
+  const impronta = await improntaDi(cbz).catch(() => undefined);
+  return { fileType: "cbz", ...(impronta ? { impronta } : {}) };
 }
 
 // IL SEGUITO CHE SCENDE DA SE' (`lib/anticipo.js`): come `ensureLocalFile`

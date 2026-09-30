@@ -22,6 +22,9 @@ on:
 jobs:
   prova:
     runs-on: ubuntu-latest
+    # di solito bastano tre minuti; senza tetto una prova appesa tiene la
+    # macchina accesa per sei ore
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
