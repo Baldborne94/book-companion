@@ -79,7 +79,11 @@ export function avviaSupabase(porta = 4599) {
     server.listen(porta, () =>
       ok({
         righe: () => [...books.values()],
-        chiudi: () => new Promise((c) => server.close(c)),
+        chiudi: () =>
+          new Promise((c) => {
+            server.closeAllConnections?.();
+            server.close(c);
+          }),
       })
     )
   );

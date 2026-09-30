@@ -240,7 +240,24 @@ const SCENE = [
   },
 ];
 
+// OGNI ATTESA HA UN TETTO, anche quelle delle prove: una scena che non
+// finisce, o un server che non si chiude perche' il browser tiene ancora
+// una connessione aperta, teneva la CI appesa per ore senza dire dove
+// (successo sulla PR della conversione dei CBR: `npm run e2e` fermo da
+// venti minuti, e il log arriva solo a corsa finita).
+const TETTO_SCENA = 180_000;
+const TETTO_CHIUSURA = 10_000;
+const TETTO_TUTTO = 12 * 60_000;
+const entro = (p, ms, perche) => {
+  let t;
+  return Promise.race([p, new Promise((_, ko) => (t = setTimeout(() => ko(new Error(`${perche} (dopo ${ms / 1000} s)`)), ms)))]).finally(() => clearTimeout(t));
+};
+
 async function principale() {
+  setTimeout(() => {
+    console.log(`✗ le prove non finiscono in ${TETTO_TUTTO / 60_000} minuti`);
+    process.exit(1);
+  }, TETTO_TUTTO).unref();
   const avvio = await lanciaBrowser();
   if (avvio.saltato) {
     console.log(`⚠ prove sull'app SALTATE — ${avvio.saltato}`);
@@ -260,19 +277,21 @@ async function principale() {
     const db = await avviaSupabase(PORTA_DB);
     const t0 = Date.now();
     try {
-      const { guasti = [], nota = "" } = await scena.fai({ browser, db });
+      const { guasti = [], nota = "" } = await entro(scena.fai({ browser, db }), TETTO_SCENA, "la scena non finisce");
       if (guasti.length) throw new Error(`guasti nella pagina: ${guasti.join(" | ")}`);
       console.log(`✓ ${scena.nome} (${((Date.now() - t0) / 1000).toFixed(1)} s)${nota ? ` — ${nota}` : ""}`);
     } catch (e) {
       cadute += 1;
       console.log(`✗ ${scena.nome} — ${e.message.split("\n")[0]}`);
     } finally {
-      await db.chiudi();
-      for (const c of browser.contexts()) await c.close();
+      // prima i browser, che tengono aperte le connessioni; poi il server
+      for (const c of browser.contexts()) await entro(c.close(), TETTO_CHIUSURA, "un browser non si chiude").catch((e) => console.log(`  ${e.message}`));
+      await entro(db.chiudi(), TETTO_CHIUSURA, "il Supabase finto non si chiude").catch((e) => console.log(`  ${e.message}`));
     }
   }
-  await browser.close();
-  await new Promise((ok) => server.httpServer.close(ok));
+  await entro(browser.close(), TETTO_CHIUSURA, "il browser non si chiude").catch((e) => console.log(e.message));
+  server.httpServer.closeAllConnections?.();
+  await entro(new Promise((ok) => server.httpServer.close(ok)), TETTO_CHIUSURA, "il server dell'app non si chiude").catch((e) => console.log(e.message));
   console.log(cadute ? `\n${cadute} ${cadute === 1 ? "scena caduta" : "scene cadute"}` : `\n${SCENE.length} scene, tutte in piedi`);
   process.exit(cadute ? 1 : 0);
 }
