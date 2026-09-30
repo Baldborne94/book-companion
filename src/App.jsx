@@ -45,7 +45,8 @@ import { annotaErrore } from "./lib/registro.js";
 import SezioneGuasti from "./components/SezioneGuasti.jsx";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile, convertiLibroInCbz, adottaCbzConvertiti } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
-import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive } from "./lib/drive.js";
+import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato } from "./lib/drive.js";
+import { importaDaDrive, resoconto } from "./lib/importBook.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
 import BarraLavoro from "./components/BarraLavoro.jsx";
 import { spiegaSync, schedaDiversa } from "./lib/syncCore.js";
@@ -1027,7 +1028,7 @@ export default function App() {
   // mentre il giro della conversione lavora: si pesterebbero i piedi.
   const adottaCbz = useRef(async () => {});
   adottaCbz.current = async () => {
-    if (filoLavoro.current) return;
+    if (filoLavoro.current || filoImport.current) return;
     const fatti = await adottaCbzConvertiti(loadBooks(), { onFatto: (f) => applicaConversione(f.id, f.patch) }).catch(() => []);
     if (!fatti.length) return;
     setLocalIds(await localFileIds().catch(() => null));
@@ -1239,6 +1240,77 @@ export default function App() {
   }
   const fermaLavoro = () => {
     filoLavoro.current = null;
+  };
+
+  // L'IMPORTAZIONE DA DRIVE VIVE QUI, come il giro dei CBR (segnalato dal
+  // lettore: «stavo importando i miei fumetti di Walking Dead, ho navigato
+  // un po' ed è sparito il caricamento»). Stava nella Libreria: uscendo
+  // continuava di nascosto, e alla fine scriveva la biblioteca di QUANDO
+  // ERA PARTITA — quel che era cambiato nel frattempo (un libro adottato,
+  // una saga scritta) tornava indietro. Qui si vede da ogni sezione, si
+  // ferma dalla barra, e alla fine si aggiunge alla biblioteca di adesso.
+  const [importo, setImporto] = useState(null);
+  const filoImport = useRef(null);
+  async function importaDaDriveQui(voci, note = []) {
+    if (filoImport.current || !voci.length) return;
+    const mio = {};
+    filoImport.current = mio;
+    const vivo = () => filoImport.current === mio;
+    setImporto({ fatti: 0, totale: voci.length, nome: voci[0].name });
+    try {
+      const esito = await importaDaDrive(voci, loadBooks(), {
+        apri: (v) => fileRemoto(v.id, v.size),
+        // il segno PRIMA della scheda: senza, al prossimo giro la mappa
+        // di Drive non riconoscerebbe il libro e gli toglierebbe il file
+        segna: async (fileId, bookId, v) => {
+          try {
+            await segnaSuDrive(fileId, bookId);
+            mettiNellaMappa(bookId, fileId, v.size);
+            return true;
+          } catch (e) {
+            return e instanceof DriveScollegato ? "scollegato" : false;
+          }
+        },
+        // il CBR compresso troppo grande: convertito leggendolo da Drive, e
+        // il CBZ al suo posto lassu' (il CBR nel cestino di Drive)
+        converti: async (v, onProgress) => {
+          const { convertiInCbz } = await import("./lib/archivioFumetto.js");
+          return convertiInCbz({ drive: { id: v.id, chiave: chiaveDrive() }, misura: Number(v.size) }, { onProgress });
+        },
+        sostituisci: async (v, bookId, cbz) => {
+          try {
+            await sostituisciSuDrive(v.id, cbz, {
+              nome: String(v.name).replace(/\.cbr$/i, "") + ".cbz",
+              bookId,
+              onProgress: (p) => vivo() && setImporto((g) => ({ ...g, conversione: null, caricamento: p })),
+            });
+            return true;
+          } catch (e) {
+            return e instanceof DriveScollegato ? "scollegato" : false;
+          }
+        },
+        onProgress: (p) => vivo() && setImporto(p),
+        vivo,
+      });
+      if (esito.added.length) {
+        updateBooks([...loadBooks(), ...esito.added]);
+        runSync.current(true);
+      }
+      const coda = esito.scollegato
+        ? "Google Drive aspetta un tocco: il resto lo aggiungi riprovando"
+        : esito.fermato
+          ? "fermato: il resto lo aggiungi riprovando"
+          : "";
+      notify([resoconto(esito), ...note, coda].filter((x) => x && x !== "Nessun file importato").join(" · ") || "Nessun tomo aggiunto");
+    } catch (e) {
+      notify(e instanceof DriveScollegato ? "Google Drive aspetta un tocco: riprova." : e?.message || "Google Drive non ha risposto");
+    } finally {
+      if (filoImport.current === mio) filoImport.current = null;
+      setImporto(null);
+    }
+  }
+  const fermaImport = () => {
+    filoImport.current = null;
   };
 
   async function handleDelete(id) {
@@ -1637,6 +1709,9 @@ export default function App() {
             notify={notify}
             localIds={localIds}
             onImported={() => runSync.current(true)}
+            importoDrive={importo}
+            onImportaDaDrive={importaDaDriveQui}
+            onFermaImport={fermaImport}
             daImportare={daImportare}
             onImportati={() => setDaImportare(null)}
             focusSaga={focusSaga}
@@ -1674,8 +1749,10 @@ export default function App() {
         )}
       </main>
       </div>
-      {(lavoro || restanti.length > 0) && (
+      {(lavoro || importo || restanti.length > 0) && (
         <BarraLavoro
+          importo={importo}
+          onFermaImport={fermaImport}
           lavoro={lavoro}
           restanti={restanti.length}
           onFerma={fermaLavoro}

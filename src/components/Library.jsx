@@ -6,7 +6,7 @@ import { leggiPreferite, scriviPreferite, preferiteVive, segnaPreferita, puoEsse
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { ascoltaCopertine } from "../lib/miniature.js";
 import { storageEstimate, spazioQui, misureFile, togliByteQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
-import { importFiles, importaDaDrive, resoconto, impronteDaFare } from "../lib/importBook.js";
+import { importFiles, resoconto, impronteDaFare } from "../lib/importBook.js";
 import { chiaveCollana } from "../lib/collana.js";
 import { preparaArchivio, segnaArchivio, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
 import PezziArchivio from "./PezziArchivio.jsx";
@@ -19,11 +19,11 @@ import { isSyncConfigured } from "../lib/supabase.js";
 import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso, schedeCambiate
 } from "../lib/syncCore.js";
-import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, DriveScollegato, scegliSuDrive, dettagliFile, ultimoArchivioSuDrive, ultimoArchivioDaDrive, sostituisciSuDrive, chiaveDrive } from "../lib/drive.js";
-import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, sceltaDalPicker, libriSotto, idRadice, fraseCarico } from "../lib/driveCore.js";
+import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, DriveScollegato, scegliSuDrive, dettagliFile, ultimoArchivioSuDrive, ultimoArchivioDaDrive } from "../lib/drive.js";
+import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, sceltaDalPicker, libriSotto, idRadice } from "../lib/driveCore.js";
 import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
-import { eFumetto, fraseConversione } from "../lib/fumetto.js";
-import { fraseDelPasso } from "../lib/convertiCbr.js";
+import { eFumetto } from "../lib/fumetto.js";
+import { fraseDelPasso, fraseImport } from "../lib/convertiCbr.js";
 import { senzaCopertina } from "../lib/copertina.js";
 import { spartisciQui } from "../lib/spazio.js";
 import { BarraCloud, BarraDrive, PesoQui } from "./BarraCloud.jsx";
@@ -702,6 +702,9 @@ export default function Library({
   notify,
   localIds,
   onImported,
+  importoDrive = null,
+  onImportaDaDrive,
+  onFermaImport,
   daImportare,
   onImportati,
   focusSaga,
@@ -775,7 +778,6 @@ export default function Library({
   // «Aggiungi da Drive»: l'elenco dei file lassu' che non sono ancora
   // libri, con le spunte, e il filo per fermare il giro a meta'
   const [scegliendo, setScegliendo] = useState(false);
-  const filoDrive = useRef(null);
   const [dragOver, setDragOver] = useState(false);
   const [restoring, setRestoring] = useState(false);
   // il richiamo dei tomi dal cloud: {i, totale, titolo} mentre scende, e
@@ -1735,7 +1737,7 @@ export default function Library({
   // cartella — si chiede a Drive dopo, e `daAggiungere` decide: un file gia'
   // sullo scaffale si dice, non si raddoppia.
   async function scegliDaDrive() {
-    if (importing || scegliendo) return;
+    if (importing || importoDrive || scegliendo) return;
     setScegliendo(true);
     try {
       if (!driveProntoOra()) await collegaDrive();
@@ -1767,67 +1769,11 @@ export default function Library({
         notify(`${trovati.length === 1 ? "Il libro scelto è" : `I ${trovati.length} libri scelti sono`} già sullo scaffale ✨${note.length > 1 ? ` · ${note.slice(0, -1).join(" · ")}` : ""}`);
         return;
       }
-      await importaScelte(voci, note);
+      onImportaDaDrive?.(voci, note);
     } catch (e) {
       notify(e instanceof DriveScollegato ? "Google Drive aspetta un tocco: riprova." : e?.message || "Google Drive non ha risposto");
     } finally {
       setScegliendo(false);
-    }
-  }
-
-  async function importaScelte(scelte, note = []) {
-    if (!scelte.length || importing) return;
-    setImporting(true);
-    filoDrive.current = true;
-    try {
-      const esito = await importaDaDrive(scelte, books, {
-        apri: (v) => fileRemoto(v.id, v.size),
-        // il segno PRIMA della scheda: senza, al prossimo giro la mappa
-        // di Drive non riconoscerebbe il libro e gli toglierebbe il file
-        segna: async (fileId, bookId, v) => {
-          try {
-            await segnaSuDrive(fileId, bookId);
-            mettiNellaMappa(bookId, fileId, v.size);
-            return true;
-          } catch (e) {
-            return e instanceof DriveScollegato ? "scollegato" : false;
-          }
-        },
-        // il CBR compresso troppo grande: convertito leggendolo da Drive, e
-        // il CBZ al suo posto lassu' (il CBR nel cestino di Drive)
-        converti: async (v, onProgress) => {
-          const { convertiInCbz } = await import("../lib/archivioFumetto.js");
-          return convertiInCbz({ drive: { id: v.id, chiave: chiaveDrive() }, misura: Number(v.size) }, { onProgress });
-        },
-        sostituisci: async (v, bookId, cbz) => {
-          try {
-            await sostituisciSuDrive(v.id, cbz, {
-              nome: String(v.name).replace(/\.cbr$/i, "") + ".cbz",
-              bookId,
-              onProgress: (p) => setGiroImport((g) => ({ ...g, conversione: null, caricamento: p })),
-            });
-            return true;
-          } catch (e) {
-            return e instanceof DriveScollegato ? "scollegato" : false;
-          }
-        },
-        onProgress: setGiroImport,
-        vivo: () => filoDrive.current,
-      });
-      if (esito.added.length) {
-        updateBooks([...books, ...esito.added]);
-        onImported?.();
-      }
-      const coda = esito.scollegato
-        ? "Google Drive aspetta un tocco: il resto lo aggiungi riprovando"
-        : esito.fermato
-          ? "fermato: il resto lo aggiungi riprovando"
-          : "";
-      notify([resoconto(esito), ...note, coda].filter((x) => x && x !== "Nessun file importato").join(" · ") || "Nessun tomo aggiunto");
-    } finally {
-      filoDrive.current = null;
-      setImporting(false);
-      setGiroImport(null);
     }
   }
 
@@ -2142,28 +2088,22 @@ export default function Library({
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
         <button
           onClick={() => inputRef.current?.click()}
-          disabled={importing}
+          disabled={importing || !!importoDrive}
           style={{
             padding: "10px 20px",
             borderRadius: R.piccolo,
-            background: importing ? C.dim : `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
-            color: importing ? C.muted : C.onAccent,
+            background: importing || importoDrive ? C.dim : `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+            color: importing || importoDrive ? C.muted : C.onAccent,
             fontWeight: 600,
             fontSize: F.corpo,
-            boxShadow: importing ? "none" : `0 0 20px ${C.accent}2e`,
+            boxShadow: importing || importoDrive ? "none" : `0 0 20px ${C.accent}2e`,
           }}
         >
-          {importing
-            ? giroImport?.conversione || giroImport?.caricamento
-              ? `${giroImport.totale > 1 ? `${giroImport.fatti + 1} di ${giroImport.totale} · ` : ""}${giroImport.caricamento ? fraseCarico(giroImport.caricamento) : fraseConversione(giroImport.conversione)}`
-              : giroImport?.totale > 1
-              ? `Rilego ${giroImport.fatti + 1} di ${giroImport.totale}…`
-              : "Sto rilegando i tomi…"
-            : "＋ Aggiungi libri"}
+          {importing ? fraseImport(giroImport || {}) : importoDrive ? fraseImport(importoDrive) : "＋ Aggiungi libri"}
         </button>
         {/* la finestra di Drive stessa: si sfoglia «book-companion» com'e'
             su Drive e si toccano i libri, o le cartelle intere */}
-        {drive && !importing && (
+        {drive && !importing && !importoDrive && (
           <button
             onClick={scegliDaDrive}
             disabled={scegliendo}
@@ -2179,9 +2119,9 @@ export default function Library({
             {scegliendo ? "Apro Drive…" : "📂 Scegli su Drive"}
           </button>
         )}
-        {importing && filoDrive.current && (
+        {importoDrive && (
           <button
-            onClick={() => (filoDrive.current = false)}
+            onClick={onFermaImport}
             style={{
               padding: "10px 18px",
               minHeight: 44,

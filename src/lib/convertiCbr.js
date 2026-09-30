@@ -110,3 +110,12 @@ export function pianoConversione({ qui = null, lassu = null } = {}) {
   if (!sorgente) return null;
   return { sorgente, converti: (qui || lassu) !== "cbz", sostituisci: lassu === "cbr" };
 }
+
+// la riga dell'importazione da Drive, quella che la Libreria scriveva sul
+// suo tasto: adesso vive in App (`importaDaDriveQui`) e si vede ovunque
+export function fraseImport({ fatti = 0, totale = 0, conversione = null, caricamento = null } = {}) {
+  const quale = totale > 1 ? `${fatti + 1} di ${totale}` : "";
+  if (caricamento) return `${quale ? `${quale} · ` : ""}${fraseCarico(caricamento)}`;
+  if (conversione) return `${quale ? `${quale} · ` : ""}${fraseConversione(conversione)}`;
+  return quale ? `Rilego ${quale}…` : "Sto rilegando i tomi…";
+}

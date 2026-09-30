@@ -4,7 +4,8 @@
 // parte, si ferma al primo intoppo (e gli altri restano CBR), va avanti a
 // chiave scaduta (ogni libro dopo fallisce uguale), o conta convertito chi
 // non lo e'.
-import { cbrDaConvertire, convertiTutti, resocontoConversioni, fraseDelPasso, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro, fraseLavoro, pianoConversione } from "../src/lib/convertiCbr.js";
+import { fraseConversione } from "../src/lib/fumetto.js";
+import { cbrDaConvertire, convertiTutti, resocontoConversioni, fraseDelPasso, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro, fraseLavoro, pianoConversione, fraseImport } from "../src/lib/convertiCbr.js";
 
 export default async (t) => {
   const libri = [
@@ -91,6 +92,14 @@ export default async (t) => {
 
   t.eq("la riga fuori dalla Libreria", fraseLavoro({ i: 11, totale: 75, passo: { letti: 396, misura: 1000 } }), "🔁 CBR in CBZ: 12 di 75 · 39%");
   t.eq("…mentre sale su Drive", fraseLavoro({ i: 0, totale: 2, passo: { carico: true, presi: 1, totale: 2 } }), "🔁 CBR in CBZ: 1 di 2 · sale su Drive");
+  // l'importazione da Drive: la riga che stava sul tasto della Libreria
+  const MB = 1024 * 1024;
+  t.eq("un libro solo", fraseImport({ fatti: 0, totale: 1 }), "Sto rilegando i tomi…");
+  t.eq("a che punto del giro", fraseImport({ fatti: 3, totale: 24 }), "Rilego 4 di 24…");
+  t.eq("un CBR che si converte", fraseImport({ fatti: 3, totale: 24, conversione: { letti: 50, misura: 200, pagine: 30 } }), `4 di 24 · ${fraseConversione({ letti: 50, misura: 200, pagine: 30 })}`);
+  t.eq("…e il suo CBZ che sale", fraseImport({ fatti: 3, totale: 24, conversione: { letti: 1, misura: 2 }, caricamento: { presi: 8 * MB, totale: 200 * MB } }), "4 di 24 · Carico su Google Drive: 8 di 200 MB");
+  t.eq("da solo non si numera", fraseImport({ fatti: 0, totale: 1, caricamento: { presi: 0, totale: 2 * MB } }), "Carico su Google Drive: 0 di 2 MB");
+  t.eq("senza niente in mano", fraseImport(), "Sto rilegando i tomi…");
   t.eq("…prima di cominciare", fraseLavoro({ i: 0, totale: 2 }), "🔁 CBR in CBZ: 1 di 2");
 
   // ---- cosa fare, dallo stato dei file ------------------------------------------------

@@ -16,6 +16,7 @@ import { build, preview } from "vite";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
 import { fumetto, fumettoGrosso, epub, FRASE, mondoDisco } from "./libri.mjs";
 import { avviaDrive, driveNelBrowser } from "./driveFinto.mjs";
+import { rar4 } from "../test/rar-finto.mjs";
 
 const PORTA_DB = 4599;
 const PORTA_APP = 4190;
@@ -233,6 +234,62 @@ const SCENE = [
         const nuove = dopo.pezzi - conti.pezzi + dopo.interi - conti.interi;
         if (nuove) throw new Error(`tornando indietro di ${voltate} voltate si sono chieste ${nuove} pagine a Drive`);
         return { guasti: d.guasti, nota: `indietro di ${voltate} voltate, nessuna richiesta a Drive` };
+      } finally {
+        await drv.chiudi();
+      }
+    },
+  },
+  {
+    // segnalato dal lettore coi Walking Dead: «ho navigato un po' ed è
+    // sparito il caricamento, poi ci mette davvero troppo a convertire».
+    // Nella cartella, accanto a ogni CBR, il CBZ che Colab ha lasciato.
+    nome: "una cartella da Drive si importa fuori dalla Libreria, e dei gemelli di Colab entra il CBZ",
+    async fai({ browser }) {
+      const cbz = Buffer.from(await fumetto());
+      const cbr = rar4([["p1.png", Buffer.from("89504e47" + "00".repeat(200), "hex")], ["p2.png", Buffer.from("89504e47" + "11".repeat(200), "hex")]]);
+      const vol = (n) => `The Walking Dead Deluxe Vol. 0${n}`;
+      const cartella = (id, name, su) => ({ id, name, mimeType: "application/vnd.google-apps.folder", parents: [su] });
+      const voce = (id, name, b) => ({ id, name, size: String(b.length), mimeType: "application/octet-stream", parents: ["W"] });
+      const elenco = [
+        cartella("R", "Book-Companion", "root"),
+        cartella("W", "The Walking Dead", "R"),
+        voce("r1", `${vol(1)}.cbr`, cbr),
+        voce("z1", `${vol(1)}.cbz`, cbz),
+        voce("r2", `${vol(2)}.cbr`, cbr),
+        voce("z2", `${vol(2)}.cbz`, cbz),
+        voce("r3", `${vol(3)}.cbr`, cbr),
+      ];
+      const drv = await avviaDrive(PORTA_DRIVE, { r1: cbr, z1: cbz, r2: cbr, z2: cbz, r3: cbr }, { elenco, latenza: 400 });
+      try {
+        const d = await dispositivo(browser, {
+          drive: {
+            libri: [{ id: "vecchio", title: "Un libro di prima", fileType: "epub", addedAt: 1 }],
+            mappa: {},
+            scelta: [{ id: "W", name: "The Walking Dead", mimeType: "application/vnd.google-apps.folder" }],
+          },
+        });
+        await d.p.goto(`${URL_APP}?apri=libreria`);
+        await d.p.getByRole("button", { name: /Scegli su Drive/ }).first().click();
+        // a meta' importazione si esce dalla Libreria: il lavoro si vede ancora
+        const riga = await finche(() => testoAvviso(d.p, /Da Google Drive/), 15000, "l'importazione non si vede");
+        await d.p.getByRole("button", { name: /Ingresso/ }).first().click();
+        await finche(() => testoAvviso(d.p, /Da Google Drive/), 5000, "uscendo dalla Libreria l'importazione sparisce");
+        // e intanto la biblioteca cambia: alla fine quel che e' arrivato resta
+        await d.p.evaluate(() => {
+          const b = JSON.parse(localStorage.getItem("bc_books"));
+          localStorage.setItem("bc_books", JSON.stringify([...b, { id: "intruso", title: "Arrivato intanto", fileType: "epub", addedAt: 2 }]));
+        });
+        const titoli = () => libriDi(d.p).then((l) => l.map((b) => `${b.title} [${b.fileType}]`).sort());
+        const tutti = await finche(async () => {
+          const t = await titoli();
+          return t.filter((x) => /Walking/.test(x)).length >= 3 && t;
+        }, 60000, "l'importazione non finisce");
+        await aspetta(1500);
+        const fine = (await titoli()).join(" · ");
+        const atteso = ["Arrivato intanto [epub]", "The Walking Dead Deluxe Vol. 01 [cbz]", "The Walking Dead Deluxe Vol. 02 [cbz]", "The Walking Dead Deluxe Vol. 03 [cbr]", "Un libro di prima [epub]"].join(" · ");
+        if (fine !== atteso) throw new Error(`la biblioteca alla fine: ${fine}`);
+        if (drv.scesi().some((id) => id === "r1" || id === "r2")) throw new Error(`si sono letti i CBR che hanno il gemello: ${drv.scesi()}`);
+        return { guasti: d.guasti, nota: `${tutti.length} libri, «${riga}»` };
       } finally {
         await drv.chiudi();
       }
