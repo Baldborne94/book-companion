@@ -126,6 +126,31 @@ export default async (t) => {
     t.eq("un CBZ non si ferma qui: si legge a fette", d.pezzi, 0);
     await drive.fermaCbrCompresso("cbr", undefined);
     t.eq("un libro che su Drive non c'e': niente viaggi", d.pezzi + d.interi, 0);
+
+    // ---- il CBZ che sale si vede salire («fermo al 99% da un po'») ----------------------
+    const MISURA = 20 * MB;
+    const pezzi = [];
+    globalThis.fetch = async (url, op = {}) => {
+      const testa = (k) => (op.headers || {})[k];
+      if (op.method === "POST") return { ok: true, status: 200, headers: { get: (k) => (k === "Location" ? "https://www.googleapis.com/upload/sessione" : null) }, json: async () => ({}) };
+      const [, da, a] = /bytes (\d+)-(\d+)/.exec(testa("Content-Range"));
+      pezzi.push(Number(a) + 1 - Number(da));
+      const fine = Number(a) + 1 >= MISURA;
+      return {
+        ok: fine,
+        status: fine ? 200 : 308,
+        headers: { get: (k) => (k === "Range" ? `bytes=0-${a}` : null) },
+        json: async () => ({ id: "nuovo", size: String(MISURA) }),
+      };
+    };
+    const saliti = [];
+    await drive.caricaSuDrive(new Blob([new Uint8Array(MISURA)]), { nome: "x.cbz", bookId: "b", onProgress: (p) => saliti.push(p.presi) });
+    t.eq("si dice subito che sale, da zero", saliti[0], 0);
+    t.eq("…e a pezzi piccoli, un segno ogni 8 MB", saliti.map((x) => x / MB).join(), "0,8,16");
+    t.eq("…pezzi da 8 MB e la coda", pezzi.map((x) => x / MB).join(), "8,8,4");
+    pezzi.length = 0;
+    await drive.caricaSuDrive(new Blob([new Uint8Array(MISURA)]), { nome: "x.cbz", bookId: "b" });
+    t.eq("senza chi guarda, i pezzi grandi di sempre", pezzi.map((x) => x / MB).join(), "20");
   } finally {
     await drive.scollegaDrive?.().catch?.(() => {});
     for (const k of Object.keys(memoria)) delete memoria[k];
