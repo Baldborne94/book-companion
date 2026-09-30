@@ -42,7 +42,30 @@ def comprimi(dove, zip_path):
     return len(nomi)
 
 
+def trova_cartella(cartella):
+    # la cartella dell'app si riconosce senza badare alle maiuscole, come fa
+    # l'app (sul Drive del lettore era «Book-Companion», e Colab, che
+    # distingue, non trovava niente e diceva «0 file»)
+    p = pathlib.Path(cartella)
+    if p.is_dir():
+        return p
+    sopra = p.parent
+    if sopra.is_dir():
+        for c in sopra.iterdir():
+            if c.is_dir() and c.name.lower() == p.name.lower():
+                return c
+    return None
+
+
 def converti_tutti(cartella, lavoro="/content/lavoro", dice=print):
+    trovata = trova_cartella(cartella)
+    if trovata is None:
+        sopra = pathlib.Path(cartella).parent
+        dentro = sorted(c.name for c in sopra.iterdir() if c.is_dir()) if sopra.is_dir() else []
+        dice(f"La cartella {cartella} non c'e'. In {sopra} ci sono: {', '.join(dentro) or 'nessuna cartella'}.")
+        dice("Scrivi in CARTELLA quella dell'app e rilancia questa cella.")
+        return 0, 0, 0
+    cartella = trovata
     cbr = sorted(p for p in pathlib.Path(cartella).rglob("*") if p.is_file() and p.suffix.lower() == ".cbr")
     fatti = saltati = falliti = 0
     dice(f"{len(cbr)} file .cbr sotto {cartella}")

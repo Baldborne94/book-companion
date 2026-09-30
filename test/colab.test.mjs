@@ -9,6 +9,6 @@ export default async (t) => {
   const codice = readFileSync(new URL("cbr_in_cbz.py", qui), "utf8");
   const celle = nb.cells.filter((c) => c.cell_type === "code").map((c) => c.source.join(""));
   t.c("il quaderno porta il codice provato, uguale", celle.includes(codice));
-  t.c("…e lo chiama sulla cartella dell'app", celle.some((c) => /MyDrive\/book-companion/.test(c) && /converti_tutti\(CARTELLA\)/.test(c)));
+  t.c("…e lo chiama sulla cartella dell'app", celle.some((c) => /MyDrive\/book-companion/i.test(c) && /converti_tutti\(CARTELLA\)/.test(c)));
   t.c("…dopo aver montato Drive", celle.findIndex((c) => /drive\.mount/.test(c)) < celle.findIndex((c) => /converti_tutti\(CARTELLA\)/.test(c)));
 };
