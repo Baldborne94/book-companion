@@ -24,6 +24,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 - Gira su Node puro. `test/tema.test.mjs` vuole un browser vero: senza Playwright si dichiara **saltato**, e saltare non è passare.
 - Un test che dipende da chi gira prima non difende niente (stub lasciati su `globalThis` da un altro file).
 - La logica sta in `src/lib/` (niente JSX) proprio perché Node non importa un `.jsx`: una decisione dentro un componente è fuori dalla portata di ogni test.
+- `npm run e2e` (`e2e/run.mjs`): l'app costruita su un Supabase finto, in Chromium — saga fra due dispositivi, ePub che si apre, Ingresso. La CI la rifà. Un difetto trovato col banco a mano diventa una scena qui.
 - Guardiani che non si toccano: `identificatori.test.mjs` (un nome che non esiste più: la build resta verde e l'app muore solo in quel ramo), `scala.test.mjs` e `misura-ui.test.mjs` (la scala dei corpi), `palette.test.mjs`, `tasti-barra.test.mjs`, `manifest.test.mjs`, `giro-sync.test.mjs` (convergenza della sincronizzazione), `lapidi.test.mjs` (`EMPTY_ROW` copre ogni colonna di `rowFromLocal`), `pdf-chiudi.test.mjs`.
 
 ## Architettura
