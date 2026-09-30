@@ -27,7 +27,7 @@ import SezioneDizionario from "./components/SezioneDizionario.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
 import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, timbraScheda, getProgress, getUpdatedAt } from "./lib/library.js";
-import { removeBookData, removeFileOnly, requestPersistence } from "./lib/bookStore.js";
+import { removeBookData, removeFileOnly, requestPersistence, listCoverIds } from "./lib/bookStore.js";
 import { cercaNuovaVersione } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
 import Home from "./components/Home.jsx";
@@ -35,7 +35,8 @@ import Library from "./components/Library.jsx";
 import BookSheet from "./components/BookSheet.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
 import { getBookMusic, setBookMusic } from "./lib/music.js";
-import { getJump, clearJump } from "./lib/annotations.js";
+import { getJump, clearJump, getMarks } from "./lib/annotations.js";
+import { doppioniDiFumetti } from "./lib/doppioni.js";
 import { daAvvisare } from "./lib/oracle.js";
 import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
@@ -1229,8 +1230,12 @@ export default function App() {
   // (`ricordaLavoro`) perche' un'app chiusa a meta' possa riprendere.
   const [lavoro, setLavoro] = useState(null);
   const filoLavoro = useRef(null);
+  // i doppioni dei fumetti (vedi sotto, «I DOPPIONI DEI FUMETTI»): le copie
+  // da togliere non si convertono
+  const [doppi, setDoppi] = useState([]);
+  const copieDaTogliere = new Set(doppi.flatMap((g) => g.via));
   const [sospeso, setSospeso] = useState(() => lavoroSospeso());
-  const cbrDaFare = cbrDaConvertire(books, { qui: localIds || new Set(), suDrive: new Set(Object.keys(mappaDrive())) });
+  const cbrDaFare = cbrDaConvertire(books, { qui: localIds || new Set(), suDrive: new Set(Object.keys(mappaDrive())) }).filter((b) => !copieDaTogliere.has(b.id));
   const restanti = sospeso && !lavoro && localIds ? restantiDelLavoro(sospeso, cbrDaFare) : [];
   useEffect(() => {
     // ricordati tutti convertiti (o tolti): non c'e' niente da riprendere
@@ -1342,6 +1347,43 @@ export default function App() {
   const fermaImport = () => {
     filoImport.current = null;
   };
+
+  // I DOPPIONI DEI FUMETTI (`doppioniDiFumetti`): lo stesso volume in due o
+  // tre schede, nate prima che l'importazione saltasse i gemelli di Colab.
+  // Si contano qui (servono le copertine, che stanno nel database) e si
+  // uniscono dalla Manutenzione: di ogni gruppo resta la scheda che conta di
+  // piu', le altre se ne vanno. I file su Drive restano dove sono.
+
+  useEffect(() => {
+    let vivo = true;
+    listCoverIds()
+      .then((ids) => new Set(ids))
+      .catch(() => new Set())
+      .then((cop) => {
+        if (!vivo) return;
+        setDoppi(doppioniDiFumetti(books, { progresso: getProgress, stato: getStatus, segni: (id) => getMarks(id).length, copertina: (id) => cop.has(id) }));
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [books]);
+  async function unisciDoppioni(gruppi) {
+    // il giro dei CBR potrebbe star convertendo proprio una copia da togliere
+    if (filoLavoro.current || filoImport.current) {
+      notify("Prima ferma il lavoro in corso, poi unisci i doppioni.");
+      return;
+    }
+    const via = gruppi.flatMap((g) => g.via);
+    for (const id of via) {
+      removeBookMeta(id);
+      smarcaSuDrive(id).catch(() => {});
+      await removeBookData(id).catch(() => {});
+    }
+    setBooks(loadBooks());
+    setSpazioCambiato((n) => n + 1);
+    notify(`${gruppi.length === 1 ? "Un volume" : `${gruppi.length} volumi`} di nuovo con una scheda sola: ${via.length === 1 ? "tolta una copia" : `tolte ${via.length} copie`} ✓`);
+    runSync.current(true);
+  }
 
   async function handleDelete(id) {
     setOpenId(null);
@@ -1733,6 +1775,8 @@ export default function App() {
             lavoroCbr={lavoro}
             cbrDaFare={cbrDaFare}
             onConvertiTutti={() => convertiICbr(cbrDaFare)}
+            doppi={doppi}
+            onUnisciDoppioni={unisciDoppioni}
             onFermaLavoro={fermaLavoro}
             onOpenBook={setOpenId}
             onReadAt={(id, punto) => handleRead(id, punto)}

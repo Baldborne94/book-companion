@@ -696,6 +696,8 @@ export default function Library({
   lavoroCbr = null,
   cbrDaFare = [],
   onConvertiTutti,
+  doppi = [],
+  onUnisciDoppioni,
   onFermaLavoro,
   onOpenBook,
   onReadAt,
@@ -774,6 +776,7 @@ export default function Library({
     scriviVista(vista.current);
   };
   const [importing, setImporting] = useState(false);
+  const [vediDoppi, setVediDoppi] = useState(false);
   const [giroImport, setGiroImport] = useState(null);
   // «Aggiungi da Drive»: l'elenco dei file lassu' che non sono ancora
   // libri, con le spunte, e il filo per fermare il giro a meta'
@@ -2621,8 +2624,8 @@ export default function Library({
                   fisso sul tasto diceva al lettore che c'era del lavoro
                   arretrato dove non ce n'era («è corretto?»). */}
               🧰 Manutenzione
-              {!manutenzione && senzaImpronta.length + mancaLaCopertina.length + cbrDaFare.length > 0
-                ? ` · ${senzaImpronta.length + mancaLaCopertina.length + cbrDaFare.length}`
+              {!manutenzione && senzaImpronta.length + mancaLaCopertina.length + cbrDaFare.length + doppi.length > 0
+                ? ` · ${senzaImpronta.length + mancaLaCopertina.length + cbrDaFare.length + doppi.length}`
                 : ""}{" "}
               {manutenzione ? "▾" : "▸"}
             </button>
@@ -2809,6 +2812,52 @@ export default function Library({
                   ? `Fermo qui (${lavoroCbr.i + 1} di ${lavoroCbr.totale}) · ${fraseDelPasso(lavoroCbr.passo)}`
                   : `🔁 Converti ${cbrDaFare.length === 1 ? "un CBR" : `${cbrDaFare.length} CBR`} in CBZ`}
               </button>
+            )}
+            {/* I DOPPIONI DEI FUMETTI (vedi `doppioniDiFumetti`): prima si
+                vede quali, poi si uniscono. Si tiene la scheda che stai
+                leggendo, o il CBZ con la copertina */}
+            {doppi.length > 0 && !vediDoppi && (
+              <button
+                onClick={() => setVediDoppi(true)}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.accent}88`,
+                  color: C.accent,
+                  fontSize: F.nota,
+                }}
+              >
+                {`👯 ${doppi.length === 1 ? "Un fumetto ha" : `${doppi.length} fumetti hanno`} una copia in più: unisci`}
+              </button>
+            )}
+            {doppi.length > 0 && vediDoppi && (
+              <div style={{ flexBasis: "100%", padding: 12, borderRadius: R.piccolo, border: `1px solid ${C.border}`, background: C.surface }}>
+                <p style={{ margin: "0 0 8px", color: C.text, fontSize: F.nota, lineHeight: 1.45 }}>
+                  Di ogni volume resta una scheda sola: quella che stai leggendo, o il CBZ con la copertina. Le altre se ne vanno;
+                  i file su Google Drive restano dove sono.
+                </p>
+                <ul style={{ margin: "0 0 10px", padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" }}>
+                  {doppi.map((g) => (
+                    <li key={g.tieni} style={{ fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" }}>
+                      <span style={{ color: C.text }}>{g.titolo}</span> · {g.via.length === 1 ? "una copia" : `${g.via.length} copie`} in più
+                    </li>
+                  ))}
+                </ul>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    onClick={async () => {
+                      await onUnisciDoppioni?.(doppi);
+                      setVediDoppi(false);
+                    }}
+                    style={{ minHeight: 44, padding: "8px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                  >
+                    Unisci i doppioni
+                  </button>
+                  <button onClick={() => setVediDoppi(false)} style={{ minHeight: 44, padding: "8px 16px", color: C.muted, fontSize: F.nota }}>
+                    Lascia stare
+                  </button>
+                </div>
+              </div>
             )}
             {senzaImpronta.length > 0 && (
               <button

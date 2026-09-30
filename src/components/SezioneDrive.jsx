@@ -33,7 +33,7 @@ const tasto = (colore) => ({
   fontSize: F.nota,
 });
 
-export default function SezioneDrive({ onCollegato, notify }) {
+export default function SezioneDrive({ onCollegato, notify, sobria = false }) {
   const [, ridisegna] = useState(0);
   const [id, setId] = useState(clientId());
   const [chiave, setChiave] = useState(apiKey());
@@ -119,32 +119,41 @@ export default function SezioneDrive({ onCollegato, notify }) {
   return (
     <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
       <div style={{ fontSize: F.corpo, color: C.text, marginBottom: 6 }}>🗂 Google Drive</div>
-      <p style={{ color: C.muted, fontSize: F.nota, lineHeight: 1.5, margin: 0 }}>
-        I file dei libri stanno sul tuo Drive, non qui sopra: l'app riconosce quelli che hai già caricato nelle
-        cartelle Libri, Fumetti e Manga, manda su i nuovi, e li riporta sul tablet quando li apri.
-      </p>
+      {/* da dentro, collegato, la spiegazione e' gia' stata letta: resta
+          quel che serve guardare (vedi il pannello «sobrio» in SyncPanel) */}
+      {!(sobria && acceso) && (
+        <p style={{ color: C.muted, fontSize: F.nota, lineHeight: 1.5, margin: 0 }}>
+          I file dei libri stanno sul tuo Drive, non qui sopra: l'app riconosce quelli che hai già caricato nelle
+          cartelle Libri, Fumetti e Manga, manda su i nuovi, e li riporta sul tablet quando li apri.
+        </p>
+      )}
 
       {acceso ? (
         <>
           <p style={{ margin: "10px 0 0", fontSize: F.nota, color: pronto ? C.accent : C.text }}>
             {pronto
-              ? `Collegato · ${libri.quanti} ${libri.quanti === 1 ? "libro riconosciuto" : "libri riconosciuti"} su Drive`
+              ? `${sobria ? "" : "Collegato · "}${libri.quanti} ${libri.quanti === 1 ? "libro riconosciuto" : "libri riconosciuti"} su Drive`
               : statoRinnovo() === "ok"
                 ? "Collegato · rinnovo la chiave…"
                 : "Collegato, ma Google chiede un tocco per continuare. Entra con Google qui sopra e non lo chiederà più."}
           </p>
           {spazio && <BarraDrive spazio={spazio} libri={libri} compatta />}
           {campoChiave}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-            {!pronto && (
-              <button onClick={collega} disabled={busy} style={tasto(C.arcane)}>
-                {busy ? "…" : "🔑 Ricollega"}
-              </button>
-            )}
-            <button onClick={scollega} disabled={busy} style={tasto(C.muted)}>
-              Scollega Drive
-            </button>
-          </div>
+          {/* da dentro lo scollegamento sta sotto «Altro», con l'uscita */}
+          {(!pronto || !sobria) && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+              {!pronto && (
+                <button onClick={collega} disabled={busy} style={tasto(C.arcane)}>
+                  {busy ? "…" : "🔑 Ricollega"}
+                </button>
+              )}
+              {!sobria && (
+                <button onClick={scollega} disabled={busy} style={tasto(C.muted)}>
+                  Scollega Drive
+                </button>
+              )}
+            </div>
+          )}
         </>
       ) : (
         <>

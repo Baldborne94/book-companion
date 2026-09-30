@@ -926,13 +926,34 @@ export async function convertiLibroInCbz(book, { onProgress, chiedi = true } = {
   const { convertiInCbz } = await import("./archivioFumetto.js");
   const { improntaDi } = await import("./importBook.js");
   const { formatoDaByte } = await import("./fumetto.js");
-  const { pianoConversione } = await import("./convertiCbr.js");
+  const { pianoConversione, PERCHE_DOPPIONE } = await import("./convertiCbr.js");
   const formato = async (b) => (b ? formatoDaByte(new Uint8Array(await b.slice(0, 8).arrayBuffer())) : null);
   const qui = await getFile(book.id).catch(() => null);
   const voce = driveAcceso() ? mappaDrive()[book.id] : null;
   if (voce?.id && !driveProntoOra()) {
     if (!chiedi) throw new DriveScollegato();
     await collegaDrive();
+  }
+  // IL GEMELLO GIA' FATTO (vedi `gemelloCbzDi`): accanto al CBR su Drive c'e'
+  // gia' il suo CBZ. Libero, si adotta; di un'altra scheda, e' un doppione
+  if (voce?.id) {
+    const { gemelloCbzDi } = await import("./driveCore.js");
+    const gem = gemelloCbzDi(voce.id, await elencaFile());
+    if (gem) {
+      const altro = gem.appProperties?.bcId;
+      if (altro && altro !== book.id) throw new Error(PERCHE_DOPPIONE);
+      await adottaCbz({ bookId: book.id, vecchio: voce.id, nuovo: gem.id, byte: Number(gem.size) || 0 });
+      LONTANI.dimentica?.(book.id);
+      await removeFileOnly(book.id).catch(() => {});
+      if (!(await getCover(book.id).catch(() => null))) {
+        const { copertinaOriginale } = await import("./copertina.js");
+        const f = fileRemoto(gem.id, Number(gem.size) || 0);
+        f.daLontano = true;
+        const cover = await copertinaOriginale({ ...book, fileType: "cbz" }, f).catch(() => null);
+        if (cover) await putCover(book.id, cover).catch(() => {});
+      }
+      return { fileType: "cbz" };
+    }
   }
   const lassu = voce?.id ? fileRemoto(voce.id, voce.byte) : null;
   const piano = pianoConversione({ qui: await formato(qui), lassu: await formato(lassu) });

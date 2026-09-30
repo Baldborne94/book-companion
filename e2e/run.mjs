@@ -325,7 +325,7 @@ const SCENE = [
       await finche(async () => (await chiave()) === "ya29.dal-server", 15000, "la chiave scaduta non si rinnova da sola");
       if (finestre.length) throw new Error(`si e' aperta la finestra di Google: ${finestre[0]}`);
       await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
-      const stato = await finche(() => testoAvviso(d.p, /la chiave si rinnova da sola/), 10000, "il pannello non dice che Drive si rinnova da solo");
+      const stato = await finche(() => testoAvviso(d.p, /Google Drive collegato · si rinnova da solo/), 10000, "il pannello non dice che Drive si rinnova da solo");
       return { guasti: d.guasti, nota: `${rinnovi} ${rinnovi === 1 ? "rinnovo" : "rinnovi"} dal server, nessuna finestra · «${stato}»` };
     },
   },
