@@ -288,10 +288,11 @@ function Shelf({ books, onOpenBook, localIds, idLassu, showOrder, coverV = 0, co
                   fontSize: F.nota,
                   lineHeight: 1.25,
                   color: C.text,
-                  display: "-webkit-box",
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: "vertical",
-                  overflow: "hidden",
+                  // IL TITOLO INTERO (scelto dal lettore fra le proposte:
+                  // «Cthulhu. I racconti del..», «Il peggiore dei mondi…»
+                  // dicevano meta' del libro), a capo fra le parole: la
+                  // riga si allunga, i libri restano in alto
+                  overflowWrap: "break-word",
                 }}
               >
                 {b.title}
@@ -301,10 +302,9 @@ function Shelf({ books, onOpenBook, localIds, idLassu, showOrder, coverV = 0, co
               <div
                 style={{
                   fontSize: F.minuscolo,
+                  lineHeight: 1.25,
                   color: C.muted,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  overflowWrap: "break-word",
                 }}
               >
                 {b.author}
