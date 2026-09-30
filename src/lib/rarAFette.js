@@ -40,7 +40,7 @@ const nomeDa = (bytes) => {
   return new TextDecoder().decode(puro).replace(/\\/g, "/");
 };
 
-async function voci4(blob) {
+async function voci4(blob, ferma) {
   const voci = [];
   let pos = RAR4.length;
   while (pos + 7 <= blob.size) {
@@ -72,6 +72,7 @@ async function voci4(blob) {
           byte: dati,
           memorizzato: metodo === 0x30 && !(flags & 0x0004) && !(flags & 0x0003),
         });
+        if (ferma?.(voci[voci.length - 1])) return voci;
       }
     }
     pos += lunga + dati;
@@ -94,7 +95,7 @@ function vint(u8, i) {
   throw new Error("numero RAR storto");
 }
 
-async function voci5(blob) {
+async function voci5(blob, ferma) {
   const voci = [];
   let pos = RAR5.length;
   while (pos + 5 <= blob.size) {
@@ -145,6 +146,7 @@ async function voci5(blob) {
       const spezzato = flags & 0x0008 || flags & 0x0010;
       if (!(fflags & 0x0001)) {
         voci.push({ nome, da: pos + tutta, byte: dati, memorizzato: metodo === 0 && !cifrato && !spezzato });
+        if (ferma?.(voci[voci.length - 1])) return voci;
       }
     }
     pos += tutta + dati;
@@ -180,4 +182,16 @@ export async function apriRar(blob, { eImmagine = () => true } = {}) {
       return new Uint8Array(await blob.slice(v.da, v.da + v.byte).arrayBuffer());
     },
   };
+}
+
+// LA PRIMA PAGINA E BASTA (vedi `primaPaginaRar` in `fumetto.js`): da Drive
+// ogni testata e' un viaggio in rete, e per la copertina — o per sapere se
+// le pagine sono compresse — non serve camminare tutto l'archivio. Ci si
+// ferma alla prima immagine: `null` se non ce n'e' o se l'archivio non si
+// legge a fette (cifrato, a volumi).
+export async function primaImmagineRar(blob, eImmagine = () => true) {
+  const testa = await fetta(blob, 0, 8);
+  const ferma = (v) => eImmagine(v.nome);
+  const voci = inizia(testa, RAR5) ? await voci5(blob, ferma) : inizia(testa, RAR4) ? await voci4(blob, ferma) : null;
+  return voci?.find(ferma) || null;
 }

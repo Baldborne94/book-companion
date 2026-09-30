@@ -31,7 +31,7 @@ import { leggiDaPrendere, scriviDaPrendere, fondiDaPrendere } from "./daPrendere
 import { leggiRigheLeggere, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare, copertineInAttesa, segnaInAttesa, fondiSchede } from "./syncCore.js";
 import { daTogliereDalSecchio, avanziDelSecchio, segnaSuDrive, leggereDaLontano } from "./driveCore.js";
 import { raccontaGiro } from "./resoconto.js";
-import { giroDrive, giroMelodie, archiviaSuDrive, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto } from "./drive.js";
+import { giroDrive, giroMelodie, archiviaSuDrive, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto, fermaCbrCompresso } from "./drive.js";
 import { tipiDi, tipoDi } from "./library.js";
 import { misureFile, listTrackIds } from "./bookStore.js";
 import { nuovaMemoria, firmaLontana } from "./ultimiLontani.js";
@@ -838,12 +838,12 @@ export async function togliFileDalCloud(book) {
 // appena toccato lo schermo, e Google la finestra la apre solo dopo un tocco.
 // Un file che Drive non ha piu' (tolto a mano dal lettore) e' «non c'e'»,
 // non un guasto: si prova il secchio.
-async function dalDrive(book) {
+async function dalDrive(book, { onProgress } = {}) {
   const voce = driveAcceso() ? mappaDrive()[book.id] : null;
   if (!voce) return null;
   if (!driveProntoOra()) await collegaDrive();
   try {
-    return await scaricaDaDrive(voce.id);
+    return await scaricaDaDrive(voce.id, { onProgress, totale: voce.byte });
   } catch (e) {
     if (e?.status === 404) return null;
     throw e;
@@ -854,8 +854,8 @@ async function dalDrive(book) {
 // secchio, e niente scritto su disco. E' la strada di chi legge — vedi
 // `fileDaLeggere` — e di chi vuole tenerlo (`ensureLocalFile`), che ci
 // aggiunge la scrittura.
-async function prendiFile(book) {
-  const daDrive = await dalDrive(book).catch(() => null);
+async function prendiFile(book, opzioni = {}) {
+  const daDrive = await dalDrive(book, opzioni).catch(() => null);
   if (daDrive) return daDrive;
   if (!isSyncConfigured()) return null;
   const session = await getSession();
@@ -883,10 +883,11 @@ async function prendiFile(book) {
 // il volume dopo se ha acceso l'anticipo.
 // il pezzo di un PDF: lo stesso che pdf.js chiede da se' (`rangeChunkSize`)
 const PEZZO_PDF = 64 * 1024;
-export async function fileDaLeggere(book) {
+export async function fileDaLeggere(book, { onProgress } = {}) {
   const local = await getFile(book.id);
   if (local) return local;
   const voce = driveAcceso() ? mappaDrive()[book.id] : null;
+  await fermaCbrCompresso(book.fileType, voce);
   if (leggereDaLontano(book, voce)) {
     if (!driveProntoOra()) await collegaDrive();
     const f = fileRemoto(voce.id, voce.byte, book.fileType === "pdf" ? { minimo: PEZZO_PDF } : {});
@@ -898,7 +899,7 @@ export async function fileDaLeggere(book) {
   const firma = firmaLontana(voce);
   const ricordato = LONTANI.prendi(book.id, firma);
   if (ricordato) return ricordato;
-  const preso = await prendiFile(book);
+  const preso = await prendiFile(book, { onProgress });
   if (preso) {
     preso.lontano = true;
     LONTANI.tieni(book.id, firma, preso);
@@ -943,10 +944,13 @@ export async function anticipaFile(book) {
 // TENERE IL LIBRO SUL TABLET: gli stessi byte di `prendiFile`, scritti su
 // disco. Da qui passano i soli gesti che lo CHIEDONO — la scheda, «Scarica
 // qui», il ripristino — mai una lettura.
-export async function ensureLocalFile(book) {
+// Chi lo tiene sul tablet dopo averlo letto da Drive ha gia' il file in
+// memoria (`LONTANI`): si scrive quello, invece di scaricarlo di nuovo.
+export async function ensureLocalFile(book, { onProgress } = {}) {
   const local = await getFile(book.id);
   if (local) return local;
-  const preso = await prendiFile(book);
+  const voce = driveAcceso() ? mappaDrive()[book.id] : null;
+  const preso = LONTANI.prendi(book.id, firmaLontana(voce)) || (await prendiFile(book, { onProgress }));
   if (!preso) return null;
   await putFile(book.id, preso);
   return preso;

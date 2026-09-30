@@ -811,3 +811,22 @@ export function cartellaArchivi(cartelle) {
   const radice = idRadice(cartelle);
   return (cartelle || []).find((c) => c?.name === ARCHIVI && c.parents?.[0] === radice)?.id || null;
 }
+
+// A CHE PUNTO E' LA DISCESA (chiesto dal lettore: «come mai ci mette cosi'
+// tanto ad aprire i file?», davanti a un omnibus CBR fermo su «Apro il
+// tomo…»). Un libro che scende intero da Drive puo' pesare un giga, e la
+// candela muta non diceva niente. Megabyte interi, e la misura totale se si
+// sa; sotto il mega si dice «meno di un MB» invece di uno zero.
+const MB = 1024 * 1024;
+export function fraseDiscesa({ presi = 0, totale = 0 } = {}, apertura = "Scende da Google Drive:") {
+  const mb = (n) => (n < MB ? "meno di un MB" : `${Math.floor(n / MB)} MB`);
+  if (totale > 0) return `${apertura} ${Math.floor(presi / MB)} di ${Math.max(1, Math.round(totale / MB))} MB`;
+  return `${apertura} ${mb(presi)}`;
+}
+// lo stesso sul tasto «Tieni sul tablet» (segnalato: «come mai ci mette una
+// vita a scaricarmi in locale?», davanti a un «Scarico…» muto)
+export const fraseScarico = (p) => (p ? fraseDiscesa(p, "Scarico…") : "Scarico…");
+
+// ogni quanto dirlo: a ogni mega, o in fondo — a ogni pezzo della rete
+// sarebbero migliaia di disegni per un file grosso
+export const vaDetto = (prima, adesso, totale) => adesso >= totale || Math.floor(adesso / MB) > Math.floor(prima / MB);

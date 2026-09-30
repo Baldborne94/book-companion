@@ -5,106 +5,14 @@
 // dalla libreria RAR vera (node-unrar-js, lo stesso unrar del browser): se
 // la libreria lo accetta, l'archivio e' valido, e le pagine lette a fette
 // devono essere IDENTICHE a quelle che estrae lei.
-import zlib from "zlib";
 import { createRequire } from "module";
+import { rar4, rar5 } from "./rar-finto.mjs";
 import { vociRar, apriRar } from "../src/lib/rarAFette.js";
-import { apriArchivio, cbrApribile, CBR_MAX, PERCHE_CBR_GRANDE } from "../src/lib/fumetto.js";
+import { fileRemoto } from "../src/lib/drive.js";
+import { apriArchivio, cbrApribile, CBR_MAX, PERCHE_CBR_GRANDE, primaPaginaRar, cbrLontanoApribile } from "../src/lib/fumetto.js";
 
 const require = createRequire(import.meta.url);
 const unrar = require("node-unrar-js");
-
-// ---- RAR 4 -------------------------------------------------------------------
-const crc16 = (b) => zlib.crc32(b) & 0xffff;
-function blocco(tipo, flags, corpo) {
-  const testa = Buffer.alloc(5);
-  testa.writeUInt8(tipo, 0);
-  testa.writeUInt16LE(flags, 1);
-  testa.writeUInt16LE(7 + corpo.length, 3);
-  const dentro = Buffer.concat([testa, corpo]);
-  const crc = Buffer.alloc(2);
-  crc.writeUInt16LE(crc16(dentro), 0);
-  return Buffer.concat([crc, dentro]);
-}
-// ogni voce: [nome, dati, {metodo, flags, grande, unicode}]
-function rar4(voci, { principale = 0 } = {}) {
-  const pezzi = [Buffer.from("Rar!\x1a\x07\x00", "binary"), blocco(0x73, principale, Buffer.alloc(6))];
-  for (const [nome, dati, o = {}] of voci) {
-    let n = Buffer.from(nome, "utf8");
-    // il nome unicode: la forma leggibile, uno zero, e poi la versione
-    // compressa — che qui e' spazzatura apposta, non si deve leggere
-    if (o.unicode) n = Buffer.concat([n, Buffer.from([0, 0xff, 0x01, 0x42])]);
-    const grande = !!o.grande;
-    const corpo = Buffer.alloc(25 + (grande ? 8 : 0) + n.length);
-    corpo.writeUInt32LE(dati.length, 0);
-    corpo.writeUInt32LE(dati.length, 4);
-    corpo.writeUInt8(2, 8);
-    corpo.writeUInt32LE(zlib.crc32(dati) >>> 0, 9);
-    corpo.writeUInt32LE(0, 13);
-    corpo.writeUInt8(20, 17);
-    corpo.writeUInt8(o.metodo ?? 0x30, 18);
-    corpo.writeUInt16LE(n.length, 19);
-    corpo.writeUInt32LE(0x20, 21);
-    if (grande) {
-      corpo.writeUInt32LE(0, 25);
-      corpo.writeUInt32LE(0, 29);
-    }
-    n.copy(corpo, 25 + (grande ? 8 : 0));
-    const flags = 0x8000 | (grande ? 0x0100 : 0) | (o.unicode ? 0x0200 : 0) | (o.flags || 0);
-    pezzi.push(blocco(0x74, flags, corpo), Buffer.from(dati));
-  }
-  pezzi.push(blocco(0x7b, 0x4000, Buffer.alloc(0)));
-  return Buffer.concat(pezzi);
-}
-
-// ---- RAR 5 -------------------------------------------------------------------
-function vint(n) {
-  const out = [];
-  do {
-    let b = n % 128;
-    n = Math.floor(n / 128);
-    if (n) b |= 0x80;
-    out.push(b);
-  } while (n);
-  return Buffer.from(out);
-}
-function testa5(campi) {
-  const dentro = Buffer.concat([vint(campi.length), campi]);
-  const crc = Buffer.alloc(4);
-  crc.writeUInt32LE(zlib.crc32(dentro) >>> 0, 0);
-  return Buffer.concat([crc, dentro]);
-}
-function rar5(voci, { volume = false } = {}) {
-  const pezzi = [
-    Buffer.from([0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x01, 0x00]),
-    testa5(Buffer.concat([vint(1), vint(0), vint(volume ? 1 : 0)])),
-  ];
-  for (const [nome, dati, o = {}] of voci) {
-    const n = Buffer.from(nome, "utf8");
-    const extra = o.cifrato ? Buffer.concat([vint(2), vint(1), vint(0)]) : null;
-    const crc = Buffer.alloc(4);
-    crc.writeUInt32LE(zlib.crc32(dati) >>> 0, 0);
-    const campi = Buffer.concat([
-      vint(2),
-      vint(0x0002 | (extra ? 0x0001 : 0) | (o.spezzato ? 0x0010 : 0)),
-      ...(extra ? [vint(extra.length)] : []),
-      vint(dati.length),
-      vint(0x0004 | (o.cartella ? 0x0001 : 0)),
-      vint(dati.length),
-      vint(0x20),
-      crc,
-      // il bit 6 e' «solido»: un file memorizzato in un archivio solido lo ha
-      // acceso, e resta memorizzato — il metodo sta nei bit 7-9
-      vint(((o.metodo ?? 0) << 7) | (o.solido ? 0x40 : 0)),
-      vint(0),
-      vint(n.length),
-      n,
-      ...(extra ? [extra] : []),
-    ]);
-    pezzi.push(testa5(campi), Buffer.from(dati));
-  }
-  pezzi.push(testa5(Buffer.concat([vint(5), vint(0), vint(0)])));
-  return Buffer.concat(pezzi);
-}
 
 const pagina = (seme, lunga = 300) => Buffer.from(Array.from({ length: lunga }, (_, i) => (i * 31 + seme) % 256));
 // una testata di PNG davanti, cosi' una pagina spostata di un byte non
@@ -224,4 +132,55 @@ export default async (t) => {
     perche = e.message;
   }
   t.eq("il grande compresso si rifiuta con la ragione", perche, PERCHE_CBR_GRANDE);
+
+  // ---- LA PRIMA PAGINA DI UN CBR LONTANO ---------------------------------------
+  // (i Lobster Johnson su Drive: dorso disegnato e minuti di attesa) — da Drive
+  // ogni fetta e' una richiesta, quindi si contano
+  const contato = (bytes, finta = null) => {
+    const b = new Blob([bytes]);
+    const conta = { n: 0 };
+    const pezzo = (da, a) => ({
+      arrayBuffer: async () => {
+        conta.n += 1;
+        return b.slice(da, a).arrayBuffer();
+      },
+    });
+    return { conta, blob: { size: finta ?? b.size, slice: (da, a) => pezzo(da, a) } };
+  };
+  const molte = [["ComicInfo.xml", INFO], ...Array.from({ length: 40 }, (_, i) => [`p${String(i + 1).padStart(2, "0")}.png`, png(i + 1, 90000)])];
+  for (const [famiglia, costruisci] of [
+    ["RAR 4", rar4],
+    ["RAR 5", rar5],
+  ]) {
+    const lontano = contato(costruisci(molte));
+    const p = await primaPaginaRar(lontano.blob);
+    t.eq(`${famiglia}: la prima pagina, saltata la scheda`, p?.nome, "p01.png");
+    t.c(`${famiglia}: …coi suoi byte giusti`, Buffer.from(p?.bytes || []).equals(png(1, 90000)));
+    // col lettore vero di Drive (`fileRemoto`, pezzi da 256 KB tenuti in
+    // memoria) i viaggi in rete sono quelli che contano
+    const byte = costruisci(molte);
+    let viaggi = 0;
+    const remoto = fileRemoto("f", byte.length, {
+      prendi: async (da, a) => {
+        viaggi += 1;
+        return { da, buf: new Uint8Array(byte.subarray(da, a)) };
+      },
+    });
+    t.eq(`${famiglia}: da Drive la prima pagina e' la stessa`, (await primaPaginaRar(remoto))?.nome, "p01.png");
+    t.c(`${famiglia}: …con uno o due viaggi in rete, non uno per pagina`, viaggi <= 2, `viaggi: ${viaggi}`);
+    const tutto = contato(costruisci(molte));
+    await apriRar(tutto.blob, { eImmagine: soloPagine });
+    t.c(`${famiglia}: (camminare tutto l'archivio ne costa una per pagina)`, tutto.conta.n > 40, `richieste: ${tutto.conta.n}`);
+  }
+  const compresso = await primaPaginaRar(blob(rar4([["p1.png", png(1), { metodo: 0x33 }], ["p2.png", png(2)]])));
+  t.eq("una prima pagina compressa si dice, senza byte", `${compresso?.compressa}:${!!compresso?.bytes}`, "true:false");
+  t.eq("uno zip non ha una prima pagina RAR", await primaPaginaRar(blob(Buffer.from("PK\x03\x04xxxxxxxx", "binary"))), null);
+
+  // ---- APRIBILE, PRIMA DI SCARICARLO ----------------------------------------------
+  t.c("lontano, grande e memorizzato: si apre", await cbrLontanoApribile(contato(rar4(VOCI), CBR_MAX + 1).blob));
+  t.c("lontano, grande e compresso: no, e lo si sa subito", !(await cbrLontanoApribile(contato(rar5([["p1.png", png(1), { metodo: 3 }]]), CBR_MAX + 1).blob)));
+  const piccolo = contato(rar4([["p1.png", png(1), { metodo: 0x33 }]]));
+  t.c("piccolo e compresso: si apre, ci pensa la libreria", await cbrLontanoApribile(piccolo.blob));
+  t.eq("…e non si chiede niente a Drive", piccolo.conta.n, 0);
+  t.c("se non si sa, si prova", await cbrLontanoApribile(contato(Buffer.from("PK\x03\x04xxxxxxxx", "binary"), CBR_MAX + 1).blob));
 };

@@ -22,7 +22,7 @@
 
 import { TUTTA, unisci, rifinisci } from "./pdfCrop.js";
 import { apriZip } from "./zipAFette.js";
-import { apriRar } from "./rarAFette.js";
+import { apriRar, primaImmagineRar } from "./rarAFette.js";
 import { comeRete } from "./anticipo.js";
 
 // UN CBR NON SI LEGGE A FETTE, e allora ha un tetto. La libreria RAR per il
@@ -52,6 +52,28 @@ const rarAFette = (blob) => apriRar(blob, { eImmagine: ePagina }).catch(() => nu
 export async function cbrApribile(blob) {
   if (!cbrTroppoGrande("cbr", blob?.size)) return true;
   return !!(await rarAFette(blob));
+}
+
+// UN CBR SU DRIVE SI GUARDA DALLA PRIMA PAGINA (chiesto dal lettore: i due
+// Lobster Johnson col dorso disegnato, e minuti di «Apro il tomo…» per
+// niente). Il resto dell'archivio si cammina solo testata per testata, e da
+// Drive e' un viaggio per pagina; la prima pagina invece sta subito dopo
+// l'inizio, a una o due richieste. Dice due cose: i byte della copertina,
+// se la pagina e' memorizzata, e se le pagine sono COMPRESSE — e allora un
+// CBR oltre `CBR_MAX` il browser non lo aprira' mai, e va detto prima di
+// scaricarlo, non dopo. `null` = non si sa (non e' un RAR leggibile a fette).
+export async function primaPaginaRar(blob) {
+  const v = await primaImmagineRar(blob, ePagina).catch(() => null);
+  if (!v) return null;
+  if (!v.memorizzato) return { nome: v.nome, compressa: true };
+  return { nome: v.nome, compressa: false, bytes: new Uint8Array(await blob.slice(v.da, v.da + v.byte).arrayBuffer()) };
+}
+
+// Si puo' aprire un CBR che sta lontano? Nel dubbio si': la strada di sempre
+// dira' la sua dopo.
+export async function cbrLontanoApribile(blob) {
+  if (!cbrTroppoGrande("cbr", blob?.size)) return true;
+  return !(await primaPaginaRar(blob))?.compressa;
 }
 
 export const FORMATI = ["cbz", "cbr"];
@@ -583,6 +605,28 @@ export const AVANTI_QUI = 2;
 export function pagineAvanti({ lontano = false, connessione = null } = {}) {
   if (!lontano) return AVANTI_QUI;
   return comeRete(connessione) === "a consumo" ? AVANTI_A_CONSUMO : AVANTI_DA_LONTANO;
+}
+
+// LE PAGINE GIA' APERTE RESTANO, FINO A UN TETTO DI BYTE (segnalato dal
+// lettore: «ci mette parecchi secondi per passare da una pagina all'altra…
+// o tornare indietro»). Si tenevano quattro pagine dietro quella a schermo e
+// le altre si buttavano: sul tablet si riestraggono in un attimo, ma da
+// Drive tornare indietro era un viaggio in rete a voltata (misurato col
+// Drive finto a 4 MB/s: 1,2 secondi a coppia, contro 30-100 ms in avanti).
+// Adesso una pagina se ne va solo se fuori dalla finestra E oltre il tetto,
+// e la piu' lontana per prima. `pronte` = [[pagina, byte], …].
+export const MEMORIA_PAGINE = 200 * 1024 * 1024;
+export function daLasciare(pronte, { attorno, dietro = 0, avanti = 0, tetto = MEMORIA_PAGINE } = {}) {
+  let tot = pronte.reduce((s, [, b]) => s + (Number(b) || 0), 0);
+  const via = [];
+  const fuori = pronte.filter(([n]) => n < attorno - dietro || n > attorno + avanti);
+  fuori.sort((x, y) => Math.abs(y[0] - attorno) - Math.abs(x[0] - attorno));
+  for (const [n, b] of fuori) {
+    if (tot <= tetto) break;
+    via.push(n);
+    tot -= Number(b) || 0;
+  }
+  return via;
 }
 
 // le pagine da preparare dopo `ultima` (l'ultima a schermo), in ordine, fino

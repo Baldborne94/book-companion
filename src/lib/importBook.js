@@ -606,8 +606,8 @@ export async function importaDaDrive(voci, libri = [], { apri, segna, onProgress
 
 // Quel che si legge di un file lontano. Il CBR resta col nome del file: la
 // lettura a fette di un RAR cammina di testata in testata attraverso tutto
-// l'archivio, e da Drive sarebbe una richiesta per pagina — il fumetto
-// entra, e la copertina la ritrova la manutenzione quando e' sceso.
+// l'archivio, e da Drive sarebbe una richiesta per pagina. La copertina
+// invece si', dalla sola prima pagina.
 async function leggiDaLontano(meta, blob, fileType) {
   if (fileType === "epub") return leggiEpubLontano(meta, blob);
   if (fileType === "pdf") {
@@ -617,7 +617,13 @@ async function leggiDaLontano(meta, blob, fileType) {
     return { titolo: true, copertina: !!thumb };
   }
   if (fileType === "cbz") return enrichFumetto(meta, blob);
-  return { titolo: true, copertina: false };
+  // IL CBR DA LONTANO: la copertina dalla prima pagina (`primaPaginaRar`),
+  // a uno o due viaggi in rete — prima entrava col dorso disegnato
+  const { copertinaOriginale } = await import("./copertina.js");
+  blob.daLontano = true;
+  const cover = await copertinaOriginale({ fileType: "cbr" }, blob);
+  if (cover) await putCover(meta.id, cover);
+  return { titolo: true, copertina: !!cover };
 }
 
 export async function leggiEpubLontano(meta, blob) {

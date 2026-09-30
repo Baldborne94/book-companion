@@ -5,7 +5,7 @@ import JSZip from "jszip";
 
 // Un PNG vero di un colore solo: il fumetto deve avere pagine che il
 // browser sa disegnare, o la copertina e le misure cadono per altro.
-function png(larghezza, altezza, [r, g, b]) {
+function pngDa(larghezza, altezza, grezzo) {
   const crc = (buf) => {
     let c = ~0;
     for (const x of buf) {
@@ -28,15 +28,37 @@ function png(larghezza, altezza, [r, g, b]) {
   testa.writeUInt32BE(altezza, 4);
   testa[8] = 8;
   testa[9] = 2;
-  const riga = Buffer.alloc(1 + larghezza * 3);
-  for (let x = 0; x < larghezza; x++) riga.set([r, g, b], 1 + x * 3);
-  const grezzo = Buffer.concat(Array.from({ length: altezza }, () => riga));
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     pezzo("IHDR", testa),
-    pezzo("IDAT", deflateSync(grezzo)),
+    pezzo("IDAT", deflateSync(grezzo, { level: 1 })),
     pezzo("IEND", Buffer.alloc(0)),
   ]);
+}
+function png(larghezza, altezza, [r, g, b]) {
+  const riga = Buffer.alloc(1 + larghezza * 3);
+  for (let x = 0; x < larghezza; x++) riga.set([r, g, b], 1 + x * 3);
+  return pngDa(larghezza, altezza, Buffer.concat(Array.from({ length: altezza }, () => riga)));
+}
+
+// UN FUMETTO CHE DA DRIVE SI LEGGE A PEZZI: oltre i 20 MB, con pagine di
+// rumore da un mega l'una (il rumore non si comprime: ogni pagina e' una
+// richiesta a Drive, e le richieste si possono contare)
+export async function fumettoGrosso(pagine = 24) {
+  const zip = new JSZip();
+  const L = 600;
+  const A = 580;
+  const passo = 1 + L * 3;
+  let x = 7;
+  for (let i = 0; i < pagine; i++) {
+    const righe = Buffer.alloc(A * passo);
+    for (let k = 0; k < righe.length; k++) {
+      x = (Math.imul(x, 1103515245) + 12345) & 0x7fffffff;
+      righe[k] = k % passo === 0 ? 0 : (x >> 16) & 255;
+    }
+    zip.file(`pagina ${String(i + 1).padStart(2, "0")}.png`, pngDa(L, A, righe), { compression: "STORE" });
+  }
+  return zip.generateAsync({ type: "nodebuffer" });
 }
 
 export async function fumetto() {

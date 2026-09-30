@@ -145,6 +145,14 @@ export async function copertinaDaEpub(eb) {
 export async function copertinaOriginale(book, bytes) {
   if (!bytes) return null;
   try {
+    // un CBR che sta su Drive: la prima pagina e basta (`primaPaginaRar`),
+    // non l'archivio intero — da li' sarebbe un viaggio in rete per pagina
+    if (book?.fileType === "cbr" && bytes.daLontano) {
+      const { primaPaginaRar } = await import("./fumetto.js");
+      const p = await primaPaginaRar(bytes);
+      if (!p?.bytes) return null;
+      return (await preparaCopertina(new Blob([p.bytes], { type: tipoImmagine(p.nome) || "image/jpeg" }))) || null;
+    }
     // un fumetto: la prima pagina, rimpicciolita come una copertina messa
     // a mano — PRIMA di `arrayBuffer`, che su un CBZ da un giga caricherebbe
     // in memoria tutto il volume per guardarne una pagina

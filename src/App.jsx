@@ -1210,12 +1210,12 @@ export default function App() {
   // TENERE UN LIBRO SUL TABLET, a richiesta: e' l'unica strada per cui una
   // lettura da Drive diventa una copia qui. Si arriva da un tocco, quindi
   // la chiave di Google si puo' chiedere.
-  async function handleTieniQui(id) {
+  async function handleTieniQui(id, onProgress) {
     const b = books.find((x) => x.id === id);
     if (!b) return false;
     try {
       if (driveAcceso() && mappaDrive()[id] && !driveProntoOra()) await collegaDrive();
-      const f = await ensureLocalFile(b);
+      const f = await ensureLocalFile(b, { onProgress });
       if (!f) {
         notify("Non ho trovato il file né su Google Drive né nel cloud");
         return false;

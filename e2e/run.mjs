@@ -14,10 +14,12 @@
 import { existsSync } from "node:fs";
 import { build, preview } from "vite";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
-import { fumetto, epub, FRASE, mondoDisco } from "./libri.mjs";
+import { fumetto, fumettoGrosso, epub, FRASE, mondoDisco } from "./libri.mjs";
+import { avviaDrive, driveNelBrowser } from "./driveFinto.mjs";
 
 const PORTA_DB = 4599;
 const PORTA_APP = 4190;
+const PORTA_DRIVE = 4598;
 const URL_APP = `http://localhost:${PORTA_APP}/`;
 const aspetta = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -68,7 +70,7 @@ async function lanciaBrowser() {
 // o da Google (la prima volta in CI il catalogo vero ha dato a «Racconti» la
 // saga di Moravia, e la scena cadeva per una ragione che qui non c'era). Chi
 // vuole il catalogo se lo porta: `catalogo(url)` risponde al posto suo.
-async function dispositivo(browser, { sessione = false, prima = null, catalogo = null } = {}) {
+async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, drive = null } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   await ctx.route(
     (url) => !/^(localhost|127\.0\.0\.1)$/.test(url.hostname),
@@ -83,6 +85,7 @@ async function dispositivo(browser, { sessione = false, prima = null, catalogo =
   );
   if (sessione) await ctx.addInitScript(sessioneFinta);
   if (prima) await ctx.addInitScript(prima);
+  if (drive) await ctx.addInitScript(driveNelBrowser, { porta: PORTA_DRIVE, ...drive });
   const p = await ctx.newPage();
   const guasti = [];
   p.on("pageerror", (e) => guasti.push(e.message));
@@ -181,6 +184,60 @@ const SCENE = [
       return { guasti: d.guasti, nota };
     },
   },
+  {
+    // segnalato dal lettore: «ci mette parecchi secondi per passare da una
+    // pagina all'altra… o tornare indietro». Si tenevano quattro pagine
+    // dietro quella a schermo, e da Drive tornarci era un viaggio a voltata.
+    nome: "un fumetto letto da Drive torna indietro senza chiedere di nuovo le pagine",
+    async fai({ browser }) {
+      const bytes = await fumettoGrosso();
+      const drv = await avviaDrive(PORTA_DRIVE, { fg: bytes });
+      try {
+        const d = await dispositivo(browser, {
+          drive: { libri: [{ id: "fg", title: "Tavole", fileType: "cbz", addedAt: 1 }], mappa: { fg: { id: "fg", byte: bytes.length } } },
+        });
+        await d.p.goto(`${URL_APP}?apri=libreria`);
+        await d.p.getByText("Tavole").first().click();
+        await d.p.getByRole("button", { name: /Apri il libro/ }).first().click();
+        // le pagine a schermo, finite e visibili
+        const vista = () =>
+          d.p.evaluate(() => {
+            const ims = [...document.querySelectorAll("img")].filter((x) => /pagina \d+\.png$/.test(x.alt));
+            if (!ims.length || ims.some((im) => !im.complete || !im.naturalWidth)) return "";
+            return ims.map((x) => x.alt.match(/(\d+)\.png$/)[1]).join("+");
+          });
+        let ora = await finche(vista, 20000, "il fumetto non si apre");
+        const volta = async (tasto) => {
+          const prima = ora;
+          await d.p.keyboard.press(tasto);
+          ora = await finche(async () => {
+            const v = await vista();
+            return v && v !== prima ? v : "";
+          }, 15000, `la voltata da ${prima} non arriva`);
+        };
+        for (let i = 0; i < 30 && !ora.includes("23"); i++) await volta("ArrowRight");
+        if (!ora.includes("23")) throw new Error(`avanti non arriva a pagina 23 (ferma su ${ora})`);
+        // ferme anche le pagine preparate avanti, si contano le richieste
+        let conti = drv.conti();
+        await finche(async () => {
+          await aspetta(1000);
+          const c = drv.conti();
+          const fermo = c.pezzi === conti.pezzi && c.interi === conti.interi;
+          conti = c;
+          return fermo;
+        }, 20000, "Drive non smette di scendere");
+        let voltate = 0;
+        for (; voltate < 30 && !ora.startsWith("02"); voltate++) await volta("ArrowLeft");
+        if (!ora.startsWith("02")) throw new Error(`indietro non arriva a pagina 2 (ferma su ${ora})`);
+        const dopo = drv.conti();
+        const nuove = dopo.pezzi - conti.pezzi + dopo.interi - conti.interi;
+        if (nuove) throw new Error(`tornando indietro di ${voltate} voltate si sono chieste ${nuove} pagine a Drive`);
+        return { guasti: d.guasti, nota: `indietro di ${voltate} voltate, nessuna richiesta a Drive` };
+      } finally {
+        await drv.chiudi();
+      }
+    },
+  },
 ];
 
 async function principale() {
@@ -197,7 +254,8 @@ async function principale() {
   const server = await preview({ logLevel: "warn", preview: { port: PORTA_APP, strictPort: true }, build: { outDir: "dist-e2e" } });
 
   let cadute = 0;
-  for (const scena of SCENE) {
+  // `SCENA=parola npm run e2e` fa girare solo le scene che la contengono
+  for (const scena of SCENE.filter((x) => !process.env.SCENA || x.nome.includes(process.env.SCENA))) {
     // ogni scena col suo cloud vuoto: una non eredita i libri dell'altra
     const db = await avviaSupabase(PORTA_DB);
     const t0 = Date.now();
