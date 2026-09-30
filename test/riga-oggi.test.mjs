@@ -29,7 +29,7 @@ export default async function (t) {
   t.eq("stamattina la serie di ieri e' ancora viva", ieri.join("|"), "2 giorni di fila");
 
   const inPari = pezziDiOggi({}, passoObiettivo(20, 24, 2026, oggi), oggi);
-  t.eq("il passo, non il conto (lo dice la porta del diario)", inPari.join("|"), "obiettivo: in anticipo di 2 libri");
+  t.eq("il passo, non il conto (lo dice la porta del diario)", inPari.join("|"), "obiettivo: 2 libri avanti sulla tabella di marcia (20 letti, a oggi ne bastavano 18)");
   t.c("…e il conto «20 di 24» non si ripete", !inPari[0].includes("24"));
 
   const fatto = pezziDiOggi({}, passoObiettivo(24, 24, 2026, oggi), oggi);

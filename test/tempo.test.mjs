@@ -131,10 +131,29 @@ export default async function (t) {
   // ---- il passo --------------------------------------------------------------
   const meta = ore(2026, 7, 2, 12); // circa meta' anno
   t.vicino("a luglio e' passata circa meta' dell'anno", frazioneAnno(2026, meta), 0.5, 0.01);
-  t.eq("a meta' anno 12 su 24 sei in pari", passoObiettivo(12, 24, 2026, meta).passo, "in pari col passo");
-  t.eq("7 su 24 a luglio sei indietro", passoObiettivo(7, 24, 2026, meta).passo, "indietro di 5 libri");
-  t.eq("14 su 24 a luglio sei avanti", passoObiettivo(14, 24, 2026, meta).passo, "in anticipo di 2 libri");
-  t.eq("il singolare", passoObiettivo(13, 24, 2026, meta).passo, "in anticipo di un libro");
+  t.eq("a meta' anno 12 su 24 sei in pari", passoObiettivo(12, 24, 2026, meta).passo, "in pari con la tabella di marcia");
+  t.eq("7 su 24 a luglio sei indietro", passoObiettivo(7, 24, 2026, meta).passo, "5 libri indietro sulla tabella di marcia (7 letti, a oggi ne servivano 12)");
+  t.eq("14 su 24 a luglio sei avanti", passoObiettivo(14, 24, 2026, meta).passo, "2 libri avanti sulla tabella di marcia (14 letti, a oggi ne bastavano 12)");
+  t.eq("il singolare", passoObiettivo(13, 24, 2026, meta).passo, "un libro avanti sulla tabella di marcia (13 letti, a oggi ne bastavano 12)");
+  // il caso del lettore: fine settembre, i due numeri fanno tornare il conto
+  const settembre = ore(2026, 9, 30, 12);
+  t.eq("21 su 24 a fine settembre", passoObiettivo(21, 24, 2026, settembre).passo, "3 libri avanti sulla tabella di marcia (21 letti, a oggi ne bastavano 18)");
+  // IL CONTO TORNA A VISTA, ogni giorno e con ogni conto: «N libri avanti (L
+  // letti, a oggi ne bastavano B)» vuol dire L - B = N, e indietro B - L = N
+  const nDi = (x) => (x.startsWith("un libro") ? 1 : parseInt(x, 10));
+  const storti = [];
+  for (let giorno = 0; giorno < 365; giorno += 3) {
+    const quando = ore(2026, 1, 1, 12) + giorno * 86_400_000;
+    for (let letti = 0; letti < 24; letti++) {
+      const frase = passoObiettivo(letti, 24, 2026, quando).passo;
+      const m = /\((\d+) letti, a oggi ne (bastavano|servivano) (\d+)\)$/.exec(frase);
+      if (!m) continue;
+      const [l, b] = [Number(m[1]), Number(m[3])];
+      const diff = m[2] === "bastavano" ? l - b : b - l;
+      if (diff !== nDi(frase) || l !== letti) storti.push(`${giorno}/${letti}: ${frase}`);
+    }
+  }
+  t.c("il conto della frase torna sempre", storti.length === 0, storti.slice(0, 3).join(" | "));
   t.eq("raggiunto e' raggiunto, qualunque sia la data", passoObiettivo(24, 24, 2026, ore(2026, 3, 1, 12)).passo, "obiettivo raggiunto ✨");
   t.eq("la barra non sfora", passoObiettivo(30, 24, 2026, meta).frazione, 1);
   t.eq("senza obiettivo non c'e' passo", passoObiettivo(5, 0, 2026, meta), null);
