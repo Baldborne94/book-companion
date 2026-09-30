@@ -21,7 +21,7 @@ import { BarraCloud } from "./BarraCloud.jsx";
 import SezioneDrive from "./SezioneDrive.jsx";
 import { ultimoGiro } from "../lib/resoconto.js";
 import { entraConGoogle, statoRinnovo } from "../lib/accessoGoogle.js";
-import { driveProntoOra } from "../lib/drive.js";
+import { driveProntoOra, driveAcceso, scollegaDrive } from "../lib/drive.js";
 
 
 function Spazio({ dati }) {
@@ -288,24 +288,52 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
           <p style={{ color: C.muted }}>Un momento…</p>
         ) : session ? (
           <>
-            <p style={{ color: C.muted, fontSize: F.nota, marginBottom: 16 }}>
-              Connesso come <span style={{ color: C.text }}>{session.user.email}</span>
-              <br />
-              Ultima sincronizzazione: {fmtWhen(getLastSync())}
-            </p>
-            <StatoGoogle
-              conGoogle={(session.user.app_metadata?.providers || []).includes("google")}
-              onGoogle={conGoogle}
-              busy={busy}
-              guaio={guaioGoogle}
-            />
+            {/* DA DENTRO, UNA SCHEDA SOLA (chiesto dal lettore: «si può
+                ripulire un po' questo pannello?»): chi sei, e due righe che
+                dicono se biblioteca e Drive stanno a posto. Il resto — il
+                racconto del giro, la password, l'uscita — c'e', piegato */}
+            <div
+              style={{
+                padding: "12px 14px",
+                marginBottom: 12,
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.border}`,
+                background: C.bg,
+              }}
+            >
+              <div style={{ color: C.text, fontSize: F.corpo, overflowWrap: "anywhere" }}>{session.user.email}</div>
+              <Riga ok={!!getLastSync()}>
+                {getLastSync() ? `Biblioteca sincronizzata · ${fmtWhen(getLastSync())}` : "Biblioteca non ancora sincronizzata"}
+              </Riga>
+              <StatoGoogle
+                conGoogle={(session.user.app_metadata?.providers || []).includes("google")}
+                onGoogle={conGoogle}
+                busy={busy}
+                guaio={guaioGoogle}
+              />
+            </div>
+            <button
+              onClick={onSync}
+              disabled={status.busy}
+              style={{
+                width: "100%",
+                minHeight: 48,
+                padding: "10px 18px",
+                borderRadius: R.piccolo,
+                background: status.busy ? C.dim : `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+                color: status.busy ? C.muted : C.onAccent,
+                fontWeight: 600,
+                fontSize: F.corpo,
+              }}
+            >
+              {status.busy ? "Sincronizzo…" : "🔄 Sincronizza ora"}
+            </button>
             {status.message && (
-              <div style={{ marginBottom: 12 }}>
+              <div style={{ marginTop: 10 }}>
                 <p style={{ color: C.arcane, fontSize: F.nota, margin: 0 }}>{status.message}</p>
                 {/* IL TESTO GREZZO NON SI BUTTA, SI RIPIEGA: la frase sopra
                     serve a chi legge, questo a chi deve ripararlo quando gli
-                    arriva la fotografia. In vista sarebbe il difetto di
-                    prima; buttato via, la fotografia non direbbe niente. */}
+                    arriva la fotografia */}
                 {status.dettaglio && (
                   <details style={{ marginTop: 6 }}>
                     <summary style={{ color: C.muted, fontSize: F.piccolo, cursor: "pointer" }}>
@@ -327,78 +355,6 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
               </div>
             )}
             <Racconto voci={status.racconto || ultimoGiro()?.voci || []} />
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button
-                onClick={onSync}
-                disabled={status.busy}
-                style={{
-                  flex: 1,
-                  minWidth: 150,
-                  padding: "11px 18px",
-                  borderRadius: R.piccolo,
-                  background: status.busy ? C.dim : `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
-                  color: status.busy ? C.muted : C.onAccent,
-                  fontWeight: 600,
-                  fontSize: F.corpo,
-                }}
-              >
-                {status.busy ? "Sincronizzo…" : "🔄 Sincronizza ora"}
-              </button>
-              <button
-                onClick={handleSignOut}
-                style={{
-                  padding: "11px 18px",
-                  borderRadius: R.piccolo,
-                  border: `1px solid ${C.border}`,
-                  color: C.muted,
-                  fontSize: F.corpo,
-                }}
-              >
-                Esci
-              </button>
-            </div>
-            {/* Chi e' entrato col link puo' darsi una password e non
-                dipenderne piu'; ed e' anche la strada per rimetterne una
-                dimenticata, senza una pagina di recupero tutta sua. */}
-            {nuova === null ? (
-              <button
-                onClick={() => { setNuova(""); setGuaio(null); }}
-                style={{ marginTop: 12, color: C.muted, fontSize: F.nota, textDecoration: "underline" }}
-              >
-                🔑 Cambia la password
-              </button>
-            ) : (
-              <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <input
-                  value={nuova}
-                  onChange={(e) => setNuova(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && salvaPassword()}
-                  type="password"
-                  autoComplete="new-password"
-                  placeholder="Nuova password"
-                  style={{ ...campo(), flex: 1, minWidth: 160, width: "auto" }}
-                />
-                <button
-                  onClick={salvaPassword}
-                  disabled={busy}
-                  style={{
-                    padding: "10px 18px",
-                    borderRadius: R.piccolo,
-                    border: `1px solid ${C.accent}88`,
-                    color: C.accent,
-                    fontSize: F.nota,
-                  }}
-                >
-                  Salva
-                </button>
-                <button onClick={() => { setNuova(null); setGuaio(null); }} style={{ color: C.muted, fontSize: F.nota }}>
-                  Lascia stare
-                </button>
-              </div>
-            )}
-            {guaio && (
-              <p style={{ marginTop: 10, color: C.red, fontSize: F.nota, lineHeight: 1.45 }}>{guaio}</p>
-            )}
             <Spazio dati={spazio} />
           </>
         ) : confermare ? (
@@ -549,7 +505,82 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
 
         {/* da fuori «Entra con Google» collega anche Drive: una seconda
             porta per la stessa stanza era la confusione di prima */}
-        {(!isSyncConfigured() || session) && <SezioneDrive onCollegato={onSync} notify={notify} />}
+        {(!isSyncConfigured() || session) && <SezioneDrive onCollegato={onSync} notify={notify} sobria={!!session} />}
+
+        {isSyncConfigured() && session && (
+          <details style={{ marginTop: 16, paddingTop: 4, borderTop: `1px solid ${C.border}` }}>
+            <summary style={{ color: C.muted, fontSize: F.nota, cursor: "pointer", padding: "12px 0" }}>Altro</summary>
+            {/* Chi e' entrato col link puo' darsi una password e non
+                dipenderne piu'; ed e' anche la strada per rimetterne una
+                dimenticata, senza una pagina di recupero tutta sua. */}
+            {nuova === null ? (
+              <button
+                onClick={() => { setNuova(""); setGuaio(null); }}
+                style={{ display: "block", minHeight: 44, color: C.muted, fontSize: F.nota, textDecoration: "underline" }}
+              >
+                🔑 Cambia la password
+              </button>
+            ) : (
+              <div style={{ margin: "4px 0 8px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <input
+                  value={nuova}
+                  onChange={(e) => setNuova(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && salvaPassword()}
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Nuova password"
+                  style={{ ...campo(), flex: 1, minWidth: 160, width: "auto" }}
+                />
+                <button
+                  onClick={salvaPassword}
+                  disabled={busy}
+                  style={{
+                    padding: "10px 18px",
+                    borderRadius: R.piccolo,
+                    border: `1px solid ${C.accent}88`,
+                    color: C.accent,
+                    fontSize: F.nota,
+                  }}
+                >
+                  Salva
+                </button>
+                <button onClick={() => { setNuova(null); setGuaio(null); }} style={{ color: C.muted, fontSize: F.nota }}>
+                  Lascia stare
+                </button>
+              </div>
+            )}
+            {guaio && <p style={{ margin: "4px 0 8px", color: C.red, fontSize: F.nota, lineHeight: 1.45 }}>{guaio}</p>}
+            {driveAcceso() && (
+              <button
+                onClick={async () => {
+                  await scollegaDrive();
+                  notify?.("Google Drive scollegato. I file su Drive restano dove sono.");
+                  onClose?.();
+                }}
+                style={{ display: "block", minHeight: 44, color: C.muted, fontSize: F.nota, textDecoration: "underline" }}
+              >
+                Scollega Google Drive
+              </button>
+            )}
+            <button
+              onClick={handleSignOut}
+              style={{
+                marginTop: 4,
+                minHeight: 44,
+                padding: "8px 18px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.border}`,
+                color: C.muted,
+                fontSize: F.nota,
+              }}
+            >
+              Esci
+            </button>
+            <p style={{ margin: "8px 0 0", color: C.muted, fontSize: F.minuscolo, lineHeight: 1.45 }}>
+              Uscendo, i libri restano su questo dispositivo.
+            </p>
+          </details>
+        )}
 
         <div style={{ marginTop: 18, textAlign: "right" }}>
           <button onClick={onClose} style={{ color: C.muted, fontSize: F.nota }}>
@@ -566,35 +597,50 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
 // Ogni stato dice cosa fare, con un tasto solo.
 function StatoGoogle({ conGoogle, onGoogle, busy, guaio }) {
   const stato = statoRinnovo();
-  const tasto = {
-    marginTop: 8,
-    minHeight: 44,
-    padding: "8px 16px",
-    borderRadius: R.piccolo,
-    border: `1px solid ${C.accent}88`,
-    color: C.accent,
-    fontSize: F.nota,
-  };
   let frase;
+  let ok = false;
   let chiedi = false;
   if (stato === "revocato") {
-    frase = "Google ha ritirato il permesso per Drive (o è scaduto): rientra con Google e torna a rinnovarsi da solo.";
+    frase = "Google ha ritirato il permesso per Drive (o è scaduto): rientra con Google.";
     chiedi = true;
   } else if (conGoogle && stato !== "nessuno") {
-    frase = driveProntoOra() ? "🗂 Google Drive collegato: la chiave si rinnova da sola." : "🗂 Google Drive: rinnovo la chiave…";
+    ok = driveProntoOra();
+    frase = ok ? "Google Drive collegato · si rinnova da solo" : "Google Drive · rinnovo la chiave…";
   } else {
-    frase = "Entra con Google (la stessa email) e Google Drive si collega da solo, senza chiedere più niente.";
+    frase = "Entra con Google (la stessa email) e Drive si collega da solo, senza chiedere più niente.";
     chiedi = true;
   }
   return (
-    <div style={{ marginBottom: 14 }}>
-      <p style={{ margin: 0, color: chiedi ? C.text : C.muted, fontSize: F.nota, lineHeight: 1.45 }}>{frase}</p>
+    <>
+      <Riga ok={ok}>{frase}</Riga>
       {chiedi && (
-        <button onClick={onGoogle} disabled={busy} style={tasto}>
+        <button
+          onClick={onGoogle}
+          disabled={busy}
+          style={{
+            marginTop: 8,
+            minHeight: 44,
+            padding: "8px 16px",
+            borderRadius: R.piccolo,
+            border: `1px solid ${C.accent}88`,
+            color: C.accent,
+            fontSize: F.nota,
+          }}
+        >
           {busy ? "Vado da Google…" : "Entra con Google"}
         </button>
       )}
       {guaio && <p style={{ marginTop: 8, color: C.red, fontSize: F.nota, lineHeight: 1.45 }}>{guaio}</p>}
+    </>
+  );
+}
+
+// una riga della scheda: a posto (✓) o da guardare (·)
+function Riga({ ok, children }) {
+  return (
+    <div style={{ display: "flex", gap: 8, marginTop: 6, fontSize: F.nota, lineHeight: 1.4, color: ok ? C.muted : C.text }}>
+      <span style={{ color: ok ? C.accent : C.muted, flexShrink: 0 }}>{ok ? "✓" : "·"}</span>
+      <span>{children}</span>
     </div>
   );
 }
@@ -606,8 +652,10 @@ const MOSTRATE = 40;
 function Racconto({ voci }) {
   if (!voci.length) return null;
   return (
-    <div style={{ marginBottom: 14 }}>
-      <p style={{ color: C.muted, fontSize: F.piccolo, margin: "0 0 6px" }}>Nell'ultimo giro</p>
+    <details style={{ marginTop: 10 }}>
+      <summary style={{ color: C.muted, fontSize: F.nota, cursor: "pointer", padding: "10px 0" }}>
+        Nell'ultimo giro · {voci.length === 1 ? "un libro" : `${voci.length} libri`}
+      </summary>
       <ul style={{ listStyle: "none", margin: 0, padding: 0, maxHeight: px(220), overflowY: "auto" }}>
         {voci.slice(0, MOSTRATE).map((v, i) => (
           <li key={i} style={{ fontSize: F.piccolo, color: C.muted, padding: "3px 0", overflowWrap: "break-word" }}>
@@ -619,6 +667,6 @@ function Racconto({ voci }) {
           <li style={{ fontSize: F.piccolo, color: C.muted, padding: "3px 0" }}>e altri {voci.length - MOSTRATE}</li>
         )}
       </ul>
-    </div>
+    </details>
   );
 }

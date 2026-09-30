@@ -62,7 +62,7 @@ Apri la nuvola in alto a destra e tocca **Entra con Google**. Scegli il tuo acco
 
 Con la stessa email di prima ritrovi la stessa biblioteca: Supabase unisce da solo l'accesso con Google a quello con email e password.
 
-Da dentro, il pannello deve dire: «🗂 Google Drive collegato: la chiave si rinnova da sola».
+Da dentro, il pannello deve dire: «✓ Google Drive collegato · si rinnova da solo».
 
 ## Se qualcosa non va
 
