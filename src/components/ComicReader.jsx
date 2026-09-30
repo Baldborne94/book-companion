@@ -38,6 +38,7 @@ import {
   paginaAlPunto,
   pagineAvanti,
   daPreparare,
+  daLasciare,
   PERCHE_CBR_GRANDE,
 } from "../lib/fumetto.js";
 import { vuoto } from "../lib/pdfCrop.js";
@@ -118,6 +119,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const imgRef = useRef(null);
   const archivio = useRef(null);
   const urls = useRef(new Map());
+  const pesi = useRef(new Map());
   const inArrivo = useRef(new Map());
   const gettone = useRef(0);
   const live = useRef({ page: 1, pages: 0 });
@@ -244,6 +246,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           const blob = new Blob([bytes], { type: tipoImmagine(a.pagine[n - 1]) || "image/jpeg" });
           const url = URL.createObjectURL(blob);
           urls.current.set(n, url);
+          pesi.current.set(n, blob.size);
           inArrivo.current.delete(n);
           return url;
         })().catch((e) => {
@@ -255,17 +258,17 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     return inArrivo.current.get(n);
   }, []);
 
-  // le pagine lontane si lasciano andare: l'immagine resta nell'archivio,
-  // da dove si riestrae in un attimo
-  // la finestra tiene anche le pagine preparate avanti (`pagineAvanti`):
-  // sfoltite appena preparate, il lavoro sarebbe buttato
+  // le pagine lontane si lasciano andare solo oltre il tetto di byte
+  // (`daLasciare`): da Drive riprenderle e' un viaggio in rete. La finestra
+  // tiene sempre le pagine preparate avanti (`pagineAvanti`): sfoltite
+  // appena preparate, il lavoro sarebbe buttato
   const sfoltisci = useCallback((attorno) => {
     const avanti = Math.max(VICINE, (live.current.avanti || 0) + 2);
-    for (const [n, url] of urls.current) {
-      if (n < attorno - VICINE || n > attorno + avanti) {
-        URL.revokeObjectURL(url);
-        urls.current.delete(n);
-      }
+    const pronte = [...urls.current.keys()].map((n) => [n, pesi.current.get(n) || 0]);
+    for (const n of daLasciare(pronte, { attorno, dietro: VICINE, avanti })) {
+      URL.revokeObjectURL(urls.current.get(n));
+      urls.current.delete(n);
+      pesi.current.delete(n);
     }
   }, []);
 
@@ -365,6 +368,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
       dead = true;
       for (const url of urls.current.values()) URL.revokeObjectURL(url);
       urls.current.clear();
+      pesi.current.clear();
       archivio.current?.chiudi?.();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

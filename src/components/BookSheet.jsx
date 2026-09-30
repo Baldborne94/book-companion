@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { driveAcceso, mappaDrive } from "../lib/drive.js";
 import { fmtGoogle } from "../lib/bytes.js";
+import { fraseScarico } from "../lib/driveCore.js";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import {
   getProgress,
@@ -468,11 +469,13 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   const diversoDaDrive = suDrive && pesoQui > 0 && Number(mappaDrive()[book.id]?.byte) > 0 && Number(mappaDrive()[book.id].byte) !== pesoQui;
 
   const [tenendo, setTenendo] = useState(false);
+  const [discesa, setDiscesa] = useState(null);
   async function tieniQui() {
     if (tenendo || !onTieniQui) return;
     setTenendo(true);
+    setDiscesa(null);
     try {
-      const ok = await onTieniQui(book.id);
+      const ok = await onTieniQui(book.id, setDiscesa);
       if (ok) setPesoQui((await getFile(book.id).catch(() => null))?.size || 0);
     } finally {
       setTenendo(false);
@@ -1080,7 +1083,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                 }}
               >
                 {tenendo
-                  ? "Scarico…"
+                  ? fraseScarico(discesa)
                   : `⬇ Tieni sul tablet${Number(mappaDrive()[book.id]?.byte) > 0 ? ` · ${fmtGoogle(Number(mappaDrive()[book.id].byte))}` : ""}`}
               </button>
               <span style={{ fontSize: F.piccolo, color: C.muted }}>

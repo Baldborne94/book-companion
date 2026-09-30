@@ -607,6 +607,28 @@ export function pagineAvanti({ lontano = false, connessione = null } = {}) {
   return comeRete(connessione) === "a consumo" ? AVANTI_A_CONSUMO : AVANTI_DA_LONTANO;
 }
 
+// LE PAGINE GIA' APERTE RESTANO, FINO A UN TETTO DI BYTE (segnalato dal
+// lettore: «ci mette parecchi secondi per passare da una pagina all'altra…
+// o tornare indietro»). Si tenevano quattro pagine dietro quella a schermo e
+// le altre si buttavano: sul tablet si riestraggono in un attimo, ma da
+// Drive tornare indietro era un viaggio in rete a voltata (misurato col
+// Drive finto a 4 MB/s: 1,2 secondi a coppia, contro 30-100 ms in avanti).
+// Adesso una pagina se ne va solo se fuori dalla finestra E oltre il tetto,
+// e la piu' lontana per prima. `pronte` = [[pagina, byte], …].
+export const MEMORIA_PAGINE = 200 * 1024 * 1024;
+export function daLasciare(pronte, { attorno, dietro = 0, avanti = 0, tetto = MEMORIA_PAGINE } = {}) {
+  let tot = pronte.reduce((s, [, b]) => s + (Number(b) || 0), 0);
+  const via = [];
+  const fuori = pronte.filter(([n]) => n < attorno - dietro || n > attorno + avanti);
+  fuori.sort((x, y) => Math.abs(y[0] - attorno) - Math.abs(x[0] - attorno));
+  for (const [n, b] of fuori) {
+    if (tot <= tetto) break;
+    via.push(n);
+    tot -= Number(b) || 0;
+  }
+  return via;
+}
+
 // le pagine da preparare dopo `ultima` (l'ultima a schermo), in ordine, fino
 // alla fine del volume, saltando quelle gia' pronte
 export function daPreparare(ultima, totale, quante, pronte = new Set()) {

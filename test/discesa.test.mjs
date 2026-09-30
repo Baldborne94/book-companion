@@ -67,7 +67,7 @@ function driveFinto(file, { lunghezza = false } = {}) {
 export default async (t) => {
   const vecchi = { localStorage: globalThis.localStorage, fetch: globalThis.fetch };
   globalThis.localStorage = memoria;
-  const { fraseDiscesa, vaDetto } = await import("../src/lib/driveCore.js");
+  const { fraseDiscesa, fraseScarico, vaDetto } = await import("../src/lib/driveCore.js");
   const drive = await import("../src/lib/drive.js");
   const { CBR_MAX, PERCHE_CBR_GRANDE } = await import("../src/lib/fumetto.js");
   try {
@@ -77,6 +77,8 @@ export default async (t) => {
     t.eq("un file piccolo non e' «di 0 MB»", fraseDiscesa({ presi: 0, totale: 200 * 1024 }), "Scende da Google Drive: 0 di 1 MB");
     t.eq("senza il totale si dice quel che e' sceso", fraseDiscesa({ presi: 40 * MB }), "Scende da Google Drive: 40 MB");
     t.eq("…anche quando e' poco", fraseDiscesa({ presi: 10 }), "Scende da Google Drive: meno di un MB");
+    t.eq("sul tasto, prima che la risposta arrivi", fraseScarico(null), "Scarico…");
+    t.eq("sul tasto, a che punto e'", fraseScarico({ presi: 120 * MB, totale: 480 * MB }), "Scarico… 120 di 480 MB");
     t.c("si dice a ogni MB passato", vaDetto(MB - 1, MB, 10 * MB));
     t.c("non a ogni pezzo di rete", !vaDetto(MB + 1, MB + 2, 10 * MB));
     t.c("e alla fine sempre", vaDetto(MB + 1, MB + 2, MB + 2));

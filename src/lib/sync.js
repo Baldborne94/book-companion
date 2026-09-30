@@ -944,10 +944,13 @@ export async function anticipaFile(book) {
 // TENERE IL LIBRO SUL TABLET: gli stessi byte di `prendiFile`, scritti su
 // disco. Da qui passano i soli gesti che lo CHIEDONO — la scheda, «Scarica
 // qui», il ripristino — mai una lettura.
-export async function ensureLocalFile(book) {
+// Chi lo tiene sul tablet dopo averlo letto da Drive ha gia' il file in
+// memoria (`LONTANI`): si scrive quello, invece di scaricarlo di nuovo.
+export async function ensureLocalFile(book, { onProgress } = {}) {
   const local = await getFile(book.id);
   if (local) return local;
-  const preso = await prendiFile(book);
+  const voce = driveAcceso() ? mappaDrive()[book.id] : null;
+  const preso = LONTANI.prendi(book.id, firmaLontana(voce)) || (await prendiFile(book, { onProgress }));
   if (!preso) return null;
   await putFile(book.id, preso);
   return preso;
