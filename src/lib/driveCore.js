@@ -858,3 +858,22 @@ export function cbzDaAdottare(libri, mappa, file) {
   }
   return out;
 }
+
+// L'ADOZIONE A META' (trovata sul Drive del lettore dopo il primo giro di
+// Colab: i CBZ col segno, i CBR nel cestino, e le schede ancora «CBR»).
+// Su Drive l'adozione e' fatta in un attimo, la scheda cambia dopo: un'app
+// chiusa o una pagina congelata in mezzo lasciava il libro CBR per sempre,
+// perche' il CBR nel cestino non c'e' piu' nell'elenco e `cbzDaAdottare` non
+// lo trova. Si decide sullo STATO: un libro «cbr» il cui file su Drive e' un
+// .cbz col segno di QUESTO libro e' gia' adottato, e resta solo la scheda.
+export function cbzGiaAdottati(libri, mappa, file) {
+  const perId = new Map((file || []).map((f) => [f.id, f]));
+  const out = [];
+  for (const b of libri || []) {
+    if (b?.fileType !== "cbr") continue;
+    const f = perId.get(mappa?.[b.id]?.id);
+    if (!f || f.trashed || !/\.cbz$/i.test(f.name || "") || f.appProperties?.bcId !== b.id) continue;
+    out.push({ bookId: b.id, nuovo: f.id, byte: Number(f.size) || 0, sha: f.sha256Checksum || null });
+  }
+  return out;
+}

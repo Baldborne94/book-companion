@@ -3,7 +3,7 @@
 // due modi opposti: non riconosce il gemello (il libro resta CBR e il CBZ
 // entra come un doppione nuovo), o ne riconosce uno che non e' suo (un
 // altro fumetto al posto di questo, e il CBR nel cestino).
-import { cbzDaAdottare } from "../src/lib/driveCore.js";
+import { cbzDaAdottare, cbzGiaAdottati } from "../src/lib/driveCore.js";
 
 export default async (t) => {
   const libri = [
@@ -44,4 +44,29 @@ export default async (t) => {
   // un RAR col nome .cbz: senza guardia sarebbe il gemello di se stesso, e
   // finirebbe nel cestino col suo libro attaccato
   t.eq("un RAR col nome .cbz non e' il gemello di se stesso", cbzDaAdottare([{ id: "rr", fileType: "cbr" }], { rr: { id: "f9" } }, [{ id: "f9", name: "Finto.cbz", parents: ["F"] }]).length, 0);
+
+  // ---- l'adozione a meta': su Drive fatta, la scheda ancora «cbr» ------------------
+  // (il Drive del lettore dopo Colab: CBZ col segno, CBR nel cestino e fuori
+  // dall'elenco, schede CBR)
+  const dopo = [
+    { id: "z1", name: "I Hate Fairyland v02 - Fluff My Life (2016).cbz", parents: ["F"], size: "73308678", sha256Checksum: "aa", appProperties: { bcId: "b1" } },
+    { id: "z2", name: "Omnibus.cbz", parents: ["F"], appProperties: { bcId: "altro" } },
+    { id: "z3", name: "Senza segno.cbz", parents: ["F"] },
+    { id: "z4", name: "Buttato.cbz", parents: ["F"], trashed: true, appProperties: { bcId: "b4" } },
+    { id: "r5", name: "Ancora RAR.cbr", parents: ["F"], appProperties: { bcId: "b5" } },
+    { id: "z6", name: "Gia CBZ.cbz", parents: ["F"], appProperties: { bcId: "b6" } },
+  ];
+  const libriDopo = [
+    { id: "b1", fileType: "cbr" },
+    { id: "b2", fileType: "cbr" },
+    { id: "b3", fileType: "cbr" },
+    { id: "b4", fileType: "cbr" },
+    { id: "b5", fileType: "cbr" },
+    { id: "b6", fileType: "cbz" },
+  ];
+  const mappaDopo = { b1: { id: "z1" }, b2: { id: "z2" }, b3: { id: "z3" }, b4: { id: "z4" }, b5: { id: "r5" }, b6: { id: "z6" } };
+  const g = cbzGiaAdottati(libriDopo, mappaDopo, dopo);
+  t.eq("la scheda si ripara dallo stato di Drive, e solo quella adottata", g.map((x) => `${x.bookId}>${x.nuovo}`).join(), "b1>z1");
+  t.eq("…con misura e impronta, senza un CBR da buttare", `${g[0].byte}/${g[0].sha}/${g[0].vecchio}`, "73308678/aa/undefined");
+  t.eq("…e il gemello non si cerca due volte", cbzDaAdottare(libriDopo, mappaDopo, dopo).length, 0);
 };
