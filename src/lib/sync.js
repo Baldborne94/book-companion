@@ -925,20 +925,26 @@ export async function fileDaLeggere(book, { onProgress } = {}) {
 export async function convertiLibroInCbz(book, { onProgress, chiedi = true } = {}) {
   const { convertiInCbz } = await import("./archivioFumetto.js");
   const { improntaDi } = await import("./importBook.js");
+  const { formatoDaByte } = await import("./fumetto.js");
+  const { pianoConversione } = await import("./convertiCbr.js");
+  const formato = async (b) => (b ? formatoDaByte(new Uint8Array(await b.slice(0, 8).arrayBuffer())) : null);
   const qui = await getFile(book.id).catch(() => null);
   const voce = driveAcceso() ? mappaDrive()[book.id] : null;
-  let cbz;
-  if (qui) {
-    cbz = await convertiInCbz({ blob: qui }, { onProgress });
-    await putFile(book.id, cbz);
-  } else if (voce?.id) {
-    if (!driveProntoOra()) {
-      if (!chiedi) throw new DriveScollegato();
-      await collegaDrive();
-    }
-    cbz = await convertiInCbz({ drive: { id: voce.id, chiave: chiaveDrive() }, misura: voce.byte }, { onProgress });
-  } else throw new Error("il file di questo libro non c'è, né qui né su Google Drive");
-  if (voce?.id) {
+  if (voce?.id && !driveProntoOra()) {
+    if (!chiedi) throw new DriveScollegato();
+    await collegaDrive();
+  }
+  const lassu = voce?.id ? fileRemoto(voce.id, voce.byte) : null;
+  const piano = pianoConversione({ qui: await formato(qui), lassu: await formato(lassu) });
+  if (!piano) throw new Error("il file di questo libro non c'è, né qui né su Google Drive");
+  let cbz = piano.sorgente === "qui" ? qui : lassu;
+  if (piano.converti) {
+    cbz = piano.sorgente === "qui"
+      ? await convertiInCbz({ blob: qui }, { onProgress })
+      : await convertiInCbz({ drive: { id: voce.id, chiave: chiaveDrive() }, misura: voce.byte }, { onProgress });
+    if (qui) await putFile(book.id, cbz);
+  }
+  if (piano.sostituisci) {
     await sostituisciSuDrive(voce.id, cbz, {
       nome: nomeSuDrive({ ...book, fileType: "cbz" }),
       bookId: book.id,
@@ -953,7 +959,9 @@ export async function convertiLibroInCbz(book, { onProgress, chiedi = true } = {
     const cover = await copertinaOriginale({ ...book, fileType: "cbz" }, cbz).catch(() => null);
     if (cover) await putCover(book.id, cover).catch(() => {});
   }
-  const impronta = await improntaDi(cbz).catch(() => undefined);
+  // l'impronta dei byte nuovi, se li ho in mano: da Drive vorrebbe dire
+  // scaricare il volume solo per quella
+  const impronta = cbz === lassu ? undefined : await improntaDi(cbz).catch(() => undefined);
   return { fileType: "cbz", ...(impronta ? { impronta } : {}) };
 }
 

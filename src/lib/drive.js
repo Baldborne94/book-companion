@@ -33,6 +33,7 @@ const CARTELLA = "application/vnd.google-apps.folder";
 // un pezzo alla volta: multiplo di 256 KB come vuole Drive, e abbastanza
 // piccolo da non tenere in volo un giga intero se la rete cade a meta'
 const PEZZO = 32 * 1024 * 1024;
+const PEZZO_A_VISTA = 8 * 1024 * 1024;
 
 export class DriveScollegato extends Error {
   constructor() {
@@ -508,8 +509,16 @@ export async function caricaSuDrive(blob, { nome, cartella, bookId, props, onPro
   const dove = inizio.headers.get("Location");
   if (!dove) throw new Error("Google Drive non ha aperto il caricamento.");
   const totale = blob.size;
+  // CHI GUARDA L'AVANZAMENTO LO VEDE MUOVERSI (segnalato dal lettore: «è
+  // fermo al 99% da un po', come mai?»). Finita la conversione il CBZ sale
+  // su Drive, e la riga restava su «Converto… 99%» finche' non arrivava in
+  // fondo il primo pezzo da 32 MB — minuti, con la banda in salita di casa.
+  // Si dice subito che si carica, e a pezzi da 8 MB (multipli di 256 KB,
+  // come vuole Drive): qualche richiesta in piu', un segno ogni pochi secondi.
+  const passo = onProgress ? PEZZO_A_VISTA : PEZZO;
+  onProgress?.({ presi: 0, totale });
   for (let da = 0; ; ) {
-    const a = Math.min(totale, da + PEZZO);
+    const a = Math.min(totale, da + passo);
     const r = await chiama(dove, {
       method: "PUT",
       headers: { "Content-Range": totale ? `bytes ${da}-${a - 1}/${totale}` : "bytes */0" },
