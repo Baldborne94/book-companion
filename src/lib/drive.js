@@ -17,7 +17,7 @@
 // Le decisioni — cosa e' gia' su Drive, cosa sale, cosa lascia il secchio —
 // stanno in `driveCore.js`, dove un test le prova.
 
-import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive, CAMPI_ELENCO, daTenereNellElenco, applicaCambiamenti, elencoBuono, segnoScaduto, VERSIONE_ELENCO, fileDellElenco, cartelleDellElenco, audioDellElenco, RADICE, idRadice, ARCHIVI, cartellaArchivi, archivioDovuto, archiviDaTogliere, piuRecenti, nomeArchivio } from "./driveCore.js";
+import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive, CAMPI_ELENCO, daTenereNellElenco, applicaCambiamenti, elencoBuono, segnoScaduto, VERSIONE_ELENCO, fileDellElenco, cartelleDellElenco, audioDellElenco, RADICE, idRadice, ARCHIVI, vaDetto, cartellaArchivi, archivioDovuto, archiviDaTogliere, piuRecenti, nomeArchivio } from "./driveCore.js";
 import { getAux, putAux, removeAux } from "./bookStore.js";
 
 const TOKEN_KEY = "bc_drive_token";
@@ -371,9 +371,35 @@ const segnaCon = (fileId, props) =>
   });
 export const segna = (fileId, bookId) => segnaCon(fileId, { bcId: bookId });
 
-export async function scaricaDaDrive(fileId) {
+export async function scaricaDaDrive(fileId, { onProgress, totale = 0 } = {}) {
   const r = await chiama(`${API}/files/${fileId}?alt=media`);
-  return r.blob();
+  if (!onProgress || !r.body?.getReader) return r.blob();
+  // a pezzi, per dire a che punto e' (`fraseDiscesa`): i pezzi finiscono
+  // nello stesso Blob che `r.blob()` avrebbe fatto
+  const tot = Number(totale) || Number(r.headers.get("Content-Length")) || 0;
+  const lettore = r.body.getReader();
+  const pezzi = [];
+  let presi = 0;
+  onProgress({ presi, totale: tot });
+  for (;;) {
+    const { done, value } = await lettore.read();
+    if (done) break;
+    pezzi.push(value);
+    const prima = presi;
+    presi += value.length;
+    if (vaDetto(prima, presi, tot)) onProgress({ presi, totale: tot });
+  }
+  return new Blob(pezzi, { type: r.headers.get("Content-Type") || "" });
+}
+
+// UN CBR COMPRESSO TROPPO GRANDE SI DICE PRIMA DI SCARICARLO: dopo un giga
+// di discesa il lettore l'avrebbe rifiutato comunque (`PERCHE_CBR_GRANDE`).
+// La prima pagina lo dice a uno o due viaggi in rete (`cbrLontanoApribile`).
+export async function fermaCbrCompresso(formato, voce) {
+  if (formato !== "cbr" || !voce?.id) return;
+  const { cbrLontanoApribile, PERCHE_CBR_GRANDE } = await import("./fumetto.js");
+  if (!driveProntoOra()) await collegaDrive();
+  if (!(await cbrLontanoApribile(fileRemoto(voce.id, voce.byte)))) throw new Error(PERCHE_CBR_GRANDE);
 }
 
 // UN FILE DI DRIVE LETTO A PEZZI. Ha la forma che i lettori a fette si

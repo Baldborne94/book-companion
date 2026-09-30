@@ -1382,8 +1382,32 @@ export default function Library({
     filoCopertine.current = mio;
     setCopertinando({ i: 0, totale: mancanti.length, titolo: mancanti[0].title });
     const { ritrovaCopertine, resocontoCopertine, copertinaOriginale } = await import("../lib/copertina.js");
+    // I FUMETTI CHE STANNO SOLO SU DRIVE si guardano da lassu', a pezzi: un
+    // CBZ dall'indice in coda, un CBR dalla prima pagina (`primaPaginaRar`).
+    // Si arriva da un tocco, quindi la chiave di Google si chiede qui.
+    const mappa = mappaDrive();
+    const lassuDi = (id) => {
+      const b = mancanti.find((x) => x.id === id);
+      const v = mappa?.[id];
+      return v?.id && (b?.fileType === "cbz" || b?.fileType === "cbr") ? v : null;
+    };
+    if (mancanti.some((b) => lassuDi(b.id)) && !driveProntoOra()) {
+      try {
+        await collegaDrive();
+      } catch {
+        /* senza chiave quei tomi restano «non su questo dispositivo» */
+      }
+    }
     const esito = await ritrovaCopertine(mancanti, {
-      leggiByte: (id) => getFile(id),
+      leggiByte: async (id) => {
+        const qui = await getFile(id).catch(() => null);
+        if (qui) return qui;
+        const v = driveProntoOra() ? lassuDi(id) : null;
+        if (!v) return null;
+        const f = fileRemoto(v.id, v.byte);
+        f.daLontano = true;
+        return f;
+      },
       // aprire il tomo sta QUI e non dentro la passata, come nella visita:
       // così il giro si prova in Node con dei finti, senza epub.js
       estrai: (b, bytes) => copertinaOriginale(b, bytes),

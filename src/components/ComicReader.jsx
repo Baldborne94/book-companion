@@ -3,6 +3,7 @@ import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
 import { fileDaLeggere } from "../lib/sync.js";
 import { driveProntoOra } from "../lib/drive.js";
+import { fraseDiscesa } from "../lib/driveCore.js";
 import RicollegaDrive from "./RicollegaDrive.jsx";
 import { getCfi, setCfi, getMarks, saveMarks } from "../lib/annotations.js";
 import { setProgress, setStatus } from "../lib/library.js";
@@ -37,6 +38,7 @@ import {
   paginaAlPunto,
   pagineAvanti,
   daPreparare,
+  PERCHE_CBR_GRANDE,
 } from "../lib/fumetto.js";
 import { vuoto } from "../lib/pdfCrop.js";
 import { conAttesa } from "../lib/misuraPagine.js";
@@ -129,6 +131,8 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
 
   const [settings, setSettings] = useState(() => loadReaderSettings(Math.min(window.innerWidth, window.innerHeight)));
   const [status, setStatusUi] = useState("loading");
+  const [discesa, setDiscesa] = useState("");
+  const [perche, setPerche] = useState("");
   const [chrome, setChrome] = useState(() => !isTouch());
   const [panel, setPanel] = useState(null);
   const [page, setPage] = useState(1);
@@ -312,7 +316,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     let dead = false;
     (async () => {
       try {
-        const blob = await fileDaLeggere(book);
+        const blob = await fileDaLeggere(book, { onProgress: (p) => !dead && setDiscesa(fraseDiscesa(p)) });
         if (!blob) throw new Error("file mancante");
         lontano.current = !!blob.daLontano;
         live.current.avanti = pagineAvanti({ lontano: lontano.current, connessione: navigator.connection });
@@ -351,8 +355,10 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           else misura.then((x) => { if (!dead) setBordi(x); }).catch(() => {});
         }
         setStatusUi("ready");
-      } catch {
-        if (!dead) setStatusUi("error");
+      } catch (e) {
+        if (dead) return;
+        setPerche(e?.message === PERCHE_CBR_GRANDE ? PERCHE_CBR_GRANDE : "");
+        setStatusUi("error");
       }
     })();
     return () => {
@@ -903,6 +909,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         >
           <span style={{ fontSize: 40, animation: "bc-flicker 3s ease-in-out infinite" }}>🕯️</span>
           <span style={{ fontFamily: FONT_TITLE, fontSize: F.rilievo }}>Apro il tomo…</span>
+          {discesa && <span style={{ fontSize: F.piccolo, fontVariantNumeric: "tabular-nums" }}>{discesa}</span>}
         </div>
       )}
 
@@ -933,9 +940,10 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           }}
         >
           <span style={{ fontSize: 40 }}>📕</span>
-          <span>
-            Questo fumetto non si lascia aprire… l'archivio potrebbe essere danneggiato o senza immagini
-            dentro, oppure è nel cloud e ora sei offline.
+          <span style={{ maxWidth: px(560) }}>
+            {perche
+              ? `Q${perche.slice(1)}.`
+              : "Questo fumetto non si lascia aprire… l'archivio potrebbe essere danneggiato o senza immagini dentro, oppure è nel cloud e ora sei offline."}
           </span>
           <button onClick={handleClose} style={{ padding: "10px 22px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.muted }}>
             Torna alla Libreria
