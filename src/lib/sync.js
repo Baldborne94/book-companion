@@ -970,17 +970,20 @@ export async function convertiLibroInCbz(book, { onProgress, chiedi = true } = {
 // e voto restano, la copertina che mancava si prende dal CBZ, e la copia CBR
 // rimasta sul tablet se ne va (il lettore aprirebbe ancora quella). Si fa
 // solo con la chiave in mano: nessuna finestra di Google senza un tocco.
-// Torna, libro per libro, quel che cambia nella scheda.
-export async function adottaCbzConvertiti(libri) {
+// Torna, libro per libro, quel che cambia nella scheda, e lo dice SUBITO a
+// `onFatto`: centosette volumi con la copertina da prendere sono minuti, e
+// la scheda non aspetta l'ultimo (vedi `cbzGiaAdottati`).
+export async function adottaCbzConvertiti(libri, { onFatto } = {}) {
   if (!driveAcceso() || !driveProntoOra()) return [];
-  const { cbzDaAdottare } = await import("./driveCore.js");
+  const { cbzDaAdottare, cbzGiaAdottati } = await import("./driveCore.js");
   const cbr = (libri || []).filter((b) => b?.fileType === "cbr");
   if (!cbr.length) return [];
-  const da = cbzDaAdottare(cbr, mappaDrive(), await elencaFile());
+  const file = await elencaFile();
+  const da = [...cbzGiaAdottati(cbr, mappaDrive(), file), ...cbzDaAdottare(cbr, mappaDrive(), file)];
   const fatti = [];
   for (const a of da) {
     try {
-      await adottaCbz(a);
+      if (a.vecchio) await adottaCbz(a);
       LONTANI.dimentica?.(a.bookId);
       await removeFileOnly(a.bookId).catch(() => {});
       if (!(await getCover(a.bookId).catch(() => null))) {
@@ -991,7 +994,9 @@ export async function adottaCbzConvertiti(libri) {
         if (cover) await putCover(a.bookId, cover).catch(() => {});
       }
       const { IMPRONTA_INTERA } = await import("./importBook.js");
-      fatti.push({ id: a.bookId, patch: { fileType: "cbz", impronta: a.sha && a.byte <= IMPRONTA_INTERA ? a.sha : undefined } });
+      const fatto = { id: a.bookId, patch: { fileType: "cbz", impronta: a.sha && a.byte <= IMPRONTA_INTERA ? a.sha : undefined } };
+      fatti.push(fatto);
+      onFatto?.(fatto);
     } catch (e) {
       if (e?.name === "DriveScollegato") break;
     }

@@ -1028,8 +1028,7 @@ export default function App() {
   const adottaCbz = useRef(async () => {});
   adottaCbz.current = async () => {
     if (filoLavoro.current) return;
-    const fatti = await adottaCbzConvertiti(loadBooks()).catch(() => []);
-    for (const f of fatti) applicaConversione(f.id, f.patch);
+    const fatti = await adottaCbzConvertiti(loadBooks(), { onFatto: (f) => applicaConversione(f.id, f.patch) }).catch(() => []);
     if (!fatti.length) return;
     setLocalIds(await localFileIds().catch(() => null));
     notify(fatti.length === 1 ? "Un fumetto convertito su Colab ora è un CBZ ✓" : `${fatti.length} fumetti convertiti su Colab ora sono CBZ ✓`);
