@@ -79,6 +79,9 @@ export async function sbircia(files) {
     // prima, non dopo aver ripristinato
     parziale: !(data.version >= 2),
     pezzi: frasePezzi(insieme),
+    // l'archivio che va su Drive da solo: niente byte, e il pannello lo dice
+    soloSchede: !!data.soloSchede,
+    quando: data.exportedAt || null,
     estranei: insieme.estranei,
   };
 }
@@ -158,9 +161,10 @@ export async function restoreLibrary(archivio, { onProgress, cosa } = {}) {
       say(`Ripristino «${voce.name || "una melodia"}»…`);
       await putTrack(voce.trackId, blob);
       melodieRipristinate++;
-    } else if (voce.trackId) {
+    } else if (voce.trackId && !voce.drive) {
       // il preferito c'e' ma i byte no: meglio non lasciare in elenco una
-      // melodia che non suonerebbe
+      // melodia che non suonerebbe. Una melodia di Drive i byte li ha
+      // lassu', e scende quando la suoni.
       continue;
     }
     localiMel.push(voce);

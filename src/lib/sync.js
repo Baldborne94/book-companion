@@ -30,7 +30,7 @@ import { leggiQuaderno, scriviQuaderno, fondiQuaderno } from "./quaderno.js";
 import { leggiDaPrendere, scriviDaPrendere, fondiDaPrendere } from "./daPrendere.js";
 import { leggiRigheLeggere, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare, copertineInAttesa, segnaInAttesa, fondiSchede } from "./syncCore.js";
 import { daTogliereDalSecchio, avanziDelSecchio, segnaSuDrive, leggereDaLontano } from "./driveCore.js";
-import { giroDrive, giroMelodie, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto } from "./drive.js";
+import { giroDrive, giroMelodie, archiviaSuDrive, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto } from "./drive.js";
 import { tipiDi, tipoDi } from "./library.js";
 import { misureFile, listTrackIds } from "./bookStore.js";
 import { nuovaMemoria, firmaLontana } from "./ultimiLontani.js";
@@ -260,9 +260,27 @@ async function giroDelDrive(books, { say, inUscita, secchio = null, altrove = nu
       say,
     });
     if (esito.saltato) return esito;
-    return { ...esito, falliti: (esito.falliti || 0) + (await giroDellaMusica(say)) };
+    const falliti = (esito.falliti || 0) + (await giroDellaMusica(say));
+    return { ...esito, falliti, archiviato: await archivioDelGiorno(books, say) };
   } catch {
     return { falliti: 1 };
+  }
+}
+
+// L'ARCHIVIO DELLE SCHEDE va su Drive dopo i file (vedi `archiviaSuDrive`):
+// una volta al giorno, e un archivio che non parte non si porta via il giro.
+async function archivioDelGiorno(books, say) {
+  try {
+    const r = await archiviaSuDrive(
+      async () => {
+        say("Metto al sicuro le schede su Drive…");
+        return (await import("./exportLibrary.js")).archivioSchede();
+      },
+      { roba: books.length + getFavoritesRaw().length }
+    );
+    return !!r.fatto;
+  } catch {
+    return false;
   }
 }
 

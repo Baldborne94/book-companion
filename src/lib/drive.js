@@ -17,7 +17,7 @@
 // Le decisioni — cosa e' gia' su Drive, cosa sale, cosa lascia il secchio —
 // stanno in `driveCore.js`, dove un test le prova.
 
-import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive, CAMPI_ELENCO, daTenereNellElenco, applicaCambiamenti, elencoBuono, segnoScaduto, VERSIONE_ELENCO, fileDellElenco, cartelleDellElenco, audioDellElenco } from "./driveCore.js";
+import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive, CAMPI_ELENCO, daTenereNellElenco, applicaCambiamenti, elencoBuono, segnoScaduto, VERSIONE_ELENCO, fileDellElenco, cartelleDellElenco, audioDellElenco, RADICE, idRadice, ARCHIVI, cartellaArchivi, archivioDovuto, archiviDaTogliere, piuRecenti, nomeArchivio } from "./driveCore.js";
 import { getAux, putAux, removeAux } from "./bookStore.js";
 
 const TOKEN_KEY = "bc_drive_token";
@@ -348,11 +348,11 @@ export const elencaFile = async () => fileDellElenco(await tuttiDellElenco());
 // («book-companion»), e di scrivere un percorso invece di un nome solo
 export const elencaCartelle = async () => cartelleDellElenco(await tuttiDellElenco());
 
-async function creaCartella(nome) {
+async function creaCartella(nome, genitore = null) {
   const r = await chiama(`${API}/files?fields=id,name,parents,mimeType`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: nome, mimeType: CARTELLA }),
+    body: JSON.stringify({ name: nome, mimeType: CARTELLA, ...(genitore ? { parents: [genitore] } : {}) }),
   });
   const f = await r.json();
   aggiungiAllElenco({ mimeType: CARTELLA, ...f });
@@ -741,4 +741,65 @@ export async function melodiaDalDrive(trackId) {
     if (e?.status === 404) return null;
     throw e;
   }
+}
+
+// L'ARCHIVIO DELLE SCHEDE (le decisioni in `driveCore.js`, vedi
+// `archivioDovuto`). Parte dal giro di Drive, quindi solo con la chiave gia'
+// in mano: nessuna finestra di Google si apre da sola. `prepara` torna lo zip
+// (o `null` a biblioteca vuota) e si chiama solo se l'archivio e' dovuto:
+// raccogliere seicento schede per poi non mandarle sarebbe lavoro buttato.
+const ARCHIVIO_KEY = "bc_drive_archivio";
+export const ultimoArchivioSuDrive = () => Number(leggi(ARCHIVIO_KEY)) || 0;
+
+const archiviSuDrive = () =>
+  elencaTutto("trashed=false and appProperties has { key='bcArchivio' and value='1' }", "id,name,size,createdTime");
+
+async function cartellaDegliArchivi() {
+  const cartelle = await elencaCartelle();
+  const c = cartellaArchivi(cartelle);
+  if (c) return c;
+  const radice = idRadice(cartelle) || (await creaCartella(RADICE)).id;
+  return (await creaCartella(ARCHIVI, radice)).id;
+}
+
+export async function archiviaSuDrive(prepara, { roba = 1, ora = Date.now() } = {}) {
+  if (!driveAcceso() || !driveConfigurato()) return { saltato: "spento" };
+  if (!tokenValido()) return { saltato: "scaduto" };
+  if (!archivioDovuto({ ultimo: ultimoArchivioSuDrive(), ora, roba })) return { saltato: "fatto" };
+  try {
+    const blob = await prepara();
+    if (!blob) return { saltato: "vuoto" };
+    const cartella = await cartellaDegliArchivi();
+    await caricaSuDrive(blob, { nome: nomeArchivio(ora), cartella, props: { bcArchivio: "1" } });
+    scrivi(ARCHIVIO_KEY, String(ora));
+    // i vecchi vanno nel cestino di Drive, non spariscono: da li' il lettore
+    // li riprende per un mese
+    let tolti = 0;
+    for (const a of archiviDaTogliere(await archiviSuDrive())) {
+      try {
+        await chiama(`${API}/files/${encodeURIComponent(a.id)}?fields=id`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ trashed: true }),
+        });
+        tolti += 1;
+      } catch (e) {
+        if (e instanceof DriveScollegato) throw e;
+      }
+    }
+    return { fatto: true, tolti };
+  } catch (e) {
+    if (e instanceof DriveScollegato) return { saltato: "scaduto" };
+    throw e;
+  }
+}
+
+// L'ULTIMO ARCHIVIO, per il ripristino. Si arriva da un tocco, quindi la
+// chiave scaduta si chiede qui. `null` = su Drive non ce n'e' nessuno.
+export async function ultimoArchivioDaDrive() {
+  if (!tokenValido()) await collegaDrive();
+  const [a] = piuRecenti(await archiviSuDrive());
+  if (!a) return null;
+  const blob = await scaricaDaDrive(a.id);
+  return { file: new File([blob], a.name, { type: "application/zip" }), quando: Date.parse(a.createdTime) || 0 };
 }
