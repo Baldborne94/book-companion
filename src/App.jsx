@@ -1240,32 +1240,6 @@ export default function App() {
   const fermaLavoro = () => {
     filoLavoro.current = null;
   };
-  // LO SCHERMO RESTA ACCESO MENTRE IL GIRO LAVORA: spento, Android congela
-  // la pagina dopo qualche minuto e il giro si ferma li'. Il sistema toglie
-  // il blocco quando la pagina va in secondo piano: tornando lo si richiede.
-  const lavorando = !!lavoro;
-  useEffect(() => {
-    if (!lavorando || !navigator.wakeLock) return;
-    let presa = null;
-    let attivo = true;
-    const chiedi = async () => {
-      if (!attivo || presa || document.visibilityState !== "visible") return;
-      try {
-        presa = await navigator.wakeLock.request("screen");
-        presa.addEventListener?.("release", () => (presa = null));
-        if (!attivo) presa.release().catch(() => {});
-      } catch {
-        /* negato: il giro va lo stesso finche' lo schermo resta acceso */
-      }
-    };
-    chiedi();
-    document.addEventListener("visibilitychange", chiedi);
-    return () => {
-      attivo = false;
-      document.removeEventListener("visibilitychange", chiedi);
-      presa?.release?.().catch(() => {});
-    };
-  }, [lavorando]);
 
   async function handleDelete(id) {
     setOpenId(null);
@@ -1533,16 +1507,6 @@ export default function App() {
     }
   }, [music.current, readingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // LO SCHERMO CHE NON SI SPEGNE MENTRE LEGGI.
-  //
-  // Una pagina fitta te la leggi in due o tre minuti senza toccare il vetro,
-  // e il tablet nel frattempo si oscura. Il blocco vale solo a libro aperto,
-  // ed e' anche l'unico posto dell'app dove ha senso: alla musica servirebbe
-  // l'esatto contrario.
-  //
-  // Ma non per sempre. Se per un quarto d'ora non tocchi niente non stai
-  // leggendo, ti sei addormentato sopra il libro: il blocco si arrende e
-  // lascia che sia il tablet a decidere. Al primo tocco torna.
   // IL TEMPO DI LETTURA si conta da qui, sugli stessi segnali della veglia
   // (le voltate dei due reader, `lib/tempo.js`): si comincia ad aprire il
   // libro, ci si ferma a chiuderlo e quando l'app va in secondo piano — il
@@ -1558,58 +1522,52 @@ export default function App() {
     };
   }, [readingId]);
 
+  // LO SCHERMO NON SI SPEGNE FINCHE' L'APP E' DAVANTI (chiesto dal lettore:
+  // «quando l'app è aperta il tablet non mi si spegne?»). Prima valeva solo
+  // a libro aperto e si arrendeva dopo un quarto d'ora senza tocchi; e
+  // tornando da un'altra app non si richiedeva mai: il sistema toglie il
+  // blocco quando la pagina va in secondo piano, ma qui la presa restava
+  // segnata come viva e `chiedi` non chiedeva piu' niente. Adesso la presa
+  // si dimentica quando il sistema la toglie (`release`), e si richiede a
+  // ogni ritorno davanti e a ogni tocco. Copre anche il giro dei CBR, che
+  // aveva il suo blocco.
   useEffect(() => {
-    if (!readingId || !navigator.wakeLock) return;
+    if (!navigator.wakeLock) return;
     let attivo = true;
     let presa = null;
-    let resa = null;
-
-    const molla = () => {
-      const p = presa;
-      presa = null;
-      p?.release?.().catch(() => { /* gia' rilasciato dal sistema */ });
-    };
+    let chiedendo = false;
     const chiedi = async () => {
-      if (!attivo || presa) return;
+      if (!attivo || presa || chiedendo || document.visibilityState !== "visible") return;
+      chiedendo = true;
       try {
-        presa = await navigator.wakeLock.request("screen");
-        if (!attivo) molla();
-      } catch { /* negato o non permesso qui: si legge lo stesso */ }
+        const p = await navigator.wakeLock.request("screen");
+        if (!attivo) return p.release().catch(() => {});
+        presa = p;
+        p.addEventListener?.("release", () => {
+          if (presa === p) presa = null;
+        });
+      } catch {
+        /* negato o non permesso qui: l'app va lo stesso */
+      } finally {
+        chiedendo = false;
+      }
     };
-    const rinvia = () => {
-      clearTimeout(resa);
-      resa = setTimeout(molla, 15 * 60 * 1000);
-    };
-    const sveglia = () => {
-      rinvia();
-      chiedi();
-    };
-
-    // Il segnale che conta e' la voltata, e arriva dai reader: il testo sta
-    // dentro un iframe, e un dito che sfoglia li' dentro non fa alzare un
-    // solo evento qui fuori.
-    svegliaRef.current = sveglia;
-    const tornato = () => {
-      if (document.visibilityState === "visible") sveglia();
-    };
-
+    // il segnale dai reader: il testo sta dentro un iframe, e un dito che
+    // sfoglia li' dentro non fa alzare un solo evento qui fuori
+    svegliaRef.current = chiedi;
     chiedi();
-    rinvia();
-    // il sistema toglie il blocco da solo quando la pagina va in secondo
-    // piano: tornando davanti va richiesto di nuovo
-    document.addEventListener("visibilitychange", tornato);
-    document.addEventListener("pointerdown", sveglia);
-    document.addEventListener("keydown", sveglia);
+    document.addEventListener("visibilitychange", chiedi);
+    document.addEventListener("pointerdown", chiedi);
+    document.addEventListener("keydown", chiedi);
     return () => {
       attivo = false;
-      clearTimeout(resa);
       svegliaRef.current = () => {};
-      document.removeEventListener("visibilitychange", tornato);
-      document.removeEventListener("pointerdown", sveglia);
-      document.removeEventListener("keydown", sveglia);
-      molla();
+      document.removeEventListener("visibilitychange", chiedi);
+      document.removeEventListener("pointerdown", chiedi);
+      document.removeEventListener("keydown", chiedi);
+      presa?.release?.().catch(() => {});
     };
-  }, [readingId]);
+  }, []);
 
   return (
     <div

@@ -41,6 +41,8 @@ import {
   daLasciare,
   PERCHE_CBR_GRANDE,
   fraseConversione,
+  sfumaDa,
+  SFUMA_MS,
 } from "../lib/fumetto.js";
 import { vuoto } from "../lib/pdfCrop.js";
 import { conAttesa } from "../lib/misuraPagine.js";
@@ -114,6 +116,15 @@ function Panel({ title, onClose, children }) {
   );
 }
 
+// «meno animazioni» del sistema vale anche qui, come nel reader dei libri
+function riduciMovimento() {
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
+}
+
 export default function ComicReader({ book, startCfi, music, onMusicToggle, onMusicStop, onMusicVolume, onMusicNext, onMusicRoom, onAlive, onClose, notify, nextBook, onReadNext, indietro, onCambiaLibro }) {
   const rootRef = useRef(null);
   const boxRef = useRef(null);
@@ -146,6 +157,11 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   // per quale coppia sono quelle pagine: una coppia a cui ne manca una (non
   // si e' lasciata leggere) si disegna con quella che c'e'
   const [srcsDi, setSrcsDi] = useState("");
+  // la voltata che sfuma: l'ultimo foglio disegnato, e la sua foto che
+  // svanisce sopra il nuovo (vedi `fotografa`)
+  const disegnato = useRef(null);
+  const contaSfuma = useRef(0);
+  const [uscente, setUscente] = useState(null);
   const [verso, setVerso] = useState(() => leggiVerso(book.id, book.verso));
   const [adatta, setAdatta] = useState(() => leggiAdatta());
   // I BORDI DELLA SCANSIONE (`lib/fumetto.js`): misurati una volta per
@@ -189,6 +205,38 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   live.current.doppia = doppia;
   live.current.opzioni = opzioni;
   live.current.nastro = nastro;
+  live.current.intera = intera;
+  live.current.sfuma = settings.sfumaFumetti !== false && !riduciMovimento();
+
+  // il foglio a schermo su un canvas, com'e' disegnato adesso: le immagini
+  // sono gia' decodificate, e `drawImage` e' sincrono
+  function fotografa() {
+    const d = disegnato.current;
+    const ims = imgRef.current?.querySelectorAll("img");
+    if (!d || !ims) return null;
+    const dpr = window.devicePixelRatio || 1;
+    const tela = document.createElement("canvas");
+    tela.width = Math.round(d.disegno.foglio.w * dpr);
+    tela.height = Math.round(d.disegno.foglio.h * dpr);
+    tela.style.cssText = `display:block;width:${d.disegno.foglio.w}px;height:${d.disegno.foglio.h}px`;
+    const g = tela.getContext("2d");
+    if (!g) return null;
+    g.scale(dpr, dpr);
+    let dipinte = 0;
+    d.srcs.forEach((_, i) => {
+      const q = d.disegno.pagine.find((x) => x.indice === i);
+      const im = ims[i];
+      if (!q || !im?.complete || !im.naturalWidth) return;
+      g.save();
+      g.beginPath();
+      g.rect(q.x, 0, q.foglio.w, q.foglio.h);
+      g.clip();
+      g.drawImage(im, q.x + q.immagine.x, q.immagine.y, q.immagine.w, q.immagine.h);
+      g.restore();
+      dipinte += 1;
+    });
+    return dipinte ? { tela, w: d.disegno.foglio.w, h: d.disegno.foglio.h } : null;
+  }
   // le pagine del nastro che hanno l'immagine (n → object URL)
   const [vista, setVista] = useState({});
 
@@ -419,6 +467,10 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         }
         const buone = mostrate.map((n, i) => ({ n, url: esiti[i].status === "fulfilled" ? esiti[i].value : null })).filter((x) => x.url);
         if (!buone.length) return;
+        if (sfumaDa(disegnato.current, chiaveMostrate, { nastro: live.current.nastro, acceso: live.current.sfuma && live.current.intera })) {
+          const foto = fotografa();
+          if (foto) setUscente({ ...foto, id: ++contaSfuma.current, via: false });
+        }
         setSrcs(buone);
         setSrcsDi(chiaveMostrate);
         sfoltisci(page);
@@ -779,6 +831,38 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           return d && { foglio: d.foglio, pagine: [{ indice: 0, x: 0, foglio: d.foglio, immagine: d.immagine }] };
         })();
 
+  // LA VOLTATA SFUMA (`sfumaDa`). Il foglio di prima resta dov'e' finche'
+  // il nuovo non e' pronto (`disegnoVisto`: le stesse immagini, niente nero
+  // in mezzo); quando arriva si fotografa su un canvas (`fotografa`), che
+  // sta sopra e svanisce solo quando il nuovo e' decodificato. Una copia
+  // fatta di <img> nuove andrebbe decodificata da capo: misurato, uno o due
+  // fotogrammi neri a voltata.
+  useLayoutEffect(() => {
+    if (nastro) disegnato.current = null;
+    else if (disegno) disegnato.current = { chiave: srcsDi, srcs, disegno };
+  });
+  const disegnoVisto =
+    disegno || (!nastro && intera && live.current.sfuma && disegnato.current?.chiave === srcsDi ? disegnato.current.disegno : null);
+  useEffect(() => {
+    if (!uscente || uscente.via || !pronte) return;
+    let vivo = true;
+    const ims = [...(imgRef.current?.querySelectorAll("img") || [])];
+    const tetto = new Promise((r) => setTimeout(r, 400));
+    Promise.race([Promise.all(ims.map((im) => im.decode().catch(() => {}))), tetto]).then(() => {
+      if (vivo) setUscente((u) => (u?.id === uscente.id ? { ...u, via: true } : u));
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [uscente, pronte]);
+  useEffect(() => {
+    if (!uscente) return;
+    // ogni attesa ha un tetto: una pagina che non si decodifica, o
+    // un'animazione che non chiude, non lasciano la foto sopra per sempre
+    const t = setTimeout(() => setUscente((u) => (u?.id === uscente.id ? null : u)), uscente.via ? SFUMA_MS + 250 : 3000);
+    return () => clearTimeout(t);
+  }, [uscente]);
+
   function cambiaDoppia() {
     scriviDoppia(orientamento(riquadro), doppia ? "no" : "si");
     setSceltaDoppia((n) => n + 1);
@@ -873,13 +957,13 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
               flexShrink: 0,
               transformOrigin: "center",
               willChange: "transform",
-              width: disegno?.foglio.w,
-              height: disegno?.foglio.h,
-              visibility: disegno ? "visible" : "hidden",
+              width: disegnoVisto?.foglio.w,
+              height: disegnoVisto?.foglio.h,
+              visibility: disegnoVisto ? "visible" : "hidden",
             }}
           >
             {srcs.map((x, i) => {
-              const d = disegno?.pagine.find((q) => q.indice === i);
+              const d = disegnoVisto?.pagine.find((q) => q.indice === i);
               return (
                 <div
                   key={x.n}
@@ -913,6 +997,26 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           </div>
         )}
       </div>
+
+      {uscente && (
+        <div
+          style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", overflow: "hidden", zIndex: 1 }}
+        >
+          <div
+            key={uscente.id}
+            ref={(n) => {
+              if (n && uscente.tela.parentNode !== n) n.replaceChildren(uscente.tela);
+            }}
+            onAnimationEnd={() => setUscente((u) => (u?.id === uscente.id ? null : u))}
+            style={{
+              flexShrink: 0,
+              width: uscente.w,
+              height: uscente.h,
+              animation: uscente.via ? `bc-svanisci ${SFUMA_MS}ms ease-in-out forwards` : "none",
+            }}
+          />
+        </div>
+      )}
 
       {/* la luce si abbassa con lo stesso velo del PDF: e' la luminosita'
           delle preferenze di lettura, una per tutti i libri */}
@@ -1188,6 +1292,31 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
               : vuoto(bordi)
                 ? "Queste tavole arrivano già al bordo: non c'è niente da togliere."
                 : `Qui se ne va ${Math.round((1 - (bordi.r - bordi.l) * (bordi.b - bordi.t)) * 100)}% di cornice, e la tavola cresce.`}
+          </div>
+
+          <div style={{ height: 1, background: C.border, margin: "14px 0 12px" }} />
+          <button
+            onClick={() => updateSettings({ sfumaFumetti: settings.sfumaFumetti === false })}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "8px 10px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${settings.sfumaFumetti !== false ? C.accent : C.border}`,
+              color: settings.sfumaFumetti !== false ? C.accent : C.muted,
+              fontSize: F.nota,
+              textAlign: "left",
+            }}
+          >
+            <span style={{ fontSize: F.corpo }}>{settings.sfumaFumetti !== false ? "☑" : "☐"}</span>
+            <span style={{ flex: 1 }}>Dissolvenza fra le pagine</span>
+          </button>
+          <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 6, lineHeight: 1.45 }}>
+            {riduciMovimento()
+              ? "Il tablet chiede meno animazioni: le pagine cambiano senza sfumare."
+              : "La pagina di prima resta finché la nuova è pronta, poi sfuma in un terzo di secondo."}
           </div>
         </div>
       )}

@@ -197,6 +197,15 @@ textarea {
   }
 }
 
+@keyframes bc-svanisci {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 @keyframes bc-flicker {
   0%, 100% {
     opacity: 1;

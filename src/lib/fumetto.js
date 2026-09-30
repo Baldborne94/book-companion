@@ -614,6 +614,18 @@ export function pagineAvanti({ lontano = false, connessione = null } = {}) {
   return comeRete(connessione) === "a consumo" ? AVANTI_A_CONSUMO : AVANTI_DA_LONTANO;
 }
 
+// LA VOLTATA SFUMA (chiesto dal lettore: «una sfumatura e un intervallo
+// che rendano il cambio pagina più dolce»). Il foglio di prima resta a
+// schermo finche' il nuovo non e' pronto — niente piu' nero in mezzo — e
+// poi svanisce sopra di lui. Solo opacita', nessuna fotografia della
+// pagina. Non sfuma: il nastro (si scorre, non si volta), la prima
+// apertura, lo stesso foglio ridisegnato (lo schermo girato), chi l'ha
+// spenta e chi ha chiesto al sistema meno animazioni.
+export const SFUMA_MS = 350;
+export function sfumaDa(prima, chiave, { nastro = false, acceso = true, riduci = false } = {}) {
+  return !nastro && acceso && !riduci && !!prima && prima.chiave !== chiave;
+}
+
 // LE PAGINE GIA' APERTE RESTANO, FINO A UN TETTO DI BYTE (segnalato dal
 // lettore: «ci mette parecchi secondi per passare da una pagina all'altra…
 // o tornare indietro»). Si tenevano quattro pagine dietro quella a schermo e
