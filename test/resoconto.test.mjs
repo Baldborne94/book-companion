@@ -3,7 +3,7 @@
 // PC mai arrivate sul tablet: «Sincronizzato» non diceva niente. Sbaglia in
 // silenzio in due modi: tace una saga arrivata, o racconta come nuovo un
 // libro che non lo e' (e allora il resoconto si impara a non leggerlo).
-import { coseCambiate, raccontaGiro, fraseGiro, ricordaGiro, ultimoGiro } from "../src/lib/resoconto.js";
+import { coseCambiate, raccontaGiro, fraseGiro, ricordaGiro, ultimoGiro, avvisoArrivi } from "../src/lib/resoconto.js";
 import { rowFromLocal } from "../src/lib/syncCore.js";
 
 const riga = (book, state = {}) => rowFromLocal({ id: "L1", title: "Cthulhu. I racconti del mito", ...book }, { status: "reading", progress: 0.3, ...state }, 1);
@@ -50,6 +50,24 @@ export default async function (t) {
   t.eq("partito", `${voci[2].verso}:${voci[2].cose}`, "lassu:nuovo");
   t.eq("la riga", fraseGiro(voci), "3 libri cambiati dall'altro dispositivo · 1 libro mandato nel cloud");
   t.eq("niente da dire", fraseGiro([]), "Tutto già allineato");
+
+  // ---- l'avviso di quel che e' arrivato ------------------------------------------------
+  t.eq("niente arrivato, niente avviso", avvisoArrivi([{ titolo: "X", verso: "lassu", cose: ["letto"] }]), null);
+  t.eq("un libro: per nome", avvisoArrivi([{ titolo: "Racconti", verso: "qui", cose: ["saga «Miti di Cthulhu»"] }]), "☁ Dall'altro dispositivo: «Racconti» — saga «Miti di Cthulhu»");
+  const tanti = [
+    { titolo: "A", verso: "qui", cose: ["saga «X» n° 1"] },
+    { titolo: "B", verso: "qui", cose: ["fuori saga", "letto"] },
+    { titolo: "C", verso: "qui", cose: ["nuovo"] },
+    { titolo: "D", verso: "qui", cose: ["n° 3 in «X»"] },
+    { titolo: "E", verso: "lassu", cose: ["nuovo"] },
+  ];
+  t.eq("tanti: i conti per specie, e quel che parte non si conta", avvisoArrivi(tanti), "☁ Dall'altro dispositivo: 4 libri — 3 saghe, 1 letto, 1 nuovo. I dettagli nella nuvola.");
+  t.eq(
+    "tanti senza specie note: aggiornati",
+    avvisoArrivi([{ titolo: "A", verso: "qui", cose: ["al 40%"] }, { titolo: "B", verso: "qui", cose: ["2 segnalibri nuovi"] }]),
+    "☁ Dall'altro dispositivo: 2 libri aggiornati. I dettagli nella nuvola."
+  );
+  t.eq("…e chi e' stato tolto lo si dice", avvisoArrivi([{ titolo: "A", verso: "qui", cose: ["tolto: cancellato sull'altro dispositivo"] }, { titolo: "B", verso: "qui", cose: ["copertina nuova"] }]), "☁ Dall'altro dispositivo: 2 libri — 1 tolto, 1 copertina. I dettagli nella nuvola.");
 
   // ---- resta per il pannello --------------------------------------------------------------
   const mem = new Map();

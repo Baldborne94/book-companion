@@ -40,7 +40,9 @@ import { daAvvisare } from "./lib/oracle.js";
 import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
-import { fraseGiro, ricordaGiro } from "./lib/resoconto.js";
+import { fraseGiro, ricordaGiro, avvisoArrivi } from "./lib/resoconto.js";
+import { annotaErrore } from "./lib/registro.js";
+import SezioneGuasti from "./components/SezioneGuasti.jsx";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
 import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive } from "./lib/drive.js";
@@ -730,6 +732,21 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
         </div>
 
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            Se qualcosa non va
+          </h3>
+          <SezioneGuasti />
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
           {/* COSA SA FARE L'APP, e sta qui perché è la stanza dove uno
               viene quando si chiede qualcosa sull'app invece che sui suoi
               libri. Non compare mai da sé e non si mette in mezzo: una
@@ -1040,7 +1057,10 @@ export default function App() {
         at: Date.now(),
         signedIn: true,
       });
-      if (!quiet && racconto.length) notify(`Biblioteca sincronizzata ✨ ${fraseGiro(racconto)}`);
+      // quel che e' arrivato si dice anche dal giro silenzioso dell'avvio
+      const arrivi = avvisoArrivi(racconto);
+      if (arrivi) notify(arrivi);
+      else if (!quiet && racconto.length) notify(`Biblioteca sincronizzata ✨ ${fraseGiro(racconto)}`);
     } catch (e) {
       // IL TESTO GREZZO DI POSTGRES NON ARRIVA PIÙ SULLO SCHERMO: qui
       // c'era `e.message` incollato com'era, e il lettore si è ritrovato
@@ -1049,6 +1069,7 @@ export default function App() {
       // il testo tecnico resta sotto «dettagli» per quando arriva la
       // fotografia a chi deve ripararlo.
       const guaio = spiegaSync(e);
+      annotaErrore(e, { dove: "sincronizzazione" });
       setSync((s) => ({ ...s, busy: false, message: guaio.frase, dettaglio: guaio.dettaglio }));
       if (!quiet) notify("Sincronizzazione fallita — riprovo più tardi");
     }

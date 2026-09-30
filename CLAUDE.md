@@ -24,6 +24,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 - Gira su Node puro. `test/tema.test.mjs` vuole un browser vero: senza Playwright si dichiara **saltato**, e saltare non è passare.
 - Un test che dipende da chi gira prima non difende niente (stub lasciati su `globalThis` da un altro file).
 - La logica sta in `src/lib/` (niente JSX) proprio perché Node non importa un `.jsx`: una decisione dentro un componente è fuori dalla portata di ogni test.
+- `npm run e2e` (`e2e/run.mjs`): l'app costruita su un Supabase finto, in Chromium — saga fra due dispositivi, ePub che si apre, Ingresso. La CI la rifà. Un difetto trovato col banco a mano diventa una scena qui.
 - Guardiani che non si toccano: `identificatori.test.mjs` (un nome che non esiste più: la build resta verde e l'app muore solo in quel ramo), `scala.test.mjs` e `misura-ui.test.mjs` (la scala dei corpi), `palette.test.mjs`, `tasti-barra.test.mjs`, `manifest.test.mjs`, `giro-sync.test.mjs` (convergenza della sincronizzazione), `lapidi.test.mjs` (`EMPTY_ROW` copre ogni colonna di `rowFromLocal`), `pdf-chiudi.test.mjs`.
 
 ## Architettura
@@ -80,7 +81,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 ### Saghe
 
 - Strade in ordine: tavola (`TAVOLE`: Mondo Disco, Eresia di Horus, Seconda Apocalisse), collana nel file (`collana.js`), titolo (`sagaDalTitolo.js`, forme nella tavola del test), catalogo Open Library (`sagaDalCatalogo.js`, due voti), e **per ultima** la deduzione dai fratelli (`sagaDaBiblioteca`, vetata da `tracce: 0`). La saga vuota è uno stato legittimo; una saga tolta a mano resta tolta (`sagaTolta`).
-- Quel che il lettore ha scritto a mano non si tocca. Si **propone** riga per riga (titoli, numeri del cammino, parti), mai si riscrive in silenzio.
+- Quel che il lettore ha scritto a mano non si tocca. Si **propone** riga per riga (titoli, numeri del cammino, parti), mai si riscrive in silenzio. Un giro automatico rimette i suoi tocchi solo sui libri rimasti com'erano quando li ha guardati (`tocchiAncoraBuoni`): una risposta del catalogo che arriva dopo la mano non la copre.
 - Il prossimo volume è `nextInSaga`/`passoDentro` (in `saga.js`): il filo è la **serie**, si apre dopo un volume finito, i contorni di una guida non sono passi, e chi tace dice perché (`perchePassoTace`). «Da leggere» conta lo **stato** (un volume aperto e rimesso lì a mano torna seguito, «già al 12%»), e in una saga cominciata si propone anche l'inizio del primo ciclo non cominciato (`iniziDeiCicli`, uno per saga). Una regola sul «prossimo volume» va nella funzione che risponde a quella domanda, non in un chiamante.
 - Eresia di Horus: percorso CD8D, il numero di lettura si chiede alla tavola (`postiDelCammino`), prologo e letture di sfondo non sono tappe.
 
@@ -94,7 +95,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 - Scala di rinuncia `DEGRADE` per gli schemi non migrati; gli errori di Postgres si traducono (`spiegaSync`) e il grezzo si ripiega.
 - La musica si prende da Drive come i libri: «☁ Da Google Drive» nella Musica apre il selettore sulla cartella «Musica» di «book-companion», file e cartelle intere (`sceltaMusicaDalPicker`, `audioSotto`, `melodieDaAggiungere`); i brani non scendono, diventano melodie `drive: true` segnate `bcTrack` (`adottaMelodie`) e scendono quando le suoni. I nomi dei brani e delle raccolte musicali non si troncano.
 - L'archivio si fa da solo (`archiviaSuDrive`): una volta al giorno, dopo il giro di Drive e solo con la chiave in mano, lo zip dell'«Esporta» **senza byte** va in «book-companion/Archivi»; se ne tengono dieci, i vecchi nel cestino. Si ripristina dalla strada di sempre.
-- Drive: si riconosce prima di mandare (`abbina`: segno, impronta, misura, nome; nel dubbio non si abbina). La chiave dura un'ora e si rinnova solo da un tocco. I libri si leggono **da Drive** senza scriverli sul tablet (`prendiFile`); restano sul tablet solo quel che il lettore chiede («Tieni sul tablet»), i libri «in lettura» (`daTenereInLettura`, cinque al massimo) e il seguito della saga al 70%, con la scelta di rete di `bc_anticipo`.
+- Drive: si riconosce prima di mandare (`abbina`: segno, impronta, misura, nome; nel dubbio non si abbina). Un segno `bcId` di una scheda che qui non c'è ferma un file solo finché la biblioteca può ancora arrivare dal cloud (`schedeInArrivo`): dopo un giro è orfano, e il file si aggiunge. La chiave dura un'ora e si rinnova solo da un tocco. I libri si leggono **da Drive** senza scriverli sul tablet (`prendiFile`); restano sul tablet solo quel che il lettore chiede («Tieni sul tablet»), i libri «in lettura» (`daTenereInLettura`, cinque al massimo) e il seguito della saga al 70%, con la scelta di rete di `bc_anticipo`.
 
 ### Ingresso e Libreria
 
@@ -102,6 +103,10 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 - Libreria a «Scaffale» o a «Raccolte» (`inRaccolte`, `copertinaDi`): ogni ripiano una cartella con la copertina del volume da cui ripartire e il **nome intero** (mai troncato), i volumi soli sciolti sotto; con una ricerca in corso niente cartelle. La scelta si ricorda in `bc_vista` (`aspetto`); la raccolta aperta sta in App, perché è un livello del tasto indietro. Le raccolte col cuore (`lib/raccoltePreferite.js`, solo saghe e autori, chiave = quella del ripiano) viaggiano in `prefs.raccolte_fav`, voce per voce con lapidi; si vedono nel filtro «♥ Preferiti» e salgono in cima **solo con l'ordine «Preferiti prima»** (`nellOrdineScelto`): un ordine si sceglie, non lo impone lo scaffale.
 - Scaffale a ripiani (`disponi` in `ripiani.js`): saga o autore, cicli e capitoli come sotto-ripiani, ripiani lontani non costruiti (`useVicino`), miniature e non copertine intere.
 - Un tasto non promette ciò che non può dare; gli zeri non si dicono; un avviso sta accanto al tasto che lo risolve.
+
+### Guasti
+
+- I guasti si annotano in `bc_errori` (`lib/registro.js`: disegno, pagina, promesse, sincronizzazione) e il rapporto lo copia il lettore dalle Impostazioni. Niente telemetria; chi aggiunge un segreto che può finire in un messaggio aggiunge la sua regola in `pulisci`.
 
 ## Lezioni vincolanti (non re-impararle)
 

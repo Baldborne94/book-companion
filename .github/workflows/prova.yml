@@ -45,3 +45,9 @@ jobs:
       - run: npm test
 
       - run: npm run build
+
+      # LE PROVE SULL'APP INTERA (`e2e/run.mjs`): l'app costruita, puntata
+      # su un Supabase finto, in un browser vero — la saga fra due
+      # dispositivi, un ePub che si apre, l'Ingresso. Con `CI` accesa una
+      # scena saltata e' una scena caduta.
+      - run: npm run e2e
