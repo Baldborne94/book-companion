@@ -43,7 +43,7 @@ import { isSyncConfigured } from "./lib/supabase.js";
 import { fraseGiro, ricordaGiro, avvisoArrivi } from "./lib/resoconto.js";
 import { annotaErrore } from "./lib/registro.js";
 import SezioneGuasti from "./components/SezioneGuasti.jsx";
-import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile, convertiLibroInCbz } from "./lib/sync.js";
+import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile, convertiLibroInCbz, adottaCbzConvertiti } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
 import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive } from "./lib/drive.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
@@ -1022,6 +1022,19 @@ export default function App() {
     );
   }
 
+  // I CBZ FATTI SU COLAB (`adottaCbzConvertiti`): dopo il giro, i CBR col
+  // gemello CBZ accanto su Drive diventano CBZ, e il lettore lo sa. Non
+  // mentre il giro della conversione lavora: si pesterebbero i piedi.
+  const adottaCbz = useRef(async () => {});
+  adottaCbz.current = async () => {
+    if (filoLavoro.current) return;
+    const fatti = await adottaCbzConvertiti(loadBooks()).catch(() => []);
+    for (const f of fatti) applicaConversione(f.id, f.patch);
+    if (!fatti.length) return;
+    setLocalIds(await localFileIds().catch(() => null));
+    notify(fatti.length === 1 ? "Un fumetto convertito su Colab ora è un CBZ ✓" : `${fatti.length} fumetti convertiti su Colab ora sono CBZ ✓`);
+  };
+
   const runSync = useRef(() => {});
   runSync.current = async (quiet = false) => {
     if (sync.busy) return;
@@ -1032,6 +1045,7 @@ export default function App() {
       await sincronizzaSoloDrive().catch(() => {});
       setLocalIds(await localFileIds());
       ritrovaEbook();
+      await adottaCbz.current();
       tieniInLettura.current();
       return;
     }
@@ -1047,6 +1061,7 @@ export default function App() {
       if (res.books) setBooks(res.books);
       setLocalIds(await localFileIds());
       ritrovaEbook(res.books || null);
+      await adottaCbz.current();
       tieniInLettura.current(res.books || null);
       // DETTO LIBRO PER LIBRO (`raccontaGiro`): «Aggiornati 12 elementi»
       // non diceva se la saga scritta sul PC fosse arrivata
