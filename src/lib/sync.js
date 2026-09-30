@@ -31,10 +31,11 @@ import { leggiDaPrendere, scriviDaPrendere, fondiDaPrendere } from "./daPrendere
 import { leggiRigheLeggere, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare, copertineInAttesa, segnaInAttesa, fondiSchede } from "./syncCore.js";
 import { daTogliereDalSecchio, avanziDelSecchio, segnaSuDrive, leggereDaLontano, nomeSuDrive } from "./driveCore.js";
 import { raccontaGiro } from "./resoconto.js";
-import { giroDrive, giroMelodie, archiviaSuDrive, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto, fermaCbrCompresso, sostituisciSuDrive, chiaveDrive } from "./drive.js";
+import { giroDrive, giroMelodie, archiviaSuDrive, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto, fermaCbrCompresso, sostituisciSuDrive, chiaveDrive, DriveScollegato } from "./drive.js";
 import { tipiDi, tipoDi } from "./library.js";
 import { misureFile, listTrackIds } from "./bookStore.js";
 import { nuovaMemoria, firmaLontana } from "./ultimiLontani.js";
+import { unaPerChiave } from "./inVolo.js";
 
 const LONTANI = nuovaMemoria();
 
@@ -838,12 +839,17 @@ export async function togliFileDalCloud(book) {
 // appena toccato lo schermo, e Google la finestra la apre solo dopo un tocco.
 // Un file che Drive non ha piu' (tolto a mano dal lettore) e' «non c'e'»,
 // non un guasto: si prova il secchio.
+// una discesa per file (`inVolo.js`): il lettore e il giro dei libri in
+// lettura chiedevano lo stesso volume insieme, e la rete si divideva in due
+const DISCESE = unaPerChiave();
+const scendi = (voce, onProgress) => DISCESE(voce.id, (avvisa) => scaricaDaDrive(voce.id, { onProgress: avvisa, totale: voce.byte }), { onProgress });
+
 async function dalDrive(book, { onProgress } = {}) {
   const voce = driveAcceso() ? mappaDrive()[book.id] : null;
   if (!voce) return null;
   if (!driveProntoOra()) await collegaDrive();
   try {
-    return await scaricaDaDrive(voce.id, { onProgress, totale: voce.byte });
+    return await scendi(voce, onProgress);
   } catch (e) {
     if (e?.status === 404) return null;
     throw e;
@@ -913,7 +919,10 @@ export async function fileDaLeggere(book, { onProgress } = {}) {
 // suo posto lassu' (`sostituisciSuDrive`, il CBR nel cestino); se sta qui,
 // il CBZ prende il suo posto qui. I nomi delle pagine restano, quindi anche
 // l'ordine e il segno di lettura. Torna quel che cambia nella scheda.
-export async function convertiLibroInCbz(book, { onProgress } = {}) {
+// `chiedi: false` (il giro della Manutenzione): a chiave scaduta non si apre
+// la finestra di Google, che fuori da un tocco il browser bloccherebbe — si
+// dice «scollegato» e il giro si ferma.
+export async function convertiLibroInCbz(book, { onProgress, chiedi = true } = {}) {
   const { convertiInCbz } = await import("./archivioFumetto.js");
   const { improntaDi } = await import("./importBook.js");
   const qui = await getFile(book.id).catch(() => null);
@@ -923,7 +932,10 @@ export async function convertiLibroInCbz(book, { onProgress } = {}) {
     cbz = await convertiInCbz({ blob: qui }, { onProgress });
     await putFile(book.id, cbz);
   } else if (voce?.id) {
-    if (!driveProntoOra()) await collegaDrive();
+    if (!driveProntoOra()) {
+      if (!chiedi) throw new DriveScollegato();
+      await collegaDrive();
+    }
     cbz = await convertiInCbz({ drive: { id: voce.id, chiave: chiaveDrive() }, misura: voce.byte }, { onProgress });
   } else throw new Error("il file di questo libro non c'è, né qui né su Google Drive");
   if (voce?.id) {
@@ -934,6 +946,13 @@ export async function convertiLibroInCbz(book, { onProgress } = {}) {
     });
   }
   LONTANI.dimentica?.(book.id);
+  // la copertina che mancava (un CBR compresso da Drive non la dava: la
+  // prima pagina compressa non si legge da lontano) si prende dal CBZ
+  if (!(await getCover(book.id).catch(() => null))) {
+    const { copertinaOriginale } = await import("./copertina.js");
+    const cover = await copertinaOriginale({ ...book, fileType: "cbz" }, cbz).catch(() => null);
+    if (cover) await putCover(book.id, cover).catch(() => {});
+  }
   const impronta = await improntaDi(cbz).catch(() => undefined);
   return { fileType: "cbz", ...(impronta ? { impronta } : {}) };
 }
@@ -952,7 +971,9 @@ export async function anticipaFile(book) {
     if (voce) {
       if (!driveProntoOra()) return "chiave";
       try {
-        await putFile(book.id, await scaricaDaDrive(voce.id));
+        // il volume appena letto e' gia' in memoria (`LONTANI`); se sta
+        // scendendo per il lettore, ci si aggancia a quella discesa
+        await putFile(book.id, LONTANI.prendi(book.id, firmaLontana(voce)) || (await scendi(voce)));
         return "sceso";
       } catch (e) {
         if (e?.name === "DriveScollegato") return "chiave";

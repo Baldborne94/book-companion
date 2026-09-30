@@ -43,7 +43,7 @@ import { isSyncConfigured } from "./lib/supabase.js";
 import { fraseGiro, ricordaGiro, avvisoArrivi } from "./lib/resoconto.js";
 import { annotaErrore } from "./lib/registro.js";
 import SezioneGuasti from "./components/SezioneGuasti.jsx";
-import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile } from "./lib/sync.js";
+import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile, convertiLibroInCbz } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
 import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive } from "./lib/drive.js";
 import { spiegaSync, schedaDiversa } from "./lib/syncCore.js";
@@ -1148,6 +1148,31 @@ export default function App() {
     updateBooks(books.map((b) => (b.id === patch.id ? { ...b, ...patch } : b)));
   }
 
+  // IL CBR DIVENTATO CBZ (`convertiLibroInCbz`): la scheda si legge da
+  // disco e non dallo stato, perche' il giro della Manutenzione dura minuti
+  // e nel frattempo la biblioteca puo' essere cambiata
+  function applicaConversione(id, patch) {
+    const ora = loadBooks();
+    const prima = ora.find((b) => b.id === id);
+    if (!prima) return;
+    if (schedaDiversa(prima, { ...prima, ...patch })) timbraScheda(id);
+    updateBooks(ora.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  }
+
+  async function handleConvertiCbr(id, onProgress) {
+    const b = loadBooks().find((x) => x.id === id);
+    if (!b) return false;
+    try {
+      applicaConversione(id, await convertiLibroInCbz(b, { onProgress }));
+      setLocalIds(await localFileIds());
+      notify(`«${b.title}» è un CBZ: da adesso si apre a pezzi, senza scaricarlo intero ✓`);
+      return true;
+    } catch (e) {
+      notify(e?.name === "DriveScollegato" ? "Google Drive aspetta un tocco: riprova." : `La conversione non è riuscita: ${e?.message || e}`);
+      return false;
+    }
+  }
+
   async function handleDelete(id) {
     setOpenId(null);
     removeBookMeta(id);
@@ -1551,6 +1576,7 @@ export default function App() {
           <Library
             books={books}
             updateBooks={updateBooks}
+            onConvertito={applicaConversione}
             onOpenBook={setOpenId}
             onReadAt={(id, punto) => handleRead(id, punto)}
             notify={notify}
@@ -1604,6 +1630,7 @@ export default function App() {
           onDelete={handleDelete}
           onTogliEbook={handleTogliEbook}
           onTieniQui={handleTieniQui}
+          onConvertiCbr={handleConvertiCbr}
           onRead={handleRead}
           notify={notify}
         />
@@ -1744,7 +1771,7 @@ export default function App() {
               key={`${readingBook.id}:${readingStart || ""}`}
               book={readingBook}
               startCfi={readingStart}
-              onCambiaLibro={(patch) => handleSaveMeta({ id: readingBook.id, ...patch })}
+              onCambiaLibro={(patch) => applicaConversione(readingBook.id, patch)}
               indietro={chiudeIlLettore}
               nextBook={nextBook}
               onReadNext={handleRead}

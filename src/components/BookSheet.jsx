@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { driveAcceso, mappaDrive } from "../lib/drive.js";
 import { fmtGoogle } from "../lib/bytes.js";
 import { fraseScarico } from "../lib/driveCore.js";
+import { fraseDelPasso } from "../lib/convertiCbr.js";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import {
   getProgress,
@@ -140,7 +141,7 @@ function Field({ label, value, onChange, placeholder, options, listId }) {
   );
 }
 
-export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDelete, onTogliEbook, onTieniQui, onRead, notify }) {
+export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDelete, onTogliEbook, onTieniQui, onConvertiCbr, onRead, notify }) {
   const [title, setTitle] = useState(book.title);
   const [author, setAuthor] = useState(book.author || "");
   const [series, setSeries] = useState(book.series || "");
@@ -479,6 +480,19 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
       if (ok) setPesoQui((await getFile(book.id).catch(() => null))?.size || 0);
     } finally {
       setTenendo(false);
+    }
+  }
+
+  // UN CBR SI CONVERTE IN CBZ DA QUI (vedi `lib/convertiCbr.js`): da Drive
+  // un CBR scende intero a ogni apertura, un CBZ si legge a pezzi
+  const [convertendo, setConvertendo] = useState(null);
+  async function convertiQui() {
+    if (convertendo || !onConvertiCbr) return;
+    setConvertendo({});
+    try {
+      if (await onConvertiCbr(book.id, setConvertendo)) setPesoQui((await getFile(book.id).catch(() => null))?.size || 0);
+    } finally {
+      setConvertendo(null);
     }
   }
 
@@ -1088,6 +1102,31 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
               </button>
               <span style={{ fontSize: F.piccolo, color: C.muted }}>
                 Sta su Google Drive e si legge da lì. Tienilo qui solo se vuoi leggerlo senza rete.
+              </span>
+            </>
+          )}
+          {book.fileType === "cbr" && onConvertiCbr && (suDrive || pesoQui > 0) && (
+            <>
+              <button
+                onClick={convertiQui}
+                disabled={!!convertendo}
+                style={{
+                  justifySelf: "center",
+                  minHeight: 44,
+                  padding: "8px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.accent}66`,
+                  color: C.accent,
+                  fontSize: F.nota,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {convertendo ? fraseDelPasso(convertendo) : "🔁 Converti in CBZ"}
+              </button>
+              <span style={{ fontSize: F.piccolo, color: C.muted }}>
+                {suDrive
+                  ? "Un CBR da Drive scende intero a ogni apertura; un CBZ si legge a pezzi. Stesse pagine, stesso segno; il CBR va nel cestino di Drive."
+                  : "Un CBZ si apre senza caricare il volume intero. Stesse pagine, stesso segno."}
               </span>
             </>
           )}
