@@ -95,10 +95,18 @@ export default async function (t) {
       { id: "L", name: "Libri" },
       { id: "M", name: "Manga" },
     ];
-    const v = daAggiungere(libri, file, { lapidi: ["morto"], cartelle });
+    // un dispositivo che la biblioteca la aspetta ancora dal cloud
+    const v = daAggiungere(libri, file, { lapidi: ["morto"], cartelle, schedeInArrivo: true });
     const ids = v.map((x) => x.id);
     t.c("quel che abbina riconosce non si propone", !ids.includes("f1") && !ids.includes("f2") && !ids.includes("f7"));
-    t.c("un file segnato per un libro che qui non c'e' e' di un altro dispositivo", !ids.includes("f3"));
+    t.c("un file segnato per un libro che qui non c'e' e' di un altro dispositivo, finche' il cloud puo' portarlo", !ids.includes("f3"));
+    // IL SEGNO ORFANO (i libri di Anne McCaffrey «già sullo scaffale» che
+    // sullo scaffale non c'erano): dopo un giro quel che doveva arrivare e'
+    // arrivato, e un segno senza scheda e' di un libro cancellato con la
+    // chiave di Google scaduta — il file si propone
+    const orfani = daAggiungere(libri, file, { lapidi: [], cartelle }).map((x) => x.id);
+    t.c("dopo un giro il segno orfano non ferma il file", orfani.includes("f3") && orfani.includes("f4"));
+    t.c("…ma il segno di un libro che c'e' lo ferma sempre", !orfani.includes("f2"));
     t.c("ma se quel libro l'hai cancellato, il file e' tuo come un altro", ids.includes("f4"));
     t.c("due copie identiche fanno un libro solo", ids.includes("f5") && !ids.includes("f6"));
     t.c("lo stesso titolo con la stessa estensione e' forse gia' qui: si tace", !ids.includes("f8"));

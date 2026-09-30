@@ -14,7 +14,8 @@ import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
 import { frasiDiario } from "../lib/archivioDiario.js";
 import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
-import { portaACasa, cloudUsage, localFileIds } from "../lib/sync.js";
+import { portaACasa, cloudUsage, localFileIds, getLastSync } from "../lib/sync.js";
+import { isSyncConfigured } from "../lib/supabase.js";
 import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso, schedeCambiate
 } from "../lib/syncCore.js";
@@ -1727,7 +1728,10 @@ export default function Library({
         notify(note.length ? `Nessun libro fra quel che hai scelto: ${note.join(" · ")}` : "Non hai scelto nessun file");
         return;
       }
-      const voci = daAggiungere(books, trovati, { lapidi: Object.keys(getTombstones()), cartelle });
+      // un segno su un file senza scheda qui ferma il file solo se la
+      // biblioteca puo' ancora arrivare dal cloud (vedi `daAggiungere`)
+      const schedeInArrivo = isSyncConfigured() && !getLastSync();
+      const voci = daAggiungere(books, trovati, { lapidi: Object.keys(getTombstones()), cartelle, schedeInArrivo });
       const gia = trovati.length - voci.length;
       if (gia > 0) note.push(gia === 1 ? "uno era già sullo scaffale" : `${gia} erano già sullo scaffale`);
       if (!voci.length) {

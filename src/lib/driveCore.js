@@ -154,7 +154,18 @@ export function cartellaDi(parentId, cartelle) {
   return (i < 0 ? nomi : nomi.slice(i + 1)).join(" / ");
 }
 
-export function daAggiungere(libri, file, { lapidi = [], cartelle = [] } = {}) {
+// UN SEGNO ORFANO NON FERMA PIU' IL FILE (segnalato: i libri di Anne
+// McCaffrey scelti da Drive «già sullo scaffale», e sullo scaffale non
+// c'erano). Il segno `bcId` su un file senza una scheda qui voleva dire «e'
+// il libro di un altro dispositivo, arrivera' col cloud»: ma resta anche sul
+// file di un libro CANCELLATO quando la chiave di Google era scaduta — il
+// segno non si toglie (`smarcaSuDrive`) e la lapide se ne va al giro dopo —
+// e da li' quel file non si poteva piu' aggiungere, per sempre. Adesso il
+// segno di una scheda che qui non c'e' ferma il file solo finche' la
+// biblioteca puo' ancora arrivare dal cloud (`schedeInArrivo`: un
+// dispositivo che non ha mai sincronizzato). Dopo un giro, quello che
+// doveva arrivare e' arrivato: il segno e' orfano, e il file si propone.
+export function daAggiungere(libri, file, { lapidi = [], cartelle = [], schedeInArrivo = false } = {}) {
   const vivi = (libri || []).filter((b) => b?.id);
   const { mappa } = abbina(vivi, file);
   const presi = new Set([...mappa.values()].map((f) => f.id));
@@ -167,7 +178,7 @@ export function daAggiungere(libri, file, { lapidi = [], cartelle = [] } = {}) {
     const est = estensioneDi(f?.name);
     if (!f?.id || !EST.includes(est) || presi.has(f.id)) continue;
     const segno = f.appProperties?.bcId;
-    if (segno && !morti.has(segno)) continue;
+    if (segno && !morti.has(segno) && schedeInArrivo) continue;
     const sha = String(f.sha256Checksum || "").toLowerCase();
     if (sha && (impronte.has(sha) || visti.has(sha))) continue;
     if (titoli.has(`${est}|${nomeNudo(f.name)}`)) continue;
