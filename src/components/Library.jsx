@@ -1077,10 +1077,19 @@ export default function Library({
       // di prima — e un import arrivato durante il giro lungo non va
       // sovrascritto con la copia di quando si e' partiti
       const tocchi = {};
+      // com'era ogni libro quando il giro l'ha guardato: un tocco su un
+      // libro che nel frattempo hai cambiato tu non si rimette (vedi
+      // `tocchiAncoraBuoni`)
+      const visti = {};
       const applica = (campi) => {
-        Object.assign(tocchi, campi);
+        for (const [id, c] of Object.entries(campi)) {
+          if (!visti[id]) visti[id] = attuale.find((b) => b.id === id) || {};
+          tocchi[id] = { ...(tocchi[id] || {}), ...c };
+        }
         const prima = booksRef.current;
-        const adesso = prima.map((b) => (tocchi[b.id] ? { ...b, ...tocchi[b.id] } : b));
+        const buoni = tocchiAncoraBuoni(prima, tocchi, visti);
+        for (const id of Object.keys(tocchi)) if (!buoni[id]) delete tocchi[id];
+        const adesso = prima.map((b) => (buoni[b.id] ? { ...b, ...buoni[b.id] } : b));
         const cambiati = new Set(Object.keys(campi));
         for (const id of schedeCambiate(prima, adesso)) if (cambiati.has(id)) timbraScheda(id);
         updateBooks(adesso);
@@ -1092,7 +1101,7 @@ export default function Library({
       // cambiato niente di quel che il giro guarda, il giro non ha niente da
       // dire — e per saperlo tomo per tomo erano centinaia di letture di
       // IndexedDB a ogni apertura. I byte si chiedono in un colpo solo.
-      const { firmaGiro, leggiGiro, ricordaGiro, giroFinito } = await import("../lib/giroSaghe.js");
+      const { firmaGiro, leggiGiro, ricordaGiro, giroFinito, tocchiAncoraBuoni } = await import("../lib/giroSaghe.js");
       const conByte = await localFileIds();
       if (!vivo) return;
       const versione = typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "";

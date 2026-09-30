@@ -64,8 +64,23 @@ async function lanciaBrowser() {
 
 // un dispositivo: un contesto suo (il suo localStorage, il suo IndexedDB), a
 // misura del tablet del lettore, coi guasti della pagina raccolti
-async function dispositivo(browser, { sessione = false, prima = null } = {}) {
+// LA RETE ESTERNA E' CHIUSA: le scene non devono dipendere da Open Library
+// o da Google (la prima volta in CI il catalogo vero ha dato a «Racconti» la
+// saga di Moravia, e la scena cadeva per una ragione che qui non c'era). Chi
+// vuole il catalogo se lo porta: `catalogo(url)` risponde al posto suo.
+async function dispositivo(browser, { sessione = false, prima = null, catalogo = null } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await ctx.route(
+    (url) => !/^(localhost|127\.0\.0\.1)$/.test(url.hostname),
+    async (route) => {
+      const url = route.request().url();
+      if (catalogo && /openlibrary\.org/.test(url)) {
+        const json = await catalogo(url);
+        if (json) return route.fulfill({ json });
+      }
+      return route.abort();
+    }
+  );
   if (sessione) await ctx.addInitScript(sessioneFinta);
   if (prima) await ctx.addInitScript(prima);
   const p = await ctx.newPage();
@@ -92,7 +107,17 @@ const SCENE = [
   {
     nome: "la saga scritta sul PC arriva sul tablet, e il tablet lo dice",
     async fai({ browser, db }) {
-      const pc = await dispositivo(browser, { sessione: true });
+      // IL CATALOGO RISPONDE DOPO LA MANO (trovato in CI con la rete vera):
+      // la risposta resta ferma finche' la saga non e' scritta nella scheda,
+      // e poi propone un'altra saga — che non deve coprire quella scritta
+      let lascia;
+      const scritta = new Promise((ok) => (lascia = ok));
+      const catalogo = async (url) => {
+        await scritta;
+        if (url.includes("search.json")) return { docs: [{ key: "/works/OL1W", title: "Racconti", author_name: ["Alberto Moravia"] }] };
+        return { entries: [1, 2, 3].map(() => ({ title: "Racconti", series: ["Opere complete di Alberto Moravia ; 7"] })) };
+      };
+      const pc = await dispositivo(browser, { sessione: true, catalogo });
       const tab = await dispositivo(browser, { sessione: true });
       await importa(pc.p, "Racconti.cbz", await fumetto(), "application/zip");
       await finche(() => db.righe().some((r) => r.title === "Racconti"), 20000, "il libro non sale nel cloud");
@@ -104,6 +129,7 @@ const SCENE = [
       await pc.p.getByRole("button", { name: "Chiudi", exact: true }).click();
       // la scheda si salva CHIUDENDOSI: se resta aperta la saga non e' scritta
       await finche(async () => !(await pc.p.locator('input[placeholder="es. The Realm of the Elderlings"]').count()), 10000, "la scheda non si chiude");
+      lascia();
       await finche(() => db.righe().some((r) => r.title === "Racconti" && r.saga === "Miti di Cthulhu"), 30000, "la saga non sale nel cloud").catch(async (e) => {
         // quando cade, dice dove: la scheda sul PC, il suo timbro, la riga
         // lassu', l'ultimo giro e i guasti del PC
@@ -114,6 +140,11 @@ const SCENE = [
         const lassu = db.righe().find((r) => r.title === "Racconti");
         throw new Error(`${e.message} — PC: ${JSON.stringify(qui)} · cloud: saga=${lassu?.saga} scheda_at=${lassu?.scheda_at}`);
       });
+
+      // il catalogo ha risposto: la saga scritta a mano resta, qui e lassu'
+      await aspetta(4000);
+      const sulPc = (await libriDi(pc.p)).find((b) => b.title === "Racconti")?.saga;
+      if (sulPc !== "Miti di Cthulhu") throw new Error(`il catalogo ha coperto la saga scritta a mano: sul PC «${sulPc}»`);
 
       await tab.p.goto(URL_APP);
       await finche(async () => (await libriDi(tab.p)).find((b) => b.title === "Racconti")?.saga === "Miti di Cthulhu", 20000, "la saga non arriva sul tablet");

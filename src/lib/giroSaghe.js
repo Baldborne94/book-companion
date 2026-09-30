@@ -92,3 +92,26 @@ export function giroFinito({ collane, catalogo } = {}) {
   if ((catalogo?.rete || 0) > 0) return false;
   return true;
 }
+
+// QUEL CHE HAI SCRITTO A MANO DURANTE IL GIRO NON SI COPRE (trovato dalle
+// prove sull'app, con la rete vera: la saga scritta nella scheda mentre il
+// catalogo rispondeva ancora veniva sostituita dalla sua, e timbrata — cioe'
+// vinceva anche sull'altro dispositivo). Il giro calcola i suoi tocchi su
+// una fotografia della biblioteca e li rimette su quella di ADESSO: un
+// tocco vale solo se il libro e' ancora com'era quando il giro l'ha
+// guardato (`visto`), o se porta gia' il tocco stesso (rimesso dal giro
+// prima). Qualunque altro cambiamento e' tuo, e il tocco se ne va.
+const vuoto = (v) => (v == null || v === "" || v === false ? null : v);
+export function tocchiAncoraBuoni(libri = [], tocchi = {}, visti = {}) {
+  const per = new Map(libri.map((b) => [b?.id, b]));
+  const buoni = {};
+  for (const [id, campi] of Object.entries(tocchi)) {
+    const b = per.get(id);
+    if (!b) continue;
+    const chiavi = [...new Set([...Object.keys(campi), "saga", "sagaOrder", "series", "sagaTolta"])];
+    const come = (x) => chiavi.every((k) => vuoto(b[k]) === vuoto(x?.[k]));
+    const visto = visti[id] || {};
+    if (come(visto) || come({ ...visto, ...campi })) buoni[id] = campi;
+  }
+  return buoni;
+}
