@@ -93,6 +93,53 @@ function dimenticaToken() {
   scrivi(TOKEN_KEY, null);
 }
 
+// LA CHIAVE CHE SI RINNOVA DA SOLA (vedi `rinnovoGoogle.js`): chi e' entrato
+// con Google ha lasciato il permesso a lungo termine nel suo Supabase, e la
+// funzione su Vercel ne ricava una chiave nuova senza finestre e senza
+// tocchi. `rinnovo` lo imposta chi sa della sessione (`sync.js`); qui ci si
+// limita a chiederlo, una volta sola anche se lo chiedono in tanti.
+let rinnovo = null;
+let rinnovoInCorso = null;
+export const impostaRinnovo = (fn) => {
+  rinnovo = fn || null;
+};
+export function accettaChiave({ chiave, scade }) {
+  const t = { chiave, scade: Number(scade) || Date.now() + 3600_000 };
+  memoria = t;
+  scrivi(TOKEN_KEY, JSON.stringify(t));
+  scrivi(ACCESO_KEY, "1");
+}
+export function rinnovaInSilenzio() {
+  if (!rinnovo) return Promise.resolve(false);
+  if (!rinnovoInCorso) {
+    rinnovoInCorso = Promise.resolve()
+      .then(rinnovo)
+      .then((t) => {
+        if (!t?.chiave) return false;
+        accettaChiave(t);
+        return true;
+      })
+      .catch(() => false)
+      .finally(() => {
+        rinnovoInCorso = null;
+      });
+  }
+  return rinnovoInCorso;
+}
+// quanto manca alla chiave: la si rinnova PRIMA che scada, cosi' chi
+// guarda `driveProntoOra` la trova sempre buona
+export function chiaveInScadenza(margine = 5 * 60_000) {
+  let t = memoria;
+  if (!t) {
+    try {
+      t = JSON.parse(leggi(TOKEN_KEY));
+    } catch {
+      t = null;
+    }
+  }
+  return !t?.chiave || !(t.scade > Date.now() + margine);
+}
+
 let gis = null;
 function caricaGis() {
   if (globalThis.google?.accounts?.oauth2) return Promise.resolve();
@@ -186,6 +233,9 @@ export async function dettagliFile(ids) {
 // LA CHIAVE SI CHIEDE SOLO DA UN TOCCO: Google la consegna in una finestra,
 // e una finestra aperta senza un tocco il browser la blocca.
 export async function collegaDrive() {
+  // chi e' entrato con Google non vede nessuna finestra: la chiave arriva
+  // dal server
+  if (await rinnovaInSilenzio()) return true;
   const id = clientId();
   if (!id) throw new Error("Manca l'ID client di Google: incollalo qui sopra.");
   if (!idClientValido(id)) throw new Error(PERCHE_ID_STORTO);
@@ -210,6 +260,8 @@ export async function collegaDrive() {
 
 export async function scollegaDrive() {
   const t = tokenValido();
+  // scollegato vuol dire scollegato: niente chiavi nuove dal server
+  rinnovo = null;
   dimenticaToken();
   scrivi(ACCESO_KEY, null);
   scrivi(MAPPA_KEY, null);
@@ -227,12 +279,16 @@ export async function scollegaDrive() {
 // Una chiamata alle API di Drive. Un 401 vuol dire chiave scaduta o
 // ritirata: la si dimentica e si dice «scollegato», che e' un'altra cosa da
 // un guasto — chi chiama lo usa per aspettare invece di contare un errore.
-async function chiama(url, opzioni = {}) {
-  const t = tokenValido();
+async function chiama(url, opzioni = {}, riprovata = false) {
+  let t = tokenValido();
+  if (!t && (await rinnovaInSilenzio())) t = tokenValido();
   if (!t) throw new DriveScollegato();
   const r = await fetch(url, { ...opzioni, headers: { Authorization: `Bearer ${t}`, ...(opzioni.headers || {}) } });
   if (r.status === 401) {
     dimenticaToken();
+    // una chiave ritirata prima del tempo: se il server ne da' una nuova si
+    // riprova una volta, altrimenti e' davvero scollegato
+    if (!riprovata && (await rinnovaInSilenzio())) return chiama(url, opzioni, true);
     throw new DriveScollegato();
   }
   if (!r.ok && r.status !== 308) {

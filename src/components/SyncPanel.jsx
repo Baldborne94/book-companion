@@ -20,6 +20,8 @@ import { PIENO, parteDelPiano } from "../lib/spazio.js";
 import { BarraCloud } from "./BarraCloud.jsx";
 import SezioneDrive from "./SezioneDrive.jsx";
 import { ultimoGiro } from "../lib/resoconto.js";
+import { entraConGoogle, statoRinnovo } from "../lib/accessoGoogle.js";
+import { driveProntoOra } from "../lib/drive.js";
 
 
 function Spazio({ dati }) {
@@ -85,6 +87,7 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
   // avviso che scorre via: chi ha appena sbagliato la password deve poter
   // rileggere il perche' mentre la riscrive.
   const [guaio, setGuaio] = useState(null);
+  const [guaioGoogle, setGuaioGoogle] = useState(null);
   const [confermare, setConfermare] = useState(false);
   // il guaio dell'indirizzo non confermato e' l'unico che ha una via
   // d'uscita, e sta a parte perche' e' l'unico che fa comparire un tasto
@@ -108,6 +111,20 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
     cloudUsage().then((d) => vivo && setSpazio(d));
     return () => { vivo = false; };
   }, [session, status.at]);
+
+  // UN ACCESSO SOLO (vedi `accessoGoogle.js`): la pagina va da Google e
+  // torna qui gia' dentro, biblioteca e Drive insieme
+  async function conGoogle() {
+    if (busy) return;
+    setBusy(true);
+    setGuaioGoogle(null);
+    try {
+      await entraConGoogle();
+    } catch (err) {
+      setGuaioGoogle(spiegaAccesso(err));
+      setBusy(false);
+    }
+  }
 
   async function handleSignIn() {
     const e = email.trim();
@@ -276,6 +293,12 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
               <br />
               Ultima sincronizzazione: {fmtWhen(getLastSync())}
             </p>
+            <StatoGoogle
+              conGoogle={(session.user.app_metadata?.providers || []).includes("google")}
+              onGoogle={conGoogle}
+              busy={busy}
+              guaio={guaioGoogle}
+            />
             {status.message && (
               <div style={{ marginBottom: 12 }}>
                 <p style={{ color: C.arcane, fontSize: F.nota, margin: 0 }}>{status.message}</p>
@@ -398,11 +421,35 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
         ) : (
           <>
             <p style={{ color: C.muted, fontSize: F.nota, lineHeight: 1.5, marginBottom: 14 }}>
-              Entra con email e password: libri, segnalibri, evidenziazioni, note e progressi ti
-              seguiranno su ogni dispositivo. «Registrati» serve solo a chi non ha mai avuto un
-              account. Se finora sei entrato col link per email, la password non ce l'hai
-              ancora: chiedi il link qui sotto e, una volta dentro, impostala con «Cambia la
-              password».
+              Libri, segnalibri, note e progressi ti seguono su ogni dispositivo, e i file dei libri
+              stanno sul tuo Google Drive. Entri una volta sola, per tutt'e due.
+            </p>
+            <button
+              onClick={conGoogle}
+              disabled={busy}
+              style={{
+                width: "100%",
+                minHeight: 48,
+                padding: "10px 20px",
+                borderRadius: R.piccolo,
+                background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+                color: C.onAccent,
+                fontWeight: 600,
+                fontSize: F.corpo,
+              }}
+            >
+              {busy ? "Vado da Google…" : "Entra con Google"}
+            </button>
+            {guaioGoogle && (
+              <p style={{ marginTop: 10, color: C.red, fontSize: F.nota, lineHeight: 1.45 }}>{guaioGoogle}</p>
+            )}
+            <details style={{ marginTop: 14 }}>
+              <summary style={{ color: C.muted, fontSize: F.nota, cursor: "pointer", padding: "12px 0" }}>
+                Entra con email e password
+              </summary>
+            <p style={{ color: C.muted, fontSize: F.piccolo, lineHeight: 1.5, margin: "4px 0 10px" }}>
+              La strada di prima. Con la stessa email del tuo Google ritrovi la stessa biblioteca
+              in tutt'e due i modi. Google Drive, così, si collega a parte.
             </p>
             {/* Un `form` vero, non due caselle sciolte: e' cosi' che il
                 portachiavi del tablet capisce che c'e' un accesso da
@@ -496,10 +543,13 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
             >
               Password dimenticata? Mandami il link per email
             </button>
+            </details>
           </>
         )}
 
-        <SezioneDrive onCollegato={onSync} notify={notify} />
+        {/* da fuori «Entra con Google» collega anche Drive: una seconda
+            porta per la stessa stanza era la confusione di prima */}
+        {(!isSyncConfigured() || session) && <SezioneDrive onCollegato={onSync} notify={notify} />}
 
         <div style={{ marginTop: 18, textAlign: "right" }}>
           <button onClick={onClose} style={{ color: C.muted, fontSize: F.nota }}>
@@ -507,6 +557,44 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// A CHE PUNTO E' GOOGLE, da dentro: si rinnova da solo, o ha ritirato il
+// permesso, o l'account e' entrato con email e password e Google non c'e'.
+// Ogni stato dice cosa fare, con un tasto solo.
+function StatoGoogle({ conGoogle, onGoogle, busy, guaio }) {
+  const stato = statoRinnovo();
+  const tasto = {
+    marginTop: 8,
+    minHeight: 44,
+    padding: "8px 16px",
+    borderRadius: R.piccolo,
+    border: `1px solid ${C.accent}88`,
+    color: C.accent,
+    fontSize: F.nota,
+  };
+  let frase;
+  let chiedi = false;
+  if (stato === "revocato") {
+    frase = "Google ha ritirato il permesso per Drive (o è scaduto): rientra con Google e torna a rinnovarsi da solo.";
+    chiedi = true;
+  } else if (conGoogle && stato !== "nessuno") {
+    frase = driveProntoOra() ? "🗂 Google Drive collegato: la chiave si rinnova da sola." : "🗂 Google Drive: rinnovo la chiave…";
+  } else {
+    frase = "Entra con Google (la stessa email) e Google Drive si collega da solo, senza chiedere più niente.";
+    chiedi = true;
+  }
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <p style={{ margin: 0, color: chiedi ? C.text : C.muted, fontSize: F.nota, lineHeight: 1.45 }}>{frase}</p>
+      {chiedi && (
+        <button onClick={onGoogle} disabled={busy} style={tasto}>
+          {busy ? "Vado da Google…" : "Entra con Google"}
+        </button>
+      )}
+      {guaio && <p style={{ marginTop: 8, color: C.red, fontSize: F.nota, lineHeight: 1.45 }}>{guaio}</p>}
     </div>
   );
 }

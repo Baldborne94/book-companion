@@ -33,6 +33,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 - Stili **100% inline**. `src/index.css` tiene solo reset, font, keyframes, `.textLayer` di pdf.js, pseudo-classi (`:active`, `:focus-visible`) e pseudo-elementi delle View Transitions.
 - `src/lib/`: moduli senza JSX. `src/components/`: sezioni e pannelli. `src/data/`: tavole (saghe, generi, mappa delle funzioni, costanti).
 - `epubjs`, `pdfjs-dist`, `jszip` si importano solo lazy.
+- Un solo pezzo di server: `api/google-token.js` (funzione di Vercel), logica in `src/lib/rinnovoGoogle.js` con la rete iniettata. Nient'altro gira fuori dal browser.
 - PWA con `vite-plugin-pwa` in modalità **prompt**: mai reload automatico a libro aperto. Guscio Android: `docs/TWA.md`, `public/.well-known/assetlinks.json`, «Apri con» via `launchQueue` (`lib/lancio.js`).
 - L'APK lo costruisce e pubblica la CI (`apk.yml`, `scripts/apk.mjs`): `twa-manifest.json` generato dal manifest del sito, versionCode = numero di commit, chiave solo nei segreti (`TWA_KEYSTORE*`), e si pubblica solo se la firma è quella di `assetlinks.json`.
 
@@ -103,6 +104,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 - Scala di rinuncia `DEGRADE` per gli schemi non migrati; gli errori di Postgres si traducono (`spiegaSync`) e il grezzo si ripiega.
 - La musica si prende da Drive come i libri: «☁ Da Google Drive» nella Musica apre il selettore sulla cartella «Musica» di «book-companion», file e cartelle intere (`sceltaMusicaDalPicker`, `audioSotto`, `melodieDaAggiungere`); i brani non scendono, diventano melodie `drive: true` segnate `bcTrack` (`adottaMelodie`) e scendono quando le suoni. I nomi dei brani e delle raccolte musicali non si troncano.
 - L'archivio si fa da solo (`archiviaSuDrive`): una volta al giorno, dopo il giro di Drive e solo con la chiave in mano, lo zip dell'«Esporta» **senza byte** va in «book-companion/Archivi»; se ne tengono dieci, i vecchi nel cestino. Si ripristina dalla strada di sempre.
+- **Entra con Google** (`accessoGoogle.js`, passi in `docs/ACCESSO.md`): un ingresso solo per Supabase e Drive, col permesso a lungo termine nel Supabase del lettore (`google_refresh`, RLS). La chiave di Drive si rinnova dal **solo pezzo di server** dell'app, `api/google-token` su Vercel (`rinnovoGoogle.js`), che legge la riga con la sessione di chi chiede e tiene il segreto del client solo nelle variabili di Vercel. `collegaDrive` e `chiama` provano prima il rinnovo in silenzio (`rinnovaInSilenzio`, una richiesta anche se chiedono in tanti), e l'app tiene la chiave fresca. «nessuno»/«revocato» fermano i tentativi fino al prossimo ingresso con Google. Uscendo si smette **qui**, la riga resta (è dell'account). La chiave che arriva all'ingresso si prende una volta (`bc_google_vista`).
 - Drive: si riconosce prima di mandare (`abbina`: segno, impronta, misura, nome; nel dubbio non si abbina). Un segno `bcId` di una scheda che qui non c'è ferma un file solo finché la biblioteca può ancora arrivare dal cloud (`schedeInArrivo`): dopo un giro è orfano, e il file si aggiunge. La chiave dura un'ora e si rinnova solo da un tocco. I libri si leggono **da Drive** senza scriverli sul tablet (`prendiFile`); restano sul tablet solo quel che il lettore chiede («Tieni sul tablet»), i libri «in lettura» (`daTenereInLettura`, cinque al massimo) e il seguito della saga al 70%, con la scelta di rete di `bc_anticipo`.
 
 ### Ingresso e Libreria
@@ -118,6 +120,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 
 ### Guasti
 
+- Le voltate dei fumetti si misurano (`lib/voltate.js`, `bc_voltate`, 200): byte e disegno separati, stato delle pagine (pronte / in arrivo / chieste), Drive o tablet; il riassunto in coda al rapporto dei guasti. Solo numeri, mai titoli.
 - I guasti si annotano in `bc_errori` (`lib/registro.js`: disegno, pagina, promesse, sincronizzazione) e il rapporto lo copia il lettore dalle Impostazioni. Niente telemetria; chi aggiunge un segreto che può finire in un messaggio aggiunge la sua regola in `pulisci`.
 
 ## Lezioni vincolanti (non re-impararle)

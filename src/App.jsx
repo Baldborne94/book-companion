@@ -45,8 +45,9 @@ import { annotaErrore } from "./lib/registro.js";
 import SezioneGuasti from "./components/SezioneGuasti.jsx";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile, convertiLibroInCbz, adottaCbzConvertiti } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
-import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato } from "./lib/drive.js";
+import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, impostaRinnovo, rinnovaInSilenzio, chiaveInScadenza, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato } from "./lib/drive.js";
 import { importaDaDrive, resoconto } from "./lib/importBook.js";
+import { custodisciGoogle, rinnovoDalServer, lasciaGoogleQui } from "./lib/accessoGoogle.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
 import BarraLavoro from "./components/BarraLavoro.jsx";
 import { spiegaSync, schedaDiversa } from "./lib/syncCore.js";
@@ -1102,6 +1103,24 @@ export default function App() {
     if (frase) notify(`🔑 ${frase} La cambi da Impostazioni, in alto.`);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // LA CHIAVE DI DRIVE SEMPRE FRESCA: chi e' entrato con Google la riceve dal
+  // server (`rinnovaInSilenzio`) prima che scada, e chi guarda
+  // `driveProntoOra` la trova buona senza aver mai visto una finestra
+  useEffect(() => {
+    if (!isSyncConfigured()) return;
+    impostaRinnovo(rinnovoDalServer({ sessione: getSession }));
+    const giro = () => {
+      if (document.visibilityState === "visible" && driveAcceso() && chiaveInScadenza()) rinnovaInSilenzio();
+    };
+    giro();
+    const t = setInterval(giro, 60_000);
+    document.addEventListener("visibilitychange", giro);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", giro);
+    };
+  }, []);
+
   useEffect(() => {
     if (!isSyncConfigured()) return;
     let alive = true;
@@ -1122,7 +1141,18 @@ export default function App() {
     // pannello, e qui si tace.
     const viaAuth = onAuthChange((evento, sessione, voluta) => {
       if (!alive) return;
+      // ENTRATO CON GOOGLE: la chiave di Drive e il permesso a lungo termine
+      // arrivano con la sessione, una volta (vedi `accessoGoogle.js`)
+      if (sessione?.provider_token) {
+        impostaRinnovo(rinnovoDalServer({ sessione: getSession }));
+        custodisciGoogle(sessione).then((esito) => {
+          if (!esito.chiave) return;
+          if (esito.permesso === "non salvato") notify("🗂 Google Drive collegato, ma solo per un'ora: al Supabase manca la tabella google_refresh (aggiorna lo schema).");
+          runSync.current(true);
+        });
+      }
       if (evento === "SIGNED_OUT") {
+        lasciaGoogleQui();
         const era = dentro;
         dentro = false;
         setSync((v) => (v.signedIn ? { ...v, signedIn: false } : v));

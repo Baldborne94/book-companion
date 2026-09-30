@@ -163,3 +163,34 @@ create policy "file miei: aggiorno" on storage.objects
 drop policy if exists "file miei: elimino" on storage.objects;
 create policy "file miei: elimino" on storage.objects
   for delete using (bucket_id = 'books' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ============================================================================
+-- IL PERMESSO DI GOOGLE DRIVE A LUNGO TERMINE («Entra con Google», vedi
+-- src/lib/accessoGoogle.js e docs/ACCESSO.md). Una riga per utente: il
+-- refresh token che Google consegna all'ingresso. Da solo non apre niente
+-- (serve anche il segreto del client, che sta solo su Vercel), e le regole
+-- qui sotto lo lasciano leggere e scrivere soltanto al suo proprietario —
+-- anche la funzione su Vercel lo legge con la sessione di chi chiede.
+-- Idempotente: si puo' rieseguire.
+-- ============================================================================
+create table if not exists public.google_refresh (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  token text not null,
+  aggiornato timestamptz not null default now()
+);
+
+alter table public.google_refresh enable row level security;
+
+drop policy if exists "google_refresh_select" on public.google_refresh;
+drop policy if exists "google_refresh_insert" on public.google_refresh;
+drop policy if exists "google_refresh_update" on public.google_refresh;
+drop policy if exists "google_refresh_delete" on public.google_refresh;
+
+create policy "google_refresh_select" on public.google_refresh
+  for select using (auth.uid() = user_id);
+create policy "google_refresh_insert" on public.google_refresh
+  for insert with check (auth.uid() = user_id);
+create policy "google_refresh_update" on public.google_refresh
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "google_refresh_delete" on public.google_refresh
+  for delete using (auth.uid() = user_id);
