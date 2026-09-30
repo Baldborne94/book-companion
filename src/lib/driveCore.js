@@ -832,3 +832,29 @@ export const fraseCarico = (p) => fraseDiscesa(p, "Carico su Google Drive:");
 // ogni quanto dirlo: a ogni mega, o in fondo — a ogni pezzo della rete
 // sarebbero migliaia di disegni per un file grosso
 export const vaDetto = (prima, adesso, totale) => adesso >= totale || Math.floor(adesso / MB) > Math.floor(prima / MB);
+
+// I CBZ CONVERTITI FUORI DALL'APP (il quaderno di Colab in
+// `strumenti/cbr-in-cbz.ipynb`, scelto dal lettore: «fai la prima, colab»).
+// Su Drive il CBZ nasce accanto al suo CBR, stesso nome e altra estensione,
+// senza il segno del libro: l'app deve riconoscerlo e riattaccarlo, o il
+// libro resterebbe CBR e il CBZ entrerebbe come un libro nuovo, doppione
+// senza segno di lettura, saga ne' voto. Si abbina solo il gemello esatto:
+// stessa cartella, stesso nome (senza estensione, senza badare alle
+// maiuscole), e nessun segno di un ALTRO libro addosso. `mappa` e' quella
+// di Drive ({bookId: {id}}), `file` l'elenco dei file di Drive.
+const radiceDelNome = (n) => String(n || "").replace(/\.[^.]+$/, "").trim().toLowerCase();
+export function cbzDaAdottare(libri, mappa, file) {
+  const perId = new Map((file || []).map((f) => [f.id, f]));
+  const cbz = (file || []).filter((f) => /\.cbz$/i.test(f?.name || "") && !f.trashed);
+  const out = [];
+  for (const b of libri || []) {
+    if (b?.fileType !== "cbr") continue;
+    const vecchio = perId.get(mappa?.[b.id]?.id);
+    if (!vecchio) continue;
+    const radice = radiceDelNome(vecchio.name);
+    const cartella = vecchio.parents?.[0];
+    const nuovo = cbz.find((f) => f.id !== vecchio.id && f.parents?.[0] === cartella && radiceDelNome(f.name) === radice && (!f.appProperties?.bcId || f.appProperties.bcId === b.id));
+    if (nuovo) out.push({ bookId: b.id, vecchio: vecchio.id, nuovo: nuovo.id, byte: Number(nuovo.size) || 0, sha: nuovo.sha256Checksum || null });
+  }
+  return out;
+}

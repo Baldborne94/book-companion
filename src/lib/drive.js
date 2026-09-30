@@ -556,6 +556,26 @@ export async function sostituisciSuDrive(vecchioId, blob, { nome, bookId, onProg
   return f;
 }
 
+// IL CBZ CONVERTITO FUORI (vedi `cbzDaAdottare`) prende il posto del CBR:
+// il segno del libro sul CBZ e la mappa PRIMA, poi il CBR nel cestino col
+// segno tolto — un intoppo a meta' lascia tutt'e due, mai il libro senza.
+export async function adottaCbz({ bookId, vecchio, nuovo, byte }) {
+  await segna(nuovo, bookId);
+  mettiNellaMappa(bookId, nuovo, byte);
+  await chiama(`${API}/files/${encodeURIComponent(vecchio)}?fields=id`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ trashed: true, appProperties: { bcId: null } }),
+  }).catch((e) => {
+    if (e instanceof DriveScollegato) throw e;
+  });
+  if (VIVO) {
+    delete VIVO.elenco.file[vecchio];
+    const f = VIVO.elenco.file[nuovo];
+    if (f) f.appProperties = { ...(f.appProperties || {}), bc: "1", bcId: bookId };
+  }
+}
+
 // la chiave per chi legge Drive fuori da qui (il worker della conversione)
 export const chiaveDrive = () => tokenValido();
 
