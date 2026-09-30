@@ -11,6 +11,8 @@
 // dell'Oracolo, quella di Google, un Bearer finito dentro un messaggio di
 // rete), e i messaggi si accorciano.
 
+import { righeVoltate } from "./voltate.js";
+
 const KEY = "bc_errori";
 export const TENUTI = 30;
 const MESSAGGIO_MAX = 300;
@@ -82,7 +84,9 @@ export const eRumore = (m) => /ResizeObserver loop/.test(m || "") || String(m ||
 
 // Il rapporto: l'app e il dispositivo (senza nome, senza account) e i
 // guasti, dal piu' recente.
-export function rapporto({ errori = [], versione = "?", ambiente = {}, ora = Date.now() } = {}) {
+// In coda, se ci sono, le voltate dei fumetti misurate (`righeVoltate` in
+// `lib/voltate.js`): solo numeri.
+export function rapporto({ errori = [], versione = "?", ambiente = {}, ora = Date.now(), voltate = [] } = {}) {
   const data = (t) => new Date(t).toLocaleString("it-IT", { timeZone: "Europe/Rome" });
   const righe = [
     "Book Companion — rapporto dei guasti",
@@ -93,12 +97,13 @@ export function rapporto({ errori = [], versione = "?", ambiente = {}, ora = Dat
     ambiente.guscio ? `Aperta come: ${ambiente.guscio}` : null,
     "",
   ].filter((r) => r !== null);
-  if (!errori.length) return [...righe, "Nessun guasto annotato."].join("\n");
-  righe.push(`Guasti annotati: ${errori.length}`);
+  if (!errori.length) righe.push("Nessun guasto annotato.");
+  else righe.push(`Guasti annotati: ${errori.length}`);
   for (const e of [...errori].reverse()) {
     righe.push("", `— ${data(e.q)}${e.d ? ` · ${e.d}` : ""}${e.n > 1 ? ` · ${e.n} volte` : ""}`, e.m);
     if (e.s) righe.push(e.s);
   }
+  if (voltate.length) righe.push("", ...righeVoltate(voltate));
   return righe.join("\n");
 }
 

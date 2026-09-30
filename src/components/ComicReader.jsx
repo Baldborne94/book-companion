@@ -7,6 +7,7 @@ import { fraseDiscesa, fraseCarico } from "../lib/driveCore.js";
 import RicollegaDrive from "./RicollegaDrive.jsx";
 import { getCfi, setCfi, getMarks, saveMarks } from "../lib/annotations.js";
 import { setProgress, setStatus } from "../lib/library.js";
+import { vocePerVoltata, segnaVoltata } from "../lib/voltate.js";
 import { loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
 import { apriFumetto, misuraBordi } from "../lib/archivioFumetto.js";
 import {
@@ -161,6 +162,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   // svanisce sopra il nuovo (vedi `fotografa`)
   const disegnato = useRef(null);
   const contaSfuma = useRef(0);
+  const misuraVoltata = useRef(null);
   const [uscente, setUscente] = useState(null);
   const [verso, setVerso] = useState(() => leggiVerso(book.id, book.verso));
   const [adatta, setAdatta] = useState(() => leggiAdatta());
@@ -448,6 +450,15 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     live.current.page = page;
     live.current.ultima = mostrate.at(-1);
     const mio = ++gettone.current;
+    // la voltata si misura da qui (`lib/voltate.js`): in che stato sono le
+    // pagine che servono, e quando arrivano i byte
+    misuraVoltata.current = {
+      chiave: chiaveMostrate,
+      t0: performance.now(),
+      stati: mostrate.map((n) => (urls.current.has(n) ? "pronta" : inArrivo.current.has(n) ? "in arrivo" : "da chiedere")),
+      doppia,
+      prima: primoGiro.current,
+    };
     applica({ s: 1, x: 0, y: 0 });
     if (boxRef.current) boxRef.current.scrollTop = 0;
     // UNA PAGINA CHE NON ARRIVA NON SI PORTA VIA LA COPPIA (segnalato dal
@@ -467,6 +478,10 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         }
         const buone = mostrate.map((n, i) => ({ n, url: esiti[i].status === "fulfilled" ? esiti[i].value : null })).filter((x) => x.url);
         if (!buone.length) return;
+        if (misuraVoltata.current?.chiave === chiaveMostrate) {
+          misuraVoltata.current.tPagine = performance.now();
+          misuraVoltata.current.kb = buone.reduce((t, x) => t + (pesi.current.get(x.n) || 0), 0) / 1024;
+        }
         if (sfumaDa(disegnato.current, chiaveMostrate, { nastro: live.current.nastro, acceso: live.current.sfuma && live.current.intera })) {
           const foto = fotografa();
           if (foto) setUscente({ ...foto, id: ++contaSfuma.current, via: false });
@@ -855,6 +870,26 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
       vivo = false;
     };
   }, [uscente, pronte]);
+  // la voltata e' finita quando le pagine nuove sono decodificate: allora
+  // si annota (con un tetto, come ogni attesa)
+  useEffect(() => {
+    const m = misuraVoltata.current;
+    if (!pronte || !m || m.chiave !== srcsDi || m.tPagine == null || m.fatta) return;
+    m.fatta = true;
+    const ims = [...(imgRef.current?.querySelectorAll("img") || [])];
+    const tetto = new Promise((r) => setTimeout(r, 5000));
+    Promise.race([Promise.all(ims.map((im) => im.decode().catch(() => {}))), tetto]).then(() => {
+      const c = globalThis.navigator?.connection;
+      segnaVoltata(
+        vocePerVoltata({
+          ...m,
+          tVista: performance.now(),
+          da: lontano.current ? "drive" : "tablet",
+          rete: c ? [c.type, c.effectiveType, c.downlink ? `${c.downlink} Mbit/s` : ""].filter(Boolean).join(" ") : "",
+        })
+      );
+    });
+  }, [pronte, srcsDi]);
   useEffect(() => {
     if (!uscente) return;
     // ogni attesa ha un tetto: una pagina che non si decodifica, o
