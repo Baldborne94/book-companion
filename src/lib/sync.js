@@ -30,6 +30,7 @@ import { leggiQuaderno, scriviQuaderno, fondiQuaderno } from "./quaderno.js";
 import { leggiDaPrendere, scriviDaPrendere, fondiDaPrendere } from "./daPrendere.js";
 import { leggiRigheLeggere, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare, copertineInAttesa, segnaInAttesa, fondiSchede } from "./syncCore.js";
 import { daTogliereDalSecchio, avanziDelSecchio, segnaSuDrive, leggereDaLontano } from "./driveCore.js";
+import { raccontaGiro } from "./resoconto.js";
 import { giroDrive, giroMelodie, archiviaSuDrive, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto } from "./drive.js";
 import { tipiDi, tipoDi } from "./library.js";
 import { misureFile, listTrackIds } from "./bookStore.js";
@@ -325,6 +326,10 @@ export async function syncNow({ onProgress } = {}) {
     rowFromLocal(b, readLocalState(b.id), getUpdatedAt(b.id, b.addedAt || 1), getSchedaAt(b.id))
   );
   const tombstones = getTombstones();
+  // le righe di prima, per dire alla fine che cosa e' cambiato
+  const primaQui = new Map(localRows.map((r) => [r.id, r]));
+  const copertineScese = new Set();
+  const copertineSalite = new Set();
 
   // LE RIGHE LEGGERE PER DECIDERE, INTERE SOLO QUELLE CHE SI MUOVONO (vedi
   // `leggiRigheLeggere` in `syncCore.js`): la biblioteca intera a ogni giro
@@ -517,6 +522,7 @@ export async function syncNow({ onProgress } = {}) {
     // una copertina che non sale non ferma niente: si riprova al giro dopo
     if (cErr && cErr.statusCode !== "409") continue;
     segnaInAttesa(b.id, false);
+    copertineSalite.add(b.id);
     // l'elenco del secchio e' di prima del viaggio: senza, la copertina
     // appena salita sembrerebbe un'altra, e scenderebbe quella vecchia
     secchio.idCopertine.add(b.id);
@@ -598,7 +604,10 @@ export async function syncNow({ onProgress } = {}) {
       try {
         if (!copertineInAttesa().has(book.id) && !(await getCover(book.id))) {
           const { data } = await sb.storage.from(BUCKET).download(coverPath(uid, book.id));
-          if (data) await putCover(book.id, data);
+          if (data) {
+            await putCover(book.id, data);
+            copertineScese.add(book.id);
+          }
         }
       } catch {
         /* si riprova alla prossima sincronizzazione */
@@ -662,7 +671,10 @@ export async function syncNow({ onProgress } = {}) {
       for (const b of mancanti) {
         try {
           const { data } = await sb.storage.from(BUCKET).download(coverPath(uid, b.id));
-          if (data) await putCover(b.id, data);
+          if (data) {
+            await putCover(b.id, data);
+            copertineScese.add(b.id);
+          }
         } catch {
           /* si riprova alla prossima sincronizzazione */
         }
@@ -732,7 +744,23 @@ export async function syncNow({ onProgress } = {}) {
   localStorage.setItem(PREFS_UPD_KEY, String(stamp));
 
   localStorage.setItem(LAST_SYNC_KEY, String(Date.now()));
+  const remotaDi = new Map((remoteRows || []).map((r) => [r.id, r]));
+  const titoloDi = (id) => next.find((b) => b.id === id)?.title || primaQui.get(id)?.title || "";
+  const racconto = raccontaGiro({
+    arrivati: pull.map((row) => ({ prima: primaQui.get(row.id) || null, dopo: row })),
+    schede: [...schedeScese].map(([id, row]) => ({ prima: primaQui.get(id) || null, dopo: row })),
+    // una riga che lassu' c'e' ma non si e' letta intera non e' «nuova»:
+    // la riga leggera non ha i campi, e un campo che manca non si racconta
+    partiti: push.filter((r) => !r.deleted).map((row) => ({ prima: intere.get(row.id) || remotaDi.get(row.id) || null, dopo: row })),
+    tolti: removeLocal.map((id) => primaQui.get(id)?.title).filter(Boolean),
+    cancellati: push.filter((r) => r.deleted).map((r) => intere.get(r.id)?.title).filter(Boolean),
+    copertine: [
+      ...[...copertineScese].map((id) => ({ titolo: titoloDi(id), verso: "qui" })),
+      ...[...copertineSalite].map((id) => ({ titolo: titoloDi(id), verso: "lassu" })),
+    ].filter((c) => c.titolo),
+  });
   return {
+    racconto,
     pushed: toPush.length,
     pulled: pull.length,
     removed: removeLocal.length,
