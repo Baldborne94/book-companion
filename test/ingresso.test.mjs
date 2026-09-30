@@ -14,6 +14,7 @@ import {
   numeriMescolati,
   perchePassoTace,
   frasePassoTace,
+  passoDentro,
   MOTIVI_PASSO,
 } from "../src/lib/saga.js";
 import { rigaDiario, buildDiary } from "../src/lib/diary.js";
@@ -156,12 +157,20 @@ export default async function (t) {
   // passo dopo è quello che SEGUE l'ultimo letto — se lo stai leggendo, o
   // l'hai aperto e lasciato lì, non c'è niente da proporre: ce l'hai in mano.
   {
-    // il 27% su `d3` non lo propone (era il primo difetto) e non fa nemmeno
-    // saltare a un volume più in là: Discworld non propone niente
+    // IL 27% «DA LEGGERE» ADESSO SI PROPONE (girato di proposito: il
+    // lettore ha tolto «Moving Pictures» dalla lettura e lo ha visto sparire
+    // da tutt'e due le file). Aprire un libro lo dichiara «in lettura» da
+    // solo, e «Stai leggendo anche» guarda lo stato: un volume «Da leggere»
+    // col progresso sopra zero e' uno rimesso li' a mano, e il suo posto e'
+    // fra i seguiti — una fila sola, niente doppione
     const aperto = (id) => (id === "d3" ? 0.27 : 0);
     const p = prossimiPassi(LIBRI, { statusOf, progressoOf: aperto });
-    t.c("un volume al 27% non si propone", !ids(p).includes("d3"), ids(p));
-    t.eq("…e la sua saga tace, perché il passo dopo ce l'hai già in mano", ids(p), "m2");
+    t.c("un volume al 27% rimesso «Da leggere» si propone", ids(p).includes("d3"), ids(p));
+    // e non fa saltare a un volume più in là
+    t.c("…e non si salta oltre lui", !ids(p).includes("d4"), ids(p));
+    // in lettura invece no: lo hai in mano, e sta nell'altra fila
+    const inMano = (id) => (id === "d3" ? "reading" : statusOf(id));
+    t.c("…ma in lettura non si propone", !ids(prossimiPassi(LIBRI, { statusOf: inMano, progressoOf: aperto })).includes("d3"));
   }
   {
     // un'apertura di passaggio NON apre il filo: New Spring allo 0,4% non
@@ -281,8 +290,36 @@ export default async function (t) {
     // Men at Arms, non il numero dopo di un'altra storia
     const solo = new Set(["gg"]);
     const q = prossimiPassi(disco, { statusOf: (id) => (solo.has(id) ? "read" : "unread") });
-    t.eq("letto solo Guards! Guards!, il prossimo è Men at Arms", ids(q), "ma");
+    t.eq("letto solo Guards! Guards!, il prossimo è Men at Arms", ids(q)[0] === "m" && q[0].libro.id, "ma");
     t.eq("…che è il seguito della SUA storia", q[0].ciclo, "City Watch");
+    // E L'INIZIO DEL CICLO DOPO (chiesto dal lettore con «Moving Pictures»):
+    // in una saga cominciata si propone anche il primo volume del ciclo non
+    // ancora cominciato che viene prima nell'ordine della saga — uno solo,
+    // e DOPO il seguito della storia che hai in mano
+    t.eq("…e poi l'inizio del primo ciclo non cominciato", ids(q), "ma+cm");
+    t.eq("…che dice quale ciclo comincia", q[1].inizio, "Rincewind");
+    // letti i primi nove, l'unico ciclo non cominciato è la Rivoluzione
+    // industriale: il caso del lettore
+    const nove = new Set(["cm", "lf", "er", "mo", "so", "ws", "py", "gg", "ec"]);
+    const r = prossimiPassi(disco, { statusOf: (id) => (nove.has(id) ? "read" : "unread") });
+    t.c("Moving Pictures torna fra i seguiti", ids(r).split("+").includes("mp"), ids(r));
+    t.eq("…una volta sola", ids(r).split("+").filter((x) => x === "mp").length, 1);
+    // un ciclo lasciato (un volume abbandonato) non si ripropone
+    const lasciato = prossimiPassi(disco, { statusOf: (id) => (nove.has(id) ? "read" : id === "mp" ? "abandoned" : "unread") });
+    t.c("un ciclo abbandonato non si ripropone dall'inizio", !ids(lasciato).includes("mp") && !ids(lasciato).includes("+ll"), ids(lasciato));
+    // tutti i cicli cominciati: nessun inizio in più (il controllo di sopra,
+    // «un passo per ogni ciclo cominciato», resta identico)
+    // l'ordine è quello della SAGA, non quello in cui i libri sono entrati
+    const sparsi = [...disco].reverse();
+    t.eq("l'inizio è il ciclo che viene prima, in qualunque ordine arrivino", ids(prossimiPassi(sparsi, { statusOf: (id) => (solo.has(id) ? "read" : "unread") })), "ma+cm");
+    // un volume senza ciclo non è «un ciclo da cominciare»
+    const senzaCiclo = [{ ...L("zz", "Discworld", 0.5) }, ...disco];
+    t.c("un volume senza ciclo non si propone come inizio", !ids(prossimiPassi(senzaCiclo, { statusOf: (id) => (solo.has(id) ? "read" : "unread") })).includes("zz"));
+    // quel che la guida non conta come tappa non apre un ciclo
+    const conContorno = prossimiPassi(disco, { statusOf: (id) => (solo.has(id) ? "read" : "unread"), contorno: (b) => b.id === "cm" });
+    t.eq("un contorno non è l'inizio di un ciclo", ids(conContorno), "ma+lf");
+    // una saga soltanto in lettura non è cominciata: niente inizi
+    t.eq("senza un volume finito nessun inizio", prossimiPassi(disco, { statusOf: (id) => (id === "gg" ? "reading" : "unread") }).length, 0);
   }
 
   // ---- IL CICLO, NON LA SAGA ---------------------------------------------
@@ -584,11 +621,14 @@ export default async function (t) {
     // da aprire — e il passo è il seguito di quello che stai leggendo
     const terzo = V("c", "Terzo", 3);
     t.eq("…mentre col primo finito il filo parla", motivi([uno, due, terzo], { a: "read", b: "reading" }).length, 0);
-    t.eq("il seguito l'hai aperto", solo([uno, due], { a: "read" }, { b: 0.3 })?.motivo, "aperto");
+    // girato col «Da leggere» che conta: il seguito aperto e rimesso li' a
+    // mano si propone, e la saga non tace
+    t.eq("il seguito rimesso «Da leggere» non fa tacere la saga", solo([uno, due], { a: "read" }, { b: 0.3 }), undefined);
     // …e la frase nomina IL SEGUITO, non il volume da cui si è partiti:
     // sono due libri diversi e scambiarli manda a cercare il volume
     // sbagliato (mutazione provata)
-    const apertoQui = frasePassoTace(solo([uno, due], { a: "read" }, { b: 0.3 }));
+    // la frase si prova dove la ragione nasce ancora: il seguito IN LETTURA
+    const apertoQui = frasePassoTace({ saga: "S", nome: "S", ...passoDentro(uno, [uno, due], (id) => (id === "b" ? "reading" : "read")) });
     t.eq("…e nomina il seguito", apertoQui.includes("Secondo"), true);
     t.eq("…e non il volume di partenza", apertoQui.includes("Primo"), false);
     t.eq("dopo di te non hai altro", solo([uno], { a: "read" })?.motivo, "ultimo");

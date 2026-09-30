@@ -14,8 +14,16 @@ import { PARTI_DI_GUIDA, contornoDiUnaGuida } from "./sagaBooks.js";
 // tu, e il progresso, che lo dice il libro. L'abbandonato resta fuori per
 // la ragione opposta e altrettanto buona: quella storia l'hai lasciata
 // apposta, e riproportela e' il difetto per cui quello stato esiste.
-const maiAperto = (b, statusOf, progressoOf) =>
-  statusOf(b.id) === "unread" && !(progressoOf(b.id) > 0);
+//
+// E ADESSO DECIDE LO STATO DA SOLO (segnalato: «Moving Pictures» tolto a
+// mano dalla lettura spariva da tutt'e due le file). Quando il progresso
+// contava, «Stai leggendo anche» guardava anch'essa il progresso, e un
+// romanzo al 27% stava in due righe. Oggi quella fila guarda lo STATO, e
+// aprire un libro lo dichiara «in lettura» da solo (`handleRead`): un
+// volume «Da leggere» col progresso sopra zero e' uno che il lettore ha
+// rimesso li' a mano. Tenerlo fuori anche da qui lo lasciava senza posto
+// sull'Ingresso; adesso torna seguito, e la nota dice «gia' al 12%».
+const maiAperto = (b, statusOf) => statusOf(b.id) === "unread";
 
 // E DOVE IL CAMPO «SERIE» E' VUOTO, LO DICONO I NUMERI.
 //
@@ -320,7 +328,7 @@ export function passoDentro(
     // dall'app
     const rivali = rivaliDi(b, dove, contorno);
     if (rivali.length) return { libro: null, motivo: "mescolati", uno: b, due: rivali[0] };
-    if (maiAperto(b, statusOf, progressoOf)) return { libro: b, motivo: null };
+    if (maiAperto(b, statusOf)) return { libro: b, motivo: null };
     // il seguito c'e' e l'hai gia' aperto: il passo ce l'hai in mano, e
     // dirlo per nome e' meglio che tacere
     return { libro: null, motivo: "aperto", volume: b };
@@ -478,6 +486,7 @@ export function prossimiPassi(
     if (!libro || libro.id === escludi) continue;
     passi.push({ saga: e.saga, ciclo: e.ciclo, nome: e.nome, libro, da: e.avanti, quando: e.quando });
   }
+  passi.push(...iniziDeiCicli(books, storie, { statusOf, escludi, contorno }));
   // e a parita' di nome decide il NUMERO del volume proposto: da quando due
   // serie della stessa saga possono chiamarsi tutt'e due come la saga
   // («Discworld» due volte), l'alfabeto non le distingue piu' e senza questo
@@ -489,6 +498,39 @@ export function prossimiPassi(
       a.nome.localeCompare(b.nome, "it") ||
       (a.libro.sagaOrder ?? Infinity) - (b.libro.sagaOrder ?? Infinity)
   );
+}
+
+// E IL CICLO DOPO, IN UNA SAGA GIA' COMINCIATA (chiesto dal lettore:
+// «Moving Pictures», primo del ciclo Industrial Revolution del Mondo
+// Disco, non tornava fra i seguiti — un filo si apre solo con un volume
+// finito del SUO ciclo, e di quello non ne aveva letto nessuno). Scelto da
+// lui: in una saga dove hai finito qualcosa, si propone anche l'inizio del
+// ciclo non ancora cominciato che viene prima nell'ordine della saga. Uno
+// per saga, per non riempire la fila di tutti gli inizi del Mondo Disco.
+// Solo dove il numero e' della SAGA: dove ogni serie si numera da uno
+// (`numeriMescolati`) «prima nell'ordine della saga» non vuol dire niente.
+// Un ciclo lasciato (un volume abbandonato) non si ripropone.
+function iniziDeiCicli(books, storie, { statusOf, escludi, contorno }) {
+  const finite = new Map();
+  for (const e of storie.values()) if (e.finito) finite.set(e.saga, Math.max(finite.get(e.saga) || 0, e.quando));
+  const out = [];
+  for (const [saga, quando] of finite) {
+    if (numeriMescolati(books, saga)) continue;
+    const suoi = books.filter((b) => (b?.saga || "").trim() === saga && cicloDi(b) && b.sagaOrder != null && !contorno(b));
+    const cominciati = new Set(suoi.filter((b) => statusOf(b.id) !== "unread").map((b) => cicloDi(b).toLowerCase()));
+    const primi = new Map();
+    for (const b of suoi) {
+      const c = cicloDi(b).toLowerCase();
+      if (cominciati.has(c)) continue;
+      if (!primi.has(c) || b.sagaOrder < primi.get(c).sagaOrder) primi.set(c, b);
+    }
+    const [libro] = [...primi.values()].sort((a, b) => a.sagaOrder - b.sagaOrder);
+    if (!libro || libro.id === escludi) continue;
+    // subito dopo il filo piu' recente della sua saga: il seguito di una
+    // storia che hai in mano viene prima dell'inizio di una nuova
+    out.push({ saga, ciclo: cicloDi(libro), nome: saga, libro, inizio: cicloDi(libro), da: null, quando: quando - 0.5 });
+  }
+  return out;
 }
 
 // E LE SAGHE CHE TACCIONO DICONO PERCHE'.
@@ -596,8 +638,14 @@ export function inCorsoESeguiti(inLettura = [], passi = [], progressoOf = getPro
     if (!b || visti.has(b.id)) continue;
     visti.add(b.id);
     // il CICLO quando c'e', la saga quando non c'e': dentro una saga grande
-    // «Cosmoverse n° 4» non si puo' verificare a occhio, «Mistborn n° 4» si'
-    seguiti.push({ book: b, nota: `${p.nome} n° ${String(b.sagaOrder).replace(".", ",")}` });
+    // «Cosmoverse n° 4» non si puo' verificare a occhio, «Mistborn n° 4» si'.
+    // L'inizio di un ciclo nuovo lo dice, e un volume rimesso «Da leggere»
+    // dopo averlo aperto dice dove eri arrivato.
+    const letto = Math.round((Number(progressoOf(b.id)) || 0) * 100);
+    const pezzi = [`${p.nome} n° ${String(b.sagaOrder).replace(".", ",")}`];
+    if (p.inizio) pezzi.push(`inizia ${p.inizio}`);
+    if (letto > 0) pezzi.push(`già al ${letto}%`);
+    seguiti.push({ book: b, nota: pezzi.join(" · ") });
   }
   return { inCorso, seguiti };
 }
