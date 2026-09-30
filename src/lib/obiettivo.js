@@ -87,10 +87,17 @@ export function passoObiettivo(finiti, obiettivo, anno, oggi = Date.now()) {
   const atteso = obiettivo * frazioneAnno(anno, oggi);
   const scarto = finiti - atteso;
   const libri = (n) => (n === 1 ? "un libro" : `${n} libri`);
+  // «in anticipo di 3 libri» non diceva rispetto a cosa (chiesto dal
+  // lettore): si dice la tabella di marcia e i due numeri, e il numero dei
+  // libri che bastavano e' quello che fa tornare il conto a vista
   let passo;
   if (finiti >= obiettivo) passo = "obiettivo raggiunto ✨";
-  else if (scarto >= 1) passo = `in anticipo di ${libri(Math.floor(scarto))}`;
-  else if (scarto <= -1) passo = `indietro di ${libri(Math.floor(-scarto))}`;
-  else passo = "in pari col passo";
+  else if (scarto >= 1) {
+    const n = Math.floor(scarto);
+    passo = `${libri(n)} avanti sulla tabella di marcia (${finiti} letti, a oggi ne bastavano ${finiti - n})`;
+  } else if (scarto <= -1) {
+    const n = Math.floor(-scarto);
+    passo = `${libri(n)} indietro sulla tabella di marcia (${finiti} letti, a oggi ne servivano ${finiti + n})`;
+  } else passo = "in pari con la tabella di marcia";
   return { finiti, obiettivo, frazione: Math.min(1, finiti / obiettivo), passo };
 }
