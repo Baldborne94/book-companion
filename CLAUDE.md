@@ -103,6 +103,10 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 - Scaffale a ripiani (`disponi` in `ripiani.js`): saga o autore, cicli e capitoli come sotto-ripiani, ripiani lontani non costruiti (`useVicino`), miniature e non copertine intere.
 - Un tasto non promette ciò che non può dare; gli zeri non si dicono; un avviso sta accanto al tasto che lo risolve.
 
+### Guasti
+
+- I guasti si annotano in `bc_errori` (`lib/registro.js`: disegno, pagina, promesse, sincronizzazione) e il rapporto lo copia il lettore dalle Impostazioni. Niente telemetria; chi aggiunge un segreto che può finire in un messaggio aggiunge la sua regola in `pulisci`.
+
 ## Lezioni vincolanti (non re-impararle)
 
 1. Tipografia del reader sugli elementi, inchiostro su `body *`, mai l'interlinea su `body *`.

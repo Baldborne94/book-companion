@@ -1,6 +1,7 @@
 import { Component } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { pezzoMancante } from "../lib/guasto.js";
+import { annotaErrore } from "../lib/registro.js";
 
 // QUANDO SI ROMPE QUALCOSA, LO SCHERMO NON DEVE RESTARE BIANCO.
 //
@@ -37,8 +38,10 @@ export default class Guasto extends Component {
   }
 
   componentDidCatch(err, info) {
-    // niente telemetria: in console, dove chi sviluppa lo trova, e basta
+    // niente telemetria: in console, e nel registro che il lettore copia
+    // lui dalle Impostazioni (la pila dei componenti dice DOVE)
     console.error("Book Companion — guasto raccolto:", err, info?.componentStack);
+    annotaErrore(err, { dove: "disegno", pila: info?.componentStack || err?.stack });
   }
 
   riprova = () => {

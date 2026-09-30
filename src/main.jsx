@@ -3,6 +3,10 @@ import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
 import Guasto from "./components/Guasto.jsx";
 import "./index.css";
+import { ascoltaErrori } from "./lib/registro.js";
+
+// i guasti che nessuno raccoglie finiscono nel registro (vedi `lib/registro.js`)
+ascoltaErrori(window);
 
 // L'anello grosso: se qualcosa esplode fuori dal libro, il lettore vede
 // una candela spenta e due tasti, non uno schermo bianco.
