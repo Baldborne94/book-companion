@@ -186,6 +186,44 @@ const SCENE = [
     },
   },
   {
+    // segnalato dal lettore col telefono: «non è allineato con le cose che
+    // ci sono su tablet e pc, si porta dietro cose in meno, la
+    // sincronizzazione è molto lenta». La sua biblioteca passa i mille
+    // libri, e Supabase da' al piu' mille righe per richiesta.
+    nome: "una biblioteca di piu' di mille libri arriva intera sul telefono, e un giro senza novita' non rimanda niente",
+    async fai({ browser, db }) {
+      const N = 1100;
+      // lo script entra nella pagina come testo: N ci va scritto dentro
+      const semina = (n) => {
+        if (localStorage.getItem("bc_books")) return;
+        const libri = Array.from({ length: n }, (_, i) => ({ id: `l${String(i).padStart(4, "0")}`, title: `Volume ${i + 1}`, author: "Autore di prova", fileType: "epub", addedAt: 1000 + i }));
+        localStorage.setItem("bc_books", JSON.stringify(libri));
+      };
+      const pc = await dispositivo(browser, { sessione: true, prima: `(${semina})(${N})` });
+      await pc.p.goto(URL_APP);
+      await finche(() => db.righe().length >= N, 60000, `i ${N} libri del PC non salgono tutti (${db.righe().length})`);
+      const tel = await dispositivo(browser, { sessione: true });
+      await tel.p.goto(URL_APP);
+      const arrivati = await finche(
+        async () => {
+          const n = (await libriDi(tel.p)).length;
+          return n >= N ? n : 0;
+        },
+        60000,
+        `sul telefono non arrivano tutti i ${N} libri`
+      ).catch(async (e) => {
+        throw new Error(`${e.message}: ne arrivano ${(await libriDi(tel.p)).length}`);
+      });
+      const primaDelGiro = await pc.p.evaluate(() => localStorage.getItem("bc_lastsync"));
+      const salitePrima = db.salite();
+      await pc.p.reload();
+      await finche(async () => (await pc.p.evaluate(() => localStorage.getItem("bc_lastsync"))) !== primaDelGiro, 60000, "il secondo giro del PC non finisce");
+      const rimandate = db.salite() - salitePrima;
+      if (rimandate) throw new Error(`un giro senza novita' ha rimandato ${rimandate} righe nel cloud`);
+      return { guasti: [...pc.guasti, ...tel.guasti], nota: `${arrivati} libri sul telefono; il giro dopo non rimanda niente` };
+    },
+  },
+  {
     // segnalato dal lettore: «ci mette parecchi secondi per passare da una
     // pagina all'altra… o tornare indietro». Si tenevano quattro pagine
     // dietro quella a schermo, e da Drive tornarci era un viaggio a voltata.
