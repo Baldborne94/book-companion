@@ -631,25 +631,32 @@ export function sfumaDa(prima, chiave, { nastro = false, acceso = true, riduci =
 // tipica 111 ms di cui 108 di DISEGNO — il tablet che decodifica una pagina
 // da 1,7 MB). Mentre leggi, il browser decodifica gia' il foglio che viene
 // dopo, sotto la pagina a schermo: alla voltata l'immagine e' pronta. Solo il
-// foglio dopo, una pagina o la coppia: una pagina decodificata sono decine
-// di MB, e tenerne di piu' toglierebbe memoria alle pagine in arrivo.
-export function daDecodificare({ ultima, pages, doppia = false, opzioni = {} }) {
-  if (!(ultima >= 1) || ultima >= pages) return [];
-  return doppia ? coppiaDi(ultima + 1, pages, opzioni) : [ultima + 1];
+// foglio dopo E QUELLO PRIMA (chiesto dal lettore, «fai la 3»: misurato,
+// tornare indietro costava 70 ms a pagina singola e 156 in doppia con la
+// dissolvenza, contro 20-40 in avanti), una pagina o la coppia per parte:
+// una pagina decodificata sono decine di MB, e tenerne di piu' toglierebbe
+// memoria alle pagine in arrivo.
+export function daDecodificare({ ultima, prima = ultima, pages, doppia = false, opzioni = {} }) {
+  const foglio = (n) => (doppia ? coppiaDi(n, pages, opzioni) : [n]);
+  return {
+    avanti: ultima < pages ? foglio(ultima + 1) : [],
+    indietro: prima > 1 && prima <= pages ? foglio(prima - 1) : [],
+  };
 }
 
 // LE TRE LISTE DEL FOGLIO: a schermo, che svaniscono, il foglio dopo. Vivono
 // in UNA lista con la chiave della pagina, cosi' alla voltata la pagina che
 // era dopo (o a schermo) resta lo stesso elemento gia' decodificato. Una
 // pagina sta in una lista sola: due chiavi uguali, e React ne butta una.
-// `indice` e' il posto della pagina nel suo foglio.
+// `indice` e' il posto della pagina nel suo foglio: chi prepara due fogli
+// (dopo e prima) lo porta da se', insieme al foglio.
 export function fogliInScena({ aSchermo = [], uscenti = [], dopo = [] }) {
   const prese = new Set(aSchermo.map((x) => x.n));
   const via = uscenti.filter((x) => !prese.has(x.n));
   for (const x of via) prese.add(x.n);
   return {
     uscenti: via,
-    dopo: dopo.map((x, indice) => ({ ...x, indice })).filter((x) => !prese.has(x.n)),
+    dopo: dopo.map((x, indice) => ({ indice, ...x })).filter((x) => !prese.has(x.n)),
   };
 }
 

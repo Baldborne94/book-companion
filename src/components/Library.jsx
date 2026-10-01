@@ -3154,7 +3154,7 @@ function SceltaTitoli({ proposte, scelti, onCambia, onChiudi, onVai }) {
           ✍ Titoli da ripulire
         </h2>
         <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 16 }}>
-          Davanti a questi titoli c'è l'etichettatura di chi ha impacchettato il file.
+          Davanti o in coda a questi titoli c'è l'etichettatura di chi ha impacchettato il file.
           Guarda e spunta: quello che lasci non si tocca.
         </p>
 

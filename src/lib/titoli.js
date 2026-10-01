@@ -43,12 +43,40 @@ const RUMORE = /^(?:ebook|e-book|epub|pdf|retail|unabridged|italian|ita|eng)$/i;
 // Torna il titolo ripulito, o `null` quando non c'e' niente da togliere o
 // quel che resta non e' un titolo. `null` non e' un guasto: e' la risposta
 // normale su un titolo gia' pulito, che sono la maggioranza.
-export function titoloPulito({ title } = {}) {
+// LE ETICHETTE DI CHI HA MESSO IN GIRO IL FUMETTO (segnalato dal lettore con
+// le raccolte di I Hate Fairyland e Walking Dead: «v03 - Good Girl (2017)
+// GetComics.INFO», «(Digital) (XRA-Empire)», «(Fan Made TPB)»). Stanno IN
+// CODA, fra parentesi o nude, e non sono il titolo: l'anno, «digital», il
+// gruppo che l'ha scansionato, il sito. Si tolgono solo dalla coda e solo
+// nei fumetti: in mezzo al titolo un anno distingue una serie («Batman
+// (2016) v01»), e nei romanzi «(1965)» puo' essere del titolo.
+const ETICHETTA =
+  /^(?:\d{4}(?:-\d{4})?|digital|digital-empire|webrip|web-rip|c2c|hd|hq|upscaled|scan|fixed|repack|tpb|fan[ -]?made(?: tpb)?|of \d+|[\w'.-]*empire|getcomics(?:\.info)?)$/i;
+const CODA = /\s*(?:[([]([^()[\]]*)[)\]]|\bgetcomics\.info)\s*$/i;
+export function senzaEtichette(titolo) {
+  let t = String(titolo || "").trim();
+  for (;;) {
+    const m = CODA.exec(t);
+    if (!m || (m[1] !== undefined && !ETICHETTA.test(m[1].trim()))) return t;
+    t = t.slice(0, m.index).trim();
+  }
+}
+// «Saga v03 - Titolo», «v06: Titolo»: la forma dei fumetti che il parser
+// delle saghe non legge (vuole «Vol.» o il numero senza la «v»)
+const VOLUME_V = /^(?:.*?\s)?v\d{1,3}\s*[-–—:]\s*(.+)$/i;
+
+// Il numero del volume, nei fumetti, esce dal titolo solo se la scheda ce
+// l'ha gia' (il numero sulla copertina): rinominare tocca il solo titolo, e
+// «v03» tolto da una scheda senza numero sparirebbe del tutto.
+export function titoloPulito({ title, fileType, sagaOrder } = {}) {
   const originale = String(title || "").trim();
   if (!originale) return null;
-  const pezzi = pezziDalTitolo(originale);
-  if (!pezzi?.resto) return null;
-  const pulito = String(pezzi.resto).replace(BORDO, "").trim();
+  const fumetto = fileType === "cbz" || fileType === "cbr";
+  const base = fumetto ? senzaEtichette(originale) : originale;
+  const senzaNumero = !fumetto || Number(sagaOrder) > 0 ? pezziDalTitolo(base)?.resto || (fumetto && VOLUME_V.exec(base)?.[1]) : null;
+  const resto = senzaNumero || (base !== originale ? base : null);
+  if (!resto) return null;
+  const pulito = String(resto).replace(BORDO, "").trim();
   if (pulito.length < 2) return null;
   if (!/\p{L}/u.test(pulito)) return null;
   if (SOLO_ETICHETTA.test(pulito) || RUMORE.test(pulito)) return null;
@@ -62,12 +90,33 @@ export function titoloPulito({ title } = {}) {
 // La passata sulla biblioteca: una proposta per libro, e solo dove c'e'
 // qualcosa da togliere. Resta pura — chi scrive e' la Libreria, dopo che
 // il lettore ha spuntato.
+//
+// UN TITOLO RIPULITO NON PUO' FARE DUE FUMETTI OMONIMI: i doppioni dei
+// fumetti si riconoscono dal solo titolo (`doppioniInBiblioteca`), e
+// «The Complete Short Stories v1» e «v2» diventati uguali sarebbero
+// proposti come copie da unire. Una proposta che fa un titolo gia' preso
+// da un altro fumetto (com'e' adesso o come verrebbe) non si fa.
 export function proponiTitoli(books) {
   const fuori = [];
+  const chiave = (t) => String(t || "").trim().toLowerCase();
+  const fumetti = (books || []).filter((b) => b?.id && (b.fileType === "cbz" || b.fileType === "cbr"));
+  const conta = new Map();
+  const nuovo = new Map();
   for (const b of books || []) {
     if (!b?.id) continue;
     const a = titoloPulito(b);
-    if (a) fuori.push({ id: b.id, da: b.title, a });
+    if (a) nuovo.set(b.id, a);
+  }
+  for (const b of fumetti) {
+    const k = chiave(nuovo.get(b.id) ?? b.title);
+    conta.set(k, (conta.get(k) || 0) + 1);
+  }
+  for (const b of books || []) {
+    const a = nuovo.get(b?.id);
+    if (!a) continue;
+    const eFumetto = b.fileType === "cbz" || b.fileType === "cbr";
+    if (eFumetto && conta.get(chiave(a)) > 1) continue;
+    fuori.push({ id: b.id, da: b.title, a });
   }
   return fuori;
 }

@@ -7,7 +7,7 @@
 //
 // La cura vera però è che NON si riscrive niente: si propone, e la
 // Libreria fa spuntare. Qui si prova la proposta.
-import { titoloPulito, proponiTitoli } from "../src/lib/titoli.js";
+import { titoloPulito, proponiTitoli, senzaEtichette } from "../src/lib/titoli.js";
 
 const p = (title, author) => titoloPulito({ title, author });
 
@@ -104,4 +104,34 @@ export default async function (t) {
     proponiTitoli([{ id: "a", title: "Jordan, Robert - Wheel of Time 01 - The Eye of the World" }])[0].a,
     "The Eye of the World"
   );
+
+  // ---- I FUMETTI: le etichette in coda e la «v» del volume ---------------
+  // i titoli veri delle raccolte del lettore (I Hate Fairyland, Walking Dead)
+  const f = (title, sagaOrder = 3) => titoloPulito({ title, fileType: "cbz", sagaOrder });
+  t.eq("anno e sito in coda", f("I Hate Fairyland v03 - Good Girl (2017) GetComics.INFO"), "Good Girl");
+  t.eq("anno, «digital» e il gruppo", f("I Hate Fairyland v04 - Sadly Never After (2018) (digital) (d'argh-Empire)"), "Sadly Never After");
+  t.eq("«v06:» in testa", f("v06: Last Gert Standing"), "Last Gert Standing");
+  t.eq("«Fan Made TPB» dopo «Vol. 08 -»", f("The Walking Dead Deluxe Vol. 08 - Made To Suffer (2022) (Fan Made TPB)"), "Made To Suffer");
+  t.eq("«Fan-Made» col trattino", f("The Walking Dead Deluxe Vol. 14 - No Way Out (2024) (Fan-Made)"), "No Way Out");
+  t.eq("le quadre come le tonde", senzaEtichette("Saga [Digital] [2019]"), "Saga");
+  t.eq("senza numero di volume restano solo le etichette tolte", f("One Piece 042 (Digital)"), "One Piece 042");
+  t.eq("un anno in mezzo al titolo e' della serie: resta", senzaEtichette("Batman (2016) v01 - I Am Gotham"), "Batman (2016) v01 - I Am Gotham");
+  t.eq("una parentesi che non e' un'etichetta resta, e ferma la pulizia", senzaEtichette("Il giardino (versione lunga) (2019)"), "Il giardino (versione lunga)");
+  t.eq("un titolo di fumetto gia' pulito: niente", f("Monsters Gonna Monster"), null);
+  t.eq("un fumetto senza numero sulla scheda tiene il suo «v03»", f("I Hate Fairyland v03 - Good Girl (2017)", 0), "I Hate Fairyland v03 - Good Girl");
+  t.eq("i romanzi non perdono l'anno: puo' essere del titolo", titoloPulito({ title: "Dune (1965)", fileType: "epub" }), null);
+  t.eq("e la «v» davanti al numero e' solo dei fumetti", titoloPulito({ title: "Saga v03 - Titolo", fileType: "epub" }), null);
+  // due volumi che ripuliti si chiamerebbero uguali: per i fumetti un
+  // titolo uguale e' un doppione, e la Manutenzione li unirebbe
+  const corti = [
+    { id: "1", title: "Stories v1 - Seed", fileType: "cbz", sagaOrder: 1 },
+    { id: "2", title: "Stories v2 - Seed", fileType: "cbz", sagaOrder: 2 },
+    { id: "3", title: "Saga v03 - Altro", fileType: "cbz", sagaOrder: 3 },
+    { id: "4", title: "Seme", fileType: "cbz" },
+    { id: "5", title: "Saga v05 - Seme", fileType: "cbz", sagaOrder: 5 },
+  ];
+  const pr = proponiTitoli(corti).map((x) => `${x.id}:${x.a}`).join(" ");
+  t.eq("due fumetti che diventerebbero omonimi non si propongono, e nemmeno quello che prenderebbe il titolo di un altro", pr, "3:Altro");
+  t.eq("un romanzo che si chiamerebbe come un fumetto si propone: libri e fumetti non sono doppioni fra loro", proponiTitoli([{ id: "r", title: "01 - Seme", fileType: "epub" }, { id: "f", title: "Seme", fileType: "cbz" }, { id: "g", title: "Seme", fileType: "cbr" }]).map((x) => x.id).join(), "r");
+  t.eq("fra romanzi lo stesso titolo si propone: non e' un doppione da solo", proponiTitoli([{ id: "a", title: "01 - Eric", fileType: "epub" }, { id: "b", title: "02 - Eric", fileType: "epub" }]).length, 2);
 }

@@ -54,6 +54,9 @@ import { chiaveSaga, chiaveAutore } from "./sagaBooks.js";
 import { cercaSaga, scegliOpera } from "./sagaDalCatalogo.js";
 import { autorePerIlCatalogo } from "./retroInRete.js";
 import { pezziDalTitolo } from "./sagaDalTitolo.js";
+import { aGruppi } from "./aGruppi.js";
+
+export { aGruppi };
 
 const KEY = "bc_consigli_catalogo";
 const OL = "https://openlibrary.org/search.json";
@@ -656,21 +659,6 @@ export function daGusti(risultati = [], books = []) {
 }
 
 // ---- il giro ---------------------------------------------------------------------
-
-// Quattro alla volta, e i risultati nell'ordine degli ingressi: uno per
-// volta il giro durava quaranta secondi davanti a una pagina ferma.
-export async function aGruppi(voci = [], fn, insieme = 4) {
-  const out = new Array(voci.length);
-  let prossima = 0;
-  const lavora = async () => {
-    while (prossima < voci.length) {
-      const i = prossima++;
-      out[i] = await fn(voci[i], i);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(insieme, voci.length) }, lavora));
-  return out;
-}
 
 const AUTORI = "https://openlibrary.org/search/authors.json";
 

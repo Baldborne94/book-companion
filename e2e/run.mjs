@@ -224,6 +224,39 @@ const SCENE = [
     },
   },
   {
+    // il primo giro del telefono dopo giorni (727 libri cambiati): le
+    // schede c'erano dopo un secondo, ma si salvavano solo dopo le
+    // copertine, scese una alla volta — sul banco 99 secondi a scaffale
+    // vuoto. Adesso le schede si vedono subito e le copertine arrivano a
+    // gruppi, dopo.
+    nome: "il telefono mostra i libri scesi prima che finiscano le copertine",
+    async fai({ browser, db }) {
+      const N = 80;
+      const semina = (n) => {
+        if (localStorage.getItem("bc_books")) return;
+        localStorage.setItem("bc_books", JSON.stringify(Array.from({ length: n }, (_, i) => ({ id: `cop${String(i).padStart(3, "0")}`, title: `Copertina ${i + 1}`, author: "Autore", fileType: "epub", addedAt: 5000 + i }))));
+      };
+      const pc = await dispositivo(browser, { sessione: true, prima: `(${semina})(${N})` });
+      await pc.p.goto(URL_APP);
+      await finche(() => db.righe().filter((r) => r.id.startsWith("cop")).length >= N, 30000, "i libri del PC non salgono");
+      for (let i = 0; i < N; i++) db.metti(`books/u1/cop${String(i).padStart(3, "0")}.cover`, Buffer.alloc(2000, i));
+      await pc.ctx.close();
+      db.rallenta(100);
+      try {
+        const scese = () => db.richieste()["GET /storage/v1/object/…"] || 0;
+        const prima = scese();
+        const tel = await dispositivo(browser, { sessione: true });
+        await tel.p.goto(`${URL_APP}?apri=libreria`);
+        const quando = await finche(async () => ((await testoAvviso(tel.p, /^Copertina 1$/)) ? scese() - prima : null), 60000, "i libri non compaiono sullo scaffale del telefono");
+        if (quando >= N / 2) throw new Error(`i libri si vedono solo dopo ${quando} copertine su ${N}`);
+        await finche(() => scese() - prima >= N, 60000, `le copertine non scendono tutte (${scese() - prima} di ${N})`);
+        return { guasti: tel.guasti, nota: `scaffale pieno dopo ${quando} copertine su ${N}, poi le altre` };
+      } finally {
+        db.rallenta(0);
+      }
+    },
+  },
+  {
     // segnalato dal lettore: «ci mette parecchi secondi per passare da una
     // pagina all'altra… o tornare indietro». Si tenevano quattro pagine
     // dietro quella a schermo, e da Drive tornarci era un viaggio a voltata.
@@ -283,7 +316,7 @@ const SCENE = [
     // schermo, e alla voltata dev'essere LO STESSO elemento: un <img> nuovo
     // si rilegge e si ridecodifica (misurato: nessun guadagno). E la pagina
     // che se ne va svanisce col suo elemento, non con una foto su canvas.
-    nome: "alla voltata del fumetto la pagina dopo era gia' li', e quella di prima svanisce da se'",
+    nome: "alla voltata del fumetto la pagina dopo (e tornando, quella prima) era gia' li', e quella di prima svanisce da se'",
     async fai({ browser }) {
       const bytes = await fumettoGrosso();
       const drv = await avviaDrive(PORTA_DRIVE, { fg: bytes });
@@ -322,7 +355,32 @@ const SCENE = [
         if (e.vista !== "dopo") throw new Error(`a schermo c'e' un <img> nuovo, non quello preparato sotto (${esito})`);
         if (e.via.join() !== "prima") throw new Error(`la pagina di prima non svanisce col suo elemento (${esito})`);
         const num = (alt) => Number(alt.match(/(\d+)\.png$/)[1]);
-        return { guasti: d.guasti, nota: `pagina ${num(pronta)} → ${num(e.pagina)}: la stessa <img> preparata sotto, e la ${num(pronta)} svanisce da se'` };
+        // E ALL'INDIETRO (chiesto dal lettore, «fai la 3»): finita la
+        // dissolvenza, la pagina di prima aspetta sotto anche lei
+        await finche(
+          () =>
+            d.p.evaluate(() => {
+              const sotto = [...document.querySelectorAll("img[data-dopo]")];
+              if (sotto.length < 2 || document.querySelector("img[data-via]") || sotto.some((im) => !im.complete)) return false;
+              for (const im of sotto) im.bcSegno = "sotto";
+              return true;
+            }),
+          15000,
+          "la pagina di prima non si prepara sotto quella a schermo"
+        );
+        await d.p.keyboard.press("ArrowLeft");
+        const indietro = await finche(
+          () =>
+            d.p.evaluate((ora) => {
+              const vista = [...document.querySelectorAll("img:not([data-dopo]):not([data-via])")].find((x) => /pagina \d+\.png$/.test(x.alt));
+              return vista && vista.alt !== ora ? JSON.stringify({ pagina: vista.alt, vista: vista.bcSegno || "nuova" }) : "";
+            }, e.pagina),
+          15000,
+          "la voltata all'indietro non arriva"
+        );
+        const ind = JSON.parse(indietro);
+        if (ind.vista !== "sotto") throw new Error(`tornando indietro a schermo c'e' un <img> nuovo (${indietro})`);
+        return { guasti: d.guasti, nota: `pagina ${num(pronta)} → ${num(e.pagina)} → ${num(ind.pagina)}: ogni volta la <img> preparata sotto, e quella di prima svanisce da se'` };
       } finally {
         await drv.chiudi();
       }
