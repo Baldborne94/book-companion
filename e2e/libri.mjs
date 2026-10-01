@@ -93,6 +93,30 @@ export async function epub({ titolo = "La nebbia", autore = "Autore di Prova" } 
   return zip.generateAsync({ type: "nodebuffer", mimeType: "application/epub+zip" });
 }
 
+// un PDF di poche pagine scritto a mano: Helvetica, una riga per pagina
+export function pdf(pagine = 3) {
+  const ogg = ["<< /Type /Catalog /Pages 2 0 R >>"];
+  const kids = Array.from({ length: pagine }, (_, i) => `${3 + i * 2} 0 R`).join(" ");
+  ogg.push(`<< /Type /Pages /Kids [${kids}] /Count ${pagine} >>`);
+  const font = 3 + pagine * 2;
+  for (let i = 0; i < pagine; i++) {
+    ogg.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${font} 0 R >> >> /Contents ${4 + i * 2} 0 R >>`);
+    const testo = `BT /F1 18 Tf 72 760 Td (Pagina ${i + 1} della prova) Tj ET`;
+    ogg.push(`<< /Length ${testo.length} >>\nstream\n${testo}\nendstream`);
+  }
+  ogg.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  let s = "%PDF-1.4\n";
+  const off = [];
+  ogg.forEach((o, i) => {
+    off.push(s.length);
+    s += `${i + 1} 0 obj\n${o}\nendobj\n`;
+  });
+  const xref = s.length;
+  s += `xref\n0 ${ogg.length + 1}\n0000000000 65535 f \n` + off.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("");
+  s += `trailer\n<< /Size ${ogg.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(s, "latin1");
+}
+
 // una biblioteca del Mondo Disco coi primi nove letti e «Moving Pictures»
 // rimesso «Da leggere» dopo averlo aperto: il caso dell'Ingresso
 export function mondoDisco() {

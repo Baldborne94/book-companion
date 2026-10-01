@@ -5,6 +5,7 @@ import { useState } from "react";
 import { C, F, R, px } from "../data/constants.js";
 import { erroriAnnotati, rapporto, svuotaErrori } from "../lib/registro.js";
 import { voltateAnnotate, svuotaVoltate } from "../lib/voltate.js";
+import { tempiAnnotati, svuotaTempi } from "../lib/tempi.js";
 
 function ambiente() {
   const n = globalThis.navigator;
@@ -42,10 +43,11 @@ async function copia(testo) {
 export default function SezioneGuasti() {
   const [errori, setErrori] = useState(erroriAnnotati);
   const [voltate, setVoltate] = useState(voltateAnnotate);
+  const [tempi, setTempi] = useState(tempiAnnotati);
   const [esito, setEsito] = useState("");
   const [aperto, setAperto] = useState(false);
   const versione = typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "?";
-  const testo = rapporto({ errori, versione, ambiente: ambiente(), voltate });
+  const testo = rapporto({ errori, versione, ambiente: ambiente(), voltate, tempi });
   const ultimo = errori[errori.length - 1];
   const tasto = {
     minHeight: 44,
@@ -62,6 +64,7 @@ export default function SezioneGuasti() {
           ? `${errori.length === 1 ? "Un guasto annotato" : `${errori.length} guasti annotati`} su questo dispositivo, l'ultimo il ${new Date(ultimo.q).toLocaleString("it-IT", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}. `
           : "Nessun guasto annotato su questo dispositivo. "}
         {voltate.length ? `Dentro ci sono anche i tempi di ${voltate.length === 1 ? "una voltata" : `${voltate.length} voltate`} dei fumetti, solo numeri. ` : ""}
+        {tempi.length ? `E ${tempi.length === 1 ? "un tempo misurato" : `${tempi.length} tempi misurati`} (avvio, Libreria, aperture dei libri), solo numeri. ` : ""}
         Il rapporto resta qui: lo copi tu e lo mandi a chi ripara l'app. Niente indirizzi né chiavi dentro.
       </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -69,7 +72,8 @@ export default function SezioneGuasti() {
           onClick={async () => {
             setErrori(erroriAnnotati());
             setVoltate(voltateAnnotate());
-            const ok = await copia(rapporto({ errori: erroriAnnotati(), versione, ambiente: ambiente(), voltate: voltateAnnotate() }));
+            setTempi(tempiAnnotati());
+            const ok = await copia(rapporto({ errori: erroriAnnotati(), versione, ambiente: ambiente(), voltate: voltateAnnotate(), tempi: tempiAnnotati() }));
             setEsito(ok ? "Rapporto copiato: incollalo in un messaggio ✓" : "Non riesco a copiare: apri il rapporto qui sotto e fotografalo");
             if (!ok) setAperto(true);
           }}
@@ -80,13 +84,15 @@ export default function SezioneGuasti() {
         <button onClick={() => setAperto((a) => !a)} style={tasto}>
           {aperto ? "Chiudi il rapporto" : "Vedi il rapporto"}
         </button>
-        {(errori.length > 0 || voltate.length > 0) && (
+        {(errori.length > 0 || voltate.length > 0 || tempi.length > 0) && (
           <button
             onClick={() => {
               svuotaErrori();
               svuotaVoltate();
+              svuotaTempi();
               setErrori([]);
               setVoltate([]);
+              setTempi([]);
               setEsito("Registro svuotato");
             }}
             style={{ ...tasto, color: C.muted }}

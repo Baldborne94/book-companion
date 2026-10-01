@@ -57,6 +57,7 @@ import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
 import { comincia, segnaVita, smetti } from "./lib/tempo.js";
 import { sincronizzaPresto } from "./lib/presto.js";
+import { parti, segnaAvvio } from "./lib/tempi.js";
 
 // L'ingresso porta l'insegna dell'atmosfera scelta: candela di notte,
 // foglia nel boschetto, pergamena nell'archivio.
@@ -847,9 +848,12 @@ export default function App() {
     // uscendo dalla Libreria la raccolta aperta si chiude: rientrando si
     // riparte da tutte le raccolte
     if (id !== "library") setRaccolta(null);
+    if (id === "library" && section !== "library") parti("libreria");
     setSection(id);
   };
   const [books, setBooks] = useState(() => loadBooks());
+  // l'avvio si misura al primo disegno (`lib/tempi.js`)
+  useEffect(() => segnaAvvio({ n: books.length }), []);
   const [openId, setOpenId] = useState(null);
   const [readingId, setReadingId] = useState(null);
   const [readingStart, setReadingStart] = useState(null);
@@ -1496,6 +1500,7 @@ export default function App() {
       return;
     }
     setLastOpened(id);
+    parti(`lettura:${id}`);
     if (getStatus(id) === "unread") setStatus(id, "reading");
     setOpenId(null);
     setReadingStart(startCfi);

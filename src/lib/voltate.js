@@ -66,12 +66,12 @@ export function svuotaVoltate(st = globalThis.localStorage) {
   }
 }
 
-const quantile = (xs, q) => {
+export const quantile = (xs, q) => {
   const o = [...xs].sort((a, b) => a - b);
   return o[Math.min(o.length - 1, Math.floor(q * o.length))];
 };
 const tot = (v) => v.pagine + v.disegno;
-const sec = (ms) => (ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1).replace(".", ",")} s`);
+export const sec = (ms) => (ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1).replace(".", ",")} s`);
 
 const STATI = { P: "già pronte in memoria", A: "in arrivo (preparate prima)", C: "chieste sul momento" };
 

@@ -34,6 +34,7 @@ import { camminoDi } from "../lib/cammino.js";
 import BookCover from "./BookCover.jsx";
 import Disposizione from "./Disposizione.jsx";
 import EmptyState from "./EmptyState.jsx";
+import { partenza, dopoIlDisegno, segnaTempo, vocePerTempo } from "../lib/tempi.js";
 
 const FILTERS = [
   { id: "all", label: "Tutti" },
@@ -757,6 +758,12 @@ export default function Library({
   const [group, setGroup] = useState(vista.current.group);
   // scaffale coi libri esposti o raccolte: si ricorda come il resto
   const [aspetto, setAspetto] = useState(vista.current.aspetto);
+  // la Libreria aperta dal menu, misurata fino al disegno (`lib/tempi.js`)
+  useEffect(() => {
+    const t0 = partenza("libreria");
+    if (t0 == null) return;
+    dopoIlDisegno((t) => segnaTempo(vocePerTempo({ cosa: "libreria", t0, tappe: [["disegno", t]], n: books.length, vista: aspetto })));
+  }, []);
   // IL CUORE DELLE RACCOLTE si rilegge a ogni disegno: lo scrive anche la
   // sincronizzazione, e una copia tenuta qui resterebbe quella di prima
   const [, setCuori] = useState(0);

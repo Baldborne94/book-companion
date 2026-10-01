@@ -37,6 +37,7 @@ import HighlightList from "./HighlightList.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
 import SchedaOracolo, { attese } from "./SchedaOracolo.jsx";
 import { apertaATuttoSchermo, serveTastoSchermo } from "../lib/schermoIntero.js";
+import { misuraApertura, provenienza } from "../lib/tempi.js";
 
 // sotto i 7px la pila di fogli diventa un filo che sembra un difetto,
 // non l'orlo delle pagine: il minimo deve leggersi come carta impilata
@@ -210,6 +211,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     loadReaderSettings(Math.min(window.innerWidth, window.innerHeight))
   );
   const [status, setStatusUi] = useState("loading");
+  // l'apertura misurata (`lib/tempi.js`): finisce alla candela spenta
+  const apertura = useRef(null);
+  useEffect(() => {
+    if (status === "ready") apertura.current?.fine();
+  }, [status]);
   const [chrome, setChrome] = useState(() => !isTouch());
   const [panel, setPanel] = useState(null);
   const [progress, setProgressUi] = useState(() => getProgress(book.id));
@@ -978,9 +984,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // (`lontano`) e non si scrive: e' la situazione pulita chiesta dal
         // lettore. Un ricucito in memoria fatto un attimo fa (`byteRef`)
         // vale piu' di un altro giro di rete.
+        const misura = (apertura.current = misuraApertura("epub", book.id));
+        misura.tappa("codice");
         let blob = byteRef.current || (await fileDaLeggere(book));
         byteRef.current = null;
         if (!blob) throw new Error("file mancante");
+        misura.tappa("byte");
         // e se il verdetto e' gia' scritto e dice «spezzato», sul libro
         // lontano si ricuce PRIMA di rendere: non c'e' un disco che tenga
         // la cura, quindi la si rifa' a ogni apertura — in memoria, in un
@@ -995,6 +1004,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         epubRef.current = eb;
         await eb.ready;
         if (dead) return;
+        misura.tappa("libro", { da: provenienza(blob), kb: Math.round((blob.size || 0) / 1024) });
         const lang = (eb.packaging?.metadata?.language || "").slice(0, 2).toLowerCase();
         langRef.current = lang || "en";
         // non basta che il libro dichiari la lingua: serve che il browser

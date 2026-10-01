@@ -4,6 +4,9 @@ import App from "./App.jsx";
 import Guasto from "./components/Guasto.jsx";
 import "./index.css";
 import { ascoltaErrori } from "./lib/registro.js";
+import { codiceArrivato } from "./lib/tempi.js";
+
+codiceArrivato();
 
 // i guasti che nessuno raccoglie finiscono nel registro (vedi `lib/registro.js`)
 ascoltaErrori(window);
