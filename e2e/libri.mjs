@@ -70,7 +70,7 @@ export async function fumetto() {
 
 export const FRASE = "La nebbia saliva dal fiume e copriva le strade di Ankh-Morpork.";
 
-export async function epub() {
+export async function epub({ titolo = "La nebbia", autore = "Autore di Prova" } = {}) {
   const zip = new JSZip();
   zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
   zip.file(
@@ -79,7 +79,7 @@ export async function epub() {
   );
   zip.file(
     "OEBPS/content.opf",
-    `<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:prova-nebbia</dc:identifier><dc:title>La nebbia</dc:title><dc:creator>Autore di Prova</dc:creator><dc:language>it</dc:language><meta property="dcterms:modified">2026-01-01T00:00:00Z</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/></spine></package>`
+    `<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:prova-nebbia</dc:identifier><dc:title>${titolo}</dc:title><dc:creator>${autore}</dc:creator><dc:language>it</dc:language><meta property="dcterms:modified">2026-01-01T00:00:00Z</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/></spine></package>`
   );
   zip.file(
     "OEBPS/nav.xhtml",

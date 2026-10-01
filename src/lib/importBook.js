@@ -542,8 +542,9 @@ const conTetto = (p, ms) =>
 // compresso troppo grande si converte leggendolo da Drive, e il CBZ prende
 // il suo posto lassu' (vedi `sostituisciSuDrive`). Senza, entra com'e' e
 // la conversione si offre quando lo apri.
-export async function importaDaDrive(voci, libri = [], { apri, segna, converti, sostituisci, onProgress, vivo = () => true, leggi = leggiDaLontano, attesa = ATTESA_SCHEDA } = {}) {
+export async function importaDaDrive(voci, libri = [], { apri, segna, converti, sostituisci, onProgress, vivo = () => true, leggi = leggiDaLontano, attesa = ATTESA_SCHEDA, senzaFile = () => false, segnato = schedaSegnata } = {}) {
   const added = [];
+  const ritrovati = [];
   const errors = [];
   const sospetti = [];
   let riconosciuti = 0;
@@ -621,14 +622,32 @@ export async function importaDaDrive(voci, libri = [], { apri, segna, converti, 
     } catch {
       /* letto male o troppo lento: la scheda entra col nome del file */
     }
-    const conta = completaSaga(meta, letto, v.name, [...libri, ...added]);
-    const esito = await (convertito ? sostituisci(v, id, convertito) : segna(v.id, id, v)).catch(() => false);
+    // IL FILE TORNA NELLA SCHEDA CHE L'AVEVA PERSO (segnalato dal lettore
+    // coi Dragonriders of Pern: ogni volume due volte, una scheda col file e
+    // una col triangolo «né qui né nel cloud»). Il titolo si sa solo adesso,
+    // e la regola e' quella dell'import dal tablet (`ritornaACasa`): se il
+    // gemello sullo scaffale il file non ce l'ha piu' da nessuna parte, e non
+    // porta segni ancorati ad altri byte, questo file e' il suo.
+    const gemello = sembraGiaLetto(meta, [...libri, ...added]);
+    const casa =
+      gemello && !ritrovati.some((r) => r.id === gemello.id) && senzaFile(gemello.id) && ritornaACasa({ stessiByte: !!meta.impronta && meta.impronta === gemello.impronta, segnato: segnato(gemello.id) })
+        ? gemello
+        : null;
+    const dove = casa ? casa.id : id;
+    const conta = casa ? false : completaSaga(meta, letto, v.name, [...libri, ...added]);
+    const esito = await (convertito ? sostituisci(v, dove, convertito) : segna(v.id, dove, v)).catch(() => false);
     if (esito === "scollegato") {
       scollegato = true;
       break;
     }
     if (!esito) {
       errors.push({ name: v.name, reason: "non sono riuscito a segnarlo su Google Drive" });
+      continue;
+    }
+    if (casa) {
+      // la copertina letta per la scheda nuova non serve: la scheda c'e'
+      await removeBookData(id).catch(() => {});
+      ritrovati.push({ id: casa.id, title: casa.title || meta.title, impronta: meta.impronta || null });
       continue;
     }
     // si contano solo le schede entrate: un file rifiutato non e' un
@@ -639,7 +658,7 @@ export async function importaDaDrive(voci, libri = [], { apri, segna, converti, 
     if (sembraGiaLetto(meta, [...libri, ...added])) sospetti.push({ title: meta.title });
     added.push(meta);
   }
-  return { added, errors, sospetti, riconosciuti, senzaMetadati, senzaCopertina, fermato, scollegato };
+  return { added, ritrovati, errors, sospetti, riconosciuti, senzaMetadati, senzaCopertina, fermato, scollegato };
 }
 
 // Quel che si legge di un file lontano. Il CBR resta col nome del file: la

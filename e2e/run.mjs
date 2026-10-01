@@ -329,6 +329,55 @@ const SCENE = [
     },
   },
   {
+    // segnalato dal lettore coi Dragonriders of Pern: ogni volume due volte
+    // sullo scaffale, una scheda col file e una col triangolo «né qui né nel
+    // cloud», e la Manutenzione che non li vedeva («non dovrebbe
+    // riconoscermi i doppioni? o anche solo quando reimporto i libri»)
+    nome: "un libro reimportato da Drive torna nella scheda che l'aveva perso, e i doppioni dei libri si uniscono",
+    async fai({ browser }) {
+      const volo = await epub({ titolo: "Dragonflight", autore: "Anne McCaffrey" });
+      const quest = await epub({ titolo: "Dragonquest", autore: "Anne McCaffrey" });
+      const elenco = [
+        { id: "dr", name: "Anne McCaffrey - Dragonflight.epub", size: String(volo.length), mimeType: "application/epub+zip", parents: ["P"] },
+        { id: "dq", name: "Dragonquest.epub", size: String(quest.length), mimeType: "application/epub+zip", parents: ["P"], appProperties: { bcId: "q2" } },
+      ];
+      const drv = await avviaDrive(PORTA_DRIVE, { dr: volo, dq: quest }, { elenco });
+      try {
+        const autore = "Anne McCaffrey";
+        const d = await dispositivo(browser, {
+          drive: {
+            libri: [
+              { id: "pern", title: "Dragonflight", author: autore, fileType: "epub", addedAt: 1 },
+              { id: "q1", title: "Dragonquest", author: autore, fileType: "epub", addedAt: 2 },
+              { id: "q2", title: "Dragonquest", author: autore, fileType: "epub", addedAt: 3 },
+            ],
+            mappa: { q2: { id: "dq", byte: quest.length } },
+            scelta: [elenco[0]],
+          },
+        });
+        await d.p.goto(`${URL_APP}?apri=libreria`);
+        await d.p.getByRole("button", { name: /Scegli su Drive/ }).first().click();
+        await finche(() => testoAvviso(d.p, /ritrovato il suo file|nuovo tomo|tomi sullo scaffale/), 30000, "l'importazione da Drive non finisce");
+        const voli = (await libriDi(d.p)).filter((b) => b.title === "Dragonflight");
+        if (voli.length !== 1) throw new Error(`«Dragonflight» sullo scaffale ${voli.length} volte`);
+        const mappa = await d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_drive_libri") || "{}"));
+        if (mappa.pern?.id !== "dr") throw new Error(`il file non e' tornato nella scheda di prima: ${JSON.stringify(mappa)}`);
+        // la coppia che c'era gia': la Manutenzione la vede e la unisce
+        await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
+        await d.p.getByRole("button", { name: /Un volume ha una copia in più/ }).first().click({ timeout: 15000 });
+        await d.p.getByRole("button", { name: /Unisci i doppioni/ }).first().click();
+        const quests = await finche(async () => {
+          const q = (await libriDi(d.p)).filter((b) => b.title === "Dragonquest");
+          return q.length === 1 && q;
+        }, 10000, "i due «Dragonquest» non si uniscono");
+        if (quests[0].id !== "q2") throw new Error(`dei due «Dragonquest» e' rimasto quello senza file (${quests[0].id})`);
+        return { guasti: d.guasti, nota: "«Dragonflight» ha ritrovato il suo file; dei due «Dragonquest» resta quello col file" };
+      } finally {
+        await drv.chiudi();
+      }
+    },
+  },
+  {
     // segnalato dal lettore coi Walking Dead: «ho navigato un po' ed è
     // sparito il caricamento, poi ci mette davvero troppo a convertire».
     // Nella cartella, accanto a ogni CBR, il CBZ che Colab ha lasciato.

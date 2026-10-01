@@ -204,6 +204,46 @@ export function daAggiungere(libri, file, { lapidi = [], cartelle = [], schedeIn
   );
 }
 
+// «GIA' SULLO SCAFFALE», MA COME CHI? (segnalato dal lettore: «mi dice che
+// un libro c'è già quando in realtà non è presente»). Il conto da solo non
+// lascia controllare niente: per ogni file che `daAggiungere` ha tenuto
+// fuori si dice con quale scheda e' stato riconosciuto, con le stesse
+// strade — il segno, l'impronta o il nome (`abbina`), poi il titolo. Un
+// file che non ne ha nessuna resta senza nome di scheda: e' un doppione fra
+// quelli scelti.
+export function giaSulloScaffale(libri, file, voci) {
+  const dentro = new Set((voci || []).map((v) => v.id));
+  const vivi = (libri || []).filter((b) => b?.id);
+  const { mappa } = abbina(vivi, file);
+  const diFile = new Map([...mappa.entries()].map(([bookId, f]) => [f.id, vivi.find((b) => b.id === bookId)]));
+  const out = [];
+  for (const f of file || []) {
+    if (!f?.id || dentro.has(f.id) || !EST.includes(estensioneDi(f.name))) continue;
+    const est = estensioneDi(f.name);
+    const scheda =
+      diFile.get(f.id) ||
+      vivi.find((b) => `${estDelLibro(b)}|${nomeNudo(b.title)}` === `${est}|${nomeNudo(f.name)}`) ||
+      null;
+    out.push({ nome: f.name, come: scheda?.title || null });
+  }
+  return out;
+}
+
+// E SI DICE IN UNA RIGA: tre nomi, poi il conto. «come «X»» solo quando la
+// scheda ha un titolo diverso dal file: e' li' che si scopre l'abbinamento
+// sbagliato.
+export function fraseGia(gia) {
+  const l = gia || [];
+  if (!l.length) return "";
+  const uno = (g) => {
+    const nome = String(g.nome).replace(/\.[^.]+$/, "");
+    return g.come && nomeNudo(g.come) !== nomeNudo(nome) ? `«${nome}» (sullo scaffale come «${g.come}»)` : `«${nome}»`;
+  };
+  const nomi = l.slice(0, 3).map(uno).join(", ");
+  const resto = l.length > 3 ? ` e altri ${l.length - 3}` : "";
+  return `${nomi}${resto} ${l.length === 1 ? "era" : "erano"} già sullo scaffale`;
+}
+
 // LIBERARE IL TABLET SENZA PERDERE NIENTE (chiesto dal lettore: i romanzi
 // finiti occupano il tablet, e stanno gia' su Drive). Si propongono i libri
 // che hanno i byte QUI e una copia su Drive **identica al byte**, perche'
