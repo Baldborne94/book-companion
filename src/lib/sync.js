@@ -28,7 +28,8 @@ import { leggiTempo, scriviTempo, fondiTempo } from "./tempo.js";
 import { leggiObiettivi, scriviObiettivi, fondiObiettivi } from "./obiettivo.js";
 import { leggiQuaderno, scriviQuaderno, fondiQuaderno } from "./quaderno.js";
 import { leggiDaPrendere, scriviDaPrendere, fondiDaPrendere } from "./daPrendere.js";
-import { leggiRigheLeggere, aPagine, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare, copertineInAttesa, segnaInAttesa, fondiSchede } from "./syncCore.js";
+import { aGruppi } from "./aGruppi.js";
+import { leggiRigheLeggere, aPagine, fraseCopertine, COPERTINE_INSIEME, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare, copertineInAttesa, segnaInAttesa, fondiSchede } from "./syncCore.js";
 import { daTogliereDalSecchio, avanziDelSecchio, segnaSuDrive, leggereDaLontano, nomeSuDrive } from "./driveCore.js";
 import { raccontaGiro } from "./resoconto.js";
 import { giroDrive, giroMelodie, archiviaSuDrive, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto, fermaCbrCompresso, sostituisciSuDrive, chiaveDrive, DriveScollegato, adottaCbz, elencaFile } from "./drive.js";
@@ -313,7 +314,7 @@ export async function sincronizzaSoloDrive({ onProgress } = {}) {
   return giroDelDrive(loadBooks(), { say: (m) => onProgress?.(m) });
 }
 
-export async function syncNow({ onProgress } = {}) {
+export async function syncNow({ onProgress, onLibri } = {}) {
   if (!isSyncConfigured()) return { skipped: "non configurata" };
   const sb = await getClient();
   const session = await getSession();
@@ -568,8 +569,9 @@ export async function syncNow({ onProgress } = {}) {
     }
   }
 
-  if (pull.length || removeLocal.length) say("Ricevo le novità…");
+  if (pull.length || removeLocal.length) say(pull.length > 20 ? `Ricevo ${pull.length} libri…` : "Ricevo le novità…");
   let next = loadBooks();
+  const senzaCopertina = [];
   try {
     for (const row of pull) {
       // e la scheda piu' nuova QUI resta: la lettura scende, la scheda no,
@@ -596,20 +598,13 @@ export async function syncNow({ onProgress } = {}) {
         touchBook(book.id);
         daRimandare.push(book.id);
       }
-      // UNA COPERTINA NON VALE UN RIPRISTINO. Stava dentro il giro senza
-      // rete di sicurezza: un solo scaricamento andato storto — e sono
-      // cinquantaquattro, su una connessione qualunque — buttava via
-      // l'intera ricezione, perche' `saveBooks` sta in fondo e non ci si
-      // arrivava mai. Il libro si tiene comunque: senza copertina si vede
-      // il dorso disegnato, ed e' infinitamente meglio di niente.
+      // LA COPERTINA SCENDE DOPO, A SCHEDE GIA' SALVATE (misurato sul
+      // banco: 727 libri a 120 ms di latenza, il telefono vuoto per 99
+      // secondi e poi tutto insieme — le schede erano qui dopo un secondo,
+      // e aspettavano le copertine scese una alla volta). Qui si segna solo
+      // chi ne manca; scendono qui sotto, a gruppi.
       try {
-        if (!copertineInAttesa().has(book.id) && !(await getCover(book.id))) {
-          const { data } = await sb.storage.from(BUCKET).download(coverPath(uid, book.id));
-          if (data) {
-            await putCover(book.id, data);
-            copertineScese.add(book.id);
-          }
-        }
+        if (!copertineInAttesa().has(book.id) && !(await getCover(book.id))) senzaCopertina.push(book.id);
       } catch {
         /* si riprova alla prossima sincronizzazione */
       }
@@ -648,6 +643,8 @@ export async function syncNow({ onProgress } = {}) {
     // quarantanovesimo non lo merita nessuno.
     if (pull.length || removeLocal.length) saveBooks(next);
   }
+  // le schede si vedono ADESSO, non alla fine del giro
+  if (pull.length || removeLocal.length) onLibri?.(next);
 
   // LE COPERTINE CHE MANCANO QUI SI VANNO A RIPRENDERE, fuori dal giro di
   // `pull` (vedi `copertineDaScaricare`): dentro, una riga gia' in pari non
@@ -657,19 +654,25 @@ export async function syncNow({ onProgress } = {}) {
   // Una copertina che non scende non ferma niente — e' la stessa regola del
   // giro che le manda su: senza, si vede il dorso disegnato, che e'
   // infinitamente meglio di una ricezione buttata via.
-  if (secchio?.idCopertine?.size) {
-    try {
-      const qui = new Set(await listCoverIds());
-      const mancanti = copertineDaScaricare(next, {
-        qui,
-        lassu: secchio.idCopertine,
-        misureQui: await misureCopertine(),
-        misureLassu: secchio.misureCopertine,
-        inAttesa: copertineInAttesa(),
-      });
-      if (mancanti.length)
-        say(`Riprendo ${mancanti.length === 1 ? "una copertina" : `${mancanti.length} copertine`}…`);
-      for (const b of mancanti) {
+  //
+  // Senza l'elenco del secchio si scaricano almeno quelle dei libri appena
+  // scesi, com'era prima. E scendono A GRUPPI (`COPERTINE_INSIEME`), dicendo
+  // a che punto sono: una alla volta ognuna aspettava la sua latenza.
+  try {
+    const mancanti = secchio?.idCopertine?.size
+      ? copertineDaScaricare(next, {
+          qui: new Set(await listCoverIds()),
+          lassu: secchio.idCopertine,
+          misureQui: await misureCopertine(),
+          misureLassu: secchio.misureCopertine,
+          inAttesa: copertineInAttesa(),
+        })
+      : next.filter((b) => senzaCopertina.includes(b.id));
+    let fatte = 0;
+    if (mancanti.length) say(fraseCopertine(0, mancanti.length));
+    await aGruppi(
+      mancanti,
+      async (b) => {
         try {
           const { data } = await sb.storage.from(BUCKET).download(coverPath(uid, b.id));
           if (data) {
@@ -679,10 +682,13 @@ export async function syncNow({ onProgress } = {}) {
         } catch {
           /* si riprova alla prossima sincronizzazione */
         }
-      }
-    } catch {
-      /* senza l'elenco di casa non si indovina: si riprova al giro dopo */
-    }
+        fatte += 1;
+        if (fatte % 25 === 0 && fatte < mancanti.length) say(fraseCopertine(fatte, mancanti.length));
+      },
+      COPERTINE_INSIEME
+    );
+  } catch {
+    /* senza l'elenco di casa non si indovina: si riprova al giro dopo */
   }
 
   const { data: remotePrefsRows } = await sb.from("prefs").select("*").eq("user_id", uid).limit(1);

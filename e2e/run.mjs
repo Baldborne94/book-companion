@@ -224,6 +224,39 @@ const SCENE = [
     },
   },
   {
+    // il primo giro del telefono dopo giorni (727 libri cambiati): le
+    // schede c'erano dopo un secondo, ma si salvavano solo dopo le
+    // copertine, scese una alla volta — sul banco 99 secondi a scaffale
+    // vuoto. Adesso le schede si vedono subito e le copertine arrivano a
+    // gruppi, dopo.
+    nome: "il telefono mostra i libri scesi prima che finiscano le copertine",
+    async fai({ browser, db }) {
+      const N = 80;
+      const semina = (n) => {
+        if (localStorage.getItem("bc_books")) return;
+        localStorage.setItem("bc_books", JSON.stringify(Array.from({ length: n }, (_, i) => ({ id: `cop${String(i).padStart(3, "0")}`, title: `Copertina ${i + 1}`, author: "Autore", fileType: "epub", addedAt: 5000 + i }))));
+      };
+      const pc = await dispositivo(browser, { sessione: true, prima: `(${semina})(${N})` });
+      await pc.p.goto(URL_APP);
+      await finche(() => db.righe().filter((r) => r.id.startsWith("cop")).length >= N, 30000, "i libri del PC non salgono");
+      for (let i = 0; i < N; i++) db.metti(`books/u1/cop${String(i).padStart(3, "0")}.cover`, Buffer.alloc(2000, i));
+      await pc.ctx.close();
+      db.rallenta(100);
+      try {
+        const scese = () => db.richieste()["GET /storage/v1/object/…"] || 0;
+        const prima = scese();
+        const tel = await dispositivo(browser, { sessione: true });
+        await tel.p.goto(`${URL_APP}?apri=libreria`);
+        const quando = await finche(async () => ((await testoAvviso(tel.p, /^Copertina 1$/)) ? scese() - prima : null), 60000, "i libri non compaiono sullo scaffale del telefono");
+        if (quando >= N / 2) throw new Error(`i libri si vedono solo dopo ${quando} copertine su ${N}`);
+        await finche(() => scese() - prima >= N, 60000, `le copertine non scendono tutte (${scese() - prima} di ${N})`);
+        return { guasti: tel.guasti, nota: `scaffale pieno dopo ${quando} copertine su ${N}, poi le altre` };
+      } finally {
+        db.rallenta(0);
+      }
+    },
+  },
+  {
     // segnalato dal lettore: «ci mette parecchi secondi per passare da una
     // pagina all'altra… o tornare indietro». Si tenevano quattro pagine
     // dietro quella a schermo, e da Drive tornarci era un viaggio a voltata.

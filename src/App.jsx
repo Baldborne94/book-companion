@@ -1054,6 +1054,8 @@ export default function App() {
     setSync((s) => ({ ...s, busy: true, message: quiet ? s.message : "Sincronizzo…" }));
     try {
       const res = await syncNow({
+        // le schede scese si vedono subito: le copertine arrivano dopo
+        onLibri: (libri) => setBooks(libri),
         // il dettaglio si azzera insieme al messaggio: senza, il testo
         // tecnico del guasto di prima resterebbe ripiegato sotto la riga
         // di avanzamento del giro nuovo — un «dettagli» che racconta

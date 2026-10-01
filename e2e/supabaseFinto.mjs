@@ -10,9 +10,13 @@ import http from "node:http";
 // nascosto per mesi una biblioteca di 1070 libri che arrivava a meta'.
 export const MAX_RIGHE = 1000;
 
-export function avviaSupabase(porta = 4599) {
+// `latenza`: ms prima di ogni risposta, come una rete vera
+export function avviaSupabase(porta = 4599, { latenza = 0 } = {}) {
   const books = new Map();
   let salite = 0;
+  let attesa = latenza;
+  // le richieste per tipo: «GET /rest/v1/books», «POST /storage/v1/object»…
+  const viste = new Map();
   const oggetti = new Map();
   let prefs = null;
   // «Entra con Google»: le richieste d'accesso ricevute e i permessi salvati
@@ -26,7 +30,10 @@ export function avviaSupabase(porta = 4599) {
   const server = http.createServer((req, res) => {
     const pezzi = [];
     req.on("data", (c) => pezzi.push(c));
-    req.on("end", () => {
+    req.on("end", async () => {
+      if (attesa) await new Promise((r) => setTimeout(r, attesa));
+      const tipo = `${req.method} ${req.url.split("?")[0].replace(/\/storage\/v1\/object\/(list\/)?.*/, "/storage/v1/object/$1…")}`;
+      viste.set(tipo, (viste.get(tipo) || 0) + 1);
       const corpo = Buffer.concat(pezzi);
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Headers", "*");
@@ -93,9 +100,14 @@ export function avviaSupabase(porta = 4599) {
       // il secchio: elenco, caricamento, scaricamento, rimozione
       const lista = /^\/storage\/v1\/object\/list\/([^/]+)$/.exec(u.pathname);
       if (lista) {
-        const { prefix = "" } = JSON.parse(corpo.toString() || "{}");
+        // come il servizio vero, a pagine: `limit` e `offset` (senza, l'app
+        // che chiede a pagine di cento non vede mai una pagina corta e
+        // chiede per sempre)
+        const { prefix = "", limit = 100, offset = 0 } = JSON.parse(corpo.toString() || "{}");
         const dentro = [...oggetti.entries()]
           .filter(([k]) => k.startsWith(`${lista[1]}/${prefix ? `${prefix}/` : ""}`))
+          .sort(([a], [b]) => (a < b ? -1 : 1))
+          .slice(offset, offset + limit)
           .map(([k, v]) => ({ name: k.split("/").pop(), id: k, metadata: { size: v.length } }));
         return json(dentro);
       }
@@ -124,6 +136,13 @@ export function avviaSupabase(porta = 4599) {
       ok({
         righe: () => [...books.values()],
         salite: () => salite,
+        richieste: () => Object.fromEntries(viste),
+        // una scena che vuole una rete lenta se la mette, e la toglie
+        rallenta: (ms) => {
+          attesa = ms;
+        },
+        // le copertine lassu', come le manda un altro dispositivo
+        metti: (chiave, byte) => oggetti.set(chiave, byte),
         accessi: () => [...accessi],
         permessi: () => [...permessi.values()],
         chiudi: () =>

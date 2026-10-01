@@ -1084,6 +1084,16 @@ export function completaPull(pull = [], intere = new Map()) {
 // il database si passa da fuori come in `upsertBooks`. Se la lettura
 // leggera non riesce (uno schema senza `file_tolto`, un guasto qualunque)
 // si legge tutto come prima: e' piu' lento, e sbagliato mai.
+// LE COPERTINE DEL GIRO, a gruppi e dicendo a che punto sono (vedi la fase
+// delle copertine in `syncNow`): sei insieme, come i pezzi di un fumetto
+// da Drive non di piu', per non togliere tutta la banda al resto
+export const COPERTINE_INSIEME = 6;
+export function fraseCopertine(fatte, totale) {
+  if (!(totale > 0)) return "";
+  if (totale === 1) return "Riprendo una copertina…";
+  return fatte > 0 ? `Copertine: ${fatte} di ${totale}…` : `Riprendo ${totale} copertine…`;
+}
+
 // A PAGINE: Supabase da' al piu' mille righe per richiesta (il «Max rows» di
 // PostgREST, che un progetto puo' anche abbassare), e una biblioteca di 1070
 // libri arrivava a mille sul telefono, gli altri ricaricati a ogni giro. Si
