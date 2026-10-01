@@ -544,7 +544,7 @@ const conTetto = (p, ms) =>
 // compresso troppo grande si converte leggendolo da Drive, e il CBZ prende
 // il suo posto lassu' (vedi `sostituisciSuDrive`). Senza, entra com'e' e
 // la conversione si offre quando lo apri.
-export async function importaDaDrive(voci, libri = [], { apri, segna, converti, sostituisci, onProgress, vivo = () => true, leggi = leggiDaLontano, attesa = ATTESA_SCHEDA, senzaFile = () => false, segnato = schedaSegnata } = {}) {
+export async function importaDaDrive(voci, libri = [], { apri, segna, converti, sostituisci, onProgress, vivo = () => true, leggi = leggiDaLontano, attesa = ATTESA_SCHEDA, senzaFile = () => false, segnato = schedaSegnata, rimisura = null } = {}) {
   const added = [];
   const ritrovati = [];
   const errors = [];
@@ -555,12 +555,24 @@ export async function importaDaDrive(voci, libri = [], { apri, segna, converti, 
   let fermato = false;
   let scollegato = false;
   const tutte = Array.from(voci || []);
-  for (const [i, v] of tutte.entries()) {
+  for (let [i, v] of tutte.entries()) {
     if (!vivo()) {
       fermato = true;
       break;
     }
     onProgress?.({ fatti: i, totale: tutte.length, nome: v.name });
+    // LA MISURA CHE MANCA SI CHIEDE A DRIVE (segnalato dal lettore con
+    // «Batman - Hush», 458 MB sul PC e «il file è vuoto» qui): l'elenco di
+    // Drive che l'app tiene in memoria puo' avere un file appena caricato
+    // con misura zero, e un file lontano di misura zero si legge vuoto
+    if (!(Number(v.size) > 0) && rimisura) {
+      const misura = Number(await Promise.resolve().then(() => rimisura(v)).catch(() => 0)) || 0;
+      if (!(misura > 0)) {
+        errors.push({ name: v.name, reason: "su Google Drive il file risulta vuoto: se sta ancora salendo, riprova fra qualche minuto" });
+        continue;
+      }
+      v = { ...v, size: misura };
+    }
     const est = (/\.([a-z0-9]+)$/i.exec(v.name || "") || [])[1]?.toLowerCase() || "";
     let blob = apri(v);
     let fileType = est === "epub" || est === "pdf" ? est : null;
