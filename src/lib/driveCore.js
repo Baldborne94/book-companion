@@ -216,12 +216,18 @@ export function giaSulloScaffale(libri, file, voci) {
   const vivi = (libri || []).filter((b) => b?.id);
   const { mappa } = abbina(vivi, file);
   const diFile = new Map([...mappa.entries()].map(([bookId, f]) => [f.id, vivi.find((b) => b.id === bookId)]));
+  // i gemelli di Colab (vedi `daAggiungere`): il CBR che resta fuori perche'
+  // entra il suo CBZ non e' «gia' sullo scaffale», e il CBZ di un CBR che e'
+  // gia' un libro e' quel libro
+  const gemello = (f, est) => (file || []).find((g) => estensioneDi(g.name) === est && g.parents?.[0] === f.parents?.[0] && radiceDelNome(g.name) === radiceDelNome(f.name));
   const out = [];
   for (const f of file || []) {
     if (!f?.id || dentro.has(f.id) || !EST.includes(estensioneDi(f.name))) continue;
     const est = estensioneDi(f.name);
+    if (est === "cbr" && dentro.has(gemello(f, "cbz")?.id)) continue;
     const scheda =
       diFile.get(f.id) ||
+      (est === "cbz" && diFile.get(gemello(f, "cbr")?.id)) ||
       vivi.find((b) => `${estDelLibro(b)}|${nomeNudo(b.title)}` === `${est}|${nomeNudo(f.name)}`) ||
       null;
     out.push({ nome: f.name, come: scheda?.title || null });

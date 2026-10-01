@@ -347,7 +347,8 @@ const SCENE = [
         const d = await dispositivo(browser, {
           drive: {
             libri: [
-              { id: "pern", title: "Dragonflight", author: autore, fileType: "epub", addedAt: 1 },
+              // l'ebook tolto apposta: reimportandolo, il libro si riapre subito
+              { id: "pern", title: "Dragonflight", author: autore, fileType: "epub", addedAt: 1, fileTolto: true },
               { id: "q1", title: "Dragonquest", author: autore, fileType: "epub", addedAt: 2 },
               { id: "q2", title: "Dragonquest", author: autore, fileType: "epub", addedAt: 3 },
             ],
@@ -362,6 +363,13 @@ const SCENE = [
         if (voli.length !== 1) throw new Error(`«Dragonflight» sullo scaffale ${voli.length} volte`);
         const mappa = await d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_drive_libri") || "{}"));
         if (mappa.pern?.id !== "dr") throw new Error(`il file non e' tornato nella scheda di prima: ${JSON.stringify(mappa)}`);
+        // il segno «ebook tolto» si spegne all'import, non al giro dopo:
+        // un avviso solo, non due uno sopra l'altro
+        await aspetta(2500);
+        if (await testoAvviso(d.p, /ritrovato il suo ebook su Google Drive/)) throw new Error("il segno «ebook tolto» si spegne solo al giro dopo, con un secondo avviso");
+        // scelto di nuovo, si dice con quale scheda e' stato riconosciuto
+        await d.p.getByRole("button", { name: /Scegli su Drive/ }).first().click();
+        await finche(() => testoAvviso(d.p, /«Anne McCaffrey - Dragonflight» \(sullo scaffale come «Dragonflight»\) era già sullo scaffale/), 15000, "scelto di nuovo, non dice con quale scheda e' stato riconosciuto");
         // la coppia che c'era gia': la Manutenzione la vede e la unisce
         await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
         await d.p.getByRole("button", { name: /Un volume ha una copia in più/ }).first().click({ timeout: 15000 });
