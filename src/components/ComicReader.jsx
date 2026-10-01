@@ -286,18 +286,24 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     return inArrivo.current.get(n);
   }, []);
 
-  // IL FOGLIO DOPO GIA' DISEGNATO (`daDecodificare`): le sue <img> stanno
+  // I FOGLI DOPO E PRIMA GIA' DISEGNATI (`daDecodificare`): le loro <img> stanno
   // sotto la pagina a schermo, nella STESSA lista con la stessa chiave (il
   // numero di pagina), all'1%. Alla voltata React tiene lo stesso elemento e
   // Chrome lo trova decodificato; un <img> nuovo con lo stesso indirizzo si
   // rilegge e si ridecodifica da capo (misurato: `decode()` fuori dallo
   // schermo, o un velo a parte, 86 ms contro 87).
   const [prossimo, setProssimo] = useState([]);
+  // ogni foglio entra solo intero (una coppia a meta' si disegnerebbe male)
   const preDecodifica = useCallback(() => {
     const l = live.current;
-    const voluti = daDecodificare({ ultima: l.ultima, pages: l.pages, doppia: l.doppia, opzioni: l.opzioni });
-    const pronti = voluti.map((n) => ({ n, url: urls.current.get(n) })).filter((x) => x.url);
-    setProssimo((p) => (pronti.length === voluti.length && pronti.map((x) => x.url).join() !== p.map((x) => x.url).join() ? pronti : pronti.length === voluti.length ? p : []));
+    const { avanti, indietro } = daDecodificare({ ultima: l.ultima, prima: l.prima, pages: l.pages, doppia: l.doppia, opzioni: l.opzioni });
+    const foglio = (pagine, k) => {
+      const pronti = pagine.map((n, indice) => ({ n, url: urls.current.get(n), foglio: k, indice }));
+      return pronti.every((x) => x.url) ? pronti : [];
+    };
+    const voluti = [...foglio(avanti, 0), ...foglio(indietro, 1)];
+    const firma = (l2) => l2.map((x) => `${x.foglio}:${x.indice}:${x.url}`).join();
+    setProssimo((p) => (firma(p) === firma(voluti) ? p : voluti));
   }, []);
 
   preDecodificaRef.current = preDecodifica;
@@ -441,6 +447,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     if (status !== "ready" || nastro) return;
     live.current.page = page;
     live.current.ultima = mostrate.at(-1);
+    live.current.prima = mostrate[0];
     const mio = ++gettone.current;
     // la voltata si misura da qui (`lib/voltate.js`): in che stato sono le
     // pagine che servono, e quando arrivano i byte
@@ -842,15 +849,14 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           return d && { foglio: d.foglio, pagine: [{ indice: 0, x: 0, foglio: d.foglio, immagine: d.immagine }] };
         })();
 
-  // il disegno del foglio dopo, se le sue pagine hanno gia' una misura
-  const sfogliaPronta = !nastro && intera && prossimo.length && prossimo.every((x) => nats[x.n])
-    ? prossimo.length > 1
-      ? disegnaCoppia({ nats: prossimo.map((x) => nats[x.n]), riquadro, bordi: bordiVivi, verso })
-      : (() => {
-          const d = disegnaPagina({ nat: nats[prossimo[0].n], riquadro, bordi: bordiVivi });
-          return d && { foglio: d.foglio, pagine: [{ indice: 0, x: 0, foglio: d.foglio, immagine: d.immagine }] };
-        })()
-    : null;
+  // il disegno dei fogli dopo e prima, se le loro pagine hanno gia' una misura
+  const disegniPronti = [0, 1].map((k) => {
+    const pg = prossimo.filter((x) => x.foglio === k);
+    if (nastro || !intera || !pg.length || !pg.every((x) => nats[x.n])) return null;
+    if (pg.length > 1) return disegnaCoppia({ nats: pg.map((x) => nats[x.n]), riquadro, bordi: bordiVivi, verso });
+    const d = disegnaPagina({ nat: nats[pg[0].n], riquadro, bordi: bordiVivi });
+    return d && { foglio: d.foglio, pagine: [{ indice: 0, x: 0, foglio: d.foglio, immagine: d.immagine }] };
+  });
 
   const inScena = fogliInScena({ aSchermo: srcs, uscenti: uscente?.pagine, dopo: prossimo });
 
@@ -1072,7 +1078,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
                 );
               }),
               ...inScena.dopo.map((x) => {
-                const d = sfogliaPronta?.pagine.find((q) => q.indice === x.indice);
+                const d = disegniPronti[x.foglio]?.pagine.find((q) => q.indice === x.indice);
                 return (
                   <div
                     key={x.n}
