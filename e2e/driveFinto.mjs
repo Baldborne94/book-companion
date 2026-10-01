@@ -26,7 +26,16 @@ export function avviaDrive(porta, file, { elenco = [], latenza = 0 } = {}) {
     if (u.pathname.endsWith("/changes/startPageToken")) return json({ startPageToken: "1" });
     if (u.pathname.endsWith("/changes")) return json({ newStartPageToken: "1", changes: [] });
     if (u.pathname.endsWith("/files") && req.method === "GET") return json({ files: elenco });
-    if (req.method === "PATCH") return json({ id });
+    // il segno che l'app scrive resta sul file, come su Drive: senza, un
+    // file appena segnato tornava «di nessuno» alla scelta dopo
+    if (req.method === "PATCH") {
+      const pezzi = [];
+      for await (const c of req) pezzi.push(c);
+      const corpo = JSON.parse(Buffer.concat(pezzi).toString() || "{}");
+      const voce = elenco.find((f) => f.id === id);
+      if (voce && corpo.appProperties) voce.appProperties = { ...(voce.appProperties || {}), ...corpo.appProperties };
+      return json({ id, appProperties: voce?.appProperties });
+    }
     const bytes = u.searchParams.get("alt") === "media" ? file[id] : null;
     const voce = elenco.find((f) => f.id === id);
     if (!bytes && voce) return json(voce);

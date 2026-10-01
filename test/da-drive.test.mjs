@@ -153,6 +153,18 @@ export default async function (t) {
     t.eq("uno solo, al singolare", fraseGia([{ nome: "Mort.epub", come: "Mort" }]), "«Mort» era già sullo scaffale");
     t.eq("oltre tre, il conto", fraseGia([1, 2, 3, 4, 5].map((n) => ({ nome: `V${n}.epub`, come: null }))), "«V1», «V2», «V3» e altri 2 erano già sullo scaffale");
     t.eq("niente di gia', niente frase", fraseGia([]), "");
+    // i gemelli di Colab nella stessa cartella
+    const coppia = [
+      { id: "r1", name: "TWD Vol. 01.cbr", parents: ["W"] },
+      { id: "z1", name: "TWD Vol. 01.cbz", parents: ["W"] },
+    ];
+    t.eq("il CBR che resta fuori perche' entra il suo CBZ non e' «gia' sullo scaffale»", giaSulloScaffale([], coppia, daAggiungere([], coppia)).length, 0);
+    const vecchio = [{ id: "v", title: "Walking Dead uno", fileType: "cbr" }];
+    const conSegno = [{ ...coppia[0], appProperties: { bcId: "v" } }, coppia[1]];
+    const g2 = giaSulloScaffale(vecchio, conSegno, daAggiungere(vecchio, conSegno));
+    t.eq("il CBZ di un CBR che e' gia' un libro e' quel libro", g2.map((x) => `${x.nome}=${x.come}`).join(" "), "TWD Vol. 01.cbr=Walking Dead uno TWD Vol. 01.cbz=Walking Dead uno");
+    const altrove = [coppia[0], { ...coppia[1], parents: ["ALTRA"] }];
+    t.eq("un CBZ in un'altra cartella non e' il gemello", giaSulloScaffale([], altrove, [altrove[1]]).map((x) => x.nome).join(), "TWD Vol. 01.cbr");
   }
 
   // ---- i gemelli di Colab: il CBZ accanto al suo CBR -------------------
