@@ -12,6 +12,7 @@
 // rete), e i messaggi si accorciano.
 
 import { righeVoltate } from "./voltate.js";
+import { righeTempi } from "./tempi.js";
 
 const KEY = "bc_errori";
 export const TENUTI = 30;
@@ -85,8 +86,9 @@ export const eRumore = (m) => /ResizeObserver loop/.test(m || "") || String(m ||
 // Il rapporto: l'app e il dispositivo (senza nome, senza account) e i
 // guasti, dal piu' recente.
 // In coda, se ci sono, le voltate dei fumetti misurate (`righeVoltate` in
-// `lib/voltate.js`): solo numeri.
-export function rapporto({ errori = [], versione = "?", ambiente = {}, ora = Date.now(), voltate = [] } = {}) {
+// `lib/voltate.js`) e i tempi dell'app (`righeTempi` in `lib/tempi.js`):
+// solo numeri.
+export function rapporto({ errori = [], versione = "?", ambiente = {}, ora = Date.now(), voltate = [], tempi = [] } = {}) {
   const data = (t) => new Date(t).toLocaleString("it-IT", { timeZone: "Europe/Rome" });
   const righe = [
     "Book Companion — rapporto dei guasti",
@@ -104,6 +106,7 @@ export function rapporto({ errori = [], versione = "?", ambiente = {}, ora = Dat
     if (e.s) righe.push(e.s);
   }
   if (voltate.length) righe.push("", ...righeVoltate(voltate));
+  if (tempi.length) righe.push("", ...righeTempi(tempi));
   return righe.join("\n");
 }
 

@@ -27,6 +27,7 @@ import SchedaOracolo, { attese } from "./SchedaOracolo.jsx";
 import { apertaATuttoSchermo, serveTastoSchermo } from "../lib/schermoIntero.js";
 import { creaVoce, testoDellaPagina } from "../lib/vocePdf.js";
 import { leggiVelocita, scriviVelocita, prossimaVelocita } from "../lib/voce.js";
+import { misuraApertura, provenienza } from "../lib/tempi.js";
 
 // stesse fasce del reader EPUB, misurate sullo schermo: cosi' anche il
 // margine attorno alla pagina volta, non solo il foglio
@@ -111,6 +112,8 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   const modRef = useRef(null);
   const renderTask = useRef(null);
   const renderToken = useRef(0);
+  // l'apertura misurata (`lib/tempi.js`): finisce alla prima pagina disegnata
+  const apertura = useRef(null);
   const textLayer = useRef(null);
   const flashRef = useRef(null);
   const textCache = useRef(new Map());
@@ -274,6 +277,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
         const task = p.render({ canvas, canvasContext: canvas.getContext("2d"), viewport });
         renderTask.current = task;
         await task.promise;
+        if (renderToken.current === token) apertura.current?.fine();
 
         const layer = textRef.current;
         const mod = modRef.current;
@@ -300,8 +304,11 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     let dead = false;
     (async () => {
       try {
+        const misura = (apertura.current = misuraApertura("pdf", book.id));
+        misura.tappa("codice");
         const blob = await fileDaLeggere(book);
         if (!blob) throw new Error("file mancante");
+        misura.tappa("byte", { da: provenienza(blob), kb: Math.round((blob.size || 0) / 1024) });
         const mod = await import("../lib/pdfThumb.js");
         modRef.current = mod;
         // un PDF grosso che sta su Drive si legge da li' a pezzi (vedi
@@ -321,6 +328,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
           return;
         }
         pdfRef.current = pdf;
+        misura.tappa("libro");
         pdf.getMetadata().then((m) => {
           linguaRef.current = String(m?.info?.Language || "");
         }).catch(() => {});

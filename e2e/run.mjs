@@ -14,7 +14,7 @@
 import { existsSync } from "node:fs";
 import { build, preview } from "vite";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
-import { fumetto, fumettoGrosso, epub, FRASE, mondoDisco } from "./libri.mjs";
+import { fumetto, fumettoGrosso, epub, pdf, FRASE, mondoDisco } from "./libri.mjs";
 import { avviaDrive, driveNelBrowser } from "./driveFinto.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
 
@@ -160,6 +160,8 @@ const SCENE = [
     nome: "un ePub si importa e si apre",
     async fai({ browser }) {
       const d = await dispositivo(browser);
+      await d.p.goto(URL_APP);
+      await d.p.getByRole("button", { name: "Libreria" }).first().click();
       await importa(d.p, "La nebbia.epub", await epub(), "application/epub+zip");
       await d.p.getByText("La nebbia").first().click();
       await d.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
@@ -171,8 +173,38 @@ const SCENE = [
         25000,
         "il testo del libro non compare"
       );
+      // e i tempi sono misurati (`lib/tempi.js`): l'avvio, la Libreria aperta
+      // dal menu, l'ePub dal tocco alla pagina
+      const tempi = await finche(
+        async () => {
+          const v = await d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_tempi") || "[]"));
+          return ["avvio", "libreria", "epub"].every((c) => v.some((x) => x.c === c)) ? v : null;
+        },
+        10000,
+        "i tempi dell'avvio, della Libreria e dell'ePub non sono annotati"
+      );
+      const ep = tempi.find((x) => x.c === "epub");
+      if (ep.da !== "tablet" || !("pagina" in ep.f) || !("byte" in ep.f)) throw new Error(`apertura dell'ePub misurata male: ${JSON.stringify(ep)}`);
       const registro = await d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_errori") || "[]"));
-      return { guasti: [...d.guasti, ...registro.map((e) => `registro: ${e.m}`)] };
+      return { guasti: [...d.guasti, ...registro.map((e) => `registro: ${e.m}`)], nota: tempi.map((x) => `${x.c} ${Object.values(x.f).reduce((a, b) => a + b, 0)} ms`).join(" · ") };
+    },
+  },
+  {
+    nome: "un PDF si importa e si apre, e l'apertura e' misurata fino alla prima pagina",
+    async fai({ browser }) {
+      const d = await dispositivo(browser);
+      await importa(d.p, "Prova dei tempi.pdf", pdf(), "application/pdf");
+      await d.p.getByText("Prova dei tempi").first().click();
+      await d.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      await finche(() => testoAvviso(d.p, /Pagina 1 della prova/), 25000, "il testo della prima pagina non compare");
+      const ap = await finche(
+        async () => (await d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_tempi") || "[]"))).find((x) => x.c === "pdf"),
+        10000,
+        "l'apertura del PDF non e' annotata"
+      );
+      if (ap.da !== "tablet" || !["codice", "byte", "libro", "pagina"].every((k) => k in ap.f)) throw new Error(`apertura del PDF misurata male: ${JSON.stringify(ap)}`);
+      const registro = await d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_errori") || "[]"));
+      return { guasti: [...d.guasti, ...registro.map((e) => `registro: ${e.m}`)], nota: Object.entries(ap.f).map(([k, ms]) => `${k} ${ms} ms`).join(" + ") };
     },
   },
   {
