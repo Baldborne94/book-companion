@@ -240,6 +240,57 @@ const SCENE = [
     },
   },
   {
+    // dal rapporto delle voltate del lettore: pagine tutte in memoria, e
+    // 108 ms su 111 a DISEGNARLE. La pagina dopo aspetta sotto quella a
+    // schermo, e alla voltata dev'essere LO STESSO elemento: un <img> nuovo
+    // si rilegge e si ridecodifica (misurato: nessun guadagno). E la pagina
+    // che se ne va svanisce col suo elemento, non con una foto su canvas.
+    nome: "alla voltata del fumetto la pagina dopo era gia' li', e quella di prima svanisce da se'",
+    async fai({ browser }) {
+      const bytes = await fumettoGrosso();
+      const drv = await avviaDrive(PORTA_DRIVE, { fg: bytes });
+      try {
+        const d = await dispositivo(browser, {
+          drive: { libri: [{ id: "fg", title: "Tavole", fileType: "cbz", addedAt: 1 }], mappa: { fg: { id: "fg", byte: bytes.length } } },
+        });
+        await d.p.goto(`${URL_APP}?apri=libreria`);
+        await d.p.getByText("Tavole").first().click();
+        await d.p.getByRole("button", { name: /Apri il libro/ }).first().click();
+        const pronta = await finche(
+          () =>
+            d.p.evaluate(() => {
+              const dopo = document.querySelector("img[data-dopo]");
+              const vista = [...document.querySelectorAll("img:not([data-dopo]):not([data-via])")].find((x) => /pagina \d+\.png$/.test(x.alt));
+              if (!dopo?.complete || !dopo.naturalWidth || !vista?.complete) return "";
+              dopo.bcSegno = "dopo";
+              vista.bcSegno = "prima";
+              return vista.alt;
+            }),
+          20000,
+          "la pagina dopo non si prepara sotto quella a schermo"
+        );
+        await d.p.keyboard.press("ArrowRight");
+        const esito = await finche(
+          () =>
+            d.p.evaluate((prima) => {
+              const vista = [...document.querySelectorAll("img:not([data-dopo]):not([data-via])")].find((x) => /pagina \d+\.png$/.test(x.alt));
+              if (!vista || vista.alt === prima) return "";
+              return JSON.stringify({ pagina: vista.alt, vista: vista.bcSegno || "nuova", via: [...document.querySelectorAll("img[data-via]")].map((x) => x.bcSegno || "nuova") });
+            }, pronta),
+          15000,
+          "la voltata non arriva"
+        );
+        const e = JSON.parse(esito);
+        if (e.vista !== "dopo") throw new Error(`a schermo c'e' un <img> nuovo, non quello preparato sotto (${esito})`);
+        if (e.via.join() !== "prima") throw new Error(`la pagina di prima non svanisce col suo elemento (${esito})`);
+        const num = (alt) => Number(alt.match(/(\d+)\.png$/)[1]);
+        return { guasti: d.guasti, nota: `pagina ${num(pronta)} → ${num(e.pagina)}: la stessa <img> preparata sotto, e la ${num(pronta)} svanisce da se'` };
+      } finally {
+        await drv.chiudi();
+      }
+    },
+  },
+  {
     // segnalato dal lettore coi Walking Dead: «ho navigato un po' ed è
     // sparito il caricamento, poi ci mette davvero troppo a convertire».
     // Nella cartella, accanto a ogni CBR, il CBZ che Colab ha lasciato.
