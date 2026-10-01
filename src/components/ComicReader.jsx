@@ -44,6 +44,8 @@ import {
   fraseConversione,
   sfumaDa,
   SFUMA_MS,
+  daDecodificare,
+  fogliInScena,
 } from "../lib/fumetto.js";
 import { vuoto } from "../lib/pdfCrop.js";
 import { conAttesa } from "../lib/misuraPagine.js";
@@ -133,6 +135,8 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const archivio = useRef(null);
   const urls = useRef(new Map());
   const pesi = useRef(new Map());
+  // (urlDi chiama `preDecodifica`, che sta piu' sotto)
+  const preDecodificaRef = useRef(() => {});
   const inArrivo = useRef(new Map());
   const gettone = useRef(0);
   const live = useRef({ page: 1, pages: 0 });
@@ -158,8 +162,8 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   // per quale coppia sono quelle pagine: una coppia a cui ne manca una (non
   // si e' lasciata leggere) si disegna con quella che c'e'
   const [srcsDi, setSrcsDi] = useState("");
-  // la voltata che sfuma: l'ultimo foglio disegnato, e la sua foto che
-  // svanisce sopra il nuovo (vedi `fotografa`)
+  // la voltata che sfuma: l'ultimo foglio disegnato, e le sue pagine che
+  // svaniscono sopra il nuovo (`uscente`)
   const disegnato = useRef(null);
   const contaSfuma = useRef(0);
   const misuraVoltata = useRef(null);
@@ -210,35 +214,6 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   live.current.intera = intera;
   live.current.sfuma = settings.sfumaFumetti !== false && !riduciMovimento();
 
-  // il foglio a schermo su un canvas, com'e' disegnato adesso: le immagini
-  // sono gia' decodificate, e `drawImage` e' sincrono
-  function fotografa() {
-    const d = disegnato.current;
-    const ims = imgRef.current?.querySelectorAll("img");
-    if (!d || !ims) return null;
-    const dpr = window.devicePixelRatio || 1;
-    const tela = document.createElement("canvas");
-    tela.width = Math.round(d.disegno.foglio.w * dpr);
-    tela.height = Math.round(d.disegno.foglio.h * dpr);
-    tela.style.cssText = `display:block;width:${d.disegno.foglio.w}px;height:${d.disegno.foglio.h}px`;
-    const g = tela.getContext("2d");
-    if (!g) return null;
-    g.scale(dpr, dpr);
-    let dipinte = 0;
-    d.srcs.forEach((_, i) => {
-      const q = d.disegno.pagine.find((x) => x.indice === i);
-      const im = ims[i];
-      if (!q || !im?.complete || !im.naturalWidth) return;
-      g.save();
-      g.beginPath();
-      g.rect(q.x, 0, q.foglio.w, q.foglio.h);
-      g.clip();
-      g.drawImage(im, q.x + q.immagine.x, q.immagine.y, q.immagine.w, q.immagine.h);
-      g.restore();
-      dipinte += 1;
-    });
-    return dipinte ? { tela, w: d.disegno.foglio.w, h: d.disegno.foglio.h } : null;
-  }
   // le pagine del nastro che hanno l'immagine (n → object URL)
   const [vista, setVista] = useState({});
 
@@ -300,6 +275,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           urls.current.set(n, url);
           pesi.current.set(n, blob.size);
           inArrivo.current.delete(n);
+          preDecodificaRef.current();
           return url;
         })().catch((e) => {
           inArrivo.current.delete(n);
@@ -309,6 +285,22 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     }
     return inArrivo.current.get(n);
   }, []);
+
+  // IL FOGLIO DOPO GIA' DISEGNATO (`daDecodificare`): le sue <img> stanno
+  // sotto la pagina a schermo, nella STESSA lista con la stessa chiave (il
+  // numero di pagina), all'1%. Alla voltata React tiene lo stesso elemento e
+  // Chrome lo trova decodificato; un <img> nuovo con lo stesso indirizzo si
+  // rilegge e si ridecodifica da capo (misurato: `decode()` fuori dallo
+  // schermo, o un velo a parte, 86 ms contro 87).
+  const [prossimo, setProssimo] = useState([]);
+  const preDecodifica = useCallback(() => {
+    const l = live.current;
+    const voluti = daDecodificare({ ultima: l.ultima, pages: l.pages, doppia: l.doppia, opzioni: l.opzioni });
+    const pronti = voluti.map((n) => ({ n, url: urls.current.get(n) })).filter((x) => x.url);
+    setProssimo((p) => (pronti.length === voluti.length && pronti.map((x) => x.url).join() !== p.map((x) => x.url).join() ? pronti : pronti.length === voluti.length ? p : []));
+  }, []);
+
+  preDecodificaRef.current = preDecodifica;
 
   // le pagine lontane si lasciano andare solo oltre il tetto di byte
   // (`daLasciare`): da Drive riprenderle e' un viaggio in rete. La finestra
@@ -483,12 +475,16 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           misuraVoltata.current.kb = buone.reduce((t, x) => t + (pesi.current.get(x.n) || 0), 0) / 1024;
         }
         if (sfumaDa(disegnato.current, chiaveMostrate, { nastro: live.current.nastro, acceso: live.current.sfuma && live.current.intera })) {
-          const foto = fotografa();
-          if (foto) setUscente({ ...foto, id: ++contaSfuma.current, via: false });
+          const d = disegnato.current;
+          const via = d.srcs
+            .map((x, i) => ({ n: x.n, url: x.url, q: d.disegno.pagine.find((y) => y.indice === i) }))
+            .filter((x) => x.q);
+          if (via.length) setUscente({ id: ++contaSfuma.current, via: false, w: d.disegno.foglio.w, h: d.disegno.foglio.h, pagine: via });
         }
         setSrcs(buone);
         setSrcsDi(chiaveMostrate);
         sfoltisci(page);
+        preDecodifica();
         // le vicine si preparano DOPO quella che si guarda, nel verso in
         // cui si legge: la prossima per prima. In doppia pagina si MISURANO
         // anche, perche' una tavola larga cambia la coppia prima di arrivarci
@@ -846,12 +842,25 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           return d && { foglio: d.foglio, pagine: [{ indice: 0, x: 0, foglio: d.foglio, immagine: d.immagine }] };
         })();
 
+  // il disegno del foglio dopo, se le sue pagine hanno gia' una misura
+  const sfogliaPronta = !nastro && intera && prossimo.length && prossimo.every((x) => nats[x.n])
+    ? prossimo.length > 1
+      ? disegnaCoppia({ nats: prossimo.map((x) => nats[x.n]), riquadro, bordi: bordiVivi, verso })
+      : (() => {
+          const d = disegnaPagina({ nat: nats[prossimo[0].n], riquadro, bordi: bordiVivi });
+          return d && { foglio: d.foglio, pagine: [{ indice: 0, x: 0, foglio: d.foglio, immagine: d.immagine }] };
+        })()
+    : null;
+
+  const inScena = fogliInScena({ aSchermo: srcs, uscenti: uscente?.pagine, dopo: prossimo });
+
   // LA VOLTATA SFUMA (`sfumaDa`). Il foglio di prima resta dov'e' finche'
   // il nuovo non e' pronto (`disegnoVisto`: le stesse immagini, niente nero
-  // in mezzo); quando arriva si fotografa su un canvas (`fotografa`), che
-  // sta sopra e svanisce solo quando il nuovo e' decodificato. Una copia
-  // fatta di <img> nuove andrebbe decodificata da capo: misurato, uno o due
-  // fotogrammi neri a voltata.
+  // in mezzo); poi le sue pagine — gli STESSI elementi <img>, che passano
+  // nella lista delle uscenti con la loro chiave — stanno sopra e svaniscono
+  // quando il nuovo e' decodificato. Copie <img> nuove andrebbero
+  // decodificate da capo (fotogrammi neri), e la foto su canvas di una volta
+  // ridecodificava la pagina sul filo principale (146 ms bloccati).
   useLayoutEffect(() => {
     if (nastro) disegnato.current = null;
     else if (disegno) disegnato.current = { chiave: srcsDi, srcs, disegno };
@@ -861,7 +870,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   useEffect(() => {
     if (!uscente || uscente.via || !pronte) return;
     let vivo = true;
-    const ims = [...(imgRef.current?.querySelectorAll("img") || [])];
+    const ims = [...(imgRef.current?.querySelectorAll("img:not([data-dopo]):not([data-via])") || [])];
     const tetto = new Promise((r) => setTimeout(r, 400));
     Promise.race([Promise.all(ims.map((im) => im.decode().catch(() => {}))), tetto]).then(() => {
       if (vivo) setUscente((u) => (u?.id === uscente.id ? { ...u, via: true } : u));
@@ -876,7 +885,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     const m = misuraVoltata.current;
     if (!pronte || !m || m.chiave !== srcsDi || m.tPagine == null || m.fatta) return;
     m.fatta = true;
-    const ims = [...(imgRef.current?.querySelectorAll("img") || [])];
+    const ims = [...(imgRef.current?.querySelectorAll("img:not([data-dopo]):not([data-via])") || [])];
     const tetto = new Promise((r) => setTimeout(r, 5000));
     Promise.race([Promise.all(ims.map((im) => im.decode().catch(() => {}))), tetto]).then(() => {
       const c = globalThis.navigator?.connection;
@@ -997,61 +1006,94 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
               visibility: disegnoVisto ? "visible" : "hidden",
             }}
           >
-            {srcs.map((x, i) => {
-              const d = disegnoVisto?.pagine.find((q) => q.indice === i);
-              return (
-                <div
-                  key={x.n}
-                  style={{
-                    position: "absolute",
-                    overflow: "hidden",
-                    top: 0,
-                    left: d?.x ?? 0,
-                    width: d?.foglio.w,
-                    height: d?.foglio.h,
-                  }}
-                >
-                  <img
-                    src={x.url}
-                    alt={archivio.current?.pagine?.[x.n - 1] || ""}
-                    draggable={false}
-                    onLoad={(e) => segnaMisura(x.n, { w: e.target.naturalWidth, h: e.target.naturalHeight })}
+            {[
+              ...srcs.map((x, i) => {
+                const d = disegnoVisto?.pagine.find((q) => q.indice === i);
+                return (
+                  <div
+                    key={x.n}
                     style={{
                       position: "absolute",
-                      display: "block",
-                      maxWidth: "none",
-                      left: d?.immagine.x,
-                      top: d?.immagine.y,
-                      width: d?.immagine.w,
-                      height: d?.immagine.h,
+                      overflow: "hidden",
+                      top: 0,
+                      left: d?.x ?? 0,
+                      width: d?.foglio.w,
+                      height: d?.foglio.h,
                     }}
-                  />
-                </div>
-              );
-            })}
+                  >
+                    <img
+                      src={x.url}
+                      alt={archivio.current?.pagine?.[x.n - 1] || ""}
+                      draggable={false}
+                      onLoad={(e) => segnaMisura(x.n, { w: e.target.naturalWidth, h: e.target.naturalHeight })}
+                      style={{
+                        position: "absolute",
+                        display: "block",
+                        maxWidth: "none",
+                        left: d?.immagine.x,
+                        top: d?.immagine.y,
+                        width: d?.immagine.w,
+                        height: d?.immagine.h,
+                      }}
+                    />
+                  </div>
+                );
+              }),
+              ...inScena.uscenti.map((x) => {
+                const q = x.q;
+                const ox = ((disegnoVisto?.foglio.w || 0) - uscente.w) / 2;
+                const oy = ((disegnoVisto?.foglio.h || 0) - uscente.h) / 2;
+                return (
+                  <div
+                    key={x.n}
+                    aria-hidden="true"
+                    onAnimationEnd={() => setUscente((u) => (u?.id === uscente.id ? null : u))}
+                    style={{
+                      position: "absolute",
+                      overflow: "hidden",
+                      top: oy,
+                      left: ox + q.x,
+                      width: q.foglio.w,
+                      height: q.foglio.h,
+                      zIndex: 1,
+                      visibility: "visible",
+                      pointerEvents: "none",
+                      animation: uscente.via ? `bc-svanisci ${SFUMA_MS}ms ease-in-out forwards` : "none",
+                    }}
+                  >
+                    <img
+                      data-via=""
+                      src={x.url}
+                      alt=""
+                      draggable={false}
+                      style={{ position: "absolute", display: "block", maxWidth: "none", left: q.immagine.x, top: q.immagine.y, width: q.immagine.w, height: q.immagine.h }}
+                    />
+                  </div>
+                );
+              }),
+              ...inScena.dopo.map((x) => {
+                const d = sfogliaPronta?.pagine.find((q) => q.indice === x.indice);
+                return (
+                  <div
+                    key={x.n}
+                    aria-hidden="true"
+                    style={{ position: "absolute", overflow: "hidden", top: 0, left: d?.x ?? 0, width: d?.foglio.w ?? 1, height: d?.foglio.h ?? 1, opacity: 0.01, zIndex: -1, pointerEvents: "none" }}
+                  >
+                    <img
+                      data-dopo=""
+                      src={x.url}
+                      alt=""
+                      draggable={false}
+                      onLoad={(e) => segnaMisura(x.n, { w: e.target.naturalWidth, h: e.target.naturalHeight })}
+                      style={{ position: "absolute", display: "block", maxWidth: "none", left: d?.immagine.x, top: d?.immagine.y, width: d?.immagine.w ?? 1, height: d?.immagine.h ?? 1 }}
+                    />
+                  </div>
+                );
+              }),
+            ]}
           </div>
         )}
       </div>
-
-      {uscente && (
-        <div
-          style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", overflow: "hidden", zIndex: 1 }}
-        >
-          <div
-            key={uscente.id}
-            ref={(n) => {
-              if (n && uscente.tela.parentNode !== n) n.replaceChildren(uscente.tela);
-            }}
-            onAnimationEnd={() => setUscente((u) => (u?.id === uscente.id ? null : u))}
-            style={{
-              flexShrink: 0,
-              width: uscente.w,
-              height: uscente.h,
-              animation: uscente.via ? `bc-svanisci ${SFUMA_MS}ms ease-in-out forwards` : "none",
-            }}
-          />
-        </div>
-      )}
 
       {/* la luce si abbassa con lo stesso velo del PDF: e' la luminosita'
           delle preferenze di lettura, una per tutti i libri */}

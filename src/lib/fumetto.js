@@ -626,6 +626,33 @@ export function sfumaDa(prima, chiave, { nastro = false, acceso = true, riduci =
   return !nastro && acceso && !riduci && !!prima && prima.chiave !== chiave;
 }
 
+// LA PAGINA DOPO SI DECODIFICA PRIMA (misurato sul tablet del lettore col
+// rapporto delle voltate: 44 voltate, tutte con le pagine gia' in memoria,
+// tipica 111 ms di cui 108 di DISEGNO — il tablet che decodifica una pagina
+// da 1,7 MB). Mentre leggi, il browser decodifica gia' il foglio che viene
+// dopo, sotto la pagina a schermo: alla voltata l'immagine e' pronta. Solo il
+// foglio dopo, una pagina o la coppia: una pagina decodificata sono decine
+// di MB, e tenerne di piu' toglierebbe memoria alle pagine in arrivo.
+export function daDecodificare({ ultima, pages, doppia = false, opzioni = {} }) {
+  if (!(ultima >= 1) || ultima >= pages) return [];
+  return doppia ? coppiaDi(ultima + 1, pages, opzioni) : [ultima + 1];
+}
+
+// LE TRE LISTE DEL FOGLIO: a schermo, che svaniscono, il foglio dopo. Vivono
+// in UNA lista con la chiave della pagina, cosi' alla voltata la pagina che
+// era dopo (o a schermo) resta lo stesso elemento gia' decodificato. Una
+// pagina sta in una lista sola: due chiavi uguali, e React ne butta una.
+// `indice` e' il posto della pagina nel suo foglio.
+export function fogliInScena({ aSchermo = [], uscenti = [], dopo = [] }) {
+  const prese = new Set(aSchermo.map((x) => x.n));
+  const via = uscenti.filter((x) => !prese.has(x.n));
+  for (const x of via) prese.add(x.n);
+  return {
+    uscenti: via,
+    dopo: dopo.map((x, indice) => ({ ...x, indice })).filter((x) => !prese.has(x.n)),
+  };
+}
+
 // LE PAGINE GIA' APERTE RESTANO, FINO A UN TETTO DI BYTE (segnalato dal
 // lettore: «ci mette parecchi secondi per passare da una pagina all'altra…
 // o tornare indietro»). Si tenevano quattro pagine dietro quella a schermo e
