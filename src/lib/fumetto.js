@@ -95,6 +95,27 @@ export function formatoDaByte(u8) {
   return null;
 }
 
+// PERCHE' UN «.cbr» NON SI APRE (segnalato dal lettore con «Batman - Hush
+// (2019) (digital) (Son of Ultron-Empire).cbr»: «archivio non leggibile», e
+// basta). Il formato si decide dai primi byte; quando non e' ne' uno zip ne'
+// un rar, i primi byte dicono quasi sempre COS'E' — un 7-Zip rinominato, un
+// PDF rinominato (che allora si apre come PDF), un autoestraente, una pagina
+// web al posto del file — e il lettore sa cosa farne.
+export function cheArchivio(u8) {
+  const formato = formatoDaByte(u8);
+  if (formato) return { formato };
+  const b = u8 || new Uint8Array(0);
+  if (!b.length) return { perche: "il file è vuoto" };
+  const inizia = (...x) => x.every((v, i) => b[i] === v);
+  if (inizia(0x25, 0x50, 0x44, 0x46)) return { formato: "pdf" };
+  if (inizia(0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c)) return { perche: "è un archivio 7-Zip rinominato: rifallo in ZIP (o CBZ) e reimportalo" };
+  if (inizia(0x4d, 0x5a)) return { perche: "è un programma autoestraente (.exe), non un fumetto" };
+  if (inizia(0x1f, 0x8b) || inizia(0x42, 0x5a, 0x68)) return { perche: "è un archivio compresso (gzip o bzip2), non un CBR né un CBZ" };
+  if (b[0] === 0x3c) return { perche: "al posto del file è arrivata una pagina web: riprova più tardi" };
+  const testa = [...b.slice(0, 4)].map((x) => x.toString(16).padStart(2, "0")).join(" ");
+  return { perche: `non è né un CBZ né un CBR (comincia con ${testa})` };
+}
+
 const TIPI = {
   jpg: "image/jpeg",
   jpeg: "image/jpeg",

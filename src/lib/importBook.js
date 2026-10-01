@@ -5,7 +5,7 @@ import { riconosci, nomeInBiblioteca, chiaveSaga } from "./sagaBooks.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 import { dalMetadata } from "./sinossi.js";
 import { collana, chiaveCollana } from "./collana.js";
-import { formatoDaByte, tipoImmagine, cbrApribile, cbrLontanoApribile, PERCHE_CBR_GRANDE } from "./fumetto.js";
+import { cheArchivio, tipoImmagine, cbrApribile, cbrLontanoApribile, PERCHE_CBR_GRANDE } from "./fumetto.js";
 
 // oltre questa taglia il libro non si ricuce: tenere in memoria due
 // copie dell'archivio, su un tablet, vale piu' di qualche pagina bianca
@@ -381,9 +381,11 @@ export async function importFiles(fileList, libri = [], { onProgress, converti =
     // giro sono zip rinominati, e viceversa. Il formato scritto sul libro e'
     // quello VERO, cosi' il lettore apre col lettore giusto.
     if (!fileType && (lower.endsWith(".cbz") || lower.endsWith(".cbr"))) {
-      fileType = formatoDaByte(new Uint8Array(await file.slice(0, 8).arrayBuffer().catch(() => new ArrayBuffer(0))));
+      const testa = await file.slice(0, 8).arrayBuffer().catch(() => null);
+      const visto = testa ? cheArchivio(new Uint8Array(testa)) : { perche: "il file non si è lasciato leggere" };
+      fileType = visto.formato || null;
       if (!fileType) {
-        errors.push({ name: file.name, reason: "archivio non leggibile" });
+        errors.push({ name: file.name, reason: visto.perche });
         continue;
       }
     }
@@ -562,15 +564,19 @@ export async function importaDaDrive(voci, libri = [], { apri, segna, converti, 
     const est = (/\.([a-z0-9]+)$/i.exec(v.name || "") || [])[1]?.toLowerCase() || "";
     let blob = apri(v);
     let fileType = est === "epub" || est === "pdf" ? est : null;
+    let perche = "archivio non leggibile";
     if (est === "cbz" || est === "cbr") {
       try {
-        fileType = formatoDaByte(new Uint8Array(await blob.slice(0, 8).arrayBuffer()));
+        const visto = cheArchivio(new Uint8Array(await blob.slice(0, 8).arrayBuffer()));
+        fileType = visto.formato || null;
+        perche = visto.perche || perche;
       } catch {
         fileType = null;
+        perche = "Google Drive non ha dato il file: riprova";
       }
     }
     if (!fileType) {
-      errors.push({ name: v.name, reason: "archivio non leggibile" });
+      errors.push({ name: v.name, reason: perche });
       continue;
     }
     // il CBR che il browser non aprira' mai si converte ADESSO, una volta
