@@ -1,8 +1,8 @@
-// I DOPPIONI DEI FUMETTI (`doppioniDiFumetti`) e il gemello CBZ su Drive
+// I DOPPIONI (`doppioniInBiblioteca`: fumetti e libri) e il gemello CBZ su Drive
 // (`gemelloCbzDi`). Sbagliano in silenzio in due modi che costano: tenere
 // la copia sbagliata (quella senza il segno di lettura, o il CBR che scende
 // intero invece del CBZ), o prendere per doppioni due libri diversi.
-import { doppioniDiFumetti, chiaveVolume } from "../src/lib/doppioni.js";
+import { doppioniInBiblioteca, chiaveVolume } from "../src/lib/doppioni.js";
 import { gemelloCbzDi } from "../src/lib/driveCore.js";
 
 const TWD = (n, extra = "") => `The Walking Dead Deluxe Vol. 0${n}${extra}`;
@@ -26,7 +26,7 @@ export default async (t) => {
   const letti = { a: 0.12 };
   const segnati = { h: 2 };
   const conCopertina = new Set(["a", "c", "e"]);
-  const g = doppioniDiFumetti(libri, {
+  const g = doppioniInBiblioteca(libri, {
     progresso: (id) => letti[id] || 0,
     segni: (id) => segnati[id] || 0,
     copertina: (id) => conCopertina.has(id),
@@ -40,13 +40,30 @@ export default async (t) => {
   t.c("un volume solo non e' un doppione", !di(3));
   t.c("i libri non sono fumetti: lo stesso titolo in ePub non si tocca qui", !g.some((x) => x.titolo === "Racconti"));
   t.c("…e un PDF con lo stesso titolo di un fumetto nemmeno", !di(2).via.includes("m"));
-  t.eq("letto e finito vale come in lettura", doppioniDiFumetti([{ id: "x", title: "V", fileType: "cbr" }, { id: "y", title: "V", fileType: "cbz" }], { stato: (id) => (id === "x" ? "read" : "unread") })[0].tieni, "x");
-  t.eq("piu' avanti vince", doppioniDiFumetti([{ id: "x", title: "V", fileType: "cbz" }, { id: "y", title: "V", fileType: "cbz" }], { progresso: (id) => (id === "x" ? 0.2 : 0.6) })[0].tieni, "y");
-  t.eq("a parita' di tutto, la scheda piu' vecchia", doppioniDiFumetti([{ id: "x", title: "V", fileType: "cbz", addedAt: 9 }, { id: "y", title: "V", fileType: "cbz", addedAt: 4 }])[0].tieni, "y");
-  t.eq("la copertina conta piu' dell'eta'", doppioniDiFumetti([{ id: "x", title: "V", fileType: "cbz", addedAt: 9 }, { id: "y", title: "V", fileType: "cbz", addedAt: 4 }], { copertina: (id) => id === "x" })[0].tieni, "x");
-  t.eq("il CBZ vince sul CBR anche senza copertine, anche se il CBR e' piu' vecchio", doppioniDiFumetti([{ id: "r", title: "V", fileType: "cbr", addedAt: 1 }, { id: "z", title: "V", fileType: "cbz", addedAt: 9 }])[0].tieni, "z");
-  t.eq("due fumetti senza titolo non sono lo stesso volume", doppioniDiFumetti([{ id: "x", title: "", fileType: "cbz" }, { id: "y", title: "  ", fileType: "cbz" }]).length, 0);
-  t.eq("niente doppioni, niente gruppi", doppioniDiFumetti([{ id: "x", title: "V", fileType: "cbz" }]).length, 0);
+  t.eq("letto e finito vale come in lettura", doppioniInBiblioteca([{ id: "x", title: "V", fileType: "cbr" }, { id: "y", title: "V", fileType: "cbz" }], { stato: (id) => (id === "x" ? "read" : "unread") })[0].tieni, "x");
+  t.eq("piu' avanti vince", doppioniInBiblioteca([{ id: "x", title: "V", fileType: "cbz" }, { id: "y", title: "V", fileType: "cbz" }], { progresso: (id) => (id === "x" ? 0.2 : 0.6) })[0].tieni, "y");
+  t.eq("a parita' di tutto, la scheda piu' vecchia", doppioniInBiblioteca([{ id: "x", title: "V", fileType: "cbz", addedAt: 9 }, { id: "y", title: "V", fileType: "cbz", addedAt: 4 }])[0].tieni, "y");
+  t.eq("la copertina conta piu' dell'eta'", doppioniInBiblioteca([{ id: "x", title: "V", fileType: "cbz", addedAt: 9 }, { id: "y", title: "V", fileType: "cbz", addedAt: 4 }], { copertina: (id) => id === "x" })[0].tieni, "x");
+  t.eq("il CBZ vince sul CBR anche senza copertine, anche se il CBR e' piu' vecchio", doppioniInBiblioteca([{ id: "r", title: "V", fileType: "cbr", addedAt: 1 }, { id: "z", title: "V", fileType: "cbz", addedAt: 9 }])[0].tieni, "z");
+  t.eq("due fumetti senza titolo non sono lo stesso volume", doppioniInBiblioteca([{ id: "x", title: "", fileType: "cbz" }, { id: "y", title: "  ", fileType: "cbz" }]).length, 0);
+  t.eq("niente doppioni, niente gruppi", doppioniInBiblioteca([{ id: "x", title: "V", fileType: "cbz" }]).length, 0);
+
+  // ---- i libri: stesso titolo, stesso autore, stesso formato --------------
+  // i Dragonriders del lettore: una scheda col file su Drive, una senza
+  const pern = [
+    { id: "senza", title: "Dragonflight", author: "Anne McCaffrey", fileType: "epub", addedAt: 1 },
+    { id: "col", title: "Dragonflight", author: "Anne McCaffrey", fileType: "epub", addedAt: 9 },
+  ];
+  const conFile = (id) => id !== "senza";
+  const pg = doppioniInBiblioteca(pern, { conFile, copertina: () => true });
+  t.eq("due ePub con titolo e autore uguali sono lo stesso libro", pg.length, 1);
+  t.eq("…e resta la scheda col file, anche se e' la piu' nuova", pg[0]?.tieni, "col");
+  t.eq("…anche contro la scheda senza file che stai leggendo", doppioniInBiblioteca(pern, { conFile, progresso: (id) => (id === "senza" ? 0.4 : 0) })[0]?.tieni, "col");
+  t.eq("l'autore si confronta senza accenti, maiuscole e punti", doppioniInBiblioteca([{ id: "a", title: "Le Città", author: "Calvino, Italo", fileType: "epub" }, { id: "b", title: "le città", author: "calvino italo", fileType: "epub" }]).length, 1);
+  t.eq("stesso titolo, autori diversi: due libri", doppioniInBiblioteca([{ id: "a", title: "Racconti", author: "Moravia", fileType: "epub" }, { id: "b", title: "Racconti", author: "Calvino", fileType: "epub" }]).length, 0);
+  t.eq("lo stesso libro in ePub e in PDF non si unisce: sono due file diversi", doppioniInBiblioteca([{ id: "a", title: "Mort", author: "Pratchett", fileType: "epub" }, { id: "b", title: "Mort", author: "Pratchett", fileType: "pdf" }]).length, 0);
+  t.eq("un ePub senza autore non si unisce a un altro col suo titolo", doppioniInBiblioteca([{ id: "a", title: "Mort", author: "Pratchett", fileType: "epub" }, { id: "b", title: "Mort", author: "", fileType: "epub" }]).length, 0);
+  t.eq("un fumetto senza file perde contro quello col file, anche se e' il CBZ", doppioniInBiblioteca([{ id: "z", title: "V", fileType: "cbz" }, { id: "r", title: "V", fileType: "cbr" }], { conFile: (id) => id === "r" })[0].tieni, "r");
 
   // ---- il gemello su Drive --------------------------------------------------
   const file = [

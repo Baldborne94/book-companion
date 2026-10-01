@@ -36,7 +36,7 @@ import BookSheet from "./components/BookSheet.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
 import { getBookMusic, setBookMusic } from "./lib/music.js";
 import { getJump, clearJump, getMarks } from "./lib/annotations.js";
-import { doppioniDiFumetti } from "./lib/doppioni.js";
+import { doppioniInBiblioteca } from "./lib/doppioni.js";
 import { daAvvisare } from "./lib/oracle.js";
 import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
@@ -1293,7 +1293,11 @@ export default function App() {
     const vivo = () => filoImport.current === mio;
     setImporto({ fatti: 0, totale: voci.length, nome: voci[0].name });
     try {
+      // le schede che il file non ce l'hanno da nessuna parte: un file con
+      // il loro titolo ci torna dentro invece di fare un doppione
+      const qui = await localFileIds().catch(() => null);
       const esito = await importaDaDrive(voci, loadBooks(), {
+        senzaFile: (id) => !!qui && !qui.has(id) && !mappaDrive()[id],
         apri: (v) => fileRemoto(v.id, v.size),
         // il segno PRIMA della scheda: senza, al prossimo giro la mappa
         // di Drive non riconoscerebbe il libro e gli toglierebbe il file
@@ -1327,8 +1331,14 @@ export default function App() {
         onProgress: (p) => vivo() && setImporto(p),
         vivo,
       });
-      if (esito.added.length) {
-        updateBooks([...loadBooks(), ...esito.added]);
+      // le schede ritrovate non si toccano: torna il file, si scrive
+      // l'impronta e si spegne «tieni la scheda, non l'ebook», come
+      // all'import dal tablet
+      const tornati = new Map((esito.ritrovati || []).map((r) => [r.id, r]));
+      for (const id of tornati.keys()) timbraScheda(id);
+      if (esito.added.length || tornati.size) {
+        const base = loadBooks().map((b) => (tornati.has(b.id) ? { ...b, ...(tornati.get(b.id).impronta ? { impronta: tornati.get(b.id).impronta } : {}), fileTolto: false } : b));
+        updateBooks([...base, ...esito.added]);
         runSync.current(true);
       }
       const coda = esito.scollegato
@@ -1348,8 +1358,9 @@ export default function App() {
     filoImport.current = null;
   };
 
-  // I DOPPIONI DEI FUMETTI (`doppioniDiFumetti`): lo stesso volume in due o
-  // tre schede, nate prima che l'importazione saltasse i gemelli di Colab.
+  // I DOPPIONI (`doppioniInBiblioteca`): lo stesso volume in due o tre
+  // schede — fumetti nati prima che l'importazione saltasse i gemelli di
+  // Colab, libri reimportati da Drive accanto alla scheda rimasta senza file.
   // Si contano qui (servono le copertine, che stanno nel database) e si
   // uniscono dalla Manutenzione: di ogni gruppo resta la scheda che conta di
   // piu', le altre se ne vanno. I file su Drive restano dove sono.
@@ -1361,12 +1372,14 @@ export default function App() {
       .catch(() => new Set())
       .then((cop) => {
         if (!vivo) return;
-        setDoppi(doppioniDiFumetti(books, { progresso: getProgress, stato: getStatus, segni: (id) => getMarks(id).length, copertina: (id) => cop.has(id) }));
+        // finche' non si sa quali file stanno qui, nessuno e' «senza file»
+        const conFile = (id) => !localIds || localIds.has(id) || !!mappaDrive()[id];
+        setDoppi(doppioniInBiblioteca(books, { progresso: getProgress, stato: getStatus, segni: (id) => getMarks(id).length, copertina: (id) => cop.has(id), conFile }));
       });
     return () => {
       vivo = false;
     };
-  }, [books]);
+  }, [books, localIds]);
   async function unisciDoppioni(gruppi) {
     // il giro dei CBR potrebbe star convertendo proprio una copia da togliere
     if (filoLavoro.current || filoImport.current) {

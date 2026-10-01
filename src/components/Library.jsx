@@ -20,7 +20,7 @@ import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso, schedeCambiate
 } from "../lib/syncCore.js";
 import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, DriveScollegato, scegliSuDrive, dettagliFile, ultimoArchivioSuDrive, ultimoArchivioDaDrive } from "../lib/drive.js";
-import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, sceltaDalPicker, libriSotto, idRadice } from "../lib/driveCore.js";
+import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, sceltaDalPicker, libriSotto, idRadice, giaSulloScaffale, fraseGia } from "../lib/driveCore.js";
 import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { fraseDelPasso, fraseImport } from "../lib/convertiCbr.js";
@@ -1766,10 +1766,10 @@ export default function Library({
       // biblioteca puo' ancora arrivare dal cloud (vedi `daAggiungere`)
       const schedeInArrivo = isSyncConfigured() && !getLastSync();
       const voci = daAggiungere(books, trovati, { lapidi: Object.keys(getTombstones()), cartelle, schedeInArrivo });
-      const gia = trovati.length - voci.length;
-      if (gia > 0) note.push(gia === 1 ? "uno era già sullo scaffale" : `${gia} erano già sullo scaffale`);
+      const gia = fraseGia(giaSulloScaffale(books, trovati, voci));
+      if (gia) note.push(gia);
       if (!voci.length) {
-        notify(`${trovati.length === 1 ? "Il libro scelto è" : `I ${trovati.length} libri scelti sono`} già sullo scaffale ✨${note.length > 1 ? ` · ${note.slice(0, -1).join(" · ")}` : ""}`);
+        notify(`${note.join(" · ")} ✨`);
         return;
       }
       onImportaDaDrive?.(voci, note);
@@ -2813,9 +2813,9 @@ export default function Library({
                   : `🔁 Converti ${cbrDaFare.length === 1 ? "un CBR" : `${cbrDaFare.length} CBR`} in CBZ`}
               </button>
             )}
-            {/* I DOPPIONI DEI FUMETTI (vedi `doppioniDiFumetti`): prima si
-                vede quali, poi si uniscono. Si tiene la scheda che stai
-                leggendo, o il CBZ con la copertina */}
+            {/* I DOPPIONI (vedi `doppioniInBiblioteca`): prima si vede
+                quali, poi si uniscono. Si tiene la scheda col file, poi
+                quella che stai leggendo, poi il CBZ con la copertina */}
             {doppi.length > 0 && !vediDoppi && (
               <button
                 onClick={() => setVediDoppi(true)}
@@ -2827,14 +2827,14 @@ export default function Library({
                   fontSize: F.nota,
                 }}
               >
-                {`👯 ${doppi.length === 1 ? "Un fumetto ha" : `${doppi.length} fumetti hanno`} una copia in più: unisci`}
+                {`👯 ${doppi.length === 1 ? "Un volume ha" : `${doppi.length} volumi hanno`} una copia in più: unisci`}
               </button>
             )}
             {doppi.length > 0 && vediDoppi && (
               <div style={{ flexBasis: "100%", padding: 12, borderRadius: R.piccolo, border: `1px solid ${C.border}`, background: C.surface }}>
                 <p style={{ margin: "0 0 8px", color: C.text, fontSize: F.nota, lineHeight: 1.45 }}>
-                  Di ogni volume resta una scheda sola: quella che stai leggendo, o il CBZ con la copertina. Le altre se ne vanno;
-                  i file su Google Drive restano dove sono.
+                  Di ogni volume resta una scheda sola: quella che ha il file, poi quella che stai leggendo, poi il CBZ con la copertina. Le
+                  altre se ne vanno; i file su Google Drive restano dove sono.
                 </p>
                 <ul style={{ margin: "0 0 10px", padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" }}>
                   {doppi.map((g) => (

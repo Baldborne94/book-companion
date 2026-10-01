@@ -12,7 +12,7 @@
 //     perde il suo file al primo giro, un segno senza scheda nasconde il
 //     file per sempre.
 import { createRequire } from "module";
-import { daAggiungere, percorsoDi, cartellaDi, RADICE } from "../src/lib/driveCore.js";
+import { daAggiungere, percorsoDi, cartellaDi, RADICE, giaSulloScaffale, fraseGia } from "../src/lib/driveCore.js";
 import { fileRemoto } from "../src/lib/drive.js";
 import { apriEpubAFette, leggiOpf } from "../src/lib/epubAFette.js";
 import { trovaCopertina } from "../src/lib/copertina.js";
@@ -123,6 +123,36 @@ export default async function (t) {
     );
     t.eq("la cartella viaggia col file", v.find((x) => x.id === "f12")?.cartella, "Manga");
     t.eq("senza libri si propone tutto quel che e' un libro", daAggiungere([], file.slice(4, 6)).length, 1);
+  }
+
+  // ---- «già sullo scaffale», ma come chi --------------------------------
+  {
+    const libri = [
+      { id: "a", title: "Dragonflight", fileType: "epub", impronta: SHA("a") },
+      { id: "b", title: "Mort", fileType: "epub" },
+    ];
+    const file = [
+      { id: "f1", name: "Anne McCaffrey - Dragonflight.epub", sha256Checksum: SHA("a").toUpperCase() },
+      { id: "f2", name: "Mort.epub" },
+      { id: "f3", name: "copia strana.epub", appProperties: { bcId: "b" } },
+      { id: "f4", name: "Nuovo.epub" },
+      { id: "f5", name: "Nuovo (1).epub" },
+    ];
+    const voci = daAggiungere(libri, file.filter((f) => f.id !== "f5"));
+    const g = giaSulloScaffale(libri, file.filter((f) => f.id !== "f5"), voci);
+    const come = (n) => g.find((x) => x.nome === n)?.come;
+    t.eq("riconosciuto dall'impronta: si dice quale scheda", come("Anne McCaffrey - Dragonflight.epub"), "Dragonflight");
+    t.eq("riconosciuto dal titolo", come("Mort.epub"), "Mort");
+    t.eq("riconosciuto dal segno, anche col nome diverso", come("copia strana.epub"), "Mort");
+    t.c("chi entra non e' fra i «gia'»", !g.some((x) => x.nome === "Nuovo.epub"));
+    t.eq(
+      "la frase nomina il file, e la scheda solo quando si chiama diversa",
+      fraseGia(g),
+      "«Anne McCaffrey - Dragonflight» (sullo scaffale come «Dragonflight»), «Mort», «copia strana» (sullo scaffale come «Mort») erano già sullo scaffale"
+    );
+    t.eq("uno solo, al singolare", fraseGia([{ nome: "Mort.epub", come: "Mort" }]), "«Mort» era già sullo scaffale");
+    t.eq("oltre tre, il conto", fraseGia([1, 2, 3, 4, 5].map((n) => ({ nome: `V${n}.epub`, come: null }))), "«V1», «V2», «V3» e altri 2 erano già sullo scaffale");
+    t.eq("niente di gia', niente frase", fraseGia([]), "");
   }
 
   // ---- i gemelli di Colab: il CBZ accanto al suo CBR -------------------
@@ -361,5 +391,29 @@ export default async function (t) {
     t.eq("e si contano", e.riconosciuti, 2);
     const fermo = await importaDaDrive(voci, [], { apri, segna, leggi, vivo: () => false });
     t.c("fermato prima di cominciare: niente dentro, e si dice", fermo.fermato && !fermo.added.length && !segni.some(() => false));
+
+    // IL FILE TORNA NELLA SCHEDA CHE L'AVEVA PERSO (i Dragonriders del
+    // lettore: ogni volume due volte, una scheda col file e una senza)
+    const persa = [{ id: "pern", title: "Dragonflight", author: "Anne McCaffrey" }];
+    const leggiPern = async (meta) => {
+      meta.title = "Dragonflight";
+      meta.author = "Anne McCaffrey";
+      return { titolo: true, copertina: true };
+    };
+    const voce = [{ id: "dr", name: "Anne McCaffrey - Dragonflight.epub", size: 10 }];
+    const segnati = [];
+    const segnaPern = async (fileId, bookId) => (segnati.push(`${fileId}>${bookId}`), true);
+    const torna = await importaDaDrive(voce, persa, { apri, segna: segnaPern, leggi: leggiPern, senzaFile: (id) => id === "pern", segnato: () => false });
+    t.eq("il file della scheda rimasta senza torna dentro di lei", torna.ritrovati.map((r) => r.id).join(), "pern");
+    t.eq("…senza fare una scheda nuova", torna.added.length, 0);
+    t.eq("…e il segno su Drive porta l'id della scheda di prima", segnati.join(), "dr>pern");
+    const conSegni = await importaDaDrive(voce, persa, { apri, segna: segnaPern, leggi: leggiPern, senzaFile: () => true, segnato: () => true });
+    t.c("una scheda con segni ancorati ad altri byte non lo adotta: entra nuovo, e si dice", conSegni.added.length === 1 && !conSegni.ritrovati.length && conSegni.sospetti.length === 1);
+    const colFile = await importaDaDrive(voce, persa, { apri, segna: segnaPern, leggi: leggiPern, senzaFile: () => false, segnato: () => false });
+    t.c("una scheda che il suo file ce l'ha non si tocca: e' un'altra copia, e si dice", colFile.added.length === 1 && !colFile.ritrovati.length && colFile.sospetti.length === 1);
+    const stessiByte = await importaDaDrive([{ ...voce[0], sha256Checksum: SHA("d") }], [{ ...persa[0], impronta: SHA("d") }], { apri, segna: segnaPern, leggi: leggiPern, senzaFile: () => true, segnato: () => true });
+    t.eq("con gli stessi byte torna anche nella scheda coi segni: le righe sono le stesse", stessiByte.ritrovati.length, 1);
+    const due = await importaDaDrive([...voce, { id: "dr2", name: "Dragonflight (1).epub", size: 10 }], persa, { apri, segna: segnaPern, leggi: leggiPern, senzaFile: (id) => id === "pern", segnato: () => false });
+    t.eq("due file per la stessa scheda: il primo torna a casa, il secondo entra", `${due.ritrovati.length}/${due.added.length}`, "1/1");
   }
 }
