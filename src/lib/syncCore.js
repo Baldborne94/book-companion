@@ -1084,6 +1084,25 @@ export function completaPull(pull = [], intere = new Map()) {
 // il database si passa da fuori come in `upsertBooks`. Se la lettura
 // leggera non riesce (uno schema senza `file_tolto`, un guasto qualunque)
 // si legge tutto come prima: e' piu' lento, e sbagliato mai.
+// A PAGINE: Supabase da' al piu' mille righe per richiesta (il «Max rows» di
+// PostgREST, che un progetto puo' anche abbassare), e una biblioteca di 1070
+// libri arrivava a mille sul telefono, gli altri ricaricati a ogni giro. Si
+// chiede finche' una pagina torna vuota, avanzando di quante ne sono
+// arrivate: cosi' vale qualunque tetto abbia il server. `leggi(da, a)`
+// deve ordinare (per id), o le pagine si accavallano.
+export const PAGINA_RIGHE = 1000;
+
+export async function aPagine(leggi, passo = PAGINA_RIGHE) {
+  const tutte = [];
+  for (;;) {
+    const r = await leggi(tutte.length, tutte.length + passo - 1);
+    if (r?.error) return r;
+    const pagina = r?.data || [];
+    if (!pagina.length) return { data: tutte, error: null };
+    tutte.push(...pagina);
+  }
+}
+
 export async function leggiRigheLeggere(leggi) {
   const leggere = await leggi(COLONNE_LEGGERE);
   if (!leggere?.error) return { righe: leggere?.data || [], intere: false };

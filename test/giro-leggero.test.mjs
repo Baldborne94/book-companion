@@ -5,6 +5,8 @@ import {
   COLONNE_LEGGERE,
   LOTTO_IDS,
   leggiRigheLeggere,
+  aPagine,
+  PAGINA_RIGHE,
   leggiRigheIntere,
   idDaLeggereInteri,
   completaPull,
@@ -115,5 +117,33 @@ export default async function (t) {
     t.eq("si leggono intere solo le righe che si muovono", daLeggere.sort().join(), "piuNuova,soloLassu,vecchia");
     const intere = new Map(intereLassu.filter((r) => daLeggere.includes(r.id)).map((r) => [r.id, r]));
     t.eq("e scendono intere", completaPull(conLeggere.pull, intere).map((r) => r.title).sort().join(" · "), "Nuova lassu' · Solo lassu'");
+  }
+
+  // ---- a pagine: Supabase da' al piu' mille righe per richiesta ----
+  {
+    // un server come quello vero: le righe in ordine, al piu' `tetto` per volta
+    const server = (n, tetto = PAGINA_RIGHE) => {
+      const righe = Array.from({ length: n }, (_, i) => ({ id: `l${String(i).padStart(4, "0")}` }));
+      const chieste = [];
+      const leggi = async (da, a) => {
+        chieste.push([da, a]);
+        return { data: righe.slice(da, Math.min(a + 1, da + tetto)), error: null };
+      };
+      return { leggi, chieste };
+    };
+    const s1 = server(1070);
+    const r1 = await aPagine(s1.leggi);
+    t.eq("una biblioteca di 1070 libri arriva intera", r1.data.length, 1070);
+    t.eq("…ognuno una volta sola", new Set(r1.data.map((x) => x.id)).size, 1070);
+    t.eq("…in tre richieste: due pagine e quella vuota che dice basta", s1.chieste.map(([a, b]) => `${a}-${b}`).join(" "), "0-999 1000-1999 1070-2069");
+    const s2 = server(1070, 500);
+    t.eq("un server che ne da' meno di mille per volta non taglia la biblioteca", (await aPagine(s2.leggi)).data.length, 1070);
+    t.eq("…perche' si riparte da quante ne sono arrivate", s2.chieste[1][0], 500);
+    t.eq("una biblioteca vuota e' una richiesta sola", (await aPagine(server(0).leggi)).data.length, 0);
+    const rotta = await aPagine(async (da) => (da ? { data: null, error: { message: "rete" } } : { data: [{ id: "a" }], error: null }));
+    t.eq("una pagina che non arriva e' un guasto, non una biblioteca a meta'", rotta.error?.message, "rete");
+    const s3 = server(1070);
+    const r3 = await leggiRigheLeggere((colonne) => aPagine(s3.leggi));
+    t.eq("e la lettura leggera la usa com'e'", r3.righe.length, 1070);
   }
 }

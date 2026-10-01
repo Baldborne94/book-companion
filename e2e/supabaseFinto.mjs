@@ -4,8 +4,15 @@
 // lato del browser (`sessioneFinta`): questo server non controlla chi entra.
 import http from "node:http";
 
+// COME IL SERVIZIO VERO, UNA RICHIESTA DA' AL PIU' MILLE RIGHE (il «Max rows»
+// di PostgREST, mille di partenza in ogni progetto Supabase): chi ne vuole di
+// piu' le chiede a pagine (`offset`, `limit`). Un finto che le dava tutte ha
+// nascosto per mesi una biblioteca di 1070 libri che arrivava a meta'.
+export const MAX_RIGHE = 1000;
+
 export function avviaSupabase(porta = 4599) {
   const books = new Map();
+  let salite = 0;
   const oggetti = new Map();
   let prefs = null;
   // «Entra con Google»: le richieste d'accesso ricevute e i permessi salvati
@@ -60,11 +67,21 @@ export function avviaSupabase(porta = 4599) {
             const voluti = new Set(ids.slice(4, -1).split(",").map((x) => x.replace(/"/g, "")));
             righe = righe.filter((r) => voluti.has(r.id));
           }
+          // senza `order` Postgres non promette nessun ordine, e due pagine
+          // possono accavallarsi: qui l'ordine cambia a ogni richiesta
+          if (/^id\./.test(u.searchParams.get("order") || "")) righe.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+          else righe.sort(() => Math.random() - 0.5);
+          const da = Number(u.searchParams.get("offset") || 0);
+          const quante = Math.min(MAX_RIGHE, Number(u.searchParams.get("limit") || MAX_RIGHE));
+          righe = righe.slice(da, da + quante);
           if (colonne[0] !== "*") righe = righe.map((r) => Object.fromEntries(colonne.map((k) => [k, r[k] ?? null])));
           return json(righe);
         }
         const arr = JSON.parse(corpo.toString() || "[]");
-        for (const r of Array.isArray(arr) ? arr : [arr]) books.set(r.id, { ...(books.get(r.id) || {}), ...r });
+        for (const r of Array.isArray(arr) ? arr : [arr]) {
+          books.set(r.id, { ...(books.get(r.id) || {}), ...r });
+          salite += 1;
+        }
         return json([], 201);
       }
       if (u.pathname === "/rest/v1/prefs") {
@@ -106,6 +123,7 @@ export function avviaSupabase(porta = 4599) {
     server.listen(porta, () =>
       ok({
         righe: () => [...books.values()],
+        salite: () => salite,
         accessi: () => [...accessi],
         permessi: () => [...permessi.values()],
         chiudi: () =>
