@@ -458,6 +458,35 @@ const SCENE = [
     },
   },
   {
+    // segnalato dal lettore con «Batman - Hush (2019)…cbr», 458 MB sul PC
+    // e «il file è vuoto» importandolo: l'elenco di Drive lo portava con
+    // misura zero (appena caricato), e un file lontano di misura zero si
+    // legge vuoto. Si chiede a Drive la misura vera.
+    nome: "un file da Drive elencato con misura zero si importa con la misura vera",
+    async fai({ browser }) {
+      const cbz = Buffer.from(await fumetto());
+      const elenco = [
+        { id: "B", name: "Batman", mimeType: "application/vnd.google-apps.folder", parents: ["R"] },
+        { id: "R", name: "Book-Companion", mimeType: "application/vnd.google-apps.folder", parents: ["root"] },
+        { id: "hush", name: "Batman - Hush (2019).cbr", size: "0", mimeType: "application/octet-stream", parents: ["B"] },
+      ];
+      const drv = await avviaDrive(PORTA_DRIVE, { hush: cbz }, { elenco, misureVere: { hush: String(cbz.length) } });
+      try {
+        const d = await dispositivo(browser, {
+          drive: { libri: [{ id: "x", title: "Un libro di prima", fileType: "epub", addedAt: 1 }], mappa: {}, scelta: [{ id: "B", name: "Batman", mimeType: "application/vnd.google-apps.folder" }] },
+        });
+        await d.p.goto(`${URL_APP}?apri=libreria`);
+        await d.p.getByRole("button", { name: /Scegli su Drive/ }).first().click();
+        const libro = await finche(async () => (await libriDi(d.p)).find((b) => /Hush/.test(b.title)), 30000, "«Hush» non entra in biblioteca").catch(async (e) => {
+          throw new Error(`${e.message}: ${await testoAvviso(d.p, /Hush/)}`);
+        });
+        return { guasti: d.guasti, nota: `«${libro.title}» entrato come ${libro.fileType}` };
+      } finally {
+        await drv.chiudi();
+      }
+    },
+  },
+  {
     // segnalato dal lettore coi Walking Dead: «ho navigato un po' ed è
     // sparito il caricamento, poi ci mette davvero troppo a convertire».
     // Nella cartella, accanto a ogni CBR, il CBZ che Colab ha lasciato.

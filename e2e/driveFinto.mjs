@@ -8,7 +8,9 @@ import http from "node:http";
 
 // `elenco`: le voci di Drive (file e cartelle) per chi chiede l'elenco, i
 // cambiamenti o i dettagli di un file; `latenza`: ms prima di ogni risposta
-export function avviaDrive(porta, file, { elenco = [], latenza = 0 } = {}) {
+// `misureVere`: la misura che Drive da' chiedendo il file uno per uno, quando
+// l'elenco ne porta un'altra (un file appena caricato, elencato a zero)
+export function avviaDrive(porta, file, { elenco = [], latenza = 0, misureVere = {} } = {}) {
   const d = { pezzi: 0, interi: 0, scesi: new Set() };
   const server = http.createServer(async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -38,7 +40,7 @@ export function avviaDrive(porta, file, { elenco = [], latenza = 0 } = {}) {
     }
     const bytes = u.searchParams.get("alt") === "media" ? file[id] : null;
     const voce = elenco.find((f) => f.id === id);
-    if (!bytes && voce) return json(voce);
+    if (!bytes && voce) return json(misureVere[id] ? { ...voce, size: misureVere[id] } : voce);
     if (!bytes) {
       res.statusCode = 404;
       return res.end("{}");
