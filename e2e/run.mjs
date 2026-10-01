@@ -176,6 +176,20 @@ const SCENE = [
     },
   },
   {
+    // segnalato dal lettore con «Batman - Hush (2019) (digital) (Son of
+    // Ultron-Empire).cbr»: «archivio non leggibile», e basta. Un 7-Zip
+    // rinominato si dice per nome, e un PDF rinominato entra come PDF.
+    nome: "un .cbr che non e' un fumetto dice cos'e'",
+    async fai({ browser }) {
+      const d = await dispositivo(browser);
+      await d.p.goto(`${URL_APP}?apri=libreria`);
+      const sette = Buffer.concat([Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c, 0, 4]), Buffer.alloc(200)]);
+      await d.p.setInputFiles('input[accept^=".epub"]', { name: "Batman - Hush (2019).cbr", mimeType: "application/octet-stream", buffer: sette });
+      const detto = await finche(() => testoAvviso(d.p, /Batman - Hush \(2019\)\.cbr.*7-Zip/), 20000, "il 7-Zip rinominato non dice cos'e'");
+      return { guasti: d.guasti, nota: detto.slice(0, 120) };
+    },
+  },
+  {
     nome: "l'Ingresso propone il volume rimesso «Da leggere» e l'inizio del ciclo dopo",
     async fai({ browser }) {
       const d = await dispositivo(browser, { prima: mondoDisco });
