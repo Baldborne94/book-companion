@@ -3,6 +3,7 @@ import { C, F, R } from "../data/constants.js";
 import { driveAcceso } from "../lib/drive.js";
 import {
   parseYouTube, embedUrl, isFile, loadTrack, portaQuiMelodia, getVolume, saveVolume, restaDa, getFavorites,
+  puntoDi, segnaPunto, dimenticaPunto, daDoveRiprendere, segnaDove,
 } from "../lib/music.js";
 
 // Gli ultimi trenta secondi prima dello scadere del timer la musica scende
@@ -14,7 +15,11 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
   const iframeRef = useRef(null);
   const audioRef = useRef(null);
   const urlRef = useRef(null);
-  const queueRef = useRef({ list: [], i: 0, shuffle: false });
+  const queueRef = useRef({ list: [], i: 0, shuffle: false, raccolta: null });
+  // il punto della melodia che suona (`segnaPunto`): YouTube lo dice nei
+  // suoi messaggi, il file lo dice l'<audio>
+  const ytTempo = useRef(null);
+  const ultimoPunto = useRef(0);
   const advanceRef = useRef(() => {});
   const nextRef = useRef(() => {});
   const [current, setCurrent] = useState(null);
@@ -73,6 +78,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
     };
     const controlla = () => {
       if (!vivo.current.current) return;
+      if (document.visibilityState === "hidden") salvaRef.current();
       if (scaduto()) {
         stopRef.current();
         return;
@@ -85,8 +91,13 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
         command("playVideo");
       }
     };
+    const via = () => salvaRef.current();
     document.addEventListener("visibilitychange", controlla);
-    return () => document.removeEventListener("visibilitychange", controlla);
+    window.addEventListener("pagehide", via);
+    return () => {
+      document.removeEventListener("visibilitychange", controlla);
+      window.removeEventListener("pagehide", via);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // LA RONDA DEL TIMER, CHE E' ANCHE LA DISSOLVENZA.
@@ -179,14 +190,40 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
           return;
         }
       }
+      if (d?.event === "infoDelivery" && Number.isFinite(d?.info?.currentTime)) {
+        ytTempo.current = { t: d.info.currentTime, d: d.info.duration ?? ytTempo.current?.d };
+        segnaOgniTanto(d.info.currentTime, ytTempo.current.d);
+      }
       const ended =
         (d?.event === "onStateChange" && d.info === 0) ||
         (d?.event === "infoDelivery" && d?.info?.playerState === 0);
-      if (ended) advanceRef.current();
+      if (ended) {
+        const c = vivo.current.current;
+        if (c) dimenticaPunto(c);
+        advanceRef.current();
+      }
     };
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
   }, []);
+
+  // il punto si scrive ogni tanto mentre suona, e sempre quando si
+  // smette: un'app chiusa dal sistema in secondo piano non avvisa
+  function segnaOgniTanto(t, durata) {
+    const c = vivo.current.current;
+    if (!c || Date.now() - ultimoPunto.current < 5000) return;
+    ultimoPunto.current = Date.now();
+    segnaPunto(c, t, durata);
+  }
+  function salva() {
+    const c = vivo.current.current;
+    if (!c) return;
+    const a = audioRef.current;
+    if (c.src && a) segnaPunto(c, a.currentTime, a.duration);
+    else if (!c.src && ytTempo.current) segnaPunto(c, ytTempo.current.t, ytTempo.current.d);
+  }
+  const salvaRef = useRef(salva);
+  salvaRef.current = salva;
 
   function command(func, args = []) {
     try {
@@ -267,7 +304,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
     }
     liberaUrl();
     urlRef.current = URL.createObjectURL(blob);
-    setCurrent({ trackId: voce.trackId, name: voce.name, src: urlRef.current });
+    setCurrent({ trackId: voce.trackId, name: voce.name, src: urlRef.current, inizio: puntoDi(voce) });
     setPlaying(true);
     return true;
   }
@@ -275,6 +312,10 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
   // `voce` e' un preferito intero (file, flusso o YouTube) oppure un
   // semplice indirizzo incollato al volo
   function start(voce, name = "") {
+    salva();
+    ytTempo.current = null;
+    const q = queueRef.current;
+    if (q.raccolta && voce?.id) segnaDove(q.raccolta, voce.id);
     if (isFile(voce)) {
       spegniAudio();
       suonaFile(voce);
@@ -285,7 +326,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
     const src = parseYouTube(url || "");
     if (src) {
       spegniAudio();
-      setCurrent({ url, name: comeSiChiama, embed: embedUrl(src) });
+      setCurrent({ url, name: comeSiChiama, embed: embedUrl(src, { inizio: puntoDi({ url }) }) });
       setPlaying(true);
       return true;
     }
@@ -294,7 +335,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
   }
 
   function play(voce, name = "") {
-    queueRef.current = { list: [], i: 0, shuffle: false };
+    queueRef.current = { list: [], i: 0, shuffle: false, raccolta: null };
     setQueue(null);
     return start(voce, name);
   }
@@ -308,13 +349,16 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
     return a;
   };
 
-  function playQueue(list, shuffle = false) {
+  // `da`: il brano scelto nella raccolta, o quello a cui si era; in
+  // ordine casuale si parte da un brano a caso e la raccolta non ricorda
+  function playQueue(list, shuffle = false, { da = 0, raccolta = null } = {}) {
     const clean = (list || []).filter((f) => f?.url || f?.trackId);
     if (!clean.length) return false;
     const order = shuffle ? shuffled(clean) : clean;
-    queueRef.current = { list: order, i: 0, shuffle };
-    setQueue({ total: order.length, shuffle, index: 0 });
-    return start(order[0]);
+    const i = shuffle ? 0 : Math.min(Math.max(0, da), order.length - 1);
+    queueRef.current = { list: order, i, shuffle, raccolta: shuffle ? null : raccolta };
+    setQueue({ total: order.length, shuffle, index: i, raccolta: shuffle ? null : raccolta });
+    return start(order[i]);
   }
 
   function advance() {
@@ -327,7 +371,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
       i = 0;
     }
     q.i = i;
-    setQueue({ total: q.list.length, shuffle: q.shuffle, index: i });
+    setQueue({ total: q.list.length, shuffle: q.shuffle, index: i, raccolta: q.raccolta });
     start(q.list[i]);
   }
   advanceRef.current = advance;
@@ -359,6 +403,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
   const stopRef = useRef(() => {});
 
   function pause() {
+    salva();
     if (audioRef.current && vivo.current.current?.src) {
       try { audioRef.current.pause(); } catch { /* mai partito */ }
     } else command("pauseVideo");
@@ -378,7 +423,8 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
   }
 
   function stop() {
-    queueRef.current = { list: [], i: 0, shuffle: false };
+    salva();
+    queueRef.current = { list: [], i: 0, shuffle: false, raccolta: null };
     setQueue(null);
     spegniAudio();
     setCurrent(null);
@@ -455,7 +501,15 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
         // da ascoltare fino in fondo. In coda invece si passa alla
         // prossima, e ci pensa onEnded.
         loop={!!current?.src && !queue}
-        onEnded={() => advanceRef.current()}
+        onLoadedMetadata={(e) => {
+          const t = daDoveRiprendere(current?.inizio || 0, e.currentTarget.duration);
+          if (t) e.currentTarget.currentTime = t;
+        }}
+        onTimeUpdate={(e) => segnaOgniTanto(e.currentTarget.currentTime, e.currentTarget.duration)}
+        onEnded={() => {
+          if (current) dimenticaPunto(current);
+          advanceRef.current();
+        }}
         preload="auto"
         playsInline
         onError={() => {

@@ -93,6 +93,26 @@ export async function epub({ titolo = "La nebbia", autore = "Autore di Prova" } 
   return zip.generateAsync({ type: "nodebuffer", mimeType: "application/epub+zip" });
 }
 
+// un WAV di `sec` secondi: un la a 8 kHz, mono, 8 bit
+export function wav(sec = 120, hz = 8000) {
+  const n = sec * hz;
+  const b = Buffer.alloc(44 + n);
+  b.write("RIFF", 0);
+  b.writeUInt32LE(36 + n, 4);
+  b.write("WAVEfmt ", 8);
+  b.writeUInt32LE(16, 16);
+  b.writeUInt16LE(1, 20);
+  b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(hz, 24);
+  b.writeUInt32LE(hz, 28);
+  b.writeUInt16LE(1, 32);
+  b.writeUInt16LE(8, 34);
+  b.write("data", 36);
+  b.writeUInt32LE(n, 40);
+  for (let i = 0; i < n; i++) b[44 + i] = 128 + Math.round(20 * Math.sin((2 * Math.PI * 440 * i) / hz));
+  return b;
+}
+
 // un PDF di poche pagine scritto a mano: Helvetica, una riga per pagina
 export function pdf(pagine = 3) {
   const ogg = ["<< /Type /Catalog /Pages 2 0 R >>"];

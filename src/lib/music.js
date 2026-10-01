@@ -75,9 +75,9 @@ export function parseYouTube(input) {
   }
 }
 
-export function embedUrl(src) {
+export function embedUrl(src, { inizio = 0 } = {}) {
   const base = "https://www.youtube-nocookie.com/embed/";
-  const params = "autoplay=1&enablejsapi=1&rel=0";
+  const params = `autoplay=1&enablejsapi=1&rel=0${inizio > 0 && src.kind === "video" ? `&start=${Math.floor(inizio)}` : ""}`;
   if (src.kind === "playlist")
     return `${base}${src.video || "videoseries"}?list=${src.list}&${params}`;
   return `${base}${src.video}?${params}`;
@@ -186,4 +186,85 @@ export function getBookMusic(bookId) {
 export function setBookMusic(bookId, pair) {
   localStorage.setItem(`bc_music_${bookId}`, JSON.stringify(pair));
   localStorage.setItem(`bc_upd_${bookId}`, String(Date.now()));
+}
+
+// IL PUNTO DI OGNI MELODIA (chiesto dal lettore: «quando si ferma la
+// melodia ripartire dal punto in cui si è interrotta e non farla partire di
+// nuovo dall'inizio»). Spenta a mano, addormentata dal timer o chiusa con
+// l'app: rimessa, riparte da dov'era. Una melodia arrivata in fondo riparte
+// dall'inizio, e i primi secondi non contano. E' una cosa del dispositivo,
+// come il volume: non viaggia. Le playlist di YouTube non hanno un punto
+// solo, e restano fuori.
+const PUNTI_KEY = "bc_melodia_punti";
+export const PUNTI_TENUTI = 60;
+export const MARGINE = 5;
+
+export function chiaveMelodia(voce) {
+  if (voce?.trackId) return `f:${voce.trackId}`;
+  const src = parseYouTube(voce?.url || "");
+  return src?.kind === "video" ? `y:${src.video}` : null;
+}
+
+const leggiMappa = (st, k) => {
+  try {
+    const v = JSON.parse(st.getItem(k));
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+};
+const scriviMappa = (st, k, m) => {
+  try {
+    st.setItem(k, JSON.stringify(m));
+  } catch {
+    /* un punto che non si scrive non deve fermare la musica */
+  }
+};
+
+export function puntoDi(voce, st = globalThis.localStorage) {
+  const k = chiaveMelodia(voce);
+  return leggiMappa(st, PUNTI_KEY)[k]?.t || 0;
+}
+
+export function segnaPunto(voce, t, durata, { st = globalThis.localStorage, ora = Date.now() } = {}) {
+  const k = chiaveMelodia(voce);
+  if (!k || !Number.isFinite(t)) return;
+  const m = leggiMappa(st, PUNTI_KEY);
+  if (t < MARGINE || durata - t < MARGINE) delete m[k];
+  else m[k] = { t: Math.floor(t), q: ora };
+  const tenuti = Object.entries(m).sort((a, b) => b[1].q - a[1].q).slice(0, PUNTI_TENUTI);
+  scriviMappa(st, PUNTI_KEY, Object.fromEntries(tenuti));
+}
+
+// arrivata in fondo: la prossima volta da capo
+export function dimenticaPunto(voce, st = globalThis.localStorage) {
+  const m = leggiMappa(st, PUNTI_KEY);
+  delete m[chiaveMelodia(voce)];
+  scriviMappa(st, PUNTI_KEY, m);
+}
+
+// dove riprendere una melodia appena si e' caricata: un punto oltre la
+// fine (il file e' cambiato) non vale
+export const daDoveRiprendere = (punto, durata) => (punto >= MARGINE && (!(durata > 0) || durata - punto >= MARGINE) ? punto : 0);
+
+// la raccolta ricorda il brano a cui si era: «▶» riparte da lui
+const DOVE_KEY = "bc_raccolta_dove";
+
+export function segnaDove(raccoltaId, melodiaId, st = globalThis.localStorage) {
+  scriviMappa(st, DOVE_KEY, { ...leggiMappa(st, DOVE_KEY), [raccoltaId]: melodiaId });
+}
+
+export function doveDi(raccolta, brani, st = globalThis.localStorage) {
+  const id = leggiMappa(st, DOVE_KEY)[raccolta?.id];
+  const i = brani.findIndex((b) => b.id === id);
+  return i < 0 ? 0 : i;
+}
+
+// «2:13», «1:02:05»
+export function minuti(sec) {
+  const s = Math.max(0, Math.floor(sec || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = String(s % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${r}` : `${m}:${r}`;
 }
