@@ -14,7 +14,7 @@
 import { existsSync } from "node:fs";
 import { build, preview } from "vite";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
-import { fumetto, fumettoGrosso, epub, pdf, FRASE, mondoDisco } from "./libri.mjs";
+import { fumetto, fumettoGrosso, epub, pdf, wav, FRASE, mondoDisco } from "./libri.mjs";
 import { avviaDrive, driveNelBrowser } from "./driveFinto.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
 
@@ -205,6 +205,48 @@ const SCENE = [
       if (ap.da !== "tablet" || !["codice", "byte", "libro", "pagina"].every((k) => k in ap.f)) throw new Error(`apertura del PDF misurata male: ${JSON.stringify(ap)}`);
       const registro = await d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_errori") || "[]"));
       return { guasti: [...d.guasti, ...registro.map((e) => `registro: ${e.m}`)], nota: Object.entries(ap.f).map(([k, ms]) => `${k} ${ms} ms`).join(" + ") };
+    },
+  },
+  {
+    // chiesto dal lettore: «selezionare cosa riprodurre nelle raccolte e
+    // quando si ferma la melodia ripartire dal punto in cui si è interrotta»
+    nome: "in una raccolta si sceglie il brano, e la musica riprende da dove si era fermata anche ad app chiusa",
+    async fai({ browser }) {
+      const d = await dispositivo(browser);
+      const audio = (p) => p.evaluate(() => ({ t: document.querySelector("audio")?.currentTime ?? -1, d: document.querySelector("audio")?.duration ?? 0 }));
+      await d.p.goto(`${URL_APP}?apri=musica`);
+      for (const nome of ["Pioggia", "Camino", "Arpa"]) await d.p.setInputFiles('input[accept="audio/*"]', { name: `${nome}.wav`, mimeType: "audio/wav", buffer: wav() });
+      await finche(() => d.p.getByText("Arpa", { exact: true }).count(), 10000, "le melodie non entrano");
+      await d.p.getByRole("button", { name: "＋ Nuova raccolta" }).click();
+      await d.p.getByPlaceholder(/Come la chiami/).fill("Notti");
+      await d.p.getByRole("button", { name: "✧ Crea" }).click();
+      for (const nome of ["Pioggia", "Camino", "Arpa"]) await d.p.getByRole("button", { name: nome }).first().click();
+      await d.p.getByRole("button", { name: "Fatto" }).first().click();
+
+      // il brano scelto dalla raccolta suona, e la raccolta lo ricorda
+      await d.p.getByRole("button", { name: "≡ Brani" }).click();
+      await d.p.getByRole("button", { name: /^2\s*Camino/ }).click();
+      await finche(async () => (await audio(d.p)).t > 0.5, 10000, "il brano scelto non suona");
+      await d.p.evaluate(() => (document.querySelector("audio").currentTime = 40));
+      // il punto si scrive mentre suona: l'app chiusa dal sistema non avvisa
+      await finche(async () => JSON.parse((await d.p.evaluate(() => localStorage.getItem("bc_melodia_punti"))) || "{}"), 10000, "il punto non si scrive");
+      await aspetta(6000);
+      // l'app uccisa di colpo, come la chiude il sistema in secondo piano:
+      // nessun «Spegni», nessun evento d'uscita
+      const cdp = await d.ctx.newCDPSession(d.p);
+      cdp.send("Page.crash").catch(() => {});
+      await aspetta(1000);
+      const p2 = await d.ctx.newPage();
+      p2.on("pageerror", (e) => d.guasti.push(e.message));
+      await p2.goto(`${URL_APP}?apri=musica`);
+      const detto = await finche(() => testoAvviso(p2, /eri a «Camino», 0:4\d/), 10000, "la raccolta non dice dove si era");
+      await p2.getByRole("button", { name: "▶ Riprendi" }).click();
+      const t = await finche(async () => {
+        const a = await audio(p2);
+        return a.t > 0 ? a.t : 0;
+      }, 10000, "riprendendo non suona niente");
+      if (t < 40) throw new Error(`«▶ Riprendi» e' ripartito da ${t.toFixed(1)} s, non da 40`);
+      return { guasti: d.guasti, nota: `${detto.trim()} → ripreso a ${t.toFixed(1)} s` };
     },
   },
   {

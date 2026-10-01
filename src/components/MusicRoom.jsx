@@ -3,7 +3,7 @@ import { listTrackIds } from "../lib/bookStore.js";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import {
   getFavoritesRaw, saveFavorites, isFile, addTrackFile, dropTrack, parseYouTube,
-  getListsRaw, saveLists, nuovaRaccolta, braniDi,
+  getListsRaw, saveLists, nuovaRaccolta, braniDi, puntoDi, doveDi, minuti,
 } from "../lib/music.js";
 import EmptyState from "./EmptyState.jsx";
 import { driveAcceso, driveProntoOra, collegaDrive, elencaCartelle, elencaAudio, scegliSuDrive, dettagliFile, adottaMelodie, DriveScollegato } from "../lib/drive.js";
@@ -62,8 +62,11 @@ export default function MusicRoom({ music, playerRef, notify }) {
   const [nomeNuova, setNomeNuova] = useState("");
   const [rinomina, setRinomina] = useState(null);
   const [bozzaRac, setBozzaRac] = useState("");
+  // la raccolta di cui si vedono i brani, per sceglierne uno da suonare
+  const [aperta, setAperta] = useState(null);
 
   const { current, playing, timerEnd, sleepMin, queue, volume = 1, manca } = music;
+  const suona = (f) => !!current && (f.trackId ? current.trackId === f.trackId : !!f.url && current.url === f.url);
   // si rilegge quando cambia l'elenco o il brano: una melodia appena scesa
   // da Drive perde la nuvoletta appena comincia a suonare
   useEffect(() => {
@@ -447,6 +450,11 @@ export default function MusicRoom({ music, playerRef, notify }) {
           {liveRac.map((r) => {
             const brani = braniDi(r, liveFavs);
             const attiva = scegliendo === r.id;
+            const aperti = aperta === r.id;
+            // il brano a cui si era, e a che punto: «▶ Riprendi» parte da li'
+            const dove = doveDi(r, brani);
+            const punto = brani.length ? puntoDi(brani[dove]) : 0;
+            const riprendi = dove > 0 || punto > 0;
             return (
               <div
                 key={r.id}
@@ -491,14 +499,15 @@ export default function MusicRoom({ music, playerRef, notify }) {
                     </>
                   )}
                 </div>
-                <div style={{ fontSize: F.minuscolo, color: C.muted, margin: "6px 0 10px" }}>
+                <div style={{ fontSize: F.minuscolo, color: C.muted, margin: "6px 0 10px", lineHeight: 1.4 }}>
                   {brani.length === 0
                     ? "nessun brano ancora"
                     : `${brani.length} ${brani.length === 1 ? "brano" : "brani"}`}
+                  {riprendi && queue?.raccolta !== r.id ? ` · eri a «${brani[dove].name}»${punto ? `, ${minuti(punto)}` : ""}` : ""}
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button
-                    onClick={() => playerRef.current?.playQueue(brani, false)}
+                    onClick={() => playerRef.current?.playQueue(brani, false, { da: dove, raccolta: r.id })}
                     disabled={!brani.length}
                     style={{
                       padding: "5px 12px",
@@ -509,7 +518,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
                       opacity: brani.length ? 1 : 0.5,
                     }}
                   >
-                    ▶ In ordine
+                    {riprendi ? "▶ Riprendi" : "▶ In ordine"}
                   </button>
                   <button
                     onClick={() => playerRef.current?.playQueue(brani, true)}
@@ -537,7 +546,57 @@ export default function MusicRoom({ music, playerRef, notify }) {
                   >
                     {attiva ? "Fatto" : "Scegli i brani"}
                   </button>
+                  {brani.length > 0 && (
+                    <button
+                      onClick={() => setAperta(aperti ? null : r.id)}
+                      aria-expanded={aperti}
+                      style={{
+                        padding: "5px 12px",
+                        borderRadius: R.tondo,
+                        fontSize: F.piccolo,
+                        border: `1px solid ${aperti ? C.accent : C.border}`,
+                        color: aperti ? C.accent : C.muted,
+                      }}
+                    >
+                      {aperti ? "Chiudi" : "≡ Brani"}
+                    </button>
+                  )}
                 </div>
+                {/* UN BRANO SCELTO DALLA RACCOLTA (chiesto dal lettore:
+                    «selezionare cosa riprodurre nelle raccolte»): si suona
+                    da li', e poi avanti in ordine */}
+                {aperti && (
+                  <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 2 }}>
+                    {brani.map((b, i) => {
+                      const ora = suona(b);
+                      const p = ora ? 0 : puntoDi(b);
+                      return (
+                        <button
+                          key={b.id}
+                          onClick={() => playerRef.current?.playQueue(brani, false, { da: i, raccolta: r.id })}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            minHeight: 44,
+                            padding: "6px 8px",
+                            borderRadius: R.piccolo,
+                            textAlign: "left",
+                            background: ora ? `${C.accent}14` : "transparent",
+                          }}
+                        >
+                          <span style={{ width: 22, flexShrink: 0, fontSize: F.piccolo, color: ora ? C.accent : C.muted }}>
+                            {ora ? (playing ? "♫" : "❚❚") : i + 1}
+                          </span>
+                          <span style={{ flex: 1, minWidth: 0, fontSize: F.nota, color: ora ? C.accent : C.text, lineHeight: 1.3, overflowWrap: "break-word" }}>
+                            {b.name}
+                          </span>
+                          {p > 0 && <span style={{ flexShrink: 0, fontSize: F.minuscolo, color: C.muted }}>da {minuti(p)}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -818,6 +877,9 @@ export default function MusicRoom({ music, playerRef, notify }) {
                     <span style={{ flex: 1, minWidth: 0, fontSize: F.corpo, color: C.text, lineHeight: 1.3, overflowWrap: "break-word" }}>
                       {f.name}
                     </span>
+                    {!suona(f) && puntoDi(f) > 0 && (
+                      <span style={{ fontSize: F.minuscolo, color: C.muted, flexShrink: 0 }}>da {minuti(puntoDi(f))}</span>
+                    )}
                     {isFile(f) && qui && !qui.has(f.trackId) && (
                       <span
                         title={f.drive ? "Su Google Drive: si scarica quando la suoni" : "Non è su questo dispositivo"}
