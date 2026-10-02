@@ -42,7 +42,14 @@ export default async function (t) {
   t.c("prima le immagini, poi la domanda", tav.user[0].type === "image" && tav.user.at(-1).type === "text");
   t.c("la domanda del lettore arriva", /chi parla\?/.test(testi(tav.user)));
   t.c("il manga si dice", /destra a sinistra/.test(testi(tav.user)));
-  t.c("chiede di tradurre i balloon", /balloon/.test(tav.system));
+  t.c("racconta la scena", /che cosa succede/i.test(tav.system));
+  t.c("e non traduce i balloon se non glielo chiedi", /Non tradurre/.test(tav.system) && !/Traduci/.test(tav.system));
+  const trad = domandaTavola({ immagini: [im(6)], pagine: [6] });
+  const tradotta = domandaTavola({ immagini: [im(6)], pagine: [6], traduci: true });
+  t.c("la traduzione e' una domanda a parte", tradotta.system !== trad.system && /Traduci in italiano balloon/.test(tradotta.system));
+  t.c("che non racconta la scena", /Niente commenti sulla scena/.test(tradotta.system));
+  t.c("e lo chiede in fondo", /Traduci i balloon/.test(tradotta.user.at(-1).text) && /Che cosa succede/.test(trad.user.at(-1).text));
+  t.c("anche la traduzione tace sul dopo", /non rivelare MAI/i.test(tradotta.system));
   t.c("e di non anticipare niente", /non rivelare MAI/i.test(tav.system));
   const sola = domandaTavola({ immagini: [im(3)], pagine: [3] });
   t.c("senza domanda chiede cosa succede, senza verso", /Pagina 3/.test(testi(sola.user)) && !/destra/.test(testi(sola.user)));

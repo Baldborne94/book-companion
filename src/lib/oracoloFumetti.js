@@ -1,8 +1,8 @@
 // L'ORACOLO NEI FUMETTI E NEI MANGA (chiesto dal lettore: «dalli tutti e
 // 3»). Un CBZ non ha testo: l'Oracolo dei libri lavora sui passaggi, qui
 // guarda le TAVOLE. Tre domande:
-// - «Cosa succede in questa tavola?»: la pagina (o le due) a schermo, con la
-//   traduzione dei balloon;
+// - «Cosa succede in questa tavola?»: la pagina (o le due) a schermo,
+//   raccontata; la traduzione dei balloon e' una domanda a parte;
 // - «Dove eravamo rimasti»: alcune pagine sparse di quel che hai letto di
 //   questo volume, fino alla pagina a cui sei;
 // - «Chi è costui?»: la tavola col personaggio cerchiato, e le pagine prima.
@@ -53,13 +53,25 @@ const REGOLE = [
   "non rivelare MAI eventi che non compaiono in queste pagine o che vengono dopo.",
 ].join(" ");
 
+// RACCONTARE E TRADURRE SONO DUE DOMANDE (chiesto dal lettore: «non c'è
+// bisogno che l'oracolo mi traduca tutto il pannello a meno che non glielo
+// chieda io»): la tavola racconta solo la scena, i balloon si traducono
+// quando li chiedi
 const SISTEMA_TAVOLA = [
   "Sei l'Oracolo di un'app di lettura. Il lettore, italiano, sta leggendo un fumetto",
   "e ti mostra la tavola che ha davanti (una pagina, o due affiancate).",
-  "Racconta in poche frasi che cosa succede. Poi, se balloon e didascalie sono in",
-  "un'altra lingua, traducili in italiano nell'ordine di lettura, uno per riga,",
-  "preceduti da chi parla quando si capisce; se sono già in italiano non ripeterli.",
+  "Racconta in poche frasi che cosa succede: chi è in scena, che cosa fa, che cosa si dicono",
+  "in sostanza. Non tradurre i balloon uno per uno e non trascriverli.",
   "Se il lettore ti fa una domanda, rispondi prima a quella.",
+  REGOLE,
+].join(" ");
+
+const SISTEMA_TRADUCI = [
+  "Sei l'Oracolo di un'app di lettura. Il lettore, italiano, sta leggendo un fumetto",
+  "e ti mostra la tavola che ha davanti (una pagina, o due affiancate).",
+  "Traduci in italiano balloon e didascalie nell'ordine di lettura, uno per riga,",
+  "preceduti da chi parla quando si capisce. Niente commenti sulla scena.",
+  "Se sono già in italiano, dillo in una riga.",
   REGOLE,
 ].join(" ");
 
@@ -88,13 +100,17 @@ const verso = (manga) => (manga ? "È un manga: si legge da destra a sinistra." 
 // le domande costruite, senza rete: si provano in Node. Le fa partire
 // `chiedi` (`lib/oracle.js`), la porta di sempre: chiave, tetto del mese,
 // spesa. Le immagini stanno prima del testo che le nomina
-export function domandaTavola({ immagini = [], pagine = [], domanda = "", manga = false }) {
+export function domandaTavola({ immagini = [], pagine = [], domanda = "", manga = false, traduci = false }) {
   const testo = [
     verso(manga),
     pagine.length > 1 ? `Pagine ${pagine.join(" e ")}.` : pagine.length ? `Pagina ${pagine[0]}.` : null,
-    String(domanda || "").trim() ? `Domanda del lettore: «${String(domanda).trim()}»` : null,
+    String(domanda || "").trim()
+      ? `Domanda del lettore: «${String(domanda).trim()}»`
+      : traduci
+        ? "Traduci i balloon di questa tavola."
+        : "Che cosa succede in questa tavola?",
   ].filter(Boolean).join("\n");
-  return { system: SISTEMA_TAVOLA, user: [...immagini.map(immagine), { type: "text", text: testo || "Che cosa succede in questa tavola?" }], tetto: TETTO_BREVE };
+  return { system: traduci ? SISTEMA_TRADUCI : SISTEMA_TAVOLA, user: [...immagini.map(immagine), { type: "text", text: testo }], tetto: TETTO_BREVE };
 }
 
 export function domandaRiassunto({ pagine = [], fino, manga = false }) {
