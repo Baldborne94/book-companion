@@ -88,6 +88,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 
 - Dizionario: disco (WordNet + MultiWordNet, scaricabile) che risponde per primo, poi Wiktionary. **Le definizioni non si traducono a macchina**; MyMemory solo per la parola, solo da memorie che traducono esattamente quella. Una risposta nata da un buco di rete non va in cache.
 - Oracolo (API Anthropic con chiave del lettore in `bc_ai_key`, mai su un nostro server): **al modello non si mandano i titoli** (riconoscerebbe il libro e risponderebbe a memoria, spoiler compresi) — eccezioni dichiarate: la spiegazione di un passaggio e i consigli di lettura. Ogni domanda passa da `chiedi()`, che segna la spesa e applica il tetto del mese **prima** del `fetch`.
+- Nei fumetti l'Oracolo guarda le **tavole** (`lib/oracoloFumetti.js`): la tavola a schermo (scena e balloon tradotti), «Dove eravamo» su dieci pagine fino a quella a cui sei (`campionaPagine`, mai dopo), «Chi è» col personaggio toccato cerchiato in rosso e otto pagine prima. Il titolo non parte, si passa da `chiedi`, senza chiave non si leggono le pagine.
 - «Chi è costui?» e «Dove eravamo rimasti» vedono solo la **frontiera** (`frontiera.js`): volumi dopo il corrente mai, anche se letti. Si decide sul numero di lettura; senza numero un volume resta fuori.
 
 ### Saghe

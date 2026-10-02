@@ -69,6 +69,9 @@ function Chiave({ onSalva }) {
   );
 }
 
+// «pagine 1, 4, 9 e 12»
+const dettaPagine = (pp) => (pp.length > 1 ? `pagine ${pp.slice(0, -1).join(", ")} e ${pp.at(-1)}` : `pagina ${pp[0]}`);
+
 // LETTA AL RENDER, NON AL CARICAMENTO DEL MODULO: un oggetto costante
 // congela quello che legge, e questo file gira prima che il tema scelto
 // venga applicato. Come funzione segue anche la levetta della dimensione.
@@ -211,7 +214,9 @@ export default function SchedaOracolo({ scheda, attese, vuoto, onRiprova }) {
           scheda. */}
       <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
         <p style={{ margin: 0, fontSize: F.minuscolo, color: C.dim, lineHeight: 1.5 }}>
-          Basata solo su quello che hai letto: {raccontaFrontiera(tappe)}.
+          {/* nei fumetti la risposta viene da tavole, non da passaggi: si
+              dice quali (`lib/oracoloFumetti.js`) */}
+          {scheda.pagine ? `Basata solo su queste tavole del volume: ${dettaPagine(scheda.pagine)}.` : <>Basata solo su quello che hai letto: {raccontaFrontiera(tappe)}.</>}
           {/* i nomi trovati si dichiarano: se ne ha preso uno sbagliato te ne
               accorgi da qui, senza dover leggere i passaggi */}
           {scheda.alias?.length ? ` Cercata anche come ${scheda.alias.join(", ")}.` : ""}
@@ -235,6 +240,8 @@ export default function SchedaOracolo({ scheda, attese, vuoto, onRiprova }) {
             a pagamento per far comparire il comando. Qui il piede della
             scheda c'e' sempre. */}
         <CambiaChiave />
+        {!scheda.pagine && (
+          <>
         <button
           onClick={() => setFonti((v) => !v)}
           style={{
@@ -270,6 +277,8 @@ export default function SchedaOracolo({ scheda, attese, vuoto, onRiprova }) {
               </div>
             );
           })}
+          </>
+        )}
       </div>
     </>
   );
