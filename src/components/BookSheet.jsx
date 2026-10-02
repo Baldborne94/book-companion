@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import Stars from "./Stelle.jsx";
 import { driveAcceso, mappaDrive } from "../lib/drive.js";
 import { fmtGoogle } from "../lib/bytes.js";
 import { fraseScarico } from "../lib/driveCore.js";
@@ -62,62 +63,6 @@ const fieldStyle = () => ({
   outline: "none",
 });
 
-function Stars({ value, onChange }) {
-  const half = (n) => Math.min(1, Math.max(0, value - (n - 1)));
-  const set = (v) => onChange(v === value ? 0 : v);
-
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-      {[1, 2, 3, 4, 5].map((n) => {
-        const fill = half(n);
-        const star = (color) => (
-          <span
-            style={{
-              display: "block",
-              width: 32,
-              fontSize: F.grande,
-              lineHeight: "32px",
-              textAlign: "center",
-              color,
-              filter: color === C.accent ? `drop-shadow(0 0 6px ${C.accent}66)` : "none",
-            }}
-          >
-            ★
-          </span>
-        );
-        return (
-          <span key={n} style={{ position: "relative", width: 32, height: 32 }}>
-            {star(C.dim)}
-            <span
-              style={{
-                position: "absolute",
-                inset: 0,
-                width: `${fill * 100}%`,
-                overflow: "hidden",
-                pointerEvents: "none",
-              }}
-            >
-              {star(C.accent)}
-            </span>
-            <button
-              onClick={() => set(n - 0.5)}
-              aria-label={`${n - 0.5} stelle`}
-              style={{ position: "absolute", left: 0, top: 0, width: "50%", height: "100%" }}
-            />
-            <button
-              onClick={() => set(n)}
-              aria-label={`${n} stelle`}
-              style={{ position: "absolute", right: 0, top: 0, width: "50%", height: "100%" }}
-            />
-          </span>
-        );
-      })}
-      <span style={{ marginLeft: 8, fontSize: F.nota, color: C.muted }}>
-        {value ? String(value).replace(".", ",") : "—"}
-      </span>
-    </div>
-  );
-}
 
 function Field({ label, value, onChange, placeholder, options, listId }) {
   return (

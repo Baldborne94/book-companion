@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { getProgress, getStatus, combacia, vistaValida, scriviVista, timbraScheda, getTombstones, getUpdatedAt, scaffaleVuoto, TIPI, delTipo, tipiDi, tipiPresenti } from "../lib/library.js";
+import { getProgress, getStatus, setStatus, combacia, vistaValida, scriviVista, timbraScheda, getTombstones, getUpdatedAt, scaffaleVuoto, TIPI, delTipo, tipiDi, tipiPresenti } from "../lib/library.js";
 import { disponi, aEtichette, criterioVoto, criterioStato, altezzaStimata, ALTEZZA_SCHEDA, COLONNA, SPAZIO_COLONNE, SPAZIO_RIGHE, inRaccolte, copertinaDi, contoRaccolta, nellOrdineScelto } from "../lib/ripiani.js";
 import { leggiPreferite, scriviPreferite, preferiteVive, segnaPreferita, puoEssereFavorita, ePreferito } from "../lib/raccoltePreferite.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
@@ -35,6 +35,8 @@ import BookCover from "./BookCover.jsx";
 import Disposizione from "./Disposizione.jsx";
 import EmptyState from "./EmptyState.jsx";
 import { partenza, dopoIlDisegno, segnaTempo, vocePerTempo } from "../lib/tempi.js";
+import { leggiVoti, scriviVoti, segnaVoto, votoMio, votoDaMostrare, mediaDeiVolumi, dettoVoto, puoEssereVotata, daSegnare } from "../lib/votiRaccolte.js";
+import Stars from "./Stelle.jsx";
 
 const FILTERS = [
   { id: "all", label: "Tutti" },
@@ -437,7 +439,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   );
 }
 
-function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -587,6 +589,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, cov
             </button>
           )}
         </div>
+        <TuttaLaRaccolta r={dentro} voti={voti} onVoto={onVoto} onTutti={onTutti} />
         {mostra(dentro)}
       </>
     );
@@ -605,7 +608,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, cov
           }}
         >
           {cartelle.map((r) => (
-            <Raccolta key={r.id} r={r} amata={preferite.has(r.id)} onApri={() => onApri(r.id)} coverV={coverV} conCopertina={conCopertina} />
+            <Raccolta key={r.id} r={r} amata={preferite.has(r.id)} voto={puoEssereVotata(r.id) ? votoDaMostrare(voti, r.id, r.libri) : null} onApri={() => onApri(r.id)} coverV={coverV} conCopertina={conCopertina} />
           ))}
         </div>
       )}
@@ -617,7 +620,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, cov
 // UNA RACCOLTA: la copertina del volume da cui ripartire (`copertinaDi`),
 // due dorsi dietro che dicono «qui dentro ce n'e' piu' d'uno» — il segno
 // delle cartelle del Kindle — il numero dei volumi, e quanti ne hai letti.
-function Raccolta({ r, amata = false, onApri, coverV, conCopertina }) {
+function Raccolta({ r, amata = false, voto = null, onApri, coverV, conCopertina }) {
   const b = copertinaDi(r.libri, getStatus);
   const { quanti, letti } = contoRaccolta(r.libri, getStatus);
   if (!b) return null;
@@ -687,7 +690,106 @@ function Raccolta({ r, amata = false, onApri, coverV, conCopertina }) {
           {letti === quanti ? "tutti letti ✓" : `${letti} di ${quanti} letti`}
         </div>
       )}
+      {/* il voto della saga, o la media dei volumi votati detta come tale */}
+      {voto && (
+        <div style={{ fontSize: F.minuscolo, color: voto.mio ? C.accent : C.muted, marginTop: 2 }}>
+          ★ {dettoVoto(voto.voto)}
+          {voto.media ? " media" : ""}
+        </div>
+      )}
     </button>
+  );
+}
+
+// LA RACCOLTA APERTA, TUTTA INSIEME (`lib/votiRaccolte.js`): il voto della
+// saga (o la media dei volumi votati, detta come tale) e tutti i volumi
+// letti o da leggere in un tocco, con una conferma: venti volumi cambiati
+// per sbaglio non si rimettono a posto uno per uno
+function TuttaLaRaccolta({ r, voti, onVoto, onTutti }) {
+  const [chiedo, setChiedo] = useState(null);
+  const votabile = puoEssereVotata(r.id);
+  const mio = votoMio(voti, r.id);
+  const media = mediaDeiVolumi(r.libri);
+  const daCambiare = chiedo ? daSegnare(r.libri, chiedo, getStatus) : [];
+  const tasto = (attivo) => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    minHeight: 44,
+    padding: "0 14px",
+    borderRadius: R.tondo,
+    border: `1px solid ${attivo ? C.accent : C.border}`,
+    background: attivo ? `${C.accent}1f` : "transparent",
+    color: attivo ? C.accent : C.muted,
+    fontSize: F.nota,
+  });
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        gap: "10px 18px",
+        padding: "10px 14px",
+        marginBottom: 14,
+        borderRadius: R.medio,
+        border: `1px solid ${C.border}`,
+        background: `linear-gradient(135deg, ${C.card}, ${C.surface})`,
+      }}
+    >
+      {votabile && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: F.nota, color: C.muted }}>Il tuo voto alla saga</span>
+          <Stars value={mio} onChange={(v) => onVoto?.(r, v)} misura={28} />
+          {media && (
+            <span style={{ fontSize: F.piccolo, color: C.muted }}>
+              {mio ? "· " : ""}media dei volumi ★ {dettoVoto(media.media)} ({media.votati} {media.votati === 1 ? "votato" : "votati"} su {media.di})
+            </span>
+          )}
+        </div>
+      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginLeft: votabile ? "auto" : 0 }}>
+        {chiedo ? (
+          daCambiare.length ? (
+            <>
+              <span style={{ fontSize: F.nota, color: C.text }}>
+                {chiedo === "read"
+                  ? `Segno ${daCambiare.length === 1 ? "1 volume letto" : `${daCambiare.length} volumi letti`}?`
+                  : `Rimetto ${daCambiare.length === 1 ? "1 volume" : `${daCambiare.length} volumi`} da leggere?`}
+              </span>
+              <button
+                onClick={() => {
+                  onTutti?.(r, chiedo, daCambiare);
+                  setChiedo(null);
+                }}
+                style={tasto(true)}
+              >
+                Sì
+              </button>
+              <button onClick={() => setChiedo(null)} style={tasto(false)}>
+                No
+              </button>
+            </>
+          ) : (
+            <>
+              <span style={{ fontSize: F.nota, color: C.muted }}>{chiedo === "read" ? "Sono già tutti letti" : "Sono già tutti da leggere"}</span>
+              <button onClick={() => setChiedo(null)} style={tasto(false)}>
+                Ok
+              </button>
+            </>
+          )
+        ) : (
+          <>
+            <button onClick={() => setChiedo("read")} style={tasto(false)}>
+              ✓ Tutti letti
+            </button>
+            <button onClick={() => setChiedo("unread")} style={tasto(false)}>
+              ○ Tutti da leggere
+            </button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -721,6 +823,9 @@ export default function Library({
   // tablet deve saper chiudere, e i livelli li conosce App
   raccolta = null,
   onRaccolta = () => {},
+  // un cambio che non tocca le schede (il cuore, il voto di una raccolta)
+  // parte lo stesso verso gli altri dispositivi
+  onCambiate,
 }) {
   const [query, setQuery] = useState("");
   // il controllo aggiornamenti col dito: `agg` e' l'esito in corso, e le
@@ -771,7 +876,23 @@ export default function Library({
   const cuore = (r, si) => {
     scriviPreferite(segnaPreferita(leggiPreferite(), r.id, si, { nome: r.nome }));
     setCuori((n) => n + 1);
+    onCambiate?.();
     notify?.(si ? `♥ «${r.nome}» fra i preferiti` : `«${r.nome}» non è più fra i preferiti`);
+  };
+  // IL VOTO DELLE RACCOLTE si rilegge a ogni disegno, come il cuore
+  const voti = leggiVoti();
+  const vota = (r, v) => {
+    scriviVoti(segnaVoto(leggiVoti(), r.id, v, { nome: r.nome }));
+    setCuori((n) => n + 1);
+    onCambiate?.();
+    notify?.(v ? `★ ${dettoVoto(v)} a «${r.nome}»` : `Tolto il voto a «${r.nome}»: resta la media dei volumi`);
+  };
+  // tutti i volumi letti o da leggere: lo stato di ognuno si timbra da se'
+  // (`setStatus`), e la biblioteca ridisegnata parte verso gli altri
+  const tuttiQuanti = (r, stato, quali) => {
+    for (const b of quali) setStatus(b.id, stato);
+    updateBooks([...books]);
+    notify?.(`«${r.nome}»: ${quali.length === 1 ? "1 volume" : `${quali.length} volumi`} ${stato === "read" ? "segnati letti ✓" : "di nuovo da leggere"}`);
   };
   // il pannello della disposizione resta aperto finché non lo richiudi:
   // le scelte sono DUE, e chiudersi al primo tocco vorrebbe dire riaprirlo
@@ -2043,6 +2164,9 @@ export default function Library({
         onApri={onRaccolta}
         preferite={preferite}
         onCuore={cuore}
+        voti={voti}
+        onVoto={vota}
+        onTutti={tuttiQuanti}
       />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps

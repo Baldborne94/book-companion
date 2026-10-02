@@ -256,6 +256,38 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore davanti alle raccolte dei manga: «permettimi di
+    // mettere tutti i volumi all'interno di una raccolta come letti o meno e
+    // di valutare l'intera saga con un suo voto»
+    nome: "in una raccolta si segnano tutti i volumi letti e si vota la saga, e il tablet lo vede",
+    async fai({ browser, db }) {
+      const semina = () => {
+        if (localStorage.getItem("bc_books")) return;
+        const libri = [1, 2, 3, 4].map((i) => ({ id: `be${i}`, title: `Berserk ${i}`, author: "Kentaro Miura", saga: "Berserk", sagaOrder: i, fileType: "cbz", addedAt: i, rating: i === 1 ? 5 : 0 }));
+        localStorage.setItem("bc_books", JSON.stringify(libri));
+      };
+      const raccolte = () => localStorage.setItem("bc_vista", JSON.stringify({ aspetto: "raccolte" }));
+      const pc = await dispositivo(browser, { sessione: true, prima: `(${semina})(); (${raccolte})();` });
+      await pc.p.goto(`${URL_APP}?apri=libreria`);
+      await finche(() => db.righe().length >= 4, 20000, "i volumi non salgono");
+      await pc.p.getByRole("button", { name: /^Berserk/ }).first().click();
+      await finche(() => testoAvviso(pc.p, /media dei volumi ★ 5 \(1 votato su 4\)/), 8000, "la raccolta non dice la media dei volumi");
+      // il voto parte da solo, prima di ogni altro cambio
+      await pc.p.getByRole("button", { name: "4.5 stelle" }).first().click();
+      const voto = () => (db.prefs()?.raccolte_fav || []).find((x) => x.id === "voto|saga:berserk")?.voto;
+      await finche(() => voto() === 4.5, 15000, `il voto non sale (lassu': ${voto()})`);
+      await pc.p.getByRole("button", { name: "✓ Tutti letti" }).click();
+      await finche(() => testoAvviso(pc.p, /^Segno 4 volumi letti\?$/), 5000, "non chiede conferma");
+      await pc.p.getByRole("button", { name: "Sì" }).click();
+      await finche(() => db.righe().filter((r) => r.status === "read").length === 4, 15000, `i letti non salgono (${db.righe().filter((r) => r.status === "read").length})`);
+      const tab = await dispositivo(browser, { sessione: true, prima: `(${raccolte})();` });
+      await tab.p.goto(`${URL_APP}?apri=libreria`);
+      await finche(() => testoAvviso(tab.p, /^tutti letti ✓$/), 20000, "sul tablet la raccolta non e' tutta letta");
+      const visto = await finche(() => testoAvviso(tab.p, /★ 4,5/), 10000, "sul tablet il voto della saga non c'e'");
+      return { guasti: [...pc.guasti, ...tab.guasti], nota: `4 volumi letti e «${visto.trim()}» sul tablet` };
+    },
+  },
+  {
     // chiesto dal lettore: «deve sincronizzarsi anche la sezione musica, se
     // metto nuove raccolte o altro queste devo vederle anche sugli altri
     // dispositivi»
