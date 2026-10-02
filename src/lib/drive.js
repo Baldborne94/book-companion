@@ -859,17 +859,20 @@ export async function adottaMelodie(scelte) {
 // brano che lassu' c'e' gia' sarebbe un'attesa che nessuno capirebbe.
 // La chiave, se e' scaduta, si chiede qui: si arriva da un tocco su «suona».
 // `null` = non c'e' su Drive (e allora si dice), un guasto si alza.
+async function fileDellaMelodia(trackId) {
+  const fileId = mappaMelodie()[trackId]?.id || null;
+  if (fileId) return fileId;
+  const trovati = await elencaTutto(
+    `trashed=false and appProperties has { key='bcTrack' and value='${String(trackId).replace(/[^\w-]/g, "")}' }`,
+    "id,size"
+  );
+  return trovati[0]?.id || null;
+}
+
 export async function melodiaDalDrive(trackId) {
   if (!driveAcceso() || !driveConfigurato() || !trackId) return null;
   if (!tokenValido()) await collegaDrive();
-  let fileId = mappaMelodie()[trackId]?.id || null;
-  if (!fileId) {
-    const trovati = await elencaTutto(
-      `trashed=false and appProperties has { key='bcTrack' and value='${String(trackId).replace(/[^\w-]/g, "")}' }`,
-      "id,size"
-    );
-    fileId = trovati[0]?.id || null;
-  }
+  const fileId = await fileDellaMelodia(trackId);
   if (!fileId) return null;
   try {
     return await scaricaDaDrive(fileId);
@@ -877,6 +880,17 @@ export async function melodiaDalDrive(trackId) {
     if (e?.status === 404) return null;
     throw e;
   }
+}
+
+// L'INDIRIZZO DA CUI UNA MELODIA SUONA MENTRE SCENDE (`public/melodia-sw.js`):
+// solo con un service worker che comanda la pagina, perche' e' lui a girare
+// la richiesta a Drive; senza, `null`, e la melodia scende intera come prima
+export async function indirizzoMelodia(trackId, { sw = globalThis.navigator?.serviceWorker } = {}) {
+  if (!sw?.controller || !driveAcceso() || !driveConfigurato() || !trackId) return null;
+  if (!tokenValido()) await collegaDrive();
+  const chiave = tokenValido();
+  const fileId = chiave && (await fileDellaMelodia(trackId));
+  return fileId ? `/__melodia/${encodeURIComponent(fileId)}?k=${encodeURIComponent(chiave)}` : null;
 }
 
 // L'ARCHIVIO DELLE SCHEDE (le decisioni in `driveCore.js`, vedi

@@ -5,7 +5,7 @@
 import { C, F, R, px } from "../data/constants.js";
 import { fraseLavoro, fraseImport } from "../lib/convertiCbr.js";
 
-export default function BarraLavoro({ importo = null, onFermaImport, lavoro, restanti = 0, onFerma, onRiprendi, onLascia }) {
+export default function BarraLavoro({ importo = null, onFermaImport, scarico = null, onFermaScarico, lavoro, restanti = 0, onFerma, onRiprendi, onLascia }) {
   const tasto = {
     minHeight: 44,
     padding: "6px 14px",
@@ -38,6 +38,19 @@ export default function BarraLavoro({ importo = null, onFermaImport, lavoro, res
             {importo.nome ? ` · «${importo.nome}»` : ""}
           </span>
           <button onClick={onFermaImport} style={tasto}>
+            Ferma
+          </button>
+        </div>
+      )}
+      {scarico && (
+        <div role="status" style={riga}>
+          <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
+            <span style={{ color: C.text }}>
+              🎵 Scarico la raccolta: {scarico.i + 1} di {scarico.totale}
+            </span>
+            {scarico.nome ? ` · «${scarico.nome}»` : ""}
+          </span>
+          <button onClick={onFermaScarico} style={tasto}>
             Ferma
           </button>
         </div>
