@@ -3,7 +3,7 @@ import { listTrackIds } from "../lib/bookStore.js";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import {
   getFavoritesRaw, saveFavorites, isFile, addTrackFile, dropTrack, parseYouTube,
-  getListsRaw, saveLists, nuovaRaccolta, braniDi, puntoDi, doveDi, minuti,
+  getListsRaw, saveLists, nuovaRaccolta, braniDi, puntoDi, doveDi, minuti, MUSICA_CAMBIATA, nonArrivati,
 } from "../lib/music.js";
 import EmptyState from "./EmptyState.jsx";
 import { InAscolto } from "./Ascolto.jsx";
@@ -30,7 +30,7 @@ const inputStyle = () => ({
   outline: "none",
 });
 
-export default function MusicRoom({ music, playerRef, notify }) {
+export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
   const [link, setLink] = useState("");
   const [favs, setFavs] = useState(() => getFavoritesRaw());
   const [favName, setFavName] = useState("");
@@ -78,9 +78,12 @@ export default function MusicRoom({ music, playerRef, notify }) {
     if (playerRef.current?.play(url)) setLink("");
   }
 
+  // ogni cambio della musica parte da solo verso gli altri dispositivi,
+  // come una scheda cambiata (`lib/presto.js`)
   function commit(next) {
     setFavs(next);
     saveFavorites(next);
+    onCambiata?.();
   }
 
   function saveCurrentAsFav() {
@@ -181,7 +184,18 @@ export default function MusicRoom({ music, playerRef, notify }) {
   function commitRac(next) {
     setRaccolte(next);
     saveLists(next);
+    onCambiata?.();
   }
+
+  // e quel che arriva dagli altri si vede subito, a sala aperta
+  useEffect(() => {
+    const rileggi = () => {
+      setFavs(getFavoritesRaw());
+      setRaccolte(getListsRaw());
+    };
+    window.addEventListener(MUSICA_CAMBIATA, rileggi);
+    return () => window.removeEventListener(MUSICA_CAMBIATA, rileggi);
+  }, []);
 
   function creaRaccolta() {
     const nome = nomeNuova.trim();
@@ -454,6 +468,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
                   {brani.length === 0
                     ? "nessun brano ancora"
                     : `${brani.length} ${brani.length === 1 ? "brano" : "brani"}`}
+                  {nonArrivati(r, favs) > 0 &&
+                    ` · ${nonArrivati(r, favs) === 1 ? "1 brano non ancora arrivato qui" : `${nonArrivati(r, favs)} brani non ancora arrivati qui`}`}
                   {inAscolto
                     ? ` · ${playing ? "♫ in ascolto" : "in pausa"}`
                     : riprendi

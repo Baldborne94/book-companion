@@ -2,7 +2,7 @@
 // «un mini player fatto come si deve, come se avessi YouTube o Spotify»):
 // «⏮» che riavvolge o torna indietro, i brani che vengono dopo, la faccia di
 // una melodia senza copertina, il punto toccato sulla barra.
-import { indietroDa, prossimi, facciaDi, tempoAl, RIAVVOLGE_DOPO } from "../src/lib/music.js";
+import { indietroDa, prossimi, facciaDi, tempoAl, RIAVVOLGE_DOPO, nonArrivati } from "../src/lib/music.js";
 
 export default async function (t) {
   // ---- ⏮ -------------------------------------------------------------------
@@ -42,4 +42,10 @@ export default async function (t) {
   t.eq("prima dell'inizio, l'inizio", tempoAl(-0.2, 200), 0);
   t.eq("durata ignota: dall'inizio", tempoAl(0.5, NaN), 0);
   t.eq("un flusso senza fine: dall'inizio", tempoAl(0.5, Infinity), 0);
+
+  // ---- i brani di una raccolta non ancora arrivati -----------------------------
+  const favs = [{ id: "p", name: "Pioggia" }, { id: "t", name: "Tolto", deleted: true }];
+  t.eq("un brano che qui non c'e' e' in arrivo", nonArrivati({ brani: ["p", "c"] }, favs), 1);
+  t.eq("un brano tolto non e' in arrivo", nonArrivati({ brani: ["p", "t"] }, favs), 0);
+  t.eq("una raccolta senza brani non aspetta niente", nonArrivati({}, favs), 0);
 }

@@ -96,8 +96,22 @@ export function getFavoritesRaw() {
 
 export const getFavorites = () => getFavoritesRaw().filter((f) => !f.deleted);
 
+// LA SALA SI RILEGGE QUANDO LA MUSICA CAMBIA SOTTO DI LEI (chiesto dal
+// lettore: «se metto nuove raccolte o altro devo vederle anche sugli altri
+// dispositivi»): la sincronizzazione scrive melodie e raccolte mentre la
+// sala e' aperta, e la sala le aveva lette una volta sola, all'apertura
+export const MUSICA_CAMBIATA = "bc:musica";
+const avvisa = () => {
+  try {
+    globalThis.dispatchEvent?.(new Event(MUSICA_CAMBIATA));
+  } catch {
+    /* fuori dal browser nessuno ascolta */
+  }
+};
+
 export function writeFavorites(list) {
   localStorage.setItem(FAVS_KEY, JSON.stringify(list));
+  avvisa();
 }
 
 export function saveFavorites(list) {
@@ -126,6 +140,7 @@ export const getLists = () => getListsRaw().filter((r) => !r.deleted);
 
 export function writeLists(list) {
   localStorage.setItem(LISTS_KEY, JSON.stringify(list));
+  avvisa();
 }
 
 export function saveLists(list) {
@@ -137,6 +152,12 @@ export function nuovaRaccolta(name) {
   const now = Date.now();
   return { id: crypto.randomUUID(), name: name || "Raccolta senza nome", brani: [], addedAt: now, updatedAt: now };
 }
+
+// i brani di una raccolta che qui non sono ancora arrivati: un file sale su
+// Drive dal dispositivo dove l'hai caricato, e solo da li' viaggia. Un brano
+// tolto (lapide) non e' «in arrivo»: e' andato
+export const nonArrivati = (raccolta, favsRaw = []) =>
+  (raccolta?.brani || []).filter((id) => !favsRaw.some((f) => f.id === id)).length;
 
 // le melodie di una raccolta, nell'ordine in cui sono state messe, saltando
 // quelle che nel frattempo sono sparite

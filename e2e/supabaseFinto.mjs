@@ -135,6 +135,7 @@ export function avviaSupabase(porta = 4599, { latenza = 0 } = {}) {
     server.listen(porta, () =>
       ok({
         righe: () => [...books.values()],
+        prefs: () => prefs,
         salite: () => salite,
         richieste: () => Object.fromEntries(viste),
         // una scena che vuole una rete lenta se la mette, e la toglie
