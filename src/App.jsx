@@ -1771,7 +1771,8 @@ export default function App() {
           zIndex: 2,
           flex: 1,
           width: "100%",
-          maxWidth: px(960),
+          // la sala della musica sta su due colonne, come un lettore vero
+          maxWidth: px(section === "music" ? 1240 : 960),
           margin: "0 auto",
           padding: "8px 16px 26px",
           animation: "bc-fade-in 0.35s ease-out",

@@ -268,3 +268,43 @@ export function minuti(sec) {
   const r = String(s % 60).padStart(2, "0");
   return h ? `${h}:${String(m).padStart(2, "0")}:${r}` : `${m}:${r}`;
 }
+
+// IL LETTORE COME QUELLI CHE SI CONOSCONO (chiesto dal lettore: «un mini
+// player fatto come si deve, come se avessi YouTube o Spotify»).
+//
+// «⏮» come li': a brano avviato da piu' di tre secondi lo riavvolge, nei
+// primi secondi torna al brano prima. Al primo brano riavvolge e basta,
+// e fuori da una coda (sempre al primo) non c'e' un «prima».
+export const RIAVVOLGE_DOPO = 3;
+export function indietroDa({ i = 0, t = 0 } = {}) {
+  if (t > RIAVVOLGE_DOPO || i <= 0) return { riavvolgi: true };
+  return { i: i - 1 };
+}
+
+// i brani che vengono dopo quello che suona, nell'ordine in cui verranno:
+// in fondo alla coda si ricomincia
+export function prossimi(elenco = [], i = 0, quanti = 5) {
+  const fuori = [];
+  for (let k = 1; k <= Math.min(quanti, elenco.length - 1); k++) {
+    const j = (i + k) % elenco.length;
+    fuori.push({ ...elenco[j], indice: j });
+  }
+  return fuori;
+}
+
+// LA COPERTINA DI UNA MELODIA, che un file audio non ha: un riquadro coi
+// colori del tema, girato e segnato in modo diverso per ogni nome, cosi'
+// due brani si distinguono a colpo d'occhio e lo stesso brano ha sempre la
+// stessa faccia
+const GLIFI = ["♫", "♪", "☾", "✦", "♬", "✧", "❦", "☽"];
+export function facciaDi(nome = "") {
+  let h = 2166136261;
+  for (const ch of String(nome)) h = Math.imul(h ^ ch.codePointAt(0), 16777619) >>> 0;
+  return { angolo: h % 360, glifo: GLIFI[(h >>> 9) % GLIFI.length], verso: (h >>> 13) % 2 === 0 };
+}
+
+// la posizione toccata sulla barra, in secondi: dentro il brano, sempre
+export function tempoAl(frazione, durata) {
+  if (!(durata > 0) || !Number.isFinite(durata)) return 0;
+  return Math.min(durata, Math.max(0, frazione * durata));
+}

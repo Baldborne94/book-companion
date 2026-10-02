@@ -6,19 +6,11 @@ import {
   getListsRaw, saveLists, nuovaRaccolta, braniDi, puntoDi, doveDi, minuti,
 } from "../lib/music.js";
 import EmptyState from "./EmptyState.jsx";
+import { InAscolto } from "./Ascolto.jsx";
+import { useViewport } from "../lib/viewport.js";
 import { driveAcceso, driveProntoOra, collegaDrive, elencaCartelle, elencaAudio, scegliSuDrive, dettagliFile, adottaMelodie, DriveScollegato } from "../lib/drive.js";
 import { sceltaMusicaDalPicker, audioSotto, melodieDaAggiungere, scegliCartella, idRadice } from "../lib/driveCore.js";
 
-const SLEEP_CHOICES = [
-  { min: 0, label: "∞" },
-  { min: 15, label: "15 min" },
-  { min: 30, label: "30 min" },
-  { min: 60, label: "1 ora" },
-  { min: 90, label: "1 h 30" },
-  { min: 120, label: "2 ore" },
-  { min: 150, label: "2 h 30" },
-  { min: 180, label: "3 ore" },
-];
 
 // LETTO AL RENDER, NON AL CARICAMENTO DEL MODULO. Era un oggetto costante,
 // e un oggetto costante congela i valori che legge: questo file e' importato
@@ -65,7 +57,8 @@ export default function MusicRoom({ music, playerRef, notify }) {
   // la raccolta di cui si vedono i brani, per sceglierne uno da suonare
   const [aperta, setAperta] = useState(null);
 
-  const { current, playing, timerEnd, sleepMin, queue, volume = 1, manca } = music;
+  const { current, playing, queue } = music;
+  const { wide } = useViewport();
   const suona = (f) => !!current && (f.trackId ? current.trackId === f.trackId : !!f.url && current.url === f.url);
   // si rilegge quando cambia l'elenco o il brano: una melodia appena scesa
   // da Drive perde la nuvoletta appena comincia a suonare
@@ -78,7 +71,6 @@ export default function MusicRoom({ music, playerRef, notify }) {
       vivo = false;
     };
   }, [favs, current?.trackId]);
-  const volPerCento = Math.round(volume * 100);
 
   function playLink() {
     const url = link.trim();
@@ -256,8 +248,74 @@ export default function MusicRoom({ music, playerRef, notify }) {
     current &&
     liveFavs.some((f) => (current.trackId ? f.trackId === current.trackId : f.url === current.url));
 
+  // COME UN LETTORE VERO: a schermo largo «In ascolto» sta fermo a sinistra
+  // e la tua musica scorre a destra; a schermo stretto sta in cima
+  const ascolto = (
+    <InAscolto
+      music={music}
+      playerRef={playerRef}
+      nomeRaccolta={queue?.raccolta ? liveRac.find((r) => r.id === queue.raccolta)?.name : null}
+      vuoto={
+        liveFavs.length > 0 && (
+          <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+            <button
+              onClick={() => playerRef.current?.playQueue(liveFavs, false)}
+              style={{ padding: "8px 18px", borderRadius: R.tondo, fontSize: F.corpo, background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`, color: C.onAccent, fontWeight: 600 }}
+            >
+              ▶ Tutte le melodie
+            </button>
+            {liveFavs.length > 1 && (
+              <button
+                onClick={() => playerRef.current?.playQueue(liveFavs, true)}
+                style={{ padding: "8px 16px", borderRadius: R.tondo, fontSize: F.corpo, border: `1px solid ${C.border}`, color: C.muted }}
+              >
+                🔀 A caso
+              </button>
+            )}
+          </div>
+        )
+      }
+    >
+      {!alreadySaved && (
+        <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+          <input
+            value={favName}
+            onChange={(e) => setFavName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && saveCurrentAsFav()}
+            placeholder="Un nome per questa melodia…"
+            style={{ ...inputStyle(), background: C.bg }}
+          />
+          <button
+            onClick={saveCurrentAsFav}
+            style={{ padding: "9px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+          >
+            ☆ Custodisci
+          </button>
+        </div>
+      )}
+    </InAscolto>
+  );
+
   return (
-    <div style={{ animation: "bc-fade-in 0.4s ease-out" }}>
+    <div
+      style={{
+        animation: "bc-fade-in 0.4s ease-out",
+        display: wide ? "grid" : "block",
+        gridTemplateColumns: `${px(360)}px minmax(0, 1fr)`,
+        gap: 28,
+        alignItems: "start",
+      }}
+    >
+      <div
+        style={
+          wide
+            ? { position: "sticky", top: 8, maxHeight: "calc(100vh - 150px)", overflowY: "auto", borderRadius: R.grande }
+            : { marginBottom: 20 }
+        }
+      >
+        {ascolto}
+      </div>
+      <div style={{ minWidth: 0 }}>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 18 }}>
         <input
           value={link}
@@ -281,114 +339,6 @@ export default function MusicRoom({ music, playerRef, notify }) {
           ▶ Suona
         </button>
       </div>
-
-      {current && (
-        <div
-          style={{
-            padding: 16,
-            borderRadius: R.medio,
-            border: `1px solid ${C.arcane}55`,
-            background: `linear-gradient(135deg, ${C.arcane}14, ${C.card})`,
-            boxShadow: `0 0 30px ${C.arcane}1a`,
-            marginBottom: 20,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span
-              style={{
-                fontSize: 30,
-                animation: playing ? "bc-flicker 3s ease-in-out infinite" : "none",
-                opacity: playing ? 1 : 0.5,
-                filter: `drop-shadow(0 0 12px ${C.arcane}88)`,
-              }}
-            >
-              🎶
-            </span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.rilievo, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {current.name || "Musica di sottofondo"}
-              </div>
-              {queue && (
-                <div style={{ fontSize: F.minuscolo, color: C.arcane }}>
-                  {queue.shuffle ? "🔀 casuale" : "▶ in ordine"} · {queue.index + 1} di {queue.total}
-                </div>
-              )}
-              <div style={{ fontSize: F.minuscolo, color: current.src ? C.accent : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {current.src ? "♫ dal tuo archivio · va avanti a schermo spento" : current.url}
-              </div>
-            </div>
-            <button
-              onClick={() => (playing ? playerRef.current?.pause() : playerRef.current?.resume())}
-              aria-label={playing ? "Pausa" : "Riprendi"}
-              style={{ fontSize: F.grande, color: C.accent, width: 44, height: 44 }}
-            >
-              {playing ? "⏸" : "▶"}
-            </button>
-            <button onClick={() => playerRef.current?.stop()} aria-label="Spegni" style={{ fontSize: F.rilievo, color: C.muted, width: 36, height: 36 }}>
-              ✕
-            </button>
-          </div>
-
-          {!alreadySaved && (
-            <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-              <input
-                value={favName}
-                onChange={(e) => setFavName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && saveCurrentAsFav()}
-                placeholder="Un nome per questa melodia… («Pioggia e camino»)"
-                style={{ ...inputStyle(), background: C.bg }}
-              />
-              <button
-                onClick={saveCurrentAsFav}
-                style={{ padding: "9px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
-              >
-                ☆ Custodisci
-              </button>
-            </div>
-          )}
-
-          {/* il volume della sola musica: sotto la lettura si tiene bassa
-              senza abbassare tutto il tablet, e le notifiche restano dove sono */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
-            <span style={{ fontSize: F.piccolo, color: C.muted }}>{volPerCento === 0 ? "🔇" : volPerCento < 45 ? "🔉" : "🔊"} Volume:</span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={volPerCento}
-              onChange={(e) => playerRef.current?.setVolume(parseInt(e.target.value, 10) / 100)}
-              aria-label="Volume della musica"
-              style={{ flex: 1, minWidth: 120, accentColor: C.accent }}
-            />
-            <span style={{ fontSize: F.piccolo, color: C.arcane, width: 40, textAlign: "right" }}>{volPerCento}%</span>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-            <span style={{ fontSize: F.piccolo, color: C.muted }}>🌙 Si spegne da sola:</span>
-            {SLEEP_CHOICES.map((s) => {
-              const active = s.min === 0 ? !timerEnd : (sleepMin || 0) === s.min;
-              return (
-                <button
-                  key={s.min}
-                  onClick={() => playerRef.current?.setSleep(s.min)}
-                  style={{
-                    padding: "5px 12px",
-                    borderRadius: R.tondo,
-                    fontSize: F.piccolo,
-                    border: `1px solid ${active ? C.accent : C.border}`,
-                    color: active ? C.accent : C.muted,
-                  }}
-                >
-                  {s.label}
-                </button>
-              );
-            })}
-            {manca && (
-              <span style={{ fontSize: F.piccolo, color: C.arcane }}>manca {manca} · sfuma piano sul finire</span>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* LE RACCOLTE. Una raccolta e' un nome e un elenco di brani scelti da
           te: serve a dire "stasera questi, in quest'ordine" senza doverti
@@ -455,14 +405,15 @@ export default function MusicRoom({ music, playerRef, notify }) {
             const dove = doveDi(r, brani);
             const punto = brani.length ? puntoDi(brani[dove]) : 0;
             const riprendi = dove > 0 || punto > 0;
+            const inAscolto = queue?.raccolta === r.id;
             return (
               <div
                 key={r.id}
                 style={{
                   padding: "13px 14px",
                   borderRadius: R.medio,
-                  border: `1px solid ${attiva ? C.accent : C.border}`,
-                  background: attiva
+                  border: `1px solid ${attiva || inAscolto ? C.accent : C.border}`,
+                  background: attiva || inAscolto
                     ? `linear-gradient(135deg, ${C.accent}14, ${C.card})`
                     : `linear-gradient(135deg, ${C.card}, ${C.surface})`,
                 }}
@@ -503,7 +454,11 @@ export default function MusicRoom({ music, playerRef, notify }) {
                   {brani.length === 0
                     ? "nessun brano ancora"
                     : `${brani.length} ${brani.length === 1 ? "brano" : "brani"}`}
-                  {riprendi && queue?.raccolta !== r.id ? ` · eri a «${brani[dove].name}»${punto ? `, ${minuti(punto)}` : ""}` : ""}
+                  {inAscolto
+                    ? ` · ${playing ? "♫ in ascolto" : "in pausa"}`
+                    : riprendi
+                      ? ` · eri a «${brani[dove].name}»${punto ? `, ${minuti(punto)}` : ""}`
+                      : ""}
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button
@@ -793,9 +748,9 @@ export default function MusicRoom({ music, playerRef, notify }) {
                 padding: "13px 14px",
                 borderRadius: R.medio,
                 border: `1px solid ${
-                  editing === f.id || (inScelta && (inScelta.brani || []).includes(f.id)) ? C.accent : C.border
+                  editing === f.id || (inScelta && (inScelta.brani || []).includes(f.id)) || (!inScelta && suona(f)) ? C.accent : C.border
                 }`,
-                background: `linear-gradient(135deg, ${C.card}, ${C.surface})`,
+                background: !inScelta && suona(f) ? `linear-gradient(135deg, ${C.accent}14, ${C.card})` : `linear-gradient(135deg, ${C.card}, ${C.surface})`,
               }}
             >
               {inScelta ? (
@@ -874,7 +829,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
                         riga sola il nome di un file importato si troncava a
                         «Pioggi…», e il nome e' tutto quel che distingue un
                         brano dall'altro */}
-                    <span style={{ flex: 1, minWidth: 0, fontSize: F.corpo, color: C.text, lineHeight: 1.3, overflowWrap: "break-word" }}>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: F.corpo, color: suona(f) ? C.accent : C.text, lineHeight: 1.3, overflowWrap: "break-word" }}>
                       {f.name}
                     </span>
                     {!suona(f) && puntoDi(f) > 0 && (
@@ -901,6 +856,7 @@ export default function MusicRoom({ music, playerRef, notify }) {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }
