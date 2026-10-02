@@ -444,7 +444,14 @@ const SCENE = [
         return n;
       }, ultima);
       if (rossi < 20) throw new Error(`nella tavola mandata non c'e' il cerchio rosso (${rossi} pixel rossi)`);
-      return { guasti: d.guasti, nota: `a schermo ${aSchermo.join("+")}: tavola ${immagini(chieste[0])} img, riassunto ${immagini(chieste[1])} img (fino a ${fino}), chi e' ${immagini(chieste[2])} img, cerchio di ${rossi} pixel` };
+      // 4. tradurre e' una domanda a parte: «Cosa succede» non traduce
+      await d.p.getByRole("button", { name: "Chiudi il pannello" }).click();
+      await domanda(/Traduci i balloon/);
+      await finche(() => testoAvviso(d.p, /Risposta finta 4/), 10000, "la traduzione non compare");
+      if (!/Traduci in italiano balloon/.test(chieste[3].system) || /Traduci/.test(chieste[0].system)) throw new Error("racconto e traduzione non sono due domande");
+      if (immagini(chieste[3]) !== aSchermo.length) throw new Error(`la traduzione manda ${immagini(chieste[3])} immagini, a schermo ${aSchermo.length}`);
+      senzaTitolo(chieste[3]);
+      return { guasti: d.guasti, nota: `a schermo ${aSchermo.join("+")}: tavola ${immagini(chieste[0])} img, traduzione a parte, riassunto ${immagini(chieste[1])} img (fino a ${fino}), chi e' ${immagini(chieste[2])} img, cerchio di ${rossi} pixel` };
     },
   },
   {

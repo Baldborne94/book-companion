@@ -261,11 +261,11 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     return fuori;
   };
   const manga = verso === "rtl";
-  const spiegaTavola = (domanda = "") => {
+  const spiegaTavola = (domanda = "", traduci = false) => {
     const pagine = [...mostrate];
-    return consulta("tavola", async (passo) => ({
+    return consulta(traduci ? "traduci" : "tavola", async (passo) => ({
       pagine,
-      domanda: domandaTavola({ immagini: await leggiTavole(pagine, { lato: LATO_TAVOLA }, passo), pagine, domanda, manga }),
+      domanda: domandaTavola({ immagini: await leggiTavole(pagine, { lato: LATO_TAVOLA }, passo), pagine, domanda, manga, traduci }),
     }));
   };
   const dovEravamo = () => {
@@ -1411,6 +1411,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         >
           {[
             { glifo: "✨", nome: "Cosa succede in questa tavola", fa: () => spiegaTavola() },
+            { glifo: "🔤", nome: "Traduci i balloon", fa: () => spiegaTavola("", true) },
             { glifo: "🧭", nome: "Dove eravamo rimasti", fa: dovEravamo },
             {
               glifo: "👤",
@@ -1592,7 +1593,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
 
       {panel === "oracolo" && oracolo && (
         <Panel
-          title={oracolo.tipo === "tavola" ? "Cosa succede qui" : oracolo.tipo === "trama" ? "Dove eravamo rimasti" : "Chi è costui"}
+          title={oracolo.tipo === "tavola" ? "Cosa succede qui" : oracolo.tipo === "traduci" ? "I balloon in italiano" : oracolo.tipo === "trama" ? "Dove eravamo rimasti" : "Chi è costui"}
           onClose={() => setPanel(null)}
         >
           <SchedaOracolo
@@ -1604,7 +1605,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
             vuoto="Non riesco ad aprire queste pagine: riprova fra un momento."
             onRiprova={() => ultimaConsulta.current?.()}
           />
-          {oracolo.tipo === "tavola" && oracolo.fase === "fatto" && (
+          {(oracolo.tipo === "tavola" || oracolo.tipo === "traduci") && oracolo.fase === "fatto" && (
             <form
               onSubmit={(e) => {
                 e.preventDefault();
