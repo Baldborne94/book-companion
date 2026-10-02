@@ -56,6 +56,42 @@ export async function portaQuiMelodia(voce, { prendi = melodiaDalDrive } = {}) {
 }
 export const dropTrack = (trackId) => removeTrack(trackId).catch(() => {});
 
+// «SCARICA LA RACCOLTA» (chiesto dal lettore insieme alla musica che suona
+// mentre scende): le melodie di Drive di una raccolta che qui mancano, per
+// ascoltarle senza rete e senza aspettare
+export function daPortareQui(brani, qui) {
+  const mancano = (brani || []).filter((b) => b?.drive && b.trackId && !qui.has(b.trackId));
+  return { brani: mancano, byte: mancano.reduce((s, b) => s + (Number(b.size) || 0), 0) };
+}
+
+// una alla volta (la banda e' una), e un intoppo e' di quella melodia; la
+// chiave di Drive che chiede un tocco ferma il giro: le altre farebbero lo
+// stesso
+export async function portaQuiTutte(brani, { porta = portaQuiMelodia, vivo = () => true, onProgress } = {}) {
+  const esito = { fatte: 0, mancate: [], fermato: false, scollegato: false };
+  for (const [i, b] of (brani || []).entries()) {
+    if (!vivo()) return { ...esito, fermato: true };
+    onProgress?.({ i, totale: brani.length, nome: b.name });
+    try {
+      if (await porta(b)) esito.fatte += 1;
+      else esito.mancate.push(b.name);
+    } catch (e) {
+      if (e?.name === "DriveScollegato") return { ...esito, scollegato: true };
+      esito.mancate.push(b.name);
+    }
+  }
+  return esito;
+}
+
+export function fraseScarico({ fatte, mancate = [], fermato, scollegato }) {
+  const parti = [];
+  if (fatte) parti.push(fatte === 1 ? "1 melodia ora sta sul dispositivo" : `${fatte} melodie ora stanno sul dispositivo`);
+  if (mancate.length) parti.push(mancate.length === 1 ? `«${mancate[0]}» non è scesa` : `${mancate.length} non sono scese (${mancate.map((n) => `«${n}»`).join(", ")})`);
+  if (scollegato) parti.push("Google Drive aspetta un tocco: il resto lo scarichi riprovando");
+  else if (fermato) parti.push("fermato: il resto lo scarichi riprovando");
+  return `${parti.join(" · ") || "Niente da scaricare"} 🎵`;
+}
+
 export function parseYouTube(input) {
   try {
     const u = new URL(input.trim());

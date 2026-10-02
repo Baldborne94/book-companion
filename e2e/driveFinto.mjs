@@ -7,10 +7,11 @@
 import http from "node:http";
 
 // `elenco`: le voci di Drive (file e cartelle) per chi chiede l'elenco, i
-// cambiamenti o i dettagli di un file; `latenza`: ms prima di ogni risposta
+// cambiamenti o i dettagli di un file; `latenza`: ms prima di ogni risposta;
+// `banda`: byte al secondo per i file che scendono (0: tutta)
 // `misureVere`: la misura che Drive da' chiedendo il file uno per uno, quando
 // l'elenco ne porta un'altra (un file appena caricato, elencato a zero)
-export function avviaDrive(porta, file, { elenco = [], latenza = 0, misureVere = {} } = {}) {
+export function avviaDrive(porta, file, { elenco = [], latenza = 0, misureVere = {}, banda = 0 } = {}) {
   const d = { pezzi: 0, interi: 0, scesi: new Set() };
   const server = http.createServer(async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -45,14 +46,26 @@ export function avviaDrive(porta, file, { elenco = [], latenza = 0, misureVere =
       res.statusCode = 404;
       return res.end("{}");
     }
-    const m = /bytes=(\d+)-(\d+)/.exec(req.headers.range || "");
+    // `bytes=0-` (aperto) e' quel che chiede un <audio>
+    const m = /bytes=(\d+)-(\d*)/.exec(req.headers.range || "");
     d.scesi.add(id);
     if (m) d.pezzi += 1;
     else d.interi += 1;
-    const buf = m ? bytes.subarray(Number(m[1]), Number(m[2]) + 1) : bytes;
+    const da = m ? Number(m[1]) : 0;
+    const a = m && m[2] ? Math.min(bytes.length - 1, Number(m[2])) : bytes.length - 1;
+    const buf = bytes.subarray(da, a + 1);
     res.statusCode = m ? 206 : 200;
+    if (m) res.setHeader("Content-Range", `bytes ${da}-${a}/${bytes.length}`);
+    res.setHeader("Accept-Ranges", "bytes");
     res.setHeader("Content-Length", String(buf.length));
-    res.end(buf);
+    if (!banda) return res.end(buf);
+    // la rete lenta: il file scende a `banda` byte al secondo, a fette
+    const fetta = Math.max(1, Math.round(banda / 10));
+    for (let i = 0; i < buf.length && !res.destroyed; i += fetta) {
+      res.write(buf.subarray(i, i + fetta));
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    res.end();
   });
   return new Promise((ok) =>
     server.listen(porta, () =>

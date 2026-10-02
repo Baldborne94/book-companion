@@ -27,7 +27,7 @@ export function pulisci(testo) {
     .replace(/ya29\.[\w.-]+/g, "[gettone]")
     .replace(/Bearer\s+[\w.~+/=-]+/gi, "Bearer [gettone]")
     .replace(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g, "[gettone]")
-    .replace(/([?&](?:key|token|access_token|apikey)=)[^&\s]+/gi, "$1[…]");
+    .replace(/([?&](?:key|token|access_token|apikey|k)=)[^&\s]+/gi, "$1[…]");
 }
 
 const leggi = (st) => {

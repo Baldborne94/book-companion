@@ -34,7 +34,7 @@ import Home from "./components/Home.jsx";
 import Library from "./components/Library.jsx";
 import BookSheet from "./components/BookSheet.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
-import { getBookMusic, setBookMusic } from "./lib/music.js";
+import { getBookMusic, setBookMusic, portaQuiTutte, fraseScarico } from "./lib/music.js";
 import { getJump, clearJump, getMarks } from "./lib/annotations.js";
 import { doppioniInBiblioteca } from "./lib/doppioni.js";
 import { daAvvisare } from "./lib/oracle.js";
@@ -1365,6 +1365,29 @@ export default function App() {
     filoImport.current = null;
   };
 
+  // «SCARICA LA RACCOLTA» (`portaQuiTutte`): le melodie di Drive che qui
+  // mancano scendono una alla volta; vive qui come gli altri lavori lunghi,
+  // perche' uscire dalla sala non deve fermarlo ne' nasconderlo
+  const [scarico, setScarico] = useState(null);
+  const filoScarico = useRef(null);
+  async function scaricaRaccoltaQui(brani, raccolta) {
+    if (filoScarico.current || !brani.length) return;
+    const mio = {};
+    filoScarico.current = mio;
+    const vivo = () => filoScarico.current === mio;
+    setScarico({ i: 0, totale: brani.length, nome: brani[0].name, raccolta });
+    try {
+      if (!driveProntoOra()) await collegaDrive();
+      const esito = await portaQuiTutte(brani, { vivo, onProgress: (p) => vivo() && setScarico({ ...p, raccolta }) });
+      notify(fraseScarico(esito));
+    } catch (e) {
+      notify(e instanceof DriveScollegato ? "Google Drive aspetta un tocco: riprova 🎵" : e?.message || "Google Drive non ha risposto");
+    } finally {
+      if (filoScarico.current === mio) filoScarico.current = null;
+      setScarico(null);
+    }
+  }
+
   // I DOPPIONI (`doppioniInBiblioteca`): lo stesso volume in due o tre
   // schede — fumetti nati prima che l'importazione saltasse i gemelli di
   // Colab, libri reimportati da Drive accanto alla scheda rimasta senza file.
@@ -1841,15 +1864,19 @@ export default function App() {
         )}
         {section === "music" && (
           <Suspense fallback={null}>
-            <MusicRoom music={music} playerRef={playerRef} notify={notify} onCambiata={() => presto.current?.()} />
+            <MusicRoom music={music} playerRef={playerRef} notify={notify} onCambiata={() => presto.current?.()} scarico={scarico} onScarica={scaricaRaccoltaQui} />
           </Suspense>
         )}
       </main>
       </div>
-      {(lavoro || importo || restanti.length > 0) && (
+      {(lavoro || importo || scarico || restanti.length > 0) && (
         <BarraLavoro
           importo={importo}
           onFermaImport={fermaImport}
+          scarico={scarico}
+          onFermaScarico={() => {
+            filoScarico.current = null;
+          }}
           lavoro={lavoro}
           restanti={restanti.length}
           onFerma={fermaLavoro}

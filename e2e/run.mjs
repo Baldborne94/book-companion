@@ -18,6 +18,10 @@ import { fumetto, fumettoGrosso, fumettoLungo, epub, pdf, wav, FRASE, mondoDisco
 import { avviaDrive, driveNelBrowser } from "./driveFinto.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
 
+// le richieste del service worker passano dalle rotte del contesto solo
+// cosi' (Chromium): servono alla scena della melodia che suona mentre scende
+process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = "1";
+
 const PORTA_DB = 4599;
 const PORTA_APP = 4190;
 const PORTA_DRIVE = 4598;
@@ -317,6 +321,133 @@ const SCENE = [
       await finche(() => testoAvviso(tab.p, /^Notti d'inverno$/), 15000, "la raccolta non compare sul tablet");
       await finche(() => testoAvviso(tab.p, /^1 brano$/), 5000, "la raccolta arriva vuota sul tablet");
       return { guasti: [...pc.guasti, ...tab.guasti], nota: `lassu': ${nomiRaccolte().join(", ")}; sul tablet a sala aperta` };
+    },
+  },
+  {
+    // chiesto dal lettore: «la musica la devi scaricare prima di
+    // riprodurla?». Si': la melodia di Drive scendeva intera, e solo dopo
+    // suonava. Ora il service worker gira a Drive le richieste a pezzi
+    // dell'<audio> (`public/melodia-sw.js`), e la copia per il dispositivo
+    // scende dopo, quando gia' suona. Drive finto e lento: 2,4 MB a 200 KB/s
+    nome: "una melodia di Drive suona mentre scende, e poi resta sul dispositivo",
+    async fai({ browser }) {
+      const bytes = wav(300);
+      const banda = 200_000;
+      const drv = await avviaDrive(PORTA_DRIVE, { m1: bytes, m2: wav(20) }, { banda });
+      try {
+        const d = await dispositivo(browser, { drive: { libri: [], mappa: {} } });
+        await d.ctx.addInitScript((n) => {
+          if (localStorage.getItem("bc_music_favs")) return;
+          localStorage.setItem("bc_drive_client", "123-abc.apps.googleusercontent.com");
+          localStorage.setItem("bc_drive_melodie", JSON.stringify({ T1: { id: "m1" }, T2: { id: "m2" } }));
+          localStorage.setItem(
+            "bc_music_favs",
+            JSON.stringify([
+              { id: "f1", name: "Pioggia lontana", trackId: "T1", drive: true, size: n, addedAt: 1, updatedAt: 1 },
+              { id: "f2", name: "Camino", trackId: "T2", drive: true, size: 160044, addedAt: 2, updatedAt: 2 },
+            ])
+          );
+        }, bytes.length);
+        // anche il service worker chiede a googleapis: lo si gira al Drive finto
+        const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "*" };
+        await d.ctx.route(/^https:\/\/www\.googleapis\.com\/drive\/v3\//, (r) =>
+          r.request().method() === "OPTIONS"
+            ? r.fulfill({ status: 204, headers: cors })
+            : r.fulfill({ status: 307, headers: { ...cors, Location: r.request().url().replace("https://www.googleapis.com", `http://localhost:${PORTA_DRIVE}`) } })
+        );
+        await d.p.goto(`${URL_APP}?apri=musica`);
+        // il service worker comanda la pagina solo dalla seconda apertura
+        await d.p.evaluate(() => navigator.serviceWorker.ready);
+        await d.p.goto(`${URL_APP}?apri=musica`);
+        await finche(() => d.p.evaluate(() => !!navigator.serviceWorker.controller), 10000, "il service worker non comanda la pagina");
+        await finche(() => d.p.getByText("Pioggia lontana", { exact: true }).count(), 10000, "la melodia di Drive non c'e'");
+        const t0 = Date.now();
+        await d.p.getByText("Pioggia lontana", { exact: true }).first().click();
+        await finche(() => d.p.evaluate(() => (document.querySelector("audio")?.currentTime || 0) > 0.3), 30000, "la melodia non suona");
+        const parte = (Date.now() - t0) / 1000;
+        const intera = bytes.length / banda;
+        const src = await d.p.evaluate(() => document.querySelector("audio").getAttribute("src") || "");
+        if (!src.startsWith("/__melodia/m1")) throw new Error(`la melodia non suona a pezzi da Drive (src ${src.slice(0, 40)})`);
+        if (parte > intera / 3) throw new Error(`la melodia parte dopo ${parte.toFixed(1)} s: intera scende in ${intera.toFixed(1)} s`);
+        // salto avanti: un pezzo lontano, chiesto da li' e non da capo
+        const t1 = Date.now();
+        await d.p.evaluate(() => (document.querySelector("audio").currentTime = 250));
+        await finche(() => d.p.evaluate(() => document.querySelector("audio").currentTime > 250.3), 15000, "il salto nel brano non suona");
+        const salto = (Date.now() - t1) / 1000;
+        if (salto > intera / 3) throw new Error(`il salto a 250 s suona dopo ${salto.toFixed(1)} s: il brano si rilegge da capo`);
+        // la copia per il dispositivo, scesa dopo
+        const copia = () =>
+          d.p.evaluate(
+            () =>
+              new Promise((ok) => {
+                const r = indexedDB.open("bc_library");
+                r.onsuccess = () => {
+                  const db = r.result;
+                  if (!db.objectStoreNames.contains("tracks")) return ok(0);
+                  const g = db.transaction("tracks").objectStore("tracks").get("T1");
+                  g.onsuccess = () => ok(g.result?.size || 0);
+                  g.onerror = () => ok(0);
+                };
+                r.onerror = () => ok(0);
+              })
+          );
+        const tenuta = await finche(copia, 40000, "la melodia non resta sul dispositivo");
+        if (tenuta !== bytes.length) throw new Error(`sul dispositivo ${tenuta} byte, su Drive ${bytes.length}`);
+        // Drive che non risponde ai pezzi: la melodia scende intera, come prima
+        await d.ctx.unrouteAll({ behavior: "ignoreErrors" });
+        await d.ctx.route(/^https:\/\/www\.googleapis\.com\//, (r) => r.abort());
+        await d.p.getByText("Camino", { exact: true }).first().click();
+        await finche(
+          () => d.p.evaluate(() => /^blob:/.test(document.querySelector("audio")?.getAttribute("src") || "") && document.querySelector("audio").currentTime > 0.3),
+          30000,
+          "senza i pezzi la melodia non scende intera"
+        );
+        return { guasti: d.guasti, nota: `suona dopo ${parte.toFixed(1)} s (intera: ${intera.toFixed(1)} s), salto a 250 s in ${salto.toFixed(1)} s, copia di ${(tenuta / 1e6).toFixed(1)} MB sul dispositivo; senza pezzi scende intera` };
+      } finally {
+        await drv.chiudi();
+      }
+    },
+  },
+  {
+    // chiesto dal lettore insieme a quella sopra: «Scarica la raccolta»
+    // porta sul dispositivo le melodie di Drive che mancano, una alla volta,
+    // e dopo suonano anche senza Drive
+    nome: "«Scarica la raccolta» porta qui le melodie di Drive, e suonano senza rete",
+    async fai({ browser }) {
+      const uno = wav(60);
+      const due = wav(40);
+      const drv = await avviaDrive(PORTA_DRIVE, { m1: uno, m2: due });
+      let chiuso = false;
+      try {
+        const d = await dispositivo(browser, { drive: { libri: [], mappa: {} } });
+        await d.ctx.addInitScript((misure) => {
+          if (localStorage.getItem("bc_music_favs")) return;
+          localStorage.setItem("bc_drive_client", "123-abc.apps.googleusercontent.com");
+          localStorage.setItem("bc_drive_melodie", JSON.stringify({ T1: { id: "m1" }, T2: { id: "m2" } }));
+          localStorage.setItem(
+            "bc_music_favs",
+            JSON.stringify([
+              { id: "f1", name: "Pioggia lontana", trackId: "T1", drive: true, size: misure[0], addedAt: 1, updatedAt: 1 },
+              { id: "f2", name: "Camino", trackId: "T2", drive: true, size: misure[1], addedAt: 2, updatedAt: 2 },
+            ])
+          );
+          localStorage.setItem("bc_music_lists", JSON.stringify([{ id: "r1", name: "Taverna", brani: ["f1", "f2"], addedAt: 1, updatedAt: 1 }]));
+        }, [uno.length, due.length]);
+        await d.p.goto(`${URL_APP}?apri=musica`);
+        await finche(() => testoAvviso(d.p, /2 brani solo su Google Drive/), 10000, "la raccolta non dice cosa sta solo su Drive");
+        await d.p.getByRole("button", { name: "⬇ Scarica la raccolta" }).click();
+        await finche(() => testoAvviso(d.p, /Scarico la raccolta: \d di 2/), 5000, "la barra del lavoro non dice a che punto e'");
+        await finche(() => testoAvviso(d.p, /2 melodie ora stanno sul dispositivo/), 20000, "le melodie non scendono");
+        await finche(async () => !(await d.p.getByRole("button", { name: "⬇ Scarica la raccolta" }).count()), 5000, "il tasto resta dopo che e' tutto qui");
+        // Drive spento: la raccolta suona lo stesso
+        await drv.chiudi();
+        chiuso = true;
+        await d.p.getByRole("button", { name: "▶ In ordine" }).click();
+        await finche(() => d.p.evaluate(() => (document.querySelector("audio")?.currentTime || 0) > 0.3), 10000, "senza Drive la raccolta scaricata non suona");
+        return { guasti: d.guasti, nota: "2 melodie scese una alla volta, il tasto sparisce, e con Drive spento la raccolta suona" };
+      } finally {
+        if (!chiuso) await drv.chiudi();
+      }
     },
   },
   {

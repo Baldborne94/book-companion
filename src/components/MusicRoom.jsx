@@ -3,8 +3,9 @@ import { listTrackIds } from "../lib/bookStore.js";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import {
   getFavoritesRaw, saveFavorites, isFile, addTrackFile, dropTrack, parseYouTube,
-  getListsRaw, saveLists, nuovaRaccolta, braniDi, puntoDi, doveDi, minuti, MUSICA_CAMBIATA, nonArrivati,
+  getListsRaw, saveLists, nuovaRaccolta, braniDi, puntoDi, doveDi, minuti, MUSICA_CAMBIATA, nonArrivati, daPortareQui,
 } from "../lib/music.js";
+import { fmtBytes } from "../lib/bytes.js";
 import EmptyState from "./EmptyState.jsx";
 import { InAscolto } from "./Ascolto.jsx";
 import { useViewport } from "../lib/viewport.js";
@@ -30,7 +31,7 @@ const inputStyle = () => ({
   outline: "none",
 });
 
-export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
+export default function MusicRoom({ music, playerRef, notify, onCambiata, scarico = null, onScarica }) {
   const [link, setLink] = useState("");
   const [favs, setFavs] = useState(() => getFavoritesRaw());
   const [favName, setFavName] = useState("");
@@ -70,7 +71,7 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
     return () => {
       vivo = false;
     };
-  }, [favs, current?.trackId]);
+  }, [favs, current?.trackId, scarico?.i]);
 
   function playLink() {
     const url = link.trim();
@@ -420,6 +421,7 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
             const punto = brani.length ? puntoDi(brani[dove]) : 0;
             const riprendi = dove > 0 || punto > 0;
             const inAscolto = queue?.raccolta === r.id;
+            const lassu = qui ? daPortareQui(brani, qui) : { brani: [], byte: 0 };
             return (
               <div
                 key={r.id}
@@ -468,6 +470,8 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
                   {brani.length === 0
                     ? "nessun brano ancora"
                     : `${brani.length} ${brani.length === 1 ? "brano" : "brani"}`}
+                  {lassu.brani.length > 0 &&
+                    ` · ${lassu.brani.length === 1 ? "1 brano" : `${lassu.brani.length} brani`} solo su Google Drive${lassu.byte ? ` (${fmtBytes(lassu.byte)})` : ""}`}
                   {nonArrivati(r, favs) > 0 &&
                     ` · ${nonArrivati(r, favs) === 1 ? "1 brano non ancora arrivato qui" : `${nonArrivati(r, favs)} brani non ancora arrivati qui`}`}
                   {inAscolto
@@ -517,6 +521,24 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
                   >
                     {attiva ? "Fatto" : "Scegli i brani"}
                   </button>
+                  {/* PER ASCOLTARE SENZA RETE: le melodie di Drive che qui
+                      mancano scendono tutte, una alla volta (`portaQuiTutte` in App) */}
+                  {lassu.brani.length > 0 && driveAcceso() && (
+                    <button
+                      onClick={() => onScarica?.(lassu.brani, r.id)}
+                      disabled={!!scarico}
+                      style={{
+                        padding: "5px 12px",
+                        borderRadius: R.tondo,
+                        fontSize: F.piccolo,
+                        border: `1px solid ${C.border}`,
+                        color: C.muted,
+                        opacity: scarico ? 0.5 : 1,
+                      }}
+                    >
+                      {scarico?.raccolta === r.id ? `⬇ ${scarico.i + 1} di ${scarico.totale}…` : "⬇ Scarica la raccolta"}
+                    </button>
+                  )}
                   {brani.length > 0 && (
                     <button
                       onClick={() => setAperta(aperti ? null : r.id)}

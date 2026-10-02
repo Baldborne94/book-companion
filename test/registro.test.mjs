@@ -18,6 +18,7 @@ export default async function (t) {
   t.eq("un Bearer", pulisci("Authorization: Bearer abc.def-ghi"), "Authorization: Bearer [gettone]");
   t.eq("il gettone di Supabase", pulisci("jwt eyJhbGci.eyJzdWIi.c2lnbg"), "jwt [gettone]");
   t.eq("una chiave in un indirizzo", pulisci("GET https://x.io/a?key=segreta&b=1"), "GET https://x.io/a?key=[…]&b=1");
+  t.eq("la chiave nell'indirizzo di una melodia", pulisci("GET /__melodia/abc?k=ya2-x9"), "GET /__melodia/abc?k=[…]");
   t.eq("un messaggio qualunque resta com'è", pulisci("Cannot read properties of null (reading 'cfi')"), "Cannot read properties of null (reading 'cfi')");
 
   // ---- si annota, e le ripetizioni si contano -------------------------------------------
