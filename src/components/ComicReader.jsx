@@ -1294,18 +1294,18 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
                   nome="Segnalibri"
                   glifo="📑"
                 />
-                {/* l'Oracolo guarda le tavole (`lib/oracoloFumetti.js`) */}
-                <TastoBarra onClick={() => spiegaTavola()} attivo={panel === "oracolo" && oracolo?.tipo === "tavola"} conNome={nomiNeiTasti} nome="Tavola" glifo="✨" />
-                <TastoBarra onClick={dovEravamo} attivo={panel === "oracolo" && oracolo?.tipo === "trama"} conNome={nomiNeiTasti} nome="Dove eravamo" glifo="🧭" />
+                {/* l'Oracolo guarda le tavole (`lib/oracoloFumetti.js`): un
+                    tasto solo, le tre domande nel suo menu — tre tasti in
+                    barra la portavano a tre righe sul tablet in verticale */}
                 <TastoBarra
                   onClick={() => {
-                    setPanel(null);
-                    setIndica(true);
+                    setIndica(false);
+                    setPanel(panel === "domande" ? null : "domande");
                   }}
-                  attivo={indica}
+                  attivo={panel === "domande" || panel === "oracolo" || indica}
                   conNome={nomiNeiTasti}
-                  nome="Chi è"
-                  glifo="👤"
+                  nome="Oracolo"
+                  glifo="✨"
                 />
                 {serveTastoSchermo({ abilitato: document.fullscreenEnabled, giaTuttoSchermo: apertaATuttoSchermo() }) && (
                   <TastoBarra onClick={toggleFullscreen} attivo={isFs} conNome={nomiNeiTasti} nome={isFs ? "Esci" : "Schermo"} glifo="⛶" />
@@ -1386,6 +1386,58 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
             </div>
           </div>
         </>
+      )}
+
+      {panel === "domande" && (
+        <div
+          role="menu"
+          aria-label="Chiedi all'Oracolo"
+          style={{
+            position: "absolute",
+            right: 10,
+            top: altezzaBarra + px(6),
+            zIndex: 30,
+            width: `min(92%, ${px(320)}px)`,
+            padding: 8,
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+            borderRadius: R.medio,
+            border: `1px solid ${C.border}`,
+            background: `${C.surface}fa`,
+            boxShadow: "0 10px 40px #00000088",
+            animation: "bc-fade-in 0.2s ease-out",
+          }}
+        >
+          {[
+            { glifo: "✨", nome: "Cosa succede in questa tavola", fa: () => spiegaTavola() },
+            { glifo: "🧭", nome: "Dove eravamo rimasti", fa: dovEravamo },
+            {
+              glifo: "👤",
+              nome: "Chi è costui?",
+              nota: "poi tocca il personaggio",
+              fa: () => {
+                setPanel(null);
+                setIndica(true);
+              },
+            },
+          ].map((d) => (
+            <button
+              key={d.nome}
+              role="menuitem"
+              onClick={d.fa}
+              style={{ minHeight: 44, display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: R.piccolo, color: C.text, fontSize: F.corpo, textAlign: "left" }}
+            >
+              <span aria-hidden="true" style={{ fontSize: F.rilievo, width: px(24), textAlign: "center" }}>
+                {d.glifo}
+              </span>
+              <span>
+                {d.nome}
+                {d.nota && <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted }}>{d.nota}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
       )}
 
       {panel === "luce" && (

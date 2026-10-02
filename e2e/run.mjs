@@ -397,14 +397,19 @@ const SCENE = [
       };
 
       // 1. la tavola a schermo
-      await d.p.getByRole("button", { name: "Tavola" }).click();
+      // le tre domande stanno nel menu di un tasto solo
+      const domanda = async (nome) => {
+        await d.p.getByRole("button", { name: "Oracolo", exact: true }).click();
+        await d.p.getByRole("menuitem", { name: nome }).click();
+      };
+      await domanda(/Cosa succede/);
       await finche(() => testoAvviso(d.p, /Risposta finta 1/), 10000, "la risposta sulla tavola non compare");
       if (immagini(chieste[0]) !== aSchermo.length) throw new Error(`la tavola manda ${immagini(chieste[0])} immagini, a schermo ${aSchermo.length}`);
       senzaTitolo(chieste[0]);
 
       // 2. dove eravamo: mai oltre la pagina a cui sei
       await d.p.getByRole("button", { name: "Chiudi il pannello" }).click();
-      await d.p.getByRole("button", { name: "Dove eravamo" }).click();
+      await domanda(/Dove eravamo/);
       await finche(() => testoAvviso(d.p, /Risposta finta 2/), 10000, "il riassunto non compare");
       const viste = pagineDette(chieste[1]);
       if (viste.some((n) => n > fino)) throw new Error(`il riassunto ha visto pagine dopo la ${fino}: ${viste}`);
@@ -413,7 +418,7 @@ const SCENE = [
 
       // 3. chi e': si tocca il personaggio sulla tavola
       await d.p.getByRole("button", { name: "Chiudi il pannello" }).click();
-      await d.p.getByRole("button", { name: "Chi è" }).click();
+      await domanda(/Chi è costui/);
       await finche(() => testoAvviso(d.p, /Tocca il personaggio/), 5000, "non chiede di toccare il personaggio");
       const tavola = d.p.locator(`img[data-pagina="${aSchermo[0]}"]`).first();
       const r = await tavola.boundingBox();
@@ -440,6 +445,41 @@ const SCENE = [
       }, ultima);
       if (rossi < 20) throw new Error(`nella tavola mandata non c'e' il cerchio rosso (${rossi} pixel rossi)`);
       return { guasti: d.guasti, nota: `a schermo ${aSchermo.join("+")}: tavola ${immagini(chieste[0])} img, riassunto ${immagini(chieste[1])} img (fino a ${fino}), chi e' ${immagini(chieste[2])} img, cerchio di ${rossi} pixel` };
+    },
+  },
+  {
+    // segnalato dal lettore con una foto di Hellboy: «la disposizione non mi
+    // fa proprio impazzire». Col tablet in verticale e la musica accesa i tre
+    // tasti dell'Oracolo portavano la barra a tre righe, 183 px di tavola
+    // coperta; un tasto solo col menu la riporta a due
+    nome: "la barra dei fumetti sta su due righe col tablet in verticale e la musica accesa",
+    async fai({ browser }) {
+      const d = await dispositivo(browser);
+      await d.p.setViewportSize({ width: 800, height: 1280 });
+      await importa(d.p, "Il segreto di Arcadia.cbz", await fumettoLungo(6), "application/zip");
+      await d.p.goto(`${URL_APP}?apri=musica`);
+      for (const nome of ["D&D Dark Ambient Campaign Music", "Camino", "Arpa"]) await d.p.setInputFiles('input[accept="audio/*"]', { name: `${nome}.wav`, mimeType: "audio/wav", buffer: wav(200) });
+      await finche(() => d.p.getByText("Arpa", { exact: true }).count(), 10000, "le melodie non entrano");
+      await d.p.getByRole("button", { name: "▶ Tutte", exact: true }).click();
+      await finche(() => d.p.evaluate(() => (document.querySelector("audio")?.currentTime || 0) > 0.2), 10000, "non suona");
+      await d.p.getByRole("button", { name: "Libreria" }).first().click();
+      await d.p.getByText("Il segreto di Arcadia").first().click();
+      await d.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      await finche(() => d.p.locator("img[data-pagina]").count(), 20000, "il fumetto non si apre");
+      const misura = () =>
+        d.p.evaluate(() => {
+          const barra = document.querySelector('[aria-label="Chiudi il libro"]').closest("div[style*='position: absolute']");
+          const righe = new Set([...barra.querySelectorAll("button")].map((b) => Math.round(b.getBoundingClientRect().top / 10)));
+          return { alta: Math.round(barra.getBoundingClientRect().height), righe: righe.size, musica: !!barra.querySelector('[aria-label*="musica" i], [aria-label*="Pausa" i]') };
+        });
+      const m = await finche(async () => {
+        const x = await misura();
+        return x.musica && x;
+      }, 5000, "la musica non sta nella barra del fumetto");
+      if (m.righe > 2) throw new Error(`la barra del fumetto va su ${m.righe} righe (${m.alta} px)`);
+      await d.p.getByRole("button", { name: "Oracolo", exact: true }).click();
+      await finche(() => d.p.getByRole("menuitem", { name: /Dove eravamo/ }).count(), 3000, "il menu dell'Oracolo non si apre");
+      return { guasti: d.guasti, nota: `barra a ${m.righe} righe, ${m.alta} px` };
     },
   },
   {
