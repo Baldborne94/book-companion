@@ -14,7 +14,7 @@
 import { existsSync } from "node:fs";
 import { build, preview } from "vite";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
-import { fumetto, fumettoGrosso, epub, pdf, wav, FRASE, mondoDisco } from "./libri.mjs";
+import { fumetto, fumettoGrosso, fumettoLungo, epub, pdf, wav, FRASE, mondoDisco } from "./libri.mjs";
 import { avviaDrive, driveNelBrowser } from "./driveFinto.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
 
@@ -71,12 +71,13 @@ async function lanciaBrowser() {
 // o da Google (la prima volta in CI il catalogo vero ha dato a «Racconti» la
 // saga di Moravia, e la scena cadeva per una ragione che qui non c'era). Chi
 // vuole il catalogo se lo porta: `catalogo(url)` risponde al posto suo.
-async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, drive = null } = {}) {
+async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, drive = null, oracolo = null } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   await ctx.route(
     (url) => !/^(localhost|127\.0\.0\.1)$/.test(url.hostname),
     async (route) => {
       const url = route.request().url();
+      if (oracolo && /api\.anthropic\.com/.test(url)) return route.fulfill({ json: await oracolo(JSON.parse(route.request().postData() || "{}")) });
       if (catalogo && /openlibrary\.org/.test(url)) {
         const json = await catalogo(url);
         if (json) return route.fulfill({ json });
@@ -321,6 +322,87 @@ const SCENE = [
       await d.p.getByRole("button", { name: "Arpa" }).first().click();
       await dove(3);
       return { guasti: d.guasti, nota: `⏭ ⏮ e il riavvolgimento (${riavvolto.toFixed(1)} s), barra a ${meta.toFixed(0)} s, «Arpa» dai prossimi` };
+    },
+  },
+  {
+    // chiesto dal lettore: l'Oracolo anche per fumetti e manga, «dalli tutti
+    // e 3». L'API di Anthropic e' finta: risponde e annota cosa le arriva
+    nome: "l'Oracolo guarda le tavole di un fumetto: la tavola a schermo, dove eravamo, chi e' il personaggio toccato",
+    async fai({ browser }) {
+      const chieste = [];
+      const oracolo = async (corpo) => {
+        chieste.push(corpo);
+        return { content: [{ type: "text", text: `Risposta finta ${chieste.length}` }], usage: { input_tokens: 1000, output_tokens: 20 }, stop_reason: "end_turn" };
+      };
+      const d = await dispositivo(browser, { oracolo, prima: () => localStorage.setItem("bc_ai_key", "sk-finta") });
+      await importa(d.p, "Il segreto di Arcadia.cbz", await fumettoLungo(30), "application/zip");
+      await d.p.getByText("Il segreto di Arcadia").first().click();
+      await d.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      const vista = () =>
+        d.p.evaluate(() => {
+          const ims = [...document.querySelectorAll("img[data-pagina]")].filter((x) => getComputedStyle(x.closest("[style]")).opacity !== "0.01" && !x.closest("[data-dopo]") && !x.hasAttribute("data-dopo") && !x.hasAttribute("data-via"));
+          if (!ims.length || ims.some((im) => !im.complete || !im.naturalWidth)) return [];
+          return ims.map((x) => Number(x.dataset.pagina));
+        });
+      await finche(async () => (await vista()).length, 20000, "il fumetto non si apre");
+      for (let i = 0; i < 20 && !(await vista()).includes(14); i++) {
+        const prima = (await vista()).join();
+        await d.p.keyboard.press("ArrowRight");
+        await finche(async () => (await vista()).join() !== prima && (await vista()).length, 8000, "la voltata non arriva");
+      }
+      const aSchermo = await vista();
+      if (!aSchermo.includes(14)) throw new Error(`non si arriva a pagina 14 (${aSchermo})`);
+      const fino = Math.max(...aSchermo);
+      const immagini = (c) => c.messages[0].content.filter((b) => b.type === "image").length;
+      const pagineDette = (c) => c.messages[0].content.filter((b) => b.type === "text").flatMap((b) => [...b.text.matchAll(/[Pp]agin[ae] (\d+)/g)].map((m) => Number(m[1])));
+      const senzaTitolo = (c) => {
+        if (/Arcadia/.test(JSON.stringify(c))) throw new Error("il titolo e' arrivato al modello");
+      };
+
+      // 1. la tavola a schermo
+      await d.p.getByRole("button", { name: "Tavola" }).click();
+      await finche(() => testoAvviso(d.p, /Risposta finta 1/), 10000, "la risposta sulla tavola non compare");
+      if (immagini(chieste[0]) !== aSchermo.length) throw new Error(`la tavola manda ${immagini(chieste[0])} immagini, a schermo ${aSchermo.length}`);
+      senzaTitolo(chieste[0]);
+
+      // 2. dove eravamo: mai oltre la pagina a cui sei
+      await d.p.getByRole("button", { name: "Chiudi il pannello" }).click();
+      await d.p.getByRole("button", { name: "Dove eravamo" }).click();
+      await finche(() => testoAvviso(d.p, /Risposta finta 2/), 10000, "il riassunto non compare");
+      const viste = pagineDette(chieste[1]);
+      if (viste.some((n) => n > fino)) throw new Error(`il riassunto ha visto pagine dopo la ${fino}: ${viste}`);
+      if (immagini(chieste[1]) > 10 || !viste.includes(fino)) throw new Error(`riassunto: ${immagini(chieste[1])} immagini, pagine ${viste}`);
+      senzaTitolo(chieste[1]);
+
+      // 3. chi e': si tocca il personaggio sulla tavola
+      await d.p.getByRole("button", { name: "Chiudi il pannello" }).click();
+      await d.p.getByRole("button", { name: "Chi è" }).click();
+      await finche(() => testoAvviso(d.p, /Tocca il personaggio/), 5000, "non chiede di toccare il personaggio");
+      const tavola = d.p.locator(`img[data-pagina="${aSchermo[0]}"]`).first();
+      const r = await tavola.boundingBox();
+      await d.p.mouse.click(r.x + r.width / 2, r.y + r.height / 3);
+      await finche(() => testoAvviso(d.p, /Risposta finta 3/), 10000, "la scheda del personaggio non compare");
+      const chi = pagineDette(chieste[2]);
+      if (chi.at(-1) !== aSchermo[0] || chi.slice(0, -1).some((n) => n >= aSchermo[0])) throw new Error(`chi e': pagine ${chi}, toccata la ${aSchermo[0]}`);
+      senzaTitolo(chieste[2]);
+      // la tavola cerchiata ha davvero il cerchio rosso (la pagina 14 e' azzurra)
+      const ultima = chieste[2].messages[0].content.filter((b) => b.type === "image").at(-1).source.data;
+      const rossi = await d.p.evaluate(async (b64) => {
+        const im = new Image();
+        im.src = `data:image/jpeg;base64,${b64}`;
+        await im.decode();
+        const c = document.createElement("canvas");
+        c.width = im.naturalWidth;
+        c.height = im.naturalHeight;
+        const g = c.getContext("2d");
+        g.drawImage(im, 0, 0);
+        const px = g.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 0; i < px.length; i += 4) if (px[i] > 200 && px[i + 1] < 80 && px[i + 2] < 80) n++;
+        return n;
+      }, ultima);
+      if (rossi < 20) throw new Error(`nella tavola mandata non c'e' il cerchio rosso (${rossi} pixel rossi)`);
+      return { guasti: d.guasti, nota: `a schermo ${aSchermo.join("+")}: tavola ${immagini(chieste[0])} img, riassunto ${immagini(chieste[1])} img (fino a ${fino}), chi e' ${immagini(chieste[2])} img, cerchio di ${rossi} pixel` };
     },
   },
   {

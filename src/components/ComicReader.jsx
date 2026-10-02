@@ -52,6 +52,13 @@ import { conAttesa } from "../lib/misuraPagine.js";
 import { doppioTocco, limita, zoomAttorno } from "../lib/tavola.js";
 import { apertaATuttoSchermo, serveTastoSchermo } from "../lib/schermoIntero.js";
 import BookCover from "./BookCover.jsx";
+import SchedaOracolo from "./SchedaOracolo.jsx";
+import { hasOracle, chiedi } from "../lib/oracle.js";
+import {
+  campionaPagine, puntoSullaTavola, domandaTavola, domandaRiassunto, domandaChi,
+  LATO_TAVOLA, LATO_CONTORNO, PAGINE_RIASSUNTO, PAGINE_CHI,
+} from "../lib/oracoloFumetti.js";
+import { tavolaInBase64 } from "../lib/immagineTavola.js";
 
 // IL LETTORE DEI FUMETTI (CBZ e CBR): una pagina e' un'immagine, e il
 // lavoro e' tutto nel gesto — voltare, avvicinarsi, e il VERSO, perche' un
@@ -208,6 +215,83 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const opzioni = { larghe, sposta };
   const mostrate = doppia ? coppiaDi(page, pages, opzioni) : [page];
   const chiaveMostrate = mostrate.join(",");
+
+  // L'ORACOLO SULLE TAVOLE (`lib/oracoloFumetti.js`): la tavola a schermo,
+  // il riassunto fin qui, e chi e' il personaggio toccato. Le pagine si
+  // leggono dall'archivio senza toccare la memoria delle voltate
+  const [oracolo, setOracolo] = useState(null);
+  const [indica, setIndica] = useState(false);
+  const [domandaLibera, setDomandaLibera] = useState("");
+  const oracoloGiro = useRef(0);
+  const ultimaConsulta = useRef(null);
+  const bytesDi = async (n) => {
+    const u = urls.current.get(n);
+    if (u) return (await fetch(u)).blob();
+    const a = archivio.current;
+    const bytes = await a.leggi(n - 1);
+    return new Blob([bytes], { type: tipoImmagine(a.pagine[n - 1]) || "image/jpeg" });
+  };
+  async function consulta(tipo, prepara) {
+    ultimaConsulta.current = () => consulta(tipo, prepara);
+    const mio = ++oracoloGiro.current;
+    const vivo = () => oracoloGiro.current === mio;
+    setPanel("oracolo");
+    // senza chiave non si scaricano le pagine per niente
+    if (!hasOracle()) return setOracolo({ tipo, fase: "errore", error: "chiave" });
+    setOracolo({ tipo, fase: "leggo", fatte: 0, quante: 0 });
+    let pronto;
+    try {
+      pronto = await prepara((fatte, quante) => vivo() && setOracolo((o) => ({ ...o, fatte, quante })));
+    } catch {
+      if (vivo()) setOracolo({ tipo, fase: "vuoto" });
+      return;
+    }
+    if (!vivo()) return;
+    setOracolo((o) => ({ ...o, fase: "chiedo", pagine: pronto.pagine }));
+    const r = await chiedi(pronto.domanda);
+    if (!vivo()) return;
+    setOracolo(r.answer ? { tipo, fase: "fatto", pagine: pronto.pagine, ...r } : { tipo, fase: "errore", pagine: pronto.pagine, ...r });
+  }
+  const leggiTavole = async (pagine, opzioni, passo) => {
+    const fuori = [];
+    for (const n of pagine) {
+      fuori.push({ pagina: n, ...(await tavolaInBase64(await bytesDi(n), opzioni)) });
+      passo(fuori.length, pagine.length);
+    }
+    return fuori;
+  };
+  const manga = verso === "rtl";
+  const spiegaTavola = (domanda = "") => {
+    const pagine = [...mostrate];
+    return consulta("tavola", async (passo) => ({
+      pagine,
+      domanda: domandaTavola({ immagini: await leggiTavole(pagine, { lato: LATO_TAVOLA }, passo), pagine, domanda, manga }),
+    }));
+  };
+  const dovEravamo = () => {
+    const fino = mostrate.at(-1);
+    const pagine = campionaPagine(fino, PAGINE_RIASSUNTO);
+    return consulta("trama", async (passo) => ({
+      pagine,
+      domanda: domandaRiassunto({ pagine: await leggiTavole(pagine, { lato: LATO_CONTORNO }, passo), fino, manga }),
+    }));
+  };
+  const chiE = (n, punto) => {
+    const prima = campionaPagine(n - 1, PAGINE_CHI);
+    return consulta("chi", async (passo) => {
+      const precedenti = await leggiTavole(prima, { lato: LATO_CONTORNO }, (f) => passo(f, prima.length + 1));
+      const [tavola] = await leggiTavole([n], { lato: LATO_TAVOLA, cerchio: punto }, () => passo(prima.length + 1, prima.length + 1));
+      return { pagine: [...prima, n], domanda: domandaChi({ precedenti, tavola, pagina: n, manga }) };
+    });
+  };
+  // «Chi è costui?»: il prossimo tocco sulla tavola indica il personaggio
+  const indicato = (e) => {
+    const img = document.elementsFromPoint(e.clientX, e.clientY).find((el) => el.tagName === "IMG" && el.dataset.pagina);
+    const punto = img && puntoSullaTavola(e.clientX, e.clientY, img.getBoundingClientRect());
+    if (!punto) return notify?.("Tocca il personaggio sulla tavola");
+    setIndica(false);
+    chiE(Number(img.dataset.pagina), punto);
+  };
   live.current.doppia = doppia;
   live.current.opzioni = opzioni;
   live.current.nastro = nastro;
@@ -629,12 +713,13 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   useEffect(() => {
     if (!indietro) return;
     indietro.current = () => {
+      if (indica) { setIndica(false); return true; }
       if (panel) { setPanel(null); return true; }
       handleClose();
       return false;
     };
     return () => { indietro.current = null; };
-  }, [indietro, panel, handleClose]);
+  }, [indietro, panel, indica, handleClose]);
 
   useEffect(() => {
     const riassesta = () => {
@@ -980,6 +1065,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
                 >
                   <img
                     src={url}
+                    data-pagina={n}
                     alt={archivio.current?.pagine?.[n - 1] || ""}
                     draggable={false}
                     onLoad={(e) => segnaMisura(n, { w: e.target.naturalWidth, h: e.target.naturalHeight })}
@@ -1029,6 +1115,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
                   >
                     <img
                       src={x.url}
+                      data-pagina={x.n}
                       alt={archivio.current?.pagine?.[x.n - 1] || ""}
                       draggable={false}
                       onLoad={(e) => segnaMisura(x.n, { w: e.target.naturalWidth, h: e.target.naturalHeight })}
@@ -1206,6 +1293,19 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
                   conNome={nomiNeiTasti}
                   nome="Segnalibri"
                   glifo="📑"
+                />
+                {/* l'Oracolo guarda le tavole (`lib/oracoloFumetti.js`) */}
+                <TastoBarra onClick={() => spiegaTavola()} attivo={panel === "oracolo" && oracolo?.tipo === "tavola"} conNome={nomiNeiTasti} nome="Tavola" glifo="✨" />
+                <TastoBarra onClick={dovEravamo} attivo={panel === "oracolo" && oracolo?.tipo === "trama"} conNome={nomiNeiTasti} nome="Dove eravamo" glifo="🧭" />
+                <TastoBarra
+                  onClick={() => {
+                    setPanel(null);
+                    setIndica(true);
+                  }}
+                  attivo={indica}
+                  conNome={nomiNeiTasti}
+                  nome="Chi è"
+                  glifo="👤"
                 />
                 {serveTastoSchermo({ abilitato: document.fullscreenEnabled, giaTuttoSchermo: apertaATuttoSchermo() }) && (
                   <TastoBarra onClick={toggleFullscreen} attivo={isFs} conNome={nomiNeiTasti} nome={isFs ? "Esci" : "Schermo"} glifo="⛶" />
@@ -1402,6 +1502,82 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
               : "La pagina di prima resta finché la nuova è pronta, poi sfuma in un terzo di secondo."}
           </div>
         </div>
+      )}
+
+      {indica && (
+        <div onClick={indicato} style={{ position: "absolute", inset: 0, zIndex: 29, cursor: "crosshair" }}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "absolute",
+              top: (chrome ? altezzaBarra : 0) + 12,
+              left: "50%",
+              transform: "translateX(-50%)",
+              maxWidth: `calc(100% - ${px(24)}px)`,
+              display: "flex",
+              alignItems: "center",
+              gap: 14,
+              padding: "6px 6px 6px 16px",
+              borderRadius: R.tondo,
+              background: `${C.surface}f2`,
+              border: `1px solid ${C.accent}88`,
+              color: C.text,
+              fontSize: F.nota,
+              boxShadow: "0 6px 24px #00000088",
+              animation: "bc-fade-in 0.2s ease-out",
+            }}
+          >
+            <span>👤 Tocca il personaggio: l'Oracolo lo cerca nelle pagine prima</span>
+            <button
+              onClick={() => setIndica(false)}
+              style={{ flexShrink: 0, minHeight: 44, padding: "0 14px", borderRadius: R.tondo, border: `1px solid ${C.border}`, color: C.muted, fontSize: F.piccolo }}
+            >
+              Annulla
+            </button>
+          </div>
+        </div>
+      )}
+
+      {panel === "oracolo" && oracolo && (
+        <Panel
+          title={oracolo.tipo === "tavola" ? "Cosa succede qui" : oracolo.tipo === "trama" ? "Dove eravamo rimasti" : "Chi è costui"}
+          onClose={() => setPanel(null)}
+        >
+          <SchedaOracolo
+            scheda={oracolo}
+            attese={{
+              leggo: oracolo.quante ? `Guardo le tavole… ${oracolo.fatte} di ${oracolo.quante}` : "Guardo le tavole…",
+              chiedo: `✨ L'Oracolo sta guardando ${oracolo.pagine?.length === 1 ? "la tavola" : `${oracolo.pagine?.length || ""} tavole`}…`,
+            }}
+            vuoto="Non riesco ad aprire queste pagine: riprova fra un momento."
+            onRiprova={() => ultimaConsulta.current?.()}
+          />
+          {oracolo.tipo === "tavola" && oracolo.fase === "fatto" && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const d = domandaLibera.trim();
+                if (!d) return;
+                setDomandaLibera("");
+                spiegaTavola(d);
+              }}
+              style={{ display: "flex", gap: 8, marginTop: 14 }}
+            >
+              <input
+                value={domandaLibera}
+                onChange={(e) => setDomandaLibera(e.target.value)}
+                placeholder="Chiedi qualcosa su questa tavola…"
+                style={{ flex: 1, minWidth: 0, padding: "9px 12px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, background: C.bg, color: C.text, fontSize: F.nota }}
+              />
+              <button
+                type="submit"
+                style={{ flexShrink: 0, minHeight: 44, padding: "0 14px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+              >
+                Chiedi
+              </button>
+            </form>
+          )}
+        </Panel>
       )}
 
       {panel === "marks" && (

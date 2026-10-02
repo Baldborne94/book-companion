@@ -61,6 +61,13 @@ export async function fumettoGrosso(pagine = 24) {
   return zip.generateAsync({ type: "nodebuffer" });
 }
 
+// un volume di `pagine` tavole piccole, ognuna del suo colore
+export async function fumettoLungo(pagine = 30) {
+  const zip = new JSZip();
+  for (let i = 0; i < pagine; i++) zip.file(`pagina ${String(i + 1).padStart(2, "0")}.png`, png(60, 90, [(i * 37) % 256, (i * 91) % 256, (i * 53) % 256]));
+  return zip.generateAsync({ type: "nodebuffer" });
+}
+
 export async function fumetto() {
   const zip = new JSZip();
   const colori = [[180, 40, 40], [40, 120, 180], [60, 160, 80]];
