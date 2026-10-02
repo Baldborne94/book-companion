@@ -1792,6 +1792,7 @@ export default function App() {
         )}
         {section === "library" && (
           <Library
+            onCambiate={() => presto.current?.()}
             books={books}
             updateBooks={updateBooks}
             lavoroCbr={lavoro}
