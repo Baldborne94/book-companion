@@ -234,9 +234,14 @@ const SCENE = [
       await aspetta(6000);
       // l'app uccisa di colpo, come la chiude il sistema in secondo piano:
       // nessun «Spegni», nessun evento d'uscita
+      // si aspetta che il processo sia morto davvero, poi si chiude la pagina:
+      // una pagina nuova dello stesso sito aperta prima poteva finire nel
+      // processo moribondo e restare appesa (visto in CI: `page.goto` scaduto)
+      const morta = new Promise((ok) => d.p.once("crash", ok));
       const cdp = await d.ctx.newCDPSession(d.p);
       cdp.send("Page.crash").catch(() => {});
-      await aspetta(1000);
+      await Promise.race([morta, aspetta(10000)]);
+      await d.p.close().catch(() => {});
       const p2 = await d.ctx.newPage();
       p2.on("pageerror", (e) => d.guasti.push(e.message));
       await p2.goto(`${URL_APP}?apri=musica`);
