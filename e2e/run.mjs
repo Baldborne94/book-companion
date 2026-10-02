@@ -250,6 +250,48 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «un mini player fatto come si deve, come se
+    // avessi YouTube o Spotify»
+    nome: "il lettore della musica va avanti, torna indietro, salta nel brano e suona il prossimo scelto",
+    async fai({ browser }) {
+      const d = await dispositivo(browser);
+      const t = () => d.p.evaluate(() => document.querySelector("audio")?.currentTime ?? -1);
+      const dove = (n) => finche(() => testoAvviso(d.p, new RegExp(`Le tue melodie · ${n} di 3`)), 8000, `non si arriva al brano ${n} di 3`);
+      await d.p.goto(`${URL_APP}?apri=musica`);
+      for (const nome of ["Pioggia", "Camino", "Arpa"]) await d.p.setInputFiles('input[accept="audio/*"]', { name: `${nome}.wav`, mimeType: "audio/wav", buffer: wav(200) });
+      await finche(() => d.p.getByText("Arpa", { exact: true }).count(), 10000, "le melodie non entrano");
+      await d.p.getByRole("button", { name: "▶ Tutte", exact: true }).click();
+      await finche(async () => (await t()) > 0.3, 10000, "non suona");
+
+      // la barretta fuori dalla sala: ⏭, poi ⏮ subito (brano prima)
+      await d.p.getByRole("button", { name: "Ingresso" }).first().click();
+      await d.p.getByRole("button", { name: "Brano dopo" }).click();
+      await dove(2);
+      await d.p.getByRole("button", { name: "Brano prima" }).click();
+      await dove(1);
+      // ⏮ a brano avviato riavvolge e resta li'
+      await d.p.evaluate(() => (document.querySelector("audio").currentTime = 30));
+      await d.p.getByRole("button", { name: "Brano prima" }).click();
+      await aspetta(400);
+      const riavvolto = await t();
+      if (riavvolto > 3) throw new Error(`«⏮» a brano avviato non riavvolge: ${riavvolto.toFixed(1)} s`);
+      await dove(1);
+
+      // nella sala: la barra si tocca a meta' brano, e «Prossimi» suona il brano scelto
+      await d.p.getByRole("button", { name: "Musica" }).first().click();
+      const barra = d.p.getByRole("slider", { name: "Punto del brano" });
+      await finche(async () => Number(await barra.getAttribute("aria-valuemax")) > 100, 8000, "la barra non conosce la durata");
+      const r = await barra.boundingBox();
+      await d.p.mouse.click(r.x + r.width / 2, r.y + r.height / 2);
+      await aspetta(400);
+      const meta = await t();
+      if (Math.abs(meta - 100) > 12) throw new Error(`toccata a meta' la barra, il brano e' a ${meta.toFixed(1)} s invece di ~100`);
+      await d.p.getByRole("button", { name: "Arpa" }).first().click();
+      await dove(3);
+      return { guasti: d.guasti, nota: `⏭ ⏮ e il riavvolgimento (${riavvolto.toFixed(1)} s), barra a ${meta.toFixed(0)} s, «Arpa» dai prossimi` };
+    },
+  },
+  {
     // segnalato dal lettore con «Batman - Hush (2019) (digital) (Son of
     // Ultron-Empire).cbr»: «archivio non leggibile», e basta. Un 7-Zip
     // rinominato si dice per nome, e un PDF rinominato entra come PDF.

@@ -3,8 +3,12 @@ import { C, F, R } from "../data/constants.js";
 import { driveAcceso } from "../lib/drive.js";
 import {
   parseYouTube, embedUrl, isFile, loadTrack, portaQuiMelodia, getVolume, saveVolume, restaDa, getFavorites,
-  puntoDi, segnaPunto, dimenticaPunto, daDoveRiprendere, segnaDove,
+  puntoDi, segnaPunto, dimenticaPunto, daDoveRiprendere, segnaDove, indietroDa, getLists,
 } from "../lib/music.js";
+import { Faccia, Avanzamento, Comandi, sottotitolo } from "./Ascolto.jsx";
+
+// il nome della raccolta che suona: la coda ne tiene solo la chiave
+const nomeRaccolta = (queue) => (queue?.raccolta ? getLists().find((r) => r.id === queue.raccolta)?.name : null);
 
 // Gli ultimi trenta secondi prima dello scadere del timer la musica scende
 // fino a spegnersi. L'ora chiesta resta quella: a quel minuto c'e' silenzio,
@@ -357,8 +361,46 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
     const order = shuffle ? shuffled(clean) : clean;
     const i = shuffle ? 0 : Math.min(Math.max(0, da), order.length - 1);
     queueRef.current = { list: order, i, shuffle, raccolta: shuffle ? null : raccolta };
-    setQueue({ total: order.length, shuffle, index: i, raccolta: shuffle ? null : raccolta });
+    setQueue({ total: order.length, shuffle, index: i, raccolta: shuffle ? null : raccolta, elenco: order.map(voceInCoda) });
     return start(order[i]);
+  }
+
+  // la coda come la vede chi guarda: nome e chiave, mai i byte
+  const voceInCoda = (f) => ({ id: f.id, name: f.name, trackId: f.trackId, url: f.url });
+
+  function vaiA(i) {
+    const q = queueRef.current;
+    if (!q.list[i]) return false;
+    q.i = i;
+    setQueue({ total: q.list.length, shuffle: q.shuffle, index: i, raccolta: q.raccolta, elenco: q.list.map(voceInCoda) });
+    return start(q.list[i]);
+  }
+
+  function tempo() {
+    const c = vivo.current.current;
+    const a = audioRef.current;
+    if (c?.src && a) return { t: a.currentTime || 0, d: Number.isFinite(a.duration) ? a.duration : 0 };
+    if (c && ytTempo.current) return { t: ytTempo.current.t || 0, d: ytTempo.current.d || 0 };
+    return { t: 0, d: 0 };
+  }
+
+  function seek(t) {
+    const c = vivo.current.current;
+    if (!c) return;
+    const a = audioRef.current;
+    if (c.src && a) {
+      try { a.currentTime = Math.max(0, t); } catch { /* non ancora caricato */ }
+    } else {
+      command("seekTo", [Math.max(0, t), true]);
+      if (ytTempo.current) ytTempo.current = { ...ytTempo.current, t };
+    }
+  }
+
+  function prev() {
+    const q = queueRef.current;
+    const mossa = indietroDa({ i: q.list.length ? q.i : 0, t: tempo().t });
+    if (mossa.riavvolgi) seek(0);
+    else vaiA(mossa.i);
   }
 
   function advance() {
@@ -371,7 +413,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
       i = 0;
     }
     q.i = i;
-    setQueue({ total: q.list.length, shuffle: q.shuffle, index: i, raccolta: q.raccolta });
+    setQueue({ total: q.list.length, shuffle: q.shuffle, index: i, raccolta: q.raccolta, elenco: q.list.map(voceInCoda) });
     start(q.list[i]);
   }
   advanceRef.current = advance;
@@ -482,10 +524,22 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
       // il tasto «avanti» del sistema vale sempre: fuori da una raccolta
       // l'ordine e' quello del tuo elenco di melodie
       ms.setActionHandler("nexttrack", () => nextRef.current());
+      ms.setActionHandler("previoustrack", () => prevRef.current());
+      ms.setActionHandler("seekto", (d) => d?.seekTime != null && seekRef.current(d.seekTime));
     } catch { /* si resta ai comandi in app */ }
   }, [current, playing]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useImperativeHandle(ref, () => ({ play, playQueue, pause, resume, stop, setSleep, setVolume, sottovoce, next }));
+  // per la barra del punto una funzione sola per tutta la vita del player
+  const tempoRef = useRef(tempo);
+  tempoRef.current = tempo;
+  const tempoFisso = useRef(() => tempoRef.current()).current;
+
+  const prevRef = useRef(prev);
+  prevRef.current = prev;
+  const seekRef = useRef(seek);
+  seekRef.current = seek;
+
+  useImperativeHandle(ref, () => ({ play, playQueue, pause, resume, stop, setSleep, setVolume, sottovoce, next, prev, seek, vaiA, tempo }));
 
   return (
     <>
@@ -558,75 +612,42 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
             right: 12,
             bottom: "calc(47px + min(env(safe-area-inset-bottom, 0px), 8px))",
             zIndex: 11,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "9px 14px",
             borderRadius: R.medio,
-            background: `${C.card}f5`,
+            background: `${C.card}f7`,
             border: `1px solid ${C.border}`,
             boxShadow: `0 0 24px ${C.arcane}22, 0 6px 24px #00000066`,
             animation: "bc-fade-in 0.25s ease-out",
+            overflow: "hidden",
           }}
         >
-          {/* tutta la parte che racconta — nota, nome, sorgente, conto alla
-              rovescia — e' un solo bersaglio che porta alla sala della
-              musica: i tasti restano fuori, o cambiare traccia diventerebbe
-              un salto di sezione */}
-          <button
-            onClick={onOpen}
-            aria-label="Vai alla sala della musica"
-            style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, minWidth: 0, textAlign: "left" }}
-          >
-            <span
-              style={{
-                fontSize: F.titoletto,
-                animation: playing ? "bc-flicker 3s ease-in-out infinite" : "none",
-                opacity: playing ? 1 : 0.5,
-              }}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px 8px 8px" }}>
+            {/* copertina, nome e da dove viene sono un solo bersaglio che
+                porta alla sala della musica: i tasti restano fuori, o
+                cambiare traccia diventerebbe un salto di sezione */}
+            <button
+              onClick={onOpen}
+              aria-label="Vai alla sala della musica"
+              style={{ flex: 1, display: "flex", alignItems: "center", gap: 12, minWidth: 0, textAlign: "left" }}
             >
-              🎶
-            </span>
-            <span
-              style={{
-                flex: 1,
-                fontSize: F.nota,
-                color: C.text,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {current.name || "Musica di sottofondo"}
-            </span>
-            {/* da dove esce l'audio, a colpo d'occhio: e' l'unica cosa che
-                dice se questa musica reggera' lo schermo spento o no */}
-            <span
-              title={current.src ? "Lo suona l'app: regge lo schermo spento" : "Da YouTube: solo a schermo acceso"}
-              style={{ fontSize: F.corpo, color: current.src ? C.accent : C.muted, opacity: 0.9 }}
-            >
-              {current.src ? "♫" : "♪"}
-            </span>
-            {manca && (
-              <span
-                title="Quanto manca allo spegnimento"
-                style={{ fontSize: F.minuscolo, color: C.muted, whiteSpace: "nowrap" }}
-              >
-                🌙 {manca}
+              <Faccia nome={current.name || ""} misura={46} viva={playing} />
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: F.corpo, color: C.text, lineHeight: 1.25, overflowWrap: "break-word" }}>
+                  {current.name || "Musica di sottofondo"}
+                </span>
+                <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginTop: 2, overflowWrap: "break-word" }}>
+                  {sottotitolo({ current, queue, nomeRaccolta: nomeRaccolta(queue) })}
+                  {manca ? ` · 🌙 ${manca}` : ""}
+                </span>
               </span>
-            )}
-            <span style={{ fontSize: F.corpo, color: C.muted, opacity: 0.7 }}>›</span>
-          </button>
-          <button
-            onClick={playing ? pause : resume}
-            aria-label={playing ? "Pausa" : "Riprendi"}
-            style={{ fontSize: F.titoletto, color: C.accent, width: 34, height: 34 }}
-          >
-            {playing ? "⏸" : "▶"}
-          </button>
-          <button onClick={stop} aria-label="Spegni la musica" style={{ fontSize: F.corpo, color: C.muted, width: 30, height: 30 }}>
-            ✕
-          </button>
+            </button>
+            <Comandi playing={playing} onPrev={prev} onToggle={playing ? pause : resume} onNext={() => next()} />
+            <button onClick={stop} aria-label="Spegni la musica" style={{ fontSize: F.corpo, color: C.muted, width: 40, height: 44 }}>
+              ✕
+            </button>
+          </div>
+          <div style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}>
+            <Avanzamento tempo={tempoFisso} sottile />
+          </div>
         </div>
       )}
     </>
