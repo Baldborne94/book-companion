@@ -250,6 +250,38 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «deve sincronizzarsi anche la sezione musica, se
+    // metto nuove raccolte o altro queste devo vederle anche sugli altri
+    // dispositivi»
+    nome: "una raccolta musicale fatta sul PC arriva da sola sul tablet, anche a sala della musica aperta",
+    async fai({ browser, db }) {
+      const pc = await dispositivo(browser, { sessione: true });
+      const tab = await dispositivo(browser, { sessione: true });
+      const nomiRaccolte = () => (db.prefs()?.music_lists || []).filter((r) => !r.deleted).map((r) => r.name);
+      await pc.p.goto(`${URL_APP}?apri=musica`);
+      await tab.p.goto(`${URL_APP}?apri=musica`);
+      // il primo giro di tutt'e due e' passato: da qui in poi conta solo la mano
+      await aspetta(4000);
+      await pc.p.getByRole("button", { name: "＋ Da YouTube" }).click();
+      await pc.p.getByPlaceholder("Link YouTube della melodia…").fill("https://www.youtube.com/watch?v=abcdefghijk");
+      await pc.p.getByPlaceholder(/Nome/).fill("Pioggia e camino");
+      await pc.p.getByRole("button", { name: "☆ Custodisci" }).click();
+      await pc.p.getByRole("button", { name: "＋ Nuova raccolta" }).click();
+      await pc.p.getByPlaceholder(/Come la chiami/).fill("Notti d'inverno");
+      await pc.p.getByRole("button", { name: "✧ Crea" }).click();
+      await pc.p.getByRole("button", { name: "Pioggia e camino" }).first().click();
+      await pc.p.getByRole("button", { name: "Fatto" }).first().click();
+      // il PC resta li', a finestra aperta: nessun avvio, nessun ritorno
+      await finche(() => nomiRaccolte().includes("Notti d'inverno"), 15000, `la raccolta non sale nel cloud (lassu': ${JSON.stringify(nomiRaccolte())})`);
+      // e il tablet, con la sala gia' aperta, la vede al suo prossimo giro
+      // (il ritorno nell'app), senza uscire e rientrare dalla sala
+      await tab.p.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+      await finche(() => testoAvviso(tab.p, /^Notti d'inverno$/), 15000, "la raccolta non compare sul tablet");
+      await finche(() => testoAvviso(tab.p, /^1 brano$/), 5000, "la raccolta arriva vuota sul tablet");
+      return { guasti: [...pc.guasti, ...tab.guasti], nota: `lassu': ${nomiRaccolte().join(", ")}; sul tablet a sala aperta` };
+    },
+  },
+  {
     // chiesto dal lettore: «un mini player fatto come si deve, come se
     // avessi YouTube o Spotify»
     nome: "il lettore della musica va avanti, torna indietro, salta nel brano e suona il prossimo scelto",
