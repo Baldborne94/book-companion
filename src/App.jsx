@@ -31,8 +31,6 @@ import { removeBookData, removeFileOnly, requestPersistence, listCoverIds } from
 import { cercaNuovaVersione } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
 import Home from "./components/Home.jsx";
-import Library from "./components/Library.jsx";
-import BookSheet from "./components/BookSheet.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
 import { getBookMusic, setBookMusic, portaQuiTutte, fraseScarico } from "./lib/music.js";
 import { getJump, clearJump, getMarks } from "./lib/annotations.js";
@@ -75,6 +73,10 @@ const navIcon = (sectionId, themeId) =>
 // dopo l'avvio lo trova gia' pronto, e senza rete le serve il service
 // worker, che le tiene tutte.
 const STANZE = {
+  // la Libreria e la scheda del libro per prime: sono le stanze che si
+  // aprono di piu', e all'avvio l'Ingresso non le usa
+  Library: () => import("./components/Library.jsx"),
+  BookSheet: () => import("./components/BookSheet.jsx"),
   QuoteGarden: () => import("./components/QuoteGarden.jsx"),
   ReadingDiary: () => import("./components/ReadingDiary.jsx"),
   Quaderno: () => import("./components/Quaderno.jsx"),
@@ -84,6 +86,8 @@ const STANZE = {
   MusicRoom: () => import("./components/MusicRoom.jsx"),
   SyncPanel: () => import("./components/SyncPanel.jsx"),
 };
+const Library = lazy(STANZE.Library);
+const BookSheet = lazy(STANZE.BookSheet);
 const QuoteGarden = lazy(STANZE.QuoteGarden);
 const ReadingDiary = lazy(STANZE.ReadingDiary);
 const Quaderno = lazy(STANZE.Quaderno);
@@ -1814,6 +1818,7 @@ export default function App() {
           />
         )}
         {section === "library" && (
+          <Suspense fallback={null}>
           <Library
             onCambiate={() => presto.current?.()}
             books={books}
@@ -1861,6 +1866,7 @@ export default function App() {
               applica: () => swUpdate.current?.(true),
             }}
           />
+          </Suspense>
         )}
         {section === "music" && (
           <Suspense fallback={null}>
@@ -1889,6 +1895,7 @@ export default function App() {
       )}
       <BottomNav section={section} goTo={navigate} themeId={themeId} />
       {openBook && (
+        <Suspense fallback={null}>
         <BookSheet
           key={openBook.id}
           book={openBook}
@@ -1902,6 +1909,7 @@ export default function App() {
           onRead={handleRead}
           notify={notify}
         />
+        </Suspense>
       )}
       {themeOpen && (
         <Impostazioni

@@ -167,6 +167,8 @@ const SCENE = [
       const d = await dispositivo(browser);
       await d.p.goto(URL_APP);
       await d.p.getByRole("button", { name: "Libreria" }).first().click();
+      // la Libreria e' un pezzo a parte: la misura si scrive quando e' a schermo
+      await finche(() => d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_tempi") || "[]").some((x) => x.c === "libreria")), 10000, "la Libreria aperta dal menu non e' misurata");
       await importa(d.p, "La nebbia.epub", await epub(), "application/epub+zip");
       await d.p.getByText("La nebbia").first().click();
       await d.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();

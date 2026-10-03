@@ -46,7 +46,7 @@ export default defineConfig({
         // precacharli vorrebbe dire spedirli a tutti al primo avvio, cioe'
         // togliere la scelta che il tasto promette.
         // il wasm e' quello di unrar, 200 KB: precacharlo vuol dire aprire un CBR anche senza rete
-        globPatterns: ["**/*.{js,mjs,css,html,svg,png,wasm}"],
+        globPatterns: ["**/*.{js,mjs,css,html,svg,png,wasm,woff2}"],
         // le melodie di Drive che suonano mentre scendono (`public/melodia-sw.js`)
         importScripts: ["melodia-sw.js"],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
