@@ -1,7 +1,7 @@
 // I TEMPI DELL'APP (`lib/tempi.js`): avvio, Libreria, apertura di ePub e
 // PDF, misurati sul tablet del lettore e riassunti nel rapporto. Solo
 // numeri, e ogni misura con le sue tappe.
-import { parti, partenza, vocePerTempo, segnaTempo, tempiAnnotati, svuotaTempi, righeTempi, misuraApertura, provenienza, codiceArrivato, segnaAvvio, TENUTI } from "../src/lib/tempi.js";
+import { parti, partenza, vocePerTempo, segnaTempo, tempiAnnotati, svuotaTempi, righeTempi, misuraApertura, provenienza, codiceArrivato, segnaAvvio, TENUTI, tappeAvvio, datiNavigazione } from "../src/lib/tempi.js";
 import { rapporto } from "../src/lib/registro.js";
 
 const memoria = () => {
@@ -61,6 +61,36 @@ export default async function (t) {
   t.eq("React che monta due volte non fa due avvii", avvii.length, 1);
   t.eq("il codice conta dalla navigazione", avvii[0].f.codice, 200);
   t.eq("coi libri", avvii[0].n, 3);
+
+  // ---- dove va il tempo prima del codice -----------------------------------
+  t.eq(
+    "le tappe in ordine di tempo",
+    JSON.stringify(tappeAvvio({ pagina: 300, stile: 900, programma: 500 }, 1400)),
+    JSON.stringify([["html", 300], ["js", 500], ["stile", 900]])
+  );
+  t.eq("dopo il codice una tappa non conta", tappeAvvio({ pagina: 300, stile: 1500 }, 1400).length, 1);
+  t.eq("senza misure niente tappe", tappeAvvio({}, 1400).length, 0);
+  const perf = {
+    getEntriesByType: (k) =>
+      k === "navigation"
+        ? [{ responseEnd: 310 }]
+        : [
+            { name: "https://x/assets/index-a.css", responseEnd: 420 },
+            { name: "https://fonts.googleapis.com/css2?family=EB+Garamond", responseEnd: 880 },
+            { name: "https://fonts.gstatic.com/s/eb/a.woff2", responseEnd: 2000 },
+            { name: "https://x/assets/index-b.js", responseEnd: 640 },
+            { name: "https://x/assets/Library-c.js", responseEnd: 3000 },
+          ],
+  };
+  const doc = { querySelector: () => ({ src: "https://x/assets/index-b.js" }) };
+  const nav = datiNavigazione(perf, doc);
+  t.eq("la pagina dell'app", nav.pagina, 310);
+  t.eq("lo stile aspetta anche i caratteri di Google, non i file dei caratteri", nav.stile, 880);
+  t.eq("il programma e' quello della pagina", nav.programma, 640);
+  const diviso = righeTempi([{ q: 1, c: "avvio", f: { html: 300, js: 200, stile: 400, codice: 500, primo: 500 }, n: 1265 }]).join("\n");
+  t.c("il rapporto dice le tappe dell'avvio", /pagina dell'app 300 ms \+ programma scaricato 200 ms \+ stile e caratteri 400 ms \+ codice 500 ms \+ primo disegno 500 ms/.test(diviso), diviso);
+  t.eq("un browser senza misure non rompe niente", JSON.stringify(datiNavigazione({ getEntriesByType: () => { throw new Error("no"); } }, doc)), "{}");
+
 
   // ---- il registro ----------------------------------------------------------
   for (let i = 0; i < TENUTI + 5; i++) segnaTempo({ q: i, c: "avvio", f: { primo: i } }, { st });

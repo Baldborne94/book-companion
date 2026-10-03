@@ -29,7 +29,8 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 
 ## Architettura
 
-- React 18 + Vite 5, niente router: la sezione attiva è uno `useState` in `App.jsx`. Le stanze usate di rado (cammino, da prendere, quaderno, mappa, diario, giardino, musica, nuvola) sono lazy e si precaricano a riposo (`precaricaStanze`).
+- React 18 + Vite 5, niente router: la sezione attiva è uno `useState` in `App.jsx`. Le stanze usate di rado (cammino, da prendere, quaderno, mappa, diario, giardino, musica, nuvola), e anche la Libreria e la scheda del libro, sono lazy e si precaricano a riposo (`precaricaStanze`, Libreria e scheda per prime).
+- **I caratteri dell'interfaccia stanno nell'app** (`src/fonti/`, `@font-face` in `index.css`, latino e latino esteso, licenze OFL accanto, precache del service worker): mai un `@import` di Google nel foglio dell'app, che teneva fermo il programma finché non arrivava. Quelli del reader si scaricano a parte (`importDelFont`).
 - Stili **100% inline**. `src/index.css` tiene solo reset, font, keyframes, `.textLayer` di pdf.js, pseudo-classi (`:active`, `:focus-visible`) e pseudo-elementi delle View Transitions.
 - `src/lib/`: moduli senza JSX. `src/components/`: sezioni e pannelli. `src/data/`: tavole (saghe, generi, mappa delle funzioni, costanti).
 - `epubjs`, `pdfjs-dist`, `jszip` si importano solo lazy.
@@ -132,7 +133,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 ### Guasti
 
 - Le voltate dei fumetti si misurano (`lib/voltate.js`, `bc_voltate`, 200): byte e disegno separati, stato delle pagine (pronte / in arrivo / chieste), Drive o tablet; il riassunto in coda al rapporto dei guasti. Solo numeri, mai titoli.
-- Anche avvio, Libreria aperta dal menu, apertura di ePub e PDF si misurano (`lib/tempi.js`, `bc_tempi`, 120): tappe dal tocco (`parti` → `partenza`) alla pagina disegnata, provenienza e peso, in coda al rapporto. Solo numeri. Si cura una lentezza solo dopo che il rapporto del lettore l'ha mostrata.
+- Anche avvio, Libreria aperta dal menu, apertura di ePub e PDF si misurano (`lib/tempi.js`, `bc_tempi`, 120): tappe dal tocco (`parti` → `partenza`) alla pagina disegnata, provenienza e peso, in coda al rapporto. L'avvio dice anche cosa c'è prima del codice (`tappeAvvio`: pagina dell'app, stile e caratteri, programma scaricato). Solo numeri. Si cura una lentezza solo dopo che il rapporto del lettore l'ha mostrata.
 - I guasti si annotano in `bc_errori` (`lib/registro.js`: disegno, pagina, promesse, sincronizzazione) e il rapporto lo copia il lettore dalle Impostazioni. Niente telemetria; chi aggiunge un segreto che può finire in un messaggio aggiunge la sua regola in `pulisci`.
 
 ## Lezioni vincolanti (non re-impararle)

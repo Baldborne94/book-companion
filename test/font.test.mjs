@@ -45,10 +45,14 @@ export default async function (t) {
   // l'anteprima sui tasti usa `f.css` nella pagina dell'app, non nel
   // capitolo: la pagina deve conoscere la famiglia, o il tasto «Literata»
   // si disegnerebbe in Georgia e la scelta sarebbe alla cieca
+  // (i caratteri stanno nell'app, `@font-face` in index.css, non piu' un
+  // `@import` di Google: teneva fermo l'avvio, vedi `tappeAvvio`)
   const indice = leggi("src/index.css");
+  const dichiarate = new Set([...indice.matchAll(/@font-face\s*\{[^}]*font-family:\s*"([^"]+)"[^}]*src:\s*url\("\.\/fonti\/[^"]+\.woff2"\)/g)].map((m) => m[1]));
   for (const f of scaricati) {
-    t.c(`la pagina dell'app conosce «${f.label}» per l'anteprima`, indice.includes(`family=${f.google.split(":")[0]}`));
+    t.c(`la pagina dell'app conosce «${f.label}» per l'anteprima`, dichiarate.has(famigliaGoogle(f.google)), [...dichiarate].join(", "));
   }
+  t.c("e nessun @import di Google la tiene ferma all'avvio", !/@import[^;]*fonts\.googleapis/.test(indice));
 
   // la cache dei font deve tenere tutti i file che servono, o senza rete un
   // peso del carattere scelto torna Georgia

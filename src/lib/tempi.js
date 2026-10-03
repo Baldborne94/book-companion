@@ -42,11 +42,45 @@ let avvioSegnato = false;
 export function codiceArrivato(t = adesso()) {
   codice = t;
 }
-export function segnaAvvio({ n = 0, segna = segnaTempo, raf } = {}) {
+export function segnaAvvio({ n = 0, segna = segnaTempo, raf, perf = globalThis.performance, doc = globalThis.document } = {}) {
   if (avvioSegnato || codice == null) return;
   avvioSegnato = true;
   const tc = codice;
-  dopoIlDisegno((t) => segna(vocePerTempo({ cosa: "avvio", t0: 0, tappe: [["codice", tc], ["primo", t]], n })), { raf });
+  const prima = tappeAvvio(datiNavigazione(perf, doc), tc);
+  dopoIlDisegno((t) => segna(vocePerTempo({ cosa: "avvio", t0: 0, tappe: [...prima, ["codice", tc], ["primo", t]], n })), { raf });
+}
+
+// DOVE VA IL TEMPO PRIMA DEL CODICE (il rapporto del tablet: «codice 1,4 s»,
+// e sul banco lo stesso pacchetto ne voleva 0,4 s rallentato quattro
+// volte: il resto non e' calcolo, e senza tappe non si sa cos'e'). La
+// pagina dell'app (service worker che si sveglia e risponde), il foglio di
+// stile coi caratteri di Google che si porta dietro (il programma non parte
+// finche' non e' arrivato), il programma scaricato. In ordine di tempo, e
+// solo quelle prima del codice: arrivano in parallelo
+export function tappeAvvio({ pagina, stile, programma } = {}, codice = Infinity) {
+  return [
+    ["html", pagina],
+    ["stile", stile],
+    ["js", programma],
+  ]
+    .filter(([, t]) => Number.isFinite(t) && t > 0 && t < codice)
+    .sort((a, b) => a[1] - b[1]);
+}
+
+export function datiNavigazione(perf, doc) {
+  try {
+    const nav = perf?.getEntriesByType?.("navigation")?.[0];
+    const risorse = perf?.getEntriesByType?.("resource") || [];
+    const src = doc?.querySelector?.('script[type="module"]')?.src;
+    const fogli = risorse.filter((r) => /\.css(\?|$)|fonts\.googleapis\.com\/css/.test(r.name)).map((r) => r.responseEnd);
+    return {
+      pagina: nav?.responseEnd,
+      stile: fogli.length ? Math.max(...fogli) : undefined,
+      programma: risorse.find((r) => r.name === src)?.responseEnd,
+    };
+  } catch {
+    return {};
+  }
 }
 
 // L'APERTURA DI UN LIBRO: dal tocco su «Leggi» (`parti` in App) alla
@@ -130,6 +164,9 @@ const NOMI = {
   pdf: "PDF aperto",
 };
 const TAPPE = {
+  html: "pagina dell'app",
+  stile: "stile e caratteri",
+  js: "programma scaricato",
   pagina: "pagina pronta",
   disegno: "disegno",
   codice: "codice",
