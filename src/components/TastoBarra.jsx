@@ -278,18 +278,23 @@ export function BarraDelLibro({ titolo, onClose, linguetta, musica, tasti, coda,
   return (
     <div ref={ref} style={{ ...fondo, display: "flex", flexDirection: "column", gap: 6 }}>
       {linguetta}
+      {/* LA MUSICA STA NELLA RIGA DEL TITOLO (misurato sul tablet del
+          lettore, 902×1503 a densita' 1,33 e scrittura ×1,5: con la musica
+          nella riga dei comandi la barra di un fumetto andava su tre righe,
+          261 px, e «Schermo» restava solo in fondo). Il titolo ha
+          `flex: 1` e cede lui, coi puntini */}
       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
         {chiudi}
         {nome}
+        {musica}
         {coda}
       </div>
       {/* i tasti si spartiscono la riga: stretti insieme a sinistra
           sembrerebbero avanzati, ed e' l'aspetto «sacrificato» da cui si
           parte; `wrap` qui e' gratis, perche' quando ci stanno non fa
-          niente e quando non ci stanno (musica accesa su un telefono) e'
-          l'unica alternativa a un comando fuori dallo schermo */}
+          niente e quando non ci stanno e' l'unica alternativa a un comando
+          fuori dallo schermo */}
       <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", justifyContent: "space-evenly", gap: 4 }}>
-        {musica}
         {tasti}
       </div>
     </div>
