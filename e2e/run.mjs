@@ -587,37 +587,64 @@ const SCENE = [
   },
   {
     // segnalato dal lettore con una foto di Hellboy: «la disposizione non mi
-    // fa proprio impazzire». Col tablet in verticale e la musica accesa i tre
-    // tasti dell'Oracolo portavano la barra a tre righe, 183 px di tavola
-    // coperta; un tasto solo col menu la riporta a due
-    nome: "la barra dei fumetti sta su due righe col tablet in verticale e la musica accesa",
+    // fa proprio impazzire». Il suo tablet e' 902×1503 a densita' 1,33, a
+    // dito, aperto nel browser (dal suo rapporto: non 1280×800 a densita' 1,
+    // come si credeva), e li' la scrittura e' ×1,5. Con la musica accesa la
+    // barra andava su tre righe nei fumetti, e su piu' ancora in ePub e PDF:
+    // la musica nella riga del titolo le riporta a due
+    nome: "sul tablet del lettore in verticale, con la musica accesa, le barre dei tre lettori stanno su due righe",
     async fai({ browser }) {
-      const d = await dispositivo(browser);
-      await d.p.setViewportSize({ width: 800, height: 1280 });
-      await importa(d.p, "Il segreto di Arcadia.cbz", await fumettoLungo(6), "application/zip");
-      await d.p.goto(`${URL_APP}?apri=musica`);
-      for (const nome of ["D&D Dark Ambient Campaign Music", "Camino", "Arpa"]) await d.p.setInputFiles('input[accept="audio/*"]', { name: `${nome}.wav`, mimeType: "audio/wav", buffer: wav(200) });
-      await finche(() => d.p.getByText("Arpa", { exact: true }).count(), 10000, "le melodie non entrano");
-      await d.p.getByRole("button", { name: "▶ Tutte", exact: true }).click();
-      await finche(() => d.p.evaluate(() => (document.querySelector("audio")?.currentTime || 0) > 0.2), 10000, "non suona");
-      await d.p.getByRole("button", { name: "Libreria" }).first().click();
-      await d.p.getByText("Il segreto di Arcadia").first().click();
-      await d.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
-      await finche(() => d.p.locator("img[data-pagina]").count(), 20000, "il fumetto non si apre");
+      const ctx = await browser.newContext({ viewport: { width: 902, height: 1503 }, screen: { width: 902, height: 1503 }, deviceScaleFactor: 1.33, hasTouch: true, isMobile: true });
+      await ctx.route((u) => !/^(localhost|127\.0\.0\.1)$/.test(u.hostname), (r) => r.abort());
+      const p = await ctx.newPage();
+      const guasti = [];
+      p.on("pageerror", (e) => guasti.push(e.message));
+      await importa(p, "Il segreto di Arcadia.cbz", await fumettoLungo(6), "application/zip");
+      await importa(p, "La nebbia.epub", await epub(), "application/epub+zip");
+      await importa(p, "Carte.pdf", pdf(3), "application/pdf");
+      await p.goto(`${URL_APP}?apri=musica`);
+      for (const nome of ["D&D Dark Ambient Campaign Music", "Camino"]) await p.setInputFiles('input[accept="audio/*"]', { name: `${nome}.wav`, mimeType: "audio/wav", buffer: wav(200) });
+      await finche(() => p.getByText("Camino", { exact: true }).count(), 10000, "le melodie non entrano");
+      await p.getByRole("button", { name: "▶ Tutte", exact: true }).click();
+      await finche(() => p.evaluate(() => (document.querySelector("audio")?.currentTime || 0) > 0.2), 10000, "non suona");
+      // le righe della barra: i tasti si raggruppano per altezza del centro
       const misura = () =>
-        d.p.evaluate(() => {
-          const barra = document.querySelector('[aria-label="Chiudi il libro"]').closest("div[style*='position: absolute']");
-          const righe = new Set([...barra.querySelectorAll("button")].map((b) => Math.round(b.getBoundingClientRect().top / 10)));
-          return { alta: Math.round(barra.getBoundingClientRect().height), righe: righe.size, musica: !!barra.querySelector('[aria-label*="musica" i], [aria-label*="Pausa" i]') };
+        p.evaluate(() => {
+          const chiudi = document.querySelector('[aria-label="Chiudi il libro"]');
+          if (!chiudi) return null;
+          const barra = chiudi.closest("div[style*='position: absolute']");
+          // la linguetta dell'ePub sporge sotto la barra: non e' una riga
+          const fondo = barra.getBoundingClientRect().bottom;
+          const centri = [...barra.querySelectorAll("button")].map((b) => b.getBoundingClientRect()).filter((r) => r.height && r.bottom <= fondo).map((r) => r.top + r.height / 2).sort((x, y) => x - y);
+          const righe = centri.filter((c, i) => i === 0 || c - centri[i - 1] > 30).length;
+          return { alta: Math.round(barra.getBoundingClientRect().height), righe, musica: !!barra.querySelector('[aria-label="Pausa musica"]') };
         });
-      const m = await finche(async () => {
-        const x = await misura();
-        return x.musica && x;
-      }, 5000, "la musica non sta nella barra del fumetto");
-      if (m.righe > 2) throw new Error(`la barra del fumetto va su ${m.righe} righe (${m.alta} px)`);
-      await d.p.getByRole("button", { name: "Oracolo", exact: true }).click();
-      await finche(() => d.p.getByRole("menuitem", { name: /Dove eravamo/ }).count(), 3000, "il menu dell'Oracolo non si apre");
-      return { guasti: d.guasti, nota: `barra a ${m.righe} righe, ${m.alta} px` };
+      const note = [];
+      for (const titolo of ["Il segreto di Arcadia", "La nebbia", "Carte"]) {
+        await p.getByRole("button", { name: "Libreria" }).first().click();
+        await p.getByText(titolo).first().click();
+        await p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+        // a dito il libro si apre senza barre: un tocco solo, a pagina pronta,
+        // le chiama (due di fila sarebbero un doppio tocco)
+        if (titolo === "Il segreto di Arcadia") await finche(() => p.locator("img[data-pagina]").count(), 20000, "il fumetto non si apre");
+        await aspetta(2500);
+        if (!(await misura())) await p.touchscreen.tap(451, 750);
+        const m = await finche(async () => {
+          const x = await misura();
+          return x?.musica && x;
+        }, 8000, `la barra di «${titolo}» non c'e', o senza la musica`);
+        if (m.righe > 2) throw new Error(`la barra di «${titolo}» va su ${m.righe} righe (${m.alta} px)`);
+        note.push(`${titolo.split(" ").pop()} ${m.alta} px`);
+        if (titolo === "Il segreto di Arcadia") {
+          await p.getByRole("button", { name: "Oracolo", exact: true }).click();
+          await finche(() => p.getByRole("menuitem", { name: /Dove eravamo/ }).count(), 3000, "il menu dell'Oracolo non si apre");
+          await p.keyboard.press("Escape");
+        }
+        await p.getByRole("button", { name: "Chiudi il libro" }).click();
+        await finche(async () => !(await p.locator('[aria-label="Chiudi il libro"]').count()), 5000, `«${titolo}» non si chiude`);
+      }
+      await ctx.close();
+      return { guasti, nota: `due righe: ${note.join(", ")}` };
     },
   },
   {
