@@ -11,6 +11,7 @@ import {
   fileDellElenco,
   cartelleDellElenco,
   audioDellElenco,
+  potaElenco,
 } from "../src/lib/driveCore.js";
 import { letturaUnica } from "../src/lib/library.js";
 
@@ -24,6 +25,16 @@ export default async function (t) {
   t.c("un documento di Google no", !daTenereNellElenco({ id: "a", name: "Appunti", mimeType: "application/vnd.google-apps.document" }));
   t.c("un file cestinato no", !daTenereNellElenco({ id: "a", name: "Mort.epub", trashed: true }));
   t.c("un file senza id no", !daTenereNellElenco({ name: "Mort.epub" }));
+  // SOLO QUEL CHE L'APP GUARDA (segnalato dal lettore: il giro fermo su
+  // «Guardo i libri»; il suo Drive ha 1,5 TB di altro)
+  t.c("una foto no", !daTenereNellElenco({ id: "a", name: "IMG_2041.jpg", mimeType: "image/jpeg" }));
+  t.c("un documento con estensione no", !daTenereNellElenco({ id: "a", name: "bollette.xlsx" }));
+  t.c("ogni formato di libro si'", ["a.pdf", "b.cbz", "c.cbr", "d.EPUB"].every((name) => daTenereNellElenco({ id: "x", name })));
+  t.c("un brano dal nome, anche col tipo sbagliato", daTenereNellElenco({ id: "a", name: "Pioggia.mp3", mimeType: "application/octet-stream" }));
+  const vecchio = { a: { id: "a", name: "Mort.epub" }, b: { id: "b", name: "IMG.jpg" }, c: { id: "c", name: "Libri", mimeType: CARTELLA }, d: { id: "d", name: "Arpa.flac" } };
+  t.eq("un elenco salvato con la regola di prima si sfoltisce", Object.keys(potaElenco(vecchio)).join(), "a,c,d");
+  t.eq("e l'elenco di prima non si tocca", Object.keys(vecchio).length, 4);
+  t.eq("e si sfoltisce al primo giro dei cambiamenti, anche senza cambiamenti", Object.keys(applicaCambiamenti(vecchio, [])).join(), "a,c,d");
 
   // ---- i cambiamenti ----
   const prima = { a: { id: "a", name: "Mort.epub" }, b: { id: "b", name: "Eric.epub" }, c: { id: "c", name: "Sourcery.epub" } };
