@@ -89,6 +89,8 @@ export default async function (t) {
   t.eq("il programma e' quello della pagina", nav.programma, 640);
   const diviso = righeTempi([{ q: 1, c: "avvio", f: { html: 300, js: 200, stile: 400, codice: 500, primo: 500 }, n: 1265 }]).join("\n");
   t.c("il rapporto dice le tappe dell'avvio", /pagina dell'app 300 ms \+ programma scaricato 200 ms \+ stile e caratteri 400 ms \+ codice 500 ms \+ primo disegno 500 ms/.test(diviso), diviso);
+  const giroDrive = righeTempi([{ q: 1, c: "drive", f: { elenco: 9000, riconosce: 300 }, da: "cambi", voci: 2100, n: 1265 }]).join("\n");
+  t.c("il giro di Drive nel rapporto, con l'elenco", /Giro di Google Drive dai cambiamenti: 1 · tipica 9,3 s \(elenco 9,0 s \+ riconoscimento 300 ms\).*1265 libri · 2100 file nell'elenco/.test(giroDrive), giroDrive);
   t.eq("un browser senza misure non rompe niente", JSON.stringify(datiNavigazione({ getEntriesByType: () => { throw new Error("no"); } }, doc)), "{}");
 
 

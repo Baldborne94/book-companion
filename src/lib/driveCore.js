@@ -772,22 +772,34 @@ export function ebookRitrovati(libri, mappa) {
 // i campi che le tre domande guardavano, piu' quel che serve a distinguerle
 export const CAMPI_ELENCO = "id,name,size,sha256Checksum,appProperties,parents,mimeType";
 
-// Si tiene quel che le tre domande di prima prendevano, e nient'altro: le
-// cartelle, i file audio (per tipo) e i file con un'estensione (per nome).
-// Un file cestinato non si tiene: le domande di prima chiedevano
-// `trashed=false`.
+// Si tiene solo quel che l'app guarda: le cartelle, i libri (`EST`) e la
+// musica (per tipo o per estensione). PRIMA SI TENEVA OGNI FILE CON
+// UN'ESTENSIONE — foto, documenti, tutto il Drive del lettore, che ne ha 1,5
+// TB — e l'elenco si rileggeva e si riscriveva intero a ogni giro: misurato
+// in Chromium, 100.000 file sono 0,8 s a giro (2,5 s rallentato quattro
+// volte) contro i 25 ms di duemila. Un file cestinato non si tiene.
+const EST_TENUTE = new Set([...EST, ...EST_AUDIO]);
 export function daTenereNellElenco(f) {
   if (!f?.id || f.trashed) return false;
   if (f.mimeType === CARTELLA_MIME) return true;
   if (String(f.mimeType || "").startsWith("audio/")) return true;
-  return !!estensioneDi(f.name);
+  return EST_TENUTE.has(estensioneDi(f.name));
+}
+
+// un elenco salvato con la regola di prima si sfoltisce alla prima lettura,
+// senza richiederlo a Google
+export function potaElenco(file) {
+  const out = {};
+  for (const [id, f] of Object.entries(file || {})) if (daTenereNellElenco(f)) out[id] = f;
+  return out;
 }
 
 // i cambiamenti sull'elenco tenuto, senza toccare quello che arriva:
 // un file tolto, cestinato o diventato irrilevante se ne va; uno nuovo o
 // cambiato prende il posto di quello di prima
 export function applicaCambiamenti(elenco, cambiamenti) {
-  const out = { ...(elenco || {}) };
+  // un elenco salvato con la regola di prima si sfoltisce qui, al primo giro
+  const out = potaElenco(elenco);
   for (const c of cambiamenti || []) {
     const id = c?.fileId || c?.file?.id;
     if (!id) continue; // un cambiamento di un'unita' condivisa, non di un file

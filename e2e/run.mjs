@@ -650,6 +650,55 @@ const SCENE = [
     },
   },
   {
+    // segnalato dal lettore dal PC: «la sincronizzazione è ancora molto
+    // lenta», ferma su «Guardo i libri su Google Drive». L'elenco di Drive
+    // teneva ogni file con un'estensione — il suo Drive ha 1,5 TB di foto e
+    // altro — e a ogni giro si rileggeva e si riscriveva intero. Ora tiene
+    // solo libri, musica e cartelle, e il giro si misura per il rapporto
+    nome: "il giro di Drive tiene solo libri, musica e cartelle, e si misura",
+    async fai({ browser }) {
+      const elenco = [
+        { id: "L1", name: "Mort.epub", size: "1000", mimeType: "application/epub+zip", parents: ["C1"] },
+        { id: "L2", name: "Hush.cbz", size: "2000", mimeType: "application/zip", parents: ["C1"] },
+        { id: "C1", name: "book-companion", mimeType: "application/vnd.google-apps.folder" },
+        ...Array.from({ length: 3000 }, (_, i) => ({ id: `F${i}`, name: `IMG_${i}.jpg`, size: "3000000", mimeType: "image/jpeg", parents: ["P"] })),
+      ];
+      const drv = await avviaDrive(PORTA_DRIVE, {}, { elenco });
+      try {
+        const d = await dispositivo(browser, {
+          drive: { libri: [{ id: "m", title: "Mort", fileType: "epub", addedAt: 1 }], mappa: {} },
+          prima: () => localStorage.setItem("bc_drive_client", "123-abc.apps.googleusercontent.com"),
+        });
+        await d.p.goto(URL_APP);
+        // senza sessione il giro di solo Drive parte al ritorno della rete
+        await d.p.waitForTimeout(500);
+        await d.p.evaluate(() => window.dispatchEvent(new Event("online")));
+        const giro = await finche(
+          () => d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_tempi") || "[]").find((x) => x.c === "drive")),
+          20000,
+          "il giro di Drive non e' misurato"
+        );
+        if (!("elenco" in giro.f) || !("riconosce" in giro.f)) throw new Error(`giro misurato male: ${JSON.stringify(giro)}`);
+        if (giro.voci > 10) throw new Error(`l'elenco di Drive tiene ${giro.voci} file: le foto non servono`);
+        const tenuti = await d.p.evaluate(
+          () =>
+            new Promise((ok) => {
+              const r = indexedDB.open("bc_library");
+              r.onsuccess = () => {
+                const g = r.result.transaction("aux").objectStore("aux").get("drive_elenco");
+                g.onsuccess = () => ok(Object.keys(g.result?.file || {}).length);
+                g.onerror = () => ok(-1);
+              };
+            })
+        );
+        if (tenuti !== 3) throw new Error(`sul dispositivo l'elenco di Drive ha ${tenuti} file, non i 3 che servono`);
+        return { guasti: d.guasti, nota: `elenco di ${giro.voci} file su ${elenco.length}, ${giro.da}, ${Object.entries(giro.f).map(([k, v]) => `${k} ${v} ms`).join(" + ")}` };
+      } finally {
+        await drv.chiudi();
+      }
+    },
+  },
+  {
     // segnalato dal lettore con «Batman - Hush (2019) (digital) (Son of
     // Ultron-Empire).cbr»: «archivio non leggibile», e basta. Un 7-Zip
     // rinominato si dice per nome, e un PDF rinominato entra come PDF.

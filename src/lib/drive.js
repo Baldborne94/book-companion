@@ -17,6 +17,7 @@
 // Le decisioni — cosa e' gia' su Drive, cosa sale, cosa lascia il secchio —
 // stanno in `driveCore.js`, dove un test le prova.
 
+import { segnaTempo, vocePerTempo } from "./tempi.js";
 import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive, CAMPI_ELENCO, daTenereNellElenco, applicaCambiamenti, elencoBuono, segnoScaduto, VERSIONE_ELENCO, fileDellElenco, cartelleDellElenco, audioDellElenco, RADICE, idRadice, ARCHIVI, vaDetto, cartellaArchivi, archivioDovuto, archiviDaTogliere, piuRecenti, nomeArchivio } from "./driveCore.js";
 import { getAux, putAux, removeAux } from "./bookStore.js";
 
@@ -333,6 +334,8 @@ async function elencaTutto(query, campi) {
 const ELENCO_KEY = "drive_elenco";
 const VIVO_PER = 20 * 1000;
 let VIVO = null;
+// come si e' avuto l'ultimo elenco, per la misura del giro
+let ultimoElenco = "vivo";
 
 async function elencoDaCapo() {
   const segno = (await (await chiama(`${API}/changes/startPageToken?fields=startPageToken`)).json()).startPageToken;
@@ -369,11 +372,15 @@ async function elencoDrive() {
   if (elencoBuono(salvato)) {
     try {
       elenco = await cambiamentiDa(salvato);
+      ultimoElenco = "cambi";
     } catch (e) {
       if (!segnoScaduto(e)) throw e;
     }
   }
-  if (!elenco) elenco = await elencoDaCapo();
+  if (!elenco) {
+    elenco = await elencoDaCapo();
+    ultimoElenco = "dacapo";
+  }
   VIVO = { quando: Date.now(), elenco };
   try {
     await putAux(ELENCO_KEY, elenco);
@@ -678,13 +685,43 @@ export async function giroDrive(libri, opzioni = {}) {
   }
 }
 
-async function giro(libri, { tipo, qui, misure, inUscita, secchio, leggiByte, say = () => {}, vivo = () => true } = {}) {
+async function giro(libri, opzioni = {}) {
+  const misura = misuraGiro();
+  try {
+    return await giroMisurato(libri, opzioni, misura);
+  } finally {
+    misura.fine();
+  }
+}
+
+// IL GIRO DI DRIVE SI MISURA (segnalato dal lettore dal PC: «la
+// sincronizzazione è ancora molto lenta», ferma su «Guardo i libri»): le
+// tappe vanno nel rapporto dei guasti (`lib/tempi.js`), con quanti file
+// tiene l'elenco e se e' arrivato dai cambiamenti o da capo. Solo numeri
+function misuraGiro() {
+  const t0 = performance.now();
+  const tappe = [];
+  const dati = {};
+  return {
+    tappa(nome, extra = {}) {
+      tappe.push([nome, performance.now()]);
+      Object.assign(dati, extra);
+    },
+    fine() {
+      if (tappe.length) segnaTempo(vocePerTempo({ cosa: "drive", t0, tappe, ...dati }));
+    },
+  };
+}
+
+async function giroMisurato(libri, { tipo, qui, misure, inUscita, secchio, leggiByte, say = () => {}, vivo = () => true } = {}, misura) {
   say("Guardo i libri su Google Drive…");
   // un giro nuovo chiede i cambiamenti a Google: l'elenco vivo serve solo a
   // non chiederli tre volte dentro lo stesso giro
   VIVO = null;
   const file = await elencaFile();
+  misura.tappa("elenco", { da: ultimoElenco, voci: Object.keys(VIVO?.elenco?.file || {}).length });
   const { mappa, daSegnare, ambigui } = abbina(libri, file, { misure });
+  misura.tappa("riconosce", { n: libri.length });
   const salva = () => {
     const m = {};
     for (const [id, f] of mappa) m[id] = { id: f.id, byte: Number(f.size) || 0 };
@@ -705,6 +742,7 @@ async function giro(libri, { tipo, qui, misure, inUscita, secchio, leggiByte, sa
     }
   }
 
+  if (daSegnare.length) misura.tappa("segni");
   const suDrive = new Set(mappa.keys());
   // prima quel che ha i byte qui, poi quel che sta solo nel secchio di
   // Supabase: a chi legge `leggiByte` interessa solo da dove si prendono
@@ -743,6 +781,7 @@ async function giro(libri, { tipo, qui, misure, inUscita, secchio, leggiByte, sa
       }
     }
   }
+  if (caricati) misura.tappa("carica");
   return { mappa: new Set(mappa.keys()), ambigui, falliti, caricati };
 }
 
