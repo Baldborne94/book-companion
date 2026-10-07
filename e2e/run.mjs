@@ -713,6 +713,39 @@ const SCENE = [
     },
   },
   {
+    // segnalato da un amico del lettore: «per la parte di caricamento libri
+    // da file, mi mostra anche formati che non sono libri». Sul computer il
+    // selettore filtra per estensione, e i tipi larghi (zip, octet-stream)
+    // gli facevano mostrare ogni archivio; sul tablet servono, o un ePub
+    // scaricato dal browser resta in grigio (il caso di Tigana)
+    nome: "il selettore dei libri mostra solo libri sul computer, e sul tablet anche gli ePub scaricati",
+    async fai({ browser }) {
+      const accetta = async (p) => {
+        await p.goto(`${URL_APP}?apri=libreria`);
+        return finche(() => p.evaluate(() => document.querySelector('input[type=file][multiple][accept*=".epub"]')?.accept || ""), 15000, "l'input dei libri non c'e'");
+      };
+      const d = await dispositivo(browser);
+      const pc = (await accetta(d.p)).split(",");
+      if (pc.includes("application/octet-stream") || pc.includes("application/zip")) throw new Error(`sul computer il selettore mostra ogni archivio: ${pc.join()}`);
+      if (![".epub", ".pdf", ".cbz", ".cbr"].every((x) => pc.includes(x))) throw new Error(`sul computer mancano dei libri: ${pc.join()}`);
+      const ctx = await browser.newContext({
+        viewport: { width: 902, height: 1503 },
+        deviceScaleFactor: 1.33,
+        hasTouch: true,
+        isMobile: true,
+        userAgent: "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+      });
+      try {
+        await ctx.route((u) => !/^(localhost|127\.0\.0\.1)$/.test(u.hostname), (r) => r.abort());
+        const tablet = (await accetta(await ctx.newPage())).split(",");
+        if (!tablet.includes("application/octet-stream") || !tablet.includes("application/zip")) throw new Error(`sul tablet un ePub scaricato resterebbe in grigio: ${tablet.join()}`);
+        return { guasti: d.guasti, nota: `computer ${pc.length} tipi, tablet ${tablet.length}` };
+      } finally {
+        await ctx.close();
+      }
+    },
+  },
+  {
     nome: "l'Ingresso propone il volume rimesso «Da leggere» e l'inizio del ciclo dopo",
     async fai({ browser }) {
       const d = await dispositivo(browser, { prima: mondoDisco });
@@ -1097,6 +1130,57 @@ const SCENE = [
       await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
       const stato = await finche(() => testoAvviso(d.p, /Google Drive collegato · si rinnova da solo/), 10000, "il pannello non dice che Drive si rinnova da solo");
       return { guasti: d.guasti, nota: `${rinnovi} ${rinnovi === 1 ? "rinnovo" : "rinnovi"} dal server, nessuna finestra · «${stato}»` };
+    },
+  },
+  {
+    // segnalato da un amico del lettore: entrato con Google SENZA spuntare
+    // la casella di Drive, «le varie interazioni con Drive vanno in errore
+    // (forse sarebbe meglio che a quel punto chiedessero nuovamente di
+    // autenticarsi con Google Drive)»
+    nome: "entrato con Google senza la casella di Drive, l'app lo dice e rimanda da Google",
+    async fai({ browser, db }) {
+      const d = await dispositivo(browser, { prima: () => localStorage.setItem("bc_drive_client", "123-abc.apps.googleusercontent.com") });
+      const negate = [];
+      // Google come risponde a una chiave senza il permesso di Drive; dopo il
+      // secondo ingresso (la casella spuntata) Drive risponde
+      await d.ctx.route("https://www.googleapis.com/drive/**", (route) => {
+        const chiave = route.request().headers().authorization || "";
+        if (chiave === "Bearer ya29.dal-google") {
+          negate.push(route.request().url());
+          return route.fulfill({
+            status: 403,
+            json: { error: { code: 403, message: "Request had insufficient authentication scopes.", errors: [{ message: "Insufficient Permission", domain: "global", reason: "insufficientPermissions" }], status: "PERMISSION_DENIED", details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "ACCESS_TOKEN_SCOPE_INSUFFICIENT" }] } },
+          });
+        }
+        const u = new URL(route.request().url());
+        if (u.pathname.endsWith("/changes/startPageToken")) return route.fulfill({ json: { startPageToken: "1" } });
+        if (u.pathname.endsWith("/about")) return route.fulfill({ json: { storageQuota: { limit: "1000", usage: "10" } } });
+        return route.fulfill({ json: { files: [], changes: [], newStartPageToken: "1" } });
+      });
+      const rinnovi = [];
+      await d.ctx.route("**/api/google-token", (route) => (rinnovi.push(1), route.fulfill({ json: { chiave: "ya29.dal-server-senza-drive", scade: Date.now() + 3_600_000 } })));
+      await d.p.goto(URL_APP);
+      await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
+      await d.p.getByRole("button", { name: "Entra con Google" }).first().click();
+      await finche(() => d.p.evaluate(() => localStorage.getItem("bc_drive_permesso") === "1"), 20000, "la chiave senza Drive non si riconosce");
+      if (!negate.length) throw new Error("Drive non e' mai stato chiesto");
+      // il pannello lo dice, col tasto per rientrare
+      await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
+      const avviso = await finche(() => testoAvviso(d.p, /ha dato l'ingresso ma non Drive/), 15000, "il pannello non dice che manca il permesso di Drive");
+      const errori = await d.p.evaluate(() => localStorage.getItem("bc_errori") || "");
+      if (/403|insufficient/i.test(errori)) throw new Error(`il permesso mancante finisce fra i guasti: ${errori.slice(0, 200)}`);
+      if (rinnovi.length) throw new Error("si e' chiesta al server una chiave nuova, che sarebbe di nuovo senza Drive");
+      // la biblioteca e' vuota, come la sua: la prima cosa che si tocca e'
+      // «Scegli su Drive», e rimanda da Google invece di andare in errore
+      await d.p.goto(`${URL_APP}?apri=libreria`);
+      await d.p.getByRole("button", { name: /Scegli su Drive/ }).first().click();
+      await finche(() => d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_drive_token") || "null")?.chiave === "ya29.dal-google-2"), 20000, "«Scegli su Drive» non rimanda da Google");
+      const a = db.accessi()[1] || {};
+      if (!/auth\/drive/.test(a.scopes || "") || a.prompt !== "consent") throw new Error(`il secondo accesso non chiede Drive: ${JSON.stringify(a)}`);
+      await finche(() => d.p.evaluate(() => localStorage.getItem("bc_drive_permesso") === null), 10000, "con la casella spuntata l'avviso resta");
+      await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
+      await finche(() => testoAvviso(d.p, /Google Drive collegato · si rinnova da solo/), 10000, "con la casella spuntata il pannello non dice Drive collegato");
+      return { guasti: d.guasti, nota: `${negate.length} domande a Drive negate, poi «${avviso.slice(0, 70)}…», e un secondo ingresso con Drive` };
     },
   },
 ];

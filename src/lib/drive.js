@@ -18,7 +18,7 @@
 // stanno in `driveCore.js`, dove un test le prova.
 
 import { segnaTempo, vocePerTempo } from "./tempi.js";
-import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive, CAMPI_ELENCO, daTenereNellElenco, applicaCambiamenti, elencoBuono, segnoScaduto, VERSIONE_ELENCO, fileDellElenco, cartelleDellElenco, audioDellElenco, RADICE, idRadice, ARCHIVI, vaDetto, cartellaArchivi, archivioDovuto, archiviDaTogliere, piuRecenti, nomeArchivio } from "./driveCore.js";
+import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, senzaPermessoDrive, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive, CAMPI_ELENCO, daTenereNellElenco, applicaCambiamenti, elencoBuono, segnoScaduto, VERSIONE_ELENCO, fileDellElenco, cartelleDellElenco, audioDellElenco, RADICE, idRadice, ARCHIVI, vaDetto, cartellaArchivi, archivioDovuto, archiviDaTogliere, piuRecenti, nomeArchivio } from "./driveCore.js";
 import { getAux, putAux, removeAux } from "./bookStore.js";
 
 const TOKEN_KEY = "bc_drive_token";
@@ -27,6 +27,8 @@ const CLIENT_KEY = "bc_drive_client";
 const API_KEY = "bc_drive_api_key";
 const MAPPA_KEY = "bc_drive_libri";
 const MAPPA_MUSICA_KEY = "bc_drive_melodie";
+// Google ha dato una chiave senza Drive (la casella tolta nel consenso)
+const PERMESSO_KEY = "bc_drive_permesso";
 const SCOPE = "https://www.googleapis.com/auth/drive";
 const API = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3";
@@ -40,6 +42,14 @@ export class DriveScollegato extends Error {
   constructor() {
     super("Google Drive non collegato");
     this.name = "DriveScollegato";
+  }
+}
+// e' «scollegato» per chi chiama (aspetta, non conta un guasto), ma col
+// suo perche': ricollegarsi vuol dire spuntare Drive, non un tocco qualunque
+export class DriveSenzaPermesso extends DriveScollegato {
+  constructor(messaggio = "Google non ha dato il permesso per Drive: rientra con Google e lascia spuntata la casella di Google Drive.") {
+    super();
+    this.message = messaggio;
   }
 }
 
@@ -104,20 +114,34 @@ let rinnovoInCorso = null;
 export const impostaRinnovo = (fn) => {
   rinnovo = fn || null;
 };
+export const fraseScollegato = (e, solita) => (e instanceof DriveSenzaPermesso ? e.message : solita);
+// Chi ricollega Drive quando manca il permesso: chi e' entrato con Google
+// rientra con Google (il rinnovo dal server ha lo stesso permesso
+// dell'ingresso, e una chiave della finestra durerebbe un'ora sola)
+let rientro = null;
+export const impostaRientro = (fn) => {
+  rientro = fn || null;
+};
+export const permessoDriveMancante = () => leggi(PERMESSO_KEY) === "1";
+// la chiave dell'ingresso: un ingresso nuovo e' un consenso nuovo
 export function accettaChiave({ chiave, scade }) {
+  scrivi(PERMESSO_KEY, null);
+  tieniChiave({ chiave, scade });
+}
+function tieniChiave({ chiave, scade }) {
   const t = { chiave, scade: Number(scade) || Date.now() + 3600_000 };
   memoria = t;
   scrivi(TOKEN_KEY, JSON.stringify(t));
   scrivi(ACCESO_KEY, "1");
 }
 export function rinnovaInSilenzio() {
-  if (!rinnovo) return Promise.resolve(false);
+  if (!rinnovo || permessoDriveMancante()) return Promise.resolve(false);
   if (!rinnovoInCorso) {
     rinnovoInCorso = Promise.resolve()
       .then(rinnovo)
       .then((t) => {
         if (!t?.chiave) return false;
-        accettaChiave(t);
+        tieniChiave(t);
         return true;
       })
       .catch(() => false)
@@ -234,6 +258,10 @@ export async function dettagliFile(ids) {
 // LA CHIAVE SI CHIEDE SOLO DA UN TOCCO: Google la consegna in una finestra,
 // e una finestra aperta senza un tocco il browser la blocca.
 export async function collegaDrive() {
+  const mancava = permessoDriveMancante();
+  if (mancava && rientro && (await rientro())) {
+    throw new DriveSenzaPermesso("Vado da Google: lascia spuntata la casella di Google Drive.");
+  }
   // chi e' entrato con Google non vede nessuna finestra: la chiave arriva
   // dal server
   if (await rinnovaInSilenzio()) return true;
@@ -245,17 +273,20 @@ export async function collegaDrive() {
     const client = globalThis.google.accounts.oauth2.initTokenClient({
       client_id: id,
       scope: SCOPE,
-      prompt: driveAcceso() ? "" : "consent",
+      prompt: driveAcceso() && !mancava ? "" : "consent",
       callback: (r) => (r?.error ? ko(new Error(r.error_description || r.error)) : ok(r)),
       error_callback: (e) =>
         ko(new Error(e?.type === "popup_closed" ? "Finestra di Google chiusa prima di finire." : e?.message || "Accesso a Google non riuscito.")),
     });
     client.requestAccessToken();
   });
-  const t = { chiave: risposta.access_token, scade: Date.now() + (Number(risposta.expires_in) || 3600) * 1000 };
-  memoria = t;
-  scrivi(TOKEN_KEY, JSON.stringify(t));
-  scrivi(ACCESO_KEY, "1");
+  if (globalThis.google.accounts.oauth2.hasGrantedAllScopes?.(risposta, SCOPE) === false) {
+    dimenticaToken();
+    scrivi(PERMESSO_KEY, "1");
+    throw new DriveSenzaPermesso("Google non ha dato il permesso per Drive: ricollega e lascia spuntata la casella di Google Drive.");
+  }
+  scrivi(PERMESSO_KEY, null);
+  tieniChiave({ chiave: risposta.access_token, scade: Date.now() + (Number(risposta.expires_in) || 3600) * 1000 });
   return true;
 }
 
@@ -293,12 +324,18 @@ async function chiama(url, opzioni = {}, riprovata = false) {
     throw new DriveScollegato();
   }
   if (!r.ok && r.status !== 308) {
-    let dettaglio = "";
+    let corpo = null;
     try {
-      dettaglio = (await r.json())?.error?.message || "";
+      corpo = await r.json();
     } catch {
       /* senza corpo resta lo stato */
     }
+    if (senzaPermessoDrive(r.status, corpo)) {
+      dimenticaToken();
+      scrivi(PERMESSO_KEY, "1");
+      throw new DriveSenzaPermesso();
+    }
+    const dettaglio = corpo?.error?.message || "";
     const e = new Error(`Google Drive ha risposto ${r.status}${dettaglio ? `: ${dettaglio}` : ""}`);
     e.status = r.status;
     throw e;

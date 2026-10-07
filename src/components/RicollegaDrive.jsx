@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { C, F, R, px } from "../data/constants.js";
-import { collegaDrive } from "../lib/drive.js";
+import { collegaDrive, permessoDriveMancante } from "../lib/drive.js";
 
 // UN LIBRO LETTO DA DRIVE A META' STRADA SENZA CHIAVE. La chiave di Google
 // dura un'ora e si rinnova solo da un tocco: leggendo un fumetto lontano per
@@ -32,7 +32,10 @@ export default function RicollegaDrive({ onFatto, alto = 0 }) {
       }}
     >
       <span style={{ flex: 1, minWidth: 180 }}>
-        {errore || "Questo libro si legge da Google Drive, e Google aspetta un tocco per continuare."}
+        {errore ||
+          (permessoDriveMancante()
+            ? "Questo libro si legge da Google Drive, ma Google non ha dato il permesso per Drive: ricollega e lascia spuntata la casella di Google Drive."
+            : "Questo libro si legge da Google Drive, e Google aspetta un tocco per continuare.")}
       </span>
       <button
         disabled={provo}

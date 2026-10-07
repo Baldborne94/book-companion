@@ -9,7 +9,7 @@ import { fmtBytes } from "../lib/bytes.js";
 import EmptyState from "./EmptyState.jsx";
 import { InAscolto } from "./Ascolto.jsx";
 import { useViewport } from "../lib/viewport.js";
-import { driveAcceso, driveProntoOra, collegaDrive, elencaCartelle, elencaAudio, scegliSuDrive, dettagliFile, adottaMelodie, DriveScollegato } from "../lib/drive.js";
+import { driveAcceso, driveProntoOra, collegaDrive, elencaCartelle, elencaAudio, scegliSuDrive, dettagliFile, adottaMelodie, DriveScollegato, fraseScollegato } from "../lib/drive.js";
 import { sceltaMusicaDalPicker, audioSotto, melodieDaAggiungere, scegliCartella, idRadice } from "../lib/driveCore.js";
 
 
@@ -161,7 +161,7 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, scaric
       const quante = nuove.length === 1 ? `«${nuove[0].voce.name}» aggiunta` : `${nuove.length} melodie aggiunte`;
       notify([`${quante} da Google Drive ☁ si scaricano quando le suoni`, ...note, esito.scollegato ? "Google Drive aspetta un tocco: il resto dei segni lo scrive la prossima sincronizzazione" : ""].filter(Boolean).join(" · "));
     } catch (e) {
-      notify(e instanceof DriveScollegato ? "Google Drive aspetta un tocco: riprova." : e?.message || "Google Drive non ha risposto");
+      notify(e instanceof DriveScollegato ? fraseScollegato(e, "Google Drive aspetta un tocco: riprova.") : e?.message || "Google Drive non ha risposto");
     } finally {
       setDaDrive(false);
     }

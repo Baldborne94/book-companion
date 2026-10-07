@@ -12,6 +12,7 @@ import {
   scollegaDrive,
   mappaDrive,
   spazioSuDrive,
+  permessoDriveMancante,
 } from "../lib/drive.js";
 import { pesoDeiLibri } from "../lib/driveCore.js";
 import { statoRinnovo } from "../lib/accessoGoogle.js";
@@ -133,7 +134,9 @@ export default function SezioneDrive({ onCollegato, notify, sobria = false }) {
           <p style={{ margin: "10px 0 0", fontSize: F.nota, color: pronto ? C.accent : C.text }}>
             {pronto
               ? `${sobria ? "" : "Collegato · "}${libri.quanti} ${libri.quanti === 1 ? "libro riconosciuto" : "libri riconosciuti"} su Drive`
-              : statoRinnovo() === "ok"
+              : permessoDriveMancante()
+                ? "Google non ha dato il permesso per Drive (la casella di Google Drive non era spuntata): ricollega e lasciala spuntata."
+                : statoRinnovo() === "ok"
                 ? "Collegato · rinnovo la chiave…"
                 : "Collegato, ma Google chiede un tocco per continuare. Entra con Google qui sopra e non lo chiederà più."}
           </p>

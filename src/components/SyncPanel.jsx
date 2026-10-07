@@ -21,7 +21,7 @@ import { BarraCloud } from "./BarraCloud.jsx";
 import SezioneDrive from "./SezioneDrive.jsx";
 import { ultimoGiro } from "../lib/resoconto.js";
 import { entraConGoogle, statoRinnovo } from "../lib/accessoGoogle.js";
-import { driveProntoOra, driveAcceso, scollegaDrive } from "../lib/drive.js";
+import { driveProntoOra, driveAcceso, scollegaDrive, permessoDriveMancante } from "../lib/drive.js";
 
 
 function Spazio({ dati }) {
@@ -600,7 +600,10 @@ function StatoGoogle({ conGoogle, onGoogle, busy, guaio }) {
   let frase;
   let ok = false;
   let chiedi = false;
-  if (stato === "revocato") {
+  if (permessoDriveMancante()) {
+    frase = "Google ha dato l'ingresso ma non Drive (la casella non era spuntata): rientra con Google e lasciala spuntata.";
+    chiedi = true;
+  } else if (stato === "revocato") {
     frase = "Google ha ritirato il permesso per Drive (o è scaduto): rientra con Google.";
     chiedi = true;
   } else if (conGoogle && stato !== "nessuno") {

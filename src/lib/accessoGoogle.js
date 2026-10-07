@@ -95,6 +95,19 @@ export function rinnovoDalServer({ sessione, fetch: rete = globalThis.fetch, st 
   };
 }
 
+// QUANDO GOOGLE HA DATO L'INGRESSO MA NON DRIVE (la casella tolta nel
+// consenso), «Ricollega» rimanda da Google: solo chi e' entrato con Google,
+// perche' il suo permesso a lungo termine e' quello senza Drive. Torna se
+// e' partito; chi e' entrato con l'email ha la finestra di Drive.
+export function rientroConGoogle({ sessione, entra = entraConGoogle } = {}) {
+  return async () => {
+    const s = await sessione();
+    if (!(s?.user?.app_metadata?.providers || []).includes("google")) return false;
+    await entra();
+    return true;
+  };
+}
+
 // Uscendo, QUESTO dispositivo smette di usare il permesso. La riga nel
 // Supabase resta: e' dell'account, non del tablet, e cancellarla uscendo
 // dal PC toglierebbe il rinnovo anche al tablet che sta leggendo.

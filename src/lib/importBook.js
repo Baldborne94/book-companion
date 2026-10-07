@@ -42,6 +42,20 @@ export async function impronta(bytes) {
   }
 }
 
+// I FILE CHE IL SELETTORE MOSTRA (`accept` dell'input dei libri). Il
+// selettore di Android e quello di iPhone e iPad filtrano per tipo MIME, e
+// un ePub scaricato dal browser e' spesso «application/octet-stream» o
+// «application/zip»: senza quei tipi resta in grigio e non si sceglie (il
+// caso di Tigana, in docs/STORIA.md). Sul computer il selettore filtra per
+// estensione, e quei due tipi larghi gli fanno mostrare ogni archivio e, sul
+// Mac, ogni file: li' bastano le estensioni.
+const TIPI_LIBRO = ".epub,.pdf,.cbz,.cbr,application/epub+zip,application/pdf,application/vnd.comicbook+zip,application/vnd.comicbook-rar,application/x-cbz,application/x-cbr,application/vnd.rar,application/x-rar-compressed";
+export function tipiDaScegliere(ua = globalThis.navigator?.userAgent || "", tocchi = globalThis.navigator?.maxTouchPoints || 0) {
+  // l'iPad si presenta come un Mac, ma col dito
+  const telefono = /Android|iPhone|iPad/i.test(ua) || (/Macintosh/.test(ua) && tocchi > 1);
+  return telefono ? `${TIPI_LIBRO},application/zip,application/octet-stream` : TIPI_LIBRO;
+}
+
 // L'IMPRONTA DI UN FILE ENORME SI PRENDE A CAMPIONI. SHA-256 del browser
 // non va a flusso: vuole tutti i byte in un colpo, e su un fumetto da un
 // giga vuol dire caricarlo intero solo per riconoscere un doppione — la

@@ -44,9 +44,9 @@ import { annotaErrore } from "./lib/registro.js";
 import SezioneGuasti from "./components/SezioneGuasti.jsx";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile, convertiLibroInCbz, adottaCbzConvertiti } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
-import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, dettagliFile, impostaRinnovo, rinnovaInSilenzio, chiaveInScadenza, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato } from "./lib/drive.js";
+import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, dettagliFile, impostaRinnovo, impostaRientro, rinnovaInSilenzio, chiaveInScadenza, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato, fraseScollegato } from "./lib/drive.js";
 import { importaDaDrive, resoconto } from "./lib/importBook.js";
-import { custodisciGoogle, rinnovoDalServer, lasciaGoogleQui } from "./lib/accessoGoogle.js";
+import { custodisciGoogle, rinnovoDalServer, rientroConGoogle, lasciaGoogleQui } from "./lib/accessoGoogle.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
 import BarraLavoro from "./components/BarraLavoro.jsx";
 import { spiegaSync, schedaDiversa } from "./lib/syncCore.js";
@@ -1120,6 +1120,7 @@ export default function App() {
   useEffect(() => {
     if (!isSyncConfigured()) return;
     impostaRinnovo(rinnovoDalServer({ sessione: getSession }));
+    impostaRientro(rientroConGoogle({ sessione: getSession }));
     const giro = () => {
       if (document.visibilityState === "visible" && driveAcceso() && chiaveInScadenza()) rinnovaInSilenzio();
     };
@@ -1226,7 +1227,7 @@ export default function App() {
       notify(`«${b.title}» è un CBZ: da adesso si apre a pezzi, senza scaricarlo intero ✓`);
       return true;
     } catch (e) {
-      notify(e?.name === "DriveScollegato" ? "Google Drive aspetta un tocco: riprova." : `La conversione non è riuscita: ${e?.message || e}`);
+      notify(e?.name === "DriveScollegato" ? fraseScollegato(e, "Google Drive aspetta un tocco: riprova.") : `La conversione non è riuscita: ${e?.message || e}`);
       return false;
     }
   }
@@ -1276,7 +1277,7 @@ export default function App() {
       notify(resocontoConversioni(esito));
     } catch (e) {
       setSospeso(lavoroSospeso());
-      notify(e?.name === "DriveScollegato" ? "Google Drive aspetta un tocco: riprendi quando vuoi." : e?.message || "La conversione non è partita");
+      notify(e?.name === "DriveScollegato" ? fraseScollegato(e, "Google Drive aspetta un tocco: riprendi quando vuoi.") : e?.message || "La conversione non è partita");
     } finally {
       if (filoLavoro.current === mio) filoLavoro.current = null;
       setLavoro(null);
@@ -1318,7 +1319,7 @@ export default function App() {
             mettiNellaMappa(bookId, fileId, v.size);
             return true;
           } catch (e) {
-            return e instanceof DriveScollegato ? "scollegato" : false;
+            return e instanceof DriveScollegato ? fraseScollegato(e, "scollegato") : false;
           }
         },
         // il CBR compresso troppo grande: convertito leggendolo da Drive, e
@@ -1336,7 +1337,7 @@ export default function App() {
             });
             return true;
           } catch (e) {
-            return e instanceof DriveScollegato ? "scollegato" : false;
+            return e instanceof DriveScollegato ? fraseScollegato(e, "scollegato") : false;
           }
         },
         onProgress: (p) => vivo() && setImporto(p),
@@ -1359,7 +1360,7 @@ export default function App() {
           : "";
       notify([resoconto(esito), ...note, coda].filter((x) => x && x !== "Nessun file importato").join(" · ") || "Nessun tomo aggiunto");
     } catch (e) {
-      notify(e instanceof DriveScollegato ? "Google Drive aspetta un tocco: riprova." : e?.message || "Google Drive non ha risposto");
+      notify(e instanceof DriveScollegato ? fraseScollegato(e, "Google Drive aspetta un tocco: riprova.") : e?.message || "Google Drive non ha risposto");
     } finally {
       if (filoImport.current === mio) filoImport.current = null;
       setImporto(null);
@@ -1385,7 +1386,7 @@ export default function App() {
       const esito = await portaQuiTutte(brani, { vivo, onProgress: (p) => vivo() && setScarico({ ...p, raccolta }) });
       notify(fraseScarico(esito));
     } catch (e) {
-      notify(e instanceof DriveScollegato ? "Google Drive aspetta un tocco: riprova 🎵" : e?.message || "Google Drive non ha risposto");
+      notify(e instanceof DriveScollegato ? fraseScollegato(e, "Google Drive aspetta un tocco: riprova 🎵") : e?.message || "Google Drive non ha risposto");
     } finally {
       if (filoScarico.current === mio) filoScarico.current = null;
       setScarico(null);
@@ -1509,7 +1510,7 @@ export default function App() {
       notify(`«${b.title}» è sul tablet: lo leggi anche senza rete 📥`);
       return true;
     } catch (e) {
-      notify(e?.name === "DriveScollegato" ? "Google Drive aspetta un tocco: riprova." : e?.message || "Non sono riuscito a scaricarlo");
+      notify(e?.name === "DriveScollegato" ? fraseScollegato(e, "Google Drive aspetta un tocco: riprova.") : e?.message || "Non sono riuscito a scaricarlo");
       return false;
     }
   }
