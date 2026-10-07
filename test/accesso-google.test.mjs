@@ -5,7 +5,7 @@
 // aprire la finestra di Google a chi ha il rinnovo, lasciar cadere un lavoro
 // su una chiave ritirata a meta', o cancellare uscendo il permesso che
 // serve anche all'altro dispositivo.
-import { custodisciGoogle, entraConGoogle, rinnovoDalServer, lasciaGoogleQui, statoRinnovo, SCOPE_DRIVE } from "../src/lib/accessoGoogle.js";
+import { custodisciGoogle, entraConGoogle, rinnovoDalServer, lasciaGoogleQui, statoRinnovo, rientroConGoogle, SCOPE_DRIVE } from "../src/lib/accessoGoogle.js";
 
 function memoria() {
   const m = {};
@@ -84,6 +84,18 @@ export default async (t) => {
     await f();
     t.eq(`«${motivo}»: e non si bussa piu' fino al prossimo ingresso con Google`, chiamate.length, 1);
   }
+
+  // ---- Drive negato nel consenso: si rientra con Google -----------------------
+  let entrate = 0;
+  const entra = async () => {
+    entrate += 1;
+  };
+  const conGoogle = async () => ({ user: { app_metadata: { providers: ["email", "google"] } } });
+  t.eq("entrato con Google: «Ricollega» rimanda da Google", await rientroConGoogle({ sessione: conGoogle, entra })(), true);
+  t.eq("…davvero", entrate, 1);
+  t.eq("entrato con l'email: niente rimando, c'è la finestra di Drive", await rientroConGoogle({ sessione: async () => ({ user: { app_metadata: { providers: ["email"] } } }), entra })(), false);
+  t.eq("senza sessione: niente rimando", await rientroConGoogle({ sessione: async () => null, entra })(), false);
+  t.eq("…e nessuno è andato da Google", entrate, 1);
 
   // ---- uscire -----------------------------------------------------------------
   const s4 = memoria();

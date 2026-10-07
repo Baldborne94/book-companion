@@ -19,10 +19,20 @@ import {
   pesoDeiLibri,
   ripulisciIdClient,
   idClientValido,
+  senzaPermessoDrive,
 } from "../src/lib/driveCore.js";
 import { fmtGoogle } from "../src/lib/bytes.js";
 
 const IMP = "a".repeat(64);
+const SENZA_SCOPE = {
+  error: {
+    code: 403,
+    message: "Request had insufficient authentication scopes.",
+    errors: [{ message: "Insufficient Permission", domain: "global", reason: "insufficientPermissions" }],
+    status: "PERMISSION_DENIED",
+    details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "ACCESS_TOKEN_SCOPE_INSUFFICIENT", domain: "googleapis.com" }],
+  },
+};
 const IMP2 = "b".repeat(64);
 
 export default async (t) => {
@@ -233,6 +243,16 @@ export default async (t) => {
   t.c("niente no", !idClientValido(""));
   t.c("con qualcosa dopo la coda no", !idClientValido(ID + "/x"));
 
+  // ---- LA CASELLA DI DRIVE NON SPUNTATA ----------------------------------
+  // il corpo vero che Google manda a una chiave senza il permesso di Drive
+  t.c("la chiave senza Drive si riconosce", senzaPermessoDrive(403, SENZA_SCOPE));
+  t.c("…anche dal solo motivo vecchio", senzaPermessoDrive(403, { error: { errors: [{ reason: "insufficientPermissions" }] } }));
+  t.c("…e dal solo motivo nuovo", senzaPermessoDrive(403, { error: { details: [{ reason: "ACCESS_TOKEN_SCOPE_INSUFFICIENT" }] } }));
+  t.c("troppe domande non è un permesso", !senzaPermessoDrive(403, { error: { errors: [{ reason: "userRateLimitExceeded" }] } }));
+  t.c("un file d'altri non è il permesso di Drive", !senzaPermessoDrive(403, { error: { errors: [{ reason: "insufficientFilePermissions" }] } }));
+  t.c("un 403 senza corpo non è un permesso", !senzaPermessoDrive(403, null));
+  t.c("un 401 è un'altra cosa", !senzaPermessoDrive(401, SENZA_SCOPE));
+
   // ---- IL GIRO CON UN DRIVE FINTO ------------------------------------------
   await giroFinto(t);
 };
@@ -308,6 +328,7 @@ async function giroFinto(t) {
   const sessioni = [];
   const PEZZO = 32 * 1024 * 1024;
   let scadi = false;
+  let senzaDrive = false;
   const risposta = (corpo, stato = 200, intestazioni = {}) => ({
     ok: stato >= 200 && stato < 300,
     status: stato,
@@ -318,6 +339,7 @@ async function giroFinto(t) {
   globalThis.fetch = async (url, opz = {}) => {
     if (opz.headers?.Authorization !== "Bearer T") return risposta({}, 500);
     if (scadi) return risposta({}, 401);
+    if (senzaDrive) return risposta(SENZA_SCOPE, 403);
     const u = new URL(url);
     if (u.pathname === "/drive/v3/files" && (opz.method || "GET") === "GET") {
       domande.elenco += 1;
@@ -442,6 +464,69 @@ async function giroFinto(t) {
   // nemmeno la memoria di pochi secondi deve sopravvivere
   await drive.elencaFile();
   t.eq("…e la domanda dopo lo rifa' da capo, anche nello stesso momento", domande.elenco, 3);
+
+  // LA CASELLA DI DRIVE NON SPUNTATA: la chiave c'e', Drive risponde 403.
+  // Non e' un guasto: il giro aspetta come per la chiave scaduta, il
+  // rinnovo dal server non si chiede (darebbe un'altra chiave senza Drive),
+  // e il tocco su «Ricollega» rimanda da Google a chiedere il permesso
+  senzaDrive = true;
+  let rinnovi = 0;
+  drive.impostaRinnovo(async () => {
+    rinnovi += 1;
+    return { chiave: "T", scade: Date.now() + 3600e3 };
+  });
+  mem.set("bc_drive_token", JSON.stringify({ chiave: "T", scade: Date.now() + 3600e3 }));
+  const negato = await drive.giroDrive(libri, { tipo: () => "libri", qui: new Set(), leggiByte: async () => null });
+  t.eq("senza il permesso di Drive il giro aspetta, non va in errore", negato.saltato, "scaduto");
+  t.c("…lo sa dire", drive.permessoDriveMancante());
+  t.c("…e la chiave senza Drive si dimentica", !drive.driveProntoOra());
+  const errore = await drive.elencaFile().then(() => null, (e) => e);
+  t.c("chi chiama riceve «scollegato», non un 403", errore instanceof drive.DriveScollegato, errore?.message);
+  t.eq("…e nessun rinnovo dal server finché manca il permesso", rinnovi, 0);
+  let rientri = 0;
+  drive.impostaRientro(async () => {
+    rientri += 1;
+    return true;
+  });
+  const ricollega = await drive.collegaDrive().then(() => "collegato", (e) => e);
+  t.eq("«Ricollega» rimanda da Google", rientri, 1);
+  t.c("…e intanto non dice «collegato»", ricollega instanceof Error && rinnovi === 0, String(ricollega));
+  // tornato da Google con la casella spuntata: la chiave nuova toglie l'avviso
+  senzaDrive = false;
+  drive.accettaChiave({ chiave: "T", scade: Date.now() + 3600e3 });
+  t.c("la chiave nuova dell'ingresso toglie l'avviso", !drive.permessoDriveMancante());
+  await drive.elencaFile();
+  t.c("…e Drive risponde", drive.driveProntoOra());
+  drive.impostaRinnovo(null);
+  drive.impostaRientro(null);
+  // CHI E' ENTRATO CON L'EMAIL HA LA FINESTRA DI GOOGLE: anche li' la
+  // casella si puo' togliere, e una chiave senza Drive non e' «collegato»
+  drive.scriviClientId("274387944132-abc.apps.googleusercontent.com");
+  let concede = false;
+  const prompt = [];
+  globalThis.google = {
+    accounts: {
+      oauth2: {
+        initTokenClient: (o) => ({
+          requestAccessToken: () => {
+            prompt.push(o.prompt);
+            o.callback({ access_token: "T", expires_in: 3600, scope: concede ? `email ${o.scope}` : "email" });
+          },
+        }),
+        hasGrantedAllScopes: (r, scope) => r.scope.split(" ").includes(scope),
+      },
+    },
+  };
+  const negataQui = await drive.collegaDrive().then(() => "collegato", (e) => e);
+  t.c("la finestra senza Drive non dice «collegato»", negataQui instanceof drive.DriveSenzaPermesso, String(negataQui));
+  t.c("…lo ricorda, e la chiave senza Drive non si tiene", drive.permessoDriveMancante() && !drive.driveProntoOra());
+  t.eq("…e la frase dice della casella", drive.fraseScollegato(negataQui, "un tocco"), negataQui.message);
+  t.eq("uno scollegato qualunque tiene la frase di chi chiama", drive.fraseScollegato(new drive.DriveScollegato(), "un tocco"), "un tocco");
+  concede = true;
+  t.eq("spuntata la casella, Drive è collegato", await drive.collegaDrive(), true);
+  t.eq("…chiedendo di nuovo il consenso, anche a Drive già acceso", prompt[1], "consent");
+  t.c("…e l'avviso se ne va", !drive.permessoDriveMancante() && drive.driveProntoOra());
+  delete globalThis.google;
 
   // LA CHIAVE SCADUTA NON E' UN ERRORE: il giro aspetta e lo dice
   scadi = true;

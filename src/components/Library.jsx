@@ -6,7 +6,7 @@ import { leggiPreferite, scriviPreferite, preferiteVive, segnaPreferita, puoEsse
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { ascoltaCopertine } from "../lib/miniature.js";
 import { storageEstimate, spazioQui, misureFile, togliByteQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
-import { importFiles, resoconto, impronteDaFare } from "../lib/importBook.js";
+import { importFiles, resoconto, impronteDaFare, tipiDaScegliere } from "../lib/importBook.js";
 import { chiaveCollana } from "../lib/collana.js";
 import { preparaArchivio, segnaArchivio, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
 import PezziArchivio from "./PezziArchivio.jsx";
@@ -19,7 +19,7 @@ import { isSyncConfigured } from "../lib/supabase.js";
 import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso, schedeCambiate
 } from "../lib/syncCore.js";
-import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, DriveScollegato, scegliSuDrive, dettagliFile, ultimoArchivioSuDrive, ultimoArchivioDaDrive } from "../lib/drive.js";
+import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, DriveScollegato, scegliSuDrive, dettagliFile, ultimoArchivioSuDrive, ultimoArchivioDaDrive, fraseScollegato, permessoDriveMancante } from "../lib/drive.js";
 import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, sceltaDalPicker, libriSotto, idRadice, giaSulloScaffale, fraseGia } from "../lib/driveCore.js";
 import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
 import { eFumetto } from "../lib/fumetto.js";
@@ -1829,7 +1829,7 @@ export default function Library({
       setLibera({ ...e, scelti: new Set(LIBERARE_DI_PARTENZA) });
     } catch (err) {
       setLibera(null);
-      notify(err instanceof DriveScollegato ? "Google Drive aspetta un tocco: riprova." : err?.message || "Google Drive non ha risposto");
+      notify(err instanceof DriveScollegato ? fraseScollegato(err, "Google Drive aspetta un tocco: riprova.") : err?.message || "Google Drive non ha risposto");
     }
   }
 
@@ -1902,7 +1902,7 @@ export default function Library({
       }
       onImportaDaDrive?.(voci, note);
     } catch (e) {
-      notify(e instanceof DriveScollegato ? "Google Drive aspetta un tocco: riprova." : e?.message || "Google Drive non ha risposto");
+      notify(e instanceof DriveScollegato ? fraseScollegato(e, "Google Drive aspetta un tocco: riprova.") : e?.message || "Google Drive non ha risposto");
     } finally {
       setScegliendo(false);
     }
@@ -2067,7 +2067,7 @@ export default function Library({
       }
       await apriArchivio([a.file]);
     } catch (err) {
-      notify(err instanceof DriveScollegato ? "Google Drive non è collegato" : err?.message || "Non riesco a leggere l'archivio su Drive");
+      notify(err instanceof DriveScollegato ? fraseScollegato(err, "Google Drive non è collegato") : err?.message || "Non riesco a leggere l'archivio su Drive");
     }
   }
 
@@ -2195,14 +2195,9 @@ export default function Library({
       <input
         ref={inputRef}
         type="file"
-        // IL SELETTORE DI ANDROID FILTRA PER TIPO MIME, NON PER ESTENSIONE:
-        // con le sole estensioni, un ePub scaricato dal browser e registrato
-        // come «application/octet-stream» (o come zip, che e' quel che un
-        // ePub e') compare in grigio e non si lascia scegliere — e il lettore
-        // vede un libro che «non si importa» senza nessun messaggio. I tipi si
-        // elencano larghi: a filtrare per davvero e' `importFiles`, che guarda
-        // l'estensione e rifiuta quel che non e' un libro.
-        accept=".epub,.pdf,.cbz,.cbr,application/epub+zip,application/pdf,application/vnd.comicbook+zip,application/vnd.comicbook-rar,application/x-cbz,application/x-cbr,application/vnd.rar,application/x-rar-compressed,application/zip,application/octet-stream"
+        // a filtrare per davvero e' `importFiles`, che guarda l'estensione
+        // e rifiuta quel che non e' un libro (vedi `tipiDaScegliere`)
+        accept={tipiDaScegliere()}
         multiple
         style={{ display: "none" }}
         onChange={(e) => handleFiles(e.target.files)}
@@ -2722,7 +2717,9 @@ export default function Library({
               altri avvisi, col tasto che la rinnova. */}
           {drive && !driveProntoOra() && !portando && onRicollegaDrive && (
             <span style={{ color: C.muted }}>
-              🗂 Google Drive aspetta un tocco per continuare.{" "}
+              {permessoDriveMancante()
+                ? "🗂 Google non ha dato il permesso per Drive: ricollega e lascia spuntata la casella di Google Drive."
+                : "🗂 Google Drive aspetta un tocco per continuare."}{" "}
               <button onClick={onRicollegaDrive} style={{ color: C.arcane, textDecoration: "underline", fontSize: "inherit" }}>
                 Ricollega
               </button>

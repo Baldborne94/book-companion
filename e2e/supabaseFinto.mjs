@@ -25,8 +25,9 @@ export function avviaSupabase(porta = 4599, { latenza = 0 } = {}) {
   const ora = () => Math.floor(Date.now() / 1000);
   const UTENTE = { id: "u1", aud: "authenticated", role: "authenticated", email: "prova@esempio.it", app_metadata: { provider: "google", providers: ["email", "google"] } };
   // la sessione come la consegna Supabase al ritorno da Google: con la
-  // chiave di Drive e il permesso a lungo termine
-  const SESSIONE = () => ({ access_token: "a.b.c", refresh_token: "r", token_type: "bearer", expires_in: 3600, expires_at: ora() + 3600, provider_token: "ya29.dal-google", provider_refresh_token: "rt-google", user: UTENTE });
+  // chiave di Drive e il permesso a lungo termine (ogni ingresso, una
+  // chiave nuova, come fa Google)
+  const SESSIONE = () => ({ access_token: "a.b.c", refresh_token: "r", token_type: "bearer", expires_in: 3600, expires_at: ora() + 3600, provider_token: accessi.length > 1 ? `ya29.dal-google-${accessi.length}` : "ya29.dal-google", provider_refresh_token: "rt-google", user: UTENTE });
   const server = http.createServer((req, res) => {
     const pezzi = [];
     req.on("data", (c) => pezzi.push(c));

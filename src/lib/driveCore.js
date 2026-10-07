@@ -585,6 +585,21 @@ export const idClientValido = (v) => /^\d+-[a-z0-9]+\.apps\.googleusercontent\.c
 export const PERCHE_ID_STORTO =
   "L'ID client non ha la forma giusta: sono numeri, un trattino, lettere e cifre, e finisce con .apps.googleusercontent.com. Copialo col tasto accanto all'ID su Google Cloud invece di riscriverlo a mano.";
 
+// UNA CHIAVE SENZA IL PERMESSO DI DRIVE. Google lascia togliere la casella
+// di Drive nella finestra del consenso: l'ingresso riesce, la chiave arriva,
+// e ogni domanda a Drive torna 403. Non e' un guasto da contare ne' una
+// chiave scaduta da rinnovare (il rinnovo darebbe un'altra chiave senza
+// Drive): e' un permesso da chiedere di nuovo. Gli altri 403 (troppe
+// domande, spazio finito, un file d'altri) restano errori.
+export const senzaPermessoDrive = (stato, corpo) => {
+  if (stato !== 403) return false;
+  const e = corpo?.error;
+  return (
+    (e?.details || []).some((d) => d?.reason === "ACCESS_TOKEN_SCOPE_INSUFFICIENT") ||
+    (e?.errors || []).some((d) => d?.reason === "insufficientPermissions")
+  );
+};
+
 // IL SELETTORE DI GOOGLE (chiesto dal lettore: «non puoi mettermi
 // direttamente un collegamento al Drive, invece di scrivermi tutto tu, e da
 // li' mi fai fare l'import?»). Il Picker di Google e' la finestra di Drive
