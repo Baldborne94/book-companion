@@ -17,11 +17,13 @@
 //     CORRENTE il ritaglio si annullerebbe, poi tornerebbe, all'infinito.
 //     Per questo `attuale` si somma prima del resto.
 //
-// (2) IL RITAGLIO E' IN PIXEL INTERI E L'INTERLINEA NO (corpo grande:
-//     26,4px). Si arrotonda per ECCESSO, o la colonna resta un capello
-//     sopra il multiplo; ma a meno di un pixel dalla riga piena non si
-//     toglie niente — quella riga ci sta, e portargliela via sarebbe una
-//     riga di lettura buttata.
+// (2) LA RIGA DEL MOTORE NON E' QUELLA DEL FOGLIO DI STILE. Chromium tiene
+//     le misure in sessantaquattresimi di pixel e l'interlinea la arrotonda
+//     per ECCESSO (23,04px diventano 23,047): trenta righe vogliono 691,41px,
+//     e una colonna di 691,2 — trenta righe esatte sul foglio — ne tiene
+//     ventinove (misurato). Le righe si contano sul passo del motore, e il
+//     ritaglio si arrotonda per DIFETTO: un capello in meno della colonna e'
+//     una riga intera buttata in fondo, il pixel in piu' e' carta.
 //
 // Torna `null` quando non c'e' niente da misurare: colonna piu' bassa di
 // una riga, interlinea assurda, numeri che non sono numeri. `null` non e'
@@ -29,8 +31,9 @@
 export function ritaglioAvanzo({ colonna, riga, attuale = 0 } = {}) {
   if (!Number.isFinite(riga) || riga <= 1) return null;
   if (!Number.isFinite(colonna) || colonna <= riga) return null;
-  const grezzo = (colonna + (Number.isFinite(attuale) ? attuale : 0)) % riga;
-  return grezzo < 1 || riga - grezzo < 1 ? 0 : Math.ceil(grezzo);
+  const tutta = colonna + (Number.isFinite(attuale) ? attuale : 0);
+  const passo = Math.ceil(riga * 64) / 64;
+  return Math.floor(tutta - Math.floor(tutta / passo) * passo);
 }
 
 // L'indice del libro, da albero a elenco: epub.js lo consegna annidato, la

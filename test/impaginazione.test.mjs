@@ -54,18 +54,29 @@ export default async function (t) {
   t.eq("colonna 735, riga 24 → avanzo 15", ritaglioAvanzo({ colonna: 735, riga: 24 }), 15);
   t.eq("una colonna gia' multipla non ha avanzo", ritaglioAvanzo({ colonna: 720, riga: 24 }), 0);
 
-  // ---- pixel interi contro interlinea frazionaria ------------------------
-  // corpo grande: la riga e' 26,4px e il ritaglio dev'essere un intero
-  const r = ritaglioAvanzo({ colonna: 700, riga: 26.4 });
-  t.c("col corpo grande il ritaglio e' un intero", Number.isInteger(r), String(r));
-  t.c("e arrotonda per eccesso", r >= (700 % 26.4), `${r} vs ${(700 % 26.4).toFixed(2)}`);
+  // ---- la riga del motore, non quella del foglio di stile ---------------
+  // Chromium arrotonda l'interlinea per eccesso al 64° di pixel: con 23,04px
+  // trenta righe vogliono 691,41px, e una colonna di 691 ne tiene ventinove
+  // (misurato). Il caso del lettore: 90%, interlinea 1,6, 1280×768 — la
+  // colonna senza ritaglio era 706, e togliendo 15 restavano 691: una riga
+  // intera vuota in fondo.
+  const passo = (riga) => Math.ceil(riga * 64) / 64;
+  for (const [colonna, riga] of [[706, 23.04], [700, 26.4], [743.5, 24], [735, 24], [691.3, 23.04], [512.7, 21.6]]) {
+    const via = ritaglioAvanzo({ colonna, riga });
+    const resta = colonna - via;
+    const righe = Math.floor(colonna / passo(riga));
+    t.c(`colonna ${colonna}, riga ${riga}: il ritaglio è un intero`, Number.isInteger(via), String(via));
+    t.c(`colonna ${colonna}, riga ${riga}: ci stanno ancora ${righe} righe`, resta >= righe * passo(riga) - 1e-9, `${resta} < ${righe * passo(riga)}`);
+    t.c(`colonna ${colonna}, riga ${riga}: e in fondo resta meno di un pixel`, resta - righe * passo(riga) < 1, `${resta - righe * passo(riga)}`);
+  }
+  t.eq("il caso del lettore: 14 pixel, non 15", ritaglioAvanzo({ colonna: 706, riga: 23.04 }), 14);
 
-  // ---- la riga che ci sta non si porta via -------------------------------
-  // a meno di un pixel dalla riga piena, quella riga ci sta: toglierla
-  // sarebbe una riga di lettura buttata
+  // ---- la riga che non ci sta si toglie ------------------------------------
+  // mezzo pixel sotto la riga piena la riga NON ci sta (misurato: 719,8px con
+  // righe da 24 ne tengono 29): quel che resta e' carta, e si toglie
   t.eq("mezzo pixel di avanzo non si toglie", ritaglioAvanzo({ colonna: 720.5, riga: 24 }), 0);
-  t.eq("un capello sotto la riga piena non si toglie", ritaglioAvanzo({ colonna: 743.5, riga: 24 }), 0);
-  t.c("ma un avanzo vero si toglie", ritaglioAvanzo({ colonna: 730, riga: 24 }) > 0);
+  t.eq("un capello sotto la riga piena si toglie: quella riga non ci sta", ritaglioAvanzo({ colonna: 743.5, riga: 24 }), 23);
+  t.c("e un avanzo vero si toglie", ritaglioAvanzo({ colonna: 730, riga: 24 }) > 0);
 
   // ---- LA TRAPPOLA DEL CICLO ---------------------------------------------
   // tolto l'avanzo la colonna torna multipla: rimisurando l'altezza
