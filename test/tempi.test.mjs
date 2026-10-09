@@ -110,6 +110,33 @@ export default async function (t) {
 
   // ---- il riassunto ---------------------------------------------------------
   t.eq("niente misure, niente righe", righeTempi([]).length, 0);
+
+  // ---- LA VERSIONE SU OGNI MISURA ------------------------------------------
+  // il rapporto del tablet dopo la cura dei caratteri: «Avvio 24 · tipica
+  // 1,8 s», con dentro le aperture di prima della cura. Si conta solo la
+  // versione dell'ultima misura, e le altre si dicono
+  {
+    const mem = new Map();
+    const st = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v) };
+    segnaTempo({ q: 1, c: "avvio", f: { primo: 5 } }, { st, ver: "1.0.0 · 08/10, 22:37" });
+    t.eq("la misura porta la versione", JSON.parse(mem.get("bc_tempi"))[0].ver, "1.0.0 · 08/10, 22:37");
+    segnaTempo({ q: 2, c: "avvio", f: { primo: 5 } }, { st, ver: "" });
+    t.c("senza versione (le prove) niente campo", !("ver" in JSON.parse(mem.get("bc_tempi"))[1]));
+    const misto = [
+      { q: 1, c: "avvio", f: { codice: 1400, primo: 500 }, ver: "a" },
+      { q: 2, c: "avvio", f: { codice: 1500, primo: 500 } },
+      { q: 3, c: "avvio", f: { html: 900, codice: 200, primo: 500 }, ver: "b" },
+      { q: 4, c: "avvio", f: { html: 700, codice: 180, primo: 400 }, ver: "b" },
+      { q: 5, c: "avvio", f: { html: 800, codice: 190, primo: 450 }, ver: "b" },
+    ];
+    const r = righeTempi(misto).join("\n");
+    t.c("conta solo la versione in uso", /Avvio dell'app: 3 · tipica 1,4 s/.test(r), r);
+    t.c("e dice quante ne ha lasciate fuori", /Avvio dell'app: 3 con la versione in uso \(b\), 2 di prima non contate/.test(r), r);
+    const tappa = righeTempi([{ q: 1, c: "avvio", f: { codice: 1400, primo: 500 } }, { q: 2, c: "avvio", f: { codice: 1500, primo: 500 } }, { q: 3, c: "avvio", f: { html: 800, codice: 200, primo: 500 } }]).join("\n");
+    t.c("una tappa si misura su chi ce l'ha, non con gli zeri di chi non l'ha", /pagina dell'app 800 ms/.test(tappa), tappa);
+    const vecchie = righeTempi([{ q: 9, c: "drive", f: { elenco: 900 }, da: "cambi" }]).join("\n");
+    t.c("senza versioni si conta tutto, senza note", /Giro di Google Drive dai cambiamenti: 1/.test(vecchie) && !/non contate/.test(vecchie), vecchie);
+  }
   const voci = [
     { q: 1, c: "avvio", f: { codice: 300, primo: 100 }, n: 1100 },
     { q: 2, c: "avvio", f: { codice: 2500, primo: 200 }, n: 1100 },

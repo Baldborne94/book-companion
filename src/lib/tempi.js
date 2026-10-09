@@ -131,9 +131,14 @@ const leggi = (st) => {
   }
 };
 
-export function segnaTempo(voce, { st = globalThis.localStorage, tenuti = TENUTI } = {}) {
+// LA VERSIONE STA SU OGNI MISURA: il rapporto dopo una cura mescolava le
+// misure di prima e di dopo (l'avvio «tipica 1,8 s» con dentro le aperture
+// della settimana prima), e non diceva se la cura aveva funzionato
+const VERSIONE = typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "";
+
+export function segnaTempo(voce, { st = globalThis.localStorage, tenuti = TENUTI, ver = VERSIONE } = {}) {
   try {
-    st.setItem(KEY, JSON.stringify([...leggi(st), voce].slice(-tenuti)));
+    st.setItem(KEY, JSON.stringify([...leggi(st), ver ? { ...voce, ver } : voce].slice(-tenuti)));
   } catch {
     /* una misura che non si scrive non deve fermare niente */
   }
@@ -191,7 +196,9 @@ function riga(nome, vv) {
   const voci = vv.map((v) => v.voci).filter((x) => x > 0);
   return (
     `${nome}: ${vv.length} · tipica ${sec(quantile(t, 0.5))}` +
-    (tappe.length > 1 ? ` (${tappe.map((k) => `${TAPPE[k] || k} ${sec(quantile(vv.map((v) => v.f?.[k] || 0), 0.5))}`).join(" + ")})` : "") +
+    // la tappa si misura su chi ce l'ha: una misura di prima senza quella
+    // tappa non e' una tappa da zero
+    (tappe.length > 1 ? ` (${tappe.map((k) => `${TAPPE[k] || k} ${sec(quantile(vv.filter((v) => v.f && k in v.f).map((v) => v.f[k]), 0.5))}`).join(" + ")})` : "") +
     ` · 9 su 10 entro ${sec(quantile(t, 0.9))} · la peggiore ${sec(Math.max(...t))}` +
     (n.length ? ` · ${quantile(n, 0.5)} libri` : "") +
     (voci.length ? ` · ${quantile(voci, 0.5)} file nell'elenco` : "") +
@@ -204,8 +211,12 @@ export function righeTempi(voci = []) {
   if (!voci.length) return [];
   const out = [`Tempi misurati: ${voci.length}`];
   for (const c of Object.keys(NOMI)) {
-    const qui = voci.filter((v) => v.c === c);
-    if (!qui.length) continue;
+    const tutte = voci.filter((v) => v.c === c);
+    if (!tutte.length) continue;
+    // solo la versione dell'ultima misura, se ce n'e' una: le altre si contano
+    const ultima = tutte.at(-1).ver;
+    const qui = ultima ? tutte.filter((v) => v.ver === ultima) : tutte;
+    if (qui.length < tutte.length) out.push(`${NOMI[c]}: ${qui.length} con la versione in uso (${ultima}), ${tutte.length - qui.length} di prima non contate`);
     const provenienze = [...new Set(qui.map(via).filter(Boolean))];
     if (provenienze.length < 2) out.push(riga(`${NOMI[c]}${provenienze.length ? ` ${DA[provenienze[0]] || provenienze[0]}` : ""}`, qui));
     else for (const da of provenienze) out.push(riga(`${NOMI[c]} ${DA[da] || da}`, qui.filter((v) => via(v) === da)));

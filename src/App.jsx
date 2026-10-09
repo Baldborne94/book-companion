@@ -28,7 +28,7 @@ import SezioneDizionario from "./components/SezioneDizionario.jsx";
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
 import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, timbraScheda, getProgress, getUpdatedAt } from "./lib/library.js";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds } from "./lib/bookStore.js";
-import { cercaNuovaVersione } from "./lib/aggiornamenti.js";
+import { cercaNuovaVersione, cercaInSilenzio } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
 import Home from "./components/Home.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
@@ -973,7 +973,7 @@ export default function App() {
     // la funzione di registerSW ricaricherebbe la pagina — un reload a
     // lettore aperto, proprio cio' che non si deve fare mai.
     const ronda = setInterval(() => {
-      try { swReg.current?.update?.(); } catch { /* nessun worker: pazienza */ }
+      cercaInSilenzio(swReg.current);
     }, 30 * 60 * 1000);
     return () => {
       document.removeEventListener("visibilitychange", onVis);

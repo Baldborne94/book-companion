@@ -12,6 +12,16 @@
 // dopo. Fidarsi del silenzio al primo giro direbbe «sei all'ultima»
 // proprio mentre la versione nuova sta scaricando. Per questo il primo
 // tratto di attesa non conclude niente.
+// LA RONDA DELLA MEZZ'ORA cerca e basta. `update()` senza rete non lancia:
+// torna una promessa che si rompe, e un `try` attorno non la prende — finiva
+// nel registro dei guasti come «Failed to update a ServiceWorker» (il
+// rapporto del tablet, due volte). Senza rete non c'e' niente da dire.
+export function cercaInSilenzio(reg) {
+  return Promise.resolve()
+    .then(() => reg?.update?.())
+    .then(() => true, () => false);
+}
+
 export async function cercaNuovaVersione(reg, { attesa = 8000, passo = 250, dormi } = {}) {
   if (!reg || typeof reg.update !== "function") return "niente-sw";
   // già in attesa da un giro precedente (la ronda, un altro tab): c'è

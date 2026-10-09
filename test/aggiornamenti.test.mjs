@@ -4,7 +4,7 @@
 // avviato, non finito, e il worker nuovo può comparire un attimo dopo.
 // Fidarsi del silenzio al primo giro direbbe «sei all'ultima» proprio
 // mentre la versione nuova sta scaricando.
-import { cercaNuovaVersione, ESITI_CONTROLLO } from "../src/lib/aggiornamenti.js";
+import { cercaNuovaVersione, cercaInSilenzio, ESITI_CONTROLLO } from "../src/lib/aggiornamenti.js";
 
 // una registrazione finta: `copione` è la sequenza degli stati che il
 // browser attraverserebbe, un passo per ogni giro d'attesa
@@ -34,6 +34,12 @@ function regFinta(copione, { updateEsplode } = {}) {
 const W = { chi: "worker" };
 
 export default async function (t) {
+  // LA RONDA SENZA RETE: `update()` torna una promessa rotta, e prima finiva
+  // fra i guasti come promessa non presa (il rapporto del tablet)
+  t.eq("senza rete la ronda tace", await cercaInSilenzio({ update: () => Promise.reject(new TypeError("Failed to update a ServiceWorker")) }), false);
+  t.eq("e anche se update lancia subito", await cercaInSilenzio({ update: () => { throw new Error("no"); } }), false);
+  t.eq("con la rete ha cercato", await cercaInSilenzio({ update: async () => {} }), true);
+  t.eq("senza registrazione non esplode", await cercaInSilenzio(null), true);
   // ---- gli esiti hanno tutti la loro frase ------------------------------
   for (const esito of ["cerco", "nuova", "ultima", "errore", "niente-sw"]) {
     t.c(`l'esito «${esito}» sa parlare`, typeof ESITI_CONTROLLO[esito] === "string" && ESITI_CONTROLLO[esito].length > 4);
