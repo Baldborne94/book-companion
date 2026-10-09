@@ -522,6 +522,37 @@ export default async function (t) {
     t.eq("niente documento, niente paragrafi staccati", staccaParagrafi(null), 0);
     t.eq("e un documento senza query nemmeno", staccaParagrafi({}), 0);
 
+    // I FONDI PAGINA SEMPRE PIENI: un paragrafo che lascerebbe una riga
+    // sola in fondo alla colonna non si sposta più alla colonna dopo, anche
+    // se il libro le chiede (2, come il browser). Colonna da 10 righe, un
+    // paragrafo da 9 e uno da 4: con le regole del browser il secondo
+    // passa intero di là e in fondo resta una riga vuota.
+    await p.setViewportSize({ width: 800, height: 400 });
+    const dovePartiIlSecondo = async (conTema, primo = 9) => {
+      const righe = (n, c) => Array.from({ length: n }, () => c).join("<br>");
+      await p.setContent(`<!doctype html><html><head><style>p.libro{widows:2;orphans:2}</style></head><body style="margin:0;padding:0;width:800px;height:200px;column-count:2;column-gap:0;column-fill:auto;font:16px monospace;line-height:20px"><p class="libro" style="margin:0">${righe(primo, "uno")}</p><p id="due" class="libro" style="margin:0">${righe(4, "due")}</p></body></html>`);
+      if (conTema) await p.addStyleTag({ content: inCss(contentStyles({ ...BASE, lineHeight: 1.25 }, "en")) + "body{line-height:20px!important;padding:0!important}p{line-height:20px}" });
+      return p.evaluate(() => {
+        const r = document.getElementById("due").getClientRects()[0];
+        return Math.round(r.left) < 400 ? "nella prima colonna" : "nella seconda";
+      });
+    };
+    t.eq("(il banco: senza tema il paragrafo passa intero di là)", await dovePartiIlSecondo(false), "nella seconda");
+    t.eq("col tema comincia in fondo alla prima colonna", await dovePartiIlSecondo(true), "nella prima colonna");
+    // e la vedova: un paragrafo da 4 dopo uno da 7 lascia UNA riga alla
+    // colonna dopo, e il browser ne porta di là anche altre
+    const ultimaDove = async (conTema) => {
+      await dovePartiIlSecondo(conTema, 7);
+      return p.evaluate(() => {
+        const r = document.createRange();
+        r.selectNodeContents(document.getElementById("due"));
+        return new Set([...r.getClientRects()].filter((x) => x.left < 400 && x.height > 4).map((x) => Math.round(x.top))).size;
+      });
+    };
+    t.c("(il banco: senza tema in fondo alla prima colonna ne restano solo 2)", (await ultimaDove(false)) < 3);
+    t.eq("col tema le prime tre stanno in fondo, e una sola va di là", await ultimaDove(true), 3);
+    await p.setViewportSize({ width: 720, height: 400 });
+
     // I 20px DI EPUB.JS DENTRO LA PAGINA. Li mette lui, in orizzontale,
     // e sono 40px di carta bianca per facciata che nessuno ha scelto: su
     // una colonna che non è multipla dell'altezza di riga valgono fino a
