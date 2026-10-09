@@ -190,6 +190,7 @@ const SCENE = [
         10000,
         "i tempi dell'avvio, della Libreria e dell'ePub non sono annotati"
       );
+      if (!tempi.every((x) => x.ver)) throw new Error(`una misura senza la versione della build: ${JSON.stringify(tempi.find((x) => !x.ver))}`);
       const ep = tempi.find((x) => x.c === "epub");
       if (ep.da !== "tablet" || !("pagina" in ep.f) || !("byte" in ep.f)) throw new Error(`apertura dell'ePub misurata male: ${JSON.stringify(ep)}`);
       const registro = await d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_errori") || "[]"));
