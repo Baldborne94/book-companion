@@ -428,8 +428,18 @@ export function contentStyles(s, lingua) {
         ? { "padding-left": `${SCORRIMENTO_LATI} !important`, "padding-right": `${SCORRIMENTO_LATI} !important` }
         : { "padding-top": `${PAGINA_SU_GIU}px !important`, "padding-bottom": `${PAGINA_SU_GIU}px !important` }),
     },
+    // I FONDI PAGINA SEMPRE PIENI (scelto dal lettore: «sì, fondi pagina
+    // sempre pieni»). Il browser non lascia una riga sola di un paragrafo
+    // in fondo o in cima a una colonna (`widows`/`orphans` = 2): quando
+    // capiterebbe sposta il paragrafo e lascia una riga vuota in fondo, e
+    // la pagina finisce piu' su della sua vicina. A 1 le colonne si
+    // riempiono sempre; il prezzo, accettato, e' la riga sola. Su ogni
+    // elemento e con `!important`: e' una proprieta' che si eredita, e un
+    // `p { widows: 2 }` del libro la riprenderebbe.
     [textSel]: {
       color: `${t.fg} !important`,
+      widows: "1 !important",
+      orphans: "1 !important",
     },
     [proseSel]: {
       "line-height": `${s.lineHeight}`,
