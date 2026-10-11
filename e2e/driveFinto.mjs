@@ -12,7 +12,7 @@ import http from "node:http";
 // `misureVere`: la misura che Drive da' chiedendo il file uno per uno, quando
 // l'elenco ne porta un'altra (un file appena caricato, elencato a zero)
 export function avviaDrive(porta, file, { elenco = [], latenza = 0, misureVere = {}, banda = 0 } = {}) {
-  const d = { pezzi: 0, interi: 0, scesi: new Set() };
+  const d = { pezzi: 0, interi: 0, scesi: new Set(), cestino: [] };
   const server = http.createServer(async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "*");
@@ -28,7 +28,7 @@ export function avviaDrive(porta, file, { elenco = [], latenza = 0, misureVere =
     };
     if (u.pathname.endsWith("/changes/startPageToken")) return json({ startPageToken: "1" });
     if (u.pathname.endsWith("/changes")) return json({ newStartPageToken: "1", changes: [] });
-    if (u.pathname.endsWith("/files") && req.method === "GET") return json({ files: elenco });
+    if (u.pathname.endsWith("/files") && req.method === "GET") return json({ files: elenco.filter((f) => !f.trashed) });
     // il segno che l'app scrive resta sul file, come su Drive: senza, un
     // file appena segnato tornava «di nessuno» alla scelta dopo
     if (req.method === "PATCH") {
@@ -37,6 +37,10 @@ export function avviaDrive(porta, file, { elenco = [], latenza = 0, misureVere =
       const corpo = JSON.parse(Buffer.concat(pezzi).toString() || "{}");
       const voce = elenco.find((f) => f.id === id);
       if (voce && corpo.appProperties) voce.appProperties = { ...(voce.appProperties || {}), ...corpo.appProperties };
+      if (voce && corpo.trashed) {
+        voce.trashed = true;
+        d.cestino.push(id);
+      }
       return json({ id, appProperties: voce?.appProperties });
     }
     const bytes = u.searchParams.get("alt") === "media" ? file[id] : null;
@@ -72,6 +76,7 @@ export function avviaDrive(porta, file, { elenco = [], latenza = 0, misureVere =
       ok({
         conti: () => ({ pezzi: d.pezzi, interi: d.interi }),
         scesi: () => [...d.scesi].sort(),
+        cestino: () => [...d.cestino],
         chiudi: () =>
           new Promise((c) => {
             server.closeAllConnections?.();
