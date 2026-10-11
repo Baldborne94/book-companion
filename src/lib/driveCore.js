@@ -952,6 +952,31 @@ export function gemelloCbzDi(fileId, file) {
   return (file || []).find((g) => g.id !== f.id && !g.trashed && /\.cbz$/i.test(g.name || "") && g.parents?.[0] === f.parents?.[0] && radiceDelNome(g.name) === radiceDelNome(f.name)) || null;
 }
 
+// I CBR GIA' CONVERTITI (chiesto dal lettore facendo pulizia su Drive per
+// stare in un piano piu' piccolo: «fallo»). Accanto a 29 CBR c'era il loro
+// CBZ, e del CBR non si serviva nessuno: era entrato solo il gemello
+// (`daAggiungere`), o era il file di una scheda unita ai doppioni. Si butta
+// SOLO il CBR che nessun libro usa, accanto a un CBZ gemello che un libro
+// usa: se il CBZ fosse di nessuno, il CBR sarebbe l'unica copia letta. Un
+// CBR col segno di un libro vivo resta, a meno che quel libro non legga gia'
+// il gemello (un'adozione rimasta a meta'); col segno di una scheda che qui
+// non c'e' resta finche' la biblioteca puo' ancora arrivare dal cloud.
+export function cbrGiaConvertiti(libri, mappa, file, { schedeInArrivo = false } = {}) {
+  const vivi = new Set((libri || []).map((b) => b?.id).filter(Boolean));
+  const usati = new Set(Object.entries(mappa || {}).filter(([id]) => vivi.has(id)).map(([, f]) => f?.id).filter(Boolean));
+  const out = [];
+  for (const f of file || []) {
+    if (!f?.id || f.trashed || estensioneDi(f.name) !== "cbr" || usati.has(f.id)) continue;
+    const g = gemelloCbzDi(f.id, file);
+    if (!g || !usati.has(g.id)) continue;
+    const segno = f.appProperties?.bcId;
+    if (segno && vivi.has(segno) && mappa?.[segno]?.id !== g.id) continue;
+    if (segno && !vivi.has(segno) && schedeInArrivo) continue;
+    out.push({ id: f.id, nome: f.name, byte: Number(f.size) || 0, cbz: g.id });
+  }
+  return out;
+}
+
 // L'ADOZIONE A META' (trovata sul Drive del lettore dopo il primo giro di
 // Colab: i CBZ col segno, i CBR nel cestino, e le schede ancora «CBR»).
 // Su Drive l'adozione e' fatta in un attimo, la scheda cambia dopo: un'app

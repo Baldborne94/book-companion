@@ -18,7 +18,7 @@
 // stanno in `driveCore.js`, dove un test le prova.
 
 import { segnaTempo, vocePerTempo } from "./tempi.js";
-import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, senzaPermessoDrive, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive, CAMPI_ELENCO, daTenereNellElenco, applicaCambiamenti, elencoBuono, segnoScaduto, VERSIONE_ELENCO, fileDellElenco, cartelleDellElenco, audioDellElenco, RADICE, idRadice, ARCHIVI, vaDetto, cartellaArchivi, archivioDovuto, archiviDaTogliere, piuRecenti, nomeArchivio } from "./driveCore.js";
+import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, senzaPermessoDrive, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive, CAMPI_ELENCO, daTenereNellElenco, applicaCambiamenti, elencoBuono, segnoScaduto, VERSIONE_ELENCO, fileDellElenco, cartelleDellElenco, audioDellElenco, RADICE, idRadice, ARCHIVI, vaDetto, cartellaArchivi, archivioDovuto, archiviDaTogliere, piuRecenti, nomeArchivio, cbrGiaConvertiti } from "./driveCore.js";
 import { getAux, putAux, removeAux } from "./bookStore.js";
 
 const TOKEN_KEY = "bc_drive_token";
@@ -674,6 +674,21 @@ export async function adottaCbz({ bookId, vecchio, nuovo, byte }) {
     const f = VIVO.elenco.file[nuovo];
     if (f) f.appProperties = { ...(f.appProperties || {}), bc: "1", bcId: bookId };
   }
+}
+
+// I CBR GIA' CONVERTITI (vedi `cbrGiaConvertiti`): quelli da buttare, letti
+// dall'elenco di Drive di adesso, e il cestino per uno alla volta, col segno
+// tolto. Dal cestino di Drive si riprende per un mese.
+export async function cbrDaButtare(libri, { schedeInArrivo = false } = {}) {
+  return cbrGiaConvertiti(libri, mappaDrive(), await elencaFile(), { schedeInArrivo });
+}
+export async function cestinaSuDrive(id) {
+  await chiama(`${API}/files/${encodeURIComponent(id)}?fields=id`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ trashed: true, appProperties: { bcId: null } }),
+  });
+  if (VIVO) delete VIVO.elenco.file[id];
 }
 
 // la chiave per chi legge Drive fuori da qui (il worker della conversione)

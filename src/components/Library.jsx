@@ -19,7 +19,7 @@ import { isSyncConfigured } from "../lib/supabase.js";
 import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso, schedeCambiate
 } from "../lib/syncCore.js";
-import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, DriveScollegato, scegliSuDrive, dettagliFile, ultimoArchivioSuDrive, ultimoArchivioDaDrive, fraseScollegato, permessoDriveMancante } from "../lib/drive.js";
+import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, DriveScollegato, scegliSuDrive, dettagliFile, ultimoArchivioSuDrive, ultimoArchivioDaDrive, fraseScollegato, permessoDriveMancante, cbrDaButtare, cestinaSuDrive } from "../lib/drive.js";
 import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, sceltaDalPicker, libriSotto, idRadice, giaSulloScaffale, fraseGia } from "../lib/driveCore.js";
 import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
 import { eFumetto } from "../lib/fumetto.js";
@@ -905,6 +905,8 @@ export default function Library({
   };
   const [importing, setImporting] = useState(false);
   const [vediDoppi, setVediDoppi] = useState(false);
+  // i CBR gia' convertiti da buttare (vedi `cbrGiaConvertiti`)
+  const [avanzi, setAvanzi] = useState(null);
   const [giroImport, setGiroImport] = useState(null);
   // «Aggiungi da Drive»: l'elenco dei file lassu' che non sono ancora
   // libri, con le spunte, e il filo per fermare il giro a meta'
@@ -1813,6 +1815,49 @@ export default function Library({
   // LIBERA SPAZIO. Si ricontrolla su Drive ADESSO — la mappa e' dell'ultimo
   // giro, e un file cancellato a mano lassu' nel frattempo lascerebbe il
   // libro perduto — e per farlo serve la chiave, che si chiede da un tocco.
+  // I CBR GIA' CONVERTITI: prima si guarda su Drive e si mostra l'elenco,
+  // poi, toccato, uno alla volta nel cestino. Un intoppo e' di quel file.
+  async function cercaAvanzi() {
+    if (avanzi) return;
+    setAvanzi({ cercando: true });
+    try {
+      if (!driveProntoOra()) await collegaDrive();
+      const voci = await cbrDaButtare(books, { schedeInArrivo: isSyncConfigured() && !getLastSync() });
+      if (!voci.length) {
+        setAvanzi(null);
+        notify("Nessun CBR da buttare: dove c'è un CBR, è il file che leggi o non ha ancora il suo CBZ accanto");
+        return;
+      }
+      setAvanzi({ voci });
+    } catch (err) {
+      setAvanzi(null);
+      notify(err instanceof DriveScollegato ? fraseScollegato(err, "Google Drive aspetta un tocco: riprova.") : err?.message || "Google Drive non ha risposto");
+    }
+  }
+
+  async function buttaAvanzi() {
+    const voci = avanzi?.voci || [];
+    let fatti = 0;
+    let byte = 0;
+    let falliti = 0;
+    for (let i = 0; i < voci.length; i++) {
+      setAvanzi({ voci, buttando: i });
+      try {
+        await cestinaSuDrive(voci[i].id);
+        fatti += 1;
+        byte += voci[i].byte;
+      } catch (err) {
+        if (err instanceof DriveScollegato) {
+          notify(fraseScollegato(err, "Google Drive aspetta un tocco: riprova."));
+          break;
+        }
+        falliti += 1;
+      }
+    }
+    setAvanzi(null);
+    if (fatti) notify(`🧹 ${fatti === 1 ? "Un CBR" : `${fatti} CBR`} nel cestino di Drive · ${fmtGoogle(byte)}${falliti ? ` · ${falliti} non ${falliti === 1 ? "è andato" : "sono andati"}` : ""}. Dal cestino si riprendono per 30 giorni; lo spazio torna quando lo svuoti.`);
+  }
+
   async function apriLibera() {
     if (libera) return;
     try {
@@ -2940,6 +2985,45 @@ export default function Library({
                   ? `Fermo qui (${lavoroCbr.i + 1} di ${lavoroCbr.totale}) · ${fraseDelPasso(lavoroCbr.passo)}`
                   : `🔁 Converti ${cbrDaFare.length === 1 ? "un CBR" : `${cbrDaFare.length} CBR`} in CBZ`}
               </button>
+            )}
+            {/* I CBR GIA' CONVERTITI (vedi `cbrGiaConvertiti`): c'e' solo con
+                Drive; prima l'elenco, col peso, poi il cestino */}
+            {drive && !avanzi?.voci && (
+              <button
+                onClick={cercaAvanzi}
+                disabled={!!avanzi}
+                style={{ padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}
+              >
+                {avanzi?.cercando ? "Guardo su Drive…" : "🗑 CBR già convertiti in CBZ"}
+              </button>
+            )}
+            {avanzi?.voci && (
+              <div style={{ flexBasis: "100%", padding: 12, borderRadius: R.piccolo, border: `1px solid ${C.border}`, background: C.surface }}>
+                <p style={{ margin: "0 0 8px", color: C.text, fontSize: F.nota, lineHeight: 1.45 }}>
+                  {`${avanzi.voci.length === 1 ? "Questo CBR ha accanto il CBZ che leggi, e nessun libro lo usa più" : `Questi ${avanzi.voci.length} CBR hanno accanto il CBZ che leggi, e nessun libro li usa più`}: ${fmtGoogle(avanzi.voci.reduce((n, v) => n + v.byte, 0))} su Google Drive. Vanno nel cestino di Drive, da dove si riprendono per 30 giorni.`}
+                </p>
+                <ul style={{ margin: "0 0 10px", padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" }}>
+                  {avanzi.voci.map((v) => (
+                    <li key={v.id} style={{ fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" }}>
+                      <span style={{ color: C.text }}>{v.nome}</span> · {fmtGoogle(v.byte)}
+                    </li>
+                  ))}
+                </ul>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    onClick={buttaAvanzi}
+                    disabled={avanzi.buttando != null}
+                    style={{ minHeight: 44, padding: "8px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                  >
+                    {avanzi.buttando != null ? `Butto ${avanzi.buttando + 1} di ${avanzi.voci.length}…` : "Mettili nel cestino di Drive"}
+                  </button>
+                  {avanzi.buttando == null && (
+                    <button onClick={() => setAvanzi(null)} style={{ minHeight: 44, padding: "8px 16px", color: C.muted, fontSize: F.nota }}>
+                      Lascia stare
+                    </button>
+                  )}
+                </div>
+              </div>
             )}
             {/* I DOPPIONI (vedi `doppioniInBiblioteca`): prima si vede
                 quali, poi si uniscono. Si tiene la scheda col file, poi

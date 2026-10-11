@@ -747,6 +747,46 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore facendo pulizia su Drive: 29 CBR col loro CBZ
+    // accanto, 14,6 GB. Si butta solo il CBR di nessuno accanto al CBZ letto
+    nome: "i CBR gia' convertiti vanno nel cestino di Drive, e solo quelli",
+    async fai({ browser }) {
+      const elenco = [
+        { id: "HB", name: "Hellboy", mimeType: "application/vnd.google-apps.folder" },
+        { id: "R1", name: "Hellboy v01.cbr", size: "700000000", parents: ["HB"] },
+        { id: "Z1", name: "Hellboy v01.cbz", size: "650000000", parents: ["HB"], appProperties: { bc: "1", bcId: "h1" } },
+        { id: "R2", name: "Hellboy v02.cbr", size: "500000000", parents: ["HB"], appProperties: { bc: "1", bcId: "h2" } },
+        { id: "Z2", name: "Hellboy v02.cbz", size: "480000000", parents: ["HB"] },
+      ];
+      const drv = await avviaDrive(PORTA_DRIVE, {}, { elenco });
+      try {
+        const d = await dispositivo(browser, {
+          drive: {
+            libri: [
+              { id: "h1", title: "Hellboy v01", fileType: "cbz", addedAt: 1 },
+              { id: "h2", title: "Hellboy v02", fileType: "cbr", addedAt: 2 },
+            ],
+            mappa: { h1: { id: "Z1", byte: 650000000 }, h2: { id: "R2", byte: 500000000 } },
+          },
+          prima: () => localStorage.setItem("bc_drive_client", "123-abc.apps.googleusercontent.com"),
+        });
+        await d.p.goto(`${URL_APP}?apri=libreria`);
+        await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
+        await d.p.getByRole("button", { name: /CBR già convertiti in CBZ/ }).click();
+        const frase = await finche(() => testoAvviso(d.p, /Questo CBR ha accanto il CBZ che leggi/), 15000, "l'elenco dei CBR da buttare non compare");
+        const elencati = await d.p.evaluate(() => [...document.querySelectorAll("li span")].map((x) => x.textContent).filter((x) => /\.cbr$/.test(x)));
+        if (elencati.join() !== "Hellboy v01.cbr") throw new Error(`elencati: ${elencati.join()}`);
+        if (drv.cestino().length) throw new Error("si e' buttato qualcosa prima del tocco");
+        await d.p.getByRole("button", { name: "Mettili nel cestino di Drive" }).click();
+        await finche(() => testoAvviso(d.p, /Un CBR nel cestino di Drive/), 15000, "il cestino non si dice");
+        if (drv.cestino().join() !== "R1") throw new Error(`nel cestino: ${drv.cestino().join()}`);
+        return { guasti: d.guasti, nota: `«${frase.slice(0, 60)}…», nel cestino solo ${drv.cestino().join()}` };
+      } finally {
+        await drv.chiudi();
+      }
+    },
+  },
+  {
     nome: "l'Ingresso propone il volume rimesso «Da leggere» e l'inizio del ciclo dopo",
     async fai({ browser }) {
       const d = await dispositivo(browser, { prima: mondoDisco });
