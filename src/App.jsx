@@ -1410,7 +1410,8 @@ export default function App() {
     try {
       if (!driveProntoOra()) await collegaDrive();
       const tipi = tipiDi(loadBooks());
-      const voci = await daSpostareDaDrive(libri, { tipoDi: (b) => tipoDi(b, tipi) });
+      // quello che stai leggendo si copia e resta anche su Drive (`divisiPerHdd`)
+      const voci = await daSpostareDaDrive(libri, { tipoDi: (b) => tipoDi(b, tipi), tieni: (b) => getStatus(b.id) === "reading" });
       const esito = await spostaSuHdd(voci, {
         radice: await casaSulDisco(scelta),
         vivo,

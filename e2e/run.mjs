@@ -800,27 +800,31 @@ const SCENE = [
         { id: "Z1", name: "Hellboy v01.cbz", size: "300000", parents: ["HB"], appProperties: { bc: "1", bcId: "h1" } },
         // un volume capitato fuori posto su Drive: sul disco va dalla sua saga
         { id: "Z2", name: "Hellboy: Seed v02.cbz", size: "200000", parents: ["FU"], appProperties: { bc: "1", bcId: "h2" } },
+        // quello che stai leggendo si copia sul disco e resta anche su Drive,
+        // da leggere anche sul tablet
+        { id: "Z3", name: "Hellboy v03.cbz", size: "100000", parents: ["HB"], appProperties: { bc: "1", bcId: "h3" } },
       ];
-      const drv = await avviaDrive(PORTA_DRIVE, { Z1: Buffer.alloc(300000, 1), Z2: Buffer.alloc(200000, 2) }, { elenco });
+      const drv = await avviaDrive(PORTA_DRIVE, { Z1: Buffer.alloc(300000, 1), Z2: Buffer.alloc(200000, 2), Z3: Buffer.alloc(100000, 3) }, { elenco });
       try {
         const disco = () => {
           localStorage.setItem("bc_vista", JSON.stringify({ aspetto: "raccolte" }));
+          localStorage.setItem("bc_status_h3", "reading");
           window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
         };
         const d = await dispositivo(browser, {
           prima: `(${disco})();`,
           drive: {
             libri: [1, 2, 3].map((i) => ({ id: `h${i}`, title: `Hellboy v0${i}`, author: "Mike Mignola", saga: "Hellboy", sagaOrder: i, fileType: "cbz", tipo: "fumetti", addedAt: i })),
-            mappa: { h1: { id: "Z1", byte: 300000 }, h2: { id: "Z2", byte: 200000 } },
+            mappa: { h1: { id: "Z1", byte: 300000 }, h2: { id: "Z2", byte: 200000 }, h3: { id: "Z3", byte: 100000 } },
           },
         });
         await d.p.goto(`${URL_APP}?apri=libreria`);
         await d.p.getByRole("button", { name: /^Hellboy/ }).first().click();
         await d.p.getByRole("button", { name: "📦 Sposta sull'HDD" }).click();
-        await finche(() => testoAvviso(d.p, /i 2 volumi che stanno su Google Drive/), 8000, "la conferma non dice quanti volumi");
+        await finche(() => testoAvviso(d.p, /i 3 volumi che stanno su Google Drive.*Il volume che stai leggendo si copia sul disco e resta anche su Drive/), 8000, "la conferma non dice quanti volumi, e quello che resta");
         if (drv.cestino().length) throw new Error("si e' buttato qualcosa prima di scegliere il disco");
         await d.p.getByRole("button", { name: "Scegli la cartella del disco" }).click();
-        const frase = await finche(() => testoAvviso(d.p, /2 volumi sull'HDD/), 20000, "lo spostamento non si dice");
+        const frase = await finche(() => testoAvviso(d.p, /2 volumi sull'HDD.*Quello che stai leggendo è copiato sull'HDD e resta su Drive/), 20000, "lo spostamento non si dice");
         const sulDisco = await d.p.evaluate(async () => {
           const out = {};
           const giu = async (dir, via) => {
@@ -832,7 +836,7 @@ const SCENE = [
           await giu(await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD"), "");
           return out;
         });
-        const atteso = { "book-companion/Fumetti/Hellboy/Hellboy v01.cbz": 300000, "book-companion/Fumetti/Hellboy/Hellboy_ Seed v02.cbz": 200000 };
+        const atteso = { "book-companion/Fumetti/Hellboy/Hellboy v01.cbz": 300000, "book-companion/Fumetti/Hellboy/Hellboy_ Seed v02.cbz": 200000, "book-companion/Fumetti/Hellboy/Hellboy v03.cbz": 100000 };
         const ordinato = (o) => JSON.stringify(Object.entries(o).sort());
         if (ordinato(sulDisco) !== ordinato(atteso)) throw new Error(`sul disco: ${JSON.stringify(sulDisco)}`);
         const libri = await libriDi(d.p);
@@ -840,7 +844,7 @@ const SCENE = [
         if (tolti !== "h1,h2" || libri.length !== 3) throw new Error(`schede: ${libri.length}, senza file ${tolti}`);
         if (drv.cestino().sort().join() !== "Z1,Z2") throw new Error(`nel cestino: ${drv.cestino().join()}`);
         const mappa = await d.p.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("bc_drive_libri") || "{}")));
-        if (mappa.length) throw new Error(`ancora nella mappa: ${mappa.join()}`);
+        if (mappa.join() !== "h3") throw new Error(`ancora nella mappa: ${mappa.join()}`);
         return { guasti: d.guasti, nota: frase.slice(0, 90) };
       } finally {
         await drv.chiudi();

@@ -1006,7 +1006,7 @@ export function cbzGiaAdottati(libri, mappa, file) {
 // Un file che lassu' non c'e' piu', o di cui Drive non dice il peso, non si
 // sposta: senza il peso non si puo' guardare che sul disco sia arrivato
 // intero.
-export function daSpostareSuHdd(libri, mappa, file, { tipoDi = () => "libri" } = {}) {
+export function daSpostareSuHdd(libri, mappa, file, { tipoDi = () => "libri", tieni = () => false } = {}) {
   const per = new Map((file || []).filter((f) => f?.id && !f.trashed).map((f) => [f.id, f]));
   const out = [];
   for (const b of libri || []) {
@@ -1014,7 +1014,7 @@ export function daSpostareSuHdd(libri, mappa, file, { tipoDi = () => "libri" } =
     const byte = Number(f?.size) || 0;
     if (!f || !(byte > 0)) continue;
     const saga = String(b.saga || "").trim();
-    out.push({ bookId: b.id, fileId: f.id, nome: f.name || b.id, byte, cartelle: [cartellaDelTipo(tipoDi(b)), ...(saga ? [saga] : [])] });
+    out.push({ bookId: b.id, fileId: f.id, nome: f.name || b.id, byte, cartelle: [cartellaDelTipo(tipoDi(b)), ...(saga ? [saga] : [])], tieni: !!tieni(b) });
   }
   return out;
 }
