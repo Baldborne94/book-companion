@@ -995,3 +995,26 @@ export function cbzGiaAdottati(libri, mappa, file) {
   }
   return out;
 }
+
+// SPOSTARE SULL'HDD (chiesto dal lettore per non pagare i due tera di
+// Drive: i libri restano schede, i file vanno su un disco suo). Di una
+// raccolta si sposta il file che ogni volume legge su Drive, cosi' com'e'
+// adesso nell'elenco — la mappa e' dell'ultimo giro. Sul disco la casa la
+// decide la SCHEDA, non la cartella di Drive (dove un file sta dove e'
+// capitato): «Libri», «Fumetti» o «Manga» come su Drive, e dentro una
+// cartella per saga; un volume a se' sta nella cartella del suo tipo.
+// Un file che lassu' non c'e' piu', o di cui Drive non dice il peso, non si
+// sposta: senza il peso non si puo' guardare che sul disco sia arrivato
+// intero.
+export function daSpostareSuHdd(libri, mappa, file, { tipoDi = () => "libri" } = {}) {
+  const per = new Map((file || []).filter((f) => f?.id && !f.trashed).map((f) => [f.id, f]));
+  const out = [];
+  for (const b of libri || []) {
+    const f = per.get(mappa?.[b?.id]?.id);
+    const byte = Number(f?.size) || 0;
+    if (!f || !(byte > 0)) continue;
+    const saga = String(b.saga || "").trim();
+    out.push({ bookId: b.id, fileId: f.id, nome: f.name || b.id, byte, cartelle: [cartellaDelTipo(tipoDi(b)), ...(saga ? [saga] : [])] });
+  }
+  return out;
+}

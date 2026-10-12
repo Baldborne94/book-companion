@@ -787,6 +787,67 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore per lasciare i due tera di Drive: «spostare grossi
+    // file direttamente da drive ad hard disk esterno». Il disco e' la
+    // cartella privata del browser (OPFS), con la stessa forma di quella
+    // scelta dal lettore
+    nome: "una raccolta si sposta da Drive all'HDD: i file sul disco nelle loro cartelle, le schede restano, Drive li butta",
+    async fai({ browser }) {
+      const elenco = [
+        { id: "BC", name: "book-companion", mimeType: "application/vnd.google-apps.folder" },
+        { id: "FU", name: "Fumetti", mimeType: "application/vnd.google-apps.folder", parents: ["BC"] },
+        { id: "HB", name: "Hellboy", mimeType: "application/vnd.google-apps.folder", parents: ["FU"] },
+        { id: "Z1", name: "Hellboy v01.cbz", size: "300000", parents: ["HB"], appProperties: { bc: "1", bcId: "h1" } },
+        // un volume capitato fuori posto su Drive: sul disco va dalla sua saga
+        { id: "Z2", name: "Hellboy: Seed v02.cbz", size: "200000", parents: ["FU"], appProperties: { bc: "1", bcId: "h2" } },
+      ];
+      const drv = await avviaDrive(PORTA_DRIVE, { Z1: Buffer.alloc(300000, 1), Z2: Buffer.alloc(200000, 2) }, { elenco });
+      try {
+        const disco = () => {
+          localStorage.setItem("bc_vista", JSON.stringify({ aspetto: "raccolte" }));
+          window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
+        };
+        const d = await dispositivo(browser, {
+          prima: `(${disco})();`,
+          drive: {
+            libri: [1, 2, 3].map((i) => ({ id: `h${i}`, title: `Hellboy v0${i}`, author: "Mike Mignola", saga: "Hellboy", sagaOrder: i, fileType: "cbz", tipo: "fumetti", addedAt: i })),
+            mappa: { h1: { id: "Z1", byte: 300000 }, h2: { id: "Z2", byte: 200000 } },
+          },
+        });
+        await d.p.goto(`${URL_APP}?apri=libreria`);
+        await d.p.getByRole("button", { name: /^Hellboy/ }).first().click();
+        await d.p.getByRole("button", { name: "📦 Sposta sull'HDD" }).click();
+        await finche(() => testoAvviso(d.p, /i 2 volumi che stanno su Google Drive/), 8000, "la conferma non dice quanti volumi");
+        if (drv.cestino().length) throw new Error("si e' buttato qualcosa prima di scegliere il disco");
+        await d.p.getByRole("button", { name: "Scegli la cartella del disco" }).click();
+        const frase = await finche(() => testoAvviso(d.p, /2 volumi sull'HDD/), 20000, "lo spostamento non si dice");
+        const sulDisco = await d.p.evaluate(async () => {
+          const out = {};
+          const giu = async (dir, via) => {
+            for await (const [n, h] of dir.entries()) {
+              if (h.kind === "directory") await giu(h, `${via}${n}/`);
+              else out[`${via}${n}`] = (await h.getFile()).size;
+            }
+          };
+          await giu(await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD"), "");
+          return out;
+        });
+        const atteso = { "book-companion/Fumetti/Hellboy/Hellboy v01.cbz": 300000, "book-companion/Fumetti/Hellboy/Hellboy_ Seed v02.cbz": 200000 };
+        const ordinato = (o) => JSON.stringify(Object.entries(o).sort());
+        if (ordinato(sulDisco) !== ordinato(atteso)) throw new Error(`sul disco: ${JSON.stringify(sulDisco)}`);
+        const libri = await libriDi(d.p);
+        const tolti = libri.filter((b) => b.fileTolto).map((b) => b.id).sort().join();
+        if (tolti !== "h1,h2" || libri.length !== 3) throw new Error(`schede: ${libri.length}, senza file ${tolti}`);
+        if (drv.cestino().sort().join() !== "Z1,Z2") throw new Error(`nel cestino: ${drv.cestino().join()}`);
+        const mappa = await d.p.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("bc_drive_libri") || "{}")));
+        if (mappa.length) throw new Error(`ancora nella mappa: ${mappa.join()}`);
+        return { guasti: d.guasti, nota: frase.slice(0, 90) };
+      } finally {
+        await drv.chiudi();
+      }
+    },
+  },
+  {
     nome: "l'Ingresso propone il volume rimesso «Da leggere» e l'inizio del ciclo dopo",
     async fai({ browser }) {
       const d = await dispositivo(browser, { prima: mondoDisco });

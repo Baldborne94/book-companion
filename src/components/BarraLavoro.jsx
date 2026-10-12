@@ -4,8 +4,9 @@
 // meta', la stessa riga offre di riprenderlo.
 import { C, F, R, px } from "../data/constants.js";
 import { fraseLavoro, fraseImport } from "../lib/convertiCbr.js";
+import { fmtGoogle } from "../lib/bytes.js";
 
-export default function BarraLavoro({ importo = null, onFermaImport, scarico = null, onFermaScarico, lavoro, restanti = 0, onFerma, onRiprendi, onLascia }) {
+export default function BarraLavoro({ hdd = null, onFermaHdd, importo = null, onFermaImport, scarico = null, onFermaScarico, lavoro, restanti = 0, onFerma, onRiprendi, onLascia }) {
   const tasto = {
     minHeight: 44,
     padding: "6px 14px",
@@ -38,6 +39,20 @@ export default function BarraLavoro({ importo = null, onFermaImport, scarico = n
             {importo.nome ? ` · «${importo.nome}»` : ""}
           </span>
           <button onClick={onFermaImport} style={tasto}>
+            Ferma
+          </button>
+        </div>
+      )}
+      {hdd && (
+        <div role="status" style={riga}>
+          <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
+            <span style={{ color: C.text }}>
+              📦 Sposto sull'HDD: {hdd.nome ? `${hdd.i + 1} di ${hdd.totale}` : "guardo su Google Drive…"}
+            </span>
+            {hdd.nome ? ` · «${hdd.nome}»` : ""}
+            {hdd.byte > 0 ? ` · ${fmtGoogle(hdd.presi)} di ${fmtGoogle(hdd.byte)}` : ""}
+          </span>
+          <button onClick={onFermaHdd} style={tasto}>
             Ferma
           </button>
         </div>

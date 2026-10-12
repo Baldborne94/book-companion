@@ -22,6 +22,7 @@ import {
 import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, DriveScollegato, scegliSuDrive, dettagliFile, ultimoArchivioSuDrive, ultimoArchivioDaDrive, fraseScollegato, permessoDriveMancante, cbrDaButtare, cestinaSuDrive } from "../lib/drive.js";
 import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, sceltaDalPicker, libriSotto, idRadice, giaSulloScaffale, fraseGia } from "../lib/driveCore.js";
 import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
+import { hddPossibile, percheNoHdd } from "../lib/hdd.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { fraseDelPasso, fraseImport } from "../lib/convertiCbr.js";
 import { senzaCopertina } from "../lib/copertina.js";
@@ -439,7 +440,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   );
 }
 
-function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, onHdd }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -589,7 +590,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, cov
             </button>
           )}
         </div>
-        <TuttaLaRaccolta r={dentro} voti={voti} onVoto={onVoto} onTutti={onTutti} />
+        <TuttaLaRaccolta r={dentro} voti={voti} onVoto={onVoto} onTutti={onTutti} onHdd={onHdd} />
         {mostra(dentro)}
       </>
     );
@@ -705,7 +706,7 @@ function Raccolta({ r, amata = false, voto = null, onApri, coverV, conCopertina 
 // saga (o la media dei volumi votati, detta come tale) e tutti i volumi
 // letti o da leggere in un tocco, con una conferma: venti volumi cambiati
 // per sbaglio non si rimettono a posto uno per uno
-function TuttaLaRaccolta({ r, voti, onVoto, onTutti }) {
+function TuttaLaRaccolta({ r, voti, onVoto, onTutti, onHdd }) {
   const [chiedo, setChiedo] = useState(null);
   const votabile = puoEssereVotata(r.id);
   const mio = votoMio(voti, r.id);
@@ -789,6 +790,55 @@ function TuttaLaRaccolta({ r, voti, onVoto, onTutti }) {
           </>
         )}
       </div>
+      <SpostaSuHdd r={r} onHdd={onHdd} tasto={tasto} />
+    </div>
+  );
+}
+
+// SPOSTARE SULL'HDD (`spostaSuHdd` in App): i volumi della raccolta che
+// stanno su Drive. La cartella del disco si sceglie DENTRO il tocco — il
+// browser la chiede solo li' — e il resto e' un lavoro lungo di App.
+function SpostaSuHdd({ r, onHdd, tasto }) {
+  const [chiedo, setChiedo] = useState(false);
+  if (!onHdd || !driveAcceso()) return null;
+  const mappa = mappaDrive();
+  const lassu = r.libri.filter((b) => mappa[b.id]);
+  if (!lassu.length) return null;
+  const riga = { flexBasis: "100%", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: F.nota, color: C.muted, lineHeight: 1.45 };
+  if (!hddPossibile()) {
+    const perche = percheNoHdd();
+    return perche ? <div style={riga}>📦 {perche}</div> : null;
+  }
+  if (!chiedo)
+    return (
+      <div style={riga}>
+        <button onClick={() => setChiedo(true)} style={tasto(false)}>
+          📦 Sposta sull'HDD
+        </button>
+      </div>
+    );
+  const peso = lassu.reduce((n, b) => n + (Number(mappa[b.id]?.byte) || 0), 0);
+  async function scegli() {
+    let radice = null;
+    try {
+      radice = await window.showDirectoryPicker({ id: "bc-hdd", mode: "readwrite" });
+    } catch {
+      return;
+    }
+    setChiedo(false);
+    onHdd(lassu, radice);
+  }
+  return (
+    <div style={riga}>
+      <span style={{ flexBasis: "100%", color: C.text }}>
+        {`Sposto ${lassu.length === 1 ? "il volume che sta" : `i ${lassu.length} volumi che stanno`} su Google Drive (${fmtGoogle(peso)}) sul disco: scegli una sua cartella, e dentro faccio «book-companion» come su Drive, con Libri, Fumetti e Manga e una cartella per ogni saga (un volume a sé sta nella cartella del suo tipo). Ogni volume, quando sul disco è arrivato intero, resta in biblioteca come scheda e su Drive va nel cestino, da dove si riprende per 30 giorni. Anche il tablet lo toglie dalla sua memoria.`}
+      </span>
+      <button onClick={scegli} style={tasto(true)}>
+        Scegli la cartella del disco
+      </button>
+      <button onClick={() => setChiedo(false)} style={tasto(false)}>
+        No
+      </button>
     </div>
   );
 }
@@ -826,7 +876,12 @@ export default function Library({
   // un cambio che non tocca le schede (il cuore, il voto di una raccolta)
   // parte lo stesso verso gli altri dispositivi
   onCambiate,
+  onSpostaSuHdd,
 }) {
+  // lo scaffale si ridisegna solo quando cambia: il lavoro dell'HDD si
+  // raggiunge da qui, sempre quello di adesso
+  const hddRef = useRef(onSpostaSuHdd);
+  hddRef.current = onSpostaSuHdd;
   const [query, setQuery] = useState("");
   // il controllo aggiornamenti col dito: `agg` e' l'esito in corso, e le
   // parole stanno in ESITI_CONTROLLO — un esito senza frase e' un tasto
@@ -2212,6 +2267,7 @@ export default function Library({
         voti={voti}
         onVoto={vota}
         onTutti={tuttiQuanti}
+        onHdd={(libri, radice) => hddRef.current?.(libri, radice)}
       />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps

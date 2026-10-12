@@ -26,7 +26,7 @@ import SezioneAnticipo from "./components/SezioneAnticipo.jsx";
 import SezioneDizionario from "./components/SezioneDizionario.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
-import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, timbraScheda, getProgress, getUpdatedAt } from "./lib/library.js";
+import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, timbraScheda, getProgress, getUpdatedAt, tipiDi, tipoDi } from "./lib/library.js";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds } from "./lib/bookStore.js";
 import { cercaNuovaVersione, cercaInSilenzio } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
@@ -44,7 +44,8 @@ import { annotaErrore } from "./lib/registro.js";
 import SezioneGuasti from "./components/SezioneGuasti.jsx";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile, convertiLibroInCbz, adottaCbzConvertiti } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
-import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, dettagliFile, impostaRinnovo, impostaRientro, rinnovaInSilenzio, chiaveInScadenza, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato, fraseScollegato } from "./lib/drive.js";
+import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, dettagliFile, impostaRinnovo, impostaRientro, rinnovaInSilenzio, chiaveInScadenza, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato, fraseScollegato, daSpostareDaDrive, apriDaDrive, cestinaDelLibro } from "./lib/drive.js";
+import { spostaSuHdd, fraseHdd, casaSulDisco } from "./lib/hdd.js";
 import { importaDaDrive, resoconto } from "./lib/importBook.js";
 import { custodisciGoogle, rinnovoDalServer, rientroConGoogle, lasciaGoogleQui } from "./lib/accessoGoogle.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
@@ -1393,6 +1394,50 @@ export default function App() {
     }
   }
 
+  // SPOSTARE SULL'HDD (`spostaSuHdd`): i volumi di una raccolta scendono da
+  // Drive dritti nella cartella del disco che il lettore ha scelto; ognuno,
+  // arrivato intero, resta scheda senza file e lassu' va nel cestino. Lavoro
+  // lungo (un giga a volume): vive qui, si vede e si ferma da ogni sezione.
+  const [hdd, setHdd] = useState(null);
+  const filoHdd = useRef(null);
+  async function spostaSuHddQui(libri, scelta) {
+    if (!libri.length) return;
+    if (filoHdd.current) return notify("Sto già spostando sull'HDD: aspetta che finisca, o fermalo dalla barra in basso");
+    const mio = {};
+    filoHdd.current = mio;
+    const vivo = () => filoHdd.current === mio;
+    setHdd({ i: 0, totale: libri.length, nome: "", presi: 0, byte: 0 });
+    try {
+      if (!driveProntoOra()) await collegaDrive();
+      const tipi = tipiDi(loadBooks());
+      const voci = await daSpostareDaDrive(libri, { tipoDi: (b) => tipoDi(b, tipi) });
+      const esito = await spostaSuHdd(voci, {
+        radice: await casaSulDisco(scelta),
+        vivo,
+        ferma: (e) => e instanceof DriveScollegato,
+        onProgress: (p) => vivo() && setHdd(p),
+        apri: apriDaDrive,
+        segna: async (v) => {
+          timbraScheda(v.bookId);
+          updateBooks(loadBooks().map((b) => (b.id === v.bookId ? { ...b, fileTolto: true } : b)));
+          await removeFileOnly(v.bookId).catch(() => {});
+          const b = loadBooks().find((x) => x.id === v.bookId);
+          if (b) await togliFileDalCloud(b).catch(() => {});
+        },
+        cestina: (v) => cestinaDelLibro(v.bookId, v.fileId),
+      });
+      notify([fraseHdd(esito), esito.scollegato && fraseScollegato(esito.scollegato, "Google Drive aspetta un tocco: riprova")].filter(Boolean).join(" · "));
+    } catch (e) {
+      notify(e instanceof DriveScollegato ? fraseScollegato(e, "Google Drive aspetta un tocco: riprova") : e?.message || "Google Drive non ha risposto");
+    } finally {
+      if (filoHdd.current === mio) filoHdd.current = null;
+      setHdd(null);
+      setLocalIds(await localFileIds());
+      setSpazioCambiato((n) => n + 1);
+      runSync.current(true);
+    }
+  }
+
   // I DOPPIONI (`doppioniInBiblioteca`): lo stesso volume in due o tre
   // schede — fumetti nati prima che l'importazione saltasse i gemelli di
   // Colab, libri reimportati da Drive accanto alla scheda rimasta senza file.
@@ -1838,6 +1883,7 @@ export default function App() {
             importoDrive={importo}
             onImportaDaDrive={importaDaDriveQui}
             onFermaImport={fermaImport}
+            onSpostaSuHdd={spostaSuHddQui}
             daImportare={daImportare}
             onImportati={() => setDaImportare(null)}
             focusSaga={focusSaga}
@@ -1876,8 +1922,12 @@ export default function App() {
         )}
       </main>
       </div>
-      {(lavoro || importo || scarico || restanti.length > 0) && (
+      {(lavoro || importo || scarico || hdd || restanti.length > 0) && (
         <BarraLavoro
+          hdd={hdd}
+          onFermaHdd={() => {
+            filoHdd.current = null;
+          }}
           importo={importo}
           onFermaImport={fermaImport}
           scarico={scarico}

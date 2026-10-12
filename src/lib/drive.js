@@ -18,7 +18,7 @@
 // stanno in `driveCore.js`, dove un test le prova.
 
 import { segnaTempo, vocePerTempo } from "./tempi.js";
-import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, senzaPermessoDrive, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive, CAMPI_ELENCO, daTenereNellElenco, applicaCambiamenti, elencoBuono, segnoScaduto, VERSIONE_ELENCO, fileDellElenco, cartelleDellElenco, audioDellElenco, RADICE, idRadice, ARCHIVI, vaDetto, cartellaArchivi, archivioDovuto, archiviDaTogliere, piuRecenti, nomeArchivio, cbrGiaConvertiti } from "./driveCore.js";
+import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, senzaPermessoDrive, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive, CAMPI_ELENCO, daTenereNellElenco, applicaCambiamenti, elencoBuono, segnoScaduto, VERSIONE_ELENCO, fileDellElenco, cartelleDellElenco, audioDellElenco, RADICE, idRadice, ARCHIVI, vaDetto, cartellaArchivi, archivioDovuto, archiviDaTogliere, piuRecenti, nomeArchivio, cbrGiaConvertiti, daSpostareSuHdd } from "./driveCore.js";
 import { getAux, putAux, removeAux } from "./bookStore.js";
 
 const TOKEN_KEY = "bc_drive_token";
@@ -690,6 +690,23 @@ export async function cestinaSuDrive(id) {
   });
   if (VIVO) delete VIVO.elenco.file[id];
 }
+
+// SPOSTARE SULL'HDD (vedi `daSpostareSuHdd` e `lib/hdd.js`): i volumi da
+// spostare letti dall'elenco di adesso, e il file aperto come flusso, che
+// scende sul disco senza passare dalla memoria
+export async function daSpostareDaDrive(libri, opzioni) {
+  return daSpostareSuHdd(libri, mappaDrive(), await elencaFile(), opzioni);
+}
+// il file nel cestino, POI fuori dalla mappa: se il cestino non riesce il
+// libro si legge ancora da Drive, che e' dove il file e' rimasto
+export async function cestinaDelLibro(bookId, fileId) {
+  await cestinaSuDrive(fileId);
+  const m = mappaDrive();
+  if (m[bookId]?.id !== fileId) return;
+  delete m[bookId];
+  scriviMappa(m);
+}
+export const apriDaDrive = (fileId) => chiama(`${API}/files/${encodeURIComponent(fileId)}?alt=media`);
 
 // la chiave per chi legge Drive fuori da qui (il worker della conversione)
 export const chiaveDrive = () => tokenValido();
