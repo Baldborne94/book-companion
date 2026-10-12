@@ -802,18 +802,18 @@ function SpostaSuHdd({ r, onHdd, tasto, etichetta = "📦 Sposta sull'HDD", spie
   const [chiedo, setChiedo] = useState(false);
   if (!onHdd || !driveAcceso()) return null;
   const mappa = mappaDrive();
-  const { tutti: lassu, inLettura: restano } = divisiPerHdd(r.libri, mappa, getStatus);
-  if (!lassu.length) return null;
+  const { tutti: lassu, inLettura: restano, via } = divisiPerHdd(r.libri, mappa, getStatus);
+  if (!via.length) return null;
   const riga = { flexBasis: "100%", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: F.nota, color: C.muted, lineHeight: 1.45 };
   if (!hddPossibile()) {
     const perche = spiega && percheNoHdd();
     return perche ? <div style={riga}>📦 {perche}</div> : null;
   }
-  const peso = lassu.reduce((n, b) => n + (Number(mappa[b.id]?.byte) || 0), 0);
+  const peso = via.reduce((n, b) => n + (Number(mappa[b.id]?.byte) || 0), 0);
   if (!chiedo)
     return (
       <button onClick={() => setChiedo(true)} style={tasto(false)}>
-        {etichetta === true ? `📦 ${lassu.length} ${r.nome[lassu.length === 1 ? 0 : 1]} sull'HDD · ${fmtGoogle(peso)}` : etichetta}
+        {etichetta === true ? `📦 ${via.length} ${r.nome[via.length === 1 ? 0 : 1]} sull'HDD · ${fmtGoogle(peso)}` : etichetta}
       </button>
     );
   async function scegli() {
@@ -829,7 +829,7 @@ function SpostaSuHdd({ r, onHdd, tasto, etichetta = "📦 Sposta sull'HDD", spie
   return (
     <div style={riga}>
       <span style={{ flexBasis: "100%", color: C.text }}>
-        {`Sposto ${lassu.length === 1 ? "il volume che sta" : `i ${lassu.length} volumi che stanno`} su Google Drive (${fmtGoogle(peso)}) sul disco: scegli una sua cartella, e dentro faccio «book-companion» come su Drive, con Libri, Fumetti e Manga e una cartella per ogni saga (un volume a sé sta nella cartella del suo tipo). Ogni volume, quando sul disco è arrivato intero, resta in biblioteca come scheda e su Drive va nel cestino, da dove si riprende per 30 giorni. Anche il tablet lo toglie dalla sua memoria.${restano.length ? ` ${restano.length === 1 ? "Il volume che stai leggendo si copia sul disco e resta anche" : `I ${restano.length} volumi che stai leggendo si copiano sul disco e restano anche`} su Drive, da leggere anche sul tablet: quando li avrai finiti, rifai lo spostamento e se ne vanno anche da lì.` : ""}`}
+        {`Sposto ${via.length === 1 ? "il volume che sta" : `i ${via.length} volumi che stanno`} su Google Drive (${fmtGoogle(peso)}) sul disco: scegli una sua cartella, e dentro faccio «book-companion» come su Drive, con Libri, Fumetti e Manga e una cartella per ogni saga (un volume a sé sta nella cartella del suo tipo). Ogni volume, quando sul disco è arrivato intero, resta in biblioteca come scheda e su Drive va nel cestino, da dove si riprende per 30 giorni. Anche il tablet lo toglie dalla sua memoria.${restano.length ? ` ${restano.length === 1 ? "Il volume che stai leggendo si copia sul disco e resta anche" : `I ${restano.length} volumi che stai leggendo si copiano sul disco e restano anche`} su Drive, da leggere anche sul tablet: quando li avrai finiti, rifai lo spostamento e se ne vanno anche da lì.` : ""}`}
       </span>
       <button onClick={scegli} style={tasto(true)}>
         Scegli la cartella del disco
