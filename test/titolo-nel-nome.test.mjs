@@ -36,5 +36,15 @@ export default async (t) => {
   t.eq("due file candidati: si tace", uno(libri[0], [file[0], f("H2", "Terry Pratchett - Hogfather (2).epub")]), "");
   t.eq("un file per due schede: si tace", ids(abbina([libri[0], { ...libri[0], id: "hog2" }], file)), "");
   t.eq("basta il cognome, la parola piu' lunga dell'autore", uno(libri[0], [f("P", "Pratchett - Hogfather.epub")]), "hog=P");
+  // il volume unico non e' il file di un volume solo (il caso vero del
+  // lettore: Xenocide senza file, gli altri quattro spostati sull'HDD)
+  const quintet = f("Q", "The Ender Quintet (Enders Game Speaker for the Dead Xenocide Children of the Mind Ender in Exile) by Card, Orson Scott (z-lib.org).epub");
+  const ender = [
+    { id: "xen", title: "Xenocide", author: "Orson Scott Card", fileType: "epub" },
+    { id: "chi", title: "Children of the Mind", author: "Orson Scott Card", fileType: "epub", fileTolto: true },
+    { id: "spe", title: "Ender 02 - Speaker for the Dead", author: "Orson Scott Card", fileType: "epub", fileTolto: true },
+  ];
+  t.eq("un volume unico con dentro i titoli di altri libri dell'autore non si prende", ids(abbina(ender, [quintet])), "");
+  t.eq("il titolo di un libro d'altri dentro il nome non conta", ids(abbina([libri[0], { id: "z", title: "Harper", author: "Altro Scrittore", fileType: "epub" }], [file[0]])), "hog=H");
   t.eq("senza autore sulla scheda si tace", uno({ id: "x", title: "Hogfather", fileType: "epub" }), "");
 };

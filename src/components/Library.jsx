@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { getProgress, getStatus, setStatus, combacia, vistaValida, scriviVista, timbraScheda, getTombstones, getUpdatedAt, scaffaleVuoto, TIPI, delTipo, tipiDi, tipiPresenti } from "../lib/library.js";
+import { getProgress, getStatus, setStatus, combacia, vistaValida, scriviVista, timbraScheda, getTombstones, getUpdatedAt, scaffaleVuoto, TIPI, delTipo, tipiDi, tipoDi, tipiPresenti } from "../lib/library.js";
 import { disponi, aEtichette, criterioVoto, criterioStato, altezzaStimata, ALTEZZA_SCHEDA, COLONNA, SPAZIO_COLONNE, SPAZIO_RIGHE, inRaccolte, copertinaDi, contoRaccolta, nellOrdineScelto } from "../lib/ripiani.js";
 import { leggiPreferite, scriviPreferite, preferiteVive, segnaPreferita, puoEssereFavorita, ePreferito } from "../lib/raccoltePreferite.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
@@ -22,7 +22,7 @@ import {
 import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, DriveScollegato, scegliSuDrive, dettagliFile, ultimoArchivioSuDrive, ultimoArchivioDaDrive, fraseScollegato, permessoDriveMancante, cbrDaButtare, cestinaSuDrive } from "../lib/drive.js";
 import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, sceltaDalPicker, libriSotto, idRadice, giaSulloScaffale, fraseGia } from "../lib/driveCore.js";
 import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
-import { hddPossibile, percheNoHdd, divisiPerHdd } from "../lib/hdd.js";
+import { hddPossibile, percheNoHdd, divisiPerHdd, perSezioni, SEZIONI_HDD } from "../lib/hdd.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { fraseDelPasso, fraseImport } from "../lib/convertiCbr.js";
 import { senzaCopertina } from "../lib/copertina.js";
@@ -798,7 +798,7 @@ function TuttaLaRaccolta({ r, voti, onVoto, onTutti, onHdd }) {
 // SPOSTARE SULL'HDD (`spostaSuHdd` in App): i volumi della raccolta che
 // stanno su Drive. La cartella del disco si sceglie DENTRO il tocco — il
 // browser la chiede solo li' — e il resto e' un lavoro lungo di App.
-function SpostaSuHdd({ r, onHdd, tasto }) {
+function SpostaSuHdd({ r, onHdd, tasto, etichetta = "📦 Sposta sull'HDD", spiega = true }) {
   const [chiedo, setChiedo] = useState(false);
   if (!onHdd || !driveAcceso()) return null;
   const mappa = mappaDrive();
@@ -806,18 +806,16 @@ function SpostaSuHdd({ r, onHdd, tasto }) {
   if (!lassu.length) return null;
   const riga = { flexBasis: "100%", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: F.nota, color: C.muted, lineHeight: 1.45 };
   if (!hddPossibile()) {
-    const perche = percheNoHdd();
+    const perche = spiega && percheNoHdd();
     return perche ? <div style={riga}>📦 {perche}</div> : null;
   }
+  const peso = lassu.reduce((n, b) => n + (Number(mappa[b.id]?.byte) || 0), 0);
   if (!chiedo)
     return (
-      <div style={riga}>
-        <button onClick={() => setChiedo(true)} style={tasto(false)}>
-          📦 Sposta sull'HDD
-        </button>
-      </div>
+      <button onClick={() => setChiedo(true)} style={tasto(false)}>
+        {etichetta === true ? `📦 ${lassu.length} ${r.nome[lassu.length === 1 ? 0 : 1]} sull'HDD · ${fmtGoogle(peso)}` : etichetta}
+      </button>
     );
-  const peso = lassu.reduce((n, b) => n + (Number(mappa[b.id]?.byte) || 0), 0);
   async function scegli() {
     let radice = null;
     try {
@@ -3042,6 +3040,23 @@ export default function Library({
                   : `🔁 Converti ${cbrDaFare.length === 1 ? "un CBR" : `${cbrDaFare.length} CBR`} in CBZ`}
               </button>
             )}
+            {/* PER SEZIONE SULL'HDD (vedi `spostaSuHdd` in App): un tasto per
+                Libri, Fumetti e Manga, col conto di quel che sta su Drive */}
+            {drive &&
+              (() => {
+                const sezioni = perSezioni(books, (b) => tipoDi(b, tipi));
+                const nomi = { libri: ["libro", "libri"], fumetti: ["fumetto", "fumetti"], manga: ["manga", "manga"] };
+                return SEZIONI_HDD.map((sez, i) => (
+                  <SpostaSuHdd
+                    key={sez}
+                    r={{ libri: sezioni[sez], nome: nomi[sez] }}
+                    onHdd={onSpostaSuHdd}
+                    etichetta
+                    spiega={i === 0}
+                    tasto={(attivo) => ({ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${attivo ? C.accent + "88" : C.border}`, color: attivo ? C.accent : C.text, fontSize: F.nota })}
+                  />
+                ));
+              })()}
             {/* I CBR GIA' CONVERTITI (vedi `cbrGiaConvertiti`): c'e' solo con
                 Drive; prima l'elenco, col peso, poi il cestino */}
             {drive && !avanzi?.voci && (

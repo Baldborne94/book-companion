@@ -25,6 +25,16 @@ export function divisiPerHdd(libri, mappa, stato) {
   return { tutti: lassu, inLettura: lassu.filter((b) => stato(b.id) === "reading") };
 }
 
+// PER SEZIONE (chiesto dal lettore: «spostare per sezione, tutti i libri
+// o tutti i manga o tutti i fumetti»): le sezioni sono quelle della
+// Libreria e delle cartelle, col tipo che la Libreria da' a ogni libro
+export const SEZIONI_HDD = ["libri", "fumetti", "manga"];
+export function perSezioni(libri, tipoDi) {
+  const out = Object.fromEntries(SEZIONI_HDD.map((s) => [s, []]));
+  for (const b of libri || []) out[tipoDi(b)]?.push(b);
+  return out;
+}
+
 // sul computer senza la cartella da scegliere (Firefox) si dice perche';
 // sul tablet no: li' il disco esterno non si sceglie in nessun browser, e
 // la frase sarebbe in ogni raccolta per niente
