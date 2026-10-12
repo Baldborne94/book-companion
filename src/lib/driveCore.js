@@ -63,7 +63,10 @@ const estDelLibro = (b) => (b?.fileType || "epub").toLowerCase();
 //      parola piu' lunga dell'autore fra le parole del nome, un file senza
 //      segno di nessuno, e solo se la scheda ha un candidato e il candidato
 //      una scheda sola. Un'impronta diversa da quella di Drive e' un altro
-//      file, e non si prende.
+//      file, e non si prende. E un nome che porta anche il titolo di un altro
+//      libro dello stesso autore e' un volume unico (segnalato dal lettore:
+//      Xenocide e «The Ender Quintet (… Speaker for the Dead Xenocide
+//      Children of the Mind …)»): non e' il file di nessuno dei due.
 //
 // NEL DUBBIO NON SI ABBINA: un libro non abbinato finisce su Drive una
 // seconda volta (spazio sprecato, e si vede), uno abbinato male apre il
@@ -114,16 +117,29 @@ export function abbina(libri, file, { misure } = {}) {
     else if (c.length > 1) ambigui += 1;
   }
   const dentro = new Map();
+  const autoreDi = (b) => nomeNudo(b.author).split(" ").sort((x, y) => y.length - x.length)[0] || "";
+  // i titoli di ogni autore: un nome che porta anche il titolo di un altro
+  // suo libro e' un volume unico («The Ender Quintet (… Xenocide Children
+  // of the Mind …)»), non il file di uno solo
+  const titoliDi = new Map();
+  for (const x of vivi) {
+    const a = autoreDi(x);
+    const t = nomeNudo(x.title);
+    if (!a || t.length < 4) continue;
+    if (!titoliDi.has(a)) titoliDi.set(a, new Set());
+    titoliDi.get(a).add(t);
+  }
   for (const b of vivi) {
     if (mappa.has(b.id) || b.fileTolto || Number(misure?.get?.(b.id)) > 0) continue;
     const titolo = nomeNudo(b.title);
-    const autore = nomeNudo(b.author).split(" ").sort((x, y) => y.length - x.length)[0] || "";
+    const autore = autoreDi(b);
     if (titolo.length < 4) continue;
+    const altri = [...(titoliDi.get(autore) || [])].filter((t) => t !== titolo);
     const c = liberi(b).filter((f) => {
       if (f.appProperties?.bcId) return false;
       if (b.impronta && f.sha256Checksum && f.sha256Checksum.toLowerCase() !== b.impronta) return false;
       const n = ` ${nomeNudo(f.name)} `;
-      return n.includes(` ${titolo} `) && n.includes(` ${autore} `);
+      return n.includes(` ${titolo} `) && n.includes(` ${autore} `) && !altri.some((t) => n.includes(` ${t} `));
     });
     if (c.length > 1) ambigui += 1;
     if (c.length === 1) dentro.set(b, c[0]);
