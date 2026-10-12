@@ -2,7 +2,7 @@
 // il file scende dritto sul disco, si guarda che sia arrivato intero, e solo
 // allora la scheda resta senza file e Drive lo butta nel cestino.
 import { daSpostareSuHdd } from "../src/lib/driveCore.js";
-import { spostaSuHdd, casaSulDisco, nomeSicuro, hddPossibile, percheNoHdd, fraseHdd } from "../src/lib/hdd.js";
+import { spostaSuHdd, divisiPerHdd, casaSulDisco, nomeSicuro, hddPossibile, percheNoHdd, fraseHdd } from "../src/lib/hdd.js";
 
 // un disco finto con la forma di File System Access: cartelle, file, e una
 // scrittura che arriva nel file solo a `close` (come in Chrome)
@@ -91,6 +91,22 @@ export default async (t) => {
   const gia = cartellaFinta("Book-Companion");
   t.c("se il lettore ha scelto proprio lei, si usa lei", (await casaSulDisco(gia)) === gia && !gia.dentro.size);
   t.eq("dice file, nome e peso", `${voci[0].fileId} ${voci[0].nome} ${voci[0].byte}`, "f1 Hellboy v01.cbz 3000");
+
+  // quello che stai leggendo si copia sul disco e resta anche su Drive
+  const stati = { a: "reading", b: "read", c: "unread" };
+  const diviso = divisiPerHdd([{ id: "a" }, { id: "b" }, { id: "c" }, { id: "x" }], { a: {}, b: {}, c: {} }, (id) => stati[id]);
+  t.eq("si spostano tutti i volumi che stanno su Drive", diviso.tutti.map((b) => b.id).join(), "a,b,c");
+  t.eq("e si dice quali stai leggendo", diviso.inLettura.map((b) => b.id).join(), "a");
+  t.eq("la voce di chi stai leggendo dice di tenerlo", daSpostareSuHdd(libri, mappa, file, { tieni: (b) => b.id === "b" }).map((v) => `${v.bookId}${v.tieni ? "+" : ""}`).join(), "a,b+,c");
+  const toccati = [];
+  const ec = await spostaSuHdd([{ ...voci[0], tieni: true }, voci[2]], {
+    radice: cartellaFinta(),
+    apri: async (id) => risposta(id === "f1" ? 3000 : 500),
+    segna: async (v) => toccati.push(`segna ${v.bookId}`),
+    cestina: async (v) => toccati.push(`cestina ${v.bookId}`),
+  });
+  t.eq("copiato sul disco, ma scheda e Drive non si toccano", `${toccati.join()} · ${ec.copiati} copiato, ${ec.fatti} spostato`, "segna c,cestina c · 1 copiato, 1 spostato");
+  t.c("e si dice", /Quello che stai leggendo è copiato sull'HDD e resta su Drive/.test(fraseHdd({ ...ec })));
 
   t.eq("i nomi che Windows rifiuta", nomeSicuro('Hellboy: Year 2?.cbz'), "Hellboy_ Year 2_.cbz");
   t.eq("niente punto in fondo", nomeSicuro("Fine. "), "Fine");
@@ -184,6 +200,6 @@ export default async (t) => {
   const e6 = await spostaSuHdd([voci[2], voci[0]], { radice, vivo: () => vivo6, apri: async () => risposta(500), segna: async (v) => (segnati6.push(v.bookId), (vivo6 = false)), cestina: async () => {} });
   t.c("fermato fra due volumi, il secondo non si tocca", e6.fermato && segnati6.join() === "c");
 
-  t.c("la frase dice il disco e il cestino", /2 volumi sull'HDD · 3 MB liberati/.test(fraseHdd({ fatti: 2, byte: 3 * 1024 * 1024, mancati: [], restati: [], fermato: false })));
+  t.c("la frase dice il disco e il cestino", /2 volumi sull'HDD · 3 MB liberati/.test(fraseHdd({ fatti: 2, copiati: 0, byte: 3 * 1024 * 1024, mancati: [], restati: [], fermato: false })));
   t.c("e chi non è arrivato", /uno non è arrivato/.test(fraseHdd({ fatti: 0, byte: 0, mancati: [1], restati: [], fermato: false })));
 };

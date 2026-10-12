@@ -13,6 +13,18 @@ import { RADICE } from "./driveCore.js";
 
 export const hddPossibile = (w = globalThis) => typeof w?.showDirectoryPicker === "function";
 
+// I LIBRI CHE STAI LEGGENDO RESTANO ANCHE SU DRIVE (scelto dal lettore:
+// «spostali tutti, ma il libro che sto leggendo una copia la lasci sul
+// Drive»): dall'HDD si legge solo sul PC, da Drive anche sul tablet. Tutti i
+// volumi di una raccolta che stanno su Drive scendono sul disco; quelli in
+// lettura (`tieni`) lassu' restano, e la scheda continua a leggerli da li'.
+// Finiti, il prossimo spostamento li trova gia' sul disco e li toglie da
+// Drive senza riscaricarli.
+export function divisiPerHdd(libri, mappa, stato) {
+  const lassu = (libri || []).filter((b) => mappa?.[b?.id]);
+  return { tutti: lassu, inLettura: lassu.filter((b) => stato(b.id) === "reading") };
+}
+
 // sul computer senza la cartella da scegliere (Firefox) si dice perche';
 // sul tablet no: li' il disco esterno non si sceglie in nessun browser, e
 // la frase sarebbe in ogni raccolta per niente
@@ -68,7 +80,7 @@ async function posto(dir, nome, byte) {
 const MB = 1024 * 1024;
 
 export async function spostaSuHdd(voci, { radice, apri, segna, cestina, ferma = () => false, vivo = () => true, onProgress } = {}) {
-  const esito = { fatti: 0, byte: 0, mancati: [], restati: [], fermato: false, scollegato: null };
+  const esito = { fatti: 0, copiati: 0, byte: 0, mancati: [], restati: [], fermato: false, scollegato: null };
   for (let i = 0; i < (voci || []).length; i++) {
     if (!vivo()) {
       esito.fermato = true;
@@ -95,6 +107,10 @@ export async function spostaSuHdd(voci, { radice, apri, segna, cestina, ferma = 
       }
       if ((await p.fh.getFile()).size !== v.byte) {
         esito.mancati.push(v);
+        continue;
+      }
+      if (v.tieni) {
+        esito.copiati += 1;
         continue;
       }
       await segna(v);
@@ -126,6 +142,7 @@ const quanti = (n, uno, molti) => (n === 1 ? uno : `${n} ${molti}`);
 export function fraseHdd(e) {
   const parti = [];
   if (e.fatti) parti.push(`📦 ${quanti(e.fatti, "Un volume", "volumi")} sull'HDD${e.byte ? ` · ${fmtGoogle(e.byte)} liberati su Google Drive (nel cestino per 30 giorni)` : ""}`);
+  if (e.copiati) parti.push(e.copiati === 1 ? "📖 Quello che stai leggendo è copiato sull'HDD e resta su Drive" : `📖 I ${e.copiati} che stai leggendo sono copiati sull'HDD e restano su Drive`);
   if (e.restati.length) parti.push(`${quanti(e.restati.length, "uno è sull'HDD ma è rimasto", "sono sull'HDD ma sono rimasti")} anche su Drive`);
   if (e.mancati.length) parti.push(`${quanti(e.mancati.length, "uno non è arrivato", "non sono arrivati")} intero sul disco: resta su Drive`);
   if (e.fermato) parti.push("fermato: il resto è ancora su Drive");
