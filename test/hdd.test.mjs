@@ -2,7 +2,7 @@
 // il file scende dritto sul disco, si guarda che sia arrivato intero, e solo
 // allora la scheda resta senza file e Drive lo butta nel cestino.
 import { daSpostareSuHdd } from "../src/lib/driveCore.js";
-import { spostaSuHdd, divisiPerHdd, casaSulDisco, nomeSicuro, hddPossibile, percheNoHdd, fraseHdd } from "../src/lib/hdd.js";
+import { spostaSuHdd, divisiPerHdd, perSezioni, SEZIONI_HDD, casaSulDisco, nomeSicuro, hddPossibile, percheNoHdd, fraseHdd } from "../src/lib/hdd.js";
 
 // un disco finto con la forma di File System Access: cartelle, file, e una
 // scrittura che arriva nel file solo a `close` (come in Chrome)
@@ -107,6 +107,10 @@ export default async (t) => {
   });
   t.eq("copiato sul disco, ma scheda e Drive non si toccano", `${toccati.join()} · ${ec.copiati} copiato, ${ec.fatti} spostato`, "segna c,cestina c · 1 copiato, 1 spostato");
   t.c("e si dice", /Quello che stai leggendo è copiato sull'HDD e resta su Drive/.test(fraseHdd({ ...ec })));
+
+  // per sezione: le stesse della Libreria e delle cartelle
+  const sez = perSezioni([{ id: "l1" }, { id: "f1" }, { id: "m1" }, { id: "l2" }, { id: "x" }], (b) => ({ l1: "libri", l2: "libri", f1: "fumetti", m1: "manga", x: "musica" })[b.id]);
+  t.eq("ogni libro nella sua sezione, e un tipo sconosciuto in nessuna", SEZIONI_HDD.map((k) => `${k}:${sez[k].map((b) => b.id).join("+")}`).join(" "), "libri:l1+l2 fumetti:f1 manga:m1");
 
   t.eq("i nomi che Windows rifiuta", nomeSicuro('Hellboy: Year 2?.cbz'), "Hellboy_ Year 2_.cbz");
   t.eq("niente punto in fondo", nomeSicuro("Fine. "), "Fine");

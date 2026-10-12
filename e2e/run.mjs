@@ -897,6 +897,71 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «spostare per sezione, tutti i libri o tutti i
+    // manga o tutti i fumetti; se qualcosa è già presente non spostarlo di
+    // nuovo creando i doppioni»
+    nome: "dalla Manutenzione si sposta sull'HDD una sezione sola, e quel che è già sul disco non scende di nuovo",
+    async fai({ browser }) {
+      const elenco = [
+        { id: "L1", name: "Mort.epub", size: "50000", parents: ["X"], appProperties: { bc: "1", bcId: "l1" } },
+        { id: "Z1", name: "Hellboy v01.cbz", size: "300000", parents: ["X"], appProperties: { bc: "1", bcId: "h1" } },
+        { id: "Z2", name: "Hellboy v02.cbz", size: "200000", parents: ["X"], appProperties: { bc: "1", bcId: "h2" } },
+      ];
+      const drv = await avviaDrive(PORTA_DRIVE, { L1: Buffer.alloc(50000, 1), Z1: Buffer.alloc(300000, 2), Z2: Buffer.alloc(200000, 3) }, { elenco });
+      try {
+        const disco = () => {
+          window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
+        };
+        const d = await dispositivo(browser, {
+          prima: `(${disco})();`,
+          drive: {
+            libri: [
+              { id: "l1", title: "Mort", author: "Terry Pratchett", fileType: "epub", addedAt: 1 },
+              { id: "h1", title: "Hellboy v01", author: "Mike Mignola", saga: "Hellboy", fileType: "cbz", tipo: "fumetti", addedAt: 2 },
+              { id: "h2", title: "Hellboy v02", author: "Mike Mignola", saga: "Hellboy", fileType: "cbz", tipo: "fumetti", addedAt: 3 },
+            ],
+            mappa: { l1: { id: "L1", byte: 50000 }, h1: { id: "Z1", byte: 300000 }, h2: { id: "Z2", byte: 200000 } },
+          },
+        });
+        await d.p.goto(`${URL_APP}?apri=libreria`);
+        // il primo volume e' gia' sul disco, da un giro di prima
+        await d.p.evaluate(async () => {
+          const r = await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
+          let c = r;
+          for (const n of ["book-companion", "Fumetti", "Hellboy"]) c = await c.getDirectoryHandle(n, { create: true });
+          const w = await (await c.getFileHandle("Hellboy v01.cbz", { create: true })).createWritable();
+          await w.write(new Uint8Array(300000).fill(2));
+          await w.close();
+        });
+        await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
+        await d.p.getByRole("button", { name: /^📦 2 fumetti sull'HDD/ }).click();
+        await d.p.getByRole("button", { name: "Scegli la cartella del disco" }).click();
+        const frase = await finche(() => testoAvviso(d.p, /2 volumi sull'HDD/), 20000, "lo spostamento non si dice");
+        const sulDisco = await d.p.evaluate(async () => {
+          const out = [];
+          const giu = async (dir, via) => {
+            for await (const [n, h] of dir.entries()) {
+              if (h.kind === "directory") await giu(h, `${via}${n}/`);
+              else out.push(`${via}${n}`);
+            }
+          };
+          await giu(await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD"), "");
+          return out.sort().join();
+        });
+        if (sulDisco !== "book-companion/Fumetti/Hellboy/Hellboy v01.cbz,book-companion/Fumetti/Hellboy/Hellboy v02.cbz") throw new Error(`sul disco: ${sulDisco}`);
+        if (drv.scesi().join() !== "Z2") throw new Error(`scesi da Drive: ${drv.scesi().join()} (il primo era gia' sul disco)`);
+        if (drv.cestino().sort().join() !== "Z1,Z2") throw new Error(`nel cestino: ${drv.cestino().join()}`);
+        const tolti = (await libriDi(d.p)).filter((b) => b.fileTolto).map((b) => b.id).sort().join();
+        if (tolti !== "h1,h2") throw new Error(`senza file: ${tolti} (i libri non si toccano)`);
+        await finche(() => d.p.getByRole("button", { name: /^📦 1 libro sull'HDD/ }).count(), 5000, "il tasto dei libri non resta");
+        if (await d.p.getByRole("button", { name: /fumetti sull'HDD/ }).count()) throw new Error("il tasto dei fumetti resta, e non ha piu' niente da spostare");
+        return { guasti: d.guasti, nota: `${frase.slice(0, 60)}… · sceso solo Z2, Mort resta su Drive` };
+      } finally {
+        await drv.chiudi();
+      }
+    },
+  },
+  {
     nome: "l'Ingresso propone il volume rimesso «Da leggere» e l'inizio del ciclo dopo",
     async fai({ browser }) {
       const d = await dispositivo(browser, { prima: mondoDisco });
