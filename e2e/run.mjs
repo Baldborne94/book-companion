@@ -798,7 +798,8 @@ const SCENE = [
         { id: "FU", name: "Fumetti", mimeType: "application/vnd.google-apps.folder", parents: ["BC"] },
         { id: "HB", name: "Hellboy", mimeType: "application/vnd.google-apps.folder", parents: ["FU"] },
         { id: "Z1", name: "Hellboy v01.cbz", size: "300000", parents: ["HB"], appProperties: { bc: "1", bcId: "h1" } },
-        { id: "Z2", name: "Hellboy: Seed v02.cbz", size: "200000", parents: ["HB"], appProperties: { bc: "1", bcId: "h2" } },
+        // un volume capitato fuori posto su Drive: sul disco va dalla sua saga
+        { id: "Z2", name: "Hellboy: Seed v02.cbz", size: "200000", parents: ["FU"], appProperties: { bc: "1", bcId: "h2" } },
       ];
       const drv = await avviaDrive(PORTA_DRIVE, { Z1: Buffer.alloc(300000, 1), Z2: Buffer.alloc(200000, 2) }, { elenco });
       try {
@@ -809,7 +810,7 @@ const SCENE = [
         const d = await dispositivo(browser, {
           prima: `(${disco})();`,
           drive: {
-            libri: [1, 2, 3].map((i) => ({ id: `h${i}`, title: `Hellboy v0${i}`, author: "Mike Mignola", saga: "Hellboy", sagaOrder: i, fileType: "cbz", addedAt: i })),
+            libri: [1, 2, 3].map((i) => ({ id: `h${i}`, title: `Hellboy v0${i}`, author: "Mike Mignola", saga: "Hellboy", sagaOrder: i, fileType: "cbz", tipo: "fumetti", addedAt: i })),
             mappa: { h1: { id: "Z1", byte: 300000 }, h2: { id: "Z2", byte: 200000 } },
           },
         });
@@ -831,7 +832,7 @@ const SCENE = [
           await giu(await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD"), "");
           return out;
         });
-        const atteso = { "Fumetti/Hellboy/Hellboy v01.cbz": 300000, "Fumetti/Hellboy/Hellboy_ Seed v02.cbz": 200000 };
+        const atteso = { "book-companion/Fumetti/Hellboy/Hellboy v01.cbz": 300000, "book-companion/Fumetti/Hellboy/Hellboy_ Seed v02.cbz": 200000 };
         const ordinato = (o) => JSON.stringify(Object.entries(o).sort());
         if (ordinato(sulDisco) !== ordinato(atteso)) throw new Error(`sul disco: ${JSON.stringify(sulDisco)}`);
         const libri = await libriDi(d.p);

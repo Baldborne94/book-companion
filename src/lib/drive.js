@@ -694,9 +694,8 @@ export async function cestinaSuDrive(id) {
 // SPOSTARE SULL'HDD (vedi `daSpostareSuHdd` e `lib/hdd.js`): i volumi da
 // spostare letti dall'elenco di adesso, e il file aperto come flusso, che
 // scende sul disco senza passare dalla memoria
-export async function daSpostareDaDrive(libri) {
-  const tutti = await tuttiDellElenco();
-  return daSpostareSuHdd(libri, mappaDrive(), fileDellElenco(tutti), cartelleDellElenco(tutti));
+export async function daSpostareDaDrive(libri, opzioni) {
+  return daSpostareSuHdd(libri, mappaDrive(), await elencaFile(), opzioni);
 }
 // il file nel cestino, POI fuori dalla mappa: se il cestino non riesce il
 // libro si legge ancora da Drive, che e' dove il file e' rimasto

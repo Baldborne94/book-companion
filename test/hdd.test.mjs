@@ -2,7 +2,7 @@
 // il file scende dritto sul disco, si guarda che sia arrivato intero, e solo
 // allora la scheda resta senza file e Drive lo butta nel cestino.
 import { daSpostareSuHdd } from "../src/lib/driveCore.js";
-import { spostaSuHdd, nomeSicuro, hddPossibile, percheNoHdd, fraseHdd } from "../src/lib/hdd.js";
+import { spostaSuHdd, casaSulDisco, nomeSicuro, hddPossibile, percheNoHdd, fraseHdd } from "../src/lib/hdd.js";
 
 // un disco finto con la forma di File System Access: cartelle, file, e una
 // scrittura che arriva nel file solo a `close` (come in Chrome)
@@ -66,25 +66,30 @@ const percorso = async (radice, ...nomi) => {
 const risposta = (n, { corto = 0 } = {}) => new Response(new Uint8Array(n - corto).fill(7));
 
 export default async (t) => {
-  const cartelle = [
-    { id: "R", name: "book-companion", parents: ["root"] },
-    { id: "F", name: "Fumetti", parents: ["R"] },
-    { id: "H", name: "Hellboy", parents: ["F"] },
-    { id: "X", name: "Altrove", parents: ["root"] },
-  ];
   const file = [
     { id: "f1", name: "Hellboy v01.cbz", size: "3000", parents: ["H"] },
     { id: "f2", name: "Hellboy: Year 2.cbz", size: "2000", parents: ["H"] },
     { id: "f3", name: "Sciolto.epub", size: "500", parents: ["X"] },
+    { id: "f6", name: "Berserk 01.cbz", size: "100", parents: ["X"] },
     { id: "f4", name: "Senza peso.pdf", parents: ["H"] },
     { id: "f5", name: "Buttato.cbz", size: "10", parents: ["H"], trashed: true },
   ];
-  const libri = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }, { id: "e" }, { id: "g" }];
+  // su Drive i file stanno dove sono capitati («X»): la casa sul disco la
+  // decide la scheda
+  const libri = [{ id: "a", saga: "Hellboy" }, { id: "b", saga: " Hellboy " }, { id: "c" }, { id: "d" }, { id: "e" }, { id: "g" }];
+  const tipi = { a: "fumetti", b: "fumetti", c: "libri" };
   const mappa = { a: { id: "f1" }, b: { id: "f2" }, c: { id: "f3" }, d: { id: "f4" }, e: { id: "f5" }, g: { id: "sparito" } };
-  const voci = daSpostareSuHdd(libri, mappa, file, cartelle);
+  const voci = daSpostareSuHdd(libri, mappa, file, { tipoDi: (b) => tipi[b.id] });
   t.eq("si spostano i file che ci sono e hanno un peso", voci.map((v) => v.bookId).join(), "a,b,c");
-  t.eq("le cartelle sotto book-companion si rifanno", voci[0].cartelle.join("/"), "Fumetti/Hellboy");
-  t.eq("fuori da book-companion il percorso è intero", voci[2].cartelle.join("/"), "Altrove");
+  t.eq("un volume di una saga va nella cartella della saga, dentro quella del suo tipo", voci.map((v) => v.cartelle.join("/")).join(), "Fumetti/Hellboy,Fumetti/Hellboy,Libri");
+  t.eq("un manga va fra i manga", daSpostareSuHdd([{ id: "m", saga: "Berserk" }], { m: { id: "f6" } }, file, { tipoDi: () => "manga" })[0].cartelle.join("/"), "Manga/Berserk");
+  t.eq("senza tipo è un libro", daSpostareSuHdd([{ id: "c" }], mappa, file)[0].cartelle.join("/"), "Libri");
+
+  // la casa sul disco: «book-companion» dentro la cartella scelta, o lei
+  const scelta = cartellaFinta("E:");
+  t.c("dentro la cartella scelta nasce book-companion", (await casaSulDisco(scelta)) === scelta.dentro.get("book-companion"));
+  const gia = cartellaFinta("Book-Companion");
+  t.c("se il lettore ha scelto proprio lei, si usa lei", (await casaSulDisco(gia)) === gia && !gia.dentro.size);
   t.eq("dice file, nome e peso", `${voci[0].fileId} ${voci[0].nome} ${voci[0].byte}`, "f1 Hellboy v01.cbz 3000");
 
   t.eq("i nomi che Windows rifiuta", nomeSicuro('Hellboy: Year 2?.cbz'), "Hellboy_ Year 2_.cbz");

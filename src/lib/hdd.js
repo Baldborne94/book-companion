@@ -9,6 +9,7 @@
 // sul computer: Firefox non ce l'ha.
 
 import { fmtGoogle } from "./bytes.js";
+import { RADICE } from "./driveCore.js";
 
 export const hddPossibile = (w = globalThis) => typeof w?.showDirectoryPicker === "function";
 
@@ -31,6 +32,11 @@ export function nomeSicuro(n) {
     .trim();
   return s || "_";
 }
+
+// la casa dei libri sul disco si chiama come quella su Drive: dentro la
+// cartella scelta, a meno che il lettore non abbia scelto proprio lei
+export const casaSulDisco = async (scelta) =>
+  String(scelta?.name || "").trim().toLowerCase() === RADICE ? scelta : scelta.getDirectoryHandle(RADICE, { create: true });
 
 export async function cartellaDentro(radice, segmenti) {
   let c = radice;

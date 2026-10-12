@@ -831,7 +831,7 @@ function SpostaSuHdd({ r, onHdd, tasto }) {
   return (
     <div style={riga}>
       <span style={{ flexBasis: "100%", color: C.text }}>
-        {`Sposto ${lassu.length === 1 ? "il volume che sta" : `i ${lassu.length} volumi che stanno`} su Google Drive (${fmtGoogle(peso)}) in una cartella del disco: scegline una (o creala, per esempio «Biblioteca»), e dentro rifaccio le cartelle di Drive. Ogni volume, quando sul disco è arrivato intero, resta in biblioteca come scheda e su Drive va nel cestino, da dove si riprende per 30 giorni. Anche il tablet lo toglie dalla sua memoria.`}
+        {`Sposto ${lassu.length === 1 ? "il volume che sta" : `i ${lassu.length} volumi che stanno`} su Google Drive (${fmtGoogle(peso)}) sul disco: scegli una sua cartella, e dentro faccio «book-companion» come su Drive, con Libri, Fumetti e Manga e una cartella per ogni saga (un volume a sé sta nella cartella del suo tipo). Ogni volume, quando sul disco è arrivato intero, resta in biblioteca come scheda e su Drive va nel cestino, da dove si riprende per 30 giorni. Anche il tablet lo toglie dalla sua memoria.`}
       </span>
       <button onClick={scegli} style={tasto(true)}>
         Scegli la cartella del disco

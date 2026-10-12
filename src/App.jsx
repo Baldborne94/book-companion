@@ -26,7 +26,7 @@ import SezioneAnticipo from "./components/SezioneAnticipo.jsx";
 import SezioneDizionario from "./components/SezioneDizionario.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
-import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, timbraScheda, getProgress, getUpdatedAt } from "./lib/library.js";
+import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, timbraScheda, getProgress, getUpdatedAt, tipiDi, tipoDi } from "./lib/library.js";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds } from "./lib/bookStore.js";
 import { cercaNuovaVersione, cercaInSilenzio } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
@@ -45,7 +45,7 @@ import SezioneGuasti from "./components/SezioneGuasti.jsx";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile, convertiLibroInCbz, adottaCbzConvertiti } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
 import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, dettagliFile, impostaRinnovo, impostaRientro, rinnovaInSilenzio, chiaveInScadenza, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato, fraseScollegato, daSpostareDaDrive, apriDaDrive, cestinaDelLibro } from "./lib/drive.js";
-import { spostaSuHdd, fraseHdd } from "./lib/hdd.js";
+import { spostaSuHdd, fraseHdd, casaSulDisco } from "./lib/hdd.js";
 import { importaDaDrive, resoconto } from "./lib/importBook.js";
 import { custodisciGoogle, rinnovoDalServer, rientroConGoogle, lasciaGoogleQui } from "./lib/accessoGoogle.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
@@ -1400,7 +1400,7 @@ export default function App() {
   // lungo (un giga a volume): vive qui, si vede e si ferma da ogni sezione.
   const [hdd, setHdd] = useState(null);
   const filoHdd = useRef(null);
-  async function spostaSuHddQui(libri, radice) {
+  async function spostaSuHddQui(libri, scelta) {
     if (!libri.length) return;
     if (filoHdd.current) return notify("Sto già spostando sull'HDD: aspetta che finisca, o fermalo dalla barra in basso");
     const mio = {};
@@ -1409,9 +1409,10 @@ export default function App() {
     setHdd({ i: 0, totale: libri.length, nome: "", presi: 0, byte: 0 });
     try {
       if (!driveProntoOra()) await collegaDrive();
-      const voci = await daSpostareDaDrive(libri);
+      const tipi = tipiDi(loadBooks());
+      const voci = await daSpostareDaDrive(libri, { tipoDi: (b) => tipoDi(b, tipi) });
       const esito = await spostaSuHdd(voci, {
-        radice,
+        radice: await casaSulDisco(scelta),
         vivo,
         ferma: (e) => e instanceof DriveScollegato,
         onProgress: (p) => vivo() && setHdd(p),
