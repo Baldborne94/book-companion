@@ -929,6 +929,56 @@ const SCENE = [
     },
   },
   {
+    // segnalato dal lettore davanti a «Mando su le copertine…» ferma: «non
+    // capisco che sta facendo e perché ci mette tanto». Salivano una alla
+    // volta, ognuna ad aspettare la sua risposta
+    nome: "le copertine del PC salgono a gruppi, non una alla volta",
+    async fai({ browser, db }) {
+      const N = 60;
+      const RETE = 100;
+      const semina = (n) => {
+        if (localStorage.getItem("bc_books")) return;
+        localStorage.setItem("bc_books", JSON.stringify(Array.from({ length: n }, (_, i) => ({ id: `su${String(i).padStart(3, "0")}`, title: `Sale ${i + 1}`, author: "Autore", fileType: "epub", addedAt: 7000 + i }))));
+      };
+      const pc = await dispositivo(browser, { sessione: true, prima: `(${semina})(${N})` });
+      await pc.p.goto(URL_APP);
+      await finche(() => db.righe().filter((r) => r.id.startsWith("su")).length >= N, 30000, "i libri del PC non salgono");
+      // le copertine arrivano dopo (un «Ritrova copertine», un import da Drive)
+      await pc.p.evaluate(
+        (n) =>
+          new Promise((ok, ko) => {
+            const r = indexedDB.open("bc_library", 3);
+            r.onsuccess = () => {
+              const tx = r.result.transaction("covers", "readwrite");
+              for (let i = 0; i < n; i++) tx.objectStore("covers").put(new Blob([new Uint8Array(3000).fill(i)], { type: "image/jpeg" }), `su${String(i).padStart(3, "0")}`);
+              tx.oncomplete = ok;
+              tx.onerror = () => ko(tx.error);
+            };
+            r.onerror = () => ko(r.error);
+          }),
+        N
+      );
+      const salite = () => db.richieste()["POST /storage/v1/object/…"] || 0;
+      const prima = salite();
+      db.rallenta(RETE);
+      try {
+        const t0 = Date.now();
+        await pc.p.reload();
+        // e dicono a che punto sono, nel pannello della sincronizzazione
+        await pc.p.getByRole("button", { name: "Sincronizzazione" }).first().click();
+        await pc.p.getByRole("button", { name: /Sincronizzazione e Google Drive/ }).first().click();
+        const detto = await finche(() => testoAvviso(pc.p, /^Mando su (60 copertine|le copertine: \d+ di 60)…$/), 15000, "il pannello non dice quante copertine salgono");
+        await finche(() => salite() - prima >= N, 60000, `le copertine non salgono tutte (${salite() - prima} di ${N})`);
+        const ms = Date.now() - t0;
+        // una alla volta sarebbero almeno N viaggi uno dopo l'altro
+        if (ms > (N * RETE) / 2) throw new Error(`${N} copertine salite in ${ms} ms: una alla volta ne vorrebbero ${N * RETE}`);
+        return { guasti: pc.guasti, nota: `«${detto}», ${N} copertine in ${(ms / 1000).toFixed(1)} s con ${RETE} ms di rete (una alla volta: almeno ${(N * RETE) / 1000} s)` };
+      } finally {
+        db.rallenta(0);
+      }
+    },
+  },
+  {
     // segnalato dal lettore: «ci mette parecchi secondi per passare da una
     // pagina all'altra… o tornare indietro». Si tenevano quattro pagine
     // dietro quella a schermo, e da Drive tornarci era un viaggio a voltata.

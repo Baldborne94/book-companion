@@ -1,4 +1,5 @@
 import { fondi } from "./glossarioMio.js";
+import { aGruppi } from "./aGruppi.js";
 import { fondiRacconti } from "./racconti.js";
 import { fondiPreferite } from "./raccoltePreferite.js";
 import { fondiTempo } from "./tempo.js";
@@ -1088,10 +1089,43 @@ export function completaPull(pull = [], intere = new Map()) {
 // delle copertine in `syncNow`): sei insieme, come i pezzi di un fumetto
 // da Drive non di piu', per non togliere tutta la banda al resto
 export const COPERTINE_INSIEME = 6;
-export function fraseCopertine(fatte, totale) {
+export function fraseCopertine(fatte, totale, { su = false } = {}) {
   if (!(totale > 0)) return "";
+  if (su) {
+    if (totale === 1) return "Mando su una copertina…";
+    return fatte > 0 ? `Mando su le copertine: ${fatte} di ${totale}…` : `Mando su ${totale} copertine…`;
+  }
   if (totale === 1) return "Riprendo una copertina…";
   return fatte > 0 ? `Copertine: ${fatte} di ${totale}…` : `Riprendo ${totale} copertine…`;
+}
+
+// E SALGONO COME SCENDONO (segnalato dal lettore davanti a «Mando su le
+// copertine…» ferma: «non capisco che sta facendo e perché ci mette
+// tanto»). Salivano una alla volta, ognuna ad aspettare la sua risposta, e
+// la frase si diceva una volta sola, senza conto. Adesso a gruppi e dicendo
+// a che punto sono. `prendi(id)` da' la copertina di qui (o null), `manda`
+// la porta lassu' e dice se e' salita; una che non sale non ferma niente, si
+// riprova al giro dopo. Tornano quelle salite, col loro peso.
+export async function mandaCopertine(libri, { prendi, manda, say, insieme = COPERTINE_INSIEME } = {}) {
+  const voci = libri || [];
+  const salite = [];
+  let fatte = 0;
+  if (voci.length) say?.(fraseCopertine(0, voci.length, { su: true }));
+  await aGruppi(
+    voci,
+    async (b) => {
+      try {
+        const c = await prendi(b.id);
+        if (c && (await manda(b.id, c))) salite.push({ id: b.id, byte: c.size });
+      } catch {
+        /* si riprova al giro dopo */
+      }
+      fatte += 1;
+      if (fatte % 10 === 0 && fatte < voci.length) say?.(fraseCopertine(fatte, voci.length, { su: true }));
+    },
+    insieme
+  );
+  return salite;
 }
 
 // A PAGINE: Supabase da' al piu' mille righe per richiesta (il «Max rows» di

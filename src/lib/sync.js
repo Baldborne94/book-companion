@@ -30,7 +30,7 @@ import { leggiObiettivi, scriviObiettivi, fondiObiettivi } from "./obiettivo.js"
 import { leggiQuaderno, scriviQuaderno, fondiQuaderno } from "./quaderno.js";
 import { leggiDaPrendere, scriviDaPrendere, fondiDaPrendere } from "./daPrendere.js";
 import { aGruppi } from "./aGruppi.js";
-import { leggiRigheLeggere, aPagine, fraseCopertine, COPERTINE_INSIEME, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare, copertineInAttesa, segnaInAttesa, fondiSchede } from "./syncCore.js";
+import { leggiRigheLeggere, aPagine, fraseCopertine, COPERTINE_INSIEME, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare, mandaCopertine, copertineInAttesa, segnaInAttesa, fondiSchede } from "./syncCore.js";
 import { daTogliereDalSecchio, avanziDelSecchio, segnaSuDrive, leggereDaLontano, nomeSuDrive } from "./driveCore.js";
 import { raccontaGiro } from "./resoconto.js";
 import { giroDrive, giroMelodie, archiviaSuDrive, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto, fermaCbrCompresso, sostituisciSuDrive, chiaveDrive, DriveScollegato, adottaCbz, elencaFile } from "./drive.js";
@@ -514,25 +514,23 @@ export async function syncNow({ onProgress, onLibri } = {}) {
   // registro separato serve proprio a questo — legare le copertine al
   // registro dei file vorrebbe dire, per farne salire una, rispedire lassu'
   // trenta megabyte di romanzo.
-  let copertineNuove = 0;
   const copertineQui = new Set(await listCoverIds().catch(() => []));
   const inAttesa = copertineInAttesa();
-  for (const b of copertineDaCaricare(books, { qui: copertineQui, lassu: secchio?.idCopertine, inAttesa })) {
-    const cover = await getCover(b.id).catch(() => null);
-    if (!cover) continue;
-    const { error: cErr } = await sb.storage
-      .from(BUCKET)
-      .upload(coverPath(uid, b.id), cover, { upsert: true });
-    // una copertina che non sale non ferma niente: si riprova al giro dopo
-    if (cErr && cErr.statusCode !== "409") continue;
-    segnaInAttesa(b.id, false);
-    copertineSalite.add(b.id);
+  const salite = await mandaCopertine(copertineDaCaricare(books, { qui: copertineQui, lassu: secchio?.idCopertine, inAttesa }), {
+    prendi: (id) => getCover(id).catch(() => null),
+    manda: async (id, cover) => {
+      const { error } = await sb.storage.from(BUCKET).upload(coverPath(uid, id), cover, { upsert: true });
+      return !error || error.statusCode === "409";
+    },
+    say,
+  });
+  for (const { id, byte } of salite) {
+    segnaInAttesa(id, false);
+    copertineSalite.add(id);
     // l'elenco del secchio e' di prima del viaggio: senza, la copertina
     // appena salita sembrerebbe un'altra, e scenderebbe quella vecchia
-    secchio.idCopertine.add(b.id);
-    secchio.misureCopertine.set(b.id, cover.size);
-    copertineNuove += 1;
-    if (copertineNuove === 1) say("Mando su le copertine…");
+    secchio.idCopertine.add(id);
+    secchio.misureCopertine.set(id, byte);
   }
   // una copertina tolta qui (tornata al dorso) mentre il cloud non
   // rispondeva: lassu' c'e' ancora quella di prima, e si toglie adesso
@@ -571,7 +569,9 @@ export async function syncNow({ onProgress, onLibri } = {}) {
     }
   }
 
-  if (pull.length || removeLocal.length) say(pull.length > 20 ? `Ricevo ${pull.length} libri…` : "Ricevo le novità…");
+  // si dice sempre: senza, la frase di prima (le copertine) restava a
+  // schermo su un lavoro che era gia' un altro
+  say(pull.length > 20 ? `Ricevo ${pull.length} libri…` : pull.length || removeLocal.length ? "Ricevo le novità…" : "Guardo le preferenze…");
   let next = loadBooks();
   const senzaCopertina = [];
   try {
