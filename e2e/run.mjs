@@ -714,6 +714,51 @@ const SCENE = [
     },
   },
   {
+    // segnalato dal lettore: «Hogfather», «Interesting Times», «Monstrous
+    // Regiment» e altri 7 «non sono né qui né nel cloud», e i loro ePub
+    // erano su Drive nella vecchia cartella «Books» coi nomi lunghi di
+    // Calibre. «Se ci sono mi aspetto che li veda»
+    nome: "i libri su Drive con un nome lungo si ritrovano da soli, e l'avviso dei perduti sparisce",
+    async fai({ browser }) {
+      const elenco = [
+        { id: "BOOKS", name: "Books", mimeType: "application/vnd.google-apps.folder" },
+        { id: "H", name: "Pratchett, Terry - [Discworld 20] - Hogfather (1998, Harper).epub", size: "431172", mimeType: "application/epub+zip", parents: ["BOOKS"] },
+        { id: "I", name: "Pratchett, Terry - [Discworld 17] - Interesting Times (1994, HarperTorch).epub", size: "480290", mimeType: "application/epub+zip", parents: ["BOOKS"] },
+        { id: "M", name: "Pratchett, Terry - [Discworld 31] - Monstrous Regiment (2003, HarperTorch).epub", size: "439384", mimeType: "application/epub+zip", parents: ["BOOKS"] },
+      ];
+      const drv = await avviaDrive(PORTA_DRIVE, {}, { elenco });
+      try {
+        const d = await dispositivo(browser, {
+          drive: {
+            libri: [
+              { id: "hog", title: "Hogfather", author: "Terry Pratchett", fileType: "epub", addedAt: 1 },
+              { id: "int", title: "Interesting Times", author: "Terry Pratchett", fileType: "epub", addedAt: 2 },
+              { id: "mon", title: "Monstrous Regiment", author: "Terry Pratchett", fileType: "epub", addedAt: 3 },
+            ],
+            mappa: {},
+          },
+          prima: () => localStorage.setItem("bc_drive_client", "123-abc.apps.googleusercontent.com"),
+        });
+        await d.p.goto(`${URL_APP}?apri=libreria`);
+        await finche(() => testoAvviso(d.p, /non sono né qui né nel cloud/), 10000, "prima del giro l'avviso dei perduti non c'e'");
+        await d.p.evaluate(() => window.dispatchEvent(new Event("online")));
+        const mappa = () => d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_drive_libri") || "{}"));
+        await finche(async () => Object.keys(await mappa()).length === 3, 20000, "il giro non ritrova i tre libri");
+        const m = await mappa();
+        if (`${m.hog?.id}${m.int?.id}${m.mon?.id}` !== "HIM") throw new Error(`abbinati male: ${JSON.stringify(m)}`);
+        const segni = elenco.filter((f) => f.appProperties?.bcId).map((f) => `${f.id}=${f.appProperties.bcId}`).join();
+        if (segni !== "H=hog,I=int,M=mon") throw new Error(`segni su Drive: ${segni}`);
+        await d.p.goto(`${URL_APP}?apri=libreria`);
+        await d.p.waitForTimeout(1500);
+        const resta = await testoAvviso(d.p, /né qui né nel cloud/);
+        if (resta) throw new Error(`l'avviso resta: ${resta}`);
+        return { guasti: d.guasti, nota: `3 libri ritrovati nella cartella «Books» e segnati, l'avviso sparito` };
+      } finally {
+        await drv.chiudi();
+      }
+    },
+  },
+  {
     // segnalato da un amico del lettore: «per la parte di caricamento libri
     // da file, mi mostra anche formati che non sono libri». Sul computer il
     // selettore filtra per estensione, e i tipi larghi (zip, octet-stream)

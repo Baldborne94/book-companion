@@ -53,6 +53,17 @@ const estDelLibro = (b) => (b?.fileType || "epub").toLowerCase();
 //      sceglie per nome, e se il nome non decide si tace.
 //   4. IL NOME uguale al titolo, una volta ridotti tutt'e due, e anche qui
 //      solo se il candidato e' uno.
+//   5. IL TITOLO DENTRO IL NOME, con l'autore (segnalato dal lettore: dieci
+//      Discworld «né qui né nel cloud», e i loro ePub erano su Drive nella
+//      vecchia cartella «Books», come «Pratchett, Terry - [Discworld 20] -
+//      Hogfather (1998, Harper).epub»; «se ci sono mi aspetto che li veda»).
+//      Solo per una scheda che il file non ce l'ha da nessuna parte (niente
+//      byte qui, niente segno «ebook tolto»: un libro spostato sull'HDD non
+//      si ripesca da una copia rimasta su Drive), con il titolo intero e la
+//      parola piu' lunga dell'autore fra le parole del nome, un file senza
+//      segno di nessuno, e solo se la scheda ha un candidato e il candidato
+//      una scheda sola. Un'impronta diversa da quella di Drive e' un altro
+//      file, e non si prende.
 //
 // NEL DUBBIO NON SI ABBINA: un libro non abbinato finisce su Drive una
 // seconda volta (spazio sprecato, e si vede), uno abbinato male apre il
@@ -101,6 +112,27 @@ export function abbina(libri, file, { misure } = {}) {
     const c = liberi(b).filter((f) => nomeNudo(f.name) === titolo);
     if (c.length === 1) prendi(b, c[0], true);
     else if (c.length > 1) ambigui += 1;
+  }
+  const dentro = new Map();
+  for (const b of vivi) {
+    if (mappa.has(b.id) || b.fileTolto || Number(misure?.get?.(b.id)) > 0) continue;
+    const titolo = nomeNudo(b.title);
+    const autore = nomeNudo(b.author).split(" ").sort((x, y) => y.length - x.length)[0] || "";
+    if (titolo.length < 4) continue;
+    const c = liberi(b).filter((f) => {
+      if (f.appProperties?.bcId) return false;
+      if (b.impronta && f.sha256Checksum && f.sha256Checksum.toLowerCase() !== b.impronta) return false;
+      const n = ` ${nomeNudo(f.name)} `;
+      return n.includes(` ${titolo} `) && n.includes(` ${autore} `);
+    });
+    if (c.length > 1) ambigui += 1;
+    if (c.length === 1) dentro.set(b, c[0]);
+  }
+  const conte = new Map();
+  for (const f of dentro.values()) conte.set(f.id, (conte.get(f.id) || 0) + 1);
+  for (const [b, f] of dentro) {
+    if (conte.get(f.id) === 1) prendi(b, f, true);
+    else ambigui += 1;
   }
   return { mappa, daSegnare, ambigui };
 }
