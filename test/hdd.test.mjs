@@ -97,6 +97,8 @@ export default async (t) => {
   const diviso = divisiPerHdd([{ id: "a" }, { id: "b" }, { id: "c" }, { id: "x" }], { a: {}, b: {}, c: {} }, (id) => stati[id]);
   t.eq("si spostano tutti i volumi che stanno su Drive", diviso.tutti.map((b) => b.id).join(), "a,b,c");
   t.eq("e si dice quali stai leggendo", diviso.inLettura.map((b) => b.id).join(), "a");
+  t.eq("e il tasto conta solo quelli da togliere da Drive", diviso.via.map((b) => b.id).join(), "b,c");
+  t.eq("una sezione con i soli libri in lettura non ha niente da spostare", divisiPerHdd([{ id: "a" }], { a: {} }, (id) => stati[id]).via.length, 0);
   t.eq("la voce di chi stai leggendo dice di tenerlo", daSpostareSuHdd(libri, mappa, file, { tieni: (b) => b.id === "b" }).map((v) => `${v.bookId}${v.tieni ? "+" : ""}`).join(), "a,b+,c");
   const toccati = [];
   const ec = await spostaSuHdd([{ ...voci[0], tieni: true }, voci[2]], {

@@ -20,9 +20,14 @@ export const hddPossibile = (w = globalThis) => typeof w?.showDirectoryPicker ==
 // lettura (`tieni`) lassu' restano, e la scheda continua a leggerli da li'.
 // Finiti, il prossimo spostamento li trova gia' sul disco e li toglie da
 // Drive senza riscaricarli.
+// Il tasto conta i soli volumi DA TOGLIERE da Drive (`via`): quelli in
+// lettura restano lassu' comunque, e contati facevano dire «2 libri
+// sull'HDD» a una sezione gia' spostata (segnalato dal lettore). Si copiano
+// insieme agli altri; da soli non fanno un tasto.
 export function divisiPerHdd(libri, mappa, stato) {
   const lassu = (libri || []).filter((b) => mappa?.[b?.id]);
-  return { tutti: lassu, inLettura: lassu.filter((b) => stato(b.id) === "reading") };
+  const inLettura = lassu.filter((b) => stato(b.id) === "reading");
+  return { tutti: lassu, inLettura, via: lassu.filter((b) => !inLettura.includes(b)) };
 }
 
 // PER SEZIONE (chiesto dal lettore: «spostare per sezione, tutti i libri

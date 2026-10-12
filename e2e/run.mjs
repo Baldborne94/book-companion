@@ -866,7 +866,7 @@ const SCENE = [
         await d.p.goto(`${URL_APP}?apri=libreria`);
         await d.p.getByRole("button", { name: /^Hellboy/ }).first().click();
         await d.p.getByRole("button", { name: "📦 Sposta sull'HDD" }).click();
-        await finche(() => testoAvviso(d.p, /i 3 volumi che stanno su Google Drive.*Il volume che stai leggendo si copia sul disco e resta anche su Drive/), 8000, "la conferma non dice quanti volumi, e quello che resta");
+        await finche(() => testoAvviso(d.p, /i 2 volumi che stanno su Google Drive.*Il volume che stai leggendo si copia sul disco e resta anche su Drive/), 8000, "la conferma non dice quanti volumi, e quello che resta");
         if (drv.cestino().length) throw new Error("si e' buttato qualcosa prima di scegliere il disco");
         await d.p.getByRole("button", { name: "Scegli la cartella del disco" }).click();
         const frase = await finche(() => testoAvviso(d.p, /2 volumi sull'HDD.*Quello che stai leggendo è copiato sull'HDD e resta su Drive/), 20000, "lo spostamento non si dice");
@@ -890,6 +890,9 @@ const SCENE = [
         if (drv.cestino().sort().join() !== "Z1,Z2") throw new Error(`nel cestino: ${drv.cestino().join()}`);
         const mappa = await d.p.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("bc_drive_libri") || "{}")));
         if (mappa.join() !== "h3") throw new Error(`ancora nella mappa: ${mappa.join()}`);
+        // resta su Drive solo quello in lettura: il tasto non ha piu' niente da spostare
+        await d.p.waitForTimeout(500);
+        if (await d.p.getByRole("button", { name: "📦 Sposta sull'HDD" }).count()) throw new Error("il tasto resta per il solo volume in lettura");
         return { guasti: d.guasti, nota: frase.slice(0, 90) };
       } finally {
         await drv.chiudi();
