@@ -94,19 +94,28 @@ export function controllaDisco(libri, file, { tipoDi = () => "libri", suDrive = 
     }
     usati.add(fs);
   }
+  // UNA COPIA IN PIU' HA LO STESSO PESO (segnalato dal lettore con lo
+  // screenshot: dieci Blame! «0.cbz», «0 (2).cbz»… chiamati copie, ed erano
+  // dieci volumi diversi che su Drive si chiamavano tutti «0»). Fra i file
+  // con lo stesso nome, uno per peso e' un volume; uno con un peso gia' visto
+  // e' una copia. Si tiene, per ogni peso, quello gia' nella sua casa.
+  const aCasa = (f) => case_.get(f).case.has(f.cartelle.map(chiave).join("/"));
   for (const fs of usati) {
-    const giusto = fs.find((f) => {
+    const perPeso = new Map();
+    for (const f of fs) {
+      const g = perPeso.get(f.byte);
+      if (!g || (!aCasa(g) && aCasa(f))) perPeso.set(f.byte, f);
+    }
+    const volumi = new Set(perPeso.values());
+    for (const f of fs) if (!volumi.has(f)) esito.doppioni.push(f);
+    for (const f of volumi) {
+      esito.byte += f.byte;
       const c = case_.get(f);
-      return c.case.has(f.cartelle.map(chiave).join("/"));
-    });
-    const uno = giusto || fs[0];
-    for (const f of fs) if (f !== uno) esito.doppioni.push(f);
-    esito.byte += uno.byte;
-    const c = case_.get(uno);
-    if (giusto) esito.aPosto.push({ libro: c.libri[0], file: uno });
-    else if (c.case.size === 1) {
-      const b = c.libri[0];
-      esito.daSpostare.push({ libro: b, file: uno, a: casaDi(b, tipoDi(b)) });
+      if (aCasa(f)) esito.aPosto.push({ libro: c.libri[0], file: f });
+      else if (c.case.size === 1) {
+        const b = c.libri[0];
+        esito.daSpostare.push({ libro: b, file: f, a: casaDi(b, tipoDi(b)) });
+      }
     }
   }
   const visti = new Set([...case_.keys()]);
@@ -185,4 +194,21 @@ export function fraseRiordino(e) {
   if (e.mancati.length) parti.push(`${quanti(e.mancati.length, "uno non si è spostato", "non si sono spostati")}`);
   if (e.fermato) parti.push("fermato: il resto è dov'era");
   return parti.join(" · ") || "Niente da riordinare";
+}
+
+// IL RAPPORTO INTERO, da copiare (il pannello taglia le liste lunghe: «e altri
+// 140»). Titoli e percorsi: e' il lettore che lo legge, o lo manda a chi lo
+// aiuta; non parte da solo verso nessuno.
+export function rapportoDisco(r) {
+  const righe = [];
+  const titoli = (bs) => bs.map((b) => `  - ${b.title}${b.saga ? ` [${b.saga}]` : ""}`);
+  const file = (fs) => fs.map((f) => `  - ${[...f.cartelle, f.nome].join(" / ")} (${f.byte} byte)`);
+  righe.push(`Volumi sul disco: ${r.aPosto.length + r.daSpostare.length}, byte ${r.byte}`);
+  if (r.daSpostare.length) righe.push(`Da riordinare (${r.daSpostare.length}):`, ...r.daSpostare.map((v) => `  - ${v.libro.title}: ${v.file.cartelle.join(" / ") || "book-companion"} -> ${v.a.join(" / ")}`));
+  const m = r.mancano;
+  for (const [bs, dove] of [[m.drive, "ancora su Google Drive"], [m.qui, "solo su questo dispositivo"], [m.altrove, "ne' qui ne' su Drive"], [m.nessuno, "senza file da nessuna parte"]])
+    if (bs.length) righe.push(`Mancano dal disco, ${dove} (${bs.length}):`, ...titoli(bs));
+  if (r.senzaScheda.length) righe.push(`File senza scheda (${r.senzaScheda.length}):`, ...file(r.senzaScheda));
+  if (r.doppioni.length) righe.push(`Copie in piu', stesso nome e stesso peso (${r.doppioni.length}):`, ...file(r.doppioni));
+  return righe.join("\n");
 }

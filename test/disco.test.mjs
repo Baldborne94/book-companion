@@ -1,7 +1,7 @@
 // IL DISCO DEI LIBRI, CONTROLLATO E RIORDINATO (chiesto dal lettore: «ora su
 // E:\book-companion abbiamo tutti i volumi? mi hai sistemato anche dentro le
 // cartelle i file nel modo giusto per saga?»).
-import { casaDi, elencaDisco, controllaDisco, riordinaDisco, fraseRiordino } from "../src/lib/disco.js";
+import { casaDi, elencaDisco, controllaDisco, riordinaDisco, fraseRiordino, rapportoDisco } from "../src/lib/disco.js";
 import { daSpostareSuHdd } from "../src/lib/driveCore.js";
 
 // un disco finto: cartelle, file col loro peso, `move` facoltativo
@@ -136,6 +136,23 @@ export default async (t) => {
   const unaDelleDue = controllaDisco([{ id: "x", title: "Mort", saga: "Discworld" }, { id: "y", title: "Mort" }], [{ nome: "Mort.epub", cartelle: ["Libri"], byte: 1 }]);
   t.c("nella casa di una delle due schede è a posto", unaDelleDue.aPosto.length === 1);
 
+  // dieci volumi che su Drive si chiamavano tutti «0»: non sono copie
+  const blame = controllaDisco(
+    [{ id: "b1", title: "0", saga: "Blame!" }, { id: "b2", title: "0", saga: "Blame!" }],
+    [
+      { nome: "0.cbz", cartelle: ["Manga", "Blame!"], byte: 100 },
+      { nome: "0 (2).cbz", cartelle: ["Manga", "Blame!"], byte: 200 },
+      { nome: "0 (3).cbz", cartelle: ["Manga"], byte: 300 },
+      { nome: "0 (4).cbz", cartelle: ["Manga"], byte: 100 },
+    ],
+    { tipoDi: () => "manga" }
+  );
+  t.eq("stesso nome, pesi diversi: volumi diversi", `${blame.aPosto.length} a posto, ${blame.daSpostare.length} da spostare`, "2 a posto, 1 da spostare");
+  t.eq("stesso nome e stesso peso: quella è una copia, e resta quella fuori casa", blame.doppioni.map((f) => f.nome).join(), "0 (4).cbz");
+  t.eq("il peso conta ogni volume una volta", blame.byte, 600);
+  const testo = rapportoDisco(r);
+  t.c("il rapporto da copiare dice tutto, coi percorsi", testo.includes("Manga / JoJo's_Bizarre_Adventure / Parte 7 -> Manga / JoJo's Bizarre Adventure / Parte 7") && testo.includes("senza file da nessuna parte (1):\n  - Perso") && testo.includes("Fumetti / Nessuno.cbz (5 byte)") && testo.includes("Copie in piu'"));
+
   // riordinare: con `move`, che sposta nel posto senza copiare
   copie = 0;
   const e = await riordinaDisco(r.daSpostare, { radice });
@@ -158,8 +175,10 @@ export default async (t) => {
   const lib2 = ["100", "102", "103"].map((n) => ({ id: n, title: `Kagurabachi ${n}`, saga: "Kagurabachi" }));
   const c2 = controllaDisco(lib2, await elencaDisco(r2), { tipoDi: () => "manga" });
   // 102: due file uguali, uno già a posto → doppione, niente da spostare
-  t.eq("da spostare senza move", c2.daSpostare.map((v) => v.libro.id).sort().join(), "100");
-  const e2 = await riordinaDisco([...c2.daSpostare, { libro: lib2[2], file: c2.daSpostare[0] && (await elencaDisco(r2)).find((f) => f.nome === "Kagurabachi 103.cbz" && !f.cartelle.includes("Kagurabachi")), a: ["Manga", "Kagurabachi"] }], { radice: r2 });
+  // 103: lo stesso nome con un altro peso è un altro file, e si sposta anche lui
+  t.eq("da spostare senza move", c2.daSpostare.map((v) => v.libro.id).sort().join(), "100,103");
+  t.eq("e il 102 uguale a quello a posto è una copia", c2.doppioni.map((f) => f.cartelle.join("/")).join(), "Manga");
+  const e2 = await riordinaDisco(c2.daSpostare, { radice: r2 });
   const dopo2 = await tutto(r2);
   t.c("copiato e tolto l'originale", dopo2.includes("Manga/Kagurabachi/Kagurabachi 100.cbz:10") && !/Manga\/Kagurabachi 100\.cbz/.test(dopo2));
   t.c("un altro file con lo stesso nome non si copre: «(2)»", dopo2.includes("Manga/Kagurabachi/Kagurabachi 103.cbz:99") && dopo2.includes("Manga/Kagurabachi/Kagurabachi 103 (2).cbz:13"));
