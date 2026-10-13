@@ -886,6 +886,7 @@ export default function Library({
   onSpostaSuHdd,
   onSenzaSchedaSuHdd,
   onRiordina,
+  onImportaDalDisco,
 }) {
   // lo scaffale si ridisegna solo quando cambia: il lavoro dell'HDD si
   // raggiunge da qui, sempre quello di adesso
@@ -3249,10 +3250,28 @@ export default function Library({
                       </span>
                     ))}
                     {r.senzaScheda.length > 0 && (
-                      <span style={{ flexBasis: "100%", overflowWrap: "anywhere" }}>
-                        {`${r.senzaScheda.length === 1 ? "Un file" : `${r.senzaScheda.length} file`} sul disco che nessuna scheda riconosce (restano dove sono): `}
-                        <span style={{ color: C.text }}>{r.senzaScheda.slice(0, 12).map((f) => [...f.cartelle, f.nome].join(" / ")).join(" · ")}</span>
-                        {r.senzaScheda.length > 12 ? ` e altri ${r.senzaScheda.length - 12}` : ""}
+                      <span style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, overflowWrap: "anywhere" }}>
+                        <span style={{ flexBasis: "100%" }}>
+                          {`${r.senzaScheda.length === 1 ? "Un file" : `${r.senzaScheda.length} file`} sul disco che nessuna scheda riconosce (restano dove sono): `}
+                          <span style={{ color: C.text }}>{r.senzaScheda.slice(0, 12).map((f) => [...f.cartelle, f.nome].join(" / ")).join(" · ")}</span>
+                          {r.senzaScheda.length > 12 ? ` e altri ${r.senzaScheda.length - 12}` : ""}
+                        </span>
+                        {/* IN BIBLIOTECA SENZA DRIVE: solo la scheda (titolo,
+                            saga, copertina), il file resta sul disco e su
+                            Drive non sale niente */}
+                        {onImportaDalDisco && (
+                          <button
+                            onClick={() => {
+                              const file = r.senzaScheda;
+                              setDisco(null);
+                              onImportaDalDisco(file);
+                            }}
+                            style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                          >
+                            {`📥 Aggiungili alla biblioteca (solo dal disco)`}
+                          </button>
+                        )}
+                        <span style={{ flexBasis: "100%", fontSize: F.piccolo }}>Entrano le schede con titolo, saga e copertina; il file resta sul disco e su Google Drive non sale niente.</span>
                       </span>
                     )}
                     {r.daSegnare?.length > 0 && (

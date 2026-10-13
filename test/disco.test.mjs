@@ -1,7 +1,8 @@
 // IL DISCO DEI LIBRI, CONTROLLATO E RIORDINATO (chiesto dal lettore: «ora su
 // E:\book-companion abbiamo tutti i volumi? mi hai sistemato anche dentro le
 // cartelle i file nel modo giusto per saga?»).
-import { casaDi, elencaDisco, controllaDisco, riordinaDisco, fraseRiordino, rapportoDisco } from "../src/lib/disco.js";
+import { casaDi, elencaDisco, controllaDisco, riordinaDisco, fraseRiordino, rapportoDisco, vociDalDisco, schedeDalDisco } from "../src/lib/disco.js";
+import { importaDaDrive } from "../src/lib/importBook.js";
 import { daSpostareSuHdd } from "../src/lib/driveCore.js";
 
 // un disco finto: cartelle, file col loro peso, `move` facoltativo
@@ -223,6 +224,30 @@ export default async (t) => {
   const rp = controllaDisco(persi, fp, { suDrive: (id) => id === "p3", qui: (id) => id === "p4", leggendo: (id) => id === "p5" });
   t.eq("sul disco ma la scheda non lo sa: solo chi non ha il file altrove e non è in lettura", rp.daSegnare.map((b) => b.id).join(), "p1");
   t.c("e il rapporto lo dice", /la scheda li crede persi \(1\):\n  - A Time of Blood/.test(rapportoDisco(rp)));
+
+  // IMPORTARE DAL DISCO, SENZA DRIVE
+  const sciolti = [
+    { nome: "Locke & Key v01 - Welcome to Lovecraft (2008).epub", cartelle: ["Fumetti", "Locke & Key"], byte: 5 },
+    { nome: "Kingdom v08v2.epub", cartelle: ["Manga", "Kingdom"], byte: 6 },
+    { nome: "Elric. La saga.epub", cartelle: ["Libri", "Elric"], byte: 7 },
+  ];
+  const vd = vociDalDisco(sciolti);
+  t.eq("dal disco: il tipo dalla sezione, un libro senza tipo", vd.map((v) => v.tipo || "-").join(), "fumetti,manga,-");
+  t.eq("e un id che dice da dove", vd[0].id, "disco:Fumetti/Locke & Key/Locke & Key v01 - Welcome to Lovecraft (2008).epub");
+  const segni = [];
+  const preso = await importaDaDrive(vd, [{ id: "vecchia", title: "Elric. La saga", fileTolto: true }], {
+    apri: () => new Blob([new Uint8Array(5)]),
+    segna: async (...a) => (segni.push(a), true),
+    leggi: async () => ({ titolo: false, copertina: false }),
+    senzaFile: (id) => id === "vecchia",
+    segnato: () => false,
+  });
+  const dopoImport = schedeDalDisco([{ id: "vecchia", title: "Elric. La saga", fileTolto: false }, { id: "altra", title: "Altro" }], preso);
+  const nuove = dopoImport.filter((b) => !["vecchia", "altra"].includes(b.id));
+  t.eq("entrano le schede nuove, tutte già sul disco", nuove.map((b) => `${b.title}|${b.tipo || "-"}|${b.fileTolto}`).join(" "), "Locke & Key v01 - Welcome to Lovecraft (2008)|fumetti|true Kingdom v08v2|manga|true");
+  t.c("con la saga letta dal titolo", nuove[0].saga === "Locke & Key" && nuove[0].sagaOrder === 1);
+  t.c("il file che una scheda aveva perso torna a lei, e anche lei è sul disco", dopoImport.find((b) => b.id === "vecchia").fileTolto === true && !dopoImport.some((b) => b.id !== "vecchia" && b.title === "Elric. La saga"));
+  t.c("le altre schede non si toccano", dopoImport.find((b) => b.id === "altra").fileTolto === undefined);
 
   // riordinare: con `move`, che sposta nel posto senza copiare
   copie = 0;
