@@ -1066,3 +1066,32 @@ export function daSpostareSuHdd(libri, mappa, file, { tipoDi = () => "libri", ti
   }
   return out;
 }
+
+// I FILE CHE NESSUN LIBRO USA (segnalato dal lettore: «perche' i 38 GB di
+// manga e fumetti non sono stati spostati?», e vuole stare nel piano gratuito
+// di Drive). «Sposta sull'HDD» sposta i file delle schede; JoJo, Gachiakuta e
+// gli altri li aveva caricati a mano in cartelle sue, e nessuna scheda li
+// usa: per l'app non erano libri, e restavano su Drive. Si spostano col
+// percorso che hanno su Drive sotto «book-companion» (le cartelle le ha fatte
+// il lettore, e una scheda che dica la saga non c'e').
+// Solo dentro Libri, Fumetti e Manga di «book-companion» — il resto del Drive
+// del lettore non e' dell'app — e mai un file che un libro usa: quello che la
+// mappa di questo dispositivo collega, quello che il riconoscimento di adesso
+// collegherebbe (`usati`), quello col segno di una scheda che c'e', e
+// qualunque file segnato finche' la biblioteca puo' ancora arrivare dal cloud.
+export function fileSenzaScheda(libri, file, cartelle, { usati = new Set(), schedeInArrivo = false } = {}) {
+  const schede = new Set((libri || []).map((b) => b?.id).filter(Boolean));
+  const sezioni = new Set([CARTELLE.libri, CARTELLE.fumetti, CARTELLE.manga]);
+  const out = [];
+  for (const f of file || []) {
+    const byte = Number(f?.size) || 0;
+    if (!f?.id || f.trashed || !(byte > 0) || usati.has(f.id) || !EST.includes(estensioneDi(f.name))) continue;
+    const segno = f.appProperties?.bcId;
+    if (segno && (schedeInArrivo || schede.has(segno))) continue;
+    const nomi = percorsoDi(f.parents?.[0], cartelle);
+    const sotto = nomi.slice(nomi.findIndex(nomeRadice) + 1);
+    if (sotto.length === nomi.length || !sezioni.has(sotto[0])) continue;
+    out.push({ bookId: null, fileId: f.id, nome: f.name, byte, cartelle: sotto, tieni: false });
+  }
+  return out;
+}

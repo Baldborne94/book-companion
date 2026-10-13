@@ -27,7 +27,7 @@ import SezioneDizionario from "./components/SezioneDizionario.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
 import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, timbraScheda, getProgress, getUpdatedAt, tipiDi, tipoDi } from "./lib/library.js";
-import { removeBookData, removeFileOnly, requestPersistence, listCoverIds } from "./lib/bookStore.js";
+import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, misureFile } from "./lib/bookStore.js";
 import { cercaNuovaVersione, cercaInSilenzio } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
 import Home from "./components/Home.jsx";
@@ -42,9 +42,9 @@ import { isSyncConfigured } from "./lib/supabase.js";
 import { fraseGiro, ricordaGiro, avvisoArrivi } from "./lib/resoconto.js";
 import { annotaErrore } from "./lib/registro.js";
 import SezioneGuasti from "./components/SezioneGuasti.jsx";
-import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile, convertiLibroInCbz, adottaCbzConvertiti } from "./lib/sync.js";
+import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile, convertiLibroInCbz, adottaCbzConvertiti, getLastSync } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
-import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, dettagliFile, impostaRinnovo, impostaRientro, rinnovaInSilenzio, chiaveInScadenza, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato, fraseScollegato, daSpostareDaDrive, apriDaDrive, cestinaDelLibro } from "./lib/drive.js";
+import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, dettagliFile, impostaRinnovo, impostaRientro, rinnovaInSilenzio, chiaveInScadenza, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato, fraseScollegato, daSpostareDaDrive, apriDaDrive, cestinaDelLibro, senzaSchedaDaDrive, cestinaSuDrive } from "./lib/drive.js";
 import { spostaSuHdd, fraseHdd, casaSulDisco } from "./lib/hdd.js";
 import { importaDaDrive, resoconto } from "./lib/importBook.js";
 import { custodisciGoogle, rinnovoDalServer, rientroConGoogle, lasciaGoogleQui } from "./lib/accessoGoogle.js";
@@ -1400,7 +1400,20 @@ export default function App() {
   // lungo (un giga a volume): vive qui, si vede e si ferma da ogni sezione.
   const [hdd, setHdd] = useState(null);
   const filoHdd = useRef(null);
-  async function spostaSuHddQui(libri, scelta) {
+  // e i file che nessun libro usa (`fileSenzaScheda`): si riguarda su Drive
+  // ADESSO, perche' fra l'elenco mostrato e il tocco un giro puo' averne
+  // collegato uno a una scheda; nessuna scheda da segnare, solo il cestino
+  const spostaSenzaSchedaQui = (scelti, scelta) =>
+    spostaSuHddQui(scelti, scelta, {
+      voci: async () => {
+        const ids = new Set(scelti.map((v) => v.fileId));
+        const ora = await senzaSchedaDaDrive(loadBooks(), { misure: await misureFile(), schedeInArrivo: isSyncConfigured() && !getLastSync() });
+        return ora.filter((v) => ids.has(v.fileId));
+      },
+      segna: async () => {},
+      cestina: (v) => cestinaSuDrive(v.fileId),
+    });
+  async function spostaSuHddQui(libri, scelta, senza = null) {
     if (!libri.length) return;
     if (filoHdd.current) return notify("Sto già spostando sull'HDD: aspetta che finisca, o fermalo dalla barra in basso");
     const mio = {};
@@ -1411,21 +1424,21 @@ export default function App() {
       if (!driveProntoOra()) await collegaDrive();
       const tipi = tipiDi(loadBooks());
       // quello che stai leggendo si copia e resta anche su Drive (`divisiPerHdd`)
-      const voci = await daSpostareDaDrive(libri, { tipoDi: (b) => tipoDi(b, tipi), tieni: (b) => getStatus(b.id) === "reading" });
+      const voci = senza ? await senza.voci() : await daSpostareDaDrive(libri, { tipoDi: (b) => tipoDi(b, tipi), tieni: (b) => getStatus(b.id) === "reading" });
       const esito = await spostaSuHdd(voci, {
         radice: await casaSulDisco(scelta),
         vivo,
         ferma: (e) => e instanceof DriveScollegato,
         onProgress: (p) => vivo() && setHdd(p),
         apri: apriDaDrive,
-        segna: async (v) => {
+        segna: senza?.segna || (async (v) => {
           timbraScheda(v.bookId);
           updateBooks(loadBooks().map((b) => (b.id === v.bookId ? { ...b, fileTolto: true } : b)));
           await removeFileOnly(v.bookId).catch(() => {});
           const b = loadBooks().find((x) => x.id === v.bookId);
           if (b) await togliFileDalCloud(b).catch(() => {});
-        },
-        cestina: (v) => cestinaDelLibro(v.bookId, v.fileId),
+        }),
+        cestina: senza?.cestina || ((v) => cestinaDelLibro(v.bookId, v.fileId)),
       });
       notify([fraseHdd(esito), esito.scollegato && fraseScollegato(esito.scollegato, "Google Drive aspetta un tocco: riprova")].filter(Boolean).join(" · "));
     } catch (e) {
@@ -1885,6 +1898,7 @@ export default function App() {
             onImportaDaDrive={importaDaDriveQui}
             onFermaImport={fermaImport}
             onSpostaSuHdd={spostaSuHddQui}
+            onSenzaSchedaSuHdd={spostaSenzaSchedaQui}
             daImportare={daImportare}
             onImportati={() => setDaImportare(null)}
             focusSaga={focusSaga}

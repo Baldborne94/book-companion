@@ -971,6 +971,64 @@ const SCENE = [
     },
   },
   {
+    // segnalato dal lettore: «perché i 38 GB di manga e fumetti non sono
+    // stati spostati?» — caricati a mano su Drive, nessuna scheda li usava
+    nome: "i file su Drive che nessun libro usa vanno sull'HDD con le loro cartelle, e quelli dei libri e fuori dall'app restano",
+    async fai({ browser }) {
+      const CARTELLA = "application/vnd.google-apps.folder";
+      const elenco = [
+        { id: "R", name: "Book-Companion", mimeType: CARTELLA },
+        { id: "M", name: "Manga", mimeType: CARTELLA, parents: ["R"] },
+        { id: "J", name: "JoJo", mimeType: CARTELLA, parents: ["M"] },
+        { id: "L", name: "Libri", mimeType: CARTELLA, parents: ["R"] },
+        { id: "ALTRO", name: "Foto", mimeType: CARTELLA },
+        { id: "J1", name: "JoJo v01.cbz", size: "300000", parents: ["J"] },
+        { id: "J2", name: "JoJo v02.cbz", size: "200000", parents: ["J"] },
+        { id: "L1", name: "Mort.epub", size: "50000", parents: ["L"], appProperties: { bc: "1", bcId: "l1" } },
+        { id: "FUORI", name: "Berserk.cbz", size: "70000", parents: ["ALTRO"] },
+      ];
+      const drv = await avviaDrive(PORTA_DRIVE, { J1: Buffer.alloc(300000, 1), J2: Buffer.alloc(200000, 2), L1: Buffer.alloc(50000, 3), FUORI: Buffer.alloc(70000, 4) }, { elenco });
+      try {
+        const disco = () => {
+          window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
+        };
+        const d = await dispositivo(browser, {
+          prima: `(${disco})();`,
+          drive: {
+            libri: [{ id: "l1", title: "Mort", author: "Terry Pratchett", fileType: "epub", addedAt: 1 }],
+            mappa: { l1: { id: "L1", byte: 50000 } },
+          },
+        });
+        await d.p.goto(`${URL_APP}?apri=libreria`);
+        await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
+        await d.p.getByRole("button", { name: "📦 File su Drive che nessun libro usa" }).click();
+        await finche(() => d.p.getByText(/^Manga \/ JoJo$/).count(), 10000, "l'elenco per cartella non si vede");
+        const riga = await d.p.locator("li", { hasText: "Manga / JoJo" }).first().innerText();
+        if (!/2 file/.test(riga)) throw new Error(`la riga della cartella: ${riga}`);
+        if (await d.p.locator("li", { hasText: /Berserk|Foto|Libri/ }).count()) throw new Error("nell'elenco c'è un file di un libro o fuori dall'app");
+        await d.p.getByRole("button", { name: "Scegli la cartella del disco" }).click();
+        const frase = await finche(() => testoAvviso(d.p, /2 volumi sull'HDD/), 20000, "lo spostamento non si dice");
+        const sulDisco = await d.p.evaluate(async () => {
+          const out = [];
+          const giu = async (dir, via) => {
+            for await (const [n, h] of dir.entries()) {
+              if (h.kind === "directory") await giu(h, `${via}${n}/`);
+              else out.push(`${via}${n}:${(await h.getFile()).size}`);
+            }
+          };
+          await giu(await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD"), "");
+          return out.sort().join();
+        });
+        if (sulDisco !== "book-companion/Manga/JoJo/JoJo v01.cbz:300000,book-companion/Manga/JoJo/JoJo v02.cbz:200000") throw new Error(`sul disco: ${sulDisco}`);
+        if (drv.cestino().sort().join() !== "J1,J2") throw new Error(`nel cestino: ${drv.cestino().join()} (Mort e Berserk restano)`);
+        if ((await libriDi(d.p)).some((b) => b.fileTolto)) throw new Error("una scheda ha perso il file");
+        return { guasti: d.guasti, nota: `${frase.slice(0, 60)}… · JoJo sul disco, Mort e Berserk su Drive` };
+      } finally {
+        await drv.chiudi();
+      }
+    },
+  },
+  {
     nome: "l'Ingresso propone il volume rimesso «Da leggere» e l'inizio del ciclo dopo",
     async fai({ browser }) {
       const d = await dispositivo(browser, { prima: mondoDisco });
