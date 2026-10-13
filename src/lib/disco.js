@@ -148,13 +148,13 @@ const estDi = (n) => (/\.([a-z0-9]{2,5})$/i.exec(n || "")?.[1] || "").toLowerCas
 // volume (doppioni) puntano allo stesso file: si sposta una volta, e solo se
 // le due schede dicono la stessa casa. Due file per la stessa scheda: uno
 // solo e' il volume, gli altri sono doppioni sul disco, e si dicono.
-export function controllaDisco(libri, file, { tipoDi = () => "libri", suDrive = () => false, qui = () => false } = {}) {
+export function controllaDisco(libri, file, { tipoDi = () => "libri", suDrive = () => false, qui = () => false, leggendo = () => false } = {}) {
   const vivi = (libri || []).filter((b) => b?.id);
   // un file da 0 byte e' una copia rimasta a meta' (lo spostamento lo
   // riempie al giro dopo): non e' un volume, si dice a parte
   const pieni = (file || []).filter((f) => f.byte > 0);
   const di = abbinaDisco(vivi, pieni, (b) => casaDi(b, tipoDi(b)).map(chiave).join("/"));
-  const esito = { aPosto: [], daSpostare: [], doppioni: [], vuoti: (file || []).filter((f) => !(f.byte > 0)), mancano: { drive: [], qui: [], altrove: [], nessuno: [] }, senzaScheda: [], byte: 0 };
+  const esito = { aPosto: [], daSpostare: [], doppioni: [], vuoti: (file || []).filter((f) => !(f.byte > 0)), mancano: { drive: [], qui: [], altrove: [], nessuno: [] }, senzaScheda: [], daSegnare: [], byte: 0 };
   const case_ = new Map();
   const usati = new Set();
   for (const b of vivi) {
@@ -198,6 +198,17 @@ export function controllaDisco(libri, file, { tipoDi = () => "libri", suDrive = 
       }
     }
   }
+  // LA SCHEDA CHE CREDE PERSO UN VOLUME CHE E' SUL DISCO (segnalato dal
+  // lettore: «A Time of Blood», «Morning Star» e altri 158 «ne' qui ne' nel
+  // cloud», con 1665 volumi su 1673 sul disco). Scesi coi file che nessuna
+  // scheda usava, o prima che il disco li sapesse riconoscere: la scheda non
+  // era stata segnata, e restava senza file da nessuna parte. Si propongono
+  // da segnare come quelle spostate sull'HDD (`fileTolto`) — solo chi non ha
+  // il file qui ne' su Drive, e mai chi stai leggendo (resta su Drive).
+  const segnati = new Set();
+  for (const c of case_.values())
+    for (const b of c.libri) if (!b.fileTolto && !suDrive(b.id) && !qui(b.id) && !leggendo(b.id) && !segnati.has(b)) segnati.add(b);
+  esito.daSegnare = [...segnati];
   const visti = new Set([...case_.keys()]);
   esito.senzaScheda = pieni.filter((f) => !visti.has(f));
   return esito;
@@ -289,6 +300,7 @@ export function rapportoDisco(r) {
   for (const [bs, dove] of [[m.drive, "ancora su Google Drive"], [m.qui, "solo su questo dispositivo"], [m.altrove, "ne' qui ne' su Drive"], [m.nessuno, "senza file da nessuna parte"]])
     if (bs.length) righe.push(`Mancano dal disco, ${dove} (${bs.length}):`, ...titoli(bs));
   if (r.senzaScheda.length) righe.push(`File senza scheda (${r.senzaScheda.length}):`, ...file(r.senzaScheda));
+  if (r.daSegnare?.length) righe.push(`Sul disco, ma la scheda li crede persi (${r.daSegnare.length}):`, ...titoli(r.daSegnare));
   if (r.vuoti?.length) righe.push(`File vuoti, copie rimaste a meta' (${r.vuoti.length}):`, ...file(r.vuoti));
   if (r.doppioni.length) righe.push(`Copie in piu', stesso nome e stesso peso (${r.doppioni.length}):`, ...file(r.doppioni));
   return righe.join("\n");
