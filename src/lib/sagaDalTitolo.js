@@ -117,6 +117,11 @@ const FUMETTO = new RegExp(
   `^(.+?)(?:\\s*[-–—:]\\s*|\\s+)(?:(?:v|vol\\.?|volume|tomo|t\\.)\\s*(\\d{1,3})|(0\\d{1,2}))(?:\\s*[(\\[].*)?$`,
   "i"
 );
+// G2. IL CAPITOLO DI UN FUMETTO, numero nudo senza zero davanti: «Kagurabachi
+//     100 (2025) (Digital)», «Kagurabachi 112.1» (segnalato dal lettore: dal
+//     capitolo 100 in poi, e i mezzi capitoli, restavano sciolti). Solo nei
+//     fumetti (`fumetto`): in un romanzo «Fahrenheit 451» e' un titolo.
+const CAPITOLO_NUDO = /^(.+?)\s+(\d{1,4}(?:\.\d)?)(?:\s*[(\[].*)?$/;
 
 // H. I FUMETTI DEL LETTORE, letti in biblioteca (segnalato: «sistemami
 //    le saghe che da solo non è riuscito a sistemare, tipo JoJo»). Sui
@@ -151,7 +156,7 @@ const DISTESO = (s) => (/_/.test(s) ? s.replace(/_+/g, " ").replace(/\s+/g, " ")
 // scaffale «Wheel of Time [02]: The Great Hunt» tronca a «Wheel of Time
 // [02]:…» e i sei volumi di una saga diventano indistinguibili — la
 // copertina il titolo ce l'ha stampato sopra, la didascalia no.
-function leggi(campo) {
+function leggi(campo, { fumetto = false } = {}) {
   const s = DISTESO(String(campo || "").trim());
   if (!s) return null;
   let m = PARTE_V.exec(s);
@@ -202,6 +207,11 @@ function leggi(campo) {
   }
   m = SOLO_VOLUME.exec(s);
   if (m) return { saga: null, sagaOrder: numero(m[1]), resto: m[2] };
+  m = fumetto ? CAPITOLO_NUDO.exec(s) : null;
+  if (m) {
+    const saga = sagaBuona(m[1]);
+    if (saga) return { saga, sagaOrder: numero(m[2]), resto: null };
+  }
   m = IN_TESTA.exec(s);
   // qui l'espressione e' un PREFISSO e non tiene il resto in un gruppo:
   // il titolo e' quel che sta dopo il pezzo consumato
@@ -233,10 +243,11 @@ function pulisciFile(fileName, author) {
 // vede, e se dice una cosa diversa dal file comanda lui. Torna `null` se
 // nessuno dei due dice niente; `saga: null` col solo `sagaOrder` quando
 // c'e' il numero e non la saga.
-export function sagaDalTitolo({ title, fileName, author } = {}) {
-  const dalTitolo = leggi(title);
+export function sagaDalTitolo({ title, fileName, author, fileType } = {}) {
+  const fumetto = fileType === "cbz" || fileType === "cbr" || /\.(cbz|cbr)$/i.test(String(fileName || ""));
+  const dalTitolo = leggi(title, { fumetto });
   if (dalTitolo?.saga) return dalTitolo;
-  const dalFile = leggi(pulisciFile(fileName, author));
+  const dalFile = leggi(pulisciFile(fileName, author), { fumetto });
   if (dalFile?.saga) {
     // il titolo aveva il solo numero: quello resta suo
     return { saga: dalFile.saga, sagaOrder: dalTitolo?.sagaOrder ?? dalFile.sagaOrder, ...(dalFile.ciclo ? { ciclo: dalFile.ciclo } : {}) };

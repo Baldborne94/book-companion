@@ -771,7 +771,7 @@ function completaSaga(meta, letto, fileName, libri) {
   // sul primo libro di un autore nuovo quando il file la collana non ce
   // l'ha. Il solo numero («02 Valour») si prende se una saga c'e' gia'.
   if (!saga) {
-    const nelTitolo = sagaDalTitolo({ title: meta.title, fileName, author: meta.author });
+    const nelTitolo = sagaDalTitolo({ title: meta.title, fileName, author: meta.author, fileType: meta.fileType });
     if (!meta.saga && nelTitolo?.saga) {
       riconosciuto = true;
       meta.saga = nomeInBiblioteca(nelTitolo.saga, libri);
