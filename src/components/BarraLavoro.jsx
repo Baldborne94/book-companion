@@ -47,7 +47,7 @@ export default function BarraLavoro({ hdd = null, onFermaHdd, importo = null, on
         <div role="status" style={riga}>
           <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
             <span style={{ color: C.text }}>
-              📦 Sposto sull'HDD: {hdd.nome ? `${hdd.i + 1} di ${hdd.totale}` : "guardo su Google Drive…"}
+              {hdd.cosa || "📦 Sposto sull'HDD"}: {hdd.nome ? `${hdd.i + 1} di ${hdd.totale}` : "guardo su Google Drive…"}
             </span>
             {hdd.nome ? ` · «${hdd.nome}»` : ""}
             {hdd.byte > 0 ? ` · ${fmtGoogle(hdd.presi)} di ${fmtGoogle(hdd.byte)}` : ""}

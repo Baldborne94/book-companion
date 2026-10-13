@@ -1058,6 +1058,60 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «ora su E:\book-companion abbiamo tutti i volumi?
+    // mi hai sistemato anche dentro le cartelle i file nel modo giusto per saga?»
+    nome: "il disco si controlla e si riordina: ogni volume nella cartella della sua saga, niente si copre",
+    async fai({ browser }) {
+      const libri = [
+        { id: "j", title: "Volume 20 - Love Train", saga: "JoJo's Bizarre Adventure", series: "Parte 7", fileType: "cbz", tipo: "manga", fileTolto: true, addedAt: 1 },
+        { id: "k", title: "Kagurabachi 100 (2025) (Digital) (LuCaZ)", saga: "Kagurabachi", fileType: "cbz", tipo: "manga", fileTolto: true, addedAt: 2 },
+        { id: "m", title: "Mort", saga: "Discworld", fileType: "epub", addedAt: 3, fileTolto: true },
+        { id: "p", title: "Perso", fileType: "epub", addedAt: 4, fileTolto: true },
+      ];
+      const prima = `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});
+        window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });`;
+      const d = await dispositivo(browser, { prima });
+      await d.p.goto(`${URL_APP}?apri=libreria`);
+      await d.p.evaluate(async () => {
+        const r = await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
+        const metti = async (via, peso) => {
+          const pezzi = via.split("/");
+          let c = r;
+          for (const n of pezzi.slice(0, -1)) c = await c.getDirectoryHandle(n, { create: true });
+          const w = await (await c.getFileHandle(pezzi.at(-1), { create: true })).createWritable();
+          await w.write(new Uint8Array(peso).fill(1));
+          await w.close();
+        };
+        await metti("book-companion/Manga/JoJo's_Bizarre_Adventure/Parte 7/Volume 20 - Love Train.cbz", 7000);
+        await metti("book-companion/Manga/Kagurabachi 100 (2025) (Digital) (LuCaZ).cbz", 1000);
+        await metti("book-companion/Libri/Discworld/Mort.epub", 500);
+        await metti("book-companion/Fumetti/Sconosciuto.cbz", 50);
+      });
+      await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
+      await d.p.getByRole("button", { name: "🔍 Controlla il disco" }).click();
+      await finche(() => d.p.getByText(/Sul disco ci sono 3 volumi della biblioteca/).count(), 10000, "il rapporto del disco non si vede");
+      const testo = await d.p.locator("body").innerText();
+      for (const atteso of ["2 non stanno nella cartella della loro saga", "Manga / JoJo's_Bizarre_Adventure / Parte 7 → Manga / JoJo's Bizarre Adventure / Parte 7", "Manga → Manga / Kagurabachi", "senza il file da nessuna parte: Perso", "Fumetti / Sconosciuto.cbz"])
+        if (!testo.includes(atteso)) throw new Error(`nel rapporto manca «${atteso}»`);
+      await d.p.getByRole("button", { name: "🗂 Riordina 2" }).click();
+      const frase = await finche(() => testoAvviso(d.p, /2 volumi nella cartella della sua saga/), 10000, "il riordino non si dice");
+      const sulDisco = await d.p.evaluate(async () => {
+        const out = [];
+        const giu = async (dir, via) => {
+          for await (const [n, h] of dir.entries()) {
+            if (h.kind === "directory") await giu(h, `${via}${n}/`);
+            else out.push(`${via}${n}:${(await h.getFile()).size}`);
+          }
+        };
+        await giu(await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD"), "");
+        return out.sort().join(" ");
+      });
+      const atteso = "book-companion/Fumetti/Sconosciuto.cbz:50 book-companion/Libri/Discworld/Mort.epub:500 book-companion/Manga/JoJo's Bizarre Adventure/Parte 7/Volume 20 - Love Train.cbz:7000 book-companion/Manga/Kagurabachi/Kagurabachi 100 (2025) (Digital) (LuCaZ).cbz:1000";
+      if (sulDisco !== atteso) throw new Error(`sul disco: ${sulDisco}`);
+      return { guasti: d.guasti, nota: `${frase.slice(0, 50)}… · JoJo e Kagurabachi nelle loro saghe, Mort fermo` };
+    },
+  },
+  {
     nome: "l'Ingresso propone il volume rimesso «Da leggere» e l'inizio del ciclo dopo",
     async fai({ browser }) {
       const d = await dispositivo(browser, { prima: mondoDisco });

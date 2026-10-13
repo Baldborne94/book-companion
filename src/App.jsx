@@ -46,6 +46,7 @@ import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sin
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
 import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, dettagliFile, impostaRinnovo, impostaRientro, rinnovaInSilenzio, chiaveInScadenza, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato, fraseScollegato, daSpostareDaDrive, apriDaDrive, cestinaDelLibro, senzaSchedaDaDrive, cestinaSuDrive } from "./lib/drive.js";
 import { spostaSuHdd, fraseHdd, casaSulDisco } from "./lib/hdd.js";
+import { riordinaDisco, fraseRiordino } from "./lib/disco.js";
 import { importaDaDrive, resoconto } from "./lib/importBook.js";
 import { custodisciGoogle, rinnovoDalServer, rientroConGoogle, lasciaGoogleQui } from "./lib/accessoGoogle.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
@@ -1413,6 +1414,26 @@ export default function App() {
       segna: async () => {},
       cestina: (v) => cestinaSuDrive(v.fileId),
     });
+  // RIORDINARE IL DISCO (`riordinaDisco`): ogni file nella casa della sua
+  // scheda, dentro lo stesso disco. Stesso filo e stessa riga in basso dello
+  // spostamento: un lavoro sul disco alla volta.
+  async function riordinaQui(voci, casa) {
+    if (!voci.length) return;
+    if (filoHdd.current) return notify("Sto già lavorando sul disco: aspetta che finisca, o fermalo dalla barra in basso");
+    const mio = {};
+    filoHdd.current = mio;
+    const vivo = () => filoHdd.current === mio;
+    setHdd({ cosa: "🗂 Riordino il disco", i: 0, totale: voci.length, nome: voci[0].file.nome, presi: 0, byte: 0 });
+    try {
+      const esito = await riordinaDisco(voci, { radice: casa, vivo, onProgress: (p) => vivo() && setHdd({ ...p, cosa: "🗂 Riordino il disco" }) });
+      notify(fraseRiordino(esito));
+    } catch (e) {
+      notify(e?.message || "Il disco non ha risposto");
+    } finally {
+      if (filoHdd.current === mio) filoHdd.current = null;
+      setHdd(null);
+    }
+  }
   async function spostaSuHddQui(libri, scelta, senza = null) {
     if (!libri.length) return;
     if (filoHdd.current) return notify("Sto già spostando sull'HDD: aspetta che finisca, o fermalo dalla barra in basso");
@@ -1899,6 +1920,7 @@ export default function App() {
             onFermaImport={fermaImport}
             onSpostaSuHdd={spostaSuHddQui}
             onSenzaSchedaSuHdd={spostaSenzaSchedaQui}
+            onRiordina={riordinaQui}
             daImportare={daImportare}
             onImportati={() => setDaImportare(null)}
             focusSaga={focusSaga}

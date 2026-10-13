@@ -885,6 +885,7 @@ export default function Library({
   onCambiate,
   onSpostaSuHdd,
   onSenzaSchedaSuHdd,
+  onRiordina,
 }) {
   // lo scaffale si ridisegna solo quando cambia: il lavoro dell'HDD si
   // raggiunge da qui, sempre quello di adesso
@@ -973,6 +974,8 @@ export default function Library({
   // i file su Drive che nessun libro usa (`fileSenzaScheda`): prima l'elenco
   // per cartella, col peso, poi la cartella del disco
   const [senzaScheda, setSenzaScheda] = useState(null);
+  // il disco controllato (`controllaDisco`): il rapporto e la sua casa
+  const [disco, setDisco] = useState(null);
   const [giroImport, setGiroImport] = useState(null);
   // «Aggiungi da Drive»: l'elenco dei file lassu' che non sono ancora
   // libri, con le spunte, e il filo per fermare il giro a meta'
@@ -1922,6 +1925,37 @@ export default function Library({
       notify(err instanceof DriveScollegato ? fraseScollegato(err, "Google Drive aspetta un tocco: riprova.") : err?.message || "Google Drive non ha risposto");
     }
   }
+  async function controllaIlDisco() {
+    let scelta = null;
+    try {
+      scelta = await window.showDirectoryPicker({ id: "bc-hdd", mode: "readwrite" });
+    } catch {
+      return;
+    }
+    setDisco({ guardo: true });
+    try {
+      const { RADICE } = await import("../lib/driveCore.js");
+      const { elencaDisco, controllaDisco } = await import("../lib/disco.js");
+      const casa = String(scelta.name || "").trim().toLowerCase() === RADICE ? scelta : await scelta.getDirectoryHandle(RADICE).catch(() => null);
+      if (!casa) {
+        setDisco(null);
+        notify("Qui dentro non c'è la cartella «book-companion»: scegli quella che la contiene, o lei");
+        return;
+      }
+      const file = await elencaDisco(casa);
+      const mappa = mappaDrive();
+      const rapporto = controllaDisco(booksRef.current, file, {
+        tipoDi: (b) => tipoDi(b, tipi),
+        suDrive: (id) => !!mappa[id],
+        qui: (id) => !!localIds?.has(id),
+      });
+      setDisco({ rapporto, casa });
+    } catch (err) {
+      setDisco(null);
+      notify(err?.message || "Il disco non ha risposto");
+    }
+  }
+
   async function senzaSchedaSulDisco() {
     let radice = null;
     try {
@@ -3143,6 +3177,85 @@ export default function Library({
                     tasto={(attivo) => ({ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${attivo ? C.accent + "88" : C.border}`, color: attivo ? C.accent : C.text, fontSize: F.nota })}
                   />
                 ));
+              })()}
+            {/* IL DISCO CONTROLLATO (vedi `controllaDisco`): cosa c'è, cosa
+                manca e dove sta, cosa è fuori posto; riordinare è un tocco a
+                parte, dopo aver visto l'elenco */}
+            {onRiordina && hddPossibile() && !disco?.rapporto && (
+              <button
+                onClick={controllaIlDisco}
+                disabled={!!disco}
+                style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}
+              >
+                {disco?.guardo ? "Guardo il disco…" : "🔍 Controlla il disco"}
+              </button>
+            )}
+            {disco?.rapporto &&
+              (() => {
+                const r = disco.rapporto;
+                const sulDisco = r.aPosto.length + r.daSpostare.length;
+                const m = r.mancano;
+                const lista = { flexBasis: "100%", margin: 0, padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" };
+                const voce = { fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" };
+                const titoli = (bs) => bs.map((b) => b.title).join(" · ");
+                const mancanti = [
+                  [m.drive, "ancora su Google Drive: li sposti con «Sposta sull'HDD»"],
+                  [m.qui, "solo su questo dispositivo"],
+                  [m.altrove, "né qui né su Drive: forse sull'altro dispositivo"],
+                  [m.nessuno, "senza il file da nessuna parte"],
+                ].filter(([bs]) => bs.length);
+                return (
+                  <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: F.nota, color: C.muted, lineHeight: 1.45 }}>
+                    <span style={{ flexBasis: "100%", color: C.text }}>
+                      {`Sul disco ci sono ${sulDisco} ${sulDisco === 1 ? "volume" : "volumi"} della biblioteca (${fmtGoogle(r.byte)})${r.daSpostare.length ? `, e ${r.daSpostare.length === 1 ? "uno non sta" : `${r.daSpostare.length} non stanno`} nella cartella della ${r.daSpostare.length === 1 ? "sua" : "loro"} saga` : ", ognuno nella cartella della sua saga"}.`}
+                    </span>
+                    {r.daSpostare.length > 0 && (
+                      <ul style={lista}>
+                        {r.daSpostare.map((v) => (
+                          <li key={`${v.file.cartelle.join("/")}/${v.file.nome}`} style={voce}>
+                            <span style={{ color: C.text }}>{v.libro.title}</span> · {v.file.cartelle.join(" / ") || "book-companion"} → {v.a.join(" / ")}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {mancanti.map(([bs, dove]) => (
+                      <span key={dove} style={{ flexBasis: "100%", overflowWrap: "anywhere" }}>
+                        {`Mancano dal disco ${bs.length === 1 ? "un volume" : `${bs.length} volumi`} ${dove}: `}
+                        <span style={{ color: C.text }}>{titoli(bs.slice(0, 12))}</span>
+                        {bs.length > 12 ? ` e altri ${bs.length - 12}` : ""}
+                      </span>
+                    ))}
+                    {r.senzaScheda.length > 0 && (
+                      <span style={{ flexBasis: "100%", overflowWrap: "anywhere" }}>
+                        {`${r.senzaScheda.length === 1 ? "Un file" : `${r.senzaScheda.length} file`} sul disco che nessuna scheda riconosce (restano dove sono): `}
+                        <span style={{ color: C.text }}>{r.senzaScheda.slice(0, 12).map((f) => [...f.cartelle, f.nome].join(" / ")).join(" · ")}</span>
+                        {r.senzaScheda.length > 12 ? ` e altri ${r.senzaScheda.length - 12}` : ""}
+                      </span>
+                    )}
+                    {r.doppioni.length > 0 && (
+                      <span style={{ flexBasis: "100%", overflowWrap: "anywhere" }}>
+                        {`${r.doppioni.length === 1 ? "Una copia in più" : `${r.doppioni.length} copie in più`} di volumi che sono già sul disco (non le tocco): `}
+                        <span style={{ color: C.text }}>{r.doppioni.slice(0, 12).map((f) => [...f.cartelle, f.nome].join(" / ")).join(" · ")}</span>
+                      </span>
+                    )}
+                    {r.daSpostare.length > 0 && (
+                      <button
+                        onClick={() => {
+                          const { daSpostare } = r;
+                          const casa = disco.casa;
+                          setDisco(null);
+                          onRiordina(daSpostare, casa);
+                        }}
+                        style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                      >
+                        {`🗂 Riordina ${r.daSpostare.length}`}
+                      </button>
+                    )}
+                    <button onClick={() => setDisco(null)} style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}>
+                      Chiudi
+                    </button>
+                  </div>
+                );
               })()}
             {/* I FILE CHE NESSUN LIBRO USA (vedi `fileSenzaScheda`): caricati a
                 mano su Drive, nessuna scheda li sposta; vanno sul disco con

@@ -1054,6 +1054,20 @@ export function cbzGiaAdottati(libri, mappa, file) {
 // Un file che lassu' non c'e' piu', o di cui Drive non dice il peso, non si
 // sposta: senza il peso non si puo' guardare che sul disco sia arrivato
 // intero.
+// LA CASA DI UN VOLUME SUL DISCO, dalla scheda: il tipo, la saga, e la parte
+// (il ciclo) se c'e' — i JoJo in «Manga/JoJo's Bizarre Adventure/Parte 7», i
+// B.P.R.D. sotto Hellboy («tutto sotto Hellboy, come da saga», chiesto dal
+// lettore guardando la cartella dei fumetti). Un volume a se' sta nella
+// cartella del suo tipo. Una sola regola per chi sposta e per chi controlla.
+export function casaDelVolume(b, tipo) {
+  const saga = String(b?.saga || "").trim();
+  const ciclo = String(b?.series || "").trim();
+  const pezzi = [cartellaDelTipo(tipo)];
+  if (saga) pezzi.push(saga);
+  if (saga && ciclo && ciclo.toLowerCase() !== saga.toLowerCase()) pezzi.push(ciclo);
+  return pezzi;
+}
+
 export function daSpostareSuHdd(libri, mappa, file, { tipoDi = () => "libri", tieni = () => false } = {}) {
   const per = new Map((file || []).filter((f) => f?.id && !f.trashed).map((f) => [f.id, f]));
   const out = [];
@@ -1061,8 +1075,7 @@ export function daSpostareSuHdd(libri, mappa, file, { tipoDi = () => "libri", ti
     const f = per.get(mappa?.[b?.id]?.id);
     const byte = Number(f?.size) || 0;
     if (!f || !(byte > 0)) continue;
-    const saga = String(b.saga || "").trim();
-    out.push({ bookId: b.id, fileId: f.id, nome: f.name || b.id, byte, cartelle: [cartellaDelTipo(tipoDi(b)), ...(saga ? [saga] : [])], tieni: !!tieni(b) });
+    out.push({ bookId: b.id, fileId: f.id, nome: f.name || b.id, byte, cartelle: casaDelVolume(b, tipoDi(b)), tieni: !!tieni(b) });
   }
   return out;
 }
