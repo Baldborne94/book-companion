@@ -1058,6 +1058,36 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «sistemami tutti i libri di Hellboy mettendoli
+    // dentro la saga di Hellboy con l'ordine consigliato» — le schede sono
+    // le sue, con le saghe e le serie che avevano
+    nome: "Hellboy nell'ordine della Comics Beat: le schede si propongono e si mettono in fila",
+    async fai({ browser }) {
+      const libri = [
+        { id: "h1", title: "v01 - Seed of Destruction", saga: "Hellboy", series: "Hellboy Omnibus", sagaOrder: 1, fileType: "cbz", tipo: "fumetti", addedAt: 1 },
+        { id: "h2", title: "B.P.R.D. Omnibus v01 (2022) (digital) (Son of Ultron-Empire)", saga: "B.P.R.D", series: "B.P.R.D. Omnibus", sagaOrder: 1, fileType: "cbz", tipo: "fumetti", addedAt: 2 },
+        { id: "h3", title: "Sir Edward Grey, Witchfinder Omnibus01", saga: "Hellboy", series: "Witchfinder Omnibus", sagaOrder: 1, fileType: "cbz", tipo: "fumetti", addedAt: 3 },
+        { id: "h4", title: "Hellboy Omnibus - The Wild Hunt v3-522", saga: "Hellboy", sagaOrder: 3, fileType: "cbz", tipo: "fumetti", addedAt: 4 },
+      ];
+      const d = await dispositivo(browser, { prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});` });
+      await d.p.goto(`${URL_APP}?apri=libreria`);
+      await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
+      await d.p.getByRole("button", { name: "📚 Saghe da sistemare" }).click();
+      await finche(() => d.p.getByText("Hellboy · n. 11").count(), 5000, "la proposta per Witchfinder non si vede");
+      for (const f of ["Hellboy · n. 1", "Hellboy · n. 5", "Hellboy · n. 9"]) if (!(await d.p.getByText(f, { exact: true }).count())) throw new Error(`manca la proposta «${f}»`);
+      if ((await libriDi(d.p)).find((b) => b.id === "h2").saga !== "B.P.R.D") throw new Error("la saga si è riscritta prima del tocco");
+      await d.p.getByRole("button", { name: "Sistema 4" }).click();
+      const fila = async () =>
+        (await libriDi(d.p))
+          .filter((b) => b.saga === "Hellboy" && !b.series)
+          .sort((a, b) => a.sagaOrder - b.sagaOrder)
+          .map((b) => `${b.id}:${b.sagaOrder}`)
+          .join();
+      await finche(async () => (await fila()) === "h1:1,h2:5,h4:9,h3:11", 5000, "Hellboy non è in fila");
+      return { guasti: d.guasti, nota: await fila() };
+    },
+  },
+  {
     // chiesto dal lettore: «ora su E:\book-companion abbiamo tutti i volumi?
     // mi hai sistemato anche dentro le cartelle i file nel modo giusto per saga?»
     nome: "il disco si controlla e si riordina: ogni volume nella cartella della sua saga, niente si copre",

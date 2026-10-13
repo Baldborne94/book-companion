@@ -1,4 +1,5 @@
 import { riconosci } from "./sagaBooks.js";
+import { SAGA as DISCO } from "../data/discworldBooks.js";
 import { chiaveGlossario, vociDi } from "./glossarioMio.js";
 
 // Il glossario risponde prima della rete e anche senza: sono dati nostri,
@@ -229,7 +230,9 @@ export function glossaryOf(book) {
   if (SAGA_HINTS.some((h) => saga.includes(h))) return "discworld";
   // anche dal titolo: i libri importati prima che l'app riconoscesse le saghe
   // hanno il campo saga vuoto, e non e' un buon motivo per restare senza
-  return riconosci({ title: book?.title, author: book?.author }) ? "discworld" : null;
+  // e solo il Disco: le altre tavole (Eresia, JoJo, Hellboy) un glossario
+  // nostro non ce l'hanno
+  return riconosci({ title: book?.title, author: book?.author })?.saga === DISCO ? "discworld" : null;
 }
 
 // Il glossario di un libro adesso puo' venire da due parti: le nostre voci

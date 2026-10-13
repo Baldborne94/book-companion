@@ -110,7 +110,7 @@ export function postiDelCammino(tappe = [], ordine = () => null) {
 // direbbe «altri 242», che non e' un'informazione — e' rumore. Senza
 // `scaffale` si conta su quel che si e' ricevuto, com'era prima.
 export function camminoDi(libri = [], { tavole = TAVOLE, riconosce, scaffale } = {}) {
-  const sapere = riconosce || ((b) => riconosci({ title: b?.title, author: b?.author }));
+  const sapere = riconosce || ((b) => riconosci({ title: b?.title, author: b?.author, saga: b?.saga }));
   const miei = new Map();
   const conti = new Map();
   let riconosciuti = 0;

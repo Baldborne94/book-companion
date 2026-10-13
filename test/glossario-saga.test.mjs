@@ -210,6 +210,9 @@ export default async function (t) {
   {
     t.eq("dalla saga scritta a mano", glossaryOf({ saga: "Discworld" }), "discworld");
     t.eq("anche in italiano", glossaryOf({ saga: "Mondo Disco" }), "discworld");
+    // riconosciuto da un'altra tavola non e' il Disco: il glossario e' suo
+    t.eq("un Hellboy non apre il glossario del Disco", glossaryOf({ title: "Hellboy Omnibus v01 - Seed of Destruction" }), null);
+    t.eq("e il titolo del Disco sì", glossaryOf({ title: "Guards! Guards!", author: "Terry Pratchett" }), "discworld");
     t.eq("e scritta staccata", glossaryOf({ saga: "Disc World" }), "discworld");
     // I LIBRI ENTRATI PRIMA CHE L'APP RICONOSCESSE LE SAGHE hanno il campo
     // vuoto, e non è un buon motivo per restare senza glossario

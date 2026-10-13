@@ -2,6 +2,7 @@ import DISCWORLD, { SAGA, CICLI_NOSTRI } from "../data/discworldBooks.js";
 import HORUS, { SAGA as SAGA_HH } from "../data/horusHeresy.js";
 import APOCALISSE, { SAGA as SAGA_SA, FUORI as FUORI_BAKKER } from "../data/secondApocalypse.js";
 import JOJO, { SAGA as SAGA_JOJO } from "../data/jojo.js";
+import HELLBOY, { SAGA as SAGA_HB } from "../data/hellboy.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 
 // Riconoscere il romanzo dal titolo: i metadati degli EPUB sono spesso vuoti,
@@ -67,6 +68,9 @@ export const TAVOLE = [
   // JoJo: i volumi che nel nome non dicono la saga (vedi `data/jojo.js`).
   // Niente ripiego sull'autore: Araki ha scritto anche altro
   { saga: SAGA_JOJO, libri: JOJO, ordine: (b) => b.n, autore: null, fuori: [] },
+  // Hellboy: l'ordine della Comics Beat, riconosciuto per FORME e non per
+  // titoli (vedi `data/hellboy.js` e `perForma` qui sotto)
+  { saga: SAGA_HB, libri: HELLBOY, ordine: (b) => b.o ?? null, autore: null, fuori: [], forme: true },
 ];
 
 // I capitoli di tutte le guide, in minuscolo: `parteDiUnaStoria` guarda
@@ -101,11 +105,43 @@ export const PARTI_DI_GUIDA = new Map(
 // sarebbe la cura sbagliata: «The Truth» del Mondo Disco diventerebbe
 // «truth», che sta dentro qualunque titolo. Gli alias invece li mette chi
 // scrive la tavola, uno per uno, dove sa che sono innocui.
-const INDICE = TAVOLE.flatMap((tav) =>
+const INDICE = TAVOLE.filter((tav) => !tav.forme).flatMap((tav) =>
   tav.libri.flatMap((b) =>
     [b.t, ...(b.alias || [])].map((nome) => ({ ...b, k: norm(nome), tav }))
   )
 ).sort((a, b) => b.k.length - a.k.length);
+
+// LE TAVOLE PER FORME (Hellboy). Il nome si riduce una volta: minuscole,
+// niente apostrofi («Pirate's» = «pirates»), «&» = «and»,
+// «B.P.R.D.» = «bprd», e ogni numero di volume — «v03», «Vol. 3», «Volume
+// 03», «Omnibus03» — diventa «v3». Una forma con «~» davanti vale solo se
+// l'universo e' scritto da qualche parte (titolo, autore, saga): sono i
+// titoli che un altro libro potrebbe portare.
+export const formaDi = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .replace(/['’‘`]/g, "")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\bb p r d\b/g, "bprd")
+    .replace(/\bomnibus\s*0*(\d+)\b/g, "omnibus v$1")
+    .replace(/\b(?:v|vol|volume)\s*0*(\d+)\b/g, "v$1")
+    .replace(/\s+/g, " ")
+    .trim();
+const UNIVERSO = /\b(?:hellboy|mignola|bprd|abe sapien|lobster johnson|witchfinder|edward grey|koshchei)\b/;
+const FORME = TAVOLE.filter((tav) => tav.forme).flatMap((tav) =>
+  tav.libri.map((b) => ({
+    ...b,
+    tav,
+    re: b.forme.map((f) => ({ largo: f.startsWith("~"), re: new RegExp(f.replace(/^~/, "")) })),
+  }))
+);
+export function perForma(...pezzi) {
+  const s = formaDi(pezzi.filter(Boolean).join(" "));
+  if (!s) return null;
+  const suo = UNIVERSO.test(s);
+  return FORME.find((b) => b.re.some((f) => (suo || !f.largo) && f.re.test(s))) || null;
+}
 
 // IL CONTENIMENTO NON BASTA MAI.
 //
@@ -323,92 +359,103 @@ export const capitoloDi = (riconosciuto) => {
 // la risposta a tutti gli altri senza che nessun errore lo dica.
 const RICONOSCIUTI = new Map();
 
-export function riconosci({ title, author, fileName } = {}) {
-  if (fileName) return riconosciDaCapo({ title, author, fileName });
-  const chiave = `${title || ""}\u0000${author || ""}`;
+export function riconosci({ title, author, fileName, saga } = {}) {
+  if (fileName) return riconosciDaCapo({ title, author, fileName, saga });
+  const chiave = `${title || ""}\u0000${author || ""}\u0000${saga || ""}`;
   let r = RICONOSCIUTI.get(chiave);
   if (r === undefined) {
-    r = riconosciDaCapo({ title, author });
+    r = riconosciDaCapo({ title, author, saga });
     RICONOSCIUTI.set(chiave, r);
   }
   return r && { ...r };
 }
 
-function riconosciDaCapo({ title, author, fileName } = {}) {
+// LA SAGA SCRITTA E' SOLO CONTESTO, e solo per le forme «~»: una scheda che
+// il lettore ha messo in «Hellboy» e si chiama «The Wild Hunt v3-522» e'
+// l'Omnibus 3, anche se nel titolo l'universo non c'e'.
+function riconosciDaCapo({ title, author, fileName, saga } = {}) {
+  const perF = perForma(title, author, saga) || (fileName ? perForma(fileName, author, saga) : null);
+  if (perF) return { ...rispostaDi(perF), forma: true };
   const campi = [title, fileName].filter(Boolean).map(norm);
   const chiAutore = norm(author);
   for (const campo of campi) {
     const scheletroCampo = scheletro(campo);
     for (const b of INDICE) {
-      if (combacia(campo, b, chiAutore, scheletroCampo)) {
-        return {
-          saga: b.tav.saga,
-          sagaOrder: b.tav.ordine(b) ?? null,
-          // UNA GUIDA SA DUE COSE DIVERSE, E IL CAMPO SERIE NE TIENE UNA SOLA.
-        //
-        // Chiesto dal lettore guardando il suo scaffale: «vorrei che questi
-        // libri fossero identificati come parte della Horus Heresy
-        // dell'universo 40K, ma che comunque ce ne sono altre di serie al
-        // suo interno e non solo quella, e potrei volerle aggiungere in
-        // futuro». Sono TRE livelli — universo, storia, capitoli — e i campi
-        // sono DUE: `saga` e `series`.
-        //
-        // Finche' le tredici parti stavano in `series`, il posto per dire
-        // «questa e' l'Eresia» non c'era: se lo prendevano loro. E il giorno
-        // che sotto «Warhammer 40K» arrivano i Gaunt's Ghosts, «Prima di
-        // cominciare» — che restringe il racconto alla SERIE — sull'Eresia
-        // ripiegherebbe sulla saga intera e racconterebbe anche quelli.
-        //
-        // Quindi nel campo va la STORIA (il nome della tavola) e il CAPITOLO
-        // torna a essere quel che e': un fatto della guida, che si legge
-        // dalla tavola quando serve — sullo scaffale, come terzo livello.
-        // E' la stessa regola di `tipo`: quel che la guida sa non si scrive
-        // addosso al libro, si chiede alla guida.
-        //
-        // E QUEL CHE LA GUIDA DICHIARA FUORI DALLA STORIA NON PRENDE LA
-        // STORIA: resta nell'universo (la saga) e basta. Non e' un volume
-        // dell'Eresia — la guida lo dice lei — quindi «Prima di
-        // cominciare» non deve raccontarlo insieme ai romanzi dell'Eresia.
-          ciclo: fuoriDallaStoria(b) ? null : b.tav.parti ? b.tav.saga : b.c,
-          // MA IL CAPITOLO SI', PER CHI LA GUIDA METTE IN UN PUNTO: «Scythes
-          // of the Emperor appartiene alla parte 5, the Hunt for Magnus
-          // appartiene alla parte 8 cosi' come Battle of the Fang». Quel
-          // che il lettore aveva fatto togliere e' cio' che SCRIVIAMO
-          // addosso al suo libro — la Serie, un campo suo — e il capitolo
-          // non e' un campo: e' dove la guida li mette, e li' ce li mette
-          // per davvero (i loro dorsi ne portano il numero). Sullo scaffale
-          // i due livelli insieme dicono la verita' intera: sotto «Volumi a
-          // se'», perche' la storia non sono loro, e dentro «Part 5»,
-          // perche' il percorso li colloca li'.
-          //
-          // Le LETTURE DI SFONDO no, e le separa lo stesso lettore: «anche
-          // eisenhorn lascialo senza parte e gli altri omnibus». Un capitolo
-          // non e' un posto dove sta una serie intera — vanno nel gruppo
-          // loro (vedi `FUORI_STORIA`), sotto l'universo e non dentro la
-          // storia.
-          parte: b.tav.parti && !lettureDiSfondo(b) ? b.c || null : null,
-          // «questo libro e' una tappa di una GUIDA», che non e' «lo
-          // riconosco»: senza, lo scaffale non saprebbe distinguere una
-          // lettura di sfondo da un volume che la guida non conosce affatto
-          // — e li chiamerebbe con lo stesso nome
-          guida: !!b.tav.parti,
-          // «LA GUIDA TI CHIEDE DI LEGGERLO COME TAPPA DELLA STORIA?», e la
-          // risposta e' il NUMERO DI LETTURA: la tavola lo da' ai romanzi
-          // del cammino e lo nega a tutto il resto — il prologo (quattro
-          // percorsi ALTERNATIVI), le antologie (ci stai dentro un racconto
-          // alla volta), i sette titoli che la guida stessa marca «fuori
-          // dall'Eresia». E' scritto da un pezzo in testa a
-          // `horusHeresy.js`; qui gli si da' un nome, invece di rileggerlo
-          // ogni volta dalla forma dei dati.
-          passo: (b.tav.ordine(b) ?? null) != null,
-          titolo: b.t,
-        };
-      }
+      if (combacia(campo, b, chiAutore, scheletroCampo)) return rispostaDi(b);
     }
   }
-  // il titolo non si riconosce ma l'autore si': saga senza numero, che e'
-  // comunque meglio di niente — il glossario si accende lo stesso. Vale solo
-  // per le tavole che un autore proprio ce l'hanno.
+  return dallAutore(campi, chiAutore);
+}
+
+function rispostaDi(b) {
+  return {
+    saga: b.tav.saga,
+    sagaOrder: b.tav.ordine(b) ?? null,
+    // UNA GUIDA SA DUE COSE DIVERSE, E IL CAMPO SERIE NE TIENE UNA SOLA.
+    //
+    // Chiesto dal lettore guardando il suo scaffale: «vorrei che questi
+    // libri fossero identificati come parte della Horus Heresy
+    // dell'universo 40K, ma che comunque ce ne sono altre di serie al
+    // suo interno e non solo quella, e potrei volerle aggiungere in
+    // futuro». Sono TRE livelli — universo, storia, capitoli — e i campi
+    // sono DUE: `saga` e `series`.
+    //
+    // Finche' le tredici parti stavano in `series`, il posto per dire
+    // «questa e' l'Eresia» non c'era: se lo prendevano loro. E il giorno
+    // che sotto «Warhammer 40K» arrivano i Gaunt's Ghosts, «Prima di
+    // cominciare» — che restringe il racconto alla SERIE — sull'Eresia
+    // ripiegherebbe sulla saga intera e racconterebbe anche quelli.
+    //
+    // Quindi nel campo va la STORIA (il nome della tavola) e il CAPITOLO
+    // torna a essere quel che e': un fatto della guida, che si legge
+    // dalla tavola quando serve — sullo scaffale, come terzo livello.
+    // E' la stessa regola di `tipo`: quel che la guida sa non si scrive
+    // addosso al libro, si chiede alla guida.
+    //
+    // E QUEL CHE LA GUIDA DICHIARA FUORI DALLA STORIA NON PRENDE LA
+    // STORIA: resta nell'universo (la saga) e basta. Non e' un volume
+    // dell'Eresia — la guida lo dice lei — quindi «Prima di
+    // cominciare» non deve raccontarlo insieme ai romanzi dell'Eresia.
+    ciclo: fuoriDallaStoria(b) ? null : b.tav.parti ? b.tav.saga : b.c,
+    // MA IL CAPITOLO SI', PER CHI LA GUIDA METTE IN UN PUNTO: «Scythes
+    // of the Emperor appartiene alla parte 5, the Hunt for Magnus
+    // appartiene alla parte 8 cosi' come Battle of the Fang». Quel
+    // che il lettore aveva fatto togliere e' cio' che SCRIVIAMO
+    // addosso al suo libro — la Serie, un campo suo — e il capitolo
+    // non e' un campo: e' dove la guida li mette, e li' ce li mette
+    // per davvero (i loro dorsi ne portano il numero). Sullo scaffale
+    // i due livelli insieme dicono la verita' intera: sotto «Volumi a
+    // se'», perche' la storia non sono loro, e dentro «Part 5»,
+    // perche' il percorso li colloca li'.
+    //
+    // Le LETTURE DI SFONDO no, e le separa lo stesso lettore: «anche
+    // eisenhorn lascialo senza parte e gli altri omnibus». Un capitolo
+    // non e' un posto dove sta una serie intera — vanno nel gruppo
+    // loro (vedi `FUORI_STORIA`), sotto l'universo e non dentro la
+    // storia.
+    parte: b.tav.parti && !lettureDiSfondo(b) ? b.c || null : null,
+    // «questo libro e' una tappa di una GUIDA», che non e' «lo
+    // riconosco»: senza, lo scaffale non saprebbe distinguere una
+    // lettura di sfondo da un volume che la guida non conosce affatto
+    // — e li chiamerebbe con lo stesso nome
+    guida: !!b.tav.parti,
+    // «LA GUIDA TI CHIEDE DI LEGGERLO COME TAPPA DELLA STORIA?», e la
+    // risposta e' il NUMERO DI LETTURA: la tavola lo da' ai romanzi
+    // del cammino e lo nega a tutto il resto — il prologo (quattro
+    // percorsi ALTERNATIVI), le antologie (ci stai dentro un racconto
+    // alla volta), i sette titoli che la guida stessa marca «fuori
+    // dall'Eresia». E' scritto da un pezzo in testa a
+    // `horusHeresy.js`; qui gli si da' un nome, invece di rileggerlo
+    // ogni volta dalla forma dei dati.
+    passo: (b.tav.ordine(b) ?? null) != null,
+    titolo: b.t,
+  };
+}
+
+// il titolo non si riconosce ma l'autore si': saga senza numero, che e'
+// comunque meglio di niente — il glossario si accende lo stesso. Vale solo
+// per le tavole che un autore proprio ce l'hanno.
+function dallAutore(campi, chiAutore) {
   for (const tav of TAVOLE) {
     if (!tav.autore || !chiAutore.includes(tav.autore)) continue;
     if (campi.some((campo) => tav.fuori.some((t) => contiene(campo, t)))) continue;
@@ -762,7 +809,7 @@ export function ripassa(libro = {}, libri = [], { senzaTraccia, dallaBiblioteca 
   // riconoscimento la pensa diversamente dal lettore, comanda il lettore.
   // E niente ciclo, che senza la sua saga non vuol dire niente.
   if (nienteSaga(libro)) return null;
-  const trovato = riconosci({ title: libro.title, author: libro.author });
+  const trovato = riconosci({ title: libro.title, author: libro.author, saga: libro.saga });
   const saga = String(libro.saga || "").trim();
   const serie = String(libro.series || "").trim();
   const tocchi = {};
@@ -856,10 +903,23 @@ export function saghePropose(libri = []) {
   const tutti = (libri || []).filter((b) => b?.id);
   const out = [];
   for (const b of tutti) {
-    if (nienteSaga(b) || fuoriSaga(b) || riconosci({ title: b.title, author: b.author })) continue;
+    if (nienteSaga(b) || fuoriSaga(b)) continue;
+    const prima = { saga: String(b.saga || "").trim(), series: String(b.series || "").trim(), sagaOrder: b.sagaOrder ?? null };
+    const guida = riconosci({ title: b.title, author: b.author, saga: b.saga });
+    // UNA GUIDA PER FORME RIMETTE IN FILA ANCHE CHI UNA SAGA CE L'HA (chiesto
+    // dal lettore per Hellboy: «mettendoli dentro la saga di Hellboy con
+    // l'ordine consigliato»). Le schede gia' scritte dicevano «B.P.R.D»,
+    // «Hellboy Omnibus», «Sir Edward Grey Witchfinder», ognuna col suo «1»:
+    // la guida e' UN filo, quindi la saga e' la sua, la serie vuota (le
+    // serie spezzerebbero il filo del prossimo volume) e il numero il suo.
+    if (guida?.forma) {
+      const dopo = { saga: nomeInBiblioteca(guida.saga, tutti), series: "", sagaOrder: guida.sagaOrder };
+      if (dopo.saga !== prima.saga || dopo.series !== prima.series || dopo.sagaOrder !== prima.sagaOrder) out.push({ id: b.id, titolo: b.title || "", prima, dopo });
+      continue;
+    }
+    if (guida) continue;
     const letto = sagaDalTitolo(b);
     if (!letto?.saga) continue;
-    const prima = { saga: String(b.saga || "").trim(), series: String(b.series || "").trim(), sagaOrder: b.sagaOrder ?? null };
     const kPrima = chiaveSaga(prima.saga);
     const saga = nomeVicino(letto.saga, tutti.filter((x) => x.id !== b.id));
     const k = chiaveSaga(saga);
