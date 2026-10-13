@@ -24,6 +24,15 @@ export default async (t) => {
   t.eq("Solo Leveling c91-100", tre(s("Solo Leveling c91-100 (2020) (Digital) (LuCaZ)")), "Solo Leveling||100");
   t.eq("e senza la «c»", tre(s("Solo Leveling 131-140 (2020) (Digital) (LuCaZ)")), "Solo Leveling||140");
   t.eq("la parte anche dal nome del file", sagaDalTitolo({ title: "A Man Possessed", fileName: "JoJo's_Bizarre_Adventure_Part_3_v01_A_Man_Possessed.cbz" })?.ciclo, "Parte 3");
+  // Kagurabachi dal capitolo 100 (segnalato: restavano sciolti)
+  const f = (title) => sagaDalTitolo({ title, fileType: "cbz" });
+  t.eq("Kagurabachi 100, capitolo senza zero davanti", tre(f("Kagurabachi 100 (2025) (Digital) (LuCaZ)")), "Kagurabachi||100");
+  t.eq("e il mezzo capitolo", tre(f("Kagurabachi 112.1 (2026) (Digital) (LuCaZ)")), "Kagurabachi||112.1");
+  t.eq("anche con lo zero davanti", tre(f("Kagurabachi 092.1 (2025) (Digital) (LuCaZ)")), "Kagurabachi||92.1");
+  t.eq("il fumetto si riconosce anche dal nome del file", tre(sagaDalTitolo({ title: "Kagurabachi 101", fileName: "Kagurabachi 101.cbz" })), "Kagurabachi||101");
+  t.eq("ma un romanzo col numero resta un titolo", sagaDalTitolo({ title: "Fahrenheit 451 (1953)", fileType: "epub" }), null);
+  t.eq("e senza dire che è un fumetto, pure", sagaDalTitolo({ title: "Fahrenheit 451" }), null);
+  t.eq("il giro della biblioteca passa il tipo", deduciSaghe([{ id: "k", title: "Kagurabachi 110 (2026) (Digital) (LuCaZ)", fileType: "cbz" }], { dallaBiblioteca: false }).campi.k?.saga, "Kagurabachi");
   t.eq("Monster - Volume_06", tre(s("Monster - Volume_06_[Mangascreener]")), "Monster||6");
   t.eq("«Volume 20 - Titolo» dice il posto, non la saga", tre(s("Volume 20 - Love Train - The World is One")), "∅||20");
   // e quel che non deve diventare saga
