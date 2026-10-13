@@ -3234,7 +3234,7 @@ export default function Library({
                     )}
                     {r.doppioni.length > 0 && (
                       <span style={{ flexBasis: "100%", overflowWrap: "anywhere" }}>
-                        {`${r.doppioni.length === 1 ? "Una copia in più" : `${r.doppioni.length} copie in più`} di volumi che sono già sul disco (non le tocco): `}
+                        {`${r.doppioni.length === 1 ? "Una copia in più" : `${r.doppioni.length} copie in più`} (stesso nome e stesso peso) di volumi che sono già sul disco (non le tocco): `}
                         <span style={{ color: C.text }}>{r.doppioni.slice(0, 12).map((f) => [...f.cartelle, f.nome].join(" / ")).join(" · ")}</span>
                       </span>
                     )}
@@ -3251,6 +3251,21 @@ export default function Library({
                         {`🗂 Riordina ${r.daSpostare.length}`}
                       </button>
                     )}
+                    {/* il pannello taglia le liste lunghe: il rapporto intero si copia */}
+                    <button
+                      onClick={async () => {
+                        const { rapportoDisco } = await import("../lib/disco.js");
+                        try {
+                          await navigator.clipboard.writeText(rapportoDisco(r));
+                          notify("Rapporto del disco copiato: incollalo dove vuoi");
+                        } catch {
+                          notify("Il browser non mi lascia copiare: riprova con la finestra in primo piano");
+                        }
+                      }}
+                      style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}
+                    >
+                      📋 Copia il rapporto
+                    </button>
                     <button onClick={() => setDisco(null)} style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}>
                       Chiudi
                     </button>

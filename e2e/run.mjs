@@ -1093,6 +1093,10 @@ const SCENE = [
       const testo = await d.p.locator("body").innerText();
       for (const atteso of ["2 non stanno nella cartella della loro saga", "Manga / JoJo's_Bizarre_Adventure / Parte 7 → Manga / JoJo's Bizarre Adventure / Parte 7", "Manga → Manga / Kagurabachi", "senza il file da nessuna parte: Perso", "Fumetti / Sconosciuto.cbz"])
         if (!testo.includes(atteso)) throw new Error(`nel rapporto manca «${atteso}»`);
+      // il rapporto intero si copia (il pannello taglia le liste lunghe)
+      await d.ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: URL_APP });
+      await d.p.getByRole("button", { name: "📋 Copia il rapporto" }).click();
+      await finche(async () => /senza file da nessuna parte \(1\):\n  - Perso/.test(await d.p.evaluate(() => navigator.clipboard.readText())), 5000, "il rapporto copiato non c'è");
       await d.p.getByRole("button", { name: "🗂 Riordina 2" }).click();
       const frase = await finche(() => testoAvviso(d.p, /2 volumi nella cartella della sua saga/), 10000, "il riordino non si dice");
       const sulDisco = await d.p.evaluate(async () => {
