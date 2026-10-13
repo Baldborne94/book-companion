@@ -73,10 +73,12 @@ export function titoloPulito({ title, fileType, sagaOrder } = {}) {
   if (!originale) return null;
   const fumetto = fileType === "cbz" || fileType === "cbr";
   const base = fumetto ? senzaEtichette(originale) : originale;
-  const senzaNumero = !fumetto || Number(sagaOrder) > 0 ? pezziDalTitolo(base)?.resto || (fumetto && VOLUME_V.exec(base)?.[1]) : null;
-  const resto = senzaNumero || (base !== originale ? base : null);
-  if (!resto) return null;
-  const pulito = String(resto).replace(BORDO, "").trim();
+  const pezzi = pezziDalTitolo(base);
+  const resto = pezzi?.forma === "v" && !fumetto ? null : pezzi?.resto;
+  const senzaNumero = !fumetto || Number(sagaOrder) > 0 ? resto || (fumetto && VOLUME_V.exec(base)?.[1]) : null;
+  const via = senzaNumero || (base !== originale ? base : null);
+  if (!via) return null;
+  const pulito = String(via).replace(BORDO, "").trim();
   if (pulito.length < 2) return null;
   if (!/\p{L}/u.test(pulito)) return null;
   if (SOLO_ETICHETTA.test(pulito) || RUMORE.test(pulito)) return null;

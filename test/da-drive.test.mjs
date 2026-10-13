@@ -400,6 +400,9 @@ export default async function (t) {
     t.eq("l'avanzamento, file per file fino al fermo", passi.join(","), "0,1,2,3,4,5,6,7");
     // «Mort» lo riconosce la tavola del Mondo Disco: la stessa porta dell'import
     t.eq("le saghe riconosciute sono quelle delle schede entrate", e.added.filter((b) => b.saga).map((b) => b.title).join(","), "Berserk v01,Mort");
+    // la parte di JoJo entra come ciclo, dal nome del file
+    const jojo = await importaDaDrive([{ id: "jj", name: "JoJo's_Bizarre_Adventure_Part_5_v16_The_Requiem.cbz", size: 100, byte: cbz }], [], { apri, segna, leggi });
+    t.eq("la parte del nome del file diventa il ciclo", `${jojo.added[0]?.saga}|${jojo.added[0]?.series}|${jojo.added[0]?.sagaOrder}`, "JoJo's Bizarre Adventure|Parte 5|16");
     t.eq("e si contano", e.riconosciuti, 2);
     const fermo = await importaDaDrive(voci, [], { apri, segna, leggi, vivo: () => false });
     t.c("fermato prima di cominciare: niente dentro, e si dice", fermo.fermato && !fermo.added.length && !segni.some(() => false));
