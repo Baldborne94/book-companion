@@ -2315,7 +2315,7 @@ export default function Library({
   // l'indice delle tavole per ogni libro, e rifarlo dentro ogni ripiano a
   // ogni render sarebbe lo stesso giro moltiplicato per venti.
   const riconosciuti = useMemo(
-    () => new Map(books.map((b) => [b.id, riconosci({ title: b.title, author: b.author })])),
+    () => new Map(books.map((b) => [b.id, riconosci({ title: b.title, author: b.author, saga: b.saga })])),
     [books]
   );
 

@@ -74,7 +74,9 @@ export default async (t) => {
   t.eq("Sandman nella sua saga", fraseSaga(p.s1?.dopo), "The Sandman · n. 1");
   t.eq("Invincible nella sua", fraseSaga(p.s2?.dopo), "Invincible · n. 25");
   t.eq("JoJo già giusto: si aggiungono parte e numero", fraseSaga(p.s3?.dopo), "JoJo's Bizarre Adventure · Parte 4 · n. 17");
-  t.c("Hellboy dentro «Hellboy Omnibus» resta", !p.s4);
+  // prima restava com'era («Hellboy» contiene «Hellboy Omnibus»); da quando
+  // Hellboy ha la sua guida, prende il numero della guida (`hellboy.test.mjs`)
+  t.eq("Hellboy prende il numero della guida", fraseSaga(p.s4?.dopo), "Hellboy · n. 1");
   t.c("chi è già a posto non si propone", !p.s5);
   t.c("la saga tolta a mano resta tolta", !p.s6);
   t.eq("un'altra saga scritta: si propone col numero del titolo", fraseSaga(p.s7?.dopo), "Head Lopper · n. 2");
