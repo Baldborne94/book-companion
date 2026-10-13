@@ -1072,7 +1072,8 @@ const SCENE = [
         window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });`;
       const d = await dispositivo(browser, { prima });
       await d.p.goto(`${URL_APP}?apri=libreria`);
-      await d.p.evaluate(async () => {
+      const cbzVero = await fumetto();
+      await d.p.evaluate(async (cbz) => {
         const r = await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
         const metti = async (via, peso) => {
           const pezzi = via.split("/");
@@ -1086,7 +1087,11 @@ const SCENE = [
         await metti("book-companion/Manga/Kagurabachi 100 (2025) (Digital) (LuCaZ).cbz", 1000);
         await metti("book-companion/Libri/Discworld/Mort.epub", 500);
         await metti("book-companion/Fumetti/Sconosciuto.cbz", 50);
-      });
+        // un fumetto vero che nessuna scheda conosce: si aggiunge dal disco
+        const w = await (await (await (await r.getDirectoryHandle("book-companion")).getDirectoryHandle("Fumetti", { create: true })).getFileHandle("Locke & Key v01 - Welcome to Lovecraft (2008).cbz", { create: true })).createWritable();
+        await w.write(new Uint8Array(cbz));
+        await w.close();
+      }, [...cbzVero]);
       await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
       await d.p.getByRole("button", { name: "🔍 Controlla il disco" }).click();
       await finche(() => d.p.getByText(/Sul disco ci sono 3 volumi della biblioteca/).count(), 10000, "il rapporto del disco non si vede");
@@ -1115,8 +1120,20 @@ const SCENE = [
         await giu(await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD"), "");
         return out.sort().join(" ");
       });
-      const atteso = "book-companion/Fumetti/Sconosciuto.cbz:50 book-companion/Libri/Discworld/Mort.epub:500 book-companion/Manga/JoJo's Bizarre Adventure/Parte 7/Volume 20 - Love Train.cbz:7000 book-companion/Manga/Kagurabachi 100 (2025) (Digital) (LuCaZ).cbz:1000";
+      const atteso = `book-companion/Fumetti/Locke & Key v01 - Welcome to Lovecraft (2008).cbz:${cbzVero.length} book-companion/Fumetti/Sconosciuto.cbz:50 book-companion/Libri/Discworld/Mort.epub:500 book-companion/Manga/JoJo's Bizarre Adventure/Parte 7/Volume 20 - Love Train.cbz:7000 book-companion/Manga/Kagurabachi 100 (2025) (Digital) (LuCaZ).cbz:1000`;
       if (sulDisco !== atteso) throw new Error(`sul disco: ${sulDisco}`);
+      // il fumetto che nessuna scheda conosce entra in biblioteca dal disco:
+      // la scheda sola, già sul disco, niente byte nel browser
+      await d.p.getByRole("button", { name: "🔍 Controlla il disco" }).click();
+      await d.p.getByRole("button", { name: "📥 Aggiungili alla biblioteca (solo dal disco)" }).click();
+      const locke = await finche(async () => (await libriDi(d.p)).find((b) => /^Locke & Key v01/.test(b.title)), 15000, "Locke & Key non entra in biblioteca");
+      if (locke.fileTolto !== true || locke.tipo !== "fumetti" || locke.saga !== "Locke & Key") throw new Error(`la scheda dal disco: ${JSON.stringify({ fileTolto: locke.fileTolto, tipo: locke.tipo, saga: locke.saga })}`);
+      const byteQui = await d.p.evaluate(async (id) => {
+        const db = await new Promise((ok, ko) => { const r = indexedDB.open("bc_library"); r.onsuccess = () => ok(r.result); r.onerror = ko; });
+        if (!db.objectStoreNames.contains("files")) return false;
+        return await new Promise((ok) => { const g = db.transaction("files").objectStore("files").get(id); g.onsuccess = () => ok(!!g.result); g.onerror = () => ok(false); });
+      }, locke.id);
+      if (byteQui) throw new Error("i byte del fumetto sono entrati nel browser");
       return { guasti: d.guasti, nota: `${frase.slice(0, 50)}… · JoJo nella sua saga, Kagurabachi tolto e fermo, Mort fermo` };
     },
   },

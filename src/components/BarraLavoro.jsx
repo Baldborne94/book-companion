@@ -35,7 +35,7 @@ export default function BarraLavoro({ hdd = null, onFermaHdd, importo = null, on
       {importo && (
         <div role="status" style={riga}>
           <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
-            <span style={{ color: C.text }}>📥 Da Google Drive: {fraseImport(importo)}</span>
+            <span style={{ color: C.text }}>{importo.da || "📥 Da Google Drive"}: {fraseImport(importo)}</span>
             {importo.nome ? ` · «${importo.nome}»` : ""}
           </span>
           <button onClick={onFermaImport} style={tasto}>

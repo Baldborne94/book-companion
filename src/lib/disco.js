@@ -305,3 +305,30 @@ export function rapportoDisco(r) {
   if (r.doppioni.length) righe.push(`Copie in piu', stesso nome e stesso peso (${r.doppioni.length}):`, ...file(r.doppioni));
   return righe.join("\n");
 }
+
+// IMPORTARE DAL DISCO, SENZA DRIVE (chiesto dal lettore: «preparami
+// l'importazione solo dal disco senza drive»). I fumetti caricati a mano su
+// Drive e mai entrati in biblioteca (Locke & Key, Head Lopper, Spawn…) sono
+// scesi sul disco senza scheda; con «Aggiungi libri» i byte entrerebbero nel
+// browser e il giro di Drive li ricaricherebbe lassu'. Qui entrano le sole
+// schede: titolo, saga, copertina letti dal file del disco (la strada
+// dell'import da Drive, `importaDaDrive`, con il file del disco al posto di
+// quello lontano e nessun segno), ognuna gia' segnata come spostata
+// sull'HDD (`fileTolto`): nessun byte nel browser, niente da caricare.
+const SEZIONE = { manga: "manga", fumetti: "fumetti", libri: "libri" };
+export function vociDalDisco(file) {
+  return (file || []).map((f) => ({
+    id: `disco:${[...f.cartelle, f.nome].join("/")}`,
+    name: f.nome,
+    size: f.byte,
+    ...(SEZIONE[chiave(f.cartelle[0])] && SEZIONE[chiave(f.cartelle[0])] !== "libri" ? { tipo: SEZIONE[chiave(f.cartelle[0])] } : {}),
+    handle: f.handle,
+  }));
+}
+// le schede dopo l'import: le nuove e quelle a cui il file e' tornato sono
+// tutte sul disco
+export function schedeDalDisco(libri, esito) {
+  const tornati = new Map((esito?.ritrovati || []).map((r) => [r.id, r]));
+  const prima = (libri || []).map((b) => (tornati.has(b.id) ? { ...b, ...(tornati.get(b.id).impronta ? { impronta: tornati.get(b.id).impronta } : {}), fileTolto: true } : b));
+  return [...prima, ...(esito?.added || []).map((b) => ({ ...b, fileTolto: true }))];
+}

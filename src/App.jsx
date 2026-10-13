@@ -46,7 +46,7 @@ import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sin
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
 import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, dettagliFile, impostaRinnovo, impostaRientro, rinnovaInSilenzio, chiaveInScadenza, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato, fraseScollegato, daSpostareDaDrive, apriDaDrive, cestinaDelLibro, senzaSchedaDaDrive, cestinaSuDrive } from "./lib/drive.js";
 import { spostaSuHdd, fraseHdd, casaSulDisco } from "./lib/hdd.js";
-import { riordinaDisco, fraseRiordino } from "./lib/disco.js";
+import { riordinaDisco, fraseRiordino, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
 import { importaDaDrive, resoconto } from "./lib/importBook.js";
 import { custodisciGoogle, rinnovoDalServer, rientroConGoogle, lasciaGoogleQui } from "./lib/accessoGoogle.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
@@ -1368,6 +1368,41 @@ export default function App() {
       setImporto(null);
     }
   }
+  // IMPORTARE DAL DISCO SENZA DRIVE (`vociDalDisco`, `schedeDalDisco`): la
+  // strada di «Aggiungi da Drive» col file del disco, nessun segno, nessun
+  // byte nel browser, e ogni scheda nasce gia' sul disco
+  async function importaDalDiscoQui(file) {
+    if (filoImport.current || !file.length) return;
+    const mio = {};
+    filoImport.current = mio;
+    const vivo = () => filoImport.current === mio;
+    const da = "📥 Dal disco";
+    setImporto({ da, fatti: 0, totale: file.length, nome: file[0].nome });
+    try {
+      const voci = vociDalDisco(file);
+      const aperti = new Map();
+      for (const v of voci) aperti.set(v.id, await v.handle.getFile());
+      const qui = await localFileIds().catch(() => null);
+      const esito = await importaDaDrive(voci, loadBooks(), {
+        senzaFile: (id) => !!qui && !qui.has(id) && !mappaDrive()[id],
+        apri: (v) => aperti.get(v.id),
+        segna: async () => true,
+        onProgress: (p) => vivo() && setImporto({ ...p, da }),
+        vivo,
+      });
+      for (const r of esito.ritrovati || []) timbraScheda(r.id);
+      if (esito.added.length || esito.ritrovati?.length) {
+        updateBooks(schedeDalDisco(loadBooks(), esito));
+        runSync.current(true);
+      }
+      notify([resoconto(esito), esito.fermato ? "fermato: il resto lo aggiungi riprovando" : ""].filter((x) => x && x !== "Nessun file importato").join(" · ") || "Nessun tomo aggiunto");
+    } catch (e) {
+      notify(e?.message || "Il disco non ha risposto");
+    } finally {
+      if (filoImport.current === mio) filoImport.current = null;
+      setImporto(null);
+    }
+  }
   const fermaImport = () => {
     filoImport.current = null;
   };
@@ -1921,6 +1956,7 @@ export default function App() {
             onSpostaSuHdd={spostaSuHddQui}
             onSenzaSchedaSuHdd={spostaSenzaSchedaQui}
             onRiordina={riordinaQui}
+            onImportaDalDisco={importaDalDiscoQui}
             daImportare={daImportare}
             onImportati={() => setDaImportare(null)}
             focusSaga={focusSaga}
