@@ -78,6 +78,7 @@ const PRIMA = new RegExp(
 //    dice il posto: vale solo se la saga arriva da un altro (un fratello, il
 //    file, la tavola). Due cifre al massimo, o «1984» sarebbe il volume 1984.
 const IN_TESTA = /^(\d{1,2})(?:\s*[-–.)_]\s*|\s+)(?=\D)/;
+const SIGLA = /^[a-z]+-$/;
 // D. «Book N of the Saga», in coda o in testa: «The Dragon Reborn: Book 3
 //    of the Wheel of Time», «Book 3 of the Wheel of Time: The Dragon
 //    Reborn». E' la forma delle edizioni inglesi vecchie.
@@ -176,6 +177,13 @@ function leggi(campo, { fumetto = false } = {}) {
     if (saga) return { saga, sagaOrder: numero(m[4]), resto: null };
   }
   m = DOPO_PARENTESI.exec(s) || DOPO_SEPARATORE.exec(s);
+  // LA SIGLA DI CHI HA FATTO IL FILE NON E' UNA SAGA (segnalato dal lettore
+  // con «Dragon Haven (trwc-2)» proposto come «Trwc · n. 2»: «perche'
+  // pensi che sia corretto scrivere trwc quando lo vedi che fanno parte di
+  // una saga e hanno un loro titolo»). Minuscola, attaccata al numero col
+  // trattino: «(ttm-1)», «(trwc-2)», «(farseer-1)». E il numero e' quello
+  // dentro la sigla, non nella saga.
+  if (m && SIGLA.test(m[2])) m = null;
   if (m) {
     const saga = sagaBuona(m[2]);
     if (saga && EDIZIONE.test(saga)) {

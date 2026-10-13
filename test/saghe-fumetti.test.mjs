@@ -79,7 +79,27 @@ export default async (t) => {
   t.eq("Hellboy prende il numero della guida", fraseSaga(p.s4?.dopo), "Hellboy · n. 1");
   t.c("chi è già a posto non si propone", !p.s5);
   t.c("la saga tolta a mano resta tolta", !p.s6);
-  t.eq("un'altra saga scritta: si propone col numero del titolo", fraseSaga(p.s7?.dopo), "Head Lopper · n. 2");
-  t.eq("e si dice da dove parte", fraseSaga(p.s7?.prima), "Mio Ciclo · n. 9");
+  // una saga che il titolo non dice l'ha scritta qualcun altro (il lettore,
+  // il catalogo): «Kokou no Hito» non si propone al posto di «The Climber»
+  t.c("un'altra saga scritta, che il titolo non dice, non si propone", !p.s7);
+  t.eq("si dice da dove parte", fraseSaga(p.s1?.prima), "The Deluxe Edition Book");
+
+  // LA SIGLA DEL FILE NON E' UNA SAGA (segnalato: «Dragon Haven (trwc-2)»
+  // proposto come «Trwc · n. 2»)
+  t.eq("«(trwc-2)» non è una saga", s("Dragon Haven (trwc-2)"), null);
+  t.eq("«(ttm-1)» nemmeno", s("Fool's Errand (ttm-1)"), null);
+  t.eq("«(Discworld 4)» sì", s("Mort (Discworld 4)")?.saga, "Discworld");
+  const hobb = [
+    { id: "d", title: "Dragon Haven (trwc-2)", author: "Robin Hobb", saga: "The Realm of the Elderlings", series: "The Rain Wilds Chronicles", sagaOrder: 11 },
+    { id: "f", title: "Fool's Errand (ttm-1)", author: "Robin Hobb", saga: "Ttm", series: "The Tawny Man", sagaOrder: 1 },
+    { id: "g", title: "The Golden Fool (ttm-2)", author: "Robin Hobb", saga: "Ttm", sagaOrder: 2 },
+    { id: "a", title: "Assassin's Apprentice", author: "Robin Hobb", saga: "The Realm of the Elderlings", sagaOrder: 1 },
+    { id: "k", title: "Kokou no Hito - Volume_08", saga: "The Climber", sagaOrder: 8 },
+  ];
+  const ph = Object.fromEntries(saghePropose(hobb).map((x) => [x.id, x]));
+  t.c("Dragon Haven resta nella sua saga", !ph.d);
+  t.c("Kokou no Hito resta The Climber", !ph.k);
+  t.eq("la sigla scritta come saga torna la saga dei fratelli, la serie resta", fraseSaga(ph.f?.dopo), "The Realm of the Elderlings · The Tawny Man");
+  t.eq("senza fratelli d'accordo, niente", saghePropose([hobb[1], { ...hobb[2], saga: "Farseer" }, { ...hobb[0], id: "x" }]).length, 0);
   t.eq("senza saga si dice", fraseSaga({}), "senza saga");
 };

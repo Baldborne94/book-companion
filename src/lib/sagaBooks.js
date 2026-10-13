@@ -899,6 +899,11 @@ export function nomeVicino(saga, libri = []) {
   }
   return [...conti.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] || saga;
 }
+const SIGLA_NEL_TITOLO = /\(\s*([a-z]{2,})-\d{1,3}\s*\)/;
+const siglaDi = (b) => {
+  const m = SIGLA_NEL_TITOLO.exec(String(b?.title || ""));
+  return !!m && chiaveSaga(b?.saga) === m[1];
+};
 export function saghePropose(libri = []) {
   const tutti = (libri || []).filter((b) => b?.id);
   const out = [];
@@ -918,6 +923,14 @@ export function saghePropose(libri = []) {
       continue;
     }
     if (guida) continue;
+    // la scheda che porta per saga la sigla del file («Ttm», da «Fool's
+    // Errand (ttm-1)»): si propone la saga dei suoi fratelli, se sono
+    // d'accordo, e il numero della sigla se ne va (era dentro la sigla)
+    if (siglaDi(b)) {
+      const dalla = sagaDaBiblioteca({ ...b, saga: "" }, tutti.filter((x) => !siglaDi(x)));
+      if (dalla) out.push({ id: b.id, titolo: b.title || "", prima, dopo: { saga: dalla, series: prima.series, sagaOrder: null } });
+      continue;
+    }
     const letto = sagaDalTitolo(b);
     if (!letto?.saga) continue;
     const kPrima = chiaveSaga(prima.saga);
@@ -926,6 +939,12 @@ export function saghePropose(libri = []) {
     let dopo;
     if (k === kPrima) dopo = { saga: prima.saga, series: prima.series || letto.ciclo || "", sagaOrder: prima.sagaOrder ?? letto.sagaOrder ?? null };
     else if (kPrima && (kPrima.includes(k) || k.includes(kPrima))) continue;
+    // UNA SAGA CHE IL TITOLO NON DICE L'HA SCRITTA QUALCUN ALTRO — il
+    // lettore, il catalogo, la collana del file — e non si propone di
+    // cambiarla col nome del file («Kokou no Hito» al posto di «The
+    // Climber»). Si propone solo dove la saga di prima e' un pezzo del
+    // titolo letto male («The Deluxe Edition Book»).
+    else if (kPrima && !contiene(norm(b.title), kPrima)) continue;
     else dopo = { saga, series: letto.ciclo || (kPrima ? "" : prima.series), sagaOrder: letto.sagaOrder ?? (kPrima ? null : prima.sagaOrder) };
     if (dopo.saga === prima.saga && dopo.series === prima.series && dopo.sagaOrder === prima.sagaOrder) continue;
     out.push({ id: b.id, titolo: b.title || "", prima, dopo });
