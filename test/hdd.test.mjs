@@ -207,5 +207,6 @@ export default async (t) => {
   t.c("fermato fra due volumi, il secondo non si tocca", e6.fermato && segnati6.join() === "c");
 
   t.c("la frase dice il disco e il cestino", /2 volumi sull'HDD · 3 MB liberati/.test(fraseHdd({ fatti: 2, copiati: 0, byte: 3 * 1024 * 1024, mancati: [], restati: [], fermato: false })));
-  t.c("e chi non è arrivato", /uno non è arrivato/.test(fraseHdd({ fatti: 0, byte: 0, mancati: [1], restati: [], fermato: false })));
+  t.c("e chi non è arrivato, per nome", /uno non è arrivato intero sul disco e resta su Drive: «Hellboy v05\.cbz»/.test(fraseHdd({ fatti: 0, byte: 0, mancati: [{ nome: "Hellboy v05.cbz" }], restati: [], fermato: false })));
+  t.c("i primi tre, poi il conto", /«a», «b», «c» e altri 2$/.test(fraseHdd({ fatti: 0, byte: 0, mancati: ["a", "b", "c", "d", "e"].map((nome) => ({ nome })), restati: [], fermato: false })));
 };
