@@ -18,7 +18,7 @@
 // stanno in `driveCore.js`, dove un test le prova.
 
 import { segnaTempo, vocePerTempo } from "./tempi.js";
-import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, senzaPermessoDrive, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive, CAMPI_ELENCO, daTenereNellElenco, applicaCambiamenti, elencoBuono, segnoScaduto, VERSIONE_ELENCO, fileDellElenco, cartelleDellElenco, audioDellElenco, RADICE, idRadice, ARCHIVI, vaDetto, cartellaArchivi, archivioDovuto, archiviDaTogliere, piuRecenti, nomeArchivio, cbrGiaConvertiti, daSpostareSuHdd } from "./driveCore.js";
+import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, senzaPermessoDrive, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive, CAMPI_ELENCO, daTenereNellElenco, applicaCambiamenti, elencoBuono, segnoScaduto, VERSIONE_ELENCO, fileDellElenco, cartelleDellElenco, audioDellElenco, RADICE, idRadice, ARCHIVI, vaDetto, cartellaArchivi, archivioDovuto, archiviDaTogliere, piuRecenti, nomeArchivio, cbrGiaConvertiti, daSpostareSuHdd, fileSenzaScheda } from "./driveCore.js";
 import { getAux, putAux, removeAux } from "./bookStore.js";
 
 const TOKEN_KEY = "bc_drive_token";
@@ -696,6 +696,16 @@ export async function cestinaSuDrive(id) {
 // scende sul disco senza passare dalla memoria
 export async function daSpostareDaDrive(libri, opzioni) {
   return daSpostareSuHdd(libri, mappaDrive(), await elencaFile(), opzioni);
+}
+// i file che nessun libro usa (`fileSenzaScheda`): «usato» e' quel che la
+// mappa collega E quel che il riconoscimento di adesso collegherebbe, perche'
+// la mappa e' dell'ultimo giro. Prima di un giro non si sa niente: niente.
+export async function senzaSchedaDaDrive(libri, { misure, schedeInArrivo = false } = {}) {
+  if (idSuDrive() === null) return [];
+  const tutti = await tuttiDellElenco();
+  const file = fileDellElenco(tutti);
+  const usati = new Set([...Object.values(mappaDrive()).map((f) => f?.id), ...[...abbina(libri, file, { misure }).mappa.values()].map((f) => f.id)]);
+  return fileSenzaScheda(libri, file, cartelleDellElenco(tutti), { usati, schedeInArrivo });
 }
 // il file nel cestino, POI fuori dalla mappa: se il cestino non riesce il
 // libro si legge ancora da Drive, che e' dove il file e' rimasto

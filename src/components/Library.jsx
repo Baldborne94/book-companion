@@ -19,10 +19,10 @@ import { isSyncConfigured } from "../lib/supabase.js";
 import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso, schedeCambiate
 } from "../lib/syncCore.js";
-import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, DriveScollegato, scegliSuDrive, dettagliFile, ultimoArchivioSuDrive, ultimoArchivioDaDrive, fraseScollegato, permessoDriveMancante, cbrDaButtare, cestinaSuDrive } from "../lib/drive.js";
+import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, DriveScollegato, scegliSuDrive, dettagliFile, ultimoArchivioSuDrive, ultimoArchivioDaDrive, fraseScollegato, permessoDriveMancante, cbrDaButtare, cestinaSuDrive, senzaSchedaDaDrive } from "../lib/drive.js";
 import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, sceltaDalPicker, libriSotto, idRadice, giaSulloScaffale, fraseGia } from "../lib/driveCore.js";
 import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
-import { hddPossibile, percheNoHdd, divisiPerHdd, perSezioni, SEZIONI_HDD } from "../lib/hdd.js";
+import { hddPossibile, percheNoHdd, divisiPerHdd, perSezioni, SEZIONI_HDD, perCartella } from "../lib/hdd.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { fraseDelPasso, fraseImport } from "../lib/convertiCbr.js";
 import { senzaCopertina } from "../lib/copertina.js";
@@ -884,6 +884,7 @@ export default function Library({
   // parte lo stesso verso gli altri dispositivi
   onCambiate,
   onSpostaSuHdd,
+  onSenzaSchedaSuHdd,
 }) {
   // lo scaffale si ridisegna solo quando cambia: il lavoro dell'HDD si
   // raggiunge da qui, sempre quello di adesso
@@ -969,6 +970,9 @@ export default function Library({
   const [vediDoppi, setVediDoppi] = useState(false);
   // i CBR gia' convertiti da buttare (vedi `cbrGiaConvertiti`)
   const [avanzi, setAvanzi] = useState(null);
+  // i file su Drive che nessun libro usa (`fileSenzaScheda`): prima l'elenco
+  // per cartella, col peso, poi la cartella del disco
+  const [senzaScheda, setSenzaScheda] = useState(null);
   const [giroImport, setGiroImport] = useState(null);
   // «Aggiungi da Drive»: l'elenco dei file lassu' che non sono ancora
   // libri, con le spunte, e il filo per fermare il giro a meta'
@@ -1895,6 +1899,35 @@ export default function Library({
       setAvanzi(null);
       notify(err instanceof DriveScollegato ? fraseScollegato(err, "Google Drive aspetta un tocco: riprova.") : err?.message || "Google Drive non ha risposto");
     }
+  }
+
+  async function cercaSenzaScheda() {
+    if (senzaScheda) return;
+    setSenzaScheda({ cercando: true });
+    try {
+      if (!driveProntoOra()) await collegaDrive();
+      const voci = await senzaSchedaDaDrive(books, { misure: await misureFile(), schedeInArrivo: isSyncConfigured() && !getLastSync() });
+      if (!voci.length) {
+        setSenzaScheda(null);
+        notify("Su Drive, in Libri, Fumetti e Manga, ogni file è di un libro della biblioteca");
+        return;
+      }
+      setSenzaScheda({ voci });
+    } catch (err) {
+      setSenzaScheda(null);
+      notify(err instanceof DriveScollegato ? fraseScollegato(err, "Google Drive aspetta un tocco: riprova.") : err?.message || "Google Drive non ha risposto");
+    }
+  }
+  async function senzaSchedaSulDisco() {
+    let radice = null;
+    try {
+      radice = await window.showDirectoryPicker({ id: "bc-hdd", mode: "readwrite" });
+    } catch {
+      return;
+    }
+    const voci = senzaScheda?.voci || [];
+    setSenzaScheda(null);
+    onSenzaSchedaSuHdd?.(voci, radice);
   }
 
   async function buttaAvanzi() {
@@ -3065,6 +3098,43 @@ export default function Library({
                     tasto={(attivo) => ({ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${attivo ? C.accent + "88" : C.border}`, color: attivo ? C.accent : C.text, fontSize: F.nota })}
                   />
                 ));
+              })()}
+            {/* I FILE CHE NESSUN LIBRO USA (vedi `fileSenzaScheda`): caricati a
+                mano su Drive, nessuna scheda li sposta; vanno sul disco con
+                le cartelle che hanno su Drive */}
+            {drive && onSenzaSchedaSuHdd && hddPossibile() && !senzaScheda?.voci && (
+              <button
+                onClick={cercaSenzaScheda}
+                disabled={!!senzaScheda}
+                style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}
+              >
+                {senzaScheda?.cercando ? "Guardo su Drive…" : "📦 File su Drive che nessun libro usa"}
+              </button>
+            )}
+            {senzaScheda?.voci &&
+              (() => {
+                const voci = senzaScheda.voci;
+                const peso = voci.reduce((n, v) => n + v.byte, 0);
+                return (
+                  <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: F.nota, color: C.muted, lineHeight: 1.45 }}>
+                    <span style={{ flexBasis: "100%", color: C.text }}>
+                      {`${voci.length === 1 ? "Un file" : `${voci.length} file`} in «book-companion» su Google Drive (${fmtGoogle(peso)}) che nessun libro della biblioteca usa: li hai caricati a mano, e «Sposta sull'HDD» non li vede. Li sposto sul disco con le stesse cartelle che hanno su Drive; ognuno, arrivato intero, va nel cestino di Drive, da dove si riprende per 30 giorni.`}
+                    </span>
+                    <ul style={{ flexBasis: "100%", margin: 0, padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" }}>
+                      {perCartella(voci).map((c) => (
+                        <li key={c.cartella} style={{ fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" }}>
+                          <span style={{ color: C.text }}>{c.cartella}</span> · {c.n} file · {fmtGoogle(c.byte)}
+                        </li>
+                      ))}
+                    </ul>
+                    <button onClick={senzaSchedaSulDisco} style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}>
+                      Scegli la cartella del disco
+                    </button>
+                    <button onClick={() => setSenzaScheda(null)} style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}>
+                      No
+                    </button>
+                  </div>
+                );
               })()}
             {/* I CBR GIA' CONVERTITI (vedi `cbrGiaConvertiti`): c'e' solo con
                 Drive; prima l'elenco, col peso, poi il cestino */}

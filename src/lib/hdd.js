@@ -169,3 +169,17 @@ export function fraseHdd(e) {
   if (e.fermato) parti.push("fermato: il resto è ancora su Drive");
   return parti.join(" · ") || (e.scollegato ? "" : "Niente da spostare: i volumi di questa raccolta non sono su Google Drive");
 }
+
+// i file senza scheda si dicono per cartella, le piu' pesanti prima: 270
+// manga uno per riga non si leggono, «Manga / JoJo · 115 · 11 GB» si'
+export function perCartella(voci) {
+  const per = new Map();
+  for (const v of voci || []) {
+    const k = (v.cartelle || []).join(" / ");
+    const c = per.get(k) || { cartella: k, n: 0, byte: 0 };
+    c.n += 1;
+    c.byte += Number(v.byte) || 0;
+    per.set(k, c);
+  }
+  return [...per.values()].sort((a, b) => b.byte - a.byte || a.cartella.localeCompare(b.cartella));
+}
