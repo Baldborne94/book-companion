@@ -867,6 +867,12 @@ const SCENE = [
         await d.p.getByRole("button", { name: /^Hellboy/ }).first().click();
         await d.p.getByRole("button", { name: "📦 Sposta sull'HDD" }).click();
         await finche(() => testoAvviso(d.p, /i 2 volumi che stanno su Google Drive.*Il volume che stai leggendo si copia sul disco e resta anche su Drive/), 8000, "la conferma non dice quanti volumi, e quello che resta");
+        // e dice quali, per nome
+        const elencati = await finche(async () => {
+          const l = await d.p.evaluate(() => [...document.querySelectorAll("li > span")].map((x) => x.textContent));
+          return l.length ? l.join() : null;
+        }, 5000, "la conferma non dice quali volumi");
+        if (elencati !== "Hellboy v01,Hellboy v02") throw new Error(`la conferma elenca: ${elencati}`);
         if (drv.cestino().length) throw new Error("si e' buttato qualcosa prima di scegliere il disco");
         await d.p.getByRole("button", { name: "Scegli la cartella del disco" }).click();
         const frase = await finche(() => testoAvviso(d.p, /2 volumi sull'HDD.*Quello che stai leggendo è copiato sull'HDD e resta su Drive/), 20000, "lo spostamento non si dice");

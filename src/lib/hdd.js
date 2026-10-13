@@ -154,12 +154,18 @@ export async function spostaSuHdd(voci, { radice, apri, segna, cestina, ferma = 
 
 const quanti = (n, uno, molti) => (n === 1 ? uno : `${n} ${molti}`);
 
+// i volumi si dicono per nome, i primi tre: un conto da solo non dice quali
+const nomi = (voci) => {
+  const n = voci.slice(0, 3).map((v) => `«${v.nome}»`);
+  return voci.length > 3 ? `${n.join(", ")} e altri ${voci.length - 3}` : n.join(", ");
+};
+
 export function fraseHdd(e) {
   const parti = [];
   if (e.fatti) parti.push(`📦 ${quanti(e.fatti, "Un volume", "volumi")} sull'HDD${e.byte ? ` · ${fmtGoogle(e.byte)} liberati su Google Drive (nel cestino per 30 giorni)` : ""}`);
   if (e.copiati) parti.push(e.copiati === 1 ? "📖 Quello che stai leggendo è copiato sull'HDD e resta su Drive" : `📖 I ${e.copiati} che stai leggendo sono copiati sull'HDD e restano su Drive`);
   if (e.restati.length) parti.push(`${quanti(e.restati.length, "uno è sull'HDD ma è rimasto", "sono sull'HDD ma sono rimasti")} anche su Drive`);
-  if (e.mancati.length) parti.push(`${quanti(e.mancati.length, "uno non è arrivato", "non sono arrivati")} intero sul disco: resta su Drive`);
+  if (e.mancati.length) parti.push(`${quanti(e.mancati.length, "uno non è arrivato", "non sono arrivati")} intero sul disco e ${e.mancati.length === 1 ? "resta" : "restano"} su Drive: ${nomi(e.mancati)}`);
   if (e.fermato) parti.push("fermato: il resto è ancora su Drive");
   return parti.join(" · ") || (e.scollegato ? "" : "Niente da spostare: i volumi di questa raccolta non sono su Google Drive");
 }
