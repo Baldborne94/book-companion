@@ -1948,8 +1948,9 @@ export default function Library({
         tipoDi: (b) => tipoDi(b, tipi),
         suDrive: (id) => !!mappa[id],
         qui: (id) => !!localIds?.has(id),
+        leggendo: (id) => getStatus(id) === "reading",
       });
-      setDisco({ rapporto, casa });
+      setDisco({ rapporto, casa, tolti: new Set() });
     } catch (err) {
       setDisco(null);
       notify(err?.message || "Il disco non ha risposto");
@@ -3211,11 +3212,33 @@ export default function Library({
                     </span>
                     {r.daSpostare.length > 0 && (
                       <ul style={lista}>
-                        {r.daSpostare.map((v) => (
-                          <li key={`${v.file.cartelle.join("/")}/${v.file.nome}`} style={voce}>
-                            <span style={{ color: C.text }}>{v.libro.title}</span> · {v.file.cartelle.join(" / ") || "book-companion"} → {v.a.join(" / ")}
-                          </li>
-                        ))}
+                        {/* ogni riga si toglie: la casa la dice la scheda, e una
+                            saga scritta male sulla scheda («Ttm») va corretta lì,
+                            non portata sul disco */}
+                        {r.daSpostare.map((v, i) => {
+                          const via = disco.tolti.has(i);
+                          return (
+                            <li key={`${v.file.cartelle.join("/")}/${v.file.nome}`} style={voce}>
+                              <button
+                                onClick={() =>
+                                  setDisco((d) => {
+                                    const tolti = new Set(d.tolti);
+                                    if (tolti.has(i)) tolti.delete(i);
+                                    else tolti.add(i);
+                                    return { ...d, tolti };
+                                  })
+                                }
+                                aria-pressed={!via}
+                                style={{ display: "flex", gap: 8, alignItems: "flex-start", width: "100%", minHeight: 44, textAlign: "left", color: via ? C.dim : C.muted, fontSize: F.piccolo }}
+                              >
+                                <span style={{ color: via ? C.dim : C.accent }}>{via ? "☐" : "☑"}</span>
+                                <span style={{ minWidth: 0, overflowWrap: "anywhere", textDecoration: via ? "line-through" : "none" }}>
+                                  <span style={{ color: via ? C.dim : C.text }}>{v.libro.title}</span> · {v.file.cartelle.join(" / ") || "book-companion"} → {v.a.join(" / ")}
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                     {mancanti.map(([bs, dove]) => (
@@ -3232,6 +3255,29 @@ export default function Library({
                         {r.senzaScheda.length > 12 ? ` e altri ${r.senzaScheda.length - 12}` : ""}
                       </span>
                     )}
+                    {r.daSegnare?.length > 0 && (
+                      <span style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, overflowWrap: "anywhere" }}>
+                        <span style={{ flexBasis: "100%" }}>
+                          {`${r.daSegnare.length === 1 ? "Un volume è" : `${r.daSegnare.length} volumi sono`} sul disco, ma la scheda non lo sa e in Libreria ${r.daSegnare.length === 1 ? "risulta" : "risultano"} «né qui né nel cloud»: `}
+                          <span style={{ color: C.text }}>{r.daSegnare.slice(0, 12).map((b) => b.title).join(" · ")}</span>
+                          {r.daSegnare.length > 12 ? ` e altri ${r.daSegnare.length - 12}` : ""}
+                        </span>
+                        {!disco.segnati && (
+                          <button
+                            onClick={() => {
+                              const ids = new Set(r.daSegnare.map((b) => b.id));
+                              updateBooks(booksRef.current.map((b) => (ids.has(b.id) ? { ...b, fileTolto: true } : b)));
+                              for (const id of ids) timbraScheda(id);
+                              setDisco((d) => ({ ...d, segnati: true }));
+                              notify(`📦 ${ids.size === 1 ? "Un volume segnato" : `${ids.size} volumi segnati`} come spostati sull'HDD`);
+                            }}
+                            style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                          >
+                            {`📦 Segna ${r.daSegnare.length} come sul disco`}
+                          </button>
+                        )}
+                      </span>
+                    )}
                     {r.vuoti?.length > 0 && (
                       <span style={{ flexBasis: "100%", overflowWrap: "anywhere" }}>
                         {`${r.vuoti.length === 1 ? "Un file vuoto" : `${r.vuoti.length} file vuoti`}: copie rimaste a metà, il volume è ancora su Drive e il prossimo «Sposta sull'HDD» le riempie: `}
@@ -3244,17 +3290,17 @@ export default function Library({
                         <span style={{ color: C.text }}>{r.doppioni.slice(0, 12).map((f) => [...f.cartelle, f.nome].join(" / ")).join(" · ")}</span>
                       </span>
                     )}
-                    {r.daSpostare.length > 0 && (
+                    {r.daSpostare.length - disco.tolti.size > 0 && (
                       <button
                         onClick={() => {
-                          const { daSpostare } = r;
+                          const daSpostare = r.daSpostare.filter((_, i) => !disco.tolti.has(i));
                           const casa = disco.casa;
                           setDisco(null);
                           onRiordina(daSpostare, casa);
                         }}
                         style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
                       >
-                        {`🗂 Riordina ${r.daSpostare.length}`}
+                        {`🗂 Riordina ${r.daSpostare.length - disco.tolti.size}`}
                       </button>
                     )}
                     {/* il pannello taglia le liste lunghe: il rapporto intero si copia */}

@@ -210,6 +210,20 @@ export default async (t) => {
   t.eq("un file da 0 byte è una copia rimasta a metà, a parte", rv.vuoti.map((f) => f.nome).join() + "|" + rv.senzaScheda.some((f) => f.byte === 0), "The_Sandman_-_The_Deluxe_Edition_Book_03.cbz|false");
   t.c("e il rapporto lo dice", /File vuoti, copie rimaste a meta' \(1\)/.test(rapportoDisco(rv)));
 
+  // la scheda che crede perso un volume che è sul disco
+  const persi = [
+    { id: "p1", title: "A Time of Blood" },
+    { id: "p2", title: "Morning Star", fileTolto: true },
+    { id: "p3", title: "Su Drive" },
+    { id: "p4", title: "Qui" },
+    { id: "p5", title: "In lettura" },
+    { id: "p6", title: "Non sul disco" },
+  ];
+  const fp = ["A Time of Blood", "Morning Star", "Su Drive", "Qui", "In lettura"].map((n, i) => ({ nome: `${n}.epub`, cartelle: ["Libri"], byte: i + 1 }));
+  const rp = controllaDisco(persi, fp, { suDrive: (id) => id === "p3", qui: (id) => id === "p4", leggendo: (id) => id === "p5" });
+  t.eq("sul disco ma la scheda non lo sa: solo chi non ha il file altrove e non è in lettura", rp.daSegnare.map((b) => b.id).join(), "p1");
+  t.c("e il rapporto lo dice", /la scheda li crede persi \(1\):\n  - A Time of Blood/.test(rapportoDisco(rp)));
+
   // riordinare: con `move`, che sposta nel posto senza copiare
   copie = 0;
   const e = await riordinaDisco(r.daSpostare, { radice });
