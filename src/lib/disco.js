@@ -30,12 +30,53 @@ export async function elencaDisco(dir, via = []) {
 }
 
 // QUALE FILE E' DI QUALE SCHEDA. Il file sul disco porta il nome che aveva su
-// Drive, e la scheda il titolo che aveva all'ingresso: di solito lo stesso
-// nome. Prima lo stesso nome, poi il titolo DENTRO il nome del file (un
-// titolo ripulito: «Alpha & Omega» in «Locke & Key v06 - Alpha & Omega»),
-// solo se il candidato e' uno e di una scheda sola — nel dubbio il file resta
-// senza scheda, che si dice, e non si sposta.
-function abbinaDisco(libri, file) {
+// Drive, e la scheda il titolo che aveva all'ingresso. Prima lo stesso nome;
+// poi le PAROLE (segnalato col primo rapporto del disco del lettore: 76 volumi
+// «senza file da nessuna parte» e 152 file «senza scheda» erano in gran parte
+// gli stessi, scritti in due modi): «Abercrombie, Joe - The Heroes» e «The
+// Heroes (Joe Abercrombie) (z-library.sk…)», «Spawn Origins Collection Vol.
+// 24» e «… v24 (2022)», «The Golem's Eye» e «The Golems Eye», «Belgariad 4 :
+// Castle of Wizardry» e «Castle of Wizardry (David Eddings)». Un file e'
+// candidato di una scheda se ne contiene TUTTE le parole del titolo, in
+// qualunque ordine, o tutte quelle di un suo pezzo («Castle of Wizardry»,
+// separato da «:», « - », parentesi; un pezzo di una parola sola vale solo
+// se e' lunga). Fra i candidati vince chi ha piu' parole in comune col
+// titolo INTERO, rispetto a tutte quelle dei due (le targhe — z-library,
+// digital, l'anno — non contano): «The Law: A Dresden Files Novella» e' «The
+// Law - Dresden Files 17.2», non «The First Law 01», che ha solo «the law»
+// (preso al banco coi nomi veri del lettore). Si assegna dalla coppia
+// migliore in giu': una scheda un file, un file una scheda; a pari merito
+// vince il file gia' nella casa della scheda, e due file uguali (stesso peso)
+// non sono un dubbio, sono un volume e la sua copia.
+const RUMORE = new Set(["digital", "ebook", "epub", "by", "etc", "dcp", "empire", "hd", "f"]);
+function parole(s) {
+  return String(s || "")
+    .replace(/\.[a-z0-9]{2,5}$/i, "")
+    .replace(/\s*\(\d{1,2}\)\s*$/, "")
+    // le targhe dei siti, prima di spezzare: «1lib.sk» diventerebbe un «1»
+    .replace(/\b(?:z-?library|1lib|z-lib)(?:\.(?:sk|org))?\b/gi, " ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/['’‘`]/g, "")
+    .replace(/(\p{L})(\d)/gu, "$1 $2")
+    .replace(/(\d)(\p{L})/gu, "$1 $2")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    // «Vol. 24», «v24», «#24», «Book 24», «24»: lo stesso volume
+    .reduce((out, w, i, tutte) => {
+      if (/^(v|vol|volume|tomo|n|no)$/.test(w) && /^\d+$/.test(tutte[i + 1] || "")) return out;
+      out.push(/^\d+$/.test(w) ? `#${Number(w)}` : w);
+      return out;
+    }, []);
+}
+const pezziDi = (titolo) => {
+  const tutti = String(titolo || "").split(/\s*[:()[\]]\s*|\s+-\s+|\.\s+/).map(parole).filter((p) => p.length);
+  return tutti.filter((p) => p.length >= 2 || (p[0] || "").length >= 6);
+};
+function abbinaDisco(libri, file, casaDi = () => null) {
   const perNome = new Map();
   for (const f of file) {
     const k = nomeNudo(f.nome);
@@ -52,19 +93,55 @@ function abbinaDisco(libri, file) {
     }
   }
   const liberi = file.filter((f) => !presi.has(f));
-  const candidati = new Map();
+  const insiemi = new Map(liberi.map((f) => [f, new Set(parole(f.nome))]));
+  const coppie = [];
   for (const b of libri) {
     if (di.has(b)) continue;
-    const t = nomeNudo(b.title);
-    if (t.length < 4) continue;
-    const c = liberi.filter((f) => ` ${nomeNudo(f.nome)} `.includes(` ${t} `));
-    if (c.length === 1) candidati.set(b, c[0]);
+    const intero = parole(b.title);
+    if (!intero.length || (intero.length === 1 && intero[0].length < 4)) continue;
+    const pezzi = [intero, ...pezziDi(b.title)];
+    const casa = casaDi(b);
+    const suo = new Set(intero);
+    for (const f of liberi) {
+      const ws = insiemi.get(f);
+      if (!pezzi.some((p) => p.every((w) => ws.has(w)))) continue;
+      const contano = [...ws].filter((w) => !RUMORE.has(w) && !/^#(19|20)\d\d$/.test(w));
+      const comuni = contano.filter((w) => suo.has(w)).length;
+      const aCasa = casa && casa === f.cartelle.map((x) => x.toLowerCase()).join("/") ? 0.001 : 0;
+      coppie.push({ b, f, punti: comuni / (suo.size + contano.length - comuni || 1) + aCasa });
+    }
   }
-  const quanti = new Map();
-  for (const f of candidati.values()) quanti.set(f, (quanti.get(f) || 0) + 1);
-  for (const [b, f] of candidati) if (quanti.get(f) === 1) di.set(b, [f]);
+  coppie.sort((x, y) => y.punti - x.punti);
+  const libro = new Set();
+  const preso = new Set();
+  // nel dubbio niente: due file che coprono una scheda allo stesso modo (o due
+  // schede lo stesso file) fermano tutt'e due, anche piu' in giu'
+  const pari = (x, y) => Math.abs(x.punti - y.punti) < 1e-9;
+  for (const c of coppie) {
+    if (libro.has(c.b) || preso.has(c.f)) continue;
+    const uguali = (f, g) => f.byte === g.byte && estDi(f.nome) === estDi(g.nome);
+    const rivale = coppie.find((d) => d !== c && pari(c, d) && ((d.b === c.b && !preso.has(d.f) && !uguali(d.f, c.f)) || (d.f === c.f && !libro.has(d.b))));
+    libro.add(c.b);
+    preso.add(c.f);
+    if (rivale) {
+      libro.add(rivale.b);
+      preso.add(rivale.f);
+      continue;
+    }
+    di.set(c.b, [c.f]);
+  }
+  // le altre copie, stesso peso e stessa estensione di un file gia' preso:
+  // vanno con lui (il rapporto le dice copie)
+  const daPeso = new Map();
+  for (const [b, fs] of di) for (const f of fs) daPeso.set(`${f.byte}|${estDi(f.nome)}`, b);
+  for (const f of liberi) {
+    if (preso.has(f) || !(f.byte > 0)) continue;
+    const b = daPeso.get(`${f.byte}|${estDi(f.nome)}`);
+    if (b) di.set(b, [...di.get(b), f]);
+  }
   return di;
 }
+const estDi = (n) => (/\.([a-z0-9]{2,5})$/i.exec(n || "")?.[1] || "").toLowerCase();
 
 // Il rapporto. `tipoDi` dice la sezione di una scheda; `suDrive` e `qui` dove
 // sta il file di un volume che sul disco non c'e'. Due schede dello stesso
@@ -73,8 +150,11 @@ function abbinaDisco(libri, file) {
 // solo e' il volume, gli altri sono doppioni sul disco, e si dicono.
 export function controllaDisco(libri, file, { tipoDi = () => "libri", suDrive = () => false, qui = () => false } = {}) {
   const vivi = (libri || []).filter((b) => b?.id);
-  const di = abbinaDisco(vivi, file || []);
-  const esito = { aPosto: [], daSpostare: [], doppioni: [], mancano: { drive: [], qui: [], altrove: [], nessuno: [] }, senzaScheda: [], byte: 0 };
+  // un file da 0 byte e' una copia rimasta a meta' (lo spostamento lo
+  // riempie al giro dopo): non e' un volume, si dice a parte
+  const pieni = (file || []).filter((f) => f.byte > 0);
+  const di = abbinaDisco(vivi, pieni, (b) => casaDi(b, tipoDi(b)).map(chiave).join("/"));
+  const esito = { aPosto: [], daSpostare: [], doppioni: [], vuoti: (file || []).filter((f) => !(f.byte > 0)), mancano: { drive: [], qui: [], altrove: [], nessuno: [] }, senzaScheda: [], byte: 0 };
   const case_ = new Map();
   const usati = new Set();
   for (const b of vivi) {
@@ -119,7 +199,7 @@ export function controllaDisco(libri, file, { tipoDi = () => "libri", suDrive = 
     }
   }
   const visti = new Set([...case_.keys()]);
-  esito.senzaScheda = (file || []).filter((f) => !visti.has(f));
+  esito.senzaScheda = pieni.filter((f) => !visti.has(f));
   return esito;
 }
 
@@ -209,6 +289,7 @@ export function rapportoDisco(r) {
   for (const [bs, dove] of [[m.drive, "ancora su Google Drive"], [m.qui, "solo su questo dispositivo"], [m.altrove, "ne' qui ne' su Drive"], [m.nessuno, "senza file da nessuna parte"]])
     if (bs.length) righe.push(`Mancano dal disco, ${dove} (${bs.length}):`, ...titoli(bs));
   if (r.senzaScheda.length) righe.push(`File senza scheda (${r.senzaScheda.length}):`, ...file(r.senzaScheda));
+  if (r.vuoti?.length) righe.push(`File vuoti, copie rimaste a meta' (${r.vuoti.length}):`, ...file(r.vuoti));
   if (r.doppioni.length) righe.push(`Copie in piu', stesso nome e stesso peso (${r.doppioni.length}):`, ...file(r.doppioni));
   return righe.join("\n");
 }

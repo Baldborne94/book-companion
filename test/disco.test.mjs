@@ -124,8 +124,10 @@ export default async (t) => {
   t.eq("il file che nessuna scheda riconosce", r.senzaScheda.map((f) => f.nome).join(), "Nessuno.cbz");
   t.eq("il peso dei volumi sul disco, un doppione una volta", r.byte, 70 + 10 + 11 + 20 + 30);
   // un titolo corto o di due file non si abbina per contenimento
-  const ambiguo = controllaDisco([{ id: "x", title: "Omega" }], [{ nome: "Alpha Omega 1.cbz", cartelle: [], byte: 1 }, { nome: "Omega Red.cbz", cartelle: [], byte: 1 }]);
-  t.c("due candidati: nessuno", ambiguo.mancano.altrove.length === 1);
+  const ambiguo = controllaDisco([{ id: "x", title: "Omega" }], [{ nome: "Omega Alpha.cbz", cartelle: [], byte: 1 }, { nome: "Omega Red.cbz", cartelle: [], byte: 2 }]);
+  t.c("due candidati che lo coprono uguale: nessuno", ambiguo.mancano.altrove.length === 1 && ambiguo.senzaScheda.length === 2);
+  const meglio = controllaDisco([{ id: "x", title: "Omega" }], [{ nome: "Alpha Omega 1.cbz", cartelle: [], byte: 1 }, { nome: "Omega Red.cbz", cartelle: [], byte: 2 }]);
+  t.eq("uno lo copre meglio: quello", meglio.aPosto.concat(meglio.daSpostare).map((x) => x.file.nome).join(), "Omega Red.cbz");
   const dueSchede = controllaDisco([{ id: "x", title: "Alpha" }, { id: "y", title: "Omega" }], [{ nome: "Alpha Omega.cbz", cartelle: [], byte: 1 }]);
   t.c("un file per due schede: nessuna", dueSchede.senzaScheda.length === 1);
   // due schede dello stesso volume con case diverse: non si sposta
@@ -152,6 +154,61 @@ export default async (t) => {
   t.eq("il peso conta ogni volume una volta", blame.byte, 600);
   const testo = rapportoDisco(r);
   t.c("il rapporto da copiare dice tutto, coi percorsi", testo.includes("Manga / JoJo's_Bizarre_Adventure / Parte 7 -> Manga / JoJo's Bizarre Adventure / Parte 7") && testo.includes("senza file da nessuna parte (1):\n  - Perso") && testo.includes("Fumetti / Nessuno.cbz (5 byte)") && testo.includes("Copie in piu'"));
+
+  // I NOMI VERI DEL PRIMO RAPPORTO DEL LETTORE: titolo e file scritti in due modi
+  const zl = " (z-library.sk, 1lib.sk, z-lib.sk)";
+  const veri = [
+    { id: "h", title: "Abercrombie, Joe - The Heroes", saga: "Circle of the World" },
+    { id: "s24", title: "Spawn Origins Collection Vol. 24", saga: "Spawn Origins Collection", tipo: "fumetti" },
+    { id: "g", title: "Stroud, Jonathan - Bartimaeus 02 - The Golem's Eye", saga: "Bartimaeus" },
+    { id: "c", title: "Belgariad 4 : Castle of Wizardry", saga: "The Belgariad" },
+    { id: "law", title: "The Law: A Dresden Files Novella", saga: "Dresden Files" },
+    { id: "nl", title: "Night Lords Omnibus", saga: "Warhammer 40K" },
+    { id: "ty", title: "The Tyranny of Faith", saga: "Empire of the Wolf" },
+    { id: "st1", title: "Shadows of Treachery", saga: "Warhammer 40K" },
+    { id: "st2", title: "Shadows of Treachery", saga: "The Horus Heresy" },
+  ];
+  const fv = (via, byte) => {
+    const p = via.split("/");
+    return { cartelle: p.slice(0, -1), nome: p.at(-1), byte };
+  };
+  const fileVeri = [
+    fv(`Libri/Circle of the World/The Heroes (Joe Abercrombie)${zl}.epub`, 10),
+    fv("Fumetti/Spawn Origins Collection/Spawn Origins Collection v24 (2022) (digital) (DrVink-DCP).cbz", 24),
+    fv("Fumetti/Spawn Origins Collection/Spawn Origins Collection v25 (2023) (digital) (DrVink-DCP).cbz", 25),
+    fv(`Libri/Bartimaeus/The Golems Eye - Bartimaeus 02 (Stroud, Jonathan)${zl}.epub`, 11),
+    fv(`Libri/The Belgariad/Castle of Wizardry (David Eddings)${zl}.epub`, 12),
+    fv(`Libri/The Belgariad/Belgariad 3 Magicians Gambit (Eddings David)${zl}.epub`, 13),
+    fv("Libri/Circle of the World/Abercrombie, Joe - The First Law 01 (Abercrombie, Joe).epub", 14),
+    fv(`Libri/Dresden Files/The Law - Dresden Files 17.2 (Jim Butcher)${zl}.epub`, 15),
+    fv("Libri/Warhammer 40K/Night Lords Omnibus (Aaron Dembski-Bowden).epub", 16),
+    fv("Libri/Warhammer 40K/Night Lords Omnibus Aaron Dembski-Bowden Z-Library.epub", 16),
+    fv("Libri/The Tyranny of Faith (Richard Swan).epub", 17),
+    fv(`Libri/Empire of the Wolf/The Tyranny of Faith (Richard Swan)${zl}.epub`, 18),
+    fv("Libri/The Horus Heresy/Shadows of Treachery (Christian Dunn [Dunn, Christian]).epub", 19),
+    fv("Libri/Warhammer 40K/Shadows of Treachery (The Horus Heresy 22) (Dunn Christian Kyme Nick (Editor)).epub", 20),
+    fv("Fumetti/The Sandman/The_Sandman_-_The_Deluxe_Edition_Book_03.cbz", 0),
+  ];
+  const rv = controllaDisco(veri, fileVeri, { tipoDi: (b) => b.tipo || "libri" });
+  const di = Object.fromEntries([...rv.aPosto, ...rv.daSpostare].map((x) => [x.libro.id, x.file.nome]));
+  t.eq("le parole in un altro ordine", di.h, `The Heroes (Joe Abercrombie)${zl}.epub`);
+  t.eq("«Vol. 24» è «v24», e non il 25", di.s24, "Spawn Origins Collection v24 (2022) (digital) (DrVink-DCP).cbz");
+  t.eq("l'apostrofo che il nome del file non ha", di.g, `The Golems Eye - Bartimaeus 02 (Stroud, Jonathan)${zl}.epub`);
+  t.eq("un pezzo del titolo", di.c, `Castle of Wizardry (David Eddings)${zl}.epub`);
+  t.eq("«The Law» dei Dresden, non «The First Law»", di.law, `The Law - Dresden Files 17.2 (Jim Butcher)${zl}.epub`);
+  t.c("due file uguali non sono un dubbio: un volume e la sua copia", !!di.nl && rv.doppioni.some((f) => /Night Lords Omnibus Aaron/.test(f.nome)));
+  t.eq("a pari parole vince il file già nella casa della scheda", di.ty, `The Tyranny of Faith (Richard Swan)${zl}.epub`);
+  t.c("due schede dello stesso titolo: ognuna il file nella sua saga", /Horus Heresy 22/.test(di.st1) && /Dunn, Christian/.test(di.st2));
+  const uno = (titolo, nomi) => {
+    const r1 = controllaDisco([{ id: "x", title: titolo }], nomi.map((nome, i) => ({ nome, cartelle: [], byte: i + 1 })));
+    return [...r1.aPosto, ...r1.daSpostare].map((x) => x.file.nome).join() || "niente";
+  };
+  t.eq("l'apostrofo da solo", uno("Shadow's Edge", ["Shadows Edge (Brent Weeks).epub"]), "Shadows Edge (Brent Weeks).epub");
+  t.eq("«5» è «05», e non il 4", uno("Kill Six Billion Demons 5", ["Kill Six Billion Demons v04.cbz", "Kill Six Billion Demons v05.cbz"]), "Kill Six Billion Demons v05.cbz");
+  t.eq("un pezzo corto («It») non basta", uno("Mort (It)", ["It (Stephen King).epub"]), "niente");
+  t.eq("le targhe non contano: «digital», «ebook»", uno("Mort", ["Mort (digital) (ebook).epub", "Mort Cinder.epub"]), "Mort (digital) (ebook).epub");
+  t.eq("un file da 0 byte è una copia rimasta a metà, a parte", rv.vuoti.map((f) => f.nome).join() + "|" + rv.senzaScheda.some((f) => f.byte === 0), "The_Sandman_-_The_Deluxe_Edition_Book_03.cbz|false");
+  t.c("e il rapporto lo dice", /File vuoti, copie rimaste a meta' \(1\)/.test(rapportoDisco(rv)));
 
   // riordinare: con `move`, che sposta nel posto senza copiare
   copie = 0;

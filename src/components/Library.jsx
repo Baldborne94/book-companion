@@ -3232,6 +3232,12 @@ export default function Library({
                         {r.senzaScheda.length > 12 ? ` e altri ${r.senzaScheda.length - 12}` : ""}
                       </span>
                     )}
+                    {r.vuoti?.length > 0 && (
+                      <span style={{ flexBasis: "100%", overflowWrap: "anywhere" }}>
+                        {`${r.vuoti.length === 1 ? "Un file vuoto" : `${r.vuoti.length} file vuoti`}: copie rimaste a metà, il volume è ancora su Drive e il prossimo «Sposta sull'HDD» le riempie: `}
+                        <span style={{ color: C.text }}>{r.vuoti.map((f) => [...f.cartelle, f.nome].join(" / ")).join(" · ")}</span>
+                      </span>
+                    )}
                     {r.doppioni.length > 0 && (
                       <span style={{ flexBasis: "100%", overflowWrap: "anywhere" }}>
                         {`${r.doppioni.length === 1 ? "Una copia in più" : `${r.doppioni.length} copie in più`} (stesso nome e stesso peso) di volumi che sono già sul disco (non le tocco): `}
