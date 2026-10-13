@@ -1029,6 +1029,35 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «sistemami tutte le saghe che da solo non è
+    // riuscito a sistemare, tipo JoJo» — i nomi sono quelli dei suoi file
+    nome: "le saghe dei fumetti: JoJo con la parte, le saghe lette male si propongono e si sistemano",
+    async fai({ browser }) {
+      const libri = [
+        { id: "s1", title: "The Sandman - The Deluxe Edition Book 02 (2021) (digital) (Son of Ultron-Empire)", saga: "The Deluxe Edition Book", fileType: "cbz", tipo: "fumetti", addedAt: 1 },
+        { id: "j5", title: "JoJo's_Bizarre_Adventure_Part_5_v16_The_Requiem_Plays_Quietly", fileType: "cbz", tipo: "manga", addedAt: 2 },
+        { id: "j7", title: "Volume 20 - Love Train - The World is One", fileType: "cbz", tipo: "manga", addedAt: 3 },
+      ];
+      const d = await dispositivo(browser, { prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});` });
+      await d.p.goto(`${URL_APP}?apri=libreria`);
+      // il giro automatico legge il titolo: saga e parte
+      await finche(async () => (await libriDi(d.p)).find((b) => b.id === "j5")?.series === "Parte 5", 10000, "JoJo parte 5 non riconosciuto dal giro");
+      await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
+      // la tavola: il volume che il nome non dice
+      await d.p.getByRole("button", { name: "🔖 Riconosci saghe e cicli" }).click();
+      await finche(async () => (await libriDi(d.p)).find((b) => b.id === "j7")?.saga === "JoJo's Bizarre Adventure", 10000, "Love Train non è finito in JoJo");
+      const j7 = (await libriDi(d.p)).find((b) => b.id === "j7");
+      if (j7.series !== "Parte 7" || j7.sagaOrder !== 20) throw new Error(`Love Train: ${j7.series} n. ${j7.sagaOrder}`);
+      // la saga letta male si propone, e si sistema solo spuntata
+      await d.p.getByRole("button", { name: "📚 Saghe da sistemare" }).click();
+      await finche(() => d.p.getByText("The Sandman · n. 2").count(), 5000, "la proposta per Sandman non si vede");
+      if ((await libriDi(d.p)).find((b) => b.id === "s1").saga !== "The Deluxe Edition Book") throw new Error("la saga si è riscritta prima del tocco");
+      await d.p.getByRole("button", { name: "Sistema 1" }).click();
+      await finche(async () => (await libriDi(d.p)).find((b) => b.id === "s1")?.saga === "The Sandman", 5000, "Sandman non sistemato");
+      return { guasti: d.guasti, nota: "JoJo 5 dal giro, JoJo 7 dalla tavola, Sandman dalla proposta" };
+    },
+  },
+  {
     nome: "l'Ingresso propone il volume rimesso «Da leggere» e l'inizio del ciclo dopo",
     async fai({ browser }) {
       const d = await dispositivo(browser, { prima: mondoDisco });

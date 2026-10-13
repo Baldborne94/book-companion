@@ -40,7 +40,11 @@ function sagaBuona(s) {
   // usciva «Winter, Evan - The Burning» (visto in fotografia). Una saga
   // non contiene mai un « - »: si tiene l'ultimo pezzo.
   const pezzi = String(s || "").split(/\s+-\s+/);
-  const nome = pezzi[pezzi.length - 1].replace(CODA, "").replace(SERIE, "").trim();
+  const pulito = (p) => String(p || "").replace(CODA, "").replace(SERIE, "").trim();
+  // «The Sandman - The Deluxe Edition Book»: l'ultimo pezzo e' l'edizione,
+  // e la saga e' quello prima
+  const ultimo = pulito(pezzi[pezzi.length - 1]);
+  const nome = pezzi.length > 1 && EDIZIONE.test(ultimo) ? pulito(pezzi[pezzi.length - 2]) : ultimo;
   if (nome.length < 3 || nome.length > 60) return null;
   if (!/[a-z]/i.test(nome)) return null;
   if (new RegExp(`^${ETICHETTA}\\s*\\d*$`, "i").test(nome)) return null;
@@ -114,6 +118,33 @@ const FUMETTO = new RegExp(
   "i"
 );
 
+// H. I FUMETTI DEL LETTORE, letti in biblioteca (segnalato: «sistemami
+//    le saghe che da solo non è riuscito a sistemare, tipo JoJo»). Sui
+//    nomi dei suoi file su Drive, cinque forme restavano senza saga:
+//    - «Locke & Key v06 - Alpha & Omega (2014)»: il volume con la «v» e il
+//      titolo dopo. La «v» non e' un'etichetta delle altre forme (diventava
+//      «Locke & Key v» + 06), e con la «v» il numero dice il volume.
+//      Viene prima di tutte: «Invincible v25 - The End of All Things, Part
+//      02» era la saga «The End of All Things».
+const V_TITOLO = new RegExp(`^(.+?)\\s+v\\s?${NUMERO}\\s*[-–—:]\\s*(.{2,})$`, "i");
+//    - «JoJo's Bizarre Adventure Part 5 v16 The Requiem Plays Quietly»: la
+//      parte e' un ciclo, e il volume riparte da uno a ogni parte.
+const PARTE_V = new RegExp(
+  `^(.+?)\\s+(?:part|parte)\\s*(\\d{1,2})\\s*[-–—:,]?\\s*(?:v|vol\\.?|volume)\\s*${NUMERO}(?:\\s*[-–—:]\\s*|\\s+|$)(.*)$`,
+  "i"
+);
+//    - «Solo Leveling c91-100 (2020) (Digital)»: un pacchetto di capitoli.
+//      Senza la «c» ci vogliono due numeri col trattino («131-140»), e il
+//      posto e' l'ultimo capitolo: «c0-10» comincia da zero, che non vale.
+const CAPITOLI = /^(.+?)\s+(?:c(\d{1,4})|(\d{1,4}))-(\d{1,4})(?:\s*[(\[].*)?$/i;
+//    - «Volume 20 - Love Train»: il solo posto, la saga la dice un altro.
+const SOLO_VOLUME = new RegExp(`^(?:vol\\.?|volume)\\s*${NUMERO}(?:\\s*[-–—:]\\s*|\\s+)(\\D.+)$`, "i");
+//    - «The Sandman - The Deluxe Edition Book 02»: l'edizione non e' la
+//      saga (era il ripiano «The Deluxe Edition Book»); la saga e' davanti.
+const EDIZIONE = /^(?:the\s+)?(?:deluxe|absolute|omnibus|complete|collected|ultimate|definitive|compendium)(?:\s+(?:edition|collection))?(?:\s+(?:book|volume|vol))?$/i;
+//    E i nomi scritti per un disco: «JoJo's_Bizarre_Adventure_Part_2_v07».
+const DISTESO = (s) => (/_/.test(s) ? s.replace(/_+/g, " ").replace(/\s+/g, " ").trim() : s);
+
 // QUEL CHE RESTA TOLTA L'ETICHETTA E' IL TITOLO VERO, e nelle stesse
 // espressioni sta gia' catturato: dove il numero e la saga se ne vanno,
 // il gruppo rimasto e' il nome del romanzo. Si tiene perche' sullo
@@ -121,11 +152,31 @@ const FUMETTO = new RegExp(
 // [02]:…» e i sei volumi di una saga diventano indistinguibili — la
 // copertina il titolo ce l'ha stampato sopra, la didascalia no.
 function leggi(campo) {
-  const s = String(campo || "").trim();
+  const s = DISTESO(String(campo || "").trim());
   if (!s) return null;
-  let m = DOPO_PARENTESI.exec(s) || DOPO_SEPARATORE.exec(s);
+  let m = PARTE_V.exec(s);
+  if (m) {
+    const saga = sagaBuona(m[1]);
+    if (saga) return { saga, ciclo: `Parte ${Number(m[2])}`, sagaOrder: numero(m[3]), resto: m[4].trim() || null };
+  }
+  m = V_TITOLO.exec(s);
+  if (m) {
+    const saga = sagaBuona(m[1]);
+    // la «v» e' dei fumetti: chi ripulisce il titolo di un romanzo lo sa
+    if (saga) return { saga, sagaOrder: numero(m[2]), resto: m[3], forma: "v" };
+  }
+  m = CAPITOLI.exec(s);
+  if (m) {
+    const saga = sagaBuona(m[1]);
+    if (saga) return { saga, sagaOrder: numero(m[4]), resto: null };
+  }
+  m = DOPO_PARENTESI.exec(s) || DOPO_SEPARATORE.exec(s);
   if (m) {
     const saga = sagaBuona(m[2]);
+    if (saga && EDIZIONE.test(saga)) {
+      const davanti = sagaBuona(m[1]);
+      if (davanti) return { saga: davanti, sagaOrder: numero(m[3]), resto: null };
+    }
     if (saga) return { saga, sagaOrder: numero(m[3]), resto: m[1] };
   }
   m = DI_IN_CODA.exec(s);
@@ -149,6 +200,8 @@ function leggi(campo) {
     const saga = sagaBuona(m[1]);
     if (saga) return { saga, sagaOrder: numero(m[2] || m[3]), resto: null };
   }
+  m = SOLO_VOLUME.exec(s);
+  if (m) return { saga: null, sagaOrder: numero(m[1]), resto: m[2] };
   m = IN_TESTA.exec(s);
   // qui l'espressione e' un PREFISSO e non tiene il resto in un gruppo:
   // il titolo e' quel che sta dopo il pezzo consumato
@@ -186,7 +239,7 @@ export function sagaDalTitolo({ title, fileName, author } = {}) {
   const dalFile = leggi(pulisciFile(fileName, author));
   if (dalFile?.saga) {
     // il titolo aveva il solo numero: quello resta suo
-    return { saga: dalFile.saga, sagaOrder: dalTitolo?.sagaOrder ?? dalFile.sagaOrder };
+    return { saga: dalFile.saga, sagaOrder: dalTitolo?.sagaOrder ?? dalFile.sagaOrder, ...(dalFile.ciclo ? { ciclo: dalFile.ciclo } : {}) };
   }
   const n = dalTitolo?.sagaOrder ?? dalFile?.sagaOrder ?? null;
   return n != null ? { saga: null, sagaOrder: n } : null;

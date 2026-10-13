@@ -775,6 +775,7 @@ function completaSaga(meta, letto, fileName, libri) {
     if (!meta.saga && nelTitolo?.saga) {
       riconosciuto = true;
       meta.saga = nomeInBiblioteca(nelTitolo.saga, libri);
+      if (nelTitolo.ciclo && !meta.series) meta.series = nelTitolo.ciclo;
     }
     if (meta.saga && meta.sagaOrder == null && nelTitolo?.sagaOrder != null) meta.sagaOrder = nelTitolo.sagaOrder;
   }

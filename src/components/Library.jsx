@@ -1350,6 +1350,10 @@ export default function Library({
       if (daiTitoli.dalTitolo) {
         attuale = applica(daiTitoli.campi);
         parti.push(`${daiTitoli.dalTitolo} ${daiTitoli.dalTitolo === 1 ? "saga letta" : "saghe lette"} dal titolo`);
+        // i titoli appena letti possono portare la stessa saga scritta
+        // storta («Bizzare»): si riunisce subito, non alla prossima apertura
+        const ancora = unificaSaghe(attuale);
+        if (ancora.unificate) attuale = applica(ancora.campi);
       }
       // E POI IL CATALOGO, sui soli tomi rimasti senza saga dopo
       // tutto il resto (chiesto dal lettore: «perche' non hai riconosciuto
@@ -2157,6 +2161,34 @@ export default function Library({
   const [archivio, setArchivio] = useState(null);
   // I titoli proposti e quelli spuntati: `null` = pannello chiuso
   const [titoli, setTitoli] = useState(null);
+  // le saghe proposte dai titoli (`saghePropose`): stessa forma, stesso pannello
+  const [saghe, setSaghe] = useState(null);
+
+  async function proponiSagheOra() {
+    const { saghePropose, fraseSaga } = await import("../lib/sagaBooks.js");
+    const voci = saghePropose(booksRef.current);
+    if (!voci.length) {
+      notify?.("Le saghe che i titoli dicono sono già tutte al loro posto");
+      return;
+    }
+    const proposte = voci.map((v) => ({ ...v, sopra: v.titolo, da: fraseSaga(v.prima), a: fraseSaga(v.dopo) }));
+    setSaghe({ proposte, scelti: new Set(proposte.map((p) => p.id)) });
+  }
+
+  function sistemaSaghe() {
+    const { proposte, scelti } = saghe;
+    const nuove = new Map(proposte.filter((p) => scelti.has(p.id)).map((p) => [p.id, p.dopo]));
+    setSaghe(null);
+    if (!nuove.size) return;
+    updateBooks(
+      booksRef.current.map((b) => {
+        const d = nuove.get(b.id);
+        return d ? { ...b, saga: d.saga, series: d.series, sagaOrder: d.sagaOrder } : b;
+      })
+    );
+    for (const id of nuove.keys()) timbraScheda(id);
+    notify?.(`${nuove.size} ${nuove.size === 1 ? "saga sistemata" : "saghe sistemate"}`);
+  }
 
   async function proponiTitoliOra() {
     const { proponiTitoli } = await import("../lib/titoli.js");
@@ -3002,6 +3034,19 @@ export default function Library({
             >
               ✍ Ripulisci i titoli
             </button>
+            {/* le saghe che il titolo dice diverse dalla scheda: si propongono */}
+            <button
+              onClick={proponiSagheOra}
+              style={{
+                padding: "7px 16px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.border}`,
+                color: C.text,
+                fontSize: F.nota,
+              }}
+            >
+              📚 Saghe da sistemare
+            </button>
             {/* LE COPERTINE CHE MANCANO SI RITROVANO NEL FILE. Compare solo
                 se qualcuno ne ha bisogno, e col numero sopra: è un giro che
                 apre ogni tomo senza copertina, e chi lo tocca deve sapere
@@ -3287,6 +3332,26 @@ export default function Library({
           onVai={liberaOra}
         />
       )}
+      {saghe && (
+        <SceltaTitoli
+          titolo="📚 Saghe da sistemare"
+          spiega="Rilette dal titolo, queste schede starebbero in un'altra saga, o nella stessa con la parte e il numero. Guarda e spunta: quello che lasci non si tocca."
+          verbo="Sistema"
+          proposte={saghe.proposte}
+          scelti={saghe.scelti}
+          onCambia={(id) =>
+            setSaghe((t) => {
+              if (!t) return t;
+              const scelti = new Set(t.scelti);
+              if (scelti.has(id)) scelti.delete(id);
+              else scelti.add(id);
+              return { ...t, scelti };
+            })
+          }
+          onChiudi={() => setSaghe(null)}
+          onVai={sistemaSaghe}
+        />
+      )}
       {titoli && (
         <SceltaTitoli
           proposte={titoli.proposte}
@@ -3477,7 +3542,16 @@ function Referto({ esito, onChiudi, onRicuci, ricucendo }) {
 // `lib/titoli.js`: il parser sbaglia in silenzio, e un romanzo
 // ribattezzato male non alza nessun errore. Qui si vede «da → a» riga per
 // riga e si spunta — un titolo sbagliato non passa perché lo guardi prima.
-function SceltaTitoli({ proposte, scelti, onCambia, onChiudi, onVai }) {
+function SceltaTitoli({
+  proposte,
+  scelti,
+  onCambia,
+  onChiudi,
+  onVai,
+  titolo = "✍ Titoli da ripulire",
+  spiega = "Davanti o in coda a questi titoli c'è l'etichettatura di chi ha impacchettato il file. Guarda e spunta: quello che lasci non si tocca.",
+  verbo = "Rinomina",
+}) {
   const quanti = scelti.size;
   return (
     <div
@@ -3513,12 +3587,9 @@ function SceltaTitoli({ proposte, scelti, onCambia, onChiudi, onVai }) {
         }}
       >
         <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
-          ✍ Titoli da ripulire
+          {titolo}
         </h2>
-        <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 16 }}>
-          Davanti o in coda a questi titoli c'è l'etichettatura di chi ha impacchettato il file.
-          Guarda e spunta: quello che lasci non si tocca.
-        </p>
+        <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 16 }}>{spiega}</p>
 
         {proposte.map((p) => {
           const on = scelti.has(p.id);
@@ -3543,6 +3614,9 @@ function SceltaTitoli({ proposte, scelti, onCambia, onChiudi, onVai }) {
                 {on ? "☑" : "☐"}
               </span>
               <span style={{ minWidth: 0 }}>
+                {p.sopra && (
+                  <span style={{ display: "block", color: C.text, fontSize: F.piccolo, overflowWrap: "anywhere" }}>{p.sopra}</span>
+                )}
                 <span
                   style={{
                     display: "block",
@@ -3586,7 +3660,7 @@ function SceltaTitoli({ proposte, scelti, onCambia, onChiudi, onVai }) {
               fontSize: F.nota,
             }}
           >
-            {quanti ? `Rinomina ${quanti}` : "Nessuno spuntato"}
+            {quanti ? `${verbo} ${quanti}` : "Nessuno spuntato"}
           </button>
         </div>
       </div>

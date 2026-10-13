@@ -1,6 +1,7 @@
 import DISCWORLD, { SAGA, CICLI_NOSTRI } from "../data/discworldBooks.js";
 import HORUS, { SAGA as SAGA_HH } from "../data/horusHeresy.js";
 import APOCALISSE, { SAGA as SAGA_SA, FUORI as FUORI_BAKKER } from "../data/secondApocalypse.js";
+import JOJO, { SAGA as SAGA_JOJO } from "../data/jojo.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 
 // Riconoscere il romanzo dal titolo: i metadati degli EPUB sono spesso vuoti,
@@ -63,6 +64,9 @@ export const TAVOLE = [
   // non sono insegne inconfondibili («The Great Ordeal»), quindi il
   // riconoscimento per titolo resta `stretto` e chiede l'autore.
   { saga: SAGA_SA, libri: APOCALISSE, ordine: (b) => b.n, autore: "bakker", fuori: FUORI_BAKKER },
+  // JoJo: i volumi che nel nome non dicono la saga (vedi `data/jojo.js`).
+  // Niente ripiego sull'autore: Araki ha scritto anche altro
+  { saga: SAGA_JOJO, libri: JOJO, ordine: (b) => b.n, autore: null, fuori: [] },
 ];
 
 // I capitoli di tutte le guide, in minuscolo: `parteDiUnaStoria` guarda
@@ -644,28 +648,36 @@ export function nomeInBiblioteca(saga, libri = []) {
 // fratelli. Torna i campi da scrivere e i nomi scelti, che il resoconto
 // dice per esteso: una saga riscritta in silenzio e' esattamente il genere
 // di cosa che poi «non torna».
+// E UNA LETTERA STORTA E' LA STESSA SAGA (i JoJo del lettore: quattro file
+// «JoJo's_Bizzare_Adventure_Part_6», gli altri «Bizarre»): su un nome lungo
+// almeno dieci lettere, due grafie a una o due lettere di distanza
+// (`vicine`) sono un gruppo, e vince la piu' usata.
+const vicine = (a, b) => a === b || (a.length >= 10 && b.length >= 10 && Math.abs(a.length - b.length) <= 2 && distanza(a, b) <= 2);
 export function unificaSaghe(libri = []) {
-  const gruppi = new Map();
+  const gruppi = [];
+  const di = new Map();
   for (const b of libri) {
     const s = String(b?.saga || "").trim();
     if (!s) continue;
     const k = chiaveSaga(s);
     if (!k) continue;
-    if (!gruppi.has(k)) gruppi.set(k, new Map());
-    const grafie = gruppi.get(k);
-    grafie.set(s, (grafie.get(s) || 0) + 1);
+    let g = di.get(s) || gruppi.find((x) => [...x.chiavi].some((c) => vicine(c, k)));
+    if (!g) gruppi.push((g = { chiavi: new Set(), grafie: new Map() }));
+    g.chiavi.add(k);
+    g.grafie.set(s, (g.grafie.get(s) || 0) + 1);
+    di.set(s, g);
   }
   const campi = {};
   const nomi = [];
-  for (const [k, grafie] of gruppi) {
-    if (grafie.size < 2) continue;
-    const scelta = [...grafie.entries()].sort(
+  for (const g of gruppi) {
+    if (g.grafie.size < 2) continue;
+    const scelta = [...g.grafie.entries()].sort(
       (a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0])
     )[0][0];
     nomi.push(scelta);
     for (const b of libri) {
       const s = String(b?.saga || "").trim();
-      if (s && s !== scelta && chiaveSaga(s) === k) campi[b.id] = { saga: scelta };
+      if (s && s !== scelta && di.get(s) === g) campi[b.id] = { saga: scelta };
     }
   }
   return { campi, unificate: nomi.length, nomi };
@@ -714,6 +726,8 @@ export function deduciSaghe(libri = [], { senzaTraccia, dallaBiblioteca = true }
     // appena toccati, o due titoli con due grafie farebbero due ripiani
     const tocco = { saga: nomeInBiblioteca(letto.saga, conTitolo.concat(libri)) };
     if (b.sagaOrder == null && letto.sagaOrder != null) tocco.sagaOrder = letto.sagaOrder;
+    // «JoJo's Bizarre Adventure Part 5 v16»: la parte e' il ciclo
+    if (letto.ciclo && !String(b.series || "").trim()) tocco.series = letto.ciclo;
     campi[b.id] = tocco;
     dalTitolo += 1;
     conTitolo.push({ ...b, ...tocco });
@@ -764,6 +778,7 @@ export function ripassa(libro = {}, libri = [], { senzaTraccia, dallaBiblioteca 
     const letto = sagaDalTitolo(libro);
     if (letto?.saga) {
       tocchi.saga = nomeInBiblioteca(letto.saga, libri);
+      if (letto.ciclo && !serie) tocchi.series = letto.ciclo;
       dalTitolo = true;
     } else if (dallaBiblioteca) {
       const dalla = sagaDaBiblioteca(libro, libri, senzaTraccia);
@@ -802,3 +817,61 @@ export function ripassa(libro = {}, libri = [], { senzaTraccia, dallaBiblioteca 
   // autore — e' un'informazione del lettore, e il resoconto la dice a parte
   return Object.keys(tocchi).length ? { campi: tocchi, dedotta, dalTitolo } : null;
 }
+
+// LE SAGHE DA SISTEMARE, PROPOSTE (chiesto dal lettore: «sistemami tutte
+// le saghe che da solo non è riuscito a sistemare, tipo JoJo»). Il giro
+// automatico riempie solo le saghe vuote; quelle che un titolo letto male
+// aveva gia' scritto («The Deluxe Edition Book» per The Sandman, «The End of
+// All Things, Part» per Invincible) e i cicli mai dati restavano li'. Qui il
+// titolo si rilegge con le forme di adesso e si propone, riga per riga, quel
+// che cambierebbe: la saga, la parte (il ciclo) e il numero. Quel che il
+// lettore ha scritto a mano si tocca solo se lo spunta.
+// Una saga gia' scritta che contiene l'altra o ne e' contenuta («Hellboy» e
+// «Hellboy Omnibus») non si propone: e' la stessa storia detta piu' larga.
+// Una saga letta con una lettera storta («JoJo's Bizzare Adventure») prende
+// il nome che la biblioteca ha gia' (`nomeVicino`).
+function distanza(a, b) {
+  const r = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prima = r[0];
+    r[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const t = r[j];
+      r[j] = Math.min(r[j] + 1, r[j - 1] + 1, prima + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prima = t;
+    }
+  }
+  return r[b.length];
+}
+export function nomeVicino(saga, libri = []) {
+  const k = chiaveSaga(saga);
+  const conti = new Map();
+  for (const b of libri) {
+    const s = String(b?.saga || "").trim();
+    if (s && vicine(chiaveSaga(s), k)) conti.set(s, (conti.get(s) || 0) + 1);
+  }
+  return [...conti.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] || saga;
+}
+export function saghePropose(libri = []) {
+  const tutti = (libri || []).filter((b) => b?.id);
+  const out = [];
+  for (const b of tutti) {
+    if (nienteSaga(b) || fuoriSaga(b) || riconosci({ title: b.title, author: b.author })) continue;
+    const letto = sagaDalTitolo(b);
+    if (!letto?.saga) continue;
+    const prima = { saga: String(b.saga || "").trim(), series: String(b.series || "").trim(), sagaOrder: b.sagaOrder ?? null };
+    const kPrima = chiaveSaga(prima.saga);
+    const saga = nomeVicino(letto.saga, tutti.filter((x) => x.id !== b.id));
+    const k = chiaveSaga(saga);
+    let dopo;
+    if (k === kPrima) dopo = { saga: prima.saga, series: prima.series || letto.ciclo || "", sagaOrder: prima.sagaOrder ?? letto.sagaOrder ?? null };
+    else if (kPrima && (kPrima.includes(k) || k.includes(kPrima))) continue;
+    else dopo = { saga, series: letto.ciclo || (kPrima ? "" : prima.series), sagaOrder: letto.sagaOrder ?? (kPrima ? null : prima.sagaOrder) };
+    if (dopo.saga === prima.saga && dopo.series === prima.series && dopo.sagaOrder === prima.sagaOrder) continue;
+    out.push({ id: b.id, titolo: b.title || "", prima, dopo });
+  }
+  return out;
+}
+// come si legge una proposta: «The Sandman · n. 2», «senza saga»
+export const fraseSaga = ({ saga, series, sagaOrder } = {}) =>
+  [saga || "senza saga", series, sagaOrder != null ? `n. ${sagaOrder}` : null].filter(Boolean).join(" · ");
