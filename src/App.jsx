@@ -42,6 +42,7 @@ import { isSyncConfigured } from "./lib/supabase.js";
 import { fraseGiro, ricordaGiro, avvisoArrivi } from "./lib/resoconto.js";
 import { annotaErrore } from "./lib/registro.js";
 import SezioneGuasti from "./components/SezioneGuasti.jsx";
+import { leggiDispositivi, altroveDa, soloAltrove } from "./lib/dispositivi.js";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile, convertiLibroInCbz, adottaCbzConvertiti, getLastSync } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
 import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, dettagliFile, impostaRinnovo, impostaRientro, rinnovaInSilenzio, chiaveInScadenza, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato, fraseScollegato, daSpostareDaDrive, apriDaDrive, cestinaDelLibro, senzaSchedaDaDrive, cestinaSuDrive, mappaMelodie } from "./lib/drive.js";
@@ -55,7 +56,7 @@ import { spiegaSync, schedaDiversa } from "./lib/syncCore.js";
 import { ebookRitrovati, melodieSulDisco } from "./lib/driveCore.js";
 import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
-import { comincia, segnaVita, smetti } from "./lib/tempo.js";
+import { comincia, segnaVita, smetti, dispositivo } from "./lib/tempo.js";
 import { sincronizzaPresto } from "./lib/presto.js";
 import { parti, segnaAvvio } from "./lib/tempi.js";
 
@@ -1690,6 +1691,14 @@ export default function App() {
     // e su Drive il file c'e': il segno e' vecchio, e il libro si legge da li'
     if (b.fileTolto && !(driveAcceso() && mappaDrive()[id])) {
       notify("Di questo libro tieni la scheda, non l'ebook 📗");
+      setOpenId(id);
+      return;
+    }
+    // sta sull'altro dispositivo e da qui non si raggiunge: il reader
+    // finirebbe sul guasto, e il guasto non c'e'
+    const la = soloAltrove(id, { qui: localIds, suDrive: driveAcceso() && !!mappaDrive()[id], altrove: altroveDa(leggiDispositivi(), dispositivo()) });
+    if (la) {
+      notify(`Questo libro sta ${la} 📱: lì si legge. Qui si apre se aggiungi il file.`);
       setOpenId(id);
       return;
     }

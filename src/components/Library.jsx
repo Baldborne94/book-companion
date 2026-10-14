@@ -38,6 +38,8 @@ import EmptyState from "./EmptyState.jsx";
 import { partenza, dopoIlDisegno, segnaTempo, vocePerTempo } from "../lib/tempi.js";
 import { leggiVoti, scriviVoti, segnaVoto, votoMio, votoDaMostrare, mediaDeiVolumi, dettoVoto, puoEssereVotata, daSegnare } from "../lib/votiRaccolte.js";
 import Stars from "./Stelle.jsx";
+import { leggiDispositivi, altroveDa, sulDispositivo } from "../lib/dispositivi.js";
+import { dispositivo } from "../lib/tempo.js";
 
 const FILTERS = [
   { id: "all", label: "Tutti" },
@@ -118,9 +120,10 @@ const SEGNI_DORSO = {
   tolto: { glifo: "📗", titolo: "Tieni la scheda, non l'ebook", colore: () => C.muted },
   cloud: { glifo: "☁", titolo: "Nel cloud — si scarica quando lo apri", colore: () => C.arcane },
   perduto: { glifo: "⚠", titolo: "Né qui né nel cloud — reimporta il file", colore: () => C.accent },
+  altrove: { glifo: "📱", titolo: (nome) => `Sta ${sulDispositivo(nome)}: lì si legge`, colore: () => C.muted },
 };
 
-function Shelf({ books, onOpenBook, localIds, idLassu, showOrder, coverV = 0, conCopertina = null }) {
+function Shelf({ books, onOpenBook, localIds, idLassu, altrove = null, showOrder, coverV = 0, conCopertina = null }) {
   // Chi ha il dorso disegnato lo sa solo `BookCover`, che va a guardare in
   // IndexedDB se una copertina c'è: lo dice qui, e lo scaffale evita di
   // ristampare titolo e autore sotto una copertina che li porta già.
@@ -258,10 +261,10 @@ function Shelf({ books, onOpenBook, localIds, idLassu, showOrder, coverV = 0, co
                   rifiutato. Porta un segno suo, perché da lontano si veda
                   che quel libro c'è ma non si apre. */}
               {(() => {
-                const segno = SEGNI_DORSO[segnoDorso(b, localIds, idLassu)];
+                const segno = SEGNI_DORSO[segnoDorso(b, localIds, idLassu, altrove)];
                 return segno && (
                   <span
-                    title={segno.titolo}
+                    title={typeof segno.titolo === "function" ? segno.titolo(altrove?.get(b.id)) : segno.titolo}
                     style={{
                       position: "absolute",
                       bottom: 6,
@@ -440,7 +443,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   );
 }
 
-function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, onHdd }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, onHdd }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -523,11 +526,11 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, cov
                         <span>{p.nome ?? "Fuori dal percorso"}</span>
                         <span>{p.libri.length}</span>
                       </div>
-                      <Shelf books={p.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} conCopertina={conCopertina} showOrder />
+                      <Shelf books={p.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} altrove={altrove} coverV={coverV} conCopertina={conCopertina} showOrder />
                     </div>
                   ))
                 ) : (
-                  <Shelf books={c.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} conCopertina={conCopertina} showOrder />
+                  <Shelf books={c.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} altrove={altrove} coverV={coverV} conCopertina={conCopertina} showOrder />
                 )}
               </div>
             ))
@@ -535,7 +538,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, cov
             <Shelf
               books={r.libri}
               onOpenBook={onOpenBook}
-              localIds={localIds} idLassu={idLassu}
+              localIds={localIds} idLassu={idLassu} altrove={altrove}
               coverV={coverV}
               conCopertina={conCopertina}
               // il numero del volume ha senso dentro la sua saga; fra i volumi
@@ -546,7 +549,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, cov
         </Ripiano>
     ) : (
       <Ripiano key={r.id || "_"} nome={r.nome} quanti={r.libri.length} spento={!!r.spento}>
-        <Shelf books={r.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} coverV={coverV} conCopertina={conCopertina} />
+        <Shelf books={r.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} altrove={altrove} coverV={coverV} conCopertina={conCopertina} />
       </Ripiano>
     );
 
@@ -1152,6 +1155,8 @@ export default function Library({
   // collegato non c'e' niente da richiamare: offrirlo lo stesso sarebbe una
   // promessa che nessuno puo' mantenere.
   const drive = driveAcceso();
+  // i libri che l'altro dispositivo dice di tenere (`dispositivi.js`)
+  const altrove = useMemo(() => altroveDa(leggiDispositivi(), dispositivo()), [books, localIds]);
   const nelCloud = (collegato || drive) && localIds ? books.filter((b) => !localIds.has(b.id)) : [];
   // L'elenco del secchio arriva allo scaffale per il segno sul dorso: e' lo
   // stesso che decide la riga dei perduti qui sotto, cosi' le due non si
@@ -1171,7 +1176,8 @@ export default function Library({
   // La nuvoletta promette uno scaricamento, e su qualche tomo quella
   // promessa non si puo' mantenere: i byte non sono ne' qui ne' lassu'.
   // Finche' non si diceva, «Porta qui i tomi» falliva e basta.
-  const perduti = fraseSenzaCopia(senzaCopia(nelCloud, idLassu));
+  // e chi sta sull'altro dispositivo non e' perduto: e' la'
+  const perduti = fraseSenzaCopia(senzaCopia(nelCloud.filter((b) => !altrove.has(b.id)), idLassu));
   // E il tasto conta solo quelli che puo' DAVVERO portare giu': contando
   // anche i perduti offriva di scaricare file che l'app sapeva gia' non
   // esserci, e la riga qui sopra lo diceva a mezzo centimetro di distanza.
@@ -2409,7 +2415,7 @@ export default function Library({
         group={group}
         sort={sort}
         onOpenBook={onOpenBook}
-        localIds={localIds} idLassu={idLassu}
+        localIds={localIds} idLassu={idLassu} altrove={altrove}
         coverV={coverV}
         conCopertina={conCopertina}
         riconosciuti={riconosciuti}
