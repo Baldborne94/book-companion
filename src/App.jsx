@@ -1299,10 +1299,10 @@ export default function App() {
     if (filoLavoro.current || !voci.length) return;
     const mio = {};
     filoLavoro.current = mio;
-    setLavoro({ i: 0, totale: voci.length, titolo: voci[0].libro.title, passo: null });
+    setLavoro({ i: 0, totale: voci.length, titolo: voci[0].libro.title, passo: null, da: "disco" });
     try {
       const { convertiSulDisco, fraseConvertitiDisco } = await import("./lib/disco.js");
-      const { convertiInCbz } = await import("./lib/archivioFumetto.js");
+      const { convertiInCbz, apriFumetto } = await import("./lib/archivioFumetto.js");
       const { formatoDaByte } = await import("./lib/fumetto.js");
       const { copertinaOriginale } = await import("./lib/copertina.js");
       const { improntaDi } = await import("./lib/importBook.js");
@@ -1311,8 +1311,10 @@ export default function App() {
         radice,
         eZip: async (f) => formatoDaByte(new Uint8Array(await f.slice(0, 8).arrayBuffer())) === "cbz",
         converti: (f, onProgress) => convertiInCbz({ blob: f }, { onProgress }),
+        // il CBR si toglie solo se il CBZ scritto sul disco si apre davvero
+        apre: async (f) => ((await apriFumetto(f))?.pagine?.length || 0) > 0,
         vivo: () => filoLavoro.current === mio,
-        onProgress: (p) => filoLavoro.current === mio && setLavoro(p),
+        onProgress: (p) => filoLavoro.current === mio && setLavoro({ ...p, da: "disco" }),
       });
       for (const c of esito.convertiti) {
         const impronta = await improntaDi(c.cbz).catch(() => undefined);

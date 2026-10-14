@@ -96,8 +96,8 @@ export function restantiDelLavoro(ids, daFare) {
 }
 
 // la riga del lavoro in corso, fuori dalla Libreria
-export const fraseLavoro = ({ i = 0, totale = 0, passo = null } = {}) =>
-  `🔁 CBR in CBZ: ${i + 1} di ${totale}${passo?.carico ? " · sale su Drive" : passo?.misura ? ` · ${Math.floor((passo.letti / passo.misura) * 100)}%` : ""}`;
+export const fraseLavoro = ({ i = 0, totale = 0, passo = null, da = null } = {}) =>
+  `🔁 CBR in CBZ${da === "disco" ? " sul disco" : ""}: ${i + 1} di ${totale}${passo?.carico ? " · sale su Drive" : passo?.misura ? ` · ${Math.floor((passo.letti / passo.misura) * 100)}%` : ""}`;
 
 // COSA FARE, DECISO SULLO STATO DEI FILE e non sulla scheda (trovato al
 // banco: chiusa l'app fra «il CBZ e' salito su Drive» e «la scheda dice

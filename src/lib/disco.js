@@ -19,8 +19,9 @@ const chiave = (s) => String(s || "").trim().toLowerCase();
 // sul disco, e si confronta con quella
 export const casaDi = (b, tipo) => casaDelVolume(b, tipo).map(nomeSicuro);
 
-// dove vanno i CBR gia' convertiti sul disco (vedi `convertiSulDisco`): non
-// sono piu' volumi della biblioteca, e il controllo non li conta
+// dove andavano per un giorno i CBR convertiti sul disco: non sono volumi
+// della biblioteca, il controllo non li conta e la si svuota
+// (`cbrNeiConvertiti`, `svuotaConvertiti`)
 export const CBR_CONVERTITI = "CBR convertiti";
 
 // tutti i file di libri sotto `dir`, col percorso dalla casa
@@ -353,15 +354,17 @@ export function lavoriDalDisco(r, { haCopertina = () => true } = {}) {
   };
 }
 
-// IL CBR DIVENTA CBZ ACCANTO A SE', e il CBR non si cancella: va in
-// «book-companion/CBR convertiti», con le sue cartelle (`riordinaDisco`,
-// che non copre mai un file). Il disco del lettore non ha un cestino, e un
-// volume non si butta per conto suo: quando il CBZ si apre, quella cartella
-// la svuota lui. Il CBZ si scrive solo se il peso scritto e' quello giusto;
-// un CBZ con lo stesso nome e lo stesso peso c'e' gia' (una conversione a
-// meta'), e uno diverso non si copre («nome (2).cbz»). Un «.cbr» che dentro
-// e' gia' uno ZIP non si converte: si copia col nome giusto.
-export async function convertiSulDisco(voci, { radice, converti, eZip = async () => false, vivo = () => true, onProgress } = {}) {
+// IL CBR DIVENTA CBZ NELLA CARTELLA DELLA SUA SAGA, e il CBR se ne va
+// (segnalato dal lettore: «perche' vedo questa cartella in piu'? i CBR
+// convertiti mettili nelle cartelle apposite, non crearne una a parte: ogni
+// saga ha il suo posto dove stare»). Per un giorno il CBR finiva in
+// «book-companion/CBR convertiti»; adesso il CBZ si scrive nella casa della
+// scheda (`a`, se il volume era fuori posto) e il CBR si toglie **solo
+// dopo** che il CBZ scritto ha il peso giusto e si apre (`apre`). Un CBZ con
+// lo stesso nome e lo stesso peso c'e' gia' (una conversione a meta'), uno
+// diverso non si copre («nome (2).cbz»). Un «.cbr» che dentro e' gia' uno
+// ZIP non si converte: si copia col nome giusto.
+export async function convertiSulDisco(voci, { radice, converti, eZip = async () => false, apre = async () => true, vivo = () => true, onProgress } = {}) {
   const esito = { convertiti: [], mancati: [], fermato: false };
   for (let i = 0; i < (voci || []).length; i++) {
     if (!vivo()) {
@@ -377,29 +380,37 @@ export async function convertiSulDisco(voci, { radice, converti, eZip = async ()
         esito.fermato = true;
         break;
       }
+      const dir = v.a ? await cartellaDentro(radice, v.a) : v.file.dir;
       const base = v.file.nome.replace(/\.cbr$/i, ".cbz");
       let nome = base;
-      let gia = false;
+      let gia = null;
       for (let n = 2; ; n++) {
-        const c = await v.file.dir.getFileHandle(nome).catch(() => null);
+        const c = await dir.getFileHandle(nome).catch(() => null);
         if (!c) break;
         if ((await c.getFile()).size === cbz.size) {
-          gia = true;
+          gia = c;
           break;
         }
         if (n > 99) throw new Error("troppi file con lo stesso nome");
         nome = altroNome(base, n);
       }
+      const h = gia || (await dir.getFileHandle(nome, { create: true }));
       if (!gia) {
-        const h = await v.file.dir.getFileHandle(nome, { create: true });
         await cbz.stream().pipeTo(await h.createWritable());
         if ((await h.getFile()).size !== cbz.size) {
-          await v.file.dir.removeEntry(nome).catch(() => {});
+          await dir.removeEntry(nome).catch(() => {});
           throw new Error("il CBZ scritto sul disco non ha il peso giusto");
         }
       }
-      const via = await riordinaDisco([{ libro: v.libro, file: v.file, a: [CBR_CONVERTITI, ...v.file.cartelle] }], { radice });
-      esito.convertiti.push({ libro: v.libro, cbz, nome, cbrTenuto: via.spostati !== 1 });
+      if (!(await apre(await h.getFile()).catch(() => false))) {
+        if (!gia) await dir.removeEntry(nome).catch(() => {});
+        throw new Error("il CBZ scritto sul disco non si apre");
+      }
+      const cbrTenuto = await v.file.dir.removeEntry(v.file.nome).then(
+        () => false,
+        () => true
+      );
+      esito.convertiti.push({ libro: v.libro, cbz, nome, cbrTenuto });
     } catch (e) {
       esito.mancati.push({ libro: v.libro, perche: e?.message || String(e) });
     }
@@ -407,9 +418,32 @@ export async function convertiSulDisco(voci, { radice, converti, eZip = async ()
   return esito;
 }
 
+// LA CARTELLA «CBR CONVERTITI» DI QUEL GIORNO SI SVUOTA DALL'APP: si tolgono
+// i CBR il cui CBZ sta gia' sul disco (stesso nome, «.cbz», in qualunque
+// cartella della biblioteca); quel che non ha il suo CBZ resta e si dice, e
+// la cartella se ne va solo vuota.
+export async function cbrNeiConvertiti(radice, file = []) {
+  const cartella = await radice.getDirectoryHandle(CBR_CONVERTITI).catch(() => null);
+  if (!cartella) return null;
+  const cbz = new Set((file || []).filter((f) => /\.cbz$/i.test(f.nome)).map((f) => chiave(f.nome)));
+  const dentro = await elencaDisco(cartella);
+  const conCbz = dentro.filter((f) => cbz.has(chiave(f.nome.replace(/\.cbr$/i, ".cbz"))));
+  return { conCbz, senza: dentro.filter((f) => !conCbz.includes(f)), byte: conCbz.reduce((n, f) => n + f.byte, 0) };
+}
+export async function svuotaConvertiti(r, radice) {
+  let tolti = 0;
+  for (const f of r?.conCbz || []) {
+    if (await f.dir.removeEntry(f.nome).then(() => true, () => false)) tolti += 1;
+  }
+  const cartella = await radice.getDirectoryHandle(CBR_CONVERTITI).catch(() => null);
+  const resta = cartella ? await elencaDisco(cartella) : [];
+  if (cartella && !resta.length) await radice.removeEntry(CBR_CONVERTITI, { recursive: true }).catch(() => {});
+  return { tolti, restano: resta.length };
+}
+
 export function fraseConvertitiDisco(e) {
   const parti = [];
-  if (e.convertiti.length) parti.push(`🔁 ${quanti(e.convertiti.length, "Un CBR è diventato CBZ", "CBR sono diventati CBZ")} sul disco; i CBR sono in «book-companion/${CBR_CONVERTITI}»`);
+  if (e.convertiti.length) parti.push(`🔁 ${quanti(e.convertiti.length, "Un CBR è diventato CBZ", "CBR sono diventati CBZ")} sul disco, nella cartella della sua saga`);
   const tenuti = e.convertiti.filter((c) => c.cbrTenuto).length;
   if (tenuti) parti.push(`${quanti(tenuti, "un CBR è rimasto", "CBR sono rimasti")} accanto al suo CBZ`);
   if (e.mancati.length) parti.push(`${quanti(e.mancati.length, "uno non si è convertito", "non si sono convertiti")}: ${e.mancati.slice(0, 3).map((m) => `«${m.libro.title}» (${m.perche})`).join(", ")}`);
