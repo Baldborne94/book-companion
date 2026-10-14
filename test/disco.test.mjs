@@ -211,6 +211,93 @@ export default async (t) => {
   t.eq("un file da 0 byte è una copia rimasta a metà, a parte", rv.vuoti.map((f) => f.nome).join() + "|" + rv.senzaScheda.some((f) => f.byte === 0), "The_Sandman_-_The_Deluxe_Edition_Book_03.cbz|false");
   t.c("e il rapporto lo dice", /File vuoti, copie rimaste a meta' \(1\)/.test(rapportoDisco(rv)));
 
+  // I NOMI VERI DEL RAPPORTO DOPO: 8 schede «senza file da nessuna parte» e
+  // 22 file «senza scheda», in gran parte gli stessi
+  const rd = controllaDisco(
+    [
+      { id: "el", title: "La Saga di Elric Di Melniboné", saga: "Elric Di Melniboné" },
+      { id: "ka", title: "Kane. La saga", saga: "Kane" },
+      { id: "pk", title: "Ma gli andoidi sognano pecore elettriche?" },
+      { id: "ne", title: "Neuromancer", saga: "The Sprawl Trilogy" },
+      { id: "ho", title: "The Hobbit", saga: "Tolkienverse" },
+      { id: "hu", title: "The Children of Húrin with illustrations by Alan Lee", saga: "Tolkienverse" },
+      { id: "ih", title: "Monsters Gonna Monster", saga: "I Hate Fairyland", sagaOrder: 10, tipo: "fumetti" },
+      { id: "m1", title: "Manacled 1", saga: "Manacled" },
+      { id: "m2", title: "Manacled 2", saga: "Manacled" },
+      { id: "cj", title: "Carpe Jugulum", saga: "Discworld" },
+      { id: "am", title: "The Amazing Maurice and His Educated Rodents", saga: "Discworld" },
+      { id: "hb", title: "Hellboy Omnibus v01 - Seed of Destruction", saga: "Hellboy", tipo: "fumetti" },
+      { id: "bt", title: "Batman Year One (Digital)", tipo: "fumetti" },
+    ],
+    [
+      fv("Libri/Elric Di Melniboné/Elric. La saga (Michael Moorcock).epub", 2241901),
+      fv(`Libri/Ma gli androidi sognano pecore elettriche (Philip K. Dick)${zl}.epub`, 409962),
+      fv("Libri/The Sprawl Trilogy/Neuromancer (William Gibson) (2).epub", 821453),
+      fv("Libri/The Sprawl Trilogy/Neuromancer (William Gibson).epub", 1878585),
+      fv("Libri/Tolkienverse/The Hobbit (Tolkien, J R R).epub", 3337418),
+      fv("Libri/Tolkienverse/The Hobbit (J. R. R. Tolkien).epub", 8140510),
+      fv("Libri/Tolkienverse/The Children of Húrin (J. R. R. Tolkien, Christopher Tolkien).epub", 2460851),
+      fv("Fumetti/I Hate Fairyland/I Hate Fairyland v10 (2026) (Collection) (Image) (Digital) (LeDuch-DCP).cbz", 149656006),
+      fv("Libri/Manacled/Manacled 1.epub", 3000000),
+      fv("Libri/Manacled/Manacled 1 (Senlinyu).epub", 3821653),
+      fv("Libri/Discworld/Carpe Jugulum.epub", 400000),
+      fv("Libri/Discworld/Carpe Jugulum - Terry Pratchett.epub", 457494),
+      fv("Libri/Discworld/Pratchett, Terry - [Discworld 23] - Carpe Jugulum (2010, Corgi, 9780613277617).epub", 457494),
+      fv("Libri/Discworld/The Amazing Maurice and His Educated Rodents.epub", 280000),
+      fv("Libri/Discworld/The Amazing Maurice and His Educated Rod - Terry Pratchett.epub", 289587),
+      fv("Fumetti/Hellboy/Hellboy Omnibus v01 - Seed of Destruction.cbr", 300000000),
+      fv("Fumetti/Hellboy/Hellboy Omnibus v01 - Seed of Destruction (2018) (digital) (F) (Son of Ultron-Empire).cbz", 357537567),
+      fv("Fumetti/Bone/Bone - One Volume Edition (2004 (phaze-DCP).cbz", 310253556),
+    ],
+    { tipoDi: (b) => b.tipo || "libri" }
+  );
+  const dd = Object.fromEntries([...rd.aPosto, ...rd.daSpostare].map((x) => [x.libro.id, x.file.nome]));
+  t.eq("Elric: il resto del titolo sta nella cartella della saga", dd.el, "Elric. La saga (Michael Moorcock).epub");
+  t.c("e «La saga» di Kane non gli ruba il file", !dd.ka && rd.mancano.altrove.some((b) => b.id === "ka"));
+  const kane = controllaDisco([{ id: "ka", title: "Kane. La saga" }], [fv("Libri/Elric Di Melniboné/Elric. La saga (Michael Moorcock).epub", 1)]);
+  t.c("nemmeno da solo: «La saga» non dice quale libro", kane.mancano.altrove.length === 1);
+  const tutta = controllaDisco([{ id: "x", title: "Elric Di Melniboné" }], [fv("Libri/Elric Di Melniboné/Stormbringer (Michael Moorcock).epub", 1)]);
+  t.c("la cartella della saga non basta: una parola piena sta nel nome", tutta.mancano.altrove.length === 1);
+  const sezione = controllaDisco([{ id: "x", title: "Fumetti pazzi" }], [fv("Fumetti/Pazzi.cbz", 1)]);
+  t.c("«Fumetti», «Libri», «Manga» non sono parole del file", sezione.mancano.altrove.length === 1);
+  t.eq("una parola corta non si sfuma", uno("Mort Rising", ["Mart Rising.epub"]), "niente");
+  t.eq("un pezzo di due lettere non è una parola tronca", uno("Rodents of Unusual Size", ["Ro of Unusual Size.epub"]), "niente");
+  t.eq("i numeri non si sfumano", uno("Carpe Jugulum 9780613277617", ["Carpe Jugulum 9780613277618.epub"]), "niente");
+  t.eq("due parole storte sono troppe", uno("Ma gli andoidi sognano pecore eletriche", ["Ma gli androidi sognano pecore elettriche.epub"]), "niente");
+  t.eq("«andoidi» è «androidi»", dd.pk, `Ma gli androidi sognano pecore elettriche (Philip K. Dick)${zl}.epub`);
+  t.eq("due edizioni con le stesse parole: il file più grande", dd.ne, "Neuromancer (William Gibson).epub");
+  t.eq("anche con l'autore scritto in due modi", dd.ho, "The Hobbit (J. R. R. Tolkien).epub");
+  t.eq("l'illustratore è un pezzo a sé", dd.hu, "The Children of Húrin (J. R. R. Tolkien, Christopher Tolkien).epub");
+  t.eq("il volume che il nome non dice: saga e numero", dd.ih, "I Hate Fairyland v10 (2026) (Collection) (Image) (Digital) (LeDuch-DCP).cbz");
+  t.c("«Manacled 2» non prende «Manacled 1»", !dd.m2);
+  t.c("«(Digital)» non è un pezzo che trova un file", !dd.bt);
+  const ad = Object.fromEntries(rd.altreEdizioni.map((x) => [x.file.nome, x.libro.id]));
+  t.eq(
+    "le altre edizioni, ognuna col suo volume",
+    Object.entries(ad).map(([n, id]) => `${id}:${n.slice(0, 18)}`).sort().join(" | "),
+    ["am:The Amazing Mauric", "cj:Carpe Jugulum - Te", "cj:Pratchett, Terry -", "hb:Hellboy Omnibus v0", "ho:The Hobbit (Tolkie", "m1:Manacled 1 (Senlin", "ne:Neuromancer (Willi"].join(" | ")
+  );
+  t.eq("e senza scheda resta solo quel che nessuna scheda copre", rd.senzaScheda.map((f) => f.nome).join(), "Bone - One Volume Edition (2004 (phaze-DCP).cbz");
+  t.c("il rapporto le dice a parte, col volume", /Altre edizioni di volumi che hanno gia' il loro file \(7\):[\s\S]*Manacled 1 \(Senlinyu\)\.epub \(3821653 byte\) -> Manacled 1/.test(rapportoDisco(rd)));
+  const fraDue = controllaDisco(
+    [{ id: "a", title: "Alpha" }, { id: "o", title: "Omega" }],
+    [fv("Fumetti/Alpha.cbz", 1), fv("Fumetti/Omega.cbz", 2), fv("Fumetti/Alpha Omega.cbz", 3)]
+  );
+  t.c("un'edizione che copre due volumi uguale: resta senza scheda", !fraDue.altreEdizioni.length && fraDue.senzaScheda.map((f) => f.nome).join() === "Alpha Omega.cbz");
+  const saga = controllaDisco([{ id: "s", title: "Fuga", saga: "Saga", sagaOrder: 10, tipo: "fumetti" }], [fv("Fumetti/Saga/Volume 10 (2024) (digital).cbz", 1), fv("Fumetti/Saga/Volume 09 (2022) (digital).cbz", 2)], { tipoDi: () => "fumetti" });
+  t.c("anche una saga che si chiama «Saga», scritta solo nella cartella", saga.aPosto.length === 1 && /Volume 10/.test(saga.aPosto[0].file.nome));
+  const giaPreso = controllaDisco([{ id: "a", title: "Monsters Gonna Monster", saga: "I Hate Fairyland", sagaOrder: 10 }, { id: "b", title: "I Hate Fairyland 10" }], [fv("Fumetti/I Hate Fairyland/I Hate Fairyland v10 (2026).cbz", 1)]);
+  t.c("il file già di un'altra scheda non si prende per saga e numero", giaPreso.mancano.altrove.map((b) => b.id).join() === "a");
+  const suo = controllaDisco([{ id: "a", title: "Monsters Gonna Monster", saga: "I Hate Fairyland", sagaOrder: 10 }], [fv("Fumetti/I Hate Fairyland/Monsters Gonna Monster.cbz", 1), fv("Fumetti/I Hate Fairyland/I Hate Fairyland v10 (2026).cbz", 2)]);
+  t.eq("chi ha già il suo file lo tiene", [...suo.aPosto, ...suo.daSpostare].map((x) => x.file.nome).join(), "Monsters Gonna Monster.cbz");
+  const dueDieci = controllaDisco(
+    [{ id: "x", title: "Monsters Gonna Monster", saga: "I Hate Fairyland", sagaOrder: 10 }],
+    [fv("Fumetti/I Hate Fairyland/I Hate Fairyland v10 (2026).cbz", 1), fv("Fumetti/I Hate Fairyland/I Hate Fairyland #10 (2024).cbz", 2)]
+  );
+  t.c("due file col numero della scheda: nessuno", dueDieci.mancano.altrove.length === 1);
+  const isbn = controllaDisco([{ id: "x", title: "Monsters", saga: "Discworld", sagaOrder: 23 }], [fv("Libri/Discworld/Pratchett, Terry - [Discworld 23] - Carpe Jugulum (2010, Corgi, 9780613277617).epub", 1)]);
+  t.c("un altro numero nel nome (l'ISBN): nessuno", isbn.mancano.altrove.length === 1);
+
   // la scheda che crede perso un volume che è sul disco
   const persi = [
     { id: "p1", title: "A Time of Blood" },

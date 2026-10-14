@@ -3315,6 +3315,15 @@ export default function Library({
                         <span style={{ flexBasis: "100%", fontSize: F.piccolo }}>Entrano le schede con titolo, saga e copertina; il file resta sul disco e su Google Drive non sale niente.</span>
                       </span>
                     )}
+                    {/* un'altra edizione di un volume che il suo file ce l'ha:
+                        non e' «senza scheda», e «Aggiungili» farebbe un doppione */}
+                    {r.altreEdizioni?.length > 0 && (
+                      <span style={{ flexBasis: "100%", overflowWrap: "anywhere" }}>
+                        {`${r.altreEdizioni.length === 1 ? "Un file è un'altra edizione" : `${r.altreEdizioni.length} file sono altre edizioni`} di volumi che hanno già il loro file (restano dove sono): `}
+                        <span style={{ color: C.text }}>{r.altreEdizioni.slice(0, 12).map((x) => `${[...x.file.cartelle, x.file.nome].join(" / ")} → ${x.libro.title}`).join(" · ")}</span>
+                        {r.altreEdizioni.length > 12 ? ` e altri ${r.altreEdizioni.length - 12}` : ""}
+                      </span>
+                    )}
                     {r.daSegnare?.length > 0 && (
                       <span style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, overflowWrap: "anywhere" }}>
                         <span style={{ flexBasis: "100%" }}>
