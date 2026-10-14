@@ -1379,17 +1379,29 @@ export default function App() {
   async function handleTogliEbook(id) {
     const b = books.find((x) => x.id === id);
     if (!b) return;
-    timbraScheda(id);
-    updateBooks(books.map((x) => (x.id === id ? { ...x, fileTolto: true } : x)));
-    try {
-      await removeFileOnly(id);
-    } catch {
-      /* i byte restano orfani: la scheda dice già che l'ebook non c'è */
-    }
-    await togliFileDalCloud(b).catch(() => {});
-    setSpazioCambiato((n) => n + 1);
+    await togliEbook([id]);
     notify(`«${b.title}» resta in biblioteca, senza ebook 📗`);
+  }
+
+  // anche in fila («Libera spazio»): le schede si segnano tutte insieme, o
+  // ognuna partirebbe dalla biblioteca di prima e resterebbe segnata l'ultima
+  async function togliEbook(ids) {
+    const via = new Set(ids);
+    const tolti = books.filter((x) => via.has(x.id));
+    if (!tolti.length) return 0;
+    for (const b of tolti) timbraScheda(b.id);
+    updateBooks(books.map((x) => (via.has(x.id) ? { ...x, fileTolto: true } : x)));
+    for (const b of tolti) {
+      try {
+        await removeFileOnly(b.id);
+      } catch {
+        /* i byte restano orfani: la scheda dice già che l'ebook non c'è */
+      }
+      await togliFileDalCloud(b).catch(() => {});
+    }
+    setSpazioCambiato((n) => n + 1);
     runSync.current(true);
+    return tolti.length;
   }
 
   function handleRead(id, startCfi = null) {
@@ -1634,6 +1646,7 @@ export default function App() {
           <Suspense fallback={null}>
           <Library
             onCambiate={() => presto.current?.()}
+            onTogliEbook={togliEbook}
             books={books}
             updateBooks={updateBooks}
             lavoroCbr={lavoro}

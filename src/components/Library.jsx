@@ -5,7 +5,7 @@ import { disponi, aEtichette, criterioVoto, criterioStato, altezzaStimata, ALTEZ
 import { leggiPreferite, scriviPreferite, preferiteVive, segnaPreferita, puoEssereFavorita, ePreferito } from "../lib/raccoltePreferite.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { ascoltaCopertine } from "../lib/miniature.js";
-import { storageEstimate, spazioQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
+import { storageEstimate, spazioQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux, misureFile } from "../lib/bookStore.js";
 import { importFiles, resoconto, impronteDaFare, tipiDaScegliere } from "../lib/importBook.js";
 import { chiaveCollana } from "../lib/collana.js";
 import { preparaArchivio, segnaArchivio, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
@@ -35,7 +35,8 @@ import EmptyState from "./EmptyState.jsx";
 import { partenza, dopoIlDisegno, segnaTempo, vocePerTempo } from "../lib/tempi.js";
 import { leggiVoti, scriviVoti, segnaVoto, votoMio, votoDaMostrare, mediaDeiVolumi, dettoVoto, puoEssereVotata, daSegnare } from "../lib/votiRaccolte.js";
 import Stars from "./Stelle.jsx";
-import { leggiDispositivi, altroveDa, sulDispositivo } from "../lib/dispositivi.js";
+import { leggiDispositivi, scriviDispositivi, altroveDa, sulDispositivo, aggiornaDisco, sulDiscoDa } from "../lib/dispositivi.js";
+import { daLiberare, senzaCopiaNota, pesoTotale } from "../lib/liberaSpazio.js";
 import { dispositivo } from "../lib/tempo.js";
 
 const FILTERS = [
@@ -825,6 +826,7 @@ export default function Library({
   // un cambio che non tocca le schede (il cuore, il voto di una raccolta)
   // parte lo stesso verso gli altri dispositivi
   onCambiate,
+  onTogliEbook,
   onRiordina,
   onImportaDalDisco,
   onConvertiDalDisco,
@@ -907,6 +909,9 @@ export default function Library({
   };
   const [importing, setImporting] = useState(false);
   const [vediDoppi, setVediDoppi] = useState(false);
+  const [vediLibera, setVediLibera] = useState(false);
+  const [liberando, setLiberando] = useState(false);
+  const [pesi, setPesi] = useState(null);
   // il disco controllato (`controllaDisco`): il rapporto e la sua casa
   const [disco, setDisco] = useState(null);
   const [giroImport, setGiroImport] = useState(null);
@@ -1054,6 +1059,26 @@ export default function Library({
   // anche i perduti offriva di scaricare file che l'app sapeva gia' non
   // esserci, e la riga qui sopra lo diceva a mezzo centimetro di distanza.
   const daScendere = daPortare(nelCloud, idLassu);
+
+  // LIBERA SPAZIO (`liberaSpazio.js`): i letti che il disco del computer ha.
+  // I pesi si leggono solo a cassetta aperta: un cursore su tutti i file.
+  useEffect(() => {
+    if (!manutenzione || !localIds) return;
+    let vivo = true;
+    misureFile().then((m) => vivo && setPesi(m)).catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [manutenzione, localIds, spazioCambiato]);
+  const discoNoto = useMemo(() => sulDiscoDa(leggiDispositivi()), [books, localIds, manutenzione]);
+  const liberabili = useMemo(
+    () => (manutenzione ? daLiberare(books, { qui: localIds, sulDisco: discoNoto.ids, pesi, stato: getStatus }) : []),
+    [books, localIds, manutenzione, pesi, discoNoto]
+  );
+  const senzaCopiaSulDisco = useMemo(
+    () => (manutenzione ? senzaCopiaNota(books, { qui: localIds, sulDisco: discoNoto.ids, stato: getStatus }) : []),
+    [books, localIds, manutenzione, discoNoto]
+  );
 
 
   // IL RICONOSCIMENTO GIRA SOLO ALL'IMPORT, e i libri entrati prima non
@@ -1797,6 +1822,10 @@ export default function Library({
         sullAltro: (id) => altrove.has(id),
         leggendo: (id) => getStatus(id) === "reading",
       });
+      // quel che il disco ha lo sanno anche gli altri dispositivi: e' la
+      // copia che permette al tablet di togliere i suoi ebook letti
+      scriviDispositivi(aggiornaDisco(leggiDispositivi(), [...rapporto.aPosto, ...rapporto.daSpostare].map((x) => x.libro.id), { dispositivo: dispositivo() }));
+      onCambiate?.();
       const senza = new Set(senzaCopertina(booksRef.current, conCopertina || new Set(), copGuardate).map((b) => b.id));
       const convertiti = await cbrNeiConvertiti(casa, file).catch(() => null);
       setDisco({ rapporto, casa, tolti: new Set(), lavori: lavoriDalDisco(rapporto, { haCopertina: (id) => !senza.has(id) }), convertiti });
@@ -2686,13 +2715,63 @@ export default function Library({
               </button>
               {!portando && (
                 <span style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.4 }}>
-                  Non serve per leggerli: scendono da soli quando li apri. Serve solo per averli sul
-                  tablet senza rete.
+                  Dal cloud non si aprono: per leggerli qui servono qui.
                 </span>
               )}
               </span>
               );
             })()}
+            {liberabili.length > 0 && !vediLibera && (
+              <button
+                onClick={() => setVediLibera(true)}
+                style={{ padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.arcane}66`, color: C.arcane, fontSize: F.nota }}
+              >
+                {`🧹 Libera spazio: ${liberabili.length === 1 ? "un libro letto è" : `${liberabili.length} libri letti sono`} anche sul disco del computer${pesoTotale(liberabili) ? ` (${fmtGoogle(pesoTotale(liberabili))})` : ""}`}
+              </button>
+            )}
+            {liberabili.length > 0 && vediLibera && (
+              <div style={{ flexBasis: "100%", padding: 12, borderRadius: R.piccolo, border: `1px solid ${C.border}`, background: C.surface }}>
+                <p style={{ margin: "0 0 8px", color: C.text, fontSize: F.nota, lineHeight: 1.45 }}>
+                  {`Di questi libri letti se ne va l'ebook, qui e sugli altri dispositivi: restano la scheda, la copertina, il voto e i tuoi segni. Il file resta sul disco del computer${discoNoto.quando ? ` (controllato il ${new Date(discoNoto.quando).toLocaleDateString("it-IT")})` : ""}, e da lì si reimporta.`}
+                </p>
+                <ul style={{ margin: "0 0 10px", padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" }}>
+                  {liberabili.map((x) => (
+                    <li key={x.id} style={{ fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" }}>
+                      <span style={{ color: C.text }}>{x.titolo}</span>
+                      {x.byte ? ` · ${fmtGoogle(x.byte)}` : ""}
+                    </li>
+                  ))}
+                </ul>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    disabled={liberando}
+                    onClick={async () => {
+                      setLiberando(true);
+                      try {
+                        const quanti = await onTogliEbook?.(liberabili.map((x) => x.id));
+                        if (quanti) notify(`🧹 ${quanti === 1 ? "Un ebook tolto" : `${quanti} ebook tolti`}: le schede restano in biblioteca 📗`);
+                      } finally {
+                        setLiberando(false);
+                        setVediLibera(false);
+                      }
+                    }}
+                    style={{ minHeight: 44, padding: "8px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                  >
+                    {liberando ? "Tolgo…" : `Togli ${liberabili.length === 1 ? "l'ebook" : `i ${liberabili.length} ebook`}`}
+                  </button>
+                  <button onClick={() => setVediLibera(false)} style={{ minHeight: 44, padding: "8px 16px", color: C.muted, fontSize: F.nota }}>
+                    Lascia stare
+                  </button>
+                </div>
+              </div>
+            )}
+            {senzaCopiaSulDisco.length > 0 && (
+              <span style={{ flexBasis: "100%", fontSize: F.piccolo, color: C.muted, lineHeight: 1.4 }}>
+                {discoNoto.quando
+                  ? `${senzaCopiaSulDisco.length === 1 ? "Un libro letto non era" : `${senzaCopiaSulDisco.length} libri letti non erano`} sul disco del computer al controllo del ${new Date(discoNoto.quando).toLocaleDateString("it-IT")}: copiali lì e rifai «🔍 Controlla il disco» dal computer, poi si possono togliere da qui.`
+                  : `Di ${senzaCopiaSulDisco.length === 1 ? "un libro letto" : `${senzaCopiaSulDisco.length} libri letti`} non so se il disco del computer ha una copia: dal computer usa «🔍 Controlla il disco», poi si possono togliere da qui.`}
+              </span>
+            )}
             <button
               onClick={riconosciSaghe}
               style={{
