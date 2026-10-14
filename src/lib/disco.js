@@ -55,6 +55,13 @@ export async function elencaDisco(dir, via = []) {
 // vince il file gia' nella casa della scheda, e due file uguali (stesso peso)
 // non sono un dubbio, sono un volume e la sua copia.
 const RUMORE = new Set(["digital", "ebook", "epub", "by", "etc", "dcp", "empire", "hd", "f"]);
+// le parole che non dicono QUALE libro: un pezzo fatto solo di queste
+// («La saga» di «Kane. La saga») trovava ogni file con «la saga» nel nome, e
+// rubava quello di Elric
+const GENERICHE = new Set(
+  "the a an of and in on to for with from la il lo le gli i un una uno di da del della dei degli delle e ed in con per su nel nella saga ciclo trilogia trilogy series serie book books libro volume collection edition edizione complete completa omnibus illustrated".split(" ")
+);
+const piena = (w) => !w.startsWith("#") && w.length >= 3 && !GENERICHE.has(w) && !RUMORE.has(w);
 function parole(s) {
   return String(s || "")
     .replace(/\.[a-z0-9]{2,5}$/i, "")
@@ -78,10 +85,39 @@ function parole(s) {
       return out;
     }, []);
 }
+// «The Children of Húrin with illustrations by Alan Lee»: l'illustratore e'
+// un pezzo a se', come quel che sta dopo i due punti
 const pezziDi = (titolo) => {
-  const tutti = String(titolo || "").split(/\s*[:()[\]]\s*|\s+-\s+|\.\s+/).map(parole).filter((p) => p.length);
+  const tutti = String(titolo || "")
+    .split(/\s*[:()[\]]\s*|\s+-\s+|\.\s+|\s+(?:with\s+)?illustrat\w*\s+by\s+/i)
+    .map(parole)
+    .filter((p) => p.length);
   return tutti.filter((p) => p.length >= 2 || (p[0] || "").length >= 6);
 };
+// una parola lunga del titolo che il nome scrive con una lettera sbagliata
+// («andoidi» per «androidi») o tronca («Educated Rod» per «Rodents»)
+const unaLettera = (a, b) => {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && a[i] === b[i]) i++;
+  return a.slice(i + 1) === b.slice(i + 1) || a.slice(i + 1) === b.slice(i) || a.slice(i) === b.slice(i + 1);
+};
+const sfumata = (w, ws) => w.length >= 6 && !w.startsWith("#") && [...ws].some((x) => x.length >= 3 && ((x.length < w.length && w.startsWith(x)) || unaLettera(w, x)));
+// IL FILE COPRE UN PEZZO DEL TITOLO: ogni parola nel nome o nella cartella
+// della saga (la prima di «Libri», «Fumetti», «Manga» non dice niente), al
+// piu' una sfumata, i numeri esatti nel nome, e almeno una parola piena
+// scritta proprio nel nome: «La Saga di Elric Di Melniboné» e' «Elric. La
+// saga (Michael Moorcock)» nella cartella «Elric Di Melniboné»
+function copre(p, ws, wc) {
+  let sfumate = 0;
+  for (const w of p) {
+    if (ws.has(w) || (!w.startsWith("#") && wc.has(w))) continue;
+    if (sfumate || !sfumata(w, ws)) return false;
+    sfumate += 1;
+  }
+  return p.some((w) => piena(w) && ws.has(w));
+}
+const cartellaDi = (f) => new Set(f.cartelle.length >= 2 ? parole(f.cartelle.at(-1)) : []);
 function abbinaDisco(libri, file, casaDi = () => null) {
   const perNome = new Map();
   for (const f of file) {
@@ -100,9 +136,11 @@ function abbinaDisco(libri, file, casaDi = () => null) {
   }
   const liberi = file.filter((f) => !presi.has(f));
   const insiemi = new Map(liberi.map((f) => [f, new Set(parole(f.nome))]));
+  const cartelle = new Map(liberi.map((f) => [f, cartellaDi(f)]));
+  // le coppie di tutte le schede: quelle gia' abbinate per nome servono a
+  // riconoscere le loro altre edizioni
   const coppie = [];
   for (const b of libri) {
-    if (di.has(b)) continue;
     const intero = parole(b.title);
     if (!intero.length || (intero.length === 1 && intero[0].length < 4)) continue;
     const pezzi = [intero, ...pezziDi(b.title)];
@@ -110,23 +148,31 @@ function abbinaDisco(libri, file, casaDi = () => null) {
     const suo = new Set(intero);
     for (const f of liberi) {
       const ws = insiemi.get(f);
-      if (!pezzi.some((p) => p.every((w) => ws.has(w)))) continue;
+      if (!pezzi.some((p) => copre(p, ws, cartelle.get(f)))) continue;
       const contano = [...ws].filter((w) => !RUMORE.has(w) && !/^#(19|20)\d\d$/.test(w));
       const comuni = contano.filter((w) => suo.has(w)).length;
       const aCasa = casa && casa === f.cartelle.map((x) => x.toLowerCase()).join("/") ? 0.001 : 0;
       coppie.push({ b, f, punti: comuni / (suo.size + contano.length - comuni || 1) + aCasa });
     }
   }
-  coppie.sort((x, y) => y.punti - x.punti);
-  const libro = new Set();
+  // a pari punti il file piu' grande per primo (vedi `stessoLibro`)
+  coppie.sort((x, y) => y.punti - x.punti || y.f.byte - x.f.byte);
+  const libro = new Set(di.keys());
   const preso = new Set();
   // nel dubbio niente: due file che coprono una scheda allo stesso modo (o due
   // schede lo stesso file) fermano tutt'e due, anche piu' in giu'
   const pari = (x, y) => Math.abs(x.punti - y.punti) < 1e-9;
+  const uguali = (f, g) => f.byte === g.byte && estDi(f.nome) === estDi(g.nome);
+  // MA DUE FILE CON LE STESSE PAROLE SONO LO STESSO LIBRO in due edizioni
+  // («Neuromancer (William Gibson).epub» e «… (2).epub», «The Hobbit
+  // (Tolkien, J R R)» e «The Hobbit (J. R. R. Tolkien)»): non un dubbio su
+  // quale volume sia, e la scheda prende il piu' grande. «Spawn v24» e «v25»
+  // hanno un numero diverso, e restano un dubbio.
+  const firma = (f) => [...insiemi.get(f)].sort().join(" ");
+  const stessoLibro = (f, g) => estDi(f.nome) === estDi(g.nome) && firma(f) === firma(g);
   for (const c of coppie) {
     if (libro.has(c.b) || preso.has(c.f)) continue;
-    const uguali = (f, g) => f.byte === g.byte && estDi(f.nome) === estDi(g.nome);
-    const rivale = coppie.find((d) => d !== c && pari(c, d) && ((d.b === c.b && !preso.has(d.f) && !uguali(d.f, c.f)) || (d.f === c.f && !libro.has(d.b))));
+    const rivale = coppie.find((d) => d !== c && pari(c, d) && ((d.b === c.b && !preso.has(d.f) && !uguali(d.f, c.f) && !stessoLibro(d.f, c.f)) || (d.f === c.f && !libro.has(d.b))));
     libro.add(c.b);
     preso.add(c.f);
     if (rivale) {
@@ -140,12 +186,43 @@ function abbinaDisco(libri, file, casaDi = () => null) {
   // vanno con lui (il rapporto le dice copie)
   const daPeso = new Map();
   for (const [b, fs] of di) for (const f of fs) daPeso.set(`${f.byte}|${estDi(f.nome)}`, b);
+  const usato = (f) => [...di.values()].some((fs) => fs.includes(f));
   for (const f of liberi) {
-    if (preso.has(f) || !(f.byte > 0)) continue;
+    if (usato(f) || !(f.byte > 0)) continue;
     const b = daPeso.get(`${f.byte}|${estDi(f.nome)}`);
     if (b) di.set(b, [...di.get(b), f]);
   }
-  return di;
+  // IL VOLUME CHE IL NOME NON DICE, MA LA SAGA E IL NUMERO SI': «Monsters Gonna
+  // Monster», volume 10 di «I Hate Fairyland», e' «I Hate Fairyland v10 (2026)
+  // (Collection)…». Solo un file con tutte le parole della saga (nel nome o
+  // nella sua cartella) e il solo numero della scheda (gli anni non contano),
+  // e solo se il file e' di quella scheda sola e la scheda ha quel file solo.
+  const numeri = (ws) => [...ws].filter((w) => w.startsWith("#") && !/^#(19|20)\d\d$/.test(w));
+  const perSaga = [];
+  for (const b of libri) {
+    if (di.has(b) || !b.saga || !(Number(b.sagaOrder) > 0)) continue;
+    const saga = parole(b.saga).filter((w) => !w.startsWith("#"));
+    for (const f of liberi) {
+      if (usato(f)) continue;
+      const ws = insiemi.get(f);
+      const n = numeri(ws);
+      if (n.length === 1 && n[0] === `#${Number(b.sagaOrder)}` && saga.every((w) => ws.has(w) || cartelle.get(f).has(w))) perSaga.push({ b, f });
+    }
+  }
+  for (const c of perSaga) if (perSaga.filter((d) => d.b === c.b || d.f === c.f).length === 1) di.set(c.b, [c.f]);
+  // LE ALTRE EDIZIONI: un file rimasto che copre una scheda che il suo file ce
+  // l'ha gia' non e' «senza scheda» (aggiungerlo farebbe un doppione): si
+  // dice di chi e', se e' di una scheda sola
+  const altre = new Map();
+  for (const f of liberi) {
+    if (usato(f)) continue;
+    const suoi = coppie.filter((c) => c.f === f && di.has(c.b));
+    if (!suoi.length) continue;
+    const primo = suoi[0];
+    if (suoi.some((c) => c.b !== primo.b && pari(c, primo))) continue;
+    altre.set(f, primo.b);
+  }
+  return { di, altre };
 }
 const estDi = (n) => (/\.([a-z0-9]{2,5})$/i.exec(n || "")?.[1] || "").toLowerCase();
 
@@ -159,8 +236,8 @@ export function controllaDisco(libri, file, { tipoDi = () => "libri", suDrive = 
   // un file da 0 byte e' una copia rimasta a meta' (lo spostamento lo
   // riempie al giro dopo): non e' un volume, si dice a parte
   const pieni = (file || []).filter((f) => f.byte > 0);
-  const di = abbinaDisco(vivi, pieni, (b) => casaDi(b, tipoDi(b)).map(chiave).join("/"));
-  const esito = { aPosto: [], daSpostare: [], doppioni: [], vuoti: (file || []).filter((f) => !(f.byte > 0)), mancano: { drive: [], qui: [], altrove: [], nessuno: [] }, senzaScheda: [], daSegnare: [], byte: 0 };
+  const { di, altre } = abbinaDisco(vivi, pieni, (b) => casaDi(b, tipoDi(b)).map(chiave).join("/"));
+  const esito = { aPosto: [], daSpostare: [], doppioni: [], altreEdizioni: [], vuoti: (file || []).filter((f) => !(f.byte > 0)), mancano: { drive: [], qui: [], altrove: [], nessuno: [] }, senzaScheda: [], daSegnare: [], byte: 0 };
   const case_ = new Map();
   const usati = new Set();
   for (const b of vivi) {
@@ -216,7 +293,9 @@ export function controllaDisco(libri, file, { tipoDi = () => "libri", suDrive = 
     for (const b of c.libri) if (!b.fileTolto && !suDrive(b.id) && !qui(b.id) && !leggendo(b.id) && !segnati.has(b)) segnati.add(b);
   esito.daSegnare = [...segnati];
   const visti = new Set([...case_.keys()]);
-  esito.senzaScheda = pieni.filter((f) => !visti.has(f));
+  for (const [f, b] of altre) if (!visti.has(f)) esito.altreEdizioni.push({ file: f, libro: b });
+  const altreViste = new Set(esito.altreEdizioni.map((x) => x.file));
+  esito.senzaScheda = pieni.filter((f) => !visti.has(f) && !altreViste.has(f));
   return esito;
 }
 
@@ -306,6 +385,7 @@ export function rapportoDisco(r) {
   for (const [bs, dove] of [[m.drive, "ancora su Google Drive"], [m.qui, "solo su questo dispositivo"], [m.altrove, "ne' qui ne' su Drive"], [m.nessuno, "senza file da nessuna parte"]])
     if (bs.length) righe.push(`Mancano dal disco, ${dove} (${bs.length}):`, ...titoli(bs));
   if (r.senzaScheda.length) righe.push(`File senza scheda (${r.senzaScheda.length}):`, ...file(r.senzaScheda));
+  if (r.altreEdizioni?.length) righe.push(`Altre edizioni di volumi che hanno gia' il loro file (${r.altreEdizioni.length}):`, ...r.altreEdizioni.map((x) => `${file([x.file])[0]} -> ${x.libro.title}`));
   if (r.daSegnare?.length) righe.push(`Sul disco, ma la scheda li crede persi (${r.daSegnare.length}):`, ...titoli(r.daSegnare));
   if (r.vuoti?.length) righe.push(`File vuoti, copie rimaste a meta' (${r.vuoti.length}):`, ...file(r.vuoti));
   if (r.doppioni.length) righe.push(`Copie in piu', stesso nome e stesso peso (${r.doppioni.length}):`, ...file(r.doppioni));

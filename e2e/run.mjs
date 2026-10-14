@@ -1191,6 +1191,10 @@ const SCENE = [
         { id: "k", title: "Kagurabachi 100 (2025) (Digital) (LuCaZ)", saga: "Kagurabachi", fileType: "cbz", tipo: "manga", fileTolto: true, addedAt: 2 },
         { id: "m", title: "Mort", saga: "Discworld", fileType: "epub", addedAt: 3 },
         { id: "p", title: "Perso", fileType: "epub", addedAt: 4, fileTolto: true },
+        // dal secondo rapporto del lettore: il resto del titolo sta nella
+        // cartella (senza accento: l'OPFS del Chromium delle prove non crea
+        // cartelle con le lettere accentate)
+        { id: "e", title: "La Saga di Elric Di Melniboné", saga: "Elric Di Melnibone", fileType: "epub", addedAt: 5, fileTolto: true },
       ];
       const prima = `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});
         window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });`;
@@ -1211,6 +1215,9 @@ const SCENE = [
         await metti("book-companion/Manga/Kagurabachi 100 (2025) (Digital) (LuCaZ).cbz", 1000);
         await metti("book-companion/Libri/Discworld/Mort.epub", 500);
         await metti("book-companion/Fumetti/Sconosciuto.cbz", 50);
+        await metti("book-companion/Libri/Elric Di Melnibone/Elric. La saga (Michael Moorcock).epub", 300);
+        // un'altra edizione di Mort: non e' «senza scheda»
+        await metti("book-companion/Libri/Discworld/Mort - Terry Pratchett.epub", 600);
         // un fumetto vero che nessuna scheda conosce: si aggiunge dal disco
         const w = await (await (await (await r.getDirectoryHandle("book-companion")).getDirectoryHandle("Fumetti", { create: true })).getFileHandle("Locke & Key v01 - Welcome to Lovecraft (2008).cbz", { create: true })).createWritable();
         await w.write(new Uint8Array(cbz));
@@ -1218,10 +1225,11 @@ const SCENE = [
       }, [...cbzVero]);
       await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
       await d.p.getByRole("button", { name: "🔍 Controlla il disco" }).click();
-      await finche(() => d.p.getByText(/Sul disco ci sono 3 volumi della biblioteca/).count(), 10000, "il rapporto del disco non si vede");
+      await finche(() => d.p.getByText(/Sul disco ci sono 4 volumi della biblioteca/).count(), 10000, "il rapporto del disco non si vede");
       const testo = await d.p.locator("body").innerText();
-      for (const atteso of ["2 non stanno nella cartella della loro saga", "Manga / JoJo's_Bizarre_Adventure / Parte 7 → Manga / JoJo's Bizarre Adventure / Parte 7", "Manga → Manga / Kagurabachi", "senza il file da nessuna parte: Perso", "Fumetti / Sconosciuto.cbz"])
+      for (const atteso of ["2 non stanno nella cartella della loro saga", "Manga / JoJo's_Bizarre_Adventure / Parte 7 → Manga / JoJo's Bizarre Adventure / Parte 7", "Manga → Manga / Kagurabachi", "senza il file da nessuna parte: Perso", "Fumetti / Sconosciuto.cbz", "Un file è un'altra edizione di volumi che hanno già il loro file (restano dove sono): Libri / Discworld / Mort - Terry Pratchett.epub → Mort"])
         if (!testo.includes(atteso)) throw new Error(`nel rapporto manca «${atteso}»`);
+      if (/Elric\. La saga/.test(testo)) throw new Error("il file di Elric resta senza scheda");
       // Mort è sul disco ma la scheda non lo sapeva: si segna
       await d.p.getByRole("button", { name: "📦 Segna 1 come sul disco" }).click();
       await finche(async () => (await libriDi(d.p)).find((b) => b.id === "m")?.fileTolto === true, 5000, "Mort non è segnato come sul disco");
@@ -1244,7 +1252,7 @@ const SCENE = [
         await giu(await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD"), "");
         return out.sort().join(" ");
       });
-      const atteso = `book-companion/Fumetti/Locke & Key v01 - Welcome to Lovecraft (2008).cbz:${cbzVero.length} book-companion/Fumetti/Sconosciuto.cbz:50 book-companion/Libri/Discworld/Mort.epub:500 book-companion/Manga/JoJo's Bizarre Adventure/Parte 7/Volume 20 - Love Train.cbz:7000 book-companion/Manga/Kagurabachi 100 (2025) (Digital) (LuCaZ).cbz:1000`;
+      const atteso = `book-companion/Fumetti/Locke & Key v01 - Welcome to Lovecraft (2008).cbz:${cbzVero.length} book-companion/Fumetti/Sconosciuto.cbz:50 book-companion/Libri/Discworld/Mort - Terry Pratchett.epub:600 book-companion/Libri/Discworld/Mort.epub:500 book-companion/Libri/Elric Di Melnibone/Elric. La saga (Michael Moorcock).epub:300 book-companion/Manga/JoJo's Bizarre Adventure/Parte 7/Volume 20 - Love Train.cbz:7000 book-companion/Manga/Kagurabachi 100 (2025) (Digital) (LuCaZ).cbz:1000`;
       if (sulDisco !== atteso) throw new Error(`sul disco: ${sulDisco}`);
       // il fumetto che nessuna scheda conosce entra in biblioteca dal disco:
       // la scheda sola, già sul disco, niente byte nel browser
@@ -1258,6 +1266,7 @@ const SCENE = [
         return await new Promise((ok) => { const g = db.transaction("files").objectStore("files").get(id); g.onsuccess = () => ok(!!g.result); g.onerror = () => ok(false); });
       }, locke.id);
       if (byteQui) throw new Error("i byte del fumetto sono entrati nel browser");
+      if ((await libriDi(d.p)).some((b) => /Terry Pratchett/.test(b.title))) throw new Error("l'altra edizione di Mort è entrata come doppione");
       return { guasti: d.guasti, nota: `${frase.slice(0, 50)}… · JoJo nella sua saga, Kagurabachi tolto e fermo, Mort fermo` };
     },
   },
