@@ -101,6 +101,8 @@ export default async (t) => {
   t.eq("da solo non si numera", fraseImport({ fatti: 0, totale: 1, caricamento: { presi: 0, totale: 2 * MB } }), "Carico su Google Drive: 0 di 2 MB");
   t.eq("senza niente in mano", fraseImport(), "Sto rilegando i tomi…");
   t.eq("…prima di cominciare", fraseLavoro({ i: 0, totale: 2 }), "🔁 CBR in CBZ: 1 di 2");
+  // il giro del disco si dice suo (segnalato: «perché i fermo qui non corrispondono?»)
+  t.eq("…e quello del disco si dice", fraseLavoro({ i: 2, totale: 9, da: "disco" }), "🔁 CBR in CBZ sul disco: 3 di 9");
 
   // ---- cosa fare, dallo stato dei file ------------------------------------------------
   const piano = (x) => JSON.stringify(pianoConversione(x));

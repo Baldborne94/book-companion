@@ -1104,9 +1104,14 @@ const SCENE = [
       const libri = [
         { id: "sp", title: nomeSpawn, saga: "Spawn Origins Collection", sagaOrder: 29, fileType: "cbr", tipo: "fumetti", fileTolto: true, addedAt: 1 },
         { id: "lk", title: nomeLocke, saga: "Locke & Key", sagaOrder: 1, fileType: "cbz", tipo: "fumetti", fileTolto: true, addedAt: 2 },
+        // senza copertina e senza file: «Ritrova» ne conta tre, il disco due
+        { id: "via", title: "Un fumetto perso", fileType: "cbz", tipo: "fumetti", fileTolto: true, addedAt: 3 },
       ];
+      // il disco si fa lento a comando, per vedere i conti a giro in corso
       const prima = `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});
-        window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });`;
+        window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
+        const getFileVero = FileSystemFileHandle.prototype.getFile;
+        FileSystemFileHandle.prototype.getFile = async function () { if (window.__lento) await new Promise((ok) => setTimeout(ok, 1500)); return getFileVero.call(this); };`;
       const d = await dispositivo(browser, { prima });
       await d.p.goto(`${URL_APP}?apri=libreria`);
       const cbr = rar4([["pagina 01.png", png(60, 90, [200, 30, 30])], ["pagina 02.png", png(60, 90, [30, 200, 30])]]);
@@ -1123,11 +1128,22 @@ const SCENE = [
             await w.close();
           }
         },
-        [[[`book-companion/Fumetti/Spawn Origins Collection/${nomeSpawn}.cbr`, [...cbr]], [`book-companion/Fumetti/Locke & Key/${nomeLocke}.cbz`, [...cbz]]]]
+        // e la cartella «CBR convertiti» di quel giorno, con un CBR che il suo CBZ ce l'ha
+        [[[`book-companion/Fumetti/Spawn Origins Collection/${nomeSpawn}.cbr`, [...cbr]], [`book-companion/Fumetti/Locke & Key/${nomeLocke}.cbz`, [...cbz]], ["book-companion/CBR convertiti/Fumetti/Spawn Origins Collection/Spawn Origins Collection v28.cbr", [...cbr]], ["book-companion/Fumetti/Spawn Origins Collection/Spawn Origins Collection v28.cbz", [...cbz]]]]
       );
       await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
       await d.p.getByRole("button", { name: "🔍 Controlla il disco" }).click();
+      // ogni giro ha il suo conto sul suo tasto (segnalato: «perché i fermo
+      // qui non corrispondono?»)
+      // la cartella a parte di quel giorno si svuota (segnalato: «perché vedo
+      // questa cartella in più? ogni saga ha il suo posto dove stare»)
+      await d.p.getByRole("button", { name: /🗑 Svuota «CBR convertiti»: un CBR già CBZ/ }).click();
+      await finche(() => testoAvviso(d.p, /Un CBR tolto da «CBR convertiti», e la cartella non c'è più/), 5000, "la cartella a parte non si svuota");
+      await d.p.evaluate(() => (window.__lento = true));
       await d.p.getByRole("button", { name: "🖼 2 copertine dal disco" }).click();
+      await finche(() => d.p.getByRole("button", { name: "Fermo qui (1 di 2)" }).count(), 5000, "il giro del disco non dice il suo conto");
+      if (!(await d.p.getByRole("button", { name: "🖼 Ritrova 3 copertine" }).count())) throw new Error("«Ritrova» ha preso il conto del disco");
+      await d.p.evaluate(() => (window.__lento = false));
       const copertine = () =>
         d.p.evaluate(
           () =>
@@ -1139,8 +1155,12 @@ const SCENE = [
               };
             })
         );
-      await finche(async () => (await copertine()) === "lk,sp", 15000, "le copertine dal disco non sono arrivate");
+      await finche(async () => (await copertine()) === "lk,sp", 20000, "le copertine dal disco non sono arrivate");
+      await d.p.evaluate(() => (window.__lento = true));
       await d.p.getByRole("button", { name: "🔁 Converti in CBZ il CBR del disco" }).click();
+      await finche(() => d.p.getByText("🔁 CBR in CBZ sul disco: 1 di 1").count(), 5000, "la barra non dice il giro del disco");
+      if (await d.p.getByText(/Fermo qui/).count()) throw new Error("un altro tasto ha preso il conto del disco");
+      await d.p.evaluate(() => (window.__lento = false));
       const frase = await finche(() => testoAvviso(d.p, /Un CBR è diventato CBZ/), 30000, "la conversione sul disco non si dice");
       const sulDisco = await d.p.evaluate(async () => {
         const out = [];
@@ -1153,9 +1173,9 @@ const SCENE = [
         await giu(await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD"), "");
         return out.sort();
       });
-      for (const f of [`book-companion/Fumetti/Spawn Origins Collection/${nomeSpawn}.cbz:true`, `book-companion/CBR convertiti/Fumetti/Spawn Origins Collection/${nomeSpawn}.cbr:true`, `book-companion/Fumetti/Locke & Key/${nomeLocke}.cbz:true`])
-        if (!sulDisco.includes(f)) throw new Error(`sul disco manca ${f}: ${sulDisco.join(" | ")}`);
-      if (sulDisco.length !== 3) throw new Error(`sul disco: ${sulDisco.join(" | ")}`);
+      // il CBZ nella cartella della saga, il CBR andato, nessuna cartella a parte
+      const attesi = [`book-companion/Fumetti/Locke & Key/${nomeLocke}.cbz:true`, "book-companion/Fumetti/Spawn Origins Collection/Spawn Origins Collection v28.cbz:true", `book-companion/Fumetti/Spawn Origins Collection/${nomeSpawn}.cbz:true`];
+      if (sulDisco.join(" | ") !== attesi.join(" | ")) throw new Error(`sul disco: ${sulDisco.join(" | ")}`);
       await finche(async () => (await libriDi(d.p)).find((b) => b.id === "sp")?.fileType === "cbz", 5000, "la scheda è ancora CBR");
       if (!(await libriDi(d.p)).find((b) => b.id === "sp").fileTolto) throw new Error("la scheda non sta più sul disco");
       return { guasti: d.guasti, nota: `2 copertine dal disco · ${frase.slice(0, 70)}…` };

@@ -1596,7 +1596,10 @@ export default function Library({
     filoCopertine.current = mio;
     const mancanti = voci.map((v) => v.libro);
     const handle = new Map(voci.map((v) => [v.libro.id, v.file.handle]));
-    setCopertinando({ i: 0, totale: mancanti.length, titolo: mancanti[0].title });
+    // `da: "disco"`: il conto di questo giro sta sul suo tasto, nel pannello
+    // del disco, non su «Ritrova N copertine» (segnalato: «perché i fermo
+    // qui non corrispondono?»)
+    setCopertinando({ i: 0, totale: mancanti.length, titolo: mancanti[0].title, da: "disco" });
     const { ritrovaCopertine, resocontoCopertine, copertinaOriginale } = await import("../lib/copertina.js");
     const esito = await ritrovaCopertine(mancanti, {
       leggiByte: async (id) => (handle.has(id) ? handle.get(id).getFile() : null),
@@ -1604,7 +1607,7 @@ export default function Library({
       posa: (id, blob) => putCover(id, blob),
       segnaGuardato: (id) => putAux(`copertina_${id}`, 1),
       vivo: () => filoCopertine.current === mio,
-      onProgress: (p) => filoCopertine.current === mio && setCopertinando(p),
+      onProgress: (p) => filoCopertine.current === mio && setCopertinando({ ...p, da: "disco" }),
     });
     if (filoCopertine.current !== mio) return;
     filoCopertine.current = null;
@@ -1968,7 +1971,7 @@ export default function Library({
     setDisco({ guardo: true });
     try {
       const { RADICE } = await import("../lib/driveCore.js");
-      const { elencaDisco, controllaDisco, lavoriDalDisco } = await import("../lib/disco.js");
+      const { elencaDisco, controllaDisco, lavoriDalDisco, cbrNeiConvertiti } = await import("../lib/disco.js");
       const casa = String(scelta.name || "").trim().toLowerCase() === RADICE ? scelta : await scelta.getDirectoryHandle(RADICE).catch(() => null);
       if (!casa) {
         setDisco(null);
@@ -1984,7 +1987,8 @@ export default function Library({
         leggendo: (id) => getStatus(id) === "reading",
       });
       const senza = new Set(senzaCopertina(booksRef.current, conCopertina || new Set(), copGuardate).map((b) => b.id));
-      setDisco({ rapporto, casa, tolti: new Set(), lavori: lavoriDalDisco(rapporto, { haCopertina: (id) => !senza.has(id) }) });
+      const convertiti = await cbrNeiConvertiti(casa, file).catch(() => null);
+      setDisco({ rapporto, casa, tolti: new Set(), lavori: lavoriDalDisco(rapporto, { haCopertina: (id) => !senza.has(id) }), convertiti });
     } catch (err) {
       setDisco(null);
       notify(err?.message || "Il disco non ha risposto");
@@ -3123,6 +3127,7 @@ export default function Library({
             {mancaLaCopertina.length > 0 && (
               <button
                 onClick={copertinando ? () => { filoCopertine.current = null; setCopertinando(null); } : ritrovaLeCopertine}
+                disabled={copertinando?.da === "disco"}
                 style={{
                   padding: "7px 16px",
                   borderRadius: R.piccolo,
@@ -3131,7 +3136,7 @@ export default function Library({
                   fontSize: F.nota,
                 }}
               >
-                {copertinando
+                {copertinando && !copertinando.da
                   ? `Fermo qui (${copertinando.i + 1} di ${copertinando.totale})`
                   : `🖼 Ritrova ${mancaLaCopertina.length === 1 ? "una copertina" : `${mancaLaCopertina.length} copertine`}`}
               </button>
@@ -3179,9 +3184,12 @@ export default function Library({
                 discesa ciascuno, una volta sola. Col numero sopra, perche'
                 e' un giro lungo; fermarlo lascia convertito quel che e'
                 gia' convertito. */}
-            {(cbrDaFare.length > 0 || lavoroCbr) && (
+            {/* il giro dei CBR del disco (`da: "disco"`) ha il suo conto nella
+                barra in basso: qui non si scrive il suo «Fermo qui» */}
+            {(cbrDaFare.length > 0 || (lavoroCbr && !lavoroCbr.da)) && (
               <button
-                onClick={lavoroCbr ? onFermaLavoro : onConvertiTutti}
+                onClick={lavoroCbr ? (lavoroCbr.da ? undefined : onFermaLavoro) : onConvertiTutti}
+                disabled={!!lavoroCbr?.da}
                 style={{
                   padding: "7px 16px",
                   borderRadius: R.piccolo,
@@ -3191,7 +3199,7 @@ export default function Library({
                   fontVariantNumeric: "tabular-nums",
                 }}
               >
-                {lavoroCbr
+                {lavoroCbr && !lavoroCbr.da
                   ? `Fermo qui (${lavoroCbr.i + 1} di ${lavoroCbr.totale}) · ${fraseDelPasso(lavoroCbr.passo)}`
                   : `🔁 Converti ${cbrDaFare.length === 1 ? "un CBR" : `${cbrDaFare.length} CBR`} in CBZ`}
               </button>
@@ -3347,11 +3355,13 @@ export default function Library({
                         (`lavoriDalDisco`) */}
                     {disco.lavori?.copertine.length > 0 && (
                       <button
-                        onClick={() => copertineDalDisco(disco.lavori.copertine)}
-                        disabled={!!copertinando}
-                        style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                        onClick={copertinando?.da === "disco" ? () => { filoCopertine.current = null; setCopertinando(null); } : () => copertineDalDisco(disco.lavori.copertine)}
+                        disabled={!!copertinando && copertinando.da !== "disco"}
+                        style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota, fontVariantNumeric: "tabular-nums" }}
                       >
-                        {`🖼 ${disco.lavori.copertine.length === 1 ? "La copertina" : `${disco.lavori.copertine.length} copertine`} dal disco`}
+                        {copertinando?.da === "disco"
+                          ? `Fermo qui (${copertinando.i + 1} di ${copertinando.totale})`
+                          : `🖼 ${disco.lavori.copertine.length === 1 ? "La copertina" : `${disco.lavori.copertine.length} copertine`} dal disco`}
                       </button>
                     )}
                     {onConvertiDalDisco && disco.lavori?.cbr.length > 0 && (
@@ -3367,7 +3377,32 @@ export default function Library({
                         >
                           {`🔁 Converti in CBZ ${disco.lavori.cbr.length === 1 ? "il CBR" : `i ${disco.lavori.cbr.length} CBR`} del disco`}
                         </button>
-                        <span style={{ flexBasis: "100%", fontSize: F.piccolo }}>Il CBZ nasce accanto al CBR; il CBR non si cancella, va in «book-companion/CBR convertiti» e quella cartella la svuoti tu quando i CBZ si aprono.</span>
+                        <span style={{ flexBasis: "100%", fontSize: F.piccolo }}>Il CBZ va nella cartella della sua saga; il CBR si toglie solo quando il CBZ è scritto col peso giusto e si apre.</span>
+                      </span>
+                    )}
+                    {/* la cartella «CBR convertiti» di quel giorno: via i CBR
+                        il cui CBZ sta già sul disco (`cbrNeiConvertiti`) */}
+                    {disco.convertiti && (disco.convertiti.conCbz.length > 0 || disco.convertiti.senza.length > 0) && (
+                      <span style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                        {disco.convertiti.conCbz.length > 0 && (
+                          <button
+                            onClick={async () => {
+                              const { svuotaConvertiti } = await import("../lib/disco.js");
+                              const e = await svuotaConvertiti(disco.convertiti, disco.casa);
+                              setDisco((d) => ({ ...d, convertiti: null }));
+                              notify(`🗑 ${e.tolti === 1 ? "Un CBR tolto" : `${e.tolti} CBR tolti`} da «CBR convertiti»${e.restano ? `; ${e.restano === 1 ? "uno resta" : `${e.restano} restano`}: il loro CBZ non c'è` : ", e la cartella non c'è più"}`);
+                            }}
+                            style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                          >
+                            {`🗑 Svuota «CBR convertiti»: ${disco.convertiti.conCbz.length === 1 ? "un CBR" : `${disco.convertiti.conCbz.length} CBR`} già CBZ · ${fmtGoogle(disco.convertiti.byte)}`}
+                          </button>
+                        )}
+                        {disco.convertiti.senza.length > 0 && (
+                          <span style={{ flexBasis: "100%", fontSize: F.piccolo }}>
+                            {`In «CBR convertiti» ${disco.convertiti.senza.length === 1 ? "c'è un CBR" : `ci sono ${disco.convertiti.senza.length} CBR`} senza il suo CBZ sul disco: ${disco.convertiti.senza.length === 1 ? "resta" : "restano"}. `}
+                            <span style={{ color: C.text }}>{disco.convertiti.senza.slice(0, 6).map((f) => f.nome).join(" · ")}</span>
+                          </span>
+                        )}
                       </span>
                     )}
                     {r.daSpostare.length - disco.tolti.size > 0 && (
