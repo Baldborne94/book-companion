@@ -1,7 +1,7 @@
 // IL DISCO DEI LIBRI, CONTROLLATO E RIORDINATO (chiesto dal lettore: «ora su
 // E:\book-companion abbiamo tutti i volumi? mi hai sistemato anche dentro le
 // cartelle i file nel modo giusto per saga?»).
-import { casaDi, elencaDisco, controllaDisco, riordinaDisco, fraseRiordino, rapportoDisco, vociDalDisco, schedeDalDisco } from "../src/lib/disco.js";
+import { casaDi, elencaDisco, controllaDisco, riordinaDisco, fraseRiordino, rapportoDisco, vociDalDisco, schedeDalDisco, lavoriDalDisco, convertiSulDisco, fraseConvertitiDisco, CBR_CONVERTITI } from "../src/lib/disco.js";
 import { importaDaDrive } from "../src/lib/importBook.js";
 import { daSpostareSuHdd } from "../src/lib/driveCore.js";
 
@@ -309,4 +309,78 @@ export default async (t) => {
   // fermato
   const e6 = await riordinaDisco([{ libro: {}, file: f5, a: ["X"] }], { radice: r5, vivo: () => false });
   t.c("fermato prima: niente", e6.fermato && !e6.spostati);
+
+  // LE COPERTINE E I CBR DAL DISCO (segnalato: «mancano ancora copertine» e
+  // «ci sono file CBR che non mi fa mettere in CBZ» — i volumi spostati
+  // sull'HDD non sono ne' qui ne' su Drive). I nomi sono quelli del lettore.
+  const r7 = cartella("book-companion");
+  await metti(r7, "Fumetti/Spawn Origins Collection/Spawn Origins Collection v29 (2024) (digital) (Son of Ultron-Empire).cbr", 40);
+  await metti(r7, "Fumetti/Spawn Origins Collection/Spawn Origins Collection v30 (2025) (digital) (Son of Ultron-Empire).cbr", 50);
+  await metti(r7, "Fumetti/Spawn Origins Collection/Spawn Origins Collection v28 (2024) (digital) (DrVink-HD-DCP).cbz", 60);
+  await metti(r7, "Fumetti/Locke & Key/Locke & Key v01 - Welcome to Lovecraft (2008) (Digital) (Zone-Empire).cbr", 30);
+  const spw = (n, ext, extra = {}) => ({ id: `s${n}`, title: `Spawn Origins Collection v${n}`, saga: "Spawn Origins Collection", sagaOrder: n, fileType: ext, tipo: "fumetti", fileTolto: true, ...extra });
+  const libri7 = [spw(29, "cbr"), spw(30, "cbr"), spw(28, "cbz"), { id: "lk", title: "Locke & Key v01 - Welcome to Lovecraft (2008) (Digital) (Zone-Empire)", saga: "Locke & Key", fileType: "cbr", tipo: "fumetti" }];
+  const rap7 = controllaDisco(libri7, await elencaDisco(r7), { tipoDi: () => "fumetti" });
+  const l7 = lavoriDalDisco(rap7, { haCopertina: (id) => id === "s28" });
+  t.eq("copertine: chi non ce l'ha, col suo file", l7.copertine.map((v) => v.libro.id).sort().join(), "lk,s29,s30");
+  t.eq("CBR: solo le schede che stanno sul disco", l7.cbr.map((v) => v.libro.id).sort().join(), "s29,s30");
+  // e intanto, accanto al v30, un CBZ diverso con lo stesso nome
+  await metti(r7, "Fumetti/Spawn Origins Collection/Spawn Origins Collection v30 (2025) (digital) (Son of Ultron-Empire).cbz", 7);
+  const convertiti = [];
+  const e7 = await convertiSulDisco(l7.cbr, {
+    radice: r7,
+    converti: async (f) => {
+      convertiti.push(f.size);
+      return new Blob([new Uint8Array(f.size / 10)]);
+    },
+  });
+  const dopo7 = await tutto(r7);
+  t.eq("due convertiti", e7.convertiti.length, 2);
+  t.c("il CBZ accanto al CBR, col peso giusto", dopo7.includes("Fumetti/Spawn Origins Collection/Spawn Origins Collection v29 (2024) (digital) (Son of Ultron-Empire).cbz:4"));
+  t.c("un CBZ diverso con lo stesso nome non si copre", dopo7.includes("v30 (2025) (digital) (Son of Ultron-Empire).cbz:7") && dopo7.includes("v30 (2025) (digital) (Son of Ultron-Empire) (2).cbz:5"));
+  t.c("il CBR non si cancella: va nei convertiti, con le sue cartelle", dopo7.includes(`${CBR_CONVERTITI}/Fumetti/Spawn Origins Collection/Spawn Origins Collection v29 (2024) (digital) (Son of Ultron-Empire).cbr:40`));
+  t.c("e non resta accanto al CBZ", !(await voci(r7)).some((x) => x.startsWith("Fumetti/Spawn Origins Collection/Spawn Origins Collection v29 (2024) (digital) (Son of Ultron-Empire).cbr")));
+  t.c("il Locke & Key fuori dal disco non si tocca", dopo7.includes("Fumetti/Locke & Key/Locke & Key v01 - Welcome to Lovecraft (2008) (Digital) (Zone-Empire).cbr:30"));
+  t.c("la cartella dei convertiti non è biblioteca", !(await elencaDisco(r7)).some((f) => f.cartelle[0] === CBR_CONVERTITI));
+  t.c("la frase lo dice", /2 CBR sono diventati CBZ/.test(fraseConvertitiDisco(e7)));
+  // un CBZ con lo stesso nome e lo stesso peso e' una conversione gia' fatta
+  const r8 = cartella("book-companion");
+  await metti(r8, "Fumetti/X/X v01.cbr", 20);
+  await metti(r8, "Fumetti/X/X v01.cbz", 2);
+  const rap8 = controllaDisco([{ id: "x", title: "X v01", saga: "X", fileType: "cbr", fileTolto: true }], await elencaDisco(r8), { tipoDi: () => "fumetti" });
+  const e8 = await convertiSulDisco(lavoriDalDisco(rap8).cbr, { radice: r8, converti: async () => new Blob([new Uint8Array(2)]) });
+  t.c("la conversione già fatta non si rifà", e8.convertiti.length === 1 && !(await tutto(r8)).includes("(2).cbz"));
+  // un «.cbr» che dentro e' uno ZIP si copia col nome giusto, senza convertire
+  const r9 = cartella("book-companion");
+  await metti(r9, "Fumetti/Z/Z v01.cbr", 9);
+  const rap9 = controllaDisco([{ id: "z", title: "Z v01", saga: "Z", fileType: "cbr", fileTolto: true }], await elencaDisco(r9), { tipoDi: () => "fumetti" });
+  let chiamata = false;
+  await convertiSulDisco(lavoriDalDisco(rap9).cbr, { radice: r9, eZip: async () => true, converti: async () => (chiamata = true) });
+  t.c("uno ZIP non si converte", !chiamata && (await tutto(r9)).includes("Fumetti/Z/Z v01.cbz:9"));
+  // una conversione che fallisce e' di quel volume
+  const r10 = cartella("book-companion");
+  await metti(r10, "Fumetti/Alpha Saga/Alpha Saga v01.cbr", 9);
+  await metti(r10, "Fumetti/Alpha Saga/Alpha Saga v02.cbr", 9);
+  const rap10 = controllaDisco([{ id: "a1", title: "Alpha Saga v01", saga: "Alpha Saga", fileType: "cbr", fileTolto: true }, { id: "a2", title: "Alpha Saga v02", saga: "Alpha Saga", fileType: "cbr", fileTolto: true }], await elencaDisco(r10), { tipoDi: () => "fumetti" });
+  const e10 = await convertiSulDisco(lavoriDalDisco(rap10).cbr, { radice: r10, converti: async (f) => { if (f.size === 9 && !e10ok.length) { e10ok.push(1); throw new Error("rotto"); } return new Blob([new Uint8Array(1)]); } });
+  t.c("un intoppo è di quel volume, l'altro si converte", e10.mancati.length === 1 && e10.convertiti.length === 1);
+  t.c("e il CBR rotto resta dov'era", (await voci(r10)).filter((x) => x.startsWith("Fumetti/Alpha Saga/") && x.endsWith(".cbr:9")).length === 1);
+  const e11 = await convertiSulDisco(lavoriDalDisco(rap10).cbr, { radice: r10, vivo: () => false, converti: async () => new Blob([]) });
+  t.c("fermato prima: niente", e11.fermato && !e11.convertiti.length);
+  // fermato mentre convertiva: il CBZ non si scrive
+  let giri = 0;
+  const r12 = cartella("book-companion");
+  await metti(r12, "Fumetti/Beta Saga/Beta Saga v01.cbr", 9);
+  const rap12 = controllaDisco([{ id: "b1", title: "Beta Saga v01", saga: "Beta Saga", fileType: "cbr", fileTolto: true }], await elencaDisco(r12), { tipoDi: () => "fumetti" });
+  const e12 = await convertiSulDisco(lavoriDalDisco(rap12).cbr, { radice: r12, vivo: () => giri++ < 1, converti: async () => new Blob([new Uint8Array(3)]) });
+  t.c("fermato a conversione finita: niente scritto", e12.fermato && !(await voci(r12)).some((x) => x.endsWith(".cbz:3")));
+  // il CBZ scritto corto non resta, e il CBR nemmeno si sposta
+  const corto = { size: 10, stream: () => new Blob([new Uint8Array(1)]).stream() };
+  const e13 = await convertiSulDisco(lavoriDalDisco(rap12).cbr, { radice: r12, converti: async () => corto });
+  t.c("un CBZ col peso sbagliato si toglie", e13.mancati.length === 1 && !(await voci(r12)).some((x) => x.includes(".cbz")) && (await voci(r12)).includes("Fumetti/Beta Saga/Beta Saga v01.cbr:9"));
+  // il CBR che non si riesce a spostare resta accanto al suo CBZ, e si dice
+  await metti(r12, CBR_CONVERTITI, 1);
+  const e14 = await convertiSulDisco(lavoriDalDisco(rap12).cbr, { radice: r12, converti: async () => new Blob([new Uint8Array(3)]) });
+  t.c("il CBR rimasto si dice", e14.convertiti[0]?.cbrTenuto && /un CBR è rimasto accanto al suo CBZ/.test(fraseConvertitiDisco(e14)));
 };
+const e10ok = [];

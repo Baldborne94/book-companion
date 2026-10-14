@@ -1290,6 +1290,47 @@ export default function App() {
     filoLavoro.current = null;
   };
 
+  // I CBR CHE STANNO SOLO SUL DISCO (segnalato dal lettore: «ci sono file
+  // CBR che non mi fa mettere in CBZ»): non sono ne' qui ne' su Drive, e il
+  // giro di sopra non aveva niente da leggere. Si convertono sul disco
+  // (`convertiSulDisco`), sulla stessa riga del giro dei CBR: uno solo alla
+  // volta, si vede e si ferma da ogni sezione.
+  async function convertiDalDiscoQui(voci, radice) {
+    if (filoLavoro.current || !voci.length) return;
+    const mio = {};
+    filoLavoro.current = mio;
+    setLavoro({ i: 0, totale: voci.length, titolo: voci[0].libro.title, passo: null });
+    try {
+      const { convertiSulDisco, fraseConvertitiDisco } = await import("./lib/disco.js");
+      const { convertiInCbz } = await import("./lib/archivioFumetto.js");
+      const { formatoDaByte } = await import("./lib/fumetto.js");
+      const { copertinaOriginale } = await import("./lib/copertina.js");
+      const { improntaDi } = await import("./lib/importBook.js");
+      const { getCover, putCover } = await import("./lib/bookStore.js");
+      const esito = await convertiSulDisco(voci, {
+        radice,
+        eZip: async (f) => formatoDaByte(new Uint8Array(await f.slice(0, 8).arrayBuffer())) === "cbz",
+        converti: (f, onProgress) => convertiInCbz({ blob: f }, { onProgress }),
+        vivo: () => filoLavoro.current === mio,
+        onProgress: (p) => filoLavoro.current === mio && setLavoro(p),
+      });
+      for (const c of esito.convertiti) {
+        const impronta = await improntaDi(c.cbz).catch(() => undefined);
+        applicaConversione(c.libro.id, { fileType: "cbz", ...(impronta ? { impronta } : {}) });
+        if (!(await getCover(c.libro.id).catch(() => null))) {
+          const cover = await copertinaOriginale({ ...c.libro, fileType: "cbz" }, c.cbz).catch(() => null);
+          if (cover) await putCover(c.libro.id, cover).catch(() => {});
+        }
+      }
+      notify(fraseConvertitiDisco(esito));
+    } catch (e) {
+      notify(e?.message || "La conversione non è partita");
+    } finally {
+      if (filoLavoro.current === mio) filoLavoro.current = null;
+      setLavoro(null);
+    }
+  }
+
   // L'IMPORTAZIONE DA DRIVE VIVE QUI, come il giro dei CBR (segnalato dal
   // lettore: «stavo importando i miei fumetti di Walking Dead, ho navigato
   // un po' ed è sparito il caricamento»). Stava nella Libreria: uscendo
@@ -1957,6 +1998,7 @@ export default function App() {
             onSenzaSchedaSuHdd={spostaSenzaSchedaQui}
             onRiordina={riordinaQui}
             onImportaDalDisco={importaDalDiscoQui}
+            onConvertiDalDisco={convertiDalDiscoQui}
             daImportare={daImportare}
             onImportati={() => setDaImportare(null)}
             focusSaga={focusSaga}

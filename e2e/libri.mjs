@@ -35,7 +35,7 @@ function pngDa(larghezza, altezza, grezzo) {
     pezzo("IEND", Buffer.alloc(0)),
   ]);
 }
-function png(larghezza, altezza, [r, g, b]) {
+export function png(larghezza, altezza, [r, g, b]) {
   const riga = Buffer.alloc(1 + larghezza * 3);
   for (let x = 0; x < larghezza; x++) riga.set([r, g, b], 1 + x * 3);
   return pngDa(larghezza, altezza, Buffer.concat(Array.from({ length: altezza }, () => riga)));

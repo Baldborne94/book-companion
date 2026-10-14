@@ -14,7 +14,7 @@
 import { existsSync } from "node:fs";
 import { build, preview } from "vite";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
-import { fumetto, fumettoGrosso, fumettoLungo, epub, pdf, wav, FRASE, mondoDisco } from "./libri.mjs";
+import { fumetto, fumettoGrosso, fumettoLungo, epub, pdf, wav, FRASE, mondoDisco, png } from "./libri.mjs";
 import { avviaDrive, driveNelBrowser } from "./driveFinto.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
 
@@ -1091,6 +1091,74 @@ const SCENE = [
           .join();
       await finche(async () => (await fila()) === "h1:1:Hellboy Omnibus,h2:5:B.P.R.D. Omnibus,h4:9:Hellboy Omnibus,h3:11:Witchfinder Omnibus", 5000, "Hellboy non è in fila");
       return { guasti: d.guasti, nota: await fila() };
+    },
+  },
+  {
+    // segnalato dal lettore: «vedo che mancano ancora copertine» e «ci sono
+    // file CBR che non mi fa mettere in CBZ» — i volumi spostati sull'HDD non
+    // sono ne' qui ne' su Drive, e i due tasti non avevano niente da leggere
+    nome: "i fumetti che stanno solo sul disco: le copertine si leggono dal disco, e il CBR diventa CBZ lì",
+    async fai({ browser }) {
+      const nomeSpawn = "Spawn Origins Collection v29 (2024) (digital) (Son of Ultron-Empire)";
+      const nomeLocke = "Locke & Key v01 - Welcome to Lovecraft (2008) (Digital) (Zone-Empire)";
+      const libri = [
+        { id: "sp", title: nomeSpawn, saga: "Spawn Origins Collection", sagaOrder: 29, fileType: "cbr", tipo: "fumetti", fileTolto: true, addedAt: 1 },
+        { id: "lk", title: nomeLocke, saga: "Locke & Key", sagaOrder: 1, fileType: "cbz", tipo: "fumetti", fileTolto: true, addedAt: 2 },
+      ];
+      const prima = `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});
+        window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });`;
+      const d = await dispositivo(browser, { prima });
+      await d.p.goto(`${URL_APP}?apri=libreria`);
+      const cbr = rar4([["pagina 01.png", png(60, 90, [200, 30, 30])], ["pagina 02.png", png(60, 90, [30, 200, 30])]]);
+      const cbz = await fumetto();
+      await d.p.evaluate(
+        async ([voci]) => {
+          const r = await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
+          for (const [via, byte] of voci) {
+            const pezzi = via.split("/");
+            let c = r;
+            for (const n of pezzi.slice(0, -1)) c = await c.getDirectoryHandle(n, { create: true });
+            const w = await (await c.getFileHandle(pezzi.at(-1), { create: true })).createWritable();
+            await w.write(new Uint8Array(byte));
+            await w.close();
+          }
+        },
+        [[[`book-companion/Fumetti/Spawn Origins Collection/${nomeSpawn}.cbr`, [...cbr]], [`book-companion/Fumetti/Locke & Key/${nomeLocke}.cbz`, [...cbz]]]]
+      );
+      await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
+      await d.p.getByRole("button", { name: "🔍 Controlla il disco" }).click();
+      await d.p.getByRole("button", { name: "🖼 2 copertine dal disco" }).click();
+      const copertine = () =>
+        d.p.evaluate(
+          () =>
+            new Promise((ok) => {
+              const q = indexedDB.open("bc_library");
+              q.onsuccess = () => {
+                const t = q.result.transaction("covers").objectStore("covers").getAllKeys();
+                t.onsuccess = () => ok(t.result.sort().join());
+              };
+            })
+        );
+      await finche(async () => (await copertine()) === "lk,sp", 15000, "le copertine dal disco non sono arrivate");
+      await d.p.getByRole("button", { name: "🔁 Converti in CBZ il CBR del disco" }).click();
+      const frase = await finche(() => testoAvviso(d.p, /Un CBR è diventato CBZ/), 30000, "la conversione sul disco non si dice");
+      const sulDisco = await d.p.evaluate(async () => {
+        const out = [];
+        const giu = async (dir, via) => {
+          for await (const [n, h] of dir.entries()) {
+            if (h.kind === "directory") await giu(h, `${via}${n}/`);
+            else out.push(`${via}${n}:${(await h.getFile()).size > 0}`);
+          }
+        };
+        await giu(await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD"), "");
+        return out.sort();
+      });
+      for (const f of [`book-companion/Fumetti/Spawn Origins Collection/${nomeSpawn}.cbz:true`, `book-companion/CBR convertiti/Fumetti/Spawn Origins Collection/${nomeSpawn}.cbr:true`, `book-companion/Fumetti/Locke & Key/${nomeLocke}.cbz:true`])
+        if (!sulDisco.includes(f)) throw new Error(`sul disco manca ${f}: ${sulDisco.join(" | ")}`);
+      if (sulDisco.length !== 3) throw new Error(`sul disco: ${sulDisco.join(" | ")}`);
+      await finche(async () => (await libriDi(d.p)).find((b) => b.id === "sp")?.fileType === "cbz", 5000, "la scheda è ancora CBR");
+      if (!(await libriDi(d.p)).find((b) => b.id === "sp").fileTolto) throw new Error("la scheda non sta più sul disco");
+      return { guasti: d.guasti, nota: `2 copertine dal disco · ${frase.slice(0, 70)}…` };
     },
   },
   {
