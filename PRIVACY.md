@@ -51,8 +51,8 @@ Se crei un account e accendi la sincronizzazione, salgono su un database
 da Row Level Security — questi dati:
 
 - **le copertine dei libri**, in un bucket privato (i file dei libri no:
-  stanno su Google Drive, vedi sotto — nel bucket resta solo quel che Drive
-  non ha ancora, il tempo di portarcelo);
+  stanno sui tuoi dispositivi e sul tuo disco; nel bucket resta solo quel
+  che c'era da prima);
 - i metadati della biblioteca e i segni di lettura elencati al punto 1;
 - le preferenze, le raccolte musicali, i **link YouTube** salvati e il
   glossario che hai scritto;
@@ -66,52 +66,15 @@ suoi, e nel cloud viaggiano solo i link.
 Puoi non accenderla mai: l'app funziona identica senza. Se la spegni e
 cancelli l'account, quei dati vanno via con lui.
 
-### 2.1 bis I file dei libri su Google Drive
+### 2.1 bis «Entra con Google»
 
-Se colleghi Google Drive, l'app chiede a Google il permesso di **leggere e
-scrivere nel tuo Drive** (è il permesso intero, perché i libri che hai
-caricato a mano stanno in cartelle tue che l'app deve poter vedere). La
-chiave di accesso la consegna Google a questo browser, dura un'ora e resta
-sul dispositivo.
-
-Se entri con Google («Entra con Google»), Google consegna anche un permesso
-a lungo termine, che serve ad avere una chiave nuova senza richiedertelo
-ogni ora. Il permesso si salva nel **tuo** Supabase (tabella
-`google_refresh`), in una riga che le regole del database lasciano leggere
-solo a te. Quando la chiave sta per scadere, l'app chiede una chiave nuova
-all'**unico pezzo di server dell'app**: una funzione su Vercel
-(`api/google-token`, nel progetto dove l'app è pubblicata). La funzione
-controlla chi sei con la tua sessione di Supabase, legge il tuo permesso con
-quella stessa sessione, lo presenta a Google (`oauth2.googleapis.com`)
-insieme al segreto del client, che sta solo nelle impostazioni di Vercel, e
-ti restituisce la chiave nuova. Non salva niente e non vede altro. Uscendo
-dall'app, quel dispositivo smette di chiedere chiavi; il permesso resta nel
-tuo Supabase per gli altri dispositivi finché non lo ritiri da
-myaccount.google.com.
-
-Con quella chiave l'app parla **solo con Google** (`accounts.google.com`,
-`www.googleapis.com`) e fa queste cose: elenca i file del tuo Drive per
-riconoscere i libri (nome, misura, impronta dei byte), scrive su quei file
-un segno privato che dice a quale libro corrispondono, carica i libri
-nuovi nelle cartelle Libri, Fumetti e Manga, scarica un libro quando lo
-apri, e chiede quanto spazio usi e hai libero. Lo stesso vale per le
-melodie che carichi come file: l'app elenca i file audio del tuo Drive per
-riconoscerle (nome e misura), le carica nella cartella Musica e le scarica
-su un altro dispositivo solo quando le suoni. Con «Da Google Drive», in
-Libreria, l'app ti mostra i libri del tuo Drive che non sono ancora sullo
-scaffale e, per quelli che scegli, ne legge solo un pezzo — i metadati
-(titolo, autore, retro, collana) e la copertina — per crearne la scheda,
-senza scaricare il file intero. Con «Scegli su Drive» si apre invece la
-finestra di Drive di Google stessa dentro l'app (il *Picker*, caricato da
-`apis.google.com` e mostrato da `docs.google.com`), che ti fa sfogliare la
-cartella e toccare i file: vuole una chiave API di Google, che resta sul
-dispositivo, e all'app arrivano solo i file che hai toccato. Non legge il contenuto di nessun altro file
-e non cancella niente: eliminando un libro o una melodia dall'app, il suo
-file su Drive resta dov'è (il libro eliminato perde solo il segno privato,
-così puoi ritrovarlo con «Da Google Drive»).
-
-Puoi scollegarlo quando vuoi dal pannello della nuvola, e ritirare il
-permesso anche da myaccount.google.com → Sicurezza → App di terze parti.
+Se entri con Google, Google conferma a Supabase chi sei e l'app entra nella
+tua biblioteca: l'app non chiede a Google nessun permesso sui tuoi file.
+Google Drive non è più usato dall'app; quel che ne restava (le chiavi sul
+dispositivo, l'elenco dei file e, nel tuo Supabase, la riga col permesso a
+lungo termine di Google) l'app lo cancella da sola. L'accesso a Drive dato
+allora si ritira da myaccount.google.com → Sicurezza → App e servizi di
+terze parti.
 
 ### 2.2 L'Oracolo (Anthropic)
 

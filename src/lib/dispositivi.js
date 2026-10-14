@@ -53,11 +53,11 @@ export function altroveDa(lista, dispositivo) {
   return out;
 }
 
-// Aprire qui un libro che sta solo sull'altro dispositivo: niente byte qui,
-// niente copia su Drive. Il reader finirebbe sulla schermata del guasto, e
+// Aprire qui un libro che sta solo sull'altro dispositivo: niente byte qui.
+// Il reader finirebbe sulla schermata del guasto, e
 // il guasto non c'e': il libro e' sul tablet. Torna il nome di dove sta.
-export function soloAltrove(id, { qui, suDrive = false, altrove } = {}) {
-  if (!qui || qui.has(id) || suDrive) return null;
+export function soloAltrove(id, { qui, altrove } = {}) {
+  if (!qui || qui.has(id)) return null;
   return altrove?.has(id) ? sulDispositivo(altrove.get(id)) : null;
 }
 

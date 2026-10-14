@@ -1,11 +1,11 @@
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { getProgress, getStatus, setStatus, combacia, vistaValida, scriviVista, timbraScheda, getTombstones, getUpdatedAt, scaffaleVuoto, TIPI, delTipo, tipiDi, tipoDi, tipiPresenti } from "../lib/library.js";
+import { getProgress, getStatus, setStatus, combacia, vistaValida, scriviVista, timbraScheda, scaffaleVuoto, TIPI, delTipo, tipiDi, tipoDi, tipiPresenti } from "../lib/library.js";
 import { disponi, aEtichette, criterioVoto, criterioStato, altezzaStimata, ALTEZZA_SCHEDA, COLONNA, SPAZIO_COLONNE, SPAZIO_RIGHE, inRaccolte, copertinaDi, contoRaccolta, nellOrdineScelto } from "../lib/ripiani.js";
 import { leggiPreferite, scriviPreferite, preferiteVive, segnaPreferita, puoEssereFavorita, ePreferito } from "../lib/raccoltePreferite.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { ascoltaCopertine } from "../lib/miniature.js";
-import { storageEstimate, spazioQui, misureFile, togliByteQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
+import { storageEstimate, spazioQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux } from "../lib/bookStore.js";
 import { importFiles, resoconto, impronteDaFare, tipiDaScegliere } from "../lib/importBook.js";
 import { chiaveCollana } from "../lib/collana.js";
 import { preparaArchivio, segnaArchivio, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
@@ -14,20 +14,17 @@ import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
 import { frasiDiario } from "../lib/archivioDiario.js";
 import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
-import { portaACasa, cloudUsage, localFileIds, getLastSync } from "../lib/sync.js";
-import { isSyncConfigured } from "../lib/supabase.js";
+import { portaACasa, cloudUsage, localFileIds } from "../lib/sync.js";
 import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso, schedeCambiate
 } from "../lib/syncCore.js";
-import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, DriveScollegato, scegliSuDrive, dettagliFile, ultimoArchivioSuDrive, ultimoArchivioDaDrive, fraseScollegato, permessoDriveMancante, cbrDaButtare, cestinaSuDrive, senzaSchedaDaDrive } from "../lib/drive.js";
-import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, sceltaDalPicker, libriSotto, idRadice, giaSulloScaffale, fraseGia } from "../lib/driveCore.js";
-import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
-import { hddPossibile, percheNoHdd, divisiPerHdd, perSezioni, SEZIONI_HDD, perCartella } from "../lib/hdd.js";
+import { fmtGoogle } from "../lib/bytes.js";
+import { hddPossibile } from "../lib/hdd.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { fraseDelPasso, fraseImport } from "../lib/convertiCbr.js";
 import { senzaCopertina } from "../lib/copertina.js";
 import { spartisciQui } from "../lib/spazio.js";
-import { BarraCloud, BarraDrive, PesoQui } from "./BarraCloud.jsx";
+import { BarraCloud, PesoQui } from "./BarraCloud.jsx";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
 import { famigliaDi } from "../data/generi.js";
 import { riconosci, capitoloDi } from "../lib/sagaBooks.js";
@@ -443,7 +440,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   );
 }
 
-function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, onHdd }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -593,7 +590,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
             </button>
           )}
         </div>
-        <TuttaLaRaccolta r={dentro} voti={voti} onVoto={onVoto} onTutti={onTutti} onHdd={onHdd} />
+        <TuttaLaRaccolta r={dentro} voti={voti} onVoto={onVoto} onTutti={onTutti} />
         {mostra(dentro)}
       </>
     );
@@ -709,7 +706,7 @@ function Raccolta({ r, amata = false, voto = null, onApri, coverV, conCopertina 
 // saga (o la media dei volumi votati, detta come tale) e tutti i volumi
 // letti o da leggere in un tocco, con una conferma: venti volumi cambiati
 // per sbaglio non si rimettono a posto uno per uno
-function TuttaLaRaccolta({ r, voti, onVoto, onTutti, onHdd }) {
+function TuttaLaRaccolta({ r, voti, onVoto, onTutti }) {
   const [chiedo, setChiedo] = useState(null);
   const votabile = puoEssereVotata(r.id);
   const mio = votoMio(voti, r.id);
@@ -793,74 +790,6 @@ function TuttaLaRaccolta({ r, voti, onVoto, onTutti, onHdd }) {
           </>
         )}
       </div>
-      <SpostaSuHdd r={r} onHdd={onHdd} tasto={tasto} />
-    </div>
-  );
-}
-
-// SPOSTARE SULL'HDD (`spostaSuHdd` in App): i volumi della raccolta che
-// stanno su Drive. La cartella del disco si sceglie DENTRO il tocco — il
-// browser la chiede solo li' — e il resto e' un lavoro lungo di App.
-function SpostaSuHdd({ r, onHdd, tasto, etichetta = "📦 Sposta sull'HDD", spiega = true }) {
-  const [chiedo, setChiedo] = useState(false);
-  if (!onHdd || !driveAcceso()) return null;
-  const mappa = mappaDrive();
-  const { tutti: lassu, inLettura: restano, via } = divisiPerHdd(r.libri, mappa, getStatus);
-  // SOLO QUELLI CHE STAI LEGGENDO (chiesto dal lettore prima di lasciare
-  // Drive: «mi salvi tu in E nei posti giusti i file?»): da soli non
-  // facevano un tasto, e sul disco restavano le copie a meta' da 0 byte.
-  // Si copiano, e restano anche su Drive, da leggere sul tablet.
-  const soloLettura = !via.length;
-  const daCopiare = soloLettura ? restano : via;
-  if (!daCopiare.length) return null;
-  const riga = { flexBasis: "100%", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: F.nota, color: C.muted, lineHeight: 1.45 };
-  if (!hddPossibile()) {
-    const perche = spiega && percheNoHdd();
-    return perche ? <div style={riga}>📦 {perche}</div> : null;
-  }
-  const peso = daCopiare.reduce((n, b) => n + (Number(mappa[b.id]?.byte) || 0), 0);
-  if (!chiedo)
-    return (
-      <button onClick={() => setChiedo(true)} style={tasto(false)}>
-        {soloLettura
-          ? `📖 Copia sul disco ${restano.length === 1 ? "quello che stai leggendo" : `i ${restano.length} che stai leggendo`} · ${fmtGoogle(peso)}`
-          : etichetta === true
-            ? `📦 ${via.length} ${r.nome[via.length === 1 ? 0 : 1]} sull'HDD · ${fmtGoogle(peso)}`
-            : etichetta}
-      </button>
-    );
-  async function scegli() {
-    let radice = null;
-    try {
-      radice = await window.showDirectoryPicker({ id: "bc-hdd", mode: "readwrite" });
-    } catch {
-      return;
-    }
-    setChiedo(false);
-    onHdd(lassu, radice);
-  }
-  return (
-    <div style={riga}>
-      <span style={{ flexBasis: "100%", color: C.text }}>
-        {soloLettura
-          ? `Copio sul disco ${restano.length === 1 ? "il volume che stai leggendo" : `i ${restano.length} volumi che stai leggendo`} (${fmtGoogle(peso)}), ognuno nella cartella della sua saga dentro «book-companion»; una copia rimasta a metà si riempie. Su Google Drive ${restano.length === 1 ? "resta" : "restano"} anche, da leggere sul tablet.`
-          : `Sposto ${via.length === 1 ? "il volume che sta" : `i ${via.length} volumi che stanno`} su Google Drive (${fmtGoogle(peso)}) sul disco: scegli una sua cartella, e dentro faccio «book-companion» come su Drive, con Libri, Fumetti e Manga e una cartella per ogni saga (un volume a sé sta nella cartella del suo tipo). Ogni volume, quando sul disco è arrivato intero, resta in biblioteca come scheda e su Drive va nel cestino, da dove si riprende per 30 giorni. Anche il tablet lo toglie dalla sua memoria.${restano.length ? ` ${restano.length === 1 ? "Il volume che stai leggendo si copia sul disco e resta anche" : `I ${restano.length} volumi che stai leggendo si copiano sul disco e restano anche`} su Drive, da leggere anche sul tablet: quando li avrai finiti, rifai lo spostamento e se ne vanno anche da lì.` : ""}`}
-      </span>
-      {/* QUALI, per nome (segnalato dal lettore: «3 libri, 4 fumetti» e non
-          sapeva quali fossero) */}
-      <ul style={{ flexBasis: "100%", margin: 0, padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" }}>
-        {daCopiare.map((b) => (
-          <li key={b.id} style={{ fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" }}>
-            <span style={{ color: C.text }}>{b.title}</span> · {fmtGoogle(Number(mappa[b.id]?.byte) || 0)}
-          </li>
-        ))}
-      </ul>
-      <button onClick={scegli} style={tasto(true)}>
-        Scegli la cartella del disco
-      </button>
-      <button onClick={() => setChiedo(false)} style={tasto(false)}>
-        No
-      </button>
     </div>
   );
 }
@@ -879,15 +808,13 @@ export default function Library({
   notify,
   localIds,
   onImported,
-  importoDrive = null,
-  onImportaDaDrive,
+  importo = null,
   onFermaImport,
   daImportare,
   onImportati,
   focusSaga,
   collegato,
   onFileLocali,
-  onRicollegaDrive,
   spazioCambiato = 0,
   aggiorna,
   onCammino,
@@ -898,16 +825,10 @@ export default function Library({
   // un cambio che non tocca le schede (il cuore, il voto di una raccolta)
   // parte lo stesso verso gli altri dispositivi
   onCambiate,
-  onSpostaSuHdd,
-  onSenzaSchedaSuHdd,
   onRiordina,
   onImportaDalDisco,
   onConvertiDalDisco,
 }) {
-  // lo scaffale si ridisegna solo quando cambia: il lavoro dell'HDD si
-  // raggiunge da qui, sempre quello di adesso
-  const hddRef = useRef(onSpostaSuHdd);
-  hddRef.current = onSpostaSuHdd;
   const [query, setQuery] = useState("");
   // il controllo aggiornamenti col dito: `agg` e' l'esito in corso, e le
   // parole stanno in ESITI_CONTROLLO — un esito senza frase e' un tasto
@@ -986,17 +907,9 @@ export default function Library({
   };
   const [importing, setImporting] = useState(false);
   const [vediDoppi, setVediDoppi] = useState(false);
-  // i CBR gia' convertiti da buttare (vedi `cbrGiaConvertiti`)
-  const [avanzi, setAvanzi] = useState(null);
-  // i file su Drive che nessun libro usa (`fileSenzaScheda`): prima l'elenco
-  // per cartella, col peso, poi la cartella del disco
-  const [senzaScheda, setSenzaScheda] = useState(null);
   // il disco controllato (`controllaDisco`): il rapporto e la sua casa
   const [disco, setDisco] = useState(null);
   const [giroImport, setGiroImport] = useState(null);
-  // «Aggiungi da Drive»: l'elenco dei file lassu' che non sono ancora
-  // libri, con le spunte, e il filo per fermare il giro a meta'
-  const [scegliendo, setScegliendo] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [restoring, setRestoring] = useState(false);
   // il richiamo dei tomi dal cloud: {i, totale, titolo} mentre scende, e
@@ -1040,9 +953,6 @@ export default function Library({
   // Quanto pesi lassu'. Si chiede una volta sola, all'apertura dello
   // scaffale e solo a cloud collegato.
   const [cloud, setCloud] = useState(null);
-  // e quanto pesa il Drive, dove adesso stanno i libri: una domanda sola
-  // all'apertura, come il secchio, e solo con la chiave di Google valida
-  const [driveSpazio, setDriveSpazio] = useState(null);
   const inputRef = useRef(null);
   // Le melodie caricate da file vivono solo qui, come i libri: chi ne ha
   // deve poter fare un archivio anche senza avere un libro in libreria.
@@ -1058,11 +968,6 @@ export default function Library({
   // i byte cambiati da dentro la Libreria (uno scaricamento in massa):
   // `spazioCambiato` porta quelli cambiati da fuori, questo quelli di qui
   const [giroSpazio, setGiroSpazio] = useState(0);
-  // «Libera spazio»: quanti libri si potrebbero togliere dal tablet perche'
-  // Drive li ha identici — contati sulla mappa dell'ultimo giro, e
-  // ricontrollati su Drive vero solo quando li togli
-  const [liberabili, setLiberabili] = useState(null);
-  const [libera, setLibera] = useState(null);
 
   // E SI RILEGGE ANCHE QUANDO I BYTE CAMBIANO SENZA CHE CAMBI LA
   // BIBLIOTECA. Togliendo un ebook la scheda resta, quindi `books` cambia
@@ -1097,20 +1002,6 @@ export default function Library({
       ),
     []
   );
-  useEffect(() => {
-    if (!driveAcceso()) return setLiberabili(null);
-    let vivo = true;
-    misureFile()
-      .then((misureQui) => {
-        if (!vivo) return;
-        setLiberabili(daLiberare(books, { misureQui, mappa: mappaDrive(), stato: getStatus, toccato: (b) => getUpdatedAt(b.id, b.addedAt || 0) }));
-      })
-      .catch(() => vivo && setLiberabili(null));
-    return () => {
-      vivo = false;
-    };
-  }, [books, spazioCambiato, giroSpazio, localIds]);
-
   // NON si aggancia a `books` come i due qui sopra: quello e' un giro di
   // rete che elenca il secchio, e rifarlo a ogni import o a ogni voto messo
   // a un romanzo sarebbe traffico buttato — per giunta sul piano gratuito,
@@ -1135,15 +1026,6 @@ export default function Library({
     return () => { vivo = false; };
   }, [collegato, spazioCambiato]);
 
-  useEffect(() => {
-    if (!driveAcceso() || !driveProntoOra()) return setDriveSpazio(null);
-    let vivo = true;
-    spazioSuDrive()
-      .then((d) => vivo && setDriveSpazio(d))
-      .catch(() => {});
-    return () => { vivo = false; };
-  }, [spazioCambiato, localIds]);
-
   async function richiediPersistenza() {
     // riprovare ha senso davvero: Android la concede quando la PWA viene
     // installata o quando l'app se l'e' guadagnata con l'uso
@@ -1154,24 +1036,14 @@ export default function Library({
   // quelli che le domande sulla saga non possono sfogliare. Senza un cloud
   // collegato non c'e' niente da richiamare: offrirlo lo stesso sarebbe una
   // promessa che nessuno puo' mantenere.
-  const drive = driveAcceso();
   // i libri che l'altro dispositivo dice di tenere (`dispositivi.js`)
   const altrove = useMemo(() => altroveDa(leggiDispositivi(), dispositivo()), [books, localIds]);
-  const nelCloud = (collegato || drive) && localIds ? books.filter((b) => !localIds.has(b.id)) : [];
+  const nelCloud = collegato && localIds ? books.filter((b) => !localIds.has(b.id)) : [];
   // L'elenco del secchio arriva allo scaffale per il segno sul dorso: e' lo
   // stesso che decide la riga dei perduti qui sotto, cosi' le due non si
-  // smentiscono.
-  //
-  // «LASSU'» ADESSO SONO DUE POSTI: Google Drive, dove stanno i libri, e il
-  // secchio di Supabase, che tiene quel che Drive non ha ancora. Un libro e'
-  // al sicuro se sta in uno dei due. Finche' di uno dei due non si sa
-  // niente (elenco non ancora arrivato, Drive mai guardato) si risponde
-  // «non so», che non accusa nessuno.
-  const idDrive = idSuDrive();
-  const idLassu =
-    (collegato && !cloud?.idLibri) || (drive && !idDrive) || (!collegato && !drive)
-      ? null
-      : new Set([...(collegato ? cloud.idLibri : []), ...(idDrive || [])]);
+  // smentiscono. Finche' l'elenco non e' arrivato si risponde «non so», che
+  // non accusa nessuno.
+  const idLassu = collegato && cloud?.idLibri ? new Set(cloud.idLibri) : null;
 
   // La nuvoletta promette uno scaricamento, e su qualche tomo quella
   // promessa non si puo' mantenere: i byte non sono ne' qui ne' lassu'.
@@ -1592,7 +1464,7 @@ export default function Library({
   // di chi c'era prima della cura sui doppioni. Senza, rimettere dentro lo
   // stesso file non lo fa SALTARE: resta solo il sospetto per titolo e
   // autore, che si limita a dirtelo.
-  const senzaImpronta = impronteDaFare(books, { qui: localIds, lassu: idSuDrive() });
+  const senzaImpronta = impronteDaFare(books, { qui: localIds });
 
   // I tomi col dorso disegnato. `conCopertina` è `null` finché l'elenco non
   // è arrivato, e lì NON si offre niente: un tasto «ritrova 115 copertine»
@@ -1607,7 +1479,7 @@ export default function Library({
   // LE COPERTINE DEI VOLUMI CHE STANNO SOLO SUL DISCO (segnalato: «vedo che
   // mancano ancora copertine» — dodici fumetti sull'HDD, e «Ritrova
   // copertine» diceva «non sono su questo dispositivo»). Stesso giro, coi
-  // file del disco controllato al posto dei byte di qui o di Drive.
+  // file del disco controllato al posto dei byte di qui.
   async function copertineDalDisco(voci) {
     if (copertinando || !voci.length) return;
     const mio = {};
@@ -1649,32 +1521,8 @@ export default function Library({
     filoCopertine.current = mio;
     setCopertinando({ i: 0, totale: mancanti.length, titolo: mancanti[0].title });
     const { ritrovaCopertine, resocontoCopertine, copertinaOriginale } = await import("../lib/copertina.js");
-    // I FUMETTI CHE STANNO SOLO SU DRIVE si guardano da lassu', a pezzi: un
-    // CBZ dall'indice in coda, un CBR dalla prima pagina (`primaPaginaRar`).
-    // Si arriva da un tocco, quindi la chiave di Google si chiede qui.
-    const mappa = mappaDrive();
-    const lassuDi = (id) => {
-      const b = mancanti.find((x) => x.id === id);
-      const v = mappa?.[id];
-      return v?.id && (b?.fileType === "cbz" || b?.fileType === "cbr") ? v : null;
-    };
-    if (mancanti.some((b) => lassuDi(b.id)) && !driveProntoOra()) {
-      try {
-        await collegaDrive();
-      } catch {
-        /* senza chiave quei tomi restano «non su questo dispositivo» */
-      }
-    }
     const esito = await ritrovaCopertine(mancanti, {
-      leggiByte: async (id) => {
-        const qui = await getFile(id).catch(() => null);
-        if (qui) return qui;
-        const v = driveProntoOra() ? lassuDi(id) : null;
-        if (!v) return null;
-        const f = fileRemoto(v.id, v.byte);
-        f.daLontano = true;
-        return f;
-      },
+      leggiByte: (id) => getFile(id).catch(() => null),
       // aprire il tomo sta QUI e non dentro la passata, come nella visita:
       // così il giro si prova in Node con dei finti, senza epub.js
       estrai: (b, bytes) => copertinaOriginale(b, bytes),
@@ -1701,23 +1549,9 @@ export default function Library({
     const mio = {};
     filoImpronte.current = mio;
     setImprontando({ i: 0, totale: senzaImpronta.length, titolo: senzaImpronta[0].title });
-    const { ripassaImpronte, improntaLassu } = await import("../lib/importBook.js");
-    // un tomo che sta su Drive l'impronta ce l'ha lassu': la chiave di
-    // Google si chiede qui, perche' si arriva da un tocco
-    const mappa = mappaDrive();
-    const serveDrive = senzaImpronta.some((b) => mappa?.[b.id]?.id && !localIds?.has?.(b.id));
-    if (serveDrive && !driveProntoOra()) {
-      try {
-        await collegaDrive();
-      } catch {
-        /* senza chiave quei tomi si contano fra i «non su questo dispositivo» */
-      }
-    }
+    const { ripassaImpronte } = await import("../lib/importBook.js");
     const esito = await ripassaImpronte(senzaImpronta, {
       leggiByte: (id) => getFile(id),
-      improntaLassu: driveProntoOra()
-        ? (b) => improntaLassu(mappa?.[b.id]?.id, { dettagli: dettagliFile, remoto: (id, misura) => fileRemoto(id, misura) })
-        : undefined,
       vivo: () => filoImpronte.current === mio,
       onProgress: (p) => filoImpronte.current === mio && setImprontando(p),
     });
@@ -1939,46 +1773,6 @@ export default function Library({
     handleFiles(daImportare).finally(() => onImportati?.());
   }, [daImportare]);
 
-  // LIBERA SPAZIO. Si ricontrolla su Drive ADESSO — la mappa e' dell'ultimo
-  // giro, e un file cancellato a mano lassu' nel frattempo lascerebbe il
-  // libro perduto — e per farlo serve la chiave, che si chiede da un tocco.
-  // I CBR GIA' CONVERTITI: prima si guarda su Drive e si mostra l'elenco,
-  // poi, toccato, uno alla volta nel cestino. Un intoppo e' di quel file.
-  async function cercaAvanzi() {
-    if (avanzi) return;
-    setAvanzi({ cercando: true });
-    try {
-      if (!driveProntoOra()) await collegaDrive();
-      const voci = await cbrDaButtare(books, { schedeInArrivo: isSyncConfigured() && !getLastSync() });
-      if (!voci.length) {
-        setAvanzi(null);
-        notify("Nessun CBR da buttare: dove c'è un CBR, è il file che leggi o non ha ancora il suo CBZ accanto");
-        return;
-      }
-      setAvanzi({ voci });
-    } catch (err) {
-      setAvanzi(null);
-      notify(err instanceof DriveScollegato ? fraseScollegato(err, "Google Drive aspetta un tocco: riprova.") : err?.message || "Google Drive non ha risposto");
-    }
-  }
-
-  async function cercaSenzaScheda() {
-    if (senzaScheda) return;
-    setSenzaScheda({ cercando: true });
-    try {
-      if (!driveProntoOra()) await collegaDrive();
-      const voci = await senzaSchedaDaDrive(books, { misure: await misureFile(), schedeInArrivo: isSyncConfigured() && !getLastSync() });
-      if (!voci.length) {
-        setSenzaScheda(null);
-        notify("Su Drive, in Libri, Fumetti e Manga, ogni file è di un libro della biblioteca");
-        return;
-      }
-      setSenzaScheda({ voci });
-    } catch (err) {
-      setSenzaScheda(null);
-      notify(err instanceof DriveScollegato ? fraseScollegato(err, "Google Drive aspetta un tocco: riprova.") : err?.message || "Google Drive non ha risposto");
-    }
-  }
   async function controllaIlDisco() {
     let scelta = null;
     try {
@@ -1988,7 +1782,7 @@ export default function Library({
     }
     setDisco({ guardo: true });
     try {
-      const { RADICE } = await import("../lib/driveCore.js");
+      const { RADICE } = await import("../lib/casa.js");
       const { elencaDisco, controllaDisco, lavoriDalDisco, cbrNeiConvertiti } = await import("../lib/disco.js");
       const casa = String(scelta.name || "").trim().toLowerCase() === RADICE ? scelta : await scelta.getDirectoryHandle(RADICE).catch(() => null);
       if (!casa) {
@@ -1997,11 +1791,10 @@ export default function Library({
         return;
       }
       const file = await elencaDisco(casa);
-      const mappa = mappaDrive();
       const rapporto = controllaDisco(booksRef.current, file, {
         tipoDi: (b) => tipoDi(b, tipi),
-        suDrive: (id) => !!mappa[id],
         qui: (id) => !!localIds?.has(id),
+        sullAltro: (id) => altrove.has(id),
         leggendo: (id) => getStatus(id) === "reading",
       });
       const senza = new Set(senzaCopertina(booksRef.current, conCopertina || new Set(), copGuardate).map((b) => b.id));
@@ -2013,135 +1806,7 @@ export default function Library({
     }
   }
 
-  async function senzaSchedaSulDisco() {
-    let radice = null;
-    try {
-      radice = await window.showDirectoryPicker({ id: "bc-hdd", mode: "readwrite" });
-    } catch {
-      return;
-    }
-    const voci = senzaScheda?.voci || [];
-    setSenzaScheda(null);
-    onSenzaSchedaSuHdd?.(voci, radice);
-  }
 
-  async function buttaAvanzi() {
-    const voci = avanzi?.voci || [];
-    let fatti = 0;
-    let byte = 0;
-    let falliti = 0;
-    for (let i = 0; i < voci.length; i++) {
-      setAvanzi({ voci, buttando: i });
-      try {
-        await cestinaSuDrive(voci[i].id);
-        fatti += 1;
-        byte += voci[i].byte;
-      } catch (err) {
-        if (err instanceof DriveScollegato) {
-          notify(fraseScollegato(err, "Google Drive aspetta un tocco: riprova."));
-          break;
-        }
-        falliti += 1;
-      }
-    }
-    setAvanzi(null);
-    if (fatti) notify(`🧹 ${fatti === 1 ? "Un CBR" : `${fatti} CBR`} nel cestino di Drive · ${fmtGoogle(byte)}${falliti ? ` · ${falliti} non ${falliti === 1 ? "è andato" : "sono andati"}` : ""}. Dal cestino si riprendono per 30 giorni; lo spazio torna quando lo svuoti.`);
-  }
-
-  async function apriLibera() {
-    if (libera) return;
-    try {
-      if (!driveProntoOra()) await collegaDrive();
-      setLibera({ controllando: true });
-      const [file, misureQui] = await Promise.all([elencaFile(), misureFile()]);
-      const lassu = new Map(file.map((f) => [f.id, Number(f.size) || 0]));
-      const e = daLiberare(books, { misureQui, mappa: mappaDrive(), lassu, stato: getStatus, toccato: (b) => getUpdatedAt(b.id, b.addedAt || 0) });
-      if (!e.voci.length) {
-        setLibera(null);
-        notify("Non c'è niente da togliere: i libri qui li stai leggendo, o su Drive non hanno una copia");
-        return;
-      }
-      setLibera({ ...e, scelti: new Set(LIBERARE_DI_PARTENZA) });
-    } catch (err) {
-      setLibera(null);
-      notify(err instanceof DriveScollegato ? fraseScollegato(err, "Google Drive aspetta un tocco: riprova.") : err?.message || "Google Drive non ha risposto");
-    }
-  }
-
-  async function liberaOra() {
-    const via = (libera?.voci || []).filter((v) => libera.scelti.has(v.perche));
-    setLibera({ togliendo: 0, totale: via.length });
-    let byte = 0;
-    let tolti = 0;
-    for (const [i, v] of via.entries()) {
-      setLibera({ togliendo: i, totale: via.length });
-      try {
-        await togliByteQui(v.id);
-        byte += v.byte;
-        tolti += 1;
-      } catch {
-        /* quel libro resta qui: si apre lo stesso */
-      }
-    }
-    setLibera(null);
-    onFileLocali?.();
-    setGiroSpazio((n) => n + 1);
-    notify(
-      tolti
-        ? `Liberati ${fmtBytes(byte)} 🧹 · ${tolti === 1 ? "il tomo resta" : `${tolti} tomi restano`} sullo scaffale e ${tolti === 1 ? "scende" : "scendono"} da Drive quando ${tolti === 1 ? "lo apri" : "li apri"}`
-        : "Non sono riuscito a togliere niente"
-    );
-  }
-
-  // IL SELETTORE DI GOOGLE: la finestra di Drive stessa, aperta sulla
-  // cartella «book-companion», a scelta multipla — file e CARTELLE INTERE,
-  // che portano dentro tutti i libri che stanno sotto di loro. E' l'unica
-  // porta da Drive: la lista «Da Google Drive» e' stata tolta (chiesto dal
-  // lettore: «tieni solo Scegli su Drive e permettimi di scegliere o
-  // un'intera cartella o piu' elementi assieme»). Quel che il selettore non
-  // sa — se il file e' gia' un libro, la sua impronta, cosa c'e' in una
-  // cartella — si chiede a Drive dopo, e `daAggiungere` decide: un file gia'
-  // sullo scaffale si dice, non si raddoppia.
-  async function scegliDaDrive() {
-    if (importing || importoDrive || scegliendo) return;
-    setScegliendo(true);
-    try {
-      if (!driveProntoOra()) await collegaDrive();
-      const cartelle = await elencaCartelle();
-      const docs = await scegliSuDrive({ cartellaId: idRadice(cartelle) });
-      if (!docs) return;
-      const { sciolti, cartelle: scelte, scartati } = sceltaDalPicker(docs);
-      const note = [];
-      if (scartati.length) note.push(`${scartati.length === 1 ? "un file non è un libro" : `${scartati.length} file non sono libri`} (${scartati.slice(0, 3).join(", ")}${scartati.length > 3 ? "…" : ""})`);
-      const perId = new Map();
-      if (sciolti.length) for (const f of await dettagliFile(sciolti.map((v) => v.id))) perId.set(f.id, f);
-      if (scelte.length) {
-        const { file: sotto, vuote } = libriSotto(scelte, await elencaFile(), cartelle);
-        for (const f of sotto) perId.set(f.id, f);
-        if (vuote.length) note.push(`${vuote.length === 1 ? "nella cartella" : "nelle cartelle"} ${vuote.slice(0, 3).map((n) => `«${n}»`).join(", ")}${vuote.length > 3 ? "…" : ""} non c'è nessun libro`);
-      }
-      const trovati = [...perId.values()];
-      if (!trovati.length) {
-        notify(note.length ? `Nessun libro fra quel che hai scelto: ${note.join(" · ")}` : "Non hai scelto nessun file");
-        return;
-      }
-      // un segno su un file senza scheda qui ferma il file solo se la
-      // biblioteca puo' ancora arrivare dal cloud (vedi `daAggiungere`)
-      const schedeInArrivo = isSyncConfigured() && !getLastSync();
-      const voci = daAggiungere(books, trovati, { lapidi: Object.keys(getTombstones()), cartelle, schedeInArrivo });
-      const gia = fraseGia(giaSulloScaffale(books, trovati, voci));
-      if (gia) note.push(gia);
-      if (!voci.length) {
-        notify(`${note.join(" · ")} ✨`);
-        return;
-      }
-      onImportaDaDrive?.(voci, note);
-    } catch (e) {
-      notify(e instanceof DriveScollegato ? fraseScollegato(e, "Google Drive aspetta un tocco: riprova.") : e?.message || "Google Drive non ha risposto");
-    } finally {
-      setScegliendo(false);
-    }
-  }
 
   async function handleFiles(fileList) {
     const files = Array.from(fileList || []);
@@ -2154,8 +1819,6 @@ export default function Library({
       // I FILE TORNATI A CASA dentro una scheda che era rimasta senza byte.
       // La scheda non si tocca — titolo, saga, voto e note sono del lettore
       // — si scrive la sola impronta, e si timbra perché la riga risalga.
-      // Su Drive sale da solo al prossimo giro: `daCaricare` guarda chi ha
-      // i byte qui e non su Drive, che e' esattamente questo libro.
       const ritrovati = esito.ritrovati || [];
       const conImpronta = new Map(ritrovati.filter((r) => r.impronta).map((r) => [r.id, r.impronta]));
       for (const r of ritrovati) {
@@ -2193,10 +1856,8 @@ export default function Library({
   // uno dice che il browser puo' sfrattarti, l'altro da quanto non hai una
   // copia fuori dal browser.
   const [ultimoArch, setUltimoArch] = useState(ultimoArchivio);
-  // l'archivio che si fa da solo su Drive vale come copia: i file stanno
-  // gia' lassu', e le schede ci vanno ogni giorno
   const promemoria = promemoriaArchivio({
-    ultimo: Math.max(ultimoArch, driveAcceso() ? ultimoArchivioSuDrive() : 0),
+    ultimo: ultimoArch,
     roba: books.length + melodie,
     persistenza: persist,
   });
@@ -2319,21 +1980,6 @@ export default function Library({
     }
   }
 
-  async function apriArchivioDaDrive() {
-    if (restoring) return;
-    notify("Cerco l'ultimo archivio su Drive…");
-    try {
-      const a = await ultimoArchivioDaDrive();
-      if (!a) {
-        notify("Su Drive non c'è ancora un archivio: si fa da solo alla prossima sincronizzazione");
-        return;
-      }
-      await apriArchivio([a.file]);
-    } catch (err) {
-      notify(err instanceof DriveScollegato ? fraseScollegato(err, "Google Drive non è collegato") : err?.message || "Non riesco a leggere l'archivio su Drive");
-    }
-  }
-
   async function handleRestore(dentro, cosa) {
     if (!dentro || restoring) return;
     setArchivio(null);
@@ -2430,7 +2076,6 @@ export default function Library({
         voti={voti}
         onVoto={vota}
         onTutti={tuttiQuanti}
-        onHdd={(libri, radice) => hddRef.current?.(libri, radice)}
       />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2481,38 +2126,20 @@ export default function Library({
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
         <button
           onClick={() => inputRef.current?.click()}
-          disabled={importing || !!importoDrive}
+          disabled={importing || !!importo}
           style={{
             padding: "10px 20px",
             borderRadius: R.piccolo,
-            background: importing || importoDrive ? C.dim : `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
-            color: importing || importoDrive ? C.muted : C.onAccent,
+            background: importing || importo ? C.dim : `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+            color: importing || importo ? C.muted : C.onAccent,
             fontWeight: 600,
             fontSize: F.corpo,
-            boxShadow: importing || importoDrive ? "none" : `0 0 20px ${C.accent}2e`,
+            boxShadow: importing || importo ? "none" : `0 0 20px ${C.accent}2e`,
           }}
         >
-          {importing ? fraseImport(giroImport || {}) : importoDrive ? fraseImport(importoDrive) : "＋ Aggiungi libri"}
+          {importing ? fraseImport(giroImport || {}) : importo ? fraseImport(importo) : "＋ Aggiungi libri"}
         </button>
-        {/* la finestra di Drive stessa: si sfoglia «book-companion» com'e'
-            su Drive e si toccano i libri, o le cartelle intere */}
-        {drive && !importing && !importoDrive && (
-          <button
-            onClick={scegliDaDrive}
-            disabled={scegliendo}
-            style={{
-              padding: "10px 18px",
-              minHeight: 44,
-              borderRadius: R.piccolo,
-              border: `1px solid ${C.arcane}66`,
-              color: C.arcane,
-              fontSize: F.corpo,
-            }}
-          >
-            {scegliendo ? "Apro Drive…" : "📂 Scegli su Drive"}
-          </button>
-        )}
-        {importoDrive && (
+        {importo && (
           <button
             onClick={onFermaImport}
             style={{
@@ -2783,19 +2410,6 @@ export default function Library({
             action="Aggiungi il primo libro"
             onAction={() => inputRef.current?.click()}
           />
-          {/* il dispositivo nuovo e' proprio quello che ha bisogno
-              dell'archivio: qui la riga dei tasti non c'e' */}
-          {driveAcceso() && (
-            <div style={{ textAlign: "center" }}>
-              <button
-                onClick={apriArchivioDaDrive}
-                disabled={restoring}
-                style={{ minHeight: 44, padding: "10px 16px", borderRadius: R.tondo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}
-              >
-                ☁ Ripristina da Drive
-              </button>
-            </div>
-          )}
         </>
       ) : visible.length === 0 ? (
         /* NON È PIÙ UN VICOLO CIECO. C'era una riga sola — «Nessun tomo
@@ -2975,20 +2589,6 @@ export default function Library({
           {perduti && !portando && (
             <span style={{ color: C.accent }}>⚠ {perduti}</span>
           )}
-          {/* LA CHIAVE DI GOOGLE DURA UN'ORA, e Google la ridà solo dopo un
-              tocco: finché non la si rinnova, i libri nuovi non salgono su
-              Drive e quelli lassù non scendono. Si dice qui, accanto agli
-              altri avvisi, col tasto che la rinnova. */}
-          {drive && !driveProntoOra() && !portando && onRicollegaDrive && (
-            <span style={{ color: C.muted }}>
-              {permessoDriveMancante()
-                ? "🗂 Google non ha dato il permesso per Drive: ricollega e lascia spuntata la casella di Google Drive."
-                : "🗂 Google Drive aspetta un tocco per continuare."}{" "}
-              <button onClick={onRicollegaDrive} style={{ color: C.arcane, textDecoration: "underline", fontSize: "inherit" }}>
-                Ricollega
-              </button>
-            </span>
-          )}
           {/* IN VISTA RESTANO SOLO L'ARCHIVIO E LA CASSETTA DEGLI ATTREZZI.
               I tasti di manutenzione erano arrivati a sei tutti in fila —
               saghe, visita, doppioni, tomi dal cloud, ripristino — e sono
@@ -3010,9 +2610,8 @@ export default function Library({
               {/* il conto accanto al nome dice che la' dentro c'e' del
                   lavoro che aspetta (impronte da fare, copertine da
                   ritrovare): senza, ripiegare i tasti nasconderebbe anche il
-                  bisogno. I TOMI LASSU' NON CONTANO PIU': da quando si
-                  aggiungono da Drive senza scendere, un libro che sta la' e
-                  scende quando lo apri e' lo stato normale, e un «· 508»
+                  bisogno. I TOMI LASSU' NON CONTANO PIU': un libro che sta
+                  la' e scende quando lo apri e' uno stato normale, e un «· 508»
                   fisso sul tasto diceva al lettore che c'era del lavoro
                   arretrato dove non ce n'era («è corretto?»). */}
               🧰 Manutenzione
@@ -3048,7 +2647,6 @@ export default function Library({
             C'è solo a cloud collegato, come il numero che ha sostituito:
             senza, sarebbe una promessa che nessuno può mantenere. */}
         {cloud && <BarraCloud dati={cloud} compatta />}
-        {driveSpazio && <BarraDrive spazio={driveSpazio} libri={pesoDeiLibri(mappaDrive())} compatta />}
         {manutenzione && (
           <div
             style={{
@@ -3069,7 +2667,6 @@ export default function Library({
                 vogliono. Non e' un lavoro da fare: e' per leggerli senza
                 rete, e lo dice. */}
             {daScendere.length > 0 && (() => {
-              const peso = pesoDaScendere(daScendere, mappaDrive());
               return (
               <span style={{ display: "flex", flexDirection: "column", gap: 4, flexBasis: "100%" }}>
               <button
@@ -3085,7 +2682,7 @@ export default function Library({
               >
                 {portando
                   ? `Fermo qui (${portando.i + 1} di ${portando.totale})`
-                  : `⬇ Scarica qui ${daScendere.length === 1 ? "il tomo" : `tutti i ${daScendere.length} tomi`} rimasti lassù${peso.byte ? ` · ${peso.tutti ? "" : "almeno "}${fmtGoogle(peso.byte)}` : ""}`}
+                  : `⬇ Scarica qui ${daScendere.length === 1 ? "il tomo" : `tutti i ${daScendere.length} tomi`} rimasti lassù`}
               </button>
               {!portando && (
                 <span style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.4 }}>
@@ -3159,27 +2756,6 @@ export default function Library({
                   : `🖼 Ritrova ${mancaLaCopertina.length === 1 ? "una copertina" : `${mancaLaCopertina.length} copertine`}`}
               </button>
             )}
-            {/* LIBERA SPAZIO: c'e' solo con Drive e solo se c'e' qualcosa da
-                togliere, e dice quanto si libera prima di toccarlo */}
-            {liberabili?.voci.length > 0 && (
-              <button
-                onClick={apriLibera}
-                disabled={!!libera}
-                style={{
-                  padding: "7px 16px",
-                  borderRadius: R.piccolo,
-                  border: `1px solid ${C.arcane}66`,
-                  color: C.arcane,
-                  fontSize: F.nota,
-                }}
-              >
-                {libera?.controllando
-                  ? "Controllo su Drive…"
-                  : libera?.totale
-                    ? `Tolgo ${libera.togliendo + 1} di ${libera.totale}…`
-                    : `🧹 Libera spazio · ${fmtBytes(liberabili.voci.reduce((n, v) => n + v.byte, 0))}`}
-              </button>
-            )}
             {/* Il ripasso delle impronte c'e' solo se qualcuno ne ha bisogno:
                 a biblioteca gia' a posto sarebbe un tasto che non fa niente.
                 Il numero sta scritto sopra perche' e' un giro che legge i
@@ -3222,23 +2798,6 @@ export default function Library({
                   : `🔁 Converti ${cbrDaFare.length === 1 ? "un CBR" : `${cbrDaFare.length} CBR`} in CBZ`}
               </button>
             )}
-            {/* PER SEZIONE SULL'HDD (vedi `spostaSuHdd` in App): un tasto per
-                Libri, Fumetti e Manga, col conto di quel che sta su Drive */}
-            {drive &&
-              (() => {
-                const sezioni = perSezioni(books, (b) => tipoDi(b, tipi));
-                const nomi = { libri: ["libro", "libri"], fumetti: ["fumetto", "fumetti"], manga: ["manga", "manga"] };
-                return SEZIONI_HDD.map((sez, i) => (
-                  <SpostaSuHdd
-                    key={sez}
-                    r={{ libri: sezioni[sez], nome: nomi[sez] }}
-                    onHdd={onSpostaSuHdd}
-                    etichetta
-                    spiega={i === 0}
-                    tasto={(attivo) => ({ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${attivo ? C.accent + "88" : C.border}`, color: attivo ? C.accent : C.text, fontSize: F.nota })}
-                  />
-                ));
-              })()}
             {/* IL DISCO CONTROLLATO (vedi `controllaDisco`): cosa c'è, cosa
                 manca e dove sta, cosa è fuori posto; riordinare è un tocco a
                 parte, dopo aver visto l'elenco */}
@@ -3260,9 +2819,8 @@ export default function Library({
                 const voce = { fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" };
                 const titoli = (bs) => bs.map((b) => b.title).join(" · ");
                 const mancanti = [
-                  [m.drive, "ancora su Google Drive: li sposti con «Sposta sull'HDD»"],
                   [m.qui, "solo su questo dispositivo"],
-                  [m.altrove, "né qui né su Drive: forse sull'altro dispositivo"],
+                  [m.altrove, "non qui: forse sull'altro dispositivo"],
                   [m.nessuno, "senza il file da nessuna parte"],
                 ].filter(([bs]) => bs.length);
                 return (
@@ -3315,9 +2873,8 @@ export default function Library({
                           <span style={{ color: C.text }}>{r.senzaScheda.slice(0, 12).map((f) => [...f.cartelle, f.nome].join(" / ")).join(" · ")}</span>
                           {r.senzaScheda.length > 12 ? ` e altri ${r.senzaScheda.length - 12}` : ""}
                         </span>
-                        {/* IN BIBLIOTECA SENZA DRIVE: solo la scheda (titolo,
-                            saga, copertina), il file resta sul disco e su
-                            Drive non sale niente */}
+                        {/* IN BIBLIOTECA: solo la scheda (titolo, saga,
+                            copertina), il file resta sul disco */}
                         {onImportaDalDisco && (
                           <button
                             onClick={() => {
@@ -3330,7 +2887,7 @@ export default function Library({
                             {`📥 Aggiungili alla biblioteca (solo dal disco)`}
                           </button>
                         )}
-                        <span style={{ flexBasis: "100%", fontSize: F.piccolo }}>Entrano le schede con titolo, saga e copertina; il file resta sul disco e su Google Drive non sale niente.</span>
+                        <span style={{ flexBasis: "100%", fontSize: F.piccolo }}>Entrano le schede con titolo, saga e copertina; il file resta sul disco.</span>
                       </span>
                     )}
                     {/* un'altra edizione di un volume che il suo file ce l'ha:
@@ -3367,7 +2924,7 @@ export default function Library({
                     )}
                     {r.vuoti?.length > 0 && (
                       <span style={{ flexBasis: "100%", overflowWrap: "anywhere" }}>
-                        {`${r.vuoti.length === 1 ? "Un file vuoto" : `${r.vuoti.length} file vuoti`}: copie rimaste a metà, il volume è ancora su Drive e il prossimo «Sposta sull'HDD» le riempie: `}
+                        {`${r.vuoti.length === 1 ? "Un file vuoto" : `${r.vuoti.length} file vuoti`}: copie rimaste a metà, da riempire o togliere a mano: `}
                         <span style={{ color: C.text }}>{r.vuoti.map((f) => [...f.cartelle, f.nome].join(" / ")).join(" · ")}</span>
                       </span>
                     )}
@@ -3466,82 +3023,6 @@ export default function Library({
                   </div>
                 );
               })()}
-            {/* I FILE CHE NESSUN LIBRO USA (vedi `fileSenzaScheda`): caricati a
-                mano su Drive, nessuna scheda li sposta; vanno sul disco con
-                le cartelle che hanno su Drive */}
-            {drive && onSenzaSchedaSuHdd && hddPossibile() && !senzaScheda?.voci && (
-              <button
-                onClick={cercaSenzaScheda}
-                disabled={!!senzaScheda}
-                style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}
-              >
-                {senzaScheda?.cercando ? "Guardo su Drive…" : "📦 File su Drive che nessun libro usa"}
-              </button>
-            )}
-            {senzaScheda?.voci &&
-              (() => {
-                const voci = senzaScheda.voci;
-                const peso = voci.reduce((n, v) => n + v.byte, 0);
-                return (
-                  <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: F.nota, color: C.muted, lineHeight: 1.45 }}>
-                    <span style={{ flexBasis: "100%", color: C.text }}>
-                      {`${voci.length === 1 ? "Un file" : `${voci.length} file`} in «book-companion» su Google Drive (${fmtGoogle(peso)}) che nessun libro della biblioteca usa: li hai caricati a mano, e «Sposta sull'HDD» non li vede. Li sposto sul disco con le stesse cartelle che hanno su Drive; ognuno, arrivato intero, va nel cestino di Drive, da dove si riprende per 30 giorni.`}
-                    </span>
-                    <ul style={{ flexBasis: "100%", margin: 0, padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" }}>
-                      {perCartella(voci).map((c) => (
-                        <li key={c.cartella} style={{ fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" }}>
-                          <span style={{ color: C.text }}>{c.cartella}</span> · {c.n} file · {fmtGoogle(c.byte)}
-                        </li>
-                      ))}
-                    </ul>
-                    <button onClick={senzaSchedaSulDisco} style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}>
-                      Scegli la cartella del disco
-                    </button>
-                    <button onClick={() => setSenzaScheda(null)} style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}>
-                      No
-                    </button>
-                  </div>
-                );
-              })()}
-            {/* I CBR GIA' CONVERTITI (vedi `cbrGiaConvertiti`): c'e' solo con
-                Drive; prima l'elenco, col peso, poi il cestino */}
-            {drive && !avanzi?.voci && (
-              <button
-                onClick={cercaAvanzi}
-                disabled={!!avanzi}
-                style={{ padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}
-              >
-                {avanzi?.cercando ? "Guardo su Drive…" : "🗑 CBR già convertiti in CBZ"}
-              </button>
-            )}
-            {avanzi?.voci && (
-              <div style={{ flexBasis: "100%", padding: 12, borderRadius: R.piccolo, border: `1px solid ${C.border}`, background: C.surface }}>
-                <p style={{ margin: "0 0 8px", color: C.text, fontSize: F.nota, lineHeight: 1.45 }}>
-                  {`${avanzi.voci.length === 1 ? "Questo CBR ha accanto il CBZ che leggi, e nessun libro lo usa più" : `Questi ${avanzi.voci.length} CBR hanno accanto il CBZ che leggi, e nessun libro li usa più`}: ${fmtGoogle(avanzi.voci.reduce((n, v) => n + v.byte, 0))} su Google Drive. Vanno nel cestino di Drive, da dove si riprendono per 30 giorni.`}
-                </p>
-                <ul style={{ margin: "0 0 10px", padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" }}>
-                  {avanzi.voci.map((v) => (
-                    <li key={v.id} style={{ fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" }}>
-                      <span style={{ color: C.text }}>{v.nome}</span> · {fmtGoogle(v.byte)}
-                    </li>
-                  ))}
-                </ul>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button
-                    onClick={buttaAvanzi}
-                    disabled={avanzi.buttando != null}
-                    style={{ minHeight: 44, padding: "8px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
-                  >
-                    {avanzi.buttando != null ? `Butto ${avanzi.buttando + 1} di ${avanzi.voci.length}…` : "Mettili nel cestino di Drive"}
-                  </button>
-                  {avanzi.buttando == null && (
-                    <button onClick={() => setAvanzi(null)} style={{ minHeight: 44, padding: "8px 16px", color: C.muted, fontSize: F.nota }}>
-                      Lascia stare
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
             {/* I DOPPIONI (vedi `doppioniInBiblioteca`): prima si vede
                 quali, poi si uniscono. Si tiene la scheda col file, poi
                 quella che stai leggendo, poi il CBZ con la copertina */}
@@ -3563,7 +3044,7 @@ export default function Library({
               <div style={{ flexBasis: "100%", padding: 12, borderRadius: R.piccolo, border: `1px solid ${C.border}`, background: C.surface }}>
                 <p style={{ margin: "0 0 8px", color: C.text, fontSize: F.nota, lineHeight: 1.45 }}>
                   Di ogni volume resta una scheda sola: quella che ha il file, poi quella che stai leggendo, poi il CBZ con la copertina. Le
-                  altre se ne vanno; i file su Google Drive restano dove sono.
+                  altre se ne vanno.
                 </p>
                 <ul style={{ margin: "0 0 10px", padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" }}>
                   {doppi.map((g) => (
@@ -3617,43 +3098,12 @@ export default function Library({
             >
               {restoring ? "Ripristino…" : "↩ Ripristina"}
             </button>
-            {driveAcceso() && (
-              <button
-                onClick={apriArchivioDaDrive}
-                disabled={restoring}
-                style={{
-                  padding: "7px 16px",
-                  borderRadius: R.piccolo,
-                  border: `1px solid ${C.border}`,
-                  color: restoring ? C.muted : C.text,
-                  fontSize: F.nota,
-                }}
-              >
-                ☁ Ripristina da Drive
-              </button>
-            )}
           </div>
         )}
       </>
       )}
 
       {referto && <Referto esito={referto} onChiudi={() => setReferto(null)} onRicuci={ricuciForzato} ricucendo={ricucendo} />}
-      {libera?.voci && (
-        <SceltaLibera
-          esito={libera}
-          onCambia={(perche) =>
-            setLibera((l) => {
-              if (!l?.voci) return l;
-              const scelti = new Set(l.scelti);
-              if (scelti.has(perche)) scelti.delete(perche);
-              else scelti.add(perche);
-              return { ...l, scelti };
-            })
-          }
-          onChiudi={() => setLibera(null)}
-          onVai={liberaOra}
-        />
-      )}
       {saghe && (
         <SceltaTitoli
           titolo="📚 Saghe da sistemare"
@@ -3990,137 +3440,6 @@ function SceltaTitoli({
   );
 }
 
-// I file di Drive che non sono ancora libri, raccolti per cartella come il
-// lettore li ha messi lassu'. Partono tutti spuntati — chi apre questo
-// pannello vuole portarli sullo scaffale — e si tolgono quelli che libri
-// da leggere non sono.
-// Quali libri togliere dal tablet, per ragione: i letti, i lasciati, i
-// fermi da tre mesi. Si sceglie per gruppo e non libro per libro — sono
-// decine, e la domanda che uno ha in testa e' «i finiti si', quelli in
-// sospeso no» — ma i titoli si vedono, perche' si toglie sapendo cosa.
-const GRUPPI_LIBERA = {
-  letto: "📖 I letti",
-  lasciato: "⏸ I lasciati",
-  fermo: "🕰 Fermi da tre mesi",
-  altri: "📚 Da leggere e in lettura",
-  diverso: "⚠ Diversi da quelli su Drive",
-};
-function SceltaLibera({ esito, onCambia, onChiudi, onVai }) {
-  const { voci, scelti } = esito;
-  const peso = (l) => l.reduce((n, v) => n + v.byte, 0);
-  const presi = voci.filter((v) => scelti.has(v.perche));
-  return (
-    <div
-      onClick={onChiudi}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 55,
-        background: "#080611cc",
-        backdropFilter: "blur(4px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 16,
-        animation: "bc-fade-in 0.25s ease-out",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "100%",
-          maxWidth: px(520),
-          maxHeight: "100%",
-          overflowY: "auto",
-          borderRadius: R.grande,
-          border: `1px solid ${C.border}`,
-          background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
-          boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
-          padding: 22,
-        }}
-      >
-        <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>🧹 Libera spazio</h2>
-        <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 14 }}>
-          Questi libri hanno una copia su Google Drive. Tolti da qui restano sullo scaffale con la nuvoletta,
-          con segnalibri, evidenziazioni e punto di lettura, e si leggono da Drive quando li riapri — serve la
-          rete. Per riaverne uno sul tablet c'è «Tieni sul tablet» nella sua scheda.
-        </p>
-        {PERCHE_LIBERARE.map((perche) => {
-          const del = voci.filter((v) => v.perche === perche);
-          if (!del.length) return null;
-          const on = scelti.has(perche);
-          const titoli = del.slice(0, 4).map((v) => `«${v.title}»`).join(", ");
-          return (
-            <button
-              key={perche}
-              onClick={() => onCambia(perche)}
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 12,
-                width: "100%",
-                minHeight: 44,
-                textAlign: "left",
-                padding: "10px 12px",
-                marginBottom: 8,
-                borderRadius: R.piccolo,
-                border: `1px solid ${on ? `${C.accent}88` : C.border}`,
-                background: on ? `${C.accent}14` : "transparent",
-              }}
-            >
-              <span style={{ fontSize: F.rilievo, color: on ? C.accent : C.muted }}>{on ? "☑" : "☐"}</span>
-              <span style={{ minWidth: 0 }}>
-                <span style={{ display: "block", color: C.text, fontSize: F.corpo }}>
-                  {GRUPPI_LIBERA[perche]} · {del.length} · {fmtBytes(peso(del))}
-                </span>
-                <span style={{ display: "block", color: C.muted, fontSize: F.minuscolo, marginTop: 2 }}>
-                  {titoli}
-                  {del.length > 4 ? ` e altri ${del.length - 4}` : ""}
-                </span>
-                {perche === "altri" && (
-                  <span style={{ display: "block", color: C.muted, fontSize: F.minuscolo, marginTop: 4, lineHeight: 1.4 }}>
-                    Non li hai finiti: si leggono da Drive lo stesso, ma senza rete non si aprono.
-                  </span>
-                )}
-                {perche === "diverso" && (
-                  <span style={{ display: "block", color: C.accent, fontSize: F.minuscolo, marginTop: 4, lineHeight: 1.4 }}>
-                    Su Drive c'è un file diverso da quello qui (di solito l'originale, mentre qui c'è la versione
-                    ricucita). Riaprendoli scende quello: evidenziazioni, segnalibri e punto di lettura possono finire
-                    su righe diverse.
-                  </span>
-                )}
-              </span>
-            </button>
-          );
-        })}
-        <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "flex-end" }}>
-          <button
-            onClick={onChiudi}
-            style={{ padding: "10px 18px", minHeight: 44, borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.muted, fontSize: F.nota }}
-          >
-            Lascia stare
-          </button>
-          <button
-            onClick={onVai}
-            disabled={!presi.length}
-            style={{
-              padding: "10px 20px",
-              minHeight: 44,
-              borderRadius: R.piccolo,
-              border: `1px solid ${presi.length ? `${C.accent}88` : C.border}`,
-              background: presi.length ? `${C.accent}22` : "transparent",
-              color: presi.length ? C.accent : C.muted,
-              fontSize: F.nota,
-            }}
-          >
-            {presi.length ? `Libera ${fmtBytes(peso(presi))}` : "Niente scelto"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
   const { dentro, prendi } = archivio;
   const niente = !prendi.libri && !prendi.melodie && !prendi.diario;
@@ -4229,7 +3548,7 @@ function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
         )}
         {dentro.soloSchede && (
           <p style={{ color: C.muted, fontSize: F.minuscolo, marginTop: 10 }}>
-            ☁ Archivio delle schede{dentro.quando ? ` del ${new Date(dentro.quando).toLocaleDateString("it-IT", { day: "numeric", month: "long" })}` : ""}: i file dei libri non ci sono, li ritrova Drive.
+            ☁ Archivio delle schede{dentro.quando ? ` del ${new Date(dentro.quando).toLocaleDateString("it-IT", { day: "numeric", month: "long" })}` : ""}: i file dei libri non ci sono, si rimettono aggiungendoli.
           </p>
         )}
         {dentro.estranei > 0 && (

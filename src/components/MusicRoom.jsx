@@ -3,15 +3,11 @@ import { listTrackIds } from "../lib/bookStore.js";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import {
   getFavoritesRaw, saveFavorites, isFile, addTrackFile, dropTrack, parseYouTube,
-  getListsRaw, saveLists, nuovaRaccolta, braniDi, puntoDi, doveDi, minuti, MUSICA_CAMBIATA, nonArrivati, daPortareQui,
+  getListsRaw, saveLists, nuovaRaccolta, braniDi, puntoDi, doveDi, minuti, MUSICA_CAMBIATA, nonArrivati,
 } from "../lib/music.js";
-import { fmtBytes } from "../lib/bytes.js";
 import EmptyState from "./EmptyState.jsx";
 import { InAscolto } from "./Ascolto.jsx";
 import { useViewport } from "../lib/viewport.js";
-import { driveAcceso, driveProntoOra, collegaDrive, elencaCartelle, elencaAudio, scegliSuDrive, dettagliFile, adottaMelodie, DriveScollegato, fraseScollegato, mappaMelodie } from "../lib/drive.js";
-import { hddPossibile } from "../lib/hdd.js";
-import { sceltaMusicaDalPicker, audioSotto, melodieDaAggiungere, scegliCartella, idRadice, melodieSulDisco } from "../lib/driveCore.js";
 
 
 // LETTO AL RENDER, NON AL CARICAMENTO DEL MODULO. Era un oggetto costante,
@@ -32,7 +28,7 @@ const inputStyle = () => ({
   outline: "none",
 });
 
-export default function MusicRoom({ music, playerRef, notify, onCambiata, scarico = null, onScarica, onSulDisco }) {
+export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
   const [link, setLink] = useState("");
   const [favs, setFavs] = useState(() => getFavoritesRaw());
   const [favName, setFavName] = useState("");
@@ -43,11 +39,9 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, scaric
   const [newName, setNewName] = useState("");
   const fileRef = useRef(null);
   const [caricando, setCaricando] = useState(false);
-  const [daDrive, setDaDrive] = useState(false);
   const [raccolte, setRaccolte] = useState(() => getListsRaw());
-  // quali melodie da file hanno i byte QUI: le altre stanno su Google Drive
-  // e scendono quando le suoni — la nuvoletta lo dice prima del tocco, che
-  // su una connessione lenta e' qualche secondo di attesa
+  // quali melodie da file hanno i byte QUI: le altre non si suonano da qui,
+  // e il segno lo dice prima del tocco
   const [qui, setQui] = useState(null);
   // l'id della raccolta di cui si stanno scegliendo i brani: finche' e'
   // acceso, l'elenco delle melodie diventa una lista di spunte
@@ -62,8 +56,7 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, scaric
   const { current, playing, queue } = music;
   const { wide } = useViewport();
   const suona = (f) => !!current && (f.trackId ? current.trackId === f.trackId : !!f.url && current.url === f.url);
-  // si rilegge quando cambia l'elenco o il brano: una melodia appena scesa
-  // da Drive perde la nuvoletta appena comincia a suonare
+  // si rilegge quando cambia l'elenco o il brano
   useEffect(() => {
     let vivo = true;
     listTrackIds()
@@ -72,7 +65,7 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, scaric
     return () => {
       vivo = false;
     };
-  }, [favs, current?.trackId, scarico?.i]);
+  }, [favs, current?.trackId]);
 
   function playLink() {
     const url = link.trim();
@@ -125,47 +118,6 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, scaric
       );
     }
     if (scartati) notify(`${scartati} file non sono audio e li ho lasciati fuori 🎵`);
-  }
-
-  // DA GOOGLE DRIVE, come i libri: il selettore si apre sulla cartella
-  // «Musica» di «book-companion» (o sulla radice), file e cartelle intere.
-  // I brani non scendono: scendono quando li suoni.
-  async function scegliMusicaSuDrive() {
-    if (daDrive) return;
-    setDaDrive(true);
-    try {
-      if (!driveProntoOra()) await collegaDrive();
-      const cartelle = await elencaCartelle();
-      const docs = await scegliSuDrive({
-        cartellaId: scegliCartella("musica", { cartelle }) || idRadice(cartelle),
-        titolo: "Scegli melodie o cartelle intere",
-      });
-      if (!docs) return;
-      const { sciolti, cartelle: scelte, scartati } = sceltaMusicaDalPicker(docs);
-      const note = [];
-      if (scartati.length) note.push(`${scartati.length === 1 ? "un file non è audio" : `${scartati.length} file non sono audio`} (${scartati.slice(0, 3).join(", ")}${scartati.length > 3 ? "…" : ""})`);
-      const trovati = sciolti.length ? await dettagliFile(sciolti.map((f) => f.id)) : [];
-      if (scelte.length) {
-        const { file: sotto, vuote } = audioSotto(scelte, await elencaAudio(), cartelle);
-        trovati.push(...sotto);
-        if (vuote.length) note.push(`${vuote.length === 1 ? "nella cartella" : "nelle cartelle"} ${vuote.slice(0, 3).map((n) => `«${n}»`).join(", ")} non c'è musica`);
-      }
-      const nuove = melodieDaAggiungere(favs, trovati);
-      const gia = new Set(trovati.map((f) => f.id)).size - nuove.length;
-      if (gia > 0) note.push(gia === 1 ? "una c'era già" : `${gia} c'erano già`);
-      if (!nuove.length) {
-        notify(note.length ? `Nessuna melodia nuova: ${note.join(" · ")}` : "Non hai scelto nessun file");
-        return;
-      }
-      const esito = await adottaMelodie(nuove);
-      commit([...favs, ...nuove.map((n) => n.voce)]);
-      const quante = nuove.length === 1 ? `«${nuove[0].voce.name}» aggiunta` : `${nuove.length} melodie aggiunte`;
-      notify([`${quante} da Google Drive ☁ si scaricano quando le suoni`, ...note, esito.scollegato ? "Google Drive aspetta un tocco: il resto dei segni lo scrive la prossima sincronizzazione" : ""].filter(Boolean).join(" · "));
-    } catch (e) {
-      notify(e instanceof DriveScollegato ? fraseScollegato(e, "Google Drive aspetta un tocco: riprova.") : e?.message || "Google Drive non ha risposto");
-    } finally {
-      setDaDrive(false);
-    }
   }
 
   function addMelody() {
@@ -422,7 +374,6 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, scaric
             const punto = brani.length ? puntoDi(brani[dove]) : 0;
             const riprendi = dove > 0 || punto > 0;
             const inAscolto = queue?.raccolta === r.id;
-            const lassu = qui ? daPortareQui(brani, qui) : { brani: [], byte: 0 };
             return (
               <div
                 key={r.id}
@@ -471,8 +422,6 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, scaric
                   {brani.length === 0
                     ? "nessun brano ancora"
                     : `${brani.length} ${brani.length === 1 ? "brano" : "brani"}`}
-                  {lassu.brani.length > 0 &&
-                    ` · ${lassu.brani.length === 1 ? "1 brano" : `${lassu.brani.length} brani`} solo su Google Drive${lassu.byte ? ` (${fmtBytes(lassu.byte)})` : ""}`}
                   {nonArrivati(r, favs) > 0 &&
                     ` · ${nonArrivati(r, favs) === 1 ? "1 brano non ancora arrivato qui" : `${nonArrivati(r, favs)} brani non ancora arrivati qui`}`}
                   {inAscolto
@@ -522,24 +471,6 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, scaric
                   >
                     {attiva ? "Fatto" : "Scegli i brani"}
                   </button>
-                  {/* PER ASCOLTARE SENZA RETE: le melodie di Drive che qui
-                      mancano scendono tutte, una alla volta (`portaQuiTutte` in App) */}
-                  {lassu.brani.length > 0 && driveAcceso() && (
-                    <button
-                      onClick={() => onScarica?.(lassu.brani, r.id)}
-                      disabled={!!scarico}
-                      style={{
-                        padding: "5px 12px",
-                        borderRadius: R.tondo,
-                        fontSize: F.piccolo,
-                        border: `1px solid ${C.border}`,
-                        color: C.muted,
-                        opacity: scarico ? 0.5 : 1,
-                      }}
-                    >
-                      {scarico?.raccolta === r.id ? `⬇ ${scarico.i + 1} di ${scarico.totale}…` : "⬇ Scarica la raccolta"}
-                    </button>
-                  )}
                   {brani.length > 0 && (
                     <button
                       onClick={() => setAperta(aperti ? null : r.id)}
@@ -657,46 +588,6 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, scaric
         >
           {caricando ? "…custodisco" : "♫ Dai tuoi file"}
         </button>
-        {driveAcceso() && (
-          <button
-            onClick={scegliMusicaSuDrive}
-            disabled={daDrive}
-            style={{
-              padding: "6px 14px",
-              borderRadius: R.tondo,
-              fontSize: F.nota,
-              border: `1px solid ${C.accent}88`,
-              color: C.accent,
-              background: `${C.accent}14`,
-              opacity: daDrive ? 0.6 : 1,
-            }}
-          >
-            {daDrive ? "…apro Drive" : "☁ Da Google Drive"}
-          </button>
-        )}
-        {/* SUL DISCO PRIMA DI LASCIARE DRIVE (chiesto dal lettore): le
-            melodie di Drive in «book-companion/Musica», dal computer */}
-        {(() => {
-          if (!driveAcceso() || !onSulDisco || !hddPossibile()) return null;
-          const voci = melodieSulDisco(getFavoritesRaw(), mappaMelodie());
-          if (!voci.length) return null;
-          return (
-            <button
-              onClick={async () => {
-                let radice = null;
-                try {
-                  radice = await window.showDirectoryPicker({ id: "bc-hdd", mode: "readwrite" });
-                } catch {
-                  return;
-                }
-                onSulDisco(radice);
-              }}
-              style={{ padding: "6px 14px", borderRadius: R.tondo, fontSize: F.nota, border: `1px solid ${C.border}`, color: C.text, background: "transparent" }}
-            >
-              {`💾 ${voci.length === 1 ? "La melodia" : `Le ${voci.length} melodie`} di Drive sul disco`}
-            </button>
-          );
-        })()}
         <button
           onClick={() => setAdding((v) => !v)}
           style={{
@@ -712,7 +603,7 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, scaric
         </button>
       </div>
       <p style={{ fontSize: F.minuscolo, color: C.muted, margin: "-4px 0 14px", lineHeight: 1.5 }}>
-        ♫ Le melodie dai tuoi file vanno avanti a tablet spento, fino allo scadere del timer.{driveAcceso() ? " Salgono su Google Drive, e sull'altro dispositivo scendono quando le suoni." : " Restano su questo dispositivo: nel cloud viaggiano solo i link."}{" "}
+        ♫ Le melodie dai tuoi file vanno avanti a tablet spento, fino allo scadere del timer. Restano su questo dispositivo: nel cloud viaggiano solo i link.{" "}
         ♪ YouTube no: quel lettore si mette in pausa da solo quando lo schermo si spegne, e non è in nostro potere.
       </p>
 
@@ -899,10 +790,10 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, scaric
                     )}
                     {isFile(f) && qui && !qui.has(f.trackId) && (
                       <span
-                        title={f.drive ? "Su Google Drive: si scarica quando la suoni" : "Non è su questo dispositivo"}
+                        title="Non è su questo dispositivo"
                         style={{ fontSize: F.corpo, color: C.muted, flexShrink: 0 }}
                       >
-                        {f.drive ? "☁" : "⚠"}
+                        ⚠
                       </span>
                     )}
                   </button>

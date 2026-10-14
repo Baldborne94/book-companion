@@ -98,30 +98,6 @@ const voceDelLibro = (b) => ({
   music: getBookMusic(b.id),
 });
 
-// L'ARCHIVIO DELLE SOLE SCHEDE, quello che va su Drive da solo (vedi
-// `archiviaSuDrive`): l'indice dell'archivio di sempre, senza un byte. Un
-// libro senza `file` torna dal ripristino come scheda, e il suo file lo
-// ritrova il giro di Drive dal segno; una melodia di Drive torna voce di
-// Drive. `null` a biblioteca vuota: non c'e' niente da mettere al sicuro.
-export async function archivioSchede(ora = new Date()) {
-  const books = loadBooks();
-  const melodie = getFavoritesRaw();
-  if (!books.length && !melodie.length) return null;
-  const indice = {
-    app: "book-companion",
-    version: ARCHIVE_VERSION,
-    exportedAt: ora.toISOString(),
-    soloSchede: true,
-    books: books.map(voceDelLibro),
-    melodie: melodie.map((f) => ({ ...f })),
-    raccolte: getListsRaw(),
-    glossari: tuttiIGlossari(),
-    diario: diarioPerArchivio(),
-  };
-  const { default: JSZip } = await import("jszip");
-  return costruisciPezzo({ pezzo: { n: 1, di: 1, voci: [] }, indice, JSZip, leggi: () => null });
-}
-
 // L'ARCHIVIO SI PREPARA, POI SI SCARICA A PEZZI (lib/archivioPezzi.js).
 // Qui si raccoglie tutto — i byte restano in IndexedDB, si tengono solo i
 // riferimenti — e si decide la spartizione; ogni pezzo si costruisce solo

@@ -107,7 +107,7 @@ export function misuraApertura(cosa, id, { segna = segnaTempo, raf } = {}) {
 }
 
 // da dove arrivano i byte di un reader (`fileDaLeggere`)
-export const provenienza = (blob) => (blob?.daLontano ? "pezzi" : blob?.lontano ? "drive" : "tablet");
+export const provenienza = (blob) => (blob?.daLontano ? "pezzi" : blob?.lontano ? "cloud" : "tablet");
 
 // le tappe sono istanti in fila; nella voce restano le durate fra l'una e
 // l'altra (la prima dalla partenza)
@@ -167,7 +167,6 @@ const NOMI = {
   libreria: "Libreria aperta",
   epub: "ePub aperto",
   pdf: "PDF aperto",
-  drive: "Giro di Google Drive",
 };
 const TAPPE = {
   html: "pagina dell'app",
@@ -180,12 +179,8 @@ const TAPPE = {
   libro: "libro letto",
   impagina: "impaginazione",
   primo: "primo disegno",
-  elenco: "elenco",
-  riconosce: "riconoscimento",
-  segni: "segni",
-  carica: "caricamenti",
 };
-const DA = { dacapo: "con l'elenco da capo", cambi: "dai cambiamenti", vivo: "con l'elenco in memoria", tablet: "dal tablet", drive: "da Drive", pezzi: "da Drive a pezzi", scaffale: "a scaffale", raccolte: "a raccolte" };
+const DA = { tablet: "dal tablet", cloud: "dal cloud", pezzi: "a pezzi", scaffale: "a scaffale", raccolte: "a raccolte" };
 const via = (v) => v.da || v.vista;
 
 function riga(nome, vv) {
@@ -193,7 +188,6 @@ function riga(nome, vv) {
   const tappe = [...new Set(vv.flatMap((v) => Object.keys(v.f || {})))];
   const lente = t.filter((x) => x > 2000).length;
   const n = vv.map((v) => v.n).filter((x) => x > 0);
-  const voci = vv.map((v) => v.voci).filter((x) => x > 0);
   return (
     `${nome}: ${vv.length} · tipica ${sec(quantile(t, 0.5))}` +
     // la tappa si misura su chi ce l'ha: una misura di prima senza quella
@@ -201,7 +195,6 @@ function riga(nome, vv) {
     (tappe.length > 1 ? ` (${tappe.map((k) => `${TAPPE[k] || k} ${sec(quantile(vv.filter((v) => v.f && k in v.f).map((v) => v.f[k]), 0.5))}`).join(" + ")})` : "") +
     ` · 9 su 10 entro ${sec(quantile(t, 0.9))} · la peggiore ${sec(Math.max(...t))}` +
     (n.length ? ` · ${quantile(n, 0.5)} libri` : "") +
-    (voci.length ? ` · ${quantile(voci, 0.5)} file nell'elenco` : "") +
     (lente ? ` · oltre i 2 secondi: ${lente}` : "")
   );
 }

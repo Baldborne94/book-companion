@@ -73,7 +73,6 @@ export default async (t) => {
   // ---- aprirlo dal PC ---------------------------------------------------------
   t.eq("niente byte, niente Drive: si dice dove sta", soloAltrove("b1", { qui, altrove }), "sul tablet");
   t.eq("una voce senza nome: «sull'altro dispositivo»", soloAltrove("z", { qui, altrove: altroveDa([{ id: "qui|X", libri: ["z"], updatedAt: 1 }], "P") }), "sull'altro dispositivo");
-  t.eq("su Drive c'e': si apre da li'", soloAltrove("b1", { qui, suDrive: true, altrove }), null);
   t.eq("qui c'e': si apre", soloAltrove("d1", { qui, altrove: new Map([["d1", "tablet"]]) }), null);
   t.eq("senza l'elenco di casa non si ferma niente", soloAltrove("b1", { qui: null, altrove }), null);
   t.eq("un libro che l'altro non ha: niente", soloAltrove("x", { qui, altrove }), null);

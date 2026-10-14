@@ -1,8 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { C, F, R } from "../data/constants.js";
-import { driveAcceso, indirizzoMelodia } from "../lib/drive.js";
 import {
-  parseYouTube, embedUrl, isFile, loadTrack, portaQuiMelodia, getVolume, saveVolume, restaDa, getFavorites,
+  parseYouTube, embedUrl, isFile, loadTrack, getVolume, saveVolume, restaDa, getFavorites,
   puntoDi, segnaPunto, dimenticaPunto, daDoveRiprendere, segnaDove, indietroDa, getLists,
 } from "../lib/music.js";
 import { Faccia, Avanzamento, Comandi, sottotitolo } from "./Ascolto.jsx";
@@ -24,8 +23,6 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
   // suoi messaggi, il file lo dice l'<audio>
   const ytTempo = useRef(null);
   const ultimoPunto = useRef(0);
-  // la melodia di Drive che suona a pezzi: se l'<audio> si arrende, scende intera
-  const inRete = useRef(null);
   const advanceRef = useRef(() => {});
   const nextRef = useRef(() => {});
   const [current, setCurrent] = useState(null);
@@ -283,44 +280,13 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
     liberaUrl();
   }
 
-  async function suonaFile(voce, { aPezzi = true } = {}) {
-    let blob = await loadTrack(voce.trackId).catch(() => null);
-    if (!blob && voce.drive && !driveAcceso()) {
-      // la melodia c'e', lassu': e' questo dispositivo a non avere la porta
-      notify(`«${voce.name}» sta su Google Drive: collegalo dal pannello della nuvola per ascoltarla qui 🎵`);
-      return false;
-    }
-    // SUONA MENTRE SCENDE (`public/melodia-sw.js`): l'<audio> chiede a pezzi
-    // e parte appena ha l'inizio. La copia per il dispositivo scende dopo,
-    // quando gia' suona (`onPlaying`): prima ruberebbe la banda all'inizio
-    const indirizzo = !blob && voce.drive && aPezzi ? await indirizzoMelodia(voce.trackId).catch(() => null) : null;
-    if (indirizzo) {
-      liberaUrl();
-      inRete.current = { voce, copia: false };
-      setCurrent({ trackId: voce.trackId, name: voce.name, src: indirizzo, inizio: puntoDi(voce) });
-      setPlaying(true);
-      return true;
-    }
-    if (!blob && voce.drive) {
-      // i byte stanno su Google Drive: scendono adesso, e poi restano qui
-      notify(`Scarico «${voce.name}» da Google Drive… 🎵`);
-      try {
-        blob = await portaQuiMelodia(voce);
-      } catch {
-        notify(`Non riesco a scaricare «${voce.name}» da Google Drive: controlla la connessione e riprova 🎵`);
-        return false;
-      }
-    }
+  async function suonaFile(voce) {
+    const blob = await loadTrack(voce.trackId).catch(() => null);
     if (!blob) {
-      notify(
-        voce.drive
-          ? `«${voce.name}» non è più su Google Drive: ricaricala dal dispositivo dove ce l'hai 🎵`
-          : `«${voce.name}» non è su questo dispositivo, e su Google Drive non è ancora salita: sale alla prossima sincronizzazione del dispositivo dove l'hai caricata 🎵`
-      );
+      notify(`«${voce.name}» non è su questo dispositivo: aggiungila dalla Musica 🎵`);
       return false;
     }
     liberaUrl();
-    inRete.current = null;
     urlRef.current = URL.createObjectURL(blob);
     setCurrent({ trackId: voce.trackId, name: voce.name, src: urlRef.current, inizio: puntoDi(voce) });
     setPlaying(true);
@@ -580,19 +546,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
         }}
         preload="auto"
         playsInline
-        onPlaying={() => {
-          const r = inRete.current;
-          if (!r || r.copia || r.voce.trackId !== current?.trackId) return;
-          r.copia = true;
-          portaQuiMelodia(r.voce).catch(() => {});
-        }}
         onError={() => {
-          const r = inRete.current;
-          inRete.current = null;
-          if (r && current?.src?.startsWith("/__melodia/") && r.voce.trackId === current.trackId) {
-            suonaFile(r.voce, { aPezzi: false });
-            return;
-          }
           if (current?.src) notify("Questa traccia non si riesce a suonare 🎵");
         }}
         // NON display:none. Un elemento tolto dal disegno e' un elemento che

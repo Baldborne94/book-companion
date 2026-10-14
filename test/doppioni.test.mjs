@@ -1,9 +1,7 @@
-// I DOPPIONI (`doppioniInBiblioteca`: fumetti e libri) e il gemello CBZ su Drive
-// (`gemelloCbzDi`). Sbagliano in silenzio in due modi che costano: tenere
+// I DOPPIONI (`doppioniInBiblioteca`: fumetti e libri). Sbagliano in silenzio in due modi che costano: tenere
 // la copia sbagliata (quella senza il segno di lettura, o il CBR che scende
 // intero invece del CBZ), o prendere per doppioni due libri diversi.
 import { doppioniInBiblioteca, chiaveVolume } from "../src/lib/doppioni.js";
-import { gemelloCbzDi } from "../src/lib/driveCore.js";
 
 const TWD = (n, extra = "") => `The Walking Dead Deluxe Vol. 0${n}${extra}`;
 
@@ -64,19 +62,4 @@ export default async (t) => {
   t.eq("lo stesso libro in ePub e in PDF non si unisce: sono due file diversi", doppioniInBiblioteca([{ id: "a", title: "Mort", author: "Pratchett", fileType: "epub" }, { id: "b", title: "Mort", author: "Pratchett", fileType: "pdf" }]).length, 0);
   t.eq("un ePub senza autore non si unisce a un altro col suo titolo", doppioniInBiblioteca([{ id: "a", title: "Mort", author: "Pratchett", fileType: "epub" }, { id: "b", title: "Mort", author: "", fileType: "epub" }]).length, 0);
   t.eq("un fumetto senza file perde contro quello col file, anche se e' il CBZ", doppioniInBiblioteca([{ id: "z", title: "V", fileType: "cbz" }, { id: "r", title: "V", fileType: "cbr" }], { conFile: (id) => id === "r" })[0].tieni, "r");
-
-  // ---- il gemello su Drive --------------------------------------------------
-  const file = [
-    { id: "r1", name: `${TWD(1)}.cbr`, parents: ["W"] },
-    { id: "z1", name: `${TWD(1)}.CBZ`, parents: ["W"], appProperties: { bcId: "altro" } },
-    { id: "r2", name: `${TWD(2)}.cbr`, parents: ["W"] },
-    { id: "z2", name: `${TWD(2)}.cbz`, parents: ["ALTROVE"] },
-    { id: "r3", name: `${TWD(3)}.cbr`, parents: ["W"] },
-    { id: "z3", name: `${TWD(3)}.cbz`, parents: ["W"], trashed: true },
-  ];
-  t.eq("il CBZ accanto, di chiunque sia", gemelloCbzDi("r1", file)?.id, "z1");
-  t.eq("in un'altra cartella non e' il gemello", gemelloCbzDi("r2", file), null);
-  t.eq("nel cestino nemmeno", gemelloCbzDi("r3", file), null);
-  t.eq("un file che non c'e' non ha gemelli", gemelloCbzDi("zz", file), null);
-  t.eq("un CBZ non e' il gemello di se stesso", gemelloCbzDi("z1", file), null);
 };

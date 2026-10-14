@@ -20,7 +20,7 @@ import {
   getCfi, setCfi, removeAnnotations, setJump,
   segnalibriInteri, evidenziazioniIntere, posaSegnalibri, posaEvidenziazioni,
 } from "./annotations.js";
-import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, saveFavorites, getListsRaw, writeLists, loadTrack, dropTrack } from "./music.js";
+import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, getListsRaw, writeLists, dropTrack } from "./music.js";
 import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
 import { raccontiLetti, scriviRacconti } from "./racconti.js";
 import { leggiPreferite, scriviPreferite, fondiPreferite } from "./raccoltePreferite.js";
@@ -31,14 +31,10 @@ import { leggiObiettivi, scriviObiettivi, fondiObiettivi } from "./obiettivo.js"
 import { leggiQuaderno, scriviQuaderno, fondiQuaderno } from "./quaderno.js";
 import { leggiDaPrendere, scriviDaPrendere, fondiDaPrendere } from "./daPrendere.js";
 import { aGruppi } from "./aGruppi.js";
-import { leggiRigheLeggere, aPagine, fraseCopertine, COPERTINE_INSIEME, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare, mandaCopertine, copertineInAttesa, segnaInAttesa, fondiSchede } from "./syncCore.js";
-import { daTogliereDalSecchio, avanziDelSecchio, segnaSuDrive, leggereDaLontano, nomeSuDrive } from "./driveCore.js";
+import { avanziDelSecchio, leggiRigheLeggere, aPagine, fraseCopertine, COPERTINE_INSIEME, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare, mandaCopertine, copertineInAttesa, segnaInAttesa, fondiSchede } from "./syncCore.js";
 import { raccontaGiro } from "./resoconto.js";
-import { giroDrive, giroMelodie, archiviaSuDrive, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto, fermaCbrCompresso, sostituisciSuDrive, chiaveDrive, DriveScollegato, adottaCbz, elencaFile } from "./drive.js";
-import { tipiDi, tipoDi } from "./library.js";
-import { misureFile, listTrackIds } from "./bookStore.js";
+import { togliAvanziDrive } from "./avanziDrive.js";
 import { nuovaMemoria, firmaLontana } from "./ultimiLontani.js";
-import { unaPerChiave } from "./inVolo.js";
 
 const LONTANI = nuovaMemoria();
 
@@ -241,82 +237,6 @@ function localPrefs() {
   };
 }
 
-// IL GIRO DI DRIVE, con quel che sa solo questo dispositivo: quali libri
-// hanno i byte qui, quanto pesano, e di che tipo sono (la cartella dove va
-// un libro nuovo). Un Drive che esplode non si porta via la sincronizzazione
-// delle schede: si conta come un file non salito, e al giro dopo si riprova.
-async function giroDelDrive(books, { say, inUscita, secchio = null, altrove = null } = {}) {
-  if (!driveAcceso()) return {};
-  try {
-    const qui = new Set(await listFileIds().catch(() => []));
-    const misure = await misureFile().catch(() => new Map());
-    const tipi = tipiDi(books);
-    const esito = await giroDrive(books, {
-      tipo: (b) => tipoDi(b, tipi),
-      qui,
-      misure,
-      inUscita,
-      secchio,
-      leggiByte: async (id) => {
-        const qua = await getFile(id).catch(() => null);
-        if (qua) return qua;
-        const b = books.find((x) => x.id === id);
-        return b && altrove ? altrove(b) : null;
-      },
-      say,
-    });
-    if (esito.saltato) return esito;
-    const falliti = (esito.falliti || 0) + (await giroDellaMusica(say));
-    return { ...esito, falliti, archiviato: await archivioDelGiorno(books, say) };
-  } catch {
-    return { falliti: 1 };
-  }
-}
-
-// L'ARCHIVIO DELLE SCHEDE va su Drive dopo i file (vedi `archiviaSuDrive`):
-// una volta al giorno, e un archivio che non parte non si porta via il giro.
-async function archivioDelGiorno(books, say) {
-  try {
-    const r = await archiviaSuDrive(
-      async () => {
-        say("Metto al sicuro le schede su Drive…");
-        return (await import("./exportLibrary.js")).archivioSchede();
-      },
-      { roba: books.length + getFavoritesRaw().length }
-    );
-    return !!r.fatto;
-  } catch {
-    return false;
-  }
-}
-
-// LA MUSICA DOPO I LIBRI: sale quel che ha i byte qui, e le voci che stanno
-// su Drive si segnano (`segnaSuDrive`) — e' quel segno a farle viaggiare
-// nelle preferenze fino all'altro dispositivo, che le scarica quando le
-// suoni. Torna quante non sono salite; un giro della musica che esplode non
-// si porta via quello dei libri.
-async function giroDellaMusica(say) {
-  try {
-    const qui = new Set(await listTrackIds().catch(() => []));
-    const m = await giroMelodie(getFavoritesRaw(), { qui, leggiTrack: (id) => loadTrack(id).catch(() => null), say });
-    if (m.melodie) {
-      // si rilegge l'elenco di ADESSO: una melodia aggiunta mentre il giro
-      // caricava non va sovrascritta con la copia di quando e' partito
-      const { lista, cambiate } = segnaSuDrive(getFavoritesRaw(), m.melodie);
-      if (cambiate) saveFavorites(lista);
-    }
-    return m.falliti || 0;
-  } catch {
-    return 1;
-  }
-}
-
-// Senza un accesso a Supabase i libri su Drive si riconoscono e salgono lo
-// stesso: le schede restano su questo dispositivo, i file vanno al sicuro.
-export async function sincronizzaSoloDrive({ onProgress } = {}) {
-  return giroDelDrive(loadBooks(), { say: (m) => onProgress?.(m) });
-}
-
 export async function syncNow({ onProgress, onLibri } = {}) {
   if (!isSyncConfigured()) return { skipped: "non configurata" };
   const sb = await getClient();
@@ -324,6 +244,9 @@ export async function syncNow({ onProgress, onLibri } = {}) {
   if (!session) return { skipped: "non connesso" };
   const uid = session.user.id;
   const say = (m) => onProgress?.(m);
+  // la riga col permesso a lungo termine di Google, dei tempi di Drive
+  // (`avanziDrive.js`): una volta per account e dispositivo
+  await togliAvanziDrive({ sb, uid }).catch(() => {});
 
   say("Leggo la biblioteca…");
   const books = loadBooks();
@@ -443,10 +366,8 @@ export async function syncNow({ onProgress, onLibri } = {}) {
   }
   if (!degraded) localStorage.setItem(REPUSH_KEY, "done");
 
-  // I FILE DEI LIBRI NON SALGONO PIU' SU SUPABASE: stanno su Google Drive
-  // (deciso dal lettore, che li' ha 100 GB e qui uno). Il secchio si tiene
-  // le copertine, e dei libri solo quel che Drive non ha ancora — il tempo
-  // di portarlo su (vedi `giroDrive` e `daTogliereDalSecchio`).
+  // I FILE DEI LIBRI NON SALGONO SU SUPABASE: il secchio si tiene le
+  // copertine, e dei libri quel che c'era da prima.
   let secchio = null;
   try {
     secchio = contaSpazio(await elenca(sb, uid), []);
@@ -455,35 +376,7 @@ export async function syncNow({ onProgress, onLibri } = {}) {
   }
   let falliti = 0;
   let prefsGuaste = "";
-  const drive = await giroDelDrive(books, {
-    say,
-    inUscita: new Set(removeLocal),
-    secchio: secchio?.idLibri || null,
-    // un libro che sta solo nel secchio si scarica da li' e sale su Drive
-    // senza passare dal dispositivo: il tablet si voleva libero
-    altrove: async (b) => {
-      const { data } = await sb.storage.from(BUCKET).download(filePath(uid, b));
-      return data || null;
-    },
-  });
-  falliti += drive.falliti || 0;
-  // E QUEL CHE DRIVE HA, IL SECCHIO LO LASCIA: e' spazio del piano gratuito
-  // occupato da una seconda copia. Solo dopo un giro di Drive riuscito —
-  // con la chiave scaduta la mappa e' quella di ieri, e nel dubbio il
-  // secchio si tiene la sua copia.
-  if (drive.mappa && secchio?.idLibri) {
-    const via = daTogliereDalSecchio(secchio.idLibri, drive.mappa);
-    if (via.length) say(`Libero il cloud da ${via.length === 1 ? "un libro" : `${via.length} libri`} che stanno su Drive…`);
-    for (let i = 0; i < via.length; i += 100) {
-      const percorsi = via
-        .slice(i, i + 100)
-        .flatMap((id) => ["epub", "pdf", "cbz", "cbr"].map((ext) => `${uid}/${id}.${ext}`));
-      // uno sgombero non riuscito non ferma niente: si riprova al giro dopo
-      await sb.storage.from(BUCKET).remove(percorsi).catch(() => {});
-    }
-  }
-  // e quel che non e' di nessun libro vivo se ne va con o senza Drive
-  // (vedi `avanziDelSecchio`)
+  // quel che non e' di nessun libro vivo se ne va (vedi `avanziDelSecchio`)
   if (secchio?.idLibri) {
     const avanzi = avanziDelSecchio(secchio.idLibri, {
       libri: books,
@@ -848,36 +741,10 @@ export async function togliFileDalCloud(book) {
   }
 }
 
-// UN LIBRO SI PRENDE PRIMA DA DRIVE, poi dal secchio: da quando i file
-// stanno su Drive il secchio ha solo quel che non e' ancora stato portato
-// lassu'. A chiave scaduta si chiede la chiave nuova — chi apre un libro ha
-// appena toccato lo schermo, e Google la finestra la apre solo dopo un tocco.
-// Un file che Drive non ha piu' (tolto a mano dal lettore) e' «non c'e'»,
-// non un guasto: si prova il secchio.
-// una discesa per file (`inVolo.js`): il lettore e il giro dei libri in
-// lettura chiedevano lo stesso volume insieme, e la rete si divideva in due
-const DISCESE = unaPerChiave();
-const scendi = (voce, onProgress) => DISCESE(voce.id, (avvisa) => scaricaDaDrive(voce.id, { onProgress: avvisa, totale: voce.byte }), { onProgress });
-
-async function dalDrive(book, { onProgress } = {}) {
-  const voce = driveAcceso() ? mappaDrive()[book.id] : null;
-  if (!voce) return null;
-  if (!driveProntoOra()) await collegaDrive();
-  try {
-    return await scendi(voce, onProgress);
-  } catch (e) {
-    if (e?.status === 404) return null;
-    throw e;
-  }
-}
-
-// I byte di un libro che qui non c'e', PRESI E BASTA: da Drive, poi dal
-// secchio, e niente scritto su disco. E' la strada di chi legge — vedi
-// `fileDaLeggere` — e di chi vuole tenerlo (`ensureLocalFile`), che ci
-// aggiunge la scrittura.
-async function prendiFile(book, opzioni = {}) {
-  const daDrive = await dalDrive(book, opzioni).catch(() => null);
-  if (daDrive) return daDrive;
+// I byte di un libro che qui non c'e', PRESI E BASTA: dal secchio (quel che
+// c'era da prima), e niente scritto su disco. E' la strada di chi legge —
+// vedi `fileDaLeggere`.
+async function prendiFile(book) {
   if (!isSyncConfigured()) return null;
   const session = await getSession();
   if (!session) return null;
@@ -887,40 +754,16 @@ async function prendiFile(book, opzioni = {}) {
   return data;
 }
 
-// IL FILE CHE UN READER DEVE APRIRE, E LA SITUAZIONE PULITA (chiesta dal
-// lettore: «tutti i libri, fumetti e manga li tieni su Drive e me li leggo
-// puntando lì, e solo se voglio leggerli offline me li scarichi in
-// locale»). Tre casi, in quest'ordine:
-// - i byte sono QUI: quelli, come sempre;
-// - un fumetto o un PDF grossi su Drive: il file LONTANO letto a pezzi
-//   (`leggereDaLontano`), col segno `daLontano` per il banner della chiave;
-// - tutto il resto che sta lassu' (l'ePub, che epub.js vuole intero; il
-//   CBR; i piccoli): scende in MEMORIA per questa lettura, col segno
-//   `lontano`, e NON si scrive su disco. Riaprendolo si riprende da Drive.
-// Prima di questa cura la terza strada era `ensureLocalFile`: ogni libro
-// aperto restava sul tablet per sempre, e la «situazione pulita» durava
-// fino alla prima lettura. Sul tablet resta solo quel che il lettore ha
-// CHIESTO: «Tieni sul tablet» nella scheda, «Scarica qui» in Libreria, o
-// il volume dopo se ha acceso l'anticipo.
-// il pezzo di un PDF: lo stesso che pdf.js chiede da se' (`rangeChunkSize`)
-const PEZZO_PDF = 64 * 1024;
-export async function fileDaLeggere(book, { onProgress } = {}) {
+// IL FILE CHE UN READER DEVE APRIRE: i byte qui, o quelli del secchio in
+// MEMORIA per questa lettura (col segno `lontano`), senza scriverli su disco.
+// L'ultimo letto cosi' si riapre dalla memoria (`lib/ultimiLontani.js`).
+export async function fileDaLeggere(book) {
   const local = await getFile(book.id);
   if (local) return local;
-  const voce = driveAcceso() ? mappaDrive()[book.id] : null;
-  await fermaCbrCompresso(book.fileType, voce);
-  if (leggereDaLontano(book, voce)) {
-    if (!driveProntoOra()) await collegaDrive();
-    const f = fileRemoto(voce.id, voce.byte, book.fileType === "pdf" ? { minimo: PEZZO_PDF } : {});
-    f.daLontano = true;
-    return f;
-  }
-  // l'ultimo libro letto da lontano si riapre dalla memoria, senza
-  // riscaricarlo (`lib/ultimiLontani.js`): stesso file lassu', stessa copia
-  const firma = firmaLontana(voce);
+  const firma = firmaLontana(null);
   const ricordato = LONTANI.prendi(book.id, firma);
   if (ricordato) return ricordato;
-  const preso = await prendiFile(book, { onProgress });
+  const preso = await prendiFile(book);
   if (preso) {
     preso.lontano = true;
     LONTANI.tieni(book.id, firma, preso);
@@ -930,139 +773,38 @@ export async function fileDaLeggere(book, { onProgress } = {}) {
 
 // UN CBR GIA' IN BIBLIOTECA CHE IL BROWSER NON APRIRA' MAI (compresso e
 // oltre `CBR_MAX`: vedi `rarInCbz.js`) si converte in CBZ dal lettore, con
-// un tocco. Se sta su Drive si legge da li' a finestre e il CBZ prende il
-// suo posto lassu' (`sostituisciSuDrive`, il CBR nel cestino); se sta qui,
-// il CBZ prende il suo posto qui. I nomi delle pagine restano, quindi anche
-// l'ordine e il segno di lettura. Torna quel che cambia nella scheda.
-// `chiedi: false` (il giro della Manutenzione): a chiave scaduta non si apre
-// la finestra di Google, che fuori da un tocco il browser bloccherebbe — si
-// dice «scollegato» e il giro si ferma.
-export async function convertiLibroInCbz(book, { onProgress, chiedi = true } = {}) {
+// un tocco: il CBZ prende il suo posto qui. I nomi delle pagine restano,
+// quindi anche l'ordine e il segno di lettura. Torna quel che cambia nella
+// scheda.
+export async function convertiLibroInCbz(book, { onProgress } = {}) {
   const { convertiInCbz } = await import("./archivioFumetto.js");
   const { improntaDi } = await import("./importBook.js");
   const { formatoDaByte } = await import("./fumetto.js");
-  const { pianoConversione, PERCHE_DOPPIONE } = await import("./convertiCbr.js");
-  const formato = async (b) => (b ? formatoDaByte(new Uint8Array(await b.slice(0, 8).arrayBuffer())) : null);
+  const { pianoConversione } = await import("./convertiCbr.js");
   const qui = await getFile(book.id).catch(() => null);
-  const voce = driveAcceso() ? mappaDrive()[book.id] : null;
-  if (voce?.id && !driveProntoOra()) {
-    if (!chiedi) throw new DriveScollegato();
-    await collegaDrive();
-  }
-  // IL GEMELLO GIA' FATTO (vedi `gemelloCbzDi`): accanto al CBR su Drive c'e'
-  // gia' il suo CBZ. Libero, si adotta; di un'altra scheda, e' un doppione
-  if (voce?.id) {
-    const { gemelloCbzDi } = await import("./driveCore.js");
-    const gem = gemelloCbzDi(voce.id, await elencaFile());
-    if (gem) {
-      const altro = gem.appProperties?.bcId;
-      if (altro && altro !== book.id) throw new Error(PERCHE_DOPPIONE);
-      await adottaCbz({ bookId: book.id, vecchio: voce.id, nuovo: gem.id, byte: Number(gem.size) || 0 });
-      LONTANI.dimentica?.(book.id);
-      await removeFileOnly(book.id).catch(() => {});
-      if (!(await getCover(book.id).catch(() => null))) {
-        const { copertinaOriginale } = await import("./copertina.js");
-        const f = fileRemoto(gem.id, Number(gem.size) || 0);
-        f.daLontano = true;
-        const cover = await copertinaOriginale({ ...book, fileType: "cbz" }, f).catch(() => null);
-        if (cover) await putCover(book.id, cover).catch(() => {});
-      }
-      return { fileType: "cbz" };
-    }
-  }
-  const lassu = voce?.id ? fileRemoto(voce.id, voce.byte) : null;
-  const piano = pianoConversione({ qui: await formato(qui), lassu: await formato(lassu) });
-  if (!piano) throw new Error("il file di questo libro non c'è, né qui né su Google Drive");
-  let cbz = piano.sorgente === "qui" ? qui : lassu;
+  const piano = pianoConversione({ qui: qui ? formatoDaByte(new Uint8Array(await qui.slice(0, 8).arrayBuffer())) : null });
+  if (!piano) throw new Error("il file di questo libro non c'è su questo dispositivo");
+  let cbz = qui;
   if (piano.converti) {
-    cbz = piano.sorgente === "qui"
-      ? await convertiInCbz({ blob: qui }, { onProgress })
-      : await convertiInCbz({ drive: { id: voce.id, chiave: chiaveDrive() }, misura: voce.byte }, { onProgress });
-    if (qui) await putFile(book.id, cbz);
-  }
-  if (piano.sostituisci) {
-    await sostituisciSuDrive(voce.id, cbz, {
-      nome: nomeSuDrive({ ...book, fileType: "cbz" }),
-      bookId: book.id,
-      onProgress: (p) => onProgress?.({ ...p, carico: true }),
-    });
+    cbz = await convertiInCbz({ blob: qui }, { onProgress });
+    await putFile(book.id, cbz);
   }
   LONTANI.dimentica?.(book.id);
-  // la copertina che mancava (un CBR compresso da Drive non la dava: la
-  // prima pagina compressa non si legge da lontano) si prende dal CBZ
+  // la copertina che mancava si prende dal CBZ
   if (!(await getCover(book.id).catch(() => null))) {
     const { copertinaOriginale } = await import("./copertina.js");
     const cover = await copertinaOriginale({ ...book, fileType: "cbz" }, cbz).catch(() => null);
     if (cover) await putCover(book.id, cover).catch(() => {});
   }
-  // l'impronta dei byte nuovi, se li ho in mano: da Drive vorrebbe dire
-  // scaricare il volume solo per quella
-  const impronta = cbz === lassu ? undefined : await improntaDi(cbz).catch(() => undefined);
+  const impronta = await improntaDi(cbz).catch(() => undefined);
   return { fileType: "cbz", ...(impronta ? { impronta } : {}) };
 }
 
-// I CBZ CONVERTITI SU COLAB (vedi `cbzDaAdottare`): dopo il giro, ogni CBR
-// che ha il suo gemello CBZ accanto su Drive diventa quel CBZ — segno, saga
-// e voto restano, la copertina che mancava si prende dal CBZ, e la copia CBR
-// rimasta sul tablet se ne va (il lettore aprirebbe ancora quella). Si fa
-// solo con la chiave in mano: nessuna finestra di Google senza un tocco.
-// Torna, libro per libro, quel che cambia nella scheda, e lo dice SUBITO a
-// `onFatto`: centosette volumi con la copertina da prendere sono minuti, e
-// la scheda non aspetta l'ultimo (vedi `cbzGiaAdottati`).
-export async function adottaCbzConvertiti(libri, { onFatto } = {}) {
-  if (!driveAcceso() || !driveProntoOra()) return [];
-  const { cbzDaAdottare, cbzGiaAdottati } = await import("./driveCore.js");
-  const cbr = (libri || []).filter((b) => b?.fileType === "cbr");
-  if (!cbr.length) return [];
-  const file = await elencaFile();
-  const da = [...cbzGiaAdottati(cbr, mappaDrive(), file), ...cbzDaAdottare(cbr, mappaDrive(), file)];
-  const fatti = [];
-  for (const a of da) {
-    try {
-      if (a.vecchio) await adottaCbz(a);
-      LONTANI.dimentica?.(a.bookId);
-      await removeFileOnly(a.bookId).catch(() => {});
-      if (!(await getCover(a.bookId).catch(() => null))) {
-        const { copertinaOriginale } = await import("./copertina.js");
-        const f = fileRemoto(a.nuovo, a.byte);
-        f.daLontano = true;
-        const cover = await copertinaOriginale({ fileType: "cbz" }, f).catch(() => null);
-        if (cover) await putCover(a.bookId, cover).catch(() => {});
-      }
-      const { IMPRONTA_INTERA } = await import("./importBook.js");
-      const fatto = { id: a.bookId, patch: { fileType: "cbz", impronta: a.sha && a.byte <= IMPRONTA_INTERA ? a.sha : undefined } };
-      fatti.push(fatto);
-      onFatto?.(fatto);
-    } catch (e) {
-      if (e?.name === "DriveScollegato") break;
-    }
-  }
-  return fatti;
-}
-
-// IL SEGUITO CHE SCENDE DA SE' (`lib/anticipo.js`): come `ensureLocalFile`
-// ma SENZA CHIEDERE NIENTE A NESSUNO. Qui non c'e' un tocco dietro — si
-// arriva da una voltata — quindi a chiave di Google scaduta non si apre la
-// finestra (il browser la bloccherebbe, e se non la bloccasse sarebbe peggio:
-// un accesso a Google in faccia a chi sta leggendo). Si dice «chiave» e ci
-// si riprova alla prossima occasione. Esiti: «gia'» (era qui), «sceso»,
-// «chiave», «assente» (lassu' non c'e'), «errore».
+// IL SEGUITO CHE SCENDE DA SE' (`lib/anticipo.js`): dal secchio, scritto qui, senza chiedere niente a nessuno. Esiti: «gia'» (era qui),
+// «sceso», «assente» (lassu' non c'e'), «errore».
 export async function anticipaFile(book) {
   if (await getFile(book.id).catch(() => null)) return "gia";
   try {
-    const voce = driveAcceso() ? mappaDrive()[book.id] : null;
-    if (voce) {
-      if (!driveProntoOra()) return "chiave";
-      try {
-        // il volume appena letto e' gia' in memoria (`LONTANI`); se sta
-        // scendendo per il lettore, ci si aggancia a quella discesa
-        await putFile(book.id, LONTANI.prendi(book.id, firmaLontana(voce)) || (await scendi(voce)));
-        return "sceso";
-      } catch (e) {
-        if (e?.name === "DriveScollegato") return "chiave";
-        if (e?.status !== 404) throw e;
-      }
-    }
     if (!isSyncConfigured()) return "assente";
     const session = await getSession();
     if (!session) return "assente";
@@ -1076,40 +818,11 @@ export async function anticipaFile(book) {
   }
 }
 
-// TENERE IL LIBRO SUL TABLET: gli stessi byte di `prendiFile`, scritti su
-// disco. Da qui passano i soli gesti che lo CHIEDONO — la scheda, «Scarica
-// qui», il ripristino — mai una lettura.
-// Chi lo tiene sul tablet dopo averlo letto da Drive ha gia' il file in
-// memoria (`LONTANI`): si scrive quello, invece di scaricarlo di nuovo.
-export async function ensureLocalFile(book, { onProgress } = {}) {
-  const local = await getFile(book.id);
-  if (local) return local;
-  const voce = driveAcceso() ? mappaDrive()[book.id] : null;
-  const preso = LONTANI.prendi(book.id, firmaLontana(voce)) || (await prendiFile(book, { onProgress }));
-  if (!preso) return null;
-  await putFile(book.id, preso);
-  return preso;
-}
-
-// PORTARE A CASA I TOMI RIMASTI NEL CLOUD.
-//
-// Un libro arrivato dalla sincronizzazione ha qui titolo, copertina e
-// progresso, ma i byte scendono solo la prima volta che lo apri. Per
-// leggere va benissimo; per le domande che attraversano la saga no —
-// «Chi è costui?» sfoglia i volumi che hai finito, e un volume che non e'
-// su questo dispositivo resta muto (adesso lo dichiara, ma resta muto).
-// Aprirli uno per uno per sbloccarli e' una faccenda da dieci minuti:
-// questo giro li porta giu' tutti insieme, una volta sola.
-//
-// Un tomo per volta, come ogni passata lunga di questa app: venti
-// scaricamenti in parallelo su una connessione da tablet sono il modo di
-// non finirne nessuno. Il filo `vivo` e' l'unico modo di fermarlo a meta',
-// e quel che e' gia' sceso resta sceso.
-// Il giro vero sta in `portaGiu` (syncCore): qui si dice solo dove sono i
-// byte e come si scaricano.
-// `scollegato` NON e' uno zero come gli altri: dice che al secchio non si e'
-// nemmeno chiesto. Senza, chi legge l'esito non puo' distinguere «guardato,
-// non c'era niente» da «non ho potuto guardare» — vedi `frasePortata`.
+// PORTARE A CASA I TOMI RIMASTI NEL CLOUD: un libro arrivato dalla
+// sincronizzazione ha qui titolo, copertina e progresso, e i byte che il
+// secchio ha ancora scendono tutti insieme, un tomo per volta. Il giro vero
+// sta in `portaGiu` (syncCore). `scollegato` NON e' uno zero come gli altri:
+// dice che al secchio non si e' nemmeno chiesto (vedi `frasePortata`).
 const NIENTE = { scesi: 0, assenti: 0, falliti: 0, fermato: false, scollegato: true };
 
 async function daScaricare() {
@@ -1127,26 +840,11 @@ async function daScaricare() {
 }
 
 export async function portaACasa(libri, { onProgress, vivo } = {}) {
-  const suDrive = driveAcceso() ? mappaDrive() : {};
-  const dalDriveServe = (libri || []).some((b) => suDrive[b.id]);
-  // il tasto e' un tocco: e' il momento buono per rinnovare la chiave di
-  // Google, se e' scaduta — piu' avanti il browser la finestra la blocca
-  if (dalDriveServe && !driveProntoOra()) await collegaDrive().catch(() => {});
-  const drive = dalDriveServe && driveProntoOra();
   const cloud = await daScaricare();
-  if (!cloud && !drive) return { ...NIENTE };
+  if (!cloud) return { ...NIENTE };
   return portaGiu(libri, {
     manca: async (b) => !(await getFile(b.id).catch(() => null)),
-    scarica: async (b) => {
-      if (drive && suDrive[b.id]) {
-        try {
-          return await scaricaDaDrive(suDrive[b.id].id);
-        } catch (e) {
-          if (e?.status !== 404) throw e;
-        }
-      }
-      return cloud ? cloud.scarica(filePath(cloud.uid, b)) : null;
-    },
+    scarica: (b) => cloud.scarica(filePath(cloud.uid, b)),
     posa: (b, byte) => putFile(b.id, byte),
     titolo: (b) => b.title,
     onProgress,

@@ -9,7 +9,7 @@
 // file nessuna scheda riconosce. Riordinare sposta solo dentro il disco, e
 // non copre mai un file.
 
-import { nomeNudo, casaDelVolume } from "./driveCore.js";
+import { nomeNudo, casaDelVolume } from "./casa.js";
 import { nomeSicuro, cartellaDentro } from "./hdd.js";
 
 const EST_DISCO = /\.(epub|pdf|cbz|cbr)$/i;
@@ -251,25 +251,24 @@ function abbinaDisco(libri, file, casaDi = () => null) {
 }
 const estDi = (n) => (/\.([a-z0-9]{2,5})$/i.exec(n || "")?.[1] || "").toLowerCase();
 
-// Il rapporto. `tipoDi` dice la sezione di una scheda; `suDrive` e `qui` dove
-// sta il file di un volume che sul disco non c'e'. Due schede dello stesso
+// Il rapporto. `tipoDi` dice la sezione di una scheda; `qui` e `sullAltro`
+// dove sta il file di un volume che sul disco non c'e'. Due schede dello stesso
 // volume (doppioni) puntano allo stesso file: si sposta una volta, e solo se
 // le due schede dicono la stessa casa. Due file per la stessa scheda: uno
 // solo e' il volume, gli altri sono doppioni sul disco, e si dicono.
-export function controllaDisco(libri, file, { tipoDi = () => "libri", suDrive = () => false, qui = () => false, leggendo = () => false } = {}) {
+export function controllaDisco(libri, file, { tipoDi = () => "libri", qui = () => false, sullAltro = () => false, leggendo = () => false } = {}) {
   const vivi = (libri || []).filter((b) => b?.id);
   // un file da 0 byte e' una copia rimasta a meta' (lo spostamento lo
   // riempie al giro dopo): non e' un volume, si dice a parte
   const pieni = (file || []).filter((f) => f.byte > 0);
   const { di, altre } = abbinaDisco(vivi, pieni, (b) => casaDi(b, tipoDi(b)).map(chiave).join("/"));
-  const esito = { aPosto: [], daSpostare: [], doppioni: [], altreEdizioni: [], vuoti: (file || []).filter((f) => !(f.byte > 0)), mancano: { drive: [], qui: [], altrove: [], nessuno: [] }, senzaScheda: [], daSegnare: [], byte: 0 };
+  const esito = { aPosto: [], daSpostare: [], doppioni: [], altreEdizioni: [], vuoti: (file || []).filter((f) => !(f.byte > 0)), mancano: { qui: [], altrove: [], nessuno: [] }, senzaScheda: [], daSegnare: [], byte: 0 };
   const case_ = new Map();
   const usati = new Set();
   for (const b of vivi) {
     const fs = di.get(b);
     if (!fs) {
-      if (suDrive(b.id)) esito.mancano.drive.push(b);
-      else if (qui(b.id)) esito.mancano.qui.push(b);
+      if (qui(b.id)) esito.mancano.qui.push(b);
       else if (!b.fileTolto) esito.mancano.altrove.push(b);
       else esito.mancano.nessuno.push(b);
       continue;
@@ -311,11 +310,12 @@ export function controllaDisco(libri, file, { tipoDi = () => "libri", suDrive = 
   // cloud», con 1665 volumi su 1673 sul disco). Scesi coi file che nessuna
   // scheda usava, o prima che il disco li sapesse riconoscere: la scheda non
   // era stata segnata, e restava senza file da nessuna parte. Si propongono
-  // da segnare come quelle spostate sull'HDD (`fileTolto`) — solo chi non ha
-  // il file qui ne' su Drive, e mai chi stai leggendo (resta su Drive).
+  // da segnare (`fileTolto`) — solo chi non ha il file qui ne' sull'altro
+  // dispositivo (`sullAltro`: il segno arriva anche la', e la' toglierebbe
+  // il file), e mai chi stai leggendo.
   const segnati = new Set();
   for (const c of case_.values())
-    for (const b of c.libri) if (!b.fileTolto && !suDrive(b.id) && !qui(b.id) && !leggendo(b.id) && !segnati.has(b)) segnati.add(b);
+    for (const b of c.libri) if (!b.fileTolto && !qui(b.id) && !sullAltro(b.id) && !leggendo(b.id) && !segnati.has(b)) segnati.add(b);
   esito.daSegnare = [...segnati];
   const visti = new Set([...case_.keys()]);
   for (const [f, b] of altre) if (!visti.has(f)) esito.altreEdizioni.push({ file: f, libro: b });
@@ -407,7 +407,7 @@ export function rapportoDisco(r) {
   righe.push(`Volumi sul disco: ${r.aPosto.length + r.daSpostare.length}, byte ${r.byte}`);
   if (r.daSpostare.length) righe.push(`Da riordinare (${r.daSpostare.length}):`, ...r.daSpostare.map((v) => `  - ${v.libro.title}: ${v.file.cartelle.join(" / ") || "book-companion"} -> ${v.a.join(" / ")}`));
   const m = r.mancano;
-  for (const [bs, dove] of [[m.drive, "ancora su Google Drive"], [m.qui, "solo su questo dispositivo"], [m.altrove, "ne' qui ne' su Drive"], [m.nessuno, "senza file da nessuna parte"]])
+  for (const [bs, dove] of [[m.qui, "solo su questo dispositivo"], [m.altrove, "non qui: forse sull'altro dispositivo"], [m.nessuno, "senza file da nessuna parte"]])
     if (bs.length) righe.push(`Mancano dal disco, ${dove} (${bs.length}):`, ...titoli(bs));
   if (r.senzaScheda.length) righe.push(`File senza scheda (${r.senzaScheda.length}):`, ...file(r.senzaScheda));
   if (r.altreEdizioni?.length) righe.push(`Altre edizioni di volumi che hanno gia' il loro file (${r.altreEdizioni.length}):`, ...r.altreEdizioni.map((x) => `${file([x.file])[0]} -> ${x.libro.title}`));
@@ -421,10 +421,8 @@ export function rapportoDisco(r) {
 // l'importazione solo dal disco senza drive»). I fumetti caricati a mano su
 // Drive e mai entrati in biblioteca (Locke & Key, Head Lopper, Spawn…) sono
 // scesi sul disco senza scheda; con «Aggiungi libri» i byte entrerebbero nel
-// browser e il giro di Drive li ricaricherebbe lassu'. Qui entrano le sole
-// schede: titolo, saga, copertina letti dal file del disco (la strada
-// dell'import da Drive, `importaDaDrive`, con il file del disco al posto di
-// quello lontano e nessun segno), ognuna gia' segnata come spostata
+// browser. Qui entrano le sole schede: titolo, saga, copertina letti dal
+// file del disco (`importaDaFuori`), ognuna gia' segnata come spostata
 // sull'HDD (`fileTolto`): nessun byte nel browser, niente da caricare.
 const SEZIONE = { manga: "manga", fumetti: "fumetti", libri: "libri" };
 export function vociDalDisco(file) {

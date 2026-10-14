@@ -26,13 +26,13 @@ import SezioneAnticipo from "./components/SezioneAnticipo.jsx";
 import SezioneDizionario from "./components/SezioneDizionario.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
-import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, timbraScheda, getProgress, getUpdatedAt, tipiDi, tipoDi } from "./lib/library.js";
-import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, misureFile } from "./lib/bookStore.js";
+import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, timbraScheda, getProgress, getUpdatedAt } from "./lib/library.js";
+import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux } from "./lib/bookStore.js";
 import { cercaNuovaVersione, cercaInSilenzio } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
 import Home from "./components/Home.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
-import { getBookMusic, setBookMusic, portaQuiTutte, fraseScarico, getFavoritesRaw } from "./lib/music.js";
+import { getBookMusic, setBookMusic } from "./lib/music.js";
 import { getJump, clearJump, getMarks } from "./lib/annotations.js";
 import { doppioniInBiblioteca } from "./lib/doppioni.js";
 import { daAvvisare } from "./lib/oracle.js";
@@ -43,17 +43,14 @@ import { fraseGiro, ricordaGiro, avvisoArrivi } from "./lib/resoconto.js";
 import { annotaErrore } from "./lib/registro.js";
 import SezioneGuasti from "./components/SezioneGuasti.jsx";
 import { leggiDispositivi, altroveDa, soloAltrove } from "./lib/dispositivi.js";
-import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile, convertiLibroInCbz, adottaCbzConvertiti, getLastSync } from "./lib/sync.js";
+import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, anticipaFile, convertiLibroInCbz } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
-import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, dettagliFile, impostaRinnovo, impostaRientro, rinnovaInSilenzio, chiaveInScadenza, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato, fraseScollegato, daSpostareDaDrive, apriDaDrive, cestinaDelLibro, senzaSchedaDaDrive, cestinaSuDrive, mappaMelodie } from "./lib/drive.js";
-import { spostaSuHdd, fraseHdd, casaSulDisco } from "./lib/hdd.js";
 import { riordinaDisco, fraseRiordino, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
-import { importaDaDrive, resoconto } from "./lib/importBook.js";
-import { custodisciGoogle, rinnovoDalServer, rientroConGoogle, lasciaGoogleQui } from "./lib/accessoGoogle.js";
+import { importaDaFuori, resoconto } from "./lib/importBook.js";
+import { togliAvanziDrive } from "./lib/avanziDrive.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
 import BarraLavoro from "./components/BarraLavoro.jsx";
 import { spiegaSync, schedaDiversa } from "./lib/syncCore.js";
-import { ebookRitrovati, melodieSulDisco } from "./lib/driveCore.js";
 import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
 import { comincia, segnaVita, smetti, dispositivo } from "./lib/tempo.js";
@@ -813,7 +810,7 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
               fontSize: F.corpo,
             }}
           >
-            ☁ Sincronizzazione e Google Drive
+            ☁ Sincronizzazione nel cloud
           </button>
         </div>
         <div style={{ marginTop: 8, textAlign: "right" }}>
@@ -1016,52 +1013,10 @@ export default function App() {
     runSync.current?.(true);
   }
 
-  // L'EBOOK «TOLTO» CHE STA SU DRIVE E' RITROVATO: dopo ogni giro di Drive
-  // la mappa dice quali file ci sono, e una scheda col segno «senza ebook»
-  // sopra un file che c'e' e' una bugia — si spegne il segno, si timbra il
-  // libro (cosi' viaggia) e si dice una volta. Si legge la biblioteca di
-  // ADESSO, non lo stato di React, che dentro `runSync` e' quello di prima.
-  function ritrovaEbook(base) {
-    if (!driveAcceso()) return;
-    const libri = base || loadBooks();
-    const ids = new Set(ebookRitrovati(libri, mappaDrive()));
-    if (!ids.size) return;
-    const next = libri.map((b) => (ids.has(b.id) ? { ...b, fileTolto: false } : b));
-    for (const id of ids) timbraScheda(id);
-    updateBooks(next);
-    notify(
-      ids.size === 1
-        ? "Un libro ha ritrovato il suo ebook su Google Drive 🗂"
-        : `${ids.size} libri hanno ritrovato il loro ebook su Google Drive 🗂`
-    );
-  }
-
-  // I CBZ FATTI SU COLAB (`adottaCbzConvertiti`): dopo il giro, i CBR col
-  // gemello CBZ accanto su Drive diventano CBZ, e il lettore lo sa. Non
-  // mentre il giro della conversione lavora: si pesterebbero i piedi.
-  const adottaCbz = useRef(async () => {});
-  adottaCbz.current = async () => {
-    if (filoLavoro.current || filoImport.current) return;
-    const fatti = await adottaCbzConvertiti(loadBooks(), { onFatto: (f) => applicaConversione(f.id, f.patch) }).catch(() => []);
-    if (!fatti.length) return;
-    setLocalIds(await localFileIds().catch(() => null));
-    notify(fatti.length === 1 ? "Un fumetto convertito su Colab ora è un CBZ ✓" : `${fatti.length} fumetti convertiti su Colab ora sono CBZ ✓`);
-  };
-
   const runSync = useRef(() => {});
   runSync.current = async (quiet = false) => {
     if (sync.busy) return;
-    // SENZA SUPABASE, DRIVE LAVORA LO STESSO: le schede restano su questo
-    // dispositivo, ma i file si riconoscono e salgono su Drive
-    if (!isSyncConfigured() || !(await getSession())) {
-      if (!driveAcceso()) return;
-      await sincronizzaSoloDrive().catch(() => {});
-      setLocalIds(await localFileIds());
-      ritrovaEbook();
-      await adottaCbz.current();
-      tieniInLettura.current();
-      return;
-    }
+    if (!isSyncConfigured() || !(await getSession())) return;
     setSync((s) => ({ ...s, busy: true, message: quiet ? s.message : "Sincronizzo…" }));
     try {
       const res = await syncNow({
@@ -1075,8 +1030,6 @@ export default function App() {
       });
       if (res.books) setBooks(res.books);
       setLocalIds(await localFileIds());
-      ritrovaEbook(res.books || null);
-      await adottaCbz.current();
       tieniInLettura.current(res.books || null);
       // DETTO LIBRO PER LIBRO (`raccontaGiro`): «Aggiornati 12 elementi»
       // non diceva se la saga scritta sul PC fosse arrivata
@@ -1117,25 +1070,6 @@ export default function App() {
     if (frase) notify(`🔑 ${frase} La cambi da Impostazioni, in alto.`);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // LA CHIAVE DI DRIVE SEMPRE FRESCA: chi e' entrato con Google la riceve dal
-  // server (`rinnovaInSilenzio`) prima che scada, e chi guarda
-  // `driveProntoOra` la trova buona senza aver mai visto una finestra
-  useEffect(() => {
-    if (!isSyncConfigured()) return;
-    impostaRinnovo(rinnovoDalServer({ sessione: getSession }));
-    impostaRientro(rientroConGoogle({ sessione: getSession }));
-    const giro = () => {
-      if (document.visibilityState === "visible" && driveAcceso() && chiaveInScadenza()) rinnovaInSilenzio();
-    };
-    giro();
-    const t = setInterval(giro, 60_000);
-    document.addEventListener("visibilitychange", giro);
-    return () => {
-      clearInterval(t);
-      document.removeEventListener("visibilitychange", giro);
-    };
-  }, []);
-
   useEffect(() => {
     if (!isSyncConfigured()) return;
     let alive = true;
@@ -1156,18 +1090,7 @@ export default function App() {
     // pannello, e qui si tace.
     const viaAuth = onAuthChange((evento, sessione, voluta) => {
       if (!alive) return;
-      // ENTRATO CON GOOGLE: la chiave di Drive e il permesso a lungo termine
-      // arrivano con la sessione, una volta (vedi `accessoGoogle.js`)
-      if (sessione?.provider_token) {
-        impostaRinnovo(rinnovoDalServer({ sessione: getSession }));
-        custodisciGoogle(sessione).then((esito) => {
-          if (!esito.chiave) return;
-          if (esito.permesso === "non salvato") notify("🗂 Google Drive collegato, ma solo per un'ora: al Supabase manca la tabella google_refresh (aggiorna lo schema).");
-          runSync.current(true);
-        });
-      }
       if (evento === "SIGNED_OUT") {
-        lasciaGoogleQui();
         const era = dentro;
         dentro = false;
         setSync((v) => (v.signedIn ? { ...v, signedIn: false } : v));
@@ -1190,15 +1113,18 @@ export default function App() {
     };
   }, []);
 
-  // SENZA SUPABASE MA CON DRIVE: l'effetto qui sopra si ferma subito se il
-  // cloud delle schede non c'e', e con lui il conto dei byte di casa — cioe'
-  // le nuvolette sui libri che stanno solo su Drive. Qui si fa quel poco.
+  // SENZA SUPABASE l'effetto qui sopra si ferma subito, e con lui il conto
+  // dei byte di casa: qui si fa quel poco.
   useEffect(() => {
-    if (isSyncConfigured() || !driveAcceso()) return;
+    if (isSyncConfigured()) return;
     let alive = true;
     localFileIds().then((ids) => alive && setLocalIds(ids));
-    runSync.current(true);
     return () => { alive = false; };
+  }, []);
+
+  // QUEL CHE GOOGLE DRIVE HA LASCIATO QUI se ne va da solo (`avanziDrive.js`)
+  useEffect(() => {
+    togliAvanziDrive({ togliAux: removeAux }).catch(() => {});
   }, []);
 
   // si timbra solo quel che viaggia: la quarta di copertina scaricata
@@ -1230,7 +1156,7 @@ export default function App() {
       notify(`«${b.title}» è un CBZ: da adesso si apre a pezzi, senza scaricarlo intero ✓`);
       return true;
     } catch (e) {
-      notify(e?.name === "DriveScollegato" ? fraseScollegato(e, "Google Drive aspetta un tocco: riprova.") : `La conversione non è riuscita: ${e?.message || e}`);
+      notify(`La conversione non è riuscita: ${e?.message || e}`);
       return false;
     }
   }
@@ -1249,7 +1175,7 @@ export default function App() {
   const [doppi, setDoppi] = useState([]);
   const copieDaTogliere = new Set(doppi.flatMap((g) => g.via));
   const [sospeso, setSospeso] = useState(() => lavoroSospeso());
-  const cbrDaFare = cbrDaConvertire(books, { qui: localIds || new Set(), suDrive: new Set(Object.keys(mappaDrive())) }).filter((b) => !copieDaTogliere.has(b.id));
+  const cbrDaFare = cbrDaConvertire(books, { qui: localIds || new Set() }).filter((b) => !copieDaTogliere.has(b.id));
   const restanti = sospeso && !lavoro && localIds ? restantiDelLavoro(sospeso, cbrDaFare) : [];
   useEffect(() => {
     // ricordati tutti convertiti (o tolti): non c'e' niente da riprendere
@@ -1267,20 +1193,19 @@ export default function App() {
     setSospeso(null);
     setLavoro({ i: 0, totale: lista.length, titolo: lista[0].title, passo: null });
     try {
-      if (lista.some((b) => mappaDrive()[b.id]) && !driveProntoOra()) await collegaDrive();
       const esito = await convertiTutti(lista, {
-        converti: (b, onProgress) => convertiLibroInCbz(b, { onProgress, chiedi: false }),
+        converti: (b, onProgress) => convertiLibroInCbz(b, { onProgress }),
         applica: applicaConversione,
         vivo: () => filoLavoro.current === mio,
         onProgress: (p) => filoLavoro.current === mio && setLavoro(p),
       });
-      // fermato o a chiave scaduta resta da riprendere; finito, si dimentica
-      if (esito.fermato || esito.chiave) setSospeso(lavoroSospeso());
+      // fermato resta da riprendere; finito, si dimentica
+      if (esito.fermato) setSospeso(lavoroSospeso());
       else dimenticaLavoro();
       notify(resocontoConversioni(esito));
     } catch (e) {
       setSospeso(lavoroSospeso());
-      notify(e?.name === "DriveScollegato" ? fraseScollegato(e, "Google Drive aspetta un tocco: riprendi quando vuoi.") : e?.message || "La conversione non è partita");
+      notify(e?.message || "La conversione non è partita");
     } finally {
       if (filoLavoro.current === mio) filoLavoro.current = null;
       setLavoro(null);
@@ -1292,7 +1217,7 @@ export default function App() {
   };
 
   // I CBR CHE STANNO SOLO SUL DISCO (segnalato dal lettore: «ci sono file
-  // CBR che non mi fa mettere in CBZ»): non sono ne' qui ne' su Drive, e il
+  // CBR che non mi fa mettere in CBZ»): non sono qui, e il
   // giro di sopra non aveva niente da leggere. Si convertono sul disco
   // (`convertiSulDisco`), sulla stessa riga del giro dei CBR: uno solo alla
   // volta, si vede e si ferma da ogni sezione.
@@ -1343,78 +1268,8 @@ export default function App() {
   // ferma dalla barra, e alla fine si aggiunge alla biblioteca di adesso.
   const [importo, setImporto] = useState(null);
   const filoImport = useRef(null);
-  async function importaDaDriveQui(voci, note = []) {
-    if (filoImport.current || !voci.length) return;
-    const mio = {};
-    filoImport.current = mio;
-    const vivo = () => filoImport.current === mio;
-    setImporto({ fatti: 0, totale: voci.length, nome: voci[0].name });
-    try {
-      // le schede che il file non ce l'hanno da nessuna parte: un file con
-      // il loro titolo ci torna dentro invece di fare un doppione
-      const qui = await localFileIds().catch(() => null);
-      const esito = await importaDaDrive(voci, loadBooks(), {
-        senzaFile: (id) => !!qui && !qui.has(id) && !mappaDrive()[id],
-        apri: (v) => fileRemoto(v.id, v.size),
-        rimisura: async (v) => (await dettagliFile([v.id]))[0]?.size,
-        // il segno PRIMA della scheda: senza, al prossimo giro la mappa
-        // di Drive non riconoscerebbe il libro e gli toglierebbe il file
-        segna: async (fileId, bookId, v) => {
-          try {
-            await segnaSuDrive(fileId, bookId);
-            mettiNellaMappa(bookId, fileId, v.size);
-            return true;
-          } catch (e) {
-            return e instanceof DriveScollegato ? fraseScollegato(e, "scollegato") : false;
-          }
-        },
-        // il CBR compresso troppo grande: convertito leggendolo da Drive, e
-        // il CBZ al suo posto lassu' (il CBR nel cestino di Drive)
-        converti: async (v, onProgress) => {
-          const { convertiInCbz } = await import("./lib/archivioFumetto.js");
-          return convertiInCbz({ drive: { id: v.id, chiave: chiaveDrive() }, misura: Number(v.size) }, { onProgress });
-        },
-        sostituisci: async (v, bookId, cbz) => {
-          try {
-            await sostituisciSuDrive(v.id, cbz, {
-              nome: String(v.name).replace(/\.cbr$/i, "") + ".cbz",
-              bookId,
-              onProgress: (p) => vivo() && setImporto((g) => ({ ...g, conversione: null, caricamento: p })),
-            });
-            return true;
-          } catch (e) {
-            return e instanceof DriveScollegato ? fraseScollegato(e, "scollegato") : false;
-          }
-        },
-        onProgress: (p) => vivo() && setImporto(p),
-        vivo,
-      });
-      // le schede ritrovate non si toccano: torna il file, si scrive
-      // l'impronta e si spegne «tieni la scheda, non l'ebook», come
-      // all'import dal tablet
-      const tornati = new Map((esito.ritrovati || []).map((r) => [r.id, r]));
-      for (const id of tornati.keys()) timbraScheda(id);
-      if (esito.added.length || tornati.size) {
-        const base = loadBooks().map((b) => (tornati.has(b.id) ? { ...b, ...(tornati.get(b.id).impronta ? { impronta: tornati.get(b.id).impronta } : {}), fileTolto: false } : b));
-        updateBooks([...base, ...esito.added]);
-        runSync.current(true);
-      }
-      const coda = esito.scollegato
-        ? "Google Drive aspetta un tocco: il resto lo aggiungi riprovando"
-        : esito.fermato
-          ? "fermato: il resto lo aggiungi riprovando"
-          : "";
-      notify([resoconto(esito), ...note, coda].filter((x) => x && x !== "Nessun file importato").join(" · ") || "Nessun tomo aggiunto");
-    } catch (e) {
-      notify(e instanceof DriveScollegato ? fraseScollegato(e, "Google Drive aspetta un tocco: riprova.") : e?.message || "Google Drive non ha risposto");
-    } finally {
-      if (filoImport.current === mio) filoImport.current = null;
-      setImporto(null);
-    }
-  }
-  // IMPORTARE DAL DISCO SENZA DRIVE (`vociDalDisco`, `schedeDalDisco`): la
-  // strada di «Aggiungi da Drive» col file del disco, nessun segno, nessun
-  // byte nel browser, e ogni scheda nasce gia' sul disco
+  // IMPORTARE DAL DISCO (`vociDalDisco`, `schedeDalDisco`, `importaDaFuori`):
+  // nessun byte nel browser, e ogni scheda nasce gia' sul disco
   async function importaDalDiscoQui(file) {
     if (filoImport.current || !file.length) return;
     const mio = {};
@@ -1427,10 +1282,9 @@ export default function App() {
       const aperti = new Map();
       for (const v of voci) aperti.set(v.id, await v.handle.getFile());
       const qui = await localFileIds().catch(() => null);
-      const esito = await importaDaDrive(voci, loadBooks(), {
-        senzaFile: (id) => !!qui && !qui.has(id) && !mappaDrive()[id],
+      const esito = await importaDaFuori(voci, loadBooks(), {
+        senzaFile: (id) => !!qui && !qui.has(id),
         apri: (v) => aperti.get(v.id),
-        segna: async () => true,
         onProgress: (p) => vivo() && setImporto({ ...p, da }),
         vivo,
       });
@@ -1451,51 +1305,12 @@ export default function App() {
     filoImport.current = null;
   };
 
-  // «SCARICA LA RACCOLTA» (`portaQuiTutte`): le melodie di Drive che qui
-  // mancano scendono una alla volta; vive qui come gli altri lavori lunghi,
-  // perche' uscire dalla sala non deve fermarlo ne' nasconderlo
-  const [scarico, setScarico] = useState(null);
-  const filoScarico = useRef(null);
-  async function scaricaRaccoltaQui(brani, raccolta) {
-    if (filoScarico.current || !brani.length) return;
-    const mio = {};
-    filoScarico.current = mio;
-    const vivo = () => filoScarico.current === mio;
-    setScarico({ i: 0, totale: brani.length, nome: brani[0].name, raccolta });
-    try {
-      if (!driveProntoOra()) await collegaDrive();
-      const esito = await portaQuiTutte(brani, { vivo, onProgress: (p) => vivo() && setScarico({ ...p, raccolta }) });
-      notify(fraseScarico(esito));
-    } catch (e) {
-      notify(e instanceof DriveScollegato ? fraseScollegato(e, "Google Drive aspetta un tocco: riprova 🎵") : e?.message || "Google Drive non ha risposto");
-    } finally {
-      if (filoScarico.current === mio) filoScarico.current = null;
-      setScarico(null);
-    }
-  }
-
-  // SPOSTARE SULL'HDD (`spostaSuHdd`): i volumi di una raccolta scendono da
-  // Drive dritti nella cartella del disco che il lettore ha scelto; ognuno,
-  // arrivato intero, resta scheda senza file e lassu' va nel cestino. Lavoro
-  // lungo (un giga a volume): vive qui, si vede e si ferma da ogni sezione.
+  // I LAVORI SUL DISCO (riordinare, convertire): lunghi, vivono qui, si
+  // vedono e si fermano da ogni sezione, uno alla volta.
   const [hdd, setHdd] = useState(null);
   const filoHdd = useRef(null);
-  // e i file che nessun libro usa (`fileSenzaScheda`): si riguarda su Drive
-  // ADESSO, perche' fra l'elenco mostrato e il tocco un giro puo' averne
-  // collegato uno a una scheda; nessuna scheda da segnare, solo il cestino
-  const spostaSenzaSchedaQui = (scelti, scelta) =>
-    spostaSuHddQui(scelti, scelta, {
-      voci: async () => {
-        const ids = new Set(scelti.map((v) => v.fileId));
-        const ora = await senzaSchedaDaDrive(loadBooks(), { misure: await misureFile(), schedeInArrivo: isSyncConfigured() && !getLastSync() });
-        return ora.filter((v) => ids.has(v.fileId));
-      },
-      segna: async () => {},
-      cestina: (v) => cestinaSuDrive(v.fileId),
-    });
   // RIORDINARE IL DISCO (`riordinaDisco`): ogni file nella casa della sua
-  // scheda, dentro lo stesso disco. Stesso filo e stessa riga in basso dello
-  // spostamento: un lavoro sul disco alla volta.
+  // scheda, dentro lo stesso disco.
   async function riordinaQui(voci, casa) {
     if (!voci.length) return;
     if (filoHdd.current) return notify("Sto già lavorando sul disco: aspetta che finisca, o fermalo dalla barra in basso");
@@ -1513,59 +1328,13 @@ export default function App() {
       setHdd(null);
     }
   }
-  async function spostaSuHddQui(libri, scelta, senza = null) {
-    if (!libri.length) return;
-    if (filoHdd.current) return notify("Sto già spostando sull'HDD: aspetta che finisca, o fermalo dalla barra in basso");
-    const mio = {};
-    filoHdd.current = mio;
-    const vivo = () => filoHdd.current === mio;
-    setHdd({ i: 0, totale: libri.length, nome: "", presi: 0, byte: 0 });
-    try {
-      if (!driveProntoOra()) await collegaDrive();
-      const tipi = tipiDi(loadBooks());
-      // quello che stai leggendo si copia e resta anche su Drive (`divisiPerHdd`)
-      const voci = senza ? await senza.voci() : await daSpostareDaDrive(libri, { tipoDi: (b) => tipoDi(b, tipi), tieni: (b) => getStatus(b.id) === "reading" });
-      const esito = await spostaSuHdd(voci, {
-        radice: await casaSulDisco(scelta),
-        vivo,
-        ferma: (e) => e instanceof DriveScollegato,
-        onProgress: (p) => vivo() && setHdd(p),
-        apri: apriDaDrive,
-        segna: senza?.segna || (async (v) => {
-          timbraScheda(v.bookId);
-          updateBooks(loadBooks().map((b) => (b.id === v.bookId ? { ...b, fileTolto: true } : b)));
-          await removeFileOnly(v.bookId).catch(() => {});
-          const b = loadBooks().find((x) => x.id === v.bookId);
-          if (b) await togliFileDalCloud(b).catch(() => {});
-        }),
-        cestina: senza?.cestina || ((v) => cestinaDelLibro(v.bookId, v.fileId)),
-      });
-      notify([fraseHdd(esito), esito.scollegato && fraseScollegato(esito.scollegato, "Google Drive aspetta un tocco: riprova")].filter(Boolean).join(" · "));
-    } catch (e) {
-      notify(e instanceof DriveScollegato ? fraseScollegato(e, "Google Drive aspetta un tocco: riprova") : e?.message || "Google Drive non ha risposto");
-    } finally {
-      if (filoHdd.current === mio) filoHdd.current = null;
-      setHdd(null);
-      setLocalIds(await localFileIds());
-      setSpazioCambiato((n) => n + 1);
-      runSync.current(true);
-    }
-  }
-
-  // LE MELODIE DI DRIVE SUL DISCO, prima di lasciarlo (`melodieSulDisco`):
-  // lo stesso lavoro dello spostamento, che le copia soltanto
-  function melodieSulDiscoQui(scelta) {
-    const voci = melodieSulDisco(getFavoritesRaw(), mappaMelodie());
-    const niente = async () => {};
-    return spostaSuHddQui(voci, scelta, { voci: async () => voci, segna: niente, cestina: niente });
-  }
 
   // I DOPPIONI (`doppioniInBiblioteca`): lo stesso volume in due o tre
   // schede — fumetti nati prima che l'importazione saltasse i gemelli di
   // Colab, libri reimportati da Drive accanto alla scheda rimasta senza file.
   // Si contano qui (servono le copertine, che stanno nel database) e si
   // uniscono dalla Manutenzione: di ogni gruppo resta la scheda che conta di
-  // piu', le altre se ne vanno. I file su Drive restano dove sono.
+  // piu', le altre se ne vanno.
 
   useEffect(() => {
     let vivo = true;
@@ -1575,7 +1344,7 @@ export default function App() {
       .then((cop) => {
         if (!vivo) return;
         // finche' non si sa quali file stanno qui, nessuno e' «senza file»
-        const conFile = (id) => !localIds || localIds.has(id) || !!mappaDrive()[id];
+        const conFile = (id) => !localIds || localIds.has(id);
         setDoppi(doppioniInBiblioteca(books, { progresso: getProgress, stato: getStatus, segni: (id) => getMarks(id).length, copertina: (id) => cop.has(id), conFile }));
       });
     return () => {
@@ -1591,7 +1360,6 @@ export default function App() {
     const via = gruppi.flatMap((g) => g.via);
     for (const id of via) {
       removeBookMeta(id);
-      smarcaSuDrive(id).catch(() => {});
       await removeBookData(id).catch(() => {});
     }
     setBooks(loadBooks());
@@ -1604,7 +1372,6 @@ export default function App() {
     setOpenId(null);
     removeBookMeta(id);
     setBooks(loadBooks());
-    smarcaSuDrive(id).catch(() => {});
     try {
       await removeBookData(id);
     } catch {
@@ -1630,22 +1397,6 @@ export default function App() {
   async function handleTogliEbook(id) {
     const b = books.find((x) => x.id === id);
     if (!b) return;
-    // SE IL LIBRO STA SU DRIVE, TOGLIERLO DAL TABLET NON LO TOGLIE A TE: e'
-    // proprio quel che Drive e' venuto a fare — il tablet libero, e i file
-    // al sicuro lassu'. Il libro resta con la nuvoletta, si riscarica
-    // quando lo apri, e il segno «senza ebook» non si scrive.
-    if (driveAcceso() && mappaDrive()[id]) {
-      try {
-        await removeFileOnly(id);
-      } catch {
-        /* i byte restano qui: il libro si apre lo stesso */
-      }
-      await togliFileDalCloud(b).catch(() => {});
-      setLocalIds(await localFileIds());
-      setSpazioCambiato((n) => n + 1);
-      notify(`«${b.title}» tolto dal tablet: resta su Google Drive 🗂`);
-      return;
-    }
     timbraScheda(id);
     updateBooks(books.map((x) => (x.id === id ? { ...x, fileTolto: true } : x)));
     try {
@@ -1659,44 +1410,20 @@ export default function App() {
     runSync.current(true);
   }
 
-  // TENERE UN LIBRO SUL TABLET, a richiesta: e' l'unica strada per cui una
-  // lettura da Drive diventa una copia qui. Si arriva da un tocco, quindi
-  // la chiave di Google si puo' chiedere.
-  async function handleTieniQui(id, onProgress) {
-    const b = books.find((x) => x.id === id);
-    if (!b) return false;
-    try {
-      if (driveAcceso() && mappaDrive()[id] && !driveProntoOra()) await collegaDrive();
-      const f = await ensureLocalFile(b, { onProgress });
-      if (!f) {
-        notify("Non ho trovato il file né su Google Drive né nel cloud");
-        return false;
-      }
-      setLocalIds(await localFileIds());
-      setSpazioCambiato((n) => n + 1);
-      notify(`«${b.title}» è sul tablet: lo leggi anche senza rete 📥`);
-      return true;
-    } catch (e) {
-      notify(e?.name === "DriveScollegato" ? fraseScollegato(e, "Google Drive aspetta un tocco: riprova.") : e?.message || "Non sono riuscito a scaricarlo");
-      return false;
-    }
-  }
-
   function handleRead(id, startCfi = null) {
     const b = books.find((x) => x.id === id);
     if (!b) return;
     // un libro svuotato apposta non si apre e non si va a cercare nel
-    // cloud: `ensureLocalFile` bussherebbe a vuoto e il reader finirebbe
+    // cloud: si busserebbe a vuoto e il reader finirebbe
     // sulla schermata del guasto, che qui sarebbe una bugia
-    // e su Drive il file c'e': il segno e' vecchio, e il libro si legge da li'
-    if (b.fileTolto && !(driveAcceso() && mappaDrive()[id])) {
+    if (b.fileTolto) {
       notify("Di questo libro tieni la scheda, non l'ebook 📗");
       setOpenId(id);
       return;
     }
     // sta sull'altro dispositivo e da qui non si raggiunge: il reader
     // finirebbe sul guasto, e il guasto non c'e'
-    const la = soloAltrove(id, { qui: localIds, suDrive: driveAcceso() && !!mappaDrive()[id], altrove: altroveDa(leggiDispositivi(), dispositivo()) });
+    const la = soloAltrove(id, { qui: localIds, altrove: altroveDa(leggiDispositivi(), dispositivo()) });
     if (la) {
       notify(`Questo libro sta ${la} 📱: lì si legge. Qui si apre se aggiungi il file.`);
       setOpenId(id);
@@ -1809,12 +1536,11 @@ export default function App() {
     if (!readingBook || !nextBook) return;
     if (!daRiprovare(tentativi.current.get(nextBook.id))) return;
     if (!reteBuona(leggiAnticipo(), globalThis.navigator?.connection)) return;
-    const suDrive = driveAcceso() ? mappaDrive() : {};
     const libro = daAnticipare(readingBook, {
       prossimo: nextBook,
       progresso: getProgress(readingBook.id),
       qui: (id) => !!localIds?.has(id),
-      lassu: (id) => suDrive[id] || isSyncConfigured(),
+      lassu: () => isSyncConfigured(),
     });
     if (!libro) return;
     tentativi.current.set(libro.id, { ora: Date.now() });
@@ -1837,12 +1563,11 @@ export default function App() {
     if (!reteBuona(leggiAnticipo(), globalThis.navigator?.connection)) return;
     const qui = await localFileIds().catch(() => null);
     if (!qui) return;
-    const suDrive = driveAcceso() ? mappaDrive() : {};
     const scelti = daTenereInLettura(libri || loadBooks(), {
       statusOf: getStatus,
       tocco: (id) => getUpdatedAt(id, 0),
       qui: (id) => qui.has(id),
-      lassu: (id) => suDrive[id] || isSyncConfigured(),
+      lassu: () => isSyncConfigured(),
     }).filter((b) => daRiprovare(tentativi.current.get(b.id)));
     if (!scelti.length) return;
     tieniInLettura.inCorso = true;
@@ -1853,8 +1578,6 @@ export default function App() {
         const esito = await anticipaFile(libro);
         tentativi.current.set(libro.id, { ora: Date.now(), esito });
         if (esito === "sceso") scesi.push(libro);
-        // la chiave di Google scaduta vale per tutti: gli altri al giro dopo
-        if (esito === "chiave") break;
       }
     } finally {
       tieniInLettura.inCorso = false;
@@ -2009,12 +1732,14 @@ export default function App() {
             onReadAt={(id, punto) => handleRead(id, punto)}
             notify={notify}
             localIds={localIds}
-            onImported={() => runSync.current(true)}
-            importoDrive={importo}
-            onImportaDaDrive={importaDaDriveQui}
+            // i file di qui si ricontano subito: senza cloud il giro non
+            // parte, e un libro appena entrato sembrerebbe senza file
+            onImported={async () => {
+              setLocalIds(await localFileIds().catch(() => null));
+              runSync.current(true);
+            }}
+            importo={importo}
             onFermaImport={fermaImport}
-            onSpostaSuHdd={spostaSuHddQui}
-            onSenzaSchedaSuHdd={spostaSenzaSchedaQui}
             onRiordina={riordinaQui}
             onImportaDalDisco={importaDalDiscoQui}
             onConvertiDalDisco={convertiDalDiscoQui}
@@ -2025,16 +1750,6 @@ export default function App() {
             // i byte scesi in casa non sono roba da sincronizzare: basta
             // ricontare chi c'e', e le nuvolette si spengono subito
             onFileLocali={async () => setLocalIds(await localFileIds())}
-            // la chiave di Google si rinnova solo da un tocco, e questo lo e'
-            onRicollegaDrive={async () => {
-              try {
-                await collegaDrive();
-                runSync.current(false);
-                setSpazioCambiato((n) => n + 1);
-              } catch (e) {
-                notify(e?.message || "Google Drive non ha risposto");
-              }
-            }}
             spazioCambiato={spazioCambiato}
             onCammino={setCammino}
             raccolta={raccolta}
@@ -2051,12 +1766,12 @@ export default function App() {
         )}
         {section === "music" && (
           <Suspense fallback={null}>
-            <MusicRoom music={music} playerRef={playerRef} notify={notify} onCambiata={() => presto.current?.()} scarico={scarico} onScarica={scaricaRaccoltaQui} onSulDisco={melodieSulDiscoQui} />
+            <MusicRoom music={music} playerRef={playerRef} notify={notify} onCambiata={() => presto.current?.()} />
           </Suspense>
         )}
       </main>
       </div>
-      {(lavoro || importo || scarico || hdd || restanti.length > 0) && (
+      {(lavoro || importo || hdd || restanti.length > 0) && (
         <BarraLavoro
           hdd={hdd}
           onFermaHdd={() => {
@@ -2064,10 +1779,6 @@ export default function App() {
           }}
           importo={importo}
           onFermaImport={fermaImport}
-          scarico={scarico}
-          onFermaScarico={() => {
-            filoScarico.current = null;
-          }}
           lavoro={lavoro}
           restanti={restanti.length}
           onFerma={fermaLavoro}
@@ -2089,7 +1800,6 @@ export default function App() {
           onSaveMeta={handleSaveMeta}
           onDelete={handleDelete}
           onTogliEbook={handleTogliEbook}
-          onTieniQui={handleTieniQui}
           onConvertiCbr={handleConvertiCbr}
           onRead={handleRead}
           notify={notify}

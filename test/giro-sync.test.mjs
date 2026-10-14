@@ -16,6 +16,9 @@
 //      intero: i libri dopo di lui, le copertine, le preferenze, gli
 //      scaricamenti, e perfino il timbro dell'ora.
 //
+// (I file dei libri non salgono piu' da nessuna parte — Google Drive non
+// c'e' piu' — e restano le copertine: il patto e' lo stesso.)
+//
 // I primi tre sono la stessa regola: **si decide sullo STATO, non su un
 // registro né su un passaggio che capita una volta sola**. Il quarto e':
 // **un intoppo su UN elemento e' di quell'elemento**.
@@ -31,7 +34,6 @@
 import { readFileSync } from "fs";
 import { createRequire } from "module";
 import { copertineDaCaricare, copertineDaScaricare } from "../src/lib/syncCore.js";
-import { daCaricare } from "../src/lib/driveCore.js";
 
 const require = createRequire(import.meta.url);
 const acorn = require("acorn");
@@ -39,29 +41,17 @@ const acorn = require("acorn");
 // Un mondo finto: chi ha i byte qui, chi li ha lassu', chi ha la copertina
 // di qua e di la'. Il giro e' fatto delle sole DECISIONI pure, che e'
 // esattamente il pezzo dove i quattro difetti abitavano.
-function mondo({ libri, casa = [], secchio = [], copQui = [], copLassu = [], registro = [] }) {
+function mondo({ libri, copQui = [], copLassu = [] }) {
   return {
     libri,
-    casa: new Set(casa),
-    secchio: new Set(secchio),
     copQui: new Set(copQui),
     copLassu: new Set(copLassu),
-    registro: new Set(registro),
     mosse: 0,
   };
 }
 
 function giro(m) {
   m.mosse = 0;
-  for (const b of daCaricare(m.libri, {
-    qui: m.casa,
-    lassu: m.secchio,
-    inUscita: new Set(),
-  })) {
-    m.secchio.add(b.id);
-    m.registro.add(b.id);
-    m.mosse += 1;
-  }
   for (const b of copertineDaCaricare(m.libri, { qui: m.copQui, lassu: m.copLassu })) {
     m.copLassu.add(b.id);
     m.mosse += 1;
@@ -81,13 +71,10 @@ export default async function (t) {
     // il caso di tutti i giorni: qualcosa di qua, qualcosa di la'
     const m = mondo({
       libri: tomi(4),
-      casa: ["L0", "L1", "L2"],
-      secchio: ["L1"],
       copQui: ["L0"],
       copLassu: ["L3"],
     });
     giro(m);
-    t.c("i file che ho qui adesso stanno anche lassù", ["L0", "L1", "L2"].every((id) => m.secchio.has(id)));
     t.c("la copertina che avevo qui è salita", m.copLassu.has("L0"));
     t.c("la copertina che stava lassù è scesa", m.copQui.has("L3"));
     // IL SECONDO GIRO NON MUOVE NIENTE. Se muovesse, sarebbe un pendolo:
@@ -95,16 +82,6 @@ export default async function (t) {
     // traffico contato del piano gratuito.
     giro(m);
     t.eq("il secondo giro è fermo", m.mosse, 0);
-  }
-
-  // ---- il difetto storico numero 1, pinnato --------------------------------
-  {
-    // Il registro di QUESTO dispositivo dice «l'ho già mandato», ma nel
-    // secchio non c'è: è esattamente il caso dei sette romanzi scoperti —
-    // un giro che si fida del registro lo salta per sempre.
-    const m = mondo({ libri: tomi(1), casa: ["L0"], secchio: [], registro: ["L0"] });
-    giro(m);
-    t.c("un file che il registro dà per mandato ma lassù non c'è, sale", m.secchio.has("L0"));
   }
 
   // ---- il difetto storico numero 3, pinnato -------------------------------
@@ -118,26 +95,6 @@ export default async function (t) {
     t.eq("e al secondo giro non si rispedisce", m.mosse, 0);
   }
 
-  // ---- l'ebook tolto a mano: il giro NON lo rimette su ---------------------
-  {
-    // L'ALTRO DISPOSITIVO È IL CASO CHE CONTA: lì i byte ci sono ancora,
-    // lassù la copia non c'è più (l'ha cancellata chi ha dato il comando),
-    // e senza il segno quel libro ha la forma esatta di un file scoperto.
-    // Il giro lo rispedirebbe nel secchio, e il lettore si ritroverebbe la
-    // nuvoletta addosso al libro che aveva appena svuotato — con dentro i
-    // megabyte che voleva togliersi.
-    const m = mondo({
-      libri: [{ id: "L0", fileTolto: true }, { id: "L1" }],
-      casa: ["L0", "L1"],
-      secchio: [],
-    });
-    giro(m);
-    t.c("l'ebook tolto a mano non risale", !m.secchio.has("L0"));
-    t.c("e il libro accanto sale come sempre", m.secchio.has("L1"));
-    giro(m);
-    t.eq("e il giro resta fermo, senza pendoli", m.mosse, 0);
-  }
-
   // ---- e non si muove quel che non si può muovere --------------------------
   {
     // un tomo senza byte qui e senza copia lassù: non c'è niente da fare, e
@@ -146,14 +103,12 @@ export default async function (t) {
     const m = mondo({ libri: tomi(1) });
     giro(m);
     t.eq("un perduto non muove niente", m.mosse, 0);
-    t.eq("e non compare dal nulla nel secchio", m.secchio.size, 0);
   }
   {
     // SENZA L'ELENCO DEL SECCHIO non si carica niente: è il lato sicuro —
     // un giro saltato si rifà, centinaia di megabyte rispediti da un tablet
     // no. Vale per i file e per le copertine allo stesso modo.
     const libri = tomi(3);
-    t.eq("file: senza elenco non si carica", daCaricare(libri, { qui: new Set(["L0"]), lassu: null }).length, 0);
     t.eq("copertine: senza elenco non si carica", copertineDaCaricare(libri, { qui: new Set(["L0"]) }).length, 0);
     t.eq("copertine: senza elenco non si scarica", copertineDaScaricare(libri, { qui: new Set() }).length, 0);
   }

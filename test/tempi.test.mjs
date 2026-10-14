@@ -13,11 +13,11 @@ const giro = () => new Promise((r) => setTimeout(r, 5));
 
 export default async function (t) {
   // ---- le tappe diventano durate -----------------------------------------
-  const v = vocePerTempo({ cosa: "epub", t0: 100, tappe: [["codice", 250], ["byte", 300], ["pagina", 1300]], da: "drive", kb: 512, ora: 7 });
+  const v = vocePerTempo({ cosa: "epub", t0: 100, tappe: [["codice", 250], ["byte", 300], ["pagina", 1300]], da: "cloud", kb: 512, ora: 7 });
   t.eq("la prima tappa conta dalla partenza", v.f.codice, 150);
   t.eq("le altre dalla tappa prima", v.f.byte, 50);
   t.eq("l'ultima", v.f.pagina, 1000);
-  t.eq("la provenienza resta", v.da, "drive");
+  t.eq("la provenienza resta", v.da, "cloud");
   t.eq("e il quando", v.q, 7);
   const vuota = vocePerTempo({ cosa: "avvio", t0: 0, tappe: [["primo", 10]], da: "", vista: undefined });
   t.c("un dato vuoto non entra nella voce", !("da" in vuota) && !("vista" in vuota), JSON.stringify(vuota));
@@ -46,8 +46,8 @@ export default async function (t) {
   t.c("dopo la fine non si aggiungono tappe", !("tardi" in segnate[0].f));
 
   t.eq("byte qui", provenienza(new Blob(["a"])), "tablet");
-  t.eq("scesi da Drive", provenienza(Object.assign(new Blob(["a"]), { lontano: true })), "drive");
-  t.eq("letti da Drive a pezzi", provenienza({ daLontano: true, size: 1 }), "pezzi");
+  t.eq("scesi dal cloud", provenienza(Object.assign(new Blob(["a"]), { lontano: true })), "cloud");
+  t.eq("letti a pezzi", provenienza({ daLontano: true, size: 1 }), "pezzi");
 
   // ---- l'avvio: una volta per vita della pagina ---------------------------
   const avvii = [];
@@ -89,8 +89,6 @@ export default async function (t) {
   t.eq("il programma e' quello della pagina", nav.programma, 640);
   const diviso = righeTempi([{ q: 1, c: "avvio", f: { html: 300, js: 200, stile: 400, codice: 500, primo: 500 }, n: 1265 }]).join("\n");
   t.c("il rapporto dice le tappe dell'avvio", /pagina dell'app 300 ms \+ programma scaricato 200 ms \+ stile e caratteri 400 ms \+ codice 500 ms \+ primo disegno 500 ms/.test(diviso), diviso);
-  const giroDrive = righeTempi([{ q: 1, c: "drive", f: { elenco: 9000, riconosce: 300 }, da: "cambi", voci: 2100, n: 1265 }]).join("\n");
-  t.c("il giro di Drive nel rapporto, con l'elenco", /Giro di Google Drive dai cambiamenti: 1 · tipica 9,3 s \(elenco 9,0 s \+ riconoscimento 300 ms\).*1265 libri · 2100 file nell'elenco/.test(giroDrive), giroDrive);
   t.eq("un browser senza misure non rompe niente", JSON.stringify(datiNavigazione({ getEntriesByType: () => { throw new Error("no"); } }, doc)), "{}");
 
 
@@ -134,14 +132,14 @@ export default async function (t) {
     t.c("e dice quante ne ha lasciate fuori", /Avvio dell'app: 3 con la versione in uso \(b\), 2 di prima non contate/.test(r), r);
     const tappa = righeTempi([{ q: 1, c: "avvio", f: { codice: 1400, primo: 500 } }, { q: 2, c: "avvio", f: { codice: 1500, primo: 500 } }, { q: 3, c: "avvio", f: { html: 800, codice: 200, primo: 500 } }]).join("\n");
     t.c("una tappa si misura su chi ce l'ha, non con gli zeri di chi non l'ha", /pagina dell'app 800 ms/.test(tappa), tappa);
-    const vecchie = righeTempi([{ q: 9, c: "drive", f: { elenco: 900 }, da: "cambi" }]).join("\n");
-    t.c("senza versioni si conta tutto, senza note", /Giro di Google Drive dai cambiamenti: 1/.test(vecchie) && !/non contate/.test(vecchie), vecchie);
+    const vecchie = righeTempi([{ q: 9, c: "pdf", f: { byte: 900 }, da: "cloud" }]).join("\n");
+    t.c("senza versioni si conta tutto, senza note", /PDF aperto dal cloud: 1/.test(vecchie) && !/non contate/.test(vecchie), vecchie);
   }
   const voci = [
     { q: 1, c: "avvio", f: { codice: 300, primo: 100 }, n: 1100 },
     { q: 2, c: "avvio", f: { codice: 2500, primo: 200 }, n: 1100 },
     { q: 3, c: "epub", f: { codice: 100, byte: 900, pagina: 400 }, da: "tablet", kb: 300 },
-    { q: 4, c: "epub", f: { codice: 100, byte: 3000, pagina: 400 }, da: "drive", kb: 2048 },
+    { q: 4, c: "epub", f: { codice: 100, byte: 3000, pagina: 400 }, da: "cloud", kb: 2048 },
     { q: 5, c: "libreria", f: { disegno: 80 }, n: 1100, vista: "raccolte" },
     { q: 6, c: "pdf", f: { byte: 10, pagina: 90 }, da: "pezzi" },
   ];
@@ -149,12 +147,12 @@ export default async function (t) {
   t.c("si contano", /Tempi misurati: 6/.test(testo), testo);
   t.c("l'avvio coi libri", /Avvio dell'app: 2 · tipica 2,7 s .*· 1100 libri/.test(testo), testo);
   t.c("le tappe con il loro nome", /codice 2,5 s \+ primo disegno 200 ms/.test(testo), testo);
-  t.c("l'ePub diviso per provenienza", /ePub aperto dal tablet: 1/.test(testo) && /ePub aperto da Drive: 1/.test(testo), testo);
-  t.c("una provenienza sola sta nel nome", /PDF aperto da Drive a pezzi: 1/.test(testo), testo);
+  t.c("l'ePub diviso per provenienza", /ePub aperto dal tablet: 1/.test(testo) && /ePub aperto dal cloud: 1/.test(testo), testo);
+  t.c("una provenienza sola sta nel nome", /PDF aperto a pezzi: 1/.test(testo), testo);
   t.c("la Libreria dice la vista", /Libreria aperta a raccolte: 1 · tipica 80 ms/.test(testo), testo);
   t.c("una tappa sola non si ripete fra parentesi", !/80 ms \(/.test(testo), testo);
   t.c("oltre i 2 secondi si contano", /oltre i 2 secondi: 1/.test(testo), testo);
-  t.c("le lente si raccontano con le tappe e il peso", /ePub aperto da Drive · codice 100 ms \+ byte 3,0 s \+ pagina pronta 400 ms · 2 MB/.test(testo), testo);
+  t.c("le lente si raccontano con le tappe e il peso", /ePub aperto dal cloud · codice 100 ms \+ byte 3,0 s \+ pagina pronta 400 ms · 2 MB/.test(testo), testo);
   t.c("una rapida non e' fra le lente", !/Le ultime lente:[\s\S]*PDF/.test(testo), testo);
 
   // ---- nel rapporto, in coda --------------------------------------------------

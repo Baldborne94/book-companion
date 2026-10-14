@@ -15,7 +15,6 @@ import { existsSync } from "node:fs";
 import { build, preview } from "vite";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
 import { fumetto, fumettoGrosso, fumettoLungo, epub, pdf, wav, FRASE, mondoDisco, png } from "./libri.mjs";
-import { avviaDrive, driveNelBrowser } from "./driveFinto.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
 
 // le richieste del service worker passano dalle rotte del contesto solo
@@ -24,7 +23,6 @@ process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = "1";
 
 const PORTA_DB = 4599;
 const PORTA_APP = 4190;
-const PORTA_DRIVE = 4598;
 const URL_APP = `http://localhost:${PORTA_APP}/`;
 const aspetta = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -75,7 +73,7 @@ async function lanciaBrowser() {
 // o da Google (la prima volta in CI il catalogo vero ha dato a «Racconti» la
 // saga di Moravia, e la scena cadeva per una ragione che qui non c'era). Chi
 // vuole il catalogo se lo porta: `catalogo(url)` risponde al posto suo.
-async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, drive = null, oracolo = null, misura = null } = {}) {
+async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, oracolo = null, misura = null } = {}) {
   const ctx = await browser.newContext(misura || { viewport: { width: 1280, height: 800 } });
   await ctx.route(
     (url) => !/^(localhost|127\.0\.0\.1)$/.test(url.hostname),
@@ -91,7 +89,6 @@ async function dispositivo(browser, { sessione = false, prima = null, catalogo =
   );
   if (sessione) await ctx.addInitScript(sessioneFinta);
   if (prima) await ctx.addInitScript(prima);
-  if (drive) await ctx.addInitScript(driveNelBrowser, { porta: PORTA_DRIVE, ...drive });
   const p = await ctx.newPage();
   const guasti = [];
   p.on("pageerror", (e) => guasti.push(e.message));
@@ -332,6 +329,58 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore, lasciato Drive: «pulizia su cose che non servono
+    // piu'». Le chiavi di Drive sul dispositivo, l'elenco dei file in
+    // IndexedDB e la riga col permesso a lungo termine di Google nel
+    // Supabase se ne vanno da sole, e la biblioteca resta.
+    nome: "quel che Google Drive ha lasciato se ne va da solo, e la biblioteca resta",
+    async fai({ browser, db }) {
+      await fetch(`http://localhost:${PORTA_DB}/rest/v1/google_refresh`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: "u1", token: "rt-vecchio" }) });
+      if (db.permessi().length !== 1) throw new Error("la riga del permesso non c'e' nemmeno prima");
+      const d = await dispositivo(browser, { sessione: true });
+      await d.p.goto(`${URL_APP}?apri=libreria`);
+      // i resti dei tempi di Drive, seminati dopo il primo avvio (il database
+      // del browser lo crea l'app), poi si riapre
+      await d.p.evaluate(
+        () =>
+          new Promise((ok, ko) => {
+            for (const k of ["bc_drive_token", "bc_drive_on", "bc_drive_libri", "bc_drive_mai", "bc_google_vista"]) localStorage.setItem(k, "vecchio");
+            localStorage.setItem("bc_books", JSON.stringify([{ id: "m", title: "Mort", author: "Terry Pratchett", fileType: "epub", addedAt: 1 }]));
+            const r = indexedDB.open("bc_library");
+            r.onsuccess = () => {
+              const tx = r.result.transaction("aux", "readwrite");
+              tx.objectStore("aux").put({ file: {} }, "drive_elenco");
+              tx.oncomplete = () => (r.result.close(), ok());
+              tx.onerror = () => ko(tx.error);
+            };
+            r.onerror = () => ko(r.error);
+          })
+      );
+      await d.p.reload();
+      await finche(() => db.permessi().length === 0, 20000, "la riga col permesso di Google resta nel Supabase");
+      const rimaste = await finche(
+        () => d.p.evaluate(() => Object.keys(localStorage).filter((k) => /^bc_(drive|google)_/.test(k) && k !== "bc_google_riga_tolta").join()) .then((x) => (x === "" ? "nessuna" : "")),
+        10000,
+        "le chiavi di Drive restano sul dispositivo"
+      );
+      const elenco = await d.p.evaluate(
+        () =>
+          new Promise((ok) => {
+            const r = indexedDB.open("bc_library");
+            r.onsuccess = () => {
+              const g = r.result.transaction("aux").objectStore("aux").get("drive_elenco");
+              g.onsuccess = () => ok(g.result === undefined ? "via" : "resta");
+              g.onerror = () => ok("?");
+            };
+            r.onerror = () => ok("?");
+          })
+      );
+      if (elenco !== "via") throw new Error(`l'elenco dei file di Drive in IndexedDB: ${elenco}`);
+      if (!(await libriDi(d.p)).some((b) => b.title === "Mort")) throw new Error("la pulizia si e' portata via la biblioteca");
+      return { guasti: d.guasti, nota: `chiavi di Drive: ${rimaste}, elenco in IndexedDB via, riga di Google tolta, «Mort» al suo posto` };
+    },
+  },
+  {
     // chiesto dal lettore: «deve sincronizzarsi anche la sezione musica, se
     // metto nuove raccolte o altro queste devo vederle anche sugli altri
     // dispositivi»
@@ -361,133 +410,6 @@ const SCENE = [
       await finche(() => testoAvviso(tab.p, /^Notti d'inverno$/), 15000, "la raccolta non compare sul tablet");
       await finche(() => testoAvviso(tab.p, /^1 brano$/), 5000, "la raccolta arriva vuota sul tablet");
       return { guasti: [...pc.guasti, ...tab.guasti], nota: `lassu': ${nomiRaccolte().join(", ")}; sul tablet a sala aperta` };
-    },
-  },
-  {
-    // chiesto dal lettore: «la musica la devi scaricare prima di
-    // riprodurla?». Si': la melodia di Drive scendeva intera, e solo dopo
-    // suonava. Ora il service worker gira a Drive le richieste a pezzi
-    // dell'<audio> (`public/melodia-sw.js`), e la copia per il dispositivo
-    // scende dopo, quando gia' suona. Drive finto e lento: 2,4 MB a 200 KB/s
-    nome: "una melodia di Drive suona mentre scende, e poi resta sul dispositivo",
-    async fai({ browser }) {
-      const bytes = wav(300);
-      const banda = 200_000;
-      const drv = await avviaDrive(PORTA_DRIVE, { m1: bytes, m2: wav(20) }, { banda });
-      try {
-        const d = await dispositivo(browser, { drive: { libri: [], mappa: {} } });
-        await d.ctx.addInitScript((n) => {
-          if (localStorage.getItem("bc_music_favs")) return;
-          localStorage.setItem("bc_drive_client", "123-abc.apps.googleusercontent.com");
-          localStorage.setItem("bc_drive_melodie", JSON.stringify({ T1: { id: "m1" }, T2: { id: "m2" } }));
-          localStorage.setItem(
-            "bc_music_favs",
-            JSON.stringify([
-              { id: "f1", name: "Pioggia lontana", trackId: "T1", drive: true, size: n, addedAt: 1, updatedAt: 1 },
-              { id: "f2", name: "Camino", trackId: "T2", drive: true, size: 160044, addedAt: 2, updatedAt: 2 },
-            ])
-          );
-        }, bytes.length);
-        // anche il service worker chiede a googleapis: lo si gira al Drive finto
-        const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "*" };
-        await d.ctx.route(/^https:\/\/www\.googleapis\.com\/drive\/v3\//, (r) =>
-          r.request().method() === "OPTIONS"
-            ? r.fulfill({ status: 204, headers: cors })
-            : r.fulfill({ status: 307, headers: { ...cors, Location: r.request().url().replace("https://www.googleapis.com", `http://localhost:${PORTA_DRIVE}`) } })
-        );
-        await d.p.goto(`${URL_APP}?apri=musica`);
-        // il service worker comanda la pagina solo dalla seconda apertura
-        await d.p.evaluate(() => navigator.serviceWorker.ready);
-        await d.p.goto(`${URL_APP}?apri=musica`);
-        await finche(() => d.p.evaluate(() => !!navigator.serviceWorker.controller), 10000, "il service worker non comanda la pagina");
-        await finche(() => d.p.getByText("Pioggia lontana", { exact: true }).count(), 10000, "la melodia di Drive non c'e'");
-        const t0 = Date.now();
-        await d.p.getByText("Pioggia lontana", { exact: true }).first().click();
-        await finche(() => d.p.evaluate(() => (document.querySelector("audio")?.currentTime || 0) > 0.3), 30000, "la melodia non suona");
-        const parte = (Date.now() - t0) / 1000;
-        const intera = bytes.length / banda;
-        const src = await d.p.evaluate(() => document.querySelector("audio").getAttribute("src") || "");
-        if (!src.startsWith("/__melodia/m1")) throw new Error(`la melodia non suona a pezzi da Drive (src ${src.slice(0, 40)})`);
-        if (parte > intera / 3) throw new Error(`la melodia parte dopo ${parte.toFixed(1)} s: intera scende in ${intera.toFixed(1)} s`);
-        // salto avanti: un pezzo lontano, chiesto da li' e non da capo
-        const t1 = Date.now();
-        await d.p.evaluate(() => (document.querySelector("audio").currentTime = 250));
-        await finche(() => d.p.evaluate(() => document.querySelector("audio").currentTime > 250.3), 15000, "il salto nel brano non suona");
-        const salto = (Date.now() - t1) / 1000;
-        if (salto > intera / 3) throw new Error(`il salto a 250 s suona dopo ${salto.toFixed(1)} s: il brano si rilegge da capo`);
-        // la copia per il dispositivo, scesa dopo
-        const copia = () =>
-          d.p.evaluate(
-            () =>
-              new Promise((ok) => {
-                const r = indexedDB.open("bc_library");
-                r.onsuccess = () => {
-                  const db = r.result;
-                  if (!db.objectStoreNames.contains("tracks")) return ok(0);
-                  const g = db.transaction("tracks").objectStore("tracks").get("T1");
-                  g.onsuccess = () => ok(g.result?.size || 0);
-                  g.onerror = () => ok(0);
-                };
-                r.onerror = () => ok(0);
-              })
-          );
-        const tenuta = await finche(copia, 40000, "la melodia non resta sul dispositivo");
-        if (tenuta !== bytes.length) throw new Error(`sul dispositivo ${tenuta} byte, su Drive ${bytes.length}`);
-        // Drive che non risponde ai pezzi: la melodia scende intera, come prima
-        await d.ctx.unrouteAll({ behavior: "ignoreErrors" });
-        await d.ctx.route(/^https:\/\/www\.googleapis\.com\//, (r) => r.abort());
-        await d.p.getByText("Camino", { exact: true }).first().click();
-        await finche(
-          () => d.p.evaluate(() => /^blob:/.test(document.querySelector("audio")?.getAttribute("src") || "") && document.querySelector("audio").currentTime > 0.3),
-          30000,
-          "senza i pezzi la melodia non scende intera"
-        );
-        return { guasti: d.guasti, nota: `suona dopo ${parte.toFixed(1)} s (intera: ${intera.toFixed(1)} s), salto a 250 s in ${salto.toFixed(1)} s, copia di ${(tenuta / 1e6).toFixed(1)} MB sul dispositivo; senza pezzi scende intera` };
-      } finally {
-        await drv.chiudi();
-      }
-    },
-  },
-  {
-    // chiesto dal lettore insieme a quella sopra: «Scarica la raccolta»
-    // porta sul dispositivo le melodie di Drive che mancano, una alla volta,
-    // e dopo suonano anche senza Drive
-    nome: "«Scarica la raccolta» porta qui le melodie di Drive, e suonano senza rete",
-    async fai({ browser }) {
-      const uno = wav(60);
-      const due = wav(40);
-      const drv = await avviaDrive(PORTA_DRIVE, { m1: uno, m2: due });
-      let chiuso = false;
-      try {
-        const d = await dispositivo(browser, { drive: { libri: [], mappa: {} } });
-        await d.ctx.addInitScript((misure) => {
-          if (localStorage.getItem("bc_music_favs")) return;
-          localStorage.setItem("bc_drive_client", "123-abc.apps.googleusercontent.com");
-          localStorage.setItem("bc_drive_melodie", JSON.stringify({ T1: { id: "m1" }, T2: { id: "m2" } }));
-          localStorage.setItem(
-            "bc_music_favs",
-            JSON.stringify([
-              { id: "f1", name: "Pioggia lontana", trackId: "T1", drive: true, size: misure[0], addedAt: 1, updatedAt: 1 },
-              { id: "f2", name: "Camino", trackId: "T2", drive: true, size: misure[1], addedAt: 2, updatedAt: 2 },
-            ])
-          );
-          localStorage.setItem("bc_music_lists", JSON.stringify([{ id: "r1", name: "Taverna", brani: ["f1", "f2"], addedAt: 1, updatedAt: 1 }]));
-        }, [uno.length, due.length]);
-        await d.p.goto(`${URL_APP}?apri=musica`);
-        await finche(() => testoAvviso(d.p, /2 brani solo su Google Drive/), 10000, "la raccolta non dice cosa sta solo su Drive");
-        await d.p.getByRole("button", { name: "⬇ Scarica la raccolta" }).click();
-        await finche(() => testoAvviso(d.p, /Scarico la raccolta: \d di 2/), 5000, "la barra del lavoro non dice a che punto e'");
-        await finche(() => testoAvviso(d.p, /2 melodie ora stanno sul dispositivo/), 20000, "le melodie non scendono");
-        await finche(async () => !(await d.p.getByRole("button", { name: "⬇ Scarica la raccolta" }).count()), 5000, "il tasto resta dopo che e' tutto qui");
-        // Drive spento: la raccolta suona lo stesso
-        await drv.chiudi();
-        chiuso = true;
-        await d.p.getByRole("button", { name: "▶ In ordine" }).click();
-        await finche(() => d.p.evaluate(() => (document.querySelector("audio")?.currentTime || 0) > 0.3), 10000, "senza Drive la raccolta scaricata non suona");
-        return { guasti: d.guasti, nota: "2 melodie scese una alla volta, il tasto sparisce, e con Drive spento la raccolta suona" };
-      } finally {
-        if (!chiuso) await drv.chiudi();
-      }
     },
   },
   {
@@ -688,55 +610,6 @@ const SCENE = [
     },
   },
   {
-    // segnalato dal lettore dal PC: «la sincronizzazione è ancora molto
-    // lenta», ferma su «Guardo i libri su Google Drive». L'elenco di Drive
-    // teneva ogni file con un'estensione — il suo Drive ha 1,5 TB di foto e
-    // altro — e a ogni giro si rileggeva e si riscriveva intero. Ora tiene
-    // solo libri, musica e cartelle, e il giro si misura per il rapporto
-    nome: "il giro di Drive tiene solo libri, musica e cartelle, e si misura",
-    async fai({ browser }) {
-      const elenco = [
-        { id: "L1", name: "Mort.epub", size: "1000", mimeType: "application/epub+zip", parents: ["C1"] },
-        { id: "L2", name: "Hush.cbz", size: "2000", mimeType: "application/zip", parents: ["C1"] },
-        { id: "C1", name: "book-companion", mimeType: "application/vnd.google-apps.folder" },
-        ...Array.from({ length: 3000 }, (_, i) => ({ id: `F${i}`, name: `IMG_${i}.jpg`, size: "3000000", mimeType: "image/jpeg", parents: ["P"] })),
-      ];
-      const drv = await avviaDrive(PORTA_DRIVE, {}, { elenco });
-      try {
-        const d = await dispositivo(browser, {
-          drive: { libri: [{ id: "m", title: "Mort", fileType: "epub", addedAt: 1 }], mappa: {} },
-          prima: () => localStorage.setItem("bc_drive_client", "123-abc.apps.googleusercontent.com"),
-        });
-        await d.p.goto(URL_APP);
-        // senza sessione il giro di solo Drive parte al ritorno della rete
-        await d.p.waitForTimeout(500);
-        await d.p.evaluate(() => window.dispatchEvent(new Event("online")));
-        const giro = await finche(
-          () => d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_tempi") || "[]").find((x) => x.c === "drive")),
-          20000,
-          "il giro di Drive non e' misurato"
-        );
-        if (!("elenco" in giro.f) || !("riconosce" in giro.f)) throw new Error(`giro misurato male: ${JSON.stringify(giro)}`);
-        if (giro.voci > 10) throw new Error(`l'elenco di Drive tiene ${giro.voci} file: le foto non servono`);
-        const tenuti = await d.p.evaluate(
-          () =>
-            new Promise((ok) => {
-              const r = indexedDB.open("bc_library");
-              r.onsuccess = () => {
-                const g = r.result.transaction("aux").objectStore("aux").get("drive_elenco");
-                g.onsuccess = () => ok(Object.keys(g.result?.file || {}).length);
-                g.onerror = () => ok(-1);
-              };
-            })
-        );
-        if (tenuti !== 3) throw new Error(`sul dispositivo l'elenco di Drive ha ${tenuti} file, non i 3 che servono`);
-        return { guasti: d.guasti, nota: `elenco di ${giro.voci} file su ${elenco.length}, ${giro.da}, ${Object.entries(giro.f).map(([k, v]) => `${k} ${v} ms`).join(" + ")}` };
-      } finally {
-        await drv.chiudi();
-      }
-    },
-  },
-  {
     // segnalato dal lettore con «Batman - Hush (2019) (digital) (Son of
     // Ultron-Empire).cbr»: «archivio non leggibile», e basta. Un 7-Zip
     // rinominato si dice per nome, e un PDF rinominato entra come PDF.
@@ -748,51 +621,6 @@ const SCENE = [
       await d.p.setInputFiles('input[accept^=".epub"]', { name: "Batman - Hush (2019).cbr", mimeType: "application/octet-stream", buffer: sette });
       const detto = await finche(() => testoAvviso(d.p, /Batman - Hush \(2019\)\.cbr.*7-Zip/), 20000, "il 7-Zip rinominato non dice cos'e'");
       return { guasti: d.guasti, nota: detto.slice(0, 120) };
-    },
-  },
-  {
-    // segnalato dal lettore: «Hogfather», «Interesting Times», «Monstrous
-    // Regiment» e altri 7 «non sono né qui né nel cloud», e i loro ePub
-    // erano su Drive nella vecchia cartella «Books» coi nomi lunghi di
-    // Calibre. «Se ci sono mi aspetto che li veda»
-    nome: "i libri su Drive con un nome lungo si ritrovano da soli, e l'avviso dei perduti sparisce",
-    async fai({ browser }) {
-      const elenco = [
-        { id: "BOOKS", name: "Books", mimeType: "application/vnd.google-apps.folder" },
-        { id: "H", name: "Pratchett, Terry - [Discworld 20] - Hogfather (1998, Harper).epub", size: "431172", mimeType: "application/epub+zip", parents: ["BOOKS"] },
-        { id: "I", name: "Pratchett, Terry - [Discworld 17] - Interesting Times (1994, HarperTorch).epub", size: "480290", mimeType: "application/epub+zip", parents: ["BOOKS"] },
-        { id: "M", name: "Pratchett, Terry - [Discworld 31] - Monstrous Regiment (2003, HarperTorch).epub", size: "439384", mimeType: "application/epub+zip", parents: ["BOOKS"] },
-      ];
-      const drv = await avviaDrive(PORTA_DRIVE, {}, { elenco });
-      try {
-        const d = await dispositivo(browser, {
-          drive: {
-            libri: [
-              { id: "hog", title: "Hogfather", author: "Terry Pratchett", fileType: "epub", addedAt: 1 },
-              { id: "int", title: "Interesting Times", author: "Terry Pratchett", fileType: "epub", addedAt: 2 },
-              { id: "mon", title: "Monstrous Regiment", author: "Terry Pratchett", fileType: "epub", addedAt: 3 },
-            ],
-            mappa: {},
-          },
-          prima: () => localStorage.setItem("bc_drive_client", "123-abc.apps.googleusercontent.com"),
-        });
-        await d.p.goto(`${URL_APP}?apri=libreria`);
-        await finche(() => testoAvviso(d.p, /non sono né qui né nel cloud/), 10000, "prima del giro l'avviso dei perduti non c'e'");
-        await d.p.evaluate(() => window.dispatchEvent(new Event("online")));
-        const mappa = () => d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_drive_libri") || "{}"));
-        await finche(async () => Object.keys(await mappa()).length === 3, 20000, "il giro non ritrova i tre libri");
-        const m = await mappa();
-        if (`${m.hog?.id}${m.int?.id}${m.mon?.id}` !== "HIM") throw new Error(`abbinati male: ${JSON.stringify(m)}`);
-        const segni = elenco.filter((f) => f.appProperties?.bcId).map((f) => `${f.id}=${f.appProperties.bcId}`).join();
-        if (segni !== "H=hog,I=int,M=mon") throw new Error(`segni su Drive: ${segni}`);
-        await d.p.goto(`${URL_APP}?apri=libreria`);
-        await d.p.waitForTimeout(1500);
-        const resta = await testoAvviso(d.p, /né qui né nel cloud/);
-        if (resta) throw new Error(`l'avviso resta: ${resta}`);
-        return { guasti: d.guasti, nota: `3 libri ritrovati nella cartella «Books» e segnati, l'avviso sparito` };
-      } finally {
-        await drv.chiudi();
-      }
     },
   },
   {
@@ -829,345 +657,34 @@ const SCENE = [
     },
   },
   {
-    // chiesto dal lettore facendo pulizia su Drive: 29 CBR col loro CBZ
-    // accanto, 14,6 GB. Si butta solo il CBR di nessuno accanto al CBZ letto
-    nome: "i CBR gia' convertiti vanno nel cestino di Drive, e solo quelli",
-    async fai({ browser }) {
-      const elenco = [
-        { id: "HB", name: "Hellboy", mimeType: "application/vnd.google-apps.folder" },
-        { id: "R1", name: "Hellboy v01.cbr", size: "700000000", parents: ["HB"] },
-        { id: "Z1", name: "Hellboy v01.cbz", size: "650000000", parents: ["HB"], appProperties: { bc: "1", bcId: "h1" } },
-        { id: "R2", name: "Hellboy v02.cbr", size: "500000000", parents: ["HB"], appProperties: { bc: "1", bcId: "h2" } },
-        { id: "Z2", name: "Hellboy v02.cbz", size: "480000000", parents: ["HB"] },
-      ];
-      const drv = await avviaDrive(PORTA_DRIVE, {}, { elenco });
-      try {
-        const d = await dispositivo(browser, {
-          drive: {
-            libri: [
-              { id: "h1", title: "Hellboy v01", fileType: "cbz", addedAt: 1 },
-              { id: "h2", title: "Hellboy v02", fileType: "cbr", addedAt: 2 },
-            ],
-            mappa: { h1: { id: "Z1", byte: 650000000 }, h2: { id: "R2", byte: 500000000 } },
-          },
-          prima: () => localStorage.setItem("bc_drive_client", "123-abc.apps.googleusercontent.com"),
-        });
-        await d.p.goto(`${URL_APP}?apri=libreria`);
-        await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
-        await d.p.getByRole("button", { name: /CBR già convertiti in CBZ/ }).click();
-        const frase = await finche(() => testoAvviso(d.p, /Questo CBR ha accanto il CBZ che leggi/), 15000, "l'elenco dei CBR da buttare non compare");
-        const elencati = await d.p.evaluate(() => [...document.querySelectorAll("li span")].map((x) => x.textContent).filter((x) => /\.cbr$/.test(x)));
-        if (elencati.join() !== "Hellboy v01.cbr") throw new Error(`elencati: ${elencati.join()}`);
-        if (drv.cestino().length) throw new Error("si e' buttato qualcosa prima del tocco");
-        await d.p.getByRole("button", { name: "Mettili nel cestino di Drive" }).click();
-        await finche(() => testoAvviso(d.p, /Un CBR nel cestino di Drive/), 15000, "il cestino non si dice");
-        if (drv.cestino().join() !== "R1") throw new Error(`nel cestino: ${drv.cestino().join()}`);
-        return { guasti: d.guasti, nota: `«${frase.slice(0, 60)}…», nel cestino solo ${drv.cestino().join()}` };
-      } finally {
-        await drv.chiudi();
-      }
-    },
-  },
-  {
-    // chiesto dal lettore per lasciare i due tera di Drive: «spostare grossi
-    // file direttamente da drive ad hard disk esterno». Il disco e' la
-    // cartella privata del browser (OPFS), con la stessa forma di quella
-    // scelta dal lettore
-    nome: "una raccolta si sposta da Drive all'HDD: i file sul disco nelle loro cartelle, le schede restano, Drive li butta",
-    async fai({ browser }) {
-      const elenco = [
-        { id: "BC", name: "book-companion", mimeType: "application/vnd.google-apps.folder" },
-        { id: "FU", name: "Fumetti", mimeType: "application/vnd.google-apps.folder", parents: ["BC"] },
-        { id: "HB", name: "Hellboy", mimeType: "application/vnd.google-apps.folder", parents: ["FU"] },
-        { id: "Z1", name: "Hellboy v01.cbz", size: "300000", parents: ["HB"], appProperties: { bc: "1", bcId: "h1" } },
-        // un volume capitato fuori posto su Drive: sul disco va dalla sua saga
-        { id: "Z2", name: "Hellboy: Seed v02.cbz", size: "200000", parents: ["FU"], appProperties: { bc: "1", bcId: "h2" } },
-        // quello che stai leggendo si copia sul disco e resta anche su Drive,
-        // da leggere anche sul tablet
-        { id: "Z3", name: "Hellboy v03.cbz", size: "100000", parents: ["HB"], appProperties: { bc: "1", bcId: "h3" } },
-      ];
-      const drv = await avviaDrive(PORTA_DRIVE, { Z1: Buffer.alloc(300000, 1), Z2: Buffer.alloc(200000, 2), Z3: Buffer.alloc(100000, 3) }, { elenco });
-      try {
-        const disco = () => {
-          localStorage.setItem("bc_vista", JSON.stringify({ aspetto: "raccolte" }));
-          localStorage.setItem("bc_status_h3", "reading");
-          window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
-        };
-        const d = await dispositivo(browser, {
-          prima: `(${disco})();`,
-          drive: {
-            libri: [1, 2, 3].map((i) => ({ id: `h${i}`, title: `Hellboy v0${i}`, author: "Mike Mignola", saga: "Hellboy", sagaOrder: i, fileType: "cbz", tipo: "fumetti", addedAt: i })),
-            mappa: { h1: { id: "Z1", byte: 300000 }, h2: { id: "Z2", byte: 200000 }, h3: { id: "Z3", byte: 100000 } },
-          },
-        });
-        await d.p.goto(`${URL_APP}?apri=libreria`);
-        await d.p.getByRole("button", { name: /^Hellboy/ }).first().click();
-        await d.p.getByRole("button", { name: "📦 Sposta sull'HDD" }).click();
-        await finche(() => testoAvviso(d.p, /i 2 volumi che stanno su Google Drive.*Il volume che stai leggendo si copia sul disco e resta anche su Drive/), 8000, "la conferma non dice quanti volumi, e quello che resta");
-        // e dice quali, per nome
-        const elencati = await finche(async () => {
-          const l = await d.p.evaluate(() => [...document.querySelectorAll("li > span")].map((x) => x.textContent));
-          return l.length ? l.join() : null;
-        }, 5000, "la conferma non dice quali volumi");
-        if (elencati !== "Hellboy v01,Hellboy v02") throw new Error(`la conferma elenca: ${elencati}`);
-        if (drv.cestino().length) throw new Error("si e' buttato qualcosa prima di scegliere il disco");
-        await d.p.getByRole("button", { name: "Scegli la cartella del disco" }).click();
-        const frase = await finche(() => testoAvviso(d.p, /2 volumi sull'HDD.*Quello che stai leggendo è copiato sull'HDD e resta su Drive/), 20000, "lo spostamento non si dice");
-        const sulDisco = await d.p.evaluate(async () => {
-          const out = {};
-          const giu = async (dir, via) => {
-            for await (const [n, h] of dir.entries()) {
-              if (h.kind === "directory") await giu(h, `${via}${n}/`);
-              else out[`${via}${n}`] = (await h.getFile()).size;
-            }
-          };
-          await giu(await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD"), "");
-          return out;
-        });
-        const atteso = { "book-companion/Fumetti/Hellboy/Hellboy v01.cbz": 300000, "book-companion/Fumetti/Hellboy/Hellboy_ Seed v02.cbz": 200000, "book-companion/Fumetti/Hellboy/Hellboy v03.cbz": 100000 };
-        const ordinato = (o) => JSON.stringify(Object.entries(o).sort());
-        if (ordinato(sulDisco) !== ordinato(atteso)) throw new Error(`sul disco: ${JSON.stringify(sulDisco)}`);
-        const libri = await libriDi(d.p);
-        const tolti = libri.filter((b) => b.fileTolto).map((b) => b.id).sort().join();
-        if (tolti !== "h1,h2" || libri.length !== 3) throw new Error(`schede: ${libri.length}, senza file ${tolti}`);
-        if (drv.cestino().sort().join() !== "Z1,Z2") throw new Error(`nel cestino: ${drv.cestino().join()}`);
-        const mappa = await d.p.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("bc_drive_libri") || "{}")));
-        if (mappa.join() !== "h3") throw new Error(`ancora nella mappa: ${mappa.join()}`);
-        // resta su Drive solo quello in lettura: il tasto non ha piu' niente da spostare
-        await d.p.waitForTimeout(500);
-        if (await d.p.getByRole("button", { name: "📦 Sposta sull'HDD" }).count()) throw new Error("il tasto resta per il solo volume in lettura");
-        return { guasti: d.guasti, nota: frase.slice(0, 90) };
-      } finally {
-        await drv.chiudi();
-      }
-    },
-  },
-  {
-    // chiesto dal lettore: «spostare per sezione, tutti i libri o tutti i
-    // manga o tutti i fumetti; se qualcosa è già presente non spostarlo di
-    // nuovo creando i doppioni»
-    nome: "dalla Manutenzione si sposta sull'HDD una sezione sola, e quel che è già sul disco non scende di nuovo",
-    async fai({ browser }) {
-      const elenco = [
-        { id: "L1", name: "Mort.epub", size: "50000", parents: ["X"], appProperties: { bc: "1", bcId: "l1" } },
-        { id: "Z1", name: "Hellboy v01.cbz", size: "300000", parents: ["X"], appProperties: { bc: "1", bcId: "h1" } },
-        { id: "Z2", name: "Hellboy v02.cbz", size: "200000", parents: ["X"], appProperties: { bc: "1", bcId: "h2" } },
-      ];
-      const drv = await avviaDrive(PORTA_DRIVE, { L1: Buffer.alloc(50000, 1), Z1: Buffer.alloc(300000, 2), Z2: Buffer.alloc(200000, 3) }, { elenco });
-      try {
-        const disco = () => {
-          window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
-        };
-        const d = await dispositivo(browser, {
-          prima: `(${disco})();`,
-          drive: {
-            libri: [
-              { id: "l1", title: "Mort", author: "Terry Pratchett", fileType: "epub", addedAt: 1 },
-              { id: "h1", title: "Hellboy v01", author: "Mike Mignola", saga: "Hellboy", fileType: "cbz", tipo: "fumetti", addedAt: 2 },
-              { id: "h2", title: "Hellboy v02", author: "Mike Mignola", saga: "Hellboy", fileType: "cbz", tipo: "fumetti", addedAt: 3 },
-            ],
-            mappa: { l1: { id: "L1", byte: 50000 }, h1: { id: "Z1", byte: 300000 }, h2: { id: "Z2", byte: 200000 } },
-          },
-        });
-        await d.p.goto(`${URL_APP}?apri=libreria`);
-        // il primo volume e' gia' sul disco, da un giro di prima
-        await d.p.evaluate(async () => {
-          const r = await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
-          let c = r;
-          for (const n of ["book-companion", "Fumetti", "Hellboy"]) c = await c.getDirectoryHandle(n, { create: true });
-          const w = await (await c.getFileHandle("Hellboy v01.cbz", { create: true })).createWritable();
-          await w.write(new Uint8Array(300000).fill(2));
-          await w.close();
-        });
-        await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
-        await d.p.getByRole("button", { name: /^📦 2 fumetti sull'HDD/ }).click();
-        await d.p.getByRole("button", { name: "Scegli la cartella del disco" }).click();
-        const frase = await finche(() => testoAvviso(d.p, /2 volumi sull'HDD/), 20000, "lo spostamento non si dice");
-        const sulDisco = await d.p.evaluate(async () => {
-          const out = [];
-          const giu = async (dir, via) => {
-            for await (const [n, h] of dir.entries()) {
-              if (h.kind === "directory") await giu(h, `${via}${n}/`);
-              else out.push(`${via}${n}`);
-            }
-          };
-          await giu(await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD"), "");
-          return out.sort().join();
-        });
-        if (sulDisco !== "book-companion/Fumetti/Hellboy/Hellboy v01.cbz,book-companion/Fumetti/Hellboy/Hellboy v02.cbz") throw new Error(`sul disco: ${sulDisco}`);
-        if (drv.scesi().join() !== "Z2") throw new Error(`scesi da Drive: ${drv.scesi().join()} (il primo era gia' sul disco)`);
-        if (drv.cestino().sort().join() !== "Z1,Z2") throw new Error(`nel cestino: ${drv.cestino().join()}`);
-        const tolti = (await libriDi(d.p)).filter((b) => b.fileTolto).map((b) => b.id).sort().join();
-        if (tolti !== "h1,h2") throw new Error(`senza file: ${tolti} (i libri non si toccano)`);
-        await finche(() => d.p.getByRole("button", { name: /^📦 1 libro sull'HDD/ }).count(), 5000, "il tasto dei libri non resta");
-        if (await d.p.getByRole("button", { name: /fumetti sull'HDD/ }).count()) throw new Error("il tasto dei fumetti resta, e non ha piu' niente da spostare");
-        return { guasti: d.guasti, nota: `${frase.slice(0, 60)}… · sceso solo Z2, Mort resta su Drive` };
-      } finally {
-        await drv.chiudi();
-      }
-    },
-  },
-  {
-    // chiesto dal lettore prima di lasciare Drive: «mi salvi tu in E nei
-    // posti giusti i file?». Su Drive restavano solo i due volumi in lettura
-    // (sul disco, copie a meta' da 0 byte) e la musica
-    nome: "prima di lasciare Drive, quel che stai leggendo e la musica si copiano sul disco nei loro posti",
-    async fai({ browser }) {
-      const brano = wav(30);
-      const elenco = [
-        { id: "Z3", name: "The_Sandman_-_The_Deluxe_Edition_Book_03.cbz", size: "400000", parents: ["X"], appProperties: { bc: "1", bcId: "s3" } },
-        { id: "m1", name: "Pioggia lontana.mp3", mimeType: "audio/mpeg", size: String(brano.length), parents: ["M"], appProperties: { bcTrack: "T1" } },
-      ];
-      const drv = await avviaDrive(PORTA_DRIVE, { Z3: Buffer.alloc(400000, 7), m1: brano }, { elenco });
-      try {
-        const d = await dispositivo(browser, {
-          prima: `window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
-            if (!localStorage.getItem("bc_music_favs")) {
-              localStorage.setItem("bc_status_s3", "reading");
-              localStorage.setItem("bc_drive_client", "123-abc.apps.googleusercontent.com");
-              localStorage.setItem("bc_drive_melodie", JSON.stringify({ T1: { id: "m1", byte: ${brano.length} } }));
-              localStorage.setItem("bc_music_favs", JSON.stringify([{ id: "f1", name: "Pioggia lontana", trackId: "T1", drive: true, size: ${brano.length}, mime: "audio/mpeg", addedAt: 1, updatedAt: 1 }]));
-            }`,
-          drive: {
-            libri: [{ id: "s3", title: "The Sandman - The Deluxe Edition Book 03", saga: "The Sandman", fileType: "cbz", tipo: "fumetti", addedAt: 1 }],
-            mappa: { s3: { id: "Z3", byte: 400000 } },
-          },
-        });
-        await d.p.goto(`${URL_APP}?apri=libreria`);
-        // la copia rimasta a meta' da uno spostamento di prima
-        await d.p.evaluate(async () => {
-          let c = await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
-          for (const n of ["book-companion", "Fumetti", "The Sandman"]) c = await c.getDirectoryHandle(n, { create: true });
-          await (await c.getFileHandle("The_Sandman_-_The_Deluxe_Edition_Book_03.cbz", { create: true })).createWritable().then((w) => w.close());
-        });
-        await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
-        await d.p.getByRole("button", { name: /^📖 Copia sul disco quello che stai leggendo/ }).click();
-        await d.p.getByRole("button", { name: "Scegli la cartella del disco" }).click();
-        await finche(() => testoAvviso(d.p, /Quello che stai leggendo è copiato sull'HDD e resta su Drive/), 20000, "la copia del volume in lettura non si dice");
-        await d.p.goto(`${URL_APP}?apri=musica`);
-        await d.p.getByRole("button", { name: "💾 La melodia di Drive sul disco" }).click();
-        await finche(() => testoAvviso(d.p, /Una melodia copiata sul disco, in «Musica»/), 20000, "la copia della musica non si dice");
-        const sulDisco = await d.p.evaluate(async () => {
-          const out = [];
-          const giu = async (dir, via) => {
-            for await (const [n, h] of dir.entries()) {
-              if (h.kind === "directory") await giu(h, `${via}${n}/`);
-              else out.push(`${via}${n}:${(await h.getFile()).size}`);
-            }
-          };
-          await giu(await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD"), "");
-          return out.sort().join(" ");
-        });
-        const atteso = `book-companion/Fumetti/The Sandman/The_Sandman_-_The_Deluxe_Edition_Book_03.cbz:400000 book-companion/Musica/Pioggia lontana.mp3:${brano.length}`;
-        if (sulDisco !== atteso) throw new Error(`sul disco: ${sulDisco}`);
-        if (drv.cestino().length) throw new Error(`nel cestino di Drive: ${drv.cestino().join()} (si copiano soltanto)`);
-        if ((await libriDi(d.p)).some((b) => b.fileTolto)) throw new Error("la scheda in lettura è diventata «senza ebook»");
-        return { guasti: d.guasti, nota: "la copia da 0 byte riempita nella cartella della saga, la melodia in «Musica», Drive intatto" };
-      } finally {
-        await drv.chiudi();
-      }
-    },
-  },
-  {
     // segnalato dal lettore con la foto della Manutenzione del tablet: Chrome
     // per Android ora sa scegliere una cartella, e «Copia sul disco» copiava i
     // volumi nella memoria del tablet. L'HDD della biblioteca e' del computer
     nome: "i tasti del disco stanno sul computer, non sul tablet",
     async fai({ browser }) {
-      const elenco = [{ id: "Z3", name: "Sandman 03.cbz", size: "4000", parents: ["X"], appProperties: { bc: "1", bcId: "s3" } }];
-      const drv = await avviaDrive(PORTA_DRIVE, { Z3: Buffer.alloc(4000, 7) }, { elenco });
       const libri = [{ id: "s3", title: "Sandman 03", saga: "The Sandman", fileType: "cbz", tipo: "fumetti", addedAt: 1 }];
       const prima = `window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
-        localStorage.setItem("bc_status_s3", "reading");`;
+        localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});`;
       const tasti = async (ctx) => {
         await ctx.route((u) => !/^(localhost|127\.0\.0\.1)$/.test(u.hostname), (r) => r.abort());
         await ctx.addInitScript(prima);
-        await ctx.addInitScript(driveNelBrowser, { porta: PORTA_DRIVE, libri, mappa: { s3: { id: "Z3", byte: 4000 } } });
         const p = await ctx.newPage();
         await p.goto(`${URL_APP}?apri=libreria`);
         await p.getByRole("button", { name: /Manutenzione/ }).first().click();
         await p.waitForTimeout(1500);
-        return {
-          copia: await p.getByRole("button", { name: /Copia sul disco/ }).count(),
-          controlla: await p.getByRole("button", { name: /Controlla il disco/ }).count(),
-        };
+        return await p.getByRole("button", { name: /Controlla il disco/ }).count();
       };
       const pcCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-      const tabCtx = await browser.newContext({
-        viewport: { width: 902, height: 1503 },
-        deviceScaleFactor: 1.33,
-        hasTouch: true,
-        isMobile: true,
-        userAgent: "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
-      });
+      const tabCtx = await browser.newContext(TABLET);
       try {
         const pc = await tasti(pcCtx);
-        if (!pc.copia || !pc.controlla) throw new Error(`sul computer mancano i tasti del disco: ${JSON.stringify(pc)}`);
+        if (!pc) throw new Error("sul computer manca «Controlla il disco»");
         const tab = await tasti(tabCtx);
-        if (tab.copia || tab.controlla) throw new Error(`sul tablet ci sono i tasti del disco: ${JSON.stringify(tab)}`);
-        return { guasti: [], nota: `computer: copia ${pc.copia}, controlla ${pc.controlla} · tablet: nessuno` };
+        if (tab) throw new Error("sul tablet c'e' «Controlla il disco»");
+        return { guasti: [], nota: `computer: controlla ${pc} · tablet: nessuno` };
       } finally {
         await pcCtx.close();
         await tabCtx.close();
-        await drv.chiudi();
-      }
-    },
-  },
-  {
-    // segnalato dal lettore: «perché i 38 GB di manga e fumetti non sono
-    // stati spostati?» — caricati a mano su Drive, nessuna scheda li usava
-    nome: "i file su Drive che nessun libro usa vanno sull'HDD con le loro cartelle, e quelli dei libri e fuori dall'app restano",
-    async fai({ browser }) {
-      const CARTELLA = "application/vnd.google-apps.folder";
-      const elenco = [
-        { id: "R", name: "Book-Companion", mimeType: CARTELLA },
-        { id: "M", name: "Manga", mimeType: CARTELLA, parents: ["R"] },
-        { id: "J", name: "JoJo", mimeType: CARTELLA, parents: ["M"] },
-        { id: "L", name: "Libri", mimeType: CARTELLA, parents: ["R"] },
-        { id: "ALTRO", name: "Foto", mimeType: CARTELLA },
-        { id: "J1", name: "JoJo v01.cbz", size: "300000", parents: ["J"] },
-        { id: "J2", name: "JoJo v02.cbz", size: "200000", parents: ["J"] },
-        { id: "L1", name: "Mort.epub", size: "50000", parents: ["L"], appProperties: { bc: "1", bcId: "l1" } },
-        { id: "FUORI", name: "Berserk.cbz", size: "70000", parents: ["ALTRO"] },
-      ];
-      const drv = await avviaDrive(PORTA_DRIVE, { J1: Buffer.alloc(300000, 1), J2: Buffer.alloc(200000, 2), L1: Buffer.alloc(50000, 3), FUORI: Buffer.alloc(70000, 4) }, { elenco });
-      try {
-        const disco = () => {
-          window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
-        };
-        const d = await dispositivo(browser, {
-          prima: `(${disco})();`,
-          drive: {
-            libri: [{ id: "l1", title: "Mort", author: "Terry Pratchett", fileType: "epub", addedAt: 1 }],
-            mappa: { l1: { id: "L1", byte: 50000 } },
-          },
-        });
-        await d.p.goto(`${URL_APP}?apri=libreria`);
-        await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
-        await d.p.getByRole("button", { name: "📦 File su Drive che nessun libro usa" }).click();
-        await finche(() => d.p.getByText(/^Manga \/ JoJo$/).count(), 10000, "l'elenco per cartella non si vede");
-        const riga = await d.p.locator("li", { hasText: "Manga / JoJo" }).first().innerText();
-        if (!/2 file/.test(riga)) throw new Error(`la riga della cartella: ${riga}`);
-        if (await d.p.locator("li", { hasText: /Berserk|Foto|Libri/ }).count()) throw new Error("nell'elenco c'è un file di un libro o fuori dall'app");
-        await d.p.getByRole("button", { name: "Scegli la cartella del disco" }).click();
-        const frase = await finche(() => testoAvviso(d.p, /2 volumi sull'HDD/), 20000, "lo spostamento non si dice");
-        const sulDisco = await d.p.evaluate(async () => {
-          const out = [];
-          const giu = async (dir, via) => {
-            for await (const [n, h] of dir.entries()) {
-              if (h.kind === "directory") await giu(h, `${via}${n}/`);
-              else out.push(`${via}${n}:${(await h.getFile()).size}`);
-            }
-          };
-          await giu(await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD"), "");
-          return out.sort().join();
-        });
-        if (sulDisco !== "book-companion/Manga/JoJo/JoJo v01.cbz:300000,book-companion/Manga/JoJo/JoJo v02.cbz:200000") throw new Error(`sul disco: ${sulDisco}`);
-        if (drv.cestino().sort().join() !== "J1,J2") throw new Error(`nel cestino: ${drv.cestino().join()} (Mort e Berserk restano)`);
-        if ((await libriDi(d.p)).some((b) => b.fileTolto)) throw new Error("una scheda ha perso il file");
-        return { guasti: d.guasti, nota: `${frase.slice(0, 60)}… · JoJo sul disco, Mort e Berserk su Drive` };
-      } finally {
-        await drv.chiudi();
       }
     },
   },
@@ -1532,7 +1049,7 @@ const SCENE = [
         await pc.p.reload();
         // e dicono a che punto sono, nel pannello della sincronizzazione
         await pc.p.getByRole("button", { name: "Sincronizzazione" }).first().click();
-        await pc.p.getByRole("button", { name: /Sincronizzazione e Google Drive/ }).first().click();
+        await pc.p.getByRole("button", { name: /Sincronizzazione nel cloud/ }).first().click();
         const detto = await finche(() => testoAvviso(pc.p, /^Mando su (60 copertine|le copertine: \d+ di 60)…$/), 15000, "il pannello non dice quante copertine salgono");
         await finche(() => salite() - prima >= N, 60000, `le copertine non salgono tutte (${salite() - prima} di ${N})`);
         const ms = Date.now() - t0;
@@ -1545,60 +1062,6 @@ const SCENE = [
     },
   },
   {
-    // segnalato dal lettore: «ci mette parecchi secondi per passare da una
-    // pagina all'altra… o tornare indietro». Si tenevano quattro pagine
-    // dietro quella a schermo, e da Drive tornarci era un viaggio a voltata.
-    nome: "un fumetto letto da Drive torna indietro senza chiedere di nuovo le pagine",
-    async fai({ browser }) {
-      const bytes = await fumettoGrosso();
-      const drv = await avviaDrive(PORTA_DRIVE, { fg: bytes });
-      try {
-        const d = await dispositivo(browser, {
-          drive: { libri: [{ id: "fg", title: "Tavole", fileType: "cbz", addedAt: 1 }], mappa: { fg: { id: "fg", byte: bytes.length } } },
-        });
-        await d.p.goto(`${URL_APP}?apri=libreria`);
-        await d.p.getByText("Tavole").first().click();
-        await d.p.getByRole("button", { name: /Apri il libro/ }).first().click();
-        // le pagine a schermo, finite e visibili
-        const vista = () =>
-          d.p.evaluate(() => {
-            const ims = [...document.querySelectorAll("img")].filter((x) => /pagina \d+\.png$/.test(x.alt));
-            if (!ims.length || ims.some((im) => !im.complete || !im.naturalWidth)) return "";
-            return ims.map((x) => x.alt.match(/(\d+)\.png$/)[1]).join("+");
-          });
-        let ora = await finche(vista, 20000, "il fumetto non si apre");
-        const volta = async (tasto) => {
-          const prima = ora;
-          await d.p.keyboard.press(tasto);
-          ora = await finche(async () => {
-            const v = await vista();
-            return v && v !== prima ? v : "";
-          }, 15000, `la voltata da ${prima} non arriva`);
-        };
-        for (let i = 0; i < 30 && !ora.includes("23"); i++) await volta("ArrowRight");
-        if (!ora.includes("23")) throw new Error(`avanti non arriva a pagina 23 (ferma su ${ora})`);
-        // ferme anche le pagine preparate avanti, si contano le richieste
-        let conti = drv.conti();
-        await finche(async () => {
-          await aspetta(1000);
-          const c = drv.conti();
-          const fermo = c.pezzi === conti.pezzi && c.interi === conti.interi;
-          conti = c;
-          return fermo;
-        }, 20000, "Drive non smette di scendere");
-        let voltate = 0;
-        for (; voltate < 30 && !ora.startsWith("02"); voltate++) await volta("ArrowLeft");
-        if (!ora.startsWith("02")) throw new Error(`indietro non arriva a pagina 2 (ferma su ${ora})`);
-        const dopo = drv.conti();
-        const nuove = dopo.pezzi - conti.pezzi + dopo.interi - conti.interi;
-        if (nuove) throw new Error(`tornando indietro di ${voltate} voltate si sono chieste ${nuove} pagine a Drive`);
-        return { guasti: d.guasti, nota: `indietro di ${voltate} voltate, nessuna richiesta a Drive` };
-      } finally {
-        await drv.chiudi();
-      }
-    },
-  },
-  {
     // dal rapporto delle voltate del lettore: pagine tutte in memoria, e
     // 108 ms su 111 a DISEGNARLE. La pagina dopo aspetta sotto quella a
     // schermo, e alla voltata dev'essere LO STESSO elemento: un <img> nuovo
@@ -1607,12 +1070,9 @@ const SCENE = [
     nome: "alla voltata del fumetto la pagina dopo (e tornando, quella prima) era gia' li', e quella di prima svanisce da se'",
     async fai({ browser }) {
       const bytes = await fumettoGrosso();
-      const drv = await avviaDrive(PORTA_DRIVE, { fg: bytes });
-      try {
-        const d = await dispositivo(browser, {
-          drive: { libri: [{ id: "fg", title: "Tavole", fileType: "cbz", addedAt: 1 }], mappa: { fg: { id: "fg", byte: bytes.length } } },
-        });
-        await d.p.goto(`${URL_APP}?apri=libreria`);
+      {
+        const d = await dispositivo(browser);
+        await importa(d.p, "Tavole.cbz", bytes, "application/zip");
         await d.p.getByText("Tavole").first().click();
         await d.p.getByRole("button", { name: /Apri il libro/ }).first().click();
         const pronta = await finche(
@@ -1669,8 +1129,6 @@ const SCENE = [
         const ind = JSON.parse(indietro);
         if (ind.vista !== "sotto") throw new Error(`tornando indietro a schermo c'e' un <img> nuovo (${indietro})`);
         return { guasti: d.guasti, nota: `pagina ${num(pronta)} → ${num(e.pagina)} → ${num(ind.pagina)}: ogni volta la <img> preparata sotto, e quella di prima svanisce da se'` };
-      } finally {
-        await drv.chiudi();
       }
     },
   },
@@ -1679,281 +1137,38 @@ const SCENE = [
     // sullo scaffale, una scheda col file e una col triangolo «né qui né nel
     // cloud», e la Manutenzione che non li vedeva («non dovrebbe
     // riconoscermi i doppioni? o anche solo quando reimporto i libri»)
-    nome: "un libro reimportato da Drive torna nella scheda che l'aveva perso, e i doppioni dei libri si uniscono",
+    nome: "un libro reimportato torna nella scheda che l'aveva perso, e i doppioni dei libri si uniscono",
     async fai({ browser }) {
       const volo = await epub({ titolo: "Dragonflight", autore: "Anne McCaffrey" });
       const quest = await epub({ titolo: "Dragonquest", autore: "Anne McCaffrey" });
-      const elenco = [
-        { id: "dr", name: "Anne McCaffrey - Dragonflight.epub", size: String(volo.length), mimeType: "application/epub+zip", parents: ["P"] },
-        { id: "dq", name: "Dragonquest.epub", size: String(quest.length), mimeType: "application/epub+zip", parents: ["P"], appProperties: { bcId: "q2" } },
+      const autore = "Anne McCaffrey";
+      const libri = [
+        // l'ebook tolto apposta: reimportandolo, il libro si riapre subito
+        { id: "pern", title: "Dragonflight", author: autore, fileType: "epub", addedAt: 1, fileTolto: true },
+        // una scheda gia' letta, senza file: il file nuovo non la adotta
+        // (i segni sono ancorati ad altri byte), entra accanto, e sono due
+        { id: "q1", title: "Dragonquest", author: autore, fileType: "epub", addedAt: 2 },
       ];
-      const drv = await avviaDrive(PORTA_DRIVE, { dr: volo, dq: quest }, { elenco });
-      try {
-        const autore = "Anne McCaffrey";
-        const d = await dispositivo(browser, {
-          drive: {
-            libri: [
-              // l'ebook tolto apposta: reimportandolo, il libro si riapre subito
-              { id: "pern", title: "Dragonflight", author: autore, fileType: "epub", addedAt: 1, fileTolto: true },
-              { id: "q1", title: "Dragonquest", author: autore, fileType: "epub", addedAt: 2 },
-              { id: "q2", title: "Dragonquest", author: autore, fileType: "epub", addedAt: 3 },
-            ],
-            mappa: { q2: { id: "dq", byte: quest.length } },
-            scelta: [elenco[0]],
-          },
-        });
-        await d.p.goto(`${URL_APP}?apri=libreria`);
-        await d.p.getByRole("button", { name: /Scegli su Drive/ }).first().click();
-        await finche(() => testoAvviso(d.p, /ritrovato il suo file|nuovo tomo|tomi sullo scaffale/), 30000, "l'importazione da Drive non finisce");
-        const voli = (await libriDi(d.p)).filter((b) => b.title === "Dragonflight");
-        if (voli.length !== 1) throw new Error(`«Dragonflight» sullo scaffale ${voli.length} volte`);
-        const mappa = await d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_drive_libri") || "{}"));
-        if (mappa.pern?.id !== "dr") throw new Error(`il file non e' tornato nella scheda di prima: ${JSON.stringify(mappa)}`);
-        // il segno «ebook tolto» si spegne all'import, non al giro dopo:
-        // un avviso solo, non due uno sopra l'altro
-        await aspetta(2500);
-        if (await testoAvviso(d.p, /ritrovato il suo ebook su Google Drive/)) throw new Error("il segno «ebook tolto» si spegne solo al giro dopo, con un secondo avviso");
-        // scelto di nuovo, si dice con quale scheda e' stato riconosciuto
-        await d.p.getByRole("button", { name: /Scegli su Drive/ }).first().click();
-        await finche(() => testoAvviso(d.p, /«Anne McCaffrey - Dragonflight» \(sullo scaffale come «Dragonflight»\) era già sullo scaffale/), 15000, "scelto di nuovo, non dice con quale scheda e' stato riconosciuto");
-        // la coppia che c'era gia': la Manutenzione la vede e la unisce
-        await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
-        await d.p.getByRole("button", { name: /Un volume ha una copia in più/ }).first().click({ timeout: 15000 });
-        await d.p.getByRole("button", { name: /Unisci i doppioni/ }).first().click();
-        const quests = await finche(async () => {
-          const q = (await libriDi(d.p)).filter((b) => b.title === "Dragonquest");
-          return q.length === 1 && q;
-        }, 10000, "i due «Dragonquest» non si uniscono");
-        if (quests[0].id !== "q2") throw new Error(`dei due «Dragonquest» e' rimasto quello senza file (${quests[0].id})`);
-        return { guasti: d.guasti, nota: "«Dragonflight» ha ritrovato il suo file; dei due «Dragonquest» resta quello col file" };
-      } finally {
-        await drv.chiudi();
-      }
-    },
-  },
-  {
-    // segnalato dal lettore con «Batman - Hush (2019)…cbr», 458 MB sul PC
-    // e «il file è vuoto» importandolo: l'elenco di Drive lo portava con
-    // misura zero (appena caricato), e un file lontano di misura zero si
-    // legge vuoto. Si chiede a Drive la misura vera.
-    nome: "un file da Drive elencato con misura zero si importa con la misura vera",
-    async fai({ browser }) {
-      const cbz = Buffer.from(await fumetto());
-      const elenco = [
-        { id: "B", name: "Batman", mimeType: "application/vnd.google-apps.folder", parents: ["R"] },
-        { id: "R", name: "Book-Companion", mimeType: "application/vnd.google-apps.folder", parents: ["root"] },
-        { id: "hush", name: "Batman - Hush (2019).cbr", size: "0", mimeType: "application/octet-stream", parents: ["B"] },
-      ];
-      const drv = await avviaDrive(PORTA_DRIVE, { hush: cbz }, { elenco, misureVere: { hush: String(cbz.length) } });
-      try {
-        const d = await dispositivo(browser, {
-          drive: { libri: [{ id: "x", title: "Un libro di prima", fileType: "epub", addedAt: 1 }], mappa: {}, scelta: [{ id: "B", name: "Batman", mimeType: "application/vnd.google-apps.folder" }] },
-        });
-        await d.p.goto(`${URL_APP}?apri=libreria`);
-        await d.p.getByRole("button", { name: /Scegli su Drive/ }).first().click();
-        const libro = await finche(async () => (await libriDi(d.p)).find((b) => /Hush/.test(b.title)), 30000, "«Hush» non entra in biblioteca").catch(async (e) => {
-          throw new Error(`${e.message}: ${await testoAvviso(d.p, /Hush/)}`);
-        });
-        return { guasti: d.guasti, nota: `«${libro.title}» entrato come ${libro.fileType}` };
-      } finally {
-        await drv.chiudi();
-      }
-    },
-  },
-  {
-    // segnalato dal lettore coi Walking Dead: «ho navigato un po' ed è
-    // sparito il caricamento, poi ci mette davvero troppo a convertire».
-    // Nella cartella, accanto a ogni CBR, il CBZ che Colab ha lasciato.
-    nome: "una cartella da Drive si importa fuori dalla Libreria, e dei gemelli di Colab entra il CBZ",
-    async fai({ browser }) {
-      const cbz = Buffer.from(await fumetto());
-      const cbr = rar4([["p1.png", Buffer.from("89504e47" + "00".repeat(200), "hex")], ["p2.png", Buffer.from("89504e47" + "11".repeat(200), "hex")]]);
-      const vol = (n) => `The Walking Dead Deluxe Vol. 0${n}`;
-      const cartella = (id, name, su) => ({ id, name, mimeType: "application/vnd.google-apps.folder", parents: [su] });
-      const voce = (id, name, b) => ({ id, name, size: String(b.length), mimeType: "application/octet-stream", parents: ["W"] });
-      const elenco = [
-        cartella("R", "Book-Companion", "root"),
-        cartella("W", "The Walking Dead", "R"),
-        voce("r1", `${vol(1)}.cbr`, cbr),
-        voce("z1", `${vol(1)}.cbz`, cbz),
-        voce("r2", `${vol(2)}.cbr`, cbr),
-        voce("z2", `${vol(2)}.cbz`, cbz),
-        voce("r3", `${vol(3)}.cbr`, cbr),
-      ];
-      const drv = await avviaDrive(PORTA_DRIVE, { r1: cbr, z1: cbz, r2: cbr, z2: cbz, r3: cbr }, { elenco, latenza: 400 });
-      try {
-        const d = await dispositivo(browser, {
-          drive: {
-            libri: [{ id: "vecchio", title: "Un libro di prima", fileType: "epub", addedAt: 1 }],
-            mappa: {},
-            scelta: [{ id: "W", name: "The Walking Dead", mimeType: "application/vnd.google-apps.folder" }],
-          },
-        });
-        await d.p.goto(`${URL_APP}?apri=libreria`);
-        await d.p.getByRole("button", { name: /Scegli su Drive/ }).first().click();
-        // a meta' importazione si esce dalla Libreria: il lavoro si vede ancora
-        const riga = await finche(() => testoAvviso(d.p, /Da Google Drive/), 15000, "l'importazione non si vede");
-        await d.p.getByRole("button", { name: /Ingresso/ }).first().click();
-        await finche(() => testoAvviso(d.p, /Da Google Drive/), 5000, "uscendo dalla Libreria l'importazione sparisce");
-        // e intanto la biblioteca cambia: alla fine quel che e' arrivato resta
-        await d.p.evaluate(() => {
-          const b = JSON.parse(localStorage.getItem("bc_books"));
-          localStorage.setItem("bc_books", JSON.stringify([...b, { id: "intruso", title: "Arrivato intanto", fileType: "epub", addedAt: 2 }]));
-        });
-        const titoli = () => libriDi(d.p).then((l) => l.map((b) => `${b.title} [${b.fileType}]`).sort());
-        const tutti = await finche(async () => {
-          const t = await titoli();
-          return t.filter((x) => /Walking/.test(x)).length >= 3 && t;
-        }, 60000, "l'importazione non finisce");
-        await aspetta(1500);
-        const fine = (await titoli()).join(" · ");
-        const atteso = ["Arrivato intanto [epub]", "The Walking Dead Deluxe Vol. 01 [cbz]", "The Walking Dead Deluxe Vol. 02 [cbz]", "The Walking Dead Deluxe Vol. 03 [cbr]", "Un libro di prima [epub]"].join(" · ");
-        if (fine !== atteso) throw new Error(`la biblioteca alla fine: ${fine}`);
-        if (drv.scesi().some((id) => id === "r1" || id === "r2")) throw new Error(`si sono letti i CBR che hanno il gemello: ${drv.scesi()}`);
-        return { guasti: d.guasti, nota: `${tutti.length} libri, «${riga}»` };
-      } finally {
-        await drv.chiudi();
-      }
-    },
-  },
-  {
-    // chiesto dal lettore: il login «non mi convince» — due accessi separati,
-    // Google che chiede di nuovo ogni ora, il pannello confuso
-    nome: "si entra con Google una volta sola, e la chiave di Drive si rinnova senza finestre",
-    async fai({ browser, db }) {
-      const d = await dispositivo(browser);
-      let rinnovi = 0;
-      await d.ctx.route("**/api/google-token", (route) => {
-        rinnovi += 1;
-        const auth = route.request().headers().authorization;
-        return route.fulfill({ json: auth === "Bearer a.b.c" ? { chiave: "ya29.dal-server", scade: Date.now() + 3_600_000 } : { motivo: "sessione" }, status: auth === "Bearer a.b.c" ? 200 : 401 });
+      const d = await dispositivo(browser, {
+        prima: `if (!localStorage.getItem("bc_books")) { localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))}); localStorage.setItem("bc_prog_q1", "0.3"); }`,
       });
-      const finestre = [];
-      d.p.on("request", (r) => /accounts\.google\.com/.test(r.url()) && finestre.push(r.url()));
-      const chiave = () => d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_drive_token") || "null")?.chiave || "");
-      await d.p.goto(URL_APP);
-      await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
-      await d.p.getByRole("button", { name: "Entra con Google" }).first().click();
-      // da Google (il Supabase finto) e ritorno, gia' dentro
-      await finche(async () => (await chiave()) === "ya29.dal-google", 20000, "tornando da Google la chiave di Drive non arriva");
-      await finche(() => db.permessi().some((r) => r.user_id === "u1" && r.token === "rt-google"), 10000, "il permesso a lungo termine non si salva nel Supabase");
-      const a = db.accessi()[0] || {};
-      if (a.provider !== "google" || !/auth\/drive/.test(a.scopes || "") || a.access_type !== "offline" || a.prompt !== "consent") throw new Error(`l'accesso chiesto a Google non e' quello giusto: ${JSON.stringify(a)}`);
-
-      // un'ora dopo: la chiave e' scaduta, e si riapre l'app
-      await d.p.evaluate(() => localStorage.setItem("bc_drive_token", JSON.stringify({ chiave: "ya29.dal-google", scade: Date.now() - 1000 })));
-      await d.p.goto(URL_APP);
-      await finche(async () => (await chiave()) === "ya29.dal-server", 15000, "la chiave scaduta non si rinnova da sola");
-      if (finestre.length) throw new Error(`si e' aperta la finestra di Google: ${finestre[0]}`);
-      await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
-      const stato = await finche(() => testoAvviso(d.p, /Google Drive collegato · si rinnova da solo/), 10000, "il pannello non dice che Drive si rinnova da solo");
-      return { guasti: d.guasti, nota: `${rinnovi} ${rinnovi === 1 ? "rinnovo" : "rinnovi"} dal server, nessuna finestra · «${stato}»` };
-    },
-  },
-  {
-    // segnalato da un amico del lettore: entrato con Google SENZA spuntare
-    // la casella di Drive, «le varie interazioni con Drive vanno in errore
-    // (forse sarebbe meglio che a quel punto chiedessero nuovamente di
-    // autenticarsi con Google Drive)»
-    nome: "entrato con Google senza la casella di Drive, l'app lo dice e rimanda da Google",
-    async fai({ browser, db }) {
-      const d = await dispositivo(browser, { prima: () => localStorage.setItem("bc_drive_client", "123-abc.apps.googleusercontent.com") });
-      const negate = [];
-      // Google come risponde a una chiave senza il permesso di Drive; dopo il
-      // secondo ingresso (la casella spuntata) Drive risponde
-      await d.ctx.route("https://www.googleapis.com/drive/**", (route) => {
-        const chiave = route.request().headers().authorization || "";
-        if (chiave === "Bearer ya29.dal-google") {
-          negate.push(route.request().url());
-          return route.fulfill({
-            status: 403,
-            json: { error: { code: 403, message: "Request had insufficient authentication scopes.", errors: [{ message: "Insufficient Permission", domain: "global", reason: "insufficientPermissions" }], status: "PERMISSION_DENIED", details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "ACCESS_TOKEN_SCOPE_INSUFFICIENT" }] } },
-          });
-        }
-        const u = new URL(route.request().url());
-        if (u.pathname.endsWith("/changes/startPageToken")) return route.fulfill({ json: { startPageToken: "1" } });
-        if (u.pathname.endsWith("/about")) return route.fulfill({ json: { storageQuota: { limit: "1000", usage: "10" } } });
-        return route.fulfill({ json: { files: [], changes: [], newStartPageToken: "1" } });
-      });
-      const rinnovi = [];
-      await d.ctx.route("**/api/google-token", (route) => (rinnovi.push(1), route.fulfill({ json: { chiave: "ya29.dal-server-senza-drive", scade: Date.now() + 3_600_000 } })));
-      await d.p.goto(URL_APP);
-      await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
-      await d.p.getByRole("button", { name: "Entra con Google" }).first().click();
-      await finche(() => d.p.evaluate(() => localStorage.getItem("bc_drive_permesso") === "1"), 20000, "la chiave senza Drive non si riconosce");
-      if (!negate.length) throw new Error("Drive non e' mai stato chiesto");
-      // il pannello lo dice, col tasto per rientrare
-      await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
-      const avviso = await finche(() => testoAvviso(d.p, /ha dato l'ingresso ma non Drive/), 15000, "il pannello non dice che manca il permesso di Drive");
-      const errori = await d.p.evaluate(() => localStorage.getItem("bc_errori") || "");
-      if (/403|insufficient/i.test(errori)) throw new Error(`il permesso mancante finisce fra i guasti: ${errori.slice(0, 200)}`);
-      if (rinnovi.length) throw new Error("si e' chiesta al server una chiave nuova, che sarebbe di nuovo senza Drive");
-      // la biblioteca e' vuota, come la sua: la prima cosa che si tocca e'
-      // «Scegli su Drive», e rimanda da Google invece di andare in errore
       await d.p.goto(`${URL_APP}?apri=libreria`);
-      await d.p.getByRole("button", { name: /Scegli su Drive/ }).first().click();
-      await finche(() => d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_drive_token") || "null")?.chiave === "ya29.dal-google-2"), 20000, "«Scegli su Drive» non rimanda da Google");
-      const a = db.accessi()[1] || {};
-      if (!/auth\/drive/.test(a.scopes || "") || a.prompt !== "consent") throw new Error(`il secondo accesso non chiede Drive: ${JSON.stringify(a)}`);
-      await finche(() => d.p.evaluate(() => localStorage.getItem("bc_drive_permesso") === null), 10000, "con la casella spuntata l'avviso resta");
-      await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
-      await finche(() => testoAvviso(d.p, /Google Drive collegato · si rinnova da solo/), 10000, "con la casella spuntata il pannello non dice Drive collegato");
-      return { guasti: d.guasti, nota: `${negate.length} domande a Drive negate, poi «${avviso.slice(0, 70)}…», e un secondo ingresso con Drive` };
-    },
-  },
-  {
-    // chiesto dal lettore: «eliminiamo del tutto l'uso del googledrive». Lo
-    // scollegamento di prima non teneva: rientrando con Google, Drive si
-    // riaccendeva da solo
-    nome: "Drive si spegne per scelta: prima si dice cosa resta lassu', e rientrando con Google non si riaccende",
-    async fai({ browser, db }) {
-      const elenco = [
-        { id: "RADICE", name: "book-companion", mimeType: "application/vnd.google-apps.folder" },
-        { id: "S", name: "Sandman Deluxe Book 03.cbz", size: "1000", mimeType: "application/zip", parents: ["RADICE"], appProperties: { bcId: "s3" } },
-      ];
-      const drv = await avviaDrive(PORTA_DRIVE, {}, { elenco });
-      try {
-        const d = await dispositivo(browser, {
-          drive: { libri: [{ id: "s3", title: "Sandman Deluxe Book 03", author: "Neil Gaiman", fileType: "cbz", addedAt: 1 }], mappa: { s3: { id: "S", byte: 1000 } } },
-          prima: () => localStorage.setItem("bc_drive_client", "123-abc.apps.googleusercontent.com"),
-        });
-        const ls = (k) => d.p.evaluate((x) => localStorage.getItem(x), k);
-        await d.p.goto(URL_APP);
-        await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
-        await d.p.getByRole("button", { name: "Entra con Google" }).first().click();
-        await finche(async () => /dal-google/.test((await ls("bc_drive_token")) || ""), 20000, "tornando da Google la chiave di Drive non arriva");
-        await finche(() => drv.richieste(), 20000, "il giro di Drive non parte");
-        const permessi = JSON.stringify(db.permessi());
-
-        await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
-        await d.p.getByRole("button", { name: "Fai senza Google Drive" }).click();
-        const avviso = await finche(() => testoAvviso(d.p, /Sandman Deluxe Book 03.*sta solo su Google Drive/), 10000, "prima di spegnere non si dice cosa sta solo su Drive");
-        await d.p.getByRole("button", { name: "Spegni Google Drive" }).click();
-        await finche(async () => (await ls("bc_drive_mai")) === "1" && (await ls("bc_drive_on")) === null, 10000, "Drive non si spegne");
-        await finche(() => testoAvviso(d.p, /Spento su questo dispositivo/), 10000, "il pannello non dice che Drive e' spento");
-        const vecchia = await testoAvviso(d.p, /I file dei libri stanno sul tuo Drive/);
-        if (vecchia) throw new Error(`a Drive spento il pannello dice ancora: ${vecchia}`);
-
-        // si esce e si rientra con Google: Drive resta spento
-        await d.p.getByText("Altro", { exact: true }).click();
-        await d.p.getByRole("button", { name: "Esci" }).click();
-        await d.p.getByRole("button", { name: "Entra con Google" }).first().click();
-        await finche(() => db.accessi().length >= 2, 20000, "il secondo ingresso con Google non parte");
-        await d.p.waitForLoadState("load");
-        const a = db.accessi()[1] || {};
-        if (/auth\/drive/.test(a.scopes || "") || a.access_type || a.prompt) throw new Error(`a Drive spento si chiede ancora Drive a Google: ${JSON.stringify(a)}`);
-        const prima = drv.richieste();
-        await d.p.evaluate(() => window.dispatchEvent(new Event("online")));
-        await d.p.waitForTimeout(3000);
-        if ((await ls("bc_drive_on")) !== null) throw new Error("rientrando con Google Drive si e' riacceso");
-        if (JSON.stringify(db.permessi()) !== permessi) throw new Error("rientrando si e' salvato un permesso a lungo termine per Drive");
-        if (drv.richieste() !== prima) throw new Error(`a Drive spento l'app bussa ancora a Drive (${drv.richieste() - prima} richieste)`);
-        await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
-        await finche(() => testoAvviso(d.p, /Google Drive spento: i libri stanno qui e sul disco/), 10000, "il pannello non dice che Drive e' spento");
-        return { guasti: d.guasti, nota: `«${avviso.slice(0, 60)}…», poi spento; rientrato con Google senza Drive, nessuna richiesta a Drive` };
-      } finally {
-        await drv.chiudi();
-      }
+      await d.p.setInputFiles('input[accept^=".epub"]', { name: "Anne McCaffrey - Dragonflight.epub", mimeType: "application/epub+zip", buffer: volo });
+      await finche(async () => (await libriDi(d.p)).find((b) => b.id === "pern")?.fileTolto === false, 20000, "il file non torna nella scheda di prima");
+      const voli = (await libriDi(d.p)).filter((b) => b.title === "Dragonflight");
+      if (voli.length !== 1) throw new Error(`«Dragonflight» sullo scaffale ${voli.length} volte`);
+      await d.p.setInputFiles('input[accept^=".epub"]', { name: "Dragonquest.epub", mimeType: "application/epub+zip", buffer: quest });
+      const conFile = await finche(async () => (await libriDi(d.p)).find((b) => b.title === "Dragonquest" && b.id !== "q1")?.id, 20000, "il secondo «Dragonquest» non entra");
+      // la coppia: la Manutenzione la vede e la unisce
+      await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
+      await d.p.getByRole("button", { name: /Un volume ha una copia in più/ }).first().click({ timeout: 15000 });
+      await d.p.getByRole("button", { name: /Unisci i doppioni/ }).first().click();
+      const quests = await finche(async () => {
+        const q = (await libriDi(d.p)).filter((b) => b.title === "Dragonquest");
+        return q.length === 1 && q;
+      }, 10000, "i due «Dragonquest» non si uniscono");
+      if (quests[0].id !== conFile) throw new Error(`dei due «Dragonquest» e' rimasto quello senza file (${quests[0].id})`);
+      return { guasti: d.guasti, nota: "«Dragonflight» ha ritrovato il suo file; dei due «Dragonquest» resta quello col file" };
     },
   },
 ];

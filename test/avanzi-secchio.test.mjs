@@ -5,7 +5,7 @@
 // Drive ha, e un libro cancellato (sgombero andato storto, lapide tolta lo
 // stesso) o un ebook tolto dalla scheda su Drive non ci vanno mai — quindi
 // restavano lassu' per sempre.
-import { avanziDelSecchio } from "../src/lib/driveCore.js";
+import { avanziDelSecchio } from "../src/lib/syncCore.js";
 
 export default async (t) => {
   const secchio = new Set(["qui", "lassu", "morto", "tolto", "orfano", "canc"]);

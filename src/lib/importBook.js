@@ -5,7 +5,7 @@ import { riconosci, nomeInBiblioteca, chiaveSaga } from "./sagaBooks.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 import { dalMetadata } from "./sinossi.js";
 import { collana, chiaveCollana } from "./collana.js";
-import { cheArchivio, tipoImmagine, cbrApribile, cbrLontanoApribile, PERCHE_CBR_GRANDE } from "./fumetto.js";
+import { cheArchivio, tipoImmagine, cbrApribile, PERCHE_CBR_GRANDE } from "./fumetto.js";
 
 // oltre questa taglia il libro non si ricuce: tenere in memoria due
 // copie dell'archivio, su un tablet, vale piu' di qualche pagina bianca
@@ -83,33 +83,14 @@ export async function improntaDi(blob) {
   return dentro ? `c:${dentro}` : null;
 }
 
-// L'IMPRONTA DI UN FILE CHE STA SU DRIVE, senza scaricarlo. Sotto
-// `IMPRONTA_INTERA` e' la SHA-256 che Drive calcola da se', la stessa
-// dell'import; sopra, i dieci campioni di `improntaDi` letti a pezzi dal
-// file lontano — una decina di richieste, non un giga. La misura si chiede
-// a Drive e non alla mappa: una mappa senza misura manderebbe un file da un
-// giga per la strada della SHA intera, che non pareggerebbe mai con
-// l'impronta a campioni di chi lo importa dal tablet.
-export async function improntaLassu(fileId, { dettagli, remoto } = {}) {
-  if (!fileId || !dettagli) return null;
-  const [d] = (await dettagli([fileId])) || [];
-  const misura = Number(d?.size) || 0;
-  if (!misura) return null;
-  if (misura <= IMPRONTA_INTERA) {
-    const sha = String(d?.sha256Checksum || "").toLowerCase();
-    return /^[0-9a-f]{64}$/.test(sha) ? sha : null;
-  }
-  return remoto ? improntaDi(remoto(fileId, misura)) : null;
-}
-
 // I TOMI DA RICONOSCERE sono solo quelli che si possono servire: i byte
 // qui, o il file su Drive. Uno che non sta da nessuna parte non ha niente
 // da leggere, e contarlo nel tasto vorrebbe dire promettere per sempre un
 // lavoro che nessun tocco puo' fare — «ci clicco e non succede nulla».
 // `qui` a `null` vuol dire «non lo so» (niente sincronizzazione: i byte
 // stanno qui per forza) e allora si conta.
-export const impronteDaFare = (libri = [], { qui = null, lassu = null } = {}) =>
-  (libri || []).filter((b) => b?.id && !b.impronta && (!qui || qui.has(b.id) || !!lassu?.has(b.id)));
+export const impronteDaFare = (libri = [], { qui = null } = {}) =>
+  (libri || []).filter((b) => b?.id && !b.impronta && (!qui || qui.has(b.id)));
 
 export const giaInLibreria = (imp, libri = []) =>
   (imp && libri.find((b) => b?.impronta === imp)) || null;
@@ -132,7 +113,7 @@ export const giaInLibreria = (imp, libri = []) =>
 // `leggiByte` arriva da fuori (e' `getFile` di `bookStore`) per la
 // ragione di sempre: cosi' un test la chiama con un finto invece di
 // tirarsi dietro IndexedDB.
-export async function ripassaImpronte(libri = [], { leggiByte, improntaLassu: daLassu, onProgress, vivo } = {}) {
+export async function ripassaImpronte(libri = [], { leggiByte, onProgress, vivo } = {}) {
   const attivo = vivo || (() => true);
   const esito = { scritte: 0, senzaByte: 0, illeggibili: 0, fermato: false, campi: {} };
   // solo quelli che non ce l'hanno: chi l'ha gia' non si ri-legge: sono
@@ -155,27 +136,6 @@ export async function ripassaImpronte(libri = [], { leggiByte, improntaLassu: da
       .then(() => leggiByte?.(b.id))
       .catch(() => null);
     if (!file) {
-      // E IL TOMO CHE STA SU GOOGLE DRIVE L'IMPRONTA CE L'HA LASSU'
-      // (segnalato: «perche' mi dice che ci sono i doppioni di tre tomi e
-      // se ci clicco non succede nulla?»). Da quando i libri si leggono da
-      // Drive, un tomo senza byte qui e' lo stato normale, e contarlo fra
-      // «non e' su questo dispositivo» lasciava il tasto a promettere lo
-      // stesso lavoro per sempre. Un guasto lassu' e' «non letto», non
-      // «non c'e'»: sono due cose diverse e si dicono in due modi.
-      if (daLassu) {
-        let lassu = null;
-        try {
-          lassu = await daLassu(b);
-        } catch {
-          esito.illeggibili += 1;
-          continue;
-        }
-        if (lassu) {
-          esito.campi[b.id] = lassu;
-          esito.scritte += 1;
-          continue;
-        }
-      }
       esito.senzaByte += 1;
       continue;
     }
@@ -534,31 +494,17 @@ export async function importFiles(fileList, libri = [], { onProgress, converti =
   return { added, errors, saltati, sospetti, ritrovati, cuciti, riconosciuti, senzaMetadati, senzaCopertina };
 }
 
-// LA SECONDA PORTA: I LIBRI CHE STANNO GIA' SU DRIVE (chiesto dal
-// lettore: portare i libri sul tablet «ci mette una vita», e caricarli
-// dopo pure). La scheda nasce leggendo del file solo quel che serve —
+// LA SECONDA PORTA: I LIBRI CHE RESTANO DOVE SONO (il disco del computer,
+// `vociDalDisco`). La scheda nasce leggendo del file solo quel che serve —
 // l'OPF e la copertina, la scheda e la prima pagina di un fumetto, la prima
-// pagina di un PDF — e il libro intero scende la prima volta che lo apri.
-// Niente ricucitura qui: la fa il reader alla prima apertura, come per
-// ogni libro, perche' e' li' che i byte ci sono.
-//
-// Le due trappole sono il SEGNO e l'ORDINE: il file si segna su Drive col
-// nome del libro nuovo (`segna`) solo DOPO averlo letto, e la scheda entra
-// solo se il segno e' riuscito — la mappa di Drive si riscrive a ogni giro
-// da `abbina`, e un libro che lassu' non si riconosce perderebbe il suo
-// file al primo giro, diventando «perduto»; e un segno scritto su un file
-// che poi non diventa scheda lo nasconderebbe per sempre da questo elenco.
-// `segna` torna `"scollegato"` quando la chiave di Google e' scaduta: il
-// giro si ferma, e quel che e' entrato resta entrato.
+// pagina di un PDF — e i byte non entrano nel browser. Niente ricucitura
+// qui: la fa il reader alla prima apertura, come per ogni libro, perche' e'
+// li' che i byte ci sono.
 export const ATTESA_SCHEDA = 30_000;
 const conTetto = (p, ms) =>
   Promise.race([p, new Promise((_, ko) => setTimeout(() => ko(new Error("tempo scaduto")), ms))]);
 
-// `converti(v, onProgress)` e `sostituisci(v, bookId, cbz)`: il CBR
-// compresso troppo grande si converte leggendolo da Drive, e il CBZ prende
-// il suo posto lassu' (vedi `sostituisciSuDrive`). Senza, entra com'e' e
-// la conversione si offre quando lo apri.
-export async function importaDaDrive(voci, libri = [], { apri, segna, converti, sostituisci, onProgress, vivo = () => true, leggi = leggiDaLontano, attesa = ATTESA_SCHEDA, senzaFile = () => false, segnato = schedaSegnata, rimisura = null } = {}) {
+export async function importaDaFuori(voci, libri = [], { apri, onProgress, vivo = () => true, leggi = leggiDaLontano, attesa = ATTESA_SCHEDA, senzaFile = () => false, segnato = schedaSegnata } = {}) {
   const added = [];
   const ritrovati = [];
   const errors = [];
@@ -567,28 +513,15 @@ export async function importaDaDrive(voci, libri = [], { apri, segna, converti, 
   let senzaMetadati = 0;
   let senzaCopertina = 0;
   let fermato = false;
-  let scollegato = false;
   const tutte = Array.from(voci || []);
-  for (let [i, v] of tutte.entries()) {
+  for (const [i, v] of tutte.entries()) {
     if (!vivo()) {
       fermato = true;
       break;
     }
     onProgress?.({ fatti: i, totale: tutte.length, nome: v.name });
-    // LA MISURA CHE MANCA SI CHIEDE A DRIVE (segnalato dal lettore con
-    // «Batman - Hush», 458 MB sul PC e «il file è vuoto» qui): l'elenco di
-    // Drive che l'app tiene in memoria puo' avere un file appena caricato
-    // con misura zero, e un file lontano di misura zero si legge vuoto
-    if (!(Number(v.size) > 0) && rimisura) {
-      const misura = Number(await Promise.resolve().then(() => rimisura(v)).catch(() => 0)) || 0;
-      if (!(misura > 0)) {
-        errors.push({ name: v.name, reason: "su Google Drive il file risulta vuoto: se sta ancora salendo, riprova fra qualche minuto" });
-        continue;
-      }
-      v = { ...v, size: misura };
-    }
     const est = (/\.([a-z0-9]+)$/i.exec(v.name || "") || [])[1]?.toLowerCase() || "";
-    let blob = apri(v);
+    const blob = apri(v);
     let fileType = est === "epub" || est === "pdf" ? est : null;
     let perche = "archivio non leggibile";
     if (est === "cbz" || est === "cbr") {
@@ -598,26 +531,12 @@ export async function importaDaDrive(voci, libri = [], { apri, segna, converti, 
         perche = visto.perche || perche;
       } catch {
         fileType = null;
-        perche = "Google Drive non ha dato il file: riprova";
+        perche = "il file non si legge: riprova";
       }
     }
     if (!fileType) {
       errors.push({ name: v.name, reason: perche });
       continue;
-    }
-    // il CBR che il browser non aprira' mai si converte ADESSO, una volta
-    // (vedi `rarInCbz.js`): da qui in poi e' un CBZ che sta in mano
-    let convertito = null;
-    if (fileType === "cbr" && converti && sostituisci && !(await cbrLontanoApribile(blob).catch(() => true))) {
-      convertito = await Promise.resolve()
-        .then(() => converti(v, (p) => onProgress?.({ fatti: i, totale: tutte.length, nome: v.name, conversione: p })))
-        .catch((e) => {
-          errors.push({ name: v.name, reason: `la conversione in CBZ non è riuscita (${e?.message || e})` });
-          return null;
-        });
-      if (!convertito) continue;
-      blob = convertito;
-      fileType = "cbz";
     }
     const id = crypto.randomUUID();
     const meta = {
@@ -631,20 +550,10 @@ export async function importaDaDrive(voci, libri = [], { apri, segna, converti, 
       notes: "",
       ...(v.tipo ? { tipo: v.tipo } : {}),
     };
-    // l'impronta la dice Drive, ed e' la stessa SHA-256 dell'import: cosi'
-    // lo stesso file importato un giorno dal tablet si riconosce doppione.
-    // Oltre `IMPRONTA_INTERA` l'import la prende a campioni, e quella di
-    // Drive non pareggerebbe mai: meglio nessuna che una che non combacia.
-    const sha = String(v.sha256Checksum || "").toLowerCase();
-    // del convertito l'impronta e' quella dei byte nuovi: li ha in mano
-    if (convertito) meta.impronta = await improntaDi(convertito).catch(() => undefined);
-    else if (/^[0-9a-f]{64}$/.test(sha) && Number(v.size) <= IMPRONTA_INTERA) meta.impronta = sha;
-    // e sopra si prende a campioni dal file lontano, come fa l'import dal
-    // tablet: senza, il tomo grosso entrava senza impronta e il tasto dei
-    // doppioni lo contava per sempre senza poterlo servire
-    // (la misura si chiede al file che si legge: sotto la soglia `improntaDi`
-    // scaricherebbe il file intero, che e' proprio quel che qui non si fa)
-    else if (Number(blob?.size) > IMPRONTA_INTERA) {
+    // l'impronta di un file grosso si prende a campioni, come fa l'import
+    // dal tablet: senza, il tomo grosso entrava senza impronta e il tasto
+    // dei doppioni lo contava per sempre senza poterlo servire
+    if (Number(blob?.size) > IMPRONTA_INTERA) {
       const imp = await conTetto(improntaDi(blob), attesa).catch(() => null);
       if (imp) meta.impronta = imp;
     }
@@ -665,32 +574,20 @@ export async function importaDaDrive(voci, libri = [], { apri, segna, converti, 
       gemello && !ritrovati.some((r) => r.id === gemello.id) && senzaFile(gemello.id) && ritornaACasa({ stessiByte: !!meta.impronta && meta.impronta === gemello.impronta, segnato: segnato(gemello.id) })
         ? gemello
         : null;
-    const dove = casa ? casa.id : id;
-    const conta = casa ? false : completaSaga(meta, letto, v.name, [...libri, ...added]);
-    const esito = await (convertito ? sostituisci(v, dove, convertito) : segna(v.id, dove, v)).catch(() => false);
-    if (esito === "scollegato") {
-      scollegato = true;
-      break;
-    }
-    if (!esito) {
-      errors.push({ name: v.name, reason: "non sono riuscito a segnarlo su Google Drive" });
-      continue;
-    }
     if (casa) {
       // la copertina letta per la scheda nuova non serve: la scheda c'e'
       await removeBookData(id).catch(() => {});
       ritrovati.push({ id: casa.id, title: casa.title || meta.title, impronta: meta.impronta || null });
       continue;
     }
-    // si contano solo le schede entrate: un file rifiutato non e' un
-    // titolo da controllare nella scheda, perche' la scheda non c'e'
-    if (conta) riconosciuti += 1;
+    // si contano solo le schede entrate
+    if (completaSaga(meta, letto, v.name, [...libri, ...added])) riconosciuti += 1;
     if (!letto?.titolo) senzaMetadati += 1;
     if (!letto?.copertina) senzaCopertina += 1;
     if (sembraGiaLetto(meta, [...libri, ...added])) sospetti.push({ title: meta.title });
     added.push(meta);
   }
-  return { added, ritrovati, errors, sospetti, riconosciuti, senzaMetadati, senzaCopertina, fermato, scollegato };
+  return { added, ritrovati, errors, sospetti, riconosciuti, senzaMetadati, senzaCopertina, fermato };
 }
 
 // Quel che si legge di un file lontano. Il CBR resta col nome del file: la

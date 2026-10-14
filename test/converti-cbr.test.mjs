@@ -1,9 +1,7 @@
 // TUTTI I CBR IN CBZ (`lib/convertiCbr.js`; chiesto dal lettore: «fai la
 // prima, anche tutti insieme dalla manutenzione»). Il giro sbaglia in
-// silenzio in quattro modi: propone un libro che non ha byte da nessuna
-// parte, si ferma al primo intoppo (e gli altri restano CBR), va avanti a
-// chiave scaduta (ogni libro dopo fallisce uguale), o conta convertito chi
-// non lo e'.
+// silenzio in tre modi: propone un libro che non ha byte qui, si ferma al
+// primo intoppo (e gli altri restano CBR), o conta convertito chi non lo e'.
 import { fraseConversione } from "../src/lib/fumetto.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, fraseDelPasso, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro, fraseLavoro, pianoConversione, fraseImport } from "../src/lib/convertiCbr.js";
 
@@ -15,8 +13,8 @@ export default async (t) => {
     { id: "d", title: "Solo la scheda", fileType: "cbr" },
     { id: "e", title: "Un romanzo", fileType: "epub" },
   ];
-  const scelti = cbrDaConvertire(libri, { qui: new Set(["b", "e"]), suDrive: new Set(["a", "c"]) });
-  t.eq("i CBR coi byte qui o su Drive", scelti.map((b) => b.id).join(), "a,b");
+  const scelti = cbrDaConvertire(libri, { qui: new Set(["b", "c", "e"]) });
+  t.eq("i CBR coi byte qui", scelti.map((b) => b.id).join(), "b");
   t.eq("senza sapere niente, nessuno", cbrDaConvertire(libri).length, 0);
 
   // ---- il giro -------------------------------------------------------------------
@@ -37,25 +35,6 @@ export default async (t) => {
   t.eq("…e i falliti col perche'", `${esito.falliti[0]?.titolo}: ${esito.falliti[0]?.perche}`, "Hellboy: archivio rotto");
   t.c("l'avanzamento dice quale, e a che punto", detti.some((p) => p.i === 1 && p.totale === 3 && p.titolo === "Hellboy" && p.passo?.misura === 2));
 
-  // la chiave scaduta ferma il giro: i libri dopo fallirebbero tutti uguali
-  let provati = 0;
-  const scollegato = Object.assign(new Error("Google Drive non collegato"), { name: "DriveScollegato" });
-  const chiave = await convertiTutti(libri.slice(0, 3), {
-    converti: async () => {
-      provati += 1;
-      throw scollegato;
-    },
-    applica: () => {},
-  });
-  t.c("chiave scaduta: il giro si ferma al primo", chiave.chiave && provati === 1);
-  const aMeta = await convertiTutti(libri.slice(0, 2), {
-    converti: async () => {
-      throw new Error("la chiave di Google Drive e' scaduta a meta' conversione");
-    },
-    applica: () => {},
-  });
-  t.c("…anche quando scade a meta' conversione, nel worker", aMeta.chiave && !aMeta.falliti.length);
-
   let giri = 0;
   const fermato = await convertiTutti(libri.slice(0, 3), {
     converti: async () => ({ fileType: "cbz" }),
@@ -67,12 +46,10 @@ export default async (t) => {
   // ---- le frasi ------------------------------------------------------------------
   t.eq("il resoconto", resocontoConversioni(esito), "2 CBR convertiti in CBZ ✓ · «Hellboy» non si è convertito (archivio rotto)");
   t.eq("…uno solo", resocontoConversioni({ convertiti: 1 }), "Un CBR convertito in CBZ ✓");
-  t.c("…la chiave dice cosa fare", /aspetta un tocco/.test(resocontoConversioni(chiave)));
   t.c("…fermato si dice", /fermato/.test(resocontoConversioni(fermato)));
   t.eq("…niente da dire", resocontoConversioni({}), "Nessun CBR convertito");
   t.eq("il passo prima di cominciare", fraseDelPasso({}), "Preparo la conversione…");
   t.eq("il passo mentre legge il CBR", fraseDelPasso({ letti: 45, misura: 100, pagine: 12 }), "Converto in CBZ: 45% · 12 pagine");
-  t.eq("il passo mentre il CBZ sale", fraseDelPasso({ carico: true, presi: 120 * 1048576, totale: 350 * 1048576 }), "Carico su Google Drive: 120 di 350 MB");
 
   // ---- il lavoro ricordato: l'app chiusa a meta' riprende ---------------------------
   const mem = {};
@@ -91,14 +68,10 @@ export default async (t) => {
   t.eq("un ricordo rotto non rompe l'avvio", lavoroSospeso(st), null);
 
   t.eq("la riga fuori dalla Libreria", fraseLavoro({ i: 11, totale: 75, passo: { letti: 396, misura: 1000 } }), "🔁 CBR in CBZ: 12 di 75 · 39%");
-  t.eq("…mentre sale su Drive", fraseLavoro({ i: 0, totale: 2, passo: { carico: true, presi: 1, totale: 2 } }), "🔁 CBR in CBZ: 1 di 2 · sale su Drive");
-  // l'importazione da Drive: la riga che stava sul tasto della Libreria
-  const MB = 1024 * 1024;
+  // l'importazione: la riga che stava sul tasto della Libreria
   t.eq("un libro solo", fraseImport({ fatti: 0, totale: 1 }), "Sto rilegando i tomi…");
   t.eq("a che punto del giro", fraseImport({ fatti: 3, totale: 24 }), "Rilego 4 di 24…");
   t.eq("un CBR che si converte", fraseImport({ fatti: 3, totale: 24, conversione: { letti: 50, misura: 200, pagine: 30 } }), `4 di 24 · ${fraseConversione({ letti: 50, misura: 200, pagine: 30 })}`);
-  t.eq("…e il suo CBZ che sale", fraseImport({ fatti: 3, totale: 24, conversione: { letti: 1, misura: 2 }, caricamento: { presi: 8 * MB, totale: 200 * MB } }), "4 di 24 · Carico su Google Drive: 8 di 200 MB");
-  t.eq("da solo non si numera", fraseImport({ fatti: 0, totale: 1, caricamento: { presi: 0, totale: 2 * MB } }), "Carico su Google Drive: 0 di 2 MB");
   t.eq("senza niente in mano", fraseImport(), "Sto rilegando i tomi…");
   t.eq("…prima di cominciare", fraseLavoro({ i: 0, totale: 2 }), "🔁 CBR in CBZ: 1 di 2");
   // il giro del disco si dice suo (segnalato: «perché i fermo qui non corrispondono?»)
@@ -106,10 +79,7 @@ export default async (t) => {
 
   // ---- cosa fare, dallo stato dei file ------------------------------------------------
   const piano = (x) => JSON.stringify(pianoConversione(x));
-  t.eq("CBR solo su Drive: si legge da li', si converte, si sostituisce", piano({ lassu: "cbr" }), '{"sorgente":"lassu","converti":true,"sostituisci":true}');
-  t.eq("CBR qui e su Drive: si legge da qui, niente rete per convertire", piano({ qui: "cbr", lassu: "cbr" }), '{"sorgente":"qui","converti":true,"sostituisci":true}');
-  t.eq("CBR solo qui: si converte qui, Drive non si tocca", piano({ qui: "cbr" }), '{"sorgente":"qui","converti":true,"sostituisci":false}');
-  t.eq("chiusa a meta', su Drive e' gia' CBZ: solo la scheda", piano({ lassu: "cbz" }), '{"sorgente":"lassu","converti":false,"sostituisci":false}');
-  t.eq("convertito qui ma non salito: sale, senza riconvertire", piano({ qui: "cbz", lassu: "cbr" }), '{"sorgente":"qui","converti":false,"sostituisci":true}');
-  t.eq("i byte non ci sono da nessuna parte: niente", pianoConversione({}), null);
+  t.eq("un CBR qui si converte", piano({ qui: "cbr" }), '{"sorgente":"qui","converti":true}');
+  t.eq("chiusa a meta', i byte sono gia' CBZ: solo la scheda", piano({ qui: "cbz" }), '{"sorgente":"qui","converti":false}');
+  t.eq("i byte non ci sono: niente", pianoConversione({}), null);
 };

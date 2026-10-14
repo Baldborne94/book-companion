@@ -1,15 +1,10 @@
-// SPOSTARE SULL'HDD (chiesto dal lettore per lasciare i due tera di Drive):
-// il file scende dritto sul disco, si guarda che sia arrivato intero, e solo
-// allora la scheda resta senza file e Drive lo butta nel cestino.
-import { daSpostareSuHdd, melodieSulDisco } from "../src/lib/driveCore.js";
-import { spostaSuHdd, divisiPerHdd, perSezioni, SEZIONI_HDD, casaSulDisco, nomeSicuro, hddPossibile, percheNoHdd, fraseHdd } from "../src/lib/hdd.js";
+// IL DISCO DEL COMPUTER: i nomi che Windows accetta, e i tasti del disco
+// solo dove c'e' l'HDD della biblioteca (il computer, non il tablet).
+import { nomeSicuro, hddPossibile, cartellaDentro } from "../src/lib/hdd.js";
 
-// un disco finto con la forma di File System Access: cartelle, file, e una
-// scrittura che arriva nel file solo a `close` (come in Chrome)
 function cartellaFinta(nome = "") {
   const dentro = new Map();
-  const d = {
-    kind: "directory",
+  return {
     name: nome,
     dentro,
     async getDirectoryHandle(n, { create = false } = {}) {
@@ -19,221 +14,22 @@ function cartellaFinta(nome = "") {
       }
       return dentro.get(n);
     },
-    async getFileHandle(n, { create = false } = {}) {
-      if (!dentro.has(n)) {
-        if (!create) throw Object.assign(new Error("no"), { name: "NotFoundError" });
-        dentro.set(n, fileFinto(n));
-      }
-      return dentro.get(n);
-    },
   };
-  return d;
 }
-function fileFinto(nome, byte = new Uint8Array(0)) {
-  const f = {
-    kind: "file",
-    name: nome,
-    byte,
-    async getFile() {
-      return { size: f.byte.length };
-    },
-    async createWritable() {
-      const pezzi = [];
-      return new WritableStream({
-        write(p) {
-          pezzi.push(p);
-        },
-        close() {
-          const n = pezzi.reduce((a, p) => a + p.length, 0);
-          const tutto = new Uint8Array(n);
-          let o = 0;
-          for (const p of pezzi) {
-            tutto.set(p, o);
-            o += p.length;
-          }
-          f.byte = tutto;
-        },
-      });
-    },
-  };
-  return f;
-}
-const percorso = async (radice, ...nomi) => {
-  let c = radice;
-  for (const n of nomi.slice(0, -1)) c = c.dentro.get(n);
-  return c?.dentro.get(nomi.at(-1));
-};
-const risposta = (n, { corto = 0 } = {}) => new Response(new Uint8Array(n - corto).fill(7));
 
 export default async (t) => {
-  let rm;
-  const file = [
-    { id: "f1", name: "Hellboy v01.cbz", size: "3000", parents: ["H"] },
-    { id: "f2", name: "Hellboy: Year 2.cbz", size: "2000", parents: ["H"] },
-    { id: "f3", name: "Sciolto.epub", size: "500", parents: ["X"] },
-    { id: "f6", name: "Berserk 01.cbz", size: "100", parents: ["X"] },
-    { id: "f4", name: "Senza peso.pdf", parents: ["H"] },
-    { id: "f5", name: "Buttato.cbz", size: "10", parents: ["H"], trashed: true },
-  ];
-  // su Drive i file stanno dove sono capitati («X»): la casa sul disco la
-  // decide la scheda
-  const libri = [{ id: "a", saga: "Hellboy" }, { id: "b", saga: " Hellboy " }, { id: "c" }, { id: "d" }, { id: "e" }, { id: "g" }];
-  const tipi = { a: "fumetti", b: "fumetti", c: "libri" };
-  const mappa = { a: { id: "f1" }, b: { id: "f2" }, c: { id: "f3" }, d: { id: "f4" }, e: { id: "f5" }, g: { id: "sparito" } };
-  const voci = daSpostareSuHdd(libri, mappa, file, { tipoDi: (b) => tipi[b.id] });
-  t.eq("si spostano i file che ci sono e hanno un peso", voci.map((v) => v.bookId).join(), "a,b,c");
-  t.eq("un volume di una saga va nella cartella della saga, dentro quella del suo tipo", voci.map((v) => v.cartelle.join("/")).join(), "Fumetti/Hellboy,Fumetti/Hellboy,Libri");
-  t.eq("un manga va fra i manga", daSpostareSuHdd([{ id: "m", saga: "Berserk" }], { m: { id: "f6" } }, file, { tipoDi: () => "manga" })[0].cartelle.join("/"), "Manga/Berserk");
-  t.eq("senza tipo è un libro", daSpostareSuHdd([{ id: "c" }], mappa, file)[0].cartelle.join("/"), "Libri");
-
-  // la casa sul disco: «book-companion» dentro la cartella scelta, o lei
-  const scelta = cartellaFinta("E:");
-  t.c("dentro la cartella scelta nasce book-companion", (await casaSulDisco(scelta)) === scelta.dentro.get("book-companion"));
-  const gia = cartellaFinta("Book-Companion");
-  t.c("se il lettore ha scelto proprio lei, si usa lei", (await casaSulDisco(gia)) === gia && !gia.dentro.size);
-  t.eq("dice file, nome e peso", `${voci[0].fileId} ${voci[0].nome} ${voci[0].byte}`, "f1 Hellboy v01.cbz 3000");
-
-  // quello che stai leggendo si copia sul disco e resta anche su Drive
-  const stati = { a: "reading", b: "read", c: "unread" };
-  const diviso = divisiPerHdd([{ id: "a" }, { id: "b" }, { id: "c" }, { id: "x" }], { a: {}, b: {}, c: {} }, (id) => stati[id]);
-  t.eq("si spostano tutti i volumi che stanno su Drive", diviso.tutti.map((b) => b.id).join(), "a,b,c");
-  t.eq("e si dice quali stai leggendo", diviso.inLettura.map((b) => b.id).join(), "a");
-  t.eq("e il tasto conta solo quelli da togliere da Drive", diviso.via.map((b) => b.id).join(), "b,c");
-  t.eq("una sezione con i soli libri in lettura non ha niente da spostare", divisiPerHdd([{ id: "a" }], { a: {} }, (id) => stati[id]).via.length, 0);
-  t.eq("la voce di chi stai leggendo dice di tenerlo", daSpostareSuHdd(libri, mappa, file, { tieni: (b) => b.id === "b" }).map((v) => `${v.bookId}${v.tieni ? "+" : ""}`).join(), "a,b+,c");
-  const toccati = [];
-  const ec = await spostaSuHdd([{ ...voci[0], tieni: true }, voci[2]], {
-    radice: cartellaFinta(),
-    apri: async (id) => risposta(id === "f1" ? 3000 : 500),
-    segna: async (v) => toccati.push(`segna ${v.bookId}`),
-    cestina: async (v) => toccati.push(`cestina ${v.bookId}`),
-  });
-  t.eq("copiato sul disco, ma scheda e Drive non si toccano", `${toccati.join()} · ${ec.copiati} copiato, ${ec.fatti} spostato`, "segna c,cestina c · 1 copiato, 1 spostato");
-  t.c("e si dice", /Quello che stai leggendo è copiato sull'HDD e resta su Drive/.test(fraseHdd({ ...ec })));
-
-  // le melodie sul disco, prima di lasciare Drive
-  const vm = melodieSulDisco(
-    [
-      { trackId: "T1", name: "Pioggia: lontana", mime: "audio/mpeg" },
-      { trackId: "T2", name: "Camino", mime: "audio/ogg" },
-      { trackId: "T3", name: "Tolta", deleted: true },
-      { trackId: "T4", name: "Solo qui" },
-      { trackId: "T5", name: "Senza peso" },
-      { name: "YouTube", url: "https://youtu.be/x" },
-    ],
-    { T1: { id: "m1", byte: 700 }, T2: { id: "m2", byte: 300 }, T3: { id: "m3", byte: 5 }, T5: { id: "m5", byte: 0 } }
-  );
-  t.eq("ogni melodia di Drive in «Musica», col nome e il peso di Drive", vm.map((v) => `${v.cartelle.join("/")}/${v.nome}:${v.byte}:${v.fileId}`).join(" | "), "Musica/Pioggia lontana.mp3:700:m1 | Musica/Camino.ogg:300:m2");
-  const tm = [];
-  const em = await spostaSuHdd(vm, {
-    radice: (rm = cartellaFinta()),
-    apri: async (id) => risposta(id === "m1" ? 700 : 300),
-    segna: async (v) => tm.push(`segna ${v.nome}`),
-    cestina: async (v) => tm.push(`cestina ${v.nome}`),
-  });
-  t.eq("si copiano soltanto: niente schede, niente cestino", `${tm.join()}|${em.melodie}|${em.copiati}|${(await percorso(rm, "Musica", "Pioggia lontana.mp3"))?.byte.length}`, "|2|0|700");
-  t.eq("e si dicono come melodie", fraseHdd(em), "🎵 2 melodie copiate sul disco, in «Musica»");
-
-  // per sezione: le stesse della Libreria e delle cartelle
-  const sez = perSezioni([{ id: "l1" }, { id: "f1" }, { id: "m1" }, { id: "l2" }, { id: "x" }], (b) => ({ l1: "libri", l2: "libri", f1: "fumetti", m1: "manga", x: "musica" })[b.id]);
-  t.eq("ogni libro nella sua sezione, e un tipo sconosciuto in nessuna", SEZIONI_HDD.map((k) => `${k}:${sez[k].map((b) => b.id).join("+")}`).join(" "), "libri:l1+l2 fumetti:f1 manga:m1");
-
   t.eq("i nomi che Windows rifiuta", nomeSicuro('Hellboy: Year 2?.cbz'), "Hellboy_ Year 2_.cbz");
   t.eq("niente punto in fondo", nomeSicuro("Fine. "), "Fine");
+  t.eq("un nome vuoto non fa una cartella senza nome", nomeSicuro("  "), "_");
+
+  const radice = cartellaFinta("book-companion");
+  const c = await cartellaDentro(radice, ["Fumetti", "Hellboy: Omnibus"]);
+  t.eq("le cartelle si fanno una dentro l'altra, coi nomi sicuri", `${[...radice.dentro.keys()]}/${[...radice.dentro.get("Fumetti").dentro.keys()]}/${c.name}`, "Fumetti/Hellboy_ Omnibus/Hellboy_ Omnibus");
+  t.c("rifatte, sono le stesse", (await cartellaDentro(radice, ["Fumetti", "Hellboy: Omnibus"])) === c);
+
   t.c("senza showDirectoryPicker (Firefox) non si offre", !hddPossibile({}) && hddPossibile({ showDirectoryPicker() {} }));
   const android = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36";
   t.c("sul tablet no, anche se Chrome per Android sa scegliere una cartella", !hddPossibile({ showDirectoryPicker() {}, navigator: { userAgent: android } }));
   t.c("nemmeno sull'iPad che si dice Mac", !hddPossibile({ showDirectoryPicker() {}, navigator: { userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", maxTouchPoints: 5 } }));
-  const ff = { navigator: { userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0" } };
-  t.c("Firefox sul computer: si dice perché", /Chrome o Edge/.test(percheNoHdd(ff) || ""));
-  t.c("col tasto possibile non si dice niente", percheNoHdd({ ...ff, showDirectoryPicker() {} }) === null);
-  t.c("sul tablet non si dice niente", percheNoHdd({ navigator: { userAgent: "Mozilla/5.0 (Linux; Android 10; K) Chrome/154.0 Mobile Safari/537.36" } }) === null);
-  t.c("nemmeno sull'iPad che si dice Mac", percheNoHdd({ navigator: { userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/605.1.15", maxTouchPoints: 5 } }) === null);
-
-  // il giro: scende, si guarda il peso, poi scheda e cestino in quest'ordine
-  const radice = cartellaFinta();
-  const fatto = [];
-  const esito = await spostaSuHdd(voci, {
-    radice,
-    apri: async (id) => risposta(id === "f3" ? 500 : id === "f1" ? 3000 : 2000, { corto: id === "f2" ? 1 : 0 }),
-    segna: async (v) => fatto.push(`segna ${v.bookId}`),
-    cestina: async (v) => fatto.push(`cestina ${v.fileId}`),
-  });
-  t.eq("sul disco, nella sua cartella, intero", (await percorso(radice, "Fumetti", "Hellboy", "Hellboy v01.cbz"))?.byte.length, 3000);
-  t.eq("prima la scheda, poi il cestino; chi non arriva intero resta su Drive", fatto.join(), "segna a,cestina f1,segna c,cestina f3");
-  t.eq("e si dice", `${esito.fatti} ${esito.byte} ${esito.mancati.map((v) => v.bookId)}`, "2 3500 b");
-
-  // ripreso dopo un giro fermato: il file gia' arrivato non riscende
-  let scese = 0;
-  const di = await spostaSuHdd([voci[0]], { radice, apri: async () => (scese++, risposta(3000)), segna: async () => {}, cestina: async () => {} });
-  t.c("quel che è già sul disco non riscende", scese === 0 && di.fatti === 1);
-
-  // un altro file con lo stesso nome non si copre
-  const r2 = cartellaFinta();
-  const sotto = await (await r2.getDirectoryHandle("Fumetti", { create: true })).getDirectoryHandle("Hellboy", { create: true });
-  sotto.dentro.set("Hellboy v01.cbz", fileFinto("Hellboy v01.cbz", new Uint8Array(42)));
-  await spostaSuHdd([voci[0]], { radice: r2, apri: async () => risposta(3000), segna: async () => {}, cestina: async () => {} });
-  t.c("un file diverso con lo stesso nome resta, il nuovo si chiama (2)", sotto.dentro.get("Hellboy v01.cbz").byte.length === 42 && sotto.dentro.get("Hellboy v01 (2).cbz")?.byte.length === 3000);
-
-  // il posto vuoto lasciato da una discesa andata storta si riusa
-  const r3 = cartellaFinta();
-  const s3 = await (await r3.getDirectoryHandle("Fumetti", { create: true })).getDirectoryHandle("Hellboy", { create: true });
-  s3.dentro.set("Hellboy v01.cbz", fileFinto("Hellboy v01.cbz"));
-  await spostaSuHdd([voci[0]], { radice: r3, apri: async () => risposta(3000), segna: async () => {}, cestina: async () => {} });
-  t.c("un file vuoto si riempie, niente (2)", s3.dentro.get("Hellboy v01.cbz").byte.length === 3000 && !s3.dentro.has("Hellboy v01 (2).cbz"));
-
-  // un intoppo e' di quel volume; il cestino che non riesce lascia il file in due posti
-  const segnati = [];
-  const e3 = await spostaSuHdd(voci, {
-    radice: cartellaFinta(),
-    apri: async (id) => {
-      if (id === "f1") throw new Error("rete");
-      return risposta(id === "f3" ? 500 : 2000);
-    },
-    segna: async (v) => segnati.push(v.bookId),
-    cestina: async () => {
-      throw new Error("403");
-    },
-  });
-  t.eq("un intoppo è di quel volume", segnati.join(), "b,c");
-  t.eq("il cestino che non riesce si dice", `${e3.restati.length} ${e3.byte}`, "2 0");
-
-  // la chiave scaduta ferma il giro
-  class Scollegato extends Error {}
-  const e4 = await spostaSuHdd(voci, { radice: cartellaFinta(), apri: async () => { throw new Scollegato(); }, segna: async () => {}, cestina: async () => {}, ferma: (e) => e instanceof Scollegato });
-  const visti = [];
-  const e4b = await spostaSuHdd(voci, { radice: cartellaFinta(), apri: async (id) => risposta(id === "f3" ? 500 : id === "f1" ? 3000 : 2000), segna: async (v) => visti.push(v.bookId), cestina: async () => { throw new Scollegato(); }, ferma: (e) => e instanceof Scollegato });
-  t.c("anche dal cestino: il volume è sul disco, il giro si ferma", e4b.scollegato && visti.join() === "a" && e4b.fatti === 1);
-  t.c("scollegato ferma il giro", e4.scollegato instanceof Scollegato && e4.mancati.length === 0);
-
-  // «Ferma»: a meta' discesa non si scrive niente e non si segna niente
-  let vivo = true;
-  const r5 = cartellaFinta();
-  const segnati5 = [];
-  const e5 = await spostaSuHdd([voci[0]], {
-    radice: r5,
-    vivo: () => vivo,
-    apri: async () =>
-      new Response(
-        new ReadableStream({
-          pull(c) {
-            c.enqueue(new Uint8Array(1000));
-            vivo = false;
-          },
-        })
-      ),
-    segna: async (v) => segnati5.push(v),
-    cestina: async () => {},
-  });
-  t.c("fermato a metà non segna e non lascia un file a metà", e5.fermato && !segnati5.length && (await percorso(r5, "Fumetti", "Hellboy", "Hellboy v01.cbz"))?.byte.length === 0);
-
-  // «Ferma» fra un volume e l'altro: quello gia' sul disco non si segna
-  let vivo6 = true;
-  const segnati6 = [];
-  const e6 = await spostaSuHdd([voci[2], voci[0]], { radice, vivo: () => vivo6, apri: async () => risposta(500), segna: async (v) => (segnati6.push(v.bookId), (vivo6 = false)), cestina: async () => {} });
-  t.c("fermato fra due volumi, il secondo non si tocca", e6.fermato && segnati6.join() === "c");
-
-  t.c("la frase dice il disco e il cestino", /2 volumi sull'HDD · 3 MB liberati/.test(fraseHdd({ fatti: 2, copiati: 0, byte: 3 * 1024 * 1024, mancati: [], restati: [], fermato: false })));
-  t.c("e chi non è arrivato, per nome", /uno non è arrivato intero sul disco e resta su Drive: «Hellboy v05\.cbz»/.test(fraseHdd({ fatti: 0, byte: 0, mancati: [{ nome: "Hellboy v05.cbz" }], restati: [], fermato: false })));
-  t.c("i primi tre, poi il conto", /«a», «b», «c» e altri 2$/.test(fraseHdd({ fatti: 0, byte: 0, mancati: ["a", "b", "c", "d", "e"].map((nome) => ({ nome })), restati: [], fermato: false })));
+  t.c("il Mac col mouse si'", hddPossibile({ showDirectoryPicker() {}, navigator: { userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", maxTouchPoints: 0 } }));
 };

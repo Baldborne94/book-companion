@@ -7,7 +7,6 @@
 import { portaGiu, frasePortata, senzaCopia, fraseSenzaCopia, daPortare, nonCeLassu } from "../src/lib/syncCore.js";
 // chi sale adesso va su Google Drive, ma la regola e' la stessa di quando
 // saliva nel secchio: stato e non registro, e al buio niente
-import { daCaricare } from "../src/lib/driveCore.js";
 
 const voci = (n) => Array.from({ length: n }, (_, i) => ({ id: `v${i}`, name: `Melodia ${i}` }));
 
@@ -185,40 +184,6 @@ export default async function (t) {
   t.c("né la rete caduta", !nonCeLassu(new TypeError("Failed to fetch")));
   t.c("né un errore che non c'è", !nonCeLassu(null));
   t.c("e un 4040 non è un 404", !nonCeLassu({ statusCode: "4040" }));
-
-  // ---- QUALI FILE DEVONO SALIRE ---------------------------------------------
-  // È la decisione della cura: un «no» di troppo è un romanzo senza copia
-  // per sempre, un «sì» di troppo sono centinaia di megabyte rispediti da
-  // un tablet sul traffico contato del piano gratuito.
-  {
-    const tomi = ["a", "b", "c"].map((id) => ({ id, title: id }));
-    const tutti = new Set(["a", "b", "c"]);
-    const su = (l) => l.map((b) => b.id).join(",");
-    const chiedi = (o) => su(daCaricare(tomi, { qui: tutti, lassu: new Set(), ...o }));
-
-    t.eq("nessuno lassù, salgono tutti", chiedi({}), "a,b,c");
-    // IL DIFETTO CHE HA APERTO TUTTO QUESTO: i byte non sono in casa, e
-    // allora non c'è niente da mandare — ma il giro deve tornare a
-    // guardarlo, non dimenticarselo per sempre
-    t.eq("senza i byte qui non si manda niente", chiedi({ qui: new Set(["a"]) }), "a");
-    t.eq("chi è già nel secchio non risale", chiedi({ lassu: new Set(["a", "b"]) }), "c");
-    // IL REGISTRO DI QUESTO DISPOSITIVO NON VOTA PIÙ, ed è un dietrofront
-    // voluto: qui c'era un controllo che pinnava «chi `bc_uploaded` dà per
-    // mandato non risale». Era mezzo difetto rimasto in piedi — un libro
-    // segnato nel registro ma ASSENTE dal secchio non risaliva mai, che è
-    // esattamente il caso dei sette romanzi scoperti. L'ha preso il test
-    // della convergenza (`giro-sync`), non la lettura. Adesso decide solo
-    // l'elenco del secchio, e il registro è stato tolto.
-    t.eq("un registro non esiste più: comanda il secchio", chiedi({ lassu: new Set(["b"]) }), "a,c");
-    // IL LIBRO CHE IL CLOUD DICE CANCELLATO fra poco se ne va anche da qui:
-    // caricarlo adesso lo farebbe rinascere
-    t.eq("chi sta per essere cancellato non sale", chiedi({ inUscita: new Set(["a"]) }), "b,c");
-    // SENZA L'ELENCO DEL SECCHIO NON SI CARICA NIENTE: è il lato sicuro —
-    // un giro saltato si rifà al prossimo, un rinvio in massa no
-    t.eq("elenco mancante → niente", su(daCaricare(tomi, { qui: tutti, lassu: null })), "");
-    t.eq("e senza nemmeno gli argomenti non esplode", su(daCaricare(tomi)), "");
-    t.eq("una voce senza id si salta", su(daCaricare([{ title: "storto" }], { qui: tutti, lassu: new Set() })), "");
-  }
 
   // ---- I TOMI CHE NON SONO DA NESSUNA PARTE ---------------------------------
   {

@@ -30,27 +30,14 @@ export async function renderPdfThumbDa(blob) {
   return disegnaPrima(apriAIntervalli(blob).promise);
 }
 
-// Il documento lontano aperto per leggerlo. Un pezzo che non arriva (la
-// chiave di Google scaduta a meta' lettura) lascerebbe pdf.js in attesa per
-// sempre, con la pagina bianca: si tiene da parte, si dice a chi legge
-// (`onGuasto`), e `riprova` lo richiede quando la chiave e' tornata.
-export function loadPdfDa(blob, { onGuasto } = {}) {
-  const t = apriAIntervalli(blob, onGuasto);
-  return { promise: t.promise, riprova: t.riprova };
-}
-
-function apriAIntervalli(blob, onGuasto) {
+function apriAIntervalli(blob) {
   const trasporto = new pdfjs.PDFDataRangeTransport(blob.size, null);
-  const falliti = [];
   const chiedi = (da, a) =>
     blob
       .slice(da, a)
       .arrayBuffer()
       .then((b) => trasporto.onDataRange(da, new Uint8Array(b)))
-      .catch((e) => {
-        falliti.push([da, a]);
-        onGuasto?.(e);
-      });
+      .catch(() => {});
   trasporto.requestDataRange = chiedi;
   const promise = pdfjs.getDocument({
     range: trasporto,
@@ -59,7 +46,7 @@ function apriAIntervalli(blob, onGuasto) {
     disableStream: true,
     rangeChunkSize: 64 * 1024,
   }).promise;
-  return { promise, riprova: () => falliti.splice(0).forEach(([da, a]) => chiedi(da, a)) };
+  return { promise };
 }
 
 async function disegnaPrima(aperto) {
