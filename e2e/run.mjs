@@ -1068,6 +1068,9 @@ const SCENE = [
         { id: "h2", title: "B.P.R.D. Omnibus v01 (2022) (digital) (Son of Ultron-Empire)", saga: "B.P.R.D", series: "B.P.R.D. Omnibus", sagaOrder: 1, fileType: "cbz", tipo: "fumetti", addedAt: 2 },
         { id: "h3", title: "Sir Edward Grey, Witchfinder Omnibus01", saga: "Hellboy", series: "Witchfinder Omnibus", sagaOrder: 1, fileType: "cbz", tipo: "fumetti", addedAt: 3 },
         { id: "h4", title: "Hellboy Omnibus - The Wild Hunt v3-522", saga: "Hellboy", sagaOrder: 3, fileType: "cbz", tipo: "fumetti", addedAt: 4 },
+        // e una saga scritta che il titolo non dice resta com'e' (segnalato:
+        // «Dragon Haven (trwc-2)» proposto «Trwc · n. 2»)
+        { id: "dh", title: "Dragon Haven (trwc-2)", author: "Robin Hobb", saga: "The Realm of the Elderlings", series: "The Rain Wilds Chronicles", sagaOrder: 11, fileType: "epub", addedAt: 5 },
       ];
       const d = await dispositivo(browser, { prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});` });
       await d.p.goto(`${URL_APP}?apri=libreria`);
@@ -1076,6 +1079,7 @@ const SCENE = [
       await finche(() => d.p.getByText("Hellboy · n. 11").count(), 5000, "la proposta per Witchfinder non si vede");
       for (const f of ["Hellboy · n. 1", "Hellboy · n. 5", "Hellboy · n. 9"]) if (!(await d.p.getByText(f, { exact: true }).count())) throw new Error(`manca la proposta «${f}»`);
       if ((await libriDi(d.p)).find((b) => b.id === "h2").saga !== "B.P.R.D") throw new Error("la saga si è riscritta prima del tocco");
+      if (await d.p.getByText(/Trwc/).count()) throw new Error("Dragon Haven proposto: la sigla del file letta come saga");
       await d.p.getByRole("button", { name: "Sistema 4" }).click();
       const fila = async () =>
         (await libriDi(d.p))
