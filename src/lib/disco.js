@@ -19,10 +19,15 @@ const chiave = (s) => String(s || "").trim().toLowerCase();
 // sul disco, e si confronta con quella
 export const casaDi = (b, tipo) => casaDelVolume(b, tipo).map(nomeSicuro);
 
+// dove vanno i CBR gia' convertiti sul disco (vedi `convertiSulDisco`): non
+// sono piu' volumi della biblioteca, e il controllo non li conta
+export const CBR_CONVERTITI = "CBR convertiti";
+
 // tutti i file di libri sotto `dir`, col percorso dalla casa
 export async function elencaDisco(dir, via = []) {
   const out = [];
   for await (const [nome, h] of dir.entries()) {
+    if (h.kind === "directory" && !via.length && nome === CBR_CONVERTITI) continue;
     if (h.kind === "directory") out.push(...(await elencaDisco(h, [...via, nome])));
     else if (EST_DISCO.test(nome)) out.push({ cartelle: via, nome, byte: (await h.getFile()).size, handle: h, dir });
   }
@@ -331,4 +336,83 @@ export function schedeDalDisco(libri, esito) {
   const tornati = new Map((esito?.ritrovati || []).map((r) => [r.id, r]));
   const prima = (libri || []).map((b) => (tornati.has(b.id) ? { ...b, ...(tornati.get(b.id).impronta ? { impronta: tornati.get(b.id).impronta } : {}), fileTolto: true } : b));
   return [...prima, ...(esito?.added || []).map((b) => ({ ...b, fileTolto: true }))];
+}
+
+// QUEL CHE SI FA DAL DISCO, con i file del disco in mano (segnalato dal
+// lettore: «vedo che mancano ancora copertine» e «ci sono file CBR che non
+// mi fa mettere in CBZ»). Un volume spostato sull'HDD non e' ne' qui ne' su
+// Drive: «Ritrova copertine» e «Converti in CBZ» non avevano niente da
+// leggere, e dicevano «non sono su questo dispositivo». Con il disco
+// controllato i file si hanno: le copertine che mancano si leggono da li', e
+// i CBR delle schede che stanno solo sul disco si convertono li'.
+export function lavoriDalDisco(r, { haCopertina = () => true } = {}) {
+  const sul = [...(r?.aPosto || []), ...(r?.daSpostare || [])];
+  return {
+    copertine: sul.filter((v) => !haCopertina(v.libro.id)),
+    cbr: sul.filter((v) => v.libro.fileTolto && /\.cbr$/i.test(v.file.nome)),
+  };
+}
+
+// IL CBR DIVENTA CBZ ACCANTO A SE', e il CBR non si cancella: va in
+// «book-companion/CBR convertiti», con le sue cartelle (`riordinaDisco`,
+// che non copre mai un file). Il disco del lettore non ha un cestino, e un
+// volume non si butta per conto suo: quando il CBZ si apre, quella cartella
+// la svuota lui. Il CBZ si scrive solo se il peso scritto e' quello giusto;
+// un CBZ con lo stesso nome e lo stesso peso c'e' gia' (una conversione a
+// meta'), e uno diverso non si copre («nome (2).cbz»). Un «.cbr» che dentro
+// e' gia' uno ZIP non si converte: si copia col nome giusto.
+export async function convertiSulDisco(voci, { radice, converti, eZip = async () => false, vivo = () => true, onProgress } = {}) {
+  const esito = { convertiti: [], mancati: [], fermato: false };
+  for (let i = 0; i < (voci || []).length; i++) {
+    if (!vivo()) {
+      esito.fermato = true;
+      break;
+    }
+    const v = voci[i];
+    onProgress?.({ i, totale: voci.length, titolo: v.libro.title, passo: null });
+    try {
+      const cbr = await v.file.handle.getFile();
+      const cbz = (await eZip(cbr)) ? cbr : await converti(cbr, (p) => onProgress?.({ i, totale: voci.length, titolo: v.libro.title, passo: p }));
+      if (!vivo()) {
+        esito.fermato = true;
+        break;
+      }
+      const base = v.file.nome.replace(/\.cbr$/i, ".cbz");
+      let nome = base;
+      let gia = false;
+      for (let n = 2; ; n++) {
+        const c = await v.file.dir.getFileHandle(nome).catch(() => null);
+        if (!c) break;
+        if ((await c.getFile()).size === cbz.size) {
+          gia = true;
+          break;
+        }
+        if (n > 99) throw new Error("troppi file con lo stesso nome");
+        nome = altroNome(base, n);
+      }
+      if (!gia) {
+        const h = await v.file.dir.getFileHandle(nome, { create: true });
+        await cbz.stream().pipeTo(await h.createWritable());
+        if ((await h.getFile()).size !== cbz.size) {
+          await v.file.dir.removeEntry(nome).catch(() => {});
+          throw new Error("il CBZ scritto sul disco non ha il peso giusto");
+        }
+      }
+      const via = await riordinaDisco([{ libro: v.libro, file: v.file, a: [CBR_CONVERTITI, ...v.file.cartelle] }], { radice });
+      esito.convertiti.push({ libro: v.libro, cbz, nome, cbrTenuto: via.spostati !== 1 });
+    } catch (e) {
+      esito.mancati.push({ libro: v.libro, perche: e?.message || String(e) });
+    }
+  }
+  return esito;
+}
+
+export function fraseConvertitiDisco(e) {
+  const parti = [];
+  if (e.convertiti.length) parti.push(`🔁 ${quanti(e.convertiti.length, "Un CBR è diventato CBZ", "CBR sono diventati CBZ")} sul disco; i CBR sono in «book-companion/${CBR_CONVERTITI}»`);
+  const tenuti = e.convertiti.filter((c) => c.cbrTenuto).length;
+  if (tenuti) parti.push(`${quanti(tenuti, "un CBR è rimasto", "CBR sono rimasti")} accanto al suo CBZ`);
+  if (e.mancati.length) parti.push(`${quanti(e.mancati.length, "uno non si è convertito", "non si sono convertiti")}: ${e.mancati.slice(0, 3).map((m) => `«${m.libro.title}» (${m.perche})`).join(", ")}`);
+  if (e.fermato) parti.push("fermato: il resto è com'era");
+  return parti.join(" · ") || "Niente da convertire";
 }

@@ -172,6 +172,9 @@ function leggi(campo, { fumetto = false } = {}) {
     if (saga) return { saga, sagaOrder: numero(m[2]), resto: m[3], forma: "v" };
   }
   m = CAPITOLI.exec(s);
+  // «Spawn Origins Collection Vol. 02-017»: dopo «Vol.» il numero e' il
+  // volume, e «-017» e' la copia che Drive numera, non i capitoli 2-17
+  if (m && /(?:^|\s)(?:v|vol\.?|volume)$/i.test(m[1])) m = null;
   if (m) {
     const saga = sagaBuona(m[1]);
     if (saga) return { saga, sagaOrder: numero(m[4]), resto: null };

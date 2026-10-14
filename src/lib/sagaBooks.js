@@ -136,10 +136,14 @@ const FORME = TAVOLE.filter((tav) => tav.forme).flatMap((tav) =>
     re: b.forme.map((f) => ({ largo: f.startsWith("~"), re: new RegExp(f.replace(/^~/, "")) })),
   }))
 );
-export function perForma(...pezzi) {
-  const s = formaDi(pezzi.filter(Boolean).join(" "));
+// LE FORME SI PROVANO SUL TITOLO, e autore e saga sono solo il contesto
+// delle forme larghe: con la saga dentro, «Lobster Johnson Omnibus v02»
+// scritto nella saga «Lobster Johnson Omnibus» si leggeva come il primo
+// (la saga, senza numero, combaciava con «omnibus» non seguito da «v2»).
+export function perForma(titolo, ...contesto) {
+  const s = formaDi(titolo);
   if (!s) return null;
-  const suo = UNIVERSO.test(s);
+  const suo = UNIVERSO.test(formaDi([titolo, ...contesto].filter(Boolean).join(" ")));
   return FORME.find((b) => b.re.some((f) => (suo || !f.largo) && f.re.test(s))) || null;
 }
 
@@ -699,7 +703,22 @@ export function nomeInBiblioteca(saga, libri = []) {
 // «JoJo's_Bizzare_Adventure_Part_6», gli altri «Bizarre»): su un nome lungo
 // almeno dieci lettere, due grafie a una o due lettere di distanza
 // (`vicine`) sono un gruppo, e vince la piu' usata.
-const vicine = (a, b) => a === b || (a.length >= 10 && b.length >= 10 && Math.abs(a.length - b.length) <= 2 && distanza(a, b) <= 2);
+// MA SOLO DENTRO UNA PAROLA, e lunga (segnalato dal lettore: «continua a
+// sminchiarmi le saghe aggiungendo o togliendo cose»). A ogni apertura della
+// Libreria «The 1st Chronicles of Thomas Covenant» finiva dentro «The Last
+// Chronicles of Thomas Covenant»: «1st» e «Last» sono a due lettere, e sono
+// due serie. Si confrontano parola per parola: una sola diversa, di almeno
+// cinque lettere, senza cifre, a una o due lettere dall'altra.
+const vicine = (a, b) => {
+  if (a === b) return true;
+  const pa = a.split(" ");
+  const pb = b.split(" ");
+  if (a.length < 10 || pa.length !== pb.length) return false;
+  const diverse = pa.map((p, i) => [p, pb[i]]).filter(([x, y]) => x !== y);
+  if (diverse.length !== 1) return false;
+  const [x, y] = diverse[0];
+  return x.length >= 5 && y.length >= 5 && !/\d/.test(x + y) && distanza(x, y) <= 2;
+};
 export function unificaSaghe(libri = []) {
   const gruppi = [];
   const di = new Map();
@@ -915,10 +934,12 @@ export function saghePropose(libri = []) {
     // dal lettore per Hellboy: «mettendoli dentro la saga di Hellboy con
     // l'ordine consigliato»). Le schede gia' scritte dicevano «B.P.R.D»,
     // «Hellboy Omnibus», «Sir Edward Grey Witchfinder», ognuna col suo «1»:
-    // la guida e' UN filo, quindi la saga e' la sua, la serie vuota (le
-    // serie spezzerebbero il filo del prossimo volume) e il numero il suo.
+    // la saga e il numero sono della guida. LA SERIE RESTA QUELLA DEL
+    // LETTORE (aveva gia' messo a mano «Hellboy Omnibus», «Young Hellboy»,
+    // «Hellboy and the B.P.R.D.»: «cosi' come stavo facendo»), e chi non ne
+    // ha una prende quella della guida (`c` in `data/hellboy.js`).
     if (guida?.forma) {
-      const dopo = { saga: nomeInBiblioteca(guida.saga, tutti), series: "", sagaOrder: guida.sagaOrder };
+      const dopo = { saga: nomeInBiblioteca(guida.saga, tutti), series: prima.series || guida.ciclo || "", sagaOrder: guida.sagaOrder };
       if (dopo.saga !== prima.saga || dopo.series !== prima.series || dopo.sagaOrder !== prima.sagaOrder) out.push({ id: b.id, titolo: b.title || "", prima, dopo });
       continue;
     }
@@ -938,7 +959,9 @@ export function saghePropose(libri = []) {
     const k = chiaveSaga(saga);
     let dopo;
     if (k === kPrima) dopo = { saga: prima.saga, series: prima.series || letto.ciclo || "", sagaOrder: prima.sagaOrder ?? letto.sagaOrder ?? null };
-    else if (kPrima && (kPrima.includes(k) || k.includes(kPrima))) continue;
+    // ...tranne la saga che finisce con un'etichetta: «Spawn Origins
+    // Collection Vol» e' «Spawn Origins Collection» letta male
+    else if (kPrima && (kPrima.includes(k) || k.includes(kPrima)) && !/ (?:vol|volume|book|part|tome)$/.test(kPrima)) continue;
     // UNA SAGA CHE IL TITOLO NON DICE L'HA SCRITTA QUALCUN ALTRO — il
     // lettore, il catalogo, la collana del file — e non si propone di
     // cambiarla col nome del file («Kokou no Hito» al posto di «The

@@ -75,49 +75,56 @@ export default async (t) => {
   t.c("ogni racconto sta in una tappa che c'è", HELLBOY.filter((v) => v.tipo === "racconto").every((v) => HELLBOY.some((x) => x.t === v.in && x.o != null)));
   t.eq("«B.P.R.D.» ridotto", formaDi("B.P.R.D. Omnibus Vol. 03"), "bprd omnibus v3");
 
-  // le schede del lettore: si propone, con la saga intera e il numero della guida
+  // le schede del lettore: si propone la saga della guida e il suo numero,
+  // e la SERIE resta la sua (le aveva messe a mano: «così come stavo
+  // facendo»); chi non ne ha una prende quella della guida
   const scaffale = [
     { id: "h1", title: "v01 - Seed of Destruction", saga: "Hellboy", series: "Hellboy Omnibus", sagaOrder: 1 },
-    { id: "h2", title: "B.P.R.D. Omnibus v01 (2022)", saga: "B.P.R.D", series: "B.P.R.D. Omnibus", sagaOrder: 1 },
+    { id: "h2", title: "B.P.R.D. Omnibus v01 (2022)", saga: "B.P.R.D. Omnibus", series: "", sagaOrder: 1 },
     { id: "h3", title: "Sir Edward Grey, Witchfinder Omnibus01", saga: "Hellboy", series: "Witchfinder Omnibus", sagaOrder: 1 },
-    { id: "h4", title: "Hellboy Omnibus - The Wild Hunt v3-522", saga: "Hellboy", series: "", sagaOrder: 9 },
-    { id: "h5", title: "Koshchei the Deathless Omnibus (2026)", saga: "Hellboy", sagaTolta: false, series: "", sagaOrder: null },
+    { id: "h4", title: "Hellboy Omnibus - The Wild Hunt v3-522", saga: "Hellboy", series: "Hellboy Omnibus", sagaOrder: 9 },
+    { id: "h5", title: "Koshchei the Deathless Omnibus (2026)", saga: "Hellboy", series: "", sagaOrder: null },
+    { id: "h8", title: "Hellboy and the B.P.R.D. - The Secret of Chesbro House and Others (2023)", saga: "Hellboy", series: "Hellboy and the B.P.R.D.", sagaOrder: 43 },
     { id: "d1", title: "Mort", author: "Terry Pratchett", saga: "Discworld", series: "La Morte scritta a mano", sagaOrder: 4 },
   ];
   const p = Object.fromEntries(saghePropose(scaffale).map((x) => [x.id, x]));
-  t.eq("Omnibus 1: si toglie la serie", fraseSaga(p.h1?.dopo), "Hellboy · n. 1");
-  t.eq("B.P.R.D. entra in Hellboy", fraseSaga(p.h2?.dopo), "Hellboy · n. 5");
-  t.eq("e si dice da dove parte", fraseSaga(p.h2?.prima), "B.P.R.D · B.P.R.D. Omnibus · n. 1");
-  t.eq("Witchfinder al suo posto", fraseSaga(p.h3?.dopo), "Hellboy · n. 11");
-  t.c("chi è già a posto non si propone", !p.h4);
+  t.c("chi è già a posto non si propone", !p.h1 && !p.h4);
+  t.eq("B.P.R.D. entra in Hellboy, con la serie della guida", fraseSaga(p.h2?.dopo), "Hellboy · B.P.R.D. Omnibus · n. 5");
+  t.eq("e si dice da dove parte", fraseSaga(p.h2?.prima), "B.P.R.D. Omnibus · n. 1");
+  t.eq("Witchfinder al suo posto, la serie resta", fraseSaga(p.h3?.dopo), "Hellboy · Witchfinder Omnibus · n. 11");
+  t.eq("la serie scritta a mano resta, il numero è della guida", fraseSaga(p.h8?.dopo), "Hellboy · Hellboy and the B.P.R.D. · n. 46");
   t.eq("il numero che mancava", fraseSaga(p.h5?.dopo), "Hellboy · n. 34");
+  t.eq("una serie diversa da quella della guida resta la sua", fraseSaga(saghePropose([{ id: "m", title: "B.P.R.D. Omnibus v03", saga: "B.P.R.D.", series: "Plague of Frogs", sagaOrder: 3 }])[0]?.dopo), "Hellboy · Plague of Frogs · n. 7");
   t.c("il Disco scritto a mano non si tocca", !p.d1);
-  t.eq("la saga scritta fa da contesto anche qui", fraseSaga(saghePropose([{ id: "j", title: "The Wild Hunt v3-522", saga: "Hellboy", sagaOrder: 3 }])[0]?.dopo), "Hellboy · n. 9");
+  t.eq("la saga scritta fa da contesto anche qui", fraseSaga(saghePropose([{ id: "j", title: "The Wild Hunt v3-522", saga: "Hellboy", sagaOrder: 3 }])[0]?.dopo), "Hellboy · Hellboy Omnibus · n. 9");
+  // la saga e' contesto, non titolo: «Lobster Johnson Omnibus» scritta come
+  // saga non fa del secondo volume il primo
+  t.eq("Lobster Johnson 2 nella sua saga", riconosci({ title: "Lobster Johnson Omnibus v02 (2023) (digital)", saga: "Lobster Johnson Omnibus" })?.sagaOrder, 13);
   // le altre tavole restano come prima: l'Eresia sa l'ordine di lettura, e
   // il numero della collana scritto nel titolo (24) non si propone
   t.eq("l'Eresia non prende il numero della collana", saghePropose([{ id: "e", title: "Betrayer (The Horus Heresy Book 24)", saga: "" }]).length, 0);
   t.c("la saga tolta a mano resta tolta", !saghePropose([{ id: "x", title: "B.P.R.D. Omnibus v02", saga: "", sagaTolta: true }]).length);
-  t.eq("ripassa riempie solo i vuoti", ripassa({ id: "y", title: "B.P.R.D. Omnibus v02", saga: "Hellboy", sagaOrder: 2 })?.campi ?? null, null);
+  t.eq("ripassa riempie solo i vuoti", ripassa({ id: "y", title: "B.P.R.D. Omnibus v02", saga: "Hellboy", series: "Mia", sagaOrder: 2 })?.campi ?? null, null);
   t.eq("e il vuoto lo riempie", ripassa({ id: "z", title: "B.P.R.D. Omnibus v02", saga: "", sagaOrder: null })?.campi?.sagaOrder, 6);
   t.eq("anche con la saga come contesto", ripassa({ id: "w", title: "Crimson Lotus", saga: "Hellboy", sagaOrder: null })?.campi?.sagaOrder, 39);
-  t.eq("la saga si scrive come la scrive già la biblioteca", fraseSaga(saghePropose([{ id: "k", title: "B.P.R.D. Omnibus v01", saga: "HELLBOY" }])[0]?.dopo), "HELLBOY · n. 5");
+  t.eq("la saga si scrive come la scrive già la biblioteca", fraseSaga(saghePropose([{ id: "k", title: "B.P.R.D. Omnibus v01", saga: "HELLBOY" }])[0]?.dopo), "HELLBOY · B.P.R.D. Omnibus · n. 5");
 
-  // dopo le proposte: un filo solo, nell'ordine della guida
+  // dopo le proposte: ogni serie nell'ordine della guida
   const fatti = scaffale.map((b) => (p[b.id] ? { ...b, ...p[b.id].dopo } : b));
   const tutti = [
     ...fatti,
-    { id: "h6", title: "B.P.R.D. Omnibus v02 (2022)", saga: "Hellboy", series: "", sagaOrder: 6 },
+    { id: "h6", title: "B.P.R.D. Omnibus v02 (2022)", saga: "Hellboy", series: "B.P.R.D. Omnibus", sagaOrder: 6 },
     { id: "h7", title: "Crimson Lotus", saga: "Hellboy", series: "", sagaOrder: 39 },
   ];
   const stato = { h1: "read", h2: "read" };
   const leggi = (id) => stato[id] || "unread";
   t.eq("dopo il B.P.R.D. 1 il B.P.R.D. 2", nextInSaga(tutti.find((b) => b.id === "h2"), tutti, leggi, () => 0)?.id, "h6");
-  t.eq("dopo l'Omnibus 3 il Witchfinder", nextInSaga(tutti.find((b) => b.id === "h4"), tutti, leggi, () => 0)?.id, "h3");
-  t.eq("sul disco: tutti in Fumetti/Hellboy", casaDelVolume(fatti[1], "fumetti").join("/"), "Fumetti/Hellboy");
+  t.eq("dopo l'Omnibus 1 l'Omnibus 3 (il 2 non c'è)", nextInSaga(tutti.find((b) => b.id === "h1"), tutti, leggi, () => 0)?.id, "h4");
+  t.eq("sul disco: dentro Hellboy, nella cartella della serie", casaDelVolume(fatti[1], "fumetti").join("/"), "Fumetti/Hellboy/B.P.R.D. Omnibus");
 
   // il cammino conta i suoi volumi
   const c = camminoDi(tutti);
   t.eq("il cammino è quello di Hellboy", c?.saga, "Hellboy");
-  t.eq("hai sette tappe, Crimson Lotus compreso", c?.tue, 7);
+  t.eq("hai otto tappe, Crimson Lotus compreso", c?.tue, 8);
   t.eq("54 volumi e 3 drammi audio: i racconti non contano", c?.volumi, 57);
 };

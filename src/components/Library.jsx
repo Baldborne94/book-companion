@@ -887,6 +887,7 @@ export default function Library({
   onSenzaSchedaSuHdd,
   onRiordina,
   onImportaDalDisco,
+  onConvertiDalDisco,
 }) {
   // lo scaffale si ridisegna solo quando cambia: il lavoro dell'HDD si
   // raggiunge da qui, sempre quello di adesso
@@ -1585,6 +1586,37 @@ export default function Library({
   // trovata, la memoria del browser e' stata sfrattata, o non e' mai tornata
   // giu' — e il file ce l'hai: e' lo stesso giro del tasto ↺ della scheda,
   // fatto su tutta la biblioteca.
+  // LE COPERTINE DEI VOLUMI CHE STANNO SOLO SUL DISCO (segnalato: «vedo che
+  // mancano ancora copertine» — dodici fumetti sull'HDD, e «Ritrova
+  // copertine» diceva «non sono su questo dispositivo»). Stesso giro, coi
+  // file del disco controllato al posto dei byte di qui o di Drive.
+  async function copertineDalDisco(voci) {
+    if (copertinando || !voci.length) return;
+    const mio = {};
+    filoCopertine.current = mio;
+    const mancanti = voci.map((v) => v.libro);
+    const handle = new Map(voci.map((v) => [v.libro.id, v.file.handle]));
+    setCopertinando({ i: 0, totale: mancanti.length, titolo: mancanti[0].title });
+    const { ritrovaCopertine, resocontoCopertine, copertinaOriginale } = await import("../lib/copertina.js");
+    const esito = await ritrovaCopertine(mancanti, {
+      leggiByte: async (id) => (handle.has(id) ? handle.get(id).getFile() : null),
+      estrai: (b, bytes) => copertinaOriginale(b, bytes),
+      posa: (id, blob) => putCover(id, blob),
+      segnaGuardato: (id) => putAux(`copertina_${id}`, 1),
+      vivo: () => filoCopertine.current === mio,
+      onProgress: (p) => filoCopertine.current === mio && setCopertinando(p),
+    });
+    if (filoCopertine.current !== mio) return;
+    filoCopertine.current = null;
+    setCopertinando(null);
+    if (esito.ritrovate) {
+      setConCopertina(new Set(await listCoverIds().catch(() => [])));
+      setCoverV((v) => v + 1);
+    }
+    if (esito.senzaImmagine) setCopGuardate(await guardate());
+    notify?.(resocontoCopertine(esito));
+  }
+
   async function ritrovaLeCopertine() {
     if (copertinando) return;
     const mancanti = senzaCopertina(books, conCopertina, copGuardate);
@@ -1936,7 +1968,7 @@ export default function Library({
     setDisco({ guardo: true });
     try {
       const { RADICE } = await import("../lib/driveCore.js");
-      const { elencaDisco, controllaDisco } = await import("../lib/disco.js");
+      const { elencaDisco, controllaDisco, lavoriDalDisco } = await import("../lib/disco.js");
       const casa = String(scelta.name || "").trim().toLowerCase() === RADICE ? scelta : await scelta.getDirectoryHandle(RADICE).catch(() => null);
       if (!casa) {
         setDisco(null);
@@ -1951,7 +1983,8 @@ export default function Library({
         qui: (id) => !!localIds?.has(id),
         leggendo: (id) => getStatus(id) === "reading",
       });
-      setDisco({ rapporto, casa, tolti: new Set() });
+      const senza = new Set(senzaCopertina(booksRef.current, conCopertina || new Set(), copGuardate).map((b) => b.id));
+      setDisco({ rapporto, casa, tolti: new Set(), lavori: lavoriDalDisco(rapporto, { haCopertina: (id) => !senza.has(id) }) });
     } catch (err) {
       setDisco(null);
       notify(err?.message || "Il disco non ha risposto");
@@ -3307,6 +3340,34 @@ export default function Library({
                       <span style={{ flexBasis: "100%", overflowWrap: "anywhere" }}>
                         {`${r.doppioni.length === 1 ? "Una copia in più" : `${r.doppioni.length} copie in più`} (stesso nome e stesso peso) di volumi che sono già sul disco (non le tocco): `}
                         <span style={{ color: C.text }}>{r.doppioni.slice(0, 12).map((f) => [...f.cartelle, f.nome].join(" / ")).join(" · ")}</span>
+                      </span>
+                    )}
+                    {/* QUEL CHE SI FA COI FILE DEL DISCO: le copertine che
+                        mancano e i CBR delle schede che stanno solo lì
+                        (`lavoriDalDisco`) */}
+                    {disco.lavori?.copertine.length > 0 && (
+                      <button
+                        onClick={() => copertineDalDisco(disco.lavori.copertine)}
+                        disabled={!!copertinando}
+                        style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                      >
+                        {`🖼 ${disco.lavori.copertine.length === 1 ? "La copertina" : `${disco.lavori.copertine.length} copertine`} dal disco`}
+                      </button>
+                    )}
+                    {onConvertiDalDisco && disco.lavori?.cbr.length > 0 && (
+                      <span style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                        <button
+                          onClick={() => {
+                            const voci = disco.lavori.cbr;
+                            const casa = disco.casa;
+                            setDisco(null);
+                            onConvertiDalDisco(voci, casa);
+                          }}
+                          style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                        >
+                          {`🔁 Converti in CBZ ${disco.lavori.cbr.length === 1 ? "il CBR" : `i ${disco.lavori.cbr.length} CBR`} del disco`}
+                        </button>
+                        <span style={{ flexBasis: "100%", fontSize: F.piccolo }}>Il CBZ nasce accanto al CBR; il CBR non si cancella, va in «book-companion/CBR convertiti» e quella cartella la svuoti tu quando i CBZ si aprono.</span>
                       </span>
                     )}
                     {r.daSpostare.length - disco.tolti.size > 0 && (
