@@ -1032,6 +1032,51 @@ const SCENE = [
     },
   },
   {
+    // segnalato dal lettore con la foto della Manutenzione del tablet: Chrome
+    // per Android ora sa scegliere una cartella, e «Copia sul disco» copiava i
+    // volumi nella memoria del tablet. L'HDD della biblioteca e' del computer
+    nome: "i tasti del disco stanno sul computer, non sul tablet",
+    async fai({ browser }) {
+      const elenco = [{ id: "Z3", name: "Sandman 03.cbz", size: "4000", parents: ["X"], appProperties: { bc: "1", bcId: "s3" } }];
+      const drv = await avviaDrive(PORTA_DRIVE, { Z3: Buffer.alloc(4000, 7) }, { elenco });
+      const libri = [{ id: "s3", title: "Sandman 03", saga: "The Sandman", fileType: "cbz", tipo: "fumetti", addedAt: 1 }];
+      const prima = `window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
+        localStorage.setItem("bc_status_s3", "reading");`;
+      const tasti = async (ctx) => {
+        await ctx.route((u) => !/^(localhost|127\.0\.0\.1)$/.test(u.hostname), (r) => r.abort());
+        await ctx.addInitScript(prima);
+        await ctx.addInitScript(driveNelBrowser, { porta: PORTA_DRIVE, libri, mappa: { s3: { id: "Z3", byte: 4000 } } });
+        const p = await ctx.newPage();
+        await p.goto(`${URL_APP}?apri=libreria`);
+        await p.getByRole("button", { name: /Manutenzione/ }).first().click();
+        await p.waitForTimeout(1500);
+        return {
+          copia: await p.getByRole("button", { name: /Copia sul disco/ }).count(),
+          controlla: await p.getByRole("button", { name: /Controlla il disco/ }).count(),
+        };
+      };
+      const pcCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+      const tabCtx = await browser.newContext({
+        viewport: { width: 902, height: 1503 },
+        deviceScaleFactor: 1.33,
+        hasTouch: true,
+        isMobile: true,
+        userAgent: "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+      });
+      try {
+        const pc = await tasti(pcCtx);
+        if (!pc.copia || !pc.controlla) throw new Error(`sul computer mancano i tasti del disco: ${JSON.stringify(pc)}`);
+        const tab = await tasti(tabCtx);
+        if (tab.copia || tab.controlla) throw new Error(`sul tablet ci sono i tasti del disco: ${JSON.stringify(tab)}`);
+        return { guasti: [], nota: `computer: copia ${pc.copia}, controlla ${pc.controlla} · tablet: nessuno` };
+      } finally {
+        await pcCtx.close();
+        await tabCtx.close();
+        await drv.chiudi();
+      }
+    },
+  },
+  {
     // segnalato dal lettore: «perché i 38 GB di manga e fumetti non sono
     // stati spostati?» — caricati a mano su Drive, nessuna scheda li usava
     nome: "i file su Drive che nessun libro usa vanno sull'HDD con le loro cartelle, e quelli dei libri e fuori dall'app restano",

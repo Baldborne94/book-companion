@@ -11,7 +11,16 @@
 import { fmtGoogle } from "./bytes.js";
 import { RADICE } from "./driveCore.js";
 
-export const hddPossibile = (w = globalThis) => typeof w?.showDirectoryPicker === "function";
+// IL DISCO E' DEL COMPUTER (segnalato dal lettore con la Manutenzione del
+// tablet: Chrome per Android ora sa scegliere una cartella, e i tasti
+// dell'HDD copiavano i volumi nella memoria del tablet). Telefono e tablet
+// non hanno l'HDD della biblioteca, anche se il browser sa scrivere.
+const inTasca = (w) => {
+  const n = w?.navigator || {};
+  const ua = n.userAgent || "";
+  return /Android|iPhone|iPad/i.test(ua) || (/Macintosh/.test(ua) && n.maxTouchPoints > 1);
+};
+export const hddPossibile = (w = globalThis) => typeof w?.showDirectoryPicker === "function" && !inTasca(w);
 
 // I LIBRI CHE STAI LEGGENDO RESTANO ANCHE SU DRIVE (scelto dal lettore:
 // «spostali tutti, ma il libro che sto leggendo una copia la lasci sul
@@ -41,13 +50,10 @@ export function perSezioni(libri, tipoDi) {
 }
 
 // sul computer senza la cartella da scegliere (Firefox) si dice perche';
-// sul tablet no: li' il disco esterno non si sceglie in nessun browser, e
-// la frase sarebbe in ogni raccolta per niente
+// sul tablet no: li' l'HDD della biblioteca non c'e', e la frase sarebbe in
+// ogni raccolta per niente
 export function percheNoHdd(w = globalThis) {
-  if (hddPossibile(w)) return null;
-  const n = w?.navigator || {};
-  const ua = n.userAgent || "";
-  if (/Android|iPhone|iPad/i.test(ua) || (/Macintosh/.test(ua) && n.maxTouchPoints > 1)) return null;
+  if (hddPossibile(w) || inTasca(w)) return null;
   return "Per spostare questi volumi su un disco serve Chrome o Edge sul computer: questo browser non sa scrivere in una cartella.";
 }
 
