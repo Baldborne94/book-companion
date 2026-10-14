@@ -12,13 +12,14 @@ import http from "node:http";
 // `misureVere`: la misura che Drive da' chiedendo il file uno per uno, quando
 // l'elenco ne porta un'altra (un file appena caricato, elencato a zero)
 export function avviaDrive(porta, file, { elenco = [], latenza = 0, misureVere = {}, banda = 0 } = {}) {
-  const d = { pezzi: 0, interi: 0, scesi: new Set(), cestino: [] };
+  const d = { pezzi: 0, interi: 0, scesi: new Set(), cestino: [], richieste: 0 };
   const server = http.createServer(async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "*");
     res.setHeader("Access-Control-Allow-Methods", "*");
     res.setHeader("Access-Control-Expose-Headers", "*");
     if (req.method === "OPTIONS") return res.end();
+    d.richieste += 1;
     if (latenza) await new Promise((r) => setTimeout(r, latenza));
     const u = new URL(req.url, "http://x");
     const id = decodeURIComponent(u.pathname.split("/").pop());
@@ -77,6 +78,7 @@ export function avviaDrive(porta, file, { elenco = [], latenza = 0, misureVere =
         conti: () => ({ pezzi: d.pezzi, interi: d.interi }),
         scesi: () => [...d.scesi].sort(),
         cestino: () => [...d.cestino],
+        richieste: () => d.richieste,
         chiudi: () =>
           new Promise((c) => {
             server.closeAllConnections?.();
