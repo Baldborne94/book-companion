@@ -116,6 +116,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 - Il lettore della musica è uno solo in due forme (`components/Ascolto.jsx`): «In ascolto» nella sala (a schermo largo colonna ferma a sinistra) e la barretta in fondo alle altre sezioni, con copertina disegnata dal nome (`facciaDi`), ⏮ ⏯ ⏭ e il punto del brano. «⏮» riavvolge dopo 3 s (`indietroDa`). Il punto si legge **dentro la barra** (`tempo()`), mai nello stato di App. Tasti disegnati, non caratteri (le emoji di Android).
 - **Entra con Google** (`accessoGoogle.js`, passi in `docs/ACCESSO.md`): solo l'ingresso nella biblioteca, nessun permesso sui file.
 - **Ogni dispositivo dice quali libri tiene** (`dispositivi.js`: voce `qui|<dispositivo>` nella colonna `raccolte_fav`, scritta solo quando cambia): sull'altro un libro senza byte che sta lì non è perduto (📱, `segnoDorso` `altrove`) e, toccato, lo dice (`soloAltrove`).
+- **Il disco del computer dice cosa ha** (`aggiornaDisco`: voce `qui|<dispositivo>|disco`, `disco: true`, scritta a ogni «🔍 Controlla il disco»; `sulDiscoDa`; il disco non è un dispositivo per `altroveDa`). «🧹 Libera spazio» in Manutenzione (`liberaSpazio.js`) propone i libri **letti** con il file qui che il disco ha, il più pesante prima, e toglie gli ebook in fila (`togliEbook` in App, le schede segnate tutte insieme). **La copia che conta è solo il disco**: «togli l'ebook» arriva sull'altro dispositivo e toglie il file anche là. I letti di cui il disco non sa niente si dicono, con la strada.
 
 ### Ingresso e Libreria
 

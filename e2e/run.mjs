@@ -329,6 +329,70 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore, col tablet pieno: «su E ho tutto salvato quindi
+    // non si perde il file originale». Il PC controlla il disco e lo dice
+    // lassu'; il tablet propone di togliere gli ebook dei letti che il disco
+    // ha, e solo quelli.
+    nome: "il tablet libera spazio: via gli ebook letti che il disco del computer ha, e solo quelli",
+    async fai({ browser, db }) {
+      const tab = await dispositivo(browser, { sessione: true, misura: TABLET });
+      await importa(tab.p, "La nebbia.epub", await epub(), "application/epub+zip");
+      await importa(tab.p, "Il faro.epub", await epub({ titolo: "Il faro" }), "application/epub+zip");
+      await importa(tab.p, "Il ponte.epub", await epub({ titolo: "Il ponte" }), "application/epub+zip");
+      await importa(tab.p, "Il bosco.epub", await epub({ titolo: "Il bosco" }), "application/epub+zip");
+      const ids = Object.fromEntries((await libriDi(tab.p)).map((b) => [b.title, b.id]));
+      // letti la nebbia, il bosco e il faro; il ponte e' in lettura
+      await tab.p.evaluate((ids) => {
+        localStorage.setItem(`bc_status_${ids["La nebbia"]}`, "read");
+        localStorage.setItem(`bc_status_${ids["Il bosco"]}`, "read");
+        localStorage.setItem(`bc_status_${ids["Il faro"]}`, "read");
+        localStorage.setItem(`bc_status_${ids["Il ponte"]}`, "reading");
+      }, ids);
+
+      await finche(() => Object.values(ids).every((id) => db.righe().some((r) => r.id === id)), 20000, "i libri del tablet non salgono");
+      // sul disco del computer ci sono la nebbia, il bosco e il ponte, il faro no
+      const prima = `window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });`;
+      const pc = await dispositivo(browser, { sessione: true, prima });
+      await pc.p.goto(`${URL_APP}?apri=libreria`);
+      await finche(async () => (await libriDi(pc.p)).filter((b) => Object.values(ids).includes(b.id)).length === 4, 20000, "i libri del tablet non scendono sul PC");
+      await pc.p.evaluate(async () => {
+        const r = await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
+        const libri = await (await r.getDirectoryHandle("book-companion", { create: true })).getDirectoryHandle("Libri", { create: true });
+        for (const nome of ["La nebbia.epub", "Il bosco.epub", "Il ponte.epub"]) {
+          const w = await (await libri.getFileHandle(nome, { create: true })).createWritable();
+          await w.write(new Uint8Array(400).fill(1));
+          await w.close();
+        }
+      });
+      await pc.p.getByRole("button", { name: /Manutenzione/ }).first().click();
+      await pc.p.getByRole("button", { name: "🔍 Controlla il disco" }).click();
+      await finche(() => pc.p.getByText(/Sul disco ci sono 3 volumi della biblioteca/).count(), 10000, "il rapporto del disco non si vede");
+
+      await finche(() => (db.prefs()?.raccolte_fav || []).some((v) => v.disco && v.libri?.length === 3), 20000, "il PC non dice lassu' cosa ha il disco");
+      // il tablet lo sa al giro dopo
+      await tab.p.goto(`${URL_APP}?apri=libreria`);
+      await tab.p.getByRole("button", { name: /Manutenzione/ }).first().click();
+      const tasto = tab.p.getByRole("button", { name: /🧹 Libera spazio: 2 libri letti sono anche sul disco del computer/ });
+      await finche(() => tasto.count(), 20000, "sul tablet non c'e' «Libera spazio»");
+      const faro = await finche(() => testoAvviso(tab.p, /Un libro letto non era sul disco del computer/), 5000, "il letto che il disco non ha non si dice");
+      await tasto.click();
+      const elenco = await tab.p.locator("li").allInnerTexts();
+      if (!elenco.some((t) => /La nebbia/.test(t)) || !elenco.some((t) => /Il bosco/.test(t)) || elenco.some((t) => /Il faro|Il ponte/.test(t))) throw new Error(`nell'elenco: ${elenco.join(" | ")}`);
+      await tab.p.getByRole("button", { name: "Togli i 2 ebook" }).click();
+      await finche(() => testoAvviso(tab.p, /2 ebook tolti/), 8000, "il tablet non dice di aver tolto gli ebook");
+      const libri = await libriDi(tab.p);
+      const tolto = (t) => libri.find((b) => b.id === ids[t])?.fileTolto === true;
+      if (!tolto("La nebbia") || !tolto("Il bosco") || tolto("Il faro") || tolto("Il ponte")) throw new Error(`segnati: ${libri.filter((b) => b.fileTolto).map((b) => b.title).join(", ")}`);
+      const byte = await tab.p.evaluate(async (ids) => {
+        const db = await new Promise((ok, ko) => { const r = indexedDB.open("bc_library"); r.onsuccess = () => ok(r.result); r.onerror = ko; });
+        const c = (id) => new Promise((ok) => { const g = db.transaction("files").objectStore("files").count(id); g.onsuccess = () => ok(g.result); g.onerror = () => ok(-1); });
+        return [await c(ids["La nebbia"]), await c(ids["Il bosco"]), await c(ids["Il faro"]), await c(ids["Il ponte"])].join(",");
+      }, ids);
+      if (byte !== "0,0,1,1") throw new Error(`file sul tablet (nebbia, bosco, faro, ponte): ${byte}`);
+      return { guasti: [...tab.guasti, ...pc.guasti], nota: `via la nebbia e il bosco; restano il faro («${faro.slice(0, 40)}…») e il ponte in lettura` };
+    },
+  },
+  {
     // chiesto dal lettore, lasciato Drive: «pulizia su cose che non servono
     // piu'». Le chiavi di Drive sul dispositivo, l'elenco dei file in
     // IndexedDB e la riga col permesso a lungo termine di Google nel

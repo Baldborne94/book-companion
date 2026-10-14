@@ -43,14 +43,41 @@ export function aggiornaQui(lista, ids, { dispositivo, nome, ora = Date.now() } 
   return fondiDispositivi((lista || []).filter((v) => v.id !== id), [{ id, nome, libri, updatedAt: ora }]);
 }
 
-// I libri che stanno su un ALTRO dispositivo, col suo nome
+// I libri che stanno su un ALTRO dispositivo, col suo nome. Il disco non e'
+// un dispositivo: un libro che sta solo li' non si apre da nessuna parte.
 export function altroveDa(lista, dispositivo) {
   const out = new Map();
   for (const v of lista || []) {
-    if (v.deleted || v.id === PREFISSO_QUI + dispositivo || !Array.isArray(v.libri)) continue;
+    if (v.deleted || v.disco || v.id === PREFISSO_QUI + dispositivo || !Array.isArray(v.libri)) continue;
     for (const id of v.libri) if (!out.has(id)) out.set(id, v.nome || "");
   }
   return out;
+}
+
+// I LIBRI CHE IL DISCO DEL COMPUTER HA, visti all'ultimo «Controlla il
+// disco» (chiesto dal lettore per liberare spazio sul tablet: «su E ho
+// tutto salvato»). Il tablet il disco non lo vede: lo sa solo da questa
+// voce, che viaggia con quelle dei dispositivi (`disco: true`, chiavi
+// nell'ordine di jsonb come le altre).
+export function aggiornaDisco(lista, ids, { dispositivo, ora = Date.now() } = {}) {
+  if (!dispositivo || !ids) return lista || [];
+  const id = `${PREFISSO_QUI}${dispositivo}|disco`;
+  const libri = [...new Set(ids)].map(String).sort();
+  const prima = (lista || []).find((v) => v.id === id);
+  if (prima && JSON.stringify(prima.libri) === JSON.stringify(libri)) return lista;
+  return fondiDispositivi((lista || []).filter((v) => v.id !== id), [{ id, disco: true, libri, updatedAt: ora }]);
+}
+
+// gli id che un disco ha, e quando e' stato guardato l'ultima volta
+export function sulDiscoDa(lista) {
+  const ids = new Set();
+  let quando = 0;
+  for (const v of lista || []) {
+    if (!v?.disco || v.deleted || !Array.isArray(v.libri)) continue;
+    for (const id of v.libri) ids.add(id);
+    quando = Math.max(quando, Number(v.updatedAt) || 0);
+  }
+  return { ids, quando };
 }
 
 // Aprire qui un libro che sta solo sull'altro dispositivo: niente byte qui.

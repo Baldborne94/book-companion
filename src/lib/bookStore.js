@@ -127,9 +127,11 @@ async function pesaStore(nome) {
   });
 }
 
-// QUANTO PESA OGNI COPERTINA QUI, per id: la misura dice se quella qui e'
-// la stessa che sta nel secchio. Stesso cursore di `pesaStore`, e per la
-// stessa ragione — `size` si legge senza tirare su un byte.
+// QUANTO PESA OGNI LIBRO E OGNI COPERTINA QUI, per id: i libri per dire
+// quanto spazio libera «Libera spazio», le copertine per sapere se quella
+// qui e' la stessa che sta nel secchio. Stesso cursore di `pesaStore`, e
+// per la stessa ragione — `size` si legge senza tirare su un byte.
+export const misureFile = () => misureDi("files");
 export const misureCopertine = () => misureDi("covers");
 
 async function misureDi(nome) {
