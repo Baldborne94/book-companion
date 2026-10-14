@@ -18,6 +18,8 @@ export const CHIAVI_DRIVE = [
   "bc_drive_archivio",
   "bc_google_rinnovo",
   "bc_google_vista",
+  // la scelta di rete per i libri che scendevano dal cloud da soli
+  "bc_anticipo",
 ];
 export const AUX_DRIVE = ["drive_elenco"];
 // la riga del Supabase si toglie una volta per account e dispositivo

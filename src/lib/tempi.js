@@ -106,9 +106,6 @@ export function misuraApertura(cosa, id, { segna = segnaTempo, raf } = {}) {
   };
 }
 
-// da dove arrivano i byte di un reader (`fileDaLeggere`)
-export const provenienza = (blob) => (blob?.daLontano ? "pezzi" : blob?.lontano ? "cloud" : "tablet");
-
 // le tappe sono istanti in fila; nella voce restano le durate fra l'una e
 // l'altra (la prima dalla partenza)
 export function vocePerTempo({ cosa, t0, tappe, ora = Date.now(), ...extra }) {
@@ -180,6 +177,7 @@ const TAPPE = {
   impagina: "impaginazione",
   primo: "primo disegno",
 };
+// tablet, cloud e pezzi: le voci scritte quando i libri si aprivano anche da lassu'
 const DA = { tablet: "dal tablet", cloud: "dal cloud", pezzi: "a pezzi", scaffale: "a scaffale", raccolte: "a raccolte" };
 const via = (v) => v.da || v.vista;
 

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
-import { fileDaLeggere, convertiLibroInCbz } from "../lib/sync.js";
+import { convertiLibroInCbz } from "../lib/sync.js";
+import { getFile } from "../lib/bookStore.js";
 import { getCfi, setCfi, getMarks, saveMarks } from "../lib/annotations.js";
 import { setProgress, setStatus } from "../lib/library.js";
 import { vocePerVoltata, segnaVoltata } from "../lib/voltate.js";
@@ -34,7 +35,7 @@ import {
   altezzeNastro,
   cimeNastro,
   paginaAlPunto,
-  pagineAvanti,
+  AVANTI_QUI,
   daPreparare,
   daLasciare,
   PERCHE_CBR_GRANDE,
@@ -196,8 +197,6 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const dueRighe = useDueRighe();
   // quanto e' alta la barra in cima: il pannello della luce le sta sotto
   const [altezzaBarra, setAltezzaBarra] = useState(0);
-  // un fumetto letto a pagine da un file lontano (`daLontano`)
-  const lontano = useRef(false);
 
   const intera = adatta === "intera";
   const nastro = adatta === "nastro";
@@ -386,7 +385,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
 
   // le pagine lontane si lasciano andare solo oltre il tetto di byte
   // (`daLasciare`): da Drive riprenderle e' un viaggio in rete. La finestra
-  // tiene sempre le pagine preparate avanti (`pagineAvanti`): sfoltite
+  // tiene sempre le pagine preparate avanti (`AVANTI_QUI`): sfoltite
   // appena preparate, il lavoro sarebbe buttato
   const sfoltisci = useCallback((attorno) => {
     const avanti = Math.max(VICINE, (live.current.avanti || 0) + 2);
@@ -426,7 +425,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     segnaMisura(n, { w: im.naturalWidth, h: im.naturalHeight });
   }, [urlDi, segnaMisura]);
 
-  // LE PAGINE AVANTI (vedi `pagineAvanti`): dopo quella a schermo, in
+  // LE PAGINE AVANTI (vedi `AVANTI_QUI`): dopo quella a schermo, in
   // ordine, e il giro si ferma quando si volta — la voltata ne fa partire
   // uno nuovo da dove sei, e quel che e' gia' pronto resta pronto. IN VOLO
   // NE STANNO `IN_VOLO` alla volta, non una: misurato col Drive finto, una
@@ -445,10 +444,9 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     let dead = false;
     (async () => {
       try {
-        const blob = await fileDaLeggere(book);
+        const blob = await getFile(book.id);
         if (!blob) throw new Error("file mancante");
-        lontano.current = !!blob.daLontano;
-        live.current.avanti = pagineAvanti({ lontano: lontano.current, connessione: navigator.connection });
+        live.current.avanti = AVANTI_QUI;
         const a = await apriFumetto(blob);
         if (dead) return;
         if (!a.pagine.length) throw new Error("nessuna pagina");
@@ -968,13 +966,10 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     const ims = [...(imgRef.current?.querySelectorAll("img:not([data-dopo]):not([data-via])") || [])];
     const tetto = new Promise((r) => setTimeout(r, 5000));
     Promise.race([Promise.all(ims.map((im) => im.decode().catch(() => {}))), tetto]).then(() => {
-      const c = globalThis.navigator?.connection;
       segnaVoltata(
         vocePerVoltata({
           ...m,
           tVista: performance.now(),
-          da: lontano.current ? "drive" : "tablet",
-          rete: c ? [c.type, c.effectiveType, c.downlink ? `${c.downlink} Mbit/s` : ""].filter(Boolean).join(" ") : "",
         })
       );
     });

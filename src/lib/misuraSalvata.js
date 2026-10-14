@@ -24,7 +24,3 @@ export function misuraBuona(salvata, byte) {
   if (typeof salvata !== "object" || salvata.locations == null) return null;
   return Number(salvata.di) === Number(byte) ? salvata.locations : null;
 }
-
-// chi ricuce in memoria butta solo cio' che non sa di chi e': una misura
-// con la grandezza si scarta da se' al confronto
-export const daButtareRicucendo = (salvata) => typeof salvata === "string";

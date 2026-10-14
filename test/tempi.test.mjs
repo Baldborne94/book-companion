@@ -1,7 +1,7 @@
 // I TEMPI DELL'APP (`lib/tempi.js`): avvio, Libreria, apertura di ePub e
 // PDF, misurati sul tablet del lettore e riassunti nel rapporto. Solo
 // numeri, e ogni misura con le sue tappe.
-import { parti, partenza, vocePerTempo, segnaTempo, tempiAnnotati, svuotaTempi, righeTempi, misuraApertura, provenienza, codiceArrivato, segnaAvvio, TENUTI, tappeAvvio, datiNavigazione } from "../src/lib/tempi.js";
+import { parti, partenza, vocePerTempo, segnaTempo, tempiAnnotati, svuotaTempi, righeTempi, misuraApertura, codiceArrivato, segnaAvvio, TENUTI, tappeAvvio, datiNavigazione } from "../src/lib/tempi.js";
 import { rapporto } from "../src/lib/registro.js";
 
 const memoria = () => {
@@ -44,10 +44,6 @@ export default async function (t) {
   t.eq("con la pagina in coda", Object.keys(segnate[0].f).join(","), "byte,pagina");
   t.eq("e i dati delle tappe", segnate[0].da, "pezzi");
   t.c("dopo la fine non si aggiungono tappe", !("tardi" in segnate[0].f));
-
-  t.eq("byte qui", provenienza(new Blob(["a"])), "tablet");
-  t.eq("scesi dal cloud", provenienza(Object.assign(new Blob(["a"]), { lontano: true })), "cloud");
-  t.eq("letti a pezzi", provenienza({ daLontano: true, size: 1 }), "pezzi");
 
   // ---- l'avvio: una volta per vita della pagina ---------------------------
   const avvii = [];

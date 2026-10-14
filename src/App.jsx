@@ -22,11 +22,10 @@ import Foliage from "./components/Foliage.jsx";
 import Scrolls from "./components/Scrolls.jsx";
 import { CandleIcon, BooksIcon, MusicIcon, LeafIcon, ScrollIcon, CloudIcon } from "./components/Icons.jsx";
 import { SezioneOracolo } from "./components/TettoOracolo.jsx";
-import SezioneAnticipo from "./components/SezioneAnticipo.jsx";
 import SezioneDizionario from "./components/SezioneDizionario.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
-import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, timbraScheda, getProgress, getUpdatedAt } from "./lib/library.js";
+import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, timbraScheda, getProgress } from "./lib/library.js";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux } from "./lib/bookStore.js";
 import { cercaNuovaVersione, cercaInSilenzio } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
@@ -42,9 +41,8 @@ import { isSyncConfigured } from "./lib/supabase.js";
 import { fraseGiro, ricordaGiro, avvisoArrivi } from "./lib/resoconto.js";
 import { annotaErrore } from "./lib/registro.js";
 import SezioneGuasti from "./components/SezioneGuasti.jsx";
-import { leggiDispositivi, altroveDa, soloAltrove } from "./lib/dispositivi.js";
-import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, anticipaFile, convertiLibroInCbz } from "./lib/sync.js";
-import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
+import { leggiDispositivi, altroveDa, percheNonSiApre } from "./lib/dispositivi.js";
+import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, convertiLibroInCbz } from "./lib/sync.js";
 import { riordinaDisco, fraseRiordino, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
 import { importaDaFuori, resoconto } from "./lib/importBook.js";
 import { togliAvanziDrive } from "./lib/avanziDrive.js";
@@ -736,21 +734,6 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
               marginBottom: 8,
             }}
           >
-            Senza rete
-          </h3>
-          <SezioneAnticipo />
-        </div>
-
-        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-          <h3
-            style={{
-              fontFamily: FONT_TITLE,
-              fontSize: F.titoletto,
-              fontWeight: 600,
-              color: C.text,
-              marginBottom: 8,
-            }}
-          >
             Se qualcosa non va
           </h3>
           <SezioneGuasti />
@@ -1030,7 +1013,6 @@ export default function App() {
       });
       if (res.books) setBooks(res.books);
       setLocalIds(await localFileIds());
-      tieniInLettura.current(res.books || null);
       // DETTO LIBRO PER LIBRO (`raccontaGiro`): «Aggiornati 12 elementi»
       // non diceva se la saga scritta sul PC fosse arrivata
       const racconto = res.racconto || [];
@@ -1421,11 +1403,10 @@ export default function App() {
       setOpenId(id);
       return;
     }
-    // sta sull'altro dispositivo e da qui non si raggiunge: il reader
-    // finirebbe sul guasto, e il guasto non c'e'
-    const la = soloAltrove(id, { qui: localIds, altrove: altroveDa(leggiDispositivi(), dispositivo()) });
-    if (la) {
-      notify(`Questo libro sta ${la} 📱: lì si legge. Qui si apre se aggiungi il file.`);
+    // senza byte qui il reader finirebbe sul guasto, e il guasto non c'e'
+    const perche = percheNonSiApre(id, { qui: localIds, altrove: altroveDa(leggiDispositivi(), dispositivo()) });
+    if (perche) {
+      notify(perche);
       setOpenId(id);
       return;
     }
@@ -1524,73 +1505,6 @@ export default function App() {
   const readingBook = books.find((b) => b.id === readingId);
   const nextBook = readingBook ? nextInSaga(readingBook, books) : null;
   flags.current.reading = !!readingBook;
-
-  // IL SEGUITO SCENDE MENTRE LEGGI (`lib/anticipo.js`): a ogni voltata si
-  // guarda se e' il momento di portare giu' il volume dopo. Un ref e non
-  // un effetto, perche' il segnale e' la voltata (`onAlive`), non un
-  // cambio di stato; e i tentativi stanno in una mappa della sessione, cosi'
-  // un volume sceso non si richiede e uno andato storto si riprova piu' tardi.
-  const tentativi = useRef(new Map());
-  const anticipa = useRef(() => {});
-  anticipa.current = () => {
-    if (!readingBook || !nextBook) return;
-    if (!daRiprovare(tentativi.current.get(nextBook.id))) return;
-    if (!reteBuona(leggiAnticipo(), globalThis.navigator?.connection)) return;
-    const libro = daAnticipare(readingBook, {
-      prossimo: nextBook,
-      progresso: getProgress(readingBook.id),
-      qui: (id) => !!localIds?.has(id),
-      lassu: () => isSyncConfigured(),
-    });
-    if (!libro) return;
-    tentativi.current.set(libro.id, { ora: Date.now() });
-    anticipaFile(libro).then((esito) => {
-      tentativi.current.set(libro.id, { ora: Date.now(), esito });
-      if (esito !== "sceso") return;
-      notify(`📥 «${libro.title}» è sceso: lo leggi anche senza rete`);
-      localFileIds().then(setLocalIds);
-    });
-  };
-
-  // I LIBRI IN LETTURA RESTANO SUL TABLET (`daTenereInLettura`): a ogni giro
-  // della sincronizzazione, con la stessa scelta di rete del seguito. Uno
-  // per volta, con la stessa mappa dei tentativi: un libro andato storto si
-  // riprova piu' tardi, uno sceso non si richiede. Si legge la biblioteca di
-  // ADESSO, non lo stato di React, che dentro il giro e' quello di prima.
-  const tieniInLettura = useRef(async () => {});
-  tieniInLettura.current = async (libri = null) => {
-    if (tieniInLettura.inCorso) return;
-    if (!reteBuona(leggiAnticipo(), globalThis.navigator?.connection)) return;
-    const qui = await localFileIds().catch(() => null);
-    if (!qui) return;
-    const scelti = daTenereInLettura(libri || loadBooks(), {
-      statusOf: getStatus,
-      tocco: (id) => getUpdatedAt(id, 0),
-      qui: (id) => qui.has(id),
-      lassu: () => isSyncConfigured(),
-    }).filter((b) => daRiprovare(tentativi.current.get(b.id)));
-    if (!scelti.length) return;
-    tieniInLettura.inCorso = true;
-    const scesi = [];
-    try {
-      for (const libro of scelti) {
-        tentativi.current.set(libro.id, { ora: Date.now() });
-        const esito = await anticipaFile(libro);
-        tentativi.current.set(libro.id, { ora: Date.now(), esito });
-        if (esito === "sceso") scesi.push(libro);
-      }
-    } finally {
-      tieniInLettura.inCorso = false;
-    }
-    if (!scesi.length) return;
-    setLocalIds(await localFileIds());
-    setSpazioCambiato((n) => n + 1);
-    notify(
-      scesi.length === 1
-        ? `📥 «${scesi[0].title}», che stai leggendo, è sul tablet: lo apri anche senza rete`
-        : `📥 ${scesi.length} libri che stai leggendo sono sul tablet: li apri anche senza rete`
-    );
-  };
 
   useEffect(() => {
     if (readingId && music.current) {
@@ -1904,7 +1818,7 @@ export default function App() {
               onMusicNext={() => playerRef.current?.next()}
               onMusicRoom={() => navigate("music")}
               onMusicSottovoce={(si) => playerRef.current?.sottovoce(si)}
-              onAlive={() => { svegliaRef.current(); segnaVita(); anticipa.current(); }}
+              onAlive={() => { svegliaRef.current(); segnaVita(); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);
@@ -1928,7 +1842,7 @@ export default function App() {
               onMusicNext={() => playerRef.current?.next()}
               onMusicRoom={() => navigate("music")}
               onMusicSottovoce={(si) => playerRef.current?.sottovoce(si)}
-              onAlive={() => { svegliaRef.current(); segnaVita(); anticipa.current(); }}
+              onAlive={() => { svegliaRef.current(); segnaVita(); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);
@@ -1952,7 +1866,7 @@ export default function App() {
               onMusicVolume={(v) => playerRef.current?.setVolume(v)}
               onMusicNext={() => playerRef.current?.next()}
               onMusicRoom={() => navigate("music")}
-              onAlive={() => { svegliaRef.current(); segnaVita(); anticipa.current(); }}
+              onAlive={() => { svegliaRef.current(); segnaVita(); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);
