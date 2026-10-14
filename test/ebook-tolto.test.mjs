@@ -15,7 +15,6 @@
 //
 // È la lezione della saga tolta a mano, sullo stesso campo vuoto che non si
 // vede.
-import { daCaricare } from "../src/lib/driveCore.js";
 import { banco } from "./aiuto.mjs";
 import {
   rowFromLocal,
@@ -64,20 +63,6 @@ export default async (t) => {
     t.c("…che toglie solo lei", !("file_tolto" in dopo[0]));
     t.eq("…e lascia in piedi la saga tolta", dopo[0].saga_tolta, false);
     t.eq("…e la saga", dopo[0].saga, "Malazan");
-  }
-
-  // ── NON RISALE NEL SECCHIO ────────────────────────────────────────────
-  //
-  // Il caso che conta e' l'ALTRO dispositivo, dove i byte ci sono ancora:
-  // lassu' la copia non c'e' piu', quindi senza questa regola quel libro ha
-  // la forma esatta di un file scoperto e ripartirebbe verso il secchio —
-  // e il lettore si ritroverebbe la nuvoletta addosso al libro che aveva
-  // appena svuotato.
-  {
-    const libri = [libro("tolto", { fileTolto: true }), libro("normale")];
-    const su = daCaricare(libri, { qui: new Set(["tolto", "normale"]), lassu: new Set() });
-    t.eq("sale solo quello che l'ebook ce l'ha", su.length, 1);
-    t.eq("e non e' quello svuotato", su[0].id, "normale");
   }
 
   // ── NON È UN TOMO PERDUTO ─────────────────────────────────────────────

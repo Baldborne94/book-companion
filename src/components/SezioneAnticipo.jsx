@@ -16,8 +16,7 @@ export default function SezioneAnticipo() {
       <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 10, lineHeight: 1.45 }}>
         I libri che stai leggendo (gli ultimi {IN_LETTURA_MAX} toccati) restano sul tablet, e quando sei a{" "}
         {Math.round(ANTICIPO_DA * 100)}% di un volume scende anche il prossimo della saga: così li apri senza
-        rete. Scendono da Google Drive o dal cloud; un ebook che hai tolto non scende, e quelli finiti li
-        toglie «Libera spazio».
+        rete. Scendono dal cloud, se il libro ce l'ha; un ebook che hai tolto non scende.
       </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {SCELTE_ANTICIPO.map((s) => {

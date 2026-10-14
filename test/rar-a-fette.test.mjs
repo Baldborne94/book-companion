@@ -8,8 +8,7 @@
 import { createRequire } from "module";
 import { rar4, rar5 } from "./rar-finto.mjs";
 import { vociRar, apriRar } from "../src/lib/rarAFette.js";
-import { fileRemoto } from "../src/lib/drive.js";
-import { apriArchivio, cbrApribile, CBR_MAX, PERCHE_CBR_GRANDE, primaPaginaRar, cbrLontanoApribile } from "../src/lib/fumetto.js";
+import { apriArchivio, cbrApribile, CBR_MAX, PERCHE_CBR_GRANDE, primaPaginaRar } from "../src/lib/fumetto.js";
 
 const require = createRequire(import.meta.url);
 const unrar = require("node-unrar-js");
@@ -156,18 +155,6 @@ export default async (t) => {
     const p = await primaPaginaRar(lontano.blob);
     t.eq(`${famiglia}: la prima pagina, saltata la scheda`, p?.nome, "p01.png");
     t.c(`${famiglia}: …coi suoi byte giusti`, Buffer.from(p?.bytes || []).equals(png(1, 90000)));
-    // col lettore vero di Drive (`fileRemoto`, pezzi da 256 KB tenuti in
-    // memoria) i viaggi in rete sono quelli che contano
-    const byte = costruisci(molte);
-    let viaggi = 0;
-    const remoto = fileRemoto("f", byte.length, {
-      prendi: async (da, a) => {
-        viaggi += 1;
-        return { da, buf: new Uint8Array(byte.subarray(da, a)) };
-      },
-    });
-    t.eq(`${famiglia}: da Drive la prima pagina e' la stessa`, (await primaPaginaRar(remoto))?.nome, "p01.png");
-    t.c(`${famiglia}: …con uno o due viaggi in rete, non uno per pagina`, viaggi <= 2, `viaggi: ${viaggi}`);
     const tutto = contato(costruisci(molte));
     await apriRar(tutto.blob, { eImmagine: soloPagine });
     t.c(`${famiglia}: (camminare tutto l'archivio ne costa una per pagina)`, tutto.conta.n > 40, `richieste: ${tutto.conta.n}`);
@@ -175,12 +162,4 @@ export default async (t) => {
   const compresso = await primaPaginaRar(blob(rar4([["p1.png", png(1), { metodo: 0x33 }], ["p2.png", png(2)]])));
   t.eq("una prima pagina compressa si dice, senza byte", `${compresso?.compressa}:${!!compresso?.bytes}`, "true:false");
   t.eq("uno zip non ha una prima pagina RAR", await primaPaginaRar(blob(Buffer.from("PK\x03\x04xxxxxxxx", "binary"))), null);
-
-  // ---- APRIBILE, PRIMA DI SCARICARLO ----------------------------------------------
-  t.c("lontano, grande e memorizzato: si apre", await cbrLontanoApribile(contato(rar4(VOCI), CBR_MAX + 1).blob));
-  t.c("lontano, grande e compresso: no, e lo si sa subito", !(await cbrLontanoApribile(contato(rar5([["p1.png", png(1), { metodo: 3 }]]), CBR_MAX + 1).blob)));
-  const piccolo = contato(rar4([["p1.png", png(1), { metodo: 0x33 }]]));
-  t.c("piccolo e compresso: si apre, ci pensa la libreria", await cbrLontanoApribile(piccolo.blob));
-  t.eq("…e non si chiede niente a Drive", piccolo.conta.n, 0);
-  t.c("se non si sa, si prova", await cbrLontanoApribile(contato(Buffer.from("PK\x03\x04xxxxxxxx", "binary"), CBR_MAX + 1).blob));
 };

@@ -2,7 +2,7 @@
 
 La tua biblioteca personale, di notte: ePub, PDF e fumetti (CBZ/CBR, manga compresi) in un reader curato, con la musica di sottofondo, le tue saghe in ordine e un Oracolo che ti ricorda la storia fin dove sei arrivato — senza spoiler.
 
-L'app è **local-first**: i libri stanno sul tuo dispositivo (o sul tuo Google Drive), e tutto funziona anche senza account. La sincronizzazione fra dispositivi è facoltativa.
+L'app è **local-first**: i libri stanno sul tuo dispositivo (e, sul computer, su un disco tuo), e tutto funziona anche senza account. La sincronizzazione fra dispositivi è facoltativa.
 
 **Apri l'app:** <https://book-companion-ruddy.vercel.app>
 
@@ -46,17 +46,9 @@ Serve per avere gli stessi libri, punti di lettura, evidenziazioni e preferenze 
 4. **Project Settings → API**: copia «Project URL» e la chiave «anon public» nelle variabili `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (su Vercel: Settings → Environment Variables, poi Redeploy). I dettagli sono in [`.env.example`](.env.example).
 5. Nell'app: **Impostazioni → Sincronizzazione**, registrati e entra.
 
-### I file su Google Drive
+### I libri sul disco del computer
 
-I file dei libri e delle melodie possono stare sul tuo Google Drive: l'app li legge da lì senza riempire il tablet, e li porta giù solo quando lo chiedi.
-
-1. Su <https://console.cloud.google.com> crea un progetto e abilita **Google Drive API** e **Google Picker API**.
-2. **API e servizi → Credenziali → Crea credenziali → ID client OAuth**, tipo «Applicazione web». In «Origini JavaScript autorizzate» aggiungi l'indirizzo dell'app (`https://book-companion-ruddy.vercel.app`).
-3. Sempre in Credenziali, crea una **Chiave API** (serve alla finestra «Scegli su Drive»).
-4. Nell'app: **pannello della nuvola → Google Drive**, incolla l'ID client e la chiave API (oppure mettili in `VITE_GOOGLE_CLIENT_ID` e `VITE_GOOGLE_API_KEY`) e tocca **Collega Google Drive**.
-5. Tieni i libri in una cartella **`book-companion`** sul Drive (con dentro `Libri`, `Fumetti`, `Manga`, `Musica` come preferisci): **Libreria → Scegli su Drive** apre lì.
-
-L'accesso di Google dura un'ora: quando scade, l'app chiede un tocco per rinnovarlo.
+Sul computer, con Chrome o Edge, **Libreria → Manutenzione → 🔍 Controlla il disco** guarda la cartella **`book-companion`** di un disco tuo (dentro `Libri`, `Fumetti`, `Manga`, una cartella per saga): dice cosa c'è, cosa manca e cosa è fuori posto, riordina, e aggiunge alla biblioteca le schede dei file che non ci sono ancora. I file restano sul disco.
 
 ### L'Oracolo
 

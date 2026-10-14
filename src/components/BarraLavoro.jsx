@@ -1,12 +1,12 @@
 // LA RIGA DEL LAVORO LUNGO, sopra la barra delle sezioni (vedi il giro dei
-// CBR e l'importazione da Drive in `App.jsx`): da ogni sezione si vede a
+// CBR, l'importazione e i lavori sul disco in `App.jsx`): da ogni sezione si vede a
 // che punto e', e si ferma. Ad app riaperta con un giro dei CBR lasciato a
 // meta', la stessa riga offre di riprenderlo.
 import { C, F, R, px } from "../data/constants.js";
 import { fraseLavoro, fraseImport } from "../lib/convertiCbr.js";
 import { fmtGoogle } from "../lib/bytes.js";
 
-export default function BarraLavoro({ hdd = null, onFermaHdd, importo = null, onFermaImport, scarico = null, onFermaScarico, lavoro, restanti = 0, onFerma, onRiprendi, onLascia }) {
+export default function BarraLavoro({ hdd = null, onFermaHdd, importo = null, onFermaImport, lavoro, restanti = 0, onFerma, onRiprendi, onLascia }) {
   const tasto = {
     minHeight: 44,
     padding: "6px 14px",
@@ -35,7 +35,7 @@ export default function BarraLavoro({ hdd = null, onFermaHdd, importo = null, on
       {importo && (
         <div role="status" style={riga}>
           <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
-            <span style={{ color: C.text }}>{importo.da || "📥 Da Google Drive"}: {fraseImport(importo)}</span>
+            <span style={{ color: C.text }}>{importo.da || "📥 Importo"}: {fraseImport(importo)}</span>
             {importo.nome ? ` · «${importo.nome}»` : ""}
           </span>
           <button onClick={onFermaImport} style={tasto}>
@@ -47,25 +47,12 @@ export default function BarraLavoro({ hdd = null, onFermaHdd, importo = null, on
         <div role="status" style={riga}>
           <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
             <span style={{ color: C.text }}>
-              {hdd.cosa || "📦 Sposto sull'HDD"}: {hdd.nome ? `${hdd.i + 1} di ${hdd.totale}` : "guardo su Google Drive…"}
+              {hdd.cosa || "🗂 Sul disco"}: {hdd.i + 1} di {hdd.totale}
             </span>
             {hdd.nome ? ` · «${hdd.nome}»` : ""}
             {hdd.byte > 0 ? ` · ${fmtGoogle(hdd.presi)} di ${fmtGoogle(hdd.byte)}` : ""}
           </span>
           <button onClick={onFermaHdd} style={tasto}>
-            Ferma
-          </button>
-        </div>
-      )}
-      {scarico && (
-        <div role="status" style={riga}>
-          <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
-            <span style={{ color: C.text }}>
-              🎵 Scarico la raccolta: {scarico.i + 1} di {scarico.totale}
-            </span>
-            {scarico.nome ? ` · «${scarico.nome}»` : ""}
-          </span>
-          <button onClick={onFermaScarico} style={tasto}>
             Ferma
           </button>
         </div>

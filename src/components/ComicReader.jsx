@@ -2,9 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
 import { fileDaLeggere, convertiLibroInCbz } from "../lib/sync.js";
-import { driveProntoOra, mappaDrive } from "../lib/drive.js";
-import { fraseDiscesa, fraseCarico } from "../lib/driveCore.js";
-import RicollegaDrive from "./RicollegaDrive.jsx";
 import { getCfi, setCfi, getMarks, saveMarks } from "../lib/annotations.js";
 import { setProgress, setStatus } from "../lib/library.js";
 import { vocePerVoltata, segnaVoltata } from "../lib/voltate.js";
@@ -157,7 +154,6 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
 
   const [settings, setSettings] = useState(() => loadReaderSettings(Math.min(window.innerWidth, window.innerHeight)));
   const [status, setStatusUi] = useState("loading");
-  const [discesa, setDiscesa] = useState("");
   const [perche, setPerche] = useState("");
   const [apertura, setApertura] = useState(0);
   const [chrome, setChrome] = useState(() => !isTouch());
@@ -200,12 +196,8 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const dueRighe = useDueRighe();
   // quanto e' alta la barra in cima: il pannello della luce le sta sotto
   const [altezzaBarra, setAltezzaBarra] = useState(0);
-  // un fumetto grosso che sta su Drive si legge da li' a pagine (vedi
-  // `fileDaLeggere`): una pagina che non arriva a chiave scaduta chiede un
-  // tocco, e `riprova` la richiede quando la chiave e' tornata
+  // un fumetto letto a pagine da un file lontano (`daLontano`)
   const lontano = useRef(false);
-  const [senzaChiave, setSenzaChiave] = useState(false);
-  const [riprova, setRiprova] = useState(0);
 
   const intera = adatta === "intera";
   const nastro = adatta === "nastro";
@@ -453,7 +445,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     let dead = false;
     (async () => {
       try {
-        const blob = await fileDaLeggere(book, { onProgress: (p) => !dead && setDiscesa(fraseDiscesa(p)) });
+        const blob = await fileDaLeggere(book);
         if (!blob) throw new Error("file mancante");
         lontano.current = !!blob.daLontano;
         live.current.avanti = pagineAvanti({ lontano: lontano.current, connessione: navigator.connection });
@@ -556,8 +548,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         if (gettone.current !== mio) return;
         const rotte = mostrate.filter((_, i) => esiti[i].status !== "fulfilled" || !esiti[i].value);
         if (rotte.length) {
-          if (lontano.current && !driveProntoOra()) setSenzaChiave(true);
-          else notify?.(rotte.length === mostrate.length ? "Questa pagina non si lascia aprire" : `La pagina ${rotte.join(" e ")} non si lascia aprire`);
+          notify?.(rotte.length === mostrate.length ? "Questa pagina non si lascia aprire" : `La pagina ${rotte.join(" e ")} non si lascia aprire`);
         }
         const buone = mostrate.map((n, i) => ({ n, url: esiti[i].status === "fulfilled" ? esiti[i].value : null })).filter((x) => x.url);
         if (!buone.length) return;
@@ -599,7 +590,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     // sveglio e il tempo di lettura si conta da qui
     if (primoGiro.current) primoGiro.current = false;
     else onAlive?.();
-  }, [status, chiaveMostrate, nastro, pages, book.id, urlDi, sfoltisci, flush, riprova]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, chiaveMostrate, nastro, pages, book.id, urlDi, sfoltisci, flush]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- IL NASTRO (vedi `altezzeNastro` in lib/fumetto.js) ----------------
   // La pagina segue lo scorrimento: quella sotto il primo terzo dello
@@ -648,9 +639,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         .then((url) => {
           if (url) setVista((v) => (v[n] === url ? v : { ...v, [n]: url }));
         })
-        .catch(() => {
-          if (lontano.current && !driveProntoOra()) setSenzaChiave(true);
-        });
+        .catch(() => {});
     }
     sfoltisci(page);
     // e oltre la finestra montata, le pagine avanti si preparano in fila
@@ -668,7 +657,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     }
     if (primoGiro.current) primoGiro.current = false;
     else onAlive?.();
-  }, [status, nastro, page, pages, !!cime, riprova]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, nastro, page, pages, !!cime]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // L'ANCORA DEL NASTRO: quando una pagina SOPRA quella che leggi riceve la
   // sua misura vera (era una stima), tutto il nastro sotto si sposta, e la
@@ -1209,19 +1198,9 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         >
           <span style={{ fontSize: 40, animation: "bc-flicker 3s ease-in-out infinite" }}>🕯️</span>
           <span style={{ fontFamily: FONT_TITLE, fontSize: F.rilievo }}>Apro il tomo…</span>
-          {discesa && <span style={{ fontSize: F.piccolo, fontVariantNumeric: "tabular-nums" }}>{discesa}</span>}
         </div>
       )}
 
-      {senzaChiave && (
-        <RicollegaDrive
-          alto={chrome ? altezzaBarra : 0}
-          onFatto={() => {
-            setSenzaChiave(false);
-            setRiprova((n) => n + 1);
-          }}
-        />
-      )}
       {status === "error" && (
         <div
           style={{
@@ -1252,13 +1231,8 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
                 disabled={!!convertendo}
                 style={{ minHeight: 44, padding: "10px 22px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontVariantNumeric: "tabular-nums" }}
               >
-                {convertendo ? (convertendo.carico ? fraseCarico(convertendo) : fraseConversione(convertendo)) : "Converti in CBZ"}
+                {convertendo ? fraseConversione(convertendo) : "Converti in CBZ"}
               </button>
-              {mappaDrive()[book.id] && (
-                <span style={{ fontSize: F.piccolo, color: C.muted, maxWidth: px(520) }}>
-                  Su Google Drive il CBZ prende il posto del CBR, che va nel cestino di Drive: da lì lo riprendi per un mese.
-                </span>
-              )}
             </>
           )}
           <button onClick={handleClose} style={{ padding: "10px 22px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.muted }}>

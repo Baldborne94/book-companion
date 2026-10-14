@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
-import RicollegaDrive from "./RicollegaDrive.jsx";
-import { driveProntoOra } from "../lib/drive.js";
 import { fileDaLeggere } from "../lib/sync.js";
 import { getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights } from "../lib/annotations.js";
 import { getProgress, setProgress, setStatus, getStatus, loadBooks } from "../lib/library.js";
@@ -138,8 +136,6 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   // quanto e' alta la barra in cima: chi si appoggia sotto di lei non puo'
   // piu' supporre un numero, con due righe dipende da cosa c'e' dentro
   const [altezzaBarra, setAltezzaBarra] = useState(0);
-  const [senzaChiave, setSenzaChiave] = useState(false);
-  const riprovaLontano = useRef(null);
   const [endCard, setEndCard] = useState(null);
   const [marks, setMarks] = useState(() => getMarks(book.id));
   const [hls, setHls] = useState(() => getHighlights(book.id));
@@ -311,18 +307,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
         misura.tappa("byte", { da: provenienza(blob), kb: Math.round((blob.size || 0) / 1024) });
         const mod = await import("../lib/pdfThumb.js");
         modRef.current = mod;
-        // un PDF grosso che sta su Drive si legge da li' a pezzi (vedi
-        // `fileDaLeggere`): pdf.js chiede solo quel che gli serve per la
-        // pagina che disegna. Un pezzo che non arriva a chiave scaduta resta
-        // da parte, e si richiede quando la chiave e' tornata
-        let pdf;
-        if (blob.daLontano) {
-          const t = mod.loadPdfDa(blob, { onGuasto: () => !driveProntoOra() && setSenzaChiave(true) });
-          riprovaLontano.current = t.riprova;
-          pdf = await t.promise;
-        } else {
-          pdf = await mod.loadPdf(await blob.arrayBuffer());
-        }
+        const pdf = await mod.loadPdf(await blob.arrayBuffer());
         if (dead) {
           mod.chiudiPdf(pdf);
           return;
@@ -881,15 +866,6 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
         </div>
       )}
 
-      {senzaChiave && (
-        <RicollegaDrive
-          alto={chrome ? altezzaBarra : 0}
-          onFatto={() => {
-            setSenzaChiave(false);
-            riprovaLontano.current?.();
-          }}
-        />
-      )}
       {status === "error" && (
         <div
           style={{

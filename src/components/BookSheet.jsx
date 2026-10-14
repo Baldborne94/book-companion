@@ -1,8 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Stars from "./Stelle.jsx";
-import { driveAcceso, mappaDrive } from "../lib/drive.js";
-import { fmtGoogle } from "../lib/bytes.js";
-import { fraseScarico } from "../lib/driveCore.js";
 import { fraseDelPasso } from "../lib/convertiCbr.js";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import {
@@ -86,7 +83,7 @@ function Field({ label, value, onChange, placeholder, options, listId }) {
   );
 }
 
-export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDelete, onTogliEbook, onTieniQui, onConvertiCbr, onRead, notify }) {
+export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDelete, onTogliEbook, onConvertiCbr, onRead, notify }) {
   const [title, setTitle] = useState(book.title);
   const [author, setAuthor] = useState(book.author || "");
   const [series, setSeries] = useState(book.series || "");
@@ -394,14 +391,8 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   // i campi editati si salvano PRIMA: il giro dell'ebook riscrive il libro
   // in biblioteca, e un titolo appena corretto e non ancora salvato
   // finirebbe sotto quella riscrittura
-  const suDrive = driveAcceso() && !!mappaDrive()[book.id];
-  // QUANTO PESA IL FILE QUI, se c'e': serve al tasto «Togli dal tablet».
-  // Senza file qui, su un libro che sta su Drive, quel tasto non avrebbe
-  // niente da togliere e direbbe «tolto» lo stesso. E se la copia su Drive
-  // ha un'altra misura — l'originale, mentre qui c'e' la versione ricucita
-  // — riaprendo scende quella, e i segni possono spostarsi: «Libera spazio»
-  // lo dice, e lo stesso deve dirlo il tasto a mano. `undefined` = non
-  // ancora guardato, `0` = qui non c'e'.
+  // SE IL FILE C'E' QUI (un CBR si converte solo coi byte in mano).
+  // `undefined` = non ancora guardato, `0` = qui non c'e'.
   const [pesoQui, setPesoQui] = useState(undefined);
   useEffect(() => {
     let vivo = true;
@@ -412,24 +403,8 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
       vivo = false;
     };
   }, [book.id]);
-  const diversoDaDrive = suDrive && pesoQui > 0 && Number(mappaDrive()[book.id]?.byte) > 0 && Number(mappaDrive()[book.id].byte) !== pesoQui;
-
-  const [tenendo, setTenendo] = useState(false);
-  const [discesa, setDiscesa] = useState(null);
-  async function tieniQui() {
-    if (tenendo || !onTieniQui) return;
-    setTenendo(true);
-    setDiscesa(null);
-    try {
-      const ok = await onTieniQui(book.id, setDiscesa);
-      if (ok) setPesoQui((await getFile(book.id).catch(() => null))?.size || 0);
-    } finally {
-      setTenendo(false);
-    }
-  }
-
-  // UN CBR SI CONVERTE IN CBZ DA QUI (vedi `lib/convertiCbr.js`): da Drive
-  // un CBR scende intero a ogni apertura, un CBZ si legge a pezzi
+  // UN CBR SI CONVERTE IN CBZ DA QUI (vedi `lib/convertiCbr.js`): un CBZ si
+  // legge a pezzi
   const [convertendo, setConvertendo] = useState(null);
   async function convertiQui() {
     if (convertendo || !onConvertiCbr) return;
@@ -966,7 +941,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
           {/* SENZA EBOOK IL TASTO NON C'È, e al suo posto c'è la ragione.
               Lasciarlo sarebbe un tasto che si apre su un guasto; toglierlo
               e basta lascerebbe a chiedersi dove è finito. */}
-          {book.fileTolto && !suDrive ? (
+          {book.fileTolto ? (
             <span
               style={{
                 flex: 1,
@@ -979,9 +954,8 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                 lineHeight: 1.45,
               }}
             >
-              📗 Di questo libro tieni la scheda, non l'ebook: non è sul tablet né su Google Drive.
-              Per rileggerlo reimportane il file dalla Libreria, o mettilo su Drive nella cartella dei
-              libri — l'app lo riconosce al prossimo giro e la scheda torna a leggersi.
+              📗 Di questo libro tieni la scheda, non l'ebook: non è su questo dispositivo.
+              Per rileggerlo reimportane il file dalla Libreria: torna in questa scheda.
             </span>
           ) : (
             <button
@@ -1021,36 +995,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
           {/* TOGLIERE L'EBOOK NON È ELIMINARE IL LIBRO, e le due cose stanno
               vicine perché è lì che uno le cerca — ma dicono per intero cosa
               se ne va e cosa resta, che è l'unica differenza che conta. */}
-          {/* E SE IL LIBRO STA SU GOOGLE DRIVE, il file se ne va solo dal
-              tablet: su Drive resta, e si riscarica quando lo riapri. */}
-          {/* LA SITUAZIONE PULITA: il libro sta su Drive, si legge da li',
-              e sul tablet arriva SOLO se lo chiedi — qui, con la misura
-              scritta sul tasto perche' e' spazio e connessione tuoi. */}
-          {(!book.fileTolto || suDrive) && suDrive && pesoQui === 0 && (
-            <>
-              <button
-                onClick={tieniQui}
-                disabled={tenendo}
-                style={{
-                  justifySelf: "center",
-                  minHeight: 44,
-                  padding: "8px 16px",
-                  borderRadius: R.piccolo,
-                  border: `1px solid ${C.arcane}66`,
-                  color: C.arcane,
-                  fontSize: F.nota,
-                }}
-              >
-                {tenendo
-                  ? fraseScarico(discesa)
-                  : `⬇ Tieni sul tablet${Number(mappaDrive()[book.id]?.byte) > 0 ? ` · ${fmtGoogle(Number(mappaDrive()[book.id].byte))}` : ""}`}
-              </button>
-              <span style={{ fontSize: F.piccolo, color: C.muted }}>
-                Sta su Google Drive e si legge da lì. Tienilo qui solo se vuoi leggerlo senza rete.
-              </span>
-            </>
-          )}
-          {book.fileType === "cbr" && onConvertiCbr && (suDrive || pesoQui > 0) && (
+          {book.fileType === "cbr" && onConvertiCbr && pesoQui > 0 && (
             <>
               <button
                 onClick={convertiQui}
@@ -1069,26 +1014,18 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                 {convertendo ? fraseDelPasso(convertendo) : "🔁 Converti in CBZ"}
               </button>
               <span style={{ fontSize: F.piccolo, color: C.muted }}>
-                {suDrive
-                  ? "Un CBR da Drive scende intero a ogni apertura; un CBZ si legge a pezzi. Stesse pagine, stesso segno; il CBR va nel cestino di Drive."
-                  : "Un CBZ si apre senza caricare il volume intero. Stesse pagine, stesso segno."}
+                Un CBZ si apre senza caricare il volume intero. Stesse pagine, stesso segno.
               </span>
             </>
           )}
-          {(!book.fileTolto || suDrive) && onTogliEbook && !(suDrive && pesoQui === 0) && (
+          {!book.fileTolto && onTogliEbook && (
             <button
               onClick={() => (confermaEbook ? togliEbook() : setConfermaEbook(true))}
               style={{ fontSize: F.piccolo, color: confermaEbook ? C.accent : C.muted, textDecoration: "underline" }}
             >
-              {suDrive
-                ? confermaEbook
-                  ? diversoDaDrive
-                    ? "Confermi? Su Drive c'è un file diverso da questo (qui è la versione ricucita): riaprendolo, evidenziazioni e segno possono spostarsi — tocca di nuovo"
-                    : "Confermi? Il file lascia il tablet e resta su Google Drive — tocca di nuovo"
-                  : "Togli dal tablet, resta su Google Drive"
-                : confermaEbook
-                  ? "Confermi? L'ebook sparisce da qui e dal cloud, la scheda e la copertina restano — tocca di nuovo"
-                  : "Togli l'ebook, tieni la scheda"}
+              {confermaEbook
+                ? "Confermi? L'ebook sparisce da qui e dal cloud, la scheda e la copertina restano — tocca di nuovo"
+                : "Togli l'ebook, tieni la scheda"}
             </button>
           )}
           <button
@@ -1096,9 +1033,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
             style={{ fontSize: F.piccolo, color: confirmDelete ? C.red : C.muted, textDecoration: "underline" }}
           >
             {confirmDelete
-              ? suDrive
-                ? "Confermi? Il libro esce dall'app; il file su Google Drive resta dov'è — tocca di nuovo"
-                : "Confermi? Il file verrà rimosso per sempre — tocca di nuovo"
+              ? "Confermi? Il file verrà rimosso per sempre — tocca di nuovo"
               : "Elimina questo libro"}
           </button>
         </div>

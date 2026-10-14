@@ -76,13 +76,6 @@ export async function primaPaginaRar(blob) {
   return { nome: v.nome, compressa: false, bytes: new Uint8Array(await blob.slice(v.da, v.da + v.byte).arrayBuffer()) };
 }
 
-// Si puo' aprire un CBR che sta lontano? Nel dubbio si': la strada di sempre
-// dira' la sua dopo.
-export async function cbrLontanoApribile(blob) {
-  if (!cbrTroppoGrande("cbr", blob?.size)) return true;
-  return !(await primaPaginaRar(blob))?.compressa;
-}
-
 export const FORMATI = ["cbz", "cbr"];
 export const ESTENSIONI = [".cbz", ".cbr"];
 export const eFumetto = (b) => b?.fileType === "cbz" || b?.fileType === "cbr";

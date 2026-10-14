@@ -2,7 +2,7 @@
 // E:\book-companion abbiamo tutti i volumi? mi hai sistemato anche dentro le
 // cartelle i file nel modo giusto per saga?»).
 import { casaDi, elencaDisco, controllaDisco, riordinaDisco, fraseRiordino, rapportoDisco, vociDalDisco, schedeDalDisco, lavoriDalDisco, convertiSulDisco, fraseConvertitiDisco, CBR_CONVERTITI, cbrNeiConvertiti, svuotaConvertiti } from "../src/lib/disco.js";
-import { importaDaDrive } from "../src/lib/importBook.js";
+import { importaDaFuori } from "../src/lib/importBook.js";
 
 // un disco finto: cartelle, file col loro peso, `move` facoltativo
 function cartella(nome = "", { conMove = true } = {}) {
@@ -106,12 +106,11 @@ export default async (t) => {
     { id: "k101", title: "Kagurabachi 101", saga: "Kagurabachi", tipo: "manga" },
     { id: "s", title: "The Sandman Book 02", saga: "The Sandman", tipo: "fumetti" },
     { id: "l", title: "Alpha & Omega", saga: "Locke & Key", tipo: "fumetti" },
-    { id: "d", title: "Su Drive", tipo: "libri" },
     { id: "q", title: "Qui", tipo: "libri" },
     { id: "a", title: "Sul tablet", tipo: "libri" },
     { id: "n", title: "Perso", tipo: "libri", fileTolto: true },
   ];
-  const r = controllaDisco(libri, file, { tipoDi: (b) => b.tipo, suDrive: (id) => id === "d", qui: (id) => id === "q" });
+  const r = controllaDisco(libri, file, { tipoDi: (b) => b.tipo, qui: (id) => id === "q" });
   const sp = Object.fromEntries(r.daSpostare.map((v) => [v.libro.id, `${v.file.cartelle.join("/")} → ${v.a.join("/")}`]));
   t.eq("JoJo dalle cartelle di Drive alla sua saga e parte", sp.j, "Manga/JoJo's_Bizarre_Adventure/Parte 7 → Manga/JoJo's Bizarre Adventure/Parte 7");
   t.eq("Kagurabachi sciolto va nella sua saga", sp.k100, "Manga → Manga/Kagurabachi");
@@ -119,7 +118,7 @@ export default async (t) => {
   t.c("chi è già a posto non si sposta", r.aPosto.some((x) => x.libro.id === "k101") && !sp.k101);
   t.c("dei due Sandman si tiene quello a posto", r.aPosto.some((x) => x.libro.id === "s" && x.file.cartelle.join("/") === "Fumetti/The Sandman") && !sp.s);
   t.eq("e l'altro è un doppione sul disco", r.doppioni.map((f) => f.cartelle.join("/")).join(), "Fumetti/The Deluxe Edition Book");
-  t.eq("dove sta chi manca", `${r.mancano.drive.map((b) => b.id)}|${r.mancano.qui.map((b) => b.id)}|${r.mancano.altrove.map((b) => b.id)}|${r.mancano.nessuno.map((b) => b.id)}`, "d|q|a|n");
+  t.eq("dove sta chi manca", `${r.mancano.qui.map((b) => b.id)}|${r.mancano.altrove.map((b) => b.id)}|${r.mancano.nessuno.map((b) => b.id)}`, "q|a|n");
   t.eq("il file che nessuna scheda riconosce", r.senzaScheda.map((f) => f.nome).join(), "Nessuno.cbz");
   t.eq("il peso dei volumi sul disco, un doppione una volta", r.byte, 70 + 10 + 11 + 20 + 30);
   // un titolo corto o di due file non si abbina per contenimento
@@ -315,17 +314,17 @@ export default async (t) => {
   const persi = [
     { id: "p1", title: "A Time of Blood" },
     { id: "p2", title: "Morning Star", fileTolto: true },
-    { id: "p3", title: "Su Drive" },
+    { id: "p3", title: "Sul tablet" },
     { id: "p4", title: "Qui" },
     { id: "p5", title: "In lettura" },
     { id: "p6", title: "Non sul disco" },
   ];
-  const fp = ["A Time of Blood", "Morning Star", "Su Drive", "Qui", "In lettura"].map((n, i) => ({ nome: `${n}.epub`, cartelle: ["Libri"], byte: i + 1 }));
-  const rp = controllaDisco(persi, fp, { suDrive: (id) => id === "p3", qui: (id) => id === "p4", leggendo: (id) => id === "p5" });
-  t.eq("sul disco ma la scheda non lo sa: solo chi non ha il file altrove e non è in lettura", rp.daSegnare.map((b) => b.id).join(), "p1");
+  const fp = ["A Time of Blood", "Morning Star", "Sul tablet", "Qui", "In lettura"].map((n, i) => ({ nome: `${n}.epub`, cartelle: ["Libri"], byte: i + 1 }));
+  const rp = controllaDisco(persi, fp, { sullAltro: (id) => id === "p3", qui: (id) => id === "p4", leggendo: (id) => id === "p5" });
+  t.eq("sul disco ma la scheda non lo sa: solo chi non ha il file qui né sul tablet e non è in lettura", rp.daSegnare.map((b) => b.id).join(), "p1");
   t.c("e il rapporto lo dice", /la scheda li crede persi \(1\):\n  - A Time of Blood/.test(rapportoDisco(rp)));
 
-  // IMPORTARE DAL DISCO, SENZA DRIVE
+  // IMPORTARE DAL DISCO
   const sciolti = [
     { nome: "Locke & Key v01 - Welcome to Lovecraft (2008).epub", cartelle: ["Fumetti", "Locke & Key"], byte: 5 },
     { nome: "Kingdom v08v2.epub", cartelle: ["Manga", "Kingdom"], byte: 6 },
@@ -334,10 +333,8 @@ export default async (t) => {
   const vd = vociDalDisco(sciolti);
   t.eq("dal disco: il tipo dalla sezione, un libro senza tipo", vd.map((v) => v.tipo || "-").join(), "fumetti,manga,-");
   t.eq("e un id che dice da dove", vd[0].id, "disco:Fumetti/Locke & Key/Locke & Key v01 - Welcome to Lovecraft (2008).epub");
-  const segni = [];
-  const preso = await importaDaDrive(vd, [{ id: "vecchia", title: "Elric. La saga", fileTolto: true }], {
+  const preso = await importaDaFuori(vd, [{ id: "vecchia", title: "Elric. La saga", fileTolto: true }], {
     apri: () => new Blob([new Uint8Array(5)]),
-    segna: async (...a) => (segni.push(a), true),
     leggi: async () => ({ titolo: false, copertina: false }),
     senzaFile: (id) => id === "vecchia",
     segnato: () => false,

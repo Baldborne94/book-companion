@@ -487,14 +487,9 @@ export const nonCeLassu = (e) =>
   e?.status === 404 ||
   /not.?found/i.test(`${e?.message || ""} ${e?.error || ""}`);
 
-// I FILE DEI LIBRI SALGONO SU GOOGLE DRIVE, NON PIU' NEL SECCHIO: chi
-// decide cosa sale sta in `driveCore.js` (`daCaricare`), con le regole che
-// qui erano costate quattro giri — si decide sullo STATO e non su un
-// registro, e senza l'elenco di lassu' non parte niente. Con i file sono
-// andati via anche il «troppo grande per il piano gratuito» e il rimando
-// dei file ricuciti: Drive un tetto da cinquanta megabyte non ce l'ha, e
-// la copia lassu' resta quella originale, che il reader ricuce da se' alla
-// prima apertura.
+// I FILE DEI LIBRI NON SALGONO PIU' NEL SECCHIO: stanno sui dispositivi e
+// sul disco del computer. Il secchio tiene le copertine, e dei libri quel
+// che c'era da prima.
 
 // I TOMI CHE NON SONO DA NESSUNA PARTE.
 //
@@ -845,8 +840,9 @@ function fondiGlossari(local, remote, remoteNewer) {
 // secchio per rimediare, erano la cosa piu' pesante del piano gratuito. Con
 // Drive quei byte hanno un posto, e il lettore li ha voluti la': una voce
 // con `trackId` sale solo col segno `drive` (lo scrive il giro della musica
-// quando il brano e' lassu'), e l'altro dispositivo la scarica quando la
-// suoni. Senza il segno resta dov'e' nata, come prima — e resta anche la
+// quando il brano era lassu'). Drive non c'e' piu': le voci segnate allora
+// continuano a viaggiare (nome, raccolte, lapidi), e ogni dispositivo suona
+// i byte che ha. Senza il segno resta dov'e' nata, come prima — e resta anche la
 // regola di prima per quel che arriva da lassu' senza segno (scritto da una
 // versione vecchia dell'app): non entra. Le lapidi seguono la voce: quella
 // di un brano che viaggiava viaggia anche lei.
@@ -858,8 +854,8 @@ export function mergePrefs(local, remote) {
     (local.music_favs || []).filter(viaggia),
     (remote?.music_favs || []).filter(viaggia)
   );
-  // i file di questo dispositivo che non sono ancora su Drive: restano qui,
-  // salvo che lassu' ci sia gia' la loro versione segnata
+  // i file di questo dispositivo senza segno: restano qui, salvo che lassu'
+  // ci sia gia' la loro versione segnata
   const giaFuse = new Set(link.map((f) => f.id));
   const mieiFile = (local.music_favs || []).filter((f) => !viaggia(f) && !giaFuse.has(f.id));
   // quel che si scrive QUI: le voci fuse piu' i miei file ancora fermi,
@@ -1093,8 +1089,8 @@ export function completaPull(pull = [], intere = new Map()) {
 // leggera non riesce (uno schema senza `file_tolto`, un guasto qualunque)
 // si legge tutto come prima: e' piu' lento, e sbagliato mai.
 // LE COPERTINE DEL GIRO, a gruppi e dicendo a che punto sono (vedi la fase
-// delle copertine in `syncNow`): sei insieme, come i pezzi di un fumetto
-// da Drive non di piu', per non togliere tutta la banda al resto
+// delle copertine in `syncNow`): sei insieme, non di piu', per non togliere
+// tutta la banda al resto
 export const COPERTINE_INSIEME = 6;
 export function fraseCopertine(fatte, totale, { su = false } = {}) {
   if (!(totale > 0)) return "";
@@ -1172,4 +1168,31 @@ export async function leggiRigheIntere(leggiIds, ids = []) {
     for (const r of data || []) intere.set(r.id, r);
   }
   return intere;
+}
+
+// GLI AVANZI DEL SECCHIO: un file nel secchio che non appartiene a nessun
+// libro vivo non ha niente da aspettare. Sono i libri
+// cancellati quando lo sgombero e' andato storto — la lapide si toglie
+// comunque, e da li' nessuno guardava piu' quel file — e gli ebook tolti
+// dalla scheda (`fileTolto`), dove il lettore ha gia' detto che il file non
+// lo vuole. Restavano a pesare sul piano gratuito per sempre (segnalato:
+// «come mai dice che ci sono ancora 5 libri su supabase», a giro finito).
+//
+// VIVO e' chi c'e' qui O lassu' nella tabella: un libro importato
+// sull'altro dispositivo e non ancora sceso e' vivo anche se qui non c'e'.
+// E senza nessun vivo non si toglie niente: una biblioteca che risulta
+// vuota da tutt'e due i lati e' piu' spesso una lettura andata storta che
+// una biblioteca vuota, e nel dubbio il file resta.
+export function avanziDelSecchio(idSecchio, { libri = [], righe = [], lapidi = [], inUscita = [] } = {}) {
+  if (!idSecchio) return [];
+  const morti = new Set([...(lapidi || []), ...(inUscita || [])]);
+  const vivi = new Set();
+  for (const b of libri || []) if (b?.id && !b.fileTolto && !morti.has(b.id)) vivi.add(b.id);
+  for (const r of righe || []) if (r?.id && !r.deleted && !r.file_tolto && !morti.has(r.id)) vivi.add(r.id);
+  const tolti = new Set([
+    ...(libri || []).filter((b) => b?.fileTolto).map((b) => b.id),
+    ...(righe || []).filter((r) => r?.file_tolto && !r.deleted).map((r) => r.id),
+  ]);
+  if (!vivi.size && !tolti.size) return [];
+  return [...idSecchio].filter((id) => !vivi.has(id));
 }

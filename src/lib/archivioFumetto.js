@@ -20,10 +20,10 @@ const rar = async () => {
 };
 
 // UN CBR COMPRESSO SI CONVERTE IN CBZ in un worker (`cbrInCbz.worker.js`,
-// `rarInCbz.js`), leggendo l'archivio a finestre: dal tablet (`blob`) o da
-// Drive (`drive: { id, chiave }`), senza caricarlo intero. Torna il Blob
+// `rarInCbz.js`), leggendo l'archivio a finestre (`blob`, dal dispositivo o
+// dal disco), senza caricarlo intero. Torna il Blob
 // del CBZ; `onProgress({ letti, misura, pagine })`.
-export async function convertiInCbz({ blob, drive, misura }, { onProgress } = {}) {
+export async function convertiInCbz({ blob, misura }, { onProgress } = {}) {
   if (!wasm) wasm = await fetch(wasmUrl).then((r) => r.arrayBuffer());
   const w = new Worker(new URL("./cbrInCbz.worker.js", import.meta.url), { type: "module" });
   try {
@@ -34,7 +34,7 @@ export async function convertiInCbz({ blob, drive, misura }, { onProgress } = {}
         else ko(new Error(data.errore || "conversione fallita"));
       };
       w.onerror = (e) => ko(new Error(e?.message || "il worker della conversione non parte"));
-      w.postMessage({ blob, drive, misura: misura ?? blob?.size, wasm });
+      w.postMessage({ blob, misura: misura ?? blob?.size, wasm });
     });
   } finally {
     w.terminate();

@@ -276,12 +276,6 @@ export const MAPPA = [
   },
   {
     luogo: "libreria",
-    nome: "Aggiungi libri da Google Drive",
-    cosa: "Si apre la finestra di Drive sulla cartella «book-companion»: tocca i libri che vuoi, o cartelle intere con tutto quel che c'è sotto. Entrano con titolo, autore e copertina senza scaricare il file; quelli già sullo scaffale non si raddoppiano.",
-    dove: "«📂 Scegli su Drive», accanto a «+ Aggiungi libri» (vuole la chiave API nel pannello della nuvola).",
-  },
-  {
-    luogo: "libreria",
     nome: "Cerca dentro i tomi",
     cosa: "Cerca una frase dentro TUTTI i libri, uno per volta. I tomi rimasti nel cloud si contano e si dicono.",
     dove: "Il tasto 🔍 accanto alla ricerca.",
@@ -441,12 +435,6 @@ export const MAPPA = [
     nome: "La sincronizzazione",
     cosa: "Facoltativa: schede, progressi, evidenziazioni e copertine viaggiano fra i tuoi dispositivi.",
     dove: "Impostazioni → il rimando al pannello della nuvola.",
-  },
-  {
-    luogo: "impostazioni",
-    nome: "I libri su Google Drive",
-    cosa: "I file dei libri stanno sul tuo Drive: l'app riconosce quelli che hai già caricato, manda su i nuovi, li riporta sul tablet quando li apri e ti dice quanto spazio resta.",
-    dove: "Impostazioni → Sincronizzazione e Google Drive.",
   },
 ];
 

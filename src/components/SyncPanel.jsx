@@ -18,10 +18,8 @@ import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, GIA_REGISTRAT
 // dimenticare separatamente
 import { PIENO, parteDelPiano } from "../lib/spazio.js";
 import { BarraCloud } from "./BarraCloud.jsx";
-import SezioneDrive from "./SezioneDrive.jsx";
 import { ultimoGiro } from "../lib/resoconto.js";
-import { entraConGoogle, statoRinnovo } from "../lib/accessoGoogle.js";
-import { driveProntoOra, permessoDriveMancante, senzaDrive } from "../lib/drive.js";
+import { entraConGoogle } from "../lib/accessoGoogle.js";
 
 
 function Spazio({ dati }) {
@@ -112,8 +110,8 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
     return () => { vivo = false; };
   }, [session, status.at]);
 
-  // UN ACCESSO SOLO (vedi `accessoGoogle.js`): la pagina va da Google e
-  // torna qui gia' dentro, biblioteca e Drive insieme
+  // «Entra con Google» (vedi `accessoGoogle.js`): la pagina va da Google e
+  // torna qui gia' dentro
   async function conGoogle() {
     if (busy) return;
     setBusy(true);
@@ -289,8 +287,8 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
         ) : session ? (
           <>
             {/* DA DENTRO, UNA SCHEDA SOLA (chiesto dal lettore: «si può
-                ripulire un po' questo pannello?»): chi sei, e due righe che
-                dicono se biblioteca e Drive stanno a posto. Il resto — il
+                ripulire un po' questo pannello?»): chi sei, e una riga che
+                dice se la biblioteca sta a posto. Il resto — il
                 racconto del giro, la password, l'uscita — c'e', piegato */}
             <div
               style={{
@@ -305,12 +303,6 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
               <Riga ok={!!getLastSync()}>
                 {getLastSync() ? `Biblioteca sincronizzata · ${fmtWhen(getLastSync())}` : "Biblioteca non ancora sincronizzata"}
               </Riga>
-              <StatoGoogle
-                conGoogle={(session.user.app_metadata?.providers || []).includes("google")}
-                onGoogle={conGoogle}
-                busy={busy}
-                guaio={guaioGoogle}
-              />
             </div>
             <button
               onClick={onSync}
@@ -377,8 +369,8 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
         ) : (
           <>
             <p style={{ color: C.muted, fontSize: F.nota, lineHeight: 1.5, marginBottom: 14 }}>
-              Libri, segnalibri, note e progressi ti seguono su ogni dispositivo, e i file dei libri
-              stanno sul tuo Google Drive. Entri una volta sola, per tutt'e due.
+              Libri, segnalibri, note e progressi ti seguono su ogni dispositivo. I file dei libri
+              restano dove li metti: sul dispositivo e sul disco.
             </p>
             <button
               onClick={conGoogle}
@@ -405,7 +397,7 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
               </summary>
             <p style={{ color: C.muted, fontSize: F.piccolo, lineHeight: 1.5, margin: "4px 0 10px" }}>
               La strada di prima. Con la stessa email del tuo Google ritrovi la stessa biblioteca
-              in tutt'e due i modi. Google Drive, così, si collega a parte.
+              in tutt'e due i modi.
             </p>
             {/* Un `form` vero, non due caselle sciolte: e' cosi' che il
                 portachiavi del tablet capisce che c'e' un accesso da
@@ -503,9 +495,6 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
           </>
         )}
 
-        {/* da fuori «Entra con Google» collega anche Drive: una seconda
-            porta per la stessa stanza era la confusione di prima */}
-        {(!isSyncConfigured() || session) && <SezioneDrive onCollegato={onSync} notify={notify} sobria={!!session} />}
 
         {isSyncConfigured() && session && (
           <details style={{ marginTop: 16, paddingTop: 4, borderTop: `1px solid ${C.border}` }}>
@@ -577,56 +566,6 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
         </div>
       </div>
     </div>
-  );
-}
-
-// A CHE PUNTO E' GOOGLE, da dentro: si rinnova da solo, o ha ritirato il
-// permesso, o l'account e' entrato con email e password e Google non c'e'.
-// Ogni stato dice cosa fare, con un tasto solo.
-function StatoGoogle({ conGoogle, onGoogle, busy, guaio }) {
-  const stato = statoRinnovo();
-  let frase;
-  let ok = false;
-  let chiedi = false;
-  if (senzaDrive()) {
-    // spento per scelta: e' a posto, e non c'e' niente da chiedere a Google
-    frase = "Google Drive spento: i libri stanno qui e sul disco";
-    ok = true;
-  } else if (permessoDriveMancante()) {
-    frase = "Google ha dato l'ingresso ma non Drive (la casella non era spuntata): rientra con Google e lasciala spuntata.";
-    chiedi = true;
-  } else if (stato === "revocato") {
-    frase = "Google ha ritirato il permesso per Drive (o è scaduto): rientra con Google.";
-    chiedi = true;
-  } else if (conGoogle && stato !== "nessuno") {
-    ok = driveProntoOra();
-    frase = ok ? "Google Drive collegato · si rinnova da solo" : "Google Drive · rinnovo la chiave…";
-  } else {
-    frase = "Entra con Google (la stessa email) e Drive si collega da solo, senza chiedere più niente.";
-    chiedi = true;
-  }
-  return (
-    <>
-      <Riga ok={ok}>{frase}</Riga>
-      {chiedi && (
-        <button
-          onClick={onGoogle}
-          disabled={busy}
-          style={{
-            marginTop: 8,
-            minHeight: 44,
-            padding: "8px 16px",
-            borderRadius: R.piccolo,
-            border: `1px solid ${C.accent}88`,
-            color: C.accent,
-            fontSize: F.nota,
-          }}
-        >
-          {busy ? "Vado da Google…" : "Entra con Google"}
-        </button>
-      )}
-      {guaio && <p style={{ marginTop: 8, color: C.red, fontSize: F.nota, lineHeight: 1.45 }}>{guaio}</p>}
-    </>
   );
 }
 
