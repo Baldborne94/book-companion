@@ -75,8 +75,8 @@ async function lanciaBrowser() {
 // o da Google (la prima volta in CI il catalogo vero ha dato a «Racconti» la
 // saga di Moravia, e la scena cadeva per una ragione che qui non c'era). Chi
 // vuole il catalogo se lo porta: `catalogo(url)` risponde al posto suo.
-async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, drive = null, oracolo = null } = {}) {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, drive = null, oracolo = null, misura = null } = {}) {
+  const ctx = await browser.newContext(misura || { viewport: { width: 1280, height: 800 } });
   await ctx.route(
     (url) => !/^(localhost|127\.0\.0\.1)$/.test(url.hostname),
     async (route) => {
@@ -111,6 +111,15 @@ async function importa(p, nome, buffer, mimeType) {
   const titolo = nome.replace(/\.[^.]+$/, "");
   await finche(async () => (await libriDi(p)).some((b) => b.title === titolo), 20000, `«${titolo}» non entra in biblioteca`);
 }
+
+// il tablet del lettore (CLAUDE.md): Chrome Android, 902×1503 a densita' 1,33, col dito
+const TABLET = {
+  viewport: { width: 902, height: 1503 },
+  deviceScaleFactor: 1.33,
+  hasTouch: true,
+  isMobile: true,
+  userAgent: "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+};
 
 const SCENE = [
   {
@@ -292,6 +301,34 @@ const SCENE = [
       await finche(() => testoAvviso(tab.p, /^tutti letti ✓$/), 20000, "sul tablet la raccolta non e' tutta letta");
       const visto = await finche(() => testoAvviso(tab.p, /★ 4,5/), 10000, "sul tablet il voto della saga non c'e'");
       return { guasti: [...pc.guasti, ...tab.guasti], nota: `4 volumi letti e «${visto.trim()}» sul tablet` };
+    },
+  },
+  {
+    // chiesto dal lettore, lasciato Drive: «fai sapere al PC quali libri sono
+    // sul tablet». Il libro aggiunto sul tablet compariva sul PC col
+    // triangolo «né qui né nel cloud», e aperto finiva sul guasto.
+    nome: "il libro aggiunto sul tablet, sul PC sta «sul tablet» e non è perduto",
+    async fai({ browser, db }) {
+      const tab = await dispositivo(browser, { sessione: true, misura: TABLET });
+      await importa(tab.p, "La nebbia.epub", await epub(), "application/epub+zip");
+      const id = (await libriDi(tab.p)).find((b) => b.title === "La nebbia").id;
+      const voce = () => (db.prefs()?.raccolte_fav || []).find((x) => x.id.startsWith("qui|") && x.libri?.includes(id));
+      await finche(() => voce()?.nome === "tablet", 20000, `il tablet non dice lassu' cosa tiene (${JSON.stringify(db.prefs()?.raccolte_fav)})`);
+
+      const pc = await dispositivo(browser, { sessione: true });
+      await pc.p.goto(`${URL_APP}?apri=libreria`);
+      await finche(async () => (await libriDi(pc.p)).some((b) => b.id === id), 20000, "il libro non scende sul PC");
+      const segno = await finche(() => pc.p.locator('span[title="Sta sul tablet: lì si legge"]').count(), 15000, "sul dorso non c'e' il segno del tablet");
+      await aspetta(1500);
+      const perso = await testoAvviso(pc.p, /né qui né nel cloud/);
+      if (perso) throw new Error(`sul PC il libro del tablet e' detto perduto: «${perso}»`);
+      if (await pc.p.locator('span[title^="Né qui né nel cloud"]').count()) throw new Error("sul dorso c'e' il triangolo dei perduti");
+
+      await pc.p.getByText("La nebbia").first().click();
+      await pc.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      const detto = await finche(() => testoAvviso(pc.p, /^Questo libro sta sul tablet 📱/), 8000, "aprendolo, il PC non dice che sta sul tablet");
+      if (await pc.p.locator("iframe").count()) throw new Error("il reader si e' aperto su un libro che qui non c'e'");
+      return { guasti: [...pc.guasti, ...tab.guasti], nota: `${segno} segno 📱 · «${detto}»` };
     },
   },
   {

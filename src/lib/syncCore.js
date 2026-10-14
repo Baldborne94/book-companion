@@ -554,9 +554,16 @@ export function daPortare(soloNelCloud, idLassu) {
 // contrario. Qui si decide in un punto solo, con la STESSA regola di
 // `senzaCopia`: senza l'elenco del secchio non si accusa nessuno e resta la
 // nuvoletta, che al peggio promette un tentativo.
-export function segnoDorso(b, localIds, idLassu) {
+//
+// E UN LIBRO CHE STA SULL'ALTRO DISPOSITIVO non e' perduto (segnalato dopo
+// aver lasciato Drive: il libro aggiunto sul tablet, sul PC col triangolo).
+// `altrove` sono i libri che l'altro dispositivo dice di tenere
+// (`altroveDa`); se lassu' c'e' una copia, vince la nuvoletta, che da qui si
+// apre.
+export function segnoDorso(b, localIds, idLassu, altrove = null) {
   if (b?.fileTolto) return "tolto";
   if (!localIds || !b?.id || localIds.has(b.id)) return null;
+  if (altrove?.has(b.id) && !idLassu?.has(b.id)) return "altrove";
   if (idLassu && !idLassu.has(b.id)) return "perduto";
   return "cloud";
 }

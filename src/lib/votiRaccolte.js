@@ -82,14 +82,17 @@ export function daSegnare(libri, stato, statusOf) {
 // `voto|`: stessa forma (id, ora, lapide), stessa fusione. Un'app di prima
 // li legge come cuori di raccolte che non esistono, e li rimanda su intatti.
 const PREFISSO = "voto|";
-export const inViaggio = (preferite = [], voti = []) => [...preferite, ...voti.map((v) => ({ ...v, id: PREFISSO + v.id }))];
+// e cosi' le voci dei dispositivi (`dispositivi.js`), con la chiave `qui|`
+export const inViaggio = (preferite = [], voti = [], dispositivi = []) => [...preferite, ...voti.map((v) => ({ ...v, id: PREFISSO + v.id })), ...dispositivi];
 export function dalViaggio(lista = []) {
   const preferite = [];
   const voti = [];
+  const dispositivi = [];
   for (const v of lista || []) {
     if (typeof v?.id !== "string") continue;
     if (v.id.startsWith(PREFISSO)) voti.push({ ...v, id: v.id.slice(PREFISSO.length) });
+    else if (v.id.startsWith("qui|")) dispositivi.push(v);
     else preferite.push(v);
   }
-  return { preferite, voti };
+  return { preferite, voti, dispositivi };
 }

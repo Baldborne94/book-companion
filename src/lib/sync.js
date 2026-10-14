@@ -25,7 +25,8 @@ import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
 import { raccontiLetti, scriviRacconti } from "./racconti.js";
 import { leggiPreferite, scriviPreferite, fondiPreferite } from "./raccoltePreferite.js";
 import { leggiVoti, scriviVoti, fondiVoti, inViaggio, dalViaggio } from "./votiRaccolte.js";
-import { leggiTempo, scriviTempo, fondiTempo } from "./tempo.js";
+import { leggiDispositivi, scriviDispositivi, fondiDispositivi, aggiornaQui, nomeDispositivo } from "./dispositivi.js";
+import { leggiTempo, scriviTempo, fondiTempo, dispositivo } from "./tempo.js";
 import { leggiObiettivi, scriviObiettivi, fondiObiettivi } from "./obiettivo.js";
 import { leggiQuaderno, scriviQuaderno, fondiQuaderno } from "./quaderno.js";
 import { leggiDaPrendere, scriviDaPrendere, fondiDaPrendere } from "./daPrendere.js";
@@ -234,7 +235,7 @@ function localPrefs() {
     quaderno: leggiQuaderno(),
     da_prendere: leggiDaPrendere(),
     // il cuore e i voti delle raccolte nella stessa colonna (`inViaggio`)
-    raccolte_fav: inViaggio(leggiPreferite(), leggiVoti()),
+    raccolte_fav: inViaggio(leggiPreferite(), leggiVoti(), leggiDispositivi()),
     last_opened: getLastOpened(),
     updated_at: parseInt(localStorage.getItem(PREFS_UPD_KEY), 10) || 0,
   };
@@ -693,6 +694,9 @@ export async function syncNow({ onProgress, onLibri } = {}) {
     /* senza l'elenco di casa non si indovina: si riprova al giro dopo */
   }
 
+  // quali libri tiene questo dispositivo, perche' l'altro non li dica persi
+  const quiOra = await listFileIds().catch(() => null);
+  scriviDispositivi(aggiornaQui(leggiDispositivi(), quiOra, { dispositivo: dispositivo(), nome: nomeDispositivo() }));
   const { data: remotePrefsRows } = await sb.from("prefs").select("*").eq("user_id", uid).limit(1);
   const { merged, favsLocali, applyLocal, pushRemote } = mergePrefs(localPrefs(), remotePrefsRows?.[0] || null);
   const stamp = pushRemote ? Date.now() : merged.updated_at;
@@ -718,6 +722,7 @@ export async function syncNow({ onProgress, onLibri } = {}) {
     const arrivati = dalViaggio(merged.raccolte_fav);
     scriviPreferite(fondiPreferite(leggiPreferite(), arrivati.preferite));
     scriviVoti(fondiVoti(leggiVoti(), arrivati.voti));
+    scriviDispositivi(fondiDispositivi(leggiDispositivi(), arrivati.dispositivi));
     if (merged.last_opened) localStorage.setItem("bc_lastopen", merged.last_opened);
   }
   if (pushRemote) {
