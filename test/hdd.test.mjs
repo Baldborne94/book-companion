@@ -1,7 +1,7 @@
 // SPOSTARE SULL'HDD (chiesto dal lettore per lasciare i due tera di Drive):
 // il file scende dritto sul disco, si guarda che sia arrivato intero, e solo
 // allora la scheda resta senza file e Drive lo butta nel cestino.
-import { daSpostareSuHdd } from "../src/lib/driveCore.js";
+import { daSpostareSuHdd, melodieSulDisco } from "../src/lib/driveCore.js";
 import { spostaSuHdd, divisiPerHdd, perSezioni, SEZIONI_HDD, casaSulDisco, nomeSicuro, hddPossibile, percheNoHdd, fraseHdd } from "../src/lib/hdd.js";
 
 // un disco finto con la forma di File System Access: cartelle, file, e una
@@ -66,6 +66,7 @@ const percorso = async (radice, ...nomi) => {
 const risposta = (n, { corto = 0 } = {}) => new Response(new Uint8Array(n - corto).fill(7));
 
 export default async (t) => {
+  let rm;
   const file = [
     { id: "f1", name: "Hellboy v01.cbz", size: "3000", parents: ["H"] },
     { id: "f2", name: "Hellboy: Year 2.cbz", size: "2000", parents: ["H"] },
@@ -109,6 +110,29 @@ export default async (t) => {
   });
   t.eq("copiato sul disco, ma scheda e Drive non si toccano", `${toccati.join()} · ${ec.copiati} copiato, ${ec.fatti} spostato`, "segna c,cestina c · 1 copiato, 1 spostato");
   t.c("e si dice", /Quello che stai leggendo è copiato sull'HDD e resta su Drive/.test(fraseHdd({ ...ec })));
+
+  // le melodie sul disco, prima di lasciare Drive
+  const vm = melodieSulDisco(
+    [
+      { trackId: "T1", name: "Pioggia: lontana", mime: "audio/mpeg" },
+      { trackId: "T2", name: "Camino", mime: "audio/ogg" },
+      { trackId: "T3", name: "Tolta", deleted: true },
+      { trackId: "T4", name: "Solo qui" },
+      { trackId: "T5", name: "Senza peso" },
+      { name: "YouTube", url: "https://youtu.be/x" },
+    ],
+    { T1: { id: "m1", byte: 700 }, T2: { id: "m2", byte: 300 }, T3: { id: "m3", byte: 5 }, T5: { id: "m5", byte: 0 } }
+  );
+  t.eq("ogni melodia di Drive in «Musica», col nome e il peso di Drive", vm.map((v) => `${v.cartelle.join("/")}/${v.nome}:${v.byte}:${v.fileId}`).join(" | "), "Musica/Pioggia lontana.mp3:700:m1 | Musica/Camino.ogg:300:m2");
+  const tm = [];
+  const em = await spostaSuHdd(vm, {
+    radice: (rm = cartellaFinta()),
+    apri: async (id) => risposta(id === "m1" ? 700 : 300),
+    segna: async (v) => tm.push(`segna ${v.nome}`),
+    cestina: async (v) => tm.push(`cestina ${v.nome}`),
+  });
+  t.eq("si copiano soltanto: niente schede, niente cestino", `${tm.join()}|${em.melodie}|${em.copiati}|${(await percorso(rm, "Musica", "Pioggia lontana.mp3"))?.byte.length}`, "|2|0|700");
+  t.eq("e si dicono come melodie", fraseHdd(em), "🎵 2 melodie copiate sul disco, in «Musica»");
 
   // per sezione: le stesse della Libreria e delle cartelle
   const sez = perSezioni([{ id: "l1" }, { id: "f1" }, { id: "m1" }, { id: "l2" }, { id: "x" }], (b) => ({ l1: "libri", l2: "libri", f1: "fumetti", m1: "manga", x: "musica" })[b.id]);

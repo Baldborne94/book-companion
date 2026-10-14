@@ -32,7 +32,7 @@ import { cercaNuovaVersione, cercaInSilenzio } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
 import Home from "./components/Home.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
-import { getBookMusic, setBookMusic, portaQuiTutte, fraseScarico } from "./lib/music.js";
+import { getBookMusic, setBookMusic, portaQuiTutte, fraseScarico, getFavoritesRaw } from "./lib/music.js";
 import { getJump, clearJump, getMarks } from "./lib/annotations.js";
 import { doppioniInBiblioteca } from "./lib/doppioni.js";
 import { daAvvisare } from "./lib/oracle.js";
@@ -44,7 +44,7 @@ import { annotaErrore } from "./lib/registro.js";
 import SezioneGuasti from "./components/SezioneGuasti.jsx";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile, convertiLibroInCbz, adottaCbzConvertiti, getLastSync } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
-import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, dettagliFile, impostaRinnovo, impostaRientro, rinnovaInSilenzio, chiaveInScadenza, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato, fraseScollegato, daSpostareDaDrive, apriDaDrive, cestinaDelLibro, senzaSchedaDaDrive, cestinaSuDrive } from "./lib/drive.js";
+import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, dettagliFile, impostaRinnovo, impostaRientro, rinnovaInSilenzio, chiaveInScadenza, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato, fraseScollegato, daSpostareDaDrive, apriDaDrive, cestinaDelLibro, senzaSchedaDaDrive, cestinaSuDrive, mappaMelodie } from "./lib/drive.js";
 import { spostaSuHdd, fraseHdd, casaSulDisco } from "./lib/hdd.js";
 import { riordinaDisco, fraseRiordino, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
 import { importaDaDrive, resoconto } from "./lib/importBook.js";
@@ -52,7 +52,7 @@ import { custodisciGoogle, rinnovoDalServer, rientroConGoogle, lasciaGoogleQui }
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
 import BarraLavoro from "./components/BarraLavoro.jsx";
 import { spiegaSync, schedaDiversa } from "./lib/syncCore.js";
-import { ebookRitrovati } from "./lib/driveCore.js";
+import { ebookRitrovati, melodieSulDisco } from "./lib/driveCore.js";
 import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
 import { comincia, segnaVita, smetti } from "./lib/tempo.js";
@@ -1551,6 +1551,14 @@ export default function App() {
     }
   }
 
+  // LE MELODIE DI DRIVE SUL DISCO, prima di lasciarlo (`melodieSulDisco`):
+  // lo stesso lavoro dello spostamento, che le copia soltanto
+  function melodieSulDiscoQui(scelta) {
+    const voci = melodieSulDisco(getFavoritesRaw(), mappaMelodie());
+    const niente = async () => {};
+    return spostaSuHddQui(voci, scelta, { voci: async () => voci, segna: niente, cestina: niente });
+  }
+
   // I DOPPIONI (`doppioniInBiblioteca`): lo stesso volume in due o tre
   // schede — fumetti nati prima che l'importazione saltasse i gemelli di
   // Colab, libri reimportati da Drive accanto alla scheda rimasta senza file.
@@ -2034,7 +2042,7 @@ export default function App() {
         )}
         {section === "music" && (
           <Suspense fallback={null}>
-            <MusicRoom music={music} playerRef={playerRef} notify={notify} onCambiata={() => presto.current?.()} scarico={scarico} onScarica={scaricaRaccoltaQui} />
+            <MusicRoom music={music} playerRef={playerRef} notify={notify} onCambiata={() => presto.current?.()} scarico={scarico} onScarica={scaricaRaccoltaQui} onSulDisco={melodieSulDiscoQui} />
           </Suspense>
         )}
       </main>

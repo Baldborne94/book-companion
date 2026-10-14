@@ -971,6 +971,67 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore prima di lasciare Drive: «mi salvi tu in E nei
+    // posti giusti i file?». Su Drive restavano solo i due volumi in lettura
+    // (sul disco, copie a meta' da 0 byte) e la musica
+    nome: "prima di lasciare Drive, quel che stai leggendo e la musica si copiano sul disco nei loro posti",
+    async fai({ browser }) {
+      const brano = wav(30);
+      const elenco = [
+        { id: "Z3", name: "The_Sandman_-_The_Deluxe_Edition_Book_03.cbz", size: "400000", parents: ["X"], appProperties: { bc: "1", bcId: "s3" } },
+        { id: "m1", name: "Pioggia lontana.mp3", mimeType: "audio/mpeg", size: String(brano.length), parents: ["M"], appProperties: { bcTrack: "T1" } },
+      ];
+      const drv = await avviaDrive(PORTA_DRIVE, { Z3: Buffer.alloc(400000, 7), m1: brano }, { elenco });
+      try {
+        const d = await dispositivo(browser, {
+          prima: `window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
+            if (!localStorage.getItem("bc_music_favs")) {
+              localStorage.setItem("bc_status_s3", "reading");
+              localStorage.setItem("bc_drive_client", "123-abc.apps.googleusercontent.com");
+              localStorage.setItem("bc_drive_melodie", JSON.stringify({ T1: { id: "m1", byte: ${brano.length} } }));
+              localStorage.setItem("bc_music_favs", JSON.stringify([{ id: "f1", name: "Pioggia lontana", trackId: "T1", drive: true, size: ${brano.length}, mime: "audio/mpeg", addedAt: 1, updatedAt: 1 }]));
+            }`,
+          drive: {
+            libri: [{ id: "s3", title: "The Sandman - The Deluxe Edition Book 03", saga: "The Sandman", fileType: "cbz", tipo: "fumetti", addedAt: 1 }],
+            mappa: { s3: { id: "Z3", byte: 400000 } },
+          },
+        });
+        await d.p.goto(`${URL_APP}?apri=libreria`);
+        // la copia rimasta a meta' da uno spostamento di prima
+        await d.p.evaluate(async () => {
+          let c = await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
+          for (const n of ["book-companion", "Fumetti", "The Sandman"]) c = await c.getDirectoryHandle(n, { create: true });
+          await (await c.getFileHandle("The_Sandman_-_The_Deluxe_Edition_Book_03.cbz", { create: true })).createWritable().then((w) => w.close());
+        });
+        await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
+        await d.p.getByRole("button", { name: /^📖 Copia sul disco quello che stai leggendo/ }).click();
+        await d.p.getByRole("button", { name: "Scegli la cartella del disco" }).click();
+        await finche(() => testoAvviso(d.p, /Quello che stai leggendo è copiato sull'HDD e resta su Drive/), 20000, "la copia del volume in lettura non si dice");
+        await d.p.goto(`${URL_APP}?apri=musica`);
+        await d.p.getByRole("button", { name: "💾 La melodia di Drive sul disco" }).click();
+        await finche(() => testoAvviso(d.p, /Una melodia copiata sul disco, in «Musica»/), 20000, "la copia della musica non si dice");
+        const sulDisco = await d.p.evaluate(async () => {
+          const out = [];
+          const giu = async (dir, via) => {
+            for await (const [n, h] of dir.entries()) {
+              if (h.kind === "directory") await giu(h, `${via}${n}/`);
+              else out.push(`${via}${n}:${(await h.getFile()).size}`);
+            }
+          };
+          await giu(await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD"), "");
+          return out.sort().join(" ");
+        });
+        const atteso = `book-companion/Fumetti/The Sandman/The_Sandman_-_The_Deluxe_Edition_Book_03.cbz:400000 book-companion/Musica/Pioggia lontana.mp3:${brano.length}`;
+        if (sulDisco !== atteso) throw new Error(`sul disco: ${sulDisco}`);
+        if (drv.cestino().length) throw new Error(`nel cestino di Drive: ${drv.cestino().join()} (si copiano soltanto)`);
+        if ((await libriDi(d.p)).some((b) => b.fileTolto)) throw new Error("la scheda in lettura è diventata «senza ebook»");
+        return { guasti: d.guasti, nota: "la copia da 0 byte riempita nella cartella della saga, la melodia in «Musica», Drive intatto" };
+      } finally {
+        await drv.chiudi();
+      }
+    },
+  },
+  {
     // segnalato dal lettore: «perché i 38 GB di manga e fumetti non sono
     // stati spostati?» — caricati a mano su Drive, nessuna scheda li usava
     nome: "i file su Drive che nessun libro usa vanno sull'HDD con le loro cartelle, e quelli dei libri e fuori dall'app restano",

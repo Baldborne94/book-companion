@@ -95,7 +95,7 @@ async function posto(dir, nome, byte) {
 const MB = 1024 * 1024;
 
 export async function spostaSuHdd(voci, { radice, apri, segna, cestina, ferma = () => false, vivo = () => true, onProgress } = {}) {
-  const esito = { fatti: 0, copiati: 0, byte: 0, mancati: [], restati: [], fermato: false, scollegato: null };
+  const esito = { fatti: 0, copiati: 0, melodie: 0, byte: 0, mancati: [], restati: [], fermato: false, scollegato: null };
   for (let i = 0; i < (voci || []).length; i++) {
     if (!vivo()) {
       esito.fermato = true;
@@ -125,7 +125,8 @@ export async function spostaSuHdd(voci, { radice, apri, segna, cestina, ferma = 
         continue;
       }
       if (v.tieni) {
-        esito.copiati += 1;
+        if (v.melodia) esito.melodie += 1;
+        else esito.copiati += 1;
         continue;
       }
       await segna(v);
@@ -164,6 +165,7 @@ export function fraseHdd(e) {
   const parti = [];
   if (e.fatti) parti.push(`📦 ${quanti(e.fatti, "Un volume", "volumi")} sull'HDD${e.byte ? ` · ${fmtGoogle(e.byte)} liberati su Google Drive (nel cestino per 30 giorni)` : ""}`);
   if (e.copiati) parti.push(e.copiati === 1 ? "📖 Quello che stai leggendo è copiato sull'HDD e resta su Drive" : `📖 I ${e.copiati} che stai leggendo sono copiati sull'HDD e restano su Drive`);
+  if (e.melodie) parti.push(e.melodie === 1 ? "🎵 Una melodia copiata sul disco, in «Musica»" : `🎵 ${e.melodie} melodie copiate sul disco, in «Musica»`);
   if (e.restati.length) parti.push(`${quanti(e.restati.length, "uno è sull'HDD ma è rimasto", "sono sull'HDD ma sono rimasti")} anche su Drive`);
   if (e.mancati.length) parti.push(`${quanti(e.mancati.length, "uno non è arrivato", "non sono arrivati")} intero sul disco e ${e.mancati.length === 1 ? "resta" : "restano"} su Drive: ${nomi(e.mancati)}`);
   if (e.fermato) parti.push("fermato: il resto è ancora su Drive");
