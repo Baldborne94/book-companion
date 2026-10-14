@@ -288,6 +288,12 @@ export default async (t) => {
   t.c("un altro numero è un altro volume, non un'altra edizione", !sandman.altreEdizioni.length && /Book 01/.test(sandman.senzaScheda.map((f) => f.nome).join()));
   const soloUno = controllaDisco([{ id: "s4", title: "The Sandman - The Deluxe Edition Book 04", saga: "The Sandman" }], [fv("Fumetti/The Sandman/The Sandman - The Deluxe Edition Book 01.cbz", 1)]);
   t.c("e non prende il file del Book 01 quando il suo manca", soloUno.mancano.altrove.length === 1);
+  // dal quarto rapporto: il numero della scheda è l'ordine di lettura
+  const pern = controllaDisco(
+    [{ id: "wd", title: "Dragonriders of Pern #03: Original 3 - The White Dragon", saga: "Dragonriders of Pern" }],
+    [fv(`Libri/Dragonriders of Pern/The White Dragon (Dragonriders of Pern Book 5) (Anne McCaffrey)${zl}.epub`, 1), fv("Libri/Dragonriders of Pern/Dragonquest (Dragonriders of Pern Book 2).epub", 2)]
+  );
+  t.eq("il titolo vero del volume vale più del numero", [...pern.aPosto, ...pern.daSpostare].map((x) => x.file.nome).join(), `The White Dragon (Dragonriders of Pern Book 5) (Anne McCaffrey)${zl}.epub`);
   const fraDue = controllaDisco(
     [{ id: "a", title: "Alpha" }, { id: "o", title: "Omega" }],
     [fv("Fumetti/Alpha.cbz", 1), fv("Fumetti/Omega.cbz", 2), fv("Fumetti/Alpha Omega.cbz", 3)]
