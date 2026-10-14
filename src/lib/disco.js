@@ -129,6 +129,17 @@ const altroNumero = (intero, ws) => {
   const nf = numeri(ws);
   return nt.length > 0 && nf.length > 0 && !nt.some((n) => nf.includes(n));
 };
+// MA IL TITOLO VERO DEL VOLUME VALE PIU' DEL NUMERO (segnalato col quarto
+// rapporto: «Dragonriders of Pern #03: Original 3 - The White Dragon» e il
+// file «The White Dragon (Dragonriders of Pern Book 5)»: il numero della
+// scheda e' l'ordine di lettura, quello del file l'ordine d'uscita). Il
+// numero decide solo quando il file copre il titolo col nome della saga e
+// basta: i pezzi che non sono la saga sono il titolo vero.
+const pezziVeri = (titolo, saga) =>
+  String(titolo || "")
+    .split(/\s*:\s*|\s+-\s+|\.\s+|\s+(?:with\s+)?illustrat\w*\s+by\s+/i)
+    .map(parole)
+    .filter((p) => !p.every((w) => saga.has(w)));
 const cartellaDi = (f) => new Set(f.cartelle.length >= 2 ? parole(f.cartelle.at(-1)) : []);
 function abbinaDisco(libri, file, casaDi = () => null) {
   const perNome = new Map();
@@ -158,9 +169,12 @@ function abbinaDisco(libri, file, casaDi = () => null) {
     const pezzi = [intero, ...pezziDi(b.title)];
     const casa = casaDi(b);
     const suo = new Set(intero);
+    const veri = pezziVeri(b.title, new Set(parole(b.saga)));
     for (const f of liberi) {
       const ws = insiemi.get(f);
-      if (altroNumero(intero, ws) || !pezzi.some((p) => copre(p, ws, cartelle.get(f)))) continue;
+      const wc = cartelle.get(f);
+      if (!pezzi.some((p) => copre(p, ws, wc))) continue;
+      if (altroNumero(intero, ws) && !veri.some((p) => copre(p, ws, wc))) continue;
       const contano = [...ws].filter((w) => !RUMORE.has(w) && !/^#(19|20)\d\d$/.test(w));
       const comuni = contano.filter((w) => suo.has(w)).length;
       const aCasa = casa && casa === f.cartelle.map((x) => x.toLowerCase()).join("/") ? 0.001 : 0;
