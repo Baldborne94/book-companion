@@ -117,6 +117,18 @@ function copre(p, ws, wc) {
   }
   return p.some((w) => piena(w) && ws.has(w));
 }
+// i numeri di un nome, senza gli anni
+const numeri = (ws) => [...ws].filter((w) => w.startsWith("#") && !/^#(19|20)\d\d$/.test(w));
+// UN ALTRO NUMERO E' UN ALTRO VOLUME (segnalato col terzo rapporto: «The
+// Sandman - The Deluxe Edition Book 01» detto altra edizione del «Book 04»,
+// perche' il pezzo «The Sandman» del titolo copre ogni file della saga). Se
+// titolo e nome hanno numeri e nessuno in comune, il file non e' di quella
+// scheda; un nome senza numeri («Castle of Wizardry») resta buono.
+const altroNumero = (intero, ws) => {
+  const nt = numeri(intero);
+  const nf = numeri(ws);
+  return nt.length > 0 && nf.length > 0 && !nt.some((n) => nf.includes(n));
+};
 const cartellaDi = (f) => new Set(f.cartelle.length >= 2 ? parole(f.cartelle.at(-1)) : []);
 function abbinaDisco(libri, file, casaDi = () => null) {
   const perNome = new Map();
@@ -148,7 +160,7 @@ function abbinaDisco(libri, file, casaDi = () => null) {
     const suo = new Set(intero);
     for (const f of liberi) {
       const ws = insiemi.get(f);
-      if (!pezzi.some((p) => copre(p, ws, cartelle.get(f)))) continue;
+      if (altroNumero(intero, ws) || !pezzi.some((p) => copre(p, ws, cartelle.get(f)))) continue;
       const contano = [...ws].filter((w) => !RUMORE.has(w) && !/^#(19|20)\d\d$/.test(w));
       const comuni = contano.filter((w) => suo.has(w)).length;
       const aCasa = casa && casa === f.cartelle.map((x) => x.toLowerCase()).join("/") ? 0.001 : 0;
@@ -197,7 +209,6 @@ function abbinaDisco(libri, file, casaDi = () => null) {
   // (Collection)…». Solo un file con tutte le parole della saga (nel nome o
   // nella sua cartella) e il solo numero della scheda (gli anni non contano),
   // e solo se il file e' di quella scheda sola e la scheda ha quel file solo.
-  const numeri = (ws) => [...ws].filter((w) => w.startsWith("#") && !/^#(19|20)\d\d$/.test(w));
   const perSaga = [];
   for (const b of libri) {
     if (di.has(b) || !b.saga || !(Number(b.sagaOrder) > 0)) continue;

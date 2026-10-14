@@ -279,6 +279,15 @@ export default async (t) => {
   );
   t.eq("e senza scheda resta solo quel che nessuna scheda copre", rd.senzaScheda.map((f) => f.nome).join(), "Bone - One Volume Edition (2004 (phaze-DCP).cbz");
   t.c("il rapporto le dice a parte, col volume", /Altre edizioni di volumi che hanno gia' il loro file \(7\):[\s\S]*Manacled 1 \(Senlinyu\)\.epub \(3821653 byte\) -> Manacled 1/.test(rapportoDisco(rd)));
+  // dal terzo rapporto: il Book 01 non è un'altra edizione del Book 04
+  const sandman = controllaDisco(
+    [{ id: "s4", title: "The Sandman - The Deluxe Edition Book 04 (2021) (digital) (Son of Ultron-Empire)", saga: "The Sandman", tipo: "fumetti" }],
+    [fv("Fumetti/The Sandman/The Sandman - The Deluxe Edition Book 04 (2021) (digital) (Son of Ultron-Empire).cbz", 4), fv("Fumetti/The Sandman/The Sandman - The Deluxe Edition Book 01 (2020) (digital) (Son of Ultron-Empire).cbz", 1)],
+    { tipoDi: () => "fumetti" }
+  );
+  t.c("un altro numero è un altro volume, non un'altra edizione", !sandman.altreEdizioni.length && /Book 01/.test(sandman.senzaScheda.map((f) => f.nome).join()));
+  const soloUno = controllaDisco([{ id: "s4", title: "The Sandman - The Deluxe Edition Book 04", saga: "The Sandman" }], [fv("Fumetti/The Sandman/The Sandman - The Deluxe Edition Book 01.cbz", 1)]);
+  t.c("e non prende il file del Book 01 quando il suo manca", soloUno.mancano.altrove.length === 1);
   const fraDue = controllaDisco(
     [{ id: "a", title: "Alpha" }, { id: "o", title: "Omega" }],
     [fv("Fumetti/Alpha.cbz", 1), fv("Fumetti/Omega.cbz", 2), fv("Fumetti/Alpha Omega.cbz", 3)]
