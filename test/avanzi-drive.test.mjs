@@ -43,7 +43,7 @@ export default async (t) => {
   t.eq("via le chiavi di Drive e di Google", e.tolte.sort().join(), "bc_drive_libri,bc_drive_mai,bc_drive_token,bc_google_vista");
   t.eq("il resto della biblioteca non si tocca", Object.keys(st.m).sort().join(), "bc_books,bc_tema");
   t.eq("e l'elenco dei file di Drive in IndexedDB", aux.join(), "drive_elenco");
-  t.c("ogni chiave dei tempi di Drive e' nell'elenco", ["bc_drive_on", "bc_drive_client", "bc_drive_api_key", "bc_drive_melodie", "bc_drive_permesso", "bc_drive_archivio", "bc_google_rinnovo"].every((k) => CHIAVI_DRIVE.includes(k)) && AUX_DRIVE.includes("drive_elenco"));
+  t.c("ogni chiave dei tempi di Drive e' nell'elenco", ["bc_drive_on", "bc_drive_client", "bc_drive_api_key", "bc_drive_melodie", "bc_drive_permesso", "bc_drive_archivio", "bc_google_rinnovo", "bc_anticipo"].every((k) => CHIAVI_DRIVE.includes(k)) && AUX_DRIVE.includes("drive_elenco"));
   t.eq("rifatto, non c'e' piu' niente da togliere", (await togliAvanziDrive({ st })).tolte.length, 0);
 
   // ---- nel Supabase ----------------------------------------------------------

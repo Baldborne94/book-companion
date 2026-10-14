@@ -127,12 +127,9 @@ async function pesaStore(nome) {
   });
 }
 
-// QUANTO PESA OGNI LIBRO QUI, per id: e' uno dei modi in cui un libro si
-// riconosce fra i file che il lettore ha caricato a mano su Drive. Stesso
-// cursore di `pesaStore`, e per la stessa ragione — `size` si legge senza
-// tirare su un byte. Lo stesso per le copertine: la misura dice se quella
-// qui e' la stessa che sta nel secchio.
-export const misureFile = () => misureDi("files");
+// QUANTO PESA OGNI COPERTINA QUI, per id: la misura dice se quella qui e'
+// la stessa che sta nel secchio. Stesso cursore di `pesaStore`, e per la
+// stessa ragione — `size` si legge senza tirare su un byte.
 export const misureCopertine = () => misureDi("covers");
 
 async function misureDi(nome) {
@@ -208,14 +205,6 @@ export async function removeFileOnly(id) {
   await withStore("aux", "readwrite", (s) => s.delete(`loc_${id}`));
   await withStore("aux", "readwrite", (s) => s.delete(`salute_${id}`));
 }
-
-// E I SOLI BYTE, QUANDO TORNANO IDENTICI. «Libera spazio» toglie dal
-// tablet un libro la cui copia su Drive e' la STESSA al byte: quando
-// riscende, le posizioni misurate da epub.js e il verdetto sulla
-// spezzatura valgono ancora, e buttarli vorrebbe dire rimisurare le pagine
-// di ogni libro riaperto per niente. Per questo non passa da
-// `removeFileOnly`, che quei calcoli li butta perche' li' il file cambia.
-export const togliByteQui = (id) => withStore("files", "readwrite", (s) => s.delete(id));
 
 export async function removeBookData(id) {
   await withStore("files", "readwrite", (s) => s.delete(id));

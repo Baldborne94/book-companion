@@ -34,9 +34,7 @@ import { aGruppi } from "./aGruppi.js";
 import { avanziDelSecchio, leggiRigheLeggere, aPagine, fraseCopertine, COPERTINE_INSIEME, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare, mandaCopertine, copertineInAttesa, segnaInAttesa, fondiSchede } from "./syncCore.js";
 import { raccontaGiro } from "./resoconto.js";
 import { togliAvanziDrive } from "./avanziDrive.js";
-import { nuovaMemoria, firmaLontana } from "./ultimiLontani.js";
 
-const LONTANI = nuovaMemoria();
 
 // `contaSpazio` viveva qui ed e' passata in `syncCore` con le altre
 // decisioni pure; si riesporta perche' chi la cercava la trovi dov'era.
@@ -47,8 +45,6 @@ const REPUSH_KEY = "bc_repush";
 const PREFS_UPD_KEY = "bc_prefs_upd";
 
 export const getLastSync = () => parseInt(localStorage.getItem(LAST_SYNC_KEY), 10) || 0;
-
-export const touchPrefs = () => localStorage.setItem(PREFS_UPD_KEY, String(Date.now()));
 
 const filePath = (uid, book) => `${uid}/${book.id}.${book.fileType || "epub"}`;
 const coverPath = (uid, id) => `${uid}/${id}.cover`;
@@ -741,36 +737,6 @@ export async function togliFileDalCloud(book) {
   }
 }
 
-// I byte di un libro che qui non c'e', PRESI E BASTA: dal secchio (quel che
-// c'era da prima), e niente scritto su disco. E' la strada di chi legge —
-// vedi `fileDaLeggere`.
-async function prendiFile(book) {
-  if (!isSyncConfigured()) return null;
-  const session = await getSession();
-  if (!session) return null;
-  const sb = await getClient();
-  const { data, error } = await sb.storage.from(BUCKET).download(filePath(session.user.id, book));
-  if (error || !data) return null;
-  return data;
-}
-
-// IL FILE CHE UN READER DEVE APRIRE: i byte qui, o quelli del secchio in
-// MEMORIA per questa lettura (col segno `lontano`), senza scriverli su disco.
-// L'ultimo letto cosi' si riapre dalla memoria (`lib/ultimiLontani.js`).
-export async function fileDaLeggere(book) {
-  const local = await getFile(book.id);
-  if (local) return local;
-  const firma = firmaLontana(null);
-  const ricordato = LONTANI.prendi(book.id, firma);
-  if (ricordato) return ricordato;
-  const preso = await prendiFile(book);
-  if (preso) {
-    preso.lontano = true;
-    LONTANI.tieni(book.id, firma, preso);
-  }
-  return preso;
-}
-
 // UN CBR GIA' IN BIBLIOTECA CHE IL BROWSER NON APRIRA' MAI (compresso e
 // oltre `CBR_MAX`: vedi `rarInCbz.js`) si converte in CBZ dal lettore, con
 // un tocco: il CBZ prende il suo posto qui. I nomi delle pagine restano,
@@ -789,7 +755,6 @@ export async function convertiLibroInCbz(book, { onProgress } = {}) {
     cbz = await convertiInCbz({ blob: qui }, { onProgress });
     await putFile(book.id, cbz);
   }
-  LONTANI.dimentica?.(book.id);
   // la copertina che mancava si prende dal CBZ
   if (!(await getCover(book.id).catch(() => null))) {
     const { copertinaOriginale } = await import("./copertina.js");
@@ -798,24 +763,6 @@ export async function convertiLibroInCbz(book, { onProgress } = {}) {
   }
   const impronta = await improntaDi(cbz).catch(() => undefined);
   return { fileType: "cbz", ...(impronta ? { impronta } : {}) };
-}
-
-// IL SEGUITO CHE SCENDE DA SE' (`lib/anticipo.js`): dal secchio, scritto qui, senza chiedere niente a nessuno. Esiti: «gia'» (era qui),
-// «sceso», «assente» (lassu' non c'e'), «errore».
-export async function anticipaFile(book) {
-  if (await getFile(book.id).catch(() => null)) return "gia";
-  try {
-    if (!isSyncConfigured()) return "assente";
-    const session = await getSession();
-    if (!session) return "assente";
-    const sb = await getClient();
-    const { data, error } = await sb.storage.from(BUCKET).download(filePath(session.user.id, book));
-    if (!data) return error && !nonCeLassu(error) ? "errore" : "assente";
-    await putFile(book.id, data);
-    return "sceso";
-  } catch {
-    return "errore";
-  }
 }
 
 // PORTARE A CASA I TOMI RIMASTI NEL CLOUD: un libro arrivato dalla

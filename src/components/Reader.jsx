@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
 import { getAux, putAux, getFile } from "../lib/bookStore.js";
-import { fileDaLeggere } from "../lib/sync.js";
 import {
   getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights,
 } from "../lib/annotations.js";
@@ -27,7 +26,7 @@ import { sillaba } from "../lib/hyphens.js";
 import { eNotaRef, risolviHref, trovaNota, pezziNota, piuVicina } from "../lib/nota.js";
 import { immagineDaIngrandire, sceltaDelTocco } from "../lib/tavola.js";
 import Tavola from "./Tavola.jsx";
-import { controllaSpezzatura, saluteInCache, daRicucire, ricuciLibro, ricuciInMemoria, conSegni, taci } from "../lib/ricuci.js";
+import { controllaSpezzatura, saluteInCache, daRicucire, ricuciLibro, conSegni, taci } from "../lib/ricuci.js";
 import { leftoverScroll, dentroIlCapitolo } from "../lib/spread.js";
 import { chiaveAvanzo, avanzoRicordato, ricordaAvanzo } from "../lib/avanzoRicordato.js";
 import { misuraBuona, misuraDaSalvare } from "../lib/misuraSalvata.js";
@@ -37,7 +36,7 @@ import HighlightList from "./HighlightList.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
 import SchedaOracolo, { attese } from "./SchedaOracolo.jsx";
 import { apertaATuttoSchermo, serveTastoSchermo } from "../lib/schermoIntero.js";
-import { misuraApertura, provenienza } from "../lib/tempi.js";
+import { misuraApertura } from "../lib/tempi.js";
 
 // sotto i 7px la pila di fogli diventa un filo che sembra un difetto,
 // non l'orlo delle pagine: il minimo deve leggersi come carta impilata
@@ -282,8 +281,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [velocita, setVelocita] = useState(() => leggiVelocita());
   const voceRef = useRef({ stato: null, frasi: [], i: 0, coda: "", gettone: 0, giro: null, quiete: null, pagina: null, frase: null });
   const voceVista = useRef(null);
-  // il ricucito in memoria del libro lontano, per il giro che lo riapre
-  const byteRef = useRef(null);
   const saltaPct = useRef(null);
 
   const anchor = useRef(null);
@@ -980,31 +977,17 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     let dead = false;
     (async () => {
       try {
-        // IL LIBRO CHE STA SU DRIVE E QUI NON C'E' arriva in memoria
-        // (`lontano`) e non si scrive: e' la situazione pulita chiesta dal
-        // lettore. Un ricucito in memoria fatto un attimo fa (`byteRef`)
-        // vale piu' di un altro giro di rete.
         const misura = (apertura.current = misuraApertura("epub", book.id));
         misura.tappa("codice");
-        let blob = byteRef.current || (await fileDaLeggere(book));
-        byteRef.current = null;
+        const blob = await getFile(book.id);
         if (!blob) throw new Error("file mancante");
         misura.tappa("byte");
-        // e se il verdetto e' gia' scritto e dice «spezzato», sul libro
-        // lontano si ricuce PRIMA di rendere: non c'e' un disco che tenga
-        // la cura, quindi la si rifa' a ogni apertura — in memoria, in un
-        // attimo — e senza questa riga la pagina comparirebbe spezzata e
-        // si riassesterebbe un secondo dopo, a ogni apertura
-        if (blob.lontano) {
-          const salute = await saluteInCache(book.id, blob.size);
-          if (salute && daRicucire(salute)) blob = (await ricuciInMemoria(book.id, blob))?.blob || blob;
-        }
         const { default: ePub } = await import("epubjs");
         const eb = ePub(await blob.arrayBuffer());
         epubRef.current = eb;
         await eb.ready;
         if (dead) return;
-        misura.tappa("libro", { da: provenienza(blob), kb: Math.round((blob.size || 0) / 1024) });
+        misura.tappa("libro", { kb: Math.round((blob.size || 0) / 1024) });
         const lang = (eb.packaging?.metadata?.language || "").slice(0, 2).toLowerCase();
         langRef.current = lang || "en";
         // non basta che il libro dichiari la lingua: serve che il browser
@@ -1095,9 +1078,6 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // la candela torna un attimo, una volta nella vita del libro.
         (async () => {
           let ebScan = null;
-          // il ricucito in memoria non si controlla: il verdetto e' del file
-          // vero, e scriverne uno sul ricucito lo cancellerebbe
-          if (blob.ricucito) return;
           try {
             let salute = await saluteInCache(book.id, blob.size);
             if (!salute) {
@@ -1106,16 +1086,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               salute = await controllaSpezzatura(book.id, ebScan, blob.size);
             }
             if (dead || !salute || !daRicucire(salute)) return;
-            // sul libro lontano non c'e' un «piu' tardi»: la ricucitura in
-            // memoria e' deterministica, quindi i segni presi su un giro
-            // valgono sul prossimo, e si ricuce anche con dei segni
-            if (!blob.lontano && conSegni(book.id)) {
+            if (conSegni(book.id)) {
               if (!salute.taciuto) setCucitura("offri");
               return;
             }
-            const r = blob.lontano ? await ricuciInMemoria(book.id, blob) : await ricuciLibro(book.id, blob);
+            const r = await ricuciLibro(book.id, blob);
             if (!r?.blob || dead) return;
-            if (blob.lontano) byteRef.current = r.blob;
             notify?.("Questo libro era spezzato: l'ho ricucito 🪡");
             saltaPct.current = live.current.progress || 0;
             setStatusUi("loading");

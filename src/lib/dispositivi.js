@@ -61,6 +61,15 @@ export function soloAltrove(id, { qui, altrove } = {}) {
   return altrove?.has(id) ? sulDispositivo(altrove.get(id)) : null;
 }
 
+// I readers leggono solo i byte di qui (dal cloud non si apre piu' niente):
+// un libro senza file qui non si apre, si dice perche'. Null: si apre.
+export function percheNonSiApre(id, { qui, altrove } = {}) {
+  if (!qui || qui.has(id)) return null;
+  const la = soloAltrove(id, { qui, altrove });
+  if (la) return `Questo libro sta ${la} 📱: lì si legge. Qui si apre se aggiungi il file.`;
+  return "Il file di questo libro non è qui: se è rimasto nel cloud portalo qui con «⬇ Scarica qui» in Libreria, se no reimportalo.";
+}
+
 export const sulDispositivo = (nome) => (nome ? `sul ${nome}` : "sull'altro dispositivo");
 
 export function nomeDispositivo(w = globalThis) {

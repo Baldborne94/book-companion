@@ -115,7 +115,7 @@ const guardate = () =>
 // perduto. Il colore si legge quando si disegna (`C` cambia col tema).
 const SEGNI_DORSO = {
   tolto: { glifo: "📗", titolo: "Tieni la scheda, non l'ebook", colore: () => C.muted },
-  cloud: { glifo: "☁", titolo: "Nel cloud — si scarica quando lo apri", colore: () => C.arcane },
+  cloud: { glifo: "☁", titolo: "Nel cloud — portalo qui con «Scarica qui»", colore: () => C.arcane },
   perduto: { glifo: "⚠", titolo: "Né qui né nel cloud — reimporta il file", colore: () => C.accent },
   altrove: { glifo: "📱", titolo: (nome) => `Sta ${sulDispositivo(nome)}: lì si legge`, colore: () => C.muted },
 };

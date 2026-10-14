@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
-import { fileDaLeggere } from "../lib/sync.js";
+import { getFile } from "../lib/bookStore.js";
 import { getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights } from "../lib/annotations.js";
-import { getProgress, setProgress, setStatus, getStatus, loadBooks } from "../lib/library.js";
+import { setProgress, setStatus, getStatus, loadBooks } from "../lib/library.js";
 // il tetto alle schede tenute da parte sta col resto della cache, o le
 // due copie prenderebbero strade diverse
 import { leggiSchede, scriviSchede, riponi, tocca, daTenere, MAX_SCHEDE } from "../lib/schedeCache.js";
@@ -25,7 +25,7 @@ import SchedaOracolo, { attese } from "./SchedaOracolo.jsx";
 import { apertaATuttoSchermo, serveTastoSchermo } from "../lib/schermoIntero.js";
 import { creaVoce, testoDellaPagina } from "../lib/vocePdf.js";
 import { leggiVelocita, scriviVelocita, prossimaVelocita } from "../lib/voce.js";
-import { misuraApertura, provenienza } from "../lib/tempi.js";
+import { misuraApertura } from "../lib/tempi.js";
 
 // stesse fasce del reader EPUB, misurate sullo schermo: cosi' anche il
 // margine attorno alla pagina volta, non solo il foglio
@@ -302,9 +302,9 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
       try {
         const misura = (apertura.current = misuraApertura("pdf", book.id));
         misura.tappa("codice");
-        const blob = await fileDaLeggere(book);
+        const blob = await getFile(book.id);
         if (!blob) throw new Error("file mancante");
-        misura.tappa("byte", { da: provenienza(blob), kb: Math.round((blob.size || 0) / 1024) });
+        misura.tappa("byte", { kb: Math.round((blob.size || 0) / 1024) });
         const mod = await import("../lib/pdfThumb.js");
         modRef.current = mod;
         const pdf = await mod.loadPdf(await blob.arrayBuffer());

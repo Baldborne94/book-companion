@@ -2,7 +2,7 @@
 // lasciato Drive: «fai sapere al PC quali libri sono sul tablet»). Il libro
 // aggiunto sul tablet compariva sul PC col triangolo «né qui né nel cloud»
 // e, aperto, finiva sulla schermata del guasto.
-import { aggiornaQui, altroveDa, soloAltrove, leggiDispositivi, nomeDispositivo, PREFISSO_QUI } from "../src/lib/dispositivi.js";
+import { aggiornaQui, altroveDa, soloAltrove, percheNonSiApre, leggiDispositivi, nomeDispositivo, PREFISSO_QUI } from "../src/lib/dispositivi.js";
 import { inViaggio, dalViaggio } from "../src/lib/votiRaccolte.js";
 import { mergePrefs, segnoDorso, senzaCopia } from "../src/lib/syncCore.js";
 
@@ -76,6 +76,10 @@ export default async (t) => {
   t.eq("qui c'e': si apre", soloAltrove("d1", { qui, altrove: new Map([["d1", "tablet"]]) }), null);
   t.eq("senza l'elenco di casa non si ferma niente", soloAltrove("b1", { qui: null, altrove }), null);
   t.eq("un libro che l'altro non ha: niente", soloAltrove("x", { qui, altrove }), null);
+  t.c("dal reader: dove sta", /sta sul tablet 📱/.test(percheNonSiApre("b1", { qui, altrove })));
+  t.c("ne' qui ne' sull'altro: dal cloud non si apre piu', si dice come riaverlo", /Scarica qui.*reimportalo/.test(percheNonSiApre("x", { qui, altrove })));
+  t.eq("qui c'e': si apre", percheNonSiApre("d1", { qui, altrove }), null);
+  t.eq("prima di aver contato i file di qui non si ferma niente", percheNonSiApre("x", { qui: null, altrove }), null);
 
   // ---- il nome --------------------------------------------------------------
   t.eq("Android e' il tablet", nomeDispositivo({ navigator: { userAgent: "Mozilla/5.0 (Linux; Android 10; K)" } }), "tablet");
