@@ -21,7 +21,7 @@ import { BarraCloud } from "./BarraCloud.jsx";
 import SezioneDrive from "./SezioneDrive.jsx";
 import { ultimoGiro } from "../lib/resoconto.js";
 import { entraConGoogle, statoRinnovo } from "../lib/accessoGoogle.js";
-import { driveProntoOra, driveAcceso, scollegaDrive, permessoDriveMancante } from "../lib/drive.js";
+import { driveProntoOra, permessoDriveMancante, senzaDrive } from "../lib/drive.js";
 
 
 function Spazio({ dati }) {
@@ -550,18 +550,6 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
               </div>
             )}
             {guaio && <p style={{ margin: "4px 0 8px", color: C.red, fontSize: F.nota, lineHeight: 1.45 }}>{guaio}</p>}
-            {driveAcceso() && (
-              <button
-                onClick={async () => {
-                  await scollegaDrive();
-                  notify?.("Google Drive scollegato. I file su Drive restano dove sono.");
-                  onClose?.();
-                }}
-                style={{ display: "block", minHeight: 44, color: C.muted, fontSize: F.nota, textDecoration: "underline" }}
-              >
-                Scollega Google Drive
-              </button>
-            )}
             <button
               onClick={handleSignOut}
               style={{
@@ -600,7 +588,11 @@ function StatoGoogle({ conGoogle, onGoogle, busy, guaio }) {
   let frase;
   let ok = false;
   let chiedi = false;
-  if (permessoDriveMancante()) {
+  if (senzaDrive()) {
+    // spento per scelta: e' a posto, e non c'e' niente da chiedere a Google
+    frase = "Google Drive spento: i libri stanno qui e sul disco";
+    ok = true;
+  } else if (permessoDriveMancante()) {
     frase = "Google ha dato l'ingresso ma non Drive (la casella non era spuntata): rientra con Google e lasciala spuntata.";
     chiedi = true;
   } else if (stato === "revocato") {

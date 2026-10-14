@@ -596,6 +596,29 @@ export function spazioDrive(q) {
   };
 }
 
+// PRIMA DI SPEGNERE DRIVE, quel che sta solo lassu': i libri che Drive ha e
+// questo dispositivo no (un libro sul disco ha la scheda «senza ebook», e
+// non e' lassu' che lo si perde), e le melodie che da qui si suonano solo da
+// Drive. Spento Drive, da qui non si aprono piu': si dicono per nome, prima.
+export function soloSuDrive({ libri = [], mappa = {}, qui = new Set(), melodie = [], tracce = new Set() } = {}) {
+  return {
+    libri: libri.filter((b) => b?.id && mappa[b.id] && !qui.has(b.id) && !b.fileTolto),
+    melodie: melodie.filter((m) => m?.drive && !m.deleted && m.trackId && !tracce.has(m.trackId)),
+  };
+}
+export function fraseSoloSuDrive({ libri = [], melodie = [] } = {}) {
+  const parti = [];
+  if (libri.length) {
+    const nomi = libri.slice(0, 3).map((b) => `«${b.title || "senza titolo"}»`);
+    const resto = libri.length - nomi.length;
+    parti.push(resto ? `${nomi.join(", ")} e altri ${resto}` : nomi.join(", "));
+  }
+  if (melodie.length) parti.push(melodie.length === 1 ? "una melodia" : `${melodie.length} melodie`);
+  if (!parti.length) return null;
+  const uno = libri.length + melodie.length === 1;
+  return `${parti.join(" e ")} ${uno ? "sta" : "stanno"} solo su Google Drive: spento Drive, da qui non ${uno ? "si apre" : "si aprono"} finché non ${uno ? "lo" : "li"} rimetti sul dispositivo o sul disco.`;
+}
+
 // Quanto pesano, su Drive, i libri che l'app ci ha riconosciuto.
 export function pesoDeiLibri(mappa) {
   let quanti = 0;

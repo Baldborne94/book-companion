@@ -9,12 +9,18 @@ import {
   driveAcceso,
   driveProntoOra,
   collegaDrive,
-  scollegaDrive,
+  spegniDrive,
+  riprendiDrive,
+  senzaDrive,
   mappaDrive,
   spazioSuDrive,
   permessoDriveMancante,
 } from "../lib/drive.js";
-import { pesoDeiLibri } from "../lib/driveCore.js";
+import { pesoDeiLibri, soloSuDrive, fraseSoloSuDrive } from "../lib/driveCore.js";
+import { loadBooks } from "../lib/library.js";
+import { listFileIds, listTrackIds } from "../lib/bookStore.js";
+import { getFavoritesRaw } from "../lib/music.js";
+import { isSyncConfigured } from "../lib/supabase.js";
 import { statoRinnovo } from "../lib/accessoGoogle.js";
 import { BarraDrive } from "./BarraCloud.jsx";
 
@@ -41,6 +47,9 @@ export default function SezioneDrive({ onCollegato, notify, sobria = false }) {
   const [busy, setBusy] = useState(false);
   const [guaio, setGuaio] = useState(null);
   const [spazio, setSpazio] = useState(null);
+  // la domanda prima di spegnere: null, o la frase di quel che resta lassu'
+  const [spegnendo, setSpegnendo] = useState(null);
+  const spento = senzaDrive();
   const acceso = driveAcceso();
   const pronto = driveProntoOra();
   const daBuild = !!import.meta.env?.VITE_GOOGLE_CLIENT_ID;
@@ -72,10 +81,22 @@ export default function SezioneDrive({ onCollegato, notify, sobria = false }) {
     }
   }
 
-  async function scollega() {
-    await scollegaDrive();
-    notify?.("Google Drive scollegato. I file su Drive restano dove sono.");
+  async function chiediSpegni() {
+    const [qui, tracce] = await Promise.all([listFileIds().catch(() => []), listTrackIds().catch(() => [])]);
+    const lassu = soloSuDrive({ libri: loadBooks(), mappa: mappaDrive(), qui: new Set(qui), melodie: getFavoritesRaw(), tracce: new Set(tracce) });
+    setSpegnendo({ frase: fraseSoloSuDrive(lassu) });
+  }
+
+  async function spegni() {
+    await spegniDrive();
+    setSpegnendo(null);
+    notify?.("Google Drive spento su questo dispositivo. I file su Drive restano dove sono.");
     ridisegna((n) => n + 1);
+  }
+
+  async function riprendi() {
+    riprendiDrive();
+    await collega();
   }
 
   const libri = pesoDeiLibri(mappaDrive());
@@ -122,14 +143,44 @@ export default function SezioneDrive({ onCollegato, notify, sobria = false }) {
       <div style={{ fontSize: F.corpo, color: C.text, marginBottom: 6 }}>🗂 Google Drive</div>
       {/* da dentro, collegato, la spiegazione e' gia' stata letta: resta
           quel che serve guardare (vedi il pannello «sobrio» in SyncPanel) */}
-      {!(sobria && acceso) && (
+      {!spento && !(sobria && acceso) && (
         <p style={{ color: C.muted, fontSize: F.nota, lineHeight: 1.5, margin: 0 }}>
           I file dei libri stanno sul tuo Drive, non qui sopra: l'app riconosce quelli che hai già caricato nelle
           cartelle Libri, Fumetti e Manga, manda su i nuovi, e li riporta sul tablet quando li apri.
         </p>
       )}
 
-      {acceso ? (
+      {spento ? (
+        <>
+          <p style={{ margin: "10px 0 0", fontSize: F.nota, color: C.text, lineHeight: 1.5 }}>
+            Spento su questo dispositivo: i libri si leggono da qui e dal disco, e su Drive non sale e non scende niente.
+            {isSyncConfigured() ? " Schede, segni e progressi viaggiano col cloud come sempre." : ""}
+          </p>
+          <div style={{ marginTop: 12 }}>
+            <button onClick={riprendi} disabled={busy} style={tasto(C.arcane)}>
+              {busy ? "…" : "Riprendi Google Drive"}
+            </button>
+          </div>
+        </>
+      ) : spegnendo ? (
+        <>
+          <p style={{ margin: "10px 0 0", fontSize: F.nota, color: C.text, lineHeight: 1.5 }}>
+            Spento Drive, da questo dispositivo l'app non legge, non manda e non archivia più niente su Google Drive, e
+            non lo riaccende nemmeno entrando con Google. I file lassù restano dove sono.
+          </p>
+          {spegnendo.frase && (
+            <p style={{ margin: "8px 0 0", fontSize: F.nota, color: C.accent, lineHeight: 1.5 }}>⚠ {spegnendo.frase}</p>
+          )}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+            <button onClick={spegni} style={tasto(C.accent)}>
+              Spegni Google Drive
+            </button>
+            <button onClick={() => setSpegnendo(null)} style={tasto(C.muted)}>
+              Lascia stare
+            </button>
+          </div>
+        </>
+      ) : acceso ? (
         <>
           <p style={{ margin: "10px 0 0", fontSize: F.nota, color: pronto ? C.accent : C.text }}>
             {pronto
@@ -142,21 +193,16 @@ export default function SezioneDrive({ onCollegato, notify, sobria = false }) {
           </p>
           {spazio && <BarraDrive spazio={spazio} libri={libri} compatta />}
           {campoChiave}
-          {/* da dentro lo scollegamento sta sotto «Altro», con l'uscita */}
-          {(!pronto || !sobria) && (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-              {!pronto && (
-                <button onClick={collega} disabled={busy} style={tasto(C.arcane)}>
-                  {busy ? "…" : "🔑 Ricollega"}
-                </button>
-              )}
-              {!sobria && (
-                <button onClick={scollega} disabled={busy} style={tasto(C.muted)}>
-                  Scollega Drive
-                </button>
-              )}
-            </div>
-          )}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+            {!pronto && (
+              <button onClick={collega} disabled={busy} style={tasto(C.arcane)}>
+                {busy ? "…" : "🔑 Ricollega"}
+              </button>
+            )}
+            <button onClick={chiediSpegni} disabled={busy} style={tasto(C.muted)}>
+              Fai senza Google Drive
+            </button>
+          </div>
         </>
       ) : (
         <>
@@ -189,6 +235,11 @@ export default function SezioneDrive({ onCollegato, notify, sobria = false }) {
               style={{ ...tasto(C.accent), opacity: !daBuild && !id.trim() ? 0.5 : 1 }}
             >
               {busy ? "…" : "Collega Google Drive"}
+            </button>
+            {/* anche senza averlo mai collegato: entrando con Google, Drive
+                non si collega piu' da solo */}
+            <button onClick={chiediSpegni} disabled={busy} style={{ ...tasto(C.muted), marginLeft: 8 }}>
+              Fai senza Google Drive
             </button>
           </div>
           {!driveConfigurato() && !id.trim() && (

@@ -13,7 +13,7 @@
 // in Node (per questo `supabase.js`, che legge le variabili della build, si
 // carica solo quando serve).
 const client = async (sb) => sb || (await import("./supabase.js")).getClient();
-import { accettaChiave, impostaRinnovo } from "./drive.js";
+import { accettaChiave, impostaRinnovo, senzaDrive } from "./drive.js";
 
 export const SCOPE_DRIVE = "https://www.googleapis.com/auth/drive";
 // l'esito dell'ultimo rinnovo: «nessuno» (mai entrato con Google) e
@@ -41,18 +41,23 @@ const scrivi = (st, k, v) => {
 
 export const statoRinnovo = (st = globalThis.localStorage) => leggi(st, STATO_KEY) || "";
 
-export async function entraConGoogle({ sb = null, origine = globalThis.location?.origin } = {}) {
+// Chi ha spento Drive entra con Google per la sola biblioteca: Google non
+// chiede il permesso per Drive, e non ne lascia uno a lungo termine.
+export async function entraConGoogle({ sb = null, origine = globalThis.location?.origin, conDrive = !senzaDrive() } = {}) {
   const c = await client(sb);
   if (!c) throw new Error("sync non configurata");
   const { error } = await c.auth.signInWithOAuth({
     provider: "google",
-    options: {
-      redirectTo: origine,
-      scopes: SCOPE_DRIVE,
-      // `prompt=consent` perche' Google consegni il permesso a lungo termine
-      // anche a chi l'aveva gia' dato: senza, lo da' solo la prima volta
-      queryParams: { access_type: "offline", prompt: "consent" },
-    },
+    options: conDrive
+      ? {
+          redirectTo: origine,
+          scopes: SCOPE_DRIVE,
+          // `prompt=consent` perche' Google consegni il permesso a lungo
+          // termine anche a chi l'aveva gia' dato: senza, lo da' solo la
+          // prima volta
+          queryParams: { access_type: "offline", prompt: "consent" },
+        }
+      : { redirectTo: origine },
   });
   if (error) throw error;
 }
@@ -60,9 +65,10 @@ export async function entraConGoogle({ sb = null, origine = globalThis.location?
 // All'ingresso con Google: la chiave a Drive, il permesso nel Supabase.
 // Torna cosa e' successo, per dirlo: { chiave, permesso: "salvato" |
 // "non salvato" | null }.
-export async function custodisciGoogle(sessione, { sb = null, st = globalThis.localStorage, accetta = accettaChiave, ora = Date.now() } = {}) {
+// Con Drive spento la chiave che arriva non e' di Drive, e non si tiene.
+export async function custodisciGoogle(sessione, { sb = null, st = globalThis.localStorage, accetta = accettaChiave, ora = Date.now(), spento = senzaDrive } = {}) {
   const chiave = sessione?.provider_token;
-  if (!chiave || leggi(st, VISTA_KEY) === chiave.slice(-16)) return { chiave: false, permesso: null };
+  if (!chiave || spento() || leggi(st, VISTA_KEY) === chiave.slice(-16)) return { chiave: false, permesso: null };
   scrivi(st, VISTA_KEY, chiave.slice(-16));
   // un minuto di meno: la chiave e' nata quando Google ha risposto, non ora
   accetta({ chiave, scade: ora + 59 * 60_000 });

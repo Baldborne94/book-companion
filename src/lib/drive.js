@@ -29,6 +29,8 @@ const MAPPA_KEY = "bc_drive_libri";
 const MAPPA_MUSICA_KEY = "bc_drive_melodie";
 // Google ha dato una chiave senza Drive (la casella tolta nel consenso)
 const PERMESSO_KEY = "bc_drive_permesso";
+// il lettore ha scelto di fare senza Drive su questo dispositivo
+const MAI_KEY = "bc_drive_mai";
 const SCOPE = "https://www.googleapis.com/auth/drive";
 const API = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3";
@@ -50,6 +52,18 @@ export class DriveSenzaPermesso extends DriveScollegato {
   constructor(messaggio = "Google non ha dato il permesso per Drive: rientra con Google e lascia spuntata la casella di Google Drive.") {
     super();
     this.message = messaggio;
+  }
+}
+
+// SENZA DRIVE PER SCELTA (chiesto dal lettore: «eliminiamo del tutto l'uso
+// del googledrive»): non e' lo scollegamento di prima, che il prossimo
+// ingresso con Google o il rinnovo dal server riaccendevano da soli. E' una
+// scelta di questo dispositivo, e nessuna chiave la disfa: si riprende solo
+// col tasto che la riprende.
+export class DriveSpento extends DriveScollegato {
+  constructor() {
+    super();
+    this.message = "Google Drive è spento su questo dispositivo: lo riprendi dal pannello della nuvola.";
   }
 }
 
@@ -83,6 +97,7 @@ export const pickerConfigurato = () => !!apiKey();
 // «acceso» e' la scelta del lettore, e resta vera anche a chiave scaduta:
 // la nuvoletta sui dorsi deve continuare a dire che il libro sta lassu'
 export const driveAcceso = () => leggi(ACCESO_KEY) === "1";
+export const senzaDrive = () => leggi(MAI_KEY) === "1";
 
 let memoria = null;
 function tokenValido() {
@@ -114,7 +129,7 @@ let rinnovoInCorso = null;
 export const impostaRinnovo = (fn) => {
   rinnovo = fn || null;
 };
-export const fraseScollegato = (e, solita) => (e instanceof DriveSenzaPermesso ? e.message : solita);
+export const fraseScollegato = (e, solita) => (e instanceof DriveSenzaPermesso || e instanceof DriveSpento ? e.message : solita);
 // Chi ricollega Drive quando manca il permesso: chi e' entrato con Google
 // rientra con Google (il rinnovo dal server ha lo stesso permesso
 // dell'ingresso, e una chiave della finestra durerebbe un'ora sola)
@@ -129,13 +144,14 @@ export function accettaChiave({ chiave, scade }) {
   tieniChiave({ chiave, scade });
 }
 function tieniChiave({ chiave, scade }) {
+  if (senzaDrive()) return;
   const t = { chiave, scade: Number(scade) || Date.now() + 3600_000 };
   memoria = t;
   scrivi(TOKEN_KEY, JSON.stringify(t));
   scrivi(ACCESO_KEY, "1");
 }
 export function rinnovaInSilenzio() {
-  if (!rinnovo || permessoDriveMancante()) return Promise.resolve(false);
+  if (!rinnovo || permessoDriveMancante() || senzaDrive()) return Promise.resolve(false);
   if (!rinnovoInCorso) {
     rinnovoInCorso = Promise.resolve()
       .then(rinnovo)
@@ -258,6 +274,7 @@ export async function dettagliFile(ids) {
 // LA CHIAVE SI CHIEDE SOLO DA UN TOCCO: Google la consegna in una finestra,
 // e una finestra aperta senza un tocco il browser la blocca.
 export async function collegaDrive() {
+  if (senzaDrive()) throw new DriveSpento();
   const mancava = permessoDriveMancante();
   if (mancava && rientro && (await rientro())) {
     throw new DriveSenzaPermesso("Vado da Google: lascia spuntata la casella di Google Drive.");
@@ -289,6 +306,12 @@ export async function collegaDrive() {
   tieniChiave({ chiave: risposta.access_token, scade: Date.now() + (Number(risposta.expires_in) || 3600) * 1000 });
   return true;
 }
+
+export async function spegniDrive() {
+  await scollegaDrive();
+  scrivi(MAI_KEY, "1");
+}
+export const riprendiDrive = () => scrivi(MAI_KEY, null);
 
 export async function scollegaDrive() {
   const t = tokenValido();

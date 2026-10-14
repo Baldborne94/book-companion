@@ -1749,6 +1749,61 @@ const SCENE = [
       return { guasti: d.guasti, nota: `${negate.length} domande a Drive negate, poi «${avviso.slice(0, 70)}…», e un secondo ingresso con Drive` };
     },
   },
+  {
+    // chiesto dal lettore: «eliminiamo del tutto l'uso del googledrive». Lo
+    // scollegamento di prima non teneva: rientrando con Google, Drive si
+    // riaccendeva da solo
+    nome: "Drive si spegne per scelta: prima si dice cosa resta lassu', e rientrando con Google non si riaccende",
+    async fai({ browser, db }) {
+      const elenco = [
+        { id: "RADICE", name: "book-companion", mimeType: "application/vnd.google-apps.folder" },
+        { id: "S", name: "Sandman Deluxe Book 03.cbz", size: "1000", mimeType: "application/zip", parents: ["RADICE"], appProperties: { bcId: "s3" } },
+      ];
+      const drv = await avviaDrive(PORTA_DRIVE, {}, { elenco });
+      try {
+        const d = await dispositivo(browser, {
+          drive: { libri: [{ id: "s3", title: "Sandman Deluxe Book 03", author: "Neil Gaiman", fileType: "cbz", addedAt: 1 }], mappa: { s3: { id: "S", byte: 1000 } } },
+          prima: () => localStorage.setItem("bc_drive_client", "123-abc.apps.googleusercontent.com"),
+        });
+        const ls = (k) => d.p.evaluate((x) => localStorage.getItem(x), k);
+        await d.p.goto(URL_APP);
+        await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
+        await d.p.getByRole("button", { name: "Entra con Google" }).first().click();
+        await finche(async () => /dal-google/.test((await ls("bc_drive_token")) || ""), 20000, "tornando da Google la chiave di Drive non arriva");
+        await finche(() => drv.richieste(), 20000, "il giro di Drive non parte");
+        const permessi = JSON.stringify(db.permessi());
+
+        await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
+        await d.p.getByRole("button", { name: "Fai senza Google Drive" }).click();
+        const avviso = await finche(() => testoAvviso(d.p, /Sandman Deluxe Book 03.*sta solo su Google Drive/), 10000, "prima di spegnere non si dice cosa sta solo su Drive");
+        await d.p.getByRole("button", { name: "Spegni Google Drive" }).click();
+        await finche(async () => (await ls("bc_drive_mai")) === "1" && (await ls("bc_drive_on")) === null, 10000, "Drive non si spegne");
+        await finche(() => testoAvviso(d.p, /Spento su questo dispositivo/), 10000, "il pannello non dice che Drive e' spento");
+        const vecchia = await testoAvviso(d.p, /I file dei libri stanno sul tuo Drive/);
+        if (vecchia) throw new Error(`a Drive spento il pannello dice ancora: ${vecchia}`);
+
+        // si esce e si rientra con Google: Drive resta spento
+        await d.p.getByText("Altro", { exact: true }).click();
+        await d.p.getByRole("button", { name: "Esci" }).click();
+        await d.p.getByRole("button", { name: "Entra con Google" }).first().click();
+        await finche(() => db.accessi().length >= 2, 20000, "il secondo ingresso con Google non parte");
+        await d.p.waitForLoadState("load");
+        const a = db.accessi()[1] || {};
+        if (/auth\/drive/.test(a.scopes || "") || a.access_type || a.prompt) throw new Error(`a Drive spento si chiede ancora Drive a Google: ${JSON.stringify(a)}`);
+        const prima = drv.richieste();
+        await d.p.evaluate(() => window.dispatchEvent(new Event("online")));
+        await d.p.waitForTimeout(3000);
+        if ((await ls("bc_drive_on")) !== null) throw new Error("rientrando con Google Drive si e' riacceso");
+        if (JSON.stringify(db.permessi()) !== permessi) throw new Error("rientrando si e' salvato un permesso a lungo termine per Drive");
+        if (drv.richieste() !== prima) throw new Error(`a Drive spento l'app bussa ancora a Drive (${drv.richieste() - prima} richieste)`);
+        await d.p.locator("button[aria-label=Sincronizzazione]:visible").first().click();
+        await finche(() => testoAvviso(d.p, /Google Drive spento: i libri stanno qui e sul disco/), 10000, "il pannello non dice che Drive e' spento");
+        return { guasti: d.guasti, nota: `«${avviso.slice(0, 60)}…», poi spento; rientrato con Google senza Drive, nessuna richiesta a Drive` };
+      } finally {
+        await drv.chiudi();
+      }
+    },
+  },
 ];
 
 // OGNI ATTESA HA UN TETTO, anche quelle delle prove: una scena che non
