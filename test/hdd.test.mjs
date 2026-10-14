@@ -141,6 +141,9 @@ export default async (t) => {
   t.eq("i nomi che Windows rifiuta", nomeSicuro('Hellboy: Year 2?.cbz'), "Hellboy_ Year 2_.cbz");
   t.eq("niente punto in fondo", nomeSicuro("Fine. "), "Fine");
   t.c("senza showDirectoryPicker (Firefox) non si offre", !hddPossibile({}) && hddPossibile({ showDirectoryPicker() {} }));
+  const android = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36";
+  t.c("sul tablet no, anche se Chrome per Android sa scegliere una cartella", !hddPossibile({ showDirectoryPicker() {}, navigator: { userAgent: android } }));
+  t.c("nemmeno sull'iPad che si dice Mac", !hddPossibile({ showDirectoryPicker() {}, navigator: { userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", maxTouchPoints: 5 } }));
   const ff = { navigator: { userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0" } };
   t.c("Firefox sul computer: si dice perché", /Chrome o Edge/.test(percheNoHdd(ff) || ""));
   t.c("col tasto possibile non si dice niente", percheNoHdd({ ...ff, showDirectoryPicker() {} }) === null);
