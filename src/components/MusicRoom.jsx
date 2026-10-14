@@ -9,8 +9,9 @@ import { fmtBytes } from "../lib/bytes.js";
 import EmptyState from "./EmptyState.jsx";
 import { InAscolto } from "./Ascolto.jsx";
 import { useViewport } from "../lib/viewport.js";
-import { driveAcceso, driveProntoOra, collegaDrive, elencaCartelle, elencaAudio, scegliSuDrive, dettagliFile, adottaMelodie, DriveScollegato, fraseScollegato } from "../lib/drive.js";
-import { sceltaMusicaDalPicker, audioSotto, melodieDaAggiungere, scegliCartella, idRadice } from "../lib/driveCore.js";
+import { driveAcceso, driveProntoOra, collegaDrive, elencaCartelle, elencaAudio, scegliSuDrive, dettagliFile, adottaMelodie, DriveScollegato, fraseScollegato, mappaMelodie } from "../lib/drive.js";
+import { hddPossibile } from "../lib/hdd.js";
+import { sceltaMusicaDalPicker, audioSotto, melodieDaAggiungere, scegliCartella, idRadice, melodieSulDisco } from "../lib/driveCore.js";
 
 
 // LETTO AL RENDER, NON AL CARICAMENTO DEL MODULO. Era un oggetto costante,
@@ -31,7 +32,7 @@ const inputStyle = () => ({
   outline: "none",
 });
 
-export default function MusicRoom({ music, playerRef, notify, onCambiata, scarico = null, onScarica }) {
+export default function MusicRoom({ music, playerRef, notify, onCambiata, scarico = null, onScarica, onSulDisco }) {
   const [link, setLink] = useState("");
   const [favs, setFavs] = useState(() => getFavoritesRaw());
   const [favName, setFavName] = useState("");
@@ -673,6 +674,29 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, scaric
             {daDrive ? "…apro Drive" : "☁ Da Google Drive"}
           </button>
         )}
+        {/* SUL DISCO PRIMA DI LASCIARE DRIVE (chiesto dal lettore): le
+            melodie di Drive in «book-companion/Musica», dal computer */}
+        {(() => {
+          if (!driveAcceso() || !onSulDisco || !hddPossibile()) return null;
+          const voci = melodieSulDisco(getFavoritesRaw(), mappaMelodie());
+          if (!voci.length) return null;
+          return (
+            <button
+              onClick={async () => {
+                let radice = null;
+                try {
+                  radice = await window.showDirectoryPicker({ id: "bc-hdd", mode: "readwrite" });
+                } catch {
+                  return;
+                }
+                onSulDisco(radice);
+              }}
+              style={{ padding: "6px 14px", borderRadius: R.tondo, fontSize: F.nota, border: `1px solid ${C.border}`, color: C.text, background: "transparent" }}
+            >
+              {`💾 ${voci.length === 1 ? "La melodia" : `Le ${voci.length} melodie`} di Drive sul disco`}
+            </button>
+          );
+        })()}
         <button
           onClick={() => setAdding((v) => !v)}
           style={{

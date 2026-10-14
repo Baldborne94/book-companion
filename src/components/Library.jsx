@@ -803,17 +803,27 @@ function SpostaSuHdd({ r, onHdd, tasto, etichetta = "📦 Sposta sull'HDD", spie
   if (!onHdd || !driveAcceso()) return null;
   const mappa = mappaDrive();
   const { tutti: lassu, inLettura: restano, via } = divisiPerHdd(r.libri, mappa, getStatus);
-  if (!via.length) return null;
+  // SOLO QUELLI CHE STAI LEGGENDO (chiesto dal lettore prima di lasciare
+  // Drive: «mi salvi tu in E nei posti giusti i file?»): da soli non
+  // facevano un tasto, e sul disco restavano le copie a meta' da 0 byte.
+  // Si copiano, e restano anche su Drive, da leggere sul tablet.
+  const soloLettura = !via.length;
+  const daCopiare = soloLettura ? restano : via;
+  if (!daCopiare.length) return null;
   const riga = { flexBasis: "100%", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: F.nota, color: C.muted, lineHeight: 1.45 };
   if (!hddPossibile()) {
     const perche = spiega && percheNoHdd();
     return perche ? <div style={riga}>📦 {perche}</div> : null;
   }
-  const peso = via.reduce((n, b) => n + (Number(mappa[b.id]?.byte) || 0), 0);
+  const peso = daCopiare.reduce((n, b) => n + (Number(mappa[b.id]?.byte) || 0), 0);
   if (!chiedo)
     return (
       <button onClick={() => setChiedo(true)} style={tasto(false)}>
-        {etichetta === true ? `📦 ${via.length} ${r.nome[via.length === 1 ? 0 : 1]} sull'HDD · ${fmtGoogle(peso)}` : etichetta}
+        {soloLettura
+          ? `📖 Copia sul disco ${restano.length === 1 ? "quello che stai leggendo" : `i ${restano.length} che stai leggendo`} · ${fmtGoogle(peso)}`
+          : etichetta === true
+            ? `📦 ${via.length} ${r.nome[via.length === 1 ? 0 : 1]} sull'HDD · ${fmtGoogle(peso)}`
+            : etichetta}
       </button>
     );
   async function scegli() {
@@ -829,12 +839,14 @@ function SpostaSuHdd({ r, onHdd, tasto, etichetta = "📦 Sposta sull'HDD", spie
   return (
     <div style={riga}>
       <span style={{ flexBasis: "100%", color: C.text }}>
-        {`Sposto ${via.length === 1 ? "il volume che sta" : `i ${via.length} volumi che stanno`} su Google Drive (${fmtGoogle(peso)}) sul disco: scegli una sua cartella, e dentro faccio «book-companion» come su Drive, con Libri, Fumetti e Manga e una cartella per ogni saga (un volume a sé sta nella cartella del suo tipo). Ogni volume, quando sul disco è arrivato intero, resta in biblioteca come scheda e su Drive va nel cestino, da dove si riprende per 30 giorni. Anche il tablet lo toglie dalla sua memoria.${restano.length ? ` ${restano.length === 1 ? "Il volume che stai leggendo si copia sul disco e resta anche" : `I ${restano.length} volumi che stai leggendo si copiano sul disco e restano anche`} su Drive, da leggere anche sul tablet: quando li avrai finiti, rifai lo spostamento e se ne vanno anche da lì.` : ""}`}
+        {soloLettura
+          ? `Copio sul disco ${restano.length === 1 ? "il volume che stai leggendo" : `i ${restano.length} volumi che stai leggendo`} (${fmtGoogle(peso)}), ognuno nella cartella della sua saga dentro «book-companion»; una copia rimasta a metà si riempie. Su Google Drive ${restano.length === 1 ? "resta" : "restano"} anche, da leggere sul tablet.`
+          : `Sposto ${via.length === 1 ? "il volume che sta" : `i ${via.length} volumi che stanno`} su Google Drive (${fmtGoogle(peso)}) sul disco: scegli una sua cartella, e dentro faccio «book-companion» come su Drive, con Libri, Fumetti e Manga e una cartella per ogni saga (un volume a sé sta nella cartella del suo tipo). Ogni volume, quando sul disco è arrivato intero, resta in biblioteca come scheda e su Drive va nel cestino, da dove si riprende per 30 giorni. Anche il tablet lo toglie dalla sua memoria.${restano.length ? ` ${restano.length === 1 ? "Il volume che stai leggendo si copia sul disco e resta anche" : `I ${restano.length} volumi che stai leggendo si copiano sul disco e restano anche`} su Drive, da leggere anche sul tablet: quando li avrai finiti, rifai lo spostamento e se ne vanno anche da lì.` : ""}`}
       </span>
       {/* QUALI, per nome (segnalato dal lettore: «3 libri, 4 fumetti» e non
           sapeva quali fossero) */}
       <ul style={{ flexBasis: "100%", margin: 0, padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" }}>
-        {via.map((b) => (
+        {daCopiare.map((b) => (
           <li key={b.id} style={{ fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" }}>
             <span style={{ color: C.text }}>{b.title}</span> · {fmtGoogle(Number(mappa[b.id]?.byte) || 0)}
           </li>

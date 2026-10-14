@@ -558,6 +558,16 @@ export function nomeMelodiaSuDrive(m) {
   return `${t || "Melodia senza nome"}.${EST_MIME[String(m?.mime || "").toLowerCase()] || "mp3"}`;
 }
 
+// LE MELODIE SUL DISCO, prima di lasciare Drive (chiesto dal lettore: «mi
+// salvi tu in E nei posti giusti i file?»): ognuna in «book-companion/Musica»
+// col nome che ha su Drive, e col peso di Drive, che dice quando e' arrivata
+// intera. Si copiano soltanto (`tieni`): lassu' restano finche' Drive c'e'.
+export function melodieSulDisco(melodie, mappa) {
+  return (melodie || [])
+    .filter((m) => m?.trackId && !m.deleted && mappa?.[m.trackId]?.id && Number(mappa[m.trackId].byte) > 0)
+    .map((m) => ({ cartelle: ["Musica"], nome: nomeMelodiaSuDrive(m), byte: Number(mappa[m.trackId].byte), fileId: mappa[m.trackId].id, tieni: true, melodia: true }));
+}
+
 // UNA MELODIA SU DRIVE SI DICE SULLA SUA VOCE (`drive: true`), ed e' quel
 // segno che la fa viaggiare nelle preferenze: una voce che l'altro
 // dispositivo non potrebbe suonare resta dov'e' nata, come prima — era
