@@ -3,7 +3,6 @@
 // cartelle i file nel modo giusto per saga?»).
 import { casaDi, elencaDisco, controllaDisco, riordinaDisco, fraseRiordino, rapportoDisco, vociDalDisco, schedeDalDisco, lavoriDalDisco, convertiSulDisco, fraseConvertitiDisco, CBR_CONVERTITI, cbrNeiConvertiti, svuotaConvertiti } from "../src/lib/disco.js";
 import { importaDaDrive } from "../src/lib/importBook.js";
-import { daSpostareSuHdd } from "../src/lib/driveCore.js";
 
 // un disco finto: cartelle, file col loro peso, `move` facoltativo
 function cartella(nome = "", { conMove = true } = {}) {
@@ -88,7 +87,6 @@ export default async (t) => {
   t.eq("la parte senza saga non fa una cartella", casaDi({ series: "Parte 7" }, "manga").join("/"), "Manga");
   t.eq("un ciclo che si chiama come la saga non si ripete", casaDi({ saga: "Hellboy", series: "hellboy" }, "fumetti").join("/"), "Fumetti/Hellboy");
   t.eq("nomi buoni per Windows", casaDi({ saga: "Batman: Year One" }, "fumetti").join("/"), "Fumetti/Batman_ Year One");
-  t.eq("e chi sposta da Drive usa la stessa casa", daSpostareSuHdd([{ id: "b", saga: "Hellboy", series: "B.P.R.D." }], { b: { id: "f" } }, [{ id: "f", name: "x.cbz", size: "5" }], { tipoDi: () => "fumetti" })[0].cartelle.join("/"), "Fumetti/Hellboy/B.P.R.D.");
 
   const radice = cartella("book-companion");
   await metti(radice, "Manga/JoJo's_Bizarre_Adventure/Parte 7/Volume 20 - Love Train.cbz", 70);

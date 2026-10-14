@@ -19,10 +19,10 @@ import { isSyncConfigured } from "../lib/supabase.js";
 import {
   frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso, schedeCambiate
 } from "../lib/syncCore.js";
-import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, DriveScollegato, scegliSuDrive, dettagliFile, ultimoArchivioSuDrive, ultimoArchivioDaDrive, fraseScollegato, permessoDriveMancante, cbrDaButtare, cestinaSuDrive, senzaSchedaDaDrive } from "../lib/drive.js";
+import { driveAcceso, driveProntoOra, idSuDrive, mappaDrive, spazioSuDrive, collegaDrive, elencaFile, elencaCartelle, fileRemoto, DriveScollegato, scegliSuDrive, dettagliFile, ultimoArchivioSuDrive, ultimoArchivioDaDrive, fraseScollegato, permessoDriveMancante } from "../lib/drive.js";
 import { pesoDeiLibri, daAggiungere, daLiberare, PERCHE_LIBERARE, LIBERARE_DI_PARTENZA, pesoDaScendere, sceltaDalPicker, libriSotto, idRadice, giaSulloScaffale, fraseGia } from "../lib/driveCore.js";
 import { fmtBytes, fmtGoogle } from "../lib/bytes.js";
-import { hddPossibile, percheNoHdd, divisiPerHdd, perSezioni, SEZIONI_HDD, perCartella } from "../lib/hdd.js";
+import { hddPossibile } from "../lib/hdd.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { fraseDelPasso, fraseImport } from "../lib/convertiCbr.js";
 import { senzaCopertina } from "../lib/copertina.js";
@@ -443,7 +443,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   );
 }
 
-function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, onHdd }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -593,7 +593,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
             </button>
           )}
         </div>
-        <TuttaLaRaccolta r={dentro} voti={voti} onVoto={onVoto} onTutti={onTutti} onHdd={onHdd} />
+        <TuttaLaRaccolta r={dentro} voti={voti} onVoto={onVoto} onTutti={onTutti} />
         {mostra(dentro)}
       </>
     );
@@ -709,7 +709,7 @@ function Raccolta({ r, amata = false, voto = null, onApri, coverV, conCopertina 
 // saga (o la media dei volumi votati, detta come tale) e tutti i volumi
 // letti o da leggere in un tocco, con una conferma: venti volumi cambiati
 // per sbaglio non si rimettono a posto uno per uno
-function TuttaLaRaccolta({ r, voti, onVoto, onTutti, onHdd }) {
+function TuttaLaRaccolta({ r, voti, onVoto, onTutti }) {
   const [chiedo, setChiedo] = useState(null);
   const votabile = puoEssereVotata(r.id);
   const mio = votoMio(voti, r.id);
@@ -793,74 +793,6 @@ function TuttaLaRaccolta({ r, voti, onVoto, onTutti, onHdd }) {
           </>
         )}
       </div>
-      <SpostaSuHdd r={r} onHdd={onHdd} tasto={tasto} />
-    </div>
-  );
-}
-
-// SPOSTARE SULL'HDD (`spostaSuHdd` in App): i volumi della raccolta che
-// stanno su Drive. La cartella del disco si sceglie DENTRO il tocco — il
-// browser la chiede solo li' — e il resto e' un lavoro lungo di App.
-function SpostaSuHdd({ r, onHdd, tasto, etichetta = "📦 Sposta sull'HDD", spiega = true }) {
-  const [chiedo, setChiedo] = useState(false);
-  if (!onHdd || !driveAcceso()) return null;
-  const mappa = mappaDrive();
-  const { tutti: lassu, inLettura: restano, via } = divisiPerHdd(r.libri, mappa, getStatus);
-  // SOLO QUELLI CHE STAI LEGGENDO (chiesto dal lettore prima di lasciare
-  // Drive: «mi salvi tu in E nei posti giusti i file?»): da soli non
-  // facevano un tasto, e sul disco restavano le copie a meta' da 0 byte.
-  // Si copiano, e restano anche su Drive, da leggere sul tablet.
-  const soloLettura = !via.length;
-  const daCopiare = soloLettura ? restano : via;
-  if (!daCopiare.length) return null;
-  const riga = { flexBasis: "100%", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: F.nota, color: C.muted, lineHeight: 1.45 };
-  if (!hddPossibile()) {
-    const perche = spiega && percheNoHdd();
-    return perche ? <div style={riga}>📦 {perche}</div> : null;
-  }
-  const peso = daCopiare.reduce((n, b) => n + (Number(mappa[b.id]?.byte) || 0), 0);
-  if (!chiedo)
-    return (
-      <button onClick={() => setChiedo(true)} style={tasto(false)}>
-        {soloLettura
-          ? `📖 Copia sul disco ${restano.length === 1 ? "quello che stai leggendo" : `i ${restano.length} che stai leggendo`} · ${fmtGoogle(peso)}`
-          : etichetta === true
-            ? `📦 ${via.length} ${r.nome[via.length === 1 ? 0 : 1]} sull'HDD · ${fmtGoogle(peso)}`
-            : etichetta}
-      </button>
-    );
-  async function scegli() {
-    let radice = null;
-    try {
-      radice = await window.showDirectoryPicker({ id: "bc-hdd", mode: "readwrite" });
-    } catch {
-      return;
-    }
-    setChiedo(false);
-    onHdd(lassu, radice);
-  }
-  return (
-    <div style={riga}>
-      <span style={{ flexBasis: "100%", color: C.text }}>
-        {soloLettura
-          ? `Copio sul disco ${restano.length === 1 ? "il volume che stai leggendo" : `i ${restano.length} volumi che stai leggendo`} (${fmtGoogle(peso)}), ognuno nella cartella della sua saga dentro «book-companion»; una copia rimasta a metà si riempie. Su Google Drive ${restano.length === 1 ? "resta" : "restano"} anche, da leggere sul tablet.`
-          : `Sposto ${via.length === 1 ? "il volume che sta" : `i ${via.length} volumi che stanno`} su Google Drive (${fmtGoogle(peso)}) sul disco: scegli una sua cartella, e dentro faccio «book-companion» come su Drive, con Libri, Fumetti e Manga e una cartella per ogni saga (un volume a sé sta nella cartella del suo tipo). Ogni volume, quando sul disco è arrivato intero, resta in biblioteca come scheda e su Drive va nel cestino, da dove si riprende per 30 giorni. Anche il tablet lo toglie dalla sua memoria.${restano.length ? ` ${restano.length === 1 ? "Il volume che stai leggendo si copia sul disco e resta anche" : `I ${restano.length} volumi che stai leggendo si copiano sul disco e restano anche`} su Drive, da leggere anche sul tablet: quando li avrai finiti, rifai lo spostamento e se ne vanno anche da lì.` : ""}`}
-      </span>
-      {/* QUALI, per nome (segnalato dal lettore: «3 libri, 4 fumetti» e non
-          sapeva quali fossero) */}
-      <ul style={{ flexBasis: "100%", margin: 0, padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" }}>
-        {daCopiare.map((b) => (
-          <li key={b.id} style={{ fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" }}>
-            <span style={{ color: C.text }}>{b.title}</span> · {fmtGoogle(Number(mappa[b.id]?.byte) || 0)}
-          </li>
-        ))}
-      </ul>
-      <button onClick={scegli} style={tasto(true)}>
-        Scegli la cartella del disco
-      </button>
-      <button onClick={() => setChiedo(false)} style={tasto(false)}>
-        No
-      </button>
     </div>
   );
 }
@@ -898,16 +830,10 @@ export default function Library({
   // un cambio che non tocca le schede (il cuore, il voto di una raccolta)
   // parte lo stesso verso gli altri dispositivi
   onCambiate,
-  onSpostaSuHdd,
-  onSenzaSchedaSuHdd,
   onRiordina,
   onImportaDalDisco,
   onConvertiDalDisco,
 }) {
-  // lo scaffale si ridisegna solo quando cambia: il lavoro dell'HDD si
-  // raggiunge da qui, sempre quello di adesso
-  const hddRef = useRef(onSpostaSuHdd);
-  hddRef.current = onSpostaSuHdd;
   const [query, setQuery] = useState("");
   // il controllo aggiornamenti col dito: `agg` e' l'esito in corso, e le
   // parole stanno in ESITI_CONTROLLO — un esito senza frase e' un tasto
@@ -986,11 +912,6 @@ export default function Library({
   };
   const [importing, setImporting] = useState(false);
   const [vediDoppi, setVediDoppi] = useState(false);
-  // i CBR gia' convertiti da buttare (vedi `cbrGiaConvertiti`)
-  const [avanzi, setAvanzi] = useState(null);
-  // i file su Drive che nessun libro usa (`fileSenzaScheda`): prima l'elenco
-  // per cartella, col peso, poi la cartella del disco
-  const [senzaScheda, setSenzaScheda] = useState(null);
   // il disco controllato (`controllaDisco`): il rapporto e la sua casa
   const [disco, setDisco] = useState(null);
   const [giroImport, setGiroImport] = useState(null);
@@ -1942,43 +1863,6 @@ export default function Library({
   // LIBERA SPAZIO. Si ricontrolla su Drive ADESSO — la mappa e' dell'ultimo
   // giro, e un file cancellato a mano lassu' nel frattempo lascerebbe il
   // libro perduto — e per farlo serve la chiave, che si chiede da un tocco.
-  // I CBR GIA' CONVERTITI: prima si guarda su Drive e si mostra l'elenco,
-  // poi, toccato, uno alla volta nel cestino. Un intoppo e' di quel file.
-  async function cercaAvanzi() {
-    if (avanzi) return;
-    setAvanzi({ cercando: true });
-    try {
-      if (!driveProntoOra()) await collegaDrive();
-      const voci = await cbrDaButtare(books, { schedeInArrivo: isSyncConfigured() && !getLastSync() });
-      if (!voci.length) {
-        setAvanzi(null);
-        notify("Nessun CBR da buttare: dove c'è un CBR, è il file che leggi o non ha ancora il suo CBZ accanto");
-        return;
-      }
-      setAvanzi({ voci });
-    } catch (err) {
-      setAvanzi(null);
-      notify(err instanceof DriveScollegato ? fraseScollegato(err, "Google Drive aspetta un tocco: riprova.") : err?.message || "Google Drive non ha risposto");
-    }
-  }
-
-  async function cercaSenzaScheda() {
-    if (senzaScheda) return;
-    setSenzaScheda({ cercando: true });
-    try {
-      if (!driveProntoOra()) await collegaDrive();
-      const voci = await senzaSchedaDaDrive(books, { misure: await misureFile(), schedeInArrivo: isSyncConfigured() && !getLastSync() });
-      if (!voci.length) {
-        setSenzaScheda(null);
-        notify("Su Drive, in Libri, Fumetti e Manga, ogni file è di un libro della biblioteca");
-        return;
-      }
-      setSenzaScheda({ voci });
-    } catch (err) {
-      setSenzaScheda(null);
-      notify(err instanceof DriveScollegato ? fraseScollegato(err, "Google Drive aspetta un tocco: riprova.") : err?.message || "Google Drive non ha risposto");
-    }
-  }
   async function controllaIlDisco() {
     let scelta = null;
     try {
@@ -2013,40 +1897,6 @@ export default function Library({
     }
   }
 
-  async function senzaSchedaSulDisco() {
-    let radice = null;
-    try {
-      radice = await window.showDirectoryPicker({ id: "bc-hdd", mode: "readwrite" });
-    } catch {
-      return;
-    }
-    const voci = senzaScheda?.voci || [];
-    setSenzaScheda(null);
-    onSenzaSchedaSuHdd?.(voci, radice);
-  }
-
-  async function buttaAvanzi() {
-    const voci = avanzi?.voci || [];
-    let fatti = 0;
-    let byte = 0;
-    let falliti = 0;
-    for (let i = 0; i < voci.length; i++) {
-      setAvanzi({ voci, buttando: i });
-      try {
-        await cestinaSuDrive(voci[i].id);
-        fatti += 1;
-        byte += voci[i].byte;
-      } catch (err) {
-        if (err instanceof DriveScollegato) {
-          notify(fraseScollegato(err, "Google Drive aspetta un tocco: riprova."));
-          break;
-        }
-        falliti += 1;
-      }
-    }
-    setAvanzi(null);
-    if (fatti) notify(`🧹 ${fatti === 1 ? "Un CBR" : `${fatti} CBR`} nel cestino di Drive · ${fmtGoogle(byte)}${falliti ? ` · ${falliti} non ${falliti === 1 ? "è andato" : "sono andati"}` : ""}. Dal cestino si riprendono per 30 giorni; lo spazio torna quando lo svuoti.`);
-  }
 
   async function apriLibera() {
     if (libera) return;
@@ -2430,7 +2280,6 @@ export default function Library({
         voti={voti}
         onVoto={vota}
         onTutti={tuttiQuanti}
-        onHdd={(libri, radice) => hddRef.current?.(libri, radice)}
       />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3222,23 +3071,6 @@ export default function Library({
                   : `🔁 Converti ${cbrDaFare.length === 1 ? "un CBR" : `${cbrDaFare.length} CBR`} in CBZ`}
               </button>
             )}
-            {/* PER SEZIONE SULL'HDD (vedi `spostaSuHdd` in App): un tasto per
-                Libri, Fumetti e Manga, col conto di quel che sta su Drive */}
-            {drive &&
-              (() => {
-                const sezioni = perSezioni(books, (b) => tipoDi(b, tipi));
-                const nomi = { libri: ["libro", "libri"], fumetti: ["fumetto", "fumetti"], manga: ["manga", "manga"] };
-                return SEZIONI_HDD.map((sez, i) => (
-                  <SpostaSuHdd
-                    key={sez}
-                    r={{ libri: sezioni[sez], nome: nomi[sez] }}
-                    onHdd={onSpostaSuHdd}
-                    etichetta
-                    spiega={i === 0}
-                    tasto={(attivo) => ({ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${attivo ? C.accent + "88" : C.border}`, color: attivo ? C.accent : C.text, fontSize: F.nota })}
-                  />
-                ));
-              })()}
             {/* IL DISCO CONTROLLATO (vedi `controllaDisco`): cosa c'è, cosa
                 manca e dove sta, cosa è fuori posto; riordinare è un tocco a
                 parte, dopo aver visto l'elenco */}
@@ -3466,82 +3298,6 @@ export default function Library({
                   </div>
                 );
               })()}
-            {/* I FILE CHE NESSUN LIBRO USA (vedi `fileSenzaScheda`): caricati a
-                mano su Drive, nessuna scheda li sposta; vanno sul disco con
-                le cartelle che hanno su Drive */}
-            {drive && onSenzaSchedaSuHdd && hddPossibile() && !senzaScheda?.voci && (
-              <button
-                onClick={cercaSenzaScheda}
-                disabled={!!senzaScheda}
-                style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}
-              >
-                {senzaScheda?.cercando ? "Guardo su Drive…" : "📦 File su Drive che nessun libro usa"}
-              </button>
-            )}
-            {senzaScheda?.voci &&
-              (() => {
-                const voci = senzaScheda.voci;
-                const peso = voci.reduce((n, v) => n + v.byte, 0);
-                return (
-                  <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: F.nota, color: C.muted, lineHeight: 1.45 }}>
-                    <span style={{ flexBasis: "100%", color: C.text }}>
-                      {`${voci.length === 1 ? "Un file" : `${voci.length} file`} in «book-companion» su Google Drive (${fmtGoogle(peso)}) che nessun libro della biblioteca usa: li hai caricati a mano, e «Sposta sull'HDD» non li vede. Li sposto sul disco con le stesse cartelle che hanno su Drive; ognuno, arrivato intero, va nel cestino di Drive, da dove si riprende per 30 giorni.`}
-                    </span>
-                    <ul style={{ flexBasis: "100%", margin: 0, padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" }}>
-                      {perCartella(voci).map((c) => (
-                        <li key={c.cartella} style={{ fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" }}>
-                          <span style={{ color: C.text }}>{c.cartella}</span> · {c.n} file · {fmtGoogle(c.byte)}
-                        </li>
-                      ))}
-                    </ul>
-                    <button onClick={senzaSchedaSulDisco} style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}>
-                      Scegli la cartella del disco
-                    </button>
-                    <button onClick={() => setSenzaScheda(null)} style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}>
-                      No
-                    </button>
-                  </div>
-                );
-              })()}
-            {/* I CBR GIA' CONVERTITI (vedi `cbrGiaConvertiti`): c'e' solo con
-                Drive; prima l'elenco, col peso, poi il cestino */}
-            {drive && !avanzi?.voci && (
-              <button
-                onClick={cercaAvanzi}
-                disabled={!!avanzi}
-                style={{ padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}
-              >
-                {avanzi?.cercando ? "Guardo su Drive…" : "🗑 CBR già convertiti in CBZ"}
-              </button>
-            )}
-            {avanzi?.voci && (
-              <div style={{ flexBasis: "100%", padding: 12, borderRadius: R.piccolo, border: `1px solid ${C.border}`, background: C.surface }}>
-                <p style={{ margin: "0 0 8px", color: C.text, fontSize: F.nota, lineHeight: 1.45 }}>
-                  {`${avanzi.voci.length === 1 ? "Questo CBR ha accanto il CBZ che leggi, e nessun libro lo usa più" : `Questi ${avanzi.voci.length} CBR hanno accanto il CBZ che leggi, e nessun libro li usa più`}: ${fmtGoogle(avanzi.voci.reduce((n, v) => n + v.byte, 0))} su Google Drive. Vanno nel cestino di Drive, da dove si riprendono per 30 giorni.`}
-                </p>
-                <ul style={{ margin: "0 0 10px", padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" }}>
-                  {avanzi.voci.map((v) => (
-                    <li key={v.id} style={{ fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" }}>
-                      <span style={{ color: C.text }}>{v.nome}</span> · {fmtGoogle(v.byte)}
-                    </li>
-                  ))}
-                </ul>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button
-                    onClick={buttaAvanzi}
-                    disabled={avanzi.buttando != null}
-                    style={{ minHeight: 44, padding: "8px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
-                  >
-                    {avanzi.buttando != null ? `Butto ${avanzi.buttando + 1} di ${avanzi.voci.length}…` : "Mettili nel cestino di Drive"}
-                  </button>
-                  {avanzi.buttando == null && (
-                    <button onClick={() => setAvanzi(null)} style={{ minHeight: 44, padding: "8px 16px", color: C.muted, fontSize: F.nota }}>
-                      Lascia stare
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
             {/* I DOPPIONI (vedi `doppioniInBiblioteca`): prima si vede
                 quali, poi si uniscono. Si tiene la scheda col file, poi
                 quella che stai leggendo, poi il CBZ con la copertina */}

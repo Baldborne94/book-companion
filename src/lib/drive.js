@@ -18,7 +18,7 @@
 // stanno in `driveCore.js`, dove un test le prova.
 
 import { segnaTempo, vocePerTempo } from "./tempi.js";
-import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, senzaPermessoDrive, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive, CAMPI_ELENCO, daTenereNellElenco, applicaCambiamenti, elencoBuono, segnoScaduto, VERSIONE_ELENCO, fileDellElenco, cartelleDellElenco, audioDellElenco, RADICE, idRadice, ARCHIVI, vaDetto, cartellaArchivi, archivioDovuto, archiviDaTogliere, piuRecenti, nomeArchivio, cbrGiaConvertiti, daSpostareSuHdd, fileSenzaScheda } from "./driveCore.js";
+import { abbina, ripulisciChiaveApi, chiaveApiValida, PERCHE_CHIAVE_STORTA, daCaricare, daTraslocare, scegliCartella, cartellaDelTipo, nomeSuDrive, spazioDrive, estensioneDi, ripulisciIdClient, idClientValido, PERCHE_ID_STORTO, senzaPermessoDrive, abbinaMelodie, melodieDaCaricare, melodieFile, nomeMelodiaSuDrive, CAMPI_ELENCO, daTenereNellElenco, applicaCambiamenti, elencoBuono, segnoScaduto, VERSIONE_ELENCO, fileDellElenco, cartelleDellElenco, audioDellElenco, RADICE, idRadice, ARCHIVI, vaDetto, cartellaArchivi, archivioDovuto, archiviDaTogliere, piuRecenti, nomeArchivio } from "./driveCore.js";
 import { getAux, putAux, removeAux } from "./bookStore.js";
 
 const TOKEN_KEY = "bc_drive_token";
@@ -678,68 +678,6 @@ export async function sostituisciSuDrive(vecchioId, blob, { nome, bookId, onProg
   if (VIVO) delete VIVO.elenco.file[vecchioId];
   return f;
 }
-
-// IL CBZ CONVERTITO FUORI (vedi `cbzDaAdottare`) prende il posto del CBR:
-// il segno del libro sul CBZ e la mappa PRIMA, poi il CBR nel cestino col
-// segno tolto — un intoppo a meta' lascia tutt'e due, mai il libro senza.
-export async function adottaCbz({ bookId, vecchio, nuovo, byte }) {
-  await segna(nuovo, bookId);
-  mettiNellaMappa(bookId, nuovo, byte);
-  await chiama(`${API}/files/${encodeURIComponent(vecchio)}?fields=id`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ trashed: true, appProperties: { bcId: null } }),
-  }).catch((e) => {
-    if (e instanceof DriveScollegato) throw e;
-  });
-  if (VIVO) {
-    delete VIVO.elenco.file[vecchio];
-    const f = VIVO.elenco.file[nuovo];
-    if (f) f.appProperties = { ...(f.appProperties || {}), bc: "1", bcId: bookId };
-  }
-}
-
-// I CBR GIA' CONVERTITI (vedi `cbrGiaConvertiti`): quelli da buttare, letti
-// dall'elenco di Drive di adesso, e il cestino per uno alla volta, col segno
-// tolto. Dal cestino di Drive si riprende per un mese.
-export async function cbrDaButtare(libri, { schedeInArrivo = false } = {}) {
-  return cbrGiaConvertiti(libri, mappaDrive(), await elencaFile(), { schedeInArrivo });
-}
-export async function cestinaSuDrive(id) {
-  await chiama(`${API}/files/${encodeURIComponent(id)}?fields=id`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ trashed: true, appProperties: { bcId: null } }),
-  });
-  if (VIVO) delete VIVO.elenco.file[id];
-}
-
-// SPOSTARE SULL'HDD (vedi `daSpostareSuHdd` e `lib/hdd.js`): i volumi da
-// spostare letti dall'elenco di adesso, e il file aperto come flusso, che
-// scende sul disco senza passare dalla memoria
-export async function daSpostareDaDrive(libri, opzioni) {
-  return daSpostareSuHdd(libri, mappaDrive(), await elencaFile(), opzioni);
-}
-// i file che nessun libro usa (`fileSenzaScheda`): «usato» e' quel che la
-// mappa collega E quel che il riconoscimento di adesso collegherebbe, perche'
-// la mappa e' dell'ultimo giro. Prima di un giro non si sa niente: niente.
-export async function senzaSchedaDaDrive(libri, { misure, schedeInArrivo = false } = {}) {
-  if (idSuDrive() === null) return [];
-  const tutti = await tuttiDellElenco();
-  const file = fileDellElenco(tutti);
-  const usati = new Set([...Object.values(mappaDrive()).map((f) => f?.id), ...[...abbina(libri, file, { misure }).mappa.values()].map((f) => f.id)]);
-  return fileSenzaScheda(libri, file, cartelleDellElenco(tutti), { usati, schedeInArrivo });
-}
-// il file nel cestino, POI fuori dalla mappa: se il cestino non riesce il
-// libro si legge ancora da Drive, che e' dove il file e' rimasto
-export async function cestinaDelLibro(bookId, fileId) {
-  await cestinaSuDrive(fileId);
-  const m = mappaDrive();
-  if (m[bookId]?.id !== fileId) return;
-  delete m[bookId];
-  scriviMappa(m);
-}
-export const apriDaDrive = (fileId) => chiama(`${API}/files/${encodeURIComponent(fileId)}?alt=media`);
 
 // la chiave per chi legge Drive fuori da qui (il worker della conversione)
 export const chiaveDrive = () => tokenValido();

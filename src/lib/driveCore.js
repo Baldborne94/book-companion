@@ -182,6 +182,8 @@ const nomeRadice = (n) => String(n || "").trim().toLowerCase() === RADICE;
 // il percorso di una cartella dalla cima: nomi dal piu' alto al piu' basso.
 // Un giro chiuso (un genitore che porta a se stesso) si ferma invece di
 // non finire mai.
+const radiceDelNome = (n) => String(n || "").replace(/\.[^.]+$/, "").trim().toLowerCase();
+
 export function percorsoDi(cartellaId, cartelle) {
   const per = new Map((cartelle || []).map((c) => [c.id, c]));
   const nomi = [];
@@ -556,16 +558,6 @@ export function nomeMelodiaSuDrive(m) {
     .trim()
     .slice(0, 150);
   return `${t || "Melodia senza nome"}.${EST_MIME[String(m?.mime || "").toLowerCase()] || "mp3"}`;
-}
-
-// LE MELODIE SUL DISCO, prima di lasciare Drive (chiesto dal lettore: «mi
-// salvi tu in E nei posti giusti i file?»): ognuna in «book-companion/Musica»
-// col nome che ha su Drive, e col peso di Drive, che dice quando e' arrivata
-// intera. Si copiano soltanto (`tieni`): lassu' restano finche' Drive c'e'.
-export function melodieSulDisco(melodie, mappa) {
-  return (melodie || [])
-    .filter((m) => m?.trackId && !m.deleted && mappa?.[m.trackId]?.id && Number(mappa[m.trackId].byte) > 0)
-    .map((m) => ({ cartelle: ["Musica"], nome: nomeMelodiaSuDrive(m), byte: Number(mappa[m.trackId].byte), fileId: mappa[m.trackId].id, tieni: true, melodia: true }));
 }
 
 // UNA MELODIA SU DRIVE SI DICE SULLA SUA VOCE (`drive: true`), ed e' quel
@@ -997,96 +989,6 @@ export const fraseCarico = (p) => fraseDiscesa(p, "Carico su Google Drive:");
 // sarebbero migliaia di disegni per un file grosso
 export const vaDetto = (prima, adesso, totale) => adesso >= totale || Math.floor(adesso / MB) > Math.floor(prima / MB);
 
-// I CBZ CONVERTITI FUORI DALL'APP (il quaderno di Colab in
-// `strumenti/cbr-in-cbz.ipynb`, scelto dal lettore: «fai la prima, colab»).
-// Su Drive il CBZ nasce accanto al suo CBR, stesso nome e altra estensione,
-// senza il segno del libro: l'app deve riconoscerlo e riattaccarlo, o il
-// libro resterebbe CBR e il CBZ entrerebbe come un libro nuovo, doppione
-// senza segno di lettura, saga ne' voto. Si abbina solo il gemello esatto:
-// stessa cartella, stesso nome (senza estensione, senza badare alle
-// maiuscole), e nessun segno di un ALTRO libro addosso. `mappa` e' quella
-// di Drive ({bookId: {id}}), `file` l'elenco dei file di Drive.
-const radiceDelNome = (n) => String(n || "").replace(/\.[^.]+$/, "").trim().toLowerCase();
-export function cbzDaAdottare(libri, mappa, file) {
-  const perId = new Map((file || []).map((f) => [f.id, f]));
-  const cbz = (file || []).filter((f) => /\.cbz$/i.test(f?.name || "") && !f.trashed);
-  const out = [];
-  for (const b of libri || []) {
-    if (b?.fileType !== "cbr") continue;
-    const vecchio = perId.get(mappa?.[b.id]?.id);
-    if (!vecchio) continue;
-    const radice = radiceDelNome(vecchio.name);
-    const cartella = vecchio.parents?.[0];
-    const nuovo = cbz.find((f) => f.id !== vecchio.id && f.parents?.[0] === cartella && radiceDelNome(f.name) === radice && (!f.appProperties?.bcId || f.appProperties.bcId === b.id));
-    if (nuovo) out.push({ bookId: b.id, vecchio: vecchio.id, nuovo: nuovo.id, byte: Number(nuovo.size) || 0, sha: nuovo.sha256Checksum || null });
-  }
-  return out;
-}
-
-// IL GEMELLO CBZ DI UN FILE SU DRIVE, di chiunque sia (segnalato dal
-// lettore: il giro dei CBR riconvertiva e ricaricava un Walking Dead che
-// aveva gia' il suo CBZ di Colab, entrato come un'altra scheda). Stessa
-// cartella, stesso nome, fuori dal cestino.
-export function gemelloCbzDi(fileId, file) {
-  const f = (file || []).find((x) => x.id === fileId);
-  if (!f) return null;
-  return (file || []).find((g) => g.id !== f.id && !g.trashed && /\.cbz$/i.test(g.name || "") && g.parents?.[0] === f.parents?.[0] && radiceDelNome(g.name) === radiceDelNome(f.name)) || null;
-}
-
-// I CBR GIA' CONVERTITI (chiesto dal lettore facendo pulizia su Drive per
-// stare in un piano piu' piccolo: «fallo»). Accanto a 29 CBR c'era il loro
-// CBZ, e del CBR non si serviva nessuno: era entrato solo il gemello
-// (`daAggiungere`), o era il file di una scheda unita ai doppioni. Si butta
-// SOLO il CBR che nessun libro usa, accanto a un CBZ gemello che un libro
-// usa: se il CBZ fosse di nessuno, il CBR sarebbe l'unica copia letta. Un
-// CBR col segno di un libro vivo resta, a meno che quel libro non legga gia'
-// il gemello (un'adozione rimasta a meta'); col segno di una scheda che qui
-// non c'e' resta finche' la biblioteca puo' ancora arrivare dal cloud.
-export function cbrGiaConvertiti(libri, mappa, file, { schedeInArrivo = false } = {}) {
-  const vivi = new Set((libri || []).map((b) => b?.id).filter(Boolean));
-  const usati = new Set(Object.entries(mappa || {}).filter(([id]) => vivi.has(id)).map(([, f]) => f?.id).filter(Boolean));
-  const out = [];
-  for (const f of file || []) {
-    if (!f?.id || f.trashed || estensioneDi(f.name) !== "cbr" || usati.has(f.id)) continue;
-    const g = gemelloCbzDi(f.id, file);
-    if (!g || !usati.has(g.id)) continue;
-    const segno = f.appProperties?.bcId;
-    if (segno && vivi.has(segno) && mappa?.[segno]?.id !== g.id) continue;
-    if (segno && !vivi.has(segno) && schedeInArrivo) continue;
-    out.push({ id: f.id, nome: f.name, byte: Number(f.size) || 0, cbz: g.id });
-  }
-  return out;
-}
-
-// L'ADOZIONE A META' (trovata sul Drive del lettore dopo il primo giro di
-// Colab: i CBZ col segno, i CBR nel cestino, e le schede ancora «CBR»).
-// Su Drive l'adozione e' fatta in un attimo, la scheda cambia dopo: un'app
-// chiusa o una pagina congelata in mezzo lasciava il libro CBR per sempre,
-// perche' il CBR nel cestino non c'e' piu' nell'elenco e `cbzDaAdottare` non
-// lo trova. Si decide sullo STATO: un libro «cbr» il cui file su Drive e' un
-// .cbz col segno di QUESTO libro e' gia' adottato, e resta solo la scheda.
-export function cbzGiaAdottati(libri, mappa, file) {
-  const perId = new Map((file || []).map((f) => [f.id, f]));
-  const out = [];
-  for (const b of libri || []) {
-    if (b?.fileType !== "cbr") continue;
-    const f = perId.get(mappa?.[b.id]?.id);
-    if (!f || f.trashed || !/\.cbz$/i.test(f.name || "") || f.appProperties?.bcId !== b.id) continue;
-    out.push({ bookId: b.id, nuovo: f.id, byte: Number(f.size) || 0, sha: f.sha256Checksum || null });
-  }
-  return out;
-}
-
-// SPOSTARE SULL'HDD (chiesto dal lettore per non pagare i due tera di
-// Drive: i libri restano schede, i file vanno su un disco suo). Di una
-// raccolta si sposta il file che ogni volume legge su Drive, cosi' com'e'
-// adesso nell'elenco — la mappa e' dell'ultimo giro. Sul disco la casa la
-// decide la SCHEDA, non la cartella di Drive (dove un file sta dove e'
-// capitato): «Libri», «Fumetti» o «Manga» come su Drive, e dentro una
-// cartella per saga; un volume a se' sta nella cartella del suo tipo.
-// Un file che lassu' non c'e' piu', o di cui Drive non dice il peso, non si
-// sposta: senza il peso non si puo' guardare che sul disco sia arrivato
-// intero.
 // LA CASA DI UN VOLUME SUL DISCO, dalla scheda: il tipo, la saga, e la parte
 // (il ciclo) se c'e' — i JoJo in «Manga/JoJo's Bizarre Adventure/Parte 7», i
 // B.P.R.D. sotto Hellboy («tutto sotto Hellboy, come da saga», chiesto dal
@@ -1099,45 +1001,4 @@ export function casaDelVolume(b, tipo) {
   if (saga) pezzi.push(saga);
   if (saga && ciclo && ciclo.toLowerCase() !== saga.toLowerCase()) pezzi.push(ciclo);
   return pezzi;
-}
-
-export function daSpostareSuHdd(libri, mappa, file, { tipoDi = () => "libri", tieni = () => false } = {}) {
-  const per = new Map((file || []).filter((f) => f?.id && !f.trashed).map((f) => [f.id, f]));
-  const out = [];
-  for (const b of libri || []) {
-    const f = per.get(mappa?.[b?.id]?.id);
-    const byte = Number(f?.size) || 0;
-    if (!f || !(byte > 0)) continue;
-    out.push({ bookId: b.id, fileId: f.id, nome: f.name || b.id, byte, cartelle: casaDelVolume(b, tipoDi(b)), tieni: !!tieni(b) });
-  }
-  return out;
-}
-
-// I FILE CHE NESSUN LIBRO USA (segnalato dal lettore: «perche' i 38 GB di
-// manga e fumetti non sono stati spostati?», e vuole stare nel piano gratuito
-// di Drive). «Sposta sull'HDD» sposta i file delle schede; JoJo, Gachiakuta e
-// gli altri li aveva caricati a mano in cartelle sue, e nessuna scheda li
-// usa: per l'app non erano libri, e restavano su Drive. Si spostano col
-// percorso che hanno su Drive sotto «book-companion» (le cartelle le ha fatte
-// il lettore, e una scheda che dica la saga non c'e').
-// Solo dentro Libri, Fumetti e Manga di «book-companion» — il resto del Drive
-// del lettore non e' dell'app — e mai un file che un libro usa: quello che la
-// mappa di questo dispositivo collega, quello che il riconoscimento di adesso
-// collegherebbe (`usati`), quello col segno di una scheda che c'e', e
-// qualunque file segnato finche' la biblioteca puo' ancora arrivare dal cloud.
-export function fileSenzaScheda(libri, file, cartelle, { usati = new Set(), schedeInArrivo = false } = {}) {
-  const schede = new Set((libri || []).map((b) => b?.id).filter(Boolean));
-  const sezioni = new Set([CARTELLE.libri, CARTELLE.fumetti, CARTELLE.manga]);
-  const out = [];
-  for (const f of file || []) {
-    const byte = Number(f?.size) || 0;
-    if (!f?.id || f.trashed || !(byte > 0) || usati.has(f.id) || !EST.includes(estensioneDi(f.name))) continue;
-    const segno = f.appProperties?.bcId;
-    if (segno && (schedeInArrivo || schede.has(segno))) continue;
-    const nomi = percorsoDi(f.parents?.[0], cartelle);
-    const sotto = nomi.slice(nomi.findIndex(nomeRadice) + 1);
-    if (sotto.length === nomi.length || !sezioni.has(sotto[0])) continue;
-    out.push({ bookId: null, fileId: f.id, nome: f.name, byte, cartelle: sotto, tieni: false });
-  }
-  return out;
 }

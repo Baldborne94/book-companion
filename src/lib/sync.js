@@ -34,7 +34,7 @@ import { aGruppi } from "./aGruppi.js";
 import { leggiRigheLeggere, aPagine, fraseCopertine, COPERTINE_INSIEME, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare, mandaCopertine, copertineInAttesa, segnaInAttesa, fondiSchede } from "./syncCore.js";
 import { daTogliereDalSecchio, avanziDelSecchio, segnaSuDrive, leggereDaLontano, nomeSuDrive } from "./driveCore.js";
 import { raccontaGiro } from "./resoconto.js";
-import { giroDrive, giroMelodie, archiviaSuDrive, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto, fermaCbrCompresso, sostituisciSuDrive, chiaveDrive, DriveScollegato, adottaCbz, elencaFile } from "./drive.js";
+import { giroDrive, giroMelodie, archiviaSuDrive, driveAcceso, driveProntoOra, mappaDrive, scaricaDaDrive, collegaDrive, fileRemoto, fermaCbrCompresso, sostituisciSuDrive, chiaveDrive, DriveScollegato } from "./drive.js";
 import { tipiDi, tipoDi } from "./library.js";
 import { misureFile, listTrackIds } from "./bookStore.js";
 import { nuovaMemoria, firmaLontana } from "./ultimiLontani.js";
@@ -941,34 +941,13 @@ export async function convertiLibroInCbz(book, { onProgress, chiedi = true } = {
   const { convertiInCbz } = await import("./archivioFumetto.js");
   const { improntaDi } = await import("./importBook.js");
   const { formatoDaByte } = await import("./fumetto.js");
-  const { pianoConversione, PERCHE_DOPPIONE } = await import("./convertiCbr.js");
+  const { pianoConversione } = await import("./convertiCbr.js");
   const formato = async (b) => (b ? formatoDaByte(new Uint8Array(await b.slice(0, 8).arrayBuffer())) : null);
   const qui = await getFile(book.id).catch(() => null);
   const voce = driveAcceso() ? mappaDrive()[book.id] : null;
   if (voce?.id && !driveProntoOra()) {
     if (!chiedi) throw new DriveScollegato();
     await collegaDrive();
-  }
-  // IL GEMELLO GIA' FATTO (vedi `gemelloCbzDi`): accanto al CBR su Drive c'e'
-  // gia' il suo CBZ. Libero, si adotta; di un'altra scheda, e' un doppione
-  if (voce?.id) {
-    const { gemelloCbzDi } = await import("./driveCore.js");
-    const gem = gemelloCbzDi(voce.id, await elencaFile());
-    if (gem) {
-      const altro = gem.appProperties?.bcId;
-      if (altro && altro !== book.id) throw new Error(PERCHE_DOPPIONE);
-      await adottaCbz({ bookId: book.id, vecchio: voce.id, nuovo: gem.id, byte: Number(gem.size) || 0 });
-      LONTANI.dimentica?.(book.id);
-      await removeFileOnly(book.id).catch(() => {});
-      if (!(await getCover(book.id).catch(() => null))) {
-        const { copertinaOriginale } = await import("./copertina.js");
-        const f = fileRemoto(gem.id, Number(gem.size) || 0);
-        f.daLontano = true;
-        const cover = await copertinaOriginale({ ...book, fileType: "cbz" }, f).catch(() => null);
-        if (cover) await putCover(book.id, cover).catch(() => {});
-      }
-      return { fileType: "cbz" };
-    }
   }
   const lassu = voce?.id ? fileRemoto(voce.id, voce.byte) : null;
   const piano = pianoConversione({ qui: await formato(qui), lassu: await formato(lassu) });
@@ -999,45 +978,6 @@ export async function convertiLibroInCbz(book, { onProgress, chiedi = true } = {
   // scaricare il volume solo per quella
   const impronta = cbz === lassu ? undefined : await improntaDi(cbz).catch(() => undefined);
   return { fileType: "cbz", ...(impronta ? { impronta } : {}) };
-}
-
-// I CBZ CONVERTITI SU COLAB (vedi `cbzDaAdottare`): dopo il giro, ogni CBR
-// che ha il suo gemello CBZ accanto su Drive diventa quel CBZ — segno, saga
-// e voto restano, la copertina che mancava si prende dal CBZ, e la copia CBR
-// rimasta sul tablet se ne va (il lettore aprirebbe ancora quella). Si fa
-// solo con la chiave in mano: nessuna finestra di Google senza un tocco.
-// Torna, libro per libro, quel che cambia nella scheda, e lo dice SUBITO a
-// `onFatto`: centosette volumi con la copertina da prendere sono minuti, e
-// la scheda non aspetta l'ultimo (vedi `cbzGiaAdottati`).
-export async function adottaCbzConvertiti(libri, { onFatto } = {}) {
-  if (!driveAcceso() || !driveProntoOra()) return [];
-  const { cbzDaAdottare, cbzGiaAdottati } = await import("./driveCore.js");
-  const cbr = (libri || []).filter((b) => b?.fileType === "cbr");
-  if (!cbr.length) return [];
-  const file = await elencaFile();
-  const da = [...cbzGiaAdottati(cbr, mappaDrive(), file), ...cbzDaAdottare(cbr, mappaDrive(), file)];
-  const fatti = [];
-  for (const a of da) {
-    try {
-      if (a.vecchio) await adottaCbz(a);
-      LONTANI.dimentica?.(a.bookId);
-      await removeFileOnly(a.bookId).catch(() => {});
-      if (!(await getCover(a.bookId).catch(() => null))) {
-        const { copertinaOriginale } = await import("./copertina.js");
-        const f = fileRemoto(a.nuovo, a.byte);
-        f.daLontano = true;
-        const cover = await copertinaOriginale({ fileType: "cbz" }, f).catch(() => null);
-        if (cover) await putCover(a.bookId, cover).catch(() => {});
-      }
-      const { IMPRONTA_INTERA } = await import("./importBook.js");
-      const fatto = { id: a.bookId, patch: { fileType: "cbz", impronta: a.sha && a.byte <= IMPRONTA_INTERA ? a.sha : undefined } };
-      fatti.push(fatto);
-      onFatto?.(fatto);
-    } catch (e) {
-      if (e?.name === "DriveScollegato") break;
-    }
-  }
-  return fatti;
 }
 
 // IL SEGUITO CHE SCENDE DA SE' (`lib/anticipo.js`): come `ensureLocalFile`

@@ -27,12 +27,12 @@ import SezioneDizionario from "./components/SezioneDizionario.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
 import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, timbraScheda, getProgress, getUpdatedAt, tipiDi, tipoDi } from "./lib/library.js";
-import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, misureFile } from "./lib/bookStore.js";
+import { removeBookData, removeFileOnly, requestPersistence, listCoverIds } from "./lib/bookStore.js";
 import { cercaNuovaVersione, cercaInSilenzio } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
 import Home from "./components/Home.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
-import { getBookMusic, setBookMusic, portaQuiTutte, fraseScarico, getFavoritesRaw } from "./lib/music.js";
+import { getBookMusic, setBookMusic, portaQuiTutte, fraseScarico } from "./lib/music.js";
 import { getJump, clearJump, getMarks } from "./lib/annotations.js";
 import { doppioniInBiblioteca } from "./lib/doppioni.js";
 import { daAvvisare } from "./lib/oracle.js";
@@ -43,17 +43,16 @@ import { fraseGiro, ricordaGiro, avvisoArrivi } from "./lib/resoconto.js";
 import { annotaErrore } from "./lib/registro.js";
 import SezioneGuasti from "./components/SezioneGuasti.jsx";
 import { leggiDispositivi, altroveDa, soloAltrove } from "./lib/dispositivi.js";
-import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile, convertiLibroInCbz, adottaCbzConvertiti, getLastSync } from "./lib/sync.js";
+import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, sincronizzaSoloDrive, anticipaFile, ensureLocalFile, convertiLibroInCbz } from "./lib/sync.js";
 import { daAnticipare, reteBuona, leggiAnticipo, daRiprovare, daTenereInLettura } from "./lib/anticipo.js";
-import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, dettagliFile, impostaRinnovo, impostaRientro, rinnovaInSilenzio, chiaveInScadenza, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato, fraseScollegato, daSpostareDaDrive, apriDaDrive, cestinaDelLibro, senzaSchedaDaDrive, cestinaSuDrive, mappaMelodie } from "./lib/drive.js";
-import { spostaSuHdd, fraseHdd, casaSulDisco } from "./lib/hdd.js";
+import { driveAcceso, driveProntoOra, mappaDrive, collegaDrive, smarcaSuDrive, dettagliFile, impostaRinnovo, impostaRientro, rinnovaInSilenzio, chiaveInScadenza, fileRemoto, segna as segnaSuDrive, mettiNellaMappa, sostituisciSuDrive, chiaveDrive, DriveScollegato, fraseScollegato } from "./lib/drive.js";
 import { riordinaDisco, fraseRiordino, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
 import { importaDaDrive, resoconto } from "./lib/importBook.js";
 import { custodisciGoogle, rinnovoDalServer, rientroConGoogle, lasciaGoogleQui } from "./lib/accessoGoogle.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
 import BarraLavoro from "./components/BarraLavoro.jsx";
 import { spiegaSync, schedaDiversa } from "./lib/syncCore.js";
-import { ebookRitrovati, melodieSulDisco } from "./lib/driveCore.js";
+import { ebookRitrovati } from "./lib/driveCore.js";
 import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
 import { comincia, segnaVita, smetti, dispositivo } from "./lib/tempo.js";
@@ -1036,18 +1035,6 @@ export default function App() {
     );
   }
 
-  // I CBZ FATTI SU COLAB (`adottaCbzConvertiti`): dopo il giro, i CBR col
-  // gemello CBZ accanto su Drive diventano CBZ, e il lettore lo sa. Non
-  // mentre il giro della conversione lavora: si pesterebbero i piedi.
-  const adottaCbz = useRef(async () => {});
-  adottaCbz.current = async () => {
-    if (filoLavoro.current || filoImport.current) return;
-    const fatti = await adottaCbzConvertiti(loadBooks(), { onFatto: (f) => applicaConversione(f.id, f.patch) }).catch(() => []);
-    if (!fatti.length) return;
-    setLocalIds(await localFileIds().catch(() => null));
-    notify(fatti.length === 1 ? "Un fumetto convertito su Colab ora è un CBZ ✓" : `${fatti.length} fumetti convertiti su Colab ora sono CBZ ✓`);
-  };
-
   const runSync = useRef(() => {});
   runSync.current = async (quiet = false) => {
     if (sync.busy) return;
@@ -1058,7 +1045,6 @@ export default function App() {
       await sincronizzaSoloDrive().catch(() => {});
       setLocalIds(await localFileIds());
       ritrovaEbook();
-      await adottaCbz.current();
       tieniInLettura.current();
       return;
     }
@@ -1076,7 +1062,6 @@ export default function App() {
       if (res.books) setBooks(res.books);
       setLocalIds(await localFileIds());
       ritrovaEbook(res.books || null);
-      await adottaCbz.current();
       tieniInLettura.current(res.books || null);
       // DETTO LIBRO PER LIBRO (`raccontaGiro`): «Aggiornati 12 elementi»
       // non diceva se la saga scritta sul PC fosse arrivata
@@ -1474,28 +1459,12 @@ export default function App() {
     }
   }
 
-  // SPOSTARE SULL'HDD (`spostaSuHdd`): i volumi di una raccolta scendono da
-  // Drive dritti nella cartella del disco che il lettore ha scelto; ognuno,
-  // arrivato intero, resta scheda senza file e lassu' va nel cestino. Lavoro
-  // lungo (un giga a volume): vive qui, si vede e si ferma da ogni sezione.
+  // I LAVORI SUL DISCO (riordinare, convertire): lunghi, vivono qui, si
+  // vedono e si fermano da ogni sezione, uno alla volta.
   const [hdd, setHdd] = useState(null);
   const filoHdd = useRef(null);
-  // e i file che nessun libro usa (`fileSenzaScheda`): si riguarda su Drive
-  // ADESSO, perche' fra l'elenco mostrato e il tocco un giro puo' averne
-  // collegato uno a una scheda; nessuna scheda da segnare, solo il cestino
-  const spostaSenzaSchedaQui = (scelti, scelta) =>
-    spostaSuHddQui(scelti, scelta, {
-      voci: async () => {
-        const ids = new Set(scelti.map((v) => v.fileId));
-        const ora = await senzaSchedaDaDrive(loadBooks(), { misure: await misureFile(), schedeInArrivo: isSyncConfigured() && !getLastSync() });
-        return ora.filter((v) => ids.has(v.fileId));
-      },
-      segna: async () => {},
-      cestina: (v) => cestinaSuDrive(v.fileId),
-    });
   // RIORDINARE IL DISCO (`riordinaDisco`): ogni file nella casa della sua
-  // scheda, dentro lo stesso disco. Stesso filo e stessa riga in basso dello
-  // spostamento: un lavoro sul disco alla volta.
+  // scheda, dentro lo stesso disco.
   async function riordinaQui(voci, casa) {
     if (!voci.length) return;
     if (filoHdd.current) return notify("Sto già lavorando sul disco: aspetta che finisca, o fermalo dalla barra in basso");
@@ -1513,53 +1482,6 @@ export default function App() {
       setHdd(null);
     }
   }
-  async function spostaSuHddQui(libri, scelta, senza = null) {
-    if (!libri.length) return;
-    if (filoHdd.current) return notify("Sto già spostando sull'HDD: aspetta che finisca, o fermalo dalla barra in basso");
-    const mio = {};
-    filoHdd.current = mio;
-    const vivo = () => filoHdd.current === mio;
-    setHdd({ i: 0, totale: libri.length, nome: "", presi: 0, byte: 0 });
-    try {
-      if (!driveProntoOra()) await collegaDrive();
-      const tipi = tipiDi(loadBooks());
-      // quello che stai leggendo si copia e resta anche su Drive (`divisiPerHdd`)
-      const voci = senza ? await senza.voci() : await daSpostareDaDrive(libri, { tipoDi: (b) => tipoDi(b, tipi), tieni: (b) => getStatus(b.id) === "reading" });
-      const esito = await spostaSuHdd(voci, {
-        radice: await casaSulDisco(scelta),
-        vivo,
-        ferma: (e) => e instanceof DriveScollegato,
-        onProgress: (p) => vivo() && setHdd(p),
-        apri: apriDaDrive,
-        segna: senza?.segna || (async (v) => {
-          timbraScheda(v.bookId);
-          updateBooks(loadBooks().map((b) => (b.id === v.bookId ? { ...b, fileTolto: true } : b)));
-          await removeFileOnly(v.bookId).catch(() => {});
-          const b = loadBooks().find((x) => x.id === v.bookId);
-          if (b) await togliFileDalCloud(b).catch(() => {});
-        }),
-        cestina: senza?.cestina || ((v) => cestinaDelLibro(v.bookId, v.fileId)),
-      });
-      notify([fraseHdd(esito), esito.scollegato && fraseScollegato(esito.scollegato, "Google Drive aspetta un tocco: riprova")].filter(Boolean).join(" · "));
-    } catch (e) {
-      notify(e instanceof DriveScollegato ? fraseScollegato(e, "Google Drive aspetta un tocco: riprova") : e?.message || "Google Drive non ha risposto");
-    } finally {
-      if (filoHdd.current === mio) filoHdd.current = null;
-      setHdd(null);
-      setLocalIds(await localFileIds());
-      setSpazioCambiato((n) => n + 1);
-      runSync.current(true);
-    }
-  }
-
-  // LE MELODIE DI DRIVE SUL DISCO, prima di lasciarlo (`melodieSulDisco`):
-  // lo stesso lavoro dello spostamento, che le copia soltanto
-  function melodieSulDiscoQui(scelta) {
-    const voci = melodieSulDisco(getFavoritesRaw(), mappaMelodie());
-    const niente = async () => {};
-    return spostaSuHddQui(voci, scelta, { voci: async () => voci, segna: niente, cestina: niente });
-  }
-
   // I DOPPIONI (`doppioniInBiblioteca`): lo stesso volume in due o tre
   // schede — fumetti nati prima che l'importazione saltasse i gemelli di
   // Colab, libri reimportati da Drive accanto alla scheda rimasta senza file.
@@ -2013,8 +1935,6 @@ export default function App() {
             importoDrive={importo}
             onImportaDaDrive={importaDaDriveQui}
             onFermaImport={fermaImport}
-            onSpostaSuHdd={spostaSuHddQui}
-            onSenzaSchedaSuHdd={spostaSenzaSchedaQui}
             onRiordina={riordinaQui}
             onImportaDalDisco={importaDalDiscoQui}
             onConvertiDalDisco={convertiDalDiscoQui}
@@ -2051,7 +1971,7 @@ export default function App() {
         )}
         {section === "music" && (
           <Suspense fallback={null}>
-            <MusicRoom music={music} playerRef={playerRef} notify={notify} onCambiata={() => presto.current?.()} scarico={scarico} onScarica={scaricaRaccoltaQui} onSulDisco={melodieSulDiscoQui} />
+            <MusicRoom music={music} playerRef={playerRef} notify={notify} onCambiata={() => presto.current?.()} scarico={scarico} onScarica={scaricaRaccoltaQui} />
           </Suspense>
         )}
       </main>

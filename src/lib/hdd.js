@@ -1,15 +1,6 @@
-// SPOSTARE SULL'HDD (vedi `daSpostareSuHdd`): il file di ogni volume scende
-// da Drive DRITTO sul disco del lettore, a flusso, senza mai stare tutto in
-// memoria (un fumetto pesa un giga). Solo quando sul disco c'e' il file con
-// il peso che Drive dice, la scheda resta senza file (`segna`) e il file di
-// Drive va nel cestino (`cestina`), in quest'ordine: un intoppo a meta'
-// lascia il file in due posti, mai in nessuno.
-//
-// Il disco si sceglie con `showDirectoryPicker`, che c'e' in Chrome ed Edge
-// sul computer: Firefox non ce l'ha.
-
-import { fmtGoogle } from "./bytes.js";
-import { RADICE } from "./driveCore.js";
+// IL DISCO DEL COMPUTER (`lib/disco.js`: controllare, riordinare, aggiungere
+// dal disco). La cartella si sceglie con `showDirectoryPicker`, che c'e' in
+// Chrome ed Edge sul computer: Firefox non ce l'ha.
 
 // IL DISCO E' DEL COMPUTER (segnalato dal lettore con la Manutenzione del
 // tablet: Chrome per Android ora sa scegliere una cartella, e i tasti
@@ -22,42 +13,7 @@ const inTasca = (w) => {
 };
 export const hddPossibile = (w = globalThis) => typeof w?.showDirectoryPicker === "function" && !inTasca(w);
 
-// I LIBRI CHE STAI LEGGENDO RESTANO ANCHE SU DRIVE (scelto dal lettore:
-// «spostali tutti, ma il libro che sto leggendo una copia la lasci sul
-// Drive»): dall'HDD si legge solo sul PC, da Drive anche sul tablet. Tutti i
-// volumi di una raccolta che stanno su Drive scendono sul disco; quelli in
-// lettura (`tieni`) lassu' restano, e la scheda continua a leggerli da li'.
-// Finiti, il prossimo spostamento li trova gia' sul disco e li toglie da
-// Drive senza riscaricarli.
-// Il tasto conta i soli volumi DA TOGLIERE da Drive (`via`): quelli in
-// lettura restano lassu' comunque, e contati facevano dire «2 libri
-// sull'HDD» a una sezione gia' spostata (segnalato dal lettore). Si copiano
-// insieme agli altri; da soli non fanno un tasto.
-export function divisiPerHdd(libri, mappa, stato) {
-  const lassu = (libri || []).filter((b) => mappa?.[b?.id]);
-  const inLettura = lassu.filter((b) => stato(b.id) === "reading");
-  return { tutti: lassu, inLettura, via: lassu.filter((b) => !inLettura.includes(b)) };
-}
-
-// PER SEZIONE (chiesto dal lettore: «spostare per sezione, tutti i libri
-// o tutti i manga o tutti i fumetti»): le sezioni sono quelle della
-// Libreria e delle cartelle, col tipo che la Libreria da' a ogni libro
-export const SEZIONI_HDD = ["libri", "fumetti", "manga"];
-export function perSezioni(libri, tipoDi) {
-  const out = Object.fromEntries(SEZIONI_HDD.map((s) => [s, []]));
-  for (const b of libri || []) out[tipoDi(b)]?.push(b);
-  return out;
-}
-
-// sul computer senza la cartella da scegliere (Firefox) si dice perche';
-// sul tablet no: li' l'HDD della biblioteca non c'e', e la frase sarebbe in
-// ogni raccolta per niente
-export function percheNoHdd(w = globalThis) {
-  if (hddPossibile(w) || inTasca(w)) return null;
-  return "Per spostare questi volumi su un disco serve Chrome o Edge sul computer: questo browser non sa scrivere in una cartella.";
-}
-
-// i nomi che Windows rifiuta: un file di Drive puo' chiamarsi «Batman: Year One»
+// i nomi che Windows rifiuta: un titolo puo' essere «Batman: Year One»
 export function nomeSicuro(n) {
   const s = String(n ?? "")
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
@@ -66,128 +22,8 @@ export function nomeSicuro(n) {
   return s || "_";
 }
 
-// la casa dei libri sul disco si chiama come quella su Drive: dentro la
-// cartella scelta, a meno che il lettore non abbia scelto proprio lei
-export const casaSulDisco = async (scelta) =>
-  String(scelta?.name || "").trim().toLowerCase() === RADICE ? scelta : scelta.getDirectoryHandle(RADICE, { create: true });
-
 export async function cartellaDentro(radice, segmenti) {
   let c = radice;
   for (const s of segmenti || []) c = await c.getDirectoryHandle(nomeSicuro(s), { create: true });
   return c;
-}
-
-const altroNome = (nome, n) => {
-  const i = nome.lastIndexOf(".");
-  return i > 0 ? `${nome.slice(0, i)} (${n})${nome.slice(i)}` : `${nome} (${n})`;
-};
-
-// Dove va il file: un file con lo stesso nome e lo STESSO peso e' gia'
-// arrivato (un giro fermato a meta' riparte da li'); con un altro peso e'
-// un altro file, e non si copre — si prova «nome (2)». La scrittura di
-// Chrome finisce nel file solo a `close`: un file a meta' sul disco non c'e'.
-async function posto(dir, nome, byte) {
-  for (let n = 1; n < 100; n++) {
-    const prova = n === 1 ? nome : altroNome(nome, n);
-    const fh = await dir.getFileHandle(prova).catch(() => null);
-    if (!fh) return { fh: await dir.getFileHandle(prova, { create: true }), nome: prova, gia: false };
-    const ha = (await fh.getFile()).size;
-    // vuoto e' il posto lasciato da una discesa andata storta
-    if (ha === 0 || ha === byte) return { fh, nome: prova, gia: ha === byte };
-  }
-  throw new Error("troppi file con lo stesso nome");
-}
-
-const MB = 1024 * 1024;
-
-export async function spostaSuHdd(voci, { radice, apri, segna, cestina, ferma = () => false, vivo = () => true, onProgress } = {}) {
-  const esito = { fatti: 0, copiati: 0, melodie: 0, byte: 0, mancati: [], restati: [], fermato: false, scollegato: null };
-  for (let i = 0; i < (voci || []).length; i++) {
-    if (!vivo()) {
-      esito.fermato = true;
-      break;
-    }
-    const v = voci[i];
-    onProgress?.({ i, totale: voci.length, nome: v.nome, presi: 0, byte: v.byte });
-    try {
-      const dir = await cartellaDentro(radice, v.cartelle);
-      const p = await posto(dir, nomeSicuro(v.nome), v.byte);
-      if (!p.gia) {
-        const r = await apri(v.fileId);
-        let scesi = 0;
-        const conta = new TransformStream({
-          transform(pezzo, ctl) {
-            if (!vivo()) return ctl.error(new Error("fermato"));
-            const prima = scesi;
-            scesi += pezzo.byteLength;
-            if (Math.floor(prima / MB) !== Math.floor(scesi / MB)) onProgress?.({ i, totale: voci.length, nome: v.nome, presi: scesi, byte: v.byte });
-            ctl.enqueue(pezzo);
-          },
-        });
-        await r.body.pipeThrough(conta).pipeTo(await p.fh.createWritable());
-      }
-      if ((await p.fh.getFile()).size !== v.byte) {
-        esito.mancati.push(v);
-        continue;
-      }
-      if (v.tieni) {
-        if (v.melodia) esito.melodie += 1;
-        else esito.copiati += 1;
-        continue;
-      }
-      await segna(v);
-      esito.fatti += 1;
-      try {
-        await cestina(v);
-        esito.byte += v.byte;
-      } catch (e) {
-        if (ferma(e)) throw e;
-        esito.restati.push(v);
-      }
-    } catch (e) {
-      if (!vivo()) {
-        esito.fermato = true;
-        break;
-      }
-      if (ferma(e)) {
-        esito.scollegato = e;
-        break;
-      }
-      esito.mancati.push(v);
-    }
-  }
-  return esito;
-}
-
-const quanti = (n, uno, molti) => (n === 1 ? uno : `${n} ${molti}`);
-
-// i volumi si dicono per nome, i primi tre: un conto da solo non dice quali
-const nomi = (voci) => {
-  const n = voci.slice(0, 3).map((v) => `«${v.nome}»`);
-  return voci.length > 3 ? `${n.join(", ")} e altri ${voci.length - 3}` : n.join(", ");
-};
-
-export function fraseHdd(e) {
-  const parti = [];
-  if (e.fatti) parti.push(`📦 ${quanti(e.fatti, "Un volume", "volumi")} sull'HDD${e.byte ? ` · ${fmtGoogle(e.byte)} liberati su Google Drive (nel cestino per 30 giorni)` : ""}`);
-  if (e.copiati) parti.push(e.copiati === 1 ? "📖 Quello che stai leggendo è copiato sull'HDD e resta su Drive" : `📖 I ${e.copiati} che stai leggendo sono copiati sull'HDD e restano su Drive`);
-  if (e.melodie) parti.push(e.melodie === 1 ? "🎵 Una melodia copiata sul disco, in «Musica»" : `🎵 ${e.melodie} melodie copiate sul disco, in «Musica»`);
-  if (e.restati.length) parti.push(`${quanti(e.restati.length, "uno è sull'HDD ma è rimasto", "sono sull'HDD ma sono rimasti")} anche su Drive`);
-  if (e.mancati.length) parti.push(`${quanti(e.mancati.length, "uno non è arrivato", "non sono arrivati")} intero sul disco e ${e.mancati.length === 1 ? "resta" : "restano"} su Drive: ${nomi(e.mancati)}`);
-  if (e.fermato) parti.push("fermato: il resto è ancora su Drive");
-  return parti.join(" · ") || (e.scollegato ? "" : "Niente da spostare: i volumi di questa raccolta non sono su Google Drive");
-}
-
-// i file senza scheda si dicono per cartella, le piu' pesanti prima: 270
-// manga uno per riga non si leggono, «Manga / JoJo · 115 · 11 GB» si'
-export function perCartella(voci) {
-  const per = new Map();
-  for (const v of voci || []) {
-    const k = (v.cartelle || []).join(" / ");
-    const c = per.get(k) || { cartella: k, n: 0, byte: 0 };
-    c.n += 1;
-    c.byte += Number(v.byte) || 0;
-    per.set(k, c);
-  }
-  return [...per.values()].sort((a, b) => b.byte - a.byte || a.cartella.localeCompare(b.cartella));
 }

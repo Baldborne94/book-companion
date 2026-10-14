@@ -122,4 +122,3 @@ export function fraseImport({ fatti = 0, totale = 0, conversione = null, caricam
 
 // il CBR che ha gia' il suo CBZ su Drive, in un'altra scheda: non si
 // riconverte (sarebbe un'altra copia da centinaia di MB), si dice
-export const PERCHE_DOPPIONE = "ha già il suo CBZ su Google Drive, in un'altra scheda: è un doppione, uniscilo dalla Manutenzione";
