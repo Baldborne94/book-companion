@@ -76,7 +76,7 @@ export default async (t) => {
   t.eq("JoJo già giusto: si aggiungono parte e numero", fraseSaga(p.s3?.dopo), "JoJo's Bizarre Adventure · Parte 4 · n. 17");
   // prima restava com'era («Hellboy» contiene «Hellboy Omnibus»); da quando
   // Hellboy ha la sua guida, prende il numero della guida (`hellboy.test.mjs`)
-  t.eq("Hellboy prende il numero della guida", fraseSaga(p.s4?.dopo), "Hellboy · n. 1");
+  t.eq("Hellboy prende il numero della guida e la serie", fraseSaga(p.s4?.dopo), "Hellboy · Hellboy Omnibus · n. 1");
   t.c("chi è già a posto non si propone", !p.s5);
   t.c("la saga tolta a mano resta tolta", !p.s6);
   // una saga che il titolo non dice l'ha scritta qualcun altro (il lettore,
@@ -89,6 +89,27 @@ export default async (t) => {
   t.eq("«(trwc-2)» non è una saga", s("Dragon Haven (trwc-2)"), null);
   t.eq("«(ttm-1)» nemmeno", s("Fool's Errand (ttm-1)"), null);
   t.eq("«(Discworld 4)» sì", s("Mort (Discworld 4)")?.saga, "Discworld");
+  // «-017» dopo «Vol. 02» e' la copia che Drive numera, non i capitoli 2-17
+  t.eq("«Vol. 02-017» è il volume 2", tre(s("Spawn Origins Collection Vol. 02-017")), "Spawn Origins Collection||2");
+  t.eq("i capitoli restano capitoli", tre(s("Solo Leveling c91-100")), "Solo Leveling||100");
+  const spawn = saghePropose([{ id: "sp", title: "Spawn Origins Collection Vol. 02-017", saga: "Spawn Origins Collection Vol", sagaOrder: 17 }])[0];
+  t.eq("la saga che finisce con «Vol» si propone senza", fraseSaga(spawn?.dopo), "Spawn Origins Collection · n. 2");
+  t.c("«Grendel» dentro «Grendel Omnibus» resta com'è", !saghePropose([{ id: "o", title: "Grendel v01 - Devil by the Deed", saga: "Grendel Omnibus", sagaOrder: 1 }]).length);
+
+  // DUE GRAFIE SONO UNA SAGA SOLO DENTRO UNA PAROLA LUNGA (segnalato: «1st» e
+  // «Last» di Thomas Covenant riuniti a ogni apertura della Libreria)
+  const tc = unificaSaghe([
+    { id: "a", saga: "The Last Chronicles of Thomas Covenant" },
+    { id: "b", saga: "The Last Chronicles of Thomas Covenant" },
+    { id: "c", saga: "The 1st Chronicles of Thomas Covenant" },
+  ]);
+  t.eq("1st e Last restano due saghe", tc.unificate, 0);
+  const due = (x, y) => unificaSaghe([{ id: "a", saga: x }, { id: "b", saga: x }, { id: "c", saga: y }]).unificate;
+  t.eq("una cifra fa un'altra saga", due("Warhammer 40000", "Warhammer 30000"), 0);
+  t.eq("una parola corta fa un'altra saga", due("The Last Chronicles", "The Lost Chronicles"), 0);
+  t.eq("una parola in più fa un'altra saga", due("Spawn Origins Collection", "Spawn Origin Collection Vol"), 0);
+  t.eq("due parole storte: nel dubbio due ripiani", due("Black Jewels Trilogy", "Black Jewel Trilogie"), 0);
+  t.eq("Bizzare e Bizarre una sola", unificaSaghe([{ id: "a", saga: "JoJo's Bizarre Adventure" }, { id: "b", saga: "JoJo's Bizarre Adventure" }, { id: "c", saga: "JoJo's Bizzare Adventure" }]).campi?.c?.saga, "JoJo's Bizarre Adventure");
   const hobb = [
     { id: "d", title: "Dragon Haven (trwc-2)", author: "Robin Hobb", saga: "The Realm of the Elderlings", series: "The Rain Wilds Chronicles", sagaOrder: 11 },
     { id: "f", title: "Fool's Errand (ttm-1)", author: "Robin Hobb", saga: "Ttm", series: "The Tawny Man", sagaOrder: 1 },

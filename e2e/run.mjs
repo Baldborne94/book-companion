@@ -1076,18 +1076,20 @@ const SCENE = [
       await d.p.goto(`${URL_APP}?apri=libreria`);
       await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
       await d.p.getByRole("button", { name: "📚 Saghe da sistemare" }).click();
-      await finche(() => d.p.getByText("Hellboy · n. 11").count(), 5000, "la proposta per Witchfinder non si vede");
-      for (const f of ["Hellboy · n. 1", "Hellboy · n. 5", "Hellboy · n. 9"]) if (!(await d.p.getByText(f, { exact: true }).count())) throw new Error(`manca la proposta «${f}»`);
+      // la serie che il lettore aveva scritto resta; chi non ne ha prende quella della guida
+      await finche(() => d.p.getByText("Hellboy · Witchfinder Omnibus · n. 11").count(), 5000, "la proposta per Witchfinder non si vede");
+      for (const f of ["Hellboy · B.P.R.D. Omnibus · n. 5", "Hellboy · Hellboy Omnibus · n. 9"]) if (!(await d.p.getByText(f, { exact: true }).count())) throw new Error(`manca la proposta «${f}»`);
       if ((await libriDi(d.p)).find((b) => b.id === "h2").saga !== "B.P.R.D") throw new Error("la saga si è riscritta prima del tocco");
       if (await d.p.getByText(/Trwc/).count()) throw new Error("Dragon Haven proposto: la sigla del file letta come saga");
-      await d.p.getByRole("button", { name: "Sistema 4" }).click();
+      // tre righe: l'Omnibus 1, gia' a posto, non si propone
+      await d.p.getByRole("button", { name: "Sistema 3" }).click();
       const fila = async () =>
         (await libriDi(d.p))
-          .filter((b) => b.saga === "Hellboy" && !b.series)
+          .filter((b) => b.saga === "Hellboy")
           .sort((a, b) => a.sagaOrder - b.sagaOrder)
-          .map((b) => `${b.id}:${b.sagaOrder}`)
+          .map((b) => `${b.id}:${b.sagaOrder}:${b.series}`)
           .join();
-      await finche(async () => (await fila()) === "h1:1,h2:5,h4:9,h3:11", 5000, "Hellboy non è in fila");
+      await finche(async () => (await fila()) === "h1:1:Hellboy Omnibus,h2:5:B.P.R.D. Omnibus,h4:9:Hellboy Omnibus,h3:11:Witchfinder Omnibus", 5000, "Hellboy non è in fila");
       return { guasti: d.guasti, nota: await fila() };
     },
   },
