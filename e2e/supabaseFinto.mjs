@@ -48,6 +48,12 @@ export function avviaSupabase(porta = 4599, { latenza = 0 } = {}) {
         link.push(u.searchParams.get("redirect_to") || JSON.parse(corpo.toString() || "{}").redirect_to || "");
         return json({});
       }
+      // il codice dell'email di reimpostazione: buono solo «12345678»
+      if (u.pathname === "/auth/v1/verify" && req.method === "POST") {
+        const { token, type } = JSON.parse(corpo.toString() || "{}");
+        if (type !== "recovery" || token !== "12345678") return json({ code: 403, error_code: "otp_expired", msg: "Token has expired or is invalid" }, 403);
+        return json({ access_token: "a.b.c", refresh_token: "r", expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, token_type: "bearer", user: UTENTE });
+      }
       if (u.pathname === "/auth/v1/user" && req.method === "PUT") password.push(JSON.parse(corpo.toString() || "{}").password);
       if (u.pathname === "/auth/v1/user") return json(UTENTE);
       if (u.pathname === "/rest/v1/google_refresh") {

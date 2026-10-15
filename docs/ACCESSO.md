@@ -6,11 +6,28 @@ Si entra nella biblioteca (Supabase) con email e password. «Entra con Google» 
 
 L'account resta lo stesso, con la stessa email. Se non ha ancora una password:
 
-1. Nel pannello della nuvola scrivi l'email e tocca **«Password dimenticata?»** (come in Ciak).
-2. Arriva l'email di **reimpostazione della password** (il modello «Reset Password» di Supabase). Apri il link **dell'ultima** che hai chiesto, e subito: vale una volta sola.
-3. Torni nell'app già dentro, e il pannello si apre su **«Scegli la nuova password»**. Scrivila due volte e tocca **Salva**. Da lì si entra con email e password.
+1. Nel pannello della nuvola scrivi l'email e tocca **«Password dimenticata?»**.
+2. Arriva l'email di **reimpostazione della password**. Il pannello resta aperto e chiede il **codice** che c'è dentro: scrivilo e tocca **Conferma**. Si resta nell'app (l'APK sul tablet, la finestra sul computer): un link nella posta aprirebbe sempre il browser.
+3. Il pannello passa a **«Scegli la nuova password»**. Scrivila due volte e tocca **Salva**. Da lì si entra con email e password.
 
-Il link torna alla radice dell'app (l'indirizzo che Supabase accetta già come Site URL): niente da aggiungere fra i Redirect URLs. Un link scaduto o già usato riporta con l'errore nell'indirizzo, e l'app lo dice nel pannello, dove se ne chiede un altro.
+Il codice vale una volta sola, ed è buono solo quello dell'ultima email chiesta.
+
+### Il modello dell'email (una volta, a mano)
+
+Il modello di partenza di Supabase manda solo il link. Perché porti il codice: **Supabase → Authentication → Emails → Templates → Reset Password** (in certe versioni **Reset password** sotto *Email Templates*), e al posto del testo:
+
+- **Subject**: `Il codice per la nuova password`
+- **Body** (lascia anche il link: serve a chi apre la mail sul computer, e alle altre app dello stesso progetto, se ce ne sono):
+
+```html
+<h2>La nuova password</h2>
+<p>Scrivi questo codice nell'app, nel pannello della nuvola:</p>
+<p style="font-size:28px;letter-spacing:4px"><strong>{{ .Token }}</strong></p>
+<p>Vale una volta sola. Se non l'hai chiesto tu, ignora questa email.</p>
+<p style="color:#888">Oppure, dal browser: <a href="{{ .ConfirmationURL }}">scegli la password nuova</a>.</p>
+```
+
+Il link riporta alla radice dell'app (l'indirizzo che Supabase accetta già come Site URL): niente da aggiungere fra i Redirect URLs. L'app, tornata dal link, chiede la password nello stesso riquadro; un link scaduto o già usato riporta con l'errore nell'indirizzo, e l'app lo dice nel pannello, dove se ne chiede un altro.
 
 ## Spegnere Google fuori dall'app (una volta, a mano)
 

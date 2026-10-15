@@ -4,6 +4,7 @@ import { isSyncConfigured } from "../lib/supabase.js";
 import {
   getSession,
   mandaReimpostazione,
+  entraColCodice,
   signOut,
   getLastSync,
   cloudUsage,
@@ -12,7 +13,7 @@ import {
   rimandaConferma,
   cambiaPassword,
 } from "../lib/sync.js";
-import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, GIA_REGISTRATA, controllaNuova } from "../lib/accesso.js";
+import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, GIA_REGISTRATA, controllaNuova, codiceDallEmail } from "../lib/accesso.js";
 // il riferimento del piano sta in UN posto solo: prima era un numero qui e
 // la stringa «1 GB» due righe sotto, due cose da cambiare insieme e da
 // dimenticare separatamente
@@ -92,6 +93,11 @@ export default function SyncPanel({ status, onClose, onSync, notify, chiediPassw
   // dimenticata?» (`PASSWORD_RECOVERY` in App) il campo e' gia' aperto, in cima
   const [nuova, setNuova] = useState(chiediPassword ? "" : null);
   const [ripetuta, setRipetuta] = useState("");
+  // entrati col codice il pannello e' gia' aperto: la richiesta arriva dopo
+  useEffect(() => {
+    if (chiediPassword) setNuova((n) => n ?? "");
+  }, [chiediPassword]);
+  const [codice, setCodice] = useState("");
 
   const [spazio, setSpazio] = useState(undefined);
 
@@ -122,6 +128,28 @@ export default function SyncPanel({ status, onClose, onSync, notify, chiediPassw
     try {
       await mandaReimpostazione(e);
       setSent(true);
+    } catch (err) {
+      setGuaio(spiegaAccesso(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function conCodice() {
+    const c = codiceDallEmail(codice);
+    if (busy) return;
+    if (!c) {
+      setGuaio("Scrivi il codice di cifre che trovi nell'email.");
+      return;
+    }
+    setBusy(true);
+    setGuaio(null);
+    try {
+      await entraColCodice(email.trim(), c);
+      setSent(false);
+      setCodice("");
+      setSession(await getSession());
+      onSync?.();
     } catch (err) {
       setGuaio(spiegaAccesso(err));
     } finally {
@@ -393,13 +421,51 @@ export default function SyncPanel({ status, onClose, onSync, notify, chiediPassw
             </span>
           </p>
         ) : sent ? (
-          <p style={{ color: C.text, fontSize: F.corpo, lineHeight: 1.55 }}>
-            ✉️ Ti ho mandato un'email a <strong>{email.trim()}</strong>.<br />
-            <span style={{ color: C.muted, fontSize: F.nota }}>
-              Apri il link e scegli la password nuova: vale una volta sola, ed è buono solo
-              l'ultimo che hai chiesto. Se non arriva, guarda nella posta indesiderata.
-            </span>
-          </p>
+          <>
+            <p style={{ color: C.text, fontSize: F.corpo, lineHeight: 1.55, marginBottom: 12 }}>
+              ✉️ Ti ho mandato un'email a <strong>{email.trim()}</strong>.<br />
+              <span style={{ color: C.muted, fontSize: F.nota }}>
+                Scrivi qui il codice che c'è dentro: resti nell'app, e subito dopo scegli la password
+                nuova. Vale una volta sola, ed è buono solo l'ultimo che hai chiesto. Se non arriva,
+                guarda nella posta indesiderata.
+              </span>
+            </p>
+            <form
+              onSubmit={(e) => { e.preventDefault(); conCodice(); }}
+              style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+            >
+              <input
+                value={codice}
+                onChange={(e) => setCodice(e.target.value)}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="codice dall'email"
+                style={{ ...campo(), flex: 1, minWidth: 160, width: "auto", letterSpacing: 2 }}
+              />
+              <button
+                type="submit"
+                disabled={busy}
+                style={{
+                  padding: "10px 20px",
+                  borderRadius: R.piccolo,
+                  background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+                  color: C.onAccent,
+                  fontWeight: 600,
+                  fontSize: F.corpo,
+                }}
+              >
+                {busy ? "…" : "Conferma"}
+              </button>
+            </form>
+            {guaio && <p style={{ marginTop: 10, color: C.red, fontSize: F.nota, lineHeight: 1.45 }}>{guaio}</p>}
+            <button
+              onClick={passwordDimenticata}
+              disabled={busy}
+              style={{ marginTop: 12, minHeight: 44, color: C.muted, fontSize: F.nota, textDecoration: "underline" }}
+            >
+              Non è arrivata? Mandamene un'altra
+            </button>
+          </>
         ) : (
           <>
             <p style={{ color: C.muted, fontSize: F.nota, lineHeight: 1.5, marginBottom: 14 }}>

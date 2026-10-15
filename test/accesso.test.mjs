@@ -4,7 +4,7 @@
 // arriva qui come un `TypeError` senza codice e senza stato, e se lo si
 // tratta come una credenziale rifiutata si manda il lettore a riscrivere
 // all'infinito una password che era giusta.
-import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, controllaNuova, erroreDelLink } from "../src/lib/accesso.js";
+import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, controllaNuova, erroreDelLink, codiceDallEmail } from "../src/lib/accesso.js";
 
 // come li manda supabase-js: un oggetto con `code`, `status` e `message`
 const errore = (code, message = "", status = 400) => ({ code, message, status });
@@ -107,6 +107,16 @@ export default async function (t) {
   t.c("un carattere sotto no", passwordCorta("a".repeat(MIN_PASSWORD - 1)) === true);
   t.c("e il campo vuoto e' corto, non un errore", passwordCorta("") === true);
   t.c("nemmeno se la password non c'e' proprio", passwordCorta(undefined) === true);
+
+  // IL CODICE DELL'EMAIL, scritto nell'app: da 6 a 10 cifre, spazi e trattini via
+  t.eq("sei cifre", codiceDallEmail("123456"), "123456");
+  t.eq("otto, copiate con gli spazi", codiceDallEmail(" 1234 5678 "), "12345678");
+  t.eq("col trattino", codiceDallEmail("123-456"), "123456");
+  t.eq("dieci al massimo", codiceDallEmail("12345678901"), null);
+  t.eq("cinque sono poche", codiceDallEmail("12345"), null);
+  t.eq("lettere no", codiceDallEmail("12a456"), null);
+  t.eq("vuoto, niente", codiceDallEmail(undefined), null);
+  t.c("il codice sbagliato si dice", /codice è sbagliato o scaduto/.test(spiegaAccesso(errore("otp_expired", "Token has expired or is invalid", 403))));
 
   // LA PASSWORD NUOVA, scritta due volte (come in Ciak)
   t.eq("uguali e lunghe abbastanza: si salva", controllaNuova("segreta123", "segreta123"), null);

@@ -29,7 +29,19 @@ const VOCI = {
     "Ho già mandato parecchie mail a quest'indirizzo: aspetta qualche minuto.",
   validation_failed: "Controlla l'indirizzo email.",
   signup_disabled: "Su questo progetto le registrazioni sono chiuse.",
+  otp_expired: "Il codice è sbagliato o scaduto: guarda l'ultima email che ti ho mandato, o chiedine un altro.",
 };
+
+// IL CODICE DELL'EMAIL, SCRITTO NELL'APP (il lettore: «se uno avesse perso
+// la password e dovesse rifare il giro dall'applicazione io voglio che mi
+// reindirizzi sull'applicazione, non sulla pagina web»). Un link nella posta
+// apre il browser, sempre: passa da Supabase, e l'APK non lo riceve. Il
+// codice si copia a mano dove si e' gia'. Supabase lo fa da 6 a 10 cifre, e
+// chi lo copia porta spazi e trattini.
+export function codiceDallEmail(testo) {
+  const cifre = String(testo || "").replace(/[\s-]/g, "");
+  return /^\d{6,10}$/.test(cifre) ? cifre : null;
+}
 
 // LA PASSWORD NUOVA SI SCRIVE DUE VOLTE (come in Ciak): sbagliarla scrivendo
 // vuol dire restare fuori al prossimo accesso, con una password che nessuno

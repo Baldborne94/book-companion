@@ -74,6 +74,17 @@ export async function mandaReimpostazione(email) {
   if (error) throw error;
 }
 
+// Il codice della stessa email, scritto nell'app senza uscirne: fa entrare e
+// lancia lo stesso `PASSWORD_RECOVERY` del link, quindi la password nuova si
+// chiede nello stesso riquadro. Il modello dell'email deve portare il codice
+// (`{{ .Token }}`, `docs/ACCESSO.md`).
+export async function entraColCodice(email, codice) {
+  const sb = await getClient();
+  if (!sb) throw new Error("sync non configurata");
+  const { error } = await sb.auth.verifyOtp({ email, token: codice, type: "recovery" });
+  if (error) throw error;
+}
+
 // EMAIL E PASSWORD, chiesto dal lettore: aspettare una mail e aprirne il
 // link ogni volta che si cambia dispositivo e' una porta che si apre solo
 // se la posta funziona — e su un tablet, dove l'app e' installata come

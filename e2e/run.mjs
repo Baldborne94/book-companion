@@ -420,7 +420,9 @@ const SCENE = [
     // «voglio cancellare l'accesso a google per la mia applicazione». Il
     // pannello d'ingresso ha email e password in vista, e niente Google.
     // Poi «fai come per Ciak»: «Password dimenticata?» manda l'email di
-    // reimpostazione, e il ritorno (`type=recovery`) chiede la password.
+    // reimpostazione, e il ritorno (`type=recovery`) chiede la password. E
+    // «voglio che mi reindirizzi sull'applicazione»: il codice dell'email si
+    // scrive nell'app.
     nome: "si entra con email e password, senza Google, e «Password dimenticata?» fa scegliere la password",
     async fai({ browser, db }) {
       const d = await dispositivo(browser, { misura: TABLET });
@@ -436,26 +438,37 @@ const SCENE = [
       // «Password dimenticata?»: l'email di reimpostazione, che riporta alla radice
       await email.fill("prova@esempio.it");
       await d.p.getByRole("button", { name: /Password dimenticata/ }).click();
-      await finche(() => testoAvviso(d.p, /scegli la password nuova/), 5000, "il pannello non dice di aprire l'email");
+      await finche(() => testoAvviso(d.p, /Scrivi qui il codice/), 5000, "il pannello non chiede il codice dell'email");
       const ritorno = await finche(() => db.link().at(-1), 5000, "l'email di reimpostazione non parte");
       if (ritorno !== new URL(URL_APP).origin) throw new Error(`il link riporta a ${ritorno}`);
-      // aperto il link: Supabase torna con `type=recovery`, e si chiede subito la password
+      // il codice si scrive nell'app, senza uscirne: uno sbagliato si dice
+      const codice = d.p.getByPlaceholder("codice dall'email");
+      await d.p.getByRole("button", { name: "Conferma" }).click();
+      await finche(() => testoAvviso(d.p, /Scrivi il codice di cifre/), 5000, "il codice vuoto non si dice");
+      if (db.richieste()["POST /auth/v1/verify"]) throw new Error("il codice vuoto e' partito per Supabase");
+      await codice.fill("00000000");
+      await d.p.getByRole("button", { name: "Conferma" }).click();
+      await finche(() => testoAvviso(d.p, /codice è sbagliato o scaduto/), 5000, "il codice sbagliato non si dice");
+      await codice.fill("1234 5678");
+      await d.p.getByRole("button", { name: "Conferma" }).click();
+      const campo = d.p.getByPlaceholder("Nuova password");
+      await finche(() => campo.isVisible(), 10000, "col codice giusto la password nuova non si chiede");
+      if (!(await d.p.getByText("🔑 Scegli la nuova password").isVisible())) throw new Error("manca il titolo della password nuova");
+      // scritta due volte: se non sono uguali non parte
+      await campo.fill("segreta123");
+      await d.p.getByPlaceholder("Ripetila").fill("segreta124");
+      await d.p.getByRole("button", { name: "Salva" }).first().click();
+      await finche(() => testoAvviso(d.p, /non sono uguali/), 5000, "due password diverse non si dicono");
+      if (db.password().length) throw new Error("due password diverse sono partite lo stesso");
+      await d.p.getByPlaceholder("Ripetila").fill("segreta123");
+      await d.p.getByRole("button", { name: "Salva" }).first().click();
+      await finche(() => db.password().includes("segreta123"), 5000, "la password nuova non arriva a Supabase");
+      await finche(async () => !(await d.p.getByText("🔑 Scegli la nuova password").count()), 5000, "la richiesta della password resta lì dopo averla salvata");
+      // il link della stessa email, aperto nel browser, fa lo stesso
       const t = await dispositivo(browser, { misura: TABLET });
       const sessione = new URLSearchParams({ access_token: "a.b.c", refresh_token: "r", expires_in: "3600", expires_at: String(Math.floor(Date.now() / 1000) + 3600), token_type: "bearer", type: "recovery" });
       await t.p.goto(`${URL_APP}#${sessione}`);
-      const campo = t.p.getByPlaceholder("Nuova password");
-      await finche(() => campo.isVisible(), 10000, "tornati dal link, la password nuova non si chiede");
-      if (!(await t.p.getByText("🔑 Scegli la nuova password").isVisible())) throw new Error("manca il titolo della password nuova");
-      // scritta due volte: se non sono uguali non parte
-      await campo.fill("segreta123");
-      await t.p.getByPlaceholder("Ripetila").fill("segreta124");
-      await t.p.getByRole("button", { name: "Salva" }).first().click();
-      await finche(() => testoAvviso(t.p, /non sono uguali/), 5000, "due password diverse non si dicono");
-      if (db.password().length) throw new Error("due password diverse sono partite lo stesso");
-      await t.p.getByPlaceholder("Ripetila").fill("segreta123");
-      await t.p.getByRole("button", { name: "Salva" }).first().click();
-      await finche(() => db.password().includes("segreta123"), 5000, "la password nuova non arriva a Supabase");
-      await finche(async () => !(await t.p.getByText("🔑 Scegli la nuova password").count()), 5000, "la richiesta della password resta lì dopo averla salvata");
+      await finche(() => t.p.getByPlaceholder("Nuova password").isVisible(), 10000, "tornati dal link, la password nuova non si chiede");
       // un link scaduto torna con l'errore nel frammento: si dice, e l'indirizzo si pulisce
       const s = await dispositivo(browser, { misura: TABLET });
       await s.p.goto(`${URL_APP}#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired`);
@@ -463,7 +476,7 @@ const SCENE = [
       if (!(await s.p.getByPlaceholder("la-tua@email.it").isVisible())) throw new Error("col link scaduto il pannello d'ingresso non e' aperto");
       const resta = await s.p.evaluate(() => location.hash);
       if (resta) throw new Error(`l'errore resta nell'indirizzo: ${resta}`);
-      return { guasti: [...d.guasti, ...t.guasti, ...s.guasti], nota: "email e password in vista, nessun Google · «Password dimenticata?» manda la reimpostazione, al ritorno la password due volte · il link scaduto si dice" };
+      return { guasti: [...d.guasti, ...t.guasti, ...s.guasti], nota: "email e password in vista, nessun Google · «Password dimenticata?»: il codice dell'email nell'app, poi la password due volte · il link fa lo stesso · il link scaduto si dice" };
     },
   },
   {
