@@ -42,6 +42,8 @@ import { fraseGiro, ricordaGiro, avvisoArrivi } from "./lib/resoconto.js";
 import { annotaErrore } from "./lib/registro.js";
 import SezioneGuasti from "./components/SezioneGuasti.jsx";
 import { leggiDispositivi, altroveDa, percheNonSiApre } from "./lib/dispositivi.js";
+import { scegliDalDisco } from "./lib/sceltaFile.js";
+import { tipiDaScegliere } from "./lib/importBook.js";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, convertiLibroInCbz } from "./lib/sync.js";
 import { riordinaDisco, fraseRiordino, fraseDaParte, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
 import { importaDaFuori, resoconto } from "./lib/importBook.js";
@@ -814,6 +816,7 @@ export default function App() {
   // «Apri con»: i file che il sistema ci passa entrano in Libreria dalla
   // stessa porta dell'input, e la Libreria dice quando ha finito
   const [daImportare, setDaImportare] = useState(null);
+  const sceltaRef = useRef(null);
   // I BYTE SONO APPENA CAMBIATI, e lo dice chi li ha cambiati.
   //
   // Segnalato dal lettore: «ho tolto un po' di ebook e tenuto solo la
@@ -909,9 +912,7 @@ export default function App() {
       window.launchQueue?.setConsumer?.((params) => {
         fileDaLancio(params).then((files) => {
           if (!files.length) return;
-          setFocusSaga(null);
-          setDaImportare(files);
-          setSection("library");
+          daFuori(files);
         });
       });
     } catch {
@@ -1406,6 +1407,22 @@ export default function App() {
     return tolti.length;
   }
 
+  // i file arrivati da fuori entrano in Libreria dalla porta dell'input
+  function daFuori(files) {
+    setFocusSaga(null);
+    setDaImportare(files);
+    setSection("library");
+  }
+
+  // IL FILE DI UN LIBRO CHE QUI NON C'E' si sceglie subito, dentro il tocco
+  // di «Apri»: entrato, torna nella sua scheda (`ritornaACasa`)
+  function scegliIlFile() {
+    scegliDalDisco().then((files) => {
+      if (files === null) sceltaRef.current?.click();
+      else if (files.length) daFuori(files);
+    });
+  }
+
   function handleRead(id, startCfi = null) {
     const b = books.find((x) => x.id === id);
     if (!b) return;
@@ -1413,8 +1430,9 @@ export default function App() {
     // cloud: si busserebbe a vuoto e il reader finirebbe
     // sulla schermata del guasto, che qui sarebbe una bugia
     if (b.fileTolto) {
-      notify("Di questo libro tieni la scheda, non l'ebook 📗");
+      notify("Di questo libro tieni la scheda, non l'ebook 📗: scegli il file per rimetterlo");
       setOpenId(id);
+      scegliIlFile();
       return;
     }
     // senza byte qui il reader finirebbe sul guasto, e il guasto non c'e'
@@ -1422,6 +1440,7 @@ export default function App() {
     if (perche) {
       notify(perche);
       setOpenId(id);
+      scegliIlFile();
       return;
     }
     setLastOpened(id);
@@ -1598,6 +1617,17 @@ export default function App() {
       }}
     >
       {theme.decor === "foliage" && <Foliage />}
+      <input
+        ref={sceltaRef}
+        type="file"
+        accept={tipiDaScegliere()}
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const files = [...(e.target.files || [])];
+          e.target.value = "";
+          if (files.length) daFuori(files);
+        }}
+      />
       {theme.decor === "scrolls" && <Scrolls />}
       <Stardust theme={theme} />
       <div className="bc-scroll">

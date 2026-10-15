@@ -37,6 +37,7 @@ import { leggiVoti, scriviVoti, segnaVoto, votoMio, votoDaMostrare, mediaDeiVolu
 import Stars from "./Stelle.jsx";
 import { leggiDispositivi, scriviDispositivi, altroveDa, sulDispositivo, aggiornaDisco, sulDiscoDa } from "../lib/dispositivi.js";
 import { daLiberare, senzaCopiaNota, pesoTotale } from "../lib/liberaSpazio.js";
+import { ID_DISCO } from "../lib/sceltaFile.js";
 import { dispositivo } from "../lib/tempo.js";
 
 const FILTERS = [
@@ -1802,7 +1803,7 @@ export default function Library({
   async function controllaIlDisco() {
     let scelta = null;
     try {
-      scelta = await window.showDirectoryPicker({ id: "bc-hdd", mode: "readwrite" });
+      scelta = await window.showDirectoryPicker({ id: ID_DISCO, mode: "readwrite" });
     } catch {
       return;
     }

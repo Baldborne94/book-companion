@@ -304,15 +304,24 @@ const SCENE = [
     // chiesto dal lettore, lasciato Drive: «fai sapere al PC quali libri sono
     // sul tablet». Il libro aggiunto sul tablet compariva sul PC col
     // triangolo «né qui né nel cloud», e aperto finiva sul guasto.
-    nome: "il libro aggiunto sul tablet, sul PC sta «sul tablet» e non è perduto",
+    nome: "il libro aggiunto sul tablet, sul PC sta «sul tablet» e non è perduto, e da «Apri» se ne sceglie il file",
     async fai({ browser, db }) {
       const tab = await dispositivo(browser, { sessione: true, misura: TABLET });
-      await importa(tab.p, "La nebbia.epub", await epub(), "application/epub+zip");
+      const libro = await epub();
+      await importa(tab.p, "La nebbia.epub", libro, "application/epub+zip");
       const id = (await libriDi(tab.p)).find((b) => b.title === "La nebbia").id;
       const voce = () => (db.prefs()?.raccolte_fav || []).find((x) => x.id.startsWith("qui|") && x.libri?.includes(id));
       await finche(() => voce()?.nome === "tablet", 20000, `il tablet non dice lassu' cosa tiene (${JSON.stringify(db.prefs()?.raccolte_fav)})`);
+      await finche(() => db.righe().some((r) => r.id === id), 20000, "la scheda del tablet non sale");
 
-      const pc = await dispositivo(browser, { sessione: true });
+      // il selettore dei file del computer: la prima volta il lettore annulla
+      const prima = `window.showOpenFilePicker = async (o) => {
+        window.__chiesto = o;
+        if (!window.__scelta) throw new DOMException("annullato", "AbortError");
+        const f = window.__scelta;
+        return [{ getFile: async () => f }];
+      };`;
+      const pc = await dispositivo(browser, { sessione: true, prima });
       await pc.p.goto(`${URL_APP}?apri=libreria`);
       await finche(async () => (await libriDi(pc.p)).some((b) => b.id === id), 20000, "il libro non scende sul PC");
       const segno = await finche(() => pc.p.locator('span[title="Sta sul tablet: lì si legge"]').count(), 15000, "sul dorso non c'e' il segno del tablet");
@@ -325,7 +334,21 @@ const SCENE = [
       await pc.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
       const detto = await finche(() => testoAvviso(pc.p, /^Questo libro sta sul tablet 📱/), 8000, "aprendolo, il PC non dice che sta sul tablet");
       if (await pc.p.locator("iframe").count()) throw new Error("il reader si e' aperto su un libro che qui non c'e'");
-      return { guasti: [...pc.guasti, ...tab.guasti], nota: `${segno} segno 📱 · «${detto}»` };
+      const chiesto = await pc.p.evaluate(() => window.__chiesto?.id);
+      if (chiesto !== "bc-hdd") throw new Error(`«Apri» non porta alle cartelle del disco: ${chiesto}`);
+      // la seconda volta sceglie il file, ed entra nella sua scheda
+      await pc.p.evaluate((b) => { window.__scelta = new File([new Uint8Array(b)], "La nebbia.epub", { type: "application/epub+zip" }); }, [...libro]);
+      await pc.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      await finche(async () => {
+        const n = await pc.p.evaluate(async (id) => {
+          const db = await new Promise((ok, ko) => { const r = indexedDB.open("bc_library"); r.onsuccess = () => ok(r.result); r.onerror = ko; });
+          return await new Promise((ok) => { const g = db.transaction("files").objectStore("files").count(id); g.onsuccess = () => ok(g.result); g.onerror = () => ok(0); });
+        }, id);
+        return n === 1;
+      }, 15000, "il file scelto non entra nella scheda del tablet");
+      const schede = (await libriDi(pc.p)).filter((b) => b.title === "La nebbia");
+      if (schede.length !== 1) throw new Error(`le schede della nebbia sul PC: ${schede.length}`);
+      return { guasti: [...pc.guasti, ...tab.guasti], nota: `${segno} segno 📱 · «${detto}» · poi il file scelto entra nella sua scheda` };
     },
   },
   {
@@ -921,7 +944,8 @@ const SCENE = [
         { id: "e", title: "La Saga di Elric Di Melniboné", saga: "Elric Di Melnibone", fileType: "epub", addedAt: 5, fileTolto: true },
       ];
       const prima = `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});
-        window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });`;
+        window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD", { create: true });
+        window.showOpenFilePicker = async (o) => { window.__chiesto = o; throw new DOMException("annullato", "AbortError"); };`;
       const d = await dispositivo(browser, { prima });
       await d.p.goto(`${URL_APP}?apri=libreria`);
       const cbzVero = await fumetto();
@@ -1005,6 +1029,12 @@ const SCENE = [
       await d.p.getByRole("button", { name: "🔍 Controlla il disco" }).click();
       await finche(() => d.p.getByText(/Sul disco ci sono \d+ volumi della biblioteca/).count(), 10000, "il secondo controllo non si vede");
       if (await d.p.getByText(/altre edizioni|un'altra edizione/).count()) throw new Error("il controllo conta ancora quel che è da parte");
+      // Mort sta solo sul disco: dalla sua scheda se ne sceglie il file
+      await d.p.getByText("Mort", { exact: true }).first().evaluate((e) => e.closest("button").click());
+      await d.p.getByRole("button", { name: "📂 Scegli il file" }).click();
+      await finche(() => testoAvviso(d.p, /scegli il file per rimetterlo/), 5000, "«Apri» su un libro senza ebook non dice di scegliere il file");
+      const chiesto = await finche(() => d.p.evaluate(() => window.__chiesto?.id), 5000, "«Apri» su un libro senza ebook non apre il selettore");
+      if (chiesto !== "bc-hdd") throw new Error(`il selettore non parte dal disco: ${chiesto}`);
       return { guasti: d.guasti, nota: `${frase.slice(0, 50)}… · JoJo nella sua saga, Kagurabachi tolto e fermo, Mort fermo` };
     },
   },

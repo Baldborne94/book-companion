@@ -938,24 +938,28 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
         )}
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          {/* SENZA EBOOK IL TASTO NON C'È, e al suo posto c'è la ragione.
-              Lasciarlo sarebbe un tasto che si apre su un guasto; toglierlo
-              e basta lascerebbe a chiedersi dove è finito. */}
+          {/* SENZA EBOOK NON SI APRE: si sceglie il file (chiesto dal
+              lettore: «portarmi alle cartelle locali»), e la ragione resta
+              accanto al tasto */}
           {book.fileTolto ? (
-            <span
-              style={{
-                flex: 1,
-                minWidth: 170,
-                padding: "10px 14px",
-                borderRadius: R.piccolo,
-                border: `1px dashed ${C.border}`,
-                color: C.muted,
-                fontSize: F.piccolo,
-                lineHeight: 1.45,
-              }}
-            >
-              📗 Di questo libro tieni la scheda, non l'ebook: non è su questo dispositivo.
-              Per rileggerlo reimportane il file dalla Libreria: torna in questa scheda.
+            <span style={{ flex: 1, minWidth: 170, display: "flex", flexDirection: "column", gap: 6 }}>
+              <button
+                onClick={openBook}
+                style={{
+                  padding: "12px 20px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.accent}88`,
+                  color: C.accent,
+                  fontWeight: 700,
+                  fontSize: F.corpo,
+                  fontFamily: FONT_TITLE,
+                }}
+              >
+                📂 Scegli il file
+              </button>
+              <span style={{ color: C.muted, fontSize: F.piccolo, lineHeight: 1.45 }}>
+                📗 Di questo libro tieni la scheda, non l'ebook: scelto il file, torna in questa scheda.
+              </span>
             </span>
           ) : (
             <button
