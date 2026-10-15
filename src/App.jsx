@@ -43,7 +43,7 @@ import { annotaErrore } from "./lib/registro.js";
 import SezioneGuasti from "./components/SezioneGuasti.jsx";
 import { leggiDispositivi, altroveDa, percheNonSiApre } from "./lib/dispositivi.js";
 import { scegliDalDisco } from "./lib/sceltaFile.js";
-import { chiedeNuovaPassword } from "./lib/accesso.js";
+import { erroreDelLink } from "./lib/accesso.js";
 import { tipiDaScegliere } from "./lib/importBook.js";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, convertiLibroInCbz } from "./lib/sync.js";
 import { riordinaDisco, fraseRiordino, fraseDaParte, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
@@ -861,13 +861,22 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [music, setMusic] = useState({ current: null, playing: false, timerEnd: null });
   const [syncOpen, setSyncOpen] = useState(false);
-  // tornati dal link «Password dimenticata?»: letto prima che l'indirizzo si
-  // pulisca, e il pannello si apre appena si e' dentro
-  const [chiediPassword, setChiediPassword] = useState(() => chiedeNuovaPassword(globalThis.location?.search));
+  // tornati dal link di «Password dimenticata?» (`PASSWORD_RECOVERY`, sotto):
+  // il pannello si apre sulla password nuova
+  const [chiediPassword, setChiediPassword] = useState(false);
   const [sync, setSync] = useState({ busy: false, message: null, at: 0, signedIn: false });
+  // un link per email andato storto torna con l'errore nel frammento: si
+  // dice, nel pannello dove se ne chiede un altro, e l'indirizzo si pulisce
+  const [guaioLink] = useState(() => erroreDelLink(globalThis.location?.hash));
   useEffect(() => {
-    if (chiediPassword && sync.signedIn) setSyncOpen(true);
-  }, [chiediPassword, sync.signedIn]);
+    if (!guaioLink) return;
+    setSyncOpen(true);
+    try {
+      history.replaceState(history.state, "", location.pathname + location.search);
+    } catch {
+      /* l'indirizzo resta sporco: non rompe niente */
+    }
+  }, [guaioLink]);
   const [localIds, setLocalIds] = useState(null);
   const [themeId, setThemeId] = useState(() => {
     const saved = loadReaderSettings(Math.min(window.innerWidth, window.innerHeight)).appTheme;
@@ -1088,6 +1097,13 @@ export default function App() {
       } else if (sessione) {
         dentro = true;
         setSync((v) => (v.signedIn ? v : { ...v, signedIn: true }));
+      }
+      // come in Ciak: il link dell'email di reimpostazione fa entrare, e
+      // senza chiedere subito la password nuova si resterebbe dentro senza
+      // saperla
+      if (evento === "PASSWORD_RECOVERY") {
+        setChiediPassword(true);
+        setSyncOpen(true);
       }
     });
     localFileIds().then((ids) => alive && setLocalIds(ids));
@@ -1804,6 +1820,7 @@ export default function App() {
           onSync={() => runSync.current(false)}
           notify={notify}
           chiediPassword={chiediPassword}
+          avviso={guaioLink}
         />
       )}
       {gardenOpen && (

@@ -53,7 +53,7 @@ export default async function (t) {
 
   // ---- e la frase dice le DUE cose che il lettore deve sapere ------------
   // che la password appena scritta non è stata salvata (o la riproverà
-  // all'infinito), e che la strada è il link seguito da «Cambia la password»
+  // all'infinito), e che la strada è «Password dimenticata?»
   t.c("la frase dice che la password non è stata salvata", /non è stata salvata/i.test(GIA_REGISTRATA), GIA_REGISTRATA);
-  t.c("e indica la strada del link", /link/i.test(GIA_REGISTRATA) && /cambia la password/i.test(GIA_REGISTRATA), GIA_REGISTRATA);
+  t.c("e indica la strada di «Password dimenticata?»", /password dimenticata\?/i.test(GIA_REGISTRATA), GIA_REGISTRATA);
 }
