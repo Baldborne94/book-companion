@@ -407,6 +407,46 @@ export default async (t) => {
   const e6 = await riordinaDisco([{ libro: {}, file: f5, a: ["X"] }], { radice: r5, vivo: () => false });
   t.c("fermato prima: niente", e6.fermato && !e6.spostati);
 
+  // L'ELENCO DEL DISCO CHIEDE I PESI A GRUPPI (segnalato: «ci sta mettendo
+  // veramente tanto a controllare il disco», 1698 volumi): uno alla volta,
+  // ogni richiesta aspetta la sua
+  const rLento = cartella("book-companion");
+  for (let i = 0; i < 40; i++) await metti(rLento, `Libri/Saga ${i % 4}/Volume ${String(i).padStart(2, "0")}.epub`, 10 + i);
+  let inVolo = 0;
+  let massimo = 0;
+  const lenti = [];
+  const segna = async (d) => {
+    for (const h of d.dentro.values()) {
+      if (h.kind === "directory") await segna(h);
+      else {
+        const vero = h.getFile;
+        h.getFile = async () => {
+          inVolo += 1;
+          massimo = Math.max(massimo, inVolo);
+          await new Promise((ok) => setTimeout(ok, 5));
+          inVolo -= 1;
+          return vero();
+        };
+        lenti.push(h);
+      }
+    }
+  };
+  await segna(rLento);
+  const passi = [];
+  const tL = Date.now();
+  const elenco = await elencaDisco(rLento, [], { onFile: (n, tot) => passi.push(`${n}/${tot}`), insieme: 8 });
+  const msL = Date.now() - tL;
+  t.c("piu' pesi chiesti insieme, mai oltre il tetto", massimo > 1 && massimo <= 8, `massimo ${massimo}`);
+  t.c("e il tempo scende: 40 richieste da 5 ms in meno di 40×5", msL < 150, `${msL} ms`);
+  t.eq("ogni file col suo peso", elenco.map((f) => f.byte).join(), elenco.map((f) => 10 + Number(f.nome.slice(7, 9))).join());
+  t.eq("nell'ordine delle cartelle, come prima", elenco.map((f) => `${f.cartelle.join("/")}/${f.nome}`).join("|"), [...elenco].map((f) => `${f.cartelle.join("/")}/${f.nome}`).sort((a, b) => a.localeCompare(b, "it", { numeric: true })).join("|"));
+  t.eq("e dice a che punto e'", passi.at(-1), "40/40");
+  t.eq("un disco vuoto: niente, e nessun giro a vuoto", (await elencaDisco(cartella("book-companion"))).length, 0);
+  const rNome = cartella("book-companion");
+  await metti(rNome, `Fumetti/${DA_PARTE}/Saga/Vol 1.cbz`, 5);
+  await metti(rNome, `${DA_PARTE}/Fumetti/Vol 2.cbz`, 6);
+  t.eq("si salta solo la cartella in cima, non una che si chiama uguale piu' giu'", (await elencaDisco(rNome)).map((f) => f.nome).join(), "Vol 1.cbz");
+
   // LE COPIE E LE ALTRE EDIZIONI, MESSE DA PARTE (chiesto dal lettore col
   // rapporto del disco: 29 altre edizioni e 16 copie). Si spostano, mai si
   // cancellano, e il volume collegato alla scheda non si tocca.

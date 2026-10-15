@@ -151,6 +151,11 @@ export default async function (t) {
   t.c("le lente si raccontano con le tappe e il peso", /ePub aperto dal cloud · codice 100 ms \+ byte 3,0 s \+ pagina pronta 400 ms · 2 MB/.test(testo), testo);
   t.c("una rapida non e' fra le lente", !/Le ultime lente:[\s\S]*PDF/.test(testo), testo);
 
+  // ---- il disco controllato (segnalato: «ci sta mettendo veramente tanto») ----
+  const disco = righeTempi([{ q: 1, c: "disco", f: { elenco: 41000, abbina: 900, resto: 300 }, n: 1750 }]).join("\n");
+  t.c("il disco ha la sua riga, con le tappe", /Disco controllato: 1 · tipica 42,2 s \(elenco dei file 41,0 s \+ abbinamento 900 ms \+ il resto 300 ms\)/.test(disco), disco);
+  t.c("e conta file, non libri", /1750 file/.test(disco) && !/1750 libri/.test(disco), disco);
+
   // ---- nel rapporto, in coda --------------------------------------------------
   const r = rapporto({ tempi: voci, versione: "x" });
   t.c("il rapporto li porta", /Tempi misurati: 6/.test(r), r);
