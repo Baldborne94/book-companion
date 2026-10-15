@@ -416,6 +416,26 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «fammi fare il login senza usare google», poi
+    // «voglio cancellare l'accesso a google per la mia applicazione». Il
+    // pannello d'ingresso ha email e password in vista, e niente Google.
+    nome: "si entra con email e password, senza Google",
+    async fai({ browser }) {
+      const d = await dispositivo(browser, { misura: TABLET });
+      await d.p.goto(URL_APP);
+      await d.p.getByRole("button", { name: "Sincronizzazione" }).first().click();
+      await d.p.getByRole("button", { name: /Sincronizzazione nel cloud/ }).first().click();
+      const email = d.p.getByPlaceholder("la-tua@email.it");
+      await finche(() => email.isVisible(), 8000, "il campo dell'email non si vede subito");
+      if (!(await d.p.getByPlaceholder("password").isVisible())) throw new Error("il campo della password non si vede");
+      if (!(await d.p.getByRole("button", { name: "Entra", exact: true }).isVisible())) throw new Error("il tasto «Entra» non si vede");
+      const testo = await d.p.locator("body").innerText();
+      if (/google/i.test(testo)) throw new Error(`nel pannello c'e' ancora Google: ${testo.match(/.{0,40}google.{0,40}/i)?.[0]}`);
+      await d.p.screenshot({ path: "/tmp/claude-0/-home-user-book-companion/bc16680d-bf59-53a1-b939-bada45eba10f/scratchpad/ingresso.png" });
+      return { guasti: d.guasti, nota: "email e password in vista, nessun Google" };
+    },
+  },
+  {
     // chiesto dal lettore, lasciato Drive: «pulizia su cose che non servono
     // piu'». Le chiavi di Drive sul dispositivo, l'elenco dei file in
     // IndexedDB e la riga col permesso a lungo termine di Google nel

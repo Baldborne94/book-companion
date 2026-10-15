@@ -19,15 +19,9 @@ export function avviaSupabase(porta = 4599, { latenza = 0 } = {}) {
   const viste = new Map();
   const oggetti = new Map();
   let prefs = null;
-  // «Entra con Google»: le richieste d'accesso ricevute e i permessi salvati
-  const accessi = [];
+  // le righe col permesso di Google rimaste dai tempi di Drive (`google_refresh`)
   const permessi = new Map();
-  const ora = () => Math.floor(Date.now() / 1000);
-  const UTENTE = { id: "u1", aud: "authenticated", role: "authenticated", email: "prova@esempio.it", app_metadata: { provider: "google", providers: ["email", "google"] } };
-  // la sessione come la consegna Supabase al ritorno da Google: con la
-  // chiave di Drive e il permesso a lungo termine (ogni ingresso, una
-  // chiave nuova, come fa Google)
-  const SESSIONE = () => ({ access_token: "a.b.c", refresh_token: "r", token_type: "bearer", expires_in: 3600, expires_at: ora() + 3600, provider_token: accessi.length > 1 ? `ya29.dal-google-${accessi.length}` : "ya29.dal-google", provider_refresh_token: "rt-google", user: UTENTE });
+  const UTENTE = { id: "u1", aud: "authenticated", role: "authenticated", email: "prova@esempio.it", app_metadata: { provider: "email", providers: ["email"] } };
   const server = http.createServer((req, res) => {
     const pezzi = [];
     req.on("data", (c) => pezzi.push(c));
@@ -47,18 +41,6 @@ export function avviaSupabase(porta = 4599, { latenza = 0 } = {}) {
         res.setHeader("Content-Type", "application/json");
         res.end(JSON.stringify(x));
       };
-      if (u.pathname === "/auth/v1/authorize") {
-        accessi.push(Object.fromEntries(u.searchParams));
-        const torna = u.searchParams.get("redirect_to");
-        // PKCE: un codice da scambiare; senza, la sessione nel frammento
-        const dove = u.searchParams.get("code_challenge")
-          ? `${torna}${torna.includes("?") ? "&" : "?"}code=codice-finto`
-          : `${torna}#${new URLSearchParams(Object.entries(SESSIONE()).filter(([k]) => k !== "user").map(([k, v]) => [k, String(v)]))}`;
-        res.statusCode = 302;
-        res.setHeader("Location", dove);
-        return res.end();
-      }
-      if (u.pathname === "/auth/v1/token" && u.searchParams.get("grant_type") === "pkce") return json(SESSIONE());
       if (u.pathname === "/auth/v1/user") return json(UTENTE);
       if (u.pathname === "/rest/v1/google_refresh") {
         if (req.method === "GET") return json([...permessi.values()]);
@@ -150,7 +132,6 @@ export function avviaSupabase(porta = 4599, { latenza = 0 } = {}) {
         },
         // le copertine lassu', come le manda un altro dispositivo
         metti: (chiave, byte) => oggetti.set(chiave, byte),
-        accessi: () => [...accessi],
         permessi: () => [...permessi.values()],
         chiudi: () =>
           new Promise((c) => {

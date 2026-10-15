@@ -66,15 +66,14 @@ suoi, e nel cloud viaggiano solo i link.
 Puoi non accenderla mai: l'app funziona identica senza. Se la spegni e
 cancelli l'account, quei dati vanno via con lui.
 
-### 2.1 bis «Entra con Google»
+### 2.1 bis Niente Google
 
-Se entri con Google, Google conferma a Supabase chi sei e l'app entra nella
-tua biblioteca: l'app non chiede a Google nessun permesso sui tuoi file.
-Google Drive non è più usato dall'app; quel che ne restava (le chiavi sul
-dispositivo, l'elenco dei file e, nel tuo Supabase, la riga col permesso a
-lungo termine di Google) l'app lo cancella da sola. L'accesso a Drive dato
-allora si ritira da myaccount.google.com → Sicurezza → App e servizi di
-terze parti.
+Nella biblioteca si entra con email e password: «Entra con Google» è stato
+tolto, e Google Drive non è più usato dall'app. Quel che ne restava (le
+chiavi sul dispositivo, l'elenco dei file e, nel tuo Supabase, la riga col
+permesso a lungo termine di Google) l'app lo cancella da sola. Gli accessi
+dati a Google a suo tempo si ritirano da myaccount.google.com → Sicurezza →
+App e servizi di terze parti (i passi in `docs/ACCESSO.md`).
 
 ### 2.2 L'Oracolo (Anthropic)
 
