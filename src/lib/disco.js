@@ -29,15 +29,33 @@ export const CBR_CONVERTITI = "CBR convertiti";
 // controllo non le conta piu'
 export const DA_PARTE = "_Doppioni";
 
-// tutti i file di libri sotto `dir`, col percorso dalla casa
-export async function elencaDisco(dir, via = []) {
-  const out = [];
-  for await (const [nome, h] of dir.entries()) {
-    if (h.kind === "directory" && !via.length && (nome === CBR_CONVERTITI || nome === DA_PARTE)) continue;
-    if (h.kind === "directory") out.push(...(await elencaDisco(h, [...via, nome])));
-    else if (EST_DISCO.test(nome)) out.push({ cartelle: via, nome, byte: (await h.getFile()).size, handle: h, dir });
-  }
-  return out;
+// tutti i file di libri sotto `dir`, col percorso dalla casa. Il peso di
+// ogni file si chiede al disco (`getFile`), e uno alla volta ogni richiesta
+// aspetta la sua (segnalato dal lettore: «ci sta mettendo veramente tanto a
+// controllare il disco», 1698 volumi): si chiedono `INSIEME` alla volta,
+// e l'elenco resta nell'ordine delle cartelle
+export const INSIEME = 16;
+export async function elencaDisco(dir, via = [], { onFile, insieme = INSIEME } = {}) {
+  const voci = [];
+  const giu = async (d, v) => {
+    for await (const [nome, h] of d.entries()) {
+      if (h.kind === "directory" && !v.length && (nome === CBR_CONVERTITI || nome === DA_PARTE)) continue;
+      if (h.kind === "directory") await giu(h, [...v, nome]);
+      else if (EST_DISCO.test(nome)) voci.push({ cartelle: v, nome, byte: 0, handle: h, dir: d });
+    }
+  };
+  await giu(dir, via);
+  let prossimo = 0;
+  let fatti = 0;
+  const lavora = async () => {
+    while (prossimo < voci.length) {
+      const f = voci[prossimo++];
+      f.byte = (await f.handle.getFile()).size;
+      onFile?.(++fatti, voci.length);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(insieme, voci.length) }, lavora));
+  return voci;
 }
 
 // QUALE FILE E' DI QUALE SCHEDA. Il file sul disco porta il nome che aveva su

@@ -1808,6 +1808,8 @@ export default function Library({
       return;
     }
     setDisco({ guardo: true });
+    // misurato per il rapporto dei guasti: elenco dei file, abbinamento, il resto
+    const t0 = performance.now();
     try {
       const { RADICE } = await import("../lib/casa.js");
       const { elencaDisco, controllaDisco, lavoriDalDisco, cbrNeiConvertiti } = await import("../lib/disco.js");
@@ -1817,7 +1819,8 @@ export default function Library({
         notify("Qui dentro non c'è la cartella «book-companion»: scegli quella che la contiene, o lei");
         return;
       }
-      const file = await elencaDisco(casa);
+      const file = await elencaDisco(casa, [], { onFile: (letti, totale) => (letti % 25 === 0 || letti === totale) && setDisco((d) => (d?.guardo ? { ...d, letti, totale } : d)) });
+      const tElenco = performance.now();
       const rapporto = controllaDisco(booksRef.current, file, {
         tipoDi: (b) => tipoDi(b, tipi),
         qui: (id) => !!localIds?.has(id),
@@ -1828,8 +1831,10 @@ export default function Library({
       // copia che permette al tablet di togliere i suoi ebook letti
       scriviDispositivi(aggiornaDisco(leggiDispositivi(), [...rapporto.aPosto, ...rapporto.daSpostare].map((x) => x.libro.id), { dispositivo: dispositivo() }));
       onCambiate?.();
+      const tControllo = performance.now();
       const senza = new Set(senzaCopertina(booksRef.current, conCopertina || new Set(), copGuardate).map((b) => b.id));
       const convertiti = await cbrNeiConvertiti(casa, file).catch(() => null);
+      segnaTempo(vocePerTempo({ cosa: "disco", t0, tappe: [["elenco", tElenco], ["abbina", tControllo], ["resto", performance.now()]], n: file.length }));
       setDisco({ rapporto, casa, tolti: new Set(), lavori: lavoriDalDisco(rapporto, { haCopertina: (id) => !senza.has(id) }), convertiti });
     } catch (err) {
       setDisco(null);
@@ -2888,7 +2893,7 @@ export default function Library({
                 disabled={!!disco}
                 style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}
               >
-                {disco?.guardo ? "Guardo il disco…" : "🔍 Controlla il disco"}
+                {disco?.guardo ? `Guardo il disco…${disco.totale ? ` ${disco.letti} di ${disco.totale} file` : ""}` : "🔍 Controlla il disco"}
               </button>
             )}
             {disco?.rapporto &&

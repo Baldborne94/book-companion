@@ -164,6 +164,7 @@ const NOMI = {
   libreria: "Libreria aperta",
   epub: "ePub aperto",
   pdf: "PDF aperto",
+  disco: "Disco controllato",
 };
 const TAPPE = {
   html: "pagina dell'app",
@@ -176,10 +177,15 @@ const TAPPE = {
   libro: "libro letto",
   impagina: "impaginazione",
   primo: "primo disegno",
+  elenco: "elenco dei file",
+  abbina: "abbinamento",
+  resto: "il resto",
 };
 // tablet, cloud e pezzi: le voci scritte quando i libri si aprivano anche da lassu'
 const DA = { tablet: "dal tablet", cloud: "dal cloud", pezzi: "a pezzi", scaffale: "a scaffale", raccolte: "a raccolte" };
 const via = (v) => v.da || v.vista;
+// cosa conta `n`: i libri della biblioteca, o i file del disco controllato
+const unita = (v) => (v?.c === "disco" ? "file" : "libri");
 
 function riga(nome, vv) {
   const t = vv.map(tot);
@@ -192,7 +198,7 @@ function riga(nome, vv) {
     // tappa non e' una tappa da zero
     (tappe.length > 1 ? ` (${tappe.map((k) => `${TAPPE[k] || k} ${sec(quantile(vv.filter((v) => v.f && k in v.f).map((v) => v.f[k]), 0.5))}`).join(" + ")})` : "") +
     ` · 9 su 10 entro ${sec(quantile(t, 0.9))} · la peggiore ${sec(Math.max(...t))}` +
-    (n.length ? ` · ${quantile(n, 0.5)} libri` : "") +
+    (n.length ? ` · ${quantile(n, 0.5)} ${unita(vv[0])}` : "") +
     (lente ? ` · oltre i 2 secondi: ${lente}` : "")
   );
 }
@@ -220,7 +226,7 @@ export function righeTempi(voci = []) {
         `  ${new Date(v.q).toLocaleString("it-IT", { timeZone: "Europe/Rome" })} · ${NOMI[v.c] || v.c}${via(v) ? ` ${DA[via(v)] || via(v)}` : ""} · ` +
           Object.entries(v.f || {}).map(([k, ms]) => `${TAPPE[k] || k} ${sec(ms)}`).join(" + ") +
           (v.kb ? ` · ${Math.round(v.kb / 102.4) / 10} MB` : "") +
-          (v.n ? ` · ${v.n} libri` : "")
+          (v.n ? ` · ${v.n} ${unita(v)}` : "")
       );
   }
   return out;
