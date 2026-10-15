@@ -4,7 +4,7 @@
 // arriva qui come un `TypeError` senza codice e senza stato, e se lo si
 // tratta come una credenziale rifiutata si manda il lettore a riscrivere
 // all'infinito una password che era giusta.
-import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, ritornoPerPassword, chiedeNuovaPassword } from "../src/lib/accesso.js";
+import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, controllaNuova, erroreDelLink } from "../src/lib/accesso.js";
 
 // come li manda supabase-js: un oggetto con `code`, `status` e `message`
 const errore = (code, message = "", status = 400) => ({ code, message, status });
@@ -108,11 +108,21 @@ export default async function (t) {
   t.c("e il campo vuoto e' corto, non un errore", passwordCorta("") === true);
   t.c("nemmeno se la password non c'e' proprio", passwordCorta(undefined) === true);
 
-  // IL LINK PER UNA PASSWORD NUOVA (segnalato: «mi apre direttamente
-  // l'applicazione»): riporta con un segno, e l'app lo riconosce
-  t.eq("il link riporta all'app col segno", ritornoPerPassword("https://app.example"), "https://app.example/?nuova-password");
-  t.c("il segno si riconosce", chiedeNuovaPassword("?nuova-password"));
-  t.c("anche in mezzo ad altri parametri", chiedeNuovaPassword("?apri=libreria&nuova-password"));
-  t.c("senza segno, niente", !chiedeNuovaPassword("?apri=libreria") && !chiedeNuovaPassword("") && !chiedeNuovaPassword(undefined));
-  t.c("il frammento con l'accesso non e' il segno", !chiedeNuovaPassword("#nuova-password"));
+  // LA PASSWORD NUOVA, scritta due volte (come in Ciak)
+  t.eq("uguali e lunghe abbastanza: si salva", controllaNuova("segreta123", "segreta123"), null);
+  t.c("diverse: si dice", /non sono uguali/.test(controllaNuova("segreta123", "segreta124")));
+  t.c("corta: si dice prima della differenza", /almeno/.test(controllaNuova("abc", "abd")));
+  t.c("al pelo della soglia passa", controllaNuova("a".repeat(MIN_PASSWORD), "a".repeat(MIN_PASSWORD)) === null);
+
+  // IL LINK CHE NON FA ENTRARE (il lettore: «faccio sign in e mi apre la
+  // pagina web», con l'errore nel frammento)
+  const scaduto = erroreDelLink("#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired");
+  t.c("il link scaduto si dice scaduto", /scaduto o è già stato usato/.test(scaduto), scaduto);
+  t.c("e dice la strada", /Password dimenticata\?/.test(scaduto), scaduto);
+  const altro = erroreDelLink("#error=server_error&error_description=Qualcosa+non+va");
+  t.c("un altro errore porta il suo perche'", /non ha funzionato \(Qualcosa non va\)/.test(altro), altro);
+  t.c("anche col solo codice", !!erroreDelLink("#error_code=bad_jwt"));
+  t.eq("il frammento con l'accesso non e' un errore", erroreDelLink("#access_token=a.b.c&type=recovery"), null);
+  t.eq("e niente frammento, niente", erroreDelLink(""), null);
+  t.eq("nemmeno se manca", erroreDelLink(undefined), null);
 }

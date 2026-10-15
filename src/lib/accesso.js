@@ -31,19 +31,32 @@ const VOCI = {
   signup_disabled: "Su questo progetto le registrazioni sono chiuse.",
 };
 
-// IL LINK PER UNA PASSWORD NUOVA (segnalato dal lettore: «il link dovrebbe
-// permettermi di crearmi nuova password e invece mi apre direttamente
-// l'applicazione»). Il link per email fa entrare e basta: questo segno
-// nell'indirizzo di ritorno dice all'app di chiedere subito la password.
-export const NUOVA_PASSWORD = "nuova-password";
-export const ritornoPerPassword = (origine) => `${origine}/?${NUOVA_PASSWORD}`;
-export const chiedeNuovaPassword = (search) => {
+// LA PASSWORD NUOVA SI SCRIVE DUE VOLTE (come in Ciak): sbagliarla scrivendo
+// vuol dire restare fuori al prossimo accesso, con una password che nessuno
+// conosce.
+export function controllaNuova(password, ripetuta) {
+  if (passwordCorta(password)) return `La password vuole almeno ${MIN_PASSWORD} caratteri.`;
+  if (password !== ripetuta) return "Le due password non sono uguali.";
+  return null;
+}
+
+// IL LINK CHE NON FA ENTRARE (il lettore: «faccio sign in e mi apre la
+// pagina web», con `#error=access_denied&error_code=otp_expired` nell'indirizzo).
+// Supabase torna con l'errore nel frammento, e l'app lo taceva: si mostrava
+// l'Ingresso, fuori dalla biblioteca, senza una parola.
+export function erroreDelLink(frammento) {
+  let p;
   try {
-    return new URLSearchParams(search || "").has(NUOVA_PASSWORD);
+    p = new URLSearchParams(String(frammento || "").replace(/^#/, ""));
   } catch {
-    return false;
+    return null;
   }
-};
+  if (!p.get("error") && !p.get("error_code")) return null;
+  if (p.get("error_code") === "otp_expired")
+    return "Il link dell'email è scaduto o è già stato usato: vale una volta sola, e solo l'ultimo che hai chiesto. Chiedine un altro qui sotto con «Password dimenticata?» e apri subito quello.";
+  const perche = p.get("error_description");
+  return `Il link dell'email non ha funzionato${perche ? ` (${perche})` : ""}: chiedine un altro qui sotto con «Password dimenticata?».`;
+}
 
 export function spiegaAccesso(err) {
   if (!err) return null;
@@ -114,4 +127,4 @@ export function esitoRegistrazione(data) {
 export const GIA_REGISTRATA =
   "Quest'email è già registrata, e la password che hai appena scritto NON è stata salvata. " +
   "Se ne avevi una, entra con quella. Se finora sei entrato col link per email, la password non " +
-  "ce l'hai ancora: chiedi il link qui sotto e, una volta dentro, impostala con «Cambia la password».";
+  "ce l'hai ancora: premi «Password dimenticata?» qui sotto e sceglila dal link che ti arriva.";

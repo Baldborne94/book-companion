@@ -44,7 +44,7 @@ export function avviaSupabase(porta = 4599, { latenza = 0 } = {}) {
         res.setHeader("Content-Type", "application/json");
         res.end(JSON.stringify(x));
       };
-      if (u.pathname === "/auth/v1/otp") {
+      if (u.pathname === "/auth/v1/otp" || u.pathname === "/auth/v1/recover") {
         link.push(u.searchParams.get("redirect_to") || JSON.parse(corpo.toString() || "{}").redirect_to || "");
         return json({});
       }

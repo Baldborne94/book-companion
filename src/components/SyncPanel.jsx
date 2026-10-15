@@ -3,7 +3,7 @@ import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { isSyncConfigured } from "../lib/supabase.js";
 import {
   getSession,
-  signIn,
+  mandaReimpostazione,
   signOut,
   getLastSync,
   cloudUsage,
@@ -12,7 +12,7 @@ import {
   rimandaConferma,
   cambiaPassword,
 } from "../lib/sync.js";
-import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, GIA_REGISTRATA, ritornoPerPassword } from "../lib/accesso.js";
+import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, GIA_REGISTRATA, controllaNuova } from "../lib/accesso.js";
 // il riferimento del piano sta in UN posto solo: prima era un numero qui e
 // la stringa «1 GB» due righe sotto, due cose da cambiare insieme e da
 // dimenticare separatamente
@@ -74,7 +74,7 @@ const campo = () => ({
   outline: "none",
 });
 
-export default function SyncPanel({ status, onClose, onSync, notify, chiediPassword = false }) {
+export default function SyncPanel({ status, onClose, onSync, notify, chiediPassword = false, avviso = null }) {
   const [session, setSession] = useState(undefined);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -88,11 +88,10 @@ export default function SyncPanel({ status, onClose, onSync, notify, chiediPassw
   // il guaio dell'indirizzo non confermato e' l'unico che ha una via
   // d'uscita, e sta a parte perche' e' l'unico che fa comparire un tasto
   const [rimanda, setRimanda] = useState(false);
-  // la password si cambia da dentro, ed e' anche il modo di darsene una
-  // dopo essere entrati col link
-  // arrivati dal link «Password dimenticata?» (`chiedeNuovaPassword`): il
-  // campo e' gia' aperto, in cima
+  // la password si cambia da dentro; tornati dal link di «Password
+  // dimenticata?» (`PASSWORD_RECOVERY` in App) il campo e' gia' aperto, in cima
   const [nuova, setNuova] = useState(chiediPassword ? "" : null);
+  const [ripetuta, setRipetuta] = useState("");
 
   const [spazio, setSpazio] = useState(undefined);
 
@@ -110,13 +109,18 @@ export default function SyncPanel({ status, onClose, onSync, notify, chiediPassw
     return () => { vivo = false; };
   }, [session, status.at]);
 
-  async function handleSignIn() {
+  // come in Ciak: l'email di reimpostazione, e al ritorno la password nuova
+  async function passwordDimenticata() {
     const e = email.trim();
-    if (!e || busy) return;
+    if (busy) return;
+    if (!e) {
+      setGuaio("Scrivi la tua email qui sopra, poi premi di nuovo «Password dimenticata?».");
+      return;
+    }
     setBusy(true);
     setGuaio(null);
     try {
-      await signIn(e, { ritorno: ritornoPerPassword(window.location.origin) });
+      await mandaReimpostazione(e);
       setSent(true);
     } catch (err) {
       setGuaio(spiegaAccesso(err));
@@ -189,8 +193,9 @@ export default function SyncPanel({ status, onClose, onSync, notify, chiediPassw
   }
 
   async function salvaPassword() {
-    if (passwordCorta(nuova)) {
-      setGuaio(`La password vuole almeno ${MIN_PASSWORD} caratteri.`);
+    const no = controllaNuova(nuova, ripetuta);
+    if (no) {
+      setGuaio(no);
       return;
     }
     setBusy(true);
@@ -198,6 +203,7 @@ export default function SyncPanel({ status, onClose, onSync, notify, chiediPassw
     try {
       await cambiaPassword(nuova);
       setNuova(null);
+      setRipetuta("");
       notify("Password salvata: la prossima volta entri con quella 🔑");
     } catch (err) {
       setGuaio(spiegaAccesso(err));
@@ -219,6 +225,15 @@ export default function SyncPanel({ status, onClose, onSync, notify, chiediPassw
           placeholder="Nuova password"
           style={{ ...campo(), flex: 1, minWidth: 160, width: "auto" }}
         />
+        <input
+          value={ripetuta}
+          onChange={(e) => setRipetuta(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && salvaPassword()}
+          type="password"
+          autoComplete="new-password"
+          placeholder="Ripetila"
+          style={{ ...campo(), flex: 1, minWidth: 160, width: "auto" }}
+        />
         <button
           onClick={salvaPassword}
           disabled={busy}
@@ -232,7 +247,7 @@ export default function SyncPanel({ status, onClose, onSync, notify, chiediPassw
         >
           Salva
         </button>
-        <button onClick={() => { setNuova(null); setGuaio(null); }} style={{ color: C.muted, fontSize: F.nota }}>
+        <button onClick={() => { setNuova(null); setRipetuta(""); setGuaio(null); }} style={{ color: C.muted, fontSize: F.nota }}>
           Lascia stare
         </button>
       </div>
@@ -379,10 +394,10 @@ export default function SyncPanel({ status, onClose, onSync, notify, chiediPassw
           </p>
         ) : sent ? (
           <p style={{ color: C.text, fontSize: F.corpo, lineHeight: 1.55 }}>
-            ✉️ Ti ho mandato un link a <strong>{email.trim()}</strong>.<br />
+            ✉️ Ti ho mandato un'email a <strong>{email.trim()}</strong>.<br />
             <span style={{ color: C.muted, fontSize: F.nota }}>
-              Aprilo da questo dispositivo: tornerai qui già connesso, e ti chiederò la password
-              nuova.
+              Apri il link e scegli la password nuova: vale una volta sola, ed è buono solo
+              l'ultimo che hai chiesto. Se non arriva, guarda nella posta indesiderata.
             </span>
           </p>
         ) : (
@@ -391,6 +406,7 @@ export default function SyncPanel({ status, onClose, onSync, notify, chiediPassw
               Libri, segnalibri, note e progressi ti seguono su ogni dispositivo. I file dei libri
               restano dove li metti: sul dispositivo e sul disco.
             </p>
+            {avviso && <p style={{ color: C.red, fontSize: F.nota, lineHeight: 1.45, marginBottom: 12 }}>{avviso}</p>}
             {/* Un `form` vero, non due caselle sciolte: e' cosi' che il
                 portachiavi del tablet capisce che c'e' un accesso da
                 ricordare e te lo ripropone la volta dopo — che e' tutto il
@@ -473,27 +489,26 @@ export default function SyncPanel({ status, onClose, onSync, notify, chiediPassw
                 {busy ? "…" : "✉️ Rimandami la conferma"}
               </button>
             )}
-            {/* La strada di prima resta, ed e' quella che serve quando la
-                password non ce l'hai piu': si entra col link e da dentro se
-                ne rimette una. */}
+            {/* Chi la password non ce l'ha (o non l'ha mai scelta) se ne
+                fa mandare una nuova: l'email di reimpostazione, come in Ciak */}
             <button
-              onClick={handleSignIn}
+              onClick={passwordDimenticata}
               disabled={busy}
-              style={{ marginTop: 12, color: C.muted, fontSize: F.nota, textDecoration: "underline" }}
+              style={{ marginTop: 12, minHeight: 44, color: C.muted, fontSize: F.nota, textDecoration: "underline" }}
             >
-              Password dimenticata? Mandami il link per email
+              Password dimenticata?
             </button>
           </>
         )}
 
 
-        {/* DAL LINK PER UNA PASSWORD NUOVA si arriva qui, gia' dentro: la
-            password si chiede subito, non sotto «Altro» */}
+        {/* DAL LINK DI «PASSWORD DIMENTICATA?» si arriva qui, gia' dentro:
+            la password si chiede subito, non sotto «Altro» */}
         {isSyncConfigured() && session && chiediPassword && nuova !== null && (
           <div style={{ marginTop: 16, padding: 12, borderRadius: R.piccolo, border: `1px solid ${C.accent}66` }}>
             <p style={{ margin: "0 0 8px", color: C.text, fontSize: F.corpo, fontFamily: FONT_TITLE }}>🔑 Scegli la nuova password</p>
             <p style={{ margin: "0 0 8px", color: C.muted, fontSize: F.nota, lineHeight: 1.45 }}>
-              {`Almeno ${MIN_PASSWORD} caratteri. Da lì in poi entri con email e password, su ogni dispositivo.`}
+              {`Sei entrato dal link dell'email. Almeno ${MIN_PASSWORD} caratteri, scritta due volte: da lì in poi entri con email e password, su ogni dispositivo.`}
             </p>
             {formNuova()}
             {guaio && <p style={{ margin: "4px 0 0", color: C.red, fontSize: F.nota, lineHeight: 1.45 }}>{guaio}</p>}
@@ -503,9 +518,6 @@ export default function SyncPanel({ status, onClose, onSync, notify, chiediPassw
         {isSyncConfigured() && session && (
           <details style={{ marginTop: 16, paddingTop: 4, borderTop: `1px solid ${C.border}` }}>
             <summary style={{ color: C.muted, fontSize: F.nota, cursor: "pointer", padding: "12px 0" }}>Altro</summary>
-            {/* Chi e' entrato col link puo' darsi una password e non
-                dipenderne piu'; ed e' anche la strada per rimetterne una
-                dimenticata, senza una pagina di recupero tutta sua. */}
             {!chiediPassword && (nuova === null ? (
               <button
                 onClick={() => { setNuova(""); setGuaio(null); }}

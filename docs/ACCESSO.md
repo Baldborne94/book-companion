@@ -6,11 +6,11 @@ Si entra nella biblioteca (Supabase) con email e password. «Entra con Google» 
 
 L'account resta lo stesso, con la stessa email. Se non ha ancora una password:
 
-1. Nel pannello della nuvola scrivi l'email e tocca **«Password dimenticata? Mandami il link per email»**.
-2. Apri il link nella mail: entri nella biblioteca, e il pannello si apre su **«Scegli la nuova password»**.
-3. Scrivila e tocca **Salva**. Da lì si entra con email e password.
+1. Nel pannello della nuvola scrivi l'email e tocca **«Password dimenticata?»** (come in Ciak).
+2. Arriva l'email di **reimpostazione della password** (il modello «Reset Password» di Supabase). Apri il link **dell'ultima** che hai chiesto, e subito: vale una volta sola.
+3. Torni nell'app già dentro, e il pannello si apre su **«Scegli la nuova password»**. Scrivila due volte e tocca **Salva**. Da lì si entra con email e password.
 
-Il link torna all'app con `?nuova-password` nell'indirizzo: su Supabase, in **Authentication → URL Configuration → Redirect URLs**, deve esserci l'indirizzo dell'app con `/**` in fondo, o Supabase riporta al solo indirizzo e la password non si chiede (si entra lo stesso, e la si sceglie da «Altro → Cambia la password»).
+Il link torna alla radice dell'app (l'indirizzo che Supabase accetta già come Site URL): niente da aggiungere fra i Redirect URLs. Un link scaduto o già usato riporta con l'errore nell'indirizzo, e l'app lo dice nel pannello, dove se ne chiede un altro.
 
 ## Spegnere Google fuori dall'app (una volta, a mano)
 

@@ -60,14 +60,17 @@ export async function getSession() {
   return data.session || null;
 }
 
-// `ritorno`: dove riporta il link (per una password nuova, `ritornoPerPassword`)
-export async function signIn(email, { ritorno = window.location.origin } = {}) {
+// «PASSWORD DIMENTICATA?» COME IN CIAK (chiesto dal lettore: «fai come per
+// Ciak»): l'email di reimpostazione, non il link d'accesso. Supabase la
+// manda col suo modello «Reset password», e il link riporta qui con
+// `type=recovery`: la libreria lo dice con l'evento `PASSWORD_RECOVERY`, e
+// l'app chiede subito la password nuova. Si torna alla radice del sito,
+// l'indirizzo che Supabase accetta gia' (un segno nell'indirizzo, come prima,
+// andava aggiunto fra i Redirect URLs, e un link vecchio tornava senza).
+export async function mandaReimpostazione(email) {
   const sb = await getClient();
   if (!sb) throw new Error("sync non configurata");
-  const { error } = await sb.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: ritorno },
-  });
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
   if (error) throw error;
 }
 
@@ -77,9 +80,8 @@ export async function signIn(email, { ritorno = window.location.origin } = {}) {
 // PWA, il link apre il browser invece dell'app. La password sta nel
 // portachiavi del dispositivo e si entra in due tocchi.
 //
-// Il link per posta NON se ne va: e' la strada di scorta quando la
-// password non ce l'hai piu', ed e' anche l'unica che funziona senza aver
-// mai registrato niente.
+// Chi la password non ce l'ha piu' (o non l'ha mai scelta) se ne fa
+// mandare una nuova per email: `mandaReimpostazione`.
 export async function entraConPassword(email, password) {
   const sb = await getClient();
   if (!sb) throw new Error("sync non configurata");
@@ -152,10 +154,8 @@ export async function rimandaConferma(email) {
   if (error) throw error;
 }
 
-// Serve a chi e' entrato col link e vuole smettere di dipenderne, ed e'
-// anche l'unica strada per rimettere una password dimenticata: si entra
-// col link, si riscrive la password, e la volta dopo si entra in due
-// tocchi. Cosi' non serve una pagina di recupero tutta sua.
+// Da dentro, o tornati dal link di «Password dimenticata?»
+// (`PASSWORD_RECOVERY`): la volta dopo si entra in due tocchi.
 export async function cambiaPassword(password) {
   const sb = await getClient();
   if (!sb) throw new Error("sync non configurata");
