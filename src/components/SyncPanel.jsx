@@ -426,8 +426,9 @@ export default function SyncPanel({ status, onClose, onSync, notify, chiediPassw
               ✉️ Ti ho mandato un'email a <strong>{email.trim()}</strong>.<br />
               <span style={{ color: C.muted, fontSize: F.nota }}>
                 Scrivi qui il codice che c'è dentro: resti nell'app, e subito dopo scegli la password
-                nuova. Vale una volta sola, ed è buono solo l'ultimo che hai chiesto. Se non arriva,
-                guarda nella posta indesiderata.
+                nuova. Se nella mail c'è solo un link, aprilo: la password si sceglie lì. Vale una
+                volta sola, ed è buono solo l'ultimo che hai chiesto. Se non arriva, guarda nella
+                posta indesiderata.
               </span>
             </p>
             <form

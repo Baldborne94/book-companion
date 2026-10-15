@@ -14,7 +14,15 @@ Il codice vale una volta sola, ed è buono solo quello dell'ultima email chiesta
 
 ### Il modello dell'email (una volta, a mano)
 
-Il modello di partenza di Supabase manda solo il link. Perché porti il codice: **Supabase → Authentication → Emails → Templates → Reset Password** (in certe versioni **Reset password** sotto *Email Templates*), e al posto del testo:
+Il modello di partenza di Supabase manda solo il link, e Supabase lascia cambiare i modelli solo a chi spedisce le mail col **suo server di posta** («Set up custom SMTP to edit templates»). Col proprio Gmail:
+
+1. **Account Google → Sicurezza**: la **verifica in due passaggi** dev'essere attiva. Poi **Password per le app** (myaccount.google.com/apppasswords): creane una, chiamala «Supabase», e copia le 16 lettere. Non è la password di Gmail, e non va scritta da nessun'altra parte.
+2. **Supabase → Authentication → Emails → SMTP Settings** («Set up SMTP»): accendi **Enable custom SMTP**, e scrivi
+   - **Sender email**: il tuo indirizzo Gmail; **Sender name**: `Book Companion`;
+   - **Host**: `smtp.gmail.com`; **Port**: `465`;
+   - **Username**: il tuo indirizzo Gmail; **Password**: le 16 lettere del punto 1.
+   Salva. Da qui le mail partono dal tuo Gmail (e il tetto di Supabase, poche mail l'ora, se ne va).
+3. **Authentication → Emails → Templates → Reset Password**, e al posto del testo:
 
 - **Subject**: `Il codice per la nuova password`
 - **Body** (lascia anche il link: serve a chi apre la mail sul computer, e alle altre app dello stesso progetto, se ce ne sono):
