@@ -54,7 +54,10 @@ export function pulisciUrl(win = globalThis) {
     const l = win.location;
     if (!h?.replaceState || !l) return;
     if (!l.search) return;
-    h.replaceState(h.state, "", l.pathname || "/");
+    // il frammento resta: e' li' che torna l'accesso dal link per email
+    // (`#access_token=…`), e toglierlo prima che Supabase lo legga lascerebbe
+    // fuori chi ha appena aperto il link
+    h.replaceState(h.state, "", (l.pathname || "/") + (l.hash || ""));
   } catch {
     /* senza history non c'e' niente da pulire */
   }

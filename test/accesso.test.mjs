@@ -4,7 +4,7 @@
 // arriva qui come un `TypeError` senza codice e senza stato, e se lo si
 // tratta come una credenziale rifiutata si manda il lettore a riscrivere
 // all'infinito una password che era giusta.
-import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD } from "../src/lib/accesso.js";
+import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, ritornoPerPassword, chiedeNuovaPassword } from "../src/lib/accesso.js";
 
 // come li manda supabase-js: un oggetto con `code`, `status` e `message`
 const errore = (code, message = "", status = 400) => ({ code, message, status });
@@ -107,4 +107,12 @@ export default async function (t) {
   t.c("un carattere sotto no", passwordCorta("a".repeat(MIN_PASSWORD - 1)) === true);
   t.c("e il campo vuoto e' corto, non un errore", passwordCorta("") === true);
   t.c("nemmeno se la password non c'e' proprio", passwordCorta(undefined) === true);
+
+  // IL LINK PER UNA PASSWORD NUOVA (segnalato: «mi apre direttamente
+  // l'applicazione»): riporta con un segno, e l'app lo riconosce
+  t.eq("il link riporta all'app col segno", ritornoPerPassword("https://app.example"), "https://app.example/?nuova-password");
+  t.c("il segno si riconosce", chiedeNuovaPassword("?nuova-password"));
+  t.c("anche in mezzo ad altri parametri", chiedeNuovaPassword("?apri=libreria&nuova-password"));
+  t.c("senza segno, niente", !chiedeNuovaPassword("?apri=libreria") && !chiedeNuovaPassword("") && !chiedeNuovaPassword(undefined));
+  t.c("il frammento con l'accesso non e' il segno", !chiedeNuovaPassword("#nuova-password"));
 }

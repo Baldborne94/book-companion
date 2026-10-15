@@ -31,6 +31,20 @@ const VOCI = {
   signup_disabled: "Su questo progetto le registrazioni sono chiuse.",
 };
 
+// IL LINK PER UNA PASSWORD NUOVA (segnalato dal lettore: «il link dovrebbe
+// permettermi di crearmi nuova password e invece mi apre direttamente
+// l'applicazione»). Il link per email fa entrare e basta: questo segno
+// nell'indirizzo di ritorno dice all'app di chiedere subito la password.
+export const NUOVA_PASSWORD = "nuova-password";
+export const ritornoPerPassword = (origine) => `${origine}/?${NUOVA_PASSWORD}`;
+export const chiedeNuovaPassword = (search) => {
+  try {
+    return new URLSearchParams(search || "").has(NUOVA_PASSWORD);
+  } catch {
+    return false;
+  }
+};
+
 export function spiegaAccesso(err) {
   if (!err) return null;
   const codice = err.code || "";

@@ -60,12 +60,13 @@ export async function getSession() {
   return data.session || null;
 }
 
-export async function signIn(email) {
+// `ritorno`: dove riporta il link (per una password nuova, `ritornoPerPassword`)
+export async function signIn(email, { ritorno = window.location.origin } = {}) {
   const sb = await getClient();
   if (!sb) throw new Error("sync non configurata");
   const { error } = await sb.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: window.location.origin },
+    options: { emailRedirectTo: ritorno },
   });
   if (error) throw error;
 }
