@@ -12,7 +12,7 @@ import {
   rimandaConferma,
   cambiaPassword,
 } from "../lib/sync.js";
-import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, GIA_REGISTRATA } from "../lib/accesso.js";
+import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, GIA_REGISTRATA, ritornoPerPassword } from "../lib/accesso.js";
 // il riferimento del piano sta in UN posto solo: prima era un numero qui e
 // la stringa «1 GB» due righe sotto, due cose da cambiare insieme e da
 // dimenticare separatamente
@@ -74,7 +74,7 @@ const campo = () => ({
   outline: "none",
 });
 
-export default function SyncPanel({ status, onClose, onSync, notify }) {
+export default function SyncPanel({ status, onClose, onSync, notify, chiediPassword = false }) {
   const [session, setSession] = useState(undefined);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -90,7 +90,9 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
   const [rimanda, setRimanda] = useState(false);
   // la password si cambia da dentro, ed e' anche il modo di darsene una
   // dopo essere entrati col link
-  const [nuova, setNuova] = useState(null);
+  // arrivati dal link «Password dimenticata?» (`chiedeNuovaPassword`): il
+  // campo e' gia' aperto, in cima
+  const [nuova, setNuova] = useState(chiediPassword ? "" : null);
 
   const [spazio, setSpazio] = useState(undefined);
 
@@ -114,7 +116,7 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
     setBusy(true);
     setGuaio(null);
     try {
-      await signIn(e);
+      await signIn(e, { ritorno: ritornoPerPassword(window.location.origin) });
       setSent(true);
     } catch (err) {
       setGuaio(spiegaAccesso(err));
@@ -202,6 +204,39 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  function formNuova() {
+    return (
+
+      <div style={{ margin: "4px 0 8px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <input
+          value={nuova}
+          onChange={(e) => setNuova(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && salvaPassword()}
+          type="password"
+          autoComplete="new-password"
+          placeholder="Nuova password"
+          style={{ ...campo(), flex: 1, minWidth: 160, width: "auto" }}
+        />
+        <button
+          onClick={salvaPassword}
+          disabled={busy}
+          style={{
+            padding: "10px 18px",
+            borderRadius: R.piccolo,
+            border: `1px solid ${C.accent}88`,
+            color: C.accent,
+            fontSize: F.nota,
+          }}
+        >
+          Salva
+        </button>
+        <button onClick={() => { setNuova(null); setGuaio(null); }} style={{ color: C.muted, fontSize: F.nota }}>
+          Lascia stare
+        </button>
+      </div>
+    );
   }
 
   async function handleSignOut() {
@@ -346,8 +381,8 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
           <p style={{ color: C.text, fontSize: F.corpo, lineHeight: 1.55 }}>
             ✉️ Ti ho mandato un link a <strong>{email.trim()}</strong>.<br />
             <span style={{ color: C.muted, fontSize: F.nota }}>
-              Aprilo da questo dispositivo: tornerai qui già connesso, e la biblioteca comincerà
-              a sincronizzarsi da sola.
+              Aprilo da questo dispositivo: tornerai qui già connesso, e ti chiederò la password
+              nuova.
             </span>
           </p>
         ) : (
@@ -452,13 +487,26 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
         )}
 
 
+        {/* DAL LINK PER UNA PASSWORD NUOVA si arriva qui, gia' dentro: la
+            password si chiede subito, non sotto «Altro» */}
+        {isSyncConfigured() && session && chiediPassword && nuova !== null && (
+          <div style={{ marginTop: 16, padding: 12, borderRadius: R.piccolo, border: `1px solid ${C.accent}66` }}>
+            <p style={{ margin: "0 0 8px", color: C.text, fontSize: F.corpo, fontFamily: FONT_TITLE }}>🔑 Scegli la nuova password</p>
+            <p style={{ margin: "0 0 8px", color: C.muted, fontSize: F.nota, lineHeight: 1.45 }}>
+              {`Almeno ${MIN_PASSWORD} caratteri. Da lì in poi entri con email e password, su ogni dispositivo.`}
+            </p>
+            {formNuova()}
+            {guaio && <p style={{ margin: "4px 0 0", color: C.red, fontSize: F.nota, lineHeight: 1.45 }}>{guaio}</p>}
+          </div>
+        )}
+
         {isSyncConfigured() && session && (
           <details style={{ marginTop: 16, paddingTop: 4, borderTop: `1px solid ${C.border}` }}>
             <summary style={{ color: C.muted, fontSize: F.nota, cursor: "pointer", padding: "12px 0" }}>Altro</summary>
             {/* Chi e' entrato col link puo' darsi una password e non
                 dipenderne piu'; ed e' anche la strada per rimetterne una
                 dimenticata, senza una pagina di recupero tutta sua. */}
-            {nuova === null ? (
+            {!chiediPassword && (nuova === null ? (
               <button
                 onClick={() => { setNuova(""); setGuaio(null); }}
                 style={{ display: "block", minHeight: 44, color: C.muted, fontSize: F.nota, textDecoration: "underline" }}
@@ -466,34 +514,8 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
                 🔑 Cambia la password
               </button>
             ) : (
-              <div style={{ margin: "4px 0 8px", display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <input
-                  value={nuova}
-                  onChange={(e) => setNuova(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && salvaPassword()}
-                  type="password"
-                  autoComplete="new-password"
-                  placeholder="Nuova password"
-                  style={{ ...campo(), flex: 1, minWidth: 160, width: "auto" }}
-                />
-                <button
-                  onClick={salvaPassword}
-                  disabled={busy}
-                  style={{
-                    padding: "10px 18px",
-                    borderRadius: R.piccolo,
-                    border: `1px solid ${C.accent}88`,
-                    color: C.accent,
-                    fontSize: F.nota,
-                  }}
-                >
-                  Salva
-                </button>
-                <button onClick={() => { setNuova(null); setGuaio(null); }} style={{ color: C.muted, fontSize: F.nota }}>
-                  Lascia stare
-                </button>
-              </div>
-            )}
+              formNuova()
+            ))}
             {guaio && <p style={{ margin: "4px 0 8px", color: C.red, fontSize: F.nota, lineHeight: 1.45 }}>{guaio}</p>}
             <button
               onClick={handleSignOut}

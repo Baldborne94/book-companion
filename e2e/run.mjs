@@ -419,8 +419,8 @@ const SCENE = [
     // chiesto dal lettore: «fammi fare il login senza usare google», poi
     // «voglio cancellare l'accesso a google per la mia applicazione». Il
     // pannello d'ingresso ha email e password in vista, e niente Google.
-    nome: "si entra con email e password, senza Google",
-    async fai({ browser }) {
+    nome: "si entra con email e password, senza Google, e il link per email fa scegliere la password",
+    async fai({ browser, db }) {
       const d = await dispositivo(browser, { misura: TABLET });
       await d.p.goto(URL_APP);
       await d.p.getByRole("button", { name: "Sincronizzazione" }).first().click();
@@ -431,8 +431,24 @@ const SCENE = [
       if (!(await d.p.getByRole("button", { name: "Entra", exact: true }).isVisible())) throw new Error("il tasto «Entra» non si vede");
       const testo = await d.p.locator("body").innerText();
       if (/google/i.test(testo)) throw new Error(`nel pannello c'e' ancora Google: ${testo.match(/.{0,40}google.{0,40}/i)?.[0]}`);
-      await d.p.screenshot({ path: "/tmp/claude-0/-home-user-book-companion/bc16680d-bf59-53a1-b939-bada45eba10f/scratchpad/ingresso.png" });
-      return { guasti: d.guasti, nota: "email e password in vista, nessun Google" };
+      // «Password dimenticata?»: il link riporta col segno della password nuova
+      await email.fill("prova@esempio.it");
+      await d.p.getByRole("button", { name: /Password dimenticata/ }).click();
+      await finche(() => testoAvviso(d.p, /ti chiederò la password/), 5000, "il pannello non dice che chiederà la password");
+      const ritorno = await finche(() => db.link().at(-1), 5000, "il link per email non parte");
+      if (!/\?nuova-password$/.test(ritorno)) throw new Error(`il link riporta a ${ritorno}`);
+      // aperto il link: si torna dentro, e si chiede subito la password
+      const t = await dispositivo(browser, { misura: TABLET });
+      const sessione = new URLSearchParams({ access_token: "a.b.c", refresh_token: "r", expires_in: "3600", expires_at: String(Math.floor(Date.now() / 1000) + 3600), token_type: "bearer", type: "magiclink" });
+      await t.p.goto(`${URL_APP}/?nuova-password#${sessione}`);
+      const campo = t.p.getByPlaceholder("Nuova password");
+      await finche(() => campo.isVisible(), 10000, "tornati dal link, la password nuova non si chiede");
+      if (!(await t.p.getByText("🔑 Scegli la nuova password").isVisible())) throw new Error("manca il titolo della password nuova");
+      await campo.fill("segreta123");
+      await t.p.getByRole("button", { name: "Salva" }).first().click();
+      await finche(() => db.password().includes("segreta123"), 5000, "la password nuova non arriva a Supabase");
+      await finche(async () => !(await t.p.getByText("🔑 Scegli la nuova password").count()), 5000, "la richiesta della password resta lì dopo averla salvata");
+      return { guasti: [...d.guasti, ...t.guasti], nota: "email e password in vista, nessun Google · dal link «Password dimenticata?» si sceglie la password" };
     },
   },
   {

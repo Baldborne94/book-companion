@@ -21,6 +21,9 @@ export function avviaSupabase(porta = 4599, { latenza = 0 } = {}) {
   let prefs = null;
   // le righe col permesso di Google rimaste dai tempi di Drive (`google_refresh`)
   const permessi = new Map();
+  // i link per email chiesti (dove riportano), e le password scritte
+  const link = [];
+  const password = [];
   const UTENTE = { id: "u1", aud: "authenticated", role: "authenticated", email: "prova@esempio.it", app_metadata: { provider: "email", providers: ["email"] } };
   const server = http.createServer((req, res) => {
     const pezzi = [];
@@ -41,6 +44,11 @@ export function avviaSupabase(porta = 4599, { latenza = 0 } = {}) {
         res.setHeader("Content-Type", "application/json");
         res.end(JSON.stringify(x));
       };
+      if (u.pathname === "/auth/v1/otp") {
+        link.push(u.searchParams.get("redirect_to") || JSON.parse(corpo.toString() || "{}").redirect_to || "");
+        return json({});
+      }
+      if (u.pathname === "/auth/v1/user" && req.method === "PUT") password.push(JSON.parse(corpo.toString() || "{}").password);
       if (u.pathname === "/auth/v1/user") return json(UTENTE);
       if (u.pathname === "/rest/v1/google_refresh") {
         if (req.method === "GET") return json([...permessi.values()]);
@@ -133,6 +141,8 @@ export function avviaSupabase(porta = 4599, { latenza = 0 } = {}) {
         // le copertine lassu', come le manda un altro dispositivo
         metti: (chiave, byte) => oggetti.set(chiave, byte),
         permessi: () => [...permessi.values()],
+        link: () => [...link],
+        password: () => [...password],
         chiudi: () =>
           new Promise((c) => {
             server.closeAllConnections?.();

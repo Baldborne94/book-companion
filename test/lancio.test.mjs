@@ -58,11 +58,15 @@ export default async function (t) {
     t.eq("si riscrive una volta", scritti.length, 1);
     t.eq("sul solo percorso, senza il parametro", scritti[0][1], "/");
     t.eq("e lo state resta quello che c'era", scritti[0][0], win.history.state);
+    // l'accesso dal link per email torna nel frammento: non si tocca
+    const conAccesso = { history: { state: null, replaceState: (st, x, u) => scritti.push([st, u]) }, location: { search: "?nuova-password", pathname: "/", hash: "#access_token=a&type=magiclink" } };
+    pulisciUrl(conAccesso);
+    t.eq("via il parametro, il frammento dell'accesso resta", scritti.at(-1)[1], "/#access_token=a&type=magiclink");
     // senza parametri non si tocca la storia: un replaceState in piu' a
     // ogni avvio non rompe niente, ma non e' lavoro da fare
     const fermo = { history: { state: null, replaceState: () => scritti.push("no") }, location: { search: "", pathname: "/" } };
     pulisciUrl(fermo);
-    t.eq("senza parametri non si riscrive", scritti.length, 1);
+    t.eq("senza parametri non si riscrive", scritti.length, 2);
     // senza history non esplode
     pulisciUrl({ location: { search: "?apri=x" } });
     pulisciUrl(null);
