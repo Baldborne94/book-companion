@@ -1,7 +1,7 @@
 // IL DISCO DEI LIBRI, CONTROLLATO E RIORDINATO (chiesto dal lettore: «ora su
 // E:\book-companion abbiamo tutti i volumi? mi hai sistemato anche dentro le
 // cartelle i file nel modo giusto per saga?»).
-import { casaDi, elencaDisco, controllaDisco, riordinaDisco, fraseRiordino, rapportoDisco, vociDalDisco, schedeDalDisco, lavoriDalDisco, convertiSulDisco, fraseConvertitiDisco, CBR_CONVERTITI, cbrNeiConvertiti, svuotaConvertiti } from "../src/lib/disco.js";
+import { casaDi, elencaDisco, controllaDisco, riordinaDisco, fraseRiordino, rapportoDisco, vociDalDisco, schedeDalDisco, lavoriDalDisco, convertiSulDisco, fraseConvertitiDisco, CBR_CONVERTITI, cbrNeiConvertiti, svuotaConvertiti, DA_PARTE, daMettereDaParte, fraseDaParte } from "../src/lib/disco.js";
 import { importaDaFuori } from "../src/lib/importBook.js";
 
 // un disco finto: cartelle, file col loro peso, `move` facoltativo
@@ -406,6 +406,39 @@ export default async (t) => {
   // fermato
   const e6 = await riordinaDisco([{ libro: {}, file: f5, a: ["X"] }], { radice: r5, vivo: () => false });
   t.c("fermato prima: niente", e6.fermato && !e6.spostati);
+
+  // LE COPIE E LE ALTRE EDIZIONI, MESSE DA PARTE (chiesto dal lettore col
+  // rapporto del disco: 29 altre edizioni e 16 copie). Si spostano, mai si
+  // cancellano, e il volume collegato alla scheda non si tocca.
+  const rDp = cartella("book-companion");
+  await metti(rDp, "Fumetti/Hellboy/Hellboy Omnibus v03 - The Wild Hunt.cbz", 120);
+  await metti(rDp, "Fumetti/Hellboy/Hellboy Omnibus  - The Wild Hunt v3-522.cbz", 150);
+  await metti(rDp, "Libri/Discworld/Mort.epub", 5);
+  await metti(rDp, "Libri/Discworld/Death/Mort.epub", 5);
+  await metti(rDp, "Libri/Altro/Mort.epub", 7);
+  const libP = [
+    { id: "h3", title: "Hellboy Omnibus v03 - The Wild Hunt", saga: "Hellboy", fileType: "cbz", fileTolto: true },
+    { id: "m", title: "Mort", saga: "Discworld", fileType: "epub", fileTolto: true },
+  ];
+  const rapP = controllaDisco(libP, await elencaDisco(rDp), { tipoDi: (b) => (b.fileType === "epub" ? "libri" : "fumetti") });
+  const vociP = daMettereDaParte(rapP);
+  const collegati = new Set([...rapP.aPosto, ...rapP.daSpostare].map((v) => v.file));
+  t.c("ci sono un'altra edizione e una copia", rapP.altreEdizioni.length >= 1 && rapP.doppioni.length >= 1, rapportoDisco(rapP));
+  t.eq("da parte vanno le altre edizioni e le copie, e nient'altro", vociP.length, rapP.altreEdizioni.length + rapP.doppioni.length);
+  t.c("mai un file collegato a una scheda", !vociP.some((v) => collegati.has(v.file)));
+  t.c("con le loro cartelle sotto _Doppioni", vociP.every((v) => v.a[0] === DA_PARTE && v.a.slice(1).join("/") === v.file.cartelle.join("/")));
+  const eP = await riordinaDisco(vociP, { radice: rDp });
+  const dopoP = await tutto(rDp);
+  const elencoP = await voci(rDp);
+  t.c("l'altra edizione di Hellboy e' da parte", elencoP.includes(`${DA_PARTE}/Fumetti/Hellboy/Hellboy Omnibus  - The Wild Hunt v3-522.cbz:150`) && !elencoP.includes("Fumetti/Hellboy/Hellboy Omnibus  - The Wild Hunt v3-522.cbz:150"));
+  t.c("i volumi collegati restano dove sono", dopoP.includes("Fumetti/Hellboy/Hellboy Omnibus v03 - The Wild Hunt.cbz:120") && [...collegati].every((f) => dopoP.includes(`${[...f.cartelle, f.nome].join("/")}:${f.byte}`)));
+  t.eq("niente si cancella: lo stesso numero di file", elencoP.length, 5);
+  t.c("e si dice", new RegExp(`${eP.spostati} file messi da parte in «${DA_PARTE}»`).test(fraseDaParte(eP)), fraseDaParte(eP));
+  const ancora = controllaDisco(libP, await elencaDisco(rDp), { tipoDi: (b) => (b.fileType === "epub" ? "libri" : "fumetti") });
+  t.eq("al controllo dopo, quel che e' da parte non si conta piu'", ancora.altreEdizioni.length + ancora.doppioni.length + ancora.senzaScheda.length, 0);
+  t.c("fermato a meta' si dice", /fermato: il resto è dov'era/.test(fraseDaParte({ spostati: 1, doppioni: [], mancati: [], fermato: true })));
+  t.eq("niente da parte, niente da dire", fraseDaParte({ spostati: 0, doppioni: [], mancati: [], fermato: false }), "Niente da mettere da parte");
+  t.c("chi c'era gia', e chi non si e' spostato, si dice", /uno c'era già.*uno non si è spostato/.test(fraseDaParte({ spostati: 0, doppioni: [{}], mancati: [{}], fermato: false })));
 
   // LE COPERTINE E I CBR DAL DISCO (segnalato: «mancano ancora copertine» e
   // «ci sono file CBR che non mi fa mettere in CBZ» — i volumi spostati

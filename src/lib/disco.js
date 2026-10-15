@@ -24,11 +24,16 @@ export const casaDi = (b, tipo) => casaDelVolume(b, tipo).map(nomeSicuro);
 // (`cbrNeiConvertiti`, `svuotaConvertiti`)
 export const CBR_CONVERTITI = "CBR convertiti";
 
+// dove vanno le copie in piu' e le altre edizioni messe da parte
+// (`daMettereDaParte`): il lettore le guarda e la svuota a mano, e il
+// controllo non le conta piu'
+export const DA_PARTE = "_Doppioni";
+
 // tutti i file di libri sotto `dir`, col percorso dalla casa
 export async function elencaDisco(dir, via = []) {
   const out = [];
   for await (const [nome, h] of dir.entries()) {
-    if (h.kind === "directory" && !via.length && nome === CBR_CONVERTITI) continue;
+    if (h.kind === "directory" && !via.length && (nome === CBR_CONVERTITI || nome === DA_PARTE)) continue;
     if (h.kind === "directory") out.push(...(await elencaDisco(h, [...via, nome])));
     else if (EST_DISCO.test(nome)) out.push({ cartelle: via, nome, byte: (await h.getFile()).size, handle: h, dir });
   }
@@ -385,6 +390,26 @@ export async function riordinaDisco(voci, { radice, vivo = () => true, onProgres
     }
   }
   return esito;
+}
+
+// LE COPIE IN PIU' E LE ALTRE EDIZIONI, MESSE DA PARTE (chiesto dal lettore,
+// col rapporto del disco in mano: 29 altre edizioni e 16 copie, cinque GB di
+// fumetti doppi). Non si cancella niente: si spostano in `_Doppioni` con le
+// loro cartelle (due file con lo stesso nome in due saghe non si incontrano),
+// e il lettore li guarda e svuota a mano. I file collegati alle schede non
+// sono mai fra questi.
+export function daMettereDaParte(r) {
+  const file = [...(r?.altreEdizioni || []).map((x) => x.file), ...(r?.doppioni || [])];
+  return file.map((f) => ({ libro: {}, file: f, a: [DA_PARTE, ...f.cartelle] }));
+}
+
+export function fraseDaParte(e) {
+  const parti = [];
+  if (e.spostati) parti.push(`🗃 ${e.spostati === 1 ? "Un file messo" : `${e.spostati} file messi`} da parte in «${DA_PARTE}»: guardali e svuota la cartella quando vuoi`);
+  if (e.doppioni.length) parti.push(`${e.doppioni.length === 1 ? "uno c'era già, ed è rimasto" : `${e.doppioni.length} c'erano già, e sono rimasti`} dov'${e.doppioni.length === 1 ? "era" : "erano"}`);
+  if (e.mancati.length) parti.push(`${e.mancati.length === 1 ? "uno non si è spostato" : `${e.mancati.length} non si sono spostati`}`);
+  if (e.fermato) parti.push("fermato: il resto è dov'era");
+  return parti.join(" · ") || "Niente da mettere da parte";
 }
 
 const quanti = (n, uno, molti) => (n === 1 ? uno : `${n} ${molti}`);

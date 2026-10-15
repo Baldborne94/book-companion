@@ -991,6 +991,20 @@ const SCENE = [
       }, locke.id);
       if (byteQui) throw new Error("i byte del fumetto sono entrati nel browser");
       if ((await libriDi(d.p)).some((b) => /Terry Pratchett/.test(b.title))) throw new Error("l'altra edizione di Mort è entrata come doppione");
+      // l'altra edizione di Mort va da parte, con le sue cartelle, e il
+      // controllo dopo non la conta piu'
+      await d.p.getByRole("button", { name: "🔍 Controlla il disco" }).click();
+      await d.p.getByRole("button", { name: /🗃 Metti da parte il file in più/ }).click();
+      await finche(() => testoAvviso(d.p, /Un file messo da parte in «_Doppioni»/), 10000, "l'altra edizione non va da parte");
+      const daParte = await d.p.evaluate(async () => {
+        const bc = await (await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD")).getDirectoryHandle("book-companion");
+        const c = async (via) => { let x = bc; for (const n of via.slice(0, -1)) x = await x.getDirectoryHandle(n); return (await (await x.getFileHandle(via.at(-1))).getFile()).size; };
+        return [await c(["_Doppioni", "Libri", "Discworld", "Mort - Terry Pratchett.epub"]).catch(() => -1), await c(["Libri", "Discworld", "Mort - Terry Pratchett.epub"]).catch(() => -1), await c(["Libri", "Discworld", "Mort.epub"]).catch(() => -1)].join(",");
+      });
+      if (daParte !== "600,-1,500") throw new Error(`da parte, al suo posto, Mort: ${daParte}`);
+      await d.p.getByRole("button", { name: "🔍 Controlla il disco" }).click();
+      await finche(() => d.p.getByText(/Sul disco ci sono \d+ volumi della biblioteca/).count(), 10000, "il secondo controllo non si vede");
+      if (await d.p.getByText(/altre edizioni|un'altra edizione/).count()) throw new Error("il controllo conta ancora quel che è da parte");
       return { guasti: d.guasti, nota: `${frase.slice(0, 50)}… · JoJo nella sua saga, Kagurabachi tolto e fermo, Mort fermo` };
     },
   },
