@@ -43,7 +43,7 @@ import { annotaErrore } from "./lib/registro.js";
 import SezioneGuasti from "./components/SezioneGuasti.jsx";
 import { leggiDispositivi, altroveDa, percheNonSiApre } from "./lib/dispositivi.js";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, convertiLibroInCbz } from "./lib/sync.js";
-import { riordinaDisco, fraseRiordino, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
+import { riordinaDisco, fraseRiordino, fraseDaParte, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
 import { importaDaFuori, resoconto } from "./lib/importBook.js";
 import { togliAvanziDrive } from "./lib/avanziDrive.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
@@ -1293,16 +1293,18 @@ export default function App() {
   const filoHdd = useRef(null);
   // RIORDINARE IL DISCO (`riordinaDisco`): ogni file nella casa della sua
   // scheda, dentro lo stesso disco.
-  async function riordinaQui(voci, casa) {
+  // anche «Metti da parte» (`daMettereDaParte`): lo stesso spostamento,
+  // verso `_Doppioni`
+  async function riordinaQui(voci, casa, { cosa = "🗂 Riordino il disco", frase = fraseRiordino } = {}) {
     if (!voci.length) return;
     if (filoHdd.current) return notify("Sto già lavorando sul disco: aspetta che finisca, o fermalo dalla barra in basso");
     const mio = {};
     filoHdd.current = mio;
     const vivo = () => filoHdd.current === mio;
-    setHdd({ cosa: "🗂 Riordino il disco", i: 0, totale: voci.length, nome: voci[0].file.nome, presi: 0, byte: 0 });
+    setHdd({ cosa, i: 0, totale: voci.length, nome: voci[0].file.nome, presi: 0, byte: 0 });
     try {
-      const esito = await riordinaDisco(voci, { radice: casa, vivo, onProgress: (p) => vivo() && setHdd({ ...p, cosa: "🗂 Riordino il disco" }) });
-      notify(fraseRiordino(esito));
+      const esito = await riordinaDisco(voci, { radice: casa, vivo, onProgress: (p) => vivo() && setHdd({ ...p, cosa }) });
+      notify(frase(esito));
     } catch (e) {
       notify(e?.message || "Il disco non ha risposto");
     } finally {
@@ -1668,6 +1670,7 @@ export default function App() {
             importo={importo}
             onFermaImport={fermaImport}
             onRiordina={riordinaQui}
+            onMettiDaParte={(voci, casa) => riordinaQui(voci, casa, { cosa: "🗃 Metto da parte i doppioni", frase: fraseDaParte })}
             onImportaDalDisco={importaDalDiscoQui}
             onConvertiDalDisco={convertiDalDiscoQui}
             daImportare={daImportare}

@@ -828,6 +828,7 @@ export default function Library({
   onCambiate,
   onTogliEbook,
   onRiordina,
+  onMettiDaParte,
   onImportaDalDisco,
   onConvertiDalDisco,
 }) {
@@ -3009,8 +3010,31 @@ export default function Library({
                     )}
                     {r.doppioni.length > 0 && (
                       <span style={{ flexBasis: "100%", overflowWrap: "anywhere" }}>
-                        {`${r.doppioni.length === 1 ? "Una copia in più" : `${r.doppioni.length} copie in più`} (stesso nome e stesso peso) di volumi che sono già sul disco (non le tocco): `}
+                        {`${r.doppioni.length === 1 ? "Una copia in più" : `${r.doppioni.length} copie in più`} (stesso nome e stesso peso) di volumi che sono già sul disco: `}
                         <span style={{ color: C.text }}>{r.doppioni.slice(0, 12).map((f) => [...f.cartelle, f.nome].join(" / ")).join(" · ")}</span>
+                      </span>
+                    )}
+                    {/* METTERE DA PARTE, mai cancellare (`daMettereDaParte`) */}
+                    {onMettiDaParte && r.doppioni.length + (r.altreEdizioni?.length || 0) > 0 && (
+                      <span style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                        <button
+                          onClick={async () => {
+                            const { daMettereDaParte } = await import("../lib/disco.js");
+                            const casa = disco.casa;
+                            const voci = daMettereDaParte(r);
+                            setDisco(null);
+                            onMettiDaParte(voci, casa);
+                          }}
+                          style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                        >
+                          {(() => {
+                            const fs = [...r.doppioni, ...(r.altreEdizioni || []).map((x) => x.file)];
+                            return `🗃 Metti da parte ${fs.length === 1 ? "il file in più" : `i ${fs.length} file in più`} (${fmtGoogle(fs.reduce((t, f) => t + f.byte, 0))})`;
+                          })()}
+                        </button>
+                        <span style={{ flexBasis: "100%", fontSize: F.piccolo }}>
+                          Le copie e le altre edizioni vanno in «book-companion / _Doppioni», con le loro cartelle: non si cancella niente, e il controllo non le conta più. Le guardi e svuoti tu la cartella.
+                        </span>
                       </span>
                     )}
                     {/* QUEL CHE SI FA COI FILE DEL DISCO: le copertine che
