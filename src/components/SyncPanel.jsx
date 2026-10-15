@@ -19,7 +19,6 @@ import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, GIA_REGISTRAT
 import { PIENO, parteDelPiano } from "../lib/spazio.js";
 import { BarraCloud } from "./BarraCloud.jsx";
 import { ultimoGiro } from "../lib/resoconto.js";
-import { entraConGoogle } from "../lib/accessoGoogle.js";
 
 
 function Spazio({ dati }) {
@@ -85,7 +84,6 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
   // avviso che scorre via: chi ha appena sbagliato la password deve poter
   // rileggere il perche' mentre la riscrive.
   const [guaio, setGuaio] = useState(null);
-  const [guaioGoogle, setGuaioGoogle] = useState(null);
   const [confermare, setConfermare] = useState(false);
   // il guaio dell'indirizzo non confermato e' l'unico che ha una via
   // d'uscita, e sta a parte perche' e' l'unico che fa comparire un tasto
@@ -109,20 +107,6 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
     cloudUsage().then((d) => vivo && setSpazio(d));
     return () => { vivo = false; };
   }, [session, status.at]);
-
-  // «Entra con Google» (vedi `accessoGoogle.js`): la pagina va da Google e
-  // torna qui gia' dentro
-  async function conGoogle() {
-    if (busy) return;
-    setBusy(true);
-    setGuaioGoogle(null);
-    try {
-      await entraConGoogle();
-    } catch (err) {
-      setGuaioGoogle(spiegaAccesso(err));
-      setBusy(false);
-    }
-  }
 
   async function handleSignIn() {
     const e = email.trim();
@@ -372,33 +356,6 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
               Libri, segnalibri, note e progressi ti seguono su ogni dispositivo. I file dei libri
               restano dove li metti: sul dispositivo e sul disco.
             </p>
-            <button
-              onClick={conGoogle}
-              disabled={busy}
-              style={{
-                width: "100%",
-                minHeight: 48,
-                padding: "10px 20px",
-                borderRadius: R.piccolo,
-                background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
-                color: C.onAccent,
-                fontWeight: 600,
-                fontSize: F.corpo,
-              }}
-            >
-              {busy ? "Vado da Google…" : "Entra con Google"}
-            </button>
-            {guaioGoogle && (
-              <p style={{ marginTop: 10, color: C.red, fontSize: F.nota, lineHeight: 1.45 }}>{guaioGoogle}</p>
-            )}
-            <details style={{ marginTop: 14 }}>
-              <summary style={{ color: C.muted, fontSize: F.nota, cursor: "pointer", padding: "12px 0" }}>
-                Entra con email e password
-              </summary>
-            <p style={{ color: C.muted, fontSize: F.piccolo, lineHeight: 1.5, margin: "4px 0 10px" }}>
-              La strada di prima. Con la stessa email del tuo Google ritrovi la stessa biblioteca
-              in tutt'e due i modi.
-            </p>
             {/* Un `form` vero, non due caselle sciolte: e' cosi' che il
                 portachiavi del tablet capisce che c'e' un accesso da
                 ricordare e te lo ripropone la volta dopo — che e' tutto il
@@ -491,7 +448,6 @@ export default function SyncPanel({ status, onClose, onSync, notify }) {
             >
               Password dimenticata? Mandami il link per email
             </button>
-            </details>
           </>
         )}
 

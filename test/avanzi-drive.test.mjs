@@ -2,9 +2,7 @@
 // «pulizia su cose che non servono piu'»): le chiavi sul dispositivo,
 // l'elenco dei file in IndexedDB e, nel Supabase, la riga col permesso a
 // lungo termine di Google, che con Drive dentro apriva i file del lettore.
-// E «Entra con Google» non chiede piu' Drive.
 import { togliAvanziDrive, CHIAVI_DRIVE, AUX_DRIVE } from "../src/lib/avanziDrive.js";
-import { entraConGoogle } from "../src/lib/accessoGoogle.js";
 
 function memoria(iniziale = {}) {
   const m = { ...iniziale };
@@ -18,11 +16,8 @@ function memoria(iniziale = {}) {
 
 function supabaseFinto({ errore = null, esplode = false } = {}) {
   const tolte = [];
-  let oauth = null;
   return {
     tolte,
-    oauth: () => oauth,
-    auth: { signInWithOAuth: async (o) => ((oauth = o), { error: null }) },
     from: (tabella) => ({
       delete: () => ({
         eq: async (k, v) => {
@@ -66,11 +61,4 @@ export default async (t) => {
   t.eq("la rete giu': si riprova al giro dopo", (await togliAvanziDrive({ st: st4, sb: giu, uid: "u1" })).riga, false);
   const rifiuto = supabaseFinto({ errore: { code: "42501", message: "permission denied" } });
   t.eq("un rifiuto vero: si riprova", (await togliAvanziDrive({ st: memoria(), sb: rifiuto, uid: "u1" })).riga, false);
-
-  // ---- entrare con Google ----------------------------------------------------
-  const og = supabaseFinto();
-  await entraConGoogle({ sb: og, origine: "https://book.example" });
-  const o = og.oauth();
-  t.eq("da Google, e di ritorno qui", `${o.provider} ${o.options.redirectTo}`, "google https://book.example");
-  t.c("senza il permesso per Drive, ne' uno a lungo termine", !o.options.scopes && !o.options.queryParams);
 };
