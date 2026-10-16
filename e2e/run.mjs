@@ -1066,20 +1066,32 @@ const SCENE = [
       }, locke.id);
       if (byteQui) throw new Error("i byte del fumetto sono entrati nel browser");
       if ((await libriDi(d.p)).some((b) => /Terry Pratchett/.test(b.title))) throw new Error("l'altra edizione di Mort è entrata come doppione");
-      // l'altra edizione di Mort va da parte, con le sue cartelle, e il
-      // controllo dopo non la conta piu'
-      await d.p.getByRole("button", { name: "🔍 Controlla il disco" }).click();
-      await d.p.getByRole("button", { name: /🗃 Metti da parte il file in più/ }).click();
-      await finche(() => testoAvviso(d.p, /Un file messo da parte in «_Doppioni»/), 10000, "l'altra edizione non va da parte");
-      const daParte = await d.p.evaluate(async () => {
-        const bc = await (await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD")).getDirectoryHandle("book-companion");
-        const c = async (via) => { let x = bc; for (const n of via.slice(0, -1)) x = await x.getDirectoryHandle(n); return (await (await x.getFileHandle(via.at(-1))).getFile()).size; };
-        return [await c(["_Doppioni", "Libri", "Discworld", "Mort - Terry Pratchett.epub"]).catch(() => -1), await c(["Libri", "Discworld", "Mort - Terry Pratchett.epub"]).catch(() => -1), await c(["Libri", "Discworld", "Mort.epub"]).catch(() => -1)].join(",");
+      // «Metti da parte» sposta solo le copie identiche: l'altra edizione di
+      // Mort resta dov'e' («mi hai tolto libri che non dovevi togliere»)
+      const leggi = () =>
+        d.p.evaluate(async () => {
+          const bc = await (await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD")).getDirectoryHandle("book-companion");
+          const c = async (via) => { let x = bc; for (const n of via.slice(0, -1)) x = await x.getDirectoryHandle(n); return (await (await x.getFileHandle(via.at(-1))).getFile()).size; };
+          return [["_Doppioni", "Libri", "Mort.epub"], ["Libri", "Mort.epub"], ["Libri", "Discworld", "Mort - Terry Pratchett.epub"], ["_Doppioni", "Libri", "Discworld", "Mort - Terry Pratchett.epub"]].reduce(async (acc, via) => [...(await acc), await c(via).catch(() => -1)], []).then((x) => x.join(","));
+        });
+      await d.p.evaluate(async () => {
+        const libri = await (await (await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD")).getDirectoryHandle("book-companion")).getDirectoryHandle("Libri");
+        const w = await (await libri.getFileHandle("Mort.epub", { create: true })).createWritable();
+        await w.write(new Uint8Array(500));
+        await w.close();
       });
-      if (daParte !== "600,-1,500") throw new Error(`da parte, al suo posto, Mort: ${daParte}`);
       await d.p.getByRole("button", { name: "🔍 Controlla il disco" }).click();
-      await finche(() => d.p.getByText(/Sul disco ci sono \d+ volumi della biblioteca/).count(), 10000, "il secondo controllo non si vede");
-      if (await d.p.getByText(/altre edizioni|un'altra edizione/).count()) throw new Error("il controllo conta ancora quel che è da parte");
+      await d.p.getByRole("button", { name: /🗃 Metti da parte la copia in più/ }).click();
+      await finche(() => testoAvviso(d.p, /Un file messo da parte in «_Doppioni»/), 10000, "la copia non va da parte");
+      const daParte = await leggi();
+      if (daParte !== "500,-1,600,-1") throw new Error(`da parte la copia, al suo posto l'altra edizione: ${daParte}`);
+      // e quel che e' in _Doppioni torna da dove era venuto
+      await d.p.getByRole("button", { name: "🔍 Controlla il disco" }).click();
+      await finche(() => d.p.getByText(/altre edizioni|un'altra edizione/).count(), 10000, "l'altra edizione non si dice piu'");
+      await d.p.getByRole("button", { name: "↩ Rimetti a posto il file di «_Doppioni»" }).click();
+      await finche(() => testoAvviso(d.p, /Un file rimesso al suo posto/), 10000, "il ritorno da _Doppioni non si dice");
+      const rimesso = await leggi();
+      if (rimesso !== "-1,500,600,-1") throw new Error(`rimesso a posto: ${rimesso}`);
       // Mort sta solo sul disco: dalla sua scheda se ne sceglie il file
       await d.p.getByText("Mort", { exact: true }).first().evaluate((e) => e.closest("button").click());
       await d.p.getByRole("button", { name: "📂 Scegli il file" }).click();

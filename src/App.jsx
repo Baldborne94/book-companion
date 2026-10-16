@@ -46,7 +46,7 @@ import { scegliDalDisco } from "./lib/sceltaFile.js";
 import { erroreDelLink } from "./lib/accesso.js";
 import { tipiDaScegliere } from "./lib/importBook.js";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, convertiLibroInCbz } from "./lib/sync.js";
-import { riordinaDisco, fraseRiordino, fraseDaParte, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
+import { riordinaDisco, fraseRiordino, fraseDaParte, fraseRimessi, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
 import { importaDaFuori, resoconto } from "./lib/importBook.js";
 import { togliAvanziDrive } from "./lib/avanziDrive.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
@@ -1723,7 +1723,8 @@ export default function App() {
             importo={importo}
             onFermaImport={fermaImport}
             onRiordina={riordinaQui}
-            onMettiDaParte={(voci, casa) => riordinaQui(voci, casa, { cosa: "🗃 Metto da parte i doppioni", frase: fraseDaParte })}
+            onMettiDaParte={(voci, casa) => riordinaQui(voci, casa, { cosa: "🗃 Metto da parte le copie", frase: fraseDaParte })}
+            onRimettiAPosto={(voci, casa) => riordinaQui(voci, casa, { cosa: "↩ Rimetto a posto", frase: fraseRimessi })}
             onImportaDalDisco={importaDalDiscoQui}
             onConvertiDalDisco={convertiDalDiscoQui}
             daImportare={daImportare}

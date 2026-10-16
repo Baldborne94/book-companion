@@ -1,7 +1,7 @@
 // IL DISCO DEI LIBRI, CONTROLLATO E RIORDINATO (chiesto dal lettore: «ora su
 // E:\book-companion abbiamo tutti i volumi? mi hai sistemato anche dentro le
 // cartelle i file nel modo giusto per saga?»).
-import { casaDi, elencaDisco, controllaDisco, riordinaDisco, fraseRiordino, rapportoDisco, vociDalDisco, schedeDalDisco, lavoriDalDisco, convertiSulDisco, fraseConvertitiDisco, CBR_CONVERTITI, cbrNeiConvertiti, svuotaConvertiti, DA_PARTE, daMettereDaParte, fraseDaParte } from "../src/lib/disco.js";
+import { casaDi, elencaDisco, controllaDisco, riordinaDisco, fraseRiordino, rapportoDisco, vociDalDisco, schedeDalDisco, lavoriDalDisco, convertiSulDisco, fraseConvertitiDisco, CBR_CONVERTITI, cbrNeiConvertiti, svuotaConvertiti, DA_PARTE, daMettereDaParte, fraseDaParte, daRimettereAPosto, fraseRimessi } from "../src/lib/disco.js";
 import { importaDaFuori } from "../src/lib/importBook.js";
 
 // un disco finto: cartelle, file col loro peso, `move` facoltativo
@@ -460,9 +460,10 @@ export default async (t) => {
   await metti(rNome, `${DA_PARTE}/Fumetti/Vol 2.cbz`, 6);
   t.eq("si salta solo la cartella in cima, non una che si chiama uguale piu' giu'", (await elencaDisco(rNome)).map((f) => f.nome).join(), "Vol 1.cbz");
 
-  // LE COPIE E LE ALTRE EDIZIONI, MESSE DA PARTE (chiesto dal lettore col
-  // rapporto del disco: 29 altre edizioni e 16 copie). Si spostano, mai si
-  // cancellano, e il volume collegato alla scheda non si tocca.
+  // LE COPIE, MESSE DA PARTE (chiesto dal lettore col rapporto del disco: 29
+  // altre edizioni e 16 copie). Si spostano, mai si cancellano, e il volume
+  // collegato alla scheda non si tocca. Le altre edizioni NO: «mi hai tolto
+  // libri che non dovevi togliere».
   const rDp = cartella("book-companion");
   await metti(rDp, "Fumetti/Hellboy/Hellboy Omnibus v03 - The Wild Hunt.cbz", 120);
   await metti(rDp, "Fumetti/Hellboy/Hellboy Omnibus  - The Wild Hunt v3-522.cbz", 150);
@@ -477,18 +478,33 @@ export default async (t) => {
   const vociP = daMettereDaParte(rapP);
   const collegati = new Set([...rapP.aPosto, ...rapP.daSpostare].map((v) => v.file));
   t.c("ci sono un'altra edizione e una copia", rapP.altreEdizioni.length >= 1 && rapP.doppioni.length >= 1, rapportoDisco(rapP));
-  t.eq("da parte vanno le altre edizioni e le copie, e nient'altro", vociP.length, rapP.altreEdizioni.length + rapP.doppioni.length);
+  t.eq("da parte vanno le sole copie identiche", vociP.map((v) => v.file.nome).join(), rapP.doppioni.map((f) => f.nome).join());
   t.c("mai un file collegato a una scheda", !vociP.some((v) => collegati.has(v.file)));
   t.c("con le loro cartelle sotto _Doppioni", vociP.every((v) => v.a[0] === DA_PARTE && v.a.slice(1).join("/") === v.file.cartelle.join("/")));
   const eP = await riordinaDisco(vociP, { radice: rDp });
   const dopoP = await tutto(rDp);
   const elencoP = await voci(rDp);
-  t.c("l'altra edizione di Hellboy e' da parte", elencoP.includes(`${DA_PARTE}/Fumetti/Hellboy/Hellboy Omnibus  - The Wild Hunt v3-522.cbz:150`) && !elencoP.includes("Fumetti/Hellboy/Hellboy Omnibus  - The Wild Hunt v3-522.cbz:150"));
+  t.c("l'altra edizione di Hellboy resta dov'e'", elencoP.includes("Fumetti/Hellboy/Hellboy Omnibus  - The Wild Hunt v3-522.cbz:150") && !elencoP.some((x) => x.startsWith(`${DA_PARTE}/Fumetti`)));
+  t.c("la copia di Mort e' da parte", elencoP.some((x) => x.startsWith(`${DA_PARTE}/Libri/`) && x.endsWith("Mort.epub:5")));
   t.c("i volumi collegati restano dove sono", dopoP.includes("Fumetti/Hellboy/Hellboy Omnibus v03 - The Wild Hunt.cbz:120") && [...collegati].every((f) => dopoP.includes(`${[...f.cartelle, f.nome].join("/")}:${f.byte}`)));
   t.eq("niente si cancella: lo stesso numero di file", elencoP.length, 5);
-  t.c("e si dice", new RegExp(`${eP.spostati} file messi da parte in «${DA_PARTE}»`).test(fraseDaParte(eP)), fraseDaParte(eP));
+  t.c("e si dice", eP.spostati === 1 && new RegExp(`Un file messo da parte in «${DA_PARTE}»`).test(fraseDaParte(eP)), fraseDaParte(eP));
   const ancora = controllaDisco(libP, await elencaDisco(rDp), { tipoDi: (b) => (b.fileType === "epub" ? "libri" : "fumetti") });
-  t.eq("al controllo dopo, quel che e' da parte non si conta piu'", ancora.altreEdizioni.length + ancora.doppioni.length + ancora.senzaScheda.length, 0);
+  t.eq("al controllo dopo, la copia da parte non si conta piu', l'altra edizione si'", `${ancora.doppioni.length + ancora.senzaScheda.length}|${ancora.altreEdizioni.length}`, "0|1");
+  // E SI RIMETTE A POSTO quel che il «Metti da parte» di prima aveva spostato
+  const rRi = cartella("book-companion");
+  await metti(rRi, "Fumetti/Kill Six Billion Demons/Book Three.cbz", 30);
+  await metti(rRi, `${DA_PARTE}/Fumetti/Book Two/Kill Six Billion Demons - Book Two-027.cbz`, 20);
+  await metti(rRi, `${DA_PARTE}/Libri/Discworld/Mort.epub`, 5);
+  await metti(rRi, "Libri/Discworld/Mort.epub", 5);
+  const vociRi = await daRimettereAPosto(rRi);
+  t.eq("ogni file torna nella cartella da cui era venuto", vociRi.map((v) => `${v.file.cartelle.join("/")} -> ${v.a.join("/")}`).sort().join(" | "), `${DA_PARTE}/Fumetti/Book Two -> Fumetti/Book Two | ${DA_PARTE}/Libri/Discworld -> Libri/Discworld`);
+  const eRi = await riordinaDisco(vociRi, { radice: rRi });
+  const dopoRi = await voci(rRi);
+  t.c("il Book Two e' di nuovo fuori", dopoRi.includes("Fumetti/Book Two/Kill Six Billion Demons - Book Two-027.cbz:20") && !dopoRi.some((x) => x.includes("Book Two-027") && x.startsWith(DA_PARTE)));
+  t.c("e non copre mai un file: la copia uguale resta da parte", dopoRi.includes(`${DA_PARTE}/Libri/Discworld/Mort.epub:5`) && dopoRi.includes("Libri/Discworld/Mort.epub:5"));
+  t.eq("e si dice", fraseRimessi(eRi), `↩ Un file rimesso al suo posto · uno c'era già, uguale, ed è rimasto in «${DA_PARTE}»`);
+  t.eq("niente in _Doppioni, niente da rimettere", (await daRimettereAPosto(cartella("book-companion"))).length, 0);
   t.c("fermato a meta' si dice", /fermato: il resto è dov'era/.test(fraseDaParte({ spostati: 1, doppioni: [], mancati: [], fermato: true })));
   t.eq("niente da parte, niente da dire", fraseDaParte({ spostati: 0, doppioni: [], mancati: [], fermato: false }), "Niente da mettere da parte");
   t.c("chi c'era gia', e chi non si e' spostato, si dice", /uno c'era già.*uno non si è spostato/.test(fraseDaParte({ spostati: 0, doppioni: [{}], mancati: [{}], fermato: false })));

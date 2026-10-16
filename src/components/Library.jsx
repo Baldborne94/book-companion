@@ -830,6 +830,7 @@ export default function Library({
   onTogliEbook,
   onRiordina,
   onMettiDaParte,
+  onRimettiAPosto,
   onImportaDalDisco,
   onConvertiDalDisco,
 }) {
@@ -1812,7 +1813,7 @@ export default function Library({
     const t0 = performance.now();
     try {
       const { RADICE } = await import("../lib/casa.js");
-      const { elencaDisco, controllaDisco, lavoriDalDisco, cbrNeiConvertiti } = await import("../lib/disco.js");
+      const { elencaDisco, controllaDisco, lavoriDalDisco, cbrNeiConvertiti, daRimettereAPosto } = await import("../lib/disco.js");
       const casa = String(scelta.name || "").trim().toLowerCase() === RADICE ? scelta : await scelta.getDirectoryHandle(RADICE).catch(() => null);
       if (!casa) {
         setDisco(null);
@@ -1834,8 +1835,9 @@ export default function Library({
       const tControllo = performance.now();
       const senza = new Set(senzaCopertina(booksRef.current, conCopertina || new Set(), copGuardate).map((b) => b.id));
       const convertiti = await cbrNeiConvertiti(casa, file).catch(() => null);
+      const daParte = await daRimettereAPosto(casa).catch(() => []);
       segnaTempo(vocePerTempo({ cosa: "disco", t0, tappe: [["elenco", tElenco], ["abbina", tControllo], ["resto", performance.now()]], n: file.length }));
-      setDisco({ rapporto, casa, tolti: new Set(), lavori: lavoriDalDisco(rapporto, { haCopertina: (id) => !senza.has(id) }), convertiti });
+      setDisco({ rapporto, casa, tolti: new Set(), lavori: lavoriDalDisco(rapporto, { haCopertina: (id) => !senza.has(id) }), convertiti, daParte });
     } catch (err) {
       setDisco(null);
       notify(err?.message || "Il disco non ha risposto");
@@ -3021,7 +3023,7 @@ export default function Library({
                       </span>
                     )}
                     {/* METTERE DA PARTE, mai cancellare (`daMettereDaParte`) */}
-                    {onMettiDaParte && r.doppioni.length + (r.altreEdizioni?.length || 0) > 0 && (
+                    {onMettiDaParte && r.doppioni.length > 0 && (
                       <span style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
                         <button
                           onClick={async () => {
@@ -3033,15 +3035,25 @@ export default function Library({
                           }}
                           style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
                         >
-                          {(() => {
-                            const fs = [...r.doppioni, ...(r.altreEdizioni || []).map((x) => x.file)];
-                            return `🗃 Metti da parte ${fs.length === 1 ? "il file in più" : `i ${fs.length} file in più`} (${fmtGoogle(fs.reduce((t, f) => t + f.byte, 0))})`;
-                          })()}
+                          {`🗃 Metti da parte ${r.doppioni.length === 1 ? "la copia in più" : `le ${r.doppioni.length} copie in più`} (${fmtGoogle(r.doppioni.reduce((t, f) => t + f.byte, 0))})`}
                         </button>
                         <span style={{ flexBasis: "100%", fontSize: F.piccolo }}>
-                          Le copie e le altre edizioni vanno in «book-companion / _Doppioni», con le loro cartelle: non si cancella niente, e il controllo non le conta più. Le guardi e svuoti tu la cartella.
+                          Solo le copie identiche (stesso nome, stesso peso) vanno in «book-companion / _Doppioni», con le loro cartelle: non si cancella niente. Le altre edizioni restano dove sono: possono essere libri diversi, e decidi tu.
                         </span>
                       </span>
+                    )}
+                    {/* RIMETTERE A POSTO quel che e' in `_Doppioni` (`daRimettereAPosto`) */}
+                    {onRimettiAPosto && disco.daParte?.length > 0 && (
+                      <button
+                        onClick={() => {
+                          const { daParte, casa } = disco;
+                          setDisco(null);
+                          onRimettiAPosto(daParte, casa);
+                        }}
+                        style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}
+                      >
+                        {`↩ Rimetti a posto ${disco.daParte.length === 1 ? "il file" : `i ${disco.daParte.length} file`} di «_Doppioni»`}
+                      </button>
                     )}
                     {/* QUEL CHE SI FA COI FILE DEL DISCO: le copertine che
                         mancano e i CBR delle schede che stanno solo lì
