@@ -428,9 +428,29 @@ export async function riordinaDisco(voci, { radice, vivo = () => true, onProgres
 // loro cartelle (due file con lo stesso nome in due saghe non si incontrano),
 // e il lettore li guarda e svuota a mano. I file collegati alle schede non
 // sono mai fra questi.
+// SOLO LE COPIE IDENTICHE (il lettore, dopo averlo premuto: «mi hai tolto
+// libri che non dovevi togliere»). Un'«altra edizione» e' un'ipotesi del
+// controllo, e puo' essere un altro libro: il Book Two scambiato per il
+// Three, l'Omnibus che contiene piu' storie del volume. Quella si dice, e la
+// sposta il lettore.
 export function daMettereDaParte(r) {
-  const file = [...(r?.altreEdizioni || []).map((x) => x.file), ...(r?.doppioni || [])];
-  return file.map((f) => ({ libro: {}, file: f, a: [DA_PARTE, ...f.cartelle] }));
+  return (r?.doppioni || []).map((f) => ({ libro: {}, file: f, a: [DA_PARTE, ...f.cartelle] }));
+}
+// RIMETTERE A POSTO quel che sta in `_Doppioni`: ogni file nella cartella da
+// cui era venuto (le sue cartelle sotto `_Doppioni` sono quelle di prima),
+// con lo spostamento di «Riordina», che non copre mai un file.
+export async function daRimettereAPosto(radice, opz) {
+  const dp = await radice.getDirectoryHandle(DA_PARTE).catch(() => null);
+  if (!dp) return [];
+  return (await elencaDisco(dp, [], opz)).map((f) => ({ libro: {}, file: { ...f, cartelle: [DA_PARTE, ...f.cartelle] }, a: f.cartelle }));
+}
+export function fraseRimessi(e) {
+  const parti = [];
+  if (e.spostati) parti.push(`↩ ${e.spostati === 1 ? "Un file rimesso" : `${e.spostati} file rimessi`} al suo posto`);
+  if (e.doppioni.length) parti.push(`${e.doppioni.length === 1 ? "uno c'era già, uguale, ed è rimasto" : `${e.doppioni.length} c'erano già, uguali, e sono rimasti`} in «${DA_PARTE}»`);
+  if (e.mancati.length) parti.push(`${e.mancati.length === 1 ? "uno non si è spostato" : `${e.mancati.length} non si sono spostati`}`);
+  if (e.fermato) parti.push("fermato: il resto è in «_Doppioni»");
+  return parti.join(" · ") || "Niente da rimettere a posto";
 }
 
 export function fraseDaParte(e) {
