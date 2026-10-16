@@ -283,6 +283,19 @@ export default async (t) => {
     { tipoDi: () => "fumetti" }
   );
   t.c("un altro numero è un altro volume, non un'altra edizione", !sandman.altreEdizioni.length && /Book 01/.test(sandman.senzaScheda.map((f) => f.nome).join()));
+  // dal rapporto dopo: i numeri in lettere sono numeri
+  const ksbd = controllaDisco(
+    [{ id: "k3", title: "Kill Six Billion Demons - Book Three (2019) (Digital) (phillywilly-Empire)", saga: "Kill Six Billion Demons", tipo: "fumetti" }],
+    [fv("Fumetti/Kill Six Billion Demons/Kill Six Billion Demons - Book Three (2019) (Digital) (phillywilly-Empire).cbz", 3), fv("Fumetti/Book Two/Kill Six Billion Demons - Book Two-027.cbz", 2)],
+    { tipoDi: () => "fumetti" }
+  );
+  t.c("«Book Two» non è un'altra edizione del «Book Three»", !ksbd.altreEdizioni.length && /Book Two/.test(ksbd.senzaScheda.map((f) => f.nome).join()), rapportoDisco(ksbd));
+  const due = controllaDisco([{ id: "s2", title: "v02 - The Deluxe Edition: Book Two", saga: "The Sandman" }], [fv("Fumetti/The Sandman/The Sandman - The Deluxe Edition Book 02 (2021).cbz", 2), fv("Fumetti/The Sandman/The Sandman - The Deluxe Edition Book 03 (2021).cbz", 3)]);
+  t.eq("«Book Two» trova il «Book 02», e non il «Book 03»", [...due.aPosto, ...due.daSpostare].map((x) => x.file.nome).join(), "The Sandman - The Deluxe Edition Book 02 (2021).cbz");
+  const trono = controllaDisco([{ id: "t3", title: "Il Trono di Spade - Libro Tre", saga: "Il Trono di Spade" }], [fv("Libri/Il Trono di Spade/Il Trono di Spade - Libro Tre.epub", 3), fv("Libri/Il Trono di Spade/Il Trono di Spade - Libro Due.epub", 2)]);
+  t.c("anche in italiano: «Libro Due» non è un'altra edizione del «Libro Tre»", !trono.altreEdizioni.length && /Libro Due/.test(trono.senzaScheda.map((f) => f.nome).join()), rapportoDisco(trono));
+  const op = controllaDisco([{ id: "op", title: "One Piece v105", saga: "One Piece", tipo: "manga" }], [fv("Manga/One Piece/One Piece v105.cbz", 105), fv("Manga/One Piece/One Piece v001.cbz", 1)], { tipoDi: () => "manga" });
+  t.c("un numero in lettere dentro un nome resta un nome: «One Piece v001» non è il v105", !op.altreEdizioni.length && /v001/.test(op.senzaScheda.map((f) => f.nome).join()), rapportoDisco(op));
   const soloUno = controllaDisco([{ id: "s4", title: "The Sandman - The Deluxe Edition Book 04", saga: "The Sandman" }], [fv("Fumetti/The Sandman/The Sandman - The Deluxe Edition Book 01.cbz", 1)]);
   t.c("e non prende il file del Book 01 quando il suo manca", soloUno.mancano.altrove.length === 1);
   // dal quarto rapporto: il numero della scheda è l'ordine di lettura

@@ -84,6 +84,17 @@ const RUMORE = new Set(["digital", "ebook", "epub", "by", "etc", "dcp", "empire"
 const GENERICHE = new Set(
   "the a an of and in on to for with from la il lo le gli i un una uno di da del della dei degli delle e ed in con per su nel nella saga ciclo trilogia trilogy series serie book books libro volume collection edition edizione complete completa omnibus illustrated".split(" ")
 );
+// «Book Two» e' «Book 02» (segnalato col rapporto del disco: «Kill Six
+// Billion Demons - Book Two» detta altra edizione del «Book Three», due
+// volumi diversi che coi numeri in lettere sembravano uno). Solo dopo la
+// parola che annuncia un volume: «Kill Six Billion» resta un nome.
+const IN_LETTERE = Object.fromEntries(
+  [
+    "one two three four five six seven eight nine ten eleven twelve",
+    "uno due tre quattro cinque sei sette otto nove dieci undici dodici",
+  ].flatMap((riga) => riga.split(" ").map((w, i) => [w, i + 1]))
+);
+const ANNUNCIA = /^(book|part|volume|tome|libro|parte|tomo)$/;
 const piena = (w) => !w.startsWith("#") && w.length >= 3 && !GENERICHE.has(w) && !RUMORE.has(w);
 function parole(s) {
   return String(s || "")
@@ -104,7 +115,8 @@ function parole(s) {
     // «Vol. 24», «v24», «#24», «Book 24», «24»: lo stesso volume
     .reduce((out, w, i, tutte) => {
       if (/^(v|vol|volume|tomo|n|no)$/.test(w) && /^\d+$/.test(tutte[i + 1] || "")) return out;
-      out.push(/^\d+$/.test(w) ? `#${Number(w)}` : w);
+      if (IN_LETTERE[w] && ANNUNCIA.test(tutte[i - 1] || "")) out.push(`#${IN_LETTERE[w]}`);
+      else out.push(/^\d+$/.test(w) ? `#${Number(w)}` : w);
       return out;
     }, []);
 }
