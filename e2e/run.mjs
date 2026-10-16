@@ -1060,7 +1060,8 @@ const SCENE = [
           }
         };
         await giu(await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD"), "");
-        return out.sort();
+        // la copia della biblioteca la guarda la scena del riordino
+        return out.filter((f) => !f.startsWith("book-companion/_Copie/")).sort();
       });
       // il CBZ nella cartella della saga, il CBR andato, nessuna cartella a parte
       const attesi = [`book-companion/Fumetti/Locke & Key/${nomeLocke}.cbz:true`, "book-companion/Fumetti/Spawn Origins Collection/Spawn Origins Collection v28.cbz:true", `book-companion/Fumetti/Spawn Origins Collection/${nomeSpawn}.cbz:true`];
@@ -1131,7 +1132,7 @@ const SCENE = [
       await d.p.locator("li button", { hasText: "Kagurabachi 100" }).click();
       await d.p.getByRole("button", { name: "🗂 Riordina 1" }).click();
       const frase = await finche(() => testoAvviso(d.p, /Un volume nella cartella della sua saga/), 10000, "il riordino non si dice");
-      const sulDisco = await d.p.evaluate(async () => {
+      const sulDiscoTutto = await d.p.evaluate(async () => {
         const out = [];
         const giu = async (dir, via) => {
           for await (const [n, h] of dir.entries()) {
@@ -1142,6 +1143,13 @@ const SCENE = [
         await giu(await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD"), "");
         return out.sort().join(" ");
       });
+      // la copia della biblioteca, accanto ai libri e detta nel rapporto
+      const copia = sulDiscoTutto.split(" ").filter((f) => f.startsWith("book-companion/_Copie/"));
+      if (copia.length !== 1 || !/^book-companion\/_Copie\/biblioteca-\d{4}-\d{2}-\d{2}\.zip:[1-9]\d+$/.test(copia[0])) throw new Error(`la copia della biblioteca sul disco: ${copia.join(" ") || "nessuna"}`);
+      if (!testo.includes("📦 Copia della biblioteca scritta sul disco: «_Copie/biblioteca-")) throw new Error("il rapporto non dice della copia");
+      // e vale per il promemoria «Non hai mai fatto un archivio»
+      if (!(await d.p.evaluate(() => localStorage.getItem("bc_last_export")))) throw new Error("la copia sul disco non conta come archivio");
+      const sulDisco = sulDiscoTutto.split(" ").filter((f) => !f.startsWith("book-companion/_Copie/")).join(" ");
       const atteso = `book-companion/Fumetti/Locke & Key v01 - Welcome to Lovecraft (2008).cbz:${cbzVero.length} book-companion/Fumetti/Sconosciuto.cbz:50 book-companion/Libri/Discworld/Mort - Terry Pratchett.epub:600 book-companion/Libri/Discworld/Mort.epub:500 book-companion/Libri/Elric Di Melnibone/Elric. La saga (Michael Moorcock).epub:300 book-companion/Manga/JoJo's Bizarre Adventure/Parte 7/Volume 20 - Love Train.cbz:7000 book-companion/Manga/Kagurabachi 100 (2025) (Digital) (LuCaZ).cbz:1000`;
       if (sulDisco !== atteso) throw new Error(`sul disco: ${sulDisco}`);
       // il fumetto che nessuna scheda conosce entra in biblioteca dal disco:

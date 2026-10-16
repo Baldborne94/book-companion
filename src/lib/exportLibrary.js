@@ -98,6 +98,26 @@ const voceDelLibro = (b) => ({
   music: getBookMusic(b.id),
 });
 
+// LA COPIA SENZA BYTE (vedi `lib/copiaDisco.js`): lo stesso indice
+// dell'archivio — schede, lettura, segni, melodie, raccolte, glossari,
+// diario — senza i file. Sul disco del computer i libri ci sono gia', e
+// quel che rischia di perdersi e' tutto il resto. «Ripristina» la legge
+// come un archivio i cui libri non portano il file.
+export function indiceSoloSchede(ora = new Date()) {
+  return {
+    app: "book-companion",
+    version: ARCHIVE_VERSION,
+    exportedAt: ora.toISOString(),
+    // «Ripristina» lo dice prima: i file dei libri qui non ci sono
+    soloSchede: true,
+    books: loadBooks().map(voceDelLibro),
+    melodie: getFavoritesRaw().map((f) => ({ ...f })),
+    raccolte: getListsRaw(),
+    glossari: tuttiIGlossari(),
+    diario: diarioPerArchivio(),
+  };
+}
+
 // L'ARCHIVIO SI PREPARA, POI SI SCARICA A PEZZI (lib/archivioPezzi.js).
 // Qui si raccoglie tutto — i byte restano in IndexedDB, si tengono solo i
 // riferimenti — e si decide la spartizione; ogni pezzo si costruisce solo
