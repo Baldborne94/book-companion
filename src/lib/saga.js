@@ -598,8 +598,28 @@ export function perchePassoTace(
     quante.set(t.saga, (quante.get(t.saga) || 0) + 1);
     ultima.set(t.saga, Math.max(ultima.get(t.saga) || 0, t.quando));
   }
-  for (const t of muti) if (quante.get(t.saga) > 1) t.nome = `${t.saga} · ${t.ciclo || "senza serie"}`;
-  return muti.sort(
+  // E UNA SAGA LETTA TUTTA STA IN UNA RIGA SOLA (chiesto dal lettore fra le
+  // proposte): The Black Company erano quattro righe, una per serie, e tutte
+  // dicevano la stessa cosa — non c'e' altro da leggere. Solo se TUTTI i
+  // volumi della saga sono letti: con uno solo ancora da leggere, anche di
+  // un'altra serie, «hai letto tutto» sarebbe falso, e le righe per serie
+  // restano. L'ultimo e' il piu' avanti nella saga
+  const suoi = new Map();
+  for (const b of books) {
+    const saga = (b?.saga || "").trim();
+    if (!saga) continue;
+    if (!suoi.has(saga)) suoi.set(saga, []);
+    suoi.get(saga).push(b);
+  }
+  const lette = new Set([...quante].filter(([saga, n]) => n > 1 && suoi.get(saga).every((b) => statusOf(b.id) === "read")).map(([saga]) => saga));
+  const righe = muti.filter((t) => !lette.has(t.saga));
+  for (const saga of lette) {
+    const tutti = suoi.get(saga);
+    const da = tutti.reduce((a, b) => ((b.sagaOrder ?? -Infinity) > (a.sagaOrder ?? -Infinity) ? b : a));
+    righe.push({ saga, ciclo: "", nome: saga, motivo: "sagaLetta", da, quanti: tutti.length });
+  }
+  for (const t of righe) if (quante.get(t.saga) > 1 && !lette.has(t.saga)) t.nome = `${t.saga} · ${t.ciclo || "senza serie"}`;
+  return righe.sort(
     (a, b) =>
       ultima.get(b.saga) - ultima.get(a.saga) ||
       a.saga.localeCompare(b.saga, "it") ||
@@ -626,6 +646,8 @@ export const MOTIVI_PASSO = {
       ? `«${t.uno.title}» e «${t.due.title}» portano tutt'e due il n° ${t.uno.sagaOrder}: finché è così non so dire qual è il prossimo — correggi il numero di uno dei due nella scheda.`
       : "due volumi portano lo stesso numero di lettura: finché è così non so dire qual è il prossimo — correggi i numeri nella scheda.",
   senzaSaga: () => "non ha una saga scritta nella scheda.",
+  sagaLetta: (t) =>
+    `hai letto ${t?.quanti ? `tutti i ${t.quanti} volumi` : "tutti i volumi"} che hai: l'ultimo è «${t?.da?.title || "il più avanti"}».`,
 };
 
 // I VOLUMI DI CUI LA RIGA PARLA, da aprire col tocco (chiesto dal lettore:

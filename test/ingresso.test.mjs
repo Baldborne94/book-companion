@@ -647,7 +647,10 @@ export default async function (t) {
       { ...uno, series: "Part 1 · The Fall of Horus" },
       { ...due, series: "Part 7 · Mars & Magnus" },
     ];
-    t.eq("hai letto tutto quello che hai", solo(parti, { a: "read", b: "read" })?.motivo, "tuttiLetti");
+    // (con un volume ancora da leggere, prima di loro: letta tutta, la saga
+    // starebbe in una riga sola)
+    const daLeggere = V("z", "Prologo", 0.5, "Part 0 · Prologo");
+    t.eq("hai letto tutto quello che hai", solo([...parti, daLeggere], { a: "read", b: "read" })?.motivo, "tuttiLetti");
     // i numeri mescolati zittiscono il filo, ed è l'unica ragione che
     // chiede al lettore di mettere mano a un campo. IL DOPPIONE CHE CONTA
     // È QUELLO SUL PASSO: due titoli sul numero che si starebbe per
@@ -771,12 +774,14 @@ export default async function (t) {
       C("rc", "Red Country", 6, ""),
       C("woc", "The Wisdom of Crowds", 9, "The Age of Madness"),
       { id: "g", title: "Goosebumps", saga: "Goosebumps", sagaOrder: 1, addedAt: 1 },
+      // ancora da leggere: con la saga letta tutta le righe sarebbero una
+      C("bsc", "Best Served Cold", 4, ""),
     ];
     // la Goosebumps toccata fra due fili di Circle: le righe della saga
     // restano insieme lo stesso, nell'ordine dei volumi
     const quando = { woc: 3, g: 2, lak: 1, rc: 0 };
     const righe = perchePassoTace(libri, {
-      statusOf: (id) => (id === "g" ? "reading" : "read"),
+      statusOf: (id) => (id === "g" ? "reading" : id === "bsc" ? "unread" : "read"),
       progressoOf: () => 0,
       tocco: (id) => quando[id],
     }).map(frasePassoTace);
@@ -792,13 +797,33 @@ export default async function (t) {
     t.eq("…o quello di partenza se non si sa", ids({ motivo: "aperto", da: libri[0] }), "lak");
     t.eq("l'ultimo che hai: lui", ids({ motivo: "ultimo", da: libri[2], volume: libri[1] }), "woc");
     t.eq("senza volumi niente da aprire", ids({ motivo: "mescolati" }), "");
+    // E LETTA TUTTA STA IN UNA RIGA SOLA, che nomina l'ultimo nella saga
+    // (non l'ultimo toccato) e apre lui
+    const tutta = perchePassoTace(libri, {
+      statusOf: (id) => (id === "g" ? "reading" : "read"),
+      progressoOf: () => 0,
+      tocco: (id) => quando[id] ?? 0,
+    });
+    t.eq(
+      "Circle letta tutta: una riga sola",
+      tutta.map(frasePassoTace)[0],
+      "Circle of the World: hai letto tutti i 4 volumi che hai: l'ultimo è «The Wisdom of Crowds»."
+    );
+    t.eq("…e apre l'ultimo", volumiDelMotivo(tutta[0]).map((b) => b.id).join(), "woc");
+    t.eq("…e la saga in lettura resta com'era, dopo", tutta.map((r) => r.nome).join(" | "), "Circle of the World | Goosebumps");
+    // un abbandonato non e' letto: le righe per serie restano
+    t.eq(
+      "con un volume lasciato le righe restano",
+      perchePassoTace(libri, { statusOf: (id) => (id === "bsc" ? "abandoned" : "read"), progressoOf: () => 0 }).filter((r) => r.saga === "Circle of the World").length,
+      3
+    );
     // e una saga con un filo solo resta col suo nome
     t.eq("un filo solo resta col nome della saga", righe[3].startsWith("Goosebumps: "), true);
     // due saghe mai toccate, coi numeri che si intrecciano: una saga per
     // volta lo stesso, non 3-5-7-9 alternate
     const A = (id, n, serie) => ({ id, title: id, saga: "Altra", series: serie, sagaOrder: n, addedAt: 1 });
-    const intrecciati = perchePassoTace([libri[0], libri[2], A("a5", 5, "Uno"), A("a7", 7, "Due")], {
-      statusOf: () => "read",
+    const intrecciati = perchePassoTace([libri[0], libri[2], libri[4], A("a1", 1, "Zero"), A("a5", 5, "Uno"), A("a7", 7, "Due")], {
+      statusOf: (id) => (id === "a1" || id === "bsc" ? "unread" : "read"),
       progressoOf: () => 0,
     });
     t.eq("a parità di tocco le saghe non si mescolano", intrecciati.map((r) => r.da.id).join(" "), "a5 a7 lak woc");
@@ -806,7 +831,7 @@ export default async function (t) {
     const S = (id, serie) => ({ id, title: id, saga: "Senza", series: serie, addedAt: 1 });
     t.eq(
       "fili senza numero in ordine di nome",
-      perchePassoTace([S("z", "Zeta"), S("b", "Beta")], { statusOf: () => "read", progressoOf: () => 0 })
+      perchePassoTace([S("z", "Zeta"), S("b", "Beta"), S("u", "Ultima")], { statusOf: (id) => (id === "u" ? "unread" : "read"), progressoOf: () => 0 })
         .map((r) => r.nome)
         .join(" | "),
       "Senza · Beta | Senza · Zeta"
