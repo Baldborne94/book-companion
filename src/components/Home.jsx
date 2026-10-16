@@ -76,7 +76,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
   const [dorsi, setDorsi] = useState({});
   const segnaDorso = (id, v) => setDorsi((d) => (d[id] === v ? d : { ...d, [id]: v }));
   const [perche, setPerche] = useState(false);
-  const { wide } = useViewport();
+  const { wide, largo } = useViewport();
 
   // I CONTI DELLE DUE PORTE STANNO SOPRA IL `return` ANTICIPATO, e non è
   // pignoleria: un hook chiamato dopo un `return` è un hook che sparisce
@@ -244,97 +244,156 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
     { chi: "prendere", titolo: "Da prendere", riga: rigaPrendere || "I libri che ti mancano", colore: C.arcane, icona: <span style={{ fontSize: F.titoletto }}>🛒</span>, apri: onDaPrendere },
   ];
 
-  // UNA COLONNA SOLA, anche sullo schermo largo (chiesto dal lettore): a due
-  // colonne la sinistra portava sei sezioni e la destra due, e l'occhio non
-  // sapeva da dove cominciare
-  return (
-    <div style={{ animation: "bc-fade-in 0.4s ease-out" }}>
-      {last && (
-        <>
-          <SectionTitle>{followedFrom ? "Il prossimo della saga" : "Continua da dove ti sei fermato"}</SectionTitle>
-          <button
-            onClick={() => onRead(last.id)}
-            style={{
-              width: "100%",
-              display: "flex",
-              gap: 18,
-              alignItems: "center",
-              textAlign: "left",
-              padding: 16,
-              borderRadius: R.medio,
-              border: `1px solid ${C.border}`,
-              background: `linear-gradient(135deg, ${C.card}, ${C.surface})`,
-              boxShadow: `0 0 30px ${C.arcane}14`,
-            }}
-          >
-            {/* LA COSA PIU' IMPORTANTE DELLA PAGINA SI VEDE: era grande
-                quanto le miniature delle file sotto. Qui titolo e autore
-                stanno gia' scritti accanto, quindi il dorso disegnato resta
-                muto (`compact`) */}
-            <div style={{ width: px(118), flexShrink: 0 }}>
-              <BookCover book={last} compact />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
+  // LE STANZE SONO NAVIGAZIONE, NON CONTENUTO: quattro pulsanti larghi
+  // quanto la pagina erano trecento pixel d'altezza; in una griglia due per
+  // due stanno nella meta', e il conto di ognuna resta in vista. Sul
+  // computer stanno accanto al libro in mano, dove la sua scheda lasciava
+  // una fascia vuota larga mezzo schermo
+  const accanto = largo && !!last;
+  const griglia = (dall) => (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gap: 10,
+            marginTop: dall,
+          }}
+        >
+          {stanze.map((s) => (
+            <button
+              key={s.chi}
+              onClick={s.apri}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                gap: 6,
+                minHeight: 44,
+                padding: "12px 14px",
+                borderRadius: R.medio,
+                border: `1px solid ${s.colore}44`,
+                background: `linear-gradient(135deg, ${s.colore}12, transparent)`,
+                textAlign: "left",
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 8, color: s.colore }}>
+                <span style={{ display: "inline-flex", filter: `drop-shadow(0 0 8px ${s.colore}55)` }}>{s.icona}</span>
+                <span style={{ fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.rilievo, color: C.text }}>{s.titolo}</span>
+              </span>
+              <span
                 style={{
-                  fontFamily: FONT_TITLE,
-                  fontWeight: 600,
-                  fontSize: F.titolo,
-                  color: C.text,
-                  lineHeight: 1.2,
+                  fontSize: F.piccolo,
+                  color: C.muted,
+                  lineHeight: 1.35,
                   display: "-webkit-box",
                   WebkitLineClamp: 2,
                   WebkitBoxOrient: "vertical",
                   overflow: "hidden",
                 }}
               >
-                {last.title}
-              </div>
-              {last.author && <div style={{ fontSize: F.nota, color: C.muted, margin: "4px 0 10px" }}>{last.author}</div>}
-              {resuming && (
-                <div style={{ height: 6, borderRadius: R.minimo, background: C.dim, overflow: "hidden", marginBottom: 6 }}>
-                  <div
-                    style={{
-                      width: `${Math.max(pct, 2)}%`,
-                      height: "100%",
-                      borderRadius: R.minimo,
-                      background: `linear-gradient(90deg, ${C.accent}, ${C.arcane})`,
-                    }}
-                  />
-                </div>
-              )}
-              <div style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 12 }}>
-                {resuming
-                  ? `${pct}% letto`
-                  : followedFrom
-                    ? `il passo n° ${virgola(last.sagaOrder)} di ${last.saga}`
-                    : "non l'hai ancora cominciato"}
-              </div>
-              <span
+                {s.riga}
+              </span>
+            </button>
+          ))}
+        </div>
+  );
+
+  // UNA COLONNA SOLA, anche sullo schermo largo (chiesto dal lettore): a due
+  // colonne la sinistra portava sei sezioni e la destra due, e l'occhio non
+  // sapeva da dove cominciare
+  return (
+    <div style={{ animation: "bc-fade-in 0.4s ease-out" }}>
+      <div style={accanto ? { display: "grid", gridTemplateColumns: "minmax(0, 3fr) minmax(0, 2fr)", columnGap: 22, alignItems: "end" } : undefined}>
+        <div style={{ minWidth: 0 }}>
+          {last && (
+            <>
+              <SectionTitle>{followedFrom ? "Il prossimo della saga" : "Continua da dove ti sei fermato"}</SectionTitle>
+              <button
+                onClick={() => onRead(last.id)}
                 style={{
-                  display: "inline-flex",
+                  width: "100%",
+                  display: "flex",
+                  gap: 18,
                   alignItems: "center",
-                  minHeight: 40,
-                  padding: "0 18px",
-                  borderRadius: R.tondo,
-                  background: `linear-gradient(135deg, ${C.accent}, ${C.accentDeep})`,
-                  color: C.onAccent,
-                  fontWeight: 600,
-                  fontSize: F.nota,
+                  textAlign: "left",
+                  padding: 16,
+                  borderRadius: R.medio,
+                  border: `1px solid ${C.border}`,
+                  background: `linear-gradient(135deg, ${C.card}, ${C.surface})`,
+                  boxShadow: `0 0 30px ${C.arcane}14`,
                 }}
               >
-                {resuming ? "Riprendi ›" : "Comincia ›"}
-              </span>
-            </div>
-          </button>
-        </>
-      )}
+                {/* LA COSA PIU' IMPORTANTE DELLA PAGINA SI VEDE: era grande
+                    quanto le miniature delle file sotto. Qui titolo e autore
+                    stanno gia' scritti accanto, quindi il dorso disegnato resta
+                    muto (`compact`) */}
+                <div style={{ width: px(118), flexShrink: 0 }}>
+                  <BookCover book={last} compact />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontFamily: FONT_TITLE,
+                      fontWeight: 600,
+                      fontSize: F.titolo,
+                      color: C.text,
+                      lineHeight: 1.2,
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {last.title}
+                  </div>
+                  {last.author && <div style={{ fontSize: F.nota, color: C.muted, margin: "4px 0 10px" }}>{last.author}</div>}
+                  {resuming && (
+                    <div style={{ height: 6, borderRadius: R.minimo, background: C.dim, overflow: "hidden", marginBottom: 6 }}>
+                      <div
+                        style={{
+                          width: `${Math.max(pct, 2)}%`,
+                          height: "100%",
+                          borderRadius: R.minimo,
+                          background: `linear-gradient(90deg, ${C.accent}, ${C.arcane})`,
+                        }}
+                      />
+                    </div>
+                  )}
+                  <div style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 12 }}>
+                    {resuming
+                      ? `${pct}% letto`
+                      : followedFrom
+                        ? `il passo n° ${virgola(last.sagaOrder)} di ${last.saga}`
+                        : "non l'hai ancora cominciato"}
+                  </div>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      minHeight: 40,
+                      padding: "0 18px",
+                      borderRadius: R.tondo,
+                      background: `linear-gradient(135deg, ${C.accent}, ${C.accentDeep})`,
+                      color: C.onAccent,
+                      fontWeight: 600,
+                      fontSize: F.nota,
+                    }}
+                  >
+                    {resuming ? "Riprendi ›" : "Comincia ›"}
+                  </span>
+                </div>
+              </button>
+            </>
+          )}
 
-      {oggi.length > 0 && (
-        <div style={{ marginTop: 12, fontSize: F.nota, color: C.muted, textAlign: "center" }}>
-          {oggi.join(" · ")}
+          {oggi.length > 0 && (
+            <div style={{ marginTop: 12, fontSize: F.nota, color: C.muted, textAlign: "center" }}>
+              {oggi.join(" · ")}
+            </div>
+          )}
         </div>
-      )}
+        {accanto && griglia(0)}
+      </div>
 
       {inCorso.length > 0 && (
         <>
@@ -421,54 +480,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
         </>
       )}
 
-      {/* LE STANZE SONO NAVIGAZIONE, NON CONTENUTO: quattro pulsanti larghi
-          quanto la pagina erano trecento pixel d'altezza; in una griglia due
-          per due stanno nella metà, e il conto di ognuna resta in vista */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-          gap: 10,
-          marginTop: 22,
-        }}
-      >
-        {stanze.map((s) => (
-          <button
-            key={s.chi}
-            onClick={s.apri}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-start",
-              gap: 6,
-              minHeight: 44,
-              padding: "12px 14px",
-              borderRadius: R.medio,
-              border: `1px solid ${s.colore}44`,
-              background: `linear-gradient(135deg, ${s.colore}12, transparent)`,
-              textAlign: "left",
-            }}
-          >
-            <span style={{ display: "flex", alignItems: "center", gap: 8, color: s.colore }}>
-              <span style={{ display: "inline-flex", filter: `drop-shadow(0 0 8px ${s.colore}55)` }}>{s.icona}</span>
-              <span style={{ fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.rilievo, color: C.text }}>{s.titolo}</span>
-            </span>
-            <span
-              style={{
-                fontSize: F.piccolo,
-                color: C.muted,
-                lineHeight: 1.35,
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-              }}
-            >
-              {s.riga}
-            </span>
-          </button>
-        ))}
-      </div>
+      {!accanto && griglia(22)}
     </div>
   );
 }
