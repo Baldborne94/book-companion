@@ -420,15 +420,39 @@ const SCENE = [
     // lo spazio a schermo». La colonna stava a 960 e mezzo schermo restava vuoto
     nome: "sul computer largo la colonna usa lo schermo, sul tablet resta com'era",
     async fai({ browser }) {
-      const pc = await dispositivo(browser, { misura: { viewport: { width: 1920, height: 1040 } } });
+      const prima = () => {
+        if (localStorage.getItem("bc_books")) return;
+        localStorage.setItem("bc_books", JSON.stringify([{ id: "m", title: "Mort", author: "Terry Pratchett", fileType: "epub", addedAt: 1 }]));
+        localStorage.setItem("bc_status_m", "reading");
+      };
+      const pc = await dispositivo(browser, { misura: { viewport: { width: 1920, height: 1040 } }, prima });
       await pc.p.goto(URL_APP);
       const larga = await finche(() => pc.p.evaluate(() => document.querySelector("main")?.getBoundingClientRect().width), 8000, "l'Ingresso non si vede");
       if (larga < 1400) throw new Error(`sul PC la colonna e' larga ${larga}`);
-      const tab = await dispositivo(browser, { misura: TABLET });
+      // le stanze accanto al libro in mano, sopra le file; sul tablet in fondo
+      const sopra = (p) =>
+        p.evaluate(() => {
+          const stanza = [...document.querySelectorAll("button")].find((b) => /Il giardino/.test(b.textContent))?.getBoundingClientRect();
+          const libro = [...document.querySelectorAll("button")].find((b) => /Comincia|Riprendi/.test(b.textContent))?.getBoundingClientRect();
+          return stanza && libro ? stanza.top < libro.bottom && stanza.left > libro.right - 1 : null;
+        });
+      await finche(() => sopra(pc.p).then((x) => x !== null), 8000, "il libro in mano o le stanze non si vedono");
+      if ((await sopra(pc.p)) !== true) throw new Error("sul PC le stanze non stanno accanto al libro in mano");
+      // la finestra stretta: le stanze tornano in fondo senza riaprire l'app
+      await pc.p.setViewportSize({ width: 1100, height: 1040 });
+      await finche(() => sopra(pc.p).then((x) => x === false), 5000, "stringendo la finestra le stanze restano accanto al libro");
+      const tab = await dispositivo(browser, { misura: TABLET, prima });
       await tab.p.goto(URL_APP);
       const t = await finche(() => tab.p.evaluate(() => [document.querySelector("main")?.getBoundingClientRect().width, document.documentElement.scrollWidth, innerWidth]), 8000, "l'Ingresso del tablet non si vede");
       if (t[0] !== t[2] || t[1] > t[2]) throw new Error(`sul tablet: colonna ${t[0]}, pagina ${t[1]}, schermo ${t[2]}`);
-      return { guasti: [...pc.guasti, ...tab.guasti], nota: `PC: colonna ${Math.round(larga)} su 1920 · tablet: colonna a tutta larghezza (${t[2]}), niente che sborda` };
+      await finche(() => sopra(tab.p).then((x) => x !== null), 8000, "sul tablet il libro in mano o le stanze non si vedono");
+      if ((await sopra(tab.p)) !== false) throw new Error("sul tablet le stanze non stanno in fondo");
+      // e sdraiato e' largo 1503, ma con la scrittura ×1,5 non e' un computer
+      const sdr = await dispositivo(browser, { misura: { ...TABLET, viewport: { width: 1503, height: 902 } }, prima });
+      await sdr.p.goto(URL_APP);
+      await finche(() => sopra(sdr.p).then((x) => x !== null), 8000, "sul tablet sdraiato il libro in mano o le stanze non si vedono");
+      if ((await sopra(sdr.p)) !== false) throw new Error("sul tablet sdraiato le stanze sono salite accanto al libro");
+      return { guasti: [...pc.guasti, ...tab.guasti, ...sdr.guasti], nota: `PC: colonna ${Math.round(larga)} su 1920, stanze accanto al libro · tablet: colonna a tutta larghezza (${t[2]}), niente che sborda, stanze in fondo anche sdraiato` };
     },
   },
   {
