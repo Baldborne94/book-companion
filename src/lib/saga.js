@@ -628,6 +628,16 @@ export const MOTIVI_PASSO = {
   senzaSaga: () => "non ha una saga scritta nella scheda.",
 };
 
+// I VOLUMI DI CUI LA RIGA PARLA, da aprire col tocco (chiesto dal lettore:
+// «correggi il numero di uno dei due nella scheda» diceva dove, ma non ci
+// portava — e la scheda andava cercata in Libreria). Due volumi col
+// numero uguale si aprono tutt'e due; il seguito gia' aperto e' lui;
+// altrimenti il volume da cui la riga parte.
+export function volumiDelMotivo(t) {
+  const v = t?.motivo === "mescolati" ? [t.uno, t.due] : t?.motivo === "aperto" ? [t.volume || t.da] : [t?.da];
+  return v.filter((b) => b?.id);
+}
+
 // La frase intera, col nome del filo davanti. Un motivo che non conosciamo
 // si dice com'e' invece di sparire: e' la regola di `spiegaSync` — quel che
 // non sappiamo tradurre resta l'unico appiglio.
