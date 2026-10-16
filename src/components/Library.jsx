@@ -8,7 +8,7 @@ import { ascoltaCopertine } from "../lib/miniature.js";
 import { storageEstimate, spazioQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux, misureFile } from "../lib/bookStore.js";
 import { importFiles, resoconto, impronteDaFare, tipiDaScegliere } from "../lib/importBook.js";
 import { chiaveCollana } from "../lib/collana.js";
-import { preparaArchivio, segnaArchivio, ultimoArchivio, promemoriaArchivio } from "../lib/exportLibrary.js";
+import { preparaArchivio, segnaArchivio, ultimoArchivio, promemoriaArchivio, indiceSoloSchede } from "../lib/exportLibrary.js";
 import PezziArchivio from "./PezziArchivio.jsx";
 import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
 import { frasiDiario } from "../lib/archivioDiario.js";
@@ -1836,8 +1836,17 @@ export default function Library({
       const senza = new Set(senzaCopertina(booksRef.current, conCopertina || new Set(), copGuardate).map((b) => b.id));
       const convertiti = await cbrNeiConvertiti(casa, file).catch(() => null);
       const daParte = await daRimettereAPosto(casa).catch(() => []);
+      // la copia della biblioteca accanto ai libri (vedi `lib/copiaDisco.js`):
+      // un intoppo qui e' della copia, non del controllo, e si dice
+      const copia = await (async () => {
+        const { scriviCopia } = await import("../lib/copiaDisco.js");
+        const { default: JSZip } = await import("jszip");
+        const fatta = await scriviCopia(casa, { indice: indiceSoloSchede(), JSZip });
+        segnaArchivio();
+        return fatta;
+      })().catch((e) => ({ guaio: e?.message || "il disco non ha risposto" }));
       segnaTempo(vocePerTempo({ cosa: "disco", t0, tappe: [["elenco", tElenco], ["abbina", tControllo], ["resto", performance.now()]], n: file.length }));
-      setDisco({ rapporto, casa, tolti: new Set(), lavori: lavoriDalDisco(rapporto, { haCopertina: (id) => !senza.has(id) }), convertiti, daParte });
+      setDisco({ rapporto, casa, tolti: new Set(), lavori: lavoriDalDisco(rapporto, { haCopertina: (id) => !senza.has(id) }), convertiti, daParte, copia });
     } catch (err) {
       setDisco(null);
       notify(err?.message || "Il disco non ha risposto");
@@ -2916,6 +2925,13 @@ export default function Library({
                     <span style={{ flexBasis: "100%", color: C.text }}>
                       {`Sul disco ci sono ${sulDisco} ${sulDisco === 1 ? "volume" : "volumi"} della biblioteca (${fmtGoogle(r.byte)})${r.daSpostare.length ? `, e ${r.daSpostare.length === 1 ? "uno non sta" : `${r.daSpostare.length} non stanno`} nella cartella della ${r.daSpostare.length === 1 ? "sua" : "loro"} saga` : ", ognuno nella cartella della sua saga"}.`}
                     </span>
+                    {disco.copia && (
+                      <span style={{ flexBasis: "100%", color: disco.copia.guaio ? C.accent : C.muted }}>
+                        {disco.copia.guaio
+                          ? `📦 La copia della biblioteca sul disco non è riuscita: ${disco.copia.guaio}.`
+                          : `📦 Copia della biblioteca scritta sul disco: «${disco.copia.percorso}» (${disco.copia.schede} ${disco.copia.schede === 1 ? "scheda" : "schede"} con lettura, segni e diario, ${fmtGoogle(disco.copia.byte)}). Se un giorno servisse, si riapre con «↩ Ripristina».`}
+                      </span>
+                    )}
                     {r.daSpostare.length > 0 && (
                       <ul style={lista}>
                         {/* ogni riga si toglie: la casa la dice la scheda, e una
