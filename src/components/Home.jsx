@@ -9,7 +9,7 @@ import { leggiTempo, pezziDiOggi } from "../lib/tempo.js";
 import { raccogli, conta, rigaGiardino } from "../lib/citazioni.js";
 import { leggiQuaderno, rigaQuaderno } from "../lib/quaderno.js";
 import { leggiDaPrendere, proposte, rigaDaPrendere } from "../lib/daPrendere.js";
-import { nextInSaga, prossimiPassi, perchePassoTace, frasePassoTace, inCorsoESeguiti } from "../lib/saga.js";
+import { nextInSaga, prossimiPassi, perchePassoTace, frasePassoTace, volumiDelMotivo, inCorsoESeguiti } from "../lib/saga.js";
 import BookCover from "./BookCover.jsx";
 import { BookmarkIcon, LeafIcon, SparkIcon } from "./Icons.jsx";
 import EmptyState from "./EmptyState.jsx";
@@ -452,15 +452,35 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
             {perche ? "▾" : "▸"} E le altre saghe? ({muti.length})
           </button>
           {perche && (
-            <ul style={{ margin: "2px 0 0", padding: "0 0 0 18px", listStyle: "disc" }}>
-              {muti.map((t) => (
-                <li
-                  key={`${t.saga}\u0000${t.ciclo}`}
-                  style={{ fontSize: F.nota, color: C.muted, lineHeight: 1.55, marginBottom: 4 }}
-                >
-                  {frasePassoTace(t)}
-                </li>
-              ))}
+            // OGNI RIGA PORTA ALLA SCHEDA DI CUI PARLA (vedi `volumiDelMotivo`):
+            // un avviso sta accanto al tasto che lo risolve. Due volumi col
+            // numero uguale hanno un tasto ciascuno
+            <ul style={{ margin: "2px 0 0", padding: 0, listStyle: "none" }}>
+              {muti.map((t) => {
+                const vol = volumiDelMotivo(t);
+                const riga = { fontSize: F.nota, color: C.muted, lineHeight: 1.45, textAlign: "left", fontFamily: "inherit" };
+                const tasto = { background: "none", border: "none", cursor: "pointer", minHeight: 44, padding: "4px 0" };
+                return (
+                  <li key={`${t.saga}\u0000${t.ciclo}`}>
+                    {vol.length === 1 ? (
+                      <button onClick={() => onOpenBook(vol[0].id)} style={{ ...tasto, ...riga, width: "100%" }}>
+                        {frasePassoTace(t)} <span style={{ color: C.accent }}>›</span>
+                      </button>
+                    ) : (
+                      <div style={{ ...riga, padding: "4px 0" }}>
+                        {frasePassoTace(t)}
+                        <div style={{ display: "flex", flexWrap: "wrap", columnGap: 16 }}>
+                          {vol.map((b) => (
+                            <button key={b.id} onClick={() => onOpenBook(b.id)} style={{ ...tasto, ...riga, color: C.accent }}>
+                              Apri «{b.title}» ›
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

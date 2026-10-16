@@ -14,6 +14,7 @@ import {
   numeriMescolati,
   perchePassoTace,
   frasePassoTace,
+  volumiDelMotivo,
   passoDentro,
   MOTIVI_PASSO,
 } from "../src/lib/saga.js";
@@ -784,6 +785,13 @@ export default async function (t) {
       righe.map((r) => r.split(":")[0]).join(" | "),
       "Circle of the World · The First Law | Circle of the World · senza serie | Circle of the World · The Age of Madness | Goosebumps"
     );
+    // ogni riga porta ai volumi di cui parla
+    const ids = (t) => volumiDelMotivo(t).map((b) => b.id).join(" ");
+    t.eq("due numeri uguali: tutt'e due", ids({ motivo: "mescolati", uno: libri[0], due: libri[1], da: libri[2] }), "lak rc");
+    t.eq("il seguito gia' aperto: lui", ids({ motivo: "aperto", volume: libri[1], da: libri[0] }), "rc");
+    t.eq("…o quello di partenza se non si sa", ids({ motivo: "aperto", da: libri[0] }), "lak");
+    t.eq("l'ultimo che hai: lui", ids({ motivo: "ultimo", da: libri[2], volume: libri[1] }), "woc");
+    t.eq("senza volumi niente da aprire", ids({ motivo: "mescolati" }), "");
     // e una saga con un filo solo resta col suo nome
     t.eq("un filo solo resta col nome della saga", righe[3].startsWith("Goosebumps: "), true);
     // due saghe mai toccate, coi numeri che si intrecciano: una saga per

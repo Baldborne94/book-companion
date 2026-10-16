@@ -53,14 +53,23 @@ const RUMORE = /^(?:ebook|e-book|epub|pdf|retail|unabridged|italian|ita|eng)$/i;
 const ETICHETTA =
   /^(?:\d{4}(?:-\d{4})?|digital|digital-empire|webrip|web-rip|c2c|hd|hq|upscaled|scan|fixed|repack|tpb|fan[ -]?made(?: tpb)?|of \d+|[\w'.-]*empire|getcomics(?:\.info)?)$/i;
 const CODA = /\s*(?:[([]([^()[\]]*)[)\]]|\bgetcomics\.info)\s*$/i;
+// E IL GRUPPO CHE VIENE DOPO UN'ETICHETTA E' UN'ETICHETTA (segnalato dal
+// lettore: «Berserk v40 (2019) (digital) (aKraa)» restava com'era). Il nome
+// di chi ha scansionato non si riconosce da se', ma sta sempre in fondo,
+// dopo l'anno o «digital»: nella coda di parentesi si toglie tutto da
+// quella prima etichetta in poi. Una parentesi che viene PRIMA della prima
+// etichetta resta («Il giardino (versione lunga) (2019)»).
 export function senzaEtichette(titolo) {
   let t = String(titolo || "").trim();
+  let taglio = t;
   for (;;) {
     const m = CODA.exec(t);
-    if (!m || (m[1] !== undefined && !ETICHETTA.test(m[1].trim()))) return t;
+    if (!m) return taglio;
+    if (m[1] === undefined || ETICHETTA.test(m[1].trim())) taglio = t.slice(0, m.index).trim();
     t = t.slice(0, m.index).trim();
   }
 }
+const PALLINO = /^[\s•·●▪◦‣∙]+/u;
 // «Saga v03 - Titolo», «v06: Titolo»: la forma dei fumetti che il parser
 // delle saghe non legge (vuole «Vol.» o il numero senza la «v»)
 const VOLUME_V = /^(?:.*?\s)?v\d{1,3}\s*[-–—:]\s*(.+)$/i;
@@ -72,7 +81,10 @@ export function titoloPulito({ title, fileType, sagaOrder } = {}) {
   const originale = String(title || "").trim();
   if (!originale) return null;
   const fumetto = fileType === "cbz" || fileType === "cbr";
-  const base = fumetto ? senzaEtichette(originale) : originale;
+  // il pallino davanti («• The Crippled God») viene dall'elenco da cui il
+  // titolo e' stato copiato: non e' del titolo, in nessun libro
+  const senzaPallino = originale.replace(PALLINO, "");
+  const base = fumetto ? senzaEtichette(senzaPallino) : senzaPallino;
   const pezzi = pezziDalTitolo(base);
   const resto = pezzi?.forma === "v" && !fumetto ? null : pezzi?.resto;
   const senzaNumero = !fumetto || Number(sagaOrder) > 0 ? resto || (fumetto && VOLUME_V.exec(base)?.[1]) : null;

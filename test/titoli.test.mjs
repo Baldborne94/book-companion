@@ -117,6 +117,14 @@ export default async function (t) {
   t.eq("senza numero di volume restano solo le etichette tolte", f("One Piece 042 (Digital)"), "One Piece 042");
   t.eq("un anno in mezzo al titolo e' della serie: resta", senzaEtichette("Batman (2016) v01 - I Am Gotham"), "Batman (2016) v01 - I Am Gotham");
   t.eq("una parentesi che non e' un'etichetta resta, e ferma la pulizia", senzaEtichette("Il giardino (versione lunga) (2019)"), "Il giardino (versione lunga)");
+  // segnalati dal lettore nella lista «E le altre saghe?»: il gruppo che
+  // ha scansionato sta dopo l'anno e «digital», e da solo non si riconosce
+  t.eq("il gruppo dopo «digital» va via con lui", f("Berserk v40 (2019) (digital) (aKraa)", 40), "Berserk v40");
+  t.eq("anche dopo il solo anno", senzaEtichette("Biomega v06 (2010) (Grupetto)"), "Biomega v06");
+  t.eq("il sito da solo, senza anno davanti", senzaEtichette("Saga v01 - Alba GetComics.INFO"), "Saga v01 - Alba");
+  t.eq("ma un gruppo sconosciuto da solo resta", senzaEtichette("Biomega v06 (Grupetto)"), "Biomega v06 (Grupetto)");
+  t.eq("il pallino davanti a un romanzo", titoloPulito({ title: "• The Crippled God", fileType: "epub" }), "The Crippled God");
+  t.eq("e davanti a un fumetto", f("· Monsters Gonna Monster"), "Monsters Gonna Monster");
   t.eq("un titolo di fumetto gia' pulito: niente", f("Monsters Gonna Monster"), null);
   t.eq("un fumetto senza numero sulla scheda tiene il suo «v03»", f("I Hate Fairyland v03 - Good Girl (2017)", 0), "I Hate Fairyland v03 - Good Girl");
   t.eq("i romanzi non perdono l'anno: puo' essere del titolo", titoloPulito({ title: "Dune (1965)", fileType: "epub" }), null);

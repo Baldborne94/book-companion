@@ -466,6 +466,47 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «E le altre saghe?» diceva «correggi il numero
+    // di uno dei due nella scheda» e non ci portava. Ogni riga apre la
+    // scheda del volume di cui parla; due numeri uguali, un tasto ciascuno.
+    nome: "«E le altre saghe?» apre la scheda del volume di cui parla",
+    async fai({ browser }) {
+      const prima = () => {
+        if (localStorage.getItem("bc_books")) return;
+        const v = (id, title, saga, n) => ({ id, title, author: "A", saga, sagaOrder: n, fileType: "epub", addedAt: 1 });
+        localStorage.setItem(
+          "bc_books",
+          JSON.stringify([v("s9", "Spawn Nove", "Spawn", 9), v("s10a", "Spawn Dieci", "Spawn", 10), v("s10b", "Spawn Dieci bis", "Spawn", 10), v("m1", "Mort", "Discworld", 1)])
+        );
+        localStorage.setItem("bc_status_s9", "read");
+        localStorage.setItem("bc_status_m1", "read");
+      };
+      const d = await dispositivo(browser, { misura: TABLET, prima });
+      await d.p.goto(URL_APP);
+      const apri = d.p.getByRole("button", { name: /E le altre saghe/ });
+      await finche(() => apri.isVisible(), 8000, "«E le altre saghe?» non c'e'");
+      await apri.click();
+      const titoloInScheda = (t) => d.p.evaluate((t) => [...document.querySelectorAll("input")].some((i) => i.value === t), t);
+      // due numeri uguali: un tasto per volume, e il secondo apre il secondo
+      const bis = d.p.getByRole("button", { name: "Apri «Spawn Dieci bis» ›" });
+      await finche(() => bis.isVisible(), 5000, "la riga dei due n° 10 non ha il tasto del secondo volume");
+      if (!(await d.p.getByRole("button", { name: "Apri «Spawn Dieci» ›" }).isVisible())) throw new Error("manca il tasto del primo n° 10");
+      await bis.click();
+      await finche(() => titoloInScheda("Spawn Dieci bis"), 8000, "il tasto non apre la scheda di «Spawn Dieci bis»");
+      // e una riga con un volume solo si tocca tutta
+      await d.p.goto(URL_APP);
+      await finche(() => apri.isVisible(), 8000, "tornati all'Ingresso, «E le altre saghe?» non c'e'");
+      await apri.click();
+      const mort = d.p.getByRole("button", { name: /Discworld: «Mort»/ });
+      await finche(() => mort.isVisible(), 5000, "la riga di Mort non si tocca");
+      const alta = (await mort.boundingBox()).height;
+      if (alta < 44) throw new Error(`la riga di Mort e' alta ${alta}px, meno di un dito`);
+      await mort.click();
+      await finche(() => titoloInScheda("Mort"), 8000, "la riga di Mort non apre la sua scheda");
+      return { guasti: d.guasti, nota: "i due n° 10 di Spawn hanno un tasto ciascuno, la riga di Mort (alta un dito) apre la sua scheda" };
+    },
+  },
+  {
     // chiesto dal lettore: «fammi fare il login senza usare google», poi
     // «voglio cancellare l'accesso a google per la mia applicazione». Il
     // pannello d'ingresso ha email e password in vista, e niente Google.
