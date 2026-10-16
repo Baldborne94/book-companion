@@ -1678,8 +1678,12 @@ export default function App() {
           zIndex: 2,
           flex: 1,
           width: "100%",
-          // la sala della musica sta su due colonne, come un lettore vero
-          maxWidth: px(section === "music" ? 1240 : 960),
+          // LO SCHERMO DEL COMPUTER SI USA (chiesto dal lettore sul PC, 1920
+          // di larghezza: «far si' che occupi bene lo spazio»). A 960 l'Ingresso
+          // e la Libreria lasciavano mezzo schermo vuoto, sette copertine per
+          // riga; sul tablet `px` la portava gia' oltre lo schermo, e
+          // `width: 100%` fa da tetto
+          maxWidth: px(1440),
           margin: "0 auto",
           padding: "8px 16px 26px",
           animation: "bc-fade-in 0.35s ease-out",

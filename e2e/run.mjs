@@ -416,6 +416,22 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore sul PC, 1920 di larghezza: «far si' che occupi bene
+    // lo spazio a schermo». La colonna stava a 960 e mezzo schermo restava vuoto
+    nome: "sul computer largo la colonna usa lo schermo, sul tablet resta com'era",
+    async fai({ browser }) {
+      const pc = await dispositivo(browser, { misura: { viewport: { width: 1920, height: 1040 } } });
+      await pc.p.goto(URL_APP);
+      const larga = await finche(() => pc.p.evaluate(() => document.querySelector("main")?.getBoundingClientRect().width), 8000, "l'Ingresso non si vede");
+      if (larga < 1400) throw new Error(`sul PC la colonna e' larga ${larga}`);
+      const tab = await dispositivo(browser, { misura: TABLET });
+      await tab.p.goto(URL_APP);
+      const t = await finche(() => tab.p.evaluate(() => [document.querySelector("main")?.getBoundingClientRect().width, document.documentElement.scrollWidth, innerWidth]), 8000, "l'Ingresso del tablet non si vede");
+      if (t[0] !== t[2] || t[1] > t[2]) throw new Error(`sul tablet: colonna ${t[0]}, pagina ${t[1]}, schermo ${t[2]}`);
+      return { guasti: [...pc.guasti, ...tab.guasti], nota: `PC: colonna ${Math.round(larga)} su 1920 · tablet: colonna a tutta larghezza (${t[2]}), niente che sborda` };
+    },
+  },
+  {
     // chiesto dal lettore: «fammi fare il login senza usare google», poi
     // «voglio cancellare l'accesso a google per la mia applicazione». Il
     // pannello d'ingresso ha email e password in vista, e niente Google.
