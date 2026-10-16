@@ -57,6 +57,33 @@ export default async function (t) {
   t.eq("React che monta due volte non fa due avvii", avvii.length, 1);
   t.eq("il codice conta dalla navigazione", avvii[0].f.codice, 200);
   t.eq("coi libri", avvii[0].n, 3);
+  // un avvio dietro le quinte non si misura (i rapporti: «primo disegno 15085,1 s»)
+  {
+    const finto = (stato) => {
+      const ascolta = new Set();
+      return {
+        get visibilityState() { return stato; },
+        cambia(s) { stato = s; for (const f of ascolta) f(); },
+        addEventListener: (_, f) => ascolta.add(f),
+        querySelector: () => null,
+      };
+    };
+    const prova = async (doc, mentre) => {
+      const m = await import(`../src/lib/tempi.js?${Math.random()}`);
+      const fatte = [];
+      let disegna;
+      m.codiceArrivato(100);
+      m.segnaAvvio({ n: 1, segna: (x) => fatte.push(x), raf: (f) => (disegna = f), doc, perf: null });
+      mentre?.();
+      disegna?.();
+      await giro();
+      return fatte.length;
+    };
+    t.eq("una scheda aperta in secondo piano non fa un avvio", await prova(finto("hidden")), 0);
+    const via = finto("visible");
+    t.eq("nemmeno una che va in secondo piano prima di disegnare", await prova(via, () => via.cambia("hidden")), 0);
+    t.eq("davanti, si misura", await prova(finto("visible")), 1);
+  }
 
   // ---- dove va il tempo prima del codice -----------------------------------
   t.eq(
@@ -150,6 +177,14 @@ export default async function (t) {
   t.c("oltre i 2 secondi si contano", /oltre i 2 secondi: 1/.test(testo), testo);
   t.c("le lente si raccontano con le tappe e il peso", /ePub aperto dal cloud · codice 100 ms \+ byte 3,0 s \+ pagina pronta 400 ms · 2 MB/.test(testo), testo);
   t.c("una rapida non e' fra le lente", !/Le ultime lente:[\s\S]*PDF/.test(testo), testo);
+  const conVecchie = righeTempi([
+    { q: Date.UTC(2026, 9, 14, 13), c: "drive", f: { elenco: 3700, riconosce: 688 }, da: "cambi", n: 1699 },
+    { q: Date.UTC(2026, 9, 14, 14), c: "avvio", f: { html: 1300, primo: 900 }, ver: "a" },
+    { q: Date.UTC(2026, 9, 16, 8), c: "avvio", f: { html: 1300, codice: 95, primo: 659 }, ver: "b" },
+  ]).join("\n");
+  const soloLente = conVecchie.split("Le ultime lente:")[1] || "";
+  t.c("fra le lente solo la versione in uso", /pagina dell'app 1,3 s \+ codice 95 ms/.test(soloLente) && !/primo disegno 900 ms/.test(soloLente), conVecchie);
+  t.c("e niente misure che non esistono piu'", !/drive/.test(soloLente), conVecchie);
 
   // ---- il disco controllato (segnalato: «ci sta mettendo veramente tanto») ----
   const disco = righeTempi([{ q: 1, c: "disco", f: { elenco: 41000, abbina: 900, resto: 300 }, n: 1750 }]).join("\n");

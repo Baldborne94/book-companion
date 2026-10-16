@@ -45,9 +45,19 @@ export function codiceArrivato(t = adesso()) {
 export function segnaAvvio({ n = 0, segna = segnaTempo, raf, perf = globalThis.performance, doc = globalThis.document } = {}) {
   if (avvioSegnato || codice == null) return;
   avvioSegnato = true;
+  // UN AVVIO DIETRO LE QUINTE NON SI MISURA (i rapporti: «primo disegno
+  // 567,6 s» sul PC, «15085,1 s» sul tablet). Una scheda riaperta in
+  // secondo piano non disegna finche' non la si guarda, e la misura contava
+  // le ore d'attesa come lentezza
+  if (doc?.visibilityState === "hidden") return;
+  let nascosta = false;
+  const via = () => {
+    if (doc.visibilityState === "hidden") nascosta = true;
+  };
+  doc?.addEventListener?.("visibilitychange", via);
   const tc = codice;
   const prima = tappeAvvio(datiNavigazione(perf, doc), tc);
-  dopoIlDisegno((t) => segna(vocePerTempo({ cosa: "avvio", t0: 0, tappe: [...prima, ["codice", tc], ["primo", t]], n })), { raf });
+  dopoIlDisegno((t) => !nascosta && segna(vocePerTempo({ cosa: "avvio", t0: 0, tappe: [...prima, ["codice", tc], ["primo", t]], n })), { raf });
 }
 
 // DOVE VA IL TEMPO PRIMA DEL CODICE (il rapporto del tablet: «codice 1,4 s»,
@@ -218,7 +228,10 @@ export function righeTempi(voci = []) {
     if (provenienze.length < 2) out.push(riga(`${NOMI[c]}${provenienze.length ? ` ${DA[provenienze[0]] || provenienze[0]}` : ""}`, qui));
     else for (const da of provenienze) out.push(riga(`${NOMI[c]} ${DA[da] || da}`, qui.filter((v) => via(v) === da)));
   }
-  const lente = voci.filter((v) => tot(v) > 2000).slice(-5);
+  // anche le lente della sola versione in uso, e delle sole misure che
+  // esistono ancora (le «drive cambi» di prima di togliere Drive)
+  const inUso = Object.fromEntries(Object.keys(NOMI).map((c) => [c, voci.filter((v) => v.c === c).at(-1)?.ver]));
+  const lente = voci.filter((v) => NOMI[v.c] && (!inUso[v.c] || v.ver === inUso[v.c]) && tot(v) > 2000).slice(-5);
   if (lente.length) {
     out.push("Le ultime lente:");
     for (const v of lente)
