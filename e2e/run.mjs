@@ -438,6 +438,16 @@ const SCENE = [
         });
       await finche(() => sopra(pc.p).then((x) => x !== null), 8000, "il libro in mano o le stanze non si vedono");
       if ((await sopra(pc.p)) !== true) throw new Error("sul PC le stanze non stanno accanto al libro in mano");
+      // e nella stessa fascia, alte quanto lui: allineate in fondo
+      // galleggiavano a meta' altezza sotto un vuoto (la foto del lettore)
+      const fascia = await pc.p.evaluate(() => {
+        const bottoni = [...document.querySelectorAll("button")];
+        const libro = bottoni.find((b) => /Comincia|Riprendi/.test(b.textContent)).getBoundingClientRect();
+        const stanze = bottoni.find((b) => /Il giardino/.test(b.textContent)).parentElement.getBoundingClientRect();
+        return [libro.top, libro.bottom, stanze.top, stanze.bottom].map(Math.round);
+      });
+      if (Math.abs(fascia[0] - fascia[2]) > 1 || Math.abs(fascia[1] - fascia[3]) > 1)
+        throw new Error(`sul PC il libro sta fra ${fascia[0]} e ${fascia[1]}, le stanze fra ${fascia[2]} e ${fascia[3]}`);
       // la finestra stretta: le stanze tornano in fondo senza riaprire l'app
       await pc.p.setViewportSize({ width: 1100, height: 1040 });
       await finche(() => sopra(pc.p).then((x) => x === false), 5000, "stringendo la finestra le stanze restano accanto al libro");

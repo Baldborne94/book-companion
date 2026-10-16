@@ -585,7 +585,27 @@ export function perchePassoTace(
     if (libro) continue;
     muti.push({ ...e, ...esito, da: e.avanti });
   }
-  return muti.sort((a, b) => b.quando - a.quando || a.nome.localeCompare(b.nome, "it"));
+  // UNA SAGA CON PIU' FILI LI NOMINA PER SERIE, E LI TIENE VICINI. Segnalato
+  // dal lettore: «Circle of the World: "Red Country" e' l'ultimo volume che
+  // hai», e venti righe piu' giu' la stessa saga con «The Wisdom of Crowds»
+  // e «Last Argument of Kings». Erano tre serie (il filo e' la serie), ma
+  // col solo nome della saga davanti sembravano tre risposte alla stessa
+  // domanda, e la prima sbagliata. Le righe di una saga stanno insieme,
+  // nell'ordine dei volumi; le saghe nell'ordine dell'ultima toccata
+  const quante = new Map();
+  const ultima = new Map();
+  for (const t of muti) {
+    quante.set(t.saga, (quante.get(t.saga) || 0) + 1);
+    ultima.set(t.saga, Math.max(ultima.get(t.saga) || 0, t.quando));
+  }
+  for (const t of muti) if (quante.get(t.saga) > 1) t.nome = `${t.saga} · ${t.ciclo || "senza serie"}`;
+  return muti.sort(
+    (a, b) =>
+      ultima.get(b.saga) - ultima.get(a.saga) ||
+      a.saga.localeCompare(b.saga, "it") ||
+      (a.da?.sagaOrder ?? Infinity) - (b.da?.sagaOrder ?? Infinity) ||
+      a.nome.localeCompare(b.nome, "it")
+  );
 }
 
 // Le parole, una per ragione. Stanno in un elenco per la ragione di `GUAI` e

@@ -757,6 +757,54 @@ export default async function (t) {
     );
   }
 
+  // ── UNA SAGA CON PIÙ FILI LI NOMINA PER SERIE ────────────────────────
+  //
+  // Segnalato dal lettore: «Circle of the World: "Red Country" è l'ultimo
+  // volume che hai», e venti righe più giù la stessa saga con «The Wisdom
+  // of Crowds». Erano serie diverse, ma col solo nome della saga davanti
+  // sembravano due risposte alla stessa domanda.
+  {
+    const C = (id, titolo, n, serie) => ({ id, title: titolo, saga: "Circle of the World", series: serie, sagaOrder: n, addedAt: 1 });
+    const libri = [
+      C("lak", "Last Argument of Kings", 3, "The First Law"),
+      C("rc", "Red Country", 6, ""),
+      C("woc", "The Wisdom of Crowds", 9, "The Age of Madness"),
+      { id: "g", title: "Goosebumps", saga: "Goosebumps", sagaOrder: 1, addedAt: 1 },
+    ];
+    // la Goosebumps toccata fra due fili di Circle: le righe della saga
+    // restano insieme lo stesso, nell'ordine dei volumi
+    const quando = { woc: 3, g: 2, lak: 1, rc: 0 };
+    const righe = perchePassoTace(libri, {
+      statusOf: (id) => (id === "g" ? "reading" : "read"),
+      progressoOf: () => 0,
+      tocco: (id) => quando[id],
+    }).map(frasePassoTace);
+    t.eq(
+      "ogni filo di Circle porta la sua serie, insieme e in ordine",
+      righe.map((r) => r.split(":")[0]).join(" | "),
+      "Circle of the World · The First Law | Circle of the World · senza serie | Circle of the World · The Age of Madness | Goosebumps"
+    );
+    // e una saga con un filo solo resta col suo nome
+    t.eq("un filo solo resta col nome della saga", righe[3].startsWith("Goosebumps: "), true);
+    // due saghe mai toccate, coi numeri che si intrecciano: una saga per
+    // volta lo stesso, non 3-5-7-9 alternate
+    const A = (id, n, serie) => ({ id, title: id, saga: "Altra", series: serie, sagaOrder: n, addedAt: 1 });
+    const intrecciati = perchePassoTace([libri[0], libri[2], A("a5", 5, "Uno"), A("a7", 7, "Due")], {
+      statusOf: () => "read",
+      progressoOf: () => 0,
+    });
+    t.eq("a parità di tocco le saghe non si mescolano", intrecciati.map((r) => r.da.id).join(" "), "a5 a7 lak woc");
+    // e due fili senza numero si mettono per nome, non per ordine d'arrivo
+    const S = (id, serie) => ({ id, title: id, saga: "Senza", series: serie, addedAt: 1 });
+    t.eq(
+      "fili senza numero in ordine di nome",
+      perchePassoTace([S("z", "Zeta"), S("b", "Beta")], { statusOf: () => "read", progressoOf: () => 0 })
+        .map((r) => r.nome)
+        .join(" | "),
+      "Senza · Beta | Senza · Zeta"
+    );
+  }
+
   // ---- LA PORTA DEL DIARIO ----------------------------------------------
   {
     const anno = (y, n) => ({ year: y, entries: Array.from({ length: n }, (_, i) => ({ i })) });
