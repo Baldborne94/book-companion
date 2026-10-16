@@ -30,6 +30,27 @@ const chiaveAutore = (a) =>
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
+// LO STESSO VOLUME SCRITTO IN DUE MODI (segnalato dal lettore: «Kill Six
+// Billion Demons v05 - Breaker of Infinities-0021» accanto a «… - Book 05 -
+// Breaker of Infinities (2026) (digital) (Son of Ultron-Empire)», tutt'e
+// due col 5, e la Manutenzione taceva). Fra i fumetti, la stessa saga, lo
+// stesso numero e lo stesso titolo VERO: quel che resta togliendo la saga, i
+// numeri (anche la copia di Drive, «-0021») e le etichette fra parentesi. Un
+// titolo vero vuoto non basta: «Saga v01» e «Saga Vol. 1» possono essere
+// due edizioni diverse, e nel dubbio niente.
+const NUMERO = /^(v|vol|volume|book|tomo|tome|part|parte|n|no)?\d+$/;
+const ANNUNCIA = new Set(["v", "vol", "volume", "book", "tomo", "tome", "part", "parte", "libro"]);
+const IN_LETTERE = new Set("one two three four five six seven eight nine ten eleven twelve uno due tre quattro cinque sei sette otto nove dieci undici dodici".split(" "));
+export function titoloVero(b) {
+  const saga = new Set(chiaveAutore(b?.saga).split(" ").filter(Boolean));
+  const parole = chiaveAutore(String(b?.title || "").replace(EST, "").replace(/[([][^)\]]*[)\]]/g, " ")).split(" ").filter(Boolean);
+  return parole.filter((w, i) => !saga.has(w) && !NUMERO.test(w) && !ANNUNCIA.has(w) && !(IN_LETTERE.has(w) && ANNUNCIA.has(parole[i - 1]))).join(" ");
+}
+const chiaveVera = (b) => {
+  if (!eFumetto(b) || !b.saga || !(Number(b.sagaOrder) > 0)) return "";
+  const t = titoloVero(b);
+  return t ? `vero|${chiaveAutore(b.saga)}|${Number(b.sagaOrder)}|${t}` : "";
+};
 const chiaveGruppo = (b) => {
   const t = chiaveVolume(b);
   if (!t) return "";
@@ -54,13 +75,25 @@ const prima = (a, b) => {
 };
 
 export function doppioniInBiblioteca(libri, { progresso = () => 0, stato = () => "unread", segni = () => 0, copertina = () => false, conFile = () => true } = {}) {
+  // due chiavi, e un libro che ne condivide una con un altro sta nel suo
+  // gruppo: le due strade si uniscono (chi e' doppione per titolo e chi lo
+  // e' per titolo vero)
+  const capo = new Map();
+  const su = (x) => (capo.get(x) === x ? x : capo.set(x, su(capo.get(x))).get(x));
+  const primoDi = new Map();
+  const tutti = (libri || []).filter((b) => b?.id);
+  for (const b of tutti) capo.set(b.id, b.id);
+  for (const b of tutti)
+    for (const k of [chiaveGruppo(b), chiaveVera(b)]) {
+      if (!k) continue;
+      if (!primoDi.has(k)) primoDi.set(k, b.id);
+      else capo.set(su(b.id), su(primoDi.get(k)));
+    }
   const gruppi = new Map();
-  for (const b of libri || []) {
-    if (!b?.id) continue;
-    const k = chiaveGruppo(b);
-    if (!k) continue;
-    if (!gruppi.has(k)) gruppi.set(k, []);
-    gruppi.get(k).push(b);
+  for (const b of tutti) {
+    const r = su(b.id);
+    if (!gruppi.has(r)) gruppi.set(r, []);
+    gruppi.get(r).push(b);
   }
   const out = [];
   for (const g of gruppi.values()) {

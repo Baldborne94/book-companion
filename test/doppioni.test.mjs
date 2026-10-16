@@ -1,7 +1,7 @@
 // I DOPPIONI (`doppioniInBiblioteca`: fumetti e libri). Sbagliano in silenzio in due modi che costano: tenere
 // la copia sbagliata (quella senza il segno di lettura, o il CBR che scende
 // intero invece del CBZ), o prendere per doppioni due libri diversi.
-import { doppioniInBiblioteca, chiaveVolume } from "../src/lib/doppioni.js";
+import { doppioniInBiblioteca, chiaveVolume, titoloVero } from "../src/lib/doppioni.js";
 
 const TWD = (n, extra = "") => `The Walking Dead Deluxe Vol. 0${n}${extra}`;
 
@@ -62,4 +62,27 @@ export default async (t) => {
   t.eq("lo stesso libro in ePub e in PDF non si unisce: sono due file diversi", doppioniInBiblioteca([{ id: "a", title: "Mort", author: "Pratchett", fileType: "epub" }, { id: "b", title: "Mort", author: "Pratchett", fileType: "pdf" }]).length, 0);
   t.eq("un ePub senza autore non si unisce a un altro col suo titolo", doppioniInBiblioteca([{ id: "a", title: "Mort", author: "Pratchett", fileType: "epub" }, { id: "b", title: "Mort", author: "", fileType: "epub" }]).length, 0);
   t.eq("un fumetto senza file perde contro quello col file, anche se e' il CBZ", doppioniInBiblioteca([{ id: "z", title: "V", fileType: "cbz" }, { id: "r", title: "V", fileType: "cbr" }], { conFile: (id) => id === "r" })[0].tieni, "r");
+
+  // LO STESSO VOLUME SCRITTO IN DUE MODI (segnalato coi due «Breaker of
+  // Infinities»): stessa saga, stesso numero, stesso titolo vero
+  const K = "Kill Six Billion Demons";
+  const ksbd = [
+    { id: "file", title: "Kill Six Billion Demons - Book 05 - Breaker of Infinities (2026) (digital) (Son of Ultron-Empire)", saga: K, sagaOrder: 5, fileType: "cbz", addedAt: 9 },
+    { id: "drive", title: "Kill Six Billion Demons v05 - Breaker of Infinities-0021", saga: K, sagaOrder: 5, fileType: "cbz", addedAt: 1 },
+    { id: "tre", title: "Kill Six Billion Demons - Book Three (2019) (Digital) (phillywilly-Empire)", saga: K, sagaOrder: 3, fileType: "cbz" },
+  ];
+  t.eq("il titolo vero: senza saga, numeri, etichette e copia di Drive", [titoloVero(ksbd[0]), titoloVero(ksbd[1])].join(" | "), "breaker of infinities | breaker of infinities");
+  t.eq("«Book Three» non ha titolo vero", titoloVero(ksbd[2]), "");
+  const kg = doppioniInBiblioteca(ksbd, { conFile: (id) => id === "file" });
+  t.c("«v05 - Breaker of Infinities-0021» e «Book 05 - Breaker of Infinities (2026)…» sono un volume", kg.length === 1 && kg[0].via.join() === "drive", JSON.stringify(kg));
+  t.eq("…e resta la scheda col file", kg[0]?.tieni, "file");
+  const omni = [
+    { id: "v1", title: "v01 - Seed of Destruction", saga: "Hellboy", sagaOrder: 1, fileType: "cbz" },
+    { id: "om", title: "Hellboy Omnibus v01 - Seed of Destruction (2018) (digital)", saga: "Hellboy", sagaOrder: 1, fileType: "cbz" },
+  ];
+  t.eq("l'Omnibus non e' il volume che contiene", doppioniInBiblioteca(omni).length, 0);
+  t.eq("un numero diverso e' un altro volume", doppioniInBiblioteca([ksbd[0], { ...ksbd[1], sagaOrder: 4 }]).length, 0);
+  t.eq("una saga diversa e' un altro fumetto, anche col titolo vero uguale", doppioniInBiblioteca([{ id: "a", title: "Alpha v01 - The Beginning", saga: "Alpha", sagaOrder: 1, fileType: "cbz" }, { id: "b", title: "Beta v01 - The Beginning", saga: "Beta", sagaOrder: 1, fileType: "cbz" }]).length, 0);
+  t.eq("senza titolo vero, nel dubbio niente", doppioniInBiblioteca([{ id: "a", title: "Kingdom v04 [TurnipFarmers]", saga: "Kingdom", sagaOrder: 4, fileType: "cbz" }, { id: "b", title: "Kingdom Vol. 4", saga: "Kingdom", sagaOrder: 4, fileType: "cbz" }]).length, 0);
+  t.eq("e i libri restano col loro titolo e autore", doppioniInBiblioteca([{ ...ksbd[0], fileType: "epub", author: "A" }, { ...ksbd[1], fileType: "epub", author: "A" }]).length, 0);
 };
