@@ -238,7 +238,11 @@ const SCENE = [
       await d.p.getByRole("button", { name: "Fatto" }).first().click();
 
       // il brano scelto dalla raccolta suona, e la raccolta lo ricorda
-      await d.p.getByRole("button", { name: "≡ Brani" }).click();
+      // la raccolta e' una riga: il nome apre i brani, il resto sta in «⋯»
+      if (await d.p.getByRole("button", { name: "Scegli i brani" }).count()) throw new Error("«Scegli i brani» sta in vista, non nel menu «⋯»");
+      await d.p.getByRole("button", { name: "Altro per Notti" }).click();
+      if (!(await d.p.getByRole("button", { name: "Scegli i brani" }).isVisible())) throw new Error("nel menu «⋯» manca «Scegli i brani»");
+      await d.p.getByRole("button", { name: /^✧\s*Notti/ }).click();
       await d.p.getByRole("button", { name: /^2\s*Camino/ }).click();
       await finche(async () => (await audio(d.p)).t > 0.5, 10000, "il brano scelto non suona");
       await d.p.evaluate(() => (document.querySelector("audio").currentTime = 40));
@@ -623,7 +627,7 @@ const SCENE = [
       // il primo giro di tutt'e due e' passato: da qui in poi conta solo la mano
       await aspetta(4000);
       await pc.p.getByRole("button", { name: "＋ Da YouTube" }).click();
-      await pc.p.getByPlaceholder("Link YouTube della melodia…").fill("https://www.youtube.com/watch?v=abcdefghijk");
+      await pc.p.getByPlaceholder("Incolla un link YouTube (video o playlist)…").fill("https://www.youtube.com/watch?v=abcdefghijk");
       await pc.p.getByPlaceholder(/Nome/).fill("Pioggia e camino");
       await pc.p.getByRole("button", { name: "☆ Custodisci" }).click();
       await pc.p.getByRole("button", { name: "＋ Nuova raccolta" }).click();
@@ -680,7 +684,17 @@ const SCENE = [
       if (Math.abs(meta - 100) > 12) throw new Error(`toccata a meta' la barra, il brano e' a ${meta.toFixed(1)} s invece di ~100`);
       await d.p.getByRole("button", { name: "Arpa" }).first().click();
       await dove(3);
-      return { guasti: d.guasti, nota: `⏭ ⏮ e il riavvolgimento (${riavvolto.toFixed(1)} s), barra a ${meta.toFixed(0)} s, «Arpa» dai prossimi` };
+      // il timer e' un tasto solo: le durate si aprono da lui, e scelta una
+      // il tasto dice quanto manca
+      if (await d.p.getByRole("button", { name: "15 min" }).count()) throw new Error("le durate del timer stanno in vista");
+      await d.p.getByRole("button", { name: "🌙 Timer" }).click();
+      await d.p.getByRole("button", { name: "15 min" }).click();
+      await finche(async () => !(await d.p.getByRole("button", { name: "15 min" }).count()), 3000, "scelta la durata, le durate restano aperte");
+      const orologio = await finche(() => d.p.getByRole("button", { name: /^🌙 \d/ }).textContent().catch(() => null), 3000, "il tasto del timer non dice quanto manca");
+      // e un link YouTube si suona dal riquadro di «＋ Da YouTube»
+      await d.p.getByRole("button", { name: "＋ Da YouTube" }).click();
+      if (!(await d.p.getByRole("button", { name: "▶ Suona ora" }).isVisible())) throw new Error("nel riquadro di YouTube manca «▶ Suona ora»");
+      return { guasti: d.guasti, nota: `⏭ ⏮ e il riavvolgimento (${riavvolto.toFixed(1)} s), barra a ${meta.toFixed(0)} s, «Arpa» dai prossimi, timer «${orologio.trim()}»` };
     },
   },
   {

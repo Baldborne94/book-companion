@@ -6,7 +6,7 @@ import {
   getListsRaw, saveLists, nuovaRaccolta, braniDi, puntoDi, doveDi, minuti, MUSICA_CAMBIATA, nonArrivati,
 } from "../lib/music.js";
 import EmptyState from "./EmptyState.jsx";
-import { InAscolto } from "./Ascolto.jsx";
+import { InAscolto, Icona } from "./Ascolto.jsx";
 import { useViewport } from "../lib/viewport.js";
 
 
@@ -29,7 +29,6 @@ const inputStyle = () => ({
 });
 
 export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
-  const [link, setLink] = useState("");
   const [favs, setFavs] = useState(() => getFavoritesRaw());
   const [favName, setFavName] = useState("");
   const [editing, setEditing] = useState(null);
@@ -52,6 +51,9 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
   const [bozzaRac, setBozzaRac] = useState("");
   // la raccolta di cui si vedono i brani, per sceglierne uno da suonare
   const [aperta, setAperta] = useState(null);
+  // la raccolta col menu «⋯» aperto: scegliere i brani, rinominare,
+  // dimenticare — le cose che si fanno di rado stanno li' dentro
+  const [menu, setMenu] = useState(null);
 
   const { current, playing, queue } = music;
   const { wide } = useViewport();
@@ -67,10 +69,17 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
     };
   }, [favs, current?.trackId]);
 
-  function playLink() {
-    const url = link.trim();
+  // UN LINK SI SUONA SENZA CUSTODIRLO, dallo stesso riquadro di «＋ Da
+  // YouTube»: la barra larga in cima alla sala era la cosa piu' grande della
+  // pagina dopo il lettore, per un gesto che si fa di rado
+  function suonaOra() {
+    const url = newUrl.trim();
     if (!url) return;
-    if (playerRef.current?.play(url)) setLink("");
+    if (playerRef.current?.play(url)) {
+      setNewUrl("");
+      setNewName("");
+      setAdding(false);
+    }
   }
 
   // ogni cambio della musica parte da solo verso gli altri dispositivi,
@@ -284,30 +293,6 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
         {ascolto}
       </div>
       <div style={{ minWidth: 0 }}>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 18 }}>
-        <input
-          value={link}
-          onChange={(e) => setLink(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && playLink()}
-          placeholder="Incolla un link YouTube (video o playlist)…"
-          style={inputStyle()}
-        />
-        <button
-          onClick={playLink}
-          style={{
-            padding: "10px 22px",
-            borderRadius: R.piccolo,
-            background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
-            color: C.onAccent,
-            fontWeight: 600,
-            fontSize: F.corpo,
-            boxShadow: `0 0 20px ${C.accent}2e`,
-          }}
-        >
-          ▶ Suona
-        </button>
-      </div>
-
       {/* LE RACCOLTE. Una raccolta e' un nome e un elenco di brani scelti da
           te: serve a dire "stasera questi, in quest'ordine" senza doverti
           portare dietro tutte le melodie ogni volta. */}
@@ -364,21 +349,40 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
           una dopo l'altra. Creane una e poi scegli i brani dall'elenco qui sotto.
         </p>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12, marginBottom: 22 }}>
+        // UNA RACCOLTA PER RIGA, LARGA QUANTO LA PAGINA (chiesto dal lettore:
+        // «tanto pieno e articolato»). In schede da 240 px i nomi dei brani
+        // andavano a capo ogni due parole e sei tasti si contendevano due
+        // righe. In vista restano «▶ Riprendi» e 🔀; il nome apre i brani, e
+        // il resto sta nel menu «⋯». Sul computer largo, due per riga
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${px(420)}px), 1fr))`, gap: 10, marginBottom: 22, alignItems: "start" }}>
           {liveRac.map((r) => {
             const brani = braniDi(r, liveFavs);
             const attiva = scegliendo === r.id;
             const aperti = aperta === r.id;
+            const conMenu = menu === r.id;
             // il brano a cui si era, e a che punto: «▶ Riprendi» parte da li'
             const dove = doveDi(r, brani);
             const punto = brani.length ? puntoDi(brani[dove]) : 0;
             const riprendi = dove > 0 || punto > 0;
             const inAscolto = queue?.raccolta === r.id;
+            const tondo = (acceso) => ({
+              width: 44,
+              height: 44,
+              flexShrink: 0,
+              borderRadius: R.tondo,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: F.corpo,
+              border: `1px solid ${acceso ? C.accent : C.border}`,
+              color: acceso ? C.accent : C.muted,
+            });
+            const voceMenu = { minHeight: 44, padding: "0 14px", borderRadius: R.tondo, fontSize: F.piccolo, border: `1px solid ${C.border}`, color: C.muted };
             return (
               <div
                 key={r.id}
                 style={{
-                  padding: "13px 14px",
+                  padding: "10px 12px",
                   borderRadius: R.medio,
                   border: `1px solid ${attiva || inAscolto ? C.accent : C.border}`,
                   background: attiva || inAscolto
@@ -400,42 +404,41 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
                       style={{ ...inputStyle(), minWidth: 0, padding: "6px 10px", background: C.bg }}
                     />
                   ) : (
-                    <>
-                      <span style={{ fontSize: F.titoletto, color: C.accent }}>✧</span>
-                      <span style={{ flex: 1, minWidth: 0, fontSize: F.corpo, color: C.text, lineHeight: 1.3, overflowWrap: "break-word" }}>
-                        {r.name}
+                    <button
+                      onClick={() => brani.length && setAperta(aperti ? null : r.id)}
+                      aria-expanded={brani.length ? aperti : undefined}
+                      style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, minHeight: 44, textAlign: "left" }}
+                    >
+                      <span style={{ fontSize: F.titoletto, color: C.accent, flexShrink: 0 }}>✧</span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: "block", fontSize: F.corpo, color: C.text, lineHeight: 1.3, overflowWrap: "break-word" }}>{r.name}</span>
+                        <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginTop: 2, lineHeight: 1.4, overflowWrap: "break-word" }}>
+                          {brani.length === 0
+                            ? "nessun brano ancora"
+                            : `${brani.length} ${brani.length === 1 ? "brano" : "brani"}`}
+                          {nonArrivati(r, favs) > 0 &&
+                            ` · ${nonArrivati(r, favs) === 1 ? "1 brano non ancora arrivato qui" : `${nonArrivati(r, favs)} brani non ancora arrivati qui`}`}
+                          {inAscolto
+                            ? ` · ${playing ? "♫ in ascolto" : "in pausa"}`
+                            : riprendi
+                              ? ` · eri a «${brani[dove].name}»${punto ? `, ${minuti(punto)}` : ""}`
+                              : ""}
+                        </span>
                       </span>
-                      <button
-                        onClick={() => { setRinomina(r.id); setBozzaRac(r.name); }}
-                        aria-label={`Rinomina ${r.name}`}
-                        style={{ color: C.muted, padding: 4, fontSize: F.corpo }}
-                      >
-                        ✎
-                      </button>
-                      <button onClick={() => togliRaccolta(r)} aria-label={`Dimentica ${r.name}`} style={{ color: C.muted, padding: 4 }}>
-                        🗑
-                      </button>
-                    </>
+                      {brani.length > 0 && (
+                        <span aria-hidden="true" style={{ color: C.muted, fontSize: F.piccolo, flexShrink: 0 }}>
+                          {aperti ? "▾" : "▸"}
+                        </span>
+                      )}
+                    </button>
                   )}
-                </div>
-                <div style={{ fontSize: F.minuscolo, color: C.muted, margin: "6px 0 10px", lineHeight: 1.4 }}>
-                  {brani.length === 0
-                    ? "nessun brano ancora"
-                    : `${brani.length} ${brani.length === 1 ? "brano" : "brani"}`}
-                  {nonArrivati(r, favs) > 0 &&
-                    ` · ${nonArrivati(r, favs) === 1 ? "1 brano non ancora arrivato qui" : `${nonArrivati(r, favs)} brani non ancora arrivati qui`}`}
-                  {inAscolto
-                    ? ` · ${playing ? "♫ in ascolto" : "in pausa"}`
-                    : riprendi
-                      ? ` · eri a «${brani[dove].name}»${punto ? `, ${minuti(punto)}` : ""}`
-                      : ""}
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button
                     onClick={() => playerRef.current?.playQueue(brani, false, { da: dove, raccolta: r.id })}
                     disabled={!brani.length}
                     style={{
-                      padding: "5px 12px",
+                      minHeight: 44,
+                      padding: "0 14px",
+                      flexShrink: 0,
                       borderRadius: R.tondo,
                       fontSize: F.piccolo,
                       border: `1px solid ${brani.length ? C.accent : C.border}`,
@@ -448,50 +451,52 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
                   <button
                     onClick={() => playerRef.current?.playQueue(brani, true)}
                     disabled={brani.length < 2}
-                    style={{
-                      padding: "5px 12px",
-                      borderRadius: R.tondo,
-                      fontSize: F.piccolo,
-                      border: `1px solid ${C.border}`,
-                      color: C.muted,
-                      opacity: brani.length > 1 ? 1 : 0.5,
-                    }}
+                    aria-label={`${r.name} a caso`}
+                    style={{ ...tondo(false), opacity: brani.length > 1 ? 1 : 0.5 }}
                   >
-                    🔀
+                    <Icona nome="caso" misura={20} />
                   </button>
-                  <button
-                    onClick={() => setScegliendo(attiva ? null : r.id)}
-                    style={{
-                      padding: "5px 12px",
-                      borderRadius: R.tondo,
-                      fontSize: F.piccolo,
-                      border: `1px solid ${attiva ? C.accent : C.border}`,
-                      color: attiva ? C.accent : C.muted,
-                    }}
-                  >
-                    {attiva ? "Fatto" : "Scegli i brani"}
+                  <button onClick={() => setMenu(conMenu ? null : r.id)} aria-expanded={conMenu} aria-label={`Altro per ${r.name}`} style={tondo(conMenu)}>
+                    ⋯
                   </button>
-                  {brani.length > 0 && (
-                    <button
-                      onClick={() => setAperta(aperti ? null : r.id)}
-                      aria-expanded={aperti}
-                      style={{
-                        padding: "5px 12px",
-                        borderRadius: R.tondo,
-                        fontSize: F.piccolo,
-                        border: `1px solid ${aperti ? C.accent : C.border}`,
-                        color: aperti ? C.accent : C.muted,
-                      }}
-                    >
-                      {aperti ? "Chiudi" : "≡ Brani"}
-                    </button>
-                  )}
                 </div>
+                {conMenu && (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                    <button
+                      onClick={() => {
+                        setScegliendo(attiva ? null : r.id);
+                        setMenu(null);
+                      }}
+                      style={{ ...voceMenu, border: `1px solid ${attiva ? C.accent : C.border}`, color: attiva ? C.accent : C.muted }}
+                    >
+                      {attiva ? "Fatto" : "Scegli i brani"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setRinomina(r.id);
+                        setBozzaRac(r.name);
+                        setMenu(null);
+                      }}
+                      style={voceMenu}
+                    >
+                      ✎ Rinomina
+                    </button>
+                    <button
+                      onClick={() => {
+                        togliRaccolta(r);
+                        setMenu(null);
+                      }}
+                      style={voceMenu}
+                    >
+                      🗑 Dimentica
+                    </button>
+                  </div>
+                )}
                 {/* UN BRANO SCELTO DALLA RACCOLTA (chiesto dal lettore:
                     «selezionare cosa riprodurre nelle raccolte»): si suona
                     da li', e poi avanti in ordine */}
                 {aperti && (
-                  <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 2 }}>
+                  <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2 }}>
                     {brani.map((b, i) => {
                       const ora = suona(b);
                       const p = ora ? 0 : puntoDi(b);
@@ -603,8 +608,7 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
         </button>
       </div>
       <p style={{ fontSize: F.minuscolo, color: C.muted, margin: "-4px 0 14px", lineHeight: 1.5 }}>
-        ♫ Le melodie dai tuoi file vanno avanti a tablet spento, fino allo scadere del timer. Restano su questo dispositivo: nel cloud viaggiano solo i link.{" "}
-        ♪ YouTube no: quel lettore si mette in pausa da solo quando lo schermo si spegne, e non è in nostro potere.
+        ♫ I tuoi file suonano anche a schermo spento · ♪ YouTube solo a schermo acceso
       </p>
 
       {adding && (
@@ -625,7 +629,7 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
             value={newUrl}
             onChange={(e) => setNewUrl(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addMelody()}
-            placeholder="Link YouTube della melodia…"
+            placeholder="Incolla un link YouTube (video o playlist)…"
             style={{ ...inputStyle(), flexBasis: "100%" }}
           />
           <input
@@ -635,6 +639,12 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
             placeholder="Nome («Pioggia e camino»)"
             style={inputStyle()}
           />
+          <button
+            onClick={suonaOra}
+            style={{ padding: "10px 18px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.corpo }}
+          >
+            ▶ Suona ora
+          </button>
           <button
             onClick={addMelody}
             style={{
