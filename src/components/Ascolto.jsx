@@ -25,6 +25,7 @@ const ICONE = {
   pausa: "M7 5h4v14H7zM13 5h4v14h-4z",
   prima: "M6 5h2.5v14H6zM19 5v14L9 12z",
   dopo: "M15.5 5H18v14h-2.5zM5 5l10 7-10 7z",
+  caso: "M10.6 9.2 5.4 4 4 5.4l5.2 5.2zM14.5 4l2 2L4 18.6 5.4 20 18 7.5l2 2V4zm.3 9.4-1.4 1.4 3.1 3.1-2 2.1H20v-5.5l-2 2z",
 };
 export function Icona({ nome, misura = 22, colore = "currentColor" }) {
   return (
@@ -206,6 +207,9 @@ export function sottotitolo({ current, queue, nomeRaccolta }) {
 export function InAscolto({ music, playerRef, nomeRaccolta, vuoto = null, children = null }) {
   const { current, playing, queue, volume = 1, timerEnd, sleepMin, manca } = music;
   const p = () => playerRef.current;
+  // le durate del timer si aprono da un tasto solo: otto bottoni in vista
+  // erano una riga intera per una scelta che si fa una volta a sera
+  const [orologio, setOrologio] = useState(false);
   const tempo = useRef(() => p()?.tempo?.() || { t: 0, d: 0 }).current;
   const pannello = {
     padding: 18,
@@ -229,7 +233,16 @@ export function InAscolto({ music, playerRef, nomeRaccolta, vuoto = null, childr
     );
   }
   const vol = Math.round(volume * 100);
-  const dopo = queue?.elenco ? prossimi(queue.elenco, queue.index, 5) : [];
+  const dopo = queue?.elenco ? prossimi(queue.elenco, queue.index, 3) : [];
+  const chip = (acceso) => ({
+    minHeight: 44,
+    padding: "0 14px",
+    borderRadius: R.tondo,
+    fontSize: F.piccolo,
+    border: `1px solid ${acceso ? C.accent : C.border}`,
+    color: acceso ? C.accent : C.muted,
+    flexShrink: 0,
+  });
   return (
     <div style={pannello}>
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
@@ -241,10 +254,10 @@ export function InAscolto({ music, playerRef, nomeRaccolta, vuoto = null, childr
       <div style={{ fontSize: F.piccolo, color: C.arcane, marginTop: 4, lineHeight: 1.4, overflowWrap: "break-word" }}>
         {sottotitolo({ current, queue, nomeRaccolta })}
       </div>
-      {queue && (
-        <div style={{ fontSize: F.minuscolo, color: current.src ? C.accent : C.muted, marginTop: 2 }}>
-          {current.src ? "♫ dal tuo archivio · va avanti a schermo spento" : "♪ da YouTube · solo a schermo acceso"}
-        </div>
+      {/* si dice solo quel che cambia le cose: YouTube si ferma a schermo
+          spento, i file no (e sono quasi tutti file) */}
+      {queue && !current.src && (
+        <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 2 }}>♪ da YouTube · solo a schermo acceso</div>
       )}
       <div style={{ margin: "10px 0 4px" }}>
         <Avanzamento tempo={tempo} onSeek={(t) => p()?.seek(t)} />
@@ -256,6 +269,8 @@ export function InAscolto({ music, playerRef, nomeRaccolta, vuoto = null, childr
         onToggle={() => (playing ? p()?.pause() : p()?.resume())}
         onNext={() => p()?.next()}
       />
+      {/* VOLUME, TIMER E SPEGNI IN UNA RIGA SOLA (chiesto dal lettore: «tanto
+          pieno e articolato»): erano tre righe, e il timer otto bottoni */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16 }}>
         <span style={{ fontSize: F.corpo, color: C.muted, width: 22 }} aria-hidden="true">
           {vol === 0 ? "🔇" : vol < 45 ? "🔉" : "🔊"}
@@ -267,54 +282,59 @@ export function InAscolto({ music, playerRef, nomeRaccolta, vuoto = null, childr
           value={vol}
           onChange={(e) => p()?.setVolume(parseInt(e.target.value, 10) / 100)}
           aria-label="Volume della musica"
+          aria-valuetext={`${vol}%`}
           style={{ flex: 1, minWidth: 0, accentColor: C.accent }}
         />
-        <span style={{ fontSize: F.piccolo, color: C.muted, width: 40, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{vol}%</span>
+        <button onClick={() => setOrologio((v) => !v)} aria-expanded={orologio} style={chip(orologio || !!timerEnd)}>
+          {timerEnd ? `🌙 ${manca || "…"}` : "🌙 Timer"}
+        </button>
+        <button onClick={() => p()?.stop()} aria-label="Spegni la musica" title="Spegni la musica" style={{ ...chip(false), width: 44, padding: 0 }}>
+          ✕
+        </button>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
-        <span style={{ fontSize: F.piccolo, color: C.muted, marginRight: 2 }}>🌙 Si spegne da sola</span>
-        {SLEEP_CHOICES.map((s) => {
-          const attivo = s.min === 0 ? !timerEnd : (sleepMin || 0) === s.min;
-          return (
-            <button
-              key={s.min}
-              onClick={() => p()?.setSleep(s.min)}
-              style={{
-                padding: "4px 10px",
-                borderRadius: R.tondo,
-                fontSize: F.minuscolo,
-                border: `1px solid ${attivo ? C.accent : C.border}`,
-                color: attivo ? C.accent : C.muted,
-              }}
-            >
-              {s.label}
-            </button>
-          );
-        })}
-      </div>
-      {manca && <div style={{ fontSize: F.piccolo, color: C.arcane, marginTop: 6 }}>manca {manca} · sfuma piano sul finire</div>}
+      {orologio && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: F.piccolo, color: C.muted, marginRight: 2 }}>Si spegne da sola dopo</span>
+          {SLEEP_CHOICES.map((s) => {
+            const attivo = s.min === 0 ? !timerEnd : (sleepMin || 0) === s.min;
+            return (
+              <button
+                key={s.min}
+                onClick={() => {
+                  p()?.setSleep(s.min);
+                  setOrologio(false);
+                }}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: R.tondo,
+                  fontSize: F.minuscolo,
+                  border: `1px solid ${attivo ? C.accent : C.border}`,
+                  color: attivo ? C.accent : C.muted,
+                }}
+              >
+                {s.min === 0 ? "mai" : s.label}
+              </button>
+            );
+          })}
+          {timerEnd && <span style={{ flexBasis: "100%", fontSize: F.minuscolo, color: C.arcane }}>sfuma piano sul finire</span>}
+        </div>
+      )}
       {children}
       {dopo.length > 0 && (
         <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: F.piccolo, color: C.muted, letterSpacing: 0.4, marginBottom: 4 }}>Prossimi</div>
+          <div style={{ fontSize: F.piccolo, color: C.muted, letterSpacing: 0.4, marginBottom: 4 }}>Poi</div>
           {dopo.map((b) => (
             <button
               key={`${b.indice}:${b.id}`}
               onClick={() => p()?.vaiA(b.indice)}
               style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: 44, padding: "4px 6px", borderRadius: R.piccolo, textAlign: "left" }}
             >
-              <Faccia nome={b.name || ""} misura={32} />
+              <Faccia nome={b.name || ""} misura={28} />
               <span style={{ flex: 1, minWidth: 0, fontSize: F.nota, color: C.text, lineHeight: 1.3, overflowWrap: "break-word" }}>{b.name}</span>
             </button>
           ))}
         </div>
       )}
-      <button
-        onClick={() => p()?.stop()}
-        style={{ marginTop: 14, padding: "6px 12px", borderRadius: R.tondo, fontSize: F.piccolo, color: C.muted, border: `1px solid ${C.border}` }}
-      >
-        ✕ Spegni la musica
-      </button>
     </div>
   );
 }
