@@ -37,6 +37,7 @@ import {
   nomeSottoIlDito,
   nomiDaSegnare,
   avvisoVoce,
+  scrittoComeNome,
   giroDaRiprendere,
   segnaFermato,
   LEXICANUM,
@@ -377,6 +378,13 @@ export default async function (t) {
     t.c("una minuscola non e' mai un nome", nomiNelTesto("the cadia gate", ix).length === 0);
     t.eq("una virgola spezza il nome", nomiNelTesto("Garviel, Loken said", ix).map((m) => m.testo).join("|"), "Loken");
     t.eq("l'apostrofo dentro il nome resta", nomiNelTesto("then Lion El’Jonson spoke", ix)[0]?.chiave, "lion el'jonson");
+    // «'Two hundred and fifty'»: la distanza, non il gruppo «Two Hundred»
+    const numeri = { chiavi: new Set(["two hundred", "eye of terror"]), max: 3 };
+    t.eq("un numero in minuscolo non e' il nome della voce", nomiNelTesto("'Two hundred and fifty,' said Bannan.", numeri).length, 0);
+    t.eq("scritto come il nome si'", nomiNelTesto("the Two Hundred marched", numeri)[0]?.testo, "Two Hundred");
+    t.eq("le paroline di mezzo restano minuscole", nomiNelTesto("into the Eye of Terror", numeri)[0]?.testo, "Eye of Terror");
+    t.c("scritto come un nome: maiuscole le parole che contano", scrittoComeNome("Sons of Horus") && scrittoComeNome("Cadia") && scrittoComeNome("Isstvan III"));
+    t.c("non come un nome: una parola che conta minuscola", !scrittoComeNome("Two hundred") && !scrittoComeNome("power armour") && !scrittoComeNome("of Horus"));
     const corto = { chiavi: new Set(["ork"]), max: 1 };
     t.eq("una parola sola sotto le quattro lettere non si segna", nomiNelTesto("The Ork roared", corto).length, 0);
     const pos = frase.indexOf("Loken smiled") + 2;

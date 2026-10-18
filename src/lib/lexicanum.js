@@ -787,6 +787,19 @@ export function indiceLore(deposito = DEPOSITO) {
 
 const PAROLA_RE = /[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu;
 
+// SCRITTO COME UN NOME (segnalato dal lettore: «Two hundred and fifty», la
+// distanza, apriva la voce «Two Hundred», un gruppo degli Emperor's
+// Children). Nei titoli di MediaWiki solo la prima lettera e' indifferente:
+// «Two hundred» non e' «Two Hundred». Un nome di piu' parole ha maiuscole
+// tutte le parole che contano; le paroline di mezzo («Sons of Horus», «Eye
+// of Terror») e i numeri possono restare come sono.
+const PAROLINE = new Set(["of", "the", "and", "in", "on", "at", "to", "for", "a", "an", "de", "du", "del", "la", "le", "von", "van", "der", "den", "al", "el", "upon"]);
+export function scrittoComeNome(testo) {
+  const parole = String(testo || "").match(PAROLA_RE) || [];
+  if (!parole.length) return false;
+  return parole.every((w, i) => /^[\p{Lu}\p{N}]/u.test(w) || (i > 0 && PAROLINE.has(w)));
+}
+
 // Le parole che nel capitolo compaiono anche MINUSCOLE: «battle» minuscola
 // vuol dire che «Battle» a inizio frase e' una parola, non un nome
 export function parolePiccole(testo) {
@@ -817,6 +830,7 @@ export function nomiNelTesto(testo, ix, minuscole = new Set()) {
     for (let n = Math.min(ix.max, parole.length - i); n >= 1 && !preso; n--) {
       const pezzo = t.slice(parole[i].da, parole[i + n - 1].a);
       if (n > 1 && /[^\p{L}\p{N}'’ -]/u.test(pezzo)) continue;
+      if (!scrittoComeNome(pezzo)) continue;
       for (const forma of new Set([pezzo, pezzo.replace(/['’]s?$/u, "")])) {
         const k = chiave(forma);
         if (!k || !ix.chiavi.has(k)) continue;

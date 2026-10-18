@@ -10,6 +10,7 @@ const W = {
   "Loken": "#REDIRECT [[Garviel Loken]]",
   "Luna Wolves": "#REDIRECT [[Sons of Horus]]",
   "Mournival": `The '''Mournival''' was an informal council of four captains of the Luna Wolves.{{Fn|1}}\n\n==Sources==\n*{{Endn|1}}: ''[[Horus Rising (Novel)|Horus Rising]]''`,
+  "Two Hundred": `The '''Two Hundred''' refers to a group of 200 Terran-recruited Emperor's Children.{{Fn|1}}\n\n==Sources==\n*{{Endn|1}}: ''[[Fulgrim (Novel)|Fulgrim]]''`,
   "Sons of Horus": `The '''Sons of Horus''', first known as the '''Luna Wolves''', were the XVI Legion.{{Fn|1}}\n\n==Sources==\n*{{Endn|1}}: ''[[Codex: Chaos Space Marines]]''`,
 };
 const TITOLI = Object.keys(W).sort();
