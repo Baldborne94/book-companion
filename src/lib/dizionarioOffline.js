@@ -91,7 +91,7 @@ export async function statoDizionario(deposito = DEPOSITO) {
 // invece di fidarsi del nome del file.
 const eGzip = (b) => b.length > 1 && b[0] === 0x1f && b[1] === 0x8b;
 
-async function apri(byte) {
+export async function apri(byte) {
   if (!eGzip(byte)) return new TextDecoder().decode(byte);
   if (typeof DecompressionStream !== "function") {
     throw new Error("questo browser non sa aprire il file compresso");
@@ -100,7 +100,7 @@ async function apri(byte) {
   return new Response(flusso).text();
 }
 
-async function raccogli(res, onProgress) {
+export async function raccogli(res, onProgress) {
   const atteso = Number(res.headers.get("content-length")) || 0;
   if (!res.body?.getReader) return new Uint8Array(await res.arrayBuffer());
   const lettore = res.body.getReader();

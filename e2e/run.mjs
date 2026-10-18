@@ -111,6 +111,44 @@ async function importa(p, nome, buffer, mimeType) {
   await finche(async () => (await libriDi(p)).some((b) => b.title === titolo), 20000, `«${titolo}» non entra in biblioteca`);
 }
 
+// SELEZIONA UNA PAROLA NEL LIBRO e apre la scheda del dizionario. La pagina
+// si rimonta dopo la prima misura (l'avanzo di riga) e una selezione fatta
+// prima si perde: si riseleziona finche' il menu della selezione c'e'.
+async function definisci(p, parola) {
+  const tasto = () => p.getByRole("button", { name: /Definisci|Significato/ });
+  await finche(
+    async () => {
+      for (const f of p.frames()) {
+        const fatto = await f
+          .evaluate((w) => {
+            const it = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+            for (let n = it.nextNode(); n; n = it.nextNode()) {
+              const i = n.nodeValue.indexOf(w);
+              if (i < 0) continue;
+              const r = document.createRange();
+              r.setStart(n, i);
+              r.setEnd(n, i + w.length);
+              document.getSelection().removeAllRanges();
+              document.getSelection().addRange(r);
+              return true;
+            }
+            return false;
+          }, parola)
+          .catch(() => false);
+        if (!fatto) continue;
+        for (let i = 0; i < 8; i++) {
+          if (await tasto().count()) return true;
+          await aspetta(250);
+        }
+      }
+      return false;
+    },
+    25000,
+    `«${parola}» non si lascia selezionare, o il menu non compare`
+  );
+  await tasto().first().click();
+}
+
 // il tablet del lettore (CLAUDE.md): Chrome Android, 902×1503 a densita' 1,33, col dito
 const TABLET = {
   viewport: { width: 902, height: 1503 },
@@ -1478,48 +1516,7 @@ const SCENE = [
       // l'interruttore del libro: acceso dalla saga riconosciuta
       await finche(() => p.getByRole("button", { name: /Lexicanum nella scheda del dizionario: acceso/ }).count(), 8000, "la scheda del libro non dice che Lexicanum e' acceso");
       await p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
-      const seleziona = (parola) =>
-        finche(
-          async () => {
-            for (const f of p.frames()) {
-              const fatto = await f
-                .evaluate((w) => {
-                  const it = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-                  for (let n = it.nextNode(); n; n = it.nextNode()) {
-                    const i = n.nodeValue.indexOf(w);
-                    if (i < 0) continue;
-                    const r = document.createRange();
-                    r.setStart(n, i);
-                    r.setEnd(n, i + w.length);
-                    document.getSelection().removeAllRanges();
-                    document.getSelection().addRange(r);
-                    return true;
-                  }
-                  return false;
-                }, parola)
-                .catch(() => false);
-              if (fatto) return true;
-            }
-            return false;
-          },
-          25000,
-          `«${parola}» non si lascia selezionare`
-        );
-      // la pagina si rimonta dopo la prima misura (l'avanzo di riga) e una
-      // selezione fatta prima si perde: si riseleziona finche' il menu c'e'
-      await finche(
-        async () => {
-          await seleziona("Loken");
-          for (let i = 0; i < 8; i++) {
-            if (await p.getByRole("button", { name: /Definisci/ }).count()) return true;
-            await aspetta(250);
-          }
-          return false;
-        },
-        25000,
-        "il menu della selezione non compare"
-      );
-      await p.getByRole("button", { name: /Definisci/ }).first().click();
+      await definisci(p, "Loken");
       // il rinvio «Loken» porta alla voce, e l'incipit (da un'altra opera) si legge
       await finche(() => p.getByText(/was a Captain of the Luna Wolves/).count(), 8000, "la scheda non mostra la voce di Lexicanum");
       await p.getByRole("button", { name: "Leggi la voce ▸" }).click();
@@ -1538,6 +1535,33 @@ const SCENE = [
       await p.getByRole("button", { name: /◂ Garviel Loken/ }).click();
       await finche(() => p.getByText(/Isstvan III/).count(), 5000, "indietro non torna alla voce di prima");
       return { guasti: d.guasti, nota: `${chieste.length} richieste a Lexicanum, ${veli.length} veli` };
+    },
+  },
+  {
+    nome: "Wiktionary scende dalle Impostazioni, e senza rete la scheda spiega le parole in inglese con gli esempi, anche un modo di dire al passato",
+    async fai({ browser }) {
+      const d = await dispositivo(browser, { misura: TABLET });
+      const { p } = d;
+      await p.goto(URL_APP);
+      await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await p.getByRole("button", { name: /Scarica Wiktionary/ }).click();
+      await finche(() => p.getByText(/📚 Wiktionary:/).count(), 8000, "la riga del lavoro non compare");
+      await finche(() => p.getByText(/Wiktionary inglese sul dispositivo: /).count(), 120000, "Wiktionary non scende");
+      await p.keyboard.press("Escape");
+      const frase = "The captain stared with a grim face while old Vorn finally kicked the bucket on the deck.";
+      await importa(p, "Grim.epub", await epub({ titolo: "Grim", autore: "Autore di Prova", frase, lingua: "en" }), "application/epub+zip");
+      await p.getByText("Grim").first().click();
+      await p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      await definisci(p, "grim");
+      await finche(() => p.getByText("Wiktionary · sul dispositivo").count(), 8000, "la scheda non risponde da Wiktionary sul dispositivo");
+      // il senso principale per primo, con il suo esempio
+      const primo = await p.getByText(/Dismal and gloomy/).count();
+      const esempio = await p.getByText(/«Life was grim/).count();
+      if (!primo || !esempio) throw new Error("«grim» non comincia dall'aggettivo col suo esempio");
+      await p.mouse.click(450, 1450);
+      await definisci(p, "kicked the bucket");
+      await finche(() => p.getByText(/To die\./).count(), 8000, "il modo di dire al passato non si spiega alla sua forma base");
+      return { guasti: d.guasti };
     },
   },
 ];

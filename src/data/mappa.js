@@ -181,7 +181,7 @@ export const MAPPA = [
   {
     luogo: "parola",
     nome: "Definisci",
-    cosa: "Il dizionario dell'app: sensi numerati, resa italiana, modi di dire e verbi frasali. Risponde anche senza rete se hai scaricato il dizionario.",
+    cosa: "Il dizionario dell'app: sensi numerati con un esempio d'uso, resa italiana, modi di dire e verbi frasali. Risponde anche senza rete se hai scaricato i dizionari (WordNet per la resa italiana, Wiktionary per i significati inglesi).",
     dove: "Tieni premuto su una parola → «Definisci».",
     chiave: "dizionario",
   },
@@ -433,8 +433,8 @@ export const MAPPA = [
   {
     luogo: "impostazioni",
     nome: "Il dizionario sul dispositivo",
-    cosa: "Tre megabyte e mezzo da scaricare una volta: il dizionario risponde anche senza rete, con la resa italiana.",
-    dove: "Impostazioni → Dizionario.",
+    cosa: "Due dizionari da scaricare una volta: WordNet (quattro megabyte) per la resa italiana, e Wiktionary inglese (ventotto) per i significati in inglese, con esempi d'uso e parole rare e arcaiche. Poi la scheda risponde senza rete.",
+    dove: "Impostazioni → Il dizionario.",
   },
   {
     luogo: "impostazioni",

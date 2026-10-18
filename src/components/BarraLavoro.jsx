@@ -6,8 +6,9 @@ import { C, F, R, px } from "../data/constants.js";
 import { fraseLavoro, fraseImport } from "../lib/convertiCbr.js";
 import { fmtGoogle } from "../lib/bytes.js";
 import { fraseLexicanum } from "../lib/lexicanum.js";
+import { fraseWiktionary } from "../lib/wiktionaryOffline.js";
 
-export default function BarraLavoro({ lex = null, onFermaLex, hdd = null, onFermaHdd, importo = null, onFermaImport, lavoro, restanti = 0, onFerma, onRiprendi, onLascia }) {
+export default function BarraLavoro({ lex = null, onFermaLex, wikt = null, onFermaWikt, hdd = null, onFermaHdd, importo = null, onFermaImport, lavoro, restanti = 0, onFerma, onRiprendi, onLascia }) {
   const tasto = {
     minHeight: 44,
     padding: "6px 14px",
@@ -50,6 +51,16 @@ export default function BarraLavoro({ lex = null, onFermaLex, hdd = null, onFerm
             <span style={{ color: C.text }}>⚔ Lexicanum:</span> {fraseLexicanum(lex)}
           </span>
           <button onClick={onFermaLex} style={tasto}>
+            Ferma
+          </button>
+        </div>
+      )}
+      {wikt && (
+        <div role="status" style={riga}>
+          <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
+            <span style={{ color: C.text }}>📚 Wiktionary:</span> {fraseWiktionary(wikt)}
+          </span>
+          <button onClick={onFermaWikt} style={tasto}>
             Ferma
           </button>
         </div>

@@ -197,3 +197,5 @@ Dopo la milestone, sulla frontiera di lettura (`lib/frontiera.js`): «Chi è cos
 I fumetti (CBZ e CBR, manga compresi): `lib/fumetto.js` e `components/ComicReader.jsx`. Il dettaglio sta in `docs/STORIA.md`.
 
 Lexicanum sul dispositivo per i libri del 40K (`lib/lexicanum.js`, `components/VoceLore.jsx`): voci senza rete nella scheda del dizionario, paragrafi velati per fonte. Dopo, se il lettore li vuole: i nomi del 40K segnati nel testo come il glossario del Mondo Disco, l'elenco dei personaggi incontrati fin dove sei, il capitolo delle fonti («Chapter 9») per non velare quel che di questo libro hai già letto, il wiki di Fandom come seconda fonte.
+
+Wiktionary inglese sul dispositivo (`lib/wiktionaryOffline.js`, costruito dalla CI da kaikki.org): i significati in inglese, con esempi d'uso, senza rete, accanto alla resa italiana di WordNet.

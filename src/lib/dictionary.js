@@ -1,5 +1,6 @@
 import { getAux, putAux } from "./bookStore.js";
 import { sensiOffline, POS_WORDNET } from "./dizionarioOffline.js";
+import { sensiWikt } from "./wiktionaryOffline.js";
 
 const CACHE = new Map();
 const AUX_KEY = "dict_cache";
@@ -14,6 +15,11 @@ const MAX_WORDS = 600;
 let sensiLocali = sensiOffline;
 export function usaDizionarioLocale(fn) {
   sensiLocali = fn || sensiOffline;
+}
+// e Wiktionary scaricato, allo stesso modo
+let sensiWiktLocali = sensiWikt;
+export function usaWiktionaryLocale(fn) {
+  sensiWiktLocali = fn || sensiWikt;
 }
 
 // LA RESA ITALIANA, raccolta dai sensi: per categoria grammaticale,
@@ -102,6 +108,12 @@ const POS_IT = {
   "proper noun": "nome proprio",
   participle: "participio",
   article: "articolo",
+  // le categorie che Wiktionary ha e WordNet no
+  phrase: "locuzione",
+  abbreviation: "abbreviazione",
+  proverb: "proverbio",
+  particle: "particella",
+  contraction: "contrazione",
 };
 
 const rank = (pos) => {
@@ -234,7 +246,31 @@ async function seguiDerivata(entries, parola, lang) {
   }
 }
 
+// WIKTIONARY SUL DISPOSITIVO RISPONDE AL POSTO DELLA RETE, e qui, nel punto
+// da cui passano tutti: la parola, la sua forma base («plural of…»), la
+// derivata («the state of being gormless») e i modi di dire. E' la stessa
+// fonte, quindi le stesse regole valgono senza toccarle. Dove non conosce
+// la parola (i nomi propri, le voci lunghe che la riduzione lascia fuori)
+// si chiede ancora alla rete.
+const esempio = (s) => {
+  const t = String(s || "").trim();
+  return t && t.length <= 200 ? t : null;
+};
+const senzaDoppioni = (out) => out.filter((e, i, all) => all.findIndex((x) => x.text === e.text) === i);
+const sensiInOrdine = (out) => senzaDoppioni(out).sort((a, b) => a.order - b.order);
 async function fetchSenses(word, section) {
+  if (section === "en") {
+    const qui = await sensiWiktLocali(word).catch(() => []);
+    // NELL'ORDINE DI WIKTIONARY, non riordinati per categoria: la pagina
+    // mette per primo il senso principale, e ordinando i sostantivi davanti
+    // «grim» cominciava con tre sensi gergali e obsoleti da sostantivo
+    // invece che con l'aggettivo (visto nella scheda col dizionario vero)
+    if (qui.length) {
+      return senzaDoppioni(
+        qui.map(([pos, text, es]) => ({ pos: POS_IT[pos] || pos, order: rank(pos), text, ...(esempio(es) ? { es: esempio(es) } : {}), qui: true }))
+      );
+    }
+  }
   const res = await fetch(
     `https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(word)}`
   );
@@ -248,12 +284,12 @@ async function fetchSenses(word, section) {
     const pos = String(block.partOfSpeech || "").toLowerCase();
     for (const d of block.definitions || []) {
       const text = strip(d.definition);
-      if (text) out.push({ pos: POS_IT[pos] || pos, order: rank(pos), text });
+      // l'esempio d'uso, come sul dispositivo: il primo, se e' corto
+      const es = esempio(strip(d.parsedExamples?.[0]?.example || d.examples?.[0] || ""));
+      if (text) out.push({ pos: POS_IT[pos] || pos, order: rank(pos), text, ...(es ? { es } : {}) });
     }
   }
-  return out
-    .filter((e, i, all) => all.findIndex((x) => x.text === e.text) === i)
-    .sort((a, b) => a.order - b.order);
+  return sensiInOrdine(out);
 }
 
 // IL DIZIONARIO CHE STA SUL DISPOSITIVO, quando quello in rete non risponde.
@@ -550,6 +586,11 @@ function subPhrases(words) {
 // tornano marcate `missing`, e i titoli normalizzati (la maiuscola iniziale)
 // vanno riportati alla forma chiesta.
 async function esistenti(titoli) {
+  // prima Wiktionary sul dispositivo: se conosce una delle finestre, la
+  // rete non serve
+  const qui = [];
+  for (const t of titoli) if ((await sensiWiktLocali(t).catch(() => [])).length) qui.push(t);
+  if (qui.length) return qui;
   const url =
     "https://en.wiktionary.org/w/api.php?action=query&format=json&formatversion=2&origin=*&titles=" +
     encodeURIComponent(titoli.join("|"));
@@ -605,7 +646,7 @@ export async function lookupPhrase(raw, bookLang = "en", { onParziale } = {}) {
 
   // fra le voci esistenti vince la piu' lunga: «take the mickey» batte
   // «the mickey», ed e' quella che spiega davvero il passaggio
-  const scelta = vive.sort((a, b) => b.split(" ").length - a.split(" ").length)[0] || null;
+  let scelta = vive.sort((a, b) => b.split(" ").length - a.split(" ").length)[0] || null;
   let entries = [];
   if (scelta) {
     const known = CACHE.get(`${scelta}|${lang}`);
@@ -616,6 +657,22 @@ export async function lookupPhrase(raw, bookLang = "en", { onParziale } = {}) {
       } catch {
         offline = true;
       }
+    }
+  }
+  // ANCHE UN MODO DI DIRE PUO' ESSERE UNA FORMA FLESSA: Wiktionary ha la voce
+  // «kicked the bucket», e la sua unica riga e' «simple past … of kick the
+  // bucket». Si segue il rimando come sulle parole (un salto solo), e la
+  // scheda spiega il modo di dire alla sua forma base
+  const rimando = entries.length && entries.every((e) => formaDi(e.text)) ? formaDi(entries[0].text) : null;
+  if (rimando && rimando.lemma !== scelta) {
+    try {
+      const veri = (await fetchSenses(rimando.lemma, lang)).filter((e) => !formaDi(e.text));
+      if (veri.length) {
+        entries = veri;
+        scelta = rimando.lemma;
+      }
+    } catch {
+      /* resta il rimando: dice almeno quale modo di dire e' */
     }
   }
 
