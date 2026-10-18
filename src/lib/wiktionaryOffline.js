@@ -181,7 +181,7 @@ export async function scaricaWiktionary({ fetcher = fetch, deposito = DEPOSITO, 
   const cartellino = await cartellinoWikt(fetcher);
   if (!cartellino) throw new Error("il dizionario Wiktionary non si trova sul sito: riprova più tardi");
   let giro = await deposito.leggi(GIRO);
-  if (!giro || giro.versione !== cartellino.quando) giro = { versione: cartellino.quando, fatti: [], byte: 0 };
+  if (!giro || giro.versione !== cartellino.versione) giro = { versione: cartellino.versione, fatti: [], byte: 0 };
   const totale = cartellino.file.reduce((n, f) => n + (f.byte || 0), 0);
   const avanti = (extra = 0) =>
     onProgress?.({ fatti: giro.fatti.length, file: cartellino.file.length, scaricati: giro.byte + extra, totale });
@@ -191,16 +191,20 @@ export async function scaricaWiktionary({ fetcher = fetch, deposito = DEPOSITO, 
     if (fermo()) return { ...giro, fermato: true, file: cartellino.file.length };
     const res = await fetcher(`${CARTELLA}/${f.n}.json.gz`);
     if (!res.ok) throw new Error(`il dizionario non si scarica (${res.status})`);
-    const byte = await raccogli(res, (p) => avanti(p.scaricati));
+    // IL CONTO SI FA SUL PESO DICHIARATO, non sui byte che arrivano: un
+    // server che manda il `.gz` gia' aperto (`Content-Encoding`) consegna
+    // il JSON intero, quattro volte piu' grosso, e la riga diceva «26 MB di
+    // 28» dopo quattro file su ventisette (visto nel browser)
+    const byte = await raccogli(res, (p) => avanti(Math.min(p.scaricati, f.byte || 0)));
     const sacchi = JSON.parse(await apri(byte));
     await deposito.scriviMolti(Object.entries(sacchi));
-    giro = { ...giro, fatti: [...giro.fatti, f.n], byte: giro.byte + byte.length };
+    giro = { ...giro, fatti: [...giro.fatti, f.n], byte: giro.byte + (f.byte || 0) };
     await deposito.scrivi(GIRO, giro);
     avanti();
   }
   APERTI.clear();
   installato = null;
-  const meta = { voci: cartellino.voci, byte: giro.byte, versione: cartellino.quando, quando: Date.now() };
+  const meta = { voci: cartellino.voci, byte: giro.byte, versione: cartellino.versione, quando: Date.now() };
   await deposito.scrivi(META, meta);
   await deposito.togli(GIRO).catch(() => {});
   return meta;
@@ -278,6 +282,8 @@ export async function sensiWikt(parola, deposito = DEPOSITO) {
 // La riga del lavoro: quanti file e quanti mega
 export function fraseWiktionary(p) {
   if (!p) return "";
+  // prima del cartellino non si sa quante parti sono: «0 di 0» e' uno zero
+  if (!p.file) return "comincio…";
   const mb = (n) => `${(n / 1048576).toFixed(0)} MB`;
   const peso = p.totale >= 1048576 ? ` · ${mb(p.scaricati || 0)} di ${mb(p.totale)}` : "";
   return `${p.fatti} di ${p.file} parti${peso}`;

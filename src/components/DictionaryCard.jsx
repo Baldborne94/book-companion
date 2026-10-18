@@ -132,7 +132,7 @@ function Voce({ dict, titolo }) {
               «questa è la voce che sta sul dispositivo» — e dice anche se
               la rete sta ancora cercando */}
           {banda(
-            `${dict.dalDisco ? "WordNet · sul dispositivo" : `Wiktionary · ${lingua}`}${dict.cercando ? " · cerco anche in rete…" : ""}`
+            `${dict.dalDisco ? "WordNet · sul dispositivo" : entries.some((e) => e.qui) ? "Wiktionary · sul dispositivo" : `Wiktionary · ${lingua}`}${dict.cercando ? " · cerco anche in rete…" : ""}`
           )}
           <div style={{ padding: "9px 12px 11px" }}>
             {mostrate.map((e, i) => (
@@ -147,6 +147,13 @@ function Voce({ dict, titolo }) {
                       quale dei cinque sensi è «gatto» e quale «vomitare» */}
                   {e.ita?.length > 0 && (
                     <span style={{ fontSize: F.nota, color: C.accent, marginLeft: 6 }}>— {e.ita.join(", ")}</span>
+                  )}
+                  {/* l'esempio d'uso di Wiktionary: il senso in una frase
+                      vera dice piu' della definizione da sola */}
+                  {e.es && (
+                    <div style={{ marginTop: 3, fontSize: F.piccolo, color: C.muted, fontStyle: "italic", lineHeight: 1.45 }}>
+                      «{e.es}»
+                    </div>
                   )}
                   {/* «The quality or state of being gormless» non spiega
                       niente a chi non sa cosa vuol dire «gormless»: la sua

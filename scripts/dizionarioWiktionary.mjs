@@ -12,6 +12,7 @@
 // (`sensiDaKaikki`, `accoda`, `LIMITI`), dove un test le prova.
 import { createReadStream, mkdirSync, writeFileSync, readdirSync, rmSync } from "node:fs";
 import { createGunzip, gzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
 import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import { dirname, join } from "node:path";
@@ -88,12 +89,14 @@ for (const k of [...voci.keys()].sort()) {
 mkdirSync(FUORI, { recursive: true });
 for (const vecchio of readdirSync(FUORI)) if (vecchio.endsWith(".json.gz")) rmSync(join(FUORI, vecchio));
 const file = [];
+const impronta = createHash("sha1");
 let crudo = 0;
 for (const [n, sacchi] of [...perFile].sort(([a], [b]) => a.localeCompare(b))) {
   const json = JSON.stringify(sacchi);
   crudo += json.length;
   const byte = gzipSync(json, { level: 9 });
   writeFileSync(join(FUORI, `${n}.json.gz`), byte);
+  impronta.update(byte);
   file.push({ n, byte: byte.length });
 }
 
@@ -117,11 +120,13 @@ writeFileSync(
 );
 
 const totale = file.reduce((n, f) => n + f.byte, 0);
-// IL CARTELLINO LO SCRIVE CHI COSTRUISCE: la `versione` (quando) dice al
-// dispositivo se i file che ha gia' sono di questa annata
+// IL CARTELLINO LO SCRIVE CHI COSTRUISCE. La `versione` e' l'impronta dei
+// file, non l'ora: rifatto coi dati di ieri il dizionario e' identico, la
+// CI non ha niente da committare e il tablet non riscarica niente. Con
+// l'ora, ogni giro della CI avrebbe fatto ripartire da capo chi lo ha.
 writeFileSync(
   join(FUORI, "meta.json"),
-  JSON.stringify({ voci: voci.size, byte: totale, file, fonte: "Wiktionary inglese (wiktextract, kaikki.org)", quando: Date.now() })
+  JSON.stringify({ voci: voci.size, byte: totale, file, fonte: "Wiktionary inglese (wiktextract, kaikki.org)", versione: impronta.digest("hex").slice(0, 16) })
 );
 const mb = (n) => (n / 1048576).toFixed(1);
 console.log(`crudo ${mb(crudo)} MB → compresso ${mb(totale)} MB in ${file.length} file`);

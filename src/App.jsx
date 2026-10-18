@@ -596,7 +596,7 @@ function MisuraPicker({ current, onPick, consigliata }) {
   );
 }
 
-function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex }) {
+function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex, wikt, onWikt, onFermaWikt }) {
   return (
     <div
       onClick={onClose}
@@ -725,7 +725,7 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
           >
             Il dizionario
           </h3>
-          <SezioneDizionario />
+          <SezioneDizionario wikt={wikt} onScaricaWikt={onWikt} onFermaWikt={onFermaWikt} />
         </div>
 
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
@@ -1273,6 +1273,38 @@ export default function App() {
     filoLex.current = null;
   };
 
+  // WIKTIONARY SUL DISPOSITIVO scende allo stesso modo: qualche decina di
+  // mega in una trentina di file, che sul tablet sono minuti — un lavoro
+  // lungo, visibile da ogni sezione, che si riprende dal file dopo.
+  const [wikt, setWikt] = useState(null);
+  const filoWikt = useRef(null);
+  async function scaricaWikt() {
+    if (filoWikt.current) return;
+    const mio = {};
+    filoWikt.current = mio;
+    setWikt({ fatti: 0, file: 0, scaricati: 0, totale: 0 });
+    try {
+      const { scaricaWiktionary } = await import("./lib/wiktionaryOffline.js");
+      const esito = await scaricaWiktionary({
+        fermo: () => filoWikt.current !== mio,
+        onProgress: (p) => filoWikt.current === mio && setWikt(p),
+      });
+      notify(
+        esito.fermato
+          ? "Wiktionary fermato a metà: si riprende dalle Impostazioni, dal punto dove era arrivato."
+          : `📚 Wiktionary inglese sul dispositivo: ${esito.voci.toLocaleString("it-IT")} voci ✓`
+      );
+    } catch (e) {
+      notify(`${e?.message || "Wiktionary non è sceso."} Quel che è già qui resta: si riprende dalle Impostazioni.`);
+    } finally {
+      if (filoWikt.current === mio) filoWikt.current = null;
+      setWikt(null);
+    }
+  }
+  const fermaWikt = () => {
+    filoWikt.current = null;
+  };
+
   // I CBR CHE STANNO SOLO SUL DISCO (segnalato dal lettore: «ci sono file
   // CBR che non mi fa mettere in CBZ»): non sono qui, e il
   // giro di sopra non aveva niente da leggere. Si convertono sul disco
@@ -1810,10 +1842,12 @@ export default function App() {
         )}
       </main>
       </div>
-      {(lavoro || importo || hdd || lex || restanti.length > 0) && (
+      {(lavoro || importo || hdd || lex || wikt || restanti.length > 0) && (
         <BarraLavoro
           lex={lex}
           onFermaLex={fermaLex}
+          wikt={wikt}
+          onFermaWikt={fermaWikt}
           hdd={hdd}
           onFermaHdd={() => {
             filoHdd.current = null;
@@ -1860,6 +1894,9 @@ export default function App() {
           lex={lex}
           onLex={scaricaLex}
           onFermaLex={fermaLex}
+          wikt={wikt}
+          onWikt={scaricaWikt}
+          onFermaWikt={fermaWikt}
         />
       )}
       {/* le stanze di rado arrivano da un pacchetto loro: finche' non c'e',
