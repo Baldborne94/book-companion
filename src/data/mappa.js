@@ -204,6 +204,12 @@ export const MAPPA = [
     dove: "I termini segnati nel testo, e «📖 Tieni nel glossario» nella scheda del dizionario.",
     chiave: "terms",
   },
+  {
+    luogo: "parola",
+    nome: "Lexicanum",
+    cosa: "Nei libri del 40K la scheda del dizionario mostra la voce di Lexicanum su un nome, una legione o un pianeta, senza rete, coi link alle altre voci. I paragrafi che vengono da un volume della saga che non hai ancora letto restano velati finché non li tocchi.",
+    dove: "Tieni premuto su un nome → «Definisci» → «Leggi la voce». Si scarica da Impostazioni → Lexicanum.",
+  },
 
   // ---- NELLA SCHEDA DI UN LIBRO ------------------------------------------
   {
@@ -429,6 +435,12 @@ export const MAPPA = [
     nome: "Il dizionario sul dispositivo",
     cosa: "Tre megabyte e mezzo da scaricare una volta: il dizionario risponde anche senza rete, con la resa italiana.",
     dove: "Impostazioni → Dizionario.",
+  },
+  {
+    luogo: "impostazioni",
+    nome: "Lexicanum sul dispositivo",
+    cosa: "Il wiki del 40K da scaricare una volta, con calma: si ferma e si riprende. Poi le voci rispondono nella scheda del dizionario, senza rete.",
+    dove: "Impostazioni → Lexicanum; acceso o spento libro per libro nella scheda del libro.",
   },
   {
     luogo: "impostazioni",

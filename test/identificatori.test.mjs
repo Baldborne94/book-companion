@@ -30,7 +30,7 @@ const acorn = require("acorn");
 const AMBIENTE = new Set([
   ...Object.getOwnPropertyNames(globalThis),
   "window", "document", "navigator", "location", "history", "screen",
-  "localStorage", "sessionStorage", "indexedDB", "caches", "crypto",
+  "localStorage", "sessionStorage", "indexedDB", "IDBKeyRange", "caches", "crypto",
   "fetch", "Request", "Response", "Headers", "FormData", "Blob", "File",
   "FileReader", "URL", "URLSearchParams", "AbortController", "Image",
   "Audio", "Event", "CustomEvent", "MutationObserver", "ResizeObserver",

@@ -195,3 +195,5 @@ Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E �
 Dopo la milestone, sulla frontiera di lettura (`lib/frontiera.js`): «Chi è costui?» in tutti e due i reader e «Dove eravamo rimasti» (`lib/trama.js`), scheda condivisa in `components/SchedaOracolo.jsx` con dentro il campo per la chiave. Il dettaglio sta in `docs/STORIA.md`.
 
 I fumetti (CBZ e CBR, manga compresi): `lib/fumetto.js` e `components/ComicReader.jsx`. Il dettaglio sta in `docs/STORIA.md`.
+
+Lexicanum sul dispositivo per i libri del 40K (`lib/lexicanum.js`, `components/VoceLore.jsx`): voci senza rete nella scheda del dizionario, paragrafi velati per fonte. Dopo, se il lettore li vuole: i nomi del 40K segnati nel testo come il glossario del Mondo Disco, l'elenco dei personaggi incontrati fin dove sei, il capitolo delle fonti («Chapter 9») per non velare quel che di questo libro hai già letto, il wiki di Fandom come seconda fonte.

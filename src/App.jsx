@@ -23,6 +23,7 @@ import Scrolls from "./components/Scrolls.jsx";
 import { CandleIcon, BooksIcon, MusicIcon, LeafIcon, ScrollIcon, CloudIcon } from "./components/Icons.jsx";
 import { SezioneOracolo } from "./components/TettoOracolo.jsx";
 import SezioneDizionario from "./components/SezioneDizionario.jsx";
+import SezioneLexicanum from "./components/SezioneLexicanum.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
 import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, timbraScheda, getProgress } from "./lib/library.js";
@@ -595,7 +596,7 @@ function MisuraPicker({ current, onPick, consigliata }) {
   );
 }
 
-function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa }) {
+function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex }) {
   return (
     <div
       onClick={onClose}
@@ -725,6 +726,21 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
             Il dizionario
           </h3>
           <SezioneDizionario />
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            Lexicanum
+          </h3>
+          <SezioneLexicanum lavoro={lex} onScarica={onLex} onFerma={onFermaLex} />
         </div>
 
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
@@ -1220,6 +1236,41 @@ export default function App() {
   }
   const fermaLavoro = () => {
     filoLavoro.current = null;
+  };
+
+  // LEXICANUM SCENDE QUI, come gli altri lavori lunghi: dalle Impostazioni
+  // si chiede, da ogni sezione si vede e si ferma (`BarraLavoro`). Dove era
+  // arrivato lo ricorda il modulo (`lex_giro`), quindi un'app chiusa a meta'
+  // riprende dalla pagina dopo. E' solo rete: puo' scendere mentre un altro
+  // lavoro gira.
+  const [lex, setLex] = useState(null);
+  const filoLex = useRef(null);
+  async function scaricaLex({ aggiorna = false } = {}) {
+    if (filoLex.current) return;
+    const mio = {};
+    filoLex.current = mio;
+    setLex({ voci: 0, totale: null, byte: 0 });
+    try {
+      const { scaricaLexicanum, fraseLexicanum } = await import("./lib/lexicanum.js");
+      const esito = await scaricaLexicanum({
+        aggiorna,
+        fermo: () => filoLex.current !== mio,
+        onProgress: (p) => filoLex.current === mio && setLex(p),
+      });
+      notify(
+        esito.fermato
+          ? `Lexicanum fermato a ${fraseLexicanum(esito)}: si riprende dalle Impostazioni.`
+          : `⚔ Lexicanum sul dispositivo: ${fraseLexicanum(esito)} ✓`
+      );
+    } catch (e) {
+      notify(`${e?.message || "Lexicanum non è sceso."} Quel che è già qui resta: si riprende dalle Impostazioni.`);
+    } finally {
+      if (filoLex.current === mio) filoLex.current = null;
+      setLex(null);
+    }
+  }
+  const fermaLex = () => {
+    filoLex.current = null;
   };
 
   // I CBR CHE STANNO SOLO SUL DISCO (segnalato dal lettore: «ci sono file
@@ -1759,8 +1810,10 @@ export default function App() {
         )}
       </main>
       </div>
-      {(lavoro || importo || hdd || restanti.length > 0) && (
+      {(lavoro || importo || hdd || lex || restanti.length > 0) && (
         <BarraLavoro
+          lex={lex}
+          onFermaLex={fermaLex}
           hdd={hdd}
           onFermaHdd={() => {
             filoHdd.current = null;
@@ -1804,6 +1857,9 @@ export default function App() {
           consigliata={risolviScala(AUTO)}
           onSync={() => { setThemeOpen(false); setSyncOpen(true); }}
           onMappa={() => setMappaOpen(true)}
+          lex={lex}
+          onLex={scaricaLex}
+          onFermaLex={fermaLex}
         />
       )}
       {/* le stanze di rado arrivano da un pacchetto loro: finche' non c'e',

@@ -19,6 +19,7 @@ import { recupera, senzaEtichetta } from "../lib/sinossi.js";
 import { preparaCopertina, copertinaOriginale } from "../lib/copertina.js";
 import { caricaCopertina } from "../lib/sync.js";
 import { chiaveGlossario, vociDi, salvaVoci, togli } from "../lib/glossarioMio.js";
+import { statoLexicanum, del40k, loreAMano, scriviLoreAMano } from "../lib/lexicanum.js";
 import { getCfi } from "../lib/annotations.js";
 import { frontiera } from "../lib/frontiera.js";
 import { soloDellaSerie, perchePrimaTace, fraseTace } from "../lib/trama.js";
@@ -296,6 +297,29 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   function togliVoce(t) {
     salvaVoci(chiaveMia, togli(mieVoci, t));
     setGlossV((v) => v + 1);
+  }
+
+  // LEXICANUM PER QUESTO LIBRO. Si accende da se' sui libri che la saga, la
+  // serie o il titolo dicono del 40K; qui si corregge a mano dove la regola
+  // sbaglia (un 40K con la saga vuota, o il contrario). Solo se Lexicanum e'
+  // sceso: un interruttore che non accende niente promette il falso.
+  const [lexQui, setLexQui] = useState(false);
+  const [loreMano, setLoreMano] = useState(() => loreAMano(book.id));
+  useEffect(() => {
+    let vivo = true;
+    statoLexicanum().then((s) => vivo && setLexQui(!!s));
+    return () => {
+      vivo = false;
+    };
+  }, []);
+  const loreDaSe = del40k({ ...book, saga });
+  const loreAcceso = loreMano ?? loreDaSe;
+  function cambiaLore() {
+    // tornare a quel che direbbe la regola cancella la scelta: cosi' una
+    // saga sistemata dopo torna a decidere da sola
+    const nuovo = !loreAcceso === loreDaSe ? null : !loreAcceso;
+    scriviLoreAMano(book.id, nuovo);
+    setLoreMano(nuovo);
   }
 
   const pct = Math.round(getProgress(book.id) * 100);
@@ -935,6 +959,29 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
               </div>
             )}
           </div>
+        )}
+
+        {lexQui && (
+          <button
+            onClick={cambiaLore}
+            aria-pressed={loreAcceso}
+            style={{
+              width: "100%",
+              textAlign: "left",
+              marginBottom: 14,
+              padding: "10px 14px",
+              minHeight: 44,
+              borderRadius: R.piccolo,
+              border: `1px solid ${loreAcceso ? `${C.arcane}55` : C.border}`,
+              color: loreAcceso ? C.text : C.muted,
+              fontSize: F.nota,
+            }}
+          >
+            ⚔ Lexicanum nella scheda del dizionario: {loreAcceso ? "acceso" : "spento"}
+            <span style={{ float: "right", color: C.muted, fontSize: F.minuscolo }}>
+              {loreMano == null ? (loreDaSe ? "dalla saga" : "") : "scelto da te"}
+            </span>
+          </button>
         )}
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
