@@ -201,7 +201,7 @@ export function termineIn(text, offset, ix) {
 // ha `caretRangeFromPoint`, Gecko — che e' il browser del lettore — solo
 // `caretPositionFromPoint`, e vanno servite tutt'e due. Fuori da un nodo di
 // testo non c'e' una parola.
-export function termAt(doc, x, y, ix) {
+export function caretAt(doc, x, y) {
   let node = null;
   let offset = 0;
   if (doc.caretRangeFromPoint) {
@@ -218,7 +218,13 @@ export function termAt(doc, x, y, ix) {
     }
   }
   if (!node || node.nodeType !== 3) return null;
-  return termineIn(node.nodeValue, offset, ix);
+  return { node, offset };
+}
+
+// e serve a due: al glossario qui sotto e ai nomi di Lexicanum nel reader
+export function termAt(doc, x, y, ix) {
+  const c = caretAt(doc, x, y);
+  return c ? termineIn(c.node.nodeValue, c.offset, ix) : null;
 }
 
 const SAGA_HINTS = ["discworld", "disc world", "mondo disco", "mondo dei dischi"];

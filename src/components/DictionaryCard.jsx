@@ -7,10 +7,10 @@ import { rigaUltima, rigaMese, riassunto, costo, leggiTetto } from "../lib/spesa
 import { TettoFinito } from "./TettoOracolo.jsx";
 import { daAnnotare, fraseAttorno, annota, togliParola, leggiQuaderno, scriviQuaderno } from "../lib/quaderno.js";
 import { chiaveGlossario, vociDi, salvaVoci, aggiungi, togli, cerca } from "../lib/glossarioMio.js";
-import { cercaLore, loreAttivo, statoLexicanum, giudiceFonti, velaVoce } from "../lib/lexicanum.js";
+import { cercaLore, loreAttivo, statoLexicanum, giudiceFonti, velaVoce, avvisoVoce, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
 import { loadBooks, getStatus } from "../lib/library.js";
 import { getCfi } from "../lib/annotations.js";
-import VoceLore, { Testo, Velo } from "./VoceLore.jsx";
+import VoceLore, { Testo, Velo, AvvisoFandom } from "./VoceLore.jsx";
 
 // La scheda del dizionario e' identica nei due reader: qui una volta sola,
 // cosi' EPUB e PDF non divergono. Risponde con quello che il tablet non puo'
@@ -275,6 +275,11 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
   const [lore, setLore] = useState(null);
   const [loreAperta, setLoreAperta] = useState(false);
   const [incipitAperto, setIncipitAperto] = useState(false);
+  // FANDOM, la seconda scheda: stessa ricerca, il suo deposito, e quale delle
+  // due si sta guardando (`null` = Lexicanum se c'e', se no Fandom)
+  const [fanQui, setFanQui] = useState(undefined);
+  const [fan, setFan] = useState(null);
+  const [scheda, setScheda] = useState(null);
   // la scheda resta montata tra una selezione e l'altra: la risposta della
   // frase di prima non deve comparire sotto la frase nuova
   const tagRef = useRef();
@@ -286,6 +291,7 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
     if (glossOpen) setGlossOpen(false);
     if (loreAperta) setLoreAperta(false);
     if (incipitAperto) setIncipitAperto(false);
+    if (scheda) setScheda(null);
   }
   const dict = extra && extra.tag === tag ? { ...dictProp, ...extra.res, loading: false, cercando: false } : dictProp;
 
@@ -293,6 +299,7 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
     let vivo = true;
     statoDizionario().then((s) => vivo && setInstallato(s));
     statoLexicanum().then((s) => vivo && setLexQui(s));
+    statoLexicanum(undefined, FANDOM).then((s) => vivo && setFanQui(s));
     cartellinoInRete().then((c) => vivo && setCartellino(c));
     return () => {
       vivo = false;
@@ -303,6 +310,7 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
   // nell'ePub e nel PDF, e sta sul dispositivo — risponde in un attimo e
   // senza rete. Solo nei libri del 40K (`loreAttivo`).
   const loreQui = !!lexQui && loreAttivo(book);
+  const fandomQui = !!fanQui && loreAttivo(book);
   const testoSel = dictProp ? dictProp.raw?.trim() || dictProp.word || "" : "";
   useEffect(() => {
     if (!loreQui || !testoSel) return;
@@ -315,13 +323,31 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
       vivo = false;
     };
   }, [loreQui, tag]);
-  const voceLore = lore && lore.tag === tag ? lore.voce : null;
+  useEffect(() => {
+    if (!fandomQui || !testoSel) return;
+    let vivo = true;
+    const mio = tag;
+    cercaLore(testoSel, undefined, FANDOM)
+      .catch(() => null)
+      .then((v) => vivo && setFan({ tag: mio, voce: v }));
+    return () => {
+      vivo = false;
+    };
+  }, [fandomQui, tag]);
+  const voceLex = lore && lore.tag === tag ? lore.voce : null;
+  const voceFan = fan && fan.tag === tag ? fan.voce : null;
+  const wikiScelto = (scheda === "fan" && voceFan) || (!voceLex && voceFan) ? FANDOM : LEXICANUM;
+  const voceLore = wikiScelto === FANDOM ? voceFan : voceLex;
+  const cercaWiki = (loreQui && lore?.tag !== tag) || (fandomQui && fan?.tag !== tag);
   const giudice = useMemo(
     () => (voceLore ? giudiceFonti(book, loadBooks(), { statusOf: getStatus, cfiOf: getCfi }) : null),
     [voceLore, book]
   );
   // l'incipit: il primo paragrafo, velato se cita un volume non ancora letto
   const incipit = voceLore && giudice ? velaVoce(voceLore, giudice).find((b) => b.x) : null;
+  // su Fandom il velo e' la voce intera: l'avviso sta davanti all'incipit
+  const avvisoFan = wikiScelto === FANDOM && voceLore && giudice ? avvisoVoce(voceLore, giudice) : null;
+  const fanChiusa = !!avvisoFan && (avvisoFan.motivi.length > 0 || avvisoFan.senzaFonti) && !incipitAperto;
 
   // IL QUADERNO DELLE PAROLE si scrive da se', a risposta completa: la
   // ricerca e' gia' il gesto che dice «questa non la sapevo». Una volta per
@@ -469,7 +495,14 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
         }}
       >
         {loreAperta && voceLore ? (
-          <VoceLore voce={voceLore} giudice={giudice} onChiudi={() => setLoreAperta(false)} />
+          <VoceLore
+            key={wikiScelto.id}
+            voce={voceLore}
+            giudice={giudice}
+            wiki={wikiScelto}
+            aperta={incipitAperto}
+            onChiudi={() => setLoreAperta(false)}
+          />
         ) : (
         <>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
@@ -551,7 +584,38 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
               background: `${C.surface}55`,
             }}
           >
-            {banda("Lexicanum · sul dispositivo")}
+            {banda(`${wikiScelto.nome} · sul dispositivo`)}
+            {/* le due schede, quando la voce c'e' in tutti e due i wiki */}
+            {voceLex && voceFan && (
+              <div role="tablist" style={{ display: "flex", gap: 6, padding: "8px 12px 0" }}>
+                {[
+                  [LEXICANUM, "lex"],
+                  [FANDOM, "fan"],
+                ].map(([w, id]) => (
+                  <button
+                    key={id}
+                    role="tab"
+                    aria-selected={wikiScelto === w}
+                    onClick={() => {
+                      setScheda(id);
+                      setIncipitAperto(false);
+                    }}
+                    style={{
+                      minHeight: 36,
+                      padding: "4px 12px",
+                      borderRadius: R.tondo,
+                      fontSize: F.piccolo,
+                      border: `1px solid ${wikiScelto === w ? `${C.arcane}88` : C.border}`,
+                      color: wikiScelto === w ? C.arcane : C.muted,
+                      background: wikiScelto === w ? `${C.arcane}14` : "transparent",
+                    }}
+                  >
+                    {w.nome}
+                    {w === FANDOM ? " ⚠" : ""}
+                  </button>
+                ))}
+              </div>
+            )}
             <div style={{ padding: "9px 12px 11px" }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
                 <span style={{ fontSize: F.corpo, fontWeight: 600, color: C.text }}>{voceLore.t}</span>
@@ -559,7 +623,9 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
                   <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>da «{voceLore.via}»</span>
                 )}
               </div>
-              {incipit?.v && !incipitAperto ? (
+              {fanChiusa ? (
+                <AvvisoFandom avviso={avvisoFan} corto onApri={() => setIncipitAperto(true)} />
+              ) : incipit?.v && !incipitAperto ? (
                 <Velo perche={incipit.v} onApri={() => setIncipitAperto(true)} />
               ) : incipit ? (
                 <p style={{ fontSize: F.nota, color: C.text, lineHeight: 1.5, margin: "0 0 8px" }}>
@@ -603,7 +669,7 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
 
         {/* il dizionario manca e la parola e' inglese: qui si vede la
             mancanza, e qui si offre il rimedio */}
-        {installato === null && !dict.loading && (dict.lang || "en") === "en" && !!dict.word && (
+        {installato === null && !dict.loading && !dict.soloLore && (dict.lang || "en") === "en" && !!dict.word && (
           <ScaricaQui cartellino={cartellino} onFatto={riletta} />
         )}
 
@@ -691,9 +757,11 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
           </a>
         )}
 
-        {dict.loading ? (
+        {dict.loading || (dict.soloLore && !local && cercaWiki) ? (
           <p style={{ color: C.muted, fontSize: F.nota }}>Cerco…</p>
-        ) : local ? null : (
+        ) : local ? null : dict.soloLore ? (
+          <p style={{ color: C.muted, fontSize: F.nota, lineHeight: 1.5 }}>«{dict.word}» non ha una voce nei wiki scaricati.</p>
+        ) : (
           // il glossario che tace non chiude la scheda: resta l'Oracolo, e
           // per la definizione nuda c'e' il dizionario del tablet
           <p style={{ color: C.muted, fontSize: F.nota, lineHeight: 1.5 }}>

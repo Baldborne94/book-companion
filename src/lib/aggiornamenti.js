@@ -22,6 +22,15 @@ export function cercaInSilenzio(reg) {
     .then(() => true, () => false);
 }
 
+// QUANDO SI AGGIORNA DA SOLA: in secondo piano, con la versione nuova pronta,
+// mai a libro aperto e mai sotto un lavoro lungo (segnalato dal lettore:
+// «ogni tot lo scaricamento del Lexicanum si ferma» — ogni passaggio in
+// secondo piano fuori dal libro ricaricava la pagina, e il giro restava a
+// meta').
+export function siAggiornaNascosta({ nascosta, pronta, leggendo, lavoroLungo }) {
+  return nascosta && pronta && !leggendo && !lavoroLungo;
+}
+
 export async function cercaNuovaVersione(reg, { attesa = 8000, passo = 250, dormi } = {}) {
   if (!reg || typeof reg.update !== "function") return "niente-sw";
   // già in attesa da un giro precedente (la ronda, un altro tab): c'è

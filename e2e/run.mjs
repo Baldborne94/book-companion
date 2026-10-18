@@ -16,7 +16,7 @@ import { build, preview } from "vite";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
 import { fumetto, fumettoGrosso, fumettoLungo, epub, pdf, wav, FRASE, mondoDisco, png } from "./libri.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
-import { lexicanumFinto } from "./lexicanumFinto.mjs";
+import { lexicanumFinto, fandomFinto } from "./lexicanumFinto.mjs";
 
 // le richieste del service worker passano dalle rotte del contesto solo
 // cosi' (Chromium): servono alla scena della melodia che suona mentre scende
@@ -74,7 +74,7 @@ async function lanciaBrowser() {
 // o da Google (la prima volta in CI il catalogo vero ha dato a «Racconti» la
 // saga di Moravia, e la scena cadeva per una ragione che qui non c'era). Chi
 // vuole il catalogo se lo porta: `catalogo(url)` risponde al posto suo.
-async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, oracolo = null, misura = null, lexicanum = null } = {}) {
+async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, oracolo = null, misura = null, lexicanum = null, fandom = null } = {}) {
   const ctx = await browser.newContext(misura || { viewport: { width: 1280, height: 800 } });
   await ctx.route(
     (url) => !/^(localhost|127\.0\.0\.1)$/.test(url.hostname),
@@ -82,6 +82,7 @@ async function dispositivo(browser, { sessione = false, prima = null, catalogo =
       const url = route.request().url();
       if (oracolo && /api\.anthropic\.com/.test(url)) return route.fulfill({ json: await oracolo(JSON.parse(route.request().postData() || "{}")) });
       if (lexicanum && /wh40k\.lexicanum\.com/.test(url)) return lexicanum(route);
+      if (fandom && /warhammer40k\.fandom\.com/.test(url)) return fandom(route);
       if (catalogo && /openlibrary\.org/.test(url)) {
         const json = await catalogo(url);
         if (json) return route.fulfill({ json });
@@ -1496,7 +1497,7 @@ const SCENE = [
     },
   },
   {
-    nome: "Lexicanum scende dalle Impostazioni, e nella scheda del dizionario la voce vela quel che viene da un volume dopo",
+    nome: "Lexicanum scende dalle Impostazioni, i nomi si segnano nel testo, e nella scheda del dizionario la voce vela quel che viene da un volume dopo",
     async fai({ browser }) {
       const chieste = [];
       const d = await dispositivo(browser, { misura: TABLET, lexicanum: lexicanumFinto(chieste) });
@@ -1514,8 +1515,10 @@ const SCENE = [
       await importa(p, "Horus Rising.epub", await epub({ titolo: "Horus Rising", autore: "Dan Abnett", frase, lingua: "en" }), "application/epub+zip");
       await p.getByText("Horus Rising").first().click();
       // l'interruttore del libro: acceso dalla saga riconosciuta
-      await finche(() => p.getByRole("button", { name: /Lexicanum nella scheda del dizionario: acceso/ }).count(), 8000, "la scheda del libro non dice che Lexicanum e' acceso");
+      await finche(() => p.getByRole("button", { name: /I wiki del 40K nella scheda del dizionario: accesi/ }).count(), 8000, "la scheda del libro non dice che i wiki sono accesi");
       await p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      // i nomi del 40K segnati nel testo, come i termini del glossario
+      await finche(() => p.locator('[data-bc-lore="Garviel Loken"]').count(), 15000, "«Garviel Loken» non e' segnato nel testo");
       await definisci(p, "Loken");
       // il rinvio «Loken» porta alla voce, e l'incipit (da un'altra opera) si legge
       await finche(() => p.getByText(/was a Captain of the Luna Wolves/).count(), 8000, "la scheda non mostra la voce di Lexicanum");
@@ -1535,6 +1538,39 @@ const SCENE = [
       await p.getByRole("button", { name: /◂ Garviel Loken/ }).click();
       await finche(() => p.getByText(/Isstvan III/).count(), 5000, "indietro non torna alla voce di prima");
       return { guasti: d.guasti, nota: `${chieste.length} richieste a Lexicanum, ${veli.length} veli` };
+    },
+  },
+  {
+    nome: "Lexicanum interrotto da un ricaricamento riparte da solo da dove era arrivato, e quello fermato dal lettore resta fermo",
+    async fai({ browser }) {
+      const chieste = [];
+      // l'ultima pagina tarda: il ricaricamento la coglie a meta'
+      const d = await dispositivo(browser, { misura: TABLET, lexicanum: lexicanumFinto(chieste, { attesa: (i) => (i === 2 ? 4000 : 600) }) });
+      const { p } = d;
+      const pagine = () => chieste.filter((u) => u.includes("generator=allpages"));
+      const allaSeconda = () => pagine().some((u) => u.includes("gapcontinue=1"));
+      await p.goto(URL_APP);
+      await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await p.getByRole("button", { name: "⚔ Scarica Lexicanum" }).click();
+      await finche(allaSeconda, 8000, "la seconda pagina non viene chiesta");
+      // fermato a mano: dopo un ricaricamento non riparte
+      // il Ferma delle Impostazioni: quello della riga del lavoro sta sotto il pannello
+      await p.getByText("⚔ Lexicanum sta scendendo").locator("..").getByRole("button", { name: "Ferma" }).click({ timeout: 8000 });
+      await finche(() => p.getByText(/Lexicanum fermato a/).count(), 8000, "il lavoro non si ferma");
+      const ferme = pagine().length;
+      await p.reload();
+      await aspetta(7000);
+      if (pagine().length !== ferme) throw new Error("lo scaricamento fermato dal lettore e' ripartito da solo");
+      // ripreso a mano e interrotto da un ricaricamento: riparte da solo
+      await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await p.getByRole("button", { name: "⚔ Riprendi lo scaricamento" }).click({ timeout: 8000 });
+      await finche(() => pagine().length > ferme, 8000, "la ripresa a mano non chiede pagine");
+      await p.reload();
+      await finche(() => p.getByText(/⚔ Lexicanum:/).count(), 10000, "dopo il ricaricamento lo scaricamento non riparte");
+      await finche(() => p.getByText(/Lexicanum sul dispositivo: /).count(), 20000, "lo scaricamento ripreso non finisce");
+      const daCapo = pagine().filter((u) => !u.includes("gapcontinue")).length;
+      if (daCapo !== 1) throw new Error(`la prima pagina chiesta ${daCapo} volte: e' ripartito da capo invece che da dove era arrivato`);
+      return { guasti: d.guasti, nota: `${pagine().length} pagine chieste, la prima una volta sola` };
     },
   },
   {
@@ -1561,6 +1597,37 @@ const SCENE = [
       await p.mouse.click(450, 1450);
       await definisci(p, "kicked the bucket");
       await finche(() => p.getByText(/To die\./).count(), 8000, "il modo di dire al passato non si spiega alla sua forma base");
+      return { guasti: d.guasti };
+    },
+  },
+  {
+    nome: "Fandom scende accanto a Lexicanum, e nella scheda la sua voce si legge dietro l'avviso coi libri che vengono dopo",
+    async fai({ browser }) {
+      const d = await dispositivo(browser, { misura: TABLET, lexicanum: lexicanumFinto([]), fandom: fandomFinto([]) });
+      const { p } = d;
+      await p.goto(URL_APP);
+      await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await p.getByRole("button", { name: "⚔ Scarica Lexicanum" }).click();
+      await p.getByRole("button", { name: "📜 Scarica Fandom" }).click();
+      await finche(() => p.getByText(/📜 Fandom sul dispositivo: /).count(), 20000, "Fandom non scende");
+      await finche(() => p.getByText(/⚔ Lexicanum sul dispositivo: /).count(), 20000, "Lexicanum non scende");
+      await p.keyboard.press("Escape");
+      const frase = "I was there, the day that Horus slew the Emperor. Garviel Loken watched the Warmaster from the deck.";
+      await importa(p, "Horus Rising.epub", await epub({ titolo: "Horus Rising", autore: "Dan Abnett", frase, lingua: "en" }), "application/epub+zip");
+      await p.getByText("Horus Rising").first().click();
+      await p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      await definisci(p, "Loken");
+      // le due schede; la prima e' Lexicanum
+      await finche(() => p.getByRole("tab", { name: /Fandom/ }).count(), 8000, "la scheda di Fandom non compare");
+      await p.getByRole("tab", { name: /Fandom/ }).click();
+      const avviso = await finche(async () => (await p.getByText(/Questa voce può spoilerare/).count()) && p.getByText(/Questa voce può spoilerare/).first().locator("..").textContent(), 5000, "l'avviso di Fandom non compare");
+      if (!/False Gods/.test(avviso) || /left for dead/.test(await p.locator("body").textContent())) throw new Error(`avviso sbagliato o testo gia' in vista: ${avviso}`);
+      await p.getByText(/Questa voce può spoilerare/).first().click();
+      await finche(() => p.getByText(/originally the Captain/).count(), 5000, "toccato l'avviso, l'incipit non compare");
+      // la voce intera si apre gia' letta: l'avviso si accetta una volta
+      await p.getByRole("button", { name: "Leggi la voce ▸" }).click();
+      await finche(() => p.getByText(/left for dead/).count(), 5000, "la voce intera di Fandom non si apre");
+      await finche(() => p.getByText("Fandom · sul dispositivo").count(), 5000, "la voce non dice da quale wiki viene");
       return { guasti: d.guasti };
     },
   },

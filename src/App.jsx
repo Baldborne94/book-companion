@@ -28,7 +28,7 @@ import SezioneLexicanum from "./components/SezioneLexicanum.jsx";
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
 import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, timbraScheda, getProgress } from "./lib/library.js";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux } from "./lib/bookStore.js";
-import { cercaNuovaVersione, cercaInSilenzio } from "./lib/aggiornamenti.js";
+import { cercaNuovaVersione, cercaInSilenzio, siAggiornaNascosta } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
 import Home from "./components/Home.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
@@ -596,7 +596,7 @@ function MisuraPicker({ current, onPick, consigliata }) {
   );
 }
 
-function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex, wikt, onWikt, onFermaWikt }) {
+function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex, fan, onFan, onFermaFan, wikt, onWikt, onFermaWikt }) {
   return (
     <div
       onClick={onClose}
@@ -738,9 +738,16 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
               marginBottom: 8,
             }}
           >
-            Lexicanum
+            I wiki del 40K
           </h3>
-          <SezioneLexicanum lavoro={lex} onScarica={onLex} onFerma={onFermaLex} />
+          <SezioneLexicanum
+            lavoro={lex}
+            onScarica={onLex}
+            onFerma={onFermaLex}
+            lavoroFan={fan}
+            onScaricaFan={onFan}
+            onFermaFan={onFermaFan}
+          />
         </div>
 
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
@@ -931,7 +938,7 @@ export default function App() {
   const svegliaRef = useRef(() => {});
   const swUpdate = useRef(null);
   const [updateReady, setUpdateReady] = useState(false);
-  const flags = useRef({ reading: false, updateReady: false });
+  const flags = useRef({ reading: false, updateReady: false, lavoroLungo: false });
   const swReg = useRef(null);
 
   useEffect(() => {
@@ -969,11 +976,8 @@ export default function App() {
       /* service worker non disponibile (dev / browser antico): l'app funziona uguale */
     }
     const onVis = () => {
-      if (
-        document.visibilityState === "hidden" &&
-        flags.current.updateReady &&
-        !flags.current.reading
-      ) {
+      const f = flags.current;
+      if (siAggiornaNascosta({ nascosta: document.visibilityState === "hidden", pronta: f.updateReady, leggendo: f.reading, lavoroLungo: f.lavoroLungo })) {
         swUpdate.current?.(true);
       }
     };
@@ -1243,35 +1247,78 @@ export default function App() {
   // arrivato lo ricorda il modulo (`lex_giro`), quindi un'app chiusa a meta'
   // riprende dalla pagina dopo. E' solo rete: puo' scendere mentre un altro
   // lavoro gira.
+  // E FANDOM ALLO STESSO MODO, con la sua riga: sono due wiki, due host,
+  // due lavori che possono scendere insieme.
   const [lex, setLex] = useState(null);
+  const [fan, setFan] = useState(null);
   const filoLex = useRef(null);
-  async function scaricaLex({ aggiorna = false } = {}) {
-    if (filoLex.current) return;
+  const filoFan = useRef(null);
+  // un wiki che ha risposto con un guasto vero non si riprova da solo a ogni
+  // ritorno davanti: l'avviso si e' gia' visto, si riprende a mano
+  const wikiGuasti = useRef(new Set());
+  async function scaricaWikiQui(quale, { aggiorna = false, daSolo = false } = {}) {
+    const filo = quale === "fan" ? filoFan : filoLex;
+    const metti = quale === "fan" ? setFan : setLex;
+    if (filo.current) return;
     const mio = {};
-    filoLex.current = mio;
-    setLex({ voci: 0, totale: null, byte: 0 });
+    filo.current = mio;
+    metti({ voci: 0, totale: null, byte: 0 });
+    const nome = quale === "fan" ? "Fandom" : "Lexicanum";
     try {
-      const { scaricaLexicanum, fraseLexicanum } = await import("./lib/lexicanum.js");
+      const { scaricaLexicanum, fraseLexicanum, segnaFermato, LEXICANUM, FANDOM } = await import("./lib/lexicanum.js");
+      const wiki = quale === "fan" ? FANDOM : LEXICANUM;
+      if (!daSolo) {
+        segnaFermato(wiki, false);
+        wikiGuasti.current.delete(quale);
+      }
       const esito = await scaricaLexicanum({
         aggiorna,
-        fermo: () => filoLex.current !== mio,
-        onProgress: (p) => filoLex.current === mio && setLex(p),
+        wiki,
+        fermo: () => filo.current !== mio,
+        onProgress: (p) => filo.current === mio && metti(p),
       });
       notify(
         esito.fermato
-          ? `Lexicanum fermato a ${fraseLexicanum(esito)}: si riprende dalle Impostazioni.`
-          : `⚔ Lexicanum sul dispositivo: ${fraseLexicanum(esito)} ✓`
+          ? `${nome} fermato a ${fraseLexicanum(esito)}: si riprende dalle Impostazioni.`
+          : `${quale === "fan" ? "📜" : "⚔"} ${nome} sul dispositivo: ${fraseLexicanum(esito)} ✓`
       );
     } catch (e) {
-      notify(`${e?.message || "Lexicanum non è sceso."} Quel che è già qui resta: si riprende dalle Impostazioni.`);
+      wikiGuasti.current.add(quale);
+      notify(`${e?.message || `${nome} non è sceso.`} Quel che è già qui resta: si riprende dalle Impostazioni.`);
     } finally {
-      if (filoLex.current === mio) filoLex.current = null;
-      setLex(null);
+      if (filo.current === mio) filo.current = null;
+      metti(null);
     }
   }
-  const fermaLex = () => {
-    filoLex.current = null;
+  const scaricaLex = (o) => scaricaWikiQui("lex", o);
+  const scaricaFan = (o) => scaricaWikiQui("fan", o);
+  const fermaWiki = (quale) => {
+    (quale === "fan" ? filoFan : filoLex).current = null;
+    import("./lib/lexicanum.js").then((m) => m.segnaFermato(quale === "fan" ? m.FANDOM : m.LEXICANUM, true));
   };
+  const fermaLex = () => fermaWiki("lex");
+  const fermaFan = () => fermaWiki("fan");
+  // IL GIRO LASCIATO A META' RIPARTE DA SOLO: all'avvio (il sistema chiude
+  // l'app in secondo piano), al ritorno davanti e quando torna la rete.
+  // Quello fermato dal lettore resta fermo finche' non lo riprende lui.
+  useEffect(() => {
+    const riprendi = async () => {
+      if (document.visibilityState !== "visible") return;
+      const { giroDaRiprendere, LEXICANUM, FANDOM } = await import("./lib/lexicanum.js");
+      for (const [quale, filo, wiki] of [["lex", filoLex, LEXICANUM], ["fan", filoFan, FANDOM]]) {
+        if (filo.current || wikiGuasti.current.has(quale)) continue;
+        if (await giroDaRiprendere(undefined, wiki)) scaricaWikiQui(quale, { daSolo: true });
+      }
+    };
+    const t = setTimeout(riprendi, 4000);
+    document.addEventListener("visibilitychange", riprendi);
+    window.addEventListener("online", riprendi);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("visibilitychange", riprendi);
+      window.removeEventListener("online", riprendi);
+    };
+  }, []);
 
   // WIKTIONARY SUL DISPOSITIVO scende allo stesso modo: qualche decina di
   // mega in una trentina di file, che sul tablet sono minuti — un lavoro
@@ -1644,6 +1691,7 @@ export default function App() {
   const readingBook = books.find((b) => b.id === readingId);
   const nextBook = readingBook ? nextInSaga(readingBook, books) : null;
   flags.current.reading = !!readingBook;
+  flags.current.lavoroLungo = !!(lex || fan || wikt || lavoro || importo || hdd);
 
   useEffect(() => {
     if (readingId && music.current) {
@@ -1842,10 +1890,12 @@ export default function App() {
         )}
       </main>
       </div>
-      {(lavoro || importo || hdd || lex || wikt || restanti.length > 0) && (
+      {(lavoro || importo || hdd || lex || fan || wikt || restanti.length > 0) && (
         <BarraLavoro
           lex={lex}
           onFermaLex={fermaLex}
+          fan={fan}
+          onFermaFan={fermaFan}
           wikt={wikt}
           onFermaWikt={fermaWikt}
           hdd={hdd}
@@ -1894,6 +1944,9 @@ export default function App() {
           lex={lex}
           onLex={scaricaLex}
           onFermaLex={fermaLex}
+          fan={fan}
+          onFan={scaricaFan}
+          onFermaFan={fermaFan}
           wikt={wikt}
           onWikt={scaricaWikt}
           onFermaWikt={fermaWikt}

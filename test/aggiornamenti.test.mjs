@@ -4,7 +4,7 @@
 // avviato, non finito, e il worker nuovo può comparire un attimo dopo.
 // Fidarsi del silenzio al primo giro direbbe «sei all'ultima» proprio
 // mentre la versione nuova sta scaricando.
-import { cercaNuovaVersione, cercaInSilenzio, ESITI_CONTROLLO } from "../src/lib/aggiornamenti.js";
+import { cercaNuovaVersione, cercaInSilenzio, ESITI_CONTROLLO, siAggiornaNascosta } from "../src/lib/aggiornamenti.js";
 
 // una registrazione finta: `copione` è la sequenza degli stati che il
 // browser attraverserebbe, un passo per ogni giro d'attesa
@@ -88,4 +88,13 @@ export default async function (t) {
     await cercaNuovaVersione(f.reg, { dormi: f.dormi, attesa: 2000, passo: 250 }),
     "nuova"
   );
+
+  // l'aggiornamento da solo: in secondo piano, mai a libro aperto, mai
+  // mentre scende un wiki o gira un altro lavoro lungo
+  const base = { nascosta: true, pronta: true, leggendo: false, lavoroLungo: false };
+  t.eq("nascosta e pronta: si aggiorna", siAggiornaNascosta(base), true);
+  t.eq("davanti no", siAggiornaNascosta({ ...base, nascosta: false }), false);
+  t.eq("senza versione nuova no", siAggiornaNascosta({ ...base, pronta: false }), false);
+  t.eq("a libro aperto no", siAggiornaNascosta({ ...base, leggendo: true }), false);
+  t.eq("sotto un lavoro lungo no", siAggiornaNascosta({ ...base, lavoroLungo: true }), false);
 }
