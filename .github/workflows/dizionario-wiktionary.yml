@@ -1,0 +1,49 @@
+# IL DIZIONARIO WIKTIONARY SI COSTRUISCE QUI, NON A MANO.
+#
+# I dati vengono da kaikki.org (Wiktionary inglese estratto da
+# wiktextract), che dalla sandbox di sviluppo non si raggiunge: dai server
+# di GitHub si'. Lo script li legge a flusso, li riduce e scrive
+# `public/dizionario/wikt/`; questo lavoro committa il risultato sul ramo
+# da cui e' partito, cosi' il dizionario sta nel repository come quello di
+# WordNet e Vercel lo serve come un file qualunque.
+#
+# Parte da solo quando cambia lo script (sui rami `claude/*`, dove si
+# lavora), e a mano da GitHub per rifarlo coi dati nuovi di Wiktionary.
+name: Dizionario Wiktionary
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/**"]
+    paths:
+      - scripts/dizionarioWiktionary.mjs
+      - src/lib/wiktionaryOffline.js
+      - .github/workflows/dizionario-wiktionary.yml
+
+permissions:
+  contents: write
+
+jobs:
+  costruisci:
+    runs-on: ubuntu-latest
+    # qualche giga da scaricare e da leggere riga per riga: di solito un
+    # quarto d'ora, il tetto tiene una lettura appesa dal costare sei ore
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # lo script usa solo Node: niente `npm ci`
+      - run: node --max-old-space-size=6144 scripts/dizionarioWiktionary.mjs
+
+      - name: Committa il dizionario
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/dizionario/wikt
+          if git diff --cached --quiet; then echo "niente di nuovo"; exit 0; fi
+          git commit -m "Dizionario Wiktionary ricostruito dalla CI"
+          git push
