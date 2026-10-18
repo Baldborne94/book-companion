@@ -7,7 +7,7 @@ import { rigaUltima, rigaMese, riassunto, costo, leggiTetto } from "../lib/spesa
 import { TettoFinito } from "./TettoOracolo.jsx";
 import { daAnnotare, fraseAttorno, annota, togliParola, leggiQuaderno, scriviQuaderno } from "../lib/quaderno.js";
 import { chiaveGlossario, vociDi, salvaVoci, aggiungi, togli, cerca } from "../lib/glossarioMio.js";
-import { cercaLore, loreAttivo, statoLexicanum, giudiceFonti, velaVoce, avvisoVoce, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
+import { cercaLore, scrittoComeNome, loreAttivo, statoLexicanum, giudiceFonti, velaVoce, avvisoVoce, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
 import { loadBooks, getStatus } from "../lib/library.js";
 import { getCfi } from "../lib/annotations.js";
 import VoceLore, { Testo, Velo, AvvisoFandom } from "./VoceLore.jsx";
@@ -451,6 +451,82 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
   const testo = dict.raw?.trim() || dict.word || "";
   const titolo = primaria?.t || (testo.length > 44 ? `${testo.slice(0, 44)}…` : testo);
 
+  const primaIlWiki = dict.soloLore || scrittoComeNome(testoSel);
+  const bloccoWiki = voceLore ? (
+      <div
+        style={{
+          marginBottom: 12,
+          border: `1px solid ${C.border}`,
+          borderRadius: R.piccolo,
+          overflow: "hidden",
+          background: `${C.surface}55`,
+        }}
+      >
+        {banda(`${wikiScelto.nome} · sul dispositivo`)}
+        {/* le due schede, quando la voce c'e' in tutti e due i wiki */}
+        {voceLex && voceFan && (
+          <div role="tablist" style={{ display: "flex", gap: 6, padding: "8px 12px 0" }}>
+            {[
+              [LEXICANUM, "lex"],
+              [FANDOM, "fan"],
+            ].map(([w, id]) => (
+              <button
+                key={id}
+                role="tab"
+                aria-selected={wikiScelto === w}
+                onClick={() => {
+                  setScheda(id);
+                  setIncipitAperto(false);
+                }}
+                style={{
+                  minHeight: 36,
+                  padding: "4px 12px",
+                  borderRadius: R.tondo,
+                  fontSize: F.piccolo,
+                  border: `1px solid ${wikiScelto === w ? `${C.arcane}88` : C.border}`,
+                  color: wikiScelto === w ? C.arcane : C.muted,
+                  background: wikiScelto === w ? `${C.arcane}14` : "transparent",
+                }}
+              >
+                {w.nome}
+                {w === FANDOM ? " ⚠" : ""}
+              </button>
+            ))}
+          </div>
+        )}
+        <div style={{ padding: "9px 12px 11px" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: F.corpo, fontWeight: 600, color: C.text }}>{voceLore.t}</span>
+            {voceLore.via && (
+              <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>da «{voceLore.via}»</span>
+            )}
+          </div>
+          {fanChiusa ? (
+            <AvvisoFandom avviso={avvisoFan} corto onApri={() => setIncipitAperto(true)} />
+          ) : incipit?.v && !incipitAperto ? (
+            <Velo perche={incipit.v} onApri={() => setIncipitAperto(true)} />
+          ) : incipit ? (
+            <p style={{ fontSize: F.nota, color: C.text, lineHeight: 1.5, margin: "0 0 8px" }}>
+              <Testo x={incipit.x} />
+            </p>
+          ) : null}
+          <button
+            onClick={() => setLoreAperta(true)}
+            style={{
+              minHeight: 40,
+              fontSize: F.piccolo,
+              color: C.accent,
+              border: `1px solid ${C.accent}55`,
+              borderRadius: R.tondo,
+              padding: "5px 14px",
+            }}
+          >
+            Leggi la voce ▸
+          </button>
+        </div>
+      </div>
+  ) : null;
+
   return (
     <div
       onClick={onClose}
@@ -572,84 +648,15 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
         )}
 
         {/* LEXICANUM: l'incipit della voce, e la voce intera a un tocco.
-            Sta prima del vocabolario: in un romanzo del 40K chi tocca
-            «Cadia» chiede del pianeta, non della parola. */}
-        {voceLore && (
-          <div
-            style={{
-              marginBottom: 12,
-              border: `1px solid ${C.border}`,
-              borderRadius: R.piccolo,
-              overflow: "hidden",
-              background: `${C.surface}55`,
-            }}
-          >
-            {banda(`${wikiScelto.nome} · sul dispositivo`)}
-            {/* le due schede, quando la voce c'e' in tutti e due i wiki */}
-            {voceLex && voceFan && (
-              <div role="tablist" style={{ display: "flex", gap: 6, padding: "8px 12px 0" }}>
-                {[
-                  [LEXICANUM, "lex"],
-                  [FANDOM, "fan"],
-                ].map(([w, id]) => (
-                  <button
-                    key={id}
-                    role="tab"
-                    aria-selected={wikiScelto === w}
-                    onClick={() => {
-                      setScheda(id);
-                      setIncipitAperto(false);
-                    }}
-                    style={{
-                      minHeight: 36,
-                      padding: "4px 12px",
-                      borderRadius: R.tondo,
-                      fontSize: F.piccolo,
-                      border: `1px solid ${wikiScelto === w ? `${C.arcane}88` : C.border}`,
-                      color: wikiScelto === w ? C.arcane : C.muted,
-                      background: wikiScelto === w ? `${C.arcane}14` : "transparent",
-                    }}
-                  >
-                    {w.nome}
-                    {w === FANDOM ? " ⚠" : ""}
-                  </button>
-                ))}
-              </div>
-            )}
-            <div style={{ padding: "9px 12px 11px" }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
-                <span style={{ fontSize: F.corpo, fontWeight: 600, color: C.text }}>{voceLore.t}</span>
-                {voceLore.via && (
-                  <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>da «{voceLore.via}»</span>
-                )}
-              </div>
-              {fanChiusa ? (
-                <AvvisoFandom avviso={avvisoFan} corto onApri={() => setIncipitAperto(true)} />
-              ) : incipit?.v && !incipitAperto ? (
-                <Velo perche={incipit.v} onApri={() => setIncipitAperto(true)} />
-              ) : incipit ? (
-                <p style={{ fontSize: F.nota, color: C.text, lineHeight: 1.5, margin: "0 0 8px" }}>
-                  <Testo x={incipit.x} />
-                </p>
-              ) : null}
-              <button
-                onClick={() => setLoreAperta(true)}
-                style={{
-                  minHeight: 40,
-                  fontSize: F.piccolo,
-                  color: C.accent,
-                  border: `1px solid ${C.accent}55`,
-                  borderRadius: R.tondo,
-                  padding: "5px 14px",
-                }}
-              >
-                Leggi la voce ▸
-              </button>
-            </div>
-          </div>
-        )}
+            Sta prima del vocabolario quando la selezione e' scritta come
+            un nome: in un romanzo del 40K chi tocca «Cadia» chiede del
+            pianeta. «Two hundred» in minuscolo e' un numero, e la voce
+            «Two Hundred» viene dopo la parola (`scrittoComeNome`). */}
+        {voceLore && primaIlWiki && bloccoWiki}
 
         <Voce key={tag} dict={dict} titolo={titolo} />
+
+        {voceLore && !primaIlWiki && bloccoWiki}
 
         {/* la parola e' finita nel quaderno: detto, e reversibile. Senza
             questa riga il quaderno si riempirebbe a tua insaputa, e l'unico

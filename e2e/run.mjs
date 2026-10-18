@@ -1515,7 +1515,7 @@ const SCENE = [
       if (!chieste.every((u) => u.includes("origin=*"))) throw new Error("una richiesta a Lexicanum senza origin=*: il browser la rifiuterebbe");
       await p.keyboard.press("Escape");
 
-      const frase = "I was there, the day that Horus slew the Emperor. Garviel Loken watched the Warmaster from the deck.";
+      const frase = "I was there, the day that Horus slew the Emperor. Garviel Loken watched the Warmaster from the deck. 'Two hundred and fifty,' came the answer.";
       await importa(p, "Horus Rising.epub", await epub({ titolo: "Horus Rising", autore: "Dan Abnett", frase, lingua: "en" }), "application/epub+zip");
       await p.getByText("Horus Rising").first().click();
       // l'interruttore del libro: acceso dalla saga riconosciuta
@@ -1541,6 +1541,25 @@ const SCENE = [
       await finche(() => p.getByText(/were the XVI Legion/).count(), 5000, "il link non porta alla voce");
       await p.getByRole("button", { name: /◂ Garviel Loken/ }).click();
       await finche(() => p.getByText(/Isstvan III/).count(), 5000, "indietro non torna alla voce di prima");
+      // «Two hundred» in minuscolo e' la distanza: non si segna, e la voce
+      // «Two Hundred» viene dopo la parola
+      if (await p.locator('[data-bc-lore="Two Hundred"]').count()) throw new Error("«Two hundred», un numero, e' segnato come un nome");
+      await p.getByRole("button", { name: "◂ La parola" }).click();
+      await p.getByRole("button", { name: "✕" }).first().click();
+      await p.route("**/api/rest_v1/page/definition/**", (r) =>
+        r.fulfill({ headers: { "access-control-allow-origin": "*" }, json: { en: [{ partOfSpeech: "Numeral", language: "English", definitions: [{ definition: "The cardinal number two hundred." }] }] } })
+      );
+      await p.route("https://en.wiktionary.org/w/api.php?**", (r) =>
+        r.fulfill({ headers: { "access-control-allow-origin": "*" }, json: { query: { pages: [{ ns: 0, title: "two hundred" }] } } })
+      );
+      await definisci(p, "Two hundred");
+      const sopra = async (testo) => (await p.getByText(testo).first().boundingBox())?.y;
+      const [parola, voce] = await finche(async () => {
+        const a = await sopra(/The cardinal number two hundred/);
+        const b = await sopra(/^Two Hundred$/);
+        return a != null && b != null ? [a, b] : null;
+      }, 10000, "nella scheda di «Two hundred» manca la parola o la voce «Two Hundred»");
+      if (voce < parola) throw new Error("«Two hundred», un numero, mette la voce «Two Hundred» prima della parola");
       return { guasti: d.guasti, nota: `${chieste.length} richieste a Lexicanum, ${veli.length} veli` };
     },
   },
