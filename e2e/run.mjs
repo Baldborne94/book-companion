@@ -16,6 +16,7 @@ import { build, preview } from "vite";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
 import { fumetto, fumettoGrosso, fumettoLungo, epub, pdf, wav, FRASE, mondoDisco, png } from "./libri.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
+import { lexicanumFinto } from "./lexicanumFinto.mjs";
 
 // le richieste del service worker passano dalle rotte del contesto solo
 // cosi' (Chromium): servono alla scena della melodia che suona mentre scende
@@ -73,13 +74,14 @@ async function lanciaBrowser() {
 // o da Google (la prima volta in CI il catalogo vero ha dato a «Racconti» la
 // saga di Moravia, e la scena cadeva per una ragione che qui non c'era). Chi
 // vuole il catalogo se lo porta: `catalogo(url)` risponde al posto suo.
-async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, oracolo = null, misura = null } = {}) {
+async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, oracolo = null, misura = null, lexicanum = null } = {}) {
   const ctx = await browser.newContext(misura || { viewport: { width: 1280, height: 800 } });
   await ctx.route(
     (url) => !/^(localhost|127\.0\.0\.1)$/.test(url.hostname),
     async (route) => {
       const url = route.request().url();
       if (oracolo && /api\.anthropic\.com/.test(url)) return route.fulfill({ json: await oracolo(JSON.parse(route.request().postData() || "{}")) });
+      if (lexicanum && /wh40k\.lexicanum\.com/.test(url)) return lexicanum(route);
       if (catalogo && /openlibrary\.org/.test(url)) {
         const json = await catalogo(url);
         if (json) return route.fulfill({ json });
@@ -1453,6 +1455,89 @@ const SCENE = [
       }, 10000, "i due «Dragonquest» non si uniscono");
       if (quests[0].id !== conFile) throw new Error(`dei due «Dragonquest» e' rimasto quello senza file (${quests[0].id})`);
       return { guasti: d.guasti, nota: "«Dragonflight» ha ritrovato il suo file; dei due «Dragonquest» resta quello col file" };
+    },
+  },
+  {
+    nome: "Lexicanum scende dalle Impostazioni, e nella scheda del dizionario la voce vela quel che viene da un volume dopo",
+    async fai({ browser }) {
+      const chieste = [];
+      const d = await dispositivo(browser, { misura: TABLET, lexicanum: lexicanumFinto(chieste) });
+      const { p } = d;
+      await p.goto(URL_APP);
+      await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await p.getByRole("button", { name: "⚔ Scarica Lexicanum" }).click();
+      // il lavoro si vede da ogni sezione, nella sua riga
+      await finche(() => p.getByText(/⚔ Lexicanum:/).count(), 8000, "la riga del lavoro non compare");
+      await finche(() => p.getByText(/Lexicanum sul dispositivo: /).count(), 20000, "lo scaricamento non finisce");
+      if (!chieste.every((u) => u.includes("origin=*"))) throw new Error("una richiesta a Lexicanum senza origin=*: il browser la rifiuterebbe");
+      await p.keyboard.press("Escape");
+
+      const frase = "I was there, the day that Horus slew the Emperor. Garviel Loken watched the Warmaster from the deck.";
+      await importa(p, "Horus Rising.epub", await epub({ titolo: "Horus Rising", autore: "Dan Abnett", frase, lingua: "en" }), "application/epub+zip");
+      await p.getByText("Horus Rising").first().click();
+      // l'interruttore del libro: acceso dalla saga riconosciuta
+      await finche(() => p.getByRole("button", { name: /Lexicanum nella scheda del dizionario: acceso/ }).count(), 8000, "la scheda del libro non dice che Lexicanum e' acceso");
+      await p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      const seleziona = (parola) =>
+        finche(
+          async () => {
+            for (const f of p.frames()) {
+              const fatto = await f
+                .evaluate((w) => {
+                  const it = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                  for (let n = it.nextNode(); n; n = it.nextNode()) {
+                    const i = n.nodeValue.indexOf(w);
+                    if (i < 0) continue;
+                    const r = document.createRange();
+                    r.setStart(n, i);
+                    r.setEnd(n, i + w.length);
+                    document.getSelection().removeAllRanges();
+                    document.getSelection().addRange(r);
+                    return true;
+                  }
+                  return false;
+                }, parola)
+                .catch(() => false);
+              if (fatto) return true;
+            }
+            return false;
+          },
+          25000,
+          `«${parola}» non si lascia selezionare`
+        );
+      // la pagina si rimonta dopo la prima misura (l'avanzo di riga) e una
+      // selezione fatta prima si perde: si riseleziona finche' il menu c'e'
+      await finche(
+        async () => {
+          await seleziona("Loken");
+          for (let i = 0; i < 8; i++) {
+            if (await p.getByRole("button", { name: /Definisci/ }).count()) return true;
+            await aspetta(250);
+          }
+          return false;
+        },
+        25000,
+        "il menu della selezione non compare"
+      );
+      await p.getByRole("button", { name: /Definisci/ }).first().click();
+      // il rinvio «Loken» porta alla voce, e l'incipit (da un'altra opera) si legge
+      await finche(() => p.getByText(/was a Captain of the Luna Wolves/).count(), 8000, "la scheda non mostra la voce di Lexicanum");
+      await p.getByRole("button", { name: "Leggi la voce ▸" }).click();
+      const veli = await finche(async () => {
+        const v = await p.getByText(/Paragrafo velato/).allTextContents();
+        return v.length ? v : null;
+      }, 5000, "nessun paragrafo velato");
+      const attesi = [/da questo libro/, /«False Gods», che viene dopo/, /«Galaxy in Flames», che viene dopo/];
+      if (veli.length !== 3 || !attesi.every((re, i) => re.test(veli[i]))) throw new Error(`veli sbagliati: ${JSON.stringify(veli)}`);
+      if (await p.getByText(/first signs of corruption/).count()) throw new Error("il testo velato e' gia' nella pagina");
+      await p.getByText(/Paragrafo velato: da «False Gods»/).click();
+      await finche(() => p.getByText(/first signs of corruption/).count(), 5000, "il velo toccato non si apre");
+      // un link a un rinvio porta alla voce, e «indietro» torna
+      await p.getByRole("button", { name: "Luna Wolves" }).click();
+      await finche(() => p.getByText(/were the XVI Legion/).count(), 5000, "il link non porta alla voce");
+      await p.getByRole("button", { name: /◂ Garviel Loken/ }).click();
+      await finche(() => p.getByText(/Isstvan III/).count(), 5000, "indietro non torna alla voce di prima");
+      return { guasti: d.guasti, nota: `${chieste.length} richieste a Lexicanum, ${veli.length} veli` };
     },
   },
 ];

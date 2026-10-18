@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { lemmaDoppione, lookup, lookupPhrase, wordCount } from "../lib/dictionary.js";
 import { statoDizionario, scaricaDizionario, cartellinoInRete } from "../lib/dizionarioOffline.js";
@@ -7,6 +7,10 @@ import { rigaUltima, rigaMese, riassunto, costo, leggiTetto } from "../lib/spesa
 import { TettoFinito } from "./TettoOracolo.jsx";
 import { daAnnotare, fraseAttorno, annota, togliParola, leggiQuaderno, scriviQuaderno } from "../lib/quaderno.js";
 import { chiaveGlossario, vociDi, salvaVoci, aggiungi, togli, cerca } from "../lib/glossarioMio.js";
+import { cercaLore, loreAttivo, statoLexicanum, giudiceFonti, velaVoce } from "../lib/lexicanum.js";
+import { loadBooks, getStatus } from "../lib/library.js";
+import { getCfi } from "../lib/annotations.js";
+import VoceLore, { Testo, Velo } from "./VoceLore.jsx";
 
 // La scheda del dizionario e' identica nei due reader: qui una volta sola,
 // cosi' EPUB e PDF non divergono. Risponde con quello che il tablet non puo'
@@ -257,6 +261,13 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
   const [installato, setInstallato] = useState(undefined);
   const [cartellino, setCartellino] = useState(null);
   const [extra, setExtra] = useState(null);
+  // LEXICANUM: `lexQui` come `installato` (undefined = non ancora guardato),
+  // `lore` la voce trovata per QUESTA selezione, `loreAperta` la voce intera
+  // al posto della scheda
+  const [lexQui, setLexQui] = useState(undefined);
+  const [lore, setLore] = useState(null);
+  const [loreAperta, setLoreAperta] = useState(false);
+  const [incipitAperto, setIncipitAperto] = useState(false);
   // la scheda resta montata tra una selezione e l'altra: la risposta della
   // frase di prima non deve comparire sotto la frase nuova
   const tagRef = useRef();
@@ -266,17 +277,44 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
     if (oracolo) setOracolo(null);
     if (keyOpen) setKeyOpen(false);
     if (glossOpen) setGlossOpen(false);
+    if (loreAperta) setLoreAperta(false);
+    if (incipitAperto) setIncipitAperto(false);
   }
   const dict = extra && extra.tag === tag ? { ...dictProp, ...extra.res, loading: false, cercando: false } : dictProp;
 
   useEffect(() => {
     let vivo = true;
     statoDizionario().then((s) => vivo && setInstallato(s));
+    statoLexicanum().then((s) => vivo && setLexQui(s));
     cartellinoInRete().then((c) => vivo && setCartellino(c));
     return () => {
       vivo = false;
     };
   }, []);
+
+  // La voce di Lexicanum si cerca qui e non nei due reader: e' la stessa
+  // nell'ePub e nel PDF, e sta sul dispositivo — risponde in un attimo e
+  // senza rete. Solo nei libri del 40K (`loreAttivo`).
+  const loreQui = !!lexQui && loreAttivo(book);
+  const testoSel = dictProp ? dictProp.raw?.trim() || dictProp.word || "" : "";
+  useEffect(() => {
+    if (!loreQui || !testoSel) return;
+    let vivo = true;
+    const mio = tag;
+    cercaLore(testoSel)
+      .catch(() => null)
+      .then((v) => vivo && setLore({ tag: mio, voce: v }));
+    return () => {
+      vivo = false;
+    };
+  }, [loreQui, tag]);
+  const voceLore = lore && lore.tag === tag ? lore.voce : null;
+  const giudice = useMemo(
+    () => (voceLore ? giudiceFonti(book, loadBooks(), { statusOf: getStatus, cfiOf: getCfi }) : null),
+    [voceLore, book]
+  );
+  // l'incipit: il primo paragrafo, velato se cita un volume non ancora letto
+  const incipit = voceLore && giudice ? velaVoce(voceLore, giudice).find((b) => b.x) : null;
 
   // IL QUADERNO DELLE PAROLE si scrive da se', a risposta completa: la
   // ricerca e' gia' il gesto che dice «questa non la sapevo». Una volta per
@@ -375,7 +413,7 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
   const primaria = elenco ? null : dict.frase ? dict.slang || dict.gloss : dict.gloss || dict.slang;
   const secondaria = elenco || primaria !== dict.gloss ? (elenco ? null : dict.gloss) : dict.slang;
   const voce = !!(dict.entries?.length || dict.translation);
-  const local = primaria || secondaria || elenco || voce;
+  const local = primaria || secondaria || elenco || voce || voceLore;
   const rest = elenco ? tutte : tutte.filter((e) => e.t !== primaria?.t && e.t !== secondaria?.t);
   const testo = dict.raw?.trim() || dict.word || "";
   const titolo = primaria?.t || (testo.length > 44 ? `${testo.slice(0, 44)}…` : testo);
@@ -411,7 +449,9 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
           // definizioni sotto la piega
           width: `min(94%, ${px(560)}px)`,
           marginTop: alto,
-          maxHeight: "62%",
+          // la voce intera e' una pagina da leggere: prende quasi tutto lo
+          // schermo, la scheda della parola resta piccola
+          maxHeight: loreAperta && voceLore ? `calc(100% - ${alto}px - 16px)` : "62%",
           overflowY: "auto",
           background: `${C.card}fa`,
           border: `1px solid ${C.border}`,
@@ -421,6 +461,10 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
           animation: "bc-fade-in 0.2s ease-out",
         }}
       >
+        {loreAperta && voceLore ? (
+          <VoceLore voce={voceLore} giudice={giudice} onChiudi={() => setLoreAperta(false)} />
+        ) : (
+        <>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
           <span style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
             {titolo}
@@ -485,6 +529,51 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
           >
             Cerca «{dict.wikiSearch.term}» sul wiki ↗
           </a>
+        )}
+
+        {/* LEXICANUM: l'incipit della voce, e la voce intera a un tocco.
+            Sta prima del vocabolario: in un romanzo del 40K chi tocca
+            «Cadia» chiede del pianeta, non della parola. */}
+        {voceLore && (
+          <div
+            style={{
+              marginBottom: 12,
+              border: `1px solid ${C.border}`,
+              borderRadius: R.piccolo,
+              overflow: "hidden",
+              background: `${C.surface}55`,
+            }}
+          >
+            {banda("Lexicanum · sul dispositivo")}
+            <div style={{ padding: "9px 12px 11px" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: F.corpo, fontWeight: 600, color: C.text }}>{voceLore.t}</span>
+                {voceLore.via && (
+                  <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>da «{voceLore.via}»</span>
+                )}
+              </div>
+              {incipit?.v && !incipitAperto ? (
+                <Velo perche={incipit.v} onApri={() => setIncipitAperto(true)} />
+              ) : incipit ? (
+                <p style={{ fontSize: F.nota, color: C.text, lineHeight: 1.5, margin: "0 0 8px" }}>
+                  <Testo x={incipit.x} />
+                </p>
+              ) : null}
+              <button
+                onClick={() => setLoreAperta(true)}
+                style={{
+                  minHeight: 40,
+                  fontSize: F.piccolo,
+                  color: C.accent,
+                  border: `1px solid ${C.accent}55`,
+                  borderRadius: R.tondo,
+                  padding: "5px 14px",
+                }}
+              >
+                Leggi la voce ▸
+              </button>
+            </div>
+          </div>
         )}
 
         <Voce key={tag} dict={dict} titolo={titolo} />
@@ -782,6 +871,8 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
               </div>
             )}
           </div>
+        )}
+        </>
         )}
       </div>
     </div>

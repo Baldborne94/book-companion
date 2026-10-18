@@ -132,6 +132,8 @@ qualunque richiesta web porta con sé.
 | Una voce di «Da prendere» (consiglio o lista) non ha ancora la copertina | `openlibrary.org` | titolo e autore di quel libro, una volta sola |
 | ...e i consigli del catalogo hanno una copertina | `covers.openlibrary.org` | il numero della copertina di quel libro (l'immagine), niente di tuo |
 | Scarichi il dizionario offline dalle Impostazioni | il nostro stesso sito | niente: è un file statico, come l'app |
+| Scarichi Lexicanum dalle Impostazioni | `wh40k.lexicanum.com` | niente di tuo: si chiedono le pagine del wiki, tutte, in ordine alfabetico. Le voci poi si cercano sul dispositivo |
+| Tocchi «Apri su Lexicanum» nella voce | `wh40k.lexicanum.com` | il nome della voce (apri tu il link) |
 | Sempre, per i caratteri della pagina | `fonts.googleapis.com`, `fonts.gstatic.com` | niente, oltre alla richiesta stessa |
 
 Due avvertenze oneste:
