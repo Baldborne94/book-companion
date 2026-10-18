@@ -17,8 +17,9 @@ const PAGINE = [TITOLI.slice(0, 2), TITOLI.slice(2, 4), TITOLI.slice(4)];
 
 export const VOCI_FINTE = TITOLI.filter((t) => !W[t].startsWith("#REDIRECT")).length;
 
-// `chieste` raccoglie gli indirizzi, per guardare cosa ha chiesto l'app
-export const lexicanumFinto = (chieste = []) => async (route) => {
+// `chieste` raccoglie gli indirizzi, per guardare cosa ha chiesto l'app;
+// `attesa` dice quanto tarda ogni pagina (per interrompere a meta')
+export const lexicanumFinto = (chieste = [], { attesa = () => 600 } = {}) => async (route) => {
   const u = new URL(route.request().url());
   chieste.push(u.href);
   const p = Object.fromEntries(u.searchParams);
@@ -27,8 +28,37 @@ export const lexicanumFinto = (chieste = []) => async (route) => {
   if (p.meta === "siteinfo") return route.fulfill({ headers, json: { query: { general: { sitename: "Lexicanum" }, statistics: { articles: VOCI_FINTE } } } });
   const i = Number(p.gapcontinue || 0);
   // un po' di attesa: la riga del lavoro deve farsi vedere
-  await new Promise((r) => setTimeout(r, 600));
+  await new Promise((r) => setTimeout(r, attesa(i)));
   const corpo = { query: { pages: PAGINE[i].map((title) => ({ ns: 0, title, revisions: [{ slots: { main: { content: W[title] } } }] })) } };
   if (i + 1 < PAGINE.length) corpo.continue = { gapcontinue: String(i + 1), continue: "gapcontinue||" };
   return route.fulfill({ headers, json: corpo });
+};
+
+// E UN FANDOM FINTO, nel formato vero del Warhammer 40k Wiki: niente
+// citazioni per paragrafo, le fonti tutte in fondo, il titolo del libro in
+// corsivo e il link sull'autore.
+const F = {
+  "Garviel Loken": `{{Quote|I was never a Son of Horus.| Garviel Loken}}
+[[File:Loken.jpg|thumb|250px|Garviel Loken.]]
+'''Garviel Loken''' was originally the [[Captain]] of the [[Luna Wolves]] during the [[Great Crusade]].
+
+After Horus' fall to [[Chaos]] on [[Davin]], Loken was betrayed and left for dead on [[Isstvan III]].
+
+==Sources==
+*''Horus Rising'' (Novel) by [[Dan Abnett]]
+*''False Gods'' (Novel) by [[Graham McNeill]]
+*''Galaxy In Flames'' (Novel) by Ben Counter
+[[Category:Characters]]`,
+  "Loken": "#REDIRECT [[Garviel Loken]]",
+};
+
+export const fandomFinto = (chieste = []) => async (route) => {
+  const u = new URL(route.request().url());
+  chieste.push(u.href);
+  const p = Object.fromEntries(u.searchParams);
+  const headers = { "access-control-allow-origin": "*" };
+  if (u.pathname !== "/api.php") return route.fulfill({ status: 404, headers, body: "non qui" });
+  if (p.meta === "siteinfo") return route.fulfill({ headers, json: { query: { general: { sitename: "Warhammer 40k Wiki" }, statistics: { articles: 1 } } } });
+  const pages = Object.keys(F).map((title) => ({ ns: 0, title, revisions: [{ slots: { main: { content: F[title] } } }] }));
+  return route.fulfill({ headers, json: { query: { pages } } });
 };

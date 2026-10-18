@@ -36,6 +36,11 @@ import {
   parolePiccole,
   nomeSottoIlDito,
   nomiDaSegnare,
+  avvisoVoce,
+  giroDaRiprendere,
+  segnaFermato,
+  LEXICANUM,
+  FANDOM,
 } from "../src/lib/lexicanum.js";
 
 const deposito = () => {
@@ -173,7 +178,9 @@ export default async function (t) {
   const pagina = (titoli) =>
     titoli.map((ti) => ({ ns: 0, title: ti, revisions: [{ slots: { main: { content: ti.startsWith("→") ? "" : `'''${ti}''' is.` } } }] }));
   const PAGINE = [pagina(["Abaddon", "Aximand"]), pagina(["Cadia", "Calth"]), pagina(["Davin"])];
-  const finto = (chieste, { guastoAlla = -1 } = {}) => async (url) => {
+  // `guasto`: sulla pagina `alla` il wiki sbaglia `volte` volte (o sempre),
+  // nel modo `come` — la rete che cade, un 429, una pagina al posto dei dati
+  const finto = (chieste, { guasto = null } = {}) => async (url) => {
     const u = new URL(url);
     const p = Object.fromEntries(u.searchParams);
     chieste.push(p);
@@ -182,7 +189,11 @@ export default async function (t) {
       return { ok: true, status: 200, text: async () => JSON.stringify({ query: { general: { sitename: "Lexicanum" }, statistics: { articles: 5 } } }) };
     }
     const i = p.gapcontinue ? Number(p.gapcontinue) : 0;
-    if (i === guastoAlla) throw new TypeError("Failed to fetch");
+    if (guasto && i === guasto.alla && (guasto.volte == null || guasto.volte-- > 0)) {
+      if (guasto.come === "429") return { ok: false, status: 429, headers: { get: (h) => (h === "retry-after" ? "30" : null) } };
+      if (guasto.come === "pagina") return { ok: true, status: 200, text: async () => "<html>Just a moment...</html>" };
+      throw new TypeError("Failed to fetch");
+    }
     const corpo = { query: { pages: PAGINE[i] } };
     if (i + 1 < PAGINE.length) corpo.continue = { gapcontinue: String(i + 1), continue: "gapcontinue||" };
     return { ok: true, status: 200, text: async () => JSON.stringify(corpo) };
@@ -230,11 +241,66 @@ export default async function (t) {
   }
 
   {
+    // la rete cade piu' volte di quante ne reggeva prima (quattro): il giro
+    // aspetta e va avanti, dicendo che aspetta
+    const d = deposito();
+    const attese = [];
+    const passi = [];
+    const meta = await scaricaLexicanum({
+      fetcher: finto([], { guasto: { alla: 1, volte: 7 } }),
+      deposito: d,
+      attesa: async (ms) => attese.push(ms),
+      pausa: 0,
+      onProgress: (p) => passi.push(p),
+    });
+    t.eq("la rete che cade non ferma il giro: arriva in fondo", meta.voci, 5);
+    t.c("e intanto dice che aspetta la rete", passi.some((p) => p.attesa === "rete"));
+    t.c("l'attesa cresce ma non supera il minuto", attese.length >= 7 && Math.max(...attese) <= 60000 && attese[1] > attese[0], JSON.stringify(attese));
+    t.c("tornata la rete, la riga non dice piu' che aspetta", !passi.at(-1).attesa);
+  }
+  {
+    const d = deposito();
+    const attese = [];
+    const passi = [];
+    const meta = await scaricaLexicanum({
+      fetcher: finto([], { guasto: { alla: 1, volte: 5, come: "429" } }),
+      deposito: d,
+      attesa: async (ms) => attese.push(ms),
+      pausa: 0,
+      onProgress: (p) => passi.push(p),
+    });
+    t.eq("il wiki che chiede di rallentare non ferma il giro", meta.voci, 5);
+    t.c("si aspetta quanto chiede", attese.includes(30000) && passi.some((p) => p.attesa === "rallenta"));
+  }
+  {
+    // la rete non torna, e il lettore ferma: il giro si ferma lì, con la
+    // ripresa al punto giusto
+    const d = deposito();
+    let attese = 0;
+    let ferma = false;
+    const esito = await scaricaLexicanum({
+      fetcher: finto([], { guasto: { alla: 1 } }),
+      deposito: d,
+      attesa: async () => {
+        if (++attese === 3) ferma = true;
+      },
+      pausa: 0,
+      fermo: () => ferma,
+    });
+    t.c("fermato mentre aspettava la rete, dice che si e' fermato", esito.fermato === true);
+    t.c("e quel che era sceso resta per la ripresa", (await giroLexicanum(d))?.voci === 2 && (await giroLexicanum(d))?.cont?.gapcontinue === "1");
+  }
+  {
     const d = deposito();
     let guaio = null;
-    await scaricaLexicanum({ fetcher: finto([], { guastoAlla: 1 }), deposito: d, attesa, pausa: 0 }).catch((e) => (guaio = e));
-    t.c("una rete che cade si dice", /non risponde/.test(guaio?.message || ""));
-    t.c("e quel che era sceso resta per la ripresa", (await giroLexicanum(d))?.voci === 2);
+    await scaricaLexicanum({ fetcher: finto([], { guasto: { alla: 1, come: "pagina" } }), deposito: d, attesa, pausa: 0 }).catch((e) => (guaio = e));
+    t.c("una pagina al posto dei dati, che non passa, alla fine si dice", /pagina invece che coi dati/.test(guaio?.message || ""));
+  }
+  {
+    // al primo contatto invece si resta brevi: li' un rifiuto e' la notizia
+    let guaio = null;
+    await trovaApi({ fetcher: async () => { throw new TypeError("Failed to fetch"); }, attesa }).catch((e) => (guaio = e));
+    t.c("se il sito non risponde al primo contatto si dice subito", /non risponde/.test(guaio?.message || ""));
   }
 
   // ---- LA RICERCA -------------------------------------------------------
@@ -335,10 +401,116 @@ export default async function (t) {
     t.eq("una voce del glossario vince sullo stesso nome di Lexicanum", saltati.length, 0);
   }
 
+  // ---- FANDOM ----------------------------------------------------------
+  // Un pezzo della voce vera di Garviel Loken sul Warhammer 40k Wiki: niente
+  // citazioni per paragrafo, le fonti in fondo, il titolo del libro in
+  // corsivo e il link sull'AUTORE.
+  const LOKEN_FANDOM = `{{Quote|I was never a Son of Horus.| Garviel Loken's valediction to [[Horus|Horus Lupercal]]}}
+[[File:Captain_Garviel_Loken_Portrait.jpg|thumb|250px|Garviel Loken, [[Captain]] of the [[Luna Wolves]].]]
+'''Garviel Loken''' was originally the [[Captain]] of the [[Luna Wolves]] (later [[Sons of Horus]]) during the [[Great Crusade]].
+
+However, after Horus' fall to [[Chaos]] on [[Davin]], he was considered too loyal.
+
+== See Also ==
+*'''[[Mournival]]'''
+
+==Sources==
+*''The Horus Heresy - Book One: Betrayal'' (Forge World Series) by Alan Bligh, pp. 46, 48
+*''Horus Rising'' (Novel) by [[Dan Abnett]]
+*''False Gods'' (Novel) by [[Graham McNeill]]
+*''Galaxy In Flames'' (Novel) by Ben Counter
+*[http://www.forgeworld.co.uk/en-GB/Abaddon-and-Loken ''Forgeworld - Abaddon vs. Loken Diorama'']
+
+[[es:Garviel Loken]]
+[[Category:Characters]]`;
+  {
+    const v = daWikitesto("Garviel Loken", LOKEN_FANDOM);
+    t.eq("su Fandom il titolo della fonte e' il corsivo, non l'autore col link", v.fv.map((f) => f.t).slice(0, 4).join("|"), "The Horus Heresy - Book One: Betrayal|Horus Rising|False Gods|Galaxy In Flames");
+    t.c("la citazione in testa e l'immagine non diventano testo", !v.p.some((b) => /valediction|Portrait/.test(testoPiano(b.x || ""))));
+    t.c("il link col testo uguale si scrive corto", v.p[0].x.includes("[[Great Crusade]]") && !v.p[0].x.includes("[[Great Crusade|Great Crusade]]"));
+    t.eq("e si disegna come gli altri", JSON.stringify(pezzi("on [[Davin]].")[1]), JSON.stringify({ s: "Davin", l: "Davin", i: false }));
+    t.c("i paragrafi di Fandom non hanno fonti proprie: niente veli per paragrafo", v.p.every((b) => !b.f?.length));
+    // dopo il link rotto l'immagine va via e la coda di lettere si attacca
+    // al link: segni che quei link sono stati letti, non copiati grezzi
+    const rotto = daWikitesto("X", "Uno [[rotto e poi [[File:x.jpg|thumb|una didascalia]] e [[Davin]]s.");
+    t.c("un link che non si chiude non lascia grezzi quelli dopo", !rotto.p[0].x.includes("didascalia") && rotto.p[0].x.includes("[[Davin|Davins]]"), rotto.p[0].x);
+
+    const libri = [{ id: "hr", title: "Horus Rising", saga: "The Horus Heresy", sagaOrder: 1 }];
+    const giudice = giudiceFonti(libri[0], libri, { statusOf: () => "reading", cfiOf: () => "x" });
+    const a = avvisoVoce(v, giudice);
+    t.c("l'avviso dice i libri delle fonti che vengono dopo", a.motivi.some((m) => /False Gods/.test(m)) && a.motivi.some((m) => /Galaxy in Flames/.test(m)));
+    t.c("e anche questo stesso libro", a.motivi.some((m) => /questo libro/.test(m)));
+    t.eq("i codex e le altre opere non li conta", a.motivi.length, 3);
+    t.eq("lo stesso motivo da due fonti si dice una volta", avvisoVoce({ fv: [{ t: "A" }, { t: "B" }] }, () => "da questo libro").motivi.length, 1);
+    t.c("una voce senza fonti lo dice", avvisoVoce(daWikitesto("Y", "Y is a world."), giudice).senzaFonti === true);
+    const letti = giudiceFonti({ id: "gf", title: "Galaxy in Flames", saga: "The Horus Heresy", sagaOrder: 3 }, [
+      { id: "hr", title: "Horus Rising", saga: "The Horus Heresy", sagaOrder: 1 },
+      { id: "fg", title: "False Gods", saga: "The Horus Heresy", sagaOrder: 2 },
+    ], { statusOf: () => "read", cfiOf: () => null });
+    t.eq("con i volumi prima gia' letti resta solo questo libro", avvisoVoce(v, letti).motivi.join(""), "da questo libro, forse da più avanti");
+  }
+  {
+    // i due wiki scendono nello stesso deposito senza pestarsi i dati
+    const d = deposito();
+    d.m.set("lex:davin", { t: "Davin", p: [] });
+    d.m.set("lex_meta", { voci: 1 });
+    const fandom = async (url) => {
+      const u = new URL(url);
+      if (u.host !== "warhammer40k.fandom.com" || u.pathname !== "/api.php") return { ok: false, status: 404, headers: { get: () => null } };
+      const p = Object.fromEntries(u.searchParams);
+      if (p.meta === "siteinfo") return { ok: true, status: 200, text: async () => JSON.stringify({ query: { general: {}, statistics: { articles: 1 } } }) };
+      return { ok: true, status: 200, text: async () => JSON.stringify({ query: { pages: [{ ns: 0, title: "Garviel Loken", revisions: [{ slots: { main: { content: LOKEN_FANDOM } } }] }] } }) };
+    };
+    const meta = await scaricaLexicanum({ fetcher: fandom, deposito: d, attesa: async () => {}, pausa: 0, wiki: FANDOM });
+    t.eq("Fandom scende col suo indirizzo", meta.voci, 1);
+    t.c("nelle sue chiavi e col suo cartellino", d.m.has("fan:garviel loken") && d.m.has("fan_meta"));
+    t.eq("Lexicanum resta com'era", (await statoLexicanum(d, LEXICANUM))?.voci, 1);
+    t.eq("la voce di Fandom si trova in Fandom", (await voceLore("Garviel Loken", d, FANDOM))?.t, "Garviel Loken");
+    t.eq("e non in Lexicanum", await voceLore("Garviel Loken", d, LEXICANUM), null);
+    // un rinvio di Fandom non copre una voce vera di Fandom
+    const sopra = await recordDi([{ ns: 0, title: "GARVIEL LOKEN", revisions: [{ content: "#REDIRECT [[Loken]]" }] }], d.leggi, FANDOM);
+    t.eq("un rinvio di Fandom guarda le voci di Fandom", sopra.record.length, 0);
+    await rimuoviLexicanum(d, FANDOM);
+    t.c("rimuovere Fandom lascia Lexicanum", d.m.has("lex:davin") && d.m.has("lex_meta") && !d.m.has("fan:garviel loken") && !d.m.has("fan_meta"));
+  }
+
+  // ---- LA RIPRESA DA SOLO -----------------------------------------------
+  // il giro lasciato a meta' riparte quando l'app si riapre, quello fermato
+  // dal lettore no; e il fermo di un wiki non ferma l'altro
+  {
+    const prima = globalThis.localStorage;
+    const dati = new Map();
+    globalThis.localStorage = {
+      getItem: (k) => (dati.has(k) ? dati.get(k) : null),
+      setItem: (k, v) => dati.set(k, String(v)),
+      removeItem: (k) => dati.delete(k),
+    };
+    try {
+      const d = deposito();
+      t.eq("niente giro, niente da riprendere", await giroDaRiprendere(d, LEXICANUM), null);
+      await d.scrivi("lex_giro", { api: "https://x/api.php", cont: { gapcontinue: "B" }, voci: 50 });
+      await d.scrivi("fan_giro", { api: "https://y/api.php", cont: { gapcontinue: "C" }, voci: 50 });
+      t.eq("un giro a meta' si riprende", (await giroDaRiprendere(d, LEXICANUM))?.voci, 50);
+      segnaFermato(LEXICANUM, true);
+      t.eq("fermato a mano resta fermo", await giroDaRiprendere(d, LEXICANUM), null);
+      t.eq("e Fandom no", (await giroDaRiprendere(d, FANDOM))?.voci, 50);
+      segnaFermato(LEXICANUM, false);
+      t.eq("ripreso a mano torna a riprendersi", (await giroDaRiprendere(d, LEXICANUM))?.voci, 50);
+      segnaFermato(FANDOM, true);
+      await rimuoviLexicanum(d, FANDOM);
+      await d.scrivi("fan_giro", { api: "https://y/api.php", cont: null, voci: 0 });
+      t.eq("rimosso, il fermo se ne va con lui", (await giroDaRiprendere(d, FANDOM))?.voci, 0);
+    } finally {
+      if (prima === undefined) delete globalThis.localStorage;
+      else globalThis.localStorage = prima;
+    }
+  }
+
   // ---- LA RIGA DEL LAVORO -----------------------------------------------
   t.eq("la riga del lavoro dice voci, totale e peso", fraseLexicanum({ voci: 12400, totale: 45000, byte: 85 * 1048576 }), "12.400 voci di circa 45.000 · 85 MB");
   t.eq("senza totale non si inventa", fraseLexicanum({ voci: 3, byte: 0 }), "3 voci");
   t.eq("e sotto il mega non si dice «0 MB»", fraseLexicanum({ voci: 3, byte: 4000 }), "3 voci");
+  t.eq("e dice quando aspetta la rete", fraseLexicanum({ voci: 3, attesa: "rete" }), "3 voci · aspetto la rete…");
 
   // ---- I PEZZI ----------------------------------------------------------
   const p = pezzi("The ''[[Horus Rising (Novel)|Horus Rising]]'' and [[Ullanor|the Triumph]].");

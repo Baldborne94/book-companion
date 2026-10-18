@@ -19,7 +19,7 @@ import { recupera, senzaEtichetta } from "../lib/sinossi.js";
 import { preparaCopertina, copertinaOriginale } from "../lib/copertina.js";
 import { caricaCopertina } from "../lib/sync.js";
 import { chiaveGlossario, vociDi, salvaVoci, togli } from "../lib/glossarioMio.js";
-import { statoLexicanum, del40k, loreAMano, scriviLoreAMano } from "../lib/lexicanum.js";
+import { statoLexicanum, del40k, loreAMano, scriviLoreAMano, FANDOM } from "../lib/lexicanum.js";
 import { getCfi } from "../lib/annotations.js";
 import { frontiera } from "../lib/frontiera.js";
 import { soloDellaSerie, perchePrimaTace, fraseTace } from "../lib/trama.js";
@@ -307,7 +307,8 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   const [loreMano, setLoreMano] = useState(() => loreAMano(book.id));
   useEffect(() => {
     let vivo = true;
-    statoLexicanum().then((s) => vivo && setLexQui(!!s));
+    // Lexicanum o Fandom: l'interruttore vale per tutti e due i wiki
+    Promise.all([statoLexicanum(), statoLexicanum(undefined, FANDOM)]).then(([l, f]) => vivo && setLexQui(!!(l || f)));
     return () => {
       vivo = false;
     };
@@ -977,7 +978,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
               fontSize: F.nota,
             }}
           >
-            ⚔ Lexicanum nella scheda del dizionario: {loreAcceso ? "acceso" : "spento"}
+            ⚔ I wiki del 40K nella scheda del dizionario: {loreAcceso ? "accesi" : "spenti"}
             <span style={{ float: "right", color: C.muted, fontSize: F.minuscolo }}>
               {loreMano == null ? (loreDaSe ? "dalla saga" : "") : "scelto da te"}
             </span>

@@ -39,10 +39,31 @@ export const SITO = "https://wh40k.lexicanum.com";
 // l'indirizzo dell'API non e' scritto da nessuna parte che si possa leggere
 // da qui: si provano i posti dove MediaWiki di solito la mette, e vince il
 // primo che risponde come un MediaWiki
-const API_POSSIBILI = [`${SITO}/mediawiki/api.php`, `${SITO}/w/api.php`, `${SITO}/api.php`];
-const PREFISSO = "lex:";
-const META = "lex_meta";
-const GIRO = "lex_giro";
+// I WIKI DEL 40K CHE L'APP SA SCARICARE. Stesso motore, stesse regole,
+// dati separati: ognuno ha il suo prefisso in `aux`, il suo cartellino e il
+// suo segno della ripresa. Lexicanum e' quello coi veli per paragrafo;
+// Fandom (chiesto dal lettore: «aggiungi fandom come seconda scheda con
+// l'avviso») le fonti le elenca tutte in fondo alla voce, e la voce si
+// legge dietro un avviso (`avvisoVoce`).
+export const LEXICANUM = {
+  id: "lex",
+  nome: "Lexicanum",
+  sito: SITO,
+  api: [`${SITO}/mediawiki/api.php`, `${SITO}/w/api.php`, `${SITO}/api.php`],
+  prefisso: "lex:",
+  meta: "lex_meta",
+  giro: "lex_giro",
+};
+export const FANDOM = {
+  id: "fan",
+  nome: "Fandom",
+  sito: "https://warhammer40k.fandom.com",
+  api: ["https://warhammer40k.fandom.com/api.php"],
+  prefisso: "fan:",
+  meta: "fan_meta",
+  giro: "fan_giro",
+};
+const PREFISSO = LEXICANUM.prefisso;
 // cinquanta e' il massimo che MediaWiki concede a chi non e' un bot quando
 // si chiede il testo delle pagine
 const PER_VOLTA = 50;
@@ -90,6 +111,8 @@ const SEZIONI_VIA = new Set([
   "appearances",
   "videos",
 ]);
+
+const FONTI_SEZIONE = new Set(["sources", "source", "references"]);
 
 const ENTITA = { nbsp: " ", amp: "&", quot: '"', apos: "'", lt: "<", gt: ">", mdash: "—", ndash: "–", hellip: "…", rsquo: "’", lsquo: "‘", ldquo: "“", rdquo: "”" };
 const entita = (s) =>
@@ -191,9 +214,13 @@ function link(testo) {
         if (prof === 0) break;
       } else j++;
     }
+    // un link che non si chiude resta testo, e si va avanti: prima si
+    // copiava tutto il resto com'era, e un solo «[[» rotto a meta' voce
+    // lasciava grezzi tutti i link dopo di lui (visto sulle voci di Fandom)
     if (prof !== 0) {
-      out += testo.slice(i);
-      break;
+      out += "[[";
+      i += 2;
+      continue;
     }
     const dentro = testo.slice(i + 2, j - 2);
     // la coda di lettere attaccata al link fa parte del testo: [[Primarch]]s
@@ -209,7 +236,9 @@ function link(testo) {
     testoLink = testoLink.replace(/^:?(category|file|image)\s*:/i, "");
     bersaglio = bersaglio.split("#")[0].trim();
     testoLink = (testoLink + coda).replace(/[[\]|]/g, "");
-    out += bersaglio ? `[[${bersaglio}|${testoLink}]]` : testoLink;
+    // il link col testo uguale al bersaglio si scrive corto: le voci di
+    // Fandom sono lunghe, e il doppio pesava un decimo della voce
+    out += !bersaglio ? testoLink : testoLink === bersaglio ? `[[${bersaglio}]]` : `[[${bersaglio}|${testoLink}]]`;
   }
   return out;
 }
@@ -234,6 +263,7 @@ function pulisci(s) {
 export const testoPiano = (s) =>
   String(s || "")
     .replace(/\[\[([^\]|]*)\|([^\]]*)\]\]/g, "$2")
+    .replace(/\[\[([^\]|]*)\]\]/g, "$1")
     .replace(/''/g, "")
     .replace(new RegExp(`[${FN}${FN_FINE}${EN}${EN_FINE}]`, "g"), "")
     .replace(/\s+/g, " ")
@@ -242,11 +272,18 @@ export const testoPiano = (s) =>
 // Di una riga delle fonti serve il TITOLO dell'opera, per riconoscerla fra
 // i libri: il primo link, poi il primo corsivo, poi quel che sta prima della
 // virgola. La parentesi del wiki («(Novel)») via.
+// E VIENE PRIMA CHI VIENE PRIMA: su Lexicanum il titolo e' un link dentro il
+// corsivo, su Fandom e' un corsivo senza link e il link e' l'AUTORE
+// («''Horus Rising'' (Novel) by [[Dan Abnett]]»): prendere il primo link
+// dava «Dan Abnett» per titolo (visto sulle voci vere).
 function titoloFonte(riga) {
-  const l = riga.match(/\[\[([^\]|]*)\|([^\]]*)\]\]/);
-  if (l) return senzaParentesi(l[1]) || senzaParentesi(l[2]);
-  const c = riga.match(/''([^']+)''/);
-  if (c) return senzaParentesi(c[1].trim());
+  const c = riga.match(/''(.+?)''/);
+  const l = riga.match(/\[\[([^\]|]*)(?:\|([^\]]*))?\]\]/);
+  if (c && (!l || c.index <= l.index)) {
+    const dentro = c[1].match(/^\s*\[\[([^\]|]*)(?:\|[^\]]*)?\]\]\s*$/);
+    return senzaParentesi(dentro ? dentro[1] : testoPiano(c[1]).trim());
+  }
+  if (l) return senzaParentesi(l[1]) || senzaParentesi(l[2] || "");
   return senzaParentesi(testoPiano(riga).split(",")[0].replace(/\s+by\s+.*$/i, "").trim());
 }
 
@@ -280,6 +317,12 @@ export function daWikitesto(titolo, wikitesto) {
   const blocchi = [];
   let corrente = null;
   let via = 0; // il livello della sezione che si sta saltando, 0 = nessuna
+  // LE FONTI DELLA VOCE INTERA: le righe d'elenco sotto «Sources» senza il
+  // numero di una citazione. Su Fandom sono le sole fonti che ci sono (niente
+  // citazioni per paragrafo): servono all'avviso, che dice quali di quei
+  // libri il lettore non ha ancora letto
+  let inFonti = false;
+  const fontiVoce = [];
   const chiudi = () => {
     if (!corrente) return;
     const f = [];
@@ -314,10 +357,18 @@ export function daWikitesto(titolo, wikitesto) {
       const nome = testoPiano(pulisci(h[2]));
       if (via && livello > via) continue;
       via = SEZIONI_VIA.has(nome.toLowerCase()) ? livello : 0;
+      inFonti = !!via && FONTI_SEZIONE.has(nome.toLowerCase());
       if (!via && nome) blocchi.push({ h: nome, l: livello });
       continue;
     }
-    if (via) continue;
+    if (via) {
+      if (inFonti && /^[*#]/.test(riga)) {
+        const pulita = pulisci(riga.replace(/^[*#:;\s]+/, ""));
+        const t = titoloFonte(pulita);
+        if (t && !fontiVoce.some((x) => x.t === t) && fontiVoce.length < 60) fontiVoce.push({ t, x: testoPiano(pulita) });
+      }
+      continue;
+    }
     if (!riga) {
       chiudi();
       continue;
@@ -346,7 +397,7 @@ export function daWikitesto(titolo, wikitesto) {
     const riga = pulisci(link(senzaModelli(grezza)));
     f[k] = { t: titoloFonte(riga), x: testoPiano(riga) };
   }
-  return { t: titolo, p: blocchi, f };
+  return fontiVoce.length ? { t: titolo, p: blocchi, f, fv: fontiVoce } : { t: titolo, p: blocchi, f };
 }
 
 // ---------------------------------------------------------------------------
@@ -362,40 +413,64 @@ export class GuaioLexicanum extends Error {}
 const NON_RISPONDE =
   "Lexicanum non risponde: o manca la rete, o il sito non accetta richieste da un'app nel browser.";
 
-async function chiediJson(url, { fetcher, attesa, tentativi = 4 }) {
+// LO SCARICAMENTO E' PAZIENTE (segnalato dal lettore: «perche' ogni tot lo
+// scaricamento del lexicanum si ferma?»). Prima un buco di rete, un 429 o
+// un server occupato davano quattro tentativi in mezzo minuto, poi il giro
+// si arrendeva — e sul tablet un buco di wifi o l'app in secondo piano
+// durano di piu'. Adesso, a giro avviato (`paziente`), si aspetta e si
+// riprova la STESSA pagina finche' non risponde o finche' il lettore non
+// ferma: l'attesa cresce fino a un minuto e si dice (`onAttesa`). Al primo
+// contatto (`trovaApi`) invece si resta brevi: li' un rifiuto e' la notizia
+// che il sito non parla col browser, e va detta subito.
+const ATTESA_MAX = 60000;
+// una pagina al posto dei dati (il controllo anti-bot) puo' essere un
+// momento: si riprova qualche volta, poi si dice
+const PAGINE_STRANE = 6;
+
+async function chiediJson(url, { fetcher, attesa, tentativi = 4, paziente = false, fermo = () => false, onAttesa }) {
   let ultimo = null;
-  for (let t = 0; t < tentativi; t++) {
+  let strane = 0;
+  for (let t = 0; paziente || t < tentativi; t++) {
+    // fra un tentativo e l'altro si guarda se il lettore ha fermato
+    if (paziente && t > 0 && fermo()) return null;
+    const aspetta = async (ms, motivo) => {
+      onAttesa?.(motivo);
+      await attesa(Math.min(ms, ATTESA_MAX));
+    };
     let res;
     try {
       res = await fetcher(url);
     } catch (e) {
       ultimo = new GuaioLexicanum(NON_RISPONDE);
-      await attesa(2000 * 2 ** t);
+      await aspetta(2000 * 2 ** Math.min(t, 5), "rete");
       continue;
     }
     // troppe richieste o server occupato: si aspetta quanto chiede, poi si
     // riprova la STESSA pagina
-    if (res.status === 429 || res.status === 503) {
-      const dopo = Number(res.headers?.get?.("retry-after")) || 10;
-      ultimo = new GuaioLexicanum(`Lexicanum chiede di rallentare (${res.status}).`);
-      await attesa(Math.min(dopo, 120) * 1000);
+    if (res.status === 429 || res.status === 503 || (paziente && res.status >= 500)) {
+      const dopo = Number(res.headers?.get?.("retry-after")) || 10 * Math.min(t + 1, 6);
+      ultimo = new GuaioLexicanum(`Il wiki chiede di rallentare (${res.status}).`);
+      await aspetta(dopo * 1000, "rallenta");
       continue;
     }
-    if (!res.ok) throw new GuaioLexicanum(`Lexicanum ha risposto ${res.status}.`);
+    if (!res.ok) throw new GuaioLexicanum(`Il wiki ha risposto ${res.status}.`);
     const testo = await res.text();
     let dati;
     try {
       dati = JSON.parse(testo);
     } catch {
       // una pagina di controllo anti-bot al posto della risposta
-      throw new GuaioLexicanum("Lexicanum ha risposto con una pagina invece che coi dati.");
-    }
-    if (dati?.error?.code === "maxlag") {
-      ultimo = new GuaioLexicanum("Lexicanum e' sotto carico.");
-      await attesa(5000);
+      ultimo = new GuaioLexicanum("Il wiki ha risposto con una pagina invece che coi dati.");
+      if (!paziente || ++strane > PAGINE_STRANE) throw ultimo;
+      await aspetta(ATTESA_MAX, "rallenta");
       continue;
     }
-    if (dati?.error) throw new GuaioLexicanum(`Lexicanum: ${dati.error.info || dati.error.code}`);
+    if (dati?.error?.code === "maxlag") {
+      ultimo = new GuaioLexicanum("Il wiki e' sotto carico.");
+      await aspetta(5000 * Math.min(t + 1, 6), "rallenta");
+      continue;
+    }
+    if (dati?.error) throw new GuaioLexicanum(`Il wiki: ${dati.error.info || dati.error.code}`);
     return { dati, byte: testo.length };
   }
   throw ultimo || new GuaioLexicanum(NON_RISPONDE);
@@ -404,9 +479,9 @@ async function chiediJson(url, { fetcher, attesa, tentativi = 4 }) {
 const indirizzo = (api, parametri) =>
   `${api}?${new URLSearchParams({ format: "json", formatversion: "2", origin: "*", ...parametri })}`;
 
-export async function trovaApi({ fetcher = fetch, attesa = dorme } = {}) {
+export async function trovaApi({ fetcher = fetch, attesa = dorme, wiki = LEXICANUM } = {}) {
   let guaio = null;
-  for (const api of API_POSSIBILI) {
+  for (const api of wiki.api) {
     try {
       const { dati } = await chiediJson(indirizzo(api, { action: "query", meta: "siteinfo", siprop: "general|statistics" }), {
         fetcher,
@@ -431,12 +506,12 @@ const contenutoDi = (pagina) => {
 // «Horus lupercal» → «Horus Lupercal» scritto dopo la voce la farebbe
 // sparire sotto un rinvio a se stessa. Scritto PRIMA (l'ordine alfabetico
 // del wiki mette le maiuscole avanti) lo copre la voce quando arriva.
-export async function recordDi(pagine, leggi) {
+export async function recordDi(pagine, leggi, wiki = LEXICANUM) {
   const fuori = new Map();
   const giaVera = async (k) => {
     const qui = fuori.get(k);
     if (qui) return !qui.s;
-    const v = await leggi(PREFISSO + k);
+    const v = await leggi(wiki.prefisso + k);
     return !!v && !v.s;
   };
   let voci = 0;
@@ -464,7 +539,7 @@ export async function recordDi(pagine, leggi) {
       fuori.set(corta, { t: senzaParentesi(pagina.title), r: pagina.title, s: 1 });
     }
   }
-  return { record: [...fuori].map(([k, v]) => [PREFISSO + k, v]), voci, rinvii };
+  return { record: [...fuori].map(([k, v]) => [wiki.prefisso + k, v]), voci, rinvii };
 }
 
 // LO SCARICAMENTO SI RIPRENDE. Sono migliaia di pagine: sul tablet l'app va
@@ -481,17 +556,18 @@ export async function scaricaLexicanum({
   pausa = PAUSA_MS,
   attesa = dorme,
   aggiorna = false,
+  wiki = LEXICANUM,
 } = {}) {
   // un giro cominciato si riprende sempre; uno nuovo sopra un Lexicanum
   // gia' sceso parte solo se lo si chiede (`aggiorna`): le voci si
   // riscrivono una per una e intanto quelle di prima continuano a rispondere
-  let giro = await deposito.leggi(GIRO);
+  let giro = await deposito.leggi(wiki.giro);
   if (!giro?.api) {
-    const gia = await deposito.leggi(META);
+    const gia = await deposito.leggi(wiki.meta);
     if (gia?.voci && !aggiorna) return gia;
-    const { api, voci } = await trovaApi({ fetcher, attesa });
+    const { api, voci } = await trovaApi({ fetcher, attesa, wiki });
     giro = { api, cont: null, voci: 0, rinvii: 0, byte: 0, totale: voci, iniziato: Date.now() };
-    await deposito.scrivi(GIRO, giro);
+    await deposito.scrivi(wiki.giro, giro);
   }
   onProgress?.({ ...giro });
   for (;;) {
@@ -510,8 +586,17 @@ export async function scaricaLexicanum({
       // «nuova» anche ai MediaWiki vecchi, quella che si ripassa intera
       ...(giro.cont || { continue: "" }),
     };
-    const { dati, byte } = await chiediJson(indirizzo(giro.api, parametri), { fetcher, attesa });
-    const { record, voci, rinvii } = await recordDi(dati?.query?.pages, deposito.leggi);
+    const risposta = await chiediJson(indirizzo(giro.api, parametri), {
+      fetcher,
+      attesa,
+      paziente: true,
+      fermo,
+      onAttesa: (motivo) => onProgress?.({ ...giro, attesa: motivo }),
+    });
+    // fermato mentre aspettava la rete: il segno della ripresa e' gia' giusto
+    if (!risposta) return { ...giro, fermato: true };
+    const { dati, byte } = risposta;
+    const { record, voci, rinvii } = await recordDi(dati?.query?.pages, deposito.leggi, wiki);
     if (record.length) await deposito.scriviMolti(record);
     giro = {
       ...giro,
@@ -521,21 +606,41 @@ export async function scaricaLexicanum({
       byte: giro.byte + byte,
     };
     if (!giro.cont) break;
-    await deposito.scrivi(GIRO, giro);
+    await deposito.scrivi(wiki.giro, giro);
     onProgress?.({ ...giro });
     if (pausa) await attesa(pausa);
   }
   const meta = { voci: giro.voci, rinvii: giro.rinvii, byte: giro.byte, quando: Date.now(), api: giro.api };
-  await deposito.scrivi(META, meta);
-  await deposito.togli(GIRO).catch(() => {});
+  await deposito.scrivi(wiki.meta, meta);
+  await deposito.togli(wiki.giro).catch(() => {});
   INDICE = null;
   onProgress?.({ ...giro, finito: true });
   return meta;
 }
 
-export async function statoLexicanum(deposito = DEPOSITO) {
+// FERMATO A MANO: il giro lasciato a meta' riparte da solo quando l'app si
+// riapre (un ricaricamento, il sistema che la chiude in secondo piano), ma
+// non quello che il lettore ha fermato lui. Del dispositivo, come il giro.
+const chiaveFermo = (wiki) => `bc_wiki_fermo_${wiki.id}`;
+export function fermatoAMano(wiki = LEXICANUM) {
   try {
-    const m = await deposito.leggi(META);
+    return localStorage.getItem(chiaveFermo(wiki)) === "1";
+  } catch {
+    return false;
+  }
+}
+export function segnaFermato(wiki = LEXICANUM, si = true) {
+  try {
+    if (si) localStorage.setItem(chiaveFermo(wiki), "1");
+    else localStorage.removeItem(chiaveFermo(wiki));
+  } catch {
+    /* senza localStorage al massimo riparte: meglio che restare a meta' */
+  }
+}
+
+export async function statoLexicanum(deposito = DEPOSITO, wiki = LEXICANUM) {
+  try {
+    const m = await deposito.leggi(wiki.meta);
     return m?.voci ? m : null;
   } catch {
     return null;
@@ -543,23 +648,32 @@ export async function statoLexicanum(deposito = DEPOSITO) {
 }
 
 // lo scaricamento lasciato a meta': quante voci sono gia' qui
-export async function giroLexicanum(deposito = DEPOSITO) {
+export async function giroLexicanum(deposito = DEPOSITO, wiki = LEXICANUM) {
   try {
-    const g = await deposito.leggi(GIRO);
+    const g = await deposito.leggi(wiki.giro);
     return g?.api ? g : null;
   } catch {
     return null;
   }
 }
 
-export async function rimuoviLexicanum(deposito = DEPOSITO) {
+// IL GIRO DA RIPRENDERE DA SOLO: uno cominciato e non finito, che il
+// lettore non ha fermato lui. Lo chiede App all'avvio, al ritorno in primo
+// piano e quando torna la rete.
+export async function giroDaRiprendere(deposito = DEPOSITO, wiki = LEXICANUM) {
+  if (fermatoAMano(wiki)) return null;
+  return giroLexicanum(deposito, wiki);
+}
+
+export async function rimuoviLexicanum(deposito = DEPOSITO, wiki = LEXICANUM) {
+  segnaFermato(wiki, false);
   VOCI.clear();
   INDICE = null;
   // il cartellino per primo, come nel dizionario: se la pulizia si
   // interrompe resta un Lexicanum spento, non uno acceso e bucato
-  await deposito.togli(META).catch(() => {});
-  await deposito.togli(GIRO).catch(() => {});
-  await deposito.togliPrefisso(PREFISSO);
+  await deposito.togli(wiki.meta).catch(() => {});
+  await deposito.togli(wiki.giro).catch(() => {});
+  await deposito.togliPrefisso(wiki.prefisso);
 }
 
 // ---------------------------------------------------------------------------
@@ -568,11 +682,12 @@ export async function rimuoviLexicanum(deposito = DEPOSITO) {
 const VOCI = new Map();
 const VOCI_MAX = 40;
 
-async function leggiVoce(k, deposito) {
-  if (deposito === DEPOSITO && VOCI.has(k)) return VOCI.get(k);
-  const v = (await deposito.leggi(PREFISSO + k)) || null;
+async function leggiVoce(k, deposito, wiki) {
+  const dove = wiki.prefisso + k;
+  if (deposito === DEPOSITO && VOCI.has(dove)) return VOCI.get(dove);
+  const v = (await deposito.leggi(dove)) || null;
   if (deposito === DEPOSITO) {
-    VOCI.set(k, v);
+    VOCI.set(dove, v);
     if (VOCI.size > VOCI_MAX) VOCI.delete(VOCI.keys().next().value);
   }
   return v;
@@ -581,11 +696,11 @@ async function leggiVoce(k, deposito) {
 // Un titolo → la voce, seguendo i rinvii (al massimo tre: un giro di rinvii
 // sul wiki non deve diventare un giro infinito qui). `via` e' il nome da cui
 // si e' arrivati, se diverso: la scheda lo dice («Loken → Garviel Loken»).
-export async function voceLore(titolo, deposito = DEPOSITO) {
+export async function voceLore(titolo, deposito = DEPOSITO, wiki = LEXICANUM) {
   let k = chiave(titolo);
   let via = null;
   for (let salti = 0; k && salti < 4; salti++) {
-    const v = await leggiVoce(k, deposito);
+    const v = await leggiVoce(k, deposito, wiki);
     if (!v) return null;
     if (!v.r) return via ? { ...v, via } : v;
     via = via || v.t;
@@ -625,9 +740,9 @@ export function candidati(raw) {
   return out.filter((k) => k.length >= 3);
 }
 
-export async function cercaLore(raw, deposito = DEPOSITO) {
+export async function cercaLore(raw, deposito = DEPOSITO, wiki = LEXICANUM) {
   for (const k of candidati(raw)) {
-    const v = await voceLore(k, deposito).catch(() => null);
+    const v = await voceLore(k, deposito, wiki).catch(() => null);
     if (v) return v;
   }
   return null;
@@ -864,24 +979,39 @@ export function velaVoce(voce, giudice) {
   });
 }
 
+// L'AVVISO DI UNA VOCE SENZA CITAZIONI PER PARAGRAFO (Fandom). Non si puo'
+// velare un paragrafo per volta: si guarda la lista delle fonti della voce
+// intera e si dice quali vengono da un volume che non hai ancora letto. Senza
+// lista delle fonti non si sa niente, e lo si dice: anche quello e' un rischio.
+export function avvisoVoce(voce, giudice) {
+  const fonti = voce?.fv || [];
+  const motivi = [];
+  for (const fonte of fonti) {
+    const perche = giudice(fonte);
+    if (perche && !motivi.includes(perche)) motivi.push(perche);
+  }
+  return { motivi, senzaFonti: fonti.length === 0 };
+}
+
 // Il testo con link e corsivi → pezzi da disegnare. `l` = bersaglio del
 // link, `i` = corsivo.
 export function pezzi(x) {
   const out = [];
   let corsivo = false;
-  const re = /\[\[([^\]|]*)\|([^\]]*)\]\]|''/g;
+  const re = /\[\[([^\]|]*)(?:\|([^\]]*))?\]\]|''/g;
   let da = 0;
   for (const m of String(x || "").matchAll(re)) {
     if (m.index > da) out.push({ s: x.slice(da, m.index), i: corsivo });
     if (m[0] === "''") corsivo = !corsivo;
-    else out.push({ s: m[2], l: m[1], i: corsivo });
+    else out.push({ s: m[2] ?? m[1], l: m[1], i: corsivo });
     da = m.index + m[0].length;
   }
   if (da < String(x || "").length) out.push({ s: x.slice(da), i: corsivo });
   return out.filter((p) => p.s);
 }
 
-export const indirizzoVoce = (titolo) => `${SITO}/wiki/${encodeURIComponent(String(titolo).replace(/ /g, "_"))}`;
+export const indirizzoVoce = (titolo, wiki = LEXICANUM) =>
+  `${wiki.sito}/wiki/${encodeURIComponent(String(titolo).replace(/ /g, "_"))}`;
 
 // La riga del lavoro: le voci scese, il totale che il wiki dichiara (e'
 // «circa»: conta anche le voci che non sono racconto) e i byte, che sono
@@ -892,5 +1022,6 @@ export function fraseLexicanum(p) {
   // sotto il mega non si dice: «0 MB» e' uno zero, e gli zeri non si dicono
   const mb = p.byte >= 1048576 ? ` · ${(p.byte / 1048576).toFixed(0)} MB` : "";
   const di = p.totale ? ` di circa ${numero(p.totale)}` : "";
-  return `${numero(p.voci)} voci${di}${mb}`;
+  const sosta = p.attesa === "rete" ? " · aspetto la rete…" : p.attesa === "rallenta" ? " · il wiki chiede una pausa…" : "";
+  return `${numero(p.voci)} voci${di}${mb}${sosta}`;
 }

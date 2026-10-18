@@ -208,7 +208,13 @@ export const MAPPA = [
     luogo: "parola",
     nome: "Lexicanum",
     cosa: "Nei libri del 40K i nomi di Lexicanum sono segnati nel testo come i termini del glossario: tocchi e la scheda mostra la voce, senza rete, coi link alle altre voci. I paragrafi che vengono da un volume della saga che non hai ancora letto restano velati finché non li tocchi.",
-    dove: "Tocca un nome segnato, o tieni premuto su un nome → «Definisci» → «Leggi la voce». I segni si spengono con «Segna i termini della saga». Si scarica da Impostazioni → Lexicanum.",
+    dove: "Tocca un nome segnato, o tieni premuto su un nome → «Definisci» → «Leggi la voce». I segni si spengono con «Segna i termini della saga». Si scarica da Impostazioni → I wiki del 40K.",
+  },
+  {
+    luogo: "parola",
+    nome: "Fandom",
+    cosa: "La voce del Warhammer 40k Wiki di Fandom, come seconda scheda accanto a Lexicanum, senza rete. Fandom non dice da quale libro viene ogni paragrafo: davanti alla voce c'è un avviso coi libri delle sue fonti che non hai ancora letto, e la voce si legge solo se lo tocchi.",
+    dove: "Nella scheda del dizionario di un nome del 40K → scheda «Fandom ⚠». Si scarica da Impostazioni → I wiki del 40K.",
   },
 
   // ---- NELLA SCHEDA DI UN LIBRO ------------------------------------------
@@ -439,8 +445,8 @@ export const MAPPA = [
   {
     luogo: "impostazioni",
     nome: "Lexicanum sul dispositivo",
-    cosa: "Il wiki del 40K da scaricare una volta, con calma: si ferma e si riprende. Poi le voci rispondono nella scheda del dizionario, senza rete.",
-    dove: "Impostazioni → Lexicanum; acceso o spento libro per libro nella scheda del libro.",
+    cosa: "Lexicanum e Fandom da scaricare una volta, con calma: se l'app si chiude o la rete cade lo scaricamento riparte da solo da dove era arrivato; se lo fermi tu resta fermo. Poi le voci rispondono nella scheda del dizionario, senza rete.",
+    dove: "Impostazioni → I wiki del 40K; accesi o spenti libro per libro nella scheda del libro.",
   },
   {
     luogo: "impostazioni",
