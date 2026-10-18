@@ -31,6 +31,11 @@ import {
   loreAttivo,
   trovaApi,
   fraseLexicanum,
+  indiceLore,
+  nomiNelTesto,
+  parolePiccole,
+  nomeSottoIlDito,
+  nomiDaSegnare,
 } from "../src/lib/lexicanum.js";
 
 const deposito = () => {
@@ -53,6 +58,7 @@ const deposito = () => {
     togliPrefisso: async (p) => {
       for (const k of [...m.keys()]) if (k.startsWith(p)) m.delete(k);
     },
+    chiaviPrefisso: async (p) => [...m.keys()].filter((k) => k.startsWith(p)),
   };
 };
 
@@ -284,6 +290,50 @@ export default async function (t) {
   t.c("un paragrafo da questo libro si vela", !!di("Davin").v);
   t.c("e uno dalla Guerra Solare si vela", !!di("brothers").v);
   t.c("i titoletti non si velano", velata.filter((b) => b.h).every((b) => !b.v));
+
+  // ---- I NOMI NEL TESTO ------------------------------------------------
+  {
+    const d = deposito();
+    for (const k of ["garviel loken", "loken", "horus", "sons of horus", "cadia", "battle", "lion el'jonson", "davin"]) d.m.set(`lex:${k}`, { t: k });
+    d.m.set("lex_meta", { voci: 8 });
+    const ix = await indiceLore(d);
+    t.c("l'indice e' fatto delle sole chiavi delle voci, non dei cartellini", ix.chiavi.has("garviel loken") && !ix.chiavi.has("_meta") && ix.chiavi.size === 8);
+    t.eq("e sa quante parole ha il nome piu' lungo", ix.max, 3);
+
+    const frase = "Garviel Loken watched the Sons of Horus. Loken smiled. Battle was joined on Cadia, Horus's world, and the battle raged.";
+    const nomi = nomiNelTesto(frase, ix, parolePiccole(frase)).map((m) => m.testo);
+    t.eq("il nome lungo prima di quello corto", nomi[0], "Garviel Loken");
+    t.eq("e senza accavallarsi: «Loken» dentro «Garviel Loken» non si conta di nuovo", nomi.filter((x) => x === "Loken").length, 1);
+    t.c("un nome di piu' parole si trova intero", nomi.includes("Sons of Horus"));
+    t.c("la parola sola maiuscola si trova", nomi.includes("Loken") && nomi.includes("Cadia"));
+    t.c("col genitivo, senza il genitivo", nomi.includes("Horus"));
+    t.c("una parola che nel capitolo compare anche minuscola non e' un nome", !nomi.includes("Battle"));
+    t.c("una minuscola non e' mai un nome", nomiNelTesto("the cadia gate", ix).length === 0);
+    t.eq("una virgola spezza il nome", nomiNelTesto("Garviel, Loken said", ix).map((m) => m.testo).join("|"), "Loken");
+    t.eq("l'apostrofo dentro il nome resta", nomiNelTesto("then Lion El’Jonson spoke", ix)[0]?.chiave, "lion el'jonson");
+    const corto = { chiavi: new Set(["ork"]), max: 1 };
+    t.eq("una parola sola sotto le quattro lettere non si segna", nomiNelTesto("The Ork roared", corto).length, 0);
+    const pos = frase.indexOf("Loken smiled") + 2;
+    t.eq("il dito su un nome segnato lo trova", nomeSottoIlDito(frase, pos, ix, parolePiccole(frase), new Set(["loken"]))?.testo, "Loken");
+    t.eq("su un nome non segnato nel capitolo no: il tocco resta una voltata", nomeSottoIlDito(frase, pos, ix, parolePiccole(frase), new Set(["cadia"])), null);
+    t.eq("fra due nomi, su una parola qualunque, niente", nomeSottoIlDito(frase, frase.indexOf("watched") + 1, ix, parolePiccole(frase), null), null);
+  }
+
+  {
+    // un segno per voce: «Loken» porta alla stessa voce di «Garviel Loken»
+    const ix = { chiavi: new Set(["garviel loken", "loken", "davin", "mournival"]), max: 2 };
+    const voci = { "garviel loken": "Garviel Loken", loken: "Garviel Loken", davin: "Davin", mournival: "Mournival" };
+    const risolvi = async (k) => ({ t: voci[k] });
+    const gia = new Set();
+    const testo = "Garviel Loken saw Davin. Loken thought of the Mournival and of Davin again.";
+    const primi = await nomiDaSegnare(testo, ix, new Set(), gia, { risolvi });
+    t.eq("un segno per voce, non per nome", primi.map((m) => m.testo).join("|"), "Garviel Loken|Davin|Mournival");
+    t.c("ma il tocco risponde anche sull'altro nome della stessa persona", gia.has("lore:loken"));
+    const dopo = await nomiDaSegnare("Davin burned. Loken wept.", ix, new Set(), gia, { risolvi });
+    t.eq("nello stesso capitolo, un nome gia' segnato non si segna di nuovo", dopo.length, 0);
+    const saltati = await nomiDaSegnare("Davin burned.", ix, new Set(), new Set(), { risolvi, salta: (m) => m.chiave === "davin" });
+    t.eq("una voce del glossario vince sullo stesso nome di Lexicanum", saltati.length, 0);
+  }
 
   // ---- LA RIGA DEL LAVORO -----------------------------------------------
   t.eq("la riga del lavoro dice voci, totale e peso", fraseLexicanum({ voci: 12400, totale: 45000, byte: 85 * 1048576 }), "12.400 voci di circa 45.000 · 85 MB");

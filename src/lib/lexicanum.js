@@ -22,7 +22,7 @@
 // ''[[Horus Rising (Novel)|Horus Rising]]''`): sapere DA QUALE LIBRO viene
 // un paragrafo e' quel che permette di velare quelli che vengono da un
 // volume che non hai ancora letto (`giudiceFonti`).
-import { getAux, putAux, putAuxMolti, removeAux, removeAuxPrefisso } from "./bookStore.js";
+import { getAux, putAux, putAuxMolti, removeAux, removeAuxPrefisso, chiaviAuxPrefisso } from "./bookStore.js";
 import { frontiera } from "./frontiera.js";
 import { riconosci } from "./sagaBooks.js";
 
@@ -32,6 +32,7 @@ const DEPOSITO = {
   scriviMolti: putAuxMolti,
   togli: removeAux,
   togliPrefisso: removeAuxPrefisso,
+  chiaviPrefisso: chiaviAuxPrefisso,
 };
 
 export const SITO = "https://wh40k.lexicanum.com";
@@ -527,6 +528,7 @@ export async function scaricaLexicanum({
   const meta = { voci: giro.voci, rinvii: giro.rinvii, byte: giro.byte, quando: Date.now(), api: giro.api };
   await deposito.scrivi(META, meta);
   await deposito.togli(GIRO).catch(() => {});
+  INDICE = null;
   onProgress?.({ ...giro, finito: true });
   return meta;
 }
@@ -552,6 +554,7 @@ export async function giroLexicanum(deposito = DEPOSITO) {
 
 export async function rimuoviLexicanum(deposito = DEPOSITO) {
   VOCI.clear();
+  INDICE = null;
   // il cartellino per primo, come nel dizionario: se la pulizia si
   // interrompe resta un Lexicanum spento, non uno acceso e bucato
   await deposito.togli(META).catch(() => {});
@@ -628,6 +631,119 @@ export async function cercaLore(raw, deposito = DEPOSITO) {
     if (v) return v;
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// I NOMI NEL TESTO
+//
+// Chiesto dal lettore: «segna i nomi del 40K nel testo come il glossario».
+// L'indice e' l'elenco delle CHIAVI delle voci (titoli, rinvii, nomi senza
+// parentesi), letto da IndexedDB senza aprire nessuna voce: cinquantamila
+// articoli interi in memoria per sapere se «Cadia» e' un nome sarebbero
+// centinaia di mega. Si costruisce una volta per sessione e si butta quando
+// Lexicanum si riscarica o si rimuove.
+let INDICE = null;
+const PAROLE_MAX = 6;
+
+async function costruisciIndice(deposito) {
+  const chiavi = await deposito.chiaviPrefisso(PREFISSO);
+  if (!chiavi?.length) return null;
+  const set = new Set();
+  let max = 1;
+  for (const k of chiavi) {
+    const c = String(k).slice(PREFISSO.length);
+    if (!c) continue;
+    set.add(c);
+    max = Math.max(max, c.split(" ").length);
+  }
+  return { chiavi: set, max: Math.min(max, PAROLE_MAX) };
+}
+
+export function indiceLore(deposito = DEPOSITO) {
+  if (deposito !== DEPOSITO) return costruisciIndice(deposito);
+  if (!INDICE) {
+    INDICE = costruisciIndice(deposito).catch(() => {
+      INDICE = null;
+      return null;
+    });
+  }
+  return INDICE;
+}
+
+const PAROLA_RE = /[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu;
+
+// Le parole che nel capitolo compaiono anche MINUSCOLE: «battle» minuscola
+// vuol dire che «Battle» a inizio frase e' una parola, non un nome
+export function parolePiccole(testo) {
+  const s = new Set();
+  for (const m of String(testo || "").matchAll(PAROLA_RE)) if (/^\p{Ll}/u.test(m[0])) s.add(m[0].toLowerCase());
+  return s;
+}
+
+// I nomi di Lexicanum in un pezzo di testo, dal piu' lungo («Garviel Loken»
+// prima di «Loken»), senza accavallarsi. Le regole tengono la pagina
+// leggibile: un nome comincia con la MAIUSCOLA; fra le sue parole solo spazi
+// (una virgola spezza: «Horus, Loken» sono due nomi); una parola SOLA vale
+// se ha almeno quattro lettere e nel capitolo non compare mai minuscola
+// (`minuscole`) — Lexicanum ha voci anche per «Battle» e «Captain», e
+// segnarle ogni volta che aprono una frase farebbe solo rumore.
+export function nomiNelTesto(testo, ix, minuscole = new Set()) {
+  const t = String(testo || "");
+  if (!ix?.chiavi?.size) return [];
+  const parole = [...t.matchAll(PAROLA_RE)].map((m) => ({ da: m.index, a: m.index + m[0].length, w: m[0] }));
+  const out = [];
+  let i = 0;
+  while (i < parole.length) {
+    if (!/^\p{Lu}/u.test(parole[i].w)) {
+      i++;
+      continue;
+    }
+    let preso = 0;
+    for (let n = Math.min(ix.max, parole.length - i); n >= 1 && !preso; n--) {
+      const pezzo = t.slice(parole[i].da, parole[i + n - 1].a);
+      if (n > 1 && /[^\p{L}\p{N}'’ -]/u.test(pezzo)) continue;
+      for (const forma of new Set([pezzo, pezzo.replace(/['’]s?$/u, "")])) {
+        const k = chiave(forma);
+        if (!k || !ix.chiavi.has(k)) continue;
+        if (n === 1 && (k.length < 4 || minuscole.has(k))) continue;
+        out.push({ da: parole[i].da, a: parole[i].da + forma.length, testo: forma, chiave: k });
+        preso = n;
+        break;
+      }
+    }
+    i += preso || 1;
+  }
+  return out;
+}
+
+// QUALI NOMI SEGNARE in un pezzo di testo, dato quel che il capitolo ha gia'
+// segnato (`gia`, che si aggiorna). Un segno per VOCE, non per nome: «Garviel
+// Loken» e poi «Loken» sono la stessa persona (il rinvio porta alla stessa
+// voce), e due segni a due righe di distanza erano rumore (visto nel browser).
+// Il nome rimasto senza segno entra lo stesso fra i segnati, perche' il
+// tocco risponda anche li': e' la persona su cui il segno e' gia' passato.
+export async function nomiDaSegnare(testo, ix, minuscole, gia, { risolvi = voceLore, salta = () => false } = {}) {
+  const out = [];
+  for (const m of nomiNelTesto(testo, ix, minuscole)) {
+    if (gia.has(`lore:${m.chiave}`) || salta(m)) continue;
+    const voce = await risolvi(m.chiave).catch(() => null);
+    const chi = `voce:${chiave(voce?.t) || m.chiave}`;
+    gia.add(`lore:${m.chiave}`);
+    if (gia.has(chi)) continue;
+    gia.add(chi);
+    out.push(m);
+  }
+  return out;
+}
+
+// Il nome sotto il dito: risponde solo un nome gia' SEGNATO nel capitolo
+// (`segnati`, le chiavi). Con cinquantamila voci quasi ogni maiuscola di un
+// romanzo del 40K e' un nome di Lexicanum, e se ognuna rispondesse al tocco
+// toccare il testo per voltare pagina diventerebbe una lotteria.
+export function nomeSottoIlDito(testo, offset, ix, minuscole, segnati) {
+  return (
+    nomiNelTesto(testo, ix, minuscole).find((m) => m.da <= offset && offset < m.a && (!segnati || segnati.has(m.chiave))) || null
+  );
 }
 
 // ---------------------------------------------------------------------------

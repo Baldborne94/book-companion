@@ -175,6 +175,10 @@ export const removeAux = (key) => withStore("aux", "readwrite", (s) => s.delete(
 export const chiaviAux = () => withStore("aux", "readonly", (s) => s.getAllKeys());
 // decine di migliaia di voci (Lexicanum) se ne vanno con UNA richiesta: una
 // per chiave vorrebbe dire minuti a schermo fermo
+// le sole CHIAVI sotto un prefisso: l'indice dei nomi di Lexicanum senza
+// tirarsi dietro cinquantamila voci intere
+export const chiaviAuxPrefisso = (prefisso) =>
+  withStore("aux", "readonly", (s) => s.getAllKeys(IDBKeyRange.bound(prefisso, `${prefisso}\uffff`)));
 export const removeAuxPrefisso = (prefisso) =>
   withStore("aux", "readwrite", (s) => s.delete(IDBKeyRange.bound(prefisso, `${prefisso}￿`)));
 

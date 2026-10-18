@@ -1496,7 +1496,7 @@ const SCENE = [
     },
   },
   {
-    nome: "Lexicanum scende dalle Impostazioni, e nella scheda del dizionario la voce vela quel che viene da un volume dopo",
+    nome: "Lexicanum scende dalle Impostazioni, i nomi si segnano nel testo, e nella scheda del dizionario la voce vela quel che viene da un volume dopo",
     async fai({ browser }) {
       const chieste = [];
       const d = await dispositivo(browser, { misura: TABLET, lexicanum: lexicanumFinto(chieste) });
@@ -1516,6 +1516,8 @@ const SCENE = [
       // l'interruttore del libro: acceso dalla saga riconosciuta
       await finche(() => p.getByRole("button", { name: /Lexicanum nella scheda del dizionario: acceso/ }).count(), 8000, "la scheda del libro non dice che Lexicanum e' acceso");
       await p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      // i nomi del 40K segnati nel testo, come i termini del glossario
+      await finche(() => p.locator('[data-bc-lore="Garviel Loken"]').count(), 15000, "«Garviel Loken» non e' segnato nel testo");
       await definisci(p, "Loken");
       // il rinvio «Loken» porta alla voce, e l'incipit (da un'altra opera) si legge
       await finche(() => p.getByText(/was a Captain of the Luna Wolves/).count(), 8000, "la scheda non mostra la voce di Lexicanum");

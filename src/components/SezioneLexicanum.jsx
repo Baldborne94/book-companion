@@ -16,6 +16,10 @@ export default function SezioneLexicanum({ lavoro, onScarica, onFerma }) {
   const [stato, setStato] = useState(undefined);
   const [giro, setGiro] = useState(null);
   const [confermaVia, setConfermaVia] = useState(false);
+  // RISCARICARE E' UN GIRO INTERO, cinquantamila voci: «Aggiorna» accanto a
+  // «Rimuovi» si tocca anche per errore, o credendo che serva a far
+  // funzionare Lexicanum, e allora chiede conferma e dice cosa costa
+  const [confermaGiro, setConfermaGiro] = useState(false);
 
   // si rilegge quando il lavoro parte e quando finisce: e' App che scarica,
   // e questa stanza puo' essere aperta in mezzo
@@ -75,12 +79,28 @@ export default function SezioneLexicanum({ lavoro, onScarica, onFerma }) {
                 {aMeta ? "⚔ Riprendi lo scaricamento" : "⚔ Scarica Lexicanum"}
               </button>
             )}
-            {stato && !confermaVia && (
-              <button onClick={() => onScarica({ aggiorna: true })} style={tasto}>
+            {stato && !confermaVia && !confermaGiro && (
+              <button onClick={() => setConfermaGiro(true)} style={tasto}>
                 ↻ Aggiorna
               </button>
             )}
-            {(stato || aMeta) && !confermaVia && (
+            {confermaGiro && (
+              <>
+                <button
+                  onClick={() => {
+                    setConfermaGiro(false);
+                    onScarica({ aggiorna: true });
+                  }}
+                  style={{ ...tasto, color: C.arcane, borderColor: `${C.arcane}55` }}
+                >
+                  Riscarica tutte le voci
+                </button>
+                <button onClick={() => setConfermaGiro(false)} style={{ ...tasto, color: C.muted }}>
+                  Lascia stare
+                </button>
+              </>
+            )}
+            {(stato || aMeta) && !confermaVia && !confermaGiro && (
               <button onClick={() => setConfermaVia(true)} style={{ ...tasto, color: C.muted }}>
                 Rimuovi
               </button>
@@ -99,6 +119,13 @@ export default function SezioneLexicanum({ lavoro, onScarica, onFerma }) {
         )}
       </div>
 
+      {confermaGiro && (
+        <p style={{ ...nota, color: C.text }}>
+          Non serve per usarlo: Lexicanum è già qui e resta. Riscaricare serve solo a prendere le voci nuove del
+          wiki, e rifà tutto il giro di prima; intanto le voci di adesso continuano a rispondere.
+        </p>
+      )}
+
       <p style={nota}>
         Le voci del wiki del 40K, sul dispositivo: nei libri del 40K la scheda del dizionario mostra la voce
         di un nome, di una legione o di un pianeta <strong>subito e senza rete</strong>, e i link portano alle
@@ -112,6 +139,8 @@ export default function SezioneLexicanum({ lavoro, onScarica, onFerma }) {
       <p style={nota}>
         Lo scaricamento chiede le voci a Lexicanum cinquanta alla volta, con calma: è un wiki di volontari.
         Ci vuole tempo e qualche centinaio di MB di rete; si può fermare e riprendere, anche ad app chiusa.
+        Una volta sceso <strong>resta su questo dispositivo</strong> e non si riscarica: ogni dispositivo (e ogni
+        indirizzo dell'app, come le anteprime) ha il suo.
       </p>
       <p style={{ ...nota, opacity: 0.8 }}>
         Testi da{" "}

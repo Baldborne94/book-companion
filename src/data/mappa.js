@@ -207,8 +207,8 @@ export const MAPPA = [
   {
     luogo: "parola",
     nome: "Lexicanum",
-    cosa: "Nei libri del 40K la scheda del dizionario mostra la voce di Lexicanum su un nome, una legione o un pianeta, senza rete, coi link alle altre voci. I paragrafi che vengono da un volume della saga che non hai ancora letto restano velati finché non li tocchi.",
-    dove: "Tieni premuto su un nome → «Definisci» → «Leggi la voce». Si scarica da Impostazioni → Lexicanum.",
+    cosa: "Nei libri del 40K i nomi di Lexicanum sono segnati nel testo come i termini del glossario: tocchi e la scheda mostra la voce, senza rete, coi link alle altre voci. I paragrafi che vengono da un volume della saga che non hai ancora letto restano velati finché non li tocchi.",
+    dove: "Tocca un nome segnato, o tieni premuto su un nome → «Definisci» → «Leggi la voce». I segni si spengono con «Segna i termini della saga». Si scarica da Impostazioni → Lexicanum.",
   },
 
   // ---- NELLA SCHEDA DI UN LIBRO ------------------------------------------

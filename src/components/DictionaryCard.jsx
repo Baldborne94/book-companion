@@ -603,7 +603,7 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
 
         {/* il dizionario manca e la parola e' inglese: qui si vede la
             mancanza, e qui si offre il rimedio */}
-        {installato === null && !dict.loading && (dict.lang || "en") === "en" && !!dict.word && (
+        {installato === null && !dict.loading && !dict.soloLore && (dict.lang || "en") === "en" && !!dict.word && (
           <ScaricaQui cartellino={cartellino} onFatto={riletta} />
         )}
 
@@ -691,9 +691,11 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
           </a>
         )}
 
-        {dict.loading ? (
+        {dict.loading || (dict.soloLore && !local && lore?.tag !== tag) ? (
           <p style={{ color: C.muted, fontSize: F.nota }}>Cerco…</p>
-        ) : local ? null : (
+        ) : local ? null : dict.soloLore ? (
+          <p style={{ color: C.muted, fontSize: F.nota, lineHeight: 1.5 }}>«{dict.word}» non ha una voce nel Lexicanum scaricato.</p>
+        ) : (
           // il glossario che tace non chiude la scheda: resta l'Oracolo, e
           // per la definizione nuda c'e' il dizionario del tablet
           <p style={{ color: C.muted, fontSize: F.nota, lineHeight: 1.5 }}>

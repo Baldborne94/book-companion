@@ -20,7 +20,8 @@ import { ritaglioAvanzo, flattenToc, cfiLeggibile, ultimoSegnalibro } from "../l
 import { misuraPagine, conAttesa, ATTESA } from "../lib/misuraPagine.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
-import { explain, termIndex, normalize, wikiUrl, haGlossario, termAt } from "../lib/glossary.js";
+import { explain, termIndex, normalize, wikiUrl, haGlossario, termAt, caretAt } from "../lib/glossary.js";
+import { statoLexicanum, loreAttivo, indiceLore, nomiDaSegnare, parolePiccole, nomeSottoIlDito } from "../lib/lexicanum.js";
 import { contextAround } from "../lib/oracle.js";
 import { sillaba } from "../lib/hyphens.js";
 import { eNotaRef, risolviHref, trovaNota, pezziNota, piuVicina } from "../lib/nota.js";
@@ -287,6 +288,20 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const markedRef = useRef(new Map());
   const termsRef = useRef(null);
   const termCfis = useRef([]);
+  // I NOMI DI LEXICANUM, segnati come i termini del glossario (chiesto dal
+  // lettore): l'indice delle voci e, per capitolo, le parole che vi
+  // compaiono minuscole — un nome sta li' solo se non e' anche una parola
+  const loreRef = useRef(null);
+  const minuscoleRef = useRef(new Map());
+  // la levetta «Segna i termini» compare anche per i soli nomi del 40K
+  const [nomiQui, setNomiQui] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    statoLexicanum().then((s) => vivo && setNomiQui(!!s && loreAttivo(book)));
+    return () => {
+      vivo = false;
+    };
+  }, [book]);
   const reflowing = useRef(false);
   const reflowTimer = useRef(null);
 
@@ -468,11 +483,38 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       if (!live.current.settings?.terms) return;
       const ix = await termIndex(book);
       termsRef.current = ix;
+      // Lexicanum segna solo nei libri del 40K e solo se e' sceso per intero
+      const lore = loreAttivo(book) && (await statoLexicanum()) ? await indiceLore() : null;
+      loreRef.current = lore;
       const doc = view?.contents?.document;
-      if (!ix || !doc || !view.contents) return;
+      if ((!ix && !lore) || !doc || !view.contents) return;
       const href = (view.section?.href || "").split("#")[0];
       let done = markedRef.current.get(href);
       if (!done) markedRef.current.set(href, (done = new Set()));
+      const minuscole = lore ? parolePiccole(doc.body?.textContent || "") : null;
+      if (lore) minuscoleRef.current.set(href, minuscole);
+      const segna = (node, da, a, dati) => {
+        const range = doc.createRange();
+        range.setStart(node, da);
+        range.setEnd(node, a);
+        let cfi = null;
+        try {
+          cfi = view.contents.cfiFromRange(range);
+        } catch {
+          /* nodo che epub.js non sa indirizzare: si lascia stare */
+        }
+        if (!cfi) return false;
+        termCfis.current.push(cfi);
+        try {
+          rendRef.current?.annotations.highlight(cfi, dati, undefined, "bc-term", {
+            fill: C.arcane,
+            "fill-opacity": "0.22",
+          });
+        } catch {
+          /* annotazione rifiutata: il termine resta comunque cercabile */
+        }
+        return true;
+      };
       const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
         acceptNode: (n) =>
           n.parentElement?.closest("a, script, style")
@@ -483,32 +525,25 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       for (let node = walker.nextNode(); node && left > 0; node = walker.nextNode()) {
         const text = node.nodeValue;
         if (!text || text.length < 4) continue;
-        ix.re.lastIndex = 0;
-        for (let m = ix.re.exec(text); m && left > 0; m = ix.re.exec(text)) {
-          const entry = ix.map.get(normalize(m[1]));
-          if (!entry || done.has(entry.t)) continue;
-          // «Death» il personaggio, non «the death of the king»
-          if (/^\p{Lu}/u.test(entry.t) && !/^\p{Lu}/u.test(m[1])) continue;
-          const range = doc.createRange();
-          range.setStart(node, m.index);
-          range.setEnd(node, m.index + m[1].length);
-          let cfi = null;
-          try {
-            cfi = view.contents.cfiFromRange(range);
-          } catch {
-            /* nodo che epub.js non sa indirizzare: si lascia stare */
+        if (ix) {
+          ix.re.lastIndex = 0;
+          for (let m = ix.re.exec(text); m && left > 0; m = ix.re.exec(text)) {
+            const entry = ix.map.get(normalize(m[1]));
+            if (!entry || done.has(entry.t)) continue;
+            // «Death» il personaggio, non «the death of the king»
+            if (/^\p{Lu}/u.test(entry.t) && !/^\p{Lu}/u.test(m[1])) continue;
+            if (!segna(node, m.index, m.index + m[1].length, { bcTerm: entry.t })) continue;
+            done.add(entry.t);
+            left -= 1;
           }
-          if (!cfi) continue;
-          done.add(entry.t);
-          termCfis.current.push(cfi);
-          left -= 1;
-          try {
-            rendRef.current?.annotations.highlight(cfi, { bcTerm: entry.t }, undefined, "bc-term", {
-              fill: C.arcane,
-              "fill-opacity": "0.22",
-            });
-          } catch {
-            /* annotazione rifiutata: il termine resta comunque cercabile */
+        }
+        // i nomi del 40K dopo il glossario: una voce scritta da te o dal
+        // glossario della saga vince sullo stesso nome di Lexicanum
+        if (lore && left > 0) {
+          const nomi = await nomiDaSegnare(text, lore, minuscole, done, { salta: (m) => !!ix?.map.has(normalize(m.testo)) });
+          for (const m of nomi) {
+            if (left <= 0) break;
+            if (segna(node, m.da, m.a, { bcLore: m.testo })) left -= 1;
           }
         }
       }
@@ -728,6 +763,16 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           if (ix) {
             const hit = termAt(doc, x, y, ix);
             if (hit) return openTerm(hit);
+          }
+          const lore = loreRef.current;
+          if (lore) {
+            const c = caretAt(doc, x, y);
+            const href = (view.section?.href || "").split("#")[0];
+            const segnati = new Set(
+              [...(markedRef.current.get(href) || [])].filter((k) => k.startsWith("lore:")).map((k) => k.slice(5))
+            );
+            const nome = c && nomeSottoIlDito(c.node.nodeValue, c.offset, lore, minuscoleRef.current.get(href), segnati);
+            if (nome) return openNome(nome);
           }
           // l'asterisco è un bersaglio da pochi pixel, e pretendere il
           // tocco esatto su un tablet è pretendere una mira che non c'è
@@ -2031,14 +2076,23 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     setPanel("dict");
   }
 
+  // il nome segnato apre la scheda con la sola voce di Lexicanum: il
+  // vocabolario su un nome proprio direbbe solo rumore
+  function openNome(m) {
+    setDict({ word: m.testo, raw: m.testo, loading: false, entries: [], found: [], soloLore: true });
+    setPanel("dict");
+  }
+
   function clearTerms() {
     for (const cfi of termCfis.current) {
       try { rendRef.current?.annotations.remove(cfi, "highlight"); } catch { /* vista gia' smontata */ }
     }
     termCfis.current = [];
     markedRef.current.clear();
+    minuscoleRef.current.clear();
     // spenti i segni, il tocco sulla parola torna a essere un cambio pagina
     termsRef.current = null;
+    loreRef.current = null;
   }
 
   // Il glossario di casa risponde subito e anche offline, quindi si mostra
@@ -3228,7 +3282,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 : "Sulla selezione resta solo il dizionario del tablet, quello che Android apre da sé. Il glossario della saga e «Chi è» restano."}
             </p>
           </div>
-          {haGlossario(book) && (
+          {(haGlossario(book) || nomiQui) && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <span style={{ fontSize: F.nota, color: C.muted }}>Segna i termini della saga</span>
               <button
