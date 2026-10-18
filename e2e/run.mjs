@@ -726,11 +726,15 @@ const SCENE = [
       await d.p.getByRole("button", { name: "Arpa" }).first().click();
       await dove(3);
       // il timer e' un tasto solo: le durate si aprono da lui, e scelta una
-      // il tasto dice quanto manca
-      if (await d.p.getByRole("button", { name: "15 min" }).count()) throw new Error("le durate del timer stanno in vista");
+      // il tasto dice quanto manca. La durata si cerca col nome ESATTO: il
+      // tasto del timer diventa «🌙 15 min», e un nome cercato come pezzo
+      // trovava lui, a menu gia' chiuso, ogni volta che il conto arrivava
+      // prima del controllo
+      const durata = () => d.p.getByRole("button", { name: "15 min", exact: true });
+      if (await durata().count()) throw new Error("le durate del timer stanno in vista");
       await d.p.getByRole("button", { name: "🌙 Timer" }).click();
-      await d.p.getByRole("button", { name: "15 min" }).click();
-      await finche(async () => !(await d.p.getByRole("button", { name: "15 min" }).count()), 3000, "scelta la durata, le durate restano aperte");
+      await durata().click();
+      await finche(async () => !(await durata().count()), 3000, "scelta la durata, le durate restano aperte");
       const orologio = await finche(() => d.p.getByRole("button", { name: /^🌙 \d/ }).textContent().catch(() => null), 3000, "il tasto del timer non dice quanto manca");
       // e un link YouTube si suona dal riquadro di «＋ Da YouTube»
       await d.p.getByRole("button", { name: "＋ Da YouTube" }).click();
