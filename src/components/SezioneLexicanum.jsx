@@ -9,7 +9,7 @@
 // con lo stesso motore e le sue parole.
 import { useEffect, useState } from "react";
 import { C, F, R } from "../data/constants.js";
-import { statoLexicanum, giroLexicanum, rimuoviLexicanum, fraseLexicanum, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
+import { statoLexicanum, giroLexicanum, rimuoviLexicanum, fraseLexicanum, vociDiPrima, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
 
 const voci = (n) => Number(n || 0).toLocaleString("it-IT");
 const giorno = (ts) => new Date(ts).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" });
@@ -124,10 +124,19 @@ function BloccoWiki({ wiki, icona, lavoro, onScarica, onFerma, children }) {
         )}
       </div>
 
+      {vociDiPrima(stato) && !lavoro && !confermaGiro && !confermaVia && (
+        <p style={{ ...n, color: C.text }}>
+          Queste voci sono scese prima che l'app sapesse leggere il riquadro dei dati, le citazioni e le tabelle:
+          per averli tocca «↻ Aggiorna». Rifà il giro intero, e intanto le voci di adesso continuano a rispondere.
+        </p>
+      )}
+
       {confermaGiro && (
         <p style={{ ...n, color: C.text }}>
-          Non serve per usarlo: {wiki.nome} è già qui e resta. Riscaricare serve solo a prendere le voci nuove del wiki,
-          e rifà tutto il giro di prima; intanto le voci di adesso continuano a rispondere.
+          {vociDiPrima(stato)
+            ? `Riscarica le voci col riquadro dei dati, le citazioni e le tabelle, e prende anche quelle nuove del wiki.`
+            : `Non serve per usarlo: ${wiki.nome} è già qui e resta. Riscaricare serve solo a prendere le voci nuove del wiki.`}{" "}
+          Rifà tutto il giro di prima; intanto le voci di adesso continuano a rispondere.
         </p>
       )}
 

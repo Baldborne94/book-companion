@@ -1533,12 +1533,32 @@ const SCENE = [
       }, 5000, "nessun paragrafo velato");
       const attesi = [/da questo libro/, /«False Gods», che viene dopo/, /«Galaxy in Flames», che viene dopo/];
       if (veli.length !== 3 || !attesi.every((re, i) => re.test(veli[i]))) throw new Error(`veli sbagliati: ${JSON.stringify(veli)}`);
+      // la voce come sul wiki: la citazione, il riquadro dei dati velato
+      // (non cita fonti), l'indice delle sezioni che porta al titoletto
+      if (!(await p.locator("blockquote", { hasText: "I was never a Son of Horus." }).count())) throw new Error("la citazione non e' una citazione");
+      if (await p.getByText("Captain", { exact: true }).count()) throw new Error("il riquadro dei dati non e' velato");
+      await p.getByText(/Riquadro dei dati velato/).click();
+      await finche(() => p.getByText("Captain", { exact: true }).count(), 5000, "il riquadro toccato non si apre");
+      await p.getByText("In questa voce").waitFor({ timeout: 5000 });
+      const sotto = await p.getByText("Personality", { exact: true }).last().boundingBox();
+      if (!sotto || sotto.y < 1503) throw new Error("la voce di prova non e' abbastanza lunga da scorrere");
+      await p.getByRole("button", { name: "Personality" }).click();
+
+      await finche(async () => {
+        const titolo = p.getByText("Personality", { exact: true }).last();
+        const r = await titolo.boundingBox();
+        return r && r.y >= 0 && r.y + r.height <= 1503;
+      }, 5000, "l'indice non porta alla sezione");
       if (await p.getByText(/first signs of corruption/).count()) throw new Error("il testo velato e' gia' nella pagina");
       await p.getByText(/Paragrafo velato: da «False Gods»/).click();
       await finche(() => p.getByText(/first signs of corruption/).count(), 5000, "il velo toccato non si apre");
       // un link a un rinvio porta alla voce, e «indietro» torna
-      await p.getByRole("button", { name: "Luna Wolves" }).click();
+      await p.getByRole("button", { name: "Luna Wolves" }).last().click();
       await finche(() => p.getByText(/were the XVI Legion/).count(), 5000, "il link non porta alla voce");
+      // la tabella del wiki scorre dentro la scheda, la pagina non sborda
+      await p.locator("table", { hasText: "Tarik Torgaddon" }).waitFor({ timeout: 5000 });
+      const largo = await p.evaluate(() => document.scrollingElement.scrollWidth - innerWidth);
+      if (largo > 0) throw new Error(`con la tabella la pagina sborda di ${largo}px`);
       await p.getByRole("button", { name: /◂ Garviel Loken/ }).click();
       await finche(() => p.getByText(/Isstvan III/).count(), 5000, "indietro non torna alla voce di prima");
       // «Two hundred» in minuscolo e' la distanza: non si segna, e la voce
