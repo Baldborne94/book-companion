@@ -996,6 +996,31 @@ export function scrittoComeNome(testo) {
 
 // Le parole che nel capitolo compaiono anche MINUSCOLE: «battle» minuscola
 // vuol dire che «Battle» a inizio frase e' una parola, non un nome
+// A INIZIO FRASE LA MAIUSCOLA NON DICE NIENTE (segnalato dal lettore: «non
+// capisco perche' mi hai evidenziato la parola kilometres»). Lexicanum ha
+// voci anche per parole comuni, e «Kilometres away, the Titan…» apre la
+// frase con la maiuscola come qualunque parola. Una parola sola che apre la
+// frase si segna solo se nel capitolo compare maiuscola anche IN MEZZO a una
+// frase (`inMezzo`), come «Horus» o «Cadia». Inizio di frase: l'inizio del
+// testo, o dopo . ! ? … : saltando spazi, virgolette e parentesi aperte.
+const APERTURE = /[\s"'“‘«(\[—–-]/u;
+function apreLaFrase(t, da) {
+  let i = da - 1;
+  while (i >= 0 && APERTURE.test(t[i])) {
+    // un a capo e' un paragrafo o un titolo nuovo: «CHAPTER ONE\nKilometres»
+    if (t[i] === "\n") return true;
+    i--;
+  }
+  return i < 0 || /[.!?…:]/u.test(t[i]);
+}
+
+export function maiuscoleInMezzo(testo) {
+  const t = String(testo || "");
+  const s = new Set();
+  for (const m of t.matchAll(PAROLA_RE)) if (/^\p{Lu}/u.test(m[0]) && !apreLaFrase(t, m.index)) s.add(chiave(m[0].replace(/['’]s?$/u, "")));
+  return s;
+}
+
 export function parolePiccole(testo) {
   const s = new Set();
   for (const m of String(testo || "").matchAll(PAROLA_RE)) if (/^\p{Ll}/u.test(m[0])) s.add(m[0].toLowerCase());
@@ -1009,7 +1034,7 @@ export function parolePiccole(testo) {
 // se ha almeno quattro lettere e nel capitolo non compare mai minuscola
 // (`minuscole`) — Lexicanum ha voci anche per «Battle» e «Captain», e
 // segnarle ogni volta che aprono una frase farebbe solo rumore.
-export function nomiNelTesto(testo, ix, minuscole = new Set()) {
+export function nomiNelTesto(testo, ix, minuscole = new Set(), inMezzo = null) {
   const t = String(testo || "");
   if (!ix?.chiavi?.size) return [];
   const parole = [...t.matchAll(PAROLA_RE)].map((m) => ({ da: m.index, a: m.index + m[0].length, w: m[0] }));
@@ -1029,6 +1054,7 @@ export function nomiNelTesto(testo, ix, minuscole = new Set()) {
         const k = chiave(forma);
         if (!k || !ix.chiavi.has(k)) continue;
         if (n === 1 && (k.length < 4 || minuscole.has(k))) continue;
+        if (n === 1 && inMezzo && !inMezzo.has(k) && apreLaFrase(t, parole[i].da)) continue;
         out.push({ da: parole[i].da, a: parole[i].da + forma.length, testo: forma, chiave: k });
         preso = n;
         break;
@@ -1045,9 +1071,9 @@ export function nomiNelTesto(testo, ix, minuscole = new Set()) {
 // voce), e due segni a due righe di distanza erano rumore (visto nel browser).
 // Il nome rimasto senza segno entra lo stesso fra i segnati, perche' il
 // tocco risponda anche li': e' la persona su cui il segno e' gia' passato.
-export async function nomiDaSegnare(testo, ix, minuscole, gia, { risolvi = voceLore, salta = () => false } = {}) {
+export async function nomiDaSegnare(testo, ix, minuscole, gia, { risolvi = voceLore, salta = () => false, inMezzo = null } = {}) {
   const out = [];
-  for (const m of nomiNelTesto(testo, ix, minuscole)) {
+  for (const m of nomiNelTesto(testo, ix, minuscole, inMezzo)) {
     if (gia.has(`lore:${m.chiave}`) || salta(m)) continue;
     const voce = await risolvi(m.chiave).catch(() => null);
     const chi = `voce:${chiave(voce?.t) || m.chiave}`;

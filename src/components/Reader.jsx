@@ -21,7 +21,7 @@ import { misuraPagine, conAttesa, ATTESA } from "../lib/misuraPagine.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
 import { explain, termIndex, normalize, wikiUrl, haGlossario, termAt, caretAt } from "../lib/glossary.js";
-import { statoLexicanum, loreAttivo, indiceLore, nomiDaSegnare, parolePiccole, nomeSottoIlDito } from "../lib/lexicanum.js";
+import { statoLexicanum, loreAttivo, indiceLore, nomiDaSegnare, parolePiccole, maiuscoleInMezzo, nomeSottoIlDito } from "../lib/lexicanum.js";
 import { contextAround } from "../lib/oracle.js";
 import { sillaba } from "../lib/hyphens.js";
 import { eNotaRef, risolviHref, trovaNota, pezziNota, piuVicina } from "../lib/nota.js";
@@ -492,6 +492,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       let done = markedRef.current.get(href);
       if (!done) markedRef.current.set(href, (done = new Set()));
       const minuscole = lore ? parolePiccole(doc.body?.textContent || "") : null;
+      const inMezzo = lore ? maiuscoleInMezzo(doc.body?.innerText || doc.body?.textContent || "") : null;
       if (lore) minuscoleRef.current.set(href, minuscole);
       const segna = (node, da, a, dati) => {
         const range = doc.createRange();
@@ -540,7 +541,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         // i nomi del 40K dopo il glossario: una voce scritta da te o dal
         // glossario della saga vince sullo stesso nome di Lexicanum
         if (lore && left > 0) {
-          const nomi = await nomiDaSegnare(text, lore, minuscole, done, { salta: (m) => !!ix?.map.has(normalize(m.testo)) });
+          const nomi = await nomiDaSegnare(text, lore, minuscole, done, { inMezzo, salta: (m) => !!ix?.map.has(normalize(m.testo)) });
           for (const m of nomi) {
             if (left <= 0) break;
             if (segna(node, m.da, m.a, { bcLore: m.testo })) left -= 1;
