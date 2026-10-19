@@ -1519,7 +1519,7 @@ const SCENE = [
       if (await p.getByRole("button", { name: /🖼 Scarica le immagini/ }).count()) throw new Error("un tasto promette immagini che Lexicanum non da'");
       await p.keyboard.press("Escape");
 
-      const frase = "I was there, the day that Horus slew the Emperor. Garviel Loken watched the Warmaster from the deck. 'Two hundred and fifty,' came the answer.";
+      const frase = "I was there, the day that Horus slew the Emperor. Garviel Loken watched the Warmaster from the deck. 'Two hundred and fifty,' came the answer. Kilometres away, the Titan stopped.";
       await importa(p, "Horus Rising.epub", await epub({ titolo: "Horus Rising", autore: "Dan Abnett", frase, lingua: "en" }), "application/epub+zip");
       await p.getByText("Horus Rising").first().click();
       // l'interruttore del libro: acceso dalla saga riconosciuta
@@ -1568,6 +1568,8 @@ const SCENE = [
       // «Two hundred» in minuscolo e' la distanza: non si segna, e la voce
       // «Two Hundred» viene dopo la parola
       if (await p.locator('[data-bc-lore="Two Hundred"]').count()) throw new Error("«Two hundred», un numero, e' segnato come un nome");
+      // «Kilometres» apre la frase: la maiuscola non dice che e' un nome
+      if (await p.locator('[data-bc-lore="Kilometres"]').count()) throw new Error("«Kilometres» a inizio frase e' segnato come un nome del 40K");
       await p.getByRole("button", { name: "◂ La parola" }).click();
       await p.getByRole("button", { name: "✕" }).first().click();
       await p.route("**/api/rest_v1/page/definition/**", (r) =>
@@ -1591,8 +1593,11 @@ const SCENE = [
     nome: "Lexicanum interrotto da un ricaricamento riparte da solo da dove era arrivato, e quello fermato dal lettore resta fermo",
     async fai({ browser }) {
       const chieste = [];
-      // l'ultima pagina tarda: il ricaricamento la coglie a meta'
-      const d = await dispositivo(browser, { misura: TABLET, lexicanum: lexicanumFinto(chieste, { attesa: (i) => (i === 2 ? 4000 : 600) }) });
+      // la seconda pagina tarda, perche' «Ferma» arrivi mentre e' in volo (se
+      // arriva quando e' gia' partita l'ultima, il giro finisce prima di
+      // fermarsi: su una macchina lenta la scena cadeva una volta su quattro);
+      // e tarda l'ultima, perche' il ricaricamento la colga a meta'
+      const d = await dispositivo(browser, { misura: TABLET, lexicanum: lexicanumFinto(chieste, { attesa: (i) => (i >= 1 ? 4000 : 600) }) });
       const { p } = d;
       const pagine = () => chieste.filter((u) => u.includes("generator=allpages"));
       const allaSeconda = () => pagine().some((u) => u.includes("gapcontinue=1"));

@@ -38,6 +38,7 @@ import {
   nomiDaSegnare,
   avvisoVoce,
   scrittoComeNome,
+  maiuscoleInMezzo,
   vociDiPrima,
   FORMATO_VOCI,
   immaginiDi,
@@ -469,6 +470,18 @@ Dopo.
     t.eq("le paroline di mezzo restano minuscole", nomiNelTesto("into the Eye of Terror", numeri)[0]?.testo, "Eye of Terror");
     t.c("scritto come un nome: maiuscole le parole che contano", scrittoComeNome("Sons of Horus") && scrittoComeNome("Cadia") && scrittoComeNome("Isstvan III"));
     t.c("non come un nome: una parola che conta minuscola", !scrittoComeNome("Two hundred") && !scrittoComeNome("power armour") && !scrittoComeNome("of Horus"));
+    // «Kilometres away, the Titan…»: a inizio frase la maiuscola non dice
+    // niente. Una parola sola che apre la frase si segna solo se il capitolo
+    // la scrive maiuscola anche in mezzo a una frase
+    const comuni = { chiavi: new Set(["kilometres", "horus"]), max: 1 };
+    const capitolo = "CHAPTER ONE\nKilometres away, the Titan stopped. Horus waited.\n\nThe Warmaster, Horus, smiled. \u201cKilometres,\u201d he said.";
+    const mezzo = maiuscoleInMezzo(capitolo);
+    t.c("in mezzo a una frase: «Horus» si', «Kilometres» no", mezzo.has("horus") && !mezzo.has("kilometres"));
+    t.c("dopo un a capo comincia una frase, anche senza punto", !maiuscoleInMezzo("CHAPTER ONE\nKilometres").has("kilometres"));
+    t.c("e dopo le virgolette aperte", !maiuscoleInMezzo("He stopped. \u201cKilometres").has("kilometres"));
+    t.eq("«Kilometres» che apre la frase non si segna", nomiNelTesto("Kilometres away, the Titan stopped.", comuni, new Set(), mezzo).length, 0);
+    t.eq("«Horus» che apre la frase si', perche' il capitolo lo scrive maiuscolo anche in mezzo", nomiNelTesto("Horus waited.", comuni, new Set(), mezzo)[0]?.testo, "Horus");
+    t.eq("e in mezzo a una frase una parola maiuscola vale come prima", nomiNelTesto("far away Kilometres", comuni, new Set(), new Set())[0]?.testo, "Kilometres");
     const corto = { chiavi: new Set(["ork"]), max: 1 };
     t.eq("una parola sola sotto le quattro lettere non si segna", nomiNelTesto("The Ork roared", corto).length, 0);
     const pos = frase.indexOf("Loken smiled") + 2;
