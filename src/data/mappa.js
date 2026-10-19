@@ -207,7 +207,7 @@ export const MAPPA = [
   {
     luogo: "parola",
     nome: "Lexicanum",
-    cosa: "Nei libri del 40K i nomi di Lexicanum sono segnati nel testo come i termini del glossario: tocchi e la scheda mostra la voce, senza rete, coi link alle altre voci. I paragrafi che vengono da un volume della saga che non hai ancora letto restano velati finché non li tocchi. La voce è come sul wiki: il riquadro dei dati (velato, perché può dire come va a finire), le citazioni, le tabelle e l'indice delle sezioni.",
+    cosa: "Nei libri del 40K i nomi di Lexicanum sono segnati nel testo come i termini del glossario: tocchi e la scheda mostra la voce, senza rete, coi link alle altre voci. I paragrafi che vengono da un volume della saga che non hai ancora letto restano velati finché non li tocchi. La voce è come sul wiki: il riquadro dei dati (velato, perché può dire come va a finire), le citazioni, le tabelle e l'indice delle sezioni, con l'immagine di Fandom se l'hai scaricata.",
     dove: "Tocca un nome segnato, o tieni premuto su un nome → «Definisci» → «Leggi la voce». I segni si spengono con «Segna i termini della saga». Si scarica da Impostazioni → I wiki del 40K.",
   },
   {

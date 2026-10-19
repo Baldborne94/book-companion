@@ -46,6 +46,7 @@ import {
   statoImmagini,
   rimuoviImmagini,
   immagineDi,
+  immaginePerVoce,
   fraseImmagini,
   giroDaRiprendere,
   segnaFermato,
@@ -667,6 +668,16 @@ However, after Horus' fall to [[Chaos]] on [[Davin]], he was considered too loya
     PAGINE_IMG.shift();
     t.c("se dalla prima pagina non arriva nessuna immagine, il giro si ferma e lo dice", /non lascia salvare le sue immagini/.test(guaio));
 
+    // Lexicanum non segna l'immagine principale: la sua voce prende quella
+    // della stessa voce di Fandom, anche passando da un rinvio di Fandom
+    const perLoken = await immaginePerVoce("Garviel Loken", d, LEXICANUM);
+    t.c("la voce di Lexicanum prende l'immagine di Fandom, e dice da dove viene", perLoken?.blob?.size === 11000 && perLoken.da === FANDOM);
+    await d.scrivi("fan:garviel loken", { t: "Garviel Loken", p: [], f: {} });
+    await d.scrivi("fan:loken", { t: "Loken", r: "Garviel Loken" });
+    t.eq("anche se su Fandom quel nome e' un rinvio", (await immaginePerVoce("Loken", d, LEXICANUM))?.blob?.size, 11000);
+    await d.scrivi("img:lex:cadia", blob(5000));
+    t.c("ma la sua, se c'e', vince", (await immaginePerVoce("Cadia", d, LEXICANUM))?.da === LEXICANUM);
+    t.eq("una voce senza immagine da nessuna parte resta senza", await immaginePerVoce("Davin", d, LEXICANUM), null);
     await rimuoviImmagini(d, FANDOM);
     t.c("rimuovere le immagini lascia il testo", !d.m.has("img:fan:cadia") && !d.m.has("fan_img_meta") && d.m.has("fan_meta") && (await statoImmagini(d, FANDOM)) === null);
   }

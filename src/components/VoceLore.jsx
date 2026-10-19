@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { pezzi, velaVoce, voceLore, indirizzoVoce, avvisoVoce, immagineDi, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
+import { pezzi, velaVoce, voceLore, indirizzoVoce, avvisoVoce, immaginePerVoce, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
 
 // UNA VOCE DI LEXICANUM, letta dentro la scheda del dizionario. I link
 // portano alle altre voci SUL DISPOSITIVO, con un «indietro» che ricorda il
@@ -119,13 +119,16 @@ function VeloInTesta({ ib, figura, onApri }) {
   return <Velo cosa="Immagine velata" perche="non dice da quale libro viene, e può mostrare come va a finire" onApri={onApri} />;
 }
 
-function Figura({ src, titolo }) {
+function Figura({ src, titolo, da }) {
   return (
-    <img
-      src={src}
-      alt={titolo}
-      style={{ display: "block", maxWidth: "100%", maxHeight: px(360), margin: "4px auto 12px", borderRadius: R.piccolo, border: `1px solid ${C.border}` }}
-    />
+    <figure style={{ margin: "4px 0 12px" }}>
+      <img
+        src={src}
+        alt={titolo}
+        style={{ display: "block", maxWidth: "100%", maxHeight: px(360), margin: "0 auto", borderRadius: R.piccolo, border: `1px solid ${C.border}` }}
+      />
+      {da && <figcaption style={{ marginTop: 4, textAlign: "center", fontSize: F.minuscolo, color: C.muted }}>Immagine da {da}</figcaption>}
+    </figure>
   );
 }
 
@@ -236,11 +239,11 @@ export default function VoceLore({ voce: prima, giudice, onChiudi, wiki = LEXICA
     let vivo = true;
     let url = null;
     setFigura(null);
-    immagineDi(voce.t, undefined, wiki)
-      .then((blob) => {
-        if (!vivo || !blob) return;
-        url = URL.createObjectURL(blob);
-        setFigura(url);
+    immaginePerVoce(voce.t, undefined, wiki)
+      .then((trovata) => {
+        if (!vivo || !trovata) return;
+        url = URL.createObjectURL(trovata.blob);
+        setFigura({ url, da: trovata.da === wiki ? null : trovata.da.nome });
       })
       .catch(() => {});
     return () => {
@@ -298,7 +301,7 @@ export default function VoceLore({ voce: prima, giudice, onChiudi, wiki = LEXICA
             <VeloInTesta ib={voce.ib} figura={figura} onApri={() => apri("ib")} />
           ) : (
             <>
-              {figura && <Figura src={figura} titolo={voce.t} />}
+              {figura && <Figura src={figura.url} titolo={voce.t} da={figura.da} />}
               {voce.ib && <Riquadro ib={voce.ib} onLink={vai} />}
             </>
           ))}

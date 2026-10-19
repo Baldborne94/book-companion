@@ -5,8 +5,8 @@
 // rinvio, un link a un rinvio, fonti da questo libro, da un volume dopo,
 // da un codex.
 
-// le immagini dei due wiki, come le servono i loro depositi (CORS aperto):
-// un ritratto piccolo per Loken, l'immagine principale della sua voce
+// l'immagine di Fandom, come la serve il suo deposito (CORS aperto): un
+// ritratto piccolo per Loken, l'immagine principale della sua voce
 const RITRATTO = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAB4AAAAoCAIAAABmcd1FAAAAK0lEQVR4nO3MMQ0AAAgDsMmZROSjgoOkSe9m2iNRq9VqtVqtVqvVavX/egEV7KmuPVZ5ogAAAABJRU5ErkJggg==", "base64");
 const W = {
   "Davin": `'''Davin''' is a [[Feral World]].{{Fn|1}}\n\n==Sources==\n*{{Endn|1}}: ''[[False Gods (Novel)|False Gods]]'' by [[Graham McNeill]]`,
@@ -29,12 +29,9 @@ export const lexicanumFinto = (chieste = [], { attesa = () => 600 } = {}) => asy
   chieste.push(u.href);
   const p = Object.fromEntries(u.searchParams);
   const headers = { "access-control-allow-origin": "*" };
-  if (u.pathname.startsWith("/mediawiki/images/")) return route.fulfill({ headers: { ...headers, "content-type": "image/png" }, body: RITRATTO });
   if (u.pathname !== "/mediawiki/api.php") return route.fulfill({ status: 404, headers, body: "non qui" });
-  if (p.prop === "pageimages") {
-    const pages = [{ ns: 0, title: "Garviel Loken", thumbnail: { source: "https://wh40k.lexicanum.com/mediawiki/images/thumb/loken.png", width: 30, height: 40 } }];
-    return route.fulfill({ headers, json: { query: { pages } } });
-  }
+  // come il Lexicanum vero: nessuna voce dichiara l'immagine principale
+  if (p.prop === "pageimages") return route.fulfill({ headers, json: { query: { pages: TITOLI.slice(0, 3).map((title) => ({ ns: 0, title })) } } });
   if (p.meta === "siteinfo") return route.fulfill({ headers, json: { query: { general: { sitename: "Lexicanum" }, statistics: { articles: VOCI_FINTE } } } });
   const i = Number(p.gapcontinue || 0);
   // un po' di attesa: la riga del lavoro deve farsi vedere
