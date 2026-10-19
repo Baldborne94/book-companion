@@ -1299,7 +1299,11 @@ export async function misuraImmagini({ fetcher = fetch, deposito = DEPOSITO, att
   const pagine = risposta?.dati?.query?.pages || [];
   const tutte = Array.isArray(pagine) ? pagine.length : Object.keys(pagine).length;
   const con = conImmagine(pagine);
-  if (!tutte) return { voci, quota: 0, medio: 0, stima: 0, campione: 0 };
+  // NESSUNA IMMAGINE PRINCIPALE in tutto il campione (visto su Lexicanum
+  // vero: «0% hanno un'immagine», e il tasto prometteva «circa 1 MB»): il
+  // wiki non segna quale sia l'immagine di una voce, e non c'e' niente da
+  // scaricare per questa strada. Lo si dice, senza tasto
+  if (!con.length) return { voci, senzaPrincipale: true, campione: tutte };
   const pesi = [];
   for (const { src } of con.slice(0, CAMPIONE_PESI)) {
     try {

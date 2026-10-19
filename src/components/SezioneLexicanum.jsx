@@ -75,7 +75,7 @@ function BloccoImmagini({ wiki, lavoro, altro, onScarica, onFerma }) {
   const t = tasto();
   const n = nota();
   const viola = { ...t, color: C.arcane, borderColor: `${C.arcane}55` };
-  const pronta = misura && misura !== "…" && !misura.errore && !misura.bloccate;
+  const pronta = misura && misura !== "…" && !misura.errore && !misura.bloccate && !misura.senzaPrincipale;
   return (
     <div style={{ marginTop: 12 }}>
       <p style={{ margin: 0, fontSize: F.piccolo, fontWeight: 600, color: lavoro ? C.text : stato ? C.green : C.muted }}>
@@ -142,6 +142,12 @@ function BloccoImmagini({ wiki, lavoro, altro, onScarica, onFerma }) {
         </p>
       )}
       {misura?.errore && <p style={{ ...n, color: C.text }}>{misura.errore} Si può riprovare.</p>}
+      {misura?.senzaPrincipale && (
+        <p style={{ ...n, color: C.text }}>
+          {wiki.nome} non segna quale sia l'immagine principale delle sue voci: su {misura.campione} voci guardate, nessuna
+          la dichiara. Per questa strada non c'è niente da scaricare.
+        </p>
+      )}
       <p style={n}>
         L'immagine sta in cima alla voce, col riquadro dei dati
         {wiki === FANDOM ? ", dietro l'avviso della voce." : ", e resta velata con lui: anche un'immagine può dire come va a finire."}

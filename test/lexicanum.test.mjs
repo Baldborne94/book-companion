@@ -636,6 +636,9 @@ However, after Horus' fall to [[Chaos]] on [[Davin]], he was considered too loya
     t.c("la misura usa l'API del wiki gia' sceso, e chiede le immagini ridotte", chieste[0].startsWith("https://w/api.php") && chieste[0].includes("pithumbsize=400") && chieste[0].includes("prop=pageimages"));
     t.eq("e conta quante voci hanno l'immagine", misura.quota, 2 / 3);
     t.eq("e stima il peso sulle voci del wiki e sui pesi misurati", misura.stima, Math.round(10 * (2 / 3) * 11000));
+    const senza = async (url) => ({ ok: true, status: 200, text: async () => JSON.stringify({ query: { pages: [{ title: "Davin" }, { title: "Cadia" }] } }) });
+    const nessuna = await misuraImmagini({ fetcher: senza, deposito: d, attesa, wiki: FANDOM });
+    t.c("un wiki che non segna l'immagine principale lo dice, senza un peso da promettere", nessuna.senzaPrincipale === true && nessuna.stima == null && nessuna.campione === 2);
     const chiuso = await misuraImmagini({ fetcher: wikiImg([], { bloccate: true }), deposito: d, attesa, wiki: FANDOM });
     t.c("un wiki che non lascia prendere le immagini si dice prima", chiuso.bloccate === true);
 
