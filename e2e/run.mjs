@@ -82,7 +82,7 @@ async function dispositivo(browser, { sessione = false, prima = null, catalogo =
       const url = route.request().url();
       if (oracolo && /api\.anthropic\.com/.test(url)) return route.fulfill({ json: await oracolo(JSON.parse(route.request().postData() || "{}")) });
       if (lexicanum && /wh40k\.lexicanum\.com/.test(url)) return lexicanum(route);
-      if (fandom && /warhammer40k\.fandom\.com/.test(url)) return fandom(route);
+      if (fandom && /warhammer40k\.fandom\.com|static\.wikia\.nocookie\.net/.test(url)) return fandom(route);
       if (catalogo && /openlibrary\.org/.test(url)) {
         const json = await catalogo(url);
         if (json) return route.fulfill({ json });
@@ -1513,6 +1513,9 @@ const SCENE = [
       await finche(() => p.getByText(/⚔ Lexicanum:/).count(), 8000, "la riga del lavoro non compare");
       await finche(() => p.getByText(/Lexicanum sul dispositivo: /).count(), 20000, "lo scaricamento non finisce");
       if (!chieste.every((u) => u.includes("origin=*"))) throw new Error("una richiesta a Lexicanum senza origin=*: il browser la rifiuterebbe");
+      await p.getByRole("button", { name: "🖼 Misura le immagini" }).first().click();
+      await p.getByRole("button", { name: /🖼 Scarica le immagini · circa/ }).click({ timeout: 8000 });
+      await finche(() => p.getByText(/Immagini di Lexicanum sul dispositivo: un'immagine/).count(), 15000, "le immagini di Lexicanum non scendono");
       await p.keyboard.press("Escape");
 
       const frase = "I was there, the day that Horus slew the Emperor. Garviel Loken watched the Warmaster from the deck. 'Two hundred and fifty,' came the answer.";
@@ -1537,8 +1540,10 @@ const SCENE = [
       // (non cita fonti), l'indice delle sezioni che porta al titoletto
       if (!(await p.locator("blockquote", { hasText: "I was never a Son of Horus." }).count())) throw new Error("la citazione non e' una citazione");
       if (await p.getByText("Captain", { exact: true }).count()) throw new Error("il riquadro dei dati non e' velato");
-      await p.getByText(/Riquadro dei dati velato/).click();
+      if (await p.locator('img[alt="Garviel Loken"]').count()) throw new Error("l'immagine non e' velata col riquadro");
+      await p.getByText(/Riquadro dei dati e immagine velati/).click();
       await finche(() => p.getByText("Captain", { exact: true }).count(), 5000, "il riquadro toccato non si apre");
+      await finche(() => p.locator('img[alt="Garviel Loken"]').evaluate((img) => img.complete && img.naturalWidth === 30).catch(() => false), 5000, "toccato il velo, l'immagine non c'e'");
       await p.getByText("In questa voce").waitFor({ timeout: 5000 });
       const sotto = await p.getByText("Personality", { exact: true }).last().boundingBox();
       if (!sotto || sotto.y < 1503) throw new Error("la voce di prova non e' abbastanza lunga da scorrere");
@@ -1644,6 +1649,28 @@ const SCENE = [
     },
   },
   {
+    nome: "le immagini di Fandom interrotte da un ricaricamento ripartono da sole da dove erano arrivate",
+    async fai({ browser }) {
+      const chieste = [];
+      const d = await dispositivo(browser, { misura: TABLET, lexicanum: lexicanumFinto([]), fandom: fandomFinto(chieste, { lento: 4000 }) });
+      const { p } = d;
+      const pagineImg = () => chieste.filter((u) => u.includes("prop=pageimages"));
+      await p.goto(URL_APP);
+      await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await p.getByRole("button", { name: "📜 Scarica Fandom" }).click();
+      await finche(() => p.getByText(/📜 Fandom sul dispositivo: /).count(), 20000, "Fandom non scende");
+      await p.getByRole("button", { name: "🖼 Misura le immagini" }).click();
+      await p.getByRole("button", { name: /🖼 Scarica le immagini · circa/ }).click({ timeout: 8000 });
+      await finche(() => pagineImg().some((u) => u.includes("gapcontinue=1")), 10000, "la seconda pagina delle immagini non viene chiesta");
+      await p.reload();
+      await finche(() => p.getByText(/🖼 Immagini di Fandom:/).count(), 10000, "dopo il ricaricamento le immagini non ripartono");
+      await finche(() => p.getByText(/Immagini di Fandom sul dispositivo: 2 immagini/).count(), 20000, "le immagini riprese non finiscono");
+      const daCapo = pagineImg().filter((u) => !u.includes("gapcontinue") && !u.includes("gapfrom")).length;
+      if (daCapo !== 1) throw new Error(`la prima pagina delle immagini chiesta ${daCapo} volte: e' ripartito da capo`);
+      return { guasti: d.guasti, nota: `${pagineImg().length} pagine di immagini chieste` };
+    },
+  },
+  {
     nome: "Fandom scende accanto a Lexicanum, e nella scheda la sua voce si legge dietro l'avviso coi libri che vengono dopo",
     async fai({ browser }) {
       const d = await dispositivo(browser, { misura: TABLET, lexicanum: lexicanumFinto([]), fandom: fandomFinto([]) });
@@ -1654,6 +1681,10 @@ const SCENE = [
       await p.getByRole("button", { name: "📜 Scarica Fandom" }).click();
       await finche(() => p.getByText(/📜 Fandom sul dispositivo: /).count(), 20000, "Fandom non scende");
       await finche(() => p.getByText(/⚔ Lexicanum sul dispositivo: /).count(), 20000, "Lexicanum non scende");
+      // le immagini: prima si misurano e si dice il peso, poi si scaricano
+      await p.getByRole("button", { name: "🖼 Misura le immagini" }).last().click();
+      await p.getByRole("button", { name: /🖼 Scarica le immagini · circa/ }).click({ timeout: 8000 });
+      await finche(() => p.getByText(/Immagini di Fandom sul dispositivo: un'immagine/).count(), 15000, "le immagini di Fandom non scendono");
       await p.keyboard.press("Escape");
       const frase = "I was there, the day that Horus slew the Emperor. Garviel Loken watched the Warmaster from the deck.";
       await importa(p, "Horus Rising.epub", await epub({ titolo: "Horus Rising", autore: "Dan Abnett", frase, lingua: "en" }), "application/epub+zip");
@@ -1670,6 +1701,12 @@ const SCENE = [
       // la voce intera si apre gia' letta: l'avviso si accetta una volta
       await p.getByRole("button", { name: "Leggi la voce ▸" }).click();
       await finche(() => p.getByText(/left for dead/).count(), 5000, "la voce intera di Fandom non si apre");
+      // il ritratto di Loken, dal dispositivo, in cima alla voce
+      await finche(
+        () => p.locator('img[alt="Garviel Loken"]').evaluate((img) => img.complete && img.naturalWidth === 30 && img.src.startsWith("blob:")).catch(() => false),
+        5000,
+        "l'immagine principale della voce non c'e'"
+      );
       await finche(() => p.getByText("Fandom · sul dispositivo").count(), 5000, "la voce non dice da quale wiki viene");
       return { guasti: d.guasti };
     },
