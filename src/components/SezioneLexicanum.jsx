@@ -9,7 +9,20 @@
 // con lo stesso motore e le sue parole.
 import { useEffect, useState } from "react";
 import { C, F, R } from "../data/constants.js";
-import { statoLexicanum, giroLexicanum, rimuoviLexicanum, fraseLexicanum, vociDiPrima, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
+import {
+  statoLexicanum,
+  giroLexicanum,
+  rimuoviLexicanum,
+  fraseLexicanum,
+  vociDiPrima,
+  immaginiDi,
+  misuraImmagini,
+  statoImmagini,
+  rimuoviImmagini,
+  fraseImmagini,
+  LEXICANUM,
+  FANDOM,
+} from "../lib/lexicanum.js";
 
 const voci = (n) => Number(n || 0).toLocaleString("it-IT");
 const giorno = (ts) => new Date(ts).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" });
@@ -23,8 +36,121 @@ const tasto = () => ({
   fontSize: F.corpo,
 });
 const nota = () => ({ margin: "8px 0 0", fontSize: F.minuscolo, color: C.muted, lineHeight: 1.5 });
+const mega = (b) => `${Math.max(1, Math.round(b / 1048576)).toLocaleString("it-IT")} MB`;
 
-function BloccoWiki({ wiki, icona, lavoro, onScarica, onFerma, children }) {
+// LE IMMAGINI PRINCIPALI, sotto il wiki gia' sceso. Prima si misura (quante
+// voci hanno l'immagine, quanto pesano, se il wiki le lascia salvare), poi si
+// scarica dicendo il peso: un tasto non promette cio' che non sa.
+function BloccoImmagini({ wiki, lavoro, altro, onScarica, onFerma }) {
+  const [stato, setStato] = useState(undefined);
+  const [giro, setGiro] = useState(null);
+  const [misura, setMisura] = useState(null);
+  const [confermaVia, setConfermaVia] = useState(false);
+  const inCorso = !!lavoro;
+  useEffect(() => {
+    let vivo = true;
+    statoImmagini(undefined, wiki).then((s) => vivo && setStato(s));
+    giroLexicanum(undefined, immaginiDi(wiki)).then((g) => vivo && setGiro(g));
+    return () => {
+      vivo = false;
+    };
+  }, [inCorso, wiki]);
+
+  async function misurale() {
+    setMisura("…");
+    try {
+      setMisura(await misuraImmagini({ wiki }));
+    } catch (e) {
+      setMisura({ errore: e?.message || "Il wiki non ha risposto." });
+    }
+  }
+  async function via() {
+    await rimuoviImmagini(undefined, wiki).catch(() => {});
+    setStato(null);
+    setGiro(null);
+    setMisura(null);
+    setConfermaVia(false);
+  }
+
+  const t = tasto();
+  const n = nota();
+  const viola = { ...t, color: C.arcane, borderColor: `${C.arcane}55` };
+  const pronta = misura && misura !== "…" && !misura.errore && !misura.bloccate;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <p style={{ margin: 0, fontSize: F.piccolo, fontWeight: 600, color: lavoro ? C.text : stato ? C.green : C.muted }}>
+        {lavoro
+          ? `🖼 Le immagini stanno scendendo`
+          : stato === undefined
+            ? "…"
+            : stato
+              ? `🖼 Immagini sul dispositivo · ${fraseImmagini(stato)}`
+              : giro
+                ? `🖼 Immagini scese a metà · ${fraseImmagini(giro)}`
+                : `🖼 Le immagini non sono sul dispositivo`}
+      </p>
+      {lavoro && <p style={{ ...n, color: C.text }}>Scarico… {fraseImmagini(lavoro)}</p>}
+      {altro && !lavoro && !stato && <p style={n}>Stanno scendendo le immagini dell'altro wiki: una alla volta.</p>}
+
+      {!altro && (
+        <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+          {lavoro ? (
+            <button onClick={onFerma} style={t}>
+              Ferma
+            </button>
+          ) : stato ? (
+            confermaVia ? (
+              <>
+                <button onClick={via} style={{ ...t, color: C.red }}>
+                  Rimuovi le immagini
+                </button>
+                <button onClick={() => setConfermaVia(false)} style={{ ...t, color: C.muted }}>
+                  Lascia stare
+                </button>
+              </>
+            ) : (
+              <button onClick={() => setConfermaVia(true)} style={{ ...t, color: C.muted }}>
+                Rimuovi le immagini
+              </button>
+            )
+          ) : giro ? (
+            <button onClick={() => onScarica()} style={viola}>
+              🖼 Riprendi le immagini
+            </button>
+          ) : pronta ? (
+            <button onClick={() => onScarica()} style={viola}>
+              🖼 Scarica le immagini · circa {mega(misura.stima)}
+            </button>
+          ) : (
+            <button onClick={misurale} disabled={misura === "…"} style={viola}>
+              {misura === "…" ? "Misuro…" : "🖼 Misura le immagini"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {!lavoro && !stato && !giro && pronta && (
+        <p style={n}>
+          Misurate su {misura.campione} voci: {Math.round(misura.quota * 100)}% hanno un'immagine, in media{" "}
+          {Math.max(1, Math.round(misura.medio / 1024))} KB l'una. Per tutte le voci circa {mega(misura.stima)}. Solo l'immagine
+          principale di ogni voce, già ridotta dal wiki.
+        </p>
+      )}
+      {misura?.bloccate && (
+        <p style={{ ...n, color: C.text }}>
+          {wiki.nome} non lascia salvare le sue immagini a un'app nel browser: si vedono solo aprendo la voce sul sito.
+        </p>
+      )}
+      {misura?.errore && <p style={{ ...n, color: C.text }}>{misura.errore} Si può riprovare.</p>}
+      <p style={n}>
+        L'immagine sta in cima alla voce, col riquadro dei dati
+        {wiki === FANDOM ? ", dietro l'avviso della voce." : ", e resta velata con lui: anche un'immagine può dire come va a finire."}
+      </p>
+    </div>
+  );
+}
+
+function BloccoWiki({ wiki, icona, lavoro, onScarica, onFerma, immagini, onImmagini, onFermaImmagini, children }) {
   const [stato, setStato] = useState(undefined);
   const [giro, setGiro] = useState(null);
   const [confermaVia, setConfermaVia] = useState(false);
@@ -140,16 +266,27 @@ function BloccoWiki({ wiki, icona, lavoro, onScarica, onFerma, children }) {
         </p>
       )}
 
+      {stato && (
+        <BloccoImmagini
+          wiki={wiki}
+          lavoro={immagini?.quale === wiki.id ? immagini : null}
+          altro={!!immagini && immagini.quale !== wiki.id}
+          onScarica={() => onImmagini?.(wiki.id)}
+          onFerma={onFermaImmagini}
+        />
+      )}
+
       {children}
     </div>
   );
 }
 
-export default function SezioneLexicanum({ lavoro, onScarica, onFerma, lavoroFan, onScaricaFan, onFermaFan }) {
+export default function SezioneLexicanum({ lavoro, onScarica, onFerma, lavoroFan, onScaricaFan, onFermaFan, immagini, onImmagini, onFermaImmagini }) {
+  const img = { immagini, onImmagini, onFermaImmagini };
   const n = nota();
   return (
     <div>
-      <BloccoWiki wiki={LEXICANUM} icona="⚔" lavoro={lavoro} onScarica={onScarica} onFerma={onFerma}>
+      <BloccoWiki wiki={LEXICANUM} icona="⚔" lavoro={lavoro} onScarica={onScarica} onFerma={onFerma} {...img}>
         <p style={n}>
           Le voci del wiki del 40K, sul dispositivo: nei libri del 40K i nomi si segnano nel testo e la scheda del
           dizionario mostra la voce di un nome, di una legione o di un pianeta <strong>subito e senza rete</strong>, e i
@@ -178,7 +315,7 @@ export default function SezioneLexicanum({ lavoro, onScarica, onFerma, lavoroFan
       </BloccoWiki>
 
       <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}66` }}>
-        <BloccoWiki wiki={FANDOM} icona="📜" lavoro={lavoroFan} onScarica={onScaricaFan} onFerma={onFermaFan}>
+        <BloccoWiki wiki={FANDOM} icona="📜" lavoro={lavoroFan} onScarica={onScaricaFan} onFerma={onFermaFan} {...img}>
           <p style={n}>
             Il Warhammer 40k Wiki di Fandom, come <strong>seconda scheda</strong> accanto a Lexicanum: voci più lunghe e
             raccontate, utili per legioni, fazioni e guerre.

@@ -445,7 +445,7 @@ export const MAPPA = [
   {
     luogo: "impostazioni",
     nome: "Lexicanum sul dispositivo",
-    cosa: "Lexicanum e Fandom da scaricare una volta, con calma: se l'app si chiude o la rete cade lo scaricamento riparte da solo da dove era arrivato; se lo fermi tu resta fermo. Poi le voci rispondono nella scheda del dizionario, senza rete.",
+    cosa: "Lexicanum e Fandom da scaricare una volta, con calma, e a parte le loro immagini principali (prima si misura quanto pesano): se l'app si chiude o la rete cade lo scaricamento riparte da solo da dove era arrivato; se lo fermi tu resta fermo. Poi le voci rispondono nella scheda del dizionario, senza rete.",
     dove: "Impostazioni → I wiki del 40K; accesi o spenti libro per libro nella scheda del libro.",
   },
   {

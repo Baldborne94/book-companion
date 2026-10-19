@@ -1218,6 +1218,204 @@ export function pezzi(x) {
   return out.filter((p) => p.s);
 }
 
+// ---------------------------------------------------------------------------
+// LE IMMAGINI PRINCIPALI
+//
+// Chiesto dal lettore, dopo il riquadro e le citazioni: «passa alle
+// immagini». Non tutte: tutte quelle ridotte di Fandom sono circa un giga, a
+// piena misura otto. Si prende l'immagine principale di ogni voce, quella
+// che il wiki stesso sceglie (PageImages: `prop=pageimages`), gia' ridotta
+// a 400 px dal wiki, cinquanta voci per richiesta come il testo. Un lavoro a
+// parte, chiesto a parte, che si ferma e riparte come quello del testo (le
+// stesse chiavi per il fermo e la ripresa, col suo `id`).
+//
+// PRIMA SI MISURA (`misuraImmagini`): su una pagina di voci si conta quante
+// hanno l'immagine e quanto pesano le prime, e se il wiki lascia salvare le
+// sue immagini al browser — Fandom si' (CORS aperto, provato), Lexicanum non
+// si sa da qui. Il peso si dice prima di scaricare, misurato e non indovinato.
+export const immaginiDi = (wiki = LEXICANUM) => ({
+  id: `${wiki.id}_img`,
+  nome: `le immagini di ${wiki.nome}`,
+  prefisso: `img:${wiki.prefisso}`,
+  giro: `${wiki.id}_img_giro`,
+  meta: `${wiki.id}_img_meta`,
+});
+const LATO_IMMAGINE = 400;
+const IMMAGINI_INSIEME = 3;
+const CAMPIONE_PESI = 4;
+// il campione parte da una lettera di mezzo: le prime pagine dell'alfabeto
+// sono numeri e sigle, voci corte e quasi tutte senza immagine
+const CAMPIONE_DA = "G";
+
+const parametriImmagini = (cont, piu = {}) => ({
+  action: "query",
+  generator: "allpages",
+  gapnamespace: "0",
+  gapfilterredir: "nonredirects",
+  gaplimit: String(PER_VOLTA),
+  prop: "pageimages",
+  piprop: "thumbnail",
+  pithumbsize: String(LATO_IMMAGINE),
+  pilimit: String(PER_VOLTA),
+  maxlag: "5",
+  ...(cont || { continue: "" }),
+  ...piu,
+});
+
+const conImmagine = (pagine) =>
+  (Array.isArray(pagine) ? pagine : Object.values(pagine || {}))
+    .filter((p) => p?.thumbnail?.source && p.title)
+    .map((p) => ({ k: chiave(p.title), src: p.thumbnail.source }))
+    .filter((p) => p.k);
+
+async function apiDelWiki({ deposito, fetcher, attesa, wiki }) {
+  const meta = await deposito.leggi(wiki.meta).catch(() => null);
+  if (meta?.api) return { api: meta.api, voci: meta.voci || null };
+  return trovaApi({ fetcher, attesa, wiki });
+}
+
+// UN'IMMAGINE: tre tentativi, poi e' saltata. Un'immagine che manca e'
+// di quell'immagine sola, e la voce resta col suo testo.
+async function prendiImmagine(src, { fetcher, attesa }) {
+  for (let t = 0; t < 3; t++) {
+    try {
+      const res = await fetcher(src);
+      if (res.ok) {
+        const blob = await res.blob();
+        return blob?.size ? blob : null;
+      }
+      if (res.status === 404 || res.status === 410 || res.status === 403) return null;
+    } catch {
+      /* rete o CORS: si riprova, poi si salta */
+    }
+    await attesa(2000 * 2 ** t);
+  }
+  return null;
+}
+
+export async function misuraImmagini({ fetcher = fetch, deposito = DEPOSITO, attesa = dorme, wiki = LEXICANUM } = {}) {
+  const { api, voci } = await apiDelWiki({ deposito, fetcher, attesa, wiki });
+  const risposta = await chiediJson(indirizzo(api, parametriImmagini(null, { gapfrom: CAMPIONE_DA })), { fetcher, attesa });
+  const pagine = risposta?.dati?.query?.pages || [];
+  const tutte = Array.isArray(pagine) ? pagine.length : Object.keys(pagine).length;
+  const con = conImmagine(pagine);
+  if (!tutte) return { voci, quota: 0, medio: 0, stima: 0, campione: 0 };
+  const pesi = [];
+  for (const { src } of con.slice(0, CAMPIONE_PESI)) {
+    try {
+      const res = await fetcher(src);
+      if (res.ok) pesi.push((await res.blob()).size);
+    } catch {
+      /* contata fra quelle che non arrivano */
+    }
+  }
+  if (con.length && !pesi.length) return { voci, bloccate: true, campione: tutte };
+  const quota = con.length / tutte;
+  const medio = pesi.length ? pesi.reduce((a, b) => a + b, 0) / pesi.length : 0;
+  return { voci, quota, medio, stima: Math.round((voci || 0) * quota * medio), campione: tutte };
+}
+
+export async function scaricaImmagini({
+  fetcher = fetch,
+  deposito = DEPOSITO,
+  onProgress,
+  fermo = () => false,
+  pausa = PAUSA_MS,
+  attesa = dorme,
+  wiki = LEXICANUM,
+} = {}) {
+  const im = immaginiDi(wiki);
+  let giro = await deposito.leggi(im.giro);
+  if (!giro?.api) {
+    const gia = await deposito.leggi(im.meta);
+    if (gia?.immagini != null) return gia;
+    const { api, voci } = await apiDelWiki({ deposito, fetcher, attesa, wiki });
+    giro = { api, cont: null, immagini: 0, saltate: 0, byte: 0, voci: 0, totale: voci, iniziato: Date.now() };
+    await deposito.scrivi(im.giro, giro);
+  }
+  onProgress?.({ ...giro });
+  for (;;) {
+    if (fermo()) return { ...giro, fermato: true };
+    const risposta = await chiediJson(indirizzo(giro.api, parametriImmagini(giro.cont)), {
+      fetcher,
+      attesa,
+      paziente: true,
+      fermo,
+      onAttesa: (motivo) => onProgress?.({ ...giro, attesa: motivo }),
+    });
+    if (!risposta) return { ...giro, fermato: true };
+    const pagine = risposta.dati?.query?.pages || [];
+    const da = conImmagine(pagine);
+    const record = [];
+    let byte = 0;
+    for (let i = 0; i < da.length; i += IMMAGINI_INSIEME) {
+      const gruppo = da.slice(i, i + IMMAGINI_INSIEME);
+      const blobs = await Promise.all(gruppo.map((p) => prendiImmagine(p.src, { fetcher, attesa })));
+      gruppo.forEach((p, j) => {
+        if (!blobs[j]) return;
+        record.push([im.prefisso + p.k, blobs[j]]);
+        byte += blobs[j].size;
+      });
+    }
+    // la prima pagina dice se il wiki lascia salvare le sue immagini: se
+    // non ne arriva nessuna, le altre migliaia non arriverebbero lo stesso
+    if (!giro.immagini && !giro.saltate && da.length >= 3 && !record.length)
+      throw new GuaioLexicanum(`${wiki.nome} non lascia salvare le sue immagini a un'app nel browser.`);
+    if (record.length) await deposito.scriviMolti(record);
+    giro = {
+      ...giro,
+      cont: risposta.dati?.continue || null,
+      immagini: giro.immagini + record.length,
+      saltate: giro.saltate + da.length - record.length,
+      byte: giro.byte + byte,
+      voci: giro.voci + (Array.isArray(pagine) ? pagine.length : Object.keys(pagine).length),
+    };
+    if (!giro.cont) break;
+    await deposito.scrivi(im.giro, giro);
+    onProgress?.({ ...giro });
+    if (pausa) await attesa(pausa);
+  }
+  const meta = { immagini: giro.immagini, saltate: giro.saltate, byte: giro.byte, quando: Date.now() };
+  await deposito.scrivi(im.meta, meta);
+  await deposito.togli(im.giro).catch(() => {});
+  onProgress?.({ ...giro, finito: true });
+  return meta;
+}
+
+export async function statoImmagini(deposito = DEPOSITO, wiki = LEXICANUM) {
+  try {
+    const m = await deposito.leggi(immaginiDi(wiki).meta);
+    return m?.immagini != null ? m : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function rimuoviImmagini(deposito = DEPOSITO, wiki = LEXICANUM) {
+  const im = immaginiDi(wiki);
+  segnaFermato(im, false);
+  await deposito.togli(im.meta).catch(() => {});
+  await deposito.togli(im.giro).catch(() => {});
+  await deposito.togliPrefisso(im.prefisso);
+}
+
+// l'immagine di una voce, dal suo titolo vero (chi arriva da un rinvio ha
+// gia' il titolo della voce)
+export async function immagineDi(titolo, deposito = DEPOSITO, wiki = LEXICANUM) {
+  const k = chiave(titolo);
+  if (!k) return null;
+  return (await deposito.leggi(immaginiDi(wiki).prefisso + k).catch(() => null)) || null;
+}
+
+export function fraseImmagini(p) {
+  if (!p) return "";
+  const mb = p.byte >= 1048576 ? ` · ${(p.byte / 1048576).toFixed(0)} MB` : "";
+  const di = p.totale && p.voci ? ` · ${numero(p.voci)} voci guardate di circa ${numero(p.totale)}` : "";
+  const sosta = p.attesa === "rete" ? " · aspetto la rete…" : p.attesa === "rallenta" ? " · il wiki chiede una pausa…" : "";
+  const quante = p.immagini === 1 ? "un'immagine" : `${numero(p.immagini)} immagini`;
+  return `${quante}${mb}${di}${sosta}`;
+}
+
 export const indirizzoVoce = (titolo, wiki = LEXICANUM) =>
   `${wiki.sito}/wiki/${encodeURIComponent(String(titolo).replace(/ /g, "_"))}`;
 

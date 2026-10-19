@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { pezzi, velaVoce, voceLore, indirizzoVoce, avvisoVoce, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
+import { pezzi, velaVoce, voceLore, indirizzoVoce, avvisoVoce, immagineDi, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
 
 // UNA VOCE DI LEXICANUM, letta dentro la scheda del dizionario. I link
 // portano alle altre voci SUL DISPOSITIVO, con un «indietro» che ricorda il
@@ -108,15 +108,28 @@ export function AvvisoFandom({ avviso, onApri, corto = false }) {
 // Lexicanum sta dietro un velo suo: non cita fonti, e dice cose come la
 // fedelta' di Horus o la sorte di Cadia senza chiedere a che punto sei. Su
 // Fandom la voce intera sta gia' dietro l'avviso.
-function Riquadro({ ib, velato, onApri, onLink }) {
-  if (velato)
-    return (
-      <Velo
-        cosa="Riquadro dei dati velato"
-        perche={`${ib.c.length} righe che non dicono da quali libri vengono, e possono dire come va a finire`}
-        onApri={onApri}
-      />
-    );
+// L'IMMAGINE PRINCIPALE sta col riquadro, e col suo velo: anche lei non
+// dice da quale libro viene. I byte stanno sul dispositivo; l'indirizzo per
+// disegnarli si fa qui e si butta quando la voce cambia.
+function VeloInTesta({ ib, figura, onApri }) {
+  if (ib && figura)
+    return <Velo cosa="Riquadro dei dati e immagine velati" perche="non dicono da quali libri vengono, e possono dire come va a finire" onApri={onApri} />;
+  if (ib)
+    return <Velo cosa="Riquadro dei dati velato" perche={`${ib.c.length} righe che non dicono da quali libri vengono, e possono dire come va a finire`} onApri={onApri} />;
+  return <Velo cosa="Immagine velata" perche="non dice da quale libro viene, e può mostrare come va a finire" onApri={onApri} />;
+}
+
+function Figura({ src, titolo }) {
+  return (
+    <img
+      src={src}
+      alt={titolo}
+      style={{ display: "block", maxWidth: "100%", maxHeight: px(360), margin: "4px auto 12px", borderRadius: R.piccolo, border: `1px solid ${C.border}` }}
+    />
+  );
+}
+
+function Riquadro({ ib, onLink }) {
   return (
     <div style={{ margin: "4px 0 12px", border: `1px solid ${C.border}`, borderRadius: R.piccolo, overflow: "hidden" }}>
       <div style={{ padding: "6px 12px", fontSize: F.minuscolo, color: C.muted, letterSpacing: 0.6, textTransform: "uppercase", borderBottom: `1px solid ${C.border}`, background: `${C.surface}55` }}>
@@ -218,6 +231,23 @@ export default function VoceLore({ voce: prima, giudice, onChiudi, wiki = LEXICA
   const titoli = useRef(new Map());
   const sezioni = blocchi.map((b, i) => (b.h && b.l === 2 ? [b.h, i] : null)).filter(Boolean);
   const apri = (k) => setAperti((a) => new Set(a).add(k));
+  const [figura, setFigura] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    let url = null;
+    setFigura(null);
+    immagineDi(voce.t, undefined, wiki)
+      .then((blob) => {
+        if (!vivo || !blob) return;
+        url = URL.createObjectURL(blob);
+        setFigura(url);
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [voce.t, wiki]);
 
   async function vai(titolo) {
     setManca("");
@@ -263,7 +293,15 @@ export default function VoceLore({ voce: prima, giudice, onChiudi, wiki = LEXICA
       )}
       {!chiusa && (
       <div style={{ marginTop: 8 }}>
-        {voce.ib && <Riquadro ib={voce.ib} velato={wiki !== FANDOM && !aperti.has("ib")} onApri={() => apri("ib")} onLink={vai} />}
+        {(voce.ib || figura) &&
+          (wiki !== FANDOM && !aperti.has("ib") ? (
+            <VeloInTesta ib={voce.ib} figura={figura} onApri={() => apri("ib")} />
+          ) : (
+            <>
+              {figura && <Figura src={figura} titolo={voce.t} />}
+              {voce.ib && <Riquadro ib={voce.ib} onLink={vai} />}
+            </>
+          ))}
         {sezioni.length >= 3 && (
           <nav style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "2px 0 12px" }}>
             <span style={{ width: "100%", fontSize: F.minuscolo, color: C.muted, letterSpacing: 0.6, textTransform: "uppercase" }}>In questa voce</span>

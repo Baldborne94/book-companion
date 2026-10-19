@@ -40,6 +40,13 @@ import {
   scrittoComeNome,
   vociDiPrima,
   FORMATO_VOCI,
+  immaginiDi,
+  misuraImmagini,
+  scaricaImmagini,
+  statoImmagini,
+  rimuoviImmagini,
+  immagineDi,
+  fraseImmagini,
   giroDaRiprendere,
   segnaFermato,
   LEXICANUM,
@@ -589,6 +596,76 @@ However, after Horus' fall to [[Chaos]] on [[Davin]], he was considered too loya
       if (prima === undefined) delete globalThis.localStorage;
       else globalThis.localStorage = prima;
     }
+  }
+
+  // ---- LE IMMAGINI PRINCIPALI ------------------------------------------
+  // chiesto dal lettore: «passa alle immagini». Il wiki dice quale e'
+  // l'immagine principale di ogni voce (pageimages) e la da' gia' ridotta
+  {
+    const PAGINE_IMG = [
+      [{ title: "Garviel Loken", thumbnail: { source: "https://img/loken.webp" } }, { title: "Davin" }, { title: "Cadia", thumbnail: { source: "https://img/cadia.webp" } }],
+      [{ title: "Horus", thumbnail: { source: "https://img/horus.webp" } }, { title: "Ullanor", thumbnail: { source: "https://img/manca.webp" } }],
+    ];
+    const blob = (n) => ({ size: n, type: "image/webp" });
+    const wikiImg = (chieste, { bloccate = false, rete = 0 } = {}) => {
+      let cadute = 0;
+      return async (url) => {
+        const u = new URL(url);
+        chieste.push(u.href);
+        if (u.hostname === "img") {
+          if (bloccate) throw new TypeError("Failed to fetch");
+          if (u.pathname === "/horus.webp" && cadute < rete) {
+            cadute++;
+            throw new TypeError("Failed to fetch");
+          }
+          if (u.pathname === "/manca.webp") return { ok: false, status: 404 };
+          return { ok: true, status: 200, blob: async () => blob(u.pathname.length * 1000) };
+        }
+        const p = Object.fromEntries(u.searchParams);
+        if (p.meta === "siteinfo") return { ok: true, status: 200, text: async () => JSON.stringify({ query: { general: {}, statistics: { articles: 10 } } }) };
+        const i = Number(p.gapcontinue || 0);
+        const corpo = { query: { pages: PAGINE_IMG[i] } };
+        if (i + 1 < PAGINE_IMG.length) corpo.continue = { gapcontinue: String(i + 1), continue: "gapcontinue||" };
+        return { ok: true, status: 200, text: async () => JSON.stringify(corpo) };
+      };
+    };
+    const d = deposito();
+    await d.scrivi("fan_meta", { voci: 10, api: "https://w/api.php" });
+    const chieste = [];
+    const misura = await misuraImmagini({ fetcher: wikiImg(chieste), deposito: d, attesa, wiki: FANDOM });
+    t.c("la misura usa l'API del wiki gia' sceso, e chiede le immagini ridotte", chieste[0].startsWith("https://w/api.php") && chieste[0].includes("pithumbsize=400") && chieste[0].includes("prop=pageimages"));
+    t.eq("e conta quante voci hanno l'immagine", misura.quota, 2 / 3);
+    t.eq("e stima il peso sulle voci del wiki e sui pesi misurati", misura.stima, Math.round(10 * (2 / 3) * 11000));
+    const chiuso = await misuraImmagini({ fetcher: wikiImg([], { bloccate: true }), deposito: d, attesa, wiki: FANDOM });
+    t.c("un wiki che non lascia prendere le immagini si dice prima", chiuso.bloccate === true);
+
+    let viste = 0;
+    const primo = await scaricaImmagini({ fetcher: wikiImg([]), deposito: d, attesa, pausa: 0, wiki: FANDOM, fermo: () => viste++ >= 1 });
+    t.c("fermato a meta' si ferma, e le immagini della prima pagina restano", primo.fermato && d.m.has("img:fan:garviel loken") && d.m.has("img:fan:cadia"));
+    t.eq("e il segno della ripresa e' quello delle immagini", (await giroDaRiprendere(d, immaginiDi(FANDOM)))?.immagini, 2);
+    t.c("non quello del testo, che e' gia' sceso", !d.m.has("fan_giro") && d.m.get("fan_meta")?.voci === 10);
+    const chiesteDopo = [];
+    const meta = await scaricaImmagini({ fetcher: wikiImg(chiesteDopo, { rete: 2 }), deposito: d, attesa, pausa: 0, wiki: FANDOM });
+    t.eq("un'immagine che il wiki non ha si chiede una volta sola", chiesteDopo.filter((u) => u.endsWith("/manca.webp")).length, 1);
+    t.eq("ripreso arriva in fondo: un'immagine che non c'e' e' saltata, la rete che cade si riprova", `${meta.immagini}/${meta.saltate}`, "3/1");
+    t.eq("e il cartellino dice quante e quanto pesano", meta.byte, 3 * 11000);
+    t.eq("l'immagine si trova dal titolo della voce", (await immagineDi("Garviel Loken", d, FANDOM))?.size, 11000);
+    t.c("e una voce senza immagine non ne ha", (await immagineDi("Davin", d, FANDOM)) === null);
+    t.c("e quelle di Fandom non sono di Lexicanum", (await immagineDi("Garviel Loken", d, LEXICANUM)) === null);
+    t.eq("e una sola si dice al singolare", fraseImmagini({ immagini: 1, byte: 0 }), "un'immagine");
+    t.eq("la riga del lavoro dice le immagini", fraseImmagini({ immagini: 12000, byte: 50 * 1048576, voci: 15000, totale: 73000 }), "12.000 immagini · 50 MB · 15.000 voci guardate di circa 73.000");
+
+    const chiusa = deposito();
+    await chiusa.scrivi("fan_meta", { voci: 10, api: "https://w/api.php" });
+    const tre = [{ title: "A", thumbnail: { source: "https://img/a.webp" } }, { title: "B", thumbnail: { source: "https://img/b.webp" } }, { title: "C", thumbnail: { source: "https://img/c.webp" } }];
+    PAGINE_IMG.unshift(tre);
+    let guaio = "";
+    await scaricaImmagini({ fetcher: wikiImg([], { bloccate: true }), deposito: chiusa, attesa, pausa: 0, wiki: FANDOM }).catch((e) => (guaio = e.message));
+    PAGINE_IMG.shift();
+    t.c("se dalla prima pagina non arriva nessuna immagine, il giro si ferma e lo dice", /non lascia salvare le sue immagini/.test(guaio));
+
+    await rimuoviImmagini(d, FANDOM);
+    t.c("rimuovere le immagini lascia il testo", !d.m.has("img:fan:cadia") && !d.m.has("fan_img_meta") && d.m.has("fan_meta") && (await statoImmagini(d, FANDOM)) === null);
   }
 
   // ---- LA RIGA DEL LAVORO -----------------------------------------------
