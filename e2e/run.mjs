@@ -1513,9 +1513,10 @@ const SCENE = [
       await finche(() => p.getByText(/⚔ Lexicanum:/).count(), 8000, "la riga del lavoro non compare");
       await finche(() => p.getByText(/Lexicanum sul dispositivo: /).count(), 20000, "lo scaricamento non finisce");
       if (!chieste.every((u) => u.includes("origin=*"))) throw new Error("una richiesta a Lexicanum senza origin=*: il browser la rifiuterebbe");
+      // Lexicanum non dichiara l'immagine principale: lo si dice, e niente tasto
       await p.getByRole("button", { name: "🖼 Misura le immagini" }).first().click();
-      await p.getByRole("button", { name: /🖼 Scarica le immagini · circa/ }).click({ timeout: 8000 });
-      await finche(() => p.getByText(/Immagini di Lexicanum sul dispositivo: un'immagine/).count(), 15000, "le immagini di Lexicanum non scendono");
+      await finche(() => p.getByText(/non segna quale sia l'immagine principale/).count(), 8000, "la misura di Lexicanum non dice che le immagini non ci sono");
+      if (await p.getByRole("button", { name: /🖼 Scarica le immagini/ }).count()) throw new Error("un tasto promette immagini che Lexicanum non da'");
       await p.keyboard.press("Escape");
 
       const frase = "I was there, the day that Horus slew the Emperor. Garviel Loken watched the Warmaster from the deck. 'Two hundred and fifty,' came the answer.";
@@ -1540,10 +1541,8 @@ const SCENE = [
       // (non cita fonti), l'indice delle sezioni che porta al titoletto
       if (!(await p.locator("blockquote", { hasText: "I was never a Son of Horus." }).count())) throw new Error("la citazione non e' una citazione");
       if (await p.getByText("Captain", { exact: true }).count()) throw new Error("il riquadro dei dati non e' velato");
-      if (await p.locator('img[alt="Garviel Loken"]').count()) throw new Error("l'immagine non e' velata col riquadro");
-      await p.getByText(/Riquadro dei dati e immagine velati/).click();
+      await p.getByText(/Riquadro dei dati velato/).click();
       await finche(() => p.getByText("Captain", { exact: true }).count(), 5000, "il riquadro toccato non si apre");
-      await finche(() => p.locator('img[alt="Garviel Loken"]').evaluate((img) => img.complete && img.naturalWidth === 30).catch(() => false), 5000, "toccato il velo, l'immagine non c'e'");
       await p.getByText("In questa voce").waitFor({ timeout: 5000 });
       const sotto = await p.getByText("Personality", { exact: true }).last().boundingBox();
       if (!sotto || sotto.y < 1503) throw new Error("la voce di prova non e' abbastanza lunga da scorrere");
@@ -1708,6 +1707,15 @@ const SCENE = [
         "l'immagine principale della voce non c'e'"
       );
       await finche(() => p.getByText("Fandom · sul dispositivo").count(), 5000, "la voce non dice da quale wiki viene");
+      // e la voce di Lexicanum, che l'immagine non la segna, prende quella di
+      // Fandom: velata col riquadro, e detta da dove viene
+      await p.getByRole("button", { name: "◂ La parola" }).click();
+      await p.getByRole("tab", { name: /Lexicanum/ }).click();
+      await p.getByRole("button", { name: "Leggi la voce ▸" }).click();
+      if (await p.locator('img[alt="Garviel Loken"]').count()) throw new Error("l'immagine di Fandom non e' velata nella voce di Lexicanum");
+      await p.getByText(/Riquadro dei dati e immagine velati/).click();
+      await finche(() => p.locator('img[alt="Garviel Loken"]').evaluate((img) => img.complete && img.naturalWidth === 30).catch(() => false), 5000, "nella voce di Lexicanum l'immagine di Fandom non c'e'");
+      await p.getByText("Immagine da Fandom").waitFor({ timeout: 3000 });
       return { guasti: d.guasti };
     },
   },

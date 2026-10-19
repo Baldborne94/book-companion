@@ -1411,6 +1411,21 @@ export async function immagineDi(titolo, deposito = DEPOSITO, wiki = LEXICANUM) 
   return (await deposito.leggi(immaginiDi(wiki).prefisso + k).catch(() => null)) || null;
 }
 
+// L'IMMAGINE DA MOSTRARE IN UNA VOCE: la sua, e per una voce di Lexicanum,
+// che non segna l'immagine principale, quella della stessa voce di Fandom
+// (chiesto dal lettore, al posto di un secondo giro sul wiki di volontari:
+// i byte sono gia' sul dispositivo). La voce di Fandom si cerca come la
+// cerca la scheda, rinvii compresi. `da` dice di chi e' l'immagine.
+export async function immaginePerVoce(titolo, deposito = DEPOSITO, wiki = LEXICANUM) {
+  const sua = await immagineDi(titolo, deposito, wiki);
+  if (sua) return { blob: sua, da: wiki };
+  const diretta = await immagineDi(titolo, deposito, FANDOM);
+  if (diretta) return { blob: diretta, da: FANDOM };
+  const altra = await voceLore(titolo, deposito, FANDOM).catch(() => null);
+  const suFandom = altra?.t ? await immagineDi(altra.t, deposito, FANDOM) : null;
+  return suFandom ? { blob: suFandom, da: FANDOM } : null;
+}
+
 export function fraseImmagini(p) {
   if (!p) return "";
   const mb = p.byte >= 1048576 ? ` · ${(p.byte / 1048576).toFixed(0)} MB` : "";
