@@ -38,6 +38,8 @@ import {
   nomiDaSegnare,
   avvisoVoce,
   scrittoComeNome,
+  vociDiPrima,
+  FORMATO_VOCI,
   giroDaRiprendere,
   segnaFermato,
   LEXICANUM,
@@ -135,6 +137,73 @@ export default async function (t) {
 
   t.eq("la chiave non guarda maiuscole e accenti", chiave("  Lion El’Jonson "), "lion el'jonson");
 
+  // ---- IL RIQUADRO, LE CITAZIONI, LE TABELLE ------------------------------
+  // chiesto dal lettore: «la stessa esperienza della pagina online». Le
+  // forme vere di Fandom (Cadia, le Legioni); quelle di Lexicanum come le
+  // scrive il wiki, col riquadro a capo e le citazioni coi numeri delle fonti
+  {
+    const cadia = daWikitesto("Cadia", `{{Quote|This is Cadia, you silly fool!| Inquisitor-General Neve}}
+{{Planet
+|title1=Cadia Prime
+|image1=[[File:Cadia.jpg|center|210px]]|
+|caption1=Cadia as seen from orbit.
+|affiliation= [[Chaos]] (Currently) <br> [[Imperium of Man]] (Formerly)
+|temperature_/_climate=20°C; Arctic to Temperate
+|segmentum= [[Segmentum Obscurus]]|
+|tithe_grade=
+}}
+'''Cadia''' was a [[Fortress World]].`);
+    t.eq("il riquadro ha il nome del suo modello", cadia.ib?.n, "Planet");
+    t.eq(
+      "e i suoi campi, senza immagine, didascalia e campi vuoti",
+      JSON.stringify(cadia.ib?.c),
+      JSON.stringify([
+        ["Title", "Cadia Prime"],
+        ["Affiliation", "[[Chaos]] (Currently) · [[Imperium of Man]] (Formerly)"],
+        ["Temperature / climate", "20°C; Arctic to Temperate"],
+        ["Segmentum", "[[Segmentum Obscurus]]"],
+      ])
+    );
+    t.eq("la citazione in testa e' una citazione, con chi l'ha detta", JSON.stringify(cadia.p[0]), JSON.stringify({ q: "This is Cadia, you silly fool!", di: "Inquisitor-General Neve", f: [] }));
+    t.eq("e il primo paragrafo resta il primo paragrafo", cadia.p.find((b) => b.x)?.x, "Cadia was a [[Fortress World]].");
+    const solo = daWikitesto("X", "{{Main|Horus Heresy}}\n{{Primarch\n|image=[[Image:Horus.jpg|250px]]\n|name=Horus Lupercal\n}}\nTesto.");
+    t.c("un modello senza campi da leggere non e' un riquadro", !solo.ib);
+
+    const lex = daWikitesto("Loken", `{{Quote|I was never a Son of Horus.|[[Garviel Loken|Loken]] to [[Horus]]}}{{Fn|1}}
+'''Loken''' was a Captain.{{Fn|2}}
+
+==Sources==
+*{{Endn|1}}: ''[[Galaxy in Flames (Novel)|Galaxy in Flames]]''
+*{{Endn|2}}: ''[[Horus Rising (Novel)|Horus Rising]]''
+==See also==
+{{Quote|Una citazione fra i rimandi|Nessuno}}`);
+    const q = lex.p.find((b) => b.q);
+    t.eq("chi parla puo' avere un link col suo «|»", q?.di, "[[Garviel Loken|Loken]] to [[Horus]]");
+    t.c("la citazione porta le sue fonti, e si vela come un paragrafo", q?.f?.includes("1") && lex.f["1"]?.t === "Galaxy in Flames");
+    t.c("nelle sezioni che si buttano le citazioni se ne vanno con loro", lex.p.filter((b) => b.q).length === 1);
+
+    const legioni = daWikitesto("Legions", `Intro.
+{|border="1" cellspacing="0"
+|+ The [[Legiones Astartes]]
+!width="5%" style="background: #000080;"|'''Number'''
+!style="background: #000080;"|'''Legion'''
+|-
+!<center>|'''I'''
+|[[Dark Angels]]{{Fn|1}}
+|-
+|XVI || [[Sons of Horus|Luna Wolves]]
+|}
+Dopo.
+
+==Sources==
+*{{Endn|1}}: ''[[Codex: Dark Angels]]''`);
+    const tab = legioni.p.find((b) => b.tab);
+    t.eq("la tabella ha le sue righe, senza gli attributi delle celle", JSON.stringify(tab?.tab), JSON.stringify([["Number", "Legion"], ["I", "[[Dark Angels]]"], ["XVI", "[[Sons of Horus|Luna Wolves]]"]]));
+    t.c("la prima riga e' l'intestazione, e la didascalia resta", tab?.th === 1 && tab?.c === "The [[Legiones Astartes]]");
+    t.c("le fonti nelle celle velano la tabella", tab?.f?.join() === "1");
+    t.eq("e la tabella sta dove l'aveva messa il wiki", legioni.p.map((b) => (b.tab ? "T" : b.x)).join("|"), "Intro.|T|Dopo.");
+  }
+
   // ---- I RECORD ---------------------------------------------------------
   {
     const d = deposito();
@@ -220,6 +289,13 @@ export default async function (t) {
 
     const meta = await scaricaLexicanum({ fetcher: finto(chieste), deposito: d, attesa, pausa: 0 });
     t.eq("ripreso, arriva in fondo con tutte le voci", meta.voci, 5);
+    t.eq("e dice il formato delle voci, perche' il pannello sappia se riscaricarle", meta.formato, FORMATO_VOCI);
+    t.c("le voci col formato di adesso non chiedono di riscaricare", !vociDiPrima(meta));
+    t.c("quelle scese prima si', e un Lexicanum assente no", vociDiPrima({ voci: 50000 }) && !vociDiPrima(null));
+    // un giro cominciato col formato di prima e ripreso dopo resta di prima
+    const vecchio = deposito();
+    await vecchio.scrivi("lex_giro", { api: "https://wh40k.lexicanum.com/mediawiki/api.php", cont: { gapcontinue: "2", continue: "gapcontinue||" }, voci: 4, rinvii: 0, byte: 0 });
+    t.eq("un giro di prima ripreso adesso resta di prima", (await scaricaLexicanum({ fetcher: finto([]), deposito: vecchio, attesa, pausa: 0 })).formato, 1);
     const pagineChieste = chieste.filter((p) => p.generator === "allpages").map((p) => p.gapcontinue || "0");
     t.eq("ripartendo dalla pagina dopo, senza rifare le prime", pagineChieste.join(","), "0,1,2");
     t.c("la continuazione si ripassa intera", chieste.some((p) => p.continue === "gapcontinue||"));
@@ -434,8 +510,9 @@ However, after Horus' fall to [[Chaos]] on [[Davin]], he was considered too loya
   {
     const v = daWikitesto("Garviel Loken", LOKEN_FANDOM);
     t.eq("su Fandom il titolo della fonte e' il corsivo, non l'autore col link", v.fv.map((f) => f.t).slice(0, 4).join("|"), "The Horus Heresy - Book One: Betrayal|Horus Rising|False Gods|Galaxy In Flames");
-    t.c("la citazione in testa e l'immagine non diventano testo", !v.p.some((b) => /valediction|Portrait/.test(testoPiano(b.x || ""))));
-    t.c("il link col testo uguale si scrive corto", v.p[0].x.includes("[[Great Crusade]]") && !v.p[0].x.includes("[[Great Crusade|Great Crusade]]"));
+    t.c("la citazione in testa e l'immagine non diventano un paragrafo", !v.p.some((b) => /valediction|Portrait/.test(testoPiano(b.x || ""))));
+    const primo = v.p.find((b) => b.x);
+    t.c("il link col testo uguale si scrive corto", primo.x.includes("[[Great Crusade]]") && !primo.x.includes("[[Great Crusade|Great Crusade]]"));
     t.eq("e si disegna come gli altri", JSON.stringify(pezzi("on [[Davin]].")[1]), JSON.stringify({ s: "Davin", l: "Davin", i: false }));
     t.c("i paragrafi di Fandom non hanno fonti proprie: niente veli per paragrafo", v.p.every((b) => !b.f?.length));
     // dopo il link rotto l'immagine va via e la coda di lettere si attacca

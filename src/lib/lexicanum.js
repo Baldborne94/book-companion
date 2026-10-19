@@ -93,6 +93,9 @@ const FN = "\u0001";
 const FN_FINE = "\u0002";
 const EN = "\u0003";
 const EN_FINE = "\u0004";
+// il posto di una citazione o di una tabella tolta dal testo: `\u0005Q3\u0006`
+const POSTO = "\u0005";
+const POSTO_FINE = "\u0006";
 
 // le sezioni che non sono racconto: elenchi di fonti, di immagini, di
 // rimandi. Le fonti si leggono prima di buttarle.
@@ -128,7 +131,12 @@ const entita = (s) =>
 // segni che sopravvivono alla pulizia e si raccolgono alla fine. Un modello
 // che non si chiude resta testo: mangiarsi il resto della voce per una
 // graffa dimenticata sarebbe peggio.
-function senzaModelli(testo) {
+// CON LA RACCOLTA (la voce intera, non una riga delle fonti) tre cose non si
+// buttano piu' (chiesto dal lettore: «avere la stessa esperienza della
+// pagina online»): il riquadro dei dati, le citazioni e le tabelle. Il
+// riquadro va nella raccolta, citazioni e tabelle lasciano il loro posto
+// nel testo, perche' stiano dove le aveva messe il wiki.
+function senzaModelli(testo, raccolta = null) {
   let out = "";
   let i = 0;
   const n = testo.length;
@@ -152,7 +160,7 @@ function senzaModelli(testo) {
         i += 2;
         continue;
       }
-      out += sostituto(testo.slice(i + 2, j - 2));
+      out += sostituto(testo.slice(i + 2, j - 2), raccolta);
       i = j;
     } else if (inizioRiga && testo.startsWith("{|", i)) {
       let prof = 0;
@@ -168,6 +176,7 @@ function senzaModelli(testo) {
           if (prof === 0) break;
         } else j++;
       }
+      if (raccolta) out += posto(raccolta, "T", testo.slice(i, j));
       i = j;
     } else {
       out += testo[i];
@@ -177,13 +186,150 @@ function senzaModelli(testo) {
   return out;
 }
 
-function sostituto(dentro) {
+function sostituto(dentro, raccolta) {
   const parti = dentro.split("|");
   const nome = parti[0].trim().toLowerCase();
   const argomenti = parti.slice(1).map((a) => a.trim()).filter(Boolean);
   if (nome === "fn") return argomenti.map((a) => FN + a + FN_FINE).join("");
   if (nome === "endn") return argomenti.map((a) => EN + a + EN_FINE).join("");
+  if (!raccolta) return "";
+  const m = argomentiDi(dentro);
+  if (CITAZIONI.has(m.nome)) {
+    const testo = m.pos[0] ?? m.nom.text ?? m.nom.quote ?? "";
+    const di = m.pos[1] ?? m.nom.author ?? m.nom.speaker ?? m.nom.source ?? m.nom.by ?? "";
+    return testo.trim() ? posto(raccolta, "Q", { testo, di }) : "";
+  }
+  if (!raccolta.ib) {
+    const c = campiDelRiquadro(m.campi);
+    if (c.length >= 2) raccolta.ib = { n: senzaParentesi(m.vero.replace(/_/g, " ")), c };
+  }
   return "";
+}
+
+const CITAZIONI = new Set(["quote", "cquote", "quotation", "quote2", "blockquote"]);
+
+// la citazione lascia la riga aperta: il {{Fn}} scritto subito dopo di lei
+// e' la sua fonte, non quella del paragrafo che segue
+const posto = (raccolta, tipo, cosa) => {
+  (raccolta[tipo] ||= []).push(cosa);
+  return `\n${POSTO}${tipo}${raccolta[tipo].length - 1}${POSTO_FINE}${tipo === "Q" ? "" : "\n"}`;
+};
+
+// gli argomenti di un modello, divisi solo dai «|» che non stanno dentro un
+// link o un altro modello: «[[Horus|Horus Lupercal]]» e' un argomento solo
+function argomentiDi(dentro) {
+  const pezzi = [];
+  let prof = 0;
+  let da = 0;
+  for (let i = 0; i < dentro.length; i++) {
+    const due = dentro.slice(i, i + 2);
+    if (due === "[[" || due === "{{") {
+      prof++;
+      i++;
+    } else if ((due === "]]" || due === "}}") && prof > 0) {
+      prof--;
+      i++;
+    } else if (dentro[i] === "|" && prof === 0) {
+      pezzi.push(dentro.slice(da, i));
+      da = i + 1;
+    }
+  }
+  pezzi.push(dentro.slice(da));
+  const vero = pezzi.shift().trim();
+  const nome = vero.toLowerCase();
+  const pos = [];
+  const nom = {};
+  const campi = [];
+  for (const a of pezzi) {
+    const uguale = a.match(/^\s*([\w][\w ./-]*?)\s*=([\s\S]*)$/);
+    if (!uguale) {
+      if (a.trim()) pos.push(a.trim());
+      continue;
+    }
+    const k = uguale[1].toLowerCase();
+    nom[k] = uguale[2].trim();
+    campi.push([uguale[1], uguale[2].trim()]);
+  }
+  return { nome, vero, pos, nom, campi };
+}
+
+// IL RIQUADRO DEI DATI: i campi con un testo da leggere, nell'ordine del
+// wiki. Immagini e didascalie via (le immagini non sono sul dispositivo), e
+// il nome della voce, che sta gia' in testa. «temperature_/_climate» si legge
+// «Temperature / climate»; «title1» «Title».
+const CAMPI_VIA = /^(image|img|picture|pic|caption|imagecaption|image caption|size|width|imagesize|image size|alt|name|pagename|header|footer|align|float|style)\d*$/i;
+const CAMPI_MAX = 24;
+function campiDelRiquadro(campi) {
+  const out = [];
+  for (const [k, grezzo] of campi) {
+    if (CAMPI_VIA.test(k.trim()) || out.length >= CAMPI_MAX) continue;
+    const v = senzaSegni(pulisci(link(senzaModelli(String(grezzo).replace(/<br\s*\/?>/gi, " · ")))))
+      .replace(/^[\s·]+|[\s·]+$/g, "")
+      .replace(/(\s*·\s*)+/g, " · ");
+    if (!testoPiano(v)) continue;
+    const nome = k.replace(/_/g, " ").replace(/\s*\/\s*/g, " / ").replace(/\d+$/, "").replace(/\s+/g, " ").trim();
+    if (nome) out.push([nome[0].toUpperCase() + nome.slice(1), v]);
+  }
+  return out;
+}
+
+const senzaSegni = (s) => String(s).replace(new RegExp(`${FN}[^${FN_FINE}]*${FN_FINE}|${EN}[^${EN_FINE}]*${EN_FINE}`, "g"), "").trim();
+
+// UNA TABELLA del wiki → righe di celle (testo coi link). «|-» apre una
+// riga, «!» e «|» una cella, «!!» e «||» la cella dopo sulla stessa riga;
+// gli attributi («style=…|testo») si lasciano. Una tabella annidata o troppo
+// grande si accorcia: e' una scheda da leggere, non un foglio di calcolo.
+// «style="…"|testo» o «<center>|testo»: prima del primo «|» che non sta in
+// un link ci sono gli attributi della cella, non il suo testo
+function senzaAttributi(cella) {
+  const crudi = cella.split("|");
+  if (crudi.length < 2) return cella;
+  const prima = crudi[0];
+  if (prima.includes("[[") || prima.includes("{{")) return cella;
+  if (!/=|^\s*<[^>]*>\s*$|^\s*$/.test(prima)) return cella;
+  return crudi.slice(1).join("|");
+}
+const RIGHE_MAX = 60;
+const COLONNE_MAX = 8;
+function tabellaDi(grezza) {
+  const righe = [];
+  let riga = null;
+  let didascalia = "";
+  let intestata = false;
+  const cella = (testo, testata) => {
+    if (!riga) {
+      riga = [];
+      righe.push(riga);
+      if (righe.length === 1) intestata = testata;
+    }
+    if (riga.length < COLONNE_MAX) riga.push(senzaAttributi(testo));
+  };
+  const corpo = grezza.split("\n").slice(1);
+  for (const linea of corpo) {
+    const l = linea.trim();
+    if (l.startsWith("|}")) break;
+    if (l.startsWith("{|")) continue;
+    if (l.startsWith("|+")) didascalia = l.slice(2);
+    else if (l.startsWith("|-")) riga = null;
+    else if (l.startsWith("!")) for (const c of l.slice(1).split("!!")) cella(c, true);
+    else if (l.startsWith("|")) for (const c of l.slice(1).split("||")) cella(c, false);
+    else if (riga?.length) riga[riga.length - 1] += " " + l;
+  }
+  const f = [];
+  const testo = (s) =>
+    pulisci(link(senzaModelli(s))).replace(new RegExp(`${FN}([^${FN_FINE}]*)${FN_FINE}`, "g"), (m, n) => {
+      const k = numeroFonte(n);
+      if (k && !f.includes(k)) f.push(k);
+      return "";
+    }).replace(new RegExp(`${EN}[^${EN_FINE}]*${EN_FINE}`, "g"), "").trim();
+  const r = righe
+    .filter((x) => x.length)
+    .slice(0, RIGHE_MAX)
+    .map((x) => x.map(testo))
+    .filter((x) => x.some((c) => testoPiano(c)));
+  if (!r.length) return null;
+  const c = testo(didascalia);
+  return { tab: r, ...(intestata ? { th: 1 } : {}), ...(testoPiano(c) ? { c } : {}), f };
 }
 
 // «1a», «1b» sono pagine diverse della stessa fonte «1»
@@ -312,7 +458,8 @@ export function daWikitesto(titolo, wikitesto) {
     return FN + k + FN_FINE;
   });
 
-  testo = link(senzaModelli(testo));
+  const raccolta = {};
+  testo = link(senzaModelli(testo, raccolta));
 
   const blocchi = [];
   let corrente = null;
@@ -335,6 +482,17 @@ export function daWikitesto(titolo, wikitesto) {
     );
     if (testoPiano(x)) blocchi.push(corrente.li ? { x, f, li: true } : { x, f });
     corrente = null;
+  };
+  const conFonti = (grezzo) => {
+    const f = [];
+    const x = pulisci(
+      link(senzaModelli(grezzo)).replace(new RegExp(`${FN}([^${FN_FINE}]*)${FN_FINE}`, "g"), (m, n) => {
+        const k = numeroFonte(n);
+        if (k && !f.includes(k)) f.push(k);
+        return "";
+      })
+    );
+    return { x: senzaSegni(x), f };
   };
 
   for (const grezza of testo.split("\n")) {
@@ -373,6 +531,29 @@ export function daWikitesto(titolo, wikitesto) {
       chiudi();
       continue;
     }
+    const segnato = riga.match(new RegExp(`^${POSTO}([QT])(\\d+)${POSTO_FINE}(.*)$`));
+    if (segnato) {
+      chiudi();
+      const cosa = raccolta[segnato[1]]?.[Number(segnato[2])];
+      let coda = segnato[3];
+      if (segnato[1] === "Q" && cosa) {
+        const { x, f } = conFonti(cosa.testo);
+        const di = conFonti(cosa.di).x;
+        coda = coda.replace(new RegExp(`^(\\s*${FN}([^${FN_FINE}]*)${FN_FINE})+`), (tutte) => {
+          for (const m of tutte.matchAll(new RegExp(`${FN}([^${FN_FINE}]*)${FN_FINE}`, "g"))) {
+            const k = numeroFonte(m[1]);
+            if (k && !f.includes(k)) f.push(k);
+          }
+          return "";
+        });
+        if (testoPiano(x)) blocchi.push(testoPiano(di) ? { q: x, di, f } : { q: x, f });
+      } else if (segnato[1] === "T" && cosa) {
+        const tab = tabellaDi(cosa);
+        if (tab) blocchi.push(tab);
+      }
+      if (coda.trim()) corrente = { righe: [coda.trim()] };
+      continue;
+    }
     // resti di tabelle e di modelli spezzati su piu' righe
     if (/^(\||!|\{\||\|\})/.test(riga)) continue;
     const elenco = riga.match(/^([*#;:]+)\s*(.*)$/);
@@ -397,11 +578,24 @@ export function daWikitesto(titolo, wikitesto) {
     const riga = pulisci(link(senzaModelli(grezza)));
     f[k] = { t: titoloFonte(riga), x: testoPiano(riga) };
   }
-  return fontiVoce.length ? { t: titolo, p: blocchi, f, fv: fontiVoce } : { t: titolo, p: blocchi, f };
+  return {
+    t: titolo,
+    ...(raccolta.ib ? { ib: raccolta.ib } : {}),
+    p: blocchi,
+    f,
+    ...(fontiVoce.length ? { fv: fontiVoce } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------
 // LO SCARICAMENTO
+
+// IL FORMATO DELLE VOCI SCESE: 2 = col riquadro dei dati, le citazioni e le
+// tabelle. Le voci si riducono quando scendono, quindi quelle scese prima
+// non li hanno: il pannello lo dice accanto a «Aggiorna», che le riscarica.
+// Un giro cominciato col formato di prima e ripreso dopo resta di prima.
+export const FORMATO_VOCI = 2;
+export const vociDiPrima = (stato) => !!stato?.voci && (stato.formato || 1) < FORMATO_VOCI;
 
 const dorme = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -566,7 +760,7 @@ export async function scaricaLexicanum({
     const gia = await deposito.leggi(wiki.meta);
     if (gia?.voci && !aggiorna) return gia;
     const { api, voci } = await trovaApi({ fetcher, attesa, wiki });
-    giro = { api, cont: null, voci: 0, rinvii: 0, byte: 0, totale: voci, iniziato: Date.now() };
+    giro = { api, cont: null, voci: 0, rinvii: 0, byte: 0, totale: voci, iniziato: Date.now(), formato: FORMATO_VOCI };
     await deposito.scrivi(wiki.giro, giro);
   }
   onProgress?.({ ...giro });
@@ -610,7 +804,7 @@ export async function scaricaLexicanum({
     onProgress?.({ ...giro });
     if (pausa) await attesa(pausa);
   }
-  const meta = { voci: giro.voci, rinvii: giro.rinvii, byte: giro.byte, quando: Date.now(), api: giro.api };
+  const meta = { voci: giro.voci, rinvii: giro.rinvii, byte: giro.byte, quando: Date.now(), api: giro.api, formato: giro.formato || 1 };
   await deposito.scrivi(wiki.meta, meta);
   await deposito.togli(wiki.giro).catch(() => {});
   INDICE = null;
