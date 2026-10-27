@@ -263,6 +263,52 @@ const SCENE = [
     },
   },
   {
+    nome: "una cartella del tablet diventa le sue raccolte, una per sottocartella, e rifarlo non fa doppioni",
+    async fai({ browser }) {
+      // il selettore delle cartelle non si apre da una prova: lo si finge
+      // con la forma che ha in Chrome, la cartella «Music» del lettore
+      const prima = (b64) => {
+        const byte = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const file = (nome) => ({ kind: "file", getFile: async () => new File([byte], nome, { type: nome.endsWith(".jpg") ? "image/jpeg" : "" }) });
+        const cartella = (voci) => ({
+          kind: "directory",
+          async *entries() {
+            for (const [nome, v] of Object.entries(voci)) yield [nome, v === 1 ? file(nome) : v];
+          },
+        });
+        const music = cartella({
+          ".thumbnails": cartella({ "a.jpg": 1 }),
+          "WARHAMMER 40k": cartella({ "10 - Siege of Terra.wav": 1, "2 - Cadia Stands.wav": 1 }),
+          "Horror playlist": cartella({ "Night.wav": 1, "cover.jpg": 1 }),
+        });
+        window.showDirectoryPicker = async () => Object.assign(music, { name: "Music" });
+      };
+      const d = await dispositivo(browser, { misura: TABLET });
+      await d.ctx.addInitScript(prima, wav(2).toString("base64"));
+      await d.p.goto(`${URL_APP}?apri=musica`);
+      await d.p.getByRole("button", { name: "📁 Da una cartella" }).click();
+      const detto = await finche(() => d.p.getByText(/📁 Dalla cartella «Music»/).textContent().catch(() => null), 15000, "la cartella non diventa raccolte");
+      if (!/«Horror playlist» \(1\)/.test(detto) || !/«WARHAMMER 40k» \(2\)/.test(detto)) throw new Error(`raccolte sbagliate: ${detto}`);
+      for (const nome of ["WARHAMMER 40k", "Horror playlist"]) await d.p.getByRole("button", { name: new RegExp(`^✧\\s*${nome}`) }).waitFor({ timeout: 5000 });
+      if (await d.p.getByRole("button", { name: /^✧\s*\.thumbnails/ }).count()) throw new Error("la cartella nascosta e' diventata una raccolta");
+      // i brani nell'ordine dei nomi: il 2 prima del 10
+      await d.p.getByRole("button", { name: /^✧\s*WARHAMMER 40k/ }).click();
+      await d.p.getByRole("button", { name: /^1\s*2 - Cadia Stands/ }).waitFor({ timeout: 5000 });
+      await d.p.getByRole("button", { name: /^2\s*10 - Siege of Terra/ }).waitFor({ timeout: 5000 });
+      const largo = await d.p.evaluate(() => document.scrollingElement.scrollWidth - innerWidth);
+      if (largo > 0) throw new Error(`col tasto della cartella la sala sborda di ${largo}px`);
+      // rifarlo non fa doppioni
+      await d.p.getByRole("button", { name: "📁 Da una cartella" }).click();
+      await finche(() => d.p.getByText(/avevano già tutti i loro brani/).count(), 15000, "la seconda volta non dice che c'era gia' tutto");
+      const conti = await d.p.evaluate(() => ({
+        melodie: JSON.parse(localStorage.getItem("bc_music_favs") || "[]").filter((f) => !f.deleted).length,
+        raccolte: JSON.parse(localStorage.getItem("bc_music_lists") || "[]").filter((r) => !r.deleted).length,
+      }));
+      if (conti.melodie !== 3 || conti.raccolte !== 2) throw new Error(`rifatto, doppioni: ${JSON.stringify(conti)}`);
+      return { guasti: d.guasti, nota: `${conti.raccolte} raccolte, ${conti.melodie} melodie, nessun doppione` };
+    },
+  },
+  {
     // chiesto dal lettore: «selezionare cosa riprodurre nelle raccolte e
     // quando si ferma la melodia ripartire dal punto in cui si è interrotta»
     nome: "in una raccolta si sceglie il brano, e la musica riprende da dove si era fermata anche ad app chiusa",
