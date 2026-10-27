@@ -422,6 +422,12 @@ export const MAPPA = [
     cosa: "Metti insieme le melodie che ti accompagnano, e la musica si spegne da sola con una dissolvenza.",
     dove: "La sala della musica.",
   },
+  {
+    luogo: "musica",
+    nome: "Una cartella, le sue raccolte",
+    cosa: "Scegli una cartella del tablet: ogni sottocartella con della musica diventa una raccolta col suo nome, i brani in ordine. Rifarlo aggiunge solo i brani nuovi.",
+    dove: "La sala della musica → «📁 Da una cartella».",
+  },
 
   // ---- IMPOSTAZIONI ------------------------------------------------------
   {

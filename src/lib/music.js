@@ -22,17 +22,28 @@ const FAVS_KEY = "bc_music_favs";
 export const isFile = (f) => !!f?.trackId;
 
 const AUDIO_OK = /^audio\//;
+// un file letto da una cartella puo' arrivare senza tipo, o con quello
+// generico di chi non sa: Android non sempre lo dice, e allora decide
+// l'estensione. Un tipo vero che non e' audio resta un no («audio.mp3» che
+// si dichiara testo non entra)
+const AUDIO_EST = { mp3: "audio/mpeg", m4a: "audio/mp4", aac: "audio/aac", ogg: "audio/ogg", oga: "audio/ogg", opus: "audio/ogg", flac: "audio/flac", wav: "audio/wav", weba: "audio/webm" };
+const estensione = (nome) => (String(nome || "").match(/\.([a-z0-9]+)$/i)?.[1] || "").toLowerCase();
+const SENZA_TIPO = new Set(["", "application/octet-stream"]);
+export const tipoAudio = (file) =>
+  AUDIO_OK.test(file?.type || "") ? file.type : SENZA_TIPO.has(file?.type || "") ? AUDIO_EST[estensione(file?.name)] || "" : "";
+export const nomeMelodia = (nomeFile) => String(nomeFile || "").replace(/\.[^.]+$/, "") || "Melodia senza nome";
 
 export async function addTrackFile(file) {
-  if (!AUDIO_OK.test(file.type || "")) return null;
+  const mime = tipoAudio(file);
+  if (!mime) return null;
   const trackId = crypto.randomUUID();
   await putTrack(trackId, file);
   const now = Date.now();
   return {
     id: crypto.randomUUID(),
-    name: (file.name || "").replace(/\.[^.]+$/, "") || "Melodia senza nome",
+    name: nomeMelodia(file.name),
     trackId,
-    mime: file.type,
+    mime,
     size: file.size,
     addedAt: now,
     updatedAt: now,
@@ -138,6 +149,74 @@ export function saveLists(list) {
 export function nuovaRaccolta(name) {
   const now = Date.now();
   return { id: crypto.randomUUID(), name: name || "Raccolta senza nome", brani: [], addedAt: now, updatedAt: now };
+}
+
+// UNA CARTELLA DIVENTA UNA RACCOLTA (chiesto dal lettore, con la foto della
+// cartella «Music» del tablet: «Atmosfera - Fantasy epica», «Horror
+// playlist», «WARHAMMER 40k»…: «mi permetti di caricare sul player
+// direttamente una raccolta?»). Ogni sottocartella con della musica e' una
+// raccolta col suo nome, e i brani sciolti della cartella scelta fanno una
+// raccolta col nome di lei; una cartella sola e' una raccolta sola. Le
+// cartelle nascoste («.thumbnails») non si guardano. Dentro una raccolta i
+// brani stanno nell'ordine dei nomi, coi numeri contati da numeri («2 -» prima
+// di «10 -»). E SI PUO' RIFARE: una raccolta col nome che c'e' gia' prende
+// solo i brani che le mancano, e un brano gia' custodito (stesso nome, stesso
+// peso) non si custodisce due volte, si rimette nella raccolta.
+//
+// `voci`: { file, percorso } con il percorso DENTRO la cartella scelta
+// («WARHAMMER 40k/Battle.mp3» → ["WARHAMMER 40k", "Battle.mp3"]).
+const nomeGiusto = (s) => String(s || "").trim().toLocaleLowerCase();
+const ordineNaturale = new Intl.Collator("it", { numeric: true, sensitivity: "base" });
+
+export function pianoDaCartella(radice, voci, { raccolte = [], favs = [] } = {}) {
+  const gruppi = new Map();
+  for (const v of voci || []) {
+    const percorso = (v.percorso || []).filter(Boolean);
+    if (!v.file || !percorso.length || percorso.some((p) => p.startsWith("."))) continue;
+    if (!tipoAudio(v.file)) continue;
+    const nome = percorso.length > 1 ? percorso[0] : radice || "Raccolta senza nome";
+    if (!gruppi.has(nome)) gruppi.set(nome, []);
+    gruppi.get(nome).push({ file: v.file, ordine: percorso.join("/") });
+  }
+  const vive = raccolte.filter((r) => !r.deleted);
+  const custodite = favs.filter((f) => !f.deleted && f.trackId);
+  const piano = [];
+  for (const [nome, brani] of gruppi) {
+    brani.sort((a, b) => ordineNaturale.compare(a.ordine, b.ordine));
+    const esistente = vive.find((r) => nomeGiusto(r.name) === nomeGiusto(nome)) || null;
+    const dentro = new Set(esistente?.brani || []);
+    const nuovi = [];
+    const rimessi = [];
+    // `sequenza`: i brani da mettere nella raccolta, nell'ordine dei nomi,
+    // ognuno o un file da custodire o una melodia che c'e' gia'
+    const sequenza = [];
+    for (const { file } of brani) {
+      const gia = custodite.find((f) => f.name === nomeMelodia(file.name) && f.size === file.size);
+      if (gia) {
+        if (!dentro.has(gia.id) && !rimessi.includes(gia.id)) {
+          rimessi.push(gia.id);
+          sequenza.push({ id: gia.id });
+        }
+      } else {
+        nuovi.push(file);
+        sequenza.push({ file });
+      }
+    }
+    piano.push({ nome, id: esistente?.id || null, nuovi, rimessi, sequenza, tutti: brani.length });
+  }
+  return piano.sort((a, b) => ordineNaturale.compare(a.nome, b.nome));
+}
+
+// i file di una cartella scelta con `showDirectoryPicker`, sottocartelle
+// comprese (fino a tre livelli: una raccolta di raccolte, non un disco)
+export async function vociDellaCartella(cartella, percorso = [], fuori = []) {
+  if (percorso.length > 3) return fuori;
+  for await (const [nome, voce] of cartella.entries()) {
+    if (nome.startsWith(".")) continue;
+    if (voce.kind === "file") fuori.push({ file: await voce.getFile(), percorso: [...percorso, nome] });
+    else if (voce.kind === "directory") await vociDellaCartella(voce, [...percorso, nome], fuori);
+  }
+  return fuori;
 }
 
 // i brani di una raccolta che qui non sono ancora arrivati: un file sale su

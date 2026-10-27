@@ -4,6 +4,7 @@ import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import {
   getFavoritesRaw, saveFavorites, isFile, addTrackFile, dropTrack, parseYouTube,
   getListsRaw, saveLists, nuovaRaccolta, braniDi, puntoDi, doveDi, minuti, MUSICA_CAMBIATA, nonArrivati,
+  pianoDaCartella, vociDellaCartella,
 } from "../lib/music.js";
 import EmptyState from "./EmptyState.jsx";
 import { InAscolto, Icona } from "./Ascolto.jsx";
@@ -38,6 +39,10 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
   const [newName, setNewName] = useState("");
   const fileRef = useRef(null);
   const [caricando, setCaricando] = useState(false);
+  // le melodie di una cartella custodite fin qui, su quante: sono decine di
+  // file da qualche mega, e il tasto dice a che punto e'
+  const [daCartellaConto, setDaCartellaConto] = useState(null);
+  const cartellaPossibile = typeof window !== "undefined" && typeof window.showDirectoryPicker === "function";
   const [raccolte, setRaccolte] = useState(() => getListsRaw());
   // quali melodie da file hanno i byte QUI: le altre non si suonano da qui,
   // e il segno lo dice prima del tocco
@@ -127,6 +132,66 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
       );
     }
     if (scartati) notify(`${scartati} file non sono audio e li ho lasciati fuori 🎵`);
+  }
+
+  // UNA CARTELLA → LE SUE RACCOLTE (`pianoDaCartella`): ogni sottocartella
+  // una raccolta col suo nome, i brani gia' custoditi non si ricaricano, una
+  // raccolta che c'e' gia' prende solo quel che le manca
+  async function daCartella() {
+    let scelta;
+    try {
+      scelta = await window.showDirectoryPicker({ id: "bc-musica" });
+    } catch (e) {
+      if (e?.name !== "AbortError") notify("Non riesco ad aprire quella cartella 🎵");
+      return;
+    }
+    setCaricando(true);
+    try {
+      const piano = pianoDaCartella(scelta.name, await vociDellaCartella(scelta), { raccolte, favs });
+      if (!piano.length) {
+        notify(`Nella cartella «${scelta.name}» non ho trovato musica 🎵`);
+        return;
+      }
+      const totale = piano.reduce((n, p) => n + p.nuovi.length, 0);
+      let fatti = 0;
+      setDaCartellaConto({ fatti, totale });
+      const nuove = [];
+      let elenco = raccolte;
+      const dette = [];
+      let scartati = 0;
+      for (const p of piano) {
+        const ids = [];
+        for (const pezzo of p.sequenza) {
+          if (pezzo.id) {
+            ids.push(pezzo.id);
+            continue;
+          }
+          const voce = await addTrackFile(pezzo.file).catch(() => null);
+          setDaCartellaConto({ fatti: ++fatti, totale });
+          if (voce) {
+            nuove.push(voce);
+            ids.push(voce.id);
+          } else scartati++;
+        }
+        if (!ids.length) continue;
+        const ora = Date.now();
+        elenco = p.id
+          ? elenco.map((x) => (x.id === p.id ? { ...x, brani: [...(x.brani || []), ...ids], updatedAt: ora } : x))
+          : [...elenco, { ...nuovaRaccolta(p.nome), brani: ids }];
+        dette.push(`«${p.nome}» (${ids.length})`);
+      }
+      if (nuove.length) commit([...favs, ...nuove]);
+      if (dette.length) commitRac(elenco);
+      notify(
+        dette.length
+          ? `📁 Dalla cartella «${scelta.name}»: ${dette.join(", ")} ✨`
+          : `Le raccolte di «${scelta.name}» avevano già tutti i loro brani ✨`
+      );
+      if (scartati) notify(`${scartati} file non si sono lasciati custodire e li ho lasciati fuori 🎵`);
+    } finally {
+      setCaricando(false);
+      setDaCartellaConto(null);
+    }
   }
 
   function addMelody() {
@@ -591,8 +656,25 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata }) {
             opacity: caricando ? 0.6 : 1,
           }}
         >
-          {caricando ? "…custodisco" : "♫ Dai tuoi file"}
+          {caricando && !daCartellaConto ? "…custodisco" : "♫ Dai tuoi file"}
         </button>
+        {cartellaPossibile && (
+          <button
+            onClick={daCartella}
+            disabled={caricando}
+            style={{
+              padding: "6px 14px",
+              borderRadius: R.tondo,
+              fontSize: F.nota,
+              border: `1px solid ${C.accent}88`,
+              color: C.accent,
+              background: `${C.accent}14`,
+              opacity: caricando && !daCartellaConto ? 0.6 : 1,
+            }}
+          >
+            {daCartellaConto ? `…custodisco ${daCartellaConto.fatti}/${daCartellaConto.totale}` : "📁 Da una cartella"}
+          </button>
+        )}
         <button
           onClick={() => setAdding((v) => !v)}
           style={{
