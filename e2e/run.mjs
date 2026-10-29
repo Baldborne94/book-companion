@@ -263,6 +263,66 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «per me l'importante è che l'applicazione risulti
+    // funzionante anche offline e che recuperi i libri che ho salvato in locale»
+    nome: "senza rete l'app si riapre sul tablet e apre i libri salvati qui: ePub, PDF e fumetto, e quel che si fa offline sale quando torna la rete",
+    async fai({ browser, db }) {
+      const d = await dispositivo(browser, { sessione: true, misura: TABLET });
+      await importa(d.p, "La nebbia.epub", await epub(), "application/epub+zip");
+      await importa(d.p, "Prova dei tempi.pdf", pdf(), "application/pdf");
+      await importa(d.p, "Racconti.cbz", await fumetto(), "application/zip");
+      // il service worker non prende la pagina che l'ha installato
+      // (`clientsClaim: false`): la prende quella dopo, come sul tablet
+      await d.p.evaluate(() => navigator.serviceWorker.ready);
+      await d.p.reload();
+      await finche(() => d.p.evaluate(() => !!navigator.serviceWorker.controller), 10000, "il service worker non prende la pagina");
+
+      await d.ctx.setOffline(true);
+      await d.p.close();
+      const p = await d.ctx.newPage();
+      const guasti = [];
+      p.on("pageerror", (e) => guasti.push(e.message));
+      await p.goto(URL_APP);
+      await finche(() => p.getByRole("button", { name: "Libreria" }).count(), 15000, "senza rete l'app non si riapre");
+
+      const apri = async (titolo) => {
+        await p.goto(`${URL_APP}?apri=libreria`);
+        await p.getByText(titolo).first().click();
+        await p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      };
+      await apri("La nebbia");
+      await finche(
+        async () => {
+          for (const f of p.frames()) if ((await f.evaluate(() => document.body?.innerText || "").catch(() => "")).includes(FRASE)) return true;
+          return false;
+        },
+        25000,
+        "senza rete l'ePub non si apre"
+      );
+      await apri("Prova dei tempi");
+      await finche(() => testoAvviso(p, /Pagina 1 della prova/), 25000, "senza rete il PDF non si apre");
+      await apri("Racconti");
+      await finche(
+        () => p.evaluate(() => [...document.querySelectorAll("img[data-pagina]")].some((im) => im.complete && im.naturalWidth === 60)),
+        25000,
+        "senza rete il fumetto non mostra la pagina"
+      );
+      // e quel che si fa senza rete parte quando la rete torna
+      await p.goto(`${URL_APP}?apri=libreria`);
+      await p.getByText("Prova dei tempi").first().click();
+      await p.getByRole("button", { name: "Letto", exact: true }).click();
+      await finche(async () => (await libriDi(p)).length && p.evaluate(() => Object.keys(localStorage).some((k) => k.startsWith("bc_status_") && localStorage.getItem(k) === "read")), 5000, "il libro non si segna letto senza rete");
+      await d.ctx.setOffline(false);
+      await p.goto(URL_APP);
+      await finche(() => db.righe().some((r) => r.title === "Prova dei tempi" && r.status === "read"), 30000, "tornata la rete, il libro letto offline non sale nel cloud");
+      // SENZA RETE IL GIRO NON ARRIVA AL CLOUD, e lo annota: e' il racconto
+      // di quel che e' successo, non un guasto dell'app
+      const rete = (e) => e.d === "sincronizzazione" && /Failed to fetch/.test(e.m);
+      const registro = (await p.evaluate(() => JSON.parse(localStorage.getItem("bc_errori") || "[]"))).filter((e) => !rete(e));
+      return { guasti: [...d.guasti, ...guasti, ...registro.map((e) => `registro: ${e.m}`)] };
+    },
+  },
+  {
     nome: "una cartella del tablet diventa le sue raccolte, una per sottocartella, e rifarlo non fa doppioni",
     async fai({ browser }) {
       // il selettore delle cartelle non si apre da una prova: lo si finge
