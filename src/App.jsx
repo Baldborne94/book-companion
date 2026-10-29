@@ -884,6 +884,9 @@ export default function App() {
   // la raccolta aperta in Libreria (vedi `Grouped`): qui perche' e' un
   // livello del tasto indietro
   const [raccolta, setRaccolta] = useState(null);
+  // la raccolta musicale aperta nella sala: un livello dell'indietro come
+  // quella della Libreria
+  const [raccoltaMusica, setRaccoltaMusica] = useState(null);
   const [toast, setToast] = useState(null);
   const [music, setMusic] = useState({ current: null, playing: false, timerEnd: null });
   const [syncOpen, setSyncOpen] = useState(false);
@@ -1697,6 +1700,7 @@ export default function App() {
   // la raccolta aperta in Libreria: l'indietro torna a tutte le raccolte
   // prima di lasciare la Libreria
   if (section === "library" && raccolta != null) livelli.push(() => setRaccolta(null));
+  if (section === "music" && raccoltaMusica != null) livelli.push(() => setRaccoltaMusica(null));
   // prima della scheda, che il cammino sa aprire: l'ultimo livello si
   // chiude per primo, e con la scheda aperta sopra dev'essere lei ad
   // andarsene col primo indietro
@@ -1935,7 +1939,7 @@ export default function App() {
         )}
         {section === "music" && (
           <Suspense fallback={null}>
-            <MusicRoom music={music} playerRef={playerRef} notify={notify} onCambiata={() => presto.current?.()} />
+            <MusicRoom music={music} playerRef={playerRef} notify={notify} onCambiata={() => presto.current?.()} aperta={raccoltaMusica} onApri={setRaccoltaMusica} />
           </Suspense>
         )}
       </main>

@@ -426,7 +426,13 @@ export const MAPPA = [
     luogo: "musica",
     nome: "Una cartella, le sue raccolte",
     cosa: "Scegli una cartella del tablet: ogni sottocartella con della musica diventa una raccolta col suo nome, i brani in ordine. Rifarlo aggiunge solo i brani nuovi.",
-    dove: "La sala della musica → «📁 Da una cartella».",
+    dove: "La sala della musica → «＋ Aggiungi» → «📁 Da una cartella».",
+  },
+  {
+    luogo: "musica",
+    nome: "Cerca, scegli, suona",
+    cosa: "Le raccolte in griglia e i brani in ordine coi salti per lettera; una ricerca sola per brani e raccolte, a parole sparse. Il tocco su un brano suona da lì in avanti, e il suo menu «⋯» lo mette nelle raccolte, lo rinomina o lo dimentica.",
+    dove: "La sala della musica: la ricerca in cima, poi «Raccolte» e «Brani».",
   },
 
   // ---- IMPOSTAZIONI ------------------------------------------------------
