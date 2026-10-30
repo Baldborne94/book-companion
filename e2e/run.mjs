@@ -263,6 +263,66 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «per me l'importante è che l'applicazione risulti
+    // funzionante anche offline e che recuperi i libri che ho salvato in locale»
+    nome: "senza rete l'app si riapre sul tablet e apre i libri salvati qui: ePub, PDF e fumetto, e quel che si fa offline sale quando torna la rete",
+    async fai({ browser, db }) {
+      const d = await dispositivo(browser, { sessione: true, misura: TABLET });
+      await importa(d.p, "La nebbia.epub", await epub(), "application/epub+zip");
+      await importa(d.p, "Prova dei tempi.pdf", pdf(), "application/pdf");
+      await importa(d.p, "Racconti.cbz", await fumetto(), "application/zip");
+      // il service worker non prende la pagina che l'ha installato
+      // (`clientsClaim: false`): la prende quella dopo, come sul tablet
+      await d.p.evaluate(() => navigator.serviceWorker.ready);
+      await d.p.reload();
+      await finche(() => d.p.evaluate(() => !!navigator.serviceWorker.controller), 10000, "il service worker non prende la pagina");
+
+      await d.ctx.setOffline(true);
+      await d.p.close();
+      const p = await d.ctx.newPage();
+      const guasti = [];
+      p.on("pageerror", (e) => guasti.push(e.message));
+      await p.goto(URL_APP);
+      await finche(() => p.getByRole("button", { name: "Libreria" }).count(), 15000, "senza rete l'app non si riapre");
+
+      const apri = async (titolo) => {
+        await p.goto(`${URL_APP}?apri=libreria`);
+        await p.getByText(titolo).first().click();
+        await p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      };
+      await apri("La nebbia");
+      await finche(
+        async () => {
+          for (const f of p.frames()) if ((await f.evaluate(() => document.body?.innerText || "").catch(() => "")).includes(FRASE)) return true;
+          return false;
+        },
+        25000,
+        "senza rete l'ePub non si apre"
+      );
+      await apri("Prova dei tempi");
+      await finche(() => testoAvviso(p, /Pagina 1 della prova/), 25000, "senza rete il PDF non si apre");
+      await apri("Racconti");
+      await finche(
+        () => p.evaluate(() => [...document.querySelectorAll("img[data-pagina]")].some((im) => im.complete && im.naturalWidth === 60)),
+        25000,
+        "senza rete il fumetto non mostra la pagina"
+      );
+      // e quel che si fa senza rete parte quando la rete torna
+      await p.goto(`${URL_APP}?apri=libreria`);
+      await p.getByText("Prova dei tempi").first().click();
+      await p.getByRole("button", { name: "Letto", exact: true }).click();
+      await finche(async () => (await libriDi(p)).length && p.evaluate(() => Object.keys(localStorage).some((k) => k.startsWith("bc_status_") && localStorage.getItem(k) === "read")), 5000, "il libro non si segna letto senza rete");
+      await d.ctx.setOffline(false);
+      await p.goto(URL_APP);
+      await finche(() => db.righe().some((r) => r.title === "Prova dei tempi" && r.status === "read"), 30000, "tornata la rete, il libro letto offline non sale nel cloud");
+      // SENZA RETE IL GIRO NON ARRIVA AL CLOUD, e lo annota: e' il racconto
+      // di quel che e' successo, non un guasto dell'app
+      const rete = (e) => e.d === "sincronizzazione" && /Failed to fetch/.test(e.m);
+      const registro = (await p.evaluate(() => JSON.parse(localStorage.getItem("bc_errori") || "[]"))).filter((e) => !rete(e));
+      return { guasti: [...d.guasti, ...guasti, ...registro.map((e) => `registro: ${e.m}`)] };
+    },
+  },
+  {
     nome: "una cartella del tablet diventa le sue raccolte, una per sottocartella, e rifarlo non fa doppioni",
     async fai({ browser }) {
       // il selettore delle cartelle non si apre da una prova: lo si finge
@@ -286,13 +346,15 @@ const SCENE = [
       const d = await dispositivo(browser, { misura: TABLET });
       await d.ctx.addInitScript(prima, wav(2).toString("base64"));
       await d.p.goto(`${URL_APP}?apri=musica`);
+      await d.p.getByRole("button", { name: "＋ Aggiungi" }).click();
       await d.p.getByRole("button", { name: "📁 Da una cartella" }).click();
       const detto = await finche(() => d.p.getByText(/📁 Dalla cartella «Music»/).textContent().catch(() => null), 15000, "la cartella non diventa raccolte");
       if (!/«Horror playlist» \(1\)/.test(detto) || !/«WARHAMMER 40k» \(2\)/.test(detto)) throw new Error(`raccolte sbagliate: ${detto}`);
-      for (const nome of ["WARHAMMER 40k", "Horror playlist"]) await d.p.getByRole("button", { name: new RegExp(`^✧\\s*${nome}`) }).waitFor({ timeout: 5000 });
-      if (await d.p.getByRole("button", { name: /^✧\s*\.thumbnails/ }).count()) throw new Error("la cartella nascosta e' diventata una raccolta");
+      // fatte le raccolte, la sala mostra le raccolte
+      for (const nome of ["WARHAMMER 40k", "Horror playlist"]) await d.p.getByRole("button", { name: new RegExp(`^${nome}`) }).waitFor({ timeout: 5000 });
+      if (await d.p.getByRole("button", { name: /^\.thumbnails/ }).count()) throw new Error("la cartella nascosta e' diventata una raccolta");
       // i brani nell'ordine dei nomi: il 2 prima del 10
-      await d.p.getByRole("button", { name: /^✧\s*WARHAMMER 40k/ }).click();
+      await d.p.getByRole("button", { name: /^WARHAMMER 40k/ }).click();
       await d.p.getByRole("button", { name: /^1\s*2 - Cadia Stands/ }).waitFor({ timeout: 5000 });
       await d.p.getByRole("button", { name: /^2\s*10 - Siege of Terra/ }).waitFor({ timeout: 5000 });
       const largo = await d.p.evaluate(() => document.scrollingElement.scrollWidth - innerWidth);
@@ -309,6 +371,87 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore con la foto della sala dopo la cartella «Music»:
+    // «rendermelo come una piccola app musicale affinché sia più ordinato e
+    // non sia una sfilza lunghissima di brani uno sotto l'altro, ma con
+    // ricerca, selezione e tutto ciò che richiede un player musicale»
+    nome: "la sala della musica come un lettore musicale: raccolte in griglia, ricerca, lettere, menu del brano, lettore ripiegato e indietro",
+    async fai({ browser }) {
+      const nomi = ["Acolyte", "Administratum", "Atonement", "Ave Dominus Nox", "Binary Signal", "Black Templars (Warhammer 40,000)", "Burning Skies", "Cadia Stands", "Dark Mechanicus", "Eisenhorn", "Forge World", "Grimdark", "Hive City", "Imperium", "Lord Inquisitor", "Macragge", "Necron Tomb", "Ork Waaagh", "Psykana", "Terra", "Ultramar", "Xenos"];
+      const prima = ([b64, nomi]) => {
+        const byte = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const file = (nome) => ({ kind: "file", getFile: async () => new File([byte], nome, { type: "" }) });
+        const cartella = (voci) => ({
+          kind: "directory",
+          async *entries() {
+            for (const [nome, v] of Object.entries(voci)) yield [nome, v === 1 ? file(nome) : v];
+          },
+        });
+        const music = cartella({
+          "WARHAMMER 40k": cartella(Object.fromEntries(nomi.map((n) => [`${n}.wav`, 1]))),
+          "Horror playlist": cartella({ "Night.wav": 1 }),
+        });
+        window.showDirectoryPicker = async () => Object.assign(music, { name: "Music" });
+      };
+      const d = await dispositivo(browser, { misura: TABLET });
+      const { p } = d;
+      await d.ctx.addInitScript(prima, [wav(30).toString("base64"), nomi]);
+      await p.goto(`${URL_APP}?apri=musica`);
+      // scelta la vista dei brani, una cartella fatta raccolte riporta alle raccolte
+      await p.getByRole("tab", { name: /Brani/ }).click();
+      await p.getByRole("button", { name: "＋ Aggiungi" }).click();
+      await p.getByRole("button", { name: "📁 Da una cartella" }).click();
+      await finche(() => p.getByText(/📁 Dalla cartella «Music»/).count(), 20000, "la cartella non diventa raccolte");
+
+      // le raccolte in griglia, ognuna col suo ▶
+      await p.getByRole("button", { name: "Suona WARHAMMER 40k" }).waitFor({ timeout: 5000 });
+      if (!(await p.getByRole("tab", { name: /Raccolte/ }).getAttribute("aria-selected")).includes("true")) throw new Error("fatte le raccolte, la sala non le mostra");
+
+      // la ricerca trova i brani anche dalla vista delle raccolte, a parole sparse
+      await p.getByLabel("Cerca nella musica").fill("templ black");
+      await p.getByRole("button", { name: /^Black Templars/ }).click();
+      await finche(() => p.evaluate(() => (document.querySelector("audio")?.currentTime ?? 0) > 0.3), 10000, "il brano trovato non suona");
+      await p.getByRole("button", { name: "Cancella la ricerca" }).click();
+
+      // sul tablet il lettore sta ripiegato: una riga coi tre tasti, e la barra del punto si apre col tocco
+      if (await p.getByRole("slider", { name: "Punto del brano" }).count()) throw new Error("sul tablet il lettore non sta ripiegato");
+      await p.getByRole("button", { name: /^Apri il lettore: Black Templars/ }).click();
+      await p.getByRole("slider", { name: "Punto del brano" }).waitFor({ timeout: 3000 });
+      await p.getByRole("button", { name: "Riduci il lettore" }).click();
+      await finche(async () => !(await p.getByRole("slider", { name: "Punto del brano" }).count()), 3000, "il lettore non si riduce");
+
+      // i brani: le lettere per saltare, matita e cestino solo nel menu «⋯»
+      await p.getByRole("tab", { name: /Brani/ }).click();
+      await p.getByRole("button", { name: "X", exact: true }).waitFor({ timeout: 3000 });
+      if (await p.getByRole("button", { name: /^Rinomina|^Dimentica/ }).count()) throw new Error("matita e cestino stanno in vista su ogni riga");
+      await p.getByRole("button", { name: "Altro per Night", exact: true }).click();
+      await p.getByRole("button", { name: "✧ Nelle raccolte" }).click();
+      await p.getByRole("button", { name: "＋ WARHAMMER 40k" }).click();
+      const dentro = await p.evaluate(() => {
+        const favs = JSON.parse(localStorage.getItem("bc_music_favs") || "[]");
+        const night = favs.find((f) => f.name === "Night");
+        return JSON.parse(localStorage.getItem("bc_music_lists") || "[]").find((r) => r.name === "WARHAMMER 40k").brani.includes(night.id);
+      });
+      if (!dentro) throw new Error("dal menu del brano «Night» non entra nella raccolta");
+
+      // la pagina della raccolta, e l'indietro torna alle raccolte senza lasciare la sala
+      await p.getByRole("tab", { name: /Raccolte/ }).click();
+      await p.getByRole("button", { name: /^WARHAMMER 40k/ }).click();
+      await p.getByRole("button", { name: /^23\s*Night/ }).waitFor({ timeout: 3000 });
+      const largo = await p.evaluate(() => document.scrollingElement.scrollWidth - innerWidth);
+      if (largo > 0) throw new Error(`la sala sborda di ${largo}px`);
+      // la raccolta che suona: il tasto grande e' pausa, non un nuovo inizio
+      await p.getByRole("button", { name: "▶ In ordine" }).click();
+      await p.getByRole("button", { name: "❚❚ Pausa" }).click();
+      await finche(() => p.evaluate(() => document.querySelector("audio")?.paused), 3000, "«❚❚ Pausa» non ferma la raccolta");
+      await p.getByRole("button", { name: "▶ Riprendi" }).waitFor({ timeout: 3000 });
+      await p.goBack();
+      await p.getByRole("button", { name: "Suona Horror playlist" }).waitFor({ timeout: 3000 });
+      if (!(await p.getByRole("tab", { name: /Raccolte/ }).count())) throw new Error("l'indietro dalla raccolta ha lasciato la sala");
+      return { guasti: d.guasti, nota: "23 brani, ricerca a parole sparse, lettore ripiegato, lettere, menu del brano, indietro" };
+    },
+  },
+  {
     // chiesto dal lettore: «selezionare cosa riprodurre nelle raccolte e
     // quando si ferma la melodia ripartire dal punto in cui si è interrotta»
     nome: "in una raccolta si sceglie il brano, e la musica riprende da dove si era fermata anche ad app chiusa",
@@ -316,8 +459,10 @@ const SCENE = [
       const d = await dispositivo(browser);
       const audio = (p) => p.evaluate(() => ({ t: document.querySelector("audio")?.currentTime ?? -1, d: document.querySelector("audio")?.duration ?? 0 }));
       await d.p.goto(`${URL_APP}?apri=musica`);
+      await d.p.getByRole("button", { name: "＋ Aggiungi" }).click();
       for (const nome of ["Pioggia", "Camino", "Arpa"]) await d.p.setInputFiles('input[accept="audio/*"]', { name: `${nome}.wav`, mimeType: "audio/wav", buffer: wav() });
       await finche(() => d.p.getByText("Arpa", { exact: true }).count(), 10000, "le melodie non entrano");
+      await d.p.getByRole("tab", { name: /Raccolte/ }).click();
       await d.p.getByRole("button", { name: "＋ Nuova raccolta" }).click();
       await d.p.getByPlaceholder(/Come la chiami/).fill("Notti");
       await d.p.getByRole("button", { name: "✧ Crea" }).click();
@@ -325,11 +470,10 @@ const SCENE = [
       await d.p.getByRole("button", { name: "Fatto" }).first().click();
 
       // il brano scelto dalla raccolta suona, e la raccolta lo ricorda
-      // la raccolta e' una riga: il nome apre i brani, il resto sta in «⋯»
+      // la raccolta e' una pagina: i brani in vista, il resto sta in «⋯»
       if (await d.p.getByRole("button", { name: "Scegli i brani" }).count()) throw new Error("«Scegli i brani» sta in vista, non nel menu «⋯»");
       await d.p.getByRole("button", { name: "Altro per Notti" }).click();
       if (!(await d.p.getByRole("button", { name: "Scegli i brani" }).isVisible())) throw new Error("nel menu «⋯» manca «Scegli i brani»");
-      await d.p.getByRole("button", { name: /^✧\s*Notti/ }).click();
       await d.p.getByRole("button", { name: /^2\s*Camino/ }).click();
       await finche(async () => (await audio(d.p)).t > 0.5, 10000, "il brano scelto non suona");
       await d.p.evaluate(() => (document.querySelector("audio").currentTime = 40));
@@ -349,6 +493,7 @@ const SCENE = [
       const p2 = await d.ctx.newPage();
       p2.on("pageerror", (e) => d.guasti.push(e.message));
       await p2.goto(`${URL_APP}?apri=musica`);
+      await p2.getByRole("button", { name: /^Notti/ }).click();
       const detto = await finche(() => testoAvviso(p2, /eri a «Camino», 0:4\d/), 10000, "la raccolta non dice dove si era");
       await p2.getByRole("button", { name: "▶ Riprendi" }).click();
       const t = await finche(async () => {
@@ -713,10 +858,12 @@ const SCENE = [
       await tab.p.goto(`${URL_APP}?apri=musica`);
       // il primo giro di tutt'e due e' passato: da qui in poi conta solo la mano
       await aspetta(4000);
+      await pc.p.getByRole("button", { name: "＋ Aggiungi" }).click();
       await pc.p.getByRole("button", { name: "＋ Da YouTube" }).click();
       await pc.p.getByPlaceholder("Incolla un link YouTube (video o playlist)…").fill("https://www.youtube.com/watch?v=abcdefghijk");
       await pc.p.getByPlaceholder(/Nome/).fill("Pioggia e camino");
       await pc.p.getByRole("button", { name: "☆ Custodisci" }).click();
+      await pc.p.getByRole("tab", { name: /Raccolte/ }).click();
       await pc.p.getByRole("button", { name: "＋ Nuova raccolta" }).click();
       await pc.p.getByPlaceholder(/Come la chiami/).fill("Notti d'inverno");
       await pc.p.getByRole("button", { name: "✧ Crea" }).click();
@@ -741,9 +888,11 @@ const SCENE = [
       const t = () => d.p.evaluate(() => document.querySelector("audio")?.currentTime ?? -1);
       const dove = (n) => finche(() => testoAvviso(d.p, new RegExp(`Le tue melodie · ${n} di 3`)), 8000, `non si arriva al brano ${n} di 3`);
       await d.p.goto(`${URL_APP}?apri=musica`);
-      for (const nome of ["Pioggia", "Camino", "Arpa"]) await d.p.setInputFiles('input[accept="audio/*"]', { name: `${nome}.wav`, mimeType: "audio/wav", buffer: wav(200) });
-      await finche(() => d.p.getByText("Arpa", { exact: true }).count(), 10000, "le melodie non entrano");
-      await d.p.getByRole("button", { name: "▶ Tutte", exact: true }).click();
+      await d.p.getByRole("button", { name: "＋ Aggiungi" }).click();
+      // «▶ Tutti» suona nell'ordine dei nomi
+      for (const nome of ["Arpa", "Camino", "Pioggia"]) await d.p.setInputFiles('input[accept="audio/*"]', { name: `${nome}.wav`, mimeType: "audio/wav", buffer: wav(200) });
+      await finche(() => d.p.getByText("Pioggia", { exact: true }).count(), 10000, "le melodie non entrano");
+      await d.p.getByRole("button", { name: "▶ Tutti", exact: true }).click();
       await finche(async () => (await t()) > 0.3, 10000, "non suona");
 
       // la barretta fuori dalla sala: ⏭, poi ⏮ subito (brano prima)
@@ -769,7 +918,7 @@ const SCENE = [
       await aspetta(400);
       const meta = await t();
       if (Math.abs(meta - 100) > 12) throw new Error(`toccata a meta' la barra, il brano e' a ${meta.toFixed(1)} s invece di ~100`);
-      await d.p.getByRole("button", { name: "Arpa" }).first().click();
+      await d.p.getByRole("button", { name: "Pioggia" }).first().click();
       await dove(3);
       // il timer e' un tasto solo: le durate si aprono da lui, e scelta una
       // il tasto dice quanto manca. La durata si cerca col nome ESATTO: il
@@ -782,10 +931,11 @@ const SCENE = [
       await durata().click();
       await finche(async () => !(await durata().count()), 3000, "scelta la durata, le durate restano aperte");
       const orologio = await finche(() => d.p.getByRole("button", { name: /^🌙 \d/ }).textContent().catch(() => null), 3000, "il tasto del timer non dice quanto manca");
-      // e un link YouTube si suona dal riquadro di «＋ Da YouTube»
+      // e un link YouTube si suona dal riquadro di «＋ Da YouTube», dentro «＋ Aggiungi»
+      await d.p.getByRole("button", { name: "＋ Aggiungi" }).click();
       await d.p.getByRole("button", { name: "＋ Da YouTube" }).click();
       if (!(await d.p.getByRole("button", { name: "▶ Suona ora" }).isVisible())) throw new Error("nel riquadro di YouTube manca «▶ Suona ora»");
-      return { guasti: d.guasti, nota: `⏭ ⏮ e il riavvolgimento (${riavvolto.toFixed(1)} s), barra a ${meta.toFixed(0)} s, «Arpa» dai prossimi, timer «${orologio.trim()}»` };
+      return { guasti: d.guasti, nota: `⏭ ⏮ e il riavvolgimento (${riavvolto.toFixed(1)} s), barra a ${meta.toFixed(0)} s, «Pioggia» dai prossimi, timer «${orologio.trim()}»` };
     },
   },
   {
@@ -899,9 +1049,10 @@ const SCENE = [
       await importa(p, "La nebbia.epub", await epub(), "application/epub+zip");
       await importa(p, "Carte.pdf", pdf(3), "application/pdf");
       await p.goto(`${URL_APP}?apri=musica`);
+      await p.getByRole("button", { name: "＋ Aggiungi" }).click();
       for (const nome of ["D&D Dark Ambient Campaign Music", "Camino"]) await p.setInputFiles('input[accept="audio/*"]', { name: `${nome}.wav`, mimeType: "audio/wav", buffer: wav(200) });
       await finche(() => p.getByText("Camino", { exact: true }).count(), 10000, "le melodie non entrano");
-      await p.getByRole("button", { name: "▶ Tutte", exact: true }).click();
+      await p.getByRole("button", { name: "▶ Tutti", exact: true }).click();
       await finche(() => p.evaluate(() => (document.querySelector("audio")?.currentTime || 0) > 0.2), 10000, "non suona");
       // le righe della barra: i tasti si raggruppano per altezza del centro
       const misura = () =>

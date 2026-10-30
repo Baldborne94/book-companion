@@ -37,22 +37,26 @@ export function Icona({ nome, misura = 22, colore = "currentColor" }) {
 
 // la copertina che un file audio non ha (`facciaDi`): stessa faccia per
 // lo stesso nome, sempre
-export function Faccia({ nome = "", misura = 44, viva = false }) {
+// `piena`: quadrata e larga quanto la casella che la tiene (le copertine
+// delle raccolte, in griglia)
+export function Faccia({ nome = "", misura = 44, viva = false, piena = false }) {
   const f = facciaDi(nome);
   const [a, b] = f.verso ? [C.arcane, C.accent] : [C.accent, C.arcane];
+  if (piena) misura = px(130);
   return (
     <span
       aria-hidden="true"
       style={{
         flexShrink: 0,
-        width: misura,
-        height: misura,
-        borderRadius: misura > 100 ? R.grande : R.piccolo,
+        width: piena ? "100%" : misura,
+        height: piena ? "auto" : misura,
+        aspectRatio: piena ? "1 / 1" : undefined,
+        borderRadius: piena ? R.medio : misura > 100 ? R.grande : R.piccolo,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         background: `linear-gradient(${f.angolo}deg, ${a}55, ${C.card} 55%, ${b}40)`,
-        border: `1px solid ${C.border}`,
+        border: `1px solid ${piena && viva ? C.accent : C.border}`,
         boxShadow: viva ? `0 0 ${Math.round(misura / 4)}px ${C.arcane}33` : "none",
         color: C.text,
         fontSize: Math.round(misura * 0.42),
@@ -204,9 +208,29 @@ export function sottotitolo({ current, queue, nomeRaccolta }) {
 // IL PANNELLO «IN ASCOLTO» della sala della musica: copertina, nome intero,
 // il punto del brano da trascinare, i tre tasti, volume, timer e i brani
 // che vengono dopo
-export function InAscolto({ music, playerRef, nomeRaccolta, vuoto = null, children = null }) {
+// `ripiegabile` (la sala a schermo stretto): il pannello si riduce a una
+// riga coi tre tasti, come nei lettori musicali, e la lista resta in vista
+const PICCOLO = "bc_musica_lettore";
+const lettorePiccolo = () => {
+  try {
+    return localStorage.getItem(PICCOLO) !== "grande";
+  } catch {
+    return true;
+  }
+};
+
+export function InAscolto({ music, playerRef, nomeRaccolta, vuoto = null, children = null, ripiegabile = false }) {
   const { current, playing, queue, volume = 1, timerEnd, sleepMin, manca } = music;
   const p = () => playerRef.current;
+  const [piccolo, setPiccolo] = useState(lettorePiccolo);
+  const riduci = (v) => {
+    setPiccolo(v);
+    try {
+      localStorage.setItem(PICCOLO, v ? "piccolo" : "grande");
+    } catch {
+      /* una preferenza che non si salva non e' un guasto */
+    }
+  };
   // le durate del timer si aprono da un tasto solo: otto bottoni in vista
   // erano una riga intera per una scelta che si fa una volta a sera
   const [orologio, setOrologio] = useState(false);
@@ -218,17 +242,55 @@ export function InAscolto({ music, playerRef, nomeRaccolta, vuoto = null, childr
     background: `linear-gradient(160deg, ${C.arcane}14, ${C.card} 45%, ${C.surface})`,
     boxShadow: `0 0 30px ${C.arcane}14`,
   };
+  // A MUSICA SPENTA IL PANNELLO SI FA PICCOLO (con la sala diventata un
+  // lettore musicale): una copertina da 160 px su niente si prendeva mezzo
+  // schermo del tablet sopra le raccolte, che sono quel che si cerca
   if (!current) {
     return (
-      <div style={pannello}>
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
-          <Faccia nome="" misura={px(160)} />
+      <div style={{ ...pannello, padding: 14, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <Faccia nome="" misura={px(56)} />
+        <div style={{ flex: 1, minWidth: px(160) }}>
+          <div style={{ fontFamily: FONT_TITLE, fontSize: F.titoletto, color: C.text }}>Niente in ascolto</div>
+          <p style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.4, margin: "2px 0 0" }}>
+            Scegli una raccolta o un brano: suona qui, e ti segue in tutta l'app.
+          </p>
         </div>
-        <div style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, color: C.text, textAlign: "center" }}>Niente in ascolto</div>
-        <p style={{ fontSize: F.nota, color: C.muted, textAlign: "center", lineHeight: 1.45, margin: "6px 0 14px" }}>
-          Scegli una raccolta o una melodia: suona qui, e ti segue in tutta l'app.
-        </p>
         {vuoto}
+      </div>
+    );
+  }
+  // RIPIEGATO: copertina, nome, da dove viene, i tre tasti e la riga del
+  // punto. Un tocco sul nome lo riapre. Con 87 brani il pannello intero si
+  // prendeva due terzi del tablet prima della lista
+  if (ripiegabile && piccolo) {
+    return (
+      <div style={{ ...pannello, padding: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            onClick={() => riduci(false)}
+            aria-label={`Apri il lettore: ${current.name || "Musica di sottofondo"}`}
+            style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 12, textAlign: "left", minHeight: 44 }}
+          >
+            <Faccia nome={current.name || ""} misura={px(56)} viva={playing} />
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: "block", fontFamily: FONT_TITLE, fontWeight: 600, fontSize: F.corpo, color: C.text, lineHeight: 1.25, overflowWrap: "break-word" }}>
+                {current.name || "Musica di sottofondo"}
+              </span>
+              <span style={{ display: "block", fontSize: F.minuscolo, color: C.arcane, marginTop: 2, lineHeight: 1.35, overflowWrap: "break-word" }}>
+                {sottotitolo({ current, queue, nomeRaccolta })} · ▾
+              </span>
+            </span>
+          </button>
+          <Comandi
+            playing={playing}
+            onPrev={() => p()?.prev()}
+            onToggle={() => (playing ? p()?.pause() : p()?.resume())}
+            onNext={() => p()?.next()}
+          />
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <Avanzamento tempo={tempo} sottile />
+        </div>
       </div>
     );
   }
@@ -244,7 +306,16 @@ export function InAscolto({ music, playerRef, nomeRaccolta, vuoto = null, childr
     flexShrink: 0,
   });
   return (
-    <div style={pannello}>
+    <div style={{ ...pannello, position: "relative" }}>
+      {ripiegabile && (
+        <button
+          onClick={() => riduci(true)}
+          aria-label="Riduci il lettore"
+          style={{ position: "absolute", top: 10, right: 10, width: 44, height: 44, borderRadius: R.tondo, border: `1px solid ${C.border}`, color: C.muted, fontSize: F.corpo }}
+        >
+          ▴
+        </button>
+      )}
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
         <Faccia nome={current.name || ""} misura={px(200)} viva={playing} />
       </div>
