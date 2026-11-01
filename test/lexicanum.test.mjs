@@ -49,6 +49,15 @@ import {
   immagineDi,
   immaginePerVoce,
   figuraBreve,
+  misuraIllustrazioni,
+  illustrazioniDi,
+  scaricaIllustrazioni,
+  statoIllustrazioni,
+  rimuoviIllustrazioni,
+  illustrazioniPerVoce,
+  fraseIllustrazioni,
+  didascaliaDi,
+  fileDelleVoci,
   fraseImmagini,
   giroDaRiprendere,
   segnaFermato,
@@ -694,6 +703,104 @@ However, after Horus' fall to [[Chaos]] on [[Davin]], he was considered too loya
     t.eq("una voce senza immagine da nessuna parte resta senza", await immaginePerVoce("Davin", d, LEXICANUM), null);
     await rimuoviImmagini(d, FANDOM);
     t.c("rimuovere le immagini lascia il testo", !d.m.has("img:fan:cadia") && !d.m.has("fan_img_meta") && d.m.has("fan_meta") && (await statoImmagini(d, FANDOM)) === null);
+  }
+
+  // ---- LE ALTRE ILLUSTRAZIONI DI FANDOM ---------------------------------
+  // chiesto dal lettore, misurato, provato sulla microSD e scelto: nella
+  // memoria dell'app. Prima l'elenco dei file di ogni voce, poi i file
+  // distinti, meno principale, SVG, icone dei modelli e immagini piccole
+  {
+    const ELENCO = [
+      // una pagina di voci i cui file non stanno in una risposta sola
+      {
+        pages: [
+          { title: "Garviel Loken", pageimage: "Loken.jpg", images: [{ title: "File:Loken.jpg" }, { title: "File:Loken e Torgaddon.jpg" }, { title: "File:Aquila.svg" }] },
+          { title: "Davin", images: [{ title: "File:Davin Moon.jpg" }, { title: "File:Stemma.png" }] },
+          { title: "Cadia" },
+        ],
+        continue: { imcontinue: "1|Lupercal", continue: "gapcontinue||" },
+      },
+      { pages: [{ title: "Garviel Loken", images: [{ title: "File:Lupercal's Court.jpg" }] }], continue: { gapcontinue: "Horus", continue: "gapcontinue||" } },
+      {
+        pages: [
+          { title: "Horus", pageimage: "Horus.jpg", images: [{ title: "File:Horus.jpg" }, { title: "File:Lupercal's Court.jpg" }, { title: "File:Stemma.png" }] },
+          { title: "Ullanor", images: [{ title: "File:Stemma.png" }, { title: "File:Piccola.png" }] },
+        ],
+      },
+    ];
+    const pesoA = (lato) => (lato === "250" ? 18000 : 37000);
+    const wikiIll = (chieste, { bloccate = false } = {}) => async (url) => {
+      const u = new URL(url);
+      chieste.push(u.href);
+      if (u.hostname === "static.wikia.nocookie.net") {
+        if (bloccate) throw new TypeError("Failed to fetch");
+        if (u.pathname.includes("Davin")) return { ok: false, status: 404 };
+        return { ok: true, status: 200, blob: async () => ({ size: pesoA(u.pathname.split("/").pop()), type: "image/webp" }) };
+      }
+      const p = Object.fromEntries(u.searchParams);
+      const json = (x) => ({ ok: true, status: 200, text: async () => JSON.stringify(x) });
+      if (p.meta === "siteinfo") return json({ query: { general: {}, statistics: { articles: 10 } } });
+      if (p.prop === "imageinfo") {
+        const pages = p.titles.split("|").map((title) => {
+          const piccola = /Piccola/.test(title);
+          return { title, imageinfo: [{ mime: "image/jpeg", width: piccola ? 60 : 800, height: piccola ? 60 : 600, thumburl: `https://static.wikia.nocookie.net/w/images/${encodeURIComponent(title)}/revision/latest/scale-to-width-down/${p.iiurlwidth}` }] };
+        });
+        return json({ query: { pages } });
+      }
+      const i = p.imcontinue ? 1 : p.gapcontinue ? 2 : 0;
+      const { pages, continue: cont } = ELENCO[i];
+      return json({ query: { pages }, ...(cont ? { continue: cont } : {}) });
+    };
+
+    t.eq("la didascalia e' il nome del file, senza «File:», trattini bassi ed estensione", didascaliaDi("File:Horus_Lupercal.jpeg"), "Horus Lupercal");
+    const perVoce = fileDelleVoci(ELENCO[0].pages);
+    t.eq("i file di una voce, senza la sua immagine principale e senza gli SVG", (perVoce.get("garviel loken") || []).join("|"), "Loken e Torgaddon.jpg");
+
+    const d = deposito();
+    await d.scrivi("fan_meta", { voci: 10, api: "https://w/api.php" });
+    const chieste = [];
+    const m = await misuraIllustrazioni({ fetcher: wikiIll(chieste), deposito: d, attesa, wiki: FANDOM });
+    t.c("la misura parte da una lettera di mezzo, come quella delle immagini", chieste.some((u) => u.includes("gapfrom=G") && u.includes("prop=images")));
+    t.c("e pesa le stesse illustrazioni alle due misure", m.stime[250] < m.stime[400] && m.stime[250] === m.stimaQuante * 18000 && m.stime[400] === m.stimaQuante * 37000);
+    const chiusa = await misuraIllustrazioni({ fetcher: wikiIll([], { bloccate: true }), deposito: d, attesa, wiki: FANDOM });
+    t.c("un wiki che non lascia prendere le illustrazioni si dice prima", chiusa.bloccate === true);
+
+    let viste = 0;
+    const primo = await scaricaIllustrazioni({ fetcher: wikiIll([]), deposito: d, attesa, pausa: 0, wiki: FANDOM, lato: 250, iconaDa: 3, fermo: () => viste++ >= 1 });
+    t.c("fermato durante l'elenco si ferma, e il giro resta da riprendere", primo.fermato && primo.fase === "elenco" && !!(await giroDaRiprendere(d, illustrazioniDi(FANDOM))));
+    const chiesteDopo = [];
+    let vociViste = 0;
+    const meta = await scaricaIllustrazioni({ fetcher: wikiIll(chiesteDopo), deposito: d, attesa, pausa: 0, wiki: FANDOM, lato: 250, iconaDa: 3, onProgress: (p) => (vociViste = Math.max(vociViste, p.voci || 0)) });
+    t.eq("le voci guardate si contano una volta, anche quelle i cui file stanno in due risposte", vociViste, 5);
+    t.eq("i file di una voce in piu' risposte si sommano", (await d.leggi("illv:fan:garviel loken")).join("|"), "Loken e Torgaddon.jpg|Lupercal's Court.jpg");
+    t.c("un file in piu' voci si scarica una volta sola", chiesteDopo.filter((u) => u.includes("Lupercal") && u.includes("static.")).length === 1);
+    t.c("le icone dei modelli (in tante voci) non si chiedono", !chiesteDopo.some((u) => u.includes("Stemma")));
+    t.c("l'immagine principale non si richiede", !chiesteDopo.some((u) => /Loken\.jpg|Horus\.jpg/.test(decodeURIComponent(u)) && u.includes("static.")));
+    t.c("le illustrazioni alla misura scelta", chiesteDopo.filter((u) => u.includes("static.")).every((u) => u.endsWith("/250")) && d.m.get("ill:fan:loken e torgaddon jpg")?.size === 18000);
+    t.c("quelle piccole e quelle che non arrivano restano fuori, e si contano", meta.immagini === 2 && meta.saltate === 2 && meta.lato === 250);
+    t.c("finito, il giro e la lista se ne vanno", !d.m.has("fan_ill_giro") && !d.m.has("fan_ill_lista") && (await statoIllustrazioni(d, FANDOM))?.immagini === 2);
+
+    const diLoken = await illustrazioniPerVoce("Garviel Loken", d, FANDOM);
+    t.eq("una voce mostra le sue illustrazioni, nell'ordine in cui le cita", diLoken.map((x) => x.didascalia).join("|"), "Loken e Torgaddon|Lupercal's Court");
+    await d.scrivi("fan:garviel loken", { t: "Garviel Loken", p: [], f: {} });
+    await d.scrivi("fan:loken", { t: "Loken", r: "Garviel Loken" });
+    t.eq("la voce di Lexicanum prende quelle di Fandom, anche da un rinvio", (await illustrazioniPerVoce("Loken", d, LEXICANUM)).length, 2);
+    t.eq("una voce di Fandom senza illustrazioni resta senza", (await illustrazioniPerVoce("Loken", d, FANDOM)).length, 0);
+
+    const giaFatto = await scaricaIllustrazioni({ fetcher: wikiIll([]), deposito: d, attesa, pausa: 0, wiki: FANDOM });
+    t.eq("un giro gia' finito non riparte", giaFatto.immagini, 2);
+
+    const chiusoD = deposito();
+    await chiusoD.scrivi("fan_meta", { voci: 10, api: "https://w/api.php" });
+    let guaio = "";
+    await scaricaIllustrazioni({ fetcher: wikiIll([], { bloccate: true }), deposito: chiusoD, attesa, pausa: 0, wiki: FANDOM, iconaDa: 3 }).catch((e) => (guaio = e.message));
+    t.c("se dal primo blocco non arriva niente, il giro si ferma e lo dice", /non lascia salvare le sue illustrazioni/.test(guaio));
+
+    await rimuoviIllustrazioni(d, FANDOM);
+    t.c("rimuovere le illustrazioni toglie file ed elenchi, e lascia il resto", ![...d.m.keys()].some((k) => k.startsWith("ill:fan:") || k.startsWith("illv:fan:")) && !d.m.has("fan_ill_meta") && d.m.has("fan_meta"));
+
+    t.eq("la riga dell'elenco", fraseIllustrazioni({ fase: "elenco", voci: 1200, totale: 7300 }), "elenco: 1200 voci guardate di circa 7300");
+    t.eq("la riga delle illustrazioni", fraseIllustrazioni({ fase: "immagini", immagini: 3400, byte: 60 * 1048576, i: 4000, file: 20000 }), "3400 illustrazioni · 60 MB · 4000 file guardati di 20.000");
   }
 
   // ---- L'IMMAGINE ACCANTO ALLA DEFINIZIONE -------------------------------

@@ -1452,6 +1452,281 @@ export async function immaginePerVoce(titolo, deposito = DEPOSITO, wiki = LEXICA
   return suFandom ? { blob: suFandom, da: FANDOM } : null;
 }
 
+// ---------------------------------------------------------------------------
+// LE ALTRE ILLUSTRAZIONI DI FANDOM
+//
+// Chiesto dal lettore, misurate prima: circa 20.000 illustrazioni oltre alla
+// principale, 18 KB a 250 px e 37 KB a 400 px. Provata la microSD (una
+// cartella scelta, l'unica strada per la scheda): 5 secondi a file per
+// scrivere, 2 per rileggere, e il permesso da richiedere a ogni apertura.
+// Scelta del lettore: nella memoria dell'app, come le immagini principali.
+//
+// Due passi. L'ELENCO: per ogni voce i file che contiene (`prop=images`),
+// meno l'immagine principale, che c'e' gia'. Le ILLUSTRAZIONI: i file
+// distinti, una volta sola anche se stanno in piu' voci, meno le icone dei
+// modelli (un file che sta in `ICONA_DA` voci o piu', un SVG, un lato sotto
+// i 120 px), ridotti dal wiki alla misura scelta.
+export const illustrazioniDi = (wiki = FANDOM) => ({
+  id: `${wiki.id}_ill`,
+  nome: `le illustrazioni di ${wiki.nome}`,
+  prefisso: `ill:${wiki.prefisso}`,
+  voci: `illv:${wiki.prefisso}`,
+  lista: `${wiki.id}_ill_lista`,
+  giro: `${wiki.id}_ill_giro`,
+  meta: `${wiki.id}_ill_meta`,
+});
+export const LATI_ILLUSTRAZIONI = [250, 400];
+export const ICONA_DA = 25;
+const LATO_MINIMO = 120;
+const CAMPIONE_ILL = 8;
+
+const parametriElenco = (cont, piu = {}) => ({
+  action: "query",
+  generator: "allpages",
+  gapnamespace: "0",
+  gapfilterredir: "nonredirects",
+  gaplimit: String(PER_VOLTA),
+  prop: "images|pageimages",
+  imlimit: "max",
+  piprop: "name",
+  pilimit: String(PER_VOLTA),
+  maxlag: "5",
+  ...(cont || { continue: "" }),
+  ...piu,
+});
+
+const parametriFile = (titoli, lato) => ({
+  action: "query",
+  titles: titoli.join("|"),
+  prop: "imageinfo",
+  iiprop: "url|mime|size",
+  iiurlwidth: String(lato),
+  maxlag: "5",
+});
+
+const nomeFile = (t) => String(t || "").replace(/^(File|Image):/i, "").replace(/_/g, " ");
+// la didascalia che si puo': il nome del file senza estensione
+export const didascaliaDi = (file) => nomeFile(file).replace(/\.[a-z0-9]{2,5}$/i, "").trim();
+const sembraIcona = (file) => /\.svg$/i.test(file);
+
+// i file di ogni voce di una pagina dell'elenco, senza la sua immagine
+// principale e senza gli SVG
+export function fileDelleVoci(pagine) {
+  const fuori = new Map();
+  for (const p of Array.isArray(pagine) ? pagine : Object.values(pagine || {})) {
+    const k = chiave(p?.title);
+    if (!k) continue;
+    const principale = p.pageimage ? nomeFile(p.pageimage) : null;
+    const file = (p.images || []).map((i) => nomeFile(i.title)).filter((f) => f && f !== principale && !sembraIcona(f));
+    if (file.length) fuori.set(k, [...(fuori.get(k) || []), ...file]);
+  }
+  return fuori;
+}
+
+// le illustrazioni vere fra le risposte di `imageinfo`
+export function illustrazioniVere(pagine) {
+  return (Array.isArray(pagine) ? pagine : Object.values(pagine || {}))
+    .map((p) => ({ f: nomeFile(p?.title), ii: (p?.imageinfo || [])[0] }))
+    .filter(({ ii }) => ii?.thumburl && /^image\//.test(ii.mime || "") && !/svg/.test(ii.mime) && Math.min(ii.width || 0, ii.height || 0) >= LATO_MINIMO)
+    .map(({ f, ii }) => ({ f, src: ii.thumburl }));
+}
+
+// la miniatura di Fandom alla misura chiesta: l'indirizzo dice la larghezza
+const allaMisura = (src, lato) => String(src).replace(/\/scale-to-width-down\/\d+/, `/scale-to-width-down/${lato}`);
+
+// PRIMA SI MISURA, sulle stesse voci della misura delle immagini principali:
+// quante illustrazioni per voce, e quanto pesano alle due misure
+export async function misuraIllustrazioni({ fetcher = fetch, deposito = DEPOSITO, attesa = dorme, wiki = FANDOM } = {}) {
+  const { api, voci } = await apiDelWiki({ deposito, fetcher, attesa, wiki });
+  const elenco = await chiediJson(indirizzo(api, parametriElenco(null, { gapfrom: CAMPIONE_DA })), { fetcher, attesa });
+  const pagine = elenco?.dati?.query?.pages || [];
+  const tutte = Array.isArray(pagine) ? pagine.length : Object.keys(pagine).length;
+  const perVoce = fileDelleVoci(pagine);
+  const file = [...new Set([...perVoce.values()].flat())];
+  const quante = [...perVoce.values()].reduce((n, f) => n + f.length, 0);
+  if (!file.length) return { voci, nessuna: true, campione: tutte };
+  const info = await chiediJson(indirizzo(api, parametriFile(file.slice(0, PER_VOLTA), LATI_ILLUSTRAZIONI[1])), { fetcher, attesa });
+  const vere = illustrazioniVere(info?.dati?.query?.pages);
+  const quota = vere.length / Math.min(file.length, PER_VOLTA);
+  const pesi = { 250: [], 400: [] };
+  for (const { src } of vere.slice(0, CAMPIONE_ILL)) {
+    for (const lato of LATI_ILLUSTRAZIONI) {
+      try {
+        const res = await fetcher(allaMisura(src, lato));
+        if (res.ok) pesi[lato].push((await res.blob()).size);
+      } catch {
+        /* contata fra quelle che non arrivano */
+      }
+    }
+  }
+  if (vere.length && !pesi[400].length) return { voci, bloccate: true, campione: tutte };
+  const media = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+  const stimaQuante = Math.round(((voci || 0) * quante * quota) / Math.max(1, tutte));
+  return {
+    voci,
+    campione: tutte,
+    perVoce: (quante * quota) / Math.max(1, tutte),
+    stimaQuante,
+    stime: Object.fromEntries(LATI_ILLUSTRAZIONI.map((l) => [l, Math.round(stimaQuante * media(pesi[l]))])),
+  };
+}
+
+export async function scaricaIllustrazioni({
+  fetcher = fetch,
+  deposito = DEPOSITO,
+  onProgress,
+  fermo = () => false,
+  pausa = PAUSA_MS,
+  attesa = dorme,
+  wiki = FANDOM,
+  lato = LATI_ILLUSTRAZIONI[0],
+  iconaDa = ICONA_DA,
+} = {}) {
+  const il = illustrazioniDi(wiki);
+  let giro = await deposito.leggi(il.giro);
+  if (!giro?.api) {
+    const gia = await deposito.leggi(il.meta);
+    if (gia?.immagini != null) return gia;
+    const { api, voci } = await apiDelWiki({ deposito, fetcher, attesa, wiki });
+    giro = { api, lato, fase: "elenco", cont: null, voci: 0, totale: voci, i: 0, file: 0, immagini: 0, saltate: 0, byte: 0, iniziato: Date.now() };
+    await deposito.scrivi(il.giro, giro);
+  }
+  const paziente = (motivo) => onProgress?.({ ...giro, attesa: motivo });
+  onProgress?.({ ...giro });
+
+  // L'ELENCO: una pagina di voci alla volta, i file di ognuna nel suo record
+  while (giro.fase === "elenco") {
+    if (fermo()) return { ...giro, fermato: true };
+    const risposta = await chiediJson(indirizzo(giro.api, parametriElenco(giro.cont)), { fetcher, attesa, paziente: true, fermo, onAttesa: paziente });
+    if (!risposta) return { ...giro, fermato: true };
+    const pagine = risposta.dati?.query?.pages || [];
+    const perVoce = fileDelleVoci(pagine);
+    // una voce con molti file torna in piu' risposte: i suoi si sommano
+    const record = [];
+    for (const [k, file] of perVoce) {
+      const prima = (await deposito.leggi(il.voci + k).catch(() => null)) || [];
+      record.push([il.voci + k, [...new Set([...prima, ...file])]]);
+    }
+    if (record.length) await deposito.scriviMolti(record);
+    const cont = risposta.dati?.continue || null;
+    // una pagina di voci si conta alla sua prima risposta: le altre, coi
+    // file che non ci stavano (`imcontinue`), sono le stesse voci
+    const nuove = !giro.cont?.imcontinue;
+    giro = { ...giro, cont, voci: giro.voci + (nuove ? (Array.isArray(pagine) ? pagine.length : Object.keys(pagine).length) : 0) };
+    if (!cont) {
+      // fine dell'elenco: i file distinti, meno le icone dei modelli
+      const conti = new Map();
+      for (const k of await deposito.chiaviPrefisso(il.voci)) {
+        for (const f of (await deposito.leggi(k).catch(() => null)) || []) conti.set(f, (conti.get(f) || 0) + 1);
+      }
+      const lista = [...conti].filter(([, n]) => n < iconaDa).map(([f]) => f).sort();
+      await deposito.scrivi(il.lista, lista);
+      giro = { ...giro, fase: "immagini", cont: null, i: 0, file: lista.length };
+    }
+    await deposito.scrivi(il.giro, giro);
+    onProgress?.({ ...giro });
+    if (pausa) await attesa(pausa);
+  }
+
+  // LE ILLUSTRAZIONI: cinquanta file alla volta, ridotti alla misura scelta
+  const lista = (await deposito.leggi(il.lista)) || [];
+  while (giro.i < lista.length) {
+    if (fermo()) return { ...giro, fermato: true };
+    const blocco = lista.slice(giro.i, giro.i + PER_VOLTA);
+    const risposta = await chiediJson(indirizzo(giro.api, parametriFile(blocco.map((f) => `File:${f}`), giro.lato)), {
+      fetcher,
+      attesa,
+      paziente: true,
+      fermo,
+      onAttesa: paziente,
+    });
+    if (!risposta) return { ...giro, fermato: true };
+    const vere = illustrazioniVere(risposta.dati?.query?.pages);
+    const record = [];
+    let byte = 0;
+    for (let j = 0; j < vere.length; j += IMMAGINI_INSIEME) {
+      const gruppo = vere.slice(j, j + IMMAGINI_INSIEME);
+      const blobs = await Promise.all(gruppo.map((x) => prendiImmagine(x.src, { fetcher, attesa })));
+      gruppo.forEach((x, n) => {
+        if (!blobs[n]) return;
+        record.push([il.prefisso + chiave(x.f), blobs[n]]);
+        byte += blobs[n].size;
+      });
+    }
+    if (!giro.immagini && !giro.saltate && vere.length >= 3 && !record.length)
+      throw new GuaioLexicanum(`${wiki.nome} non lascia salvare le sue illustrazioni a un'app nel browser.`);
+    if (record.length) await deposito.scriviMolti(record);
+    giro = {
+      ...giro,
+      i: giro.i + blocco.length,
+      immagini: giro.immagini + record.length,
+      saltate: giro.saltate + blocco.length - record.length,
+      byte: giro.byte + byte,
+    };
+    await deposito.scrivi(il.giro, giro);
+    onProgress?.({ ...giro });
+    if (pausa && giro.i < lista.length) await attesa(pausa);
+  }
+  const meta = { immagini: giro.immagini, saltate: giro.saltate, byte: giro.byte, lato: giro.lato, quando: Date.now() };
+  await deposito.scrivi(il.meta, meta);
+  await deposito.togli(il.giro).catch(() => {});
+  await deposito.togli(il.lista).catch(() => {});
+  onProgress?.({ ...giro, finito: true });
+  return meta;
+}
+
+export async function statoIllustrazioni(deposito = DEPOSITO, wiki = FANDOM) {
+  try {
+    const m = await deposito.leggi(illustrazioniDi(wiki).meta);
+    return m?.immagini != null ? m : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function rimuoviIllustrazioni(deposito = DEPOSITO, wiki = FANDOM) {
+  const il = illustrazioniDi(wiki);
+  segnaFermato(il, false);
+  await deposito.togli(il.meta).catch(() => {});
+  await deposito.togli(il.giro).catch(() => {});
+  await deposito.togli(il.lista).catch(() => {});
+  await deposito.togliPrefisso(il.prefisso);
+  await deposito.togliPrefisso(il.voci);
+}
+
+// LE ILLUSTRAZIONI DI UNA VOCE: quelle scese, nell'ordine in cui la voce le
+// cita. Una voce di Lexicanum prende quelle della stessa voce di Fandom,
+// anche passando da un rinvio, come l'immagine principale.
+export async function illustrazioniPerVoce(titolo, deposito = DEPOSITO, wiki = FANDOM) {
+  const il = illustrazioniDi(FANDOM);
+  let k = chiave(titolo);
+  let file = k ? await deposito.leggi(il.voci + k).catch(() => null) : null;
+  if (!file && wiki !== FANDOM) {
+    const altra = await voceLore(titolo, deposito, FANDOM).catch(() => null);
+    k = altra?.t ? chiave(altra.t) : null;
+    file = k ? await deposito.leggi(il.voci + k).catch(() => null) : null;
+  }
+  const fuori = [];
+  for (const f of file || []) {
+    const blob = await deposito.leggi(il.prefisso + chiave(f)).catch(() => null);
+    if (blob) fuori.push({ f, didascalia: didascaliaDi(f), blob });
+  }
+  return fuori;
+}
+
+export function fraseIllustrazioni(p) {
+  if (!p) return "";
+  if (p.fase === "elenco") {
+    const di = p.totale ? ` di circa ${numero(p.totale)}` : "";
+    return `elenco: ${numero(p.voci || 0)} voci guardate${di}`;
+  }
+  const mb = p.byte >= 1048576 ? ` · ${(p.byte / 1048576).toFixed(0)} MB` : "";
+  const di = p.file ? ` · ${numero(p.i || 0)} file guardati di ${numero(p.file)}` : "";
+  const sosta = p.attesa === "rete" ? " · aspetto la rete…" : p.attesa === "rallenta" ? " · il wiki chiede una pausa…" : "";
+  const quante = p.immagini === 1 ? "un'illustrazione" : `${numero(p.immagini || 0)} illustrazioni`;
+  return `${quante}${mb}${di}${sosta}`;
+}
+
 // L'IMMAGINE NEL RIQUADRO BREVE della scheda, accanto alla definizione
 // (chiesto dal lettore: «dei termini che definiscono l'universo Warhammer
 // riesci a tirarmi fuori le illustrazioni se esistono e mostrarle insieme

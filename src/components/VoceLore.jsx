@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { pezzi, velaVoce, voceLore, indirizzoVoce, avvisoVoce, immaginePerVoce, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
+import { pezzi, velaVoce, voceLore, indirizzoVoce, avvisoVoce, immaginePerVoce, illustrazioniPerVoce, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
 
 // UNA VOCE DI LEXICANUM, letta dentro la scheda del dizionario. I link
 // portano alle altre voci SUL DISPOSITIVO, con un «indietro» che ricorda il
@@ -132,6 +132,72 @@ function Figura({ src, titolo, da }) {
   );
 }
 
+// LE ALTRE ILLUSTRAZIONI della voce, in fondo: miniature col nome del file
+// sotto, e un tocco le apre in grande (le frecce passano alle altre)
+function Illustrazioni({ galleria, da }) {
+  const [grande, setGrande] = useState(null);
+  useEffect(() => {
+    if (grande == null) return;
+    const tasto = (e) => {
+      if (e.key === "Escape") setGrande(null);
+      if (e.key === "ArrowRight") setGrande((g) => (g + 1) % galleria.length);
+      if (e.key === "ArrowLeft") setGrande((g) => (g - 1 + galleria.length) % galleria.length);
+    };
+    window.addEventListener("keydown", tasto);
+    return () => window.removeEventListener("keydown", tasto);
+  }, [grande, galleria.length]);
+  const aperta = grande != null ? galleria[grande] : null;
+  const freccia = { minWidth: 44, minHeight: 44, borderRadius: R.tondo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.corpo, background: `${C.bg}cc` };
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ fontSize: F.corpo, fontWeight: 600, color: C.text, marginBottom: 6 }}>
+        Illustrazioni <span style={{ color: C.muted, fontWeight: 400 }}>{galleria.length}</span>
+        {da && <span style={{ marginLeft: 8, fontSize: F.minuscolo, color: C.muted, fontWeight: 400 }}>da {da}</span>}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill, minmax(${px(120)}px, 1fr))`, gap: 10 }}>
+        {galleria.map((g, i) => (
+          <button key={g.f} onClick={() => setGrande(i)} aria-label={`Apri in grande: ${g.didascalia}`} style={{ padding: 0, textAlign: "center", minWidth: 0 }}>
+            <img
+              src={g.url}
+              alt={g.didascalia}
+              style={{ display: "block", width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: R.piccolo, border: `1px solid ${C.border}` }}
+            />
+            <span style={{ display: "block", marginTop: 4, fontSize: F.minuscolo, color: C.muted, lineHeight: 1.3, overflowWrap: "anywhere" }}>{g.didascalia}</span>
+          </button>
+        ))}
+      </div>
+      {aperta && (
+        <div
+          role="dialog"
+          aria-label={aperta.didascalia}
+          onClick={() => setGrande(null)}
+          style={{ position: "fixed", inset: 0, zIndex: 60, background: "#05030bf0", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16, gap: 10 }}
+        >
+          <img src={aperta.url} alt={aperta.didascalia} style={{ maxWidth: "100%", maxHeight: "78vh", objectFit: "contain", borderRadius: R.piccolo }} />
+          <div style={{ fontSize: F.piccolo, color: C.text, textAlign: "center", overflowWrap: "anywhere" }}>
+            {aperta.didascalia} <span style={{ color: C.muted }}>· {grande + 1} di {galleria.length}</span>
+          </div>
+          <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 10 }}>
+            {galleria.length > 1 && (
+              <button onClick={() => setGrande((g) => (g - 1 + galleria.length) % galleria.length)} aria-label="Illustrazione prima" style={freccia}>
+                ‹
+              </button>
+            )}
+            <button onClick={() => setGrande(null)} aria-label="Chiudi l'illustrazione" style={freccia}>
+              ✕
+            </button>
+            {galleria.length > 1 && (
+              <button onClick={() => setGrande((g) => (g + 1) % galleria.length)} aria-label="Illustrazione dopo" style={freccia}>
+                ›
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Riquadro({ ib, onLink }) {
   return (
     <div style={{ margin: "4px 0 12px", border: `1px solid ${C.border}`, borderRadius: R.piccolo, overflow: "hidden" }}>
@@ -252,6 +318,26 @@ export default function VoceLore({ voce: prima, giudice, onChiudi, wiki = LEXICA
     };
   }, [voce.t, wiki]);
 
+  // le altre illustrazioni, scese dal giro a parte: anche loro dal
+  // dispositivo, gli indirizzi buttati quando la voce cambia
+  const [galleria, setGalleria] = useState([]);
+  useEffect(() => {
+    let vivo = true;
+    let urls = [];
+    setGalleria([]);
+    illustrazioniPerVoce(voce.t, undefined, wiki)
+      .then((lista) => {
+        if (!vivo) return;
+        urls = lista.map((x) => URL.createObjectURL(x.blob));
+        setGalleria(lista.map((x, i) => ({ f: x.f, didascalia: x.didascalia, url: urls[i] })));
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [voce.t, wiki]);
+
   async function vai(titolo) {
     setManca("");
     const v = await voceLore(titolo, undefined, wiki).catch(() => null);
@@ -358,6 +444,16 @@ export default function VoceLore({ voce: prima, giudice, onChiudi, wiki = LEXICA
             </p>
           )
         )}
+        {galleria.length > 0 &&
+          (wiki !== FANDOM && !aperti.has("ill") ? (
+            <Velo
+              cosa={galleria.length === 1 ? "Un'illustrazione da Fandom velata" : `${galleria.length} illustrazioni da Fandom velate`}
+              perche="non dicono da quale libro vengono, e possono mostrare come va a finire"
+              onApri={() => apri("ill")}
+            />
+          ) : (
+            <Illustrazioni galleria={galleria} da={wiki !== FANDOM ? FANDOM.nome : null} />
+          ))}
       </div>
       )}
       <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}66`, display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>

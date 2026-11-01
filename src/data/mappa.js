@@ -213,7 +213,7 @@ export const MAPPA = [
   {
     luogo: "parola",
     nome: "Fandom",
-    cosa: "La voce del Warhammer 40k Wiki di Fandom, come seconda scheda accanto a Lexicanum, senza rete. Fandom non dice da quale libro viene ogni paragrafo: davanti alla voce c'è un avviso coi libri delle sue fonti che non hai ancora letto, e la voce si legge solo se lo tocchi.",
+    cosa: "La voce del Warhammer 40k Wiki di Fandom, come seconda scheda accanto a Lexicanum, senza rete. Fandom non dice da quale libro viene ogni paragrafo: davanti alla voce c'è un avviso coi libri delle sue fonti che non hai ancora letto, e la voce si legge solo se lo tocchi. In fondo alla voce, se le hai scaricate, le altre illustrazioni: un tocco le apre in grande.",
     dove: "Nella scheda del dizionario di un nome del 40K → scheda «Fandom ⚠». Si scarica da Impostazioni → I wiki del 40K.",
   },
 
@@ -457,7 +457,7 @@ export const MAPPA = [
   {
     luogo: "impostazioni",
     nome: "Lexicanum sul dispositivo",
-    cosa: "Lexicanum e Fandom da scaricare una volta, con calma, e a parte le loro immagini principali (prima si misura quanto pesano): se l'app si chiude o la rete cade lo scaricamento riparte da solo da dove era arrivato; se lo fermi tu resta fermo. Poi le voci rispondono nella scheda del dizionario, senza rete.",
+    cosa: "Lexicanum e Fandom da scaricare una volta, con calma, e a parte le loro immagini principali e le altre illustrazioni di Fandom (prima si misura quanto pesano, e per le illustrazioni si sceglie la misura): se l'app si chiude o la rete cade lo scaricamento riparte da solo da dove era arrivato; se lo fermi tu resta fermo. Poi le voci rispondono nella scheda del dizionario, senza rete.",
     dove: "Impostazioni → I wiki del 40K; accesi o spenti libro per libro nella scheda del libro.",
   },
   {

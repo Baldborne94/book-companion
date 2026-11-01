@@ -62,8 +62,12 @@ After Horus' fall to [[Chaos]] on [[Davin]], Loken was betrayed and left for dea
 
 const IMMAGINI = "https://static.wikia.nocookie.net/warhammer40k/images";
 
-// `lento`: quanto tarda la seconda pagina delle immagini (per interromperla)
-export const fandomFinto = (chieste = [], { lento = 0 } = {}) => async (route) => {
+// `lento`: quanto tarda la seconda pagina delle immagini (per interromperla);
+// `lentoIll`: quanto tarda la prima richiesta delle miniature delle
+// illustrazioni, quella del giro (la misura chiede a 400 px)
+export const fandomFinto = (chieste = [], { lento = 0, lentoIll = 0 } = {}) => {
+  let illRallentate = 0;
+  return async (route) => {
   const u = new URL(route.request().url());
   chieste.push(u.href);
   const p = Object.fromEntries(u.searchParams);
@@ -79,6 +83,18 @@ export const fandomFinto = (chieste = [], { lento = 0 } = {}) => async (route) =
     return route.fulfill({ headers, json: { query: { pages }, ...(lento ? { continue: { gapcontinue: "1", continue: "gapcontinue||" } } : {}) } });
   }
   if (p.meta === "siteinfo") return route.fulfill({ headers, json: { query: { general: { sitename: "Warhammer 40k Wiki" }, statistics: { articles: 1 } } } });
+  // le altre illustrazioni: i file della voce (con la principale e un'icona
+  // SVG, che restano fuori), e per ogni file la miniatura alla misura chiesta
+  if (p.prop === "images|pageimages") {
+    const pages = [{ ns: 0, title: "Garviel Loken", pageimage: "Loken.jpg", images: [{ title: "File:Loken.jpg" }, { title: "File:Loken e Torgaddon.jpg" }, { title: "File:Aquila.svg" }] }];
+    return route.fulfill({ headers, json: { query: { pages } } });
+  }
+  if (p.prop === "imageinfo") {
+    if (lentoIll && p.iiurlwidth !== "400" && !illRallentate++) await new Promise((r) => setTimeout(r, lentoIll));
+    const pages = p.titles.split("|").map((title) => ({ ns: 6, title, imageinfo: [{ mime: "image/jpeg", width: 800, height: 600, thumburl: `${IMMAGINI}/${encodeURIComponent(title)}/revision/latest/scale-to-width-down/${p.iiurlwidth}` }] }));
+    return route.fulfill({ headers, json: { query: { pages } } });
+  }
   const pages = Object.keys(F).map((title) => ({ ns: 0, title, revisions: [{ slots: { main: { content: F[title] } } }] }));
   return route.fulfill({ headers, json: { query: { pages } } });
+  };
 };

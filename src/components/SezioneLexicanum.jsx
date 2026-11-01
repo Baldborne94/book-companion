@@ -8,7 +8,6 @@
 // vedono da ogni sezione e si fermano e si riprendono. Un blocco per wiki,
 // con lo stesso motore e le sue parole.
 import { useEffect, useState } from "react";
-import ProvaScheda from "./ProvaScheda.jsx";
 import { C, F, R } from "../data/constants.js";
 import {
   statoLexicanum,
@@ -21,6 +20,12 @@ import {
   statoImmagini,
   rimuoviImmagini,
   fraseImmagini,
+  illustrazioniDi,
+  misuraIllustrazioni,
+  statoIllustrazioni,
+  rimuoviIllustrazioni,
+  fraseIllustrazioni,
+  LATI_ILLUSTRAZIONI,
   LEXICANUM,
   FANDOM,
 } from "../lib/lexicanum.js";
@@ -157,7 +162,113 @@ function BloccoImmagini({ wiki, lavoro, altro, onScarica, onFerma }) {
   );
 }
 
-function BloccoWiki({ wiki, icona, lavoro, onScarica, onFerma, immagini, onImmagini, onFermaImmagini, children }) {
+// LE ALTRE ILLUSTRAZIONI DI FANDOM, sotto le immagini principali: anche
+// qui prima si misura, poi si sceglie la misura col suo peso
+function BloccoIllustrazioni({ lavoro, onScarica, onFerma }) {
+  const [stato, setStato] = useState(undefined);
+  const [giro, setGiro] = useState(null);
+  const [misura, setMisura] = useState(null);
+  const [confermaVia, setConfermaVia] = useState(false);
+  const inCorso = !!lavoro;
+  useEffect(() => {
+    let vivo = true;
+    statoIllustrazioni().then((s) => vivo && setStato(s));
+    giroLexicanum(undefined, illustrazioniDi(FANDOM)).then((g) => vivo && setGiro(g));
+    return () => {
+      vivo = false;
+    };
+  }, [inCorso]);
+
+  async function misurale() {
+    setMisura("…");
+    try {
+      setMisura(await misuraIllustrazioni());
+    } catch (e) {
+      setMisura({ errore: e?.message || "Il wiki non ha risposto." });
+    }
+  }
+  async function via() {
+    await rimuoviIllustrazioni().catch(() => {});
+    setStato(null);
+    setGiro(null);
+    setMisura(null);
+    setConfermaVia(false);
+  }
+
+  const t = tasto();
+  const n = nota();
+  const viola = { ...t, color: C.arcane, borderColor: `${C.arcane}55` };
+  const pronta = misura && misura !== "…" && !misura.errore && !misura.bloccate && !misura.nessuna;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <p style={{ margin: 0, fontSize: F.piccolo, fontWeight: 600, color: lavoro ? C.text : stato ? C.green : C.muted }}>
+        {lavoro
+          ? "🖼 Le illustrazioni stanno scendendo"
+          : stato === undefined
+            ? "…"
+            : stato
+              ? `🖼 Illustrazioni sul dispositivo · ${fraseIllustrazioni(stato)} · ${stato.lato} px`
+              : giro
+                ? `🖼 Illustrazioni scese a metà · ${fraseIllustrazioni(giro)}`
+                : "🖼 Le altre illustrazioni non sono sul dispositivo"}
+      </p>
+      {lavoro && <p style={{ ...n, color: C.text }}>Scarico… {fraseIllustrazioni(lavoro)}</p>}
+      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+        {lavoro ? (
+          <button onClick={onFerma} style={t}>
+            Ferma
+          </button>
+        ) : stato ? (
+          confermaVia ? (
+            <>
+              <button onClick={via} style={{ ...t, color: C.red }}>
+                Rimuovi le illustrazioni
+              </button>
+              <button onClick={() => setConfermaVia(false)} style={{ ...t, color: C.muted }}>
+                Lascia stare
+              </button>
+            </>
+          ) : (
+            <button onClick={() => setConfermaVia(true)} style={{ ...t, color: C.muted }}>
+              Rimuovi le illustrazioni
+            </button>
+          )
+        ) : giro ? (
+          <button onClick={() => onScarica()} style={viola}>
+            🖼 Riprendi le illustrazioni
+          </button>
+        ) : pronta ? (
+          LATI_ILLUSTRAZIONI.map((lato) => (
+            <button key={lato} onClick={() => onScarica(lato)} style={viola}>
+              🖼 Scarica a {lato} px · circa {mega(misura.stime[lato])}
+            </button>
+          ))
+        ) : (
+          <button onClick={misurale} disabled={misura === "…"} style={viola}>
+            {misura === "…" ? "Misuro…" : "🖼 Misura le illustrazioni"}
+          </button>
+        )}
+      </div>
+      {!lavoro && !stato && !giro && pronta && (
+        <p style={n}>
+          Misurate su {misura.campione} voci: in media {misura.perVoce.toFixed(1).replace(".", ",")} illustrazioni per voce oltre alla
+          principale, circa {voci(misura.stimaQuante)} in tutto. A 250 px stanno bene accanto al testo; a 400 px si vedono nitide anche
+          aperte in grande.
+        </p>
+      )}
+      {misura?.bloccate && <p style={{ ...n, color: C.text }}>Fandom non lascia salvare le sue illustrazioni a un'app nel browser.</p>}
+      {misura?.nessuna && <p style={{ ...n, color: C.text }}>Nelle {misura.campione} voci guardate non ci sono illustrazioni oltre alla principale.</p>}
+      {misura?.errore && <p style={{ ...n, color: C.text }}>{misura.errore} Si può riprovare.</p>}
+      <p style={n}>
+        Le altre illustrazioni di ogni voce, oltre alla principale: stanno in fondo alla voce, nella sezione «Illustrazioni», col
+        nome del file come didascalia, e un tocco le apre in grande. Su Fandom dietro l'avviso della voce, su Lexicanum velate. Lo
+        scaricamento è lungo, ore: prima l'elenco dei file di ogni voce, poi le illustrazioni, e se l'app si chiude riparte da solo.
+      </p>
+    </div>
+  );
+}
+
+function BloccoWiki({ wiki, icona, lavoro, onScarica, onFerma, immagini, onImmagini, onFermaImmagini, illustrazioni, onIllustrazioni, onFermaIllustrazioni, children }) {
   const [stato, setStato] = useState(undefined);
   const [giro, setGiro] = useState(null);
   const [confermaVia, setConfermaVia] = useState(false);
@@ -282,13 +393,14 @@ function BloccoWiki({ wiki, icona, lavoro, onScarica, onFerma, immagini, onImmag
           onFerma={onFermaImmagini}
         />
       )}
+      {stato && wiki === FANDOM && <BloccoIllustrazioni lavoro={illustrazioni} onScarica={onIllustrazioni} onFerma={onFermaIllustrazioni} />}
 
       {children}
     </div>
   );
 }
 
-export default function SezioneLexicanum({ lavoro, onScarica, onFerma, lavoroFan, onScaricaFan, onFermaFan, immagini, onImmagini, onFermaImmagini }) {
+export default function SezioneLexicanum({ lavoro, onScarica, onFerma, lavoroFan, onScaricaFan, onFermaFan, immagini, onImmagini, onFermaImmagini, illustrazioni, onIllustrazioni, onFermaIllustrazioni }) {
   const img = { immagini, onImmagini, onFermaImmagini };
   const n = nota();
   return (
@@ -322,7 +434,17 @@ export default function SezioneLexicanum({ lavoro, onScarica, onFerma, lavoroFan
       </BloccoWiki>
 
       <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}66` }}>
-        <BloccoWiki wiki={FANDOM} icona="📜" lavoro={lavoroFan} onScarica={onScaricaFan} onFerma={onFermaFan} {...img}>
+        <BloccoWiki
+          wiki={FANDOM}
+          icona="📜"
+          lavoro={lavoroFan}
+          onScarica={onScaricaFan}
+          onFerma={onFermaFan}
+          {...img}
+          illustrazioni={illustrazioni}
+          onIllustrazioni={onIllustrazioni}
+          onFermaIllustrazioni={onFermaIllustrazioni}
+        >
           <p style={n}>
             Il Warhammer 40k Wiki di Fandom, come <strong>seconda scheda</strong> accanto a Lexicanum: voci più lunghe e
             raccontate, utili per legioni, fazioni e guerre.
@@ -346,7 +468,6 @@ export default function SezioneLexicanum({ lavoro, onScarica, onFerma, lavoroFan
           </p>
         </BloccoWiki>
       </div>
-      {typeof window !== "undefined" && typeof window.showDirectoryPicker === "function" && <ProvaScheda />}
     </div>
   );
 }
