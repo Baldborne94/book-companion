@@ -431,7 +431,7 @@ export const MAPPA = [
   {
     luogo: "musica",
     nome: "Cerca, scegli, suona",
-    cosa: "Le raccolte in griglia e i brani in ordine coi salti per lettera; una ricerca sola per brani e raccolte, a parole sparse. Il tocco su un brano suona da lì in avanti, e il suo menu «⋯» lo mette nelle raccolte, lo rinomina o lo dimentica.",
+    cosa: "Le raccolte in griglia e i brani in ordine coi salti per lettera; una ricerca sola per brani e raccolte, a parole sparse. Il tocco su un brano suona da lì in avanti, e il suo menu «⋯» lo mette nelle raccolte, lo rinomina o lo dimentica. Una raccolta si rinomina o si elimina dal «⋯» della sua casella (i brani restano).",
     dove: "La sala della musica: la ricerca in cima, poi «Raccolte» e «Brani».",
   },
 
