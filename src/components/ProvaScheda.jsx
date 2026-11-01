@@ -48,13 +48,26 @@ export default function ProvaScheda() {
     }
     setOccupata(true);
     setConto({ fatte: 0, di: QUANTE });
+    // la cartella si ricorda e la scrittura si salva appena finisce: se
+    // la rilettura non torna, riaperta l'app la prova c'e' lo stesso
+    let ricordata = true;
+    await putAux(MANIGLIA, cartella).catch(() => (ricordata = false));
+    let fatta = null;
     try {
-      await putAux(MANIGLIA, cartella).catch(() => {});
-      const scrittura = await provaScrittura({ cartella, onProgress: setConto });
-      salva({ cartella: cartella.name, scrittura, riaperture: [] });
+      const scrittura = await provaScrittura({
+        cartella,
+        onProgress: setConto,
+        onScritte: (parziale) => {
+          fatta = { cartella: cartella.name, ricordata, scrittura: parziale, riaperture: [] };
+          salva(fatta);
+        },
+      });
+      salva({ cartella: cartella.name, ricordata, scrittura, riaperture: [] });
       setPermesso(await cartella.queryPermission?.({ mode: "readwrite" }));
     } catch (e) {
-      setGuaio(`La prova si è fermata: ${e?.message || e?.name}.`);
+      const errore = `${e?.name || "Errore"}: ${e?.message || ""}`.trim();
+      setGuaio(`La prova si è fermata: ${errore}.`);
+      salva({ ...(fatta || { cartella: cartella.name, ricordata, scrittura: null, riaperture: [] }), errore });
     } finally {
       setOccupata(false);
       setConto(null);
@@ -66,19 +79,24 @@ export default function ProvaScheda() {
   async function rileggi() {
     setGuaio("");
     setOccupata(true);
+    const quando = Date.now();
+    let prima = "cartella non ricordata";
     try {
       const cartella = await getAux(MANIGLIA);
       if (!cartella) throw new Error("la cartella della prova non è più ricordata");
-      const prima = await cartella.queryPermission({ mode: "readwrite" });
+      prima = await cartella.queryPermission({ mode: "readwrite" });
       let ora = prima;
       if (ora !== "granted") ora = await cartella.requestPermission({ mode: "readwrite" });
       setPermesso(ora);
-      const rilettura = ora === "granted" ? await rileggiProva({ cartella }) : null;
-      salva({ ...stato, riaperture: [...(stato?.riaperture || []), { quando: Date.now(), permesso: prima, rilettura }] });
+      const rilettura = ora === "granted" ? await rileggiProva({ cartella, onProgress: setConto }) : null;
+      salva({ ...stato, riaperture: [...(stato?.riaperture || []), { quando, permesso: prima, rilettura }] });
     } catch (e) {
-      setGuaio(`Rilettura non riuscita: ${e?.message || e?.name}.`);
+      const errore = `${e?.name || "Errore"}: ${e?.message || ""}`.trim();
+      setGuaio(`Rilettura non riuscita: ${errore}.`);
+      salva({ ...stato, riaperture: [...(stato?.riaperture || []), { quando, permesso: prima, errore }] });
     } finally {
       setOccupata(false);
+      setConto(null);
     }
   }
 
@@ -127,19 +145,20 @@ export default function ProvaScheda() {
       </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
         <button onClick={prova} disabled={occupata} style={tasto(true)}>
-          {conto ? `…scrivo ${conto.fatte}/${conto.di}` : stato ? "📁 Rifai la prova" : "📁 Scegli la cartella e prova"}
+          {conto && conto.fase !== "rileggo" ? `…scrivo ${conto.fatte}/${conto.di}` : stato ? "📁 Rifai la prova" : "📁 Scegli la cartella e prova"}
         </button>
         {stato && (
           <button onClick={rileggi} disabled={occupata} style={tasto(false)}>
-            🔁 Rileggi dalla cartella
+            {conto?.fase === "rileggo" ? `…rileggo ${conto.fatte}${conto.di ? `/${conto.di}` : ""}` : "🔁 Rileggi dalla cartella"}
           </button>
         )}
       </div>
       {stato && (
         <>
           <p style={riga}>
-            Cartella «{stato.cartella}»: {rigaScrittura(stato.scrittura)}.
+            Cartella «{stato.cartella}»{stato.scrittura ? `: ${rigaScrittura(stato.scrittura)}` : ""}.
           </p>
+          {stato.errore && <p style={{ ...riga, color: C.accent }}>Errore: {stato.errore}</p>}
           {permesso && (
             <p style={{ ...riga, color: permesso === "granted" ? C.accent : C.muted }}>
               Adesso Chrome dice: {permesso === "granted" ? "permesso sulla cartella ricordato" : "il permesso va richiesto con un tocco"}.
