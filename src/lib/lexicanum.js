@@ -1452,6 +1452,18 @@ export async function immaginePerVoce(titolo, deposito = DEPOSITO, wiki = LEXICA
   return suFandom ? { blob: suFandom, da: FANDOM } : null;
 }
 
+// L'IMMAGINE NEL RIQUADRO BREVE della scheda, accanto alla definizione
+// (chiesto dal lettore: «dei termini che definiscono l'universo Warhammer
+// riesci a tirarmi fuori le illustrazioni se esistono e mostrarle insieme
+// alla definizione?»): gli stessi veli della voce intera. Su Fandom sta
+// dietro l'avviso coi libri non letti; su Lexicanum dietro un velo suo,
+// perche' non dice da quale libro viene.
+export function figuraBreve({ wiki, haFigura, chiusa, svelata }) {
+  if (!haFigura || chiusa) return "niente";
+  if (wiki !== FANDOM && !svelata) return "velata";
+  return "visibile";
+}
+
 export function fraseImmagini(p) {
   if (!p) return "";
   const mb = p.byte >= 1048576 ? ` · ${(p.byte / 1048576).toFixed(0)} MB` : "";

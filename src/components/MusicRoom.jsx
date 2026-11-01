@@ -75,6 +75,11 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
   const [menuBrano, setMenuBrano] = useState(null);
   const [nelleRaccolte, setNelleRaccolte] = useState(null);
   const [aggiungi, setAggiungi] = useState(false);
+  // ELIMINARE UNA RACCOLTA SI TROVA (segnalato dal lettore: «mi permetti di
+  // cancellare le raccolte? al momento non posso farlo»): un «⋯» su ogni
+  // casella e nella pagina, e una conferma prima, perché non si torna indietro
+  const [menuCasella, setMenuCasella] = useState(null);
+  const [daEliminare, setDaEliminare] = useState(null);
 
   const { current, playing, queue } = music;
   const { wide } = useViewport();
@@ -547,6 +552,33 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
     </div>
   );
 
+  // la conferma prima di eliminare: i brani restano, la raccolta no
+  const conferma = (r) =>
+    daEliminare === r.id && (
+      <div role="alertdialog" aria-label={`Eliminare ${r.name}?`} style={{ marginTop: 8, padding: 10, borderRadius: R.piccolo, border: `1px solid ${C.accent}66`, background: `${C.accent}10` }}>
+        <p style={{ margin: 0, fontSize: F.piccolo, color: C.text, lineHeight: 1.4 }}>
+          Eliminare «{r.name}»? I brani restano fra le tue melodie.
+        </p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          <button
+            onClick={() => {
+              togliRaccolta(r);
+              setDaEliminare(null);
+              setMenu(false);
+              setMenuCasella(null);
+              notify(`«${r.name}» eliminata — i brani restano fra le tue melodie`);
+            }}
+            style={{ ...pieno, fontSize: F.piccolo }}
+          >
+            🗑 Elimina
+          </button>
+          <button onClick={() => setDaEliminare(null)} style={pillola()}>
+            Annulla
+          </button>
+        </div>
+      </div>
+    );
+
   // LA CASELLA DI UNA RACCOLTA: copertina disegnata dal nome, ▶ sopra per
   // suonarla da dove eri, il nome intero sotto; il tocco apre la sua pagina
   function casella(r) {
@@ -573,10 +605,46 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
             </button>
           )}
         </div>
-        <button onClick={() => { setCerca(""); apri(r.id); }} style={{ display: "block", width: "100%", minHeight: 44, padding: "8px 2px 4px", textAlign: "left" }}>
-          <span style={{ display: "block", fontSize: F.corpo, color: inAscolto ? C.accent : C.text, lineHeight: 1.3, overflowWrap: "break-word" }}>{r.name}</span>
-          <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginTop: 2, lineHeight: 1.35 }}>{sotto.join(" · ")}</span>
-        </button>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 2 }}>
+          <button onClick={() => { setCerca(""); apri(r.id); }} style={{ flex: 1, minWidth: 0, display: "block", minHeight: 44, padding: "8px 2px 4px", textAlign: "left" }}>
+            <span style={{ display: "block", fontSize: F.corpo, color: inAscolto ? C.accent : C.text, lineHeight: 1.3, overflowWrap: "break-word" }}>{r.name}</span>
+            <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginTop: 2, lineHeight: 1.35 }}>{sotto.join(" · ")}</span>
+          </button>
+          <button
+            onClick={() => {
+              setMenuCasella(menuCasella === r.id ? null : r.id);
+              setDaEliminare(null);
+            }}
+            aria-expanded={menuCasella === r.id}
+            aria-label={`Altro per ${r.name}`}
+            style={{ ...tondo(menuCasella === r.id), border: "none", marginTop: 2 }}
+          >
+            ⋯
+          </button>
+        </div>
+        {menuCasella === r.id && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+            <button
+              onClick={() => {
+                setMenuCasella(null);
+                setCerca("");
+                apri(r.id);
+                setRinomina(r.id);
+                setBozzaRac(r.name);
+              }}
+              style={{ minHeight: 44, padding: "0 12px", borderRadius: R.tondo, fontSize: F.piccolo, border: `1px solid ${C.border}`, color: C.muted }}
+            >
+              ✎ Rinomina
+            </button>
+            <button
+              onClick={() => setDaEliminare(r.id)}
+              style={{ minHeight: 44, padding: "0 12px", borderRadius: R.tondo, fontSize: F.piccolo, border: `1px solid ${C.border}`, color: C.muted }}
+            >
+              🗑 Elimina raccolta
+            </button>
+          </div>
+        )}
+        {conferma(r)}
       </div>
     );
   }
@@ -679,18 +747,12 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
                 >
                   ✎ Rinomina
                 </button>
-                <button
-                  onClick={() => {
-                    togliRaccolta(r);
-                    setMenu(false);
-                    notify(`«${r.name}» dimenticata — i brani restano fra le tue melodie`);
-                  }}
-                  style={voce}
-                >
-                  🗑 Dimentica
+                <button onClick={() => setDaEliminare(r.id)} style={voce}>
+                  🗑 Elimina raccolta
                 </button>
               </div>
             )}
+            {conferma(r)}
           </div>
         </div>
 

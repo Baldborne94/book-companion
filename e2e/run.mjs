@@ -448,7 +448,31 @@ const SCENE = [
       await p.goBack();
       await p.getByRole("button", { name: "Suona Horror playlist" }).waitFor({ timeout: 3000 });
       if (!(await p.getByRole("tab", { name: /Raccolte/ }).count())) throw new Error("l'indietro dalla raccolta ha lasciato la sala");
-      return { guasti: d.guasti, nota: "23 brani, ricerca a parole sparse, lettore ripiegato, lettere, menu del brano, indietro" };
+
+      // ELIMINARE UNA RACCOLTA SI TROVA: «⋯» sulla casella, poi la conferma
+      // (segnalato dal lettore: «al momento non posso farlo»)
+      const stato = () =>
+        p.evaluate(() => ({
+          rac: JSON.parse(localStorage.getItem("bc_music_lists") || "[]").filter((r) => !r.deleted).map((r) => r.name),
+          brani: JSON.parse(localStorage.getItem("bc_music_favs") || "[]").filter((f) => !f.deleted).length,
+        }));
+      await p.getByRole("button", { name: "Altro per Horror playlist" }).click();
+      await p.getByRole("button", { name: "🗑 Elimina raccolta" }).click();
+      await p.getByRole("button", { name: "🗑 Elimina", exact: true }).click();
+      await finche(async () => !(await p.getByRole("button", { name: "Suona Horror playlist" }).count()), 3000, "eliminata, la raccolta resta nella griglia");
+      // e dalla sua pagina, col menu «⋯»
+      await p.getByRole("button", { name: /^WARHAMMER 40k/ }).click();
+      await p.getByRole("button", { name: "Altro per WARHAMMER 40k" }).click();
+      await p.getByRole("button", { name: "🗑 Elimina raccolta" }).click();
+      await p.getByRole("button", { name: "🗑 Elimina", exact: true }).click();
+      await p.getByRole("button", { name: "＋ Nuova raccolta" }).waitFor({ timeout: 3000 });
+      const dopo = await stato();
+      if (dopo.rac.length || dopo.brani !== 23) throw new Error(`eliminate le raccolte: ${JSON.stringify(dopo)}`);
+      // e non tornano riaprendo l'app
+      await p.goto(`${URL_APP}?apri=musica`);
+      await p.getByRole("tab", { name: /Brani/ }).waitFor({ timeout: 5000 });
+      if (await p.getByRole("button", { name: /^Suona / }).count()) throw new Error("riaperta l'app, una raccolta eliminata e' tornata");
+      return { guasti: d.guasti, nota: "23 brani, ricerca a parole sparse, lettore ripiegato, lettere, menu del brano, indietro, raccolte eliminate (i brani restano)" };
     },
   },
   {
@@ -1894,11 +1918,24 @@ const SCENE = [
       await definisci(p, "Loken");
       // le due schede; la prima e' Lexicanum
       await finche(() => p.getByRole("tab", { name: /Fandom/ }).count(), 8000, "la scheda di Fandom non compare");
+      // L'IMMAGINE ACCANTO ALLA DEFINIZIONE: su Lexicanum quella di Fandom,
+      // velata finche' non la tocchi
+      const ritratto = () => p.locator('img[alt="Garviel Loken"]').evaluate((img) => img.complete && img.naturalWidth === 30).catch(() => false);
+      await p.getByRole("button", { name: "🖼 Immagine velata · mostrala" }).waitFor({ timeout: 5000 });
+      if (await p.locator('img[alt="Garviel Loken"]').count()) throw new Error("accanto alla definizione di Lexicanum l'immagine non e' velata");
+      await p.getByRole("button", { name: "🖼 Immagine velata · mostrala" }).click();
+      await finche(ritratto, 5000, "toccato il velo, l'immagine non compare accanto alla definizione");
+      await p.getByText("da Fandom", { exact: true }).waitFor({ timeout: 3000 });
       await p.getByRole("tab", { name: /Fandom/ }).click();
       const avviso = await finche(async () => (await p.getByText(/Questa voce può spoilerare/).count()) && p.getByText(/Questa voce può spoilerare/).first().locator("..").textContent(), 5000, "l'avviso di Fandom non compare");
+      // su Fandom sta dietro l'avviso, come il testo: si guarda dopo che i
+      // byte, dal dispositivo, hanno avuto il tempo di arrivare
+      await aspetta(1000);
+      if (await p.locator('img[alt="Garviel Loken"]').count()) throw new Error("l'immagine di Fandom sta in vista davanti all'avviso");
       if (!/False Gods/.test(avviso) || /left for dead/.test(await p.locator("body").textContent())) throw new Error(`avviso sbagliato o testo gia' in vista: ${avviso}`);
       await p.getByText(/Questa voce può spoilerare/).first().click();
       await finche(() => p.getByText(/originally the Captain/).count(), 5000, "toccato l'avviso, l'incipit non compare");
+      await finche(ritratto, 5000, "toccato l'avviso, l'immagine di Fandom non compare accanto alla definizione");
       // la voce intera si apre gia' letta: l'avviso si accetta una volta
       await p.getByRole("button", { name: "Leggi la voce ▸" }).click();
       await finche(() => p.getByText(/left for dead/).count(), 5000, "la voce intera di Fandom non si apre");

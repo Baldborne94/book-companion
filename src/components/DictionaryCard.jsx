@@ -7,7 +7,7 @@ import { rigaUltima, rigaMese, riassunto, costo, leggiTetto } from "../lib/spesa
 import { TettoFinito } from "./TettoOracolo.jsx";
 import { daAnnotare, fraseAttorno, annota, togliParola, leggiQuaderno, scriviQuaderno } from "../lib/quaderno.js";
 import { chiaveGlossario, vociDi, salvaVoci, aggiungi, togli, cerca } from "../lib/glossarioMio.js";
-import { cercaLore, scrittoComeNome, loreAttivo, statoLexicanum, giudiceFonti, velaVoce, avvisoVoce, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
+import { cercaLore, scrittoComeNome, loreAttivo, statoLexicanum, giudiceFonti, velaVoce, avvisoVoce, immaginePerVoce, figuraBreve, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
 import { loadBooks, getStatus } from "../lib/library.js";
 import { getCfi } from "../lib/annotations.js";
 import VoceLore, { Testo, Velo, AvvisoFandom } from "./VoceLore.jsx";
@@ -280,6 +280,10 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
   const [fanQui, setFanQui] = useState(undefined);
   const [fan, setFan] = useState(null);
   const [scheda, setScheda] = useState(null);
+  // L'IMMAGINE della voce accanto alla definizione (`figuraBreve`): i byte
+  // dal dispositivo, l'indirizzo fatto qui e buttato quando la voce cambia
+  const [figura, setFigura] = useState(null);
+  const [figuraSvelata, setFiguraSvelata] = useState(false);
   // la scheda resta montata tra una selezione e l'altra: la risposta della
   // frase di prima non deve comparire sotto la frase nuova
   const tagRef = useRef();
@@ -292,6 +296,7 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
     if (loreAperta) setLoreAperta(false);
     if (incipitAperto) setIncipitAperto(false);
     if (scheda) setScheda(null);
+    if (figuraSvelata) setFiguraSvelata(false);
   }
   const dict = extra && extra.tag === tag ? { ...dictProp, ...extra.res, loading: false, cercando: false } : dictProp;
 
@@ -348,6 +353,24 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
   // su Fandom il velo e' la voce intera: l'avviso sta davanti all'incipit
   const avvisoFan = wikiScelto === FANDOM && voceLore && giudice ? avvisoVoce(voceLore, giudice) : null;
   const fanChiusa = !!avvisoFan && (avvisoFan.motivi.length > 0 || avvisoFan.senzaFonti) && !incipitAperto;
+  useEffect(() => {
+    if (!voceLore?.t) return;
+    let vivo = true;
+    let url = null;
+    immaginePerVoce(voceLore.t, undefined, wikiScelto)
+      .then((trovata) => {
+        if (!vivo || !trovata) return;
+        url = URL.createObjectURL(trovata.blob);
+        setFigura({ t: voceLore.t, wiki: wikiScelto, url, da: trovata.da === wikiScelto ? null : trovata.da.nome });
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [voceLore?.t, wikiScelto]);
+  const figuraQui = figura && voceLore && figura.t === voceLore.t && figura.wiki === wikiScelto ? figura : null;
+  const modoFigura = figuraBreve({ wiki: wikiScelto, haFigura: !!figuraQui, chiusa: fanChiusa, svelata: figuraSvelata });
 
   // IL QUADERNO DELLE PAROLE si scrive da se', a risposta completa: la
   // ricerca e' gia' il gesto che dice «questa non la sapevo». Una volta per
@@ -494,7 +517,21 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
             ))}
           </div>
         )}
-        <div style={{ padding: "9px 12px 11px" }}>
+        <div style={{ padding: "9px 12px 11px", display: "flow-root" }}>
+          {modoFigura === "visibile" && (
+            <button
+              onClick={() => setLoreAperta(true)}
+              aria-label={`${voceLore.t}: leggi la voce`}
+              style={{ float: "right", margin: "2px 0 8px 12px", padding: 0, textAlign: "center" }}
+            >
+              <img
+                src={figuraQui.url}
+                alt={voceLore.t}
+                style={{ display: "block", width: px(104), maxHeight: px(156), objectFit: "cover", borderRadius: R.piccolo, border: `1px solid ${C.border}` }}
+              />
+              {figuraQui.da && <span style={{ display: "block", marginTop: 2, fontSize: F.minuscolo, color: C.muted }}>da {figuraQui.da}</span>}
+            </button>
+          )}
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
             <span style={{ fontSize: F.corpo, fontWeight: 600, color: C.text }}>{voceLore.t}</span>
             {voceLore.via && (
@@ -510,19 +547,30 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
               <Testo x={incipit.x} />
             </p>
           ) : null}
-          <button
-            onClick={() => setLoreAperta(true)}
-            style={{
-              minHeight: 40,
-              fontSize: F.piccolo,
-              color: C.accent,
-              border: `1px solid ${C.accent}55`,
-              borderRadius: R.tondo,
-              padding: "5px 14px",
-            }}
-          >
-            Leggi la voce ▸
-          </button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              onClick={() => setLoreAperta(true)}
+              style={{
+                minHeight: 40,
+                fontSize: F.piccolo,
+                color: C.accent,
+                border: `1px solid ${C.accent}55`,
+                borderRadius: R.tondo,
+                padding: "5px 14px",
+              }}
+            >
+              Leggi la voce ▸
+            </button>
+            {modoFigura === "velata" && (
+              <button
+                onClick={() => setFiguraSvelata(true)}
+                title="Non dice da quale libro viene, e può mostrare come va a finire"
+                style={{ minHeight: 40, fontSize: F.piccolo, color: C.muted, border: `1px dashed ${C.border}`, borderRadius: R.tondo, padding: "5px 14px" }}
+              >
+                🖼 Immagine velata · mostrala
+              </button>
+            )}
+          </div>
         </div>
       </div>
   ) : null;

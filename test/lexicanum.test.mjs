@@ -48,6 +48,7 @@ import {
   rimuoviImmagini,
   immagineDi,
   immaginePerVoce,
+  figuraBreve,
   fraseImmagini,
   giroDaRiprendere,
   segnaFermato,
@@ -694,6 +695,13 @@ However, after Horus' fall to [[Chaos]] on [[Davin]], he was considered too loya
     await rimuoviImmagini(d, FANDOM);
     t.c("rimuovere le immagini lascia il testo", !d.m.has("img:fan:cadia") && !d.m.has("fan_img_meta") && d.m.has("fan_meta") && (await statoImmagini(d, FANDOM)) === null);
   }
+
+  // ---- L'IMMAGINE ACCANTO ALLA DEFINIZIONE -------------------------------
+  t.eq("su Fandom, letto l'avviso, l'immagine sta accanto alla definizione", figuraBreve({ wiki: FANDOM, haFigura: true, chiusa: false, svelata: false }), "visibile");
+  t.eq("su Fandom, avviso ancora chiuso, niente immagine", figuraBreve({ wiki: FANDOM, haFigura: true, chiusa: true, svelata: false }), "niente");
+  t.eq("su Lexicanum l'immagine sta velata", figuraBreve({ wiki: LEXICANUM, haFigura: true, chiusa: false, svelata: false }), "velata");
+  t.eq("e toccato il velo si vede", figuraBreve({ wiki: LEXICANUM, haFigura: true, chiusa: false, svelata: true }), "visibile");
+  t.eq("senza immagine non c'e' velo da toccare", figuraBreve({ wiki: LEXICANUM, haFigura: false, chiusa: false, svelata: false }), "niente");
 
   // ---- LA RIGA DEL LAVORO -----------------------------------------------
   t.eq("la riga del lavoro dice voci, totale e peso", fraseLexicanum({ voci: 12400, totale: 45000, byte: 85 * 1048576 }), "12.400 voci di circa 45.000 · 85 MB");
