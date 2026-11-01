@@ -15,9 +15,20 @@ import { nomeSicuro } from "./hdd.js";
 import { FANDOM } from "./lexicanum.js";
 
 export const QUANTE = 200;
+// OGNI ATTESA HA UN TETTO (visto sul tablet del lettore: «…scrivo 200/200»
+// e poi piu' niente, la rilettura ferma senza dire perche'): un file che
+// non risponde entro il tetto si conta e si passa al prossimo, e dopo
+// `FERMA_DOPO` di fila la rilettura si ferma e lo dice
+export const TETTO_FILE = 10000;
+export const FERMA_DOPO = 3;
 export const CARTELLA = "Illustrazioni-prova";
 export const LARGHEZZA = 400;
 const GIRI_MAX = 12;
+
+const TETTO = Symbol("tetto");
+const entro = (promessa, ms, aspetta) =>
+  Promise.race([promessa, new Promise((ok) => aspetta(ms).then(() => ok(TETTO)))]);
+const dorme = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const indirizzo = (api, parametri) =>
   `${api}?${new URLSearchParams({ format: "json", formatversion: "2", origin: "*", ...parametri })}`;
@@ -56,10 +67,10 @@ async function daProvare({ fetcher, api, quante }) {
 // SCRIVERE E RILEGGERE: ogni illustrazione si scarica, si scrive nel suo
 // file, e alla fine si rilegge tutto. Scaricare e scrivere si contano a
 // parte: e' la scrittura sulla scheda quella che non conosciamo.
-export async function provaScrittura({ cartella, fetcher = fetch, ora = () => performance.now(), quante = QUANTE, api = FANDOM.api[0], onProgress } = {}) {
+export async function provaScrittura({ cartella, fetcher = fetch, ora = () => performance.now(), quante = QUANTE, api = FANDOM.api[0], onProgress, onScritte, tetto = TETTO_FILE, aspetta = dorme } = {}) {
   const dentro = await cartella.getDirectoryHandle(CARTELLA, { create: true });
   const lista = await daProvare({ fetcher, api, quante });
-  const esito = { scritte: 0, saltate: 0, byte: 0, msScaricare: 0, msScrivere: 0, msRileggere: 0, diverse: 0, quando: Date.now() };
+  const esito = { scritte: 0, saltate: 0, byte: 0, msScaricare: 0, msScrivere: 0, bloccateScrivendo: 0, riletti: 0, msRileggere: 0, diverse: 0, bloccate: 0, fermata: false, finita: false, quando: Date.now() };
   const scritte = [];
   for (const { nome, src } of lista) {
     const t0 = ora();
@@ -76,36 +87,81 @@ export async function provaScrittura({ cartella, fetcher = fetch, ora = () => pe
       esito.saltate++;
       continue;
     }
-    const fh = await dentro.getFileHandle(nome, { create: true });
-    const w = await fh.createWritable();
-    await w.write(blob);
-    await w.close();
+    const scritto = await entro(
+      (async () => {
+        const fh = await dentro.getFileHandle(nome, { create: true });
+        const w = await fh.createWritable();
+        await w.write(blob);
+        await w.close();
+      })(),
+      tetto,
+      aspetta
+    );
     esito.msScrivere += ora() - t1;
+    if (scritto === TETTO) {
+      esito.bloccateScrivendo++;
+      continue;
+    }
     esito.scritte++;
     esito.byte += blob.size;
     scritte.push({ nome, size: blob.size });
     onProgress?.({ fatte: esito.scritte, di: lista.length });
   }
+  // la scrittura e' gia' un risultato: si consegna prima di rileggere
+  onScritte?.({ ...esito });
   const t2 = ora();
+  let diFila = 0;
+  onProgress?.({ fase: "rileggo", fatte: 0, di: scritte.length });
   for (const { nome, size } of scritte) {
-    const f = await (await dentro.getFileHandle(nome)).getFile();
+    const f = await entro(dentro.getFileHandle(nome).then((h) => h.getFile()), tetto, aspetta);
+    if (f === TETTO) {
+      esito.bloccate++;
+      onProgress?.({ fase: "rileggo", fatte: esito.riletti + esito.bloccate, di: scritte.length });
+      if (++diFila >= FERMA_DOPO) {
+        esito.fermata = true;
+        break;
+      }
+      continue;
+    }
+    diFila = 0;
+    esito.riletti++;
     if (f.size !== size) esito.diverse++;
+    onProgress?.({ fase: "rileggo", fatte: esito.riletti + esito.bloccate, di: scritte.length });
   }
   esito.msRileggere = ora() - t2;
+  esito.finita = true;
   return esito;
 }
 
 // RIAPERTA L'APP: i file della prova si rileggono dalla cartella ricordata
-export async function rileggiProva({ cartella, ora = () => performance.now() }) {
+export async function rileggiProva({ cartella, ora = () => performance.now(), tetto = TETTO_FILE, aspetta = dorme, onProgress }) {
   const dentro = await cartella.getDirectoryHandle(CARTELLA);
   const t0 = ora();
-  let file = 0;
-  let byte = 0;
-  for await (const voce of dentro.values()) {
-    byte += (await voce.getFile()).size;
-    file++;
+  const r = { file: 0, byte: 0, bloccate: 0, fermata: false, ms: 0 };
+  const voci = dentro.values();
+  let diFila = 0;
+  for (;;) {
+    const passo = await entro(
+      voci.next().then(async (x) => (x.done ? x : { done: false, size: (await x.value.getFile()).size })),
+      tetto,
+      aspetta
+    );
+    if (passo === TETTO) {
+      r.bloccate++;
+      if (++diFila >= FERMA_DOPO) {
+        r.fermata = true;
+        break;
+      }
+      continue;
+    }
+    if (passo.done) break;
+    diFila = 0;
+    r.file++;
+    r.byte += passo.size;
+    onProgress?.({ fase: "rileggo", fatte: r.file });
   }
-  return { file, byte, ms: ora() - t0 };
+  r.ms = ora() - t0;
+  return r;
 }
 
 export const togliProva = (cartella) => cartella.removeEntry(CARTELLA, { recursive: true });
@@ -121,27 +177,41 @@ export function rigaScrittura(e) {
   const pezzi = [
     `${e.scritte} illustrazioni scritte (${mb(e.byte)})`,
     `scaricarle ${sec(e.msScaricare)}, scriverle ${sec(e.msScrivere)} (${l1} ms l'una)`,
-    `rilette in ${sec(e.msRileggere)}`,
   ];
+  if (e.bloccateScrivendo) pezzi.push(`${e.bloccateScrivendo} senza risposta scrivendo (oltre ${sec(TETTO_FILE)})`);
   if (e.saltate) pezzi.push(`${e.saltate} non arrivate`);
-  pezzi.push(e.diverse ? `${e.diverse} rilette diverse da come scritte` : "tutte uguali a come scritte");
+  if (!e.finita) {
+    pezzi.push("rilettura non finita (l'app si è chiusa o la scheda non ha risposto)");
+    return pezzi.join(" · ");
+  }
+  const l2 = e.riletti ? Math.round(e.msRileggere / e.riletti) : 0;
+  pezzi.push(`${e.riletti} rilette in ${sec(e.msRileggere)} (${l2} ms l'una)`);
+  if (e.bloccate) pezzi.push(`${e.bloccate} senza risposta rileggendo (oltre ${sec(TETTO_FILE)})`);
+  if (e.fermata) pezzi.push(`rilettura fermata dopo ${FERMA_DOPO} file di fila senza risposta`);
+  if (e.riletti) pezzi.push(e.diverse ? `${e.diverse} rilette diverse da come scritte` : "rilette uguali a come scritte");
   return pezzi.join(" · ");
 }
 
 export function rigaRiapertura(r) {
   if (!r) return "";
   const permesso = r.permesso === "granted" ? "permesso ricordato" : r.permesso === "prompt" ? "permesso da richiedere (un tocco)" : `permesso: ${r.permesso}`;
-  const letti = r.rilettura ? ` · rilette ${r.rilettura.file} in ${sec(r.rilettura.ms)}` : "";
-  return `${new Date(r.quando).toLocaleString("it-IT", { timeZone: "Europe/Rome" })}: ${permesso}${letti}`;
+  const l = r.rilettura;
+  const letti = l
+    ? ` · rilette ${l.file} in ${sec(l.ms)}${l.bloccate ? ` · ${l.bloccate} senza risposta` : ""}${l.fermata ? " · rilettura fermata" : ""}`
+    : "";
+  const guaio = r.errore ? ` · errore: ${r.errore}` : "";
+  return `${new Date(r.quando).toLocaleString("it-IT", { timeZone: "Europe/Rome" })}: ${permesso}${letti}${guaio}`;
 }
 
 export function testoProva(stato, ambiente = "") {
-  if (!stato?.scrittura) return "";
+  if (!stato) return "";
   return [
     "Book Companion — prova sulla microSD",
     ambiente ? `Browser: ${ambiente}` : null,
     `Cartella: «${stato.cartella}»`,
-    `Scrittura: ${rigaScrittura(stato.scrittura)}`,
+    stato.ricordata === false ? "La cartella non si lascia ricordare dall'app" : null,
+    stato.scrittura ? `Scrittura: ${rigaScrittura(stato.scrittura)}` : null,
+    stato.errore ? `Errore: ${stato.errore}` : null,
     ...(stato.riaperture || []).map((r) => `Riapertura: ${rigaRiapertura(r)}`),
   ]
     .filter(Boolean)

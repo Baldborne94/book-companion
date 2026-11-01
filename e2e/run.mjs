@@ -1928,8 +1928,9 @@ const SCENE = [
       await p.goto(URL_APP);
       await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
       await p.getByRole("button", { name: "📁 Scegli la cartella e prova" }).click();
-      const riga = await finche(() => testoAvviso(p, /200 illustrazioni scritte/), 60000, "la prova non scrive le 200 illustrazioni");
-      if (!/tutte uguali a come scritte/.test(riga)) throw new Error(`rilette diverse: ${riga}`);
+      // prima arriva la scrittura salvata a meta' («rilettura non finita»),
+      // poi la riga finale con la rilettura
+      const riga = await finche(() => testoAvviso(p, /200 illustrazioni scritte.*200 rilette in .* rilette uguali a come scritte/), 60000, "la prova non scrive e rilegge le 200 illustrazioni uguali");
       const sullaScheda = await p.evaluate(async () => {
         const c = await (await navigator.storage.getDirectory()).getDirectoryHandle("Illustrazioni-prova");
         let n = 0;
@@ -1969,6 +1970,46 @@ const SCENE = [
         "i file della prova restano"
       );
       return { guasti: d.guasti, nota: `${riga.trim()} · ${riapertura.trim()}` };
+    },
+  },
+  {
+    // visto sul tablet del lettore: «…scrivo 200/200» e poi piu' niente, e
+    // riaperta l'app nessun «Rileggi dalla cartella». La scheda che non
+    // risponde alla rilettura qui e' un `getFile` che non torna mai
+    nome: "se la scheda non risponde alla rilettura, la prova lo dice, e riaperta l'app la scrittura c'e' e si può rileggere",
+    async fai({ browser }) {
+      const fandom = async (route) => {
+        const u = new URL(route.request().url());
+        if (u.hostname === "static.wikia.nocookie.net") return route.fulfill({ contentType: "image/png", body: png(40, 60, [120, 30, 30]) });
+        if (u.searchParams.get("generator") === "random") {
+          const pages = Array.from({ length: 50 }, (_, i) => ({ title: `Voce ${Math.random()}-${i}`, images: [{ title: `File:Quadro ${Math.random()}.jpg` }] }));
+          return route.fulfill({ json: { query: { pages } } });
+        }
+        if (u.searchParams.get("prop") === "imageinfo") {
+          const pages = u.searchParams.get("titles").split("|").map((title) => ({ title, imageinfo: [{ mime: "image/jpeg", width: 800, height: 600, thumburl: `https://static.wikia.nocookie.net/x/${encodeURIComponent(title)}/400` }] }));
+          return route.fulfill({ json: { query: { pages } } });
+        }
+        return route.abort();
+      };
+      const prima = () => {
+        window.showDirectoryPicker = () => navigator.storage.getDirectory();
+        if (!sessionStorage.getItem("riaperta")) FileSystemFileHandle.prototype.getFile = () => new Promise(() => {});
+      };
+      const d = await dispositivo(browser, { misura: TABLET, fandom, prima });
+      const { p } = d;
+      await p.goto(URL_APP);
+      await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await p.getByRole("button", { name: "📁 Scegli la cartella e prova" }).click();
+      // scritte tutte, la rilettura comincia e lo dice
+      await p.getByRole("button", { name: /^…rileggo 0\/200/ }).waitFor({ timeout: 30000 });
+      // l'app chiusa a meta' della rilettura (la scheda risponde di nuovo)
+      await p.evaluate(() => sessionStorage.setItem("riaperta", "1"));
+      await p.reload();
+      await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      const riga = await finche(() => testoAvviso(p, /200 illustrazioni scritte.*rilettura non finita/), 8000, "riaperta l'app, la scrittura non c'e' o non dice che la rilettura non e' finita");
+      await p.getByRole("button", { name: "🔁 Rileggi dalla cartella" }).click();
+      await finche(() => testoAvviso(p, /Riapertura 1 —.*rilette 200/), 15000, "riaperta l'app, la rilettura non riesce");
+      return { guasti: d.guasti, nota: riga.trim() };
     },
   },
   {
