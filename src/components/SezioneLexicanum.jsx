@@ -8,6 +8,7 @@
 // vedono da ogni sezione e si fermano e si riprendono. Un blocco per wiki,
 // con lo stesso motore e le sue parole.
 import { useEffect, useState } from "react";
+import ProvaScheda from "./ProvaScheda.jsx";
 import { C, F, R } from "../data/constants.js";
 import {
   statoLexicanum,
@@ -345,6 +346,7 @@ export default function SezioneLexicanum({ lavoro, onScarica, onFerma, lavoroFan
           </p>
         </BloccoWiki>
       </div>
+      {typeof window !== "undefined" && typeof window.showDirectoryPicker === "function" && <ProvaScheda />}
     </div>
   );
 }

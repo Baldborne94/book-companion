@@ -1896,6 +1896,82 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «possiamo caricarle sulla micro SD del tablet»,
+    // poi «fai la prova sulla microSD». La scheda qui e' la cartella privata
+    // del browser: una cartella vera, che si scrive e si rilegge come quella
+    // che Chrome per Android da' scegliendo la microSD
+    nome: "la prova sulla microSD scrive e rilegge 200 illustrazioni di Fandom, e riaperta l'app dice se il permesso e' ricordato",
+    async fai({ browser }) {
+      let giro = 0;
+      const fandom = async (route) => {
+        const u = new URL(route.request().url());
+        if (u.hostname === "static.wikia.nocookie.net") return route.fulfill({ contentType: "image/png", body: png(40, 60, [120, 30, 30]) });
+        if (u.searchParams.get("generator") === "random") {
+          giro++;
+          const pages = Array.from({ length: 50 }, (_, i) => ({ title: `Voce ${giro}-${i}`, images: [{ title: `File:Quadro ${giro}-${i}.jpg` }, { title: "File:Aquila.svg" }] }));
+          return route.fulfill({ json: { query: { pages } } });
+        }
+        if (u.searchParams.get("prop") === "imageinfo") {
+          const pages = u.searchParams.get("titles").split("|").map((title) => ({
+            title,
+            imageinfo: [{ mime: /svg$/.test(title) ? "image/svg+xml" : "image/jpeg", width: 800, height: 600, thumburl: `https://static.wikia.nocookie.net/warhammer40k/images/${encodeURIComponent(title)}/revision/latest/scale-to-width-down/400` }],
+          }));
+          return route.fulfill({ json: { query: { pages } } });
+        }
+        return route.abort();
+      };
+      const prima = () => {
+        window.showDirectoryPicker = () => navigator.storage.getDirectory();
+      };
+      const d = await dispositivo(browser, { misura: TABLET, fandom, prima });
+      const { p } = d;
+      await p.goto(URL_APP);
+      await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await p.getByRole("button", { name: "📁 Scegli la cartella e prova" }).click();
+      const riga = await finche(() => testoAvviso(p, /200 illustrazioni scritte/), 60000, "la prova non scrive le 200 illustrazioni");
+      if (!/tutte uguali a come scritte/.test(riga)) throw new Error(`rilette diverse: ${riga}`);
+      const sullaScheda = await p.evaluate(async () => {
+        const c = await (await navigator.storage.getDirectory()).getDirectoryHandle("Illustrazioni-prova");
+        let n = 0;
+        for await (const v of c.values()) if (v.kind === "file") n++;
+        return n;
+      });
+      if (sullaScheda !== 200) throw new Error(`nella cartella ${sullaScheda} file invece di 200`);
+
+      // riaperta l'app: la cartella si ricorda, e il permesso si guarda
+      await p.close();
+      const p2 = await d.ctx.newPage();
+      p2.on("pageerror", (e) => d.guasti.push(e.message));
+      await p2.goto(URL_APP);
+      await p2.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await finche(() => testoAvviso(p2, /Adesso Chrome dice: permesso sulla cartella ricordato/), 8000, "riaperta l'app, non dice del permesso");
+      await p2.getByRole("button", { name: "🔁 Rileggi dalla cartella" }).click();
+      const riapertura = await finche(() => testoAvviso(p2, /Riapertura 1 —.*permesso ricordato · rilette 200/), 15000, "la rilettura non dice permesso e file");
+      // e se Chrome lo dimentica (quel che vogliamo sapere dal tablet): si
+      // annota com'era prima del tocco, e dopo il tocco si rilegge
+      await p2.close();
+      await d.ctx.addInitScript(() => {
+        FileSystemHandle.prototype.queryPermission = async () => "prompt";
+        FileSystemHandle.prototype.requestPermission = async () => "granted";
+      });
+      const p3 = await d.ctx.newPage();
+      p3.on("pageerror", (e) => d.guasti.push(e.message));
+      await p3.goto(URL_APP);
+      await p3.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await finche(() => testoAvviso(p3, /Adesso Chrome dice: il permesso va richiesto con un tocco/), 8000, "riaperta l'app, non dice che il permesso va richiesto");
+      await p3.getByRole("button", { name: "🔁 Rileggi dalla cartella" }).click();
+      await finche(() => testoAvviso(p3, /Riapertura 2 —.*permesso da richiedere \(un tocco\) · rilette 200/), 15000, "il permesso dimenticato non si annota, o dopo il tocco non si rilegge");
+      // e i file della prova si tolgono
+      await p3.getByRole("button", { name: "🗑 Togli i file della prova" }).click();
+      await finche(
+        () => p3.evaluate(async () => !(await (async () => { for await (const [n] of (await navigator.storage.getDirectory()).entries()) if (n === "Illustrazioni-prova") return true; return false; })())),
+        5000,
+        "i file della prova restano"
+      );
+      return { guasti: d.guasti, nota: `${riga.trim()} · ${riapertura.trim()}` };
+    },
+  },
+  {
     nome: "Fandom scende accanto a Lexicanum, e nella scheda la sua voce si legge dietro l'avviso coi libri che vengono dopo",
     async fai({ browser }) {
       const d = await dispositivo(browser, { misura: TABLET, lexicanum: lexicanumFinto([]), fandom: fandomFinto([]) });
