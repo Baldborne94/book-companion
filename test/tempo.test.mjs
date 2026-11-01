@@ -129,7 +129,11 @@ export default async function (t) {
   t.eq("valori storti si scartano", JSON.stringify(fondiObiettivi({ 2026: { n: "boh", t: 1 } })), "{}");
 
   // ---- il passo --------------------------------------------------------------
-  const meta = ore(2026, 7, 2, 12); // circa meta' anno
+  // META' ANNO ESATTA, non «il 2 luglio a mezzogiorno»: con l'ora legale
+  // quel mezzogiorno sta un'ora prima della meta' (a Roma) o un'ora dopo (a
+  // Sydney), e i conti qui sotto stanno apposta su un numero intero di libri
+  // — in Italia «5 indietro» diventava «4», in UTC no
+  const meta = (ore(2026, 1, 1, 0) + ore(2027, 1, 1, 0)) / 2;
   t.vicino("a luglio e' passata circa meta' dell'anno", frazioneAnno(2026, meta), 0.5, 0.01);
   t.eq("a meta' anno 12 su 24 sei in pari", passoObiettivo(12, 24, 2026, meta).passo, "in pari con la tabella di marcia");
   t.eq("7 su 24 a luglio sei indietro", passoObiettivo(7, 24, 2026, meta).passo, "5 libri indietro sulla tabella di marcia (7 letti, a oggi ne servivano 12)");
