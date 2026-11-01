@@ -1896,120 +1896,27 @@ const SCENE = [
     },
   },
   {
-    // chiesto dal lettore: «possiamo caricarle sulla micro SD del tablet»,
-    // poi «fai la prova sulla microSD». La scheda qui e' la cartella privata
-    // del browser: una cartella vera, che si scrive e si rilegge come quella
-    // che Chrome per Android da' scegliendo la microSD
-    nome: "la prova sulla microSD scrive e rilegge 200 illustrazioni di Fandom, e riaperta l'app dice se il permesso e' ricordato",
+    nome: "le illustrazioni di Fandom interrotte da un ricaricamento ripartono da sole, senza rifare l'elenco",
     async fai({ browser }) {
-      let giro = 0;
-      const fandom = async (route) => {
-        const u = new URL(route.request().url());
-        if (u.hostname === "static.wikia.nocookie.net") return route.fulfill({ contentType: "image/png", body: png(40, 60, [120, 30, 30]) });
-        if (u.searchParams.get("generator") === "random") {
-          giro++;
-          const pages = Array.from({ length: 50 }, (_, i) => ({ title: `Voce ${giro}-${i}`, images: [{ title: `File:Quadro ${giro}-${i}.jpg` }, { title: "File:Aquila.svg" }] }));
-          return route.fulfill({ json: { query: { pages } } });
-        }
-        if (u.searchParams.get("prop") === "imageinfo") {
-          const pages = u.searchParams.get("titles").split("|").map((title) => ({
-            title,
-            imageinfo: [{ mime: /svg$/.test(title) ? "image/svg+xml" : "image/jpeg", width: 800, height: 600, thumburl: `https://static.wikia.nocookie.net/warhammer40k/images/${encodeURIComponent(title)}/revision/latest/scale-to-width-down/400` }],
-          }));
-          return route.fulfill({ json: { query: { pages } } });
-        }
-        return route.abort();
-      };
-      const prima = () => {
-        window.showDirectoryPicker = () => navigator.storage.getDirectory();
-      };
-      const d = await dispositivo(browser, { misura: TABLET, fandom, prima });
+      const chieste = [];
+      const d = await dispositivo(browser, { misura: TABLET, lexicanum: lexicanumFinto([]), fandom: fandomFinto(chieste, { lentoIll: 4000 }) });
       const { p } = d;
+      const elenchi = () => chieste.filter((u) => u.includes("prop=images%7Cpageimages") && !u.includes("gapfrom"));
+      const miniature = () => chieste.filter((u) => u.includes("prop=imageinfo") && u.includes("iiurlwidth=250"));
       await p.goto(URL_APP);
       await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
-      await p.getByRole("button", { name: "📁 Scegli la cartella e prova" }).click();
-      // prima arriva la scrittura salvata a meta' («rilettura non finita»),
-      // poi la riga finale con la rilettura
-      const riga = await finche(() => testoAvviso(p, /200 illustrazioni scritte.*200 rilette in .* rilette uguali a come scritte/), 60000, "la prova non scrive e rilegge le 200 illustrazioni uguali");
-      const sullaScheda = await p.evaluate(async () => {
-        const c = await (await navigator.storage.getDirectory()).getDirectoryHandle("Illustrazioni-prova");
-        let n = 0;
-        for await (const v of c.values()) if (v.kind === "file") n++;
-        return n;
-      });
-      if (sullaScheda !== 200) throw new Error(`nella cartella ${sullaScheda} file invece di 200`);
-
-      // riaperta l'app: la cartella si ricorda, e il permesso si guarda
-      await p.close();
-      const p2 = await d.ctx.newPage();
-      p2.on("pageerror", (e) => d.guasti.push(e.message));
-      await p2.goto(URL_APP);
-      await p2.getByRole("button", { name: /^Impostazioni/ }).first().click();
-      await finche(() => testoAvviso(p2, /Adesso Chrome dice: permesso sulla cartella ricordato/), 8000, "riaperta l'app, non dice del permesso");
-      await p2.getByRole("button", { name: "🔁 Rileggi dalla cartella" }).click();
-      const riapertura = await finche(() => testoAvviso(p2, /Riapertura 1 —.*permesso ricordato · rilette 200/), 15000, "la rilettura non dice permesso e file");
-      // e se Chrome lo dimentica (quel che vogliamo sapere dal tablet): si
-      // annota com'era prima del tocco, e dopo il tocco si rilegge
-      await p2.close();
-      await d.ctx.addInitScript(() => {
-        FileSystemHandle.prototype.queryPermission = async () => "prompt";
-        FileSystemHandle.prototype.requestPermission = async () => "granted";
-      });
-      const p3 = await d.ctx.newPage();
-      p3.on("pageerror", (e) => d.guasti.push(e.message));
-      await p3.goto(URL_APP);
-      await p3.getByRole("button", { name: /^Impostazioni/ }).first().click();
-      await finche(() => testoAvviso(p3, /Adesso Chrome dice: il permesso va richiesto con un tocco/), 8000, "riaperta l'app, non dice che il permesso va richiesto");
-      await p3.getByRole("button", { name: "🔁 Rileggi dalla cartella" }).click();
-      await finche(() => testoAvviso(p3, /Riapertura 2 —.*permesso da richiedere \(un tocco\) · rilette 200/), 15000, "il permesso dimenticato non si annota, o dopo il tocco non si rilegge");
-      // e i file della prova si tolgono
-      await p3.getByRole("button", { name: "🗑 Togli i file della prova" }).click();
-      await finche(
-        () => p3.evaluate(async () => !(await (async () => { for await (const [n] of (await navigator.storage.getDirectory()).entries()) if (n === "Illustrazioni-prova") return true; return false; })())),
-        5000,
-        "i file della prova restano"
-      );
-      return { guasti: d.guasti, nota: `${riga.trim()} · ${riapertura.trim()}` };
-    },
-  },
-  {
-    // visto sul tablet del lettore: «…scrivo 200/200» e poi piu' niente, e
-    // riaperta l'app nessun «Rileggi dalla cartella». La scheda che non
-    // risponde alla rilettura qui e' un `getFile` che non torna mai
-    nome: "se la scheda non risponde alla rilettura, la prova lo dice, e riaperta l'app la scrittura c'e' e si può rileggere",
-    async fai({ browser }) {
-      const fandom = async (route) => {
-        const u = new URL(route.request().url());
-        if (u.hostname === "static.wikia.nocookie.net") return route.fulfill({ contentType: "image/png", body: png(40, 60, [120, 30, 30]) });
-        if (u.searchParams.get("generator") === "random") {
-          const pages = Array.from({ length: 50 }, (_, i) => ({ title: `Voce ${Math.random()}-${i}`, images: [{ title: `File:Quadro ${Math.random()}.jpg` }] }));
-          return route.fulfill({ json: { query: { pages } } });
-        }
-        if (u.searchParams.get("prop") === "imageinfo") {
-          const pages = u.searchParams.get("titles").split("|").map((title) => ({ title, imageinfo: [{ mime: "image/jpeg", width: 800, height: 600, thumburl: `https://static.wikia.nocookie.net/x/${encodeURIComponent(title)}/400` }] }));
-          return route.fulfill({ json: { query: { pages } } });
-        }
-        return route.abort();
-      };
-      const prima = () => {
-        window.showDirectoryPicker = () => navigator.storage.getDirectory();
-        if (!sessionStorage.getItem("riaperta")) FileSystemFileHandle.prototype.getFile = () => new Promise(() => {});
-      };
-      const d = await dispositivo(browser, { misura: TABLET, fandom, prima });
-      const { p } = d;
-      await p.goto(URL_APP);
-      await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
-      await p.getByRole("button", { name: "📁 Scegli la cartella e prova" }).click();
-      // scritte tutte, la rilettura comincia e lo dice
-      await p.getByRole("button", { name: /^…rileggo 0\/200/ }).waitFor({ timeout: 30000 });
-      // l'app chiusa a meta' della rilettura (la scheda risponde di nuovo)
-      await p.evaluate(() => sessionStorage.setItem("riaperta", "1"));
+      await p.getByRole("button", { name: "📜 Scarica Fandom" }).click();
+      await finche(() => p.getByText(/📜 Fandom sul dispositivo: /).count(), 20000, "Fandom non scende");
+      await p.getByRole("button", { name: "🖼 Misura le illustrazioni" }).click();
+      await p.getByRole("button", { name: /🖼 Scarica a 250 px · circa/ }).click({ timeout: 8000 });
+      await finche(() => miniature().length > 0, 10000, "dopo l'elenco le illustrazioni non vengono chieste");
       await p.reload();
+      // ripartono da sole: la richiesta interrotta si rifà, e il giro finisce
+      await finche(() => miniature().length >= 2, 15000, "dopo il ricaricamento le illustrazioni non ripartono");
       await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
-      const riga = await finche(() => testoAvviso(p, /200 illustrazioni scritte.*rilettura non finita/), 8000, "riaperta l'app, la scrittura non c'e' o non dice che la rilettura non e' finita");
-      await p.getByRole("button", { name: "🔁 Rileggi dalla cartella" }).click();
-      await finche(() => testoAvviso(p, /Riapertura 1 —.*rilette 200/), 15000, "riaperta l'app, la rilettura non riesce");
-      return { guasti: d.guasti, nota: riga.trim() };
+      await finche(() => p.getByText(/Illustrazioni sul dispositivo · un'illustrazione · 250 px/).count(), 20000, "le illustrazioni riprese non finiscono");
+      if (elenchi().length !== 1) throw new Error(`l'elenco dei file chiesto ${elenchi().length} volte: e' ripartito da capo`);
+      return { guasti: d.guasti, nota: `${miniature().length} richieste di miniature, un elenco solo` };
     },
   },
   {
@@ -2027,6 +1934,13 @@ const SCENE = [
       await p.getByRole("button", { name: "🖼 Misura le immagini" }).last().click();
       await p.getByRole("button", { name: /🖼 Scarica le immagini · circa/ }).click({ timeout: 8000 });
       await finche(() => p.getByText(/Immagini di Fandom sul dispositivo: un'immagine/).count(), 15000, "le immagini di Fandom non scendono");
+      // le altre illustrazioni: misurate, poi scelta la misura col suo peso
+      await p.getByRole("button", { name: "🖼 Misura le illustrazioni" }).click();
+      await p.getByRole("button", { name: /🖼 Scarica a 400 px · circa/ }).waitFor({ timeout: 8000 });
+      await p.getByRole("button", { name: /🖼 Scarica a 250 px · circa/ }).click();
+      await finche(() => p.getByText(/Illustrazioni sul dispositivo · un'illustrazione · 250 px/).count(), 15000, "le illustrazioni di Fandom non scendono");
+      const chiesteIll = await p.evaluate(() => performance.getEntriesByType("resource").map((r) => r.name).filter((n) => n.includes("static.wikia")));
+      if (chiesteIll.some((n) => /Aquila|Loken\.jpg/.test(decodeURIComponent(n)) && n.includes("scale-to-width-down"))) throw new Error(`scaricate anche l'icona o la principale: ${chiesteIll.join(" ")}`);
       await p.keyboard.press("Escape");
       const frase = "I was there, the day that Horus slew the Emperor. Garviel Loken watched the Warmaster from the deck.";
       await importa(p, "Horus Rising.epub", await epub({ titolo: "Horus Rising", autore: "Dan Abnett", frase, lingua: "en" }), "application/epub+zip");
@@ -2063,6 +1977,10 @@ const SCENE = [
         "l'immagine principale della voce non c'e'"
       );
       await finche(() => p.getByText("Fandom · sul dispositivo").count(), 5000, "la voce non dice da quale wiki viene");
+      // in fondo alla voce, le altre illustrazioni: un tocco le apre in grande
+      await p.getByRole("button", { name: "Apri in grande: Loken e Torgaddon" }).click({ timeout: 5000 });
+      await p.getByRole("dialog", { name: "Loken e Torgaddon" }).waitFor({ timeout: 3000 });
+      await p.getByRole("button", { name: "Chiudi l'illustrazione" }).click();
       // e la voce di Lexicanum, che l'immagine non la segna, prende quella di
       // Fandom: velata col riquadro, e detta da dove viene
       await p.getByRole("button", { name: "◂ La parola" }).click();
@@ -2072,6 +1990,10 @@ const SCENE = [
       await p.getByText(/Riquadro dei dati e immagine velati/).click();
       await finche(() => p.locator('img[alt="Garviel Loken"]').evaluate((img) => img.complete && img.naturalWidth === 30).catch(() => false), 5000, "nella voce di Lexicanum l'immagine di Fandom non c'e'");
       await p.getByText("Immagine da Fandom").waitFor({ timeout: 3000 });
+      // e le altre illustrazioni di Fandom, velate anche loro
+      if (await p.getByRole("button", { name: /Apri in grande/ }).count()) throw new Error("le illustrazioni di Fandom non sono velate nella voce di Lexicanum");
+      await p.getByText(/Un'illustrazione da Fandom velata/).click();
+      await p.getByRole("button", { name: "Apri in grande: Loken e Torgaddon" }).waitFor({ timeout: 3000 });
       return { guasti: d.guasti };
     },
   },

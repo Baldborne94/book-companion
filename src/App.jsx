@@ -596,7 +596,7 @@ function MisuraPicker({ current, onPick, consigliata }) {
   );
 }
 
-function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex, fan, onFan, onFermaFan, imm, onImm, onFermaImm, wikt, onWikt, onFermaWikt }) {
+function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex, fan, onFan, onFermaFan, imm, onImm, onFermaImm, ill, onIll, onFermaIll, wikt, onWikt, onFermaWikt }) {
   return (
     <div
       onClick={onClose}
@@ -750,6 +750,9 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
             immagini={imm}
             onImmagini={onImm}
             onFermaImmagini={onFermaImm}
+            illustrazioni={ill}
+            onIllustrazioni={onIll}
+            onFermaIllustrazioni={onFermaIll}
           />
         </div>
 
@@ -1347,13 +1350,52 @@ export default function App() {
     filoImm.current = null;
     if (quale) import("./lib/lexicanum.js").then((m) => m.segnaFermato(m.immaginiDi(quale === "fan" ? m.FANDOM : m.LEXICANUM), true));
   };
+  // LE ALTRE ILLUSTRAZIONI DI FANDOM: lo stesso giro, piu' lungo (prima
+  // l'elenco dei file di ogni voce, poi i file), alla misura scelta
+  const [ill, setIll] = useState(null);
+  const filoIll = useRef(null);
+  const illGuasto = useRef(false);
+  async function scaricaIllustrazioniQui(lato, { daSolo = false } = {}) {
+    if (filoIll.current) return;
+    const mio = {};
+    filoIll.current = mio;
+    setIll({ fase: "elenco", voci: 0 });
+    try {
+      const m = await import("./lib/lexicanum.js");
+      if (!daSolo) {
+        m.segnaFermato(m.illustrazioniDi(m.FANDOM), false);
+        illGuasto.current = false;
+      }
+      const esito = await m.scaricaIllustrazioni({
+        wiki: m.FANDOM,
+        ...(lato ? { lato } : {}),
+        fermo: () => filoIll.current !== mio,
+        onProgress: (p) => filoIll.current === mio && setIll(p),
+      });
+      notify(
+        esito.fermato
+          ? `Illustrazioni di Fandom fermate a ${m.fraseIllustrazioni(esito)}: si riprendono dalle Impostazioni.`
+          : `🖼 Illustrazioni di Fandom sul dispositivo: ${m.fraseIllustrazioni(esito)} ✓`
+      );
+    } catch (e) {
+      illGuasto.current = true;
+      notify(`${e?.message || "Le illustrazioni di Fandom non sono scese."} Quelle già qui restano.`);
+    } finally {
+      if (filoIll.current === mio) filoIll.current = null;
+      setIll(null);
+    }
+  }
+  const fermaIll = () => {
+    filoIll.current = null;
+    import("./lib/lexicanum.js").then((m) => m.segnaFermato(m.illustrazioniDi(m.FANDOM), true));
+  };
   // IL GIRO LASCIATO A META' RIPARTE DA SOLO: all'avvio (il sistema chiude
   // l'app in secondo piano), al ritorno davanti e quando torna la rete.
   // Quello fermato dal lettore resta fermo finche' non lo riprende lui.
   useEffect(() => {
     const riprendi = async () => {
       if (document.visibilityState !== "visible") return;
-      const { giroDaRiprendere, immaginiDi, LEXICANUM, FANDOM } = await import("./lib/lexicanum.js");
+      const { giroDaRiprendere, immaginiDi, illustrazioniDi, LEXICANUM, FANDOM } = await import("./lib/lexicanum.js");
       for (const [quale, filo, wiki] of [["lex", filoLex, LEXICANUM], ["fan", filoFan, FANDOM]]) {
         if (filo.current || wikiGuasti.current.has(quale)) continue;
         if (await giroDaRiprendere(undefined, wiki)) scaricaWikiQui(quale, { daSolo: true });
@@ -1362,6 +1404,7 @@ export default function App() {
         if (filoImm.current || immGuaste.current.has(quale)) continue;
         if (await giroDaRiprendere(undefined, immaginiDi(wiki))) scaricaImmaginiQui(quale, { daSolo: true });
       }
+      if (!filoIll.current && !illGuasto.current && (await giroDaRiprendere(undefined, illustrazioniDi(FANDOM)))) scaricaIllustrazioniQui(null, { daSolo: true });
     };
     const t = setTimeout(riprendi, 4000);
     document.addEventListener("visibilitychange", riprendi);
@@ -1745,7 +1788,7 @@ export default function App() {
   const readingBook = books.find((b) => b.id === readingId);
   const nextBook = readingBook ? nextInSaga(readingBook, books) : null;
   flags.current.reading = !!readingBook;
-  flags.current.lavoroLungo = !!(lex || fan || imm || wikt || lavoro || importo || hdd);
+  flags.current.lavoroLungo = !!(lex || fan || imm || ill || wikt || lavoro || importo || hdd);
 
   useEffect(() => {
     if (readingId && music.current) {
@@ -1944,7 +1987,7 @@ export default function App() {
         )}
       </main>
       </div>
-      {(lavoro || importo || hdd || lex || fan || imm || wikt || restanti.length > 0) && (
+      {(lavoro || importo || hdd || lex || fan || imm || ill || wikt || restanti.length > 0) && (
         <BarraLavoro
           lex={lex}
           onFermaLex={fermaLex}
@@ -1952,6 +1995,8 @@ export default function App() {
           onFermaFan={fermaFan}
           imm={imm}
           onFermaImm={fermaImm}
+          ill={ill}
+          onFermaIll={fermaIll}
           wikt={wikt}
           onFermaWikt={fermaWikt}
           hdd={hdd}
@@ -2006,6 +2051,9 @@ export default function App() {
           imm={imm}
           onImm={scaricaImmaginiQui}
           onFermaImm={fermaImm}
+          ill={ill}
+          onIll={scaricaIllustrazioniQui}
+          onFermaIll={fermaIll}
           wikt={wikt}
           onWikt={scaricaWikt}
           onFermaWikt={fermaWikt}
