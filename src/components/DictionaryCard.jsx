@@ -7,7 +7,7 @@ import { rigaUltima, rigaMese, riassunto, costo, leggiTetto } from "../lib/spesa
 import { TettoFinito } from "./TettoOracolo.jsx";
 import { daAnnotare, fraseAttorno, annota, togliParola, leggiQuaderno, scriviQuaderno } from "../lib/quaderno.js";
 import { chiaveGlossario, vociDi, salvaVoci, aggiungi, togli, cerca } from "../lib/glossarioMio.js";
-import { cercaLore, scrittoComeNome, loreAttivo, statoLexicanum, giudiceFonti, velaVoce, avvisoVoce, immaginePerVoce, illustrazioniPerVoce, figuraBreve, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
+import { voceNelContesto, scrittoComeNome, loreAttivo, statoLexicanum, giudiceFonti, velaVoce, avvisoVoce, immaginePerVoce, illustrazioniPerVoce, figuraBreve, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
 import { loadBooks, getStatus } from "../lib/library.js";
 import { getCfi } from "../lib/annotations.js";
 import VoceLore, { Testo, Velo, AvvisoFandom, Lightbox } from "./VoceLore.jsx";
@@ -251,6 +251,10 @@ function ScaricaQui({ cartellino, onFatto }) {
 }
 
 
+// le voci col nome che stanno in vista: oltre, un nome comune («Horus»)
+// riempirebbe la scheda di titoli
+const ALTRE_IN_VISTA = 8;
+
 export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) {
   // {loading} | {answer} | {error}; la chiave si chiede qui dentro, dove
   // l'Oracolo si usa, non in un pannello di impostazioni da scoprire
@@ -327,9 +331,9 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
     if (!loreQui || !testoSel) return;
     let vivo = true;
     const mio = tag;
-    cercaLore(testoSel)
+    voceNelContesto(testoSel, dictProp?.context || "")
       .catch(() => null)
-      .then((v) => vivo && setLore({ tag: mio, voce: v }));
+      .then((r) => vivo && setLore({ tag: mio, voce: r?.voce || null, altre: r?.altre || [] }));
     return () => {
       vivo = false;
     };
@@ -338,9 +342,9 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
     if (!fandomQui || !testoSel) return;
     let vivo = true;
     const mio = tag;
-    cercaLore(testoSel, undefined, FANDOM)
+    voceNelContesto(testoSel, dictProp?.context || "", undefined, FANDOM)
       .catch(() => null)
-      .then((v) => vivo && setFan({ tag: mio, voce: v }));
+      .then((r) => vivo && setFan({ tag: mio, voce: r?.voce || null, altre: r?.altre || [] }));
     return () => {
       vivo = false;
     };
@@ -349,6 +353,16 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
   const voceFan = fan && fan.tag === tag ? fan.voce : null;
   const wikiScelto = (scheda === "fan" && voceFan) || (!voceLex && voceFan) ? FANDOM : LEXICANUM;
   const voceLore = wikiScelto === FANDOM ? voceFan : voceLex;
+  // LE ALTRE VOCI COL NOME (vedi `voceNelContesto`): un tocco la mette al
+  // posto di quella mostrata, che passa fra le altre
+  const altreLore = (wikiScelto === FANDOM ? fan : lore)?.altre || [];
+  const scegliAltra = (v) => {
+    const metti = wikiScelto === FANDOM ? setFan : setLore;
+    const pulita = ({ dalParagrafo, ...resto }) => resto;
+    metti((x) => ({ ...x, voce: v, altre: [pulita(x.voce), ...x.altre.filter((a) => a !== v)] }));
+    setIncipitAperto(false);
+    setFiguraSvelata(false);
+  };
   const cercaWiki = (loreQui && lore?.tag !== tag) || (fandomQui && fan?.tag !== tag);
   const giudice = useMemo(
     () => (voceLore ? giudiceFonti(book, loadBooks(), { statusOf: getStatus, cfiOf: getCfi }) : null),
@@ -572,8 +586,10 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
           )}
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
             <span style={{ fontSize: F.corpo, fontWeight: 600, color: C.text }}>{voceLore.t}</span>
-            {voceLore.via && (
-              <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>da «{voceLore.via}»</span>
+            {voceLore.dalParagrafo ? (
+              <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>scelta dal paragrafo che leggi</span>
+            ) : (
+              voceLore.via && <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>da «{voceLore.via}»</span>
             )}
           </div>
           {fanChiusa ? (
@@ -609,6 +625,22 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
               </button>
             )}
           </div>
+          {altreLore.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: F.minuscolo, color: C.muted, marginBottom: 4 }}>Altre voci con questo nome</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {altreLore.slice(0, ALTRE_IN_VISTA).map((v) => (
+                  <button
+                    key={v.t}
+                    onClick={() => scegliAltra(v)}
+                    style={{ minHeight: 40, fontSize: F.piccolo, color: C.text, border: `1px solid ${C.border}`, borderRadius: R.tondo, padding: "5px 12px", textAlign: "left" }}
+                  >
+                    {v.t}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
   ) : null;

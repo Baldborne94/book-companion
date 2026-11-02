@@ -15,7 +15,12 @@ const W = {
   "Loken": "#REDIRECT [[Garviel Loken]]",
   "Luna Wolves": "#REDIRECT [[Sons of Horus]]",
   "Mournival": `The '''Mournival''' was an informal council of four captains of the Luna Wolves.{{Fn|1}}\n\n==Sources==\n*{{Endn|1}}: ''[[Horus Rising (Novel)|Horus Rising]]''`,
-  "Two Hundred": `The '''Two Hundred''' refers to a group of 200 Terran-recruited Emperor's Children.{{Fn|1}}\n\n==Sources==\n*{{Endn|1}}: ''[[Fulgrim (Novel)|Fulgrim]]''`,
+  // un nome, piu' voci: il wiki rinvia «Reavers» agli Eldar Oscuri, e il
+  // Titano sta in una voce accanto (il caso del lettore in Mechanicum)
+  "Reavers": "#REDIRECT [[Reaver Jetbike]]",
+  "Reaver Jetbike": `'''Reaver Jetbikes''' are the twisted [[Dark Eldar]] cousins of the Eldar Jetbikes, racing ahead with anti-grav technology.{{Fn|1}}\n\n==Sources==\n*{{Endn|1}}: ''[[Codex: Dark Eldar]]''`,
+  "Reaver Titan": `The '''Reaver''' is a Battle [[Titan]] of the Collegia Titanica. Its [[Princeps]] commands the engine behind void shields, with a turbo laser and a melta cannon.{{Fn|1}}\n\n==Sources==\n*{{Endn|1}}: ''[[Codex: Titan Legions]]''`,
+  "Two Hundred":`The '''Two Hundred''' refers to a group of 200 Terran-recruited Emperor's Children.{{Fn|1}}\n\n==Sources==\n*{{Endn|1}}: ''[[Fulgrim (Novel)|Fulgrim]]''`,
   "Sons of Horus": `The '''Sons of Horus''', first known as the '''Luna Wolves''', were the XVI Legion.{{Fn|1}}\n{| class="wikitable"\n! Name !! Rank !! Company !! Fate during the Heresy and long after it\n|-\n| [[Garviel Loken]] || Captain || 10th || Fought on [[Isstvan III]] against his own brothers in the Choral City\n|-\n| Tarik Torgaddon || Captain || 2nd || Fell on Isstvan III\n|}\n\n==Sources==\n*{{Endn|1}}: ''[[Codex: Chaos Space Marines]]''`,
 };
 const TITOLI = Object.keys(W).sort();

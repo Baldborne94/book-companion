@@ -64,6 +64,9 @@ import {
   segnaFermato,
   LEXICANUM,
   FANDOM,
+  altreVoci,
+  sceltaDalContesto,
+  voceNelContesto,
 } from "../src/lib/lexicanum.js";
 
 const deposito = () => {
@@ -840,4 +843,48 @@ However, after Horus' fall to [[Chaos]] on [[Davin]], he was considered too loya
     ["the Triumph", "Ullanor", false],
     [".", "", false],
   ]));
+
+  // ---- UN NOME, PIU' VOCI ------------------------------------------------
+  // Il caso del lettore in Mechanicum: «Reavers» rinvia ai Reaver Jetbike, e
+  // nel paragrafo sono i Titani classe Reaver
+  {
+    const d = deposito();
+    const V = (t, testo) => ({ t, p: [{ x: testo }] });
+    d.m.set("lex:reavers", { t: "Reavers", r: "Reaver Jetbike" });
+    d.m.set("lex:reaver jetbike", V("Reaver Jetbike", "Reaver Jetbikes are the twisted Dark Eldar cousins of the Eldar Jetbikes, racing ahead with anti-grav technology."));
+    d.m.set("lex:reaver titan", V("Reaver Titan", "The Reaver is a Battle Titan of the Collegia Titanica. Its Princeps commands the engine from the cockpit, behind void shields, with a turbo laser and a melta cannon."));
+    d.m.set("lex:reaver-class titan", { t: "Reaver-class Titan", r: "Reaver Titan" });
+    d.m.set("lex:reavers dark eldar", V("Reavers (Dark Eldar)", "A gang of Commorragh."));
+    d.m.set("lex:reaverine", V("Reaverine", "Una parola che comincia allo stesso modo, ma è un'altra."));
+    const paragrafo =
+      "Princeps Kasim in Raptoria darted through the ruins of the Arsia sub-silos to unleash a furious barrage into one of the flanking Reavers. The towering engine's shields soaked up the fire of the smaller war machine.";
+    const trovata = await voceLore("Reavers", d);
+    t.eq(
+      "le altre voci col nome davanti, una per voce, senza la trovata",
+      (await altreVoci("reavers", trovata, d)).map((v) => v.t).join(" | "),
+      "Reaver Titan | Reavers (Dark Eldar)"
+    );
+    const r = await voceNelContesto("flanking Reavers", paragrafo, d);
+    t.eq("dal paragrafo, il Titano", r?.voce.t, "Reaver Titan");
+    t.eq("…e lo dice", r?.voce.dalParagrafo, true);
+    t.eq("…e la voce del wiki passa fra le altre, in testa", r?.altre.map((v) => v.t).join(" | "), "Reaver Jetbike | Reavers (Dark Eldar)");
+    const senza = await voceNelContesto("Reavers", "", d);
+    t.eq("senza paragrafo resta la voce del wiki", `${senza?.voce.t} ${!!senza?.voce.dalParagrafo}`, "Reaver Jetbike false");
+    t.eq("…con le altre sotto", senza?.altre.length, 2);
+    t.eq("una parola sola in comune non basta a cambiare", sceltaDalContesto(trovata, [V("Reaver Titan", "engine")], "the engine roared"), trovata);
+    t.eq("il plurale è la stessa parola", sceltaDalContesto(trovata, [V("Reaver Titan", "engine shield")], "the engines shields")?.t, "Reaver Titan");
+    t.eq("due bastano", sceltaDalContesto(trovata, [V("Reaver Titan", "engine shields")], "the engine shields roared")?.t, "Reaver Titan");
+    // il nome cercato non conta: la voce del wiki qui non lo nomina, e
+    // l'altra lo porterebbe come un punto in più
+    const raider = V("Raider", "A Dark Eldar transport.");
+    t.eq("il nome cercato non è un indizio", sceltaDalContesto(raider, [V("Reaver Titan", "Reaver engine")], "the Reavers engine", "reavers"), raider);
+    t.eq("nemmeno al plurale", (await voceNelContesto("Reavers", "", d))?.altre.some((v) => v.t === "Reaverine"), false);
+    t.eq("e un nome senza altre voci non ne ha", (await voceNelContesto("Reaverine", paragrafo, d))?.altre.length, 0);
+    // e Fandom, con le sue chiavi
+    const f = deposito();
+    f.m.set("fan:reaver", { t: "Reaver", r: "Reavers (Drukhari)" });
+    f.m.set("fan:reavers drukhari", V("Reavers (Drukhari)", "Drukhari jetbike riders."));
+    f.m.set("fan:reaver-class titan", V("Reaver-class Titan", "A Battle Titan: the Princeps and the engine, void shields."));
+    t.eq("su Fandom il Titano dal paragrafo", (await voceNelContesto("Reaver", paragrafo, f, FANDOM))?.voce.t, "Reaver-class Titan");
+  }
 }

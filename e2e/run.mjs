@@ -1791,7 +1791,7 @@ const SCENE = [
       await p.getByText(/I paragrafi che Lexicanum cita da un volume/).waitFor({ timeout: 3000 });
       await p.keyboard.press("Escape");
 
-      const frase = "I was there, the day that Horus slew the Emperor. Garviel Loken watched the Warmaster from the deck. 'Two hundred and fifty,' came the answer. Kilometres away, the Titan stopped.";
+      const frase = "I was there, the day that Horus slew the Emperor. Garviel Loken watched the Warmaster from the deck. 'Two hundred and fifty,' came the answer. Kilometres away, the Titan stopped. Princeps Kasim's engine fired into the flanking Reavers, and their void shields soaked up the barrage.";
       await importa(p, "Horus Rising.epub", await epub({ titolo: "Horus Rising", autore: "Dan Abnett", frase, lingua: "en" }), "application/epub+zip");
       await p.getByText("Horus Rising").first().click();
       // l'interruttore del libro: acceso dalla saga riconosciuta
@@ -1858,6 +1858,19 @@ const SCENE = [
         return a != null && b != null ? [a, b] : null;
       }, 10000, "nella scheda di «Two hundred» manca la parola o la voce «Two Hundred»");
       if (voce < parola) throw new Error("«Two hundred», un numero, mette la voce «Two Hundred» prima della parola");
+      // UN NOME, PIU' VOCI: «Reavers» rinvia agli Eldar Oscuri, ma il
+      // paragrafo parla di un Princeps, di un motore e di scudi: il Titano.
+      // E sotto le altre voci col nome, per correggere la scelta
+      // fuori dalla scheda: il velo sotto la chiude (il ✕ della barra chiuderebbe il libro)
+      await p.mouse.click(450, 1450);
+      await definisci(p, "Reavers");
+      await finche(() => p.getByText(/Battle Titan of the Collegia Titanica/).count(), 8000, "«Reavers» nel paragrafo dei Titani non apre il Titano");
+      await p.getByText("scelta dal paragrafo che leggi").waitFor({ timeout: 3000 });
+      await p.getByText("Altre voci con questo nome").waitFor({ timeout: 3000 });
+      await p.getByRole("button", { name: "Reaver Jetbike", exact: true }).click();
+      await finche(() => p.getByText(/twisted Dark Eldar cousins/).count(), 5000, "la voce scelta fra le altre non si apre");
+      if (await p.getByText("scelta dal paragrafo che leggi").count()) throw new Error("la voce scelta a mano si dice scelta dal paragrafo");
+      await p.getByRole("button", { name: "Reaver Titan", exact: true }).waitFor({ timeout: 3000 });
       return { guasti: d.guasti, nota: `${chieste.length} richieste a Lexicanum, ${veli.length} veli` };
     },
   },
