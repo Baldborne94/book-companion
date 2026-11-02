@@ -13,6 +13,7 @@
 
 import { righeVoltate } from "./voltate.js";
 import { righeTempi } from "./tempi.js";
+import { righePause } from "./pauseLettura.js";
 
 const KEY = "bc_errori";
 export const TENUTI = 30;
@@ -87,8 +88,9 @@ export const eRumore = (m) => /ResizeObserver loop/.test(m || "") || String(m ||
 // guasti, dal piu' recente.
 // In coda, se ci sono, le voltate dei fumetti misurate (`righeVoltate` in
 // `lib/voltate.js`) e i tempi dell'app (`righeTempi` in `lib/tempi.js`):
-// solo numeri.
-export function rapporto({ errori = [], versione = "?", ambiente = {}, ora = Date.now(), voltate = [], tempi = [] } = {}) {
+// solo numeri. E le pause che il tempo di lettura ha scartato
+// (`righePause` in `lib/pauseLettura.js`).
+export function rapporto({ errori = [], versione = "?", ambiente = {}, ora = Date.now(), voltate = [], tempi = [], pause = [] } = {}) {
   const data = (t) => new Date(t).toLocaleString("it-IT", { timeZone: "Europe/Rome" });
   const righe = [
     "Book Companion — rapporto dei guasti",
@@ -107,6 +109,8 @@ export function rapporto({ errori = [], versione = "?", ambiente = {}, ora = Dat
   }
   if (voltate.length) righe.push("", ...righeVoltate(voltate));
   if (tempi.length) righe.push("", ...righeTempi(tempi));
+  const p = righePause(pause);
+  if (p.length) righe.push("", ...p);
   return righe.join("\n");
 }
 

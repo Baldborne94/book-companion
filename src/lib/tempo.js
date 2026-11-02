@@ -22,6 +22,8 @@
 // sera; tenerne una sola per giorno fra dispositivi diversi ne perderebbe
 // una. Tutt'e due gli errori sarebbero numeri plausibili, cioe' invisibili.
 
+import { segnaTratto } from "./pauseLettura.js";
+
 export const PAUSA_MAX = 4 * 60 * 1000;
 
 // Un giorno «letto» per la serie vuole almeno cinque minuti: aprire il libro
@@ -186,6 +188,7 @@ export function dispositivo() {
 }
 
 let ultimo = null;
+let ultimoTipo = "";
 
 // Il reader si e' aperto, o l'app e' tornata in primo piano con un libro
 // aperto: da qui si ricomincia a contare.
@@ -193,19 +196,22 @@ export function comincia(ora = Date.now()) {
   ultimo = ora;
 }
 
-// Una voltata: si conta il tratto dall'ultimo segnale.
-export function segnaVita(ora = Date.now()) {
+// Una voltata: si conta il tratto dall'ultimo segnale, e il tratto si annota
+// contato o scartato (`lib/pauseLettura.js`). `tipo` e' il lettore
+export function segnaVita(ora = Date.now(), tipo = ultimoTipo, come = "v") {
   if (ultimo != null) {
     const prima = leggiTempo();
     const dopo = accumula(prima, dispositivo(), ultimo, ora);
     if (dopo !== prima) scriviTempo(dopo);
+    if (ora > ultimo) segnaTratto(giornoDi(ora), Math.round((ora - ultimo) / 1000), { contato: dopo !== prima, come, tipo });
   }
   ultimo = ora;
+  ultimoTipo = tipo;
 }
 
 // Il libro si chiude o l'app va in secondo piano: si conta l'ultimo tratto
 // e ci si ferma, o il tempo in background finirebbe nel conto.
 export function smetti(ora = Date.now()) {
-  if (ultimo != null) segnaVita(ora);
+  if (ultimo != null) segnaVita(ora, ultimoTipo, "c");
   ultimo = null;
 }
