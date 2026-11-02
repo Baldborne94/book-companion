@@ -2144,7 +2144,7 @@ export default function App() {
               onMusicNext={() => playerRef.current?.next()}
               onMusicRoom={() => navigate("music")}
               onMusicSottovoce={(si) => playerRef.current?.sottovoce(si)}
-              onAlive={() => { svegliaRef.current(); segnaVita(); }}
+              onAlive={() => { svegliaRef.current(); segnaVita(Date.now(), "epub"); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);
@@ -2168,7 +2168,7 @@ export default function App() {
               onMusicNext={() => playerRef.current?.next()}
               onMusicRoom={() => navigate("music")}
               onMusicSottovoce={(si) => playerRef.current?.sottovoce(si)}
-              onAlive={() => { svegliaRef.current(); segnaVita(); }}
+              onAlive={() => { svegliaRef.current(); segnaVita(Date.now(), "pdf"); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);
@@ -2192,7 +2192,7 @@ export default function App() {
               onMusicVolume={(v) => playerRef.current?.setVolume(v)}
               onMusicNext={() => playerRef.current?.next()}
               onMusicRoom={() => navigate("music")}
-              onAlive={() => { svegliaRef.current(); segnaVita(); }}
+              onAlive={() => { svegliaRef.current(); segnaVita(Date.now(), "fumetto"); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);

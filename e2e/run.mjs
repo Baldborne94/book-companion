@@ -245,6 +245,48 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «mi sembra di aver letto di più di quanto dici».
+    // Il tempo di lettura butta i tratti oltre i 4 minuti fra due voltate, e
+    // prima di cambiare la regola si misura quanto si butta: il rapporto dei
+    // guasti lo dice, giorno per giorno e per lettore
+    nome: "il rapporto dei guasti dice quanto tempo di lettura si è contato e quante pause si sono scartate",
+    async fai({ browser }) {
+      const d = await dispositivo(browser, {
+        misura: TABLET,
+        prima: () => {
+          const vero = Date.now;
+          Date.now = () => vero() + (window.__salto || 0);
+        },
+      });
+      await d.p.goto(URL_APP);
+      await importa(d.p, "La nebbia.epub", await epub({ quanti: 80 }), "application/epub+zip");
+      await d.p.getByText("La nebbia").first().click();
+      await d.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      await finche(
+        async () => {
+          for (const f of d.p.frames()) if ((await f.evaluate(() => document.body?.innerText || "").catch(() => "")).includes(FRASE)) return true;
+          return false;
+        },
+        25000,
+        "il testo del libro non compare"
+      );
+      const tratti = () => d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_pause") || "[]")[0] || { v: 0, x: [] });
+      await d.p.keyboard.press("ArrowRight");
+      await finche(async () => (await tratti()).v >= 1, 8000, "la voltata non si conta");
+      // cinque minuti sulla stessa pagina, poi la voltata
+      await d.p.evaluate(() => (window.__salto = 5 * 60 * 1000 + 5000));
+      await d.p.keyboard.press("ArrowRight");
+      await finche(async () => (await tratti()).x.length >= 1, 8000, "la pausa lunga non si annota");
+      await d.p.goto(URL_APP);
+      await d.p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await d.p.getByRole("button", { name: "Vedi il rapporto" }).click();
+      const testo = await finche(() => d.p.evaluate(() => [...document.querySelectorAll("pre")].map((e) => e.textContent).find((t) => t.includes("rapporto dei guasti")) || ""), 5000, "il rapporto non si vede");
+      for (const atteso of ["Tempo di lettura su questo dispositivo (un giorno):", "scartate 1 pausa per 5 min", "Pause scartate per durata: 4–10 min 1", "per lettore: ePub 1"])
+        if (!testo.includes(atteso)) throw new Error(`nel rapporto manca «${atteso}»:\n${testo.split("Tempo di lettura")[1] || testo.slice(-400)}`);
+      return { guasti: d.guasti, nota: testo.split("\n").find((r) => r.includes("scartate")).trim() };
+    },
+  },
+  {
     nome: "un PDF si importa e si apre, e l'apertura e' misurata fino alla prima pagina",
     async fai({ browser }) {
       const d = await dispositivo(browser);
