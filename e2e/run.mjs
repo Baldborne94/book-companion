@@ -1734,10 +1734,15 @@ const SCENE = [
       await finche(() => p.getByText(/⚔ Lexicanum:/).count(), 8000, "la riga del lavoro non compare");
       await finche(() => p.getByText(/Lexicanum sul dispositivo: /).count(), 20000, "lo scaricamento non finisce");
       if (!chieste.every((u) => u.includes("origin=*"))) throw new Error("una richiesta a Lexicanum senza origin=*: il browser la rifiuterebbe");
-      // Lexicanum non dichiara l'immagine principale: lo si dice, e niente tasto
-      await p.getByRole("button", { name: "🖼 Misura le immagini" }).first().click();
-      await finche(() => p.getByText(/non segna quale sia l'immagine principale/).count(), 8000, "la misura di Lexicanum non dice che le immagini non ci sono");
-      if (await p.getByRole("button", { name: /🖼 Scarica le immagini/ }).count()) throw new Error("un tasto promette immagini che Lexicanum non da'");
+      // Lexicanum non dichiara l'immagine principale: niente tasti di immagini, e si dice dove stanno
+      await finche(() => p.getByText(/Lexicanum non segna le immagini delle sue voci/).count(), 8000, "Lexicanum non dice che le immagini vengono da Fandom");
+      if (await p.getByRole("button", { name: /🖼 Misura le immagini|🖼 Scarica le immagini/ }).count()) throw new Error("un tasto promette immagini che Lexicanum non da'");
+      // il riepilogo in cima dice cosa c'e' e cosa manca
+      await finche(() => p.getByText(/^Da scaricare: Fandom, Immagini principali di Fandom, Altre illustrazioni di Fandom\.$/).count(), 5000, "il riepilogo non dice cosa manca");
+      // a Lexicanum sceso la spiegazione si chiude, e si riapre a un tocco
+      if (await p.getByText(/I paragrafi che Lexicanum cita da un volume/).count()) throw new Error("a Lexicanum sceso la spiegazione resta aperta");
+      await p.getByRole("button", { name: "ℹ Cos'è Lexicanum e come funziona" }).click();
+      await p.getByText(/I paragrafi che Lexicanum cita da un volume/).waitFor({ timeout: 3000 });
       await p.keyboard.press("Escape");
 
       const frase = "I was there, the day that Horus slew the Emperor. Garviel Loken watched the Warmaster from the deck. 'Two hundred and fifty,' came the answer. Kilometres away, the Titan stopped.";
@@ -1916,6 +1921,10 @@ const SCENE = [
       await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
       await finche(() => p.getByText(/Illustrazioni sul dispositivo · un'illustrazione · 250 px/).count(), 20000, "le illustrazioni riprese non finiscono");
       if (elenchi().length !== 1) throw new Error(`l'elenco dei file chiesto ${elenchi().length} volte: e' ripartito da capo`);
+      // rimosse le illustrazioni, il riepilogo in cima lo dice subito
+      await p.getByRole("button", { name: "Rimuovi le illustrazioni" }).click();
+      await p.getByRole("button", { name: "Rimuovi le illustrazioni" }).click();
+      await finche(() => p.getByText(/^Da scaricare: .*Altre illustrazioni di Fandom\.$/).count(), 5000, "rimosse le illustrazioni, il riepilogo non lo dice");
       return { guasti: d.guasti, nota: `${miniature().length} richieste di miniature, un elenco solo` };
     },
   },
@@ -1939,6 +1948,7 @@ const SCENE = [
       await p.getByRole("button", { name: /🖼 Scarica a 400 px · circa/ }).waitFor({ timeout: 8000 });
       await p.getByRole("button", { name: /🖼 Scarica a 250 px · circa/ }).click();
       await finche(() => p.getByText(/Illustrazioni sul dispositivo · un'illustrazione · 250 px/).count(), 15000, "le illustrazioni di Fandom non scendono");
+      await finche(() => p.getByText("Tutto è sul dispositivo: non c'è altro da scaricare.").count(), 5000, "con tutto sceso il riepilogo non dice che non c'e' altro");
       const chiesteIll = await p.evaluate(() => performance.getEntriesByType("resource").map((r) => r.name).filter((n) => n.includes("static.wikia")));
       if (chiesteIll.some((n) => /Aquila|Loken\.jpg/.test(decodeURIComponent(n)) && n.includes("scale-to-width-down"))) throw new Error(`scaricate anche l'icona o la principale: ${chiesteIll.join(" ")}`);
       await p.keyboard.press("Escape");
