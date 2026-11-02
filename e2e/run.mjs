@@ -1967,6 +1967,20 @@ const SCENE = [
       await p.getByText(/Questa voce può spoilerare/).first().click();
       await finche(() => p.getByText(/originally the Captain/).count(), 5000, "toccato l'avviso, l'incipit non compare");
       await finche(ritratto, 5000, "toccato l'avviso, l'immagine di Fandom non compare accanto alla definizione");
+      // piu' grande di prima, e un tocco la apre in grande con le altre illustrazioni della voce
+      const tastoImmagini = p.getByRole("button", { name: "Guarda le immagini di Garviel Loken (2)" });
+      const larga = (await tastoImmagini.boundingBox())?.width || 0;
+      if (larga < 200) throw new Error(`l'immagine accanto alla definizione e' larga ${larga} px`);
+      if (!(await tastoImmagini.textContent()).includes("+1")) throw new Error("l'immagine non dice che ce n'e' un'altra");
+      await tastoImmagini.click();
+      await finche(() => testoAvviso(p, /1 di 2/), 3000, "toccata l'immagine, non si apre in grande con le altre");
+      await p.getByRole("button", { name: "Illustrazione dopo" }).click();
+      await p.getByRole("dialog", { name: "Loken e Torgaddon" }).waitFor({ timeout: 3000 });
+      // grande quanto lo schermo, anche se l'immagine scesa e' piccola
+      const vista = await p.getByRole("dialog", { name: "Loken e Torgaddon" }).locator("img").boundingBox();
+      if (!vista || vista.width < 450 || vista.height < 700) throw new Error(`in grande l'illustrazione e' ${Math.round(vista?.width)}×${Math.round(vista?.height)} px`);
+      await p.getByRole("button", { name: "Chiudi l'illustrazione" }).click();
+      if (!(await p.getByRole("button", { name: "Leggi la voce ▸" }).count())) throw new Error("chiusa l'illustrazione, la scheda non c'e' piu'");
       // la voce intera si apre gia' letta: l'avviso si accetta una volta
       await p.getByRole("button", { name: "Leggi la voce ▸" }).click();
       await finche(() => p.getByText(/left for dead/).count(), 5000, "la voce intera di Fandom non si apre");
