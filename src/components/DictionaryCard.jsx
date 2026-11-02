@@ -7,10 +7,10 @@ import { rigaUltima, rigaMese, riassunto, costo, leggiTetto } from "../lib/spesa
 import { TettoFinito } from "./TettoOracolo.jsx";
 import { daAnnotare, fraseAttorno, annota, togliParola, leggiQuaderno, scriviQuaderno } from "../lib/quaderno.js";
 import { chiaveGlossario, vociDi, salvaVoci, aggiungi, togli, cerca } from "../lib/glossarioMio.js";
-import { cercaLore, scrittoComeNome, loreAttivo, statoLexicanum, giudiceFonti, velaVoce, avvisoVoce, immaginePerVoce, figuraBreve, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
+import { cercaLore, scrittoComeNome, loreAttivo, statoLexicanum, giudiceFonti, velaVoce, avvisoVoce, immaginePerVoce, illustrazioniPerVoce, figuraBreve, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
 import { loadBooks, getStatus } from "../lib/library.js";
 import { getCfi } from "../lib/annotations.js";
-import VoceLore, { Testo, Velo, AvvisoFandom } from "./VoceLore.jsx";
+import VoceLore, { Testo, Velo, AvvisoFandom, Lightbox } from "./VoceLore.jsx";
 
 // La scheda del dizionario e' identica nei due reader: qui una volta sola,
 // cosi' EPUB e PDF non divergono. Risponde con quello che il tablet non puo'
@@ -284,6 +284,11 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
   // dal dispositivo, l'indirizzo fatto qui e buttato quando la voce cambia
   const [figura, setFigura] = useState(null);
   const [figuraSvelata, setFiguraSvelata] = useState(false);
+  // le altre illustrazioni della stessa voce, e quale si guarda in grande
+  // (chiesto dal lettore: «non è troppo piccola? e se volessi vedere più
+  // illustrazioni dello stesso elemento?»)
+  const [altre, setAltre] = useState(null);
+  const [grande, setGrande] = useState(null);
   // la scheda resta montata tra una selezione e l'altra: la risposta della
   // frase di prima non deve comparire sotto la frase nuova
   const tagRef = useRef();
@@ -297,6 +302,7 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
     if (incipitAperto) setIncipitAperto(false);
     if (scheda) setScheda(null);
     if (figuraSvelata) setFiguraSvelata(false);
+    if (grande != null) setGrande(null);
   }
   const dict = extra && extra.tag === tag ? { ...dictProp, ...extra.res, loading: false, cercando: false } : dictProp;
 
@@ -369,8 +375,28 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
       if (url) URL.revokeObjectURL(url);
     };
   }, [voceLore?.t, wikiScelto]);
+  useEffect(() => {
+    if (!voceLore?.t) return;
+    let vivo = true;
+    let urls = [];
+    illustrazioniPerVoce(voceLore.t, undefined, wikiScelto)
+      .then((lista) => {
+        if (!vivo) return;
+        urls = lista.map((x) => URL.createObjectURL(x.blob));
+        setAltre({ t: voceLore.t, wiki: wikiScelto, lista: lista.map((x, i) => ({ f: x.f, didascalia: x.didascalia, url: urls[i] })) });
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [voceLore?.t, wikiScelto]);
   const figuraQui = figura && voceLore && figura.t === voceLore.t && figura.wiki === wikiScelto ? figura : null;
-  const modoFigura = figuraBreve({ wiki: wikiScelto, haFigura: !!figuraQui, chiusa: fanChiusa, svelata: figuraSvelata });
+  const altreQui = altre && voceLore && altre.t === voceLore.t && altre.wiki === wikiScelto ? altre.lista : [];
+  // LA PRINCIPALE PER PRIMA, poi le altre illustrazioni; senza principale,
+  // la prima illustrazione fa da immagine della voce
+  const galleriaBreve = [...(figuraQui ? [{ f: "", didascalia: voceLore.t, url: figuraQui.url, da: figuraQui.da }] : []), ...altreQui];
+  const modoFigura = figuraBreve({ wiki: wikiScelto, haFigura: galleriaBreve.length > 0, chiusa: fanChiusa, svelata: figuraSvelata });
 
   // IL QUADERNO DELLE PAROLE si scrive da se', a risposta completa: la
   // ricerca e' gia' il gesto che dice «questa non la sapevo». Una volta per
@@ -518,19 +544,31 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
           </div>
         )}
         <div style={{ padding: "9px 12px 11px", display: "flow-root" }}>
+          {/* PIU' GRANDE E INTERA: una foto su fondo bianco o un quadro alto
+              non si ritagliano; un tocco la apre in grande, con le altre */}
           {modoFigura === "visibile" && (
             <button
-              onClick={() => setLoreAperta(true)}
-              aria-label={`${voceLore.t}: leggi la voce`}
-              style={{ float: "right", margin: "2px 0 8px 12px", padding: 0, textAlign: "center" }}
+              onClick={() => setGrande(0)}
+              aria-label={`Guarda le immagini di ${voceLore.t}${galleriaBreve.length > 1 ? ` (${galleriaBreve.length})` : ""}`}
+              style={{ float: "right", position: "relative", margin: "2px 0 8px 12px", padding: 0, textAlign: "center" }}
             >
               <img
-                src={figuraQui.url}
-                alt={voceLore.t}
-                style={{ display: "block", width: px(104), maxHeight: px(156), objectFit: "cover", borderRadius: R.piccolo, border: `1px solid ${C.border}` }}
+                src={galleriaBreve[0].url}
+                alt={galleriaBreve[0].didascalia}
+                style={{ display: "block", width: px(160), maxHeight: px(230), objectFit: "contain", background: C.bg, borderRadius: R.piccolo, border: `1px solid ${C.border}` }}
               />
-              {figuraQui.da && <span style={{ display: "block", marginTop: 2, fontSize: F.minuscolo, color: C.muted }}>da {figuraQui.da}</span>}
+              {galleriaBreve.length > 1 && (
+                <span
+                  style={{ position: "absolute", right: 6, bottom: galleriaBreve[0].da ? 26 : 6, padding: "2px 8px", borderRadius: R.tondo, background: `${C.bg}dd`, color: C.text, fontSize: F.minuscolo }}
+                >
+                  🖼 +{galleriaBreve.length - 1}
+                </span>
+              )}
+              {galleriaBreve[0].da && <span style={{ display: "block", marginTop: 2, fontSize: F.minuscolo, color: C.muted }}>da {galleriaBreve[0].da}</span>}
             </button>
+          )}
+          {grande != null && modoFigura === "visibile" && (
+            <Lightbox galleria={galleriaBreve} indice={grande} onCambia={setGrande} onChiudi={() => setGrande(null)} />
           )}
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
             <span style={{ fontSize: F.corpo, fontWeight: 600, color: C.text }}>{voceLore.t}</span>

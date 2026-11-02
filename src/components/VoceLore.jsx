@@ -132,22 +132,59 @@ function Figura({ src, titolo, da }) {
   );
 }
 
-// LE ALTRE ILLUSTRAZIONI della voce, in fondo: miniature col nome del file
-// sotto, e un tocco le apre in grande (le frecce passano alle altre)
-function Illustrazioni({ galleria, da }) {
-  const [grande, setGrande] = useState(null);
+// UN'ILLUSTRAZIONE IN GRANDE, sopra tutto: le frecce (e i tasti) passano
+// alle altre, un tocco fuori chiude. La usano la voce e il riquadro breve
+// della scheda
+export function Lightbox({ galleria, indice, onCambia, onChiudi }) {
+  const n = galleria.length;
   useEffect(() => {
-    if (grande == null) return;
     const tasto = (e) => {
-      if (e.key === "Escape") setGrande(null);
-      if (e.key === "ArrowRight") setGrande((g) => (g + 1) % galleria.length);
-      if (e.key === "ArrowLeft") setGrande((g) => (g - 1 + galleria.length) % galleria.length);
+      if (e.key === "Escape") onChiudi();
+      if (e.key === "ArrowRight") onCambia((indice + 1) % n);
+      if (e.key === "ArrowLeft") onCambia((indice - 1 + n) % n);
     };
     window.addEventListener("keydown", tasto);
     return () => window.removeEventListener("keydown", tasto);
-  }, [grande, galleria.length]);
-  const aperta = grande != null ? galleria[grande] : null;
+  }, [indice, n, onCambia, onChiudi]);
+  const aperta = galleria[indice];
+  if (!aperta) return null;
   const freccia = { minWidth: 44, minHeight: 44, borderRadius: R.tondo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.corpo, background: `${C.bg}cc` };
+  return (
+    <div
+      role="dialog"
+      aria-label={aperta.didascalia}
+      onClick={onChiudi}
+      style={{ position: "fixed", inset: 0, zIndex: 60, background: "#05030bf0", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16, gap: 10 }}
+    >
+      {/* GRANDE QUANTO LO SCHERMO: le illustrazioni scese sono larghe 250 o
+          400 px, e alla loro misura vera restavano un francobollo */}
+      <img src={aperta.url} alt={aperta.didascalia} style={{ width: "100%", height: "74vh", objectFit: "contain" }} />
+      <div style={{ fontSize: F.piccolo, color: C.text, textAlign: "center", overflowWrap: "anywhere" }}>
+        {aperta.didascalia} {n > 1 && <span style={{ color: C.muted }}>· {indice + 1} di {n}</span>}
+      </div>
+      <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 10 }}>
+        {n > 1 && (
+          <button onClick={() => onCambia((indice - 1 + n) % n)} aria-label="Illustrazione prima" style={freccia}>
+            ‹
+          </button>
+        )}
+        <button onClick={onChiudi} aria-label="Chiudi l'illustrazione" style={freccia}>
+          ✕
+        </button>
+        {n > 1 && (
+          <button onClick={() => onCambia((indice + 1) % n)} aria-label="Illustrazione dopo" style={freccia}>
+            ›
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// LE ALTRE ILLUSTRAZIONI della voce, in fondo: miniature col nome del file
+// sotto, e un tocco le apre in grande
+function Illustrazioni({ galleria, da }) {
+  const [grande, setGrande] = useState(null);
   return (
     <div style={{ marginTop: 14 }}>
       <div style={{ fontSize: F.corpo, fontWeight: 600, color: C.text, marginBottom: 6 }}>
@@ -166,34 +203,7 @@ function Illustrazioni({ galleria, da }) {
           </button>
         ))}
       </div>
-      {aperta && (
-        <div
-          role="dialog"
-          aria-label={aperta.didascalia}
-          onClick={() => setGrande(null)}
-          style={{ position: "fixed", inset: 0, zIndex: 60, background: "#05030bf0", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16, gap: 10 }}
-        >
-          <img src={aperta.url} alt={aperta.didascalia} style={{ maxWidth: "100%", maxHeight: "78vh", objectFit: "contain", borderRadius: R.piccolo }} />
-          <div style={{ fontSize: F.piccolo, color: C.text, textAlign: "center", overflowWrap: "anywhere" }}>
-            {aperta.didascalia} <span style={{ color: C.muted }}>· {grande + 1} di {galleria.length}</span>
-          </div>
-          <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 10 }}>
-            {galleria.length > 1 && (
-              <button onClick={() => setGrande((g) => (g - 1 + galleria.length) % galleria.length)} aria-label="Illustrazione prima" style={freccia}>
-                ‹
-              </button>
-            )}
-            <button onClick={() => setGrande(null)} aria-label="Chiudi l'illustrazione" style={freccia}>
-              ✕
-            </button>
-            {galleria.length > 1 && (
-              <button onClick={() => setGrande((g) => (g + 1) % galleria.length)} aria-label="Illustrazione dopo" style={freccia}>
-                ›
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {grande != null && <Lightbox galleria={galleria} indice={grande} onCambia={setGrande} onChiudi={() => setGrande(null)} />}
     </div>
   );
 }
