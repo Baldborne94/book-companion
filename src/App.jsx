@@ -1313,42 +1313,42 @@ export default function App() {
   // riga, che si ferma e riparte come quello del testo.
   const [imm, setImm] = useState(null);
   const filoImm = useRef(null);
-  const immGuaste = useRef(new Set());
-  async function scaricaImmaginiQui(quale, { daSolo = false } = {}) {
+  const immGuaste = useRef(false);
+  // solo Fandom: Lexicanum non segna l'immagine principale, e le sue voci
+  // prendono quelle di Fandom. `quale` resta nello stato per la riga del
+  // lavoro e per il blocco del wiki
+  async function scaricaImmaginiQui(quale = "fan", { daSolo = false } = {}) {
     if (filoImm.current) return;
     const mio = { quale };
     filoImm.current = mio;
     setImm({ quale, immagini: 0, byte: 0 });
-    const nome = quale === "fan" ? "Fandom" : "Lexicanum";
     try {
       const m = await import("./lib/lexicanum.js");
-      const wiki = quale === "fan" ? m.FANDOM : m.LEXICANUM;
       if (!daSolo) {
-        m.segnaFermato(m.immaginiDi(wiki), false);
-        immGuaste.current.delete(quale);
+        m.segnaFermato(m.immaginiDi(m.FANDOM), false);
+        immGuaste.current = false;
       }
       const esito = await m.scaricaImmagini({
-        wiki,
+        wiki: m.FANDOM,
         fermo: () => filoImm.current !== mio,
         onProgress: (p) => filoImm.current === mio && setImm({ quale, ...p }),
       });
       notify(
         esito.fermato
-          ? `Immagini di ${nome} fermate a ${m.fraseImmagini(esito)}: si riprendono dalle Impostazioni.`
-          : `🖼 Immagini di ${nome} sul dispositivo: ${m.fraseImmagini(esito)} ✓`
+          ? `Immagini di Fandom fermate a ${m.fraseImmagini(esito)}: si riprendono dalle Impostazioni.`
+          : `🖼 Immagini di Fandom sul dispositivo: ${m.fraseImmagini(esito)} ✓`
       );
     } catch (e) {
-      immGuaste.current.add(quale);
-      notify(`${e?.message || `Le immagini di ${nome} non sono scese.`} Quelle già qui restano.`);
+      immGuaste.current = true;
+      notify(`${e?.message || "Le immagini di Fandom non sono scese."} Quelle già qui restano.`);
     } finally {
       if (filoImm.current === mio) filoImm.current = null;
       setImm(null);
     }
   }
   const fermaImm = () => {
-    const quale = filoImm.current?.quale;
     filoImm.current = null;
-    if (quale) import("./lib/lexicanum.js").then((m) => m.segnaFermato(m.immaginiDi(quale === "fan" ? m.FANDOM : m.LEXICANUM), true));
+    import("./lib/lexicanum.js").then((m) => m.segnaFermato(m.immaginiDi(m.FANDOM), true));
   };
   // LE ALTRE ILLUSTRAZIONI DI FANDOM: lo stesso giro, piu' lungo (prima
   // l'elenco dei file di ogni voce, poi i file), alla misura scelta
@@ -1400,10 +1400,7 @@ export default function App() {
         if (filo.current || wikiGuasti.current.has(quale)) continue;
         if (await giroDaRiprendere(undefined, wiki)) scaricaWikiQui(quale, { daSolo: true });
       }
-      for (const [quale, wiki] of [["lex", LEXICANUM], ["fan", FANDOM]]) {
-        if (filoImm.current || immGuaste.current.has(quale)) continue;
-        if (await giroDaRiprendere(undefined, immaginiDi(wiki))) scaricaImmaginiQui(quale, { daSolo: true });
-      }
+      if (!filoImm.current && !immGuaste.current && (await giroDaRiprendere(undefined, immaginiDi(FANDOM)))) scaricaImmaginiQui("fan", { daSolo: true });
       if (!filoIll.current && !illGuasto.current && (await giroDaRiprendere(undefined, illustrazioniDi(FANDOM)))) scaricaIllustrazioniQui(null, { daSolo: true });
     };
     const t = setTimeout(riprendi, 4000);

@@ -1727,6 +1727,36 @@ export function fraseIllustrazioni(p) {
   return `${quante}${mb}${di}${sosta}`;
 }
 
+// IL RIEPILOGO DEI WIKI, in cima alla sezione delle Impostazioni (chiesto
+// dal lettore, che con tutto gia' sceso non capiva se mancasse qualcosa:
+// «non mi dice che c'è altro da scaricare», poi «rendi tutto più chiaro
+// possibile»). Una riga per cosa da scaricare, col suo stato, e una frase
+// che risponde alla domanda. Le immagini di Lexicanum non sono una riga:
+// Lexicanum non le segna, e le sue voci usano quelle di Fandom.
+export function riepilogoWiki({ lex, lexGiro, fan, fanGiro, img, imgGiro, ill, illGiro } = {}) {
+  const riga = (nome, fatto, giro, dettaglio, serve) =>
+    fatto
+      ? { nome, stato: "fatto", dettaglio }
+      : giro
+        ? { nome, stato: "aMeta", dettaglio: "scese a metà: riprendi qui sotto" }
+        : serve
+          ? { nome, stato: "dopo", dettaglio: `dopo ${serve}` }
+          : { nome, stato: "manca", dettaglio: "da scaricare, qui sotto" };
+  const voci = (n) => (n === 1 ? "una voce" : `${numero(n)} voci`);
+  const righe = [
+    riga("Lexicanum", lex, lexGiro, lex && voci(lex.voci)),
+    riga("Fandom", fan, fanGiro, fan && voci(fan.voci)),
+    riga("Immagini principali di Fandom", img, imgGiro, img && fraseImmagini(img), !fan && !img && !imgGiro ? "Fandom" : null),
+    riga("Altre illustrazioni di Fandom", ill, illGiro, ill && `${fraseIllustrazioni(ill)} · ${ill.lato} px`, !fan && !ill && !illGiro ? "Fandom" : null),
+  ];
+  const mancano = righe.filter((r) => r.stato !== "fatto");
+  return {
+    righe,
+    tutto: !mancano.length,
+    frase: mancano.length ? `Da scaricare: ${mancano.map((r) => r.nome).join(", ")}.` : "Tutto è sul dispositivo: non c'è altro da scaricare.",
+  };
+}
+
 // L'IMMAGINE NEL RIQUADRO BREVE della scheda, accanto alla definizione
 // (chiesto dal lettore: «dei termini che definiscono l'universo Warhammer
 // riesci a tirarmi fuori le illustrazioni se esistono e mostrarle insieme

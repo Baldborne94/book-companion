@@ -58,6 +58,7 @@ import {
   fraseIllustrazioni,
   didascaliaDi,
   fileDelleVoci,
+  riepilogoWiki,
   fraseImmagini,
   giroDaRiprendere,
   segnaFermato,
@@ -801,6 +802,20 @@ However, after Horus' fall to [[Chaos]] on [[Davin]], he was considered too loya
 
     t.eq("la riga dell'elenco", fraseIllustrazioni({ fase: "elenco", voci: 1200, totale: 7300 }), "elenco: 1200 voci guardate di circa 7300");
     t.eq("la riga delle illustrazioni", fraseIllustrazioni({ fase: "immagini", immagini: 3400, byte: 60 * 1048576, i: 4000, file: 20000 }), "3400 illustrazioni · 60 MB · 4000 file guardati di 20.000");
+  }
+
+  // ---- IL RIEPILOGO DEI WIKI --------------------------------------------
+  {
+    const tutto = riepilogoWiki({ lex: { voci: 50208 }, fan: { voci: 7314 }, img: { immagini: 5822, byte: 141 * 1048576 }, ill: { immagini: 17526, byte: 605 * 1048576, lato: 400 } });
+    t.c("tutto sceso: si dice che non c'e' altro da scaricare", tutto.tutto && /non c'è altro da scaricare/.test(tutto.frase) && tutto.righe.every((r) => r.stato === "fatto"));
+    t.eq("ogni riga dice cosa c'e'", tutto.righe.map((r) => r.dettaglio).join(" | "), "50.208 voci | 7314 voci | 5822 immagini · 141 MB | 17.526 illustrazioni · 605 MB · 400 px");
+    const poco = riepilogoWiki({ lex: { voci: 10 }, illGiro: null });
+    t.eq("senza Fandom, le sue immagini vengono dopo di lui", poco.righe.map((r) => r.stato).join(","), "fatto,manca,dopo,dopo");
+    t.eq("e la frase dice cosa manca", poco.frase, "Da scaricare: Fandom, Immagini principali di Fandom, Altre illustrazioni di Fandom.");
+    const meta = riepilogoWiki({ lex: { voci: 10 }, fan: { voci: 5 }, img: { immagini: 1, byte: 1 }, illGiro: { api: "x" } });
+    t.c("un giro a meta' si dice da riprendere", meta.righe[3].stato === "aMeta" && /riprendi/.test(meta.righe[3].dettaglio) && !meta.tutto);
+    t.eq("una riga senza giro e col wiki sceso e' da scaricare", riepilogoWiki({ lex: { voci: 1 }, fan: { voci: 1 } }).righe[2].stato, "manca");
+    t.eq("una voce sola si dice al singolare", riepilogoWiki({ lex: { voci: 1 } }).righe[0].dettaglio, "una voce");
   }
 
   // ---- L'IMMAGINE ACCANTO ALLA DEFINIZIONE -------------------------------

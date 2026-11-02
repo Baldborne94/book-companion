@@ -26,6 +26,7 @@ import {
   rimuoviIllustrazioni,
   fraseIllustrazioni,
   LATI_ILLUSTRAZIONI,
+  riepilogoWiki,
   LEXICANUM,
   FANDOM,
 } from "../lib/lexicanum.js";
@@ -47,7 +48,7 @@ const mega = (b) => `${Math.max(1, Math.round(b / 1048576)).toLocaleString("it-I
 // LE IMMAGINI PRINCIPALI, sotto il wiki gia' sceso. Prima si misura (quante
 // voci hanno l'immagine, quanto pesano, se il wiki le lascia salvare), poi si
 // scarica dicendo il peso: un tasto non promette cio' che non sa.
-function BloccoImmagini({ wiki, lavoro, altro, onScarica, onFerma }) {
+function BloccoImmagini({ wiki, lavoro, onScarica, onFerma, onCambio }) {
   const [stato, setStato] = useState(undefined);
   const [giro, setGiro] = useState(null);
   const [misura, setMisura] = useState(null);
@@ -76,6 +77,7 @@ function BloccoImmagini({ wiki, lavoro, altro, onScarica, onFerma }) {
     setGiro(null);
     setMisura(null);
     setConfermaVia(false);
+    onCambio?.();
   }
 
   const t = tasto();
@@ -96,10 +98,7 @@ function BloccoImmagini({ wiki, lavoro, altro, onScarica, onFerma }) {
                 : `🖼 Le immagini non sono sul dispositivo`}
       </p>
       {lavoro && <p style={{ ...n, color: C.text }}>Scarico… {fraseImmagini(lavoro)}</p>}
-      {altro && !lavoro && !stato && <p style={n}>Stanno scendendo le immagini dell'altro wiki: una alla volta.</p>}
-
-      {!altro && (
-        <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
           {lavoro ? (
             <button onClick={onFerma} style={t}>
               Ferma
@@ -132,8 +131,7 @@ function BloccoImmagini({ wiki, lavoro, altro, onScarica, onFerma }) {
               {misura === "…" ? "Misuro…" : "🖼 Misura le immagini"}
             </button>
           )}
-        </div>
-      )}
+      </div>
 
       {!lavoro && !stato && !giro && pronta && (
         <p style={n}>
@@ -148,23 +146,19 @@ function BloccoImmagini({ wiki, lavoro, altro, onScarica, onFerma }) {
         </p>
       )}
       {misura?.errore && <p style={{ ...n, color: C.text }}>{misura.errore} Si può riprovare.</p>}
-      {misura?.senzaPrincipale && (
-        <p style={{ ...n, color: C.text }}>
-          {wiki.nome} non segna quale sia l'immagine principale delle sue voci: su {misura.campione} voci guardate, nessuna
-          la dichiara. Per questa strada non c'è niente da scaricare.
+      {!stato && (
+        <p style={n}>
+          L'immagine sta in cima alla voce, col riquadro dei dati, dietro l'avviso della voce; nelle voci di Lexicanum la stessa
+          immagine resta velata.
         </p>
       )}
-      <p style={n}>
-        L'immagine sta in cima alla voce, col riquadro dei dati
-        {wiki === FANDOM ? ", dietro l'avviso della voce." : ", e resta velata con lui: anche un'immagine può dire come va a finire."}
-      </p>
     </div>
   );
 }
 
 // LE ALTRE ILLUSTRAZIONI DI FANDOM, sotto le immagini principali: anche
 // qui prima si misura, poi si sceglie la misura col suo peso
-function BloccoIllustrazioni({ lavoro, onScarica, onFerma }) {
+function BloccoIllustrazioni({ lavoro, onScarica, onFerma, onCambio }) {
   const [stato, setStato] = useState(undefined);
   const [giro, setGiro] = useState(null);
   const [misura, setMisura] = useState(null);
@@ -193,6 +187,7 @@ function BloccoIllustrazioni({ lavoro, onScarica, onFerma }) {
     setGiro(null);
     setMisura(null);
     setConfermaVia(false);
+    onCambio?.();
   }
 
   const t = tasto();
@@ -259,16 +254,18 @@ function BloccoIllustrazioni({ lavoro, onScarica, onFerma }) {
       {misura?.bloccate && <p style={{ ...n, color: C.text }}>Fandom non lascia salvare le sue illustrazioni a un'app nel browser.</p>}
       {misura?.nessuna && <p style={{ ...n, color: C.text }}>Nelle {misura.campione} voci guardate non ci sono illustrazioni oltre alla principale.</p>}
       {misura?.errore && <p style={{ ...n, color: C.text }}>{misura.errore} Si può riprovare.</p>}
-      <p style={n}>
-        Le altre illustrazioni di ogni voce, oltre alla principale: stanno in fondo alla voce, nella sezione «Illustrazioni», col
-        nome del file come didascalia, e un tocco le apre in grande. Su Fandom dietro l'avviso della voce, su Lexicanum velate. Lo
-        scaricamento è lungo, ore: prima l'elenco dei file di ogni voce, poi le illustrazioni, e se l'app si chiude riparte da solo.
-      </p>
+      {!stato && (
+        <p style={n}>
+          Le altre illustrazioni di ogni voce, oltre alla principale: stanno in fondo alla voce, nella sezione «Illustrazioni», col
+          nome del file come didascalia, e un tocco le apre in grande. Su Fandom dietro l'avviso della voce, su Lexicanum velate. Lo
+          scaricamento è lungo, ore: prima l'elenco dei file di ogni voce, poi le illustrazioni, e se l'app si chiude riparte da solo.
+        </p>
+      )}
     </div>
   );
 }
 
-function BloccoWiki({ wiki, icona, lavoro, onScarica, onFerma, immagini, onImmagini, onFermaImmagini, illustrazioni, onIllustrazioni, onFermaIllustrazioni, children }) {
+function BloccoWiki({ wiki, icona, lavoro, onScarica, onFerma, immagini, onImmagini, onFermaImmagini, illustrazioni, onIllustrazioni, onFermaIllustrazioni, onCambio, children }) {
   const [stato, setStato] = useState(undefined);
   const [giro, setGiro] = useState(null);
   const [confermaVia, setConfermaVia] = useState(false);
@@ -276,6 +273,8 @@ function BloccoWiki({ wiki, icona, lavoro, onScarica, onFerma, immagini, onImmag
   // accanto a «Rimuovi» si tocca anche per errore, o credendo che serva a
   // far funzionare il wiki, e allora chiede conferma e dice cosa costa
   const [confermaGiro, setConfermaGiro] = useState(false);
+  // a wiki gia' sceso la spiegazione si chiude: resta a un tocco
+  const [info, setInfo] = useState(false);
 
   // si rilegge quando il lavoro parte e quando finisce: e' App che scarica,
   // e questa stanza puo' essere aperta in mezzo
@@ -294,6 +293,7 @@ function BloccoWiki({ wiki, icona, lavoro, onScarica, onFerma, immagini, onImmag
     setStato(null);
     setGiro(null);
     setConfermaVia(false);
+    onCambio?.();
   }
 
   const t = tasto();
@@ -384,18 +384,84 @@ function BloccoWiki({ wiki, icona, lavoro, onScarica, onFerma, immagini, onImmag
         </p>
       )}
 
-      {stato && (
+      {/* LEXICANUM NON HA UN BLOCCO DI IMMAGINI: non segna l'immagine
+          principale delle sue voci (misurato: nessuna su cinquanta), e le
+          sue voci prendono quelle di Fandom. Un tasto «Misura» li' faceva
+          credere che mancasse qualcosa */}
+      {stato && wiki === FANDOM && (
         <BloccoImmagini
           wiki={wiki}
           lavoro={immagini?.quale === wiki.id ? immagini : null}
-          altro={!!immagini && immagini.quale !== wiki.id}
           onScarica={() => onImmagini?.(wiki.id)}
           onFerma={onFermaImmagini}
+          onCambio={onCambio}
         />
       )}
-      {stato && wiki === FANDOM && <BloccoIllustrazioni lavoro={illustrazioni} onScarica={onIllustrazioni} onFerma={onFermaIllustrazioni} />}
+      {stato && wiki !== FANDOM && (
+        <p style={{ ...n, marginTop: 12 }}>
+          🖼 Lexicanum non segna le immagini delle sue voci: le prende da Fandom (l'immagine principale e le altre illustrazioni),
+          velate perché possono dire come va a finire. Si scaricano nel blocco di Fandom qui sotto.
+        </p>
+      )}
+      {stato && wiki === FANDOM && <BloccoIllustrazioni lavoro={illustrazioni} onScarica={onIllustrazioni} onFerma={onFermaIllustrazioni} onCambio={onCambio} />}
 
-      {children}
+      {stato && (
+        <button
+          onClick={() => setInfo((v) => !v)}
+          aria-expanded={info}
+          style={{ minHeight: 44, padding: "6px 0", marginTop: 6, fontSize: F.piccolo, color: C.arcane }}
+        >
+          {info ? "ℹ Nascondi la spiegazione" : `ℹ Cos'è ${wiki.nome} e come funziona`}
+        </button>
+      )}
+      {(!stato || info) && children}
+    </div>
+  );
+}
+
+// IL RIEPILOGO, in cima: cosa c'e' sul dispositivo e cosa manca, in una
+// riga per cosa (`riepilogoWiki`). Si rilegge quando un lavoro parte o
+// finisce e quando qualcosa si rimuove
+function Riepilogo({ versione }) {
+  const [r, setR] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    Promise.all([
+      statoLexicanum(undefined, LEXICANUM),
+      giroLexicanum(undefined, LEXICANUM),
+      statoLexicanum(undefined, FANDOM),
+      giroLexicanum(undefined, FANDOM),
+      statoImmagini(undefined, FANDOM),
+      giroLexicanum(undefined, immaginiDi(FANDOM)),
+      statoIllustrazioni(),
+      giroLexicanum(undefined, illustrazioniDi(FANDOM)),
+    ])
+      .then(([lex, lexGiro, fan, fanGiro, img, imgGiro, ill, illGiro]) => vivo && setR(riepilogoWiki({ lex, lexGiro, fan, fanGiro, img, imgGiro, ill, illGiro })))
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [versione]);
+  if (!r) return null;
+  const segno = { fatto: "✓", aMeta: "◐", dopo: "○", manca: "○" };
+  return (
+    <div
+      role="status"
+      aria-label="Riepilogo dei wiki"
+      style={{ marginBottom: 16, padding: 12, borderRadius: R.medio, border: `1px solid ${r.tutto ? `${C.green}66` : C.border}`, background: `${C.surface}55` }}
+    >
+      <p style={{ margin: 0, fontSize: F.corpo, fontWeight: 600, color: r.tutto ? C.green : C.text }}>{r.frase}</p>
+      <ul style={{ listStyle: "none", margin: "8px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+        {r.righe.map((x) => (
+          <li key={x.nome} style={{ fontSize: F.piccolo, lineHeight: 1.45, color: x.stato === "fatto" ? C.text : C.muted }}>
+            <span style={{ display: "inline-block", width: 22, color: x.stato === "fatto" ? C.green : x.stato === "aMeta" ? C.accent : C.muted }}>{segno[x.stato]}</span>
+            {x.nome} <span style={{ color: C.muted }}>· {x.dettaglio}</span>
+          </li>
+        ))}
+      </ul>
+      <p style={{ margin: "8px 0 0", fontSize: F.minuscolo, color: C.muted, lineHeight: 1.5 }}>
+        Le voci di Lexicanum usano le immagini e le illustrazioni di Fandom: Lexicanum non segna le sue.
+      </p>
     </div>
   );
 }
@@ -403,9 +469,13 @@ function BloccoWiki({ wiki, icona, lavoro, onScarica, onFerma, immagini, onImmag
 export default function SezioneLexicanum({ lavoro, onScarica, onFerma, lavoroFan, onScaricaFan, onFermaFan, immagini, onImmagini, onFermaImmagini, illustrazioni, onIllustrazioni, onFermaIllustrazioni }) {
   const img = { immagini, onImmagini, onFermaImmagini };
   const n = nota();
+  const [rimossi, setRimossi] = useState(0);
+  const onCambio = () => setRimossi((v) => v + 1);
+  const versione = `${rimossi}|${!!lavoro}|${!!lavoroFan}|${!!immagini}|${!!illustrazioni}`;
   return (
     <div>
-      <BloccoWiki wiki={LEXICANUM} icona="⚔" lavoro={lavoro} onScarica={onScarica} onFerma={onFerma} {...img}>
+      <Riepilogo versione={versione} />
+      <BloccoWiki wiki={LEXICANUM} icona="⚔" lavoro={lavoro} onScarica={onScarica} onFerma={onFerma} onCambio={onCambio}>
         <p style={n}>
           Le voci del wiki del 40K, sul dispositivo: nei libri del 40K i nomi si segnano nel testo e la scheda del
           dizionario mostra la voce di un nome, di una legione o di un pianeta <strong>subito e senza rete</strong>, e i
@@ -444,6 +514,7 @@ export default function SezioneLexicanum({ lavoro, onScarica, onFerma, lavoroFan
           illustrazioni={illustrazioni}
           onIllustrazioni={onIllustrazioni}
           onFermaIllustrazioni={onFermaIllustrazioni}
+          onCambio={onCambio}
         >
           <p style={n}>
             Il Warhammer 40k Wiki di Fandom, come <strong>seconda scheda</strong> accanto a Lexicanum: voci più lunghe e
