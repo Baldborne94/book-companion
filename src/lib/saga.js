@@ -67,11 +67,20 @@ export function numeriMescolati(libri = [], saga = "") {
 
 export const cicloDi = (b) => (b?.series || "").trim();
 
-// I volumi fra cui cercare «il prossimo» di un libro: quelli della sua
-// SERIE, dentro la sua saga. Niente se li' dentro i numeri si interlacciano.
+// I volumi fra cui cercare «il prossimo» di un libro: la SAGA INTERA dove
+// il numero e' della saga, la sua SERIE solo dove ogni serie si numera da
+// se' (`numeriMescolati`).
 //
-// QUESTA REGOLA E' STATA GIRATA DUE VOLTE, e la ragione va scritta per
-// intero o il prossimo la gira una terza. Per un giro il gruppo e' stato la
+// QUESTA REGOLA E' STATA GIRATA TRE VOLTE, e l'ultima l'ha scelta il
+// lettore fra tre strade messe in fila (uno per saga sempre; una scelta per
+// saga; solo le saghe delle nostre tavole): «uno per saga, sempre». Il
+// Mondo Disco gli proponeva cinque seguiti e il Malazan tre: «mostrami solo
+// il numero successivo al numero che sto leggendo o che ho gia' letto». Il
+// racconto delle due giravolte prima resta qui sotto, perche' il prossimo
+// che pensa «ma il Malazan ha quattro storie» sappia che lo si e' gia'
+// pensato, e che il lettore ha deciso sapendolo.
+//
+// LE DUE GIRATE DI PRIMA. Per un giro il gruppo e' stato la
 // SAGA INTERA dove i numeri erano una fila sola — i quarantun Pratchett
 // numerati da 1 a 41 — e la serie entrava in gioco solo dove i numeri si
 // ripetevano, come nel Cosmoverse. L'aveva chiesto il lettore con quattro
@@ -81,16 +90,16 @@ export const cicloDi = (b) => (b?.series || "").trim();
 // era giusto suggerirmi i volumi successivi alle serie che avevo gia'
 // iniziato».
 //
-// Ha ragione, e il perche' sta nei dati: IL NUMERO E LA SERIE RISPONDONO A
+// Il ragionamento di allora: IL NUMERO E LA SERIE RISPONDONO A
 // DUE DOMANDE DIVERSE. Il numero dice in che ordine leggere, la serie dice
 // DI QUALE STORIA stiamo parlando — e in un universo come il Malazan i
 // numeri sono una fila sola solo perche' se li e' scritti lui in un ordine
 // di lettura unico, mentre le storie restano quattro. Chi ha in mano il
 // Path to Ascendancy non aspetta «il numero dopo», aspetta il prossimo di
 // QUELLA storia; il numero dopo puo' essere un Kharkanas che col filo in
-// mano non c'entra niente. Raggruppare e' mestiere della serie, sempre.
+// mano non c'entra niente. Vero, ma il lettore ha preferito il numero.
 //
-// I senza-serie sono un gruppo come gli altri — «Volumi a se'» sullo
+// Dove il filo e' la serie, i senza-serie sono un gruppo come gli altri — «Volumi a se'» sullo
 // scaffale — e su una saga che la serie non ce l'ha su nessuno il gruppo e'
 // la saga intera: li' i due raggruppamenti coincidono e non cambia niente.
 // MA UNA PARTE NON E' UN CICLO, E NON LO SI PUO' INDOVINARE.
@@ -134,9 +143,15 @@ export function gruppoDi(book, books = []) {
   // dove la serie e' la PARTE di una guida il filo e' la saga intera: «il
   // prossimo» di un cammino in tredici capitoli e' il capitolo dopo, non
   // il prossimo volume del capitolo in cui stai
-  const dove = parteDiUnaStoria(book)
-    ? dellaSaga
-    : dellaSaga.filter((b) => cicloDi(b).toLowerCase() === cicloDi(book).toLowerCase());
+  // E DOVE IL NUMERO E' DELLA SAGA IL FILO E' LA SAGA INTERA (la terza
+  // volta, e scelta dal lettore fra tre strade: «uno per saga, sempre»).
+  // Solo dove ogni serie si numera da se' (`numeriMescolati`) il numero e'
+  // della serie, e la serie resta il filo: li' «il numero dopo» della saga
+  // non esiste
+  const dove =
+    parteDiUnaStoria(book) || !numeriMescolati(books, saga)
+      ? dellaSaga
+      : dellaSaga.filter((b) => cicloDi(b).toLowerCase() === cicloDi(book).toLowerCase());
   // IL VETO NON STA PIU' QUI: raggruppare e' una cosa, decidere se il numero
   // si puo' leggere e' un'altra. La domanda «e' una fila sola?» si fa in
   // `passoDentro`, dove si sa anche quale volume si starebbe per proporre.
@@ -364,12 +379,13 @@ export function passoDentro(
 // l'hai gia'). L'abbandonato non apre niente, come sempre: quella storia
 // l'hai lasciata apposta.
 //
-// UN FILO PER SERIE COMINCIATA, ED E' LA SERIE A SPARTIRE (chiesto dal
-// lettore guardando il Malazan: «considera non tutto il ciclo ma la singola
-// serie per sapere cosa devo leggere dopo... era giusto suggerirmi i volumi
-// successivi alle serie che avevo gia' iniziato»). Chi tiene in mano due
-// storie dello stesso universo ha due prossimi volumi, e sono due righe:
-// il perche' sta per esteso in `gruppoDi`.
+// UN FILO PER SAGA, DOVE IL NUMERO E' DELLA SAGA (girata per la terza
+// volta, e stavolta scelta dal lettore fra tre strade: «uno per saga,
+// sempre», guardando un Mondo Disco con cinque seguiti e un Malazan con
+// tre). Il passo e' il numero dopo il piu' alto che hai letto o stai
+// leggendo, di qualunque serie. Solo dove ogni serie si numera da se'
+// (Mistborn e la Folgoluce da uno) il filo resta la serie: li' il numero
+// della saga non esiste. La storia delle due giravolte sta in `gruppoDi`.
 //
 // MA IL NOME DELLA RIGA NON SEGUE IL GRUPPO: SEGUE IL NUMERO. Il numero
 // mostrato accanto e' quello che il lettore ha scritto sul volume, e va
@@ -402,9 +418,8 @@ export function passoDentro(
 // storia diversa da quella che e' rimasta muta.
 function raccogliStorie(books, statusOf, tocco, contorno) {
   // dove ogni serie si numera da se', il numero e' della SERIE e l'etichetta
-  // pure; dove la fila e' una sola, il numero e' della saga. Non decide come
-  // si raggruppa — quello e' mestiere della serie, sempre — decide come si
-  // chiama la riga.
+  // pure, e il filo e' la serie; dove la fila e' una sola, il numero e'
+  // della saga, e la saga e' un filo solo.
   // UNA DOMANDA PER SAGA, NON PER LIBRO: chi non aveva i numeri doppi non si
   // segnava da nessuna parte, e la stessa domanda — un giro sull'intera
   // biblioteca — si rifaceva per ogni suo volume. Misurato con 650 libri e
@@ -435,7 +450,9 @@ function raccogliStorie(books, statusOf, tocco, contorno) {
     // un filo per serie cominciata, e le maiuscole non ne fanno un secondo;
     // il volume che non sta in nessun gruppo — numeri doppi dentro la sua
     // stessa serie — lo zittisce `nextInSaga`
-    const ciclo = cicloDi(b);
+    // UN FILO PER SAGA, dove il numero e' della saga; uno per serie solo
+    // dove ogni serie si numera da se' (vedi `gruppoDi`)
+    const ciclo = suoi.has(saga) ? cicloDi(b) : "";
     const chiave = `${saga}\u0000${ciclo.toLowerCase()}`;
     // `finito: false` qui e' cintura e bretelle e NON e' portante (mutazione
     // provata, sopravvive): il campo assente e' falso lo stesso. Sta scritto
@@ -484,9 +501,8 @@ export function prossimiPassi(
     const libro = nextInSaga(e.avanti, books, statusOf, progressoOf, contorno);
     // il libro gia' in cima all'Ingresso non si ripete due righe piu' sotto
     if (!libro || libro.id === escludi) continue;
-    passi.push({ saga: e.saga, ciclo: e.ciclo, nome: e.nome, libro, da: e.avanti, quando: e.quando });
+    passi.push({ saga: e.saga, ciclo: e.ciclo, nome: e.nome, libro, da: e.avanti, quando: e.quando, inizio: inizioDiCiclo(libro, books, contorno) });
   }
-  passi.push(...iniziDeiCicli(books, storie, { statusOf, escludi, contorno }));
   // e a parita' di nome decide il NUMERO del volume proposto: da quando due
   // serie della stessa saga possono chiamarsi tutt'e due come la saga
   // («Discworld» due volte), l'alfabeto non le distingue piu' e senza questo
@@ -500,37 +516,18 @@ export function prossimiPassi(
   );
 }
 
-// E IL CICLO DOPO, IN UNA SAGA GIA' COMINCIATA (chiesto dal lettore:
-// «Moving Pictures», primo del ciclo Industrial Revolution del Mondo
-// Disco, non tornava fra i seguiti — un filo si apre solo con un volume
-// finito del SUO ciclo, e di quello non ne aveva letto nessuno). Scelto da
-// lui: in una saga dove hai finito qualcosa, si propone anche l'inizio del
-// ciclo non ancora cominciato che viene prima nell'ordine della saga. Uno
-// per saga, per non riempire la fila di tutti gli inizi del Mondo Disco.
-// Solo dove il numero e' della SAGA: dove ogni serie si numera da uno
-// (`numeriMescolati`) «prima nell'ordine della saga» non vuol dire niente.
-// Un ciclo lasciato (un volume abbandonato) non si ripropone.
-function iniziDeiCicli(books, storie, { statusOf, escludi, contorno }) {
-  const finite = new Map();
-  for (const e of storie.values()) if (e.finito) finite.set(e.saga, Math.max(finite.get(e.saga) || 0, e.quando));
-  const out = [];
-  for (const [saga, quando] of finite) {
-    if (numeriMescolati(books, saga)) continue;
-    const suoi = books.filter((b) => (b?.saga || "").trim() === saga && cicloDi(b) && b.sagaOrder != null && !contorno(b));
-    const cominciati = new Set(suoi.filter((b) => statusOf(b.id) !== "unread").map((b) => cicloDi(b).toLowerCase()));
-    const primi = new Map();
-    for (const b of suoi) {
-      const c = cicloDi(b).toLowerCase();
-      if (cominciati.has(c)) continue;
-      if (!primi.has(c) || b.sagaOrder < primi.get(c).sagaOrder) primi.set(c, b);
-    }
-    const [libro] = [...primi.values()].sort((a, b) => a.sagaOrder - b.sagaOrder);
-    if (!libro || libro.id === escludi) continue;
-    // subito dopo il filo piu' recente della sua saga: il seguito di una
-    // storia che hai in mano viene prima dell'inizio di una nuova
-    out.push({ saga, ciclo: cicloDi(libro), nome: saga, libro, inizio: cicloDi(libro), da: null, quando: quando - 0.5 });
-  }
-  return out;
+// IL PASSO CHE APRE UN CICLO LO DICE («Discworld n° 10 · inizia
+// Industrial Revolution»): nessun volume della sua serie viene prima di
+// lui. Prima era una proposta a parte (`iniziDeiCicli`, l'inizio del primo
+// ciclo non cominciato, uno per saga); col filo che e' la saga intera resta
+// la nota sul passo. Un volume senza serie da' "" da solo
+function inizioDiCiclo(libro, books, contorno) {
+  const ciclo = cicloDi(libro).toLowerCase();
+  const saga = (libro.saga || "").trim();
+  const prima = books.some(
+    (b) => b && b.id !== libro.id && (b.saga || "").trim() === saga && cicloDi(b).toLowerCase() === ciclo && b.sagaOrder != null && b.sagaOrder < libro.sagaOrder && !contorno(b)
+  );
+  return prima ? "" : cicloDi(libro);
 }
 
 // E LE SAGHE CHE TACCIONO DICONO PERCHE'.
@@ -603,7 +600,10 @@ export function perchePassoTace(
   // dicevano la stessa cosa — non c'e' altro da leggere. Solo se TUTTI i
   // volumi della saga sono letti: con uno solo ancora da leggere, anche di
   // un'altra serie, «hai letto tutto» sarebbe falso, e le righe per serie
-  // restano. L'ultimo e' il piu' avanti nella saga
+  // restano. L'ultimo e' il piu' avanti nella saga. Col filo che e' la saga
+  // intera la riga e' gia' una, e lo dice lo stesso: «hai letto tutti i 4
+  // volumi» dice piu' di «e' l'ultimo che hai» (un volume solo no: «tutti i
+  // 1 volumi»)
   const suoi = new Map();
   for (const b of books) {
     const saga = (b?.saga || "").trim();
@@ -611,7 +611,7 @@ export function perchePassoTace(
     if (!suoi.has(saga)) suoi.set(saga, []);
     suoi.get(saga).push(b);
   }
-  const lette = new Set([...quante].filter(([saga, n]) => n > 1 && suoi.get(saga).every((b) => statusOf(b.id) === "read")).map(([saga]) => saga));
+  const lette = new Set([...quante.keys()].filter((saga) => suoi.get(saga).length > 1 && suoi.get(saga).every((b) => statusOf(b.id) === "read")));
   const righe = muti.filter((t) => !lette.has(t.saga));
   for (const saga of lette) {
     const tutti = suoi.get(saga);

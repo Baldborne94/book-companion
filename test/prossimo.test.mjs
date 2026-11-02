@@ -245,20 +245,16 @@ export default async function (t) {
     t.eq("i numeri in fila non silenziano niente", nextInSaga(trilogia[0], trilogia, nuovi)?.id, "due");
   }
   {
-    // IL CICLO COMANDA SEMPRE, ANCHE COI NUMERI UNICI — e questo controllo è
-    // GIRATO. Pinnava «coi numeri unici la saga è una fila sola e il ciclo
-    // non c'entra», regola chiesta su Pratchett e disdetta dal lettore un
-    // giorno dopo guardando il Malazan: «considera non tutto il ciclo ma la
-    // singola serie per sapere cosa devo leggere dopo».
-    //
-    // Il caso lo spiega da sé: x2 è il numero 6 e il numero 7 è k1, ma k1 è
-    // un Kharkanas. Chi ha in mano i senza-serie non aspetta «il numero
-    // dopo», aspetta il prossimo della SUA storia — e lì non ce n'è uno.
+    // COI NUMERI UNICI LA SAGA E' UN FILO SOLO — e questo controllo è
+    // GIRATO per la terza volta. Pinnava «il ciclo comanda sempre», chiesto
+    // sul Malazan; il lettore poi ha scelto fra tre strade «uno per saga,
+    // sempre»: il passo è il numero dopo, di qualunque serie. Solo coi
+    // numeri DOPPI (ogni serie numerata da sé) si resta nella serie.
     const C = (id, ciclo, n) => ({ ...V(id, "Malazan", n), series: ciclo });
     const misti = [C("k1", "Kharkanas", 7), C("k2", "Kharkanas", 8), C("x1", "", 5), C("x2", "", 6)];
-    t.eq("il prossimo è quello della sua serie", nextInSaga(misti[2], misti, nuovi)?.id, "x2");
-    t.eq("…e non si scavalca in un'altra storia", nextInSaga(misti[3], misti, nuovi), null);
-    t.eq("…mentre dentro i Kharkanas si prosegue", nextInSaga(misti[0], misti, nuovi)?.id, "k2");
+    t.eq("il prossimo è il numero dopo", nextInSaga(misti[2], misti, nuovi)?.id, "x2");
+    t.eq("…anche se è di un'altra serie", nextInSaga(misti[3], misti, nuovi)?.id, "k1");
+    t.eq("…e dentro i Kharkanas si prosegue", nextInSaga(misti[0], misti, nuovi)?.id, "k2");
     // coi numeri DOPPI non cambia niente, ed è la prova che a spartire è la
     // serie e non i numeri: un volume senza ciclo resta fra i senza-ciclo
     const doppi = [C("k1", "Kharkanas", 1), C("k2", "Kharkanas", 2), C("x1", "", 1), C("x2", "", 2)];

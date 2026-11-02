@@ -223,46 +223,35 @@ export default async function (t) {
     );
   }
   {
-    // DUE STORIE COMINCIATE, DUE PASSI — e questo controllo è GIRATO di
-    // proposito. Pinnava «coi numeri unici la saga è un filo solo»: la
-    // regola durò un giorno, e l'ha disdetta il lettore guardando proprio
-    // il Malazan («considera non tutto il ciclo ma la singola serie per
-    // sapere cosa devo leggere dopo... era giusto suggerirmi i volumi
-    // successivi alle serie che avevo già iniziato»). Qui ha in mano i
-    // Kharkanas (k1 letto) e i senza-serie (x1 letto): sono due fili, e il
-    // prossimo di ognuno è il prossimo della SUA storia, non il numero dopo.
-    //
-    // E lo stesso libro non si propone due volte, che era il difetto da cui
-    // questo blocco è nato («Fall of Light» in fila due volte): i
-    // senza-serie sono un gruppo a sé, quindi da x1 non si arriva a k2.
+    // UNA SAGA, UN PASSO — e questo controllo è GIRATO per la terza volta.
+    // Pinnava «due serie cominciate, due passi», chiesto dal lettore sul
+    // Malazan; poi, guardando un Mondo Disco con cinque seguiti e un Malazan
+    // con tre, ha scelto fra tre strade «uno per saga, sempre»: il passo è
+    // il numero dopo il più alto letto o in lettura, di qualunque serie.
     const C = (id, ciclo, n) => ({ ...L(id, "Malazan", n), series: ciclo });
     const malazan = [C("k1", "Kharkanas", 7), C("k2", "Kharkanas", 8), C("x1", "", 5), C("x2", "", 6)];
     const stati = { k1: "read", x1: "read" };
     const p = prossimiPassi(malazan, { statusOf: (id) => stati[id] || "unread" });
-    t.eq("due serie cominciate danno due passi", ids(p), "x2+k2");
-    t.eq("il filo dei Kharkanas propone il suo", p.find((x) => x.ciclo === "Kharkanas").libro.id, "k2");
-    t.eq("e i senza-serie il loro, senza scavalcare nell'altra storia", p.find((x) => !x.ciclo).libro.id, "x2");
-    // IL NOME SEGUE IL NUMERO, NON IL GRUPPO: qui i numeri sono una fila
-    // sola del Malazan, quindi «Malazan n° 8» — «Kharkanas n° 8» direbbe
-    // «l'ottavo Kharkanas», e i Kharkanas sono tre.
-    t.eq("…col nome della saga, che è il numero sul dorso", p[0].nome, "Malazan");
-    t.eq("…tutt'e due", p[1].nome, "Malazan");
+    t.eq("due serie cominciate, un passo solo: il numero dopo il più alto", ids(p), "k2");
+    t.eq("…col nome della saga", `${p[0].nome} n° ${p[0].libro.sagaOrder}`, "Malazan n° 8");
+    // il più alto è il riferimento anche se è di un'altra serie: letto il 5
+    // (senza serie), il passo è il 6, e letto il 7 (Kharkanas) il 6 saltato
+    // non torna
+    t.eq("letto il 5, il 6", ids(prossimiPassi(malazan, { statusOf: (id) => (id === "x1" ? "read" : "unread") })), "x2");
+    t.eq(
+      "in lettura il più alto, il passo è il suo seguito",
+      ids(prossimiPassi(malazan, { statusOf: (id) => ({ x1: "read", k1: "reading" })[id] || "unread" })),
+      "k2"
+    );
   }
 
-  // ---- IL MONDO DISCO: UN PASSO PER OGNI CICLO COMINCIATO ----------------
+  // ---- IL MONDO DISCO: IL NUMERO DOPO, UNO SOLO ---------------------------
   {
-    // QUESTO BLOCCO È GIRATO, e il perché va letto prima di girarlo una
-    // terza volta. Pinnava «letti i primi dieci, il prossimo è l'undicesimo
-    // e basta»: l'aveva chiesto il lettore con quattro Pratchett in fila, e
-    // l'ha disdetto lui stesso un giorno dopo, guardando il Malazan e un
-    // Disco diventato muto («era giusto suggerirmi i volumi successivi alle
-    // serie che avevo già iniziato»).
-    //
-    // Il numero e la serie rispondono a due domande diverse: il numero dice
-    // in che ordine leggere, la serie dice di quale storia si parla. Chi ha
-    // finito i primi dieci ha in mano cinque storie, e ognuna ha il suo
-    // prossimo volume; il numero resta quello della saga, ed è per questo
-    // che l'etichetta dice «Discworld» e non «Death» (vedi sotto).
+    // GIRATO ANCHE QUESTO, ed era il caso della fotografia: letti i primi
+    // dieci, la fila proponeva un passo per ogni ciclo cominciato (Reaper
+    // Man 11, Witches Abroad 12, Small Gods 13, Men at Arms 15) più l'inizio
+    // del primo ciclo non cominciato. Il lettore: «mostrami solo il numero
+    // successivo al numero che sto leggendo o che ho già letto».
     const D = (id, n, ciclo) => ({ ...L(id, "Discworld", n), series: ciclo });
     const disco = [
       D("cm", 1, "Rincewind"), D("lf", 2, "Rincewind"), D("er", 3, "The Witches"), D("mo", 4, "Death"),
@@ -271,56 +260,31 @@ export default async function (t) {
       D("rm", 11, "Death"), D("wa", 12, "The Witches"), D("sg", 13, "Ancient Civilizations"),
       D("ll", 14, "The Witches"), D("ma", 15, "City Watch"),
     ];
-    const primiDieci = new Set(["cm", "lf", "er", "mo", "so", "ws", "py", "gg", "ec", "mp"]);
-    const p = prossimiPassi(disco, { statusOf: (id) => (primiDieci.has(id) ? "read" : "unread") });
-    // cinque cicli cominciati, cinque passi: Morte → Reaper Man (11),
-    // Streghe → Witches Abroad (12), Civiltà → Small Gods (13), Guardie →
-    // Men at Arms (15). Rincewind e la Rivoluzione industriale non hanno un
-    // seguito in questa biblioteca e tacciono.
-    t.eq("un passo per ogni ciclo cominciato", ids(p), "rm+wa+sg+ma");
-    // IL NOME SEGUE IL NUMERO: nel Disco la fila è una sola, da 1 a 41, e il
-    // numero accanto è quello del dorso. «Death n° 11» direbbe «l'undicesimo
-    // della Morte», che è falso — i romanzi della Morte sono cinque.
-    t.eq("…e si chiama col numero della saga", `${p[0].nome} n° ${p[0].libro.sagaOrder}`, "Discworld n° 11");
-    t.c("…tutte le righe", p.every((x) => x.nome === "Discworld"), JSON.stringify(p.map((x) => x.nome)));
-    // a parità di nome e di tocco comanda il numero, o l'ordine delle righe
-    // sarebbe quello d'ingresso in biblioteca, diverso a ogni import
-    t.eq("…in ordine di numero", p.map((x) => x.libro.sagaOrder).join(","), "11,12,13,15");
-    // e il ciclo è quello del volume che hai finito, non il primo che si
-    // incontra scorrendo: letto solo Guards! Guards! (Guardie), il passo è
-    // Men at Arms, non il numero dopo di un'altra storia
-    const solo = new Set(["gg"]);
-    const q = prossimiPassi(disco, { statusOf: (id) => (solo.has(id) ? "read" : "unread") });
-    t.eq("letto solo Guards! Guards!, il prossimo è Men at Arms", ids(q)[0] === "m" && q[0].libro.id, "ma");
-    t.eq("…che è il seguito della SUA storia", q[0].ciclo, "City Watch");
-    // E L'INIZIO DEL CICLO DOPO (chiesto dal lettore con «Moving Pictures»):
-    // in una saga cominciata si propone anche il primo volume del ciclo non
-    // ancora cominciato che viene prima nell'ordine della saga — uno solo,
-    // e DOPO il seguito della storia che hai in mano
-    t.eq("…e poi l'inizio del primo ciclo non cominciato", ids(q), "ma+cm");
-    t.eq("…che dice quale ciclo comincia", q[1].inizio, "Rincewind");
-    // letti i primi nove, l'unico ciclo non cominciato è la Rivoluzione
-    // industriale: il caso del lettore
-    const nove = new Set(["cm", "lf", "er", "mo", "so", "ws", "py", "gg", "ec"]);
-    const r = prossimiPassi(disco, { statusOf: (id) => (nove.has(id) ? "read" : "unread") });
-    t.c("Moving Pictures torna fra i seguiti", ids(r).split("+").includes("mp"), ids(r));
-    t.eq("…una volta sola", ids(r).split("+").filter((x) => x === "mp").length, 1);
-    // un ciclo lasciato (un volume abbandonato) non si ripropone
-    const lasciato = prossimiPassi(disco, { statusOf: (id) => (nove.has(id) ? "read" : id === "mp" ? "abandoned" : "unread") });
-    t.c("un ciclo abbandonato non si ripropone dall'inizio", !ids(lasciato).includes("mp") && !ids(lasciato).includes("+ll"), ids(lasciato));
-    // tutti i cicli cominciati: nessun inizio in più (il controllo di sopra,
-    // «un passo per ogni ciclo cominciato», resta identico)
-    // l'ordine è quello della SAGA, non quello in cui i libri sono entrati
-    const sparsi = [...disco].reverse();
-    t.eq("l'inizio è il ciclo che viene prima, in qualunque ordine arrivino", ids(prossimiPassi(sparsi, { statusOf: (id) => (solo.has(id) ? "read" : "unread") })), "ma+cm");
-    // un volume senza ciclo non è «un ciclo da cominciare»
-    const senzaCiclo = [{ ...L("zz", "Discworld", 0.5) }, ...disco];
-    t.c("un volume senza ciclo non si propone come inizio", !ids(prossimiPassi(senzaCiclo, { statusOf: (id) => (solo.has(id) ? "read" : "unread") })).includes("zz"));
-    // quel che la guida non conta come tappa non apre un ciclo
-    const conContorno = prossimiPassi(disco, { statusOf: (id) => (solo.has(id) ? "read" : "unread"), contorno: (b) => b.id === "cm" });
-    t.eq("un contorno non è l'inizio di un ciclo", ids(conContorno), "ma+lf");
-    // una saga soltanto in lettura non è cominciata: niente inizi
-    t.eq("senza un volume finito nessun inizio", prossimiPassi(disco, { statusOf: (id) => (id === "gg" ? "reading" : "unread") }).length, 0);
+    const di = (letti) => (id) => (letti.includes(id) ? "read" : "unread");
+    const primiDieci = ["cm", "lf", "er", "mo", "so", "ws", "py", "gg", "ec", "mp"];
+    const p = prossimiPassi(disco, { statusOf: di(primiDieci) });
+    t.eq("letti i primi dieci, l'undicesimo e basta", ids(p), "rm");
+    t.eq("…col numero della saga", `${p[0].nome} n° ${p[0].libro.sagaOrder}`, "Discworld n° 11");
+    t.eq("…che non apre un ciclo: la Morte c'era già", p[0].inizio, "");
+    // letto solo Guards! Guards! (8), il passo è il 9 anche se è un Rincewind
+    t.eq("letto solo l'8, il 9, di qualunque serie", ids(prossimiPassi(disco, { statusOf: di(["gg"]) })), "ec");
+    // letti i primi nove: Moving Pictures, e la nota dice che apre un ciclo
+    const nove = primiDieci.slice(0, 9);
+    const r = prossimiPassi(disco, { statusOf: di(nove) });
+    t.eq("letti nove, Moving Pictures", ids(r), "mp");
+    t.eq("…che dice quale ciclo comincia", r[0].inizio, "Industrial Revolution");
+    // abbandonato Moving Pictures, il passo scavalca (come sempre)
+    const lasciato = prossimiPassi(disco, { statusOf: (id) => (nove.includes(id) ? "read" : id === "mp" ? "abandoned" : "unread") });
+    t.eq("un volume lasciato si scavalca", ids(lasciato), "rm");
+    // un contorno della guida non conta come volume del ciclo: tolti i primi
+    // due Rincewind come contorni, il 5 apre i Rincewind
+    const conContorno = prossimiPassi(disco, { statusOf: di(["mo"]), contorno: (b) => b.id === "cm" || b.id === "lf" });
+    t.eq("un contorno non è il primo di un ciclo", conContorno[0]?.inizio, "Rincewind");
+    t.eq("…mentre senza contorni il 5 non apre niente", prossimiPassi(disco, { statusOf: di(["mo"]) })[0]?.inizio, "");
+    // l'ordine d'arrivo non conta
+    t.eq("in qualunque ordine arrivino i libri", ids(prossimiPassi([...disco].reverse(), { statusOf: di(nove) })), "mp");
+    // una saga soltanto in lettura non è cominciata
+    t.eq("senza un volume finito niente", prossimiPassi(disco, { statusOf: (id) => (id === "gg" ? "reading" : "unread") }).length, 0);
   }
 
   // ---- IL CICLO, NON LA SAGA ---------------------------------------------
@@ -515,12 +479,12 @@ export default async function (t) {
     const contorno = (b) => b.id === "prologo" || b.id === "sfondo";
     const letto = (id) => (id === "prologo" || id === "uno" || id === "quindici" ? "read" : "unread");
     t.eq("il contorno non apre un filo", ids(prossimiPassi(scena, { statusOf: letto, contorno })), "sedici");
-    // e senza la guardia torna il difetto identico, con la sua riga in più
-    t.eq(
-      "senza la guardia la riga di troppo torna",
-      ids(prossimiPassi(scena, { statusOf: letto, contorno: () => false })),
-      "sfondo+sedici"
-    );
+    // e il prologo letto da solo non apre il filo: senza la guardia la saga
+    // proporrebbe il numero dopo di lui (col filo che è la saga intera, la
+    // riga in più di allora non c'è più: la guardia si vede qui)
+    const soloPrologo = (id) => (id === "prologo" ? "read" : "unread");
+    t.eq("letto solo il prologo, nessun filo", prossimiPassi(scena, { statusOf: soloPrologo, contorno }).length, 0);
+    t.eq("…che senza la guardia si aprirebbe", ids(prossimiPassi(scena, { statusOf: soloPrologo, contorno: () => false })), "uno");
     // E LA DOMANDA DEVE ARRIVARE FIN DENTRO `nextInSaga`: qui il filo lo
     // apre un romanzo vero e il contorno è un CANDIDATO, non il
     // riferimento — è il solo caso che prova il passaggio (mutazione
@@ -637,20 +601,12 @@ export default async function (t) {
     // cosa a chi legge la riga: «li hai letti» e «li hai lasciati» sono due
     // storie diverse
     t.eq("dopo di te solo quel che avevi lasciato", solo([uno, due], { a: "read", b: "abandoned" })?.motivo, "abbandonati");
-    // E «tuttiLetti» È RAGGIUNGIBILE SOLO DOVE IL GRUPPO È PIÙ LARGO DELLA
-    // CHIAVE: il riferimento è il più avanti DELLA SUA SERIE, ma dove la
-    // Serie è una PARTE di una nostra guida `gruppoDi` allarga alla saga
-    // intera — così davanti al riferimento ci possono stare volumi letti di
-    // un'altra parte. È il caso di chi ha ancora i capitoli scritti nel
-    // campo, e senza questa scena il ramo non lo prova nessuno.
-    const parti = [
-      { ...uno, series: "Part 1 · The Fall of Horus" },
-      { ...due, series: "Part 7 · Mars & Magnus" },
-    ];
-    // (con un volume ancora da leggere, prima di loro: letta tutta, la saga
-    // starebbe in una riga sola)
-    const daLeggere = V("z", "Prologo", 0.5, "Part 0 · Prologo");
-    t.eq("hai letto tutto quello che hai", solo([...parti, daLeggere], { a: "read", b: "read" })?.motivo, "tuttiLetti");
+    // E «tuttiLetti» NASCE DA CHI RILEGGE: il riferimento della fila è il
+    // più avanti che hai letto, quindi davanti a lui non c'è niente di
+    // letto; ma chiuso di nuovo il primo, col secondo già letto, la proposta
+    // a libro chiuso (`nextInSaga` diretta in App) chiede il passo dopo il
+    // primo
+    t.eq("hai letto tutto quello che hai", passoDentro(uno, [uno, due], () => "read").motivo, "tuttiLetti");
     // i numeri mescolati zittiscono il filo, ed è l'unica ragione che
     // chiede al lettore di mettere mano a un campo. IL DOPPIONE CHE CONTA
     // È QUELLO SUL PASSO: due titoli sul numero che si starebbe per
@@ -761,12 +717,13 @@ export default async function (t) {
     );
   }
 
-  // ── UNA SAGA CON PIÙ FILI LI NOMINA PER SERIE ────────────────────────
+  // ── UNA SAGA, UNA RIGA ───────────────────────────────────────────────
   //
   // Segnalato dal lettore: «Circle of the World: "Red Country" è l'ultimo
   // volume che hai», e venti righe più giù la stessa saga con «The Wisdom
-  // of Crowds». Erano serie diverse, ma col solo nome della saga davanti
-  // sembravano due risposte alla stessa domanda.
+  // of Crowds». Allora erano tre fili, uno per serie, e si nominarono per
+  // serie; col filo che è la saga intera («uno per saga, sempre») la riga
+  // è una, e parla dal più avanti.
   {
     const C = (id, titolo, n, serie) => ({ id, title: titolo, saga: "Circle of the World", series: serie, sagaOrder: n, addedAt: 1 });
     const libri = [
@@ -785,11 +742,8 @@ export default async function (t) {
       progressoOf: () => 0,
       tocco: (id) => quando[id],
     }).map(frasePassoTace);
-    t.eq(
-      "ogni filo di Circle porta la sua serie, insieme e in ordine",
-      righe.map((r) => r.split(":")[0]).join(" | "),
-      "Circle of the World · The First Law | Circle of the World · senza serie | Circle of the World · The Age of Madness | Goosebumps"
-    );
+    t.eq("Circle è una riga sola, col nome della saga", righe.map((r) => r.split(":")[0]).join(" | "), "Circle of the World | Goosebumps");
+    t.eq("…che parla dal più avanti", righe[0], "Circle of the World: «The Wisdom of Crowds» è l'ultimo volume che hai di questa storia.");
     // ogni riga porta ai volumi di cui parla
     const ids = (t) => volumiDelMotivo(t).map((b) => b.id).join(" ");
     t.eq("due numeri uguali: tutt'e due", ids({ motivo: "mescolati", uno: libri[0], due: libri[1], da: libri[2] }), "lak rc");
@@ -811,14 +765,13 @@ export default async function (t) {
     );
     t.eq("…e apre l'ultimo", volumiDelMotivo(tutta[0]).map((b) => b.id).join(), "woc");
     t.eq("…e la saga in lettura resta com'era, dopo", tutta.map((r) => r.nome).join(" | "), "Circle of the World | Goosebumps");
-    // un abbandonato non e' letto: le righe per serie restano
+    // un abbandonato non e' letto: la saga non e' «letta tutta»
     t.eq(
-      "con un volume lasciato le righe restano",
-      perchePassoTace(libri, { statusOf: (id) => (id === "bsc" ? "abandoned" : "read"), progressoOf: () => 0 }).filter((r) => r.saga === "Circle of the World").length,
-      3
+      "con un volume lasciato non è letta tutta",
+      perchePassoTace(libri, { statusOf: (id) => (id === "bsc" ? "abandoned" : "read"), progressoOf: () => 0 }).find((r) => r.saga === "Circle of the World")?.motivo,
+      "ultimo"
     );
-    // e una saga con un filo solo resta col suo nome
-    t.eq("un filo solo resta col nome della saga", righe[3].startsWith("Goosebumps: "), true);
+    t.eq("Goosebumps resta col suo nome", righe[1].startsWith("Goosebumps: "), true);
     // due saghe mai toccate, coi numeri che si intrecciano: una saga per
     // volta lo stesso, non 3-5-7-9 alternate
     const A = (id, n, serie) => ({ id, title: id, saga: "Altra", series: serie, sagaOrder: n, addedAt: 1 });
@@ -826,15 +779,23 @@ export default async function (t) {
       statusOf: (id) => (id === "a1" || id === "bsc" ? "unread" : "read"),
       progressoOf: () => 0,
     });
-    t.eq("a parità di tocco le saghe non si mescolano", intrecciati.map((r) => r.da.id).join(" "), "a5 a7 lak woc");
-    // e due fili senza numero si mettono per nome, non per ordine d'arrivo
-    const S = (id, serie) => ({ id, title: id, saga: "Senza", series: serie, addedAt: 1 });
+    t.eq("a parità di tocco le saghe in ordine di nome", intrecciati.map((r) => r.da.id).join(" "), "a7 woc");
+    // DOVE OGNI SERIE SI NUMERA DA SÉ i fili restano uno per serie, e una
+    // saga con più fili li nomina per serie, insieme, per numero e poi per
+    // nome (non per ordine d'arrivo)
+    const M = (id, serie, n) => ({ id, title: id, saga: "Cosmoverse", series: serie, sagaOrder: n, addedAt: 1 });
+    const cosmo = [M("sl2", "Stormlight", 2), M("mb2", "Mistborn", 2), M("sl1", "Stormlight", 1), M("mb1", "Mistborn", 1), M("mb0", "Mistborn", 0.5)];
     t.eq(
-      "fili senza numero in ordine di nome",
-      perchePassoTace([S("z", "Zeta"), S("b", "Beta"), S("u", "Ultima")], { statusOf: (id) => (id === "u" ? "unread" : "read"), progressoOf: () => 0 })
+      "coi numeri per serie, un filo per serie col suo nome",
+      perchePassoTace(cosmo, { statusOf: (id) => (id === "mb0" ? "unread" : "read"), progressoOf: () => 0 })
         .map((r) => r.nome)
         .join(" | "),
-      "Senza · Beta | Senza · Zeta"
+      "Cosmoverse · Mistborn | Cosmoverse · Stormlight"
+    );
+    t.eq(
+      "…e letta tutta, una riga",
+      perchePassoTace(cosmo, { statusOf: () => "read", progressoOf: () => 0 }).map((r) => r.motivo).join(),
+      "sagaLetta"
     );
   }
 
