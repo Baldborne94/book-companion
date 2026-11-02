@@ -119,7 +119,9 @@ export default async (t) => {
   const stato = { h1: "read", h2: "read" };
   const leggi = (id) => stato[id] || "unread";
   t.eq("dopo il B.P.R.D. 1 il B.P.R.D. 2", nextInSaga(tutti.find((b) => b.id === "h2"), tutti, leggi, () => 0)?.id, "h6");
-  t.eq("dopo l'Omnibus 1 l'Omnibus 3 (il 2 non c'è)", nextInSaga(tutti.find((b) => b.id === "h1"), tutti, leggi, () => 0)?.id, "h4");
+  // il filo è la saga intera (l'ordine della guida): dopo l'Omnibus 1 il
+  // numero dopo non letto, anche di un'altra serie
+  t.eq("dopo l'Omnibus 1 il numero dopo della guida", nextInSaga(tutti.find((b) => b.id === "h1"), tutti, leggi, () => 0)?.id, "h6");
   t.eq("sul disco: dentro Hellboy, nella cartella della serie", casaDelVolume(fatti[1], "fumetti").join("/"), "Fumetti/Hellboy/B.P.R.D. Omnibus");
 
   // il cammino conta i suoi volumi

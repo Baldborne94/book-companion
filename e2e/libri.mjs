@@ -170,7 +170,8 @@ export function mondoDisco() {
   for (const id of ["cm", "lf", "er", "mo", "so", "ws", "py", "gg", "ec"]) localStorage.setItem(`bc_status_${id}`, "read");
   localStorage.setItem("bc_status_mp", "unread");
   localStorage.setItem("bc_prog_mp", "0.12");
-  // e il seguito di una storia cominciata (Mort letto), aperto e rimesso li'
+  // e il seguito di una storia cominciata (Mort letto), aperto e rimesso li':
+  // non si propone, perche' il seguito della saga e' uno, il numero 10
   localStorage.setItem("bc_status_rm", "unread");
   localStorage.setItem("bc_prog_rm", "0.3");
   localStorage.setItem("bc_status_mech", "reading");

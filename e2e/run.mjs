@@ -1481,12 +1481,16 @@ const SCENE = [
     },
   },
   {
-    nome: "l'Ingresso propone il volume rimesso «Da leggere» e l'inizio del ciclo dopo",
+    // la fotografia del lettore: il Mondo Disco proponeva un seguito per
+    // ogni ciclo cominciato (Reaper Man 11, Men at Arms 15…) e lui ha scelto
+    // «uno per saga, sempre»: il numero dopo il più alto letto o in lettura
+    nome: "l'Ingresso propone un seguito per saga, il numero dopo, anche rimesso «Da leggere»",
     async fai({ browser }) {
       const d = await dispositivo(browser, { prima: mondoDisco });
       await d.p.goto(URL_APP);
       const nota = await finche(() => testoAvviso(d.p, /Discworld n° 10 · inizia Industrial Revolution · già al 12%/), 15000, "Moving Pictures non e' fra i seguiti");
-      await finche(() => testoAvviso(d.p, /^Discworld n° 11 · già al 30%$/), 5000, "Reaper Man, rimesso «Da leggere», non e' fra i seguiti");
+      const note = await d.p.evaluate(() => [...document.querySelectorAll("div,span,p")].filter((e) => e.childElementCount === 0 && /^Discworld n° /.test(e.textContent || "")).map((e) => e.textContent));
+      if (note.length !== 1) throw new Error(`il Mondo Disco propone piu' di un seguito: ${note.join(" | ")}`);
       return { guasti: d.guasti, nota };
     },
   },

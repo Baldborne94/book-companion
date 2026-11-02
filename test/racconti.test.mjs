@@ -322,10 +322,18 @@ export default async (t) => {
       { id: "2", saga: "Warhammer 40K", series: parte3, sagaOrder: 25 },
     ];
     t.eq("il filo di una guida è la saga intera", gruppoDi(eresia[1], eresia).length, 2);
+    // dove il numero è della saga, il filo è la saga intera («uno per saga,
+    // sempre», scelto dal lettore); la serie solo dove ogni serie si numera
+    // da sé
     const malazan = [
       { id: "1", saga: "Malazan", series: "Book of the Fallen", sagaOrder: 1 },
       { id: "2", saga: "Malazan", series: "Kharkanas", sagaOrder: 7 },
     ];
-    t.eq("…e quello del Malazan resta la serie", gruppoDi(malazan[1], malazan).length, 1);
+    t.eq("…e anche quello del Malazan, coi numeri suoi", gruppoDi(malazan[1], malazan).length, 2);
+    const cosmo = [
+      { id: "1", saga: "Cosmoverse", series: "Mistborn", sagaOrder: 1, title: "The Final Empire" },
+      { id: "2", saga: "Cosmoverse", series: "Stormlight", sagaOrder: 1, title: "The Way of Kings" },
+    ];
+    t.eq("…ma dove ogni serie parte da uno il filo è la serie", gruppoDi(cosmo[1], cosmo).length, 1);
   }
 };
