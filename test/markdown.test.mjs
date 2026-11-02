@@ -58,5 +58,5 @@ export default async function (t) {
   // non rigenera lascerebbe sul sito la versione vecchia (la build lo fa
   // da se', ma il repository deve dire quel che il sito serve)
   const pagina = readFileSync(new URL("../public/privacy.html", import.meta.url), "utf8");
-  t.c("public/privacy.html e' generata da questo PRIVACY.md", pagina.includes(html));
+  t.c("public/privacy.html e' generata da questo PRIVACY.md", pagina.includes(html), "PRIVACY.md e' cambiato: rigenera la pagina con `npm run privacy` (la fa anche la build), poi rilancia i test");
 }

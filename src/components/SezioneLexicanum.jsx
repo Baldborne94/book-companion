@@ -48,7 +48,7 @@ const mega = (b) => `${Math.max(1, Math.round(b / 1048576)).toLocaleString("it-I
 // LE IMMAGINI PRINCIPALI, sotto il wiki gia' sceso. Prima si misura (quante
 // voci hanno l'immagine, quanto pesano, se il wiki le lascia salvare), poi si
 // scarica dicendo il peso: un tasto non promette cio' che non sa.
-function BloccoImmagini({ wiki, lavoro, altro, onScarica, onFerma, onCambio }) {
+function BloccoImmagini({ wiki, lavoro, onScarica, onFerma, onCambio }) {
   const [stato, setStato] = useState(undefined);
   const [giro, setGiro] = useState(null);
   const [misura, setMisura] = useState(null);
@@ -98,10 +98,7 @@ function BloccoImmagini({ wiki, lavoro, altro, onScarica, onFerma, onCambio }) {
                 : `🖼 Le immagini non sono sul dispositivo`}
       </p>
       {lavoro && <p style={{ ...n, color: C.text }}>Scarico… {fraseImmagini(lavoro)}</p>}
-      {altro && !lavoro && !stato && <p style={n}>Stanno scendendo le immagini dell'altro wiki: una alla volta.</p>}
-
-      {!altro && (
-        <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
           {lavoro ? (
             <button onClick={onFerma} style={t}>
               Ferma
@@ -134,8 +131,7 @@ function BloccoImmagini({ wiki, lavoro, altro, onScarica, onFerma, onCambio }) {
               {misura === "…" ? "Misuro…" : "🖼 Misura le immagini"}
             </button>
           )}
-        </div>
-      )}
+      </div>
 
       {!lavoro && !stato && !giro && pronta && (
         <p style={n}>
@@ -150,16 +146,10 @@ function BloccoImmagini({ wiki, lavoro, altro, onScarica, onFerma, onCambio }) {
         </p>
       )}
       {misura?.errore && <p style={{ ...n, color: C.text }}>{misura.errore} Si può riprovare.</p>}
-      {misura?.senzaPrincipale && (
-        <p style={{ ...n, color: C.text }}>
-          {wiki.nome} non segna quale sia l'immagine principale delle sue voci: su {misura.campione} voci guardate, nessuna
-          la dichiara. Per questa strada non c'è niente da scaricare.
-        </p>
-      )}
       {!stato && (
         <p style={n}>
-          L'immagine sta in cima alla voce, col riquadro dei dati
-          {wiki === FANDOM ? ", dietro l'avviso della voce." : ", e resta velata con lui: anche un'immagine può dire come va a finire."}
+          L'immagine sta in cima alla voce, col riquadro dei dati, dietro l'avviso della voce; nelle voci di Lexicanum la stessa
+          immagine resta velata.
         </p>
       )}
     </div>
@@ -402,7 +392,6 @@ function BloccoWiki({ wiki, icona, lavoro, onScarica, onFerma, immagini, onImmag
         <BloccoImmagini
           wiki={wiki}
           lavoro={immagini?.quale === wiki.id ? immagini : null}
-          altro={!!immagini && immagini.quale !== wiki.id}
           onScarica={() => onImmagini?.(wiki.id)}
           onFerma={onFermaImmagini}
           onCambio={onCambio}
@@ -486,7 +475,7 @@ export default function SezioneLexicanum({ lavoro, onScarica, onFerma, lavoroFan
   return (
     <div>
       <Riepilogo versione={versione} />
-      <BloccoWiki wiki={LEXICANUM} icona="⚔" lavoro={lavoro} onScarica={onScarica} onFerma={onFerma} {...img} onCambio={onCambio}>
+      <BloccoWiki wiki={LEXICANUM} icona="⚔" lavoro={lavoro} onScarica={onScarica} onFerma={onFerma} onCambio={onCambio}>
         <p style={n}>
           Le voci del wiki del 40K, sul dispositivo: nei libri del 40K i nomi si segnano nel testo e la scheda del
           dizionario mostra la voce di un nome, di una legione o di un pianeta <strong>subito e senza rete</strong>, e i

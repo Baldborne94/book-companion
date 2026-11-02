@@ -9,6 +9,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 ## Come si lavora
 
 - `npm test` **e** `npm run build` verdi prima di ogni commit. La CI (`.github/workflows/prova.yml`) li rifà.
+- Chi tocca `PRIVACY.md` rigenera la pagina (`npm run privacy`, la fa anche la build) **prima** di `npm test`: `markdown.test.mjs` controlla che `public/privacy.html` sia in pari, e cade finché non lo è (scambiato a lungo per un test instabile).
 - **Ogni test nuovo si prova con le mutazioni**: si rompe apposta la cosa che difende e si guarda che caschi. Un test che passa sul codice rotto non vale niente. Una guardia che nessuna mutazione fa cascare si toglie (codice che non guarda niente è codice che il prossimo crede vivo).
 - **Si riproduce prima di curare**, nel browser vero sull'app intera (`npm run dev` o `vite preview`, Playwright col Chromium in `PLAYWRIGHT_BROWSERS_PATH`). Una scena costruita apposta non è una diagnosi del caso del lettore: non si raccontano come suoi i libri di un banco.
 - Si misura: tempi, byte, fotogrammi. «Dovrebbe essere più veloce» non è un risultato.

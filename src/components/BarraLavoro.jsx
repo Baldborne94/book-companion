@@ -68,7 +68,7 @@ export default function BarraLavoro({ lex = null, onFermaLex, fan = null, onFerm
       {imm && (
         <div role="status" style={riga}>
           <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
-            <span style={{ color: C.text }}>🖼 Immagini di {imm.quale === "fan" ? "Fandom" : "Lexicanum"}:</span> {fraseImmagini(imm)}
+            <span style={{ color: C.text }}>🖼 Immagini di Fandom:</span> {fraseImmagini(imm)}
           </span>
           <button onClick={onFermaImm} style={tasto}>
             Ferma
