@@ -77,7 +77,7 @@ export async function fumetto() {
 
 export const FRASE = "La nebbia saliva dal fiume e copriva le strade di Ankh-Morpork.";
 
-export async function epub({ titolo = "La nebbia", autore = "Autore di Prova", frase = FRASE, lingua = "it", quanti = 12 } = {}) {
+export async function epub({ titolo = "La nebbia", autore = "Autore di Prova", frase = FRASE, lingua = "it", quanti = 12, rientri = false } = {}) {
   const zip = new JSZip();
   zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
   zip.file(
@@ -95,7 +95,7 @@ export async function epub({ titolo = "La nebbia", autore = "Autore di Prova", f
   const paragrafi = Array.from({ length: quanti }, (_, i) => `<p>${i === 0 ? frase : `Paragrafo ${i + 1} della prova, con abbastanza parole da fare una riga intera sulla pagina.`}</p>`).join("");
   zip.file(
     "OEBPS/c1.xhtml",
-    `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Uno</title></head><body><h1>Capitolo uno</h1>${paragrafi}</body></html>`
+    `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Uno</title>${rientri ? "<style>p { text-indent: 1.5em; margin: 0 }</style>" : ""}</head><body><h1>Capitolo uno</h1>${paragrafi}</body></html>`
   );
   return zip.generateAsync({ type: "nodebuffer", mimeType: "application/epub+zip" });
 }

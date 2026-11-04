@@ -36,6 +36,18 @@ export function ritaglioAvanzo({ colonna, riga, attuale = 0 } = {}) {
   return Math.floor(tutta - Math.floor(tutta / passo) * passo);
 }
 
+// E L'AVANZO SI DIVIDE FRA SOPRA E SOTTO (segnalato dal lettore col tablet
+// sdraiato: «un gap in fondo alla pagina più spesso della parte sopra…
+// vorrei che siano simmetrici»). Tutto in fondo, a scrittura ×1,5 l'avanzo
+// vale fino a quasi una riga, e sotto restava il doppio della carta di
+// sopra (misurato: 17px sopra, 34 sotto). La colonna resta alta uguale:
+// cambia solo dove sta la carta che avanza. Il pixel dispari va sotto
+export function spartiAvanzo(avanzo) {
+  const a = Math.max(0, Math.round(Number(avanzo) || 0));
+  const su = Math.floor(a / 2);
+  return { su, giu: a - su };
+}
+
 // L'indice del libro, da albero a elenco: epub.js lo consegna annidato, la
 // pagina lo mostra in fila con un rientro per livello.
 export function flattenToc(items, depth = 0, out = []) {

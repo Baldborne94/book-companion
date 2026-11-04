@@ -35,22 +35,58 @@ export function chiaveAvanzo({ larghezza, altezza, settings = {} } = {}) {
   ].join("|");
 }
 
-export function avanzoRicordato(id, chiave, storage = globalThis.localStorage) {
+// PIU' GEOMETRIE PER LIBRO (il rapporto del lettore: un'apertura con
+// 5,3 s di «pagina pronta»; riprodotto alla misura del tablet col
+// processore rallentato sei volte: 8,2 s alla prima apertura contro 4,0
+// alla seconda, e la differenza e' il ritaglio che reimpagina il capitolo
+// sotto la candela). Si teneva UNA geometria per libro: girando il tablet
+// la misura sdraiata cancellava quella in piedi, e il lettore che legge in
+// tutt'e due i versi ripagava il ritaglio a ogni giro. Adesso le ultime
+// `GEOMETRIE_PER_LIBRO`, la piu' recente in testa. La forma di prima
+// (`{ chiave, resto }`) si legge ancora
+export const GEOMETRIE_PER_LIBRO = 4;
+const voci = (r) => {
+  if (Array.isArray(r?.voci)) return r.voci.filter((v) => Array.isArray(v) && v.length === 2);
+  if (r && typeof r.chiave === "string") return [[r.chiave, r.resto]];
+  return [];
+};
+const buono = (n) => (Number.isFinite(Number(n)) && Number(n) >= 0 ? Number(n) : null);
+const leggiJson = (storage, k) => {
   try {
-    const r = JSON.parse(storage?.getItem(chiaveRicordo(id)) || "null");
-    if (!r || r.chiave !== chiave) return null;
-    const n = Number(r.resto);
-    return Number.isFinite(n) && n >= 0 ? n : null;
+    return JSON.parse(storage?.getItem(k) || "null");
   } catch {
     return null;
   }
+};
+
+export function avanzoRicordato(id, chiave, storage = globalThis.localStorage) {
+  const v = voci(leggiJson(storage, chiaveRicordo(id))).find(([k]) => k === chiave);
+  return v ? buono(v[1]) : null;
 }
+
+// E UN LIBRO NUOVO PARTE DA QUEL CHE SI SA DELLO SCHERMO: l'avanzo e' una
+// funzione della colonna e dell'interlinea, e con la stessa finestra e le
+// stesse impostazioni l'ultimo libro aperto ha quasi sempre lo stesso
+// numero (la tipografia la mette il reader). E' un'IPOTESI, non un ricordo:
+// il reader misura comunque, e se il foglio di stile del libro vince
+// sull'interlinea si ritaglia come prima — non si perde niente, ed e' per
+// questo che il libro resta fuori dalla chiave qui e dentro in
+// `avanzoRicordato`
+export const CHIAVE_SCHERMO = "bc_avanzo_schermo";
+export const GEOMETRIE_SCHERMO = 8;
+export function avanzoDaAltri(chiave, storage = globalThis.localStorage) {
+  const v = voci(leggiJson(storage, CHIAVE_SCHERMO)).find(([k]) => k === chiave);
+  return v ? buono(v[1]) : null;
+}
+
+const metti = (lista, chiave, n, tetto) => [[chiave, n], ...lista.filter(([k]) => k !== chiave)].slice(0, tetto);
 
 export function ricordaAvanzo(id, chiave, resto, storage = globalThis.localStorage) {
   const n = Number(resto);
   if (!id || !Number.isFinite(n) || n < 0) return;
   try {
-    storage?.setItem(chiaveRicordo(id), JSON.stringify({ chiave, resto: n }));
+    storage?.setItem(chiaveRicordo(id), JSON.stringify({ voci: metti(voci(leggiJson(storage, chiaveRicordo(id))), chiave, n, GEOMETRIE_PER_LIBRO) }));
+    storage?.setItem(CHIAVE_SCHERMO, JSON.stringify({ voci: metti(voci(leggiJson(storage, CHIAVE_SCHERMO)), chiave, n, GEOMETRIE_SCHERMO) }));
   } catch {
     /* senza memoria si rimisura: costa e non rompe */
   }

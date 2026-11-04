@@ -1,7 +1,7 @@
 // L'aritmetica del ritaglio dell'avanzo di riga. Sono quattro righe di
 // codice e due trappole, e tutt'e due ci sono gia' cascate una volta: al
 // primo tentativo il libro non si apriva affatto.
-import { ritaglioAvanzo, flattenToc } from "../src/lib/readerLayout.js";
+import { ritaglioAvanzo, spartiAvanzo, flattenToc } from "../src/lib/readerLayout.js";
 import {
   rientrata, spaziatoriFitti, SEGNO_DI_SCENA, RIENTRO_MINIMO, ABBASTANZA_PARAGRAFI,
   curaParagrafi, MODI_PARAGRAFI,
@@ -195,4 +195,12 @@ export default async function (t) {
   t.c("né un numero di capitolo", !segno("12"));
   t.c("né una riga di puntini lunga", !segno("..............."), "");
   t.c("il vuoto non è un segno", !segno(""));
+
+  // L'AVANZO SI DIVIDE FRA SOPRA E SOTTO (il tablet sdraiato del lettore:
+  // 18px sopra, 47 sotto). La somma resta l'avanzo: la colonna non cambia
+  t.eq("ventotto pixel: quattordici e quattordici", JSON.stringify(spartiAvanzo(28)), '{"su":14,"giu":14}');
+  t.eq("il pixel dispari va sotto", JSON.stringify(spartiAvanzo(29)), '{"su":14,"giu":15}');
+  t.eq("niente avanzo, niente carta in piu'", JSON.stringify(spartiAvanzo(0)), '{"su":0,"giu":0}');
+  t.eq("un avanzo che non e' un numero vale zero", JSON.stringify(spartiAvanzo(undefined)), '{"su":0,"giu":0}');
+  t.eq("ne' negativo", JSON.stringify(spartiAvanzo(-5)), '{"su":0,"giu":0}');
 }
