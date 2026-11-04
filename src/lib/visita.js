@@ -10,6 +10,8 @@
 // farci. Quello che l'app sa già curare da sé non si segnala: sarebbe
 // rumore, e il rumore fa ignorare anche le righe che contano.
 
+import { dir, risolvi } from "./percorsi.js";
+
 // Sotto questa soglia un libro non ha davvero testo: è un guscio, o le
 // pagine sono immagini scansionate.
 export const TESTO_MINIMO = 2000;
@@ -54,7 +56,7 @@ export const GUAI = {
   spezzato: {
     grave: false,
     dice: "è spezzato in pezzi che l'indice non apre",
-    cura: "la ricucitura non c'è riuscita: reimportarlo fa un lavoro più profondo",
+    cura: "la ricucitura non ha trovato i pezzi da unire: se le pagine finiscono a metà frase, serve un'altra copia del file",
   },
   capitoliVuoti: {
     grave: false,
@@ -130,13 +132,23 @@ export async function fattiDaEpub(eb) {
   await eb.loaded?.spine;
   const voci = eb.spine?.spineItems || eb.spine?.items || [];
   // i bersagli dell'indice, per riconoscere i documenti che nessuna voce
-  // apre — sono quelli che il testo non può scavalcare
+  // apre — sono quelli che il testo non può scavalcare. Le voci di epub.js
+  // sono scritte COME NEL FILE DELL'INDICE, cioè viste dalla sua cartella,
+  // e la spina dalla cartella del pacchetto: con l'indice in `Text/nav.xhtml`
+  // (Sigil) «c1.xhtml» e «Text/c1.xhtml» non si incontravano mai, nessuna
+  // voce era dell'indice, e il frontespizio contava come pezzi da cucire
+  // (segnalato dal lettore: «spezzato, ricucilo ora», e poi la ricucitura
+  // — che l'indice lo legge bene — non trovava niente). Si risolvono tutte
+  // e due come fa la cura (`risolvi`)
   const inIndice = new Set();
+  const pk = eb.packaging || {};
+  const cartellaIndice = dir(String(pk.navPath || pk.ncxPath || ""));
   try {
     const nav = await eb.loaded?.navigation;
     const scendi = (elenco) => {
       for (const v of elenco || []) {
-        if (v?.href) inIndice.add(String(v.href).split("#")[0].replace(/^\.?\//, ""));
+        const p = v?.href && risolvi(cartellaIndice, String(v.href));
+        if (p) inIndice.add(p);
         scendi(v.subitems);
       }
     };
@@ -164,7 +176,7 @@ export async function fattiDaEpub(eb) {
     } finally {
       try { item.unload(); } catch { /* già scaricato */ }
     }
-    righe.push({ t, img, inToc: inIndice.has(String(item.href || "").replace(/^\.?\//, "")) });
+    righe.push({ t, img, inToc: inIndice.has(risolvi("", String(item.href || ""))) });
   }
   // IL MATERIALE DI CONTORNO NON VOTA: frontespizio, copyright, dedica,
   // «dello stesso autore» sono documenti corti fuori indice IN TESTA (e in

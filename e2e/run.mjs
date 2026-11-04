@@ -14,7 +14,7 @@
 import { existsSync } from "node:fs";
 import { build, preview } from "vite";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
-import { fumetto, fumettoGrosso, fumettoLungo, epub, epubConContorno, pdf, wav, FRASE, mondoDisco, png } from "./libri.mjs";
+import { fumetto, fumettoGrosso, fumettoLungo, epub, epubConContorno, epubConPagine, pdf, wav, FRASE, mondoDisco, png } from "./libri.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
 import { lexicanumFinto, fandomFinto } from "./lexicanumFinto.mjs";
 
@@ -452,6 +452,75 @@ const SCENE = [
       );
       if (/time of legend|CONTENTS/.test(primo)) throw new Error(`il frontespizio e' cucito con quel che viene dopo: «${primo.replace(/\s+/g, " ").slice(0, 160)}…»`);
       return { guasti: d.guasti, nota: "frontespizio da solo, come nel libro" };
+    },
+  },
+  {
+    // segnalato dal lettore con due foto: «Questo libro è spezzato… 🪡
+    // Ricucilo ora», e al tocco «La ricucitura non ha trovato pezzi da
+    // unire: reimporta il file». Con l'indice in una cartella a parte la
+    // diagnosi non riconosceva nessuna voce, e il contorno in testa contava
+    // come pezzi; e un libro su cui la cura passa a vuoto non si offre piu'
+    nome: "un libro sano con l'indice in una cartella a parte non e' «spezzato», e una ricucitura a vuoto non si offre due volte",
+    async fai({ browser }) {
+      const d = await dispositivo(browser, { misura: TABLET });
+      const salute = (titolo) =>
+        d.p.evaluate(async (titolo) => {
+          const id = JSON.parse(localStorage.getItem("bc_books")).find((b) => b.title === titolo).id;
+          const db = await new Promise((r, e) => { const q = indexedDB.open("bc_library"); q.onsuccess = () => r(q.result); q.onerror = e; });
+          return new Promise((r) => { const q = db.transaction("aux").objectStore("aux").get(`salute_${id}`); q.onsuccess = () => r(q.result || null); q.onerror = () => r(null); });
+        }, titolo);
+      const scriviSalute = (titolo, v) =>
+        d.p.evaluate(async ([titolo, v]) => {
+          const id = JSON.parse(localStorage.getItem("bc_books")).find((b) => b.title === titolo).id;
+          const db = await new Promise((r, e) => { const q = indexedDB.open("bc_library"); q.onsuccess = () => r(q.result); q.onerror = e; });
+          await new Promise((r, e) => { const tx = db.transaction("aux", "readwrite"); tx.objectStore("aux").put(v, `salute_${id}`); tx.oncomplete = r; tx.onerror = e; });
+        }, [titolo, v]);
+      // un segno: il libro e' in lettura, e il banner chiede invece di ricucire
+      const inLettura = (titolo) => d.p.evaluate((t) => { const id = JSON.parse(localStorage.getItem("bc_books")).find((b) => b.title === t).id; localStorage.setItem(`bc_prog_${id}`, "0.1"); }, titolo);
+      const apri = async (titolo) => {
+        await d.p.goto(`${URL_APP}?apri=libreria`);
+        await d.p.getByText(titolo).first().click();
+        await d.p.getByRole("button", { name: /Apri il libro|Comincia|Riprendi|Continua/ }).first().click({ timeout: 5000 }).catch(() => {});
+      };
+      const banner = () => d.p.getByText(/spezzato in più pezzi/).first().isVisible().catch(() => false);
+      // il verdetto si scrive dietro la pagina: si aspetta lui, poi si guarda
+      const verdetto = (titolo, ok, perche) => finche(async () => { const s = await salute(titolo); return s && s.v && ok(s) ? s : null; }, 20000, perche);
+
+      await d.p.goto(URL_APP);
+      await importa(d.p, "Mille Figli.epub", await epubConContorno({ cartella: "Text/" }), "application/epub+zip");
+      await inLettura("Mille Figli");
+      await apri("Mille Figli");
+      const sano = await verdetto("Mille Figli", () => true, "il verdetto di «Mille Figli» non si scrive");
+      if (sano.giunture || sano.monconi) throw new Error(`l'indice in Text/ non si legge: ${JSON.stringify(sano)}`);
+      if (await banner()) throw new Error("il banner della ricucitura su un libro sano");
+
+      // un «più tardi» detto alla diagnosi di prima resta detto
+      await importa(d.p, "Le Pagine.epub", await epubConPagine(), "application/epub+zip");
+      await inLettura("Le Pagine");
+      const peso = await d.p.evaluate(async () => {
+        const id = JSON.parse(localStorage.getItem("bc_books")).find((b) => b.title === "Le Pagine").id;
+        const db = await new Promise((r, e) => { const q = indexedDB.open("bc_library"); q.onsuccess = () => r(q.result); q.onerror = e; });
+        return new Promise((r) => { const q = db.transaction("files").objectStore("files").get(id); q.onsuccess = () => r(q.result?.size ?? q.result?.byteLength ?? null); });
+      });
+      await scriviSalute("Le Pagine", { size: peso, monconi: 0, giunture: 5, taciuto: true });
+      await apri("Le Pagine");
+      const taciuto = await verdetto("Le Pagine", (s) => s.v, "il verdetto vecchio non si riguarda");
+      if (!taciuto.taciuto) throw new Error(`il «più tardi» si e' perso col verdetto nuovo: ${JSON.stringify(taciuto)}`);
+      await new Promise((r) => setTimeout(r, 1500));
+      if (await banner()) throw new Error("il banner torna dopo un «più tardi»");
+
+      // senza «più tardi»: il banner, il tocco, la cura che non trova niente
+      await scriviSalute("Le Pagine", { ...taciuto, taciuto: false });
+      await apri("Le Pagine");
+      await finche(banner, 15000, "il banner della ricucitura non compare su «Le Pagine»");
+      await d.p.getByText(/Ricucilo ora/).first().click();
+      const detto = await finche(() => testoAvviso(d.p, /pezzi da unire/), 15000, "la ricucitura a vuoto non si dice");
+      if (/reimport/i.test(detto)) throw new Error(`manda a reimportare, che rifa' la stessa cura: «${detto}»`);
+      await verdetto("Le Pagine", (s) => s.vano, "la cura a vuoto non si ricorda");
+      await apri("Le Pagine");
+      await new Promise((r) => setTimeout(r, 3000));
+      if (await banner()) throw new Error("dopo una cura a vuoto il banner torna");
+      return { guasti: d.guasti, nota: `indice in Text/: ${sano.giunture} giunture; «più tardi» tenuto; a vuoto: «${detto}», poi niente banner` };
     },
   },
   {

@@ -60,7 +60,9 @@ export default async function (t) {
   // colophon, non un romanzo fatto a pezzi
   t.c("due o tre no", !esamina({ ...SANO, giunture: 3 }).includes("spezzato"));
   t.c("non è serio, ma si può risolvere", !grave(["spezzato"]));
-  t.c("e la cura è reimportare", /reimport/i.test(GUAI.spezzato.cura));
+  // reimportare rifà la stessa ricucitura dell'ingresso: mandarci il
+  // lettore è un giro a vuoto (il banner diceva «reimporta il file»)
+  t.c("e la cura non è reimportare", !/reimport/i.test(GUAI.spezzato.cura) && /altra copia/.test(GUAI.spezzato.cura));
 
   // ---- capitoli vuoti ----------------------------------------------------
   t.c("anche uno solo si dice", esamina({ ...SANO, vuoti: 1 }).includes("capitoliVuoti"));
@@ -203,12 +205,13 @@ export default async function (t) {
   // Il referto vero del lettore accusava quasi ogni libro di «capitoli
   // senza niente dentro»: erano le pagine di SOLA IMMAGINE (copertina,
   // mappe) e il materiale di contorno in testa — falsi malati.
-  const finto = (docs, toc) => ({
+  const finto = (docs, toc, { cartella = "", packaging } = {}) => ({
     load: () => {},
+    packaging,
     loaded: { spine: Promise.resolve(), navigation: Promise.resolve({ toc }) },
     spine: {
       items: docs.map((d, i) => ({
-        href: `c${i}.xhtml`,
+        href: `${cartella}c${i}.xhtml`,
         load: async () => {},
         unload: () => {},
         document: {
@@ -237,6 +240,37 @@ export default async function (t) {
   );
   t.eq("la copertina non è un capitolo vuoto", fatti.vuoti, 0);
   t.eq("e il contorno non è una giuntura", fatti.giunture, 0);
+
+  // L'INDICE IN UNA CARTELLA A PARTE (Sigil: `Text/nav.xhtml`, i capitoli
+  // accanto). epub.js dà le voci come le scrive l'indice, «c2.xhtml», e
+  // la spina dalla cartella del pacchetto, «Text/c2.xhtml»: senza
+  // risolverle nessuna voce era dell'indice, e il frontespizio di «A
+  // Thousand Sons» contava cinque giunture — «spezzato, ricucilo ora», e
+  // poi la cura non trovava niente (segnalato dal lettore con due foto)
+  const contorno = [
+    { testo: "A THOUSAND SONS All is dust" },
+    { testo: "The Horus Heresy Book Twelve" },
+    { testo: "All is dust. Knowledge is power." },
+    { testo: "It is a time of legend. ".repeat(20) },
+    { testo: "CONTENTS Dramatis Personae Chapter One" },
+    { testo: "DRAMATIS PERSONAE Magnus the Red. ".repeat(10) },
+    { testo: PROSA_LUNGA },
+    { testo: PROSA_LUNGA },
+  ];
+  fatti = await fattiDaEpub(finto(contorno, tocDi(5, 6, 7), { cartella: "Text/", packaging: { navPath: "Text/nav.xhtml" } }));
+  t.eq("l'indice accanto ai capitoli: le voci si trovano, il contorno non vota", `${fatti.giunture} ${fatti.vuoti}`, "0 0");
+  // EPUB2: l'ncx accanto ai capitoli, voci col frammento, spina con «./»
+  const colFrammento = (...idx) => idx.map((i) => ({ href: `c${i}.xhtml#inizio` }));
+  fatti = await fattiDaEpub(finto(contorno, colFrammento(5, 6, 7), { cartella: "./Text/", packaging: { ncxPath: "Text/toc.ncx" } }));
+  t.eq("l'ncx a parte pure, frammento compreso", fatti.giunture, 0);
+  // e un indice che risale dalla sua cartella
+  const risale = (...idx) => idx.map((i) => ({ href: `../Text/c${i}.xhtml` }));
+  fatti = await fattiDaEpub(finto(contorno, risale(5, 6, 7), { cartella: "Text/", packaging: { navPath: "Nav/nav.xhtml" } }));
+  t.eq("un indice che risale con «../»", fatti.giunture, 0);
+  // e il libro spezzato davvero resta spezzato anche con l'indice a parte
+  const pezzi = [{ testo: PROSA_LUNGA }, ...Array.from({ length: GIUNTURE_TANTE }, () => ({ testo: "un pezzo corto della scena che continua" })), { testo: PROSA_LUNGA }];
+  fatti = await fattiDaEpub(finto(pezzi, tocDi(0, GIUNTURE_TANTE + 1), { cartella: "Text/", packaging: { navPath: "Text/nav.xhtml" } }));
+  t.eq("i pezzi fuori indice in mezzo si contano ancora", fatti.giunture, GIUNTURE_TANTE);
 
   // una pagina di sola immagine IN MEZZO alla storia resta innocente
   fatti = await fattiDaEpub(

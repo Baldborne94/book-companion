@@ -18,12 +18,18 @@ import { fattiDaEpub, GIUNTURE_TANTE } from "./visita.js";
 const chiave = (id) => `salute_${id}`;
 
 // il verdetto vale finché i byte sono quelli: cambia il file (una
-// ricucitura, un reimport), cambia la misura, e si riguarda
-export const saluteValida = (salute, size) => !!salute && salute.size === size;
+// ricucitura, un reimport), cambia la misura, e si riguarda. E vale finché
+// la diagnosi è quella che l'ha scritto: la 1 leggeva male gli indici in
+// una cartella a parte e vedeva spezzati libri sani — un verdetto di prima
+// si riguarda una volta
+export const VERSIONE_SALUTE = 2;
+export const saluteValida = (salute, size) => !!salute && salute.size === size && salute.v === VERSIONE_SALUTE;
 
-// spezzato = tanti pezzi corti fuori indice, o anche UN taglio a metà frase
+// spezzato = tanti pezzi corti fuori indice, o anche UN taglio a metà frase;
+// ma non un libro su cui la ricucitura è già passata senza trovare niente
+// (`vano`): offrirla ancora sarebbe un tasto che non fa nulla
 export const daRicucire = (salute) =>
-  (salute?.monconi || 0) >= 1 || (salute?.giunture || 0) >= GIUNTURE_TANTE;
+  !salute?.vano && ((salute?.monconi || 0) >= 1 || (salute?.giunture || 0) >= GIUNTURE_TANTE);
 
 // il verdetto già scritto, se vale ancora: è la strada gratis, e chi
 // chiama può risparmiarsi di aprire una seconda copia del libro
@@ -40,7 +46,11 @@ export async function controllaSpezzatura(id, eb, size) {
   const inCache = await saluteInCache(id, size);
   if (inCache) return inCache;
   const fatti = await fattiDaEpub(eb);
-  const nuovo = { size, monconi: fatti.monconi || 0, giunture: fatti.giunture || 0 };
+  const nuovo = { size, v: VERSIONE_SALUTE, monconi: fatti.monconi || 0, giunture: fatti.giunture || 0 };
+  // un «più tardi» detto agli stessi byte resta detto anche se la diagnosi
+  // è nuova
+  const prima = await getAux(chiave(id)).catch(() => null);
+  if (prima?.taciuto && prima.size === size) nuovo.taciuto = true;
   try {
     await putAux(chiave(id), nuovo);
   } catch {
@@ -65,7 +75,18 @@ export async function taci(id) {
 export async function ricuciLibro(id, blob) {
   const { unisciPezzi } = await import("./unisciEpub.js");
   const cucito = await unisciPezzi(blob);
-  if (!cucito?.blob || !cucito.cuciti) return null;
+  if (!cucito?.blob || !cucito.cuciti) {
+    // la cura non ha trovato niente: si scrive accanto al verdetto, o il
+    // banner tornerebbe a ogni apertura (e senza segni la cura girerebbe
+    // dietro a ogni apertura, per niente)
+    try {
+      const s = (await getAux(chiave(id))) || {};
+      await putAux(chiave(id), { ...s, size: blob.size, v: VERSIONE_SALUTE, vano: true });
+    } catch {
+      /* al più lo ridirà */
+    }
+    return null;
+  }
   await putFile(id, cucito.blob);
   try {
     await putAux(`loc_${id}`, null);

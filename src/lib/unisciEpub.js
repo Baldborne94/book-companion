@@ -29,20 +29,8 @@ const XHTML = "application/xhtml+xml";
 // sbaglia il libro entra in biblioteca con TUTTE le immagini rotte e tutti
 // i rimandi che portano da nessuna parte — in silenzio, perche' nessuno
 // controlla che un `src` punti a qualcosa.
-export const dir = (p) => p.replace(/[^/]*$/, "");
-
-// percorso di `rel` visto da `base` (una cartella), senza URL assoluti
-export function risolvi(base, rel) {
-  if (!rel || /^[a-z][a-z0-9+.-]*:/i.test(rel) || rel.startsWith("#")) return null;
-  const parti = (base + rel.split("#")[0]).split("/");
-  const fuori = [];
-  for (const p of parti) {
-    if (!p || p === ".") continue;
-    if (p === "..") fuori.pop();
-    else fuori.push(p);
-  }
-  return fuori.join("/");
-}
+import { dir, risolvi } from "./percorsi.js";
+export { dir, risolvi };
 
 // Il parser XML e' severo e parecchi ePub non sono ben formati: se
 // protesta si rilegge il documento come HTML, che perdona tutto.
