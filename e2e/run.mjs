@@ -1537,6 +1537,57 @@ const SCENE = [
     },
   },
   {
+    // «adattala a qualsiasi tipo di schermo», chiesto dal lettore pensando a
+    // un tablet piu' piccolo. Misurata su dieci schermi (telefoni, 7", 8,7"
+    // e 8,4" nei due versi, il suo tablet, il computer): niente sbordava, ma
+    // sul telefono la Libreria era fatta di intestazione e filtri — il
+    // titolo su due righe, i filtri su quattro, due copertine giganti per
+    // riga — e il primo libro cominciava a meta' schermo
+    nome: "sul telefono la Libreria comincia presto: titolo su una riga, filtri in una fila, tre copertine per riga; sul tablet resta com'era",
+    async fai({ browser }) {
+      const misura = async (vp) => {
+        const ctx = await browser.newContext({ viewport: vp, screen: vp, deviceScaleFactor: vp.width < 500 ? 3 : 1.33, hasTouch: true, isMobile: true });
+        await ctx.route((u) => !/^(localhost|127\.0\.0\.1)$/.test(u.hostname), (r) => r.abort());
+        const p = await ctx.newPage();
+        for (const [nome, buf, tipo] of [["Uno.epub", await epub({ titolo: "Uno" }), "application/epub+zip"], ["Due.epub", await epub({ titolo: "Due" }), "application/epub+zip"], ["Tre.epub", await epub({ titolo: "Tre" }), "application/epub+zip"], ["Arcadia.cbz", await fumetto(), "application/zip"]])
+          await importa(p, nome, buf, tipo);
+        await p.goto(`${URL_APP}?apri=libreria`);
+        await p.getByRole("button", { name: "Fumetti", exact: false }).first().waitFor({ timeout: 8000 });
+        await aspetta(800);
+        const m = await p.evaluate(() => {
+          const titolo = [...document.querySelectorAll("header span, h1")].find((e) => e.textContent.trim() === "Book Companion");
+          const filtri = [...document.querySelectorAll("button")].filter((b) => ["Tutti", "Da leggere", "In lettura", "Letti", "Abbandonati", "♥ Preferiti"].includes(b.textContent.trim()));
+          const righeFiltri = new Set(filtri.map((b) => Math.round(b.getBoundingClientRect().top))).size;
+          return {
+            titoloAlto: titolo ? Math.round(titolo.getBoundingClientRect().height) : -1,
+            righeFiltri,
+            sborda: document.scrollingElement.scrollWidth - innerWidth,
+          };
+        });
+        // le copertine della prima riga: quante stanno alla stessa altezza
+        const tops = await p.evaluate(() => {
+          const grid = [...document.querySelectorAll("div")].find((d) => getComputedStyle(d).display === "grid" && d.querySelectorAll("button").length >= 3);
+          if (!grid) return [];
+          return [...grid.children].map((c) => Math.round(c.getBoundingClientRect().top));
+        });
+        const primaRiga = tops.filter((t) => t === tops[0]).length;
+        await ctx.close();
+        return { ...m, primaRiga, primoLibro: tops[0] };
+      };
+      const tel = await misura({ width: 360, height: 740 });
+      if (tel.sborda > 0) throw new Error(`a 360 la Libreria sborda di ${tel.sborda}px`);
+      if (tel.titoloAlto > 40) throw new Error(`a 360 il titolo va a capo (${tel.titoloAlto}px)`);
+      if (tel.righeFiltri !== 1) throw new Error(`a 360 i filtri stanno su ${tel.righeFiltri} righe`);
+      if (tel.primaRiga !== 3) throw new Error(`a 360 la prima riga ha ${tel.primaRiga} copertine`);
+      if (tel.primoLibro > 370) throw new Error(`a 360 il primo libro comincia a ${tel.primoLibro}px, oltre meta' schermo`);
+      const tab = await misura(TABLET.viewport);
+      if (tab.sborda > 0) throw new Error(`sul tablet la Libreria sborda di ${tab.sborda}px`);
+      // sul tablet i filtri non scorrono di lato: la fila che scorre e' del telefono
+      if (!tab.righeFiltri) throw new Error("sul tablet i filtri non si vedono");
+      return { nota: `a 360: titolo ${tel.titoloAlto}px, filtri su 1 riga, ${tel.primaRiga} copertine, primo libro a ${tel.primoLibro}px · tablet: filtri su ${tab.righeFiltri} righe, ${tab.primaRiga} per riga` };
+    },
+  },
+  {
     // segnalato dal lettore col telefono: «non è allineato con le cose che
     // ci sono su tablet e pc, si porta dietro cose in meno, la
     // sincronizzazione è molto lenta». La sua biblioteca passa i mille
@@ -1791,7 +1842,7 @@ const SCENE = [
       await p.getByText(/I paragrafi che Lexicanum cita da un volume/).waitFor({ timeout: 3000 });
       await p.keyboard.press("Escape");
 
-      const frase = "I was there, the day that Horus slew the Emperor. Garviel Loken watched the Warmaster from the deck. 'Two hundred and fifty,' came the answer. Kilometres away, the Titan stopped.";
+      const frase = "I was there, the day that Horus slew the Emperor. Garviel Loken watched the Warmaster from the deck. 'Two hundred and fifty,' came the answer. Kilometres away, the Titan stopped. Princeps Kasim's engine fired into the flanking Reavers, and their void shields soaked up the barrage.";
       await importa(p, "Horus Rising.epub", await epub({ titolo: "Horus Rising", autore: "Dan Abnett", frase, lingua: "en" }), "application/epub+zip");
       await p.getByText("Horus Rising").first().click();
       // l'interruttore del libro: acceso dalla saga riconosciuta
@@ -1858,6 +1909,19 @@ const SCENE = [
         return a != null && b != null ? [a, b] : null;
       }, 10000, "nella scheda di «Two hundred» manca la parola o la voce «Two Hundred»");
       if (voce < parola) throw new Error("«Two hundred», un numero, mette la voce «Two Hundred» prima della parola");
+      // UN NOME, PIU' VOCI: «Reavers» rinvia agli Eldar Oscuri, ma il
+      // paragrafo parla di un Princeps, di un motore e di scudi: il Titano.
+      // E sotto le altre voci col nome, per correggere la scelta
+      // fuori dalla scheda: il velo sotto la chiude (il ✕ della barra chiuderebbe il libro)
+      await p.mouse.click(450, 1450);
+      await definisci(p, "Reavers");
+      await finche(() => p.getByText(/Battle Titan of the Collegia Titanica/).count(), 8000, "«Reavers» nel paragrafo dei Titani non apre il Titano");
+      await p.getByText("scelta dal paragrafo che leggi").waitFor({ timeout: 3000 });
+      await p.getByText("Altre voci con questo nome").waitFor({ timeout: 3000 });
+      await p.getByRole("button", { name: "Reaver Jetbike", exact: true }).click();
+      await finche(() => p.getByText(/twisted Dark Eldar cousins/).count(), 5000, "la voce scelta fra le altre non si apre");
+      if (await p.getByText("scelta dal paragrafo che leggi").count()) throw new Error("la voce scelta a mano si dice scelta dal paragrafo");
+      await p.getByRole("button", { name: "Reaver Titan", exact: true }).waitFor({ timeout: 3000 });
       return { guasti: d.guasti, nota: `${chieste.length} richieste a Lexicanum, ${veli.length} veli` };
     },
   },

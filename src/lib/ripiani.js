@@ -469,10 +469,21 @@ export const COLONNA = 108;
 export const SPAZIO_COLONNE = 16;
 export const SPAZIO_RIGHE = 20;
 
+// SUL TELEFONO TRE COLONNE, NON DUE GIGANTI (misurato a 360 px: con colonne
+// da 108 ne stavano due da 156, e la pagina era fatta di copertine). La
+// colonna scende fino a `COLONNA_MIN` pur di farne stare tre; sotto, si
+// torna alle colonne che ci stanno. Sopra i 356 px non cambia niente. La
+// stessa regola in CSS (`COLONNA_CSS`) e nella stima: se divergessero, lo
+// scaffale salterebbe sotto il dito
+export const COLONNA_MIN = 88;
+export const colonnaPer = (larghezza) =>
+  Math.max(COLONNA_MIN, Math.min(COLONNA, (Math.max(0, Number(larghezza) || 0) - 2 * SPAZIO_COLONNE) / 3));
+export const COLONNA_CSS = `max(${COLONNA_MIN}px, min(${COLONNA}px, calc((100% - ${2 * SPAZIO_COLONNE}px) / 3)))`;
+
 export function altezzaStimata(quanti, larghezza) {
   const n = Math.max(0, Number(quanti) || 0);
   if (!n) return 0;
-  const colonne = Math.max(1, Math.floor((Math.max(0, Number(larghezza) || 0) + SPAZIO_COLONNE) / (COLONNA + SPAZIO_COLONNE)));
+  const colonne = Math.max(1, Math.floor((Math.max(0, Number(larghezza) || 0) + SPAZIO_COLONNE) / (colonnaPer(larghezza) + SPAZIO_COLONNE)));
   const righe = Math.ceil(n / colonne);
   return righe * ALTEZZA_SCHEDA + (righe - 1) * SPAZIO_RIGHE;
 }

@@ -934,12 +934,98 @@ export function candidati(raw) {
   return out.filter((k) => k.length >= 3);
 }
 
-export async function cercaLore(raw, deposito = DEPOSITO, wiki = LEXICANUM) {
+// la voce e il nome che l'ha trovata («reavers» dentro «flanking Reavers»)
+async function trovaLore(raw, deposito, wiki) {
   for (const k of candidati(raw)) {
     const v = await voceLore(k, deposito, wiki).catch(() => null);
-    if (v) return v;
+    if (v) return { voce: v, k };
   }
   return null;
+}
+
+export async function cercaLore(raw, deposito = DEPOSITO, wiki = LEXICANUM) {
+  return (await trovaLore(raw, deposito, wiki))?.voce || null;
+}
+
+// ---------------------------------------------------------------------------
+// UN NOME, PIU' VOCI (segnalato dal lettore in Mechanicum: «Reavers» apriva
+// i Reaver Jetbike degli Eldar Oscuri, e lì erano i Titani classe Reaver).
+// Il wiki rinvia un nome a UNA voce, la sua; le altre col nome davanti
+// («Reaver Titan», «Reaver-class Titan», «Reavers (Drukhari)») stanno
+// accanto nell'indice, e si trovano dalle sole chiavi. Scelto dal lettore:
+// la voce si sceglie dal paragrafo che stai leggendo, e sotto le altre per
+// correggerla.
+
+// il nome che ha risposto, e al singolare: «Reaver Titan» comincia con
+// «reaver», non con «reavers»
+const basiDi = (k) => (/[^s]s$/.test(k) && k.length > 3 ? [k, k.slice(0, -1)] : [k]);
+
+export const ALTRE_MAX = 30;
+
+// Le altre voci che portano il nome davanti, gia' seguiti i rinvii, una per
+// voce, senza quella trovata. Le chiavi piu' corte prima: «reaver titan»
+// dice di piu' di «reaver titan (legio metalica)»
+export async function altreVoci(nome, trovata, deposito = DEPOSITO, wiki = LEXICANUM) {
+  const viste = new Set(trovata?.t ? [chiave(trovata.t)] : []);
+  const chiavi = new Set();
+  for (const base of basiDi(chiave(nome))) {
+    for (const dove of (await deposito.chiaviPrefisso(wiki.prefisso + base).catch(() => [])) || []) {
+      const k = String(dove).slice(wiki.prefisso.length);
+      const resto = k.slice(base.length);
+      if (!resto || resto.startsWith(" ") || resto.startsWith("-")) chiavi.add(k);
+    }
+  }
+  const out = [];
+  for (const k of [...chiavi].sort((a, b) => a.length - b.length || (a < b ? -1 : 1)).slice(0, ALTRE_MAX)) {
+    const v = await voceLore(k, deposito, wiki).catch(() => null);
+    if (!v?.t || viste.has(chiave(v.t))) continue;
+    viste.add(chiave(v.t));
+    out.push(v);
+  }
+  return out;
+}
+
+const VUOTE = new Set(
+  "that this with from into were have which there their about they them then than what when where while been only also over upon such more most some each other these those would could should after before under against between being very just like even still because across around toward towards through again itself himself herself whose within without though although every never always".split(" ")
+);
+const radice = (w) => (w.length > 4 && w.endsWith("s") ? w.slice(0, -1) : w);
+const paroleDi = (testo) =>
+  new Set(
+    (chiave(testo).match(/[\p{L}]+/gu) || []).filter((w) => w.length >= 4 && !VUOTE.has(w)).map(radice)
+  );
+const testoDellaVoce = (v) => `${v.t} ${(v.p || []).map((b) => b.x || "").join(" ")}`.slice(0, 4000);
+
+// LA VOCE DAL PARAGRAFO: vince quella che ha in se' piu' parole del
+// paragrafo che stai leggendo (il nome cercato non conta: ce l'hanno tutte).
+// Si cambia la voce del wiki solo con almeno due parole in piu': nel dubbio
+// resta quella a cui il wiki rinvia
+export function sceltaDalContesto(trovata, altre = [], contesto = "", nome = "") {
+  const qui = paroleDi(contesto);
+  for (const w of paroleDi(nome)) qui.delete(w);
+  const punti = (v) => [...paroleDi(testoDellaVoce(v))].filter((w) => qui.has(w)).length;
+  const base = punti(trovata);
+  let meglio = trovata;
+  let max = base;
+  for (const v of altre) {
+    const p = punti(v);
+    if (p > max) {
+      meglio = v;
+      max = p;
+    }
+  }
+  return max >= base + 2 ? meglio : trovata;
+}
+
+// Tutto insieme, per la scheda: la voce da mostrare (`dalParagrafo` se non
+// e' quella del wiki) e le altre, la trovata compresa se e' stata scavalcata
+export async function voceNelContesto(raw, contesto = "", deposito = DEPOSITO, wiki = LEXICANUM) {
+  const preso = await trovaLore(raw, deposito, wiki);
+  if (!preso) return null;
+  const trovata = preso.voce;
+  const altre = await altreVoci(preso.k, trovata, deposito, wiki);
+  const scelta = sceltaDalContesto(trovata, altre, contesto, preso.k);
+  if (scelta === trovata) return { voce: trovata, altre };
+  return { voce: { ...scelta, dalParagrafo: true }, altre: [trovata, ...altre.filter((v) => v !== scelta)] };
 }
 
 // ---------------------------------------------------------------------------
