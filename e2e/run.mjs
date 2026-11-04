@@ -287,6 +287,61 @@ const SCENE = [
     },
   },
   {
+    // il rapporto del lettore: il 3/11 un minuto contato e 42 scartati, il
+    // 4/11 77 secondi in media a pagina. Il tempo si contava solo fra due
+    // voltate, e quello passato nella scheda del dizionario o in una voce
+    // dei wiki non era lettura. Scelto da lui: «conta anche il tempo nel
+    // dizionario e nei wiki»
+    nome: "il tempo passato nella scheda del dizionario si conta come lettura, finche' la tocchi",
+    async fai({ browser }) {
+      const d = await dispositivo(browser, {
+        misura: TABLET,
+        prima: () => {
+          const vero = Date.now;
+          Date.now = () => vero() + (window.__salto || 0);
+        },
+      });
+      await d.p.goto(URL_APP);
+      await importa(d.p, "La nebbia.epub", await epub({ quanti: 80 }), "application/epub+zip");
+      await d.p.getByText("La nebbia").first().click();
+      await d.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      await finche(
+        async () => {
+          for (const f of d.p.frames()) if ((await f.evaluate(() => document.body?.innerText || "").catch(() => "")).includes(FRASE)) return true;
+          return false;
+        },
+        25000,
+        "il testo del libro non compare"
+      );
+      const secondi = () => d.p.evaluate(() => Object.values(JSON.parse(localStorage.getItem("bc_tempo") || "{}")).reduce((a, g) => a + Object.values(g).reduce((x, y) => x + y, 0), 0));
+      await d.p.keyboard.press("ArrowRight");
+      await finche(async () => (await secondi()) >= 0 && (await d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_pause") || "[]")[0]?.v)) >= 1, 8000, "la voltata non si conta");
+      const prima = await secondi();
+      await definisci(d.p, "nebbia");
+      const tocca = async () => {
+        const r = await d.p.getByText("nebbia", { exact: true }).first().boundingBox();
+        await d.p.touchscreen.tap(r.x + r.width / 2, r.y + r.height / 2);
+      };
+      // sette minuti nella scheda, toccandola ogni tre: poi si chiude e si volta
+      for (const min of [3, 6]) {
+        await d.p.evaluate((m) => (window.__salto = m * 60 * 1000), min);
+        await tocca();
+        await aspetta(300);
+      }
+      await d.p.evaluate(() => (window.__salto = 6.5 * 60 * 1000));
+      await d.p.mouse.click(450, 1450);
+      await d.p.evaluate(() => (window.__salto = 7 * 60 * 1000));
+      await d.p.keyboard.press("ArrowRight");
+      const dopo = await finche(async () => {
+        const s = await secondi();
+        return s - prima >= 400 ? s : null;
+      }, 8000, `i sette minuti nella scheda non si contano (contati ${(await secondi()) - prima} s)`);
+      const scartate = await d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_pause") || "[]")[0]?.x?.length || 0);
+      if (scartate) throw new Error(`${scartate} pause scartate: il tempo nella scheda e' stato buttato`);
+      return { guasti: d.guasti, nota: `${Math.round((dopo - prima) / 60)} min contati fra le due voltate` };
+    },
+  },
+  {
     nome: "un PDF si importa e si apre, e l'apertura e' misurata fino alla prima pagina",
     async fai({ browser }) {
       const d = await dispositivo(browser);

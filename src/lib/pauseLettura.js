@@ -13,15 +13,17 @@ const KEY = "bc_pause";
 export const GIORNI_TENUTI = 14;
 const SCARTATE_MAX = 300;
 
-// Un tratto: `contato` se e' finito nel tempo di lettura; `come` dice da dove
-// arriva una pausa scartata — «v» fra due voltate, «c» alla chiusura del
-// libro o con l'app in secondo piano; `tipo` il lettore
+// Un tratto: `contato` se e' finito nel tempo di lettura; `come` dice da
+// cosa e' chiuso — «v» una voltata, «t» un tocco o uno scorrimento (la
+// scheda del dizionario, una voce dei wiki), «c» la chiusura del libro o
+// l'app in secondo piano; `tipo` il lettore. Le voltate si contano solo
+// quando sono voltate: un tocco non e' una pagina
 export function annotaTratto(giorni, g, secondi, { contato, come = "v", tipo = "" } = {}) {
   const lista = Array.isArray(giorni) ? giorni.filter((d) => d && d.g !== g) : [];
   const prima = (Array.isArray(giorni) ? giorni.find((d) => d?.g === g) : null) || { g, v: 0, s: 0, x: [] };
   const oggi = { ...prima, x: [...(prima.x || [])] };
   if (contato) {
-    oggi.v += 1;
+    if (come === "v") oggi.v += 1;
     oggi.s += secondi;
   } else if (oggi.x.length < SCARTATE_MAX) oggi.x.push([secondi, come, tipo]);
   return [...lista, oggi].sort((a, b) => (a.g < b.g ? -1 : 1)).slice(-GIORNI_TENUTI);
@@ -90,8 +92,13 @@ export function righePause(dati = []) {
   }
   const fasce = FASCE.map(([fino, nome], i) => [nome, tutte.filter(([s]) => s <= fino && s > (i ? FASCE[i - 1][0] : 0))]).filter(([, l]) => l.length);
   out.push(`Pause scartate per durata: ${fasce.map(([nome, l]) => `${nome} ${l.length}`).join(" · ")}`);
-  const fra = tutte.filter(([, come]) => come === "v").length;
-  if (fra < tutte.length) out.push(`  fra due voltate ${fra} · alla chiusura o in secondo piano ${tutte.length - fra}`);
+  const PROVENIENZE = [
+    ["v", "chiuse da una voltata"],
+    ["t", "chiuse da un tocco"],
+    ["c", "alla chiusura o in secondo piano"],
+  ];
+  const da = PROVENIENZE.map(([k, nome]) => [nome, tutte.filter(([, come]) => come === k).length]).filter(([, n]) => n);
+  if (da.length > 1) out.push(`  ${da.map(([nome, n]) => `${nome} ${n}`).join(" · ")}`);
   const lettori = [...new Set(tutte.map(([, , t]) => t).filter(Boolean))];
   if (lettori.length) out.push(`  per lettore: ${lettori.map((t) => `${LETTORI[t] || t} ${tutte.filter(([, , q]) => q === t).length}`).join(" · ")}`);
   out.push(`Contando ogni pausa come una pagina media del suo giorno: ${min(altra)} in più.`);

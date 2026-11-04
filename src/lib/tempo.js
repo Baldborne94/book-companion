@@ -209,6 +209,21 @@ export function segnaVita(ora = Date.now(), tipo = ultimoTipo, come = "v") {
   ultimoTipo = tipo;
 }
 
+// E IL TEMPO NELLA SCHEDA DEL DIZIONARIO E NEI WIKI E' LETTURA (chiesto dal
+// lettore dopo il rapporto: il 3/11 un minuto contato e 42 scartati, il
+// 4/11 77 secondi a pagina — «conta anche il tempo nel dizionario e nei
+// wiki»). Un tocco, uno scorrimento, un tasto dentro il lettore sono un
+// segno di vita come una voltata: chi legge una voce di Lexicanum la tocca
+// e la scorre. Al piu' uno ogni `ATTIVITA_OGNI`, o lo scorrimento
+// scriverebbe nello storage a ogni pixel; quel che sta in mezzo lo conta il
+// segno dopo, che misura dal precedente. Libro chiuso, niente: si conta
+// solo da `comincia`
+export const ATTIVITA_OGNI = 15 * 1000;
+export function segnaAttivita(ora = Date.now()) {
+  if (ultimo == null || ora - ultimo < ATTIVITA_OGNI) return;
+  segnaVita(ora, ultimoTipo, "t");
+}
+
 // Il libro si chiude o l'app va in secondo piano: si conta l'ultimo tratto
 // e ci si ferma, o il tempo in background finirebbe nel conto.
 export function smetti(ora = Date.now()) {
