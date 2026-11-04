@@ -55,7 +55,7 @@ import BarraLavoro from "./components/BarraLavoro.jsx";
 import { spiegaSync, schedaDiversa } from "./lib/syncCore.js";
 import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
-import { comincia, segnaVita, smetti, dispositivo } from "./lib/tempo.js";
+import { comincia, segnaVita, segnaAttivita, smetti, dispositivo } from "./lib/tempo.js";
 import { sincronizzaPresto } from "./lib/presto.js";
 import { parti, segnaAvvio } from "./lib/tempi.js";
 
@@ -1805,8 +1805,15 @@ export default function App() {
     comincia();
     const vis = () => (document.visibilityState === "visible" ? comincia() : smetti());
     document.addEventListener("visibilitychange", vis);
+    // un tocco, uno scorrimento, un tasto: anche nella scheda del dizionario
+    // e nelle voci dei wiki si sta leggendo (`segnaAttivita`). Lo
+    // scorrimento non sale: si ascolta in cattura
+    const vivo = () => segnaAttivita();
+    const segni = ["pointerdown", "keydown", "wheel", "scroll"];
+    for (const t of segni) document.addEventListener(t, vivo, { capture: true, passive: true });
     return () => {
       document.removeEventListener("visibilitychange", vis);
+      for (const t of segni) document.removeEventListener(t, vivo, { capture: true });
       smetti();
     };
   }, [readingId]);
