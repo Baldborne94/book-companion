@@ -16,7 +16,7 @@ import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings, importDelFont,
 } from "../lib/readerSettings.js";
 import { contentStyles, spegniVuoti, curaParagrafi, MODI_PARAGRAFI, spegniScenografia } from "../lib/readerTheme.js";
-import { ritaglioAvanzo, flattenToc, cfiLeggibile, ultimoSegnalibro } from "../lib/readerLayout.js";
+import { ritaglioAvanzo, spartiAvanzo, flattenToc, cfiLeggibile, ultimoSegnalibro } from "../lib/readerLayout.js";
 import { misuraPagine, conAttesa, ATTESA } from "../lib/misuraPagine.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
@@ -416,7 +416,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // il margine si scrive SUBITO nel riquadro, a mano: aspettando il
     // render di React, epub.js si rimisurerebbe sul riquadro di prima e il
     // ritaglio resterebbe nel padding senza mai entrare nella colonna
-    viewerRef.current.style.paddingBottom = `calc(${FOOT + resto}px + env(safe-area-inset-bottom))`;
+    const { su, giu } = spartiAvanzo(resto);
+    viewerRef.current.style.paddingTop = `${HEAD + su}px`;
+    viewerRef.current.style.paddingBottom = `calc(${FOOT + giu}px + env(safe-area-inset-bottom))`;
     relayout(anchor.current || live.current.cfi);
     return true;
   }, [relayout, book.id]);
@@ -2556,9 +2558,11 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             style={{
               position: "absolute",
               inset: 0,
-              // l'avanzo si toglie da SOTTO: cosi' il testo resta ancorato in
-              // alto e la pagina non balla quando la misura cambia
-              padding: `${HEAD}px ${paginated ? Math.max(settings.margin, EDGE_MAX + 8) : settings.margin}px calc(${FOOT + avanzo}px + env(safe-area-inset-bottom))`,
+              // l'avanzo si divide fra sopra e sotto (`spartiAvanzo`): tutto
+              // in fondo lasciava sotto il doppio della carta di sopra. Si
+              // misura una volta per geometria e il libro nasce col ritaglio
+              // ricordato, quindi la pagina non balla
+              padding: `${HEAD + spartiAvanzo(avanzo).su}px ${paginated ? Math.max(settings.margin, EDGE_MAX + 8) : settings.margin}px calc(${FOOT + spartiAvanzo(avanzo).giu}px + env(safe-area-inset-bottom))`,
               boxSizing: "border-box",
               // la carta arriva fino al bordo interno della rilegatura: senza,
               // il margine di lettura mostrava la copertina e staccava le

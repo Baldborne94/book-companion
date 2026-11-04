@@ -342,6 +342,58 @@ const SCENE = [
     },
   },
   {
+    // segnalato dal lettore con la foto del tablet sdraiato: «un gap in
+    // fondo alla pagina più spesso della parte sopra… solo in orizzontale».
+    // L'avanzo di riga si toglieva tutto da sotto: a scrittura ×1,5 puo'
+    // valere quasi una riga intera
+    nome: "sul tablet sdraiato lo spazio sopra e sotto il testo della pagina e' lo stesso",
+    async fai({ browser }) {
+      const SDRAIATO = { ...TABLET, viewport: { width: 1503, height: 902 }, screen: { width: 1503, height: 902 } };
+      // come nella foto: paragrafi rientrati senza stacco, corpo al 130%
+      const d = await dispositivo(browser, { misura: SDRAIATO, prima: () => localStorage.setItem("bc_reader", JSON.stringify({ fontSize: 130 })) });
+      await d.p.goto(URL_APP);
+      await importa(d.p, "La nebbia.epub", await epub({ quanti: 80, rientri: true }), "application/epub+zip");
+      await d.p.getByText("La nebbia").first().click();
+      await d.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      await finche(
+        async () => {
+          for (const f of d.p.frames()) if ((await f.evaluate(() => document.body?.innerText || "").catch(() => "")).includes(FRASE)) return true;
+          return false;
+        },
+        25000,
+        "il testo del libro non compare"
+      );
+      await aspetta(2500);
+      const spazi = async () => {
+        const fr = d.p.frames().find((f) => f !== d.p.mainFrame());
+        const righe = await fr.evaluate(() => {
+          const out = [];
+          for (const p of document.querySelectorAll("p")) {
+            const r = document.createRange();
+            r.selectNodeContents(p);
+            for (const q of r.getClientRects()) out.push({ l: q.left, t: q.top, b: q.bottom });
+          }
+          return out;
+        });
+        return d.p.evaluate((righe) => {
+          const ifr = document.querySelector("iframe");
+          const box = ifr.getBoundingClientRect();
+          const carta = ifr.closest(".epub-container").parentElement.parentElement.getBoundingClientRect();
+          // la pagina di destra, tutta di prosa: le righe nella sua meta'
+          const meta = carta.left + carta.width / 2;
+          const viste = righe.map((r) => ({ l: r.l + box.left, t: r.t + box.top, b: r.b + box.top })).filter((r) => r.l >= meta && r.l < carta.right && r.b > carta.top && r.t < carta.bottom);
+          if (!viste.length) return null;
+          const sopra = Math.min(...viste.map((r) => r.t)) - carta.top;
+          const sotto = carta.bottom - Math.max(...viste.map((r) => r.b));
+          return { sopra: Math.round(sopra), sotto: Math.round(sotto) };
+        }, righe);
+      };
+      const m = await finche(spazi, 8000, "le righe della pagina non si misurano");
+      if (Math.abs(m.sotto - m.sopra) > 3) throw new Error(`sopra ${m.sopra}px, sotto ${m.sotto}px: la pagina non e' simmetrica`);
+      return { guasti: d.guasti, nota: `sopra ${m.sopra}px, sotto ${m.sotto}px` };
+    },
+  },
+  {
     nome: "un PDF si importa e si apre, e l'apertura e' misurata fino alla prima pagina",
     async fai({ browser }) {
       const d = await dispositivo(browser);
