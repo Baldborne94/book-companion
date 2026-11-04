@@ -2283,7 +2283,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     const r = bytes && (await ricuciLibro(book.id, bytes).catch(() => null));
     if (!r?.blob) {
       setCucitura(null);
-      notify?.("La ricucitura non ha trovato pezzi da unire: reimporta il file");
+      notify?.("Non ho trovato pezzi da unire: il libro resta com'è, e non te lo chiedo più");
       return;
     }
     saltaPct.current = live.current.progress || getProgress(book.id) || 0;

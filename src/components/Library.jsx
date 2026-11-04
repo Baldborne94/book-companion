@@ -1711,7 +1711,7 @@ export default function Library({
       const file = await getFile(id).catch(() => null);
       if (!file) return notify?.("I byte di questo tomo non sono su questo dispositivo");
       const r = await ricuciDavvero(b, file);
-      if (!r?.fatti) return notify?.("La ricucitura non ha trovato pezzi da unire: reimporta il file");
+      if (!r?.fatti) return notify?.("Non ho trovato pezzi da unire: il libro resta com'è");
       const dopo = esamina(r.fatti);
       setReferto((v) =>
         v && {
