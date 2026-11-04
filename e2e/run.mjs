@@ -14,7 +14,7 @@
 import { existsSync } from "node:fs";
 import { build, preview } from "vite";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
-import { fumetto, fumettoGrosso, fumettoLungo, epub, pdf, wav, FRASE, mondoDisco, png } from "./libri.mjs";
+import { fumetto, fumettoGrosso, fumettoLungo, epub, epubConContorno, pdf, wav, FRASE, mondoDisco, png } from "./libri.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
 import { lexicanumFinto, fandomFinto } from "./lexicanumFinto.mjs";
 
@@ -424,6 +424,34 @@ const SCENE = [
       const secondoNato = await apri("Secondo");
       if (secondoNato !== ritaglio) throw new Error(`il libro nuovo nasce con ${secondoNato} sotto, e il ritaglio dello schermo e' ${ritaglio}`);
       return { guasti: d.guasti, nota: `primo nato con ${primoNato}, ritagliato a ${ritaglio}; il secondo nasce gia' a ${secondoNato}` };
+    },
+  },
+  {
+    // segnalato dal lettore con la foto di «A Thousand Sons»: titolo,
+    // motto, introduzione e contenuti tutti attaccati sulla stessa pagina.
+    // La ricucitura all'ingresso attaccava al precedente OGNI documento
+    // che l'indice non apre, e il contorno in testa (frontespizio,
+    // introduzione, contenuti) nell'indice della Black Library non c'e'
+    nome: "la ricucitura all'ingresso non attacca il frontespizio, l'introduzione e i contenuti",
+    async fai({ browser }) {
+      const d = await dispositivo(browser, { misura: TABLET });
+      await d.p.goto(URL_APP);
+      await importa(d.p, "Mille Figli.epub", await epubConContorno(), "application/epub+zip");
+      await d.p.getByText("Mille Figli").first().click();
+      await d.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      const primo = await finche(
+        async () => {
+          for (const f of d.p.frames()) {
+            const t = await f.evaluate(() => document.body?.innerText || "").catch(() => "");
+            if (t.includes("A THOUSAND SONS")) return t;
+          }
+          return null;
+        },
+        25000,
+        "il frontespizio non compare"
+      );
+      if (/time of legend|CONTENTS/.test(primo)) throw new Error(`il frontespizio e' cucito con quel che viene dopo: «${primo.replace(/\s+/g, " ").slice(0, 160)}…»`);
+      return { guasti: d.guasti, nota: "frontespizio da solo, come nel libro" };
     },
   },
   {

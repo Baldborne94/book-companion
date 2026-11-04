@@ -11,8 +11,9 @@
 // Qui i pezzi si ricuciono PRIMA che il libro entri in biblioteca: i
 // documenti che nessuna voce d'indice apre tornano dentro quello che li
 // precede, e da lì il testo scorre. Cosa NON si tocca: i file di
-// contorno (frontespizio, dedica, colophon), che una voce ce l'hanno e
-// una pagina propria la meritano.
+// contorno (frontespizio, dedica, introduzione, contenuti), che una
+// pagina propria la meritano — anche quando l'indice non li nomina, come
+// nei libri della Black Library (`gruppiDellaSpina`).
 //
 // Il prezzo, dichiarato: cambia la struttura del libro, quindi i CFI —
 // segnalibri, evidenziazioni e punto di lettura — di un libro gia' letto
@@ -160,6 +161,27 @@ function bersagliIndice(navDoc, cartellaNav) {
 }
 
 const utf8 = new TextDecoder("utf-8");
+// I GRUPPI DA CUCIRE: un documento che l'indice non apre — o che comincia
+// a meta' frase — e' la continuazione del precedente. Ma NON IN TESTA
+// (segnalato dal lettore con la foto di «A Thousand Sons»: titolo, motto,
+// introduzione e pagina dei contenuti attaccati sulla stessa pagina).
+// Prima della prima voce d'indice sta il contorno — frontespizio, motto,
+// introduzione, contenuti — e nell'indice della Black Library non c'e':
+// ognuno la sua pagina, come nel libro. E' la stessa regola della visita
+// (`fattiDaEpub`: «il materiale di contorno non vota»), che la cura non
+// seguiva. Il taglio a meta' frase vale ovunque, anche in testa. Pura, e
+// il taglio arriva da fuori, cosi' un test la interroga senza DOM
+export function gruppiDellaSpina(voci = [], taglia = () => false) {
+  const primoInToc = voci.findIndex((v) => v.inToc);
+  const gruppi = [];
+  voci.forEach((v, i) => {
+    const continua = gruppi.length && ((!v.inToc && i > primoInToc && primoInToc >= 0) || taglia(voci[i - 1]?.testo, v.testo));
+    if (continua) gruppi[gruppi.length - 1].push(v);
+    else gruppi.push([v]);
+  });
+  return gruppi;
+}
+
 export async function unisciPezzi(blob) {
   const { tagliaAMetaFrase } = await import("./visita.js");
   // LA DIAGNOSI SI LEGGE A FETTE, LA CURA CON JSZIP. Quasi ogni libro
@@ -243,19 +265,10 @@ export async function unisciPezzi(blob) {
       spina.map(async (s) => [s.voce.path, capiDelCorpo(await leggiTesto(s.voce.path).catch(() => ""))])
     )
   );
-  // i gruppi: un documento che l'indice non apre — o che comincia a meta'
-  // frase — e' la continuazione del precedente
-  const gruppi = [];
-  let precedente = null;
-  for (const s of spina) {
-    const continua =
-      gruppi.length &&
-      (!bersagli.has(s.voce.path) ||
-        tagliaAMetaFrase(testi.get(precedente?.voce.path), testi.get(s.voce.path)));
-    if (continua) gruppi[gruppi.length - 1].push(s);
-    else gruppi.push([s]);
-    precedente = s;
-  }
+  const gruppi = gruppiDellaSpina(
+    spina.map((s) => ({ s, inToc: bersagli.has(s.voce.path), testo: testi.get(s.voce.path) })),
+    tagliaAMetaFrase
+  ).map((g) => g.map((v) => v.s));
   const daCucire = gruppi.filter((g) => g.length > 1);
   if (!daCucire.length) return null;
   await conJSZip();
