@@ -167,7 +167,7 @@ function Stardust({ theme }) {
   );
 }
 
-function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
+function CompactHeader({ onSync, signedIn, syncing, theme, onTheme, stretto }) {
   const I = themeIcon(theme.id);
   return (
     <header
@@ -190,7 +190,9 @@ function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
       >
         <I size={px(26)} active />
       </span>
-      <span style={{ flex: 1, minWidth: 0, fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
+      {/* SU UNA RIGA: a 360 px «Book / Companion» andava a capo e
+          l'intestazione si mangiava due righe di pagina */}
+      <span style={{ flex: 1, minWidth: 0, fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
         Book Companion
       </span>
       {/* stessa cura dell'intestazione grande: la parola scritta accanto al
@@ -213,7 +215,8 @@ function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
         }}
       >
         <I size={px(19)} />
-        Impostazioni
+        {/* sul telefono il glifo basta: il nome resta nell'etichetta */}
+        {!stretto && "Impostazioni"}
       </button>
       <button
         onClick={onSync}
@@ -860,7 +863,7 @@ export default function App() {
   // al loro posto. Questo numero cresce quando i byte sono andati via
   // davvero, e la Libreria rilegge tutt'e due.
   const [spazioCambiato, setSpazioCambiato] = useState(0);
-  const { tall } = useViewport();
+  const { tall, stretto } = useViewport();
   // la saga vale solo per il salto dalla home: tornando dal menu la
   // libreria deve ritrovarsi intera
   const navigate = (id) => {
@@ -1889,6 +1892,7 @@ export default function App() {
         />
       ) : (
         <CompactHeader
+          stretto={stretto}
           onSync={() => setSyncOpen(true)}
           syncing={sync.busy}
           signedIn={sync.signedIn}

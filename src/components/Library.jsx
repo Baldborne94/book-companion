@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getProgress, getStatus, setStatus, combacia, vistaValida, scriviVista, timbraScheda, scaffaleVuoto, TIPI, delTipo, tipiDi, tipoDi, tipiPresenti } from "../lib/library.js";
-import { disponi, aEtichette, criterioVoto, criterioStato, altezzaStimata, ALTEZZA_SCHEDA, COLONNA, SPAZIO_COLONNE, SPAZIO_RIGHE, inRaccolte, copertinaDi, contoRaccolta, nellOrdineScelto } from "../lib/ripiani.js";
+import { disponi, aEtichette, criterioVoto, criterioStato, altezzaStimata, ALTEZZA_SCHEDA, COLONNA_CSS, SPAZIO_COLONNE, SPAZIO_RIGHE, inRaccolte, copertinaDi, contoRaccolta, nellOrdineScelto } from "../lib/ripiani.js";
 import { leggiPreferite, scriviPreferite, preferiteVive, segnaPreferita, puoEssereFavorita, ePreferito } from "../lib/raccoltePreferite.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { ascoltaCopertine } from "../lib/miniature.js";
@@ -39,6 +39,7 @@ import { leggiDispositivi, scriviDispositivi, altroveDa, sulDispositivo, aggiorn
 import { daLiberare, senzaCopiaNota, pesoTotale } from "../lib/liberaSpazio.js";
 import { ID_DISCO } from "../lib/sceltaFile.js";
 import { dispositivo } from "../lib/tempo.js";
+import { useViewport } from "../lib/viewport.js";
 
 const FILTERS = [
   { id: "all", label: "Tutti" },
@@ -133,7 +134,7 @@ function Shelf({ books, onOpenBook, localIds, idLassu, altrove = null, showOrder
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: `repeat(auto-fill, minmax(${COLONNA}px, 1fr))`,
+        gridTemplateColumns: `repeat(auto-fill, minmax(${COLONNA_CSS}, 1fr))`,
         gap: `${SPAZIO_RIGHE}px ${SPAZIO_COLONNE}px`,
         // I LIBRI SI ALLINEANO IN ALTO. Un `<button>` più basso della sua
         // riga centra il contenuto — è il browser che lo fa — e da quando la
@@ -604,7 +605,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: `repeat(auto-fill, minmax(${COLONNA}px, 1fr))`,
+            gridTemplateColumns: `repeat(auto-fill, minmax(${COLONNA_CSS}, 1fr))`,
             gap: `${SPAZIO_RIGHE}px ${SPAZIO_COLONNE}px`,
             alignItems: "start",
             marginBottom: 26,
@@ -834,6 +835,7 @@ export default function Library({
   onImportaDalDisco,
   onConvertiDalDisco,
 }) {
+  const { stretto } = useViewport();
   const [query, setQuery] = useState("");
   // il controllo aggiornamenti col dito: `agg` e' l'esito in corso, e le
   // parole stanno in ESITI_CONTROLLO — un esito senza frase e' un tasto
@@ -2272,6 +2274,17 @@ export default function Library({
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 20 }}>
+        {/* SUL TELEFONO I FILTRI STANNO IN UNA FILA CHE SCORRE DI LATO:
+            andando a capo erano quattro righe, e i libri cominciavano a meta'
+            schermo (misurato a 360 px). Altrove la fila non esiste
+            (`contents`) e i tasti si dispongono come sempre */}
+        <div
+          style={
+            stretto
+              ? { display: "flex", gap: 8, flex: "1 1 100%", minWidth: 0, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 2, maskImage: "linear-gradient(to right, #000 85%, transparent)", WebkitMaskImage: "linear-gradient(to right, #000 85%, transparent)" }
+              : { display: "contents" }
+          }
+        >
         {FILTERS.map((f) => {
           const active = filter === f.id;
           return (
@@ -2279,6 +2292,8 @@ export default function Library({
               key={f.id}
               onClick={() => setFilter(f.id)}
               style={{
+                flexShrink: 0,
+                whiteSpace: "nowrap",
                 padding: "6px 14px",
                 borderRadius: R.tondo,
                 fontSize: F.nota,
@@ -2305,6 +2320,8 @@ export default function Library({
                   key={f.id}
                   onClick={() => setTipo(f.id)}
                   style={{
+                    flexShrink: 0,
+                    whiteSpace: "nowrap",
                     padding: "6px 14px",
                     borderRadius: R.tondo,
                     fontSize: F.nota,
@@ -2320,6 +2337,7 @@ export default function Library({
             })}
           </>
         )}
+        </div>
         <span style={{ flex: 1 }} />
         {/* SCAFFALE O RACCOLTE (chiesto dal lettore, col Kindle in mano):
             due tasti attaccati, quindi da 44px, e la scelta si ricorda */}
