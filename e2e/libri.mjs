@@ -178,3 +178,30 @@ export function mondoDisco() {
   localStorage.setItem("bc_prog_mech", "0.12");
   localStorage.setItem("bc_lastopen", "mech");
 }
+
+// UN LIBRO COL CONTORNO IN TESTA, come quelli della Black Library:
+// frontespizio, motto, introduzione e pagina dei contenuti FUORI
+// dall'indice (che comincia da «Dramatis Personae»), poi i capitoli
+export async function epubConContorno() {
+  const zip = new JSZip();
+  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+  zip.file("META-INF/container.xml", `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`);
+  const doc = (titolo, corpo) => `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${titolo}</title></head><body>${corpo}</body></html>`;
+  const prosa = (n, inizio) => Array.from({ length: n }, (_, i) => `<p>${i === 0 ? inizio : "The Space Marines and their primarch leaders conquer the galaxy in the name of the Emperor, world after world."}</p>`).join("");
+  const pezzi = [
+    ["titolo", false, doc("Titolo", "<h1>A THOUSAND SONS</h1><h2>All is dust...</h2>")],
+    ["serie", false, doc("Serie", "<p>The Horus Heresy</p>")],
+    ["leggenda", false, doc("Leggenda", prosa(8, "It is a time of legend."))],
+    ["contenuti", false, doc("Contenuti", '<h1>CONTENTS</h1><p><a href="personae.xhtml">DRAMATIS PERSONAE</a></p><p><a href="c1.xhtml">CHAPTER ONE</a></p>')],
+    ["personae", true, doc("Dramatis Personae", "<h1>DRAMATIS PERSONAE</h1>" + prosa(6, "Magnus the Red, Primarch of the Thousand Sons."))],
+    ["c1", true, doc("Chapter One", "<h1>CHAPTER ONE</h1>" + prosa(40, "The Mountain had existed for tens of thousands of years."))],
+  ];
+  for (const [id, , xml] of pezzi) zip.file(`OEBPS/${id}.xhtml`, xml);
+  const voci = pezzi.filter(([, inToc]) => inToc).map(([id]) => `<li><a href="${id}.xhtml">${id}</a></li>`).join("");
+  zip.file("OEBPS/nav.xhtml", `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Indice</title></head><body><nav epub:type="toc"><ol>${voci}</ol></nav></body></html>`);
+  zip.file(
+    "OEBPS/content.opf",
+    `<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:contorno</dc:identifier><dc:title>Mille Figli</dc:title><dc:creator>Autore di Prova</dc:creator><dc:language>en</dc:language><meta property="dcterms:modified">2026-01-01T00:00:00Z</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>${pezzi.map(([id]) => `<item id="${id}" href="${id}.xhtml" media-type="application/xhtml+xml"/>`).join("")}</manifest><spine>${pezzi.map(([id]) => `<itemref idref="${id}"/>`).join("")}</spine></package>`
+  );
+  return zip.generateAsync({ type: "nodebuffer", mimeType: "application/epub+zip" });
+}
