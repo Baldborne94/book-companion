@@ -29,7 +29,7 @@ import { immagineDaIngrandire, sceltaDelTocco } from "../lib/tavola.js";
 import Tavola from "./Tavola.jsx";
 import { controllaSpezzatura, saluteInCache, daRicucire, ricuciLibro, conSegni, taci } from "../lib/ricuci.js";
 import { leftoverScroll, dentroIlCapitolo } from "../lib/spread.js";
-import { chiaveAvanzo, avanzoRicordato, ricordaAvanzo } from "../lib/avanzoRicordato.js";
+import { chiaveAvanzo, avanzoRicordato, avanzoDaAltri, ricordaAvanzo } from "../lib/avanzoRicordato.js";
 import { misuraBuona, misuraDaSalvare } from "../lib/misuraSalvata.js";
 import { pezziDaLeggere, scegliVoce, testoFra, leggiVelocita, scriviVelocita, prossimaVelocita } from "../lib/voce.js";
 import BookCover from "./BookCover.jsx";
@@ -359,7 +359,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // zero voleva dire rifare a ogni apertura il giro che teneva accesa la
   // candela ~700 ms dopo che il testo era gia' pronto
   const geometria = (s) => chiaveAvanzo({ larghezza: window.innerWidth, altezza: window.innerHeight, settings: s });
-  const [ricordato] = useState(() => avanzoRicordato(book.id, geometria(live.current.settings || settings)));
+  // il libro nuovo parte dall'avanzo dello stesso schermo misurato su un
+  // altro libro (`avanzoDaAltri`): la misura poi conferma o ritaglia
+  const [ricordato] = useState(() => {
+    const g = geometria(live.current.settings || settings);
+    return avanzoRicordato(book.id, g) ?? avanzoDaAltri(g);
+  });
   const [avanzo, setAvanzo] = useState(ricordato ?? 0);
   const avanzoRef = useRef(ricordato ?? 0);
   const avanzoTimer = useRef(null);

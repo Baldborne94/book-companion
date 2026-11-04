@@ -394,6 +394,39 @@ const SCENE = [
     },
   },
   {
+    // il rapporto del lettore: un'apertura con 5,3 s di «pagina pronta»
+    // contro le solite 0,6. Alla prima apertura di un libro (e a ogni giro
+    // del tablet) l'avanzo di riga non era ricordato, e il ritaglio
+    // reimpaginava il capitolo sotto la candela. Adesso un libro nuovo nasce
+    // col ritaglio misurato sullo stesso schermo da un altro libro
+    nome: "un libro nuovo nasce col ritaglio dell'avanzo gia' misurato sullo stesso schermo",
+    async fai({ browser }) {
+      const SDRAIATO = { ...TABLET, viewport: { width: 1503, height: 902 }, screen: { width: 1503, height: 902 } };
+      const d = await dispositivo(browser, { misura: SDRAIATO, prima: () => localStorage.getItem("bc_reader") || localStorage.setItem("bc_reader", JSON.stringify({ fontSize: 130 })) });
+      await d.p.goto(URL_APP);
+      await importa(d.p, "Primo.epub", await epub({ titolo: "Primo", quanti: 80, rientri: true }), "application/epub+zip");
+      await importa(d.p, "Secondo.epub", await epub({ titolo: "Secondo", quanti: 80, rientri: true }), "application/epub+zip");
+      const apri = async (titolo) => {
+        await d.p.goto(`${URL_APP}?apri=libreria`);
+        await d.p.getByText(titolo, { exact: true }).first().click();
+        await d.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+        // il riquadro appena nato, prima che la misura abbia fatto il suo giro
+        return finche(() => d.p.evaluate(() => {
+          const ifr = document.querySelector("iframe");
+          const v = ifr?.closest(".epub-container")?.parentElement;
+          return v ? getComputedStyle(v).paddingBottom : null;
+        }), 15000, `«${titolo}» non si apre`);
+      };
+      const primoNato = await apri("Primo");
+      await aspetta(3000);
+      const ritaglio = await d.p.evaluate(() => getComputedStyle(document.querySelector("iframe").closest(".epub-container").parentElement).paddingBottom);
+      if (primoNato === ritaglio) throw new Error(`la scena non ha un avanzo da ritagliare (${ritaglio})`);
+      const secondoNato = await apri("Secondo");
+      if (secondoNato !== ritaglio) throw new Error(`il libro nuovo nasce con ${secondoNato} sotto, e il ritaglio dello schermo e' ${ritaglio}`);
+      return { guasti: d.guasti, nota: `primo nato con ${primoNato}, ritagliato a ${ritaglio}; il secondo nasce gia' a ${secondoNato}` };
+    },
+  },
+  {
     nome: "un PDF si importa e si apre, e l'apertura e' misurata fino alla prima pagina",
     async fai({ browser }) {
       const d = await dispositivo(browser);
