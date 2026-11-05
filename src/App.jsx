@@ -26,7 +26,10 @@ import SezioneDizionario from "./components/SezioneDizionario.jsx";
 import SezioneLexicanum from "./components/SezioneLexicanum.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
-import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, timbraScheda, getProgress } from "./lib/library.js";
+import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, getStatus, setStatus, timbraScheda, getProgress } from "./lib/library.js";
+import { libroDellaScheda } from "./lib/schedaMusica.js";
+import { leggiSalvaschermo, fase, prossimoCambio } from "./lib/salvaschermo.js";
+import Salvaschermo, { SezioneSalvaschermo } from "./components/Salvaschermo.jsx";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux } from "./lib/bookStore.js";
 import { cercaNuovaVersione, cercaInSilenzio, siAggiornaNascosta } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
@@ -711,6 +714,21 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
               marginBottom: 8,
             }}
           >
+            Il salvaschermo
+          </h3>
+          <SezioneSalvaschermo />
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
             L'Oracolo
           </h3>
           <SezioneOracolo />
@@ -948,6 +966,8 @@ export default function App() {
   const toastTimer = useRef(null);
   const playerRef = useRef(null);
   const svegliaRef = useRef(() => {});
+  const segnoRef = useRef(() => {});
+  const [salva, setSalva] = useState(false);
   const swUpdate = useRef(null);
   const [updateReady, setUpdateReady] = useState(false);
   const flags = useRef({ reading: false, updateReady: false, lavoroLungo: false });
@@ -1786,6 +1806,7 @@ export default function App() {
 
   const openBook = books.find((b) => b.id === openId);
   const readingBook = books.find((b) => b.id === readingId);
+  const libroScheda = libroDellaScheda({ aperto: readingBook, ultimoId: getLastOpened(), libri: books, statoDi: getStatus });
   const nextBook = readingBook ? nextInSaga(readingBook, books) : null;
   flags.current.reading = !!readingBook;
   flags.current.lavoroLungo = !!(lex || fan || imm || ill || wikt || lavoro || importo || hdd);
@@ -1827,13 +1848,24 @@ export default function App() {
   // si dimentica quando il sistema la toglie (`release`), e si richiede a
   // ogni ritorno davanti e a ogni tocco. Copre anche il giro dei CBR, che
   // aveva il suo blocco.
+  //
+  // E POI IL SALVASCHERMO (`lib/salvaschermo.js`, chiesto dal lettore: «le
+  // copertine sono artistiche, averle tipo salvaschermo sarebbe figo»).
+  // Ogni segno di vita — tocco, tasto, ritorno davanti, voltata dei reader,
+  // anche quelle della lettura ad alta voce — riparte il conto; un timer
+  // solo porta alla copertina e poi, piu' tardi, lascia la presa, cosi' chi
+  // si addormenta col libro aperto non ritrova il tablet acceso al mattino.
+  // A presa lasciata non si richiede finche' non torna un segno di vita.
   useEffect(() => {
-    if (!navigator.wakeLock) return;
     let attivo = true;
     let presa = null;
     let chiedendo = false;
+    let lasciata = false;
+    let ultimo = Date.now();
+    let timer = null;
     const chiedi = async () => {
-      if (!attivo || presa || chiedendo || document.visibilityState !== "visible") return;
+      if (!navigator.wakeLock) return;
+      if (!attivo || lasciata || presa || chiedendo || document.visibilityState !== "visible") return;
       chiedendo = true;
       try {
         const p = await navigator.wakeLock.request("screen");
@@ -1848,19 +1880,50 @@ export default function App() {
         chiedendo = false;
       }
     };
+    const guarda = () => {
+      clearTimeout(timer);
+      if (!attivo) return;
+      const misura = { ...leggiSalvaschermo(), fermo: Date.now() - ultimo, lavoroLungo: flags.current.lavoroLungo };
+      const f = fase(misura);
+      if (f !== "sveglio") setSalva((v) => v || "copertina");
+      if (f === "spento" && !lasciata) {
+        lasciata = true;
+        presa?.release?.().catch(() => {});
+        presa = null;
+      }
+      const tra = prossimoCambio(misura);
+      if (tra != null) timer = setTimeout(guarda, tra + 50);
+    };
+    // un segno di vita: il conto riparte e la presa si richiede. La
+    // copertina NON si chiude qui: si chiude al tocco finito, sul
+    // salvaschermo stesso (vedi `Salvaschermo.jsx`)
+    const segno = () => {
+      ultimo = Date.now();
+      lasciata = false;
+      chiedi();
+      guarda();
+    };
+    // la voltata e il tasto non passano dal salvaschermo: lo chiudono da qui
+    const sveglia = () => {
+      setSalva(false);
+      segno();
+    };
     // il segnale dai reader: il testo sta dentro un iframe, e un dito che
     // sfoglia li' dentro non fa alzare un solo evento qui fuori
-    svegliaRef.current = chiedi;
-    chiedi();
-    document.addEventListener("visibilitychange", chiedi);
-    document.addEventListener("pointerdown", chiedi);
-    document.addEventListener("keydown", chiedi);
+    svegliaRef.current = sveglia;
+    segnoRef.current = segno;
+    segno();
+    document.addEventListener("visibilitychange", segno);
+    document.addEventListener("pointerdown", segno);
+    document.addEventListener("keydown", sveglia);
     return () => {
       attivo = false;
+      clearTimeout(timer);
       svegliaRef.current = () => {};
-      document.removeEventListener("visibilitychange", chiedi);
-      document.removeEventListener("pointerdown", chiedi);
-      document.removeEventListener("keydown", chiedi);
+      segnoRef.current = () => {};
+      document.removeEventListener("visibilitychange", segno);
+      document.removeEventListener("pointerdown", segno);
+      document.removeEventListener("keydown", sveglia);
       presa?.release?.().catch(() => {});
     };
   }, []);
@@ -2222,7 +2285,16 @@ export default function App() {
         hideMini={section === "music" || !!readingBook}
         onOpen={() => navigate("music")}
         notify={notify}
+        libro={libroScheda}
       />
+      {salva && libroScheda && (
+        <Salvaschermo
+          key={libroScheda.id}
+          libro={libroScheda}
+          onTocco={() => setSalva(false)}
+          onSenza={() => setSalva(false)}
+        />
+      )}
       {updateReady && !readingBook && (
         <div
           style={{
