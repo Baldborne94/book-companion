@@ -6,8 +6,9 @@
 // `init` chiedeva e che il manifest del sito non sa dire.
 //
 //   node scripts/apk.mjs <codice> <nome-versione>   → twa-manifest.json
+//   node scripts/apk.mjs cuci                        → il nostro codice nel progetto generato
 //   node scripts/apk.mjs impronta <file.apk-certs>  → controlla la firma
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 
@@ -50,8 +51,89 @@ export function firmaDelSito(certs, assetlinks) {
   return improntaDelSito(assetlinks).includes(impronta);
 }
 
+// IL NOSTRO CODICE ANDROID SI CUCE NEL PROGETTO CHE BUBBLEWRAP GENERA
+// (`android/*.java`, chiesto dal lettore: la copertina sulla schermata di
+// blocco «tipo Kindle», che solo un'app nativa puo' mettere). Bubblewrap non
+// prevede codice proprio e a ogni `update` riscrive il progetto da capo:
+// quindi si cuce DOPO l'update e prima del build, su tre punti precisi, e
+// se un punto non si trova piu' — Bubblewrap e' cambiato — il giro si
+// ferma e lo dice, invece di pubblicare un guscio muto.
+//
+//   - la `LauncherActivity` generata estende la nostra `GuscioActivity`
+//     invece di quella della libreria (che e' quel che la nostra estende);
+//   - il manifest dichiara il permesso di cambiare lo sfondo e il
+//     `PostMessageService` di androidx, senza il quale Chrome non apre il
+//     canale;
+//   - R8 (`minifyEnabled true`) rinominerebbe il campo privato della
+//     libreria che leggiamo per riflessione (`mSession`): una regola
+//     ProGuard gli tiene il nome.
+export const CAMPO_SESSIONE = "mSession";
+export const PROGUARD = `# la sessione di Chrome si legge per riflessione (android/SchermataDiBlocco.java)
+-keepclassmembers class com.google.androidbrowserhelper.trusted.TwaLauncher {
+  androidx.browser.customtabs.CustomTabsSession ${CAMPO_SESSIONE};
+}
+`;
+const PERMESSO = '<uses-permission android:name="android.permission.SET_WALLPAPER"/>';
+const SERVIZIO = '<service android:name="androidx.browser.customtabs.PostMessageService" android:exported="true"/>';
+const BASE_LIBRERIA = "extends com.google.androidbrowserhelper.trusted.LauncherActivity";
+const BASE_NOSTRA = "extends GuscioActivity";
+const REGOLE = "proguardFiles 'proguard-grimorio.pro'";
+
+function unaVolta(testo, ancora, dove) {
+  const prima = testo.indexOf(ancora);
+  if (prima < 0 || testo.indexOf(ancora, prima + 1) >= 0)
+    throw new Error(`cuci: in ${dove} l'ancora «${ancora}» ${prima < 0 ? "non c'e'" : "c'e' piu' di una volta"} — Bubblewrap e' cambiato, vedi scripts/apk.mjs`);
+  return prima;
+}
+
+export function cuciGuscio({ manifest, launcher, gradle }) {
+  let m = manifest;
+  if (!m.includes(PERMESSO)) {
+    const i = unaVolta(m, "<application", "AndroidManifest.xml");
+    m = `${m.slice(0, i)}${PERMESSO}\n\n    ${m.slice(i)}`;
+  }
+  if (!m.includes(SERVIZIO)) {
+    const i = unaVolta(m, "</application>", "AndroidManifest.xml");
+    m = `${m.slice(0, i)}    ${SERVIZIO}\n\n    ${m.slice(i)}`;
+  }
+  let l = launcher;
+  if (!l.includes(BASE_NOSTRA)) {
+    unaVolta(l, BASE_LIBRERIA, "LauncherActivity.java");
+    l = l.replace(BASE_LIBRERIA, BASE_NOSTRA);
+  }
+  let g = gradle;
+  if (!g.includes(REGOLE)) {
+    const i = unaVolta(g, "minifyEnabled true", "app/build.gradle");
+    const fine = i + "minifyEnabled true".length;
+    g = `${g.slice(0, fine)}\n            ${REGOLE}${g.slice(fine)}`;
+  }
+  return { manifest: m, launcher: l, gradle: g, proguard: PROGUARD };
+}
+
+// il package dichiarato in ogni file di `android/` dev'essere quello
+// dell'APK, o il build cade su un file nella cartella sbagliata
+export const pacchettoDi = (java) => /^\s*package\s+([\w.]+)\s*;/m.exec(java)?.[1] || "";
+
+function cuci(assetlinks) {
+  const pacchetto = pacchettoDelSito(assetlinks);
+  const cartella = `app/src/main/java/${pacchetto.replace(/\./g, "/")}`;
+  const nostri = readdirSync(new URL("android/", qui)).filter((f) => f.endsWith(".java"));
+  for (const f of nostri) {
+    const java = readFileSync(new URL(`android/${f}`, qui), "utf8");
+    if (pacchettoDi(java) !== pacchetto) throw new Error(`cuci: android/${f} dichiara il package «${pacchettoDi(java)}», l'APK e' «${pacchetto}»`);
+  }
+  const vie = { manifest: "app/src/main/AndroidManifest.xml", launcher: `${cartella}/LauncherActivity.java`, gradle: "app/build.gradle" };
+  const cucito = cuciGuscio(Object.fromEntries(Object.entries(vie).map(([k, v]) => [k, readFileSync(v, "utf8")])));
+  for (const [k, v] of Object.entries(vie)) writeFileSync(v, cucito[k]);
+  writeFileSync("app/proguard-grimorio.pro", cucito.proguard);
+  mkdirSync(cartella, { recursive: true });
+  for (const f of nostri) writeFileSync(join(cartella, f), readFileSync(new URL(`android/${f}`, qui), "utf8"));
+  console.log(`cuci: ${nostri.join(", ")} in ${cartella}, manifest, build.gradle e regole ProGuard`);
+}
+
 async function principale([primo, secondo]) {
   const assetlinks = leggiJson("public/.well-known/assetlinks.json");
+  if (primo === "cuci") return cuci(assetlinks);
   if (primo === "impronta") {
     if (firmaDelSito(readFileSync(secondo, "utf8"), assetlinks)) return console.log("firma: e' la chiave di assetlinks.json");
     console.error("firma: l'APK NON e' firmato con la chiave di assetlinks.json — non si pubblica");

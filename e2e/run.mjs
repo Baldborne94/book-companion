@@ -1726,6 +1726,116 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «mi appare anche se decido di spegnere io il
+    // dispositivo?» — lo sfondo della schermata di blocco lo mette il guscio
+    // Android; qui si recita il guscio (il saluto con la porta) e si guarda
+    // cosa la pagina gli manda
+    nome: "la copertina per la schermata di blocco: il guscio saluta, la pagina la manda a pezzi, alla misura dello schermo, intera, e cambia col libro",
+    async fai({ browser }) {
+      const libri = [{ id: "lb", title: "Il libro di ieri", author: "Qualcuno", fileType: "epub", addedAt: 1 }];
+      const d = await dispositivo(browser, {
+        misura: TABLET,
+        prima: `
+          Object.defineProperty(document, "referrer", { configurable: true, get: () => "android-app://it.bookcompanion.app/" });
+          localStorage.getItem("bc_books") || (localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))}), localStorage.setItem("bc_lastopen", "lb"));`,
+      });
+      const copertina = (id, colore) =>
+        d.p.evaluate(
+          ([id, colore]) =>
+            new Promise((ok, ko) => {
+              const c = document.createElement("canvas");
+              c.width = 300;
+              c.height = 450;
+              const g = c.getContext("2d");
+              g.fillStyle = colore;
+              g.fillRect(0, 0, 300, 450);
+              c.toBlob((blob) => {
+                const r = indexedDB.open("bc_library", 3);
+                r.onsuccess = () => {
+                  const tx = r.result.transaction("covers", "readwrite");
+                  tx.objectStore("covers").put(blob, id);
+                  tx.oncomplete = ok;
+                  tx.onerror = () => ko(tx.error);
+                };
+                r.onerror = () => ko(r.error);
+              }, "image/jpeg");
+            }),
+          [id, colore]
+        );
+      await d.p.goto(URL_APP);
+      await copertina("lb", "#d01010");
+      await d.p.goto(URL_APP);
+      // senza il saluto, le Impostazioni dicono cosa manca e non promettono niente
+      await d.p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await finche(() => d.p.getByText(/serve l'app Android più recente/).count(), 5000, "senza il guscio non si dice cosa manca");
+      if (await d.p.getByRole("switch", { name: /schermata di blocco/ }).count()) throw new Error("l'interruttore c'è prima del saluto");
+      // il guscio saluta: una porta, come fa Chrome — e lo rifa' a ogni
+      // pagina caricata, perche' la porta di prima muore con lei
+      const ricevuti = () => d.p.evaluate(() => window.__ricevuti.splice(0));
+      const saluta = () =>
+        d.p.evaluate(() => {
+          const canale = new MessageChannel();
+          window.__ricevuti = [];
+          window.__porta = canale.port1;
+          canale.port1.onmessage = (m) => window.__ricevuti.push(m.data);
+          window.dispatchEvent(new MessageEvent("message", { data: "grimorio:pronto", origin: location.origin, ports: [canale.port2] }));
+        });
+      await saluta();
+      const interruttore = d.p.getByRole("switch", { name: /schermata di blocco/ });
+      await finche(() => interruttore.count(), 5000, "dopo il saluto l'interruttore non compare");
+      await aspetta(800);
+      if ((await ricevuti()).length) throw new Error("la copertina parte senza che il lettore l'abbia chiesto");
+      await interruttore.click();
+      const intera = async (id) => {
+        const pezzi = [];
+        await finche(async () => {
+          pezzi.push(...(await ricevuti()).map((s) => JSON.parse(s).sfondo));
+          const miei = pezzi.filter((p) => p.id === id);
+          return miei.length && miei.length === miei[0].n;
+        }, 15000, `la copertina di «${id}» non arriva intera`);
+        const miei = pezzi.filter((p) => p.id === id).sort((a, b) => a.i - b.i);
+        if (miei.some((p, i) => p.i !== i || p.n !== miei.length)) throw new Error(`pezzi storti: ${miei.map((p) => `${p.i}/${p.n}`).join()}`);
+        return miei.map((p) => p.dati).join("");
+      };
+      const b64 = await intera("lb");
+      const m = await d.p.evaluate(async (b64) => {
+        const img = await createImageBitmap(await (await fetch(`data:image/jpeg;base64,${b64}`)).blob());
+        const c = new OffscreenCanvas(img.width, img.height);
+        const g = c.getContext("2d");
+        g.drawImage(img, 0, 0);
+        const a = (x, y) => [...g.getImageData(x, y, 1, 1).data.slice(0, 3)];
+        const attesa = { w: Math.round(Math.min(screen.width, screen.height) * devicePixelRatio), h: Math.round(Math.max(screen.width, screen.height) * devicePixelRatio) };
+        return { lato: [img.width, img.height], attesa: [attesa.w, attesa.h], mezzo: a(Math.round(img.width / 2), Math.round(img.height / 2)), alto: a(Math.round(img.width / 2), 5) };
+      }, b64);
+      if (m.lato.join() !== m.attesa.join()) throw new Error(`lo sfondo è ${m.lato.join("×")}, lo schermo ${m.attesa.join("×")}`);
+      if (!(m.mezzo[0] > 180 && m.mezzo[1] < 60)) throw new Error(`in mezzo non c'è la copertina: ${m.mezzo}`);
+      if (m.alto[0] > 60) throw new Error(`in alto la copertina è stata ritagliata invece che messa intera: ${m.alto}`);
+      // la risposta del guscio: la prima volta si dice, un guasto sempre
+      await d.p.evaluate(() => window.__porta.postMessage("grimorio:sfondo:ok"));
+      await finche(() => testoAvviso(d.p, /La copertina è sulla schermata di blocco/), 5000, "l'ok del guscio non si dice");
+      await d.p.evaluate(() => window.__porta.postMessage("grimorio:sfondo:errore:non permesso qui"));
+      await finche(() => testoAvviso(d.p, /non è andata sulla schermata di blocco: non permesso qui/), 5000, "il guasto del guscio non si dice");
+      // e un altro libro in mano manda la sua
+      await d.p.keyboard.press("Escape").catch(() => {});
+      await importa(d.p, "La nebbia.epub", await epub({ quanti: 20 }), "application/epub+zip");
+      const nuovo = (await libriDi(d.p)).find((b) => b.title === "La nebbia").id;
+      await copertina(nuovo, "#1040d0");
+      await saluta();
+      await d.p.getByText("La nebbia").first().click();
+      await d.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      const b2 = await intera(nuovo);
+      const blu = await d.p.evaluate(async (b64) => {
+        const img = await createImageBitmap(await (await fetch(`data:image/jpeg;base64,${b64}`)).blob());
+        const c = new OffscreenCanvas(img.width, img.height);
+        const g = c.getContext("2d");
+        g.drawImage(img, 0, 0);
+        return [...g.getImageData(Math.round(img.width / 2), Math.round(img.height / 2), 1, 1).data.slice(0, 3)];
+      }, b2);
+      if (!(blu[2] > 150 && blu[0] < 80)) throw new Error(`aperto l'altro libro, lo sfondo non è la sua copertina: ${blu}`);
+      return { guasti: d.guasti, nota: `sfondo ${m.lato.join("×")} intero, poi quello del libro aperto` };
+    },
+  },
+  {
     // chiesto dal lettore: «non mi toccare quelli già presenti ma solo i
     // libri che non sono già nelle raccolte», e poi «fai lasciare stare le
     // raccolte anche al giro automatico»

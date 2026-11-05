@@ -29,7 +29,9 @@ import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js"
 import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, getStatus, setStatus, timbraScheda, getProgress } from "./lib/library.js";
 import { libroDellaScheda } from "./lib/schedaMusica.js";
 import { leggiSalvaschermo, fase, prossimoCambio } from "./lib/salvaschermo.js";
-import Salvaschermo, { SezioneSalvaschermo } from "./components/Salvaschermo.jsx";
+import Salvaschermo, { SezioneSalvaschermo, SezioneSfondo } from "./components/Salvaschermo.jsx";
+import { salutoDelGuscio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo } from "./lib/sfondo.js";
+import { ascoltaCopertine } from "./lib/miniature.js";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux } from "./lib/bookStore.js";
 import { cercaNuovaVersione, cercaInSilenzio, siAggiornaNascosta } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
@@ -602,7 +604,7 @@ function MisuraPicker({ current, onPick, consigliata }) {
   );
 }
 
-function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex, fan, onFan, onFermaFan, imm, onImm, onFermaImm, ill, onIll, onFermaIll, wikt, onWikt, onFermaWikt }) {
+function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex, fan, onFan, onFermaFan, imm, onImm, onFermaImm, ill, onIll, onFermaIll, wikt, onWikt, onFermaWikt, guscioPronto = false, sfondo = false, onSfondo = () => {} }) {
   return (
     <div
       onClick={onClose}
@@ -717,6 +719,7 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
             Il salvaschermo
           </h3>
           <SezioneSalvaschermo />
+          <SezioneSfondo pronto={guscioPronto} acceso={sfondo} onCambia={onSfondo} />
         </div>
 
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
@@ -968,6 +971,41 @@ export default function App() {
   const svegliaRef = useRef(() => {});
   const segnoRef = useRef(() => {});
   const [salva, setSalva] = useState(false);
+  // IL GUSCIO ANDROID CHE SALUTA (`lib/sfondo.js`): la porta su cui mandargli
+  // la copertina per la schermata di blocco, e la scelta di farlo
+  const [guscio, setGuscio] = useState(null);
+  const [sfondo, setSfondo] = useState(leggiSfondo);
+  const sfondoMandato = useRef(null);
+  const confermaSfondo = useRef(false);
+  useEffect(() => {
+    const saluto = (e) => {
+      if (!salutoDelGuscio(e, window.location.origin)) return;
+      const porta = e.ports[0];
+      porta.onmessage = (m) => {
+        const r = risposta(m.data);
+        if (!r) return;
+        if (r.errore) notify(`La copertina non è andata sulla schermata di blocco: ${r.errore}`);
+        // si dice solo la prima volta dopo l'accensione: poi a ogni libro
+        // sarebbe una riga di troppo
+        else if (confermaSfondo.current) {
+          confermaSfondo.current = false;
+          notify("La copertina è sulla schermata di blocco");
+        }
+      };
+      porta.start?.();
+      setGuscio({ porta });
+    };
+    window.addEventListener("message", saluto);
+    return () => window.removeEventListener("message", saluto);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  function accendiSfondo(acceso) {
+    setSfondo(scriviSfondo(acceso));
+    if (acceso) {
+      sfondoMandato.current = null;
+      confermaSfondo.current = true;
+    }
+  }
   const swUpdate = useRef(null);
   const [updateReady, setUpdateReady] = useState(false);
   const flags = useRef({ reading: false, updateReady: false, lavoroLungo: false });
@@ -1807,6 +1845,32 @@ export default function App() {
   const openBook = books.find((b) => b.id === openId);
   const readingBook = books.find((b) => b.id === readingId);
   const libroScheda = libroDellaScheda({ aperto: readingBook, ultimoId: getLastOpened(), libri: books, statoDi: getStatus });
+  // LA COPERTINA VA AL GUSCIO quando cambia il libro in mano o la sua
+  // copertina, se il lettore l'ha chiesto e il guscio ha salutato. Composta
+  // qui per lo schermo di QUESTO dispositivo (`misuraSchermo`), a pezzi.
+  const idScheda = libroScheda?.id || null;
+  const [copVScheda, setCopVScheda] = useState(0);
+  useEffect(() => ascoltaCopertine((id) => id === idScheda && setCopVScheda((v) => v + 1)), [idScheda]);
+  useEffect(() => {
+    if (!guscio || !sfondo || !idScheda) return;
+    let vivo = true;
+    (async () => {
+      const { getCover } = await import("./lib/bookStore.js");
+      const blob = await getCover(idScheda);
+      if (!vivo || !blob) return;
+      const chiave = `${idScheda}:${blob.size}:${copVScheda}`;
+      if (sfondoMandato.current === chiave) return;
+      const base64 = await copertinaPerSchermo(blob, misuraSchermo({ width: window.screen?.width, height: window.screen?.height, dpr: window.devicePixelRatio || 1 }));
+      if (!vivo || !base64) return;
+      sfondoMandato.current = chiave;
+      for (const p of pezzi(idScheda, base64)) guscio.porta.postMessage(p);
+    })().catch(() => {
+      /* senza copertina o senza canvas: lo sfondo resta quello di prima */
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [guscio, sfondo, idScheda, copVScheda]);
   const nextBook = readingBook ? nextInSaga(readingBook, books) : null;
   flags.current.reading = !!readingBook;
   flags.current.lavoroLungo = !!(lex || fan || imm || ill || wikt || lavoro || importo || hdd);
@@ -2128,6 +2192,9 @@ export default function App() {
           wikt={wikt}
           onWikt={scaricaWikt}
           onFermaWikt={fermaWikt}
+          guscioPronto={!!guscio}
+          sfondo={sfondo}
+          onSfondo={accendiSfondo}
         />
       )}
       {/* le stanze di rado arrivano da un pacchetto loro: finche' non c'e',
