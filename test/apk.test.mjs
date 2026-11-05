@@ -16,6 +16,7 @@ export default async function (t) {
   t.eq("niente permesso di notifica", g.enableNotifications, false);
   t.eq("l'orientamento del guscio fatto a mano (docs/TWA.md), non «any» del sito", g.orientation, "default");
   t.eq("il codice e' quello del giro", g.appVersionCode, 842);
+  t.eq("Android 7 come minimo: lo vuole la libreria del guscio", g.minSdkVersion, 24);
   t.eq("…col nome che si legge nelle impostazioni", g.appVersionName, "1.0.0 (842)");
   t.eq("la chiave dove il giro la scrive", `${g.signingKey.path} ${g.signingKey.alias}`, "./android.keystore android");
   t.eq("quel che dice il manifest del sito resta", `${g.launcherName} ${g.display}`, "Grimorio fullscreen");

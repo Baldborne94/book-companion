@@ -34,6 +34,11 @@ export function guscio(twa, { codice, versione, assetlinks }) {
     // come rispondeva il lettore a `init` (docs/TWA.md): l'APK nuovo non
     // cambia come gira lo schermo rispetto a quello che ha sul tablet
     orientation: "default",
+    // la libreria del guscio (android-browser-helper 2.7.4, che il core di
+    // Bubblewrap porta con se') vuole Android 7 (API 24) come minimo, e il
+    // progetto generato partiva da 21: il merge dei manifest si fermava li',
+    // prima ancora di compilare. Il tablet del lettore e' Android 10.
+    minSdkVersion: 24,
     // cresce a ogni commit su main: Android installa sopra solo un codice piu' alto
     appVersionCode: codice,
     appVersionName: versione,
