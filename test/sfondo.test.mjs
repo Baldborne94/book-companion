@@ -20,6 +20,9 @@ export default async function (t) {
   // come fa Chrome: dati vuoti, la porta attaccata, l'origine del sito
   t.c("la porta con dati vuoti dall'origine del sito", portaDelGuscio({ data: "", origin: SITO, ports: [porta] }, SITO) === porta);
   t.c("…o dal pacchetto, se Chrome non ha verificato l'origine", portaDelGuscio({ data: "", origin: `android-app://${PACCHETTO}`, ports: [porta] }, SITO) === porta);
+  // com'e' arrivata davvero sul tablet: `android-app://` con l'host del sito
+  t.c("…o da android-app:// con l'host del sito, com'e' davvero", portaDelGuscio({ data: "", origin: "android-app://book-companion-ruddy.vercel.app", ports: [porta] }, SITO) === porta);
+  t.eq("ma un https di un altro sito no", portaDelGuscio({ data: "", origin: "https://book-companion-ruddy.vercel.app.evil.example", ports: [porta] }, SITO), null);
   t.c("…o senza origine", portaDelGuscio({ data: null, origin: "", ports: [porta] }, SITO) === porta);
   t.c("col saluto scritto dentro va bene da qualunque origine", portaDelGuscio({ data: SALUTO, origin: "https://altro.example", ports: [porta] }, SITO) === porta);
   t.eq("un messaggio da un'altra origine senza saluto no", portaDelGuscio({ data: "", origin: "https://altro.example", ports: [porta] }, SITO), null);

@@ -58,14 +58,18 @@ export const nelGuscio = (referrer = globalThis.document?.referrer, storage = gl
 // sulla finestra. La pagina aspettava il saluto nel messaggio della
 // finestra e lasciava la porta senza ascolto. Quindi la porta E' la stretta
 // di mano: si prende, ci si risponde sopra, e si ascolta su di lei.
-// L'origine e' quella del sito (verificata con `use_as_origin`) o il
-// pacchetto; un messaggio con la porta e il saluto scritto dentro va bene
-// da qualunque origine, perche' nel guscio nessun altro ne manda.
+// L'ORIGINE E' `android-app://<host del sito>` (la riga «Messaggi alla
+// pagina» dell'APK 1110, tre porte rifiutate): Chrome scrive cosi'
+// l'origine di un'app Android verificata, con l'host del sito e non il
+// pacchetto, e nessuna pagina web puo' produrla. Si accetta ogni
+// `android-app://`, l'origine del sito, e un messaggio con la porta e il
+// saluto scritto dentro da qualunque origine, perche' nel guscio nessun
+// altro ne manda.
 export function portaDelGuscio(e, origine) {
   const porta = e?.ports?.[0];
   if (!porta) return null;
   const o = String(e.origin || "");
-  if (o && o !== origine && o !== `android-app://${PACCHETTO}` && e.data !== SALUTO) return null;
+  if (o && o !== origine && !o.startsWith("android-app://") && e.data !== SALUTO) return null;
   return porta;
 }
 

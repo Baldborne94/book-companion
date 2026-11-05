@@ -1780,7 +1780,8 @@ const SCENE = [
           window.__ricevuti = [];
           window.__porta = canale.port1;
           canale.port1.onmessage = (m) => window.__ricevuti.push(m.data);
-          window.dispatchEvent(new MessageEvent("message", { data: "", origin: location.origin, ports: [canale.port2] }));
+          // l'origine com'e' davvero sul tablet: android-app:// con l'host del sito
+          window.dispatchEvent(new MessageEvent("message", { data: "", origin: `android-app://${location.host}`, ports: [canale.port2] }));
           canale.port1.postMessage("grimorio:pronto");
         });
       await saluta();
