@@ -26,7 +26,8 @@ import SezioneDizionario from "./components/SezioneDizionario.jsx";
 import SezioneLexicanum from "./components/SezioneLexicanum.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
-import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, timbraScheda, getProgress } from "./lib/library.js";
+import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, getStatus, setStatus, timbraScheda, getProgress } from "./lib/library.js";
+import { libroDellaScheda } from "./lib/schedaMusica.js";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux } from "./lib/bookStore.js";
 import { cercaNuovaVersione, cercaInSilenzio, siAggiornaNascosta } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
@@ -1786,6 +1787,7 @@ export default function App() {
 
   const openBook = books.find((b) => b.id === openId);
   const readingBook = books.find((b) => b.id === readingId);
+  const libroScheda = libroDellaScheda({ aperto: readingBook, ultimoId: getLastOpened(), libri: books, statoDi: getStatus });
   const nextBook = readingBook ? nextInSaga(readingBook, books) : null;
   flags.current.reading = !!readingBook;
   flags.current.lavoroLungo = !!(lex || fan || imm || ill || wikt || lavoro || importo || hdd);
@@ -2222,6 +2224,7 @@ export default function App() {
         hideMini={section === "music" || !!readingBook}
         onOpen={() => navigate("music")}
         notify={notify}
+        libro={libroScheda}
       />
       {updateReady && !readingBook && (
         <div

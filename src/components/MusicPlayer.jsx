@@ -5,6 +5,9 @@ import {
   puntoDi, segnaPunto, dimenticaPunto, daDoveRiprendere, segnaDove, indietroDa, getLists,
 } from "../lib/music.js";
 import { Faccia, Avanzamento, Comandi, sottotitolo } from "./Ascolto.jsx";
+import { getCover } from "../lib/bookStore.js";
+import { ascoltaCopertine } from "../lib/miniature.js";
+import { metadatiScheda, copertinaQuadrata } from "../lib/schedaMusica.js";
 
 // il nome della raccolta che suona: la coda ne tiene solo la chiave
 const nomeRaccolta = (queue) => (queue?.raccolta ? getLists().find((r) => r.id === queue.raccolta)?.name : null);
@@ -14,7 +17,7 @@ const nomeRaccolta = (queue) => (queue?.raccolta ? getLists().find((r) => r.id =
 // non l'inizio di una discesa.
 const DISSOLVENZA = 30000;
 
-const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, notify }, ref) {
+const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, notify, libro = null }, ref) {
   const iframeRef = useRef(null);
   const audioRef = useRef(null);
   const urlRef = useRef(null);
@@ -470,6 +473,30 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
     notify("🌙 La musica si è addormentata. Buona lettura.");
   };
 
+  // LA COPERTINA DEL LIBRO PER LA SCHEDA DEL SISTEMA (`lib/schedaMusica.js`):
+  // si prepara solo quando c'e' musica, e si rifa' se la copertina cambia
+  const [copertina, setCopertina] = useState(null);
+  const [copV, setCopV] = useState(0);
+  const idLibro = libro?.id || null;
+  useEffect(() => ascoltaCopertine((id) => id === idLibro && setCopV((v) => v + 1)), [idLibro]);
+  const suona = !!current;
+  useEffect(() => {
+    setCopertina(null);
+    if (!idLibro || !suona) return;
+    let vivo = true;
+    (async () => {
+      const blob = await getCover(idLibro);
+      if (!blob || !vivo) return;
+      const q = await copertinaQuadrata(blob, C.bg);
+      if (vivo) setCopertina(q);
+    })().catch(() => {
+      /* senza copertina la scheda resta com'era */
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [idLibro, suona, copV]);
+
   // Il tastierino del sistema (schermata di blocco, notifica) sa che qui
   // c'e' della musica: non obbliga il browser a tenerla viva, ma quando la
   // tiene viva da' i comandi giusti invece di lasciare il lettore a
@@ -489,10 +516,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
     // comandi — cioe' proprio le cose che dicono al sistema "qui c'e'
     // musica viva", che a schermo spento e' quel che tiene su tutto.
     try {
-      ms.metadata = new window.MediaMetadata({
-        title: current.name || "Musica di sottofondo",
-        artist: "Book Companion",
-      });
+      ms.metadata = new window.MediaMetadata(metadatiScheda({ brano: current, libro, copertina }));
     } catch { /* niente scheda: pazienza, i comandi contano di piu' */ }
     try {
       ms.playbackState = playing ? "playing" : "paused";
@@ -507,7 +531,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
       ms.setActionHandler("previoustrack", () => prevRef.current());
       ms.setActionHandler("seekto", (d) => d?.seekTime != null && seekRef.current(d.seekTime));
     } catch { /* si resta ai comandi in app */ }
-  }, [current, playing]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [current, playing, libro?.title, libro?.author, copertina]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // per la barra del punto una funzione sola per tutta la vita del player
   const tempoRef = useRef(tempo);

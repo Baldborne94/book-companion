@@ -1506,6 +1506,68 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: la copertina di quel che sta leggendo sullo
+    // schermo con l'app in secondo piano, «tipo stile Kindle». Fuori
+    // dall'app il sistema mostra la scheda della musica: lì va la copertina
+    nome: "con la musica accesa, la scheda del sistema mostra la copertina del libro che stai leggendo, intera",
+    async fai({ browser }) {
+      const libri = [{ id: "lc", title: "Il libro in mano", author: "Un'autrice", fileType: "epub", addedAt: 1 }];
+      const d = await dispositivo(browser, {
+        prima: `localStorage.getItem("bc_books") || (localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))}), localStorage.setItem("bc_lastopen", "lc"));`,
+      });
+      await d.p.goto(URL_APP);
+      // una copertina vera, in piedi e rossa: la scheda la deve tenere intera
+      await d.p.evaluate(
+        () =>
+          new Promise((ok, ko) => {
+            const c = document.createElement("canvas");
+            c.width = 300;
+            c.height = 450;
+            const g = c.getContext("2d");
+            g.fillStyle = "#ff0000";
+            g.fillRect(0, 0, 300, 450);
+            c.toBlob((blob) => {
+              const r = indexedDB.open("bc_library", 3);
+              r.onsuccess = () => {
+                const tx = r.result.transaction("covers", "readwrite");
+                tx.objectStore("covers").put(blob, "lc");
+                tx.oncomplete = ok;
+                tx.onerror = () => ko(tx.error);
+              };
+              r.onerror = () => ko(r.error);
+            }, "image/jpeg");
+          })
+      );
+      const scheda = () =>
+        d.p.evaluate(() => {
+          const m = navigator.mediaSession?.metadata;
+          return m ? { title: m.title, artist: m.artist, src: m.artwork?.[0]?.src || "" } : null;
+        });
+      if ((await scheda())?.src) throw new Error("a musica spenta la scheda ha già un'immagine");
+      await d.p.goto(`${URL_APP}?apri=musica`);
+      await d.p.getByRole("button", { name: "＋ Aggiungi" }).click();
+      await d.p.setInputFiles('input[accept="audio/*"]', { name: "Pioggia.wav", mimeType: "audio/wav", buffer: wav(20) });
+      await finche(() => d.p.getByText("Pioggia", { exact: true }).count(), 10000, "la melodia non entra");
+      await d.p.getByRole("button", { name: "▶ Tutti", exact: true }).click();
+      const s = await finche(async () => ((await scheda())?.src.startsWith("data:image/jpeg") ? scheda() : null), 10000, "la scheda della musica non ha la copertina");
+      if (s.title !== "Pioggia") throw new Error(`il titolo della scheda è «${s.title}», non il brano`);
+      if (s.artist !== "Il libro in mano — Un'autrice") throw new Error(`sotto il brano c'è «${s.artist}»`);
+      // intera: rossa in mezzo, fondo scuro ai lati (una copertina ritagliata sarebbe rossa ovunque)
+      const pixel = await d.p.evaluate(async (src) => {
+        const img = await createImageBitmap(await (await fetch(src)).blob());
+        const c = new OffscreenCanvas(img.width, img.height);
+        const g = c.getContext("2d");
+        g.drawImage(img, 0, 0);
+        const a = (x, y) => [...g.getImageData(x, y, 1, 1).data.slice(0, 3)];
+        return { lato: [img.width, img.height], mezzo: a(256, 256), lato_sx: a(10, 256) };
+      }, s.src);
+      if (pixel.lato.join() !== "512,512") throw new Error(`l'immagine è ${pixel.lato.join("×")}, non quadrata`);
+      if (!(pixel.mezzo[0] > 200 && pixel.mezzo[1] < 60)) throw new Error(`in mezzo non c'è la copertina: ${pixel.mezzo}`);
+      if (pixel.lato_sx[0] > 60) throw new Error(`ai lati la copertina è stata allargata: ${pixel.lato_sx}`);
+      return { guasti: d.guasti, nota: `${s.title} · ${s.artist} · copertina ${pixel.lato.join("×")} intera` };
+    },
+  },
+  {
     // chiesto dal lettore: «non mi toccare quelli già presenti ma solo i
     // libri che non sono già nelle raccolte», e poi «fai lasciare stare le
     // raccolte anche al giro automatico»
