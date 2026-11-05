@@ -124,7 +124,7 @@ export function infoDalLancio(search) {
   const versione = /^\d+$/.test(q.get("guscio") || "") ? q.get("guscio") : null;
   const grezzo = q.get("esito");
   if (!grezzo) return { versione, esito: null };
-  const esito = {};
+  const esito = { grezzo };
   for (const pezzo of grezzo.split(";")) {
     const i = pezzo.indexOf("=");
     if (i > 0) esito[pezzo.slice(0, i)] = pezzo.slice(i + 1);
@@ -148,9 +148,10 @@ const PASSI = [
 export function fraseEsito(esito) {
   if (!esito) return null;
   for (const [k, frase] of PASSI) {
-    // «n» e' il numero dell'ultimo evento: 2 e' la pagina caricata
-    const ok = k === "n" ? esito.n === "2" : esito[k] === "1";
-    if (!ok) return frase + (k === "n" && esito.n ? ` (ultimo evento: ${esito.n})` : "") + (esito.e ? ` — ${esito.e}` : "");
+    if (esito[k] === "1") continue;
+    // «u» e' l'ultimo evento visto: 1 partita, 2 caricata, 3 fallita, 4
+    // interrotta, 5 scheda mostrata, 6 nascosta
+    return frase + (k === "n" && esito.u ? ` (ultimo evento: ${esito.u})` : "") + (esito.e ? ` — ${esito.e}` : "");
   }
   const n = Number(esito.f) || 0;
   return n ? `tutto a posto, ${n === 1 ? "una copertina messa" : `${n} copertine messe`}` : "canale aperto e saluto ricevuto, ma nessuna copertina mandata";
