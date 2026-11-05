@@ -42,7 +42,9 @@ jobs:
       # tutti i giorni): qui lo si aggiunge solo alla macchina della prova
       - name: Il browser per la guardia del tema
         run: |
-          npm i -D --no-save playwright
+          # paziente: Playwright appena uscito ha il suo `playwright-core`
+          # non ancora sul registro per qualche minuto, e il giro cadeva li'
+          for i in 1 2 3; do npm i -D --no-save playwright && break; [ "$i" = 3 ] && exit 1; sleep 90; done
           npx playwright install --with-deps chromium
 
       - run: npm test
