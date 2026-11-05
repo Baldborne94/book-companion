@@ -234,8 +234,13 @@ Come funziona, in breve: Chrome dà alle Trusted Web Activity un canale
 (l'origine del sito va dichiarata in `assetlinks.json` anche con
 `delegate_permission/common.use_as_origin`), saluta la pagina con
 `grimorio:pronto`, e la pagina risponde con la copertina già composta per lo
-schermo, a pezzi. Dettagli e scogli in `docs/STORIA.md` («il guscio che
-parla con la pagina»).
+schermo, a pezzi. Il guscio risaluta anche ogni volta che la scheda torna
+davanti: riaperta l'app dall'icona la sessione di Chrome cambia e la porta
+di prima muore senza dirlo, e la pagina a ogni saluto rimanda la copertina
+che non ha avuto l'ok. Sotto l'interruttore le Impostazioni dicono
+l'ultima copertina mandata e cosa ne ha detto il guscio. Dettagli e scogli
+in `docs/STORIA.md` («il guscio che parla con la pagina», «la porta
+morta»).
 
 Bubblewrap non prevede codice proprio e a ogni `update` riscrive il
 progetto: `node scripts/apk.mjs cuci` lo cuce dentro **dopo**

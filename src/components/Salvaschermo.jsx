@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { C, F, R, FONT_TITLE, px } from "../data/constants.js";
 import { leggiSalvaschermo, scriviSalvaschermo, SCELTE_COPERTINA, SCELTE_SPEGNI, fraseMinuti } from "../lib/salvaschermo.js";
-import { nelGuscio, fraseEsito, messaggiVisti, fraseMessaggi } from "../lib/sfondo.js";
+import { nelGuscio, fraseEsito, messaggiVisti, fraseMessaggi, fraseInvio } from "../lib/sfondo.js";
 import { getCover } from "../lib/bookStore.js";
 import { getProgress } from "../lib/library.js";
 
@@ -139,7 +139,7 @@ export function SezioneSalvaschermo() {
 // la riga non c'e': un tasto non promette cio' che non puo' dare. Nel
 // guscio senza il saluto — l'APK vecchio, o un processo riaperto dai
 // recenti — si dice cosa fare, senza tasto.
-export function SezioneSfondo({ pronto, info = null, acceso, onCambia }) {
+export function SezioneSfondo({ pronto, info = null, invio = null, acceso, onCambia }) {
   if (!nelGuscio()) return null;
   // il guscio nuovo c'e' ma non ha salutato: si dice fin dove e' arrivato
   // l'ultima volta (`infoDalLancio`), o come farglielo raccontare
@@ -168,6 +168,11 @@ export function SezioneSfondo({ pronto, info = null, acceso, onCambia }) {
           <p style={{ fontSize: F.piccolo, color: C.muted, marginTop: 8, lineHeight: 1.45 }}>
             Lo sfondo della schermata di blocco diventa la copertina del libro che hai in mano, e cambia
             quando cambi libro. Spegnendolo, lo sfondo di prima lo rimetti tu dalle impostazioni di Android.
+            {/* l'ultima copertina mandata e cosa ne ha detto il guscio: sul
+                tablet la schermata di blocco mostrava il libro di prima, e da
+                fuori non si vedeva se la pagina avesse mandato o il guscio
+                ascoltato */}
+            {acceso && <span style={{ display: "block", marginTop: 4, fontSize: F.minuscolo, opacity: 0.7 }}>{fraseInvio(invio)}</span>}
           </p>
         </>
       ) : (
