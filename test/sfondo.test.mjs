@@ -69,15 +69,19 @@ export default async function (t) {
   t.eq("la versione del guscio", infoDalLancio("?guscio=1099").versione, "1099");
   t.eq("una versione che non e' un numero non e' una versione", infoDalLancio("?guscio=x").versione, null);
   t.eq("«apri» resta leggibile accanto", new URLSearchParams("?apri=libreria&guscio=1099").get("apri"), "libreria");
-  const e = infoDalLancio("?guscio=1099&esito=" + encodeURIComponent("s=1;c=1;r=1;v=0;p=0;a=0;f=0;e=")).esito;
+  const e = infoDalLancio("?guscio=1099&esito=" + encodeURIComponent("l=1;k=1;n=2;s=1;c=1;r=1;v=0;p=0;a=0;f=0;e=")).esito;
   t.eq("l'esito si legge passo per passo", `${e.s}${e.c}${e.r}${e.v}${e.p}`, "11100");
   t.c("…e dice dove ci si e' fermati", /origine/.test(fraseEsito(e)) && /use_as_origin/.test(fraseEsito(e)));
-  t.c("la sessione non letta viene prima di tutto", /sessione/.test(fraseEsito({ s: "0", c: "1", r: "1" })));
-  t.c("un guasto si accoda alla frase", /— boom$/.test(fraseEsito({ s: "1", c: "0", e: "boom" })));
-  t.c("il canale rifiutato", /rifiutato/.test(fraseEsito({ s: "1", c: "1", r: "0" })));
-  t.c("il canale mai pronto", /mai stato pronto/.test(fraseEsito({ s: "1", c: "1", r: "1", v: "1", p: "0" })));
-  t.c("il saluto perso", /saluto.*non è mai arrivato/.test(fraseEsito({ s: "1", c: "1", r: "1", v: "1", p: "1", a: "0" })));
-  t.c("tutto a posto, con le copertine", /tutto a posto, 2 copertine/.test(fraseEsito({ s: "1", c: "1", r: "1", v: "1", p: "1", a: "1", f: "2" })));
-  t.c("tutto aperto ma niente mandato", /nessuna copertina/.test(fraseEsito({ s: "1", c: "1", r: "1", v: "1", p: "1", a: "1", f: "0" })));
+  t.c("la sessione non letta viene prima di tutto", /sessione/.test(fraseEsito({ l: "1", k: "1", n: "2", s: "0", c: "1", r: "1" })));
+  t.c("un guasto si accoda alla frase", /— boom$/.test(fraseEsito({ l: "1", k: "1", n: "2", s: "1", c: "0", e: "boom" })));
+  t.c("il canale rifiutato", /rifiutato/.test(fraseEsito({ l: "1", k: "1", n: "2", s: "1", c: "1", r: "0" })));
+  t.c("il canale mai pronto", /mai stato pronto/.test(fraseEsito({ l: "1", k: "1", n: "2", s: "1", c: "1", r: "1", v: "1", p: "0" })));
+  t.c("il saluto perso", /saluto.*non è mai arrivato/.test(fraseEsito({ l: "1", k: "1", n: "2", s: "1", c: "1", r: "1", v: "1", p: "1", a: "0" })));
+  t.c("tutto a posto, con le copertine", /tutto a posto, 2 copertine/.test(fraseEsito({ l: "1", k: "1", n: "2", s: "1", c: "1", r: "1", v: "1", p: "1", a: "1", f: "2" })));
+  t.c("tutto aperto ma niente mandato", /nessuna copertina/.test(fraseEsito({ l: "1", k: "1", n: "2", s: "1", c: "1", r: "1", v: "1", p: "1", a: "1", f: "0" })));
+  t.c("il lanciatore mai creato viene prima di tutto", /lanciatore non è stato creato/.test(fraseEsito({ k: "1", n: "2", s: "1" })) && /lanciatore/.test(fraseEsito({ s: "0" })));
+  t.c("il callback mai creato", /callback/.test(fraseEsito({ l: "1", n: "2", s: "1" })));
+  t.c("nessun evento di navigazione", /nessun evento/.test(fraseEsito({ l: "1", k: "1", s: "1" })));
+  t.c("un evento che non e' la pagina caricata si dice col numero", /ultimo evento: 1/.test(fraseEsito({ l: "1", k: "1", n: "1", s: "1" })));
   t.eq("senza esito niente frase", fraseEsito(null), null);
 }

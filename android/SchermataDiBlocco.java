@@ -98,6 +98,7 @@ public final class SchermataDiBlocco {
             origine = Uri.parse(u.getScheme() + "://" + u.getAuthority());
         }
         lanciatore = new Lanciatore(new Contesto(attivita), meta.launchingBrowser, idSessione, store);
+        Diagnosi.segna(attivita, "l", origine != null);
         return lanciatore;
     }
 
@@ -108,7 +109,10 @@ public final class SchermataDiBlocco {
 
         static void segna(Context c, String chiave, String valore) {
             try {
-                c.getSharedPreferences(NOME, Context.MODE_PRIVATE).edit().putString(chiave, valore).apply();
+                // `commit` e non `apply`: un processo in secondo piano senza
+                // attivita' Android lo puo' uccidere da un momento all'altro,
+                // e la diagnosi deve essere gia' su disco
+                c.getSharedPreferences(NOME, Context.MODE_PRIVATE).edit().putString(chiave, valore).commit();
             } catch (Throwable e) {
                 /* senza memoria la diagnosi manca, non il resto */
             }
@@ -125,7 +129,7 @@ public final class SchermataDiBlocco {
                 SharedPreferences p = c.getSharedPreferences(NOME, Context.MODE_PRIVATE);
                 if (p.getAll().isEmpty()) return null;
                 StringBuilder s = new StringBuilder();
-                for (String k : new String[] { "s", "c", "r", "v", "p", "a", "f", "e" }) {
+                for (String k : new String[] { "l", "k", "n", "s", "c", "r", "v", "p", "a", "f", "e" }) {
                     if (s.length() > 0) s.append(';');
                     s.append(k).append('=').append(p.getString(k, ""));
                 }
@@ -228,11 +232,15 @@ public final class SchermataDiBlocco {
 
         Ascolto(Context app) {
             this.app = app;
+            Diagnosi.segna(app, "k", true);
         }
 
         @Override
         public void onNavigationEvent(int evento, @Nullable Bundle extras) {
             super.onNavigationEvent(evento, extras);
+            // l'ultimo evento visto: se non e' mai il 2 (pagina caricata),
+            // Chrome non ce lo dice e il resto non parte
+            Diagnosi.segna(app, "n", String.valueOf(evento));
             // a ogni pagina caricata (anche dopo un aggiornamento dell'app,
             // che la ricarica): il canale di prima e' morto con lei
             if (evento == NAVIGATION_FINISHED) {
@@ -273,7 +281,10 @@ public final class SchermataDiBlocco {
     // libreria non lo scalda piu' sui Chrome recenti: una presa a parte,
     // del processo, lo fa una volta sola
     private static void apriCanale(Context app) {
-        if (origine == null || lanciatore == null) return;
+        if (origine == null || lanciatore == null) {
+            Diagnosi.segna(app, "e", origine == null ? "origine mancante" : "lanciatore mancante");
+            return;
+        }
         Diagnosi.segna(app, "s", sessione() != null);
         if (scaldato != null) {
             richiedi(app);
