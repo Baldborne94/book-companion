@@ -177,6 +177,9 @@ export function SezioneSfondo({ pronto, info = null, acceso, onCambia }) {
                 ultima ? `L'ultima volta: ${ultima}.` : "Chiudi l'app del tutto e riaprila dall'icona: al secondo avvio qui si legge dove si è fermata."
               }`
             : "Per la copertina sulla schermata di blocco serve l'app Android più recente (le Releases su GitHub), installata sopra questa. Se ce l'hai già, chiudi l'app e riaprila dall'icona."}
+          {/* il resoconto grezzo, passo per passo: una foto di questa riga
+              dice tutto a chi deve capire da lontano */}
+          {info?.esito?.grezzo && <span style={{ display: "block", marginTop: 4, fontSize: F.minuscolo, opacity: 0.7, wordBreak: "break-all" }}>{info.esito.grezzo}</span>}
         </p>
       )}
     </div>

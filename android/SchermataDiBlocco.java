@@ -130,7 +130,7 @@ public final class SchermataDiBlocco {
                 SharedPreferences p = c.getSharedPreferences(NOME, Context.MODE_PRIVATE);
                 if (p.getAll().isEmpty()) return null;
                 StringBuilder s = new StringBuilder();
-                for (String k : new String[] { "l", "k", "n", "s", "c", "r", "v", "p", "a", "f", "e" }) {
+                for (String k : new String[] { "l", "k", "n", "u", "s", "c", "r", "v", "p", "a", "f", "e" }) {
                     if (s.length() > 0) s.append(';');
                     s.append(k).append('=').append(p.getString(k, ""));
                 }
@@ -255,12 +255,15 @@ public final class SchermataDiBlocco {
         @Override
         public void onNavigationEvent(int evento, @Nullable Bundle extras) {
             super.onNavigationEvent(evento, extras);
-            // l'ultimo evento visto: se non e' mai il 2 (pagina caricata),
-            // Chrome non ce lo dice e il resto non parte
-            Diagnosi.segna(app, "n", String.valueOf(evento));
+            // l'ultimo evento visto (`u`), e il segno che la pagina si e'
+            // caricata almeno una volta (`n`), che resta: l'APK 1108 diceva
+            // «ultimo evento 6» (scheda nascosta) perche' chiudere l'app
+            // copriva il 2 di prima
+            Diagnosi.segna(app, "u", String.valueOf(evento));
             // a ogni pagina caricata (anche dopo un aggiornamento dell'app,
             // che la ricarica): il canale di prima e' morto con lei
             if (evento == NAVIGATION_FINISHED) {
+                Diagnosi.segna(app, "n", true);
                 ciao = false;
                 tentativi = 0;
                 apriCanale(app);
