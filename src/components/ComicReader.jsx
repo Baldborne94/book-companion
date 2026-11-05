@@ -7,6 +7,7 @@ import { getCfi, setCfi, getMarks, saveMarks } from "../lib/annotations.js";
 import { setProgress, setStatus } from "../lib/library.js";
 import { vocePerVoltata, segnaVoltata } from "../lib/voltate.js";
 import { loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
+import { aggiornaPasso, leggiPasso, scriviPasso, passoDi, tempoResta, fraseResta, PASSO_INIZIALE, AVANZO_MAX } from "../lib/resta.js";
 import { apriFumetto, misuraBordi } from "../lib/archivioFumetto.js";
 import {
   paginaDaAprire,
@@ -161,6 +162,23 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const [panel, setPanel] = useState(null);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(0);
+  // il passo di lettura di QUESTO fumetto (`lib/resta.js`): l'ultima pagina
+  // vista e quando, per misurare il tratto alla prossima
+  const passoRef = useRef({ rec: leggiPasso(book.id), t: null, page: null });
+  useEffect(() => {
+    if (status !== "ready" || !(page > 0)) return;
+    const ora = Date.now();
+    const pr = passoRef.current;
+    if (pr.t != null && pr.page != null) {
+      const dopo = aggiornaPasso(pr.rec, (ora - pr.t) / 1000, page - pr.page, AVANZO_MAX.fumetto);
+      if (dopo !== pr.rec) {
+        pr.rec = dopo;
+        scriviPasso(book.id, dopo);
+      }
+    }
+    pr.t = ora;
+    pr.page = page;
+  }, [page, status, book.id]);
   // le pagine a schermo, una o due, ognuna col suo object URL
   const [srcs, setSrcs] = useState([]);
   // per quale coppia sono quelle pagine: una coppia a cui ne manca una (non
@@ -906,6 +924,14 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   };
 
   const pct = pages ? Math.round((page / pages) * 100) : 0;
+  // quanto manca, come nel PDF: le pagine e il tempo al passo di questo fumetto
+  const quantoManca = (() => {
+    if (!pages) return null;
+    const restano = Math.max(0, pages - page);
+    if (!restano) return "ultima pagina";
+    const tempo = fraseResta(tempoResta({ qui: page, fine: pages, passo: passoDi(passoRef.current.rec, PASSO_INIZIALE.fumetto) }));
+    return [`${restano} ${restano === 1 ? "pagina" : "pagine"}`, tempo ? `~${tempo}` : null].filter(Boolean).join(" · ");
+  })();
   // la levetta e' quella del PDF («Togli i margini»), condivisa in
   // `bc_reader`: spenta, la scansione si vede com'e', bordo compreso
   const bordiVivi = settings.ritaglia !== false ? bordi : null;
@@ -1321,7 +1347,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: F.minuscolo, color: C.muted, marginTop: 2 }}>
               <span>{pct}%</span>
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 10px" }}>
-                {verso === "rtl" ? "⇦ da destra a sinistra" : ""}
+                {[verso === "rtl" ? "⇦ da destra a sinistra" : null, quantoManca].filter(Boolean).join(" · ")}
               </span>
               <form
                 onSubmit={(e) => {

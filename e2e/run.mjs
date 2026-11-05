@@ -287,6 +287,73 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore, fra le cose del Kindle: «fai il tempo che resta
+    // nel capitolo e nel libro». Qui il passo si misura con l'orologio
+    // spostato: trenta secondi a pagina, e un salto di dieci minuti che non
+    // e' lettura
+    nome: "il tempo che resta al capitolo e alla fine sta in fondo alla pagina, e il passo e' quello misurato su questo libro",
+    async fai({ browser }) {
+      const d = await dispositivo(browser, {
+        prima: () => {
+          const vero = Date.now;
+          Date.now = () => vero() + (window.__salto || 0);
+        },
+      });
+      await d.p.goto(URL_APP);
+      await importa(d.p, "La nebbia.epub", await epub({ quanti: 80 }), "application/epub+zip");
+      const id = (await libriDi(d.p)).find((b) => b.title === "La nebbia").id;
+      await d.p.getByText("La nebbia").first().click();
+      await d.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      await finche(
+        async () => {
+          for (const f of d.p.frames()) if ((await f.evaluate(() => document.body?.innerText || "").catch(() => "")).includes(FRASE)) return true;
+          return false;
+        },
+        25000,
+        "il testo del libro non compare"
+      );
+      // alla prima pagina c'e' gia' un numero: il passo iniziale
+      const riga = d.p.getByText(/^\d+% · .+ al capitolo · .+ alla fine$/);
+      await finche(() => riga.count(), 15000, "il tempo che resta non si legge in fondo alla pagina");
+      const prima = await riga.first().textContent();
+      const passo = () => d.p.evaluate((id) => JSON.parse(localStorage.getItem(`bc_passo_${id}`) || "null"), id);
+      if (await passo()) throw new Error("un libro appena aperto ha gia' un passo misurato");
+      // tre pagine da trenta secondi: il passo e' misurato su questo libro
+      for (let i = 0; i < 3; i++) {
+        await d.p.evaluate(() => (window.__salto = (window.__salto || 0) + 30000));
+        await d.p.keyboard.press("ArrowRight");
+        await aspetta(600);
+      }
+      const p = await finche(async () => (await passo())?.u > 0 && (await passo()), 8000, "il passo non si e' misurato dopo tre pagine");
+      if (!(p.s >= 60 && p.s <= 120)) throw new Error(`tre tratti da trenta secondi valgono ${p.s} s`);
+      // dieci minuti sulla stessa pagina non sono lettura: il passo non cambia
+      await d.p.evaluate(() => (window.__salto += 10 * 60 * 1000));
+      await d.p.keyboard.press("ArrowRight");
+      await aspetta(800);
+      const dopo = await passo();
+      if (dopo.s !== p.s) throw new Error(`una pausa di dieci minuti e' entrata nel passo: ${p.s} → ${dopo.s}`);
+      const poi = await riga.first().textContent();
+      if (poi === prima) throw new Error(`dopo quattro pagine la riga non e' cambiata: ${poi}`);
+      // e un fumetto dice le pagine e il tempo, col passo suo
+      await d.p.goto(URL_APP);
+      await importa(d.p, "Il segreto di Arcadia.cbz", await fumettoLungo(30), "application/zip");
+      const idF = (await libriDi(d.p)).find((b) => b.title === "Il segreto di Arcadia").id;
+      await d.p.getByText("Il segreto di Arcadia").first().click();
+      await d.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      const rigaF = d.p.getByText(/^\d+ pagine · ~.+ alla fine$/);
+      await finche(() => rigaF.count(), 20000, "nel fumetto le pagine e il tempo che resta non si leggono");
+      // la pagina e' nuova: l'orologio riparte da zero
+      await d.p.evaluate(() => (window.__salto = (window.__salto || 0) + 20000));
+      await d.p.keyboard.press("ArrowRight");
+      const pf = await finche(async () => {
+        const v = await d.p.evaluate((id) => JSON.parse(localStorage.getItem(`bc_passo_${id}`) || "null"), idF);
+        return v?.u > 0 && v;
+      }, 8000, "il passo del fumetto non si e' misurato");
+      if (!(pf.s >= 19 && pf.s <= 22 && pf.u >= 1 && pf.u <= 2)) throw new Error(`una tavola da venti secondi vale ${JSON.stringify(pf)}`);
+      return { guasti: d.guasti, nota: `ePub: «${prima}» → «${poi}»; fumetto: ${JSON.stringify(pf)}` };
+    },
+  },
+  {
     // il rapporto del lettore: il 3/11 un minuto contato e 42 scartati, il
     // 4/11 77 secondi in media a pagina. Il tempo si contava solo fra due
     // voltate, e quello passato nella scheda del dizionario o in una voce
@@ -1636,12 +1703,28 @@ const SCENE = [
       await finche(segno, 8000, "la voltata non scrive il segno");
       await aspetta(2500);
       const prima = await segno();
+      const quadro = d.p.getByRole("button", { name: /^Salvaschermo: La nebbia/ });
+      // UN TOCCO DENTRO IL TESTO E' UN SEGNO DI VITA anche se non volta
+      // (il lettore: «la copertina mi appare molto prima dei 3 minuti»): il
+      // testo sta in un iframe, e un dito li' dentro non fa alzare un solo
+      // evento qui fuori. Sei secondi alla copertina, un tocco in mezzo
+      // alla pagina ogni due: la copertina non deve arrivare
+      await d.p.evaluate(() => {
+        localStorage.setItem("bc_salvaschermo", JSON.stringify({ copertina: 0.1, spegni: 0.05 }));
+        document.dispatchEvent(new PointerEvent("pointerdown"));
+      });
+      for (let i = 0; i < 5; i++) {
+        await aspetta(2000);
+        await d.p.touchscreen.tap(451, 750);
+        // si guarda fra un tocco e l'altro: un tocco sul salvaschermo lo chiuderebbe, e non si vedrebbe
+        await aspetta(1500);
+        if (await quadro.count()) throw new Error(`la copertina è arrivata mentre toccavo la pagina del libro (tocco ${i + 1})`);
+      }
       // tempi di secondi invece che di minuti; la scelta vale al primo segno di vita
       await d.p.evaluate(() => {
         localStorage.setItem("bc_salvaschermo", JSON.stringify({ copertina: 0.05, spegni: 0.05 }));
         document.dispatchEvent(new PointerEvent("pointerdown"));
       });
-      const quadro = d.p.getByRole("button", { name: /^Salvaschermo: La nebbia/ });
       await finche(() => quadro.isVisible(), 10000, "la copertina non prende lo schermo");
       const misure = await finche(
         () => d.p.evaluate(() => {

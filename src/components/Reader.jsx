@@ -31,6 +31,7 @@ import { controllaSpezzatura, saluteInCache, daRicucire, ricuciLibro, conSegni, 
 import { leftoverScroll, dentroIlCapitolo } from "../lib/spread.js";
 import { chiaveAvanzo, avanzoRicordato, avanzoDaAltri, ricordaAvanzo } from "../lib/avanzoRicordato.js";
 import { misuraBuona, misuraDaSalvare } from "../lib/misuraSalvata.js";
+import { aggiornaPasso, leggiPasso, scriviPasso, passoDi, fineDelCapitolo, tempoResta, fraseResta, PASSO_INIZIALE } from "../lib/resta.js";
 import { pezziDaLeggere, scegliVoce, testoFra, leggiVelocita, scriviVelocita, prossimaVelocita } from "../lib/voce.js";
 import BookCover from "./BookCover.jsx";
 import HighlightList from "./HighlightList.jsx";
@@ -163,7 +164,7 @@ function Panel({ title, onClose, children }) {
   );
 }
 
-export default function Reader({ book, startCfi, nextBook, onReadNext, music, onMusicToggle, onMusicStop, onMusicVolume, onMusicNext, onMusicRoom, onMusicSottovoce, onAlive, onClose, notify, indietro }) {
+export default function Reader({ book, startCfi, nextBook, onReadNext, music, onMusicToggle, onMusicStop, onMusicVolume, onMusicNext, onMusicRoom, onMusicSottovoce, onAlive, onSegno, onClose, notify, indietro }) {
   const viewerRef = useRef(null);
   const rootRef = useRef(null);
   const bookRef = useRef(null);
@@ -206,6 +207,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const ripiego = useRef(null);
   const fixTimers = useRef([]);
   const live = useRef({ cfi: startCfi || getCfi(book.id), progress: getProgress(book.id), locReady: false, settings: null });
+  // il passo di lettura di QUESTO libro (`lib/resta.js`): l'ultima
+  // posizione vista e quando, per misurare il tratto alla prossima
+  const passoRef = useRef({ rec: leggiPasso(book.id), t: null, loc: null });
 
   const [settings, setSettings] = useState(() =>
     loadReaderSettings(Math.min(window.innerWidth, window.innerHeight))
@@ -448,6 +452,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [lingua, setLingua] = useState(null);
   const aliveRef = useRef(null);
   aliveRef.current = onAlive;
+  // un tocco, una rotella, un tasto dentro il capitolo: un segno di vita che
+  // non e' una voltata (il salvaschermo e il tempo di lettura, in App)
+  const segnoRef = useRef(null);
+  segnoRef.current = onSegno;
   const [chi, setChi] = useState(null);
   // i passaggi-fonte stanno ripiegati: la risposta e' quella che conta, e il
   // controllo dev'essere possibile, non obbligatorio
@@ -652,6 +660,23 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
             st.progress = p;
             setProgressUi(p);
           }
+          // il tratto dall'ultima posizione: secondi e location avanzate.
+          // Un reimpaginamento riatterra sulla stessa location (zero
+          // avanzate) e non conta; il cursore salta troppo e non conta
+          const qui = eb.locations.locationFromCfi(loc.start.cfi);
+          if (Number.isFinite(qui) && qui >= 0) {
+            const ora = Date.now();
+            const pr = passoRef.current;
+            if (pr.t != null && pr.loc != null) {
+              const dopo = aggiornaPasso(pr.rec, (ora - pr.t) / 1000, qui - pr.loc);
+              if (dopo !== pr.rec) {
+                pr.rec = dopo;
+                scriviPasso(book.id, dopo);
+              }
+            }
+            pr.t = ora;
+            pr.loc = qui;
+          }
         }
         if (loc.atEnd) {
           setStatus(book.id, "read");
@@ -843,6 +868,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         doc.addEventListener(
           "pointerdown",
           (e) => {
+            segnoRef.current?.();
             if (e.isPrimary === false) return;
             giu = { x: e.clientX, y: e.clientY, quando: Date.now() };
           },
@@ -892,6 +918,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           doc.addEventListener(
             "wheel",
             (e) => {
+              segnoRef.current?.();
               if (live.current.settings.flow === "scrolled") return;
               if (Math.abs(e.deltaY) < 4) return;
               const ora = Date.now();
@@ -934,6 +961,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       });
 
       r.on("keydown", (e) => {
+        segnoRef.current?.();
         if (e.key === "ArrowRight") turnRef.current("next");
         if (e.key === "ArrowLeft") turnRef.current("prev");
       });
@@ -2471,16 +2499,35 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   // su un altro dispositivo e' identico. Misurare le facciate vere voleva
   // dire interrogare l'impaginazione a ogni voltata, ed e' da li' che sono
   // arrivati mesi di numeri ballerini.
-  const pagine = (() => {
+  const posizione = (() => {
     if (!locReady || !epubRef.current || !live.current.cfi) return null;
     try {
       const tutte = epubRef.current.locations.length();
       const qui = epubRef.current.locations.locationFromCfi(live.current.cfi);
       if (!tutte || !Number.isFinite(qui) || qui < 0) return null;
-      return {
-        n: Math.floor(qui / POSIZIONI_PER_PAGINA) + 1,
-        tot: Math.max(1, Math.round(tutte / POSIZIONI_PER_PAGINA)),
-      };
+      return { qui, tutte };
+    } catch {
+      return null;
+    }
+  })();
+  const pagine = posizione && {
+    n: Math.floor(posizione.qui / POSIZIONI_PER_PAGINA) + 1,
+    tot: Math.max(1, Math.round(posizione.tutte / POSIZIONI_PER_PAGINA)),
+  };
+  // IL TEMPO CHE RESTA, al capitolo e alla fine (`lib/resta.js`), sullo
+  // stesso metro delle pagine: le location, col passo di questo libro
+  const resta = (() => {
+    if (!posizione) return null;
+    try {
+      const locs = epubRef.current.locations._locations;
+      return fraseResta(
+        tempoResta({
+          qui: posizione.qui,
+          fine: posizione.tutte,
+          fineCapitolo: fineDelCapitolo(locs, posizione.qui),
+          passo: passoDi(passoRef.current.rec, PASSO_INIZIALE.epub),
+        })
+      );
     } catch {
       return null;
     }
@@ -2950,7 +2997,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               style={{ width: "100%", accentColor: C.accent }}
             />
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: F.minuscolo, color: C.muted, marginTop: 2 }}>
-              <span>{locReady ? `${pct}%` : pagineMute ? "pagine non misurabili" : "misuro le pagine…"}</span>
+              <span>{locReady ? [`${pct}%`, resta].filter(Boolean).join(" · ") : pagineMute ? "pagine non misurabili" : "misuro le pagine…"}</span>
               <span>
                 {[
                   capitolo,
