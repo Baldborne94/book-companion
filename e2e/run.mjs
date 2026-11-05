@@ -1772,13 +1772,16 @@ const SCENE = [
       // il guscio saluta: una porta, come fa Chrome — e lo rifa' a ogni
       // pagina caricata, perche' la porta di prima muore con lei
       const ricevuti = () => d.p.evaluate(() => window.__ricevuti.splice(0));
+      // come fa Chrome davvero (l'APK 1110 l'ha insegnato): prima la porta
+      // del canale con un messaggio vuoto, poi il saluto SULLA porta
       const saluta = () =>
         d.p.evaluate(() => {
           const canale = new MessageChannel();
           window.__ricevuti = [];
           window.__porta = canale.port1;
           canale.port1.onmessage = (m) => window.__ricevuti.push(m.data);
-          window.dispatchEvent(new MessageEvent("message", { data: "grimorio:pronto", origin: location.origin, ports: [canale.port2] }));
+          window.dispatchEvent(new MessageEvent("message", { data: "", origin: location.origin, ports: [canale.port2] }));
+          canale.port1.postMessage("grimorio:pronto");
         });
       await saluta();
       const interruttore = d.p.getByRole("switch", { name: /schermata di blocco/ });
@@ -1786,7 +1789,7 @@ const SCENE = [
       await aspetta(800);
       // al saluto la pagina risponde (o il guscio risaluta), e nient'altro parte
       const primi = await ricevuti();
-      if (primi.join() !== "grimorio:ciao") throw new Error(`al saluto la pagina ha mandato: ${JSON.stringify(primi)}`);
+      if (!primi.length || primi.some((x) => x !== "grimorio:ciao")) throw new Error(`al saluto la pagina ha mandato: ${JSON.stringify(primi)}`);
       await interruttore.click();
       const intera = async (id) => {
         const pezzi = [];

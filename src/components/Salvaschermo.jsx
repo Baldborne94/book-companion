@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { C, F, R, FONT_TITLE, px } from "../data/constants.js";
 import { leggiSalvaschermo, scriviSalvaschermo, SCELTE_COPERTINA, SCELTE_SPEGNI, fraseMinuti } from "../lib/salvaschermo.js";
-import { nelGuscio, fraseEsito } from "../lib/sfondo.js";
+import { nelGuscio, fraseEsito, messaggiVisti, fraseMessaggi } from "../lib/sfondo.js";
 import { getCover } from "../lib/bookStore.js";
 import { getProgress } from "../lib/library.js";
 
@@ -180,6 +180,9 @@ export function SezioneSfondo({ pronto, info = null, acceso, onCambia }) {
           {/* il resoconto grezzo, passo per passo: una foto di questa riga
               dice tutto a chi deve capire da lontano */}
           {info?.esito?.grezzo && <span style={{ display: "block", marginTop: 4, fontSize: F.minuscolo, opacity: 0.7, wordBreak: "break-all" }}>{info.esito.grezzo}</span>}
+          {/* e cosa la finestra ha visto arrivare: e' la meta' della stretta
+              di mano che il guscio non puo' raccontare */}
+          {info?.versione && <span style={{ display: "block", marginTop: 2, fontSize: F.minuscolo, opacity: 0.7, wordBreak: "break-all" }}>Messaggi alla pagina: {fraseMessaggi(messaggiVisti())}</span>}
         </p>
       )}
     </div>

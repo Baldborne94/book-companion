@@ -30,7 +30,7 @@ import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, get
 import { libroDellaScheda } from "./lib/schedaMusica.js";
 import { leggiSalvaschermo, fase, prossimoCambio } from "./lib/salvaschermo.js";
 import Salvaschermo, { SezioneSalvaschermo, SezioneSfondo } from "./components/Salvaschermo.jsx";
-import { salutoDelGuscio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, CIAO } from "./lib/sfondo.js";
+import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, SALUTO, CIAO } from "./lib/sfondo.js";
 import { ascoltaCopertine } from "./lib/miniature.js";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux } from "./lib/bookStore.js";
 import { cercaNuovaVersione, cercaInSilenzio, siAggiornaNascosta } from "./lib/aggiornamenti.js";
@@ -987,9 +987,15 @@ export default function App() {
   const confermaSfondo = useRef(false);
   useEffect(() => {
     const saluto = (e) => {
-      if (!salutoDelGuscio(e, window.location.origin)) return;
-      const porta = e.ports[0];
+      annotaMessaggio(e);
+      const porta = portaDelGuscio(e, window.location.origin);
+      if (!porta) return;
       porta.onmessage = (m) => {
+        // il saluto viaggia sulla porta: si risponde li', o il guscio risaluta
+        if (m.data === SALUTO) {
+          porta.postMessage(CIAO);
+          return;
+        }
         const r = risposta(m.data);
         if (!r) return;
         if (r.errore) notify(`La copertina non è andata sulla schermata di blocco: ${r.errore}`);
@@ -1001,7 +1007,8 @@ export default function App() {
         }
       };
       porta.start?.();
-      // la risposta al saluto: senza, il guscio risaluta con un canale nuovo
+      // la porta e' la stretta di mano: si risponde subito, e il guscio
+      // smette di risalutare
       porta.postMessage(CIAO);
       setGuscio({ porta });
     };
