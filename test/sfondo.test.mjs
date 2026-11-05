@@ -4,7 +4,7 @@
 // decide quando parlargli e cosa mandargli.
 import { readFileSync } from "node:fs";
 import {
-  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, salutoDelGuscio, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, fraseEsito, ricordaLancio, lancioRicordato,
+  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, portaDelGuscio, annotaMessaggio, messaggiVisti, fraseMessaggi, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, fraseEsito, ricordaLancio, lancioRicordato,
 } from "../src/lib/sfondo.js";
 
 const memoria = () => {
@@ -16,12 +16,26 @@ export default async function (t) {
   const SITO = "https://book-companion-ruddy.vercel.app";
   const porta = {};
 
-  // ---- IL SALUTO --------------------------------------------------------
-  t.c("il saluto del guscio, con la porta, dall'origine del sito", salutoDelGuscio({ data: SALUTO, origin: SITO, ports: [porta] }, SITO));
-  t.c("…o dal pacchetto, se Chrome non ha verificato l'origine", salutoDelGuscio({ data: SALUTO, origin: `android-app://${PACCHETTO}`, ports: [porta] }, SITO));
-  t.c("un messaggio da un'altra origine no", !salutoDelGuscio({ data: SALUTO, origin: "https://altro.example", ports: [porta] }, SITO));
-  t.c("un saluto senza porta non serve a niente", !salutoDelGuscio({ data: SALUTO, origin: SITO, ports: [] }, SITO));
-  t.c("un altro messaggio non e' un saluto", !salutoDelGuscio({ data: "ciao", origin: SITO, ports: [porta] }, SITO));
+  // ---- LA PORTA E' LA STRETTA DI MANO -----------------------------------
+  // come fa Chrome: dati vuoti, la porta attaccata, l'origine del sito
+  t.c("la porta con dati vuoti dall'origine del sito", portaDelGuscio({ data: "", origin: SITO, ports: [porta] }, SITO) === porta);
+  t.c("…o dal pacchetto, se Chrome non ha verificato l'origine", portaDelGuscio({ data: "", origin: `android-app://${PACCHETTO}`, ports: [porta] }, SITO) === porta);
+  t.c("…o senza origine", portaDelGuscio({ data: null, origin: "", ports: [porta] }, SITO) === porta);
+  t.c("col saluto scritto dentro va bene da qualunque origine", portaDelGuscio({ data: SALUTO, origin: "https://altro.example", ports: [porta] }, SITO) === porta);
+  t.eq("un messaggio da un'altra origine senza saluto no", portaDelGuscio({ data: "", origin: "https://altro.example", ports: [porta] }, SITO), null);
+  t.eq("senza porta non c'e' stretta di mano", portaDelGuscio({ data: SALUTO, origin: SITO, ports: [] }, SITO), null);
+  t.eq("niente non e' niente", portaDelGuscio(null, SITO), null);
+  // la diagnosi: cosa la finestra ha visto
+  const m2 = memoria();
+  annotaMessaggio({ origin: SITO, data: "", ports: [porta] }, m2);
+  annotaMessaggio({ origin: "", data: { a: 1 }, ports: [] }, m2);
+  for (let i = 0; i < 5; i++) annotaMessaggio({ origin: "x", data: "y".repeat(80), ports: [porta, porta] }, m2);
+  const visti = messaggiVisti(m2);
+  t.eq("si tengono gli ultimi cinque", visti.length, 5);
+  t.c("i dati lunghi si accorciano", visti[4].d.length === 40 && visti[4].p === 2);
+  t.c("la frase li dice tutti", /x · «yyyy/.test(fraseMessaggi(visti)) && /2 porte/.test(fraseMessaggi(visti)));
+  t.eq("senza messaggi lo si dice", fraseMessaggi([]), "nessun messaggio visto");
+  t.c("una memoria rotta non esplode", messaggiVisti({ getItem: () => "{rotto" }).length === 0);
   t.c("il pacchetto e' quello di assetlinks", JSON.parse(readFileSync("public/.well-known/assetlinks.json", "utf8"))[0].target.package_name === PACCHETTO);
   t.c("e il saluto e' quello che il guscio manda", readFileSync("android/SchermataDiBlocco.java", "utf8").includes(`"${SALUTO}"`));
   const vuota = memoria();

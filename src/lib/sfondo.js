@@ -51,13 +51,47 @@ export function lancioRicordato(storage = globalThis.sessionStorage) {
 export const nelGuscio = (referrer = globalThis.document?.referrer, storage = globalThis.sessionStorage) =>
   String(referrer || "").startsWith("android-app://") || !!lancioRicordato(storage);
 
-// il saluto arriva come `message` sulla finestra, con la porta attaccata:
-// l'origine e' quella del sito, verificata da Chrome con `use_as_origin`, o
-// il pacchetto quando la verifica non c'e'
-export function salutoDelGuscio(e, origine) {
-  if (!e || e.data !== SALUTO || !e.ports?.length) return false;
-  return e.origin === origine || e.origin === `android-app://${PACCHETTO}`;
+// LA PORTA ARRIVA PRIMA DEL SALUTO. L'APK 1110 ha detto «canale pronto»
+// e la pagina non ha mai risposto: Chrome consegna alla finestra un
+// `message` con dati VUOTI e la porta del canale attaccata, e tutto quel che
+// il guscio scrive dopo — il saluto compreso — viaggia sulla porta, non
+// sulla finestra. La pagina aspettava il saluto nel messaggio della
+// finestra e lasciava la porta senza ascolto. Quindi la porta E' la stretta
+// di mano: si prende, ci si risponde sopra, e si ascolta su di lei.
+// L'origine e' quella del sito (verificata con `use_as_origin`) o il
+// pacchetto; un messaggio con la porta e il saluto scritto dentro va bene
+// da qualunque origine, perche' nel guscio nessun altro ne manda.
+export function portaDelGuscio(e, origine) {
+  const porta = e?.ports?.[0];
+  if (!porta) return null;
+  const o = String(e.origin || "");
+  if (o && o !== origine && o !== `android-app://${PACCHETTO}` && e.data !== SALUTO) return null;
+  return porta;
 }
+
+// ogni `message` visto sulla finestra, per la diagnosi: origine, dati e
+// quante porte, gli ultimi cinque
+export const CHIAVE_MESSAGGI = "bc_guscio_messaggi";
+export function annotaMessaggio(e, storage = globalThis.sessionStorage) {
+  const voce = { o: String(e?.origin || ""), d: typeof e?.data === "string" ? e.data.slice(0, 40) : typeof e?.data, p: e?.ports?.length || 0 };
+  try {
+    const visti = JSON.parse(storage?.getItem(CHIAVE_MESSAGGI) || "[]");
+    storage?.setItem(CHIAVE_MESSAGGI, JSON.stringify([...(Array.isArray(visti) ? visti : []), voce].slice(-5)));
+  } catch {
+    /* senza memoria niente diagnosi */
+  }
+  return voce;
+}
+export function messaggiVisti(storage = globalThis.sessionStorage) {
+  try {
+    const v = JSON.parse(storage?.getItem(CHIAVE_MESSAGGI) || "[]");
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+export const fraseMessaggi = (visti = []) =>
+  visti.length ? visti.map((v) => `${v.o || "(senza origine)"} · «${v.d}» · ${v.p} ${v.p === 1 ? "porta" : "porte"}`).join(" | ") : "nessun messaggio visto";
 
 export function risposta(data) {
   if (data === OK) return { ok: true };
