@@ -1335,7 +1335,9 @@ export default function Library({
       setCollane(null);
       return;
     }
-    const { ripassa, unificaSaghe, nienteSaga } = await import("../lib/sagaBooks.js");
+    const { ripassaSciolti, sciolto, nienteSaga } = await import("../lib/sagaBooks.js");
+    const scioltiAllInizio = new Set(books.filter(sciolto).map((b) => b.id));
+    const daRipassare = (b) => scioltiAllInizio.has(b.id);
     let sistemati = 0;
     let rinominati = 0;
     let dedotte = 0;
@@ -1346,20 +1348,14 @@ export default function Library({
       else if ((b.series || "").trim() && "series" in esito.campi) rinominati += 1;
       else sistemati += 1;
     };
-    // PRIMA le grafie, poi tutto il resto: la deduzione confronta le saghe
-    // degli altri libri dell'autore, e due grafie della stessa la fermano
-    const unite = unificaSaghe(books);
-    const unificati = books.map((b) => (unite.campi[b.id] ? { ...b, ...unite.campi[b.id] } : b));
-    const next = unificati.map((b) => {
-      // la biblioteca intera va passata: e' da li' che si impara la saga di
-      // un autore che la nostra tabella non conosce — ma la DEDUZIONE dai
-      // fratelli no, non ancora: è la sola strada che il libro non lo
-      // guarda, e parla per ultima, in fondo, dopo il file e il catalogo
-      const esito = ripassa(b, unificati, { dallaBiblioteca: false });
-      if (!esito) return b;
-      conta(b, esito);
-      return { ...b, ...esito.campi };
-    });
+    // SOLO I LIBRI SCIOLTI (`ripassaSciolti`): chi ha gia' una saga sta in
+    // una raccolta che il lettore ha messo a posto, e il tasto non la tocca
+    // — nemmeno per riunirne la grafia. La DEDUZIONE dai fratelli non
+    // ancora: è la sola strada che il libro non lo guarda, e parla per
+    // ultima, in fondo, dopo il file e il catalogo
+    const primo = ripassaSciolti(books, { dallaBiblioteca: false }, daRipassare);
+    for (const [b, esito] of primo.esiti) conta(b, esito);
+    const next = primo.libri;
 
     // E POI SI APRONO I FILE. La tavola conosce tre saghe e la deduzione ha
     // bisogno di un ALTRO libro dello stesso autore: per «Empire in Black
@@ -1412,25 +1408,17 @@ export default function Library({
     // dargli. Non apre niente ed è l'unico posto dove la deduzione parla:
     // per questo gira SEMPRE, e non più solo se il file o il catalogo
     // avevano trovato qualcosa.
+    // e anche qui solo chi era sciolto quando il tasto e' stato premuto
     const senzaTraccia = await senzaTracce(conCollane);
-    conCollane = conCollane.map((b) => {
-      const esito = ripassa(b, conCollane, { senzaTraccia });
-      if (!esito) return b;
-      conta(b, esito);
-      return { ...b, ...esito.campi };
-    });
+    const ultimo = ripassaSciolti(conCollane, { senzaTraccia }, daRipassare);
+    for (const [b, esito] of ultimo.esiti) conta(b, esito);
+    conCollane = ultimo.libri;
 
-    if (sistemati || rinominati || dedotte || dalTitolo || daiFile.scritte || dalCatalogo.trovate || unite.unificate) {
+    if (sistemati || rinominati || dedotte || dalTitolo || daiFile.scritte || dalCatalogo.trovate) {
       for (const id of schedeCambiate(books, conCollane)) timbraScheda(id);
       updateBooks(conCollane);
     }
     const parti = [];
-    // le grafie riunite si dicono col nome scelto: una saga riscritta in
-    // silenzio e' esattamente il genere di cosa che poi «non torna»
-    if (unite.unificate)
-      parti.push(
-        `la stessa saga era scritta in ${unite.unificate === 1 ? "due modi" : "più modi"}: ora è «${unite.nomi.join("», «")}»`
-      );
     // le collane lette si dicono a parte: non le abbiamo riconosciute né
     // dedotte, le abbiamo trovate scritte dentro il file
     if (daiFile.scritte)

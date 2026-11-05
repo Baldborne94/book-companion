@@ -884,6 +884,29 @@ export function ripassa(libro = {}, libri = [], { senzaTraccia, dallaBiblioteca 
   return Object.keys(tocchi).length ? { campi: tocchi, dedotta, dalTitolo } : null;
 }
 
+// IL TASTO TOCCA SOLO I LIBRI SCIOLTI (chiesto dal lettore: «non mi
+// toccare quelli già presenti ma solo i libri che non sono già nelle
+// raccolte, altrimenti mi sminchi le raccolte che ho messo a posto da
+// solo»). Un libro con la saga sta in una raccolta, e la raccolta è
+// sua: niente numero, niente ciclo, niente nome di ciclo aggiornato,
+// niente grafia riunita. Gli altri libri restano comunque la biblioteca
+// da cui la deduzione impara: si leggono, non si scrivono.
+export const sciolto = (b) => !!b && !String(b.saga || "").trim();
+
+// `quali` dice chi era sciolto QUANDO il tasto e' stato premuto: un libro
+// che nel giro ha appena preso la saga dal file resta servito fino in fondo
+export function ripassaSciolti(libri = [], opzioni = {}, quali = sciolto) {
+  const esiti = [];
+  const dopo = libri.map((b) => {
+    if (!quali(b)) return b;
+    const esito = ripassa(b, libri, opzioni);
+    if (!esito) return b;
+    esiti.push([b, esito]);
+    return { ...b, ...esito.campi };
+  });
+  return { libri: dopo, esiti };
+}
+
 // LE SAGHE DA SISTEMARE, PROPOSTE (chiesto dal lettore: «sistemami tutte
 // le saghe che da solo non è riuscito a sistemare, tipo JoJo»). Il giro
 // automatico riempie solo le saghe vuote; quelle che un titolo letto male
