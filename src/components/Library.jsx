@@ -1187,16 +1187,16 @@ export default function Library({
   // ripetibile e' l'unica forma che regge: riparte a ogni montaggio e a
   // ogni libro in piu', e riapre solo quel che non ha mai visto.
   //
-  // E LA STESSA SAGA SCRITTA IN DUE MODI SI RIUNISCE QUI, prima di tutto il
-  // resto: «The Wheel of Time» e «Wheel of Time» facevano due ripiani, e i
-  // due volumi senza saga restavano soli perche' la deduzione vedeva «due
-  // saghe dello stesso autore» (segnalato). Riunite le grafie, la deduzione
-  // torna a funzionare, e chiude il giro da sola: chi ha gia' la saga sugli
-  // altri volumi non deve premere un tasto per darla anche a questi.
+  // E LE RACCOLTE NON SI TOCCANO (chiesto dal lettore: «fai lasciare stare
+  // le raccolte anche al giro automatico»). Qui una volta si riunivano le
+  // grafie di tutta la biblioteca, prima di tutto il resto: riscriveva le
+  // saghe che il lettore aveva messo a posto a mano. Ora il giro scrive solo
+  // sui libri che erano sciolti quando e' partito, e una grafia nuova si
+  // adegua a quella della raccolta (`tocca` in `unificaSaghe`).
   useEffect(() => {
     let vivo = true;
     (async () => {
-      const { unificaSaghe, deduciSaghe, nienteSaga } = await import("../lib/sagaBooks.js");
+      const { unificaSaghe, deduciSaghe, nienteSaga, sciolto } = await import("../lib/sagaBooks.js");
       if (!vivo) return;
       // chi ha ancora una strada davanti: la saga non ce l'ha E non se l'è
       // tolta a mano. Le due passate lunghe la ricontrollano da sé, ma
@@ -1239,13 +1239,8 @@ export default function Library({
       const versione = typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "";
       if (leggiGiro() === firmaGiro(attuale, { conByte, versione })) return;
       const giro = {};
-      const unite = unificaSaghe(attuale);
-      if (unite.unificate) {
-        attuale = applica(unite.campi);
-        parti.push(
-          `la stessa saga era scritta in ${unite.unificate === 1 ? "due modi" : "più modi"}: ora è «${unite.nomi.join("», «")}»`
-        );
-      }
+      const scioltiAllInizio = new Set(attuale.filter(sciolto).map((b) => b.id));
+      const tocca = (b) => scioltiAllInizio.has(b.id);
       if (attuale.some((b) => b.fileType === "epub" && daCercare(b))) {
         const { ripassaCollane } = await import("../lib/collana.js");
         // la biblioteca INTERA, non i soli candidati: la grafia di casa si
@@ -1277,7 +1272,7 @@ export default function Library({
         parti.push(`${daiTitoli.dalTitolo} ${daiTitoli.dalTitolo === 1 ? "saga letta" : "saghe lette"} dal titolo`);
         // i titoli appena letti possono portare la stessa saga scritta
         // storta («Bizzare»): si riunisce subito, non alla prossima apertura
-        const ancora = unificaSaghe(attuale);
+        const ancora = unificaSaghe(attuale, { tocca });
         if (ancora.unificate) attuale = applica(ancora.campi);
       }
       // E POI IL CATALOGO, sui soli tomi rimasti senza saga dopo

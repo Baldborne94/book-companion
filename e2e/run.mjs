@@ -1506,6 +1506,42 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «non mi toccare quelli già presenti ma solo i
+    // libri che non sono già nelle raccolte», e poi «fai lasciare stare le
+    // raccolte anche al giro automatico»
+    nome: "le raccolte messe a posto a mano non si toccano, né dal giro automatico né dal tasto",
+    async fai({ browser }) {
+      const libri = [
+        { id: "a1", title: "Golden Wind 1", saga: "JoJo's Bizarre Adventure", fileType: "cbz", tipo: "manga", addedAt: 1 },
+        { id: "a2", title: "Stone Ocean 1", saga: "JoJo's Bizzare Adventure", fileType: "cbz", tipo: "manga", addedAt: 2 },
+        { id: "p1", title: "Guards! Guards!", author: "Terry Pratchett", saga: "Il mio Mondo Disco", fileType: "epub", addedAt: 3 },
+        { id: "s1", title: "JoJo's_Bizzare_Adventure_Part_6_v05_Stone_Ocean", fileType: "cbz", tipo: "manga", addedAt: 4 },
+      ];
+      const d = await dispositivo(browser, { prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});` });
+      await d.p.goto(`${URL_APP}?apri=libreria`);
+      // il giro automatico serve lo sciolto…
+      await finche(async () => (await libriDi(d.p)).find((b) => b.id === "s1")?.series === "Parte 6", 10000, "il volume sciolto non è stato riconosciuto dal giro");
+      const intatte = async (quando) => {
+        const ora = await libriDi(d.p);
+        for (const x of libri.filter((b) => b.saga)) {
+          const b = ora.find((y) => y.id === x.id);
+          const fuori = ["saga", "series", "sagaOrder"].filter((k) => (b[k] ?? null) !== (x[k] ?? null));
+          if (fuori.length) throw new Error(`${quando}: «${x.title}» cambiato in ${fuori.map((k) => `${k}=${JSON.stringify(b[k])}`).join(", ")}`);
+        }
+      };
+      // …e le due grafie delle raccolte restano due
+      await intatte("giro automatico");
+      await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
+      await d.p.getByRole("button", { name: "🔖 Riconosci saghe e cicli" }).click();
+      // il giro del tasto finisce sempre con un resoconto
+      await finche(() => d.p.getByText(/Erano già tutti a posto|sistemat|rinominat|dedott|lett[ei] dal|trovat/).count(), 15000, "il tasto non ha finito il giro");
+      // il Mondo Disco del lettore non prende né numero né ciclo dalla tavola
+      await intatte("tasto");
+      const s1 = (await libriDi(d.p)).find((b) => b.id === "s1");
+      return { guasti: d.guasti, nota: `raccolte intatte; sciolto in «${s1.saga}» · ${s1.series}` };
+    },
+  },
+  {
     // chiesto dal lettore: «sistemami tutti i libri di Hellboy mettendoli
     // dentro la saga di Hellboy con l'ordine consigliato» — le schede sono
     // le sue, con le saghe e le serie che avevano

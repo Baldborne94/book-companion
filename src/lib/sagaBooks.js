@@ -719,7 +719,12 @@ const vicine = (a, b) => {
   const [x, y] = diverse[0];
   return x.length >= 5 && y.length >= 5 && !/\d/.test(x + y) && distanza(x, y) <= 2;
 };
-export function unificaSaghe(libri = []) {
+// LE RACCOLTE NON SI RISCRIVONO (`tocca`, chiesto dal lettore per il giro
+// automatico: «fai lasciare stare le raccolte anche al giro automatico»).
+// Con `tocca` si riscrivono solo i libri che dice lui — i sciolti di quando
+// il giro e' partito — e la grafia la danno le raccolte: e' il nuovo che si
+// adegua alla casa, mai la casa al nuovo.
+export function unificaSaghe(libri = [], { tocca } = {}) {
   const gruppi = [];
   const di = new Map();
   for (const b of libri) {
@@ -728,23 +733,30 @@ export function unificaSaghe(libri = []) {
     const k = chiaveSaga(s);
     if (!k) continue;
     let g = di.get(s) || gruppi.find((x) => [...x.chiavi].some((c) => vicine(c, k)));
-    if (!g) gruppi.push((g = { chiavi: new Set(), grafie: new Map() }));
+    if (!g) gruppi.push((g = { chiavi: new Set(), grafie: new Map(), fisse: new Map() }));
     g.chiavi.add(k);
     g.grafie.set(s, (g.grafie.get(s) || 0) + 1);
+    if (tocca && !tocca(b)) g.fisse.set(s, (g.fisse.get(s) || 0) + 1);
     di.set(s, g);
   }
   const campi = {};
   const nomi = [];
   for (const g of gruppi) {
     if (g.grafie.size < 2) continue;
-    const scelta = [...g.grafie.entries()].sort(
+    const scelta = [...(g.fisse.size ? g.fisse : g.grafie).entries()].sort(
       (a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0])
     )[0][0];
-    nomi.push(scelta);
+    let riscritti = 0;
     for (const b of libri) {
       const s = String(b?.saga || "").trim();
-      if (s && s !== scelta && di.get(s) === g) campi[b.id] = { saga: scelta };
+      // una grafia che e' gia' quella di una raccolta e' gia' a casa — e
+      // questo tiene ferma anche ogni raccolta, la cui grafia sta in `fisse`
+      if (s && s !== scelta && di.get(s) === g && !g.fisse.has(s)) {
+        campi[b.id] = { saga: scelta };
+        riscritti += 1;
+      }
     }
+    if (riscritti) nomi.push(scelta);
   }
   return { campi, unificate: nomi.length, nomi };
 }
