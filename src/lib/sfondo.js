@@ -135,6 +135,9 @@ export function infoDalLancio(search) {
 // I passi, nell'ordine in cui avvengono: il primo che manca e' dove ci si
 // e' fermati, e la frase lo dice con la cura che gli corrisponde.
 const PASSI = [
+  ["l", "il lanciatore non è stato creato (la LauncherActivity generata non estende GuscioActivity)"],
+  ["k", "il callback di Chrome non è stato creato"],
+  ["n", "Chrome non ha mai detto che la pagina è caricata (nessun evento di navigazione)"],
   ["s", "la sessione di Chrome non si è letta (la libreria del guscio è cambiata: vedi scripts/apk.mjs)"],
   ["c", "Chrome non si è lasciato scaldare (nessun browser collegato)"],
   ["r", "Chrome ha rifiutato la richiesta del canale"],
@@ -144,7 +147,11 @@ const PASSI = [
 ];
 export function fraseEsito(esito) {
   if (!esito) return null;
-  for (const [k, frase] of PASSI) if (esito[k] !== "1") return frase + (esito.e ? ` — ${esito.e}` : "");
+  for (const [k, frase] of PASSI) {
+    // «n» e' il numero dell'ultimo evento: 2 e' la pagina caricata
+    const ok = k === "n" ? esito.n === "2" : esito[k] === "1";
+    if (!ok) return frase + (k === "n" && esito.n ? ` (ultimo evento: ${esito.n})` : "") + (esito.e ? ` — ${esito.e}` : "");
+  }
   const n = Number(esito.f) || 0;
   return n ? `tutto a posto, ${n === 1 ? "una copertina messa" : `${n} copertine messe`}` : "canale aperto e saluto ricevuto, ma nessuna copertina mandata";
 }

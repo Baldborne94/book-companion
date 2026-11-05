@@ -1836,7 +1836,7 @@ const SCENE = [
       if (!(blu[2] > 150 && blu[0] < 80)) throw new Error(`aperto l'altro libro, lo sfondo non è la sua copertina: ${blu}`);
       // e l'indirizzo di avvio del guscio racconta l'ultimo tentativo: la
       // pagina dice fin dove e' arrivato, al posto di «serve l'app nuova»
-      await d.p.goto(`${URL_APP}?guscio=1099&esito=${encodeURIComponent("s=1;c=1;r=1;v=0;p=0;a=0;f=0;e=")}`);
+      await d.p.goto(`${URL_APP}?guscio=1099&esito=${encodeURIComponent("l=1;k=1;n=2;s=1;c=1;r=1;v=0;p=0;a=0;f=0;e=")}`);
       await d.p.getByRole("button", { name: /^Impostazioni/ }).first().click();
       await finche(() => d.p.getByText(/L'app Android installata è la 1099/).count(), 5000, "la versione del guscio non si legge");
       if (!(await d.p.getByText(/non ha verificato l'origine/).count())) throw new Error("l'esito dell'ultimo tentativo non si dice");
