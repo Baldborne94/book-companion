@@ -252,6 +252,12 @@ Se `cuci` si ferma su «l'ancora … non c'è», Bubblewrap ha cambiato il
 progetto che genera: le ancore stanno in `scripts/apk.mjs`.
 
 Per vedere cosa dice il guscio sul tablet: `adb logcat -s Grimorio`.
+Senza `adb`: il guscio apre la pagina con `?guscio=<versione>` e, dal
+secondo avvio dall'icona, `&esito=…` con com'è andato l'ultimo tentativo
+(sessione letta, browser scaldato, canale chiesto, origine verificata,
+canale pronto, risposta della pagina, copertine messe). Le Impostazioni, in
+«Anche a tablet spento», lo dicono in italiano quando il saluto non è
+arrivato.
 
 ## Quel che il guscio NON cambia
 

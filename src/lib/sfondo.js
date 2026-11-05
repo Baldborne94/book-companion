@@ -10,6 +10,8 @@
 // pezzi. Qui le decisioni, provate in Node; il canvas sta in
 // `copertinaPerSchermo`, che chiede il browser.
 export const SALUTO = "grimorio:pronto";
+// la risposta al saluto: finche' non arriva, il guscio risaluta
+export const CIAO = "grimorio:ciao";
 const OK = "grimorio:sfondo:ok";
 const ERRORE = "grimorio:sfondo:errore:";
 // lo stesso di `public/.well-known/assetlinks.json` (`manifest.test.mjs`)
@@ -105,4 +107,44 @@ export async function copertinaPerSchermo(blob, { w, h }, fondo = "#000000") {
   } finally {
     img.close?.();
   }
+}
+
+// COSA DICE L'INDIRIZZO DI AVVIO. Il guscio apre la pagina con
+// `?guscio=<versione>` e, dal secondo avvio, `&esito=s=1;c=1;r=1;v=0;p=0;
+// a=0;f=0;e=…`: com'e' andato l'ultimo tentativo di parlare, passo per
+// passo. E' l'unica strada che non passa dal canale, e serve proprio quando
+// il canale non si apre. Si legge PRIMA che `pulisciUrl` tolga la query.
+export function infoDalLancio(search) {
+  let q;
+  try {
+    q = new URLSearchParams(String(search || ""));
+  } catch {
+    return { versione: null, esito: null };
+  }
+  const versione = /^\d+$/.test(q.get("guscio") || "") ? q.get("guscio") : null;
+  const grezzo = q.get("esito");
+  if (!grezzo) return { versione, esito: null };
+  const esito = {};
+  for (const pezzo of grezzo.split(";")) {
+    const i = pezzo.indexOf("=");
+    if (i > 0) esito[pezzo.slice(0, i)] = pezzo.slice(i + 1);
+  }
+  return { versione, esito };
+}
+
+// I passi, nell'ordine in cui avvengono: il primo che manca e' dove ci si
+// e' fermati, e la frase lo dice con la cura che gli corrisponde.
+const PASSI = [
+  ["s", "la sessione di Chrome non si è letta (la libreria del guscio è cambiata: vedi scripts/apk.mjs)"],
+  ["c", "Chrome non si è lasciato scaldare (nessun browser collegato)"],
+  ["r", "Chrome ha rifiutato la richiesta del canale"],
+  ["v", "Chrome non ha verificato l'origine del sito (assetlinks.json con use_as_origin: aspetta qualche minuto e riprova)"],
+  ["p", "il canale non è mai stato pronto"],
+  ["a", "il saluto del guscio non è mai arrivato alla pagina"],
+];
+export function fraseEsito(esito) {
+  if (!esito) return null;
+  for (const [k, frase] of PASSI) if (esito[k] !== "1") return frase + (esito.e ? ` — ${esito.e}` : "");
+  const n = Number(esito.f) || 0;
+  return n ? `tutto a posto, ${n === 1 ? "una copertina messa" : `${n} copertine messe`}` : "canale aperto e saluto ricevuto, ma nessuna copertina mandata";
 }

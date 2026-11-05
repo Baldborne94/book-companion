@@ -30,7 +30,7 @@ import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, get
 import { libroDellaScheda } from "./lib/schedaMusica.js";
 import { leggiSalvaschermo, fase, prossimoCambio } from "./lib/salvaschermo.js";
 import Salvaschermo, { SezioneSalvaschermo, SezioneSfondo } from "./components/Salvaschermo.jsx";
-import { salutoDelGuscio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo } from "./lib/sfondo.js";
+import { salutoDelGuscio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, CIAO } from "./lib/sfondo.js";
 import { ascoltaCopertine } from "./lib/miniature.js";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux } from "./lib/bookStore.js";
 import { cercaNuovaVersione, cercaInSilenzio, siAggiornaNascosta } from "./lib/aggiornamenti.js";
@@ -604,7 +604,7 @@ function MisuraPicker({ current, onPick, consigliata }) {
   );
 }
 
-function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex, fan, onFan, onFermaFan, imm, onImm, onFermaImm, ill, onIll, onFermaIll, wikt, onWikt, onFermaWikt, guscioPronto = false, sfondo = false, onSfondo = () => {} }) {
+function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex, fan, onFan, onFermaFan, imm, onImm, onFermaImm, ill, onIll, onFermaIll, wikt, onWikt, onFermaWikt, guscioPronto = false, infoGuscio = null, sfondo = false, onSfondo = () => {} }) {
   return (
     <div
       onClick={onClose}
@@ -719,7 +719,7 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
             Il salvaschermo
           </h3>
           <SezioneSalvaschermo />
-          <SezioneSfondo pronto={guscioPronto} acceso={sfondo} onCambia={onSfondo} />
+          <SezioneSfondo pronto={guscioPronto} info={infoGuscio} acceso={sfondo} onCambia={onSfondo} />
         </div>
 
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
@@ -974,6 +974,9 @@ export default function App() {
   // IL GUSCIO ANDROID CHE SALUTA (`lib/sfondo.js`): la porta su cui mandargli
   // la copertina per la schermata di blocco, e la scelta di farlo
   const [guscio, setGuscio] = useState(null);
+  // quale guscio ha aperto la pagina e com'e' andato l'ultimo tentativo di
+  // parlarle: si legge subito, prima che `pulisciUrl` tolga la query
+  const [infoGuscio] = useState(() => infoDalLancio(window.location.search));
   const [sfondo, setSfondo] = useState(leggiSfondo);
   const sfondoMandato = useRef(null);
   const confermaSfondo = useRef(false);
@@ -993,6 +996,8 @@ export default function App() {
         }
       };
       porta.start?.();
+      // la risposta al saluto: senza, il guscio risaluta con un canale nuovo
+      porta.postMessage(CIAO);
       setGuscio({ porta });
     };
     window.addEventListener("message", saluto);
@@ -2193,6 +2198,7 @@ export default function App() {
           onWikt={scaricaWikt}
           onFermaWikt={fermaWikt}
           guscioPronto={!!guscio}
+          infoGuscio={infoGuscio}
           sfondo={sfondo}
           onSfondo={accendiSfondo}
         />

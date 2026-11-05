@@ -4,7 +4,7 @@
 // decide quando parlargli e cosa mandargli.
 import { readFileSync } from "node:fs";
 import {
-  SALUTO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, salutoDelGuscio, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo,
+  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, salutoDelGuscio, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, fraseEsito,
 } from "../src/lib/sfondo.js";
 
 const memoria = () => {
@@ -62,4 +62,22 @@ export default async function (t) {
   t.c("acceso resta acceso", scriviSfondo(true, m) && leggiSfondo(m));
   t.c("e spento resta spento", !scriviSfondo(false, m) && !leggiSfondo(m));
   t.c("una memoria rotta vuol dire spento", !leggiSfondo({ getItem: () => { throw new Error("no"); } }));
+
+  // ---- L'INDIRIZZO DI AVVIO: QUALE GUSCIO, E COM'E' ANDATA ---------------
+  t.c("la risposta al saluto e' quella che il guscio aspetta", readFileSync("android/SchermataDiBlocco.java", "utf8").includes(`CIAO = "${CIAO}"`));
+  t.eq("senza query niente", JSON.stringify(infoDalLancio("")), JSON.stringify({ versione: null, esito: null }));
+  t.eq("la versione del guscio", infoDalLancio("?guscio=1099").versione, "1099");
+  t.eq("una versione che non e' un numero non e' una versione", infoDalLancio("?guscio=x").versione, null);
+  t.eq("«apri» resta leggibile accanto", new URLSearchParams("?apri=libreria&guscio=1099").get("apri"), "libreria");
+  const e = infoDalLancio("?guscio=1099&esito=" + encodeURIComponent("s=1;c=1;r=1;v=0;p=0;a=0;f=0;e=")).esito;
+  t.eq("l'esito si legge passo per passo", `${e.s}${e.c}${e.r}${e.v}${e.p}`, "11100");
+  t.c("…e dice dove ci si e' fermati", /origine/.test(fraseEsito(e)) && /use_as_origin/.test(fraseEsito(e)));
+  t.c("la sessione non letta viene prima di tutto", /sessione/.test(fraseEsito({ s: "0", c: "1", r: "1" })));
+  t.c("un guasto si accoda alla frase", /— boom$/.test(fraseEsito({ s: "1", c: "0", e: "boom" })));
+  t.c("il canale rifiutato", /rifiutato/.test(fraseEsito({ s: "1", c: "1", r: "0" })));
+  t.c("il canale mai pronto", /mai stato pronto/.test(fraseEsito({ s: "1", c: "1", r: "1", v: "1", p: "0" })));
+  t.c("il saluto perso", /saluto.*non è mai arrivato/.test(fraseEsito({ s: "1", c: "1", r: "1", v: "1", p: "1", a: "0" })));
+  t.c("tutto a posto, con le copertine", /tutto a posto, 2 copertine/.test(fraseEsito({ s: "1", c: "1", r: "1", v: "1", p: "1", a: "1", f: "2" })));
+  t.c("tutto aperto ma niente mandato", /nessuna copertina/.test(fraseEsito({ s: "1", c: "1", r: "1", v: "1", p: "1", a: "1", f: "0" })));
+  t.eq("senza esito niente frase", fraseEsito(null), null);
 }
