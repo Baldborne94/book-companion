@@ -97,6 +97,54 @@ export function messaggiVisti(storage = globalThis.sessionStorage) {
 export const fraseMessaggi = (visti = []) =>
   visti.length ? visti.map((v) => `${v.o || "(senza origine)"} · «${v.d}» · ${v.p} ${v.p === 1 ? "porta" : "porte"}`).join(" | ") : "nessun messaggio visto";
 
+// L'ULTIMA COPERTINA MANDATA, E COSA NE HA DETTO IL GUSCIO. Sul tablet la
+// schermata di blocco mostrava il libro di prima e l'Ingresso quello in
+// mano: la pagina aveva mandato la copertina nuova, ma su una porta che il
+// guscio non ascoltava piu' (riaperta l'app dall'icona la sessione di Chrome
+// cambia, e la porta di prima muore senza dirlo). Da fuori non si vedeva
+// niente: ora ogni invio si segna, con la risposta, e le Impostazioni lo
+// dicono. Nella sessione: vale per questa pagina aperta.
+export const CHIAVE_INVIO = "bc_sfondo_invio";
+// oltre, il silenzio del guscio e' un canale morto
+export const RISPOSTA_ENTRO = 20000;
+export function segnaInvio(voce, storage = globalThis.sessionStorage) {
+  try {
+    storage?.setItem(CHIAVE_INVIO, JSON.stringify(voce));
+  } catch {
+    /* senza memoria non si racconta */
+  }
+  return voce;
+}
+export function segnaRisposta(r, storage = globalThis.sessionStorage) {
+  const voce = ultimoInvio(storage);
+  if (!voce || !r) return voce;
+  return segnaInvio({ ...voce, esito: r.ok ? "ok" : `guasto: ${r.errore}` }, storage);
+}
+export function ultimoInvio(storage = globalThis.sessionStorage) {
+  try {
+    const v = JSON.parse(storage?.getItem(CHIAVE_INVIO) || "null");
+    return v && v.quando ? v : null;
+  } catch {
+    return null;
+  }
+}
+const ora = (q) => new Date(q).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+export function fraseInvio(voce, adesso = Date.now()) {
+  if (!voce) return "Nessuna copertina mandata da quando la pagina è aperta.";
+  const chi = `«${voce.titolo || voce.id}» alle ${ora(voce.quando)}`;
+  if (voce.esito === "senza copertina") return `${chi}: senza copertina, niente da mandare.`;
+  if (voce.esito === "illeggibile") return `${chi}: la copertina non si è letta, non è partita.`;
+  if (voce.esito === "ok") return `Ultima copertina mandata: ${chi} · messa.`;
+  if (String(voce.esito || "").startsWith("guasto")) return `Ultima copertina mandata: ${chi} · ${voce.esito}.`;
+  return `Ultima copertina mandata: ${chi} · ${adesso - voce.quando > RISPOSTA_ENTRO ? "il guscio non ha risposto" : "in attesa della risposta"}.`;
+}
+
+// AL SALUTO SI RIMANDA QUEL CHE NON E' STATO CONFERMATO: il guscio saluta a
+// ogni pagina caricata e ogni volta che la scheda torna davanti, e una
+// copertina mandata senza l'ok era quasi certamente finita su una porta
+// morta. Quella confermata no: il guscio ce l'ha gia'.
+export const dopoIlSaluto = (mandata, confermata) => (mandata && mandata === confermata ? mandata : null);
+
 export function risposta(data) {
   if (data === OK) return { ok: true };
   if (typeof data === "string" && data.startsWith(ERRORE)) return { errore: data.slice(ERRORE.length) || "guasto sconosciuto" };

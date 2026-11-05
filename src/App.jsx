@@ -30,7 +30,7 @@ import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, get
 import { libroDellaScheda } from "./lib/schedaMusica.js";
 import { leggiSalvaschermo, fase, prossimoCambio } from "./lib/salvaschermo.js";
 import Salvaschermo, { SezioneSalvaschermo, SezioneSfondo } from "./components/Salvaschermo.jsx";
-import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, SALUTO, CIAO } from "./lib/sfondo.js";
+import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, dopoIlSaluto, SALUTO, CIAO } from "./lib/sfondo.js";
 import { ascoltaCopertine } from "./lib/miniature.js";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux } from "./lib/bookStore.js";
 import { cercaNuovaVersione, cercaInSilenzio, siAggiornaNascosta } from "./lib/aggiornamenti.js";
@@ -604,7 +604,7 @@ function MisuraPicker({ current, onPick, consigliata }) {
   );
 }
 
-function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex, fan, onFan, onFermaFan, imm, onImm, onFermaImm, ill, onIll, onFermaIll, wikt, onWikt, onFermaWikt, guscioPronto = false, infoGuscio = null, sfondo = false, onSfondo = () => {} }) {
+function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex, fan, onFan, onFermaFan, imm, onImm, onFermaImm, ill, onIll, onFermaIll, wikt, onWikt, onFermaWikt, guscioPronto = false, infoGuscio = null, invioGuscio = null, sfondo = false, onSfondo = () => {} }) {
   return (
     <div
       onClick={onClose}
@@ -719,7 +719,7 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
             Il salvaschermo
           </h3>
           <SezioneSalvaschermo />
-          <SezioneSfondo pronto={guscioPronto} info={infoGuscio} acceso={sfondo} onCambia={onSfondo} />
+          <SezioneSfondo pronto={guscioPronto} info={infoGuscio} invio={invioGuscio} acceso={sfondo} onCambia={onSfondo} />
         </div>
 
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
@@ -984,8 +984,21 @@ export default function App() {
   });
   const [sfondo, setSfondo] = useState(leggiSfondo);
   const sfondoMandato = useRef(null);
+  // la copertina che il guscio ha detto di aver messo: quella non si rimanda
+  const sfondoConfermato = useRef(null);
   const confermaSfondo = useRef(false);
+  // quante volte si e' mandato o risposto: la riga nelle Impostazioni si ridisegna
+  const [invii, setInvii] = useState(0);
+  const invioGuscio = useMemo(() => ultimoInvio(), [invii]);
   useEffect(() => {
+    // A OGNI SALUTO SI RIPARTE: il guscio saluta a pagina caricata e ogni
+    // volta che la scheda torna davanti, e una copertina mandata senza l'ok
+    // era su una porta morta (il tablet mostrava il libro di prima). Un
+    // oggetto nuovo rifa' l'invio; la chiave confermata lo ferma.
+    const riparti = (porta) => {
+      sfondoMandato.current = dopoIlSaluto(sfondoMandato.current, sfondoConfermato.current);
+      setGuscio({ porta });
+    };
     const saluto = (e) => {
       annotaMessaggio(e);
       const porta = portaDelGuscio(e, window.location.origin);
@@ -994,26 +1007,46 @@ export default function App() {
         // il saluto viaggia sulla porta: si risponde li', o il guscio risaluta
         if (m.data === SALUTO) {
           porta.postMessage(CIAO);
+          riparti(porta);
           return;
         }
         const r = risposta(m.data);
         if (!r) return;
+        segnaRisposta(r);
+        setInvii((v) => v + 1);
         if (r.errore) notify(`La copertina non è andata sulla schermata di blocco: ${r.errore}`);
-        // si dice solo la prima volta dopo l'accensione: poi a ogni libro
-        // sarebbe una riga di troppo
-        else if (confermaSfondo.current) {
-          confermaSfondo.current = false;
-          notify("La copertina è sulla schermata di blocco");
+        else {
+          sfondoConfermato.current = sfondoMandato.current;
+          // si dice solo la prima volta dopo l'accensione: poi a ogni libro
+          // sarebbe una riga di troppo
+          if (confermaSfondo.current) {
+            confermaSfondo.current = false;
+            notify("La copertina è sulla schermata di blocco");
+          }
         }
       };
       porta.start?.();
       // la porta e' la stretta di mano: si risponde subito, e il guscio
       // smette di risalutare
       porta.postMessage(CIAO);
-      setGuscio({ porta });
+      riparti(porta);
+    };
+    // e quando la pagina torna davanti da sola, quel che aspetta ancora
+    // l'ok si riprova sulla porta che c'e'
+    const davanti = () => {
+      if (document.visibilityState !== "visible") return;
+      setGuscio((g) => {
+        if (!g || !sfondoMandato.current || sfondoMandato.current === sfondoConfermato.current) return g;
+        sfondoMandato.current = null;
+        return { porta: g.porta };
+      });
     };
     window.addEventListener("message", saluto);
-    return () => window.removeEventListener("message", saluto);
+    document.addEventListener("visibilitychange", davanti);
+    return () => {
+      window.removeEventListener("message", saluto);
+      document.removeEventListener("visibilitychange", davanti);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   function accendiSfondo(acceso) {
@@ -1871,18 +1904,28 @@ export default function App() {
   useEffect(() => {
     if (!guscio || !sfondo || !idScheda) return;
     let vivo = true;
+    const titolo = libroScheda?.title || "";
+    // ogni invio si segna, anche quello che non parte: le Impostazioni lo dicono
+    const segna = (esito) => {
+      segnaInvio({ id: idScheda, titolo, quando: Date.now(), esito });
+      setInvii((v) => v + 1);
+    };
     (async () => {
       const { getCover } = await import("./lib/bookStore.js");
       const blob = await getCover(idScheda);
-      if (!vivo || !blob) return;
+      if (!vivo) return;
+      if (!blob) return segna("senza copertina");
       const chiave = `${idScheda}:${blob.size}:${copVScheda}`;
       if (sfondoMandato.current === chiave) return;
       const base64 = await copertinaPerSchermo(blob, misuraSchermo({ width: window.screen?.width, height: window.screen?.height, dpr: window.devicePixelRatio || 1 }));
-      if (!vivo || !base64) return;
+      if (!vivo) return;
+      if (!base64) return segna("illeggibile");
       sfondoMandato.current = chiave;
       for (const p of pezzi(idScheda, base64)) guscio.porta.postMessage(p);
+      segna("mandata");
     })().catch(() => {
-      /* senza copertina o senza canvas: lo sfondo resta quello di prima */
+      // senza canvas: lo sfondo resta quello di prima, e lo si dice
+      if (vivo) segna("illeggibile");
     });
     return () => {
       vivo = false;
@@ -2211,6 +2254,7 @@ export default function App() {
           onFermaWikt={fermaWikt}
           guscioPronto={!!guscio}
           infoGuscio={infoGuscio}
+          invioGuscio={invioGuscio}
           sfondo={sfondo}
           onSfondo={accendiSfondo}
         />

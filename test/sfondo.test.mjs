@@ -4,7 +4,7 @@
 // decide quando parlargli e cosa mandargli.
 import { readFileSync } from "node:fs";
 import {
-  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, portaDelGuscio, annotaMessaggio, messaggiVisti, fraseMessaggi, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, fraseEsito, ricordaLancio, lancioRicordato,
+  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, portaDelGuscio, annotaMessaggio, messaggiVisti, fraseMessaggi, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, fraseEsito, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, fraseInvio, dopoIlSaluto, RISPOSTA_ENTRO,
 } from "../src/lib/sfondo.js";
 
 const memoria = () => {
@@ -57,6 +57,32 @@ export default async function (t) {
   t.eq("un guasto, con la sua ragione", risposta("grimorio:sfondo:errore:non permesso")?.errore, "non permesso");
   t.eq("un guasto muto ha comunque una ragione", risposta("grimorio:sfondo:errore:")?.errore, "guasto sconosciuto");
   t.eq("altro non e' una risposta", risposta("grimorio:pronto"), null);
+
+  // ---- L'ULTIMA COPERTINA MANDATA, E COSA NE HA DETTO IL GUSCIO ----------
+  // sul tablet la schermata di blocco mostrava il libro di prima: da fuori
+  // non si vedeva se la pagina avesse mandato o il guscio risposto
+  const inv = memoria();
+  t.c("senza invii lo si dice", /Nessuna copertina mandata/.test(fraseInvio(ultimoInvio(inv))));
+  const q = Date.parse("2026-11-05T22:10:00");
+  // l'ora e' quella del dispositivo: qui si guarda che ci sia, non quale
+  const ora = new Date(q).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+  segnaInvio({ id: "lb", titolo: "Asterix", quando: q, esito: "mandata" }, inv);
+  t.c("appena mandata si aspetta la risposta", fraseInvio(ultimoInvio(inv), q + 1000).includes(`«Asterix» alle ${ora} · in attesa della risposta`), fraseInvio(ultimoInvio(inv), q + 1000));
+  t.c("dopo un po' il silenzio e' un canale morto", /il guscio non ha risposto/.test(fraseInvio(ultimoInvio(inv), q + RISPOSTA_ENTRO + 1)));
+  segnaRisposta(risposta("grimorio:sfondo:ok"), inv);
+  t.c("l'ok del guscio si segna sull'invio", fraseInvio(ultimoInvio(inv), q + 999999).includes(`«Asterix» alle ${ora} · messa.`));
+  segnaRisposta(risposta("grimorio:sfondo:errore:non permesso"), inv);
+  t.c("e il guasto pure, con la sua ragione", /guasto: non permesso/.test(fraseInvio(ultimoInvio(inv))));
+  t.c("una risposta che non e' una risposta non tocca niente", /guasto: non permesso/.test(fraseInvio(segnaRisposta(null, inv))));
+  t.c("senza copertina non parte, e lo si dice", /«Asterix».*senza copertina/.test(fraseInvio(segnaInvio({ id: "lb", titolo: "Asterix", quando: q, esito: "senza copertina" }, inv))));
+  t.c("una copertina che non si legge non parte, e lo si dice", /non si è letta/.test(fraseInvio(segnaInvio({ id: "lb", titolo: "Asterix", quando: q, esito: "illeggibile" }, inv))));
+  t.c("senza titolo vale l'id", /«lb»/.test(fraseInvio({ id: "lb", quando: q, esito: "ok" })));
+  t.c("una memoria rotta vuol dire nessun invio", ultimoInvio({ getItem: () => "{rotto" }) === null && !segnaRisposta({ ok: true }, memoria()));
+  // al saluto si rimanda quel che non ha avuto l'ok: la porta di prima era morta
+  t.eq("una copertina confermata non si rimanda", dopoIlSaluto("lb:10:0", "lb:10:0"), "lb:10:0");
+  t.eq("una mandata senza ok si rimanda", dopoIlSaluto("lb:10:0", null), null);
+  t.eq("…anche se l'ok era di un'altra", dopoIlSaluto("lb:10:1", "lb:10:0"), null);
+  t.eq("niente mandato, niente da ricordare", dopoIlSaluto(null, null), null);
 
   // ---- A PEZZI ----------------------------------------------------------
   const b64 = "A".repeat(PEZZO * 2 + 10);

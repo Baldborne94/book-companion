@@ -22,6 +22,7 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.browser.customtabs.CustomTabsClient;
+import androidx.browser.customtabs.CustomTabsService;
 import androidx.browser.customtabs.CustomTabsServiceConnection;
 import androidx.browser.customtabs.CustomTabsSession;
 import androidx.browser.trusted.TokenStore;
@@ -65,6 +66,16 @@ import java.util.Map;
 // abbia messo il suo ascolto va perso con la porta. Dopo un po' senza
 // risposta si richiede un canale nuovo, tre volte al piu'.
 //
+// E SI RISALUTA OGNI VOLTA CHE LA SCHEDA TORNA DAVANTI (`TAB_SHOWN`): riaperta
+// l'app dall'icona a processo vivo, la `LauncherActivity` rifa' il
+// lanciatore e la sessione di Chrome cambia, ma la pagina — la stessa, non
+// ricaricata — tiene la porta della sessione di prima, che e' morta senza
+// dirlo: il tablet mostrava sulla schermata di blocco il libro di prima
+// mentre la pagina mandava quello nuovo nel vuoto. Al ritorno davanti si
+// saluta sul canale che c'e'; se Chrome rifiuta il messaggio o il canale
+// non c'e', se ne chiede uno nuovo. La pagina, a ogni saluto, rimanda la
+// copertina che non ha avuto l'ok.
+//
 // E OGNI PASSO SI SEGNA (`Diagnosi`): al prossimo avvio dall'icona
 // l'indirizzo di apertura porta alla pagina com'e' andata l'ultima volta —
 // sessione letta, browser scaldato, canale chiesto, origine verificata,
@@ -85,6 +96,11 @@ public final class SchermataDiBlocco {
     private static CustomTabsClient scaldato;
     private static boolean scaldando;
     private static boolean ciao;
+    // il canale di questa sessione e' pronto (`onMessageChannelReady`)
+    private static boolean canale;
+    // quando si e' chiesto l'ultimo canale: una richiesta ancora in volo non si ripete
+    private static long chiestoA;
+    private static final long RICHIESTA_IN_VOLO = 10000;
     private static int tentativi;
     private static final Handler mano = new Handler(Looper.getMainLooper());
     private static final Map<String, String[]> pezzi = new HashMap<>();
@@ -99,6 +115,10 @@ public final class SchermataDiBlocco {
             origine = Uri.parse(u.getScheme() + "://" + u.getAuthority());
         }
         lanciatore = new Lanciatore(new Contesto(attivita), meta.launchingBrowser, idSessione, store);
+        // una sessione nuova non ha canale ne' saluto
+        ciao = false;
+        canale = false;
+        chiestoA = 0;
         Diagnosi.segna(attivita, "l", origine != null);
         return lanciatore;
     }
@@ -265,8 +285,17 @@ public final class SchermataDiBlocco {
             if (evento == NAVIGATION_FINISHED) {
                 Diagnosi.segna(app, "n", true);
                 ciao = false;
+                canale = false;
+                chiestoA = 0;
                 tentativi = 0;
                 apriCanale(app);
+            } else if (evento == TAB_SHOWN) {
+                // la scheda torna davanti: si risaluta, e la pagina rimanda
+                // quel che non ha avuto l'ok (vedi in testa)
+                ciao = false;
+                tentativi = 0;
+                if (canale) saluta(app);
+                else if (System.currentTimeMillis() - chiestoA > RICHIESTA_IN_VOLO) apriCanale(app);
             }
         }
 
@@ -274,6 +303,8 @@ public final class SchermataDiBlocco {
         public void onMessageChannelReady(@Nullable Bundle extras) {
             super.onMessageChannelReady(extras);
             Diagnosi.segna(app, "p", true);
+            canale = true;
+            chiestoA = 0;
             saluta(app);
         }
 
@@ -348,6 +379,7 @@ public final class SchermataDiBlocco {
         // `use_as_origin` in assetlinks.json, e la pagina la ritrova in
         // `event.origin`
         boolean ok;
+        chiestoA = System.currentTimeMillis();
         try {
             ok = s.requestPostMessageChannel(origine, origine, new Bundle());
         } catch (Throwable e) {
@@ -361,7 +393,13 @@ public final class SchermataDiBlocco {
     private static void saluta(Context app) {
         CustomTabsSession s = sessione();
         if (s == null) return;
-        s.postMessage(SALUTO, null);
+        // Chrome dice subito se il canale non c'e' piu': allora se ne chiede
+        // un altro, senza aspettare
+        if (s.postMessage(SALUTO, null) != CustomTabsService.RESULT_SUCCESS) {
+            canale = false;
+            richiedi(app);
+            return;
+        }
         // senza risposta si riprova con un canale nuovo: il primo messaggio
         // puo' essere arrivato prima dell'ascolto della pagina
         if (tentativi >= RITENTA_DOPO.length) return;

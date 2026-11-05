@@ -1792,13 +1792,15 @@ const SCENE = [
       const primi = await ricevuti();
       if (!primi.length || primi.some((x) => x !== "grimorio:ciao")) throw new Error(`al saluto la pagina ha mandato: ${JSON.stringify(primi)}`);
       await interruttore.click();
-      const intera = async (id) => {
+      const intera = async (id, dove = "") => {
         const pezzi = [];
         await finche(async () => {
-          pezzi.push(...(await ricevuti()).map((s) => JSON.parse(s).sfondo));
+          // nel mucchio c'e' anche il «ciao» al saluto: non e' un pezzo, e
+          // un'esplosione qui dentro buttava via tutto il mucchio preso
+          pezzi.push(...(await ricevuti()).filter((s) => s.startsWith("{")).map((s) => JSON.parse(s).sfondo));
           const miei = pezzi.filter((p) => p.id === id);
           return miei.length && miei.length === miei[0].n;
-        }, 15000, `la copertina di «${id}» non arriva intera`);
+        }, 15000, `la copertina di «${id}» non arriva intera ${dove} (visti: ${pezzi.map((p) => `${p.i}/${p.n}`).join(" ")}; invio: ${await d.p.evaluate(() => sessionStorage.getItem("bc_sfondo_invio"))})`);
         const miei = pezzi.filter((p) => p.id === id).sort((a, b) => a.i - b.i);
         if (miei.some((p, i) => p.i !== i || p.n !== miei.length)) throw new Error(`pezzi storti: ${miei.map((p) => `${p.i}/${p.n}`).join()}`);
         return miei.map((p) => p.dati).join("");
@@ -1821,6 +1823,17 @@ const SCENE = [
       await finche(() => testoAvviso(d.p, /La copertina è sulla schermata di blocco/), 5000, "l'ok del guscio non si dice");
       await d.p.evaluate(() => window.__porta.postMessage("grimorio:sfondo:errore:non permesso qui"));
       await finche(() => testoAvviso(d.p, /non è andata sulla schermata di blocco: non permesso qui/), 5000, "il guasto del guscio non si dice");
+      // e le Impostazioni dicono l'ultima mandata e cosa ne ha detto il
+      // guscio: sul tablet la schermata di blocco mostrava il libro di prima
+      await finche(() => d.p.getByText(/Ultima copertina mandata: «Il libro di ieri».*guasto: non permesso qui/).count(), 5000, "l'ultimo invio e la sua risposta non si dicono");
+      // IL GUSCIO RISALUTA (la scheda torna davanti) e la pagina non
+      // rimanda una copertina che aveva avuto l'ok: ce l'ha gia'
+      await d.p.evaluate(() => window.__porta.postMessage("grimorio:sfondo:ok"));
+      await d.p.evaluate(() => window.__porta.postMessage("grimorio:pronto"));
+      await aspetta(1500);
+      const dopoIlSaluto = await ricevuti();
+      if (dopoIlSaluto.some((x) => x !== "grimorio:ciao")) throw new Error(`al risaluto la pagina ha rimandato una copertina gia' messa: ${dopoIlSaluto.length} messaggi`);
+      if (!dopoIlSaluto.includes("grimorio:ciao")) throw new Error("al risaluto la pagina non risponde");
       // e un altro libro in mano manda la sua
       await d.p.keyboard.press("Escape").catch(() => {});
       await importa(d.p, "La nebbia.epub", await epub({ quanti: 20 }), "application/epub+zip");
@@ -1829,7 +1842,7 @@ const SCENE = [
       await saluta();
       await d.p.getByText("La nebbia").first().click();
       await d.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
-      const b2 = await intera(nuovo);
+      const b2 = await intera(nuovo, "aperto l'altro libro");
       const blu = await d.p.evaluate(async (b64) => {
         const img = await createImageBitmap(await (await fetch(`data:image/jpeg;base64,${b64}`)).blob());
         const c = new OffscreenCanvas(img.width, img.height);
@@ -1838,6 +1851,17 @@ const SCENE = [
         return [...g.getImageData(Math.round(img.width / 2), Math.round(img.height / 2), 1, 1).data.slice(0, 3)];
       }, b2);
       if (!(blu[2] > 150 && blu[0] < 80)) throw new Error(`aperto l'altro libro, lo sfondo non è la sua copertina: ${blu}`);
+      // UNA PORTA NUOVA (la sessione di Chrome e' cambiata) mentre quella
+      // copertina non ha avuto l'ok: si rimanda, perche' la porta di prima
+      // era morta — e' il caso del tablet, che mostrava il libro di prima
+      await saluta();
+      await intera(nuovo, "sulla porta nuova, senza l'ok");
+      // e con l'ok un altro saluto non la rimanda
+      await d.p.evaluate(() => window.__porta.postMessage("grimorio:sfondo:ok"));
+      await saluta();
+      await aspetta(1500);
+      const dopoLOk = await ricevuti();
+      if (dopoLOk.some((x) => x !== "grimorio:ciao")) throw new Error(`con l'ok gia' avuto, la porta nuova ha ricevuto di nuovo la copertina: ${dopoLOk.length} messaggi`);
       // e l'indirizzo di avvio del guscio racconta l'ultimo tentativo: la
       // pagina dice fin dove e' arrivato, al posto di «serve l'app nuova»
       await d.p.goto(`${URL_APP}?guscio=1099&esito=${encodeURIComponent("l=1;k=1;n=1;u=6;s=1;c=1;r=1;v=0;p=0;a=0;f=0;e=")}`);
