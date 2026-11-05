@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { C, F, R, FONT_TITLE, px } from "../data/constants.js";
 import { leggiSalvaschermo, scriviSalvaschermo, SCELTE_COPERTINA, SCELTE_SPEGNI, fraseMinuti } from "../lib/salvaschermo.js";
+import { nelGuscio } from "../lib/sfondo.js";
 import { getCover } from "../lib/bookStore.js";
 import { getProgress } from "../lib/library.js";
 
@@ -130,5 +131,48 @@ export function SezioneSalvaschermo() {
       {fila("Mostra la copertina dopo", SCELTE_COPERTINA, "copertina")}
       {fila("Poi lascia spegnere lo schermo dopo", SCELTE_SPEGNI, "spegni", !(v.copertina > 0))}
     </>
+  );
+}
+
+// LA COPERTINA ANCHE A TABLET SPENTO: lo sfondo della schermata di blocco,
+// che solo il guscio Android sa cambiare (`lib/sfondo.js`). Fuori dal guscio
+// la riga non c'e': un tasto non promette cio' che non puo' dare. Nel
+// guscio senza il saluto — l'APK vecchio, o un processo riaperto dai
+// recenti — si dice cosa fare, senza tasto.
+export function SezioneSfondo({ pronto, acceso, onCambia }) {
+  if (!nelGuscio()) return null;
+  return (
+    <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
+      <div style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 6 }}>Anche a tablet spento</div>
+      {pronto ? (
+        <>
+          <button
+            role="switch"
+            aria-checked={acceso}
+            onClick={() => onCambia(!acceso)}
+            style={{
+              minHeight: 44,
+              padding: "8px 14px",
+              borderRadius: R.tondo,
+              border: `1px solid ${acceso ? C.accent : C.border}`,
+              background: acceso ? `${C.accent}22` : "transparent",
+              color: acceso ? C.accent : C.muted,
+              fontSize: F.nota,
+            }}
+          >
+            🔒 Copertina sulla schermata di blocco · {acceso ? "sì" : "no"}
+          </button>
+          <p style={{ fontSize: F.piccolo, color: C.muted, marginTop: 8, lineHeight: 1.45 }}>
+            Lo sfondo della schermata di blocco diventa la copertina del libro che hai in mano, e cambia
+            quando cambi libro. Spegnendolo, lo sfondo di prima lo rimetti tu dalle impostazioni di Android.
+          </p>
+        </>
+      ) : (
+        <p style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.45 }}>
+          Per la copertina sulla schermata di blocco serve l'app Android più recente (le Releases su
+          GitHub), installata sopra questa. Se ce l'hai già, chiudi l'app e riaprila dall'icona.
+        </p>
+      )}
+    </div>
   );
 }

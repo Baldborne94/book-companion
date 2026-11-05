@@ -218,6 +218,41 @@ in cima: non è un errore del guscio, è che manca la firma.
   sopra). A mano, dal PC, resta la strada di prima: `bubblewrap update &&
   bubblewrap build`.
 
+## Il codice nostro nel guscio: la copertina sulla schermata di blocco
+
+Il guscio ha due classi sue, in `android/` (`GuscioActivity`,
+`SchermataDiBlocco`): la pagina gli manda la copertina del libro che hai in
+mano e lui la mette come sfondo della schermata di blocco (`SET_WALLPAPER`,
+`WallpaperManager.FLAG_LOCK`), così a tablet spento si riaccende sul libro,
+come il Kindle. Si accende da **Impostazioni → Il salvaschermo → «Copertina
+sulla schermata di blocco»**, solo dentro l'app Android, ed è spento
+finché non lo accendi tu: sostituisce lo sfondo che avevi, che poi rimetti
+dalle impostazioni di Android.
+
+Come funziona, in breve: Chrome dà alle Trusted Web Activity un canale
+`postMessage` fra app e pagina. Il guscio lo apre a ogni pagina caricata
+(l'origine del sito va dichiarata in `assetlinks.json` anche con
+`delegate_permission/common.use_as_origin`), saluta la pagina con
+`grimorio:pronto`, e la pagina risponde con la copertina già composta per lo
+schermo, a pezzi. Dettagli e scogli in `docs/STORIA.md` («il guscio che
+parla con la pagina»).
+
+Bubblewrap non prevede codice proprio e a ogni `update` riscrive il
+progetto: `node scripts/apk.mjs cuci` lo cuce dentro **dopo**
+`bubblewrap update` e **prima** di `bubblewrap build` (la CI lo fa da sé).
+A mano, dalla cartella del progetto:
+
+```sh
+bubblewrap update --skipVersionUpgrade
+node ../book-companion/scripts/apk.mjs cuci
+bubblewrap build
+```
+
+Se `cuci` si ferma su «l'ancora … non c'è», Bubblewrap ha cambiato il
+progetto che genera: le ancore stanno in `scripts/apk.mjs`.
+
+Per vedere cosa dice il guscio sul tablet: `adb logcat -s Grimorio`.
+
 ## Quel che il guscio NON cambia
 
 - **La musica a schermo spento**: YouTube si mette in pausa da solo in

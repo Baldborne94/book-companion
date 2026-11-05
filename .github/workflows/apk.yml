@@ -24,6 +24,7 @@ on:
       - public/icons/**
       - public/.well-known/assetlinks.json
       - scripts/apk.mjs
+      - android/**
       - .github/workflows/apk.yml
   pull_request:
     paths:
@@ -31,6 +32,7 @@ on:
       - public/icons/**
       - public/.well-known/assetlinks.json
       - scripts/apk.mjs
+      - android/**
       - .github/workflows/apk.yml
   workflow_dispatch:
 
@@ -112,6 +114,8 @@ jobs:
           cd guscio
           node ../scripts/apk.mjs "$CODICE" "$VERSIONE"
           npx bubblewrap update --skipVersionUpgrade
+          # il nostro codice Android (android/) nel progetto appena generato
+          node ../scripts/apk.mjs cuci
           npx bubblewrap build
           "$ANDROID_HOME/build-tools/$ATTREZZI/apksigner" verify --print-certs app-release-signed.apk | tee firma.txt
           mv app-release-signed.apk "Grimorio-$CODICE.apk"

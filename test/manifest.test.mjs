@@ -79,6 +79,9 @@ export default async function (t) {
   const al = JSON.parse(leggi("public/.well-known/assetlinks.json"));
   t.c("assetlinks e' un elenco con una voce", Array.isArray(al) && al.length === 1);
   t.eq("delega la gestione degli URL", al[0]?.relation?.[0], "delegate_permission/common.handle_all_urls");
+  // senza `use_as_origin` Chrome non apre alla pagina il canale postMessage
+  // del guscio, e la copertina non arriva alla schermata di blocco
+  t.c("e l'uso come origine, per il canale col guscio", al[0]?.relation?.includes("delegate_permission/common.use_as_origin"));
   t.eq("namespace android_app", al[0]?.target?.namespace, "android_app");
   t.c("il package e' un nome Java valido", /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(al[0]?.target?.package_name || ""));
   const impronte = al[0]?.target?.sha256_cert_fingerprints || [];
