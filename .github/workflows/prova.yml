@@ -42,9 +42,12 @@ jobs:
       # tutti i giorni): qui lo si aggiunge solo alla macchina della prova
       - name: Il browser per la guardia del tema
         run: |
-          # paziente: Playwright appena uscito ha il suo `playwright-core`
-          # non ancora sul registro per qualche minuto, e il giro cadeva li'
-          for i in 1 2 3; do npm i -D --no-save playwright && break; [ "$i" = 3 ] && exit 1; sleep 90; done
+          # UN PLAYWRIGHT PUBBLICATO A META' NON FERMA IL GIRO: il 5/11/2026
+          # `playwright@1.65.0` c'era e il suo `playwright-core@1.65.0` no
+          # (l'ultimo era 1.64.1), per piu' di un quarto d'ora. Se l'ultimo
+          # non si installa si prende la versione di `playwright-core` che
+          # esiste davvero: `playwright@X` dipende da `playwright-core@X`.
+          npm i -D --no-save playwright || npm i -D --no-save "playwright@$(npm view playwright-core version)"
           npx playwright install --with-deps chromium
 
       - run: npm test
