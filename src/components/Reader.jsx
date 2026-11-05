@@ -164,7 +164,7 @@ function Panel({ title, onClose, children }) {
   );
 }
 
-export default function Reader({ book, startCfi, nextBook, onReadNext, music, onMusicToggle, onMusicStop, onMusicVolume, onMusicNext, onMusicRoom, onMusicSottovoce, onAlive, onClose, notify, indietro }) {
+export default function Reader({ book, startCfi, nextBook, onReadNext, music, onMusicToggle, onMusicStop, onMusicVolume, onMusicNext, onMusicRoom, onMusicSottovoce, onAlive, onSegno, onClose, notify, indietro }) {
   const viewerRef = useRef(null);
   const rootRef = useRef(null);
   const bookRef = useRef(null);
@@ -452,6 +452,10 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [lingua, setLingua] = useState(null);
   const aliveRef = useRef(null);
   aliveRef.current = onAlive;
+  // un tocco, una rotella, un tasto dentro il capitolo: un segno di vita che
+  // non e' una voltata (il salvaschermo e il tempo di lettura, in App)
+  const segnoRef = useRef(null);
+  segnoRef.current = onSegno;
   const [chi, setChi] = useState(null);
   // i passaggi-fonte stanno ripiegati: la risposta e' quella che conta, e il
   // controllo dev'essere possibile, non obbligatorio
@@ -864,6 +868,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         doc.addEventListener(
           "pointerdown",
           (e) => {
+            segnoRef.current?.();
             if (e.isPrimary === false) return;
             giu = { x: e.clientX, y: e.clientY, quando: Date.now() };
           },
@@ -913,6 +918,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
           doc.addEventListener(
             "wheel",
             (e) => {
+              segnoRef.current?.();
               if (live.current.settings.flow === "scrolled") return;
               if (Math.abs(e.deltaY) < 4) return;
               const ora = Date.now();
@@ -955,6 +961,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       });
 
       r.on("keydown", (e) => {
+        segnoRef.current?.();
         if (e.key === "ArrowRight") turnRef.current("next");
         if (e.key === "ArrowLeft") turnRef.current("prev");
       });

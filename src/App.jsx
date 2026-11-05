@@ -2348,6 +2348,10 @@ export default function App() {
               onMusicRoom={() => navigate("music")}
               onMusicSottovoce={(si) => playerRef.current?.sottovoce(si)}
               onAlive={() => { svegliaRef.current(); segnaVita(Date.now(), "epub"); }}
+              // un tocco dentro il testo: il testo sta in un iframe e un dito
+              // li' dentro non fa alzare un solo evento qui fuori — il
+              // salvaschermo arrivava sotto le dita del lettore
+              onSegno={() => { segnoRef.current(); segnaAttivita(); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);

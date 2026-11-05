@@ -1703,12 +1703,28 @@ const SCENE = [
       await finche(segno, 8000, "la voltata non scrive il segno");
       await aspetta(2500);
       const prima = await segno();
+      const quadro = d.p.getByRole("button", { name: /^Salvaschermo: La nebbia/ });
+      // UN TOCCO DENTRO IL TESTO E' UN SEGNO DI VITA anche se non volta
+      // (il lettore: «la copertina mi appare molto prima dei 3 minuti»): il
+      // testo sta in un iframe, e un dito li' dentro non fa alzare un solo
+      // evento qui fuori. Sei secondi alla copertina, un tocco in mezzo
+      // alla pagina ogni due: la copertina non deve arrivare
+      await d.p.evaluate(() => {
+        localStorage.setItem("bc_salvaschermo", JSON.stringify({ copertina: 0.1, spegni: 0.05 }));
+        document.dispatchEvent(new PointerEvent("pointerdown"));
+      });
+      for (let i = 0; i < 5; i++) {
+        await aspetta(2000);
+        await d.p.touchscreen.tap(451, 750);
+        // si guarda fra un tocco e l'altro: un tocco sul salvaschermo lo chiuderebbe, e non si vedrebbe
+        await aspetta(1500);
+        if (await quadro.count()) throw new Error(`la copertina è arrivata mentre toccavo la pagina del libro (tocco ${i + 1})`);
+      }
       // tempi di secondi invece che di minuti; la scelta vale al primo segno di vita
       await d.p.evaluate(() => {
         localStorage.setItem("bc_salvaschermo", JSON.stringify({ copertina: 0.05, spegni: 0.05 }));
         document.dispatchEvent(new PointerEvent("pointerdown"));
       });
-      const quadro = d.p.getByRole("button", { name: /^Salvaschermo: La nebbia/ });
       await finche(() => quadro.isVisible(), 10000, "la copertina non prende lo schermo");
       const misure = await finche(
         () => d.p.evaluate(() => {
