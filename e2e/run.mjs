@@ -1784,7 +1784,9 @@ const SCENE = [
       const interruttore = d.p.getByRole("switch", { name: /schermata di blocco/ });
       await finche(() => interruttore.count(), 5000, "dopo il saluto l'interruttore non compare");
       await aspetta(800);
-      if ((await ricevuti()).length) throw new Error("la copertina parte senza che il lettore l'abbia chiesto");
+      // al saluto la pagina risponde (o il guscio risaluta), e nient'altro parte
+      const primi = await ricevuti();
+      if (primi.join() !== "grimorio:ciao") throw new Error(`al saluto la pagina ha mandato: ${JSON.stringify(primi)}`);
       await interruttore.click();
       const intera = async (id) => {
         const pezzi = [];
@@ -1832,7 +1834,13 @@ const SCENE = [
         return [...g.getImageData(Math.round(img.width / 2), Math.round(img.height / 2), 1, 1).data.slice(0, 3)];
       }, b2);
       if (!(blu[2] > 150 && blu[0] < 80)) throw new Error(`aperto l'altro libro, lo sfondo non è la sua copertina: ${blu}`);
-      return { guasti: d.guasti, nota: `sfondo ${m.lato.join("×")} intero, poi quello del libro aperto` };
+      // e l'indirizzo di avvio del guscio racconta l'ultimo tentativo: la
+      // pagina dice fin dove e' arrivato, al posto di «serve l'app nuova»
+      await d.p.goto(`${URL_APP}?guscio=1099&esito=${encodeURIComponent("s=1;c=1;r=1;v=0;p=0;a=0;f=0;e=")}`);
+      await d.p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await finche(() => d.p.getByText(/L'app Android installata è la 1099/).count(), 5000, "la versione del guscio non si legge");
+      if (!(await d.p.getByText(/non ha verificato l'origine/).count())) throw new Error("l'esito dell'ultimo tentativo non si dice");
+      return { guasti: d.guasti, nota: `sfondo ${m.lato.join("×")} intero, poi quello del libro aperto; esito del guscio letto` };
     },
   },
   {

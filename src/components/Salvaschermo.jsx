@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { C, F, R, FONT_TITLE, px } from "../data/constants.js";
 import { leggiSalvaschermo, scriviSalvaschermo, SCELTE_COPERTINA, SCELTE_SPEGNI, fraseMinuti } from "../lib/salvaschermo.js";
-import { nelGuscio } from "../lib/sfondo.js";
+import { nelGuscio, fraseEsito } from "../lib/sfondo.js";
 import { getCover } from "../lib/bookStore.js";
 import { getProgress } from "../lib/library.js";
 
@@ -139,8 +139,11 @@ export function SezioneSalvaschermo() {
 // la riga non c'e': un tasto non promette cio' che non puo' dare. Nel
 // guscio senza il saluto — l'APK vecchio, o un processo riaperto dai
 // recenti — si dice cosa fare, senza tasto.
-export function SezioneSfondo({ pronto, acceso, onCambia }) {
+export function SezioneSfondo({ pronto, info = null, acceso, onCambia }) {
   if (!nelGuscio()) return null;
+  // il guscio nuovo c'e' ma non ha salutato: si dice fin dove e' arrivato
+  // l'ultima volta (`infoDalLancio`), o come farglielo raccontare
+  const ultima = fraseEsito(info?.esito);
   return (
     <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
       <div style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 6 }}>Anche a tablet spento</div>
@@ -169,8 +172,11 @@ export function SezioneSfondo({ pronto, acceso, onCambia }) {
         </>
       ) : (
         <p style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.45 }}>
-          Per la copertina sulla schermata di blocco serve l'app Android più recente (le Releases su
-          GitHub), installata sopra questa. Se ce l'hai già, chiudi l'app e riaprila dall'icona.
+          {info?.versione
+            ? `L'app Android installata è la ${info.versione}, ma il suo saluto non è arrivato. ${
+                ultima ? `L'ultima volta: ${ultima}.` : "Chiudi l'app del tutto e riaprila dall'icona: al secondo avvio qui si legge dove si è fermata."
+              }`
+            : "Per la copertina sulla schermata di blocco serve l'app Android più recente (le Releases su GitHub), installata sopra questa. Se ce l'hai già, chiudi l'app e riaprila dall'icona."}
         </p>
       )}
     </div>

@@ -7,6 +7,8 @@ import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
@@ -57,17 +59,33 @@ import java.util.Map;
 // Bubblewrap 1.25 porta con se', e la regola ProGuard che `apk.mjs cuci`
 // scrive gli conserva il nome. Se un giorno non si legge, lo sfondo non si
 // mette e si scrive nel log: l'app va come prima.
+//
+// IL SALUTO SI RIPETE finche' la pagina non risponde (`CIAO`): il primo
+// messaggio porta la porta alla pagina, e se arriva prima che la pagina
+// abbia messo il suo ascolto va perso con la porta. Dopo un po' senza
+// risposta si richiede un canale nuovo, tre volte al piu'.
+//
+// E OGNI PASSO SI SEGNA (`Diagnosi`): al prossimo avvio dall'icona
+// l'indirizzo di apertura porta alla pagina com'e' andata l'ultima volta —
+// sessione letta, browser scaldato, canale chiesto, origine verificata,
+// canale pronto, risposta della pagina — perche' quando il canale non si
+// apre e' l'unica strada che resta per dirlo a chi non ha `adb`.
 public final class SchermataDiBlocco {
     private static final String TAG = "Grimorio";
     static final String SALUTO = "grimorio:pronto";
+    static final String CIAO = "grimorio:ciao";
     static final String OK = "grimorio:sfondo:ok";
     static final String ERRORE = "grimorio:sfondo:errore:";
     private static final int PEZZI_MAX = 64;
+    private static final long[] RITENTA_DOPO = { 1500, 4000, 10000 };
 
     private static Lanciatore lanciatore;
     private static Uri origine;
     private static CustomTabsClient scaldato;
     private static boolean scaldando;
+    private static boolean ciao;
+    private static int tentativi;
+    private static final Handler mano = new Handler(Looper.getMainLooper());
     private static final Map<String, String[]> pezzi = new HashMap<>();
 
     private SchermataDiBlocco() {}
@@ -82,6 +100,68 @@ public final class SchermataDiBlocco {
         lanciatore = new Lanciatore(new Contesto(attivita), meta.launchingBrowser, idSessione, store);
         return lanciatore;
     }
+
+    // ---- LA DIAGNOSI ---------------------------------------------------------
+
+    private static final class Diagnosi {
+        private static final String NOME = "grimorio";
+
+        static void segna(Context c, String chiave, String valore) {
+            try {
+                c.getSharedPreferences(NOME, Context.MODE_PRIVATE).edit().putString(chiave, valore).apply();
+            } catch (Throwable e) {
+                /* senza memoria la diagnosi manca, non il resto */
+            }
+        }
+
+        static void segna(Context c, String chiave, boolean valore) {
+            segna(c, chiave, valore ? "1" : "0");
+        }
+
+        // «s=1;c=1;r=1;v=0;p=0;a=0;f=0;e=…»: una lettera per passo, nell'ordine
+        // in cui i passi avvengono, cosi' la pagina dice dove ci si e' fermati
+        static String leggiEAzzera(Context c) {
+            try {
+                SharedPreferences p = c.getSharedPreferences(NOME, Context.MODE_PRIVATE);
+                if (p.getAll().isEmpty()) return null;
+                StringBuilder s = new StringBuilder();
+                for (String k : new String[] { "s", "c", "r", "v", "p", "a", "f", "e" }) {
+                    if (s.length() > 0) s.append(';');
+                    s.append(k).append('=').append(p.getString(k, ""));
+                }
+                p.edit().clear().apply();
+                return s.toString();
+            } catch (Throwable e) {
+                return null;
+            }
+        }
+    }
+
+    static Uri conDiagnosi(Activity attivita, Uri indirizzo) {
+        if (indirizzo == null) return null;
+        try {
+            Uri.Builder b = indirizzo.buildUpon().appendQueryParameter("guscio", String.valueOf(versione(attivita)));
+            String esito = Diagnosi.leggiEAzzera(attivita);
+            if (esito != null) b.appendQueryParameter("esito", esito);
+            return b.build();
+        } catch (Throwable e) {
+            return indirizzo;
+        }
+    }
+
+    private static long versione(Context c) {
+        try {
+            PackageInfo info = c.getPackageManager().getPackageInfo(c.getPackageName(), 0);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) return info.getLongVersionCode();
+            @SuppressWarnings("deprecation")
+            long v = info.versionCode;
+            return v;
+        } catch (Throwable e) {
+            return 0;
+        }
+    }
+
+    // ---- IL LANCIATORE -------------------------------------------------------
 
     // la presa sul servizio e' dell'applicazione, l'avvio dell'attivita' e'
     // dell'attivita' (da un contesto che non e' un'attivita' Android vuole
@@ -139,8 +219,10 @@ public final class SchermataDiBlocco {
         return lanciatore == null ? null : lanciatore.sessione();
     }
 
-    // Quel che Chrome ci dice. Sopra `QualityEnforcer`, che e' il callback
-    // di sempre della libreria: i suoi controlli restano.
+    // ---- QUEL CHE CHROME CI DICE ----------------------------------------------
+
+    // Sopra `QualityEnforcer`, che e' il callback di sempre della libreria: i
+    // suoi controlli restano.
     static final class Ascolto extends QualityEnforcer {
         private final Context app;
 
@@ -153,19 +235,28 @@ public final class SchermataDiBlocco {
             super.onNavigationEvent(evento, extras);
             // a ogni pagina caricata (anche dopo un aggiornamento dell'app,
             // che la ricarica): il canale di prima e' morto con lei
-            if (evento == NAVIGATION_FINISHED) apriCanale(app);
+            if (evento == NAVIGATION_FINISHED) {
+                ciao = false;
+                tentativi = 0;
+                apriCanale(app);
+            }
         }
 
         @Override
         public void onMessageChannelReady(@Nullable Bundle extras) {
             super.onMessageChannelReady(extras);
-            CustomTabsSession s = sessione();
-            if (s != null) s.postMessage(SALUTO, null);
+            Diagnosi.segna(app, "p", true);
+            saluta(app);
         }
 
         @Override
         public void onPostMessage(@NonNull String messaggio, @Nullable Bundle extras) {
             super.onPostMessage(messaggio, extras);
+            if (CIAO.equals(messaggio)) {
+                ciao = true;
+                Diagnosi.segna(app, "a", true);
+                return;
+            }
             ricevi(app, messaggio);
         }
 
@@ -174,6 +265,7 @@ public final class SchermataDiBlocco {
                 @Nullable Bundle extras) {
             super.onRelationshipValidationResult(relazione, richiesta, esito, extras);
             Log.d(TAG, "origine " + richiesta + " verificata: " + esito);
+            Diagnosi.segna(app, "v", esito);
         }
     }
 
@@ -182,21 +274,26 @@ public final class SchermataDiBlocco {
     // del processo, lo fa una volta sola
     private static void apriCanale(Context app) {
         if (origine == null || lanciatore == null) return;
+        Diagnosi.segna(app, "s", sessione() != null);
         if (scaldato != null) {
-            richiedi();
+            richiedi(app);
             return;
         }
         if (scaldando) return;
         String provider = lanciatore.getProviderPackage();
-        if (provider == null) return;
+        if (provider == null) {
+            Diagnosi.segna(app, "e", "nessun browser");
+            return;
+        }
         scaldando = true;
-        CustomTabsClient.bindCustomTabsService(app, provider, new CustomTabsServiceConnection() {
+        boolean legato = CustomTabsClient.bindCustomTabsService(app, provider, new CustomTabsServiceConnection() {
             @Override
             public void onCustomTabsServiceConnected(@NonNull ComponentName nome, @NonNull CustomTabsClient client) {
                 client.warmup(0);
                 scaldato = client;
                 scaldando = false;
-                richiedi();
+                Diagnosi.segna(app, "c", true);
+                richiedi(app);
             }
 
             @Override
@@ -205,17 +302,43 @@ public final class SchermataDiBlocco {
                 scaldando = false;
             }
         });
+        if (!legato) {
+            scaldando = false;
+            Diagnosi.segna(app, "c", false);
+        }
     }
 
-    private static void richiedi() {
+    private static void richiedi(Context app) {
         CustomTabsSession s = sessione();
         if (s == null) return;
         // l'origine e' quella del sito: Chrome la verifica con
         // `use_as_origin` in assetlinks.json, e la pagina la ritrova in
         // `event.origin`
-        boolean ok = s.requestPostMessageChannel(origine, origine, new Bundle());
+        boolean ok;
+        try {
+            ok = s.requestPostMessageChannel(origine, origine, new Bundle());
+        } catch (Throwable e) {
+            ok = false;
+            Diagnosi.segna(app, "e", String.valueOf(e));
+        }
         Log.d(TAG, "canale chiesto: " + ok);
+        Diagnosi.segna(app, "r", ok);
     }
+
+    private static void saluta(Context app) {
+        CustomTabsSession s = sessione();
+        if (s == null) return;
+        s.postMessage(SALUTO, null);
+        // senza risposta si riprova con un canale nuovo: il primo messaggio
+        // puo' essere arrivato prima dell'ascolto della pagina
+        if (tentativi >= RITENTA_DOPO.length) return;
+        long fra = RITENTA_DOPO[tentativi++];
+        mano.postDelayed(() -> {
+            if (!ciao) richiedi(app);
+        }, fra);
+    }
+
+    // ---- LA COPERTINA ---------------------------------------------------------
 
     // {"sfondo":{"id":"…","i":0,"n":4,"dati":"<base64>"}}: la copertina
     // arriva a pezzi perche' un messaggio solo da mezzo megabyte non passa
@@ -252,6 +375,8 @@ public final class SchermataDiBlocco {
         }
     }
 
+    private static int sfondiMessi;
+
     private static void metti(Context app, String base64) {
         new Thread(() -> {
             String esito;
@@ -264,14 +389,16 @@ public final class SchermataDiBlocco {
                     if (!wm.isSetWallpaperAllowed()) throw new IllegalStateException("non permesso su questo dispositivo");
                     wm.setBitmap(immagine, null, true, WallpaperManager.FLAG_LOCK);
                     esito = OK;
+                    Diagnosi.segna(app, "f", String.valueOf(++sfondiMessi));
                 } else {
                     esito = ERRORE + "serve Android 7 o piu' recente";
                 }
             } catch (Throwable e) {
                 esito = ERRORE + e.getMessage();
+                Diagnosi.segna(app, "e", String.valueOf(e.getMessage()));
             }
             final String risposta = esito;
-            new Handler(Looper.getMainLooper()).post(() -> {
+            mano.post(() -> {
                 CustomTabsSession s = sessione();
                 if (s != null) s.postMessage(risposta, null);
             });
