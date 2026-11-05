@@ -138,7 +138,7 @@ const PASSI = [
   ["l", "il lanciatore non è stato creato (la LauncherActivity generata non estende GuscioActivity)"],
   ["k", "il callback di Chrome non è stato creato"],
   ["n", "Chrome non ha mai detto che la pagina è caricata (nessun evento di navigazione)"],
-  ["s", "la sessione di Chrome non si è letta (la libreria del guscio è cambiata: vedi scripts/apk.mjs)"],
+  ["s", "la sessione di Chrome non si è letta (R8 l'ha nascosta, o la libreria del guscio è cambiata: vedi scripts/apk.mjs)"],
   ["c", "Chrome non si è lasciato scaldare (nessun browser collegato)"],
   ["r", "Chrome ha rifiutato la richiesta del canale"],
   ["v", "Chrome non ha verificato l'origine del sito (assetlinks.json con use_as_origin: aspetta qualche minuto e riprova)"],

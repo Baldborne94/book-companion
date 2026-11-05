@@ -41,24 +41,31 @@ export default async function (t) {
 // ancore precise, e un'ancora sparita ferma il giro invece di pubblicare un
 // guscio che non parla con la pagina.
 export async function cucitura(t) {
-  const { cuciGuscio, pacchettoDi, CAMPO_SESSIONE, PROGUARD } = await import("../scripts/apk.mjs");
+  const { cuciGuscio, pacchettoDi, CAMPO_SESSIONE, regoleProguard } = await import("../scripts/apk.mjs");
   const assetlinks = JSON.parse(readFileSync("public/.well-known/assetlinks.json", "utf8"));
   const manifest = `<manifest package="it.bookcompanion.app">\n    <application android:name="Application">\n        <activity android:name="LauncherActivity" />\n    </application>\n</manifest>\n`;
   const launcher = `package it.bookcompanion.app;\n\npublic class LauncherActivity\n        extends com.google.androidbrowserhelper.trusted.LauncherActivity {\n}\n`;
   const gradle = `android {\n    buildTypes {\n        release {\n            minifyEnabled true\n        }\n    }\n}\n`;
-  const c = cuciGuscio({ manifest, launcher, gradle });
+  const pacchetto = pacchettoDelSito(assetlinks);
+  const c = cuciGuscio({ manifest, launcher, gradle, pacchetto });
   t.c("il permesso di cambiare lo sfondo, prima di <application>", /SET_WALLPAPER"\/>[\s\S]*<application/.test(c.manifest));
   t.c("il servizio dei messaggi, dentro <application>", /<application[\s\S]*PostMessageService"[^>]*android:exported="true"[\s\S]*<\/application>/.test(c.manifest));
   t.c("la LauncherActivity generata estende la nostra", c.launcher.includes("extends GuscioActivity") && !c.launcher.includes("trusted.LauncherActivity"));
   t.c("le regole ProGuard entrano nel build di release", /minifyEnabled true\s*\n\s*proguardFiles 'proguard-grimorio.pro'/.test(c.gradle));
-  t.c("e tengono il nome del campo letto per riflessione", c.proguard.includes(`CustomTabsSession ${CAMPO_SESSIONE};`));
-  const di_nuovo = cuciGuscio({ manifest: c.manifest, launcher: c.launcher, gradle: c.gradle });
+  // la classe INTERA (l'APK 1104 e' uscito col solo campo, e R8 l'ha toccato)
+  t.c("e tengono intera la classe della libreria che si legge per riflessione", /-keep class com\.google\.androidbrowserhelper\.trusted\.TwaLauncher \{ \*; \}/.test(c.proguard));
+  t.c("…e le nostre, che la leggono", c.proguard.includes(`-keep class ${pacchetto}.** { *; }`));
+  t.c("…dicendo il campo che si cerca", c.proguard.includes(CAMPO_SESSIONE));
+  let senza = "";
+  try { cuciGuscio({ manifest, launcher, gradle }); } catch (e) { senza = e.message; }
+  t.c("senza il package le regole non si scrivono", /package/.test(senza));
+  const di_nuovo = cuciGuscio({ manifest: c.manifest, launcher: c.launcher, gradle: c.gradle, pacchetto });
   t.c("cucire due volte non raddoppia niente", di_nuovo.manifest === c.manifest && di_nuovo.launcher === c.launcher && di_nuovo.gradle === c.gradle);
   for (const [nome, rotto] of [
-    ["senza <application>", { manifest: "<manifest/>", launcher, gradle }],
-    ["con due <application>", { manifest: manifest + "<application/>", launcher, gradle }],
-    ["con una LauncherActivity che non estende la libreria", { manifest, launcher: "class X {}", gradle }],
-    ["senza minifyEnabled", { manifest, launcher, gradle: "android {}" }],
+    ["senza <application>", { manifest: "<manifest/>", launcher, gradle, pacchetto }],
+    ["con due <application>", { manifest: manifest + "<application/>", launcher, gradle, pacchetto }],
+    ["con una LauncherActivity che non estende la libreria", { manifest, launcher: "class X {}", gradle, pacchetto }],
+    ["senza minifyEnabled", { manifest, launcher, gradle: "android {}", pacchetto }],
   ]) {
     let caduto = "";
     try { cuciGuscio(rotto); } catch (e) { caduto = e.message; }
@@ -70,7 +77,7 @@ export async function cucitura(t) {
   t.c("c'e' del codice Android da cucire", java.length >= 2, java.join());
   for (const f of java) t.eq(`android/${f} e' nel package dell'APK`, pacchettoDi(readFileSync(`android/${f}`, "utf8")), pacchettoDelSito(assetlinks));
   const blocco = readFileSync("android/SchermataDiBlocco.java", "utf8");
-  t.c("la riflessione legge il campo che ProGuard conserva", blocco.includes(`getDeclaredField("${CAMPO_SESSIONE}")`) && PROGUARD.includes(CAMPO_SESSIONE));
+  t.c("la riflessione legge il campo che ProGuard conserva, e se no cerca per tipo", blocco.includes(`getDeclaredField("${CAMPO_SESSIONE}")`) && blocco.includes("f.getType() != CustomTabsSession.class") && regoleProguard("x.y").includes(CAMPO_SESSIONE));
   t.c("…e manda un saluto che la pagina riconosce", blocco.includes('SALUTO = "grimorio:pronto"'));
   const yml = readFileSync(".github/workflows/apk.yml", "utf8");
   t.c("la CI cuce dopo l'update e prima del build", /bubblewrap update[^\n]*\n(?:[^\n]*\n)*?[^\n]*apk\.mjs cuci\n(?:[^\n]*\n)*?[^\n]*bubblewrap build/.test(yml));
