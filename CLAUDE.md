@@ -66,6 +66,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 - Leggi ad alta voce (`lib/voce.js`): la pagina a schermo, **a frasi**, girata con la voltata di sempre; la frase che scavalca il bordo aspetta la pagina dopo. Solo a pagine. La musica si abbassa con un fattore suo (`sottovoce`), mai col volume salvato.
 - Leggi ad alta voce nei PDF (`lib/vocePdf.js`): stesse regole, testo da pdf.js ricucito in paragrafi sul passo della pagina, **lingua dal testo** (quella dichiarata dal PDF mente), voltate della voce ricordate (`girate`), tre pagine mute fermano la voce.
 - Note a piè di pagina lette sul posto (`lib/nota.js`), mappe ingrandibili (`lib/tavola.js`), glossario con annotazioni di epub.js (mai `<span>` nel testo: cambierebbero i CFI).
+- **Il tempo che resta** (`lib/resta.js`): al capitolo e alla fine, in fondo alla pagina dell'ePub e del fumetto (il PDF ha il suo, `readingSpeed.js`). Si misura **sul testo** (location di epub.js, pagine nei fumetti), **per libro** (`bc_passo_<id>`, passo iniziale pesato `PESO_INIZIALE` unità, conto dimezzato oltre `FINESTRA`), con le regole di `readingSpeed.js` (tratti fra 2,5 s e 4 min, salto oltre `AVANZO_MAX` fuori, indietro non conta, tratto scartato = stesso oggetto). Il capitolo è il documento della spina (`fineDelCapitolo`).
 
 ### PDF e fumetti
 
