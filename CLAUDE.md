@@ -144,6 +144,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 ### Schermo
 
 - Lo schermo non si spegne finché l'app è davanti (Wake Lock in `App.jsx`). La presa si dimentica al suo `release` (il sistema la toglie in secondo piano) e si richiede al ritorno e a ogni tocco, una richiesta alla volta.
+- **Il salvaschermo** (`lib/salvaschermo.js`, `components/Salvaschermo.jsx`, chiesto dal lettore «tipo Kindle»): dopo `copertina` minuti senza segni di vita (tocco, tasto, ritorno davanti, voltata dei reader, anche della voce) la copertina del libro in mano (`libroDellaScheda`) prende lo schermo, **intera e grande** quanto lo schermo su fondo nero, col titolo e la percentuale sotto; dopo altri `spegni` minuti la presa si **lascia** e non si richiede fino al prossimo segno. Un timer solo (`prossimoCambio`), mai un orologio che ticchetta. Un lavoro lungo tiene sveglio e senza copertina. Il tocco lo chiude e non volta la pagina; la voltata e il tasto lo chiudono da `sveglia`. Senza copertina non si mostra niente. Tempi del dispositivo in `bc_salvaschermo` (predefinito 5 e 10, «Mai» = come prima), scelti nelle Impostazioni. Si misura su telefono e tablet, nei due versi.
 
 ### Guasti
 

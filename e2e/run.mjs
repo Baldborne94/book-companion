@@ -1568,6 +1568,164 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «molte copertine sono proprio artistiche, averle
+    // tipo salvaschermo sarebbe figo» — e chi si addormenta col libro aperto
+    // non deve ritrovare il tablet acceso al mattino
+    nome: "il salvaschermo: senza tocchi la copertina prende lo schermo, poi la presa si lascia, e il tocco che lo chiude non volta la pagina",
+    async fai({ browser }) {
+      const d = await dispositivo(browser, {
+        misura: TABLET,
+        // una presa finta che dice quando la si chiede e quando la si lascia
+        prima: () => {
+          const log = [];
+          window.__presa = log;
+          Object.defineProperty(navigator, "wakeLock", {
+            configurable: true,
+            value: {
+              request: async () => {
+                log.push("chiesta");
+                const t = new EventTarget();
+                t.release = async () => {
+                  log.push("lasciata");
+                  t.dispatchEvent(new Event("release"));
+                };
+                return t;
+              },
+            },
+          });
+        },
+      });
+      await d.p.goto(URL_APP);
+      await importa(d.p, "La nebbia.epub", await epub({ quanti: 80 }), "application/epub+zip");
+      const id = (await libriDi(d.p)).find((b) => b.title === "La nebbia").id;
+      // una copertina in piedi, rossa
+      await d.p.evaluate(
+        (id) =>
+          new Promise((ok, ko) => {
+            const c = document.createElement("canvas");
+            c.width = 300;
+            c.height = 450;
+            const g = c.getContext("2d");
+            g.fillStyle = "#c01010";
+            g.fillRect(0, 0, 300, 450);
+            c.toBlob((blob) => {
+              const r = indexedDB.open("bc_library", 3);
+              r.onsuccess = () => {
+                const tx = r.result.transaction("covers", "readwrite");
+                tx.objectStore("covers").put(blob, id);
+                tx.oncomplete = ok;
+                tx.onerror = () => ko(tx.error);
+              };
+              r.onerror = () => ko(r.error);
+            }, "image/jpeg");
+          }),
+        id
+      );
+      await d.p.getByText("La nebbia").first().click();
+      await d.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      await finche(
+        async () => {
+          for (const f of d.p.frames()) if ((await f.evaluate(() => document.body?.innerText || "").catch(() => "")).includes(FRASE)) return true;
+          return false;
+        },
+        25000,
+        "il testo del libro non compare"
+      );
+      await d.p.keyboard.press("ArrowRight");
+      const segno = () => d.p.evaluate((id) => localStorage.getItem(`bc_cfi_${id}`), id);
+      await finche(segno, 8000, "la voltata non scrive il segno");
+      await aspetta(2500);
+      const prima = await segno();
+      // tempi di secondi invece che di minuti; la scelta vale al primo segno di vita
+      await d.p.evaluate(() => {
+        localStorage.setItem("bc_salvaschermo", JSON.stringify({ copertina: 0.05, spegni: 0.05 }));
+        document.dispatchEvent(new PointerEvent("pointerdown"));
+      });
+      const quadro = d.p.getByRole("button", { name: /^Salvaschermo: La nebbia/ });
+      await finche(() => quadro.isVisible(), 10000, "la copertina non prende lo schermo");
+      const misure = await finche(
+        () => d.p.evaluate(() => {
+          const img = document.querySelector('img[alt^="Copertina di La nebbia"]');
+          return img?.complete && img.naturalWidth ? { w: img.naturalWidth, h: img.naturalHeight, r: img.getBoundingClientRect().height } : null;
+        }),
+        5000,
+        "la copertina non si carica"
+      );
+      if (misure.r < 600) throw new Error(`la copertina è piccola: alta ${Math.round(misure.r)} px su 1503`);
+      if ((await d.p.evaluate(() => window.__presa)).includes("lasciata")) throw new Error("la presa si è lasciata insieme alla copertina, non dopo");
+      await finche(async () => (await d.p.evaluate(() => window.__presa)).includes("lasciata"), 10000, "la presa sullo schermo non si lascia");
+      const chieste = (await d.p.evaluate(() => window.__presa)).filter((x) => x === "chiesta").length;
+      // il tocco dove di solito si volta: chiude il salvaschermo, e basta
+      await d.p.touchscreen.tap(Math.round(902 * 0.85), 750);
+      await finche(async () => !(await quadro.count()), 3000, "il tocco non chiude il salvaschermo");
+      await aspetta(1500);
+      if ((await segno()) !== prima) throw new Error("il tocco che chiude il salvaschermo ha voltato la pagina");
+      const dopo = (await d.p.evaluate(() => window.__presa)).filter((x) => x === "chiesta").length;
+      if (dopo <= chieste) throw new Error("tornati dal salvaschermo, la presa sullo schermo non si richiede");
+      return { guasti: d.guasti, nota: `copertina alta ${Math.round(misure.r)} px, presa lasciata e richiesta, pagina ferma` };
+    },
+  },
+  {
+    // «questa cosa la voglio per qualunque tipo di schermo android, tablet o
+    // telefono»: la copertina intera e grande, e la riga sotto in vista, su
+    // un telefono piccolo nei due versi e sul tablet del lettore nei due versi
+    nome: "il salvaschermo su ogni schermo: telefono e tablet, in piedi e sdraiati, la copertina intera e la riga sotto in vista",
+    async fai({ browser }) {
+      const libri = [{ id: "sv", title: "Un titolo abbastanza lungo da andare a capo sul telefono", author: "Qualcuno", fileType: "epub", addedAt: 1 }];
+      const d = await dispositivo(browser, {
+        misura: { viewport: { width: 360, height: 800 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true },
+        prima: `localStorage.getItem("bc_books") || (localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))}), localStorage.setItem("bc_lastopen", "sv"), localStorage.setItem("bc_salvaschermo", JSON.stringify({ copertina: 0.03, spegni: 0 })));`,
+      });
+      await d.p.goto(URL_APP);
+      await d.p.evaluate(
+        () =>
+          new Promise((ok, ko) => {
+            const c = document.createElement("canvas");
+            c.width = 600;
+            c.height = 900;
+            c.getContext("2d").fillRect(0, 0, 600, 900);
+            c.toBlob((blob) => {
+              const r = indexedDB.open("bc_library", 3);
+              r.onsuccess = () => {
+                const tx = r.result.transaction("covers", "readwrite");
+                tx.objectStore("covers").put(blob, "sv");
+                tx.oncomplete = ok;
+                tx.onerror = () => ko(tx.error);
+              };
+              r.onerror = () => ko(r.error);
+            }, "image/jpeg");
+          })
+      );
+      await d.p.goto(URL_APP);
+      const quadro = d.p.getByRole("button", { name: /^Salvaschermo:/ });
+      await finche(() => quadro.isVisible(), 10000, "la copertina non prende lo schermo");
+      const viste = [];
+      for (const [w, h] of [[360, 800], [800, 360], [902, 1503], [1503, 902]]) {
+        await d.p.setViewportSize({ width: w, height: h });
+        await aspetta(300);
+        const m = await d.p.evaluate(() => {
+          const img = document.querySelector('img[alt^="Copertina di"]');
+          const riga = img?.nextElementSibling;
+          if (!img?.naturalWidth || !riga) return null;
+          const a = img.getBoundingClientRect();
+          const b = riga.getBoundingClientRect();
+          // quanto e' alta la copertina DISEGNATA dentro il riquadro (contain)
+          const k = Math.min(a.width / img.naturalWidth, a.height / img.naturalHeight);
+          return { img: [a.left, a.top, a.right, a.bottom], riga: [b.left, b.top, b.right, b.bottom], disegnata: [img.naturalWidth * k, img.naturalHeight * k] };
+        });
+        if (!m) throw new Error(`${w}×${h}: la copertina o la riga sotto non ci sono`);
+        const fuori = (r) => r[0] < -1 || r[1] < -1 || r[2] > w + 1 || r[3] > h + 1;
+        if (fuori(m.img)) throw new Error(`${w}×${h}: la copertina esce dallo schermo (${m.img.map(Math.round)})`);
+        if (fuori(m.riga)) throw new Error(`${w}×${h}: la riga del titolo esce dallo schermo (${m.riga.map(Math.round)})`);
+        // grande: tocca l'altezza o la larghezza disponibile, non un francobollo
+        const [dw, dh] = m.disegnata;
+        if (dh < h * 0.55 && dw < w * 0.8) throw new Error(`${w}×${h}: la copertina è piccola (${Math.round(dw)}×${Math.round(dh)})`);
+        viste.push(`${w}×${h} → ${Math.round(dw)}×${Math.round(dh)}`);
+      }
+      return { guasti: d.guasti, nota: viste.join(", ") };
+    },
+  },
+  {
     // chiesto dal lettore: «non mi toccare quelli già presenti ma solo i
     // libri che non sono già nelle raccolte», e poi «fai lasciare stare le
     // raccolte anche al giro automatico»
