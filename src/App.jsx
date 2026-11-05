@@ -30,7 +30,7 @@ import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, get
 import { libroDellaScheda } from "./lib/schedaMusica.js";
 import { leggiSalvaschermo, fase, prossimoCambio } from "./lib/salvaschermo.js";
 import Salvaschermo, { SezioneSalvaschermo, SezioneSfondo } from "./components/Salvaschermo.jsx";
-import { salutoDelGuscio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, CIAO } from "./lib/sfondo.js";
+import { salutoDelGuscio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, CIAO } from "./lib/sfondo.js";
 import { ascoltaCopertine } from "./lib/miniature.js";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux } from "./lib/bookStore.js";
 import { cercaNuovaVersione, cercaInSilenzio, siAggiornaNascosta } from "./lib/aggiornamenti.js";
@@ -976,7 +976,12 @@ export default function App() {
   const [guscio, setGuscio] = useState(null);
   // quale guscio ha aperto la pagina e com'e' andato l'ultimo tentativo di
   // parlarle: si legge subito, prima che `pulisciUrl` tolga la query
-  const [infoGuscio] = useState(() => infoDalLancio(window.location.search));
+  const [infoGuscio] = useState(() => {
+    const i = infoDalLancio(window.location.search);
+    if (i.versione) ricordaLancio(i);
+    // dopo una ricarica la query non c'e' piu': vale quel che si ricorda
+    return i.versione ? i : lancioRicordato() || i;
+  });
   const [sfondo, setSfondo] = useState(leggiSfondo);
   const sfondoMandato = useRef(null);
   const confermaSfondo = useRef(false);

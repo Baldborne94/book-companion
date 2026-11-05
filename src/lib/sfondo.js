@@ -22,9 +22,34 @@ export const PEZZO = 48000;
 // il lato lungo dello sfondo: oltre, solo byte in piu'
 export const LATO_MAX = 2400;
 
+// LA PAGINA SI RICORDA DEL GUSCIO PER TUTTA LA SESSIONE: il referrer
+// `android-app://` e la query `?guscio=` ci sono solo alla prima apertura, e
+// una ricarica (l'aggiornamento automatico dell'app, un `reload`) li perde
+// — con l'APK 1110 la sezione «Anche a tablet spento» e' sparita del tutto.
+// `sessionStorage` vive quanto la scheda, ricariche comprese, e muore con
+// lei: e' la memoria giusta per «chi mi ha aperta».
+export const CHIAVE_LANCIO = "bc_guscio_lancio";
+export function ricordaLancio(info, storage = globalThis.sessionStorage) {
+  if (!info?.versione) return;
+  try {
+    storage?.setItem(CHIAVE_LANCIO, JSON.stringify(info));
+  } catch {
+    /* senza memoria si va col referrer */
+  }
+}
+export function lancioRicordato(storage = globalThis.sessionStorage) {
+  try {
+    const v = JSON.parse(storage?.getItem(CHIAVE_LANCIO) || "null");
+    return v && v.versione ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 // dentro il guscio Chrome mette il pacchetto come referrer (lo stesso
-// segno del rapporto dei guasti)
-export const nelGuscio = (referrer = globalThis.document?.referrer) => String(referrer || "").startsWith("android-app://");
+// segno del rapporto dei guasti), o la pagina se lo ricorda
+export const nelGuscio = (referrer = globalThis.document?.referrer, storage = globalThis.sessionStorage) =>
+  String(referrer || "").startsWith("android-app://") || !!lancioRicordato(storage);
 
 // il saluto arriva come `message` sulla finestra, con la porta attaccata:
 // l'origine e' quella del sito, verificata da Chrome con `use_as_origin`, o

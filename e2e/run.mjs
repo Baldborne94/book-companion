@@ -1841,6 +1841,11 @@ const SCENE = [
       await finche(() => d.p.getByText(/L'app Android installata è la 1099/).count(), 5000, "la versione del guscio non si legge");
       if (!(await d.p.getByText(/non ha verificato l'origine/).count())) throw new Error("l'esito dell'ultimo tentativo non si dice");
       if (!(await d.p.getByText("l=1;k=1;n=1;u=6;s=1;c=1;r=1;v=0;p=0;a=0;f=0;e=").count())) throw new Error("il resoconto grezzo non si vede");
+      // e una ricarica (l'aggiornamento automatico) non fa dimenticare il guscio
+      await d.p.goto(URL_APP);
+      await d.p.evaluate(() => { Object.defineProperty(document, "referrer", { configurable: true, get: () => "" }); });
+      await d.p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await finche(() => d.p.getByText(/L'app Android installata è la 1099/).count(), 5000, "dopo una ricarica la pagina ha dimenticato il guscio");
       return { guasti: d.guasti, nota: `sfondo ${m.lato.join("×")} intero, poi quello del libro aperto; esito del guscio letto` };
     },
   },

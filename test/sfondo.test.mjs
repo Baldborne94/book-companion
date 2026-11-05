@@ -4,7 +4,7 @@
 // decide quando parlargli e cosa mandargli.
 import { readFileSync } from "node:fs";
 import {
-  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, salutoDelGuscio, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, fraseEsito,
+  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, salutoDelGuscio, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, fraseEsito, ricordaLancio, lancioRicordato,
 } from "../src/lib/sfondo.js";
 
 const memoria = () => {
@@ -24,7 +24,16 @@ export default async function (t) {
   t.c("un altro messaggio non e' un saluto", !salutoDelGuscio({ data: "ciao", origin: SITO, ports: [porta] }, SITO));
   t.c("il pacchetto e' quello di assetlinks", JSON.parse(readFileSync("public/.well-known/assetlinks.json", "utf8"))[0].target.package_name === PACCHETTO);
   t.c("e il saluto e' quello che il guscio manda", readFileSync("android/SchermataDiBlocco.java", "utf8").includes(`"${SALUTO}"`));
-  t.c("nel guscio il referrer e' il pacchetto", nelGuscio(`android-app://${PACCHETTO}/`) && !nelGuscio("https://google.com/") && !nelGuscio(""));
+  const vuota = memoria();
+  t.c("nel guscio il referrer e' il pacchetto", nelGuscio(`android-app://${PACCHETTO}/`, vuota) && !nelGuscio("https://google.com/", vuota) && !nelGuscio("", vuota));
+  // dopo una ricarica il referrer e la query non ci sono piu': vale la memoria
+  const sess = memoria();
+  ricordaLancio(infoDalLancio("?guscio=1110&esito=l%3D1"), sess);
+  t.c("la pagina si ricorda chi l'ha aperta", nelGuscio("", sess) && lancioRicordato(sess)?.versione === "1110");
+  t.eq("…con l'esito", lancioRicordato(sess)?.esito?.l, "1");
+  ricordaLancio(infoDalLancio(""), sess);
+  t.eq("un avvio senza guscio non cancella la memoria", lancioRicordato(sess)?.versione, "1110");
+  t.c("senza memoria niente", !lancioRicordato(memoria()) && !lancioRicordato({ getItem: () => "{rotto" }));
 
   // ---- LA RISPOSTA ------------------------------------------------------
   t.eq("ok", JSON.stringify(risposta("grimorio:sfondo:ok")), '{"ok":true}');
