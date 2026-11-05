@@ -80,6 +80,7 @@ public final class SchermataDiBlocco {
     private static final long[] RITENTA_DOPO = { 1500, 4000, 10000 };
 
     private static Lanciatore lanciatore;
+    private static String ultimoGuasto;
     private static Uri origine;
     private static CustomTabsClient scaldato;
     private static boolean scaldando;
@@ -205,14 +206,30 @@ public final class SchermataDiBlocco {
             super.destroy();
         }
 
+        // PER NOME, E SE NO PER TIPO: l'APK 1104 ha detto «la sessione non si
+        // e' letta» — R8 aveva toccato il campo nonostante la regola sul
+        // nome. Il tipo invece non si nasconde: fra i campi della classe (e
+        // delle sue madri) uno solo e' una `CustomTabsSession`.
         @Nullable
         CustomTabsSession sessione() {
             try {
                 Field f = TwaLauncher.class.getDeclaredField("mSession");
                 f.setAccessible(true);
                 return (CustomTabsSession) f.get(this);
-            } catch (Throwable e) {
-                Log.w(TAG, "la sessione di Chrome non si legge: " + e);
+            } catch (Throwable perNome) {
+                for (Class<?> c = getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+                    for (Field f : c.getDeclaredFields()) {
+                        if (f.getType() != CustomTabsSession.class) continue;
+                        try {
+                            f.setAccessible(true);
+                            return (CustomTabsSession) f.get(this);
+                        } catch (Throwable perTipo) {
+                            Log.w(TAG, "la sessione non si legge per tipo: " + perTipo);
+                        }
+                    }
+                }
+                Log.w(TAG, "la sessione di Chrome non si legge: " + perNome);
+                ultimoGuasto = String.valueOf(perNome);
                 return null;
             }
         }
@@ -285,7 +302,9 @@ public final class SchermataDiBlocco {
             Diagnosi.segna(app, "e", origine == null ? "origine mancante" : "lanciatore mancante");
             return;
         }
-        Diagnosi.segna(app, "s", sessione() != null);
+        boolean letta = sessione() != null;
+        Diagnosi.segna(app, "s", letta);
+        if (!letta && ultimoGuasto != null) Diagnosi.segna(app, "e", ultimoGuasto);
         if (scaldato != null) {
             richiedi(app);
             return;

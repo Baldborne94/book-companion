@@ -72,11 +72,18 @@ export function firmaDelSito(certs, assetlinks) {
 //   - R8 (`minifyEnabled true`) rinominerebbe il campo privato della
 //     libreria che leggiamo per riflessione (`mSession`): una regola
 //     ProGuard gli tiene il nome.
+//
+// LA CLASSE INTERA, NON IL SOLO CAMPO: l'APK 1104 e' uscito con la regola
+// `-keepclassmembers` sul campo e il guscio ha risposto «la sessione non si
+// e' letta» — R8 fonde una classe con la sua unica figlia e rinomina quel
+// che la regola sul membro non protegge. Una classe tenuta (`-keep … { *; }`)
+// non si fonde, non si rinomina e tiene ogni campo; e le nostre si tengono
+// con lei, perche' sono quelle che la leggono.
 export const CAMPO_SESSIONE = "mSession";
-export const PROGUARD = `# la sessione di Chrome si legge per riflessione (android/SchermataDiBlocco.java)
--keepclassmembers class com.google.androidbrowserhelper.trusted.TwaLauncher {
-  androidx.browser.customtabs.CustomTabsSession ${CAMPO_SESSIONE};
-}
+export const regoleProguard = (pacchetto) => `# la sessione di Chrome si legge per riflessione (android/SchermataDiBlocco.java):
+# la classe intera, o R8 la fonde nella nostra e rinomina ${CAMPO_SESSIONE}
+-keep class com.google.androidbrowserhelper.trusted.TwaLauncher { *; }
+-keep class ${pacchetto}.** { *; }
 `;
 const PERMESSO = '<uses-permission android:name="android.permission.SET_WALLPAPER"/>';
 const SERVIZIO = '<service android:name="androidx.browser.customtabs.PostMessageService" android:exported="true"/>';
@@ -91,7 +98,8 @@ function unaVolta(testo, ancora, dove) {
   return prima;
 }
 
-export function cuciGuscio({ manifest, launcher, gradle }) {
+export function cuciGuscio({ manifest, launcher, gradle, pacchetto }) {
+  if (!pacchetto) throw new Error("cuci: manca il package dell'APK per le regole ProGuard");
   let m = manifest;
   if (!m.includes(PERMESSO)) {
     const i = unaVolta(m, "<application", "AndroidManifest.xml");
@@ -112,7 +120,7 @@ export function cuciGuscio({ manifest, launcher, gradle }) {
     const fine = i + "minifyEnabled true".length;
     g = `${g.slice(0, fine)}\n            ${REGOLE}${g.slice(fine)}`;
   }
-  return { manifest: m, launcher: l, gradle: g, proguard: PROGUARD };
+  return { manifest: m, launcher: l, gradle: g, proguard: regoleProguard(pacchetto) };
 }
 
 // il package dichiarato in ogni file di `android/` dev'essere quello
@@ -128,7 +136,7 @@ function cuci(assetlinks) {
     if (pacchettoDi(java) !== pacchetto) throw new Error(`cuci: android/${f} dichiara il package «${pacchettoDi(java)}», l'APK e' «${pacchetto}»`);
   }
   const vie = { manifest: "app/src/main/AndroidManifest.xml", launcher: `${cartella}/LauncherActivity.java`, gradle: "app/build.gradle" };
-  const cucito = cuciGuscio(Object.fromEntries(Object.entries(vie).map(([k, v]) => [k, readFileSync(v, "utf8")])));
+  const cucito = cuciGuscio({ ...Object.fromEntries(Object.entries(vie).map(([k, v]) => [k, readFileSync(v, "utf8")])), pacchetto });
   for (const [k, v] of Object.entries(vie)) writeFileSync(v, cucito[k]);
   writeFileSync("app/proguard-grimorio.pro", cucito.proguard);
   mkdirSync(cartella, { recursive: true });
