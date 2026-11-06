@@ -2880,52 +2880,87 @@ const SCENE = [
     },
   },
   {
-    nome: "le serie seguite su MangaDex: una serie si cerca e si segue, un capitolo scaricato è un CBZ nella biblioteca e si legge, il rimando si legge là",
+    nome: "le serie seguite su MangaDex: nel browser la sfida anti-bot si dice; nel guscio le richieste passano da lui, un capitolo scaricato è un CBZ nella biblioteca e si legge, il rimando si legge là",
     async fai({ browser }) {
       const chieste = [];
       // con un libro in casa: l'Ingresso vuoto non ha le stanze
       const d = await dispositivo(browser, {
         misura: TABLET,
-        mangadex: mangadexFinto(chieste),
+        mangadex: mangadexFinto(chieste, { soloGuscio: true }),
         prima: () => localStorage.setItem("bc_books", JSON.stringify([{ id: "m", title: "Mort", author: "Terry Pratchett", fileType: "epub", addedAt: 1 }])),
       });
       const { p } = d;
       await p.goto(URL_APP);
-      // la stanza sull'Ingresso, larga quanto la fila
-      await p.getByRole("button", { name: /Serie seguite/ }).click();
       const stanza = p.getByRole("dialog", { name: "Serie seguite" });
-      await stanza.getByText(/Non segui ancora nessuna serie/).waitFor({ timeout: 8000 });
+      // NEL BROWSER: MangaDex respinge la pagina, e la stanza lo dice (sul
+      // tablet diceva «la rete non risponde»)
+      await p.getByRole("button", { name: /Serie seguite/ }).click();
       await stanza.getByLabel("Cerca una serie").fill("berserk");
       await stanza.getByRole("button", { name: "Cerca" }).click();
-      await finche(() => stanza.getByRole("button", { name: "＋ Segui" }).count(), 8000, "la ricerca non trova Berserk");
+      await finche(() => stanza.getByText(/sfida anti-bot/).count(), 8000, "nel browser la stanza non dice la sfida anti-bot");
+      if (await stanza.getByText(/la rete non risponde/).count()) throw new Error("la stanza da' la colpa alla rete");
+      await stanza.getByRole("button", { name: "Chiudi le serie seguite" }).click();
+      // IL GUSCIO SALUTA, dice che sa chiedere, e fa da tramite: chiede col suo
+      // segno e rimanda il corpo a pezzi in base64, al contrario per provare
+      // che la pagina li rimette in fila
+      await p.evaluate(() => {
+        const canale = new MessageChannel();
+        window.__guscio = [];
+        canale.port1.onmessage = async (m) => {
+          if (typeof m.data !== "string" || !m.data.startsWith('{"rete"')) return;
+          const r = JSON.parse(m.data).rete;
+          window.__guscio.push(r.url);
+          try {
+            const risp = await fetch(r.url, { method: r.metodo, body: r.corpo, headers: { "x-dal-guscio": "1", ...(r.tipoCorpo ? { "content-type": r.tipoCorpo } : {}) } });
+            const byte = new Uint8Array(await risp.arrayBuffer());
+            let bin = "";
+            for (const x of byte) bin += String.fromCharCode(x);
+            const b64 = btoa(bin);
+            const PEZZO = 700;
+            const n = Math.max(1, Math.ceil(b64.length / PEZZO));
+            for (let k = n - 1; k >= 0; k--) canale.port1.postMessage(JSON.stringify({ rete: { id: r.id, i: k, n, stato: risp.status, tipo: risp.headers.get("content-type"), cache: risp.headers.get("x-cache"), dati: b64.slice(k * PEZZO, (k + 1) * PEZZO) } }));
+          } catch (err) {
+            canale.port1.postMessage(JSON.stringify({ rete: { id: r.id, errore: String(err) } }));
+          }
+        };
+        window.dispatchEvent(new MessageEvent("message", { data: "", origin: `android-app://${location.host}`, ports: [canale.port2] }));
+        canale.port1.postMessage("grimorio:pronto");
+        canale.port1.postMessage("grimorio:sa:rete");
+      });
+      await p.getByRole("button", { name: /Serie seguite/ }).click();
+      await stanza.getByLabel("Cerca una serie").fill("berserk");
+      await stanza.getByRole("button", { name: "Cerca" }).click();
+      await finche(() => stanza.getByRole("button", { name: "＋ Segui" }).count(), 8000, "nel guscio la ricerca non trova Berserk");
       if (!(await stanza.getByText(/Miura Kentarou · 1989 · inglese, italiano/).count())) throw new Error("la voce trovata non dice autore, anno e lingue");
+      // la copertina passa dal guscio anche lei, e si vede
+      await finche(() => stanza.locator("img").evaluateAll((xs) => xs.some((i) => i.naturalWidth === 32)), 8000, "la copertina non arriva dal guscio");
       await stanza.getByRole("button", { name: "＋ Segui" }).click();
       await stanza.getByText("✓ Seguita").waitFor({ timeout: 3000 });
-      // la serie seguita, coi capitoli letti dal feed
       await finche(() => stanza.getByText(/ultimo capitolo: 4/).count(), 8000, "la serie non dice l'ultimo capitolo");
       await stanza.getByRole("button", { name: /^Berserk/ }).click();
-      await finche(() => stanza.getByRole("button", { name: "⬇ Scarica", exact: true }).count(), 5000, "i capitoli ospitati non hanno il tasto per scaricare");
-      // il rimando si legge dove sta, senza promettere pagine
+      const scarica = stanza.getByRole("button", { name: "⬇ Scarica", exact: true });
+      await finche(() => scarica.count(), 5000, "i capitoli ospitati non hanno il tasto per scaricare");
       const la = stanza.getByRole("link", { name: "↗ Leggi là" });
       if ((await la.count()) !== 1 || !/mangaplus/.test(await la.getAttribute("href"))) throw new Error("il capitolo che e' solo un rimando non porta a MangaPlus");
-      if ((await stanza.getByRole("button", { name: "⬇ Scarica", exact: true }).count()) !== 3) throw new Error("i capitoli ospitati da scaricare non sono tre");
-      // si scarica il primo: la riga del lavoro, poi il CBZ in biblioteca
-      await stanza.getByRole("button", { name: "⬇ Scarica", exact: true }).last().click();
+      if ((await scarica.count()) !== 3) throw new Error("i capitoli ospitati da scaricare non sono tre");
+      await scarica.last().click();
       await finche(() => p.getByText(/📡 Scarico «Berserk 1»/).count(), 5000, "la riga del lavoro non compare");
       await finche(() => p.getByText(/1 capitolo scaricato nella biblioteca/).count(), 20000, "il capitolo non arriva in biblioteca");
       const libri = await p.evaluate(() => JSON.parse(localStorage.getItem("bc_books") || "[]"));
       const cbz = libri.find((b) => b.saga === "Berserk" && Number(b.sagaOrder) === 1);
       if (!cbz) throw new Error(`il CBZ non e' in biblioteca con la saga e il numero: ${JSON.stringify(libri.map((b) => [b.title, b.saga, b.sagaOrder]))}`);
       if (cbz.fileType !== "cbz" || cbz.tipo !== "manga" || cbz.verso !== "rtl" || cbz.title !== "The Black Swordsman") throw new Error(`la scheda del capitolo e' sbagliata: ${JSON.stringify(cbz)}`);
-      // ogni pagina e' stata segnalata al nodo, come MangaDex chiede
-      const rapporti = chieste.filter((c) => c.startsWith("POST https://api.mangadex.network/report")).length;
+      // nel guscio NIENTE va diretto a MangaDex: tutto porta il segno del guscio
+      const dirette = chieste.filter((c) => !c.endsWith("(guscio)"));
+      const dopo = dirette.filter((c) => !/title=berserk/.test(c));
+      if (dopo.length) throw new Error(`richieste dirette a MangaDex col guscio presente: ${JSON.stringify(dopo)}`);
+      // ogni pagina e' stata segnalata al nodo, dal guscio
+      const rapporti = chieste.filter((c) => c.startsWith("POST https://api.mangadex.network/report") && c.endsWith("(guscio)")).length;
       if (rapporti !== PAGINE_PER_CAPITOLO) throw new Error(`rapporti al nodo: ${rapporti}, attesi ${PAGINE_PER_CAPITOLO}`);
-      // ora il capitolo si legge da qui, e gli altri restano da scaricare
       await finche(() => stanza.getByRole("button", { name: "📖 Leggi" }).count(), 5000, "il capitolo scaricato non ha il tasto per leggerlo");
-      if ((await stanza.getByRole("button", { name: "⬇ Scarica", exact: true }).count()) !== 2) throw new Error("i capitoli ancora da scaricare non sono due");
+      if ((await scarica.count()) !== 2) throw new Error("i capitoli ancora da scaricare non sono due");
       await stanza.getByRole("button", { name: "📖 Leggi" }).click();
       await finche(() => p.evaluate(() => [...document.querySelectorAll("img")].some((i) => i.naturalWidth === 120 && i.naturalHeight === 180)), 15000, "il lettore dei fumetti non mostra la pagina scaricata");
-      // e l'Ingresso conta la serie
       await p.keyboard.press("Escape");
       await p.goto(URL_APP);
       await finche(() => p.getByText(/1 serie seguita/).count(), 8000, "l'Ingresso non conta la serie seguita");

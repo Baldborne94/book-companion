@@ -28,13 +28,17 @@ const CAPITOLI = [
 export const PAGINE_PER_CAPITOLO = 2;
 
 // `chieste` raccoglie gli indirizzi (e i rapporti delle pagine), per guardare
-// cosa ha chiesto l'app
-export const mangadexFinto = (chieste = []) => async (route) => {
+// cosa ha chiesto l'app. `soloGuscio`: come MangaDex vero, la sfida
+// anti-bot respinge le pagine web («Bot challenge not passed») e lascia
+// passare l'app — qui, chi porta il segno del guscio finto (`x-dal-guscio`)
+export const mangadexFinto = (chieste = [], { soloGuscio = false } = {}) => async (route) => {
   const req = route.request();
   const u = new URL(req.url());
-  chieste.push(`${req.method()} ${u.href}`);
   const headers = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "*" };
   if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers });
+  const dalGuscio = !!req.headers()["x-dal-guscio"];
+  chieste.push(`${req.method()} ${u.href}${dalGuscio ? " (guscio)" : ""}`);
+  if (soloGuscio && !dalGuscio) return route.fulfill({ status: 403, headers: { ...headers, "content-type": "text/plain" }, body: "Bot challenge not passed, refresh this page." });
   if (u.hostname === "api.mangadex.org") {
     if (u.pathname === "/manga") {
       const t = (u.searchParams.get("title") || "").toLowerCase();

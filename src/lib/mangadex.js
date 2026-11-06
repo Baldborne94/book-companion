@@ -56,7 +56,11 @@ export function nuovoRitmo({ intervallo = INTERVALLO, adesso = Date.now, dormi =
 // supera. Dal tablet del lettore la stanza diceva «la rete non risponde»,
 // che e' falso: si dice cos'e'. Le app con un nome loro (non un browser)
 // passano: e' la strada del guscio Android.
-export const SFIDA = "MangaDex non risponde alle pagine web: davanti alla sua API c'è una sfida anti-bot che lascia passare solo le app, non i siti. Dal browser questa stanza non può leggerlo";
+export const SFIDA = "MangaDex non risponde alle pagine web: davanti alla sua API c'è una sfida anti-bot che lascia passare solo le app, non i siti. Nel browser questa stanza non può leggerlo; nell'app Android (l'APK più recente) le richieste passano dal guscio";
+// UN RITMO SOLO PER TUTTA L'APP: la stanza che cerca e il lavoro che scarica
+// stanno nella stessa fila, o insieme sforerebbero le cinque al secondo
+export const ritmoComune = nuovoRitmo();
+
 export function spiega(e, inRete = typeof navigator === "undefined" || navigator.onLine !== false) {
   const m = String(e?.message || e || "");
   if (/429/.test(m)) return "MangaDex chiede di aspettare un momento (troppe richieste)";
