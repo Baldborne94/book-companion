@@ -3,7 +3,7 @@
 // dei fumetti dell'app, e la lista delle serie seguite con i capitoli nuovi.
 import {
   cerca, capitoli, pagine, scaricaCapitolo, comicInfo, nomeFile, nomeCapitolo, titoloDi, scegliCapitoli, daFeed, daRicerca,
-  nuovoRitmo, spiega, DNS_BLOCCA, indirizzoPrivato, segnalaPagina, leggiSerie, scriviSerie, segui, smetti, cambiaLingua, conCapitoli, visti, nuoviInTutto, fraseSerie,
+  nuovoRitmo, spiega, DNS_BLOCCA, indirizzoPrivato, GUSCIO_MUTO, respintaDalGuscio, segnalaPagina, leggiSerie, scriviSerie, segui, smetti, cambiaLingua, conCapitoli, visti, nuoviInTutto, fraseSerie,
   nellaBiblioteca, daScaricare, fraseScarico, copertinaUrl, PAGINA_FEED, COPERTINE, RAPPORTO, BASE, SFIDA,
 } from "../src/lib/mangadex.js";
 import { apriArchivio, leggiComicInfo, eComicInfo } from "../src/lib/fumetto.js";
@@ -145,6 +145,20 @@ export default async function (t) {
     ["10.0.0.1", "192.168.1.1", "172.31.255.1", "127.0.0.1", "0.0.0.0"].every((ip) => indirizzoPrivato(`Failed to connect to api.mangadex.org/${ip}:443`))
     && !["172.15.0.1", "172.32.0.1", "104.18.10.4", "11.0.0.1"].some((ip) => indirizzoPrivato(`Failed to connect to api.mangadex.org/${ip}:443`)));
   t.c("la strada per curarlo sta nel messaggio", /DNS privato/.test(DNS_BLOCCA) && /one\.one\.one\.one/.test(DNS_BLOCCA));
+  // la strada si dice: dal guscio un no e' di MangaDex all'app, dentro
+  // l'app senza saluto e' il guscio muto, nel browser e' la sfida
+  t.eq("un 403 passato dal guscio e' MangaDex che dice no all'app, con le sue parole", spiega(new Error("MangaDex: 403 Bot challenge not passed"), true, "guscio"), respintaDalGuscio("MangaDex: 403 Bot challenge not passed"));
+  t.c("…e il messaggio porta lo stato e le parole", /\(403 Bot challenge not passed\)/.test(respintaDalGuscio("MangaDex: 403 Bot challenge not passed")));
+  t.eq("dentro l'app senza saluto un Failed to fetch e' il guscio muto", spiega(new TypeError("Failed to fetch"), true, "muto"), GUSCIO_MUTO);
+  t.eq("…e anche un 403", spiega(new Error("MangaDex: 403"), true, "muto"), GUSCIO_MUTO);
+  t.c("il guscio muto dice di riaprire dall'icona", /riaprila dall'icona/.test(GUSCIO_MUTO));
+  t.eq("un guasto di rete passato dal guscio si dice com'e'", spiega(new Error("timeout"), true, "guscio"), "timeout");
+  t.eq("…anche quando Java lo chiama rete: non e' la sfida", spiega(new Error("Network is unreachable"), true, "guscio"), "Network is unreachable");
+  t.eq("…e il DNS che blocca resta il DNS anche dal guscio", spiega(new Error("Failed to connect to api.mangadex.org/172.16.0.4:443"), true, "guscio"), DNS_BLOCCA);
+  t.eq("…e con la rete spenta e' la rete anche dentro l'app", spiega(new TypeError("Failed to fetch"), false, "muto"), "la rete non risponde");
+  const respinto = await cerca("x", { fetch: async () => ({ ...risposta({}, 403), text: async () => "<html><h1>Bot challenge</h1>   not passed</html>" }), ritmo }).catch((e) => e.message);
+  t.eq("una risposta che dice no porta le sue prime parole, senza HTML", respinto, "MangaDex: 403 Bot challenge not passed");
+  t.eq("…e senza corpo resta lo stato", await cerca("x", { fetch: async () => risposta({}, 403), ritmo }).catch((e) => e.message), "MangaDex: 403");
   t.eq("…e con la rete spenta e' la rete", spiega(new TypeError("Failed to fetch"), false), "la rete non risponde");
   const errore = await cerca("x", { fetch: async () => risposta({ result: "error", errors: [{ detail: "Bad request" }] }), ritmo }).catch((e) => e.message);
   t.eq("un errore dell'API porta il suo dettaglio", errore, "Bad request");

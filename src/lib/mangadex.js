@@ -69,13 +69,21 @@ export const DNS_BLOCCA = "Il DNS di questa rete blocca MangaDex (lo manda a un 
 export const indirizzoPrivato = (m) =>
   /\/(?:10\.\d+|127\.\d+|0\.0|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.\d+\.\d+(?::\d+)?\b/.test(String(m || ""));
 
-export function spiega(e, inRete = typeof navigator === "undefined" || navigator.onLine !== false) {
+// DA QUALE STRADA: la stessa sfida si dice in tre modi. Sul tablet la
+// stanza diceva la sfida senza dire se la richiesta era passata dal guscio
+// o dalla pagina sola, e la diagnosi restava a meta'. `via`: "guscio" (la
+// rete del guscio c'era), "muto" (dentro l'app Android, ma il guscio non
+// ha salutato questa pagina), altrimenti il browser
+export const GUSCIO_MUTO = "Il guscio Android non ha salutato questa pagina, e da sola la pagina MangaDex non la lascia passare. Chiudi l'app del tutto (dalle app recenti) e riaprila dall'icona";
+export const respintaDalGuscio = (m) => `MangaDex ha respinto anche la richiesta dell'app (${m.replace(/^MangaDex:\s*/, "")}): non è la pagina, è MangaDex che dice no all'app`;
+
+export function spiega(e, inRete = typeof navigator === "undefined" || navigator.onLine !== false, via = null) {
   const m = String(e?.message || e || "");
   if (indirizzoPrivato(m)) return DNS_BLOCCA;
   if (/429/.test(m)) return "MangaDex chiede di aspettare un momento (troppe richieste)";
-  if (/Bot challenge|\b403\b/i.test(m)) return SFIDA;
+  if (/Bot challenge|\b403\b/i.test(m)) return via === "guscio" ? respintaDalGuscio(m) : via === "muto" ? GUSCIO_MUTO : SFIDA;
   if (/\b5\d\d\b/.test(m)) return "MangaDex non risponde in questo momento";
-  if (/Failed to fetch|NetworkError|network/i.test(m)) return inRete ? SFIDA : "la rete non risponde";
+  if (/Failed to fetch|NetworkError|network/i.test(m)) return !inRete ? "la rete non risponde" : via === "muto" ? GUSCIO_MUTO : via === "guscio" ? m : SFIDA;
   return m || "guasto sconosciuto";
 }
 
@@ -86,7 +94,13 @@ async function chiedi(url, { fetch, ritmo = (f) => f(), tentativi = 2 } = {}) {
     await new Promise((ok) => setTimeout(ok, dopo * 1000));
     return chiedi(url, { fetch, ritmo, tentativi: tentativi - 1 });
   }
-  if (!r.ok) throw new Error(`MangaDex: ${r.status}`);
+  if (!r.ok) {
+    // le prime parole della risposta dicono chi ha detto no (la sfida,
+    // un limite, un guasto): senza, la diagnosi da lontano resta a meta'
+    const corpo = await Promise.resolve(r.text?.()).catch(() => "");
+    const parole = String(corpo || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+    throw new Error(`MangaDex: ${r.status}${parole ? ` ${parole}` : ""}`);
+  }
   const json = await r.json();
   if (json?.result === "error") throw new Error(json.errors?.[0]?.detail || "MangaDex: errore");
   return json;
