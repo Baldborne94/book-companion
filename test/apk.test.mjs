@@ -52,7 +52,14 @@ export async function cucitura(t) {
   const pacchetto = pacchettoDelSito(assetlinks);
   const c = cuciGuscio({ manifest, launcher, gradle, pacchetto });
   t.c("il permesso di cambiare lo sfondo, prima di <application>", /SET_WALLPAPER"\/>[\s\S]*<application/.test(c.manifest));
-  t.c("e quello di leggere lo sfondo di prima, solo fino ad Android 12", /READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"\/>[\s\S]*<application/.test(c.manifest));
+  t.c("e quello di leggere lo sfondo di prima, fino ad Android 12", /READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"\/>[\s\S]*<application/.test(c.manifest));
+  // il tablet del lettore e' un Android 13 o piu': li' il permesso e' un altro,
+  // e il guscio sceglie quello giusto a seconda dell'Android che trova
+  t.c("…e da Android 13 quello delle foto", /READ_MEDIA_IMAGES"\/>[\s\S]*<application/.test(c.manifest));
+  const blocco0 = readFileSync("android/SchermataDiBlocco.java", "utf8");
+  t.c("il guscio chiede READ_MEDIA_IMAGES da Android 13 e READ_EXTERNAL_STORAGE prima", /SDK_INT >= Build\.VERSION_CODES\.TIRAMISU \? "android\.permission\.READ_MEDIA_IMAGES" : Manifest\.permission\.READ_EXTERNAL_STORAGE/.test(blocco0) && blocco0.includes("checkSelfPermission(permessoLettura())") && readFileSync("android/PermessoActivity.java", "utf8").includes("SchermataDiBlocco.permessoLettura()"));
+  t.c("…e su Android 13 non salta piu' la lettura in silenzio", !/TIRAMISU\) return true;/.test(blocco0) && !/TIRAMISU && !leggibile/.test(blocco0));
+  t.c("…e il lancio dice la versione di Android, che lo user agent nasconde", /appendQueryParameter\("android", String\.valueOf\(Build\.VERSION\.SDK_INT\)\)/.test(blocco0));
   t.c("il servizio dei messaggi, dentro <application>", /<application[\s\S]*PostMessageService"[^>]*android:exported="true"[\s\S]*<\/application>/.test(c.manifest));
   t.c("e l'attivita' trasparente del permesso, non esportata, dentro <application>", /<application[\s\S]*<activity android:name="\.PermessoActivity" android:exported="false"[^>]*Theme\.Translucent[\s\S]*<\/application>/.test(c.manifest) && readdirSync("android").includes("PermessoActivity.java"));
   t.c("la LauncherActivity generata estende la nostra", c.launcher.includes("extends GuscioActivity") && !c.launcher.includes("trusted.LauncherActivity"));

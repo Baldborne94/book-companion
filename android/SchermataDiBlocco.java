@@ -118,7 +118,17 @@ public final class SchermataDiBlocco {
     // come prima. Senza permesso la copertina non si mette: metterla
     // coprirebbe per sempre quel che si voleva salvare.
     static final String RIMESSO = "grimorio:sfondo:rimesso";
-    static final String PERMESSO_LETTURA = Manifest.permission.READ_EXTERNAL_STORAGE;
+    // IL PERMESSO GIUSTO PER L'ANDROID CHE C'E'. Fino ad Android 12 lo sfondo
+    // si legge con READ_EXTERNAL_STORAGE; da Android 13 con READ_MEDIA_IMAGES
+    // («foto e contenuti multimediali»). Il tablet del lettore e' un Android
+    // 13 o piu' — la schermata delle impostazioni diceva «nessuna
+    // autorizzazione richiesta», perche' il primo permesso era dichiarato
+    // solo fino al 12 — e lo user agent di Chrome scrive «Android 10» su
+    // ogni dispositivo: per un anno si e' creduto a quello.
+    static String permessoLettura() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? "android.permission.READ_MEDIA_IMAGES" : Manifest.permission.READ_EXTERNAL_STORAGE;
+    }
+    private static String ultimoGuastoLettura;
     private static final String PREFS_SFONDO = "grimorio_sfondo";
     private static final String CHIEDI_LETTURA = "chiedi_lettura";
     // UN NO VALE PER QUESTA APERTURA DELL'APP, NON PER SEMPRE: gli APK 1126
@@ -234,7 +244,8 @@ public final class SchermataDiBlocco {
     static Uri conDiagnosi(Activity attivita, Uri indirizzo) {
         if (indirizzo == null) return null;
         try {
-            Uri.Builder b = indirizzo.buildUpon().appendQueryParameter("guscio", String.valueOf(versione(attivita)));
+            Uri.Builder b = indirizzo.buildUpon().appendQueryParameter("guscio", String.valueOf(versione(attivita)))
+                    .appendQueryParameter("android", String.valueOf(Build.VERSION.SDK_INT));
             String esito = Diagnosi.leggiEAzzera(attivita);
             if (esito != null) b.appendQueryParameter("esito", esito);
             return b.build();
@@ -538,15 +549,13 @@ public final class SchermataDiBlocco {
     }
 
     private static boolean leggibile(Context c) {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
-                && c.checkSelfPermission(PERMESSO_LETTURA) == PackageManager.PERMISSION_GRANTED;
+        return c.checkSelfPermission(permessoLettura()) == PackageManager.PERMISSION_GRANTED;
     }
 
     // il permesso si chiede solo se una copertina l'ha chiesto e in questa
     // apertura dell'app il lettore non ha gia' detto di no
     static boolean permessoDaChiedere(Context c) {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU && !leggibile(c)
-                && prefsSfondo(c).getBoolean(CHIEDI_LETTURA, false) && !negataQui;
+        return !leggibile(c) && prefsSfondo(c).getBoolean(CHIEDI_LETTURA, false) && !negataQui;
     }
 
     static boolean permessoChiestoGia(Context c) {
@@ -565,7 +574,7 @@ public final class SchermataDiBlocco {
     static String statoPermesso(Context c) {
         SharedPreferences p = prefsSfondo(c);
         return "w=" + (leggibile(c) ? "1" : "0") + ";x=" + (p.getBoolean(CHIEDI_LETTURA, false) ? "1" : "0")
-                + ";y=" + (negataQui ? "1" : "0");
+                + ";y=" + (negataQui ? "1" : "0") + (ultimoGuastoLettura != null ? ";g=" + ultimoGuastoLettura : "");
     }
 
     // La pagina dell'app nelle impostazioni di Android, dove il permesso si
@@ -644,7 +653,6 @@ public final class SchermataDiBlocco {
     private static boolean salvaPrima(Context app, WallpaperManager wm) throws Exception {
         File f = filePrima(app);
         if (f.exists()) return true;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) return true;
         SharedPreferences p = prefsSfondo(app);
         if (!leggibile(app)) {
             p.edit().putBoolean(CHIEDI_LETTURA, true).commit();
@@ -655,6 +663,9 @@ public final class SchermataDiBlocco {
             pfd = wm.getWallpaperFile(WallpaperManager.FLAG_LOCK);
             if (pfd == null) pfd = wm.getWallpaperFile(WallpaperManager.FLAG_SYSTEM);
         } catch (SecurityException e) {
+            // il permesso c'e' ma Android vuole dell'altro: si dice quale
+            ultimoGuastoLettura = String.valueOf(e.getMessage());
+            Diagnosi.segna(app, "e", "lettura dello sfondo: " + e.getMessage());
             p.edit().putBoolean(CHIEDI_LETTURA, true).commit();
             return false;
         }

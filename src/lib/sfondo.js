@@ -261,17 +261,27 @@ export function infoDalLancio(search) {
   try {
     q = new URLSearchParams(String(search || ""));
   } catch {
-    return { versione: null, esito: null };
+    return { versione: null, android: null, esito: null };
   }
   const versione = /^\d+$/.test(q.get("guscio") || "") ? q.get("guscio") : null;
+  // `android` e' l'API (29 = Android 10, 33 = 13, 34 = 14): lo user agent
+  // di Chrome dice «Android 10» su ogni dispositivo, e solo il guscio sa
+  const android = /^\d+$/.test(q.get("android") || "") ? Number(q.get("android")) : null;
   const grezzo = q.get("esito");
-  if (!grezzo) return { versione, esito: null };
+  if (!grezzo) return { versione, android, esito: null };
   const esito = { grezzo };
   for (const pezzo of grezzo.split(";")) {
     const i = pezzo.indexOf("=");
     if (i > 0) esito[pezzo.slice(0, i)] = pezzo.slice(i + 1);
   }
-  return { versione, esito };
+  return { versione, android, esito };
+}
+
+export function nomeAndroid(api) {
+  const n = Number(api);
+  if (!Number.isInteger(n) || n < 21) return null;
+  const NOMI = { 21: "5", 22: "5.1", 23: "6", 24: "7", 25: "7.1", 26: "8", 27: "8.1", 28: "9", 29: "10", 30: "11", 31: "12", 32: "12L", 33: "13", 34: "14", 35: "15", 36: "16" };
+  return `Android ${NOMI[n] || `API ${n}`}`;
 }
 
 // I passi, nell'ordine in cui avvengono: il primo che manca e' dove ci si

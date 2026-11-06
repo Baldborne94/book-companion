@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { C, F, R, FONT_TITLE, px } from "../data/constants.js";
 import { leggiSalvaschermo, scriviSalvaschermo, SCELTE_COPERTINA, SCELTE_SPEGNI, fraseMinuti } from "../lib/salvaschermo.js";
-import { nelGuscio, fraseEsito, messaggiVisti, fraseMessaggi, fraseInvio, LATO_MAX, STRADA_PERMESSO } from "../lib/sfondo.js";
+import { nelGuscio, fraseEsito, messaggiVisti, fraseMessaggi, fraseInvio, LATO_MAX, STRADA_PERMESSO, nomeAndroid } from "../lib/sfondo.js";
 import { getCover, getFile } from "../lib/bookStore.js";
 import { copertinaOriginale } from "../lib/copertina.js";
 import { copertinaGrande } from "../lib/copertinaGrande.js";
@@ -180,6 +180,7 @@ export function SezioneSfondo({ pronto, info = null, invio = null, acceso, onCam
                 fuori non si vedeva se la pagina avesse mandato o il guscio
                 ascoltato */}
             {(acceso || invio) && <span style={{ display: "block", marginTop: 4, fontSize: F.minuscolo, opacity: 0.7 }}>{fraseInvio(invio)}</span>}
+            {info?.versione && <span style={{ display: "block", marginTop: 2, fontSize: F.minuscolo, opacity: 0.7 }}>Guscio {info.versione}{nomeAndroid(info.android) ? ` · ${nomeAndroid(info.android)}` : ""}</span>}
           </p>
         </>
       ) : (

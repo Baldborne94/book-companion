@@ -36,14 +36,14 @@ public class PermessoActivity extends Activity {
         // concede a mano, e la copertina si mette senza lo sfondo di prima
         if (getIntent().getBooleanExtra(SchermataDiBlocco.DA_COPERTINA, false)
                 && SchermataDiBlocco.permessoChiestoGia(this)
-                && !shouldShowRequestPermissionRationale(SchermataDiBlocco.PERMESSO_LETTURA)) {
+                && !shouldShowRequestPermissionRationale(SchermataDiBlocco.permessoLettura())) {
             SchermataDiBlocco.permessoRisposto(this, new int[] { android.content.pm.PackageManager.PERMISSION_DENIED });
             SchermataDiBlocco.apriImpostazioniApp(this);
             SchermataDiBlocco.dopoIlPermesso(this);
             finish();
             return;
         }
-        requestPermissions(new String[] { SchermataDiBlocco.PERMESSO_LETTURA }, PERMESSO);
+        requestPermissions(new String[] { SchermataDiBlocco.permessoLettura() }, PERMESSO);
     }
 
     @Override
