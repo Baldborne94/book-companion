@@ -98,7 +98,9 @@ export const regoleProguard = (pacchetto) => `# la sessione di Chrome si legge p
 `;
 // e quello di leggere lo sfondo di prima, che dal 13 non serve piu' a niente
 const PERMESSO = '<uses-permission android:name="android.permission.SET_WALLPAPER"/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>';
-const SERVIZIO = '<service android:name="androidx.browser.customtabs.PostMessageService" android:exported="true"/>';
+// il servizio dei messaggi di Chrome, e l'attivita' trasparente che chiede
+// il permesso di leggere lo sfondo sopra la pagina (`android/PermessoActivity.java`)
+const SERVIZIO = '<service android:name="androidx.browser.customtabs.PostMessageService" android:exported="true"/>\n    <activity android:name=".PermessoActivity" android:exported="false" android:theme="@android:style/Theme.Translucent.NoTitleBar"/>';
 const BASE_LIBRERIA = "extends com.google.androidbrowserhelper.trusted.LauncherActivity";
 const BASE_NOSTRA = "extends GuscioActivity";
 const REGOLE = "proguardFiles 'proguard-grimorio.pro'";

@@ -54,6 +54,7 @@ export async function cucitura(t) {
   t.c("il permesso di cambiare lo sfondo, prima di <application>", /SET_WALLPAPER"\/>[\s\S]*<application/.test(c.manifest));
   t.c("e quello di leggere lo sfondo di prima, solo fino ad Android 12", /READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"\/>[\s\S]*<application/.test(c.manifest));
   t.c("il servizio dei messaggi, dentro <application>", /<application[\s\S]*PostMessageService"[^>]*android:exported="true"[\s\S]*<\/application>/.test(c.manifest));
+  t.c("e l'attivita' trasparente del permesso, non esportata, dentro <application>", /<application[\s\S]*<activity android:name="\.PermessoActivity" android:exported="false"[^>]*Theme\.Translucent[\s\S]*<\/application>/.test(c.manifest) && readdirSync("android").includes("PermessoActivity.java"));
   t.c("la LauncherActivity generata estende la nostra", c.launcher.includes("extends GuscioActivity") && !c.launcher.includes("trusted.LauncherActivity"));
   t.c("le regole ProGuard entrano nel build di release", /minifyEnabled true\s*\n\s*proguardFiles 'proguard-grimorio.pro'/.test(c.gradle));
   // la classe INTERA (l'APK 1104 e' uscito col solo campo, e R8 l'ha toccato)

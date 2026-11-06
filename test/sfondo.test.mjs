@@ -33,9 +33,13 @@ export default async function (t) {
   annotaMessaggio({ origin: SITO, data: "", ports: [porta] }, m2);
   annotaMessaggio({ origin: "", data: { a: 1 }, ports: [] }, m2);
   for (let i = 0; i < 5; i++) annotaMessaggio({ origin: "x", data: "y".repeat(80), ports: [porta, porta] }, m2);
+  // il rumore del polyfill non entra: senza porta e senza «grimorio» non e' del guscio
+  t.eq("un messaggio senza porta ne' parola del guscio non si annota", annotaMessaggio({ origin: SITO, data: "setImmediate$0.5$46", ports: [] }, m2), null);
+  t.c("…ma il saluto scritto dentro si', anche senza porta", !!annotaMessaggio({ origin: SITO, data: "grimorio:pronto", ports: [] }, m2));
   const visti = messaggiVisti(m2);
   t.eq("si tengono gli ultimi cinque", visti.length, 5);
-  t.c("i dati lunghi si accorciano", visti[4].d.length === 40 && visti[4].p === 2);
+  t.c("i dati lunghi si accorciano", visti[3].d.length === 40 && visti[3].p === 2);
+  t.eq("e il rumore non ha preso posto", visti[4].d, "grimorio:pronto");
   t.c("la frase li dice tutti", /x · «yyyy/.test(fraseMessaggi(visti)) && /2 porte/.test(fraseMessaggi(visti)));
   t.eq("senza messaggi lo si dice", fraseMessaggi([]), "nessun messaggio visto");
   t.c("una memoria rotta non esplode", messaggiVisti({ getItem: () => "{rotto" }).length === 0);
