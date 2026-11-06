@@ -104,11 +104,11 @@ Alle domande di `init`:
   è il dominio di Vercel rovesciato: NON accettarlo.
 - **Short name**: `Grimorio` (massimo 12 caratteri: «Book Companion» ne
   ha 14 e Bubblewrap propone «BkC»). Nel `twa-manifest.json` il campo si
-  chiama `launcherName`; l'etichetta sotto l'icona però la riscrive
-  `apk.mjs cuci` nelle risorse del progetto generato (`ETICHETTA`,
-  «Book Companion»: Android non ha il tetto dei dodici caratteri). Il
-  lettore l'ha chiesto: «invece di Grimorio chiama l'app Book Companion».
-  «Grimorio» resta il nome interno del canale (`grimorio:…`) e del log.
+  chiama `launcherName`, e lì `apk.mjs` (`guscio`, `ETICHETTA`) scrive
+  «Book Companion»: Android non ha il tetto dei dodici caratteri, e il
+  core di Bubblewrap controlla solo che il nome ci sia. Il lettore l'ha
+  chiesto: «invece di Grimorio chiama l'app Book Companion». «Grimorio»
+  resta il nome interno del canale (`grimorio:…`) e del log.
 - Una risposta sbagliata si corregge dopo, senza rifare `init`: in
   `twa-manifest.json`, poi `bubblewrap update` e `bubblewrap build`. I campi
   non si chiamano come le domande: il nome corto è **`launcherName`**,
