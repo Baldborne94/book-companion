@@ -174,9 +174,10 @@ export function SezioneSfondo({ pronto, info = null, invio = null, acceso, onCam
             quando cambi libro. Spegnendolo, la schermata di blocco torna allo sfondo che avevi: la prima volta
             l'app chiede il permesso di leggerlo (foto e contenuti) con una finestra sopra la pagina; se non
             compare, chiudi l'app del tutto e riaprila dall'icona, o concedilo in {stradaPermesso(info?.android)}
-            {Number(info?.android) >= 34 ? " (se Android chiede quali foto, scegli tutte)" : ""}. Senza permesso
+            {Number(info?.android) >= 33 ? " (da Android 13 serve l'accesso a tutti i file: un interruttore, non una finestra)" : ""}. Senza permesso
             la copertina va lo stesso, e spegnendo Android rimette il suo. Dopo un permesso cambiato dalle
-            impostazioni Android l'app va chiusa del tutto e riaperta dall'icona.
+            impostazioni Android l'app va chiusa del tutto e riaperta dall'icona. La copertina si mette e si
+            toglie solo a tablet in piedi: Android la ritaglia per lo schermo com'è in quel momento.
             {/* l'ultima copertina mandata e cosa ne ha detto il guscio: sul
                 tablet la schermata di blocco mostrava il libro di prima, e da
                 fuori non si vedeva se la pagina avesse mandato o il guscio

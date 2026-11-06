@@ -19,6 +19,7 @@ import androidx.annotation.Nullable;
 // sola (`dopoIlPermesso`).
 public class PermessoActivity extends Activity {
     private static final int PERMESSO = 1;
+    private static final int TUTTI_I_FILE = 2;
 
     @Override
     protected void onCreate(@Nullable Bundle stato) {
@@ -26,6 +27,17 @@ public class PermessoActivity extends Activity {
         if (stato != null) return;
         if (!SchermataDiBlocco.permessoDaChiedere(this)) {
             finish();
+            return;
+        }
+        // DA ANDROID 13 non c'e' una finestra: l'«accesso a tutti i file» e' un
+        // interruttore nelle impostazioni, si va li' e si aspetta il ritorno
+        if (SchermataDiBlocco.tuttiIFile()) {
+            try {
+                startActivityForResult(SchermataDiBlocco.intentoTuttiIFile(this), TUTTI_I_FILE);
+            } catch (Throwable e) {
+                SchermataDiBlocco.permessoRispostoDalleImpostazioni(this);
+                finish();
+            }
             return;
         }
         // «NON CHIEDERE PIU'»: Android non mostra piu' la finestra e risponde
@@ -44,6 +56,16 @@ public class PermessoActivity extends Activity {
             return;
         }
         requestPermissions(new String[] { SchermataDiBlocco.permessoLettura() }, PERMESSO);
+    }
+
+    @Override
+    protected void onActivityResult(int codice, int esito, android.content.Intent dati) {
+        super.onActivityResult(codice, esito, dati);
+        if (codice != TUTTI_I_FILE) return;
+        SchermataDiBlocco.permessoRispostoDalleImpostazioni(this);
+        SchermataDiBlocco.dopoIlPermesso(this);
+        setResult(RESULT_OK);
+        finish();
     }
 
     @Override

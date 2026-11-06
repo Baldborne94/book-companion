@@ -53,12 +53,19 @@ export async function cucitura(t) {
   const c = cuciGuscio({ manifest, launcher, gradle, pacchetto });
   t.c("il permesso di cambiare lo sfondo, prima di <application>", /SET_WALLPAPER"\/>[\s\S]*<application/.test(c.manifest));
   t.c("e quello di leggere lo sfondo di prima, fino ad Android 12", /READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"\/>[\s\S]*<application/.test(c.manifest));
-  // il tablet del lettore e' un Android 13 o piu': li' il permesso e' un altro,
-  // e il guscio sceglie quello giusto a seconda dell'Android che trova
-  t.c("…e da Android 13 quello delle foto", /READ_MEDIA_IMAGES"\/>[\s\S]*<application/.test(c.manifest));
+  // il tablet del lettore e' un Android 14: li' lo sfondo si legge solo con
+  // l'«accesso a tutti i file» (StorageManager.checkPermissionReadImages guarda
+  // MANAGE_EXTERNAL_STORAGE e poi READ_EXTERNAL_STORAGE, che a targetSdk 36
+  // non si concede piu'; «Foto e video» non bastava, APK 1138)
+  t.c("…e da Android 13 l'accesso a tutti i file", /MANAGE_EXTERNAL_STORAGE"\/>[\s\S]*<application/.test(c.manifest) && !/READ_MEDIA_IMAGES/.test(c.manifest));
   const blocco0 = readFileSync("android/SchermataDiBlocco.java", "utf8");
-  t.c("il guscio chiede READ_MEDIA_IMAGES da Android 13 e READ_EXTERNAL_STORAGE prima", /SDK_INT >= Build\.VERSION_CODES\.TIRAMISU \? "android\.permission\.READ_MEDIA_IMAGES" : Manifest\.permission\.READ_EXTERNAL_STORAGE/.test(blocco0) && blocco0.includes("checkSelfPermission(permessoLettura())") && readFileSync("android/PermessoActivity.java", "utf8").includes("SchermataDiBlocco.permessoLettura()"));
+  const permesso0 = readFileSync("android/PermessoActivity.java", "utf8");
+  t.c("il guscio da Android 13 guarda l'accesso a tutti i file, prima READ_EXTERNAL_STORAGE", /tuttiIFile\(\) \{\s*return Build\.VERSION\.SDK_INT >= Build\.VERSION_CODES\.TIRAMISU;/.test(blocco0) && /if \(tuttiIFile\(\)\) return android\.os\.Environment\.isExternalStorageManager\(\);/.test(blocco0) && /checkSelfPermission\(permessoLettura\(\)\)/.test(blocco0));
+  t.c("…e la finestra del permesso da Android 13 porta all'interruttore e aspetta il ritorno", /if \(SchermataDiBlocco\.tuttiIFile\(\)\) \{[\s\S]*startActivityForResult\(SchermataDiBlocco\.intentoTuttiIFile\(this\), TUTTI_I_FILE\)/.test(permesso0) && /onActivityResult[\s\S]*codice != TUTTI_I_FILE[\s\S]*permessoRispostoDalleImpostazioni\(this\);\s*SchermataDiBlocco\.dopoIlPermesso\(this\)/.test(permesso0) && blocco0.includes("ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION"));
   t.c("…e su Android 13 non salta piu' la lettura in silenzio", !/TIRAMISU\) return true;/.test(blocco0) && !/TIRAMISU && !leggibile/.test(blocco0));
+  // a tablet sdraiato Android ritaglia lo sfondo per lo schermo com'e': ne' si mette ne' si rimette
+  t.c("a tablet sdraiato lo sfondo non si mette", /if \(sdraiato\(app\)\) throw new IllegalStateException\(SDRAIATO\);\s*boolean salvato = salvaPrima\(app, wm\);/.test(blocco0));
+  t.c("…e non si rimette", /if \(prima\.exists\(\) && sdraiato\(app\)\) throw new IllegalStateException\(SDRAIATO\);/.test(blocco0) && /getRealMetrics\(m\);\s*return m\.widthPixels > m\.heightPixels;/.test(blocco0));
   t.c("…e il lancio dice la versione di Android, che lo user agent nasconde", /appendQueryParameter\("android", String\.valueOf\(Build\.VERSION\.SDK_INT\)\)/.test(blocco0));
   t.c("il servizio dei messaggi, dentro <application>", /<application[\s\S]*PostMessageService"[^>]*android:exported="true"[\s\S]*<\/application>/.test(c.manifest));
   t.c("e l'attivita' trasparente del permesso, non esportata, dentro <application>", /<application[\s\S]*<activity android:name="\.PermessoActivity" android:exported="false"[^>]*Theme\.Translucent[\s\S]*<\/application>/.test(c.manifest) && readdirSync("android").includes("PermessoActivity.java"));

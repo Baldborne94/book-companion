@@ -30,7 +30,7 @@ import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, get
 import { libroDellaScheda } from "./lib/schedaMusica.js";
 import { leggiSalvaschermo, fase, prossimoCambio } from "./lib/salvaschermo.js";
 import Salvaschermo, { SezioneSalvaschermo, SezioneSfondo } from "./components/Salvaschermo.jsx";
-import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, dopoIlSaluto, SALUTO, CIAO, TOGLI, LATO_MAX, fraseSenzaPrima } from "./lib/sfondo.js";
+import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, dopoIlSaluto, SALUTO, CIAO, TOGLI, LATO_MAX, fraseSenzaPrima, inPiedi } from "./lib/sfondo.js";
 import { ascoltaCopertine } from "./lib/miniature.js";
 import { copertinaGrande, dimenticaGrande } from "./lib/copertinaGrande.js";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux } from "./lib/bookStore.js";
@@ -984,6 +984,23 @@ export default function App() {
     return i.versione ? i : lancioRicordato() || i;
   });
   const [sfondo, setSfondo] = useState(leggiSfondo);
+  // IL VERSO DEL TABLET: lo sfondo si manda e si toglie solo in piedi
+  // (Android lo ritaglia per lo schermo com'e' in quel momento), e quando
+  // torna in piedi si rimanda quel che aspettava
+  const [verso, setVerso] = useState(() => inPiedi());
+  const togliInAttesa = useRef(false);
+  useEffect(() => {
+    const mq = window.matchMedia?.("(orientation: portrait)");
+    const aggiorna = () => setVerso(inPiedi());
+    mq?.addEventListener?.("change", aggiorna);
+    window.addEventListener("orientationchange", aggiorna);
+    window.addEventListener("resize", aggiorna);
+    return () => {
+      mq?.removeEventListener?.("change", aggiorna);
+      window.removeEventListener("orientationchange", aggiorna);
+      window.removeEventListener("resize", aggiorna);
+    };
+  }, []);
   const sfondoMandato = useRef(null);
   // la copertina che il guscio ha detto di aver messo: quella non si rimanda
   const sfondoConfermato = useRef(null);
@@ -1066,11 +1083,23 @@ export default function App() {
     sfondoConfermato.current = null;
     confermaSfondo.current = acceso;
     if (!acceso && guscio) {
-      guscio.porta.postMessage(TOGLI);
-      segnaInvio({ quando: Date.now(), esito: "togli" });
+      if (!inPiedi()) {
+        togliInAttesa.current = true;
+        segnaInvio({ quando: Date.now(), esito: "togli sdraiato" });
+      } else {
+        guscio.porta.postMessage(TOGLI);
+        segnaInvio({ quando: Date.now(), esito: "togli" });
+      }
       setInvii((v) => v + 1);
     }
   }
+  useEffect(() => {
+    if (!verso || !togliInAttesa.current || !guscio) return;
+    togliInAttesa.current = false;
+    guscio.porta.postMessage(TOGLI);
+    segnaInvio({ quando: Date.now(), esito: "togli" });
+    setInvii((v) => v + 1);
+  }, [verso, guscio]);
   const swUpdate = useRef(null);
   const [updateReady, setUpdateReady] = useState(false);
   const flags = useRef({ reading: false, updateReady: false, lavoroLungo: false });
@@ -1942,6 +1971,7 @@ export default function App() {
       if (!blob) return segna("senza copertina");
       const chiave = `${idScheda}:${blob.size}:${copVScheda}`;
       if (sfondoMandato.current === chiave) return;
+      if (!inPiedi()) return segna("sdraiato");
       const base64 = await copertinaPerSchermo(blob, misuraSchermo({ width: window.screen?.width, height: window.screen?.height, dpr: window.devicePixelRatio || 1 }));
       if (!vivo) return;
       if (!base64) return segna("illeggibile");
@@ -1955,7 +1985,7 @@ export default function App() {
     return () => {
       vivo = false;
     };
-  }, [guscio, sfondo, idScheda, copVScheda]);
+  }, [guscio, sfondo, idScheda, copVScheda, verso]);
   const nextBook = readingBook ? nextInSaga(readingBook, books) : null;
   flags.current.reading = !!readingBook;
   flags.current.lavoroLungo = !!(lex || fan || imm || ill || wikt || lavoro || importo || hdd);

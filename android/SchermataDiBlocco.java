@@ -119,15 +119,42 @@ public final class SchermataDiBlocco {
     // coprirebbe per sempre quel che si voleva salvare.
     static final String RIMESSO = "grimorio:sfondo:rimesso";
     // IL PERMESSO GIUSTO PER L'ANDROID CHE C'E'. Fino ad Android 12 lo sfondo
-    // si legge con READ_EXTERNAL_STORAGE; da Android 13 con READ_MEDIA_IMAGES
-    // («foto e contenuti multimediali»). Il tablet del lettore e' un Android
-    // 13 o piu' — la schermata delle impostazioni diceva «nessuna
-    // autorizzazione richiesta», perche' il primo permesso era dichiarato
-    // solo fino al 12 — e lo user agent di Chrome scrive «Android 10» su
-    // ogni dispositivo: per un anno si e' creduto a quello.
-    static String permessoLettura() {
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? "android.permission.READ_MEDIA_IMAGES" : Manifest.permission.READ_EXTERNAL_STORAGE;
+    // si legge con READ_EXTERNAL_STORAGE (una finestra). Da Android 13
+    // `StorageManager.checkPermissionReadImages`, che il servizio degli sfondi
+    // chiama per chi non e' di sistema, guarda PRIMA l'«accesso a tutti i
+    // file» (MANAGE_EXTERNAL_STORAGE) e POI READ_EXTERNAL_STORAGE — che a
+    // un'app compilata per Android 13+ (questa: targetSdk 36) non si
+    // concede piu'. «Foto e video» (READ_MEDIA_IMAGES, APK 1138) non basta:
+    // il tablet ha risposto «Permission READ_EXTERNAL_STORAGE denied» col
+    // permesso delle foto concesso. L'accesso a tutti i file non e' una
+    // finestra ma un interruttore nelle impostazioni: `PermessoActivity` ci
+    // porta e aspetta il ritorno. Il tablet del lettore e' un Android 14; lo
+    // user agent di Chrome scrive «Android 10» su ogni dispositivo.
+    static boolean tuttiIFile() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU;
     }
+    static String permessoLettura() {
+        return Manifest.permission.READ_EXTERNAL_STORAGE;
+    }
+    static Intent intentoTuttiIFile(Context c) {
+        Intent i = new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + c.getPackageName()));
+        if (i.resolveActivity(c.getPackageManager()) == null) i = new Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+        return i;
+    }
+    // IL TABLET SDRAIATO: Android ritaglia lo sfondo per lo schermo com'e' nel
+    // momento in cui lo mette, e un'immagine in piedi messa a tablet sdraiato
+    // torna in piedi ingrandita tre volte («non si capisce niente»). Si mette
+    // e si rimette solo a tablet in piedi; la pagina aspetta il verso giusto.
+    static boolean sdraiato(Context c) {
+        try {
+            android.util.DisplayMetrics m = new android.util.DisplayMetrics();
+            c.getSystemService(android.hardware.display.DisplayManager.class).getDisplay(android.view.Display.DEFAULT_DISPLAY).getRealMetrics(m);
+            return m.widthPixels > m.heightPixels;
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+    static final String SDRAIATO = "il tablet è sdraiato: Android ritaglia lo sfondo per lo schermo com'è adesso. Rimettilo in piedi e riprova";
     private static String ultimoGuastoLettura;
     private static final String PREFS_SFONDO = "grimorio_sfondo";
     private static final String CHIEDI_LETTURA = "chiedi_lettura";
@@ -549,6 +576,7 @@ public final class SchermataDiBlocco {
     }
 
     private static boolean leggibile(Context c) {
+        if (tuttiIFile()) return android.os.Environment.isExternalStorageManager();
         return c.checkSelfPermission(permessoLettura()) == PackageManager.PERMISSION_GRANTED;
     }
 
@@ -565,7 +593,17 @@ public final class SchermataDiBlocco {
     // `esiti` vuoto e' una finestra chiusa senza risposta: si richiedera'
     static void permessoRisposto(Context c, int[] esiti) {
         if (esiti == null || esiti.length == 0) return;
-        negataQui = esiti[0] != PackageManager.PERMISSION_GRANTED;
+        permessoRisposto(c, esiti[0] == PackageManager.PERMISSION_GRANTED);
+    }
+
+    // tornati dalle impostazioni dell'accesso a tutti i file: la risposta e'
+    // quel che c'e' scritto li'
+    static void permessoRispostoDalleImpostazioni(Context c) {
+        permessoRisposto(c, leggibile(c));
+    }
+
+    private static void permessoRisposto(Context c, boolean concesso) {
+        negataQui = !concesso;
         prefsSfondo(c).edit().putBoolean(CHIEDI_LETTURA, false).putBoolean(LETTURA_CHIESTA, true).commit();
     }
 
@@ -687,6 +725,7 @@ public final class SchermataDiBlocco {
                 WallpaperManager wm = WallpaperManager.getInstance(app);
                 if (!wm.isSetWallpaperAllowed()) throw new IllegalStateException("non permesso su questo dispositivo");
                 File prima = filePrima(app);
+                if (prima.exists() && sdraiato(app)) throw new IllegalStateException(SDRAIATO);
                 if (prima.exists()) {
                     try (InputStream in = new FileInputStream(prima)) {
                         wm.setStream(in, null, true, WallpaperManager.FLAG_LOCK);
@@ -730,6 +769,7 @@ public final class SchermataDiBlocco {
                     if (immagine == null) throw new IllegalStateException("immagine illeggibile");
                     WallpaperManager wm = WallpaperManager.getInstance(app);
                     if (!wm.isSetWallpaperAllowed()) throw new IllegalStateException("non permesso su questo dispositivo");
+                    if (sdraiato(app)) throw new IllegalStateException(SDRAIATO);
                     boolean salvato = salvaPrima(app, wm);
                     if (!salvato && !leggibile(app) && !negataQui) {
                         scrivi(fileAttesa(app), byteDellImmagine);

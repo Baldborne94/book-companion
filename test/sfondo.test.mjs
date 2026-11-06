@@ -4,7 +4,7 @@
 // decide quando parlargli e cosa mandargli.
 import { readFileSync } from "node:fs";
 import {
-  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, portaDelGuscio, annotaMessaggio, messaggiVisti, fraseMessaggi, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, nomeAndroid, fraseEsito, frasePermesso, stradaPermesso, fraseSenzaPrima, ultimoStato, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, fraseInvio, dopoIlSaluto, RISPOSTA_ENTRO, TOGLI,
+  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, portaDelGuscio, annotaMessaggio, messaggiVisti, fraseMessaggi, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, nomeAndroid, fraseEsito, frasePermesso, stradaPermesso, fraseSenzaPrima, ultimoStato, inPiedi, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, fraseInvio, dopoIlSaluto, RISPOSTA_ENTRO, TOGLI,
 } from "../src/lib/sfondo.js";
 
 const memoria = () => {
@@ -92,7 +92,7 @@ export default async function (t) {
   // un no vale per questa apertura dell'app, non per sempre; e la copertina
   // si mette lo stesso, dicendo che lo sfondo di prima non si e' salvato
   const blocco = readFileSync("android/SchermataDiBlocco.java", "utf8");
-  t.c("il no non si scrive su disco: ferma le richieste finche' il processo vive", /negataQui = esiti\[0\] != PackageManager\.PERMISSION_GRANTED;/.test(blocco) && !/LETTURA_NEGATA/.test(blocco) && /&& !negataQui;/.test(blocco));
+  t.c("il no non si scrive su disco: ferma le richieste finche' il processo vive", /permessoRisposto\(c, esiti\[0\] == PackageManager\.PERMISSION_GRANTED\);[\s\S]*negataQui = !concesso;/.test(blocco) && !/LETTURA_NEGATA/.test(blocco) && /&& !negataQui;/.test(blocco));
   t.c("senza una risposta la copertina da parte non si rimette (richiederebbe la finestra senza fine)", /if \(!fileAttesa\(app\)\.exists\(\) \|\| !\(leggibile\(app\) \|\| negataQui\)\) return;/.test(blocco));
   t.c("negato, la copertina si mette senza lo sfondo di prima e lo dice con lo stato", /esito = salvato \? OK : OK_SENZA_PRIMA \+ " " \+ statoPermesso\(app\);/.test(blocco) && blocco.includes('OK_SENZA_PRIMA = "grimorio:sfondo:ok:senzaprima"'));
   t.c("«non chiedere piu'» apre la pagina dell'app nelle impostazioni, solo per una copertina", /getBooleanExtra\(SchermataDiBlocco\.DA_COPERTINA, false\)[\s\S]*!shouldShowRequestPermissionRationale\([\s\S]*apriImpostazioniApp\(this\);[\s\S]*dopoIlPermesso\(this\);/.test(readFileSync("android/PermessoActivity.java", "utf8")) && blocco.includes("ACTION_APPLICATION_DETAILS_SETTINGS"));
@@ -103,9 +103,9 @@ export default async function (t) {
   segnaRisposta(risposta("grimorio:sfondo:ok:senzaprima w=0;x=0;y=1"), sp);
   t.eq("…si segna come tale", ultimoInvio(sp).esito, "ok senza prima");
   t.c("…e la riga dice la strada delle impostazioni Android, con lo stato", /messa, ma lo sfondo di prima non si è potuto salvare.*Autorizzazioni → Archiviazione.*\(w=0;x=0;y=1\)\.$/.test(fraseInvio(ultimoInvio(sp))));
-  // da Android 13 la voce e' «Foto e video», e su 14 vale solo «tutte»
-  t.c("…su Android 13 la strada e' Foto e video", /Foto e video → Consenti sempre/.test(fraseInvio(ultimoInvio(sp), Date.now(), 33)) && !/Archiviazione/.test(fraseInvio(ultimoInvio(sp), Date.now(), 33)));
-  t.c("…su Android 14 si dice che servono tutte le foto", /a tutte le foto/.test(fraseSenzaPrima(34)) && !/tutte le foto/.test(fraseSenzaPrima(33)));
+  // da Android 13 lo sfondo si legge solo con l'accesso a tutti i file
+  t.c("…su Android 13 la strada e' l'accesso a tutti i file", /Accesso speciale → Accesso a tutti i file/.test(fraseInvio(ultimoInvio(sp), Date.now(), 33)) && !/Archiviazione/.test(fraseInvio(ultimoInvio(sp), Date.now(), 33)));
+  t.c("…e si dice che e' un interruttore, non una finestra", /un interruttore, non una finestra/.test(fraseSenzaPrima(34)) && !/interruttore/.test(fraseSenzaPrima(29)));
   t.c("…e prima del 13 resta Archiviazione", /Archiviazione/.test(stradaPermesso(29)) && /Archiviazione/.test(stradaPermesso(null)));
   t.c("dopo il permesso si riapre dall'icona", /riaprila dall'icona/.test(fraseSenzaPrima(34)));
   t.eq("lo stato del permesso si tiene a parte, e resta alla copertina dopo", ultimoStato(sp).stato, "w=0;x=0;y=1");
@@ -193,7 +193,13 @@ export default async function (t) {
   t.eq("senza w/x/y la frase resta quella", fraseEsito(aperto), "tutto a posto, una copertina messa");
   t.c("concesso", /· permesso di leggere lo sfondo: concesso$/.test(fraseEsito({ ...aperto, w: "1", x: "0", y: "0" })));
   t.c("negato, con la strada delle impostazioni", /negato \(Impostazioni Android/.test(fraseEsito({ ...aperto, w: "0", x: "0", y: "1" })));
-  t.c("…che su Android 13 e' Foto e video", /negato \(Impostazioni Android.*Foto e video/.test(fraseEsito({ ...aperto, w: "0", x: "0", y: "1" }, 33)));
+  t.c("…che su Android 13 e' l'accesso a tutti i file", /negato \(Impostazioni Android.*Accesso a tutti i file/.test(fraseEsito({ ...aperto, w: "0", x: "0", y: "1" }, 33)));
+  // il tablet sdraiato: Android ritaglia lo sfondo per lo schermo com'e'
+  t.c("in piedi dal verso dello schermo", inPiedi({ screen: { orientation: { type: "portrait-primary" } }, innerWidth: 1503, innerHeight: 902 }) && !inPiedi({ screen: { orientation: { type: "landscape-primary" } }, innerWidth: 902, innerHeight: 1503 }));
+  t.c("…e senza il verso, dalla misura della finestra", inPiedi({ innerWidth: 902, innerHeight: 1503 }) && !inPiedi({ innerWidth: 1503, innerHeight: 902 }) && inPiedi({}));
+  const sd = memoria();
+  t.c("sdraiato, la copertina aspetta il verso giusto", /sdraiato, la copertina parte quando lo rimetti in piedi/.test(fraseInvio(segnaInvio({ id: "lb", titolo: "Asterix", quando: Date.now(), esito: "sdraiato" }, sd))));
+  t.c("…e anche lo sfondo da togliere", /sdraiato, si toglie quando lo rimetti in piedi/.test(fraseInvio(segnaInvio({ quando: Date.now(), esito: "togli sdraiato" }, sd))));
   t.c("da chiedere e mai aperta", /da chiedere, il guscio non ha ancora aperto la finestra/.test(fraseEsito({ ...aperto, w: "0", x: "1", y: "0" })));
   t.c("da chiedere, aperta una volta", /finestra aperta dal guscio una volta$/.test(fraseEsito({ ...aperto, w: "0", x: "1", y: "0", z: "1" })));
   t.c("da chiedere, aperta tre volte", /finestra aperta dal guscio 3 volte$/.test(fraseEsito({ ...aperto, w: "0", x: "1", y: "0", z: "3" })));

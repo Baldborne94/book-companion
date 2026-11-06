@@ -155,13 +155,27 @@ export function ultimoInvio(storage = globalThis.sessionStorage) {
 }
 const ora = (q) => new Date(q).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
 // la strada per concedere il permesso a mano, quando la finestra non
-// compare o si e' detto «non chiedere piu'»: da Android 13 (API 33) e' la
-// voce «Foto e video», e su Android 14 la finestra propone anche «Seleziona
-// foto», che per leggere lo sfondo vale come un no
+// compare o si e' detto «non chiedere piu'». Da Android 13 (API 33) lo
+// sfondo si legge solo con l'«accesso a tutti i file»: un interruttore
+// nelle impostazioni, non una finestra («Foto e video» non basta: l'ha
+// detto il tablet con l'APK 1138)
 export const stradaPermesso = (api = null) =>
-  `Impostazioni Android → App → Book Companion → Autorizzazioni → ${Number(api) >= 33 ? "Foto e video → Consenti sempre" : "Archiviazione"}`;
+  Number(api) >= 33
+    ? "Impostazioni Android → App → ⋮ → Accesso speciale → Accesso a tutti i file → Book Companion"
+    : "Impostazioni Android → App → Book Companion → Autorizzazioni → Archiviazione";
 export const fraseSenzaPrima = (api = null) =>
-  `lo sfondo di prima non si è potuto salvare: manca il permesso di leggerlo${Number(api) >= 34 ? " a tutte le foto" : ""}. Concedilo in ${stradaPermesso(api)}, poi chiudi l'app del tutto e riaprila dall'icona`;
+  `lo sfondo di prima non si è potuto salvare: ${Number(api) >= 33 ? "da Android 13 per leggerlo serve l'accesso a tutti i file (un interruttore, non una finestra)" : "manca il permesso di leggerlo"}. Concedilo in ${stradaPermesso(api)}, poi chiudi l'app del tutto e riaprila dall'icona`;
+// IL TABLET SDRAIATO: Android ritaglia lo sfondo per lo schermo com'e' nel
+// momento in cui lo mette, e la copertina messa a tablet sdraiato tornava
+// in piedi ingrandita tre volte («non si capisce niente»). Si manda solo a
+// tablet in piedi, e si rimanda quando torna in piedi.
+export const inPiedi = (w = globalThis) => {
+  const tipo = w?.screen?.orientation?.type;
+  if (typeof tipo === "string") return tipo.startsWith("portrait");
+  const a = Number(w?.innerWidth) || 0;
+  const b = Number(w?.innerHeight) || 0;
+  return !(a > b);
+};
 // UN PERMESSO CAMBIATO DALLE IMPOSTAZIONI UCCIDE IL PROCESSO DELL'APP: il
 // guscio tace finche' non si riapre dall'icona, e la riga lo deve dire
 export const SENZA_RISPOSTA = "il guscio non ha risposto: chiudi l'app del tutto e riaprila dall'icona";
@@ -183,9 +197,11 @@ export function fraseInvio(voce, adesso = Date.now(), api = null) {
   if (voce.esito === "rimesso") return `Sfondo rimesso alle ${ora(voce.quando)}: la schermata di blocco è tornata a quello di prima.`;
   if (voce.esito === "tolto") return `Sfondo tolto alle ${ora(voce.quando)}: quello di prima non si era potuto salvare, Android ha messo il suo.`;
   if (voce.esito === "togli") return `Sfondo da togliere, chiesto alle ${ora(voce.quando)} · ${adesso - voce.quando > RISPOSTA_ENTRO ? SENZA_RISPOSTA : "in attesa della risposta"}.`;
+  if (voce.esito === "togli sdraiato") return `Sfondo da togliere, chiesto alle ${ora(voce.quando)}: il tablet è sdraiato, si toglie quando lo rimetti in piedi.`;
   if (String(voce.esito || "").startsWith("guasto nel togliere")) return `Sfondo da togliere, chiesto alle ${ora(voce.quando)} · ${voce.esito}.`;
   const chi = `«${voce.titolo || voce.id}» alle ${ora(voce.quando)}`;
   if (voce.esito === "senza copertina") return `${chi}: senza copertina, niente da mandare.`;
+  if (voce.esito === "sdraiato") return `${chi}: il tablet è sdraiato, la copertina parte quando lo rimetti in piedi (Android ritaglia lo sfondo per lo schermo com'è adesso).`;
   if (voce.esito === "illeggibile") return `${chi}: la copertina non si è letta, non è partita.`;
   if (voce.esito === "ok") return `Ultima copertina mandata: ${chi} · messa.`;
   if (voce.esito === "ok senza prima") return `Ultima copertina mandata: ${chi} · messa, ma ${fraseSenzaPrima(api)}${voce.stato ? ` (${voce.stato})` : ""}.`;
