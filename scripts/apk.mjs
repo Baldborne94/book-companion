@@ -96,7 +96,8 @@ export const regoleProguard = (pacchetto) => `# la sessione di Chrome si legge p
 -keep class com.google.androidbrowserhelper.trusted.TwaLauncher { *; }
 -keep class ${pacchetto}.** { *; }
 `;
-const PERMESSO = '<uses-permission android:name="android.permission.SET_WALLPAPER"/>';
+// e quello di leggere lo sfondo di prima, che dal 13 non serve piu' a niente
+const PERMESSO = '<uses-permission android:name="android.permission.SET_WALLPAPER"/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>';
 const SERVIZIO = '<service android:name="androidx.browser.customtabs.PostMessageService" android:exported="true"/>';
 const BASE_LIBRERIA = "extends com.google.androidbrowserhelper.trusted.LauncherActivity";
 const BASE_NOSTRA = "extends GuscioActivity";

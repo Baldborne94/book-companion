@@ -1016,7 +1016,8 @@ export default function App() {
         segnaRisposta(r);
         setInvii((v) => v + 1);
         if (r.errore) notify(togliendo ? `Lo sfondo della schermata di blocco non si è tolto: ${r.errore}` : `La copertina non è andata sulla schermata di blocco: ${r.errore}`);
-        else if (r.tolto || togliendo) notify("La schermata di blocco è tornata allo sfondo della schermata iniziale");
+        else if (r.rimesso) notify("La schermata di blocco è tornata allo sfondo di prima");
+        else if (r.tolto || togliendo) notify("Sfondo tolto: quello di prima non si era potuto salvare, Android ha messo il suo");
         else {
           sfondoConfermato.current = sfondoMandato.current;
           // si dice solo la prima volta dopo l'accensione: poi a ogni libro

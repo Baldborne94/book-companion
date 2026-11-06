@@ -1921,9 +1921,9 @@ const SCENE = [
       // Asterix»): la pagina lo chiede al guscio, e la risposta si dice
       await interruttore.click();
       await finche(async () => (await ricevuti()).includes("grimorio:sfondo:togli"), 5000, "spento l'interruttore, la pagina non chiede di togliere lo sfondo");
-      await d.p.evaluate(() => window.__porta.postMessage("grimorio:sfondo:tolto"));
-      await finche(() => testoAvviso(d.p, /tornata allo sfondo della schermata iniziale/), 5000, "lo sfondo tolto non si dice");
-      await finche(() => d.p.getByText(/Sfondo tolto alle .* schermata iniziale/).count(), 5000, "sotto l'interruttore spento non si legge che lo sfondo e' stato tolto");
+      await d.p.evaluate(() => window.__porta.postMessage("grimorio:sfondo:rimesso"));
+      await finche(() => testoAvviso(d.p, /tornata allo sfondo di prima/), 5000, "lo sfondo rimesso non si dice");
+      await finche(() => d.p.getByText(/Sfondo rimesso alle .* quello di prima/).count(), 5000, "sotto l'interruttore spento non si legge che lo sfondo e' stato rimesso");
       // e riacceso, la copertina riparte da capo
       await interruttore.click();
       await intera("lb", "riacceso l'interruttore");
