@@ -1,9 +1,8 @@
 package it.bookcompanion.app;
 
-import android.content.pm.PackageManager;
+import android.content.Intent;
 import android.net.Uri;
-
-import androidx.annotation.NonNull;
+import android.os.Bundle;
 
 import androidx.browser.customtabs.CustomTabsCallback;
 
@@ -20,23 +19,29 @@ import com.google.androidbrowserhelper.trusted.TwaLauncher;
 public class GuscioActivity extends com.google.androidbrowserhelper.trusted.LauncherActivity {
     private static final int PERMESSO = 1;
 
-    // IL PERMESSO DI LEGGERE LO SFONDO si chiede qui, una volta, prima di
-    // aprire Chrome: la pagina l'ha chiesto (una copertina da mettere senza
-    // poter salvare quel che c'era) e il lettore non ha ancora detto di no.
-    // La libreria aspetta `launchTwa()` quando questo torna false.
+    // IL PERMESSO DI LEGGERE LO SFONDO lo chiede `PermessoActivity`, sopra
+    // Chrome, e si avvia QUI DOPO `super.onCreate`, in ogni caso: a tablet
+    // acceso la libreria chiude questa attivita' in `onCreate` («la TWA e'
+    // gia' viva») prima di `shouldLaunchImmediately`, e la finestra non
+    // compariva mai. A freddo `shouldLaunchImmediately` torna false e
+    // Chrome parte alla risposta (`onActivityResult` → `launchTwa()`).
     @Override
-    protected boolean shouldLaunchImmediately() {
-        if (!SchermataDiBlocco.permessoDaChiedere(this)) return true;
-        requestPermissions(new String[] { SchermataDiBlocco.PERMESSO_LETTURA }, PERMESSO);
-        return false;
+    protected void onCreate(Bundle stato) {
+        super.onCreate(stato);
+        if (stato == null && SchermataDiBlocco.permessoDaChiedere(this)) {
+            startActivityForResult(new Intent(this, PermessoActivity.class), PERMESSO);
+        }
     }
 
     @Override
-    public void onRequestPermissionsResult(int codice, @NonNull String[] permessi, @NonNull int[] esiti) {
-        super.onRequestPermissionsResult(codice, permessi, esiti);
-        if (codice != PERMESSO) return;
-        SchermataDiBlocco.permessoRisposto(this, esiti.length > 0 && esiti[0] == PackageManager.PERMISSION_GRANTED);
-        launchTwa();
+    protected boolean shouldLaunchImmediately() {
+        return !SchermataDiBlocco.permessoDaChiedere(this);
+    }
+
+    @Override
+    protected void onActivityResult(int codice, int esito, Intent dati) {
+        super.onActivityResult(codice, esito, dati);
+        if (codice == PERMESSO && !isFinishing()) launchTwa();
     }
 
     @Override

@@ -84,7 +84,12 @@ export function portaDelGuscio(e, origine) {
 // ogni `message` visto sulla finestra, per la diagnosi: origine, dati e
 // quante porte, gli ultimi cinque
 export const CHIAVE_MESSAGGI = "bc_guscio_messaggi";
+// Solo quel che puo' essere del guscio: una porta attaccata, o una parola
+// che comincia per «grimorio». Il polyfill di `setImmediate` manda alla
+// finestra decine di «setImmediate$…» e riempiva da solo le cinque righe.
+export const puoEssereDelGuscio = (e) => (e?.ports?.length || 0) > 0 || (typeof e?.data === "string" && e.data.startsWith("grimorio:"));
 export function annotaMessaggio(e, storage = globalThis.sessionStorage) {
+  if (!puoEssereDelGuscio(e)) return null;
   const voce = { o: String(e?.origin || ""), d: typeof e?.data === "string" ? e.data.slice(0, 40) : typeof e?.data, p: e?.ports?.length || 0 };
   try {
     const visti = JSON.parse(storage?.getItem(CHIAVE_MESSAGGI) || "[]");

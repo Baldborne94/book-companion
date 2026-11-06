@@ -119,6 +119,15 @@ public final class SchermataDiBlocco {
     private static final String FILE_PRIMA = "sfondo_prima";
     private static final int PEZZI_MAX = 64;
     private static final long[] RITENTA_DOPO = { 1500, 4000, 10000 };
+    // IL CANALE CHIESTO E MAI PRONTO: con la pagina ricaricata nella stessa
+    // sessione (l'aggiornamento dell'app) Chrome accetta la richiesta
+    // (`r=1`, origine verificata `v=1`) e non dice mai «pronto» (`p=`): la
+    // pagina nuova non ha porta e il guscio aspettava per sempre. Chrome
+    // chiude il canale a ogni documento nuovo e lo riapre solo a richiesta,
+    // e la prima richiesta puo' cadere nel buco fra lo sgancio e il
+    // riaggancio del servizio. Si richiede a scadenze finche' non e' pronto.
+    private static final long[] RICHIEDI_DOPO = { 2000, 5000, 12000 };
+    private static int richieste;
 
     private static Lanciatore lanciatore;
     private static String ultimoGuasto;
@@ -180,7 +189,7 @@ public final class SchermataDiBlocco {
                 SharedPreferences p = c.getSharedPreferences(NOME, Context.MODE_PRIVATE);
                 if (p.getAll().isEmpty()) return null;
                 StringBuilder s = new StringBuilder();
-                for (String k : new String[] { "l", "k", "n", "u", "s", "c", "r", "v", "p", "a", "f", "e" }) {
+                for (String k : new String[] { "l", "k", "n", "u", "s", "c", "r", "q", "v", "p", "a", "f", "e" }) {
                     if (s.length() > 0) s.append(';');
                     s.append(k).append('=').append(p.getString(k, ""));
                 }
@@ -318,12 +327,14 @@ public final class SchermataDiBlocco {
                 canale = false;
                 chiestoA = 0;
                 tentativi = 0;
+                richieste = 0;
                 apriCanale(app);
             } else if (evento == TAB_SHOWN) {
                 // la scheda torna davanti: si risaluta, e la pagina rimanda
                 // quel che non ha avuto l'ok (vedi in testa)
                 ciao = false;
                 tentativi = 0;
+                richieste = 0;
                 if (canale) saluta(app);
                 else if (System.currentTimeMillis() - chiestoA > RICHIESTA_IN_VOLO) apriCanale(app);
             }
@@ -422,6 +433,14 @@ public final class SchermataDiBlocco {
         }
         Log.d(TAG, "canale chiesto: " + ok);
         Diagnosi.segna(app, "r", ok);
+        // e se non diventa pronto, si richiede: ogni richiesta rifa' la
+        // verifica dell'origine e riapre il canale sulla pagina di adesso
+        if (!ok || richieste >= RICHIEDI_DOPO.length) return;
+        final int mia = ++richieste;
+        Diagnosi.segna(app, "q", String.valueOf(mia));
+        mano.postDelayed(() -> {
+            if (!canale && !ciao && richieste == mia) richiedi(app);
+        }, RICHIEDI_DOPO[mia - 1]);
     }
 
     private static void saluta(Context app) {
