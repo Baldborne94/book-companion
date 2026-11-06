@@ -52,6 +52,10 @@ export async function cucitura(t) {
   const pacchetto = pacchettoDelSito(assetlinks);
   const c = cuciGuscio({ manifest, launcher, gradle, pacchetto });
   t.c("il permesso di cambiare lo sfondo, prima di <application>", /SET_WALLPAPER"\/>[\s\S]*<application/.test(c.manifest));
+  // il guscio va in rete da se' (MangaDex, `chiediAllaRete`): una TWA di
+  // solito non lo fa, ci va Chrome, e l'APK 1148 ha risposto «Permission
+  // denied (missing INTERNET permission?)»
+  t.c("e quello di andare in rete, per MangaDex", /android\.permission\.INTERNET"\/>[\s\S]*<application/.test(c.manifest));
   t.c("e quello di leggere lo sfondo di prima, fino ad Android 12", /READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"\/>[\s\S]*<application/.test(c.manifest));
   // il tablet del lettore e' un Android 14: li' lo sfondo si legge solo con
   // l'«accesso a tutti i file» (StorageManager.checkPermissionReadImages guarda
