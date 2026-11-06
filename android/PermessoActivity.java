@@ -28,6 +28,21 @@ public class PermessoActivity extends Activity {
             finish();
             return;
         }
+        // «NON CHIEDERE PIU'»: Android non mostra piu' la finestra e risponde
+        // «negato» da solo. Si riconosce perche' una richiesta c'e' gia' stata
+        // e la spiegazione non e' piu' dovuta; allora, aperta per una
+        // copertina (non dal lanciatore, che poi mette Chrome davanti), si
+        // apre la pagina dell'app nelle impostazioni, dove il permesso si
+        // concede a mano, e la copertina si mette senza lo sfondo di prima
+        if (getIntent().getBooleanExtra(SchermataDiBlocco.DA_COPERTINA, false)
+                && SchermataDiBlocco.permessoChiestoGia(this)
+                && !shouldShowRequestPermissionRationale(SchermataDiBlocco.PERMESSO_LETTURA)) {
+            SchermataDiBlocco.permessoRisposto(this, new int[] { android.content.pm.PackageManager.PERMISSION_DENIED });
+            SchermataDiBlocco.apriImpostazioniApp(this);
+            SchermataDiBlocco.dopoIlPermesso(this);
+            finish();
+            return;
+        }
         requestPermissions(new String[] { SchermataDiBlocco.PERMESSO_LETTURA }, PERMESSO);
     }
 
