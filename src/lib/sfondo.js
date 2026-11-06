@@ -14,6 +14,12 @@ export const SALUTO = "grimorio:pronto";
 export const CIAO = "grimorio:ciao";
 const OK = "grimorio:sfondo:ok";
 const ERRORE = "grimorio:sfondo:errore:";
+// SPEGNENDO L'INTERRUTTORE LO SFONDO SI TOGLIE (il lettore: «ho bloccato la
+// feature e vedo ancora Asterix, ed e' anche sbagliato»): il guscio toglie
+// quello messo da lui e la schermata di blocco torna a quello della
+// schermata iniziale. Quello di prima nessuno lo puo' rileggere.
+export const TOGLI = "grimorio:sfondo:togli";
+const TOLTO = "grimorio:sfondo:tolto";
 // lo stesso di `public/.well-known/assetlinks.json` (`manifest.test.mjs`)
 export const PACCHETTO = "it.bookcompanion.app";
 export const CHIAVE = "bc_sfondo";
@@ -118,7 +124,8 @@ export function segnaInvio(voce, storage = globalThis.sessionStorage) {
 export function segnaRisposta(r, storage = globalThis.sessionStorage) {
   const voce = ultimoInvio(storage);
   if (!voce || !r) return voce;
-  return segnaInvio({ ...voce, esito: r.ok ? "ok" : `guasto: ${r.errore}` }, storage);
+  const togliendo = voce.esito === "togli";
+  return segnaInvio({ ...voce, esito: r.tolto ? "tolto" : r.ok ? (togliendo ? "tolto" : "ok") : `guasto${togliendo ? " nel togliere" : ""}: ${r.errore}` }, storage);
 }
 export function ultimoInvio(storage = globalThis.sessionStorage) {
   try {
@@ -131,6 +138,9 @@ export function ultimoInvio(storage = globalThis.sessionStorage) {
 const ora = (q) => new Date(q).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
 export function fraseInvio(voce, adesso = Date.now()) {
   if (!voce) return "Nessuna copertina mandata da quando la pagina è aperta.";
+  if (voce.esito === "tolto") return `Sfondo tolto alle ${ora(voce.quando)}: la schermata di blocco è tornata a quello della schermata iniziale.`;
+  if (voce.esito === "togli") return `Sfondo da togliere, chiesto alle ${ora(voce.quando)} · ${adesso - voce.quando > RISPOSTA_ENTRO ? "il guscio non ha risposto" : "in attesa della risposta"}.`;
+  if (String(voce.esito || "").startsWith("guasto nel togliere")) return `Sfondo da togliere, chiesto alle ${ora(voce.quando)} · ${voce.esito}.`;
   const chi = `«${voce.titolo || voce.id}» alle ${ora(voce.quando)}`;
   if (voce.esito === "senza copertina") return `${chi}: senza copertina, niente da mandare.`;
   if (voce.esito === "illeggibile") return `${chi}: la copertina non si è letta, non è partita.`;
@@ -147,6 +157,7 @@ export const dopoIlSaluto = (mandata, confermata) => (mandata && mandata === con
 
 export function risposta(data) {
   if (data === OK) return { ok: true };
+  if (data === TOLTO) return { ok: true, tolto: true };
   if (typeof data === "string" && data.startsWith(ERRORE)) return { errore: data.slice(ERRORE.length) || "guasto sconosciuto" };
   return null;
 }

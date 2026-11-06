@@ -30,7 +30,7 @@ import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, get
 import { libroDellaScheda } from "./lib/schedaMusica.js";
 import { leggiSalvaschermo, fase, prossimoCambio } from "./lib/salvaschermo.js";
 import Salvaschermo, { SezioneSalvaschermo, SezioneSfondo } from "./components/Salvaschermo.jsx";
-import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, dopoIlSaluto, SALUTO, CIAO } from "./lib/sfondo.js";
+import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, dopoIlSaluto, SALUTO, CIAO, TOGLI } from "./lib/sfondo.js";
 import { ascoltaCopertine } from "./lib/miniature.js";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux } from "./lib/bookStore.js";
 import { cercaNuovaVersione, cercaInSilenzio, siAggiornaNascosta } from "./lib/aggiornamenti.js";
@@ -1012,9 +1012,11 @@ export default function App() {
         }
         const r = risposta(m.data);
         if (!r) return;
+        const togliendo = ultimoInvio()?.esito === "togli";
         segnaRisposta(r);
         setInvii((v) => v + 1);
-        if (r.errore) notify(`La copertina non è andata sulla schermata di blocco: ${r.errore}`);
+        if (r.errore) notify(togliendo ? `Lo sfondo della schermata di blocco non si è tolto: ${r.errore}` : `La copertina non è andata sulla schermata di blocco: ${r.errore}`);
+        else if (r.tolto || togliendo) notify("La schermata di blocco è tornata allo sfondo della schermata iniziale");
         else {
           sfondoConfermato.current = sfondoMandato.current;
           // si dice solo la prima volta dopo l'accensione: poi a ogni libro
@@ -1051,9 +1053,16 @@ export default function App() {
   }, []);
   function accendiSfondo(acceso) {
     setSfondo(scriviSfondo(acceso));
-    if (acceso) {
-      sfondoMandato.current = null;
-      confermaSfondo.current = true;
+    // riacceso si rimanda da capo; spento, il guscio toglie lo sfondo che
+    // ha messo lui (il lettore: «ho bloccato la feature e vedo ancora
+    // Asterix»), e la schermata di blocco torna a quello della iniziale
+    sfondoMandato.current = null;
+    sfondoConfermato.current = null;
+    confermaSfondo.current = acceso;
+    if (!acceso && guscio) {
+      guscio.porta.postMessage(TOGLI);
+      segnaInvio({ quando: Date.now(), esito: "togli" });
+      setInvii((v) => v + 1);
     }
   }
   const swUpdate = useRef(null);

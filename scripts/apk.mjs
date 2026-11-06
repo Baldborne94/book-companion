@@ -90,6 +90,14 @@ const SERVIZIO = '<service android:name="androidx.browser.customtabs.PostMessage
 const BASE_LIBRERIA = "extends com.google.androidbrowserhelper.trusted.LauncherActivity";
 const BASE_NOSTRA = "extends GuscioActivity";
 const REGOLE = "proguardFiles 'proguard-grimorio.pro'";
+// L'ETICHETTA SOTTO L'ICONA E' IL NOME INTERO (chiesto dal lettore: «invece di
+// Grimorio chiama l'app Book Companion»). Bubblewrap la prende dallo
+// `short_name` del sito, che per la PWA deve stare in dodici caratteri;
+// l'etichetta di Android non ha quel tetto, e si riscrive qui nelle risorse
+// del progetto generato. «Grimorio» resta il nome interno del canale
+// (`grimorio:…`) e del log.
+export const ETICHETTA = "Book Companion";
+const ETICHETTE = ["launcherName", "appName"];
 
 function unaVolta(testo, ancora, dove) {
   const prima = testo.indexOf(ancora);
@@ -98,8 +106,11 @@ function unaVolta(testo, ancora, dove) {
   return prima;
 }
 
-export function cuciGuscio({ manifest, launcher, gradle, pacchetto }) {
+export function cuciGuscio({ manifest, launcher, gradle, strings = "", pacchetto }) {
   if (!pacchetto) throw new Error("cuci: manca il package dell'APK per le regole ProGuard");
+  let r = strings;
+  unaVolta(r, `<string name="${ETICHETTE[0]}">`, "res/values/strings.xml");
+  for (const nome of ETICHETTE) r = r.replace(new RegExp(`(<string name="${nome}">)[^<]*(</string>)`), `$1${ETICHETTA}$2`);
   let m = manifest;
   if (!m.includes(PERMESSO)) {
     const i = unaVolta(m, "<application", "AndroidManifest.xml");
@@ -120,7 +131,7 @@ export function cuciGuscio({ manifest, launcher, gradle, pacchetto }) {
     const fine = i + "minifyEnabled true".length;
     g = `${g.slice(0, fine)}\n            ${REGOLE}${g.slice(fine)}`;
   }
-  return { manifest: m, launcher: l, gradle: g, proguard: regoleProguard(pacchetto) };
+  return { manifest: m, launcher: l, gradle: g, strings: r, proguard: regoleProguard(pacchetto) };
 }
 
 // il package dichiarato in ogni file di `android/` dev'essere quello
@@ -135,13 +146,13 @@ function cuci(assetlinks) {
     const java = readFileSync(new URL(`android/${f}`, qui), "utf8");
     if (pacchettoDi(java) !== pacchetto) throw new Error(`cuci: android/${f} dichiara il package «${pacchettoDi(java)}», l'APK e' «${pacchetto}»`);
   }
-  const vie = { manifest: "app/src/main/AndroidManifest.xml", launcher: `${cartella}/LauncherActivity.java`, gradle: "app/build.gradle" };
+  const vie = { manifest: "app/src/main/AndroidManifest.xml", launcher: `${cartella}/LauncherActivity.java`, gradle: "app/build.gradle", strings: "app/src/main/res/values/strings.xml" };
   const cucito = cuciGuscio({ ...Object.fromEntries(Object.entries(vie).map(([k, v]) => [k, readFileSync(v, "utf8")])), pacchetto });
   for (const [k, v] of Object.entries(vie)) writeFileSync(v, cucito[k]);
   writeFileSync("app/proguard-grimorio.pro", cucito.proguard);
   mkdirSync(cartella, { recursive: true });
   for (const f of nostri) writeFileSync(join(cartella, f), readFileSync(new URL(`android/${f}`, qui), "utf8"));
-  console.log(`cuci: ${nostri.join(", ")} in ${cartella}, manifest, build.gradle e regole ProGuard`);
+  console.log(`cuci: ${nostri.join(", ")} in ${cartella}, manifest, build.gradle, regole ProGuard, etichetta «${ETICHETTA}»`);
 }
 
 async function principale([primo, secondo]) {

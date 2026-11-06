@@ -41,13 +41,18 @@ export default async function (t) {
 // ancore precise, e un'ancora sparita ferma il giro invece di pubblicare un
 // guscio che non parla con la pagina.
 export async function cucitura(t) {
-  const { cuciGuscio, pacchettoDi, CAMPO_SESSIONE, regoleProguard } = await import("../scripts/apk.mjs");
+  const { cuciGuscio, pacchettoDi, CAMPO_SESSIONE, regoleProguard, ETICHETTA } = await import("../scripts/apk.mjs");
   const assetlinks = JSON.parse(readFileSync("public/.well-known/assetlinks.json", "utf8"));
   const manifest = `<manifest package="it.bookcompanion.app">\n    <application android:name="Application">\n        <activity android:name="LauncherActivity" />\n    </application>\n</manifest>\n`;
   const launcher = `package it.bookcompanion.app;\n\npublic class LauncherActivity\n        extends com.google.androidbrowserhelper.trusted.LauncherActivity {\n}\n`;
   const gradle = `android {\n    buildTypes {\n        release {\n            minifyEnabled true\n        }\n    }\n}\n`;
+  const strings = `<resources>\n    <string name="appName">Grimorio</string>\n    <string name="launcherName">Grimorio</string>\n    <string name="hostName">x</string>\n</resources>\n`;
   const pacchetto = pacchettoDelSito(assetlinks);
-  const c = cuciGuscio({ manifest, launcher, gradle, pacchetto });
+  const c = cuciGuscio({ manifest, launcher, gradle, strings, pacchetto });
+  // l'etichetta sotto l'icona e' il nome intero, non lo short_name della PWA
+  t.eq("l'etichetta sotto l'icona e il nome dell'app sono il nome intero", (c.strings.match(/<string name="(?:launcherName|appName)">([^<]*)<\/string>/g) || []).join(), `<string name="appName">${ETICHETTA}</string>,<string name="launcherName">${ETICHETTA}</string>`);
+  t.c("e il resto delle risorse resta", c.strings.includes('<string name="hostName">x</string>'));
+  t.c("il nome intero e' quello del manifest del sito", ETICHETTA === JSON.parse(readFileSync("public/manifest.json", "utf8")).name);
   t.c("il permesso di cambiare lo sfondo, prima di <application>", /SET_WALLPAPER"\/>[\s\S]*<application/.test(c.manifest));
   t.c("il servizio dei messaggi, dentro <application>", /<application[\s\S]*PostMessageService"[^>]*android:exported="true"[\s\S]*<\/application>/.test(c.manifest));
   t.c("la LauncherActivity generata estende la nostra", c.launcher.includes("extends GuscioActivity") && !c.launcher.includes("trusted.LauncherActivity"));
@@ -57,15 +62,16 @@ export async function cucitura(t) {
   t.c("…e le nostre, che la leggono", c.proguard.includes(`-keep class ${pacchetto}.** { *; }`));
   t.c("…dicendo il campo che si cerca", c.proguard.includes(CAMPO_SESSIONE));
   let senza = "";
-  try { cuciGuscio({ manifest, launcher, gradle }); } catch (e) { senza = e.message; }
+  try { cuciGuscio({ manifest, launcher, gradle, strings }); } catch (e) { senza = e.message; }
   t.c("senza il package le regole non si scrivono", /package/.test(senza));
-  const di_nuovo = cuciGuscio({ manifest: c.manifest, launcher: c.launcher, gradle: c.gradle, pacchetto });
-  t.c("cucire due volte non raddoppia niente", di_nuovo.manifest === c.manifest && di_nuovo.launcher === c.launcher && di_nuovo.gradle === c.gradle);
+  const di_nuovo = cuciGuscio({ manifest: c.manifest, launcher: c.launcher, gradle: c.gradle, strings: c.strings, pacchetto });
+  t.c("cucire due volte non raddoppia niente", di_nuovo.manifest === c.manifest && di_nuovo.launcher === c.launcher && di_nuovo.gradle === c.gradle && di_nuovo.strings === c.strings);
   for (const [nome, rotto] of [
-    ["senza <application>", { manifest: "<manifest/>", launcher, gradle, pacchetto }],
-    ["con due <application>", { manifest: manifest + "<application/>", launcher, gradle, pacchetto }],
-    ["con una LauncherActivity che non estende la libreria", { manifest, launcher: "class X {}", gradle, pacchetto }],
-    ["senza minifyEnabled", { manifest, launcher, gradle: "android {}", pacchetto }],
+    ["senza <application>", { manifest: "<manifest/>", launcher, gradle, strings, pacchetto }],
+    ["con due <application>", { manifest: manifest + "<application/>", launcher, gradle, strings, pacchetto }],
+    ["con una LauncherActivity che non estende la libreria", { manifest, launcher: "class X {}", gradle, strings, pacchetto }],
+    ["senza minifyEnabled", { manifest, launcher, gradle: "android {}", strings, pacchetto }],
+    ["senza l'etichetta sotto l'icona", { manifest, launcher, gradle, strings: "<resources/>", pacchetto }],
   ]) {
     let caduto = "";
     try { cuciGuscio(rotto); } catch (e) { caduto = e.message; }

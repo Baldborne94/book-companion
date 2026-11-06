@@ -1917,6 +1917,16 @@ const SCENE = [
       const dopoIlSaluto = await ricevuti();
       if (dopoIlSaluto.some((x) => x !== "grimorio:ciao")) throw new Error(`al risaluto la pagina ha rimandato una copertina gia' messa: ${dopoIlSaluto.length} messaggi`);
       if (!dopoIlSaluto.includes("grimorio:ciao")) throw new Error("al risaluto la pagina non risponde");
+      // SPEGNENDO SI TOGLIE (il lettore: «ho bloccato la feature e vedo ancora
+      // Asterix»): la pagina lo chiede al guscio, e la risposta si dice
+      await interruttore.click();
+      await finche(async () => (await ricevuti()).includes("grimorio:sfondo:togli"), 5000, "spento l'interruttore, la pagina non chiede di togliere lo sfondo");
+      await d.p.evaluate(() => window.__porta.postMessage("grimorio:sfondo:tolto"));
+      await finche(() => testoAvviso(d.p, /tornata allo sfondo della schermata iniziale/), 5000, "lo sfondo tolto non si dice");
+      await finche(() => d.p.getByText(/Sfondo tolto alle .* schermata iniziale/).count(), 5000, "sotto l'interruttore spento non si legge che lo sfondo e' stato tolto");
+      // e riacceso, la copertina riparte da capo
+      await interruttore.click();
+      await intera("lb", "riacceso l'interruttore");
       // e un altro libro in mano manda la sua
       await d.p.keyboard.press("Escape").catch(() => {});
       await importa(d.p, "La nebbia.epub", await epub({ quanti: 20 }), "application/epub+zip");

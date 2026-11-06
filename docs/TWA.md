@@ -27,7 +27,7 @@ merge su `main` che tocca quel che il guscio porta con sé (manifest del
 sito, icone, `assetlinks.json`), oppure a comando da **Actions → APK →
 Run workflow**, costruisce l'APK con Bubblewrap, lo firma con la chiave di
 sempre, controlla che la firma sia quella di `assetlinks.json` e lo
-pubblica fra le **Releases** come `Grimorio-<numero>.apk`. Il link del
+pubblica fra le **Releases** come `BookCompanion-<numero>.apk`. Il link del
 README punta sempre all'ultima.
 
 Il `twa-manifest.json` non si tiene da nessuna parte: si genera a ogni giro
@@ -103,8 +103,12 @@ Alle domande di `init`:
   `assetlinks.json`; se lo cambi, cambialo anche lì. Il valore proposto
   è il dominio di Vercel rovesciato: NON accettarlo.
 - **Short name**: `Grimorio` (massimo 12 caratteri: «Book Companion» ne
-  ha 14 e Bubblewrap propone «BkC»). È l'etichetta sotto l'icona, e nel
-  `twa-manifest.json` il campo si chiama `launcherName`.
+  ha 14 e Bubblewrap propone «BkC»). Nel `twa-manifest.json` il campo si
+  chiama `launcherName`; l'etichetta sotto l'icona però la riscrive
+  `apk.mjs cuci` nelle risorse del progetto generato (`ETICHETTA`,
+  «Book Companion»: Android non ha il tetto dei dodici caratteri). Il
+  lettore l'ha chiesto: «invece di Grimorio chiama l'app Book Companion».
+  «Grimorio» resta il nome interno del canale (`grimorio:…`) e del log.
 - Una risposta sbagliata si corregge dopo, senza rifare `init`: in
   `twa-manifest.json`, poi `bubblewrap update` e `bubblewrap build`. I campi
   non si chiamano come le domande: il nome corto è **`launcherName`**,

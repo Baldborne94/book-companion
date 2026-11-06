@@ -5,7 +5,7 @@
 # Releases. Qui lo fa la macchina: a ogni cambio di cio' che il guscio
 # porta con se' (manifest, icone, assetlinks) su main, oppure a comando
 # (Actions → APK → Run workflow), costruisce, firma con la chiave di
-# sempre e pubblica `Grimorio-<codice>.apk` come ultima Release.
+# sempre e pubblica `BookCompanion-<codice>.apk` come ultima Release.
 #
 # LA CHIAVE NON STA NEL REPOSITORY: arriva dai segreti di GitHub
 # (TWA_KEYSTORE in base64, TWA_KEYSTORE_PASSWORD, TWA_KEY_PASSWORD), e
@@ -118,7 +118,7 @@ jobs:
           node ../scripts/apk.mjs cuci
           npx bubblewrap build
           "$ANDROID_HOME/build-tools/$ATTREZZI/apksigner" verify --print-certs app-release-signed.apk | tee firma.txt
-          mv app-release-signed.apk "Grimorio-$CODICE.apk"
+          mv app-release-signed.apk "BookCompanion-$CODICE.apk"
 
       - name: La firma e' quella di assetlinks
         if: steps.chiave.outputs.vera == 'si'
@@ -126,8 +126,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Grimorio-${{ env.CODICE }}
-          path: guscio/Grimorio-${{ env.CODICE }}.apk
+          name: BookCompanion-${{ env.CODICE }}
+          path: guscio/BookCompanion-${{ env.CODICE }}.apk
           retention-days: 14
 
       - name: La Release
@@ -135,7 +135,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "apk-$CODICE" "guscio/Grimorio-$CODICE.apk" \
+          gh release create "apk-$CODICE" "guscio/BookCompanion-$CODICE.apk" \
             --target "$GITHUB_SHA" --latest \
-            --title "Grimorio $VERSIONE" \
+            --title "Book Companion $VERSIONE" \
             --notes "Il guscio Android di Book Companion, costruito da \`$(git rev-parse --short HEAD)\`. Si installa sopra quello di prima: la firma e' la stessa, i libri restano."

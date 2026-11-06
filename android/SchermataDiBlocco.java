@@ -87,6 +87,13 @@ public final class SchermataDiBlocco {
     static final String CIAO = "grimorio:ciao";
     static final String OK = "grimorio:sfondo:ok";
     static final String ERRORE = "grimorio:sfondo:errore:";
+    // SPEGNENDO L'INTERRUTTORE LO SFONDO SI TOGLIE: il lettore ha spento e
+    // ha trovato sulla schermata di blocco il libro di prima, «ed e' anche
+    // sbagliato». Android non ha un «rimetti quello di prima» (lo sfondo che
+    // c'era non si puo' leggere), ma `clear(FLAG_LOCK)` toglie quello messo
+    // qui e la schermata di blocco torna a quello della schermata iniziale
+    static final String TOGLI = "grimorio:sfondo:togli";
+    static final String TOLTO = "grimorio:sfondo:tolto";
     private static final int PEZZI_MAX = 64;
     private static final long[] RITENTA_DOPO = { 1500, 4000, 10000 };
 
@@ -316,6 +323,10 @@ public final class SchermataDiBlocco {
                 Diagnosi.segna(app, "a", true);
                 return;
             }
+            if (TOGLI.equals(messaggio)) {
+                togli(app);
+                return;
+            }
             ricevi(app, messaggio);
         }
 
@@ -447,6 +458,30 @@ public final class SchermataDiBlocco {
     }
 
     private static int sfondiMessi;
+
+    private static void togli(Context app) {
+        new Thread(() -> {
+            String esito;
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    WallpaperManager wm = WallpaperManager.getInstance(app);
+                    if (!wm.isSetWallpaperAllowed()) throw new IllegalStateException("non permesso su questo dispositivo");
+                    wm.clear(WallpaperManager.FLAG_LOCK);
+                    esito = TOLTO;
+                } else {
+                    esito = ERRORE + "serve Android 9 o piu' recente per togliere lo sfondo";
+                }
+            } catch (Throwable e) {
+                esito = ERRORE + e.getMessage();
+                Diagnosi.segna(app, "e", String.valueOf(e.getMessage()));
+            }
+            final String risposta = esito;
+            mano.post(() -> {
+                CustomTabsSession s = sessione();
+                if (s != null) s.postMessage(risposta, null);
+            });
+        }, "sfondo").start();
+    }
 
     private static void metti(Context app, String base64) {
         new Thread(() -> {
