@@ -88,7 +88,7 @@ export async function cucitura(t) {
   // concesso la copertina messa da parte si mette da sola
   const permesso = readFileSync("android/PermessoActivity.java", "utf8");
   t.c("una copertina senza permesso si mette da parte e apre la finestra sopra Chrome", /scrivi\(fileAttesa\(app\)[\s\S]*chiediPermesso\(app\)/.test(blocco) && /PermessoActivity\.class\);\s*i\.addFlags\(Intent\.FLAG_ACTIVITY_NEW_TASK\)/.test(blocco));
-  t.c("…e concesso il permesso la mette da sola", /permessoRisposto\(this, esiti\);\s*SchermataDiBlocco\.dopoIlPermesso\(this\)/.test(permesso) && /dopoIlPermesso[\s\S]*metti\(app, leggi\(fileAttesa\(app\)\)\)/.test(blocco));
+  t.c("…e risposto il permesso la mette da sola", /permessoRisposto\(this, esiti\);\s*SchermataDiBlocco\.dopoIlPermesso\(this\)/.test(permesso) && /dopoIlPermesso[\s\S]*metti\(app, leggi\(fileAttesa\(app\)\)\)/.test(blocco));
   t.c("…e la diagnosi conta le finestre aperte (z) dopo i passi del canale", /"f", "e", "z" \}/.test(blocco));
   const yml = readFileSync(".github/workflows/apk.yml", "utf8");
   t.c("la CI cuce dopo l'update e prima del build", /bubblewrap update[^\n]*\n(?:[^\n]*\n)*?[^\n]*apk\.mjs cuci\n(?:[^\n]*\n)*?[^\n]*bubblewrap build/.test(yml));

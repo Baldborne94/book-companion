@@ -13,6 +13,9 @@ export const SALUTO = "grimorio:pronto";
 // la risposta al saluto: finche' non arriva, il guscio risaluta
 export const CIAO = "grimorio:ciao";
 const OK = "grimorio:sfondo:ok";
+// messa, ma senza lo sfondo di prima: il permesso di leggerlo manca, e in
+// coda lo stato del permesso («w=0;x=0;y=1»)
+const OK_SENZA_PRIMA = "grimorio:sfondo:ok:senzaprima";
 const ERRORE = "grimorio:sfondo:errore:";
 // SPEGNENDO L'INTERRUTTORE LO SFONDO SI RIMETTE (il lettore: «ho bloccato la
 // feature e vedo ancora Asterix, ed e' anche sbagliato», e poi «mi mette lo
@@ -132,7 +135,8 @@ export function segnaRisposta(r, storage = globalThis.sessionStorage) {
   const voce = ultimoInvio(storage);
   if (!voce || !r) return voce;
   const togliendo = voce.esito === "togli";
-  return segnaInvio({ ...voce, esito: r.rimesso ? "rimesso" : r.tolto ? "tolto" : r.ok ? (togliendo ? "tolto" : "ok") : `guasto${togliendo ? " nel togliere" : ""}: ${r.errore}` }, storage);
+  const esito = r.rimesso ? "rimesso" : r.tolto ? "tolto" : r.ok ? (togliendo ? "tolto" : r.senzaPrima ? "ok senza prima" : "ok") : `guasto${togliendo ? " nel togliere" : ""}: ${r.errore}`;
+  return segnaInvio({ ...voce, esito, stato: r.senzaPrima ? r.stato || null : undefined }, storage);
 }
 export function ultimoInvio(storage = globalThis.sessionStorage) {
   try {
@@ -143,6 +147,11 @@ export function ultimoInvio(storage = globalThis.sessionStorage) {
   }
 }
 const ora = (q) => new Date(q).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+// la strada per concedere il permesso a mano, quando la finestra non
+// compare o si e' detto «non chiedere piu'»
+export const STRADA_PERMESSO = "Impostazioni Android → App → Book Companion → Autorizzazioni → Archiviazione";
+export const SENZA_PRIMA = `lo sfondo di prima non si è potuto salvare: manca il permesso di leggerlo. Concedilo in ${STRADA_PERMESSO}, poi spegni e riaccendi l'interruttore`;
+
 export function fraseInvio(voce, adesso = Date.now()) {
   if (!voce) return "Nessuna copertina mandata da quando la pagina è aperta.";
   if (voce.esito === "rimesso") return `Sfondo rimesso alle ${ora(voce.quando)}: la schermata di blocco è tornata a quello di prima.`;
@@ -153,6 +162,7 @@ export function fraseInvio(voce, adesso = Date.now()) {
   if (voce.esito === "senza copertina") return `${chi}: senza copertina, niente da mandare.`;
   if (voce.esito === "illeggibile") return `${chi}: la copertina non si è letta, non è partita.`;
   if (voce.esito === "ok") return `Ultima copertina mandata: ${chi} · messa.`;
+  if (voce.esito === "ok senza prima") return `Ultima copertina mandata: ${chi} · messa, ma ${SENZA_PRIMA}${voce.stato ? ` (${voce.stato})` : ""}.`;
   if (String(voce.esito || "").startsWith("guasto")) return `Ultima copertina mandata: ${chi} · ${voce.esito}.`;
   return `Ultima copertina mandata: ${chi} · ${adesso - voce.quando > RISPOSTA_ENTRO ? "il guscio non ha risposto" : "in attesa della risposta"}.`;
 }
@@ -165,6 +175,7 @@ export const dopoIlSaluto = (mandata, confermata) => (mandata && mandata === con
 
 export function risposta(data) {
   if (data === OK) return { ok: true };
+  if (typeof data === "string" && data.startsWith(OK_SENZA_PRIMA)) return { ok: true, senzaPrima: true, stato: data.slice(OK_SENZA_PRIMA.length).trim() || null };
   if (data === TOLTO) return { ok: true, tolto: true };
   if (data === RIMESSO) return { ok: true, tolto: true, rimesso: true };
   if (typeof data === "string" && data.startsWith(ERRORE)) return { errore: data.slice(ERRORE.length) || "guasto sconosciuto" };
@@ -297,7 +308,7 @@ export function fraseEsito(esito) {
 export function frasePermesso(esito) {
   if (!esito || esito.w === undefined) return null;
   if (esito.w === "1") return "permesso di leggere lo sfondo: concesso";
-  if (esito.y === "1") return "permesso di leggere lo sfondo: negato (Impostazioni Android → App → Book Companion → Autorizzazioni → Archiviazione)";
+  if (esito.y === "1") return `permesso di leggere lo sfondo: negato (${STRADA_PERMESSO})`;
   if (esito.x === "1") return `permesso di leggere lo sfondo: da chiedere, ${Number(esito.z) > 0 ? `finestra aperta dal guscio ${esito.z === "1" ? "una volta" : `${esito.z} volte`}` : "il guscio non ha ancora aperto la finestra"}`;
   return "permesso di leggere lo sfondo: mai servito";
 }

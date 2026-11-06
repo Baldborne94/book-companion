@@ -30,7 +30,7 @@ import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, get
 import { libroDellaScheda } from "./lib/schedaMusica.js";
 import { leggiSalvaschermo, fase, prossimoCambio } from "./lib/salvaschermo.js";
 import Salvaschermo, { SezioneSalvaschermo, SezioneSfondo } from "./components/Salvaschermo.jsx";
-import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, dopoIlSaluto, SALUTO, CIAO, TOGLI, LATO_MAX } from "./lib/sfondo.js";
+import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, dopoIlSaluto, SALUTO, CIAO, TOGLI, LATO_MAX, SENZA_PRIMA } from "./lib/sfondo.js";
 import { ascoltaCopertine } from "./lib/miniature.js";
 import { copertinaGrande, dimenticaGrande } from "./lib/copertinaGrande.js";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux } from "./lib/bookStore.js";
@@ -1019,7 +1019,11 @@ export default function App() {
         if (r.errore) notify(togliendo ? `Lo sfondo della schermata di blocco non si è tolto: ${r.errore}` : `La copertina non è andata sulla schermata di blocco: ${r.errore}`);
         else if (r.rimesso) notify("La schermata di blocco è tornata allo sfondo di prima");
         else if (r.tolto || togliendo) notify("Sfondo tolto: quello di prima non si era potuto salvare, Android ha messo il suo");
-        else {
+        else if (r.senzaPrima) {
+          sfondoConfermato.current = sfondoMandato.current;
+          confermaSfondo.current = false;
+          notify(`La copertina è sulla schermata di blocco, ma ${SENZA_PRIMA}`);
+        } else {
           sfondoConfermato.current = sfondoMandato.current;
           // si dice solo la prima volta dopo l'accensione: poi a ogni libro
           // sarebbe una riga di troppo

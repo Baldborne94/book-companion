@@ -94,6 +94,12 @@ public final class SchermataDiBlocco {
     static final String SALUTO = "grimorio:pronto";
     static final String CIAO = "grimorio:ciao";
     static final String OK = "grimorio:sfondo:ok";
+    // MESSA, MA SENZA LO SFONDO DI PRIMA: il permesso di leggerlo e' stato
+    // negato (o la finestra non e' mai comparsa, come sul tablet con quattro
+    // APK di fila) e la copertina si mette lo stesso — il lettore la vuole —
+    // dicendolo, con lo stato del permesso in coda, cosi' la pagina spiega
+    // la strada delle impostazioni Android senza aspettare un riavvio
+    static final String OK_SENZA_PRIMA = "grimorio:sfondo:ok:senzaprima";
     static final String ERRORE = "grimorio:sfondo:errore:";
     // SPEGNENDO L'INTERRUTTORE LO SFONDO SI TOGLIE: il lettore ha spento e
     // ha trovato sulla schermata di blocco il libro di prima, «ed e' anche
@@ -115,11 +121,19 @@ public final class SchermataDiBlocco {
     static final String PERMESSO_LETTURA = Manifest.permission.READ_EXTERNAL_STORAGE;
     private static final String PREFS_SFONDO = "grimorio_sfondo";
     private static final String CHIEDI_LETTURA = "chiedi_lettura";
-    // UNA FINESTRA CHIUSA SENZA RISPOSTA NON E' UN NO: l'APK 1126 prendeva
-    // per un diniego anche una richiesta annullata (risultato vuoto), e da
-    // li' non chiedeva piu' («non mi ha chiesto il permesso»). La chiave
-    // e' nuova apposta: il «no» scritto da quell'APK si dimentica
-    private static final String LETTURA_NEGATA = "lettura_negata2";
+    // UN NO VALE PER QUESTA APERTURA DELL'APP, NON PER SEMPRE: gli APK 1126
+    // e 1132 scrivevano il diniego su disco e da li' non chiedevano piu',
+    // e un «no» arrivato senza finestra (Samsung risponde subito «negato»
+    // dopo un «non chiedere piu'») chiudeva la porta per sempre. Ora un no
+    // ferma le richieste finche' il processo vive, e al prossimo avvio si
+    // richiede; a chi ha detto «non chiedere piu'» Android non mostra
+    // niente, e allora si apre la pagina dell'app nelle impostazioni.
+    private static boolean negataQui;
+    // c'e' gia' stata una richiesta con risposta: serve a distinguere il
+    // «non chiedere piu'» (nessuna finestra, e nessuna spiegazione dovuta)
+    // dalla primissima richiesta, che Android tratta allo stesso modo
+    private static final String LETTURA_CHIESTA = "lettura_chiesta";
+    static final String DA_COPERTINA = "da_copertina";
     private static final String FILE_PRIMA = "sfondo_prima";
     // LA COPERTINA CHE ASPETTA IL PERMESSO. Gli APK 1126-1132 chiedevano il
     // permesso solo al prossimo avvio dall'icona, e sul tablet la finestra
@@ -528,25 +542,42 @@ public final class SchermataDiBlocco {
                 && c.checkSelfPermission(PERMESSO_LETTURA) == PackageManager.PERMISSION_GRANTED;
     }
 
-    // il lanciatore chiede il permesso solo se una copertina l'ha chiesto e
-    // il lettore non ha gia' detto di no
+    // il permesso si chiede solo se una copertina l'ha chiesto e in questa
+    // apertura dell'app il lettore non ha gia' detto di no
     static boolean permessoDaChiedere(Context c) {
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU && !leggibile(c)
-                && prefsSfondo(c).getBoolean(CHIEDI_LETTURA, false) && !prefsSfondo(c).getBoolean(LETTURA_NEGATA, false);
+                && prefsSfondo(c).getBoolean(CHIEDI_LETTURA, false) && !negataQui;
+    }
+
+    static boolean permessoChiestoGia(Context c) {
+        return prefsSfondo(c).getBoolean(LETTURA_CHIESTA, false);
     }
 
     // `esiti` vuoto e' una finestra chiusa senza risposta: si richiedera'
     static void permessoRisposto(Context c, int[] esiti) {
         if (esiti == null || esiti.length == 0) return;
-        boolean concesso = esiti[0] == PackageManager.PERMISSION_GRANTED;
-        prefsSfondo(c).edit().putBoolean(CHIEDI_LETTURA, false).putBoolean(LETTURA_NEGATA, !concesso).commit();
+        negataQui = esiti[0] != PackageManager.PERMISSION_GRANTED;
+        prefsSfondo(c).edit().putBoolean(CHIEDI_LETTURA, false).putBoolean(LETTURA_CHIESTA, true).commit();
     }
 
-    // lo stato del permesso, per la diagnosi: letto (w), da chiedere (x), negato (y)
+    // lo stato del permesso, per la diagnosi: letto (w), da chiedere (x),
+    // negato in questa apertura (y)
     static String statoPermesso(Context c) {
         SharedPreferences p = prefsSfondo(c);
         return "w=" + (leggibile(c) ? "1" : "0") + ";x=" + (p.getBoolean(CHIEDI_LETTURA, false) ? "1" : "0")
-                + ";y=" + (p.getBoolean(LETTURA_NEGATA, false) ? "1" : "0");
+                + ";y=" + (negataQui ? "1" : "0");
+    }
+
+    // La pagina dell'app nelle impostazioni di Android, dove il permesso si
+    // concede a mano: e' la strada per chi ha detto «non chiedere piu'», a
+    // cui Android non mostra piu' nessuna finestra
+    static void apriImpostazioniApp(Activity a) {
+        try {
+            Intent i = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + a.getPackageName()));
+            a.startActivity(i);
+        } catch (Throwable e) {
+            Log.w(TAG, "le impostazioni dell'app non si aprono: " + e);
+        }
     }
 
     private static File filePrima(Context app) {
@@ -583,6 +614,7 @@ public final class SchermataDiBlocco {
         try {
             Intent i = new Intent(app, PermessoActivity.class);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            i.putExtra(DA_COPERTINA, true);
             app.startActivity(i);
             Diagnosi.segna(app, "z", String.valueOf(++finestreChieste));
         } catch (Throwable e) {
@@ -591,11 +623,14 @@ public final class SchermataDiBlocco {
         }
     }
 
-    // Concesso il permesso, la copertina messa da parte si mette da sola e
-    // la pagina riceve l'ok come se fosse appena arrivata
+    // Risposto il permesso, la copertina messa da parte si mette da sola e
+    // la pagina riceve l'ok come se fosse appena arrivata: con lo sfondo di
+    // prima salvato se e' stato concesso, senza (e dicendolo) se negato
     static void dopoIlPermesso(Context c) {
         Context app = c.getApplicationContext();
-        if (!leggibile(app) || !fileAttesa(app).exists()) return;
+        // senza una risposta (finestra chiusa sotto) non si rimette, o la
+        // copertina richiederebbe la finestra in un giro senza fine
+        if (!fileAttesa(app).exists() || !(leggibile(app) || negataQui)) return;
         try {
             metti(app, leggi(fileAttesa(app)));
         } catch (Throwable e) {
@@ -612,7 +647,6 @@ public final class SchermataDiBlocco {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) return true;
         SharedPreferences p = prefsSfondo(app);
         if (!leggibile(app)) {
-            if (p.getBoolean(LETTURA_NEGATA, false)) return true;
             p.edit().putBoolean(CHIEDI_LETTURA, true).commit();
             return false;
         }
@@ -685,14 +719,15 @@ public final class SchermataDiBlocco {
                     if (immagine == null) throw new IllegalStateException("immagine illeggibile");
                     WallpaperManager wm = WallpaperManager.getInstance(app);
                     if (!wm.isSetWallpaperAllowed()) throw new IllegalStateException("non permesso su questo dispositivo");
-                    if (!salvaPrima(app, wm)) {
+                    boolean salvato = salvaPrima(app, wm);
+                    if (!salvato && !leggibile(app) && !negataQui) {
                         scrivi(fileAttesa(app), byteDellImmagine);
-                        if (!leggibile(app)) mano.post(() -> chiediPermesso(app));
+                        mano.post(() -> chiediPermesso(app));
                         esito = ERRORE + "per rimettere lo sfondo di prima quando spegni, serve il permesso di leggerlo: concedilo nella finestra che compare; se non compare, chiudi l'app del tutto e riaprila dall'icona";
                     } else {
                         wm.setBitmap(immagine, null, true, WallpaperManager.FLAG_LOCK);
                         fileAttesa(app).delete();
-                        esito = OK;
+                        esito = salvato ? OK : OK_SENZA_PRIMA + " " + statoPermesso(app);
                         Diagnosi.segna(app, "f", String.valueOf(++sfondiMessi));
                     }
                 } else {

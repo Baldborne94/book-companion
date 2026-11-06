@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { C, F, R, FONT_TITLE, px } from "../data/constants.js";
 import { leggiSalvaschermo, scriviSalvaschermo, SCELTE_COPERTINA, SCELTE_SPEGNI, fraseMinuti } from "../lib/salvaschermo.js";
-import { nelGuscio, fraseEsito, messaggiVisti, fraseMessaggi, fraseInvio, LATO_MAX } from "../lib/sfondo.js";
+import { nelGuscio, fraseEsito, messaggiVisti, fraseMessaggi, fraseInvio, LATO_MAX, STRADA_PERMESSO } from "../lib/sfondo.js";
 import { getCover, getFile } from "../lib/bookStore.js";
 import { copertinaOriginale } from "../lib/copertina.js";
 import { copertinaGrande } from "../lib/copertinaGrande.js";
@@ -173,7 +173,8 @@ export function SezioneSfondo({ pronto, info = null, invio = null, acceso, onCam
             Lo sfondo della schermata di blocco diventa la copertina del libro che hai in mano, e cambia
             quando cambi libro. Spegnendolo, la schermata di blocco torna allo sfondo che avevi: la prima volta
             l'app chiede il permesso di leggerlo (foto e contenuti) con una finestra sopra la pagina; se non
-            compare, chiudi l'app del tutto e riaprila dall'icona. Senza permesso Android rimette il suo.
+            compare, chiudi l'app del tutto e riaprila dall'icona, o concedilo in {STRADA_PERMESSO}. Senza permesso
+            la copertina va lo stesso, e spegnendo Android rimette il suo.
             {/* l'ultima copertina mandata e cosa ne ha detto il guscio: sul
                 tablet la schermata di blocco mostrava il libro di prima, e da
                 fuori non si vedeva se la pagina avesse mandato o il guscio

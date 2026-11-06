@@ -85,10 +85,24 @@ export default async function (t) {
   // spegnendo si toglie: il guscio risponde «tolto»
   t.eq("lo sfondo tolto e' un ok a parte", JSON.stringify(risposta("grimorio:sfondo:tolto")), '{"ok":true,"tolto":true}');
   t.eq("e quello rimesso un altro", JSON.stringify(risposta("grimorio:sfondo:rimesso")), '{"ok":true,"tolto":true,"rimesso":true}');
-  t.c("il guscio salva lo sfondo di prima e lo rimette", readFileSync("android/SchermataDiBlocco.java", "utf8").includes('RIMESSO = "grimorio:sfondo:rimesso"') && /getWallpaperFile\(WallpaperManager\.FLAG_LOCK\)[\s\S]*wm\.setStream\(in, null, true, WallpaperManager\.FLAG_LOCK\)/.test(readFileSync("android/SchermataDiBlocco.java", "utf8")) && readFileSync("android/SchermataDiBlocco.java", "utf8").includes("if (!salvaPrima(app, wm))"));
+  t.c("il guscio salva lo sfondo di prima e lo rimette", readFileSync("android/SchermataDiBlocco.java", "utf8").includes('RIMESSO = "grimorio:sfondo:rimesso"') && /getWallpaperFile\(WallpaperManager\.FLAG_LOCK\)[\s\S]*wm\.setStream\(in, null, true, WallpaperManager\.FLAG_LOCK\)/.test(readFileSync("android/SchermataDiBlocco.java", "utf8")) && readFileSync("android/SchermataDiBlocco.java", "utf8").includes("boolean salvato = salvaPrima(app, wm);"));
   t.c("e il lanciatore chiede il permesso di leggerlo", readFileSync("android/GuscioActivity.java", "utf8").includes("shouldLaunchImmediately") && readFileSync("android/GuscioActivity.java", "utf8").includes("launchTwa()"));
   // una finestra chiusa senza risposta non e' un no (l'APK 1126 lo credeva)
-  t.c("una richiesta annullata non vale come diniego", /if \(esiti == null \|\| esiti\.length == 0\) return;/.test(readFileSync("android/SchermataDiBlocco.java", "utf8")) && readFileSync("android/SchermataDiBlocco.java", "utf8").includes('LETTURA_NEGATA = "lettura_negata2"'));
+  t.c("una richiesta annullata non vale come diniego", /if \(esiti == null \|\| esiti\.length == 0\) return;/.test(readFileSync("android/SchermataDiBlocco.java", "utf8")));
+  // un no vale per questa apertura dell'app, non per sempre; e la copertina
+  // si mette lo stesso, dicendo che lo sfondo di prima non si e' salvato
+  const blocco = readFileSync("android/SchermataDiBlocco.java", "utf8");
+  t.c("il no non si scrive su disco: ferma le richieste finche' il processo vive", /negataQui = esiti\[0\] != PackageManager\.PERMISSION_GRANTED;/.test(blocco) && !/LETTURA_NEGATA/.test(blocco) && /&& !negataQui;/.test(blocco));
+  t.c("senza una risposta la copertina da parte non si rimette (richiederebbe la finestra senza fine)", /if \(!fileAttesa\(app\)\.exists\(\) \|\| !\(leggibile\(app\) \|\| negataQui\)\) return;/.test(blocco));
+  t.c("negato, la copertina si mette senza lo sfondo di prima e lo dice con lo stato", /esito = salvato \? OK : OK_SENZA_PRIMA \+ " " \+ statoPermesso\(app\);/.test(blocco) && blocco.includes('OK_SENZA_PRIMA = "grimorio:sfondo:ok:senzaprima"'));
+  t.c("«non chiedere piu'» apre la pagina dell'app nelle impostazioni, solo per una copertina", /getBooleanExtra\(SchermataDiBlocco\.DA_COPERTINA, false\)[\s\S]*!shouldShowRequestPermissionRationale\([\s\S]*apriImpostazioniApp\(this\);[\s\S]*dopoIlPermesso\(this\);/.test(readFileSync("android/PermessoActivity.java", "utf8")) && blocco.includes("ACTION_APPLICATION_DETAILS_SETTINGS"));
+  t.eq("messa senza lo sfondo di prima, con lo stato", JSON.stringify(risposta("grimorio:sfondo:ok:senzaprima w=0;x=0;y=1")), '{"ok":true,"senzaPrima":true,"stato":"w=0;x=0;y=1"}');
+  t.eq("…anche senza stato", JSON.stringify(risposta("grimorio:sfondo:ok:senzaprima")), '{"ok":true,"senzaPrima":true,"stato":null}');
+  const sp = memoria();
+  segnaInvio({ id: "lb", titolo: "Asterix", quando: Date.now(), esito: "mandata" }, sp);
+  segnaRisposta(risposta("grimorio:sfondo:ok:senzaprima w=0;x=0;y=1"), sp);
+  t.eq("…si segna come tale", ultimoInvio(sp).esito, "ok senza prima");
+  t.c("…e la riga dice la strada delle impostazioni Android, con lo stato", /messa, ma lo sfondo di prima non si è potuto salvare.*Autorizzazioni → Archiviazione.*\(w=0;x=0;y=1\)\.$/.test(fraseInvio(ultimoInvio(sp))));
   const java = readFileSync("android/SchermataDiBlocco.java", "utf8");
   t.c("il guscio ascolta la richiesta di togliere e risponde con la sua parola", java.includes(`TOGLI = "${TOGLI}"`) && java.includes('TOLTO = "grimorio:sfondo:tolto"') && java.includes("wm.clear(WallpaperManager.FLAG_LOCK)"));
   const tg = memoria();
