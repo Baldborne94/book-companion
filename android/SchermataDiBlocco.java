@@ -115,7 +115,11 @@ public final class SchermataDiBlocco {
     static final String PERMESSO_LETTURA = Manifest.permission.READ_EXTERNAL_STORAGE;
     private static final String PREFS_SFONDO = "grimorio_sfondo";
     private static final String CHIEDI_LETTURA = "chiedi_lettura";
-    private static final String LETTURA_NEGATA = "lettura_negata";
+    // UNA FINESTRA CHIUSA SENZA RISPOSTA NON E' UN NO: l'APK 1126 prendeva
+    // per un diniego anche una richiesta annullata (risultato vuoto), e da
+    // li' non chiedeva piu' («non mi ha chiesto il permesso»). La chiave
+    // e' nuova apposta: il «no» scritto da quell'APK si dimentica
+    private static final String LETTURA_NEGATA = "lettura_negata2";
     private static final String FILE_PRIMA = "sfondo_prima";
     private static final int PEZZI_MAX = 64;
     private static final long[] RITENTA_DOPO = { 1500, 4000, 10000 };
@@ -194,6 +198,8 @@ public final class SchermataDiBlocco {
                     s.append(k).append('=').append(p.getString(k, ""));
                 }
                 p.edit().clear().apply();
+                // e lo stato del permesso di leggere lo sfondo, che non si azzera
+                s.append(';').append(statoPermesso(c));
                 return s.toString();
             } catch (Throwable e) {
                 return null;
@@ -519,8 +525,18 @@ public final class SchermataDiBlocco {
                 && prefsSfondo(c).getBoolean(CHIEDI_LETTURA, false) && !prefsSfondo(c).getBoolean(LETTURA_NEGATA, false);
     }
 
-    static void permessoRisposto(Context c, boolean concesso) {
+    // `esiti` vuoto e' una finestra chiusa senza risposta: si richiedera'
+    static void permessoRisposto(Context c, int[] esiti) {
+        if (esiti == null || esiti.length == 0) return;
+        boolean concesso = esiti[0] == PackageManager.PERMISSION_GRANTED;
         prefsSfondo(c).edit().putBoolean(CHIEDI_LETTURA, false).putBoolean(LETTURA_NEGATA, !concesso).commit();
+    }
+
+    // lo stato del permesso, per la diagnosi: letto (w), da chiedere (x), negato (y)
+    static String statoPermesso(Context c) {
+        SharedPreferences p = prefsSfondo(c);
+        return "w=" + (leggibile(c) ? "1" : "0") + ";x=" + (p.getBoolean(CHIEDI_LETTURA, false) ? "1" : "0")
+                + ";y=" + (p.getBoolean(LETTURA_NEGATA, false) ? "1" : "0");
     }
 
     private static File filePrima(Context app) {
