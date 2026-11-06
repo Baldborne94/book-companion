@@ -73,8 +73,9 @@ function Copertina({ src: indirizzo, lato = 56, rete = null }) {
 
 const lingue = (s) => (s.lingue || []).map((l) => NOME_LINGUA[l] || l).join(", ");
 
-export default function SerieSeguite({ books, onClose, onApri, onScarica, scarico = null, rete: reteGuscio = null, guscioVecchio = false }) {
+export default function SerieSeguite({ books, onClose, onApri, onScarica, scarico = null, rete: reteGuscio = null, guscioVecchio = false, guscioMuto = false }) {
   const rete = reteGuscio || diretta;
+  const via = reteGuscio ? "guscio" : guscioMuto ? "muto" : null;
   const [lista, setLista] = useState(leggiSerie);
   const [testo, setTesto] = useState("");
   const [trovate, setTrovate] = useState(null);
@@ -102,7 +103,7 @@ export default function SerieSeguite({ books, onClose, onApri, onScarica, scaric
       setLista((l) => scriviSerie(l.map((s) => (s.id === serie.id ? conCapitoli(s, caps) : s))));
     } catch (e) {
       if (!vivo.current) return;
-      setCapitoliDi((m) => ({ ...m, [serie.id]: { ...(m[serie.id] || {}), caricando: false, guasto: spiega(e) } }));
+      setCapitoliDi((m) => ({ ...m, [serie.id]: { ...(m[serie.id] || {}), caricando: false, guasto: spiega(e, undefined, via) } }));
     }
   }
   // all'apertura si controllano tutte, una dopo l'altra
@@ -125,7 +126,7 @@ export default function SerieSeguite({ books, onClose, onApri, onScarica, scaric
       const r = await cerca(testo, { fetch: rete, ritmo: ritmoMangadex });
       if (vivo.current) setTrovate(r);
     } catch (err) {
-      if (vivo.current) setGuasto(spiega(err));
+      if (vivo.current) setGuasto(spiega(err, undefined, via));
     } finally {
       if (vivo.current) setCercando(false);
     }

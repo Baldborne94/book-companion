@@ -30,7 +30,7 @@ import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, get
 import { libroDellaScheda } from "./lib/schedaMusica.js";
 import { leggiSalvaschermo, fase, prossimoCambio } from "./lib/salvaschermo.js";
 import Salvaschermo, { SezioneSalvaschermo, SezioneSfondo } from "./components/Salvaschermo.jsx";
-import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, dopoIlSaluto, SALUTO, CIAO, TOGLI, LATO_MAX, fraseSenzaPrima, inPiedi } from "./lib/sfondo.js";
+import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, dopoIlSaluto, SALUTO, CIAO, TOGLI, LATO_MAX, fraseSenzaPrima, inPiedi, nelGuscio } from "./lib/sfondo.js";
 import { ascoltaCopertine } from "./lib/miniature.js";
 import { copertinaGrande, dimenticaGrande } from "./lib/copertinaGrande.js";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux } from "./lib/bookStore.js";
@@ -2435,6 +2435,7 @@ export default function App() {
             scarico={scarico}
             rete={reteMangadex}
             guscioVecchio={!!guscio && !guscio.rete}
+            guscioMuto={!guscio && nelGuscio()}
           />
         </Suspense>
       )}

@@ -2880,7 +2880,7 @@ const SCENE = [
     },
   },
   {
-    nome: "le serie seguite su MangaDex: nel browser la sfida anti-bot si dice; nel guscio le richieste passano da lui, un capitolo scaricato è un CBZ nella biblioteca e si legge, il rimando si legge là",
+    nome: "le serie seguite su MangaDex: nel browser la sfida anti-bot si dice, dentro l'app senza saluto il guscio muto; nel guscio le richieste passano da lui, un capitolo scaricato è un CBZ nella biblioteca e si legge, il rimando si legge là",
     async fai({ browser }) {
       const chieste = [];
       // con un libro in casa: l'Ingresso vuoto non ha le stanze
@@ -2899,6 +2899,17 @@ const SCENE = [
       await stanza.getByRole("button", { name: "Cerca" }).click();
       await finche(() => stanza.getByText(/sfida anti-bot/).count(), 8000, "nel browser la stanza non dice la sfida anti-bot");
       if (await stanza.getByText(/la rete non risponde/).count()) throw new Error("la stanza da' la colpa alla rete");
+      await stanza.getByRole("button", { name: "Chiudi le serie seguite" }).click();
+      // DENTRO L'APP ANDROID, MA IL GUSCIO NON HA SALUTATO: non e' la sfida
+      // del browser, e' il guscio muto, e si dice di riaprire dall'icona (sul
+      // tablet la stanza diceva la sfida e la diagnosi restava a meta')
+      await p.evaluate(() => sessionStorage.setItem("bc_guscio_lancio", JSON.stringify({ versione: "1150", android: "14" })));
+      await p.reload();
+      await p.getByRole("button", { name: /Serie seguite/ }).click();
+      await stanza.getByLabel("Cerca una serie").fill("berserk");
+      await stanza.getByRole("button", { name: "Cerca" }).click();
+      await finche(() => stanza.getByText(/Il guscio Android non ha salutato questa pagina/).count(), 8000, "dentro l'app senza saluto la stanza non dice il guscio muto");
+      if (await stanza.getByText(/sfida anti-bot/).count()) throw new Error("dentro l'app senza saluto la stanza dice la sfida del browser");
       await stanza.getByRole("button", { name: "Chiudi le serie seguite" }).click();
       // IL GUSCIO SALUTA, dice che sa chiedere, e fa da tramite: chiede col suo
       // segno e rimanda il corpo a pezzi in base64, al contrario per provare
