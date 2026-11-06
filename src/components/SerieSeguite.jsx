@@ -2,16 +2,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
 import {
   IN_VISTA, NOME_LINGUA, SITO,
-  cerca, capitoli, leggiSerie, scriviSerie, segui, smetti, cambiaLingua, conCapitoli, visti, nellaBiblioteca, daScaricare, nomeCapitolo, spiega, nuovoRitmo,
+  cerca, capitoli, leggiSerie, scriviSerie, segui, smetti, cambiaLingua, conCapitoli, visti, nellaBiblioteca, daScaricare, spiega, ritmoComune,
 } from "../lib/mangadex.js";
 
 // LE SERIE SEGUITE SU MANGADEX (`lib/mangadex.js`): cerca una serie,
 // seguila, vedi i capitoli, scarica quelli che vuoi (diventano CBZ nella
-// biblioteca) e leggi dove stanno quelli che MangaDex non ospita. Un
-// ritmo solo per tutta la stanza: MangaDex vuole al piu' cinque richieste
-// al secondo, e scaricare un capitolo mentre si cerca non deve sforare.
-export const ritmoMangadex = nuovoRitmo();
-const rete = (url, opzioni) => fetch(url, opzioni);
+// biblioteca) e leggi dove stanno quelli che MangaDex non ospita. Le
+// richieste passano dalla `rete` che arriva da App: quella del guscio
+// Android (`lib/reteGuscio.js`), perche' MangaDex respinge le pagine web, o
+// nel browser la fetch di sempre, che si sente dire la sfida.
+const ritmoMangadex = ritmoComune;
+const diretta = (url, opzioni) => fetch(url, opzioni);
 
 const campo = () => ({
   flex: 1,
@@ -35,7 +36,36 @@ const tasto = (colore, pieno = false) => ({
   whiteSpace: "nowrap",
 });
 
-function Copertina({ src, lato = 56 }) {
+// LA COPERTINA DAL GUSCIO: il deposito di MangaDex respinge anche le
+// immagini chieste da una pagina, quindi passano dalla rete del guscio e
+// si mostrano dai loro byte (un indirizzo `blob:` da guardare, mai salvato)
+function useImmagine(src, rete) {
+  const [url, setUrl] = useState(rete ? null : src);
+  useEffect(() => {
+    if (!rete || !src) {
+      setUrl(src);
+      return;
+    }
+    let vivo = true;
+    let fatto = null;
+    rete(src)
+      .then((r) => (r.ok ? r.arrayBuffer() : null))
+      .then((b) => {
+        if (!vivo || !b) return;
+        fatto = URL.createObjectURL(new Blob([b]));
+        setUrl(fatto);
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+      if (fatto) URL.revokeObjectURL(fatto);
+    };
+  }, [src, rete]);
+  return url;
+}
+
+function Copertina({ src: indirizzo, lato = 56, rete = null }) {
+  const src = useImmagine(indirizzo, rete);
   const [rotta, setRotta] = useState(false);
   if (!src || rotta) return <div style={{ width: px(lato), height: px(lato * 1.5), borderRadius: R.minimo, background: C.border, flexShrink: 0 }} />;
   return <img src={src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setRotta(true)} style={{ width: px(lato), height: px(lato * 1.5), objectFit: "cover", borderRadius: R.minimo, flexShrink: 0, background: C.border }} />;
@@ -43,7 +73,8 @@ function Copertina({ src, lato = 56 }) {
 
 const lingue = (s) => (s.lingue || []).map((l) => NOME_LINGUA[l] || l).join(", ");
 
-export default function SerieSeguite({ books, onClose, onApri, onScarica, scarico = null }) {
+export default function SerieSeguite({ books, onClose, onApri, onScarica, scarico = null, rete: reteGuscio = null, guscioVecchio = false }) {
+  const rete = reteGuscio || diretta;
   const [lista, setLista] = useState(leggiSerie);
   const [testo, setTesto] = useState("");
   const [trovate, setTrovate] = useState(null);
@@ -136,6 +167,12 @@ export default function SerieSeguite({ books, onClose, onApri, onScarica, scaric
           fumetti, da leggere offline. I manga con licenza (One Piece, Kingdom…) lì hanno solo il rimando a chi li pubblica:
           si vede quando esce un capitolo nuovo e si legge là.
         </p>
+        {/* nel guscio vecchio la rete non c'e': lo si dice prima di cercare */}
+        {guscioVecchio && (
+          <div style={{ fontSize: F.piccolo, color: C.accent, marginBottom: 10, lineHeight: 1.45 }}>
+            ⚠ MangaDex respinge le pagine web: qui le richieste devono passare dall'app Android, e questa è una versione che non lo sa fare. Installa l'APK più recente.
+          </div>
+        )}
         <form onSubmit={cercaOra} style={{ display: "flex", gap: 8, marginBottom: 10 }}>
           <input value={testo} onChange={(e) => setTesto(e.target.value)} placeholder="Cerca una serie su MangaDex" aria-label="Cerca una serie" style={campo()} />
           <button type="submit" disabled={cercando || !testo.trim()} style={tasto(C.accent, true)}>
@@ -148,7 +185,7 @@ export default function SerieSeguite({ books, onClose, onApri, onScarica, scaric
             {!trovate.length && <div style={{ fontSize: F.nota, color: C.muted }}>Nessuna serie con questo nome, in inglese o in italiano.</div>}
             {trovate.map((s) => (
               <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", marginBottom: 6, borderRadius: R.piccolo, border: `1px dashed ${C.border}` }}>
-                <Copertina src={s.copertina} lato={44} />
+                <Copertina src={s.copertina} lato={44} rete={reteGuscio} />
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: "block", fontSize: F.nota, color: C.text }}>{s.titolo}</span>
                   <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted }}>
@@ -176,7 +213,7 @@ export default function SerieSeguite({ books, onClose, onApri, onScarica, scaric
           return (
             <section key={serie.id} style={{ marginBottom: 14, padding: 12, borderRadius: R.medio, border: `1px solid ${C.border}`, background: `${C.card}cc` }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <Copertina src={serie.copertina} />
+                <Copertina src={serie.copertina} rete={reteGuscio} />
                 <button onClick={() => apri(serie)} aria-expanded={espansa} style={{ flex: 1, minWidth: 0, textAlign: "left", minHeight: 44, color: C.text }}>
                   <span style={{ display: "block", fontFamily: FONT_TITLE, fontSize: F.rilievo, fontWeight: 600 }}>{serie.titolo}</span>
                   <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted }}>

@@ -36,14 +36,21 @@ import com.google.androidbrowserhelper.trusted.TwaLauncher;
 
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 // LA COPERTINA SULLA SCHERMATA DI BLOCCO, come il Kindle.
 //
@@ -92,6 +99,19 @@ import java.util.Map;
 public final class SchermataDiBlocco {
     private static final String TAG = "Grimorio";
     static final String SALUTO = "grimorio:pronto";
+    // LA RETE DEL GUSCIO. MangaDex mette davanti alla sua API una sfida
+    // anti-bot che lascia passare le app e respinge le pagine web: dal
+    // browser la stanza «Serie seguite» non poteva leggerlo («la rete non
+    // risponde», sul tablet). Il guscio e' un'app: la pagina gli chiede
+    // l'indirizzo (`{"rete":{id,url}}`), il guscio lo chiede col nome
+    // dell'app e rimanda il corpo a pezzi in base64, come la copertina ma al
+    // contrario. Solo indirizzi di MangaDex, solo https: il guscio non e' un
+    // proxy per chiunque. Dopo il saluto dice che sa farlo (`SA_RETE`): un
+    // guscio vecchio tace, e la pagina lo sa.
+    static final String SA_RETE = "grimorio:sa:rete";
+    private static final int PEZZO_RETE = 48000;
+    private static final int RETE_MAX = 20 * 1024 * 1024;
+    private static final ExecutorService fila = Executors.newFixedThreadPool(2);
     static final String CIAO = "grimorio:ciao";
     static final String OK = "grimorio:sfondo:ok";
     // MESSA, MA SENZA LO SFONDO DI PRIMA: il permesso di leggerlo e' stato
@@ -521,6 +541,7 @@ public final class SchermataDiBlocco {
             richiedi(app);
             return;
         }
+        s.postMessage(SA_RETE, null);
         // senza risposta si riprova con un canale nuovo: il primo messaggio
         // puo' essere arrivato prima dell'ascolto della pagina
         if (tentativi >= RITENTA_DOPO.length) return;
@@ -536,12 +557,18 @@ public final class SchermataDiBlocco {
     // arriva a pezzi perche' un messaggio solo da mezzo megabyte non passa
     // dal binder di Android
     private static void ricevi(Context app, String messaggio) {
-        JSONObject sfondo;
+        JSONObject radice;
         try {
-            sfondo = new JSONObject(messaggio).optJSONObject("sfondo");
+            radice = new JSONObject(messaggio);
         } catch (Throwable e) {
             return;
         }
+        JSONObject rete = radice.optJSONObject("rete");
+        if (rete != null) {
+            chiediAllaRete(app, rete);
+            return;
+        }
+        JSONObject sfondo = radice.optJSONObject("sfondo");
         if (sfondo == null) return;
         String id = sfondo.optString("id", "");
         int i = sfondo.optInt("i", -1);
@@ -568,6 +595,102 @@ public final class SchermataDiBlocco {
     }
 
     private static int sfondiMessi;
+
+    // ---- LA RETE DEL GUSCIO -------------------------------------------------
+
+    static boolean ospitePermesso(String host) {
+        String h = String.valueOf(host).toLowerCase(Locale.ROOT);
+        return h.equals("api.mangadex.org") || h.equals("uploads.mangadex.org") || h.equals("api.mangadex.network") || h.endsWith(".mangadex.network");
+    }
+
+    static String nomeDellApp(Context c) {
+        return "BookCompanion/" + versione(c) + " (Android " + Build.VERSION.RELEASE + "; +https://book-companion.vercel.app)";
+    }
+
+    private static void chiediAllaRete(Context app, JSONObject r) {
+        final long id = r.optLong("id", -1);
+        final String indirizzo = r.optString("url", "");
+        final String metodo = "POST".equalsIgnoreCase(r.optString("metodo", "GET")) ? "POST" : "GET";
+        final String corpo = r.has("corpo") ? r.optString("corpo", "") : null;
+        final String tipoCorpo = r.optString("tipoCorpo", "application/json");
+        if (id < 0) return;
+        fila.execute(() -> {
+            HttpURLConnection c = null;
+            try {
+                URL u = new URL(indirizzo);
+                if (!"https".equals(u.getProtocol()) || !ospitePermesso(u.getHost())) throw new IllegalArgumentException("indirizzo non permesso: " + u.getHost());
+                c = (HttpURLConnection) u.openConnection();
+                c.setConnectTimeout(20000);
+                c.setReadTimeout(60000);
+                c.setInstanceFollowRedirects(true);
+                c.setRequestMethod(metodo);
+                c.setRequestProperty("User-Agent", nomeDellApp(app));
+                c.setRequestProperty("Accept", "*/*");
+                if ("POST".equals(metodo) && corpo != null) {
+                    byte[] b = corpo.getBytes(StandardCharsets.UTF_8);
+                    c.setDoOutput(true);
+                    c.setRequestProperty("Content-Type", tipoCorpo);
+                    c.setFixedLengthStreamingMode(b.length);
+                    try (OutputStream o = c.getOutputStream()) {
+                        o.write(b);
+                    }
+                }
+                int stato = c.getResponseCode();
+                byte[] dati = leggiTutto(stato >= 400 ? c.getErrorStream() : c.getInputStream());
+                rispondiRete(id, stato, c.getContentType(), c.getHeaderField("X-Cache"), dati);
+            } catch (Throwable e) {
+                try {
+                    JSONObject dentro = new JSONObject();
+                    dentro.put("id", id);
+                    dentro.put("errore", String.valueOf(e.getMessage()));
+                    JSONObject m = new JSONObject();
+                    m.put("rete", dentro);
+                    mandaAllaPagina(m.toString());
+                } catch (Throwable ignora) {
+                    /* senza risposta la pagina smette di aspettare da sola */
+                }
+            } finally {
+                if (c != null) c.disconnect();
+            }
+        });
+    }
+
+    private static byte[] leggiTutto(InputStream in) throws Exception {
+        if (in == null) return new byte[0];
+        try (InputStream dentro = in; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] b = new byte[64 * 1024];
+            for (int n; (n = dentro.read(b)) > 0; ) {
+                if (out.size() + n > RETE_MAX) throw new IllegalStateException("risposta troppo grande");
+                out.write(b, 0, n);
+            }
+            return out.toByteArray();
+        }
+    }
+
+    private static void rispondiRete(long id, int stato, String tipo, String cache, byte[] dati) throws Exception {
+        String b64 = Base64.encodeToString(dati, Base64.NO_WRAP);
+        int n = Math.max(1, (b64.length() + PEZZO_RETE - 1) / PEZZO_RETE);
+        for (int k = 0; k < n; k++) {
+            JSONObject dentro = new JSONObject();
+            dentro.put("id", id);
+            dentro.put("i", k);
+            dentro.put("n", n);
+            dentro.put("stato", stato);
+            if (tipo != null) dentro.put("tipo", tipo);
+            if (cache != null) dentro.put("cache", cache);
+            dentro.put("dati", b64.substring(k * PEZZO_RETE, Math.min(b64.length(), (k + 1) * PEZZO_RETE)));
+            JSONObject m = new JSONObject();
+            m.put("rete", dentro);
+            mandaAllaPagina(m.toString());
+        }
+    }
+
+    private static void mandaAllaPagina(String testo) {
+        mano.post(() -> {
+            CustomTabsSession s = sessione();
+            if (s != null) s.postMessage(testo, null);
+        });
+    }
 
     // ---- LO SFONDO DI PRIMA -------------------------------------------------
 

@@ -55,7 +55,8 @@ import { tipiDaScegliere } from "./lib/importBook.js";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, convertiLibroInCbz } from "./lib/sync.js";
 import { riordinaDisco, fraseRiordino, fraseDaParte, fraseRimessi, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
 import { importaDaFuori, resoconto, importFiles } from "./lib/importBook.js";
-import { scaricaCapitolo, nomeCapitolo, spiega as spiegaMangadex, nuovoRitmo } from "./lib/mangadex.js";
+import { scaricaCapitolo, nomeCapitolo, spiega as spiegaMangadex, ritmoComune } from "./lib/mangadex.js";
+import { nuovaReteGuscio, SA_RETE } from "./lib/reteGuscio.js";
 import { togliAvanziDrive } from "./lib/avanziDrive.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
 import BarraLavoro from "./components/BarraLavoro.jsx";
@@ -1017,15 +1018,24 @@ export default function App() {
     // volta che la scheda torna davanti, e una copertina mandata senza l'ok
     // era su una porta morta (il tablet mostrava il libro di prima). Un
     // oggetto nuovo rifa' l'invio; la chiave confermata lo ferma.
-    const riparti = (porta) => {
+    // la rete del guscio (`lib/reteGuscio.js`) vive con la sua porta, e
+    // vale solo da quando il guscio dice di saperla usare (`SA_RETE`)
+    const riparti = (porta, rete) => {
       sfondoMandato.current = dopoIlSaluto(sfondoMandato.current, sfondoConfermato.current);
-      setGuscio({ porta });
+      setGuscio((g) => ({ porta, ...(g?.porta === porta && g.rete ? { rete: g.rete } : rete ? { rete } : {}) }));
     };
     const saluto = (e) => {
       annotaMessaggio(e);
       const porta = portaDelGuscio(e, window.location.origin);
       if (!porta) return;
+      const rete = nuovaReteGuscio((s) => porta.postMessage(s));
       porta.onmessage = (m) => {
+        // le risposte della rete del guscio: MangaDex, chiesto col nome dell'app
+        if (rete.ricevi(m.data)) return;
+        if (m.data === SA_RETE) {
+          setGuscio((g) => (g && g.porta === porta ? { ...g, rete } : g));
+          return;
+        }
         // il saluto viaggia sulla porta: si risponde li', o il guscio risaluta
         if (m.data === SALUTO) {
           porta.postMessage(CIAO);
@@ -1067,7 +1077,7 @@ export default function App() {
       setGuscio((g) => {
         if (!g || !sfondoMandato.current || sfondoMandato.current === sfondoConfermato.current) return g;
         sfondoMandato.current = null;
-        return { porta: g.porta };
+        return { ...g };
       });
     };
     window.addEventListener("message", saluto);
@@ -1699,13 +1709,16 @@ export default function App() {
   // quel capitolo, il giro continua e alla fine si racconta.
   const [scarico, setScarico] = useState(null);
   const filoScarico = useRef(null);
-  const ritmoScarico = useRef(null);
+  // MANGADEX RESPINGE LE PAGINE WEB (la sfida anti-bot): nel guscio le
+  // richieste passano da lui, col nome dell'app; nel browser vanno dirette
+  // e la stanza dice perche' non rispondono
+  const reteMangadex = guscio?.rete?.fetch || null;
   async function scaricaCapitoli(serie, caps) {
     if (filoScarico.current || !caps?.length) return;
     const mio = {};
     filoScarico.current = mio;
     const vivo = () => filoScarico.current === mio;
-    if (!ritmoScarico.current) ritmoScarico.current = nuovoRitmo();
+    const chiedi = reteMangadex || ((u, o) => fetch(u, o));
     let fatti = 0;
     const guai = [];
     try {
@@ -1715,8 +1728,8 @@ export default function App() {
         setScarico({ i, totale: caps.length, nome, pagina: 0, pagine: 0 });
         try {
           const file = await scaricaCapitolo(serie, cap, {
-            fetch: (u, o) => fetch(u, o),
-            ritmo: ritmoScarico.current,
+            fetch: chiedi,
+            ritmo: ritmoComune,
             vivo,
             onProgress: (p) => vivo() && setScarico({ i, totale: caps.length, nome, ...p }),
           });
@@ -2420,6 +2433,8 @@ export default function App() {
             }}
             onScarica={scaricaCapitoli}
             scarico={scarico}
+            rete={reteMangadex}
+            guscioVecchio={!!guscio && !guscio.rete}
           />
         </Suspense>
       )}
