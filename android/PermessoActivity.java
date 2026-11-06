@@ -12,7 +12,11 @@ import androidx.annotation.Nullable;
 // prima di arrivare a `shouldLaunchImmediately` («la finestra non era
 // comparsa»). Un'attivita' trasparente a parte, avviata dal lanciatore in
 // ogni caso, chiede il permesso sopra la pagina e si chiude con la
-// risposta. E' nel manifest grazie a `apk.mjs cuci`.
+// risposta. E' nel manifest grazie a `apk.mjs cuci`. E la apre anche il
+// guscio stesso, sopra Chrome, nel momento in cui una copertina arriva senza
+// permesso (`chiediPermesso`): sul tablet la strada dell'icona non ha mai
+// mostrato la finestra. Concesso, la copertina messa da parte si mette da
+// sola (`dopoIlPermesso`).
 public class PermessoActivity extends Activity {
     private static final int PERMESSO = 1;
 
@@ -32,6 +36,7 @@ public class PermessoActivity extends Activity {
         super.onRequestPermissionsResult(codice, permessi, esiti);
         if (codice != PERMESSO) return;
         SchermataDiBlocco.permessoRisposto(this, esiti);
+        SchermataDiBlocco.dopoIlPermesso(this);
         setResult(RESULT_OK);
         finish();
     }
