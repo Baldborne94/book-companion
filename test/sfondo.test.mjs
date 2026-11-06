@@ -4,7 +4,7 @@
 // decide quando parlargli e cosa mandargli.
 import { readFileSync } from "node:fs";
 import {
-  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, portaDelGuscio, annotaMessaggio, messaggiVisti, fraseMessaggi, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, nomeAndroid, fraseEsito, frasePermesso, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, fraseInvio, dopoIlSaluto, RISPOSTA_ENTRO, TOGLI,
+  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, portaDelGuscio, annotaMessaggio, messaggiVisti, fraseMessaggi, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, nomeAndroid, fraseEsito, frasePermesso, stradaPermesso, fraseSenzaPrima, ultimoStato, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, fraseInvio, dopoIlSaluto, RISPOSTA_ENTRO, TOGLI,
 } from "../src/lib/sfondo.js";
 
 const memoria = () => {
@@ -103,6 +103,16 @@ export default async function (t) {
   segnaRisposta(risposta("grimorio:sfondo:ok:senzaprima w=0;x=0;y=1"), sp);
   t.eq("…si segna come tale", ultimoInvio(sp).esito, "ok senza prima");
   t.c("…e la riga dice la strada delle impostazioni Android, con lo stato", /messa, ma lo sfondo di prima non si è potuto salvare.*Autorizzazioni → Archiviazione.*\(w=0;x=0;y=1\)\.$/.test(fraseInvio(ultimoInvio(sp))));
+  // da Android 13 la voce e' «Foto e video», e su 14 vale solo «tutte»
+  t.c("…su Android 13 la strada e' Foto e video", /Foto e video → Consenti sempre/.test(fraseInvio(ultimoInvio(sp), Date.now(), 33)) && !/Archiviazione/.test(fraseInvio(ultimoInvio(sp), Date.now(), 33)));
+  t.c("…su Android 14 si dice che servono tutte le foto", /a tutte le foto/.test(fraseSenzaPrima(34)) && !/tutte le foto/.test(fraseSenzaPrima(33)));
+  t.c("…e prima del 13 resta Archiviazione", /Archiviazione/.test(stradaPermesso(29)) && /Archiviazione/.test(stradaPermesso(null)));
+  t.c("dopo il permesso si riapre dall'icona", /riaprila dall'icona/.test(fraseSenzaPrima(34)));
+  t.eq("lo stato del permesso si tiene a parte, e resta alla copertina dopo", ultimoStato(sp).stato, "w=0;x=0;y=1");
+  segnaInvio({ id: "lb2", titolo: "Dopo", quando: Date.now(), esito: "mandata" }, sp);
+  t.eq("…anche quando la riga dell'invio e' gia' di un'altra", ultimoStato(sp).stato, "w=0;x=0;y=1");
+  t.eq("senza stato, niente", ultimoStato(memoria()), null);
+  t.c("il silenzio dice di riaprire dall'icona", /non ha risposto: chiudi l'app del tutto e riaprila dall'icona/.test(fraseInvio(ultimoInvio(sp), Date.now() + RISPOSTA_ENTRO + 1)));
   const java = readFileSync("android/SchermataDiBlocco.java", "utf8");
   t.c("il guscio ascolta la richiesta di togliere e risponde con la sua parola", java.includes(`TOGLI = "${TOGLI}"`) && java.includes('TOLTO = "grimorio:sfondo:tolto"') && java.includes("wm.clear(WallpaperManager.FLAG_LOCK)"));
   const tg = memoria();
@@ -183,6 +193,7 @@ export default async function (t) {
   t.eq("senza w/x/y la frase resta quella", fraseEsito(aperto), "tutto a posto, una copertina messa");
   t.c("concesso", /· permesso di leggere lo sfondo: concesso$/.test(fraseEsito({ ...aperto, w: "1", x: "0", y: "0" })));
   t.c("negato, con la strada delle impostazioni", /negato \(Impostazioni Android/.test(fraseEsito({ ...aperto, w: "0", x: "0", y: "1" })));
+  t.c("…che su Android 13 e' Foto e video", /negato \(Impostazioni Android.*Foto e video/.test(fraseEsito({ ...aperto, w: "0", x: "0", y: "1" }, 33)));
   t.c("da chiedere e mai aperta", /da chiedere, il guscio non ha ancora aperto la finestra/.test(fraseEsito({ ...aperto, w: "0", x: "1", y: "0" })));
   t.c("da chiedere, aperta una volta", /finestra aperta dal guscio una volta$/.test(fraseEsito({ ...aperto, w: "0", x: "1", y: "0", z: "1" })));
   t.c("da chiedere, aperta tre volte", /finestra aperta dal guscio 3 volte$/.test(fraseEsito({ ...aperto, w: "0", x: "1", y: "0", z: "3" })));

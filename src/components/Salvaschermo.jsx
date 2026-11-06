@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { C, F, R, FONT_TITLE, px } from "../data/constants.js";
 import { leggiSalvaschermo, scriviSalvaschermo, SCELTE_COPERTINA, SCELTE_SPEGNI, fraseMinuti } from "../lib/salvaschermo.js";
-import { nelGuscio, fraseEsito, messaggiVisti, fraseMessaggi, fraseInvio, LATO_MAX, STRADA_PERMESSO, nomeAndroid } from "../lib/sfondo.js";
+import { nelGuscio, fraseEsito, messaggiVisti, fraseMessaggi, fraseInvio, LATO_MAX, stradaPermesso, nomeAndroid, ultimoStato } from "../lib/sfondo.js";
 import { getCover, getFile } from "../lib/bookStore.js";
 import { copertinaOriginale } from "../lib/copertina.js";
 import { copertinaGrande } from "../lib/copertinaGrande.js";
@@ -147,7 +147,7 @@ export function SezioneSfondo({ pronto, info = null, invio = null, acceso, onCam
   if (!nelGuscio()) return null;
   // il guscio nuovo c'e' ma non ha salutato: si dice fin dove e' arrivato
   // l'ultima volta (`infoDalLancio`), o come farglielo raccontare
-  const ultima = fraseEsito(info?.esito);
+  const ultima = fraseEsito(info?.esito, info?.android);
   return (
     <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
       <div style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 6 }}>Anche a tablet spento</div>
@@ -173,14 +173,19 @@ export function SezioneSfondo({ pronto, info = null, invio = null, acceso, onCam
             Lo sfondo della schermata di blocco diventa la copertina del libro che hai in mano, e cambia
             quando cambi libro. Spegnendolo, la schermata di blocco torna allo sfondo che avevi: la prima volta
             l'app chiede il permesso di leggerlo (foto e contenuti) con una finestra sopra la pagina; se non
-            compare, chiudi l'app del tutto e riaprila dall'icona, o concedilo in {STRADA_PERMESSO}. Senza permesso
-            la copertina va lo stesso, e spegnendo Android rimette il suo.
+            compare, chiudi l'app del tutto e riaprila dall'icona, o concedilo in {stradaPermesso(info?.android)}
+            {Number(info?.android) >= 34 ? " (se Android chiede quali foto, scegli tutte)" : ""}. Senza permesso
+            la copertina va lo stesso, e spegnendo Android rimette il suo. Dopo un permesso cambiato dalle
+            impostazioni Android l'app va chiusa del tutto e riaperta dall'icona.
             {/* l'ultima copertina mandata e cosa ne ha detto il guscio: sul
                 tablet la schermata di blocco mostrava il libro di prima, e da
                 fuori non si vedeva se la pagina avesse mandato o il guscio
                 ascoltato */}
-            {(acceso || invio) && <span style={{ display: "block", marginTop: 4, fontSize: F.minuscolo, opacity: 0.7 }}>{fraseInvio(invio)}</span>}
-            {info?.versione && <span style={{ display: "block", marginTop: 2, fontSize: F.minuscolo, opacity: 0.7 }}>Guscio {info.versione}{nomeAndroid(info.android) ? ` · ${nomeAndroid(info.android)}` : ""}</span>}
+            {(acceso || invio) && <span style={{ display: "block", marginTop: 4, fontSize: F.minuscolo, opacity: 0.7 }}>{fraseInvio(invio, Date.now(), info?.android)}</span>}
+            {info?.versione && <span style={{ display: "block", marginTop: 2, fontSize: F.minuscolo, opacity: 0.7 }}>Guscio {info.versione}{nomeAndroid(info.android) ? ` · ${nomeAndroid(info.android)}` : ""}{ultimoStato() ? ` · permesso: ${ultimoStato().stato}` : ""}</span>}
+            {/* com'e' andato l'ultimo avvio, anche a guscio vivo: e' li' che
+                finisce il guasto di una lettura rifiutata */}
+            {ultima && <span style={{ display: "block", marginTop: 2, fontSize: F.minuscolo, opacity: 0.7, wordBreak: "break-word" }}>All'ultimo avvio: {ultima}</span>}
           </p>
         </>
       ) : (
