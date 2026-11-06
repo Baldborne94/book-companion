@@ -3,7 +3,7 @@
 // dei fumetti dell'app, e la lista delle serie seguite con i capitoli nuovi.
 import {
   cerca, capitoli, pagine, scaricaCapitolo, comicInfo, nomeFile, nomeCapitolo, titoloDi, scegliCapitoli, daFeed, daRicerca,
-  nuovoRitmo, spiega, segnalaPagina, leggiSerie, scriviSerie, segui, smetti, cambiaLingua, conCapitoli, visti, nuoviInTutto, fraseSerie,
+  nuovoRitmo, spiega, DNS_BLOCCA, indirizzoPrivato, segnalaPagina, leggiSerie, scriviSerie, segui, smetti, cambiaLingua, conCapitoli, visti, nuoviInTutto, fraseSerie,
   nellaBiblioteca, daScaricare, fraseScarico, copertinaUrl, PAGINA_FEED, COPERTINE, RAPPORTO, BASE, SFIDA,
 } from "../src/lib/mangadex.js";
 import { apriArchivio, leggiComicInfo, eComicInfo } from "../src/lib/fumetto.js";
@@ -140,6 +140,11 @@ export default async function (t) {
   // challenge not passed», o un «Failed to fetch» con la rete viva
   t.c("un Failed to fetch con la rete viva e' la sfida anti-bot, non la rete", /sfida anti-bot/.test(spiega(new TypeError("Failed to fetch"))) && spiega(new TypeError("Failed to fetch")) === SFIDA);
   t.c("un 403 e' la sfida", spiega(new Error("MangaDex: 403")) === SFIDA && spiega(new Error("Bot challenge not passed, refresh this page.")) === SFIDA);
+  t.eq("il nome mandato a un indirizzo privato e' il DNS che blocca (il caso del tablet)", spiega(new Error("Failed to connect to api.mangadex.org/172.16.0.4:443")), DNS_BLOCCA);
+  t.c("ogni rete privata e' un blocco, un indirizzo pubblico no",
+    ["10.0.0.1", "192.168.1.1", "172.31.255.1", "127.0.0.1", "0.0.0.0"].every((ip) => indirizzoPrivato(`Failed to connect to api.mangadex.org/${ip}:443`))
+    && !["172.15.0.1", "172.32.0.1", "104.18.10.4", "11.0.0.1"].some((ip) => indirizzoPrivato(`Failed to connect to api.mangadex.org/${ip}:443`)));
+  t.c("la strada per curarlo sta nel messaggio", /DNS privato/.test(DNS_BLOCCA) && /one\.one\.one\.one/.test(DNS_BLOCCA));
   t.eq("…e con la rete spenta e' la rete", spiega(new TypeError("Failed to fetch"), false), "la rete non risponde");
   const errore = await cerca("x", { fetch: async () => risposta({ result: "error", errors: [{ detail: "Bad request" }] }), ritmo }).catch((e) => e.message);
   t.eq("un errore dell'API porta il suo dettaglio", errore, "Bad request");

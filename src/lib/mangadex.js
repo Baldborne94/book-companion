@@ -61,8 +61,17 @@ export const SFIDA = "MangaDex non risponde alle pagine web: davanti alla sua AP
 // stanno nella stessa fila, o insieme sforerebbero le cinque al secondo
 export const ritmoComune = nuovoRitmo();
 
+// UN NOME CHE PORTA IN CASA: sul tablet del lettore il DNS della rete Wi-Fi
+// mandava api.mangadex.org a 172.16.0.4, e la stanza mostrava l'errore
+// grezzo del guscio. Un indirizzo privato dietro un nome pubblico e' un
+// blocco del DNS, e si cura cambiando il DNS del dispositivo
+export const DNS_BLOCCA = "Il DNS di questa rete blocca MangaDex (lo manda a un indirizzo che non è su Internet). Si risolve scegliendo un DNS pubblico: Impostazioni Android → Connessioni → Altre impostazioni di rete → DNS privato → «one.one.one.one», poi riapri l'app dall'icona";
+export const indirizzoPrivato = (m) =>
+  /\/(?:10\.\d+|127\.\d+|0\.0|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.\d+\.\d+(?::\d+)?\b/.test(String(m || ""));
+
 export function spiega(e, inRete = typeof navigator === "undefined" || navigator.onLine !== false) {
   const m = String(e?.message || e || "");
+  if (indirizzoPrivato(m)) return DNS_BLOCCA;
   if (/429/.test(m)) return "MangaDex chiede di aspettare un momento (troppe richieste)";
   if (/Bot challenge|\b403\b/i.test(m)) return SFIDA;
   if (/\b5\d\d\b/.test(m)) return "MangaDex non risponde in questo momento";
