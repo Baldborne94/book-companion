@@ -87,6 +87,8 @@ export default async function (t) {
   t.eq("e quello rimesso un altro", JSON.stringify(risposta("grimorio:sfondo:rimesso")), '{"ok":true,"tolto":true,"rimesso":true}');
   t.c("il guscio salva lo sfondo di prima e lo rimette", readFileSync("android/SchermataDiBlocco.java", "utf8").includes('RIMESSO = "grimorio:sfondo:rimesso"') && /getWallpaperFile\(WallpaperManager\.FLAG_LOCK\)[\s\S]*wm\.setStream\(in, null, true, WallpaperManager\.FLAG_LOCK\)/.test(readFileSync("android/SchermataDiBlocco.java", "utf8")) && readFileSync("android/SchermataDiBlocco.java", "utf8").includes("if (!salvaPrima(app, wm))"));
   t.c("e il lanciatore chiede il permesso di leggerlo", readFileSync("android/GuscioActivity.java", "utf8").includes("shouldLaunchImmediately") && readFileSync("android/GuscioActivity.java", "utf8").includes("launchTwa()"));
+  // una finestra chiusa senza risposta non e' un no (l'APK 1126 lo credeva)
+  t.c("una richiesta annullata non vale come diniego", /if \(esiti == null \|\| esiti\.length == 0\) return;/.test(readFileSync("android/SchermataDiBlocco.java", "utf8")) && readFileSync("android/SchermataDiBlocco.java", "utf8").includes('LETTURA_NEGATA = "lettura_negata2"'));
   const java = readFileSync("android/SchermataDiBlocco.java", "utf8");
   t.c("il guscio ascolta la richiesta di togliere e risponde con la sua parola", java.includes(`TOGLI = "${TOGLI}"`) && java.includes('TOLTO = "grimorio:sfondo:tolto"') && java.includes("wm.clear(WallpaperManager.FLAG_LOCK)"));
   const tg = memoria();

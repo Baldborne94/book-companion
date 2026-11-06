@@ -1,7 +1,6 @@
 package it.bookcompanion.app;
 
 import android.app.Activity;
-import android.content.pm.PackageManager;
 import android.os.Bundle;
 
 import androidx.annotation.NonNull;
@@ -32,7 +31,7 @@ public class PermessoActivity extends Activity {
     public void onRequestPermissionsResult(int codice, @NonNull String[] permessi, @NonNull int[] esiti) {
         super.onRequestPermissionsResult(codice, permessi, esiti);
         if (codice != PERMESSO) return;
-        SchermataDiBlocco.permessoRisposto(this, esiti.length > 0 && esiti[0] == PackageManager.PERMISSION_GRANTED);
+        SchermataDiBlocco.permessoRisposto(this, esiti);
         setResult(RESULT_OK);
         finish();
     }
