@@ -142,7 +142,10 @@ export async function copertinaDaEpub(eb) {
 // e allora il dorso disegnato E' lo stato di partenza. Chi chiama deve
 // pero' avere i byte in mano: senza file non si guarda, e cancellare la
 // copertina buona per un libro rimasto nel cloud sarebbe il danno peggiore.
-export async function copertinaOriginale(book, bytes) {
+// `max` e' il lato lungo: di norma `LATO`, la misura delle copertine
+// salvate; la copertina grande per lo schermo intero (`copertinaGrande.js`)
+// ne chiede uno quanto lo schermo, e l'ePub arriva com'e' nel file
+export async function copertinaOriginale(book, bytes, max = LATO) {
   if (!bytes) return null;
   try {
     // un CBR che sta su Drive: la prima pagina e basta (`primaPaginaRar`),
@@ -151,7 +154,7 @@ export async function copertinaOriginale(book, bytes) {
       const { primaPaginaRar } = await import("./fumetto.js");
       const p = await primaPaginaRar(bytes);
       if (!p?.bytes) return null;
-      return (await preparaCopertina(new Blob([p.bytes], { type: tipoImmagine(p.nome) || "image/jpeg" }))) || null;
+      return (await preparaCopertina(new Blob([p.bytes], { type: tipoImmagine(p.nome) || "image/jpeg" }), max)) || null;
     }
     // un fumetto: la prima pagina, rimpicciolita come una copertina messa
     // a mano — PRIMA di `arrayBuffer`, che su un CBZ da un giga caricherebbe
@@ -161,12 +164,14 @@ export async function copertinaOriginale(book, bytes) {
       const a = await apriFumetto(bytes);
       if (!a.pagine.length) return null;
       const blob = new Blob([await a.leggi(0)], { type: tipoImmagine(a.pagine[0]) || "image/jpeg" });
-      return (await preparaCopertina(blob)) || null;
+      return (await preparaCopertina(blob, max)) || null;
     }
     const buf = await bytes.arrayBuffer();
     if (book?.fileType === "pdf") {
       const { renderPdfThumb } = await import("./pdfThumb.js");
-      return (await renderPdfThumb(buf)) || null;
+      // la miniatura di sempre e' larga 320; per lo schermo intero una
+      // pagina in piedi larga i sette decimi del lato lungo ci sta tutta
+      return (await renderPdfThumb(buf, max > LATO ? Math.round(max * 0.7) : 320)) || null;
     }
     const { default: ePub } = await import("epubjs");
     return await copertinaDaEpub(ePub(buf));

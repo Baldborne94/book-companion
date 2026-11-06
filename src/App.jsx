@@ -30,8 +30,9 @@ import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, get
 import { libroDellaScheda } from "./lib/schedaMusica.js";
 import { leggiSalvaschermo, fase, prossimoCambio } from "./lib/salvaschermo.js";
 import Salvaschermo, { SezioneSalvaschermo, SezioneSfondo } from "./components/Salvaschermo.jsx";
-import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, dopoIlSaluto, SALUTO, CIAO, TOGLI } from "./lib/sfondo.js";
+import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, dopoIlSaluto, SALUTO, CIAO, TOGLI, LATO_MAX } from "./lib/sfondo.js";
 import { ascoltaCopertine } from "./lib/miniature.js";
+import { copertinaGrande, dimenticaGrande } from "./lib/copertinaGrande.js";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux } from "./lib/bookStore.js";
 import { cercaNuovaVersione, cercaInSilenzio, siAggiornaNascosta } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
@@ -1910,7 +1911,14 @@ export default function App() {
   // qui per lo schermo di QUESTO dispositivo (`misuraSchermo`), a pezzi.
   const idScheda = libroScheda?.id || null;
   const [copVScheda, setCopVScheda] = useState(0);
-  useEffect(() => ascoltaCopertine((id) => id === idScheda && setCopVScheda((v) => v + 1)), [idScheda]);
+  useEffect(
+    () =>
+      ascoltaCopertine((id) => {
+        dimenticaGrande(id);
+        if (id === idScheda) setCopVScheda((v) => v + 1);
+      }),
+    [idScheda]
+  );
   useEffect(() => {
     if (!guscio || !sfondo || !idScheda) return;
     let vivo = true;
@@ -1921,8 +1929,11 @@ export default function App() {
       setInvii((v) => v + 1);
     };
     (async () => {
-      const { getCover } = await import("./lib/bookStore.js");
-      const blob = await getCover(idScheda);
+      const { getCover, getFile } = await import("./lib/bookStore.js");
+      const { copertinaOriginale } = await import("./lib/copertina.js");
+      // la copertina grande, dal file (`copertinaGrande.js`): quella
+      // salvata e' da 800 e sullo schermo da 2000 arrivava morbida
+      const blob = await copertinaGrande(libroScheda, { leggiFile: getFile, leggiCover: getCover, estrai: copertinaOriginale, max: LATO_MAX });
       if (!vivo) return;
       if (!blob) return segna("senza copertina");
       const chiave = `${idScheda}:${blob.size}:${copVScheda}`;
