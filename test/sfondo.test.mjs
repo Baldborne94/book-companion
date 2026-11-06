@@ -4,7 +4,7 @@
 // decide quando parlargli e cosa mandargli.
 import { readFileSync } from "node:fs";
 import {
-  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, portaDelGuscio, annotaMessaggio, messaggiVisti, fraseMessaggi, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, fraseEsito, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, fraseInvio, dopoIlSaluto, RISPOSTA_ENTRO, TOGLI,
+  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, portaDelGuscio, annotaMessaggio, messaggiVisti, fraseMessaggi, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, fraseEsito, frasePermesso, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, fraseInvio, dopoIlSaluto, RISPOSTA_ENTRO, TOGLI,
 } from "../src/lib/sfondo.js";
 
 const memoria = () => {
@@ -158,6 +158,17 @@ export default async function (t) {
   t.c("tutto a posto, con le copertine", /tutto a posto, 2 copertine/.test(fraseEsito({ l: "1", k: "1", n: "1", s: "1", c: "1", r: "1", v: "1", p: "1", a: "1", f: "2" })));
   t.c("tutto aperto ma niente mandato", /nessuna copertina/.test(fraseEsito({ l: "1", k: "1", n: "1", s: "1", c: "1", r: "1", v: "1", p: "1", a: "1", f: "0" })));
   t.c("il lanciatore mai creato viene prima di tutto", /lanciatore non è stato creato/.test(fraseEsito({ k: "1", n: "1", s: "1" })) && /lanciatore/.test(fraseEsito({ s: "0" })));
+  // il permesso di leggere lo sfondo, in coda, in parole
+  const aperto = { l: "1", k: "1", n: "1", s: "1", c: "1", r: "1", v: "1", p: "1", a: "1", f: "1" };
+  t.eq("senza w/x/y la frase resta quella", fraseEsito(aperto), "tutto a posto, una copertina messa");
+  t.c("concesso", /· permesso di leggere lo sfondo: concesso$/.test(fraseEsito({ ...aperto, w: "1", x: "0", y: "0" })));
+  t.c("negato, con la strada delle impostazioni", /negato \(Impostazioni Android/.test(fraseEsito({ ...aperto, w: "0", x: "0", y: "1" })));
+  t.c("da chiedere e mai aperta", /da chiedere, il guscio non ha ancora aperto la finestra/.test(fraseEsito({ ...aperto, w: "0", x: "1", y: "0" })));
+  t.c("da chiedere, aperta una volta", /finestra aperta dal guscio una volta$/.test(fraseEsito({ ...aperto, w: "0", x: "1", y: "0", z: "1" })));
+  t.c("da chiedere, aperta tre volte", /finestra aperta dal guscio 3 volte$/.test(fraseEsito({ ...aperto, w: "0", x: "1", y: "0", z: "3" })));
+  t.c("mai servito", /mai servito$/.test(fraseEsito({ ...aperto, w: "0", x: "0", y: "0" })));
+  t.c("il permesso non copre un passo mancato", !/permesso di leggere/.test(fraseEsito({ ...aperto, p: "0", w: "0", x: "1", y: "0" })));
+  t.eq("senza esito, niente", frasePermesso(null), null);
   t.c("il callback mai creato", /callback/.test(fraseEsito({ l: "1", n: "1", s: "1" })));
   t.c("nessun evento di navigazione", /nessun evento/.test(fraseEsito({ l: "1", k: "1", s: "1" })));
   t.c("senza la pagina caricata si dice l'ultimo evento visto", /nessun evento.*ultimo evento: 6/.test(fraseEsito({ l: "1", k: "1", u: "6", s: "1" })));

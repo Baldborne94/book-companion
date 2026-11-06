@@ -121,6 +121,15 @@ public final class SchermataDiBlocco {
     // e' nuova apposta: il «no» scritto da quell'APK si dimentica
     private static final String LETTURA_NEGATA = "lettura_negata2";
     private static final String FILE_PRIMA = "sfondo_prima";
+    // LA COPERTINA CHE ASPETTA IL PERMESSO. Gli APK 1126-1132 chiedevano il
+    // permesso solo al prossimo avvio dall'icona, e sul tablet la finestra
+    // non e' mai comparsa («no stessa cosa»). Ora si chiede NEL MOMENTO in
+    // cui serve: la copertina arrivata si mette da parte, la finestra si
+    // apre sopra Chrome (il guscio puo', perche' Chrome in primo piano e'
+    // legato al suo PostMessageService), e concesso il permesso la
+    // copertina messa da parte si mette da sola. L'avvio dall'icona resta
+    // come seconda strada.
+    private static final String FILE_ATTESA = "sfondo_attesa";
     private static final int PEZZI_MAX = 64;
     private static final long[] RITENTA_DOPO = { 1500, 4000, 10000 };
     // IL CANALE CHIESTO E MAI PRONTO: con la pagina ricaricata nella stessa
@@ -132,6 +141,7 @@ public final class SchermataDiBlocco {
     // riaggancio del servizio. Si richiede a scadenze finche' non e' pronto.
     private static final long[] RICHIEDI_DOPO = { 2000, 5000, 12000 };
     private static int richieste;
+    private static int finestreChieste;
 
     private static Lanciatore lanciatore;
     private static String ultimoGuasto;
@@ -193,7 +203,7 @@ public final class SchermataDiBlocco {
                 SharedPreferences p = c.getSharedPreferences(NOME, Context.MODE_PRIVATE);
                 if (p.getAll().isEmpty()) return null;
                 StringBuilder s = new StringBuilder();
-                for (String k : new String[] { "l", "k", "n", "u", "s", "c", "r", "q", "v", "p", "a", "f", "e" }) {
+                for (String k : new String[] { "l", "k", "n", "u", "s", "c", "r", "q", "v", "p", "a", "f", "e", "z" }) {
                     if (s.length() > 0) s.append(';');
                     s.append(k).append('=').append(p.getString(k, ""));
                 }
@@ -543,6 +553,56 @@ public final class SchermataDiBlocco {
         return new File(app.getFilesDir(), FILE_PRIMA);
     }
 
+    private static File fileAttesa(Context app) {
+        return new File(app.getFilesDir(), FILE_ATTESA);
+    }
+
+    private static void scrivi(File f, byte[] dati) throws Exception {
+        File provvisorio = new File(f.getPath() + ".tmp");
+        try (OutputStream out = new FileOutputStream(provvisorio)) {
+            out.write(dati);
+        }
+        if (!provvisorio.renameTo(f)) throw new IllegalStateException("non si e' scritto " + f.getName());
+    }
+
+    private static byte[] leggi(File f) throws Exception {
+        try (InputStream in = new FileInputStream(f); java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            byte[] b = new byte[64 * 1024];
+            for (int n; (n = in.read(b)) > 0; ) out.write(b, 0, n);
+            return out.toByteArray();
+        }
+    }
+
+    // La finestra del permesso sopra Chrome, da fuori da ogni attivita'.
+    // Android 10 lascia partire un'attivita' da dietro le quinte a chi ha
+    // un servizio legato dall'app in primo piano: Chrome e' legato al
+    // PostMessageService finche' il canale e' aperto. Se non la lascia
+    // partire non succede niente, e resta la strada dell'icona (`z` dice
+    // quante volte si e' provato).
+    static void chiediPermesso(Context app) {
+        try {
+            Intent i = new Intent(app, PermessoActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            app.startActivity(i);
+            Diagnosi.segna(app, "z", String.valueOf(++finestreChieste));
+        } catch (Throwable e) {
+            Log.w(TAG, "la finestra del permesso non parte: " + e);
+            Diagnosi.segna(app, "e", "finestra del permesso: " + e.getMessage());
+        }
+    }
+
+    // Concesso il permesso, la copertina messa da parte si mette da sola e
+    // la pagina riceve l'ok come se fosse appena arrivata
+    static void dopoIlPermesso(Context c) {
+        Context app = c.getApplicationContext();
+        if (!leggibile(app) || !fileAttesa(app).exists()) return;
+        try {
+            metti(app, leggi(fileAttesa(app)));
+        } catch (Throwable e) {
+            Log.w(TAG, "la copertina messa da parte non si legge: " + e);
+        }
+    }
+
     // Salva lo sfondo della schermata di blocco (o, se e' lo stesso della
     // iniziale, quello) la prima volta. Torna false se serve il permesso:
     // allora la copertina NON si mette, e al prossimo avvio si chiede.
@@ -607,19 +667,31 @@ public final class SchermataDiBlocco {
     }
 
     private static void metti(Context app, String base64) {
+        byte[] byteDellImmagine;
+        try {
+            byteDellImmagine = Base64.decode(base64, Base64.DEFAULT);
+        } catch (Throwable e) {
+            byteDellImmagine = new byte[0];
+        }
+        metti(app, byteDellImmagine);
+    }
+
+    private static void metti(Context app, byte[] byteDellImmagine) {
         new Thread(() -> {
             String esito;
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    byte[] byteDellImmagine = Base64.decode(base64, Base64.DEFAULT);
                     Bitmap immagine = BitmapFactory.decodeByteArray(byteDellImmagine, 0, byteDellImmagine.length);
                     if (immagine == null) throw new IllegalStateException("immagine illeggibile");
                     WallpaperManager wm = WallpaperManager.getInstance(app);
                     if (!wm.isSetWallpaperAllowed()) throw new IllegalStateException("non permesso su questo dispositivo");
                     if (!salvaPrima(app, wm)) {
-                        esito = ERRORE + "per rimettere lo sfondo di prima quando spegni, serve il permesso di leggerlo: chiudi l'app del tutto, riaprila dall'icona e concedilo, poi riaccendi";
+                        scrivi(fileAttesa(app), byteDellImmagine);
+                        if (!leggibile(app)) mano.post(() -> chiediPermesso(app));
+                        esito = ERRORE + "per rimettere lo sfondo di prima quando spegni, serve il permesso di leggerlo: concedilo nella finestra che compare; se non compare, chiudi l'app del tutto e riaprila dall'icona";
                     } else {
                         wm.setBitmap(immagine, null, true, WallpaperManager.FLAG_LOCK);
+                        fileAttesa(app).delete();
                         esito = OK;
                         Diagnosi.segna(app, "f", String.valueOf(++sfondiMessi));
                     }

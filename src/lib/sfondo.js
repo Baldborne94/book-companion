@@ -285,5 +285,19 @@ export function fraseEsito(esito) {
     return frase + (k === "n" && esito.u ? ` (ultimo evento: ${esito.u})` : "") + (esito.e ? ` — ${esito.e}` : "");
   }
   const n = Number(esito.f) || 0;
-  return n ? `tutto a posto, ${n === 1 ? "una copertina messa" : `${n} copertine messe`}` : "canale aperto e saluto ricevuto, ma nessuna copertina mandata";
+  const frase = n ? `tutto a posto, ${n === 1 ? "una copertina messa" : `${n} copertine messe`}` : "canale aperto e saluto ricevuto, ma nessuna copertina mandata";
+  const permesso = frasePermesso(esito);
+  return permesso ? `${frase} · ${permesso}` : frase;
+}
+
+// Il permesso di leggere lo sfondo di prima, in parole: «w» leggibile, «x»
+// da chiedere, «y» negato, «z» quante volte il guscio ha aperto la finestra
+// da solo. Dal tablet si vedeva solo che la finestra non compariva, non
+// se il guscio l'avesse mai chiesta o preso un no per risposta.
+export function frasePermesso(esito) {
+  if (!esito || esito.w === undefined) return null;
+  if (esito.w === "1") return "permesso di leggere lo sfondo: concesso";
+  if (esito.y === "1") return "permesso di leggere lo sfondo: negato (Impostazioni Android → App → Book Companion → Autorizzazioni → Archiviazione)";
+  if (esito.x === "1") return `permesso di leggere lo sfondo: da chiedere, ${Number(esito.z) > 0 ? `finestra aperta dal guscio ${esito.z === "1" ? "una volta" : `${esito.z} volte`}` : "il guscio non ha ancora aperto la finestra"}`;
+  return "permesso di leggere lo sfondo: mai servito";
 }
