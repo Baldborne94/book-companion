@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { C, F, R, FONT_TITLE, px } from "../data/constants.js";
 import { leggiSalvaschermo, scriviSalvaschermo, SCELTE_COPERTINA, SCELTE_SPEGNI, fraseMinuti } from "../lib/salvaschermo.js";
-import { nelGuscio, fraseEsito, messaggiVisti, fraseMessaggi, fraseInvio } from "../lib/sfondo.js";
-import { getCover } from "../lib/bookStore.js";
+import { nelGuscio, fraseEsito, messaggiVisti, fraseMessaggi, fraseInvio, LATO_MAX } from "../lib/sfondo.js";
+import { getCover, getFile } from "../lib/bookStore.js";
+import { copertinaOriginale } from "../lib/copertina.js";
+import { copertinaGrande } from "../lib/copertinaGrande.js";
 import { getProgress } from "../lib/library.js";
 
 // La copertina intera su fondo nero, come un quadro appeso: le copertine
@@ -20,7 +22,9 @@ export default function Salvaschermo({ libro, onTocco, onSenza }) {
   useEffect(() => {
     let vivo = true;
     let mio = null;
-    getCover(id)
+    // la copertina grande, dal file: quella salvata e' da 800 pixel e a
+    // tutto schermo arrivava morbida (`copertinaGrande.js`)
+    copertinaGrande(libro, { leggiFile: getFile, leggiCover: getCover, estrai: copertinaOriginale, max: LATO_MAX })
       .then((blob) => {
         if (!vivo) return;
         // senza copertina non c'e' niente da appendere: resta solo lo

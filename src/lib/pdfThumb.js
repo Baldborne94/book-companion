@@ -17,8 +17,10 @@ export { chiudiPdf };
 // puo' selezionare, quindi niente dizionario
 export const makeTextLayer = (opts) => new pdfjs.TextLayer(opts);
 
-export async function renderPdfThumb(arrayBuffer) {
-  return disegnaPrima(pdfjs.getDocument({ data: arrayBuffer }).promise);
+// `larghezza` in pixel: 320 per la miniatura della scheda; la copertina
+// grande per lo schermo intero (`copertinaGrande.js`) ne chiede di piu'
+export async function renderPdfThumb(arrayBuffer, larghezza = 320) {
+  return disegnaPrima(pdfjs.getDocument({ data: arrayBuffer }).promise, larghezza);
 }
 
 // LA PRIMA PAGINA DI UN PDF CHE STA ALTROVE (un file di Drive letto a
@@ -49,12 +51,12 @@ function apriAIntervalli(blob) {
   return { promise };
 }
 
-async function disegnaPrima(aperto) {
+async function disegnaPrima(aperto, larghezza = 320) {
   const pdf = await aperto;
   try {
     const page = await pdf.getPage(1);
     const base = page.getViewport({ scale: 1 });
-    const viewport = page.getViewport({ scale: 320 / base.width });
+    const viewport = page.getViewport({ scale: larghezza / base.width });
     const canvas = document.createElement("canvas");
     canvas.width = Math.ceil(viewport.width);
     canvas.height = Math.ceil(viewport.height);

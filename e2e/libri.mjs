@@ -35,6 +35,18 @@ function pngDa(larghezza, altezza, grezzo) {
     pezzo("IEND", Buffer.alloc(0)),
   ]);
 }
+// righe orizzontali alte `passo` pixel, di due colori: una copertina che
+// ingrandita da piccola si scioglie, e si vede (`copertinaGrande`)
+export function pngRighe(larghezza, altezza, passo, a, b) {
+  const riga = (c) => {
+    const r = Buffer.alloc(1 + larghezza * 3);
+    for (let x = 0; x < larghezza; x++) r.set(c, 1 + x * 3);
+    return r;
+  };
+  const [ra, rb] = [riga(a), riga(b)];
+  return pngDa(larghezza, altezza, Buffer.concat(Array.from({ length: altezza }, (_, y) => (Math.floor(y / passo) % 2 ? rb : ra))));
+}
+
 export function png(larghezza, altezza, [r, g, b]) {
   const riga = Buffer.alloc(1 + larghezza * 3);
   for (let x = 0; x < larghezza; x++) riga.set([r, g, b], 1 + x * 3);
@@ -77,7 +89,7 @@ export async function fumetto() {
 
 export const FRASE = "La nebbia saliva dal fiume e copriva le strade di Ankh-Morpork.";
 
-export async function epub({ titolo = "La nebbia", autore = "Autore di Prova", frase = FRASE, lingua = "it", quanti = 12, rientri = false } = {}) {
+export async function epub({ titolo = "La nebbia", autore = "Autore di Prova", frase = FRASE, lingua = "it", quanti = 12, rientri = false, copertina = null } = {}) {
   const zip = new JSZip();
   zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
   zip.file(
@@ -86,7 +98,7 @@ export async function epub({ titolo = "La nebbia", autore = "Autore di Prova", f
   );
   zip.file(
     "OEBPS/content.opf",
-    `<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:prova-nebbia</dc:identifier><dc:title>${titolo}</dc:title><dc:creator>${autore}</dc:creator><dc:language>${lingua}</dc:language><meta property="dcterms:modified">2026-01-01T00:00:00Z</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/></spine></package>`
+    `<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:prova-nebbia</dc:identifier><dc:title>${titolo}</dc:title><dc:creator>${autore}</dc:creator><dc:language>${lingua}</dc:language><meta property="dcterms:modified">2026-01-01T00:00:00Z</meta>${copertina ? '<meta name="cover" content="cover"/>' : ""}</metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/>${copertina ? '<item id="cover" href="cover.png" media-type="image/png" properties="cover-image"/>' : ""}</manifest><spine><itemref idref="c1"/></spine></package>`
   );
   zip.file(
     "OEBPS/nav.xhtml",
@@ -97,6 +109,7 @@ export async function epub({ titolo = "La nebbia", autore = "Autore di Prova", f
     "OEBPS/c1.xhtml",
     `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Uno</title>${rientri ? "<style>p { text-indent: 1.5em; margin: 0 }</style>" : ""}</head><body><h1>Capitolo uno</h1>${paragrafi}</body></html>`
   );
+  if (copertina) zip.file("OEBPS/cover.png", copertina);
   return zip.generateAsync({ type: "nodebuffer", mimeType: "application/epub+zip" });
 }
 

@@ -17,6 +17,7 @@ import { eFumetto } from "../lib/fumetto.js";
 import { getCover, getFile, putCover, removeCover } from "../lib/bookStore.js";
 import { recupera, senzaEtichetta } from "../lib/sinossi.js";
 import { preparaCopertina, copertinaOriginale } from "../lib/copertina.js";
+import { segnaAMano } from "../lib/copertinaGrande.js";
 import { caricaCopertina } from "../lib/sync.js";
 import { chiaveGlossario, vociDi, salvaVoci, togli } from "../lib/glossarioMio.js";
 import { statoLexicanum, del40k, loreAMano, scriviLoreAMano, FANDOM } from "../lib/lexicanum.js";
@@ -245,6 +246,8 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
         return;
       }
       await putCover(book.id, blob);
+      // a tutto schermo resta questa, non quella dentro il file (`copertinaGrande.js`)
+      segnaAMano(book.id, true);
       // il libro è cambiato anche se i suoi campi no: senza questo la
       // sincronizzazione non saprebbe che c'è qualcosa di nuovo
       touchBook(book.id);
@@ -275,6 +278,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
         return;
       }
       const originale = await copertinaOriginale(book, bytes);
+      segnaAMano(book.id, false);
       if (originale) await putCover(book.id, originale);
       else await removeCover(book.id);
       touchBook(book.id);

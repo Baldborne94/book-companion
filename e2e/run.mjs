@@ -14,7 +14,7 @@
 import { existsSync } from "node:fs";
 import { build, preview } from "vite";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
-import { fumetto, fumettoGrosso, fumettoLungo, epub, epubConContorno, epubConPagine, pdf, wav, FRASE, mondoDisco, png } from "./libri.mjs";
+import { fumetto, fumettoGrosso, fumettoLungo, epub, epubConContorno, epubConPagine, pdf, wav, FRASE, mondoDisco, png, pngRighe } from "./libri.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
 import { lexicanumFinto, fandomFinto } from "./lexicanumFinto.mjs";
 
@@ -1927,9 +1927,12 @@ const SCENE = [
       // e riacceso, la copertina riparte da capo
       await interruttore.click();
       await intera("lb", "riacceso l'interruttore");
-      // e un altro libro in mano manda la sua
+      // e un altro libro in mano manda la sua — GRANDE, dal file: la
+      // copertina salvata e' da 800 pixel e a 2000 arrivava morbida («riesci
+      // a rendermi l'immagine full HD?»). Righe blu da 4 pixel: ingrandite
+      // da 800 si sciolgono, dal file restano righe
       await d.p.keyboard.press("Escape").catch(() => {});
-      await importa(d.p, "La nebbia.epub", await epub({ quanti: 20 }), "application/epub+zip");
+      await importa(d.p, "La nebbia.epub", await epub({ quanti: 20, copertina: pngRighe(1200, 1800, 4, [16, 64, 208], [0, 0, 40]) }), "application/epub+zip");
       const nuovo = (await libriDi(d.p)).find((b) => b.title === "La nebbia").id;
       await copertina(nuovo, "#1040d0");
       await saluta();
@@ -1941,9 +1944,14 @@ const SCENE = [
         const c = new OffscreenCanvas(img.width, img.height);
         const g = c.getContext("2d");
         g.drawImage(img, 0, 0);
-        return [...g.getImageData(Math.round(img.width / 2), Math.round(img.height / 2), 1, 1).data.slice(0, 3)];
+        const x = Math.round(img.width / 2);
+        const y0 = Math.round(img.height / 2);
+        const col = [];
+        for (let y = y0 - 30; y < y0 + 30; y++) col.push([...g.getImageData(x, y, 1, 1).data.slice(0, 3)]);
+        return { maxB: Math.max(...col.map((p) => p[2])), minB: Math.min(...col.map((p) => p[2])), maxR: Math.max(...col.map((p) => p[0])) };
       }, b2);
-      if (!(blu[2] > 150 && blu[0] < 80)) throw new Error(`aperto l'altro libro, lo sfondo non è la sua copertina: ${blu}`);
+      if (!(blu.maxB > 150 && blu.maxR < 80)) throw new Error(`aperto l'altro libro, lo sfondo non è la sua copertina: ${JSON.stringify(blu)}`);
+      if (blu.maxB - blu.minB < 100) throw new Error(`la copertina è arrivata morbida: le righe da 4 pixel si sono sciolte (contrasto ${blu.maxB - blu.minB}), cioe' e' quella salvata da 800 e non quella del file`);
       // UNA PORTA NUOVA (la sessione di Chrome e' cambiata) mentre quella
       // copertina non ha avuto l'ok: si rimanda, perche' la porta di prima
       // era morta — e' il caso del tablet, che mostrava il libro di prima
