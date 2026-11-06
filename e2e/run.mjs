@@ -17,6 +17,7 @@ import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
 import { fumetto, fumettoGrosso, fumettoLungo, epub, epubConContorno, epubConPagine, pdf, wav, FRASE, mondoDisco, png, pngRighe } from "./libri.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
 import { lexicanumFinto, fandomFinto } from "./lexicanumFinto.mjs";
+import { mangadexFinto, PAGINE_PER_CAPITOLO } from "./mangadexFinto.mjs";
 
 // le richieste del service worker passano dalle rotte del contesto solo
 // cosi' (Chromium): servono alla scena della melodia che suona mentre scende
@@ -74,7 +75,7 @@ async function lanciaBrowser() {
 // o da Google (la prima volta in CI il catalogo vero ha dato a «Racconti» la
 // saga di Moravia, e la scena cadeva per una ragione che qui non c'era). Chi
 // vuole il catalogo se lo porta: `catalogo(url)` risponde al posto suo.
-async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, oracolo = null, misura = null, lexicanum = null, fandom = null } = {}) {
+async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, oracolo = null, misura = null, lexicanum = null, fandom = null, mangadex = null } = {}) {
   const ctx = await browser.newContext(misura || { viewport: { width: 1280, height: 800 } });
   await ctx.route(
     (url) => !/^(localhost|127\.0\.0\.1)$/.test(url.hostname),
@@ -83,6 +84,7 @@ async function dispositivo(browser, { sessione = false, prima = null, catalogo =
       if (oracolo && /api\.anthropic\.com/.test(url)) return route.fulfill({ json: await oracolo(JSON.parse(route.request().postData() || "{}")) });
       if (lexicanum && /wh40k\.lexicanum\.com/.test(url)) return lexicanum(route);
       if (fandom && /warhammer40k\.fandom\.com|static\.wikia\.nocookie\.net/.test(url)) return fandom(route);
+      if (mangadex && /mangadex\.(org|network)\//.test(url)) return mangadex(route);
       if (catalogo && /openlibrary\.org/.test(url)) {
         const json = await catalogo(url);
         if (json) return route.fulfill({ json });
@@ -2874,6 +2876,59 @@ const SCENE = [
       if (await p.getByRole("button", { name: /Apri in grande/ }).count()) throw new Error("le illustrazioni di Fandom non sono velate nella voce di Lexicanum");
       await p.getByText(/Un'illustrazione da Fandom velata/).click();
       await p.getByRole("button", { name: "Apri in grande: Loken e Torgaddon" }).waitFor({ timeout: 3000 });
+      return { guasti: d.guasti };
+    },
+  },
+  {
+    nome: "le serie seguite su MangaDex: una serie si cerca e si segue, un capitolo scaricato è un CBZ nella biblioteca e si legge, il rimando si legge là",
+    async fai({ browser }) {
+      const chieste = [];
+      // con un libro in casa: l'Ingresso vuoto non ha le stanze
+      const d = await dispositivo(browser, {
+        misura: TABLET,
+        mangadex: mangadexFinto(chieste),
+        prima: () => localStorage.setItem("bc_books", JSON.stringify([{ id: "m", title: "Mort", author: "Terry Pratchett", fileType: "epub", addedAt: 1 }])),
+      });
+      const { p } = d;
+      await p.goto(URL_APP);
+      // la stanza sull'Ingresso, larga quanto la fila
+      await p.getByRole("button", { name: /Serie seguite/ }).click();
+      const stanza = p.getByRole("dialog", { name: "Serie seguite" });
+      await stanza.getByText(/Non segui ancora nessuna serie/).waitFor({ timeout: 8000 });
+      await stanza.getByLabel("Cerca una serie").fill("berserk");
+      await stanza.getByRole("button", { name: "Cerca" }).click();
+      await finche(() => stanza.getByRole("button", { name: "＋ Segui" }).count(), 8000, "la ricerca non trova Berserk");
+      if (!(await stanza.getByText(/Miura Kentarou · 1989 · inglese, italiano/).count())) throw new Error("la voce trovata non dice autore, anno e lingue");
+      await stanza.getByRole("button", { name: "＋ Segui" }).click();
+      await stanza.getByText("✓ Seguita").waitFor({ timeout: 3000 });
+      // la serie seguita, coi capitoli letti dal feed
+      await finche(() => stanza.getByText(/ultimo capitolo: 4/).count(), 8000, "la serie non dice l'ultimo capitolo");
+      await stanza.getByRole("button", { name: /^Berserk/ }).click();
+      await finche(() => stanza.getByRole("button", { name: "⬇ Scarica", exact: true }).count(), 5000, "i capitoli ospitati non hanno il tasto per scaricare");
+      // il rimando si legge dove sta, senza promettere pagine
+      const la = stanza.getByRole("link", { name: "↗ Leggi là" });
+      if ((await la.count()) !== 1 || !/mangaplus/.test(await la.getAttribute("href"))) throw new Error("il capitolo che e' solo un rimando non porta a MangaPlus");
+      if ((await stanza.getByRole("button", { name: "⬇ Scarica", exact: true }).count()) !== 3) throw new Error("i capitoli ospitati da scaricare non sono tre");
+      // si scarica il primo: la riga del lavoro, poi il CBZ in biblioteca
+      await stanza.getByRole("button", { name: "⬇ Scarica", exact: true }).last().click();
+      await finche(() => p.getByText(/📡 Scarico «Berserk 1»/).count(), 5000, "la riga del lavoro non compare");
+      await finche(() => p.getByText(/1 capitolo scaricato nella biblioteca/).count(), 20000, "il capitolo non arriva in biblioteca");
+      const libri = await p.evaluate(() => JSON.parse(localStorage.getItem("bc_books") || "[]"));
+      const cbz = libri.find((b) => b.saga === "Berserk" && Number(b.sagaOrder) === 1);
+      if (!cbz) throw new Error(`il CBZ non e' in biblioteca con la saga e il numero: ${JSON.stringify(libri.map((b) => [b.title, b.saga, b.sagaOrder]))}`);
+      if (cbz.fileType !== "cbz" || cbz.tipo !== "manga" || cbz.verso !== "rtl" || cbz.title !== "The Black Swordsman") throw new Error(`la scheda del capitolo e' sbagliata: ${JSON.stringify(cbz)}`);
+      // ogni pagina e' stata segnalata al nodo, come MangaDex chiede
+      const rapporti = chieste.filter((c) => c.startsWith("POST https://api.mangadex.network/report")).length;
+      if (rapporti !== PAGINE_PER_CAPITOLO) throw new Error(`rapporti al nodo: ${rapporti}, attesi ${PAGINE_PER_CAPITOLO}`);
+      // ora il capitolo si legge da qui, e gli altri restano da scaricare
+      await finche(() => stanza.getByRole("button", { name: "📖 Leggi" }).count(), 5000, "il capitolo scaricato non ha il tasto per leggerlo");
+      if ((await stanza.getByRole("button", { name: "⬇ Scarica", exact: true }).count()) !== 2) throw new Error("i capitoli ancora da scaricare non sono due");
+      await stanza.getByRole("button", { name: "📖 Leggi" }).click();
+      await finche(() => p.evaluate(() => [...document.querySelectorAll("img")].some((i) => i.naturalWidth === 120 && i.naturalHeight === 180)), 15000, "il lettore dei fumetti non mostra la pagina scaricata");
+      // e l'Ingresso conta la serie
+      await p.keyboard.press("Escape");
+      await p.goto(URL_APP);
+      await finche(() => p.getByText(/1 serie seguita/).count(), 8000, "l'Ingresso non conta la serie seguita");
       return { guasti: d.guasti };
     },
   },

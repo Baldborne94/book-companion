@@ -54,7 +54,8 @@ import { erroreDelLink } from "./lib/accesso.js";
 import { tipiDaScegliere } from "./lib/importBook.js";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, convertiLibroInCbz } from "./lib/sync.js";
 import { riordinaDisco, fraseRiordino, fraseDaParte, fraseRimessi, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
-import { importaDaFuori, resoconto } from "./lib/importBook.js";
+import { importaDaFuori, resoconto, importFiles } from "./lib/importBook.js";
+import { scaricaCapitolo, nomeCapitolo, spiega as spiegaMangadex, nuovoRitmo } from "./lib/mangadex.js";
 import { togliAvanziDrive } from "./lib/avanziDrive.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
 import BarraLavoro from "./components/BarraLavoro.jsx";
@@ -89,6 +90,7 @@ const STANZE = {
   ReadingDiary: () => import("./components/ReadingDiary.jsx"),
   Quaderno: () => import("./components/Quaderno.jsx"),
   DaPrendere: () => import("./components/DaPrendere.jsx"),
+  SerieSeguite: () => import("./components/SerieSeguite.jsx"),
   Mappa: () => import("./components/Mappa.jsx"),
   Cammino: () => import("./components/Cammino.jsx"),
   MusicRoom: () => import("./components/MusicRoom.jsx"),
@@ -100,6 +102,7 @@ const QuoteGarden = lazy(STANZE.QuoteGarden);
 const ReadingDiary = lazy(STANZE.ReadingDiary);
 const Quaderno = lazy(STANZE.Quaderno);
 const DaPrendere = lazy(STANZE.DaPrendere);
+const SerieSeguite = lazy(STANZE.SerieSeguite);
 const Mappa = lazy(STANZE.Mappa);
 const Cammino = lazy(STANZE.Cammino);
 const MusicRoom = lazy(STANZE.MusicRoom);
@@ -906,6 +909,7 @@ export default function App() {
   const [diaryOpen, setDiaryOpen] = useState(false);
   const [quadernoOpen, setQuadernoOpen] = useState(false);
   const [prendereOpen, setPrendereOpen] = useState(false);
+  const [serieOpen, setSerieOpen] = useState(false);
   const [mappaOpen, setMappaOpen] = useState(false);
   // il cammino di una saga: la guida intera con dentro i tuoi volumi
   const [cammino, setCammino] = useState(null);
@@ -1689,6 +1693,55 @@ export default function App() {
     filoImport.current = null;
   };
 
+  // SCARICARE I CAPITOLI DA MANGADEX (`lib/mangadex.js`): un lavoro lungo,
+  // vive qui, un capitolo alla volta; ogni CBZ entra dalla porta di sempre
+  // (`importFiles`) e la biblioteca di ADESSO lo prende. Un intoppo e' di
+  // quel capitolo, il giro continua e alla fine si racconta.
+  const [scarico, setScarico] = useState(null);
+  const filoScarico = useRef(null);
+  const ritmoScarico = useRef(null);
+  async function scaricaCapitoli(serie, caps) {
+    if (filoScarico.current || !caps?.length) return;
+    const mio = {};
+    filoScarico.current = mio;
+    const vivo = () => filoScarico.current === mio;
+    if (!ritmoScarico.current) ritmoScarico.current = nuovoRitmo();
+    let fatti = 0;
+    const guai = [];
+    try {
+      for (const [i, cap] of caps.entries()) {
+        if (!vivo()) break;
+        const nome = nomeCapitolo(serie, cap);
+        setScarico({ i, totale: caps.length, nome, pagina: 0, pagine: 0 });
+        try {
+          const file = await scaricaCapitolo(serie, cap, {
+            fetch: (u, o) => fetch(u, o),
+            ritmo: ritmoScarico.current,
+            vivo,
+            onProgress: (p) => vivo() && setScarico({ i, totale: caps.length, nome, ...p }),
+          });
+          const esito = await importFiles([file], loadBooks());
+          if (esito.added.length) {
+            updateBooks([...loadBooks(), ...esito.added]);
+            fatti += 1;
+          } else guai.push(`«${nome}»: ${esito.errors[0]?.reason || "già in biblioteca"}`);
+        } catch (e) {
+          if (!vivo()) break;
+          guai.push(`«${nome}»: ${spiegaMangadex(e)}`);
+        }
+      }
+      if (fatti) runSync.current(true);
+      const frase = fatti ? (fatti === 1 ? "1 capitolo scaricato nella biblioteca" : `${fatti} capitoli scaricati nella biblioteca`) : "Nessun capitolo scaricato";
+      notify([frase, !vivo() ? "fermato" : "", ...guai.slice(0, 2)].filter(Boolean).join(" · "));
+    } finally {
+      if (filoScarico.current === mio) filoScarico.current = null;
+      setScarico(null);
+    }
+  }
+  const fermaScarico = () => {
+    filoScarico.current = null;
+  };
+
   // I LAVORI SUL DISCO (riordinare, convertire): lunghi, vivono qui, si
   // vedono e si fermano da ogni sezione, uno alla volta.
   const [hdd, setHdd] = useState(null);
@@ -1905,6 +1958,7 @@ export default function App() {
   if (diaryOpen) livelli.push(() => setDiaryOpen(false));
   if (quadernoOpen) livelli.push(() => setQuadernoOpen(false));
   if (prendereOpen) livelli.push(() => setPrendereOpen(false));
+  if (serieOpen) livelli.push(() => setSerieOpen(false));
   if (syncOpen) livelli.push(() => setSyncOpen(false));
   if (themeOpen) livelli.push(() => setThemeOpen(false));
   if (mappaOpen) livelli.push(() => setMappaOpen(false));
@@ -1988,7 +2042,7 @@ export default function App() {
   }, [guscio, sfondo, idScheda, copVScheda, verso]);
   const nextBook = readingBook ? nextInSaga(readingBook, books) : null;
   flags.current.reading = !!readingBook;
-  flags.current.lavoroLungo = !!(lex || fan || imm || ill || wikt || lavoro || importo || hdd);
+  flags.current.lavoroLungo = !!(lex || fan || imm || ill || wikt || lavoro || importo || hdd || scarico);
 
   useEffect(() => {
     if (readingId && music.current) {
@@ -2177,6 +2231,7 @@ export default function App() {
             onDiary={() => setDiaryOpen(true)}
             onQuaderno={() => setQuadernoOpen(true)}
             onDaPrendere={() => setPrendereOpen(true)}
+            onSerie={() => setSerieOpen(true)}
           />
         )}
         {section === "library" && (
@@ -2237,8 +2292,10 @@ export default function App() {
         )}
       </main>
       </div>
-      {(lavoro || importo || hdd || lex || fan || imm || ill || wikt || restanti.length > 0) && (
+      {(lavoro || importo || hdd || lex || fan || imm || ill || wikt || scarico || restanti.length > 0) && (
         <BarraLavoro
+          scarico={scarico}
+          onFermaScarico={fermaScarico}
           lex={lex}
           onFermaLex={fermaLex}
           fan={fan}
@@ -2352,6 +2409,20 @@ export default function App() {
         <Quaderno books={books} onClose={() => setQuadernoOpen(false)} onReadAt={(id, dove) => handleRead(id, dove)} />
       )}
       {prendereOpen && <DaPrendere books={books} onClose={() => setPrendereOpen(false)} />}
+      {serieOpen && (
+        <Suspense fallback={null}>
+          <SerieSeguite
+            books={books}
+            onClose={() => setSerieOpen(false)}
+            onApri={(id) => {
+              setSerieOpen(false);
+              handleRead(id);
+            }}
+            onScarica={scaricaCapitoli}
+            scarico={scarico}
+          />
+        </Suspense>
+      )}
       </Suspense>
       {readingBook && (
         // L'ANELLO STRETTO. Il reader è la parte più complicata dell'app,

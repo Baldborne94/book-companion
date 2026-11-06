@@ -9,6 +9,7 @@ import { leggiTempo, pezziDiOggi } from "../lib/tempo.js";
 import { raccogli, conta, rigaGiardino } from "../lib/citazioni.js";
 import { leggiQuaderno, rigaQuaderno } from "../lib/quaderno.js";
 import { leggiDaPrendere, proposte, rigaDaPrendere } from "../lib/daPrendere.js";
+import { leggiSerie, fraseSerie } from "../lib/mangadex.js";
 import { nextInSaga, prossimiPassi, perchePassoTace, frasePassoTace, volumiDelMotivo, inCorsoESeguiti } from "../lib/saga.js";
 import BookCover from "./BookCover.jsx";
 import { BookmarkIcon, LeafIcon, SparkIcon } from "./Icons.jsx";
@@ -70,7 +71,7 @@ const fila = (wide) => ({
   flexWrap: wide ? "wrap" : "nowrap",
 });
 
-export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onQuaderno, onDaPrendere }) {
+export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onQuaderno, onDaPrendere, onSerie }) {
   // chi ha il dorso disegnato lo sa solo `BookCover`: lo dice qui, così i
   // preferiti non ristampano un titolo che sta già sulla copertina
   const [dorsi, setDorsi] = useState({});
@@ -242,6 +243,8 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
     { chi: "diario", titolo: "Il diario", riga: rigaAnno || "Libri finiti, anno per anno", colore: C.accent, icona: <BookmarkIcon size={22} />, apri: onDiary },
     { chi: "quaderno", titolo: "Il quaderno", riga: rigaParole || "Le parole cercate, da ripassare", colore: C.green, icona: <span style={{ fontSize: F.titoletto }}>📒</span>, apri: onQuaderno },
     { chi: "prendere", titolo: "Da prendere", riga: rigaPrendere || "I libri che ti mancano", colore: C.arcane, icona: <span style={{ fontSize: F.titoletto }}>🛒</span>, apri: onDaPrendere },
+    // le serie seguite su MangaDex: una quinta stanza, larga quanto la fila
+    { chi: "serie", titolo: "Serie seguite", riga: fraseSerie(leggiSerie()) || "I manga che segui, capitolo per capitolo", colore: C.green, icona: <span style={{ fontSize: F.titoletto }}>📡</span>, apri: onSerie, larga: true },
   ];
 
   // LE STANZE SONO NAVIGAZIONE, NON CONTENUTO: quattro pulsanti larghi
@@ -275,6 +278,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
                 border: `1px solid ${s.colore}44`,
                 background: `linear-gradient(135deg, ${s.colore}12, transparent)`,
                 textAlign: "left",
+                gridColumn: s.larga ? "1 / -1" : undefined,
               }}
             >
               <span style={{ display: "flex", alignItems: "center", gap: 8, color: s.colore }}>
