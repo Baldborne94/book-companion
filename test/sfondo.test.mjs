@@ -4,7 +4,7 @@
 // decide quando parlargli e cosa mandargli.
 import { readFileSync } from "node:fs";
 import {
-  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, portaDelGuscio, annotaMessaggio, messaggiVisti, fraseMessaggi, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, fraseEsito, frasePermesso, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, fraseInvio, dopoIlSaluto, RISPOSTA_ENTRO, TOGLI,
+  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, portaDelGuscio, annotaMessaggio, messaggiVisti, fraseMessaggi, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, nomeAndroid, fraseEsito, frasePermesso, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, fraseInvio, dopoIlSaluto, RISPOSTA_ENTRO, TOGLI,
 } from "../src/lib/sfondo.js";
 
 const memoria = () => {
@@ -156,8 +156,14 @@ export default async function (t) {
 
   // ---- L'INDIRIZZO DI AVVIO: QUALE GUSCIO, E COM'E' ANDATA ---------------
   t.c("la risposta al saluto e' quella che il guscio aspetta", readFileSync("android/SchermataDiBlocco.java", "utf8").includes(`CIAO = "${CIAO}"`));
-  t.eq("senza query niente", JSON.stringify(infoDalLancio("")), JSON.stringify({ versione: null, esito: null }));
+  t.eq("senza query niente", JSON.stringify(infoDalLancio("")), JSON.stringify({ versione: null, android: null, esito: null }));
   t.eq("la versione del guscio", infoDalLancio("?guscio=1099").versione, "1099");
+  t.eq("e quella di Android, come API", infoDalLancio("?guscio=1136&android=34").android, 34);
+  t.eq("senza, null", infoDalLancio("?guscio=1136").android, null);
+  t.eq("l'API in parole", nomeAndroid(34), "Android 14");
+  t.eq("…anche il 10 vero", nomeAndroid(29), "Android 10");
+  t.eq("…un'API ignota resta un numero", nomeAndroid(40), "Android API 40");
+  t.eq("…e senza API niente", nomeAndroid(null), null);
   t.eq("una versione che non e' un numero non e' una versione", infoDalLancio("?guscio=x").versione, null);
   t.eq("«apri» resta leggibile accanto", new URLSearchParams("?apri=libreria&guscio=1099").get("apri"), "libreria");
   const e = infoDalLancio("?guscio=1099&esito=" + encodeURIComponent("l=1;k=1;n=1;u=6;s=1;c=1;r=1;v=0;p=0;a=0;f=0;e=")).esito;
