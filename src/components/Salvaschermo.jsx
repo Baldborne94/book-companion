@@ -167,8 +167,8 @@ export function SezioneSfondo({ pronto, info = null, invio = null, acceso, onCam
           </button>
           <p style={{ fontSize: F.piccolo, color: C.muted, marginTop: 8, lineHeight: 1.45 }}>
             Lo sfondo della schermata di blocco diventa la copertina del libro che hai in mano, e cambia
-            quando cambi libro. Spegnendolo, la schermata di blocco torna allo sfondo della schermata iniziale: uno
-            sfondo che avevi solo sul blocco Android non lo lascia rileggere, quello lo rimetti tu.
+            quando cambi libro. Spegnendolo, la schermata di blocco torna allo sfondo che avevi: la prima volta
+            l'app chiede il permesso di leggerlo (foto e contenuti), e senza permesso Android rimette il suo.
             {/* l'ultima copertina mandata e cosa ne ha detto il guscio: sul
                 tablet la schermata di blocco mostrava il libro di prima, e da
                 fuori non si vedeva se la pagina avesse mandato o il guscio

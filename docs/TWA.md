@@ -233,6 +233,11 @@ sulla schermata di blocco»**, solo dentro l'app Android, ed è spento
 finché non lo accendi tu: sostituisce lo sfondo che avevi, che poi rimetti
 dalle impostazioni di Android.
 
+Spegnendo l'interruttore il guscio rimette lo sfondo che c'era: l'ha
+salvato alla prima copertina, e per leggerlo chiede una volta il permesso
+«foto e contenuti» (fino ad Android 12; dal 13 non si può, e Android
+rimette il suo). Senza permesso la prima copertina non si mette.
+
 Come funziona, in breve: Chrome dà alle Trusted Web Activity un canale
 `postMessage` fra app e pagina. Il guscio lo apre a ogni pagina caricata
 (l'origine del sito va dichiarata in `assetlinks.json` anche con

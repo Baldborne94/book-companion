@@ -80,6 +80,9 @@ export default async function (t) {
   t.c("una memoria rotta vuol dire nessun invio", ultimoInvio({ getItem: () => "{rotto" }) === null && !segnaRisposta({ ok: true }, memoria()));
   // spegnendo si toglie: il guscio risponde «tolto»
   t.eq("lo sfondo tolto e' un ok a parte", JSON.stringify(risposta("grimorio:sfondo:tolto")), '{"ok":true,"tolto":true}');
+  t.eq("e quello rimesso un altro", JSON.stringify(risposta("grimorio:sfondo:rimesso")), '{"ok":true,"tolto":true,"rimesso":true}');
+  t.c("il guscio salva lo sfondo di prima e lo rimette", readFileSync("android/SchermataDiBlocco.java", "utf8").includes('RIMESSO = "grimorio:sfondo:rimesso"') && /getWallpaperFile\(WallpaperManager\.FLAG_LOCK\)[\s\S]*wm\.setStream\(in, null, true, WallpaperManager\.FLAG_LOCK\)/.test(readFileSync("android/SchermataDiBlocco.java", "utf8")) && readFileSync("android/SchermataDiBlocco.java", "utf8").includes("if (!salvaPrima(app, wm))"));
+  t.c("e il lanciatore chiede il permesso di leggerlo", readFileSync("android/GuscioActivity.java", "utf8").includes("shouldLaunchImmediately") && readFileSync("android/GuscioActivity.java", "utf8").includes("launchTwa()"));
   const java = readFileSync("android/SchermataDiBlocco.java", "utf8");
   t.c("il guscio ascolta la richiesta di togliere e risponde con la sua parola", java.includes(`TOGLI = "${TOGLI}"`) && java.includes('TOLTO = "grimorio:sfondo:tolto"') && java.includes("wm.clear(WallpaperManager.FLAG_LOCK)"));
   const tg = memoria();
@@ -87,7 +90,10 @@ export default async function (t) {
   t.c("chiesto di togliere, si aspetta", /Sfondo da togliere.*in attesa/.test(fraseInvio(ultimoInvio(tg), q + 1000)));
   t.c("…e il silenzio e' un canale morto", /Sfondo da togliere.*non ha risposto/.test(fraseInvio(ultimoInvio(tg), q + RISPOSTA_ENTRO + 1)));
   segnaRisposta(risposta("grimorio:sfondo:tolto"), tg);
-  t.c("tolto: la schermata di blocco e' tornata a quello della iniziale", /Sfondo tolto alle .*schermata iniziale/.test(fraseInvio(ultimoInvio(tg))));
+  t.c("tolto: quello di prima non si era salvato", /Sfondo tolto alle .*Android ha messo il suo/.test(fraseInvio(ultimoInvio(tg))));
+  segnaInvio({ quando: q, esito: "togli" }, tg);
+  segnaRisposta(risposta("grimorio:sfondo:rimesso"), tg);
+  t.c("rimesso: la schermata di blocco e' tornata a quello di prima", /Sfondo rimesso alle .*quello di prima/.test(fraseInvio(ultimoInvio(tg))));
   segnaInvio({ quando: q, esito: "togli" }, tg);
   segnaRisposta(risposta("grimorio:sfondo:errore:no"), tg);
   t.c("un guasto nel togliere si dice come tale", /Sfondo da togliere.*guasto nel togliere: no/.test(fraseInvio(ultimoInvio(tg))));

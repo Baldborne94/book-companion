@@ -1,5 +1,6 @@
 package it.bookcompanion.app;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.WallpaperManager;
 import android.content.ComponentName;
@@ -9,6 +10,7 @@ import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
@@ -16,6 +18,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.ParcelFileDescriptor;
 import android.util.Base64;
 import android.util.Log;
 
@@ -33,6 +36,11 @@ import com.google.androidbrowserhelper.trusted.TwaLauncher;
 
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
@@ -94,6 +102,21 @@ public final class SchermataDiBlocco {
     // qui e la schermata di blocco torna a quello della schermata iniziale
     static final String TOGLI = "grimorio:sfondo:togli";
     static final String TOLTO = "grimorio:sfondo:tolto";
+    // E QUELLO DI PRIMA SI RIMETTE: sul Samsung del lettore `clear` non
+    // torna allo sfondo della schermata iniziale ma a quello predefinito
+    // («mi mette lo sfondo default e non l'ultimo che c'era prima»). Allora
+    // lo sfondo che c'e' si salva PRIMA di coprirlo, la prima volta, e
+    // spegnendo si rimette quello. Per leggerlo Android (fino al 12) vuole
+    // il permesso di lettura della memoria, che il lanciatore chiede una
+    // volta al prossimo avvio; dal 13 non si puo' piu' leggere e si va
+    // come prima. Senza permesso la copertina non si mette: metterla
+    // coprirebbe per sempre quel che si voleva salvare.
+    static final String RIMESSO = "grimorio:sfondo:rimesso";
+    static final String PERMESSO_LETTURA = Manifest.permission.READ_EXTERNAL_STORAGE;
+    private static final String PREFS_SFONDO = "grimorio_sfondo";
+    private static final String CHIEDI_LETTURA = "chiedi_lettura";
+    private static final String LETTURA_NEGATA = "lettura_negata";
+    private static final String FILE_PRIMA = "sfondo_prima";
     private static final int PEZZI_MAX = 64;
     private static final long[] RITENTA_DOPO = { 1500, 4000, 10000 };
 
@@ -459,13 +482,78 @@ public final class SchermataDiBlocco {
 
     private static int sfondiMessi;
 
+    // ---- LO SFONDO DI PRIMA -------------------------------------------------
+
+    private static SharedPreferences prefsSfondo(Context c) {
+        return c.getSharedPreferences(PREFS_SFONDO, Context.MODE_PRIVATE);
+    }
+
+    private static boolean leggibile(Context c) {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                && c.checkSelfPermission(PERMESSO_LETTURA) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    // il lanciatore chiede il permesso solo se una copertina l'ha chiesto e
+    // il lettore non ha gia' detto di no
+    static boolean permessoDaChiedere(Context c) {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU && !leggibile(c)
+                && prefsSfondo(c).getBoolean(CHIEDI_LETTURA, false) && !prefsSfondo(c).getBoolean(LETTURA_NEGATA, false);
+    }
+
+    static void permessoRisposto(Context c, boolean concesso) {
+        prefsSfondo(c).edit().putBoolean(CHIEDI_LETTURA, false).putBoolean(LETTURA_NEGATA, !concesso).commit();
+    }
+
+    private static File filePrima(Context app) {
+        return new File(app.getFilesDir(), FILE_PRIMA);
+    }
+
+    // Salva lo sfondo della schermata di blocco (o, se e' lo stesso della
+    // iniziale, quello) la prima volta. Torna false se serve il permesso:
+    // allora la copertina NON si mette, e al prossimo avvio si chiede.
+    private static boolean salvaPrima(Context app, WallpaperManager wm) throws Exception {
+        File f = filePrima(app);
+        if (f.exists()) return true;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) return true;
+        SharedPreferences p = prefsSfondo(app);
+        if (!leggibile(app)) {
+            if (p.getBoolean(LETTURA_NEGATA, false)) return true;
+            p.edit().putBoolean(CHIEDI_LETTURA, true).commit();
+            return false;
+        }
+        ParcelFileDescriptor pfd;
+        try {
+            pfd = wm.getWallpaperFile(WallpaperManager.FLAG_LOCK);
+            if (pfd == null) pfd = wm.getWallpaperFile(WallpaperManager.FLAG_SYSTEM);
+        } catch (SecurityException e) {
+            p.edit().putBoolean(CHIEDI_LETTURA, true).commit();
+            return false;
+        }
+        // nessun file: sono i predefiniti, e per tornarci basta `clear`
+        if (pfd == null) return true;
+        File provvisorio = new File(app.getFilesDir(), FILE_PRIMA + ".tmp");
+        try (InputStream in = new ParcelFileDescriptor.AutoCloseInputStream(pfd); OutputStream out = new FileOutputStream(provvisorio)) {
+            byte[] b = new byte[64 * 1024];
+            for (int n; (n = in.read(b)) > 0; ) out.write(b, 0, n);
+        }
+        if (!provvisorio.renameTo(f)) throw new IllegalStateException("lo sfondo di prima non si e' salvato");
+        return true;
+    }
+
     private static void togli(Context app) {
         new Thread(() -> {
             String esito;
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    WallpaperManager wm = WallpaperManager.getInstance(app);
-                    if (!wm.isSetWallpaperAllowed()) throw new IllegalStateException("non permesso su questo dispositivo");
+                WallpaperManager wm = WallpaperManager.getInstance(app);
+                if (!wm.isSetWallpaperAllowed()) throw new IllegalStateException("non permesso su questo dispositivo");
+                File prima = filePrima(app);
+                if (prima.exists()) {
+                    try (InputStream in = new FileInputStream(prima)) {
+                        wm.setStream(in, null, true, WallpaperManager.FLAG_LOCK);
+                    }
+                    prima.delete();
+                    esito = RIMESSO;
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     wm.clear(WallpaperManager.FLAG_LOCK);
                     esito = TOLTO;
                 } else {
@@ -493,9 +581,13 @@ public final class SchermataDiBlocco {
                     if (immagine == null) throw new IllegalStateException("immagine illeggibile");
                     WallpaperManager wm = WallpaperManager.getInstance(app);
                     if (!wm.isSetWallpaperAllowed()) throw new IllegalStateException("non permesso su questo dispositivo");
-                    wm.setBitmap(immagine, null, true, WallpaperManager.FLAG_LOCK);
-                    esito = OK;
-                    Diagnosi.segna(app, "f", String.valueOf(++sfondiMessi));
+                    if (!salvaPrima(app, wm)) {
+                        esito = ERRORE + "per rimettere lo sfondo di prima quando spegni, serve il permesso di leggerlo: chiudi l'app del tutto, riaprila dall'icona e concedilo, poi riaccendi";
+                    } else {
+                        wm.setBitmap(immagine, null, true, WallpaperManager.FLAG_LOCK);
+                        esito = OK;
+                        Diagnosi.segna(app, "f", String.valueOf(++sfondiMessi));
+                    }
                 } else {
                     esito = ERRORE + "serve Android 7 o piu' recente";
                 }
