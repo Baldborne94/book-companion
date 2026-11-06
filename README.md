@@ -12,9 +12,9 @@ L'app è **local-first**: i libri stanno sul tuo dispositivo (e, sul computer, s
 
 ### Su Android: l'APK
 
-1. Scarica l'ultimo APK dalla pagina **[Releases](https://github.com/Baldborne94/book-companion/releases/latest)** (il file `Grimorio-….apk`).
+1. Scarica l'ultimo APK dalla pagina **[Releases](https://github.com/Baldborne94/book-companion/releases/latest)** (il file `BookCompanion-….apk`).
 2. Aprilo dal telefono o dal tablet. Android chiede il permesso di «installare app da origini sconosciute» per il browser o per l'app dei file: concedilo una volta.
-3. L'app compare fra le altre come **Grimorio**. Si apre a tutto schermo, e compare anche nel menu «Apri con» dei file `.epub`, `.pdf`, `.cbz` e `.cbr`.
+3. L'app compare fra le altre come **Book Companion**. Si apre a tutto schermo, e compare anche nel menu «Apri con» dei file `.epub`, `.pdf`, `.cbz` e `.cbr`.
 
 L'APK è un guscio leggero che apre il sito dentro Chrome: gli aggiornamenti dell'app arrivano da soli, senza reinstallare. Serve **Chrome** sul dispositivo. Per costruire un APK tuo, vedi [`docs/TWA.md`](docs/TWA.md).
 

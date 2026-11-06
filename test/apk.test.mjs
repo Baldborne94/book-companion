@@ -4,7 +4,7 @@
 // versionCode fermo non si installa sopra; uno firmato con un'altra chiave
 // si pubblica e il tablet non lo sa.
 import { readFileSync, readdirSync } from "node:fs";
-import { guscio, firmaDelSito, pacchettoDelSito } from "../scripts/apk.mjs";
+import { guscio, firmaDelSito, pacchettoDelSito, ETICHETTA } from "../scripts/apk.mjs";
 
 export default async function (t) {
   const assetlinks = JSON.parse(readFileSync("public/.well-known/assetlinks.json", "utf8"));
@@ -19,7 +19,10 @@ export default async function (t) {
   t.eq("Android 7 come minimo: lo vuole la libreria del guscio", g.minSdkVersion, 24);
   t.eq("…col nome che si legge nelle impostazioni", g.appVersionName, "1.0.0 (842)");
   t.eq("la chiave dove il giro la scrive", `${g.signingKey.path} ${g.signingKey.alias}`, "./android.keystore android");
-  t.eq("quel che dice il manifest del sito resta", `${g.launcherName} ${g.display}`, "Grimorio fullscreen");
+  t.eq("quel che dice il manifest del sito resta", g.display, "fullscreen");
+  // l'etichetta sotto l'icona e' il nome intero, non lo short_name della PWA
+  t.eq("l'etichetta sotto l'icona e' il nome intero", g.launcherName, "Book Companion");
+  t.c("…che e' il nome del manifest del sito", ETICHETTA === JSON.parse(readFileSync("public/manifest.json", "utf8")).name);
   for (const cattivo of [0, NaN, 1.5, "842"]) {
     let caduto = false;
     try { guscio(init, { codice: cattivo, versione: "x", assetlinks }); } catch { caduto = true; }

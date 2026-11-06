@@ -4,7 +4,7 @@
 // decide quando parlargli e cosa mandargli.
 import { readFileSync } from "node:fs";
 import {
-  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, portaDelGuscio, annotaMessaggio, messaggiVisti, fraseMessaggi, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, fraseEsito, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, fraseInvio, dopoIlSaluto, RISPOSTA_ENTRO,
+  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, portaDelGuscio, annotaMessaggio, messaggiVisti, fraseMessaggi, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, fraseEsito, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, fraseInvio, dopoIlSaluto, RISPOSTA_ENTRO, TOGLI,
 } from "../src/lib/sfondo.js";
 
 const memoria = () => {
@@ -78,6 +78,19 @@ export default async function (t) {
   t.c("una copertina che non si legge non parte, e lo si dice", /non si è letta/.test(fraseInvio(segnaInvio({ id: "lb", titolo: "Asterix", quando: q, esito: "illeggibile" }, inv))));
   t.c("senza titolo vale l'id", /«lb»/.test(fraseInvio({ id: "lb", quando: q, esito: "ok" })));
   t.c("una memoria rotta vuol dire nessun invio", ultimoInvio({ getItem: () => "{rotto" }) === null && !segnaRisposta({ ok: true }, memoria()));
+  // spegnendo si toglie: il guscio risponde «tolto»
+  t.eq("lo sfondo tolto e' un ok a parte", JSON.stringify(risposta("grimorio:sfondo:tolto")), '{"ok":true,"tolto":true}');
+  const java = readFileSync("android/SchermataDiBlocco.java", "utf8");
+  t.c("il guscio ascolta la richiesta di togliere e risponde con la sua parola", java.includes(`TOGLI = "${TOGLI}"`) && java.includes('TOLTO = "grimorio:sfondo:tolto"') && java.includes("wm.clear(WallpaperManager.FLAG_LOCK)"));
+  const tg = memoria();
+  segnaInvio({ quando: q, esito: "togli" }, tg);
+  t.c("chiesto di togliere, si aspetta", /Sfondo da togliere.*in attesa/.test(fraseInvio(ultimoInvio(tg), q + 1000)));
+  t.c("…e il silenzio e' un canale morto", /Sfondo da togliere.*non ha risposto/.test(fraseInvio(ultimoInvio(tg), q + RISPOSTA_ENTRO + 1)));
+  segnaRisposta(risposta("grimorio:sfondo:tolto"), tg);
+  t.c("tolto: la schermata di blocco e' tornata a quello della iniziale", /Sfondo tolto alle .*schermata iniziale/.test(fraseInvio(ultimoInvio(tg))));
+  segnaInvio({ quando: q, esito: "togli" }, tg);
+  segnaRisposta(risposta("grimorio:sfondo:errore:no"), tg);
+  t.c("un guasto nel togliere si dice come tale", /Sfondo da togliere.*guasto nel togliere: no/.test(fraseInvio(ultimoInvio(tg))));
   // al saluto si rimanda quel che non ha avuto l'ok: la porta di prima era morta
   t.eq("una copertina confermata non si rimanda", dopoIlSaluto("lb:10:0", "lb:10:0"), "lb:10:0");
   t.eq("una mandata senza ok si rimanda", dopoIlSaluto("lb:10:0", null), null);

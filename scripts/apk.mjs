@@ -21,10 +21,21 @@ export const pacchettoDelSito = (assetlinks) => assetlinks[0].target.package_nam
 export const improntaDelSito = (assetlinks) => assetlinks[0].target.sha256_cert_fingerprints;
 
 // `twa` e' quel che genera Bubblewrap dal manifest del sito
+// L'ETICHETTA SOTTO L'ICONA E' IL NOME INTERO (chiesto dal lettore: «invece
+// di Grimorio chiama l'app Book Companion»). Bubblewrap la prende dallo
+// `short_name` del sito, che per la PWA deve stare in dodici caratteri;
+// l'etichetta di Android non ha quel tetto, e `validate()` del core
+// controlla solo che il nome ci sia. Il primo tentativo la riscriveva in
+// `res/values/strings.xml`, che nel progetto generato non c'e': le stringhe
+// nascono da `resValue` in `app/build.gradle`, da questo campo. «Grimorio»
+// resta il nome interno del canale (`grimorio:…`) e del log.
+export const ETICHETTA = "Book Companion";
+
 export function guscio(twa, { codice, versione, assetlinks }) {
   if (!Number.isInteger(codice) || codice < 1) throw new Error(`versionCode non valido: ${codice}`);
   return {
     ...twa,
+    launcherName: ETICHETTA,
     // il valore di `init` e' il dominio rovesciato: Android legherebbe il
     // guscio a un pacchetto che `assetlinks.json` non conosce, e l'app
     // partirebbe con la barra di Chrome
