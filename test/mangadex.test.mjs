@@ -4,7 +4,7 @@
 import {
   cerca, capitoli, pagine, scaricaCapitolo, comicInfo, nomeFile, nomeCapitolo, titoloDi, scegliCapitoli, daFeed, daRicerca,
   nuovoRitmo, spiega, segnalaPagina, leggiSerie, scriviSerie, segui, smetti, cambiaLingua, conCapitoli, visti, nuoviInTutto, fraseSerie,
-  nellaBiblioteca, daScaricare, fraseScarico, copertinaUrl, PAGINA_FEED, COPERTINE, RAPPORTO, BASE,
+  nellaBiblioteca, daScaricare, fraseScarico, copertinaUrl, PAGINA_FEED, COPERTINE, RAPPORTO, BASE, SFIDA,
 } from "../src/lib/mangadex.js";
 import { apriArchivio, leggiComicInfo, eComicInfo } from "../src/lib/fumetto.js";
 
@@ -136,7 +136,11 @@ export default async function (t) {
   t.eq("…una volta sola", volte, 2);
   t.eq("un 503 si spiega", spiega(new Error("MangaDex: 503")), "MangaDex non risponde in questo momento");
   t.eq("un 429 si spiega", spiega(new Error("MangaDex: 429")), "MangaDex chiede di aspettare un momento (troppe richieste)");
-  t.eq("la rete morta si spiega", spiega(new TypeError("Failed to fetch")), "la rete non risponde");
+  // la sfida anti-bot di MangaDex, riprodotta con Chromium: 403 «Bot
+  // challenge not passed», o un «Failed to fetch» con la rete viva
+  t.c("un Failed to fetch con la rete viva e' la sfida anti-bot, non la rete", /sfida anti-bot/.test(spiega(new TypeError("Failed to fetch"))) && spiega(new TypeError("Failed to fetch")) === SFIDA);
+  t.c("un 403 e' la sfida", spiega(new Error("MangaDex: 403")) === SFIDA && spiega(new Error("Bot challenge not passed, refresh this page.")) === SFIDA);
+  t.eq("…e con la rete spenta e' la rete", spiega(new TypeError("Failed to fetch"), false), "la rete non risponde");
   const errore = await cerca("x", { fetch: async () => risposta({ result: "error", errors: [{ detail: "Bad request" }] }), ritmo }).catch((e) => e.message);
   t.eq("un errore dell'API porta il suo dettaglio", errore, "Bad request");
   t.c("un 404 vale come guasto", /404/.test(await capitoli("nessuno", { fetch, ritmo }).catch((e) => e.message)));

@@ -49,11 +49,20 @@ export function nuovoRitmo({ intervallo = INTERVALLO, adesso = Date.now, dormi =
   };
 }
 
-export function spiega(e) {
+// LA SFIDA ANTI-BOT DI MANGADEX: l'API risponde «Bot challenge not passed»
+// (403, o un rimando alla sfida che una richiesta da un'altra origine non
+// puo' seguire: «Failed to fetch») a qualunque pagina web, perche' davanti
+// ci sta una prova di lavoro che solo il loro sito aperto a tutto schermo
+// supera. Dal tablet del lettore la stanza diceva «la rete non risponde»,
+// che e' falso: si dice cos'e'. Le app con un nome loro (non un browser)
+// passano: e' la strada del guscio Android.
+export const SFIDA = "MangaDex non risponde alle pagine web: davanti alla sua API c'è una sfida anti-bot che lascia passare solo le app, non i siti. Dal browser questa stanza non può leggerlo";
+export function spiega(e, inRete = typeof navigator === "undefined" || navigator.onLine !== false) {
   const m = String(e?.message || e || "");
   if (/429/.test(m)) return "MangaDex chiede di aspettare un momento (troppe richieste)";
+  if (/Bot challenge|\b403\b/i.test(m)) return SFIDA;
   if (/\b5\d\d\b/.test(m)) return "MangaDex non risponde in questo momento";
-  if (/Failed to fetch|NetworkError|network/i.test(m)) return "la rete non risponde";
+  if (/Failed to fetch|NetworkError|network/i.test(m)) return inRete ? SFIDA : "la rete non risponde";
   return m || "guasto sconosciuto";
 }
 
