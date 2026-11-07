@@ -96,12 +96,19 @@ export const messaggioNovita = (lista) => JSON.stringify({ novita: (lista || [])
 // e non e' ancora stata cercata; trovata, la saga guarda la serie (gli
 // autori restano, se la si dovesse ricercare); non trovata, resta agli
 // autori e non si ricerca. Un intoppo di rete non segna niente: si riprova.
-export const daCercare = (voce) => !!voce && voce.tipo === "autori" && String(voce.id).startsWith("saga:") && !voce.cercata;
+// Una ricerca fatta con una regola di prima si rifa' una volta (`RICERCA`:
+// la 2 cerca tutte le serie della raccolta, la 1 ne trovava al piu' tre dai
+// primi titoli); una serie gia' trovata resta finche' la nuova non risponde.
+export const RICERCA = 2;
+export const daCercare = (voce) =>
+  !!voce && (voce.tipo === "autori" || voce.tipo === "serie") && String(voce.id).startsWith("saga:") && (!voce.cercata || (voce.ricerca || 1) < RICERCA);
 export function conSerie(lista, id, serie, quando = Date.now()) {
   return (lista || []).map((x) => {
     if (x.id !== id || !daCercare(x)) return x;
     const trovate = (serie || []).filter((s) => /^Q\d+$/.test(s?.id || "")).map((s) => ({ id: s.id, nome: String(s.nome || s.id), membri: s.membri || 0 }));
-    return trovate.length ? { ...x, tipo: "serie", serie: trovate, cercata: quando } : { ...x, cercata: quando };
+    const segno = { cercata: quando, ricerca: RICERCA };
+    if (trovate.length) return { ...x, tipo: "serie", serie: trovate, ...segno };
+    return { ...x, ...segno };
   });
 }
 // le parole della serie seguita, e dei suoi autori

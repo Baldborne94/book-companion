@@ -2,6 +2,7 @@
 // alla serie, e la serie scelta per i titoli che ha, non per il nome.
 import {
   formeDelTitolo, titoliDellaRaccolta, titoliFraIMembri, serieDegli, serieCheCoprono, domandaMembri, cercaSerie, API_WIKIDATA, SERIE_MAX,
+  titoliDaProvare, nomiDeiCicli, eUnUniverso, UNIVERSO, PROVE_MAX,
 } from "../src/lib/serieWikidata.js";
 
 const voce = (en, it, alias = []) => ({
@@ -47,7 +48,24 @@ export default async function (t) {
   t.eq("…a pari titoli la piu' stretta", serieCheCoprono([cosmere, stormlight]).map((x) => x.id).join(), "S");
   t.eq("…ma quella che si chiama come la raccolta prima", serieCheCoprono([stormlight, cosmere], { nome: "Il Cosmere" }).map((x) => x.id).join(), "C");
   t.eq("…una serie senza titoli nuovi non entra, e niente titoli niente serie", serieCheCoprono([stormlight, { ...cosmere, titoli: ["b"] }, { id: "Z", membri: 1, titoli: [] }]).map((x) => x.id).join() + "/" + serieCheCoprono([{ id: "Z", membri: 1, titoli: [] }]).length, "S/0");
-  t.eq("…al piu' tre", serieCheCoprono("abcde".split("").map((x, i) => ({ id: x, membri: 1, titoli: [String(i)] }))).length, SERIE_MAX);
+  t.eq("…al piu' otto", serieCheCoprono("abcdefghij".split("").map((x, i) => ({ id: x, membri: 1, titoli: [String(i)] }))).length, SERIE_MAX);
+  t.eq("…otto", SERIE_MAX, 8);
+
+  // tutte le serie di una raccolta: i primi titoli e il primo di ogni ciclo
+  const quaranta = [
+    { title: "Horus Rising", series: "The Horus Heresy" },
+    { title: "False Gods", series: "The Horus Heresy" },
+    { title: "Galaxy in Flames", series: "The Horus Heresy" },
+    { title: "Fulgrim", series: "The Horus Heresy" },
+    { title: "The Solar War", series: "The Siege of Terra" },
+    { title: "The Lost and the Damned", series: "the siege of terra" },
+    { title: "First and Only", series: "Gaunt's Ghosts" },
+    { title: "Eisenhorn: Xenos", series: "" },
+  ];
+  t.eq("i titoli da cercare: i primi tre, poi il primo di ogni altro ciclo", titoliDaProvare(quaranta).join("|"), "Horus Rising|False Gods|Galaxy in Flames|The Solar War|First and Only");
+  t.eq("…al piu' dieci", titoliDaProvare(Array.from({ length: 30 }, (_, i) => ({ title: `T${i}`, series: `S${i}` }))).length, PROVE_MAX);
+  t.eq("i nomi dei cicli, una volta sola", nomiDeiCicli(quaranta).join("|"), "The Horus Heresy|The Siege of Terra|Gaunt's Ghosts");
+  t.c("un universo si riconosce dal tipo", eUnUniverso({ claims: { P31: [{ mainsnak: { datavalue: { value: { id: UNIVERSO } } } }] } }) && !eUnUniverso({ claims: { P31: [{ mainsnak: { datavalue: { value: { id: "Q1667921" } } } }] } }) && !eUnUniverso(null));
 
   // il giro intero, su un Wikidata finto
   const wd = wikidata({
@@ -75,6 +93,30 @@ export default async function (t) {
     { id: "Q201", nome: "Le Cronache della Folgoluce", membri: 2, combaciano: 2 },
     { id: "Q202", nome: "Mistborn", membri: 2, combaciano: 1 },
   ]));
+  // il 40K: due serie dai cicli, e l'universo che le contiene tutte e due
+  // (coprirebbe piu' titoli di ognuna) non si segue
+  const tipo = (q) => ({ P31: [{ mainsnak: { datavalue: { value: { id: q } } } }] });
+  const quarantaWd = wikidata({
+    // l'Assedio si trova solo dal nome del ciclo, i Gaunt solo dal primo
+    // titolo del loro ciclo (che non e' fra i primi tre della raccolta)
+    cerca: { "Horus Rising": ["Q401"], "First and Only": ["Q403"], "The Siege of Terra": ["Q502"] },
+    entita: {
+      Q401: { claims: { P179: [{ mainsnak: { datavalue: { value: { id: "Q501" } } } }], P1434: [{ mainsnak: { datavalue: { value: { id: "Q509" } } } }] } },
+      Q402: { claims: { P179: [{ mainsnak: { datavalue: { value: { id: "Q502" } } } }], P1434: [{ mainsnak: { datavalue: { value: { id: "Q509" } } } }] } },
+      Q501: { ...voce("The Horus Heresy", "Eresia di Horus"), claims: tipo("Q1667921") },
+      Q502: { ...voce("The Siege of Terra"), claims: tipo("Q1667921") },
+      Q403: { claims: { P179: [{ mainsnak: { datavalue: { value: { id: "Q503" } } } }] } },
+      Q503: { ...voce("Gaunt's Ghosts"), claims: tipo("Q1667921") },
+      Q604: voce("First and Only"),
+      Q509: { ...voce("Warhammer 40,000 universe"), claims: tipo(UNIVERSO) },
+      Q601: voce("Horus Rising"),
+      Q602: voce("False Gods"),
+      Q603: voce("The Solar War"),
+    },
+    membri: { Q501: ["Q601", "Q602"], Q502: ["Q603"], Q503: ["Q604"], Q509: ["Q601", "Q602", "Q603", "Q604"] },
+  });
+  const trovate40 = await cercaSerie({ nome: "Warhammer 40K", libri: quaranta }, quarantaWd.prendi);
+  t.eq("la raccolta del 40K: l'Eresia, l'Assedio dal nome del ciclo, i Gaunt dal primo titolo del loro ciclo, non l'universo", (trovate40 || []).map((x) => `${x.nome}:${x.combaciano}`).sort().join("|"), "Eresia di Horus:2|Gaunt's Ghosts:1|The Siege of Terra:1");
   const film = wikidata({ cerca: { Berserk: ["Q900"] }, entita: { Q901: voce("Berserk (film)") }, membri: { Q900: ["Q901"] } });
   t.eq("un nome che Wikidata conosce, ma senza un titolo in comune, non e' la saga", await cercaSerie({ nome: "Berserk", libri: [{ title: "Berserk Deluxe Volume 1" }] }, film.prendi), null);
   const vuota = wikidata({});

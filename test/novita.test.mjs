@@ -1,10 +1,11 @@
 // LE NOVITÀ DELLE RACCOLTE SCELTE (`lib/novita.js` ↔ `android/Novita.java`):
 // cosa si guarda di una raccolta, la lista, cosa va al guscio e cosa torna.
 import { readFileSync } from "node:fs";
+import { SERIE_MAX as SERIE_MAX_PAGINA } from "../src/lib/serieWikidata.js";
 import {
   autoriDi, vocePerRaccolta, leggiNovita, scriviNovita, seguita, seguiNovita, smettiNovita,
   messaggioNovita, statoNovita, fraseNovita, tastoNovita, puoAvvisare, STATO_NOVITA, AUTORI_MAX, CHIAVE_NOVITA,
-  daCercare, conSerie, fraseSerie,
+  daCercare, conSerie, fraseSerie, RICERCA,
 } from "../src/lib/novita.js";
 
 const memoria = () => {
@@ -76,11 +77,15 @@ export default async function (t) {
   // la saga su Wikidata
   const cosmo = { id: "saga:cosmoverse", nome: "Cosmoverse", tipo: "autori", autori: ["Brandon Sanderson"] };
   const trovate = [{ id: "Q7766706", nome: "The Stormlight Archive", membri: 8 }, { id: "Q123", nome: "Mistborn", membri: 7 }];
-  t.c("si cerca la serie di una saga che guarda gli autori, una volta; non di un autore, non di un manga", daCercare(cosmo) && !daCercare({ ...cosmo, cercata: 1 }) && !daCercare({ ...cosmo, id: "autore:x" }) && !daCercare(vocePerRaccolta(berserk)) && !daCercare(null));
+  t.c("si cerca la serie di una saga che guarda gli autori, una volta; non di un autore, non di un manga", daCercare(cosmo) && !daCercare({ ...cosmo, cercata: 1, ricerca: RICERCA }) && !daCercare({ ...cosmo, id: "autore:x" }) && !daCercare(vocePerRaccolta(berserk)) && !daCercare(null));
+  t.c("…una cercata con la regola di prima (al piu' tre serie dai primi titoli) si ricerca una volta, anche se una serie l'aveva trovata", RICERCA === 2 && daCercare({ ...cosmo, cercata: 1 }) && daCercare({ ...cosmo, tipo: "serie", serie: [{ id: "Q1" }], cercata: 1 }) && !daCercare({ ...cosmo, tipo: "serie", serie: [{ id: "Q1" }], cercata: 1, ricerca: 2 }));
   const conCosmo = conSerie([cosmo, vocePerRaccolta(berserk)], "saga:cosmoverse", trovate, 42);
-  t.eq("trovata, la saga guarda le serie (e tiene gli autori)", JSON.stringify(conCosmo[0]), JSON.stringify({ ...cosmo, tipo: "serie", serie: trovate, cercata: 42 }));
+  t.eq("trovata, la saga guarda le serie (e tiene gli autori)", JSON.stringify(conCosmo[0]), JSON.stringify({ ...cosmo, tipo: "serie", serie: trovate, cercata: 42, ricerca: RICERCA }));
   t.eq("…le altre voci restano", conCosmo[1].tipo, "manga");
-  t.eq("non trovata, resta agli autori e non si ricerca", JSON.stringify(conSerie([cosmo], "saga:cosmoverse", [], 42)[0]), JSON.stringify({ ...cosmo, cercata: 42 }));
+  t.eq("non trovata, resta agli autori e non si ricerca", JSON.stringify(conSerie([cosmo], "saga:cosmoverse", [], 42)[0]), JSON.stringify({ ...cosmo, cercata: 42, ricerca: RICERCA }));
+  const vecchia = { ...cosmo, tipo: "serie", serie: [trovate[0]], cercata: 1 };
+  t.eq("ricercata con la regola nuova, prende le serie nuove", JSON.stringify(conSerie([vecchia], "saga:cosmoverse", trovate, 42)[0].serie), JSON.stringify(trovate));
+  t.eq("…e se la ricerca nuova non trova niente, la serie di prima resta", JSON.stringify(conSerie([vecchia], "saga:cosmoverse", [], 42)[0]), JSON.stringify({ ...vecchia, cercata: 42, ricerca: RICERCA }));
   t.eq("…un id che non e' di Wikidata non e' una serie", conSerie([cosmo], "saga:cosmoverse", [{ id: "x", nome: "X" }], 42)[0].tipo, "autori");
   t.eq("…una saga smessa nel frattempo non torna", conSerie([], "saga:cosmoverse", trovate).length, 0);
   t.eq("…una gia' cercata non si riscrive", conSerie(conCosmo, "saga:cosmoverse", [], 99)[0].cercata, 42);
@@ -101,10 +106,11 @@ export default async function (t) {
   t.c("i libri da Open Library, dal piu' nuovo; i capitoli da MangaDex, in inglese e in italiano", /openlibrary\.org\/search\.json\?author=/.test(java) && /&sort=new/.test(java) && /api\.mangadex\.org\/manga\?title=/.test(java) && /translatedLanguage%5B%5D=en&translatedLanguage%5B%5D=it/.test(java));
   t.c("la prima volta niente e' nuovo", /if \(pronta && !giaDetto\(s, titolo\)\) avvisa\(/.test(java) && /if \(!Double\.isNaN\(noto\) && numero > noto\) avvisa\(/.test(java));
   t.c("una lista vuota spegne il giro, la finestra si chiede solo con delle raccolte, un rifiuto di Android si dice", /if \(dopo\.length\(\) > 0\) programma\(app\);\s*else togli\(app\);/.test(java) && /if \(dopo\.length\(\) > 0 && daChiedere\(app\)\) chiedi\(app\);/.test(java) && /catch \(Throwable e\) \{[\s\S]{0,120}return STATO \+ "guasto";/.test(java));
-  t.c("le serie da Wikidata: i membri dalla ricerca, poi solo i nuovi, la prima volta niente", /"serie"\.equals\(tipo\)/.test(java) && /controllaSerie\(app, id, s\)/.test(java) && /"haswbstatement:"/.test(java) && /append\("P179=" \+ q \+ "\|P361=" \+ q \+ "\|P1434=" \+ q\)/.test(java) && /soloQ\(s\.optJSONArray\("wikidata"\)\)/.test(java) && /if \(pronta\) nuovi\.add\(m\);\s*else visti\.put\(m\);/.test(java));
+  t.c("le serie da Wikidata: i membri dalla ricerca, poi solo i nuovi, la prima volta niente", /"serie"\.equals\(tipo\)/.test(java) && /controllaSerie\(app, id, s\)/.test(java) && /"haswbstatement:P179=" \+ q \+ "\|P361=" \+ q \+ "\|P1434=" \+ q/.test(java) && /soloQ\(s\.optJSONArray\("wikidata"\)\)/.test(java) && /if \(pronta\) nuovi\.add\(m\);\s*else visti\.put\(m\);/.test(java));
   t.c("…un volume con la data di quest'anno, dopo o dell'anno scorso; senza data si riguarda", /if \(uscita == 0\) continue;\s*visti\.put\(m\);\s*if \(!eUnVolume\(claims\) \|\| uscita < anno - 1\) continue;/.test(java));
   t.c("…non le edizioni, gli audiolibri, i radiodrammi", ["Q3331189", "Q106833", "Q2635894"].every((q) => new RegExp(`NON_VOLUMI = \\{[^}]*"${q}"`).test(java)));
   t.c("…la serie e' la stessa cosa se ha gli stessi id", /"serie"\.equals\(a\.optString\("tipo"\)\)\) return String\.valueOf\(a\.optJSONArray\("wikidata"\)\)\.equals\(String\.valueOf\(b\.optJSONArray\("wikidata"\)\)\);/.test(java));
+  t.c("una domanda per serie, fino a otto come la pagina; una serie che non risponde ferma il giro (i suoi membri non sembrano nuovi)", /SERIE_MAX = 8;/.test(java) && SERIE_MAX_PAGINA === 8 && /out\.length\(\) < SERIE_MAX/.test(java) && /if \(questi == null\) return;/.test(java));
   t.c("una serie guarda anche i suoi autori, con una memoria a parte (la prima volta niente e' nuovo anche per loro)", /controllaSerie\(app, id, s\);\s*controllaAutori\(app, id, s, "vistiAutori", "prontaAutori"\);/.test(java) && /else controllaAutori\(app, id, s, "visti", "pronta"\);/.test(java) && /boolean pronta = s\.optBoolean\(campoPronta, false\);/.test(java));
   t.c("…lo stesso libro, dalla serie e dall'autore, si dice una volta", /if \(!giaDetto\(s, titolo, inglese\)\) avvisa\(/.test(java) && /segnaDetto\(s, titolo, inglese\);/.test(java) && /segnaDetto\(s, titolo\);/.test(java) && /"annunciati"/.test(java));
   t.c("…la memoria degli autori resta solo se gli autori sono gli stessi, quella della serie se la serie e' la stessa", /if \(!stessaCosa\(vecchia, nuova\)\) return;/.test(java) && /if \(!String\.valueOf\(vecchia\.optJSONArray\("autori"\)\)\.equals\(String\.valueOf\(nuova\.optJSONArray\("autori"\)\)\)\) return;\s*for \(String campo : new String\[\] \{ "vistiAutori", "prontaAutori" \}\)/.test(java));

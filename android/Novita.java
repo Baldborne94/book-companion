@@ -61,6 +61,8 @@ public class Novita extends JobService {
     // serie si ricordano tutti (l'Eresia di Horus ne ha piu' di sessanta)
     private static final int VISTI_MAX = 1000;
     static final String WIKIDATA = "https://www.wikidata.org/w/api.php";
+    // le serie di una raccolta, come `SERIE_MAX` in `lib/serieWikidata.js`
+    static final int SERIE_MAX = 8;
     // quel che e' parte di una serie ma non e' un volume nuovo da leggere:
     // edizioni, audiolibri e radiodrammi (GraphicAudio ha le sue «parti»
     // dello Stormlight), film, serie tv e d'animazione, giochi
@@ -315,14 +317,19 @@ public class Novita extends JobService {
     private static void controllaSerie(Context app, String id, JSONObject s) throws Exception {
         JSONArray serie = soloQ(s.optJSONArray("wikidata"));
         if (serie.length() == 0) return;
-        StringBuilder cerca = new StringBuilder("haswbstatement:");
+        // una domanda per serie (una raccolta grande ne segue fino a otto):
+        // una serie che non risponde ferma il giro, o la prossima volta i suoi
+        // membri sembrerebbero tutti nuovi
+        JSONArray trovati = new JSONArray();
         for (int k = 0; k < serie.length(); k++) {
             String q = serie.getString(k);
-            cerca.append(k == 0 ? "" : "|").append("P179=" + q + "|P361=" + q + "|P1434=" + q);
+            if (k > 0) Thread.sleep(1000);
+            String cerca = "haswbstatement:P179=" + q + "|P361=" + q + "|P1434=" + q;
+            JSONObject json = chiedi(app, WIKIDATA + "?action=query&format=json&list=search&srnamespace=0&srlimit=500&srsearch=" + URLEncoder.encode(cerca, "UTF-8"));
+            JSONArray questi = json == null || json.optJSONObject("query") == null ? null : json.optJSONObject("query").optJSONArray("search");
+            if (questi == null) return;
+            for (int j = 0; j < questi.length(); j++) trovati.put(questi.get(j));
         }
-        JSONObject json = chiedi(app, WIKIDATA + "?action=query&format=json&list=search&srnamespace=0&srlimit=500&srsearch=" + URLEncoder.encode(cerca.toString(), "UTF-8"));
-        JSONArray trovati = json == null || json.optJSONObject("query") == null ? null : json.optJSONObject("query").optJSONArray("search");
-        if (trovati == null) return;
         JSONArray visti = s.optJSONArray("visti");
         if (visti == null) visti = new JSONArray();
         java.util.HashSet<String> giaVisti = new java.util.HashSet<>();
@@ -368,7 +375,7 @@ public class Novita extends JobService {
     // gli id di Wikidata e nient'altro: finiscono in un indirizzo
     static JSONArray soloQ(JSONArray ids) {
         JSONArray out = new JSONArray();
-        for (int k = 0; ids != null && k < ids.length() && out.length() < 3; k++) {
+        for (int k = 0; ids != null && k < ids.length() && out.length() < SERIE_MAX; k++) {
             String q = ids.optString(k, "");
             if (q.matches("Q[0-9]+")) out.put(q);
         }
