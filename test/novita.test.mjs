@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   autoriDi, vocePerRaccolta, leggiNovita, scriviNovita, seguita, seguiNovita, smettiNovita,
   messaggioNovita, statoNovita, fraseNovita, tastoNovita, puoAvvisare, STATO_NOVITA, AUTORI_MAX, CHIAVE_NOVITA,
+  daCercare, conSerie, fraseSerie,
 } from "../src/lib/novita.js";
 
 const memoria = () => {
@@ -72,6 +73,24 @@ export default async function (t) {
   t.eq("…di una saga di libri, coi suoi autori", tastoNovita({ id: "saga:e", nome: "E", libri }, []).spiega, "Avviso: i libri nuovi di Dan Abnett, Graham McNeill, Aaron Dembski-Bowden");
   t.eq("…niente dove non si puo'", tastoNovita({ id: "genere:x", nome: "X" }, []), null);
 
+  // la saga su Wikidata
+  const cosmo = { id: "saga:cosmoverse", nome: "Cosmoverse", tipo: "autori", autori: ["Brandon Sanderson"] };
+  const trovate = [{ id: "Q7766706", nome: "The Stormlight Archive", membri: 8 }, { id: "Q123", nome: "Mistborn", membri: 7 }];
+  t.c("si cerca la serie di una saga che guarda gli autori, una volta; non di un autore, non di un manga", daCercare(cosmo) && !daCercare({ ...cosmo, cercata: 1 }) && !daCercare({ ...cosmo, id: "autore:x" }) && !daCercare(vocePerRaccolta(berserk)) && !daCercare(null));
+  const conCosmo = conSerie([cosmo, vocePerRaccolta(berserk)], "saga:cosmoverse", trovate, 42);
+  t.eq("trovata, la saga guarda le serie (e tiene gli autori)", JSON.stringify(conCosmo[0]), JSON.stringify({ ...cosmo, tipo: "serie", serie: trovate, cercata: 42 }));
+  t.eq("…le altre voci restano", conCosmo[1].tipo, "manga");
+  t.eq("non trovata, resta agli autori e non si ricerca", JSON.stringify(conSerie([cosmo], "saga:cosmoverse", [], 42)[0]), JSON.stringify({ ...cosmo, cercata: 42 }));
+  t.eq("…un id che non e' di Wikidata non e' una serie", conSerie([cosmo], "saga:cosmoverse", [{ id: "x", nome: "X" }], 42)[0].tipo, "autori");
+  t.eq("…una saga smessa nel frattempo non torna", conSerie([], "saga:cosmoverse", trovate).length, 0);
+  t.eq("…una gia' cercata non si riscrive", conSerie(conCosmo, "saga:cosmoverse", [], 99)[0].cercata, 42);
+  scriviNovita(conCosmo, st);
+  t.eq("la serie si rilegge", leggiNovita(st)[0].tipo, "serie");
+  t.eq("al guscio va l'elenco delle serie", JSON.stringify(JSON.parse(messaggioNovita(conCosmo)).novita[0]), JSON.stringify({ id: "saga:cosmoverse", nome: "Cosmoverse", tipo: "serie", wikidata: ["Q7766706", "Q123"] }));
+  t.eq("il tasto dice cosa guarda", tastoNovita({ id: "saga:cosmoverse", nome: "Cosmoverse", libri: [{ author: "Brandon Sanderson" }] }, conCosmo).spiega, "Avviso: i volumi nuovi di «The Stormlight Archive», «Mistborn» (Wikidata)");
+  t.eq("la riga: trovata", fraseSerie(conCosmo[0]), "Su Wikidata: «The Stormlight Archive», «Mistborn», 15 volumi. Ti avviso dei volumi nuovi.");
+  t.c("…mentre cerca, col guasto, non trovata, e niente per un autore o prima di cercare", /Cerco la saga/.test(fraseSerie(cosmo, { cerco: true })) && /non risponde adesso/.test(fraseSerie(cosmo, { guasto: true })) && fraseSerie({ ...cosmo, cercata: 1 }) === "Su Wikidata non l'ho trovata: ti avviso dei libri nuovi di Brandon Sanderson." && fraseSerie({ ...cosmo, id: "autore:b" }) === "" && fraseSerie(cosmo) === "" && fraseSerie(null) === "");
+
   // il guscio parla la stessa lingua
   const java = readFileSync("android/Novita.java", "utf8");
   const guscio = readFileSync("android/SchermataDiBlocco.java", "utf8");
@@ -81,5 +100,9 @@ export default async function (t) {
   t.c("i libri da Open Library, dal piu' nuovo; i capitoli da MangaDex, in inglese e in italiano", /openlibrary\.org\/search\.json\?author=/.test(java) && /&sort=new/.test(java) && /api\.mangadex\.org\/manga\?title=/.test(java) && /translatedLanguage%5B%5D=en&translatedLanguage%5B%5D=it/.test(java));
   t.c("la prima volta niente e' nuovo", /if \(pronta\) avvisa\(/.test(java) && /if \(!Double\.isNaN\(noto\) && numero > noto\) avvisa\(/.test(java));
   t.c("una lista vuota spegne il giro, la finestra si chiede solo con delle raccolte, un rifiuto di Android si dice", /if \(dopo\.length\(\) > 0\) programma\(app\);\s*else togli\(app\);/.test(java) && /if \(dopo\.length\(\) > 0 && daChiedere\(app\)\) chiedi\(app\);/.test(java) && /catch \(Throwable e\) \{[\s\S]{0,120}return STATO \+ "guasto";/.test(java));
+  t.c("le serie da Wikidata: i membri dalla ricerca, poi solo i nuovi, la prima volta niente", /"serie"\.equals\(tipo\)/.test(java) && /controllaSerie\(app, id, s\)/.test(java) && /"haswbstatement:"/.test(java) && /append\("P179=" \+ q \+ "\|P361=" \+ q \+ "\|P1434=" \+ q\)/.test(java) && /soloQ\(s\.optJSONArray\("wikidata"\)\)/.test(java) && /if \(pronta\) nuovi\.add\(m\);\s*else visti\.put\(m\);/.test(java));
+  t.c("…un volume con la data di quest'anno, dopo o dell'anno scorso; senza data si riguarda", /if \(uscita == 0\) continue;\s*visti\.put\(m\);\s*if \(!eUnVolume\(claims\) \|\| uscita < anno - 1\) continue;/.test(java));
+  t.c("…non le edizioni, gli audiolibri, i radiodrammi", ["Q3331189", "Q106833", "Q2635894"].every((q) => new RegExp(`NON_VOLUMI = \\{[^}]*"${q}"`).test(java)));
+  t.c("…la serie e' la stessa cosa se ha gli stessi id", /"serie"\.equals\(a\.optString\("tipo"\)\)\) return String\.valueOf\(a\.optJSONArray\("wikidata"\)\)\.equals\(String\.valueOf\(b\.optJSONArray\("wikidata"\)\)\);/.test(java));
   t.c("un lavoro suo, non quello degli avvisi tolti", /LAVORO = 4402/.test(java) && /CANALE = "novita"/.test(java));
 }

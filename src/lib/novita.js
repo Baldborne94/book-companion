@@ -12,7 +12,11 @@
 //   libro nuovo del suo autore);
 // - una saga di MANGA: i capitoli nuovi su MangaDex, rimandi compresi (il
 //   capitolo uscito su MANGA Plus e' un capitolo uscito). Solo avvisi: dove
-//   leggerlo lo decide il lettore.
+//   leggerlo lo decide il lettore;
+// - una saga che Wikidata riconosce dai titoli dei suoi volumi
+//   (`lib/serieWikidata.js`): i volumi nuovi della serie, e non i libri
+//   dell'autore che con la saga non c'entrano. La si cerca aperta la
+//   raccolta seguita, una volta (`daCercare`, `conSerie`).
 export const CHIAVE_NOVITA = "bc_novita";
 export const STATO_NOVITA = "grimorio:novita:";
 // gli autori di una saga che si guardano: i piu' presenti, al piu' tre (le
@@ -50,10 +54,12 @@ export function vocePerRaccolta(r) {
   return autori.length ? { id: r.id, nome, tipo: "autori", autori } : null;
 }
 
+const TIPI = ["manga", "autori", "serie"];
+
 export function leggiNovita(st = globalThis.localStorage) {
   try {
     const v = JSON.parse(st?.getItem(CHIAVE_NOVITA) || "[]");
-    return Array.isArray(v) ? v.filter((x) => x && puoAvvisare(x.id) && (x.tipo === "manga" || x.tipo === "autori")) : [];
+    return Array.isArray(v) ? v.filter((x) => x && puoAvvisare(x.id) && TIPI.includes(x.tipo)) : [];
   } catch {
     return [];
   }
@@ -77,10 +83,27 @@ export function seguiNovita(lista, voce) {
 export const smettiNovita = (lista, id) => (lista || []).filter((x) => x.id !== id);
 
 // al guscio va solo quel che gli serve per chiedere
-export const messaggioNovita = (lista) =>
-  JSON.stringify({
-    novita: (lista || []).map((x) => (x.tipo === "manga" ? { id: x.id, nome: x.nome, tipo: "manga", titolo: x.titolo || x.nome } : { id: x.id, nome: x.nome, tipo: "autori", autori: (x.autori || []).slice(0, AUTORI_MAX) })),
+const perIlGuscio = (x) => {
+  if (x.tipo === "manga") return { id: x.id, nome: x.nome, tipo: "manga", titolo: x.titolo || x.nome };
+  if (x.tipo === "serie") return { id: x.id, nome: x.nome, tipo: "serie", wikidata: (x.serie || []).map((s) => s.id) };
+  return { id: x.id, nome: x.nome, tipo: "autori", autori: (x.autori || []).slice(0, AUTORI_MAX) };
+};
+export const messaggioNovita = (lista) => JSON.stringify({ novita: (lista || []).map(perIlGuscio) });
+
+// LA SERIE SU WIKIDATA si cerca per una saga seguita che guarda gli autori
+// e non e' ancora stata cercata; trovata, la saga guarda la serie (gli
+// autori restano, se la si dovesse ricercare); non trovata, resta agli
+// autori e non si ricerca. Un intoppo di rete non segna niente: si riprova.
+export const daCercare = (voce) => !!voce && voce.tipo === "autori" && String(voce.id).startsWith("saga:") && !voce.cercata;
+export function conSerie(lista, id, serie, quando = Date.now()) {
+  return (lista || []).map((x) => {
+    if (x.id !== id || !daCercare(x)) return x;
+    const trovate = (serie || []).filter((s) => /^Q\d+$/.test(s?.id || "")).map((s) => ({ id: s.id, nome: String(s.nome || s.id), membri: s.membri || 0 }));
+    return trovate.length ? { ...x, tipo: "serie", serie: trovate, cercata: quando } : { ...x, cercata: quando };
   });
+}
+// le parole della serie seguita
+export const nomiSerie = (voce) => (voce?.serie || []).map((s) => `«${s.nome}»`).join(", ");
 
 export function statoNovita(dato) {
   if (typeof dato !== "string" || !dato.startsWith(STATO_NOVITA)) return null;
@@ -104,6 +127,28 @@ export function tastoNovita(r, lista) {
   const voce = vocePerRaccolta(r);
   if (!voce) return null;
   const si = seguita(lista, r.id);
-  const come = voce.tipo === "manga" ? "i capitoli nuovi" : voce.autori.length === 1 && voce.autori[0] === voce.nome ? "i libri nuovi" : `i libri nuovi di ${voce.autori.join(", ")}`;
+  const mia = (lista || []).find((x) => x.id === r.id);
+  const come =
+    mia?.tipo === "serie"
+      ? `i volumi nuovi di ${nomiSerie(mia)} (Wikidata)`
+      : voce.tipo === "manga"
+        ? "i capitoli nuovi"
+        : voce.autori.length === 1 && voce.autori[0] === voce.nome
+          ? "i libri nuovi"
+          : `i libri nuovi di ${voce.autori.join(", ")}`;
   return { si, testo: si ? "🔔 Ti avviso delle novità" : "🔕 Avvisami delle novità", spiega: `Avviso: ${come}` };
+}
+
+// cosa dice la riga sotto il tasto, a raccolta seguita
+export function fraseSerie(voce, { cerco = false, guasto = false } = {}) {
+  if (!voce) return "";
+  if (voce.tipo === "serie") {
+    const membri = (voce.serie || []).reduce((n, s) => n + (s.membri || 0), 0);
+    return `Su Wikidata: ${nomiSerie(voce)}${membri ? `, ${membri === 1 ? "1 volume" : `${membri} volumi`}` : ""}. Ti avviso dei volumi nuovi.`;
+  }
+  if (voce.tipo !== "autori" || !String(voce.id).startsWith("saga:")) return "";
+  if (cerco) return "🔎 Cerco la saga su Wikidata…";
+  if (guasto) return "Wikidata non risponde adesso: riprovo la prossima volta che apri la raccolta. Intanto ti avviso dei libri nuovi dei suoi autori.";
+  if (voce.cercata) return `Su Wikidata non l'ho trovata: ti avviso dei libri nuovi di ${(voce.autori || []).join(", ")}.`;
+  return "";
 }

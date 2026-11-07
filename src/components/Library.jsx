@@ -33,7 +33,8 @@ import BookCover from "./BookCover.jsx";
 import Disposizione from "./Disposizione.jsx";
 import EmptyState from "./EmptyState.jsx";
 import { partenza, dopoIlDisegno, segnaTempo, vocePerTempo } from "../lib/tempi.js";
-import { leggiNovita, scriviNovita, seguiNovita, smettiNovita, vocePerRaccolta, tastoNovita } from "../lib/novita.js";
+import { leggiNovita, scriviNovita, seguiNovita, smettiNovita, vocePerRaccolta, tastoNovita, conSerie } from "../lib/novita.js";
+import SerieDellaRaccolta from "./SerieDellaRaccolta.jsx";
 import { leggiVoti, scriviVoti, segnaVoto, votoMio, votoDaMostrare, mediaDeiVolumi, dettoVoto, puoEssereVotata, daSegnare } from "../lib/votiRaccolte.js";
 import Stars from "./Stelle.jsx";
 import { leggiDispositivi, scriviDispositivi, altroveDa, sulDispositivo, aggiornaDisco, sulDiscoDa } from "../lib/dispositivi.js";
@@ -444,7 +445,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   );
 }
 
-function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, novita = [], onAvvisami }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, novita = [], onAvvisami, onSerie }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -618,6 +619,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
             </button>
           )}
         </div>
+        {avviso?.si && <SerieDellaRaccolta r={dentro} lista={novita} onCercata={onSerie} />}
         <TuttaLaRaccolta r={dentro} voti={voti} onVoto={onVoto} onTutti={onTutti} />
         {mostra(dentro)}
       </>
@@ -925,6 +927,13 @@ export default function Library({
     setCuori((n) => n + 1);
     onNovita?.(lista);
     notify?.(si ? `🔔 Ti avviso delle novità di «${r.nome}»` : `Niente più avvisi per «${r.nome}»`);
+  };
+  // la saga trovata (o non trovata) su Wikidata: la lista cambia, e va al
+  // guscio come ogni cambio
+  const serieCercata = (id, serie) => {
+    const lista = scriviNovita(conSerie(leggiNovita(), id, serie));
+    setCuori((n) => n + 1);
+    onNovita?.(lista);
   };
   // IL VOTO DELLE RACCOLTE si rilegge a ogni disegno, come il cuore
   const voti = leggiVoti();
@@ -2148,6 +2157,7 @@ export default function Library({
         onTutti={tuttiQuanti}
         novita={novita}
         onAvvisami={avvisami}
+        onSerie={serieCercata}
       />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
