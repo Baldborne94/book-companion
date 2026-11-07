@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
 import {
   IN_VISTA, NOME_LINGUA, SITO,
-  cerca, capitoli, leggiSerie, fraseAvvisi, scriviSerie, segui, smetti, cambiaLingua, conCapitoli, visti, nellaBiblioteca, daScaricare, spiega, ritmoComune,
+  cerca, capitoli, leggiSerie, fraseAvvisi, schedaSerie, conUfficiale, nomeUfficiale, fraseUfficiale, scriviSerie, segui, smetti, cambiaLingua, conCapitoli, visti, nellaBiblioteca, daScaricare, spiega, ritmoComune,
 } from "../lib/mangadex.js";
 
 // LE SERIE SEGUITE SU MANGADEX (`lib/mangadex.js`): cerca una serie,
@@ -106,6 +106,11 @@ export default function SerieSeguite({ books, onClose, onApri, onScarica, scaric
       if (!vivo.current) return;
       setCapitoliDi((m) => ({ ...m, [serie.id]: { lista: caps, caricando: false, guasto: null } }));
       setLista((l) => scriviSerie(l.map((s) => (s.id === serie.id ? conCapitoli(s, caps) : s))));
+      // l'edizione ufficiale, per le serie seguite prima che si tenesse
+      if (serie.ufficiale === undefined) {
+        const scheda = await schedaSerie(serie.id, { fetch: rete, ritmo: ritmoMangadex }).catch(() => null);
+        if (scheda && vivo.current) setLista((l) => scriviSerie(conUfficiale(l, serie.id, scheda.ufficiale)));
+      }
     } catch (e) {
       if (!vivo.current) return;
       setCapitoliDi((m) => ({ ...m, [serie.id]: { ...(m[serie.id] || {}), caricando: false, guasto: spiega(e, undefined, via) } }));
@@ -255,6 +260,11 @@ export default function SerieSeguite({ books, onClose, onApri, onScarica, scaric
                     <button onClick={() => controlla(serie)} disabled={!!c.caricando} style={tasto(C.muted)}>
                       ↻ Aggiorna
                     </button>
+                    {serie.ufficiale && (
+                      <a href={serie.ufficiale} target="_blank" rel="noopener noreferrer" style={{ ...tasto(C.accent, true), display: "inline-flex", alignItems: "center", textDecoration: "none" }}>
+                        📖 Tutti i capitoli su {nomeUfficiale(serie.ufficiale)}
+                      </a>
+                    )}
                     <a href={`${SITO}/title/${serie.id}`} target="_blank" rel="noopener noreferrer" style={{ ...tasto(C.muted), display: "inline-flex", alignItems: "center", textDecoration: "none" }}>
                       ↗ Su MangaDex
                     </a>
@@ -262,6 +272,7 @@ export default function SerieSeguite({ books, onClose, onApri, onScarica, scaric
                       Smetti di seguire
                     </button>
                   </div>
+                  {c.lista && fraseUfficiale(serie, caps) && <div style={{ fontSize: F.nota, color: C.muted, lineHeight: 1.45, marginBottom: 6 }}>{fraseUfficiale(serie, caps)}</div>}
                   {/* «Nessun capitolo» solo dopo un controllo andato a buon fine: prima
                       del suo turno la serie aspetta, e lo si dice */}
                   {!caps.length && !c.caricando && !c.guasto && (

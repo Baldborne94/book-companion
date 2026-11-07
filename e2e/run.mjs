@@ -2896,7 +2896,12 @@ const SCENE = [
               { id: "m", title: "Mort", author: "Terry Pratchett", fileType: "epub", addedAt: 1 },
               { id: "v1", title: "Berserk Vol. 1", saga: "Berserk", sagaOrder: 1, fileType: "cbz", tipo: "manga", addedAt: 2 },
             ]),
-          ),
+          ) ||
+          // una serie seguita da prima che la stanza tenesse l'edizione
+          // ufficiale (senza il campo): la stanza la chiede una volta. Solo
+          // la prima volta: questo gira a ogni pagina caricata
+          localStorage.getItem("bc_serie") ||
+          localStorage.setItem("bc_serie", JSON.stringify([{ id: "g1", titolo: "Gachiakuta", lingua: "en", lingue: ["en"], ultimo: null, ultimoNoto: null, nuovi: 0 }])),
       });
       const { p } = d;
       await p.goto(URL_APP);
@@ -2904,9 +2909,12 @@ const SCENE = [
       // NEL BROWSER: MangaDex respinge la pagina, e la stanza lo dice (sul
       // tablet diceva «la rete non risponde»)
       await p.getByRole("button", { name: /Serie seguite/ }).click();
+      // la serie seguita da prima prova i suoi capitoli e lo dice nella sua
+      // scheda; la ricerca lo dice sotto la casella: si aspettano tutt'e due
+      await finche(() => stanza.getByText(/sfida anti-bot/).count(), 8000, "nel browser la serie seguita non dice la sfida anti-bot");
       await stanza.getByLabel("Cerca una serie").fill("berserk");
       await stanza.getByRole("button", { name: "Cerca" }).click();
-      await finche(() => stanza.getByText(/sfida anti-bot/).count(), 8000, "nel browser la stanza non dice la sfida anti-bot");
+      await finche(async () => (await stanza.getByText(/sfida anti-bot/).count()) >= 2, 8000, "nel browser la ricerca non dice la sfida anti-bot");
       if (await stanza.getByText(/la rete non risponde/).count()) throw new Error("la stanza da' la colpa alla rete");
       await stanza.getByRole("button", { name: "Chiudi le serie seguite" }).click();
       // DENTRO L'APP ANDROID, MA IL GUSCIO NON HA SALUTATO: non e' la sfida
@@ -2915,11 +2923,15 @@ const SCENE = [
       await p.evaluate(() => sessionStorage.setItem("bc_guscio_lancio", JSON.stringify({ versione: "1150", android: "14" })));
       await p.reload();
       await p.getByRole("button", { name: /Serie seguite/ }).click();
+      await finche(() => stanza.getByText(/Il guscio Android non ha salutato questa pagina/).count(), 8000, "dentro l'app senza saluto la serie seguita non dice il guscio muto");
       await stanza.getByLabel("Cerca una serie").fill("berserk");
       await stanza.getByRole("button", { name: "Cerca" }).click();
-      await finche(() => stanza.getByText(/Il guscio Android non ha salutato questa pagina/).count(), 8000, "dentro l'app senza saluto la stanza non dice il guscio muto");
+      await finche(async () => (await stanza.getByText(/Il guscio Android non ha salutato questa pagina/).count()) >= 2, 8000, "dentro l'app senza saluto la ricerca non dice il guscio muto");
       if (await stanza.getByText(/sfida anti-bot/).count()) throw new Error("dentro l'app senza saluto la stanza dice la sfida del browser");
       await stanza.getByRole("button", { name: "Chiudi le serie seguite" }).click();
+      // da qui in poi niente va diretto a MangaDex (prima, nel browser e col
+      // guscio muto, la stanza ci ha provato, e doveva)
+      const primaDelGuscio = chieste.length;
       // IL GUSCIO SALUTA, dice che sa chiedere, e fa da tramite: chiede col suo
       // segno e rimanda il corpo a pezzi in base64, al contrario per provare
       // che la pagina li rimette in fila
@@ -2986,12 +2998,20 @@ const SCENE = [
         window.__lento = 0;
       });
       await stanza.getByText("✓ Seguita").waitFor({ timeout: 3000 });
+      // L'EDIZIONE UFFICIALE: dalla ricerca per la serie appena seguita, dalla
+      // sua scheda per quella seguita da prima
+      await finche(() => p.evaluate(() => JSON.parse(localStorage.getItem("bc_serie") || "[]").find((s) => s.id === "g1")?.ufficiale === "https://kmanga.kodansha.com/title/10044"), 8000, "la serie seguita da prima non prende l'edizione ufficiale dalla sua scheda");
+      if ((await p.evaluate(() => JSON.parse(localStorage.getItem("bc_serie") || "[]").find((s) => s.id === "b1")?.ufficiale)) !== "https://www.darkhorse.com/Books/Berserk") throw new Error("la serie appena seguita non tiene l'edizione ufficiale della ricerca");
       // GLI AVVISI AD APP CHIUSA: la serie seguita va al guscio, e la stanza
       // dice lo stato delle notifiche che il guscio risponde
       await finche(() => p.evaluate(() => window.__seguite.some((l) => l.some((x) => x.id === "b1" && x.titolo === "Berserk" && x.lingua))), 5000, "la serie seguita non arriva al guscio");
       await finche(() => stanza.getByText(/Ti avviso io dei capitoli nuovi/).count(), 5000, "la stanza non dice che gli avvisi sono accesi");
       await finche(() => stanza.getByText(/ultimo capitolo: 4/).count(), 8000, "la serie non dice l'ultimo capitolo");
       await stanza.getByRole("button", { name: /^Berserk/ }).click();
+      const tutti = stanza.getByRole("link", { name: "📖 Tutti i capitoli su darkhorse.com" });
+      await finche(() => tutti.count(), 5000, "la serie aperta non porta all'elenco intero sul sito ufficiale");
+      if ((await tutti.getAttribute("href")) !== "https://www.darkhorse.com/Books/Berserk") throw new Error("il tasto dell'edizione ufficiale porta altrove");
+      if (!(await stanza.getByText(/l'elenco intero, dal primo all'ultimo uscito, è su darkhorse\.com/).count())) throw new Error("sopra l'elenco non si dice dove sta il resto");
       const scarica = stanza.getByRole("button", { name: "⬇ Scarica", exact: true });
       await finche(() => scarica.count(), 5000, "i capitoli ospitati non hanno il tasto per scaricare");
       const la = stanza.getByRole("link", { name: "↗ Leggi là" });
@@ -3008,8 +3028,7 @@ const SCENE = [
       // riconosce, mai da un volume con lo stesso numero
       if (cbz.mangadex !== idCapitolo(1)) throw new Error(`la scheda del capitolo non tiene il suo id di MangaDex: ${cbz.mangadex}`);
       // nel guscio NIENTE va diretto a MangaDex: tutto porta il segno del guscio
-      const dirette = chieste.filter((c) => !c.endsWith("(guscio)"));
-      const dopo = dirette.filter((c) => !/title=berserk/.test(c));
+      const dopo = chieste.slice(primaDelGuscio).filter((c) => !c.endsWith("(guscio)"));
       if (dopo.length) throw new Error(`richieste dirette a MangaDex col guscio presente: ${JSON.stringify(dopo)}`);
       // ogni pagina e' stata segnalata al nodo, dal guscio
       const rapporti = chieste.filter((c) => c.startsWith("POST https://api.mangadex.network/report") && c.endsWith("(guscio)")).length;
@@ -3023,7 +3042,7 @@ const SCENE = [
       const ultima = await p.evaluate(() => window.__seguite.at(-1));
       if (!ultima?.some((x) => x.id === "b1" && x.ultimo === 4)) throw new Error(`al guscio non arriva l'ultimo capitolo noto: ${JSON.stringify(ultima)}`);
       await p.goto(URL_APP);
-      await finche(() => p.getByText(/1 serie seguita/).count(), 8000, "l'Ingresso non conta la serie seguita");
+      await finche(() => p.getByText(/2 serie seguite/).count(), 8000, "l'Ingresso non conta le serie seguite");
       // LA NOTIFICA APRE LA STANZA: `/?serie=<id>`
       await p.goto(`${URL_APP}?serie=b1`);
       await finche(() => p.getByRole("dialog", { name: "Serie seguite" }).count(), 8000, "la notifica non apre la stanza delle serie seguite");

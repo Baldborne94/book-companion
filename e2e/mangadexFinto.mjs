@@ -7,7 +7,7 @@ import { png } from "./libri.mjs";
 const MANGA = {
   id: "b1",
   type: "manga",
-  attributes: { title: { en: "Berserk" }, altTitles: [], year: 1989, status: "ongoing", originalLanguage: "ja", availableTranslatedLanguages: ["en", "it"] },
+  attributes: { title: { en: "Berserk" }, altTitles: [], year: 1989, status: "ongoing", originalLanguage: "ja", availableTranslatedLanguages: ["en", "it"], links: { engtl: "https://www.darkhorse.com/Books/Berserk" } },
   relationships: [
     { type: "author", attributes: { name: "Miura Kentarou" } },
     { type: "cover_art", attributes: { fileName: "cop.jpg" } },
@@ -48,6 +48,10 @@ export const mangadexFinto = (chieste = [], { soloGuscio = false } = {}) => asyn
       return route.fulfill({ headers, json: { result: "ok", response: "collection", data: "berserk".includes(t) ? [MANGA] : [], total: 1 } });
     }
     if (u.pathname === "/manga/b1/feed") return route.fulfill({ headers, json: { result: "ok", response: "collection", data: CAPITOLI, total: CAPITOLI.length } });
+    // una serie seguita da prima che la stanza tenesse l'edizione ufficiale:
+    // la sua scheda la porta, il feed e' vuoto
+    if (u.pathname === "/manga/g1/feed") return route.fulfill({ headers, json: { result: "ok", response: "collection", data: [], total: 0 } });
+    if (u.pathname === "/manga/g1") return route.fulfill({ headers, json: { result: "ok", data: { id: "g1", type: "manga", attributes: { title: { en: "Gachiakuta" }, links: { engtl: "https://kmanga.kodansha.com/title/10044" } }, relationships: [] } } });
     const cap = u.pathname.match(/^\/at-home\/server\/cccccccc-0000-4000-8000-00000000000(\d)$/);
     if (cap) return route.fulfill({ headers, json: { result: "ok", baseUrl: "https://nodo.mangadex.network", chapter: { hash: `hc${cap[1]}`, data: Array.from({ length: PAGINE_PER_CAPITOLO }, (_, i) => `${i + 1}-c${cap[1]}.png`), dataSaver: [] } } });
     return route.fulfill({ status: 404, headers, json: { result: "error", errors: [{ detail: "non qui" }] } });

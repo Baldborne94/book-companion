@@ -139,7 +139,8 @@ qualunque richiesta web porta con sé.
 | Scarichi le altre illustrazioni di Fandom dalle Impostazioni | `warhammer40k.fandom.com` e `static.wikia.nocookie.net` | niente di tuo: si chiede quali file contiene ogni voce, tutte in ordine alfabetico, poi le miniature di quei file alla misura che scegli |
 | Tocchi «Apri su Fandom» nella voce | `warhammer40k.fandom.com` | il nome della voce (apri tu il link) |
 | Cerchi una serie in «Serie seguite» | `api.mangadex.org` (nell'app Android passa dal guscio, col nome dell'app) | il nome che cerchi |
-| Apri una serie seguita | `api.mangadex.org`, `uploads.mangadex.org` | l'id della serie su MangaDex e la lingua scelta (i capitoli), il nome del file della copertina |
+| Apri una serie seguita | `api.mangadex.org`, `uploads.mangadex.org` | l'id della serie su MangaDex e la lingua scelta (i capitoli; una volta sola anche la scheda della serie, per l'indirizzo dell'edizione ufficiale), il nome del file della copertina |
+| Tocchi «📖 Tutti i capitoli su …» | il sito ufficiale della serie (MANGA Plus, K MANGA, VIZ…) | niente di tuo: apri tu la pagina della serie |
 | Scarichi un capitolo | `api.mangadex.org`, il nodo di MangaDex che lo serve (`*.mangadex.network`), `api.mangadex.network` | l'id del capitolo e le sue pagine; a ogni pagina, il rapporto che MangaDex chiede per la salute dei suoi nodi (indirizzo della pagina, esito, byte, durata, niente di tuo) |
 | Ad app chiusa, ogni tre ore, se segui almeno una serie (solo nell'app Android) | `api.mangadex.org` | l'id di ogni serie seguita e la sua lingua, per sapere se è uscito un capitolo nuovo. Le serie seguite stanno sul dispositivo; la notifica la manda Android, niente passa da un nostro server |
 | Sempre, per i caratteri della pagina | `fonts.googleapis.com`, `fonts.gstatic.com` | niente, oltre alla richiesta stessa |

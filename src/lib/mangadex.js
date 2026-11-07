@@ -125,6 +125,38 @@ export const copertinaUrl = (id, file, lato = 256) => (id && file ? `${COPERTINE
 
 const relazione = (m, tipo) => (m.relationships || []).find((r) => r.type === tipo);
 
+// L'EDIZIONE UFFICIALE INGLESE (`links.engtl` della serie su MangaDex): per
+// le serie con licenza MangaDex tiene solo gli ultimi capitoli, e il lettore
+// li vuole tutti («fammi leggere bene tutti quanti quelli che voglio»). La
+// pagina ufficiale della serie ha l'elenco intero (MANGA Plus, K MANGA, VIZ):
+// la stanza ci porta, coi suoi nomi
+const SITI_UFFICIALI = [
+  [/(^|\.)mangaplus\.shueisha\.co\.jp$/, "MANGA Plus"],
+  [/(^|\.)kmanga\.kodansha\.com$/, "K MANGA"],
+  [/(^|\.)viz\.com$/, "VIZ"],
+  [/(^|\.)mangaup\.(net|jp)$/, "Manga UP!"],
+  [/(^|\.)azuki\.co$/, "Azuki"],
+  [/(^|\.)webtoons\.com$/, "WEBTOON"],
+];
+export function linkUfficiale(links) {
+  const u = String(links?.engtl || "").trim();
+  try {
+    const url = new URL(u);
+    return url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+export function nomeUfficiale(indirizzo) {
+  let host = "";
+  try {
+    host = new URL(indirizzo).hostname.toLowerCase();
+  } catch {
+    return "il sito ufficiale";
+  }
+  return SITI_UFFICIALI.find(([re]) => re.test(host))?.[1] || host.replace(/^www\./, "");
+}
+
 export function daRicerca(json) {
   return (json?.data || []).map((m) => {
     const a = m.attributes || {};
@@ -138,9 +170,28 @@ export function daRicerca(json) {
       lingue,
       autore: relazione(m, "author")?.attributes?.name || "",
       copertina: copertinaUrl(m.id, relazione(m, "cover_art")?.attributes?.fileName),
+      ufficiale: linkUfficiale(a.links),
     };
   });
 }
+
+// sopra l'elenco: quello che c'e' qui non e' tutto, e dove sta il resto
+export function fraseUfficiale(serie, capitoli = []) {
+  if (!serie?.ufficiale) return null;
+  const n = (capitoli || []).length;
+  const qui = n === 0 ? "MangaDex qui non ha capitoli" : n === 1 ? "Qui c'è l'unico capitolo che MangaDex ha" : `Qui ci sono i ${n} capitoli che MangaDex ha`;
+  return `${qui}; l'elenco intero, dal primo all'ultimo uscito, è su ${nomeUfficiale(serie.ufficiale)}.`;
+}
+
+// LA SCHEDA DI UNA SERIE: per le serie seguite prima che la stanza tenesse
+// l'edizione ufficiale, una richiesta sola, una volta
+export async function schedaSerie(id, { fetch, ritmo, base = BASE } = {}) {
+  const json = await chiedi(conParametri(`${base}/manga/${id}`, [["includes[]", ["cover_art", "author"]]]), { fetch, ritmo });
+  return daRicerca({ data: json?.data ? [json.data] : [] })[0] || null;
+}
+// la serie seguita prende l'indirizzo ufficiale (anche «nessuno»: null), e
+// non si richiede piu'
+export const conUfficiale = (lista, id, ufficiale) => lista.map((s) => (s.id === id ? { ...s, ufficiale: ufficiale || null } : s));
 
 export async function cerca(testo, { fetch, ritmo, base = BASE, limite = 10, lingue = LINGUE } = {}) {
   const t = String(testo || "").trim();
@@ -323,7 +374,7 @@ export function scriviSerie(lista, st = globalThis.localStorage) {
 export function segui(lista, trovata, { lingua = null, adesso = Date.now() } = {}) {
   if (!trovata?.id || lista.some((s) => s.id === trovata.id)) return lista;
   const l = lingua && trovata.lingue?.includes(lingua) ? lingua : trovata.lingue?.[0] || "en";
-  return [...lista, { id: trovata.id, titolo: trovata.titolo, autore: trovata.autore || "", copertina: trovata.copertina || null, originale: trovata.originale || null, lingue: trovata.lingue || [], lingua: l, seguitaDa: adesso, ultimoNoto: null, ultimo: null, nuovi: 0, controllata: null }];
+  return [...lista, { id: trovata.id, titolo: trovata.titolo, autore: trovata.autore || "", copertina: trovata.copertina || null, originale: trovata.originale || null, lingue: trovata.lingue || [], lingua: l, ufficiale: trovata.ufficiale || null, seguitaDa: adesso, ultimoNoto: null, ultimo: null, nuovi: 0, controllata: null }];
 }
 export const smetti = (lista, id) => lista.filter((s) => s.id !== id);
 export const cambiaLingua = (lista, id, lingua) => lista.map((s) => (s.id === id ? { ...s, lingua, ultimoNoto: null, ultimo: null, nuovi: 0 } : s));

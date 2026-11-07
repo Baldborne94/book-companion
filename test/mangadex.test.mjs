@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 // dei fumetti dell'app, e la lista delle serie seguite con i capitoli nuovi.
 import {
   cerca, capitoli, pagine, scaricaCapitolo, comicInfo, nomeFile, nomeCapitolo, titoloDi, scegliCapitoli, daFeed, daRicerca,
-  nuovoRitmo, spiega, messaggioSeguite, statoAvvisi, fraseAvvisi, serieDalLancio, STATO_AVVISI, DNS_BLOCCA, indirizzoPrivato, GUSCIO_MUTO, respintaDalGuscio, segnalaPagina, leggiSerie, scriviSerie, segui, smetti, cambiaLingua, conCapitoli, visti, nuoviInTutto, fraseSerie,
+  nuovoRitmo, spiega, linkUfficiale, nomeUfficiale, fraseUfficiale, schedaSerie, conUfficiale, messaggioSeguite, statoAvvisi, fraseAvvisi, serieDalLancio, STATO_AVVISI, DNS_BLOCCA, indirizzoPrivato, GUSCIO_MUTO, respintaDalGuscio, segnalaPagina, leggiSerie, scriviSerie, segui, smetti, cambiaLingua, conCapitoli, visti, nuoviInTutto, fraseSerie,
   nellaBiblioteca, daScaricare, fraseScarico, copertinaUrl, PAGINA_FEED, COPERTINE, RAPPORTO, BASE, SFIDA,
 } from "../src/lib/mangadex.js";
 import { apriArchivio, leggiComicInfo, eComicInfo } from "../src/lib/fumetto.js";
@@ -196,6 +196,25 @@ export default async function (t) {
   // il guscio parla la stessa lingua della pagina
   const avvisiJava = readFileSync("android/Avvisi.java", "utf8");
   const guscioJava = readFileSync("android/SchermataDiBlocco.java", "utf8");
+  // L'EDIZIONE UFFICIALE: dove stanno tutti i capitoli
+  t.eq("l'indirizzo ufficiale inglese dai link della serie", linkUfficiale({ engtl: "https://mangaplus.shueisha.co.jp/titles/100020", raw: "https://x.jp" }), "https://mangaplus.shueisha.co.jp/titles/100020");
+  t.c("…solo https, e niente senza", linkUfficiale({ engtl: "http://mangaplus.shueisha.co.jp/titles/1" }) === null && linkUfficiale({ engtl: "javascript:alert(1)" }) === null && linkUfficiale({ raw: "https://x.jp" }) === null && linkUfficiale(null) === null);
+  t.eq("MANGA Plus si chiama col suo nome", nomeUfficiale("https://mangaplus.shueisha.co.jp/titles/100020"), "MANGA Plus");
+  t.eq("…K MANGA", nomeUfficiale("https://kmanga.kodansha.com/title/10044/episode/1"), "K MANGA");
+  t.eq("…VIZ anche con www", nomeUfficiale("https://www.viz.com/shonenjump/chapters/one-piece"), "VIZ");
+  t.eq("…un sito che non conosco col suo indirizzo", nomeUfficiale("https://www.darkhorse.com/Books/Berserk"), "darkhorse.com");
+  t.eq("…e non un sito che finisce come uno noto", nomeUfficiale("https://notviz.com/x"), "notviz.com");
+  const opDaRicerca = daRicerca({ data: [{ id: "op", attributes: { title: { en: "One Piece" }, links: { engtl: "https://mangaplus.shueisha.co.jp/titles/100020" } }, relationships: [] }] })[0];
+  t.eq("la ricerca tiene l'edizione ufficiale", opDaRicerca.ufficiale, "https://mangaplus.shueisha.co.jp/titles/100020");
+  t.eq("…e seguire la serie se la porta dietro", segui([], { ...opDaRicerca, lingue: ["en"] })[0].ufficiale, "https://mangaplus.shueisha.co.jp/titles/100020");
+  t.eq("…senza, e' null (non «da chiedere»)", segui([], { id: "x", titolo: "X", lingue: ["en"] })[0].ufficiale, null);
+  const chiestaScheda = [];
+  const scheda = await schedaSerie("op", { fetch: async (u) => (chiestaScheda.push(u), risposta({ result: "ok", data: { id: "op", attributes: { title: { en: "One Piece" }, links: { engtl: "https://mangaplus.shueisha.co.jp/titles/100020" } }, relationships: [] } })), ritmo });
+  t.c("la scheda di una serie seguita da prima: una richiesta, e l'edizione ufficiale", chiestaScheda.length === 1 && /\/manga\/op\?/.test(chiestaScheda[0]) && scheda.ufficiale === "https://mangaplus.shueisha.co.jp/titles/100020");
+  t.c("…che si scrive nella serie, anche quando non c'e' (null: non si richiede piu')", conUfficiale([{ id: "op" }, { id: "b" }], "op", "https://m/x")[0].ufficiale === "https://m/x" && conUfficiale([{ id: "op" }], "op", undefined)[0].ufficiale === null && !("ufficiale" in conUfficiale([{ id: "op" }, { id: "b" }], "op", "u")[1]));
+  t.eq("sopra l'elenco: cosa c'e' qui e dove sta il resto", fraseUfficiale({ ufficiale: "https://mangaplus.shueisha.co.jp/titles/100020" }, [1, 2, 3]), "Qui ci sono i 3 capitoli che MangaDex ha; l'elenco intero, dal primo all'ultimo uscito, è su MANGA Plus.");
+  t.c("…uno, nessuno, e senza edizione ufficiale niente", /^Qui c'è l'unico capitolo/.test(fraseUfficiale({ ufficiale: "https://kmanga.kodansha.com/t" }, [1])) && /^MangaDex qui non ha capitoli/.test(fraseUfficiale({ ufficiale: "https://kmanga.kodansha.com/t" }, [])) && fraseUfficiale({}, [1]) === null);
+
   // GLI AVVISI AD APP CHIUSA: cosa va al guscio, cosa torna
   const daMandare = JSON.parse(messaggioSeguite([
     { id: "op", titolo: "One Piece", lingua: "en", ultimo: 1197, copertina: "x", nuovi: 2 },
