@@ -2,7 +2,7 @@
 // Android, che chiede a MangaDex col nome dell'app (la sfida anti-bot
 // respinge le pagine web) e rimanda il corpo a pezzi in base64.
 import { readFileSync } from "node:fs";
-import { nuovaReteGuscio, rispostaFinta, SA_RETE, SENZA_GUSCIO, ATTESA_RETE } from "../src/lib/reteGuscio.js";
+import { nuovaReteGuscio, rispostaFinta, SA_RETE, SENZA_GUSCIO, ATTESA_RETE, INSIEME } from "../src/lib/reteGuscio.js";
 
 const b64 = (s) => Buffer.from(s).toString("base64");
 
@@ -72,8 +72,12 @@ export default async function (t) {
   t.eq("un guasto del guscio arriva come errore", await p4.catch((e) => e.message), "indirizzo non permesso: altrove.example");
   t.eq("…e la richiesta non resta in volo", rete.inVolo, 0);
 
-  // il guscio che tace: il tetto
+  // il guscio che tace: il tetto, dopo un rimando sulla porta di adesso
   const p5 = rete.fetch("https://api.mangadex.org/y");
+  const primaDelRimando = mandati.length;
+  scatta();
+  t.eq("scaduta senza un pezzo, la richiesta si rimanda una volta", mandati.length, primaDelRimando + 1);
+  t.c("…col numero nuovo e lo stesso indirizzo", mandati.at(-1).rete.id !== mandati.at(-2).rete.id && mandati.at(-1).rete.url === "https://api.mangadex.org/y");
   scatta();
   // una promessa che non si chiude non deve far finire il test in silenzio
   const ancoraAppesa = new Promise((ok) => setTimeout(() => ok("ancora appesa"), 50));
@@ -85,6 +89,61 @@ export default async function (t) {
   }, { aspetta, smetti });
   t.eq("una porta chiusa e' un guscio che non risponde", await rotta.fetch("https://api.mangadex.org/z").catch((e) => e.message), SENZA_GUSCIO);
   t.eq("…e il suo tetto si toglie", rotta.inVolo + timer.size, 0);
+  t.eq("…e una porta chiusa non si riprova", timer.size, 0);
+
+  // LA FILA: al guscio ne arrivano al piu' INSIEME, il tetto parte alla partenza
+  const posta2 = [];
+  const fila = nuovaReteGuscio((x) => posta2.push(JSON.parse(x).rete), { aspetta, smetti });
+  const tante = ["a", "b", "c", "d"].map((x) => fila.fetch(`https://uploads.mangadex.org/covers/${x}.jpg`));
+  // le ultime due restano in volo e scadranno con i tetti di dopo
+  for (const x of tante) x.catch(() => {});
+  t.eq("ne partono al piu' due insieme (i fili del guscio)", `${INSIEME}/${posta2.length}/${fila.partite}`, "2/2/2");
+  t.eq("…le altre aspettano qui, senza tetto", `${fila.inVolo}/${timer.size}`, "4/2");
+  // il guscio non ha mai visto la terza: un pezzo col suo numero non e' suo
+  fila.ricevi(JSON.stringify({ rete: { id: 3, i: 0, n: 1, stato: 200, dati: "" } }));
+  t.eq("un pezzo per una richiesta ancora in fila si ignora", `${fila.inVolo}/${fila.partite}`, "4/2");
+  fila.ricevi(JSON.stringify({ rete: { id: posta2[0].id, i: 0, n: 1, stato: 200, dati: "" } }));
+  await tante[0];
+  t.eq("una che torna fa partire la prossima", posta2.map((r) => r.url.slice(-5)).join(" "), "a.jpg b.jpg c.jpg");
+  t.c("…col tetto suo", timer.size === 2 && fila.partite === 2);
+  fila.ricevi(JSON.stringify({ rete: { id: posta2[1].id, errore: "boh" } }));
+  await tante[1].catch(() => {});
+  t.eq("anche un guasto libera il posto", posta2.length, 4);
+
+  // LE FIGURE DOPO: il feed passa davanti alle copertine in fila
+  const posta3 = [];
+  const pri = nuovaReteGuscio((x) => posta3.push(JSON.parse(x).rete), { aspetta, smetti, insieme: 1 });
+  const fig = ["1", "2", "3"].map((x) => pri.fetch(`https://uploads.mangadex.org/c/${x}.jpg`, { priorita: "bassa" }));
+  const api = pri.fetch("https://api.mangadex.org/manga/op/feed");
+  const fig4 = pri.fetch("https://uploads.mangadex.org/c/4.jpg", { priorita: "bassa" });
+  // il guscio risponde a quel che gli arriva, una alla volta
+  for (let k = 0; k < 5; k++) pri.ricevi(JSON.stringify({ rete: { id: posta3[k].id, i: 0, n: 1, stato: 200, dati: "" } }));
+  await Promise.all([...fig, api, fig4]);
+  t.eq("la richiesta dell'API passa davanti alle figure in fila, le figure restano in ordine", posta3.map((r) => r.url.split("/").pop()).join(" "), "1.jpg feed 2.jpg 3.jpg 4.jpg");
+
+  // UNA RETE PER TUTTE LE PORTE: la porta cambia, la risposta trova la sua richiesta
+  const vecchia = [];
+  const nuova = [];
+  const sola = nuovaReteGuscio((x) => vecchia.push(JSON.parse(x).rete), { aspetta, smetti });
+  const feed = sola.fetch("https://api.mangadex.org/manga/op/feed");
+  sola.porta((x) => nuova.push(JSON.parse(x).rete));
+  sola.ricevi(JSON.stringify({ rete: { id: vecchia[0].id, i: 0, n: 1, stato: 200, dati: b64("{}") } }));
+  t.eq("la risposta arrivata dalla porta nuova chiude la richiesta partita dalla vecchia", (await feed).status, 200);
+  const dopo = sola.fetch("https://api.mangadex.org/manga/op");
+  t.c("le richieste dopo vanno dalla porta nuova, col numero che continua", nuova.length === 1 && nuova[0].id > vecchia[0].id);
+  const vecchiaRichiesta = nuova[0].id;
+  scatta();
+  t.c("il rimando va dalla porta di adesso", nuova.length === 2 && nuova[1].id !== vecchiaRichiesta);
+  sola.ricevi(JSON.stringify({ rete: { id: vecchiaRichiesta, i: 0, n: 1, stato: 500, dati: "" } }));
+  t.eq("una risposta tardiva al numero di prima non si mescola", sola.inVolo, 1);
+  sola.ricevi(JSON.stringify({ rete: { id: nuova[1].id, i: 0, n: 1, stato: 200, dati: "" } }));
+  t.eq("…e quella del rimando chiude la richiesta", (await dopo).status, 200);
+  // un pezzo arrivato toglie il rimando: una risposta lenta ma viva non si ripete
+  const lenta = sola.fetch("https://api.mangadex.org/lenta");
+  const quante = nuova.length;
+  sola.ricevi(JSON.stringify({ rete: { id: nuova.at(-1).id, i: 0, n: 2, stato: 200, dati: "" } }));
+  scatta();
+  t.eq("scaduta a meta' non si rimanda, si dice", `${nuova.length - quante}/${await lenta.catch((e) => e.message)}`, `0/${SENZA_GUSCIO}`);
   t.c("la risposta finta senza stato non e' ok", !rispostaFinta().ok && rispostaFinta({ stato: 299 }).ok && !rispostaFinta({ stato: 300 }).ok);
 
   // il guscio: solo MangaDex, solo https, col nome dell'app, e lo dice dopo il saluto

@@ -2915,8 +2915,15 @@ const SCENE = [
       // segno e rimanda il corpo a pezzi in base64, al contrario per provare
       // che la pagina li rimette in fila
       await p.evaluate(() => {
-        const canale = new MessageChannel();
+        // come il vero: risponde sul canale di ADESSO, qualunque porta abbia
+        // portato la richiesta, e rinnova il canale quando la scheda torna
+        // davanti (`window.__riapri`)
+        let attuale = null;
         window.__guscio = [];
+        window.__lento = 0;
+        const apri = () => {
+        const canale = new MessageChannel();
+        attuale = canale;
         canale.port1.onmessage = async (m) => {
           if (typeof m.data !== "string" || !m.data.startsWith('{"rete"')) return;
           const r = JSON.parse(m.data).rete;
@@ -2924,19 +2931,23 @@ const SCENE = [
           try {
             const risp = await fetch(r.url, { method: r.metodo, body: r.corpo, headers: { "x-dal-guscio": "1", ...(r.tipoCorpo ? { "content-type": r.tipoCorpo } : {}) } });
             const byte = new Uint8Array(await risp.arrayBuffer());
+            if (window.__lento) await new Promise((ok) => setTimeout(ok, window.__lento));
             let bin = "";
             for (const x of byte) bin += String.fromCharCode(x);
             const b64 = btoa(bin);
             const PEZZO = 700;
             const n = Math.max(1, Math.ceil(b64.length / PEZZO));
-            for (let k = n - 1; k >= 0; k--) canale.port1.postMessage(JSON.stringify({ rete: { id: r.id, i: k, n, stato: risp.status, tipo: risp.headers.get("content-type"), cache: risp.headers.get("x-cache"), dati: b64.slice(k * PEZZO, (k + 1) * PEZZO) } }));
+            for (let k = n - 1; k >= 0; k--) attuale.port1.postMessage(JSON.stringify({ rete: { id: r.id, i: k, n, stato: risp.status, tipo: risp.headers.get("content-type"), cache: risp.headers.get("x-cache"), dati: b64.slice(k * PEZZO, (k + 1) * PEZZO) } }));
           } catch (err) {
-            canale.port1.postMessage(JSON.stringify({ rete: { id: r.id, errore: String(err) } }));
+            attuale.port1.postMessage(JSON.stringify({ rete: { id: r.id, errore: String(err) } }));
           }
         };
         window.dispatchEvent(new MessageEvent("message", { data: "", origin: `android-app://${location.host}`, ports: [canale.port2] }));
         canale.port1.postMessage("grimorio:pronto");
         canale.port1.postMessage("grimorio:sa:rete");
+        };
+        apri();
+        window.__riapri = apri;
       });
       await p.getByRole("button", { name: /Serie seguite/ }).click();
       await stanza.getByLabel("Cerca una serie").fill("berserk");
@@ -2945,7 +2956,18 @@ const SCENE = [
       if (!(await stanza.getByText(/Miura Kentarou · 1989 · inglese, italiano/).count())) throw new Error("la voce trovata non dice autore, anno e lingue");
       // la copertina passa dal guscio anche lei, e si vede
       await finche(() => stanza.locator("img").evaluateAll((xs) => xs.some((i) => i.naturalWidth === 32)), 8000, "la copertina non arriva dal guscio");
+      // LA SCHEDA TORNA DAVANTI MENTRE I CAPITOLI SONO IN VIAGGIO: il guscio
+      // rinnova il canale e risponde sul nuovo (sul tablet: «il guscio non
+      // ha risposto» e «Nessun capitolo», con una rete per porta)
+      await p.evaluate(() => {
+        window.__lento = 600;
+      });
       await stanza.getByRole("button", { name: "＋ Segui" }).click();
+      await finche(() => p.evaluate(() => window.__guscio.some((u) => /\/feed\?/.test(u))), 5000, "seguendo, il feed dei capitoli non parte");
+      await p.evaluate(() => {
+        window.__riapri();
+        window.__lento = 0;
+      });
       await stanza.getByText("✓ Seguita").waitFor({ timeout: 3000 });
       await finche(() => stanza.getByText(/ultimo capitolo: 4/).count(), 8000, "la serie non dice l'ultimo capitolo");
       await stanza.getByRole("button", { name: /^Berserk/ }).click();
