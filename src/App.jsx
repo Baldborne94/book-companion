@@ -1020,15 +1020,23 @@ export default function App() {
     // oggetto nuovo rifa' l'invio; la chiave confermata lo ferma.
     // la rete del guscio (`lib/reteGuscio.js`) vive con la sua porta, e
     // vale solo da quando il guscio dice di saperla usare (`SA_RETE`)
-    const riparti = (porta, rete) => {
+    // la rete, una volta che il guscio ha detto di saperla usare, resta
+    // anche quando la porta cambia: e' la stessa
+    const riparti = (porta) => {
       sfondoMandato.current = dopoIlSaluto(sfondoMandato.current, sfondoConfermato.current);
-      setGuscio((g) => ({ porta, ...(g?.porta === porta && g.rete ? { rete: g.rete } : rete ? { rete } : {}) }));
+      setGuscio((g) => ({ porta, ...(g?.rete ? { rete: g.rete } : {}) }));
     };
+    // UNA RETE SOLA per tutte le porte (`lib/reteGuscio.js`): il guscio
+    // risponde sul canale di adesso, e la richiesta partita dalla porta di
+    // prima deve ritrovare chi la aspetta
+    const rete = nuovaReteGuscio(() => {
+      throw new Error("nessuna porta");
+    });
     const saluto = (e) => {
       annotaMessaggio(e);
       const porta = portaDelGuscio(e, window.location.origin);
       if (!porta) return;
-      const rete = nuovaReteGuscio((s) => porta.postMessage(s));
+      rete.porta((s) => porta.postMessage(s));
       porta.onmessage = (m) => {
         // le risposte della rete del guscio: MangaDex, chiesto col nome dell'app
         if (rete.ricevi(m.data)) return;

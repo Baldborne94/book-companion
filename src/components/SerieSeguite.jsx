@@ -48,7 +48,7 @@ function useImmagine(src, rete) {
     }
     let vivo = true;
     let fatto = null;
-    rete(src)
+    rete(src, { priorita: "bassa" })
       .then((r) => (r.ok ? r.arrayBuffer() : null))
       .then((b) => {
         if (!vivo || !b) return;
@@ -254,7 +254,7 @@ export default function SerieSeguite({ books, onClose, onApri, onScarica, scaric
                       Smetti di seguire
                     </button>
                   </div>
-                  {!caps.length && !c.caricando && <div style={{ fontSize: F.nota, color: C.muted }}>Nessun capitolo in {NOME_LINGUA[serie.lingua] || serie.lingua}.</div>}
+                  {!caps.length && !c.caricando && !c.guasto && <div style={{ fontSize: F.nota, color: C.muted }}>Nessun capitolo in {NOME_LINGUA[serie.lingua] || serie.lingua}.</div>}
                   {inVista.map((cap) => {
                     const libro = nellaBiblioteca(books, serie, cap);
                     const ospitato = !cap.esterno && cap.pagine > 0;

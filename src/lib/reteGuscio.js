@@ -31,20 +31,77 @@ export function rispostaFinta({ stato = 0, tipo = "", cache = null, byte = new U
   };
 }
 
+// QUANTE INSIEME: il guscio chiede con due fili (`fila` in
+// `SchermataDiBlocco.java`), e il resto aspetta in fila da lui. Sul tablet
+// la stanza mandava insieme le copertine di tutte le serie e il feed dei
+// capitoli: il feed aspettava dietro le copertine piu' del tetto della
+// pagina, e la pagina diceva «il guscio non ha risposto» a un guscio che
+// lavorava. La fila sta qui: al guscio ne arrivano al piu' `INSIEME`, e il
+// tetto parte quando la richiesta parte davvero.
+export const INSIEME = 2;
+
 // `posta(stringa)` manda al guscio; `ricevi(dato)` va chiamata con ogni
-// messaggio della porta e dice se era della rete. I tempi si iniettano.
-export function nuovaReteGuscio(posta, { attesa = ATTESA_RETE, aspetta = setTimeout, smetti = clearTimeout } = {}) {
+// messaggio di ogni porta e dice se era della rete. UNA RETE PER TUTTE LE
+// PORTE (`porta(posta)` cambia solo la strada): il guscio rinnova il canale
+// quando la scheda torna davanti, e risponde sul canale di adesso. Con una
+// rete per porta la risposta arrivava a una rete che non la conosceva, e
+// i numeri ripartivano da 1 (una risposta vecchia poteva finire a una
+// richiesta nuova). Le figure (`priorita: "bassa"`) aspettano dietro
+// le richieste dell'API. Una richiesta che scade senza un pezzo si rimanda una
+// volta sola, col numero nuovo, sulla porta di adesso.
+// I tempi si iniettano.
+export function nuovaReteGuscio(posta, { attesa = ATTESA_RETE, insieme = INSIEME, aspetta = setTimeout, smetti = clearTimeout } = {}) {
   let prossimo = 1;
+  let strada = posta;
   const inVolo = new Map();
+  const coda = [];
+  let partite = 0;
+  const finisci = (id) => {
+    const v = inVolo.get(id);
+    if (!v) return null;
+    smetti(v.timer);
+    inVolo.delete(id);
+    if (v.partita) partite--;
+    avanti();
+    return v;
+  };
   const scade = (id) => {
     const v = inVolo.get(id);
     if (!v) return;
     smetti(v.timer);
     v.timer = aspetta(() => {
-      inVolo.delete(id);
+      if (!inVolo.has(id)) return;
+      if (!v.pezzi && !v.rimandata) {
+        inVolo.delete(id);
+        const nuovo = prossimo++;
+        inVolo.set(nuovo, { ...v, id: nuovo, rimandata: true, timer: null });
+        manda(nuovo);
+        return;
+      }
+      finisci(id);
       v.ko(new Error(SENZA_GUSCIO));
     }, attesa);
   };
+  function manda(id) {
+    const v = inVolo.get(id);
+    if (!v) return;
+    v.partita = true;
+    scade(id);
+    try {
+      strada(JSON.stringify({ rete: { id, ...v.messaggio } }));
+    } catch {
+      finisci(id);
+      v.ko(new Error(SENZA_GUSCIO));
+    }
+  }
+  function avanti() {
+    while (partite < insieme && coda.length) {
+      const id = coda.shift();
+      if (!inVolo.has(id)) continue;
+      partite++;
+      manda(id);
+    }
+  }
   function ricevi(dato) {
     if (typeof dato !== "string" || !dato.startsWith('{"rete"')) return false;
     let r;
@@ -54,10 +111,9 @@ export function nuovaReteGuscio(posta, { attesa = ATTESA_RETE, aspetta = setTime
       return true;
     }
     const v = r && inVolo.get(r.id);
-    if (!v) return true;
+    if (!v || !v.partita) return true;
     if (r.errore != null) {
-      smetti(v.timer);
-      inVolo.delete(r.id);
+      finisci(r.id);
       v.ko(new Error(String(r.errore) || "il guscio non ha potuto chiedere"));
       return true;
     }
@@ -72,8 +128,7 @@ export function nuovaReteGuscio(posta, { attesa = ATTESA_RETE, aspetta = setTime
       scade(r.id);
       return true;
     }
-    smetti(v.timer);
-    inVolo.delete(r.id);
+    finisci(r.id);
     try {
       v.ok(rispostaFinta({ stato: v.stato, tipo: v.tipo, cache: v.cache, byte: daBase64(v.pezzi.join("")) }));
     } catch (e) {
@@ -86,19 +141,28 @@ export function nuovaReteGuscio(posta, { attesa = ATTESA_RETE, aspetta = setTime
     const metodo = String(opzioni.method || "GET").toUpperCase();
     const corpo = typeof opzioni.body === "string" ? opzioni.body : undefined;
     const tipoCorpo = opzioni.headers?.["content-type"] || opzioni.headers?.["Content-Type"];
+    const messaggio = { url: String(url), metodo, ...(corpo !== undefined ? { corpo } : {}), ...(tipoCorpo ? { tipoCorpo } : {}) };
     return new Promise((ok, ko) => {
-      inVolo.set(id, { ok, ko, pezzi: null, timer: null });
-      scade(id);
-      try {
-        posta(JSON.stringify({ rete: { id, url: String(url), metodo, ...(corpo !== undefined ? { corpo } : {}), ...(tipoCorpo ? { tipoCorpo } : {}) } }));
-      } catch (e) {
-        smetti(inVolo.get(id)?.timer);
-        inVolo.delete(id);
-        ko(new Error(SENZA_GUSCIO));
-      }
+      const bassa = opzioni.priorita === "bassa";
+      inVolo.set(id, { ok, ko, messaggio, pezzi: null, timer: null, partita: false, bassa });
+      // le copertine dopo: il feed e la ricerca non aspettano le figure
+      const dove = bassa ? -1 : coda.findIndex((x) => inVolo.get(x)?.bassa);
+      if (dove < 0) coda.push(id);
+      else coda.splice(dove, 0, id);
+      avanti();
     });
   }
-  return { fetch: chiedi, ricevi, get inVolo() {
-    return inVolo.size;
-  } };
+  return {
+    fetch: chiedi,
+    ricevi,
+    porta(nuova) {
+      strada = nuova;
+    },
+    get inVolo() {
+      return inVolo.size;
+    },
+    get partite() {
+      return partite;
+    },
+  };
 }
