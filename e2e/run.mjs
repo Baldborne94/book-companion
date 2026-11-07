@@ -17,7 +17,6 @@ import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
 import { fumetto, fumettoGrosso, fumettoLungo, epub, epubConContorno, epubConPagine, pdf, wav, FRASE, mondoDisco, png, pngRighe } from "./libri.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
 import { lexicanumFinto, fandomFinto } from "./lexicanumFinto.mjs";
-import { mangadexFinto, PAGINE_PER_CAPITOLO, idCapitolo } from "./mangadexFinto.mjs";
 
 // le richieste del service worker passano dalle rotte del contesto solo
 // cosi' (Chromium): servono alla scena della melodia che suona mentre scende
@@ -75,7 +74,7 @@ async function lanciaBrowser() {
 // o da Google (la prima volta in CI il catalogo vero ha dato a «Racconti» la
 // saga di Moravia, e la scena cadeva per una ragione che qui non c'era). Chi
 // vuole il catalogo se lo porta: `catalogo(url)` risponde al posto suo.
-async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, oracolo = null, misura = null, lexicanum = null, fandom = null, mangadex = null } = {}) {
+async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, oracolo = null, misura = null, lexicanum = null, fandom = null } = {}) {
   const ctx = await browser.newContext(misura || { viewport: { width: 1280, height: 800 } });
   await ctx.route(
     (url) => !/^(localhost|127\.0\.0\.1)$/.test(url.hostname),
@@ -84,7 +83,6 @@ async function dispositivo(browser, { sessione = false, prima = null, catalogo =
       if (oracolo && /api\.anthropic\.com/.test(url)) return route.fulfill({ json: await oracolo(JSON.parse(route.request().postData() || "{}")) });
       if (lexicanum && /wh40k\.lexicanum\.com/.test(url)) return lexicanum(route);
       if (fandom && /warhammer40k\.fandom\.com|static\.wikia\.nocookie\.net/.test(url)) return fandom(route);
-      if (mangadex && /mangadex\.(org|network)\//.test(url)) return mangadex(route);
       if (catalogo && /openlibrary\.org/.test(url)) {
         const json = await catalogo(url);
         if (json) return route.fulfill({ json });
@@ -2876,160 +2874,6 @@ const SCENE = [
       if (await p.getByRole("button", { name: /Apri in grande/ }).count()) throw new Error("le illustrazioni di Fandom non sono velate nella voce di Lexicanum");
       await p.getByText(/Un'illustrazione da Fandom velata/).click();
       await p.getByRole("button", { name: "Apri in grande: Loken e Torgaddon" }).waitFor({ timeout: 3000 });
-      return { guasti: d.guasti };
-    },
-  },
-  {
-    nome: "le serie seguite su MangaDex: nel browser la sfida anti-bot si dice, dentro l'app senza saluto il guscio muto; nel guscio le richieste passano da lui, un capitolo scaricato è un CBZ nella biblioteca e si legge, il rimando si legge là",
-    async fai({ browser }) {
-      const chieste = [];
-      // con un libro in casa: l'Ingresso vuoto non ha le stanze
-      const d = await dispositivo(browser, {
-        misura: TABLET,
-        mangadex: mangadexFinto(chieste, { soloGuscio: true }),
-        // e il volume 1 di Berserk: un volume non e' il capitolo 1 (sul tablet
-        // i volumi di Gachiakuta passavano per capitoli, «📖 Leggi» a un rimando)
-        prima: () =>
-          localStorage.setItem(
-            "bc_books",
-            JSON.stringify([
-              { id: "m", title: "Mort", author: "Terry Pratchett", fileType: "epub", addedAt: 1 },
-              { id: "v1", title: "Berserk Vol. 1", saga: "Berserk", sagaOrder: 1, fileType: "cbz", tipo: "manga", addedAt: 2 },
-            ]),
-          ),
-      });
-      const { p } = d;
-      await p.goto(URL_APP);
-      const stanza = p.getByRole("dialog", { name: "Serie seguite" });
-      // NEL BROWSER: MangaDex respinge la pagina, e la stanza lo dice (sul
-      // tablet diceva «la rete non risponde»)
-      await p.getByRole("button", { name: /Serie seguite/ }).click();
-      await stanza.getByLabel("Cerca una serie").fill("berserk");
-      await stanza.getByRole("button", { name: "Cerca" }).click();
-      await finche(() => stanza.getByText(/sfida anti-bot/).count(), 8000, "nel browser la stanza non dice la sfida anti-bot");
-      if (await stanza.getByText(/la rete non risponde/).count()) throw new Error("la stanza da' la colpa alla rete");
-      await stanza.getByRole("button", { name: "Chiudi le serie seguite" }).click();
-      // DENTRO L'APP ANDROID, MA IL GUSCIO NON HA SALUTATO: non e' la sfida
-      // del browser, e' il guscio muto, e si dice di riaprire dall'icona (sul
-      // tablet la stanza diceva la sfida e la diagnosi restava a meta')
-      await p.evaluate(() => sessionStorage.setItem("bc_guscio_lancio", JSON.stringify({ versione: "1150", android: "14" })));
-      await p.reload();
-      await p.getByRole("button", { name: /Serie seguite/ }).click();
-      await stanza.getByLabel("Cerca una serie").fill("berserk");
-      await stanza.getByRole("button", { name: "Cerca" }).click();
-      await finche(() => stanza.getByText(/Il guscio Android non ha salutato questa pagina/).count(), 8000, "dentro l'app senza saluto la stanza non dice il guscio muto");
-      if (await stanza.getByText(/sfida anti-bot/).count()) throw new Error("dentro l'app senza saluto la stanza dice la sfida del browser");
-      await stanza.getByRole("button", { name: "Chiudi le serie seguite" }).click();
-      // IL GUSCIO SALUTA, dice che sa chiedere, e fa da tramite: chiede col suo
-      // segno e rimanda il corpo a pezzi in base64, al contrario per provare
-      // che la pagina li rimette in fila
-      await p.evaluate(() => {
-        // come il vero: risponde sul canale di ADESSO, qualunque porta abbia
-        // portato la richiesta, e rinnova il canale quando la scheda torna
-        // davanti (`window.__riapri`)
-        let attuale = null;
-        window.__guscio = [];
-        window.__seguite = [];
-        window.__lento = 0;
-        const apri = () => {
-        const canale = new MessageChannel();
-        attuale = canale;
-        canale.port1.onmessage = async (m) => {
-          // le serie seguite per gli avvisi: il guscio le tiene e dice lo
-          // stato delle notifiche, come `Avvisi.seguite`
-          if (typeof m.data === "string" && m.data.startsWith('{"seguite"')) {
-            window.__seguite.push(JSON.parse(m.data).seguite);
-            attuale.port1.postMessage("grimorio:avvisi:si");
-            return;
-          }
-          if (typeof m.data !== "string" || !m.data.startsWith('{"rete"')) return;
-          const r = JSON.parse(m.data).rete;
-          window.__guscio.push(r.url);
-          try {
-            const risp = await fetch(r.url, { method: r.metodo, body: r.corpo, headers: { "x-dal-guscio": "1", ...(r.tipoCorpo ? { "content-type": r.tipoCorpo } : {}) } });
-            const byte = new Uint8Array(await risp.arrayBuffer());
-            if (window.__lento) await new Promise((ok) => setTimeout(ok, window.__lento));
-            let bin = "";
-            for (const x of byte) bin += String.fromCharCode(x);
-            const b64 = btoa(bin);
-            const PEZZO = 700;
-            const n = Math.max(1, Math.ceil(b64.length / PEZZO));
-            for (let k = n - 1; k >= 0; k--) attuale.port1.postMessage(JSON.stringify({ rete: { id: r.id, i: k, n, stato: risp.status, tipo: risp.headers.get("content-type"), cache: risp.headers.get("x-cache"), dati: b64.slice(k * PEZZO, (k + 1) * PEZZO) } }));
-          } catch (err) {
-            attuale.port1.postMessage(JSON.stringify({ rete: { id: r.id, errore: String(err) } }));
-          }
-        };
-        window.dispatchEvent(new MessageEvent("message", { data: "", origin: `android-app://${location.host}`, ports: [canale.port2] }));
-        canale.port1.postMessage("grimorio:pronto");
-        canale.port1.postMessage("grimorio:sa:rete");
-        };
-        apri();
-        window.__riapri = apri;
-      });
-      await p.getByRole("button", { name: /Serie seguite/ }).click();
-      await stanza.getByLabel("Cerca una serie").fill("berserk");
-      await stanza.getByRole("button", { name: "Cerca" }).click();
-      await finche(() => stanza.getByRole("button", { name: "＋ Segui" }).count(), 8000, "nel guscio la ricerca non trova Berserk");
-      if (!(await stanza.getByText(/Miura Kentarou · 1989 · inglese, italiano/).count())) throw new Error("la voce trovata non dice autore, anno e lingue");
-      // la copertina passa dal guscio anche lei, e si vede
-      await finche(() => stanza.locator("img").evaluateAll((xs) => xs.some((i) => i.naturalWidth === 32)), 8000, "la copertina non arriva dal guscio");
-      // LA SCHEDA TORNA DAVANTI MENTRE I CAPITOLI SONO IN VIAGGIO: il guscio
-      // rinnova il canale e risponde sul nuovo (sul tablet: «il guscio non
-      // ha risposto» e «Nessun capitolo», con una rete per porta)
-      await p.evaluate(() => {
-        window.__lento = 600;
-      });
-      await stanza.getByRole("button", { name: "＋ Segui" }).click();
-      await finche(() => p.evaluate(() => window.__guscio.some((u) => /\/feed\?/.test(u))), 5000, "seguendo, il feed dei capitoli non parte");
-      await p.evaluate(() => {
-        window.__riapri();
-        window.__lento = 0;
-      });
-      await stanza.getByText("✓ Seguita").waitFor({ timeout: 3000 });
-      // GLI AVVISI AD APP CHIUSA: la serie seguita va al guscio, e la stanza
-      // dice lo stato delle notifiche che il guscio risponde
-      await finche(() => p.evaluate(() => window.__seguite.some((l) => l.some((x) => x.id === "b1" && x.titolo === "Berserk" && x.lingua))), 5000, "la serie seguita non arriva al guscio");
-      await finche(() => stanza.getByText(/Ti avviso io dei capitoli nuovi/).count(), 5000, "la stanza non dice che gli avvisi sono accesi");
-      await finche(() => stanza.getByText(/ultimo capitolo: 4/).count(), 8000, "la serie non dice l'ultimo capitolo");
-      await stanza.getByRole("button", { name: /^Berserk/ }).click();
-      const scarica = stanza.getByRole("button", { name: "⬇ Scarica", exact: true });
-      await finche(() => scarica.count(), 5000, "i capitoli ospitati non hanno il tasto per scaricare");
-      const la = stanza.getByRole("link", { name: "↗ Leggi là" });
-      if ((await la.count()) !== 1 || !/mangaplus/.test(await la.getAttribute("href"))) throw new Error("il capitolo che e' solo un rimando non porta a MangaPlus");
-      if ((await scarica.count()) !== 3) throw new Error("i capitoli ospitati da scaricare non sono tre");
-      await scarica.last().click();
-      await finche(() => p.getByText(/📡 Scarico «Berserk 1»/).count(), 5000, "la riga del lavoro non compare");
-      await finche(() => p.getByText(/1 capitolo scaricato nella biblioteca/).count(), 20000, "il capitolo non arriva in biblioteca");
-      const libri = await p.evaluate(() => JSON.parse(localStorage.getItem("bc_books") || "[]"));
-      const cbz = libri.find((b) => b.saga === "Berserk" && Number(b.sagaOrder) === 1 && b.id !== "v1");
-      if (!cbz) throw new Error(`il CBZ non e' in biblioteca con la saga e il numero: ${JSON.stringify(libri.map((b) => [b.title, b.saga, b.sagaOrder]))}`);
-      if (cbz.fileType !== "cbz" || cbz.tipo !== "manga" || cbz.verso !== "rtl" || cbz.title !== "The Black Swordsman") throw new Error(`la scheda del capitolo e' sbagliata: ${JSON.stringify(cbz)}`);
-      // la scheda tiene l'id del capitolo: e' da quello che la stanza lo
-      // riconosce, mai da un volume con lo stesso numero
-      if (cbz.mangadex !== idCapitolo(1)) throw new Error(`la scheda del capitolo non tiene il suo id di MangaDex: ${cbz.mangadex}`);
-      // nel guscio NIENTE va diretto a MangaDex: tutto porta il segno del guscio
-      const dirette = chieste.filter((c) => !c.endsWith("(guscio)"));
-      const dopo = dirette.filter((c) => !/title=berserk/.test(c));
-      if (dopo.length) throw new Error(`richieste dirette a MangaDex col guscio presente: ${JSON.stringify(dopo)}`);
-      // ogni pagina e' stata segnalata al nodo, dal guscio
-      const rapporti = chieste.filter((c) => c.startsWith("POST https://api.mangadex.network/report") && c.endsWith("(guscio)")).length;
-      if (rapporti !== PAGINE_PER_CAPITOLO) throw new Error(`rapporti al nodo: ${rapporti}, attesi ${PAGINE_PER_CAPITOLO}`);
-      await finche(() => stanza.getByRole("button", { name: "📖 Leggi" }).count(), 5000, "il capitolo scaricato non ha il tasto per leggerlo");
-      if ((await scarica.count()) !== 2) throw new Error("i capitoli ancora da scaricare non sono due");
-      await stanza.getByRole("button", { name: "📖 Leggi" }).click();
-      await finche(() => p.evaluate(() => [...document.querySelectorAll("img")].some((i) => i.naturalWidth === 120 && i.naturalHeight === 180)), 15000, "il lettore dei fumetti non mostra la pagina scaricata");
-      await p.keyboard.press("Escape");
-      // il guscio sa anche l'ultimo capitolo noto: da li' conta i nuovi
-      const ultima = await p.evaluate(() => window.__seguite.at(-1));
-      if (!ultima?.some((x) => x.id === "b1" && x.ultimo === 4)) throw new Error(`al guscio non arriva l'ultimo capitolo noto: ${JSON.stringify(ultima)}`);
-      await p.goto(URL_APP);
-      await finche(() => p.getByText(/1 serie seguita/).count(), 8000, "l'Ingresso non conta la serie seguita");
-      // LA NOTIFICA APRE LA STANZA: `/?serie=<id>`
-      await p.goto(`${URL_APP}?serie=b1`);
-      await finche(() => p.getByRole("dialog", { name: "Serie seguite" }).count(), 8000, "la notifica non apre la stanza delle serie seguite");
-      await p.goto(`${URL_APP}?serie=sconosciuta`);
-      await p.waitForTimeout(500);
-      if (await p.getByRole("dialog", { name: "Serie seguite" }).count()) throw new Error("una serie che non si segue apre la stanza");
       return { guasti: d.guasti };
     },
   },

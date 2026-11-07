@@ -206,18 +206,7 @@ export function leggiComicInfo(xml) {
     verso: /^YesAndRightToLeft$/i.test(manga) ? "rtl" : null,
     // «Yes» o «YesAndRightToLeft»: e' un manga, qualunque sia il verso
     manga: /^Yes/i.test(manga),
-    // il capitolo di MangaDex da cui viene (`comicInfo` in `mangadex.js`
-    // lo scrive in Web): e' cosi' che la stanza delle serie lo riconosce
-    mangadex: capitoloMangadex(campo(s, "Web")),
   };
-}
-
-// L'ID DEL CAPITOLO DI MANGADEX dal suo indirizzo: un capitolo scaricato si
-// riconosce da questo, non da saga e numero (sul tablet il volume 3 di
-// Gachiakuta passava per il capitolo 3, e un rimando a K MANGA diceva «Leggi»)
-export function capitoloMangadex(web) {
-  const m = String(web || "").match(/^https:\/\/mangadex\.org\/chapter\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[/?#]|$)/i);
-  return m ? m[1].toLowerCase() : null;
 }
 
 // Da dove si riparte: il punto chiesto (un segnalibro), poi quello salvato,

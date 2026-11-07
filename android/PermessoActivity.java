@@ -20,23 +20,11 @@ import androidx.annotation.Nullable;
 public class PermessoActivity extends Activity {
     private static final int PERMESSO = 1;
     private static final int TUTTI_I_FILE = 2;
-    private static final int NOTIFICHE = 3;
 
     @Override
     protected void onCreate(@Nullable Bundle stato) {
         super.onCreate(stato);
         if (stato != null) return;
-        // LE NOTIFICHE DEI CAPITOLI NUOVI (`Avvisi.java`): una finestra di
-        // Android sola, chiesta una volta, e la risposta torna alla pagina
-        if (getIntent().getBooleanExtra(Avvisi.DA_AVVISI, false)) {
-            if (android.os.Build.VERSION.SDK_INT < 33) {
-                finish();
-                return;
-            }
-            Avvisi.chiesto(this);
-            requestPermissions(new String[] { android.Manifest.permission.POST_NOTIFICATIONS }, NOTIFICHE);
-            return;
-        }
         if (!SchermataDiBlocco.permessoDaChiedere(this)) {
             finish();
             return;
@@ -83,11 +71,6 @@ public class PermessoActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int codice, @NonNull String[] permessi, @NonNull int[] esiti) {
         super.onRequestPermissionsResult(codice, permessi, esiti);
-        if (codice == NOTIFICHE) {
-            SchermataDiBlocco.mandaAllaPagina(Avvisi.stato(this));
-            finish();
-            return;
-        }
         if (codice != PERMESSO) return;
         SchermataDiBlocco.permessoRisposto(this, esiti);
         SchermataDiBlocco.dopoIlPermesso(this);
