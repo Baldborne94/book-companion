@@ -96,11 +96,15 @@ export const regoleProguard = (pacchetto) => `# la sessione di Chrome si legge p
 -keep class com.google.androidbrowserhelper.trusted.TwaLauncher { *; }
 -keep class ${pacchetto}.** { *; }
 `;
-// e quello di leggere lo sfondo di prima, che dal 13 non serve piu' a niente
-const PERMESSO = '<uses-permission android:name="android.permission.SET_WALLPAPER"/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>\n    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>';
-// il servizio dei messaggi di Chrome, e l'attivita' trasparente che chiede
-// il permesso di leggere lo sfondo sopra la pagina (`android/PermessoActivity.java`)
-const SERVIZIO = '<service android:name="androidx.browser.customtabs.PostMessageService" android:exported="true"/>\n    <activity android:name=".PermessoActivity" android:exported="false" android:theme="@android:style/Theme.Translucent.NoTitleBar"/>';
+// e quello di leggere lo sfondo di prima, che dal 13 non serve piu' a niente;
+// la rete, le notifiche, il riavvio e lo stato della rete per le novita'
+// (`android/Novita.java`: il guscio chiede lui a Open Library e MangaDex,
+// ad app chiusa, col lavoro periodico che sopravvive al riavvio)
+const PERMESSO = '<uses-permission android:name="android.permission.SET_WALLPAPER"/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>\n    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>\n    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>';
+// il servizio dei messaggi di Chrome, l'attivita' trasparente che chiede
+// i permessi sopra la pagina (`android/PermessoActivity.java`), e il lavoro
+// periodico delle novita' (`android/Novita.java`)
+const SERVIZIO = '<service android:name="androidx.browser.customtabs.PostMessageService" android:exported="true"/>\n    <activity android:name=".PermessoActivity" android:exported="false" android:theme="@android:style/Theme.Translucent.NoTitleBar"/>\n    <service android:name=".Novita" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false"/>';
 const BASE_LIBRERIA = "extends com.google.androidbrowserhelper.trusted.LauncherActivity";
 const BASE_NOSTRA = "extends GuscioActivity";
 const REGOLE = "proguardFiles 'proguard-grimorio.pro'";

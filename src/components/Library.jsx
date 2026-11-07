@@ -33,6 +33,7 @@ import BookCover from "./BookCover.jsx";
 import Disposizione from "./Disposizione.jsx";
 import EmptyState from "./EmptyState.jsx";
 import { partenza, dopoIlDisegno, segnaTempo, vocePerTempo } from "../lib/tempi.js";
+import { leggiNovita, scriviNovita, seguiNovita, smettiNovita, vocePerRaccolta, tastoNovita } from "../lib/novita.js";
 import { leggiVoti, scriviVoti, segnaVoto, votoMio, votoDaMostrare, mediaDeiVolumi, dettoVoto, puoEssereVotata, daSegnare } from "../lib/votiRaccolte.js";
 import Stars from "./Stelle.jsx";
 import { leggiDispositivi, scriviDispositivi, altroveDa, sulDispositivo, aggiornaDisco, sulDiscoDa } from "../lib/dispositivi.js";
@@ -443,7 +444,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   );
 }
 
-function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, novita = [], onAvvisami }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -561,6 +562,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
   const dentro = aperta != null ? ripiani.find((r) => r.id === aperta) : null;
   if (dentro) {
     const amata = preferite.has(dentro.id);
+    const avviso = tastoNovita(dentro, novita);
     return (
       <>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
@@ -590,6 +592,29 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
               }}
             >
               {amata ? "♥ Fra i preferiti" : "♡ Metti fra i preferiti"}
+            </button>
+          )}
+          {/* LE NOVITA' (`lib/novita.js`): si segue solo quel che si sceglie,
+              e la notifica la manda il guscio Android */}
+          {avviso && (
+            <button
+              onClick={() => onAvvisami?.(dentro, !avviso.si)}
+              aria-pressed={avviso.si}
+              title={avviso.spiega}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                minHeight: 44,
+                padding: "0 14px",
+                borderRadius: R.tondo,
+                border: `1px solid ${avviso.si ? C.green : C.border}`,
+                background: avviso.si ? `${C.green}1f` : "transparent",
+                color: avviso.si ? C.green : C.muted,
+                fontSize: F.nota,
+              }}
+            >
+              {avviso.testo}
             </button>
           )}
         </div>
@@ -828,6 +853,8 @@ export default function Library({
   // un cambio che non tocca le schede (il cuore, il voto di una raccolta)
   // parte lo stesso verso gli altri dispositivi
   onCambiate,
+  // le raccolte da seguire per le novita' cambiate: App le manda al guscio
+  onNovita,
   onTogliEbook,
   onRiordina,
   onMettiDaParte,
@@ -887,6 +914,17 @@ export default function Library({
     setCuori((n) => n + 1);
     onCambiate?.();
     notify?.(si ? `♥ «${r.nome}» fra i preferiti` : `«${r.nome}» non è più fra i preferiti`);
+  };
+  // LE NOVITA' DA SEGUIRE si rileggono a ogni disegno, come il cuore; ogni
+  // cambio va al guscio (`onNovita`), che le guarda ad app chiusa
+  const novita = leggiNovita();
+  const avvisami = (r, si) => {
+    const voce = vocePerRaccolta(r);
+    if (!voce) return;
+    const lista = scriviNovita(si ? seguiNovita(leggiNovita(), voce) : smettiNovita(leggiNovita(), r.id));
+    setCuori((n) => n + 1);
+    onNovita?.(lista);
+    notify?.(si ? `🔔 Ti avviso delle novità di «${r.nome}»` : `Niente più avvisi per «${r.nome}»`);
   };
   // IL VOTO DELLE RACCOLTE si rilegge a ogni disegno, come il cuore
   const voti = leggiVoti();
@@ -2108,6 +2146,8 @@ export default function Library({
         voti={voti}
         onVoto={vota}
         onTutti={tuttiQuanti}
+        novita={novita}
+        onAvvisami={avvisami}
       />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps

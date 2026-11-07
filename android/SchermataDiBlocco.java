@@ -551,6 +551,13 @@ public final class SchermataDiBlocco {
         } catch (Throwable e) {
             return;
         }
+        // le raccolte da seguire per le novita' (`Novita.java`): il guscio
+        // risponde con lo stato delle notifiche
+        org.json.JSONArray novita = radice.optJSONArray("novita");
+        if (novita != null) {
+            mandaAllaPagina(Novita.seguite(app, novita));
+            return;
+        }
         JSONObject sfondo = radice.optJSONObject("sfondo");
         if (sfondo == null) return;
         String id = sfondo.optString("id", "");
@@ -578,6 +585,13 @@ public final class SchermataDiBlocco {
     }
 
     private static int sfondiMessi;
+
+    static void mandaAllaPagina(String testo) {
+        mano.post(() -> {
+            CustomTabsSession s = sessione();
+            if (s != null) s.postMessage(testo, null);
+        });
+    }
 
     // ---- LO SFONDO DI PRIMA -------------------------------------------------
 
