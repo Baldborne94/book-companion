@@ -97,7 +97,7 @@ export const regoleProguard = (pacchetto) => `# la sessione di Chrome si legge p
 -keep class ${pacchetto}.** { *; }
 `;
 // e quello di leggere lo sfondo di prima, che dal 13 non serve piu' a niente
-const PERMESSO = '<uses-permission android:name="android.permission.SET_WALLPAPER"/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>\n    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>\n    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>';
+const PERMESSO = '<uses-permission android:name="android.permission.SET_WALLPAPER"/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>\n    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>\n    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>';
 // il servizio dei messaggi di Chrome, l'attivita' trasparente che chiede
 // i permessi sopra la pagina (`android/PermessoActivity.java`), e il lavoro
 // periodico degli avvisi dei capitoli nuovi (`android/Avvisi.java`)

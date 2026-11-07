@@ -367,12 +367,13 @@ export const messaggioSeguite = (lista) =>
 export function statoAvvisi(dato) {
   if (typeof dato !== "string" || !dato.startsWith(STATO_AVVISI)) return null;
   const s = dato.slice(STATO_AVVISI.length);
-  return ["si", "no", "chiedo"].includes(s) ? s : null;
+  return ["si", "no", "chiedo", "guasto"].includes(s) ? s : null;
 }
 export function fraseAvvisi(stato, { nelGuscio = false, seguite = 0 } = {}) {
   if (!seguite) return null;
   if (stato === "si") return "🔔 Ti avviso io dei capitoli nuovi, anche ad app chiusa: ogni tre ore guardo MangaDex, e una notifica ti porta qui.";
   if (stato === "no") return "🔕 Android non lascia mandare notifiche a Book Companion, quindi i capitoli nuovi li vedi solo qui e nell'Ingresso. Per gli avvisi: Impostazioni Android → Notifiche → Book Companion, e riaccendile.";
+  if (stato === "guasto") return "⚠ Android non ha accettato il controllo periodico dei capitoli: gli avvisi ad app chiusa non partono. I capitoli nuovi li vedi qui e nell'Ingresso; installa l'APK più recente.";
   if (stato === "chiedo") return "🔔 Android ti chiede se Book Companion può mandarti notifiche: rispondi sì per gli avvisi dei capitoli nuovi.";
   if (!nelGuscio) return "Gli avvisi ad app chiusa li manda l'app Android: qui i capitoli nuovi li vedi aprendo la stanza o nell'Ingresso.";
   return null;

@@ -449,7 +449,16 @@ public final class SchermataDiBlocco {
                 togli(app);
                 return;
             }
-            ricevi(app, messaggio);
+            // NIENTE CHE ARRIVA DALLA PAGINA PUO' FAR CADERE IL GUSCIO: con l'APK
+            // 1160 un errore negli avvisi (Android 14 voleva un permesso in
+            // piu' per il lavoro periodico) usciva da qui e chiudeva il
+            // processo, a ogni apertura; e con lui la rete di MangaDex
+            try {
+                ricevi(app, messaggio);
+            } catch (Throwable e) {
+                Log.w(TAG, "messaggio della pagina: " + e);
+                Diagnosi.segna(app, "e", "messaggio: " + e);
+            }
         }
 
         @Override
