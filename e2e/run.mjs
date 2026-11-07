@@ -74,7 +74,7 @@ async function lanciaBrowser() {
 // o da Google (la prima volta in CI il catalogo vero ha dato a «Racconti» la
 // saga di Moravia, e la scena cadeva per una ragione che qui non c'era). Chi
 // vuole il catalogo se lo porta: `catalogo(url)` risponde al posto suo.
-async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, oracolo = null, misura = null, lexicanum = null, fandom = null } = {}) {
+async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, oracolo = null, misura = null, lexicanum = null, fandom = null, wikidata = null } = {}) {
   const ctx = await browser.newContext(misura || { viewport: { width: 1280, height: 800 } });
   await ctx.route(
     (url) => !/^(localhost|127\.0\.0\.1)$/.test(url.hostname),
@@ -83,6 +83,7 @@ async function dispositivo(browser, { sessione = false, prima = null, catalogo =
       if (oracolo && /api\.anthropic\.com/.test(url)) return route.fulfill({ json: await oracolo(JSON.parse(route.request().postData() || "{}")) });
       if (lexicanum && /wh40k\.lexicanum\.com/.test(url)) return lexicanum(route);
       if (fandom && /warhammer40k\.fandom\.com|static\.wikia\.nocookie\.net/.test(url)) return fandom(route);
+      if (wikidata && /www\.wikidata\.org\/w\/api\.php/.test(url)) return route.fulfill({ json: await wikidata(new URL(url).searchParams), headers: { "access-control-allow-origin": "*" } });
       if (catalogo && /openlibrary\.org/.test(url)) {
         const json = await catalogo(url);
         if (json) return route.fulfill({ json });
@@ -2923,6 +2924,66 @@ const SCENE = [
       await finche(() => p.evaluate(() => window.__novita.at(-1)?.length === 0), 5000, "smettendo, la lista vuota non arriva al guscio");
       await finche(() => p.getByText(/Non segui ancora niente/).count(), 3000, "smettendo, le Impostazioni non lo dicono");
       if ((await p.evaluate(() => localStorage.getItem("bc_novita"))) !== "[]") throw new Error("la lista non si e' svuotata");
+      return { guasti: d.guasti };
+    },
+  },
+  {
+    // chiesto dal lettore: «come fa a sapere della raccolta Cosmoverse chi
+    // e' l'autore e cosa ne uscira' dopo? … non riesci a riconoscermi
+    // nessuna saga?». Seguita, la saga si cerca su Wikidata dai TITOLI (il
+    // nome «Cosmoverse» Wikidata non lo conosce) e al guscio va la serie
+    nome: "le novità di una saga: Wikidata la riconosce dai titoli dei volumi, la raccolta lo dice e al guscio va la serie",
+    async fai({ browser }) {
+      const libri = ["The Way of Kings", "Words of Radiance"].map((title, i) => ({ id: `sl${i}`, title, author: "Brandon Sanderson", saga: "Cosmoverse", sagaOrder: i + 1, fileType: "epub", addedAt: i + 1 }));
+      const chieste = [];
+      const etichetta = (en) => ({ labels: { en: { value: en } } });
+      const d = await dispositivo(browser, {
+        misura: TABLET,
+        prima: `
+          Object.defineProperty(document, "referrer", { configurable: true, get: () => "android-app://it.bookcompanion.app/" });
+          localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});
+          localStorage.setItem("bc_vista", JSON.stringify({ aspetto: "raccolte" }));`,
+        wikidata: async (q) => {
+          chieste.push(q.get("action"));
+          if (q.get("action") === "wbsearchentities") return { search: q.get("search") === "The Way of Kings" ? [{ id: "Q1" }] : [] };
+          if (q.get("action") === "query") return { query: { search: /P179=Q7766706/.test(q.get("srsearch")) ? [{ title: "Q1" }, { title: "Q2" }, { title: "Q3" }] : [] } };
+          const tutte = {
+            Q1: { ...etichetta("The Way of Kings"), claims: { P179: [{ mainsnak: { datavalue: { value: { id: "Q7766706" } } } }] } },
+            Q2: etichetta("Words of Radiance"),
+            Q3: etichetta("Oathbringer"),
+            Q7766706: etichetta("The Stormlight Archive"),
+          };
+          return { entities: Object.fromEntries(q.get("ids").split("|").filter((id) => tutte[id]).map((id) => [id, tutte[id]])) };
+        },
+      });
+      const { p } = d;
+      await p.goto(`${URL_APP}?apri=libreria`);
+      await p.evaluate(() => {
+        const canale = new MessageChannel();
+        window.__novita = [];
+        canale.port1.onmessage = (m) => {
+          if (typeof m.data !== "string" || !m.data.startsWith('{"novita"')) return;
+          window.__novita.push(JSON.parse(m.data).novita);
+          canale.port1.postMessage("grimorio:novita:si");
+        };
+        window.dispatchEvent(new MessageEvent("message", { data: "", origin: `android-app://${location.host}`, ports: [canale.port2] }));
+        canale.port1.postMessage("grimorio:pronto");
+      });
+      await p.getByRole("button", { name: /^Cosmoverse/ }).first().click();
+      const tasto = p.getByRole("button", { name: "🔕 Avvisami delle novità" });
+      await finche(() => tasto.count(), 5000, "nella raccolta della saga non c'e' il tasto delle novita'");
+      if (chieste.length) throw new Error("Wikidata si e' chiesto prima di seguire la saga");
+      await tasto.click();
+      await finche(() => p.getByText("Su Wikidata: «The Stormlight Archive», 3 volumi. Ti avviso dei volumi nuovi.").count(), 8000, "la raccolta non dice la serie trovata su Wikidata");
+      await finche(() => p.evaluate(() => window.__novita.some((l) => l.length === 1 && l[0].tipo === "serie" && l[0].wikidata.join() === "Q7766706")), 5000, "la serie non arriva al guscio");
+      if ((await p.getByRole("button", { name: "🔔 Ti avviso delle novità" }).getAttribute("title")) !== "Avviso: i volumi nuovi di «The Stormlight Archive» (Wikidata)") throw new Error("il tasto non dice cosa guarda");
+      const quante = chieste.length;
+      await p.getByRole("button", { name: /Tutte le raccolte/ }).click();
+      await p.getByRole("button", { name: /^Cosmoverse/ }).first().click();
+      await finche(() => p.getByText(/Su Wikidata: «The Stormlight Archive»/).count(), 5000, "riaperta, la raccolta non dice piu' la serie");
+      if (chieste.length !== quante) throw new Error("riaperta la raccolta, la saga si e' cercata di nuovo");
+      await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await finche(() => p.getByText("volumi nuovi di «The Stormlight Archive» · Wikidata").count(), 5000, "le Impostazioni non dicono la serie seguita");
       return { guasti: d.guasti };
     },
   },

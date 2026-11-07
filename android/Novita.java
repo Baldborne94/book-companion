@@ -35,7 +35,10 @@ import java.util.Calendar;
 // - «autori»: i libri piu' nuovi di ogni autore su Open Library; un libro
 //   mai visto, di quest'anno o dell'anno scorso, e' una notifica;
 // - «manga»: l'ultimo capitolo su MangaDex (inglese e italiano, rimandi
-//   compresi); un numero piu' alto dell'ultimo noto e' una notifica.
+//   compresi); un numero piu' alto dell'ultimo noto e' una notifica;
+// - «serie»: i membri della serie su Wikidata (riconosciuta dalla pagina,
+//   `lib/serieWikidata.js`); un libro mai visto che esce quest'anno, dopo o
+//   e' uscito l'anno scorso e' una notifica.
 // La prima volta niente e' nuovo: si parte da quel che c'e'. Solo avvisi:
 // dove leggere o prendere la novita' lo decide il lettore.
 public class Novita extends JobService {
@@ -51,8 +54,16 @@ public class Novita extends JobService {
     static final String DA_NOVITA = "da_novita";
     private static final String[] CONTENUTI = { "safe", "suggestive", "erotica", "pornographic" };
     // i libri gia' visti di un autore che si ricordano: Open Library ne da'
-    // venti per domanda, e piu' di cosi' sono solo vecchi
-    private static final int VISTI_MAX = 200;
+    // venti per domanda, e piu' di cosi' sono solo vecchi; i membri di una
+    // serie si ricordano tutti (l'Eresia di Horus ne ha piu' di sessanta)
+    private static final int VISTI_MAX = 1000;
+    static final String WIKIDATA = "https://www.wikidata.org/w/api.php";
+    // quel che e' parte di una serie ma non e' un volume nuovo da leggere:
+    // edizioni, audiolibri e radiodrammi (GraphicAudio ha le sue «parti»
+    // dello Stormlight), film, serie tv e d'animazione, giochi
+    static final String[] NON_VOLUMI = {
+        "Q3331189", "Q106833", "Q2635894", "Q11424", "Q5398426", "Q581714", "Q63952888", "Q7889", "Q1643932", "Q131436",
+    };
 
     // ---- DALLA PAGINA ---------------------------------------------------------
 
@@ -69,11 +80,12 @@ public class Novita extends JobService {
                 if (s == null) continue;
                 String id = s.optString("id", "");
                 String tipo = s.optString("tipo", "");
-                if (id.isEmpty() || !("autori".equals(tipo) || "manga".equals(tipo))) continue;
+                if (id.isEmpty() || !("autori".equals(tipo) || "manga".equals(tipo) || "serie".equals(tipo))) continue;
                 JSONObject nuova = new JSONObject();
                 nuova.put("nome", s.optString("nome", ""));
                 nuova.put("tipo", tipo);
                 if ("manga".equals(tipo)) nuova.put("titolo", s.optString("titolo", s.optString("nome", "")));
+                else if ("serie".equals(tipo)) nuova.put("wikidata", soloQ(s.optJSONArray("wikidata")));
                 else nuova.put("autori", s.optJSONArray("autori") != null ? s.optJSONArray("autori") : new JSONArray());
                 JSONObject vecchia = prima.optJSONObject(id);
                 if (vecchia != null && stessaCosa(vecchia, nuova)) {
@@ -104,6 +116,7 @@ public class Novita extends JobService {
     private static boolean stessaCosa(JSONObject a, JSONObject b) {
         if (!a.optString("tipo").equals(b.optString("tipo"))) return false;
         if ("manga".equals(a.optString("tipo"))) return a.optString("titolo").equals(b.optString("titolo"));
+        if ("serie".equals(a.optString("tipo"))) return String.valueOf(a.optJSONArray("wikidata")).equals(String.valueOf(b.optJSONArray("wikidata")));
         return String.valueOf(a.optJSONArray("autori")).equals(String.valueOf(b.optJSONArray("autori")));
     }
 
@@ -193,6 +206,7 @@ public class Novita extends JobService {
             if (s == null) continue;
             try {
                 if ("manga".equals(s.optString("tipo"))) controllaManga(app, id, s);
+                else if ("serie".equals(s.optString("tipo"))) controllaSerie(app, id, s);
                 else controllaAutori(app, id, s);
             } catch (Throwable e) {
                 Log.w(TAG, "la raccolta " + id + " non si guarda: " + e);
@@ -252,6 +266,109 @@ public class Novita extends JobService {
         while (visti.length() > VISTI_MAX) visti.remove(0);
         s.put("visti", visti);
         s.put("pronta", true);
+    }
+
+    // I VOLUMI NUOVI DI UNA SERIE: Wikidata, cio' che dichiara di essere
+    // parte della serie (P179), dell'opera (P361) o del suo universo (P1434).
+    // La prima volta tutto e' visto; poi un membro mai visto si guarda: un
+    // volume (non un'edizione, un audiolibro, un film) con una data di
+    // quest'anno, dopo o dell'anno scorso e' una notifica. Senza data si
+    // riguarda al giro dopo: un annuncio la data spesso l'ha dopo.
+    private static void controllaSerie(Context app, String id, JSONObject s) throws Exception {
+        JSONArray serie = soloQ(s.optJSONArray("wikidata"));
+        if (serie.length() == 0) return;
+        StringBuilder cerca = new StringBuilder("haswbstatement:");
+        for (int k = 0; k < serie.length(); k++) {
+            String q = serie.getString(k);
+            cerca.append(k == 0 ? "" : "|").append("P179=" + q + "|P361=" + q + "|P1434=" + q);
+        }
+        JSONObject json = chiedi(app, WIKIDATA + "?action=query&format=json&list=search&srnamespace=0&srlimit=500&srsearch=" + URLEncoder.encode(cerca.toString(), "UTF-8"));
+        JSONArray trovati = json == null || json.optJSONObject("query") == null ? null : json.optJSONObject("query").optJSONArray("search");
+        if (trovati == null) return;
+        JSONArray visti = s.optJSONArray("visti");
+        if (visti == null) visti = new JSONArray();
+        java.util.HashSet<String> giaVisti = new java.util.HashSet<>();
+        for (int k = 0; k < visti.length(); k++) giaVisti.add(visti.optString(k));
+        boolean pronta = s.optBoolean("pronta", false);
+        java.util.ArrayList<String> nuovi = new java.util.ArrayList<>();
+        for (int k = 0; k < trovati.length(); k++) {
+            String m = trovati.optJSONObject(k) == null ? "" : trovati.optJSONObject(k).optString("title", "");
+            if (!m.matches("Q[0-9]+") || giaVisti.contains(m)) continue;
+            if (pronta) nuovi.add(m);
+            else visti.put(m);
+        }
+        int anno = Calendar.getInstance().get(Calendar.YEAR);
+        for (int i = 0; i < nuovi.size(); i += 50) {
+            Thread.sleep(1000);
+            String ids = android.text.TextUtils.join("|", nuovi.subList(i, Math.min(i + 50, nuovi.size())));
+            JSONObject e = chiedi(app, WIKIDATA + "?action=wbgetentities&format=json&props=labels%7Cclaims&languages=it%7Cen&ids=" + URLEncoder.encode(ids, "UTF-8"));
+            JSONObject entita = e == null ? null : e.optJSONObject("entities");
+            if (entita == null) continue;
+            JSONArray chiavi = entita.names();
+            for (int k = 0; chiavi != null && k < chiavi.length(); k++) {
+                String m = chiavi.getString(k);
+                JSONObject voce = entita.optJSONObject(m);
+                if (voce == null) continue;
+                JSONObject claims = voce.optJSONObject("claims");
+                int uscita = annoDi(claims);
+                if (uscita == 0) continue;
+                visti.put(m);
+                if (!eUnVolume(claims) || uscita < anno - 1) continue;
+                String titolo = etichetta(voce.optJSONObject("labels"));
+                if (titolo.isEmpty()) continue;
+                avvisa(app, id, "📚 Nuovo volume: " + s.optString("nome", ""), titolo + (uscita > anno ? " · esce nel " + uscita : " (" + uscita + ")"));
+            }
+        }
+        while (visti.length() > VISTI_MAX) visti.remove(0);
+        s.put("visti", visti);
+        s.put("pronta", true);
+    }
+
+    // gli id di Wikidata e nient'altro: finiscono in un indirizzo
+    static JSONArray soloQ(JSONArray ids) {
+        JSONArray out = new JSONArray();
+        for (int k = 0; ids != null && k < ids.length() && out.length() < 3; k++) {
+            String q = ids.optString(k, "");
+            if (q.matches("Q[0-9]+")) out.put(q);
+        }
+        return out;
+    }
+
+    // l'anno di uscita (P577), il piu' vecchio se ce n'e' piu' d'uno: la
+    // ristampa non e' un libro nuovo
+    static int annoDi(JSONObject claims) {
+        JSONArray date = claims == null ? null : claims.optJSONArray("P577");
+        int anno = 0;
+        for (int k = 0; date != null && k < date.length(); k++) {
+            try {
+                String t = date.getJSONObject(k).getJSONObject("mainsnak").getJSONObject("datavalue").getJSONObject("value").getString("time");
+                int a = Integer.parseInt(t.substring(1, 5));
+                if (anno == 0 || a < anno) anno = a;
+            } catch (Throwable e) {
+                /* una data scritta male non e' una data */
+            }
+        }
+        return anno;
+    }
+
+    static boolean eUnVolume(JSONObject claims) {
+        JSONArray tipi = claims == null ? null : claims.optJSONArray("P31");
+        for (int k = 0; tipi != null && k < tipi.length(); k++) {
+            try {
+                String t = tipi.getJSONObject(k).getJSONObject("mainsnak").getJSONObject("datavalue").getJSONObject("value").getString("id");
+                for (String no : NON_VOLUMI) if (no.equals(t)) return false;
+            } catch (Throwable e) {
+                /* un tipo senza valore non dice niente */
+            }
+        }
+        return true;
+    }
+
+    private static String etichetta(JSONObject labels) {
+        if (labels == null) return "";
+        JSONObject l = labels.optJSONObject("it");
+        if (l == null) l = labels.optJSONObject("en");
+        return l == null ? "" : l.optString("value", "");
     }
 
     // I CAPITOLI NUOVI DI UN MANGA: l'id su MangaDex si cerca una volta dal

@@ -1,5 +1,5 @@
 import { C, F, R } from "../data/constants.js";
-import { fraseNovita } from "../lib/novita.js";
+import { fraseNovita, nomiSerie } from "../lib/novita.js";
 
 // LE NOVITA' NELLE IMPOSTAZIONI (`lib/novita.js`): cosa si segue, lo stato
 // delle notifiche come lo dice il guscio, e un tocco per smettere. Si
@@ -15,7 +15,7 @@ export default function SezioneNovita({ lista = [], stato = null, nelGuscio = fa
           <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere", fontSize: F.nota, color: C.text }}>
             {x.nome}
             <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted }}>
-              {x.tipo === "manga" ? "capitoli nuovi · MangaDex" : `libri nuovi di ${(x.autori || []).join(", ")} · Open Library`}
+              {x.tipo === "manga" ? "capitoli nuovi · MangaDex" : x.tipo === "serie" ? `volumi nuovi di ${nomiSerie(x)} · Wikidata` : `libri nuovi di ${(x.autori || []).join(", ")} · Open Library`}
             </span>
           </span>
           <button
