@@ -2877,6 +2877,55 @@ const SCENE = [
       return { guasti: d.guasti };
     },
   },
+  {
+    // chiesto dal lettore, tolta la parte manga: «notifiche quando esce un
+    // nuovo libro, un nuovo capitolo, delle mie serie e dei miei autori» —
+    // solo quel che sceglie lui. La notifica la manda il guscio (Novita.java);
+    // qui si recita il guscio e si guarda cosa gli arriva
+    nome: "le novità: dalla raccolta si segue una saga, la lista va al guscio, le Impostazioni dicono lo stato e si smette con un tocco",
+    async fai({ browser }) {
+      const libri = [1, 2].map((i) => ({ id: `bk${i}`, title: `Berserk ${i}`, author: "Kentaro Miura", saga: "Berserk", sagaOrder: i, fileType: "cbz", tipo: "manga", addedAt: i }));
+      const d = await dispositivo(browser, {
+        misura: TABLET,
+        prima: `
+          Object.defineProperty(document, "referrer", { configurable: true, get: () => "android-app://it.bookcompanion.app/" });
+          localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});
+          localStorage.setItem("bc_vista", JSON.stringify({ aspetto: "raccolte" }));`,
+      });
+      const { p } = d;
+      await p.goto(`${URL_APP}?apri=libreria`);
+      // il guscio saluta, e alle novita' risponde lo stato delle notifiche
+      await p.evaluate(() => {
+        const canale = new MessageChannel();
+        window.__novita = [];
+        canale.port1.onmessage = (m) => {
+          if (typeof m.data !== "string" || !m.data.startsWith('{"novita"')) return;
+          window.__novita.push(JSON.parse(m.data).novita);
+          canale.port1.postMessage("grimorio:novita:si");
+        };
+        window.dispatchEvent(new MessageEvent("message", { data: "", origin: `android-app://${location.host}`, ports: [canale.port2] }));
+        canale.port1.postMessage("grimorio:pronto");
+      });
+      await aspetta(500);
+      if ((await p.evaluate(() => window.__novita.length)) !== 0) throw new Error("al saluto, senza niente da seguire, la lista e' partita");
+      await p.getByRole("button", { name: /^Berserk/ }).first().click();
+      const tasto = p.getByRole("button", { name: "🔕 Avvisami delle novità" });
+      await finche(() => tasto.count(), 5000, "nella raccolta di una saga non c'e' il tasto delle novita'");
+      if ((await tasto.getAttribute("title")) !== "Avviso: i capitoli nuovi") throw new Error(`il tasto di una saga di manga promette altro: ${await tasto.getAttribute("title")}`);
+      await tasto.click();
+      await finche(() => p.evaluate(() => window.__novita.some((l) => l.length === 1 && l[0].id === "saga:berserk" && l[0].tipo === "manga" && l[0].titolo === "Berserk")), 5000, "la saga seguita non arriva al guscio");
+      await finche(() => p.getByRole("button", { name: "🔔 Ti avviso delle novità" }).count(), 3000, "il tasto non dice che la saga e' seguita");
+      // le Impostazioni: lo stato che il guscio ha detto, e cosa si segue
+      await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await finche(() => p.getByText(/🔔 1 raccolta seguita: ogni qualche ora/).count(), 5000, "le Impostazioni non dicono che gli avvisi sono accesi");
+      if (!(await p.getByText("capitoli nuovi · MangaDex").count())) throw new Error("le Impostazioni non dicono cosa si guarda della saga");
+      await p.getByRole("button", { name: "Smetti di seguire Berserk" }).click();
+      await finche(() => p.evaluate(() => window.__novita.at(-1)?.length === 0), 5000, "smettendo, la lista vuota non arriva al guscio");
+      await finche(() => p.getByText(/Non segui ancora niente/).count(), 3000, "smettendo, le Impostazioni non lo dicono");
+      if ((await p.evaluate(() => localStorage.getItem("bc_novita"))) !== "[]") throw new Error("la lista non si e' svuotata");
+      return { guasti: d.guasti };
+    },
+  },
 ];
 
 // OGNI ATTESA HA UN TETTO, anche quelle delle prove: una scena che non

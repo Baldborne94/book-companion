@@ -138,6 +138,7 @@ qualunque richiesta web porta con sé.
 | Scarichi le immagini di un wiki dalle Impostazioni | `warhammer40k.fandom.com` e `static.wikia.nocookie.net` (Fandom), `wh40k.lexicanum.com` (Lexicanum) | niente di tuo: si chiede quale sia l'immagine principale di ogni voce, tutte in ordine alfabetico, e si scaricano quelle |
 | Scarichi le altre illustrazioni di Fandom dalle Impostazioni | `warhammer40k.fandom.com` e `static.wikia.nocookie.net` | niente di tuo: si chiede quali file contiene ogni voce, tutte in ordine alfabetico, poi le miniature di quei file alla misura che scegli |
 | Tocchi «Apri su Fandom» nella voce | `warhammer40k.fandom.com` | il nome della voce (apri tu il link) |
+| Ad app chiusa, ogni quattro ore, se segui le novità di almeno una raccolta (solo nell'app Android) | `openlibrary.org`, `api.mangadex.org` | per un autore o una saga di libri, il nome degli autori (i loro libri più nuovi); per una saga di manga, il suo titolo una volta e poi il suo numero su MangaDex (gli ultimi capitoli). Le raccolte seguite stanno sul dispositivo; la notifica la manda Android, niente passa da un nostro server |
 | Sempre, per i caratteri della pagina | `fonts.googleapis.com`, `fonts.gstatic.com` | niente, oltre alla richiesta stessa |
 
 Due avvertenze oneste:

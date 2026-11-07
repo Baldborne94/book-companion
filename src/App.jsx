@@ -56,6 +56,8 @@ import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, con
 import { riordinaDisco, fraseRiordino, fraseDaParte, fraseRimessi, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
 import { importaDaFuori, resoconto, importFiles } from "./lib/importBook.js";
 import { avanziManga } from "./lib/avanziManga.js";
+import { leggiNovita, scriviNovita, smettiNovita, messaggioNovita, statoNovita } from "./lib/novita.js";
+import SezioneNovita from "./components/SezioneNovita.jsx";
 import { togliAvanziDrive } from "./lib/avanziDrive.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
 import BarraLavoro from "./components/BarraLavoro.jsx";
@@ -606,7 +608,7 @@ function MisuraPicker({ current, onPick, consigliata }) {
   );
 }
 
-function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex, fan, onFan, onFermaFan, imm, onImm, onFermaImm, ill, onIll, onFermaIll, wikt, onWikt, onFermaWikt, guscioPronto = false, infoGuscio = null, invioGuscio = null, sfondo = false, onSfondo = () => {} }) {
+function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex, fan, onFan, onFermaFan, imm, onImm, onFermaImm, ill, onIll, onFermaIll, wikt, onWikt, onFermaWikt, guscioPronto = false, infoGuscio = null, invioGuscio = null, sfondo = false, onSfondo = () => {}, novita = [], statoNovita: statoAvvisi = null, onSmettiNovita }) {
   return (
     <div
       onClick={onClose}
@@ -722,6 +724,21 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
           </h3>
           <SezioneSalvaschermo />
           <SezioneSfondo pronto={guscioPronto} info={infoGuscio} invio={invioGuscio} acceso={sfondo} onCambia={onSfondo} />
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            Le novità
+          </h3>
+          <SezioneNovita lista={novita} stato={statoAvvisi} nelGuscio={guscioPronto} onSmetti={onSmettiNovita} />
         </div>
 
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
@@ -908,6 +925,10 @@ export default function App() {
   const [quadernoOpen, setQuadernoOpen] = useState(false);
   const [prendereOpen, setPrendereOpen] = useState(false);
   const [mappaOpen, setMappaOpen] = useState(false);
+  // LE NOVITA' (`lib/novita.js`): la lista sta nel dispositivo, il guscio la
+  // guarda ad app chiusa e dice lo stato delle notifiche
+  const [novita, setNovita] = useState(leggiNovita);
+  const [statoAvvisi, setStatoAvvisi] = useState(null);
   // il cammino di una saga: la guida intera con dentro i tuoi volumi
   const [cammino, setCammino] = useState(null);
   // la raccolta aperta in Libreria (vedi `Grouped`): qui perche' e' un
@@ -976,6 +997,24 @@ export default function App() {
   // IL GUSCIO ANDROID CHE SALUTA (`lib/sfondo.js`): la porta su cui mandargli
   // la copertina per la schermata di blocco, e la scelta di farlo
   const [guscio, setGuscio] = useState(null);
+  // la lista delle novita' va al guscio a ogni porta nuova (il guscio di
+  // prima puo' essere stato ucciso) e a ogni cambio; un guscio vecchio non
+  // la legge e non risponde, e le Impostazioni lo dicono
+  const mandaNovita = (lista) => {
+    setNovita(lista);
+    if (!guscio?.porta) return;
+    try {
+      guscio.porta.postMessage(messaggioNovita(lista));
+    } catch {
+      /* una porta morta: il prossimo saluto rimanda */
+    }
+  };
+  useEffect(() => {
+    // al saluto solo se c'e' qualcosa da seguire: una lista vuota parte dal
+    // tocco che toglie l'ultima, e il saluto resta un saluto
+    if (guscio?.porta && leggiNovita().length) mandaNovita(leggiNovita());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guscio?.porta]);
   // quale guscio ha aperto la pagina e com'e' andato l'ultimo tentativo di
   // parlarle: si legge subito, prima che `pulisciUrl` tolga la query
   const [infoGuscio] = useState(() => {
@@ -1023,6 +1062,11 @@ export default function App() {
       const porta = portaDelGuscio(e, window.location.origin);
       if (!porta) return;
       porta.onmessage = (m) => {
+        const sn = statoNovita(m.data);
+        if (sn) {
+          setStatoAvvisi(sn);
+          return;
+        }
         // il saluto viaggia sulla porta: si risponde li', o il guscio risaluta
         if (m.data === SALUTO) {
           porta.postMessage(CIAO);
@@ -2189,6 +2233,7 @@ export default function App() {
           <Suspense fallback={null}>
           <Library
             onCambiate={() => presto.current?.()}
+            onNovita={mandaNovita}
             onTogliEbook={togliEbook}
             books={books}
             updateBooks={updateBooks}
@@ -2318,6 +2363,9 @@ export default function App() {
           invioGuscio={invioGuscio}
           sfondo={sfondo}
           onSfondo={accendiSfondo}
+          novita={novita}
+          statoNovita={statoAvvisi}
+          onSmettiNovita={(id) => mandaNovita(scriviNovita(smettiNovita(leggiNovita(), id)))}
         />
       )}
       {/* le stanze di rado arrivano da un pacchetto loro: finche' non c'e',

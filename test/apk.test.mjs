@@ -52,11 +52,12 @@ export async function cucitura(t) {
   const pacchetto = pacchettoDelSito(assetlinks);
   const c = cuciGuscio({ manifest, launcher, gradle, pacchetto });
   t.c("il permesso di cambiare lo sfondo, prima di <application>", /SET_WALLPAPER"\/>[\s\S]*<application/.test(c.manifest));
-  // LA PARTE MANGA E' STATA TOLTA: con lei i permessi che servivano solo a
-  // lei (la rete del guscio, le notifiche, il lavoro periodico) e il suo
-  // servizio. Un permesso che non serve a niente e' una riga in piu' nella
-  // pagina dell'app su Android, e una domanda in piu' per chi la installa
-  t.c("niente permessi della parte manga, ne' il suo servizio", !/INTERNET|POST_NOTIFICATIONS|RECEIVE_BOOT_COMPLETED|ACCESS_NETWORK_STATE|BIND_JOB_SERVICE|\.Avvisi"/.test(c.manifest));
+  // LE NOVITA' (`android/Novita.java`): il guscio va in rete da se' (una TWA
+  // di solito non lo fa, ci va Chrome: l'APK 1148 rispondeva «missing
+  // INTERNET permission»), manda notifiche, e il suo lavoro periodico vuole
+  // il riavvio e, da Android 14, lo stato della rete (l'APK 1160 cadeva)
+  t.c("i permessi delle novita', prima di <application>", ["INTERNET", "POST_NOTIFICATIONS", "RECEIVE_BOOT_COMPLETED", "ACCESS_NETWORK_STATE"].every((x) => new RegExp(`android\\.permission\\.${x}"\\/>[\\s\\S]*<application`).test(c.manifest)));
+  t.c("il lavoro delle novita' dentro l'applicazione, legabile solo dal sistema; quello degli avvisi tolti no", /<application[\s\S]*<service android:name="\.Novita" android:permission="android\.permission\.BIND_JOB_SERVICE" android:exported="false"\/>[\s\S]*<\/application>/.test(c.manifest) && !/\.Avvisi"/.test(c.manifest));
   // ...ma chi aveva l'APK 1160 o 1162 ha ancora il lavoro programmato e il
   // canale delle notifiche: se ne vanno a ogni apertura
   const guscioJava = readFileSync("android/GuscioActivity.java", "utf8");
