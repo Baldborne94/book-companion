@@ -14,7 +14,6 @@ import {
   tipoImmagine,
   eComicInfo,
   leggiComicInfo,
-  capitoloMangadex,
   paginaDaAprire,
   tocco,
   leggiVerso,
@@ -145,15 +144,6 @@ export default async (t) => {
   t.eq("l'autore", info.autore, "Tizia Caia");
   t.eq("la sinossi, anche dentro CDATA", info.sinossi, "Una storia <breve>.");
   t.eq("il verso dei manga", info.verso, "rtl");
-  t.eq("il capitolo di MangaDex dal Web della scheda", leggiComicInfo("<ComicInfo><Web>https://mangadex.org/chapter/0F1E2D3C-aaaa-bbbb-cccc-123456789abc</Web></ComicInfo>").mangadex, "0f1e2d3c-aaaa-bbbb-cccc-123456789abc");
-  t.c("…solo da MangaDex e solo un capitolo", [
-    "https://mangadex.org/title/0f1e2d3c-aaaa-bbbb-cccc-123456789abc",
-    "https://altro.org/chapter/0f1e2d3c-aaaa-bbbb-cccc-123456789abc",
-    "https://nonmangadex.org/chapter/0f1e2d3c-aaaa-bbbb-cccc-123456789abc",
-    "https://mangadex.org/chapter/0f1e2d3c-aaaa-bbbb-cccc-123456789abcd",
-    "",
-  ].every((w) => capitoloMangadex(w) === null) && capitoloMangadex("https://mangadex.org/chapter/0f1e2d3c-aaaa-bbbb-cccc-123456789abc/1") === "0f1e2d3c-aaaa-bbbb-cccc-123456789abc");
-  t.eq("…e senza Web niente", info.mangadex, null);
   t.eq("«Manga: Yes» da solo non dice il verso", leggiComicInfo("<ComicInfo><Manga>Yes</Manga></ComicInfo>").verso, null);
   t.eq("un numero storto vale niente", leggiComicInfo("<ComicInfo><Number>abc</Number></ComicInfo>").numero, null);
   t.eq("… lo zero anche", leggiComicInfo("<ComicInfo><Number>0</Number></ComicInfo>").numero, null);

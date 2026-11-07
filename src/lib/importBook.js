@@ -846,7 +846,6 @@ async function enrichFumetto(meta, file) {
     if (info.autore) meta.author = info.autore;
     if (info.sinossi) meta.sinossi = info.sinossi;
     if (info.verso) meta.verso = info.verso;
-    if (info.mangadex) meta.mangadex = info.mangadex;
     // la scheda dice che e' un manga: lo si scrive nel TIPO, non nel
     // genere — il genere dice di cosa parla la storia, il tipo che oggetto
     // e' — e il lettore lo vede e lo corregge nella scheda del libro

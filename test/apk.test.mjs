@@ -52,18 +52,20 @@ export async function cucitura(t) {
   const pacchetto = pacchettoDelSito(assetlinks);
   const c = cuciGuscio({ manifest, launcher, gradle, pacchetto });
   t.c("il permesso di cambiare lo sfondo, prima di <application>", /SET_WALLPAPER"\/>[\s\S]*<application/.test(c.manifest));
-  // il guscio va in rete da se' (MangaDex, `chiediAllaRete`): una TWA di
-  // solito non lo fa, ci va Chrome, e l'APK 1148 ha risposto «Permission
-  // denied (missing INTERNET permission?)»
-  t.c("e quello di andare in rete, per MangaDex", /android\.permission\.INTERNET"\/>[\s\S]*<application/.test(c.manifest));
-  // gli avvisi dei capitoli nuovi ad app chiusa (`android/Avvisi.java`): le
-  // notifiche, il lavoro periodico che sopravvive al riavvio, e il servizio
-  // che solo il sistema puo' legare
-  // Android 14 rifiuta un lavoro periodico con la rete a chi non dichiara di
-  // guardare la rete: l'APK 1160 cadeva a ogni apertura (SecurityException)
-  t.c("il permesso di guardare la rete, che il lavoro con la rete vuole da Android 14", /android\.permission\.ACCESS_NETWORK_STATE"\/>[\s\S]*<application/.test(c.manifest));
-  t.c("il permesso delle notifiche e quello del riavvio", /android\.permission\.POST_NOTIFICATIONS"\/>[\s\S]*<application/.test(c.manifest) && /android\.permission\.RECEIVE_BOOT_COMPLETED"\/>[\s\S]*<application/.test(c.manifest));
-  t.c("il lavoro degli avvisi dentro l'applicazione, legabile solo dal sistema", /<application[\s\S]*<service android:name="\.Avvisi" android:permission="android\.permission\.BIND_JOB_SERVICE" android:exported="false"\/>[\s\S]*<\/application>/.test(c.manifest));
+  // LA PARTE MANGA E' STATA TOLTA: con lei i permessi che servivano solo a
+  // lei (la rete del guscio, le notifiche, il lavoro periodico) e il suo
+  // servizio. Un permesso che non serve a niente e' una riga in piu' nella
+  // pagina dell'app su Android, e una domanda in piu' per chi la installa
+  t.c("niente permessi della parte manga, ne' il suo servizio", !/INTERNET|POST_NOTIFICATIONS|RECEIVE_BOOT_COMPLETED|ACCESS_NETWORK_STATE|BIND_JOB_SERVICE|\.Avvisi"/.test(c.manifest));
+  // ...ma chi aveva l'APK 1160 o 1162 ha ancora il lavoro programmato e il
+  // canale delle notifiche: se ne vanno a ogni apertura
+  const guscioJava = readFileSync("android/GuscioActivity.java", "utf8");
+  const avanzi = readFileSync("android/AvanziAvvisi.java", "utf8");
+  t.c("gli avanzi degli avvisi si tolgono a ogni apertura", /super\.onCreate\(stato\);\s*AvanziAvvisi\.togli\(getApplicationContext\(\)\);/.test(guscioJava));
+  t.c("…il lavoro, la memoria e il canale delle notifiche", /js\.cancel\(LAVORO\)/.test(avanzi) && /LAVORO = 4401/.test(avanzi) && /deleteSharedPreferences\(PREFS\)/.test(avanzi) && /PREFS = "avvisi"/.test(avanzi) && /deleteNotificationChannel\(CANALE\)/.test(avanzi) && /CANALE = "capitoli"/.test(avanzi));
+  // e niente che arrivi dalla pagina fa cadere il guscio (l'APK 1160 cadeva
+  // a ogni apertura per un errore dentro un messaggio)
+  t.c("un messaggio della pagina si legge dentro una presa", /try \{\s*ricevi\(app, messaggio\);\s*\} catch \(Throwable e\)/.test(readFileSync("android/SchermataDiBlocco.java", "utf8")));
   t.c("e quello di leggere lo sfondo di prima, fino ad Android 12", /READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"\/>[\s\S]*<application/.test(c.manifest));
   // il tablet del lettore e' un Android 14: li' lo sfondo si legge solo con
   // l'«accesso a tutti i file» (StorageManager.checkPermissionReadImages guarda

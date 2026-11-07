@@ -7,9 +7,8 @@ import { fraseLavoro, fraseImport } from "../lib/convertiCbr.js";
 import { fmtGoogle } from "../lib/bytes.js";
 import { fraseLexicanum, fraseImmagini, fraseIllustrazioni } from "../lib/lexicanum.js";
 import { fraseWiktionary } from "../lib/wiktionaryOffline.js";
-import { fraseScarico } from "../lib/mangadex.js";
 
-export default function BarraLavoro({ scarico = null, onFermaScarico, lex = null, onFermaLex, fan = null, onFermaFan, imm = null, onFermaImm, ill = null, onFermaIll, wikt = null, onFermaWikt, hdd = null, onFermaHdd, importo = null, onFermaImport, lavoro, restanti = 0, onFerma, onRiprendi, onLascia }) {
+export default function BarraLavoro({ lex = null, onFermaLex, fan = null, onFermaFan, imm = null, onFermaImm, ill = null, onFermaIll, wikt = null, onFermaWikt, hdd = null, onFermaHdd, importo = null, onFermaImport, lavoro, restanti = 0, onFerma, onRiprendi, onLascia }) {
   const tasto = {
     minHeight: 44,
     padding: "6px 14px",
@@ -35,16 +34,6 @@ export default function BarraLavoro({ scarico = null, onFermaScarico, lex = null
   const giro = lavoro || restanti > 0;
   return (
     <>
-      {scarico && (
-        <div role="status" style={riga}>
-          <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
-            <span style={{ color: C.text }}>{fraseScarico(scarico)}</span>
-          </span>
-          <button onClick={onFermaScarico} style={tasto}>
-            Ferma
-          </button>
-        </div>
-      )}
       {importo && (
         <div role="status" style={riga}>
           <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>

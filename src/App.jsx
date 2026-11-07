@@ -30,7 +30,7 @@ import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, get
 import { libroDellaScheda } from "./lib/schedaMusica.js";
 import { leggiSalvaschermo, fase, prossimoCambio } from "./lib/salvaschermo.js";
 import Salvaschermo, { SezioneSalvaschermo, SezioneSfondo } from "./components/Salvaschermo.jsx";
-import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, dopoIlSaluto, SALUTO, CIAO, TOGLI, LATO_MAX, fraseSenzaPrima, inPiedi, nelGuscio } from "./lib/sfondo.js";
+import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, dopoIlSaluto, SALUTO, CIAO, TOGLI, LATO_MAX, fraseSenzaPrima, inPiedi } from "./lib/sfondo.js";
 import { ascoltaCopertine } from "./lib/miniature.js";
 import { copertinaGrande, dimenticaGrande } from "./lib/copertinaGrande.js";
 import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux } from "./lib/bookStore.js";
@@ -55,8 +55,7 @@ import { tipiDaScegliere } from "./lib/importBook.js";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, convertiLibroInCbz } from "./lib/sync.js";
 import { riordinaDisco, fraseRiordino, fraseDaParte, fraseRimessi, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
 import { importaDaFuori, resoconto, importFiles } from "./lib/importBook.js";
-import { scaricaCapitolo, nomeCapitolo, spiega as spiegaMangadex, ritmoComune, leggiSerie, messaggioSeguite, statoAvvisi, serieDalLancio } from "./lib/mangadex.js";
-import { nuovaReteGuscio, SA_RETE } from "./lib/reteGuscio.js";
+import { avanziManga } from "./lib/avanziManga.js";
 import { togliAvanziDrive } from "./lib/avanziDrive.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
 import BarraLavoro from "./components/BarraLavoro.jsx";
@@ -91,7 +90,6 @@ const STANZE = {
   ReadingDiary: () => import("./components/ReadingDiary.jsx"),
   Quaderno: () => import("./components/Quaderno.jsx"),
   DaPrendere: () => import("./components/DaPrendere.jsx"),
-  SerieSeguite: () => import("./components/SerieSeguite.jsx"),
   Mappa: () => import("./components/Mappa.jsx"),
   Cammino: () => import("./components/Cammino.jsx"),
   MusicRoom: () => import("./components/MusicRoom.jsx"),
@@ -103,7 +101,6 @@ const QuoteGarden = lazy(STANZE.QuoteGarden);
 const ReadingDiary = lazy(STANZE.ReadingDiary);
 const Quaderno = lazy(STANZE.Quaderno);
 const DaPrendere = lazy(STANZE.DaPrendere);
-const SerieSeguite = lazy(STANZE.SerieSeguite);
 const Mappa = lazy(STANZE.Mappa);
 const Cammino = lazy(STANZE.Cammino);
 const MusicRoom = lazy(STANZE.MusicRoom);
@@ -910,11 +907,6 @@ export default function App() {
   const [diaryOpen, setDiaryOpen] = useState(false);
   const [quadernoOpen, setQuadernoOpen] = useState(false);
   const [prendereOpen, setPrendereOpen] = useState(false);
-  // la notifica di un capitolo nuovo apre l'app su `/?serie=<id>`: si
-  // legge prima che `pulisciUrl` tolga la query
-  const [serieOpen, setSerieOpen] = useState(() => !!serieDalLancio(window.location.search, leggiSerie()));
-  // lo stato delle notifiche come lo dice il guscio (`android/Avvisi.java`)
-  const [avvisi, setAvvisi] = useState(null);
   const [mappaOpen, setMappaOpen] = useState(false);
   // il cammino di una saga: la guida intera con dentro i tuoi volumi
   const [cammino, setCammino] = useState(null);
@@ -1022,37 +1014,15 @@ export default function App() {
     // volta che la scheda torna davanti, e una copertina mandata senza l'ok
     // era su una porta morta (il tablet mostrava il libro di prima). Un
     // oggetto nuovo rifa' l'invio; la chiave confermata lo ferma.
-    // la rete del guscio (`lib/reteGuscio.js`) vive con la sua porta, e
-    // vale solo da quando il guscio dice di saperla usare (`SA_RETE`)
-    // la rete, una volta che il guscio ha detto di saperla usare, resta
-    // anche quando la porta cambia: e' la stessa
     const riparti = (porta) => {
       sfondoMandato.current = dopoIlSaluto(sfondoMandato.current, sfondoConfermato.current);
-      setGuscio((g) => ({ porta, ...(g?.rete ? { rete: g.rete } : {}) }));
+      setGuscio({ porta });
     };
-    // UNA RETE SOLA per tutte le porte (`lib/reteGuscio.js`): il guscio
-    // risponde sul canale di adesso, e la richiesta partita dalla porta di
-    // prima deve ritrovare chi la aspetta
-    const rete = nuovaReteGuscio(() => {
-      throw new Error("nessuna porta");
-    });
     const saluto = (e) => {
       annotaMessaggio(e);
       const porta = portaDelGuscio(e, window.location.origin);
       if (!porta) return;
-      rete.porta((s) => porta.postMessage(s));
       porta.onmessage = (m) => {
-        // le risposte della rete del guscio: MangaDex, chiesto col nome dell'app
-        if (rete.ricevi(m.data)) return;
-        const sa = statoAvvisi(m.data);
-        if (sa) {
-          setAvvisi(sa);
-          return;
-        }
-        if (m.data === SA_RETE) {
-          setGuscio((g) => (g && g.porta === porta ? { ...g, rete } : g));
-          return;
-        }
         // il saluto viaggia sulla porta: si risponde li', o il guscio risaluta
         if (m.data === SALUTO) {
           porta.postMessage(CIAO);
@@ -1346,6 +1316,10 @@ export default function App() {
   // QUEL CHE GOOGLE DRIVE HA LASCIATO QUI se ne va da solo (`avanziDrive.js`)
   useEffect(() => {
     togliAvanziDrive({ togliAux: removeAux }).catch(() => {});
+  }, []);
+  // e cosi' quel che la stanza dei manga, tolta, ha lasciato (`avanziManga.js`)
+  useEffect(() => {
+    avanziManga();
   }, []);
 
   // si timbra solo quel che viaggia: la quarta di copertina scaricata
@@ -1720,73 +1694,6 @@ export default function App() {
     filoImport.current = null;
   };
 
-  // SCARICARE I CAPITOLI DA MANGADEX (`lib/mangadex.js`): un lavoro lungo,
-  // vive qui, un capitolo alla volta; ogni CBZ entra dalla porta di sempre
-  // (`importFiles`) e la biblioteca di ADESSO lo prende. Un intoppo e' di
-  // quel capitolo, il giro continua e alla fine si racconta.
-  const [scarico, setScarico] = useState(null);
-  const filoScarico = useRef(null);
-  // MANGADEX RESPINGE LE PAGINE WEB (la sfida anti-bot): nel guscio le
-  // richieste passano da lui, col nome dell'app; nel browser vanno dirette
-  // e la stanza dice perche' non rispondono
-  const reteMangadex = guscio?.rete?.fetch || null;
-  // LE SERIE SEGUITE VANNO AL GUSCIO, per gli avvisi ad app chiusa: a ogni
-  // porta nuova (il guscio di prima puo' essere stato ucciso) e a ogni cambio
-  // della lista nella stanza. Solo a un guscio che sa la rete: e' quello che
-  // sa leggere un messaggio in JSON che non e' la copertina
-  const mandaSeguite = (lista) => {
-    if (!guscio?.rete || !guscio.porta) return;
-    try {
-      guscio.porta.postMessage(messaggioSeguite(lista));
-    } catch {
-      /* una porta morta: il prossimo saluto rimanda */
-    }
-  };
-  useEffect(() => {
-    if (guscio?.rete && guscio.porta) mandaSeguite(leggiSerie());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [guscio?.porta, guscio?.rete]);
-  async function scaricaCapitoli(serie, caps) {
-    if (filoScarico.current || !caps?.length) return;
-    const mio = {};
-    filoScarico.current = mio;
-    const vivo = () => filoScarico.current === mio;
-    const chiedi = reteMangadex || ((u, o) => fetch(u, o));
-    let fatti = 0;
-    const guai = [];
-    try {
-      for (const [i, cap] of caps.entries()) {
-        if (!vivo()) break;
-        const nome = nomeCapitolo(serie, cap);
-        setScarico({ i, totale: caps.length, nome, pagina: 0, pagine: 0 });
-        try {
-          const file = await scaricaCapitolo(serie, cap, {
-            fetch: chiedi,
-            ritmo: ritmoComune,
-            vivo,
-            onProgress: (p) => vivo() && setScarico({ i, totale: caps.length, nome, ...p }),
-          });
-          const esito = await importFiles([file], loadBooks());
-          if (esito.added.length) {
-            updateBooks([...loadBooks(), ...esito.added]);
-            fatti += 1;
-          } else guai.push(`«${nome}»: ${esito.errors[0]?.reason || "già in biblioteca"}`);
-        } catch (e) {
-          if (!vivo()) break;
-          guai.push(`«${nome}»: ${spiegaMangadex(e)}`);
-        }
-      }
-      if (fatti) runSync.current(true);
-      const frase = fatti ? (fatti === 1 ? "1 capitolo scaricato nella biblioteca" : `${fatti} capitoli scaricati nella biblioteca`) : "Nessun capitolo scaricato";
-      notify([frase, !vivo() ? "fermato" : "", ...guai.slice(0, 2)].filter(Boolean).join(" · "));
-    } finally {
-      if (filoScarico.current === mio) filoScarico.current = null;
-      setScarico(null);
-    }
-  }
-  const fermaScarico = () => {
-    filoScarico.current = null;
-  };
 
   // I LAVORI SUL DISCO (riordinare, convertire): lunghi, vivono qui, si
   // vedono e si fermano da ogni sezione, uno alla volta.
@@ -2004,7 +1911,6 @@ export default function App() {
   if (diaryOpen) livelli.push(() => setDiaryOpen(false));
   if (quadernoOpen) livelli.push(() => setQuadernoOpen(false));
   if (prendereOpen) livelli.push(() => setPrendereOpen(false));
-  if (serieOpen) livelli.push(() => setSerieOpen(false));
   if (syncOpen) livelli.push(() => setSyncOpen(false));
   if (themeOpen) livelli.push(() => setThemeOpen(false));
   if (mappaOpen) livelli.push(() => setMappaOpen(false));
@@ -2088,7 +1994,7 @@ export default function App() {
   }, [guscio, sfondo, idScheda, copVScheda, verso]);
   const nextBook = readingBook ? nextInSaga(readingBook, books) : null;
   flags.current.reading = !!readingBook;
-  flags.current.lavoroLungo = !!(lex || fan || imm || ill || wikt || lavoro || importo || hdd || scarico);
+  flags.current.lavoroLungo = !!(lex || fan || imm || ill || wikt || lavoro || importo || hdd);
 
   useEffect(() => {
     if (readingId && music.current) {
@@ -2277,7 +2183,6 @@ export default function App() {
             onDiary={() => setDiaryOpen(true)}
             onQuaderno={() => setQuadernoOpen(true)}
             onDaPrendere={() => setPrendereOpen(true)}
-            onSerie={() => setSerieOpen(true)}
           />
         )}
         {section === "library" && (
@@ -2338,10 +2243,8 @@ export default function App() {
         )}
       </main>
       </div>
-      {(lavoro || importo || hdd || lex || fan || imm || ill || wikt || scarico || restanti.length > 0) && (
+      {(lavoro || importo || hdd || lex || fan || imm || ill || wikt || restanti.length > 0) && (
         <BarraLavoro
-          scarico={scarico}
-          onFermaScarico={fermaScarico}
           lex={lex}
           onFermaLex={fermaLex}
           fan={fan}
@@ -2455,26 +2358,6 @@ export default function App() {
         <Quaderno books={books} onClose={() => setQuadernoOpen(false)} onReadAt={(id, dove) => handleRead(id, dove)} />
       )}
       {prendereOpen && <DaPrendere books={books} onClose={() => setPrendereOpen(false)} />}
-      {serieOpen && (
-        <Suspense fallback={null}>
-          <SerieSeguite
-            books={books}
-            onClose={() => setSerieOpen(false)}
-            onApri={(id) => {
-              setSerieOpen(false);
-              handleRead(id);
-            }}
-            onScarica={scaricaCapitoli}
-            scarico={scarico}
-            rete={reteMangadex}
-            guscioVecchio={!!guscio && !guscio.rete}
-            guscioMuto={!guscio && nelGuscio()}
-            avvisi={avvisi}
-            nelGuscio={!!guscio || nelGuscio()}
-            onLista={mandaSeguite}
-          />
-        </Suspense>
-      )}
       </Suspense>
       {readingBook && (
         // L'ANELLO STRETTO. Il reader è la parte più complicata dell'app,
