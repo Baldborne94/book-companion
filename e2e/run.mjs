@@ -876,6 +876,48 @@ const SCENE = [
     },
   },
   {
+    // segnalato dal lettore: «il player riproduce sempre la stessa canzone…
+    // sto ascoltando la raccolta di Warhammer». Il libro ricordava il brano
+    // e non la raccolta: «▶ Riprendi» lo suonava da solo, in ripetizione
+    nome: "la musica di un libro riprende la sua raccolta, e la raccolta va al brano dopo",
+    async fai({ browser }) {
+      const d = await dispositivo(browser, { misura: TABLET });
+      const dove = () => d.p.evaluate(() => (document.body.innerText.match(/Notti · (\d) di 3/) || [])[1] || null);
+      // il libro prima: entrare in biblioteca ricarica la pagina
+      await importa(d.p, "La nebbia.epub", await epub(), "application/epub+zip");
+      await d.p.goto(`${URL_APP}?apri=musica`);
+      await d.p.getByRole("button", { name: "＋ Aggiungi" }).click();
+      for (const nome of ["Pioggia", "Camino", "Arpa"]) await d.p.setInputFiles('input[accept="audio/*"]', { name: `${nome}.wav`, mimeType: "audio/wav", buffer: wav(3) });
+      await finche(() => d.p.getByText("Arpa", { exact: true }).count(), 10000, "le melodie non entrano");
+      await d.p.getByRole("tab", { name: /Raccolte/ }).click();
+      await d.p.getByRole("button", { name: "＋ Nuova raccolta" }).click();
+      await d.p.getByPlaceholder(/Come la chiami/).fill("Notti");
+      await d.p.getByRole("button", { name: "✧ Crea" }).click();
+      for (const nome of ["Pioggia", "Camino", "Arpa"]) await d.p.getByRole("button", { name: nome }).first().click();
+      await d.p.getByRole("button", { name: "Fatto" }).first().click();
+      await d.p.getByRole("button", { name: /In ordine/ }).first().click();
+      await finche(async () => (await dove()) === "1", 8000, "la raccolta non parte");
+      await finche(async () => (await dove()) === "2", 10000, "nella sala, finito il brano, la raccolta non va avanti");
+      // aperto un libro con la raccolta che suona, il libro la ricorda
+      await d.p.getByRole("button", { name: "Libreria" }).first().click();
+      await d.p.getByText("La nebbia").first().click();
+      await d.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      await finche(() => d.p.evaluate(() => Object.keys(localStorage).some((k) => /^bc_music_(?!favs|lists)/.test(k) && JSON.parse(localStorage.getItem(k))?.raccolta)), 10000, "il libro non ricorda la raccolta");
+      // l'app riaperta, musica spenta: il libro propone la sua raccolta
+      await d.p.goto(`${URL_APP}?apri=libreria`);
+      await d.p.getByText("La nebbia").first().click();
+      await d.p.getByRole("button", { name: /Apri il libro|Continua|Comincia/ }).first().click();
+      await finche(() => d.p.getByText(/Questo libro suona con la raccolta «Notti»/).count(), 10000, "il libro non propone la sua raccolta");
+      await d.p.getByRole("button", { name: "▶ Riprendi" }).click();
+      const src = () => d.p.evaluate(() => document.querySelector("audio")?.src || "");
+      const primo = await finche(() => src(), 8000, "«▶ Riprendi» non suona niente");
+      if (await d.p.evaluate(() => document.querySelector("audio")?.loop)) throw new Error("il brano ripreso gira in ripetizione, da solo");
+      // finito il brano (tre secondi), suona quello dopo della raccolta
+      await finche(async () => (await src()) && (await src()) !== primo, 10000, "finito il brano, non arriva quello dopo");
+      return { guasti: d.guasti, nota: "ripresa la raccolta dal suo brano, e finito il brano e' arrivato il prossimo" };
+    },
+  },
+  {
     // chiesto dal lettore davanti alle raccolte dei manga: «permettimi di
     // mettere tutti i volumi all'interno di una raccolta come letti o meno e
     // di valutare l'intera saga con un suo voto»

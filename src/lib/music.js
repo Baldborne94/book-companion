@@ -270,6 +270,33 @@ export function getBookMusic(bookId) {
   }
 }
 
+// IL LEGAME FRA UN LIBRO E LA SUA MUSICA porta anche la RACCOLTA che
+// suonava. Segnalato dal lettore: «riproduce sempre la stessa canzone… sto
+// ascoltando la raccolta di Warhammer». Il libro ricordava solo il brano,
+// e «▶ Riprendi» lo suonava da solo, cioe' in ripetizione (una melodia
+// sola gira all'infinito): la raccolta non andava piu' avanti. Adesso si
+// riprende la raccolta da quel brano; `raccolta: null` e' una melodia
+// scelta da sola, e resta in ripetizione.
+export const legameMusica = (music) =>
+  music?.current ? { url: music.current.url, trackId: music.current.trackId, name: music.current.name, raccolta: music.queue?.raccolta || null } : null;
+
+const stessaMelodia = (a, b) => (a?.trackId ? a.trackId === b?.trackId : !!a?.url && a.url === b?.url);
+
+// come si riprende la musica di un libro: la raccolta dal suo brano, o la
+// melodia sola. Un legame scritto prima che si ricordasse la raccolta (senza
+// la chiave) prende la raccolta che contiene quel brano, se c'e'
+export function comeRiprendere(pair, { raccolte = getLists(), favs = getFavorites() } = {}) {
+  if (!pair) return null;
+  const vecchio = !("raccolta" in pair);
+  const candidate = vecchio ? raccolte : raccolte.filter((r) => r.id === pair.raccolta);
+  for (const r of candidate) {
+    const brani = braniDi(r, favs);
+    const da = brani.findIndex((b) => stessaMelodia(pair, b));
+    if (da >= 0) return { raccolta: r, brani, da };
+  }
+  return { melodia: pair };
+}
+
 export function setBookMusic(bookId, pair) {
   localStorage.setItem(`bc_music_${bookId}`, JSON.stringify(pair));
   localStorage.setItem(`bc_upd_${bookId}`, String(Date.now()));

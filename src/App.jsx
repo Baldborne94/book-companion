@@ -38,7 +38,7 @@ import { cercaNuovaVersione, cercaInSilenzio, siAggiornaNascosta } from "./lib/a
 import Guasto from "./components/Guasto.jsx";
 import Home from "./components/Home.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
-import { getBookMusic, setBookMusic } from "./lib/music.js";
+import { getBookMusic, setBookMusic, legameMusica, comeRiprendere } from "./lib/music.js";
 import { getJump, clearJump, getMarks } from "./lib/annotations.js";
 import { doppioniInBiblioteca } from "./lib/doppioni.js";
 import { daAvvisare } from "./lib/oracle.js";
@@ -1916,13 +1916,16 @@ export default function App() {
     if (music.playing && music.current) {
       // il legame porta con se' la sorgente: un file ha il suo trackId,
       // un video il suo indirizzo
-      setBookMusic(id, { url: music.current.url, trackId: music.current.trackId, name: music.current.name });
+      setBookMusic(id, legameMusica(music));
     } else {
-      const pair = getBookMusic(id);
-      if (pair) {
-        notify(`Questo libro suona con «${pair.name || "la sua melodia"}»`, {
+      const come = comeRiprendere(getBookMusic(id));
+      if (come) {
+        notify(come.raccolta ? `Questo libro suona con la raccolta «${come.raccolta.name}»` : `Questo libro suona con «${come.melodia.name || "la sua melodia"}»`, {
           label: "▶ Riprendi",
-          onClick: () => playerRef.current?.play(pair),
+          onClick: () =>
+            come.raccolta
+              ? playerRef.current?.playQueue(come.brani, false, { da: come.da, raccolta: come.raccolta.id })
+              : playerRef.current?.play(come.melodia),
         });
       }
     }
@@ -2042,7 +2045,7 @@ export default function App() {
 
   useEffect(() => {
     if (readingId && music.current) {
-      setBookMusic(readingId, { url: music.current.url, trackId: music.current.trackId, name: music.current.name });
+      setBookMusic(readingId, legameMusica(music));
     }
   }, [music.current, readingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
