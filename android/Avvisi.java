@@ -85,8 +85,15 @@ public class Avvisi extends JobService {
             return stato(app);
         }
         scrivi(app, dopo);
-        if (dopo.length() > 0) programma(app);
-        else togli(app);
+        // un rifiuto di Android al lavoro periodico si dice alla pagina, e il
+        // resto del guscio va avanti
+        try {
+            if (dopo.length() > 0) programma(app);
+            else togli(app);
+        } catch (Throwable e) {
+            Log.w(TAG, "il controllo periodico non parte: " + e);
+            return STATO + "guasto";
+        }
         if (dopo.length() > 0 && daChiedere(app)) chiedi(app);
         return stato(app);
     }

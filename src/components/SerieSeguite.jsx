@@ -174,7 +174,7 @@ export default function SerieSeguite({ books, onClose, onApri, onScarica, scaric
           si vede quando esce un capitolo nuovo e si legge là.
         </p>
         {fraseAvvisi(avvisi, { nelGuscio, seguite: lista.length }) && (
-          <div style={{ fontSize: F.piccolo, color: avvisi === "no" ? C.accent : C.muted, lineHeight: 1.45, marginBottom: 12 }}>{fraseAvvisi(avvisi, { nelGuscio, seguite: lista.length })}</div>
+          <div style={{ fontSize: F.piccolo, color: avvisi === "no" || avvisi === "guasto" ? C.accent : C.muted, lineHeight: 1.45, marginBottom: 12 }}>{fraseAvvisi(avvisi, { nelGuscio, seguite: lista.length })}</div>
         )}
         {/* nel guscio vecchio la rete non c'e': lo si dice prima di cercare */}
         {guscioVecchio && (
@@ -262,7 +262,13 @@ export default function SerieSeguite({ books, onClose, onApri, onScarica, scaric
                       Smetti di seguire
                     </button>
                   </div>
-                  {!caps.length && !c.caricando && !c.guasto && <div style={{ fontSize: F.nota, color: C.muted }}>Nessun capitolo in {NOME_LINGUA[serie.lingua] || serie.lingua}.</div>}
+                  {/* «Nessun capitolo» solo dopo un controllo andato a buon fine: prima
+                      del suo turno la serie aspetta, e lo si dice */}
+                  {!caps.length && !c.caricando && !c.guasto && (
+                    <div style={{ fontSize: F.nota, color: C.muted }}>
+                      {c.lista ? `Nessun capitolo in ${NOME_LINGUA[serie.lingua] || serie.lingua}.` : "In attesa del controllo dei capitoli…"}
+                    </div>
+                  )}
                   {inVista.map((cap) => {
                     const libro = nellaBiblioteca(books, serie, cap);
                     const ospitato = !cap.esterno && cap.pagine > 0;

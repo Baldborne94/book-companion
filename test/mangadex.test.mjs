@@ -193,6 +193,9 @@ export default async function (t) {
   t.eq("cambiare lingua azzera il conto", cambiaLingua(lista, "b1", "en")[0].lingua + cambiaLingua([s], "b1", "en")[0].nuovi, "en0");
   t.eq("smettere la toglie", smetti(lista, "b1").length, 0);
 
+  // il guscio parla la stessa lingua della pagina
+  const avvisiJava = readFileSync("android/Avvisi.java", "utf8");
+  const guscioJava = readFileSync("android/SchermataDiBlocco.java", "utf8");
   // GLI AVVISI AD APP CHIUSA: cosa va al guscio, cosa torna
   const daMandare = JSON.parse(messaggioSeguite([
     { id: "op", titolo: "One Piece", lingua: "en", ultimo: 1197, copertina: "x", nuovi: 2 },
@@ -207,11 +210,10 @@ export default async function (t) {
   t.c("la stanza dice gli avvisi accesi", /anche ad app chiusa/.test(fraseAvvisi("si", { nelGuscio: true, seguite: 2 })));
   t.c("…spenti, con la strada per riaccenderli", /Impostazioni Android → Notifiche → Book Companion/.test(fraseAvvisi("no", { nelGuscio: true, seguite: 1 })));
   t.c("…la finestra di Android aperta", /rispondi sì/.test(fraseAvvisi("chiedo", { nelGuscio: true, seguite: 1 })));
+  t.c("…e il rifiuto di Android al controllo periodico, che si dice (APK 1160)", statoAvvisi(`${STATO_AVVISI}guasto`) === "guasto" && /non ha accettato il controllo periodico/.test(fraseAvvisi("guasto", { nelGuscio: true, seguite: 1 })));
+  t.c("UN GUASTO NEGLI AVVISI NON FA CADERE IL GUSCIO: il messaggio della pagina si legge dentro una rete", /try \{\s*ricevi\(app, messaggio\);\s*\} catch \(Throwable e\)/.test(guscioJava) && /try \{\s*if \(dopo\.length\(\) > 0\) programma\(app\);\s*else togli\(app\);\s*\} catch \(Throwable e\) \{[\s\S]{0,120}return STATO \+ "guasto";/.test(avvisiJava));
   t.c("…nel browser, che li manda l'app Android", /app Android/.test(fraseAvvisi(null, { seguite: 1 })));
   t.c("…e niente senza serie seguite, o nel guscio prima della risposta", fraseAvvisi("si", { nelGuscio: true, seguite: 0 }) === null && fraseAvvisi(null, { nelGuscio: true, seguite: 3 }) === null);
-  // il guscio parla la stessa lingua della pagina
-  const avvisiJava = readFileSync("android/Avvisi.java", "utf8");
-  const guscioJava = readFileSync("android/SchermataDiBlocco.java", "utf8");
   t.c("il guscio risponde con lo stesso segno che la pagina legge", avvisiJava.includes(`STATO = "${STATO_AVVISI}"`) && /STATO \+ "si"/.test(avvisiJava) && /STATO \+ \(daChiedere\(c\) \? "chiedo" : "no"\)/.test(avvisiJava));
   t.c("il guscio legge le serie seguite prima della copertina, e risponde lo stato", /optJSONArray\("seguite"\);\s*if \(seguite != null\) \{\s*mandaAllaPagina\(Avvisi\.seguite\(app, seguite\)\);/.test(guscioJava) && guscioJava.indexOf('optJSONArray("seguite")') < guscioJava.indexOf('optJSONObject("sfondo")'));
   t.c("chiede a MangaDex col nome dell'app, ogni tre ore, con la rete", /setRequestProperty\("User-Agent", SchermataDiBlocco\.nomeDellApp\(app\)\)/.test(avvisiJava) && /OGNI = 3L \* 60 \* 60 \* 1000/.test(avvisiJava) && /setRequiredNetworkType\(JobInfo\.NETWORK_TYPE_ANY\)/.test(avvisiJava) && /setPersisted\(true\)/.test(avvisiJava));

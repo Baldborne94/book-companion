@@ -59,6 +59,9 @@ export async function cucitura(t) {
   // gli avvisi dei capitoli nuovi ad app chiusa (`android/Avvisi.java`): le
   // notifiche, il lavoro periodico che sopravvive al riavvio, e il servizio
   // che solo il sistema puo' legare
+  // Android 14 rifiuta un lavoro periodico con la rete a chi non dichiara di
+  // guardare la rete: l'APK 1160 cadeva a ogni apertura (SecurityException)
+  t.c("il permesso di guardare la rete, che il lavoro con la rete vuole da Android 14", /android\.permission\.ACCESS_NETWORK_STATE"\/>[\s\S]*<application/.test(c.manifest));
   t.c("il permesso delle notifiche e quello del riavvio", /android\.permission\.POST_NOTIFICATIONS"\/>[\s\S]*<application/.test(c.manifest) && /android\.permission\.RECEIVE_BOOT_COMPLETED"\/>[\s\S]*<application/.test(c.manifest));
   t.c("il lavoro degli avvisi dentro l'applicazione, legabile solo dal sistema", /<application[\s\S]*<service android:name="\.Avvisi" android:permission="android\.permission\.BIND_JOB_SERVICE" android:exported="false"\/>[\s\S]*<\/application>/.test(c.manifest));
   t.c("e quello di leggere lo sfondo di prima, fino ad Android 12", /READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"\/>[\s\S]*<application/.test(c.manifest));
