@@ -104,6 +104,10 @@ export default async function (t) {
   t.c("la scheda si scrive con le entita' giuste", /<Series>Fist &amp; &lt;Sword&gt;<\/Series>/.test(comicInfo({ serie: "Fist & <Sword>", numero: 2 })) && /<Title>Capitolo 2<\/Title>/.test(comicInfo({ serie: "x", numero: 2 })));
   t.c("un coreano e' manga senza verso", /<Manga>Yes<\/Manga>/.test(comicInfo({ serie: "x", numero: 1, originale: "ko" })) && !/<Manga>/.test(comicInfo({ serie: "x", numero: 1 })));
   t.c("…e la riga Web porta al capitolo su MangaDex", /<Web>https:\/\/mangadex\.org\/chapter\/c1<\/Web>/.test(comicInfo({ serie: "x", idCapitolo: "c1" })));
+  // chi scrive e chi legge la scheda si capiscono: l'id del capitolo torna
+  // com'era, ed e' quello con cui la stanza lo riconosce in biblioteca
+  const idVero = "5e2f1a3b-1111-2222-3333-444455556666";
+  t.eq("l'id scritto nella scheda torna all'import", leggiComicInfo(comicInfo({ serie: "Berserk", numero: 1, idCapitolo: idVero })).mangadex, idVero);
   t.eq("un numero con la virgola nel nome del file", nomeFile(serie, { numero: 12.5 }), "Berserk 012.5.cbz");
   t.eq("i caratteri che un file non vuole spariscono", nomeFile({ titolo: 'Re: Zero / "Arc"' }, { numero: 3 }), "Re Zero Arc 003.cbz");
   t.eq("il nome del capitolo per la riga", nomeCapitolo(serie, cap), "Berserk 1");
@@ -190,14 +194,19 @@ export default async function (t) {
 
   // il capitolo che e' gia' in biblioteca, e quelli da scaricare
   const books = [
-    { id: "k1", fileType: "cbz", saga: "berserk", sagaOrder: 386 },
-    { id: "k2", fileType: "epub", saga: "Berserk", sagaOrder: 1 },
-    { id: "k3", fileType: "cbz", saga: "The Berserk", sagaOrder: 2 },
+    { id: "k1", fileType: "cbz", saga: "berserk", sagaOrder: 386, mangadex: "aaaaaaaa-0000-0000-0000-000000000386" },
+    { id: "k2", fileType: "epub", saga: "Berserk", sagaOrder: 1, mangadex: "x" },
+    { id: "k3", fileType: "cbz", saga: "The Berserk", sagaOrder: 2, title: "Capitolo 2" },
+    { id: "v3", fileType: "cbz", saga: "Berserk", sagaOrder: 3, title: "Berserk Vol. 3" },
+    { id: "k4", fileType: "cbr", saga: "Altro", sagaOrder: 9, mangadex: "cccccccc-0000-0000-0000-000000000004", title: "x" },
   ];
-  t.eq("stessa saga e stesso numero, un fumetto", nellaBiblioteca(books, serie, { numero: 386 })?.id, "k1");
+  t.eq("il suo id lo riconosce, qualunque saga abbia la scheda", nellaBiblioteca(books, serie, { id: "cccccccc-0000-0000-0000-000000000004", numero: 4 })?.id, "k4");
+  t.eq("stessa saga e stesso numero di un capitolo di MangaDex: un'altra traduzione, gia' in casa", nellaBiblioteca(books, serie, { id: "altro", numero: 386 })?.id, "k1");
   t.eq("un romanzo con lo stesso numero non conta", nellaBiblioteca(books, serie, { numero: 1 }), null);
-  t.eq("l'articolo davanti non divide", nellaBiblioteca(books, serie, { numero: 2 })?.id, "k3");
-  t.eq("senza numero non si cerca", nellaBiblioteca(books, serie, { numero: null }), null);
+  t.eq("scaricato prima dell'id: saga, numero e il titolo del capitolo (l'articolo davanti non divide)", nellaBiblioteca(books, serie, { numero: 2 })?.id, "k3");
+  t.eq("UN VOLUME NON E' UN CAPITOLO: il volume 3 non e' il capitolo 3 (Gachiakuta sul tablet)", nellaBiblioteca(books, serie, { id: "z", numero: 3, titolo: "IMBUED" }), null);
+  t.eq("…neanche quando il capitolo non ha titolo", nellaBiblioteca(books, serie, { numero: 3 }), null);
+  t.eq("senza numero non si cerca per saga", nellaBiblioteca(books, serie, { numero: null }), null);
   const da = daScaricare(caps, books, serie);
   t.c("da scaricare: ospitati, con pagine, non ancora qui", !da.some((c) => c.numero === 386 || c.numero === 2 || c.esterno) && da.some((c) => c.numero === 1) && da.length === caps.length - 2);
   t.eq("la riga del lavoro", fraseScarico({ i: 0, totale: 3, nome: "Berserk 386", pagina: 2, pagine: 14 }), "📡 Scarico «Berserk 386» (1 di 3) · pagina 3 di 14");

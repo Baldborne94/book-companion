@@ -353,10 +353,22 @@ export function fraseSerie(lista) {
 // IL CAPITOLO CHE STA GIA' IN BIBLIOTECA: stessa saga (com'e' scritta in
 // casa, maiuscole a parte) e stesso numero, e che sia un fumetto
 const chiave = (s) => String(s || "").trim().toLowerCase().replace(/^(the|il|lo|la|i|gli|le|l')\s+/, "");
+// IL CAPITOLO GIA' IN CASA: quello scaricato da MangaDex porta il suo id
+// (`mangadex`, dal Web della sua scheda); con saga e numero vale solo un
+// altro capitolo di MangaDex (un'altra traduzione dello stesso numero), o
+// uno scaricato prima che la scheda tenesse l'id, che ha per titolo quello
+// del capitolo. MAI UN VOLUME: sul tablet i volumi 1-3 di Gachiakuta
+// passavano per i capitoli 1-3, e ai rimandi a K MANGA la stanza diceva
+// «📖 Leggi» al posto di «↗ Leggi là»
 export function nellaBiblioteca(books, serie, cap) {
-  if (!cap || cap.numero == null) return null;
+  if (!cap) return null;
+  const fumetti = (books || []).filter((b) => ["cbz", "cbr"].includes(b.fileType));
+  const proprio = cap.id ? fumetti.find((b) => b.mangadex === cap.id) : null;
+  if (proprio) return proprio;
+  if (cap.numero == null) return null;
   const k = chiave(serie.titolo);
-  return (books || []).find((b) => ["cbz", "cbr"].includes(b.fileType) && chiave(b.saga) === k && Number(b.sagaOrder) === cap.numero) || null;
+  const titolo = chiave(cap.titolo || `Capitolo ${cap.numero}`);
+  return fumetti.find((b) => chiave(b.saga) === k && Number(b.sagaOrder) === cap.numero && (b.mangadex || chiave(b.title) === titolo)) || null;
 }
 
 export const daScaricare = (capitoli, books, serie) => capitoli.filter((c) => !c.esterno && c.pagine > 0 && !nellaBiblioteca(books, serie, c));
