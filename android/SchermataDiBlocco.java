@@ -568,6 +568,13 @@ public final class SchermataDiBlocco {
             chiediAllaRete(app, rete);
             return;
         }
+        // le serie seguite, per gli avvisi ad app chiusa (`Avvisi.java`): il
+        // guscio risponde con lo stato delle notifiche
+        org.json.JSONArray seguite = radice.optJSONArray("seguite");
+        if (seguite != null) {
+            mandaAllaPagina(Avvisi.seguite(app, seguite));
+            return;
+        }
         JSONObject sfondo = radice.optJSONObject("sfondo");
         if (sfondo == null) return;
         String id = sfondo.optString("id", "");
@@ -685,7 +692,7 @@ public final class SchermataDiBlocco {
         }
     }
 
-    private static void mandaAllaPagina(String testo) {
+    static void mandaAllaPagina(String testo) {
         mano.post(() -> {
             CustomTabsSession s = sessione();
             if (s != null) s.postMessage(testo, null);

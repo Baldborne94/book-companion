@@ -55,7 +55,7 @@ import { tipiDaScegliere } from "./lib/importBook.js";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, convertiLibroInCbz } from "./lib/sync.js";
 import { riordinaDisco, fraseRiordino, fraseDaParte, fraseRimessi, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
 import { importaDaFuori, resoconto, importFiles } from "./lib/importBook.js";
-import { scaricaCapitolo, nomeCapitolo, spiega as spiegaMangadex, ritmoComune } from "./lib/mangadex.js";
+import { scaricaCapitolo, nomeCapitolo, spiega as spiegaMangadex, ritmoComune, leggiSerie, messaggioSeguite, statoAvvisi, serieDalLancio } from "./lib/mangadex.js";
 import { nuovaReteGuscio, SA_RETE } from "./lib/reteGuscio.js";
 import { togliAvanziDrive } from "./lib/avanziDrive.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
@@ -910,7 +910,11 @@ export default function App() {
   const [diaryOpen, setDiaryOpen] = useState(false);
   const [quadernoOpen, setQuadernoOpen] = useState(false);
   const [prendereOpen, setPrendereOpen] = useState(false);
-  const [serieOpen, setSerieOpen] = useState(false);
+  // la notifica di un capitolo nuovo apre l'app su `/?serie=<id>`: si
+  // legge prima che `pulisciUrl` tolga la query
+  const [serieOpen, setSerieOpen] = useState(() => !!serieDalLancio(window.location.search, leggiSerie()));
+  // lo stato delle notifiche come lo dice il guscio (`android/Avvisi.java`)
+  const [avvisi, setAvvisi] = useState(null);
   const [mappaOpen, setMappaOpen] = useState(false);
   // il cammino di una saga: la guida intera con dentro i tuoi volumi
   const [cammino, setCammino] = useState(null);
@@ -1040,6 +1044,11 @@ export default function App() {
       porta.onmessage = (m) => {
         // le risposte della rete del guscio: MangaDex, chiesto col nome dell'app
         if (rete.ricevi(m.data)) return;
+        const sa = statoAvvisi(m.data);
+        if (sa) {
+          setAvvisi(sa);
+          return;
+        }
         if (m.data === SA_RETE) {
           setGuscio((g) => (g && g.porta === porta ? { ...g, rete } : g));
           return;
@@ -1721,6 +1730,22 @@ export default function App() {
   // richieste passano da lui, col nome dell'app; nel browser vanno dirette
   // e la stanza dice perche' non rispondono
   const reteMangadex = guscio?.rete?.fetch || null;
+  // LE SERIE SEGUITE VANNO AL GUSCIO, per gli avvisi ad app chiusa: a ogni
+  // porta nuova (il guscio di prima puo' essere stato ucciso) e a ogni cambio
+  // della lista nella stanza. Solo a un guscio che sa la rete: e' quello che
+  // sa leggere un messaggio in JSON che non e' la copertina
+  const mandaSeguite = (lista) => {
+    if (!guscio?.rete || !guscio.porta) return;
+    try {
+      guscio.porta.postMessage(messaggioSeguite(lista));
+    } catch {
+      /* una porta morta: il prossimo saluto rimanda */
+    }
+  };
+  useEffect(() => {
+    if (guscio?.rete && guscio.porta) mandaSeguite(leggiSerie());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guscio?.porta, guscio?.rete]);
   async function scaricaCapitoli(serie, caps) {
     if (filoScarico.current || !caps?.length) return;
     const mio = {};
@@ -2444,6 +2469,9 @@ export default function App() {
             rete={reteMangadex}
             guscioVecchio={!!guscio && !guscio.rete}
             guscioMuto={!guscio && nelGuscio()}
+            avvisi={avvisi}
+            nelGuscio={!!guscio || nelGuscio()}
+            onLista={mandaSeguite}
           />
         </Suspense>
       )}
