@@ -17,7 +17,7 @@ import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
 import { fumetto, fumettoGrosso, fumettoLungo, epub, epubConContorno, epubConPagine, pdf, wav, FRASE, mondoDisco, png, pngRighe } from "./libri.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
 import { lexicanumFinto, fandomFinto } from "./lexicanumFinto.mjs";
-import { mangadexFinto, PAGINE_PER_CAPITOLO } from "./mangadexFinto.mjs";
+import { mangadexFinto, PAGINE_PER_CAPITOLO, idCapitolo } from "./mangadexFinto.mjs";
 
 // le richieste del service worker passano dalle rotte del contesto solo
 // cosi' (Chromium): servono alla scena della melodia che suona mentre scende
@@ -2887,7 +2887,16 @@ const SCENE = [
       const d = await dispositivo(browser, {
         misura: TABLET,
         mangadex: mangadexFinto(chieste, { soloGuscio: true }),
-        prima: () => localStorage.setItem("bc_books", JSON.stringify([{ id: "m", title: "Mort", author: "Terry Pratchett", fileType: "epub", addedAt: 1 }])),
+        // e il volume 1 di Berserk: un volume non e' il capitolo 1 (sul tablet
+        // i volumi di Gachiakuta passavano per capitoli, «📖 Leggi» a un rimando)
+        prima: () =>
+          localStorage.setItem(
+            "bc_books",
+            JSON.stringify([
+              { id: "m", title: "Mort", author: "Terry Pratchett", fileType: "epub", addedAt: 1 },
+              { id: "v1", title: "Berserk Vol. 1", saga: "Berserk", sagaOrder: 1, fileType: "cbz", tipo: "manga", addedAt: 2 },
+            ]),
+          ),
       });
       const { p } = d;
       await p.goto(URL_APP);
@@ -2980,9 +2989,12 @@ const SCENE = [
       await finche(() => p.getByText(/📡 Scarico «Berserk 1»/).count(), 5000, "la riga del lavoro non compare");
       await finche(() => p.getByText(/1 capitolo scaricato nella biblioteca/).count(), 20000, "il capitolo non arriva in biblioteca");
       const libri = await p.evaluate(() => JSON.parse(localStorage.getItem("bc_books") || "[]"));
-      const cbz = libri.find((b) => b.saga === "Berserk" && Number(b.sagaOrder) === 1);
+      const cbz = libri.find((b) => b.saga === "Berserk" && Number(b.sagaOrder) === 1 && b.id !== "v1");
       if (!cbz) throw new Error(`il CBZ non e' in biblioteca con la saga e il numero: ${JSON.stringify(libri.map((b) => [b.title, b.saga, b.sagaOrder]))}`);
       if (cbz.fileType !== "cbz" || cbz.tipo !== "manga" || cbz.verso !== "rtl" || cbz.title !== "The Black Swordsman") throw new Error(`la scheda del capitolo e' sbagliata: ${JSON.stringify(cbz)}`);
+      // la scheda tiene l'id del capitolo: e' da quello che la stanza lo
+      // riconosce, mai da un volume con lo stesso numero
+      if (cbz.mangadex !== idCapitolo(1)) throw new Error(`la scheda del capitolo non tiene il suo id di MangaDex: ${cbz.mangadex}`);
       // nel guscio NIENTE va diretto a MangaDex: tutto porta il segno del guscio
       const dirette = chieste.filter((c) => !c.endsWith("(guscio)"));
       const dopo = dirette.filter((c) => !/title=berserk/.test(c));

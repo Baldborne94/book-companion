@@ -19,11 +19,14 @@ const capitolo = (id, chapter, pages, extra = {}) => ({
   attributes: { chapter, title: extra.title || "", pages, translatedLanguage: "en", publishAt: "2025-03-01T00:00:00+00:00", externalUrl: extra.esterno || null },
   relationships: [{ type: "scanlation_group", attributes: { name: extra.gruppo || "TAMT" } }],
 });
+// gli id come quelli veri (UUID): la scheda del capitolo scaricato tiene il
+// suo, e la stanza lo riconosce da quello
+export const idCapitolo = (n) => `cccccccc-0000-4000-8000-00000000000${n}`;
 const CAPITOLI = [
-  capitolo("c4", "4", 0, { esterno: "https://mangaplus.shueisha.co.jp/viewer/4", gruppo: "MangaPlus" }),
-  capitolo("c3", "3", 2, { title: "The Guardians of Desire" }),
-  capitolo("c2", "2", 2),
-  capitolo("c1", "1", 2, { title: "The Black Swordsman" }),
+  capitolo(idCapitolo(4), "4", 0, { esterno: "https://mangaplus.shueisha.co.jp/viewer/4", gruppo: "MangaPlus" }),
+  capitolo(idCapitolo(3), "3", 2, { title: "The Guardians of Desire" }),
+  capitolo(idCapitolo(2), "2", 2),
+  capitolo(idCapitolo(1), "1", 2, { title: "The Black Swordsman" }),
 ];
 export const PAGINE_PER_CAPITOLO = 2;
 
@@ -45,8 +48,8 @@ export const mangadexFinto = (chieste = [], { soloGuscio = false } = {}) => asyn
       return route.fulfill({ headers, json: { result: "ok", response: "collection", data: "berserk".includes(t) ? [MANGA] : [], total: 1 } });
     }
     if (u.pathname === "/manga/b1/feed") return route.fulfill({ headers, json: { result: "ok", response: "collection", data: CAPITOLI, total: CAPITOLI.length } });
-    const cap = u.pathname.match(/^\/at-home\/server\/(c\d)$/);
-    if (cap) return route.fulfill({ headers, json: { result: "ok", baseUrl: "https://nodo.mangadex.network", chapter: { hash: `h${cap[1]}`, data: Array.from({ length: PAGINE_PER_CAPITOLO }, (_, i) => `${i + 1}-${cap[1]}.png`), dataSaver: [] } } });
+    const cap = u.pathname.match(/^\/at-home\/server\/cccccccc-0000-4000-8000-00000000000(\d)$/);
+    if (cap) return route.fulfill({ headers, json: { result: "ok", baseUrl: "https://nodo.mangadex.network", chapter: { hash: `hc${cap[1]}`, data: Array.from({ length: PAGINE_PER_CAPITOLO }, (_, i) => `${i + 1}-c${cap[1]}.png`), dataSaver: [] } } });
     return route.fulfill({ status: 404, headers, json: { result: "error", errors: [{ detail: "non qui" }] } });
   }
   if (u.hostname === "nodo.mangadex.network") {
