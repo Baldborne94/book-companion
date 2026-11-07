@@ -353,6 +353,42 @@ export function fraseSerie(lista) {
 // IL CAPITOLO CHE STA GIA' IN BIBLIOTECA: stessa saga (com'e' scritta in
 // casa, maiuscole a parte) e stesso numero, e che sia un fumetto
 const chiave = (s) => String(s || "").trim().toLowerCase().replace(/^(the|il|lo|la|i|gli|le|l')\s+/, "");
+// GLI AVVISI AD APP CHIUSA (`android/Avvisi.java`): la pagina manda al
+// guscio le serie seguite (id, titolo, lingua, ultimo capitolo noto), lui
+// le controlla ogni tre ore e manda una notifica a capitolo nuovo, e
+// risponde con lo stato delle notifiche (`grimorio:avvisi:si|no|chiedo`)
+export const STATO_AVVISI = "grimorio:avvisi:";
+export const messaggioSeguite = (lista) =>
+  JSON.stringify({
+    seguite: (lista || [])
+      .filter((s) => s && s.id)
+      .map((s) => ({ id: s.id, titolo: s.titolo || "", lingua: s.lingua || "en", ...(Number.isFinite(s.ultimo) ? { ultimo: s.ultimo } : {}) })),
+  });
+export function statoAvvisi(dato) {
+  if (typeof dato !== "string" || !dato.startsWith(STATO_AVVISI)) return null;
+  const s = dato.slice(STATO_AVVISI.length);
+  return ["si", "no", "chiedo"].includes(s) ? s : null;
+}
+export function fraseAvvisi(stato, { nelGuscio = false, seguite = 0 } = {}) {
+  if (!seguite) return null;
+  if (stato === "si") return "🔔 Ti avviso io dei capitoli nuovi, anche ad app chiusa: ogni tre ore guardo MangaDex, e una notifica ti porta qui.";
+  if (stato === "no") return "🔕 Android non lascia mandare notifiche a Book Companion, quindi i capitoli nuovi li vedi solo qui e nell'Ingresso. Per gli avvisi: Impostazioni Android → Notifiche → Book Companion, e riaccendile.";
+  if (stato === "chiedo") return "🔔 Android ti chiede se Book Companion può mandarti notifiche: rispondi sì per gli avvisi dei capitoli nuovi.";
+  if (!nelGuscio) return "Gli avvisi ad app chiusa li manda l'app Android: qui i capitoli nuovi li vedi aprendo la stanza o nell'Ingresso.";
+  return null;
+}
+// la notifica apre l'app su `/?serie=<id>`: la stanza delle serie seguite,
+// solo se la serie c'e' ancora
+export function serieDalLancio(search, lista) {
+  let id;
+  try {
+    id = new URLSearchParams(search || "").get("serie");
+  } catch {
+    return null;
+  }
+  return id && (lista || []).some((s) => s.id === id) ? id : null;
+}
+
 // IL CAPITOLO GIA' IN CASA: quello scaricato da MangaDex porta il suo id
 // (`mangadex`, dal Web della sua scheda); con saga e numero vale solo un
 // altro capitolo di MangaDex (un'altra traduzione dello stesso numero), o

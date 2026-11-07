@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
 import {
   IN_VISTA, NOME_LINGUA, SITO,
-  cerca, capitoli, leggiSerie, scriviSerie, segui, smetti, cambiaLingua, conCapitoli, visti, nellaBiblioteca, daScaricare, spiega, ritmoComune,
+  cerca, capitoli, leggiSerie, fraseAvvisi, scriviSerie, segui, smetti, cambiaLingua, conCapitoli, visti, nellaBiblioteca, daScaricare, spiega, ritmoComune,
 } from "../lib/mangadex.js";
 
 // LE SERIE SEGUITE SU MANGADEX (`lib/mangadex.js`): cerca una serie,
@@ -73,10 +73,15 @@ function Copertina({ src: indirizzo, lato = 56, rete = null }) {
 
 const lingue = (s) => (s.lingue || []).map((l) => NOME_LINGUA[l] || l).join(", ");
 
-export default function SerieSeguite({ books, onClose, onApri, onScarica, scarico = null, rete: reteGuscio = null, guscioVecchio = false, guscioMuto = false }) {
+export default function SerieSeguite({ books, onClose, onApri, onScarica, scarico = null, rete: reteGuscio = null, guscioVecchio = false, guscioMuto = false, avvisi = null, nelGuscio = false, onLista }) {
   const rete = reteGuscio || diretta;
   const via = reteGuscio ? "guscio" : guscioMuto ? "muto" : null;
   const [lista, setLista] = useState(leggiSerie);
+  // ogni cambio della lista va al guscio, per gli avvisi ad app chiusa
+  useEffect(() => {
+    onLista?.(lista);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lista]);
   const [testo, setTesto] = useState("");
   const [trovate, setTrovate] = useState(null);
   const [cercando, setCercando] = useState(false);
@@ -168,6 +173,9 @@ export default function SerieSeguite({ books, onClose, onApri, onScarica, scaric
           fumetti, da leggere offline. I manga con licenza (One Piece, Kingdom…) lì hanno solo il rimando a chi li pubblica:
           si vede quando esce un capitolo nuovo e si legge là.
         </p>
+        {fraseAvvisi(avvisi, { nelGuscio, seguite: lista.length }) && (
+          <div style={{ fontSize: F.piccolo, color: avvisi === "no" ? C.accent : C.muted, lineHeight: 1.45, marginBottom: 12 }}>{fraseAvvisi(avvisi, { nelGuscio, seguite: lista.length })}</div>
+        )}
         {/* nel guscio vecchio la rete non c'e': lo si dice prima di cercare */}
         {guscioVecchio && (
           <div style={{ fontSize: F.piccolo, color: C.accent, marginBottom: 10, lineHeight: 1.45 }}>

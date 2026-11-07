@@ -2929,11 +2929,19 @@ const SCENE = [
         // davanti (`window.__riapri`)
         let attuale = null;
         window.__guscio = [];
+        window.__seguite = [];
         window.__lento = 0;
         const apri = () => {
         const canale = new MessageChannel();
         attuale = canale;
         canale.port1.onmessage = async (m) => {
+          // le serie seguite per gli avvisi: il guscio le tiene e dice lo
+          // stato delle notifiche, come `Avvisi.seguite`
+          if (typeof m.data === "string" && m.data.startsWith('{"seguite"')) {
+            window.__seguite.push(JSON.parse(m.data).seguite);
+            attuale.port1.postMessage("grimorio:avvisi:si");
+            return;
+          }
           if (typeof m.data !== "string" || !m.data.startsWith('{"rete"')) return;
           const r = JSON.parse(m.data).rete;
           window.__guscio.push(r.url);
@@ -2978,6 +2986,10 @@ const SCENE = [
         window.__lento = 0;
       });
       await stanza.getByText("✓ Seguita").waitFor({ timeout: 3000 });
+      // GLI AVVISI AD APP CHIUSA: la serie seguita va al guscio, e la stanza
+      // dice lo stato delle notifiche che il guscio risponde
+      await finche(() => p.evaluate(() => window.__seguite.some((l) => l.some((x) => x.id === "b1" && x.titolo === "Berserk" && x.lingua))), 5000, "la serie seguita non arriva al guscio");
+      await finche(() => stanza.getByText(/Ti avviso io dei capitoli nuovi/).count(), 5000, "la stanza non dice che gli avvisi sono accesi");
       await finche(() => stanza.getByText(/ultimo capitolo: 4/).count(), 8000, "la serie non dice l'ultimo capitolo");
       await stanza.getByRole("button", { name: /^Berserk/ }).click();
       const scarica = stanza.getByRole("button", { name: "⬇ Scarica", exact: true });
@@ -3007,8 +3019,17 @@ const SCENE = [
       await stanza.getByRole("button", { name: "📖 Leggi" }).click();
       await finche(() => p.evaluate(() => [...document.querySelectorAll("img")].some((i) => i.naturalWidth === 120 && i.naturalHeight === 180)), 15000, "il lettore dei fumetti non mostra la pagina scaricata");
       await p.keyboard.press("Escape");
+      // il guscio sa anche l'ultimo capitolo noto: da li' conta i nuovi
+      const ultima = await p.evaluate(() => window.__seguite.at(-1));
+      if (!ultima?.some((x) => x.id === "b1" && x.ultimo === 4)) throw new Error(`al guscio non arriva l'ultimo capitolo noto: ${JSON.stringify(ultima)}`);
       await p.goto(URL_APP);
       await finche(() => p.getByText(/1 serie seguita/).count(), 8000, "l'Ingresso non conta la serie seguita");
+      // LA NOTIFICA APRE LA STANZA: `/?serie=<id>`
+      await p.goto(`${URL_APP}?serie=b1`);
+      await finche(() => p.getByRole("dialog", { name: "Serie seguite" }).count(), 8000, "la notifica non apre la stanza delle serie seguite");
+      await p.goto(`${URL_APP}?serie=sconosciuta`);
+      await p.waitForTimeout(500);
+      if (await p.getByRole("dialog", { name: "Serie seguite" }).count()) throw new Error("una serie che non si segue apre la stanza");
       return { guasti: d.guasti };
     },
   },

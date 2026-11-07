@@ -56,6 +56,11 @@ export async function cucitura(t) {
   // solito non lo fa, ci va Chrome, e l'APK 1148 ha risposto «Permission
   // denied (missing INTERNET permission?)»
   t.c("e quello di andare in rete, per MangaDex", /android\.permission\.INTERNET"\/>[\s\S]*<application/.test(c.manifest));
+  // gli avvisi dei capitoli nuovi ad app chiusa (`android/Avvisi.java`): le
+  // notifiche, il lavoro periodico che sopravvive al riavvio, e il servizio
+  // che solo il sistema puo' legare
+  t.c("il permesso delle notifiche e quello del riavvio", /android\.permission\.POST_NOTIFICATIONS"\/>[\s\S]*<application/.test(c.manifest) && /android\.permission\.RECEIVE_BOOT_COMPLETED"\/>[\s\S]*<application/.test(c.manifest));
+  t.c("il lavoro degli avvisi dentro l'applicazione, legabile solo dal sistema", /<application[\s\S]*<service android:name="\.Avvisi" android:permission="android\.permission\.BIND_JOB_SERVICE" android:exported="false"\/>[\s\S]*<\/application>/.test(c.manifest));
   t.c("e quello di leggere lo sfondo di prima, fino ad Android 12", /READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"\/>[\s\S]*<application/.test(c.manifest));
   // il tablet del lettore e' un Android 14: li' lo sfondo si legge solo con
   // l'«accesso a tutti i file» (StorageManager.checkPermissionReadImages guarda

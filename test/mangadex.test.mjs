@@ -1,9 +1,10 @@
+import { readFileSync } from "node:fs";
 // LE SERIE SEGUITE SU MANGADEX (`lib/mangadex.js`): la fonte con la rete
 // finta nella forma vera dell'API, il CBZ che ne esce riaperto col lettore
 // dei fumetti dell'app, e la lista delle serie seguite con i capitoli nuovi.
 import {
   cerca, capitoli, pagine, scaricaCapitolo, comicInfo, nomeFile, nomeCapitolo, titoloDi, scegliCapitoli, daFeed, daRicerca,
-  nuovoRitmo, spiega, DNS_BLOCCA, indirizzoPrivato, GUSCIO_MUTO, respintaDalGuscio, segnalaPagina, leggiSerie, scriviSerie, segui, smetti, cambiaLingua, conCapitoli, visti, nuoviInTutto, fraseSerie,
+  nuovoRitmo, spiega, messaggioSeguite, statoAvvisi, fraseAvvisi, serieDalLancio, STATO_AVVISI, DNS_BLOCCA, indirizzoPrivato, GUSCIO_MUTO, respintaDalGuscio, segnalaPagina, leggiSerie, scriviSerie, segui, smetti, cambiaLingua, conCapitoli, visti, nuoviInTutto, fraseSerie,
   nellaBiblioteca, daScaricare, fraseScarico, copertinaUrl, PAGINA_FEED, COPERTINE, RAPPORTO, BASE, SFIDA,
 } from "../src/lib/mangadex.js";
 import { apriArchivio, leggiComicInfo, eComicInfo } from "../src/lib/fumetto.js";
@@ -191,6 +192,34 @@ export default async function (t) {
   t.eq("…nessuna, niente", fraseSerie([]), null);
   t.eq("cambiare lingua azzera il conto", cambiaLingua(lista, "b1", "en")[0].lingua + cambiaLingua([s], "b1", "en")[0].nuovi, "en0");
   t.eq("smettere la toglie", smetti(lista, "b1").length, 0);
+
+  // GLI AVVISI AD APP CHIUSA: cosa va al guscio, cosa torna
+  const daMandare = JSON.parse(messaggioSeguite([
+    { id: "op", titolo: "One Piece", lingua: "en", ultimo: 1197, copertina: "x", nuovi: 2 },
+    { id: "ga", titolo: "Gachiakuta", lingua: "it", ultimo: null },
+    { titolo: "senza id" },
+    null,
+  ]));
+  t.eq("al guscio vanno id, titolo, lingua e l'ultimo noto, nient'altro", JSON.stringify(daMandare), JSON.stringify({ seguite: [{ id: "op", titolo: "One Piece", lingua: "en", ultimo: 1197 }, { id: "ga", titolo: "Gachiakuta", lingua: "it" }] }));
+  t.eq("…una lista vuota spegne il giro", messaggioSeguite([]), '{"seguite":[]}');
+  t.eq("…senza lingua e' inglese", JSON.parse(messaggioSeguite([{ id: "x" }])).seguite[0].lingua, "en");
+  t.c("la risposta del guscio si legge, e solo quella", statoAvvisi(`${STATO_AVVISI}si`) === "si" && statoAvvisi(`${STATO_AVVISI}no`) === "no" && statoAvvisi(`${STATO_AVVISI}chiedo`) === "chiedo" && statoAvvisi(`${STATO_AVVISI}boh`) === null && statoAvvisi("grimorio:pronto") === null && statoAvvisi(null) === null);
+  t.c("la stanza dice gli avvisi accesi", /anche ad app chiusa/.test(fraseAvvisi("si", { nelGuscio: true, seguite: 2 })));
+  t.c("…spenti, con la strada per riaccenderli", /Impostazioni Android → Notifiche → Book Companion/.test(fraseAvvisi("no", { nelGuscio: true, seguite: 1 })));
+  t.c("…la finestra di Android aperta", /rispondi sì/.test(fraseAvvisi("chiedo", { nelGuscio: true, seguite: 1 })));
+  t.c("…nel browser, che li manda l'app Android", /app Android/.test(fraseAvvisi(null, { seguite: 1 })));
+  t.c("…e niente senza serie seguite, o nel guscio prima della risposta", fraseAvvisi("si", { nelGuscio: true, seguite: 0 }) === null && fraseAvvisi(null, { nelGuscio: true, seguite: 3 }) === null);
+  // il guscio parla la stessa lingua della pagina
+  const avvisiJava = readFileSync("android/Avvisi.java", "utf8");
+  const guscioJava = readFileSync("android/SchermataDiBlocco.java", "utf8");
+  t.c("il guscio risponde con lo stesso segno che la pagina legge", avvisiJava.includes(`STATO = "${STATO_AVVISI}"`) && /STATO \+ "si"/.test(avvisiJava) && /STATO \+ \(daChiedere\(c\) \? "chiedo" : "no"\)/.test(avvisiJava));
+  t.c("il guscio legge le serie seguite prima della copertina, e risponde lo stato", /optJSONArray\("seguite"\);\s*if \(seguite != null\) \{\s*mandaAllaPagina\(Avvisi\.seguite\(app, seguite\)\);/.test(guscioJava) && guscioJava.indexOf('optJSONArray("seguite")') < guscioJava.indexOf('optJSONObject("sfondo")'));
+  t.c("chiede a MangaDex col nome dell'app, ogni tre ore, con la rete", /setRequestProperty\("User-Agent", SchermataDiBlocco\.nomeDellApp\(app\)\)/.test(avvisiJava) && /OGNI = 3L \* 60 \* 60 \* 1000/.test(avvisiJava) && /setRequiredNetworkType\(JobInfo\.NETWORK_TYPE_ANY\)/.test(avvisiJava) && /setPersisted\(true\)/.test(avvisiJava));
+  t.c("la notifica apre la pagina che la stanza riconosce", /SITO \+ "\/\?serie=" \+ Uri\.encode\(id\)/.test(avvisiJava) && serieDalLancio(`?serie=${encodeURIComponent("op")}`, [{ id: "op" }]) === "op");
+  t.c("una serie nuova non e' nuova: si avvisa solo sopra un ultimo noto", /if \(!Double\.isNaN\(noto\) && numero > noto\) avvisa\(/.test(avvisiJava));
+  t.c("una lista vuota spegne il giro, e la finestra si chiede solo con delle serie", /if \(dopo\.length\(\) > 0\) programma\(app\);\s*else togli\(app\);/.test(avvisiJava) && /if \(dopo\.length\(\) > 0 && daChiedere\(app\)\) chiedi\(app\);/.test(avvisiJava));
+  t.eq("la notifica apre la stanza della serie", serieDalLancio("?serie=op&guscio=1150", [{ id: "op" }]), "op");
+  t.c("…solo se la serie e' ancora seguita", serieDalLancio("?serie=zz", [{ id: "op" }]) === null && serieDalLancio("", [{ id: "op" }]) === null && serieDalLancio("?apri=libreria", [{ id: "op" }]) === null);
 
   // il capitolo che e' gia' in biblioteca, e quelli da scaricare
   const books = [
