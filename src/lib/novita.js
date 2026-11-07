@@ -14,9 +14,11 @@
 //   capitolo uscito su MANGA Plus e' un capitolo uscito). Solo avvisi: dove
 //   leggerlo lo decide il lettore;
 // - una saga che Wikidata riconosce dai titoli dei suoi volumi
-//   (`lib/serieWikidata.js`): i volumi nuovi della serie, e non i libri
-//   dell'autore che con la saga non c'entrano. La si cerca aperta la
-//   raccolta seguita, una volta (`daCercare`, `conSerie`).
+//   (`lib/serieWikidata.js`): i volumi nuovi della serie, e anche i libri
+//   nuovi dei suoi autori fuori dalla saga (chiesto dal lettore: «magari è
+//   uscito qualcosa di nuovo, non per forza della stessa saga»); lo stesso
+//   libro il guscio lo dice una volta. La serie si cerca aperta la raccolta
+//   seguita, una volta (`daCercare`, `conSerie`).
 export const CHIAVE_NOVITA = "bc_novita";
 export const STATO_NOVITA = "grimorio:novita:";
 // gli autori di una saga che si guardano: i piu' presenti, al piu' tre (le
@@ -85,7 +87,7 @@ export const smettiNovita = (lista, id) => (lista || []).filter((x) => x.id !== 
 // al guscio va solo quel che gli serve per chiedere
 const perIlGuscio = (x) => {
   if (x.tipo === "manga") return { id: x.id, nome: x.nome, tipo: "manga", titolo: x.titolo || x.nome };
-  if (x.tipo === "serie") return { id: x.id, nome: x.nome, tipo: "serie", wikidata: (x.serie || []).map((s) => s.id) };
+  if (x.tipo === "serie") return { id: x.id, nome: x.nome, tipo: "serie", wikidata: (x.serie || []).map((s) => s.id), autori: (x.autori || []).slice(0, AUTORI_MAX) };
   return { id: x.id, nome: x.nome, tipo: "autori", autori: (x.autori || []).slice(0, AUTORI_MAX) };
 };
 export const messaggioNovita = (lista) => JSON.stringify({ novita: (lista || []).map(perIlGuscio) });
@@ -102,8 +104,9 @@ export function conSerie(lista, id, serie, quando = Date.now()) {
     return trovate.length ? { ...x, tipo: "serie", serie: trovate, cercata: quando } : { ...x, cercata: quando };
   });
 }
-// le parole della serie seguita
+// le parole della serie seguita, e dei suoi autori
 export const nomiSerie = (voce) => (voce?.serie || []).map((s) => `«${s.nome}»`).join(", ");
+const eGliAutori = (voce, articolo = "i") => ((voce?.autori || []).length ? ` e ${articolo} libri nuovi di ${voce.autori.join(", ")}` : "");
 
 export function statoNovita(dato) {
   if (typeof dato !== "string" || !dato.startsWith(STATO_NOVITA)) return null;
@@ -130,7 +133,7 @@ export function tastoNovita(r, lista) {
   const mia = (lista || []).find((x) => x.id === r.id);
   const come =
     mia?.tipo === "serie"
-      ? `i volumi nuovi di ${nomiSerie(mia)} (Wikidata)`
+      ? `i volumi nuovi di ${nomiSerie(mia)} (Wikidata)${eGliAutori(mia)}`
       : voce.tipo === "manga"
         ? "i capitoli nuovi"
         : voce.autori.length === 1 && voce.autori[0] === voce.nome
@@ -144,7 +147,7 @@ export function fraseSerie(voce, { cerco = false, guasto = false } = {}) {
   if (!voce) return "";
   if (voce.tipo === "serie") {
     const membri = (voce.serie || []).reduce((n, s) => n + (s.membri || 0), 0);
-    return `Su Wikidata: ${nomiSerie(voce)}${membri ? `, ${membri === 1 ? "1 volume" : `${membri} volumi`}` : ""}. Ti avviso dei volumi nuovi.`;
+    return `Su Wikidata: ${nomiSerie(voce)}${membri ? `, ${membri === 1 ? "1 volume" : `${membri} volumi`}` : ""}. Ti avviso dei volumi nuovi${eGliAutori(voce, "dei")}${(voce.autori || []).length ? ", anche fuori dalla saga" : ""}.`;
   }
   if (voce.tipo !== "autori" || !String(voce.id).startsWith("saga:")) return "";
   if (cerco) return "🔎 Cerco la saga su Wikidata…";

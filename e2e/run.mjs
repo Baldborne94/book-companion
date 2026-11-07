@@ -2974,16 +2974,16 @@ const SCENE = [
       await finche(() => tasto.count(), 5000, "nella raccolta della saga non c'e' il tasto delle novita'");
       if (chieste.length) throw new Error("Wikidata si e' chiesto prima di seguire la saga");
       await tasto.click();
-      await finche(() => p.getByText("Su Wikidata: «The Stormlight Archive», 3 volumi. Ti avviso dei volumi nuovi.").count(), 8000, "la raccolta non dice la serie trovata su Wikidata");
-      await finche(() => p.evaluate(() => window.__novita.some((l) => l.length === 1 && l[0].tipo === "serie" && l[0].wikidata.join() === "Q7766706")), 5000, "la serie non arriva al guscio");
-      if ((await p.getByRole("button", { name: "🔔 Ti avviso delle novità" }).getAttribute("title")) !== "Avviso: i volumi nuovi di «The Stormlight Archive» (Wikidata)") throw new Error("il tasto non dice cosa guarda");
+      await finche(() => p.getByText("Su Wikidata: «The Stormlight Archive», 3 volumi. Ti avviso dei volumi nuovi e dei libri nuovi di Brandon Sanderson, anche fuori dalla saga.").count(), 8000, "la raccolta non dice la serie trovata su Wikidata");
+      await finche(() => p.evaluate(() => window.__novita.some((l) => l.length === 1 && l[0].tipo === "serie" && l[0].wikidata.join() === "Q7766706" && l[0].autori.join() === "Brandon Sanderson")), 5000, "la serie e i suoi autori non arrivano al guscio");
+      if ((await p.getByRole("button", { name: "🔔 Ti avviso delle novità" }).getAttribute("title")) !== "Avviso: i volumi nuovi di «The Stormlight Archive» (Wikidata) e i libri nuovi di Brandon Sanderson") throw new Error("il tasto non dice cosa guarda");
       const quante = chieste.length;
       await p.getByRole("button", { name: /Tutte le raccolte/ }).click();
       await p.getByRole("button", { name: /^Cosmoverse/ }).first().click();
       await finche(() => p.getByText(/Su Wikidata: «The Stormlight Archive»/).count(), 5000, "riaperta, la raccolta non dice piu' la serie");
       if (chieste.length !== quante) throw new Error("riaperta la raccolta, la saga si e' cercata di nuovo");
       await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
-      await finche(() => p.getByText("volumi nuovi di «The Stormlight Archive» · Wikidata").count(), 5000, "le Impostazioni non dicono la serie seguita");
+      await finche(() => p.getByText("volumi nuovi di «The Stormlight Archive» · Wikidata; libri nuovi di Brandon Sanderson · Open Library").count(), 5000, "le Impostazioni non dicono la serie seguita");
       return { guasti: d.guasti };
     },
   },

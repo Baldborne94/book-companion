@@ -38,7 +38,10 @@ import java.util.Calendar;
 //   compresi); un numero piu' alto dell'ultimo noto e' una notifica;
 // - «serie»: i membri della serie su Wikidata (riconosciuta dalla pagina,
 //   `lib/serieWikidata.js`); un libro mai visto che esce quest'anno, dopo o
-//   e' uscito l'anno scorso e' una notifica.
+//   e' uscito l'anno scorso e' una notifica. E anche i libri nuovi dei suoi
+//   autori, fuori dalla saga (chiesto dal lettore: «magari è uscito qualcosa
+//   di nuovo, non per forza della stessa saga»): lo stesso libro, trovato da
+//   tutte e due le parti, si dice una volta sola (`annunciati`).
 // La prima volta niente e' nuovo: si parte da quel che c'e'. Solo avvisi:
 // dove leggere o prendere la novita' lo decide il lettore.
 public class Novita extends JobService {
@@ -85,14 +88,10 @@ public class Novita extends JobService {
                 nuova.put("nome", s.optString("nome", ""));
                 nuova.put("tipo", tipo);
                 if ("manga".equals(tipo)) nuova.put("titolo", s.optString("titolo", s.optString("nome", "")));
-                else if ("serie".equals(tipo)) nuova.put("wikidata", soloQ(s.optJSONArray("wikidata")));
                 else nuova.put("autori", s.optJSONArray("autori") != null ? s.optJSONArray("autori") : new JSONArray());
+                if ("serie".equals(tipo)) nuova.put("wikidata", soloQ(s.optJSONArray("wikidata")));
                 JSONObject vecchia = prima.optJSONObject(id);
-                if (vecchia != null && stessaCosa(vecchia, nuova)) {
-                    for (String campo : new String[] { "visti", "pronta", "mangadex", "ultimo" }) {
-                        if (vecchia.has(campo)) nuova.put(campo, vecchia.get(campo));
-                    }
-                }
+                if (vecchia != null) tieni(vecchia, nuova);
                 dopo.put(id, nuova);
             }
         } catch (Throwable e) {
@@ -111,6 +110,21 @@ public class Novita extends JobService {
         }
         if (dopo.length() > 0 && daChiedere(app)) chiedi(app);
         return stato(app);
+    }
+
+    // quel che il guscio sa gia' di una raccolta resta finche' la raccolta
+    // guarda le stesse cose: la serie per i suoi membri, gli autori per i
+    // loro libri (una saga che ha un autore in piu' riparte da capo con gli
+    // autori, ma non con la serie)
+    static void tieni(JSONObject vecchia, JSONObject nuova) throws Exception {
+        if (!stessaCosa(vecchia, nuova)) return;
+        for (String campo : new String[] { "visti", "pronta", "mangadex", "ultimo", "annunciati" }) {
+            if (vecchia.has(campo)) nuova.put(campo, vecchia.get(campo));
+        }
+        if (!String.valueOf(vecchia.optJSONArray("autori")).equals(String.valueOf(nuova.optJSONArray("autori")))) return;
+        for (String campo : new String[] { "vistiAutori", "prontaAutori" }) {
+            if (vecchia.has(campo)) nuova.put(campo, vecchia.get(campo));
+        }
     }
 
     private static boolean stessaCosa(JSONObject a, JSONObject b) {
@@ -206,8 +220,10 @@ public class Novita extends JobService {
             if (s == null) continue;
             try {
                 if ("manga".equals(s.optString("tipo"))) controllaManga(app, id, s);
-                else if ("serie".equals(s.optString("tipo"))) controllaSerie(app, id, s);
-                else controllaAutori(app, id, s);
+                else if ("serie".equals(s.optString("tipo"))) {
+                    controllaSerie(app, id, s);
+                    controllaAutori(app, id, s, "vistiAutori", "prontaAutori");
+                } else controllaAutori(app, id, s, "visti", "pronta");
             } catch (Throwable e) {
                 Log.w(TAG, "la raccolta " + id + " non si guarda: " + e);
             }
@@ -221,10 +237,8 @@ public class Novita extends JobService {
                 String id = restano.getString(k);
                 JSONObject guardata = tutte.optJSONObject(id);
                 JSONObject s = ora.optJSONObject(id);
-                if (guardata == null || s == null || !stessaCosa(guardata, s)) continue;
-                for (String campo : new String[] { "visti", "pronta", "mangadex", "ultimo" }) {
-                    if (guardata.has(campo)) s.put(campo, guardata.get(campo));
-                }
+                if (guardata == null || s == null) continue;
+                tieni(guardata, s);
             }
         }
         scrivi(app, ora);
@@ -233,14 +247,14 @@ public class Novita extends JobService {
     // I LIBRI NUOVI DI UN AUTORE: Open Library, dal piu' nuovo. Un libro mai
     // visto di quest'anno o dell'anno scorso (le date delle uscite annunciate
     // ci sono gia'); i piu' vecchi si segnano visti senza dire niente
-    private static void controllaAutori(Context app, String id, JSONObject s) throws Exception {
+    private static void controllaAutori(Context app, String id, JSONObject s, String campoVisti, String campoPronta) throws Exception {
         JSONArray autori = s.optJSONArray("autori");
-        if (autori == null) return;
-        JSONArray visti = s.optJSONArray("visti");
+        if (autori == null || autori.length() == 0) return;
+        JSONArray visti = s.optJSONArray(campoVisti);
         if (visti == null) visti = new JSONArray();
         java.util.HashSet<String> giaVisti = new java.util.HashSet<>();
         for (int k = 0; k < visti.length(); k++) giaVisti.add(visti.optString(k));
-        boolean pronta = s.optBoolean("pronta", false);
+        boolean pronta = s.optBoolean(campoPronta, false);
         int anno = Calendar.getInstance().get(Calendar.YEAR);
         for (int a = 0; a < autori.length(); a++) {
             String autore = autori.optString(a, "");
@@ -258,14 +272,38 @@ public class Novita extends JobService {
                 visti.put(chiave);
                 int uscito = d.optInt("first_publish_year", 0);
                 if (uscito >= anno - 1) {
-                    if (pronta) avvisa(app, id, "📚 Nuovo libro di " + autore, d.optString("title", "") + " (" + uscito + ")");
+                    String titolo = d.optString("title", "");
+                    if (pronta && !giaDetto(s, titolo)) avvisa(app, id, "📚 Nuovo libro di " + autore, titolo + " (" + uscito + ")");
+                    segnaDetto(s, titolo);
                 }
             }
             Thread.sleep(1000);
         }
         while (visti.length() > VISTI_MAX) visti.remove(0);
-        s.put("visti", visti);
-        s.put("pronta", true);
+        s.put(campoVisti, visti);
+        s.put(campoPronta, true);
+    }
+
+    // I TITOLI GIA' DETTI: lo stesso libro arriva dalla serie e dal suo
+    // autore, con la stessa scrittura a meno di maiuscole e segni
+    static String chiaveTitolo(String t) {
+        return t == null ? "" : t.toLowerCase(java.util.Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+", "");
+    }
+
+    static boolean giaDetto(JSONObject s, String... titoli) {
+        JSONArray detti = s.optJSONArray("annunciati");
+        for (int k = 0; detti != null && k < detti.length(); k++) {
+            for (String t : titoli) if (!chiaveTitolo(t).isEmpty() && chiaveTitolo(t).equals(detti.optString(k))) return true;
+        }
+        return false;
+    }
+
+    static void segnaDetto(JSONObject s, String... titoli) throws Exception {
+        JSONArray detti = s.optJSONArray("annunciati");
+        if (detti == null) detti = new JSONArray();
+        for (String t : titoli) if (!chiaveTitolo(t).isEmpty() && !giaDetto(s, t)) detti.put(chiaveTitolo(t));
+        while (detti.length() > VISTI_MAX) detti.remove(0);
+        s.put("annunciati", detti);
     }
 
     // I VOLUMI NUOVI DI UNA SERIE: Wikidata, cio' che dichiara di essere
@@ -314,9 +352,12 @@ public class Novita extends JobService {
                 if (uscita == 0) continue;
                 visti.put(m);
                 if (!eUnVolume(claims) || uscita < anno - 1) continue;
-                String titolo = etichetta(voce.optJSONObject("labels"));
+                JSONObject labels = voce.optJSONObject("labels");
+                String titolo = etichetta(labels);
                 if (titolo.isEmpty()) continue;
-                avvisa(app, id, "📚 Nuovo volume: " + s.optString("nome", ""), titolo + (uscita > anno ? " · esce nel " + uscita : " (" + uscita + ")"));
+                String inglese = labels == null || labels.optJSONObject("en") == null ? "" : labels.optJSONObject("en").optString("value", "");
+                if (!giaDetto(s, titolo, inglese)) avvisa(app, id, "📚 Nuovo volume: " + s.optString("nome", ""), titolo + (uscita > anno ? " · esce nel " + uscita : " (" + uscita + ")"));
+                segnaDetto(s, titolo, inglese);
             }
         }
         while (visti.length() > VISTI_MAX) visti.remove(0);

@@ -15,7 +15,7 @@ export default function SezioneNovita({ lista = [], stato = null, nelGuscio = fa
           <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere", fontSize: F.nota, color: C.text }}>
             {x.nome}
             <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted }}>
-              {x.tipo === "manga" ? "capitoli nuovi · MangaDex" : x.tipo === "serie" ? `volumi nuovi di ${nomiSerie(x)} · Wikidata` : `libri nuovi di ${(x.autori || []).join(", ")} · Open Library`}
+              {x.tipo === "manga" ? "capitoli nuovi · MangaDex" : x.tipo === "serie" ? `volumi nuovi di ${nomiSerie(x)} · Wikidata${(x.autori || []).length ? `; libri nuovi di ${x.autori.join(", ")} · Open Library` : ""}` : `libri nuovi di ${(x.autori || []).join(", ")} · Open Library`}
             </span>
           </span>
           <button
