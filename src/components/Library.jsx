@@ -35,6 +35,7 @@ import EmptyState from "./EmptyState.jsx";
 import { partenza, dopoIlDisegno, segnaTempo, vocePerTempo } from "../lib/tempi.js";
 import { leggiNovita, scriviNovita, seguiNovita, smettiNovita, vocePerRaccolta, tastoNovita, conSerie } from "../lib/novita.js";
 import SerieDellaRaccolta from "./SerieDellaRaccolta.jsx";
+import AltriDellAutore from "./AltriDellAutore.jsx";
 import { leggiVoti, scriviVoti, segnaVoto, votoMio, votoDaMostrare, mediaDeiVolumi, dettoVoto, puoEssereVotata, daSegnare } from "../lib/votiRaccolte.js";
 import Stars from "./Stelle.jsx";
 import { leggiDispositivi, scriviDispositivi, altroveDa, sulDispositivo, aggiornaDisco, sulDiscoDa } from "../lib/dispositivi.js";
@@ -445,7 +446,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   );
 }
 
-function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, novita = [], onAvvisami, onSerie }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, novita = [], onAvvisami, onSerie, onDaPrendere }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -622,6 +623,8 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
         {avviso?.si && <SerieDellaRaccolta r={dentro} lista={novita} onCercata={onSerie} />}
         <TuttaLaRaccolta r={dentro} voti={voti} onVoto={onVoto} onTutti={onTutti} />
         {mostra(dentro)}
+        {/* in fondo, dopo i volumi: gli altri libri degli autori che segui */}
+        {avviso?.si && <AltriDellAutore key={dentro.id} autori={(novita.find((x) => x.id === dentro.id)?.autori || []).slice(0, 3)} books={tutti} notify={onDaPrendere} />}
       </>
     );
   }
@@ -2158,6 +2161,10 @@ export default function Library({
         novita={novita}
         onAvvisami={avvisami}
         onSerie={serieCercata}
+        onDaPrendere={(testo) => {
+          notify?.(testo);
+          onCambiate?.();
+        }}
       />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps

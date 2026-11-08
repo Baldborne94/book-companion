@@ -397,10 +397,28 @@ export const MAPPA = [
     dove: "Il tasto nell'Ingresso; nella scheda del dizionario «Non tenerla» la toglie subito.",
   },
   {
+    luogo: "libreria",
+    nome: "Le novità delle tue saghe e dei tuoi autori",
+    cosa: "Una notifica di Android, anche ad app chiusa, quando esce un volume nuovo di una saga che segui (riconosciuta su Wikidata dai titoli che hai) o un libro nuovo dei suoi autori; per i manga, i capitoli nuovi. Sotto il tasto la raccolta dice cosa guarda. Nelle Impostazioni, «Le novità», c'è l'elenco e si smette con ✕.",
+    dove: "Nella raccolta aperta di una saga o di un autore, «🔕 Avvisami delle novità».",
+  },
+  {
+    luogo: "libreria",
+    nome: "Altri libri dei tuoi autori",
+    cosa: "In una raccolta che segui, i libri dei suoi autori che non hai, dal più nuovo, da Open Library: un tocco li mette in Da prendere.",
+    dove: "In fondo alla raccolta seguita, dopo i volumi.",
+  },
+  {
     luogo: "ingresso",
     nome: "Da prendere",
     cosa: "La lista dei libri da procurarti: quelli che scrivi tu, i consigli gratuiti dal catalogo di Open Library — il volume dopo l'ultimo che hai letto di ogni saga e i più votati sui tuoi generi, con la copertina — e, se vuoi, quelli su misura dell'Oracolo. Si copia per portarla in libreria, e ti dice quando un libro è arrivato.",
     dove: "Il tasto nell'Ingresso.",
+  },
+  {
+    luogo: "ingresso",
+    nome: "Uscite del 40K",
+    cosa: "Se leggi il 40K, quando apri l'app controlla su Lexicanum le pagine appena aperte per un libro (di solito annunciato o appena uscito) e te le mostra: un tocco lo mette in Da prendere, «Lexicanum ↗» apre la sua pagina, «✓ Viste» le toglie. Al più una volta ogni sei ore, solo ad app aperta.",
+    dove: "Nell'Ingresso, sotto «Appena arrivati», solo quando c'è qualcosa di nuovo.",
   },
   {
     luogo: "ingresso",
