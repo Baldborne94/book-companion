@@ -10,17 +10,22 @@ const memoria = () => {
 const tipo = (...q) => q.map((id) => ({ mainsnak: { datavalue: { value: { id } } } }));
 const serie = (id, n) => [{ mainsnak: { datavalue: { value: { id } } }, qualifiers: n == null ? {} : { P1545: [{ datavalue: { value: String(n) } }] } }];
 const anno = (a) => [{ mainsnak: { datavalue: { value: { time: `+${a}-00-00T00:00:00Z` } } } }];
-const opera = (en, { it, alias = [], p31 = ["Q7725634"], saga, n, a } = {}) => ({
+const opera = (en, { it, alias = [], p31 = ["Q7725634"], forma = "Q8261", saga, n, a } = {}) => ({
   labels: { en: { value: en }, ...(it ? { it: { value: it } } : {}) },
   aliases: alias.length ? { en: alias.map((value) => ({ value })) } : {},
-  claims: { P31: tipo(...p31), ...(saga ? { P179: serie(saga, n) } : {}), ...(a ? { P577: anno(a) } : {}) },
+  claims: { P31: tipo(...p31), ...(forma ? { P7937: tipo(forma) } : {}), ...(saga ? { P179: serie(saga, n) } : {}), ...(a ? { P577: anno(a) } : {}) },
 });
 
 export default async function (t) {
   const nomi = { Q10: "Lockwood & Co.", Q11: "Bartimaeus Sequence" };
   t.eq("un libro: titolo inglese, saga col numero, anno", JSON.stringify((({ titolo, saga, numero, anno }) => ({ titolo, saga, numero, anno }))(libroDa(opera("The Hollow Boy", { saga: "Q10", n: 3, a: 2015 }), nomi))), JSON.stringify({ titolo: "The Hollow Boy", saga: "Lockwood & Co.", numero: 3, anno: 2015 }));
   t.c("…non un'edizione, una serie, un fumetto; non senza titolo inglese", !libroDa(opera("X", { p31: ["Q3331189"] })) && !libroDa(opera("Lockwood & Co.", { p31: ["Q1667921"] })) && !libroDa(opera("X", { p31: ["Q3496994"] })) && !libroDa({ labels: { it: { value: "Solo italiano" } }, claims: { P31: tipo("Q7725634") } }));
-  t.eq("…un numero che non e' un numero non e' un numero", libroDa(opera("X", { saga: "Q10", n: "prequel" }), nomi).numero, null);
+  t.eq("…un numero che non e' un numero non e' un numero, e nemmeno «2.5»", [libroDa(opera("X", { saga: "Q10", n: "prequel" }), nomi).numero, libroDa(opera("X", { saga: "Q10", n: "2.5" }), nomi).numero].join(), ",");
+  // solo i romanzi: le novelle, i racconti, il volume diviso no (la foto
+  // del lettore: Edgedancer, Dawnshard, Defending Elysium, «Part One»)
+  t.c("solo i romanzi: non novelle, racconti, novelette, raccolte, volumi divisi", ["Q149537", "Q49084", "Q472808", "Q1279564", "Q133500522"].every((f) => !libroDa(opera("Edgedancer", { forma: f, saga: "Q10" }), nomi)));
+  t.c("…anche dentro una saga e anche col numero, se la forma dice breve", !libroDa(opera("Legion", { forma: "Q149537", saga: "Q10", n: 1 }), nomi));
+  t.c("…senza forma passa solo un volume numerato di una saga", !!libroDa(opera("The Empty Grave", { forma: null, saga: "Q10", n: 5 }), nomi) && !libroDa(opera("Hard Choices", { forma: null }), nomi) && !libroDa(opera("X", { forma: null, saga: "Q10" }), nomi) && !libroDa(opera("X", { forma: null, saga: "Q10", n: "2.5" }), nomi));
   t.eq("l'autore e' il primo omonimo che di mestiere scrive", sceltaAutore(["Q1", "Q2"], { Q1: { claims: { P106: tipo("Q1028181") } }, Q2: { claims: { P106: tipo("Q36180") } } }), "Q2");
   t.eq("…nessuno scrittore, nessun autore", sceltaAutore(["Q1"], { Q1: { claims: { P106: tipo("Q1028181") } } }), null);
 
@@ -82,4 +87,8 @@ export default async function (t) {
   chieste.length = 0;
   await opereDi("Jonathan Stroud", prendi, { st, ora: 1001 });
   t.c("la memoria di Open Library della versione di prima non vale: si richiede a Wikidata", chieste.length === n);
+  st.setItem("bc_altri_autore", JSON.stringify({ "jonathan stroud": { quando: 1000, libri: [{ titolo: "Edgedancer" }] } }));
+  chieste.length = 0;
+  const rifatte = await opereDi("Jonathan Stroud", prendi, { st, ora: 1001 });
+  t.c("…neanche quella di Wikidata scritta con la regola di prima (le novelle): si richiede", chieste.length === n && !rifatte.some((l) => l.titolo === "Edgedancer"));
 }
