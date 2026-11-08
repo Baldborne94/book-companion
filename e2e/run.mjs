@@ -254,9 +254,14 @@ const SCENE = [
     async fai({ browser }) {
       const d = await dispositivo(browser, {
         misura: TABLET,
+        // l'orologio parte da mezzogiorno di oggi: i tratti si contano per
+        // giorno, e la CI partita alle 23:56 coi cinque minuti di salto
+        // finiva a domani («la pausa lunga non si annota» nel giorno di ieri)
         prima: () => {
           const vero = Date.now;
-          Date.now = () => vero() + (window.__salto || 0);
+          const inizio = vero();
+          const mezzogiorno = new Date(inizio).setHours(12, 0, 0, 0);
+          Date.now = () => mezzogiorno + (vero() - inizio) + (window.__salto || 0);
         },
       });
       await d.p.goto(URL_APP);
