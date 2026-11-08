@@ -37,7 +37,7 @@ export default async (t) => {
   // il prologo dell'Eresia, e un Abnett che nessuna guida conosce resta fuori
   t.eq("«Horus Rising» resta dell'Eresia", saga("Horus Rising"), "The Horus Heresy");
   t.eq("«Prospero Burns» resta dell'Eresia", saga("Prospero Burns"), "The Horus Heresy");
-  t.eq("«Xenos» (Eisenhorn) non e' Gaunt's Ghosts", saga("Xenos"), null);
+  t.eq("«Xenos» non e' Gaunt's Ghosts: e' di Eisenhorn", saga("Xenos"), "Eisenhorn");
 
   // A CAPITOLI: la Serie scritta sul libro e' la storia, il ciclo e' il capitolo
   const r = riconosci({ title: "Traitor General", author: "Dan Abnett" });

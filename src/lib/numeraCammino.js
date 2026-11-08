@@ -52,7 +52,10 @@ export function numerazioneGuida(cammino) {
   // di CANCELLARGLI il numero che ha appena preso.
   const fuori = [];
   for (const t of cammino?.tappe || []) {
-    if (!t?.libro || t.posto == null) continue;
+    // e il libro di un'altra guida o la raccolta che contiene il romanzo
+    // non si numerano da qui: il primo ha il numero della sua guida,
+    // l'omnibus prenderebbe tre numeri uno sopra l'altro
+    if (!t?.libro || t.posto == null || t.altrui || t.dentro) continue;
     const a = t.posto;
     const da = t.libro.sagaOrder == null ? null : Number(t.libro.sagaOrder);
     if (da === a) continue;
@@ -109,7 +112,7 @@ export function serieDaScrivere(cammino) {
   const visti = new Set();
   const storia = String(cammino?.saga || "").trim();
   for (const t of cammino?.tappe || []) {
-    if (!t?.libro) continue;
+    if (!t?.libro || t.altrui || t.dentro) continue;
     // lo stesso libro puo' comparire su piu' righe — l'antologia e i suoi
     // racconti, o due copie dello stesso volume — e una riga sola basta:
     // la Serie e' del LIBRO, non della tappa
@@ -143,7 +146,7 @@ export function serieDaScrivere(cammino) {
 //
 // Torna `null` quando non c'e' niente da fare: e' la risposta normale.
 export function sagaComune(cammino) {
-  const miei = (cammino?.tappe || []).map((t) => t?.libro).filter(Boolean);
+  const miei = (cammino?.tappe || []).filter((t) => !t?.altrui && !t?.dentro).map((t) => t?.libro).filter(Boolean);
   if (!miei.length) return null;
   const grafie = new Map();
   for (const b of miei) {

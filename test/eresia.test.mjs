@@ -4,7 +4,7 @@
 // differenza e' tutta nelle antologie.
 //
 // E soprattutto: aggiungere una seconda saga non deve rompere la prima.
-import { riconosci, ripassa } from "../src/lib/sagaBooks.js";
+import { TAVOLE, riconosci, ripassa } from "../src/lib/sagaBooks.js";
 import HORUS, { SAGA as SAGA_HH } from "../src/data/horusHeresy.js";
 import { SAGA as SAGA_DISCO } from "../src/data/discworldBooks.js";
 
@@ -47,8 +47,16 @@ export default async function (t) {
   // e' il controllo che prende le collisioni fra le due tavole: se un
   // titolo dell'Eresia venisse mangiato da uno del Mondo Disco (o
   // viceversa) si vedrebbe qui e non fra sei mesi, da uno scaffale storto
+  // TRANNE il contorno che un'altra guida ha come TAPPA: Eisenhorn, Malleus
+  // e Hereticus sono il prologo qui e la storia di Eisenhorn, e sono di la'
+  // (il cammino dell'Eresia li ritrova per titolo)
+  const altrove = (b) =>
+    (b.tipo === "prologo" || b.tipo === "fuori" || b.sfondo) &&
+    TAVOLE.some((tav) => tav.saga !== SAGA_HH && tav.libri.some((v) => v.t === b.t));
+  t.eq("il contorno che un'altra guida ha come tappa: i tre di Eisenhorn", HORUS.filter(altrove).map((b) => b.t).join(", "), "Eisenhorn, Malleus, Hereticus");
   const sbagliati = [];
   for (const b of HORUS) {
+    if (altrove(b)) continue;
     const r = riconosci({ title: b.t, author: b.a || "" });
     if (r?.saga !== SAGA_HH || (r?.sagaOrder ?? null) !== b.o) {
       sbagliati.push(`${b.t} → ${r ? `${r.saga} #${r.sagaOrder}` : "niente"}`);

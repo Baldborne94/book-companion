@@ -76,8 +76,11 @@ function daTavole(books, statusOf, riconosce, tavole) {
     }
     let rif = null;
     let ultimaTua = -Infinity;
+    // un romanzo dentro una raccolta che hai (l'omnibus di Eisenhorn) e'
+    // tuo: letta la raccolta, il prossimo da prendere e' quello dopo
+    const di = (v) => tue.get(v.t) || (v.in ? tue.get(v.in) : null);
     for (const { v, o } of tappe) {
-      const b = tue.get(v.t);
+      const b = di(v);
       if (!b) continue;
       ultimaTua = Math.max(ultimaTua, o);
       if (letto(statusOf(b.id)) && (rif == null || o > rif.o)) rif = { o, b };
@@ -87,7 +90,7 @@ function daTavole(books, statusOf, riconosce, tavole) {
     if (!rif) continue;
     const voci = [];
     for (const { v, o } of tappe) {
-      if (o <= rif.o || tue.has(v.t)) continue;
+      if (o <= rif.o || di(v)) continue;
       voci.push({ id: idTitolo(v.t, v.a), titolo: v.t, autore: v.a || "", saga: tav.saga, numero: o });
       // i buchi fra le tappe che hai, piu' il primo volume DOPO l'ultima:
       // oltre, la lista diventerebbe la guida intera

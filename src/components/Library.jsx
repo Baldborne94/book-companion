@@ -28,7 +28,7 @@ import { BarraCloud, PesoQui } from "./BarraCloud.jsx";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
 import { famigliaDi } from "../data/generi.js";
 import { riconosci, capitoloDi } from "../lib/sagaBooks.js";
-import { camminiDi } from "../lib/cammino.js";
+import { camminiDi, guideAccanto } from "../lib/cammino.js";
 import BookCover from "./BookCover.jsx";
 import Disposizione from "./Disposizione.jsx";
 import EmptyState from "./EmptyState.jsx";
@@ -343,17 +343,21 @@ function TastoCammino({ libri, tutti, riconosciuti, onCammino }) {
   // UNA GUIDA, UN TASTO: sul ripiano «Warhammer 40K» del lettore stanno
   // l'Eresia e Gaunt's Ghosts, e ognuna ha il suo cammino (`camminiDi`).
   // Il tasto sta dove ci sono i suoi volumi, contati sul ripiano.
-  const cammini = useMemo(
-    () =>
-      onCammino && riconosciuti
-        ? camminiDi(tutti || libri, { riconosce: (b) => riconosciuti.get(b.id), scaffale: libri })
-        : [],
-    [libri, tutti, riconosciuti, onCammino]
-  );
+  // E ACCANTO, LE GUIDE DELLO STESSO UNIVERSO ANCORA DA COMINCIARE
+  // (`guideAccanto`): sotto «Warhammer 40K» c'è anche Gaunt's Ghosts a zero
+  // volumi, col conto, perché «dove vedo le saghe che mi mancano?» trovi
+  // la risposta dove l'ha cercata
+  const { cammini, accanto } = useMemo(() => {
+    if (!onCammino || !riconosciuti) return { cammini: [], accanto: [] };
+    const riconosce = (b) => riconosciuti.get(b.id);
+    const qui = camminiDi(tutti || libri, { riconosce, scaffale: libri });
+    return { cammini: qui, accanto: guideAccanto(qui, tutti || libri, { riconosce }) };
+  }, [libri, tutti, riconosciuti, onCammino]);
   if (!cammini.length) return null;
+  const tutteQui = [...cammini, ...accanto];
   return (
     <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
-      {cammini.map((cammino) => (
+      {tutteQui.map((cammino) => (
         <button
           key={cammino.saga}
           onClick={() => onCammino(cammino)}
@@ -368,8 +372,13 @@ function TastoCammino({ libri, tutti, riconosciuti, onCammino }) {
             border: `1px solid ${C.border}`,
           }}
         >
-          {/* con due guide sullo stesso ripiano il tasto dice quale */}
-          {cammini.length > 1 ? `📜 ${cammino.saga}` : "📜 Il cammino"}
+          {/* con due guide sullo stesso ripiano il tasto dice quale, e
+              quella che non sta sul ripiano dice anche quanti ne hai */}
+          {tutteQui.length === 1
+            ? "📜 Il cammino"
+            : accanto.includes(cammino)
+              ? `📜 ${cammino.saga} · ${cammino.tue}/${cammino.volumi}`
+              : `📜 ${cammino.saga}`}
         </button>
       ))}
     </span>

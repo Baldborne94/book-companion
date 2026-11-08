@@ -974,7 +974,7 @@ const SCENE = [
     // chiesto dal lettore dopo «I libri dei tuoi autori» tolta: le guide
     // scritte a mano, a partire da Gaunt's Ghosts. Sul suo tablet sta sotto
     // «Warhammer 40K» accanto all'Eresia, e di Gaunt's non ha niente
-    nome: "Gaunt's Ghosts: il suo cammino accanto all'Eresia, i mancanti in Da prendere, e la guida si apre anche senza volumi",
+    nome: "Gaunt's Ghosts ed Eisenhorn: i loro cammini accanto all'Eresia, l'omnibus che contiene i romanzi, i mancanti in Da prendere, e la guida si apre anche senza volumi",
     async fai({ browser }) {
       const w = (id, title) => ({ id, title, author: "Dan Abnett", saga: "Warhammer 40K", fileType: "epub", addedAt: 1 });
       const libri = [
@@ -982,6 +982,7 @@ const SCENE = [
         w("h2", "Know No Fear"),
         w("h3", "Prospero Burns"),
         w("g1", "First and Only"),
+        w("e1", "Eisenhorn Omnibus"),
         { id: "m1", title: "Mort", author: "Terry Pratchett", saga: "Discworld", fileType: "epub", addedAt: 1 },
       ];
       const d = await dispositivo(browser, {
@@ -996,15 +997,30 @@ const SCENE = [
       // due guide sullo stesso ripiano, un tasto per una
       await finche(() => p.getByRole("button", { name: "📜 Gaunt's Ghosts" }).count(), 8000, "sul ripiano del 40K non c'e' il cammino di Gaunt's Ghosts");
       if (!(await p.getByRole("button", { name: "📜 The Horus Heresy" }).count())) throw new Error("il cammino dell'Eresia e' sparito dal ripiano del 40K");
+      if ((await p.getByRole("button", { name: /^📜 / }).count()) !== 4) throw new Error("sul ripiano del 40K non ci sono quattro cammini (Eresia, Gaunt's Ghosts, Eisenhorn, e Ravenor da cominciare)");
+      // «dove vedo le saghe che mi mancano?»: la guida del 40K mai cominciata sta accanto, col conto
+      await p.getByRole("button", { name: "📜 Ravenor · 0/3" }).click();
+      await finche(() => p.getByText(/Hai 0 dei 3 volumi della guida/).count(), 5000, "la guida di Ravenor accanto non si apre");
+      await p.getByRole("button", { name: "Chiudi" }).click();
       await p.getByRole("button", { name: "📜 Gaunt's Ghosts" }).click();
       await finche(() => p.getByText("Il cammino · Gaunt's Ghosts").count(), 5000, "il cammino di Gaunt's Ghosts non si apre");
       await finche(() => p.getByText(/Hai 1 dei 15 volumi della guida/).count(), 3000, "il cammino non dice 1 dei 15");
+      // «altri N dei tuoi libri»: l'Eresia e l'omnibus di Eisenhorn stanno fuori da questa guida
       for (const ciclo of ["The Founding (1-3)", "The Victory (12-15)"]) if (!(await p.getByText(ciclo).count())) throw new Error(`nel cammino manca il ciclo «${ciclo}»`);
       if (await p.getByRole("button", { name: "Metti «First and Only» in Da prendere" }).count()) throw new Error("si propone di prendere un volume che hai");
       await p.getByRole("button", { name: "Metti «Ghostmaker» in Da prendere" }).click();
       await finche(() => p.getByText("✓ in Da prendere").count(), 3000, "il tocco non dice che «Ghostmaker» e' in Da prendere");
       const lista = await p.evaluate(() => JSON.parse(localStorage.getItem("bc_da_prendere") || "[]"));
       if (!lista.some((v) => v.titolo === "Ghostmaker" && v.autore === "Dan Abnett" && v.saga === "Gaunt's Ghosts" && v.numero === 2)) throw new Error(`«Ghostmaker» non e' in lista con saga e numero: ${JSON.stringify(lista)}`);
+      await p.getByRole("button", { name: "Chiudi" }).click();
+      // EISENHORN: il lettore ha l'omnibus, cioe' i primi tre romanzi
+      await finche(() => p.getByRole("button", { name: "📜 Eisenhorn" }).count(), 5000, "sul ripiano del 40K non c'e' il cammino di Eisenhorn");
+      await p.getByRole("button", { name: "📜 Eisenhorn" }).click();
+      await finche(() => p.getByText(/Hai 3 dei 4 volumi della guida/).count(), 5000, "con l'omnibus il cammino di Eisenhorn non dice 3 dei 4");
+      if (!(await p.getByText(/dentro «Eisenhorn Omnibus»/).count())) throw new Error("i romanzi dentro l'omnibus non dicono dove sono");
+      if (await p.getByRole("button", { name: "Metti «Malleus» in Da prendere" }).count()) throw new Error("si propone di prendere Malleus, che sta nell'omnibus");
+      await p.getByRole("button", { name: "Metti «The Magos» in Da prendere" }).click();
+      await finche(() => p.getByText("✓ in Da prendere").count(), 3000, "il tocco non dice che «The Magos» e' in Da prendere");
       await p.getByRole("button", { name: "Chiudi" }).click();
       // il Mondo Disco ha il suo cammino anche se l'Eresia ha piu' volumi
       await p.getByRole("button", { name: /Tutte le raccolte/ }).click();
@@ -1030,7 +1046,7 @@ const SCENE = [
       await finche(() => q.getByText("La tua lista").count(), 3000, "chiuso il cammino non si torna a Da prendere");
       // la lista era vuota quando il cammino si e' aperto: si rilegge o resta vuota
       await finche(async () => !(await q.getByText(/^Ancora vuota/).count()) && (await q.getByText("First and Only", { exact: true }).count()) > 0, 3000, "la lista sotto non mostra la voce messa dal cammino");
-      return { guasti: [...d.guasti, ...altro.guasti], nota: "due cammini sul ripiano del 40K, Ghostmaker in lista con saga e numero, il Disco ha il suo tasto, la guida si apre senza volumi da Da prendere" };
+      return { guasti: [...d.guasti, ...altro.guasti], nota: "tre cammini sul ripiano del 40K e Ravenor accanto a 0/3, Ghostmaker e The Magos in lista, l'omnibus da' 3 dei 4 di Eisenhorn, il Disco ha il suo tasto, la guida si apre senza volumi da Da prendere" };
     },
   },
   {
