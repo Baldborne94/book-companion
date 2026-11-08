@@ -403,12 +403,6 @@ export const MAPPA = [
     dove: "Nella raccolta aperta di una saga o di un autore, «🔕 Avvisami delle novità».",
   },
   {
-    luogo: "libreria",
-    nome: "I libri dei tuoi autori",
-    cosa: "In una raccolta che segui, i romanzi dei suoi autori saga per saga, coi titoli originali (da Wikidata, senza novelle e racconti): quanti sono, quanti ne hai e quali ti mancano. Un tocco li mette in Da prendere, con la saga e il numero.",
-    dove: "In fondo alla raccolta seguita, dopo i volumi.",
-  },
-  {
     luogo: "ingresso",
     nome: "Da prendere",
     cosa: "La lista dei libri da procurarti: quelli che scrivi tu, i consigli gratuiti dal catalogo di Open Library — il volume dopo l'ultimo che hai letto di ogni saga e i più votati sui tuoi generi, con la copertina — e, se vuoi, quelli su misura dell'Oracolo. Si copia per portarla in libreria, e ti dice quando un libro è arrivato.",
