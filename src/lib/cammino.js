@@ -73,11 +73,17 @@ const chiave = (saga, titolo) => `${saga}\u0000${titolo}`;
 // nessuna biblioteca, e non c'e' niente su cui scrivere un numero.
 const PASSO = 0.01;
 
+// UN VOLUME DELLA GUIDA: non un racconto (non e' un file) e non una
+// raccolta (`omnibus`: un modo di avere i romanzi che contiene, non un
+// romanzo in piu')
+export const volume = (voce) => voce?.tipo !== "racconto" && voce?.tipo !== "omnibus";
+
 export function postiDelCammino(tappe = [], ordine = () => null) {
   let ultimo = 0;
   let quanti = 0;
   return tappe.map((t) => {
-    if (t?.voce?.tipo === "racconto") return { ...t, posto: null };
+    // e una raccolta nemmeno: i suoi romanzi hanno il loro posto
+    if (!volume(t?.voce)) return { ...t, posto: null };
     // e non c'e' nessun controllo che il numero sia un numero: `ordine` e'
     // nostra e le tre tavole tornano un numero o niente. Una guardia in
     // piu' qui non guarderebbe nulla, e una guardia che non guarda e'
@@ -113,6 +119,10 @@ function riconosciuti(libri, riconosce) {
   const sapere = riconosce || ((b) => riconosci({ title: b?.title, author: b?.author, saga: b?.saga }));
   const miei = new Map();
   const sagaDi = new Map();
+  // lo stesso titolo per tutte le guide: «Malleus» e' un romanzo di
+  // Eisenhorn e una tappa del prologo dell'Eresia, e il cammino
+  // dell'Eresia deve trovarlo anche se il riconoscimento lo da' all'altra
+  const perTitolo = new Map();
   for (const b of libri) {
     if (!b) continue;
     const r = sapere(b);
@@ -125,11 +135,21 @@ function riconosciuti(libri, riconosce) {
     // due copie dello stesso volume sono UNA tappa, e vince la prima:
     // l'ordine in cui arrivano e' quello dello scaffale, non del caso
     if (!miei.has(k)) miei.set(k, b);
+    if (!perTitolo.has(r.titolo)) perTitolo.set(r.titolo, b);
   }
-  return { miei, sagaDi };
+  return { miei, sagaDi, perTitolo };
 }
 
-function costruisci(tav, miei, contati) {
+// LA RACCOLTA CHE CONTIENE UN ROMANZO, da tutte le guide: Malleus sta
+// nell'omnibus di Eisenhorn, e il prologo dell'Eresia — che lo nomina senza
+// saperlo — diceva «Malleus, non ce l'hai» a chi aveva l'omnibus in mano
+// (era la scena del lettore). I racconti no: la loro antologia la dice la
+// loro riga.
+const CONTENITORI = new Map(
+  TAVOLE.flatMap((t) => t.libri.filter((v) => v.in && v.tipo !== "racconto").map((v) => [v.t, v.in]))
+);
+
+function costruisci(tav, { miei, perTitolo }, contati) {
   // UN RACCONTO NON E' UN FILE, e il suo «ce l'hai» e' quello della sua
   // ANTOLOGIA: «The Aurelian» sta dentro «Eye of Terra», e possederlo vuol
   // dire possedere quel volume. Cercarlo per titolo non troverebbe mai
@@ -141,14 +161,24 @@ function costruisci(tav, miei, contati) {
   // su una storia che aveva in mano. Si cerca prima il racconto per il suo
   // titolo, e l'antologia resta il ripiego: e' la strada normale, perche'
   // quasi sempre e' li' che lo si possiede.
-  const suo = (voce) =>
-    miei.get(chiave(tav.saga, voce.t)) ||
-    (voce.tipo === "racconto" ? miei.get(chiave(tav.saga, voce.in || "")) : null) ||
-    null;
-  const tappe = postiDelCammino(
-    tav.libri.map((voce) => ({ voce, libro: suo(voce) })),
-    tav.ordine
-  );
+  //
+  // E COSI' UN ROMANZO DENTRO UNA RACCOLTA (Eisenhorn, Ravenor): `in` e' il
+  // volume che lo contiene, e chi ha l'omnibus ha i tre romanzi. La riga
+  // lo dice (`dentro`), cosi' nessuno propone di numerare l'omnibus tre
+  // volte. E un titolo che il riconoscimento ha dato a un'ALTRA guida
+  // (`altrui`: Malleus e' di Eisenhorn, e nel prologo dell'Eresia e'
+  // contorno) e' tuo lo stesso, ma il numero e la Serie li decide la sua.
+  const suo = (voce) => {
+    const proprio = miei.get(chiave(tav.saga, voce.t));
+    if (proprio) return { voce, libro: proprio };
+    const altrui = perTitolo.get(voce.t);
+    if (altrui) return { voce, libro: altrui, altrui: true };
+    const dove = voce.in || CONTENITORI.get(voce.t);
+    const contiene = dove ? miei.get(chiave(tav.saga, dove)) || perTitolo.get(dove) : null;
+    if (contiene) return { voce, libro: contiene, dentro: true };
+    return { voce, libro: null };
+  };
+  const tappe = postiDelCammino(tav.libri.map(suo), tav.ordine);
   // E ADESSO I DUE INSIEMI SONO DUE, dove prima uno bastava.
   //
   // Il filtro sui racconti era stato TOLTO perche' non guardava niente: un
@@ -164,11 +194,13 @@ function costruisci(tav, miei, contati) {
   // e sta sotto al conto del possesso, che ha 71 al denominatore: contarci
   // un racconto direbbe «hai 12 dei 71 volumi» su undici volumi e una
   // storia breve.
+  //
+  // E IL POSSESSO SI CONTA SULLE TAPPE, non sui file: con l'omnibus in
+  // mano i romanzi che hai sono tre, e il file e' uno. La raccolta non e'
+  // un volume della guida (`volume`): e' un modo di averne alcuni.
   const conLibro = tappe.filter((t) => t.libro);
   const dentro = new Set(conLibro.map((t) => t.libro.id));
-  const volumiTuoi = new Set(
-    conLibro.filter((t) => t.voce?.tipo !== "racconto").map((t) => t.libro.id)
-  );
+  const volumiTuoi = conLibro.filter((t) => volume(t.voce)).length;
   return {
     saga: tav.saga,
     // la tavola dichiara che i suoi `c` sono CAPITOLI di una storia sola e
@@ -176,12 +208,12 @@ function costruisci(tav, miei, contati) {
     // Serie — la storia, non il capitolo
     parti: !!tav.parti,
     tappe,
-    tue: volumiTuoi.size,
+    tue: volumiTuoi,
     // QUANTI VOLUMI HA LA GUIDA, che non e' quante righe ha la tavola: da
     // quando i racconti hanno una riga per uno, `tappe.length` risponde
     // «110» a una domanda sui libri da avere. Il possesso si conta sui
     // FILE, ed e' questo il numero che sta accanto a `tue`.
-    volumi: tappe.filter((t) => t.voce?.tipo !== "racconto").length,
+    volumi: tappe.filter((t) => volume(t.voce)).length,
     // quanti ne ha QUESTO ripiano: da quando le tappe si cercano in tutta
     // la biblioteca, `tue` non puo' piu' decidere se il tasto compare —
     // direbbe di si' su ogni scaffale, anche su quello di Piranesi
@@ -213,7 +245,8 @@ function costruisci(tav, miei, contati) {
 // I libri per le tappe si cercano sempre in tutta la biblioteca (vedi
 // sopra): un volume sotto un'altra grafia della saga e' tuo lo stesso.
 export function camminiDi(libri = [], { tavole = TAVOLE, riconosce, scaffale } = {}) {
-  const { miei, sagaDi } = riconosciuti(libri, riconosce);
+  const visti = riconosciuti(libri, riconosce);
+  const { sagaDi } = visti;
   const contati = (scaffale || libri).filter(Boolean);
   const conti = new Map();
   for (const b of contati) {
@@ -224,7 +257,7 @@ export function camminiDi(libri = [], { tavole = TAVOLE, riconosce, scaffale } =
     .map((tav, i) => ({ tav, i, quanti: conti.get(tav.saga) || 0 }))
     .filter((x) => x.quanti > 0)
     .sort((a, b) => b.quanti - a.quanti || a.i - b.i)
-    .map((x) => costruisci(x.tav, miei, contati));
+    .map((x) => costruisci(x.tav, visti, contati));
 }
 
 // il cammino che comanda: il primo dei cammini
@@ -238,8 +271,20 @@ export function camminoDi(libri = [], opzioni = {}) {
 // zero — non si aprirebbe mai. «Da prendere» le elenca tutte, e da li' si
 // apre questa: «hai 0 dei 15 volumi», con ogni tappa da prendere.
 export function camminoDellaGuida(tav, libri = [], { riconosce } = {}) {
-  const { miei } = riconosciuti(libri, riconosce);
-  return costruisci(tav, miei, []);
+  return costruisci(tav, riconosciuti(libri, riconosce), []);
+}
+
+// LE GUIDE DELLO STESSO UNIVERSO, ACCANTO. Chiesto dal lettore con la foto
+// della sua raccolta «Warhammer 40K», dove c'era il solo cammino
+// dell'Eresia: «dove vedo le saghe che mi mancano?». Un tasto spunta sul
+// ripiano solo se ne hai un volume, e Gaunt's Ghosts non l'ha cominciato:
+// le guide che la tavola dichiara dello stesso `universo` di un cammino
+// del ripiano stanno accanto a lui, anche a zero volumi.
+export function guideAccanto(cammini = [], libri = [], { tavole = TAVOLE, riconosce } = {}) {
+  const universi = new Set(cammini.map((c) => tavole.find((t) => t.saga === c.saga)?.universo).filter(Boolean));
+  const gia = new Set(cammini.map((c) => c.saga));
+  const visti = riconosciuti(libri, riconosce);
+  return tavole.filter((t) => universi.has(t.universo) && !gia.has(t.saga)).map((t) => costruisci(t, visti, []));
 }
 
 // LE GUIDE DA ELENCARE: quelle che sono una guida intera. JoJo no: la sua
@@ -360,7 +405,7 @@ export function prossimoPasso(
 
   const inGioco = (t) => {
     const tipo = t?.voce?.tipo;
-    if (tipo === "fuori" || tipo === "antologia") return false;
+    if (tipo === "fuori" || tipo === "antologia" || tipo === "omnibus") return false;
     if (tipo === "prologo") return !entrato && cominciati.has(t.voce.nota || "");
     return true;
   };
@@ -422,7 +467,7 @@ export function lettiDelCammino(
   let quante = 0;
   for (const t of tappe) {
     const tipo = t?.voce?.tipo;
-    if (tipo === "fuori" || tipo === "antologia") continue;
+    if (tipo === "fuori" || tipo === "antologia" || tipo === "omnibus") continue;
     if (tipo === "prologo" && !cominciati.has(t.voce.nota || "")) continue;
     quante += 1;
     // i racconti entrano nel conto come i romanzi: la guida li chiede

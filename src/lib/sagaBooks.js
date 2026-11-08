@@ -4,6 +4,8 @@ import APOCALISSE, { SAGA as SAGA_SA, FUORI as FUORI_BAKKER } from "../data/seco
 import JOJO, { SAGA as SAGA_JOJO } from "../data/jojo.js";
 import HELLBOY, { SAGA as SAGA_HB } from "../data/hellboy.js";
 import GAUNT, { SAGA as SAGA_GG } from "../data/gauntsGhosts.js";
+import EISENHORN, { SAGA as SAGA_EI } from "../data/eisenhorn.js";
+import RAVENOR, { SAGA as SAGA_RA } from "../data/ravenor.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 
 // Riconoscere il romanzo dal titolo: i metadati degli EPUB sono spesso vuoti,
@@ -60,7 +62,7 @@ export const TAVOLE = [
   // `parti: true` = il campo `c` di questa tavola non sono CICLI ma i
   // capitoli di una storia sola, letti in fila. Lo dichiara la tavola
   // perche' dai dati non si distingue (vedi `parteDiUnaStoria`).
-  { saga: SAGA_HH, libri: HORUS, ordine: (b) => b.o, autore: null, fuori: [], parti: true },
+  { saga: SAGA_HH, libri: HORUS, ordine: (b) => b.o, autore: null, fuori: [], parti: true, universo: "Warhammer 40K" },
   // Bakker sta in mezzo ai due: ha scritto quasi solo questa saga — quindi
   // il ripiego sull'autore vale, coi suoi thriller in `fuori` — ma i titoli
   // non sono insegne inconfondibili («The Great Ordeal»), quindi il
@@ -75,7 +77,11 @@ export const TAVOLE = [
   // Gaunt's Ghosts (vedi `data/gauntsGhosts.js`): una storia sola in
   // quattro cicli, quindi a capitoli come l'Eresia, e niente ripiego
   // sull'autore — Abnett scrive anche Eisenhorn e l'Eresia
-  { saga: SAGA_GG, libri: GAUNT, ordine: (b) => b.o, autore: null, fuori: [], parti: true },
+  { saga: SAGA_GG, libri: GAUNT, ordine: (b) => b.o, autore: null, fuori: [], parti: true, universo: "Warhammer 40K" },
+  // Eisenhorn e Ravenor (vedi `data/eisenhorn.js`, `data/ravenor.js`):
+  // serie semplici, e niente ripiego sull'autore per la stessa ragione
+  { saga: SAGA_EI, libri: EISENHORN, ordine: (b) => b.o, autore: null, fuori: [], universo: "Warhammer 40K" },
+  { saga: SAGA_RA, libri: RAVENOR, ordine: (b) => b.o, autore: null, fuori: [], universo: "Warhammer 40K" },
 ];
 
 // I capitoli di tutte le guide, in minuscolo: `parteDiUnaStoria` guarda
@@ -110,11 +116,28 @@ export const PARTI_DI_GUIDA = new Map(
 // sarebbe la cura sbagliata: «The Truth» del Mondo Disco diventerebbe
 // «truth», che sta dentro qualunque titolo. Gli alias invece li mette chi
 // scrive la tavola, uno per uno, dove sa che sono innocui.
+//
+// E A PARITA' DI LUNGHEZZA, DUE REGOLE (chieste da Eisenhorn e Ravenor):
+// - il NOME DI UNA SAGA si prova per ultimo: «Eisenhorn 01 - Xenos» e'
+//   Xenos, e «Ravenor 02 - Ravenor Returned» non e' il primo Ravenor. Il
+//   nome della saga sta nel file come etichetta, il titolo e' l'altro;
+// - un titolo che una guida nomina come CONTORNO (il prologo dell'Eresia:
+//   Eisenhorn, Malleus, Hereticus) e un'altra come sua TAPPA e' della
+//   seconda. Il cammino dell'Eresia lo ritrova lo stesso, per titolo.
+const NOMI_DI_SAGA = new Set(TAVOLE.map((t) => norm(t.saga)));
+// le stesse specie di `fuoriDallaStoria` e `lettureDiSfondo` qui sotto,
+// che a questo punto del modulo non esistono ancora
+const contorno = (v) => v.tipo === "prologo" || v.tipo === "fuori" || v.sfondo === true;
 const INDICE = TAVOLE.filter((tav) => !tav.forme).flatMap((tav) =>
   tav.libri.flatMap((b) =>
     [b.t, ...(b.alias || [])].map((nome) => ({ ...b, k: norm(nome), tav }))
   )
-).sort((a, b) => b.k.length - a.k.length);
+).sort(
+  (a, b) =>
+    Number(NOMI_DI_SAGA.has(a.k)) - Number(NOMI_DI_SAGA.has(b.k)) ||
+    b.k.length - a.k.length ||
+    Number(contorno(a)) - Number(contorno(b))
+);
 
 // LE TAVOLE PER FORME (Hellboy). Il nome si riduce una volta: minuscole,
 // niente apostrofi («Pirate's» = «pirates»), «&» = «and»,

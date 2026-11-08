@@ -260,10 +260,13 @@ export default async (t) => {
     t.eq("spuntato il racconto, il passo avanza", dopoSpunta.tappa.voce.t, "Horus Rising");
     t.eq("…e quello ce l'ha", dopoSpunta.apribile, null);
     t.eq("…e il prologo si dichiara una scelta", prossimoPasso(c, con({})).prologo, "scelta");
-    // letto Eisenhorn, il percorso Inquisition è cominciato: il passo
-    // diventa il suo seguito, che non ha
+    // letto Eisenhorn — l'OMNIBUS del 2004, che contiene anche Malleus e
+    // Hereticus — il percorso Inquisition e' finito tutto. Prima il passo
+    // diceva «Malleus, non ce l'hai» a chi l'aveva in mano dentro la
+    // raccolta: da quando Eisenhorn ha la sua guida, la guida dice cosa
+    // contiene l'omnibus (`in`), e il prologo dell'Eresia lo sa
     const dopo = prossimoPasso(c, con({ 3: "read" }));
-    t.eq("letto Eisenhorn il passo è il seguito del suo percorso", dopo.tappa.voce.t, "Malleus");
-    t.eq("…e i conti sono sulle tappe in gioco", lettiDelCammino(c, con({ 3: "read" })).letti, 1);
+    t.eq("letto l'omnibus di Eisenhorn il percorso e' finito: si torna al primo passo della storia", dopo.tappa.voce.t, "The Wolf of Ash and Fire");
+    t.eq("…e i conti contano i tre romanzi letti dentro l'omnibus", lettiDelCammino(c, con({ 3: "read" })).letti, 3);
   }
 };

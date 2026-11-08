@@ -10,7 +10,7 @@
 // non è tua ti fa saltare un libro, una tua data per mancante te lo fa
 // ricomprare.
 import { banco } from "./aiuto.mjs";
-import { camminoDi, camminiDi, camminoDellaGuida, guideIntere, perParte } from "../src/lib/cammino.js";
+import { camminoDi, camminiDi, camminoDellaGuida, guideAccanto, guideIntere, perParte } from "../src/lib/cammino.js";
 import { TAVOLE } from "../src/lib/sagaBooks.js";
 import HORUS, { SAGA as SAGA_HH } from "../src/data/horusHeresy.js";
 
@@ -183,6 +183,22 @@ export default async (t) => {
     t.eq("…e quelle che hai ci sono", una.tue, 1);
     t.eq("le guide intere: JoJo no, le altre si'", guideIntere().map((g) => g.saga).includes("JoJo's Bizarre Adventure"), false);
     t.eq("…e Gaunt's Ghosts c'e'", guideIntere().some((g) => g.saga === "Gaunt's Ghosts"), true);
+  }
+  // ── LE GUIDE DELLO STESSO UNIVERSO, ACCANTO ───────────────────────────
+  // la foto del lettore: «Warhammer 40K» col solo cammino dell'Eresia, e la
+  // domanda «dove vedo le saghe che mi mancano?»
+  {
+    const libri = [{ id: "h", title: "Horus Rising", author: "Dan Abnett" }, { id: "m", title: "Mort", author: "Terry Pratchett" }];
+    const qui = camminiDi(libri, { scaffale: [libri[0]] });
+    const accanto = guideAccanto(qui, libri);
+    t.eq("accanto all'Eresia le altre guide del 40K", accanto.map((c) => c.saga).join(", "), "Gaunt's Ghosts, Eisenhorn, Ravenor");
+    t.eq("…a zero volumi, col loro conto", accanto.map((c) => `${c.tue}/${c.volumi}`).join(" "), "0/15 0/4 0/3");
+    const disco = camminiDi(libri, { scaffale: [libri[1]] });
+    t.eq("accanto al Mondo Disco niente: un universo suo non lo dichiara", guideAccanto(disco, libri).length, 0);
+    t.eq("e senza cammini niente", guideAccanto([], libri).length, 0);
+    const conGaunt = [...libri, { id: "g", title: "First and Only", author: "Dan Abnett" }];
+    const due = camminiDi(conGaunt, { scaffale: [libri[0], conGaunt[2]] });
+    t.eq("una guida gia' sul ripiano non si ripete accanto", guideAccanto(due, conGaunt).map((c) => c.saga).join(", "), "Eisenhorn, Ravenor");
   }
   {
     // senza ripiano si conta su quel che si è ricevuto, com'era prima

@@ -239,16 +239,22 @@ export default async (t) => {
     const suoi = [
       { id: "1", title: "Horus Rising", author: "", saga: "Warhammer 40K" },
       { id: "2", title: "False Gods", author: "", saga: "Warhammer 40K" },
-      { id: "3", title: "Eisenhorn", author: "", saga: "Warhammer 40K" },
+      { id: "3", title: "Soul Hunter", author: "", saga: "Warhammer 40K" },
+      // Eisenhorn ha la sua guida: nel prologo dell'Eresia e' tuo, ma il
+      // numero glielo da' la sua, non questa
+      { id: "4", title: "Eisenhorn", author: "", saga: "Warhammer 40K" },
     ];
     const c = camminoDi(suoi);
     const n = numerazioneGuida(c);
     t.eq("i tre volumi ricevono un numero", n.length, 3);
-    // Eisenhorn apre il prologo della guida: un numero di lettura suo non
-    // ce l'ha (non è un romanzo dell'Eresia) e senza il decimale
-    // resterebbe fuori dalla frontiera, che è un buco e non una prudenza
-    const eisenhorn = n.find((p) => p.title === "Eisenhorn");
-    t.eq("e il prologo si infila prima del primo", eisenhorn.a, 0.01);
+    t.c("Eisenhorn sta nel prologo dell'Eresia come tuo", c.tappe.some((x) => x.voce.t === "Eisenhorn" && x.libro?.id === "4"));
+    t.c("…ma il numero non glielo da' l'Eresia", !n.some((p) => p.id === "4"));
+    // il prologo apre la guida: un numero di lettura suo non ce l'ha (non
+    // e' un romanzo dell'Eresia) e senza il decimale resterebbe fuori dalla
+    // frontiera, che e' un buco e non una prudenza. Soul Hunter e' la
+    // quarta riga del prologo
+    const eisenhorn = n.find((p) => p.title === "Soul Hunter");
+    t.eq("e il prologo si infila prima del primo", eisenhorn.a, 0.04);
     t.eq("…anche se per la tavola non ha un numero di lettura", eisenhorn.da, null);
     // IL CONTROLLO CHE IL LETTORE HA CHIESTO DUE VOLTE. Pinnava il
     // contrario («horus.a > 13») ed è girato con dentro la ragione: il

@@ -299,7 +299,9 @@ export default async (t) => {
     // portano il numero («questi 3 non dovrebbero essere fuori dal
     // percorso»).
     for (const [titolo, cosa] of [
-      ["Eisenhorn", "il prologo"],
+      // non Eisenhorn: da quando ha la sua guida e' di quella (vedi
+      // `test/eisenhorn-ravenor.test.mjs`); il prologo resta il prologo
+      ["Soul Hunter", "il prologo"],
       ["Night Lords Omnibus", "l'omnibus dei Night Lords"],
       ["Forges of Mars Omnibus", "l'omnibus di Marte"],
       ["Ahriman Omnibus", "l'omnibus di Ahriman"],

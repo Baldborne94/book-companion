@@ -242,7 +242,7 @@ function Tappa({ t, onOpenBook, gia, onMetti }) {
           {voce.t}
         </span>
         <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginTop: 2 }}>
-          {[voce.a, voce.nota, libro ? `nella tua biblioteca${stato ? ` · ${stato}` : ""}` : null]
+          {[voce.a, voce.nota, libro ? `${t.dentro ? `dentro «${libro.title}»` : "nella tua biblioteca"}${stato ? ` · ${stato}` : ""}` : null]
             .filter(Boolean)
             .join(" · ")}
         </span>
