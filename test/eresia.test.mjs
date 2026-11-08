@@ -121,8 +121,8 @@ export default async function (t) {
   // ripiego, i Gaunt's Ghosts di Abnett diventerebbero Eresia
   t.eq(
     "un Abnett che non è dell'Eresia resta fuori",
-    riconosci({ title: "First and Only", author: "Dan Abnett" }),
-    null
+    riconosci({ title: "First and Only", author: "Dan Abnett" })?.saga,
+    "Gaunt's Ghosts"
   );
   // UN AUTORE SBAGLIATO È UNA PROVA, uno mancante no: metà degli ePub
   // l'autore non ce l'hanno, e lì il silenzio non vale come smentita

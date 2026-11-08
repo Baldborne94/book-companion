@@ -971,6 +971,69 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore dopo «I libri dei tuoi autori» tolta: le guide
+    // scritte a mano, a partire da Gaunt's Ghosts. Sul suo tablet sta sotto
+    // «Warhammer 40K» accanto all'Eresia, e di Gaunt's non ha niente
+    nome: "Gaunt's Ghosts: il suo cammino accanto all'Eresia, i mancanti in Da prendere, e la guida si apre anche senza volumi",
+    async fai({ browser }) {
+      const w = (id, title) => ({ id, title, author: "Dan Abnett", saga: "Warhammer 40K", fileType: "epub", addedAt: 1 });
+      const libri = [
+        w("h1", "Horus Rising"),
+        w("h2", "Know No Fear"),
+        w("h3", "Prospero Burns"),
+        w("g1", "First and Only"),
+        { id: "m1", title: "Mort", author: "Terry Pratchett", saga: "Discworld", fileType: "epub", addedAt: 1 },
+      ];
+      const d = await dispositivo(browser, {
+        misura: TABLET,
+        prima: `
+          localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});
+          localStorage.setItem("bc_vista", JSON.stringify({ aspetto: "raccolte" }));`,
+      });
+      const { p } = d;
+      await p.goto(`${URL_APP}?apri=libreria`);
+      await p.getByRole("button", { name: /^Warhammer 40K/ }).first().click();
+      // due guide sullo stesso ripiano, un tasto per una
+      await finche(() => p.getByRole("button", { name: "📜 Gaunt's Ghosts" }).count(), 8000, "sul ripiano del 40K non c'e' il cammino di Gaunt's Ghosts");
+      if (!(await p.getByRole("button", { name: "📜 The Horus Heresy" }).count())) throw new Error("il cammino dell'Eresia e' sparito dal ripiano del 40K");
+      await p.getByRole("button", { name: "📜 Gaunt's Ghosts" }).click();
+      await finche(() => p.getByText("Il cammino · Gaunt's Ghosts").count(), 5000, "il cammino di Gaunt's Ghosts non si apre");
+      await finche(() => p.getByText(/Hai 1 dei 15 volumi della guida/).count(), 3000, "il cammino non dice 1 dei 15");
+      for (const ciclo of ["The Founding (1-3)", "The Victory (12-15)"]) if (!(await p.getByText(ciclo).count())) throw new Error(`nel cammino manca il ciclo «${ciclo}»`);
+      if (await p.getByRole("button", { name: "Metti «First and Only» in Da prendere" }).count()) throw new Error("si propone di prendere un volume che hai");
+      await p.getByRole("button", { name: "Metti «Ghostmaker» in Da prendere" }).click();
+      await finche(() => p.getByText("✓ in Da prendere").count(), 3000, "il tocco non dice che «Ghostmaker» e' in Da prendere");
+      const lista = await p.evaluate(() => JSON.parse(localStorage.getItem("bc_da_prendere") || "[]"));
+      if (!lista.some((v) => v.titolo === "Ghostmaker" && v.autore === "Dan Abnett" && v.saga === "Gaunt's Ghosts" && v.numero === 2)) throw new Error(`«Ghostmaker» non e' in lista con saga e numero: ${JSON.stringify(lista)}`);
+      await p.getByRole("button", { name: "Chiudi" }).click();
+      // il Mondo Disco ha il suo cammino anche se l'Eresia ha piu' volumi
+      await p.getByRole("button", { name: /Tutte le raccolte/ }).click();
+      await p.getByRole("button", { name: /^Discworld/ }).first().click();
+      await finche(() => p.getByRole("button", { name: "📜 Il cammino" }).count(), 5000, "il ripiano del Mondo Disco non ha piu' il suo cammino");
+
+      // UN ALTRO DISPOSITIVO, SENZA NESSUN GAUNT'S: la guida da «Da prendere»
+      const altro = await dispositivo(browser, {
+        misura: TABLET,
+        prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify([w("h1", "Horus Rising")]))});`,
+      });
+      const q = altro.p;
+      await q.goto(URL_APP);
+      await q.getByRole("button", { name: /Da prendere/ }).first().click();
+      await finche(() => q.getByText("📜 Le guide complete").count(), 8000, "in Da prendere non ci sono le guide");
+      await q.getByRole("button", { name: /^Gaunt's Ghosts/ }).click();
+      await finche(() => q.getByText(/Hai 0 dei 15 volumi della guida/).count(), 5000, "la guida senza volumi non si apre");
+      await q.getByRole("button", { name: "Metti «First and Only» in Da prendere" }).click();
+      await finche(() => q.getByText("✓ in Da prendere").count(), 3000, "il tocco non dice che e' in Da prendere");
+      // l'indietro chiude prima il cammino, e la lista sotto si e' riletta
+      await q.goBack();
+      await finche(async () => !(await q.getByText("Il cammino · Gaunt's Ghosts").count()), 3000, "l'indietro non chiude il cammino");
+      await finche(() => q.getByText("La tua lista").count(), 3000, "chiuso il cammino non si torna a Da prendere");
+      // la lista era vuota quando il cammino si e' aperto: si rilegge o resta vuota
+      await finche(async () => !(await q.getByText(/^Ancora vuota/).count()) && (await q.getByText("First and Only", { exact: true }).count()) > 0, 3000, "la lista sotto non mostra la voce messa dal cammino");
+      return { guasti: [...d.guasti, ...altro.guasti], nota: "due cammini sul ripiano del 40K, Ghostmaker in lista con saga e numero, il Disco ha il suo tasto, la guida si apre senza volumi da Da prendere" };
+    },
+  },
+  {
     // chiesto dal lettore davanti alle raccolte dei manga: «permettimi di
     // mettere tutti i volumi all'interno di una raccolta come letti o meno e
     // di valutare l'intera saga con un suo voto»

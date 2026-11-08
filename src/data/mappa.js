@@ -295,8 +295,8 @@ export const MAPPA = [
   {
     luogo: "libreria",
     nome: "Il cammino di una saga",
-    cosa: "La guida di lettura per intero — anche i volumi che non hai — con dentro i tuoi, in ordine e divisa per parti. Per l'Eresia di Horus è il percorso CD8D: settantuno tappe, antologie e romanzi 40K al loro posto.",
-    dove: "Il tasto 📜 sull'intestazione del ripiano, dove la saga è una di quelle riconosciute.",
+    cosa: "La guida di lettura per intero — anche i volumi che non hai — con dentro i tuoi, in ordine e divisa per parti; quel che manca va in Da prendere con un tocco. Le guide: Mondo Disco, l'Eresia di Horus (il percorso CD8D: settantuno tappe, antologie e romanzi 40K al loro posto), la Seconda Apocalisse, Hellboy e Gaunt's Ghosts (i quindici romanzi in quattro cicli).",
+    dove: "Il tasto 📜 sull'intestazione del ripiano, uno per guida (sotto «Warhammer 40K» l'Eresia e Gaunt's Ghosts); anche le guide di cui non hai niente si aprono da «Da prendere», in «📜 Le guide complete».",
   },
   {
     luogo: "libreria",

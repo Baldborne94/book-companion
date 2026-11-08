@@ -10,7 +10,7 @@
 // non è tua ti fa saltare un libro, una tua data per mancante te lo fa
 // ricomprare.
 import { banco } from "./aiuto.mjs";
-import { camminoDi, perParte } from "../src/lib/cammino.js";
+import { camminoDi, camminiDi, camminoDellaGuida, guideIntere, perParte } from "../src/lib/cammino.js";
 import { TAVOLE } from "../src/lib/sagaBooks.js";
 import HORUS, { SAGA as SAGA_HH } from "../src/data/horusHeresy.js";
 
@@ -145,8 +145,44 @@ export default async (t) => {
       riconosce: sapere,
       scaffale: [L("x", "Un romanzo qualunque")],
     });
-    t.eq("un ripiano senza tappe non ne ha nessuna", altrove.dalRipiano, 0);
-    t.eq("…anche se la biblioteca ne ha eccome", altrove.tue, 2);
+    // la guida si sceglie sul ripiano: uno senza tappe non ha cammino (e
+    // quindi niente tasto), anche se la biblioteca ne ha eccome
+    t.eq("un ripiano senza tappe non ha cammino", altrove, null);
+  }
+  // ── UN CAMMINO PER GUIDA, CONTATE SUL RIPIANO ─────────────────────────
+  //
+  // Prima vinceva una guida sola, contata su TUTTA la biblioteca: preso al
+  // banco, un ripiano del Mondo Disco in una biblioteca con piu' volumi
+  // dell'Eresia riceveva il cammino dell'Eresia, con zero volumi li' — e il
+  // tasto spariva. E sul ripiano «Warhammer 40K» del lettore, dove accanto
+  // all'Eresia stanno i Gaunt's Ghosts, la seconda guida non si apriva mai.
+  {
+    const tutti = [L("a", "Alfa"), L("b", "Beta"), L("g", "Gamma"), L("z", "Zeta")];
+    const sapere = sa({
+      Alfa: { saga: "Finta", titolo: "Alfa" },
+      Beta: { saga: "Finta", titolo: "Beta" },
+      Gamma: { saga: "Finta", titolo: "Gamma" },
+      Zeta: { saga: "Altra", titolo: "Zeta" },
+    });
+    const suo = camminoDi(tutti, { tavole: TAVOLE_FINTE, riconosce: sapere, scaffale: [L("z", "Zeta")] });
+    t.eq("il ripiano di una guida meno grande ha la SUA guida", suo?.saga, "Altra");
+    t.eq("…col suo volume", suo?.dalRipiano, 1);
+    const misto = camminiDi(tutti, { tavole: TAVOLE_FINTE, riconosce: sapere, scaffale: [L("z", "Zeta"), L("a", "Alfa"), L("b", "Beta")] });
+    t.eq("un ripiano con due guide ha due cammini, prima la piu' piena", misto.map((c) => `${c.saga}:${c.dalRipiano}`).join(" "), "Finta:2 Altra:1");
+    const pari = camminiDi(tutti, { tavole: TAVOLE_FINTE, riconosce: sapere, scaffale: [L("z", "Zeta"), L("a", "Alfa")] });
+    t.eq("a parita' la prima dichiarata, non il primo libro", pari.map((c) => c.saga).join(" "), "Finta Altra");
+  }
+  // ── LA GUIDA INTERA ANCHE SENZA VOLUMI ────────────────────────────────
+  // Gaunt's Ghosts sul tablet del lettore: zero volumi, e la guida va
+  // aperta lo stesso, da «Da prendere»
+  {
+    const vuota = camminoDellaGuida(FINTA, [L("z", "Zeta")], { riconosce: sa({ Zeta: { saga: "Altra", titolo: "Zeta" } }) });
+    t.eq("una guida senza volumi tuoi si apre lo stesso", vuota.saga, "Finta");
+    t.eq("…con tutte le tappe, nessuna tua", `${vuota.tappe.length} ${vuota.tue}`, "5 0");
+    const una = camminoDellaGuida(FINTA, [L("b", "Beta")], { riconosce: sa({ Beta: { saga: "Finta", titolo: "Beta" } }) });
+    t.eq("…e quelle che hai ci sono", una.tue, 1);
+    t.eq("le guide intere: JoJo no, le altre si'", guideIntere().map((g) => g.saga).includes("JoJo's Bizarre Adventure"), false);
+    t.eq("…e Gaunt's Ghosts c'e'", guideIntere().some((g) => g.saga === "Gaunt's Ghosts"), true);
   }
   {
     // senza ripiano si conta su quel che si è ricevuto, com'era prima

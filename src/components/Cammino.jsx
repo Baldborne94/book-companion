@@ -4,6 +4,7 @@ import { getStatus } from "../lib/library.js";
 import { perParte, prossimoPasso, lettiDelCammino } from "../lib/cammino.js";
 import { numerazioneGuida, serieDaScrivere, sagaComune, campiDaScrivere } from "../lib/numeraCammino.js";
 import { raccontiLetti, segnaRacconto, chiaveRacconto } from "../lib/racconti.js";
+import { leggiDaPrendere, scriviDaPrendere, tieni, vive, idTitolo } from "../lib/daPrendere.js";
 
 // I FILTRI SONO TRE, e il terzo è quello per cui la pagina esiste: su una
 // guida da settantuno tappe «cosa mi manca» è la domanda vera, e senza un
@@ -202,7 +203,7 @@ function Racconto({ t, letto, onSegna }) {
   );
 }
 
-function Tappa({ t, onOpenBook }) {
+function Tappa({ t, onOpenBook, gia, onMetti }) {
   const { voce, libro } = t;
   const stato = libro ? STATO[getStatus(libro.id)] : null;
   const dentro = (
@@ -246,16 +247,44 @@ function Tappa({ t, onOpenBook }) {
             .join(" · ")}
         </span>
       </span>
-      <span
-        style={{
-          flexShrink: 0,
-          fontSize: F.minuscolo,
-          color: libro ? C.green : C.muted,
-          opacity: libro ? 1 : 0.7,
-        }}
-      >
-        {libro ? "✓" : "manca"}
-      </span>
+      {/* QUEL CHE MANCA SI METTE IN «DA PRENDERE» da qui (chiesto dal
+          lettore: «se è già nella raccolta me lo specifichi, ti manca
+          ancora questo da aggiungere oppure no»). La voce porta la saga e
+          il numero del cammino, e l'id è quello delle proposte della
+          stessa guida: tenuta da qui, là non si ripropone. */}
+      {!libro && onMetti ? (
+        gia ? (
+          <span style={{ flexShrink: 0, fontSize: F.minuscolo, color: C.green, whiteSpace: "nowrap" }}>✓ in Da prendere</span>
+        ) : (
+          <button
+            onClick={() => onMetti(t)}
+            aria-label={`Metti «${voce.t}» in Da prendere`}
+            style={{
+              flexShrink: 0,
+              minHeight: 44,
+              padding: "0 12px",
+              borderRadius: R.tondo,
+              border: `1px solid ${C.accent}66`,
+              color: C.accent,
+              fontSize: F.minuscolo,
+              whiteSpace: "nowrap",
+            }}
+          >
+            ＋ Da prendere
+          </button>
+        )
+      ) : (
+        <span
+          style={{
+            flexShrink: 0,
+            fontSize: F.minuscolo,
+            color: libro ? C.green : C.muted,
+            opacity: libro ? 1 : 0.7,
+          }}
+        >
+          {libro ? "✓" : "manca"}
+        </span>
+      )}
     </>
   );
 
@@ -435,8 +464,18 @@ function SceltaNumeri({ numeri, serie, saga, scelti, sagaScelta, onCambia, onSag
   );
 }
 
-export default function Cammino({ cammino, onClose, onOpenBook, onNumera }) {
+export default function Cammino({ cammino, onClose, onOpenBook, onNumera, onDaPrendere }) {
   const [filtro, setFiltro] = useState("tutte");
+  const [lista, setLista] = useState(leggiDaPrendere);
+  const nella = useMemo(() => new Set(vive(lista).map((v) => v.id)), [lista]);
+  const voceDi = (voce) => idTitolo(voce.t, voce.a);
+  const metti = (t) => {
+    const voce = { id: voceDi(t.voce), titolo: t.voce.t, autore: t.voce.a || "", saga: cammino.saga, numero: t.posto };
+    const nuova = tieni(leggiDaPrendere(), voce);
+    scriviDaPrendere(nuova);
+    setLista(nuova);
+    onDaPrendere?.(voce);
+  };
   const [numerare, setNumerare] = useState(null);
   const [spuntati, setSpuntati] = useState(() => raccontiLetti());
   const { tappe, tue, volumi, fuori, saga } = cammino;
@@ -599,7 +638,7 @@ export default function Cammino({ cammino, onClose, onOpenBook, onNumera }) {
                   onSegna={(voce, letto) => setSpuntati(segnaRacconto(voce, letto))}
                 />
               ) : (
-                <Tappa key={t.voce.t} t={t} onOpenBook={onOpenBook} />
+                <Tappa key={t.voce.t} t={t} onOpenBook={onOpenBook} gia={nella.has(voceDi(t.voce))} onMetti={metti} />
               )
             )}
           </section>
