@@ -109,11 +109,10 @@ export function postiDelCammino(tappe = [], ordine = () => null) {
 // libri non stanno in questo percorso». Contata su tutta la biblioteca
 // direbbe «altri 242», che non e' un'informazione — e' rumore. Senza
 // `scaffale` si conta su quel che si e' ricevuto, com'era prima.
-export function camminoDi(libri = [], { tavole = TAVOLE, riconosce, scaffale } = {}) {
+function riconosciuti(libri, riconosce) {
   const sapere = riconosce || ((b) => riconosci({ title: b?.title, author: b?.author, saga: b?.saga }));
   const miei = new Map();
-  const conti = new Map();
-  let riconosciuti = 0;
+  const sagaDi = new Map();
   for (const b of libri) {
     if (!b) continue;
     const r = sapere(b);
@@ -121,25 +120,16 @@ export function camminoDi(libri = [], { tavole = TAVOLE, riconosce, scaffale } =
     // autore («questo e' un Pratchett, la saga gliela do lo stesso»), e li'
     // non sappiamo di quale volume si tratti
     if (!r?.titolo) continue;
-    riconosciuti += 1;
-    conti.set(r.saga, (conti.get(r.saga) || 0) + 1);
+    sagaDi.set(b.id, r.saga);
     const k = chiave(r.saga, r.titolo);
     // due copie dello stesso volume sono UNA tappa, e vince la prima:
     // l'ordine in cui arrivano e' quello dello scaffale, non del caso
     if (!miei.has(k)) miei.set(k, b);
   }
+  return { miei, sagaDi };
+}
 
-  // il ripiano puo' contenere libri di piu' tavole (un volume di un'altra
-  // saga finito li' dentro): comanda quella che ne ha di piu', e a parita'
-  // la prima dichiarata — un criterio che dipendesse dall'ordine dei libri
-  // cambierebbe cammino a ogni import
-  let scelta = null;
-  for (const tav of tavole) {
-    const quanti = conti.get(tav.saga) || 0;
-    if (quanti > (scelta?.quanti || 0)) scelta = { tav, quanti };
-  }
-  if (!scelta) return null;
-
+function costruisci(tav, miei, contati) {
   // UN RACCONTO NON E' UN FILE, e il suo «ce l'hai» e' quello della sua
   // ANTOLOGIA: «The Aurelian» sta dentro «Eye of Terra», e possederlo vuol
   // dire possedere quel volume. Cercarlo per titolo non troverebbe mai
@@ -152,12 +142,12 @@ export function camminoDi(libri = [], { tavole = TAVOLE, riconosce, scaffale } =
   // titolo, e l'antologia resta il ripiego: e' la strada normale, perche'
   // quasi sempre e' li' che lo si possiede.
   const suo = (voce) =>
-    miei.get(chiave(scelta.tav.saga, voce.t)) ||
-    (voce.tipo === "racconto" ? miei.get(chiave(scelta.tav.saga, voce.in || "")) : null) ||
+    miei.get(chiave(tav.saga, voce.t)) ||
+    (voce.tipo === "racconto" ? miei.get(chiave(tav.saga, voce.in || "")) : null) ||
     null;
   const tappe = postiDelCammino(
-    scelta.tav.libri.map((voce) => ({ voce, libro: suo(voce) })),
-    scelta.tav.ordine
+    tav.libri.map((voce) => ({ voce, libro: suo(voce) })),
+    tav.ordine
   );
   // E ADESSO I DUE INSIEMI SONO DUE, dove prima uno bastava.
   //
@@ -179,13 +169,12 @@ export function camminoDi(libri = [], { tavole = TAVOLE, riconosce, scaffale } =
   const volumiTuoi = new Set(
     conLibro.filter((t) => t.voce?.tipo !== "racconto").map((t) => t.libro.id)
   );
-  const contati = (scaffale || libri).filter(Boolean);
   return {
-    saga: scelta.tav.saga,
+    saga: tav.saga,
     // la tavola dichiara che i suoi `c` sono CAPITOLI di una storia sola e
     // non cicli del lettore: e' quel che decide cosa si scrive nel campo
     // Serie — la storia, non il capitolo
-    parti: !!scelta.tav.parti,
+    parti: !!tav.parti,
     tappe,
     tue: volumiTuoi.size,
     // QUANTI VOLUMI HA LA GUIDA, che non e' quante righe ha la tavola: da
@@ -203,6 +192,60 @@ export function camminoDi(libri = [], { tavole = TAVOLE, riconosce, scaffale } =
     fuori: contati.filter((b) => !dentro.has(b.id)).length,
   };
 }
+
+
+// I CAMMINI DI UN RIPIANO, uno per guida, e si contano SUL RIPIANO.
+//
+// Prima la guida si sceglieva contando i libri di TUTTA la biblioteca, e
+// ne vinceva una sola. Con due guide le due cose sbagliavano insieme, e la
+// seconda guida l'ha fatto vedere (chiesto dal lettore: «Gaunt's Ghosts»,
+// che sul suo tablet sta sotto «Warhammer 40K» accanto all'Eresia):
+//
+// - un ripiano del Mondo Disco, in una biblioteca con piu' volumi
+//   dell'Eresia, riceveva il cammino dell'Eresia — con zero volumi su quel
+//   ripiano, quindi senza tasto. Il tasto spariva da dove serviva;
+// - sullo stesso ripiano «Warhammer 40K» l'Eresia vinceva sempre, e il
+//   cammino di Gaunt's Ghosts non si poteva aprire da nessuna parte.
+//
+// Adesso ogni guida che ha almeno un volume sul ripiano ha il suo cammino,
+// prima quella che ne ha di piu' e a parita' la prima dichiarata: un
+// criterio che dipendesse dall'ordine dei libri cambierebbe a ogni import.
+// I libri per le tappe si cercano sempre in tutta la biblioteca (vedi
+// sopra): un volume sotto un'altra grafia della saga e' tuo lo stesso.
+export function camminiDi(libri = [], { tavole = TAVOLE, riconosce, scaffale } = {}) {
+  const { miei, sagaDi } = riconosciuti(libri, riconosce);
+  const contati = (scaffale || libri).filter(Boolean);
+  const conti = new Map();
+  for (const b of contati) {
+    const saga = sagaDi.get(b.id);
+    if (saga) conti.set(saga, (conti.get(saga) || 0) + 1);
+  }
+  return tavole
+    .map((tav, i) => ({ tav, i, quanti: conti.get(tav.saga) || 0 }))
+    .filter((x) => x.quanti > 0)
+    .sort((a, b) => b.quanti - a.quanti || a.i - b.i)
+    .map((x) => costruisci(x.tav, miei, contati));
+}
+
+// il cammino che comanda: il primo dei cammini
+export function camminoDi(libri = [], opzioni = {}) {
+  return camminiDi(libri, opzioni)[0] || null;
+}
+
+// LA GUIDA INTERA ANCHE SENZA VOLUMI. Il cammino si apre dal ripiano, e un
+// ripiano c'e' solo se un volume ce l'hai: la guida di una saga che non
+// hai ancora cominciato — Gaunt's Ghosts sul tablet del lettore, che ne ha
+// zero — non si aprirebbe mai. «Da prendere» le elenca tutte, e da li' si
+// apre questa: «hai 0 dei 15 volumi», con ogni tappa da prendere.
+export function camminoDellaGuida(tav, libri = [], { riconosce } = {}) {
+  const { miei } = riconosciuti(libri, riconosce);
+  return costruisci(tav, miei, []);
+}
+
+// LE GUIDE DA ELENCARE: quelle che sono una guida intera. JoJo no: la sua
+// tavola tiene solo i volumi che il nome del file non dice, e «hai 3 dei
+// 14» sarebbe un conto su un elenco che non e' la saga.
+export const guideIntere = (tavole = TAVOLE) => tavole.filter((t) => t.intera !== false);
 
 // IL TUO PROSSIMO PASSO NEL CAMMINO.
 //
@@ -339,7 +382,10 @@ export function prossimoPasso(
     tappa: passo,
     inCorso: !!passo.libro && statoDi(passo.libro.id) === "reading",
     apribile: apribile === passo ? null : apribile,
-    prologo: !cominciati.size && !entrato ? "scelta" : null,
+    // e solo se la guida UN PROLOGO CE L'HA: la riga dei quattro percorsi
+    // alternativi e' dell'Eresia, e su Gaunt's Ghosts (o sul Mondo Disco)
+    // cominciato da zero parlava di un prologo che non c'e'
+    prologo: !cominciati.size && !entrato && tappe.some((t) => t?.voce?.tipo === "prologo") ? "scelta" : null,
   };
 }
 

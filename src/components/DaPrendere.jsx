@@ -20,6 +20,7 @@ import { chiedi, hasOracle } from "../lib/oracle.js";
 import { costo, soldi, riassunto, leggiTetto } from "../lib/spesa.js";
 import { CampoChiave, TettoFinito } from "./TettoOracolo.jsx";
 import { copertinaNota, nuovoCercatore } from "../lib/copertineRete.js";
+import { camminoDellaGuida, guideIntere } from "../lib/cammino.js";
 
 // uno per tutta la pagina: poche domande alla volta, mai due uguali
 const copertinaDiVoce = nuovoCercatore();
@@ -350,8 +351,16 @@ function Consigli({ books, lista, gia, onTieni, onScarta }) {
   );
 }
 
-export default function DaPrendere({ books, onClose }) {
+export default function DaPrendere({ books, onClose, onGuida, rileggi = 0 }) {
   const [lista, setLista] = useState(leggiDaPrendere);
+  // il cammino aperto da qui scrive nella stessa lista: chiuso, si rilegge
+  useEffect(() => {
+    if (rileggi) setLista(leggiDaPrendere());
+  }, [rileggi]);
+  // LE GUIDE INTERE, anche quelle di cui non hai niente (Gaunt's Ghosts
+  // sul tablet del lettore): il cammino si apre dal ripiano, e un ripiano
+  // senza volumi non c'e'
+  const guide = useMemo(() => (onGuida ? guideIntere().map((tav) => camminoDellaGuida(tav, books)) : []), [books, onGuida]);
   const [titolo, setTitolo] = useState("");
   const [autore, setAutore] = useState("");
   const [copiata, setCopiata] = useState(null);
@@ -499,6 +508,40 @@ export default function DaPrendere({ books, onClose }) {
                   {arr ? "Togli" : "🗑"}
                 </button>
               </div>
+            ))}
+          </div>
+        )}
+
+        {guide.length > 0 && (
+          <div style={{ marginBottom: 26 }}>
+            <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.titoletto, color: C.arcane, marginBottom: 4 }}>📜 Le guide complete</h3>
+            <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 10, lineHeight: 1.45 }}>
+              Gli elenchi scritti a mano nell'app, nell'ordine di lettura: apri una guida per vedere quali volumi hai e
+              mettere in lista quelli che mancano.
+            </p>
+            {guide.map((g) => (
+              <button
+                key={g.saga}
+                onClick={() => onGuida(g)}
+                style={{
+                  display: "flex",
+                  width: "100%",
+                  alignItems: "center",
+                  gap: 10,
+                  minHeight: 44,
+                  marginBottom: 6,
+                  padding: "8px 14px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.border}`,
+                  textAlign: "left",
+                }}
+              >
+                <span style={{ flex: 1, minWidth: 0, fontFamily: FONT_TITLE, fontSize: F.corpo, color: C.text }}>{g.saga}</span>
+                <span style={{ fontSize: F.piccolo, color: g.tue === g.volumi ? C.green : C.muted, whiteSpace: "nowrap" }}>
+                  {g.tue === g.volumi ? `✓ tutti e ${g.volumi}` : g.tue ? `${g.tue} di ${g.volumi}` : `${g.volumi} volumi`}
+                </span>
+                <span style={{ color: C.muted }}>›</span>
+              </button>
             ))}
           </div>
         )}

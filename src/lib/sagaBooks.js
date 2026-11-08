@@ -3,6 +3,7 @@ import HORUS, { SAGA as SAGA_HH } from "../data/horusHeresy.js";
 import APOCALISSE, { SAGA as SAGA_SA, FUORI as FUORI_BAKKER } from "../data/secondApocalypse.js";
 import JOJO, { SAGA as SAGA_JOJO } from "../data/jojo.js";
 import HELLBOY, { SAGA as SAGA_HB } from "../data/hellboy.js";
+import GAUNT, { SAGA as SAGA_GG } from "../data/gauntsGhosts.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 
 // Riconoscere il romanzo dal titolo: i metadati degli EPUB sono spesso vuoti,
@@ -67,10 +68,14 @@ export const TAVOLE = [
   { saga: SAGA_SA, libri: APOCALISSE, ordine: (b) => b.n, autore: "bakker", fuori: FUORI_BAKKER },
   // JoJo: i volumi che nel nome non dicono la saga (vedi `data/jojo.js`).
   // Niente ripiego sull'autore: Araki ha scritto anche altro
-  { saga: SAGA_JOJO, libri: JOJO, ordine: (b) => b.n, autore: null, fuori: [] },
+  { saga: SAGA_JOJO, libri: JOJO, ordine: (b) => b.n, autore: null, fuori: [], intera: false },
   // Hellboy: l'ordine della Comics Beat, riconosciuto per FORME e non per
   // titoli (vedi `data/hellboy.js` e `perForma` qui sotto)
   { saga: SAGA_HB, libri: HELLBOY, ordine: (b) => b.o ?? null, autore: null, fuori: [], forme: true },
+  // Gaunt's Ghosts (vedi `data/gauntsGhosts.js`): una storia sola in
+  // quattro cicli, quindi a capitoli come l'Eresia, e niente ripiego
+  // sull'autore — Abnett scrive anche Eisenhorn e l'Eresia
+  { saga: SAGA_GG, libri: GAUNT, ordine: (b) => b.o, autore: null, fuori: [], parti: true },
 ];
 
 // I capitoli di tutte le guide, in minuscolo: `parteDiUnaStoria` guarda

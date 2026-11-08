@@ -28,7 +28,7 @@ import { BarraCloud, PesoQui } from "./BarraCloud.jsx";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
 import { famigliaDi } from "../data/generi.js";
 import { riconosci, capitoloDi } from "../lib/sagaBooks.js";
-import { camminoDi } from "../lib/cammino.js";
+import { camminiDi } from "../lib/cammino.js";
 import BookCover from "./BookCover.jsx";
 import Disposizione from "./Disposizione.jsx";
 import EmptyState from "./EmptyState.jsx";
@@ -340,32 +340,39 @@ function Shelf({ books, onOpenBook, localIds, idLassu, altrove = null, showOrder
 // scritta a mano («Warhammer 40K») che nessuna tavola conosce, e un tasto
 // legato al nome non sarebbe mai comparso proprio dov'è nato il bisogno.
 function TastoCammino({ libri, tutti, riconosciuti, onCammino }) {
-  const cammino = useMemo(
+  // UNA GUIDA, UN TASTO: sul ripiano «Warhammer 40K» del lettore stanno
+  // l'Eresia e Gaunt's Ghosts, e ognuna ha il suo cammino (`camminiDi`).
+  // Il tasto sta dove ci sono i suoi volumi, contati sul ripiano.
+  const cammini = useMemo(
     () =>
       onCammino && riconosciuti
-        ? camminoDi(tutti || libri, { riconosce: (b) => riconosciuti.get(b.id), scaffale: libri })
-        : null,
+        ? camminiDi(tutti || libri, { riconosce: (b) => riconosciuti.get(b.id), scaffale: libri })
+        : [],
     [libri, tutti, riconosciuti, onCammino]
   );
-  // il tasto sta dove ci sono i suoi volumi: `tue` conta tutta la
-  // biblioteca, quindi da solo lo farebbe comparire su ogni ripiano
-  if (!cammino?.dalRipiano) return null;
+  if (!cammini.length) return null;
   return (
-    <button
-      onClick={() => onCammino(cammino)}
-      style={{
-        fontSize: F.piccolo,
-        fontFamily: "inherit",
-        fontWeight: 400,
-        color: C.muted,
-        padding: "2px 8px",
-        minHeight: 32,
-        borderRadius: R.tondo,
-        border: `1px solid ${C.border}`,
-      }}
-    >
-      📜 Il cammino
-    </button>
+    <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+      {cammini.map((cammino) => (
+        <button
+          key={cammino.saga}
+          onClick={() => onCammino(cammino)}
+          style={{
+            fontSize: F.piccolo,
+            fontFamily: "inherit",
+            fontWeight: 400,
+            color: C.muted,
+            padding: "2px 8px",
+            minHeight: 32,
+            borderRadius: R.tondo,
+            border: `1px solid ${C.border}`,
+          }}
+        >
+          {/* con due guide sullo stesso ripiano il tasto dice quale */}
+          {cammini.length > 1 ? `📜 ${cammino.saga}` : "📜 Il cammino"}
+        </button>
+      ))}
+    </span>
   );
 }
 

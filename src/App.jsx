@@ -924,6 +924,9 @@ export default function App() {
   const [diaryOpen, setDiaryOpen] = useState(false);
   const [quadernoOpen, setQuadernoOpen] = useState(false);
   const [prendereOpen, setPrendereOpen] = useState(false);
+  // quante voci il cammino ha messo in «Da prendere»: aperta sotto, la
+  // lista si rilegge quando il cammino si chiude
+  const [giroPrendere, setGiroPrendere] = useState(0);
   const [mappaOpen, setMappaOpen] = useState(false);
   // LE NOVITA' (`lib/novita.js`): la lista sta nel dispositivo, il guscio la
   // guarda ad app chiusa e dice lo stato delle notifiche
@@ -1949,6 +1952,8 @@ export default function App() {
   // prima di lasciare la Libreria
   if (section === "library" && raccolta != null) livelli.push(() => setRaccolta(null));
   if (section === "music" && raccoltaMusica != null) livelli.push(() => setRaccoltaMusica(null));
+  // «Da prendere» prima del cammino: la guida si apre anche da li', sopra
+  if (prendereOpen) livelli.push(() => setPrendereOpen(false));
   // prima della scheda, che il cammino sa aprire: l'ultimo livello si
   // chiude per primo, e con la scheda aperta sopra dev'essere lei ad
   // andarsene col primo indietro
@@ -1957,7 +1962,6 @@ export default function App() {
   if (gardenOpen) livelli.push(() => setGardenOpen(false));
   if (diaryOpen) livelli.push(() => setDiaryOpen(false));
   if (quadernoOpen) livelli.push(() => setQuadernoOpen(false));
-  if (prendereOpen) livelli.push(() => setPrendereOpen(false));
   if (syncOpen) livelli.push(() => setSyncOpen(false));
   if (themeOpen) livelli.push(() => setThemeOpen(false));
   if (mappaOpen) livelli.push(() => setMappaOpen(false));
@@ -2376,12 +2380,21 @@ export default function App() {
           niente al posto loro — si apre un attimo dopo, gia' completa */}
       <Suspense fallback={null}>
       {mappaOpen && <Mappa onClose={() => setMappaOpen(false)} />}
+      {/* «Da prendere» sotto il cammino: la guida si apre anche da li' */}
+      {prendereOpen && (
+        <DaPrendere books={books} onClose={() => setPrendereOpen(false)} onGuida={setCammino} rileggi={cammino ? 0 : giroPrendere} />
+      )}
       {cammino && (
         <Cammino
           cammino={cammino}
           onClose={() => setCammino(null)}
           onOpenBook={setOpenId}
           onNumera={scriviNumeriCammino}
+          onDaPrendere={(v) => {
+            setGiroPrendere((n) => n + 1);
+            notify(`🛒 «${v.titolo}» in Da prendere`);
+            presto.current?.();
+          }}
         />
       )}
       {syncOpen && (
@@ -2409,7 +2422,6 @@ export default function App() {
         // libro si torna al quaderno da cui si era partiti
         <Quaderno books={books} onClose={() => setQuadernoOpen(false)} onReadAt={(id, dove) => handleRead(id, dove)} />
       )}
-      {prendereOpen && <DaPrendere books={books} onClose={() => setPrendereOpen(false)} />}
       </Suspense>
       {readingBook && (
         // L'ANELLO STRETTO. Il reader è la parte più complicata dell'app,
