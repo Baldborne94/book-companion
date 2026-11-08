@@ -939,7 +939,7 @@ const SCENE = [
       const tipo = (...q) => q.map((id) => ({ mainsnak: { datavalue: { value: { id } } } }));
       const opera = (en, { it, saga, n, a, p31 = "Q7725634" } = {}) => ({
         labels: { en: { value: en }, ...(it ? { it: { value: it } } : {}) },
-        claims: { P31: tipo(p31), ...(saga ? { P179: [{ mainsnak: { datavalue: { value: { id: saga } } }, qualifiers: { P1545: [{ datavalue: { value: String(n) } }] } }] } : {}), ...(a ? { P577: [{ mainsnak: { datavalue: { value: { time: `+${a}-00-00T00:00:00Z` } } } }] } : {}) },
+        claims: { P31: tipo(p31), P7937: tipo("Q8261"), ...(saga ? { P179: [{ mainsnak: { datavalue: { value: { id: saga } } }, qualifiers: { P1545: [{ datavalue: { value: String(n) } }] } }] } : {}), ...(a ? { P577: [{ mainsnak: { datavalue: { value: { time: `+${a}-00-00T00:00:00Z` } } } }] } : {}) },
       });
       const W = {
         Q1: { claims: { P106: tipo("Q6625963") } },

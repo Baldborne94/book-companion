@@ -27,10 +27,23 @@ export const API = "https://www.wikidata.org/w/api.php";
 export const IN_VISTA = 5;
 export const SCADENZA = 7 * 24 * 60 * 60 * 1000;
 const CHIAVE = "bc_altri_autore";
+// la regola con cui la memoria e' stata scritta: una regola nuova (2: solo
+// romanzi) non si fida di quel che la vecchia ha tenuto per una settimana
+export const VERSIONE = 2;
 const TENUTI = 30;
 
-// i libri: opera letteraria, romanzo, opera scritta, novella, raccolta di racconti
-export const LIBRI = ["Q7725634", "Q8261", "Q47461344", "Q149537", "Q1279564"];
+// i libri: opera letteraria, romanzo, opera scritta
+export const LIBRI = ["Q7725634", "Q8261", "Q47461344"];
+// SOLO I ROMANZI (chiesto dal lettore con la foto di Sanderson: «non mi
+// mettere le storie brevi o altri brevi racconti, soltanto i romanzi
+// principali e le saghe principali»). La forma dell'opera (P7937, o il tipo):
+// romanzo si', novella, racconto, novelette, raccolte e antologie, il volume
+// diviso in parti («The Stormlight Archive (Part One)», la prima meta' di
+// The Way of Kings) e il romanzo a fumetti no. Senza forma passa solo un
+// volume numerato di una saga: tenerlo evita i buchi nella saga, buttare il
+// resto evita i libri che nessuno sa cosa siano.
+export const ROMANZO = "Q8261";
+export const BREVI = ["Q149537", "Q49084", "Q472808", "Q1279564", "Q105420", "Q7064554", "Q133500522", "Q725377"];
 // chi scrive: scrittore, romanziere, autore, fumettista-scrittore, poeta, autore per ragazzi
 export const SCRITTORI = ["Q36180", "Q6625963", "Q482980", "Q15949613", "Q49757", "Q4853732", "Q18844224"];
 
@@ -49,9 +62,14 @@ export function libroDa(e, nomiSerie = {}) {
   const c = e?.claims || {};
   const titolo = e?.labels?.en?.value;
   if (!titolo || !ids(c, "P31").some((t) => LIBRI.includes(t))) return null;
+  const forme = [...ids(c, "P7937"), ...ids(c, "P31")];
+  if (forme.some((f) => BREVI.includes(f))) return null;
   const s = (c.P179 || [])[0];
   const sagaId = valore(s)?.id || null;
-  const numero = s?.qualifiers?.P1545?.[0]?.datavalue?.value ?? null;
+  const grezzo = s?.qualifiers?.P1545?.[0]?.datavalue?.value ?? null;
+  // un numero intero: «2.5» e' la novella fra il secondo e il terzo
+  const numero = grezzo != null && /^\d+$/.test(String(grezzo).trim()) ? Number(grezzo) : null;
+  if (!forme.includes(ROMANZO) && !(sagaId && numero != null)) return null;
   const tempo = String(valore((c.P577 || [])[0])?.time || "");
   const nomi = [
     ...Object.values(e.labels || {}).map((l) => l?.value),
@@ -62,7 +80,7 @@ export function libroDa(e, nomiSerie = {}) {
     anno: Number(tempo.slice(1, 5)) || null,
     saga: sagaId ? nomiSerie[sagaId] || null : null,
     sagaId,
-    numero: numero != null && /^\d+(\.\d+)?$/.test(String(numero)) ? Number(numero) : null,
+    numero,
     nomi,
   };
 }
@@ -147,13 +165,12 @@ const leggi = (st) => {
 
 export function opereRicordate(autore, { st = globalThis.localStorage, ora = Date.now() } = {}) {
   const v = leggi(st)[chiaveAutore(autore)];
-  // la memoria della versione di Open Library non ha `libri`: si richiede
-  return v && ora - v.quando < SCADENZA ? v.libri || null : null;
+  return v && v.versione === VERSIONE && ora - v.quando < SCADENZA ? v.libri || null : null;
 }
 
 export function ricordaOpere(autore, libri, { st = globalThis.localStorage, ora = Date.now() } = {}) {
   const m = leggi(st);
-  m[chiaveAutore(autore)] = { quando: ora, libri };
+  m[chiaveAutore(autore)] = { quando: ora, versione: VERSIONE, libri };
   const tenuti = Object.entries(m).sort((a, b) => b[1].quando - a[1].quando).slice(0, TENUTI);
   try {
     st?.setItem(CHIAVE, JSON.stringify(Object.fromEntries(tenuti)));

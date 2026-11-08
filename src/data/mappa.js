@@ -405,7 +405,7 @@ export const MAPPA = [
   {
     luogo: "libreria",
     nome: "I libri dei tuoi autori",
-    cosa: "In una raccolta che segui, i libri dei suoi autori saga per saga, coi titoli originali (da Wikidata): quanti sono, quanti ne hai e quali ti mancano. Un tocco li mette in Da prendere, con la saga e il numero.",
+    cosa: "In una raccolta che segui, i romanzi dei suoi autori saga per saga, coi titoli originali (da Wikidata, senza novelle e racconti): quanti sono, quanti ne hai e quali ti mancano. Un tocco li mette in Da prendere, con la saga e il numero.",
     dove: "In fondo alla raccolta seguita, dopo i volumi.",
   },
   {
