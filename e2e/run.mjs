@@ -923,6 +923,105 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «una sezione dedicata ai libri o saghe che
+    // quell'autore che sto seguendo ha pubblicato, che non ho, così la metto
+    // nella lista dei libri da aggiungere». In fondo alla raccolta seguita
+    nome: "nella raccolta seguita, gli altri libri dei suoi autori che non hai, e un tocco li mette in Da prendere",
+    async fai({ browser }) {
+      const libri = [
+        { id: "w1", title: "Horus Rising", author: "Dan Abnett", saga: "Warhammer 40K", series: "The Horus Heresy", sagaOrder: 1, fileType: "epub", addedAt: 1 },
+        { id: "w2", title: "Legion", author: "Dan Abnett", saga: "Warhammer 40K", series: "The Horus Heresy", sagaOrder: 7, fileType: "epub", addedAt: 2 },
+      ];
+      const segue = [{ id: "saga:warhammer 40k", nome: "Warhammer 40K", tipo: "autori", autori: ["Dan Abnett"], cercata: 1, ricerca: 2 }];
+      const chieste = [];
+      const d = await dispositivo(browser, {
+        misura: TABLET,
+        prima: `
+          localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});
+          localStorage.getItem("bc_novita") || localStorage.setItem("bc_novita", ${JSON.stringify(JSON.stringify(segue))});
+          localStorage.setItem("bc_vista", JSON.stringify({ aspetto: "raccolte" }));`,
+        catalogo: async (url) => {
+          const u = new URL(url);
+          if (u.pathname !== "/search.json" || u.searchParams.get("author") !== "Dan Abnett") return null;
+          chieste.push(url);
+          const k = ["OL1A"];
+          return { docs: [
+            { title: "Horus Rising", author_key: k, first_publish_year: 2006 },
+            { title: "First and Only", author_key: k, first_publish_year: 1999 },
+            { title: "Hive", author_key: k, first_publish_year: 2026 },
+            { title: "Guardians of the Galaxy", author_key: k, first_publish_year: 2013 },
+          ] };
+        },
+      });
+      const { p } = d;
+      await p.goto(`${URL_APP}?apri=libreria`);
+      await p.getByRole("button", { name: /^Warhammer 40K/ }).first().click();
+      await finche(() => p.getByText("📚 Altri libri dei tuoi autori").count(), 8000, "nella raccolta seguita non c'e' la sezione degli altri libri");
+      await finche(() => p.getByText(/Dan Abnett · 3 libri che non hai/).count(), 8000, "la sezione non dice quanti libri dell'autore mancano");
+      const ordine = await p.evaluate(() => [...document.querySelectorAll("section")].find((x) => x.textContent.includes("Altri libri dei tuoi autori")).innerText);
+      if (!(ordine.indexOf("Hive") < ordine.indexOf("Guardians of the Galaxy") && ordine.indexOf("Guardians of the Galaxy") < ordine.indexOf("First and Only"))) throw new Error(`non dal piu' nuovo:\n${ordine}`);
+      if (ordine.includes("Horus Rising")) throw new Error("propone un libro che c'e' gia'");
+      await p.getByRole("button", { name: "Metti «Hive» in Da prendere" }).click();
+      await finche(() => p.getByText("✓ in Da prendere").count(), 3000, "il tocco non dice che il libro e' in Da prendere");
+      const lista = await p.evaluate(() => JSON.parse(localStorage.getItem("bc_da_prendere") || "[]"));
+      if (!lista.some((v) => v.titolo === "Hive" && v.autore === "Dan Abnett")) throw new Error(`«Hive» non e' nella lista: ${JSON.stringify(lista)}`);
+      // riaperta la raccolta, il catalogo non si richiede (una settimana)
+      await p.getByRole("button", { name: /Tutte le raccolte/ }).click();
+      await p.getByRole("button", { name: /^Warhammer 40K/ }).first().click();
+      await finche(() => p.getByText("✓ in Da prendere").count(), 5000, "riaperta, la sezione non ricorda quel che c'e' in Da prendere");
+      if (chieste.length !== 1) throw new Error(`il catalogo e' stato chiesto ${chieste.length} volte`);
+      return { guasti: d.guasti, nota: "3 libri che non hai, dal più nuovo; «Hive» in Da prendere; una domanda sola al catalogo" };
+    },
+  },
+  {
+    // chiesto dal lettore: «vorrei novità di tutto il mondo 40k… lo vedo
+    // quando apro l'applicazione». Le pagine nuove di Lexicanum, solo i libri
+    nome: "le uscite del 40K da Lexicanum stanno nell'Ingresso, si mettono in Da prendere e, viste, se ne vanno",
+    async fai({ browser }) {
+      const libri = [{ id: "w1", title: "Horus Rising", author: "Dan Abnett", saga: "Warhammer 40K", fileType: "epub", addedAt: 1 }];
+      const chieste = [];
+      const lexicanum = async (route) => {
+        const u = new URL(route.request().url());
+        const q = Object.fromEntries(u.searchParams);
+        const headers = { "access-control-allow-origin": "*" };
+        if (u.pathname !== "/mediawiki/api.php") return route.fulfill({ status: 404, headers, body: "non qui" });
+        if (q.meta === "siteinfo") return route.fulfill({ headers, json: { query: { general: { sitename: "Lexicanum" }, statistics: { articles: 1 } } } });
+        chieste.push(q.list);
+        return route.fulfill({ headers, json: { query: { recentchanges: [
+          { title: "Hive (Novel)", timestamp: "2026-11-07T10:00:00Z" },
+          { title: "Ordo Minoris", timestamp: "2026-11-06T10:00:00Z" },
+          { title: "Sons of the Emperor (Anthology)", timestamp: "2026-11-05T10:00:00Z" },
+        ] } } });
+      };
+      const d = await dispositivo(browser, {
+        misura: TABLET,
+        lexicanum,
+        prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});`,
+      });
+      const { p } = d;
+      await p.goto(URL_APP);
+      await finche(() => p.getByText("Uscite del 40K").count(), 10000, "nell'Ingresso non ci sono le uscite del 40K");
+      await finche(() => p.getByText(/^2 libri nuovi su Lexicanum/).count(), 5000, "non dice quanti libri nuovi");
+      if (await p.getByText("Ordo Minoris").count()) throw new Error("fra le uscite c'e' una pagina che non e' un libro");
+      const link = await p.getByRole("link", { name: "Lexicanum ↗" }).first().getAttribute("href");
+      if (link !== "https://wh40k.lexicanum.com/wiki/Hive_(Novel)") throw new Error(`il collegamento porta a ${link}`);
+      await p.getByRole("button", { name: "Metti «Hive» in Da prendere" }).click();
+      await finche(() => p.getByText("✓ in Da prendere").count(), 3000, "il tocco non dice che il libro e' in Da prendere");
+      await p.getByRole("button", { name: "✓ Viste" }).click();
+      await finche(async () => !(await p.getByText("Uscite del 40K").count()), 3000, "viste, le uscite restano nell'Ingresso");
+      await p.reload();
+      await aspetta(2500);
+      if (await p.getByText("Uscite del 40K").count()) throw new Error("riaperta l'app, le uscite viste tornano");
+      if (chieste.length !== 1) throw new Error(`Lexicanum e' stato chiesto ${chieste.length} volte in sei ore`);
+      // chi non legge il 40K non chiede niente
+      const altro = await dispositivo(browser, { misura: TABLET, lexicanum, prima: `localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify([{ id: "m1", title: "Mort", author: "Terry Pratchett", fileType: "epub", addedAt: 1 }]))});` });
+      await altro.p.goto(URL_APP);
+      await aspetta(2500);
+      if (chieste.length !== 1 || (await altro.p.getByText("Uscite del 40K").count())) throw new Error("chi non legge il 40K ha chiesto a Lexicanum");
+      return { guasti: [...d.guasti, ...altro.guasti], nota: "2 libri nuovi, «Hive» in Da prendere, viste e sparite, una domanda in sei ore" };
+    },
+  },
+  {
     // chiesto dal lettore davanti alle raccolte dei manga: «permettimi di
     // mettere tutti i volumi all'interno di una raccolta come letti o meno e
     // di valutare l'intera saga con un suo voto»

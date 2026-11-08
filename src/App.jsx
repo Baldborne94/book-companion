@@ -2230,6 +2230,7 @@ export default function App() {
             onDiary={() => setDiaryOpen(true)}
             onQuaderno={() => setQuadernoOpen(true)}
             onDaPrendere={() => setPrendereOpen(true)}
+            notify={notify}
           />
         )}
         {section === "library" && (

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { useViewport } from "../lib/viewport.js";
 import { getFinished, getLastOpened, getProgress, getStarted, getStatus, getUpdatedAt, letturaUnica, appenaArrivati, quandoArrivato } from "../lib/library.js";
@@ -9,6 +9,8 @@ import { leggiTempo, pezziDiOggi } from "../lib/tempo.js";
 import { raccogli, conta, rigaGiardino } from "../lib/citazioni.js";
 import { leggiQuaderno, rigaQuaderno } from "../lib/quaderno.js";
 import { leggiDaPrendere, proposte, rigaDaPrendere } from "../lib/daPrendere.js";
+// le uscite del 40K portano Lexicanum: a parte, dopo il primo disegno
+const Uscite40k = lazy(() => import("./Uscite40k.jsx"));
 import { nextInSaga, prossimiPassi, perchePassoTace, frasePassoTace, volumiDelMotivo, inCorsoESeguiti } from "../lib/saga.js";
 import BookCover from "./BookCover.jsx";
 import { BookmarkIcon, LeafIcon, SparkIcon } from "./Icons.jsx";
@@ -70,7 +72,7 @@ const fila = (wide) => ({
   flexWrap: wide ? "wrap" : "nowrap",
 });
 
-export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onQuaderno, onDaPrendere }) {
+export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiary, onQuaderno, onDaPrendere, notify }) {
   // chi ha il dorso disegnato lo sa solo `BookCover`: lo dice qui, così i
   // preferiti non ristampano un titolo che sta già sulla copertina
   const [dorsi, setDorsi] = useState({});
@@ -503,6 +505,10 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
           </div>
         </>
       )}
+
+      <Suspense fallback={null}>
+        <Uscite40k books={books} notify={notify} />
+      </Suspense>
 
       {!accanto && griglia(22)}
     </div>
