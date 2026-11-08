@@ -229,4 +229,26 @@ export default async function (t) {
   // la scelta di un libro non tocca quella di un altro
   M.setBookMusic("b2", { id: "m2" });
   t.eq("e ogni libro ha la sua", M.getBookMusic("b1").id, "m1");
+
+  // IL LIBRO RICORDA ANCHE LA RACCOLTA (segnalato dal lettore: «riproduce
+  // sempre la stessa canzone… sto ascoltando la raccolta di Warhammer»):
+  // «▶ Riprendi» suonava il brano da solo, cioe' in ripetizione
+  const battaglia = { id: "f1", name: "Battaglia", trackId: "t1" };
+  const marcia = { id: "f2", name: "Marcia", trackId: "t2" };
+  const coro = { id: "f3", name: "Coro", url: "https://youtu.be/abcdefghijk" };
+  const wh = { id: "r-wh", name: "WARHAMMER 40k", brani: ["f1", "f2", "f3"] };
+  const altra = { id: "r-x", name: "Altro", brani: ["f2"] };
+  const tutto = { raccolte: [altra, wh], favs: [battaglia, marcia, coro] };
+  const suona = { current: { trackId: "t2", name: "Marcia" }, queue: { raccolta: "r-wh" } };
+  t.eq("il legame porta la raccolta che suonava", JSON.stringify(M.legameMusica(suona)), JSON.stringify({ trackId: "t2", name: "Marcia", raccolta: "r-wh" }));
+  t.eq("…una melodia sola non ha raccolta", M.legameMusica({ current: { trackId: "t2", name: "Marcia" }, queue: null }).raccolta, null);
+  t.eq("…niente che suona, niente legame", M.legameMusica({ current: null }), null);
+  const r = M.comeRiprendere(M.legameMusica(suona), tutto);
+  t.c("si riprende la raccolta da quel brano, non il brano da solo", r.raccolta?.id === "r-wh" && r.da === 1 && r.brani.map((b) => b.id).join() === "f1,f2,f3" && !r.melodia);
+  t.eq("…anche un brano di YouTube", M.comeRiprendere({ url: coro.url, name: "Coro", raccolta: "r-wh" }, tutto).da, 2);
+  t.eq("una melodia scelta da sola resta da sola", M.comeRiprendere({ trackId: "t2", name: "Marcia", raccolta: null }, tutto).melodia?.name, "Marcia");
+  t.eq("un legame di prima prende la raccolta che contiene il brano", M.comeRiprendere({ trackId: "t1", name: "Battaglia" }, tutto).raccolta?.id, "r-wh");
+  t.eq("…la prima che lo contiene", M.comeRiprendere({ trackId: "t2", name: "Marcia" }, tutto).raccolta?.id, "r-x");
+  t.eq("una raccolta tolta, o senza piu' quel brano: la melodia da sola", M.comeRiprendere({ trackId: "t1", name: "Battaglia", raccolta: "r-via" }, tutto).melodia?.name, "Battaglia");
+  t.eq("nessun legame, niente da riprendere", M.comeRiprendere(null, tutto), null);
 }

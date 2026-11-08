@@ -16,12 +16,21 @@
 // servizio delle query SPARQL: quello razionava a una domanda al minuto.
 export const API_WIKIDATA = "https://www.wikidata.org/w/api.php";
 export const LEGAMI = ["P179", "P361", "P1434"];
-// i titoli della raccolta che si cercano uno per uno per trovare la serie
+// TUTTE LE SERIE DI UNA RACCOLTA (scelto dal lettore davanti al suo
+// «Warhammer 40K»: «ci sono anche saghe inerenti all'universo 40k… come le
+// gestisci?»). Si cercano i primi titoli della raccolta e il primo di ogni
+// suo ciclo (la Serie della scheda), e i nomi dei cicli; si seguono le serie
+// che coprono i suoi titoli, mai un universo intero (`UNIVERSO`: il Cosmere,
+// il Mondo Disco come luogo, il 40K sarebbero ogni libro nuovo, anche di
+// serie che il lettore non ha).
 export const TITOLI_DA_PROVARE = 3;
+// i titoli cercati in tutto: ognuno sono due domande
+export const PROVE_MAX = 10;
 // le serie candidate che si aprono: ognuna e' una domanda in piu'
-export const CANDIDATE_MAX = 6;
-// le serie che una raccolta segue al piu'
-export const SERIE_MAX = 3;
+export const CANDIDATE_MAX = 12;
+// le serie che una raccolta segue al piu' (il guscio ne guarda tante)
+export const SERIE_MAX = 8;
+export const UNIVERSO = "Q559618";
 
 const norm = (s) =>
   String(s || "")
@@ -118,6 +127,57 @@ export function serieDegli(entita = {}) {
   return out;
 }
 
+// i titoli da cercare: i primi della raccolta, poi il primo di ogni ciclo
+export function titoliDaProvare(libri = [], max = PROVE_MAX) {
+  const out = titoliDellaRaccolta(libri).slice(0, TITOLI_DA_PROVARE);
+  const cicli = new Set();
+  for (const b of libri || []) {
+    const ciclo = norm(b?.series);
+    const t = String(b?.title || "").trim();
+    if (!ciclo || cicli.has(ciclo) || !t) continue;
+    cicli.add(ciclo);
+    if (!out.some((x) => norm(x) === norm(t))) out.push(t);
+  }
+  return out.slice(0, max);
+}
+
+// i nomi dei cicli della raccolta, una volta sola
+export const nomiDeiCicli = (libri = []) => {
+  const visti = new Map();
+  for (const b of libri || []) {
+    const n = String(b?.series || "").trim();
+    if (n && !visti.has(norm(n))) visti.set(norm(n), n);
+  }
+  return [...visti.values()];
+};
+
+// GLI AUTORI DECIDONO FRA DUE SERIE CON LO STESSO TITOLO. Misurato sul 40K
+// del lettore: «The Solar War» e' anche il secondo della trilogia «The Long
+// Winter» di A. G. Riddle, e la serie entrava per quel titolo. Una serie
+// che su Wikidata ha i suoi autori (P50) e nessuno e' un autore della
+// raccolta non si segue; senza autori dichiarati, o con una raccolta senza
+// autori, non si giudica. Si confronta il cognome (l'ultima parola).
+const cognome = (n) => norm(n).split(" ").filter(Boolean).pop() || "";
+export function cognomiDellaRaccolta(libri = []) {
+  const out = new Set();
+  for (const b of libri || []) {
+    for (const a of String(b?.author || "").split(/\s*(?:;|&| e | and |,)\s*/i)) {
+      const c = cognome(a);
+      if (c.length >= 3 && !/^(sconosciuto|unknown|anonimo|various|vv)$/.test(c)) out.add(c);
+    }
+  }
+  return out;
+}
+export const autoriDi = (e) => (e?.claims?.P50 || []).map((c) => c?.mainsnak?.datavalue?.value?.id).filter(Boolean);
+export function autoriCompatibili(e, nomiAutori = {}, cognomi = new Set()) {
+  const ids = autoriDi(e);
+  if (!ids.length || !cognomi.size) return true;
+  return ids.some((id) => cognomi.has(cognome(nomiAutori[id])));
+}
+
+// un universo intero non e' una serie da seguire
+export const eUnUniverso = (e) => (e?.claims?.P31 || []).some((c) => c?.mainsnak?.datavalue?.value?.id === UNIVERSO);
+
 export const domandaMembri = (q) => `haswbstatement:${LEGAMI.map((p) => `${p}=${q}`).join("|")}`;
 
 const indirizzo = (p) => `${API_WIKIDATA}?${new URLSearchParams({ format: "json", origin: "*", ...p })}`;
@@ -136,17 +196,35 @@ export async function cercaSerie({ nome = "", libri = [] } = {}, prendi) {
     return (r?.search || []).map((x) => x.id).filter(Boolean);
   };
   // prima dai titoli: la serie di cui un volume e' parte e' la prova piu' forte
-  for (const t of titoli.slice(0, TITOLI_DA_PROVARE)) {
+  for (const t of titoliDaProvare(libri)) {
     const ids = (await cerca(String(t).replace(/\s*[([].*$/, ""), "en")).slice(0, 3);
     if (!ids.length) continue;
     const r = await prendi(indirizzo({ action: "wbgetentities", ids: ids.join("|"), props: "claims" }));
     for (const id of serieDegli(r?.entities)) aggiungi(id);
   }
+  for (const ciclo of nomiDeiCicli(libri)) for (const id of (await cerca(ciclo, "en")).slice(0, 2)) aggiungi(id);
   if (String(nome).trim()) {
     for (const lingua of ["en", "it"]) for (const id of (await cerca(String(nome).trim(), lingua)).slice(0, 2)) aggiungi(id);
   }
+  if (!candidate.length) return null;
+  // nomi e tipi delle candidate in una domanda: gli universi escono qui
+  const tipi = {};
+  for (let i = 0; i < candidate.length; i += 50) {
+    const e = await prendi(indirizzo({ action: "wbgetentities", ids: candidate.slice(i, i + 50).join("|"), props: "labels|claims", languages: "it|en" }));
+    Object.assign(tipi, e?.entities || {});
+  }
+  // i nomi degli autori delle candidate, in una domanda
+  const cognomi = cognomiDellaRaccolta(libri);
+  const nomiAutori = {};
+  const idAutori = [...new Set(candidate.flatMap((q) => autoriDi(tipi[q])))];
+  if (cognomi.size && idAutori.length) {
+    for (let i = 0; i < idAutori.length; i += 50) {
+      const e = await prendi(indirizzo({ action: "wbgetentities", ids: idAutori.slice(i, i + 50).join("|"), props: "labels", languages: "en|it" }));
+      for (const [id, x] of Object.entries(e?.entities || {})) nomiAutori[id] = x?.labels?.en?.value || x?.labels?.it?.value || "";
+    }
+  }
   const misurate = [];
-  for (const q of candidate.slice(0, CANDIDATE_MAX)) {
+  for (const q of candidate.filter((q) => !eUnUniverso(tipi[q]) && autoriCompatibili(tipi[q], nomiAutori, cognomi)).slice(0, CANDIDATE_MAX)) {
     const r = await prendi(indirizzo({ action: "query", list: "search", srsearch: domandaMembri(q), srlimit: "500", srnamespace: "0" }));
     const membri = (r?.query?.search || []).map((x) => x.title).filter((x) => /^Q\d+$/.test(x));
     if (!membri.length) continue;
@@ -155,13 +233,8 @@ export async function cercaSerie({ nome = "", libri = [] } = {}, prendi) {
       const e = await prendi(indirizzo({ action: "wbgetentities", ids: membri.slice(i, i + 50).join("|"), props: "labels|aliases", languages: "en|it" }));
       Object.assign(entita, e?.entities || {});
     }
-    misurate.push({ id: q, membri: membri.length, titoli: titoliFraIMembri(entita, titoli) });
-  }
-  if (!misurate.some((c) => c.titoli.length)) return null;
-  const e = await prendi(indirizzo({ action: "wbgetentities", ids: misurate.map((x) => x.id).join("|"), props: "labels", languages: "it|en" }));
-  for (const c of misurate) {
-    const l = e?.entities?.[c.id]?.labels || {};
-    c.nome = l.it?.value || l.en?.value || c.id;
+    const l = tipi[q]?.labels || {};
+    misurate.push({ id: q, nome: l.it?.value || l.en?.value || q, membri: membri.length, titoli: titoliFraIMembri(entita, titoli) });
   }
   const scelte = serieCheCoprono(misurate, { nome });
   return scelte.length ? scelte.map((x) => ({ id: x.id, nome: x.nome, membri: x.membri, combaciano: x.titoli.length })) : null;
