@@ -926,51 +926,67 @@ const SCENE = [
     // chiesto dal lettore: «una sezione dedicata ai libri o saghe che
     // quell'autore che sto seguendo ha pubblicato, che non ho, così la metto
     // nella lista dei libri da aggiungere». In fondo alla raccolta seguita
-    nome: "nella raccolta seguita, gli altri libri dei suoi autori che non hai, e un tocco li mette in Da prendere",
+    nome: "nella raccolta seguita, i libri dei suoi autori saga per saga: quanti ne hai, quali mancano, e un tocco li mette in Da prendere",
     async fai({ browser }) {
+      // la prima forma (Open Library) e' stata bocciata dal lettore con una
+      // foto: traduzioni, omonimi, cofanetti, nessuna saga. Ora Wikidata
       const libri = [
-        { id: "w1", title: "Horus Rising", author: "Dan Abnett", saga: "Warhammer 40K", series: "The Horus Heresy", sagaOrder: 1, fileType: "epub", addedAt: 1 },
-        { id: "w2", title: "Legion", author: "Dan Abnett", saga: "Warhammer 40K", series: "The Horus Heresy", sagaOrder: 7, fileType: "epub", addedAt: 2 },
+        { id: "s1", title: "L'amuleto di Samarcanda", author: "Jonathan Stroud", saga: "Bartimaeus", sagaOrder: 1, fileType: "epub", addedAt: 1 },
+        { id: "s2", title: "The Golem's Eye", author: "Jonathan Stroud", saga: "Bartimaeus", sagaOrder: 2, fileType: "epub", addedAt: 2 },
       ];
-      const segue = [{ id: "saga:warhammer 40k", nome: "Warhammer 40K", tipo: "autori", autori: ["Dan Abnett"], cercata: 1, ricerca: 2 }];
+      const segue = [{ id: "saga:bartimaeus", nome: "Bartimaeus", tipo: "autori", autori: ["Jonathan Stroud"], cercata: 1, ricerca: 2 }];
       const chieste = [];
+      const tipo = (...q) => q.map((id) => ({ mainsnak: { datavalue: { value: { id } } } }));
+      const opera = (en, { it, saga, n, a, p31 = "Q7725634" } = {}) => ({
+        labels: { en: { value: en }, ...(it ? { it: { value: it } } : {}) },
+        claims: { P31: tipo(p31), ...(saga ? { P179: [{ mainsnak: { datavalue: { value: { id: saga } } }, qualifiers: { P1545: [{ datavalue: { value: String(n) } }] } }] } : {}), ...(a ? { P577: [{ mainsnak: { datavalue: { value: { time: `+${a}-00-00T00:00:00Z` } } } }] } : {}) },
+      });
+      const W = {
+        Q1: { claims: { P106: tipo("Q6625963") } },
+        Q11: { labels: { en: { value: "Bartimaeus Sequence" } } },
+        Q10: { labels: { en: { value: "Lockwood & Co." } } },
+        Q21: opera("The Amulet of Samarkand", { it: "L'amuleto di Samarcanda", saga: "Q11", n: 1, a: 2003 }),
+        Q22: opera("The Golem's Eye", { saga: "Q11", n: 2, a: 2004 }),
+        Q23: opera("Ptolemy's Gate", { saga: "Q11", n: 3, a: 2005 }),
+        Q31: opera("The Screaming Staircase", { saga: "Q10", n: 1, a: 2013 }),
+        Q32: opera("The Whispering Skull", { saga: "Q10", n: 2, a: 2014 }),
+        Q40: opera("Buried Fire", { a: 1999 }),
+        Q41: opera("Mroczny sobowtór", { p31: "Q3331189" }),
+      };
       const d = await dispositivo(browser, {
         misura: TABLET,
         prima: `
           localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});
           localStorage.getItem("bc_novita") || localStorage.setItem("bc_novita", ${JSON.stringify(JSON.stringify(segue))});
           localStorage.setItem("bc_vista", JSON.stringify({ aspetto: "raccolte" }));`,
-        catalogo: async (url) => {
-          const u = new URL(url);
-          if (u.pathname !== "/search.json" || u.searchParams.get("author") !== "Dan Abnett") return null;
-          chieste.push(url);
-          const k = ["OL1A"];
-          return { docs: [
-            { title: "Horus Rising", author_key: k, first_publish_year: 2006 },
-            { title: "First and Only", author_key: k, first_publish_year: 1999 },
-            { title: "Hive", author_key: k, first_publish_year: 2026 },
-            { title: "Guardians of the Galaxy", author_key: k, first_publish_year: 2013 },
-          ] };
+        wikidata: async (q) => {
+          chieste.push(q.get("action"));
+          if (q.get("action") === "wbsearchentities") return { search: q.get("search") === "Jonathan Stroud" ? [{ id: "Q1" }] : [] };
+          if (q.get("action") === "query") return { query: { search: Object.keys(W).filter((k) => /^Q[234]\d$/.test(k)).map((title) => ({ title })) } };
+          return { entities: Object.fromEntries(q.get("ids").split("|").filter((i) => W[i]).map((i) => [i, W[i]])) };
         },
       });
       const { p } = d;
       await p.goto(`${URL_APP}?apri=libreria`);
-      await p.getByRole("button", { name: /^Warhammer 40K/ }).first().click();
-      await finche(() => p.getByText("📚 Altri libri dei tuoi autori").count(), 8000, "nella raccolta seguita non c'e' la sezione degli altri libri");
-      await finche(() => p.getByText(/Dan Abnett · 3 libri che non hai/).count(), 8000, "la sezione non dice quanti libri dell'autore mancano");
-      const ordine = await p.evaluate(() => [...document.querySelectorAll("section")].find((x) => x.textContent.includes("Altri libri dei tuoi autori")).innerText);
-      if (!(ordine.indexOf("Hive") < ordine.indexOf("Guardians of the Galaxy") && ordine.indexOf("Guardians of the Galaxy") < ordine.indexOf("First and Only"))) throw new Error(`non dal piu' nuovo:\n${ordine}`);
-      if (ordine.includes("Horus Rising")) throw new Error("propone un libro che c'e' gia'");
-      await p.getByRole("button", { name: "Metti «Hive» in Da prendere" }).click();
+      await p.getByRole("button", { name: /^Bartimaeus/ }).first().click();
+      await finche(() => p.getByText("📚 I libri dei tuoi autori").count(), 8000, "nella raccolta seguita non c'e' la sezione dei libri degli autori");
+      const sezione = () => p.evaluate(() => [...document.querySelectorAll("section")].find((x) => x.textContent.includes("I libri dei tuoi autori"))?.innerText || "");
+      await finche(async () => /Bartimaeus Sequence/.test(await sezione()), 8000, "la sezione non mostra le saghe");
+      const testo = await sezione();
+      for (const atteso of ["Bartimaeus Sequence", "te ne manca 1", "#3 Ptolemy's Gate", "Lockwood & Co.", "non ne hai nessuno", "Altri libri", "Buried Fire"])
+        if (!testo.includes(atteso)) throw new Error(`nella sezione manca «${atteso}»:\n${testo}`);
+      for (const via of ["Mroczny", "The Amulet of Samarkand", "The Golem's Eye"]) if (testo.includes(via)) throw new Error(`la sezione mostra «${via}», che non deve:\n${testo}`);
+      if (!(testo.indexOf("Bartimaeus Sequence") < testo.indexOf("Lockwood & Co.") && testo.indexOf("Lockwood & Co.") < testo.indexOf("Altri libri"))) throw new Error(`le saghe non sono in ordine:\n${testo}`);
+      await p.getByRole("button", { name: "Metti «Ptolemy's Gate» in Da prendere" }).click();
       await finche(() => p.getByText("✓ in Da prendere").count(), 3000, "il tocco non dice che il libro e' in Da prendere");
       const lista = await p.evaluate(() => JSON.parse(localStorage.getItem("bc_da_prendere") || "[]"));
-      if (!lista.some((v) => v.titolo === "Hive" && v.autore === "Dan Abnett")) throw new Error(`«Hive» non e' nella lista: ${JSON.stringify(lista)}`);
-      // riaperta la raccolta, il catalogo non si richiede (una settimana)
+      if (!lista.some((v) => v.titolo === "Ptolemy's Gate" && v.autore === "Jonathan Stroud" && v.saga === "Bartimaeus Sequence" && v.numero === 3)) throw new Error(`«Ptolemy's Gate» non e' nella lista con la sua saga: ${JSON.stringify(lista)}`);
+      const quante = chieste.length;
       await p.getByRole("button", { name: /Tutte le raccolte/ }).click();
-      await p.getByRole("button", { name: /^Warhammer 40K/ }).first().click();
+      await p.getByRole("button", { name: /^Bartimaeus/ }).first().click();
       await finche(() => p.getByText("✓ in Da prendere").count(), 5000, "riaperta, la sezione non ricorda quel che c'e' in Da prendere");
-      if (chieste.length !== 1) throw new Error(`il catalogo e' stato chiesto ${chieste.length} volte`);
-      return { guasti: d.guasti, nota: "3 libri che non hai, dal più nuovo; «Hive» in Da prendere; una domanda sola al catalogo" };
+      if (chieste.length !== quante) throw new Error("riaperta la raccolta, Wikidata si e' richiesto");
+      return { guasti: d.guasti, nota: "Bartimaeus te ne manca 1, Lockwood nessuno, Altri libri; niente edizioni né libri che hai; «Ptolemy's Gate» in Da prendere con la saga" };
     },
   },
   {

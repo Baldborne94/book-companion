@@ -404,8 +404,8 @@ export const MAPPA = [
   },
   {
     luogo: "libreria",
-    nome: "Altri libri dei tuoi autori",
-    cosa: "In una raccolta che segui, i libri dei suoi autori che non hai, dal più nuovo, da Open Library: un tocco li mette in Da prendere.",
+    nome: "I libri dei tuoi autori",
+    cosa: "In una raccolta che segui, i libri dei suoi autori saga per saga, coi titoli originali (da Wikidata): quanti sono, quanti ne hai e quali ti mancano. Un tocco li mette in Da prendere, con la saga e il numero.",
     dove: "In fondo alla raccolta seguita, dopo i volumi.",
   },
   {
