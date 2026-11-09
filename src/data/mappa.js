@@ -295,7 +295,7 @@ export const MAPPA = [
   {
     luogo: "libreria",
     nome: "Il cammino di una saga",
-    cosa: "La guida di lettura per intero — anche i volumi che non hai — con dentro i tuoi, in ordine e divisa per parti; quel che manca va in Da prendere con un tocco. Le guide: Mondo Disco, l'Eresia di Horus (il percorso CD8D: settantuno tappe, antologie e romanzi 40K al loro posto), la Seconda Apocalisse, Hellboy, Gaunt's Ghosts (i quindici romanzi in quattro cicli), Eisenhorn e Ravenor (con l'omnibus che contiene i romanzi).",
+    cosa: "La guida di lettura per intero — anche i volumi che non hai — con dentro i tuoi, in ordine e divisa per parti; quel che manca va in Da prendere con un tocco. Le guide: Mondo Disco, l'Eresia di Horus (il percorso CD8D: settantuno tappe, antologie e romanzi 40K al loro posto), la Seconda Apocalisse, Hellboy, Gaunt's Ghosts (i quindici romanzi in quattro cicli), Eisenhorn e Ravenor (con l'omnibus che contiene i romanzi), il Libro dei Caduti di Malazan e le Cronache della Folgorluce.",
     dove: "Il tasto 📜 sull'intestazione del ripiano, uno per guida; sotto «Warhammer 40K» ci sono tutte le guide del 40K, anche quelle che non hai cominciato (col conto: «📜 Ravenor · 0/3»). Tutte le guide si aprono anche da «Da prendere», in «📜 Le guide complete».",
   },
   {

@@ -48,6 +48,8 @@ const NOMI = [
   { nomi: ["eisenhorn"], saga: "Eisenhorn" },
   { nomi: ["ravenor"], saga: "Ravenor" },
   { nomi: ["hellboy"], saga: "Hellboy" },
+  { nomi: ["malazan", "malazan book of the fallen", "libro dei caduti di malazan"], saga: "Malazan Book of the Fallen" },
+  { nomi: ["stormlight", "stormlight archive", "cronache della folgorluce"], saga: "The Stormlight Archive" },
 ];
 
 export function guidaDalNome(nome) {
