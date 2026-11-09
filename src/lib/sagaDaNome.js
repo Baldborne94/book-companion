@@ -14,7 +14,7 @@
 //    libri»), quindi l'elenco si MOSTRA prima di scriverlo, e il lettore
 //    toglie quel che non vuole: si propone, non si scrive in silenzio.
 // Si chiede all'API di Wikidata (`origin=*`), mai al servizio SPARQL.
-import { TAVOLE } from "./sagaBooks.js";
+import { TAVOLE, riconosci } from "./sagaBooks.js";
 import { camminoDellaGuida, guideIntere } from "./cammino.js";
 import { vociDallaGuida, giaSulloScaffale } from "./senzaFile.js";
 
@@ -54,6 +54,13 @@ const NOMI = [
   { nomi: ["lockwood", "lockwood co", "lockwood and co"], saga: "Lockwood & Co." },
   { nomi: ["bartimaeus", "bartimaeus sequence", "trilogia di bartimeus", "bartimeus"], saga: "Bartimaeus" },
   { nomi: ["kingkiller", "kingkiller chronicle", "cronache dell'assassino del re", "assassino del re"], saga: "The Kingkiller Chronicle" },
+  { nomi: ["realm of the elderlings", "elderlings"], saga: "The Realm of the Elderlings" },
+  // le sue cinque serie: la guida ristretta al suo ciclo
+  { nomi: ["farseer", "farseer trilogy"], saga: "The Realm of the Elderlings", parte: "The Farseer Trilogy", nome: "The Farseer Trilogy" },
+  { nomi: ["liveship traders", "liveship", "liveship traders trilogy"], saga: "The Realm of the Elderlings", parte: "Liveship Traders", nome: "Liveship Traders" },
+  { nomi: ["tawny man", "tawny man trilogy"], saga: "The Realm of the Elderlings", parte: "The Tawny Man", nome: "The Tawny Man" },
+  { nomi: ["rain wild chronicles", "rain wild", "rain wilds chronicles"], saga: "The Realm of the Elderlings", parte: "The Rain Wilds Chronicles", nome: "The Rain Wilds Chronicles" },
+  { nomi: ["fitz and the fool", "fitz and the fool trilogy"], saga: "The Realm of the Elderlings", parte: "Fitz and the Fool", nome: "Fitz and the Fool" },
 ];
 
 // LE PAROLE CHE DICONO «E' UNA SAGA» E NON SONO IL SUO NOME. Il lettore ha
@@ -239,16 +246,24 @@ export async function serieDellAutore(nome, prendi) {
   if (!q) return null;
   const m = await prendi(indirizzo({ action: "query", list: "search", srsearch: `haswbstatement:P50=${q}`, srlimit: "500", srnamespace: "0" }));
   const opere = (m?.query?.search || []).map((x) => x.title).filter((x) => /^Q\d+$/.test(x));
-  const conti = new Map();
+  // IL CONTO E' QUELLO DELL'ELENCO (il lettore: «perché dice 13 libri e ne
+  // mostra 3?»): i Liveship Traders su Wikidata sono tre romanzi e dieci
+  // volumi delle edizioni spezzate francese e tedesca, senza titolo in
+  // inglese ne' in italiano. Si contano i volumi come li mette in fila
+  // l'elenco (`volumeDa`, `inOrdine`), e un libro senza titolo non c'e'.
+  const perSerie = new Map();
+  const suoi = [];
   for (let i = 0; i < opere.length; i += 50) {
-    const r = await prendi(indirizzo({ action: "wbgetentities", ids: opere.slice(i, i + 50).join("|"), props: "claims" }));
+    const r = await prendi(indirizzo({ action: "wbgetentities", ids: opere.slice(i, i + 50).join("|"), props: "labels|claims", languages: "en|it" }));
     for (const x of Object.values(r?.entities || {})) {
-      const tipi = [...ids(x?.claims, "P31"), ...ids(x?.claims, "P7937")];
-      if (!tipi.some((t) => LIBRI.includes(t)) || tipi.some((t) => NON_VOLUMI.includes(t))) continue;
-      for (const serie of new Set(ids(x?.claims, "P179"))) conti.set(serie, (conti.get(serie) || 0) + 1);
+      const qui = new Set(ids(x?.claims, "P179"));
+      const v = volumeDa(x, null);
+      if (!v) continue;
+      suoi.push(v);
+      for (const serie of qui) perSerie.set(serie, [...(perSerie.get(serie) || []), volumeDa(x, serie)]);
     }
   }
-  const serie = [...conti.keys()];
+  const serie = [...perSerie.keys()];
   const voci = [];
   for (let i = 0; i < serie.length; i += 50) {
     const r = await prendi(indirizzo({ action: "wbgetentities", ids: serie.slice(i, i + 50).join("|"), props: "labels|claims", languages: "en|it" }));
@@ -257,10 +272,22 @@ export async function serieDellAutore(nome, prendi) {
       const tipi = ids(v?.claims, "P31");
       if (tipi.includes(UNIVERSO) || !tipi.some((t) => SERIE.includes(t))) continue;
       const titolo = etichetta(v);
-      if (titolo) voci.push({ fonte: "wikidata", q: k, nome: titolo, quanti: conti.get(k) });
+      const quanti = inOrdine(perSerie.get(k)).volumi.length;
+      if (titolo && quanti) voci.push({ fonte: "wikidata", q: k, nome: titolo, quanti });
     }
   }
-  return { autore: etichetta(e.entities[q]) || nome, serie: voci.sort((a, b) => b.quanti - a.quanti || a.nome.localeCompare(b.nome)) };
+  // GLI ALTRI SUOI LIBRI (il lettore, con John Gwynne: «e le altre saghe di
+  // questo autore non le consideri?»): Wikidata ha i suoi romanzi ma non
+  // le serie dei Bloodsworn e di Of Blood and Bone. Quelli che non stanno
+  // in nessuna serie dell'elenco si mostrano a parte, per anno, e la
+  // raccolta la scrive il lettore.
+  const inSerie = new Set(voci.flatMap((x) => perSerie.get(x.q).map((v) => piano(v.titolo))));
+  const visti = new Set();
+  const sciolti = suoi
+    .filter((v) => !inSerie.has(piano(v.titolo)) && !visti.has(piano(v.titolo)) && visti.add(piano(v.titolo)))
+    .sort((a, b) => (a.anno || 9999) - (b.anno || 9999) || a.titolo.localeCompare(b.titolo))
+    .map(({ titolo, anno }) => ({ titolo, anno }));
+  return { autore: etichetta(e.entities[q]) || nome, serie: voci.sort((a, b) => b.quanti - a.quanti || a.nome.localeCompare(b.nome)), sciolti };
 }
 
 // La strada intera per un autore: le guide, poi Wikidata senza i doppioni
@@ -269,13 +296,21 @@ export async function saghePerAutore(nome, { prendi } = {}) {
   const w = prendi ? await serieDellAutore(nome, prendi) : null;
   const giaGuide = new Set(guide.map((g) => g.saga));
   const altre = (w?.serie || []).filter((x) => !giaGuide.has(guidaDalNome(x.nome)?.saga));
-  if (!guide.length && !altre.length) return null;
-  return { autore: w?.autore || nome, saghe: [...guide, ...altre] };
+  const autore = w?.autore || nome;
+  // i libri sciolti che una guida conosce stanno gia' nella guida
+  const sciolti = (w?.sciolti || []).filter((v) => !giaGuide.has(riconosci({ title: v.titolo, author: autore })?.saga));
+  const altri = sciolti.length ? [{ fonte: "sciolti", nome: "Altri libri", autore, quanti: sciolti.length, volumi: sciolti }] : [];
+  if (!guide.length && !altre.length && !altri.length) return null;
+  return { autore, saghe: [...guide, ...altre, ...altri] };
 }
 
 // I libri di una saga scelta dall'elenco dell'autore
 export async function libriDellaSaga(voce, { libri = [], prendi } = {}) {
   if (voce.fonte === "guida") return volumiDallaGuida({ saga: voce.saga }, libri);
+  if (voce.fonte === "sciolti") {
+    const volumi = voce.volumi.map((v) => ({ titolo: v.titolo, autore: voce.autore || "", saga: "", serie: "", numero: null, anno: v.anno }));
+    return { fonte: "sciolti", nome: voce.nome, saga: "", volumi: volumi.map((v) => ({ ...v, gia: giaSulloScaffale(v, libri) })) };
+  }
   const w = await volumiDellaSerie(voce.q, voce.nome, prendi);
   return { ...w, volumi: w.volumi.map((v) => ({ ...v, gia: giaSulloScaffale(v, libri) })) };
 }

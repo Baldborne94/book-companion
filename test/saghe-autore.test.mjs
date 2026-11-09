@@ -48,11 +48,21 @@ export default async (t) => {
     Q28: opera("Un'edizione", "Q11", 5, { p31: "Q3331189", forma: null }),
     Q13: { labels: { en: { value: "A TV Show" } }, claims: { P31: tipo("Q5398426") } },
     Q29: opera("Il romanzo dalla serie TV", "Q13", 1),
+    // un volume dell'edizione spezzata francese: senza titolo in inglese o italiano
+    Q41: { ...opera("", "Q11", 2), labels: { fr: { value: "Le volume" } } },
+    Q40: (() => { const o = opera("Una novità", null); o.claims.P577 = [{ mainsnak: { datavalue: { value: { time: "+2025-03-01T00:00:00Z" } } } }]; return o; })(),
+    Q42: opera("A", null),
+    Q43: opera("The Hollow Boy", null),
+    // senza numero in una serie numerata: l'elenco non lo mostra, e il conto nemmeno
+    Q44: opera("Senza numero", "Q11"),
+    Q45: opera("Una novità", null),
+    Q14: { labels: { en: { value: "Empty Series" } }, claims: { P31: tipo("Q1667921") } },
+    Q46: opera("Solo", "Q14"),
   };
   const prendi = async (url) => {
     const q = new URL(url).searchParams;
     if (q.get("action") === "wbsearchentities") return { search: [{ id: "Q9" }, { id: "Q1" }] };
-    if (q.get("action") === "query" && /P50=Q1/.test(q.get("srsearch"))) return { query: { search: ["Q21", "Q22", "Q23", "Q24", "Q25", "Q26", "Q27", "Q28", "Q29"].map((title) => ({ title })) } };
+    if (q.get("action") === "query" && /P50=Q1/.test(q.get("srsearch"))) return { query: { search: ["Q21", "Q22", "Q23", "Q24", "Q25", "Q26", "Q27", "Q28", "Q29", "Q40", "Q41", "Q42", "Q43", "Q44", "Q45", "Q46"].map((title) => ({ title })) } };
     if (q.get("action") === "query" && /P179=Q11/.test(q.get("srsearch"))) return { query: { search: ["Q23", "Q24", "Q25", "Q27", "Q28"].map((title) => ({ title })) } };
     return { entities: Object.fromEntries(q.get("ids").split("|").filter((i) => E[i]).map((i) => [i, E[i]])) };
   };
@@ -64,6 +74,17 @@ export default async (t) => {
   t.c("…e la stessa serie di Wikidata non si ripete", !nomi.some((n) => n.startsWith("wikidata:Lockwood")), nomi.join(" | "));
   t.c("la serie di Wikidata coi soli libri (niente racconto ne' edizione)", nomi.includes("wikidata:Some Other Series:3"), nomi.join(" | "));
   t.c("niente universi", !nomi.some((n) => /Universe/.test(n)), nomi.join(" | "));
+  t.c("il conto e' quello dell'elenco: un volume senza titolo leggibile non conta (i «13 libri» dei Liveship Traders)", nomi.includes("wikidata:Some Other Series:3"), nomi.join(" | "));
+  const altri = r.saghe.find((s) => s.fonte === "sciolti");
+  t.eq(
+    "gli altri suoi libri, fuori da ogni serie dell'elenco, per anno (senza anno in fondo): non i doppioni di un volume, non quelli che una guida conosce",
+    altri?.volumi.map((v) => v.titolo).join(" | "),
+    "Una novità | Il romanzo dalla serie TV | Mondo | Solo"
+  );
+  t.c("una serie che nell'elenco non avrebbe libri non si mostra", !nomi.some((n) => /Empty Series/.test(n)), nomi.join(" | "));
+  t.eq("…ultimi nell'elenco, col conto", `${r.saghe.at(-1).nome} ${r.saghe.at(-1).quanti}`, "Altri libri 4");
+  const sciolti = await libriDellaSaga(altri, { libri: [{ title: "Mondo", author: "Jonathan Stroud" }], prendi });
+  t.eq("toccati, senza raccolta e col loro autore", sciolti.volumi.map((v) => `${v.titolo}:${v.autore}:${v.saga}:${v.gia}`).join(" | "), "Una novità:Jonathan Stroud::false | Il romanzo dalla serie TV:Jonathan Stroud::false | Mondo:Jonathan Stroud::true | Solo:Jonathan Stroud::false");
   t.c("niente serie TV (il «Doctor Who» di Abnett: toccato, nessun libro)", !nomi.some((n) => /TV Show/.test(n)), nomi.join(" | "));
   const altra = r.saghe.find((s) => s.nome === "Some Other Series");
   const libri = await libriDellaSaga(altra, { libri: [{ title: "B", author: "Jonathan Stroud" }], prendi });

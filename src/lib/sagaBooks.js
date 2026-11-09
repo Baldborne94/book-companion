@@ -12,6 +12,7 @@ import MISTBORN, { SAGA as SAGA_MB } from "../data/mistborn.js";
 import LOCKWOOD, { SAGA as SAGA_LW } from "../data/lockwood.js";
 import BARTIMAEUS, { SAGA as SAGA_BT } from "../data/bartimaeus.js";
 import KINGKILLER, { SAGA as SAGA_KK } from "../data/kingkiller.js";
+import ELDERLINGS, { SAGA as SAGA_RE } from "../data/elderlings.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 
 // Riconoscere il romanzo dal titolo: i metadati degli EPUB sono spesso vuoti,
@@ -99,6 +100,8 @@ export const TAVOLE = [
   // Bartimaeus e Kingkiller (vedi `data/bartimaeus.js`, `data/kingkiller.js`)
   { saga: SAGA_BT, libri: BARTIMAEUS, ordine: (b) => b.o, autore: null, fuori: [] },
   { saga: SAGA_KK, libri: KINGKILLER, ordine: (b) => b.o, autore: null, fuori: [] },
+  // il mondo di Robin Hobb: cinque serie come cicli (vedi `data/elderlings.js`)
+  { saga: SAGA_RE, libri: ELDERLINGS, ordine: (b) => b.o, autore: null, fuori: [] },
 ];
 
 // I capitoli di tutte le guide, in minuscolo: `parteDiUnaStoria` guarda
@@ -1023,15 +1026,17 @@ export function saghePropose(libri = []) {
       if (dopo.saga !== prima.saga || dopo.series !== prima.series || dopo.sagaOrder !== prima.sagaOrder) out.push({ id: b.id, titolo: b.title || "", prima, dopo });
       continue;
     }
-    if (guida) continue;
     // la scheda che porta per saga la sigla del file («Ttm», da «Fool's
     // Errand (ttm-1)»): si propone la saga dei suoi fratelli, se sono
-    // d'accordo, e il numero della sigla se ne va (era dentro la sigla)
+    // d'accordo, e il numero della sigla se ne va (era dentro la sigla).
+    // Anche se una guida riconosce il libro: la sigla resta sbagliata (Fool's
+    // Errand e' della guida degli Elderlings da quando c'e')
     if (siglaDi(b)) {
       const dalla = sagaDaBiblioteca({ ...b, saga: "" }, tutti.filter((x) => !siglaDi(x)));
       if (dalla) out.push({ id: b.id, titolo: b.title || "", prima, dopo: { saga: dalla, series: prima.series, sagaOrder: null } });
       continue;
     }
+    if (guida) continue;
     const letto = sagaDalTitolo(b);
     if (!letto?.saga) continue;
     const kPrima = chiaveSaga(prima.saga);
