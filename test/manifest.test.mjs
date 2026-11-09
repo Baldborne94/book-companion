@@ -101,7 +101,9 @@ export default async function (t) {
   const denylist = /navigateFallbackDenylist:\s*\[([^\]]*)\]/.exec(vite)?.[1] || "";
   t.c("la privacy e' fuori dal ripiego", /privacy/.test(denylist));
   t.c("e `.well-known` pure", /well-known/.test(denylist));
-  t.c("e il dizionario ancora", /dizionario/.test(denylist));
+  // il dizionario non sta piu' nel sito (scende da GitHub, `lib/fonteDizionari.js`):
+  // niente pagine sue da tenere fuori dal ripiego, e niente 32 MB in ogni build
+  t.c("il dizionario non sta piu' nel sito", !existsSync(new URL("public/dizionario", radice)));
   t.c("la pagina della privacy esiste in public/", existsSync(new URL("public/privacy.html", radice)));
   t.c("ed e' generata a ogni build", /"prebuild":\s*"node scripts\/privacy\.mjs"/.test(leggi("package.json")));
 }

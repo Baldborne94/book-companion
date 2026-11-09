@@ -18,6 +18,7 @@
 // NON SI SCARICA DA SE'. Sono tre megabytes e mezzo: si scaricano quando il
 // lettore lo chiede, dalle Impostazioni, come «Porta qui i tomi».
 import { getAux, putAux, putAuxMolti, removeAux, chiaviAux } from "./bookStore.js";
+import { DIZIONARI } from "./fonteDizionari.js";
 
 // IL DEPOSITO SI PASSA DA FUORI, come `leggiByte` nelle impronte e la
 // funzione di scrittura in `upsertBooks`: cosi' il giro intero — scarica,
@@ -33,8 +34,8 @@ const DEPOSITO = {
   chiavi: chiaviAux,
 };
 
-const INDIRIZZO = "/dizionario/en.json.gz";
-const CARTELLINO = "/dizionario/meta.json";
+const INDIRIZZO = `${DIZIONARI}/en.json.gz`;
+const CARTELLINO = `${DIZIONARI}/meta.json`;
 const PREFISSO = "diz_";
 const META = "diz_meta";
 

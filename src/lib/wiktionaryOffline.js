@@ -23,6 +23,7 @@
 // suoi sacchi senza resti, e lo scaricamento si riprende file per file.
 import { getAux, putAux, putAuxMolti, removeAux, removeAuxPrefisso } from "./bookStore.js";
 import { apri, raccogli } from "./dizionarioOffline.js";
+import { DIZIONARI } from "./fonteDizionari.js";
 
 const DEPOSITO = {
   leggi: getAux,
@@ -32,7 +33,7 @@ const DEPOSITO = {
   togliPrefisso: removeAuxPrefisso,
 };
 
-export const CARTELLA = "/dizionario/wikt";
+export const CARTELLA = `${DIZIONARI}/wikt`;
 const PREFISSO = "wik:";
 const META = "wik_meta";
 const GIRO = "wik_giro";

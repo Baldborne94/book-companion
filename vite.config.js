@@ -39,28 +39,22 @@ export default defineConfig({
       manifest: false,
       includeAssets: ["icon.svg", "manifest.json", "icons/*.png"],
       workbox: {
-        // IL DIZIONARIO OFFLINE NON STA QUI DENTRO, ed e' voluto: sono 3,3 MB
-        // e il lettore li scarica quando li chiede lui (Impostazioni › Il
-        // dizionario). Il `.gz`, il `.json` del cartellino e il `.txt` della
-        // licenza restano fuori dai `globPatterns` proprio per questo —
-        // precacharli vorrebbe dire spedirli a tutti al primo avvio, cioe'
-        // togliere la scelta che il tasto promette.
+        // IL DIZIONARIO OFFLINE NON STA QUI DENTRO, ed e' voluto: il lettore
+        // lo scarica quando lo chiede lui (Impostazioni › Il dizionario), e
+        // nemmeno nella build c'e' piu': scende da GitHub
+        // (`lib/fonteDizionari.js`), cosi' ogni deployment non porta 32 MB.
         // il wasm e' quello di unrar, 200 KB: precacharlo vuol dire aprire un CBR anche senza rete
         globPatterns: ["**/*.{js,mjs,css,html,svg,png,wasm,woff2}"],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         skipWaiting: false,
         clientsClaim: false,
         navigateFallback: "index.html",
-        // ...ma restare fuori dal precache non basta: aprire la licenza in
-        // una scheda nuova E' una navigazione, e il ripiego le servirebbe
-        // `index.html` — cioe' l'app al posto del documento, senza un
-        // errore che lo dica.
-        // ...e lo stesso vale per la privacy, che e' una pagina a se' — lo
-        // store la vuole a un indirizzo pubblico — e per `.well-known`,
-        // dove Android viene a leggere `assetlinks.json` per fidarsi del
-        // guscio: servirgli l'app al posto del file lascerebbe la barra
-        // del browser in cima per sempre.
-        navigateFallbackDenylist: [/^\/dizionario\//, /^\/privacy/, /^\/\.well-known\//],
+        // LE PAGINE FUORI DALL'APP NON PASSANO DAL RIPIEGO: la privacy, che
+        // e' una pagina a se' (lo store la vuole a un indirizzo pubblico), e
+        // `.well-known`, dove Android viene a leggere `assetlinks.json` per
+        // fidarsi del guscio: servirgli l'app al posto del file lascerebbe la
+        // barra del browser in cima per sempre.
+        navigateFallbackDenylist: [/^\/privacy/, /^\/\.well-known\//],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/,

@@ -13,6 +13,7 @@ import {
   cartellinoInRete,
 } from "../lib/dizionarioOffline.js";
 import { statoWiktionary, giroWiktionary, rimuoviWiktionary, cartellinoWikt, fraseWiktionary } from "../lib/wiktionaryOffline.js";
+import { DIZIONARI } from "../lib/fonteDizionari.js";
 
 const mb = (n) => `${(n / 1048576).toFixed(1)} MB`;
 const voci = (n) => n.toLocaleString("it-IT");
@@ -136,11 +137,11 @@ export default function SezioneDizionario({ wikt = null, onScaricaWikt, onFermaW
       </p>
       <p style={{ ...nota, opacity: 0.8 }}>
         Da <strong>WordNet 3.0</strong>, Princeton University (
-        <a href="/dizionario/LICENZA-WordNet.txt" target="_blank" rel="noreferrer" style={{ color: C.arcane }}>
+        <a href={`${DIZIONARI}/LICENZA-WordNet.txt`} target="_blank" rel="noreferrer" style={{ color: C.arcane }}>
           licenza
         </a>
         ) e <strong>MultiWordNet 1.5</strong>, Fondazione Bruno Kessler, CC BY 3.0 (
-        <a href="/dizionario/LICENZA-MultiWordNet.txt" target="_blank" rel="noreferrer" style={{ color: C.arcane }}>
+        <a href={`${DIZIONARI}/LICENZA-MultiWordNet.txt`} target="_blank" rel="noreferrer" style={{ color: C.arcane }}>
           attribuzione
         </a>
         ).
@@ -238,7 +239,7 @@ function Wiktionary({ lavoro, onScarica, onFerma, tasto, nota }) {
       )}
       <p style={{ ...nota, opacity: 0.8 }}>
         Da <strong>Wiktionary</strong> inglese, dei suoi autori, CC BY-SA 4.0, estratto da wiktextract (kaikki.org) (
-        <a href="/dizionario/wikt/LICENZA-Wiktionary.txt" target="_blank" rel="noreferrer" style={{ color: C.arcane }}>
+        <a href={`${DIZIONARI}/wikt/LICENZA-Wiktionary.txt`} target="_blank" rel="noreferrer" style={{ color: C.arcane }}>
           attribuzione
         </a>
         ).
