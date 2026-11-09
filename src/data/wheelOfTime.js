@@ -5,7 +5,7 @@
 // libri». La Ruota sta sul suo scaffale (la saga scritta in due modi, «The
 // Wheel of Time» e «Wheel of Time», e' in `docs/STORIA.md`). La fonte e'
 // Wikidata, misurato il 9 novembre 2026: ogni titolo col suo anno (1990 …
-// 2013). Il prequel (New Spring, 2004) sta dopo il quattordicesimo: i numeri
+// 2013). Il prequel (New Spring, 2004; per Wikidata il n° 0) sta dopo il quattordicesimo: i numeri
 // da 1 a 14 sono quelli dei nomi dei file, e non si spostano.
 //
 // Gli ALIAS sono i titoli italiani che Wikidata registra.
@@ -30,6 +30,6 @@ export default [
   { o: 11, t: "Knife of Dreams", c: SAGA, a: A, alias: ["La lama dei sogni"] },
   { o: 12, t: "The Gathering Storm", c: SAGA, a: A, alias: ["Presagi di tempesta"] },
   { o: 13, t: "Towers of Midnight", c: SAGA, a: A, alias: ["Le torri di mezzanotte"] },
-  { o: 14, t: "A Memory of Light", c: SAGA, a: A },
-  { o: 15, t: "New Spring", c: SAGA, a: A, nota: "prequel" },
+  { o: 14, t: "A Memory of Light", c: SAGA, a: A, alias: ["Memoria di luce"] },
+  { o: 15, t: "New Spring", c: SAGA, a: A, alias: ["Nuova Primavera"], nota: "prequel" },
 ];
