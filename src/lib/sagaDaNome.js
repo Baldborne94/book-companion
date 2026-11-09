@@ -281,7 +281,9 @@ export async function serieDellAutore(nome, prendi) {
   // le serie dei Bloodsworn e di Of Blood and Bone. Quelli che non stanno
   // in nessuna serie dell'elenco si mostrano a parte, per anno, e la
   // raccolta la scrive il lettore.
-  const inSerie = new Set(voci.flatMap((x) => perSerie.get(x.q).map((v) => piano(v.titolo))));
+  // …e non la serie stessa scritta come un libro («The Ki and Vandien
+  // Quartet» di Hobb, sopra fra le serie e sotto fra gli altri libri)
+  const inSerie = new Set(voci.flatMap((x) => [piano(x.nome), ...perSerie.get(x.q).map((v) => piano(v.titolo))]));
   const visti = new Set();
   const sciolti = suoi
     .filter((v) => !inSerie.has(piano(v.titolo)) && !visti.has(piano(v.titolo)) && visti.add(piano(v.titolo)))

@@ -56,13 +56,14 @@ export default async (t) => {
     // senza numero in una serie numerata: l'elenco non lo mostra, e il conto nemmeno
     Q44: opera("Senza numero", "Q11"),
     Q45: opera("Una novità", null),
+    Q47: opera("Some Other Series", null),
     Q14: { labels: { en: { value: "Empty Series" } }, claims: { P31: tipo("Q1667921") } },
     Q46: opera("Solo", "Q14"),
   };
   const prendi = async (url) => {
     const q = new URL(url).searchParams;
     if (q.get("action") === "wbsearchentities") return { search: [{ id: "Q9" }, { id: "Q1" }] };
-    if (q.get("action") === "query" && /P50=Q1/.test(q.get("srsearch"))) return { query: { search: ["Q21", "Q22", "Q23", "Q24", "Q25", "Q26", "Q27", "Q28", "Q29", "Q40", "Q41", "Q42", "Q43", "Q44", "Q45", "Q46"].map((title) => ({ title })) } };
+    if (q.get("action") === "query" && /P50=Q1/.test(q.get("srsearch"))) return { query: { search: ["Q21", "Q22", "Q23", "Q24", "Q25", "Q26", "Q27", "Q28", "Q29", "Q40", "Q41", "Q42", "Q43", "Q44", "Q45", "Q46", "Q47"].map((title) => ({ title })) } };
     if (q.get("action") === "query" && /P179=Q11/.test(q.get("srsearch"))) return { query: { search: ["Q23", "Q24", "Q25", "Q27", "Q28"].map((title) => ({ title })) } };
     return { entities: Object.fromEntries(q.get("ids").split("|").filter((i) => E[i]).map((i) => [i, E[i]])) };
   };
@@ -77,7 +78,7 @@ export default async (t) => {
   t.c("il conto e' quello dell'elenco: un volume senza titolo leggibile non conta (i «13 libri» dei Liveship Traders)", nomi.includes("wikidata:Some Other Series:3"), nomi.join(" | "));
   const altri = r.saghe.find((s) => s.fonte === "sciolti");
   t.eq(
-    "gli altri suoi libri, fuori da ogni serie dell'elenco, per anno (senza anno in fondo): non i doppioni di un volume, non quelli che una guida conosce",
+    "gli altri suoi libri, fuori da ogni serie dell'elenco, per anno (senza anno in fondo): non la serie scritta come un libro, non i doppioni di un volume, non quelli che una guida conosce",
     altri?.volumi.map((v) => v.titolo).join(" | "),
     "Una novità | Il romanzo dalla serie TV | Mondo | Solo"
   );
