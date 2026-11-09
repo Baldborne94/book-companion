@@ -13,6 +13,12 @@ import LOCKWOOD, { SAGA as SAGA_LW } from "../data/lockwood.js";
 import BARTIMAEUS, { SAGA as SAGA_BT } from "../data/bartimaeus.js";
 import KINGKILLER, { SAGA as SAGA_KK } from "../data/kingkiller.js";
 import ELDERLINGS, { SAGA as SAGA_RE } from "../data/elderlings.js";
+import COSMERE_SOLI, { SAGA as SAGA_CS } from "../data/cosmereStandalones.js";
+import WHEEL, { SAGA as SAGA_WT } from "../data/wheelOfTime.js";
+import APT, { SAGA as SAGA_AP } from "../data/shadowsOfTheApt.js";
+import { LA_TRILOGIA, I_SOLI, LA_FOLLIA, TRILOGIA, A_SE, FOLLIA, UNIVERSO as MONDO_FL } from "../data/firstLaw.js";
+import { I_FEDELI, IL_SANGUE, FEDELI, SANGUE, UNIVERSO as MONDO_BL } from "../data/banishedLands.js";
+import { EMPIRE, ASCESA, KHARKANAS_LIBRI, WITNESS_LIBRI, MALAZAN_EMPIRE, PATH, KHARKANAS, WITNESS } from "../data/malazanMondo.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 
 // Riconoscere il romanzo dal titolo: i metadati degli EPUB sono spesso vuoti,
@@ -92,16 +98,32 @@ export const TAVOLE = [
   // Malazan e Stormlight (vedi `data/malazan.js`, `data/stormlight.js`):
   // serie semplici, l'autore su ogni volume (Erikson e Sanderson scrivono
   // anche altre serie nello stesso mondo)
-  { saga: SAGA_MZ, libri: MALAZAN, ordine: (b) => b.o, autore: null, fuori: [] },
-  { saga: SAGA_SL, libri: STORMLIGHT, ordine: (b) => b.o, autore: null, fuori: [] },
+  { saga: SAGA_MZ, libri: MALAZAN, ordine: (b) => b.o, autore: null, fuori: [], universo: "Malazan" },
+  { saga: SAGA_SL, libri: STORMLIGHT, ordine: (b) => b.o, autore: null, fuori: [], universo: "Cosmere" },
   // Mistborn e Lockwood (vedi `data/mistborn.js`, `data/lockwood.js`)
-  { saga: SAGA_MB, libri: MISTBORN, ordine: (b) => b.o, autore: null, fuori: [] },
+  { saga: SAGA_MB, libri: MISTBORN, ordine: (b) => b.o, autore: null, fuori: [], universo: "Cosmere" },
   { saga: SAGA_LW, libri: LOCKWOOD, ordine: (b) => b.o, autore: null, fuori: [] },
   // Bartimaeus e Kingkiller (vedi `data/bartimaeus.js`, `data/kingkiller.js`)
   { saga: SAGA_BT, libri: BARTIMAEUS, ordine: (b) => b.o, autore: null, fuori: [] },
   { saga: SAGA_KK, libri: KINGKILLER, ordine: (b) => b.o, autore: null, fuori: [] },
   // il mondo di Robin Hobb: cinque serie come cicli (vedi `data/elderlings.js`)
   { saga: SAGA_RE, libri: ELDERLINGS, ordine: (b) => b.o, autore: null, fuori: [] },
+  // il resto del Cosmere e del mondo di Malazan: guide dello stesso
+  // `universo` di Mistborn, Stormlight e del Libro dei Caduti, come il 40K
+  // (vedi `data/cosmereStandalones.js`, `data/malazanMondo.js`)
+  { saga: SAGA_CS, libri: COSMERE_SOLI, ordine: (b) => b.o, autore: null, fuori: [], universo: "Cosmere" },
+  { saga: MALAZAN_EMPIRE, libri: EMPIRE, ordine: (b) => b.o, autore: null, fuori: [], universo: "Malazan" },
+  { saga: PATH, libri: ASCESA, ordine: (b) => b.o, autore: null, fuori: [], universo: "Malazan" },
+  { saga: KHARKANAS, libri: KHARKANAS_LIBRI, ordine: (b) => b.o, autore: null, fuori: [], universo: "Malazan" },
+  { saga: WITNESS, libri: WITNESS_LIBRI, ordine: (b) => b.o, autore: null, fuori: [], universo: "Malazan" },
+  // le altre saghe grandi (vedi i loro file in `data/`)
+  { saga: SAGA_WT, libri: WHEEL, ordine: (b) => b.o, autore: null, fuori: [] },
+  { saga: SAGA_AP, libri: APT, ordine: (b) => b.o, autore: null, fuori: [] },
+  { saga: TRILOGIA, libri: LA_TRILOGIA, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_FL },
+  { saga: A_SE, libri: I_SOLI, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_FL },
+  { saga: FOLLIA, libri: LA_FOLLIA, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_FL },
+  { saga: FEDELI, libri: I_FEDELI, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_BL },
+  { saga: SANGUE, libri: IL_SANGUE, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_BL },
 ];
 
 // I capitoli di tutte le guide, in minuscolo: `parteDiUnaStoria` guarda
@@ -293,6 +315,12 @@ function combaciaScheletro(campo, chiave, scheletroCampo) {
   return contiene(scheletroCampo ?? scheletro(campo), nudo);
 }
 
+// l'autore della voce c'e' ed e' quello scritto nel libro
+function confermato(voce, autoreNorm, campo) {
+  const cogn = voce.a ? cognome(voce.a) : voce.tav.autore || "";
+  return !!cogn && (autoreNorm.includes(cogn) || campo.includes(cogn));
+}
+
 function combacia(campo, voce, autoreNorm, scheletroCampo) {
   if (!contiene(campo, voce.k) && !combaciaScheletro(campo, voce.k, scheletroCampo)) return false;
   // l'autore del volume se la tavola lo scrive volume per volume (l'Eresia,
@@ -433,7 +461,15 @@ function riconosciDaCapo({ title, author, fileName, saga } = {}) {
   for (const campo of campi) {
     const scheletroCampo = scheletro(campo);
     for (const b of INDICE) {
-      if (combacia(campo, b, chiAutore, scheletroCampo)) return rispostaDi(b);
+      if (!combacia(campo, b, chiAutore, scheletroCampo)) continue;
+      // LO STESSO TITOLO IN DUE GUIDE: vince quella il cui autore e' scritto
+      // nel libro. «Legacies of Betrayal» e' un'antologia dell'Eresia (senza
+      // autore: a venti mani) e il terzo di Witness di Erikson
+      if (!confermato(b, chiAutore, campo)) {
+        const suo = INDICE.find((x) => x !== b && x.k === b.k && confermato(x, chiAutore, campo) && combacia(campo, x, chiAutore, scheletroCampo));
+        if (suo) return rispostaDi(suo);
+      }
+      return rispostaDi(b);
     }
   }
   return dallAutore(campi, chiAutore);
@@ -896,7 +932,7 @@ export function ripassa(libro = {}, libri = [], { senzaTraccia, dallaBiblioteca 
   let dalTitolo = false;
 
   if (trovato) {
-    if (!saga) tocchi.saga = trovato.saga;
+    if (!saga) tocchi.saga = raccoltaDellaGuida(trovato.saga, libri) || trovato.saga;
     if (libro.sagaOrder == null && trovato.sagaOrder != null) tocchi.sagaOrder = trovato.sagaOrder;
   } else if (!saga && !fuoriSaga(libro)) {
     // la tabella non lo conosce: la saga puo' stare scritta nel titolo, e
@@ -951,6 +987,29 @@ export function ripassa(libro = {}, libri = [], { senzaTraccia, dallaBiblioteca 
 // sua: niente numero, niente ciclo, niente nome di ciclo aggiornato,
 // niente grafia riunita. Gli altri libri restano comunque la biblioteca
 // da cui la deduzione impara: si leggono, non si scrivono.
+// LA RACCOLTA DEL LETTORE PER UNA GUIDA: quella dove tiene i libri della
+// guida o del suo universo, la piu' piena; `null` se non ne ha. Sul suo
+// tablet i libri del 40K stanno sotto «Warhammer 40K», il Cosmere sotto
+// «Cosmoverse»: un libro nuovo che una guida riconosce va li', non in una
+// raccolta col nome della guida accanto (chiesto dal lettore: «raccoglie
+// tutte le saghe» sotto il suo mondo). Una raccolta che si chiama come un
+// CICLO della guida non e' la casa della guida intera: chi tiene i Liveship
+// Traders in «Liveship Traders» aggiunge il Farseer sotto il mondo, non li'.
+export function raccoltaDellaGuida(guida, libri = [], { riconosce = (b) => riconosci({ title: b?.title, author: b?.author, saga: b?.saga }) } = {}) {
+  const tav = TAVOLE.find((t) => t.saga === guida);
+  if (!tav) return null;
+  const vicine = new Set(TAVOLE.filter((t) => t.saga === tav.saga || (tav.universo && t.universo === tav.universo)).map((t) => t.saga));
+  const cicli = new Set(tav.libri.map((v) => v.c).filter((c) => c && c !== tav.saga).map(norm));
+  const conti = new Map();
+  for (const b of libri) {
+    const s = String(b?.saga || "").trim();
+    if (!s || cicli.has(norm(s))) continue;
+    const r = riconosce(b);
+    if (r?.saga && vicine.has(r.saga)) conti.set(s, (conti.get(s) || 0) + 1);
+  }
+  return [...conti.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] || null;
+}
+
 export const sciolto = (b) => !!b && !String(b.saga || "").trim();
 
 // `quali` dice chi era sciolto QUANDO il tasto e' stato premuto: un libro

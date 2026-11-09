@@ -192,13 +192,21 @@ export default async function (t) {
   t.c("ma il titolo muto, con due saghe in casa, resta fermo", !due.campi.c);
 
   // ---- e il tasto fa lo stesso -------------------------------------------
-  const r = ripassa(GWYNNE[1], GWYNNE);
-  t.eq("ripassa: saga dal titolo", r?.campi.saga, "The Faithful and the Fallen");
+  // (i Gwynne del lettore ora li conosce la guida delle Banished Lands, che
+  // risponde prima del titolo: le regole del titolo si provano su una saga
+  // che nessuna guida conosce, Raven's Shadow di Anthony Ryan)
+  t.eq("ripassa: «02 Valour» ora lo dice la guida, col suo numero", JSON.stringify(ripassa(GWYNNE[0], [GWYNNE[0]])?.campi), JSON.stringify({ saga: "The Faithful and the Fallen", sagaOrder: 2, series: "The Faithful and the Fallen" }));
+  const RYAN = [
+    { id: "t", title: "02 Tower Lord", author: "Anthony Ryan", saga: "", sagaOrder: null },
+    { id: "b", title: "Blood Song: The Raven's Shadow Series Book 1", author: "Anthony Ryan", saga: "", sagaOrder: null },
+  ];
+  const r = ripassa(RYAN[1], RYAN);
+  t.eq("ripassa: saga dal titolo", r?.campi.saga, "The Raven's Shadow");
   t.c("ripassa: dichiarata come letta dal titolo, non dedotta", r?.dalTitolo === true && r?.dedotta === false);
   t.eq("ripassa: e il numero", r?.campi.sagaOrder, 1);
   // il numero in testa si prende SOLO se la saga c'e'
-  t.c("ripassa: «02 Valour» senza saga in casa non tocca niente", ripassa(GWYNNE[0], [GWYNNE[0]]) === null);
-  const conSaga = { ...GWYNNE[0], saga: "The Faithful and the Fallen" };
-  t.eq("ripassa: «02 Valour» con la saga scritta a mano prende il posto", ripassa(conSaga, [conSaga])?.campi.sagaOrder, 2);
+  t.c("ripassa: «02 Tower Lord» senza saga in casa non tocca niente", ripassa(RYAN[0], [RYAN[0]]) === null);
+  const conSaga = { ...RYAN[0], saga: "The Raven's Shadow" };
+  t.eq("ripassa: «02 Tower Lord» con la saga scritta a mano prende il posto", ripassa(conSaga, [conSaga])?.campi.sagaOrder, 2);
   t.c("ripassa: un posto gia' dato non si sovrascrive", ripassa({ ...conSaga, sagaOrder: 7 }, [conSaga]) === null);
 }

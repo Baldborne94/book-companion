@@ -20,7 +20,10 @@ const opera = (en, serie, n, { p31 = "Q7725634", forma = "Q8261" } = {}) => ({
 export default async (t) => {
   // ── LE GUIDE ──────────────────────────────────────────────────────────
   t.eq("il nome si confronta a parole, anche solo il cognome", [eLAutore("Abnett", "Dan Abnett"), eLAutore("dan abnett", "Dan Abnett"), eLAutore("Dan Brown", "Dan Abnett")].join(), "true,true,false");
-  const abnett = guideDellAutore("Dan Abnett").map((g) => g.saga);
+  const tutte = guideDellAutore("Dan Abnett");
+  t.eq("prima il suo mondo, se ha volumi in piu' guide dello stesso universo", `${tutte[0].universo} ${tutte[0].quanti > 30}`, "Warhammer 40K true");
+  t.eq("un autore con una guida sola non ha un mondo", guideDellAutore("Jonathan Stroud").filter((g) => g.universo).length, 0);
+  const abnett = tutte.filter((g) => !g.universo).map((g) => g.saga);
   t.c("le guide di Abnett: Gaunt's Ghosts, Eisenhorn, Ravenor…", ["Gaunt's Ghosts", "Eisenhorn", "Ravenor"].every((s) => abnett.includes(s)), abnett.join(", "));
   t.c("…e l'Eresia, dove ne ha scritti", abnett.includes("The Horus Heresy"));
   // i racconti non sono libri: «N libri» conta i volumi che si prendono

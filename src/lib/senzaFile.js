@@ -11,7 +11,7 @@
 // segno e' nel formato (`SENZA`): la sincronizzazione scrive `epub` al posto
 // di un formato vuoto, e una scheda senza file sull'altro dispositivo
 // diventerebbe un ePub tolto — cioe' un libro che possiedi.
-import { TAVOLE, riconosci } from "./sagaBooks.js";
+import { TAVOLE, riconosci, raccoltaDellaGuida } from "./sagaBooks.js";
 import { volume } from "./cammino.js";
 import { cercaCopertina } from "./copertineRete.js";
 import { urlCopertina } from "./consigliLiberi.js";
@@ -87,22 +87,7 @@ export function giaSulloScaffale(voce, libri = []) {
 // stanno sotto «Warhammer 40K», e i Gaunt's Ghosts senza file devono finire
 // li', accanto all'Eresia, non in una raccolta nuova. Senza libri suoi, il
 // nome dell'universo o della guida.
-export function sagaPerLaGuida(tav, libri = [], { riconosce = (b) => riconosci({ title: b?.title, author: b?.author, saga: b?.saga }) } = {}) {
-  const vicine = new Set(TAVOLE.filter((t) => t.saga === tav.saga || (tav.universo && t.universo === tav.universo)).map((t) => t.saga));
-  // una raccolta che si chiama come un CICLO della guida non e' la casa
-  // della guida intera: chi tiene i Liveship Traders in «Liveship Traders»
-  // aggiunge il Farseer sotto «The Realm of the Elderlings», non li'
-  const cicli = new Set(tav.libri.map((v) => v.c).filter((c) => c && c !== tav.saga).map((c) => piano(c)));
-  const conti = new Map();
-  for (const b of libri) {
-    const s = String(b?.saga || "").trim();
-    if (!s || cicli.has(piano(s))) continue;
-    const r = riconosce(b);
-    if (r?.saga && vicine.has(r.saga)) conti.set(s, (conti.get(s) || 0) + 1);
-  }
-  const scelta = [...conti.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
-  return scelta ? scelta[0] : tav.universo || tav.saga;
-}
+export const sagaPerLaGuida = (tav, libri = [], opzioni = {}) => raccoltaDellaGuida(tav.saga, libri, opzioni) || tav.universo || tav.saga;
 
 // L'AUTORE DI UNA GUIDA SCRITTA DA UNO SOLO, per i volumi che non lo
 // dicono (il Mondo Disco lo tiene sulla tavola, in minuscolo)

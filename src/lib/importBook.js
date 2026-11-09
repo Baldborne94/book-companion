@@ -1,7 +1,7 @@
 import { putFile, getFile, putCover, getCover, removeBookData, removeAux, putAux, spazioEsaurito } from "./bookStore.js";
 import { getProgress } from "./library.js";
 import { getMarks, getHighlights } from "./annotations.js";
-import { riconosci, nomeInBiblioteca, chiaveSaga } from "./sagaBooks.js";
+import { riconosci, nomeInBiblioteca, chiaveSaga, raccoltaDellaGuida } from "./sagaBooks.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 import { dalMetadata } from "./sinossi.js";
 import { collana, chiaveCollana } from "./collana.js";
@@ -649,7 +649,7 @@ export async function leggiEpubLontano(meta, blob) {
 // scritta nel file, il titolo. Una funzione sola per le due porte da cui un
 // libro entra — il file scelto dal tablet e quello che sta su Drive — o
 // le due porte riconoscerebbero le saghe in due modi.
-function completaSaga(meta, letto, fileName, libri) {
+export function completaSaga(meta, letto, fileName, libri) {
   let riconosciuto = false;
   // saga e numero d'ordine dal titolo, senza chiederli a mano: e' quello
   // che accende il glossario e fa funzionare il «prossimo della saga»
@@ -685,7 +685,8 @@ function completaSaga(meta, letto, fileName, libri) {
   }
   if (saga) {
     riconosciuto = true;
-    meta.saga = saga.saga;
+    // nella raccolta che il lettore usa per quella guida o il suo universo
+    meta.saga = raccoltaDellaGuida(saga.saga, libri) || saga.saga;
     if (saga.sagaOrder != null) meta.sagaOrder = saga.sagaOrder;
     // il CICLO era riconosciuto e poi buttato via. E' l'informazione che
     // dice quale storia continua un volume: nel Mondo Disco «cosa e'
