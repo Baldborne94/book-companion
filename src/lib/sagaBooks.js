@@ -15,6 +15,7 @@ import KINGKILLER, { SAGA as SAGA_KK } from "../data/kingkiller.js";
 import ELDERLINGS, { SAGA as SAGA_RE } from "../data/elderlings.js";
 import COSMERE_SOLI, { SAGA as SAGA_CS } from "../data/cosmereStandalones.js";
 import WHEEL, { SAGA as SAGA_WT } from "../data/wheelOfTime.js";
+import BLOODSWORN, { SAGA as SAGA_BS } from "../data/bloodsworn.js";
 import APT, { SAGA as SAGA_AP } from "../data/shadowsOfTheApt.js";
 import { LA_TRILOGIA, I_SOLI, LA_FOLLIA, TRILOGIA, A_SE, FOLLIA, UNIVERSO as MONDO_FL } from "../data/firstLaw.js";
 import { I_FEDELI, IL_SANGUE, FEDELI, SANGUE, UNIVERSO as MONDO_BL } from "../data/banishedLands.js";
@@ -124,6 +125,7 @@ export const TAVOLE = [
   { saga: FOLLIA, libri: LA_FOLLIA, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_FL },
   { saga: FEDELI, libri: I_FEDELI, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_BL },
   { saga: SANGUE, libri: IL_SANGUE, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_BL },
+  { saga: SAGA_BS, libri: BLOODSWORN, ordine: (b) => b.o, autore: null, fuori: [] },
 ];
 
 // I capitoli di tutte le guide, in minuscolo: `parteDiUnaStoria` guarda

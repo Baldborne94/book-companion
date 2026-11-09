@@ -9,7 +9,7 @@
 // numeri 1-4 nella loro serie; A Time of Dread 2018, A Time of Blood e A
 // Time of Courage senza serie ne' anno, in quest'ordine (il primo, il
 // secondo e il terzo della trilogia).
-// I Bloodsworn sono un altro mondo, e tre libri soli: restano a Wikidata.
+// I Bloodsworn sono un altro mondo: hanno la loro guida (`data/bloodsworn.js`).
 export const FEDELI = "The Faithful and the Fallen";
 export const SANGUE = "Of Blood and Bone";
 export const UNIVERSO = "The Banished Lands";

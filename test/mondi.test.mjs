@@ -14,7 +14,7 @@ const chi = (title, author) => {
 };
 
 export default async (t) => {
-  const nuove = ["Cosmere Standalones", "Novels of the Malazan Empire", "Path to Ascendancy", "The Kharkanas Trilogy", "Witness", "The Wheel of Time", "Shadows of the Apt", "The First Law Trilogy", "The First Law Standalones", "The Age of Madness", "The Faithful and the Fallen", "Of Blood and Bone"];
+  const nuove = ["Cosmere Standalones", "Novels of the Malazan Empire", "Path to Ascendancy", "The Kharkanas Trilogy", "Witness", "The Wheel of Time", "Shadows of the Apt", "The First Law Trilogy", "The First Law Standalones", "The Age of Madness", "The Faithful and the Fallen", "Of Blood and Bone", "The Bloodsworn Saga"];
   for (const s of nuove) {
     const tav = TAVOLE.find((x) => x.saga === s);
     t.c(`la guida «${s}» c'e'`, !!tav);
@@ -31,7 +31,9 @@ export default async (t) => {
   // quel che non e' della guida resta fuori
   t.eq("il Secret Project che non e' del Cosmere no", chi("The Frugal Wizard's Handbook for Surviving Medieval England", "Brandon Sanderson"), null);
   t.eq("il terzo di Kharkanas, non uscito, no", chi("Walk in Shadow", "Steven Erikson"), null);
-  t.eq("i Bloodsworn sono un altro mondo", chi("The Shadow of the Gods", "John Gwynne"), null);
+  t.eq("i Bloodsworn sono un altro mondo, con la loro guida", chi("The Shadow of the Gods", "John Gwynne"), "The Bloodsworn Saga · 1");
+  t.eq("«Bloodsworn» per nome", guidaDalNome("Bloodsworn")?.saga, "The Bloodsworn Saga");
+  t.eq("…e non sta nelle Banished Lands", TAVOLE.find((x) => x.saga === "The Bloodsworn Saga")?.universo, undefined);
   t.eq("«The Heroes» di un altro autore no", chi("The Heroes", "Joe Bloggs"), null);
 
   // un mondo si chiede intero, col suo nome o col nome del lettore

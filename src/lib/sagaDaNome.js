@@ -56,6 +56,7 @@ const NOMI = [
   { nomi: ["kingkiller", "kingkiller chronicle", "cronache dell'assassino del re", "assassino del re"], saga: "The Kingkiller Chronicle" },
   { nomi: ["realm of the elderlings", "elderlings"], saga: "The Realm of the Elderlings" },
   { nomi: ["wheel of time", "ruota del tempo"], saga: "The Wheel of Time" },
+  { nomi: ["bloodsworn", "bloodsworn saga"], saga: "The Bloodsworn Saga" },
   // I MONDI: tutte le guide dello stesso `universo`, ognuna coi suoi numeri
   // (chiesto dal lettore: «raccoglie tutte le saghe»)
   { nomi: ["cosmere", "cosmoverse", "cosmoverso"], universo: "Cosmere" },
