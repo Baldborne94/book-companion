@@ -25,9 +25,9 @@ export const SERIE = ["Q277759", "Q1667921", "Q7725310", "Q13593966", "Q53815"];
 export const LIBRI = ["Q7725634", "Q8261", "Q47461344", "Q571"];
 // non volumi della saga: edizioni, racconti, novelle, raccolte
 export const NON_VOLUMI = ["Q3331189", "Q49084", "Q149537", "Q1279564", "Q105420", "Q472808"];
-const UNIVERSO = "Q559618";
+export const UNIVERSO = "Q559618";
 
-const piano = (s) =>
+export const piano = (s) =>
   String(s || "")
     .toLowerCase()
     .normalize("NFD")
@@ -95,9 +95,9 @@ export function volumiDallaGuida(trovata, libri = [], opzioni = {}) {
 // ---- Wikidata -----------------------------------------------------------------
 
 const valore = (c) => c?.mainsnak?.datavalue?.value;
-const ids = (claims, p) => (claims?.[p] || []).map((c) => valore(c)?.id).filter(Boolean);
-const indirizzo = (p) => `${API}?${new URLSearchParams({ format: "json", origin: "*", ...p })}`;
-const etichetta = (e) => e?.labels?.en?.value || e?.labels?.it?.value || "";
+export const ids = (claims, p) => (claims?.[p] || []).map((c) => valore(c)?.id).filter(Boolean);
+export const indirizzo = (p) => `${API}?${new URLSearchParams({ format: "json", origin: "*", ...p })}`;
+export const etichetta = (e) => e?.labels?.en?.value || e?.labels?.it?.value || "";
 
 // la serie fra le candidate: la prima che E' una serie e non un universo
 export function sceltaSerie(candidati = [], entita = {}) {
@@ -143,10 +143,21 @@ async function serieDalNome(nome, prendi) {
     const candidati = (s?.search || []).map((x) => x.id).filter(Boolean);
     if (!candidati.length) continue;
     const e = await prendi(indirizzo({ action: "wbgetentities", ids: candidati.join("|"), props: "labels|claims", languages: "en|it" }));
-    const q = sceltaSerie(candidati, e?.entities || {});
+    const q = sceltaSerie(candidati, e?.entities || {}) || serieSenzaTipo(s.search, e?.entities || {});
     if (q) return { q, e };
   }
   return null;
+}
+
+// UNA SERIE CHE WIKIDATA NOMINA E BASTA. Il lettore ha cercato «Shadows of
+// the Apt»: Wikidata ha la voce («fantasy series by Adrian Tchaikovsky») ma
+// senza tipo, e nessun romanzo la indica. Presa per quel che e', i suoi
+// libri sono zero, e il pannello dice che la saga c'e' ma l'elenco no,
+// invece di «non ho trovato una saga con questo nome».
+const DICE_SERIE = /\b(series|serie|saga|trilogy|trilogia|cycle|ciclo)\b/i;
+export function serieSenzaTipo(risultati = [], entita = {}) {
+  const r = risultati.find((x) => x?.id && DICE_SERIE.test(x.description || "") && !ids(entita[x.id]?.claims, "P31").length);
+  return r ? r.id : null;
 }
 
 export async function sagaDaWikidata(nome, prendi) {
