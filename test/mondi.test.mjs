@@ -25,6 +25,7 @@ export default async (t) => {
   t.eq("Night of Knives e' il primo dell'Impero di Esslemont", chi("Night of Knives", "Ian C. Esslemont"), "Novels of the Malazan Empire · 1");
   t.eq("la Ruota: gli ultimi tre scritti con Sanderson", chi("The Gathering Storm", "Robert Jordan, Brandon Sanderson"), "The Wheel of Time · 12");
   t.eq("…anche col titolo italiano", chi("Presagi di tempesta", "Robert Jordan"), "The Wheel of Time · 12");
+  t.eq("The First Law col titolo italiano", chi("Il richiamo delle spade", "Joe Abercrombie"), "The First Law Trilogy · 1");
   t.eq("…e il prequel dopo il quattordicesimo", chi("New Spring", "Robert Jordan"), "The Wheel of Time · 15");
   t.eq("Tress e' dei Secret Projects del Cosmere", riconosci({ title: "Tress of the Emerald Sea", author: "Brandon Sanderson" })?.ciclo, "Secret Projects");
   // quel che non e' della guida resta fuori

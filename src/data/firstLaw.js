@@ -8,6 +8,7 @@
 // The Blade Itself 2006, Before They Are Hanged 2007, Last Argument of Kings
 // 2008; Best Served Cold 2009, The Heroes 2011, Red Country 2012; A Little
 // Hatred 2019, The Trouble with Peace 2020, The Wisdom of Crowds 2021.
+// Gli ALIAS sono i titoli italiani che Wikidata registra.
 // SOLO I ROMANZI: Sharp Ends (racconti) no.
 export const TRILOGIA = "The First Law Trilogy";
 export const A_SE = "The First Law Standalones";
@@ -17,13 +18,13 @@ export const UNIVERSO = "The First Law";
 const A = "Joe Abercrombie";
 
 export const LA_TRILOGIA = [
-  { o: 1, t: "The Blade Itself", c: TRILOGIA, a: A },
-  { o: 2, t: "Before They Are Hanged", c: TRILOGIA, a: A },
-  { o: 3, t: "Last Argument of Kings", c: TRILOGIA, a: A },
+  { o: 1, t: "The Blade Itself", c: TRILOGIA, a: A, alias: ["Il richiamo delle spade"] },
+  { o: 2, t: "Before They Are Hanged", c: TRILOGIA, a: A, alias: ["Non prima che siano impiccati"] },
+  { o: 3, t: "Last Argument of Kings", c: TRILOGIA, a: A, alias: ["L'ultima ragione dei re"] },
 ];
 
 export const I_SOLI = [
-  { o: 1, t: "Best Served Cold", c: A_SE, a: A },
+  { o: 1, t: "Best Served Cold", c: A_SE, a: A, alias: ["Il sapore della vendetta"] },
   { o: 2, t: "The Heroes", c: A_SE, a: A },
   { o: 3, t: "Red Country", c: A_SE, a: A },
 ];
