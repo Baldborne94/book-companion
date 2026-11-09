@@ -47,11 +47,40 @@ export function schedaSenzaFile(
   };
 }
 
-// UNA SCHEDA CHE C'E' GIA' NON SI RADDOPPIA: stesso titolo (senza maiuscole
-// e segni) e, se tutt'e due l'hanno, stesso autore
+// UNA SCHEDA CHE C'E' GIA' NON SI RADDOPPIA (chiesto dal lettore: «se un
+// libro o una saga sono già presenti non me li aggiungere di nuovo"): stesso
+// titolo (senza maiuscole e segni) e, se tutt'e due l'hanno, stesso autore.
+// Ma lo stesso libro si scrive in piu' modi: col nome della saga davanti
+// («Mistborn: The Final Empire»), con la serie fra parentesi in coda
+// («Empire in Black and Gold (Shadows of the Apt 1)»), in italiano. Le
+// forme accorciate valgono solo con l'autore scritto da tutt'e due le parti
+// e uguale (un «Part One» non e' ogni «Part One»); la traduzione la sa la
+// guida (`riconosci`: stesso volume della stessa guida).
 const piano = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
-export const giaSulloScaffale = (voce, libri = []) =>
-  libri.some((b) => piano(b?.title) === piano(voce?.titolo) && (!voce?.autore || !b?.author || piano(b.author) === piano(voce.autore)));
+const corte = (t) => {
+  const s = String(t || "");
+  const senzaCoda = s.replace(/\s*\([^()]*\)\s*$/, "");
+  const dopo = senzaCoda.includes(":") ? senzaCoda.slice(senzaCoda.indexOf(":") + 1) : "";
+  return new Set([senzaCoda, dopo].map(piano).filter((x) => x && x !== piano(s)));
+};
+export function giaSulloScaffale(voce, libri = []) {
+  const titolo = piano(voce?.titolo);
+  const autore = piano(voce?.autore);
+  const mie = new Set([titolo, ...corte(voce?.titolo)]);
+  const ra = riconosci({ title: voce?.titolo, author: voce?.autore });
+  const stessoVolume = (b) => {
+    if (!ra?.titolo) return false;
+    const rb = riconosci({ title: b?.title, author: b?.author });
+    return rb?.saga === ra.saga && rb?.titolo === ra.titolo;
+  };
+  return libri.some((b) => {
+    const suo = piano(b?.author);
+    if (autore && suo && suo !== autore) return false;
+    if (piano(b?.title) === titolo) return true;
+    if (autore && suo && [piano(b?.title), ...corte(b?.title)].some((t) => mie.has(t))) return true;
+    return stessoVolume(b);
+  });
+}
 
 // LA SAGA IN CUI FINISCONO LE SCHEDE DI UNA GUIDA: quella che il lettore
 // usa gia' per i libri dello stesso universo. Sul suo tablet i libri del 40K

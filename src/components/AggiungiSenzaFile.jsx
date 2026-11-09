@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { sagaDalNome, saghePerAutore, libriDellaSaga } from "../lib/sagaDaNome.js";
+import { sagaDelLibro, fraseSagaDelLibro, raccolteDellAutore } from "../lib/sagaDelLibro.js";
+import { giaSulloScaffale } from "../lib/senzaFile.js";
 
 const prendi = async (url) => {
   const r = await fetch(url, { signal: AbortSignal.timeout?.(20000) });
@@ -41,7 +43,10 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
   const [esito, setEsito] = useState(null);
   const [tolti, setTolti] = useState(() => new Set());
   const [raccolta, setRaccolta] = useState("");
-  const [libro, setLibro] = useState({ titolo: "", autore: "", saga: "", numero: "" });
+  const VUOTO = { titolo: "", autore: "", saga: "", serie: "", numero: "" };
+  const [libro, setLibro] = useState(VUOTO);
+  // di che saga e' il libro solo: la proposta e da dove viene
+  const [riconosco, setRiconosco] = useState(null);
   // la ricerca per autore: le sue saghe, e un tocco porta l'elenco dei libri
   const [chi, setChi] = useState("");
   const [saghe, setSaghe] = useState(null);
@@ -55,7 +60,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
     setEsito(null);
     try {
       const r = await sagaDalNome(n, { libri: books, prendi });
-      setEsito(r && r.volumi.length ? r : { vuota: true });
+      setEsito(r && r.volumi.length ? r : { vuota: true, senzaLibri: r?.nome || "" });
       setRaccolta(r?.saga || "");
       setTolti(new Set());
       setCerca(null);
@@ -83,7 +88,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
     setEsito(null);
     try {
       const r = await libriDellaSaga(voce, { libri: books, prendi });
-      setEsito(r && r.volumi.length ? r : { vuota: true });
+      setEsito(r && r.volumi.length ? r : { vuota: true, senzaLibri: r?.nome || "" });
       setRaccolta(r?.saga || "");
       setTolti(new Set());
       setCerca(null);
@@ -91,6 +96,24 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
       setCerca("guasto");
     }
   }
+
+  async function diCheSaga() {
+    const voce = { titolo: libro.titolo.trim(), autore: libro.autore.trim() };
+    if (!voce.titolo) return;
+    setRiconosco({ stato: "cerco" });
+    try {
+      const r = await sagaDelLibro(voce, books, { prendi });
+      if (r) setLibro((l) => ({ ...l, saga: r.saga, serie: r.serie || "", numero: r.numero != null ? String(r.numero) : "" }));
+      setRiconosco({ frase: fraseSagaDelLibro(r, voce.autore) });
+    } catch {
+      setRiconosco({ stato: "guasto" });
+    }
+  }
+
+  const sueRaccolte = raccolteDellAutore(libro.autore, books);
+  // chiesto dal lettore: «se un libro o una saga sono già presenti non me li
+  // aggiungere di nuovo» — e lo si dice prima del tasto
+  const giaQui = !!libro.titolo.trim() && giaSulloScaffale(libro, books);
 
   const daAggiungere = esito?.volumi ? esito.volumi.filter((v, i) => !v.gia && !tolti.has(i)) : [];
 
@@ -145,8 +168,9 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
         {cerca === "guasto" && <p style={{ fontSize: F.piccolo, color: C.accent, marginBottom: 12 }}>Wikidata non risponde adesso: riprova fra poco.</p>}
         {esito?.vuota && (
           <p style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.5, marginBottom: 12 }}>
-            Non ho trovato una saga con questo nome, né fra le guide dell'app né su Wikidata. Prova col nome inglese, o aggiungi i libri uno
-            per volta qui sotto.
+            {esito.senzaLibri
+              ? `Wikidata conosce «${esito.senzaLibri}», ma non dice quali libri ne fanno parte. Aggiungili uno per volta qui sotto: «🔍 Di che saga è?» ti propone la raccolta.`
+              : "Non ho trovato una saga con questo nome, né fra le guide dell'app né su Wikidata. Prova col nome inglese, o aggiungi i libri uno per volta qui sotto."}
           </p>
         )}
         {esito?.volumi && (
@@ -190,20 +214,44 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (!libro.titolo.trim()) return;
+            if (!libro.titolo.trim() || giaQui) return;
             onAggiungi([libro]);
-            setLibro({ titolo: "", autore: "", saga: "", numero: "" });
+            setLibro(VUOTO);
+            setRiconosco(null);
           }}
           style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
         >
-          <input value={libro.titolo} onChange={(e) => setLibro({ ...libro, titolo: e.target.value })} placeholder="Titolo" aria-label="Titolo" style={campo(220)} />
+          <input value={libro.titolo} onChange={(e) => { setLibro({ ...libro, titolo: e.target.value }); setRiconosco(null); }} placeholder="Titolo" aria-label="Titolo" style={campo(220)} />
           <input value={libro.autore} onChange={(e) => setLibro({ ...libro, autore: e.target.value })} placeholder="Autore" aria-label="Autore" style={campo(180)} />
-          <input value={libro.saga} onChange={(e) => setLibro({ ...libro, saga: e.target.value })} placeholder="Saga (facoltativa)" aria-label="Saga" style={campo(180)} />
+          <input value={libro.saga} onChange={(e) => setLibro({ ...libro, saga: e.target.value, serie: "" })} placeholder="Saga (facoltativa)" aria-label="Saga" style={campo(180)} />
           <input value={libro.numero} onChange={(e) => setLibro({ ...libro, numero: e.target.value })} placeholder="N°" aria-label="Numero" inputMode="decimal" style={{ ...campo(60), flex: "0 1 80px" }} />
-          <button type="submit" disabled={!libro.titolo.trim()} style={{ ...tasto(C.accent, true), opacity: libro.titolo.trim() ? 1 : 0.5 }}>
+          <button type="submit" disabled={!libro.titolo.trim() || giaQui} style={{ ...tasto(C.accent, true), opacity: libro.titolo.trim() && !giaQui ? 1 : 0.5 }}>
             📥 Aggiungi
           </button>
         </form>
+        {giaQui && <p style={{ fontSize: F.piccolo, color: C.accent, marginTop: 8 }}>✓ Questo libro è già sullo scaffale: non lo aggiungo di nuovo.</p>}
+        {/* DI CHE SAGA E'? (chiesto dal lettore: «se cerco un libro riesci a
+            riconoscermi a quale saga appartiene di quelle che ho già
+            creato?»): si propone, il campo resta suo */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
+          <button type="button" onClick={diCheSaga} disabled={!libro.titolo.trim() || riconosco?.stato === "cerco"} style={{ ...tasto(C.accent), opacity: libro.titolo.trim() ? 1 : 0.5 }}>
+            {riconosco?.stato === "cerco" ? "Cerco…" : "🔍 Di che saga è?"}
+          </button>
+          {riconosco?.frase && <span style={{ flex: "1 1 240px", fontSize: F.piccolo, color: C.muted, lineHeight: 1.5 }}>{riconosco.frase}</span>}
+          {riconosco?.stato === "guasto" && <span style={{ fontSize: F.piccolo, color: C.accent }}>Wikidata non risponde adesso: riprova fra poco.</span>}
+        </div>
+        {sueRaccolte.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 6 }}>Le tue raccolte con libri di quest'autore:</p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {sueRaccolte.map((r) => (
+                <button key={r.saga} type="button" onClick={() => setLibro((l) => ({ ...l, saga: r.saga, serie: "" }))} style={tasto(r.saga === libro.saga ? C.accent : C.text, r.saga === libro.saga)}>
+                  {r.saga} · {r.quanti}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

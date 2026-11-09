@@ -31,6 +31,21 @@ export default async (t) => {
   t.c("stesso titolo e autore: c'e' gia'", giaSulloScaffale({ titolo: "ghostmaker", autore: "Dan Abnett" }, libri));
   t.c("…anche senza autore da un lato", giaSulloScaffale({ titolo: "Ghostmaker" }, libri));
   t.c("un altro autore no", !giaSulloScaffale({ titolo: "Ghostmaker", autore: "Joe Bloggs" }, libri));
+  // lo stesso libro scritto in un altro modo (chiesto dal lettore: «se un
+  // libro o una saga sono già presenti non me li aggiungere di nuovo»)
+  const scritti = [
+    { title: "Mistborn: The Final Empire", author: "Brandon Sanderson" },
+    { title: "Empire in Black and Gold (Shadows of the Apt 1)", author: "Adrian Tchaikovsky" },
+    { title: "Il nome del vento", author: "Patrick Rothfuss" },
+    { title: "Part One", author: "Someone" },
+  ];
+  t.c("la saga davanti al titolo", giaSulloScaffale({ titolo: "The Final Empire", autore: "Brandon Sanderson" }, scritti));
+  t.c("…e al contrario, anche fuori dalle guide", giaSulloScaffale({ titolo: "Shadows of the Apt: Dragonfly Falling", autore: "Adrian Tchaikovsky" }, [{ title: "Dragonfly Falling", author: "Adrian Tchaikovsky" }]));
+  t.c("la serie fra parentesi in coda", giaSulloScaffale({ titolo: "Empire in Black and Gold", autore: "Adrian Tchaikovsky" }, scritti));
+  t.c("il titolo italiano che la guida conosce", giaSulloScaffale({ titolo: "The Name of the Wind", autore: "Patrick Rothfuss" }, scritti));
+  t.c("una forma accorciata vale solo con l'autore da tutt'e due le parti", !giaSulloScaffale({ titolo: "Saga: Part One" }, scritti));
+  t.c("…e uguale", !giaSulloScaffale({ titolo: "Saga: Part One", autore: "Other" }, scritti));
+  t.c("un altro volume della stessa guida no", !giaSulloScaffale({ titolo: "The Wise Man's Fear", autore: "Patrick Rothfuss" }, scritti));
 
   // LA SAGA DELLE SCHEDE DI UNA GUIDA: quella che il lettore usa per lo stesso universo
   const suoi = [{ id: "h", title: "Horus Rising", author: "Dan Abnett", saga: "Warhammer 40K" }, { id: "k", title: "Know No Fear", author: "Dan Abnett", saga: "Warhammer 40K" }];

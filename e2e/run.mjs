@@ -1125,6 +1125,25 @@ const SCENE = [
       const sua = dopo.find((b) => b.id === ghost.id);
       if (sua.fileTolto || sua.title !== "Ghostmaker" || sua.sagaOrder !== 2) throw new Error(`la scheda di Ghostmaker dopo il file: ${JSON.stringify(sua)}`);
       if (dopo.length !== libri.length + 14) throw new Error(`il file ha fatto una scheda nuova accanto: ${dopo.length} libri`);
+      // UN LIBRO SOLO: «a quale saga appartiene di quelle che ho già
+      // creato?», e uno che c'e' gia' non si aggiunge di nuovo
+      await p.goto(`${URL_APP}?apri=libreria`);
+      await p.getByRole("button", { name: "📥 Senza file" }).click();
+      const titolo = p.getByRole("textbox", { name: "Titolo", exact: true });
+      await titolo.fill("Ghostmaker");
+      await p.getByRole("textbox", { name: "Autore", exact: true }).fill("Dan Abnett");
+      await finche(() => p.getByText(/Questo libro è già sullo scaffale/).count(), 5000, "il libro che c'e' gia' non si dice");
+      if (await p.getByRole("button", { name: "📥 Aggiungi", exact: true }).isEnabled()) throw new Error("il libro che c'e' gia' si puo' aggiungere di nuovo");
+      if (!(await p.getByRole("button", { name: /^Warhammer 40K · \d+$/ }).count())) throw new Error("le raccolte dell'autore non si propongono");
+      await titolo.fill("Malleus");
+      await p.getByRole("button", { name: "🔍 Di che saga è?" }).click();
+      await finche(() => p.getByText(/È nella guida di Eisenhorn: va in «Warhammer 40K», Eisenhorn, n° 2/).count(), 5000, "Malleus non si riconosce nella raccolta del 40K");
+      const proposta = `${await p.getByRole("textbox", { name: "Saga", exact: true }).inputValue()} ${await p.getByRole("textbox", { name: "Numero", exact: true }).inputValue()}`;
+      if (proposta !== "Warhammer 40K 2") throw new Error(`la proposta scritta nei campi: ${proposta}`);
+      await p.getByRole("button", { name: "📥 Aggiungi", exact: true }).click();
+      await finche(async () => (await libriDi(p)).some((b) => b.title === "Malleus"), 5000, "Malleus non entra");
+      const malleus = (await libriDi(p)).find((b) => b.title === "Malleus");
+      if (`${malleus.saga}|${malleus.series}|${malleus.sagaOrder}` !== "Warhammer 40K|Eisenhorn|2") throw new Error(`Malleus sullo scaffale: ${JSON.stringify(malleus)}`);
       // LE SAGHE DI UN AUTORE («permettimi la ricerca per autore»): la
       // guida dell'app e la serie di Wikidata, e un tocco porta i libri
       const tipo = (...q) => q.map((id) => ({ mainsnak: { datavalue: { value: { id } } } }));
@@ -1152,7 +1171,7 @@ const SCENE = [
       await a.getByRole("button", { name: /📜 Lockwood & Co\./ }).click();
       await finche(() => a.getByText(/«Lockwood & Co\.»: l'elenco della guida/).count(), 5000, "toccata la guida, i suoi libri non arrivano");
       if (!(await a.getByRole("button", { name: "📥 Aggiungi 5 schede" }).count())) throw new Error("i cinque libri di Lockwood non si possono aggiungere");
-      return { guasti: [...d.guasti, ...altro.guasti], nota: `14 schede in ordine sotto «Warhammer 40K», ${await copertine()} copertine, Ghostmaker col suo ePub nella sua scheda; le saghe di Stroud: le guide e la serie di Wikidata` };
+      return { guasti: [...d.guasti, ...altro.guasti], nota: `14 schede in ordine sotto «Warhammer 40K», ${await copertine()} copertine, Ghostmaker col suo ePub nella sua scheda e non raddoppiato, Malleus riconosciuto nel 40K; le saghe di Stroud: le guide e la serie di Wikidata` };
     },
   },
   {

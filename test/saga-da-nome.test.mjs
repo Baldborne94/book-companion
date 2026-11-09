@@ -3,7 +3,7 @@
 // corretto i libri». Prima le guide scritte a mano, poi Wikidata. Quel che
 // sbaglia in silenzio e' l'ORDINE e cosa e' un VOLUME (una novella «2.5»,
 // un'edizione, il volume di un'altra serie).
-import { sagaDalNome, guidaDalNome, sceltaSerie, volumeDa, inOrdine, senzaParoleGeneriche } from "../src/lib/sagaDaNome.js";
+import { sagaDalNome, guidaDalNome, sceltaSerie, volumeDa, inOrdine, senzaParoleGeneriche, serieSenzaTipo } from "../src/lib/sagaDaNome.js";
 
 const tipo = (...q) => q.map((id) => ({ mainsnak: { datavalue: { value: { id } } } }));
 const legame = (serie, n) => ({ mainsnak: { datavalue: { value: { id: serie } } }, ...(n != null ? { qualifiers: { P1545: [{ datavalue: { value: String(n) } }] } } : {}) });
@@ -93,4 +93,19 @@ export default async (t) => {
   // niente serie su Wikidata
   const vuoto = await sagaDalNome("Nessuna", { libri: [], prendi: async () => ({ search: [] }) });
   t.eq("un nome che Wikidata non conosce", vuoto, null);
+  // UNA SERIE CHE WIKIDATA NOMINA E BASTA (il lettore ha cercato «Shadows of
+  // the Apt»: la voce c'e', senza tipo e senza libri)
+  const apt = [{ id: "Q137781299", description: "fantasy series by Adrian Tchaikovsky" }];
+  t.eq("una voce senza tipo che si descrive come serie", serieSenzaTipo(apt, { Q137781299: { claims: {} } }), "Q137781299");
+  t.eq("…non un libro senza tipo", serieSenzaTipo([{ id: "Q1", description: "2008 novel by Adrian Tchaikovsky" }], { Q1: { claims: {} } }), null);
+  t.eq("…non una voce col suo tipo (quello lo giudica `sceltaSerie`)", serieSenzaTipo(apt, { Q137781299: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: "Q5398426" } } } }] } } }), null);
+  const vuota = await sagaDalNome("Shadows of the Apt", {
+    prendi: async (url) => {
+      const q = new URL(url).searchParams;
+      if (q.get("action") === "wbsearchentities") return { search: apt };
+      if (q.get("action") === "query") return { query: { search: [] } };
+      return { entities: { Q137781299: { labels: { en: { value: "Shadows of the Apt" } }, claims: {} } } };
+    },
+  });
+  t.eq("la saga c'e', l'elenco no: il pannello lo dice col suo nome", `${vuota?.nome} ${vuota?.volumi.length}`, "Shadows of the Apt 0");
 };
