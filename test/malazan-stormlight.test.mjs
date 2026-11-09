@@ -24,7 +24,7 @@ export default async (t) => {
   t.eq("la novella Edgedancer no", chi("Edgedancer", "Brandon Sanderson"), null);
   t.eq("la prima meta' di The Way of Kings stampata a parte no", chi("The Stormlight Archive (Part One)", "Brandon Sanderson"), null);
   t.eq("Mistborn non e' Stormlight: e' la sua guida", chi("Mistborn: The Final Empire", "Brandon Sanderson"), "Mistborn · 1");
-  t.eq("un altro Erikson (Kharkanas) non e' il Libro dei Caduti", chi("Forge of Darkness", "Steven Erikson"), null);
+  t.eq("un altro Erikson (Kharkanas) non e' il Libro dei Caduti: e' la sua guida", chi("Forge of Darkness", "Steven Erikson"), "The Kharkanas Trilogy · 1");
   t.eq("«Memories of Ice» di un altro autore no", chi("Memories of Ice", "Joe Bloggs"), null);
   // e si trovano per nome, anche in italiano
   t.eq("«Il libro dei caduti di Malazan»", guidaDalNome("Il libro dei Caduti di Malazan")?.saga, "Malazan Book of the Fallen");

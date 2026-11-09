@@ -124,7 +124,7 @@ export async function raccoltaDellaSerie(s, libri = [], prendi) {
   if (cicli.length) return { fonte: "ciclo", saga: piuFrequente(cicli.map((b) => b.saga)), serie: cicli[0].series, numero: null };
   // la serie ha una guida, e i libri di quella guida stanno in una raccolta
   const g = guidaDalNome(s.nome);
-  const tav = g && TAVOLE.find((t) => t.saga === g.saga);
+  const tav = g && TAVOLE.find((t) => t.saga === g.saga || (g.universo && t.universo === g.universo));
   if (tav) {
     const saga = sagaPerLaGuida(tav, libri);
     if (conSaga.some((b) => chiaveSaga(b.saga) === chiaveSaga(saga))) return { fonte: "guida", saga, serie: "", numero: null };

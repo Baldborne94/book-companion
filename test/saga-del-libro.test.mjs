@@ -30,12 +30,12 @@ export default async (t) => {
     "guida Warhammer 40K | Eisenhorn | 2"
   );
   t.c("…e lo dice", /guida di Eisenhorn.*«Warhammer 40K», Eisenhorn, n° 2/.test(fraseSagaDelLibro(m)), fraseSagaDelLibro(m));
-  const tit = sagaDaQui({ titolo: "Empire in Black and Gold (Shadows of the Apt 1)", autore: "Adrian Tchaikovsky" }, scaffale);
-  t.eq("il titolo che dice la saga", `${tit?.fonte} ${tit?.saga} ${tit?.numero}`, "titolo Shadows of the Apt 1");
+  const tit = sagaDaQui({ titolo: "Hyperion (Hyperion Cantos 1)", autore: "Dan Simmons" }, scaffale);
+  t.eq("il titolo che dice la saga", `${tit?.fonte} ${tit?.saga} ${tit?.numero}`, "titolo Hyperion Cantos 1");
   const kay = sagaDaQui({ titolo: "The Wandering Fire", autore: "Guy Gavriel Kay" }, scaffale);
   t.eq("gli altri libri dell'autore stanno tutti in una raccolta", `${kay?.fonte} ${kay?.saga}`, "autore Fionavar");
   t.c("…e lo dice col suo nome", /libri di Guy Gavriel Kay.*«Fionavar»/.test(fraseSagaDelLibro(kay, "Guy Gavriel Kay")), fraseSagaDelLibro(kay, "Guy Gavriel Kay"));
-  t.eq("in piu' raccolte la deduzione tace", sagaDaQui({ titolo: "Warbreaker", autore: "Brandon Sanderson" }, scaffale), null);
+  t.eq("in piu' raccolte la deduzione tace", sagaDaQui({ titolo: "The Rithmatist", autore: "Brandon Sanderson" }, scaffale), null);
   t.eq("senza titolo niente", sagaDaQui({ titolo: "  " }, scaffale), null);
   // …e allora le sue raccolte si scelgono a mano, anche dal solo cognome
   t.eq(
@@ -94,10 +94,11 @@ export default async (t) => {
   const c = await sagaDelLibro({ titolo: "Calamity", autore: "Sanderson" }, scaffale, { prendi });
   t.eq("la serie scritta come ciclo di una raccolta", `${c?.saga} | ${c?.serie} | ${c?.come}`, "Sanderson ragazzi | Reckoners | ciclo");
   const u = await sagaDelLibro({ titolo: "Universe Book", autore: "Sanderson" }, scaffale, { prendi });
-  t.eq("un universo serve a trovare la raccolta (Elantris sta in «Cosmoverse»)", `${u?.saga} ${u?.come}`, "Cosmoverse fratelli");
+  t.eq("un universo serve a trovare la raccolta (il Cosmere e' un mondo di guide, e Elantris sta in «Cosmoverse»)", `${u?.saga} ${u?.come}`, "Cosmoverse guida");
   const g = await sagaDelLibro({ titolo: "Secret History", autore: "Sanderson" }, [...scaffale, { title: "The Final Empire", author: "Brandon Sanderson", saga: "Cosmoverse" }], { prendi });
   t.eq("una serie che ha la sua guida va dove tieni i libri di quella guida", `${g?.saga} ${g?.come}`, "Cosmoverse guida");
-  const g0 = await sagaDelLibro({ titolo: "Secret History", autore: "Sanderson" }, scaffale, { prendi });
+  // (senza Elantris: e' del Cosmere, e porterebbe la raccolta del Cosmere)
+  const g0 = await sagaDelLibro({ titolo: "Secret History", autore: "Sanderson" }, scaffale.filter((b) => b.title !== "Elantris"), { prendi });
   t.eq("…solo se quella raccolta ce l'hai: se no e' una raccolta nuova, detta", `${g0?.saga} ${g0?.nuova}`, "Mistborn true");
   t.eq("…ma non e' mai una raccolta nuova", await sagaDelLibro({ titolo: "Universe Book", autore: "Sanderson" }, [], { prendi }), null);
   const n = await sagaDelLibro({ titolo: "Lonely Book", autore: "Sanderson" }, scaffale, { prendi });

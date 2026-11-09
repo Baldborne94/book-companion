@@ -405,7 +405,7 @@ export const MAPPA = [
   {
     luogo: "libreria",
     nome: "Schede senza file",
-    cosa: "Scrivi il nome di una saga, o di un autore per vedere tutte le sue saghe (e i suoi libri che non stanno in nessuna serie), e l'app trova i libri in ordine (dalle guide dell'app, se no da Wikidata), te li mostra e li mette sullo scaffale con la copertina, senza ebook; o aggiungi un libro solo: «🔍 Di che saga è?» ti dice in quale delle tue raccolte va (dalle guide, dagli altri libri dell'autore o dalla sua serie su Wikidata). Un libro che hai già non si aggiunge di nuovo. Quando avrai il file, dalla scheda «📂 Scegli il file» e l'ebook entra lì. Dal cammino di una guida, «📥 Metti sullo scaffale» fa lo stesso coi volumi che mancano.",
+    cosa: "Scrivi il nome di una saga o di un mondo intero (il Cosmere, Malazan, il 40K), o di un autore per vedere tutte le sue saghe (e i suoi libri che non stanno in nessuna serie), e l'app trova i libri in ordine (dalle guide dell'app, se no da Wikidata), te li mostra e li mette sullo scaffale con la copertina, senza ebook; o aggiungi un libro solo: «🔍 Di che saga è?» ti dice in quale delle tue raccolte va (dalle guide, dagli altri libri dell'autore o dalla sua serie su Wikidata). Un libro che hai già non si aggiunge di nuovo. Quando avrai il file, dalla scheda «📂 Scegli il file» e l'ebook entra lì. Dal cammino di una guida, «📥 Metti sullo scaffale» fa lo stesso coi volumi che mancano.",
     dove: "In Libreria, «📥 Senza file» accanto ad «Aggiungi libri»; nel cammino di una guida.",
   },
   {

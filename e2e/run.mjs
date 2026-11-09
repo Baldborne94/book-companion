@@ -1144,6 +1144,14 @@ const SCENE = [
       await finche(async () => (await libriDi(p)).some((b) => b.title === "Malleus"), 5000, "Malleus non entra");
       const malleus = (await libriDi(p)).find((b) => b.title === "Malleus");
       if (`${malleus.saga}|${malleus.series}|${malleus.sagaOrder}` !== "Warhammer 40K|Eisenhorn|2") throw new Error(`Malleus sullo scaffale: ${JSON.stringify(malleus)}`);
+      // UN MONDO INTERO («fai le guide di Cosmoverso e Malazan»): tutte le
+      // sue guide, una dopo l'altra, in una raccolta
+      await p.getByRole("button", { name: "📥 Senza file" }).click();
+      await p.getByRole("textbox", { name: "Nome della saga" }).fill("Cosmoverso");
+      await p.getByRole("button", { name: "🔍 Cerca i libri" }).click();
+      await finche(() => p.getByText(/«Cosmere»: tutte le guide dell'app di questo mondo/).count(), 5000, "il Cosmere non si trova come mondo");
+      if (!(await p.getByRole("button", { name: "📥 Aggiungi 18 schede" }).count())) throw new Error("il Cosmere non ha i suoi diciotto romanzi");
+      if ((await p.getByRole("textbox", { name: "Raccolta" }).inputValue()) !== "Cosmere") throw new Error("senza Cosmere sullo scaffale, la raccolta proposta non e' il mondo");
       // LE SAGHE DI UN AUTORE («permettimi la ricerca per autore»): la
       // guida dell'app e la serie di Wikidata, e un tocco porta i libri
       const tipo = (...q) => q.map((id) => ({ mainsnak: { datavalue: { value: { id } } } }));
@@ -1176,7 +1184,7 @@ const SCENE = [
       await a.getByRole("button", { name: /📜 Lockwood & Co\./ }).click();
       await finche(() => a.getByText(/«Lockwood & Co\.»: l'elenco della guida/).count(), 5000, "toccata la guida, i suoi libri non arrivano");
       if (!(await a.getByRole("button", { name: "📥 Aggiungi 5 schede" }).count())) throw new Error("i cinque libri di Lockwood non si possono aggiungere");
-      return { guasti: [...d.guasti, ...altro.guasti], nota: `14 schede in ordine sotto «Warhammer 40K», ${await copertine()} copertine, Ghostmaker col suo ePub nella sua scheda e non raddoppiato, Malleus riconosciuto nel 40K; le saghe di Stroud: le guide, la serie di Wikidata e gli altri libri` };
+      return { guasti: [...d.guasti, ...altro.guasti], nota: `14 schede in ordine sotto «Warhammer 40K», ${await copertine()} copertine, Ghostmaker col suo ePub nella sua scheda e non raddoppiato, Malleus riconosciuto nel 40K, il Cosmere come mondo; le saghe di Stroud: le guide, la serie di Wikidata e gli altri libri` };
     },
   },
   {

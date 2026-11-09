@@ -157,8 +157,8 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
             <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 6 }}>Le saghe di {saghe.autore}: toccane una per vederne i libri.</p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {saghe.saghe.map((v) => (
-                <button key={`${v.fonte}:${v.q || v.saga}`} onClick={() => apriSaga(v)} style={tasto(v.fonte === "guida" ? C.accent : C.text)}>
-                  {v.fonte === "guida" ? "📜 " : v.fonte === "sciolti" ? "📚 " : ""}
+                <button key={`${v.fonte}:${v.q || v.universo || v.saga}`} onClick={() => apriSaga(v)} style={tasto(v.fonte === "guida" ? C.accent : C.text)}>
+                  {v.universo ? "🌐 " : v.fonte === "guida" ? "📜 " : v.fonte === "sciolti" ? "📚 " : ""}
                   {v.nome} · {v.quanti === 1 ? "1 libro" : `${v.quanti} libri`}
                 </button>
               ))}
@@ -176,7 +176,9 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
         {esito?.volumi && (
           <div style={{ marginBottom: 26 }}>
             <p style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>
-              {esito.fonte === "guida"
+              {esito.universo
+                ? `«${esito.nome}»: tutte le guide dell'app di questo mondo, una dopo l'altra, ognuna coi suoi numeri.`
+                : esito.fonte === "guida"
                 ? `«${esito.nome}»: l'elenco della guida dell'app, nell'ordine di lettura.`
                 : esito.fonte === "sciolti"
                 ? "I suoi libri che su Wikidata non stanno in nessuna serie, per anno di uscita. Spunta quelli di una saga, scrivi qui sotto la raccolta e aggiungili. Un libro appena uscito può non esserci ancora."

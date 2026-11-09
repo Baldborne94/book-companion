@@ -48,13 +48,22 @@ const NOMI = [
   { nomi: ["eisenhorn"], saga: "Eisenhorn" },
   { nomi: ["ravenor"], saga: "Ravenor" },
   { nomi: ["hellboy"], saga: "Hellboy" },
-  { nomi: ["malazan", "malazan book of the fallen", "libro dei caduti di malazan"], saga: "Malazan Book of the Fallen" },
+  { nomi: ["malazan book of the fallen", "libro dei caduti di malazan"], saga: "Malazan Book of the Fallen" },
   { nomi: ["stormlight", "stormlight archive", "cronache della folgorluce"], saga: "The Stormlight Archive" },
   { nomi: ["mistborn", "wax and wayne"], saga: "Mistborn" },
   { nomi: ["lockwood", "lockwood co", "lockwood and co"], saga: "Lockwood & Co." },
   { nomi: ["bartimaeus", "bartimaeus sequence", "trilogia di bartimeus", "bartimeus"], saga: "Bartimaeus" },
   { nomi: ["kingkiller", "kingkiller chronicle", "cronache dell'assassino del re", "assassino del re"], saga: "The Kingkiller Chronicle" },
   { nomi: ["realm of the elderlings", "elderlings"], saga: "The Realm of the Elderlings" },
+  { nomi: ["wheel of time", "ruota del tempo"], saga: "The Wheel of Time" },
+  // I MONDI: tutte le guide dello stesso `universo`, ognuna coi suoi numeri
+  // (chiesto dal lettore: «raccoglie tutte le saghe»)
+  { nomi: ["cosmere", "cosmoverse", "cosmoverso"], universo: "Cosmere" },
+  { nomi: ["tales of witness", "witness"], saga: "Witness" },
+  { nomi: ["malazan", "malazan universe", "malazan world", "mondo di malazan", "universo di malazan"], universo: "Malazan" },
+  { nomi: ["first law", "first law world", "mondo della prima legge"], universo: "The First Law" },
+  { nomi: ["banished lands"], universo: "The Banished Lands" },
+  { nomi: ["warhammer 40k", "warhammer 40000", "warhammer 40 000", "40k"], universo: "Warhammer 40K" },
   // le sue cinque serie: la guida ristretta al suo ciclo
   { nomi: ["farseer", "farseer trilogy"], saga: "The Realm of the Elderlings", parte: "The Farseer Trilogy", nome: "The Farseer Trilogy" },
   { nomi: ["liveship traders", "liveship", "liveship traders trilogy"], saga: "The Realm of the Elderlings", parte: "Liveship Traders", nome: "Liveship Traders" },
@@ -92,6 +101,12 @@ export function guidaDalNome(nome) {
 
 // I VOLUMI DI UNA GUIDA, tutti, coi tuoi segnati (`gia`)
 export function volumiDallaGuida(trovata, libri = [], opzioni = {}) {
+  if (trovata.universo) {
+    const voci = guideIntere()
+      .filter((t) => t.universo === trovata.universo)
+      .flatMap((t) => vociDallaGuida(camminoDellaGuida(t, libri, opzioni), libri, opzioni));
+    return voci.length ? { fonte: "guida", nome: trovata.universo, saga: voci[0].saga, universo: true, volumi: voci } : null;
+  }
   const tav = TAVOLE.find((t) => t.saga === trovata.saga);
   if (!tav) return null;
   const cammino = camminoDellaGuida(tav, libri, opzioni);
@@ -221,11 +236,23 @@ export const eLAutore = (scritto, autore) => {
 };
 
 export function guideDellAutore(nome) {
-  return guideIntere()
+  const sue = guideIntere()
     .map((tav) => ({ tav, quanti: tav.libri.filter((v) => (v.tipo || "") !== "racconto" && eLAutore(nome, v.a || AUTORI_DELLE_GUIDE[tav.saga] || "")).length }))
     .filter((x) => x.quanti > 0)
     .sort((a, b) => b.quanti - a.quanti)
     .map(({ tav, quanti }) => ({ fonte: "guida", saga: tav.saga, nome: tav.saga, quanti }));
+  // IL SUO MONDO, PRIMA (il lettore: «raccoglie tutte le saghe»): dove ha
+  // volumi in due guide o piu' dello stesso universo, il mondo intero, col
+  // conto dei suoi volumi e di quelli degli altri che ci scrivono
+  const universi = new Map();
+  for (const g of sue) {
+    const u = TAVOLE.find((t) => t.saga === g.saga)?.universo;
+    if (u) universi.set(u, (universi.get(u) || 0) + 1);
+  }
+  const mondi = [...universi.entries()]
+    .filter(([, n]) => n > 1)
+    .map(([u]) => ({ fonte: "guida", universo: u, nome: u, quanti: volumiDallaGuida({ universo: u })?.volumi.length || 0 }));
+  return [...mondi, ...sue];
 }
 
 // l'autore giusto fra quelli col suo nome: il primo che di mestiere scrive
@@ -296,8 +323,13 @@ export async function serieDellAutore(nome, prendi) {
 export async function saghePerAutore(nome, { prendi } = {}) {
   const guide = guideDellAutore(nome);
   const w = prendi ? await serieDellAutore(nome, prendi) : null;
-  const giaGuide = new Set(guide.map((g) => g.saga));
-  const altre = (w?.serie || []).filter((x) => !giaGuide.has(guidaDalNome(x.nome)?.saga));
+  const giaGuide = new Set(guide.map((g) => g.saga).filter(Boolean));
+  const giaMondi = new Set(guide.map((g) => g.universo || TAVOLE.find((t) => t.saga === g.saga)?.universo).filter(Boolean));
+  const giaDetta = (nomeSerie) => {
+    const g = guidaDalNome(nomeSerie);
+    return !!g && (giaGuide.has(g.saga) || giaMondi.has(g.universo));
+  };
+  const altre = (w?.serie || []).filter((x) => !giaDetta(x.nome));
   const autore = w?.autore || nome;
   // i libri sciolti che una guida conosce stanno gia' nella guida
   const sciolti = (w?.sciolti || []).filter((v) => !giaGuide.has(riconosci({ title: v.titolo, author: autore })?.saga));
@@ -308,7 +340,7 @@ export async function saghePerAutore(nome, { prendi } = {}) {
 
 // I libri di una saga scelta dall'elenco dell'autore
 export async function libriDellaSaga(voce, { libri = [], prendi } = {}) {
-  if (voce.fonte === "guida") return volumiDallaGuida({ saga: voce.saga }, libri);
+  if (voce.fonte === "guida") return volumiDallaGuida(voce.universo ? { universo: voce.universo } : { saga: voce.saga }, libri);
   if (voce.fonte === "sciolti") {
     const volumi = voce.volumi.map((v) => ({ titolo: v.titolo, autore: voce.autore || "", saga: "", serie: "", numero: null, anno: v.anno }));
     return { fonte: "sciolti", nome: voce.nome, saga: "", volumi: volumi.map((v) => ({ ...v, gia: giaSulloScaffale(v, libri) })) };
