@@ -24,7 +24,7 @@ export default async (t) => {
   // e quel che non e' della guida resta fuori
   t.eq("la novella «Mistborn: Secret History» no", chi("Mistborn: Secret History", "Brandon Sanderson"), null);
   t.eq("Stormlight resta Stormlight", chi("The Way of Kings", "Brandon Sanderson")?.split(" · ")[0], "The Stormlight Archive");
-  t.eq("Bartimaeus non e' Lockwood", chi("The Amulet of Samarkand", "Jonathan Stroud"), null);
+  t.eq("Bartimaeus non e' Lockwood: e' la sua guida", chi("The Amulet of Samarkand", "Jonathan Stroud")?.split(" · ")[0], "Bartimaeus");
   t.eq("«The Empty Grave» di un altro autore no", chi("The Empty Grave", "Joe Bloggs"), null);
   // per nome
   t.eq("«Wax and Wayne» e' Mistborn", guidaDalNome("Wax and Wayne")?.saga, "Mistborn");

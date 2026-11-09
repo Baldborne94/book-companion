@@ -52,15 +52,35 @@ const NOMI = [
   { nomi: ["stormlight", "stormlight archive", "cronache della folgorluce"], saga: "The Stormlight Archive" },
   { nomi: ["mistborn", "wax and wayne"], saga: "Mistborn" },
   { nomi: ["lockwood", "lockwood co", "lockwood and co"], saga: "Lockwood & Co." },
+  { nomi: ["bartimaeus", "bartimaeus sequence", "trilogia di bartimeus", "bartimeus"], saga: "Bartimaeus" },
+  { nomi: ["kingkiller", "kingkiller chronicle", "cronache dell'assassino del re", "assassino del re"], saga: "The Kingkiller Chronicle" },
 ];
 
+// LE PAROLE CHE DICONO «E' UNA SAGA» E NON SONO IL SUO NOME. Il lettore ha
+// cercato «raven's shadow series» e non ha trovato niente: la ricerca per
+// nome di Wikidata combacia sull'etichetta («Raven's Shadow»), e la parola
+// in piu' la manda a vuoto. Il nome scritto si prova com'e', e se non trova
+// niente si riprova senza (`variantiDelNome`): «Bartimaeus Sequence» resta
+// buono alla prima.
+const GENERICHE = /\b(series|serie|saga|trilogy|trilogia|cycle|ciclo|books|libri|novels|romanzi)\b/gi;
+export const senzaParoleGeneriche = (nome) =>
+  String(nome || "")
+    .replace(/(\b(la|the|il|le)\s+)?\b(saga|serie|series|trilogia|trilogy|ciclo|cycle)\s+(dell'|della|degli|dei|del|di|of)\s*/gi, " ")
+    .replace(GENERICHE, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+export const variantiDelNome = (nome) => [...new Set([String(nome || "").trim(), senzaParoleGeneriche(nome)].filter(Boolean))];
+
 export function guidaDalNome(nome) {
-  const k = piano(nome);
-  if (!k) return null;
-  const n = NOMI.find((x) => x.nomi.some((v) => piano(v) === k)) || null;
-  if (n) return n;
-  const tav = guideIntere().find((t) => piano(t.saga) === k);
-  return tav ? { saga: tav.saga } : null;
+  for (const variante of variantiDelNome(nome)) {
+    const k = piano(variante);
+    if (!k) continue;
+    const n = NOMI.find((x) => x.nomi.some((v) => piano(v) === k)) || null;
+    if (n) return n;
+    const tav = guideIntere().find((t) => piano(t.saga) === k);
+    if (tav) return { saga: tav.saga };
+  }
+  return null;
 }
 
 // I VOLUMI DI UNA GUIDA, tutti, coi tuoi segnati (`gia`)
@@ -114,15 +134,25 @@ export function inOrdine(volumi = []) {
   return { perAnno: true, volumi: unici(volumi.filter((v) => v.anno).sort((a, b) => a.anno - b.anno)).map((v, i) => ({ ...v, numero: i + 1 })) };
 }
 
-// Sei domande al piu': la ricerca, i tipi delle candidate, i membri, le
-// loro schede (a cinquanta), i nomi degli autori. `prendi(url)` da' il JSON.
+// Sei domande al piu' (otto se il nome va ripulito): la ricerca, i tipi
+// delle candidate, i membri, le loro schede (a cinquanta), i nomi degli autori. `prendi(url)` da' il JSON.
+// la serie col nome com'e', e se non c'e' col nome senza le parole generiche
+async function serieDalNome(nome, prendi) {
+  for (const variante of variantiDelNome(nome)) {
+    const s = await prendi(indirizzo({ action: "wbsearchentities", search: variante, language: "en", uselang: "it", type: "item", limit: "7" }));
+    const candidati = (s?.search || []).map((x) => x.id).filter(Boolean);
+    if (!candidati.length) continue;
+    const e = await prendi(indirizzo({ action: "wbgetentities", ids: candidati.join("|"), props: "labels|claims", languages: "en|it" }));
+    const q = sceltaSerie(candidati, e?.entities || {});
+    if (q) return { q, e };
+  }
+  return null;
+}
+
 export async function sagaDaWikidata(nome, prendi) {
-  const s = await prendi(indirizzo({ action: "wbsearchentities", search: nome, language: "en", uselang: "it", type: "item", limit: "7" }));
-  const candidati = (s?.search || []).map((x) => x.id).filter(Boolean);
-  if (!candidati.length) return null;
-  const e = await prendi(indirizzo({ action: "wbgetentities", ids: candidati.join("|"), props: "labels|claims", languages: "en|it" }));
-  const q = sceltaSerie(candidati, e?.entities || {});
-  if (!q) return null;
+  const trovata = await serieDalNome(nome, prendi);
+  if (!trovata) return null;
+  const { q, e } = trovata;
   const m = await prendi(indirizzo({ action: "query", list: "search", srsearch: `haswbstatement:P179=${q}`, srlimit: "200", srnamespace: "0" }));
   const membri = (m?.query?.search || []).map((x) => x.title).filter((x) => /^Q\d+$/.test(x));
   const entita = {};
