@@ -242,7 +242,9 @@ export async function serieDellAutore(nome, prendi) {
   for (let i = 0; i < serie.length; i += 50) {
     const r = await prendi(indirizzo({ action: "wbgetentities", ids: serie.slice(i, i + 50).join("|"), props: "labels|claims", languages: "en|it" }));
     for (const [k, v] of Object.entries(r?.entities || {})) {
-      if (ids(v?.claims, "P31").includes(UNIVERSO)) continue;
+      // una serie di libri, non l'universo né la serie TV («Doctor Who» di Abnett)
+      const tipi = ids(v?.claims, "P31");
+      if (tipi.includes(UNIVERSO) || !tipi.some((t) => SERIE.includes(t))) continue;
       const titolo = etichetta(v);
       if (titolo) voci.push({ fonte: "wikidata", q: k, nome: titolo, quanti: conti.get(k) });
     }

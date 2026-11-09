@@ -36,7 +36,8 @@ export default async (t) => {
     Q1: { labels: { en: { value: "Jonathan Stroud" } }, claims: { P106: tipo("Q6625963") } },
     Q10: { labels: { en: { value: "Lockwood & Co." } }, claims: { P31: tipo("Q1667921") } },
     Q11: { labels: { en: { value: "Some Other Series" } }, claims: { P31: tipo("Q1667921") } },
-    Q12: { labels: { en: { value: "An Universe" } }, claims: { P31: tipo("Q559618") } },
+    // il Cosmere vero e' universo e serie di libri insieme
+    Q12: { labels: { en: { value: "An Universe" } }, claims: { P31: [...tipo("Q559618"), ...tipo("Q277759")] } },
     Q21: opera("The Screaming Staircase", "Q10", 1),
     Q22: opera("The Whispering Skull", "Q10", 2),
     Q23: opera("A", "Q11", 1),
@@ -45,11 +46,13 @@ export default async (t) => {
     Q26: opera("Mondo", "Q12", 1),
     Q27: opera("Un racconto", "Q11", 4, { forma: "Q49084" }),
     Q28: opera("Un'edizione", "Q11", 5, { p31: "Q3331189", forma: null }),
+    Q13: { labels: { en: { value: "A TV Show" } }, claims: { P31: tipo("Q5398426") } },
+    Q29: opera("Il romanzo dalla serie TV", "Q13", 1),
   };
   const prendi = async (url) => {
     const q = new URL(url).searchParams;
     if (q.get("action") === "wbsearchentities") return { search: [{ id: "Q9" }, { id: "Q1" }] };
-    if (q.get("action") === "query" && /P50=Q1/.test(q.get("srsearch"))) return { query: { search: ["Q21", "Q22", "Q23", "Q24", "Q25", "Q26", "Q27", "Q28"].map((title) => ({ title })) } };
+    if (q.get("action") === "query" && /P50=Q1/.test(q.get("srsearch"))) return { query: { search: ["Q21", "Q22", "Q23", "Q24", "Q25", "Q26", "Q27", "Q28", "Q29"].map((title) => ({ title })) } };
     if (q.get("action") === "query" && /P179=Q11/.test(q.get("srsearch"))) return { query: { search: ["Q23", "Q24", "Q25", "Q27", "Q28"].map((title) => ({ title })) } };
     return { entities: Object.fromEntries(q.get("ids").split("|").filter((i) => E[i]).map((i) => [i, E[i]])) };
   };
@@ -61,6 +64,7 @@ export default async (t) => {
   t.c("…e la stessa serie di Wikidata non si ripete", !nomi.some((n) => n.startsWith("wikidata:Lockwood")), nomi.join(" | "));
   t.c("la serie di Wikidata coi soli libri (niente racconto ne' edizione)", nomi.includes("wikidata:Some Other Series:3"), nomi.join(" | "));
   t.c("niente universi", !nomi.some((n) => /Universe/.test(n)), nomi.join(" | "));
+  t.c("niente serie TV (il «Doctor Who» di Abnett: toccato, nessun libro)", !nomi.some((n) => /TV Show/.test(n)), nomi.join(" | "));
   const altra = r.saghe.find((s) => s.nome === "Some Other Series");
   const libri = await libriDellaSaga(altra, { libri: [{ title: "B", author: "Jonathan Stroud" }], prendi });
   t.eq("toccata, i suoi libri in ordine", libri.volumi.map((v) => `${v.numero}${v.titolo}`).join(","), "1A,2B,3C");
