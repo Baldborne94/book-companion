@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { sagaDalNome } from "../lib/sagaDaNome.js";
+import { sagaDalNome, saghePerAutore, libriDellaSaga } from "../lib/sagaDaNome.js";
 
 const prendi = async (url) => {
   const r = await fetch(url, { signal: AbortSignal.timeout?.(20000) });
@@ -42,6 +42,10 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
   const [tolti, setTolti] = useState(() => new Set());
   const [raccolta, setRaccolta] = useState("");
   const [libro, setLibro] = useState({ titolo: "", autore: "", saga: "", numero: "" });
+  // la ricerca per autore: le sue saghe, e un tocco porta l'elenco dei libri
+  const [chi, setChi] = useState("");
+  const [saghe, setSaghe] = useState(null);
+  const [cercaAutore, setCercaAutore] = useState(null);
 
   async function trova(e) {
     e.preventDefault();
@@ -51,6 +55,34 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
     setEsito(null);
     try {
       const r = await sagaDalNome(n, { libri: books, prendi });
+      setEsito(r && r.volumi.length ? r : { vuota: true });
+      setRaccolta(r?.saga || "");
+      setTolti(new Set());
+      setCerca(null);
+    } catch {
+      setCerca("guasto");
+    }
+  }
+
+  async function trovaAutore(e) {
+    e.preventDefault();
+    const n = chi.trim();
+    if (!n) return;
+    setCercaAutore("cerco");
+    setSaghe(null);
+    try {
+      setSaghe((await saghePerAutore(n, { prendi })) || { vuoto: true });
+      setCercaAutore(null);
+    } catch {
+      setCercaAutore("guasto");
+    }
+  }
+
+  async function apriSaga(voce) {
+    setCerca("cerco");
+    setEsito(null);
+    try {
+      const r = await libriDellaSaga(voce, { libri: books, prendi });
       setEsito(r && r.volumi.length ? r : { vuota: true });
       setRaccolta(r?.saga || "");
       setTolti(new Set());
@@ -79,13 +111,37 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
           il file»: entra lì.
         </p>
 
-        <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.titoletto, color: C.accent, marginBottom: 6 }}>Una saga intera</h3>
+        <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.titoletto, color: C.accent, marginBottom: 6 }}>Una saga intera, o le saghe di un autore</h3>
         <form onSubmit={trova} style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
           <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Il nome della saga, es. Gaunt's Ghosts" aria-label="Nome della saga" style={campo(240)} />
           <button type="submit" disabled={!nome.trim() || cerca === "cerco"} style={{ ...tasto(C.accent, true), opacity: nome.trim() ? 1 : 0.5 }}>
             {cerca === "cerco" ? "Cerco…" : "🔍 Cerca i libri"}
           </button>
         </form>
+        {/* O UN AUTORE (chiesto dal lettore: «permettimi la ricerca per
+            autore così da sapere che saghe ha fatto»): le sue saghe, e un
+            tocco ne porta i libri nell'elenco qui sotto */}
+        <form onSubmit={trovaAutore} style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <input value={chi} onChange={(e) => setChi(e.target.value)} placeholder="Oppure un autore, es. Brandon Sanderson" aria-label="Autore delle saghe" style={campo(240)} />
+          <button type="submit" disabled={!chi.trim() || cercaAutore === "cerco"} style={{ ...tasto(C.accent, true), opacity: chi.trim() ? 1 : 0.5 }}>
+            {cercaAutore === "cerco" ? "Cerco…" : "🔍 Le sue saghe"}
+          </button>
+        </form>
+        {cercaAutore === "guasto" && <p style={{ fontSize: F.piccolo, color: C.accent, marginBottom: 12 }}>Wikidata non risponde adesso: riprova fra poco.</p>}
+        {saghe?.vuoto && <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 12 }}>Non ho trovato saghe di questo autore. Prova col nome completo, com'è scritto in copertina.</p>}
+        {saghe?.saghe && (
+          <div style={{ marginBottom: 14 }}>
+            <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 6 }}>Le saghe di {saghe.autore}: toccane una per vederne i libri.</p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {saghe.saghe.map((v) => (
+                <button key={`${v.fonte}:${v.q || v.saga}`} onClick={() => apriSaga(v)} style={tasto(v.fonte === "guida" ? C.accent : C.text)}>
+                  {v.fonte === "guida" ? "📜 " : ""}
+                  {v.nome} · {v.quanti === 1 ? "1 libro" : `${v.quanti} libri`}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {cerca === "guasto" && <p style={{ fontSize: F.piccolo, color: C.accent, marginBottom: 12 }}>Wikidata non risponde adesso: riprova fra poco.</p>}
         {esito?.vuota && (
           <p style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.5, marginBottom: 12 }}>
