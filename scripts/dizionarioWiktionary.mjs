@@ -1,5 +1,6 @@
 // COSTRUISCE IL DIZIONARIO WIKTIONARY INGLESE: wiktextract (kaikki.org) →
-// `public/dizionario/wikt/<iniziale>.json.gz` + `meta.json`.
+// `dizionario/wikt/<iniziale>.json.gz` + `meta.json` (fuori da `public/`:
+// non entra nelle build, l'app lo scarica da GitHub, `lib/fonteDizionari.js`).
 //
 // Lo lancia la CI (`.github/workflows/dizionario-wiktionary.yml`) e committa
 // il risultato: kaikki.org dalla sandbox di sviluppo non si raggiunge, dai
@@ -20,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { chiaveKaikki, sensiDaKaikki, accoda, saccoWikt, fileDi } from "../src/lib/wiktionaryOffline.js";
 
 const QUI = dirname(fileURLToPath(import.meta.url));
-const FUORI = join(QUI, "..", "public", "dizionario", "wikt");
+const FUORI = join(QUI, "..", "dizionario", "wikt");
 const PAGINA = "https://kaikki.org/dictionary/English/index.html";
 const POSSIBILI = [
   "https://kaikki.org/dictionary/English/kaikki.org-dictionary-English.jsonl.gz",

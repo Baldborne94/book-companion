@@ -3,9 +3,10 @@
 # I dati vengono da kaikki.org (Wiktionary inglese estratto da
 # wiktextract), che dalla sandbox di sviluppo non si raggiunge: dai server
 # di GitHub si'. Lo script li legge a flusso, li riduce e scrive
-# `public/dizionario/wikt/`; questo lavoro committa il risultato sul ramo
-# da cui e' partito, cosi' il dizionario sta nel repository come quello di
-# WordNet e Vercel lo serve come un file qualunque.
+# `dizionario/wikt/`; questo lavoro committa il risultato sul ramo da cui
+# e' partito, cosi' il dizionario sta nel repository come quello di WordNet.
+# Non entra nelle build (sta fuori da `public/`): l'app lo scarica da GitHub,
+# dal ramo `main` (`src/lib/fonteDizionari.js`).
 #
 # Parte da solo quando cambia lo script (sui rami `claude/*`, dove si
 # lavora), e a mano da GitHub per rifarlo coi dati nuovi di Wiktionary.
@@ -43,7 +44,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/dizionario/wikt
+          git add dizionario/wikt
           if git diff --cached --quiet; then echo "niente di nuovo"; exit 0; fi
           git commit -m "Dizionario Wiktionary ricostruito dalla CI"
           git push

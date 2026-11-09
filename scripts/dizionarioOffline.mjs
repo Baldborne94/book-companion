@@ -1,7 +1,8 @@
 // COSTRUISCE IL DIZIONARIO OFFLINE: WordNet 3.0 piu' MultiWordNet.
 //
 // Si lancia a mano — `node scripts/dizionarioOffline.mjs` — e riscrive
-// `public/dizionario/en.json.gz`. Non gira nella build: il file generato sta
+// `dizionario/en.json.gz` (fuori da `public/`: l'app lo scarica da GitHub,
+// `lib/fonteDizionari.js`). Non gira nella build: il file generato sta
 // nel repository, cosi' chi distribuisce l'app non scarica niente. Le due
 // fonti si prendono da GitHub la prima volta e restano in `scripts/.cache`
 // (ignorata da git): se la rete non c'e' e la cache nemmeno, lo script dice
@@ -44,7 +45,7 @@ import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 
 const QUI = dirname(fileURLToPath(import.meta.url));
-const FUORI = join(QUI, "..", "public", "dizionario");
+const FUORI = join(QUI, "..", "dizionario");
 const CACHE = join(QUI, ".cache");
 
 const FONTI = {
