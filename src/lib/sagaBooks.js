@@ -6,6 +6,8 @@ import HELLBOY, { SAGA as SAGA_HB } from "../data/hellboy.js";
 import GAUNT, { SAGA as SAGA_GG } from "../data/gauntsGhosts.js";
 import EISENHORN, { SAGA as SAGA_EI } from "../data/eisenhorn.js";
 import RAVENOR, { SAGA as SAGA_RA } from "../data/ravenor.js";
+import MALAZAN, { SAGA as SAGA_MZ } from "../data/malazan.js";
+import STORMLIGHT, { SAGA as SAGA_SL } from "../data/stormlight.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 
 // Riconoscere il romanzo dal titolo: i metadati degli EPUB sono spesso vuoti,
@@ -82,6 +84,11 @@ export const TAVOLE = [
   // serie semplici, e niente ripiego sull'autore per la stessa ragione
   { saga: SAGA_EI, libri: EISENHORN, ordine: (b) => b.o, autore: null, fuori: [], universo: "Warhammer 40K" },
   { saga: SAGA_RA, libri: RAVENOR, ordine: (b) => b.o, autore: null, fuori: [], universo: "Warhammer 40K" },
+  // Malazan e Stormlight (vedi `data/malazan.js`, `data/stormlight.js`):
+  // serie semplici, l'autore su ogni volume (Erikson e Sanderson scrivono
+  // anche altre serie nello stesso mondo)
+  { saga: SAGA_MZ, libri: MALAZAN, ordine: (b) => b.o, autore: null, fuori: [] },
+  { saga: SAGA_SL, libri: STORMLIGHT, ordine: (b) => b.o, autore: null, fuori: [] },
 ];
 
 // I capitoli di tutte le guide, in minuscolo: `parteDiUnaStoria` guarda

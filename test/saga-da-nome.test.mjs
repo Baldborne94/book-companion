@@ -23,11 +23,11 @@ export default async (t) => {
   t.eq("«Mondo Disco» e' il Discworld", guidaDalNome("Mondo Disco")?.saga, "Discworld");
   t.eq("«gaunt's ghosts» senza maiuscole", guidaDalNome("gaunt's ghosts")?.saga, "Gaunt's Ghosts");
   t.eq("«The Siege of Terra» e' la parte 12 dell'Eresia", guidaDalNome("The Siege of Terra")?.parte, "Part 12 · The Siege of Terra");
-  t.eq("un nome che nessuna guida ha", guidaDalNome("Malazan"), null);
+  t.eq("un nome che nessuna guida ha", guidaDalNome("Una saga che non c'è"), null);
   const sot = await sagaDalNome("Siege of Terra", { libri: [] });
   t.eq("Siege of Terra: tredici volumi, dalla guida", `${sot.fonte} ${sot.volumi.length}`, "guida 13");
   t.eq("…dal primo all'ultimo", `${sot.volumi[0].titolo} … ${sot.volumi.at(-1).titolo}`, "The Solar War … The End and the Death: Volume III");
-  t.eq("senza la rete, un nome sconosciuto non trova niente", await sagaDalNome("Malazan", { libri: [] }), null);
+  t.eq("senza la rete, un nome sconosciuto non trova niente", await sagaDalNome("Una saga che non c'è", { libri: [] }), null);
 
   // ── WIKIDATA ──────────────────────────────────────────────────────────
   const E = {
