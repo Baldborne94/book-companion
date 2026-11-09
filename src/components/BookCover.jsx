@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { segnaposto } from "../lib/segnaposto.js";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { getCover, getAux, putAux } from "../lib/bookStore.js";
 import { caricaCopertina, giaVista, ascoltaCopertine, chiaveMin, LATO_MIN, generazione } from "../lib/miniature.js";
@@ -109,7 +110,7 @@ function Disegnato({ book, radius, compact, numerato }) {
               </div>
             </>
           )}
-          {book.fileType && book.fileType !== "epub" && (
+          {book.fileType && book.fileType !== "epub" && !segnaposto(book) && (
             <div
               style={{
                 position: "absolute",

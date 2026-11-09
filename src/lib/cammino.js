@@ -1,4 +1,5 @@
 import { riconosci, TAVOLE, fuoriDallaStoria } from "./sagaBooks.js";
+import { segnaposto } from "./segnaposto.js";
 import { getStatus, getProgress } from "./library.js";
 import { raccontiLetti, chiaveRacconto } from "./racconti.js";
 
@@ -178,7 +179,10 @@ function costruisci(tav, { miei, perTitolo }, contati) {
     if (contiene) return { voce, libro: contiene, dentro: true };
     return { voce, libro: null };
   };
-  const tappe = postiDelCammino(tav.libri.map(suo), tav.ordine);
+  // UNA SCHEDA SENZA FILE (`segnaposto`) e' sullo scaffale ma il libro non
+  // ce l'hai: la riga la apre, ma non conta fra i tuoi e non e' da aprire
+  const conSegno = (t) => (t.libro && segnaposto(t.libro) ? { ...t, daCaricare: true } : t);
+  const tappe = postiDelCammino(tav.libri.map((voce) => conSegno(suo(voce))), tav.ordine);
   // E ADESSO I DUE INSIEMI SONO DUE, dove prima uno bastava.
   //
   // Il filtro sui racconti era stato TOLTO perche' non guardava niente: un
@@ -200,7 +204,7 @@ function costruisci(tav, { miei, perTitolo }, contati) {
   // un volume della guida (`volume`): e' un modo di averne alcuni.
   const conLibro = tappe.filter((t) => t.libro);
   const dentro = new Set(conLibro.map((t) => t.libro.id));
-  const volumiTuoi = conLibro.filter((t) => volume(t.voce)).length;
+  const volumiTuoi = conLibro.filter((t) => volume(t.voce) && !t.daCaricare).length;
   return {
     saga: tav.saga,
     // la tavola dichiara che i suoi `c` sono CAPITOLI di una storia sola e
@@ -415,7 +419,7 @@ export function prossimoPasso(
   for (const t of tappe) {
     if (!inGioco(t) || fatta(t)) continue;
     if (!passo) passo = t;
-    if (t.libro) { apribile = t; break; }
+    if (t.libro && !t.daCaricare) { apribile = t; break; }
   }
   if (!passo) return null;
 

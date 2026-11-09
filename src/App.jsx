@@ -26,14 +26,15 @@ import SezioneDizionario from "./components/SezioneDizionario.jsx";
 import SezioneLexicanum from "./components/SezioneLexicanum.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
-import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, getStatus, setStatus, timbraScheda, getProgress } from "./lib/library.js";
+import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, getStatus, setStatus, timbraScheda, getProgress, touchBook } from "./lib/library.js";
+import { segnaposto } from "./lib/segnaposto.js";
 import { libroDellaScheda } from "./lib/schedaMusica.js";
 import { leggiSalvaschermo, fase, prossimoCambio } from "./lib/salvaschermo.js";
 import Salvaschermo, { SezioneSalvaschermo, SezioneSfondo } from "./components/Salvaschermo.jsx";
 import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, dopoIlSaluto, SALUTO, CIAO, TOGLI, LATO_MAX, fraseSenzaPrima, inPiedi } from "./lib/sfondo.js";
 import { ascoltaCopertine } from "./lib/miniature.js";
 import { copertinaGrande, dimenticaGrande } from "./lib/copertinaGrande.js";
-import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux } from "./lib/bookStore.js";
+import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux, putCover } from "./lib/bookStore.js";
 import { cercaNuovaVersione, cercaInSilenzio, siAggiornaNascosta } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
 import Home from "./components/Home.jsx";
@@ -52,7 +53,11 @@ import { leggiDispositivi, altroveDa, percheNonSiApre } from "./lib/dispositivi.
 import { scegliDalDisco } from "./lib/sceltaFile.js";
 import { erroreDelLink } from "./lib/accesso.js";
 import { tipiDaScegliere } from "./lib/importBook.js";
-import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, convertiLibroInCbz } from "./lib/sync.js";
+import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, convertiLibroInCbz, caricaCopertina } from "./lib/sync.js";
+import { schedaSenzaFile, giaSulloScaffale, copertinaDalCatalogo, fraseAggiunte } from "./lib/senzaFile.js";
+import { preparaCopertina } from "./lib/copertina.js";
+import { camminoDellaGuida } from "./lib/cammino.js";
+import { TAVOLE } from "./lib/sagaBooks.js";
 import { riordinaDisco, fraseRiordino, fraseDaParte, fraseRimessi, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
 import { importaDaFuori, resoconto, importFiles } from "./lib/importBook.js";
 import { avanziManga } from "./lib/avanziManga.js";
@@ -92,6 +97,7 @@ const STANZE = {
   ReadingDiary: () => import("./components/ReadingDiary.jsx"),
   Quaderno: () => import("./components/Quaderno.jsx"),
   DaPrendere: () => import("./components/DaPrendere.jsx"),
+  AggiungiSenzaFile: () => import("./components/AggiungiSenzaFile.jsx"),
   Mappa: () => import("./components/Mappa.jsx"),
   Cammino: () => import("./components/Cammino.jsx"),
   MusicRoom: () => import("./components/MusicRoom.jsx"),
@@ -103,6 +109,7 @@ const QuoteGarden = lazy(STANZE.QuoteGarden);
 const ReadingDiary = lazy(STANZE.ReadingDiary);
 const Quaderno = lazy(STANZE.Quaderno);
 const DaPrendere = lazy(STANZE.DaPrendere);
+const AggiungiSenzaFile = lazy(STANZE.AggiungiSenzaFile);
 const Mappa = lazy(STANZE.Mappa);
 const Cammino = lazy(STANZE.Cammino);
 const MusicRoom = lazy(STANZE.MusicRoom);
@@ -927,6 +934,8 @@ export default function App() {
   // quante voci il cammino ha messo in «Da prendere»: aperta sotto, la
   // lista si rilegge quando il cammino si chiude
   const [giroPrendere, setGiroPrendere] = useState(0);
+  // il pannello delle schede senza file (`lib/senzaFile.js`)
+  const [senzaFileOpen, setSenzaFileOpen] = useState(false);
   const [mappaOpen, setMappaOpen] = useState(false);
   // LE NOVITA' (`lib/novita.js`): la lista sta nel dispositivo, il guscio la
   // guarda ad app chiusa e dice lo stato delle notifiche
@@ -1230,6 +1239,57 @@ export default function App() {
     saveBooks(next);
     setBooks(next);
     presto.current?.();
+  }
+
+  // LE SCHEDE SENZA FILE (`lib/senzaFile.js`): entrano subito, col dorso
+  // disegnato, e le copertine scendono dopo, due alla volta — una saga da
+  // quindici volumi non aspetta quindici immagini per farsi vedere. Quel che
+  // e' gia' sullo scaffale (anche solo come scheda) non si raddoppia.
+  function aggiungiSenzaFile(voci = []) {
+    const ora = Date.now();
+    const nuove = [];
+    let gia = 0;
+    for (const [i, v] of voci.entries()) {
+      if (giaSulloScaffale(v, [...books, ...nuove])) {
+        gia += 1;
+        continue;
+      }
+      const s = schedaSenzaFile(v, { ora: ora + i });
+      if (s) nuove.push(s);
+    }
+    if (nuove.length) {
+      const tutti = [...books, ...nuove];
+      updateBooks(tutti);
+      for (const b of nuove) timbraScheda(b.id);
+      copertineDelleNuove(nuove);
+    }
+    notify(fraseAggiunte({ aggiunte: nuove.length, gia }));
+    return nuove;
+  }
+
+  async function copertineDelleNuove(nuove) {
+    let fatte = 0;
+    for (let i = 0; i < nuove.length; i += 2) {
+      await Promise.all(
+        nuove.slice(i, i + 2).map(async (b) => {
+          const blob = await copertinaDalCatalogo({ titolo: b.title, autore: b.author }).catch(() => null);
+          const pronta = blob ? await preparaCopertina(blob).catch(() => null) : null;
+          if (!pronta) return;
+          await putCover(b.id, pronta).catch(() => {});
+          touchBook(b.id);
+          caricaCopertina(b.id);
+          fatte += 1;
+        })
+      );
+    }
+    if (fatte < nuove.length) notify(fatte ? `🖼 Copertine trovate: ${fatte} di ${nuove.length}` : "🖼 Nel catalogo non ho trovato le copertine: restano i dorsi disegnati");
+  }
+
+  // dal cammino: i volumi che mancano entrano, e il cammino si rifà con loro
+  function mettiInBiblioteca(voci) {
+    const nuove = aggiungiSenzaFile(voci);
+    const tav = TAVOLE.find((t) => t.saga === cammino?.saga);
+    if (tav && nuove.length) setCammino(camminoDellaGuida(tav, [...books, ...nuove]));
   }
 
   // I NUMERI DELLA GUIDA, scritti dal pannello del cammino. Si scrive la
@@ -1862,18 +1922,24 @@ export default function App() {
   }
 
   // i file arrivati da fuori entrano in Libreria dalla porta dell'input
-  function daFuori(files) {
+  // `casa`: la scheda da cui il file e' stato scelto, dove deve entrare
+  // anche se il titolo dentro il file e' scritto in un altro modo
+  function daFuori(files, casa = null) {
     setFocusSaga(null);
-    setDaImportare(files);
+    const elenco = Array.from(files || []);
+    if (casa) elenco.casa = casa;
+    setDaImportare(elenco);
     setSection("library");
   }
 
   // IL FILE DI UN LIBRO CHE QUI NON C'E' si sceglie subito, dentro il tocco
-  // di «Apri»: entrato, torna nella sua scheda (`ritornaACasa`)
-  function scegliIlFile() {
+  // di «Apri»: entrato, torna nella sua scheda (`ritornaACasa`, e `casa`)
+  const casaScelta = useRef(null);
+  function scegliIlFile(casa = null) {
+    casaScelta.current = casa;
     scegliDalDisco().then((files) => {
       if (files === null) sceltaRef.current?.click();
-      else if (files.length) daFuori(files);
+      else if (files.length) daFuori(files, casa);
     });
   }
 
@@ -1884,9 +1950,9 @@ export default function App() {
     // cloud: si busserebbe a vuoto e il reader finirebbe
     // sulla schermata del guasto, che qui sarebbe una bugia
     if (b.fileTolto) {
-      notify("Di questo libro tieni la scheda, non l'ebook 📗: scegli il file per rimetterlo");
+      notify(segnaposto(b) ? "Questa scheda non ha ancora il suo ebook 📥: scegli il file" : "Di questo libro tieni la scheda, non l'ebook 📗: scegli il file per rimetterlo");
       setOpenId(id);
-      scegliIlFile();
+      scegliIlFile(id);
       return;
     }
     // senza byte qui il reader finirebbe sul guasto, e il guasto non c'e'
@@ -1894,7 +1960,7 @@ export default function App() {
     if (perche) {
       notify(perche);
       setOpenId(id);
-      scegliIlFile();
+      scegliIlFile(id);
       return;
     }
     setLastOpened(id);
@@ -1954,6 +2020,7 @@ export default function App() {
   if (section === "music" && raccoltaMusica != null) livelli.push(() => setRaccoltaMusica(null));
   // «Da prendere» prima del cammino: la guida si apre anche da li', sopra
   if (prendereOpen) livelli.push(() => setPrendereOpen(false));
+  if (senzaFileOpen) livelli.push(() => setSenzaFileOpen(false));
   // prima della scheda, che il cammino sa aprire: l'ultimo livello si
   // chiude per primo, e con la scheda aperta sopra dev'essere lei ad
   // andarsene col primo indietro
@@ -2182,7 +2249,8 @@ export default function App() {
         onChange={(e) => {
           const files = [...(e.target.files || [])];
           e.target.value = "";
-          if (files.length) daFuori(files);
+          if (files.length) daFuori(files, casaScelta.current);
+          casaScelta.current = null;
         }}
       />
       {theme.decor === "scrolls" && <Scrolls />}
@@ -2277,6 +2345,7 @@ export default function App() {
             onFileLocali={async () => setLocalIds(await localFileIds())}
             spazioCambiato={spazioCambiato}
             onCammino={setCammino}
+            onSenzaFile={() => setSenzaFileOpen(true)}
             raccolta={raccolta}
             onRaccolta={setRaccolta}
             // il controllo aggiornamenti col dito: qui siamo in Libreria,
@@ -2387,6 +2456,7 @@ export default function App() {
       {cammino && (
         <Cammino
           cammino={cammino}
+          libri={books}
           onClose={() => setCammino(null)}
           onOpenBook={setOpenId}
           onNumera={scriviNumeriCammino}
@@ -2394,6 +2464,17 @@ export default function App() {
             setGiroPrendere((n) => n + 1);
             notify(`🛒 «${v.titolo}» in Da prendere`);
             presto.current?.();
+          }}
+          onMettiInBiblioteca={mettiInBiblioteca}
+        />
+      )}
+      {senzaFileOpen && (
+        <AggiungiSenzaFile
+          books={books}
+          onClose={() => setSenzaFileOpen(false)}
+          onAggiungi={(voci) => {
+            aggiungiSenzaFile(voci);
+            setSenzaFileOpen(false);
           }}
         />
       )}

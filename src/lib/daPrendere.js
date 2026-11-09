@@ -23,6 +23,7 @@
 
 import { getStatus } from "./library.js";
 import { riconosci, TAVOLE, chiaveSaga } from "./sagaBooks.js";
+import { segnaposto } from "./segnaposto.js";
 import { sembraGiaLetto } from "./importBook.js";
 import { cicloDi } from "./saga.js";
 import { fondiQuaderno } from "./quaderno.js";
@@ -70,6 +71,8 @@ function daTavole(books, statusOf, riconosce, tavole) {
       .sort((a, b) => a.o - b.o);
     const tue = new Map();
     for (const b of books) {
+      // una scheda senza file e' un libro da prendere, non uno che hai
+      if (segnaposto(b)) continue;
       const r = riconosce(b);
       if (!r || r.saga !== tav.saga || !r.titolo) continue;
       if (!tue.has(r.titolo)) tue.set(r.titolo, b);
@@ -174,6 +177,8 @@ export function scarta(lista, id, ora = Date.now()) {
 // quel numero.
 export function arrivato(voce, books = []) {
   if (!voce) return null;
+  // una scheda senza file non e' un libro arrivato: e' il posto dove arrivera'
+  books = books.filter((b) => !segnaposto(b));
   if (voce.titolo) return sembraGiaLetto({ title: voce.titolo, author: voce.autore }, books);
   if (voce.numero == null || !voce.saga) return null;
   const s = chiaveSaga(voce.saga);

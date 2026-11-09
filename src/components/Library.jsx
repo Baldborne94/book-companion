@@ -29,6 +29,7 @@ import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
 import { famigliaDi } from "../data/generi.js";
 import { riconosci, capitoloDi } from "../lib/sagaBooks.js";
 import { camminiDi, guideAccanto } from "../lib/cammino.js";
+import { segnaposto } from "../lib/segnaposto.js";
 import BookCover from "./BookCover.jsx";
 import Disposizione from "./Disposizione.jsx";
 import EmptyState from "./EmptyState.jsx";
@@ -857,6 +858,7 @@ export default function Library({
   importo = null,
   onFermaImport,
   daImportare,
+  onSenzaFile,
   onImportati,
   focusSaga,
   collegato,
@@ -1846,7 +1848,7 @@ export default function Library({
   useEffect(() => {
     if (!daImportare?.length || lancioServito.current === daImportare) return;
     lancioServito.current = daImportare;
-    handleFiles(daImportare).finally(() => onImportati?.());
+    handleFiles(daImportare, { casa: daImportare.casa || null }).finally(() => onImportati?.());
   }, [daImportare]);
 
   async function controllaIlDisco() {
@@ -1903,19 +1905,22 @@ export default function Library({
 
 
 
-  async function handleFiles(fileList) {
+  async function handleFiles(fileList, { casa = null } = {}) {
     const files = Array.from(fileList || []);
     if (!files.length || importing) return;
     setImporting(true);
     try {
       // la libreria di adesso serve a riconoscere i doppioni: senza, lo
       // stesso file importato due volte fa due libri distinti
-      const esito = await importFiles(files, books, { onProgress: setGiroImport });
+      const esito = await importFiles(files, books, { onProgress: setGiroImport, casa: casa ? books.find((b) => b.id === casa) || null : null });
       // I FILE TORNATI A CASA dentro una scheda che era rimasta senza byte.
       // La scheda non si tocca — titolo, saga, voto e note sono del lettore
       // — si scrive la sola impronta, e si timbra perché la riga risalga.
       const ritrovati = esito.ritrovati || [];
       const conImpronta = new Map(ritrovati.filter((r) => r.impronta).map((r) => [r.id, r.impronta]));
+      // una scheda senza file (`segnaposto`) il formato non l'aveva: lo
+      // prende dal file che arriva, o il lettore non saprebbe aprirlo
+      const formato = new Map(ritrovati.filter((r) => r.fileType).map((r) => [r.id, r.fileType]));
       for (const r of ritrovati) {
         timbraScheda(r.id);
       }
@@ -1929,6 +1934,7 @@ export default function Library({
               ? {
                   ...b,
                   ...(conImpronta.has(b.id) ? { impronta: conImpronta.get(b.id) } : {}),
+                  ...(segnaposto(b) && formato.has(b.id) ? { fileType: formato.get(b.id) } : {}),
                   fileTolto: false,
                 }
               : b
@@ -2237,6 +2243,17 @@ export default function Library({
         >
           {importing ? fraseImport(giroImport || {}) : importo ? fraseImport(importo) : "＋ Aggiungi libri"}
         </button>
+        {/* SENZA FILE (chiesto dal lettore: «inserisco solo il titolo della
+            raccolta o saga e tu mi aggiungi la copertina»): una saga dal
+            suo nome o un libro solo, la scheda con la copertina, il file poi */}
+        {onSenzaFile && !importing && !importo && (
+          <button
+            onClick={onSenzaFile}
+            style={{ minHeight: 44, padding: "10px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}66`, color: C.accent, fontSize: F.corpo }}
+          >
+            📥 Senza file
+          </button>
+        )}
         {importo && (
           <button
             onClick={onFermaImport}

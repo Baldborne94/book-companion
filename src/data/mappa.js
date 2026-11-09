@@ -403,6 +403,12 @@ export const MAPPA = [
     dove: "Nella raccolta aperta di una saga o di un autore, «🔕 Avvisami delle novità».",
   },
   {
+    luogo: "libreria",
+    nome: "Schede senza file",
+    cosa: "Scrivi il nome di una saga e l'app trova i suoi libri in ordine (dalle guide dell'app, se no da Wikidata), te li mostra e li mette sullo scaffale con la copertina, senza ebook; o aggiungi un libro solo. Quando avrai il file, dalla scheda «📂 Scegli il file» e l'ebook entra lì. Dal cammino di una guida, «📥 Metti sullo scaffale» fa lo stesso coi volumi che mancano.",
+    dove: "In Libreria, «📥 Senza file» accanto ad «Aggiungi libri»; nel cammino di una guida.",
+  },
+  {
     luogo: "ingresso",
     nome: "Da prendere",
     cosa: "La lista dei libri da procurarti: quelli che scrivi tu, i consigli gratuiti dal catalogo di Open Library — il volume dopo l'ultimo che hai letto di ogni saga e i più votati sui tuoi generi, con la copertina — e, se vuoi, quelli su misura dell'Oracolo. Si copia per portarla in libreria, e ti dice quando un libro è arrivato.",
