@@ -11,12 +11,13 @@
 //
 // Senza Playwright o senza un browser le scene si dichiarano SALTATE, come
 // `test/tema.test.mjs`; nella CI (`CI=true`) saltare e' un fallimento.
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { build, preview } from "vite";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
 import { fumetto, fumettoGrosso, fumettoLungo, epub, epubConContorno, epubConPagine, pdf, wav, FRASE, mondoDisco, png, pngRighe } from "./libri.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
 import { lexicanumFinto, fandomFinto } from "./lexicanumFinto.mjs";
+import { DIZIONARI } from "../src/lib/fonteDizionari.js";
 
 // le richieste del service worker passano dalle rotte del contesto solo
 // cosi' (Chromium): servono alla scena della melodia che suona mentre scende
@@ -74,12 +75,22 @@ async function lanciaBrowser() {
 // o da Google (la prima volta in CI il catalogo vero ha dato a «Racconti» la
 // saga di Moravia, e la scena cadeva per una ragione che qui non c'era). Chi
 // vuole il catalogo se lo porta: `catalogo(url)` risponde al posto suo.
+// I DIZIONARI OFFLINE invece sono file del repository (`dizionario/`), che
+// GitHub serve dal ramo `main` (`lib/fonteDizionari.js`): qui li serve la
+// cartella, con lo stesso CORS e lo stesso tipo di GitHub.
+const dalRepository = (route, url) => {
+  const file = new URL(`../dizionario/${url.slice(DIZIONARI.length + 1)}`, import.meta.url);
+  const cors = { "access-control-allow-origin": "*" };
+  if (!existsSync(file)) return route.fulfill({ status: 404, headers: cors, body: "" });
+  return route.fulfill({ body: readFileSync(file), contentType: url.endsWith(".gz") ? "application/octet-stream" : "text/plain; charset=utf-8", headers: cors });
+};
 async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, oracolo = null, misura = null, lexicanum = null, fandom = null, wikidata = null, copertine = null } = {}) {
   const ctx = await browser.newContext(misura || { viewport: { width: 1280, height: 800 } });
   await ctx.route(
     (url) => !/^(localhost|127\.0\.0\.1)$/.test(url.hostname),
     async (route) => {
       const url = route.request().url();
+      if (url.startsWith(`${DIZIONARI}/`)) return dalRepository(route, url);
       if (oracolo && /api\.anthropic\.com/.test(url)) return route.fulfill({ json: await oracolo(JSON.parse(route.request().postData() || "{}")) });
       if (lexicanum && /wh40k\.lexicanum\.com/.test(url)) return lexicanum(route);
       if (fandom && /warhammer40k\.fandom\.com|static\.wikia\.nocookie\.net/.test(url)) return fandom(route);
