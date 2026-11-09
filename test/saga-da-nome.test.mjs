@@ -3,7 +3,7 @@
 // corretto i libri». Prima le guide scritte a mano, poi Wikidata. Quel che
 // sbaglia in silenzio e' l'ORDINE e cosa e' un VOLUME (una novella «2.5»,
 // un'edizione, il volume di un'altra serie).
-import { sagaDalNome, guidaDalNome, sceltaSerie, volumeDa, inOrdine } from "../src/lib/sagaDaNome.js";
+import { sagaDalNome, guidaDalNome, sceltaSerie, volumeDa, inOrdine, senzaParoleGeneriche } from "../src/lib/sagaDaNome.js";
 
 const tipo = (...q) => q.map((id) => ({ mainsnak: { datavalue: { value: { id } } } }));
 const legame = (serie, n) => ({ mainsnak: { datavalue: { value: { id: serie } } }, ...(n != null ? { qualifiers: { P1545: [{ datavalue: { value: String(n) } }] } } : {}) });
@@ -49,7 +49,8 @@ export default async (t) => {
     if (q.get("action") === "query") return { query: { search: ["Q201", "Q202", "Q203", "Q204", "Q205", "Q206"].map((title) => ({ title })) } };
     return { entities: Object.fromEntries(q.get("ids").split("|").filter((i) => E[i]).map((i) => [i, E[i]])) };
   };
-  const r = await sagaDalNome("Kingkiller", { libri: [{ title: "The Name of the Wind", author: "Patrick Rothfuss" }], prendi });
+  // (un nome che nessuna guida dell'app ha: la serie finta e' su Wikidata)
+  const r = await sagaDalNome("Una cronaca finta", { libri: [{ title: "The Name of the Wind", author: "Patrick Rothfuss" }], prendi });
   t.eq("la serie, non l'universo", r.nome, "The Kingkiller Chronicle");
   t.eq("i volumi numerati, in ordine, una volta sola", r.volumi.map((v) => `${v.numero} ${v.titolo}`).join(" | "), "1 The Name of the Wind | 2 The Wise Man's Fear");
   t.eq("…con l'autore e l'anno", `${r.volumi[1].autore} ${r.volumi[1].anno}`, "Patrick Rothfuss 2011");
@@ -70,6 +71,25 @@ export default async (t) => {
   const misti = inOrdine([{ titolo: "B", numero: 2 }, { titolo: "Z", numero: null, anno: 1990 }, { titolo: "A", numero: 1 }]);
   t.eq("in una saga numerata quello senza numero resta fuori", misti.volumi.map((v) => v.titolo).join(), "A,B");
 
+  // IL NOME COME LO SCRIVE IL LETTORE: «raven's shadow series» non trovava
+  // niente, perche' la ricerca di Wikidata combacia sull'etichetta e la
+  // parola in piu' la manda a vuoto. Si riprova senza le parole generiche
+  const cercati = [];
+  const soloEsatto = async (url) => {
+    const q = new URL(url).searchParams;
+    if (q.get("action") === "wbsearchentities") {
+      cercati.push(q.get("search"));
+      return { search: q.get("search") === "raven's shadow" ? [{ id: "Q101" }] : [] };
+    }
+    return prendi(url);
+  };
+  const rs = await sagaDalNome("raven's shadow series", { libri: [], prendi: soloEsatto });
+  t.eq("«raven's shadow series» trova la saga, ripulito il nome", `${rs?.nome} ${rs?.volumi.length}`, "The Kingkiller Chronicle 2");
+  t.eq("…provato prima com'era scritto, poi senza «series»", cercati.join(" | "), "raven's shadow series | raven's shadow");
+  t.eq("le parole generiche via, il nome resta", senzaParoleGeneriche("La saga di Raven's Shadow trilogy"), "Raven's Shadow");
+  t.eq("anche in italiano", senzaParoleGeneriche("Il ciclo dell'Eredità"), "Eredità");
+  t.eq("…e senza articolo", senzaParoleGeneriche("Saga di Shannara"), "Shannara");
+  t.eq("e le guide pure: «Mistborn series» e' Mistborn", guidaDalNome("Mistborn series")?.saga, "Mistborn");
   // niente serie su Wikidata
   const vuoto = await sagaDalNome("Nessuna", { libri: [], prendi: async () => ({ search: [] }) });
   t.eq("un nome che Wikidata non conosce", vuoto, null);

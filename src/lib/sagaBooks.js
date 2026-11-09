@@ -10,6 +10,8 @@ import MALAZAN, { SAGA as SAGA_MZ } from "../data/malazan.js";
 import STORMLIGHT, { SAGA as SAGA_SL } from "../data/stormlight.js";
 import MISTBORN, { SAGA as SAGA_MB } from "../data/mistborn.js";
 import LOCKWOOD, { SAGA as SAGA_LW } from "../data/lockwood.js";
+import BARTIMAEUS, { SAGA as SAGA_BT } from "../data/bartimaeus.js";
+import KINGKILLER, { SAGA as SAGA_KK } from "../data/kingkiller.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 
 // Riconoscere il romanzo dal titolo: i metadati degli EPUB sono spesso vuoti,
@@ -94,6 +96,9 @@ export const TAVOLE = [
   // Mistborn e Lockwood (vedi `data/mistborn.js`, `data/lockwood.js`)
   { saga: SAGA_MB, libri: MISTBORN, ordine: (b) => b.o, autore: null, fuori: [] },
   { saga: SAGA_LW, libri: LOCKWOOD, ordine: (b) => b.o, autore: null, fuori: [] },
+  // Bartimaeus e Kingkiller (vedi `data/bartimaeus.js`, `data/kingkiller.js`)
+  { saga: SAGA_BT, libri: BARTIMAEUS, ordine: (b) => b.o, autore: null, fuori: [] },
+  { saga: SAGA_KK, libri: KINGKILLER, ordine: (b) => b.o, autore: null, fuori: [] },
 ];
 
 // I capitoli di tutte le guide, in minuscolo: `parteDiUnaStoria` guarda
