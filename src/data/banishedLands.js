@@ -4,10 +4,11 @@
 // Il lettore ha cercato Gwynne in «📥 Senza file» e ha visto solo The
 // Faithful and the Fallen: «e le altre saghe di questo autore non le
 // consideri?». Wikidata ha i romanzi di Of Blood and Bone ma non la serie,
-// quindi una guida. La fonte e' Wikidata, misurato il 9 novembre 2026:
-// Malice, Valour, Ruin, Wrath coi numeri 1-4 nella loro serie; A Time of
-// Dread, A Time of Blood, A Time of Courage senza serie ne' anno, in
-// quest'ordine (il primo, il secondo e il terzo della trilogia).
+// quindi una guida. La fonte e' Wikidata, misurato il 9 novembre 2026 dai
+// libri di Gwynne (P50): Malice 2012, Valour 2014, Ruin 2015, Wrath 2016 coi
+// numeri 1-4 nella loro serie; A Time of Dread 2018, A Time of Blood e A
+// Time of Courage senza serie ne' anno, in quest'ordine (il primo, il
+// secondo e il terzo della trilogia).
 // I Bloodsworn sono un altro mondo, e tre libri soli: restano a Wikidata.
 export const FEDELI = "The Faithful and the Fallen";
 export const SANGUE = "Of Blood and Bone";
