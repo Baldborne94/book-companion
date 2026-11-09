@@ -153,6 +153,11 @@ export async function sagaDaWikidata(nome, prendi) {
   const trovata = await serieDalNome(nome, prendi);
   if (!trovata) return null;
   const { q, e } = trovata;
+  return volumiDellaSerie(q, etichetta(e.entities[q]) || nome, prendi);
+}
+
+// I volumi di una serie gia' trovata (dal nome o dall'autore)
+export async function volumiDellaSerie(q, titolo, prendi) {
   const m = await prendi(indirizzo({ action: "query", list: "search", srsearch: `haswbstatement:P179=${q}`, srlimit: "200", srnamespace: "0" }));
   const membri = (m?.query?.search || []).map((x) => x.title).filter((x) => /^Q\d+$/.test(x));
   const entita = {};
@@ -167,7 +172,6 @@ export async function sagaDaWikidata(nome, prendi) {
     const r = await prendi(indirizzo({ action: "wbgetentities", ids: autori.slice(0, 50).join("|"), props: "labels", languages: "en|it" }));
     for (const [k, v] of Object.entries(r?.entities || {})) nomi[k] = etichetta(v);
   }
-  const titolo = etichetta(e.entities[q]) || nome;
   return {
     fonte: "wikidata",
     nome: titolo,
@@ -175,6 +179,92 @@ export async function sagaDaWikidata(nome, prendi) {
     perAnno,
     volumi: volumi.map((v) => ({ titolo: v.titolo, autore: nomi[v.autoreId] || "", saga: titolo, serie: "", numero: v.numero, anno: v.anno })),
   };
+}
+
+// ---- le saghe di un autore ----------------------------------------------------
+//
+// Chiesto dal lettore: «permettimi la ricerca per autore cosi' da sapere che
+// saghe ha fatto, cosi' le puoi aggiungere direttamente». Due elenchi, come
+// per il nome: prima le GUIDE dell'app in cui l'autore ha dei volumi (Abnett
+// → Gaunt's Ghosts, Eisenhorn, Ravenor, e l'Eresia dove ne ha scritti), poi
+// le SERIE di Wikidata dei suoi libri, quelle con piu' libri prima. Una
+// serie che ha gia' la sua guida non si ripete.
+
+// chi di mestiere scrive: scrittore, romanziere, autore, poeta, autore per ragazzi…
+export const SCRITTORI = ["Q36180", "Q6625963", "Q482980", "Q15949613", "Q49757", "Q4853732", "Q18844224"];
+const AUTORI_DELLE_GUIDE = { Discworld: "Terry Pratchett", Hellboy: "Mike Mignola" };
+const paroleDi = (s) => piano(s).split(" ").filter((p) => p.length > 1);
+
+// il nome scritto sta nell'autore se ogni sua parola c'e' («Abnett», «dan abnett»)
+export const eLAutore = (scritto, autore) => {
+  const w = paroleDi(scritto);
+  const a = new Set(paroleDi(autore));
+  return w.length > 0 && w.every((p) => a.has(p));
+};
+
+export function guideDellAutore(nome) {
+  return guideIntere()
+    .map((tav) => ({ tav, quanti: tav.libri.filter((v) => (v.tipo || "") !== "racconto" && eLAutore(nome, v.a || AUTORI_DELLE_GUIDE[tav.saga] || "")).length }))
+    .filter((x) => x.quanti > 0)
+    .sort((a, b) => b.quanti - a.quanti)
+    .map(({ tav, quanti }) => ({ fonte: "guida", saga: tav.saga, nome: tav.saga, quanti }));
+}
+
+// l'autore giusto fra quelli col suo nome: il primo che di mestiere scrive
+export function sceltaAutore(candidati = [], entita = {}) {
+  for (const c of candidati) if (ids(entita[c]?.claims, "P106").some((m) => SCRITTORI.includes(m))) return c;
+  return null;
+}
+
+// Le serie dei suoi libri su Wikidata: la ricerca, i mestieri delle
+// candidate, i suoi libri (P50), le loro schede (a cinquanta), i nomi delle
+// serie. Solo le opere che sono libri, e solo le serie e non gli universi.
+export async function serieDellAutore(nome, prendi) {
+  const s = await prendi(indirizzo({ action: "wbsearchentities", search: nome, language: "en", uselang: "it", type: "item", limit: "7" }));
+  const candidati = (s?.search || []).map((x) => x.id).filter(Boolean);
+  if (!candidati.length) return null;
+  const e = await prendi(indirizzo({ action: "wbgetentities", ids: candidati.join("|"), props: "labels|claims", languages: "en|it" }));
+  const q = sceltaAutore(candidati, e?.entities || {});
+  if (!q) return null;
+  const m = await prendi(indirizzo({ action: "query", list: "search", srsearch: `haswbstatement:P50=${q}`, srlimit: "500", srnamespace: "0" }));
+  const opere = (m?.query?.search || []).map((x) => x.title).filter((x) => /^Q\d+$/.test(x));
+  const conti = new Map();
+  for (let i = 0; i < opere.length; i += 50) {
+    const r = await prendi(indirizzo({ action: "wbgetentities", ids: opere.slice(i, i + 50).join("|"), props: "claims" }));
+    for (const x of Object.values(r?.entities || {})) {
+      const tipi = [...ids(x?.claims, "P31"), ...ids(x?.claims, "P7937")];
+      if (!tipi.some((t) => LIBRI.includes(t)) || tipi.some((t) => NON_VOLUMI.includes(t))) continue;
+      for (const serie of new Set(ids(x?.claims, "P179"))) conti.set(serie, (conti.get(serie) || 0) + 1);
+    }
+  }
+  const serie = [...conti.keys()];
+  const voci = [];
+  for (let i = 0; i < serie.length; i += 50) {
+    const r = await prendi(indirizzo({ action: "wbgetentities", ids: serie.slice(i, i + 50).join("|"), props: "labels|claims", languages: "en|it" }));
+    for (const [k, v] of Object.entries(r?.entities || {})) {
+      if (ids(v?.claims, "P31").includes(UNIVERSO)) continue;
+      const titolo = etichetta(v);
+      if (titolo) voci.push({ fonte: "wikidata", q: k, nome: titolo, quanti: conti.get(k) });
+    }
+  }
+  return { autore: etichetta(e.entities[q]) || nome, serie: voci.sort((a, b) => b.quanti - a.quanti || a.nome.localeCompare(b.nome)) };
+}
+
+// La strada intera per un autore: le guide, poi Wikidata senza i doppioni
+export async function saghePerAutore(nome, { prendi } = {}) {
+  const guide = guideDellAutore(nome);
+  const w = prendi ? await serieDellAutore(nome, prendi) : null;
+  const giaGuide = new Set(guide.map((g) => g.saga));
+  const altre = (w?.serie || []).filter((x) => !giaGuide.has(guidaDalNome(x.nome)?.saga));
+  if (!guide.length && !altre.length) return null;
+  return { autore: w?.autore || nome, saghe: [...guide, ...altre] };
+}
+
+// I libri di una saga scelta dall'elenco dell'autore
+export async function libriDellaSaga(voce, { libri = [], prendi } = {}) {
+  if (voce.fonte === "guida") return volumiDallaGuida({ saga: voce.saga }, libri);
+  const w = await volumiDellaSerie(voce.q, voce.nome, prendi);
+  return { ...w, volumi: w.volumi.map((v) => ({ ...v, gia: giaSulloScaffale(v, libri) })) };
 }
 
 // La strada intera: prima le guide, poi Wikidata

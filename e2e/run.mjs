@@ -1058,7 +1058,7 @@ const SCENE = [
     // caricare il libro… mi aggiungi la copertina», e «quando aggiungo il
     // nome di una saga in automatico mi aggiungi nell'ordine corretto i
     // libri con copertina». Poi il file si sceglie dalla scheda, e ci entra
-    nome: "schede senza file: una saga dal suo nome, in ordine e con le copertine, e il file scelto dalla scheda entra in quella scheda",
+    nome: "schede senza file: una saga dal suo nome o dal suo autore, in ordine e con le copertine, e il file scelto dalla scheda entra in quella scheda",
     async fai({ browser }) {
       const w = (id, title) => ({ id, title, author: "Dan Abnett", saga: "Warhammer 40K", series: "The Horus Heresy", fileType: "epub", addedAt: 1 });
       const libri = [w("h1", "Horus Rising"), w("h2", "Know No Fear")];
@@ -1125,7 +1125,34 @@ const SCENE = [
       const sua = dopo.find((b) => b.id === ghost.id);
       if (sua.fileTolto || sua.title !== "Ghostmaker" || sua.sagaOrder !== 2) throw new Error(`la scheda di Ghostmaker dopo il file: ${JSON.stringify(sua)}`);
       if (dopo.length !== libri.length + 14) throw new Error(`il file ha fatto una scheda nuova accanto: ${dopo.length} libri`);
-      return { guasti: d.guasti, nota: `14 schede in ordine sotto «Warhammer 40K», ${await copertine()} copertine, Ghostmaker col suo ePub nella sua scheda` };
+      // LE SAGHE DI UN AUTORE («permettimi la ricerca per autore»): la
+      // guida dell'app e la serie di Wikidata, e un tocco porta i libri
+      const tipo = (...q) => q.map((id) => ({ mainsnak: { datavalue: { value: { id } } } }));
+      const libroW = (en, n) => ({ labels: { en: { value: en } }, claims: { P31: tipo("Q7725634"), P7937: tipo("Q8261"), P50: tipo("Q1"), P179: [{ mainsnak: { datavalue: { value: { id: "Q11" } } }, qualifiers: { P1545: [{ datavalue: { value: String(n) } }] } }] } });
+      const W = { Q1: { labels: { en: { value: "Jonathan Stroud" } }, claims: { P106: tipo("Q6625963") } }, Q11: { labels: { en: { value: "Bartimaeus Sequence" } }, claims: { P31: tipo("Q1667921") } }, Q30: { labels: { en: { value: "Heroes of the Valley" } }, claims: { P31: tipo("Q7725634"), P7937: tipo("Q8261"), P50: tipo("Q1"), P179: [{ mainsnak: { datavalue: { value: { id: "Q12" } } }, qualifiers: { P1545: [{ datavalue: { value: "1" } }] } }] } }, Q12: { labels: { en: { value: "Valley Tales" } }, claims: { P31: tipo("Q1667921") } }, Q31: libroW("The Amulet of Samarkand", 1) };
+      const altro = await dispositivo(browser, {
+        misura: TABLET,
+        wikidata: async (q) => {
+          if (q.get("action") === "wbsearchentities") return { search: [{ id: "Q1" }] };
+          if (q.get("action") === "query" && /P50=Q1/.test(q.get("srsearch"))) return { query: { search: [{ title: "Q30" }, { title: "Q31" }] } };
+          if (q.get("action") === "query") return { query: { search: [{ title: "Q30" }] } };
+          return { entities: Object.fromEntries(q.get("ids").split("|").filter((i) => W[i]).map((i) => [i, W[i]])) };
+        },
+      });
+      const a = altro.p;
+      await a.goto(`${URL_APP}?apri=libreria`);
+      await a.getByRole("button", { name: "📥 Senza file" }).click();
+      await a.getByRole("textbox", { name: "Autore delle saghe" }).fill("Jonathan Stroud");
+      await a.getByRole("button", { name: "🔍 Le sue saghe" }).click();
+      await finche(() => a.getByRole("button", { name: /📜 Lockwood & Co\. · 5 libri/ }).count(), 8000, "fra le saghe dell'autore manca la guida di Lockwood");
+      if (!(await a.getByRole("button", { name: /📜 Bartimaeus · 4 libri/ }).count())) throw new Error("fra le saghe dell'autore manca la guida di Bartimaeus");
+      if (await a.getByRole("button", { name: /^Bartimaeus Sequence/ }).count()) throw new Error("la serie di Wikidata che ha gia' la sua guida si ripete");
+      await a.getByRole("button", { name: /^Valley Tales · 1 libro/ }).click();
+      await finche(() => a.getByText("Heroes of the Valley").count(), 8000, "toccata la saga di Wikidata, i suoi libri non arrivano");
+      await a.getByRole("button", { name: /📜 Lockwood & Co\./ }).click();
+      await finche(() => a.getByText(/«Lockwood & Co\.»: l'elenco della guida/).count(), 5000, "toccata la guida, i suoi libri non arrivano");
+      if (!(await a.getByRole("button", { name: "📥 Aggiungi 5 schede" }).count())) throw new Error("i cinque libri di Lockwood non si possono aggiungere");
+      return { guasti: [...d.guasti, ...altro.guasti], nota: `14 schede in ordine sotto «Warhammer 40K», ${await copertine()} copertine, Ghostmaker col suo ePub nella sua scheda; le saghe di Stroud: le guide e la serie di Wikidata` };
     },
   },
   {
