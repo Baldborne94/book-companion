@@ -89,10 +89,14 @@ export function giaSulloScaffale(voce, libri = []) {
 // nome dell'universo o della guida.
 export function sagaPerLaGuida(tav, libri = [], { riconosce = (b) => riconosci({ title: b?.title, author: b?.author, saga: b?.saga }) } = {}) {
   const vicine = new Set(TAVOLE.filter((t) => t.saga === tav.saga || (tav.universo && t.universo === tav.universo)).map((t) => t.saga));
+  // una raccolta che si chiama come un CICLO della guida non e' la casa
+  // della guida intera: chi tiene i Liveship Traders in «Liveship Traders»
+  // aggiunge il Farseer sotto «The Realm of the Elderlings», non li'
+  const cicli = new Set(tav.libri.map((v) => v.c).filter((c) => c && c !== tav.saga).map((c) => piano(c)));
   const conti = new Map();
   for (const b of libri) {
     const s = String(b?.saga || "").trim();
-    if (!s) continue;
+    if (!s || cicli.has(piano(s))) continue;
     const r = riconosce(b);
     if (r?.saga && vicine.has(r.saga)) conti.set(s, (conti.get(s) || 0) + 1);
   }

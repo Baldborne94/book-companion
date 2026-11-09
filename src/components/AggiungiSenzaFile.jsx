@@ -158,7 +158,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {saghe.saghe.map((v) => (
                 <button key={`${v.fonte}:${v.q || v.saga}`} onClick={() => apriSaga(v)} style={tasto(v.fonte === "guida" ? C.accent : C.text)}>
-                  {v.fonte === "guida" ? "📜 " : ""}
+                  {v.fonte === "guida" ? "📜 " : v.fonte === "sciolti" ? "📚 " : ""}
                   {v.nome} · {v.quanti === 1 ? "1 libro" : `${v.quanti} libri`}
                 </button>
               ))}
@@ -178,6 +178,8 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
             <p style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>
               {esito.fonte === "guida"
                 ? `«${esito.nome}»: l'elenco della guida dell'app, nell'ordine di lettura.`
+                : esito.fonte === "sciolti"
+                ? "I suoi libri che su Wikidata non stanno in nessuna serie, per anno di uscita. Spunta quelli di una saga, scrivi qui sotto la raccolta e aggiungili. Un libro appena uscito può non esserci ancora."
                 : `«${esito.nome}» su Wikidata${esito.perAnno ? ", in ordine di uscita (lì i volumi non hanno il numero)" : ", nell'ordine della serie"}. Controlla l'elenco: per alcune saghe Wikidata è incompleto.`}
             </p>
             <label style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10, fontSize: F.piccolo, color: C.muted }}>

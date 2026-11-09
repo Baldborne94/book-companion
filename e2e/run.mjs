@@ -1148,12 +1148,12 @@ const SCENE = [
       // guida dell'app e la serie di Wikidata, e un tocco porta i libri
       const tipo = (...q) => q.map((id) => ({ mainsnak: { datavalue: { value: { id } } } }));
       const libroW = (en, n) => ({ labels: { en: { value: en } }, claims: { P31: tipo("Q7725634"), P7937: tipo("Q8261"), P50: tipo("Q1"), P179: [{ mainsnak: { datavalue: { value: { id: "Q11" } } }, qualifiers: { P1545: [{ datavalue: { value: String(n) } }] } }] } });
-      const W = { Q1: { labels: { en: { value: "Jonathan Stroud" } }, claims: { P106: tipo("Q6625963") } }, Q11: { labels: { en: { value: "Bartimaeus Sequence" } }, claims: { P31: tipo("Q1667921") } }, Q30: { labels: { en: { value: "Heroes of the Valley" } }, claims: { P31: tipo("Q7725634"), P7937: tipo("Q8261"), P50: tipo("Q1"), P179: [{ mainsnak: { datavalue: { value: { id: "Q12" } } }, qualifiers: { P1545: [{ datavalue: { value: "1" } }] } }] } }, Q12: { labels: { en: { value: "Valley Tales" } }, claims: { P31: tipo("Q1667921") } }, Q31: libroW("The Amulet of Samarkand", 1) };
+      const W = { Q1: { labels: { en: { value: "Jonathan Stroud" } }, claims: { P106: tipo("Q6625963") } }, Q11: { labels: { en: { value: "Bartimaeus Sequence" } }, claims: { P31: tipo("Q1667921") } }, Q30: { labels: { en: { value: "Heroes of the Valley" } }, claims: { P31: tipo("Q7725634"), P7937: tipo("Q8261"), P50: tipo("Q1"), P179: [{ mainsnak: { datavalue: { value: { id: "Q12" } } }, qualifiers: { P1545: [{ datavalue: { value: "1" } }] } }] } }, Q12: { labels: { en: { value: "Valley Tales" } }, claims: { P31: tipo("Q1667921") } }, Q31: libroW("The Amulet of Samarkand", 1), Q32: { labels: { en: { value: "Buried Fire" } }, claims: { P31: tipo("Q7725634"), P7937: tipo("Q8261"), P50: tipo("Q1") } } };
       const altro = await dispositivo(browser, {
         misura: TABLET,
         wikidata: async (q) => {
           if (q.get("action") === "wbsearchentities") return { search: [{ id: "Q1" }] };
-          if (q.get("action") === "query" && /P50=Q1/.test(q.get("srsearch"))) return { query: { search: [{ title: "Q30" }, { title: "Q31" }] } };
+          if (q.get("action") === "query" && /P50=Q1/.test(q.get("srsearch"))) return { query: { search: [{ title: "Q30" }, { title: "Q31" }, { title: "Q32" }] } };
           if (q.get("action") === "query") return { query: { search: [{ title: "Q30" }] } };
           return { entities: Object.fromEntries(q.get("ids").split("|").filter((i) => W[i]).map((i) => [i, W[i]])) };
         },
@@ -1168,10 +1168,15 @@ const SCENE = [
       if (await a.getByRole("button", { name: /^Bartimaeus Sequence/ }).count()) throw new Error("la serie di Wikidata che ha gia' la sua guida si ripete");
       await a.getByRole("button", { name: /^Valley Tales · 1 libro/ }).click();
       await finche(() => a.getByText("Heroes of the Valley").count(), 8000, "toccata la saga di Wikidata, i suoi libri non arrivano");
+      // e i suoi libri che Wikidata non mette in nessuna serie («e le altre
+      // saghe di questo autore non le consideri?»)
+      await a.getByRole("button", { name: /📚 Altri libri · 1 libro/ }).click();
+      await finche(() => a.getByText(/I suoi libri che su Wikidata non stanno in nessuna serie/).count(), 8000, "gli altri libri dell'autore non si aprono");
+      if (!(await a.getByText("Buried Fire").count())) throw new Error("fra gli altri libri manca Buried Fire");
       await a.getByRole("button", { name: /📜 Lockwood & Co\./ }).click();
       await finche(() => a.getByText(/«Lockwood & Co\.»: l'elenco della guida/).count(), 5000, "toccata la guida, i suoi libri non arrivano");
       if (!(await a.getByRole("button", { name: "📥 Aggiungi 5 schede" }).count())) throw new Error("i cinque libri di Lockwood non si possono aggiungere");
-      return { guasti: [...d.guasti, ...altro.guasti], nota: `14 schede in ordine sotto «Warhammer 40K», ${await copertine()} copertine, Ghostmaker col suo ePub nella sua scheda e non raddoppiato, Malleus riconosciuto nel 40K; le saghe di Stroud: le guide e la serie di Wikidata` };
+      return { guasti: [...d.guasti, ...altro.guasti], nota: `14 schede in ordine sotto «Warhammer 40K», ${await copertine()} copertine, Ghostmaker col suo ePub nella sua scheda e non raddoppiato, Malleus riconosciuto nel 40K; le saghe di Stroud: le guide, la serie di Wikidata e gli altri libri` };
     },
   },
   {
