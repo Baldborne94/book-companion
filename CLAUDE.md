@@ -14,6 +14,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 - **Si riproduce prima di curare**, nel browser vero sull'app intera (`npm run dev` o `vite preview`, Playwright col Chromium in `PLAYWRIGHT_BROWSERS_PATH`). Una scena costruita apposta non è una diagnosi del caso del lettore: non si raccontano come suoi i libri di un banco.
 - Si misura: tempi, byte, fotogrammi. «Dovrebbe essere più veloce» non è un risultato.
 - Branch `claude/*` → PR in bozza → squash/merge su `main`. Dopo il merge si aspetta la build di produzione di Vercel, poi si riallinea il branch (spingere subito lo stesso commit ha lasciato la produzione indietro, una volta).
+- **Vercel non pubblica le anteprime dei rami `claude/*`** (`vercel.json` → `scripts/saltaAnteprima.sh`, il passo «Ignored Build Step»: esce 0 e salta). Ogni deployment è una copia intera dell'app (36 MB, 28 del Wiktionary) e conta nei 10 GB gratuiti, che si sono riempiti; le prove le fa la CI. La pulizia delle copie vecchie è un'impostazione del progetto su Vercel (conservazione dei deployment), del lettore.
 - Ogni cambiamento che introduce una regola nuova aggiunge **un paragrafo in `docs/STORIA.md`** (il racconto) e, se è una regola che il prossimo deve rispettare, **una riga qui**.
 - Per fermare un server di prova: `fuser -k PORTA/tcp`, mai `pkill -f` (uccide anche la shell che lo lancia).
 - `npm i --no-save <pacchetto>` pota ciò che non sta in `package.json` (ha fatto sparire Playwright una volta).
