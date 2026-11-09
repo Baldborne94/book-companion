@@ -327,7 +327,7 @@ const convertiNelBrowser = async (file, onProgress) => {
   return convertiInCbz({ blob: file }, { onProgress });
 };
 
-export async function importFiles(fileList, libri = [], { onProgress, converti = convertiNelBrowser } = {}) {
+export async function importFiles(fileList, libri = [], { onProgress, converti = convertiNelBrowser, casa = null } = {}) {
   const added = [];
   const errors = [];
   // i due modi di essere un doppione: saltati e segnalati
@@ -404,6 +404,13 @@ export async function importFiles(fileList, libri = [], { onProgress, converti =
       }
       ritorno = noto;
     }
+    // IL FILE SCELTO DA UNA SCHEDA VA IN QUELLA SCHEDA (`casa`: «📂 Scegli
+    // il file» di una scheda senza file o senza ebook). Il titolo dentro il
+    // file puo' essere scritto in un altro modo («Ghostmaker (Gaunt's Ghosts
+    // Book 2)»), e il riconoscimento per titolo farebbe una scheda nuova
+    // accanto a quella che il lettore ha toccato. Un file solo, e solo se i
+    // byte di quella scheda qui non ci sono.
+    if (!ritorno && casa && tutti.length === 1 && !(await byteInCasa(casa.id))) ritorno = casa;
     const id = ritorno ? ritorno.id : crypto.randomUUID();
     // l'estrazione non deve coprire la copertina che c'e' gia': puo' essere
     // quella che ti sei messo a mano
@@ -474,7 +481,7 @@ export async function importFiles(fileList, libri = [], { onProgress, converti =
     // scrive e' l'impronta, cosi' la prossima volta il libro si riconosce
     // dai byte invece che dal titolo.
     if (ritorno) {
-      ritrovati.push({ id: ritorno.id, title: ritorno.title || meta.title, impronta: imp || null });
+      ritrovati.push({ id: ritorno.id, title: ritorno.title || meta.title, impronta: imp || null, fileType });
       continue;
     }
     if (!letto?.titolo) senzaMetadati += 1;

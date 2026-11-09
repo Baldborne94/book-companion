@@ -1,0 +1,92 @@
+// LE SCHEDE SENZA FILE (`lib/senzaFile.js`, `lib/segnaposto.js`): chiesto dal
+// lettore, «aggiungere libri o saghe senza dover per forza caricare il
+// libro… e poi ci carico dentro l'ebook». Quel che sbaglia in silenzio: il
+// SEGNO (sull'altro dispositivo una scheda senza file non deve diventare un
+// ePub tolto, cioe' un libro posseduto), i DOPPIONI, e la SAGA in cui
+// finiscono le schede di una guida.
+import { schedaSenzaFile, giaSulloScaffale, sagaPerLaGuida, vociDallaGuida, copertinaDalCatalogo, fraseAggiunte, SENZA } from "../src/lib/senzaFile.js";
+import { segnaposto } from "../src/lib/segnaposto.js";
+import { rowFromLocal, localFromRow } from "../src/lib/syncCore.js";
+import { camminoDellaGuida, prossimoPasso } from "../src/lib/cammino.js";
+import { proposte, arrivato } from "../src/lib/daPrendere.js";
+import { TAVOLE } from "../src/lib/sagaBooks.js";
+
+const guida = (saga) => TAVOLE.find((t) => t.saga === saga);
+
+export default async (t) => {
+  const s = schedaSenzaFile({ titolo: " Ghostmaker ", autore: "Dan Abnett", saga: "Warhammer 40K", serie: "Gaunt's Ghosts", numero: "2" }, { id: "x", ora: 5 });
+  t.eq("la scheda: titolo, autore, saga, serie, numero", [s.title, s.author, s.saga, s.series, s.sagaOrder].join("|"), "Ghostmaker|Dan Abnett|Warhammer 40K|Gaunt's Ghosts|2");
+  t.c("…senza file, col suo segno", s.fileTolto === true && s.fileType === SENZA && segnaposto(s));
+  t.eq("il numero con la virgola", schedaSenzaFile({ titolo: "x", numero: "2,5" }).sagaOrder, 2.5);
+  t.eq("niente numero, niente numero", schedaSenzaFile({ titolo: "x", numero: "" }).sagaOrder, null);
+  t.eq("senza titolo nessuna scheda", schedaSenzaFile({ titolo: "  " }), null);
+  t.c("un ePub tolto apposta non e' una scheda senza file", !segnaposto({ fileTolto: true, fileType: "epub" }));
+
+  // IL SEGNO VIAGGIA: la sincronizzazione scrive «epub» al posto di un formato vuoto
+  const tornata = localFromRow(rowFromLocal(s, {})).book;
+  t.c("dopo il giro nel cloud resta una scheda senza file", segnaposto(tornata), JSON.stringify({ fileType: tornata.fileType, fileTolto: tornata.fileTolto }));
+
+  // I DOPPIONI
+  const libri = [{ title: "Ghostmaker", author: "Dan Abnett" }];
+  t.c("stesso titolo e autore: c'e' gia'", giaSulloScaffale({ titolo: "ghostmaker", autore: "Dan Abnett" }, libri));
+  t.c("…anche senza autore da un lato", giaSulloScaffale({ titolo: "Ghostmaker" }, libri));
+  t.c("un altro autore no", !giaSulloScaffale({ titolo: "Ghostmaker", autore: "Joe Bloggs" }, libri));
+
+  // LA SAGA DELLE SCHEDE DI UNA GUIDA: quella che il lettore usa per lo stesso universo
+  const suoi = [{ id: "h", title: "Horus Rising", author: "Dan Abnett", saga: "Warhammer 40K" }, { id: "k", title: "Know No Fear", author: "Dan Abnett", saga: "Warhammer 40K" }];
+  t.eq("Gaunt's Ghosts finisce sotto «Warhammer 40K», accanto all'Eresia", sagaPerLaGuida(guida("Gaunt's Ghosts"), suoi), "Warhammer 40K");
+  t.eq("senza libri suoi, il nome dell'universo", sagaPerLaGuida(guida("Gaunt's Ghosts"), []), "Warhammer 40K");
+  t.eq("il Mondo Disco, senza universo, il nome della guida", sagaPerLaGuida(guida("Discworld"), suoi), "Discworld");
+
+  // I VOLUMI DI UN CAMMINO
+  const voci = vociDallaGuida(camminoDellaGuida(guida("Gaunt's Ghosts"), suoi), suoi);
+  t.eq("Gaunt's Ghosts: quindici volumi in ordine", voci.map((v) => v.numero).join(","), Array.from({ length: 15 }, (_, i) => i + 1).join(","));
+  t.eq("…con saga, serie e autore", [voci[1].titolo, voci[1].saga, voci[1].serie, voci[1].autore].join("|"), "Ghostmaker|Warhammer 40K|Gaunt's Ghosts|Dan Abnett");
+  const eis = vociDallaGuida(camminoDellaGuida(guida("Eisenhorn"), []), []);
+  t.eq("Eisenhorn: i quattro romanzi, non l'omnibus", eis.map((v) => v.titolo).join(", "), "Xenos, Malleus, Hereticus, The Magos");
+  const disco = vociDallaGuida(camminoDellaGuida(guida("Discworld"), []), []);
+  t.eq("il Mondo Disco ha l'autore anche se la tavola non lo scrive", disco[0].autore, "Terry Pratchett");
+  const hh = vociDallaGuida(camminoDellaGuida(guida("The Horus Heresy"), []), []);
+  t.c("dell'Eresia niente prologo ne' titoli fuori dalla storia", !hh.some((v) => ["Malleus", "Soul Hunter", "Night Lords Omnibus"].includes(v.titolo)));
+  t.c("…ma le antologie si', sono libri della storia", hh.some((v) => v.titolo === "Eye of Terra"));
+  const conUno = [...suoi, { id: "g", title: "First and Only", author: "Dan Abnett", saga: "Warhammer 40K" }];
+  t.eq("quello che hai e' segnato", vociDallaGuida(camminoDellaGuida(guida("Gaunt's Ghosts"), conUno), conUno).filter((v) => v.gia).map((v) => v.titolo).join(), "First and Only");
+
+  // UNA SCHEDA SENZA FILE NON E' UN LIBRO CHE HAI
+  const posto = schedaSenzaFile({ titolo: "Ghostmaker", autore: "Dan Abnett", saga: "Warhammer 40K" }, { id: "p" });
+  const conPosto = [...conUno, posto];
+  const c = camminoDellaGuida(guida("Gaunt's Ghosts"), conPosto);
+  t.eq("nel cammino la scheda c'e', ma non conta fra i tuoi", c.tue, 1);
+  t.eq("…la sua riga lo dice", c.tappe.find((x) => x.voce.t === "Ghostmaker").daCaricare, true);
+  const stato = { statoDi: (id) => (id === "g" ? "read" : "unread"), progressoDi: () => 0, spuntati: new Set() };
+  t.eq("letto il primo, il passo e' Ghostmaker…", prossimoPasso(c, stato).tappa.voce.t, "Ghostmaker");
+  t.eq("…ma non e' «da aprire»: il file non c'e'", prossimoPasso(c, stato).apribile, null);
+  // e una scheda senza file PIU' AVANTI non diventa «intanto puoi aprire»
+  const avanti = [...conUno, schedaSenzaFile({ titolo: "Necropolis", autore: "Dan Abnett" }, { id: "n" })];
+  const c2 = camminoDellaGuida(guida("Gaunt's Ghosts"), avanti);
+  t.eq("il passo e' Ghostmaker, che non hai…", prossimoPasso(c2, stato).tappa.voce.t, "Ghostmaker");
+  t.eq("…e Necropolis senza file non e' «intanto puoi aprire»", prossimoPasso(c2, stato).apribile, null);
+  const prop = proposte(conPosto, [], { statusOf: (id) => (id === "g" ? "read" : "unread") });
+  t.c("Da prendere lo propone lo stesso: e' da prendere", prop.some((g) => g.voci.some((v) => v.titolo === "Ghostmaker")));
+  t.eq("e una voce in lista non e' «arrivata» per una scheda senza file", arrivato({ titolo: "Ghostmaker", autore: "Dan Abnett" }, conPosto), null);
+
+  // LA COPERTINA DAL CATALOGO
+  const chieste = [];
+  const finto = (risposte) => async (url) => {
+    chieste.push(url);
+    const r = risposte.find(([re]) => re.test(url));
+    if (!r) return { ok: false, status: 404 };
+    return r[1];
+  };
+  const immagine = new Blob([new Uint8Array(5000)], { type: "image/jpeg" });
+  const cerca = { ok: true, json: async () => ({ docs: [{ key: "/works/1", title: "Ghostmaker", author_name: ["Dan Abnett"], cover_i: 42 }] }) };
+  const blob = await copertinaDalCatalogo({ titolo: "Ghostmaker", autore: "Dan Abnett" }, { fetcher: finto([[/search\.json/, cerca], [/covers\.openlibrary\.org\/b\/id\/42-L\.jpg\?default=false/, { ok: true, blob: async () => immagine }]]) });
+  t.c("la copertina grande arriva", blob === immagine, chieste.join(" "));
+  const nessuna = await copertinaDalCatalogo({ titolo: "Ghostmaker", autore: "Dan Abnett" }, { fetcher: finto([[/search\.json/, cerca], [/covers/, { ok: true, blob: async () => new Blob([new Uint8Array(40)], { type: "image/gif" }) }]]) });
+  t.eq("un'immagine minuscola (il segnaposto del catalogo) non e' una copertina", nessuna, null);
+  t.eq("senza rete, niente (e niente guasto)", await copertinaDalCatalogo({ titolo: "X" }, { fetcher: async () => { throw new Error("rete"); } }), null);
+
+  t.eq("la frase: una", fraseAggiunte({ aggiunte: 1 }), "📥 Una scheda senza file sullo scaffale");
+  t.eq("la frase: molte e alcune gia'", fraseAggiunte({ aggiunte: 14, gia: 1 }), "📥 14 schede senza file sullo scaffale · una c'era già");
+  t.eq("la frase: niente", fraseAggiunte({ gia: 3 }), "Niente da aggiungere: c'erano già tutte");
+};

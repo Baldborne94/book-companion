@@ -5,6 +5,7 @@ import { perParte, prossimoPasso, lettiDelCammino } from "../lib/cammino.js";
 import { numerazioneGuida, serieDaScrivere, sagaComune, campiDaScrivere } from "../lib/numeraCammino.js";
 import { raccontiLetti, segnaRacconto, chiaveRacconto } from "../lib/racconti.js";
 import { leggiDaPrendere, scriviDaPrendere, tieni, vive, idTitolo } from "../lib/daPrendere.js";
+import { vociDallaGuida } from "../lib/senzaFile.js";
 
 // I FILTRI SONO TRE, e il terzo è quello per cui la pagina esiste: su una
 // guida da settantuno tappe «cosa mi manca» è la domanda vera, e senza un
@@ -242,7 +243,7 @@ function Tappa({ t, onOpenBook, gia, onMetti }) {
           {voce.t}
         </span>
         <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginTop: 2 }}>
-          {[voce.a, voce.nota, libro ? `${t.dentro ? `dentro «${libro.title}»` : "nella tua biblioteca"}${stato ? ` · ${stato}` : ""}` : null]
+          {[voce.a, voce.nota, libro ? (t.daCaricare ? "📥 sullo scaffale, senza file" : `${t.dentro ? `dentro «${libro.title}»` : "nella tua biblioteca"}${stato ? ` · ${stato}` : ""}`) : null]
             .filter(Boolean)
             .join(" · ")}
         </span>
@@ -278,11 +279,11 @@ function Tappa({ t, onOpenBook, gia, onMetti }) {
           style={{
             flexShrink: 0,
             fontSize: F.minuscolo,
-            color: libro ? C.green : C.muted,
+            color: libro && !t.daCaricare ? C.green : C.muted,
             opacity: libro ? 1 : 0.7,
           }}
         >
-          {libro ? "✓" : "manca"}
+          {t.daCaricare ? "📥" : libro ? "✓" : "manca"}
         </span>
       )}
     </>
@@ -464,7 +465,7 @@ function SceltaNumeri({ numeri, serie, saga, scelti, sagaScelta, onCambia, onSag
   );
 }
 
-export default function Cammino({ cammino, onClose, onOpenBook, onNumera, onDaPrendere }) {
+export default function Cammino({ cammino, libri = [], onClose, onOpenBook, onNumera, onDaPrendere, onMettiInBiblioteca }) {
   const [filtro, setFiltro] = useState("tutte");
   const [lista, setLista] = useState(leggiDaPrendere);
   const nella = useMemo(() => new Set(vive(lista).map((v) => v.id)), [lista]);
@@ -479,6 +480,9 @@ export default function Cammino({ cammino, onClose, onOpenBook, onNumera, onDaPr
   const [numerare, setNumerare] = useState(null);
   const [spuntati, setSpuntati] = useState(() => raccontiLetti());
   const { tappe, tue, volumi, fuori, saga } = cammino;
+  // I VOLUMI CHE MANCANO, COME SCHEDE SENZA FILE (`lib/senzaFile.js`):
+  // sullo scaffale con la copertina, nell'ordine della guida
+  const mancanti = useMemo(() => (onMettiInBiblioteca ? vociDallaGuida(cammino, libri).filter((v) => !v.gia) : []), [cammino, libri, onMettiInBiblioteca]);
 
   // le tre proposte si calcolano a ogni giro e non alla pressione: servono
   // gia' per sapere se il tasto ha qualcosa da offrire, e un tasto che
@@ -498,7 +502,8 @@ export default function Cammino({ cammino, onClose, onOpenBook, onNumera, onDaPr
 
   const parti = useMemo(() => {
     const scelte =
-      filtro === "tue" ? tappe.filter((t) => t.libro) : filtro === "mancano" ? tappe.filter((t) => !t.libro) : tappe;
+      // una scheda senza file sta fra quelli che ti mancano
+      filtro === "tue" ? tappe.filter((t) => t.libro && !t.daCaricare) : filtro === "mancano" ? tappe.filter((t) => !t.libro || t.daCaricare) : tappe;
     // si filtra PRIMA di raggruppare, così una parte dove non resta niente
     // non lascia un'intestazione vuota
     return perParte(scelte);
@@ -583,6 +588,23 @@ export default function Cammino({ cammino, onClose, onOpenBook, onNumera, onDaPr
               : ""}
           </button>
         )}
+        {mancanti.length > 0 && (
+          <button
+            onClick={() => onMettiInBiblioteca(mancanti)}
+            style={{
+              minHeight: 44,
+              marginTop: 8,
+              marginLeft: onNumera && daFare ? 8 : 0,
+              padding: "0 14px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.accent}66`,
+              color: C.accent,
+              fontSize: F.piccolo,
+            }}
+          >
+            📥 {mancanti.length === 1 ? "Metti sullo scaffale quello che manca" : `Metti sullo scaffale i ${mancanti.length} che mancano`} (senza file)
+          </button>
+        )}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
           {FILTRI.map((f) => {
             const acceso = filtro === f.id;
@@ -626,7 +648,7 @@ export default function Cammino({ cammino, onClose, onOpenBook, onNumera, onDaPr
             >
               {parte}
               <span style={{ fontSize: F.minuscolo, color: C.muted, fontFamily: "inherit", fontWeight: 400 }}>
-                {dentro.filter((t) => t.libro).length}/{dentro.length}
+                {dentro.filter((t) => t.libro && !t.daCaricare).length}/{dentro.length}
               </span>
             </h3>
             {dentro.map((t) =>

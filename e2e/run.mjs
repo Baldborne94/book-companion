@@ -74,7 +74,7 @@ async function lanciaBrowser() {
 // o da Google (la prima volta in CI il catalogo vero ha dato a «Racconti» la
 // saga di Moravia, e la scena cadeva per una ragione che qui non c'era). Chi
 // vuole il catalogo se lo porta: `catalogo(url)` risponde al posto suo.
-async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, oracolo = null, misura = null, lexicanum = null, fandom = null, wikidata = null } = {}) {
+async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, oracolo = null, misura = null, lexicanum = null, fandom = null, wikidata = null, copertine = null } = {}) {
   const ctx = await browser.newContext(misura || { viewport: { width: 1280, height: 800 } });
   await ctx.route(
     (url) => !/^(localhost|127\.0\.0\.1)$/.test(url.hostname),
@@ -84,6 +84,10 @@ async function dispositivo(browser, { sessione = false, prima = null, catalogo =
       if (lexicanum && /wh40k\.lexicanum\.com/.test(url)) return lexicanum(route);
       if (fandom && /warhammer40k\.fandom\.com|static\.wikia\.nocookie\.net/.test(url)) return fandom(route);
       if (wikidata && /www\.wikidata\.org\/w\/api\.php/.test(url)) return route.fulfill({ json: await wikidata(new URL(url).searchParams), headers: { "access-control-allow-origin": "*" } });
+      if (copertine && /covers\.openlibrary\.org/.test(url)) {
+        const body = await copertine(url);
+        return body ? route.fulfill({ body, contentType: "image/png", headers: { "access-control-allow-origin": "*" } }) : route.fulfill({ status: 404, headers: { "access-control-allow-origin": "*" }, body: "" });
+      }
       if (catalogo && /openlibrary\.org/.test(url)) {
         const json = await catalogo(url);
         if (json) return route.fulfill({ json });
@@ -1047,6 +1051,81 @@ const SCENE = [
       // la lista era vuota quando il cammino si e' aperto: si rilegge o resta vuota
       await finche(async () => !(await q.getByText(/^Ancora vuota/).count()) && (await q.getByText("First and Only", { exact: true }).count()) > 0, 3000, "la lista sotto non mostra la voce messa dal cammino");
       return { guasti: [...d.guasti, ...altro.guasti], nota: "tre cammini sul ripiano del 40K e Ravenor accanto a 0/3, Ghostmaker e The Magos in lista, l'omnibus da' 3 dei 4 di Eisenhorn, il Disco ha il suo tasto, la guida si apre senza volumi da Da prendere" };
+    },
+  },
+  {
+    // chiesto dal lettore: «aggiungere libri o saghe senza dover per forza
+    // caricare il libro… mi aggiungi la copertina», e «quando aggiungo il
+    // nome di una saga in automatico mi aggiungi nell'ordine corretto i
+    // libri con copertina». Poi il file si sceglie dalla scheda, e ci entra
+    nome: "schede senza file: una saga dal suo nome, in ordine e con le copertine, e il file scelto dalla scheda entra in quella scheda",
+    async fai({ browser }) {
+      const w = (id, title) => ({ id, title, author: "Dan Abnett", saga: "Warhammer 40K", series: "The Horus Heresy", fileType: "epub", addedAt: 1 });
+      const libri = [w("h1", "Horus Rising"), w("h2", "Know No Fear")];
+      const cercate = [];
+      const immagine = pngRighe(300, 450, 4, [200, 40, 40], [20, 20, 20]);
+      const d = await dispositivo(browser, {
+        misura: TABLET,
+        prima: `
+          localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});
+          localStorage.setItem("bc_vista", JSON.stringify({ aspetto: "raccolte" }));`,
+        catalogo: (url) => {
+          if (!/search\.json/.test(url)) return null;
+          const q = new URL(url).searchParams;
+          cercate.push(q.get("title"));
+          return { docs: [{ key: `/works/${cercate.length}`, title: q.get("title"), author_name: ["Dan Abnett"], cover_i: 1000 + cercate.length }] };
+        },
+        copertine: () => immagine,
+      });
+      const { p } = d;
+      await p.goto(`${URL_APP}?apri=libreria`);
+      await p.getByRole("button", { name: "📥 Senza file" }).click();
+      await p.getByRole("textbox", { name: "Nome della saga" }).fill("Gaunt's Ghosts");
+      await p.getByRole("button", { name: "🔍 Cerca i libri" }).click();
+      await finche(() => p.getByText(/«Gaunt's Ghosts»: l'elenco della guida dell'app/).count(), 5000, "la saga non si trova fra le guide");
+      if ((await p.getByRole("textbox", { name: "Raccolta" }).inputValue()) !== "Warhammer 40K") throw new Error("la raccolta proposta non e' quella del 40K del lettore");
+      // si toglie l'ultimo: l'elenco si mostra prima di scriverlo
+      await p.locator("label", { hasText: "The Anarch" }).getByRole("checkbox").uncheck();
+      await p.getByRole("button", { name: "📥 Aggiungi 14 schede" }).click();
+      await finche(() => testoAvviso(p, /14 schede senza file sullo scaffale/), 5000, "l'aggiunta non si dice");
+      const nuove = (await libriDi(p)).filter((b) => b.fileType === "nessuno");
+      if (nuove.length !== 14) throw new Error(`schede senza file: ${nuove.length}`);
+      const ordine = nuove.sort((a, b) => a.sagaOrder - b.sagaOrder).map((b) => `${b.sagaOrder} ${b.title}`).join(" | ");
+      if (!/^1 First and Only \| 2 Ghostmaker \| 3 Necropolis/.test(ordine) || /Anarch/.test(ordine)) throw new Error(`l'ordine non e' quello della guida: ${ordine}`);
+      if (!nuove.every((b) => b.fileTolto && b.saga === "Warhammer 40K" && b.series === "Gaunt's Ghosts" && b.author === "Dan Abnett")) throw new Error(`saga, serie o autore sbagliati: ${JSON.stringify(nuove[0])}`);
+      // le copertine scendono dopo, due alla volta
+      const copertine = () =>
+        p.evaluate(
+          () =>
+            new Promise((ok) => {
+              const r = indexedDB.open("bc_library");
+              r.onsuccess = () => {
+                const q = r.result.transaction("covers").objectStore("covers").getAllKeys();
+                q.onsuccess = () => ok(q.result.length);
+              };
+            })
+        );
+      await finche(async () => (await copertine()) >= 14, 15000, "le copertine delle schede non arrivano");
+      // nella raccolta stanno coi loro titoli, e il cammino non le conta fra i tuoi
+      await p.getByRole("button", { name: /^Warhammer 40K/ }).first().click();
+      await finche(() => p.getByRole("button", { name: "📜 Gaunt's Ghosts" }).count(), 5000, "le schede non portano il cammino di Gaunt's Ghosts sul ripiano");
+      await p.getByRole("button", { name: "📜 Gaunt's Ghosts" }).click();
+      await finche(() => p.getByText(/Hai 0 dei 15 volumi della guida/).count(), 5000, "il cammino conta le schede senza file fra i libri che hai");
+      if ((await p.getByText("📥 sullo scaffale, senza file").count()) < 14) throw new Error("le righe del cammino non dicono «senza file»");
+      await p.getByRole("button", { name: "Chiudi" }).click();
+      // IL FILE SCELTO DALLA SCHEDA ENTRA IN QUELLA SCHEDA, anche col titolo scritto diverso
+      const ghost = nuove.find((b) => b.title === "Ghostmaker");
+      await p.getByText("Ghostmaker", { exact: true }).first().evaluate((e) => e.closest("button").click());
+      const scelta = p.waitForEvent("filechooser");
+      await p.getByRole("button", { name: "📂 Scegli il file" }).click();
+      await finche(() => testoAvviso(p, /Questa scheda non ha ancora il suo ebook/), 5000, "la scheda senza file non dice di scegliere l'ebook");
+      await (await scelta).setFiles({ name: "Ghostmaker (Gaunt's Ghosts Book 2).epub", mimeType: "application/epub+zip", buffer: await epub({ titolo: "Ghostmaker (Gaunt's Ghosts Book 2)", autore: "Dan Abnett" }) });
+      await finche(async () => (await libriDi(p)).find((b) => b.id === ghost.id)?.fileType === "epub", 15000, "il file non e' entrato nella scheda di Ghostmaker");
+      const dopo = await libriDi(p);
+      const sua = dopo.find((b) => b.id === ghost.id);
+      if (sua.fileTolto || sua.title !== "Ghostmaker" || sua.sagaOrder !== 2) throw new Error(`la scheda di Ghostmaker dopo il file: ${JSON.stringify(sua)}`);
+      if (dopo.length !== libri.length + 14) throw new Error(`il file ha fatto una scheda nuova accanto: ${dopo.length} libri`);
+      return { guasti: d.guasti, nota: `14 schede in ordine sotto «Warhammer 40K», ${await copertine()} copertine, Ghostmaker col suo ePub nella sua scheda` };
     },
   },
   {
