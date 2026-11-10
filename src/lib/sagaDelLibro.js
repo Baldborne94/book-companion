@@ -24,7 +24,7 @@
 
 import { TAVOLE, riconosci, ripassa, chiaveSaga } from "./sagaBooks.js";
 import { sagaPerLaGuida } from "./senzaFile.js";
-import { LIBRI, NON_VOLUMI, SERIE, UNIVERSO, piano, ids, indirizzo, etichetta, volumeDa, guidaDalNome, eLAutore, variantiDelNome } from "./sagaDaNome.js";
+import { LIBRI, NON_VOLUMI, UNIVERSO, piano, ids, indirizzo, etichetta, volumeDa, guidaDalNome, eLAutore, variantiDelNome, tipiDiSerie } from "./sagaDaNome.js";
 
 // ---- senza rete ----------------------------------------------------------------
 
@@ -78,10 +78,11 @@ export async function serieDelLibro({ titolo, autore = "" } = {}, prendi) {
   const nomi = r?.entities || {};
   const q = libri.find((x) => !autore || ids(entita[x]?.claims, "P50").some((a) => eLAutore(autore, etichetta(nomi[a]))));
   if (!q) return null;
+  const diLibri = await tipiDiSerie(Object.fromEntries(serieDi(q).map((sq) => [sq, nomi[sq]])), prendi);
   const serie = serieDi(q)
     .map((sq) => {
       const tipi = ids(nomi[sq]?.claims, "P31");
-      return { q: sq, nome: etichetta(nomi[sq]), numero: volumeDa(entita[q], sq)?.numero ?? null, universo: tipi.includes(UNIVERSO), eSerie: tipi.some((t) => SERIE.includes(t)) };
+      return { q: sq, nome: etichetta(nomi[sq]), numero: volumeDa(entita[q], sq)?.numero ?? null, universo: tipi.includes(UNIVERSO), eSerie: tipi.some((t) => diLibri.includes(t)) };
     })
     .filter((x) => x.nome && (x.universo || x.eSerie))
     .sort((a, b) => a.universo - b.universo);

@@ -123,13 +123,35 @@ export const indirizzo = (p) => `${API}?${new URLSearchParams({ format: "json", 
 export const etichetta = (e) => e?.labels?.en?.value || e?.labels?.it?.value || "";
 
 // la serie fra le candidate: la prima che E' una serie e non un universo
-export function sceltaSerie(candidati = [], entita = {}) {
+export function sceltaSerie(candidati = [], entita = {}, serie = SERIE) {
   for (const q of candidati) {
     const tipi = ids(entita[q]?.claims, "P31");
     if (tipi.includes(UNIVERSO)) continue;
-    if (tipi.some((t) => SERIE.includes(t))) return q;
+    if (tipi.some((t) => serie.includes(t))) return q;
   }
   return null;
+}
+
+// UNA SERIE DI LIBRI CHE WIKIDATA CHIAMA IN UN ALTRO MODO (il lettore, con
+// le saghe di Rick Riordan: «perché non vedo Magnus Chase?»). Magnus Chase
+// su Wikidata e' una «novel sequence» e una «children's book series»,
+// nessuna delle due in `SERIE`, e i suoi tre romanzi finivano fra gli altri
+// libri. I tipi che non si conoscono si chiedono, una domanda sola: vale
+// quello che e' una sottoclasse di una serie di libri, o che lo dice nel
+// nome (libri, romanzi, fumetti in serie). Una serie TV, un film, un
+// universo restano fuori.
+const DICE_LIBRI = /\b(book|novel|novella|literary|comic)s?\b.*\b(series|sequence|cycle|saga)\b/i;
+// serie di libri, serie di romanzi, trilogia letteraria: non «serie di opere
+// creative», di cui anche la serie TV e' una sottoclasse («Doctor Who»)
+const DI_LIBRI = ["Q277759", "Q1667921", "Q13593966"];
+export async function tipiDiSerie(entita = {}, prendi) {
+  const ignoti = [...new Set(Object.values(entita).flatMap((e) => ids(e?.claims, "P31")))].filter((t) => t !== UNIVERSO && !SERIE.includes(t));
+  if (!ignoti.length || !prendi) return SERIE;
+  const r = await prendi(indirizzo({ action: "wbgetentities", ids: ignoti.slice(0, 50).join("|"), props: "labels|claims", languages: "en" }));
+  const buoni = Object.entries(r?.entities || {})
+    .filter(([, t]) => ids(t?.claims, "P279").some((s) => DI_LIBRI.includes(s)) || DICE_LIBRI.test(t?.labels?.en?.value || ""))
+    .map(([k]) => k);
+  return [...SERIE, ...buoni];
 }
 
 // un membro → un volume col suo numero in QUESTA serie, o niente
@@ -166,7 +188,8 @@ async function serieDalNome(nome, prendi) {
     const candidati = (s?.search || []).map((x) => x.id).filter(Boolean);
     if (!candidati.length) continue;
     const e = await prendi(indirizzo({ action: "wbgetentities", ids: candidati.join("|"), props: "labels|claims", languages: "en|it" }));
-    const q = sceltaSerie(candidati, e?.entities || {}) || serieSenzaTipo(s.search, e?.entities || {});
+    const serie = await tipiDiSerie(e?.entities || {}, prendi);
+    const q = sceltaSerie(candidati, e?.entities || {}, serie) || serieSenzaTipo(s.search, e?.entities || {});
     if (q) return { q, e };
   }
   return null;
@@ -292,17 +315,20 @@ export async function serieDellAutore(nome, prendi) {
     }
   }
   const serie = [...perSerie.keys()];
-  const voci = [];
+  const entitaSerie = {};
   for (let i = 0; i < serie.length; i += 50) {
     const r = await prendi(indirizzo({ action: "wbgetentities", ids: serie.slice(i, i + 50).join("|"), props: "labels|claims", languages: "en|it" }));
-    for (const [k, v] of Object.entries(r?.entities || {})) {
-      // una serie di libri, non l'universo né la serie TV («Doctor Who» di Abnett)
-      const tipi = ids(v?.claims, "P31");
-      if (tipi.includes(UNIVERSO) || !tipi.some((t) => SERIE.includes(t))) continue;
-      const titolo = etichetta(v);
-      const quanti = inOrdine(perSerie.get(k)).volumi.length;
-      if (titolo && quanti) voci.push({ fonte: "wikidata", q: k, nome: titolo, quanti });
-    }
+    Object.assign(entitaSerie, r?.entities || {});
+  }
+  const diLibri = await tipiDiSerie(entitaSerie, prendi);
+  const voci = [];
+  for (const [k, v] of Object.entries(entitaSerie)) {
+    // una serie di libri, non l'universo né la serie TV («Doctor Who» di Abnett)
+    const tipi = ids(v?.claims, "P31");
+    if (tipi.includes(UNIVERSO) || !tipi.some((t) => diLibri.includes(t))) continue;
+    const titolo = etichetta(v);
+    const quanti = inOrdine(perSerie.get(k)).volumi.length;
+    if (titolo && quanti) voci.push({ fonte: "wikidata", q: k, nome: titolo, quanti });
   }
   // GLI ALTRI SUOI LIBRI (il lettore, con John Gwynne: «e le altre saghe di
   // questo autore non le consideri?»): Wikidata ha i suoi romanzi ma non

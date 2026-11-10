@@ -4,7 +4,7 @@
 // SEGNO (sull'altro dispositivo una scheda senza file non deve diventare un
 // ePub tolto, cioe' un libro posseduto), i DOPPIONI, e la SAGA in cui
 // finiscono le schede di una guida.
-import { schedaSenzaFile, giaSulloScaffale, sagaPerLaGuida, vociDallaGuida, copertinaDalCatalogo, fraseAggiunte, SENZA } from "../src/lib/senzaFile.js";
+import { schedaSenzaFile, giaSulloScaffale, sagaPerLaGuida, vociDallaGuida, copertinaDalCatalogo, fraseAggiunte, serieDellElenco, nellaRaccolta, SENZA } from "../src/lib/senzaFile.js";
 import { segnaposto } from "../src/lib/segnaposto.js";
 import { rowFromLocal, localFromRow } from "../src/lib/syncCore.js";
 import { camminoDellaGuida, prossimoPasso } from "../src/lib/cammino.js";
@@ -78,6 +78,22 @@ export default async (t) => {
   t.c("…e non si aggiunge di nuovo", giaSulloScaffale({ titolo: "A Memory of Light", autore: "Robert Jordan" }, ruota));
   t.c("…il cognome davanti e' lo stesso autore, anche fuori dalle guide", giaSulloScaffale({ titolo: "Hyperion", autore: "Dan Simmons" }, [{ title: "Hyperion", author: "Simmons, Dan" }]));
   t.c("…ma un Sanderson che la Ruota non l'ha scritta resta un altro libro", !giaSulloScaffale({ titolo: "Knife of Dreams", autore: "Robert Jordan" }, [{ title: "Knife of Dreams", author: "Brandon Sanderson" }]));
+
+  // LA SERIE ACCANTO ALLA RACCOLTA (il lettore: «non solo il nome della
+  // saga… ma anche il nome della serie, così che vengano messi in ordine
+  // come i libri della Horus Heresy del 40K»)
+  t.eq("la serie che i volumi della guida hanno tutti uguale", serieDellElenco({ fonte: "guida", volumi: voci }), "Gaunt's Ghosts");
+  const elder = vociDallaGuida(camminoDellaGuida(guida("The Realm of the Elderlings"), []), []);
+  t.eq("una guida a cicli non ne ha una sola: ognuno tiene la sua", serieDellElenco({ fonte: "guida", volumi: elder }), "");
+  const wd = { fonte: "wikidata", nome: "Magnus Chase and the Gods of Asgard", volumi: [{ titolo: "The Sword of Summer", saga: "Magnus Chase and the Gods of Asgard", serie: "", numero: 1 }] };
+  t.eq("su Wikidata, il nome della serie", serieDellElenco(wd), "Magnus Chase and the Gods of Asgard");
+  t.eq("gli altri libri di un autore non hanno serie", serieDellElenco({ fonte: "sciolti", nome: "Altri libri", volumi: [{ titolo: "X", serie: "" }] }), "");
+  const [mc] = nellaRaccolta(wd.volumi, "Rick Riordan", "Magnus Chase and the Gods of Asgard");
+  t.eq("in un'altra raccolta la serie resta, col suo numero: un ripiano in ordine", `${mc.saga} | ${mc.serie} | ${mc.numero}`, "Rick Riordan | Magnus Chase and the Gods of Asgard | 1");
+  t.eq("…ma la serie che si chiama come la raccolta non e' una serie", nellaRaccolta(wd.volumi, "", "Magnus Chase and the Gods of Asgard")[0].serie, "");
+  t.eq("una serie scritta vale per tutti, anche nei cicli", [...new Set(nellaRaccolta(elder, "Robin Hobb", "Elderlings").map((v) => `${v.saga}/${v.serie}`))].join(), "Robin Hobb/Elderlings");
+  t.eq("vuota, ogni volume tiene la sua", nellaRaccolta(elder.slice(0, 4), "", "").map((v) => v.serie).join(" | "), "The Farseer Trilogy | The Farseer Trilogy | The Farseer Trilogy | Liveship Traders");
+  t.eq("la scheda che ne nasce", (({ saga, series, sagaOrder }) => `${saga}/${series}/${sagaOrder}`)(schedaSenzaFile(mc, { id: "m" })), "Rick Riordan/Magnus Chase and the Gods of Asgard/1");
 
   // UNA SCHEDA SENZA FILE NON E' UN LIBRO CHE HAI
   const posto = schedaSenzaFile({ titolo: "Ghostmaker", autore: "Dan Abnett", saga: "Warhammer 40K" }, { id: "p" });

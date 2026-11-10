@@ -3,7 +3,7 @@
 // corretto i libri». Prima le guide scritte a mano, poi Wikidata. Quel che
 // sbaglia in silenzio e' l'ORDINE e cosa e' un VOLUME (una novella «2.5»,
 // un'edizione, il volume di un'altra serie).
-import { sagaDalNome, guidaDalNome, sceltaSerie, volumeDa, inOrdine, senzaParoleGeneriche, serieSenzaTipo } from "../src/lib/sagaDaNome.js";
+import { sagaDalNome, guidaDalNome, sceltaSerie, volumeDa, inOrdine, senzaParoleGeneriche, serieSenzaTipo, tipiDiSerie } from "../src/lib/sagaDaNome.js";
 
 const tipo = (...q) => q.map((id) => ({ mainsnak: { datavalue: { value: { id } } } }));
 const legame = (serie, n) => ({ mainsnak: { datavalue: { value: { id: serie } } }, ...(n != null ? { qualifiers: { P1545: [{ datavalue: { value: String(n) } }] } } : {}) });
@@ -109,4 +109,28 @@ export default async (t) => {
     },
   });
   t.eq("la saga c'e', l'elenco no: il pannello lo dice col suo nome", `${vuota?.nome} ${vuota?.volumi.length}`, "Shadows of the Unguided 0");
+
+  // UNA SERIE DI LIBRI CHE WIKIDATA CHIAMA IN UN ALTRO MODO (il lettore:
+  // «perché non vedo Magnus Chase?»: su Wikidata e' una «novel sequence»)
+  const TIPI = {
+    Q2005755: { labels: { en: { value: "novel sequence" } }, claims: {} },
+    Q900: { labels: { en: { value: "young readers series" } }, claims: { P279: tipo("Q277759") } },
+    // la serie TV e' una sottoclasse di «serie di opere creative»
+    Q5398426: { labels: { en: { value: "television series" } }, claims: { P279: tipo("Q15416", "Q7725310") } },
+  };
+  const daiTipi = async (url) => ({ entities: Object.fromEntries(new URL(url).searchParams.get("ids").split("|").filter((i) => TIPI[i]).map((i) => [i, TIPI[i]])) });
+  const accettati = await tipiDiSerie({ A: { claims: { P31: tipo("Q2005755") } }, B: { claims: { P31: tipo("Q900") } }, C: { claims: { P31: tipo("Q5398426") } } }, daiTipi);
+  t.c("il nome che dice una serie di romanzi", accettati.includes("Q2005755"));
+  t.c("…o la sottoclasse di una serie di libri", accettati.includes("Q900"));
+  t.c("…ma non la serie TV, che e' una serie di opere creative", !accettati.includes("Q5398426"));
+  const magnus = await sagaDalNome("Una sequenza finta", {
+    prendi: async (url) => {
+      const q = new URL(url).searchParams;
+      if (q.get("action") === "wbsearchentities") return { search: [{ id: "Q150" }] };
+      if (q.get("action") === "query") return { query: { search: [{ title: "Q151" }] } };
+      const tutto = { ...TIPI, Q150: { labels: { en: { value: "Una sequenza finta" } }, claims: { P31: tipo("Q2005755") } }, Q151: opera("The Sword", { serie: "Q150", n: 1 }) };
+      return { entities: Object.fromEntries(q.get("ids").split("|").filter((i) => tutto[i]).map((i) => [i, tutto[i]])) };
+    },
+  });
+  t.eq("…e cercata per nome si trova, coi suoi libri", `${magnus?.nome} ${magnus?.volumi.map((v) => v.titolo).join()}`, "Una sequenza finta The Sword");
 };
