@@ -1,3 +1,4 @@
+import { seguiTransizione } from "../lib/transizione.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
@@ -1552,7 +1553,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // girerebbe mai piu'. E' successo davvero (vedi il commento sulla
     // coda di epub.js qui sotto).
     svoltaGuardia.current = setTimeout(pulisci, SVOLTA_GUARDIA);
-    vt.finished.then(pulisci, pulisci);
+    seguiTransizione(vt, pulisci);
   }
 
   // «meno animazioni» del sistema si rispetta: chi l'ha acceso ha le sue

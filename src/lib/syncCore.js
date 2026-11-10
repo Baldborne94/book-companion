@@ -986,6 +986,18 @@ const SCHEMA_INDIETRO = (col) =>
   `Lo schema del database è indietro rispetto all'app${col ? `: la colonna «${col}» non c'è o non regge il valore` : ""}. ` +
   "Rilancia «supabase/schema.sql» sul progetto Supabase, poi riprova. I tuoi libri restano qui intanto.";
 
+// LA RETE CHE CADE NON E' UN GUASTO. Arriva come un TypeError senza codice
+// ne' stato («Failed to fetch» in Chrome, «Load failed» in Safari,
+// «NetworkError» in Firefox): la sincronizzazione riprova da sola, e il
+// lettore lo legge nel pannello. Nel registro dei guasti era rumore (il
+// rapporto del tablet: due «Failed to fetch» con la wifi a 1,5 Mbit/s) che
+// copre quelli veri.
+export function eDiRete(err) {
+  const testo = String(err?.message || err?.error_description || "").trim();
+  const stato = Number(err?.status ?? err?.statusCode) || 0;
+  return stato === 0 && /fetch|network|load failed|connessione/i.test(testo);
+}
+
 export function spiegaSync(err) {
   const testo = String(err?.message || err?.error_description || "").trim();
   const dettagli = `${testo} ${err?.details || ""} ${err?.hint || ""}`;
@@ -997,7 +1009,7 @@ export function spiegaSync(err) {
   // LA RETE PRIMA DI TUTTO: cade come un TypeError senza codice ne' stato,
   // e scambiata per un guasto del database manderebbe a rilanciare uno
   // schema che sta benissimo.
-  if (stato === 0 && /fetch|network|load failed|connessione/i.test(testo))
+  if (eDiRete(err))
     return {
       frase: "Non riesco a raggiungere il cloud: controlla la rete e riprova. I tuoi libri restano qui.",
       dettaglio: testo,
