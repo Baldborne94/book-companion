@@ -10,11 +10,14 @@
 //
 // Gli ALIAS sono i titoli italiani che Wikidata registra.
 //
-// L'autore e' Jordan su ogni volume: le edizioni degli ultimi tre lo
-// scrivono per primo, accanto a Sanderson.
+// L'autore e' Jordan su ogni volume; gli ultimi tre li ha finiti Sanderson
+// dalle sue note, e Wikidata li da' a tutt'e due (`co`, i coautori): un
+// «A Memory of Light» che porta il solo «Sanderson, Brandon» e' lo stesso
+// libro, non un omonimo di un altro autore.
 export const SAGA = "The Wheel of Time";
 
 const A = "Robert Jordan";
+const CO = ["Brandon Sanderson"];
 
 export default [
   { o: 1, t: "The Eye of the World", c: SAGA, a: A, alias: ["L'occhio del mondo"] },
@@ -28,8 +31,8 @@ export default [
   { o: 9, t: "Winter's Heart", c: SAGA, a: A, alias: ["Winters Heart", "Il cuore dell'inverno"] },
   { o: 10, t: "Crossroads of Twilight", c: SAGA, a: A, alias: ["Crocevia del crepuscolo"] },
   { o: 11, t: "Knife of Dreams", c: SAGA, a: A, alias: ["La lama dei sogni"] },
-  { o: 12, t: "The Gathering Storm", c: SAGA, a: A, alias: ["Presagi di tempesta"] },
-  { o: 13, t: "Towers of Midnight", c: SAGA, a: A, alias: ["Le torri di mezzanotte"] },
-  { o: 14, t: "A Memory of Light", c: SAGA, a: A, alias: ["Memoria di luce"] },
+  { o: 12, t: "The Gathering Storm", c: SAGA, a: A, co: CO, alias: ["Presagi di tempesta"] },
+  { o: 13, t: "Towers of Midnight", c: SAGA, a: A, co: CO, alias: ["Le torri di mezzanotte"] },
+  { o: 14, t: "A Memory of Light", c: SAGA, a: A, co: CO, alias: ["Memoria di luce"] },
   { o: 15, t: "New Spring", c: SAGA, a: A, alias: ["Nuova Primavera"], nota: "prequel" },
 ];
