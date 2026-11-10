@@ -94,6 +94,8 @@ async function dispositivo(browser, { sessione = false, prima = null, catalogo =
       if (oracolo && /api\.anthropic\.com/.test(url)) return route.fulfill({ json: await oracolo(JSON.parse(route.request().postData() || "{}")) });
       if (lexicanum && /wh40k\.lexicanum\.com/.test(url)) return lexicanum(route);
       if (fandom && /warhammer40k\.fandom\.com|static\.wikia\.nocookie\.net/.test(url)) return fandom(route);
+      // le immagini di Hardcover: senza intestazioni CORS, come le vere
+      if (hardcover && /assets\.hardcover\.app/.test(url)) return route.fulfill({ body: pngRighe(300, 450, 4, [40, 120, 200], [10, 10, 30]), contentType: "image/png" });
       if (hardcover && /api\.hardcover\.app/.test(url)) {
         const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization,content-type", "access-control-allow-methods": "POST, OPTIONS" };
         if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors, body: "" });
@@ -1212,6 +1214,7 @@ const SCENE = [
     nome: "con la chiave di Hardcover nelle Impostazioni, una saga si trova su Hardcover: un romanzo per numero, le storie di mezzo e l'annunciato senza spunta",
     async fai({ browser }) {
       const chiavi = [];
+      const libriCercati = [];
       const libro = (position, id, title, { anno = 2015, data = `${anno}-10-06`, lettori = 900, lingua = "eng" } = {}) => ({
         position,
         book: { id, title, release_year: anno, release_date: data, users_count: lettori, contributions: [{ author: { name: "Rick  Riordan" } }], default_physical_edition: { language: { code3: lingua } } },
@@ -1221,6 +1224,11 @@ const SCENE = [
         hardcover: async ({ query, variables }, chiave) => {
           chiavi.push(chiave);
           if (/query_type: "Series"/.test(query)) return { data: { search: { results: { hits: [{ document: { id: "1585", name: "Magnus Chase and the Gods of Asgard", readers_count: 2729 } }, { document: { id: "260530", name: "Magnus Chase ve Asgard Tanrıları", readers_count: 0 } }] } } } };
+          // le copertine che mancano: la ricerca di un libro col suo indirizzo
+          if (/query_type: "Book"/.test(query)) {
+            libriCercati.push(variables.q);
+            return { data: { search: { results: { hits: /Hammer of Thor/.test(variables.q) ? [{ document: { title: "The Hammer of Thor", author_names: ["Rick Riordan"], users_count: 900, image: { url: "https://assets.hardcover.app/editions/2/thor.jpg" } } }] : [] } } } };
+          }
           if (/series_by_pk/.test(query) && variables.id === 1585)
             return { data: { series_by_pk: { id: 1585, name: "Magnus Chase and the Gods of Asgard", book_series: [
               libro(1, 1, "Yaz Kılıcı", { lettori: 2000, lingua: "tur" }),
@@ -1262,7 +1270,15 @@ const SCENE = [
       const scritte = nuove.map((b) => `${b.sagaOrder} ${b.title} · ${b.saga} / ${b.series} · ${b.author}`).join(" | ");
       if (scritte !== "1 The Sword of Summer · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan | 2 The Hammer of Thor · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan | 3 The Ship of the Dead · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan")
         throw new Error(`le schede: ${scritte}`);
-      return { guasti: d.guasti, nota: `${chiavi.length} domande a Hardcover; ${scritte.split(" | ").length} schede in «Rick Riordan», serie Magnus Chase, 1–3; la traduzione turca fuori, la storia di mezzo 1.5 e l'annunciato senza spunta` };
+      // LE COPERTINE CHE MANCANO (il lettore: «sì, mostra le copertine di
+      // Hardcover quando mancano»): sullo scaffale la sua, dove la nostra non c'e'
+      await p.keyboard.press("Escape");
+      await p.goto(`${URL_APP}?apri=libreria`);
+      await finche(() => p.locator('img[src="https://assets.hardcover.app/editions/2/thor.jpg"]').count(), 10000, "la copertina di Hardcover non si mostra");
+      const senza = await p.evaluate(() => [...document.querySelectorAll("img")].filter((i) => /assets\.hardcover\.app/.test(i.src)).length);
+      if (senza !== 1) throw new Error(`copertine di Hardcover sullo scaffale: ${senza} (attesa una: le altre Hardcover non le ha)`);
+      if (!libriCercati.some((q) => /The Sword of Summer/.test(q))) throw new Error("i libri senza copertina non si cercano");
+      return { guasti: d.guasti, nota: `${chiavi.length} domande a Hardcover; ${scritte.split(" | ").length} schede in «Rick Riordan», serie Magnus Chase, 1–3; la traduzione turca fuori, la storia di mezzo 1.5 e l'annunciato senza spunta; la copertina di Hardcover dove manca (${libriCercati.length} libri cercati)` };
     },
   },
   {

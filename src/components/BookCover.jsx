@@ -5,6 +5,7 @@ import { getCover, getAux, putAux } from "../lib/bookStore.js";
 import { caricaCopertina, giaVista, ascoltaCopertine, chiaveMin, LATO_MIN, generazione } from "../lib/miniature.js";
 import { preparaCopertina } from "../lib/copertina.js";
 import { vestito, gradinoTitolo } from "../lib/dorso.js";
+import { chiaveHardcover, domandaHardcover, copertinaHardcover } from "../lib/hardcover.js";
 
 // IL DORSO DISEGNATO, per i libri che una copertina non ce l'hanno.
 //
@@ -166,6 +167,8 @@ export default function BookCover({ book, radius = 8, compact = false, version =
   const [url, setUrl] = useState(nota);
   const [vicina, setVicina] = useState(intera || nota !== undefined || typeof IntersectionObserver === "undefined");
   const [giro, setGiro] = useState(0);
+  // la copertina di Hardcover, mostrata dove la nostra manca (`copertinaHardcover`)
+  const [web, setWeb] = useState(null);
   const scatola = useRef(null);
 
   useEffect(() => {
@@ -229,6 +232,23 @@ export default function BookCover({ book, radius = 8, compact = false, version =
     };
   }, [book.id, version, vicina, intera, haCopertina, giro, generazione(book.id)]);
 
+  // SENZA COPERTINA, CON LA CHIAVE DI HARDCOVER: si mostra la sua, se c'e'
+  useEffect(() => {
+    setWeb(null);
+    if (url !== null || !vicina) return;
+    const chiave = chiaveHardcover();
+    if (!chiave) return;
+    let alive = true;
+    copertinaHardcover(book, { chiedi: domandaHardcover(chiave) }).then((u) => {
+      if (!alive || !u) return;
+      setWeb(u);
+      onDisegnata?.(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [book.id, book.title, book.author, url, vicina]);
+
   return (
     <div
       ref={scatola}
@@ -247,6 +267,19 @@ export default function BookCover({ book, radius = 8, compact = false, version =
           src={url}
           alt=""
           decoding="async"
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        />
+      ) : url === null && web ? (
+        <img
+          src={web}
+          alt=""
+          decoding="async"
+          referrerPolicy="no-referrer"
+          // un'immagine che non arriva (rete, indirizzo cambiato) torna al dorso
+          onError={() => {
+            setWeb(null);
+            onDisegnata?.(true);
+          }}
           style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
         />
       ) : url === null ? (

@@ -250,3 +250,88 @@ export function fraseHardcover(avviso) {
   if (avviso === "guasto") return "Hardcover non risponde adesso: ho cercato su Wikidata.";
   return null;
 }
+
+// ---- le copertine che mancano ---------------------------------------------------
+//
+// LA COPERTINA DI HARDCOVER, MOSTRATA E NON SALVATA (il lettore, con tre
+// storie di Cahill a dorso disegnato: «non riesci a trovare le copertine?», e
+// poi «sì, mostra le copertine di Hardcover quando mancano»). Open Library
+// non le ha; Hardcover si', ma le sue immagini (`assets.hardcover.app`)
+// lasciano leggere i byte solo a hardcover.app: un'immagine si puo' mostrare
+// (`<img>`), non salvare ne' sincronizzare, e un intermediario per aggirarlo
+// sarebbe aggirare la loro regola. Quindi l'indirizzo si ricorda sul
+// dispositivo e la copertina si vede con la rete; una copertina vera, quando
+// c'e', vince sempre.
+//
+// Si chiede solo per un libro senza copertina, con la chiave, quando sta per
+// entrare nello schermo; una domanda alla volta (`PASSO_MS`: Hardcover ne
+// regge sessanta al minuto); il «non c'e'» si ricorda `NON_CE_MS`.
+const MEMORIA = "bc_copertine_hc";
+export const PASSO_MS = 1100;
+export const NON_CE_MS = 30 * 24 * 3600 * 1000;
+
+// fra i risultati, il libro col titolo (anche col sottotitolo dopo) e, se
+// scritto, l'autore; il piu' letto
+export function sceltaCopertinaHC(hits = [], { titolo = "", autore = "" } = {}) {
+  const suo = pianoHC(titolo);
+  if (!suo) return null;
+  const docs = hits
+    .map((h) => h?.document || h)
+    .filter((d) => d?.image?.url && /^https:\/\//.test(d.image.url))
+    .filter((d) => {
+      // il sottotitolo sta dopo i due punti, una parentesi o un trattino:
+      // «The Ice Storm» non e' «The Ice»
+      const [prima] = String(d.title || "").split(/\s*[:(–—-]\s*/);
+      return pianoHC(d.title) === suo || pianoHC(prima) === suo;
+    })
+    .filter((d) => !String(autore).trim() || (d.author_names || []).some((a) => eLAutore(autore, nomeDi(a)) || eLAutore(nomeDi(a), autore)));
+  return docs.sort((a, b) => (b.users_count || 0) - (a.users_count || 0))[0]?.image.url || null;
+}
+
+const leggiMemoria = (st) => {
+  try {
+    return JSON.parse(st?.getItem(MEMORIA) || "{}") || {};
+  } catch {
+    return {};
+  }
+};
+
+// la coda: una domanda dopo l'altra, `PASSO_MS` fra l'una e l'altra
+let coda = Promise.resolve();
+const inCoda = (lavoro, aspetta) => {
+  const giro = coda.then(lavoro);
+  coda = giro.catch(() => null).then(() => aspetta(PASSO_MS));
+  return giro;
+};
+const inVolo = new Map();
+// una chiave rifiutata non si riprova a ogni copertina: fino alla prossima apertura
+let chiaveNo = false;
+
+// l'indirizzo della copertina di Hardcover per un libro, o null; ricordato
+export function copertinaHardcover(libro, { chiedi, st = globalThis.localStorage, ora = Date.now(), aspetta = (ms) => new Promise((ok) => setTimeout(ok, ms)) } = {}) {
+  const id = libro?.id;
+  if (!id || !chiedi || chiaveNo || !String(libro?.title || "").trim()) return Promise.resolve(null);
+  const m = leggiMemoria(st)[id];
+  if (m && (m.u || ora - (m.t || 0) < NON_CE_MS)) return Promise.resolve(m.u || null);
+  if (inVolo.has(id)) return inVolo.get(id);
+  const giro = inCoda(async () => {
+    const q = `${libro.title} ${libro.author || ""}`.trim();
+    const s = await chiedi(`query($q: String!) { search(query: $q, query_type: "Book", per_page: 5) { results } }`, { q });
+    const u = sceltaCopertinaHC(s?.search?.results?.hits || [], { titolo: libro.title, autore: libro.author });
+    try {
+      const tutte = leggiMemoria(st);
+      tutte[id] = { u: u || "", t: ora };
+      st?.setItem(MEMORIA, JSON.stringify(tutte));
+    } catch {
+      /* memoria piena: si richiedera' */
+    }
+    return u;
+  }, aspetta)
+    .catch((e) => {
+      if (e instanceof ChiaveRifiutata) chiaveNo = true;
+      return null;
+    })
+    .finally(() => inVolo.delete(id));
+  inVolo.set(id, giro);
+  return giro;
+}
