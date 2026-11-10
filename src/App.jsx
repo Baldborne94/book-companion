@@ -66,7 +66,7 @@ import SezioneNovita from "./components/SezioneNovita.jsx";
 import { togliAvanziDrive } from "./lib/avanziDrive.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
 import BarraLavoro from "./components/BarraLavoro.jsx";
-import { spiegaSync, schedaDiversa } from "./lib/syncCore.js";
+import { spiegaSync, schedaDiversa, eDiRete } from "./lib/syncCore.js";
 import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
 import { comincia, segnaVita, segnaAttivita, smetti, dispositivo } from "./lib/tempo.js";
@@ -1345,7 +1345,7 @@ export default function App() {
       // il testo tecnico resta sotto «dettagli» per quando arriva la
       // fotografia a chi deve ripararlo.
       const guaio = spiegaSync(e);
-      annotaErrore(e, { dove: "sincronizzazione" });
+      if (!eDiRete(e)) annotaErrore(e, { dove: "sincronizzazione" });
       setSync((s) => ({ ...s, busy: false, message: guaio.frase, dettaglio: guaio.dettaglio }));
       if (!quiet) notify("Sincronizzazione fallita — riprovo più tardi");
     }
