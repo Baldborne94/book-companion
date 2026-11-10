@@ -39,9 +39,12 @@ export async function addTrackFile(file) {
   const trackId = crypto.randomUUID();
   await putTrack(trackId, file);
   const now = Date.now();
+  // `file`: il nome del file com'era, perche' un brano rinominato qui si
+  // riconosca lo stesso quando lo stesso file arriva sull'altro dispositivo
   return {
     id: crypto.randomUUID(),
     name: nomeMelodia(file.name),
+    file: file.name,
     trackId,
     mime,
     size: file.size,
@@ -49,6 +52,39 @@ export async function addTrackFile(file) {
     updatedAt: now,
   };
 }
+
+// I BRANI VIAGGIANO, I BYTE NO (chiesto dal lettore, con le raccolte del
+// tablet vuote sul PC: «c'è modo di allineare i due dispositivi senza però
+// usare il cloud?»). Il nome di ogni brano arriva sull'altro dispositivo,
+// dove non suona finche' non ci porti il file (cavo, Quick Share, una
+// chiavetta). Il file portato si riconosce dalla voce che c'e' gia' — stesso
+// peso, e lo stesso nome o lo stesso nome di file — e i suoi byte si
+// custodiscono sotto la SUA chiave: le raccolte restano quelle, senza un
+// doppione col suo id nuovo. Senza un nome uguale (un brano rinominato prima
+// che si ricordasse il nome del file) basta il peso, se e' uno solo fra i
+// brani che qui mancano e il tipo e' lo stesso: due audio diversi con gli
+// stessi byte contati non capitano.
+const stessoNome = (f, file) => f.name === nomeMelodia(file.name) || (!!f.file && f.file === file.name);
+
+export function voceDaAdottare(file, favs = [], qui = new Set()) {
+  if (!file) return null;
+  const mancano = favs.filter((f) => !f.deleted && f.trackId && !qui.has(f.trackId) && f.size === file.size);
+  const perNome = mancano.find((f) => stessoNome(f, file));
+  if (perNome) return perNome;
+  const tipo = tipoAudio(file);
+  return mancano.length === 1 && tipo && mancano[0].mime === tipo ? mancano[0] : null;
+}
+
+// i byte di un file portato qui, sotto la chiave del brano che li aspettava
+export async function adottaFile(voce, file) {
+  if (!voce?.trackId || !tipoAudio(file)) return false;
+  await putTrack(voce.trackId, file);
+  return true;
+}
+
+// i brani da file di cui questo dispositivo non ha i byte
+export const braniAltrove = (favs = [], qui) =>
+  qui ? favs.filter((f) => !f.deleted && f.trackId && !qui.has(f.trackId)) : [];
 
 export const loadTrack = (trackId) => getTrack(trackId);
 
@@ -168,7 +204,7 @@ export function nuovaRaccolta(name) {
 const nomeGiusto = (s) => String(s || "").trim().toLocaleLowerCase();
 const ordineNaturale = new Intl.Collator("it", { numeric: true, sensitivity: "base" });
 
-export function pianoDaCartella(radice, voci, { raccolte = [], favs = [] } = {}) {
+export function pianoDaCartella(radice, voci, { raccolte = [], favs = [], qui = null } = {}) {
   const gruppi = new Map();
   for (const v of voci || []) {
     const percorso = (v.percorso || []).filter(Boolean);
@@ -180,6 +216,11 @@ export function pianoDaCartella(radice, voci, { raccolte = [], favs = [] } = {})
   }
   const vive = raccolte.filter((r) => !r.deleted);
   const custodite = favs.filter((f) => !f.deleted && f.trackId);
+  // i brani arrivati dall'altro dispositivo senza byte: un file della
+  // cartella che e' uno di loro porta i byte a lui (`voceDaAdottare`)
+  const adottati = [];
+  const presi = new Set();
+  const qua = qui || new Set(custodite.map((f) => f.trackId));
   const piano = [];
   for (const [nome, brani] of gruppi) {
     brani.sort((a, b) => ordineNaturale.compare(a.ordine, b.ordine));
@@ -191,7 +232,12 @@ export function pianoDaCartella(radice, voci, { raccolte = [], favs = [] } = {})
     // ognuno o un file da custodire o una melodia che c'e' gia'
     const sequenza = [];
     for (const { file } of brani) {
-      const gia = custodite.find((f) => f.name === nomeMelodia(file.name) && f.size === file.size);
+      const lontano = voceDaAdottare(file, custodite.filter((f) => !presi.has(f.id)), qua);
+      if (lontano) {
+        presi.add(lontano.id);
+        adottati.push({ voce: lontano, file });
+      }
+      const gia = lontano || custodite.find((f) => stessoNome(f, file) && f.size === file.size);
       if (gia) {
         if (!dentro.has(gia.id) && !rimessi.includes(gia.id)) {
           rimessi.push(gia.id);
@@ -204,7 +250,11 @@ export function pianoDaCartella(radice, voci, { raccolte = [], favs = [] } = {})
     }
     piano.push({ nome, id: esistente?.id || null, nuovi, rimessi, sequenza, tutti: brani.length });
   }
-  return piano.sort((a, b) => ordineNaturale.compare(a.nome, b.nome));
+  piano.sort((a, b) => ordineNaturale.compare(a.nome, b.nome));
+  // la lista dei brani da adottare sta sulla lista, non in ogni raccolta: un
+  // brano e' uno anche se sta in due cartelle
+  piano.adottati = adottati;
+  return piano;
 }
 
 // i file di una cartella scelta con `showDirectoryPicker`, sottocartelle

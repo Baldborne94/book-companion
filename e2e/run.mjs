@@ -1683,6 +1683,71 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore, con le raccolte del tablet vuote sul PC: «c'è
+    // modo di allineare i due dispositivi senza però usare il cloud?». I nomi
+    // dei brani viaggiano, i byte no; i file portati a mano si riconoscono e
+    // suonano nelle stesse raccolte, senza doppioni
+    nome: "i brani del tablet arrivano sul PC coi nomi, e portati i file suonano nelle stesse raccolte",
+    async fai({ browser, db }) {
+      const prima = ([b64, brani]) => {
+        const byte = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const file = (nome) => ({ kind: "file", getFile: async () => new File([byte], nome, { type: "" }) });
+        const cartella = (voci) => ({
+          kind: "directory",
+          async *entries() {
+            for (const [nome, v] of Object.entries(voci)) yield [nome, v === 1 ? file(nome) : v];
+          },
+        });
+        const music = cartella({ "Horror playlist": cartella(Object.fromEntries(brani.map((b) => [b, 1]))) });
+        window.showDirectoryPicker = async () => Object.assign(music, { name: "Music" });
+      };
+      const tab = await dispositivo(browser, { sessione: true, misura: TABLET });
+      await tab.ctx.addInitScript(prima, [wav(2).toString("base64"), ["Night.wav", "Fog.wav"]]);
+      // sul PC la cartella copiata dal tablet ha solo «Fog»: «Night» arriva a parte
+      const pc = await dispositivo(browser, { sessione: true });
+      await pc.ctx.addInitScript(prima, [wav(2).toString("base64"), ["Fog.wav"]]);
+      await tab.p.goto(`${URL_APP}?apri=musica`);
+      await tab.p.getByRole("button", { name: "＋ Aggiungi" }).click();
+      await tab.p.getByRole("button", { name: "📁 Da una cartella" }).click();
+      await finche(() => tab.p.getByText(/📁 Dalla cartella «Music»/).count(), 15000, "la cartella non diventa una raccolta sul tablet");
+      const lassu = () => (db.prefs()?.music_favs || []).filter((f) => f.trackId && !f.deleted);
+      await finche(() => lassu().length === 2, 15000, `i brani da file non salgono (lassu': ${lassu().length})`);
+      if (lassu().some((f) => f.track || f.blob)) throw new Error("con i nomi sono saliti anche i byte");
+
+      await pc.p.goto(`${URL_APP}?apri=musica`);
+      await finche(() => pc.p.getByText(/2 brani stanno su un altro dispositivo/).count(), 15000, "sul PC l'avviso dei brani del tablet non compare");
+      await finche(() => testoAvviso(pc.p, /^2 brani · non qui$/), 5000, "la raccolta sul PC non dice che i brani non sono qui");
+      // niente da suonare qui, e lo dice invece di tacere
+      await pc.p.getByRole("button", { name: "Suona Horror playlist" }).click();
+      await finche(() => pc.p.getByText(/Nessuno di questi brani è su questo dispositivo/).count(), 8000, "la raccolta senza byte non dice perché non suona");
+
+      // portati i file (col cavo, con Quick Share): li si sceglie dall'avviso.
+      // Prima uno solo: la raccolta salta quello che manca e suona l'altro
+      const porta = async (nomi) => {
+        const [scelta] = await Promise.all([pc.p.waitForEvent("filechooser"), pc.p.getByRole("button", { name: "♫ Scegli i file" }).click()]);
+        await scelta.setFiles(nomi.map((name) => ({ name, mimeType: "audio/wav", buffer: wav(2) })));
+      };
+      await porta(["Night.wav"]);
+      await finche(() => pc.p.getByText(/«Night» ora suona anche qui/).count(), 15000, "il file portato non si riconosce");
+      await finche(() => testoAvviso(pc.p, /^2 brani · 1 non qui$/), 5000, "la raccolta non dice che ne manca uno solo");
+      await pc.p.getByRole("button", { name: "Suona Horror playlist" }).click();
+      await finche(() => testoAvviso(pc.p, /^2 brani · 1 non qui · ♫ in ascolto$/), 8000, "la raccolta si ferma sul brano che manca invece di suonare quello che c'e'");
+      // poi la cartella copiata dal tablet: le sue raccolte restano quelle
+      await pc.p.getByRole("button", { name: "📁 Scegli la cartella" }).click();
+      await finche(() => pc.p.getByText(/1 brano dell'altro dispositivo ora suona anche qui/).count(), 15000, "il brano della cartella portata non si riconosce");
+      await finche(async () => !(await pc.p.getByText(/su un altro dispositivo/).count()), 5000, "portati i file, l'avviso resta");
+      await finche(() => testoAvviso(pc.p, /^2 brani · ♫ in ascolto$/), 5000, "la raccolta dice ancora che dei brani non sono qui");
+      const qui = await pc.p.evaluate(() => ({
+        melodie: JSON.parse(localStorage.getItem("bc_music_favs") || "[]").filter((f) => !f.deleted).map((f) => f.id).sort(),
+        brani: JSON.parse(localStorage.getItem("bc_music_lists") || "[]").filter((r) => !r.deleted).map((r) => [...r.brani].sort()),
+      }));
+      const delTablet = lassu().map((f) => f.id).sort();
+      if (JSON.stringify(qui.melodie) !== JSON.stringify(delTablet)) throw new Error(`doppioni sul PC: ${JSON.stringify(qui.melodie)} contro ${JSON.stringify(delTablet)}`);
+      if (JSON.stringify(qui.brani) !== JSON.stringify([delTablet])) throw new Error(`la raccolta sul PC non e' quella del tablet: ${JSON.stringify(qui.brani)}`);
+      return { guasti: [...tab.guasti, ...pc.guasti], nota: `${delTablet.length} brani: nomi lassu', byte sul PC sotto la loro chiave` };
+    },
+  },
+  {
     // chiesto dal lettore: «un mini player fatto come si deve, come se
     // avessi YouTube o Spotify»
     nome: "il lettore della musica va avanti, torna indietro, salta nel brano e suona il prossimo scelto",

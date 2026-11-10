@@ -833,36 +833,21 @@ function fondiGlossari(local, remote, remoteNewer) {
   return fondi(a || {}, b || {}).glossari;
 }
 
-// I FILE AUDIO VIAGGIANO SOLO DA QUANDO STANNO SU DRIVE. Per un pezzo non
-// viaggiavano affatto (deciso dal lettore: «ogni dispositivo ha i suoi
-// file»): la voce di un file saliva col resto dell'elenco e sull'altro
-// dispositivo compariva un nome che non suonava, e i byte, portati nel
-// secchio per rimediare, erano la cosa piu' pesante del piano gratuito. Con
-// Drive quei byte hanno un posto, e il lettore li ha voluti la': una voce
-// con `trackId` sale solo col segno `drive` (lo scrive il giro della musica
-// quando il brano era lassu'). Drive non c'e' piu': le voci segnate allora
-// continuano a viaggiare (nome, raccolte, lapidi), e ogni dispositivo suona
-// i byte che ha. Senza il segno resta dov'e' nata, come prima — e resta anche la
-// regola di prima per quel che arriva da lassu' senza segno (scritto da una
-// versione vecchia dell'app): non entra. Le lapidi seguono la voce: quella
-// di un brano che viaggiava viaggia anche lei.
-const eFile = (f) => !!f?.trackId;
-const viaggia = (f) => !eFile(f) || !!f.drive;
-
+// I BRANI VIAGGIANO, I BYTE NO (chiesto dal lettore, con le raccolte del
+// tablet vuote sul PC: «c'è modo di allineare i due dispositivi senza però
+// usare il cloud?»). Per un pezzo la voce di un file non viaggiava affatto
+// («ogni dispositivo ha i suoi file»), poi solo col segno `drive`, finche'
+// Drive c'era: ma le raccolte viaggiavano coi loro id, e sull'altro
+// dispositivo restavano vuote, e un file portato la' a mano prendeva un id
+// nuovo — due elenchi mescolati in ogni raccolta, e «non ancora arrivati»
+// per sempre da tutt'e due le parti. Adesso ogni voce viaggia (nome, peso,
+// la chiave dei suoi byte, le lapidi), i byte restano dove sono, e un file
+// portato sull'altro dispositivo si custodisce sotto la chiave della sua voce
+// (`voceDaAdottare` in `music.js`).
 export function mergePrefs(local, remote) {
-  const link = mergeFavorites(
-    (local.music_favs || []).filter(viaggia),
-    (remote?.music_favs || []).filter(viaggia)
-  );
-  // i file di questo dispositivo senza segno: restano qui, salvo che lassu'
-  // ci sia gia' la loro versione segnata
-  const giaFuse = new Set(link.map((f) => f.id));
-  const mieiFile = (local.music_favs || []).filter((f) => !viaggia(f) && !giaFuse.has(f.id));
-  // quel che si scrive QUI: le voci fuse piu' i miei file ancora fermi,
-  // nell'ordine di nascita; quel che sale (`merged.music_favs`) sono le sole
-  // voci che viaggiano
-  const music_favs = link;
-  const favsLocali = [...link, ...mieiFile].sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));
+  const music_favs = mergeFavorites(local.music_favs, remote?.music_favs);
+  // quel che si scrive qui e quel che sale sono lo stesso elenco
+  const favsLocali = music_favs;
   // le raccolte hanno la stessa forma dei preferiti (id, addedAt,
   // updatedAt, deleted), quindi si fondono con la stessa regola
   const music_lists = mergeFavorites(local.music_lists, remote?.music_lists);
