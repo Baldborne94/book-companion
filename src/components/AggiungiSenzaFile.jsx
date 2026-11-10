@@ -56,6 +56,11 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
   // quel che e' appena entrato, detto accanto al tasto: il pannello resta
   // aperto per la saga dopo
   const [fatto, setFatto] = useState(null);
+  // COSA SI AGGIUNGE (chiesto dal lettore: «l'aggiungi senza file vale anche
+  // per manga e fumetti?»): una scheda senza file non ha un formato da cui
+  // capirlo, e lo scaffale e il verso di lettura lo sanno da qui
+  const [tipoNuove, setTipoNuove] = useState("libri");
+  const conTipo = (voci) => voci.map((v) => ({ ...v, tipo: tipoNuove === "libri" ? null : tipoNuove }));
 
   // Hardcover solo con la chiave del lettore (Impostazioni), letta a ogni ricerca
   const hc = () => (chiaveHardcover() ? domandaHardcover(chiaveHardcover()) : null);
@@ -138,7 +143,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
   const daAggiungere = volumi.filter((v, i) => !v.gia && !tolti.has(i));
   function aggiungiElenco() {
     const voci = nellaRaccolta(daAggiungere, raccolta, serie);
-    const nuove = onAggiungi(voci) || [];
+    const nuove = onAggiungi(conTipo(voci)) || [];
     const dove = String(raccolta || "").trim();
     setFatto(`✓ ${nuove.length === 1 ? "1 scheda aggiunta" : `${nuove.length} schede aggiunte`}${dove ? ` in «${dove}»` : ""}. Puoi cercarne un'altra.`);
   }
@@ -162,6 +167,18 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
           La scheda entra sullo scaffale con la sua copertina, senza ebook. Quando avrai il file, apri la scheda e tocca «📂 Scegli
           il file»: entra lì.
         </p>
+        <div role="group" aria-label="Cosa aggiungi" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
+          <span style={{ fontSize: F.piccolo, color: C.muted }}>Aggiungi</span>
+          {[
+            { id: "libri", label: "📖 Libri" },
+            { id: "fumetti", label: "💬 Fumetti" },
+            { id: "manga", label: "🏮 Manga" },
+          ].map((o) => (
+            <button key={o.id} type="button" onClick={() => setTipoNuove(o.id)} aria-pressed={tipoNuove === o.id} style={{ ...tasto(tipoNuove === o.id ? C.accent : C.muted, tipoNuove === o.id), borderRadius: R.tondo }}>
+              {o.label}
+            </button>
+          ))}
+        </div>
 
         <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.titoletto, color: C.accent, marginBottom: 6 }}>Una saga intera, o le saghe di un autore</h3>
         <form onSubmit={trova} style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
@@ -266,7 +283,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
           onSubmit={(e) => {
             e.preventDefault();
             if (!libro.titolo.trim() || giaQui) return;
-            onAggiungi(nellaRaccolta([libro]));
+            onAggiungi(conTipo(nellaRaccolta([libro])));
             setLibro(VUOTO);
             setRiconosco(null);
           }}

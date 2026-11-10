@@ -16,6 +16,7 @@ import { volume } from "./cammino.js";
 import { cercaCopertina } from "./copertineRete.js";
 import { urlCopertina } from "./consigliLiberi.js";
 import { SENZA } from "./segnaposto.js";
+import { TIPI_SCELTI } from "./library.js";
 
 export { SENZA };
 
@@ -27,7 +28,7 @@ const numeroDi = (n) => {
 
 // una scheda nuova, col solo titolo e quel che il lettore sa di lei
 export function schedaSenzaFile(
-  { titolo, autore = "", saga = "", serie = "", numero = null } = {},
+  { titolo, autore = "", saga = "", serie = "", numero = null, tipo = null } = {},
   { id = globalThis.crypto.randomUUID(), ora = Date.now() } = {}
 ) {
   const title = String(titolo || "").trim();
@@ -44,6 +45,9 @@ export function schedaSenzaFile(
     addedAt: ora,
     rating: 0,
     notes: "",
+    // fumetti o manga scelti nel pannello: lo scaffale e il verso di
+    // lettura li sanno prima che arrivi il file (`tipoDi`, `versoDiPartenza`)
+    ...(TIPI_SCELTI.includes(tipo) ? { tipo } : {}),
   };
 }
 

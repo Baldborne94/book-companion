@@ -1205,7 +1205,23 @@ const SCENE = [
       await campoRaccolta.fill("warhammer 40k");
       await finche(async () => (await opzioni("bc-serie-libro")).includes("Eisenhorn") && (await opzioni("bc-serie-libro")).includes("Gaunt's Ghosts"), 5000, "scelta la raccolta, le sue serie non si propongono");
       if ((await p.getByPlaceholder("Serie", { exact: true }).getAttribute("list")) !== "bc-serie-libro") throw new Error("il campo della serie non ha l'elenco");
+      // UN MANGA SENZA FILE («l'aggiungi senza file vale anche per manga e
+      // fumetti?»): il tipo scelto nel pannello, e lo scaffale lo sa subito
+      await campoRaccolta.fill("");
+      await p.getByRole("button", { name: "🏮 Manga", exact: true }).click();
+      await p.getByRole("textbox", { name: "Titolo", exact: true }).fill("One Piece, Vol. 1");
+      await p.getByRole("textbox", { name: "Autore", exact: true }).fill("Eiichiro Oda");
+      await p.getByRole("button", { name: "📥 Aggiungi", exact: true }).click();
+      await finche(async () => (await libriDi(p)).some((b) => b.title === "One Piece, Vol. 1"), 5000, "il manga senza file non entra");
+      const op = (await libriDi(p)).find((b) => b.title === "One Piece, Vol. 1");
+      if (op.tipo !== "manga" || op.fileType !== "nessuno") throw new Error(`il manga senza file: ${JSON.stringify(op)}`);
       await p.getByRole("button", { name: "Chiudi", exact: true }).click();
+      await p.getByRole("button", { name: "🏮 Manga", exact: true }).click();
+      // (il giro dei libri sciolti gli legge la saga dal titolo: sta nella raccolta «One Piece»)
+      await finche(() => p.getByText("One Piece", { exact: true }).count(), 5000, "il manga senza file non sta fra i manga");
+      if (await p.getByText("Warhammer 40K", { exact: true }).count()) throw new Error("fra i manga ci sono i romanzi del 40K");
+      // il secondo «Tutti» e' quello dei tipi
+      await p.getByRole("button", { name: "Tutti", exact: true }).nth(1).click();
       // UN MONDO INTERO («fai le guide di Cosmoverso e Malazan»): tutte le
       // sue guide, una dopo l'altra, in una raccolta
       await p.getByRole("button", { name: "📥 Senza file" }).click();

@@ -35,6 +35,9 @@ import { segnaChiave } from "./chiaviInViaggio.js";
 export const HARDCOVER = "https://api.hardcover.app/v1/graphql";
 const KEY = "bc_hardcover_key";
 export const LETTORI_MIN = 10;
+// i suoi libri da cui risalire alle serie, e quante serie al piu' se ne chiedono
+export const LIBRI_DELL_AUTORE = 60;
+export const SERIE_DAI_LIBRI = 12;
 
 // la chiave si incolla com'e', anche col «Bearer » che la pagina mostra
 export const chiaveNuda = (k) => String(k || "").trim().replace(/^bearer\s+/i, "");
@@ -197,7 +200,13 @@ export function sceltaAutoreHC(hits = [], nome = "") {
 // (French Split)», «Words of Radiance (Dramatized Adaptation)», «… The
 // Graphic Novels»), una traduzione nella lingua dei suoi volumi («Les cités
 // des Anciens»: per meta' o piu' in un'altra lingua).
-const NON_ROMANZI = /\b(split|editions?|adaptations?|dramati[sz]ed|single issues|graphic novels?|comics?|manga)\b/i;
+// e le EDIZIONI di una serie, che di un fumettista sono la meta' (Mignola:
+// «Hellboy: Edición cartoné», «Hellboy Edição Histórica», «AIDP Integral»,
+// «Hellboy Omnibus»; Vaughan: «Absolute Y: the Last Man», «Runaways
+// Deluxe»): le stesse storie rilegate di nuovo, o tradotte
+// (la parola finisce anche su una lettera accentata, che per `\b` non e' una lettera: «Édition»;
+// davanti niente confine, perche' il tedesco attacca: «Gesamtausgabe»)
+const NON_ROMANZI = /(split|editions?|adaptations?|dramati[sz]ed|single issues|graphic novels?|comics?|manga|omnibus|deluxe|absolute|complete collection|\d-in-1|edici[oó]n|edi[cç][aã]o|edizione|[ée]dition|ausgabe|integral|int[ée]grale|colecci[oó]n|cole[cç][aã]o)(?![\p{L}\d])/iu;
 export function serieCheValgono(serie = []) {
   const con = serie
     .map((s) => ({ ...s, lettori: s.volumi.reduce((n, v) => n + v.lettori, 0) }))
@@ -240,6 +249,22 @@ export async function serieDellAutoreHC(nome, chiedi) {
   if (!chi) return null;
   const d = await chiedi(`query($id: Int!) { series(where: {author_id: {_eq: $id}, primary_books_count: {_gt: 0}}, limit: 60) { id name ${LIBRI_DELLA_SERIE} } }`, { id: Number(chi.id) });
   const serie = (d?.series || []).map((x) => ({ q: x.id, nome: nomeDi(x.name), volumi: volumiDaHardcover(x.book_series) }));
+  // LE SERIE DEI SUOI LIBRI PIU' LETTI (il lettore: «l'aggiungi senza file
+  // vale anche per manga e fumetti?»). Hardcover lega una serie a UN autore
+  // della sua anagrafe, e non sempre e' lui: «One Piece» sta sotto un altro
+  // «Eiichiro Oda», e fra le serie di Oda restavano i quiz e gli artbook.
+  // Dai suoi libri si risale alle loro serie; tiene quella in cui almeno
+  // meta' dei volumi sono suoi (non l'antologia di altri dove ha un racconto)
+  const l = await chiedi(`query($id: Int!) { books(where: {contributions: {author_id: {_eq: $id}}}, order_by: {users_count: desc}, limit: ${LIBRI_DELL_AUTORE}) { book_series { series { id } } } }`, { id: Number(chi.id) });
+  const viste = new Set(serie.map((x) => x.q));
+  const altre = [...new Set((l?.books || []).flatMap((b) => (b?.book_series || []).map((x) => x?.series?.id)).filter((q) => q != null && !viste.has(q)))].slice(0, SERIE_DAI_LIBRI);
+  if (altre.length) {
+    const e = await chiedi(`query($ids: [Int!]) { series(where: {id: {_in: $ids}}) { id name ${LIBRI_DELLA_SERIE} } }`, { ids: altre });
+    for (const x of e?.series || []) {
+      const volumi = volumiDaHardcover(x.book_series);
+      if (volumi.filter((v) => eLAutore(nomeDi(chi.name), v.autore)).length * 2 >= volumi.length) serie.push({ q: x.id, nome: nomeDi(x.name), volumi });
+    }
+  }
   return {
     autore: nomeDi(chi.name),
     serie: serieCheValgono(serie).map((x) => ({ fonte: "hardcover", q: x.q, nome: x.nome, ...conti(x.volumi), volumi: perElenco(x.nome, x.volumi) })),

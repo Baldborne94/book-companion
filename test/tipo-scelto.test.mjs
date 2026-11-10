@@ -11,6 +11,8 @@
 // dispositivo rimette il volume fra i fumetti al primo giro) e una scelta
 // «fumetto» che la saga si rimangia.
 import { tipiDi, tipoDi, eManga } from "../src/lib/library.js";
+import { schedaSenzaFile, SENZA } from "../src/lib/senzaFile.js";
+import { versoDiPartenza } from "../src/lib/fumetto.js";
 import { rowFromLocal, localFromRow, normalizeRow, DEGRADE } from "../src/lib/syncCore.js";
 import { FAMIGLIE } from "../src/data/generi.js";
 
@@ -85,5 +87,28 @@ export default async (t) => {
     }
     const altro = DEGRADE.find((d) => d.test("Could not find the 'file_type' column of 'books'", righe));
     t.c("«file_type» non e' il tipo", altro?.label !== "fumetto o manga");
+  }
+
+  // ── LE SCHEDE SENZA FILE HANNO IL LORO TIPO ──────────────────────────
+  // chiesto dal lettore: «l'aggiungi senza file vale anche per manga e
+  // fumetti?». Senza file non c'e' un formato da cui capirlo: lo dice il
+  // pannello, e lo scaffale e il verso lo sanno da subito
+  {
+    const opp = schedaSenzaFile({ titolo: "One Piece, Vol. 1", tipo: "manga" }, { id: "op", ora: 1 });
+    const saga = schedaSenzaFile({ titolo: "Saga, Vol. 1", tipo: "fumetti" }, { id: "sa", ora: 1 });
+    const libro = schedaSenzaFile({ titolo: "Mort", tipo: "libri" }, { id: "mo", ora: 1 });
+    t.eq("la scheda senza file nasce col tipo scelto, e «libri» non e' un tipo", `${opp.tipo}|${saga.tipo}|${"tipo" in libro}`, "manga|fumetti|false");
+    const tipi = tipiDi([opp, saga, libro]);
+    t.eq("sullo scaffale: manga, fumetti, libri", `${tipi.get("op")}|${tipi.get("sa")}|${tipi.get("mo")}`, "manga|fumetti|libri");
+    t.eq("…anche senza la mappa", `${tipoDi(opp)}|${tipoDi(saga)}|${tipoDi(libro)}`, "manga|fumetti|libri");
+    t.eq("arrivato un ePub, un «fumetti» scelto senza file e' un libro", tipoDi({ ...saga, fileType: "epub", fileTolto: false }), "libri");
+    t.eq("arrivato il CBZ resta fumetto", tipoDi({ ...saga, fileType: "cbz", fileTolto: false }), "fumetti");
+    t.eq("il tipo della scheda senza file viaggia", localFromRow(rowFromLocal(opp, STATO, 1)).book.tipo, "manga");
+    t.c("e la scheda e' davvero senza file", opp.fileType === SENZA);
+    // il verso di lettura quando arriva il file
+    t.eq("un manga senza verso nel file si legge da destra", versoDiPartenza({ ...opp, fileType: "cbz" }), "rtl");
+    t.eq("il verso scritto nel file vince sul tipo", versoDiPartenza({ ...opp, fileType: "cbz", verso: "ltr" }), "ltr");
+    t.eq("un fumetto si legge da sinistra", versoDiPartenza({ ...saga, fileType: "cbz" }), "ltr");
+    t.eq("e un CBZ col verso da destra resta da destra", versoDiPartenza({ fileType: "cbz", verso: "rtl" }), "rtl");
   }
 };
