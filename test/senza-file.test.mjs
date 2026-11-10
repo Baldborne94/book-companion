@@ -4,7 +4,7 @@
 // SEGNO (sull'altro dispositivo una scheda senza file non deve diventare un
 // ePub tolto, cioe' un libro posseduto), i DOPPIONI, e la SAGA in cui
 // finiscono le schede di una guida.
-import { schedaSenzaFile, giaSulloScaffale, sagaPerLaGuida, vociDallaGuida, copertinaDalCatalogo, fraseAggiunte, serieDellElenco, nellaRaccolta, SENZA } from "../src/lib/senzaFile.js";
+import { schedaSenzaFile, giaSulloScaffale, sagaPerLaGuida, vociDallaGuida, copertinaDalCatalogo, fraseAggiunte, serieDellElenco, nellaRaccolta, raccolteEsistenti, serieDellaRaccolta, SENZA } from "../src/lib/senzaFile.js";
 import { segnaposto } from "../src/lib/segnaposto.js";
 import { rowFromLocal, localFromRow } from "../src/lib/syncCore.js";
 import { camminoDellaGuida, prossimoPasso } from "../src/lib/cammino.js";
@@ -133,4 +133,25 @@ export default async (t) => {
   t.eq("la frase: una", fraseAggiunte({ aggiunte: 1 }), "📥 Una scheda senza file sullo scaffale");
   t.eq("la frase: molte e alcune gia'", fraseAggiunte({ aggiunte: 14, gia: 1 }), "📥 14 schede senza file sullo scaffale · una c'era già");
   t.eq("la frase: niente", fraseAggiunte({ gia: 3 }), "Niente da aggiungere: c'erano già tutte");
+
+  // ---- LE RACCOLTE DA SCEGLIERE ---------------------------------------------
+  // chiesto dal lettore per il libro solo: «permettimi anche di metterlo in
+  // una raccolta o saga se serve». Le raccolte che hai, una per chiave, con
+  // la grafia piu' usata; e le serie dentro quella scelta
+  {
+    const scaffale = [
+      { saga: "Warhammer 40K", series: "The Horus Heresy" },
+      { saga: "Warhammer 40K", series: "Gaunt's Ghosts" },
+      { saga: "warhammer 40k", series: "the horus heresy" },
+      { saga: "Warhammer 40K", series: "The Horus Heresy" },
+      { saga: "Cosmere", series: "" },
+      { saga: "", series: "Sciolta" },
+      { saga: "The Wheel of Time" },
+    ];
+    t.eq("le raccolte che hai, una per chiave, in ordine di nome", raccolteEsistenti(scaffale).join("|"), "Cosmere|The Wheel of Time|Warhammer 40K");
+    t.eq("le serie della raccolta scelta, anche scritta diversa", serieDellaRaccolta(scaffale, "WARHAMMER 40K").join("|"), "Gaunt's Ghosts|The Horus Heresy");
+    t.eq("una raccolta senza serie non ne propone", serieDellaRaccolta(scaffale, "Cosmere").length, 0);
+    t.eq("senza raccolta niente serie (non quelle dei libri sciolti)", serieDellaRaccolta(scaffale, "").length, 0);
+    t.eq("l'articolo non fa una raccolta nuova", raccolteEsistenti([{ saga: "Wheel of Time" }, { saga: "The Wheel of Time" }, { saga: "The Wheel of Time" }]).join("|"), "The Wheel of Time");
+  }
 };

@@ -122,6 +122,34 @@ export function nellaRaccolta(volumi = [], raccolta = "", serie = "") {
   });
 }
 
+// LE RACCOLTE E LE SERIE CHE HAI GIA', da scegliere invece che da riscrivere
+// (chiesto dal lettore per il libro solo: «permettimi anche di metterlo in
+// una raccolta o saga se serve»). Una raccolta e' la saga scritta nelle
+// schede: due grafie della stessa chiave sono una, con quella piu' usata.
+function grafie(valori) {
+  const per = new Map();
+  for (const v of valori) {
+    const t = String(v || "").trim();
+    const k = chiaveSaga(t);
+    if (!t || !k) continue;
+    const g = per.get(k) || new Map();
+    g.set(t, (g.get(t) || 0) + 1);
+    per.set(k, g);
+  }
+  return [...per.values()]
+    .map((g) => [...g.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0])
+    .sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" }));
+}
+
+export const raccolteEsistenti = (libri = []) => grafie(libri.map((b) => b?.saga));
+
+// le serie dentro una raccolta, quelle che le sue schede scrivono
+export function serieDellaRaccolta(libri = [], raccolta = "") {
+  const k = chiaveSaga(String(raccolta || "").trim());
+  if (!k) return [];
+  return grafie(libri.filter((b) => chiaveSaga(String(b?.saga || "").trim()) === k).map((b) => b?.series));
+}
+
 // L'AUTORE DI UNA GUIDA SCRITTA DA UNO SOLO, per i volumi che non lo
 // dicono (il Mondo Disco lo tiene sulla tavola, in minuscolo)
 const AUTORI = { Discworld: "Terry Pratchett", Hellboy: "Mike Mignola" };
