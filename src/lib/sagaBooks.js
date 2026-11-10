@@ -317,25 +317,28 @@ function combaciaScheletro(campo, chiave, scheletroCampo) {
   return contiene(scheletroCampo ?? scheletro(campo), nudo);
 }
 
+// i cognomi di chi ha scritto la voce: l'autore del volume e i suoi
+// coautori (`co`: gli ultimi tre della Ruota li ha finiti Sanderson), se no
+// quello della tavola intera
+const cognomiDi = (voce) => (voce.a ? [voce.a, ...(voce.co || [])].map(cognome) : [voce.tav.autore || ""]).filter(Boolean);
+const scrittoDa = (voce, autoreNorm, campo) => cognomiDi(voce).some((c) => autoreNorm.includes(c) || campo.includes(c));
+
 // l'autore della voce c'e' ed e' quello scritto nel libro
 function confermato(voce, autoreNorm, campo) {
-  const cogn = voce.a ? cognome(voce.a) : voce.tav.autore || "";
-  return !!cogn && (autoreNorm.includes(cogn) || campo.includes(cogn));
+  return scrittoDa(voce, autoreNorm, campo);
 }
 
 function combacia(campo, voce, autoreNorm, scheletroCampo) {
   if (!contiene(campo, voce.k) && !combaciaScheletro(campo, voce.k, scheletroCampo)) return false;
   // l'autore del volume se la tavola lo scrive volume per volume (l'Eresia,
   // a venti mani), altrimenti quello della tavola intera
-  const cogn = voce.a ? cognome(voce.a) : voce.tav.autore || "";
-  const suo = cogn && (autoreNorm.includes(cogn) || campo.includes(cogn));
-  if (suo) return true;
+  if (scrittoDa(voce, autoreNorm, campo)) return true;
   // UN AUTORE SBAGLIATO E' UNA PROVA; UN AUTORE MANCANTE NON E' NIENTE.
   // Se sappiamo di chi e' il libro e chi ce lo porta dice un altro nome,
   // non e' quello: «Betrayer» di chiunque altro non e' il Betrayer
   // dell'Eresia. Ma meta' degli ePub l'autore non ce l'ha, e li' il
   // silenzio non deve valere come smentita.
-  if (cogn && autoreNorm) return false;
+  if (cognomiDi(voce).length && autoreNorm) return false;
   const nudo = senzaRumore(campo, voce.tav.saga);
   return voce.k.length >= nudo.length * COPERTURA;
 }

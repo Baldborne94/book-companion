@@ -66,6 +66,18 @@ export default async (t) => {
   t.c("…ma le antologie si', sono libri della storia", hh.some((v) => v.titolo === "Eye of Terra"));
   const conUno = [...suoi, { id: "g", title: "First and Only", author: "Dan Abnett", saga: "Warhammer 40K" }];
   t.eq("quello che hai e' segnato", vociDallaGuida(camminoDellaGuida(guida("Gaunt's Ghosts"), conUno), conUno).filter((v) => v.gia).map((v) => v.titolo).join(), "First and Only");
+  // GLI ULTIMI TRE DELLA RUOTA LI HA FINITI SANDERSON (il lettore, con la
+  // foto della sua raccolta: «come mai mi proponi wheel of time? non è già
+  // presente?»): il suo «A Memory of Light» porta solo «Sanderson, Brandon»
+  const ruota = [
+    { id: "w13", title: "Towers of Midnight", author: "Jordan, Robert", saga: "The Wheel of Time" },
+    { id: "w14", title: "A Memory of Light", author: "Sanderson, Brandon", saga: "The Wheel of Time" },
+  ];
+  const vociRuota = vociDallaGuida(camminoDellaGuida(guida("The Wheel of Time"), ruota), ruota);
+  t.eq("il volume scritto col solo Sanderson e' gia' tuo, come quello col cognome davanti", vociRuota.filter((v) => v.gia).map((v) => v.titolo).join(", "), "Towers of Midnight, A Memory of Light");
+  t.c("…e non si aggiunge di nuovo", giaSulloScaffale({ titolo: "A Memory of Light", autore: "Robert Jordan" }, ruota));
+  t.c("…il cognome davanti e' lo stesso autore, anche fuori dalle guide", giaSulloScaffale({ titolo: "Hyperion", autore: "Dan Simmons" }, [{ title: "Hyperion", author: "Simmons, Dan" }]));
+  t.c("…ma un Sanderson che la Ruota non l'ha scritta resta un altro libro", !giaSulloScaffale({ titolo: "Knife of Dreams", autore: "Robert Jordan" }, [{ title: "Knife of Dreams", author: "Brandon Sanderson" }]));
 
   // UNA SCHEDA SENZA FILE NON E' UN LIBRO CHE HAI
   const posto = schedaSenzaFile({ titolo: "Ghostmaker", autore: "Dan Abnett", saga: "Warhammer 40K" }, { id: "p" });

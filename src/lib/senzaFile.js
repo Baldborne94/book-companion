@@ -73,9 +73,15 @@ export function giaSulloScaffale(voce, libri = []) {
     const rb = riconosci({ title: b?.title, author: b?.author });
     return rb?.saga === ra.saga && rb?.titolo === ra.titolo;
   };
+  // «Jordan, Robert» e' «Robert Jordan»: le parole, non il loro ordine
+  const parole = (a) => piano(a).split(" ").filter(Boolean).sort().join(" ");
+  const chi = parole(voce?.autore);
   return libri.some((b) => {
-    const suo = piano(b?.author);
-    if (autore && suo && suo !== autore) return false;
+    const suo = parole(b?.author);
+    // un altro autore scritto non e' lo stesso titolo, ma puo' essere lo
+    // stesso volume di una guida, riconosciuto ognuno col suo autore (il
+    // «A Memory of Light» del solo Sanderson e' quello di Jordan)
+    if (chi && suo && suo !== chi) return stessoVolume(b);
     if (piano(b?.title) === titolo) return true;
     if (autore && suo && [piano(b?.title), ...corte(b?.title)].some((t) => mie.has(t))) return true;
     return stessoVolume(b);
