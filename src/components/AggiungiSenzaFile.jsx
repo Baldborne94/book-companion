@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { sagaDalNome, saghePerAutore, libriDellaSaga } from "../lib/sagaDaNome.js";
 import { sagaDelLibro, fraseSagaDelLibro, raccolteDellAutore } from "../lib/sagaDelLibro.js";
@@ -53,6 +53,9 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
   const [chi, setChi] = useState("");
   const [saghe, setSaghe] = useState(null);
   const [cercaAutore, setCercaAutore] = useState(null);
+  // quel che e' appena entrato, detto accanto al tasto: il pannello resta
+  // aperto per la saga dopo
+  const [fatto, setFatto] = useState(null);
 
   // Hardcover solo con la chiave del lettore (Impostazioni), letta a ogni ricerca
   const hc = () => (chiaveHardcover() ? domandaHardcover(chiaveHardcover()) : null);
@@ -65,6 +68,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
     if (!n) return;
     setCerca("cerco");
     setEsito(null);
+    setFatto(null);
     try {
       const r = await sagaDalNome(n, { libri: books, prendi, hardcover: hc() });
       setEsito(r && r.volumi.length ? r : { vuota: true, senzaLibri: r?.nome || "", hardcover: r?.hardcover });
@@ -94,6 +98,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
   async function apriSaga(voce) {
     setCerca("cerco");
     setEsito(null);
+    setFatto(null);
     try {
       const r = await libriDellaSaga(voce, { libri: books, prendi });
       setEsito(r && r.volumi.length ? r : { vuota: true, senzaLibri: r?.nome || "" });
@@ -127,7 +132,16 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
   // aggiungere di nuovo» — e lo si dice prima del tasto
   const giaQui = !!libro.titolo.trim() && giaSulloScaffale(libro, books);
 
-  const daAggiungere = esito?.volumi ? esito.volumi.filter((v, i) => !v.gia && !tolti.has(i)) : [];
+  // «gia' sullo scaffale» guardato sulla biblioteca di adesso: quel che si e'
+  // appena aggiunto dall'elenco si vede subito, senza rifare la ricerca
+  const volumi = useMemo(() => (esito?.volumi || []).map((v) => (v.gia || !giaSulloScaffale(v, books) ? v : { ...v, gia: true })), [esito, books]);
+  const daAggiungere = volumi.filter((v, i) => !v.gia && !tolti.has(i));
+  function aggiungiElenco() {
+    const voci = nellaRaccolta(daAggiungere, raccolta, serie);
+    const nuove = onAggiungi(voci) || [];
+    const dove = String(raccolta || "").trim();
+    setFatto(`✓ ${nuove.length === 1 ? "1 scheda aggiunta" : `${nuove.length} schede aggiunte`}${dove ? ` in «${dove}»` : ""}. Puoi cercarne un'altra.`);
+  }
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 40, overflowY: "auto", background: TEMA.gradient, animation: "bc-fade-in 0.35s ease-out" }}>
@@ -218,7 +232,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
                 {serieDellaRaccolta(books, raccolta).map((x) => <option key={x} value={x} />)}
               </datalist>
             </label>
-            {esito.volumi.map((v, i) => (
+            {volumi.map((v, i) => (
               <label key={`${v.numero}-${v.titolo}`} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 44, padding: "4px 0", borderBottom: `1px solid ${C.border}44`, opacity: v.gia ? 0.6 : 1 }}>
                 <input
                   type="checkbox"
@@ -234,13 +248,16 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
                 </span>
               </label>
             ))}
-            <button
-              disabled={!daAggiungere.length}
-              onClick={() => onAggiungi(nellaRaccolta(daAggiungere, raccolta, serie))}
-              style={{ ...tasto(C.accent, true), marginTop: 12, opacity: daAggiungere.length ? 1 : 0.5 }}
-            >
-              {daAggiungere.length ? `📥 Aggiungi ${daAggiungere.length === 1 ? "1 scheda" : `${daAggiungere.length} schede`}` : esito.volumi.some((v) => !v.gia) ? "Spunta quelli da aggiungere" : "Li hai già tutti"}
-            </button>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
+              <button
+                disabled={!daAggiungere.length}
+                onClick={aggiungiElenco}
+                style={{ ...tasto(C.accent, true), opacity: daAggiungere.length ? 1 : 0.5 }}
+              >
+                {daAggiungere.length ? `📥 Aggiungi ${daAggiungere.length === 1 ? "1 scheda" : `${daAggiungere.length} schede`}` : volumi.some((v) => !v.gia) ? "Spunta quelli da aggiungere" : "Li hai già tutti"}
+              </button>
+              {fatto && <span role="status" style={{ flex: "1 1 220px", fontSize: F.piccolo, color: C.accent, lineHeight: 1.5 }}>{fatto}</span>}
+            </div>
           </div>
         )}
 

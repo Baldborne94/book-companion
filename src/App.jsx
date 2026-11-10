@@ -2495,10 +2495,10 @@ export default function App() {
         <AggiungiSenzaFile
           books={books}
           onClose={() => setSenzaFileOpen(false)}
-          onAggiungi={(voci) => {
-            aggiungiSenzaFile(voci);
-            setSenzaFileOpen(false);
-          }}
+          // IL PANNELLO RESTA APERTO (chiesto dal lettore: «quando aggiungo
+          // una saga non tornare subito alla pagina principale, magari voglio
+          // rimanere lì e aggiungerne altre»): si chiude con la ✕
+          onAggiungi={(voci) => aggiungiSenzaFile(voci)}
         />
       )}
       {syncOpen && (

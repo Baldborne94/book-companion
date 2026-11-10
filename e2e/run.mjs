@@ -1138,6 +1138,12 @@ const SCENE = [
       const ordine = nuove.sort((a, b) => a.sagaOrder - b.sagaOrder).map((b) => `${b.sagaOrder} ${b.title}`).join(" | ");
       if (!/^1 First and Only \| 2 Ghostmaker \| 3 Necropolis/.test(ordine) || /Anarch/.test(ordine)) throw new Error(`l'ordine non e' quello della guida: ${ordine}`);
       if (!nuove.every((b) => b.fileTolto && b.saga === "Warhammer 40K" && b.series === "Gaunt's Ghosts" && b.author === "Dan Abnett")) throw new Error(`saga, serie o autore sbagliati: ${JSON.stringify(nuove[0])}`);
+      // IL PANNELLO RESTA APERTO («magari voglio rimanere lì e aggiungerne
+      // altre»): lo dice accanto al tasto, e quel che e' entrato e' gia' sullo scaffale
+      await finche(() => p.getByRole("status").filter({ hasText: "✓ 14 schede aggiunte in «Warhammer 40K». Puoi cercarne un'altra." }).count(), 5000, "aggiunta la saga, il pannello non resta aperto a dirlo");
+      if ((await p.getByText("✓ è già sullo scaffale").count()) < 14) throw new Error("le schede appena aggiunte non risultano gia' sullo scaffale nell'elenco");
+      if (!(await p.getByRole("button", { name: "Spunta quelli da aggiungere" }).count())) throw new Error("il tasto offre ancora di aggiungere quel che e' entrato");
+      await p.getByRole("button", { name: "Chiudi", exact: true }).click();
       // le copertine scendono dopo, due alla volta
       const copertine = () =>
         p.evaluate(
@@ -1192,8 +1198,7 @@ const SCENE = [
       if (`${malleus.saga}|${malleus.series}|${malleus.sagaOrder}` !== "Warhammer 40K|Eisenhorn|2") throw new Error(`Malleus sullo scaffale: ${JSON.stringify(malleus)}`);
       // LA RACCOLTA SI SCEGLIE («permettimi anche di metterlo in una raccolta
       // o saga se serve»): i campi propongono le raccolte che hai e, scelta
-      // la raccolta, le sue serie
-      await p.getByRole("button", { name: "📥 Senza file" }).click();
+      // la raccolta, le sue serie (aggiunto Malleus, il pannello e' ancora li')
       const opzioni = (id) => p.evaluate((x) => [...document.querySelectorAll(`#${x} option`)].map((o) => o.value), id);
       const campoRaccolta = p.getByPlaceholder("Raccolta", { exact: true });
       if ((await campoRaccolta.getAttribute("list")) !== "bc-raccolte" || !(await opzioni("bc-raccolte")).includes("Warhammer 40K")) throw new Error(`il campo della raccolta non propone le raccolte: ${await opzioni("bc-raccolte")}`);
