@@ -14,6 +14,7 @@ import {
   tipiDi,
 } from "../lib/library.js";
 import { eFumetto } from "../lib/fumetto.js";
+import { SENZA } from "../lib/segnaposto.js";
 import { getCover, getFile, putCover, removeCover } from "../lib/bookStore.js";
 import { recupera, senzaEtichetta } from "../lib/sinossi.js";
 import { preparaCopertina, copertinaOriginale } from "../lib/copertina.js";
@@ -390,7 +391,8 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
     notes,
     rating,
     fav,
-    tipo,
+    // «📖 Libro» su una scheda senza file e' l'assenza di un tipo
+    tipo: tipo === "libri" ? null : tipo,
   });
 
   function commitAndClose() {
@@ -702,12 +704,14 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
 
             {/* IL TIPO NON E' UN GENERE («non dovrebbe essere un genere il
                 manga»): un manga fantasy e' fantasy nel genere e manga qui.
-                Solo sui fumetti, perche' un ePub e' un libro e basta. */}
-            {eFumetto(book) && (
+                Solo sui fumetti, perche' un ePub e' un libro e basta; e
+                sulle schede senza file, che un formato non ce l'hanno. */}
+            {(eFumetto(book) || book.fileType === SENZA) && (
               <div style={{ marginBottom: 10 }}>
                 <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 3 }}>Tipo</span>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {[
+                    ...(eFumetto(book) ? [] : [{ id: "libri", label: "📖 Libro" }]),
                     { id: "fumetti", label: "💬 Fumetto" },
                     { id: "manga", label: "🏮 Manga" },
                   ].map((o) => {
@@ -732,7 +736,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                     );
                   })}
                 </div>
-                {!tipo && (
+                {!tipo && eFumetto(book) && (
                   <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginTop: 3 }}>
                     {tipoDeciso === "manga"
                       ? "Riconosciuto come manga. Segnane uno: gli altri volumi della saga seguono."

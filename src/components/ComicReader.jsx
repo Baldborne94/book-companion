@@ -13,6 +13,7 @@ import {
   paginaDaAprire,
   tocco,
   leggiVerso,
+  versoDiPartenza,
   scriviVerso,
   leggiAdatta,
   scriviAdatta,
@@ -190,7 +191,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   const contaSfuma = useRef(0);
   const misuraVoltata = useRef(null);
   const [uscente, setUscente] = useState(null);
-  const [verso, setVerso] = useState(() => leggiVerso(book.id, book.verso));
+  const [verso, setVerso] = useState(() => leggiVerso(book.id, versoDiPartenza(book)));
   const [adatta, setAdatta] = useState(() => leggiAdatta());
   // I BORDI DELLA SCANSIONE (`lib/fumetto.js`): misurati una volta per
   // libro alla prima apertura, sotto la candela, e poi letti dal

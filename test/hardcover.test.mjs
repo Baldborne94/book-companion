@@ -134,10 +134,11 @@ export default async (t) => {
   // ── LE DOMANDE INTERE ─────────────────────────────────────────────────
   const domande = [];
   const chiedi = async (query, vars) => {
-    domande.push(query.match(/search|series_by_pk|series\(/)[0]);
+    domande.push(query.match(/search|series_by_pk|books\(|series\(/)[0]);
     if (/query_type: "Series"/.test(query)) return { search: { results: { hits: vars.q === "the bound and the broken" ? [{ document: { id: "4979", name: "The Bound and the Broken", readers_count: 1006 } }] : vars.q === "serie finta" ? [{ document: { id: "4980", name: "Serie Finta", readers_count: 5 } }] : [] } } };
     if (/query_type: "Author"/.test(query)) return { search: { results: { hits: [{ document: { id: "254520", name: "Ryan  Cahill", books_count: 12 } }] } } };
     if (/series_by_pk/.test(query)) return { series_by_pk: { id: 4979, name: "The Bound and the Broken", book_series: BOUND } };
+    if (/books\(/.test(query)) return { books: [{ book_series: [{ series: { id: 4979 } }] }] };
     return { series: [{ id: 4979, name: "The Bound and the Broken", book_series: BOUND }] };
   };
   const bb = await serieHardcover("the bound and the broken", chiedi);
@@ -146,7 +147,45 @@ export default async (t) => {
   t.eq("un nome che Hardcover non ha", await serieHardcover("niente", chiedi), null);
   domande.length = 0;
   const cahill = await serieDellAutoreHC("Ryan Cahill", chiedi);
-  t.eq("le serie di un autore: due domande, col conto dell'elenco (i romanzi, e a parte le storie)", `${domande.join(",")} | ${cahill.autore}: ${cahill.serie.map((s) => `${s.nome} · ${s.quanti} + ${s.storie}`).join()}`, "search,series( | Ryan Cahill: The Bound and the Broken · 5 + 2");
+  t.eq("le serie di un autore: le sue serie e quelle dei suoi libri (che qui sono le stesse: niente domanda in piu'), col conto dell'elenco", `${domande.join(",")} | ${cahill.autore}: ${cahill.serie.map((s) => `${s.nome} · ${s.quanti} + ${s.storie}`).join()}`, "search,series(,books( | Ryan Cahill: The Bound and the Broken · 5 + 2");
+
+  // ── LE SERIE DEI SUOI LIBRI ───────────────────────────────────────────
+  // il lettore: «l'aggiungi senza file vale anche per manga e fumetti?».
+  // Hardcover lega «One Piece» a un altro «Eiichiro Oda» della sua anagrafe:
+  // fra le serie di Oda c'erano i quiz e gli artbook, e One Piece no
+  {
+    const op = (n, autore = "Eiichiro Oda") => legame(n, 100 + n, `One Piece, Vol. ${n}`, { autore });
+    const chiesti = [];
+    const oda = async (query, vars) => {
+      if (/query_type: "Author"/.test(query)) return { search: { results: { hits: [{ document: { id: "109411", name: "Eiichiro Oda", books_count: 198 } }] } } };
+      if (/books\(/.test(query)) return { books: [{ book_series: [{ series: { id: 4624 } }, { series: { id: 150021 } }] }, { book_series: [{ series: { id: 777 } }] }] };
+      if (/_in: \$ids/.test(query)) {
+        chiesti.push(...vars.ids);
+        return { series: [
+          { id: 4624, name: "One Piece", book_series: [op(1), op(2), op(3)] },
+          // un'antologia di altri dove c'e' anche lui: non e' sua
+          { id: 777, name: "Shonen Jump Anthology", book_series: [legame(1, 201, "Antologia 1", { autore: "Masashi Kishimoto" }), legame(2, 202, "Antologia 2", { autore: "Akira Toriyama" }), legame(3, 203, "Antologia 3", { autore: "Eiichiro Oda" })] },
+        ] };
+      }
+      return { series: [{ id: 150021, name: "One Piece Color Walk Compendiums", book_series: [legame(1, 301, "Color Walk Compendium", { autore: "Eiichiro Oda" })] }] };
+    };
+    const r = await serieDellAutoreHC("Eiichiro Oda", oda);
+    t.c("One Piece arriva dai suoi libri", r.serie.some((x) => x.nome === "One Piece" && x.quanti === 3), r.serie.map((x) => x.nome).join(" | "));
+    t.c("…e la serie che c'era gia' resta", r.serie.some((x) => x.nome === "One Piece Color Walk Compendiums"));
+    t.c("l'antologia di altri dove ha un volume no", !r.serie.some((x) => /Anthology/.test(x.nome)));
+    t.eq("e non si richiede la serie che c'e' gia'", chiesti.join(), "4624,777");
+  }
+
+  // ── LE EDIZIONI DI UN FUMETTISTA ──────────────────────────────────────
+  {
+    const una = (q, nome) => ({ q, nome, volumi: [libro(q, 100)] });
+    const nomi = serieCheValgono([
+      una(1, "Hellboy"), una(2, "Hellboy: Edición cartoné"), una(3, "Hellboy Edição Histórica"), una(4, "AIDP Integral"), una(5, "Hellboy Omnibus"),
+      una(6, "Absolute Y: the Last Man"), una(7, "Runaways Deluxe"), una(8, "Runaways: The Complete Collection"), una(9, "Berserk 2-in-1"), una(15, "L'Intégrale Hellboy"), una(16, "Hellboy Édition"), una(17, "Coleção Hellboy"), una(18, "Hellboy Gesamtausgabe"), una(19, "Mangaverse Tales"),
+      una(10, "Colección Extra Superhéroes"), una(11, "Berserk Ausgabe"), una(12, "Hellboy Edizione"), una(13, "B.P.R.D. Hell on Earth"), una(14, "Saga"),
+    ]).map((s) => s.nome);
+    t.eq("le edizioni, le raccolte e le traduzioni di una serie restano fuori (una parola che comincia allo stesso modo resta)", [...nomi].sort().join(" | "), "B.P.R.D. Hell on Earth | Hellboy | Mangaverse Tales | Saga");
+  }
 
   // ── NELLA STRADA DELL'APP ─────────────────────────────────────────────
   domande.length = 0;

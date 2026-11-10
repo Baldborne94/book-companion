@@ -237,6 +237,12 @@ export function tocco(rel, verso, { nastro = false } = {}) {
 // Il verso di lettura sta sul dispositivo, per libro: e' una proprieta'
 // del volume (un manga si legge da destra), non una preferenza del lettore.
 // `ripiego` e' quel che ComicInfo ha detto all'import, se l'ha detto.
+// IL VERSO DI PARTENZA: quello del file (ComicInfo), se no un manga scelto
+// come tale si legge da destra — anche una scheda nata senza file come
+// manga, che il verso del file non l'ha mai avuto. Quello scelto per il
+// volume col tasto «Verso» vince sempre (`leggiVerso`)
+export const versoDiPartenza = (b) => (b?.verso === "rtl" || b?.verso === "ltr" ? b.verso : b?.tipo === "manga" ? "rtl" : "ltr");
+
 export function leggiVerso(id, ripiego) {
   let v = null;
   try {

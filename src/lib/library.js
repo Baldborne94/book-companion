@@ -1,4 +1,5 @@
 import { eFumetto } from "./fumetto.js";
+import { SENZA } from "./segnaposto.js";
 
 const BOOKS_KEY = "bc_books";
 const LAST_KEY = "bc_lastopen";
@@ -434,6 +435,12 @@ export const eManga = (b) => {
 
 const chiaveSaga = (b) => String(b?.saga || "").trim().toLowerCase();
 
+// UN FUMETTO SENZA FILE (chiesto dal lettore: «l'aggiungi senza file vale
+// anche per manga e fumetti?»): il formato non c'e' ancora, e il tipo scelto
+// nel pannello lo mette sullo scaffale dei fumetti da subito. Solo finche'
+// e' senza file: arrivato un ePub, e' un libro come ogni ePub
+const fumetto = (b) => eFumetto(b) || (b?.fileType === SENZA && tipoScelto(b) === "fumetti");
+
 // E LA SAGA SI PORTA DIETRO I SUOI VOLUMI: segnare manga uno solo dei
 // quaranta One Piece deve bastare, o il lettore dovrebbe aprire quaranta
 // schede. Si propaga solo ai FUMETTI della stessa saga — un romanzo in
@@ -450,7 +457,7 @@ export function tipiDi(books) {
     // un «fumetti» scelto a mano non eredita niente: e' una scelta
     const tipo = eManga(b)
       ? "manga"
-      : eFumetto(b)
+      : fumetto(b)
         ? !tipoScelto(b) && sagheManga.has(chiaveSaga(b))
           ? "manga"
           : "fumetti"
@@ -461,7 +468,7 @@ export function tipiDi(books) {
 }
 
 export const tipoDi = (b, mappa) =>
-  mappa?.get(b?.id) ?? (eManga(b) ? "manga" : eFumetto(b) ? "fumetti" : "libri");
+  mappa?.get(b?.id) ?? (eManga(b) ? "manga" : fumetto(b) ? "fumetti" : "libri");
 export const delTipo = (b, tipo, mappa) => !tipo || tipo === "tutti" || tipoDi(b, mappa) === tipo;
 
 // I chip compaiono solo quando in casa ci sono ALMENO DUE tipi, e solo
