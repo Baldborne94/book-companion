@@ -283,12 +283,34 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
     liberaUrl();
   }
 
+  // UN BRANO CHE QUI NON HA I BYTE SI SALTA, in una coda: i nomi dei brani
+  // viaggiano e i file no, e una raccolta portata qui a meta' suona quel che
+  // c'e' invece di fermarsi al primo che manca. Si dice solo se non c'e'
+  // niente da suonare.
+  const saltati = useRef(0);
   async function suonaFile(voce) {
     const blob = await loadTrack(voce.trackId).catch(() => null);
     if (!blob) {
-      notify(`«${voce.name}» non è su questo dispositivo: aggiungila dalla Musica 🎵`);
+      const q = queueRef.current;
+      if (q.list.length > 1 && saltati.current < q.list.length - 1) {
+        saltati.current++;
+        advanceRef.current();
+        return false;
+      }
+      saltati.current = 0;
+      // una coda che non suona niente non resta «in pausa» sulla raccolta
+      if (q.list.length > 1) {
+        queueRef.current = { list: [], i: 0, shuffle: false, raccolta: null };
+        setQueue(null);
+      }
+      notify(
+        q.list.length > 1
+          ? "Nessuno di questi brani è su questo dispositivo: porta qui i loro file dalla Musica 🎵"
+          : `«${voce.name}» non è su questo dispositivo: porta qui il suo file dalla Musica 🎵`
+      );
       return false;
     }
+    saltati.current = 0;
     liberaUrl();
     urlRef.current = URL.createObjectURL(blob);
     setCurrent({ trackId: voce.trackId, name: voce.name, src: urlRef.current, inizio: puntoDi(voce) });

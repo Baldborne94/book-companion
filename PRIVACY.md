@@ -54,14 +54,17 @@ da Row Level Security — questi dati:
   stanno sui tuoi dispositivi e sul tuo disco; nel bucket resta solo quel
   che c'era da prima);
 - i metadati della biblioteca e i segni di lettura elencati al punto 1;
-- le preferenze, le raccolte musicali, i **link YouTube** salvati e il
-  glossario che hai scritto;
+- le preferenze, le raccolte musicali, i **link YouTube** salvati, i
+  **nomi** delle melodie caricate come file (col loro peso) e il glossario
+  che hai scritto;
 - il tuo **indirizzo e-mail** e la password (gestiti da Supabase Auth: la
   password è conservata da loro sotto forma di hash, l'app non la vede mai
   e non la salva).
 
-**Le melodie caricate come file NON salgono**: ogni dispositivo tiene i
-suoi, e nel cloud viaggiano solo i link.
+**I file delle melodie NON salgono**: i byte restano sul dispositivo dove
+li hai caricati. Viaggiano i loro nomi, perché le raccolte siano le stesse
+ovunque; per sentirle su un altro dispositivo ci porti tu i file (col
+cavo, con Quick Share, da una chiavetta), senza passare dal cloud.
 
 Puoi non accenderla mai: l'app funziona identica senza. Se la spegni e
 cancelli l'account, quei dati vanno via con lui.

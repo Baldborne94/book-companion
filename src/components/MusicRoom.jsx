@@ -4,7 +4,7 @@ import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import {
   getFavoritesRaw, saveFavorites, isFile, addTrackFile, dropTrack, parseYouTube,
   getListsRaw, saveLists, nuovaRaccolta, braniDi, puntoDi, doveDi, minuti, MUSICA_CAMBIATA, nonArrivati,
-  pianoDaCartella, vociDellaCartella,
+  pianoDaCartella, vociDellaCartella, voceDaAdottare, adottaFile, braniAltrove,
 } from "../lib/music.js";
 import EmptyState from "./EmptyState.jsx";
 import { InAscolto, Icona, Faccia } from "./Ascolto.jsx";
@@ -12,6 +12,22 @@ import {
   braniInVista, perLettera, raccolteInVista, inQuante, vistaIniziale, vistaSalvata, salvaVista, ordineSalvato, salvaOrdine, ORDINI,
 } from "../lib/salaMusica.js";
 import { useViewport } from "../lib/viewport.js";
+
+const ALTROVE_KEY = "bc_musica_altrove";
+const altroveChiuso = () => {
+  try {
+    return Number(localStorage.getItem(ALTROVE_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+};
+const chiudiAltroveA = (n) => {
+  try {
+    localStorage.setItem(ALTROVE_KEY, String(n));
+  } catch {
+    /* storage pieno: l'avviso torna alla prossima apertura */
+  }
+};
 
 
 // LETTO AL RENDER, NON AL CARICAMENTO DEL MODULO. Era un oggetto costante,
@@ -50,6 +66,15 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
   // quali melodie da file hanno i byte QUI: le altre non si suonano da qui,
   // e il segno lo dice prima del tocco
   const [qui, setQui] = useState(null);
+  // si alza quando dei byte arrivano qui senza che l'elenco cambi (un file
+  // portato dall'altro dispositivo, custodito sotto la chiave del suo brano)
+  const [arrivati, setArrivati] = useState(0);
+  // quanti brani lontani c'erano quando l'avviso e' stato chiuso
+  const [altroveVisti, setAltroveVisti] = useState(() => altroveChiuso());
+  const chiudiAltrove = (n) => {
+    setAltroveVisti(n);
+    chiudiAltroveA(n);
+  };
   // l'id della raccolta di cui si stanno scegliendo i brani: finche' e'
   // acceso, l'elenco delle melodie diventa una lista di spunte
   const [scegliendo, setScegliendo] = useState(null);
@@ -93,7 +118,7 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
     return () => {
       vivo = false;
     };
-  }, [favs, current?.trackId]);
+  }, [favs, current?.trackId, arrivati]);
 
   // UN LINK SI SUONA SENZA CUSTODIRLO, dallo stesso riquadro di «＋ Da
   // YouTube»: la barra larga in cima alla sala era la cosa piu' grande della
@@ -138,12 +163,29 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
     setCaricando(true);
     const nuovi = [];
     let scartati = 0;
+    // un file che e' un brano arrivato dall'altro dispositivo porta i byte a
+    // lui: niente voce nuova accanto alla sua
+    const ids = qui || new Set(await listTrackIds().catch(() => []));
+    const adottati = [];
     for (const file of scelti) {
+      const lontano = voceDaAdottare(file, favs.filter((f) => !adottati.includes(f)), ids);
+      if (lontano && (await adottaFile(lontano, file).catch(() => false))) {
+        adottati.push(lontano);
+        continue;
+      }
       const voce = await addTrackFile(file).catch(() => null);
       if (voce) nuovi.push(voce);
       else scartati++;
     }
     setCaricando(false);
+    if (adottati.length) {
+      setArrivati((n) => n + 1);
+      notify(
+        adottati.length === 1
+          ? `«${adottati[0].name}» ora suona anche qui ✨`
+          : `${adottati.length} brani ora suonano anche qui, nelle loro raccolte ✨`
+      );
+    }
     if (nuovi.length) {
       commit([...favs, ...nuovi]);
       notify(
@@ -168,14 +210,23 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
     }
     setCaricando(true);
     try {
-      const piano = pianoDaCartella(scelta.name, await vociDellaCartella(scelta), { raccolte, favs });
+      const ids = qui || new Set(await listTrackIds().catch(() => []));
+      const piano = pianoDaCartella(scelta.name, await vociDellaCartella(scelta), { raccolte, favs, qui: ids });
       if (!piano.length) {
         notify(`Nella cartella «${scelta.name}» non ho trovato musica 🎵`);
         return;
       }
-      const totale = piano.reduce((n, p) => n + p.nuovi.length, 0);
+      const totale = piano.adottati.length + piano.reduce((n, p) => n + p.nuovi.length, 0);
       let fatti = 0;
       setDaCartellaConto({ fatti, totale });
+      // prima i brani arrivati dall'altro dispositivo: i loro byte sotto la
+      // loro chiave, e le raccolte restano quelle
+      let portati = 0;
+      for (const { voce, file } of piano.adottati) {
+        if (await adottaFile(voce, file).catch(() => false)) portati++;
+        setDaCartellaConto({ fatti: ++fatti, totale });
+      }
+      if (portati) setArrivati((n) => n + 1);
       const nuove = [];
       let elenco = raccolte;
       const dette = [];
@@ -206,11 +257,9 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
         commitRac(elenco);
         cambiaVista("raccolte");
       }
-      notify(
-        dette.length
-          ? `📁 Dalla cartella «${scelta.name}»: ${dette.join(", ")} ✨`
-          : `Le raccolte di «${scelta.name}» avevano già tutti i loro brani ✨`
-      );
+      if (portati) notify(`📁 ${portati === 1 ? "1 brano dell'altro dispositivo ora suona" : `${portati} brani dell'altro dispositivo ora suonano`} anche qui ✨`);
+      if (dette.length) notify(`📁 Dalla cartella «${scelta.name}»: ${dette.join(", ")} ✨`);
+      else if (!portati) notify(`Le raccolte di «${scelta.name}» avevano già tutti i loro brani ✨`);
       if (scartati) notify(`${scartati} file non si sono lasciati custodire e li ho lasciati fuori 🎵`);
     } finally {
       setCaricando(false);
@@ -312,6 +361,12 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
 
   const liveFavs = favs.filter((f) => !f.deleted);
   const liveRac = raccolte.filter((r) => !r.deleted);
+  const altrove = braniAltrove(liveFavs, qui);
+  // portati qui dei file, la soglia scende con loro: i brani che arrivano
+  // dopo riaprono l'avviso
+  useEffect(() => {
+    if (qui && altrove.length < altroveVisti) chiudiAltrove(altrove.length);
+  });
   const pagina = liveRac.find((r) => r.id === aperta) || null;
   const alreadySaved =
     current &&
@@ -585,8 +640,10 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
     const brani = braniDi(r, liveFavs);
     const dove = doveDi(r, brani);
     const inAscolto = queue?.raccolta === r.id;
+    const lontani = braniAltrove(brani, qui).length;
     const sotto = [
       brani.length === 0 ? "nessun brano ancora" : `${brani.length} ${brani.length === 1 ? "brano" : "brani"}`,
+      lontani ? (lontani === brani.length ? "non qui" : `${lontani} non qui`) : null,
       inAscolto ? (playing ? "♫ in ascolto" : "in pausa") : null,
     ].filter(Boolean);
     return (
@@ -660,6 +717,7 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
     const riprendi = dove > 0 || punto > 0;
     const inAscolto = queue?.raccolta === r.id;
     const mancano = nonArrivati(r, favs);
+    const lontani = braniAltrove(brani, qui).length;
     const scelta = scegliendo === r.id;
     const voce = { minHeight: 44, padding: "0 14px", borderRadius: R.tondo, fontSize: F.piccolo, border: `1px solid ${C.border}`, color: C.muted };
     // i brani della raccolta che la ricerca trova, col loro numero vero
@@ -692,6 +750,7 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
             <div style={{ fontSize: F.piccolo, color: C.muted, marginTop: 4, lineHeight: 1.4 }}>
               {brani.length === 0 ? "nessun brano ancora" : `${brani.length} ${brani.length === 1 ? "brano" : "brani"}`}
               {mancano > 0 && ` · ${mancano === 1 ? "1 brano non ancora arrivato qui" : `${mancano} brani non ancora arrivati qui`}`}
+              {lontani > 0 && ` · ${lontani === 1 ? "1 non è" : `${lontani} non sono`} su questo dispositivo`}
               {inAscolto
                 ? ` · ${playing ? "♫ in ascolto" : "in pausa"}`
                 : riprendi
@@ -1003,19 +1062,47 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
           </button>
         </div>
 
+        <input
+          ref={fileRef}
+          type="file"
+          accept="audio/*"
+          multiple
+          onChange={(e) => {
+            addFiles(e.target.files);
+            e.target.value = "";
+          }}
+          style={{ display: "none" }}
+        />
+
+        {/* I BRANI DELL'ALTRO DISPOSITIVO: i nomi arrivano, i file no.
+            L'avviso sta coi tasti che lo risolvono, e si chiude: torna
+            solo se ne arrivano altri */}
+        {altrove.length > altroveVisti && (
+          <div style={{ padding: 12, borderRadius: R.medio, border: `1px solid ${C.accent}55`, background: `${C.accent}0d`, marginBottom: 14 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <p style={{ flex: 1, minWidth: 0, fontSize: F.piccolo, color: C.text, lineHeight: 1.5 }}>
+                🎵 {altrove.length === 1 ? "1 brano sta" : `${altrove.length} brani stanno`} su un altro dispositivo. Copia qui i loro file (col
+                cavo, con Quick Share, da una chiavetta) e sceglili: li riconosco dal nome e dal peso, e restano nelle loro raccolte.
+              </p>
+              <button onClick={() => chiudiAltrove(altrove.length)} aria-label="Chiudi l'avviso dei brani dell'altro dispositivo" style={{ ...tondo(), border: "none" }}>
+                ✕
+              </button>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+              {cartellaPossibile && (
+                <button onClick={daCartella} disabled={caricando} style={pillola(true)}>
+                  {daCartellaConto ? `…custodisco ${daCartellaConto.fatti}/${daCartellaConto.totale}` : "📁 Scegli la cartella"}
+                </button>
+              )}
+              <button onClick={() => fileRef.current?.click()} disabled={caricando} style={pillola(true)}>
+                {caricando && !daCartellaConto ? "…custodisco" : "♫ Scegli i file"}
+              </button>
+            </div>
+          </div>
+        )}
+
         {(aggiungi || caricando) && (
           <div style={{ padding: 12, borderRadius: R.medio, border: `1px solid ${C.border}`, background: `linear-gradient(135deg, ${C.card}, ${C.surface})`, marginBottom: 14 }}>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="audio/*"
-              multiple
-              onChange={(e) => {
-                addFiles(e.target.files);
-                e.target.value = "";
-              }}
-              style={{ display: "none" }}
-            />
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button onClick={() => fileRef.current?.click()} disabled={caricando} style={{ ...pillola(true), opacity: caricando && daCartellaConto ? 0.6 : 1 }}>
                 {caricando && !daCartellaConto ? "…custodisco" : "♫ Dai tuoi file"}

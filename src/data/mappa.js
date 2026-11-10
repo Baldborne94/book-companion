@@ -448,6 +448,12 @@ export const MAPPA = [
   },
   {
     luogo: "musica",
+    nome: "Le stesse raccolte su ogni dispositivo",
+    cosa: "Raccolte e nomi dei brani arrivano sugli altri tuoi dispositivi; i file no, restano dove li hai caricati. Copiali tu (cavo, Quick Share, chiavetta) e sceglili: si riconoscono dal nome e dal peso e suonano nelle stesse raccolte. Un brano che manca si salta.",
+    dove: "La sala della musica: l'avviso «… stanno su un altro dispositivo», con «📁 Scegli la cartella» e «♫ Scegli i file».",
+  },
+  {
+    luogo: "musica",
     nome: "Cerca, scegli, suona",
     cosa: "Le raccolte in griglia e i brani in ordine coi salti per lettera; una ricerca sola per brani e raccolte, a parole sparse. Il tocco su un brano suona da lì in avanti, e il suo menu «⋯» lo mette nelle raccolte, lo rinomina o lo dimentica. Una raccolta si rinomina o si elimina dal «⋯» della sua casella (i brani restano).",
     dove: "La sala della musica: la ricerca in cima, poi «Raccolte» e «Brani».",
@@ -463,7 +469,7 @@ export const MAPPA = [
   {
     luogo: "impostazioni",
     nome: "L'Oracolo",
-    cosa: "La chiave di Anthropic, la sua scadenza, il tetto di spesa del mese e quanto hai speso. La chiave resta sul dispositivo.",
+    cosa: "La chiave di Anthropic, la sua scadenza, il tetto di spesa del mese e quanto hai speso. Con la sincronizzazione accesa la chiave arriva anche sugli altri tuoi dispositivi.",
     dove: "Impostazioni → Oracolo.",
   },
   {

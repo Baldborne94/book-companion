@@ -593,8 +593,8 @@ export async function syncNow({ onProgress, onLibri } = {}) {
   const stamp = pushRemote ? Date.now() : merged.updated_at;
   if (applyLocal) {
     if (merged.reader) localStorage.setItem("bc_reader", JSON.stringify(merged.reader));
-    // qui si scrivono i link fusi PIU' i file di questo dispositivo, che
-    // non sono mai partiti; lassu' (`merged`) vanno i soli link
+    // tutte le voci, anche quelle dei brani che qui non hanno i byte: si
+    // vedono, e un file portato qui si custodisce sotto la loro chiave
     writeFavorites(favsLocali);
     // una melodia cancellata sull'altro dispositivo se ne va anche da qui,
     // byte compresi: sono la cosa pesante, e nessuna voce li suonera' piu'
