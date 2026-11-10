@@ -360,14 +360,19 @@ textarea {
   }
 }
 
-@keyframes bc-svanisci {
+/* LA VOLTATA DEI FUMETTI SCORRE (`scorrimento` in lib/fumetto.js): da dove
+   a dove lo dice l'elemento, con `--da` e `--a`, cosi' la stessa regola fa
+   uscire il foglio di prima ed entrare il nuovo, in un verso o nell'altro.
+   Solo `transform` (lezione 10). */
+@keyframes bc-scorri {
   from {
-    opacity: 1;
+    transform: translateX(var(--da, 0px));
   }
   to {
-    opacity: 0;
+    transform: translateX(var(--a, 0px));
   }
 }
+
 
 @keyframes bc-flicker {
   0%, 100% {

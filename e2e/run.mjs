@@ -3004,7 +3004,7 @@ const SCENE = [
     // schermo, e alla voltata dev'essere LO STESSO elemento: un <img> nuovo
     // si rilegge e si ridecodifica (misurato: nessun guadagno). E la pagina
     // che se ne va svanisce col suo elemento, non con una foto su canvas.
-    nome: "alla voltata del fumetto la pagina dopo (e tornando, quella prima) era gia' li', e quella di prima svanisce da se'",
+    nome: "alla voltata del fumetto la pagina dopo (e tornando, quella prima) era gia' li', e quella di prima esce di lato senza sovrapporsi",
     async fai({ browser }) {
       const bytes = await fumettoGrosso();
       {
@@ -3025,7 +3025,33 @@ const SCENE = [
           20000,
           "la pagina dopo non si prepara sotto quella a schermo"
         );
+        // LA VOLTATA SCORRE (il lettore, col video di Kingdom: «quel rimasuglio
+        // di pixel tra una pagina e l'altra»): fotogramma per fotogramma, il
+        // foglio di prima esce a sinistra, il nuovo entra da destra, e i due
+        // non stanno mai uno sopra l'altro
+        const film = d.p.evaluate(
+          () =>
+            new Promise((ok) => {
+              const t0 = performance.now();
+              const fot = [];
+              const giro = () => {
+                const imVia = document.querySelector("img[data-via]");
+                const via = imVia?.parentElement?.getBoundingClientRect();
+                const nuova = [...document.querySelectorAll("img[data-pagina]")].find((x) => !x.closest("[aria-hidden]"))?.parentElement?.getBoundingClientRect();
+                if (via && nuova) fot.push({ t: Math.round(performance.now() - t0), segno: imVia.bcSegno || "nuova", via: [Math.round(via.left), Math.round(via.right)], nuova: [Math.round(nuova.left), Math.round(nuova.right)] });
+                if (performance.now() - t0 < 2500) requestAnimationFrame(giro);
+                else ok(fot);
+              };
+              requestAnimationFrame(giro);
+            })
+        );
         await d.p.keyboard.press("ArrowRight");
+        const fotogrammi = await film;
+        const mossi = fotogrammi.filter((f) => f.via[0] !== f.nuova[0]);
+        if (mossi.length < 5) throw new Error(`la voltata non scorre: ${JSON.stringify(fotogrammi.slice(0, 6))}`);
+        const sopra = mossi.filter((f) => f.via[1] > f.nuova[0] + 1);
+        if (sopra.length) throw new Error(`le due pagine si sovrappongono: ${JSON.stringify(sopra.slice(0, 3))}`);
+        if (!mossi.every((f, i) => i === 0 || f.via[0] <= mossi[i - 1].via[0])) throw new Error(`la pagina di prima non esce a sinistra: ${JSON.stringify(mossi.map((f) => f.via[0]))}`);
         const esito = await finche(
           () =>
             d.p.evaluate((prima) => {
@@ -3038,7 +3064,7 @@ const SCENE = [
         );
         const e = JSON.parse(esito);
         if (e.vista !== "dopo") throw new Error(`a schermo c'e' un <img> nuovo, non quello preparato sotto (${esito})`);
-        if (e.via.join() !== "prima") throw new Error(`la pagina di prima non svanisce col suo elemento (${esito})`);
+        if (!fotogrammi.length || fotogrammi.some((f) => f.segno !== "prima")) throw new Error(`la pagina di prima non esce col suo elemento (${JSON.stringify(fotogrammi.slice(0, 2))})`);
         const num = (alt) => Number(alt.match(/(\d+)\.png$/)[1]);
         // E ALL'INDIETRO (chiesto dal lettore, «fai la 3»): finita la
         // dissolvenza, la pagina di prima aspetta sotto anche lei
@@ -3065,7 +3091,7 @@ const SCENE = [
         );
         const ind = JSON.parse(indietro);
         if (ind.vista !== "sotto") throw new Error(`tornando indietro a schermo c'e' un <img> nuovo (${indietro})`);
-        return { guasti: d.guasti, nota: `pagina ${num(pronta)} → ${num(e.pagina)} → ${num(ind.pagina)}: ogni volta la <img> preparata sotto, e quella di prima svanisce da se'` };
+        return { guasti: d.guasti, nota: `pagina ${num(pronta)} → ${num(e.pagina)} → ${num(ind.pagina)}: ogni volta la <img> preparata sotto; la voltata in ${mossi.length} fotogrammi, mai sovrapposte` };
       }
     },
   },
