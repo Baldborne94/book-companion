@@ -63,6 +63,7 @@ import { importaDaFuori, resoconto, importFiles } from "./lib/importBook.js";
 import { avanziManga } from "./lib/avanziManga.js";
 import { leggiNovita, scriviNovita, smettiNovita, messaggioNovita, statoNovita } from "./lib/novita.js";
 import SezioneNovita from "./components/SezioneNovita.jsx";
+import SezioneHardcover from "./components/SezioneHardcover.jsx";
 import { togliAvanziDrive } from "./lib/avanziDrive.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
 import BarraLavoro from "./components/BarraLavoro.jsx";
@@ -761,6 +762,21 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
             L'Oracolo
           </h3>
           <SezioneOracolo />
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            Le serie da Hardcover
+          </h3>
+          <SezioneHardcover />
         </div>
 
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>

@@ -23,7 +23,7 @@
 </head>
 <body>
 <h1>Informativa sulla privacy — Book Companion</h1>
-<p>Ultimo aggiornamento: 7 novembre 2026</p>
+<p>Ultimo aggiornamento: 10 novembre 2026</p>
 <p>Book Companion è un lettore di ebook <strong>local-first</strong>: i tuoi libri, i tuoi segni di lettura e le tue annotazioni stanno sul tuo dispositivo, e ci restano. Non esiste un nostro server che li riceva, non c'è un account obbligatorio, non c'è telemetria e non c'è pubblicità.</p>
 <p>Questo documento dice, in concreto, <strong>quali dati esistono, dove stanno, e in quali momenti precisi qualcosa esce dal dispositivo</strong>. La regola che attraversa tutto è una sola: <em>niente esce se non lo accendi tu</em>.</p>
 <hr>
@@ -48,7 +48,10 @@
 <p><strong>Non escono i titoli dei libri né i nomi delle saghe</strong>: i volumi vengono numerati («Volume 2»), e i titoli veri li rimette lo schermo. È una scelta tecnica contro gli spoiler, ma vale anche qui.</p>
 <p><strong>L'eccezione sono i consigli di lettura</strong> («Consigli dell'Oracolo», nella pagina «Da prendere»), che partono solo quando li chiedi: lì il modello riceve l'elenco della tua biblioteca — titolo, autore, saga col numero, stato di lettura, voto e cuore dei preferiti — perché consigliare libri senza sapere quali hai letto non si può. Nessuna pagina dei libri. I titoli che propone vengono poi cercati su Open Library (<code>openlibrary.org</code>) per controllare che esistano.</p>
 <p>L'uso dei dati da parte di Anthropic è regolato dal contratto fra te e loro, non da noi: vedi la <a href="https://www.anthropic.com/legal/privacy" rel="noopener">privacy policy di Anthropic</a>.</p>
-<h3>2.3 La musica da YouTube</h3>
+<h3>2.3 Le serie da Hardcover</h3>
+<p>In «📥 Senza file», le saghe e le saghe di un autore si cercano anche su Hardcover (<code>api.hardcover.app</code>), <strong>solo se incolli una chiave tua</strong> nelle Impostazioni («Le serie da Hardcover»). Basta una chiave col solo permesso <code>read:catalog</code>: non legge e non tocca la tua libreria su Hardcover. La chiave resta sul dispositivo e va solo a Hardcover, nella richiesta.</p>
+<p>Cosa esce, e solo quando tocchi «Cerca i libri» o «Le sue saghe»: il nome della saga o dell'autore che hai scritto, poi il numero della serie o dell'autore su Hardcover, per leggerne i libri. Quali libri hai e come si chiamano le tue raccolte non partono: il confronto si fa sul dispositivo. Siccome la chiave è tua, Hardcover sa che quelle ricerche vengono dal tuo account. L'uso dei dati da parte di Hardcover è regolato dalle sue condizioni e dalla sua privacy policy, su hardcover.app.</p>
+<h3>2.4 La musica da YouTube</h3>
 <p>Se aggiungi un brano tramite un link YouTube, la riproduzione avviene in un iframe <code>youtube-nocookie.com</code>. È la modalità «privacy avanzata» di YouTube: non registra la visualizzazione nella cronologia e non piazza cookie di profilazione <strong>prima</strong> che tu prema play. Da quel momento in poi vale la <a href="https://policies.google.com/privacy" rel="noopener">privacy policy di Google</a>. Le melodie caricate come file non contattano nessuno.</p>
 <h2>3. Quello che esce quando usi una funzione, senza account</h2>
 <p>Alcune funzioni interrogano servizi pubblici. Nessuna manda un identificatore tuo: vanno solo la parola o il titolo, e l'indirizzo IP che qualunque richiesta web porta con sé.</p>

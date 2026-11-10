@@ -24,6 +24,7 @@ export function pulisci(testo) {
   return String(testo ?? "")
     .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, "[email]")
     .replace(/sk-ant-[\w-]+/g, "[chiave]")
+    .replace(/hc_pat_[\w-]+/g, "[chiave]")
     .replace(/AIza[\w-]{20,}/g, "[chiave]")
     .replace(/ya29\.[\w.-]+/g, "[gettone]")
     .replace(/Bearer\s+[\w.~+/=-]+/gi, "Bearer [gettone]")

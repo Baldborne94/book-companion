@@ -1,6 +1,6 @@
 # Informativa sulla privacy — Book Companion
 
-Ultimo aggiornamento: 7 novembre 2026
+Ultimo aggiornamento: 10 novembre 2026
 
 Book Companion è un lettore di ebook **local-first**: i tuoi libri, i tuoi
 segni di lettura e le tue annotazioni stanno sul tuo dispositivo, e ci
@@ -105,7 +105,23 @@ L'uso dei dati da parte di Anthropic è regolato dal contratto fra te e
 loro, non da noi: vedi la [privacy policy di
 Anthropic](https://www.anthropic.com/legal/privacy).
 
-### 2.3 La musica da YouTube
+### 2.3 Le serie da Hardcover
+
+In «📥 Senza file», le saghe e le saghe di un autore si cercano anche su
+Hardcover (`api.hardcover.app`), **solo se incolli una chiave tua** nelle
+Impostazioni («Le serie da Hardcover»). Basta una chiave col solo permesso
+`read:catalog`: non legge e non tocca la tua libreria su Hardcover. La
+chiave resta sul dispositivo e va solo a Hardcover, nella richiesta.
+
+Cosa esce, e solo quando tocchi «Cerca i libri» o «Le sue saghe»: il nome
+della saga o dell'autore che hai scritto, poi il numero della serie o
+dell'autore su Hardcover, per leggerne i libri. Quali libri hai e come si
+chiamano le tue raccolte non partono: il confronto si fa sul dispositivo.
+Siccome la chiave è tua, Hardcover sa che quelle ricerche vengono dal tuo
+account. L'uso dei dati da parte di Hardcover è regolato dalle sue
+condizioni e dalla sua privacy policy, su hardcover.app.
+
+### 2.4 La musica da YouTube
 
 Se aggiungi un brano tramite un link YouTube, la riproduzione avviene in
 un iframe `youtube-nocookie.com`. È la modalità «privacy avanzata» di

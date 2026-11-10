@@ -3,6 +3,7 @@ import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { sagaDalNome, saghePerAutore, libriDellaSaga } from "../lib/sagaDaNome.js";
 import { sagaDelLibro, fraseSagaDelLibro, raccolteDellAutore } from "../lib/sagaDelLibro.js";
 import { giaSulloScaffale, serieDellElenco, nellaRaccolta } from "../lib/senzaFile.js";
+import { chiaveHardcover, domandaHardcover, fraseHardcover } from "../lib/hardcover.js";
 
 const prendi = async (url) => {
   const r = await fetch(url, { signal: AbortSignal.timeout?.(20000) });
@@ -53,6 +54,11 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
   const [saghe, setSaghe] = useState(null);
   const [cercaAutore, setCercaAutore] = useState(null);
 
+  // Hardcover solo con la chiave del lettore (Impostazioni), letta a ogni ricerca
+  const hc = () => (chiaveHardcover() ? domandaHardcover(chiaveHardcover()) : null);
+  // i volumi annunciati (non ancora usciti) partono senza spunta
+  const annunciati = (r) => new Set((r?.volumi || []).map((v, i) => (v.annunciato ? i : -1)).filter((i) => i >= 0));
+
   async function trova(e) {
     e.preventDefault();
     const n = nome.trim();
@@ -60,11 +66,11 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
     setCerca("cerco");
     setEsito(null);
     try {
-      const r = await sagaDalNome(n, { libri: books, prendi });
-      setEsito(r && r.volumi.length ? r : { vuota: true, senzaLibri: r?.nome || "" });
+      const r = await sagaDalNome(n, { libri: books, prendi, hardcover: hc() });
+      setEsito(r && r.volumi.length ? r : { vuota: true, senzaLibri: r?.nome || "", hardcover: r?.hardcover });
       setRaccolta(r?.saga || "");
       setSerie(r ? serieDellElenco(r) : "");
-      setTolti(new Set());
+      setTolti(annunciati(r));
       setCerca(null);
     } catch {
       setCerca("guasto");
@@ -78,7 +84,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
     setCercaAutore("cerco");
     setSaghe(null);
     try {
-      setSaghe((await saghePerAutore(n, { prendi })) || { vuoto: true });
+      setSaghe((await saghePerAutore(n, { prendi, hardcover: hc() })) || { vuoto: true });
       setCercaAutore(null);
     } catch {
       setCercaAutore("guasto");
@@ -93,7 +99,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
       setEsito(r && r.volumi.length ? r : { vuota: true, senzaLibri: r?.nome || "" });
       setRaccolta(r?.saga || "");
       setSerie(r ? serieDellElenco(r) : "");
-      setTolti(new Set());
+      setTolti(annunciati(r));
       setCerca(null);
     } catch {
       setCerca("guasto");
@@ -154,6 +160,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
           </button>
         </form>
         {cercaAutore === "guasto" && <p style={{ fontSize: F.piccolo, color: C.accent, marginBottom: 12 }}>Wikidata non risponde adesso: riprova fra poco.</p>}
+        {fraseHardcover(saghe?.hardcover) && <p style={{ fontSize: F.piccolo, color: C.accent, marginBottom: 8 }}>{fraseHardcover(saghe.hardcover)}</p>}
         {saghe?.vuoto && <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 12 }}>Non ho trovato saghe di questo autore. Prova col nome completo, com'è scritto in copertina.</p>}
         {saghe?.saghe && (
           <div style={{ marginBottom: 14 }}>
@@ -169,11 +176,12 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
           </div>
         )}
         {cerca === "guasto" && <p style={{ fontSize: F.piccolo, color: C.accent, marginBottom: 12 }}>Wikidata non risponde adesso: riprova fra poco.</p>}
+        {fraseHardcover(esito?.hardcover) && <p style={{ fontSize: F.piccolo, color: C.accent, marginBottom: 8 }}>{fraseHardcover(esito.hardcover)}</p>}
         {esito?.vuota && (
           <p style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.5, marginBottom: 12 }}>
             {esito.senzaLibri
               ? `Wikidata conosce «${esito.senzaLibri}», ma non dice quali libri ne fanno parte. Aggiungili uno per volta qui sotto: «🔍 Di che saga è?» ti propone la raccolta.`
-              : "Non ho trovato una saga con questo nome, né fra le guide dell'app né su Wikidata. Prova col nome inglese, o aggiungi i libri uno per volta qui sotto."}
+              : `Non ho trovato una saga con questo nome, né fra le guide dell'app né ${chiaveHardcover() ? "su Hardcover o " : ""}su Wikidata. Prova col nome inglese, o aggiungi i libri uno per volta qui sotto.`}
           </p>
         )}
         {esito?.volumi && (
@@ -183,6 +191,8 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
                 ? `«${esito.nome}»: tutte le guide dell'app di questo mondo, una dopo l'altra, ognuna coi suoi numeri.`
                 : esito.fonte === "guida"
                 ? `«${esito.nome}»: l'elenco della guida dell'app, nell'ordine di lettura.`
+                : esito.fonte === "hardcover"
+                ? `«${esito.nome}» su Hardcover, nell'ordine della serie: solo i romanzi (le novelle, coi numeri a metà, restano fuori)${esito.volumi.some((v) => v.annunciato) ? "; quelli non ancora usciti partono senza spunta" : ""}. Controlla l'elenco.`
                 : esito.fonte === "sciolti"
                 ? "I suoi libri che su Wikidata non stanno in nessuna serie, per anno di uscita. Spunta quelli di una saga, scrivi qui sotto la raccolta e aggiungili. Un libro appena uscito può non esserci ancora."
                 : `«${esito.nome}» su Wikidata${esito.perAnno ? ", in ordine di uscita (lì i volumi non hanno il numero)" : ", nell'ordine della serie"}. Controlla l'elenco: per alcune saghe Wikidata è incompleto.`}
@@ -210,7 +220,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
                 <span style={{ width: px(44), flexShrink: 0, color: C.muted, fontSize: F.piccolo }}>{v.numero != null ? `n° ${v.numero}` : ""}</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: "block", fontSize: F.nota, color: C.text, overflowWrap: "anywhere" }}>{v.titolo}</span>
-                  <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted }}>{[v.autore, v.anno, v.gia ? "✓ è già sullo scaffale" : null].filter(Boolean).join(" · ")}</span>
+                  <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted }}>{[v.autore, v.anno, v.annunciato ? "annunciato" : null, v.gia ? "✓ è già sullo scaffale" : null].filter(Boolean).join(" · ")}</span>
                 </span>
               </label>
             ))}

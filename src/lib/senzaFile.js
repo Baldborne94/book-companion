@@ -99,14 +99,14 @@ export const sagaPerLaGuida = (tav, libri = [], opzioni = {}) => raccoltaDellaGu
 // nome della saga nella quale voglio finire ma anche il nome della serie,
 // così che vengano messi in ordine come i libri della Horus Heresy del
 // 40K»). La proposta e' la serie che i volumi dell'elenco hanno tutti uguale
-// (Gaunt's Ghosts), se no il nome della serie di Wikidata; una guida a cicli
+// (Gaunt's Ghosts), se no il nome della serie di Wikidata o di Hardcover; una guida a cicli
 // (gli Elderlings) o un mondo intero non ne hanno una sola, e il campo vuoto
 // lascia a ogni volume la sua.
 export function serieDellElenco(esito = {}) {
   const tutte = new Set((esito.volumi || []).map((v) => String(v.serie || "").trim()));
   const [una] = tutte;
   if (tutte.size === 1 && una) return una;
-  return esito.fonte === "wikidata" ? String(esito.nome || "").trim() : "";
+  return esito.fonte === "wikidata" || esito.fonte === "hardcover" ? String(esito.nome || "").trim() : "";
 }
 
 // le schede dell'elenco nella raccolta e nella serie scelte: un campo vuoto
