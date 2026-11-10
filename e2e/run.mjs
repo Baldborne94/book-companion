@@ -1415,7 +1415,7 @@ const SCENE = [
   {
     // chiesto dal lettore sul PC, 1920 di larghezza: «far si' che occupi bene
     // lo spazio a schermo». La colonna stava a 960 e mezzo schermo restava vuoto
-    nome: "sul computer largo la colonna usa lo schermo, sul tablet resta com'era",
+    nome: "sul computer largo la colonna usa tutto lo schermo, sul tablet resta com'era",
     async fai({ browser }) {
       const prima = () => {
         if (localStorage.getItem("bc_books")) return;
@@ -1425,7 +1425,8 @@ const SCENE = [
       const pc = await dispositivo(browser, { misura: { viewport: { width: 1920, height: 1040 } }, prima });
       await pc.p.goto(URL_APP);
       const larga = await finche(() => pc.p.evaluate(() => document.querySelector("main")?.getBoundingClientRect().width), 8000, "l'Ingresso non si vede");
-      if (larga < 1400) throw new Error(`sul PC la colonna e' larga ${larga}`);
+      // tutta la finestra (il lettore: «affinché venga preso tutto lo schermo»): a 1440 restavano 214 pixel vuoti per parte
+      if (larga < 1919) throw new Error(`sul PC la colonna e' larga ${larga} su 1920`);
       // le stanze accanto al libro in mano, sopra le file; sul tablet in fondo
       const sopra = (p) =>
         p.evaluate(() => {
