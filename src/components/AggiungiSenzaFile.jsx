@@ -2,7 +2,7 @@ import { useState } from "react";
 import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { sagaDalNome, saghePerAutore, libriDellaSaga } from "../lib/sagaDaNome.js";
 import { sagaDelLibro, fraseSagaDelLibro, raccolteDellAutore } from "../lib/sagaDelLibro.js";
-import { giaSulloScaffale } from "../lib/senzaFile.js";
+import { giaSulloScaffale, serieDellElenco, nellaRaccolta } from "../lib/senzaFile.js";
 
 const prendi = async (url) => {
   const r = await fetch(url, { signal: AbortSignal.timeout?.(20000) });
@@ -43,6 +43,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
   const [esito, setEsito] = useState(null);
   const [tolti, setTolti] = useState(() => new Set());
   const [raccolta, setRaccolta] = useState("");
+  const [serie, setSerie] = useState("");
   const VUOTO = { titolo: "", autore: "", saga: "", serie: "", numero: "" };
   const [libro, setLibro] = useState(VUOTO);
   // di che saga e' il libro solo: la proposta e da dove viene
@@ -62,6 +63,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
       const r = await sagaDalNome(n, { libri: books, prendi });
       setEsito(r && r.volumi.length ? r : { vuota: true, senzaLibri: r?.nome || "" });
       setRaccolta(r?.saga || "");
+      setSerie(r ? serieDellElenco(r) : "");
       setTolti(new Set());
       setCerca(null);
     } catch {
@@ -90,6 +92,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
       const r = await libriDellaSaga(voce, { libri: books, prendi });
       setEsito(r && r.volumi.length ? r : { vuota: true, senzaLibri: r?.nome || "" });
       setRaccolta(r?.saga || "");
+      setSerie(r ? serieDellElenco(r) : "");
       setTolti(new Set());
       setCerca(null);
     } catch {
@@ -188,6 +191,13 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
               Nella raccolta
               <input value={raccolta} onChange={(e) => setRaccolta(e.target.value)} aria-label="Raccolta" style={campo(200)} />
             </label>
+            {/* LA SERIE DENTRO LA RACCOLTA (il lettore: «come i libri della
+                Horus Heresy del 40K»): un ripiano suo dentro la raccolta,
+                in ordine coi numeri dell'elenco */}
+            <label style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10, fontSize: F.piccolo, color: C.muted }}>
+              Nella serie
+              <input value={serie} onChange={(e) => setSerie(e.target.value)} placeholder="facoltativa" aria-label="Serie" style={campo(200)} />
+            </label>
             {esito.volumi.map((v, i) => (
               <label key={`${v.numero}-${v.titolo}`} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 44, padding: "4px 0", borderBottom: `1px solid ${C.border}44`, opacity: v.gia ? 0.6 : 1 }}>
                 <input
@@ -206,7 +216,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
             ))}
             <button
               disabled={!daAggiungere.length}
-              onClick={() => onAggiungi(daAggiungere.map((v) => ({ ...v, saga: raccolta.trim() || v.saga })))}
+              onClick={() => onAggiungi(nellaRaccolta(daAggiungere, raccolta, serie))}
               style={{ ...tasto(C.accent, true), marginTop: 12, opacity: daAggiungere.length ? 1 : 0.5 }}
             >
               {daAggiungere.length ? `📥 Aggiungi ${daAggiungere.length === 1 ? "1 scheda" : `${daAggiungere.length} schede`}` : "Li hai già tutti"}
@@ -219,7 +229,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
           onSubmit={(e) => {
             e.preventDefault();
             if (!libro.titolo.trim() || giaQui) return;
-            onAggiungi([libro]);
+            onAggiungi(nellaRaccolta([libro]));
             setLibro(VUOTO);
             setRiconosco(null);
           }}
@@ -227,7 +237,8 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
         >
           <input value={libro.titolo} onChange={(e) => { setLibro({ ...libro, titolo: e.target.value }); setRiconosco(null); }} placeholder="Titolo" aria-label="Titolo" style={campo(220)} />
           <input value={libro.autore} onChange={(e) => setLibro({ ...libro, autore: e.target.value })} placeholder="Autore" aria-label="Autore" style={campo(180)} />
-          <input value={libro.saga} onChange={(e) => setLibro({ ...libro, saga: e.target.value, serie: "" })} placeholder="Saga (facoltativa)" aria-label="Saga" style={campo(180)} />
+          <input value={libro.saga} onChange={(e) => setLibro({ ...libro, saga: e.target.value })} placeholder="Saga (facoltativa)" aria-label="Saga" style={campo(180)} />
+          <input value={libro.serie} onChange={(e) => setLibro({ ...libro, serie: e.target.value })} placeholder="Serie (facoltativa)" aria-label="Serie del libro" style={campo(160)} />
           <input value={libro.numero} onChange={(e) => setLibro({ ...libro, numero: e.target.value })} placeholder="N°" aria-label="Numero" inputMode="decimal" style={{ ...campo(60), flex: "0 1 80px" }} />
           <button type="submit" disabled={!libro.titolo.trim() || giaQui} style={{ ...tasto(C.accent, true), opacity: libro.titolo.trim() && !giaQui ? 1 : 0.5 }}>
             📥 Aggiungi

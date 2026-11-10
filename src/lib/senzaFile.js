@@ -11,7 +11,7 @@
 // segno e' nel formato (`SENZA`): la sincronizzazione scrive `epub` al posto
 // di un formato vuoto, e una scheda senza file sull'altro dispositivo
 // diventerebbe un ePub tolto — cioe' un libro che possiedi.
-import { TAVOLE, riconosci, raccoltaDellaGuida } from "./sagaBooks.js";
+import { TAVOLE, riconosci, raccoltaDellaGuida, chiaveSaga } from "./sagaBooks.js";
 import { volume } from "./cammino.js";
 import { cercaCopertina } from "./copertineRete.js";
 import { urlCopertina } from "./consigliLiberi.js";
@@ -94,6 +94,33 @@ export function giaSulloScaffale(voce, libri = []) {
 // li', accanto all'Eresia, non in una raccolta nuova. Senza libri suoi, il
 // nome dell'universo o della guida.
 export const sagaPerLaGuida = (tav, libri = [], opzioni = {}) => raccoltaDellaGuida(tav.saga, libri, opzioni) || tav.universo || tav.saga;
+
+// LA SERIE ACCANTO ALLA RACCOLTA (chiesto dal lettore: «mettere non solo il
+// nome della saga nella quale voglio finire ma anche il nome della serie,
+// così che vengano messi in ordine come i libri della Horus Heresy del
+// 40K»). La proposta e' la serie che i volumi dell'elenco hanno tutti uguale
+// (Gaunt's Ghosts), se no il nome della serie di Wikidata; una guida a cicli
+// (gli Elderlings) o un mondo intero non ne hanno una sola, e il campo vuoto
+// lascia a ogni volume la sua.
+export function serieDellElenco(esito = {}) {
+  const tutte = new Set((esito.volumi || []).map((v) => String(v.serie || "").trim()));
+  const [una] = tutte;
+  if (tutte.size === 1 && una) return una;
+  return esito.fonte === "wikidata" ? String(esito.nome || "").trim() : "";
+}
+
+// le schede dell'elenco nella raccolta e nella serie scelte: un campo vuoto
+// lascia quel che l'elenco scrive, e una serie che si chiama come la
+// raccolta non e' una serie (sarebbe un ripiano dentro se stesso)
+export function nellaRaccolta(volumi = [], raccolta = "", serie = "") {
+  const r = String(raccolta || "").trim();
+  const s = String(serie || "").trim();
+  return volumi.map((v) => {
+    const saga = r || v.saga || "";
+    const sua = s || v.serie || "";
+    return { ...v, saga, serie: chiaveSaga(sua) === chiaveSaga(saga) ? "" : sua };
+  });
+}
 
 // L'AUTORE DI UNA GUIDA SCRITTA DA UNO SOLO, per i volumi che non lo
 // dicono (il Mondo Disco lo tiene sulla tavola, in minuscolo)

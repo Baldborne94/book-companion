@@ -70,8 +70,12 @@ export default async (t) => {
     Q106: libro("Calamity", [["Q205", 3]]),
     Q206: { labels: { en: { value: "Mistborn" } }, claims: { P31: tipo("Q1667921") } },
     Q107: libro("Secret History", [["Q206", null]]),
+    // una serie che Wikidata chiama «novel sequence» (Magnus Chase)
+    Q207: { labels: { en: { value: "A Sequence" } }, claims: { P31: tipo("Q2005755") } },
+    Q2005755: { labels: { en: { value: "novel sequence" } }, claims: {} },
+    Q108: libro("Hammer Book", [["Q207", 2]]),
   };
-  const ricerche = { Starsight: ["Q100"], Firefight: ["Q105", "Q101"], "Lonely Book": ["Q102"], "Universe Book": ["Q103"], "Tie-in": ["Q104"], Calamity: ["Q106"], "Secret History": ["Q107"] };
+  const ricerche = { Starsight: ["Q100"], Firefight: ["Q105", "Q101"], "Lonely Book": ["Q102"], "Universe Book": ["Q103"], "Tie-in": ["Q104"], Calamity: ["Q106"], "Secret History": ["Q107"], "Hammer Book": ["Q108"] };
   const membri = { Q201: ["Q101", "Q111"], Q203: ["Q103", "Q113"] };
   let domande = 0;
   const prendi = async (url) => {
@@ -104,6 +108,8 @@ export default async (t) => {
   const n = await sagaDelLibro({ titolo: "Lonely Book", autore: "Sanderson" }, scaffale, { prendi });
   t.eq("una serie che nessuna raccolta tiene: raccolta nuova, detta", `${n?.saga} ${n?.numero} ${n?.nuova}`, "A New Series 3 true");
   t.c("…e lo dice", /non c'è: la propongo come raccolta nuova, n° 3/.test(fraseSagaDelLibro(n)), fraseSagaDelLibro(n));
+  const h = await sagaDelLibro({ titolo: "Hammer Book", autore: "Sanderson" }, scaffale, { prendi });
+  t.eq("una «novel sequence» e' una serie di libri", `${h?.saga} ${h?.numero} ${h?.nuova}`, "A Sequence 2 true");
   t.eq("una serie TV non e' una serie di libri", await sagaDelLibro({ titolo: "Tie-in", autore: "Sanderson" }, scaffale, { prendi }), null);
   t.eq("il libro di un altro autore con lo stesso titolo no", await sagaDelLibro({ titolo: "Lonely Book", autore: "Someone Else" }, scaffale, { prendi }), null);
   t.eq("senza autore scritto si prende il libro", (await sagaDelLibro({ titolo: "Lonely Book" }, scaffale, { prendi }))?.saga, "A New Series");

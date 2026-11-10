@@ -1095,6 +1095,8 @@ const SCENE = [
       await p.getByRole("button", { name: "🔍 Cerca i libri" }).click();
       await finche(() => p.getByText(/«Gaunt's Ghosts»: l'elenco della guida dell'app/).count(), 5000, "la saga non si trova fra le guide");
       if ((await p.getByRole("textbox", { name: "Raccolta" }).inputValue()) !== "Warhammer 40K") throw new Error("la raccolta proposta non e' quella del 40K del lettore");
+      // e la serie accanto, come l'Eresia nel 40K (il lettore: «anche il nome della serie»)
+      if ((await p.getByRole("textbox", { name: "Serie", exact: true }).inputValue()) !== "Gaunt's Ghosts") throw new Error("la serie proposta non e' Gaunt's Ghosts");
       // si toglie l'ultimo: l'elenco si mostra prima di scriverlo
       await p.locator("label", { hasText: "The Anarch" }).getByRole("checkbox").uncheck();
       await p.getByRole("button", { name: "📥 Aggiungi 14 schede" }).click();
@@ -1150,6 +1152,7 @@ const SCENE = [
       await p.getByRole("button", { name: "🔍 Di che saga è?" }).click();
       await finche(() => p.getByText(/È nella guida di Eisenhorn: va in «Warhammer 40K», Eisenhorn, n° 2/).count(), 5000, "Malleus non si riconosce nella raccolta del 40K");
       const proposta = `${await p.getByRole("textbox", { name: "Saga", exact: true }).inputValue()} ${await p.getByRole("textbox", { name: "Numero", exact: true }).inputValue()}`;
+      if ((await p.getByPlaceholder("Serie (facoltativa)").inputValue()) !== "Eisenhorn") throw new Error("la serie proposta per Malleus non si vede");
       if (proposta !== "Warhammer 40K 2") throw new Error(`la proposta scritta nei campi: ${proposta}`);
       await p.getByRole("button", { name: "📥 Aggiungi", exact: true }).click();
       await finche(async () => (await libriDi(p)).some((b) => b.title === "Malleus"), 5000, "Malleus non entra");

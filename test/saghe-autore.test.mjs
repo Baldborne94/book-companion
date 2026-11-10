@@ -62,11 +62,18 @@ export default async (t) => {
     Q47: opera("Some Other Series", null),
     Q14: { labels: { en: { value: "Empty Series" } }, claims: { P31: tipo("Q1667921") } },
     Q46: opera("Solo", "Q14"),
+    // MAGNUS CHASE su Wikidata e' una «novel sequence», e la serie TV una
+    // sottoclasse di «serie di opere creative»: i tipi si chiedono
+    Q15: { labels: { en: { value: "A Novel Sequence" } }, claims: { P31: tipo("Q2005755") } },
+    Q30: opera("Summer", "Q15", 1),
+    Q31: opera("Thor", "Q15", 2),
+    Q2005755: { labels: { en: { value: "novel sequence" } }, claims: {} },
+    Q5398426: { labels: { en: { value: "television series" } }, claims: { P279: tipo("Q15416", "Q7725310") } },
   };
   const prendi = async (url) => {
     const q = new URL(url).searchParams;
     if (q.get("action") === "wbsearchentities") return { search: [{ id: "Q9" }, { id: "Q1" }] };
-    if (q.get("action") === "query" && /P50=Q1/.test(q.get("srsearch"))) return { query: { search: ["Q21", "Q22", "Q23", "Q24", "Q25", "Q26", "Q27", "Q28", "Q29", "Q40", "Q41", "Q42", "Q43", "Q44", "Q45", "Q46", "Q47"].map((title) => ({ title })) } };
+    if (q.get("action") === "query" && /P50=Q1/.test(q.get("srsearch"))) return { query: { search: ["Q21", "Q22", "Q23", "Q24", "Q25", "Q26", "Q27", "Q28", "Q29", "Q40", "Q41", "Q42", "Q43", "Q44", "Q45", "Q46", "Q47", "Q30", "Q31"].map((title) => ({ title })) } };
     if (q.get("action") === "query" && /P179=Q11/.test(q.get("srsearch"))) return { query: { search: ["Q23", "Q24", "Q25", "Q27", "Q28"].map((title) => ({ title })) } };
     return { entities: Object.fromEntries(q.get("ids").split("|").filter((i) => E[i]).map((i) => [i, E[i]])) };
   };
@@ -78,6 +85,7 @@ export default async (t) => {
   t.c("…e la stessa serie di Wikidata non si ripete", !nomi.some((n) => n.startsWith("wikidata:Lockwood")), nomi.join(" | "));
   t.c("la serie di Wikidata coi soli libri (niente racconto ne' edizione)", nomi.includes("wikidata:Some Other Series:3"), nomi.join(" | "));
   t.c("niente universi", !nomi.some((n) => /Universe/.test(n)), nomi.join(" | "));
+  t.c("una serie di romanzi che Wikidata chiama «novel sequence» (Magnus Chase di Riordan)", nomi.includes("wikidata:A Novel Sequence:2"), nomi.join(" | "));
   t.c("il conto e' quello dell'elenco: un volume senza titolo leggibile non conta (i «13 libri» dei Liveship Traders)", nomi.includes("wikidata:Some Other Series:3"), nomi.join(" | "));
   const altri = r.saghe.find((s) => s.fonte === "sciolti");
   t.eq(
