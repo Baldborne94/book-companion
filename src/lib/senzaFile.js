@@ -134,7 +134,7 @@ export function vociDallaGuida(cammino, libri = [], opzioni = {}) {
   const tav = TAVOLE.find((t) => t.saga === cammino?.saga);
   if (!tav) return [];
   const saga = sagaPerLaGuida(tav, libri, opzioni);
-  return (cammino.tappe || [])
+  const romanzi = (cammino.tappe || [])
     .filter((t) => volume(t.voce) && !lettura(t.voce))
     .map((t) => ({
       titolo: t.voce.t,
@@ -145,6 +145,17 @@ export function vociDallaGuida(cammino, libri = [], opzioni = {}) {
       capitolo: t.voce.c || "",
       gia: !!t.libro,
     }));
+  // LE STORIE DI MEZZO (il lettore: «non mi consideri anche le storie di
+  // intramezzo delle serie?»): la guida le tiene a parte (`novelle`), fuori
+  // dal cammino e dal riconoscimento, e qui stanno al loro numero, fra i
+  // romanzi; l'elenco le propone senza spunta. Portano il loro ciclo
+  // (`capitolo`): una guida ristretta a un ciclo prende solo le sue.
+  const storie = (tav.novelle || [])
+    .map((n) => {
+      const v = { titolo: n.t, autore: n.a || AUTORI[tav.saga] || "", saga, serie: tav.parti ? tav.saga : n.c || "", numero: n.o, capitolo: n.c || "", anno: n.anno || null, novella: true };
+      return { ...v, gia: giaSulloScaffale(v, libri) };
+    });
+  return [...romanzi, ...storie].sort((a, b) => (a.numero ?? Infinity) - (b.numero ?? Infinity));
 }
 // il prologo e i titoli che la guida dichiara fuori dalla storia non sono
 // volumi della saga da mettere sullo scaffale: la guida li nomina e basta

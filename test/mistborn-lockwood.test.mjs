@@ -31,5 +31,5 @@ export default async (t) => {
   t.eq("«Lockwood & Co.» col segno", guidaDalNome("Lockwood & Co.")?.saga, "Lockwood & Co.");
   t.eq("«Lockwood and Co» a parole", guidaDalNome("Lockwood and Co")?.saga, "Lockwood & Co.");
   const lw = await sagaDalNome("Lockwood", { libri: [] });
-  t.eq("dal nome, la guida: cinque volumi in ordine", `${lw.fonte} ${lw.volumi.map((v) => v.numero).join(",")}`, "guida 1,2,3,4,5");
+  t.eq("dal nome, la guida: cinque volumi in ordine", `${lw.fonte} ${lw.volumi.filter((v) => !v.novella).map((v) => v.numero).join(",")}`, "guida 1,2,3,4,5");
 };

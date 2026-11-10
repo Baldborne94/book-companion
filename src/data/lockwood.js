@@ -15,3 +15,12 @@ export default [
   { o: 4, t: "The Creeping Shadow", c: SAGA, a: A },
   { o: 5, t: "The Empty Grave", c: SAGA, a: A },
 ];
+
+// LE STORIE DI MEZZO (chiesto dal lettore: «non mi consideri anche le storie
+// di intramezzo delle serie?»): a parte dai romanzi, fuori dal cammino e dal
+// riconoscimento, col loro numero; le usa solo l'elenco di «📥 Senza file»,
+// che le propone senza spunta. Fonte: Hardcover, misurato il 10 novembre
+// 2026 (la posizione nella serie e l'anno); solo quelle gia' uscite.
+export const NOVELLE = [
+  { o: 4.5, t: "A Portland Row Christmas", c: SAGA, a: "Jonathan Stroud", anno: 2023 },
+];

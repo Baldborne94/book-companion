@@ -41,3 +41,17 @@ export default [
     nota: "raccolta: Xenos, Malleus e Hereticus",
   },
 ];
+
+// LE STORIE DI MEZZO (chiesto dal lettore: «non mi consideri anche le storie
+// di intramezzo delle serie?»): a parte dai romanzi, fuori dal cammino e dal
+// riconoscimento, col loro numero; le usa solo l'elenco di «📥 Senza file»,
+// che le propone senza spunta. Fonte: Hardcover, misurato il 10 novembre
+// 2026 (la posizione nella serie e l'anno); solo quelle gia' uscite.
+export const NOVELLE = [
+  { o: 0, t: "Born Unto Us", c: SAGA, a: "Dan Abnett", anno: 2012 },
+  { o: 0, t: "Regia Occulta", c: SAGA, a: "Dan Abnett", anno: 2013 },
+  { o: 0, t: "The Strange Demise of Titus Endor", c: SAGA, a: "Dan Abnett", anno: 2013 },
+  { o: 1.5, t: "Missing in Action", c: SAGA, a: "Dan Abnett", anno: 2001 },
+  { o: 2.5, t: "Backcloth for a Crown Additional", c: SAGA, a: "Dan Abnett", anno: 2002 },
+  { o: 4.11, t: "The Keeler Image", c: SAGA, a: "Dan Abnett", anno: 2016 },
+];

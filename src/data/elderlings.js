@@ -51,3 +51,12 @@ export default [
   { o: 15, t: "Fool's Quest", c: FITZ_FOOL, a: A, alias: ["Fools Quest"] },
   { o: 16, t: "Assassin's Fate", c: FITZ_FOOL, a: A, alias: ["Assassins Fate"] },
 ];
+
+// LE STORIE DI MEZZO (chiesto dal lettore: «non mi consideri anche le storie
+// di intramezzo delle serie?»): a parte dai romanzi, fuori dal cammino e dal
+// riconoscimento, col loro numero; le usa solo l'elenco di «📥 Senza file»,
+// che le propone senza spunta. Fonte: Hardcover, misurato il 10 novembre
+// 2026 (la posizione nella serie e l'anno); solo quelle gia' uscite.
+export const NOVELLE = [
+  { o: 0.5, t: "The Wilful Princess and the Piebald Prince", c: FARSEER, a: "Robin Hobb", anno: 2013 },
+];

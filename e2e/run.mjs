@@ -1209,7 +1209,7 @@ const SCENE = [
   {
     // chiesto dal lettore: «siti affidabili dove vedere la lista completa
     // delle serie ce l'abbiamo?», poi «sì, aggiungi hardcover»
-    nome: "con la chiave di Hardcover nelle Impostazioni, una saga si trova su Hardcover: i soli romanzi, uno per numero, l'annunciato senza spunta",
+    nome: "con la chiave di Hardcover nelle Impostazioni, una saga si trova su Hardcover: un romanzo per numero, le storie di mezzo e l'annunciato senza spunta",
     async fai({ browser }) {
       const chiavi = [];
       const libro = (position, id, title, { anno = 2015, data = `${anno}-10-06`, lettori = 900, lingua = "eng" } = {}) => ({
@@ -1246,7 +1246,11 @@ const SCENE = [
       await finche(() => p.getByText(/«Magnus Chase and the Gods of Asgard» su Hardcover/).count(), 8000, "la saga non si trova su Hardcover");
       if (!chiavi.length || !chiavi.every((c) => c === "Bearer hc_pat_prova")) throw new Error(`la chiave non arriva com'e' scritta da Hardcover: ${chiavi.join(" | ")}`);
       for (const t of ["The Sword of Summer", "The Hammer of Thor", "The Ship of the Dead", "The Next Magnus"]) if (!(await p.getByText(t, { exact: true }).count())) throw new Error(`nell'elenco manca «${t}»`);
-      for (const t of ["Yaz Kılıcı", "Hotel Valhalla Guide to the Norse Worlds"]) if (await p.getByText(t, { exact: true }).count()) throw new Error(`nell'elenco c'e' «${t}», che non e' un romanzo della serie in inglese`);
+      if (await p.getByText("Yaz Kılıcı", { exact: true }).count()) throw new Error("nell'elenco c'e' la traduzione turca");
+      // la storia di mezzo (il lettore: «non mi consideri anche le storie di intramezzo?»): c'e', al suo numero, senza spunta
+      const storia = p.locator("label", { hasText: "Hotel Valhalla Guide to the Norse Worlds" });
+      if (!(await storia.getByText(/storia di mezzo/).count()) || !(await storia.getByText("n° 1.5").count())) throw new Error("la storia di mezzo non si vede al suo numero");
+      if (await storia.getByRole("checkbox").isChecked()) throw new Error("la storia di mezzo parte spuntata");
       if (await p.locator("label", { hasText: "The Next Magnus" }).getByRole("checkbox").isChecked()) throw new Error("il libro annunciato parte spuntato");
       if (!(await p.locator("label", { hasText: "The Next Magnus" }).getByText(/annunciato/).count())) throw new Error("il libro annunciato non lo dice");
       await p.getByRole("textbox", { name: "Raccolta" }).fill("Rick Riordan");
@@ -1258,7 +1262,7 @@ const SCENE = [
       const scritte = nuove.map((b) => `${b.sagaOrder} ${b.title} · ${b.saga} / ${b.series} · ${b.author}`).join(" | ");
       if (scritte !== "1 The Sword of Summer · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan | 2 The Hammer of Thor · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan | 3 The Ship of the Dead · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan")
         throw new Error(`le schede: ${scritte}`);
-      return { guasti: d.guasti, nota: `${chiavi.length} domande a Hardcover; ${scritte.split(" | ").length} schede in «Rick Riordan», serie Magnus Chase, 1–3; la traduzione turca, la guida 1.5 e l'annunciato fuori` };
+      return { guasti: d.guasti, nota: `${chiavi.length} domande a Hardcover; ${scritte.split(" | ").length} schede in «Rick Riordan», serie Magnus Chase, 1–3; la traduzione turca fuori, la storia di mezzo 1.5 e l'annunciato senza spunta` };
     },
   },
   {

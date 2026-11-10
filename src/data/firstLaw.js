@@ -34,3 +34,12 @@ export const LA_FOLLIA = [
   { o: 2, t: "The Trouble with Peace", c: FOLLIA, a: A },
   { o: 3, t: "The Wisdom of Crowds", c: FOLLIA, a: A },
 ];
+
+// LE STORIE DI MEZZO (chiesto dal lettore: «non mi consideri anche le storie
+// di intramezzo delle serie?»): a parte dai romanzi, fuori dal cammino e dal
+// riconoscimento, col loro numero; le usa solo l'elenco di «📥 Senza file»,
+// che le propone senza spunta. Fonte: Hardcover, misurato il 10 novembre
+// 2026 (la posizione nella serie e l'anno); solo quelle gia' uscite.
+export const NOVELLE_FOLLIA = [
+  { o: 0, t: "The Great Change", c: FOLLIA, a: "Joe Abercrombie", anno: 2023 },
+];

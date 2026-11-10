@@ -103,6 +103,6 @@ export default async (t) => {
   t.eq("toccata, i suoi libri in ordine", libri.volumi.map((v) => `${v.numero}${v.titolo}`).join(","), "1A,2B,3C");
   t.eq("…con quello che hai segnato", libri.volumi.filter((v) => v.gia).map((v) => v.titolo).join(), "B");
   const lw = await libriDellaSaga(r.saghe.find((s) => s.fonte === "guida" && s.saga === "Lockwood & Co."), { libri: [] });
-  t.eq("la guida toccata: i libri della guida", `${lw.fonte} ${lw.volumi.length}`, "guida 5");
+  t.eq("la guida toccata: i libri della guida", `${lw.fonte} ${lw.volumi.filter((v) => !v.novella).length}`, "guida 5");
   t.eq("un autore che nessuno conosce", await saghePerAutore("Nessuno", { prendi: async () => ({ search: [] }) }), null);
 };
