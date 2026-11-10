@@ -1207,18 +1207,25 @@ const SCENE = [
       if ((await p.getByPlaceholder("Serie", { exact: true }).getAttribute("list")) !== "bc-serie-libro") throw new Error("il campo della serie non ha l'elenco");
       // UN MANGA SENZA FILE («l'aggiungi senza file vale anche per manga e
       // fumetti?»): il tipo scelto nel pannello, e lo scaffale lo sa subito
-      await campoRaccolta.fill("");
       await p.getByRole("button", { name: "🏮 Manga", exact: true }).click();
-      await p.getByRole("textbox", { name: "Titolo", exact: true }).fill("One Piece, Vol. 1");
-      await p.getByRole("textbox", { name: "Autore", exact: true }).fill("Eiichiro Oda");
-      await p.getByRole("button", { name: "📥 Aggiungi", exact: true }).click();
-      await finche(async () => (await libriDi(p)).some((b) => b.title === "One Piece, Vol. 1"), 5000, "il manga senza file non entra");
+      const unoSolo = async (titolo) => {
+        await p.getByRole("textbox", { name: "Titolo", exact: true }).fill(titolo);
+        await p.getByRole("textbox", { name: "Autore", exact: true }).fill("Eiichiro Oda");
+        await campoRaccolta.fill("One Piece");
+        await p.getByRole("button", { name: "📥 Aggiungi", exact: true }).click();
+        await finche(async () => (await libriDi(p)).some((b) => b.title === titolo), 5000, `«${titolo}» non entra`);
+      };
+      await unoSolo("One Piece, Vol. 1");
       const op = (await libriDi(p)).find((b) => b.title === "One Piece, Vol. 1");
       if (op.tipo !== "manga" || op.fileType !== "nessuno") throw new Error(`il manga senza file: ${JSON.stringify(op)}`);
+      // E UNO AGGIUNTO FRA I LIBRI SEGUE LA SUA SAGA («come lo cambio e lo
+      // posso mettere sotto fumetti?»): segnarne uno basta
+      await p.getByRole("button", { name: "📖 Libri", exact: true }).click();
+      await unoSolo("One Piece, Vol. 2");
+      if ((await libriDi(p)).find((b) => b.title === "One Piece, Vol. 2").tipo) throw new Error("il secondo volume e' nato con un tipo: la prova non prova niente");
       await p.getByRole("button", { name: "Chiudi", exact: true }).click();
       await p.getByRole("button", { name: "🏮 Manga", exact: true }).click();
-      // (il giro dei libri sciolti gli legge la saga dal titolo: sta nella raccolta «One Piece»)
-      await finche(() => p.getByText("One Piece", { exact: true }).count(), 5000, "il manga senza file non sta fra i manga");
+      await finche(() => p.getByRole("button", { name: "One Piece: 2 volumi" }).count(), 5000, "fra i manga non ci sono tutt'e due i One Piece senza file");
       if (await p.getByText("Warhammer 40K", { exact: true }).count()) throw new Error("fra i manga ci sono i romanzi del 40K");
       // il secondo «Tutti» e' quello dei tipi
       await p.getByRole("button", { name: "Tutti", exact: true }).nth(1).click();
@@ -1278,6 +1285,11 @@ const SCENE = [
       });
       const d = await dispositivo(browser, {
         misura: TABLET,
+        // il terzo volume c'e' gia', col nome del suo file: lo dice il posto, non il titolo
+        prima: () => {
+          if (!localStorage.getItem("bc_books"))
+            localStorage.setItem("bc_books", JSON.stringify([{ id: "mc3", title: "Magnus Chase 03 (2017) (retail)", author: "", saga: "Rick Riordan", series: "Magnus Chase and the Gods of Asgard", sagaOrder: 3, fileType: "epub", fileTolto: true, addedAt: 1 }]));
+        },
         hardcover: async ({ query, variables }, chiave) => {
           chiavi.push(chiave);
           if (/query_type: "Series"/.test(query)) return { data: { search: { results: { hits: [{ document: { id: "1585", name: "Magnus Chase and the Gods of Asgard", readers_count: 2729 } }, { document: { id: "260530", name: "Magnus Chase ve Asgard Tanrıları", readers_count: 0 } }] } } } };
@@ -1320,12 +1332,14 @@ const SCENE = [
       if (!(await p.locator("label", { hasText: "The Next Magnus" }).getByText(/annunciato/).count())) throw new Error("il libro annunciato non lo dice");
       await p.getByRole("combobox", { name: "Raccolta" }).fill("Rick Riordan");
       if ((await p.getByRole("combobox", { name: "Serie", exact: true }).inputValue()) !== "Magnus Chase and the Gods of Asgard") throw new Error("la serie proposta non e' quella di Hardcover");
-      await p.getByRole("button", { name: "📥 Aggiungi 3 schede" }).click();
+      // nella raccolta e nella serie scelte il terzo c'e' gia' (il lettore: «non lo avevi già visto nella raccolta?»)
+      await finche(() => p.locator("label", { hasText: "The Ship of the Dead" }).getByText(/già sullo scaffale/).count(), 5000, "il volume gia' nella raccolta col suo numero non si riconosce");
+      await p.getByRole("button", { name: "📥 Aggiungi 2 schede" }).click();
       // (l'avviso dell'aggiunta lo copre subito quello delle copertine: qui il catalogo non risponde)
-      await finche(async () => (await libriDi(p)).filter((b) => b.fileType === "nessuno").length === 3, 5000, "le tre schede non entrano");
+      await finche(async () => (await libriDi(p)).filter((b) => b.fileType === "nessuno").length === 2, 5000, "le due schede non entrano");
       const nuove = (await libriDi(p)).filter((b) => b.fileType === "nessuno").sort((a, b) => a.sagaOrder - b.sagaOrder);
       const scritte = nuove.map((b) => `${b.sagaOrder} ${b.title} · ${b.saga} / ${b.series} · ${b.author}`).join(" | ");
-      if (scritte !== "1 The Sword of Summer · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan | 2 The Hammer of Thor · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan | 3 The Ship of the Dead · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan")
+      if (scritte !== "1 The Sword of Summer · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan | 2 The Hammer of Thor · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan")
         throw new Error(`le schede: ${scritte}`);
       // LE COPERTINE CHE MANCANO (il lettore: «sì, mostra le copertine di
       // Hardcover quando mancano»): sullo scaffale la sua, dove la nostra non c'e'
@@ -1335,7 +1349,7 @@ const SCENE = [
       const senza = await p.evaluate(() => [...document.querySelectorAll("img")].filter((i) => /assets\.hardcover\.app/.test(i.src)).length);
       if (senza !== 1) throw new Error(`copertine di Hardcover sullo scaffale: ${senza} (attesa una: le altre Hardcover non le ha)`);
       if (!libriCercati.some((q) => /The Sword of Summer/.test(q))) throw new Error("i libri senza copertina non si cercano");
-      return { guasti: d.guasti, nota: `${chiavi.length} domande a Hardcover; ${scritte.split(" | ").length} schede in «Rick Riordan», serie Magnus Chase, 1–3; la traduzione turca fuori, la storia di mezzo 1.5 e l'annunciato senza spunta; la copertina di Hardcover dove manca (${libriCercati.length} libri cercati)` };
+      return { guasti: d.guasti, nota: `${chiavi.length} domande a Hardcover; ${scritte.split(" | ").length} schede in «Rick Riordan», serie Magnus Chase, 1–2 (il 3 c'era gia' col nome del file); la traduzione turca fuori, la storia di mezzo 1.5 e l'annunciato senza spunta; la copertina di Hardcover dove manca (${libriCercati.length} libri cercati)` };
     },
   },
   {

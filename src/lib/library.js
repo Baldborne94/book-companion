@@ -446,22 +446,37 @@ const fumetto = (b) => eFumetto(b) || (b?.fileType === SENZA && tipoScelto(b) ==
 // schede. Si propaga solo ai FUMETTI della stessa saga — un romanzo in
 // ePub della stessa storia resta un libro — e solo da un volume che manga
 // lo e' per un segno suo, mai per eredita', o due saghe si contagerebbero.
+// E UNA SCHEDA SENZA FILE SEGUE LA SUA SAGA (il lettore, con i cento
+// One Piece aggiunti senza file fra i libri: «come lo cambio e lo posso
+// mettere sotto fumetti?»): un formato da cui capirlo non ce l'ha, e la
+// saga e' il segno migliore. Senza una scelta sua prende manga se la saga
+// ha un manga, fumetti se ha un fumetto; una saga di soli romanzi resta
+// di libri.
+const senzaFile = (b) => b?.fileType === SENZA;
+
 export function tipiDi(books) {
   const sagheManga = new Set();
+  const sagheFumetti = new Set();
   for (const b of books || []) {
     const k = chiaveSaga(b);
     if (k && eManga(b)) sagheManga.add(k);
+    if (k && fumetto(b)) sagheFumetti.add(k);
   }
   const mappa = new Map();
   for (const b of books || []) {
+    const k = chiaveSaga(b);
     // un «fumetti» scelto a mano non eredita niente: e' una scelta
     const tipo = eManga(b)
       ? "manga"
       : fumetto(b)
-        ? !tipoScelto(b) && sagheManga.has(chiaveSaga(b))
+        ? !tipoScelto(b) && sagheManga.has(k)
           ? "manga"
           : "fumetti"
-        : "libri";
+        : senzaFile(b) && sagheManga.has(k)
+          ? "manga"
+          : senzaFile(b) && sagheFumetti.has(k)
+            ? "fumetti"
+            : "libri";
     mappa.set(b.id, tipo);
   }
   return mappa;

@@ -154,4 +154,22 @@ export default async (t) => {
     t.eq("senza raccolta niente serie (non quelle dei libri sciolti)", serieDellaRaccolta(scaffale, "").length, 0);
     t.eq("l'articolo non fa una raccolta nuova", raccolteEsistenti([{ saga: "Wheel of Time" }, { saga: "The Wheel of Time" }, { saga: "The Wheel of Time" }]).join("|"), "The Wheel of Time");
   }
+
+  // ---- LO STESSO POSTO NELLA STESSA RACCOLTA --------------------------------
+  // il lettore, con Gachiakuta v01–v12 sullo scaffale e l'elenco di Hardcover
+  // che li proponeva tutti: «non lo avevi già visto nella raccolta?»
+  {
+    const scaffale = [
+      { title: "Gachiakuta v01 (2024) (Digital) (Rillant)", author: "", saga: "Gachiakuta", series: "", sagaOrder: 1, fileType: "cbz" },
+      { title: "Horus Rising", author: "Dan Abnett", saga: "Warhammer 40K", series: "The Horus Heresy", sagaOrder: 1, fileType: "epub" },
+      { title: "Gachiakuta Fanbook", saga: "Gachiakuta", series: "", sagaOrder: null, fileType: "cbz" },
+    ];
+    t.c("lo stesso numero nella stessa raccolta c'e' gia', anche col titolo diverso", giaSulloScaffale({ titolo: "Gachiakuta, Vol. 1", autore: "Kei Urana", saga: "Gachiakuta", serie: "", numero: 1 }, scaffale));
+    t.c("…anche scritta diversa", giaSulloScaffale({ titolo: "Gachiakuta, Vol. 1", saga: "gachiakuta", numero: "1" }, scaffale));
+    t.c("un altro numero no", !giaSulloScaffale({ titolo: "Gachiakuta, Vol. 13", saga: "Gachiakuta", numero: 13 }, scaffale));
+    t.c("lo stesso numero in un'altra serie della raccolta no (il n° 1 di Gaunt's Ghosts non e' Horus Rising)", !giaSulloScaffale({ titolo: "First and Only", autore: "Dan Abnett", saga: "Warhammer 40K", serie: "Gaunt's Ghosts", numero: 1 }, scaffale));
+    t.c("senza numero non si giudica dal posto", !giaSulloScaffale({ titolo: "Gachiakuta Artbook", saga: "Gachiakuta" }, scaffale));
+    t.c("senza raccolta nemmeno", !giaSulloScaffale({ titolo: "Altro", numero: 1 }, [{ title: "X", saga: "", sagaOrder: 1 }]));
+    t.c("lo stesso numero in un'altra raccolta no", !giaSulloScaffale({ titolo: "Chainsaw Man, Vol. 1", saga: "Chainsaw Man", numero: 1 }, scaffale));
+  }
 };

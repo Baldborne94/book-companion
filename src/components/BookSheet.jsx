@@ -736,11 +736,13 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                     );
                   })}
                 </div>
-                {!tipo && eFumetto(book) && (
+                {!tipo && (
                   <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginTop: 3 }}>
-                    {tipoDeciso === "manga"
-                      ? "Riconosciuto come manga. Segnane uno: gli altri volumi della saga seguono."
-                      : "Segnane uno come manga: gli altri volumi della saga seguono."}
+                    {!eFumetto(book)
+                      ? "Segnane uno come fumetto o manga: gli altri volumi senza file della saga seguono."
+                      : tipoDeciso === "manga"
+                        ? "Riconosciuto come manga. Segnane uno: gli altri volumi della saga seguono."
+                        : "Segnane uno come manga: gli altri volumi della saga seguono."}
                   </span>
                 )}
               </div>
