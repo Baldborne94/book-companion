@@ -232,6 +232,31 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore, che la chiave di Hardcover non se la ricordava:
+    // «falla sincronizzare sugli altri dispositivi», e lo stesso per Claude
+    nome: "la chiave di Hardcover salvata sul PC arriva sul tablet, e tolta sul PC si toglie anche li'",
+    async fai({ browser, db }) {
+      const pc = await dispositivo(browser, { sessione: true });
+      const tab = await dispositivo(browser, { sessione: true, misura: TABLET });
+      const chiaveSu = () => (db.prefs()?.raccolte_fav || []).find((v) => v?.id === "chiave|hardcover");
+      await pc.p.goto(URL_APP);
+      await pc.p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await pc.p.getByRole("textbox", { name: "Chiave di Hardcover" }).fill("hc_pat_dal_pc");
+      await pc.p.getByRole("button", { name: "Salva la chiave di Hardcover" }).click();
+      await finche(() => chiaveSu()?.k === "hc_pat_dal_pc", 20000, "la chiave non sale nelle preferenze");
+      await tab.p.goto(URL_APP);
+      await finche(async () => (await tab.p.evaluate(() => localStorage.getItem("bc_hardcover_key"))) === "hc_pat_dal_pc", 20000, "la chiave non arriva sul tablet");
+      await tab.p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await finche(() => tab.p.getByText(/✓ Chiave salvata/).count(), 8000, "le Impostazioni del tablet non la dicono salvata");
+      // tolta sul PC: una lapide, che arriva e la toglie anche dal tablet
+      await pc.p.getByRole("button", { name: "Togli la chiave" }).click();
+      await finche(() => chiaveSu()?.deleted === true, 20000, "la chiave tolta non sale come lapide");
+      await tab.p.goto(URL_APP);
+      await finche(async () => (await tab.p.evaluate(() => localStorage.getItem("bc_hardcover_key"))) === null, 20000, "la chiave tolta sul PC resta sul tablet");
+      return { guasti: [...pc.guasti, ...tab.guasti], nota: "salvata sul PC, arrivata sul tablet e detta nelle Impostazioni; tolta sul PC, tolta anche sul tablet" };
+    },
+  },
+  {
     nome: "un ePub si importa e si apre",
     async fai({ browser }) {
       const d = await dispositivo(browser);

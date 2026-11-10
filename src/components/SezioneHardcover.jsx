@@ -4,7 +4,8 @@ import { chiaveHardcover, salvaChiaveHardcover } from "../lib/hardcover.js";
 
 // LA CHIAVE DI HARDCOVER NELLE IMPOSTAZIONI (`lib/hardcover.js`): con lei
 // «📥 Senza file» cerca le serie anche su Hardcover, piu' completo di
-// Wikidata. Sta solo su questo dispositivo, come quella dell'Oracolo.
+// Wikidata. Sta sul dispositivo e viaggia sugli altri con la
+// sincronizzazione, come quella dell'Oracolo (`chiaviInViaggio.js`).
 export default function SezioneHardcover() {
   const [salvata, setSalvata] = useState(() => !!chiaveHardcover());
   const [bozza, setBozza] = useState("");
@@ -31,7 +32,7 @@ export default function SezioneHardcover() {
           <a href="https://hardcover.app/account/api" target="_blank" rel="noreferrer" style={{ color: C.accent }}>
             hardcover.app → API
           </a>{" "}
-          crea una chiave col solo permesso <code>read:catalog</code> e incollala qui. Resta su questo dispositivo; a Hardcover arrivano i nomi delle saghe e degli autori che cerchi.
+          crea una chiave col solo permesso <code>read:catalog</code> e incollala qui. Con la sincronizzazione accesa arriva da sola sugli altri tuoi dispositivi; a Hardcover arrivano i nomi delle saghe e degli autori che cerchi.
         </p>
       )}
       <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>

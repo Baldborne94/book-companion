@@ -25,6 +25,7 @@ import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
 import { raccontiLetti, scriviRacconti } from "./racconti.js";
 import { leggiPreferite, scriviPreferite, fondiPreferite } from "./raccoltePreferite.js";
 import { leggiVoti, scriviVoti, fondiVoti, inViaggio, dalViaggio } from "./votiRaccolte.js";
+import { leggiChiavi, scriviChiavi } from "./chiaviInViaggio.js";
 import { leggiDispositivi, scriviDispositivi, fondiDispositivi, aggiornaQui, nomeDispositivo } from "./dispositivi.js";
 import { leggiTempo, scriviTempo, fondiTempo, dispositivo } from "./tempo.js";
 import { leggiObiettivi, scriviObiettivi, fondiObiettivi } from "./obiettivo.js";
@@ -228,7 +229,7 @@ function localPrefs() {
     quaderno: leggiQuaderno(),
     da_prendere: leggiDaPrendere(),
     // il cuore e i voti delle raccolte nella stessa colonna (`inViaggio`)
-    raccolte_fav: inViaggio(leggiPreferite(), leggiVoti(), leggiDispositivi()),
+    raccolte_fav: inViaggio(leggiPreferite(), leggiVoti(), leggiDispositivi(), leggiChiavi()),
     last_opened: getLastOpened(),
     updated_at: parseInt(localStorage.getItem(PREFS_UPD_KEY), 10) || 0,
   };
@@ -613,6 +614,8 @@ export async function syncNow({ onProgress, onLibri } = {}) {
     scriviPreferite(fondiPreferite(leggiPreferite(), arrivati.preferite));
     scriviVoti(fondiVoti(leggiVoti(), arrivati.voti));
     scriviDispositivi(fondiDispositivi(leggiDispositivi(), arrivati.dispositivi));
+    // le chiavi di Hardcover e dell'Oracolo, messe al loro posto (`chiaviInViaggio.js`)
+    scriviChiavi(arrivati.chiavi);
     if (merged.last_opened) localStorage.setItem("bc_lastopen", merged.last_opened);
   }
   if (pushRemote) {
