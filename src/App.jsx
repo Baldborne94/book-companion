@@ -926,7 +926,7 @@ export default function App() {
   // al loro posto. Questo numero cresce quando i byte sono andati via
   // davvero, e la Libreria rilegge tutt'e due.
   const [spazioCambiato, setSpazioCambiato] = useState(0);
-  const { tall, stretto } = useViewport();
+  const { tall, stretto, largo } = useViewport();
   // la saga vale solo per il salto dalla home: tornando dal menu la
   // libreria deve ritrovarsi intera
   const navigate = (id) => {
@@ -2297,14 +2297,14 @@ export default function App() {
           zIndex: 2,
           flex: 1,
           width: "100%",
-          // LO SCHERMO DEL COMPUTER SI USA (chiesto dal lettore sul PC, 1920
-          // di larghezza: «far si' che occupi bene lo spazio»). A 960 l'Ingresso
-          // e la Libreria lasciavano mezzo schermo vuoto, sette copertine per
-          // riga; sul tablet `px` la portava gia' oltre lo schermo, e
-          // `width: 100%` fa da tetto
-          maxWidth: px(1440),
+          // LO SCHERMO DEL COMPUTER SI USA TUTTO (chiesto dal lettore sul PC,
+          // due volte: a 960 restava mezzo schermo vuoto; poi, a 1440 su una
+          // finestra da 1867, «non riesci ad adattare su desktop affinché venga
+          // preso tutto lo schermo?»: 214 pixel vuoti per parte). Nessun tetto:
+          // la colonna e' la finestra, col suo margine (`largo`: piu' ampio sul
+          // computer); sul tablet e sul telefono come sempre
           margin: "0 auto",
-          padding: "8px 16px 26px",
+          padding: largo ? "8px 32px 26px" : "8px 16px 26px",
           animation: "bc-fade-in 0.35s ease-out",
         }}
       >
