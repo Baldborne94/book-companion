@@ -14,7 +14,7 @@ const chi = (title, author) => {
 };
 
 export default async (t) => {
-  const nuove = ["Cosmere Standalones", "Novels of the Malazan Empire", "Path to Ascendancy", "The Kharkanas Trilogy", "Witness", "The Wheel of Time", "Shadows of the Apt", "The First Law Trilogy", "The First Law Standalones", "The Age of Madness", "The Faithful and the Fallen", "Of Blood and Bone", "The Bloodsworn Saga"];
+  const nuove = ["Cosmere Standalones", "Novels of the Malazan Empire", "Path to Ascendancy", "The Kharkanas Trilogy", "Witness", "The Wheel of Time", "Shadows of the Apt", "The First Law Trilogy", "The First Law Standalones", "The Age of Madness", "The Faithful and the Fallen", "Of Blood and Bone", "The Bloodsworn Saga", "The Bound and the Broken"];
   for (const s of nuove) {
     const tav = TAVOLE.find((x) => x.saga === s);
     t.c(`la guida «${s}» c'e'`, !!tav);
@@ -35,6 +35,14 @@ export default async (t) => {
   t.eq("«Bloodsworn» per nome", guidaDalNome("Bloodsworn")?.saga, "The Bloodsworn Saga");
   t.eq("…e non sta nelle Banished Lands", TAVOLE.find((x) => x.saga === "The Bloodsworn Saga")?.universo, undefined);
   t.eq("«The Heroes» di un altro autore no", chi("The Heroes", "Joe Bloggs"), null);
+  // THE BOUND AND THE BROKEN (il lettore: «perché non mi trovi nulla?»):
+  // Wikidata non ha né la serie né i libri, le edizioni di Open Library sì
+  t.eq("«the bound and the broken» per nome, scritto come il lettore", guidaDalNome("the bound and the broken")?.saga, "The Bound and the Broken");
+  const bound = await sagaDalNome("the bound and the broken", { libri: [] });
+  t.eq("i quattro romanzi in ordine, senza le due novelle", bound?.volumi.map((v) => `${v.numero} ${v.titolo}`).join(" | "), "1 Of Blood and Fire | 2 Of Darkness and Light | 3 Of War and Ruin | 4 Of Empires and Dust");
+  t.eq("«Of Blood and Fire» di un altro autore (Keri Arthur) no", chi("Of Blood and Fire", "Keri Arthur"), null);
+  t.eq("le novelle restano fuori", chi("The Fall", "Ryan Cahill"), null);
+  t.eq("…e fra le saghe di Ryan Cahill c'e' la sua guida", guideDellAutore("Ryan Cahill").map((g) => g.saga).join(), "The Bound and the Broken");
 
   // un mondo si chiede intero, col suo nome o col nome del lettore
   t.eq("«Cosmoverso» e' il Cosmere", guidaDalNome("Cosmoverso")?.universo, "Cosmere");
