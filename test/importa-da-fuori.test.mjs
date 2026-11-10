@@ -132,18 +132,29 @@ export default async (t) => {
         arrayBuffer: async () => {
           pezziGrosso.push([a, b]);
           // pochi byte e non un mega: il test guarda QUALI pezzi si chiedono,
-          // e digerire dieci mega vere dentro il tetto di 50 ms del giro
-          // (`attesa`) sotto carico non ci stava — l'impronta si perdeva e
-          // il test cadeva una volta su due senza che il codice c'entrasse
+          // e digerire dieci mega vere a ogni giro e' solo tempo perso
           return new Uint8Array(16).fill(a % 251).buffer;
         },
       }),
     };
     const apri = (v) => (v.id === "v3" ? grosso : remoto(v.byte || new Uint8Array(0)).f);
+    // IL TEMPO DEL GIRO LO DECIDE IL TEST. Con un tetto vero di 50 ms anche
+    // l'impronta a campioni di «Muto» (SHA-256 vero, nel pool dei thread)
+    // correva contro l'orologio, e sotto carico perdeva: un controllo
+    // fallito ogni tanto, e mai lo stesso giro. Qui il tetto scade solo
+    // quando «Lento» e' partito e non torna, e per nessun altro.
+    let scadi = null;
+    const sveglia = (f) => {
+      scadi = f;
+    };
     const ordine = [];
     const leggi = async (meta, blob, tipo) => {
       ordine.push(`leggi:${meta.title}`);
-      if (meta.title === "Lento") return new Promise(() => {});
+      // la sveglia di questa lettura si arma appena `leggi` rende la promessa
+      if (meta.title === "Lento") {
+        queueMicrotask(() => scadi?.());
+        return new Promise(() => {});
+      }
       if (tipo === "epub") meta.title = meta.title === "Vero" ? "Il Titolo Vero" : meta.title;
       return { titolo: tipo !== "epub" || meta.title !== "Muto", copertina: tipo === "cbz" };
     };
@@ -162,7 +173,7 @@ export default async (t) => {
       importaDaFuori(voci, [{ id: "m", title: "Mort", author: "" }], {
         apri,
         leggi,
-        attesa: 50,
+        sveglia,
         onProgress: (p) => passi.push(p.fatti),
       }),
       new Promise((ok) => setTimeout(() => ok({ appeso: true, added: [], errors: [], sospetti: [] }), 3000)),

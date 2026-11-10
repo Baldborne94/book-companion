@@ -508,10 +508,13 @@ export async function importFiles(fileList, libri = [], { onProgress, converti =
 // qui: la fa il reader alla prima apertura, come per ogni libro, perche' e'
 // li' che i byte ci sono.
 export const ATTESA_SCHEDA = 30_000;
-const conTetto = (p, ms) =>
-  Promise.race([p, new Promise((_, ko) => setTimeout(() => ko(new Error("tempo scaduto")), ms))]);
+// `sveglia` e' il `setTimeout` da cui passa il tetto: un test che lo usasse
+// davvero metterebbe lo SHA-256 vero in gara con un orologio vero, e sotto
+// carico perderebbe a caso (la storia e' in docs/STORIA.md)
+const conTetto = (p, ms, sveglia) =>
+  Promise.race([p, new Promise((_, ko) => sveglia(() => ko(new Error("tempo scaduto")), ms))]);
 
-export async function importaDaFuori(voci, libri = [], { apri, onProgress, vivo = () => true, leggi = leggiDaLontano, attesa = ATTESA_SCHEDA, senzaFile = () => false, segnato = schedaSegnata } = {}) {
+export async function importaDaFuori(voci, libri = [], { apri, onProgress, vivo = () => true, leggi = leggiDaLontano, attesa = ATTESA_SCHEDA, sveglia = setTimeout, senzaFile = () => false, segnato = schedaSegnata } = {}) {
   const added = [];
   const ritrovati = [];
   const errors = [];
@@ -561,12 +564,12 @@ export async function importaDaFuori(voci, libri = [], { apri, onProgress, vivo 
     // dal tablet: senza, il tomo grosso entrava senza impronta e il tasto
     // dei doppioni lo contava per sempre senza poterlo servire
     if (Number(blob?.size) > IMPRONTA_INTERA) {
-      const imp = await conTetto(improntaDi(blob), attesa).catch(() => null);
+      const imp = await conTetto(improntaDi(blob), attesa, sveglia).catch(() => null);
       if (imp) meta.impronta = imp;
     }
     let letto = null;
     try {
-      letto = await conTetto(leggi(meta, blob, fileType), attesa);
+      letto = await conTetto(leggi(meta, blob, fileType), attesa, sveglia);
     } catch {
       /* letto male o troppo lento: la scheda entra col nome del file */
     }
