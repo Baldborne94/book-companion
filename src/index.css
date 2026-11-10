@@ -218,6 +218,38 @@ body {
   flex-direction: column;
 }
 
+/* LA BARRA DI SCORRIMENTO DEL TEMA (chiesto dal lettore, con la foto del PC:
+   «la barra laterale così fa un po' schifo e non ci azzecca con lo stile
+   dell'app»). Quella di Windows è grigia, larga e con le frecce. Al suo
+   posto un filo arrotondato del colore dell'accento, su fondo trasparente,
+   che si accende quando ci passi sopra, e niente frecce. Solo dove c'è un
+   mouse: sul tablet e sul telefono la barra è quella sottile del sistema,
+   che compare mentre scorri e sparisce, e lì resta. Un pseudo-elemento non
+   si scrive in linea, quindi sta qui; il colore è la variabile del tema
+   (`--bc-accent`), così segue anche il Rifugio Silvano e la Cittadella. */
+@media (hover: hover) and (pointer: fine) {
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--bc-accent, #d9a94e) 48%, transparent);
+    background-clip: padding-box;
+    border: 3px solid transparent;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--bc-accent, #d9a94e) 78%, transparent);
+  }
+  ::-webkit-scrollbar-button {
+    display: none;
+  }
+}
+
 button {
   font-family: inherit;
   cursor: pointer;

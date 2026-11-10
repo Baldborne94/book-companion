@@ -34,7 +34,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 
 - React 18 + Vite 5, niente router: la sezione attiva è uno `useState` in `App.jsx`. Le stanze usate di rado (cammino, da prendere, quaderno, mappa, diario, giardino, musica, nuvola), e anche la Libreria e la scheda del libro, sono lazy e si precaricano a riposo (`precaricaStanze`, Libreria e scheda per prime).
 - **I caratteri dell'interfaccia stanno nell'app** (`src/fonti/`, `@font-face` in `index.css`, latino e latino esteso, licenze OFL accanto, precache del service worker): mai un `@import` di Google nel foglio dell'app, che teneva fermo il programma finché non arrivava. Quelli del reader si scaricano a parte (`importDelFont`).
-- Stili **100% inline**. `src/index.css` tiene solo reset, font, keyframes, `.textLayer` di pdf.js, pseudo-classi (`:active`, `:focus-visible`) e pseudo-elementi delle View Transitions.
+- Stili **100% inline**. `src/index.css` tiene solo reset, font, keyframes, `.textLayer` di pdf.js, pseudo-classi (`:active`, `:focus-visible`), pseudo-elementi delle View Transitions e la **barra di scorrimento del tema** (`::-webkit-scrollbar`, solo con `(hover: hover) and (pointer: fine)`: sul tablet resta quella del sistema; il colore è `--bc-accent`).
 - `src/lib/`: moduli senza JSX. `src/components/`: sezioni e pannelli. `src/data/`: tavole (saghe, generi, mappa delle funzioni, costanti).
 - `epubjs`, `pdfjs-dist`, `jszip` si importano solo lazy.
 - **Niente server**: tutto gira nel browser (Supabase e l'API di Anthropic si chiamano da lì). Google Drive è stato tolto (`docs/STORIA.md`), e con lui l'unica funzione di Vercel.
