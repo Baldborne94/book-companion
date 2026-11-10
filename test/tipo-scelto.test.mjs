@@ -111,4 +111,26 @@ export default async (t) => {
     t.eq("un fumetto si legge da sinistra", versoDiPartenza({ ...saga, fileType: "cbz" }), "ltr");
     t.eq("e un CBZ col verso da destra resta da destra", versoDiPartenza({ fileType: "cbz", verso: "rtl" }), "rtl");
   }
+
+  // ── LA SAGA PORTA CON SE' LE SCHEDE SENZA FILE ───────────────────────
+  // il lettore, con i cento One Piece aggiunti senza file fra i libri:
+  // «come lo cambio e lo posso mettere sotto fumetti?». Segnarne uno basta
+  {
+    const op = (n, extra = {}) => schedaSenzaFile({ titolo: `One Piece, Vol. ${n}`, saga: "One Piece", numero: n, ...extra }, { id: `op${n}`, ora: n });
+    const prima = tipiDi([op(1), op(2), op(3)]);
+    t.eq("senza nessun segno, i volumi senza file restano libri", [...prima.values()].join(), "libri,libri,libri");
+    const dopo = tipiDi([op(1, { tipo: "manga" }), op(2), op(3)]);
+    t.eq("segnato uno manga, gli altri senza file della saga seguono", [...dopo.values()].join(), "manga,manga,manga");
+    const fum = tipiDi([op(1, { tipo: "fumetti" }), op(2), op(3)]);
+    t.eq("segnato uno fumetto, seguono come fumetti", [...fum.values()].join(), "fumetti,fumetti,fumetti");
+    const cbz = { id: "c", title: "Saga, Vol. 1", saga: "Saga", fileType: "cbz" };
+    const saga2 = schedaSenzaFile({ titolo: "Saga, Vol. 2", saga: "Saga" }, { id: "s2", ora: 1 });
+    t.eq("un volume col CBZ porta i suoi fratelli senza file fra i fumetti", tipiDi([cbz, saga2]).get("s2"), "fumetti");
+    const scelto = op(4, { tipo: "fumetti" });
+    t.eq("una scelta sua non eredita", tipiDi([op(1, { tipo: "manga" }), scelto]).get("op4"), "fumetti");
+    const romanzo = { id: "r", title: "One Piece Novel", saga: "One Piece", fileType: "epub" };
+    t.eq("un ePub della stessa saga resta un libro", tipiDi([op(1, { tipo: "manga" }), romanzo]).get("r"), "libri");
+    const mort = schedaSenzaFile({ titolo: "Mort", saga: "Discworld" }, { id: "m", ora: 1 });
+    t.eq("una saga di soli romanzi resta di libri", tipiDi([mort, { id: "e", title: "Guards! Guards!", saga: "Discworld", fileType: "epub" }]).get("m"), "libri");
+  }
 };
