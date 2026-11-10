@@ -64,6 +64,7 @@ import { avanziManga } from "./lib/avanziManga.js";
 import { leggiNovita, scriviNovita, smettiNovita, messaggioNovita, statoNovita } from "./lib/novita.js";
 import SezioneNovita from "./components/SezioneNovita.jsx";
 import SezioneHardcover from "./components/SezioneHardcover.jsx";
+import { EVENTO as EVENTO_CHIAVI } from "./lib/chiaviInViaggio.js";
 import { togliAvanziDrive } from "./lib/avanziDrive.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
 import BarraLavoro from "./components/BarraLavoro.jsx";
@@ -1250,6 +1251,12 @@ export default function App() {
   const presto = useRef(null);
   if (!presto.current) presto.current = sincronizzaPresto(() => runSync.current(true), { occupato: () => occupato.current });
   useEffect(() => () => presto.current?.ferma(), []);
+  // una chiave salvata o tolta parte da sola verso gli altri dispositivi (`chiaviInViaggio.js`)
+  useEffect(() => {
+    const via = () => presto.current?.();
+    window.addEventListener(EVENTO_CHIAVI, via);
+    return () => window.removeEventListener(EVENTO_CHIAVI, via);
+  }, []);
 
   function updateBooks(next) {
     saveBooks(next);

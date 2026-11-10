@@ -30,6 +30,7 @@
 
 import { chiaveSaga } from "./sagaBooks.js";
 import { eLAutore, variantiDelNome } from "./sagaDaNome.js";
+import { segnaChiave } from "./chiaviInViaggio.js";
 
 export const HARDCOVER = "https://api.hardcover.app/v1/graphql";
 const KEY = "bc_hardcover_key";
@@ -51,6 +52,8 @@ export function salvaChiaveHardcover(k, st = globalThis.localStorage) {
     const v = chiaveNuda(k);
     if (v) st.setItem(KEY, v);
     else st.removeItem(KEY);
+    // e va sugli altri dispositivi (`chiaviInViaggio.js`)
+    segnaChiave("hardcover", v, { st });
   } catch {
     /* storage indisponibile: si richiedera' la chiave */
   }

@@ -287,7 +287,7 @@ export function SezioneOracolo() {
       <p style={{ margin: "4px 0 0", fontSize: F.piccolo, color: C.muted, lineHeight: 1.5 }}>
         {ce
           ? "Sta su questo dispositivo e non esce mai da qui: le domande partono dal browser dritte all'API di Anthropic, e paghi solo quel che chiedi. Per sostituirla, incolla la nuova qui sotto."
-          : "Senza una chiave API di Anthropic l'Oracolo resta spento: «Chi è costui?», «Dove eravamo rimasti» e «Prima di cominciare» non compaiono. La chiave resta solo su questo dispositivo."}
+          : "Senza una chiave API di Anthropic l'Oracolo resta spento: «Chi è costui?», «Dove eravamo rimasti» e «Prima di cominciare» non compaiono. La chiave sta su questo dispositivo e, con la sincronizzazione accesa, arriva da sola sugli altri tuoi."}
       </p>
       {ce && <ScadenzaChiave />}
       {ce && rigaMese() && (

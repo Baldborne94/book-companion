@@ -1,10 +1,13 @@
 // L'Oracolo legge il passaggio NEL SUO contesto e spiega cosa vuol dire:
 // quello che glossario e dizionario non possono fare, perche' il senso di
 // una battuta o di un gioco di parole sta nel paragrafo, non nella parola.
-// La chiave API e' dell'utente e non lascia mai il dispositivo: la chiamata
-// parte dal browser dritta verso l'API Anthropic, nessun server in mezzo.
+// La chiave API e' dell'utente: la chiamata parte dal browser dritta verso
+// l'API Anthropic, nessun server in mezzo. Con la sincronizzazione accesa la
+// chiave viaggia nella sua riga delle preferenze, sui suoi dispositivi
+// (`chiaviInViaggio.js`, chiesto da lui).
 
 import { daUsage, registra, oltreIlTetto, leggiTetto, restaDelMese } from "./spesa.js";
+import { segnaChiave } from "./chiaviInViaggio.js";
 
 const KEY = "bc_ai_key";
 
@@ -21,6 +24,8 @@ export function setOracleKey(k) {
     const v = String(k || "").trim();
     if (v) localStorage.setItem(KEY, v);
     else localStorage.removeItem(KEY);
+    // e va sugli altri dispositivi (`chiaviInViaggio.js`)
+    segnaChiave("oracolo", v);
   } catch {
     /* storage indisponibile: pazienza, si richiedera' la chiave */
   }

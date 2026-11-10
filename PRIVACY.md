@@ -79,7 +79,9 @@ App e servizi di terze parti (i passi in `docs/ACCESSO.md`).
 
 Le funzioni «Chi è costui?», «Dove eravamo rimasti» e «Prima di
 cominciare» chiedono a un modello di Anthropic. **Funzionano solo se
-incolli una chiave API tua**: la chiave resta sul dispositivo, non passa
+incolli una chiave API tua**: la chiave sta sul dispositivo e, se hai
+acceso la sincronizzazione, anche nella tua riga delle preferenze su
+Supabase, da cui arriva sugli altri tuoi dispositivi (vedi 2.1); non passa
 da nessun nostro server, e la spesa la vedi in fondo alla scheda.
 
 Quando fai una di queste domande, escono dal dispositivo verso
@@ -111,7 +113,9 @@ In «📥 Senza file», le saghe e le saghe di un autore si cercano anche su
 Hardcover (`api.hardcover.app`), **solo se incolli una chiave tua** nelle
 Impostazioni («Le serie da Hardcover»). Basta una chiave col solo permesso
 `read:catalog`: non legge e non tocca la tua libreria su Hardcover. La
-chiave resta sul dispositivo e va solo a Hardcover, nella richiesta.
+chiave sta sul dispositivo e, con la sincronizzazione accesa, nella tua
+riga delle preferenze su Supabase, come quella dell'Oracolo; fuori va solo
+a Hardcover, nella richiesta.
 
 Cosa esce, e solo quando tocchi «Cerca i libri» o «Le sue saghe»: il nome
 della saga o dell'autore che hai scritto, poi il numero della serie o
