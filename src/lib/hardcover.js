@@ -18,9 +18,11 @@
 // fumetti e l'universo che contiene le altre («Camp Half-Blood Chronicles»).
 // E in ogni serie le traduzioni stanno alla stessa posizione dell'originale
 // («Z krwi i ognia», il cui primo nome e' il traduttore). Quindi:
-// - di ogni posizione INTERA si tiene un libro solo, il piu' letto;
-// - le posizioni frazionarie (le novelle) e lo zero restano fuori: i soli
-//   romanzi, come in ogni guida;
+// - di ogni posizione si tiene un libro solo, l'inglese e poi il piu' letto;
+// - le posizioni frazionarie e lo zero sono le STORIE DI MEZZO (`novella`:
+//   il lettore, davanti alla serie di Cahill su Goodreads: «non mi consideri
+//   anche le storie di intramezzo delle serie?»): stanno al loro posto, e
+//   l'elenco le propone senza spunta;
 // - un libro che non e' ancora uscito si dice (`annunciato`);
 // - fra le serie di un autore, una serie quasi senza lettori (`LETTORI_MIN`)
 //   e' una traduzione, e una che condivide libri con due o piu' altre e' un
@@ -79,7 +81,7 @@ export function domandaHardcover(chiave, fetcher = globalThis.fetch, { aspetta =
   };
 }
 
-const LIBRI_DELLA_SERIE = `book_series(where: {position: {_gt: 0}, book: {compilation: {_eq: false}}}) {
+const LIBRI_DELLA_SERIE = `book_series(where: {position: {_gte: 0}, book: {compilation: {_eq: false}}}) {
   position
   book {
     id title release_year release_date users_count contributions(limit: 1) { author { name } }
@@ -92,21 +94,61 @@ const nomeDi = (s) => String(s || "").replace(/\s+/g, " ").trim();
 const linguaDi = (b) => b?.default_physical_edition?.language?.code3 || b?.default_ebook_edition?.language?.code3 || "";
 const straniero = (lingua) => !!lingua && lingua !== "eng";
 
-// I VOLUMI DI UNA SERIE: una posizione intera, un libro (il piu' letto), in
-// ordine; un libro con la data dopo oggi, o senza data, e' annunciato
+// I VOLUMI DI UNA SERIE: di ogni numero intero un romanzo (l'inglese, poi
+// il piu' letto), in ordine; un numero a meta' o lo zero e' una STORIA DI
+// MEZZO, e allo stesso numero ce ne possono essere due (In Remembrance e A
+// Ghost Return, tutt'e due lo zero di Gaunt's Ghosts). Un libro con la data
+// dopo oggi, o senza data, e' annunciato.
+//
+// MA UN NUMERO A META' E' SPESSO UN ROMANZO SPEZZATO, non una storia
+// (misurato sulle guide dell'app il 10 novembre: la Ruota a 1.1, 1.2, 2.1…
+// «Part 1 of 2», Malazan in russo «Том 1», gli Elderlings «Split Edition»).
+// Non e' una storia di mezzo: un'edizione divisa o un adattamento (`SPEZZATO`),
+// un libro in un'altra lingua, un titolo che contiene quello del romanzo del
+// suo numero intero. E la stessa storia a due numeri si tiene una volta.
+const SPEZZATO = /\b(part|book|volume|vol|tom|tome|teil|deo|partie|parte)\b\.?\s*(\d|one|two|three|i\b|ii\b)|\bof \d\b|\(.*split|split edition|dramati[sz]ed|graphic novel|comic|manga|adaptation|том|część|deo prvi|deo drugi|premi[eè]re partie/i;
+const ALTRO_ALFABETO = /[\u0370-\u03ff\u0400-\u04ff\u0590-\u06ff\u0e00-\u0e7f\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]/;
+const pianoHC = (s) => chiaveSaga(s).replace(/^the /, "");
+const megliore = (c, b) => !c || straniero(linguaDi(c)) - straniero(linguaDi(b)) > 0 || (straniero(linguaDi(c)) === straniero(linguaDi(b)) && (b.users_count || 0) > (c.users_count || 0));
 export function volumiDaHardcover(legami = [], { oggi = new Date().toISOString().slice(0, 10) } = {}) {
-  const per = new Map();
+  const romanzi = new Map();
+  const storie = [];
   for (const l of legami) {
     const p = Number(l?.position);
     const b = l?.book;
-    if (!b?.title || !Number.isInteger(p) || p < 1) continue;
-    const c = per.get(p);
-    // l'inglese prima della traduzione, poi il piu' letto
-    const meglio = !c || straniero(linguaDi(c)) - straniero(linguaDi(b)) > 0 || (straniero(linguaDi(c)) === straniero(linguaDi(b)) && (b.users_count || 0) > (c.users_count || 0));
-    if (meglio) per.set(p, b);
+    if (!b?.title || !Number.isFinite(p) || p < 0) continue;
+    if (Number.isInteger(p) && p > 0) {
+      if (megliore(romanzi.get(p), b)) romanzi.set(p, b);
+    } else storie.push([p, b]);
   }
-  return [...per.entries()]
-    .sort((a, b) => a[0] - b[0])
+  const titoloDi = (p) => pianoHC(romanzi.get(Math.floor(p))?.title || "");
+  const buone = storie.filter(([p, b]) => {
+    const suo = titoloDi(p);
+    // senza un lettore e' una traduzione dimenticata («Wspomnienie lodu» a 3.2)
+    return (b.users_count || 0) > 0 && !SPEZZATO.test(b.title) && !ALTRO_ALFABETO.test(b.title) && !straniero(linguaDi(b)) && !(suo && pianoHC(b.title).includes(suo));
+  });
+  // allo stesso numero, se c'e' una storia in inglese contano solo quelle
+  // in inglese (le altre sono le sue traduzioni senza lingua scritta: «La
+  // principessa testarda e il principe pezzato»); se non c'e', la piu' letta
+  const perNumero = new Map();
+  for (const [p, b] of buone) perNumero.set(p, [...(perNumero.get(p) || []), b]);
+  const scelte = new Map();
+  for (const [p, libri] of perNumero) {
+    const inglesi = libri.filter((b) => linguaDi(b) === "eng");
+    const tenute = inglesi.length ? inglesi : [libri.reduce((a, b) => ((b.users_count || 0) > (a.users_count || 0) ? b : a))];
+    for (const b of tenute) {
+      const t = pianoHC(b.title);
+      const c = scelte.get(t);
+      if (!c || (b.users_count || 0) > (c[1].users_count || 0)) scelte.set(t, [p, b]);
+    }
+  }
+  // la stessa storia con la serie in coda («The Narrow Road Between
+  // Desires: Kingkiller Chronicle») e' quella: si tiene la piu' letta
+  const tutte = [...scelte.entries()];
+  const doppia = ([t, [, b]]) => tutte.some(([u, [, c]]) => u !== t && (t.startsWith(`${u} `) || u.startsWith(`${t} `)) && ((c.users_count || 0) > (b.users_count || 0) || ((c.users_count || 0) === (b.users_count || 0) && u.length < t.length)));
+  const uniche = tutte.filter((x) => !doppia(x)).map(([, v]) => v);
+  return [...[...romanzi.entries()], ...uniche]
+    .sort((a, b) => a[0] - b[0] || pianoHC(a[1].title).localeCompare(pianoHC(b[1].title)))
     .map(([numero, b]) => ({
       id: b.id,
       titolo: nomeDi(b.title),
@@ -116,6 +158,7 @@ export function volumiDaHardcover(legami = [], { oggi = new Date().toISOString()
       annunciato: !b.release_date || b.release_date > oggi,
       lettori: b.users_count || 0,
       lingua: linguaDi(b),
+      novella: !Number.isInteger(numero) || numero === 0,
     }));
 }
 
@@ -171,7 +214,9 @@ export function serieCheValgono(serie = []) {
   return scelte.sort((a, b) => b.lettori - a.lettori);
 }
 
-const perElenco = (nome, volumi) => volumi.map(({ titolo, autore, numero, anno, annunciato }) => ({ titolo, autore, saga: nome, serie: "", numero, anno, annunciato }));
+const perElenco = (nome, volumi) => volumi.map(({ titolo, autore, numero, anno, annunciato, novella }) => ({ titolo, autore, saga: nome, serie: "", numero, anno, annunciato, novella }));
+// il conto dell'elenco: i romanzi, e a parte le storie di mezzo
+const conti = (volumi) => ({ quanti: volumi.filter((v) => !v.novella).length, storie: volumi.filter((v) => v.novella).length });
 
 // UNA SERIE DAL SUO NOME: due domande, la ricerca e la serie coi suoi libri
 export async function serieHardcover(nome, chiedi) {
@@ -194,7 +239,7 @@ export async function serieDellAutoreHC(nome, chiedi) {
   const serie = (d?.series || []).map((x) => ({ q: x.id, nome: nomeDi(x.name), volumi: volumiDaHardcover(x.book_series) }));
   return {
     autore: nomeDi(chi.name),
-    serie: serieCheValgono(serie).map((x) => ({ fonte: "hardcover", q: x.q, nome: x.nome, quanti: x.volumi.length, volumi: perElenco(x.nome, x.volumi) })),
+    serie: serieCheValgono(serie).map((x) => ({ fonte: "hardcover", q: x.q, nome: x.nome, ...conti(x.volumi), volumi: perElenco(x.nome, x.volumi) })),
   };
 }
 

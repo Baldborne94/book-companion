@@ -22,3 +22,14 @@ export default [
   { o: 9, t: "War Master's Gate", c: SAGA, a: A, alias: ["War Masters Gate"] },
   { o: 10, t: "Seal of the Worm", c: SAGA, a: A },
 ];
+
+// LE STORIE DI MEZZO (chiesto dal lettore: «non mi consideri anche le storie
+// di intramezzo delle serie?»): a parte dai romanzi, fuori dal cammino e dal
+// riconoscimento, col loro numero; le usa solo l'elenco di «📥 Senza file»,
+// che le propone senza spunta. Fonte: Hardcover, misurato il 10 novembre
+// 2026 (la posizione nella serie e l'anno); solo quelle gia' uscite.
+export const NOVELLE = [
+  { o: 0.5, t: "Spoils of War", c: SAGA, a: "Adrian Tchaikovsky", anno: 2016 },
+  { o: 10.6, t: "For Love of Distant Shores", c: SAGA, a: "Adrian Tchaikovsky", anno: 2018 },
+  { o: 10.7, t: "The Scent of Tears", c: SAGA, a: "Adrian Tchaikovsky", anno: 2018 },
+];

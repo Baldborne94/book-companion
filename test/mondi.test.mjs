@@ -7,6 +7,7 @@
 import { riconosci, TAVOLE } from "../src/lib/sagaBooks.js";
 import { guidaDalNome, sagaDalNome, guideDellAutore, saghePerAutore, libriDellaSaga } from "../src/lib/sagaDaNome.js";
 import { completaSaga } from "../src/lib/importBook.js";
+import { camminoDellaGuida } from "../src/lib/cammino.js";
 
 const chi = (title, author) => {
   const r = riconosci({ title, author });
@@ -39,7 +40,13 @@ export default async (t) => {
   // Wikidata non ha né la serie né i libri, le edizioni di Open Library sì
   t.eq("«the bound and the broken» per nome, scritto come il lettore", guidaDalNome("the bound and the broken")?.saga, "The Bound and the Broken");
   const bound = await sagaDalNome("the bound and the broken", { libri: [] });
-  t.eq("i quattro romanzi in ordine, senza le due novelle", bound?.volumi.map((v) => `${v.numero} ${v.titolo}`).join(" | "), "1 Of Blood and Fire | 2 Of Darkness and Light | 3 Of War and Ruin | 4 Of Empires and Dust");
+  t.eq("i quattro romanzi in ordine", bound?.volumi.filter((v) => !v.novella).map((v) => `${v.numero} ${v.titolo}`).join(" | "), "1 Of Blood and Fire | 2 Of Darkness and Light | 3 Of War and Ruin | 4 Of Empires and Dust");
+  // LE STORIE DI MEZZO (il lettore: «non mi consideri anche le storie di
+  // intramezzo delle serie?»): nell'elenco al loro numero, fuori dal cammino
+  t.eq("…e le storie di mezzo al loro numero, fra i romanzi", bound?.volumi.map((v) => `${v.numero}${v.novella ? "s" : ""}`).join(" "), "0.5s 0.6s 1 2 2.5s 3 3.5s 4 4.5s");
+  t.eq("…nella raccolta e nella serie della guida", [...new Set(bound.volumi.map((v) => `${v.saga}/${v.serie}/${v.autore}`))].join(), "The Bound and the Broken/The Bound and the Broken/Ryan Cahill");
+  t.eq("…quella che hai gia' e' segnata", (await sagaDalNome("the bound and the broken", { libri: [{ title: "The Exile", author: "Ryan Cahill" }] })).volumi.filter((v) => v.gia).map((v) => v.titolo).join(), "The Exile");
+  t.eq("ma nel cammino non ci sono: il cammino e' dei romanzi", camminoDellaGuida(TAVOLE.find((x) => x.saga === "The Bound and the Broken"), []).tappe.map((x) => x.voce.t).join(" | "), "Of Blood and Fire | Of Darkness and Light | Of War and Ruin | Of Empires and Dust");
   t.eq("«Of Blood and Fire» di un altro autore (Keri Arthur) no", chi("Of Blood and Fire", "Keri Arthur"), null);
   t.eq("le novelle restano fuori", chi("The Fall", "Ryan Cahill"), null);
   t.eq("…e fra le saghe di Ryan Cahill c'e' la sua guida", guideDellAutore("Ryan Cahill").map((g) => g.saga).join(), "The Bound and the Broken");
@@ -49,13 +56,13 @@ export default async (t) => {
   t.eq("«Malazan» e' il mondo intero", guidaDalNome("Malazan")?.universo, "Malazan");
   t.eq("…«Il libro dei caduti di Malazan» la sua serie", guidaDalNome("Il libro dei Caduti di Malazan")?.saga, "Malazan Book of the Fallen");
   const cosmo = await sagaDalNome("Cosmoverso", { libri: [{ title: "Elantris", author: "Brandon Sanderson", saga: "Cosmoverse" }] });
-  t.eq("il Cosmere: le sue diciotto guide in fila, nella raccolta del lettore", `${cosmo.volumi.length} ${cosmo.saga} ${cosmo.universo}`, "18 Cosmoverse true");
+  t.eq("il Cosmere: le sue diciotto guide in fila, nella raccolta del lettore", `${cosmo.volumi.filter((v) => !v.novella).length} ${cosmo.saga} ${cosmo.universo}`, "18 Cosmoverse true");
   t.c("…ognuna coi suoi numeri e la sua serie", cosmo.volumi.some((v) => v.titolo === "The Well of Ascension" && v.numero === 2 && v.serie === "Era One") && cosmo.volumi.some((v) => v.titolo === "Words of Radiance" && v.numero === 2));
   t.c("…e quel che hai e' segnato", cosmo.volumi.find((v) => v.titolo === "Elantris")?.gia === true);
   const mz = await sagaDalNome("Malazan", { libri: [] });
   t.eq("Malazan: i dieci di Erikson e i quindici del resto del mondo", mz.volumi.length, 25);
   const fl = await sagaDalNome("First Law", { libri: [] });
-  t.eq("The First Law: tre guide, nove romanzi", fl.volumi.length, 9);
+  t.eq("The First Law: tre guide, nove romanzi", fl.volumi.filter((v) => !v.novella).length, 9);
 
   // fra le saghe di un autore, prima il suo mondo
   t.eq("Erikson: il mondo di Malazan per primo", `${guideDellAutore("Steven Erikson")[0]?.universo} ${guideDellAutore("Steven Erikson")[0]?.quanti}`, "Malazan 25");

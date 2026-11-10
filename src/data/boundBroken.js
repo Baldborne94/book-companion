@@ -8,9 +8,18 @@
 // Of War and Ruin 2023, Of Empires and Dust 2025. I numeri sono l'ordine
 // d'uscita, che per una serie di romanzi in fila e' quello della serie.
 //
-// SOLO I ROMANZI: The Fall (95 pagine, 2021) e The Exile (2022), che le
-// edizioni mettono nella stessa serie, sono le novelle prima della storia
-// (0.5 e 0.6 su Goodreads) e restano fuori.
+// I ROMANZI SONO LA GUIDA; le STORIE DI MEZZO (`NOVELLE`, chiesto dal
+// lettore con la pagina della serie su Goodreads: «non mi consideri anche le
+// storie di intramezzo delle serie?») stanno a parte, col loro numero, e le
+// usa solo l'elenco di «📥 Senza file». Fonte: Hardcover, misurato il 10
+// novembre 2026 (posizione e data d'uscita), lo stesso elenco di Goodreads.
+export const NOVELLE = [
+  { o: 0.5, t: "The Fall", c: "The Bound and the Broken", a: "Ryan Cahill", anno: 2020 },
+  { o: 0.6, t: "The Blood that Burns the Winter Snow", c: "The Bound and the Broken", a: "Ryan Cahill", anno: 2024 },
+  { o: 2.5, t: "The Exile", c: "The Bound and the Broken", a: "Ryan Cahill", anno: 2022 },
+  { o: 3.5, t: "The Ice", c: "The Bound and the Broken", a: "Ryan Cahill", anno: 2023 },
+  { o: 4.5, t: "The Truth", c: "The Bound and the Broken", a: "Ryan Cahill", anno: 2026 },
+];
 export const SAGA = "The Bound and the Broken";
 
 const A = "Ryan Cahill";

@@ -56,8 +56,8 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
 
   // Hardcover solo con la chiave del lettore (Impostazioni), letta a ogni ricerca
   const hc = () => (chiaveHardcover() ? domandaHardcover(chiaveHardcover()) : null);
-  // i volumi annunciati (non ancora usciti) partono senza spunta
-  const annunciati = (r) => new Set((r?.volumi || []).map((v, i) => (v.annunciato ? i : -1)).filter((i) => i >= 0));
+  // i volumi annunciati (non ancora usciti) e le storie di mezzo partono senza spunta
+  const annunciati = (r) => new Set((r?.volumi || []).map((v, i) => (v.annunciato || v.novella ? i : -1)).filter((i) => i >= 0));
 
   async function trova(e) {
     e.preventDefault();
@@ -170,6 +170,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
                 <button key={`${v.fonte}:${v.q || v.universo || v.saga}`} onClick={() => apriSaga(v)} style={tasto(v.fonte === "guida" ? C.accent : C.text)}>
                   {v.universo ? "🌐 " : v.fonte === "guida" ? "📜 " : v.fonte === "sciolti" ? "📚 " : ""}
                   {v.nome} · {v.quanti === 1 ? "1 libro" : `${v.quanti} libri`}
+                  {v.storie ? ` · ${v.storie === 1 ? "1 storia di mezzo" : `${v.storie} storie di mezzo`}` : ""}
                 </button>
               ))}
             </div>
@@ -190,9 +191,9 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
               {esito.universo
                 ? `«${esito.nome}»: tutte le guide dell'app di questo mondo, una dopo l'altra, ognuna coi suoi numeri.`
                 : esito.fonte === "guida"
-                ? `«${esito.nome}»: l'elenco della guida dell'app, nell'ordine di lettura.`
+                ? `«${esito.nome}»: l'elenco della guida dell'app, nell'ordine di lettura${esito.volumi.some((v) => v.novella) ? "; le storie di mezzo partono senza spunta" : ""}.`
                 : esito.fonte === "hardcover"
-                ? `«${esito.nome}» su Hardcover, nell'ordine della serie: solo i romanzi (le novelle, coi numeri a metà, restano fuori)${esito.volumi.some((v) => v.annunciato) ? "; quelli non ancora usciti partono senza spunta" : ""}. Controlla l'elenco.`
+                ? `«${esito.nome}» su Hardcover, nell'ordine della serie${esito.volumi.some((v) => v.novella || v.annunciato) ? `; ${[esito.volumi.some((v) => v.novella) && "le storie di mezzo", esito.volumi.some((v) => v.annunciato) && "i libri non ancora usciti"].filter(Boolean).join(" e ")} partono senza spunta` : ""}. Controlla l'elenco.`
                 : esito.fonte === "sciolti"
                 ? "I suoi libri che su Wikidata non stanno in nessuna serie, per anno di uscita. Spunta quelli di una saga, scrivi qui sotto la raccolta e aggiungili. Un libro appena uscito può non esserci ancora."
                 : `«${esito.nome}» su Wikidata${esito.perAnno ? ", in ordine di uscita (lì i volumi non hanno il numero)" : ", nell'ordine della serie"}. Controlla l'elenco: per alcune saghe Wikidata è incompleto.`}
@@ -220,7 +221,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
                 <span style={{ width: px(44), flexShrink: 0, color: C.muted, fontSize: F.piccolo }}>{v.numero != null ? `n° ${v.numero}` : ""}</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: "block", fontSize: F.nota, color: C.text, overflowWrap: "anywhere" }}>{v.titolo}</span>
-                  <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted }}>{[v.autore, v.anno, v.annunciato ? "annunciato" : null, v.gia ? "✓ è già sullo scaffale" : null].filter(Boolean).join(" · ")}</span>
+                  <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted }}>{[v.autore, v.anno, v.novella ? "storia di mezzo" : null, v.annunciato ? "annunciato" : null, v.gia ? "✓ è già sullo scaffale" : null].filter(Boolean).join(" · ")}</span>
                 </span>
               </label>
             ))}
@@ -229,7 +230,7 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
               onClick={() => onAggiungi(nellaRaccolta(daAggiungere, raccolta, serie))}
               style={{ ...tasto(C.accent, true), marginTop: 12, opacity: daAggiungere.length ? 1 : 0.5 }}
             >
-              {daAggiungere.length ? `📥 Aggiungi ${daAggiungere.length === 1 ? "1 scheda" : `${daAggiungere.length} schede`}` : "Li hai già tutti"}
+              {daAggiungere.length ? `📥 Aggiungi ${daAggiungere.length === 1 ? "1 scheda" : `${daAggiungere.length} schede`}` : esito.volumi.some((v) => !v.gia) ? "Spunta quelli da aggiungere" : "Li hai già tutti"}
             </button>
           </div>
         )}

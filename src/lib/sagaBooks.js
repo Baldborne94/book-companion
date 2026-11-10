@@ -3,22 +3,22 @@ import HORUS, { SAGA as SAGA_HH } from "../data/horusHeresy.js";
 import APOCALISSE, { SAGA as SAGA_SA, FUORI as FUORI_BAKKER } from "../data/secondApocalypse.js";
 import JOJO, { SAGA as SAGA_JOJO } from "../data/jojo.js";
 import HELLBOY, { SAGA as SAGA_HB } from "../data/hellboy.js";
-import GAUNT, { SAGA as SAGA_GG } from "../data/gauntsGhosts.js";
-import EISENHORN, { SAGA as SAGA_EI } from "../data/eisenhorn.js";
-import RAVENOR, { SAGA as SAGA_RA } from "../data/ravenor.js";
+import GAUNT, { SAGA as SAGA_GG, NOVELLE as NOVELLE_GG } from "../data/gauntsGhosts.js";
+import EISENHORN, { SAGA as SAGA_EI, NOVELLE as NOVELLE_EI } from "../data/eisenhorn.js";
+import RAVENOR, { SAGA as SAGA_RA, NOVELLE as NOVELLE_RA } from "../data/ravenor.js";
 import MALAZAN, { SAGA as SAGA_MZ } from "../data/malazan.js";
-import STORMLIGHT, { SAGA as SAGA_SL } from "../data/stormlight.js";
-import MISTBORN, { SAGA as SAGA_MB } from "../data/mistborn.js";
-import LOCKWOOD, { SAGA as SAGA_LW } from "../data/lockwood.js";
+import STORMLIGHT, { SAGA as SAGA_SL, NOVELLE as NOVELLE_SL } from "../data/stormlight.js";
+import MISTBORN, { SAGA as SAGA_MB, NOVELLE as NOVELLE_MB } from "../data/mistborn.js";
+import LOCKWOOD, { SAGA as SAGA_LW, NOVELLE as NOVELLE_LW } from "../data/lockwood.js";
 import BARTIMAEUS, { SAGA as SAGA_BT } from "../data/bartimaeus.js";
-import KINGKILLER, { SAGA as SAGA_KK } from "../data/kingkiller.js";
-import ELDERLINGS, { SAGA as SAGA_RE } from "../data/elderlings.js";
+import KINGKILLER, { SAGA as SAGA_KK, NOVELLE as NOVELLE_KK } from "../data/kingkiller.js";
+import ELDERLINGS, { SAGA as SAGA_RE, NOVELLE as NOVELLE_RE } from "../data/elderlings.js";
 import COSMERE_SOLI, { SAGA as SAGA_CS } from "../data/cosmereStandalones.js";
 import WHEEL, { SAGA as SAGA_WT } from "../data/wheelOfTime.js";
 import BLOODSWORN, { SAGA as SAGA_BS } from "../data/bloodsworn.js";
-import BOUND, { SAGA as SAGA_BB } from "../data/boundBroken.js";
-import APT, { SAGA as SAGA_AP } from "../data/shadowsOfTheApt.js";
-import { LA_TRILOGIA, I_SOLI, LA_FOLLIA, TRILOGIA, A_SE, FOLLIA, UNIVERSO as MONDO_FL } from "../data/firstLaw.js";
+import BOUND, { SAGA as SAGA_BB, NOVELLE as NOVELLE_BB } from "../data/boundBroken.js";
+import APT, { SAGA as SAGA_AP, NOVELLE as NOVELLE_AP } from "../data/shadowsOfTheApt.js";
+import { LA_TRILOGIA, I_SOLI, LA_FOLLIA, TRILOGIA, A_SE, FOLLIA, UNIVERSO as MONDO_FL, NOVELLE_FOLLIA } from "../data/firstLaw.js";
 import { I_FEDELI, IL_SANGUE, FEDELI, SANGUE, UNIVERSO as MONDO_BL } from "../data/banishedLands.js";
 import { EMPIRE, ASCESA, KHARKANAS_LIBRI, WITNESS_LIBRI, MALAZAN_EMPIRE, PATH, KHARKANAS, WITNESS } from "../data/malazanMondo.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
@@ -92,24 +92,24 @@ export const TAVOLE = [
   // Gaunt's Ghosts (vedi `data/gauntsGhosts.js`): una storia sola in
   // quattro cicli, quindi a capitoli come l'Eresia, e niente ripiego
   // sull'autore — Abnett scrive anche Eisenhorn e l'Eresia
-  { saga: SAGA_GG, libri: GAUNT, ordine: (b) => b.o, autore: null, fuori: [], parti: true, universo: "Warhammer 40K" },
+  { saga: SAGA_GG, libri: GAUNT, ordine: (b) => b.o, autore: null, fuori: [], parti: true, universo: "Warhammer 40K", novelle: NOVELLE_GG },
   // Eisenhorn e Ravenor (vedi `data/eisenhorn.js`, `data/ravenor.js`):
   // serie semplici, e niente ripiego sull'autore per la stessa ragione
-  { saga: SAGA_EI, libri: EISENHORN, ordine: (b) => b.o, autore: null, fuori: [], universo: "Warhammer 40K" },
-  { saga: SAGA_RA, libri: RAVENOR, ordine: (b) => b.o, autore: null, fuori: [], universo: "Warhammer 40K" },
+  { saga: SAGA_EI, libri: EISENHORN, ordine: (b) => b.o, autore: null, fuori: [], universo: "Warhammer 40K", novelle: NOVELLE_EI },
+  { saga: SAGA_RA, libri: RAVENOR, ordine: (b) => b.o, autore: null, fuori: [], universo: "Warhammer 40K", novelle: NOVELLE_RA },
   // Malazan e Stormlight (vedi `data/malazan.js`, `data/stormlight.js`):
   // serie semplici, l'autore su ogni volume (Erikson e Sanderson scrivono
   // anche altre serie nello stesso mondo)
   { saga: SAGA_MZ, libri: MALAZAN, ordine: (b) => b.o, autore: null, fuori: [], universo: "Malazan" },
-  { saga: SAGA_SL, libri: STORMLIGHT, ordine: (b) => b.o, autore: null, fuori: [], universo: "Cosmere" },
+  { saga: SAGA_SL, libri: STORMLIGHT, ordine: (b) => b.o, autore: null, fuori: [], universo: "Cosmere", novelle: NOVELLE_SL },
   // Mistborn e Lockwood (vedi `data/mistborn.js`, `data/lockwood.js`)
-  { saga: SAGA_MB, libri: MISTBORN, ordine: (b) => b.o, autore: null, fuori: [], universo: "Cosmere" },
-  { saga: SAGA_LW, libri: LOCKWOOD, ordine: (b) => b.o, autore: null, fuori: [] },
+  { saga: SAGA_MB, libri: MISTBORN, ordine: (b) => b.o, autore: null, fuori: [], universo: "Cosmere", novelle: NOVELLE_MB },
+  { saga: SAGA_LW, libri: LOCKWOOD, ordine: (b) => b.o, autore: null, fuori: [], novelle: NOVELLE_LW },
   // Bartimaeus e Kingkiller (vedi `data/bartimaeus.js`, `data/kingkiller.js`)
   { saga: SAGA_BT, libri: BARTIMAEUS, ordine: (b) => b.o, autore: null, fuori: [] },
-  { saga: SAGA_KK, libri: KINGKILLER, ordine: (b) => b.o, autore: null, fuori: [] },
+  { saga: SAGA_KK, libri: KINGKILLER, ordine: (b) => b.o, autore: null, fuori: [], novelle: NOVELLE_KK },
   // il mondo di Robin Hobb: cinque serie come cicli (vedi `data/elderlings.js`)
-  { saga: SAGA_RE, libri: ELDERLINGS, ordine: (b) => b.o, autore: null, fuori: [] },
+  { saga: SAGA_RE, libri: ELDERLINGS, ordine: (b) => b.o, autore: null, fuori: [], novelle: NOVELLE_RE },
   // il resto del Cosmere e del mondo di Malazan: guide dello stesso
   // `universo` di Mistborn, Stormlight e del Libro dei Caduti, come il 40K
   // (vedi `data/cosmereStandalones.js`, `data/malazanMondo.js`)
@@ -120,14 +120,14 @@ export const TAVOLE = [
   { saga: WITNESS, libri: WITNESS_LIBRI, ordine: (b) => b.o, autore: null, fuori: [], universo: "Malazan" },
   // le altre saghe grandi (vedi i loro file in `data/`)
   { saga: SAGA_WT, libri: WHEEL, ordine: (b) => b.o, autore: null, fuori: [] },
-  { saga: SAGA_AP, libri: APT, ordine: (b) => b.o, autore: null, fuori: [] },
+  { saga: SAGA_AP, libri: APT, ordine: (b) => b.o, autore: null, fuori: [], novelle: NOVELLE_AP },
   { saga: TRILOGIA, libri: LA_TRILOGIA, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_FL },
   { saga: A_SE, libri: I_SOLI, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_FL },
-  { saga: FOLLIA, libri: LA_FOLLIA, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_FL },
+  { saga: FOLLIA, libri: LA_FOLLIA, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_FL, novelle: NOVELLE_FOLLIA },
   { saga: FEDELI, libri: I_FEDELI, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_BL },
   { saga: SANGUE, libri: IL_SANGUE, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_BL },
   { saga: SAGA_BS, libri: BLOODSWORN, ordine: (b) => b.o, autore: null, fuori: [] },
-  { saga: SAGA_BB, libri: BOUND, ordine: (b) => b.o, autore: null, fuori: [] },
+  { saga: SAGA_BB, libri: BOUND, ordine: (b) => b.o, autore: null, fuori: [], novelle: NOVELLE_BB },
 ];
 
 // I capitoli di tutte le guide, in minuscolo: `parteDiUnaStoria` guarda

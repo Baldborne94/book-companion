@@ -54,10 +54,10 @@ export default async (t) => {
   t.eq("il Mondo Disco, senza universo, il nome della guida", sagaPerLaGuida(guida("Discworld"), suoi), "Discworld");
 
   // I VOLUMI DI UN CAMMINO
-  const voci = vociDallaGuida(camminoDellaGuida(guida("Gaunt's Ghosts"), suoi), suoi);
+  const voci = vociDallaGuida(camminoDellaGuida(guida("Gaunt's Ghosts"), suoi), suoi).filter((v) => !v.novella);
   t.eq("Gaunt's Ghosts: quindici volumi in ordine", voci.map((v) => v.numero).join(","), Array.from({ length: 15 }, (_, i) => i + 1).join(","));
   t.eq("…con saga, serie e autore", [voci[1].titolo, voci[1].saga, voci[1].serie, voci[1].autore].join("|"), "Ghostmaker|Warhammer 40K|Gaunt's Ghosts|Dan Abnett");
-  const eis = vociDallaGuida(camminoDellaGuida(guida("Eisenhorn"), []), []);
+  const eis = vociDallaGuida(camminoDellaGuida(guida("Eisenhorn"), []), []).filter((v) => !v.novella);
   t.eq("Eisenhorn: i quattro romanzi, non l'omnibus", eis.map((v) => v.titolo).join(", "), "Xenos, Malleus, Hereticus, The Magos");
   const disco = vociDallaGuida(camminoDellaGuida(guida("Discworld"), []), []);
   t.eq("il Mondo Disco ha l'autore anche se la tavola non lo scrive", disco[0].autore, "Terry Pratchett");
@@ -83,7 +83,7 @@ export default async (t) => {
   // saga… ma anche il nome della serie, così che vengano messi in ordine
   // come i libri della Horus Heresy del 40K»)
   t.eq("la serie che i volumi della guida hanno tutti uguale", serieDellElenco({ fonte: "guida", volumi: voci }), "Gaunt's Ghosts");
-  const elder = vociDallaGuida(camminoDellaGuida(guida("The Realm of the Elderlings"), []), []);
+  const elder = vociDallaGuida(camminoDellaGuida(guida("The Realm of the Elderlings"), []), []).filter((v) => !v.novella);
   t.eq("una guida a cicli non ne ha una sola: ognuno tiene la sua", serieDellElenco({ fonte: "guida", volumi: elder }), "");
   const wd = { fonte: "wikidata", nome: "Magnus Chase and the Gods of Asgard", volumi: [{ titolo: "The Sword of Summer", saga: "Magnus Chase and the Gods of Asgard", serie: "", numero: 1 }] };
   t.eq("su Wikidata, il nome della serie", serieDellElenco(wd), "Magnus Chase and the Gods of Asgard");

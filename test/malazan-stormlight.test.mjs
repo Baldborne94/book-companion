@@ -30,7 +30,8 @@ export default async (t) => {
   t.eq("«Il libro dei caduti di Malazan»", guidaDalNome("Il libro dei Caduti di Malazan")?.saga, "Malazan Book of the Fallen");
   t.eq("«Le cronache della Folgorluce»", guidaDalNome("Le Cronache della Folgorluce")?.saga, "The Stormlight Archive");
   const sl = await sagaDalNome("Stormlight", { libri: [{ title: "The Way of Kings", author: "Brandon Sanderson", saga: "Cosmoverse" }] });
-  t.eq("dal nome, la guida: cinque volumi in ordine", `${sl.fonte} ${sl.volumi.map((v) => v.numero).join(",")}`, "guida 1,2,3,4,5");
+  t.eq("dal nome, la guida: cinque volumi in ordine", `${sl.fonte} ${sl.volumi.filter((v) => !v.novella).map((v) => v.numero).join(",")}`, "guida 1,2,3,4,5");
+  t.eq("…e fra loro le storie di mezzo, senza «The Way of Kings Prime» (una prima stesura)", sl.volumi.filter((v) => v.novella).map((v) => v.titolo).join(", "), "Elsecaller and King Lopen the First of Alethkar, Edgedancer, Dawnshard");
   t.eq("…quello che hai e' segnato", sl.volumi.filter((v) => v.gia).map((v) => v.titolo).join(), "The Way of Kings");
   t.eq("…e la raccolta e' quella dove tieni la saga («Cosmoverse»)", sl.saga, "Cosmoverse");
 };

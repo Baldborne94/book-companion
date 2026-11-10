@@ -58,10 +58,37 @@ export default async (t) => {
 
   // ── I VOLUMI DI UNA SERIE ─────────────────────────────────────────────
   const v = volumiDaHardcover(BOUND, { oggi: "2026-11-10" });
-  t.eq("solo i romanzi, uno per numero, in ordine", v.map((x) => `${x.numero} ${x.titolo}`).join(" | "), "1 Of Blood and Fire | 2 Of Darkness and Light | 3 Of War and Ruin | 4 Of Empires and Dust | 5 Of Gods and Ashes");
+  t.eq("uno per numero, in ordine, le storie di mezzo al loro posto", v.map((x) => `${x.numero} ${x.titolo}`).join(" | "), "0.5 The Fall | 1 Of Blood and Fire | 2 Of Darkness and Light | 2.5 The Exile | 3 Of War and Ruin | 4 Of Empires and Dust | 5 Of Gods and Ashes");
+  // il lettore: «non mi consideri anche le storie di intramezzo delle serie?»
+  t.eq("…segnate come storie di mezzo: i numeri a meta'", v.filter((x) => x.novella).map((x) => x.titolo).join(), "The Fall,The Exile");
+  t.eq("…e anche lo zero", volumiDaHardcover([legame(0, 1, "A Ghost Return"), legame(1, 2, "First and Only")]).map((x) => `${x.numero}${x.novella ? "s" : "r"}`).join(), "0s,1r");
   t.eq("…col nome dell'autore senza i doppi spazi, non quello del traduttore", v[0].autore, "Ryan Cahill");
   t.eq("quello non ancora uscito e' annunciato", v.filter((x) => x.annunciato).map((x) => x.titolo).join(), "Of Gods and Ashes");
   t.eq("…anche senza data", volumiDaHardcover([{ position: 1, book: { id: 1, title: "Forse", users_count: 1 } }])[0].annunciato, true);
+  // UN NUMERO A META' E' SPESSO UN ROMANZO SPEZZATO, NON UNA STORIA (la
+  // Ruota a 1.1 «Part 1 of 2», Malazan «Том 1», gli Elderlings «Split»)
+  const misto = volumiDaHardcover([
+    legame(1, 1, "The Eye of the World", { lettori: 900 }),
+    legame(1.1, 2, "The Eye of the World, Part 1 of 2: From The Two Rivers", { lettori: 300 }),
+    legame(1.2, 3, "Assassin's Apprentice (Split Edition), Part 2 of 2", { lettori: 50 }),
+    legame(3.1, 4, "Память льда. Том 1", { lettori: 20, lang: "" }),
+    legame(3.2, 5, "Wspomnienie lodu", { lettori: 0, lang: "" }),
+    legame(0.5, 6, "La principessa testarda e il principe pezzato", { lettori: 3, lang: "" }),
+    legame(0.5, 7, "The Wilful Princess and the Piebald Prince", { lettori: 300 }),
+    legame(0, 8, "In Remembrance", { lettori: 15 }),
+    legame(0, 9, "Born Unto Us", { lettori: 9 }),
+    legame(0.6, 10, "The Narrow Road Between Desires", { lettori: 672 }),
+    legame(2.6, 11, "The Narrow Road Between Desires: Kingkiller Chronicle", { lettori: 4 }),
+    legame(2.5, 12, "La música del silencio", { lettori: 40, lang: "spa" }),
+    legame(4.2, 13, "The Eye of the World: The Graphic Novel", { lettori: 30 }),
+    legame(7.5, 14, "Буря Жнеца", { lettori: 5, lang: "" }),
+    legame(1.4, 15, "The Eye of the World: The Illustrated Edition", { lettori: 20 }),
+  ]);
+  t.eq(
+    "le storie di mezzo vere: non le edizioni divise, non le traduzioni, non il titolo del romanzo, una volta sola",
+    misto.filter((x) => x.novella).map((x) => `${x.numero} ${x.titolo}`).join(" | "),
+    "0 Born Unto Us | 0 In Remembrance | 0.5 The Wilful Princess and the Piebald Prince | 0.6 The Narrow Road Between Desires"
+  );
   const tradotto = volumiDaHardcover([legame(1, 1, "Prastarý meč", { lettori: 50, lang: "ces" }), legame(1, 2, "The Sword of Summer", { lettori: 40 })]);
   t.eq("l'inglese prima della traduzione, anche se ha meno lettori", tradotto[0].titolo, "The Sword of Summer");
 
@@ -113,12 +140,12 @@ export default async (t) => {
     return { series: [{ id: 4979, name: "The Bound and the Broken", book_series: BOUND }] };
   };
   const bb = await serieHardcover("the bound and the broken", chiedi);
-  t.eq("una serie per nome: due domande, il nome di Hardcover, nella sua raccolta", `${domande.join(",")} | ${bb.fonte} ${bb.nome} ${bb.saga} ${bb.volumi.length}`, "search,series_by_pk | hardcover The Bound and the Broken The Bound and the Broken 5");
-  t.eq("…ogni volume nella raccolta della serie, col suo numero", `${bb.volumi[0].saga} ${bb.volumi[0].numero} ${bb.volumi[0].serie === ""}`, "The Bound and the Broken 1 true");
+  t.eq("una serie per nome: due domande, il nome di Hardcover, nella sua raccolta", `${domande.join(",")} | ${bb.fonte} ${bb.nome} ${bb.saga} ${bb.volumi.length}`, "search,series_by_pk | hardcover The Bound and the Broken The Bound and the Broken 7");
+  t.eq("…ogni volume nella raccolta della serie, col suo numero, la storia di mezzo segnata", `${bb.volumi[1].saga} ${bb.volumi[1].numero} ${bb.volumi[1].serie === ""} ${bb.volumi[0].novella}`, "The Bound and the Broken 1 true true");
   t.eq("un nome che Hardcover non ha", await serieHardcover("niente", chiedi), null);
   domande.length = 0;
   const cahill = await serieDellAutoreHC("Ryan Cahill", chiedi);
-  t.eq("le serie di un autore: due domande, col conto dell'elenco", `${domande.join(",")} | ${cahill.autore}: ${cahill.serie.map((s) => `${s.nome} · ${s.quanti}`).join()}`, "search,series( | Ryan Cahill: The Bound and the Broken · 5");
+  t.eq("le serie di un autore: due domande, col conto dell'elenco (i romanzi, e a parte le storie)", `${domande.join(",")} | ${cahill.autore}: ${cahill.serie.map((s) => `${s.nome} · ${s.quanti} + ${s.storie}`).join()}`, "search,series( | Ryan Cahill: The Bound and the Broken · 5 + 2");
 
   // ── NELLA STRADA DELL'APP ─────────────────────────────────────────────
   domande.length = 0;
