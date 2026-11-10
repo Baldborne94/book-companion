@@ -8,6 +8,7 @@
 import {
   chiaveNuda, chiaveHardcover, salvaChiaveHardcover, domandaHardcover, ChiaveRifiutata, volumiDaHardcover,
   sceltaSerieHC, sceltaAutoreHC, serieCheValgono, serieHardcover, serieDellAutoreHC, fraseHardcover, HARDCOVER,
+  sceltaCopertinaHC, copertinaHardcover, PASSO_MS, NON_CE_MS,
 } from "../src/lib/hardcover.js";
 import { sagaDalNome, saghePerAutore } from "../src/lib/sagaDaNome.js";
 import { pulisci } from "../src/lib/registro.js";
@@ -193,4 +194,50 @@ export default async (t) => {
   t.c("poi le serie di Hardcover", voci.includes("hardcover:Una Serie") && voci.includes("hardcover:Nuova Serie"), voci.join(" | "));
   t.c("…e la stessa serie da Wikidata non si ripete", !voci.includes("wikidata:Una Serie"), voci.join(" | "));
   t.c("un libro che sta in una serie di Hardcover non e' fra gli altri libri", !gwynne.saghe.some((s) => s.fonte === "sciolti" && s.volumi.some((x) => x.titolo === "Nuovo")), JSON.stringify(gwynne.saghe.find((s) => s.fonte === "sciolti")?.volumi));
+
+  // ── LE COPERTINE CHE MANCANO (il lettore: «non riesci a trovare le
+  // copertine?», poi «sì, mostra le copertine di Hardcover quando mancano»)
+  const img = (url) => ({ url });
+  const hc = [
+    { document: { title: "The Ice", author_names: ["Ryan  Cahill"], users_count: 153, image: img("https://assets.hardcover.app/editions/1/ice.jpg") } },
+    { document: { title: "The Ice", author_names: ["Someone Else"], users_count: 900, image: img("https://assets.hardcover.app/x.jpg") } },
+    { document: { title: "The Ice Storm", author_names: ["Ryan Cahill"], users_count: 999, image: img("https://assets.hardcover.app/storm.jpg") } },
+  ];
+  t.eq("lo stesso titolo e lo stesso autore, anche se un altro e' piu' letto", sceltaCopertinaHC(hc, { titolo: "The Ice", autore: "Ryan Cahill" }), "https://assets.hardcover.app/editions/1/ice.jpg");
+  t.eq("…anche col sottotitolo dopo", sceltaCopertinaHC([{ document: { title: "The Truth: A Bound and the Broken Novella", author_names: ["Ryan Cahill"], image: img("https://a/t.jpg") } }], { titolo: "The Truth", autore: "Ryan Cahill" }), "https://a/t.jpg");
+  t.eq("un titolo che solo comincia uguale no («The Ice Storm»)", sceltaCopertinaHC(hc.slice(2), { titolo: "The Ice", autore: "Ryan Cahill" }), null);
+  t.eq("senza autore scritto, il piu' letto", sceltaCopertinaHC(hc.slice(0, 2), { titolo: "The Ice" }), "https://assets.hardcover.app/x.jpg");
+  t.eq("un indirizzo che non e' https no", sceltaCopertinaHC([{ document: { title: "The Ice", image: img("http://a/x.jpg") } }], { titolo: "The Ice" }), null);
+
+  const memoria = new Map();
+  const st2 = { getItem: (k) => memoria.get(k) ?? null, setItem: (k, v) => memoria.set(k, v) };
+  const domande2 = [];
+  const pause = [];
+  const chiedi2 = async (query, vars) => {
+    domande2.push(vars.q);
+    return { search: { results: { hits: /Ice/.test(vars.q) ? hc : [] } } };
+  };
+  const aspetta = async (ms) => pause.push(ms);
+  const ghiaccio = { id: "ice", title: "The Ice", author: "Ryan Cahill" };
+  const [a, b] = await Promise.all([copertinaHardcover(ghiaccio, { chiedi: chiedi2, st: st2, aspetta }), copertinaHardcover(ghiaccio, { chiedi: chiedi2, st: st2, aspetta })]);
+  t.eq("trovata; e due copertine dello stesso libro fanno una domanda sola", `${a === b} ${a} ${domande2.length}`, "true https://assets.hardcover.app/editions/1/ice.jpg 1");
+  await copertinaHardcover(ghiaccio, { chiedi: chiedi2, st: st2, aspetta });
+  t.eq("…poi si ricorda: nessuna domanda in piu'", domande2.length, 1);
+  const nessuno = { id: "n", title: "Nessuno", author: "X" };
+  await copertinaHardcover(nessuno, { chiedi: chiedi2, st: st2, aspetta, ora: 1000 });
+  await copertinaHardcover(nessuno, { chiedi: chiedi2, st: st2, aspetta, ora: 1000 + NON_CE_MS - 1 });
+  t.eq("il «non c'e'» si ricorda per trenta giorni…", domande2.length, 2);
+  await copertinaHardcover(nessuno, { chiedi: chiedi2, st: st2, aspetta, ora: 1000 + NON_CE_MS + 1 });
+  t.eq("…poi si richiede", domande2.length, 3);
+  t.c("una domanda alla volta, col passo fra l'una e l'altra", pause.length >= 3 && pause.every((ms) => ms === PASSO_MS), pause.join());
+  t.eq("senza chiave non si chiede niente", await copertinaHardcover({ id: "z", title: "The Ice" }, { st: st2, aspetta }), null);
+  // per ultima: la chiave rifiutata vale fino alla prossima apertura
+  let tentativi = 0;
+  const rifiuta = async () => {
+    tentativi += 1;
+    throw new ChiaveRifiutata("no");
+  };
+  await copertinaHardcover({ id: "k1", title: "Uno" }, { chiedi: rifiuta, st: st2, aspetta });
+  await copertinaHardcover({ id: "k2", title: "Due" }, { chiedi: rifiuta, st: st2, aspetta });
+  t.eq("una chiave rifiutata non si riprova a ogni copertina", tentativi, 1);
 };

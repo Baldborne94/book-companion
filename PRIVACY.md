@@ -117,6 +117,11 @@ Cosa esce, e solo quando tocchi «Cerca i libri» o «Le sue saghe»: il nome
 della saga o dell'autore che hai scritto, poi il numero della serie o
 dell'autore su Hardcover, per leggerne i libri. Quali libri hai e come si
 chiamano le tue raccolte non partono: il confronto si fa sul dispositivo.
+Con la chiave, anche **le copertine che mancano**: per un libro senza
+copertina che sta per comparire sullo schermo partono il suo titolo e il suo
+autore, e se Hardcover ha la copertina l'app la mostra caricandola da
+`assets.hardcover.app` (che vede la richiesta, come per ogni immagine). Non
+si salva e non viaggia: si ricorda solo il suo indirizzo, sul dispositivo.
 Siccome la chiave è tua, Hardcover sa che quelle ricerche vengono dal tuo
 account. L'uso dei dati da parte di Hardcover è regolato dalle sue
 condizioni e dalla sua privacy policy, su hardcover.app.
