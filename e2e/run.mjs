@@ -84,7 +84,7 @@ const dalRepository = (route, url) => {
   if (!existsSync(file)) return route.fulfill({ status: 404, headers: cors, body: "" });
   return route.fulfill({ body: readFileSync(file), contentType: url.endsWith(".gz") ? "application/octet-stream" : "text/plain; charset=utf-8", headers: cors });
 };
-async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, oracolo = null, misura = null, lexicanum = null, fandom = null, wikidata = null, copertine = null } = {}) {
+async function dispositivo(browser, { sessione = false, prima = null, catalogo = null, oracolo = null, misura = null, lexicanum = null, fandom = null, wikidata = null, copertine = null, hardcover = null } = {}) {
   const ctx = await browser.newContext(misura || { viewport: { width: 1280, height: 800 } });
   await ctx.route(
     (url) => !/^(localhost|127\.0\.0\.1)$/.test(url.hostname),
@@ -94,6 +94,11 @@ async function dispositivo(browser, { sessione = false, prima = null, catalogo =
       if (oracolo && /api\.anthropic\.com/.test(url)) return route.fulfill({ json: await oracolo(JSON.parse(route.request().postData() || "{}")) });
       if (lexicanum && /wh40k\.lexicanum\.com/.test(url)) return lexicanum(route);
       if (fandom && /warhammer40k\.fandom\.com|static\.wikia\.nocookie\.net/.test(url)) return fandom(route);
+      if (hardcover && /api\.hardcover\.app/.test(url)) {
+        const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization,content-type", "access-control-allow-methods": "POST, OPTIONS" };
+        if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors, body: "" });
+        return route.fulfill({ json: await hardcover(JSON.parse(route.request().postData() || "{}"), route.request().headers().authorization || ""), headers: cors });
+      }
       if (wikidata && /www\.wikidata\.org\/w\/api\.php/.test(url)) return route.fulfill({ json: await wikidata(new URL(url).searchParams), headers: { "access-control-allow-origin": "*" } });
       if (copertine && /covers\.openlibrary\.org/.test(url)) {
         const body = await copertine(url);
@@ -1199,6 +1204,61 @@ const SCENE = [
       await finche(() => a.getByText(/«Lockwood & Co\.»: l'elenco della guida/).count(), 5000, "toccata la guida, i suoi libri non arrivano");
       if (!(await a.getByRole("button", { name: "📥 Aggiungi 5 schede" }).count())) throw new Error("i cinque libri di Lockwood non si possono aggiungere");
       return { guasti: [...d.guasti, ...altro.guasti], nota: `14 schede in ordine sotto «Warhammer 40K», ${await copertine()} copertine, Ghostmaker col suo ePub nella sua scheda e non raddoppiato, Malleus riconosciuto nel 40K, il Cosmere come mondo; le saghe di Stroud: le guide, la serie di Wikidata e gli altri libri` };
+    },
+  },
+  {
+    // chiesto dal lettore: «siti affidabili dove vedere la lista completa
+    // delle serie ce l'abbiamo?», poi «sì, aggiungi hardcover»
+    nome: "con la chiave di Hardcover nelle Impostazioni, una saga si trova su Hardcover: i soli romanzi, uno per numero, l'annunciato senza spunta",
+    async fai({ browser }) {
+      const chiavi = [];
+      const libro = (position, id, title, { anno = 2015, data = `${anno}-10-06`, lettori = 900, lingua = "eng" } = {}) => ({
+        position,
+        book: { id, title, release_year: anno, release_date: data, users_count: lettori, contributions: [{ author: { name: "Rick  Riordan" } }], default_physical_edition: { language: { code3: lingua } } },
+      });
+      const d = await dispositivo(browser, {
+        misura: TABLET,
+        hardcover: async ({ query, variables }, chiave) => {
+          chiavi.push(chiave);
+          if (/query_type: "Series"/.test(query)) return { data: { search: { results: { hits: [{ document: { id: "1585", name: "Magnus Chase and the Gods of Asgard", readers_count: 2729 } }, { document: { id: "260530", name: "Magnus Chase ve Asgard Tanrıları", readers_count: 0 } }] } } } };
+          if (/series_by_pk/.test(query) && variables.id === 1585)
+            return { data: { series_by_pk: { id: 1585, name: "Magnus Chase and the Gods of Asgard", book_series: [
+              libro(1, 1, "Yaz Kılıcı", { lettori: 2000, lingua: "tur" }),
+              libro(1, 2, "The Sword of Summer"),
+              libro(1.5, 3, "Hotel Valhalla Guide to the Norse Worlds", { anno: 2016 }),
+              libro(2, 4, "The Hammer of Thor", { anno: 2016 }),
+              libro(3, 5, "The Ship of the Dead", { anno: 2017 }),
+              libro(4, 6, "The Next Magnus", { anno: 2030, data: "2030-05-01", lettori: 3 }),
+            ] } } };
+          return { data: {} };
+        },
+      });
+      const { p } = d;
+      await p.goto(URL_APP);
+      await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      await p.getByRole("textbox", { name: "Chiave di Hardcover" }).fill("Bearer hc_pat_prova");
+      await p.getByRole("button", { name: "Salva la chiave di Hardcover" }).click();
+      await finche(() => p.getByText(/✓ Chiave salvata: in «📥 Senza file»/).count(), 5000, "la chiave di Hardcover non si salva");
+      await p.goto(`${URL_APP}?apri=libreria`);
+      await p.getByRole("button", { name: "📥 Senza file" }).click();
+      await p.getByRole("textbox", { name: "Nome della saga" }).fill("Magnus Chase");
+      await p.getByRole("button", { name: "🔍 Cerca i libri" }).click();
+      await finche(() => p.getByText(/«Magnus Chase and the Gods of Asgard» su Hardcover/).count(), 8000, "la saga non si trova su Hardcover");
+      if (!chiavi.length || !chiavi.every((c) => c === "Bearer hc_pat_prova")) throw new Error(`la chiave non arriva com'e' scritta da Hardcover: ${chiavi.join(" | ")}`);
+      for (const t of ["The Sword of Summer", "The Hammer of Thor", "The Ship of the Dead", "The Next Magnus"]) if (!(await p.getByText(t, { exact: true }).count())) throw new Error(`nell'elenco manca «${t}»`);
+      for (const t of ["Yaz Kılıcı", "Hotel Valhalla Guide to the Norse Worlds"]) if (await p.getByText(t, { exact: true }).count()) throw new Error(`nell'elenco c'e' «${t}», che non e' un romanzo della serie in inglese`);
+      if (await p.locator("label", { hasText: "The Next Magnus" }).getByRole("checkbox").isChecked()) throw new Error("il libro annunciato parte spuntato");
+      if (!(await p.locator("label", { hasText: "The Next Magnus" }).getByText(/annunciato/).count())) throw new Error("il libro annunciato non lo dice");
+      await p.getByRole("textbox", { name: "Raccolta" }).fill("Rick Riordan");
+      if ((await p.getByRole("textbox", { name: "Serie", exact: true }).inputValue()) !== "Magnus Chase and the Gods of Asgard") throw new Error("la serie proposta non e' quella di Hardcover");
+      await p.getByRole("button", { name: "📥 Aggiungi 3 schede" }).click();
+      // (l'avviso dell'aggiunta lo copre subito quello delle copertine: qui il catalogo non risponde)
+      await finche(async () => (await libriDi(p)).filter((b) => b.fileType === "nessuno").length === 3, 5000, "le tre schede non entrano");
+      const nuove = (await libriDi(p)).filter((b) => b.fileType === "nessuno").sort((a, b) => a.sagaOrder - b.sagaOrder);
+      const scritte = nuove.map((b) => `${b.sagaOrder} ${b.title} · ${b.saga} / ${b.series} · ${b.author}`).join(" | ");
+      if (scritte !== "1 The Sword of Summer · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan | 2 The Hammer of Thor · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan | 3 The Ship of the Dead · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan")
+        throw new Error(`le schede: ${scritte}`);
+      return { guasti: d.guasti, nota: `${chiavi.length} domande a Hardcover; ${scritte.split(" | ").length} schede in «Rick Riordan», serie Magnus Chase, 1–3; la traduzione turca, la guida 1.5 e l'annunciato fuori` };
     },
   },
   {

@@ -87,6 +87,7 @@ export default async (t) => {
   t.eq("una guida a cicli non ne ha una sola: ognuno tiene la sua", serieDellElenco({ fonte: "guida", volumi: elder }), "");
   const wd = { fonte: "wikidata", nome: "Magnus Chase and the Gods of Asgard", volumi: [{ titolo: "The Sword of Summer", saga: "Magnus Chase and the Gods of Asgard", serie: "", numero: 1 }] };
   t.eq("su Wikidata, il nome della serie", serieDellElenco(wd), "Magnus Chase and the Gods of Asgard");
+  t.eq("…e su Hardcover", serieDellElenco({ ...wd, fonte: "hardcover" }), "Magnus Chase and the Gods of Asgard");
   t.eq("gli altri libri di un autore non hanno serie", serieDellElenco({ fonte: "sciolti", nome: "Altri libri", volumi: [{ titolo: "X", serie: "" }] }), "");
   const [mc] = nellaRaccolta(wd.volumi, "Rick Riordan", "Magnus Chase and the Gods of Asgard");
   t.eq("in un'altra raccolta la serie resta, col suo numero: un ripiano in ordine", `${mc.saga} | ${mc.serie} | ${mc.numero}`, "Rick Riordan | Magnus Chase and the Gods of Asgard | 1");

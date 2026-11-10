@@ -14,9 +14,10 @@
 //    libri»), quindi l'elenco si MOSTRA prima di scriverlo, e il lettore
 //    toglie quel che non vuole: si propone, non si scrive in silenzio.
 // Si chiede all'API di Wikidata (`origin=*`), mai al servizio SPARQL.
-import { TAVOLE, riconosci } from "./sagaBooks.js";
+import { TAVOLE, riconosci, chiaveSaga } from "./sagaBooks.js";
 import { camminoDellaGuida, guideIntere } from "./cammino.js";
 import { vociDallaGuida, giaSulloScaffale } from "./senzaFile.js";
+import { serieHardcover, serieDellAutoreHC, ChiaveRifiutata } from "./hardcover.js";
 
 export const API = "https://www.wikidata.org/w/api.php";
 // le serie: di libri, di romanzi, di opere, le trilogie
@@ -347,27 +348,44 @@ export async function serieDellAutore(nome, prendi) {
 }
 
 // La strada intera per un autore: le guide, poi Wikidata senza i doppioni
-export async function saghePerAutore(nome, { prendi } = {}) {
+export async function saghePerAutore(nome, { prendi, hardcover } = {}) {
   const guide = guideDellAutore(nome);
-  const w = prendi ? await serieDellAutore(nome, prendi) : null;
+  // HARDCOVER PRIMA DI WIKIDATA, se il lettore ha la chiave (`lib/hardcover.js`):
+  // le sue serie sono piu' complete; Wikidata aggiunge le serie che Hardcover
+  // non ha e gli altri libri. Una chiave rifiutata si dice.
+  let avviso = null;
+  const h = hardcover
+    ? await serieDellAutoreHC(nome, hardcover).catch((e) => {
+        avviso = e instanceof ChiaveRifiutata ? "chiave" : "guasto";
+        return null;
+      })
+    : null;
+  const w = prendi ? await serieDellAutore(nome, prendi).catch((e) => (h?.serie?.length ? null : Promise.reject(e))) : null;
   const giaGuide = new Set(guide.map((g) => g.saga).filter(Boolean));
   const giaMondi = new Set(guide.map((g) => g.universo || TAVOLE.find((t) => t.saga === g.saga)?.universo).filter(Boolean));
   const giaDetta = (nomeSerie) => {
     const g = guidaDalNome(nomeSerie);
     return !!g && (giaGuide.has(g.saga) || giaMondi.has(g.universo));
   };
-  const altre = (w?.serie || []).filter((x) => !giaDetta(x.nome));
-  const autore = w?.autore || nome;
-  // i libri sciolti che una guida conosce stanno gia' nella guida
-  const sciolti = (w?.sciolti || []).filter((v) => !giaGuide.has(riconosci({ title: v.titolo, author: autore })?.saga));
+  const daHC = (h?.serie || []).filter((x) => !giaDetta(x.nome));
+  // una serie di Wikidata che Hardcover ha gia' (col nome, anche senza
+  // «series»: «Skyward series» e' «Skyward») non si ripete
+  const nomiHC = new Set((h?.serie || []).flatMap((x) => variantiDelNome(x.nome).map(chiaveSaga)));
+  const daWD = (w?.serie || []).filter((x) => !giaDetta(x.nome) && !variantiDelNome(x.nome).some((v) => nomiHC.has(chiaveSaga(v))));
+  const autore = h?.autore || w?.autore || nome;
+  // i libri sciolti che una guida conosce stanno gia' nella guida, e quelli
+  // che stanno in una serie di Hardcover gia' nella sua serie
+  const inHC = new Set((h?.serie || []).flatMap((x) => x.volumi.map((v) => piano(v.titolo))));
+  const sciolti = (w?.sciolti || []).filter((v) => !inHC.has(piano(v.titolo)) && !giaGuide.has(riconosci({ title: v.titolo, author: autore })?.saga));
   const altri = sciolti.length ? [{ fonte: "sciolti", nome: "Altri libri", autore, quanti: sciolti.length, volumi: sciolti }] : [];
-  if (!guide.length && !altre.length && !altri.length) return null;
-  return { autore, saghe: [...guide, ...altre, ...altri] };
+  if (!guide.length && !daHC.length && !daWD.length && !altri.length) return avviso ? { autore, saghe: [], hardcover: avviso } : null;
+  return { autore, saghe: [...guide, ...daHC, ...daWD, ...altri], ...(avviso ? { hardcover: avviso } : {}) };
 }
 
 // I libri di una saga scelta dall'elenco dell'autore
 export async function libriDellaSaga(voce, { libri = [], prendi } = {}) {
   if (voce.fonte === "guida") return volumiDallaGuida(voce.universo ? { universo: voce.universo } : { saga: voce.saga }, libri);
+  if (voce.fonte === "hardcover") return { fonte: "hardcover", nome: voce.nome, saga: voce.nome, perAnno: false, volumi: voce.volumi.map((v) => ({ ...v, gia: giaSulloScaffale(v, libri) })) };
   if (voce.fonte === "sciolti") {
     const volumi = voce.volumi.map((v) => ({ titolo: v.titolo, autore: voce.autore || "", saga: "", serie: "", numero: null, anno: v.anno }));
     return { fonte: "sciolti", nome: voce.nome, saga: "", volumi: volumi.map((v) => ({ ...v, gia: giaSulloScaffale(v, libri) })) };
@@ -376,11 +394,22 @@ export async function libriDellaSaga(voce, { libri = [], prendi } = {}) {
   return { ...w, volumi: w.volumi.map((v) => ({ ...v, gia: giaSulloScaffale(v, libri) })) };
 }
 
-// La strada intera: prima le guide, poi Wikidata
-export async function sagaDalNome(nome, { libri = [], prendi } = {}) {
+// La strada intera: prima le guide, poi Hardcover (se c'e' la chiave), poi
+// Wikidata. Una chiave rifiutata o Hardcover che non risponde si dicono
+// (`hardcover`), e si prova Wikidata lo stesso.
+export async function sagaDalNome(nome, { libri = [], prendi, hardcover } = {}) {
   const g = guidaDalNome(nome);
   if (g) return volumiDallaGuida(g, libri);
-  if (!prendi) return null;
-  const w = await sagaDaWikidata(nome, prendi);
-  return w ? { ...w, volumi: w.volumi.map((v) => ({ ...v, gia: giaSulloScaffale(v, libri) })) } : null;
+  const segna = (r) => (r ? { ...r, volumi: r.volumi.map((v) => ({ ...v, gia: giaSulloScaffale(v, libri) })) } : null);
+  let avviso = null;
+  if (hardcover) {
+    const h = await serieHardcover(nome, hardcover).catch((e) => {
+      avviso = e instanceof ChiaveRifiutata ? "chiave" : "guasto";
+      return null;
+    });
+    if (h?.volumi.length) return segna(h);
+  }
+  if (!prendi) return avviso ? { hardcover: avviso, volumi: [] } : null;
+  const w = segna(await sagaDaWikidata(nome, prendi));
+  return avviso ? { ...(w || { volumi: [] }), hardcover: avviso } : w;
 }
