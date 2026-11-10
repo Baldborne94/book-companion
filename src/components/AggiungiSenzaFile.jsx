@@ -139,7 +139,8 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
 
   // «gia' sullo scaffale» guardato sulla biblioteca di adesso: quel che si e'
   // appena aggiunto dall'elenco si vede subito, senza rifare la ricerca
-  const volumi = useMemo(() => (esito?.volumi || []).map((v) => (v.gia || !giaSulloScaffale(v, books) ? v : { ...v, gia: true })), [esito, books]);
+  // (guardato nella raccolta e nella serie scritte nei campi: e' li' che finiranno)
+  const volumi = useMemo(() => (esito?.volumi || []).map((v) => (v.gia || !giaSulloScaffale(nellaRaccolta([v], raccolta, serie)[0], books) ? v : { ...v, gia: true })), [esito, books, raccolta, serie]);
   const daAggiungere = volumi.filter((v, i) => !v.gia && !tolti.has(i));
   function aggiungiElenco() {
     const voci = nellaRaccolta(daAggiungere, raccolta, serie);

@@ -1285,6 +1285,11 @@ const SCENE = [
       });
       const d = await dispositivo(browser, {
         misura: TABLET,
+        // il terzo volume c'e' gia', col nome del suo file: lo dice il posto, non il titolo
+        prima: () => {
+          if (!localStorage.getItem("bc_books"))
+            localStorage.setItem("bc_books", JSON.stringify([{ id: "mc3", title: "Magnus Chase 03 (2017) (retail)", author: "", saga: "Rick Riordan", series: "Magnus Chase and the Gods of Asgard", sagaOrder: 3, fileType: "epub", fileTolto: true, addedAt: 1 }]));
+        },
         hardcover: async ({ query, variables }, chiave) => {
           chiavi.push(chiave);
           if (/query_type: "Series"/.test(query)) return { data: { search: { results: { hits: [{ document: { id: "1585", name: "Magnus Chase and the Gods of Asgard", readers_count: 2729 } }, { document: { id: "260530", name: "Magnus Chase ve Asgard Tanrıları", readers_count: 0 } }] } } } };
@@ -1327,12 +1332,14 @@ const SCENE = [
       if (!(await p.locator("label", { hasText: "The Next Magnus" }).getByText(/annunciato/).count())) throw new Error("il libro annunciato non lo dice");
       await p.getByRole("combobox", { name: "Raccolta" }).fill("Rick Riordan");
       if ((await p.getByRole("combobox", { name: "Serie", exact: true }).inputValue()) !== "Magnus Chase and the Gods of Asgard") throw new Error("la serie proposta non e' quella di Hardcover");
-      await p.getByRole("button", { name: "📥 Aggiungi 3 schede" }).click();
+      // nella raccolta e nella serie scelte il terzo c'e' gia' (il lettore: «non lo avevi già visto nella raccolta?»)
+      await finche(() => p.locator("label", { hasText: "The Ship of the Dead" }).getByText(/già sullo scaffale/).count(), 5000, "il volume gia' nella raccolta col suo numero non si riconosce");
+      await p.getByRole("button", { name: "📥 Aggiungi 2 schede" }).click();
       // (l'avviso dell'aggiunta lo copre subito quello delle copertine: qui il catalogo non risponde)
-      await finche(async () => (await libriDi(p)).filter((b) => b.fileType === "nessuno").length === 3, 5000, "le tre schede non entrano");
+      await finche(async () => (await libriDi(p)).filter((b) => b.fileType === "nessuno").length === 2, 5000, "le due schede non entrano");
       const nuove = (await libriDi(p)).filter((b) => b.fileType === "nessuno").sort((a, b) => a.sagaOrder - b.sagaOrder);
       const scritte = nuove.map((b) => `${b.sagaOrder} ${b.title} · ${b.saga} / ${b.series} · ${b.author}`).join(" | ");
-      if (scritte !== "1 The Sword of Summer · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan | 2 The Hammer of Thor · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan | 3 The Ship of the Dead · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan")
+      if (scritte !== "1 The Sword of Summer · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan | 2 The Hammer of Thor · Rick Riordan / Magnus Chase and the Gods of Asgard · Rick Riordan")
         throw new Error(`le schede: ${scritte}`);
       // LE COPERTINE CHE MANCANO (il lettore: «sì, mostra le copertine di
       // Hardcover quando mancano»): sullo scaffale la sua, dove la nostra non c'e'
@@ -1342,7 +1349,7 @@ const SCENE = [
       const senza = await p.evaluate(() => [...document.querySelectorAll("img")].filter((i) => /assets\.hardcover\.app/.test(i.src)).length);
       if (senza !== 1) throw new Error(`copertine di Hardcover sullo scaffale: ${senza} (attesa una: le altre Hardcover non le ha)`);
       if (!libriCercati.some((q) => /The Sword of Summer/.test(q))) throw new Error("i libri senza copertina non si cercano");
-      return { guasti: d.guasti, nota: `${chiavi.length} domande a Hardcover; ${scritte.split(" | ").length} schede in «Rick Riordan», serie Magnus Chase, 1–3; la traduzione turca fuori, la storia di mezzo 1.5 e l'annunciato senza spunta; la copertina di Hardcover dove manca (${libriCercati.length} libri cercati)` };
+      return { guasti: d.guasti, nota: `${chiavi.length} domande a Hardcover; ${scritte.split(" | ").length} schede in «Rick Riordan», serie Magnus Chase, 1–2 (il 3 c'era gia' col nome del file); la traduzione turca fuori, la storia di mezzo 1.5 e l'annunciato senza spunta; la copertina di Hardcover dove manca (${libriCercati.length} libri cercati)` };
     },
   },
   {

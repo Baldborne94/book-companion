@@ -80,7 +80,18 @@ export function giaSulloScaffale(voce, libri = []) {
   // «Jordan, Robert» e' «Robert Jordan»: le parole, non il loro ordine
   const parole = (a) => piano(a).split(" ").filter(Boolean).sort().join(" ");
   const chi = parole(voce?.autore);
+  // LO STESSO POSTO NELLA STESSA RACCOLTA (il lettore, con Gachiakuta v01–v12
+  // sullo scaffale e l'elenco di Hardcover che li proponeva tutti: «non lo
+  // avevi già visto nella raccolta?»). «Gachiakuta v01 (2024) (Digital)
+  // (Rillant)» e «Gachiakuta, Vol. 1» non si somigliano per titolo, ma
+  // stanno nella stessa raccolta, nella stessa serie, allo stesso numero.
+  // La serie conta: nel 40K il n° 1 dell'Eresia non e' il n° 1 di Gaunt's Ghosts
+  const k = chiaveSaga(String(voce?.saga || "").trim());
+  const n = numeroDi(voce?.numero);
+  const serie = chiaveSaga(String(voce?.serie || "").trim());
+  const stessoPosto = (b) => !!k && n != null && chiaveSaga(String(b?.saga || "").trim()) === k && numeroDi(b?.sagaOrder) === n && chiaveSaga(String(b?.series || "").trim()) === serie;
   return libri.some((b) => {
+    if (stessoPosto(b)) return true;
     const suo = parole(b?.author);
     // un altro autore scritto non e' lo stesso titolo, ma puo' essere lo
     // stesso volume di una guida, riconosciuto ognuno col suo autore (il
