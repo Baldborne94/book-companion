@@ -2,7 +2,7 @@ import { useState } from "react";
 import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { sagaDalNome, saghePerAutore, libriDellaSaga } from "../lib/sagaDaNome.js";
 import { sagaDelLibro, fraseSagaDelLibro, raccolteDellAutore } from "../lib/sagaDelLibro.js";
-import { giaSulloScaffale, serieDellElenco, nellaRaccolta } from "../lib/senzaFile.js";
+import { giaSulloScaffale, serieDellElenco, nellaRaccolta, raccolteEsistenti, serieDellaRaccolta } from "../lib/senzaFile.js";
 import { chiaveHardcover, domandaHardcover, fraseHardcover } from "../lib/hardcover.js";
 
 const prendi = async (url) => {
@@ -120,6 +120,9 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
   }
 
   const sueRaccolte = raccolteDellAutore(libro.autore, books);
+  // le raccolte e le serie che hai gia', da scegliere nei campi (un elenco
+  // del browser: si tocca il campo, o si scrive e si restringe)
+  const tutteLeRaccolte = raccolteEsistenti(books);
   // chiesto dal lettore: «se un libro o una saga sono già presenti non me li
   // aggiungere di nuovo» — e lo si dice prima del tasto
   const giaQui = !!libro.titolo.trim() && giaSulloScaffale(libro, books);
@@ -138,6 +141,9 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
       </div>
 
       <div style={{ maxWidth: px(720), margin: "0 auto", padding: "18px 16px 48px" }}>
+        <datalist id="bc-raccolte">
+          {tutteLeRaccolte.map((x) => <option key={x} value={x} />)}
+        </datalist>
         <p style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.5, marginBottom: 18 }}>
           La scheda entra sullo scaffale con la sua copertina, senza ebook. Quando avrai il file, apri la scheda e tocca «📂 Scegli
           il file»: entra lì.
@@ -200,14 +206,17 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
             </p>
             <label style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10, fontSize: F.piccolo, color: C.muted }}>
               Nella raccolta
-              <input value={raccolta} onChange={(e) => setRaccolta(e.target.value)} aria-label="Raccolta" style={campo(200)} />
+              <input value={raccolta} onChange={(e) => setRaccolta(e.target.value)} aria-label="Raccolta" list="bc-raccolte" style={campo(200)} />
             </label>
             {/* LA SERIE DENTRO LA RACCOLTA (il lettore: «come i libri della
                 Horus Heresy del 40K»): un ripiano suo dentro la raccolta,
                 in ordine coi numeri dell'elenco */}
             <label style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10, fontSize: F.piccolo, color: C.muted }}>
               Nella serie
-              <input value={serie} onChange={(e) => setSerie(e.target.value)} placeholder="facoltativa" aria-label="Serie" style={campo(200)} />
+              <input value={serie} onChange={(e) => setSerie(e.target.value)} placeholder="facoltativa" aria-label="Serie" list="bc-serie-elenco" style={campo(200)} />
+              <datalist id="bc-serie-elenco">
+                {serieDellaRaccolta(books, raccolta).map((x) => <option key={x} value={x} />)}
+              </datalist>
             </label>
             {esito.volumi.map((v, i) => (
               <label key={`${v.numero}-${v.titolo}`} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 44, padding: "4px 0", borderBottom: `1px solid ${C.border}44`, opacity: v.gia ? 0.6 : 1 }}>
@@ -248,13 +257,19 @@ export default function AggiungiSenzaFile({ books = [], onAggiungi, onClose }) {
         >
           <input value={libro.titolo} onChange={(e) => { setLibro({ ...libro, titolo: e.target.value }); setRiconosco(null); }} placeholder="Titolo" aria-label="Titolo" style={campo(220)} />
           <input value={libro.autore} onChange={(e) => setLibro({ ...libro, autore: e.target.value })} placeholder="Autore" aria-label="Autore" style={campo(180)} />
-          <input value={libro.saga} onChange={(e) => setLibro({ ...libro, saga: e.target.value })} placeholder="Saga (facoltativa)" aria-label="Saga" style={campo(180)} />
-          <input value={libro.serie} onChange={(e) => setLibro({ ...libro, serie: e.target.value })} placeholder="Serie (facoltativa)" aria-label="Serie del libro" style={campo(160)} />
+          <input value={libro.saga} onChange={(e) => setLibro({ ...libro, saga: e.target.value })} placeholder="Raccolta" aria-label="Saga" list="bc-raccolte" style={campo(180)} />
+          <input value={libro.serie} onChange={(e) => setLibro({ ...libro, serie: e.target.value })} placeholder="Serie" aria-label="Serie del libro" list="bc-serie-libro" style={campo(160)} />
+          <datalist id="bc-serie-libro">
+            {serieDellaRaccolta(books, libro.saga).map((x) => <option key={x} value={x} />)}
+          </datalist>
           <input value={libro.numero} onChange={(e) => setLibro({ ...libro, numero: e.target.value })} placeholder="N°" aria-label="Numero" inputMode="decimal" style={{ ...campo(60), flex: "0 1 80px" }} />
           <button type="submit" disabled={!libro.titolo.trim() || giaQui} style={{ ...tasto(C.accent, true), opacity: libro.titolo.trim() && !giaQui ? 1 : 0.5 }}>
             📥 Aggiungi
           </button>
         </form>
+        <p style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 6, lineHeight: 1.5 }}>
+          Raccolta e serie si possono lasciare vuote. {tutteLeRaccolte.length ? "Tocca il campo per sceglierne una che hai già, o scrivine una nuova." : "Scrivine una e il libro ci va dentro."}
+        </p>
         {giaQui && <p style={{ fontSize: F.piccolo, color: C.accent, marginTop: 8 }}>✓ Questo libro è già sullo scaffale: non lo aggiungo di nuovo.</p>}
         {/* DI CHE SAGA E'? (chiesto dal lettore: «se cerco un libro riesci a
             riconoscermi a quale saga appartiene di quelle che ho già

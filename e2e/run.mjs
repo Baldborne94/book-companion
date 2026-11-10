@@ -1126,9 +1126,9 @@ const SCENE = [
       await p.getByRole("textbox", { name: "Nome della saga" }).fill("Gaunt's Ghosts");
       await p.getByRole("button", { name: "🔍 Cerca i libri" }).click();
       await finche(() => p.getByText(/«Gaunt's Ghosts»: l'elenco della guida dell'app/).count(), 5000, "la saga non si trova fra le guide");
-      if ((await p.getByRole("textbox", { name: "Raccolta" }).inputValue()) !== "Warhammer 40K") throw new Error("la raccolta proposta non e' quella del 40K del lettore");
+      if ((await p.getByRole("combobox", { name: "Raccolta" }).inputValue()) !== "Warhammer 40K") throw new Error("la raccolta proposta non e' quella del 40K del lettore");
       // e la serie accanto, come l'Eresia nel 40K (il lettore: «anche il nome della serie»)
-      if ((await p.getByRole("textbox", { name: "Serie", exact: true }).inputValue()) !== "Gaunt's Ghosts") throw new Error("la serie proposta non e' Gaunt's Ghosts");
+      if ((await p.getByRole("combobox", { name: "Serie", exact: true }).inputValue()) !== "Gaunt's Ghosts") throw new Error("la serie proposta non e' Gaunt's Ghosts");
       // si toglie l'ultimo: l'elenco si mostra prima di scriverlo
       await p.locator("label", { hasText: "The Anarch" }).getByRole("checkbox").uncheck();
       await p.getByRole("button", { name: "📥 Aggiungi 14 schede" }).click();
@@ -1183,13 +1183,24 @@ const SCENE = [
       await titolo.fill("Malleus");
       await p.getByRole("button", { name: "🔍 Di che saga è?" }).click();
       await finche(() => p.getByText(/È nella guida di Eisenhorn: va in «Warhammer 40K», Eisenhorn, n° 2/).count(), 5000, "Malleus non si riconosce nella raccolta del 40K");
-      const proposta = `${await p.getByRole("textbox", { name: "Saga", exact: true }).inputValue()} ${await p.getByRole("textbox", { name: "Numero", exact: true }).inputValue()}`;
-      if ((await p.getByPlaceholder("Serie (facoltativa)").inputValue()) !== "Eisenhorn") throw new Error("la serie proposta per Malleus non si vede");
+      const proposta = `${await p.getByRole("combobox", { name: "Saga", exact: true }).inputValue()} ${await p.getByRole("textbox", { name: "Numero", exact: true }).inputValue()}`;
+      if ((await p.getByPlaceholder("Serie", { exact: true }).inputValue()) !== "Eisenhorn") throw new Error("la serie proposta per Malleus non si vede");
       if (proposta !== "Warhammer 40K 2") throw new Error(`la proposta scritta nei campi: ${proposta}`);
       await p.getByRole("button", { name: "📥 Aggiungi", exact: true }).click();
       await finche(async () => (await libriDi(p)).some((b) => b.title === "Malleus"), 5000, "Malleus non entra");
       const malleus = (await libriDi(p)).find((b) => b.title === "Malleus");
       if (`${malleus.saga}|${malleus.series}|${malleus.sagaOrder}` !== "Warhammer 40K|Eisenhorn|2") throw new Error(`Malleus sullo scaffale: ${JSON.stringify(malleus)}`);
+      // LA RACCOLTA SI SCEGLIE («permettimi anche di metterlo in una raccolta
+      // o saga se serve»): i campi propongono le raccolte che hai e, scelta
+      // la raccolta, le sue serie
+      await p.getByRole("button", { name: "📥 Senza file" }).click();
+      const opzioni = (id) => p.evaluate((x) => [...document.querySelectorAll(`#${x} option`)].map((o) => o.value), id);
+      const campoRaccolta = p.getByPlaceholder("Raccolta", { exact: true });
+      if ((await campoRaccolta.getAttribute("list")) !== "bc-raccolte" || !(await opzioni("bc-raccolte")).includes("Warhammer 40K")) throw new Error(`il campo della raccolta non propone le raccolte: ${await opzioni("bc-raccolte")}`);
+      await campoRaccolta.fill("warhammer 40k");
+      await finche(async () => (await opzioni("bc-serie-libro")).includes("Eisenhorn") && (await opzioni("bc-serie-libro")).includes("Gaunt's Ghosts"), 5000, "scelta la raccolta, le sue serie non si propongono");
+      if ((await p.getByPlaceholder("Serie", { exact: true }).getAttribute("list")) !== "bc-serie-libro") throw new Error("il campo della serie non ha l'elenco");
+      await p.getByRole("button", { name: "Chiudi", exact: true }).click();
       // UN MONDO INTERO («fai le guide di Cosmoverso e Malazan»): tutte le
       // sue guide, una dopo l'altra, in una raccolta
       await p.getByRole("button", { name: "📥 Senza file" }).click();
@@ -1197,7 +1208,7 @@ const SCENE = [
       await p.getByRole("button", { name: "🔍 Cerca i libri" }).click();
       await finche(() => p.getByText(/«Cosmere»: tutte le guide dell'app di questo mondo/).count(), 5000, "il Cosmere non si trova come mondo");
       if (!(await p.getByRole("button", { name: "📥 Aggiungi 18 schede" }).count())) throw new Error("il Cosmere non ha i suoi diciotto romanzi");
-      if ((await p.getByRole("textbox", { name: "Raccolta" }).inputValue()) !== "Cosmere") throw new Error("senza Cosmere sullo scaffale, la raccolta proposta non e' il mondo");
+      if ((await p.getByRole("combobox", { name: "Raccolta" }).inputValue()) !== "Cosmere") throw new Error("senza Cosmere sullo scaffale, la raccolta proposta non e' il mondo");
       // LE SAGHE DI UN AUTORE («permettimi la ricerca per autore»): la
       // guida dell'app e la serie di Wikidata, e un tocco porta i libri
       const tipo = (...q) => q.map((id) => ({ mainsnak: { datavalue: { value: { id } } } }));
@@ -1286,8 +1297,8 @@ const SCENE = [
       if (await storia.getByRole("checkbox").isChecked()) throw new Error("la storia di mezzo parte spuntata");
       if (await p.locator("label", { hasText: "The Next Magnus" }).getByRole("checkbox").isChecked()) throw new Error("il libro annunciato parte spuntato");
       if (!(await p.locator("label", { hasText: "The Next Magnus" }).getByText(/annunciato/).count())) throw new Error("il libro annunciato non lo dice");
-      await p.getByRole("textbox", { name: "Raccolta" }).fill("Rick Riordan");
-      if ((await p.getByRole("textbox", { name: "Serie", exact: true }).inputValue()) !== "Magnus Chase and the Gods of Asgard") throw new Error("la serie proposta non e' quella di Hardcover");
+      await p.getByRole("combobox", { name: "Raccolta" }).fill("Rick Riordan");
+      if ((await p.getByRole("combobox", { name: "Serie", exact: true }).inputValue()) !== "Magnus Chase and the Gods of Asgard") throw new Error("la serie proposta non e' quella di Hardcover");
       await p.getByRole("button", { name: "📥 Aggiungi 3 schede" }).click();
       // (l'avviso dell'aggiunta lo copre subito quello delle copertine: qui il catalogo non risponde)
       await finche(async () => (await libriDi(p)).filter((b) => b.fileType === "nessuno").length === 3, 5000, "le tre schede non entrano");
