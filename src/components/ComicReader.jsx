@@ -42,8 +42,9 @@ import {
   daLasciare,
   PERCHE_CBR_GRANDE,
   fraseConversione,
-  sfumaDa,
-  SFUMA_MS,
+  voltataAnimata,
+  SCORRI_MS,
+  scorrimento,
   daDecodificare,
   fogliInScena,
 } from "../lib/fumetto.js";
@@ -573,12 +574,14 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
           misuraVoltata.current.tPagine = performance.now();
           misuraVoltata.current.kb = buone.reduce((t, x) => t + (pesi.current.get(x.n) || 0), 0) / 1024;
         }
-        if (sfumaDa(disegnato.current, chiaveMostrate, { nastro: live.current.nastro, acceso: live.current.sfuma && live.current.intera })) {
+        if (voltataAnimata(disegnato.current, chiaveMostrate, { nastro: live.current.nastro, acceso: live.current.sfuma && live.current.intera })) {
           const d = disegnato.current;
           const via = d.srcs
             .map((x, i) => ({ n: x.n, url: x.url, q: d.disegno.pagine.find((y) => y.indice === i) }))
             .filter((x) => x.q);
-          if (via.length) setUscente({ id: ++contaSfuma.current, via: false, w: d.disegno.foglio.w, h: d.disegno.foglio.h, pagine: via });
+          // avanti o indietro: decide da che parte esce il foglio di prima
+          const avanti = mostrate[0] > Math.min(...d.srcs.map((x) => x.n));
+          if (via.length) setUscente({ id: ++contaSfuma.current, via: false, avanti, w: d.disegno.foglio.w, h: d.disegno.foglio.h, pagine: via });
         }
         setSrcs(buone);
         setSrcsDi(chiaveMostrate);
@@ -958,12 +961,20 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
   });
 
   const inScena = fogliInScena({ aSchermo: srcs, uscenti: uscente?.pagine, dopo: prossimo });
+  const passo = uscente ? scorrimento({ avanti: uscente.avanti, verso, largo: riquadro?.w || (typeof window !== "undefined" ? window.innerWidth : 0) }) : null;
+  // il foglio nuovo: fuori dallo schermo finche' il vecchio e' li', poi entra
+  const entrata = !passo
+    ? {}
+    : uscente.via
+      ? { animation: `bc-scorri ${SCORRI_MS}ms cubic-bezier(0.25, 0.8, 0.25, 1) both`, "--da": `${passo.entra}px`, "--a": "0px", willChange: "transform" }
+      : { transform: `translateX(${passo.entra}px)`, willChange: "transform" };
 
-  // LA VOLTATA SFUMA (`sfumaDa`). Il foglio di prima resta dov'e' finche'
-  // il nuovo non e' pronto (`disegnoVisto`: le stesse immagini, niente nero
-  // in mezzo); poi le sue pagine — gli STESSI elementi <img>, che passano
-  // nella lista delle uscenti con la loro chiave — stanno sopra e svaniscono
-  // quando il nuovo e' decodificato. Copie <img> nuove andrebbero
+  // LA VOLTATA SCORRE (`voltataAnimata`, `scorrimento`). Il foglio di prima
+  // resta dov'e' finche' il nuovo non e' pronto (`disegnoVisto`: le stesse
+  // immagini, niente nero in mezzo), e il nuovo aspetta fuori dallo schermo;
+  // poi le pagine di prima — gli STESSI elementi <img>, che passano nella
+  // lista delle uscenti con la loro chiave — escono di lato mentre il nuovo
+  // entra, quando e' decodificato. Copie <img> nuove andrebbero
   // decodificate da capo (fotogrammi neri), e la foto su canvas di una volta
   // ridecodificava la pagina sul filo principale (146 ms bloccati).
   useLayoutEffect(() => {
@@ -1005,7 +1016,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
     if (!uscente) return;
     // ogni attesa ha un tetto: una pagina che non si decodifica, o
     // un'animazione che non chiude, non lasciano la foto sopra per sempre
-    const t = setTimeout(() => setUscente((u) => (u?.id === uscente.id ? null : u)), uscente.via ? SFUMA_MS + 250 : 3000);
+    const t = setTimeout(() => setUscente((u) => (u?.id === uscente.id ? null : u)), uscente.via ? SCORRI_MS + 250 : 3000);
     return () => clearTimeout(t);
   }, [uscente]);
 
@@ -1122,6 +1133,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
                       left: d?.x ?? 0,
                       width: d?.foglio.w,
                       height: d?.foglio.h,
+                      ...entrata,
                     }}
                   >
                     <img
@@ -1162,7 +1174,10 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
                       zIndex: 1,
                       visibility: "visible",
                       pointerEvents: "none",
-                      animation: uscente.via ? `bc-svanisci ${SFUMA_MS}ms ease-in-out forwards` : "none",
+                      willChange: "transform",
+                      "--da": "0px",
+                      "--a": `${passo.esce}px`,
+                      animation: uscente.via ? `bc-scorri ${SCORRI_MS}ms cubic-bezier(0.25, 0.8, 0.25, 1) forwards` : "none",
                     }}
                   >
                     <img
@@ -1543,12 +1558,12 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
             }}
           >
             <span style={{ fontSize: F.corpo }}>{settings.sfumaFumetti !== false ? "☑" : "☐"}</span>
-            <span style={{ flex: 1 }}>Dissolvenza fra le pagine</span>
+            <span style={{ flex: 1 }}>Scorrimento fra le pagine</span>
           </button>
           <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 6, lineHeight: 1.45 }}>
             {riduciMovimento()
-              ? "Il tablet chiede meno animazioni: le pagine cambiano senza sfumare."
-              : "La pagina di prima resta finché la nuova è pronta, poi sfuma in un terzo di secondo."}
+              ? "Il tablet chiede meno animazioni: le pagine cambiano senza movimento."
+              : "La pagina di prima resta finché la nuova è pronta, poi esce di lato e la nuova entra, nel verso di lettura."}
           </div>
         </div>
       )}

@@ -621,16 +621,31 @@ export function disegnaCoppia({ nats, riquadro, bordi, verso = "ltr", piega = PI
 // sul dispositivo bastano le pagine vicine: leggere e' gia' istantaneo
 export const AVANTI_QUI = 2;
 
-// LA VOLTATA SFUMA (chiesto dal lettore: «una sfumatura e un intervallo
+// LA VOLTATA SI MUOVE (chiesto dal lettore: «una sfumatura e un intervallo
 // che rendano il cambio pagina più dolce»). Il foglio di prima resta a
 // schermo finche' il nuovo non e' pronto — niente piu' nero in mezzo — e
-// poi svanisce sopra di lui. Solo opacita', nessuna fotografia della
-// pagina. Non sfuma: il nastro (si scorre, non si volta), la prima
-// apertura, lo stesso foglio ridisegnato (lo schermo girato), chi l'ha
-// spenta e chi ha chiesto al sistema meno animazioni.
-export const SFUMA_MS = 350;
-export function sfumaDa(prima, chiave, { nastro = false, acceso = true, riduci = false } = {}) {
+// poi il cambio si anima. Non si anima: il nastro (si scorre, non si
+// volta), la prima apertura, lo stesso foglio ridisegnato (lo schermo
+// girato), chi l'ha spenta e chi ha chiesto al sistema meno animazioni.
+export function voltataAnimata(prima, chiave, { nastro = false, acceso = true, riduci = false } = {}) {
   return !nastro && acceso && !riduci && !!prima && prima.chiave !== chiave;
+}
+
+// E SCORRE, NON SFUMA (il lettore, col video di Kingdom: «rendere la
+// transizione più morbida affinché non si veda quel rimasuglio di pixel tra
+// una pagina e l'altra»). Era una dissolvenza da 350 ms: per una dozzina di
+// fotogrammi le due tavole stavano una sopra l'altra, e due pagine di manga
+// fitte di retini e di balloon sovrapposte sono una poltiglia grigia. Ora il
+// foglio di prima esce di lato e il nuovo entra accanto a lui, come nei
+// lettori di fumetti: mai una tavola sopra l'altra, solo `transform`.
+// Il verso e' quello della lettura: andando avanti, in un fumetto la pagina
+// nuova arriva da destra e in un manga da sinistra; tornando indietro il
+// contrario. La distanza e' la larghezza dello schermo, cosi' esce davvero.
+export const SCORRI_MS = 280;
+export function scorrimento({ avanti = true, verso = "ltr", largo = 0 } = {}) {
+  const s = (avanti ? -1 : 1) * (verso === "rtl" ? -1 : 1);
+  const w = Math.max(0, Math.round(largo || 0));
+  return { esce: s * w, entra: -s * w };
 }
 
 // LA PAGINA DOPO SI DECODIFICA PRIMA (misurato sul tablet del lettore col
