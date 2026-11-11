@@ -368,6 +368,13 @@ export function rifaiCammino(cammino, libri = [], { tavole = TAVOLE, mondi = MON
   return tav ? camminoDellaGuida(tav, libri) : null;
 }
 
+// E QUANDO SONO TANTE STANNO DIETRO UN TASTO: con le saghe del 40K accanto
+// all'Eresia sono venti, e venti tasti sull'intestazione di un ripiano sono
+// un muro (`data/warhammer40k.js`). Fino a `ACCANTO_IN_VISTA` si vedono
+// sempre; oltre, si vedono solo aperte.
+export const ACCANTO_IN_VISTA = 4;
+export const accantoInVista = (accanto = [], aperte = false) => (aperte || accanto.length <= ACCANTO_IN_VISTA ? accanto : []);
+
 // LE GUIDE DA ELENCARE: quelle che sono una guida intera. JoJo no: la sua
 // tavola tiene solo i volumi che il nome del file non dice, e «hai 3 dei
 // 14» sarebbe un conto su un elenco che non e' la saga.

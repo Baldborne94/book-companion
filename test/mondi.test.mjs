@@ -67,7 +67,7 @@ export default async (t) => {
   // fra le saghe di un autore, prima il suo mondo
   t.eq("Erikson: il mondo di Malazan per primo", `${guideDellAutore("Steven Erikson")[0]?.universo} ${guideDellAutore("Steven Erikson")[0]?.quanti}`, "Malazan 25");
   t.eq("Esslemont anche (due guide sue)", guideDellAutore("Ian C. Esslemont")[0]?.universo, "Malazan");
-  t.eq("chi scrive in una guida sola di un mondo non ha il mondo (Dembski-Bowden: solo l'Eresia)", guideDellAutore("Aaron Dembski-Bowden").filter((g) => g.universo).length, 0);
+  t.eq("chi scrive in una guida sola di un mondo non ha il mondo (Swallow: solo l'Eresia)", guideDellAutore("James Swallow").filter((g) => g.universo).length, 0);
   const tocco = await libriDellaSaga(guideDellAutore("Steven Erikson")[0], { libri: [] });
   t.eq("toccato il mondo, tutte le sue guide", `${tocco.volumi.length} ${tocco.universo}`, "25 true");
   const tipo = (...q) => q.map((id) => ({ mainsnak: { datavalue: { value: { id } } } }));

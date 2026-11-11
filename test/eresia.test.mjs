@@ -53,7 +53,11 @@ export default async function (t) {
   const altrove = (b) =>
     (b.tipo === "prologo" || b.tipo === "fuori" || b.sfondo) &&
     TAVOLE.some((tav) => tav.saga !== SAGA_HH && tav.libri.some((v) => v.t === b.t));
-  t.eq("il contorno che un'altra guida ha come tappa: i tre di Eisenhorn", HORUS.filter(altrove).map((b) => b.t).join(", "), "Eisenhorn, Malleus, Hereticus");
+  t.eq(
+    "il contorno che un'altra guida ha come tappa: i tre di Eisenhorn, i Night Lords e Storm of Iron (romanzo a se' del 40K)",
+    HORUS.filter(altrove).map((b) => b.t).join(", "),
+    "Eisenhorn, Malleus, Hereticus, Soul Hunter, Blood Reaver, Void Stalker, Storm of Iron"
+  );
   const sbagliati = [];
   for (const b of HORUS) {
     if (altrove(b)) continue;

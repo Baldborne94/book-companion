@@ -1,4 +1,5 @@
 import { eFumetto, tipoImmagine } from "./fumetto.js";
+import { segnaposto } from "./segnaposto.js";
 // LA COPERTINA SI PUO' METTERE A MANO. Titolo, autore, saga e genere si
 // correggono nella scheda del libro; la copertina no — e se l'ePub non ne
 // aveva una, quel dorso restava muto sullo scaffale per sempre.
@@ -241,6 +242,37 @@ export const senzaCopertina = (libri, conCopertina, giaGuardati) =>
   (libri || []).filter(
     (b) => b?.id && !(conCopertina && conCopertina.has(b.id)) && !(giaGuardati && giaGuardati.has(b.id))
   );
+
+// E DOVE STA IL FILE DI CHI NON CE L'HA (segnalato dal lettore sul PC:
+// «Ritrova 183 copertine», e al tocco «183 non sono su questo dispositivo»).
+// Il tasto contava tutta la biblioteca e poteva leggere solo i file di qui:
+// una promessa che non poteva mantenere. Il tasto conta `qui`; il resto si
+// dice per strada, perche' la strada e' diversa: il disco le legge da
+// «Controlla il disco», l'altro dispositivo le ritrova dal suo tasto (e la
+// copertina viaggia), una scheda senza ebook non ha un file da aprire.
+export function copertineDaDove(libri, { conCopertina, guardati, qui, sulDisco, altrove } = {}) {
+  const out = { qui: [], disco: [], altrove: [], senzaFile: [], persi: [] };
+  for (const b of senzaCopertina(libri, conCopertina, guardati)) {
+    if (qui?.has(b.id)) out.qui.push(b);
+    else if (sulDisco?.has(b.id)) out.disco.push(b);
+    else if (altrove?.has(b.id)) out.altrove.push(b);
+    else if (segnaposto(b)) out.senzaFile.push(b);
+    else out.persi.push(b);
+  }
+  return out;
+}
+
+export function fraseCopertineAltrove({ disco = [], altrove = [], senzaFile = [], persi = [] } = {}) {
+  const tutte = disco.length + altrove.length + senzaFile.length + persi.length;
+  if (!tutte) return "";
+  const parti = [];
+  const uno = (k, a, b) => (k === 1 ? a : b);
+  if (disco.length) parti.push(`${disco.length} ${uno(disco.length, "ha", "hanno")} il file sul disco (le legge «Controlla il disco»)`);
+  if (altrove.length) parti.push(`${altrove.length} su un altro dispositivo (${uno(altrove.length, "ritrovala da lì, poi arriva", "ritrovale da lì, poi arrivano")} anche qui)`);
+  if (senzaFile.length) parti.push(`${senzaFile.length} ${uno(senzaFile.length, "è una scheda", "sono schede")} senza ebook (la copertina si mette dalla scheda)`);
+  if (persi.length) parti.push(`${persi.length} ${uno(persi.length, "ha", "hanno")} un file che non so dove sia`);
+  return `${tutte === 1 ? "Una copertina che manca non si ritrova" : `${tutte} copertine che mancano non si ritrovano`} da qui: ${parti.join(", ")}.`;
+}
 
 export async function ritrovaCopertine(libri, { leggiByte, estrai, posa, segnaGuardato, onProgress, vivo } = {}) {
   const attivo = vivo || (() => true);

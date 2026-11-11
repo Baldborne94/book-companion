@@ -239,7 +239,7 @@ export default async (t) => {
     const suoi = [
       { id: "1", title: "Horus Rising", author: "", saga: "Warhammer 40K" },
       { id: "2", title: "False Gods", author: "", saga: "Warhammer 40K" },
-      { id: "3", title: "Soul Hunter", author: "", saga: "Warhammer 40K" },
+      { id: "3", title: "Angels of Darkness", author: "", saga: "Warhammer 40K" },
       // Eisenhorn ha la sua guida: nel prologo dell'Eresia e' tuo, ma il
       // numero glielo da' la sua, non questa
       { id: "4", title: "Eisenhorn", author: "", saga: "Warhammer 40K" },
@@ -251,10 +251,10 @@ export default async (t) => {
     t.c("…ma il numero non glielo da' l'Eresia", !n.some((p) => p.id === "4"));
     // il prologo apre la guida: un numero di lettura suo non ce l'ha (non
     // e' un romanzo dell'Eresia) e senza il decimale resterebbe fuori dalla
-    // frontiera, che e' un buco e non una prudenza. Soul Hunter e' la
-    // quarta riga del prologo
-    const eisenhorn = n.find((p) => p.title === "Soul Hunter");
-    t.eq("e il prologo si infila prima del primo", eisenhorn.a, 0.04);
+    // frontiera, che e' un buco e non una prudenza. Angels of Darkness e'
+    // la settima riga del prologo
+    const eisenhorn = n.find((p) => p.title === "Angels of Darkness");
+    t.eq("e il prologo si infila prima del primo", eisenhorn.a, 0.07);
     t.eq("…anche se per la tavola non ha un numero di lettura", eisenhorn.da, null);
     // IL CONTROLLO CHE IL LETTORE HA CHIESTO DUE VOLTE. Pinnava il
     // contrario («horus.a > 13») ed è girato con dentro la ragione: il

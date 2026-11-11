@@ -22,13 +22,13 @@ import { fmtGoogle } from "../lib/bytes.js";
 import { hddPossibile } from "../lib/hdd.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { fraseDelPasso, fraseImport } from "../lib/convertiCbr.js";
-import { senzaCopertina } from "../lib/copertina.js";
+import { senzaCopertina, copertineDaDove, fraseCopertineAltrove } from "../lib/copertina.js";
 import { spartisciQui } from "../lib/spazio.js";
 import { BarraCloud, PesoQui } from "./BarraCloud.jsx";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
 import { famigliaDi } from "../data/generi.js";
 import { riconosci, capitoloDi } from "../lib/sagaBooks.js";
-import { camminiDi, guideAccanto, mondiDi } from "../lib/cammino.js";
+import { camminiDi, guideAccanto, mondiDi, accantoInVista, ACCANTO_IN_VISTA } from "../lib/cammino.js";
 import { segnaposto } from "../lib/segnaposto.js";
 import BookCover from "./BookCover.jsx";
 import Disposizione from "./Disposizione.jsx";
@@ -361,8 +361,12 @@ function TastoCammino({ libri, tutti, riconosciuti, onCammino }) {
       mondi: mondiDi(qui, tutti || libri, { riconosce, scaffale: libri }),
     };
   }, [libri, tutti, riconosciuti, onCammino]);
+  // le guide accanto, quando sono tante, dietro un tasto solo (le saghe del
+  // 40K sono venti)
+  const [aperte, setAperte] = useState(false);
   if (!cammini.length) return null;
-  const tutteQui = [...mondi, ...cammini, ...accanto];
+  const tutteQui = [...mondi, ...cammini, ...accantoInVista(accanto, aperte)];
+  const chiuse = accanto.length > ACCANTO_IN_VISTA;
   return (
     <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
       {tutteQui.map((cammino) => (
@@ -391,6 +395,24 @@ function TastoCammino({ libri, tutti, riconosciuti, onCammino }) {
               : `📜 ${cammino.saga}`}
         </button>
       ))}
+      {chiuse && (
+        <button
+          onClick={() => setAperte((a) => !a)}
+          aria-expanded={aperte}
+          style={{
+            fontSize: F.piccolo,
+            fontFamily: "inherit",
+            fontWeight: 400,
+            color: C.muted,
+            padding: "2px 8px",
+            minHeight: 32,
+            borderRadius: R.tondo,
+            border: `1px dashed ${C.border}`,
+          }}
+        >
+          {aperte ? "▴ Meno guide" : `📜 Altre ${accanto.length} guide`}
+        </button>
+      )}
     </span>
   );
 }
@@ -1149,7 +1171,11 @@ export default function Library({
       vivo = false;
     };
   }, [manutenzione, localIds, spazioCambiato]);
-  const discoNoto = useMemo(() => sulDiscoDa(leggiDispositivi()), [books, localIds, manutenzione]);
+  // e si rilegge dopo ogni «Controlla il disco» (`disco`), che riscrive la
+  // voce del disco: senza, la riga delle copertine diceva «non so dove»
+  // per i volumi che il controllo aveva appena trovato (preso dalla prova
+  // e2e del disco)
+  const discoNoto = useMemo(() => sulDiscoDa(leggiDispositivi()), [books, localIds, manutenzione, disco]);
   const liberabili = useMemo(
     () => (manutenzione ? daLiberare(books, { qui: localIds, sulDisco: discoNoto.ids, pesi, stato: getStatus }) : []),
     [books, localIds, manutenzione, pesi, discoNoto]
@@ -1556,7 +1582,11 @@ export default function Library({
   // I tomi col dorso disegnato. `conCopertina` è `null` finché l'elenco non
   // è arrivato, e lì NON si offre niente: un tasto «ritrova 115 copertine»
   // su una biblioteca che ce l'ha già tutte sarebbe una promessa a vuoto.
-  const mancaLaCopertina = conCopertina ? senzaCopertina(books, conCopertina, copGuardate) : [];
+  // e il tasto conta solo quelle che può ritrovare QUI (segnalato sul PC:
+  // «Ritrova 183 copertine», e al tocco «183 non sono su questo
+  // dispositivo»); le altre si dicono con la loro strada
+  const dove = conCopertina && localIds ? copertineDaDove(books, { conCopertina, guardati: copGuardate, qui: localIds, sulDisco: discoNoto.ids, altrove }) : null;
+  const mancaLaCopertina = dove ? dove.qui : [];
 
   // LE COPERTINE CHE MANCANO SI RITROVANO NEL FILE. Il dorso disegnato vuol
   // dire che quell'immagine qui non c'e' — l'estrazione all'import non l'ha
@@ -1599,7 +1629,7 @@ export default function Library({
 
   async function ritrovaLeCopertine() {
     if (copertinando) return;
-    const mancanti = senzaCopertina(books, conCopertina, copGuardate);
+    const mancanti = mancaLaCopertina;
     if (!mancanti.length) {
       notify?.("Le copertine erano già tutte al loro posto");
       return;
@@ -2945,6 +2975,12 @@ export default function Library({
                   ? `Fermo qui (${copertinando.i + 1} di ${copertinando.totale})`
                   : `🖼 Ritrova ${mancaLaCopertina.length === 1 ? "una copertina" : `${mancaLaCopertina.length} copertine`}`}
               </button>
+            )}
+            {/* e quelle che da qui non si ritrovano, con la loro strada:
+                il tasto le contava e al tocco diceva «non sono su questo
+                dispositivo» */}
+            {dove && fraseCopertineAltrove(dove) && (
+              <p style={{ flexBasis: "100%", fontSize: F.minuscolo, color: C.muted, lineHeight: 1.5 }}>{fraseCopertineAltrove(dove)}</p>
             )}
             {/* Il ripasso delle impronte c'e' solo se qualcuno ne ha bisogno:
                 a biblioteca gia' a posto sarebbe un tasto che non fa niente.

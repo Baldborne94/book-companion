@@ -44,7 +44,10 @@ export default async (t) => {
   t.eq("«Ravenor Omnibus» con l'autore, idem", chi("Ravenor Omnibus"), "Ravenor · Ravenor: The Omnibus");
   t.eq("«The Eisenhorn Omnibus» senza autore e' la raccolta", chi("The Eisenhorn Omnibus", ""), "Eisenhorn · Eisenhorn");
   // e il resto non si sposta
-  t.eq("il resto del prologo resta dell'Eresia", chi("Soul Hunter", "Aaron Dembski-Bowden"), "The Horus Heresy · Soul Hunter");
+  t.eq("il resto del prologo resta dell'Eresia", chi("Angels of Darkness", "Gav Thorpe"), "The Horus Heresy · Angels of Darkness");
+  // e i Night Lords, da quando hanno la loro guida (`data/warhammer40k.js`),
+  // sono suoi come Malleus e' di Eisenhorn
+  t.eq("«Soul Hunter» e' dei Night Lords", chi("Soul Hunter", "Aaron Dembski-Bowden"), "Night Lords · Soul Hunter");
   t.eq("«Horus Rising» resta dell'Eresia", chi("Horus Rising"), "The Horus Heresy · Horus Rising");
   t.eq("la Serie di un romanzo sciolto e' la serie", r("Hereticus").ciclo, "Eisenhorn");
   t.eq("…e il numero quello della serie", r("Hereticus").sagaOrder, 3);
