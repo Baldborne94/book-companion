@@ -2,6 +2,7 @@ import { riconosci, TAVOLE, MONDI, fuoriDallaStoria, posizioneNelMondo, universi
 import { segnaposto } from "./segnaposto.js";
 import { getStatus, getProgress } from "./library.js";
 import { raccontiLetti, chiaveRacconto } from "./racconti.js";
+import { libroSulloScaffale } from "./senzaFile.js";
 
 // IL CAMMINO DI UNA SAGA: la guida per intero, e dentro i TUOI libri.
 //
@@ -77,14 +78,16 @@ const PASSO = 0.01;
 // UN VOLUME DELLA GUIDA: non un racconto (non e' un file) e non una
 // raccolta (`omnibus`: un modo di avere i romanzi che contiene, non un
 // romanzo in piu')
-export const volume = (voce) => voce?.tipo !== "racconto" && voce?.tipo !== "omnibus";
+// e non una storia di mezzo nella fila di un mondo (`tipo: "storia"`): sta
+// al suo posto e prende il suo numero, ma non e' un volume da contare
+export const volume = (voce) => voce?.tipo !== "racconto" && voce?.tipo !== "omnibus" && voce?.tipo !== "storia";
 
 export function postiDelCammino(tappe = [], ordine = () => null) {
   let ultimo = 0;
   let quanti = 0;
   return tappe.map((t) => {
     // e una raccolta nemmeno: i suoi romanzi hanno il loro posto
-    if (!volume(t?.voce)) return { ...t, posto: null };
+    if (!volume(t?.voce) && t?.voce?.tipo !== "storia") return { ...t, posto: null };
     // e non c'e' nessun controllo che il numero sia un numero: `ordine` e'
     // nostra e le tre tavole tornano un numero o niente. Una guardia in
     // piu' qui non guarderebbe nulla, e una guardia che non guarda e'
@@ -143,7 +146,7 @@ function riconosciuti(libri, riconosce) {
   // i mondi che questa biblioteca numera col mondo: le loro guide prendono
   // il posto nel mondo, o «Mettili in ordine» di una guida riscriverebbe
   // quel che quello del mondo ha appena scritto
-  return { miei, sagaDi, perTitolo, numerati: universiNumerati([...letti.keys()], (b) => letti.get(b)) };
+  return { miei, sagaDi, perTitolo, tutti: libri, numerati: universiNumerati([...letti.keys()], (b) => letti.get(b)) };
 }
 
 // LA RACCOLTA CHE CONTIENE UN ROMANZO, da tutte le guide: Malleus sta
@@ -155,7 +158,7 @@ const CONTENITORI = new Map(
   TAVOLE.flatMap((t) => t.libri.filter((v) => v.in && v.tipo !== "racconto").map((v) => [v.t, v.in]))
 );
 
-function costruisci(tav, { miei, perTitolo, numerati }, contati) {
+function costruisci(tav, { miei, perTitolo, tutti = [], numerati }, contati) {
   // UN RACCONTO NON E' UN FILE, e il suo «ce l'hai» e' quello della sua
   // ANTOLOGIA: «The Aurelian» sta dentro «Eye of Terra», e possederlo vuol
   // dire possedere quel volume. Cercarlo per titolo non troverebbe mai
@@ -177,6 +180,9 @@ function costruisci(tav, { miei, perTitolo, numerati }, contati) {
   // in un cammino di MONDO ogni voce e' della sua guida (`guida`): e' li'
   // che il riconoscimento l'ha messa
   const suo = (voce) => {
+    // una storia di mezzo il riconoscimento non la conosce: si cerca per
+    // titolo, con la regola di «gia' sullo scaffale»
+    if (voce.tipo === "storia") return { voce, libro: libroSulloScaffale({ titolo: voce.t, autore: voce.a }, tutti) || null };
     const proprio = miei.get(chiave(voce.guida || tav.saga, voce.t));
     if (proprio) return { voce, libro: proprio };
     const altrui = perTitolo.get(voce.t);
@@ -318,9 +324,25 @@ export function guideAccanto(cammini = [], libri = [], { tavole = TAVOLE, ricono
 // stesso che «🔢 Mettili in ordine di guida» scrive sui volumi (scelto dal
 // lettore: «sistemare la libreria pero' con il tutto malazan»). Il numero
 // della serie resta sulla voce (`o`), e la serie la dice la riga.
+//
+// E LE STORIE DI MEZZO (quarta colonna dell'ordine) stanno al loro posto
+// con un decimale dopo il romanzo uscito prima di loro (3,5; la seconda
+// 3,6), come le scriveva il lettore: numerate col mondo, il loro 1,5 della
+// serie le avrebbe messe fra i romanzi sbagliati.
 export function tavolaDelMondo(mondo, tavole = TAVOLE) {
-  const libri = (mondo?.ordine || [])
-    .map(([guida, titolo], i) => ({ ...tavole.find((t) => t.saga === guida)?.libri.find((v) => v.t === titolo), guida, passo: i + 1 }));
+  let romanzi = 0;
+  let storie = 0;
+  const libri = (mondo?.ordine || []).map(([guida, titolo, , storia]) => {
+    const tav = tavole.find((t) => t.saga === guida);
+    if (storia) {
+      storie += 1;
+      const voce = (tav?.novelle || []).find((v) => v.t === titolo);
+      return { ...voce, guida, tipo: "storia", nota: "storia di mezzo", passo: Math.round((romanzi + 0.4 + storie / 10) * 10) / 10 };
+    }
+    romanzi += 1;
+    storie = 0;
+    return { ...tav?.libri.find((v) => v.t === titolo), guida, passo: romanzi };
+  });
   return { saga: mondo?.nome || "", libri, ordine: (b) => b.passo, mondo: true, universo: mondo?.universo };
 }
 
@@ -464,7 +486,7 @@ export function prossimoPasso(
 
   const inGioco = (t) => {
     const tipo = t?.voce?.tipo;
-    if (tipo === "fuori" || tipo === "antologia" || tipo === "omnibus") return false;
+    if (tipo === "fuori" || tipo === "antologia" || tipo === "omnibus" || tipo === "storia") return false;
     if (tipo === "prologo") return !entrato && cominciati.has(t.voce.nota || "");
     return true;
   };
@@ -526,7 +548,7 @@ export function lettiDelCammino(
   let quante = 0;
   for (const t of tappe) {
     const tipo = t?.voce?.tipo;
-    if (tipo === "fuori" || tipo === "antologia" || tipo === "omnibus") continue;
+    if (tipo === "fuori" || tipo === "antologia" || tipo === "omnibus" || tipo === "storia") continue;
     if (tipo === "prologo" && !cominciati.has(t.voce.nota || "")) continue;
     quante += 1;
     // i racconti entrano nel conto come i romanzi: la guida li chiede

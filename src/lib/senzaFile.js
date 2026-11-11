@@ -67,7 +67,11 @@ const corte = (t) => {
   const dopo = senzaCoda.includes(":") ? senzaCoda.slice(senzaCoda.indexOf(":") + 1) : "";
   return new Set([senzaCoda, dopo].map(piano).filter((x) => x && x !== piano(s)));
 };
-export function giaSulloScaffale(voce, libri = []) {
+export const giaSulloScaffale = (voce, libri = []) => !!libroSulloScaffale(voce, libri);
+
+// e QUALE: il cammino di un mondo cerca cosi' le storie di mezzo, che il
+// riconoscimento non conosce (stanno fuori dalle guide)
+export function libroSulloScaffale(voce, libri = []) {
   const titolo = piano(voce?.titolo);
   const autore = piano(voce?.autore);
   const mie = new Set([titolo, ...corte(voce?.titolo)]);
@@ -90,7 +94,7 @@ export function giaSulloScaffale(voce, libri = []) {
   const n = numeroDi(voce?.numero);
   const serie = chiaveSaga(String(voce?.serie || "").trim());
   const stessoPosto = (b) => !!k && n != null && chiaveSaga(String(b?.saga || "").trim()) === k && numeroDi(b?.sagaOrder) === n && chiaveSaga(String(b?.series || "").trim()) === serie;
-  return libri.some((b) => {
+  return libri.find((b) => {
     if (stessoPosto(b)) return true;
     const suo = parole(b?.author);
     // un altro autore scritto non e' lo stesso titolo, ma puo' essere lo
