@@ -327,7 +327,21 @@ const SCENE = [
       const dopo = lassu();
       if (dopo.status !== "reading" || dopo.progress !== progresso) throw new Error(`la scheda del PC ha coperto la lettura del tablet: lassu' «${dopo.status}» al ${dopo.progress}`);
       await finche(async () => (await sulPc()).stato === "reading", 10000, "il PC non prende la lettura del tablet");
-      return { guasti: [...tab.guasti, ...pc.guasti], nota: `lassu' «${dopo.saga}», ${dopo.status} al ${Math.round(dopo.progress * 100)}%` };
+      // e chi riceve la lettura posa la SUA ora, non quella in cui l'ha
+      // ricevuta: con l'ora del ricevimento, la lettura vecchia di qui
+      // vincerebbe su quella fatta di la' nel frattempo
+      const oraDi = (p) => p.evaluate(() => {
+        const b = JSON.parse(localStorage.getItem("bc_books") || "[]").find((x) => x.title === "Racconti");
+        return Number(localStorage.getItem(`bc_let_${b?.id}`) || 0);
+      });
+      const ora = lassu().lettura_at;
+      if (!(ora > 0)) throw new Error(`lassu' la lettura non ha la sua ora: ${ora}`);
+      if ((await oraDi(pc.p)) !== ora) throw new Error(`il PC ha posato la lettura con l'ora sbagliata: ${await oraDi(pc.p)} invece di ${ora}`);
+      const tel = await dispositivo(browser, { sessione: true });
+      await tel.p.goto(URL_APP);
+      await finche(async () => (await libriDi(tel.p)).some((b) => b.title === "Racconti"), 20000, "il libro non scende sul terzo dispositivo");
+      await finche(async () => (await oraDi(tel.p)) === ora, 10000, `il terzo dispositivo ha posato la lettura con l'ora sbagliata: ${await oraDi(tel.p)} invece di ${ora}`);
+      return { guasti: [...tab.guasti, ...pc.guasti, ...tel.guasti], nota: `lassu' «${dopo.saga}», ${dopo.status} al ${Math.round(dopo.progress * 100)}%, e la sua ora su PC e telefono` };
     },
   },
   {
