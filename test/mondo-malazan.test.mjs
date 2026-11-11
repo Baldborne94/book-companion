@@ -2,9 +2,8 @@
 // chiesto dal lettore con la sua raccolta «Malazan universe»: «mi metti
 // l'ordine di lettura di tutti i libri del malazan universe e non solo
 // delle singole serie?», e poi: «riesci a fare si' che possa sistemare la
-// libreria pero' con il tutto malazan?» (lo scaffale in fila, scelto da
-// lui). Quel che sbaglia in silenzio: le serie raccolte per nome (che
-// rifanno l'ordine di una guida), due numerazioni che si riscrivono a
+// libreria pero' con il tutto malazan?» (i numeri del mondo, lo scaffale
+// diviso per serie). Quel che sbaglia in silenzio: due numerazioni che si riscrivono a
 // vicenda (il mondo e la guida), e un libro nuovo che entra col numero
 // della serie in una raccolta numerata col mondo.
 import { MONDI } from "../src/lib/sagaBooks.js";
@@ -12,7 +11,7 @@ import { camminiDi, camminoDelMondo, mondiDi, perParte, rifaiCammino, prossimoPa
 import { numerazioneGuida, serieDaScrivere } from "../src/lib/numeraCammino.js";
 import { universiNumerati, ripassaSciolti } from "../src/lib/sagaBooks.js";
 import { completaSaga } from "../src/lib/importBook.js";
-import { disponi, raccogliCicli } from "../src/lib/ripiani.js";
+import { disponi } from "../src/lib/ripiani.js";
 import { nextInSaga } from "../src/lib/saga.js";
 import { vociDallaGuida } from "../src/lib/senzaFile.js";
 
@@ -138,17 +137,15 @@ export default async (t) => {
   letti.rg = "read";
   t.eq("…e dopo Reaper's Gale, Return of the Crimson Guard di Esslemont (9)", nextInSaga(sullo[4], sullo, statoDi, () => 0)?.id, "rcg");
 
-  // LO SCAFFALE IN FILA: le serie si alternano come nel cammino
-  const inOrdine = [...sullo].sort((a, b) => a.sagaOrder - b.sagaOrder);
+  // LO SCAFFALE RESTA PER SERIE (il lettore, dopo averlo visto in fila:
+  // «lasciami i libri nella stessa serie senza dividerla, scrivici solo il
+  // numero giusto in ordine di lettura»): un sotto-ripiano per serie, i
+  // volumi in ordine col numero del mondo, le serie nell'ordine del loro
+  // primo volume
+  const rip = disponi(sullo, null, "auto").find((r) => r.nome === "Malazan universe");
   t.eq(
-    "in fila, una corsa per serie",
-    raccogliCicli(inOrdine, "series", null, true).map((g) => `${g.nome}·${g.libri.length}`).join(" | "),
-    "Malazan Book of the Fallen·1 | Novels of the Malazan Empire·1 | Malazan Book of the Fallen·2 | Novels of the Malazan Empire·1 | Malazan Book of the Fallen·1"
+    "una serie, un sotto-ripiano, coi numeri del mondo in ordine",
+    rip.cicli.map((g) => `${g.nome}: ${g.libri.map((b) => b.sagaOrder).join(",")}`).join(" | "),
+    "Malazan Book of the Fallen: 1,7,8,10 | Novels of the Malazan Empire: 6,9"
   );
-  t.eq("raccolte per nome sarebbero due", raccogliCicli(inOrdine, "series").length, 2);
-  const inFila = (ll) => universiNumerati(ll).size > 0;
-  const rip = disponi(sullo, null, "auto", null, null, inFila).find((r) => r.nome === "Malazan universe");
-  t.eq("disponi mette in fila la raccolta numerata col mondo", rip.cicli.map((g) => g.nome).join(" | "), "Malazan Book of the Fallen | Novels of the Malazan Empire | Malazan Book of the Fallen | Novels of the Malazan Empire | Malazan Book of the Fallen");
-  const ripPrima = disponi(prima, null, "auto", null, null, inFila).find((r) => r.nome === "Malazan universe");
-  t.eq("…e una per serie resta divisa per serie", ripPrima.cicli.map((g) => g.nome).join(" | "), "Malazan Book of the Fallen | Novels of the Malazan Empire");
 };
