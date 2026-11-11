@@ -48,6 +48,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 - In `aux`: `loc_<id>` (pagine di epub.js, legate alla misura del file), `salute_<id>` (verdetto sulla spezzatura), `testo_<id>` (testo estratto per ricerca e Oracolo), `min_<id>` (miniatura della copertina), `collana_<id>`/`catalogo_<id>` (memorie del riconoscimento saghe). **Chi cambia i byte di un libro butta ciò che era calcolato su di essi** (ricucitura, ritorno a casa di un file).
 - La persistenza si chiede all'avvio e si **guarda** in Libreria; l'avviso solo su `negata`, mai su `sconosciuta`.
 - Una scrittura IndexedDB è fatta quando la **transazione** si chiude (`attendi`), non su `onsuccess`.
+- **Ogni tela che rimpicciolisce una copertina passa da `pennelloFine`** (`copertina.js`: `imageSmoothingQuality = "high"`; il filtro di serie fa bande, «sgranate»): copertine salvate, miniature, scheda della musica, schermata di blocco. La copertina di un ePub si salva intera (com'è nel file), quella di un fumetto e del catalogo a 800. Le miniature hanno una **versione** (`VERSIONE_MIN`): chi cambia il modo di ridurle la alza, e quelle di prima si rifanno da sole.
 
 ### La scala
 

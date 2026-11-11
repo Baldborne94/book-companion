@@ -345,6 +345,64 @@ const SCENE = [
     },
   },
   {
+    // segnalato dal lettore: «a me sembra che alcune copertine siano
+    // sgranate». Una copertina a righe di un pixel, ridotta bene, e' un
+    // grigio uniforme; col filtro veloce del canvas fa bande
+    nome: "una copertina grande si riduce senza grana: la miniatura dell'ePub, e la copertina del fumetto e la sua miniatura",
+    async fai({ browser }) {
+      // ridotta bene, una tela a righe di un pixel e' un grigio uniforme
+      const righe = pngRighe(1666, 2500, 1, [255, 255, 255], [0, 0, 0]);
+      const d = await dispositivo(browser);
+      await importa(d.p, "La nebbia.epub", await epub({ copertina: righe }), "application/epub+zip");
+      await importa(d.p, "Racconti.cbz", await fumetto({ prima: righe }), "application/zip");
+      await d.p.goto(`${URL_APP}?apri=libreria`);
+      const oscilla = (titolo) =>
+        d.p.evaluate(async (titolo) => {
+          const libro = JSON.parse(localStorage.getItem("bc_books") || "[]").find((b) => b.title === titolo);
+          const db = await new Promise((ok, ko) => {
+            const r = indexedDB.open("bc_library");
+            r.onsuccess = () => ok(r.result);
+            r.onerror = () => ko(r.error);
+          });
+          const leggi = (store, k) => new Promise((ok) => {
+            const r = db.transaction(store).objectStore(store).get(k);
+            r.onsuccess = () => ok(r.result);
+            r.onerror = () => ok(null);
+          });
+          const scarto = async (blob) => {
+            if (!blob) return null;
+            const img = await createImageBitmap(blob);
+            const t = new OffscreenCanvas(img.width, img.height).getContext("2d");
+            t.drawImage(img, 0, 0);
+            const px = t.getImageData(0, 0, img.width, img.height).data;
+            let somma = 0, quadri = 0, n = 0;
+            for (let i = 0; i < px.length; i += 4) {
+              somma += px[i];
+              quadri += px[i] * px[i];
+              n++;
+            }
+            const media = somma / n;
+            return { lato: Math.max(img.width, img.height), scarto: Math.round(Math.sqrt(quadri / n - media * media) * 10) / 10 };
+          };
+          return { copertina: await scarto(await leggi("covers", libro.id)), miniatura: await scarto((await leggi("aux", `min_${libro.id}`))?.blob) };
+        }, titolo);
+      const misura = (titolo) => finche(async () => {
+        const x = await oscilla(titolo);
+        return x.copertina && x.miniatura && x;
+      }, 15000, `la copertina o la miniatura di «${titolo}» non ci sono`);
+      const libro = await misura("La nebbia");
+      const comic = await misura("Racconti");
+      // ridotta bene il grigio oscilla di pochi punti (il JPEG); a bande, di decine
+      const guai = [
+        libro.miniatura.scarto > 12 && `la miniatura dell'ePub e' a bande (${libro.miniatura.scarto})`,
+        comic.copertina.scarto > 12 && `la copertina del fumetto e' a bande (${comic.copertina.scarto})`,
+        comic.miniatura.scarto > 12 && `la miniatura del fumetto e' a bande (${comic.miniatura.scarto})`,
+      ].filter(Boolean);
+      if (guai.length) throw new Error(guai.join("; "));
+      return { guasti: d.guasti, nota: `il grigio oscilla di ${libro.miniatura.scarto} nella miniatura dell'ePub (la copertina resta quella del file, da ${libro.copertina.lato}), di ${comic.copertina.scarto} nella copertina del fumetto (da ${comic.copertina.lato}) e di ${comic.miniatura.scarto} nella sua miniatura` };
+    },
+  },
+  {
     nome: "un ePub si importa e si apre",
     async fai({ browser }) {
       const d = await dispositivo(browser);

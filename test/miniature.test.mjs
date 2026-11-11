@@ -13,6 +13,7 @@ import {
   copertinaCambiata,
   ascoltaCopertine,
   minBuona,
+  VERSIONE_MIN,
   dimenticaTutto,
   generazione,
 } from "../src/lib/miniature.js";
@@ -83,7 +84,7 @@ export default async function (t) {
   // ---- una miniatura buona non si rifa' ----
   {
     dimenticaTutto();
-    const b = banco({ copertine: { a: blob(80000, "A") }, min: { a: { blob: blob(8000, "MIN"), di: 80000 } } });
+    const b = banco({ copertine: { a: blob(80000, "A") }, min: { a: { blob: blob(8000, "MIN"), di: 80000, v: VERSIONE_MIN } } });
     const u = await caricaCopertina("a", b.deps);
     t.eq("la miniatura su disco si usa com'e'", u, "blob:MIN#1");
     t.eq("…senza ridurre di nuovo", b.conti.riduci, 0);
@@ -93,12 +94,22 @@ export default async function (t) {
   // ---- una miniatura di un'ALTRA copertina si rifa' ----
   {
     dimenticaTutto();
-    const b = banco({ copertine: { a: blob(90000, "NUOVA") }, min: { a: { blob: blob(8000, "VECCHIA"), di: 80000 } } });
+    const b = banco({ copertine: { a: blob(90000, "NUOVA") }, min: { a: { blob: blob(8000, "VECCHIA"), di: 80000, v: VERSIONE_MIN } } });
     const u = await caricaCopertina("a", b.deps);
     t.eq("la miniatura della copertina di prima non si mostra", u, "blob:min-NUOVA#1");
     t.eq("…e si riscrive col segno nuovo", b.scritte.a?.di, 90000);
-    t.c("minBuona vuole lo stesso segno", minBuona({ blob: {}, di: 5 }, { size: 5 }) && !minBuona({ blob: {}, di: 5 }, { size: 6 }));
+    t.eq("…e con la versione di adesso", b.scritte.a?.v, VERSIONE_MIN);
+    t.c("minBuona vuole lo stesso segno", minBuona({ blob: {}, di: 5, v: VERSIONE_MIN }, { size: 5 }) && !minBuona({ blob: {}, di: 5, v: VERSIONE_MIN }, { size: 6 }));
     t.c("…e una miniatura con dentro qualcosa", !minBuona({ di: 5 }, { size: 5 }) && !minBuona(null, { size: 5 }) && !minBuona({ blob: {}, di: 5 }, null));
+  }
+
+  // ---- una miniatura fatta col filtro di prima si rifa' (era sgranata) ----
+  {
+    dimenticaTutto();
+    const b = banco({ copertine: { a: blob(80000, "A") }, min: { a: { blob: blob(8000, "SGRANATA"), di: 80000 } } });
+    const u = await caricaCopertina("a", b.deps);
+    t.eq("la miniatura senza versione non si mostra", u, "blob:min-A#1");
+    t.eq("…e si riscrive con la versione", b.scritte.a?.v, VERSIONE_MIN);
   }
 
   // ---- una copertina gia' piccola si usa lei ----

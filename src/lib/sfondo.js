@@ -1,3 +1,4 @@
+import { pennelloFine } from "./copertina.js";
 // LA COPERTINA SULLA SCHERMATA DI BLOCCO, il lato della pagina.
 //
 // Chiesto dal lettore, dopo il salvaschermo: «mi appare anche se decido di
@@ -283,7 +284,7 @@ export async function copertinaPerSchermo(blob, { w, h }, fondo = "#000000") {
     const tela = document.createElement("canvas");
     tela.width = w;
     tela.height = h;
-    const g = tela.getContext("2d");
+    const g = pennelloFine(tela);
     g.fillStyle = fondo;
     g.fillRect(0, 0, w, h);
     g.drawImage(img, dove.x, dove.y, dove.w, dove.h);
