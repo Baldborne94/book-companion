@@ -1178,7 +1178,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
         </>
       )}
 
-      {panel === "night" && (
+      {chrome && panel === "night" && (
         <div
           style={{
             position: "absolute",

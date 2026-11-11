@@ -257,6 +257,44 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore, con Kingdom aperto sul tablet e «Da leggere» sul
+    // PC: «fai solo in modo che quando apro l'app questa si sincronizzi
+    // tutto». Il tablet il libro aperto lo manda su da solo; il PC, con la
+    // finestra sempre davanti, non chiedeva niente finche' non si cambiava
+    // scheda del browser
+    nome: "il libro aperto sul tablet sale da solo, e il PC lo riceve quando torni sulla sua finestra",
+    async fai({ browser, db }) {
+      const tab = await dispositivo(browser, { sessione: true, misura: TABLET });
+      const pc = await dispositivo(browser, { sessione: true });
+      await importa(tab.p, "Racconti.cbz", await fumetto(), "application/zip");
+      await finche(() => db.righe().some((r) => r.title === "Racconti"), 20000, "il libro non sale nel cloud");
+      await pc.p.goto(URL_APP);
+      await finche(async () => (await libriDi(pc.p)).some((b) => b.title === "Racconti"), 20000, "il libro non scende sul PC");
+      const statoSulPc = () => pc.p.evaluate(() => {
+        const b = JSON.parse(localStorage.getItem("bc_books") || "[]").find((x) => x.title === "Racconti");
+        return b && localStorage.getItem(`bc_status_${b.id}`);
+      });
+      // il PC resta davanti, e il giro dell'avvio e' finito
+      await aspetta(4000);
+
+      await tab.p.getByText("Racconti").first().click();
+      await tab.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      await finche(() => tab.p.locator("img").count(), 15000, "il fumetto non si apre");
+      // il libro resta aperto e l'app va dietro (il tasto Home del tablet)
+      await tab.p.evaluate(() => {
+        Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      await finche(() => db.righe().find((r) => r.title === "Racconti")?.status === "reading", 15000, "il libro aperto sul tablet non sale nel cloud");
+
+      // sul PC si torna sulla finestra: niente cambio di scheda del browser
+      if ((await statoSulPc()) === "reading") throw new Error("il PC sapeva gia' del libro aperto: la scena non prova niente");
+      await pc.p.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await finche(async () => (await statoSulPc()) === "reading", 15000, "tornando sulla finestra il PC non riceve il libro aperto sul tablet");
+      return { guasti: [...tab.guasti, ...pc.guasti], nota: "aperto sul tablet, salito da solo, arrivato sul PC tornando sulla finestra" };
+    },
+  },
+  {
     nome: "un ePub si importa e si apre",
     async fai({ browser }) {
       const d = await dispositivo(browser);
@@ -2005,6 +2043,23 @@ const SCENE = [
           await finche(() => p.getByRole("menuitem", { name: /Dove eravamo/ }).count(), 3000, "il menu dell'Oracolo non si apre");
           await p.keyboard.press("Escape");
         }
+        // IL PANNELLO APPESO ALLA BARRA VA E VIENE CON LEI (chiesto dal
+        // lettore: «appaia e scompaia assieme all'header e non rimanga
+        // appesa da sola»): la luce del fumetto, la notte del PDF
+        const pannelli = {
+          "Il segreto di Arcadia": [["Luce", () => p.getByText("Luminosità", { exact: true })], ["Oracolo", () => p.getByRole("menu", { name: "Chiedi all'Oracolo" })]],
+          Carte: [["Notte", () => p.getByText("Filtro notte caldo", { exact: true })]],
+        }[titolo] || [];
+        for (const [tasto, riga] of pannelli) {
+          const aperto = () => riga().count();
+          await p.getByRole("button", { name: tasto, exact: true }).click();
+          await finche(aperto, 3000, `il pannello «${tasto}» non si apre`);
+          await p.touchscreen.tap(300, 1100);
+          await finche(async () => !(await misura()) && !(await aperto()), 3000, `nascosta la barra, il pannello «${tasto}» resta appeso da solo`);
+          await p.touchscreen.tap(300, 1100);
+          await finche(async () => (await misura()) && (await aperto()), 3000, `tornata la barra, il pannello «${tasto}» non torna con lei`);
+          await p.getByRole("button", { name: tasto, exact: true }).click();
+        }
         await p.getByRole("button", { name: "Chiudi il libro" }).click();
         await finche(async () => !(await p.locator('[aria-label="Chiudi il libro"]').count()), 5000, `«${titolo}» non si chiude`);
       }
@@ -2824,14 +2879,18 @@ const SCENE = [
     // la fotografia del lettore: il Mondo Disco proponeva un seguito per
     // ogni ciclo cominciato (Reaper Man 11, Men at Arms 15…) e lui ha scelto
     // «uno per saga, sempre»: il numero dopo il più alto letto o in lettura
-    nome: "l'Ingresso propone un seguito per saga, il numero dopo, anche rimesso «Da leggere»",
+    nome: "l'Ingresso propone un seguito per saga, il numero dopo, anche rimesso «Da leggere», e in un mondo il primo non letto",
     async fai({ browser }) {
       const d = await dispositivo(browser, { prima: mondoDisco });
       await d.p.goto(URL_APP);
       const nota = await finche(() => testoAvviso(d.p, /Discworld n° 10 · inizia Industrial Revolution · già al 12%/), 15000, "Moving Pictures non e' fra i seguiti");
       const note = await d.p.evaluate(() => [...document.querySelectorAll("div,span,p")].filter((e) => e.childElementCount === 0 && /^Discworld n° /.test(e.textContent || "")).map((e) => e.textContent));
       if (note.length !== 1) throw new Error(`il Mondo Disco propone piu' di un seguito: ${note.join(" | ")}`);
-      return { guasti: d.guasti, nota };
+      // nel Cosmoverse numerato col mondo il seguito e' Elantris, il primo
+      // non letto, e non Warbreaker, il numero dopo i Mistborn letti
+      const cosmo = await finche(() => testoAvviso(d.p, /^Cosmoverse n° \d/), 10000, "il Cosmoverse non ha un seguito");
+      if (!/^Cosmoverse n° 1\b/.test(cosmo)) throw new Error(`nel Cosmoverse il seguito non e' Elantris: «${cosmo}»`);
+      return { guasti: d.guasti, nota: `${nota} · ${cosmo}` };
     },
   },
   {
