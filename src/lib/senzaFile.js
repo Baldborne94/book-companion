@@ -220,7 +220,10 @@ function vociDalMondo(cammino, libri, opzioni) {
         autore: t.voce.a || AUTORI[tav.saga] || "",
         saga: sagaDi(tav),
         serie: tav.parti ? tav.saga : t.voce.c || "",
-        numero: t.posto,
+        // il posto nel mondo solo dove la biblioteca numera gia' col mondo:
+        // altrove le schede nuove prendono il numero della loro serie, come
+        // i volumi accanto
+        numero: cammino.numerato ? t.posto : t.voce.o,
         capitolo: t.voce.c || "",
         gia: !!t.libro,
       };

@@ -27,7 +27,8 @@ export default async (t) => {
   const cosmere = MONDI.find((m) => m.universo === "Cosmere");
   const c = camminoDelMondo(cosmere, []);
   t.eq("il Cosmere comincia da Elantris, poi Mistborn", c.tappe.slice(0, 3).map((x) => x.voce.t).join(", "), "Elantris, The Final Empire, The Well of Ascension");
-  t.eq("e ogni volume tiene il numero della sua serie (Warbreaker e' il 2 dei romanzi a se')", c.tappe.find((x) => x.voce.t === "Warbreaker").posto, 2);
+  const wb = c.tappe.find((x) => x.voce.t === "Warbreaker");
+  t.eq("il numero del cammino e' il posto nel mondo, e la voce tiene quello della serie (Warbreaker: 5, il 2 dei romanzi a se')", `${wb.posto},${wb.voce.o}`, "5,2");
   t.eq("diciotto volumi", c.volumi, 18);
   t.eq(
     "le file nominano la guida e il ciclo",

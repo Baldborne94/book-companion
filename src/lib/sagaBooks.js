@@ -139,6 +139,53 @@ export const MONDI = [
   { universo: "Cosmere", nome: "Tutto il Cosmere", ordine: ORDINE_COSMERE },
 ];
 
+// IL POSTO DI UN VOLUME NEL SUO MONDO (1, 2, 3… nell'ordine del mondo), per
+// chi tiene una raccolta numerata col mondo e non serie per serie. Chiesto
+// dal lettore col cammino di «Tutto Malazan» aperto: «riesci a fare si'
+// che possa sistemare la libreria pero' con il tutto malazan?», e scelto da
+// lui lo scaffale in fila. Prima un mondo non rinumerava mai.
+let posizioni = null;
+const posizioniDeiMondi = () => {
+  if (posizioni) return posizioni;
+  posizioni = new Map();
+  for (const m of MONDI) {
+    m.ordine.forEach(([guida, titolo], i) => {
+      const voce = TAVOLE.find((t) => t.saga === guida)?.libri.find((v) => v.t === titolo);
+      posizioni.set(`${guida}\u0000${titolo}`, { universo: m.universo, mondo: i + 1, serie: voce?.o ?? null });
+    });
+  }
+  return posizioni;
+};
+export const posizioneNelMondo = (guida, titolo) => posizioniDeiMondi().get(`${guida}\u0000${titolo}`) || null;
+
+// I MONDI CHE LA TUA BIBLIOTECA NUMERA COL MONDO, decisi sullo STATO dei
+// volumi e non su un interruttore: fra i libri riconosciuti in una guida di
+// un mondo, quelli scritti col posto nel mondo contro quelli scritti col
+// numero della serie (dove i due coincidono non dice niente). Viaggia da
+// solo col numero dei volumi, e «Mettili in ordine» lo accende.
+export function universiNumerati(libri = [], riconosce = (b) => riconosci({ title: b?.title, author: b?.author, saga: b?.saga })) {
+  const conti = new Map();
+  for (const b of libri) {
+    const r = riconosce(b);
+    if (!r?.titolo) continue;
+    const p = posizioneNelMondo(r.saga, r.titolo);
+    if (!p || p.mondo === p.serie) continue;
+    const n = Number(b.sagaOrder);
+    const c = conti.get(p.universo) || { mondo: 0, serie: 0 };
+    if (n === p.mondo) c.mondo += 1;
+    else if (n === p.serie) c.serie += 1;
+    conti.set(p.universo, c);
+  }
+  return new Set([...conti].filter(([, c]) => c.mondo > c.serie).map(([u]) => u));
+}
+
+// il numero da scrivere su un volume riconosciuto: quello del mondo dove la
+// biblioteca numera col mondo, se no quello della guida
+export function numeroPerLaBiblioteca(trovato, numerati) {
+  const p = trovato?.titolo ? posizioneNelMondo(trovato.saga, trovato.titolo) : null;
+  return p && numerati?.has(p.universo) ? p.mondo : trovato?.sagaOrder ?? null;
+}
+
 // I capitoli di tutte le guide, in minuscolo: `parteDiUnaStoria` guarda
 // qui per sapere se una Serie scritta su un libro e' una parte di un
 // cammino nostro o un ciclo del lettore. Si costruisce una volta sola
@@ -949,7 +996,10 @@ export function ripassa(libro = {}, libri = [], { senzaTraccia, dallaBiblioteca 
 
   if (trovato) {
     if (!saga) tocchi.saga = raccoltaDellaGuida(trovato.saga, libri) || trovato.saga;
-    if (libro.sagaOrder == null && trovato.sagaOrder != null) tocchi.sagaOrder = trovato.sagaOrder;
+    // chiesto per ogni sciolto riconosciuto: misurato, 6 ms in piu' su 430
+    // libri con trenta sciolti, e niente da tenere a mano fra un giro e l'altro
+    const n = numeroPerLaBiblioteca(trovato, universiNumerati(libri));
+    if (libro.sagaOrder == null && n != null) tocchi.sagaOrder = n;
   } else if (!saga && !fuoriSaga(libro)) {
     // la tabella non lo conosce: la saga puo' stare scritta nel titolo, e
     // se no glielo puo' dire la tua biblioteca

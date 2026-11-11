@@ -27,7 +27,7 @@ import { spartisciQui } from "../lib/spazio.js";
 import { BarraCloud, PesoQui } from "./BarraCloud.jsx";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
 import { famigliaDi } from "../data/generi.js";
-import { riconosci, capitoloDi } from "../lib/sagaBooks.js";
+import { riconosci, capitoloDi, universiNumerati } from "../lib/sagaBooks.js";
 import { camminiDi, guideAccanto, mondiDi } from "../lib/cammino.js";
 import { segnaposto } from "../lib/segnaposto.js";
 import BookCover from "./BookCover.jsx";
@@ -499,7 +499,9 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
     status: criterioStato((b) => getStatus(b.id)),
   }[group];
 
-  const disposti = criterio ? disponi(books, null, criterio, sort, parteDi) : aEtichette(books, CRITERIO, sort);
+  // una raccolta numerata col suo mondo («Tutto Malazan») sta in fila
+  const inFila = riconosciuti ? (libri) => universiNumerati(libri, (b) => riconosciuti.get(b.id)).size > 0 : null;
+  const disposti = criterio ? disponi(books, null, criterio, sort, parteDi, inFila) : aEtichette(books, CRITERIO, sort);
   const ripiani = nellOrdineScelto(disposti, sort, preferite);
   // un ripiano disegnato sempre dallo stesso posto, esposto o dentro la sua
   // raccolta: due strade scritte a mano divergerebbero alla prima modifica
@@ -518,8 +520,10 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
             // per ciclo, nell'ordine in cui la storia li incontra. Il nome
             // del ciclo sta in una riga piu' discreta dell'intestazione della
             // saga, o le due gerarchie si confonderebbero.
-            r.cicli.map((c) => (
-              <div key={c.nome ?? "_"} style={{ marginBottom: 14 }}>
+            // in una raccolta in fila la stessa serie torna più volte: la
+            // chiave è il posto, non il nome
+            r.cicli.map((c, i) => (
+              <div key={`${i}:${c.nome ?? "_"}`} style={{ marginBottom: 14 }}>
                 <div
                   style={{
                     display: "flex",
