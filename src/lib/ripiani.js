@@ -200,23 +200,8 @@ const capitoli = (libri, parteDi) => {
   });
 };
 
-export function raccogliCicli(libri = [], campo = "series", parteDi = null, fila = false) {
+export function raccogliCicli(libri = [], campo = "series", parteDi = null) {
   if (!libri.some((b) => testo(b[campo]))) return null;
-  // UNA RACCOLTA NUMERATA COL SUO MONDO (`universiNumerati`) si legge in
-  // fila, come il cammino del mondo: i libri sono gia' in ordine di
-  // lettura, e un sotto-ripiano e' una corsa della stessa serie. Raccolti
-  // per nome, le serie che si alternano tornerebbero ognuna tutta insieme
-  // (scelto dal lettore: «fila in ordine»).
-  if (fila) {
-    const corse = [];
-    for (const b of libri) {
-      const nome = testo(b[campo]) || null;
-      const ultima = corse[corse.length - 1];
-      if (ultima && ultima.nome === nome) ultima.libri.push(b);
-      else corse.push({ nome, libri: [b], primo: b.sagaOrder ?? null });
-    }
-    return corse;
-  }
   const gruppi = new Map();
   for (const b of libri) {
     const nome = testo(b[campo]) || null;
@@ -393,7 +378,7 @@ const senzaDoppione = (cicli, nomeRipiano) => {
   return cicli[0].parti || null;
 };
 
-export function disponi(libri = [], confronta = null, per = "auto", ordine = null, parteDi = null, inFila = null) {
+export function disponi(libri = [], confronta = null, per = "auto", ordine = null, parteDi = null) {
   // un criterio che non conosciamo vale la disposizione di sempre: e' la
   // stessa regola di `vistaValida` e della svolta — un valore storto non
   // deve spegnere lo scaffale
@@ -435,7 +420,7 @@ export function disponi(libri = [], confronta = null, per = "auto", ordine = nul
       // una guida direbbe una cosa che li' non si sta chiedendo
       cicli:
         g.tipo === "saga"
-          ? senzaDoppione(raccogliCicli(g.libri, "series", parteDi, !!inFila?.(g.libri)), g.nome)
+          ? senzaDoppione(raccogliCicli(g.libri, "series", parteDi), g.nome)
           : modo === "autore"
             ? raccogliCicli(g.libri, "saga")
             : null,
