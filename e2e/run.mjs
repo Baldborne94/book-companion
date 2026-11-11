@@ -295,6 +295,42 @@ const SCENE = [
     },
   },
   {
+    // E IL DIFETTO TROVATO CERCANDO QUELLO («sistema il difetto», chiesto dal
+    // lettore): la lettura viaggiava con l'ora della riga, e una scheda
+    // cambiata sul PC dopo la lettura sul tablet rimandava su «Da leggere»
+    nome: "una scheda cambiata sul PC non copre il libro che il tablet sta leggendo",
+    async fai({ browser, db }) {
+      const tab = await dispositivo(browser, { sessione: true, misura: TABLET });
+      const pc = await dispositivo(browser, { sessione: true });
+      await importa(tab.p, "Racconti.cbz", await fumettoLungo(6), "application/zip");
+      await finche(() => db.righe().some((r) => r.title === "Racconti"), 20000, "il libro non sale nel cloud");
+      await pc.p.goto(`${URL_APP}?apri=libreria`);
+      await finche(async () => (await libriDi(pc.p)).some((b) => b.title === "Racconti"), 20000, "il libro non scende sul PC");
+      await aspetta(4000);
+
+      await tab.p.getByText("Racconti").first().click();
+      await tab.p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().click();
+      const lassu = () => db.righe().find((r) => r.title === "Racconti");
+      await finche(() => lassu()?.status === "reading", 20000, "il libro aperto sul tablet non sale");
+      const progresso = lassu().progress;
+
+      // il PC non ha ricevuto niente, e cambia la saga
+      const sulPc = () => pc.p.evaluate(() => {
+        const b = JSON.parse(localStorage.getItem("bc_books") || "[]").find((x) => x.title === "Racconti");
+        return b && { stato: localStorage.getItem(`bc_status_${b.id}`), saga: b.saga };
+      });
+      if ((await sulPc()).stato === "reading") throw new Error("il PC sapeva gia' del libro aperto: la scena non prova niente");
+      await pc.p.getByText("Racconti").first().click();
+      await pc.p.locator('input[placeholder="es. The Realm of the Elderlings"]').fill("Racconti brevi");
+      await pc.p.getByRole("button", { name: "Chiudi", exact: true }).click();
+      await finche(() => lassu()?.saga === "Racconti brevi", 20000, "la saga del PC non sale");
+      const dopo = lassu();
+      if (dopo.status !== "reading" || dopo.progress !== progresso) throw new Error(`la scheda del PC ha coperto la lettura del tablet: lassu' «${dopo.status}» al ${dopo.progress}`);
+      await finche(async () => (await sulPc()).stato === "reading", 10000, "il PC non prende la lettura del tablet");
+      return { guasti: [...tab.guasti, ...pc.guasti], nota: `lassu' «${dopo.saga}», ${dopo.status} al ${Math.round(dopo.progress * 100)}%` };
+    },
+  },
+  {
     nome: "un ePub si importa e si apre",
     async fai({ browser }) {
       const d = await dispositivo(browser);
