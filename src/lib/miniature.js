@@ -33,6 +33,11 @@ export const LATO_MIN = 480;
 
 export const chiaveMin = (id) => `min_${id}`;
 
+// LE MINIATURE HANNO UNA VERSIONE: quelle fatte col filtro veloce del
+// canvas erano sgranate (`pennelloFine` in `copertina.js`), e si rifanno da
+// sole alla prima vista. Chi cambia il modo di ridurle alza il numero.
+export const VERSIONE_MIN = 2;
+
 const viste = new Map(); // id -> { url, revoca }
 const inVolo = new Map(); // id -> { gen, p }
 const gen = new Map(); // id -> numero
@@ -66,7 +71,7 @@ export function ascoltaCopertine(f) {
 
 // la miniatura su disco e' buona solo se viene da QUESTA copertina
 export const minBuona = (min, intera) =>
-  !!(min?.blob && intera && Number(min.di) === Number(intera.size));
+  !!(min?.blob && intera && Number(min.di) === Number(intera.size) && min.v === VERSIONE_MIN);
 
 export function caricaCopertina(id, deps) {
   const g = generazione(id);
@@ -95,7 +100,7 @@ export function caricaCopertina(id, deps) {
           // o si terrebbe su disco la miniatura del libro di prima
           if (generazione(id) === g)
             Promise.resolve()
-              .then(() => deps.scriviMin?.(id, { blob: ridotta, di: intera.size }))
+              .then(() => deps.scriviMin?.(id, { blob: ridotta, di: intera.size, v: VERSIONE_MIN }))
               .catch(() => {});
         } else blob = intera;
       }

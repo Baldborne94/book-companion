@@ -1,3 +1,4 @@
+import { pennelloFine } from "./copertina.js";
 // LA COPERTINA DEL LIBRO SULLA SCHEDA DELLA MUSICA.
 //
 // Chiesto dal lettore: «se ho ancora il book companion attivo in
@@ -62,7 +63,7 @@ export async function copertinaQuadrata(blob, fondo = "#0f0d1a", lato = LATO_SCH
     const tela = document.createElement("canvas");
     tela.width = lato;
     tela.height = lato;
-    const g = tela.getContext("2d");
+    const g = pennelloFine(tela);
     g.fillStyle = fondo;
     g.fillRect(0, 0, lato, lato);
     g.drawImage(img, dove.x, dove.y, dove.w, dove.h);
