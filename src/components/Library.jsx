@@ -22,7 +22,7 @@ import { fmtGoogle } from "../lib/bytes.js";
 import { hddPossibile } from "../lib/hdd.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { fraseDelPasso, fraseImport } from "../lib/convertiCbr.js";
-import { senzaCopertina } from "../lib/copertina.js";
+import { senzaCopertina, copertineDaDove, fraseCopertineAltrove } from "../lib/copertina.js";
 import { spartisciQui } from "../lib/spazio.js";
 import { BarraCloud, PesoQui } from "./BarraCloud.jsx";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
@@ -1556,7 +1556,11 @@ export default function Library({
   // I tomi col dorso disegnato. `conCopertina` è `null` finché l'elenco non
   // è arrivato, e lì NON si offre niente: un tasto «ritrova 115 copertine»
   // su una biblioteca che ce l'ha già tutte sarebbe una promessa a vuoto.
-  const mancaLaCopertina = conCopertina ? senzaCopertina(books, conCopertina, copGuardate) : [];
+  // e il tasto conta solo quelle che può ritrovare QUI (segnalato sul PC:
+  // «Ritrova 183 copertine», e al tocco «183 non sono su questo
+  // dispositivo»); le altre si dicono con la loro strada
+  const dove = conCopertina && localIds ? copertineDaDove(books, { conCopertina, guardati: copGuardate, qui: localIds, sulDisco: discoNoto.ids, altrove }) : null;
+  const mancaLaCopertina = dove ? dove.qui : [];
 
   // LE COPERTINE CHE MANCANO SI RITROVANO NEL FILE. Il dorso disegnato vuol
   // dire che quell'immagine qui non c'e' — l'estrazione all'import non l'ha
@@ -1599,7 +1603,7 @@ export default function Library({
 
   async function ritrovaLeCopertine() {
     if (copertinando) return;
-    const mancanti = senzaCopertina(books, conCopertina, copGuardate);
+    const mancanti = mancaLaCopertina;
     if (!mancanti.length) {
       notify?.("Le copertine erano già tutte al loro posto");
       return;
@@ -2945,6 +2949,12 @@ export default function Library({
                   ? `Fermo qui (${copertinando.i + 1} di ${copertinando.totale})`
                   : `🖼 Ritrova ${mancaLaCopertina.length === 1 ? "una copertina" : `${mancaLaCopertina.length} copertine`}`}
               </button>
+            )}
+            {/* e quelle che da qui non si ritrovano, con la loro strada:
+                il tasto le contava e al tocco diceva «non sono su questo
+                dispositivo» */}
+            {dove && fraseCopertineAltrove(dove) && (
+              <p style={{ flexBasis: "100%", fontSize: F.minuscolo, color: C.muted, lineHeight: 1.5 }}>{fraseCopertineAltrove(dove)}</p>
             )}
             {/* Il ripasso delle impronte c'e' solo se qualcuno ne ha bisogno:
                 a biblioteca gia' a posto sarebbe un tasto che non fa niente.

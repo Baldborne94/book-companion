@@ -151,7 +151,7 @@ Questo file tiene le **regole vive**, in breve. Il **perché** di ogni regola �
 - Scaffale a ripiani (`disponi` in `ripiani.js`): saga o autore, cicli e capitoli come sotto-ripiani, ripiani lontani non costruiti (`useVicino`), miniature e non copertine intere.
 - «Ripulisci i titoli» propone, mai riscrive. Nei fumetti toglie anche le etichette **in coda** (`senzaEtichette`: anno, digital, gruppo, sito, e tutto quel che viene dopo la prima di loro) e il pallino davanti (`PALLINO`) e «v03 -»; il numero esce dal titolo solo se la scheda ce l'ha, e mai due fumetti diventano omonimi (sarebbero doppioni).
 - Il selettore dei libri (`tipiDaScegliere`): sul computer solo estensioni e tipi dei libri; i tipi larghi (`application/zip`, `application/octet-stream`) solo su Android, iPhone e iPad, dove senza un ePub scaricato resta in grigio.
-- Un tasto non promette ciò che non può dare; gli zeri non si dicono; un avviso sta accanto al tasto che lo risolve.
+- Un tasto non promette ciò che non può dare; gli zeri non si dicono; un avviso sta accanto al tasto che lo risolve. «🖼 Ritrova N copertine» conta solo i libri col file **qui** (`copertineDaDove`), e accanto si dice dove stanno le altre con la loro strada (`fraseCopertineAltrove`: disco, altro dispositivo, schede senza ebook, file che non si sa dove sia).
 
 ### Schermo
 
