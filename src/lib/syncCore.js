@@ -47,6 +47,7 @@ const EMPTY_ROW = {
   deleted: false,
   updated_at: 0,
   scheda_at: 0,
+  lettura_at: 0,
 };
 
 // PostgREST unisce le chiavi di un batch: una riga con meno colonne
@@ -63,7 +64,7 @@ const EMPTY_ROW = {
 // nullable, cioe' scriveva un null in silenzio invece di lamentarsi.
 export const normalizeRow = (row) => ({ ...EMPTY_ROW, ...row });
 
-export const rowFromLocal = (book, state, updatedAt, schedaAt = 0) => ({
+export const rowFromLocal = (book, state, updatedAt, schedaAt = 0, letturaAt = 0) => ({
   id: book.id,
   title: book.title || "",
   author: book.author || "",
@@ -109,6 +110,7 @@ export const rowFromLocal = (book, state, updatedAt, schedaAt = 0) => ({
   deleted: false,
   updated_at: updatedAt,
   scheda_at: schedaAt || 0,
+  lettura_at: letturaAt || 0,
 });
 
 export const localFromRow = (row) => ({
@@ -193,6 +195,12 @@ export function senzaColonna(riga, nome) {
 // e `senzaColonna`, che stanno gia' qui: come loro non tocca la rete, decide
 // soltanto. E come loro si puo' provare.
 export const DEGRADE = [
+  // l'ora della lettura: senza, la lettura torna a seguire la riga intera
+  {
+    test: (m) => /lettura_at/i.test(m),
+    label: "ora della lettura",
+    apply: (rows) => rows.map(({ lettura_at, ...r }) => r),
+  },
   // l'ora della scheda: senza, la scheda torna a seguire la riga intera
   {
     test: (m) => /scheda_at/i.test(m),
@@ -620,6 +628,30 @@ export function schedaPiuNuova(mia, sua) {
   return a > b ? "mia" : "sua";
 }
 
+// LA LETTURA HA IL SUO OROLOGIO, come la scheda (segnalato: Kingdom aperto
+// sul tablet, «Da leggere» sul PC). Stato, date, progresso e punto vanno a
+// chi ha LETTO per ultimo, non a chi ha toccato la riga: cambiare una
+// scheda sposta la riga, e la lettura vecchia di quel dispositivo copriva
+// quella nuova dell'altro. `null` = non si sa (orologi uguali, o lassu' la
+// colonna non c'e'): decide la riga, come prima.
+export const CAMPI_LETTURA = ["status", "started_at", "finished_at", "progress", "cfi"];
+
+export function letturaPiuNuova(mia, sua) {
+  if (!mia || !sua || sua.lettura_at == null) return null;
+  const a = Number(mia.lettura_at) || 0;
+  const b = Number(sua.lettura_at) || 0;
+  if (a === b) return null;
+  return a > b ? "mia" : "sua";
+}
+
+// `riga` con la lettura di `fonte`: la scheda e le annotazioni restano di `riga`
+export function conLetturaDi(riga, fonte) {
+  const out = { ...riga };
+  for (const k of CAMPI_LETTURA) if (k in fonte) out[k] = fonte[k];
+  out.lettura_at = Number(fonte.lettura_at) || 0;
+  return out;
+}
+
 // `riga` con la scheda di `fonte`: la lettura resta quella di `riga`
 export function conSchedaDi(riga, fonte) {
   const out = { ...riga };
@@ -661,27 +693,45 @@ function vincitrice(riga, altra, chi, mioLato) {
   return chi === mioLato ? scheda : null;
 }
 
+// E LO STESSO PER LA LETTURA: chi sale sopra una lettura piu' nuova lassu'
+// sale con quella, e la si posa anche qui (`lette`); chi scende sopra una
+// lettura piu' nuova qui scende con la nostra (`tenute`).
 export function fondiSchede({ push = [], pull = [], intere = new Map(), locali = [] } = {}) {
   const scese = new Map();
+  const lette = new Map();
   const suSu = push.map((row) => {
     if (row.deleted) return row;
     const r = intere.get(row.id);
     if (!r || r.deleted) return row;
+    let out = row;
     const fusa = vincitrice(row, r, schedaPiuNuova(row, r), "sua");
-    if (!fusa) return row;
-    scese.set(row.id, fusa);
-    return fusa;
+    if (fusa) {
+      out = fusa;
+      scese.set(row.id, fusa);
+    }
+    if (letturaPiuNuova(out, r) === "sua") {
+      out = conLetturaDi(out, r);
+      lette.set(row.id, out);
+    }
+    return out;
   });
   const qui = new Map(locali.map((r) => [r.id, r]));
   const tenute = new Set();
   const giu = pull.map((row) => {
     const mia = qui.get(row.id);
+    let out = row;
     const fusa = vincitrice(row, mia, schedaPiuNuova(mia, row), "mia");
-    if (!fusa) return row;
-    tenute.add(row.id);
-    return fusa;
+    if (fusa) {
+      out = fusa;
+      tenute.add(row.id);
+    }
+    if (letturaPiuNuova(mia, out) === "mia") {
+      out = conLetturaDi(out, mia);
+      tenute.add(row.id);
+    }
+    return out;
   });
-  return { push: suSu, pull: giu, scese, tenute };
+  return { push: suSu, pull: giu, scese, lette, tenute };
 }
 
 // LA SCHEDA COM'E' CAMBIATA, letta come viaggia: due libri hanno la stessa

@@ -14,7 +14,7 @@ import {
 import {
   loadBooks, saveBooks, getProgress, setProgress, getStatus, setStatus,
   getUpdatedAt, touchBook, getTombstones, clearTombstones, getLastOpened,
-  getStarted, getFinished, setDates, getSchedaAt, posaScheda,
+  getStarted, getFinished, setDates, getSchedaAt, posaScheda, getLetturaAt, posaLettura,
 } from "./library.js";
 import {
   getCfi, setCfi, removeAnnotations, setJump,
@@ -249,7 +249,7 @@ export async function syncNow({ onProgress, onLibri } = {}) {
   say("Leggo la biblioteca…");
   const books = loadBooks();
   const localRows = books.map((b) =>
-    rowFromLocal(b, readLocalState(b.id), getUpdatedAt(b.id, b.addedAt || 1), getSchedaAt(b.id))
+    rowFromLocal(b, readLocalState(b.id), getUpdatedAt(b.id, b.addedAt || 1), getSchedaAt(b.id), getLetturaAt(b.id))
   );
   const tombstones = getTombstones();
   // le righe di prima, per dire alla fine che cosa e' cambiato
@@ -332,6 +332,13 @@ export async function syncNow({ onProgress, onLibri } = {}) {
   if (schedeScese.size) {
     saveBooks(loadBooks().map((b) => (schedeScese.has(b.id) ? { ...b, ...localFromRow(schedeScese.get(b.id)).book } : b)));
     for (const [id, riga] of schedeScese) posaScheda(id, riga.scheda_at);
+  }
+  // e la lettura piu' nuova lassu' scende anche qui, con la sua ora: la
+  // riga resta la nostra (sale), quindi anche la sua ora resta quella
+  for (const [id, riga] of schede.lette) {
+    writeLocalState(id, localFromRow(riga).state);
+    posaLettura(id, Number(riga.lettura_at) || 0);
+    touchBook(id, riga.updated_at);
   }
 
   // Finche' lo schema resta indietro il flag non si chiude: al primo invio
@@ -478,6 +485,8 @@ export async function syncNow({ onProgress, onLibri } = {}) {
       const arricchita = writeLocalState(book.id, state);
       touchBook(book.id, row.updated_at);
       posaScheda(book.id, Number(row.scheda_at) || 0);
+      // la lettura scesa porta la sua ora, non quella di chi la riceve
+      posaLettura(book.id, Number(row.lettura_at) || 0);
       // L'EBOOK TOLTO ALTROVE SE NE VA ANCHE DA QUI. «Togli l'ebook, tieni
       // la scheda» e' una scelta sul LIBRO, non su un dispositivo: se i
       // byte restassero qui, questo tablet si terrebbe un file che la sua
@@ -516,7 +525,7 @@ export async function syncNow({ onProgress, onLibri } = {}) {
           .map((id) => next.find((b) => b.id === id))
           .filter(Boolean)
           .map((b) => ({
-            ...normalizeRow(rowFromLocal(b, readLocalState(b.id), getUpdatedAt(b.id, b.addedAt || 1), getSchedaAt(b.id))),
+            ...normalizeRow(rowFromLocal(b, readLocalState(b.id), getUpdatedAt(b.id, b.addedAt || 1), getSchedaAt(b.id), getLetturaAt(b.id))),
             user_id: uid,
           }));
         if (rows.length) await upsertBooks((p) => sb.from("books").upsert(p), rows);

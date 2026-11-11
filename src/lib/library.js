@@ -27,6 +27,26 @@ export function getSchedaAt(id) {
   return Number.isFinite(v) ? v : 0;
 }
 
+// E L'ORA DELLA LETTURA, separata da tutt'e due (segnalato: Kingdom aperto
+// sul tablet, «Da leggere» e al 3% sul PC). Stato, date, progresso e punto
+// viaggiavano con l'ora della riga, e quella la sposta anche chi cambia la
+// scheda: una saga scritta sul PC dopo la lettura sul tablet rimandava su
+// la lettura vecchia del PC. Chi legge timbra questa (e la riga); chi
+// riceve la posa com'e' arrivata. Vedi `letturaPiuNuova` in `syncCore.js`.
+const letturaKey = (id) => `bc_let_${id}`;
+export function timbraLettura(id, ts = Date.now()) {
+  localStorage.setItem(letturaKey(id), String(ts));
+  touchBook(id, ts);
+}
+export function posaLettura(id, ts) {
+  if (ts > 0) localStorage.setItem(letturaKey(id), String(ts));
+  else localStorage.removeItem(letturaKey(id));
+}
+export function getLetturaAt(id) {
+  const v = parseInt(localStorage.getItem(letturaKey(id)), 10);
+  return Number.isFinite(v) ? v : 0;
+}
+
 export function getUpdatedAt(id, fallback = 0) {
   const v = parseInt(localStorage.getItem(`bc_upd_${id}`), 10);
   return Number.isFinite(v) ? Math.max(v, fallback) : fallback;
@@ -72,7 +92,7 @@ export function getProgress(id) {
 
 export function setProgress(id, fraction) {
   localStorage.setItem(`bc_prog_${id}`, String(Math.min(1, Math.max(0, fraction))));
-  touchBook(id);
+  timbraLettura(id);
 }
 
 export function getStatus(id) {
@@ -135,7 +155,7 @@ export function setStatus(id, status) {
     // dopo, `lettoQui` la troverebbe e scriverebbe di nuovo l'anno in corso.
     if (status === "abandoned") setDates(id, { finished: 0 });
   }
-  touchBook(id);
+  timbraLettura(id);
 }
 
 // L'ANNO SI SCRIVE A MANO, E SI FISSA A META' ANNO.
@@ -166,14 +186,14 @@ export function segnaAnnoFine(id, anno) {
   const testo = String(anno ?? "").trim();
   if (!testo) {
     setDates(id, { finished: 0 });
-    touchBook(id);
+    timbraLettura(id);
     return true;
   }
   const n = parseInt(testo, 10);
   if (!Number.isFinite(n) || n < ANNO_MIN || n > new Date().getFullYear()) return false;
   if (annoFinito(id) === n) return true;
   setDates(id, { finished: new Date(n, MEZZO_ANNO, 1, 12).getTime() });
-  touchBook(id);
+  timbraLettura(id);
   return true;
 }
 
@@ -190,6 +210,8 @@ export function removeBookMeta(id) {
   saveBooks(loadBooks().filter((b) => b.id !== id));
   addTombstone(id);
   localStorage.removeItem(`bc_upd_${id}`);
+  localStorage.removeItem(`bc_sch_${id}`);
+  localStorage.removeItem(letturaKey(id));
   localStorage.removeItem(`bc_music_${id}`);
   localStorage.removeItem(`bc_prog_${id}`);
   localStorage.removeItem(`bc_status_${id}`);

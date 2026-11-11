@@ -1,3 +1,5 @@
+import { timbraLettura } from "./library.js";
+
 const leggiTutti = (key) => {
   try {
     const v = JSON.parse(localStorage.getItem(key));
@@ -12,7 +14,7 @@ const touch = (id) => localStorage.setItem(`bc_upd_${id}`, String(Date.now()));
 export const getCfi = (id) => localStorage.getItem(`bc_cfi_${id}`) || null;
 export const setCfi = (id, cfi) => {
   localStorage.setItem(`bc_cfi_${id}`, cfi);
-  touch(id);
+  timbraLettura(id);
 };
 
 // LE CANCELLAZIONI SI SEGNANO, O QUELLO CHE CANCELLI TORNA.

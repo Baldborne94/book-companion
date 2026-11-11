@@ -71,7 +71,7 @@ import { spiegaSync, schedaDiversa, eDiRete } from "./lib/syncCore.js";
 import { useViewport } from "./lib/viewport.js";
 import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
 import { comincia, segnaVita, segnaAttivita, smetti, dispositivo } from "./lib/tempo.js";
-import { sincronizzaPresto } from "./lib/presto.js";
+import { sincronizzaPresto, DAVANTI } from "./lib/presto.js";
 import { parti, segnaAvvio } from "./lib/tempi.js";
 
 // L'ingresso porta l'insegna dell'atmosfera scelta: candela di notte,
@@ -1421,14 +1421,24 @@ export default function App() {
       }
     });
     localFileIds().then((ids) => alive && setLocalIds(ids));
-    const onOnline = () => runSync.current(true);
-    const onVis = () => document.visibilityState === "visible" && runSync.current(true);
-    window.addEventListener("online", onOnline);
+    // QUANDO L'APP TORNA DAVANTI SI SINCRONIZZA, e sul PC «davanti» e' anche
+    // tornare sulla sua finestra (chiesto dal lettore: «quando apro l'app
+    // questa si sincronizzi tutto»): la finestra resta visibile per ore e
+    // `visibilitychange` non scatta mai, cosi' il libro aperto sul tablet
+    // restava «Da leggere» sul PC. Finestra e visibilita' arrivano insieme
+    // e fanno un giro solo, e un giro chiesto mentre un altro gira non si
+    // perde: riparte dopo (`sincronizzaPresto`)
+    const davanti = sincronizzaPresto(() => runSync.current(true), { attesa: DAVANTI, occupato: () => occupato.current });
+    const onVis = () => document.visibilityState === "visible" && davanti();
+    window.addEventListener("online", davanti);
+    window.addEventListener("focus", davanti);
     document.addEventListener("visibilitychange", onVis);
     return () => {
       alive = false;
       viaAuth();
-      window.removeEventListener("online", onOnline);
+      davanti.ferma();
+      window.removeEventListener("online", davanti);
+      window.removeEventListener("focus", davanti);
       document.removeEventListener("visibilitychange", onVis);
     };
   }, []);

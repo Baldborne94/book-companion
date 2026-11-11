@@ -178,9 +178,18 @@ export function mondoDisco() {
     // il libro in mano, in cima all'Ingresso: senza, «Continua» prenderebbe
     // Moving Pictures (e' aperto al 12%) e fra i seguiti giustamente non ci sarebbe
     { id: "mech", title: "Mechanicum", author: "Graham McNeill", fileType: "epub", addedAt: 50 },
+    // e il Cosmoverse numerato col mondo, coi Mistborn letti ed Elantris no:
+    // il seguito di un mondo e' il primo non letto, non il numero dopo
+    ...[
+      ["el", 1, "Elantris", "Cosmere Standalones"],
+      ["fe", 2, "The Final Empire", "Mistborn"],
+      ["wa", 3, "The Well of Ascension", "Mistborn"],
+      ["ha", 4, "The Hero of Ages", "Mistborn"],
+      ["wb", 5, "Warbreaker", "Cosmere Standalones"],
+    ].map(([id, n, title, series]) => ({ id, title, author: "Brandon Sanderson", saga: "Cosmoverse", sagaOrder: n, series, fileType: "epub", addedAt: 60 + n })),
   ];
   localStorage.setItem("bc_books", JSON.stringify(libri));
-  for (const id of ["cm", "lf", "er", "mo", "so", "ws", "py", "gg", "ec"]) localStorage.setItem(`bc_status_${id}`, "read");
+  for (const id of ["cm", "lf", "er", "mo", "so", "ws", "py", "gg", "ec", "fe", "wa", "ha"]) localStorage.setItem(`bc_status_${id}`, "read");
   localStorage.setItem("bc_status_mp", "unread");
   localStorage.setItem("bc_prog_mp", "0.12");
   // e il seguito di una storia cominciata (Mort letto), aperto e rimesso li':

@@ -8,6 +8,9 @@
 // gia' in corso riprova dopo (quello in corso puo' aver letto la
 // biblioteca prima della modifica).
 export const PRESTO = 3000;
+// l'app che torna davanti: un attimo, quanto basta perche' la finestra e la
+// visibilita', che arrivano insieme, facciano un giro solo
+export const DAVANTI = 500;
 
 export function sincronizzaPresto(avvia, { attesa = PRESTO, occupato = () => false, orologio = globalThis } = {}) {
   let timer = null;

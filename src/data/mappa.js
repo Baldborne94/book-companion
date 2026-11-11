@@ -381,7 +381,7 @@ export const MAPPA = [
   {
     luogo: "ingresso",
     nome: "Il prossimo della saga",
-    cosa: "Finito un volume, ti propone quello dopo — e solo se sa davvero qual è.",
+    cosa: "Finito un volume, ti propone quello dopo — e solo se sa davvero qual è. In un mondo numerato col mondo (il Cosmoverse, Malazan) è il primo volume che non hai ancora letto, anche se viene prima di quelli letti.",
     dove: "Nell'Ingresso, sotto il libro in corso.",
   },
   {
@@ -493,7 +493,7 @@ export const MAPPA = [
   {
     luogo: "impostazioni",
     nome: "La sincronizzazione",
-    cosa: "Facoltativa: schede, progressi, evidenziazioni e copertine viaggiano fra i tuoi dispositivi.",
+    cosa: "Facoltativa: schede, progressi, evidenziazioni e copertine viaggiano fra i tuoi dispositivi. Parte da sola quando apri l'app, quando torna davanti (sul computer anche quando torni sulla sua finestra), quando chiudi un libro e poco dopo ogni cambio di una scheda.",
     dove: "Impostazioni → il rimando al pannello della nuvola.",
   },
 ];

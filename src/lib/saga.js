@@ -1,5 +1,5 @@
 import { getStatus, getProgress } from "./library.js";
-import { PARTI_DI_GUIDA, contornoDiUnaGuida } from "./sagaBooks.js";
+import { PARTI_DI_GUIDA, contornoDiUnaGuida, universiNumerati } from "./sagaBooks.js";
 
 // UN VOLUME CHE HAI GIA' APERTO NON E' «IL PROSSIMO».
 //
@@ -300,6 +300,15 @@ export function passoDentro(
   if (coppia.uno) return { libro: null, motivo: "mescolati", ...coppia };
   const ord = (b) => (b.sagaOrder ?? Infinity);
   const cur = book.sagaOrder ?? null;
+  // MA IN UN MONDO IL PASSO E' IL PRIMO VOLUME NON LETTO, anche prima del
+  // piu' avanti letto (chiesto dal lettore: «mi proponi Warbreaker ma il
+  // primo che non e' stato letto del Cosmoverso e' Elantris»). Un mondo
+  // numerato col mondo (`universiNumerati`, deciso sui numeri dei volumi) e'
+  // fatto di serie che si leggono a pezzi, e un volume rimasto indietro non
+  // e' uno spoiler: e' una serie che non hai ancora cominciato. Altrove
+  // resta il numero dopo (il Mondo Disco, l'Eresia: «un volume lasciato
+  // indietro non e' il prossimo»).
+  const nelMondo = universiNumerati(dove).size > 0;
   // `dove` e' gia' della sola saga del libro: lo garantisce `gruppoDi`
   const dopo = dove
     .filter(
@@ -308,12 +317,13 @@ export function passoDentro(
         // senza numero d'ordine non si indovina: meglio nessuna proposta
         // di una sbagliata
         b.sagaOrder != null &&
-        (cur == null || ord(b) > cur)
+        (nelMondo || cur == null || ord(b) > cur)
     )
     .sort((a, b) => ord(a) - ord(b) || (a.addedAt || 0) - (b.addedAt || 0));
   let sfondo = 0;
   let letti = 0;
   let mollati = 0;
+  let aperto = null;
   for (const b of dopo) {
     // QUEL CHE LA GUIDA NON CONTA COME TAPPA SI SCAVALCA, non ferma la
     // ricerca: non sta in questo filo affatto, quindi non e' il passo dopo
@@ -344,10 +354,17 @@ export function passoDentro(
     const rivali = rivaliDi(b, dove, contorno);
     if (rivali.length) return { libro: null, motivo: "mescolati", uno: b, due: rivali[0] };
     if (maiAperto(b, statusOf)) return { libro: b, motivo: null };
+    // nel mondo un volume in mano e' una serie che stai leggendo: il passo
+    // e' il primo che non hai aperto, piu' in la'
+    if (nelMondo) {
+      aperto ??= b;
+      continue;
+    }
     // il seguito c'e' e l'hai gia' aperto: il passo ce l'hai in mano, e
     // dirlo per nome e' meglio che tacere
     return { libro: null, motivo: "aperto", volume: b };
   }
+  if (aperto) return { libro: null, motivo: "aperto", volume: aperto };
   // i tre silenzi non sono la stessa cosa, e chiedono al lettore tre cose
   // diverse: comprare il volume dopo, non cercarlo perche' l'hai letto,
   // sapere che quel che resta la guida non te lo chiede

@@ -1399,7 +1399,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         </>
       )}
 
-      {panel === "domande" && (
+      {chrome && panel === "domande" && (
         <div
           role="menu"
           aria-label="Chiedi all'Oracolo"
@@ -1452,7 +1452,7 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
         </div>
       )}
 
-      {panel === "luce" && (
+      {chrome && panel === "luce" && (
         <div
           style={{
             position: "absolute",
