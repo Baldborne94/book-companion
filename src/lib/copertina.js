@@ -1,5 +1,6 @@
 import { eFumetto, tipoImmagine } from "./fumetto.js";
 import { segnaposto } from "./segnaposto.js";
+import { NITIDA, chiaveNitida } from "./miniature.js";
 // LA COPERTINA SI PUO' METTERE A MANO. Titolo, autore, saga e genere si
 // correggono nella scheda del libro; la copertina no — e se l'ePub non ne
 // aveva una, quel dorso restava muto sullo scaffale per sempre.
@@ -20,6 +21,29 @@ export const LATO = 800;
 // si spezza a scalini: misurato contro la media esatta dei pixel, 23 dB
 // col filtro di serie e 27 con «high», e la miniatura che ne nasce 24,6
 // contro 28,2. Ogni tela che rimpicciolisce una copertina passa da qui.
+// l'etichetta: chi scrive la copertina ne lascia il segno (`putCover`)
+const nitida = (blob) => {
+  try {
+    blob[NITIDA] = true;
+  } catch {
+    /* un oggetto che non si lascia etichettare resta senza segno: si rifara' */
+  }
+  return blob;
+};
+
+// LE COPERTINE DEI FUMETTI DA RIFARE (chiesto dal lettore: «sì, fai il
+// tasto per rifare le copertine dei fumetti»). Quella di un fumetto e' la
+// prima pagina ridotta a 800, e prima di `pennelloFine` si riduceva col
+// filtro veloce: grana nella copertina, non solo nella miniatura. Si rifa'
+// dal file chi lo ha qui, con una copertina senza il segno della nitida
+// (`chiaveNitida` col suo peso), e mai una messa a mano. L'ePub no: la sua
+// copertina si salva intera, com'e' nel file.
+export function copertineDaRifare(libri, { qui, misure, nitide, aMano = () => false } = {}) {
+  return (libri || []).filter(
+    (b) => b?.id && eFumetto(b) && qui?.has(b.id) && misure?.has(b.id) && !aMano(b.id) && !nitide?.has(chiaveNitida(b.id, misure.get(b.id)))
+  );
+}
+
 export function pennelloFine(tela) {
   const g = tela.getContext("2d");
   g.imageSmoothingQuality = "high";
@@ -208,7 +232,7 @@ export async function preparaCopertina(file, max = LATO) {
     if (!m) return file;
     if (m.w === bitmap.width && m.h === bitmap.height && file.size < 400 * 1024) {
       bitmap.close?.();
-      return file;
+      return nitida(file);
     }
     const canvas = document.createElement("canvas");
     canvas.width = m.w;
@@ -217,7 +241,7 @@ export async function preparaCopertina(file, max = LATO) {
     ctx.drawImage(bitmap, 0, 0, m.w, m.h);
     bitmap.close?.();
     const blob = await new Promise((ok) => canvas.toBlob(ok, "image/jpeg", 0.85));
-    return blob || file;
+    return blob ? nitida(blob) : file;
   } catch {
     return file;
   }
@@ -335,12 +359,16 @@ export async function ritrovaCopertine(libri, { leggiByte, estrai, posa, segnaGu
 // E il giro dice cosa ha fatto, con le stesse regole di ogni resoconto:
 // gli zeri non si dicono, e la voce su cui il lettore ha qualcosa da fare
 // si porta dietro la strada.
-export function resocontoCopertine(esito = {}) {
+export function resocontoCopertine(esito = {}, { rifatte = false } = {}) {
   const { ritrovate = 0, senzaByte = 0, senzaImmagine = 0, fermato = false } = esito;
   const parti = [];
+  const fatta = rifatte ? ["rifatta", "rifatte"] : ["ritrovata", "ritrovate"];
   if (ritrovate)
-    parti.push(ritrovate === 1 ? "una copertina ritrovata 🖼" : `${ritrovate} copertine ritrovate 🖼`);
-  if (senzaImmagine)
+    parti.push(ritrovate === 1 ? `una copertina ${fatta[0]} 🖼` : `${ritrovate} copertine ${fatta[1]} 🖼`);
+  // rifacendo, un file che non si apre lascia la copertina di prima: niente da mettere a mano
+  if (senzaImmagine && rifatte)
+    parti.push(`${senzaImmagine === 1 ? "un fumetto non si è lasciato aprire" : `${senzaImmagine} fumetti non si sono lasciati aprire`}: resta la copertina di prima`);
+  else if (senzaImmagine)
     parti.push(
       senzaImmagine === 1
         ? "un tomo non ce l'ha nel file — puoi mettergliela tu dalla scheda"
@@ -348,6 +376,6 @@ export function resocontoCopertine(esito = {}) {
     );
   if (senzaByte)
     parti.push(`${senzaByte} ${senzaByte === 1 ? "non è" : "non sono"} su questo dispositivo`);
-  if (!parti.length) return "Le copertine erano già tutte al loro posto";
+  if (!parti.length) return rifatte ? "Le copertine dei fumetti erano già nitide" : "Le copertine erano già tutte al loro posto";
   return `${parti.join(", ")}${fermato ? " — giro fermato" : ""}`;
 }

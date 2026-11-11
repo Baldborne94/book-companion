@@ -403,6 +403,107 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «sì, fai il tasto per rifare le copertine dei
+    // fumetti». Una copertina salvata prima della cura (ridotta a bande,
+    // senza il segno della nitida) si rifa' dal file, e il tasto se ne va
+    nome: "le copertine dei fumetti salvate sgranate si rifanno dal file dalla Manutenzione, e il tasto se ne va",
+    async fai({ browser }) {
+      const d = await dispositivo(browser);
+      await importa(d.p, "Racconti.cbz", await fumetto({ prima: pngRighe(1666, 2500, 1, [255, 255, 255], [0, 0, 0]) }), "application/zip");
+      const tasto = () => d.p.getByRole("button", { name: /^🖼 Rifai / });
+      const apri = async () => {
+        await d.p.goto(`${URL_APP}?apri=libreria`);
+        await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
+        await aspetta(1500);
+      };
+      await apri();
+      if (await tasto().count()) throw new Error("una copertina nata dopo la cura e' gia' nitida, e il tasto non dovrebbe esserci");
+      // la copertina di prima della cura: a bande, e senza il segno
+      const stato = (azione) =>
+        d.p.evaluate(async (azione) => {
+          const libro = JSON.parse(localStorage.getItem("bc_books") || "[]").find((b) => b.title === "Racconti");
+          const db = await new Promise((ok, ko) => {
+            const r = indexedDB.open("bc_library");
+            r.onsuccess = () => ok(r.result);
+            r.onerror = () => ko(r.error);
+          });
+          const fai = (store, modo, f) => new Promise((ok, ko) => {
+            const tx = db.transaction(store, modo);
+            const r = f(tx.objectStore(store));
+            tx.oncomplete = () => ok(r?.result);
+            tx.onerror = () => ko(tx.error);
+          });
+          if (azione === "sgrana") {
+            const tela = new OffscreenCanvas(533, 800);
+            const g = tela.getContext("2d");
+            for (let y = 0; y < 800; y += 6) {
+              g.fillStyle = "#fff";
+              g.fillRect(0, y, 533, 3);
+            }
+            const bande = await tela.convertToBlob({ type: "image/jpeg", quality: 0.85 });
+            await fai("covers", "readwrite", (s) => s.put(bande, libro.id));
+            await fai("aux", "readwrite", (s) => s.delete(IDBKeyRange.bound(`nitida_${libro.id}_`, `nitida_${libro.id}_\uffff`)));
+            return null;
+          }
+          const cover = await fai("covers", "readonly", (s) => s.get(libro.id));
+          const segni = await fai("aux", "readonly", (s) => s.getAllKeys(IDBKeyRange.bound(`nitida_${libro.id}_`, `nitida_${libro.id}_\uffff`)));
+          const img = await createImageBitmap(cover);
+          const t = new OffscreenCanvas(img.width, img.height).getContext("2d");
+          t.drawImage(img, 0, 0);
+          const px = t.getImageData(0, 0, img.width, img.height).data;
+          let somma = 0, quadri = 0, n = 0;
+          for (let i = 0; i < px.length; i += 4) {
+            somma += px[i];
+            quadri += px[i] * px[i];
+            n++;
+          }
+          const media = somma / n;
+          return { scarto: Math.round(Math.sqrt(quadri / n - media * media) * 10) / 10, segno: segni.includes(`nitida_${libro.id}_${cover.size}`) };
+        }, azione);
+      const prima = await stato();
+      if (!prima.segno) throw new Error("la copertina nata all'import non ha il segno della nitida");
+      await stato("sgrana");
+      const sgranata = await stato();
+      if (sgranata.scarto < 40 || sgranata.segno) throw new Error(`la copertina di prima della cura non e' quella voluta: ${JSON.stringify(sgranata)}`);
+      await apri();
+      await finche(() => tasto().count(), 8000, "la copertina sgranata non fa comparire «Rifai»");
+      const scritta = await tasto().first().textContent();
+      await tasto().first().click();
+      await finche(() => testoAvviso(d.p, /una copertina rifatta/), 15000, "il giro non dice di aver rifatto la copertina");
+      const dopo = await stato();
+      if (dopo.scarto > 12 || !dopo.segno) throw new Error(`la copertina rifatta non e' nitida o non ha il segno: ${JSON.stringify(dopo)}`);
+      await apri();
+      if (await tasto().count()) throw new Error("rifatta la copertina, il tasto c'e' ancora");
+      return { guasti: d.guasti, nota: `«${scritta.trim()}»: il grigio oscillava di ${sgranata.scarto}, rifatta di ${dopo.scarto}, col segno; poi il tasto non c'e' piu'` };
+    },
+  },
+  {
+    // chiesto dal lettore, con la foto del pannello: «The World of Elan che
+    // comprende diverse saghe scritta da Michael J. Sullivan come mai non le
+    // riconosce ma le vede solo come saghe singole a parte?»
+    nome: "«The World of Elan» per nome e' il mondo intero di Sullivan, nella raccolta del lettore, coi suoi gia' sullo scaffale",
+    async fai({ browser }) {
+      const r = (id, title) => ({ id, title, author: "Michael J. Sullivan", saga: "The Riyria Revelations", fileType: "nessuno", fileTolto: true, addedAt: 1 });
+      const libri = [r("e1", "The Crown Conspiricy"), r("e2", "Avempartha"), r("e3", "Nyphron Rising")];
+      const d = await dispositivo(browser, {
+        misura: TABLET,
+        prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});`,
+      });
+      const { p } = d;
+      await p.goto(`${URL_APP}?apri=libreria`);
+      await p.getByRole("button", { name: "📥 Senza file" }).click();
+      await p.getByRole("textbox", { name: "Nome della saga" }).fill("The World of Elan");
+      await p.getByRole("button", { name: "🔍 Cerca i libri" }).click();
+      await finche(() => p.getByText(/tutte le guide dell'app di questo mondo/).count(), 5000, "«The World of Elan» non e' un mondo dell'app");
+      const raccolta = await p.getByRole("combobox", { name: "Raccolta" }).inputValue();
+      if (raccolta !== "The Riyria Revelations") throw new Error(`la raccolta proposta non e' quella del lettore: «${raccolta}»`);
+      const gia = await p.getByText("✓ è già sullo scaffale").count();
+      if (gia !== 3) throw new Error(`gia' sullo scaffale: ${gia} invece dei tre del lettore`);
+      for (const t of ["Age of Myth", "The Crown Tower", "Nolyn", "Drumindor"]) if (!(await p.getByText(t, { exact: true }).count())) throw new Error(`nel mondo manca «${t}»`);
+      return { guasti: d.guasti, nota: `il mondo intero nella raccolta «${raccolta}», ${gia} gia' sullo scaffale` };
+    },
+  },
+  {
     nome: "un ePub si importa e si apre",
     async fai({ browser }) {
       const d = await dispositivo(browser);
