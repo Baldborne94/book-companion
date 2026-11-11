@@ -526,6 +526,16 @@ export function lettiDelCammino(
   return { letti, quante };
 }
 
+// IL NOME DI UNA SERIE DENTRO UN MONDO: la guida, e il ciclo dopo di lei
+// quando e' un'altra cosa. Nel Cosmere «Era One» da sola non dice di quale
+// guida, e Elantris un ciclo non ce l'ha: «Mistborn · Era One», «Cosmere
+// Standalones». In Malazan il ciclo e' la guida, e si dice una volta.
+export function serieNelMondo(voce) {
+  const guida = voce?.guida || "";
+  const c = voce?.c || "";
+  return c && c !== guida ? `${guida} · ${c}` : guida;
+}
+
 // Le tappe raccolte per PARTE, nell'ordine in cui la guida le incontra.
 // Si raggruppa qui e non nel componente per la ragione di sempre: un
 // raggruppamento che rimescola non alza nessun errore, cambia solo
@@ -541,7 +551,7 @@ export function perParte(tappe = [], { fila = false } = {}) {
   if (fila) {
     const parti = [];
     for (const t of tappe) {
-      const nome = t?.voce?.c || "";
+      const nome = serieNelMondo(t?.voce);
       const ultima = parti[parti.length - 1];
       if (ultima && ultima.parte === nome) ultima.tappe.push(t);
       else parti.push({ parte: nome, tappe: [t] });
