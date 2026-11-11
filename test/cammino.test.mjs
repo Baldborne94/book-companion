@@ -10,7 +10,7 @@
 // non è tua ti fa saltare un libro, una tua data per mancante te lo fa
 // ricomprare.
 import { banco } from "./aiuto.mjs";
-import { camminoDi, camminiDi, camminoDellaGuida, guideAccanto, guideIntere, perParte } from "../src/lib/cammino.js";
+import { camminoDi, camminiDi, camminoDellaGuida, guideAccanto, guideIntere, perParte, accantoInVista } from "../src/lib/cammino.js";
 import { TAVOLE } from "../src/lib/sagaBooks.js";
 import HORUS, { SAGA as SAGA_HH } from "../src/data/horusHeresy.js";
 
@@ -191,14 +191,22 @@ export default async (t) => {
     const libri = [{ id: "h", title: "Horus Rising", author: "Dan Abnett" }, { id: "m", title: "Mort", author: "Terry Pratchett" }];
     const qui = camminiDi(libri, { scaffale: [libri[0]] });
     const accanto = guideAccanto(qui, libri);
-    t.eq("accanto all'Eresia le altre guide del 40K", accanto.map((c) => c.saga).join(", "), "Gaunt's Ghosts, Eisenhorn, Ravenor");
-    t.eq("…a zero volumi, col loro conto", accanto.map((c) => `${c.tue}/${c.volumi}`).join(" "), "0/15 0/4 0/3");
+    // da quando ci sono le saghe di `data/warhammer40k.js` sono venti: si
+    // guardano le prime, nell'ordine della tavola, e il conto
+    t.eq("accanto all'Eresia le altre guide del 40K", accanto.slice(0, 4).map((c) => c.saga).join(", "), "Gaunt's Ghosts, Eisenhorn, Ravenor, Ciaphas Cain");
+    t.eq("…tutte", accanto.length, 20);
+    t.eq("…a zero volumi, col loro conto", accanto.slice(0, 4).map((c) => `${c.tue}/${c.volumi}`).join(" "), "0/15 0/4 0/3 0/11");
+    // e sul ripiano non sono venti tasti: oltre `ACCANTO_IN_VISTA` stanno
+    // dietro un tasto solo, che le apre
+    t.eq("oltre quattro, chiuse dietro un tasto", accantoInVista(accanto, false).length, 0);
+    t.eq("…aperte, tutte", accantoInVista(accanto, true).length, 20);
+    t.eq("fino a quattro si vedono sempre", accantoInVista(accanto.slice(0, 4), false).length, 4);
     const disco = camminiDi(libri, { scaffale: [libri[1]] });
     t.eq("accanto al Mondo Disco niente: un universo suo non lo dichiara", guideAccanto(disco, libri).length, 0);
     t.eq("e senza cammini niente", guideAccanto([], libri).length, 0);
     const conGaunt = [...libri, { id: "g", title: "First and Only", author: "Dan Abnett" }];
     const due = camminiDi(conGaunt, { scaffale: [libri[0], conGaunt[2]] });
-    t.eq("una guida gia' sul ripiano non si ripete accanto", guideAccanto(due, conGaunt).map((c) => c.saga).join(", "), "Eisenhorn, Ravenor");
+    t.eq("una guida gia' sul ripiano non si ripete accanto", guideAccanto(due, conGaunt).some((c) => c.saga === "Gaunt's Ghosts"), false);
   }
   {
     // senza ripiano si conta su quel che si è ricevuto, com'era prima

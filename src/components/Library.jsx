@@ -28,7 +28,7 @@ import { BarraCloud, PesoQui } from "./BarraCloud.jsx";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
 import { famigliaDi } from "../data/generi.js";
 import { riconosci, capitoloDi } from "../lib/sagaBooks.js";
-import { camminiDi, guideAccanto, mondiDi } from "../lib/cammino.js";
+import { camminiDi, guideAccanto, mondiDi, accantoInVista, ACCANTO_IN_VISTA } from "../lib/cammino.js";
 import { segnaposto } from "../lib/segnaposto.js";
 import BookCover from "./BookCover.jsx";
 import Disposizione from "./Disposizione.jsx";
@@ -361,8 +361,12 @@ function TastoCammino({ libri, tutti, riconosciuti, onCammino }) {
       mondi: mondiDi(qui, tutti || libri, { riconosce, scaffale: libri }),
     };
   }, [libri, tutti, riconosciuti, onCammino]);
+  // le guide accanto, quando sono tante, dietro un tasto solo (le saghe del
+  // 40K sono venti)
+  const [aperte, setAperte] = useState(false);
   if (!cammini.length) return null;
-  const tutteQui = [...mondi, ...cammini, ...accanto];
+  const tutteQui = [...mondi, ...cammini, ...accantoInVista(accanto, aperte)];
+  const chiuse = accanto.length > ACCANTO_IN_VISTA;
   return (
     <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
       {tutteQui.map((cammino) => (
@@ -391,6 +395,24 @@ function TastoCammino({ libri, tutti, riconosciuti, onCammino }) {
               : `📜 ${cammino.saga}`}
         </button>
       ))}
+      {chiuse && (
+        <button
+          onClick={() => setAperte((a) => !a)}
+          aria-expanded={aperte}
+          style={{
+            fontSize: F.piccolo,
+            fontFamily: "inherit",
+            fontWeight: 400,
+            color: C.muted,
+            padding: "2px 8px",
+            minHeight: 32,
+            borderRadius: R.tondo,
+            border: `1px dashed ${C.border}`,
+          }}
+        >
+          {aperte ? "▴ Meno guide" : `📜 Altre ${accanto.length} guide`}
+        </button>
+      )}
     </span>
   );
 }

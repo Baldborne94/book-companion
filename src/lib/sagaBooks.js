@@ -22,6 +22,7 @@ import { LA_TRILOGIA, I_SOLI, LA_FOLLIA, TRILOGIA, A_SE, FOLLIA, UNIVERSO as MON
 import { I_FEDELI, IL_SANGUE, FEDELI, SANGUE, UNIVERSO as MONDO_BL } from "../data/banishedLands.js";
 import { EMPIRE, ASCESA, KHARKANAS_LIBRI, WITNESS_LIBRI, MALAZAN_EMPIRE, PATH, KHARKANAS, WITNESS, ORDINE as ORDINE_MALAZAN } from "../data/malazanMondo.js";
 import { ORDINE as ORDINE_COSMERE } from "../data/cosmereMondo.js";
+import { GUIDE as GUIDE_40K, UNIVERSO as MONDO_40K } from "../data/warhammer40k.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 
 // Riconoscere il romanzo dal titolo: i metadati degli EPUB sono spesso vuoti,
@@ -98,6 +99,8 @@ export const TAVOLE = [
   // serie semplici, e niente ripiego sull'autore per la stessa ragione
   { saga: SAGA_EI, libri: EISENHORN, ordine: (b) => b.o, autore: null, fuori: [], universo: "Warhammer 40K", novelle: NOVELLE_EI },
   { saga: SAGA_RA, libri: RAVENOR, ordine: (b) => b.o, autore: null, fuori: [], universo: "Warhammer 40K", novelle: NOVELLE_RA },
+  // le altre saghe del 40K e i romanzi a se' (vedi `data/warhammer40k.js`)
+  ...GUIDE_40K.map((g) => ({ saga: g.saga, libri: g.libri, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_40K })),
   // Malazan e Stormlight (vedi `data/malazan.js`, `data/stormlight.js`):
   // serie semplici, l'autore su ogni volume (Erikson e Sanderson scrivono
   // anche altre serie nello stesso mondo)

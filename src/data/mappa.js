@@ -295,8 +295,8 @@ export const MAPPA = [
   {
     luogo: "libreria",
     nome: "Il cammino di una saga",
-    cosa: "La guida di lettura per intero — anche i volumi che non hai — con dentro i tuoi, in ordine e divisa per parti; quel che manca va in Da prendere con un tocco. Le guide: Mondo Disco, l'Eresia di Horus (il percorso CD8D: settantuno tappe, antologie e romanzi 40K al loro posto), la Seconda Apocalisse, Hellboy, Gaunt's Ghosts (i quindici romanzi in quattro cicli), Eisenhorn e Ravenor (con l'omnibus che contiene i romanzi), il Libro dei Caduti di Malazan, le Cronache della Folgorluce, Mistborn (le due ere), Lockwood & Co., Bartimaeus e le Cronache dell'assassino del re (anche coi titoli italiani).",
-    dove: "Il tasto 📜 sull'intestazione del ripiano, uno per guida; sotto «Warhammer 40K» ci sono tutte le guide del 40K, anche quelle che non hai cominciato (col conto: «📜 Ravenor · 0/3»). Tutte le guide si aprono anche da «Da prendere», in «📜 Le guide complete».",
+    cosa: "La guida di lettura per intero — anche i volumi che non hai — con dentro i tuoi, in ordine e divisa per parti; quel che manca va in Da prendere con un tocco. Le guide: Mondo Disco, l'Eresia di Horus (il percorso CD8D: settantuno tappe, antologie e romanzi 40K al loro posto), la Seconda Apocalisse, Hellboy, Gaunt's Ghosts (i quindici romanzi in quattro cicli), Eisenhorn e Ravenor (con l'omnibus che contiene i romanzi), il Libro dei Caduti di Malazan, le Cronache della Folgorluce, Mistborn (le due ere), Lockwood & Co., Bartimaeus e le Cronache dell'assassino del re (anche coi titoli italiani), e le saghe del 40K più belle e famose (Ciaphas Cain, Night Lords, Space Wolf, Bequin, Cadia e altre undici) con una guida dei romanzi a sé consigliati.",
+    dove: "Il tasto 📜 sull'intestazione del ripiano, uno per guida; sotto «Warhammer 40K» ci sono tutte le guide del 40K, anche quelle che non hai cominciato (col conto: «📜 Ravenor · 0/3»); quando sono tante stanno dietro «📜 Altre N guide». Tutte le guide si aprono anche da «Da prendere», in «📜 Le guide complete».",
   },
   {
     luogo: "libreria",

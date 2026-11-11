@@ -521,3 +521,26 @@ App PWA local-first per la biblioteca personale: EPUB/PDF caricati dall'utente, 
   - un file che non si sa dove sia.
 
   Il disco vince sull'altro dispositivo perché da qui si legge. Mutazioni: otto, tutte prese. Misurato sull'app intera alla misura del PC e del tablet, con due schede che stanno sul tablet e una senza ebook: niente tasto, e la riga «3 copertine che mancano non si ritrovano da qui: 2 su un altro dispositivo…, 1 è una scheda senza ebook…». Niente sbordo, nessun errore.
+
+- **LE SAGHE DEL 40K E I ROMANZI A SÉ** (`data/warhammer40k.js`, `GUIDE_40K` nelle `TAVOLE`, `accantoInVista` e `ACCANTO_IN_VISTA` in `lib/cammino.js`, «📜 Altre N guide» in `TastoCammino`; `test/warhammer40k.test.mjs`). Il lettore chiedeva come si gestisce il 40K («ci sono tanti libri e tante saghe»), e poi: «vorrei tutte le saghe e i libri singoli più belli dell'universo 40K da leggere». Visto l'elenco proposto: «per ora lasciamo solo le più belle e le più famose, poi vediamo se aggiungere per la lore».
+
+  **La scelta l'ha fatta Hardcover, non la memoria.** Sono stati letti i 1381 libri della serie «Warhammer 40,000», col voto e i lettori di ognuno, e raggruppati per serie. Le collane (Space Marine Battles, Warhammer Crime, Warhammer Horror, Imperial Guard, i calendari dell'Avvento) non sono saghe: i loro libri si leggono da soli. Sono entrate:
+  - le saghe con un voto di almeno 3,7 e una cinquantina di lettori, sedici: Ciaphas Cain, Bequin, Trazyn and Orikan, The Dark Coil, Space Wolf, Night Lords, Vaults of Terra, Dark Imperium, Belisarius Cawl, Fabius Bile, Watchers of the Throne, Cadia, Ahriman, Grey Knights, Path of the Dark Eldar, Yarrick;
+  - i romanzi a sé con almeno 3,8, dodici;
+  - fuori per il voto, The Beast Arises, Dawn of Fire, gli Ultramarines e altre sette, che il lettore può chiedere dopo.
+
+  **Gli ordini vengono dalla serie su Hardcover**, con la stessa scelta di «Senza file» (`volumiDaHardcover`). Hardcover per il 40K è disordinato e si è guardato libro per libro:
+  - Ciaphas Cain non aveva il 7;
+  - Space Wolf e Dark Imperium avevano al n° 1 o 2 l'edizione italiana o polacca;
+  - Ahriman e Grey Knights non avevano il n° 1;
+  - Exodus, The Masque of Vyle e mezza serie di Yarrick sono novelle numerate come romanzi;
+  - The Dark Coil non numera niente, quindi i tre romanzi usciti vanno per anno;
+  - i coautori di The Wicked and the Damned, scritti prima a memoria, erano sbagliati, e si sono presi dalla scheda.
+
+  La tavola dice tutto questo. Le storie brevi restano fuori, per ora.
+
+  **I Night Lords e Storm of Iron stavano nel prologo dell'Eresia** come letture di sfondo: adesso hanno una guida loro e vanno lì, per la regola di Malleus («la tappa batte il contorno»). I test che usavano Soul Hunter come esempio di prologo usano Angels of Darkness, che nessun'altra guida ha.
+
+  **Venti guide accanto sono un muro**: sotto «Warhammer 40K» i tasti 📜 di quelle a zero volumi sarebbero stati venti sull'intestazione del ripiano. Oltre quattro stanno dietro «📜 Altre N guide», che le apre e le richiude.
+
+  Il test della tavola fissa il numero di romanzi di ogni guida e il primo di ognuna, perché un volume tolto per sbaglio non faceva cadere niente (mutazione provata). Mutazioni: dieci, tutte prese. Misurato sull'app intera alla misura del tablet e del PC, con cinque libri del 40K: chiuse tre guide più «📜 Altre 18 guide», aperte ventuno col loro conto, il cammino di Ciaphas Cain che si apre. Niente sbordo, nessun errore.
