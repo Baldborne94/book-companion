@@ -1,12 +1,19 @@
 // L'ORDINE DI LETTURA DI UN MONDO INTERO (`camminoDelMondo`, `MONDI`),
 // chiesto dal lettore con la sua raccolta «Malazan universe»: «mi metti
 // l'ordine di lettura di tutti i libri del malazan universe e non solo
-// delle singole serie?». Quel che sbaglia in silenzio: un ordine che non e'
-// quello di uscita, le serie raccolte per nome (che rifanno l'ordine di una
-// guida), e un numero del mondo scritto al posto di quello della serie.
+// delle singole serie?», e poi: «riesci a fare si' che possa sistemare la
+// libreria pero' con il tutto malazan?» (lo scaffale in fila, scelto da
+// lui). Quel che sbaglia in silenzio: le serie raccolte per nome (che
+// rifanno l'ordine di una guida), due numerazioni che si riscrivono a
+// vicenda (il mondo e la guida), e un libro nuovo che entra col numero
+// della serie in una raccolta numerata col mondo.
 import { MONDI } from "../src/lib/sagaBooks.js";
 import { camminiDi, camminoDelMondo, mondiDi, perParte, rifaiCammino, prossimoPasso } from "../src/lib/cammino.js";
 import { numerazioneGuida, serieDaScrivere } from "../src/lib/numeraCammino.js";
+import { universiNumerati, ripassaSciolti } from "../src/lib/sagaBooks.js";
+import { completaSaga } from "../src/lib/importBook.js";
+import { disponi, raccogliCicli } from "../src/lib/ripiani.js";
+import { nextInSaga } from "../src/lib/saga.js";
 import { vociDallaGuida } from "../src/lib/senzaFile.js";
 
 const L = (id, title, author, extra = {}) => ({ id, title, author, fileType: "epub", ...extra });
@@ -33,8 +40,8 @@ export default async (t) => {
     "Gardens of the Moon, Deadhouse Gates, Memories of Ice, House of Chains, Midnight Tides, Night of Knives, The Bonehunters"
   );
   const di = (titolo) => c.tappe.find((x) => x.voce.t === titolo);
-  t.eq("ogni volume tiene il numero della SUA serie (Toll the Hounds e' l'8)", di("Toll the Hounds").posto, 8);
-  t.eq("…e Night of Knives l'1 della sua", di("Night of Knives").posto, 1);
+  t.eq("il numero del cammino e' il posto nel mondo (Toll the Hounds e' il 10)", di("Toll the Hounds").posto, 10);
+  t.eq("…Night of Knives il 6, e la voce tiene quello della serie", `${di("Night of Knives").posto} ${di("Night of Knives").voce.o}`, "6 1");
   t.eq("i libri si trovano nella loro guida (non «altrui»)", ["Toll the Hounds", "Night of Knives"].map((x) => `${!!di(x).libro}${!!di(x).altrui}`).join(), "truefalse,truefalse");
   t.eq("hai 3 dei 25 volumi", `${c.tue}/${c.volumi}`, "3/25");
   t.eq("quel che il ripiano ha fuori dal mondo si conta", `${c.fuori} ${c.dalRipiano}`, "1 3");
@@ -49,9 +56,9 @@ export default async (t) => {
   t.eq("raccolte per nome sarebbero cinque parti, una per guida", perParte(c.tappe).length, 5);
   t.eq("senza `fila` resta il raggruppamento di prima", perParte(c.tappe).map((p) => p.tappe.length).join(), "10,6,2,4,3");
 
-  // I NUMERI: quelli delle serie, mai il posto nel mondo
+  // I NUMERI: «Mettili in ordine» scrive il posto nel mondo
   const numeri = numerazioneGuida(c);
-  t.eq("Toll the Hounds scritto 3 diventa 8, non il suo posto nel mondo", numeri.map((n) => `${n.id}:${n.a}`).sort().join(), "nok:1,toll:8");
+  t.eq("Toll the Hounds scritto 3 diventa 10, Night of Knives 6", numeri.map((n) => `${n.id}:${n.a}`).sort().join(), "nok:6,toll:10");
   t.eq("la serie e' quella della guida del volume", serieDaScrivere(c).map((s) => `${s.id}:${s.a}`).sort().join(), "nok:Novels of the Malazan Empire,toll:Malazan Book of the Fallen");
 
   // IL PROSSIMO PASSO e' il primo del mondo che non hai letto
@@ -79,6 +86,69 @@ export default async (t) => {
   const voci = vociDallaGuida(c, libri);
   t.eq("tutti e 25, in ordine di mondo", voci.map((v) => v.titolo).slice(4, 7).join(", "), "Midnight Tides, Night of Knives, The Bonehunters");
   const nok = voci.find((v) => v.titolo === "Night of Knives");
-  t.eq("Night of Knives: la sua serie, il suo numero, la raccolta del lettore", `${nok.serie} · ${nok.numero} · ${nok.saga} · ${nok.autore}`, "Novels of the Malazan Empire · 1 · Malazan universe · Ian C. Esslemont");
+  t.eq("Night of Knives: la sua serie, il numero della serie (la biblioteca non e' ancora numerata col mondo), la raccolta del lettore", `${nok.serie} · ${nok.numero} · ${nok.saga} · ${nok.autore}`, "Novels of the Malazan Empire · 1 · Malazan universe · Ian C. Esslemont");
   t.eq("quel che hai e' segnato", voci.filter((v) => v.gia).map((v) => v.titolo).join(), "Gardens of the Moon,Night of Knives,Toll the Hounds");
+
+  // LA BIBLIOTECA NUMERATA COL MONDO: quella che resta dopo «Mettili in
+  // ordine» del mondo
+  const prima = [
+    L("gotm", "Gardens of the Moon", "Steven Erikson", { saga: "Malazan universe", sagaOrder: 1, series: "Malazan Book of the Fallen" }),
+    L("nok", "Night of Knives", "Ian C. Esslemont", { saga: "Malazan universe", sagaOrder: 1, series: "Novels of the Malazan Empire" }),
+    L("tb", "The Bonehunters", "Steven Erikson", { saga: "Malazan universe", sagaOrder: 6, series: "Malazan Book of the Fallen" }),
+    L("toll", "Toll the Hounds", "Steven Erikson", { saga: "Malazan universe", sagaOrder: 8, series: "Malazan Book of the Fallen" }),
+  ];
+  t.eq("numerata per serie, il mondo non e' acceso", universiNumerati(prima).size, 0);
+  const scritti = new Map(numerazioneGuida(camminoDelMondo(mondo, prima)).map((n) => [n.id, n.a]));
+  const dopo = prima.map((b) => (scritti.has(b.id) ? { ...b, sagaOrder: scritti.get(b.id) } : b));
+  t.eq("i numeri scritti dal mondo", dopo.map((b) => `${b.id}:${b.sagaOrder}`).join(), "gotm:1,nok:6,tb:7,toll:10");
+  t.eq("…e adesso la biblioteca e' numerata col mondo", [...universiNumerati(dopo)].join(), "Malazan");
+  t.eq("un solo libro col posto del mondo contro tre della serie non basta", universiNumerati([dopo[1], ...prima.slice(2)]).size, 0);
+
+  // le guide non riscrivono quel che il mondo ha scritto
+  const guidaMB = camminiDi(dopo, { scaffale: dopo }).find((x) => x.saga === "Malazan Book of the Fallen");
+  t.eq("il cammino della guida usa il posto nel mondo", guidaMB.tappe.find((x) => x.voce.t === "Toll the Hounds").posto, 10);
+  t.eq("…e non propone di rimettere 8", numerazioneGuida(guidaMB).length, 0);
+  const conCosmere = [...dopo, L("wor", "Words of Radiance", "Brandon Sanderson", { saga: "Cosmoverse", sagaOrder: 2 })];
+  t.eq("…e un altro mondo, non numerato, resta coi suoi", camminiDi(conCosmere, { scaffale: conCosmere }).find((x) => x.saga === "The Stormlight Archive").tappe.find((x) => x.voce.t === "Words of Radiance").posto, 2);
+  t.eq("…su una biblioteca per serie, la guida resta coi suoi numeri", camminiDi(prima, { scaffale: prima }).find((x) => x.saga === "Malazan Book of the Fallen").tappe.find((x) => x.voce.t === "Toll the Hounds").posto, 8);
+
+  // un libro nuovo entra col suo posto nel mondo
+  const meta = { title: "Dust of Dreams", author: "Steven Erikson" };
+  completaSaga(meta, null, "Dust of Dreams.epub", dopo);
+  t.eq("all'import, Dust of Dreams nella raccolta numerata col mondo e' l'11", `${meta.saga} · ${meta.sagaOrder}`, "Malazan universe · 11");
+  const meta2 = { title: "Dust of Dreams", author: "Steven Erikson" };
+  completaSaga(meta2, null, "Dust of Dreams.epub", prima);
+  t.eq("…in una per serie, il 9", meta2.sagaOrder, 9);
+  const wor = { title: "Words of Radiance", author: "Brandon Sanderson" };
+  completaSaga(wor, null, "Words of Radiance.epub", dopo);
+  t.eq("…e un libro di un altro mondo tiene il numero della sua serie", wor.sagaOrder, 2);
+  const sciolto = L("dod", "Dust of Dreams", "Steven Erikson");
+  t.eq("anche dal giro dei libri sciolti", ripassaSciolti([...dopo, sciolto]).libri.find((b) => b.id === "dod").sagaOrder, 11);
+  t.eq("…e per serie il 9", ripassaSciolti([...prima, sciolto]).libri.find((b) => b.id === "dod").sagaOrder, 9);
+
+  // le schede senza file del mondo, in una biblioteca numerata col mondo
+  const vociDopo = vociDallaGuida(camminoDelMondo(mondo, dopo), dopo);
+  t.eq("le schede nuove prendono il posto nel mondo", vociDopo.find((v) => v.titolo === "Return of the Crimson Guard").numero, 9);
+
+  // il prossimo volume segue il mondo
+  const letti = { gotm: "read", nok: "read", tb: "read" };
+  const sullo = [...dopo, L("rg", "Reaper's Gale", "Steven Erikson", { saga: "Malazan universe", sagaOrder: 8, series: "Malazan Book of the Fallen" }), L("rcg", "Return of the Crimson Guard", "Ian C. Esslemont", { saga: "Malazan universe", sagaOrder: 9, series: "Novels of the Malazan Empire" })];
+  const statoDi = (id) => letti[id] || "unread";
+  t.eq("letto The Bonehunters (7), il prossimo e' Reaper's Gale (8)", nextInSaga(sullo[2], sullo, statoDi, () => 0)?.id, "rg");
+  letti.rg = "read";
+  t.eq("…e dopo Reaper's Gale, Return of the Crimson Guard di Esslemont (9)", nextInSaga(sullo[4], sullo, statoDi, () => 0)?.id, "rcg");
+
+  // LO SCAFFALE IN FILA: le serie si alternano come nel cammino
+  const inOrdine = [...sullo].sort((a, b) => a.sagaOrder - b.sagaOrder);
+  t.eq(
+    "in fila, una corsa per serie",
+    raccogliCicli(inOrdine, "series", null, true).map((g) => `${g.nome}·${g.libri.length}`).join(" | "),
+    "Malazan Book of the Fallen·1 | Novels of the Malazan Empire·1 | Malazan Book of the Fallen·2 | Novels of the Malazan Empire·1 | Malazan Book of the Fallen·1"
+  );
+  t.eq("raccolte per nome sarebbero due", raccogliCicli(inOrdine, "series").length, 2);
+  const inFila = (ll) => universiNumerati(ll).size > 0;
+  const rip = disponi(sullo, null, "auto", null, null, inFila).find((r) => r.nome === "Malazan universe");
+  t.eq("disponi mette in fila la raccolta numerata col mondo", rip.cicli.map((g) => g.nome).join(" | "), "Malazan Book of the Fallen | Novels of the Malazan Empire | Malazan Book of the Fallen | Novels of the Malazan Empire | Malazan Book of the Fallen");
+  const ripPrima = disponi(prima, null, "auto", null, null, inFila).find((r) => r.nome === "Malazan universe");
+  t.eq("…e una per serie resta divisa per serie", ripPrima.cicli.map((g) => g.nome).join(" | "), "Malazan Book of the Fallen | Novels of the Malazan Empire");
 };

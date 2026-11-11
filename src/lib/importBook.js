@@ -1,7 +1,7 @@
 import { putFile, getFile, putCover, getCover, removeBookData, removeAux, putAux, spazioEsaurito } from "./bookStore.js";
 import { getProgress } from "./library.js";
 import { getMarks, getHighlights } from "./annotations.js";
-import { riconosci, nomeInBiblioteca, chiaveSaga, raccoltaDellaGuida } from "./sagaBooks.js";
+import { riconosci, nomeInBiblioteca, chiaveSaga, raccoltaDellaGuida, universiNumerati, numeroPerLaBiblioteca } from "./sagaBooks.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 import { dalMetadata } from "./sinossi.js";
 import { collana, chiaveCollana } from "./collana.js";
@@ -690,7 +690,9 @@ export function completaSaga(meta, letto, fileName, libri) {
     riconosciuto = true;
     // nella raccolta che il lettore usa per quella guida o il suo universo
     meta.saga = raccoltaDellaGuida(saga.saga, libri) || saga.saga;
-    if (saga.sagaOrder != null) meta.sagaOrder = saga.sagaOrder;
+    // e col posto nel mondo, dove la raccolta e' numerata col mondo
+    const n = numeroPerLaBiblioteca(saga, universiNumerati(libri));
+    if (n != null) meta.sagaOrder = n;
     // il CICLO era riconosciuto e poi buttato via. E' l'informazione che
     // dice quale storia continua un volume: nel Mondo Disco «cosa e'
     // successo prima» sono le Guardie, non tutti e quarantuno i romanzi.

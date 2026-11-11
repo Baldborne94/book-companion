@@ -1,4 +1,4 @@
-import { riconosci, TAVOLE, MONDI, fuoriDallaStoria } from "./sagaBooks.js";
+import { riconosci, TAVOLE, MONDI, fuoriDallaStoria, posizioneNelMondo, universiNumerati } from "./sagaBooks.js";
 import { segnaposto } from "./segnaposto.js";
 import { getStatus, getProgress } from "./library.js";
 import { raccontiLetti, chiaveRacconto } from "./racconti.js";
@@ -124,6 +124,7 @@ function riconosciuti(libri, riconosce) {
   // Eisenhorn e una tappa del prologo dell'Eresia, e il cammino
   // dell'Eresia deve trovarlo anche se il riconoscimento lo da' all'altra
   const perTitolo = new Map();
+  const letti = new Map();
   for (const b of libri) {
     if (!b) continue;
     const r = sapere(b);
@@ -131,6 +132,7 @@ function riconosciuti(libri, riconosce) {
     // autore («questo e' un Pratchett, la saga gliela do lo stesso»), e li'
     // non sappiamo di quale volume si tratti
     if (!r?.titolo) continue;
+    letti.set(b, r);
     sagaDi.set(b.id, r.saga);
     const k = chiave(r.saga, r.titolo);
     // due copie dello stesso volume sono UNA tappa, e vince la prima:
@@ -138,7 +140,10 @@ function riconosciuti(libri, riconosce) {
     if (!miei.has(k)) miei.set(k, b);
     if (!perTitolo.has(r.titolo)) perTitolo.set(r.titolo, b);
   }
-  return { miei, sagaDi, perTitolo };
+  // i mondi che questa biblioteca numera col mondo: le loro guide prendono
+  // il posto nel mondo, o «Mettili in ordine» di una guida riscriverebbe
+  // quel che quello del mondo ha appena scritto
+  return { miei, sagaDi, perTitolo, numerati: universiNumerati([...letti.keys()], (b) => letti.get(b)) };
 }
 
 // LA RACCOLTA CHE CONTIENE UN ROMANZO, da tutte le guide: Malleus sta
@@ -150,7 +155,7 @@ const CONTENITORI = new Map(
   TAVOLE.flatMap((t) => t.libri.filter((v) => v.in && v.tipo !== "racconto").map((v) => [v.t, v.in]))
 );
 
-function costruisci(tav, { miei, perTitolo }, contati) {
+function costruisci(tav, { miei, perTitolo, numerati }, contati) {
   // UN RACCONTO NON E' UN FILE, e il suo «ce l'hai» e' quello della sua
   // ANTOLOGIA: «The Aurelian» sta dentro «Eye of Terra», e possederlo vuol
   // dire possedere quel volume. Cercarlo per titolo non troverebbe mai
@@ -184,7 +189,9 @@ function costruisci(tav, { miei, perTitolo }, contati) {
   // UNA SCHEDA SENZA FILE (`segnaposto`) e' sullo scaffale ma il libro non
   // ce l'hai: la riga la apre, ma non conta fra i tuoi e non e' da aprire
   const conSegno = (t) => (t.libro && segnaposto(t.libro) ? { ...t, daCaricare: true } : t);
-  const tappe = postiDelCammino(tav.libri.map((voce) => conSegno(suo(voce))), tav.ordine);
+  const numerato = !!numerati?.has(tav.universo);
+  const ordine = numerato && !tav.mondo ? (voce) => posizioneNelMondo(tav.saga, voce.t)?.mondo ?? null : tav.ordine;
+  const tappe = postiDelCammino(tav.libri.map((voce) => conSegno(suo(voce))), ordine);
   // E ADESSO I DUE INSIEMI SONO DUE, dove prima uno bastava.
   //
   // Il filtro sui racconti era stato TOLTO perche' non guardava niente: un
@@ -215,6 +222,8 @@ function costruisci(tav, { miei, perTitolo }, contati) {
     parti: !!tav.parti,
     // un mondo intero (`camminoDelMondo`): le serie si alternano
     mondo: !!tav.mondo,
+    // la biblioteca numera gia' questo mondo col posto nel mondo
+    numerato,
     tappe,
     tue: volumiTuoi,
     // QUANTI VOLUMI HA LA GUIDA, che non e' quante righe ha la tavola: da
@@ -298,17 +307,21 @@ export function guideAccanto(cammini = [], libri = [], { tavole = TAVOLE, ricono
 // L'ORDINE DI LETTURA DI UN MONDO INTERO. Chiesto dal lettore con la foto
 // della sua raccolta «Malazan universe»: «mi metti l'ordine di lettura di
 // tutti i libri del malazan universe e non solo delle singole serie?».
-// Le guide di un `universo` restano guide a se' (ogni serie tiene i suoi
-// numeri, quelli dei file); il mondo (`MONDI` in `sagaBooks.js`) e' solo
-// l'ORDINE in cui le loro voci si leggono insieme, scritto nella tavola
-// del mondo e mai calcolato: ogni voce porta la sua guida (`guida`) e il
-// suo numero, e il cammino si costruisce come quello di una guida. Una
+// Le guide di un `universo` restano guide a se'; il mondo (`MONDI` in
+// `sagaBooks.js`) e' l'ORDINE in cui le loro voci si leggono insieme,
+// scritto nella tavola del mondo e mai calcolato: ogni voce porta la sua
+// guida (`guida`), e il cammino si costruisce come quello di una guida. Una
 // riga che nessuna guida ha piu' (un titolo cambiato) la dice il test
 // della tavola, prima che arrivi a uno scaffale.
+//
+// IL NUMERO DEL CAMMINO DEL MONDO E' IL POSTO NEL MONDO (`passo`), lo
+// stesso che «🔢 Mettili in ordine di guida» scrive sui volumi (scelto dal
+// lettore: «sistemare la libreria pero' con il tutto malazan»). Il numero
+// della serie resta sulla voce (`o`), e la serie la dice la riga.
 export function tavolaDelMondo(mondo, tavole = TAVOLE) {
   const libri = (mondo?.ordine || [])
-    .map(([guida, titolo]) => ({ ...tavole.find((t) => t.saga === guida)?.libri.find((v) => v.t === titolo), guida }));
-  return { saga: mondo?.nome || "", libri, ordine: (b) => b.o, mondo: true, universo: mondo?.universo };
+    .map(([guida, titolo], i) => ({ ...tavole.find((t) => t.saga === guida)?.libri.find((v) => v.t === titolo), guida, passo: i + 1 }));
+  return { saga: mondo?.nome || "", libri, ordine: (b) => b.passo, mondo: true, universo: mondo?.universo };
 }
 
 export function camminoDelMondo(mondo, libri = [], { tavole = TAVOLE, riconosce, scaffale } = {}) {
