@@ -28,7 +28,7 @@ import { BarraCloud, PesoQui } from "./BarraCloud.jsx";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
 import { famigliaDi } from "../data/generi.js";
 import { riconosci, capitoloDi } from "../lib/sagaBooks.js";
-import { camminiDi, guideAccanto } from "../lib/cammino.js";
+import { camminiDi, guideAccanto, mondiDi } from "../lib/cammino.js";
 import { segnaposto } from "../lib/segnaposto.js";
 import BookCover from "./BookCover.jsx";
 import Disposizione from "./Disposizione.jsx";
@@ -348,14 +348,21 @@ function TastoCammino({ libri, tutti, riconosciuti, onCammino }) {
   // (`guideAccanto`): sotto «Warhammer 40K» c'è anche Gaunt's Ghosts a zero
   // volumi, col conto, perché «dove vedo le saghe che mi mancano?» trovi
   // la risposta dove l'ha cercata
-  const { cammini, accanto } = useMemo(() => {
-    if (!onCammino || !riconosciuti) return { cammini: [], accanto: [] };
+  // E DAVANTI, L'ORDINE DEL MONDO INTERO (`mondiDi`, chiesto dal lettore:
+  // «l'ordine di lettura di tutti i libri del malazan universe e non solo
+  // delle singole serie»): «🌐 Tutto Malazan»
+  const { cammini, accanto, mondi } = useMemo(() => {
+    if (!onCammino || !riconosciuti) return { cammini: [], accanto: [], mondi: [] };
     const riconosce = (b) => riconosciuti.get(b.id);
     const qui = camminiDi(tutti || libri, { riconosce, scaffale: libri });
-    return { cammini: qui, accanto: guideAccanto(qui, tutti || libri, { riconosce }) };
+    return {
+      cammini: qui,
+      accanto: guideAccanto(qui, tutti || libri, { riconosce }),
+      mondi: mondiDi(qui, tutti || libri, { riconosce, scaffale: libri }),
+    };
   }, [libri, tutti, riconosciuti, onCammino]);
   if (!cammini.length) return null;
-  const tutteQui = [...cammini, ...accanto];
+  const tutteQui = [...mondi, ...cammini, ...accanto];
   return (
     <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
       {tutteQui.map((cammino) => (
@@ -377,7 +384,9 @@ function TastoCammino({ libri, tutti, riconosciuti, onCammino }) {
               quella che non sta sul ripiano dice anche quanti ne hai */}
           {tutteQui.length === 1
             ? "📜 Il cammino"
-            : accanto.includes(cammino)
+            : cammino.mondo
+              ? `🌐 ${cammino.saga}`
+              : accanto.includes(cammino)
               ? `📜 ${cammino.saga} · ${cammino.tue}/${cammino.volumi}`
               : `📜 ${cammino.saga}`}
         </button>

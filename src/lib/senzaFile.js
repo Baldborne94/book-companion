@@ -174,6 +174,7 @@ const AUTORI = { Discworld: "Terry Pratchett", Hellboy: "Mike Mignola" };
 // numero, la serie che la guida scrive, e `gia` per quelli che hai (anche
 // solo come scheda: due schede dello stesso libro sarebbero un doppione)
 export function vociDallaGuida(cammino, libri = [], opzioni = {}) {
+  if (cammino?.mondo) return vociDalMondo(cammino, libri, opzioni);
   const tav = TAVOLE.find((t) => t.saga === cammino?.saga);
   if (!tav) return [];
   const saga = sagaPerLaGuida(tav, libri, opzioni);
@@ -200,6 +201,32 @@ export function vociDallaGuida(cammino, libri = [], opzioni = {}) {
     });
   return [...romanzi, ...storie].sort((a, b) => (a.numero ?? Infinity) - (b.numero ?? Infinity));
 }
+// IN UN MONDO ogni voce e' della sua guida (`guida`), e la saga e la serie
+// sono quelle che scriverebbe la sua guida: la stessa scheda da ogni
+// strada. L'ordine resta quello del mondo, e le storie di mezzo stanno
+// nelle guide (un mondo non le ripete).
+function vociDalMondo(cammino, libri, opzioni) {
+  const saghe = new Map();
+  const sagaDi = (tav) => {
+    if (!saghe.has(tav.saga)) saghe.set(tav.saga, sagaPerLaGuida(tav, libri, opzioni));
+    return saghe.get(tav.saga);
+  };
+  return (cammino.tappe || [])
+    .filter((t) => volume(t.voce) && !lettura(t.voce))
+    .map((t) => {
+      const tav = TAVOLE.find((x) => x.saga === t.voce.guida);
+      return {
+        titolo: t.voce.t,
+        autore: t.voce.a || AUTORI[tav.saga] || "",
+        saga: sagaDi(tav),
+        serie: tav.parti ? tav.saga : t.voce.c || "",
+        numero: t.posto,
+        capitolo: t.voce.c || "",
+        gia: !!t.libro,
+      };
+    });
+}
+
 // il prologo e i titoli che la guida dichiara fuori dalla storia non sono
 // volumi della saga da mettere sullo scaffale: la guida li nomina e basta
 // (le antologie si': sono libri della storia, ci stai dentro un racconto
