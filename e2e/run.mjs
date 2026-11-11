@@ -1044,7 +1044,11 @@ const SCENE = [
       // due guide sullo stesso ripiano, un tasto per una
       await finche(() => p.getByRole("button", { name: "📜 Gaunt's Ghosts" }).count(), 8000, "sul ripiano del 40K non c'e' il cammino di Gaunt's Ghosts");
       if (!(await p.getByRole("button", { name: "📜 The Horus Heresy" }).count())) throw new Error("il cammino dell'Eresia e' sparito dal ripiano del 40K");
-      if ((await p.getByRole("button", { name: /^📜 / }).count()) !== 4) throw new Error("sul ripiano del 40K non ci sono quattro cammini (Eresia, Gaunt's Ghosts, Eisenhorn, e Ravenor da cominciare)");
+      // le tre del ripiano, e le guide del 40K da cominciare (Ravenor e le
+      // saghe di `data/warhammer40k.js`) dietro un tasto solo
+      if ((await p.getByRole("button", { name: /^📜 / }).count()) !== 4) throw new Error("sul ripiano del 40K non ci sono tre cammini e il tasto delle altre guide (Eresia, Gaunt's Ghosts, Eisenhorn, «Altre N guide»)");
+      if (await p.getByRole("button", { name: "📜 Ravenor · 0/3" }).count()) throw new Error("le guide accanto non stanno dietro il loro tasto");
+      await p.getByRole("button", { name: /^📜 Altre \d+ guide$/ }).click();
       // «dove vedo le saghe che mi mancano?»: la guida del 40K mai cominciata sta accanto, col conto
       await p.getByRole("button", { name: "📜 Ravenor · 0/3" }).click();
       await finche(() => p.getByText(/Hai 0 dei 3 volumi della guida/).count(), 5000, "la guida di Ravenor accanto non si apre");
@@ -2643,7 +2647,11 @@ const SCENE = [
       await d.p.evaluate(() => (window.__lento = true));
       await d.p.getByRole("button", { name: "🖼 2 copertine dal disco" }).click();
       await finche(() => d.p.getByRole("button", { name: "Fermo qui (1 di 2)" }).count(), 5000, "il giro del disco non dice il suo conto");
-      if (!(await d.p.getByRole("button", { name: "🖼 Ritrova 3 copertine" }).count())) throw new Error("«Ritrova» ha preso il conto del disco");
+      // e «Ritrova» non c'e': qui nessuno dei tre ha il file (segnalato sul
+      // PC: «Ritrova 183 copertine» e poi «183 non sono su questo
+      // dispositivo»); accanto si dice dove stanno, e il disco ha il suo tasto
+      if (await d.p.getByRole("button", { name: /Ritrova/ }).count()) throw new Error("«Ritrova» promette copertine che qui non si leggono");
+      await finche(() => d.p.getByText(/3 copertine che mancano non si ritrovano da qui: 2 hanno il file sul disco .*1 ha un file che non so dove sia/).count(), 5000, "la riga non dice dove stanno le copertine");
       await d.p.evaluate(() => (window.__lento = false));
       const copertine = () =>
         d.p.evaluate(

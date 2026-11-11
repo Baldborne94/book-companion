@@ -1171,7 +1171,11 @@ export default function Library({
       vivo = false;
     };
   }, [manutenzione, localIds, spazioCambiato]);
-  const discoNoto = useMemo(() => sulDiscoDa(leggiDispositivi()), [books, localIds, manutenzione]);
+  // e si rilegge dopo ogni «Controlla il disco» (`disco`), che riscrive la
+  // voce del disco: senza, la riga delle copertine diceva «non so dove»
+  // per i volumi che il controllo aveva appena trovato (preso dalla prova
+  // e2e del disco)
+  const discoNoto = useMemo(() => sulDiscoDa(leggiDispositivi()), [books, localIds, manutenzione, disco]);
   const liberabili = useMemo(
     () => (manutenzione ? daLiberare(books, { qui: localIds, sulDisco: discoNoto.ids, pesi, stato: getStatus }) : []),
     [books, localIds, manutenzione, pesi, discoNoto]
