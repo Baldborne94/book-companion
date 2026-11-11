@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { getStatus } from "../lib/library.js";
-import { perParte, prossimoPasso, lettiDelCammino } from "../lib/cammino.js";
+import { perParte, prossimoPasso, lettiDelCammino, serieNelMondo } from "../lib/cammino.js";
 import { numerazioneGuida, serieDaScrivere, sagaComune, campiDaScrivere } from "../lib/numeraCammino.js";
 import { raccontiLetti, segnaRacconto, chiaveRacconto } from "../lib/racconti.js";
 import { leggiDaPrendere, scriviDaPrendere, tieni, vive, idTitolo } from "../lib/daPrendere.js";
@@ -36,7 +36,7 @@ function Passo({ passo, onOpenBook, letto, onSegna }) {
   // su un racconto la riga PIÙ importante è dove trovarlo: «leggi The
   // Aurelian» senza «in Eye of Terra» è un passo che non puoi eseguire
   // in un mondo il numero e' della serie, e la serie si dice
-  const riga = [voce.a, voce.guida ? voce.c : null, racconto && voce.in ? `in «${voce.in}»` : voce.nota]
+  const riga = [voce.a, voce.guida ? serieNelMondo(voce) : null, racconto && voce.in ? `in «${voce.in}»` : voce.nota]
     .filter(Boolean)
     .join(" · ");
 

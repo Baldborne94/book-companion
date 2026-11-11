@@ -300,9 +300,9 @@ export const MAPPA = [
   },
   {
     luogo: "libreria",
-    nome: "L'ordine di lettura di tutto Malazan",
-    cosa: "Tutti i romanzi del mondo di Malazan in un cammino solo, nell'ordine in cui sono usciti (quello che consigliano Erikson ed Esslemont): il Libro dei Caduti, i romanzi di Esslemont, Kharkanas e Witness, una serie dopo l'altra come si alternano. Ogni volume tiene il numero della sua serie, e il prossimo passo è il primo che non hai letto.",
-    dove: "Il tasto «🌐 Tutto Malazan» sull'intestazione del ripiano dove tieni Malazan, prima dei tasti 📜 delle singole serie.",
+    nome: "L'ordine di lettura di un mondo intero",
+    cosa: "Tutti i romanzi di Malazan o del Cosmere in un cammino solo, nell'ordine in cui sono usciti (quello che consigliano gli autori): a Malazan il Libro dei Caduti, i romanzi di Esslemont, Kharkanas e Witness; al Cosmere Mistborn, le Cronache della Folgorluce, Elantris, Warbreaker e i Secret Projects, una serie dopo l'altra come si alternano. Ogni volume tiene il numero della sua serie, e il prossimo passo è il primo che non hai letto.",
+    dove: "I tasti «🌐 Tutto Malazan» e «🌐 Tutto il Cosmere» sull'intestazione del ripiano dove tieni quel mondo, prima dei tasti 📜 delle singole serie.",
   },
   {
     luogo: "libreria",

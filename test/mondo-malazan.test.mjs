@@ -4,9 +4,8 @@
 // delle singole serie?». Quel che sbaglia in silenzio: un ordine che non e'
 // quello di uscita, le serie raccolte per nome (che rifanno l'ordine di una
 // guida), e un numero del mondo scritto al posto di quello della serie.
-import { MONDI, TAVOLE } from "../src/lib/sagaBooks.js";
-import { ORDINE } from "../src/data/malazanMondo.js";
-import { camminiDi, camminoDelMondo, mondiDi, perParte, rifaiCammino, tavolaDelMondo, prossimoPasso } from "../src/lib/cammino.js";
+import { MONDI } from "../src/lib/sagaBooks.js";
+import { camminiDi, camminoDelMondo, mondiDi, perParte, rifaiCammino, prossimoPasso } from "../src/lib/cammino.js";
 import { numerazioneGuida, serieDaScrivere } from "../src/lib/numeraCammino.js";
 import { vociDallaGuida } from "../src/lib/senzaFile.js";
 
@@ -15,20 +14,8 @@ const L = (id, title, author, extra = {}) => ({ id, title, author, fileType: "ep
 export default async (t) => {
   const mondo = MONDI.find((m) => m.universo === "Malazan");
   t.c("Malazan ha un ordine del mondo", !!mondo);
-  const tav = tavolaDelMondo(mondo);
 
-  // LA TAVOLA: ogni volume di ogni guida del mondo, una volta, e niente
-  // che le guide non abbiano
-  const guide = TAVOLE.filter((x) => x.universo === "Malazan");
-  const tutti = guide.flatMap((g) => g.libri.map((v) => `${g.saga}\u0000${v.t}`));
-  const nelMondo = tav.libri.map((v) => `${v.guida}\u0000${v.t}`);
-  t.eq("ogni riga dell'ordine e' una voce della sua guida", tav.libri.filter((v) => !v.t).map((v) => v.guida).join(), "");
-  t.eq("ogni volume delle guide di Malazan sta nel mondo", tutti.filter((k) => !nelMondo.includes(k)).join(" | "), "");
-  t.eq("…una volta sola", new Set(nelMondo).size, nelMondo.length);
-  // e la fila e' quella di uscita: una riga spostata a mano si vede
-  const date = ORDINE.map((r) => r[2]);
-  const fuori = date.map((d, i) => (i && d < date[i - 1] ? `${ORDINE[i][1]} (${d}) dopo ${ORDINE[i - 1][1]} (${date[i - 1]})` : null)).filter(Boolean);
-  t.eq("l'ordine e' quello delle date", fuori.join("; "), "");
+  // la tavola (date, voci, copertura) la guarda `mondi-ordine.test.mjs`
 
   // IL CAMMINO: i libri del lettore, scritti come sul suo tablet
   const libri = [
@@ -77,7 +64,9 @@ export default async (t) => {
   const qui = camminiDi(libri, { scaffale: libri.slice(0, 3) });
   t.eq("un ripiano con una guida di Malazan ha il mondo", mondiDi(qui, libri, { scaffale: libri.slice(0, 3) }).map((m) => m.saga).join(), "Tutto Malazan");
   const cosmere = camminiDi(libri, { scaffale: [libri[3]] });
-  t.eq("il Cosmere un ordine del mondo non ce l'ha", mondiDi(cosmere, libri, { scaffale: [libri[3]] }).length, 0);
+  t.eq("sul ripiano del Cosmere, il suo mondo e non quello di Malazan", mondiDi(cosmere, libri, { scaffale: [libri[3]] }).map((m) => m.saga).join(), "Tutto il Cosmere");
+  const lockwood = [L("lw", "The Screaming Staircase", "Jonathan Stroud")];
+  t.eq("una guida senza universo un mondo non ce l'ha", mondiDi(camminiDi(lockwood, { scaffale: lockwood }), lockwood, { scaffale: lockwood }).length, 0);
 
   // RIFATTO coi libri di adesso, resta un mondo
   const rifatto = rifaiCammino(c, [...libri, L("dg", "Deadhouse Gates", "Steven Erikson")]);
