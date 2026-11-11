@@ -360,6 +360,12 @@ export const MAPPA = [
   },
   {
     luogo: "libreria",
+    nome: "Rifai le copertine dei fumetti",
+    cosa: "Le copertine dei fumetti salvate prima che le riducessimo in qualità alta erano sgranate: le rifà dalla prima pagina del file, tutte in fila. Quelle messe a mano restano, e il tasto c'è solo finché ce n'è da rifare.",
+    dove: "🧰 Manutenzione.",
+  },
+  {
+    luogo: "libreria",
     nome: "Riconosci i doppioni",
     cosa: "Calcola l'impronta dei libri entrati prima che l'app la calcolasse, così lo stesso file non entra due volte.",
     dove: "🧰 Manutenzione.",

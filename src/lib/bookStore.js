@@ -1,4 +1,4 @@
-import { copertinaCambiata, chiaveMin } from "./miniature.js";
+import { copertinaCambiata, chiaveMin, NITIDA, chiaveNitida, prefissoNitida } from "./miniature.js";
 const DB_NAME = "bc_library";
 
 let dbPromise;
@@ -65,8 +65,11 @@ export const getFile = (id) => withStore("files", "readonly", (s) => s.get(id));
 // chi scrive o toglie una copertina fa dimenticare quella che lo scaffale
 // ricordava (`lib/miniature.js`): e' il solo punto da cui passano tutte —
 // la scheda, l'import, la sincronizzazione, «Ritrova le copertine»
+// E una copertina nata nitida lascia il suo segno (`NITIDA` in `miniature.js`)
 export const putCover = (id, blob) =>
-  withStore("covers", "readwrite", (s) => s.put(blob, id)).then((r) => (copertinaCambiata(id), r));
+  withStore("covers", "readwrite", (s) => s.put(blob, id))
+    .then(() => (blob?.[NITIDA] ? withStore("aux", "readwrite", (s) => s.put(1, chiaveNitida(id, blob.size))) : null))
+    .then((r) => (copertinaCambiata(id), r));
 export const getCover = (id) => withStore("covers", "readonly", (s) => s.get(id));
 // togliere la copertina scelta a mano non e' cancellare il libro: si torna
 // al dorso disegnato, che e' quello che c'era prima
@@ -221,8 +224,9 @@ export async function removeBookData(id) {
   await withStore("covers", "readwrite", (s) => s.delete(id));
   copertinaCambiata(id);
   await withStore("aux", "readwrite", (s) => s.delete(`loc_${id}`));
-  // la miniatura della copertina per lo scaffale
+  // la miniatura della copertina per lo scaffale, e il segno della nitida
   await withStore("aux", "readwrite", (s) => s.delete(chiaveMin(id)));
+  await withStore("aux", "readwrite", (s) => s.delete(IDBKeyRange.bound(prefissoNitida(id), `${prefissoNitida(id)}\uffff`)));
   // le schede dell'Oracolo di questo libro: senza, resterebbero in giro a
   // occupare spazio per un romanzo che non c'e' piu'
   await withStore("aux", "readwrite", (s) => s.delete(`schede_${id}`));

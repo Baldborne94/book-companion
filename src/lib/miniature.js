@@ -38,6 +38,17 @@ export const chiaveMin = (id) => `min_${id}`;
 // sole alla prima vista. Chi cambia il modo di ridurle alza il numero.
 export const VERSIONE_MIN = 2;
 
+// E LA COPERTINA NITIDA SI SEGNA. Una copertina ridotta in qualita' alta
+// (`preparaCopertina`) esce etichettata (`NITIDA`), e chi la scrive
+// (`putCover`) lascia in `aux` il segno col suo peso: «questa copertina, di
+// questo peso, e' nata nitida». Le copertine dei fumetti salvate prima non
+// hanno il segno, e «🖼 Rifai le copertine dei fumetti» le conta da qui
+// (`copertineDaRifare`). Il peso nella chiave: una copertina cambiata dopo
+// non porta il segno di quella di prima, e le chiavi si leggono senza i valori.
+export const NITIDA = "bcNitida";
+export const chiaveNitida = (id, peso) => `nitida_${id}_${peso}`;
+export const prefissoNitida = (id) => `nitida_${id}_`;
+
 const viste = new Map(); // id -> { url, revoca }
 const inVolo = new Map(); // id -> { gen, p }
 const gen = new Map(); // id -> numero

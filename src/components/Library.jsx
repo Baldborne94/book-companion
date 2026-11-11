@@ -5,7 +5,7 @@ import { disponi, aEtichette, criterioVoto, criterioStato, altezzaStimata, ALTEZ
 import { leggiPreferite, scriviPreferite, preferiteVive, segnaPreferita, puoEssereFavorita, ePreferito } from "../lib/raccoltePreferite.js";
 import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
 import { ascoltaCopertine } from "../lib/miniature.js";
-import { storageEstimate, spazioQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux, misureFile } from "../lib/bookStore.js";
+import { storageEstimate, spazioQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux, misureFile, misureCopertine, chiaviAuxPrefisso } from "../lib/bookStore.js";
 import { importFiles, resoconto, impronteDaFare, tipiDaScegliere } from "../lib/importBook.js";
 import { chiaveCollana } from "../lib/collana.js";
 import { preparaArchivio, segnaArchivio, ultimoArchivio, promemoriaArchivio, indiceSoloSchede } from "../lib/exportLibrary.js";
@@ -22,7 +22,8 @@ import { fmtGoogle } from "../lib/bytes.js";
 import { hddPossibile } from "../lib/hdd.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { fraseDelPasso, fraseImport } from "../lib/convertiCbr.js";
-import { senzaCopertina, copertineDaDove, fraseCopertineAltrove } from "../lib/copertina.js";
+import { senzaCopertina, copertineDaDove, fraseCopertineAltrove, copertineDaRifare } from "../lib/copertina.js";
+import { aMano } from "../lib/copertinaGrande.js";
 import { spartisciQui } from "../lib/spazio.js";
 import { BarraCloud, PesoQui } from "./BarraCloud.jsx";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
@@ -1031,6 +1032,13 @@ export default function Library({
   // quali libri il dorso disegnato ce l'hanno per davvero: si chiede una
   // volta all'apertura dello scaffale, non un libro per volta
   const [conCopertina, setConCopertina] = useState(null);
+  // i pesi delle copertine e i segni delle nitide: chi ha una copertina di
+  // fumetto da rifare (`copertineDaRifare`)
+  const [nitidezza, setNitidezza] = useState(null);
+  const rileggiNitidezza = () =>
+    Promise.all([misureCopertine(), chiaviAuxPrefisso("nitida_")])
+      .then(([misure, chiavi]) => setNitidezza(misure ? { misure, nitide: new Set(chiavi || []) } : null))
+      .catch(() => setNitidezza(null));
   // i tomi gia' aperti che dentro una copertina non ce l'hanno: le chiavi
   // dello store `aux` si chiedono in un colpo solo, come le copertine
   const [copGuardate, setCopGuardate] = useState(null);
@@ -1094,6 +1102,7 @@ export default function Library({
     listCoverIds()
       .then((ids) => setConCopertina(new Set(ids)))
       .catch(() => setConCopertina(null));
+    rileggiNitidezza();
     guardate().then(setCopGuardate);
   }, [books, spazioCambiato, giroSpazio]);
   // una copertina messa o tolta altrove (la scheda del libro, la
@@ -1587,6 +1596,7 @@ export default function Library({
   // dispositivo»); le altre si dicono con la loro strada
   const dove = conCopertina && localIds ? copertineDaDove(books, { conCopertina, guardati: copGuardate, qui: localIds, sulDisco: discoNoto.ids, altrove }) : null;
   const mancaLaCopertina = dove ? dove.qui : [];
+  const daRifare = nitidezza && localIds ? copertineDaRifare(books, { qui: localIds, ...nitidezza, aMano }) : [];
 
   // LE COPERTINE CHE MANCANO SI RITROVANO NEL FILE. Il dorso disegnato vuol
   // dire che quell'immagine qui non c'e' — l'estrazione all'import non l'ha
@@ -1659,6 +1669,31 @@ export default function Library({
     }
     if (esito.senzaImmagine) setCopGuardate(await guardate());
     notify?.(resocontoCopertine(esito));
+  }
+
+  // LE COPERTINE DEI FUMETTI SI RIFANNO DAL FILE (`copertineDaRifare`): lo
+  // stesso giro di «Ritrova», sopra una copertina che c'e' gia'. Il segno
+  // della nitida lo lascia `putCover`, e il tasto non torna.
+  async function rifaiLeCopertine() {
+    if (copertinando || !daRifare.length) return;
+    const mio = {};
+    filoCopertine.current = mio;
+    const quali = daRifare;
+    setCopertinando({ i: 0, totale: quali.length, titolo: quali[0].title, da: "rifai" });
+    const { ritrovaCopertine, resocontoCopertine, copertinaOriginale } = await import("../lib/copertina.js");
+    const esito = await ritrovaCopertine(quali, {
+      leggiByte: (id) => getFile(id).catch(() => null),
+      estrai: (b, bytes) => copertinaOriginale(b, bytes),
+      posa: (id, blob) => putCover(id, blob),
+      vivo: () => filoCopertine.current === mio,
+      onProgress: (p) => filoCopertine.current === mio && setCopertinando({ ...p, da: "rifai" }),
+    });
+    if (filoCopertine.current !== mio) return;
+    filoCopertine.current = null;
+    setCopertinando(null);
+    await rileggiNitidezza();
+    if (esito.ritrovate) setCoverV((v) => v + 1);
+    notify?.(resocontoCopertine(esito, { rifatte: true }));
   }
 
   async function ripassaLeImpronte() {
@@ -2785,8 +2820,8 @@ export default function Library({
                   fisso sul tasto diceva al lettore che c'era del lavoro
                   arretrato dove non ce n'era («è corretto?»). */}
               🧰 Manutenzione
-              {!manutenzione && senzaImpronta.length + mancaLaCopertina.length + cbrDaFare.length + doppi.length > 0
-                ? ` · ${senzaImpronta.length + mancaLaCopertina.length + cbrDaFare.length + doppi.length}`
+              {!manutenzione && senzaImpronta.length + mancaLaCopertina.length + daRifare.length + cbrDaFare.length + doppi.length > 0
+                ? ` · ${senzaImpronta.length + mancaLaCopertina.length + daRifare.length + cbrDaFare.length + doppi.length}`
                 : ""}{" "}
               {manutenzione ? "▾" : "▸"}
             </button>
@@ -2962,7 +2997,7 @@ export default function Library({
             {mancaLaCopertina.length > 0 && (
               <button
                 onClick={copertinando ? () => { filoCopertine.current = null; setCopertinando(null); } : ritrovaLeCopertine}
-                disabled={copertinando?.da === "disco"}
+                disabled={!!copertinando?.da}
                 style={{
                   padding: "7px 16px",
                   borderRadius: R.piccolo,
@@ -2974,6 +3009,26 @@ export default function Library({
                 {copertinando && !copertinando.da
                   ? `Fermo qui (${copertinando.i + 1} di ${copertinando.totale})`
                   : `🖼 Ritrova ${mancaLaCopertina.length === 1 ? "una copertina" : `${mancaLaCopertina.length} copertine`}`}
+              </button>
+            )}
+            {/* LE COPERTINE DEI FUMETTI SGRANATE si rifanno dal file: col
+                numero sopra, perché apre ogni fumetto, e il suo conto sul
+                suo tasto mentre gira */}
+            {daRifare.length > 0 && (
+              <button
+                onClick={copertinando?.da === "rifai" ? () => { filoCopertine.current = null; setCopertinando(null); } : rifaiLeCopertine}
+                disabled={!!copertinando && copertinando.da !== "rifai"}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.border}`,
+                  color: C.text,
+                  fontSize: F.nota,
+                }}
+              >
+                {copertinando?.da === "rifai"
+                  ? `Fermo qui (${copertinando.i + 1} di ${copertinando.totale})`
+                  : `🖼 Rifai ${daRifare.length === 1 ? "la copertina di un fumetto" : `le copertine di ${daRifare.length} fumetti`}`}
               </button>
             )}
             {/* e quelle che da qui non si ritrovano, con la loro strada:
