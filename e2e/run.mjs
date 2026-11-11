@@ -478,6 +478,32 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore, con la foto del pannello: «The World of Elan che
+    // comprende diverse saghe scritta da Michael J. Sullivan come mai non le
+    // riconosce ma le vede solo come saghe singole a parte?»
+    nome: "«The World of Elan» per nome e' il mondo intero di Sullivan, nella raccolta del lettore, coi suoi gia' sullo scaffale",
+    async fai({ browser }) {
+      const r = (id, title) => ({ id, title, author: "Michael J. Sullivan", saga: "The Riyria Revelations", fileType: "nessuno", fileTolto: true, addedAt: 1 });
+      const libri = [r("e1", "The Crown Conspiricy"), r("e2", "Avempartha"), r("e3", "Nyphron Rising")];
+      const d = await dispositivo(browser, {
+        misura: TABLET,
+        prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});`,
+      });
+      const { p } = d;
+      await p.goto(`${URL_APP}?apri=libreria`);
+      await p.getByRole("button", { name: "📥 Senza file" }).click();
+      await p.getByRole("textbox", { name: "Nome della saga" }).fill("The World of Elan");
+      await p.getByRole("button", { name: "🔍 Cerca i libri" }).click();
+      await finche(() => p.getByText(/tutte le guide dell'app di questo mondo/).count(), 5000, "«The World of Elan» non e' un mondo dell'app");
+      const raccolta = await p.getByRole("combobox", { name: "Raccolta" }).inputValue();
+      if (raccolta !== "The Riyria Revelations") throw new Error(`la raccolta proposta non e' quella del lettore: «${raccolta}»`);
+      const gia = await p.getByText("✓ è già sullo scaffale").count();
+      if (gia !== 3) throw new Error(`gia' sullo scaffale: ${gia} invece dei tre del lettore`);
+      for (const t of ["Age of Myth", "The Crown Tower", "Nolyn", "Drumindor"]) if (!(await p.getByText(t, { exact: true }).count())) throw new Error(`nel mondo manca «${t}»`);
+      return { guasti: d.guasti, nota: `il mondo intero nella raccolta «${raccolta}», ${gia} gia' sullo scaffale` };
+    },
+  },
+  {
     nome: "un ePub si importa e si apre",
     async fai({ browser }) {
       const d = await dispositivo(browser);

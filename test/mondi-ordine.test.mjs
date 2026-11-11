@@ -9,13 +9,14 @@ import { numerazioneGuida } from "../src/lib/numeraCammino.js";
 import { universiNumerati } from "../src/lib/sagaBooks.js";
 
 export default async (t) => {
-  t.eq("i mondi con un ordine", MONDI.map((m) => m.nome).join(", "), "Tutto Malazan, Tutto il Cosmere");
+  t.eq("i mondi con un ordine", MONDI.map((m) => m.nome).join(", "), "Tutto Malazan, Tutto il Cosmere, Tutto il mondo di Elan");
   for (const mondo of MONDI) {
     const tav = tavolaDelMondo(mondo);
     t.eq(`${mondo.nome}: ogni riga e' una voce della sua guida`, tav.libri.filter((v) => !v.t).map((v) => v.guida).join(), "");
     const guide = TAVOLE.filter((x) => x.universo === mondo.universo);
     const nelMondo = tav.libri.map((v) => `${v.guida}\u0000${v.t}`);
-    const fuori = guide.flatMap((g) => g.libri.map((v) => `${g.saga}\u0000${v.t}`)).filter((k) => !nelMondo.includes(k));
+    // una raccolta non e' un volume: chi ce l'ha ha i romanzi dentro, e quelli stanno nella fila
+    const fuori = guide.flatMap((g) => g.libri.filter((v) => v.tipo !== "omnibus").map((v) => `${g.saga}\u0000${v.t}`)).filter((k) => !nelMondo.includes(k));
     t.eq(`${mondo.nome}: ogni volume delle sue guide ci sta`, fuori.join(" | "), "");
     t.eq(`${mondo.nome}: una volta sola`, new Set(nelMondo).size, nelMondo.length);
     // e ogni storia di mezzo delle sue guide sta nella fila, una volta

@@ -65,6 +65,10 @@ const NOMI = [
   { nomi: ["malazan", "malazan universe", "malazan world", "mondo di malazan", "universo di malazan"], universo: "Malazan" },
   { nomi: ["first law", "first law world", "mondo della prima legge"], universo: "The First Law" },
   { nomi: ["banished lands"], universo: "The Banished Lands" },
+  { nomi: ["world of elan", "elan", "mondo di elan", "riyria"], universo: "The World of Elan" },
+  { nomi: ["riyria revelations", "rivelazioni di riyria"], saga: "The Riyria Revelations" },
+  { nomi: ["riyria chronicles", "cronache di riyria"], saga: "The Riyria Chronicles" },
+  { nomi: ["legends of the first empire", "leggende del primo impero"], saga: "The Legends of the First Empire" },
   { nomi: ["warhammer 40k", "warhammer 40000", "warhammer 40 000", "40k"], universo: "Warhammer 40K" },
   // le sue cinque serie: la guida ristretta al suo ciclo
   { nomi: ["farseer", "farseer trilogy"], saga: "The Realm of the Elderlings", parte: "The Farseer Trilogy", nome: "The Farseer Trilogy" },

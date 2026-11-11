@@ -22,6 +22,7 @@ import { LA_TRILOGIA, I_SOLI, LA_FOLLIA, TRILOGIA, A_SE, FOLLIA, UNIVERSO as MON
 import { I_FEDELI, IL_SANGUE, FEDELI, SANGUE, UNIVERSO as MONDO_BL } from "../data/banishedLands.js";
 import { EMPIRE, ASCESA, KHARKANAS_LIBRI, WITNESS_LIBRI, MALAZAN_EMPIRE, PATH, KHARKANAS, WITNESS, ORDINE as ORDINE_MALAZAN } from "../data/malazanMondo.js";
 import { ORDINE as ORDINE_COSMERE } from "../data/cosmereMondo.js";
+import { LE_RIVELAZIONI, LE_CRONACHE, LE_LEGGENDE, ASCESA_E_CADUTA, REVELATIONS, CHRONICLES, LEGENDS, RISE, UNIVERSO as MONDO_ELAN, NOVELLE_RIVELAZIONI, NOVELLE_CRONACHE, NOVELLE_LEGGENDE, ORDINE as ORDINE_ELAN } from "../data/elan.js";
 import { GUIDE as GUIDE_40K, UNIVERSO as MONDO_40K } from "../data/warhammer40k.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 
@@ -130,6 +131,11 @@ export const TAVOLE = [
   { saga: FOLLIA, libri: LA_FOLLIA, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_FL, novelle: NOVELLE_FOLLIA },
   { saga: FEDELI, libri: I_FEDELI, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_BL },
   { saga: SANGUE, libri: IL_SANGUE, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_BL },
+  // il mondo di Elan di Sullivan: quattro serie, quattro guide (`data/elan.js`)
+  { saga: REVELATIONS, libri: LE_RIVELAZIONI, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_ELAN, novelle: NOVELLE_RIVELAZIONI },
+  { saga: CHRONICLES, libri: LE_CRONACHE, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_ELAN, novelle: NOVELLE_CRONACHE },
+  { saga: LEGENDS, libri: LE_LEGGENDE, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_ELAN, novelle: NOVELLE_LEGGENDE },
+  { saga: RISE, libri: ASCESA_E_CADUTA, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_ELAN },
   { saga: SAGA_BS, libri: BLOODSWORN, ordine: (b) => b.o, autore: null, fuori: [] },
   { saga: SAGA_BB, libri: BOUND, ordine: (b) => b.o, autore: null, fuori: [], novelle: NOVELLE_BB },
 ];
@@ -140,6 +146,7 @@ export const TAVOLE = [
 export const MONDI = [
   { universo: "Malazan", nome: "Tutto Malazan", ordine: ORDINE_MALAZAN },
   { universo: "Cosmere", nome: "Tutto il Cosmere", ordine: ORDINE_COSMERE },
+  { universo: MONDO_ELAN, nome: "Tutto il mondo di Elan", ordine: ORDINE_ELAN },
 ];
 
 // IL POSTO DI UN VOLUME NEL SUO MONDO (1, 2, 3… nell'ordine del mondo), per
