@@ -20,7 +20,7 @@ import BOUND, { SAGA as SAGA_BB, NOVELLE as NOVELLE_BB } from "../data/boundBrok
 import APT, { SAGA as SAGA_AP, NOVELLE as NOVELLE_AP } from "../data/shadowsOfTheApt.js";
 import { LA_TRILOGIA, I_SOLI, LA_FOLLIA, TRILOGIA, A_SE, FOLLIA, UNIVERSO as MONDO_FL, NOVELLE_FOLLIA } from "../data/firstLaw.js";
 import { I_FEDELI, IL_SANGUE, FEDELI, SANGUE, UNIVERSO as MONDO_BL } from "../data/banishedLands.js";
-import { EMPIRE, ASCESA, KHARKANAS_LIBRI, WITNESS_LIBRI, MALAZAN_EMPIRE, PATH, KHARKANAS, WITNESS } from "../data/malazanMondo.js";
+import { EMPIRE, ASCESA, KHARKANAS_LIBRI, WITNESS_LIBRI, MALAZAN_EMPIRE, PATH, KHARKANAS, WITNESS, ORDINE as ORDINE_MALAZAN } from "../data/malazanMondo.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 
 // Riconoscere il romanzo dal titolo: i metadati degli EPUB sono spesso vuoti,
@@ -129,6 +129,11 @@ export const TAVOLE = [
   { saga: SAGA_BS, libri: BLOODSWORN, ordine: (b) => b.o, autore: null, fuori: [] },
   { saga: SAGA_BB, libri: BOUND, ordine: (b) => b.o, autore: null, fuori: [], novelle: NOVELLE_BB },
 ];
+
+// I MONDI CON UN ORDINE DI LETTURA: l'ordine in cui si leggono insieme le
+// guide di un `universo` (vedi `camminoDelMondo` in `cammino.js`). Solo
+// dove una fonte lo dice: un mondo senza ordine resta le sue guide.
+export const MONDI = [{ universo: "Malazan", nome: "Tutto Malazan", ordine: ORDINE_MALAZAN }];
 
 // I capitoli di tutte le guide, in minuscolo: `parteDiUnaStoria` guarda
 // qui per sapere se una Serie scritta su un libro e' una parte di un

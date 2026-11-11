@@ -56,8 +56,7 @@ import { tipiDaScegliere } from "./lib/importBook.js";
 import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, convertiLibroInCbz, caricaCopertina } from "./lib/sync.js";
 import { schedaSenzaFile, giaSulloScaffale, copertinaDalCatalogo, fraseAggiunte } from "./lib/senzaFile.js";
 import { preparaCopertina } from "./lib/copertina.js";
-import { camminoDellaGuida } from "./lib/cammino.js";
-import { TAVOLE } from "./lib/sagaBooks.js";
+import { rifaiCammino } from "./lib/cammino.js";
 import { riordinaDisco, fraseRiordino, fraseDaParte, fraseRimessi, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
 import { importaDaFuori, resoconto, importFiles } from "./lib/importBook.js";
 import { avanziManga } from "./lib/avanziManga.js";
@@ -1311,8 +1310,8 @@ export default function App() {
   // dal cammino: i volumi che mancano entrano, e il cammino si rifà con loro
   function mettiInBiblioteca(voci) {
     const nuove = aggiungiSenzaFile(voci);
-    const tav = TAVOLE.find((t) => t.saga === cammino?.saga);
-    if (tav && nuove.length) setCammino(camminoDellaGuida(tav, [...books, ...nuove]));
+    const rifatto = nuove.length ? rifaiCammino(cammino, [...books, ...nuove]) : null;
+    if (rifatto) setCammino(rifatto);
   }
 
   // I NUMERI DELLA GUIDA, scritti dal pannello del cammino. Si scrive la

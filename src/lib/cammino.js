@@ -1,4 +1,4 @@
-import { riconosci, TAVOLE, fuoriDallaStoria } from "./sagaBooks.js";
+import { riconosci, TAVOLE, MONDI, fuoriDallaStoria } from "./sagaBooks.js";
 import { segnaposto } from "./segnaposto.js";
 import { getStatus, getProgress } from "./library.js";
 import { raccontiLetti, chiaveRacconto } from "./racconti.js";
@@ -169,8 +169,10 @@ function costruisci(tav, { miei, perTitolo }, contati) {
   // volte. E un titolo che il riconoscimento ha dato a un'ALTRA guida
   // (`altrui`: Malleus e' di Eisenhorn, e nel prologo dell'Eresia e'
   // contorno) e' tuo lo stesso, ma il numero e la Serie li decide la sua.
+  // in un cammino di MONDO ogni voce e' della sua guida (`guida`): e' li'
+  // che il riconoscimento l'ha messa
   const suo = (voce) => {
-    const proprio = miei.get(chiave(tav.saga, voce.t));
+    const proprio = miei.get(chiave(voce.guida || tav.saga, voce.t));
     if (proprio) return { voce, libro: proprio };
     const altrui = perTitolo.get(voce.t);
     if (altrui) return { voce, libro: altrui, altrui: true };
@@ -211,6 +213,8 @@ function costruisci(tav, { miei, perTitolo }, contati) {
     // non cicli del lettore: e' quel che decide cosa si scrive nel campo
     // Serie — la storia, non il capitolo
     parti: !!tav.parti,
+    // un mondo intero (`camminoDelMondo`): le serie si alternano
+    mondo: !!tav.mondo,
     tappe,
     tue: volumiTuoi,
     // QUANTI VOLUMI HA LA GUIDA, che non e' quante righe ha la tavola: da
@@ -289,6 +293,44 @@ export function guideAccanto(cammini = [], libri = [], { tavole = TAVOLE, ricono
   const gia = new Set(cammini.map((c) => c.saga));
   const visti = riconosciuti(libri, riconosce);
   return tavole.filter((t) => universi.has(t.universo) && !gia.has(t.saga)).map((t) => costruisci(t, visti, []));
+}
+
+// L'ORDINE DI LETTURA DI UN MONDO INTERO. Chiesto dal lettore con la foto
+// della sua raccolta «Malazan universe»: «mi metti l'ordine di lettura di
+// tutti i libri del malazan universe e non solo delle singole serie?».
+// Le guide di un `universo` restano guide a se' (ogni serie tiene i suoi
+// numeri, quelli dei file); il mondo (`MONDI` in `sagaBooks.js`) e' solo
+// l'ORDINE in cui le loro voci si leggono insieme, scritto nella tavola
+// del mondo e mai calcolato: ogni voce porta la sua guida (`guida`) e il
+// suo numero, e il cammino si costruisce come quello di una guida. Una
+// riga che nessuna guida ha piu' (un titolo cambiato) la dice il test
+// della tavola, prima che arrivi a uno scaffale.
+export function tavolaDelMondo(mondo, tavole = TAVOLE) {
+  const libri = (mondo?.ordine || [])
+    .map(([guida, titolo]) => ({ ...tavole.find((t) => t.saga === guida)?.libri.find((v) => v.t === titolo), guida }));
+  return { saga: mondo?.nome || "", libri, ordine: (b) => b.o, mondo: true, universo: mondo?.universo };
+}
+
+export function camminoDelMondo(mondo, libri = [], { tavole = TAVOLE, riconosce, scaffale } = {}) {
+  return costruisci(tavolaDelMondo(mondo, tavole), riconosciuti(libri, riconosce), (scaffale || []).filter(Boolean));
+}
+
+// I MONDI DI UN RIPIANO: quelli che hanno un ordine e di cui il ripiano ha
+// una guida (fra i suoi cammini o accanto). Stanno davanti alle guide.
+export function mondiDi(cammini = [], libri = [], { tavole = TAVOLE, mondi = MONDI, riconosce, scaffale } = {}) {
+  const universi = new Set(cammini.map((c) => tavole.find((t) => t.saga === c.saga)?.universo).filter(Boolean));
+  return mondi.filter((m) => universi.has(m.universo)).map((m) => camminoDelMondo(m, libri, { tavole, riconosce, scaffale }));
+}
+
+// IL CAMMINO RIFATTO coi libri di adesso (dopo «Metti sullo scaffale»):
+// quello di un mondo dal suo ordine, quello di una guida dalla sua tavola
+export function rifaiCammino(cammino, libri = [], { tavole = TAVOLE, mondi = MONDI } = {}) {
+  if (cammino?.mondo) {
+    const m = mondi.find((x) => x.nome === cammino.saga);
+    return m ? camminoDelMondo(m, libri, { tavole }) : null;
+  }
+  const tav = tavole.find((t) => t.saga === cammino?.saga);
+  return tav ? camminoDellaGuida(tav, libri) : null;
 }
 
 // LE GUIDE DA ELENCARE: quelle che sono una guida intera. JoJo no: la sua
@@ -489,7 +531,23 @@ export function lettiDelCammino(
 // raggruppamento che rimescola non alza nessun errore, cambia solo
 // l'ordine di lettura di una guida — e quello nessuno lo verifica a occhio
 // su settantuno righe.
-export function perParte(tappe = []) {
+//
+// IN UN MONDO LE SERIE SI ALTERNANO (`fila`): Malazan legge cinque romanzi
+// di Erikson, uno di Esslemont, poi di nuovo Erikson. Raccolte per nome le
+// parti rimetterebbero ogni serie tutta insieme, cioe' l'ordine di una
+// guida e non quello del mondo: qui una parte e' una fila di voci della
+// stessa serie una dopo l'altra, e la stessa serie torna piu' volte.
+export function perParte(tappe = [], { fila = false } = {}) {
+  if (fila) {
+    const parti = [];
+    for (const t of tappe) {
+      const nome = t?.voce?.c || "";
+      const ultima = parti[parti.length - 1];
+      if (ultima && ultima.parte === nome) ultima.tappe.push(t);
+      else parti.push({ parte: nome, tappe: [t] });
+    }
+    return parti;
+  }
   const parti = new Map();
   for (const t of tappe) {
     const nome = t?.voce?.c || "";

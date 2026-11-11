@@ -300,6 +300,12 @@ export const MAPPA = [
   },
   {
     luogo: "libreria",
+    nome: "L'ordine di lettura di tutto Malazan",
+    cosa: "Tutti i romanzi del mondo di Malazan in un cammino solo, nell'ordine in cui sono usciti (quello che consigliano Erikson ed Esslemont): il Libro dei Caduti, i romanzi di Esslemont, Kharkanas e Witness, una serie dopo l'altra come si alternano. Ogni volume tiene il numero della sua serie, e il prossimo passo è il primo che non hai letto.",
+    dove: "Il tasto «🌐 Tutto Malazan» sull'intestazione del ripiano dove tieni Malazan, prima dei tasti 📜 delle singole serie.",
+  },
+  {
+    luogo: "libreria",
     nome: "Il tuo prossimo passo nel cammino",
     cosa: "In cima al cammino, dove sei arrivato e cosa viene dopo: il passo della guida — anche quando è un volume che non hai — e, quando non ce l'hai, il primo che puoi aprire stasera. Il prologo dell'Eresia sono quattro percorsi alternativi, quindi ne propone uno solo dopo che ne hai cominciato uno tu.",
     dove: "In cima a «Il cammino», sopra i filtri.",

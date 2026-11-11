@@ -35,7 +35,8 @@ function Passo({ passo, onOpenBook, letto, onSegna }) {
   const racconto = voce.tipo === "racconto";
   // su un racconto la riga PIÙ importante è dove trovarlo: «leggi The
   // Aurelian» senza «in Eye of Terra» è un passo che non puoi eseguire
-  const riga = [voce.a, racconto && voce.in ? `in «${voce.in}»` : voce.nota]
+  // in un mondo il numero e' della serie, e la serie si dice
+  const riga = [voce.a, voce.guida ? voce.c : null, racconto && voce.in ? `in «${voce.in}»` : voce.nota]
     .filter(Boolean)
     .join(" · ");
 
@@ -471,7 +472,7 @@ export default function Cammino({ cammino, libri = [], onClose, onOpenBook, onNu
   const nella = useMemo(() => new Set(vive(lista).map((v) => v.id)), [lista]);
   const voceDi = (voce) => idTitolo(voce.t, voce.a);
   const metti = (t) => {
-    const voce = { id: voceDi(t.voce), titolo: t.voce.t, autore: t.voce.a || "", saga: cammino.saga, numero: t.posto };
+    const voce = { id: voceDi(t.voce), titolo: t.voce.t, autore: t.voce.a || "", saga: t.voce.guida || cammino.saga, numero: t.posto };
     const nuova = tieni(leggiDaPrendere(), voce);
     scriviDaPrendere(nuova);
     setLista(nuova);
@@ -506,8 +507,8 @@ export default function Cammino({ cammino, libri = [], onClose, onOpenBook, onNu
       filtro === "tue" ? tappe.filter((t) => t.libro && !t.daCaricare) : filtro === "mancano" ? tappe.filter((t) => !t.libro || t.daCaricare) : tappe;
     // si filtra PRIMA di raggruppare, così una parte dove non resta niente
     // non lascia un'intestazione vuota
-    return perParte(scelte);
-  }, [tappe, filtro]);
+    return perParte(scelte, { fila: !!cammino.mondo });
+  }, [tappe, filtro, cammino.mondo]);
 
   return (
     <div
@@ -630,8 +631,8 @@ export default function Cammino({ cammino, libri = [], onClose, onOpenBook, onNu
       </div>
 
       <div style={{ maxWidth: px(760), margin: "0 auto", padding: "14px 18px 40px" }}>
-        {parti.map(({ parte, tappe: dentro }) => (
-          <section key={parte} style={{ marginBottom: 22 }}>
+        {parti.map(({ parte, tappe: dentro }, i) => (
+          <section key={`${i}:${parte}`} style={{ marginBottom: 22 }}>
             <h3
               style={{
                 display: "flex",
