@@ -48,7 +48,26 @@ jobs:
           # non si installa si prende la versione di `playwright-core` che
           # esiste davvero: `playwright@X` dipende da `playwright-core@X`.
           npm i -D --no-save playwright || npm i -D --no-save "playwright@$(npm view playwright-core version)"
-          npx playwright install --with-deps chromium
+
+      # I PACCHETTI DI UBUNTU POSSONO MANCARE PER ORE: l'11/11/2026 la rete
+      # della macchina non risolveva `security.ubuntu.com` né
+      # `archive.ubuntu.com`, e `--with-deps` cadeva sui caratteri
+      # (fonts-ipafont, fonts-wqy-zenhei…) prima di ogni prova, quattro giri
+      # di fila. E un tentativo con Ubuntu giù dura dieci minuti (venti
+      # secondi per nome, per ogni pacchetto): riprovarlo tre volte sforava
+      # il tetto del giro, provato. Quindi prima si chiede il nome, in dieci
+      # secondi; se risponde, un tentativo solo con un tetto di cinque
+      # minuti (di solito basta un minuto); se no, il browser si installa da
+      # solo (scende dal CDN di Playwright, non da Ubuntu) e le prove girano
+      # con le librerie che la macchina ha già (mancano solo i caratteri in
+      # più). Il giro lo dice nel riassunto, così un verde «senza i
+      # caratteri di Ubuntu» non si scambia per un giro pieno.
+      - name: Le librerie del browser (Ubuntu), o il browser da solo
+        run: |
+          if timeout 10 getent hosts archive.ubuntu.com > /dev/null && timeout 300 npx playwright install --with-deps chromium; then exit 0; fi
+          echo "Le librerie di Ubuntu non sono scese: il browser da solo"
+          npx playwright install chromium
+          echo "⚠ Prove senza le librerie di Ubuntu: i pacchetti non si scaricavano, il browser è quello di Playwright da solo" >> "$GITHUB_STEP_SUMMARY"
 
       - run: npm test
 
