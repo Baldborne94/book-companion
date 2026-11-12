@@ -8,7 +8,7 @@
 import {
   chiaveNuda, chiaveHardcover, salvaChiaveHardcover, domandaHardcover, ChiaveRifiutata, volumiDaHardcover,
   sceltaSerieHC, sceltaAutoreHC, serieCheValgono, serieHardcover, serieDellAutoreHC, fraseHardcover, HARDCOVER,
-  sceltaCopertinaHC, copertinaHardcover, PASSO_MS, NON_CE_MS,
+  sceltaCopertinaHC, copertinaHardcover, PASSO_MS, NON_CE_MS, autoreDi,
 } from "../src/lib/hardcover.js";
 import { sagaDalNome, saghePerAutore } from "../src/lib/sagaDaNome.js";
 import { pulisci } from "../src/lib/registro.js";
@@ -66,6 +66,12 @@ export default async (t) => {
   t.eq("…col nome dell'autore senza i doppi spazi, non quello del traduttore", v[0].autore, "Ryan Cahill");
   t.eq("quello non ancora uscito e' annunciato", v.filter((x) => x.annunciato).map((x) => x.titolo).join(), "Of Gods and Ashes");
   t.eq("…anche senza data", volumiDaHardcover([{ position: 1, book: { id: 1, title: "Forse", users_count: 1 } }])[0].annunciato, true);
+  // dalla biblioteca del lettore (12 novembre): il narratore e l'illustratore
+  // davanti all'autore facevano l'«autore» della scheda, e un doppione
+  const contributi = (...c) => ({ position: 1, book: { id: 1, title: "Pile of Bones", users_count: 71, contributions: c.map(([ruolo, name]) => ({ contribution: ruolo, author: { name } })) } });
+  t.eq("il narratore non è l'autore", volumiDaHardcover([contributi(["Narrator", "Tim Gerard Reynolds"], ["Author", "Michael J. Sullivan"])])[0].autore, "Michael J. Sullivan");
+  t.eq("l'illustratore nemmeno", autoreDi([{ contribution: "Illustrator", author: { name: "Larry Elmore" } }, { contribution: null, author: { name: "R. A.  Salvatore" } }]), "R. A. Salvatore");
+  t.eq("senza un autore fra i contributi, nessun autore (non chi ha fatto la copertina)", autoreDi([{ contribution: "Cover Artist", author: { name: "Chris McGrath" } }]), "");
   // UN NUMERO A META' E' SPESSO UN ROMANZO SPEZZATO, NON UNA STORIA (la
   // Ruota a 1.1 «Part 1 of 2», Malazan «Том 1», gli Elderlings «Split»)
   const misto = volumiDaHardcover([
