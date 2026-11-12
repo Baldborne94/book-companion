@@ -466,6 +466,12 @@ export const MAPPA = [
   },
   {
     luogo: "musica",
+    nome: "I brani doppi si uniscono",
+    cosa: "La stessa cartella importata su due dispositivi lascia ogni canzone due volte, una «non qui». Prima l'elenco, poi un tocco: resta un brano per canzone, nelle stesse raccolte, e ogni dispositivo tiene il suo file.",
+    dove: "La sala della musica: l'avviso «… ci sono due volte», con «Guarda i doppioni».",
+  },
+  {
+    luogo: "musica",
     nome: "Cerca, scegli, suona",
     cosa: "Le raccolte in griglia e i brani in ordine coi salti per lettera; una ricerca sola per brani e raccolte, a parole sparse. Il tocco su un brano suona da lì in avanti, e il suo menu «⋯» lo mette nelle raccolte, lo rinomina o lo dimentica. Una raccolta si rinomina o si elimina dal «⋯» della sua casella (i brani restano).",
     dove: "La sala della musica: la ricerca in cima, poi «Raccolte» e «Brani».",

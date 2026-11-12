@@ -257,6 +257,103 @@ export function pianoDaCartella(radice, voci, { raccolte = [], favs = [], qui = 
   return piano;
 }
 
+// I BRANI DOPPI (segnalato dal lettore con la sala del tablet: «65 brani · 32
+// non qui», e la raccolta aperta in due giri alfabetici, il secondo tutto «non
+// è su questo dispositivo»). La stessa cartella importata su tutt'e due i
+// dispositivi prima che i brani viaggiassero: ogni importazione ha fatto le
+// sue voci, la sincronizzazione le ha messe insieme nella raccolta col suo
+// nome, e ogni canzone c'e' due volte, una coi byte qui e una coi byte
+// sull'altro. Doppi sono i brani da file con lo STESSO PESO e lo stesso nome
+// (o lo stesso nome di file). Si tiene quello coi byte qui, poi il piu'
+// vecchio; gli altri diventano lapidi che dicono dove sono andati (`unito`).
+const nomiDi = (f) => [f.name, f.file ? nomeMelodia(f.file) : null].filter(Boolean).map(nomeGiusto);
+export function braniDoppi(favs = [], qui = null) {
+  const perPeso = new Map();
+  for (const f of favs) {
+    if (f?.deleted || !f?.trackId || !(f.size > 0)) continue;
+    if (!perPeso.has(f.size)) perPeso.set(f.size, []);
+    perPeso.get(f.size).push(f);
+  }
+  const doppi = [];
+  for (const stessi of perPeso.values()) {
+    const resto = [...stessi];
+    while (resto.length > 1) {
+      const loro = [resto.shift()];
+      const nomi = new Set(nomiDi(loro[0]));
+      for (let i = 0; i < resto.length; i++) {
+        if (!nomiDi(resto[i]).some((n) => nomi.has(n))) continue;
+        for (const n of nomiDi(resto[i])) nomi.add(n);
+        loro.push(...resto.splice(i, 1));
+        i = -1;
+      }
+      if (loro.length < 2) continue;
+      const qua = (f) => (qui?.has(f.trackId) ? 1 : 0);
+      loro.sort((a, b) => qua(b) - qua(a) || (a.addedAt || 0) - (b.addedAt || 0) || String(a.id).localeCompare(String(b.id)));
+      doppi.push({ tieni: loro[0], via: loro.slice(1) });
+    }
+  }
+  return doppi.sort((a, b) => ordineNaturale.compare(a.tieni.name || "", b.tieni.name || ""));
+}
+
+// L'UNIONE: le voci in piu' diventano lapidi con `unito`, e nelle raccolte il
+// brano tenuto prende il posto della prima delle sue copie, le altre escono
+export function unisciDoppi(favs = [], raccolte = [], doppi = [], ora = Date.now()) {
+  const verso = new Map();
+  for (const d of doppi) for (const v of d.via) verso.set(v.id, d.tieni.id);
+  const nuoveFavs = favs.map((f) => (verso.has(f.id) ? { ...f, deleted: true, unito: verso.get(f.id), updatedAt: ora } : f));
+  const nuoveRac = raccolte.map((r) => {
+    if (r.deleted || !(r.brani || []).some((id) => verso.has(id))) return r;
+    const brani = [...new Set(r.brani.map((id) => verso.get(id) || id))];
+    return { ...r, brani, updatedAt: ora };
+  });
+  return { favs: nuoveFavs, raccolte: nuoveRac };
+}
+
+// la voce viva in cui un brano unito e' andato (anche dopo due unioni)
+export function doveUnito(f, favs = []) {
+  let x = f;
+  for (let i = 0; i < 5 && x?.deleted && x.unito; i++) x = favs.find((y) => y.id === x.unito);
+  return x && !x.deleted ? x : null;
+}
+
+// la chiave dei byte che un legame vecchio (un libro, un brano) deve cercare
+export function tracciaViva(trackId, favs = []) {
+  const morto = trackId && favs.find((f) => f.deleted && f.unito && f.trackId === trackId);
+  return (morto && doveUnito(morto, favs)?.trackId) || trackId;
+}
+
+// I BYTE DELLE LAPIDI. Una lapide qualunque lascia andare i suoi byte; una
+// lapide unita PRIMA li porta sotto la chiave del brano tenuto, se qui lui
+// non li ha: sul PC i file sono quelli delle voci tolte dall'unione fatta sul
+// tablet, e cancellarli lascerebbe il brano tenuto muto. Si decide sullo
+// stato (byte qui, voce tenuta), quindi si puo' rifare: un trasloco
+// interrotto riprende al giro dopo. Un intoppo e' di quel brano, e i suoi
+// byte restano.
+export async function traslocaLapidi(favs = [], { qui, prendi = getTrack, metti = putTrack, togli = removeTrack } = {}) {
+  const esito = { spostati: 0, tolti: 0 };
+  if (!qui) return esito;
+  for (const f of favs) {
+    if (!f?.deleted || !f.trackId || !qui.has(f.trackId)) continue;
+    try {
+      const tenuto = f.unito ? doveUnito(f, favs) : null;
+      if (tenuto?.trackId && tenuto.trackId !== f.trackId && !qui.has(tenuto.trackId)) {
+        const blob = await prendi(f.trackId);
+        if (!blob) continue;
+        await metti(tenuto.trackId, blob);
+        qui.add(tenuto.trackId);
+        esito.spostati += 1;
+      }
+      if (tenuto?.trackId === f.trackId) continue;
+      await togli(f.trackId);
+      qui.delete(f.trackId);
+      esito.tolti += 1;
+    } catch {
+      /* i byte restano dove sono: il prossimo giro riprova */
+    }
+  }
+  return esito;
+}
+
 // i file di una cartella scelta con `showDirectoryPicker`, sottocartelle
 // comprese (fino a tre livelli: una raccolta di raccolte, non un disco)
 export async function vociDellaCartella(cartella, percorso = [], fuori = []) {
@@ -335,8 +432,10 @@ const stessaMelodia = (a, b) => (a?.trackId ? a.trackId === b?.trackId : !!a?.ur
 // come si riprende la musica di un libro: la raccolta dal suo brano, o la
 // melodia sola. Un legame scritto prima che si ricordasse la raccolta (senza
 // la chiave) prende la raccolta che contiene quel brano, se c'e'
-export function comeRiprendere(pair, { raccolte = getLists(), favs = getFavorites() } = {}) {
+export function comeRiprendere(pair, { raccolte = getLists(), favs = getFavorites(), tutte = getFavoritesRaw() } = {}) {
   if (!pair) return null;
+  // il brano di un libro puo' essere una copia unita a un'altra (`braniDoppi`)
+  if (pair.trackId) pair = { ...pair, trackId: tracciaViva(pair.trackId, tutte) };
   const vecchio = !("raccolta" in pair);
   const candidate = vecchio ? raccolte : raccolte.filter((r) => r.id === pair.raccolta);
   for (const r of candidate) {

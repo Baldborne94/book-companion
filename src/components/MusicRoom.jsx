@@ -5,6 +5,7 @@ import {
   getFavoritesRaw, saveFavorites, isFile, addTrackFile, dropTrack, parseYouTube,
   getListsRaw, saveLists, nuovaRaccolta, braniDi, puntoDi, doveDi, minuti, MUSICA_CAMBIATA, nonArrivati,
   pianoDaCartella, vociDellaCartella, voceDaAdottare, adottaFile, braniAltrove,
+  braniDoppi, unisciDoppi, traslocaLapidi,
 } from "../lib/music.js";
 import EmptyState from "./EmptyState.jsx";
 import { InAscolto, Icona, Faccia } from "./Ascolto.jsx";
@@ -69,6 +70,9 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
   // si alza quando dei byte arrivano qui senza che l'elenco cambi (un file
   // portato dall'altro dispositivo, custodito sotto la chiave del suo brano)
   const [arrivati, setArrivati] = useState(0);
+  // i brani doppi: l'elenco si guarda prima di unirli
+  const [doppiAperti, setDoppiAperti] = useState(false);
+  const [unendo, setUnendo] = useState(false);
   // quanti brani lontani c'erano quando l'avviso e' stato chiuso
   const [altroveVisti, setAltroveVisti] = useState(() => altroveChiuso());
   const chiudiAltrove = (n) => {
@@ -119,6 +123,20 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
       vivo = false;
     };
   }, [favs, current?.trackId, arrivati]);
+
+  // le copie unite sull'altro dispositivo portano qui i loro byte al brano
+  // tenuto: lo fa la sincronizzazione, e la sala lo riprende se si era fermata
+  useEffect(() => {
+    let vivo = true;
+    if (!favs.some((f) => f.deleted && f.unito)) return;
+    listTrackIds()
+      .then((ids) => traslocaLapidi(favs, { qui: new Set(ids) }))
+      .then((e) => vivo && e.spostati && setArrivati((n) => n + 1))
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [favs]);
 
   // UN LINK SI SUONA SENZA CUSTODIRLO, dallo stesso riquadro di «＋ Da
   // YouTube»: la barra larga in cima alla sala era la cosa piu' grande della
@@ -362,6 +380,27 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
   const liveFavs = favs.filter((f) => !f.deleted);
   const liveRac = raccolte.filter((r) => !r.deleted);
   const altrove = braniAltrove(liveFavs, qui);
+  const doppi = qui ? braniDoppi(liveFavs, qui) : [];
+
+  // I BRANI DOPPI SI UNISCONO (`braniDoppi`): uno per canzone, nelle
+  // raccolte al posto delle copie, e i byte dell'altro dispositivo li porta
+  // la' la sincronizzazione (`traslocaLapidi`)
+  async function unisciIDoppi() {
+    if (unendo || !doppi.length) return;
+    setUnendo(true);
+    try {
+      const quanti = doppi.reduce((n, d) => n + d.via.length, 0);
+      const fatto = unisciDoppi(favs, raccolte, doppi, Date.now());
+      commit(fatto.favs);
+      commitRac(fatto.raccolte);
+      await traslocaLapidi(fatto.favs, { qui: new Set(await listTrackIds().catch(() => [])) });
+      setArrivati((n) => n + 1);
+      setDoppiAperti(false);
+      notify(`${quanti === 1 ? "Una copia in più tolta" : `${quanti} copie in più tolte`}: ogni brano c'è una volta sola, nelle stesse raccolte`);
+    } finally {
+      setUnendo(false);
+    }
+  }
   // portati qui dei file, la soglia scende con loro: i brani che arrivano
   // dopo riaprono l'avviso
   useEffect(() => {
@@ -1073,6 +1112,46 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
           }}
           style={{ display: "none" }}
         />
+
+        {/* I BRANI DOPPI: la stessa canzone importata su tutt'e due i
+            dispositivi. Prima l'elenco, poi il tasto */}
+        {doppi.length > 0 && (
+          <div style={{ padding: 12, borderRadius: R.medio, border: `1px solid ${C.accent}55`, background: `${C.accent}0d`, marginBottom: 14 }}>
+            <p style={{ fontSize: F.piccolo, color: C.text, lineHeight: 1.5 }}>
+              ⧉ {doppi.length === 1 ? "Un brano c'è" : `${doppi.length} brani ci sono`} due volte (stesso nome, stesso peso): la stessa cartella importata su
+              tutt'e due i dispositivi. Unendoli resta uno solo per canzone, nelle stesse raccolte; i file restano su ogni dispositivo che li ha.
+            </p>
+            {doppiAperti && (
+              <ul style={{ listStyle: "none", margin: "10px 0 0", padding: 0, maxHeight: px(260), overflowY: "auto", fontSize: F.piccolo, color: C.muted, lineHeight: 1.5 }}>
+                {doppi.map((d) => {
+                  const copie = [d.tieni, ...d.via];
+                  const qua = copie.filter((x) => qui?.has(x.trackId)).length;
+                  return (
+                    <li key={d.tieni.id} style={{ padding: "4px 0", borderTop: `1px solid ${C.border}` }}>
+                      <span style={{ color: C.text }}>{d.tieni.name}</span> · {copie.length} copie, {qua === 0 ? "nessuna qui" : qua === copie.length ? "tutte qui" : `${qua} qui`}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+              {doppiAperti ? (
+                <>
+                  <button onClick={unisciIDoppi} disabled={unendo} style={pieno}>
+                    {unendo ? "…unisco" : `Unisci ${doppi.length === 1 ? "il doppione" : `i ${doppi.length} doppioni`}`}
+                  </button>
+                  <button onClick={() => setDoppiAperti(false)} disabled={unendo} style={pillola()}>
+                    Annulla
+                  </button>
+                </>
+              ) : (
+                <button onClick={() => setDoppiAperti(true)} style={pillola(true)}>
+                  Guarda i doppioni
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* I BRANI DELL'ALTRO DISPOSITIVO: i nomi arrivano, i file no.
             L'avviso sta coi tasti che lo risolvono, e si chiude: torna

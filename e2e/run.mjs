@@ -2069,6 +2069,100 @@ const SCENE = [
     },
   },
   {
+    // segnalato dal lettore con la sala del tablet: «65 brani · 32 non qui»,
+    // e la raccolta aperta in due giri alfabetici, il secondo tutto «non è su
+    // questo dispositivo». La stessa cartella importata su tutt'e due i
+    // dispositivi quando i brani non viaggiavano ancora: ogni canzone due
+    // volte. Quella storia l'app di oggi non la rifà (adotta i brani
+    // dell'altro), quindi lo stato si posa com'era: le voci di tutt'e due,
+    // la raccolta con tutt'e quattro, i byte di ognuno sul suo dispositivo
+    nome: "i brani doppi (la stessa cartella importata su tablet e PC) si uniscono, e sul PC i file passano alla copia tenuta",
+    async fai({ browser, db }) {
+      const peso = wav(2).length;
+      const voce = (id, name, trackId, addedAt) => ({ id, name, file: `${name}.wav`, trackId, mime: "audio/wav", size: peso, addedAt, updatedAt: addedAt });
+      const favs = [voce("t1", "Honour", "kt1", 1000), voce("t2", "Horizon", "kt2", 1001), voce("p1", "Honour", "kp1", 2000), voce("p2", "Horizon", "kp2", 2001)];
+      // e una raccolta fatta sul PC con la sola copia del PC
+      const liste = [
+        { id: "r1", name: "Horror playlist", brani: ["t1", "t2", "p1", "p2"], addedAt: 1000, updatedAt: 2001 },
+        { id: "r2", name: "Battaglie", brani: ["p1"], addedAt: 2000, updatedAt: 2002 },
+      ];
+      const posa = ([f, l]) => {
+        if (localStorage.getItem("bc_music_favs")) return;
+        localStorage.setItem("bc_music_favs", JSON.stringify(f));
+        localStorage.setItem("bc_music_lists", JSON.stringify(l));
+      };
+      const byte = (p, chiavi) =>
+        p.evaluate(
+          ([b64, chiavi]) =>
+            new Promise((ok, ko) => {
+              const req = indexedDB.open("bc_library", 3);
+              req.onupgradeneeded = () => {
+                for (const n of ["files", "covers", "aux", "tracks"]) if (!req.result.objectStoreNames.contains(n)) req.result.createObjectStore(n);
+              };
+              req.onerror = () => ko(req.error);
+              req.onsuccess = () => {
+                const tx = req.result.transaction("tracks", "readwrite");
+                const dati = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+                for (const k of chiavi) tx.objectStore("tracks").put(new Blob([dati], { type: "audio/wav" }), k);
+                tx.oncomplete = () => (req.result.close(), ok());
+                tx.onerror = () => ko(tx.error);
+              };
+            }),
+          [wav(2).toString("base64"), chiavi]
+        );
+      const chiaviQui = (p) =>
+        p.evaluate(
+          () =>
+            new Promise((ok) => {
+              const req = indexedDB.open("bc_library", 3);
+              req.onsuccess = () => {
+                const r = req.result.transaction("tracks").objectStore("tracks").getAllKeys();
+                r.onsuccess = () => (req.result.close(), ok(r.result.map(String).sort().join()));
+              };
+            })
+        );
+
+      const tab = await dispositivo(browser, { sessione: true, misura: TABLET });
+      await tab.ctx.addInitScript(posa, [favs, liste]);
+      await tab.p.goto(`${URL_APP}?apri=ingresso`);
+      await byte(tab.p, ["kt1", "kt2"]);
+      await tab.p.goto(`${URL_APP}?apri=musica`);
+      await finche(() => testoAvviso(tab.p, /^4 brani · 2 non qui$/), 10000, "la raccolta del tablet non dice i suoi doppioni come «non qui»");
+      await finche(() => tab.p.getByText(/2 brani ci sono due volte/).count(), 5000, "l'avviso dei doppioni non compare");
+      await tab.p.getByRole("button", { name: "Guarda i doppioni" }).click();
+      await finche(async () => (await tab.p.getByText(/2 copie, 1 qui/).count()) === 2, 5000, "l'elenco dei doppioni non dice le copie");
+      await tab.p.getByRole("button", { name: "Unisci i 2 doppioni" }).click();
+      await finche(() => testoAvviso(tab.p, /^2 brani$/), 8000, "unita, la raccolta dice ancora dei brani non qui");
+      if (await tab.p.getByText(/ci sono due volte/).count()) throw new Error("unita, l'avviso dei doppioni resta");
+      await finche(() => testoAvviso(tab.p, /^1 brano$/), 5000, "la raccolta che aveva solo la copia tolta perde la canzone");
+      if ((await chiaviQui(tab.p)) !== "kt1,kt2") throw new Error(`sul tablet i file della SD non sono quelli: ${await chiaviQui(tab.p)}`);
+      const lapidi = () => (db.prefs()?.music_favs || []).filter((f) => f.deleted && f.unito).map((f) => `${f.id}>${f.unito}`).sort().join();
+      await finche(() => lapidi() === "p1>t1,p2>t2", 15000, `l'unione non sale (lassu': ${lapidi()})`);
+
+      // il PC: le sue copie hanno i byte qui, e l'unione arriva col giro
+      const pc = await dispositivo(browser, { sessione: true });
+      await pc.ctx.addInitScript(posa, [favs, liste]);
+      await pc.p.goto(`${URL_APP}?apri=ingresso`);
+      await byte(pc.p, ["kp1", "kp2"]);
+      await pc.p.goto(`${URL_APP}?apri=musica`);
+      await finche(async () => (await chiaviQui(pc.p)) === "kt1,kt2", 15000, `sul PC i file non passano alla copia tenuta (chiavi: ${await chiaviQui(pc.p)})`);
+      await finche(() => testoAvviso(pc.p, /^2 brani$/), 8000, "sul PC la raccolta non è quella unita");
+      await pc.p.getByRole("button", { name: "Suona Horror playlist" }).click();
+      await finche(() => testoAvviso(pc.p, /^2 brani · ♫ in ascolto$/), 8000, "sul PC la raccolta unita non suona");
+      // un PC che ha ricevuto l'unione ma si e' fermato prima di spostare i
+      // byte (l'app chiusa a meta'): la sala lo riprende, senza account
+      const unite = await tab.p.evaluate(() => [JSON.parse(localStorage.getItem("bc_music_favs")), JSON.parse(localStorage.getItem("bc_music_lists"))]);
+      const fermo = await dispositivo(browser);
+      await fermo.ctx.addInitScript(posa, unite);
+      await fermo.p.goto(`${URL_APP}?apri=ingresso`);
+      await byte(fermo.p, ["kp1", "kp2"]);
+      await fermo.p.goto(`${URL_APP}?apri=musica`);
+      await finche(async () => (await chiaviQui(fermo.p)) === "kt1,kt2", 10000, `il trasloco interrotto non riprende nella sala (chiavi: ${await chiaviQui(fermo.p)})`);
+      await finche(() => testoAvviso(fermo.p, /^2 brani$/), 8000, "ripreso il trasloco, la raccolta dice ancora dei brani non qui");
+      return { guasti: [...tab.guasti, ...pc.guasti, ...fermo.guasti], nota: "4 voci e 2 canzoni: unite sul tablet, sul PC i byte sotto le chiavi tenute, e un trasloco interrotto riprende" };
+    },
+  },
+  {
     // chiesto dal lettore: «un mini player fatto come si deve, come se
     // avessi YouTube o Spotify»
     nome: "il lettore della musica va avanti, torna indietro, salta nel brano e suona il prossimo scelto",

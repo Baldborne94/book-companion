@@ -8,6 +8,7 @@ import {
   removeBookData,
   removeFileOnly,
   listFileIds,
+  listTrackIds,
   listCoverIds,
   misureCopertine,
 } from "./bookStore.js";
@@ -20,7 +21,7 @@ import {
   getCfi, setCfi, removeAnnotations, setJump,
   segnalibriInteri, evidenziazioniIntere, posaSegnalibri, posaEvidenziazioni,
 } from "./annotations.js";
-import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, getListsRaw, writeLists, dropTrack } from "./music.js";
+import { getBookMusic, setBookMusic, getFavoritesRaw, writeFavorites, getListsRaw, writeLists, traslocaLapidi } from "./music.js";
 import { tuttiIGlossari, scriviGlossari } from "./glossarioMio.js";
 import { raccontiLetti, scriviRacconti } from "./racconti.js";
 import { leggiPreferite, scriviPreferite, fondiPreferite } from "./raccoltePreferite.js";
@@ -601,8 +602,9 @@ export async function syncNow({ onProgress, onLibri } = {}) {
     // vedono, e un file portato qui si custodisce sotto la loro chiave
     writeFavorites(favsLocali);
     // una melodia cancellata sull'altro dispositivo se ne va anche da qui,
-    // byte compresi: sono la cosa pesante, e nessuna voce li suonera' piu'
-    for (const f of favsLocali) if (f.deleted && f.trackId) dropTrack(f.trackId);
+    // byte compresi: sono la cosa pesante, e nessuna voce li suonera' piu'.
+    // Una unita a un'altra (`braniDoppi`) prima li porta al brano tenuto.
+    await traslocaLapidi(favsLocali, { qui: new Set(await listTrackIds().catch(() => [])) }).catch(() => {});
     writeLists(merged.music_lists);
     scriviGlossari(merged.glossari || {});
     scriviRacconti(merged.racconti || []);
