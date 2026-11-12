@@ -1606,9 +1606,10 @@ const SCENE = [
     async fai({ browser }) {
       const chiavi = [];
       const libriCercati = [];
+      // il narratore davanti all'autore, come Hardcover lo da' per «Pile of Bones»
       const libro = (position, id, title, { anno = 2015, data = `${anno}-10-06`, lettori = 900, lingua = "eng" } = {}) => ({
         position,
-        book: { id, title, release_year: anno, release_date: data, users_count: lettori, contributions: [{ author: { name: "Rick  Riordan" } }], default_physical_edition: { language: { code3: lingua } } },
+        book: { id, title, release_year: anno, release_date: data, users_count: lettori, contributions: [{ contribution: "Narrator", author: { name: "Kieran Culkin" } }, { contribution: "Author", author: { name: "Rick  Riordan" } }], default_physical_edition: { language: { code3: lingua } } },
       });
       const d = await dispositivo(browser, {
         misura: TABLET,

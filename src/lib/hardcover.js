@@ -90,12 +90,20 @@ export function domandaHardcover(chiave, fetcher = globalThis.fetch, { aspetta =
 const LIBRI_DELLA_SERIE = `book_series(where: {position: {_gte: 0}, book: {compilation: {_eq: false}}}) {
   position
   book {
-    id title release_year release_date users_count contributions(limit: 1) { author { name } }
+    id title release_year release_date users_count contributions(where: {_or: [{contribution: {_is_null: true}}, {contribution: {_eq: "Author"}}]}, limit: 1) { contribution author { name } }
     default_physical_edition { language { code3 } } default_ebook_edition { language { code3 } }
   }
 }`;
 
 const nomeDi = (s) => String(s || "").replace(/\s+/g, " ").trim();
+// L'AUTORE FRA I CONTRIBUTI: Hardcover mette in fila anche chi legge
+// l'audiolibro, chi illustra e chi fa la copertina, e a volte prima
+// dell'autore (segnalato con la biblioteca del lettore: «Pile of Bones» di
+// Tim Gerard Reynolds, il narratore; «The Crystal Shard» di Larry Elmore,
+// l'illustratore, una seconda scheda accanto a quella di Salvatore).
+// L'autore e' il contributo senza ruolo o col ruolo «Author»; senza, nessuno.
+export const autoreDi = (contributi = []) =>
+  nomeDi((contributi || []).find((c) => !c?.contribution || /^author$/i.test(c.contribution))?.author?.name);
 // la lingua dell'edizione principale (cartacea, se no ebook); vuota = non si sa
 const linguaDi = (b) => b?.default_physical_edition?.language?.code3 || b?.default_ebook_edition?.language?.code3 || "";
 const straniero = (lingua) => !!lingua && lingua !== "eng";
@@ -158,7 +166,7 @@ export function volumiDaHardcover(legami = [], { oggi = new Date().toISOString()
     .map(([numero, b]) => ({
       id: b.id,
       titolo: nomeDi(b.title),
-      autore: nomeDi(b.contributions?.[0]?.author?.name),
+      autore: autoreDi(b.contributions),
       numero,
       anno: b.release_year || null,
       annunciato: !b.release_date || b.release_date > oggi,
