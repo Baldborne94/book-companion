@@ -13,6 +13,8 @@
 // «Racconti» di due autori sono due libri — e quindi vogliono lo stesso
 // titolo, lo STESSO AUTORE (scritto, non vuoto) e lo stesso formato.
 
+import { SENZA } from "./segnaposto.js";
+
 const EST = /\.(cbz|cbr|zip|rar)$/i;
 export const chiaveVolume = (b) =>
   String(b?.title || "")
@@ -59,15 +61,39 @@ const chiaveGruppo = (b) => {
   return a ? `${b.fileType}|${t}|${a}` : "";
 };
 
+// LA SCHEDA SENZA EBOOK NELLO STESSO POSTO DI UN'ALTRA (segnalato con la
+// copia della biblioteca del lettore, 12 novembre): «Kagurabachi, Vol. 1»
+// … «Vol. 7» accanto ai v01-v07 coi file, due «The Crystal Shard» al 4 della
+// Legend of Drizzt (una con l'illustratore come autore), «Archmage» e
+// «Archmage: The Legend of Drizzt» al 31, «White Night» al 9 di «The Dresden
+// Files» e di «Dresden Files». Sono schede aggiunte da una lista prima che
+// «già sullo scaffale» le fermasse, e la regola del titolo non le vedeva
+// (titoli scritti diversi, autori diversi, un formato «nessuno»). Una scheda
+// senza ebook e' un segnaposto, non un'edizione: se sta nello STESSO POSTO di
+// un'altra (la raccolta senza l'articolo, la serie, il numero) col titolo
+// vero uguale o con un sottotitolo in piu', e' un doppione. Una traduzione
+// («El Rey Fantasma») no: il titolo non lo dice, e nel dubbio niente.
+const raccoltaDi = (s) => chiaveAutore(s).replace(/^(the|la|il|lo|le|i|gli) /, "");
+const conNumero = (b) => b?.sagaOrder !== null && b?.sagaOrder !== undefined && b?.sagaOrder !== "" && Number.isFinite(Number(b.sagaOrder));
+const postoDi = (b) => (b?.saga && conNumero(b) ? `${raccoltaDi(b.saga)}|${chiaveAutore(b.series)}|${Number(b.sagaOrder)}` : "");
+const titoliVicini = (a, b) => {
+  const x = titoloVero(a);
+  const y = titoloVero(b);
+  return x === y || (!!x && !!y && (x.startsWith(`${y} `) || y.startsWith(`${x} `)));
+};
+
 // Quale tenere, in quest'ordine: quella che ha il FILE (una scheda senza
 // file non si apre: tenerla e buttare l'altra lascerebbe il libro muto),
 // quella che stai leggendo (piu' avanti vince), quella coi segnalibri, il
 // CBZ sul CBR (si legge a pezzi), quella con la copertina, e a parita' la
 // piu' vecchia (la scheda di sempre).
-function peso(b, { progresso, stato, segni, copertina, conFile }) {
+// E UNA SCHEDA SENZA EBOOK PERDE SEMPRE contro quella di un libro vero (che
+// il file puo' averlo sull'altro dispositivo o sul disco); fra due, resta
+// quella con l'autore della raccolta (Salvatore, non l'illustratore).
+function peso(b, { progresso, stato, segni, copertina, conFile, casa }) {
   const p = Number(progresso(b.id)) || 0;
   const s = stato(b.id);
-  return [conFile(b.id) ? 1 : 0, s === "read" || s === "reading" || p > 0 ? 1 : 0, p, segni(b.id), b.fileType === "cbz" ? 1 : 0, copertina(b.id) ? 1 : 0, -(Number(b.addedAt) || 0)];
+  return [conFile(b.id) ? 1 : 0, b.fileType === SENZA ? 0 : 1, s === "read" || s === "reading" || p > 0 ? 1 : 0, p, segni(b.id), b.fileType === "cbz" ? 1 : 0, casa(b), copertina(b.id) ? 1 : 0, -(Number(b.addedAt) || 0)];
 }
 const prima = (a, b) => {
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return b[i] - a[i];
@@ -89,6 +115,21 @@ export function doppioniInBiblioteca(libri, { progresso = () => 0, stato = () =>
       if (!primoDi.has(k)) primoDi.set(k, b.id);
       else capo.set(su(b.id), su(primoDi.get(k)));
     }
+  const perPosto = new Map();
+  for (const b of tutti) {
+    const k = postoDi(b);
+    if (!k) continue;
+    if (!perPosto.has(k)) perPosto.set(k, []);
+    perPosto.get(k).push(b);
+  }
+  for (const stessi of perPosto.values())
+    for (const a of stessi)
+      for (const b of stessi)
+        if (a !== b && a.fileType === SENZA && titoliVicini(a, b)) capo.set(su(a.id), su(b.id));
+  const autori = new Map();
+  const chiaveCasa = (b) => `${raccoltaDi(b.saga)}|${chiaveAutore(b.author).split(" ").sort().join(" ")}`;
+  for (const b of tutti) if (b.saga && b.author) autori.set(chiaveCasa(b), (autori.get(chiaveCasa(b)) || 0) + 1);
+  const casa = (b) => (b.saga && b.author ? autori.get(chiaveCasa(b)) || 0 : 0);
   const gruppi = new Map();
   for (const b of tutti) {
     const r = su(b.id);
@@ -98,7 +139,7 @@ export function doppioniInBiblioteca(libri, { progresso = () => 0, stato = () =>
   const out = [];
   for (const g of gruppi.values()) {
     if (g.length < 2) continue;
-    const pesati = g.map((b) => ({ b, p: peso(b, { progresso, stato, segni, copertina, conFile }) })).sort((x, y) => prima(x.p, y.p));
+    const pesati = g.map((b) => ({ b, p: peso(b, { progresso, stato, segni, copertina, conFile, casa }) })).sort((x, y) => prima(x.p, y.p));
     out.push({ titolo: pesati[0].b.title, tieni: pesati[0].b.id, via: pesati.slice(1).map((x) => x.b.id) });
   }
   return out.sort((a, b) => a.titolo.localeCompare(b.titolo, "it", { numeric: true }));
