@@ -56,6 +56,8 @@ const NOMI = [
   { nomi: ["bartimaeus", "bartimaeus sequence", "trilogia di bartimeus", "bartimeus"], saga: "Bartimaeus" },
   { nomi: ["kingkiller", "kingkiller chronicle", "cronache dell'assassino del re", "assassino del re"], saga: "The Kingkiller Chronicle" },
   { nomi: ["realm of the elderlings", "elderlings"], saga: "The Realm of the Elderlings" },
+  { nomi: ["thomas covenant", "chronicles of thomas covenant", "cronache di thomas covenant"], saga: "Thomas Covenant" },
+  { nomi: ["enderverse", "ender saga", "ender's saga", "saga di ender", "ender quintet"], saga: "Enderverse" },
   { nomi: ["wheel of time", "ruota del tempo"], saga: "The Wheel of Time" },
   { nomi: ["bloodsworn", "bloodsworn saga"], saga: "The Bloodsworn Saga" },
   // I MONDI: tutte le guide dello stesso `universo`, ognuna coi suoi numeri
