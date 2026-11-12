@@ -13,6 +13,8 @@ import LOCKWOOD, { SAGA as SAGA_LW, NOVELLE as NOVELLE_LW } from "../data/lockwo
 import BARTIMAEUS, { SAGA as SAGA_BT } from "../data/bartimaeus.js";
 import KINGKILLER, { SAGA as SAGA_KK, NOVELLE as NOVELLE_KK } from "../data/kingkiller.js";
 import ELDERLINGS, { SAGA as SAGA_RE, NOVELLE as NOVELLE_RE } from "../data/elderlings.js";
+import COVENANT, { SAGA as SAGA_TC, RACCOLTA as RACCOLTA_TC, NOVELLE as NOVELLE_TC } from "../data/covenant.js";
+import ENDERVERSE, { SAGA as SAGA_EV, RACCOLTA as RACCOLTA_EV } from "../data/enderverse.js";
 import COSMERE_SOLI, { SAGA as SAGA_CS } from "../data/cosmereStandalones.js";
 import WHEEL, { SAGA as SAGA_WT } from "../data/wheelOfTime.js";
 import BLOODSWORN, { SAGA as SAGA_BS } from "../data/bloodsworn.js";
@@ -137,6 +139,11 @@ export const TAVOLE = [
   { saga: CHRONICLES, libri: LE_CRONACHE, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_ELAN, raccolta: RACCOLTA_ELAN, novelle: NOVELLE_CRONACHE },
   { saga: LEGENDS, libri: LE_LEGGENDE, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_ELAN, raccolta: RACCOLTA_ELAN, novelle: NOVELLE_LEGGENDE },
   { saga: RISE, libri: ASCESA_E_CADUTA, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_ELAN, raccolta: RACCOLTA_ELAN },
+  // Thomas Covenant e l'Enderverse: una guida sola, le serie come cicli
+  // (come gli Elderlings), numerata col mondo e nella raccolta del lettore
+  // (vedi `data/covenant.js`, `data/enderverse.js`)
+  { saga: SAGA_TC, libri: COVENANT, ordine: (b) => b.o, autore: null, fuori: [], raccolta: RACCOLTA_TC, novelle: NOVELLE_TC },
+  { saga: SAGA_EV, libri: ENDERVERSE, ordine: (b) => b.o, autore: null, fuori: [], raccolta: RACCOLTA_EV },
   { saga: SAGA_BS, libri: BLOODSWORN, ordine: (b) => b.o, autore: null, fuori: [] },
   { saga: SAGA_BB, libri: BOUND, ordine: (b) => b.o, autore: null, fuori: [], novelle: NOVELLE_BB },
 ];
@@ -1173,7 +1180,9 @@ export function saghePropose(libri = []) {
     const casa = guida?.titolo ? TAVOLE.find((t) => t.saga === guida.saga)?.raccolta : null;
     if (casa) {
       const numerati = (cache.numerati ??= universiNumerati(tutti));
-      const dopo = { saga: casa, series: guida.saga, sagaOrder: numeroPerLaBiblioteca(guida, numerati) ?? prima.sagaOrder };
+      // la serie e' il ciclo, dove la guida tiene le serie come cicli
+      // (Thomas Covenant, l'Enderverse); per Elan ciclo e guida coincidono
+      const dopo = { saga: casa, series: guida.ciclo || guida.saga, sagaOrder: numeroPerLaBiblioteca(guida, numerati) ?? prima.sagaOrder };
       if (dopo.saga !== prima.saga || dopo.series !== prima.series || dopo.sagaOrder !== prima.sagaOrder) out.push({ id: b.id, titolo: b.title || "", prima, dopo });
       continue;
     }

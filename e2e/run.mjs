@@ -540,6 +540,53 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore: «ho dei problemi con Covenant, Enderverse che ha
+    // Ender Saga a parte». Le sue schede, sparse in cinque raccolte: «Saghe
+    // da sistemare» le porta in «Thomas Covenant» ed «Enderverse», con la
+    // serie e il numero del mondo
+    nome: "Thomas Covenant e l'Enderverse: da «Saghe da sistemare» i volumi sparsi tornano nelle raccolte del lettore, con la serie e il numero del mondo",
+    async fai({ browser }) {
+      const r = (id, title, author, saga, series, sagaOrder) => ({ id, title, author, saga, series, sagaOrder, fileType: "epub", fileTolto: true, addedAt: 1 });
+      const D = "Stephen R. Donaldson";
+      const C = "Orson Scott Card";
+      const libri = [
+        r("lfb", "Lord Foul's Bane", D, "The Last Chronicles of Thomas Covenant", "", 1),
+        r("ld", "The Last Dark", D, "The Complete Chronicles of Thomas Covenant", "", 4),
+        r("wl", "The Wounded Land", D, "The 2nd Chronicles of Thomas Covenant", "", 1),
+        r("eg", "Ender's Game", C, "Ender Saga", "The Ender Quintet", 1),
+        r("eie", "Ender in Exile", C, "Ender Saga", "The Ender Quintet", 5),
+        r("es", "Ender's Shadow", C, "Enderverse", "", 5),
+      ];
+      const d = await dispositivo(browser, {
+        misura: TABLET,
+        prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});`,
+      });
+      const { p } = d;
+      await p.goto(`${URL_APP}?apri=libreria`);
+      await p.getByRole("button", { name: /Manutenzione/ }).first().click();
+      await p.getByRole("button", { name: "📚 Saghe da sistemare" }).click();
+      await finche(() => p.getByText("Enderverse · The Ender Quintet · n. 11").count(), 5000, "Ender in Exile non si propone all'undicesimo dell'Enderverse");
+      await p.getByRole("button", { name: "Sistema 6" }).click();
+      const scaffale = async () =>
+        (await libriDi(p))
+          .map((b) => `${b.title}=${b.saga}/${b.series}/${b.sagaOrder}`)
+          .sort()
+          .join(" | ");
+      const atteso = [
+        "Ender in Exile=Enderverse/The Ender Quintet/11",
+        "Ender's Game=Enderverse/The Ender Quintet/1",
+        "Ender's Shadow=Enderverse/The Shadow Series/5",
+        "Lord Foul's Bane=Thomas Covenant/The Chronicles of Thomas Covenant the Unbeliever/1",
+        "The Last Dark=Thomas Covenant/The Last Chronicles of Thomas Covenant/10",
+        "The Wounded Land=Thomas Covenant/The Second Chronicles of Thomas Covenant/4",
+      ].join(" | ");
+      await finche(async () => (await scaffale()) === atteso, 5000, "le schede non tornano nelle due raccolte").catch(async (e) => {
+        throw new Error(`${e.message}: ${await scaffale()}`);
+      });
+      return { guasti: d.guasti, nota: "sei schede da cinque raccolte a due, con la serie e il numero del mondo" };
+    },
+  },
+  {
     // chiesto dal lettore: «il nas proprio come nas locale», «vorrei leggere
     // anche fuori casa». Il NAS su un'altra origine, come il nginx di
     // docs/NAS.md dietro Tailscale: l'indirizzo nelle Impostazioni, il
