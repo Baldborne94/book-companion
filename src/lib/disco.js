@@ -11,6 +11,7 @@
 
 import { nomeNudo, casaDelVolume } from "./casa.js";
 import { nomeSicuro, cartellaDentro } from "./hdd.js";
+import { senzaEtichette } from "./titoli.js";
 
 const EST_DISCO = /\.(epub|pdf|cbz|cbr)$/i;
 const chiave = (s) => String(s || "").trim().toLowerCase();
@@ -102,6 +103,9 @@ function parole(s) {
     .replace(/\s*\(\d{1,2}\)\s*$/, "")
     // le targhe dei siti, prima di spezzare: «1lib.sk» diventerebbe un «1»
     .replace(/\b(?:z-?library|1lib|z-lib)(?:\.(?:sk|org))?\b/gi, " ")
+    // «B.P.R.D.» e' una parola: in quattro lettere non contava niente, e le
+    // schede B.P.R.D. non trovavano mai il loro file
+    .replace(/(?<![\p{L}\p{N}])(?:\p{L}\.){2,}(?:\p{L}(?![\p{L}\p{N}]))?/gu, (m) => m.replace(/\./g, ""))
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
@@ -201,7 +205,11 @@ function abbinaDisco(libri, file, casaDi = () => null) {
   for (const b of libri) {
     const intero = parole(b.title);
     if (!intero.length || (intero.length === 1 && intero[0].length < 4)) continue;
-    const pezzi = [intero, ...pezziDi(b.title)];
+    // LA FIRMA DI CHI HA MESSO IN GIRO IL FUMETTO NON E' UN PEZZO DEL TITOLO
+    // (segnalato col rapporto del 12 novembre: «(Son of Ultron-Empire)» e
+    // «GetComics.INFO» in coda a Weird Tales coprivano ogni B.P.R.D. con la
+    // stessa firma, detto altra edizione di Weird Tales)
+    const pezzi = [intero, ...pezziDi(senzaEtichette(b.title))];
     const casa = casaDi(b);
     const suo = new Set(intero);
     const veri = pezziVeri(b.title, new Set(parole(b.saga)));
