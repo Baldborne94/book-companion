@@ -498,6 +498,12 @@ export const MAPPA = [
   },
   {
     luogo: "impostazioni",
+    nome: "Il NAS",
+    cosa: "L'indirizzo del NAS di casa (anche da fuori, con Tailscale): l'app guarda quali libri ci sono, e un libro che qui non ha il file si prende dal NAS toccando «Apri». Come preparare il NAS: docs/NAS.md.",
+    dove: "Impostazioni → Il NAS.",
+  },
+  {
+    luogo: "impostazioni",
     nome: "La sincronizzazione",
     cosa: "Facoltativa: schede, progressi, evidenziazioni e copertine viaggiano fra i tuoi dispositivi. Parte da sola quando apri l'app, quando torna davanti (sul computer anche quando torni sulla sua finestra), quando chiudi un libro e poco dopo ogni cambio di una scheda.",
     dove: "Impostazioni → il rimando al pannello della nuvola.",
