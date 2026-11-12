@@ -481,10 +481,20 @@ const SCENE = [
     // chiesto dal lettore, con la foto del pannello: «The World of Elan che
     // comprende diverse saghe scritta da Michael J. Sullivan come mai non le
     // riconosce ma le vede solo come saghe singole a parte?»
-    nome: "«The World of Elan» per nome e' il mondo intero di Sullivan, nella raccolta del lettore, coi suoi gia' sullo scaffale",
+    nome: "«The World of Elan»: per nome il mondo intero nella raccolta «The World of Elan», e i libri gia' sullo scaffale ci tornano da «Saghe da sistemare» con le serie della guida",
     async fai({ browser }) {
-      const r = (id, title) => ({ id, title, author: "Michael J. Sullivan", saga: "The Riyria Revelations", fileType: "nessuno", fileTolto: true, addedAt: 1 });
-      const libri = [r("e1", "The Crown Conspiricy"), r("e2", "Avempartha"), r("e3", "Nyphron Rising")];
+      // la biblioteca della foto del lettore: le Leggende come raccolta, con
+      // dentro The Rise and Fall e le Cronache; le Rivelazioni a parte
+      const S = "Michael J. Sullivan";
+      const r = (id, title, saga, series, sagaOrder) => ({ id, title, author: S, saga, series, sagaOrder, fileType: "nessuno", fileTolto: true, addedAt: 1 });
+      const libri = [
+        r("e1", "The Crown Conspiricy", "The Riyria Revelations", "", 1),
+        r("e2", "Avempartha", "The Riyria Revelations", "", 2),
+        r("l1", "Age of Myth", "The Legends of the First Empire", "", 1),
+        r("l2", "Age of Swords", "The Legends of the First Empire", "", 2),
+        r("n1", "Nolyn", "The Legends of the First Empire", "The Rise and Fall", 1),
+        r("c1", "The Crown Tower", "The Legends of the First Empire", "The Riyria Chronicles", 1),
+      ];
       const d = await dispositivo(browser, {
         misura: TABLET,
         prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});`,
@@ -496,11 +506,35 @@ const SCENE = [
       await p.getByRole("button", { name: "🔍 Cerca i libri" }).click();
       await finche(() => p.getByText(/tutte le guide dell'app di questo mondo/).count(), 5000, "«The World of Elan» non e' un mondo dell'app");
       const raccolta = await p.getByRole("combobox", { name: "Raccolta" }).inputValue();
-      if (raccolta !== "The Riyria Revelations") throw new Error(`la raccolta proposta non e' quella del lettore: «${raccolta}»`);
+      if (raccolta !== "The World of Elan") throw new Error(`la raccolta proposta non e' «The World of Elan»: «${raccolta}»`);
       const gia = await p.getByText("✓ è già sullo scaffale").count();
-      if (gia !== 3) throw new Error(`gia' sullo scaffale: ${gia} invece dei tre del lettore`);
+      if (gia !== 6) throw new Error(`gia' sullo scaffale: ${gia} invece dei sei del lettore`);
       for (const t of ["Age of Myth", "The Crown Tower", "Nolyn", "Drumindor"]) if (!(await p.getByText(t, { exact: true }).count())) throw new Error(`nel mondo manca «${t}»`);
-      return { guasti: d.guasti, nota: `il mondo intero nella raccolta «${raccolta}», ${gia} gia' sullo scaffale` };
+      await p.getByRole("button", { name: "Chiudi", exact: true }).click();
+
+      // e quelli gia' sullo scaffale si propongono, riga per riga
+      await p.getByRole("button", { name: /Manutenzione/ }).first().click();
+      await p.getByRole("button", { name: "📚 Saghe da sistemare" }).click();
+      await finche(() => p.getByText("The World of Elan · Legends of the First Empire · n. 1").count(), 5000, "Age of Myth non si propone in «The World of Elan»");
+      if ((await libriDi(p)).find((b) => b.id === "l1").saga !== "The Legends of the First Empire") throw new Error("la saga si e' riscritta prima del tocco");
+      await p.getByRole("button", { name: "Sistema 6" }).click();
+      const scaffale = async () =>
+        (await libriDi(p))
+          .map((b) => `${b.title}=${b.saga}/${b.series}/${b.sagaOrder}`)
+          .sort()
+          .join(" | ");
+      const atteso = [
+        "Age of Myth=The World of Elan/Legends of the First Empire/1",
+        "Age of Swords=The World of Elan/Legends of the First Empire/2",
+        "Avempartha=The World of Elan/The Riyria Revelations/2",
+        "Nolyn=The World of Elan/The Rise and Fall/1",
+        "The Crown Conspiricy=The World of Elan/The Riyria Revelations/1",
+        "The Crown Tower=The World of Elan/The Riyria Chronicles/1",
+      ].join(" | ");
+      await finche(async () => (await scaffale()) === atteso, 5000, `lo scaffale non e' in «The World of Elan» con le serie della guida`).catch(async (e) => {
+        throw new Error(`${e.message}: ${await scaffale()}`);
+      });
+      return { guasti: d.guasti, nota: `per nome in «${raccolta}»; sistemati sei libri nelle quattro serie` };
     },
   },
   {

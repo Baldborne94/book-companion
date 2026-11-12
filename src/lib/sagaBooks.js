@@ -22,7 +22,7 @@ import { LA_TRILOGIA, I_SOLI, LA_FOLLIA, TRILOGIA, A_SE, FOLLIA, UNIVERSO as MON
 import { I_FEDELI, IL_SANGUE, FEDELI, SANGUE, UNIVERSO as MONDO_BL } from "../data/banishedLands.js";
 import { EMPIRE, ASCESA, KHARKANAS_LIBRI, WITNESS_LIBRI, MALAZAN_EMPIRE, PATH, KHARKANAS, WITNESS, ORDINE as ORDINE_MALAZAN } from "../data/malazanMondo.js";
 import { ORDINE as ORDINE_COSMERE } from "../data/cosmereMondo.js";
-import { LE_RIVELAZIONI, LE_CRONACHE, LE_LEGGENDE, ASCESA_E_CADUTA, REVELATIONS, CHRONICLES, LEGENDS, RISE, UNIVERSO as MONDO_ELAN, NOVELLE_RIVELAZIONI, NOVELLE_CRONACHE, NOVELLE_LEGGENDE, ORDINE as ORDINE_ELAN } from "../data/elan.js";
+import { LE_RIVELAZIONI, LE_CRONACHE, LE_LEGGENDE, ASCESA_E_CADUTA, REVELATIONS, CHRONICLES, LEGENDS, RISE, RACCOLTA as RACCOLTA_ELAN, UNIVERSO as MONDO_ELAN, NOVELLE_RIVELAZIONI, NOVELLE_CRONACHE, NOVELLE_LEGGENDE, ORDINE as ORDINE_ELAN } from "../data/elan.js";
 import { GUIDE as GUIDE_40K, UNIVERSO as MONDO_40K } from "../data/warhammer40k.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 
@@ -131,11 +131,12 @@ export const TAVOLE = [
   { saga: FOLLIA, libri: LA_FOLLIA, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_FL, novelle: NOVELLE_FOLLIA },
   { saga: FEDELI, libri: I_FEDELI, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_BL },
   { saga: SANGUE, libri: IL_SANGUE, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_BL },
-  // il mondo di Elan di Sullivan: quattro serie, quattro guide (`data/elan.js`)
-  { saga: REVELATIONS, libri: LE_RIVELAZIONI, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_ELAN, novelle: NOVELLE_RIVELAZIONI },
-  { saga: CHRONICLES, libri: LE_CRONACHE, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_ELAN, novelle: NOVELLE_CRONACHE },
-  { saga: LEGENDS, libri: LE_LEGGENDE, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_ELAN, novelle: NOVELLE_LEGGENDE },
-  { saga: RISE, libri: ASCESA_E_CADUTA, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_ELAN },
+  // il mondo di Elan di Sullivan: quattro serie, quattro guide (`data/elan.js`),
+  // tutte nella raccolta scelta dal lettore (`raccolta`)
+  { saga: REVELATIONS, libri: LE_RIVELAZIONI, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_ELAN, raccolta: RACCOLTA_ELAN, novelle: NOVELLE_RIVELAZIONI },
+  { saga: CHRONICLES, libri: LE_CRONACHE, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_ELAN, raccolta: RACCOLTA_ELAN, novelle: NOVELLE_CRONACHE },
+  { saga: LEGENDS, libri: LE_LEGGENDE, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_ELAN, raccolta: RACCOLTA_ELAN, novelle: NOVELLE_LEGGENDE },
+  { saga: RISE, libri: ASCESA_E_CADUTA, ordine: (b) => b.o, autore: null, fuori: [], universo: MONDO_ELAN, raccolta: RACCOLTA_ELAN },
   { saga: SAGA_BS, libri: BLOODSWORN, ordine: (b) => b.o, autore: null, fuori: [] },
   { saga: SAGA_BB, libri: BOUND, ordine: (b) => b.o, autore: null, fuori: [], novelle: NOVELLE_BB },
 ];
@@ -146,7 +147,8 @@ export const TAVOLE = [
 export const MONDI = [
   { universo: "Malazan", nome: "Tutto Malazan", ordine: ORDINE_MALAZAN },
   { universo: "Cosmere", nome: "Tutto il Cosmere", ordine: ORDINE_COSMERE },
-  { universo: MONDO_ELAN, nome: "Tutto il mondo di Elan", ordine: ORDINE_ELAN },
+  // l'ordine che consiglia l'autore, non quello di uscita
+  { universo: MONDO_ELAN, nome: "Tutto il mondo di Elan", ordine: ORDINE_ELAN, perData: false },
 ];
 
 // IL POSTO DI UN VOLUME NEL SUO MONDO (1, 2, 3… nell'ordine del mondo), per
@@ -1074,6 +1076,11 @@ export function ripassa(libro = {}, libri = [], { senzaTraccia, dallaBiblioteca 
 export function raccoltaDellaGuida(guida, libri = [], { riconosce = (b) => riconosci({ title: b?.title, author: b?.author, saga: b?.saga }) } = {}) {
   const tav = TAVOLE.find((t) => t.saga === guida);
   if (!tav) return null;
+  // UNA GUIDA PUO' DIRE LA SUA RACCOLTA, quando l'ha scelta il lettore
+  // («The World of Elan» per le quattro serie di Sullivan): vince sulle
+  // raccolte che i libri avevano prima, che «📚 Saghe da sistemare» propone
+  // di lasciare (`saghePropose`)
+  if (tav.raccolta) return tav.raccolta;
   const vicine = new Set(TAVOLE.filter((t) => t.saga === tav.saga || (tav.universo && t.universo === tav.universo)).map((t) => t.saga));
   const cicli = new Set(tav.libri.map((v) => v.c).filter((c) => c && c !== tav.saga).map(norm));
   const conti = new Map();
@@ -1144,6 +1151,7 @@ const siglaDi = (b) => {
 export function saghePropose(libri = []) {
   const tutti = (libri || []).filter((b) => b?.id);
   const out = [];
+  const cache = {};
   for (const b of tutti) {
     if (nienteSaga(b) || fuoriSaga(b)) continue;
     const prima = { saga: String(b.saga || "").trim(), series: String(b.series || "").trim(), sagaOrder: b.sagaOrder ?? null };
@@ -1156,6 +1164,19 @@ export function saghePropose(libri = []) {
     // LETTORE (aveva gia' messo a mano «Hellboy Omnibus», «Young Hellboy»,
     // «Hellboy and the B.P.R.D.»: «cosi' come stavo facendo»), e chi non ne
     // ha una prende quella della guida (`c` in `data/hellboy.js`).
+    // UNA GUIDA CHE DICE LA SUA RACCOLTA ci riporta i suoi libri (chiesto
+    // dal lettore per Elan: «The World of Elan come nome della saga e poi i
+    // vari nomi delle serie come riportato nella guida»): la raccolta della
+    // guida, la serie col nome della guida, il numero della serie (o del
+    // mondo, dove la biblioteca numera col mondo). Una raccolta di Orbit,
+    // senza un posto suo, tiene il numero che ha.
+    const casa = guida?.titolo ? TAVOLE.find((t) => t.saga === guida.saga)?.raccolta : null;
+    if (casa) {
+      const numerati = (cache.numerati ??= universiNumerati(tutti));
+      const dopo = { saga: casa, series: guida.saga, sagaOrder: numeroPerLaBiblioteca(guida, numerati) ?? prima.sagaOrder };
+      if (dopo.saga !== prima.saga || dopo.series !== prima.series || dopo.sagaOrder !== prima.sagaOrder) out.push({ id: b.id, titolo: b.title || "", prima, dopo });
+      continue;
+    }
     if (guida?.forma) {
       const dopo = { saga: nomeInBiblioteca(guida.saga, tutti), series: prima.series || guida.ciclo || "", sagaOrder: guida.sagaOrder };
       if (dopo.saga !== prima.saga || dopo.series !== prima.series || dopo.sagaOrder !== prima.sagaOrder) out.push({ id: b.id, titolo: b.title || "", prima, dopo });
