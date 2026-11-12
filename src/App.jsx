@@ -62,6 +62,10 @@ import { importaDaFuori, resoconto, importFiles } from "./lib/importBook.js";
 import { avanziManga } from "./lib/avanziManga.js";
 import { leggiNovita, scriviNovita, smettiNovita, messaggioNovita, statoNovita } from "./lib/novita.js";
 import SezioneNovita from "./components/SezioneNovita.jsx";
+import SezioneNas from "./components/SezioneNas.jsx";
+// quanto aspetta un libro preso dal NAS di essere entrato, prima di non aprirsi piu' da solo
+const APRI_DAL_NAS_ENTRO = 120_000;
+import { indirizzoNas, sulNas, prendiDalNas, fraseNas } from "./lib/nas.js";
 import SezioneHardcover from "./components/SezioneHardcover.jsx";
 import { EVENTO as EVENTO_CHIAVI } from "./lib/chiaviInViaggio.js";
 import { togliAvanziDrive } from "./lib/avanziDrive.js";
@@ -616,7 +620,7 @@ function MisuraPicker({ current, onPick, consigliata }) {
   );
 }
 
-function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex, fan, onFan, onFermaFan, imm, onImm, onFermaImm, ill, onIll, onFermaIll, wikt, onWikt, onFermaWikt, guscioPronto = false, infoGuscio = null, invioGuscio = null, sfondo = false, onSfondo = () => {}, novita = [], statoNovita: statoAvvisi = null, onSmettiNovita }) {
+function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex, fan, onFan, onFermaFan, imm, onImm, onFermaImm, ill, onIll, onFermaIll, wikt, onWikt, onFermaWikt, guscioPronto = false, infoGuscio = null, invioGuscio = null, sfondo = false, onSfondo = () => {}, novita = [], statoNovita: statoAvvisi = null, onSmettiNovita, libri = [] }) {
   return (
     <div
       onClick={onClose}
@@ -747,6 +751,21 @@ function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata,
             Le novità
           </h3>
           <SezioneNovita lista={novita} stato={statoAvvisi} nelGuscio={guscioPronto} onSmetti={onSmettiNovita} />
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            Il NAS
+          </h3>
+          <SezioneNas libri={libri} />
         </div>
 
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
@@ -1975,9 +1994,47 @@ export default function App() {
     });
   }
 
+  // IL LIBRO CHE QUI NON HA IL FILE, E SUL NAS SI', SCENDE DA LI' (chiesto
+  // dal lettore: «vorrei leggere anche fuori casa», `lib/nas.js`): entra
+  // dalla porta di sempre, nella sua scheda, e si apre appena e' qui
+  // (`apriPresto`, con un tetto: un'importazione andata storta non lascia
+  // un libro in attesa di aprirsi per sempre)
+  const [apriPresto, setApriPresto] = useState(null);
+  const nasInCorso = useRef(null);
+  async function prendiDalNasEApri(b, base, voce) {
+    if (nasInCorso.current) return;
+    nasInCorso.current = b.id;
+    notify(`⬇ Prendo «${b.title}» dal NAS…`);
+    try {
+      const file = await prendiDalNas(base, voce);
+      setApriPresto(b.id);
+      setTimeout(() => setApriPresto((p) => (p === b.id ? null : p)), APRI_DAL_NAS_ENTRO);
+      daFuori([file], b.id);
+    } catch (e) {
+      notify(fraseNas(e));
+      setOpenId(b.id);
+    } finally {
+      nasInCorso.current = null;
+    }
+  }
+  useEffect(() => {
+    if (!apriPresto) return;
+    const b = books.find((x) => x.id === apriPresto);
+    if (b && !b.fileTolto && localIds?.has(apriPresto)) {
+      setApriPresto(null);
+      handleRead(apriPresto);
+    }
+  }, [apriPresto, books, localIds]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function handleRead(id, startCfi = null) {
     const b = books.find((x) => x.id === id);
     if (!b) return;
+    const voceNas = localIds && !localIds.has(id) ? sulNas(id) : null;
+    const baseNas = voceNas ? indirizzoNas() : null;
+    if (voceNas && baseNas) {
+      prendiDalNasEApri(b, baseNas, voceNas);
+      return;
+    }
     // un libro svuotato apposta non si apre e non si va a cercare nel
     // cloud: si busserebbe a vuoto e il reader finirebbe
     // sulla schermata del guasto, che qui sarebbe una bugia
@@ -2444,6 +2501,7 @@ export default function App() {
       )}
       {themeOpen && (
         <Impostazioni
+          libri={books}
           current={themeId}
           onPick={pickTheme}
           onClose={() => setThemeOpen(false)}

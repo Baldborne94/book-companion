@@ -13,6 +13,7 @@
 // `test/tema.test.mjs`; nella CI (`CI=true`) saltare e' un fallimento.
 import { existsSync, readFileSync } from "node:fs";
 import { build, preview } from "vite";
+import { avviaNas } from "./nasFinto.mjs";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
 import { fumetto, fumettoGrosso, fumettoLungo, epub, epubConContorno, epubConPagine, pdf, wav, FRASE, mondoDisco, png, pngRighe } from "./libri.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
@@ -25,6 +26,7 @@ process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = "1";
 
 const PORTA_DB = 4599;
 const PORTA_APP = 4190;
+const PORTA_NAS = 4610;
 const URL_APP = `http://localhost:${PORTA_APP}/`;
 const aspetta = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -535,6 +537,46 @@ const SCENE = [
         throw new Error(`${e.message}: ${await scaffale()}`);
       });
       return { guasti: d.guasti, nota: `per nome in «${raccolta}»; sistemati sei libri nelle quattro serie` };
+    },
+  },
+  {
+    // chiesto dal lettore: «il nas proprio come nas locale», «vorrei leggere
+    // anche fuori casa». Il NAS su un'altra origine, come il nginx di
+    // docs/NAS.md dietro Tailscale: l'indirizzo nelle Impostazioni, il
+    // controllo, e «Apri» su un libro senza file qui lo prende da li'
+    nome: "il NAS: l'indirizzo nelle Impostazioni, il controllo trova i libri, e un libro senza file qui si prende dal NAS e si apre",
+    async fai({ browser }) {
+      const nas = await avviaNas(PORTA_NAS, { file: { "book-companion/Libri/La nebbia.epub": await epub(), "book-companion/Fumetti/Racconti/Racconti 01.cbz": await fumetto() } });
+      try {
+        const libri = [{ id: "nb", title: "La nebbia", author: "Autore di Prova", fileType: "epub", fileTolto: true, addedAt: 1 }];
+        const d = await dispositivo(browser, { misura: TABLET, prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});` });
+        const { p } = d;
+        await p.goto(URL_APP);
+        await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+        await p.getByRole("textbox", { name: "Indirizzo del NAS" }).fill(`http://localhost:${PORTA_NAS}/libri`);
+        await p.getByRole("button", { name: "Salva e prova" }).click();
+        const risponde = await finche(() => testoAvviso(p, /^Il NAS risponde/), 8000, "il NAS non risponde dalle Impostazioni");
+        await p.getByRole("button", { name: "🔍 Guarda cosa c'è sul NAS" }).click();
+        const trovati = await finche(() => testoAvviso(p, /un libro della biblioteca ha il file sul NAS/), 8000, "il controllo del NAS non trova il libro");
+        if (!/un file senza scheda/.test(trovati)) throw new Error(`il fumetto senza scheda non si dice: «${trovati}»`);
+        // il libro senza file qui: «Scegli il file» lo prende dal NAS e lo apre
+        await p.goto(`${URL_APP}?apri=libreria`);
+        await p.getByText("La nebbia").first().click();
+        await p.getByRole("button", { name: "📂 Scegli il file" }).click();
+        await finche(
+          async () => {
+            for (const f of p.frames()) if ((await f.evaluate(() => document.body?.innerText || "").catch(() => "")).includes(FRASE)) return true;
+            return false;
+          },
+          25000,
+          "il libro preso dal NAS non si apre"
+        );
+        const scheda = (await libriDi(p)).filter((b) => b.title === "La nebbia");
+        if (scheda.length !== 1 || scheda[0].fileTolto) throw new Error(`il file non e' tornato nella sua scheda: ${JSON.stringify(scheda)}`);
+        return { guasti: d.guasti, nota: `«${risponde}» · ${nas.viste.filter((v) => v.endsWith(".epub")).length} richiesta del file` };
+      } finally {
+        await nas.chiudi();
+      }
     },
   },
   {
