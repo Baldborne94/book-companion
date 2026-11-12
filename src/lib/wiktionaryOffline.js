@@ -261,9 +261,6 @@ async function leggiSacco(s, deposito) {
 // dizionario non c'e' o non conosce la parola. Il cartellino si guarda una
 // volta per sessione: senza dizionario, ogni ricerca non deve costare una
 // lettura di sacco a vuoto.
-export const dimenticaStato = () => {
-  installato = null;
-};
 export async function sensiWikt(parola, deposito = DEPOSITO) {
   const p = String(parola || "").toLowerCase().trim();
   const s = saccoWikt(p);

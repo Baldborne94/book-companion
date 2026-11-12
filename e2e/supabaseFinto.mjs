@@ -19,8 +19,6 @@ export function avviaSupabase(porta = 4599, { latenza = 0 } = {}) {
   const viste = new Map();
   const oggetti = new Map();
   let prefs = null;
-  // le righe col permesso di Google rimaste dai tempi di Drive (`google_refresh`)
-  const permessi = new Map();
   // i link per email chiesti (dove riportano), e le password scritte
   const link = [];
   const password = [];
@@ -50,17 +48,6 @@ export function avviaSupabase(porta = 4599, { latenza = 0 } = {}) {
       }
       if (u.pathname === "/auth/v1/user" && req.method === "PUT") password.push(JSON.parse(corpo.toString() || "{}").password);
       if (u.pathname === "/auth/v1/user") return json(UTENTE);
-      if (u.pathname === "/rest/v1/google_refresh") {
-        if (req.method === "GET") return json([...permessi.values()]);
-        if (req.method === "DELETE") {
-          const chi = (u.searchParams.get("user_id") || "").replace(/^eq\./, "");
-          permessi.delete(chi);
-          return json([], 200);
-        }
-        const arr = JSON.parse(corpo.toString() || "[]");
-        for (const r of Array.isArray(arr) ? arr : [arr]) permessi.set(r.user_id, r);
-        return json([], 201);
-      }
       if (u.pathname === "/rest/v1/books") {
         if (req.method === "GET") {
           const colonne = (u.searchParams.get("select") || "*").split(",");
@@ -140,7 +127,6 @@ export function avviaSupabase(porta = 4599, { latenza = 0 } = {}) {
         },
         // le copertine lassu', come le manda un altro dispositivo
         metti: (chiave, byte) => oggetti.set(chiave, byte),
-        permessi: () => [...permessi.values()],
         link: () => [...link],
         password: () => [...password],
         chiudi: () =>

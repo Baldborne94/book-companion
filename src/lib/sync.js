@@ -34,7 +34,6 @@ import { leggiDaPrendere, scriviDaPrendere, fondiDaPrendere } from "./daPrendere
 import { aGruppi } from "./aGruppi.js";
 import { avanziDelSecchio, leggiRigheLeggere, aPagine, fraseCopertine, COPERTINE_INSIEME, leggiRigheIntere, idDaLeggereInteri, completaPull, planSync, mergePrefs, rowFromLocal, localFromRow, normalizeRow, withRepush, colonnaMancante, senzaColonna, fondiAnnotazioni, upsertBooks, contaSpazio, portaGiu, nonCeLassu, copertineDaScaricare, copertineDaCaricare, mandaCopertine, copertineInAttesa, segnaInAttesa, fondiSchede } from "./syncCore.js";
 import { raccontaGiro } from "./resoconto.js";
-import { togliAvanziDrive } from "./avanziDrive.js";
 
 
 // `contaSpazio` viveva qui ed e' passata in `syncCore` con le altre
@@ -242,10 +241,6 @@ export async function syncNow({ onProgress, onLibri } = {}) {
   if (!session) return { skipped: "non connesso" };
   const uid = session.user.id;
   const say = (m) => onProgress?.(m);
-  // la riga col permesso a lungo termine di Google, dei tempi di Drive
-  // (`avanziDrive.js`): una volta per account e dispositivo
-  await togliAvanziDrive({ sb, uid }).catch(() => {});
-
   say("Leggo la biblioteca…");
   const books = loadBooks();
   const localRows = books.map((b) =>

@@ -34,7 +34,7 @@ import Salvaschermo, { SezioneSalvaschermo, SezioneSfondo } from "./components/S
 import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, dopoIlSaluto, SALUTO, CIAO, TOGLI, LATO_MAX, fraseSenzaPrima, inPiedi } from "./lib/sfondo.js";
 import { ascoltaCopertine } from "./lib/miniature.js";
 import { copertinaGrande, dimenticaGrande } from "./lib/copertinaGrande.js";
-import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, removeAux, putCover } from "./lib/bookStore.js";
+import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, putCover } from "./lib/bookStore.js";
 import { cercaNuovaVersione, cercaInSilenzio, siAggiornaNascosta } from "./lib/aggiornamenti.js";
 import Guasto from "./components/Guasto.jsx";
 import Home from "./components/Home.jsx";
@@ -59,7 +59,6 @@ import { preparaCopertina } from "./lib/copertina.js";
 import { rifaiCammino } from "./lib/cammino.js";
 import { riordinaDisco, fraseRiordino, fraseDaParte, fraseRimessi, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
 import { importaDaFuori, resoconto, importFiles } from "./lib/importBook.js";
-import { avanziManga } from "./lib/avanziManga.js";
 import { leggiNovita, scriviNovita, smettiNovita, messaggioNovita, statoNovita } from "./lib/novita.js";
 import SezioneNovita from "./components/SezioneNovita.jsx";
 import SezioneNas from "./components/SezioneNas.jsx";
@@ -68,7 +67,6 @@ const APRI_DAL_NAS_ENTRO = 120_000;
 import { indirizzoNas, sulNas, prendiDalNas, fraseNas } from "./lib/nas.js";
 import SezioneHardcover from "./components/SezioneHardcover.jsx";
 import { EVENTO as EVENTO_CHIAVI } from "./lib/chiaviInViaggio.js";
-import { togliAvanziDrive } from "./lib/avanziDrive.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
 import BarraLavoro from "./components/BarraLavoro.jsx";
 import { spiegaSync, schedaDiversa, eDiRete } from "./lib/syncCore.js";
@@ -1469,15 +1467,6 @@ export default function App() {
     let alive = true;
     localFileIds().then((ids) => alive && setLocalIds(ids));
     return () => { alive = false; };
-  }, []);
-
-  // QUEL CHE GOOGLE DRIVE HA LASCIATO QUI se ne va da solo (`avanziDrive.js`)
-  useEffect(() => {
-    togliAvanziDrive({ togliAux: removeAux }).catch(() => {});
-  }, []);
-  // e cosi' quel che la stanza dei manga, tolta, ha lasciato (`avanziManga.js`)
-  useEffect(() => {
-    avanziManga();
   }, []);
 
   // si timbra solo quel che viaggia: la quarta di copertina scaricata

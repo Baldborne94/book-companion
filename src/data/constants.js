@@ -115,7 +115,6 @@ export function applyAppTheme(id) {
 }
 
 export const FONT_TITLE = '"Cormorant Garamond", Georgia, serif';
-export const FONT_BODY = '"EB Garamond", Georgia, serif';
 
 // LA SCALA. Prima c'erano ventisette corpi diversi — 12,5 · 13 · 13,5 · 14
 // · 14,5 · 15, sei gradini in due punti e mezzo — e tredici raggi. Nessuno
@@ -330,7 +329,6 @@ export function risolviScala(scelta, dati) {
 // render e' l'unico modo di seguire la levetta, come per `F` e `R`.
 let fattoreVivo = 1;
 export const px = (n) => Math.round(n * fattoreVivo);
-export const fattoreCorrente = () => fattoreVivo;
 
 // Il `tondo` NON si scala: 999 non e' una misura, e' il modo di dire
 // «pastiglia» al browser. Moltiplicarlo darebbe un numero piu' grosso e
