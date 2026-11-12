@@ -67,5 +67,3 @@ export async function scriviSchede(bookId, voci) {
     /* niente spazio o niente store: la scheda resta buona per questa sessione */
   }
 }
-
-export const chiaveSchede = CHIAVE;

@@ -72,8 +72,6 @@ export const cerca = (voci = [], termine) => {
   return voci.find((e) => norm(e.t) === n) || null;
 };
 
-export const normalizza = norm;
-
 const PREFISSO = "bc_gloss_";
 
 // I TERMINI TUOI VANNO NELL'ARCHIVIO. Un glossario che si scrive a mano e

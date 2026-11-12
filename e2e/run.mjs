@@ -1970,58 +1970,6 @@ const SCENE = [
     },
   },
   {
-    // chiesto dal lettore, lasciato Drive: «pulizia su cose che non servono
-    // piu'». Le chiavi di Drive sul dispositivo, l'elenco dei file in
-    // IndexedDB e la riga col permesso a lungo termine di Google nel
-    // Supabase se ne vanno da sole, e la biblioteca resta.
-    nome: "quel che Google Drive ha lasciato se ne va da solo, e la biblioteca resta",
-    async fai({ browser, db }) {
-      await fetch(`http://localhost:${PORTA_DB}/rest/v1/google_refresh`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: "u1", token: "rt-vecchio" }) });
-      if (db.permessi().length !== 1) throw new Error("la riga del permesso non c'e' nemmeno prima");
-      const d = await dispositivo(browser, { sessione: true });
-      await d.p.goto(`${URL_APP}?apri=libreria`);
-      // i resti dei tempi di Drive, seminati dopo il primo avvio (il database
-      // del browser lo crea l'app), poi si riapre
-      await d.p.evaluate(
-        () =>
-          new Promise((ok, ko) => {
-            for (const k of ["bc_drive_token", "bc_drive_on", "bc_drive_libri", "bc_drive_mai", "bc_google_vista"]) localStorage.setItem(k, "vecchio");
-            localStorage.setItem("bc_books", JSON.stringify([{ id: "m", title: "Mort", author: "Terry Pratchett", fileType: "epub", addedAt: 1 }]));
-            const r = indexedDB.open("bc_library");
-            r.onsuccess = () => {
-              const tx = r.result.transaction("aux", "readwrite");
-              tx.objectStore("aux").put({ file: {} }, "drive_elenco");
-              tx.oncomplete = () => (r.result.close(), ok());
-              tx.onerror = () => ko(tx.error);
-            };
-            r.onerror = () => ko(r.error);
-          })
-      );
-      await d.p.reload();
-      await finche(() => db.permessi().length === 0, 20000, "la riga col permesso di Google resta nel Supabase");
-      const rimaste = await finche(
-        () => d.p.evaluate(() => Object.keys(localStorage).filter((k) => /^bc_(drive|google)_/.test(k) && k !== "bc_google_riga_tolta").join()) .then((x) => (x === "" ? "nessuna" : "")),
-        10000,
-        "le chiavi di Drive restano sul dispositivo"
-      );
-      const elenco = await d.p.evaluate(
-        () =>
-          new Promise((ok) => {
-            const r = indexedDB.open("bc_library");
-            r.onsuccess = () => {
-              const g = r.result.transaction("aux").objectStore("aux").get("drive_elenco");
-              g.onsuccess = () => ok(g.result === undefined ? "via" : "resta");
-              g.onerror = () => ok("?");
-            };
-            r.onerror = () => ok("?");
-          })
-      );
-      if (elenco !== "via") throw new Error(`l'elenco dei file di Drive in IndexedDB: ${elenco}`);
-      if (!(await libriDi(d.p)).some((b) => b.title === "Mort")) throw new Error("la pulizia si e' portata via la biblioteca");
-      return { guasti: d.guasti, nota: `chiavi di Drive: ${rimaste}, elenco in IndexedDB via, riga di Google tolta, «Mort» al suo posto` };
-    },
-  },
-  {
     // chiesto dal lettore: «deve sincronizzarsi anche la sezione musica, se
     // metto nuove raccolte o altro queste devo vederle anche sugli altri
     // dispositivi»

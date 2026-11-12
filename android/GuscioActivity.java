@@ -28,7 +28,6 @@ public class GuscioActivity extends com.google.androidbrowserhelper.trusted.Laun
     @Override
     protected void onCreate(Bundle stato) {
         super.onCreate(stato);
-        AvanziAvvisi.togli(getApplicationContext());
         if (stato == null && SchermataDiBlocco.permessoDaChiedere(this)) {
             startActivityForResult(new Intent(this, PermessoActivity.class), PERMESSO);
         }

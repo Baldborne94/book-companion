@@ -46,7 +46,6 @@ export function getCrop(bookId) {
 }
 
 export const saveCrop = (bookId, crop) => localStorage.setItem(KEY(bookId), JSON.stringify(crop));
-export const dropCrop = (bookId) => localStorage.removeItem(KEY(bookId));
 
 // Il rettangolo dell'inchiostro su una pagina gia' disegnata. Lo sfondo lo
 // dettano i quattro angoli invece di darlo per bianco: le scansioni virano

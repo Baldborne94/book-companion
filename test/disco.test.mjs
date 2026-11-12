@@ -296,6 +296,33 @@ export default async (t) => {
   t.c("anche in italiano: «Libro Due» non è un'altra edizione del «Libro Tre»", !trono.altreEdizioni.length && /Libro Due/.test(trono.senzaScheda.map((f) => f.nome).join()), rapportoDisco(trono));
   const op = controllaDisco([{ id: "op", title: "One Piece v105", saga: "One Piece", tipo: "manga" }], [fv("Manga/One Piece/One Piece v105.cbz", 105), fv("Manga/One Piece/One Piece v001.cbz", 1)], { tipoDi: () => "manga" });
   t.c("un numero in lettere dentro un nome resta un nome: «One Piece v001» non è il v105", !op.altreEdizioni.length && /v001/.test(op.senzaScheda.map((f) => f.nome).join()), rapportoDisco(op));
+  // dal rapporto del 12 novembre: la firma di chi ha messo in giro il fumetto
+  // («(Son of Ultron-Empire)», «GetComics.INFO») non e' un pezzo del titolo,
+  // e «B.P.R.D.» e' una parola, non quattro lettere
+  const bprd = controllaDisco(
+    [
+      { id: "wt", title: "Hellboy - Weird Tales (2022) (digital) (Son of Ultron-Empire)", saga: "Hellboy", tipo: "fumetti" },
+      { id: "wt14", title: "Hellboy - Weird Tales (2014) GetComics.INFO", saga: "Hellboy", tipo: "fumetti" },
+      { id: "gr5", title: "Grendel Omnibus v05 - Grendel Tales (2024, 2nd edition) (digital) (Son of Ultron-Empire)", saga: "Grendel", tipo: "fumetti" },
+      { id: "b8", title: "B.P.R.D. Omnibus v08", saga: "Hellboy", tipo: "fumetti" },
+      { id: "b46", title: "B.P.R.D. - 1946-1948", saga: "Hellboy", tipo: "fumetti" },
+    ],
+    [
+      fv("Fumetti/Hellboy/Hellboy - Weird Tales (2022) (digital) (Son of Ultron-Empire).cbz", 10),
+      fv("Fumetti/Hellboy/Hellboy - Weird Tales (2014) GetComics.INFO.cbz", 11),
+      fv("Fumetti/Grendel/Grendel Omnibus v05 - Grendel Tales (2024, 2nd edition) (digital) (Son of Ultron-Empire).cbz", 12),
+      fv("Fumetti/Hellboy/B.P.R.D. Omnibus/B.P.R.D. Omnibus v08 (2023) (digital) (Son of Ultron-Empire).cbz", 18),
+      fv("Fumetti/Hellboy/B.P.R.D. Omnibus/B.P.R.D. Omnibus v01 (2022) (digital) (Son of Ultron-Empire).cbz", 13),
+      fv("Fumetti/Hellboy/B.P.R.D. Omnibus/B.P.R.D. Omnibus v05 (2023) (digital) (F) (Son of Ultron-Empire).cbz", 15),
+      fv("Fumetti/Hellboy/B.P.R.D/B.P.R.D. - 1946-1948 (2015) GetComics.INFO.cbz", 16),
+    ],
+    { tipoDi: () => "fumetti" }
+  );
+  const diB = Object.fromEntries([...bprd.aPosto, ...bprd.daSpostare].map((x) => [x.libro.id, x.file.byte]));
+  t.c("la firma del gruppo non fa di un B.P.R.D. un'altra edizione di Weird Tales o di Grendel", !bprd.altreEdizioni.length, rapportoDisco(bprd));
+  t.eq("B.P.R.D. Omnibus v08 trova il suo file", diB.b8, 18);
+  t.eq("B.P.R.D. - 1946-1948 trova il suo file", diB.b46, 16);
+  t.eq("i B.P.R.D. senza scheda restano senza scheda", bprd.senzaScheda.map((f) => f.byte).sort().join(), "13,15");
   const soloUno = controllaDisco([{ id: "s4", title: "The Sandman - The Deluxe Edition Book 04", saga: "The Sandman" }], [fv("Fumetti/The Sandman/The Sandman - The Deluxe Edition Book 01.cbz", 1)]);
   t.c("e non prende il file del Book 01 quando il suo manca", soloUno.mancano.altrove.length === 1);
   // dal quarto rapporto: il numero della scheda è l'ordine di lettura
