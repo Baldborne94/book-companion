@@ -85,4 +85,39 @@ export default async (t) => {
   t.eq("una saga diversa e' un altro fumetto, anche col titolo vero uguale", doppioniInBiblioteca([{ id: "a", title: "Alpha v01 - The Beginning", saga: "Alpha", sagaOrder: 1, fileType: "cbz" }, { id: "b", title: "Beta v01 - The Beginning", saga: "Beta", sagaOrder: 1, fileType: "cbz" }]).length, 0);
   t.eq("senza titolo vero, nel dubbio niente", doppioniInBiblioteca([{ id: "a", title: "Kingdom v04 [TurnipFarmers]", saga: "Kingdom", sagaOrder: 4, fileType: "cbz" }, { id: "b", title: "Kingdom Vol. 4", saga: "Kingdom", sagaOrder: 4, fileType: "cbz" }]).length, 0);
   t.eq("e i libri restano col loro titolo e autore", doppioniInBiblioteca([{ ...ksbd[0], fileType: "epub", author: "A" }, { ...ksbd[1], fileType: "epub", author: "A" }]).length, 0);
+
+  // ── LE SCHEDE SENZA EBOOK NELLO STESSO POSTO (la copia della biblioteca del
+  // lettore, 12 novembre): i nomi, i numeri e gli autori sono i suoi
+  const drizzt = (id, title, author, n, extra = {}) => ({ id, title, author, saga: "The Legend of Drizzt", sagaOrder: n, fileType: "nessuno", fileTolto: true, addedAt: extra.addedAt ?? 1, ...extra });
+  const scaffale = [
+    drizzt("cs-elmore", "The Crystal Shard", "Larry Elmore", 4, { addedAt: 1 }),
+    drizzt("cs", "The Crystal Shard", "R. A. Salvatore", 4, { addedAt: 2 }),
+    drizzt("hs", "Homeland", "R. A. Salvatore", 1),
+    drizzt("ex", "Exile", "R. A. Salvatore", 2),
+    drizzt("am", "Archmage", "R. A. Salvatore", 31, { addedAt: 1 }),
+    drizzt("am2", "Archmage: The Legend of Drizzt", "R. A. Salvatore", 31, { addedAt: 2 }),
+    drizzt("gk", "The Ghost King", "R. A. Salvatore", 22),
+    drizzt("es", "El Rey Fantasma", "R. A. Salvatore", 22),
+    { id: "kg1", title: "Kagurabachi v01", saga: "Kagurabachi", sagaOrder: 1, fileType: "cbz", tipo: "manga", addedAt: 9 },
+    { id: "kg1s", title: "Kagurabachi, Vol. 1", author: "Takeru Hokazono", saga: "Kagurabachi", sagaOrder: 1, fileType: "nessuno", fileTolto: true, addedAt: 1 },
+    { id: "wn", title: "White Night", author: "Jim Butcher", saga: "Dresden Files", sagaOrder: 9, fileType: "epub", fileTolto: true, addedAt: 5 },
+    { id: "wn2", title: "White Night", author: "Chris McGrath", saga: "The Dresden Files", sagaOrder: 9, fileType: "nessuno", fileTolto: true, addedAt: 1 },
+    { id: "sg", title: "Skin Game: A Novel of the Dresden Files", author: "Jim Butcher", saga: "Dresden Files", sagaOrder: 15, fileType: "epub", fileTolto: true, addedAt: 5 },
+    { id: "sg2", title: "Skin Game", author: "Jim Butcher", saga: "The Dresden Files", sagaOrder: 15, fileType: "nessuno", fileTolto: true, addedAt: 1 },
+    { id: "pg", title: "Proven Guilty", author: "Jim Butcher", saga: "Dresden Files", sagaOrder: 19, fileType: "epub", fileTolto: true, addedAt: 5 },
+    { id: "mm", title: "Mirror Mirror", author: "Jim Butcher", saga: "Dresden Files", sagaOrder: 19, fileType: "nessuno", fileTolto: true, addedAt: 6 },
+    { id: "ah", title: "Ashes of Man", author: "Christopher Ruocchio", saga: "The Sun Eater", sagaOrder: 5, fileType: "epub", addedAt: 1 },
+    { id: "kd", title: "Kingdoms of Death", author: "Christopher Ruocchio", saga: "The Sun Eater", sagaOrder: 5, fileType: "epub", addedAt: 2 },
+  ];
+  const sp = doppioniInBiblioteca(scaffale, { conFile: () => false });
+  const coppie = sp.map((x) => `${x.tieni}<${x.via.join("+")}`).sort().join(", ");
+  t.eq("le schede senza ebook nello stesso posto di un'altra: col titolo uguale o un sottotitolo in più", coppie, "am<am2, cs<cs-elmore, kg1<kg1s, sg<sg2, wn<wn2");
+  t.c("resta l'autore della raccolta, non l'illustratore (anche se la sua scheda è più vecchia)", sp.some((x) => x.tieni === "cs"));
+  t.c("…e la scheda di un libro vero, non il segnaposto, anche senza il file qui", sp.some((x) => x.tieni === "wn") && sp.some((x) => x.tieni === "kg1"));
+  t.c("una traduzione non si riconosce dal titolo: resta", !sp.some((x) => [x.tieni, ...x.via].includes("es")));
+  t.c("un altro libro allo stesso numero (un numero sbagliato) non è un doppione", !sp.some((x) => [x.tieni, ...x.via].includes("mm")));
+  t.c("due libri veri allo stesso numero nemmeno: sono un numero da sistemare", !sp.some((x) => [x.tieni, ...x.via].includes("kd")));
+  const jojo = (id, title, series, fileType) => ({ id, title, saga: "JoJo's Bizarre Adventure", series, sagaOrder: 1, fileType, tipo: "manga", addedAt: 1 });
+  t.eq("lo stesso numero in un'altra serie della raccolta è un altro posto", doppioniInBiblioteca([jojo("p7", "JoJo's Bizarre Adventure v01", "Parte 7", "cbz"), jojo("p8", "JoJo's Bizarre Adventure Vol. 1", "Parte 8", "nessuno")]).length, 0);
+  t.eq("senza numero non c'è posto", doppioniInBiblioteca([{ ...scaffale[9], sagaOrder: null }, { ...scaffale[8], sagaOrder: null }]).length, 0);
 };

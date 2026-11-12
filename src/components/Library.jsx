@@ -3364,15 +3364,32 @@ export default function Library({
             {doppi.length > 0 && vediDoppi && (
               <div style={{ flexBasis: "100%", padding: 12, borderRadius: R.piccolo, border: `1px solid ${C.border}`, background: C.surface }}>
                 <p style={{ margin: "0 0 8px", color: C.text, fontSize: F.nota, lineHeight: 1.45 }}>
-                  Di ogni volume resta una scheda sola: quella che ha il file, poi quella che stai leggendo, poi il CBZ con la copertina. Le
-                  altre se ne vanno.
+                  Di ogni volume resta una scheda sola: quella che ha il file, poi quella che stai leggendo, poi il CBZ con la copertina; una
+                  scheda senza ebook nello stesso posto di un libro vero se ne va lei. Le altre se ne vanno.
                 </p>
                 <ul style={{ margin: "0 0 10px", padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" }}>
-                  {doppi.map((g) => (
-                    <li key={g.tieni} style={{ fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" }}>
-                      <span style={{ color: C.text }}>{g.titolo}</span> · {g.via.length === 1 ? "una copia" : `${g.via.length} copie`} in più
-                    </li>
-                  ))}
+                  {doppi.map((g) => {
+                    // le copie che se ne vanno si dicono per nome quando non
+                    // sono lo stesso titolo: due «The Crystal Shard» si
+                    // distinguono dall'autore, «Kagurabachi, Vol. 1» dal titolo
+                    const di = (id) => books.find((b) => b.id === id);
+                    const tieni = di(g.tieni);
+                    const chi = (b) => [b?.author, b?.saga && b.saga !== tieni?.saga ? `in «${b.saga}»` : "", b?.fileType === "nessuno" ? "senza ebook" : ""].filter(Boolean).join(", ");
+                    const via = g.via.map(di).filter(Boolean);
+                    const parlante = via.some((b) => b.title !== tieni?.title || b.author !== tieni?.author || b.saga !== tieni?.saga);
+                    return (
+                      <li key={g.tieni} style={{ fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" }}>
+                        <span style={{ color: C.text }}>{g.titolo}</span>
+                        {parlante ? (
+                          <>
+                            {tieni?.author ? ` (${tieni.author})` : ""} · via: {via.map((b) => `«${b.title}»${chi(b) ? ` (${chi(b)})` : ""}`).join(", ")}
+                          </>
+                        ) : (
+                          <> · {g.via.length === 1 ? "una copia" : `${g.via.length} copie`} in più</>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button

@@ -3530,6 +3530,44 @@ const SCENE = [
     },
   },
   {
+    // dalla copia della biblioteca del lettore (12 novembre), coi suoi nomi:
+    // schede senza ebook aggiunte da una lista accanto a libri che c'erano
+    // gia', e la Manutenzione che non le vedeva. Il lettore: «sì fai i doppioni»
+    nome: "le schede senza ebook nello stesso posto di un libro si uniscono dai doppioni, e resta il libro con l'autore vero",
+    async fai({ browser }) {
+      const senza = (id, title, author, saga, n, addedAt = 1) => ({ id, title, author, saga, sagaOrder: n, fileType: "nessuno", fileTolto: true, addedAt });
+      const libri = [
+        senza("cs-elmore", "The Crystal Shard", "Larry Elmore", "The Legend of Drizzt", 4, 1),
+        senza("cs", "The Crystal Shard", "R. A. Salvatore", "The Legend of Drizzt", 4, 2),
+        senza("hl", "Homeland", "R. A. Salvatore", "The Legend of Drizzt", 1, 3),
+        senza("gk", "The Ghost King", "R. A. Salvatore", "The Legend of Drizzt", 22, 3),
+        senza("es", "El Rey Fantasma", "R. A. Salvatore", "The Legend of Drizzt", 22, 4),
+        { id: "kg1", title: "Kagurabachi v01", saga: "Kagurabachi", sagaOrder: 1, fileType: "cbz", tipo: "manga", fileTolto: true, addedAt: 9 },
+        senza("kg1s", "Kagurabachi, Vol. 1", "Takeru Hokazono", "Kagurabachi", 1, 1),
+        { id: "wn", title: "White Night", author: "Jim Butcher", saga: "Dresden Files", sagaOrder: 9, fileType: "epub", fileTolto: true, addedAt: 5 },
+        senza("wn2", "White Night", "Chris McGrath", "The Dresden Files", 9, 1),
+      ];
+      const d = await dispositivo(browser, {
+        misura: TABLET,
+        prima: `if (!localStorage.getItem("bc_books")) localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});`,
+      });
+      await d.p.goto(`${URL_APP}?apri=libreria`);
+      await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
+      await d.p.getByRole("button", { name: /3 volumi hanno una copia in più/ }).first().click({ timeout: 15000 });
+      const elenco = await d.p.locator("li", { hasText: "via:" }).allTextContents();
+      if (!elenco.some((r) => r.includes("The Crystal Shard (R. A. Salvatore) · via: «The Crystal Shard» (Larry Elmore, senza ebook)")))
+        throw new Error(`l'elenco non dice quale «The Crystal Shard» se ne va: ${JSON.stringify(elenco)}`);
+      if (!elenco.some((r) => r.includes("«White Night» (Chris McGrath, in «The Dresden Files», senza ebook)"))) throw new Error(`l'elenco non dice la raccolta della copia: ${JSON.stringify(elenco)}`);
+      await d.p.getByRole("button", { name: /Unisci i doppioni/ }).first().click();
+      const resta = await finche(async () => {
+        const ids = (await libriDi(d.p)).map((b) => b.id).sort().join();
+        return ids.split(",").length === 6 && ids;
+      }, 10000, "i doppioni non se ne vanno");
+      if (resta !== "cs,es,gk,hl,kg1,wn") throw new Error(`restano: ${resta}`);
+      return { guasti: d.guasti, nota: "tre copie senza ebook tolte: l'illustratore, il segnaposto di Kagurabachi, la seconda raccolta di Dresden; la traduzione resta" };
+    },
+  },
+  {
     nome: "Lexicanum scende dalle Impostazioni, i nomi si segnano nel testo, e nella scheda del dizionario la voce vela quel che viene da un volume dopo",
     async fai({ browser }) {
       const chieste = [];

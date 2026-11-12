@@ -372,6 +372,12 @@ export const MAPPA = [
   },
   {
     luogo: "libreria",
+    nome: "Unisci i doppioni",
+    cosa: "Lo stesso volume in due schede (un CBR e il suo CBZ, un libro reimportato, una scheda senza ebook accanto al libro vero): prima l'elenco, che dice quale resta e quale se ne va, poi un tocco.",
+    dove: "🧰 Manutenzione → «👯 … una copia in più: unisci».",
+  },
+  {
+    luogo: "libreria",
     nome: "Esporta e ripristina",
     cosa: "Un archivio con libri, segni, glossari e melodie. Se la biblioteca è grande esce in più pezzi da scaricare uno per volta: per ripristinare li scegli tutti insieme, e un pezzo dimenticato si aggiunge dopo. Ripristinando puoi scegliere cosa far entrare.",
     dove: "«Esporta biblioteca» in vista, «↩ Ripristina» nella cassetta degli attrezzi.",
