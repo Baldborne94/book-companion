@@ -17,6 +17,20 @@
 // Daughter il 5 dicembre. Blythin Castle (Chronicles #6) e' annunciato per
 // il 2027: non e' uscito e non entra.
 //
+// I NOMI SONO QUELLI DELLA GUIDA DELL'AUTORE (chiesto dal lettore: «mettere
+// The World of Elan come nome della saga e poi i vari nomi delle serie come
+// riportato nella guida», https://riyria.blogspot.com/p/series.html, letta
+// il 12 novembre 2026): «Legends of the First Empire» senza «The». Il mondo
+// la' si chiama «The Elan Saga»; la raccolta e' «The World of Elan», come
+// l'ha voluta il lettore (`RACCOLTA`: le quattro guide vanno li', e
+// «📚 Saghe da sistemare» ci porta i libri gia' sullo scaffale, la serie col
+// nome della guida). After the Fall (Out of the Ashes) e' «in development»
+// sulla pagina, senza data su Hardcover ne' su Open Library: non entra.
+// La pagina scrive che Theft of Swords contiene «The Crown Tower &
+// Avempartha»: e' una svista, il primo delle Rivelazioni e' The Crown
+// Conspiracy (Hardcover e la stessa pagina, nell'ordine di lettura).
+export const RACCOLTA = "The World of Elan";
+
 // LE RIVELAZIONI SONO SEI ROMANZI e tre raccolte di Orbit (Theft of Swords,
 // Rise of Empire, Heir of Novron), due romanzi ciascuna: una raccolta e' una
 // riga sua (`tipo: "omnibus"`), e chi ce l'ha ha i due romanzi dentro (`in`),
@@ -26,7 +40,7 @@
 export const UNIVERSO = "The World of Elan";
 export const REVELATIONS = "The Riyria Revelations";
 export const CHRONICLES = "The Riyria Chronicles";
-export const LEGENDS = "The Legends of the First Empire";
+export const LEGENDS = "Legends of the First Empire";
 export const RISE = "The Rise and Fall";
 
 const A = "Michael J. Sullivan";
@@ -83,11 +97,15 @@ export const NOVELLE_LEGGENDE = [
   { o: 0.6, t: "Little Wren and the Big Forest", c: LEGENDS, a: A, anno: 2016 },
 ];
 
-// L'ORDINE DI LETTURA DEL MONDO (`MONDI` in `sagaBooks.js`): l'ordine di
-// uscita, come per Malazan e il Cosmere. [guida, titolo, prima edizione],
-// e le storie di mezzo (quarta colonna) al posto della loro uscita, con la
-// data della prima edizione su Hardcover (The Viscount and the Witch ha
-// solo l'anno).
+// L'ORDINE DI LETTURA DEL MONDO (`MONDI` in `sagaBooks.js`): QUELLO CHE
+// L'AUTORE CONSIGLIA sulla sua pagina («essentially the order books were
+// written, which is pretty close to publication order»): le Rivelazioni, le
+// Cronache 1-2, le Leggende 1-3, le Cronache 3-4, le Leggende 4-6, The Rise
+// and Fall, Drumindor. Non e' l'ordine di uscita (Dulgath, 2015, viene dopo
+// Age of War, 2018), quindi le date non sono in fila (`perData: false`).
+// [guida, titolo, prima edizione]; le storie di mezzo (quarta colonna) dopo
+// il romanzo uscito prima di loro, con la data della prima edizione su
+// Hardcover (The Viscount and the Witch ha solo l'anno).
 export const ORDINE = [
   [REVELATIONS, "The Crown Conspiracy", "2007-09-01"],
   [REVELATIONS, "Avempartha", "2009-04-01"],
@@ -101,12 +119,12 @@ export const ORDINE = [
   [CHRONICLES, "The Rose and the Thorn", "2013-09-17"],
   [CHRONICLES, "The Jester", "2014-01-17", true],
   [CHRONICLES, "Professional Integrity", "2015-06-03", true],
-  [CHRONICLES, "The Death of Dulgath", "2015-10-15"],
   [LEGENDS, "Age of Myth", "2016-06-15"],
   [LEGENDS, "Little Wren and the Big Forest", "2016-11-21", true],
   [LEGENDS, "Age of Swords", "2017-07-25"],
-  [CHRONICLES, "The Disappearance of Winter's Daughter", "2017-12-05"],
   [LEGENDS, "Age of War", "2018-07-03"],
+  [CHRONICLES, "The Death of Dulgath", "2015-10-15"],
+  [CHRONICLES, "The Disappearance of Winter's Daughter", "2017-12-05"],
   [LEGENDS, "Age of Legend", "2019-07-09"],
   [LEGENDS, "Pile of Bones", "2019-08-01", true],
   [LEGENDS, "Age of Death", "2020"],

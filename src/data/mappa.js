@@ -302,7 +302,7 @@ export const MAPPA = [
     luogo: "libreria",
     nome: "L'ordine di lettura di un mondo intero",
     cosa: "Tutti i romanzi di Malazan, del Cosmere o del mondo di Elan (Riyria e le altre serie di Sullivan) in un cammino solo, nell'ordine in cui sono usciti (quello che consigliano gli autori): a Malazan il Libro dei Caduti, i romanzi di Esslemont, Kharkanas e Witness; al Cosmere Mistborn, le Cronache della Folgorluce, Elantris, Warbreaker e i Secret Projects, con le storie di mezzo (Edgedancer, Dawnshard, Secret History…) al loro posto, una serie dopo l'altra come si alternano. Il prossimo passo è il primo che non hai letto, e «🔢 Mettili in ordine di guida» scrive sui tuoi volumi il loro posto nel mondo (1, 2, 3…): lo scaffale resta diviso per serie, ogni volume col suo numero nell'ordine di lettura, i libri nuovi entrano al loro posto, e l'Oracolo vede tutto il mondo come una storia sola.",
-    dove: "I tasti «🌐 Tutto Malazan», «🌐 Tutto il Cosmere» e «🌐 Tutto il mondo di Elan» sull'intestazione del ripiano dove tieni quel mondo, prima dei tasti 📜 delle singole serie.",
+    dove: "I tasti «🌐 Tutto Malazan», «🌐 Tutto il Cosmere» e «🌐 Tutto il mondo di Elan» (questo nell'ordine che consiglia Sullivan) sull'intestazione del ripiano dove tieni quel mondo, prima dei tasti 📜 delle singole serie.",
   },
   {
     luogo: "libreria",

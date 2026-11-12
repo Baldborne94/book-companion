@@ -23,8 +23,9 @@ export default async (t) => {
     const storie = guide.flatMap((g) => (g.novelle || []).map((v) => `${g.saga}\u0000${v.t}`));
     const storieNelMondo = mondo.ordine.filter((r) => r[3]).map((r) => `${r[0]}\u0000${r[1]}`);
     t.eq(`${mondo.nome}: ogni storia di mezzo ci sta, una volta`, `${storie.filter((k) => !storieNelMondo.includes(k)).join(" | ")}|${new Set(storieNelMondo).size === storieNelMondo.length}`, "|true");
-    // l'ordine e' quello di uscita: una riga spostata a mano si vede
-    const date = mondo.ordine.map((r) => r[2]);
+    // l'ordine e' quello di uscita: una riga spostata a mano si vede (Elan
+    // segue l'ordine che consiglia l'autore, e lo dice: `perData: false`)
+    const date = mondo.perData === false ? [] : mondo.ordine.map((r) => r[2]);
     const storte = date.map((d, i) => (i && !(d >= date[i - 1]) ? `${mondo.ordine[i][1]} (${d}) dopo ${mondo.ordine[i - 1][1]} (${date[i - 1]})` : null)).filter(Boolean);
     t.eq(`${mondo.nome}: in ordine di data`, storte.join("; "), "");
     t.eq(`${mondo.nome}: ogni riga ha una data`, mondo.ordine.filter((r) => !/^\d{4}(-\d{2}){0,2}$/.test(r[2] || "")).map((r) => r[1]).join(), "");
