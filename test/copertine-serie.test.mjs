@@ -2,7 +2,7 @@
 // dal lettore con la foto della raccolta di Monster: «per Monster riesci a
 // recuperarmi le copertine?». Le schede come le sue (il nome del file della
 // scansione, il numero nella saga); il catalogo e' la risposta vera.
-import { numeroNelTitolo, copertinePerVolume, autoreDellaRaccolta, domandaSerie, cercaCopertineSerie, scaricaCopertina } from "../src/lib/copertineSerie.js";
+import { numeroNelTitolo, copertinePerVolume, autoreDellaRaccolta, domandaSerie, cercaCopertineSerie, scaricaCopertina, sceltePerCopertina, cercaCopertinaDelLibro } from "../src/lib/copertineSerie.js";
 import catalogo from "./monster-catalogo.mjs";
 
 const libri = Array.from({ length: 18 }, (_, i) => ({
@@ -82,6 +82,35 @@ export default async (t) => {
   let esploso = false;
   await cercaCopertineSerie({ nome: "Monster", libri }, { fetcher: async () => ({ ok: false, status: 503 }) }).catch(() => (esploso = true));
   t.c("un guasto del catalogo si dice, non e' «non ce l'ha»", esploso);
+
+  // ---- DALLA MANUTENZIONE: SI SCEGLIE LA RACCOLTA O IL LIBRO ----------------------
+  const scaffale = [
+    ...libri,
+    { id: "p1", title: "Mort", author: "Terry Pratchett", saga: "Mondo Disco", sagaOrder: 4 },
+    { id: "p2", title: "Mostri e mostriciattoli", author: "Altri" },
+    { id: "u1", title: "L'ultimo libro", author: "Àlvaro Mönsteri" },
+    { id: "k10", title: "Kingdom v10", saga: "Kingdom" },
+    { id: "k9", title: "Kingdom v9", saga: "kingdom" },
+  ];
+  const vedi = (q) => sceltePerCopertina(scaffale, q).map((s) => (s.tipo === "raccolta" ? `📚${s.nome}·${s.libri.length}` : `📖${s.libro.title}`));
+  t.eq("la raccolta prima, poi i libri, coi volumi contati", vedi("monster v01").join(" | "), "📖Monster v01");
+  t.eq("la raccolta col suo numero di volumi", vedi("Monster")[0], "📚Monster·18");
+  t.eq("al piu' otto", vedi("Monster").length, 8);
+  t.eq("la stessa saga scritta in due modi e' una raccolta, e il 9 viene prima del 10", vedi("kingdom").join(), "📚Kingdom·2,📖Kingdom v9,📖Kingdom v10");
+  t.eq("ogni parola, in qualunque ordine, l'inizio basta e senza accenti", vedi("pratch mort").join(), "📖Mort");
+  t.eq("…anche nell'autore, senza accenti", vedi("monsteri").join(), "📖L'ultimo libro");
+  t.eq("niente cercato, niente proposto", vedi("  ").length, 0);
+  t.eq("i volumi in ordine di numero", vedi("volume").slice(0, 3).join(), "📖Monster - Volume_02_[Mangascreener],📖Monster - Volume_03_[Mangascreener],📖Monster - Volume_04_[Mangascreener]");
+
+  // un libro solo: col suo numero si cerca come volume della serie
+  const perTitolo = [];
+  const titolo = async (v) => (perTitolo.push(v.titolo), v.titolo === "Mort" ? 1234 : null);
+  const v2 = await cercaCopertinaDelLibro(libri[1], { fetcher: async () => ({ ok: true, json: async () => ({ docs: catalogo }) }), perTitolo: titolo });
+  t.eq("il volume 2 di Monster come volume della serie", `${v2.proposte.map((p) => p.copertina).join()}|${perTitolo.length}`, "764859|0");
+  const mort = await cercaCopertinaDelLibro(scaffale.find((b) => b.id === "p1"), { fetcher: async () => ({ ok: true, json: async () => ({ docs: [] }) }), perTitolo: titolo });
+  t.eq("la serie non lo trova: per titolo e autore", `${mort.proposte.map((p) => `${p.copertina}·${p.libro.id}·${p.numero}`).join()}|${perTitolo.join()}`, "1234·p1·null|Mort");
+  const solo = await cercaCopertinaDelLibro({ id: "z", title: "Senza saga", saga: "Qualcosa" }, { fetcher: async () => { throw new Error("la serie non si chiede"); }, perTitolo: titolo });
+  t.eq("senza numero, solo per titolo; e niente, niente", solo.proposte.length, 0);
 
   // ---- L'IMMAGINE ----------------------------------------------------------------
   let url = "";

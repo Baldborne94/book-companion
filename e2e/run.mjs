@@ -538,6 +538,59 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore dopo Monster: «nella manutenzione un tasto in cui
+    // scelgo la raccolta o il libro e gli chiedo di mettermi la copertina
+    // corretta». Un libro per titolo e autore, poi una raccolta
+    nome: "dalla Manutenzione la copertina dal catalogo per un libro scelto e per una raccolta scelta",
+    async fai({ browser }) {
+      const catalogo = (url) => {
+        const q = new URL(url).searchParams;
+        if (q.get("title") === "La nebbia") return { docs: [{ key: "/works/OL1W", title: "La nebbia", author_name: ["Autore di Prova"], cover_i: 555 }] };
+        return q.get("q") === "Monster vol" ? { docs: catalogoMonster } : { docs: [] };
+      };
+      const COLORI = { 555: [30, 170, 60], 863480: [30, 60, 200], 764859: [200, 30, 30] };
+      const copertine = (url) => {
+        const n = Number(url.match(/\/id\/(\d+)-/)?.[1]);
+        return COLORI[n] ? png(300, 450, COLORI[n]) : null;
+      };
+      const d = await dispositivo(browser, { misura: TABLET, catalogo, copertine });
+      await importa(d.p, "La nebbia.epub", await epub(), "application/epub+zip");
+      for (const n of [1, 2]) await importa(d.p, `Monster v0${n}.cbz`, await fumetto({ prima: png(300, 450, [126 + n, 128, 128]) }), "application/zip");
+      const libri = await libriDi(d.p);
+      const id = (t) => libri.find((b) => b.title === t)?.id;
+      await d.p.goto(`${URL_APP}?apri=libreria`);
+      await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
+      await d.p.getByRole("button", { name: "🖼 Copertina dal catalogo" }).click();
+      const campo = d.p.getByRole("searchbox", { name: "Raccolta o libro di cui cercare la copertina" });
+      await campo.fill("nebbia");
+      await d.p.getByRole("button", { name: /^📖 La nebbia/ }).click();
+      await finche(() => d.p.getByRole("button", { name: "🖼 Metti la copertina" }).count(), 10000, "la copertina del libro non arriva");
+      await d.p.getByRole("button", { name: "🖼 Metti la copertina" }).click();
+      await finche(() => testoAvviso(d.p, /^🖼 Una copertina dal catalogo$/), 10000, "non dice di aver messo la copertina del libro");
+      // chiuso il giro, di nuovo il campo: la raccolta
+      await campo.fill("monster");
+      await d.p.getByRole("button", { name: /^📚 Monster · 2 volumi/ }).click();
+      await d.p.getByRole("button", { name: "🖼 Metti le 2 copertine" }).click();
+      await finche(() => testoAvviso(d.p, /^🖼 2 copertine dal catalogo$/), 10000, "non dice di aver messo le copertine della raccolta");
+      const sborda = await d.p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      if (sborda > 0) throw new Error(`la Manutenzione sborda di ${sborda}px`);
+      const stato = await d.p.evaluate(async (ids) => {
+        const db = await new Promise((ok, ko) => { const r = indexedDB.open("bc_library"); r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); });
+        return Promise.all(ids.map(async (id) => {
+          const c = await new Promise((ok) => { const r = db.transaction("covers").objectStore("covers").get(id); r.onsuccess = () => ok(r.result); });
+          const b = await createImageBitmap(c);
+          const t = new OffscreenCanvas(b.width, b.height).getContext("2d");
+          t.drawImage(b, 0, 0);
+          const [r, g, bl] = t.getImageData(b.width >> 1, b.height >> 1, 1, 1).data;
+          return (r > 150 && g < 80 ? "rossa" : bl > 150 && r < 80 ? "blu" : g > 130 && r < 80 ? "verde" : "grigia") + (localStorage.getItem(`bc_cov_mano_${id}`) === "1" ? " a mano" : "");
+        }));
+      }, [id("La nebbia"), id("Monster v01"), id("Monster v02")]);
+      const atteso = "verde a mano,blu a mano,rossa a mano";
+      if (stato.join() !== atteso) throw new Error(`copertine: ${stato.join()} (attese ${atteso})`);
+      return { guasti: d.guasti, nota: `La nebbia ${stato[0]}, Monster v01 ${stato[1]}, v02 ${stato[2]}` };
+    },
+  },
+  {
     // segnalato dal lettore con la foto dello scaffale di Kingdom: dal volume
     // 10 la prima pagina e' la sovraccoperta giapponese aperta, 800×543, e
     // sullo scaffale c'erano il dorso e il codice a barre. Manga e' segnato
