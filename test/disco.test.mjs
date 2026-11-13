@@ -344,6 +344,41 @@ export default async (t) => {
   t.eq("«B.P.R.D. Omnibus v02-0053» trova «v02 (2022) …»", diD.b2, 20);
   t.eq("…e gli intervalli restano numeri: 1946-1948", diD.b46, 21);
   t.eq("…e 131-140 non e' il 131 copiato da Drive: non e' il pacchetto 131-135", diD.sl, 22);
+  // dal rapporto del 13 novembre: la copia di Drive anche dopo un numero in
+  // lettere, e due schede col titolo uguale che il file non sa dividere ma
+  // l'autore nel nome e la cartella della saga si'
+  const tredici = controllaDisco(
+    [
+      { id: "s4", title: "The Deluxe Edition Book Four-020", saga: "The Sandman", sagaOrder: 4, tipo: "fumetti" },
+      { id: "tt", title: "The Truth", author: "Terry Pratchett", saga: "Discworld", series: "Industrial Revolution", sagaOrder: 25 },
+      { id: "ttc", title: "The Truth", author: "Ryan Cahill", saga: "The Bound and the Broken", sagaOrder: 4.5, fileType: "nessuno" },
+    ],
+    [
+      fv("Fumetti/The Sandman/The Deluxe Edition Book Four-020.cbz", 29),
+      fv("Fumetti/The Sandman/The Sandman - The Deluxe Edition Book 04 (2021) (digital) (Son of Ultron-Empire).cbz", 30),
+      fv("Libri/Discworld/The Truth - Terry Pratchett.epub", 31),
+    ],
+    { tipoDi: (b) => b.tipo || "libri" }
+  );
+  const diT = Object.fromEntries([...tredici.aPosto, ...tredici.daSpostare].map((x) => [x.libro.id, x.file.byte]));
+  t.eq("«Book Four-020» ha il suo file col suo nome", diT.s4, 29);
+  t.eq("…e il «Book 04 (2021)» e' un'altra edizione del Book Four, non un file senza scheda", tredici.altreEdizioni.map((x) => `${x.file.byte}>${x.libro.id}`).join(), "30>s4");
+  t.eq("«The Truth - Terry Pratchett» nella cartella Discworld e' di Pratchett, non di Cahill", diT.tt, 31);
+  t.c("…e Cahill resta senza", !diT.ttc);
+  const truth = (via, altro = "Ryan Cahill") => {
+    const r = controllaDisco(
+      [
+        { id: "tt", title: "The Truth", author: "Terry Pratchett", saga: "Discworld", series: "Industrial Revolution", sagaOrder: 25 },
+        { id: "ttc", title: "The Truth", author: altro, saga: "The Bound and the Broken", sagaOrder: 4.5, fileType: "nessuno" },
+      ],
+      [fv(via, 31)]
+    );
+    return [...r.aPosto, ...r.daSpostare].map((x) => x.libro.id).join();
+  };
+  t.eq("…basta l'autore nel nome, anche fuori dalla cartella", truth("Libri/The Truth - Terry Pratchett.epub"), "tt");
+  t.eq("…basta la cartella della saga, anche piu' in alto e senza l'autore", truth("Libri/Discworld/Vecchi/The Truth - edizione 2000.epub"), "tt");
+  t.eq("…e senza ne' l'uno ne' l'altra, nel dubbio niente", truth("Libri/The Truth - edizione 2000.epub"), "");
+  t.eq("…un «by» nel nome non e' l'autore «Edited by …»", truth("Libri/The Truth by Terry Pratchett.epub", "Edited by Ann Lee"), "tt");
   const soloUno = controllaDisco([{ id: "s4", title: "The Sandman - The Deluxe Edition Book 04", saga: "The Sandman" }], [fv("Fumetti/The Sandman/The Sandman - The Deluxe Edition Book 01.cbz", 1)]);
   t.c("e non prende il file del Book 01 quando il suo manca", soloUno.mancano.altrove.length === 1);
   // dal quarto rapporto: il numero della scheda è l'ordine di lettura

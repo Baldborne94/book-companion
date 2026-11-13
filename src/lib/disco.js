@@ -96,6 +96,9 @@ const IN_LETTERE = Object.fromEntries(
   ].flatMap((riga) => riga.split(" ").map((w, i) => [w, i + 1]))
 );
 const ANNUNCIA = /^(book|part|volume|tome|libro|parte|tomo)$/;
+// la copia di Drive anche dopo un numero in lettere («The Deluxe Edition Book
+// Four-020», dal rapporto del 13 novembre)
+const COPIA_DRIVE = new RegExp(`(\\b(?:(?:v|vol\\.?\\s*)\\d{1,3}|(?:book|part|volume|tome|libro|parte|tomo)\\s+(?:\\d{1,3}|${Object.keys(IN_LETTERE).join("|")})))-\\d{3,4}$`, "i");
 const piena = (w) => !w.startsWith("#") && w.length >= 3 && !GENERICHE.has(w) && !RUMORE.has(w);
 function parole(s) {
   return String(s || "")
@@ -105,7 +108,7 @@ function parole(s) {
     // numero della copia attaccato (la scheda «B.P.R.D. Omnibus v02-0053» non
     // trovava «v02 (2022) …»). Solo dopo «v» o «Vol.»: «1946-1948» e
     // «c101-110» sono intervalli
-    .replace(/(\b(?:v|vol\.?\s*)\d{1,3})-\d{3,4}$/i, "$1")
+    .replace(COPIA_DRIVE, "$1")
     // le targhe dei siti, prima di spezzare: «1lib.sk» diventerebbe un «1»
     .replace(/\b(?:z-?library|1lib|z-lib)(?:\.(?:sk|org))?\b/gi, " ")
     // «B.P.R.D.» e' una parola: in quattro lettere non contava niente, e le
@@ -204,6 +207,7 @@ function abbinaDisco(libri, file, casaDi = () => null) {
   const liberi = file.filter((f) => !presi.has(f));
   const insiemi = new Map(liberi.map((f) => [f, new Set(parole(f.nome))]));
   const cartelle = new Map(liberi.map((f) => [f, cartellaDi(f)]));
+  const tutteLeCartelle = new Map(liberi.map((f) => [f, new Set(parole(f.cartelle.join(" ")))]));
   // le coppie di tutte le schede: quelle gia' abbinate per nome servono a
   // riconoscere le loro altre edizioni
   const coppie = [];
@@ -226,7 +230,14 @@ function abbinaDisco(libri, file, casaDi = () => null) {
       const contano = [...ws].filter((w) => !RUMORE.has(w) && !/^#(19|20)\d\d$/.test(w));
       const comuni = contano.filter((w) => suo.has(w)).length;
       const aCasa = casa && casa === f.cartelle.map((x) => x.toLowerCase()).join("/") ? 0.001 : 0;
-      coppie.push({ b, f, punti: comuni / (suo.size + contano.length - comuni || 1) + aCasa });
+      // A PARI TITOLO, L'AUTORE NEL NOME E LA SAGA FRA LE CARTELLE (dal
+      // rapporto del 13 novembre: «The Truth - Terry Pratchett.epub» nella
+      // cartella Discworld, e due schede «The Truth», di Pratchett e di
+      // Cahill: nel dubbio nessuna delle due lo prendeva)
+      const suoAutore = parole(b.author).some((w) => w.length >= 4 && !w.startsWith("#") && ws.has(w)) ? 0.0004 : 0;
+      const sagaQui = parole(b.saga).filter(piena);
+      const inCartella = sagaQui.length && sagaQui.every((w) => tutteLeCartelle.get(f).has(w)) ? 0.0004 : 0;
+      coppie.push({ b, f, punti: comuni / (suo.size + contano.length - comuni || 1) + aCasa + suoAutore + inCartella });
     }
   }
   // a pari punti il file piu' grande per primo (vedi `stessoLibro`)
