@@ -166,7 +166,7 @@ export default function CopertineDalCatalogo({ r, libro = null, notify, subito =
       else n.set(id, copertina);
       return n;
     });
-  const nomeDi = (p) => (p.numero != null ? `Volume ${p.numero}` : p.libro.title);
+  const nomeDi = (p) => (p.numero != null ? `Volume ${p.etichetta}` : p.libro.title);
   const riquadretto = (attivo) => ({
     display: "flex",
     flexDirection: "column",
@@ -218,7 +218,7 @@ export default function CopertineDalCatalogo({ r, libro = null, notify, subito =
             const mia = scelta.get(p.libro.id);
             return (
               <div key={p.libro.id} style={{ display: "flex", flexDirection: "column", gap: 4, padding: 6, borderRadius: R.piccolo, border: `1px solid ${mia ? C.accent : C.border}` }}>
-                <span style={{ fontSize: F.piccolo, color: C.text }}>{p.numero != null ? p.numero : p.libro.title}</span>
+                <span style={{ fontSize: F.piccolo, color: C.text }}>{p.numero != null ? p.etichetta : p.libro.title}</span>
                 <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                   <button onClick={() => scegli(p.libro.id, null)} aria-pressed={!mia} aria-label={`${nomeDi(p)}: la tua`} style={riquadretto(!mia)}>
                     <span style={{ width: px(56), height: px(84), display: "block" }}>

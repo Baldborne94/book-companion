@@ -672,7 +672,11 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
         </div>
         {avviso?.si && <SerieDellaRaccolta r={dentro} lista={novita} onCercata={onSerie} />}
         <TuttaLaRaccolta r={dentro} voti={voti} onVoto={onVoto} onTutti={onTutti} />
-        <CopertineDalCatalogo key={dentro.id} r={dentro} notify={notify} />
+        {/* la chiave non e' quella della raccolta: lo scaffale qui sotto
+            (`mostra`, un `Ripiano`) porta gia' quella, e due fratelli con la
+            stessa chiave React li confonde a ogni aggiornamento (il tasto
+            moltiplicato venti volte e lo scaffale sparito) */}
+        <CopertineDalCatalogo key={`copertine|${dentro.id}`} r={dentro} notify={notify} />
         {mostra(dentro)}
       </>
     );

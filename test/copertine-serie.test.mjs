@@ -2,8 +2,9 @@
 // dal lettore con la foto della raccolta di Monster: «per Monster riesci a
 // recuperarmi le copertine?». Le schede come le sue (il nome del file della
 // scansione, il numero nella saga); il catalogo e' la risposta vera.
-import { numeroNelTitolo, copertinePerVolume, autoreDellaRaccolta, domandaSerie, cercaCopertineSerie, scaricaCopertina, sceltePerCopertina, cercaCopertinaDelLibro, edizioniDellOpera, opereDaChiedere, scelteDelVolume, editoriDelleScelte, tutteDellEditore, domandaEdizioni } from "../src/lib/copertineSerie.js";
+import { numeroNelTitolo, copertinePerVolume, autoreDellaRaccolta, domandaSerie, cercaCopertineSerie, scaricaCopertina, sceltePerCopertina, cercaCopertinaDelLibro, edizioniDellOpera, opereDaChiedere, scelteDelVolume, editoriDelleScelte, tutteDellEditore, domandaEdizioni, numerataPerParte, serieNelTitolo, editoreLeggibile, aggiustaByte, chiaveEditore } from "../src/lib/copertineSerie.js";
 import catalogo, { edizioni } from "./monster-catalogo.mjs";
+import { tutta as jojoTutta, parte7 as jojo7, edizioniVol2 } from "./jojo-catalogo.mjs";
 
 const libri = Array.from({ length: 18 }, (_, i) => ({
   id: `m${i + 1}`,
@@ -162,6 +163,56 @@ export default async (t) => {
   t.eq("…uno con un volume solo no, e due copertine dello stesso nel volume contano una", editoriDelleScelte(conKana).map((e) => `${e.chiave}·${e.quanti}`).join(), "viz·3,kana·2");
   t.eq("«tutte di Kana»: la prima di Kana di ogni volume che ce l'ha", [...tutteDellEditore(conKana, "kana")].map(([id, c]) => `${id}:${c}`).join(), "m2:5,m1:991984");
   t.eq("«VIZ Media LLC» e «VIZ Media» sono lo stesso", [...tutteDellEditore(tutte, "viz").values()].join(), "863480,12757108,2806209");
+
+  // ---- UNA RACCOLTA NUMERATA PER PARTE (JoJo) ------------------------------------
+  const J = "JoJo's Bizarre Adventure";
+  const jojo = [2, 3, 4, 5, 6, 7].flatMap((p) => [2, 5, 6, 8].map((n) => ({ id: `j${p}-${n}`, title: `Parte ${p} v${n}`, saga: J, series: `Parte ${p}`, sagaOrder: n })));
+  t.c("JoJo riparte da uno a ogni parte", numerataPerParte(jojo));
+  t.c("Monster no", !numerataPerParte(libri));
+  t.c("…né un volume solo per serie", !numerataPerParte([{ series: "A", sagaOrder: 1 }, { series: "B", sagaOrder: 2 }]));
+  t.c("…né un volume con la serie e uno senza", !numerataPerParte([{ series: "A", sagaOrder: 1 }, { series: "", sagaOrder: 1 }]));
+  t.eq("una serie senza parole non si dice in nessun titolo", serieNelTitolo("Monster, Vol. 1", "—"), null);
+  t.eq("…e una parola sola della serie non basta", serieNelTitolo("Jojo's - Stone T01", "Stone Ocean"), null);
+  t.c("…e la serie scritta in due modi e' una", !numerataPerParte([{ series: "Parte 2", sagaOrder: 1 }, { series: "parte 2", sagaOrder: 1 }]));
+  t.eq("la parte nel titolo, tolta", serieNelTitolo("JOJOS BIZARRE ADVENTURE PARTE 7 STEEL BALL RUN 8", "Parte 7").replace(/\s+/g, " "), "JOJOS BIZARRE ADVENTURE STEEL BALL RUN 8");
+  t.eq("…anche in inglese", serieNelTitolo("JoJo's Bizarre Adventure: Part 3--Stardust Crusaders, Vol. 1", "Parte 3") != null, true);
+  t.eq("il titolo che non la dice no", serieNelTitolo("JOJO'S BIZARRE ADVENTURE Vol.2", "Parte 2"), null);
+  t.eq("«Part 17» non e' la parte 1", serieNelTitolo("JoJo Part 17", "Parte 1"), null);
+  t.eq("una serie col nome: tutte le sue parole", serieNelTitolo("Jojo's - Stone ocean T01", "Stone Ocean") != null && serieNelTitolo("Jojo's - Steel Ball Run T24", "Stone Ocean") == null, true);
+  // il difetto: il «Vol.2» giapponese era il 2 di ogni parte
+  const parte2 = copertinePerVolume(jojoTutta, { nome: J, libri: jojo.filter((b) => b.series === "Parte 2"), serie: "Parte 2" });
+  t.eq("la parte 2: niente, e lo si dice", `${parte2.proposte.length}|${parte2.mancano.join()}`, "0|Parte 2 · 2,Parte 2 · 5,Parte 2 · 6,Parte 2 · 8");
+  const p7 = copertinePerVolume(jojo7, { nome: J, libri: jojo.filter((b) => b.series === "Parte 7"), serie: "Parte 7" });
+  t.eq("la parte 7: il 6 e l'8 dell'edizione italiana", p7.proposte.map((p) => `${p.etichetta}:${p.copertina}`).join(), "Parte 7 · 6:12997507,Parte 7 · 8:12997504");
+  const domandate = [];
+  const perParte = await cercaCopertineSerie({ nome: J, libri: [...[...jojo].reverse(), { id: "x", title: "Volume 20 - Love Train", saga: J, sagaOrder: 20 }] }, {
+    fetcher: async (url) => {
+      const q = new URL(url).searchParams.get("q");
+      domandate.push(q);
+      return { ok: true, json: async () => ({ docs: q.endsWith("Parte 7") ? jojo7 : jojoTutta }) };
+    },
+  });
+  t.eq("una domanda per parte, in ordine", domandate.join(" | "), [2, 3, 4, 5, 6, 7].map((p) => `${J} Parte ${p}`).join(" | "));
+  t.eq("…le proposte solo dove la parte c'e' (il 5 della 3: «Stardust Crusaders Part3 Vol.5»)", perParte.proposte.map((p) => p.libro.id).join(), "j3-5,j7-6,j7-8");
+  t.eq("un cofanetto non e' il primo dei suoi volumi", numeroNelTitolo("Jojo's Bizarre Adventure Part 3, Vol. 6- Vol. 10 by Hirohiko Araki", J), null);
+  t.eq("…ne' «Vol.18 - Vol.29 Set»", numeroNelTitolo("JoJo's Bizarre Adventure / Jojo no Kimyou na Bouken Vol.18 - Vol.29 Set [JAPANESE EDITION]", J), null);
+  t.eq("un trattino senza numero dopo non e' un intervallo", numeroNelTitolo("Spider-Man, Vol. 3", "Spider Man"), 3);
+  t.c("…e un volume senza parte non si cerca, si dice", perParte.mancano.includes("Volume 20 - Love Train"));
+  let rottaParte = false;
+  await cercaCopertineSerie({ nome: J, libri: jojo }, { fetcher: async () => ({ ok: false, status: 503 }) }).catch(() => (rottaParte = true));
+  t.c("…un guasto del catalogo si dice anche qui", rottaParte);
+
+  // ---- IL NOME DELL'EDITORE -------------------------------------------------------
+  t.eq("il nome pulito accanto vince", editoreLeggibile(edizioniVol2.entries[0].publishers), "Shueisha");
+  t.eq("i byte rimessi a posto, senza citta' e anno", editoreLeggibile(["ToÌ„kyoÌ„ : ShuÌ„eisha, 2000."]), "Shūeisha");
+  t.eq("…le virgolette al posto del segno: via i resti", editoreLeggibile(['ToÌ"kyoÌ" : ShuÌ"eisha, 2001.']), "Shueisha");
+  t.eq("un nome giusto con gli accenti resta", editoreLeggibile(["Dargaud Bénélux-Big Kana"]), "Dargaud Bénélux-Big Kana");
+  t.eq("…e uno senza niente", editoreLeggibile(["VIZ Media LLC"]), "VIZ Media LLC");
+  t.eq("il punto in coda se ne va", editoreLeggibile(["Kodansha."]), "Kodansha");
+  t.eq("nessun nome", editoreLeggibile([]), null);
+  t.eq("i byte di «Tōkyō»", aggiustaByte("ToÌ„kyoÌ„"), "Tōkyō");
+  t.eq("Shūeisha e Shueisha sono lo stesso editore", chiaveEditore("Shūeisha"), chiaveEditore("Shueisha"));
+  t.eq("le edizioni portano il nome leggibile", (await edizioniDellOpera("/works/OL20870468W", { fetcher: async () => ({ ok: true, json: async () => edizioniVol2 }) }))[0].editore, "Shueisha");
 
   // ---- L'IMMAGINE ----------------------------------------------------------------
   let url = "";
