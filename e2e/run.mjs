@@ -483,18 +483,26 @@ const SCENE = [
   {
     // chiesto dal lettore con la foto della raccolta di Monster: «per Monster
     // riesci a recuperarmi le copertine?». La raccolta aperta cerca su Open
-    // Library (qui la risposta vera, salvata nei test), mostra l'elenco, e
-    // mette solo quel che resta spuntato
-    nome: "le copertine di una raccolta dal catalogo: l'elenco, una tolta, le altre messe e ricordate come scelte a mano",
+    // Library (qui la risposta vera, salvata nei test) e le edizioni di ogni
+    // volume («sì, qualunque edizione dove c'è l'immagine»), e mette solo
+    // quel che si tocca
+    nome: "le copertine di una raccolta dal catalogo, di qualunque edizione: tutte di un editore, una tenuta, una toccata, ricordate come scelte a mano",
     async fai({ browser }) {
       const domande = [];
+      // le edizioni: Kana per l'1 e il 2, il 3 nessuna
+      const EDIZIONI = {
+        "/works/OL8694262W": [{ covers: [991984], publishers: ["Kana"] }, { covers: [863480], publishers: ["VIZ Media LLC"] }],
+        "/works/OL8694263W": [{ covers: [991985], publishers: ["Kana"] }],
+      };
       const catalogo = (url) => {
-        const q = new URL(url).searchParams;
+        const u = new URL(url);
+        const q = u.searchParams;
+        if (/editions\.json/.test(url)) return domande.push(u.pathname), { entries: EDIZIONI[u.pathname.replace("/editions.json", "")] || [] };
         if (/search\.json/.test(url)) domande.push(q.get("q") || q.get("title"));
         return q.get("q") === "Monster vol" ? { docs: catalogoMonster } : { docs: [] };
       };
-      // il catalogo: il volume 1 blu, il 2 rosso, il 3 verde
-      const COLORI = { 863480: [30, 60, 200], 764859: [200, 30, 30], 764959: [30, 170, 60] };
+      // Viz: l'1 blu, il 2 rosso, il 3 verde; Kana gialle
+      const COLORI = { 863480: [30, 60, 200], 764859: [200, 30, 30], 764959: [30, 170, 60], 991984: [220, 200, 30], 991985: [220, 200, 30] };
       const copertine = (url) => {
         const n = Number(url.match(/\/id\/(\d+)-/)?.[1]);
         return COLORI[n] ? png(300, 450, COLORI[n]) : null;
@@ -510,13 +518,18 @@ const SCENE = [
       await d.p.getByRole("button", { name: /^Monster/ }).first().click();
       domande.length = 0;
       await d.p.getByRole("button", { name: "🖼 Copertine dal catalogo" }).click();
-      await finche(() => d.p.getByRole("button", { name: "🖼 Metti le 3 copertine" }).count(), 10000, "l'elenco delle copertine non arriva");
-      const viste = await d.p.locator('img[alt^="Copertina del catalogo"]').count();
-      if (viste !== 3) throw new Error(`nell'elenco ${viste} copertine del catalogo (attese 3)`);
+      // senza tocchi niente da mettere: si tiene la propria
+      await finche(() => d.p.getByRole("button", { name: "Tutte Kana (2)" }).count(), 10000, "le edizioni non arrivano");
+      if (await d.p.getByRole("button", { name: /^🖼 Metti/ }).count()) throw new Error("senza tocchi c'è già qualcosa da mettere");
+      const tasti = await d.p.getByRole("button", { name: /^Volume \d: / }).evaluateAll((t) => t.map((x) => x.getAttribute("aria-label")));
+      const attesi = "Volume 1: la tua,Volume 1: VIZ Media LLC,Volume 1: Kana,Volume 2: la tua,Volume 2: Kana,Volume 2: copertina 1,Volume 3: la tua,Volume 3: copertina 1";
+      if (tasti.sort().join() !== attesi.split(",").sort().join()) throw new Error(`le scelte: ${tasti.join(" | ")}`);
       // alla misura del tablet l'elenco sta nello schermo
       const sborda = await d.p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       if (sborda > 0) throw new Error(`l'elenco sborda di ${sborda}px`);
-      await d.p.getByRole("checkbox", { name: "Volume 3" }).click();
+      await d.p.getByRole("button", { name: "Tutte Kana (2)" }).click();
+      await d.p.getByRole("button", { name: "Volume 2: la tua" }).click();
+      await d.p.getByRole("button", { name: "Volume 3: copertina 1" }).click();
       await d.p.getByRole("button", { name: "🖼 Metti le 2 copertine" }).click();
       await finche(() => testoAvviso(d.p, /^🖼 2 copertine dal catalogo$/), 10000, "non dice di aver messo le copertine");
       const stato = await d.p.evaluate(async (ids) => {
@@ -527,14 +540,15 @@ const SCENE = [
           const t = new OffscreenCanvas(b.width, b.height).getContext("2d");
           t.drawImage(b, 0, 0);
           const [r, g, bl] = t.getImageData(b.width >> 1, b.height >> 1, 1, 1).data;
-          return r > 150 && g < 80 ? "rossa" : bl > 150 && r < 80 ? "blu" : g > 130 && r < 80 ? "verde" : "grigia";
+          return r > 150 && g > 150 && bl < 80 ? "gialla" : r > 150 && g < 80 ? "rossa" : bl > 150 && r < 80 ? "blu" : g > 130 && r < 80 ? "verde" : "grigia";
         };
         return Promise.all([1, 2, 3].map(async (n) => `${n}:${await colore(ids[n])}${localStorage.getItem(`bc_cov_mano_${ids[n]}`) === "1" ? " a mano" : ""}`));
       }, ids);
-      const atteso = "1:blu a mano,2:rossa a mano,3:grigia";
+      const atteso = "1:gialla a mano,2:grigia,3:verde a mano";
       if (stato.join() !== atteso) throw new Error(`copertine: ${stato.join()} (attese ${atteso})`);
-      if (domande.join() !== "Monster vol") throw new Error(`domande al catalogo: ${domande.join(" | ")}`);
-      return { guasti: d.guasti, nota: `${stato.join(", ")}; una domanda sola al catalogo` };
+      const chieste = [...domande].sort().join();
+      if (chieste !== "/works/OL8694262W/editions.json,/works/OL8694263W/editions.json,/works/OL8694264W/editions.json,Monster vol") throw new Error(`domande al catalogo: ${chieste}`);
+      return { guasti: d.guasti, nota: `${stato.join(", ")}; una ricerca e un'edizione per volume` };
     },
   },
   {
@@ -545,10 +559,15 @@ const SCENE = [
     async fai({ browser }) {
       const catalogo = (url) => {
         const q = new URL(url).searchParams;
+        const u = new URL(url).pathname;
+        if (u === "/works/OL1W/editions.json") return { entries: [{ covers: [555], publishers: ["Mondadori"] }, { covers: [556], publishers: ["Einaudi"] }] };
+        if (u === "/works/OL8694262W/editions.json") return { entries: [{ covers: [863480], publishers: ["VIZ Media LLC"] }] };
+        if (u === "/works/OL8694263W/editions.json") return { entries: [{ covers: [764859], publishers: ["VIZ Media"] }] };
+        if (/editions\.json/.test(u)) return { entries: [] };
         if (q.get("title") === "La nebbia") return { docs: [{ key: "/works/OL1W", title: "La nebbia", author_name: ["Autore di Prova"], cover_i: 555 }] };
         return q.get("q") === "Monster vol" ? { docs: catalogoMonster } : { docs: [] };
       };
-      const COLORI = { 555: [30, 170, 60], 863480: [30, 60, 200], 764859: [200, 30, 30] };
+      const COLORI = { 555: [30, 170, 60], 556: [220, 200, 30], 863480: [30, 60, 200], 764859: [200, 30, 30] };
       const copertine = (url) => {
         const n = Number(url.match(/\/id\/(\d+)-/)?.[1]);
         return COLORI[n] ? png(300, 450, COLORI[n]) : null;
@@ -564,12 +583,15 @@ const SCENE = [
       const campo = d.p.getByRole("searchbox", { name: "Raccolta o libro di cui cercare la copertina" });
       await campo.fill("nebbia");
       await d.p.getByRole("button", { name: /^📖 La nebbia/ }).click();
-      await finche(() => d.p.getByRole("button", { name: "🖼 Metti la copertina" }).count(), 10000, "la copertina del libro non arriva");
+      await finche(() => d.p.getByRole("button", { name: "La nebbia: Einaudi" }).count(), 10000, "le copertine del libro non arrivano");
+      await d.p.getByRole("button", { name: "La nebbia: Einaudi" }).click();
       await d.p.getByRole("button", { name: "🖼 Metti la copertina" }).click();
       await finche(() => testoAvviso(d.p, /^🖼 Una copertina dal catalogo$/), 10000, "non dice di aver messo la copertina del libro");
       // chiuso il giro, di nuovo il campo: la raccolta
       await campo.fill("monster");
       await d.p.getByRole("button", { name: /^📚 Monster · 2 volumi/ }).click();
+      await finche(() => d.p.getByRole("button", { name: "Tutte VIZ Media LLC (2)" }).count(), 10000, "le edizioni della raccolta non arrivano");
+      await d.p.getByRole("button", { name: "Tutte VIZ Media LLC (2)" }).click();
       await d.p.getByRole("button", { name: "🖼 Metti le 2 copertine" }).click();
       await finche(() => testoAvviso(d.p, /^🖼 2 copertine dal catalogo$/), 10000, "non dice di aver messo le copertine della raccolta");
       const sborda = await d.p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -582,10 +604,10 @@ const SCENE = [
           const t = new OffscreenCanvas(b.width, b.height).getContext("2d");
           t.drawImage(b, 0, 0);
           const [r, g, bl] = t.getImageData(b.width >> 1, b.height >> 1, 1, 1).data;
-          return (r > 150 && g < 80 ? "rossa" : bl > 150 && r < 80 ? "blu" : g > 130 && r < 80 ? "verde" : "grigia") + (localStorage.getItem(`bc_cov_mano_${id}`) === "1" ? " a mano" : "");
+          return (r > 150 && g > 150 && bl < 80 ? "gialla" : r > 150 && g < 80 ? "rossa" : bl > 150 && r < 80 ? "blu" : g > 130 && r < 80 ? "verde" : "grigia") + (localStorage.getItem(`bc_cov_mano_${id}`) === "1" ? " a mano" : "");
         }));
       }, [id("La nebbia"), id("Monster v01"), id("Monster v02")]);
-      const atteso = "verde a mano,blu a mano,rossa a mano";
+      const atteso = "gialla a mano,blu a mano,rossa a mano";
       if (stato.join() !== atteso) throw new Error(`copertine: ${stato.join()} (attese ${atteso})`);
       return { guasti: d.guasti, nota: `La nebbia ${stato[0]}, Monster v01 ${stato[1]}, v02 ${stato[2]}` };
     },
