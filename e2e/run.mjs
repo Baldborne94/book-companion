@@ -3126,25 +3126,42 @@ const SCENE = [
     // Drive («B.P.R.D. Omnibus v02-0053») non trovava il file col nome vero
     nome: "il disco abbina la scheda col nome della copia di Drive («v02-0053») al file col nome vero",
     async fai({ browser }) {
-      const libri = [{ id: "b2", title: "B.P.R.D. Omnibus v02-0053", saga: "Hellboy", series: "B.P.R.D. Omnibus", sagaOrder: 6, fileType: "cbz", tipo: "fumetti", fileTolto: true, addedAt: 1 }];
+      // e dal rapporto dopo: la copia dopo un numero in lettere, e due «The
+      // Truth» che il file divide con l'autore nel nome
+      const libri = [
+        { id: "b2", title: "B.P.R.D. Omnibus v02-0053", saga: "Hellboy", series: "B.P.R.D. Omnibus", sagaOrder: 6, fileType: "cbz", tipo: "fumetti", fileTolto: true, addedAt: 1 },
+        { id: "s4", title: "The Deluxe Edition Book Four-020", saga: "The Sandman", sagaOrder: 4, fileType: "cbz", tipo: "fumetti", fileTolto: true, addedAt: 1 },
+        { id: "tt", title: "The Truth", author: "Terry Pratchett", saga: "Discworld", series: "Industrial Revolution", sagaOrder: 25, fileType: "epub", fileTolto: true, addedAt: 1 },
+        { id: "ttc", title: "The Truth", author: "Ryan Cahill", saga: "The Bound and the Broken", sagaOrder: 4.5, fileType: "nessuno", fileTolto: true, addedAt: 1 },
+      ];
       const prima = `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});
         window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD2", { create: true });`;
       const d = await dispositivo(browser, { prima });
       await d.p.goto(`${URL_APP}?apri=libreria`);
       await d.p.evaluate(async () => {
         let c = await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD2", { create: true });
-        for (const n of ["book-companion", "Fumetti", "Hellboy", "B.P.R.D. Omnibus"]) c = await c.getDirectoryHandle(n, { create: true });
-        const w = await (await c.getFileHandle("B.P.R.D. Omnibus v02 (2022) (digital) (Son of Ultron-Empire).cbz", { create: true })).createWritable();
-        await w.write(new Uint8Array(900).fill(1));
-        await w.close();
+        const metti = async (via, peso) => {
+          const pezzi = ["book-companion", ...via.split("/")];
+          let d = c;
+          for (const n of pezzi.slice(0, -1)) d = await d.getDirectoryHandle(n, { create: true });
+          const w = await (await d.getFileHandle(pezzi.at(-1), { create: true })).createWritable();
+          await w.write(new Uint8Array(peso).fill(1));
+          await w.close();
+        };
+        await metti("Fumetti/Hellboy/B.P.R.D. Omnibus/B.P.R.D. Omnibus v02 (2022) (digital) (Son of Ultron-Empire).cbz", 900);
+        await metti("Fumetti/The Sandman/The Deluxe Edition Book Four-020.cbz", 800);
+        await metti("Fumetti/The Sandman/The Sandman - The Deluxe Edition Book 04 (2021) (digital) (Son of Ultron-Empire).cbz", 810);
+        await metti("Libri/Discworld/The Truth - Terry Pratchett.epub", 700);
       });
       await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
       await d.p.getByRole("button", { name: "🔍 Controlla il disco" }).click();
       await finche(() => d.p.getByText(/Sul disco ci sono/).count(), 10000, "il rapporto del disco non si vede");
       const testo = await d.p.locator("body").innerText();
       const rapporto = testo.slice(testo.indexOf("Sul disco ci sono"), testo.indexOf("Sul disco ci sono") + 600);
-      if (!/Sul disco ci sono 1 volume della biblioteca/.test(rapporto) || /B\.P\.R\.D\. Omnibus v02 \(2022\)/.test(rapporto)) throw new Error(`la scheda e il file non si trovano: ${rapporto}`);
-      return { guasti: d.guasti, nota: "«v02-0053» e «v02 (2022) …» sono lo stesso volume" };
+      if (!/Sul disco ci sono 3 volumi della biblioteca/.test(rapporto) || /B\.P\.R\.D\. Omnibus v02 \(2022\)/.test(rapporto) || /nessuna scheda riconosce/.test(testo))
+        throw new Error(`le schede e i file non si trovano: ${rapporto}`);
+      if (!/altra edizione[^\n]*Book 04 \(2021\)[^\n]*→ The Deluxe Edition Book Four-020/.test(testo)) throw new Error(`il Book 04 (2021) non e' detto altra edizione del Book Four: ${rapporto}`);
+      return { guasti: d.guasti, nota: "«v02-0053» e «v02 (2022) …» sono lo stesso volume; «Book Four-020» ha il suo file e il «Book 04 (2021)» e' un'altra edizione; The Truth va a Pratchett" };
     },
   },
   {
