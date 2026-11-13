@@ -3122,6 +3122,32 @@ const SCENE = [
     },
   },
   {
+    // dal rapporto del disco del lettore: la scheda col nome della copia di
+    // Drive («B.P.R.D. Omnibus v02-0053») non trovava il file col nome vero
+    nome: "il disco abbina la scheda col nome della copia di Drive («v02-0053») al file col nome vero",
+    async fai({ browser }) {
+      const libri = [{ id: "b2", title: "B.P.R.D. Omnibus v02-0053", saga: "Hellboy", series: "B.P.R.D. Omnibus", sagaOrder: 6, fileType: "cbz", tipo: "fumetti", fileTolto: true, addedAt: 1 }];
+      const prima = `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});
+        window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("HDD2", { create: true });`;
+      const d = await dispositivo(browser, { prima });
+      await d.p.goto(`${URL_APP}?apri=libreria`);
+      await d.p.evaluate(async () => {
+        let c = await (await navigator.storage.getDirectory()).getDirectoryHandle("HDD2", { create: true });
+        for (const n of ["book-companion", "Fumetti", "Hellboy", "B.P.R.D. Omnibus"]) c = await c.getDirectoryHandle(n, { create: true });
+        const w = await (await c.getFileHandle("B.P.R.D. Omnibus v02 (2022) (digital) (Son of Ultron-Empire).cbz", { create: true })).createWritable();
+        await w.write(new Uint8Array(900).fill(1));
+        await w.close();
+      });
+      await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
+      await d.p.getByRole("button", { name: "🔍 Controlla il disco" }).click();
+      await finche(() => d.p.getByText(/Sul disco ci sono/).count(), 10000, "il rapporto del disco non si vede");
+      const testo = await d.p.locator("body").innerText();
+      const rapporto = testo.slice(testo.indexOf("Sul disco ci sono"), testo.indexOf("Sul disco ci sono") + 600);
+      if (!/Sul disco ci sono 1 volume della biblioteca/.test(rapporto) || /B\.P\.R\.D\. Omnibus v02 \(2022\)/.test(rapporto)) throw new Error(`la scheda e il file non si trovano: ${rapporto}`);
+      return { guasti: d.guasti, nota: "«v02-0053» e «v02 (2022) …» sono lo stesso volume" };
+    },
+  },
+  {
     // chiesto dal lettore: «ora su E:\book-companion abbiamo tutti i volumi?
     // mi hai sistemato anche dentro le cartelle i file nel modo giusto per saga?»
     nome: "il disco si controlla e si riordina: ogni volume nella cartella della sua saga, niente si copre",
@@ -3593,6 +3619,9 @@ const SCENE = [
         senza("kg1s", "Kagurabachi, Vol. 1", "Takeru Hokazono", "Kagurabachi", 1, 1),
         { id: "wn", title: "White Night", author: "Jim Butcher", saga: "Dresden Files", sagaOrder: 9, fileType: "epub", fileTolto: true, addedAt: 5 },
         senza("wn2", "White Night", "Chris McGrath", "The Dresden Files", 9, 1),
+        // e la copia di Drive col titolo vero vuoto
+        { id: "sp2", title: "Spawn Origins Collection v02", saga: "Spawn Origins Collection", sagaOrder: 2, fileType: "cbz", fileTolto: true, addedAt: 1 },
+        { id: "sp2d", title: "Spawn Origins Collection Vol. 02-017", saga: "Spawn Origins Collection", sagaOrder: 2, fileType: "cbz", fileTolto: true, addedAt: 2 },
       ];
       const d = await dispositivo(browser, {
         misura: TABLET,
@@ -3600,7 +3629,7 @@ const SCENE = [
       });
       await d.p.goto(`${URL_APP}?apri=libreria`);
       await d.p.getByRole("button", { name: /Manutenzione/ }).first().click();
-      await d.p.getByRole("button", { name: /3 volumi hanno una copia in più/ }).first().click({ timeout: 15000 });
+      await d.p.getByRole("button", { name: /4 volumi hanno una copia in più/ }).first().click({ timeout: 15000 });
       const elenco = await d.p.locator("li", { hasText: "via:" }).allTextContents();
       if (!elenco.some((r) => r.includes("The Crystal Shard (R. A. Salvatore) · via: «The Crystal Shard» (Larry Elmore, senza ebook)")))
         throw new Error(`l'elenco non dice quale «The Crystal Shard» se ne va: ${JSON.stringify(elenco)}`);
@@ -3608,10 +3637,10 @@ const SCENE = [
       await d.p.getByRole("button", { name: /Unisci i doppioni/ }).first().click();
       const resta = await finche(async () => {
         const ids = (await libriDi(d.p)).map((b) => b.id).sort().join();
-        return ids.split(",").length === 6 && ids;
+        return ids.split(",").length === 7 && ids;
       }, 10000, "i doppioni non se ne vanno");
-      if (resta !== "cs,es,gk,hl,kg1,wn") throw new Error(`restano: ${resta}`);
-      return { guasti: d.guasti, nota: "tre copie senza ebook tolte: l'illustratore, il segnaposto di Kagurabachi, la seconda raccolta di Dresden; la traduzione resta" };
+      if (resta !== "cs,es,gk,hl,kg1,sp2,wn") throw new Error(`restano: ${resta}`);
+      return { guasti: d.guasti, nota: "tre copie senza ebook tolte (l'illustratore, il segnaposto di Kagurabachi, la seconda raccolta di Dresden) e la copia di Drive di Spawn; la traduzione resta" };
     },
   },
   {

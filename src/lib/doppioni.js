@@ -73,6 +73,7 @@ const chiaveGruppo = (b) => {
 // un'altra (la raccolta senza l'articolo, la serie, il numero) col titolo
 // vero uguale o con un sottotitolo in piu', e' un doppione. Una traduzione
 // («El Rey Fantasma») no: il titolo non lo dice, e nel dubbio niente.
+const COPIA_DI_DRIVE = /\b(?:v|vol\.?\s*)\d{1,3}-\d{3,4}$/;
 const raccoltaDi = (s) => chiaveAutore(s).replace(/^(the|la|il|lo|le|i|gli) /, "");
 const conNumero = (b) => b?.sagaOrder !== null && b?.sagaOrder !== undefined && b?.sagaOrder !== "" && Number.isFinite(Number(b.sagaOrder));
 const postoDi = (b) => (b?.saga && conNumero(b) ? `${raccoltaDi(b.saga)}|${chiaveAutore(b.series)}|${Number(b.sagaOrder)}` : "");
@@ -126,6 +127,24 @@ export function doppioniInBiblioteca(libri, { progresso = () => 0, stato = () =>
     for (const a of stessi)
       for (const b of stessi)
         if (a !== b && a.fileType === SENZA && titoliVicini(a, b)) capo.set(su(a.id), su(b.id));
+  // LA COPIA DI DRIVE COL TITOLO VERO VUOTO (dalla biblioteca del lettore:
+  // «Spawn Origins Collection v02» e «… Vol. 02-017», col 2 tutt'e due, e
+  // cosi' l'8, il 9 e il 10). Due titoli vuoti nello stesso posto restano un
+  // dubbio («Kingdom v04 [TurnipFarmers]» e «Kingdom Vol. 4»), ma il numero
+  // della copia attaccato al volume dice che e' una copia: si uniscono, solo
+  // se l'originale e' uno solo
+  const vuoti = new Map();
+  for (const b of tutti) {
+    if (!eFumetto(b) || !b.saga || !(Number(b.sagaOrder) > 0) || titoloVero(b)) continue;
+    const k = `${raccoltaDi(b.saga)}|${chiaveAutore(b.series)}|${Number(b.sagaOrder)}`;
+    if (!vuoti.has(k)) vuoti.set(k, []);
+    vuoti.get(k).push(b);
+  }
+  for (const stessi of vuoti.values()) {
+    const copie = stessi.filter((b) => COPIA_DI_DRIVE.test(chiaveVolume(b)));
+    if (stessi.length < 2 || stessi.length - copie.length > 1) continue;
+    for (const b of stessi.slice(1)) capo.set(su(b.id), su(stessi[0].id));
+  }
   const autori = new Map();
   const chiaveCasa = (b) => `${raccoltaDi(b.saga)}|${chiaveAutore(b.author).split(" ").sort().join(" ")}`;
   for (const b of tutti) if (b.saga && b.author) autori.set(chiaveCasa(b), (autori.get(chiaveCasa(b)) || 0) + 1);
