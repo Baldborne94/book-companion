@@ -101,6 +101,11 @@ function parole(s) {
   return String(s || "")
     .replace(/\.[a-z0-9]{2,5}$/i, "")
     .replace(/\s*\(\d{1,2}\)\s*$/, "")
+    // LA COPIA DI DRIVE: «v02-0053», «Vol. 02-017» sono il volume 2 col
+    // numero della copia attaccato (la scheda «B.P.R.D. Omnibus v02-0053» non
+    // trovava «v02 (2022) …»). Solo dopo «v» o «Vol.»: «1946-1948» e
+    // «c101-110» sono intervalli
+    .replace(/(\b(?:v|vol\.?\s*)\d{1,3})-\d{3,4}$/i, "$1")
     // le targhe dei siti, prima di spezzare: «1lib.sk» diventerebbe un «1»
     .replace(/\b(?:z-?library|1lib|z-lib)(?:\.(?:sk|org))?\b/gi, " ")
     // «B.P.R.D.» e' una parola: in quattro lettere non contava niente, e le

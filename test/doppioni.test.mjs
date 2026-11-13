@@ -119,5 +119,11 @@ export default async (t) => {
   t.c("due libri veri allo stesso numero nemmeno: sono un numero da sistemare", !sp.some((x) => [x.tieni, ...x.via].includes("kd")));
   const jojo = (id, title, series, fileType) => ({ id, title, saga: "JoJo's Bizarre Adventure", series, sagaOrder: 1, fileType, tipo: "manga", addedAt: 1 });
   t.eq("lo stesso numero in un'altra serie della raccolta è un altro posto", doppioniInBiblioteca([jojo("p7", "JoJo's Bizarre Adventure v01", "Parte 7", "cbz"), jojo("p8", "JoJo's Bizarre Adventure Vol. 1", "Parte 8", "nessuno")]).length, 0);
+  // la copia di Drive col titolo vero vuoto (la biblioteca del lettore)
+  const spawn = (id, title, n, addedAt = 1) => ({ id, title, saga: "Spawn Origins Collection", sagaOrder: n, fileType: "cbz", addedAt });
+  const sp2 = doppioniInBiblioteca([spawn("s2", "Spawn Origins Collection v02", 2), spawn("s2d", "Spawn Origins Collection Vol. 02-017", 2, 2), spawn("s8", "Spawn Origins Collection v08", 8), spawn("s8d", "Spawn Origins Collection v8-015", 8, 2), spawn("s3", "Spawn Origins Collection v03", 3)]);
+  t.eq("«Vol. 02-017» e «v8-015» sono le copie di Drive del 2 e dell'8", sp2.map((x) => `${x.tieni}<${x.via.join("+")}`).sort().join(", "), "s2<s2d, s8<s8d");
+  t.eq("due originali col titolo vuoto e una copia: nel dubbio niente", doppioniInBiblioteca([spawn("a", "Kingdom v04 [TurnipFarmers]", 4), spawn("b", "Kingdom Vol. 4", 4), spawn("c", "Kingdom v04-017", 4)].map((x) => ({ ...x, saga: "Kingdom" }))).length, 0);
+  t.eq("un intervallo non è una copia: «131-140» e «v131» restano due", doppioniInBiblioteca([spawn("p", "Solo Leveling 131-140", 131), spawn("q", "Solo Leveling v131", 131)].map((x) => ({ ...x, saga: "Solo Leveling" }))).length, 0);
   t.eq("senza numero non c'è posto", doppioniInBiblioteca([{ ...scaffale[9], sagaOrder: null }, { ...scaffale[8], sagaOrder: null }]).length, 0);
 };

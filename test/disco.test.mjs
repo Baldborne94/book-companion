@@ -323,6 +323,27 @@ export default async (t) => {
   t.eq("B.P.R.D. Omnibus v08 trova il suo file", diB.b8, 18);
   t.eq("B.P.R.D. - 1946-1948 trova il suo file", diB.b46, 16);
   t.eq("i B.P.R.D. senza scheda restano senza scheda", bprd.senzaScheda.map((f) => f.byte).sort().join(), "13,15");
+  // dal rapporto dopo: la scheda col nome della copia di Drive («v02-0053»)
+  // e il file col nome vero («v02 (2022) …») sono lo stesso volume; un
+  // intervallo di anni o di capitoli non e' una copia
+  const drive = controllaDisco(
+    [
+      { id: "b2", title: "B.P.R.D. Omnibus v02-0053", saga: "Hellboy", series: "B.P.R.D. Omnibus", sagaOrder: 6, tipo: "fumetti" },
+      { id: "b46", title: "B.P.R.D. - 1946-1948", saga: "Hellboy", sagaOrder: 15, tipo: "fumetti" },
+      { id: "sl", title: "Solo Leveling 131-140", saga: "Solo Leveling", sagaOrder: 131, tipo: "manga" },
+    ],
+    [
+      fv("Fumetti/Hellboy/B.P.R.D. Omnibus/B.P.R.D. Omnibus v02 (2022) (digital) (Son of Ultron-Empire).cbz", 20),
+      fv("Fumetti/Hellboy/B.P.R.D/B.P.R.D. - 1946-1948 (2015) GetComics.INFO.cbz", 21),
+      fv("Manga/Solo Leveling/Solo Leveling Chapters 131-140 (2024).cbz", 22),
+      fv("Manga/Solo Leveling/Solo Leveling Chapters 131-135 (2024).cbz", 23),
+    ],
+    { tipoDi: (b) => b.tipo }
+  );
+  const diD = Object.fromEntries([...drive.aPosto, ...drive.daSpostare].map((x) => [x.libro.id, x.file.byte]));
+  t.eq("«B.P.R.D. Omnibus v02-0053» trova «v02 (2022) …»", diD.b2, 20);
+  t.eq("…e gli intervalli restano numeri: 1946-1948", diD.b46, 21);
+  t.eq("…e 131-140 non e' il 131 copiato da Drive: non e' il pacchetto 131-135", diD.sl, 22);
   const soloUno = controllaDisco([{ id: "s4", title: "The Sandman - The Deluxe Edition Book 04", saga: "The Sandman" }], [fv("Fumetti/The Sandman/The Sandman - The Deluxe Edition Book 01.cbz", 1)]);
   t.c("e non prende il file del Book 01 quando il suo manca", soloUno.mancano.altrove.length === 1);
   // dal quarto rapporto: il numero della scheda è l'ordine di lettura
