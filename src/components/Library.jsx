@@ -33,6 +33,7 @@ import { camminiDi, guideAccanto, mondiDi, accantoInVista, ACCANTO_IN_VISTA } fr
 import { segnaposto } from "../lib/segnaposto.js";
 import BookCover from "./BookCover.jsx";
 import CopertineDalCatalogo from "./CopertineDalCatalogo.jsx";
+import CopertinaGiusta from "./CopertinaGiusta.jsx";
 import Disposizione from "./Disposizione.jsx";
 import EmptyState from "./EmptyState.jsx";
 import { partenza, dopoIlDisegno, segnaTempo, vocePerTempo } from "../lib/tempi.js";
@@ -1059,6 +1060,8 @@ export default function Library({
   booksRef.current = books;
   // la visita: terza passata lunga, stessa forma delle altre due
   const [visitando, setVisitando] = useState(null);
+  // la copertina giusta dal catalogo, per una raccolta o un libro scelto
+  const [copertinaGiusta, setCopertinaGiusta] = useState(false);
   const [referto, setReferto] = useState(null);
   const filoVisita = useRef(null);
   const archiveRef = useRef(null);
@@ -3034,6 +3037,22 @@ export default function Library({
                   : `🖼 Rifai ${daRifare.length === 1 ? "la copertina di un fumetto" : `le copertine di ${daRifare.length} fumetti`}`}
               </button>
             )}
+            {/* LA COPERTINA GIUSTA DAL CATALOGO: si sceglie la raccolta o il
+                libro, e si guarda prima di mettere (`CopertinaGiusta`) */}
+            <button
+              onClick={() => setCopertinaGiusta((v) => !v)}
+              aria-expanded={copertinaGiusta}
+              style={{
+                padding: "7px 16px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${copertinaGiusta ? C.accent : C.border}`,
+                color: copertinaGiusta ? C.accent : C.text,
+                fontSize: F.nota,
+              }}
+            >
+              🖼 Copertina dal catalogo
+            </button>
+            {copertinaGiusta && <CopertinaGiusta books={books} notify={notify} />}
             {/* e quelle che da qui non si ritrovano, con la loro strada:
                 il tasto le contava e al tocco diceva «non sono su questo
                 dispositivo» */}

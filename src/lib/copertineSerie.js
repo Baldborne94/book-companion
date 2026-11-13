@@ -24,6 +24,7 @@
 // quella del catalogo, e si mette solo quel che il lettore lascia spuntato.
 import { autorePerIlCatalogo } from "./retroInRete.js";
 import { copertinaDi, urlCopertina } from "./consigliLiberi.js";
+import { cercaCopertina } from "./copertineRete.js";
 
 const piega = (s) =>
   String(s || "")
@@ -132,4 +133,49 @@ export async function scaricaCopertina(numero, { fetcher = fetch } = {}) {
   if (!r?.ok) return null;
   const blob = await r.blob().catch(() => null);
   return blob && /^image\//.test(blob.type || "image/jpeg") && blob.size > 1000 ? blob : null;
+}
+
+// ---- DALLA MANUTENZIONE: UNA RACCOLTA O UN LIBRO ---------------------------------
+// Chiesto dal lettore dopo Monster: «nella manutenzione un tasto in cui
+// scelgo la raccolta o il libro e gli chiedo di mettermi la copertina
+// corretta». Si scrive un pezzo del nome e si tocca quel che si vuole: le
+// raccolte (le saghe, col numero dei volumi) prima, poi i libri.
+
+export const SCELTE_IN_VISTA = 8;
+
+// ogni parola cercata, in qualunque ordine, senza accenti
+export function sceltePerCopertina(libri = [], cercato = "", quante = SCELTE_IN_VISTA) {
+  const voluto = parole(cercato);
+  if (!voluto.length) return [];
+  const dice = (testo) => {
+    const sue = parole(testo);
+    return voluto.every((v) => sue.some((p) => p.startsWith(v)));
+  };
+  const saghe = new Map();
+  for (const b of libri) {
+    // senza saga il nome e' vuoto, e nessuna parola cercata lo trova
+    const s = String(b?.saga || "").trim();
+    const k = piega(s);
+    if (!saghe.has(k)) saghe.set(k, { tipo: "raccolta", nome: s, libri: [] });
+    saghe.get(k).libri.push(b);
+  }
+  const raccolte = [...saghe.values()].filter((r) => dice(r.nome)).sort((a, b) => a.nome.localeCompare(b.nome, "it"));
+  const singoli = libri
+    .filter((b) => b?.title && dice(`${b.title} ${b.author || ""}`))
+    .sort((a, b) => String(a.title).localeCompare(String(b.title), "it", { numeric: true }))
+    .map((libro) => ({ tipo: "libro", libro }));
+  return [...raccolte, ...singoli].slice(0, quante);
+}
+
+// UN LIBRO SOLO: se ha la saga e il suo numero si cerca come volume della
+// serie (il titolo del file, «Monster - Volume_02_[Mangascreener]», al
+// catalogo non dice niente); se no, o se la serie non lo trova, per titolo e
+// autore (`cercaCopertina`, la scelta d'opera del catalogo delle saghe).
+export async function cercaCopertinaDelLibro(libro, { fetcher = fetch, perTitolo = cercaCopertina } = {}) {
+  if (numeroDi(libro) != null && String(libro.saga || "").trim()) {
+    const serie = await cercaCopertineSerie({ nome: libro.saga, libri: [libro] }, { fetcher });
+    if (serie.proposte.length) return serie;
+  }
+  const copertina = await perTitolo({ titolo: libro.title, autore: libro.author }, fetcher);
+  return copertina ? { proposte: [{ libro, numero: null, copertina, titolo: libro.title }], mancano: [] } : { proposte: [], mancano: [] };
 }

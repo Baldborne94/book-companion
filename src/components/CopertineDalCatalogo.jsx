@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { C, F, R, px } from "../data/constants.js";
-import { cercaCopertineSerie, scaricaCopertina } from "../lib/copertineSerie.js";
+import { cercaCopertineSerie, cercaCopertinaDelLibro, scaricaCopertina } from "../lib/copertineSerie.js";
 import { urlCopertina } from "../lib/consigliLiberi.js";
 import { preparaCopertina } from "../lib/copertina.js";
 import { putCover } from "../lib/bookStore.js";
@@ -14,11 +14,22 @@ import BookCover from "./BookCover.jsx";
 // mette solo quel che resta spuntato. Una copertina messa cosi' e' come una
 // scelta a mano nella scheda (`segnaAMano`: resta anche a tutto schermo; il
 // ↺ della scheda torna a quella del file) e viaggia come quella.
-export default function CopertineDalCatalogo({ r, notify }) {
-  const [stato, setStato] = useState(null);
+// Dalla Manutenzione (`CopertinaGiusta`) vale anche per un `libro` solo, e
+// comincia `subito`: chiuso o finito, `onChiudi`.
+export default function CopertineDalCatalogo({ r, libro = null, notify, subito = false, onChiudi }) {
+  const [stato, setStato] = useState(subito ? { fase: "cerco" } : null);
   const [via, setVia] = useState(() => new Set());
   const numerati = (r?.libri || []).filter((b) => Number.isInteger(Number(b.sagaOrder)) && Number(b.sagaOrder) > 0);
-  if (!numerati.length) return null;
+  const nome = libro ? libro.title : r?.nome;
+  useEffect(() => {
+    if (subito) cerca();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (!libro && !numerati.length) return null;
+  const chiudi = () => {
+    setStato(null);
+    onChiudi?.();
+  };
 
   const tasto = (attivo) => ({
     display: "inline-flex",
@@ -37,7 +48,7 @@ export default function CopertineDalCatalogo({ r, notify }) {
     setStato({ fase: "cerco" });
     setVia(new Set());
     try {
-      const esito = await cercaCopertineSerie({ nome: r.nome, libri: numerati });
+      const esito = libro ? await cercaCopertinaDelLibro(libro) : await cercaCopertineSerie({ nome: r.nome, libri: numerati });
       setStato({ fase: "elenco", ...esito });
     } catch {
       setStato({ fase: "guasto" });
@@ -67,7 +78,7 @@ export default function CopertineDalCatalogo({ r, notify }) {
         perse++;
       }
     }
-    setStato(null);
+    chiudi();
     notify?.(
       [messe ? (messe === 1 ? "🖼 Una copertina dal catalogo" : `🖼 ${messe} copertine dal catalogo`) : "", perse ? (perse === 1 ? "una non è arrivata" : `${perse} non sono arrivate`) : ""]
         .filter(Boolean)
@@ -94,7 +105,7 @@ export default function CopertineDalCatalogo({ r, notify }) {
         </button>
       </div>
     );
-  if (stato.fase === "cerco") return <div style={{ ...riquadro, color: C.muted, fontSize: F.nota }}>Cerco le copertine di «{r.nome}» su Open Library…</div>;
+  if (stato.fase === "cerco") return <div style={{ ...riquadro, color: C.muted, fontSize: F.nota }}>{libro ? `Cerco la copertina di «${nome}» su Open Library…` : `Cerco le copertine di «${nome}» su Open Library…`}</div>;
   if (stato.fase === "metto")
     return (
       <div style={{ ...riquadro, color: C.muted, fontSize: F.nota }}>
@@ -105,7 +116,7 @@ export default function CopertineDalCatalogo({ r, notify }) {
     return (
       <div style={{ ...riquadro, flexDirection: "row", flexWrap: "wrap", alignItems: "center" }}>
         <span style={{ color: C.muted, fontSize: F.nota }}>Open Library non risponde: riprova più tardi.</span>
-        <button onClick={() => setStato(null)} style={tasto(false)}>
+        <button onClick={chiudi} style={tasto(false)}>
           Ok
         </button>
       </div>
@@ -123,9 +134,13 @@ export default function CopertineDalCatalogo({ r, notify }) {
   return (
     <div style={riquadro}>
       <span style={{ color: C.text, fontSize: F.nota }}>
-        {proposte.length
-          ? `Open Library ha ${proposte.length === 1 ? "una copertina" : `${proposte.length} copertine`} per «${r.nome}»: a sinistra quella di adesso, a destra quella del catalogo. Togli la spunta a quelle che non vuoi.`
-          : `Open Library non ha copertine per i volumi di «${r.nome}».`}
+        {libro
+          ? proposte.length
+            ? `Open Library ha una copertina per «${nome}»: a sinistra quella di adesso, a destra quella del catalogo.`
+            : `Open Library non ha una copertina per «${nome}».`
+          : proposte.length
+            ? `Open Library ha ${proposte.length === 1 ? "una copertina" : `${proposte.length} copertine`} per «${nome}»: a sinistra quella di adesso, a destra quella del catalogo. Togli la spunta a quelle che non vuoi.`
+            : `Open Library non ha copertine per i volumi di «${nome}».`}
       </span>
       {mancano.length > 0 && proposte.length > 0 && (
         <span style={{ color: C.muted, fontSize: F.piccolo }}>
@@ -149,7 +164,7 @@ export default function CopertineDalCatalogo({ r, notify }) {
                   <img src={urlCopertina(p.copertina, "M")} alt={`Copertina del catalogo per il volume ${p.numero}`} loading="lazy" style={{ width: px(56), height: px(84), objectFit: "cover", borderRadius: R.minimo, background: C.surface }} />
                 </span>
                 <span style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 44, fontSize: F.piccolo, color: C.text }}>
-                  <input type="checkbox" checked={si} onChange={() => cambia(p.libro.id)} aria-label={`Volume ${p.numero}`} style={{ width: 22, height: 22 }} />
+                  <input type="checkbox" checked={si} onChange={() => cambia(p.libro.id)} aria-label={p.numero != null ? `Volume ${p.numero}` : p.libro.title} style={{ width: 22, height: 22 }} />
                   {p.numero}
                 </span>
               </label>
@@ -163,7 +178,7 @@ export default function CopertineDalCatalogo({ r, notify }) {
             {quante === 1 ? "🖼 Metti la copertina" : `🖼 Metti le ${quante} copertine`}
           </button>
         )}
-        <button onClick={() => setStato(null)} style={tasto(false)}>
+        <button onClick={chiudi} style={tasto(false)}>
           {proposte.length ? "Annulla" : "Ok"}
         </button>
       </div>
