@@ -506,6 +506,35 @@ export function tipiDi(books) {
 
 export const tipoDi = (b, mappa) =>
   mappa?.get(b?.id) ?? (eManga(b) ? "manga" : fumetto(b) ? "fumetti" : "libri");
+
+// IL VERSO DI UN FUMETTO, COL TIPO CHE PRENDE DALLA SAGA: di Kingdom e'
+// segnato manga il primo volume e basta, e gli altri lo sono per eredita'
+// (`tipiDi`). Serve a chi lavora su un libro solo, fuori dalla Libreria (la
+// copertina, `fronteDellaSovraccoperta`): la biblioteca di casa si rilegge
+// solo quando e' cambiata, e un libro non ancora entrato si conta con lei.
+let casa = { raw: undefined, libri: [], mappa: new Map() };
+function tipiDiCasa() {
+  let raw = null;
+  try {
+    raw = globalThis.localStorage?.getItem(BOOKS_KEY) ?? null;
+  } catch {
+    /* senza memoria, la biblioteca e' vuota */
+  }
+  if (raw !== casa.raw) {
+    const libri = raw ? loadBooks() : [];
+    casa = { raw, libri, mappa: tipiDi(libri) };
+  }
+  return casa;
+}
+// Un libro che non e' un fumetto non ha verso (null): la sua copertina e' com'e'.
+export function versoDelLibro(b, libri) {
+  if (!eFumetto(b)) return null;
+  // da sinistra scritto nel libro vince la saga (da destra fa gia' un manga)
+  if (b.verso === "ltr") return "ltr";
+  const qui = libri ? { libri, mappa: tipiDi(libri) } : tipiDiCasa();
+  const mappa = qui.mappa.has(b.id) ? qui.mappa : tipiDi([...qui.libri, b]);
+  return tipoDi(b, mappa) === "manga" ? "rtl" : "ltr";
+}
 export const delTipo = (b, tipo, mappa) => !tipo || tipo === "tutti" || tipoDi(b, mappa) === tipo;
 
 // I chip compaiono solo quando in casa ci sono ALMENO DUE tipi, e solo

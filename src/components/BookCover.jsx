@@ -3,7 +3,8 @@ import { segnaposto } from "../lib/segnaposto.js";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { getCover, getAux, putAux } from "../lib/bookStore.js";
 import { caricaCopertina, giaVista, ascoltaCopertine, chiaveMin, LATO_MIN, generazione } from "../lib/miniature.js";
-import { preparaCopertina } from "../lib/copertina.js";
+import { preparaCopertina, fronteDaMostrare } from "../lib/copertina.js";
+import { versoDelLibro } from "../lib/library.js";
 import { vestito, gradinoTitolo } from "../lib/dorso.js";
 import { chiaveHardcover, domandaHardcover, copertinaHardcover } from "../lib/hardcover.js";
 
@@ -137,7 +138,6 @@ const DEPS = {
   leggiCover: (id) => getCover(id),
   leggiMin: (id) => getAux(chiaveMin(id)),
   scriviMin: (id, v) => putAux(chiaveMin(id), v),
-  riduci: (blob) => preparaCopertina(blob, LATO_MIN),
   creaUrl: (blob) => URL.createObjectURL(blob),
   revoca: (url) => URL.revokeObjectURL(url),
 };
@@ -200,7 +200,9 @@ export default function BookCover({ book, radius = 8, compact = false, version =
     let alive = true;
     if (intera) {
       let objectUrl = null;
-      getCover(book.id).then((blob) => {
+      getCover(book.id)
+        .then((blob) => fronteDaMostrare(blob, versoDelLibro(book)))
+        .then((blob) => {
         if (!alive) return;
         if (blob) {
           objectUrl = URL.createObjectURL(blob);
@@ -220,7 +222,10 @@ export default function BookCover({ book, radius = 8, compact = false, version =
     }
     // l'indirizzo della miniatura lo tiene la memoria, e non si revoca
     // allo smontaggio: lo riusa il prossimo che disegna lo stesso libro
-    caricaCopertina(book.id, DEPS)
+    // la miniatura di un fumetto la cui copertina e' la sovraccoperta
+    // aperta ne tiene il fronte, dalla parte del suo verso
+    const verso = versoDelLibro(book);
+    caricaCopertina(book.id, { ...DEPS, riduci: (blob) => preparaCopertina(blob, LATO_MIN, { verso }) })
       .catch(() => null)
       .then((u) => {
         if (!alive) return;
