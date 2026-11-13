@@ -24,7 +24,7 @@
 // quella del catalogo, e si mette solo quel che il lettore lascia spuntato.
 import { autorePerIlCatalogo } from "./retroInRete.js";
 import { copertinaDi, urlCopertina } from "./consigliLiberi.js";
-import { cercaCopertina } from "./copertineRete.js";
+import { operaConCopertina } from "./copertineRete.js";
 
 const piega = (s) =>
   String(s || "")
@@ -82,8 +82,10 @@ export function domandaSerie(nome, autore) {
 }
 
 // docs del catalogo → una proposta per volume della raccolta:
-// { proposte: [{ libro, numero, copertina, titolo }], mancano: [numeri] };
-// due schede con lo stesso numero (un doppione) hanno la proposta tutt'e due
+// { proposte: [{ libro, numero, copertina, titolo, opere }], mancano: [numeri] };
+// `opere` sono tutte le opere del catalogo per quel volume, di ogni forma,
+// la forma che vince per prima (le loro edizioni: `scelteDelVolume`).
+// Due schede con lo stesso numero (un doppione) hanno la proposta tutt'e due
 export function copertinePerVolume(docs = [], { nome, libri = [] } = {}) {
   const voluti = new Map();
   for (const b of libri) {
@@ -96,17 +98,37 @@ export function copertinePerVolume(docs = [], { nome, libri = [] } = {}) {
     const numero = copertina ? numeroNelTitolo(d.title, nome) : null;
     if (numero == null || !voluti.has(numero)) return;
     const f = formaDi(d.title, numero);
-    if (!forme.has(f)) forme.set(f, { forma: f, per: new Map() });
+    if (!forme.has(f)) forme.set(f, { forma: f, per: new Map(), autori: new Set() });
+    for (const a of d.author_name || []) forme.get(f).autori.add(parole(a).join(" "));
     const per = forme.get(f).per;
-    if (!per.has(numero)) per.set(numero, { numero, copertina, titolo: d.title });
+    if (!per.has(numero)) per.set(numero, { numero, copertina, titolo: d.title, chiave: d.key || null });
   });
-  // a pari volumi, quella che il catalogo mette prima (l'ordinamento e' stabile)
-  const ordinate = [...forme.values()].sort((a, b) => b.per.size - a.per.size);
+  // a pari volumi, quella che il catalogo mette prima (l'ordinamento e' stabile);
+  // le altre forme solo con un autore in comune con lei («First Love Monster,
+  // Vol. 7» e «Monster Soul 2» sono altre serie, il «#13» di Shogakukan no)
+  const tutte = [...forme.values()].sort((a, b) => b.per.size - a.per.size);
+  const prima = tutte[0];
+  // (il catalogo scrive editore e anno al posto del suo autore, ma il titolo
+  // ha tutte le parole della forma che vince, «naoki urasawa s monster»,
+  // quando quella dice piu' del solo nome)
+  const VOLUME = new Set(["vol", "volume", "tome", "band", "libro", "book", "no", "n"]);
+  const suaForma = prima ? prima.forma.split(" ").filter((p) => p && !VOLUME.has(p)) : [];
+  const piuDelNome = suaForma.length > parole(nome).length;
+  const ordinate = tutte.filter((f) => {
+    if (f === prima || [...f.autori].some((a) => prima.autori.has(a))) return true;
+    const sue = new Set(f.forma.split(" "));
+    return piuDelNome && suaForma.every((p) => sue.has(p));
+  });
   const scelte = new Map();
-  for (const f of ordinate) for (const [n, p] of f.per) if (!scelte.has(n)) scelte.set(n, p);
+  const opere = new Map();
+  for (const f of ordinate)
+    for (const [n, p] of f.per) {
+      if (!scelte.has(n)) scelte.set(n, p);
+      opere.set(n, [...(opere.get(n) || []), { chiave: p.chiave, copertina: p.copertina, titolo: p.titolo }]);
+    }
   const numeri = [...voluti.keys()].sort((a, b) => a - b);
   return {
-    proposte: numeri.filter((n) => scelte.has(n)).flatMap((n) => voluti.get(n).map((libro) => ({ ...scelte.get(n), libro }))),
+    proposte: numeri.filter((n) => scelte.has(n)).flatMap((n) => voluti.get(n).map((libro) => ({ ...scelte.get(n), opere: opere.get(n), libro }))),
     mancano: numeri.filter((n) => !scelte.has(n)),
   };
 }
@@ -171,11 +193,98 @@ export function sceltePerCopertina(libri = [], cercato = "", quante = SCELTE_IN_
 // serie (il titolo del file, «Monster - Volume_02_[Mangascreener]», al
 // catalogo non dice niente); se no, o se la serie non lo trova, per titolo e
 // autore (`cercaCopertina`, la scelta d'opera del catalogo delle saghe).
-export async function cercaCopertinaDelLibro(libro, { fetcher = fetch, perTitolo = cercaCopertina } = {}) {
+export async function cercaCopertinaDelLibro(libro, { fetcher = fetch, perTitolo = operaConCopertina } = {}) {
   if (numeroDi(libro) != null && String(libro.saga || "").trim()) {
     const serie = await cercaCopertineSerie({ nome: libro.saga, libri: [libro] }, { fetcher });
     if (serie.proposte.length) return serie;
   }
-  const copertina = await perTitolo({ titolo: libro.title, autore: libro.author }, fetcher);
-  return copertina ? { proposte: [{ libro, numero: null, copertina, titolo: libro.title }], mancano: [] } : { proposte: [], mancano: [] };
+  const opera = await perTitolo({ titolo: libro.title, autore: libro.author }, fetcher);
+  if (!opera?.copertina) return { proposte: [], mancano: [] };
+  const sua = { chiave: opera.chiave || null, copertina: opera.copertina, titolo: libro.title };
+  return { proposte: [{ libro, numero: null, copertina: opera.copertina, titolo: libro.title, opere: [sua] }], mancano: [] };
+}
+
+// ---- QUALUNQUE EDIZIONE (chiesto dal lettore davanti all'elenco di Monster:
+// «sì, qualunque edizione dove c'è l'immagine») --------------------------------
+// Le sue copertine erano gia' quelle di Viz, le stesse del catalogo; le altre
+// stanno nelle EDIZIONI di ogni opera (la francese di Kana per i primi nove,
+// la giapponese di Shogakukan, Dargaud ed Egmont per il 12 e il 13): una
+// domanda per opera, `/works/…/editions.json`, misurato il 13 novembre 2026
+// su tutti e diciotto i volumi.
+
+export const EDIZIONI_MAX = 50;
+
+export function domandaEdizioni(chiave) {
+  return /^\/works\/OL\d+W$/.test(String(chiave || "")) ? `https://openlibrary.org${chiave}/editions.json?limit=${EDIZIONI_MAX}&fields=covers,publishers` : null;
+}
+
+// le copertine delle edizioni di un'opera: [{ copertina, editore }]; un buco
+// di rete ESPLODE (l'elenco resta quel che e', e si dice)
+export async function edizioniDellOpera(chiave, { fetcher = fetch } = {}) {
+  const url = domandaEdizioni(chiave);
+  if (!url) return [];
+  const r = await fetcher(url);
+  if (!r?.ok) throw new Error(`catalogo ${r?.status || "?"}`);
+  const fuori = [];
+  for (const e of (await r.json())?.entries || [])
+    for (const c of e?.covers || []) {
+      const n = copertinaDi({ cover_i: c });
+      if (n) fuori.push({ copertina: n, editore: String(e.publishers?.[0] || "").trim() || null });
+    }
+  return fuori;
+}
+
+// le chiavi delle opere da chiedere per tutte le proposte, una volta sola
+export function opereDaChiedere(proposte = []) {
+  const k = new Set();
+  for (const p of proposte) for (const o of p.opere || []) if (domandaEdizioni(o.chiave)) k.add(o.chiave);
+  return [...k];
+}
+
+// tutte le copertine di un volume, senza doppioni: per ogni opera la sua (col
+// nome dell'editore, se un'edizione lo dice) e poi quelle delle sue edizioni
+export function scelteDelVolume(proposta, edizioni = new Map()) {
+  const viste = new Map();
+  const metti = (copertina, editore) => {
+    if (!copertina) return;
+    if (!viste.has(copertina)) viste.set(copertina, { copertina, editore: editore || null });
+  };
+  for (const o of proposta?.opere || [{ copertina: proposta?.copertina }]) {
+    const sue = edizioni.get(o.chiave) || [];
+    metti(o.copertina, sue.find((e) => e.copertina === o.copertina)?.editore);
+    for (const e of sue) metti(e.copertina, e.editore);
+  }
+  return [...viste.values()];
+}
+
+// lo stesso editore scritto in tre modi («VIZ Media LLC», «Viz Media») e'
+// uno: la sua prima parola
+export const chiaveEditore = (editore) => parole(editore)[0] || null;
+
+// «Tutte di Kana»: gli editori che hanno copertine per piu' volumi, col
+// conto, il piu' presente prima. `scelte` e' [{ libro, copertine }].
+export function editoriDelleScelte(scelte = []) {
+  const conti = new Map();
+  for (const { copertine = [] } of scelte) {
+    const qui = new Set();
+    for (const c of copertine) {
+      const k = chiaveEditore(c.editore);
+      if (!k || qui.has(k)) continue;
+      qui.add(k);
+      const e = conti.get(k) || { chiave: k, nome: c.editore, quanti: 0 };
+      e.quanti++;
+      conti.set(k, e);
+    }
+  }
+  return [...conti.values()].filter((e) => e.quanti > 1).sort((a, b) => b.quanti - a.quanti);
+}
+
+// la copertina di quell'editore per ogni volume che ce l'ha (la prima)
+export function tutteDellEditore(scelte = [], chiave) {
+  const fuori = new Map();
+  for (const { libro, copertine = [] } of scelte) {
+    const c = copertine.find((x) => chiaveEditore(x.editore) === chiave);
+    if (c) fuori.set(libro.id, c.copertina);
+  }
+  return fuori;
 }

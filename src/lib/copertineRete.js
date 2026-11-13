@@ -81,7 +81,13 @@ export function ricorda(k, c, { mem = memoriaVera, ora = Date.now() } = {}) {
 
 // Una domanda al catalogo. `null` = l'opera non c'e' o non ha copertina;
 // un buco di rete ESPLODE.
-export async function cercaCopertina({ titolo, autore }, fetcher = fetch) {
+export async function cercaCopertina(voce, fetcher = fetch) {
+  return (await operaConCopertina(voce, fetcher))?.copertina ?? null;
+}
+
+// ...e l'opera da cui viene ({ copertina, chiave }), per chi vuole anche le
+// sue edizioni (`lib/copertineSerie.js`)
+export async function operaConCopertina({ titolo, autore }, fetcher = fetch) {
   if (!titolo) return null;
   const a = autorePerIlCatalogo(autore);
   const q = new URLSearchParams({ title: titolo, fields: "key,title,author_name,cover_i", limit: "8" });
@@ -92,11 +98,11 @@ export async function cercaCopertina({ titolo, autore }, fetcher = fetch) {
   const scelta = scegliOpera(docs, { title: titolo, author: autore, filtrata: !!a });
   if (!scelta) return null;
   const sua = copertinaDi(scelta);
-  if (sua) return sua;
+  if (sua) return { copertina: sua, chiave: scelta.key };
   // la scheda scelta puo' essere nuda mentre un'altra dello stesso titolo
   // la copertina ce l'ha: stesso libro, altra scheda del catalogo
   const gemella = docs.find((d) => d !== scelta && copertinaDi(d) && scegliOpera([d], { title: titolo, author: autore, filtrata: !!a }));
-  return gemella ? copertinaDi(gemella) : null;
+  return gemella ? { copertina: copertinaDi(gemella), chiave: gemella.key } : null;
 }
 
 // Un limitatore per tutta la pagina, e le domande in volo condivise.

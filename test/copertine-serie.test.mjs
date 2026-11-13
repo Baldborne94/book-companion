@@ -2,8 +2,8 @@
 // dal lettore con la foto della raccolta di Monster: «per Monster riesci a
 // recuperarmi le copertine?». Le schede come le sue (il nome del file della
 // scansione, il numero nella saga); il catalogo e' la risposta vera.
-import { numeroNelTitolo, copertinePerVolume, autoreDellaRaccolta, domandaSerie, cercaCopertineSerie, scaricaCopertina, sceltePerCopertina, cercaCopertinaDelLibro } from "../src/lib/copertineSerie.js";
-import catalogo from "./monster-catalogo.mjs";
+import { numeroNelTitolo, copertinePerVolume, autoreDellaRaccolta, domandaSerie, cercaCopertineSerie, scaricaCopertina, sceltePerCopertina, cercaCopertinaDelLibro, edizioniDellOpera, opereDaChiedere, scelteDelVolume, editoriDelleScelte, tutteDellEditore, domandaEdizioni } from "../src/lib/copertineSerie.js";
+import catalogo, { edizioni } from "./monster-catalogo.mjs";
 
 const libri = Array.from({ length: 18 }, (_, i) => ({
   id: `m${i + 1}`,
@@ -11,6 +11,8 @@ const libri = Array.from({ length: 18 }, (_, i) => ({
   saga: "Monster",
   sagaOrder: i + 1,
 }));
+
+const chiaveDi = (e) => String(e || "").toLowerCase().split(/\W+/)[0];
 
 export default async (t) => {
   // ---- IL NUMERO NEL TITOLO ------------------------------------------------------
@@ -37,7 +39,8 @@ export default async (t) => {
 
   // un volume che l'edizione di Viz non ha si prende da un'altra forma: il 13
   // dell'edizione di Shogakukan (vero, dalla domanda «naoki urasawa monster»)
-  const giapponese = { title: "浦沢直樹モンスター13をプレゼンツ (Naoki Urasawa's Monster, #13)", author_name: ["Naoki Urasawa"], cover_i: 8433129 };
+  // (l'autore com'e' scritto nel catalogo: l'editore e l'anno)
+  const giapponese = { key: "/works/OL19276969W", title: "浦沢直樹モンスター13をプレゼンツ (Naoki Urasawa's Monster, #13)", author_name: ['2000. editor: ToÌ"kyoÌ" : ShoÌ"gakkan'], cover_i: 8433129 };
   const senza13 = [...catalogo.filter((d) => d.title !== "Naoki Urasawa's Monster, Vol. 13"), giapponese];
   const p13 = copertinePerVolume(senza13, { nome: "Monster", libri }).proposte.find((p) => p.numero === 13);
   t.eq("…il 13 giapponese, se Viz non c'e'", p13?.copertina, 8433129);
@@ -104,13 +107,61 @@ export default async (t) => {
 
   // un libro solo: col suo numero si cerca come volume della serie
   const perTitolo = [];
-  const titolo = async (v) => (perTitolo.push(v.titolo), v.titolo === "Mort" ? 1234 : null);
+  const titolo = async (v) => (perTitolo.push(v.titolo), v.titolo === "Mort" ? { copertina: 1234, chiave: "/works/OL5W" } : null);
   const v2 = await cercaCopertinaDelLibro(libri[1], { fetcher: async () => ({ ok: true, json: async () => ({ docs: catalogo }) }), perTitolo: titolo });
   t.eq("il volume 2 di Monster come volume della serie", `${v2.proposte.map((p) => p.copertina).join()}|${perTitolo.length}`, "764859|0");
   const mort = await cercaCopertinaDelLibro(scaffale.find((b) => b.id === "p1"), { fetcher: async () => ({ ok: true, json: async () => ({ docs: [] }) }), perTitolo: titolo });
   t.eq("la serie non lo trova: per titolo e autore", `${mort.proposte.map((p) => `${p.copertina}·${p.libro.id}·${p.numero}`).join()}|${perTitolo.join()}`, "1234·p1·null|Mort");
   const solo = await cercaCopertinaDelLibro({ id: "z", title: "Senza saga", saga: "Qualcosa" }, { fetcher: async () => { throw new Error("la serie non si chiede"); }, perTitolo: titolo });
   t.eq("senza numero, solo per titolo; e niente, niente", solo.proposte.length, 0);
+
+  // le altre forme: altre serie col nome dentro no (dati veri: «First Love
+  // Monster, Vol. 7», «Spring Storm and Monster, Vol. 1»)
+  const opereDi = (ps, n) => ps.find((p) => p.numero === n).opere.map((o) => o.titolo);
+  t.eq("il 7: solo Viz, non «First Love Monster»", opereDi(proposte, 7).join(), "Naoki Urasawa's Monster, Vol. 7");
+  t.eq("l'1: solo Viz", opereDi(proposte, 1).length, 1);
+  const stessoAutore = { key: "/works/OL9W", title: "Monster - la serie, Vol. 7", author_name: ["Naoki Urasawa"], cover_i: 77 };
+  t.eq("un'altra forma dello stesso autore si'", opereDi(copertinePerVolume([...catalogo, stessoAutore], { nome: "Monster", libri }).proposte, 7).at(-1), "Monster - la serie, Vol. 7");
+  // una forma che dice solo il nome non fa entrare chi ha il nome dentro
+  const nudi = [1, 2, 3].map((n) => ({ key: `/works/OL${n}W`, title: `Monster, Vol. ${n}`, author_name: ["A"], cover_i: n }));
+  const intrusa = { key: "/works/OL8W", title: "First Love Monster, Vol. 2", author_name: ["B"], cover_i: 8 };
+  t.eq("…«Monster, Vol. 2» non apre la porta a «First Love Monster, Vol. 2»", opereDi(copertinePerVolume([...nudi, intrusa], { nome: "Monster", libri: libri.slice(0, 3) }).proposte, 2).join(), "Monster, Vol. 2");
+
+  // ---- QUALUNQUE EDIZIONE (le edizioni vere dei volumi 1, 10 e 13) --------------
+  const lette = [];
+  const daCatalogo = async (url) => {
+    lette.push(url);
+    const k = new URL(url).pathname.replace("/editions.json", "");
+    return edizioni[k] ? { ok: true, json: async () => edizioni[k] } : { ok: false, status: 404 };
+  };
+  const chiavi = opereDaChiedere(proposte);
+  t.eq("un'opera per volume, una volta sola", chiavi.length, 18);
+  t.eq("…e un doppione non la chiede due volte", opereDaChiedere(doppio.proposte).length, 18);
+  t.eq("la domanda", domandaEdizioni("/works/OL8694262W"), "https://openlibrary.org/works/OL8694262W/editions.json?limit=50&fields=covers,publishers");
+  t.eq("una chiave strana non si chiede", domandaEdizioni("/works/../x"), null);
+  const ed = new Map();
+  for (const k of ["/works/OL8694262W", "/works/OL12234119W", "/works/OL8694266W"]) ed.set(k, await edizioniDellOpera(k, { fetcher: daCatalogo }));
+  t.eq("il volume 1: Kana e Viz", ed.get("/works/OL8694262W").map((e) => `${e.copertina}:${e.editore}`).join(), "991984:Kana,863480:VIZ Media LLC");
+  let rotto = false;
+  await edizioniDellOpera("/works/OL1W", { fetcher: daCatalogo }).catch(() => (rotto = true));
+  t.c("un guasto si dice", rotto);
+  const di = (n) => scelteDelVolume(proposte.find((p) => p.numero === n), ed);
+  t.eq("il volume 1: prima quella che c'era, col suo editore, poi le altre", di(1).map((c) => `${c.copertina}:${c.editore}`).join(), "863480:VIZ Media LLC,991984:Kana");
+  t.eq("il 10: senza doppioni (la sua copertina e' anche di un'edizione)", di(10).map((c) => c.copertina).join(), "12757108,8433123,765425,15138838");
+  t.eq("il 13: Viz, Egmont, Dargaud", di(13).map((c) => chiaveDi(c.editore)).join(), "viz,egmont,dargaud");
+  t.eq("un volume senza edizioni lette: la sua", di(2).map((c) => `${c.copertina}:${c.editore}`).join(), "764859:null");
+  // il 13 giapponese di un'altra forma si aggiunge alle edizioni di quella di Viz
+  const con13 = copertinePerVolume([...catalogo, giapponese], { nome: "Monster", libri }).proposte.find((p) => p.numero === 13);
+  t.eq("…e un'altra forma dello stesso volume si aggiunge, dopo", scelteDelVolume(con13, ed).map((c) => c.copertina).join(), "2806209,11541669,10788169,8433129");
+  t.eq("un'opera senza chiave non si chiede", opereDaChiedere([{ opere: [{ chiave: null, copertina: 1 }] }]).length, 0);
+  const meno = await edizioniDellOpera("/works/OL8694262W", { fetcher: async () => ({ ok: true, json: async () => ({ entries: [{ covers: [-1, 42], publishers: ["Kana"] }] }) }) });
+  t.eq("una copertina «-1» non c'e'", meno.map((e) => e.copertina).join(), "42");
+  const tutte = [1, 10, 13].map((n) => ({ libro: { id: `m${n}` }, copertine: di(n) }));
+  t.eq("gli editori con piu' volumi, il piu' presente prima", editoriDelleScelte(tutte).map((e) => `${e.chiave}·${e.quanti}`).join(), "viz·3");
+  const conKana = [{ libro: { id: "m2" }, copertine: [{ copertina: 5, editore: "Kana" }, { copertina: 6, editore: "Kana" }] }, ...tutte];
+  t.eq("…uno con un volume solo no, e due copertine dello stesso nel volume contano una", editoriDelleScelte(conKana).map((e) => `${e.chiave}·${e.quanti}`).join(), "viz·3,kana·2");
+  t.eq("«tutte di Kana»: la prima di Kana di ogni volume che ce l'ha", [...tutteDellEditore(conKana, "kana")].map(([id, c]) => `${id}:${c}`).join(), "m2:5,m1:991984");
+  t.eq("«VIZ Media LLC» e «VIZ Media» sono lo stesso", [...tutteDellEditore(tutte, "viz").values()].join(), "863480,12757108,2806209");
 
   // ---- L'IMMAGINE ----------------------------------------------------------------
   let url = "";
