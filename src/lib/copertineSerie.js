@@ -31,12 +31,14 @@ const piega = (s) =>
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
     .toLowerCase();
-const parole = (s) => piega(s).match(/[\p{L}\p{N}]+/gu) || [];
+// l'apostrofo non divide: «JOJOS» (il titolo italiano) e' «JoJo's»
+const parole = (s) => piega(s).replace(/['’]/g, "").match(/[\p{L}\p{N}]+/gu) || [];
 
 const EDIZIONE = /(?<![\p{L}\p{N}])(kanzenban|aizoban|bunkoban|wideban|omnibus|deluxe|perfect|ultimate|box|set|edition|edizione|[eé]dition|edici[oó]n|ausgabe|integral|int[eé]grale|artbook)(?![\p{L}\p{N}])/iu;
 const DOPO_PAROLA = /(?:(?<![\p{L}])(?:vol(?:ume)?|tome|band|libro|book|n[º°o])\.?|#)\s*0*(\d{1,3})(?!\d)/iu;
-// «02/09», «2 di 9»: il volume di un'edizione numerata a parte
-const DI_TANTI = /\d\s*(?:\/|di|of|sur|de)\s*\d/iu;
+// «02/09», «2 di 9»: il volume di un'edizione numerata a parte; e «Vol. 6-
+// Vol. 10», «Vol.18 - Vol.29 Set»: un cofanetto, non il primo dei suoi
+const DI_TANTI = /\d\s*(?:\/|di|of|sur|de|[-–]\s*(?:vol(?:ume)?\.?\s*)?)\s*\d/iu;
 const IN_CODA = /(?:,|\s)\s*0*(\d{1,3})\s*$/u;
 
 // il numero del volume nel titolo, se il titolo ha tutte le parole del nome
@@ -71,10 +73,11 @@ export function autoreDellaRaccolta(libri = []) {
   return [...conti].sort((x, y) => y[1] - x[1])[0]?.[0] || "";
 }
 
-export function domandaSerie(nome, autore) {
+export function domandaSerie(nome, autore, { serie = "" } = {}) {
   const q = new URLSearchParams({ fields: "key,title,author_name,cover_i", limit: "100" });
   const a = autorePerIlCatalogo(autore);
-  if (a) {
+  if (serie) q.set("q", `${nome} ${serie}`);
+  else if (a) {
     q.set("title", nome);
     q.set("author", a);
   } else q.set("q", `${nome} vol`);
@@ -86,7 +89,7 @@ export function domandaSerie(nome, autore) {
 // `opere` sono tutte le opere del catalogo per quel volume, di ogni forma,
 // la forma che vince per prima (le loro edizioni: `scelteDelVolume`).
 // Due schede con lo stesso numero (un doppione) hanno la proposta tutt'e due
-export function copertinePerVolume(docs = [], { nome, libri = [] } = {}) {
+export function copertinePerVolume(docs = [], { nome, libri = [], serie = null } = {}) {
   const voluti = new Map();
   for (const b of libri) {
     const n = numeroDi(b);
@@ -95,7 +98,10 @@ export function copertinePerVolume(docs = [], { nome, libri = [] } = {}) {
   const forme = new Map();
   docs.forEach((d) => {
     const copertina = copertinaDi(d);
-    const numero = copertina ? numeroNelTitolo(d.title, nome) : null;
+    // in una raccolta numerata per parte il titolo deve dire la parte, e il
+    // suo numero non e' quello del volume
+    const titolo = serie ? serieNelTitolo(d.title, serie) : d.title;
+    const numero = copertina && titolo ? numeroNelTitolo(titolo, nome) : null;
     if (numero == null || !voluti.has(numero)) return;
     const f = formaDi(d.title, numero);
     if (!forme.has(f)) forme.set(f, { forma: f, per: new Map(), autori: new Set() });
@@ -128,14 +134,71 @@ export function copertinePerVolume(docs = [], { nome, libri = [] } = {}) {
     }
   const numeri = [...voluti.keys()].sort((a, b) => a - b);
   return {
-    proposte: numeri.filter((n) => scelte.has(n)).flatMap((n) => voluti.get(n).map((libro) => ({ ...scelte.get(n), opere: opere.get(n), libro }))),
-    mancano: numeri.filter((n) => !scelte.has(n)),
+    proposte: numeri.filter((n) => scelte.has(n)).flatMap((n) => voluti.get(n).map((libro) => ({ ...scelte.get(n), opere: opere.get(n), libro, etichetta: serie ? `${serie} · ${n}` : String(n) }))),
+    mancano: numeri.filter((n) => !scelte.has(n)).map((n) => (serie ? `${serie} · ${n}` : n)),
   };
 }
 
 // la domanda al catalogo; con l'autore e niente trovato, si riprova senza.
 // Un buco di rete ESPLODE (si dice, non e' «non ce l'ha»).
+// UNA RACCOLTA NUMERATA PER PARTE (segnalato dal lettore con l'elenco di
+// JoJo: in ogni volume 2 la stessa copertina, «come mai non le trova?»). Le
+// sue schede ripartono da uno a ogni parte (la serie, «Parte 5»), e il
+// catalogo numera JoJo come in Giappone, da 1 a 131 di fila: il «Vol.2» di
+// Shueisha non e' il secondo di ogni parte. Quando lo stesso numero sta in
+// due serie diverse si cerca una parte alla volta, e un titolo vale solo se
+// dice la parte («Parte 7», «Part 7») o tutte le parole della serie.
+export function numerataPerParte(libri = []) {
+  const serieDi = new Map();
+  for (const b of libri) {
+    const n = numeroDi(b);
+    const s = piega(String(b?.series || "").trim());
+    if (n == null || !s) continue;
+    if (!serieDi.has(n)) serieDi.set(n, new Set());
+    serieDi.get(n).add(s);
+  }
+  return [...serieDi.values()].some((v) => v.size > 1);
+}
+
+const PARTE = /^(?:part|parte)\s*0*(\d{1,2})$/i;
+// il titolo senza la parte, se la dice; null se non la dice
+export function serieNelTitolo(titolo, serie) {
+  const t = String(titolo || "");
+  const m = String(serie || "").trim().match(PARTE);
+  if (m) {
+    const re = new RegExp(`(?<![\\p{L}\\p{N}])(?:part|parte)\\s*0*${Number(m[1])}(?!\\d)`, "iu");
+    return re.test(t) ? t.replace(re, " ") : null;
+  }
+  const sue = parole(serie);
+  const nel = new Set(parole(t));
+  return sue.length && sue.every((p) => nel.has(p)) ? t : null;
+}
+
 export async function cercaCopertineSerie({ nome, libri = [] }, { fetcher = fetch } = {}) {
+  if (numerataPerParte(libri)) {
+    const parti = new Map();
+    const senza = [];
+    for (const b of libri) {
+      const s = String(b?.series || "").trim();
+      if (!s) senza.push(b);
+      else {
+        const k = piega(s);
+        if (!parti.has(k)) parti.set(k, { serie: s, libri: [] });
+        parti.get(k).libri.push(b);
+      }
+    }
+    const tutte = { proposte: [], mancano: [] };
+    for (const { serie, libri: suoi } of [...parti.values()].sort((a, b) => a.serie.localeCompare(b.serie, "it", { numeric: true }))) {
+      const r = await fetcher(domandaSerie(nome, "", { serie }));
+      if (!r?.ok) throw new Error(`catalogo ${r?.status || "?"}`);
+      const esito = copertinePerVolume((await r.json())?.docs || [], { nome, libri: suoi, serie });
+      tutte.proposte.push(...esito.proposte);
+      tutte.mancano.push(...esito.mancano);
+    }
+    // senza la parte il numero non dice quale volume e': non si cerca
+    tutte.mancano.push(...senza.filter((b) => numeroDi(b) != null).map((b) => b.title));
+    return tutte;
+  }
   const autore = autoreDellaRaccolta(libri);
   const chiedi = async (a) => {
     const r = await fetcher(domandaSerie(nome, a));
@@ -229,7 +292,7 @@ export async function edizioniDellOpera(chiave, { fetcher = fetch } = {}) {
   for (const e of (await r.json())?.entries || [])
     for (const c of e?.covers || []) {
       const n = copertinaDi({ cover_i: c });
-      if (n) fuori.push({ copertina: n, editore: String(e.publishers?.[0] || "").trim() || null });
+      if (n) fuori.push({ copertina: n, editore: editoreLeggibile(e.publishers) });
     }
   return fuori;
 }
@@ -255,6 +318,42 @@ export function scelteDelVolume(proposta, edizioni = new Map()) {
     for (const e of sue) metti(e.copertina, e.editore);
   }
   return [...viste.values()];
+}
+
+// IL NOME DELL'EDITORE COME LO LEGGE UNA PERSONA (l'elenco di JoJo diceva
+// «ToÌ„kyoÌ„ : ShuÌ„eisha, 2000.»: il catalogo ha preso i byte UTF-8 di
+// «Tōkyō» per lettere di Windows, e ci ha messo la citta' e l'anno). Fra i
+// nomi di un'edizione si preferisce uno pulito («Shueisha» sta accanto); se
+// no si rimettono a posto i byte, poi via la citta' prima dei due punti e
+// l'anno in coda.
+const WINDOWS = { 0x20ac: 0x80, 0x201a: 0x82, 0x192: 0x83, 0x201e: 0x84, 0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87, 0x2c6: 0x88, 0x2030: 0x89, 0x160: 0x8a, 0x2039: 0x8b, 0x152: 0x8c, 0x17d: 0x8e, 0x2018: 0x91, 0x2019: 0x92, 0x201c: 0x93, 0x201d: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97, 0x2dc: 0x98, 0x2122: 0x99, 0x161: 0x9a, 0x203a: 0x9b, 0x153: 0x9c, 0x17e: 0x9e, 0x178: 0x9f };
+const STORPIATO = /[ÃÂÅÌÍÄ][\u0080-\u00bf\u0152-\u2122"]/u;
+export function aggiustaByte(s) {
+  const t = String(s || "");
+  const byte = [];
+  for (const ch of t) {
+    const c = ch.codePointAt(0);
+    if (c < 256) byte.push(c);
+    else if (WINDOWS[c] != null) byte.push(WINDOWS[c]);
+    else return t.replace(new RegExp(STORPIATO.source, "gu"), "");
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(new Uint8Array(byte)).normalize("NFC");
+  } catch {
+    // byte persi per strada (le virgolette al posto del segno): via i resti
+    return t.replace(new RegExp(STORPIATO.source, "gu"), "");
+  }
+}
+export function editoreLeggibile(editori = []) {
+  const tutti = (Array.isArray(editori) ? editori : [editori]).map((e) => String(e || "").trim()).filter(Boolean);
+  const scelto = tutti.find((e) => !STORPIATO.test(e)) || tutti[0];
+  if (!scelto) return null;
+  const nome = aggiustaByte(scelto)
+    .replace(/^.*\s:\s*/, "")
+    .replace(/[,;]?\s*\[?c?\d{4}\]?\.?\s*$/, "")
+    .replace(/[\s.,;:]+$/, "")
+    .trim();
+  return nome || null;
 }
 
 // lo stesso editore scritto in tre modi («VIZ Media LLC», «Viz Media») e'

@@ -532,6 +532,12 @@ const SCENE = [
       await d.p.getByRole("button", { name: "Volume 3: copertina 1" }).click();
       await d.p.getByRole("button", { name: "🖼 Metti le 2 copertine" }).click();
       await finche(() => testoAvviso(d.p, /^🖼 2 copertine dal catalogo$/), 10000, "non dice di aver messo le copertine");
+      // e la raccolta resta quella: un tasto solo, lo scaffale sotto (con la
+      // stessa chiave dello scaffale il tasto si moltiplicava e lo scaffale
+      // spariva, segnalato dal lettore: «che è sta roba»)
+      await aspetta(1500);
+      const dopo = await d.p.evaluate(() => ({ tasti: [...document.querySelectorAll("button")].filter((b) => b.textContent.trim() === "🖼 Copertine dal catalogo").length, volumi: document.querySelectorAll("img[src^='blob:']").length }));
+      if (dopo.tasti !== 1 || dopo.volumi < 3) throw new Error(`dopo le copertine: ${dopo.tasti} tasti e ${dopo.volumi} copertine sullo scaffale`);
       const stato = await d.p.evaluate(async (ids) => {
         const db = await new Promise((ok, ko) => { const r = indexedDB.open("bc_library"); r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); });
         const colore = async (id) => {
