@@ -1907,6 +1907,24 @@ export default function App() {
     runSync.current(true);
   }
 
+  // ELIMINARE I VOLUMI DI UNA RACCOLTA (`lib/eliminaRaccolta.js`): come
+  // «Elimina» nella scheda, uno per uno, e la raccolta si chiude
+  async function eliminaRaccolta(r, ids) {
+    if (filoLavoro.current || filoImport.current) {
+      notify("Prima ferma il lavoro in corso, poi elimina la raccolta.");
+      return;
+    }
+    for (const id of ids) {
+      removeBookMeta(id);
+      await removeBookData(id).catch(() => {});
+    }
+    setBooks(loadBooks());
+    setRaccolta(null);
+    setSpazioCambiato((n) => n + 1);
+    notify(`«${r.nome}» eliminata: ${ids.length === 1 ? "un volume" : `${ids.length} volumi`} tornati alla polvere 🕯️`);
+    runSync.current(true);
+  }
+
   async function handleDelete(id) {
     setOpenId(null);
     removeBookMeta(id);
@@ -2396,6 +2414,7 @@ export default function App() {
             onConvertiTutti={() => convertiICbr(cbrDaFare)}
             doppi={doppi}
             onUnisciDoppioni={unisciDoppioni}
+            onEliminaRaccolta={eliminaRaccolta}
             onFermaLavoro={fermaLavoro}
             onOpenBook={setOpenId}
             onReadAt={(id, punto) => handleRead(id, punto)}
