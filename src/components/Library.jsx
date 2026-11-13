@@ -32,6 +32,7 @@ import { riconosci, capitoloDi } from "../lib/sagaBooks.js";
 import { camminiDi, guideAccanto, mondiDi, accantoInVista, ACCANTO_IN_VISTA } from "../lib/cammino.js";
 import { segnaposto } from "../lib/segnaposto.js";
 import BookCover from "./BookCover.jsx";
+import CopertineDalCatalogo from "./CopertineDalCatalogo.jsx";
 import Disposizione from "./Disposizione.jsx";
 import EmptyState from "./EmptyState.jsx";
 import { partenza, dopoIlDisegno, segnaTempo, vocePerTempo } from "../lib/tempi.js";
@@ -494,7 +495,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   );
 }
 
-function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, novita = [], onAvvisami, onSerie }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, novita = [], onAvvisami, onSerie, notify }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -670,6 +671,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
         </div>
         {avviso?.si && <SerieDellaRaccolta r={dentro} lista={novita} onCercata={onSerie} />}
         <TuttaLaRaccolta r={dentro} voti={voti} onVoto={onVoto} onTutti={onTutti} />
+        <CopertineDalCatalogo key={dentro.id} r={dentro} notify={notify} />
         {mostra(dentro)}
       </>
     );
@@ -2254,6 +2256,7 @@ export default function Library({
         novita={novita}
         onAvvisami={avvisami}
         onSerie={serieCercata}
+        notify={notify}
       />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps

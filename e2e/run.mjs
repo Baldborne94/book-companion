@@ -17,6 +17,7 @@ import { avviaNas } from "./nasFinto.mjs";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
 import { fumetto, fumettoGrosso, fumettoLungo, epub, epubConContorno, epubConPagine, pdf, wav, FRASE, mondoDisco, png, pngRighe, pngFasce } from "./libri.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
+import catalogoMonster from "../test/monster-catalogo.mjs";
 import { lexicanumFinto, fandomFinto } from "./lexicanumFinto.mjs";
 import { DIZIONARI } from "../src/lib/fonteDizionari.js";
 
@@ -477,6 +478,63 @@ const SCENE = [
       await apri();
       if (await tasto().count()) throw new Error("rifatta la copertina, il tasto c'e' ancora");
       return { guasti: d.guasti, nota: `«${scritta.trim()}»: il grigio oscillava di ${sgranata.scarto}, rifatta di ${dopo.scarto}, col segno; poi il tasto non c'e' piu'` };
+    },
+  },
+  {
+    // chiesto dal lettore con la foto della raccolta di Monster: «per Monster
+    // riesci a recuperarmi le copertine?». La raccolta aperta cerca su Open
+    // Library (qui la risposta vera, salvata nei test), mostra l'elenco, e
+    // mette solo quel che resta spuntato
+    nome: "le copertine di una raccolta dal catalogo: l'elenco, una tolta, le altre messe e ricordate come scelte a mano",
+    async fai({ browser }) {
+      const domande = [];
+      const catalogo = (url) => {
+        const q = new URL(url).searchParams;
+        if (/search\.json/.test(url)) domande.push(q.get("q") || q.get("title"));
+        return q.get("q") === "Monster vol" ? { docs: catalogoMonster } : { docs: [] };
+      };
+      // il catalogo: il volume 1 blu, il 2 rosso, il 3 verde
+      const COLORI = { 863480: [30, 60, 200], 764859: [200, 30, 30], 764959: [30, 170, 60] };
+      const copertine = (url) => {
+        const n = Number(url.match(/\/id\/(\d+)-/)?.[1]);
+        return COLORI[n] ? png(300, 450, COLORI[n]) : null;
+      };
+      const raccolte = () => localStorage.setItem("bc_vista", JSON.stringify({ aspetto: "raccolte" }));
+      const d = await dispositivo(browser, { misura: TABLET, prima: `(${raccolte})();`, catalogo, copertine });
+      // tre grigi appena diversi: tre file uguali sarebbero lo stesso libro
+      for (const n of [1, 2, 3]) await importa(d.p, `Monster v0${n}.cbz`, await fumetto({ prima: png(300, 450, [126 + n, 128, 128]) }), "application/zip");
+      const libri = await libriDi(d.p);
+      const ids = Object.fromEntries(libri.map((b) => [b.sagaOrder, b.id]));
+      if (libri.length !== 3 || libri.some((b) => b.saga !== "Monster") || !ids[1] || !ids[2] || !ids[3]) throw new Error(`i volumi non sono una raccolta numerata: ${JSON.stringify(libri.map((b) => [b.title, b.saga, b.sagaOrder]))}`);
+      await d.p.goto(`${URL_APP}?apri=libreria`);
+      await d.p.getByRole("button", { name: /^Monster/ }).first().click();
+      domande.length = 0;
+      await d.p.getByRole("button", { name: "🖼 Copertine dal catalogo" }).click();
+      await finche(() => d.p.getByRole("button", { name: "🖼 Metti le 3 copertine" }).count(), 10000, "l'elenco delle copertine non arriva");
+      const viste = await d.p.locator('img[alt^="Copertina del catalogo"]').count();
+      if (viste !== 3) throw new Error(`nell'elenco ${viste} copertine del catalogo (attese 3)`);
+      // alla misura del tablet l'elenco sta nello schermo
+      const sborda = await d.p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      if (sborda > 0) throw new Error(`l'elenco sborda di ${sborda}px`);
+      await d.p.getByRole("checkbox", { name: "Volume 3" }).click();
+      await d.p.getByRole("button", { name: "🖼 Metti le 2 copertine" }).click();
+      await finche(() => testoAvviso(d.p, /^🖼 2 copertine dal catalogo$/), 10000, "non dice di aver messo le copertine");
+      const stato = await d.p.evaluate(async (ids) => {
+        const db = await new Promise((ok, ko) => { const r = indexedDB.open("bc_library"); r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); });
+        const colore = async (id) => {
+          const c = await new Promise((ok) => { const r = db.transaction("covers").objectStore("covers").get(id); r.onsuccess = () => ok(r.result); });
+          const b = await createImageBitmap(c);
+          const t = new OffscreenCanvas(b.width, b.height).getContext("2d");
+          t.drawImage(b, 0, 0);
+          const [r, g, bl] = t.getImageData(b.width >> 1, b.height >> 1, 1, 1).data;
+          return r > 150 && g < 80 ? "rossa" : bl > 150 && r < 80 ? "blu" : g > 130 && r < 80 ? "verde" : "grigia";
+        };
+        return Promise.all([1, 2, 3].map(async (n) => `${n}:${await colore(ids[n])}${localStorage.getItem(`bc_cov_mano_${ids[n]}`) === "1" ? " a mano" : ""}`));
+      }, ids);
+      const atteso = "1:blu a mano,2:rossa a mano,3:grigia";
+      if (stato.join() !== atteso) throw new Error(`copertine: ${stato.join()} (attese ${atteso})`);
+      if (domande.join() !== "Monster vol") throw new Error(`domande al catalogo: ${domande.join(" | ")}`);
+      return { guasti: d.guasti, nota: `${stato.join(", ")}; una domanda sola al catalogo` };
     },
   },
   {
