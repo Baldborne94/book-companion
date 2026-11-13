@@ -47,6 +47,14 @@ export function pngRighe(larghezza, altezza, passo, a, b) {
   return pngDa(larghezza, altezza, Buffer.concat(Array.from({ length: altezza }, (_, y) => (Math.floor(y / passo) % 2 ? rb : ra))));
 }
 
+// fasce verticali di colori diversi, [fino a x, colore]: la sovraccoperta
+// aperta di un manga (fronte, dorso, retro)
+export function pngFasce(larghezza, altezza, fasce) {
+  const riga = Buffer.alloc(1 + larghezza * 3);
+  for (let x = 0; x < larghezza; x++) riga.set(fasce.find(([fino]) => x < fino)[1], 1 + x * 3);
+  return pngDa(larghezza, altezza, Buffer.concat(Array.from({ length: altezza }, () => riga)));
+}
+
 export function png(larghezza, altezza, [r, g, b]) {
   const riga = Buffer.alloc(1 + larghezza * 3);
   for (let x = 0; x < larghezza; x++) riga.set([r, g, b], 1 + x * 3);

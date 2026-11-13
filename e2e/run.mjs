@@ -15,7 +15,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { build, preview } from "vite";
 import { avviaNas } from "./nasFinto.mjs";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
-import { fumetto, fumettoGrosso, fumettoLungo, epub, epubConContorno, epubConPagine, pdf, wav, FRASE, mondoDisco, png, pngRighe } from "./libri.mjs";
+import { fumetto, fumettoGrosso, fumettoLungo, epub, epubConContorno, epubConPagine, pdf, wav, FRASE, mondoDisco, png, pngRighe, pngFasce } from "./libri.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
 import { lexicanumFinto, fandomFinto } from "./lexicanumFinto.mjs";
 import { DIZIONARI } from "../src/lib/fonteDizionari.js";
@@ -477,6 +477,58 @@ const SCENE = [
       await apri();
       if (await tasto().count()) throw new Error("rifatta la copertina, il tasto c'e' ancora");
       return { guasti: d.guasti, nota: `«${scritta.trim()}»: il grigio oscillava di ${sgranata.scarto}, rifatta di ${dopo.scarto}, col segno; poi il tasto non c'e' piu'` };
+    },
+  },
+  {
+    // segnalato dal lettore con la foto dello scaffale di Kingdom: dal volume
+    // 10 la prima pagina e' la sovraccoperta giapponese aperta, 800×543, e
+    // sullo scaffale c'erano il dorso e il codice a barre. Manga e' segnato
+    // il solo primo volume (senza file qui): gli altri lo sono per la saga
+    nome: "la sovraccoperta aperta di un manga mostra il fronte a sinistra, quella di un fumetto a destra, sullo scaffale e nella scheda",
+    async fai({ browser }) {
+      const semina = () => {
+        if (localStorage.getItem("bc_books")) return;
+        localStorage.setItem("bc_books", JSON.stringify([{ id: "k1", title: "Kingdom v01", saga: "Kingdom", sagaOrder: 1, fileType: "cbz", tipo: "manga", fileTolto: true, addedAt: 1 }]));
+      };
+      const d = await dispositivo(browser, { misura: TABLET, prima: `(${semina})();` });
+      // fronte del manga rosso, dorso grigio, retro blu; il fumetto al contrario
+      const ROSSO = [200, 30, 30], GRIGIO = [128, 128, 128], BLU = [30, 60, 200], VERDE = [30, 170, 60];
+      await importa(d.p, "Kingdom v10.cbz", await fumetto({ prima: pngFasce(800, 543, [[348, ROSSO], [452, GRIGIO], [800, BLU]]) }), "application/zip");
+      await importa(d.p, "Spawn v01.cbz", await fumetto({ prima: pngFasce(800, 543, [[348, BLU], [452, GRIGIO], [800, VERDE]]) }), "application/zip");
+      const libri = await libriDi(d.p);
+      const k10 = libri.find((b) => b.title === "Kingdom v10");
+      if (k10?.saga !== "Kingdom" || k10.tipo) throw new Error(`Kingdom v10 non e' entrato nella saga senza tipo suo: ${JSON.stringify(k10)}`);
+      // il colore al centro dell'immagine, e le sue proporzioni
+      const guarda = (via = []) =>
+        d.p.evaluate(async (via) => {
+          const out = [];
+          for (const img of document.querySelectorAll("img")) {
+            if (!img.src.startsWith("blob:") || !img.naturalWidth || via.includes(img.src)) continue;
+            const t = new OffscreenCanvas(img.naturalWidth, img.naturalHeight).getContext("2d");
+            t.drawImage(img, 0, 0);
+            const [r, g, b] = t.getImageData(img.naturalWidth >> 1, img.naturalHeight >> 1, 1, 1).data;
+            const colore = r > 150 && g < 80 ? "rosso" : b > 150 && r < 80 ? "blu" : g > 130 && r < 80 ? "verde" : "grigio";
+            out.push(`${colore} ${img.naturalWidth < img.naturalHeight ? "in piedi" : "sdraiata"}`);
+          }
+          return out.sort().join(", ");
+        }, via);
+      await d.p.goto(`${URL_APP}?apri=libreria`);
+      const scaffale = await finche(async () => { const v = await guarda(); return v.split(", ").length === 2 && v; }, 15000, "sullo scaffale non ci sono le due copertine");
+      const miniature = await d.p.evaluate(() => [...document.querySelectorAll("img")].map((i) => i.src));
+      if (scaffale !== "rosso in piedi, verde in piedi") throw new Error(`sullo scaffale: ${scaffale} (attesi il fronte rosso di Kingdom e quello verde di Spawn)`);
+      // la scheda mostra la copertina intera (un indirizzo nuovo): anche li' il fronte
+      await d.p.getByText("Kingdom v10").first().click();
+      const scheda = await finche(() => guarda(miniature), 8000, "la scheda non mostra la copertina");
+      if (scheda !== "rosso in piedi") throw new Error(`nella scheda di Kingdom v10: ${scheda}`);
+      // la copertina salvata resta la pagina com'e' (si ritaglia quando si mostra)
+      const salvata = await d.p.evaluate(async (id) => {
+        const db = await new Promise((ok, ko) => { const r = indexedDB.open("bc_library"); r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); });
+        const c = await new Promise((ok) => { const r = db.transaction("covers").objectStore("covers").get(id); r.onsuccess = () => ok(r.result); });
+        const b = await createImageBitmap(c);
+        return `${b.width}×${b.height}`;
+      }, k10.id);
+      if (salvata !== "800×543") throw new Error(`la copertina salvata e' stata cambiata: ${salvata}`);
+      return { guasti: d.guasti, nota: `scaffale: ${scaffale}; scheda: ${scheda}; salvata ${salvata}` };
     },
   },
   {

@@ -26,7 +26,7 @@ import SezioneDizionario from "./components/SezioneDizionario.jsx";
 import SezioneLexicanum from "./components/SezioneLexicanum.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
-import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, getStatus, setStatus, timbraScheda, getProgress, touchBook } from "./lib/library.js";
+import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, getStatus, setStatus, timbraScheda, getProgress, touchBook, versoDelLibro } from "./lib/library.js";
 import { segnaposto } from "./lib/segnaposto.js";
 import { libroDellaScheda } from "./lib/schedaMusica.js";
 import { leggiSalvaschermo, fase, prossimoCambio } from "./lib/salvaschermo.js";
@@ -2168,7 +2168,7 @@ export default function App() {
       const { copertinaOriginale } = await import("./lib/copertina.js");
       // la copertina grande, dal file (`copertinaGrande.js`): quella
       // salvata e' da 800 e sullo schermo da 2000 arrivava morbida
-      const blob = await copertinaGrande(libroScheda, { leggiFile: getFile, leggiCover: getCover, estrai: copertinaOriginale, max: LATO_MAX });
+      const blob = await copertinaGrande(libroScheda, { leggiFile: getFile, leggiCover: getCover, estrai: copertinaOriginale, max: LATO_MAX, verso: versoDelLibro(libroScheda) });
       if (!vivo) return;
       if (!blob) return segna("senza copertina");
       const chiave = `${idScheda}:${blob.size}:${copVScheda}`;

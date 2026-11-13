@@ -6,6 +6,8 @@ import {
 } from "../lib/music.js";
 import { Faccia, Avanzamento, Comandi, sottotitolo } from "./Ascolto.jsx";
 import { getCover } from "../lib/bookStore.js";
+import { fronteDaMostrare } from "../lib/copertina.js";
+import { versoDelLibro } from "../lib/library.js";
 import { ascoltaCopertine } from "../lib/miniature.js";
 import { metadatiScheda, copertinaQuadrata } from "../lib/schedaMusica.js";
 
@@ -507,7 +509,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
     if (!idLibro || !suona) return;
     let vivo = true;
     (async () => {
-      const blob = await getCover(idLibro);
+      const blob = await fronteDaMostrare(await getCover(idLibro), versoDelLibro(libro));
       if (!blob || !vivo) return;
       const q = await copertinaQuadrata(blob, C.bg);
       if (vivo) setCopertina(q);

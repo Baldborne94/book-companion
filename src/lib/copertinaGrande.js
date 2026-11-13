@@ -17,7 +17,7 @@
 // dove la mano ha scelto.
 //
 // Le decisioni stanno qui, con i lettori iniettati, e si provano in Node.
-import { LATO } from "./copertina.js";
+import { LATO, fronteDaMostrare } from "./copertina.js";
 
 export const LATO_GRANDE = 2400;
 export const CHIAVE_MANO = (id) => `bc_cov_mano_${id}`;
@@ -49,12 +49,18 @@ export function dimenticaGrande(id) {
 
 // `leggiFile(id)` → i byte del libro o null, `leggiCover(id)` → la
 // copertina salvata o null, `estrai(libro, byte, max)` → la copertina dal
-// file alla misura `max` o null. Torna un Blob o null.
-export function copertinaGrande(libro, { leggiFile, leggiCover, estrai, max = LATO_GRANDE, mano = aMano } = {}) {
+// file alla misura `max` o null. Torna un Blob o null. `verso` e' quello
+// del fumetto (`versoDelLibro`): una sovraccoperta aperta mostra il fronte.
+export function copertinaGrande(libro, { leggiFile, leggiCover, estrai, max = LATO_GRANDE, mano = aMano, verso = null, ritaglia = fronteDaMostrare } = {}) {
   const id = libro?.id;
   if (!id) return Promise.resolve(null);
   if (memoria.has(id)) return memoria.get(id);
   const p = (async () => {
+    const b = await laCopertina();
+    // una copertina messa a mano resta quella, anche larga
+    return b && verso && !mano(id) ? ritaglia(b, verso, max) : b;
+  })();
+  async function laCopertina() {
     let grande = null;
     if (!mano(id) && max > LATO) {
       try {
@@ -70,7 +76,7 @@ export function copertinaGrande(libro, { leggiFile, leggiCover, estrai, max = LA
     } catch {
       return null;
     }
-  })();
+  }
   memoria.set(id, p);
   while (memoria.size > TENUTE) memoria.delete(memoria.keys().next().value);
   return p;

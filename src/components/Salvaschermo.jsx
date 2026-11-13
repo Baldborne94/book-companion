@@ -5,7 +5,7 @@ import { nelGuscio, fraseEsito, messaggiVisti, fraseMessaggi, fraseInvio, LATO_M
 import { getCover, getFile } from "../lib/bookStore.js";
 import { copertinaOriginale } from "../lib/copertina.js";
 import { copertinaGrande } from "../lib/copertinaGrande.js";
-import { getProgress } from "../lib/library.js";
+import { getProgress, versoDelLibro } from "../lib/library.js";
 
 // La copertina intera su fondo nero, come un quadro appeso: le copertine
 // illustrate sono il punto, e ritagliarle per riempire lo schermo ne
@@ -24,7 +24,7 @@ export default function Salvaschermo({ libro, onTocco, onSenza }) {
     let mio = null;
     // la copertina grande, dal file: quella salvata e' da 800 pixel e a
     // tutto schermo arrivava morbida (`copertinaGrande.js`)
-    copertinaGrande(libro, { leggiFile: getFile, leggiCover: getCover, estrai: copertinaOriginale, max: LATO_MAX })
+    copertinaGrande(libro, { leggiFile: getFile, leggiCover: getCover, estrai: copertinaOriginale, max: LATO_MAX, verso: versoDelLibro(libro) })
       .then((blob) => {
         if (!vivo) return;
         // senza copertina non c'e' niente da appendere: resta solo lo

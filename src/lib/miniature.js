@@ -30,13 +30,18 @@
 // centinaio di pixel CSS, che con la scrittura ingrandita e uno schermo
 // fitto diventano due o trecento veri — 480 li copre senza sprecare
 export const LATO_MIN = 480;
+// e la miniatura del fronte di una sovraccoperta si tiene sempre
+// (`fronteDellaSovraccoperta` in `copertina.js`, che l'etichetta)
+export const RITAGLIATA = "bcRitagliata";
 
 export const chiaveMin = (id) => `min_${id}`;
 
 // LE MINIATURE HANNO UNA VERSIONE: quelle fatte col filtro veloce del
 // canvas erano sgranate (`pennelloFine` in `copertina.js`), e si rifanno da
 // sole alla prima vista. Chi cambia il modo di ridurle alza il numero.
-export const VERSIONE_MIN = 2;
+// La 3: la miniatura di un fumetto la cui copertina e' la sovraccoperta
+// aperta ne tiene il fronte (`fronteDellaSovraccoperta`).
+export const VERSIONE_MIN = 3;
 
 // E LA COPERTINA NITIDA SI SEGNA. Una copertina ridotta in qualita' alta
 // (`preparaCopertina`) esce etichettata (`NITIDA`), e chi la scrive
@@ -105,7 +110,9 @@ export function caricaCopertina(id, deps) {
           .catch(() => null);
         // una miniatura piu' pesante dell'originale non e' una miniatura:
         // la copertina era gia' piccola, e si usa lei
-        if (ridotta && ridotta.size < intera.size) {
+        // ...salvo il fronte di una sovraccoperta (`RITAGLIATA` in
+        // `copertina.js`): pesasse anche di piu', l'intera mostra il retro
+        if (ridotta && (ridotta.size < intera.size || ridotta[RITAGLIATA])) {
           blob = ridotta;
           // si scrive solo se nel frattempo la copertina non e' cambiata,
           // o si terrebbe su disco la miniatura del libro di prima

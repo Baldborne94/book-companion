@@ -1,6 +1,6 @@
 import { eFumetto, tipoImmagine } from "./fumetto.js";
 import { segnaposto } from "./segnaposto.js";
-import { NITIDA, chiaveNitida } from "./miniature.js";
+import { NITIDA, RITAGLIATA, chiaveNitida } from "./miniature.js";
 // LA COPERTINA SI PUO' METTERE A MANO. Titolo, autore, saga e genere si
 // correggono nella scheda del libro; la copertina no — e se l'ePub non ne
 // aveva una, quel dorso restava muto sullo scaffale per sempre.
@@ -42,6 +42,41 @@ export function copertineDaRifare(libri, { qui, misure, nitide, aMano = () => fa
   return (libri || []).filter(
     (b) => b?.id && eFumetto(b) && qui?.has(b.id) && misure?.has(b.id) && !aMano(b.id) && !nitide?.has(chiaveNitida(b.id, misure.get(b.id)))
   );
+}
+
+// LA SOVRACCOPERTA APERTA NON E' LA COPERTINA (segnalato dal lettore con lo
+// scaffale di Kingdom: dal volume 10 in poi il dorso e il codice a barre al
+// posto del disegno). Le scansioni giapponesi cominciano dalla sovraccoperta
+// intera, fronte, dorso e retro in una pagina sola, 800×543: la copertina
+// e' il fronte, alto quanto la pagina e largo quanto un volume (0,64
+// dell'altezza, misurato sulla foto del lettore: fronte 345 su 543). In un
+// manga, che si legge da destra, il fronte sta a sinistra del dorso; in un
+// fumetto occidentale a destra. Una pagina poco piu' larga che alta e' una
+// copertina e basta.
+export const SOVRACCOPERTA = 1.2;
+export const FRONTE = 0.64;
+export function fronteDellaSovraccoperta(w, h, verso) {
+  if (!(w > 0) || !(h > 0) || w / h < SOVRACCOPERTA) return null;
+  const largo = Math.min(w, Math.round(h * FRONTE));
+  return { x: verso === "rtl" ? 0 : w - largo, w: largo };
+}
+
+// IL FRONTE SI RITAGLIA QUANDO SI MOSTRA, MAI QUANDO SI SALVA: all'import
+// la saga non e' ancora scritta, e un manga preso per un fumetto
+// occidentale mostrerebbe il retro. Quando si mostra, il tipo e' quello
+// della biblioteca (`versoDelLibro`). La copertina salvata resta la pagina
+// com'e', e questa torna lei stessa se non e' una sovraccoperta.
+export async function fronteDaMostrare(blob, verso, max = LATO) {
+  if (!blob || !verso || !IMMAGINE.test(blob.type || "")) return blob || null;
+  try {
+    const b = await createImageBitmap(blob);
+    const fronte = fronteDellaSovraccoperta(b.width, b.height, verso);
+    b.close?.();
+    if (!fronte) return blob;
+    return (await preparaCopertina(blob, max, { verso })) || blob;
+  } catch {
+    return blob;
+  }
 }
 
 export function pennelloFine(tela) {
@@ -223,14 +258,19 @@ const IMMAGINE = /^image\//;
 // browser non decodifica, canvas negato — si tiene il file ORIGINALE:
 // una copertina pesante e' meglio di nessuna copertina, che e' il difetto
 // che stiamo curando.
-export async function preparaCopertina(file, max = LATO) {
+// `verso`: solo per la prima pagina di un fumetto, dove una sovraccoperta
+// aperta si ritaglia al suo fronte (`fronteDellaSovraccoperta`)
+export async function preparaCopertina(file, max = LATO, { verso = null } = {}) {
   if (!file) return null;
   if (!IMMAGINE.test(file.type || "")) return null;
   try {
     const bitmap = await createImageBitmap(file);
-    const m = misura(bitmap.width, bitmap.height, max);
+    const fronte = verso ? fronteDellaSovraccoperta(bitmap.width, bitmap.height, verso) : null;
+    const sx = fronte ? fronte.x : 0;
+    const sw = fronte ? fronte.w : bitmap.width;
+    const m = misura(sw, bitmap.height, max);
     if (!m) return file;
-    if (m.w === bitmap.width && m.h === bitmap.height && file.size < 400 * 1024) {
+    if (!fronte && m.w === bitmap.width && m.h === bitmap.height && file.size < 400 * 1024) {
       bitmap.close?.();
       return nitida(file);
     }
@@ -238,9 +278,10 @@ export async function preparaCopertina(file, max = LATO) {
     canvas.width = m.w;
     canvas.height = m.h;
     const ctx = pennelloFine(canvas);
-    ctx.drawImage(bitmap, 0, 0, m.w, m.h);
+    ctx.drawImage(bitmap, sx, 0, sw, bitmap.height, 0, 0, m.w, m.h);
     bitmap.close?.();
     const blob = await new Promise((ok) => canvas.toBlob(ok, "image/jpeg", 0.85));
+    if (blob && fronte) blob[RITAGLIATA] = true;
     return blob ? nitida(blob) : file;
   } catch {
     return file;
