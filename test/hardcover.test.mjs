@@ -98,6 +98,28 @@ export default async (t) => {
   );
   const tradotto = volumiDaHardcover([legame(1, 1, "Prastarý meč", { lettori: 50, lang: "ces" }), legame(1, 2, "The Sword of Summer", { lettori: 40 })]);
   t.eq("l'inglese prima della traduzione, anche se ha meno lettori", tradotto[0].titolo, "The Sword of Summer");
+  // JoJo su Hardcover (serie 11127, il 14 novembre): per ogni numero
+  // l'edizione giapponese, spesso la francese, quasi mai l'inglese
+  const JOJO = [
+    legame(1, 10, "Jojo's Bizarre Adventure, Tome 1: Dio, L'envahisseur", { lettori: 7, lang: "fre", autore: "Hirohiko Araki" }),
+    legame(1, 11, "ジョジョの奇妙な冒険 1 侵略者ディオ", { lettori: 15, lang: "jpn", autore: "Hirohiko Araki" }),
+    legame(20, 12, "ジョジョの奇妙な冒険 20", { lettori: 4, lang: "jpn", autore: "Hirohiko Araki" }),
+    legame(64, 13, "JoJo冒險野郎Part 6 石之海 1", { lettori: 3, lang: "fre", autore: "Hirohiko Araki" }),
+    legame(64, 14, "Stone Ocean 1", { lettori: 1, lang: "ita", autore: "Hirohiko Araki" }),
+    legame(81, 15, "スティール・ボール・ラン 1", { lettori: 40, lang: "eng", autore: "Hirohiko Araki" }),
+    legame(81, 16, "Steel Ball Run 01", { lettori: 0, lang: "ita", autore: "Hirohiko Araki" }),
+    legame(81, 17, "JoJo’s Bizarre Adventure: Part 7 — Steel Ball Run, Vol. 1", { lettori: 6, lang: "eng", autore: "Hirohiko Araki" }),
+  ];
+  const jojo = new Map(volumiDaHardcover(JOJO).map((v) => [v.numero, v.titolo]));
+  t.eq("un titolo che il lettore sa leggere prima del giapponese piu' letto", jojo.get(1), "Jojo's Bizarre Adventure, Tome 1: Dio, L'envahisseur");
+  t.eq("…anche se Hardcover dice inglese il giapponese", jojo.get(81), "JoJo’s Bizarre Adventure: Part 7 — Steel Ball Run, Vol. 1");
+  t.eq("…un alfabeto latino anche in italiano", jojo.get(64), "Stone Ocean 1");
+  // (fatti a mano: due titoli latini allo stesso numero)
+  const lingue = (...l) => volumiDaHardcover(l.map(([lang, lettori], i) => legame(1, i, `T ${lang || "?"}`, { lang, lettori })))[0].titolo;
+  t.eq("fra due titoli latini l'italiano prima del francese piu' letto", lingue(["fre", 9], ["ita", 1]), "T ita");
+  t.eq("…e la lingua non detta vale l'inglese", lingue(["ita", 9], ["", 1]), "T ?");
+  t.eq("a pari alfabeto e lingua, il piu' letto (i due «Of Empires and Dust»)", volumiDaHardcover([...BOUND].reverse()).find((v) => v.numero === 4).lettori, 176);
+  t.eq("…e se c'e' solo il giapponese, quello", jojo.get(20), "ジョジョの奇妙な冒険 20");
 
   // ── QUALE SERIE, QUALE AUTORE ─────────────────────────────────────────
   const hits = [
@@ -151,6 +173,12 @@ export default async (t) => {
   t.eq("una serie per nome: due domande, il nome di Hardcover, nella sua raccolta", `${domande.join(",")} | ${bb.fonte} ${bb.nome} ${bb.saga} ${bb.volumi.length}`, "search,series_by_pk | hardcover The Bound and the Broken The Bound and the Broken 7");
   t.eq("…ogni volume nella raccolta della serie, col suo numero, la storia di mezzo segnata", `${bb.volumi[1].saga} ${bb.volumi[1].numero} ${bb.volumi[1].serie === ""} ${bb.volumi[0].novella}`, "The Bound and the Broken 1 true true");
   t.eq("un nome che Hardcover non ha", await serieHardcover("niente", chiedi), null);
+  const jojoHC = await serieHardcover("JoJo’s Bizarre Adventure", async (q) => (/search/.test(q) ? { search: { results: { hits: [{ document: { id: "11127", name: "JoJo’s Bizarre Adventure", readers_count: 50 } }] } } } : { series_by_pk: { id: 11127, name: "JoJo’s Bizarre Adventure", book_series: JOJO } }));
+  t.eq(
+    "nell'elenco, un numero che ha solo il giapponese prende il nome della serie col numero, e lo dice",
+    jojoHC.volumi.map((v) => `${v.numero} ${v.titolo}${v.ricostruito ? " *" : ""}`).filter((x) => /^(1|20) /.test(x)).join(" | "),
+    "1 Jojo's Bizarre Adventure, Tome 1: Dio, L'envahisseur | 20 JoJo’s Bizarre Adventure, Vol. 20 *"
+  );
   domande.length = 0;
   const cahill = await serieDellAutoreHC("Ryan Cahill", chiedi);
   t.eq("le serie di un autore: le sue serie e quelle dei suoi libri (che qui sono le stesse: niente domanda in piu'), col conto dell'elenco", `${domande.join(",")} | ${cahill.autore}: ${cahill.serie.map((s) => `${s.nome} · ${s.quanti} + ${s.storie}`).join()}`, "search,series(,books( | Ryan Cahill: The Bound and the Broken · 5 + 2");
