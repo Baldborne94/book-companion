@@ -2,9 +2,9 @@
 // dal lettore con la foto della raccolta di Monster: «per Monster riesci a
 // recuperarmi le copertine?». Le schede come le sue (il nome del file della
 // scansione, il numero nella saga); il catalogo e' la risposta vera.
-import { numeroNelTitolo, copertinePerVolume, autoreDellaRaccolta, domandaSerie, cercaCopertineSerie, scaricaCopertina, sceltePerCopertina, cercaCopertinaDelLibro, edizioniDellOpera, opereDaChiedere, scelteDelVolume, editoriDelleScelte, tutteDellEditore, domandaEdizioni, numerataPerParte, serieNelTitolo, editoreLeggibile, aggiustaByte, chiaveEditore } from "../src/lib/copertineSerie.js";
+import { numeroNelTitolo, copertinePerVolume, autoreDellaRaccolta, domandaSerie, cercaCopertineSerie, scaricaCopertina, sceltePerCopertina, cercaCopertinaDelLibro, edizioniDellOpera, opereDaChiedere, scelteDelVolume, editoriDelleScelte, tutteDellEditore, domandaEdizioni, numerataPerParte, serieNelTitolo, editoreLeggibile, aggiustaByte, chiaveEditore, nomeOriginale, PAGINE_MAX } from "../src/lib/copertineSerie.js";
 import catalogo, { edizioni } from "./monster-catalogo.mjs";
-import { tutta as jojoTutta, parte7 as jojo7, edizioniVol2 } from "./jojo-catalogo.mjs";
+import { tutta as jojoTutta, parte7 as jojo7, edizioniVol2, perAutore, giapponese1, giapponese2 } from "./jojo-catalogo.mjs";
 
 const libri = Array.from({ length: 18 }, (_, i) => ({
   id: `m${i + 1}`,
@@ -14,6 +14,8 @@ const libri = Array.from({ length: 18 }, (_, i) => ({
 }));
 
 const chiaveDi = (e) => String(e || "").toLowerCase().split(/\W+/)[0];
+
+const centotrentunoLibri = (numeri) => numeri.map((n) => ({ id: `n${n}`, saga: "JoJo's Bizarre Adventure", sagaOrder: n }));
 
 export default async (t) => {
   // ---- IL NUMERO NEL TITOLO ------------------------------------------------------
@@ -201,6 +203,84 @@ export default async (t) => {
   let rottaParte = false;
   await cercaCopertineSerie({ nome: J, libri: jojo }, { fetcher: async () => ({ ok: false, status: 503 }) }).catch(() => (rottaParte = true));
   t.c("…un guasto del catalogo si dice anche qui", rottaParte);
+
+  // ---- IL NOME ORIGINALE (la raccolta JoJo numerata come in Giappone) -------------
+  t.eq("dalla ricerca per autore si impara il nome giapponese", nomeOriginale(perAutore, J), "ジョジョの奇妙な冒険");
+  t.eq("…ma solo da un'opera che col nome ha a che fare", nomeOriginale([{ title: "ジョジョの奇妙な冒険 20" }], J), null);
+  t.eq("…anche da una sua edizione", nomeOriginale([{ title: "ジョジョの奇妙な冒険 20", editions: { docs: [{ title: "JoJo's Bizarre Adventure Vol. 8" }] } }], J), "ジョジョの奇妙な冒険");
+  t.eq("…un titolo in alfabeto latino non insegna niente", nomeOriginale(catalogo, "Monster"), null);
+  t.eq("…ne' uno senza numero dopo il nome", nomeOriginale([{ title: "ジョジョの奇妙な冒険 クレイジー・Dの悪霊的失恋 1", editions: { docs: [{ title: "JoJo's Bizarre Adventure" }] } }], J), null);
+  t.eq("vince il piu' frequente", nomeOriginale([
+    { title: "ジョジョ 5", editions: { docs: [{ title: "JoJo's Bizarre Adventure" }] } },
+    { title: "ジョジョの奇妙な冒険 20", editions: { docs: [{ title: "JoJo's Bizarre Adventure" }] } },
+    { title: "ジョジョの奇妙な冒険 21", editions: { docs: [{ title: "JoJo's Bizarre Adventure" }] } },
+  ], J), "ジョジョの奇妙な冒険");
+  t.eq("…il nome anche nel titolo stesso, senza edizioni", nomeOriginale([{ title: "ジョジョの奇妙な冒険 34 (Jojo's Bizarre Adventure, #34)" }], J), "ジョジョの奇妙な冒険");
+  t.eq("…e senza nome niente da imparare", nomeOriginale([{ title: "ジョジョの奇妙な冒険 20" }], ""), null);
+  t.c("la domanda chiede anche i titoli delle edizioni", new URL(domandaSerie(J, "Hirohiko Araki")).searchParams.get("fields").includes("editions.title"));
+  const due = ["JOJO'S BIZARRE ADVENTURE Vol.2", "JOJO'S BIZARRE ADVENTURE Vol.14 ( Japanese Edition )"].map((t) => jojoTutta.find((d) => d.title === t));
+  t.eq("«( Japanese Edition )» e' la stessa forma", copertinePerVolume(due, { nome: J, libri: centotrentunoLibri([2, 14]) }).proposte.map((p) => p.numero).join(), "2,14");
+  const treAutori = [{ key: "/works/A", title: "ジョジョの奇妙な冒険 1", author_name: ["荒木飛呂彦"], cover_i: 1 }, ...due.map((d, i) => ({ ...d, author_name: [`altro ${i}`] }))];
+  t.eq("…anche con autori diversi: e' solo il nome col suo numero", copertinePerVolume(treAutori, { nome: J, libri: centotrentunoLibri([1, 2, 14]), alias: ["ジョジョの奇妙な冒険"] }).proposte.map((p) => p.numero).join(), "1,2,14");
+  t.eq("«( Japanese Edition )» non e' un'edizione grande", numeroNelTitolo("JOJO'S BIZARRE ADVENTURE Vol.14 ( Japanese Edition )", J), 14);
+  t.eq("il numero del titolo giapponese, col nome giapponese", numeroNelTitolo("ジョジョの奇妙な冒険 20", [J, "ジョジョの奇妙な冒険"]), 20);
+
+  const centotrentuno = Array.from({ length: 131 }, (_, i) => ({ id: `g${i + 1}`, saga: J, sagaOrder: i + 1, author: "Hirohiko Araki" }));
+  const domande = [];
+  const dalCatalogo = async (url) => {
+    const q = new URL(url).searchParams;
+    domande.push(`${q.get("title") ? `title=${q.get("title")}` : q.get("q")}${q.get("page") ? ` p${q.get("page")}` : ""}`);
+    const docs = q.get("title") ? perAutore : q.get("page") === "2" ? giapponese2 : q.get("q") === "ジョジョの奇妙な冒険" ? giapponese1 : [];
+    return { ok: true, json: async () => ({ docs, numFound: q.get("title") ? perAutore.length : 121 }) };
+  };
+  const g = await cercaCopertineSerie({ nome: J, libri: centotrentuno }, { fetcher: dalCatalogo });
+  t.eq("prima col nome del lettore, poi col nome giapponese, due pagine", domande.join(" | "), `title=${J} | ジョジョの奇妙な冒険 | ジョジョの奇妙な冒険 p2`);
+  t.eq("da tre copertine a settantotto", `${g.proposte.length}|${g.mancano.length}`, "78|53");
+  t.eq("il 20 e' il ventesimo giapponese", g.proposte.find((p) => p.numero === 20).titolo, "ジョジョの奇妙な冒険 20");
+  // la ricerca con l'autore non trova volumi ma insegna il nome; quella senza
+  // non trova niente: il nome imparato dalla prima vale lo stesso
+  const sentiero = [];
+  const senzaAutore = await cercaCopertineSerie({ nome: J, libri: centotrentuno.slice(19, 21) }, {
+    fetcher: async (url) => {
+      const q = new URL(url).searchParams;
+      sentiero.push(q.get("title") ? "titolo" : q.get("q"));
+      const docs = q.get("title") ? perAutore : q.get("q") === "ジョジョの奇妙な冒険" ? giapponese1 : [];
+      return { ok: true, json: async () => ({ docs, numFound: docs.length }) };
+    },
+  });
+  t.eq("…il nome della prima risposta resta anche dopo la seconda", `${sentiero.join(" | ")}|${senzaAutore.proposte.map((p) => p.numero).join()}`, `titolo | ${J} vol | ジョジョの奇妙な冒険|20,21`);
+  // tutto trovato: nessuna seconda ricerca
+  let quante = 0;
+  await cercaCopertineSerie({ nome: J, libri: centotrentuno.slice(19, 20) }, { fetcher: async () => (quante++, { ok: true, json: async () => ({ docs: [...perAutore, { key: "/works/X", title: "JoJo's Bizarre Adventure, Vol. 20", cover_i: 9 }] }) }) });
+  t.eq("niente che manca, nessuna seconda ricerca", quante, 1);
+  // pagine piene fino al tetto
+  const pagine = [];
+  const piene = Array.from({ length: 100 }, (_, i) => ({ key: `/works/OL${i}W`, title: `ジョジョの奇妙な冒険 ${i + 500}`, cover_i: 1 }));
+  await cercaCopertineSerie({ nome: J, libri: centotrentuno }, {
+    fetcher: async (url) => {
+      const q = new URL(url).searchParams;
+      if (q.get("title")) return { ok: true, json: async () => ({ docs: perAutore }) };
+      pagine.push(q.get("page") || "1");
+      return { ok: true, json: async () => ({ docs: piene.map((d) => ({ ...d, key: `${d.key}${q.get("page")}` })), numFound: 10000 }) };
+    },
+  });
+  t.eq("al piu' tre pagine", pagine.join(), Array.from({ length: PAGINE_MAX }, (_, i) => String(i + 1)).join());
+  for (const [quanti, nella, perche] of [[100, 100, "il catalogo ne ha cento: una pagina basta"], [10000, 50, "una pagina non piena e' l'ultima"]]) {
+    const viste = [];
+    await cercaCopertineSerie({ nome: J, libri: centotrentuno }, {
+      fetcher: async (url) => {
+        const q = new URL(url).searchParams;
+        if (q.get("title")) return { ok: true, json: async () => ({ docs: perAutore }) };
+        viste.push(q.get("page") || "1");
+        return { ok: true, json: async () => ({ docs: piene.slice(0, nella), numFound: quanti }) };
+      },
+    });
+    t.eq(perche, viste.join(), "1");
+  }
+  // lo Shueisha in alfabeto latino sta accanto al giapponese
+  const shueisha = jojoTutta.find((d) => d.title === "JOJO'S BIZARRE ADVENTURE Vol.2");
+  const accanto = copertinePerVolume([...giapponese1, ...giapponese2, shueisha], { nome: J, libri: centotrentuno, alias: ["ジョジョの奇妙な冒険"] }).proposte.find((p) => p.numero === 2);
+  t.eq("il 2 giapponese e quello di Shueisha col nome inglese", accanto.opere.map((o) => o.titolo).join(" | "), "ジョジョの奇妙な冒険 2 | JOJO'S BIZARRE ADVENTURE Vol.2");
 
   // ---- IL NOME DELL'EDITORE -------------------------------------------------------
   t.eq("il nome pulito accanto vince", editoreLeggibile(edizioniVol2.entries[0].publishers), "Shueisha");

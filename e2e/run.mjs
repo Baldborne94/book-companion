@@ -18,6 +18,7 @@ import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
 import { fumetto, fumettoGrosso, fumettoLungo, epub, epubConContorno, epubConPagine, pdf, wav, FRASE, mondoDisco, png, pngRighe, pngFasce } from "./libri.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
 import catalogoMonster from "../test/monster-catalogo.mjs";
+import { perAutore as jojoPerAutore, giapponese1 as jojoGiapponese } from "../test/jojo-catalogo.mjs";
 import { lexicanumFinto, fandomFinto } from "./lexicanumFinto.mjs";
 import { DIZIONARI } from "../src/lib/fonteDizionari.js";
 
@@ -555,6 +556,39 @@ const SCENE = [
       const chieste = [...domande].sort().join();
       if (chieste !== "/works/OL8694262W/editions.json,/works/OL8694263W/editions.json,/works/OL8694264W/editions.json,Monster vol") throw new Error(`domande al catalogo: ${chieste}`);
       return { guasti: d.guasti, nota: `${stato.join(", ")}; una ricerca e un'edizione per volume` };
+    },
+  },
+  {
+    // segnalato dal lettore con la sua raccolta di JoJo numerata come in
+    // Giappone (108 volumi, tre copertine): «come mai alcune copertine non me
+    // le trovi mai?». Il catalogo li tiene col titolo giapponese: il nome si
+    // impara dalle edizioni e si cerca anche cosi' (risposte vere, nei test)
+    nome: "le copertine di una raccolta col nome giapponese che il catalogo insegna: JoJo numerato come in Giappone",
+    async fai({ browser }) {
+      const domande = [];
+      const catalogo = (url) => {
+        const u = new URL(url);
+        const q = u.searchParams;
+        if (/editions\.json/.test(url)) return { entries: [] };
+        domande.push(q.get("title") ? "nome del lettore" : q.get("q"));
+        if (q.get("title")) return { docs: jojoPerAutore, numFound: jojoPerAutore.length };
+        return q.get("q") === "ジョジョの奇妙な冒険" ? { docs: jojoGiapponese, numFound: jojoGiapponese.length } : { docs: [] };
+      };
+      const copertine = () => png(300, 450, [200, 30, 30]);
+      const J = "JoJo's Bizarre Adventure";
+      const semina = (J) => {
+        if (localStorage.getItem("bc_books")) return;
+        localStorage.setItem("bc_books", JSON.stringify([20, 21].map((n) => ({ id: `jj${n}`, title: `Jojo's Bizarre Adventure, Tome ${n}`, author: "Hirohiko Araki", saga: J, sagaOrder: n, fileType: "cbz", tipo: "manga", fileTolto: true, addedAt: n }))));
+        localStorage.setItem("bc_vista", JSON.stringify({ aspetto: "raccolte" }));
+      };
+      const d = await dispositivo(browser, { misura: TABLET, prima: `(${semina})(${JSON.stringify(J)});`, catalogo, copertine });
+      await d.p.goto(`${URL_APP}?apri=libreria`);
+      await d.p.getByRole("button", { name: /^JoJo/ }).first().click();
+      await d.p.getByRole("button", { name: "🖼 Copertine dal catalogo" }).click();
+      await finche(() => d.p.getByRole("button", { name: "Volume 21: copertina 1" }).count(), 10000, "il volume 21 non ha la sua copertina");
+      if (!(await d.p.getByRole("button", { name: "Volume 20: copertina 1" }).count())) throw new Error("il volume 20 non ha la sua copertina");
+      if (domande.join(" | ") !== `nome del lettore | ${J} vol | ジョジョの奇妙な冒険`) throw new Error(`domande al catalogo: ${domande.join(" | ")}`);
+      return { guasti: d.guasti, nota: `domande: ${domande.join(" → ")}; i volumi 20 e 21 coi loro titoli giapponesi` };
     },
   },
   {
