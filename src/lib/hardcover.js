@@ -28,6 +28,7 @@
 //   e' una traduzione, e una che condivide libri con due o piu' altre e' un
 //   universo: restano fuori, come gli universi di Wikidata.
 
+import { ALTRO_ALFABETO, inAltroAlfabeto } from "./alfabeto.js";
 import { chiaveSaga } from "./sagaBooks.js";
 import { eLAutore, variantiDelNome } from "./sagaDaNome.js";
 import { segnaChiave } from "./chiaviInViaggio.js";
@@ -121,9 +122,7 @@ const straniero = (lingua) => !!lingua && lingua !== "eng";
 // un libro in un'altra lingua, un titolo che contiene quello del romanzo del
 // suo numero intero. E la stessa storia a due numeri si tiene una volta.
 const SPEZZATO = /\b(part|book|volume|vol|tom|tome|teil|deo|partie|parte)\b\.?\s*(\d|one|two|three|i\b|ii\b)|\bof \d\b|\(.*split|split edition|dramati[sz]ed|graphic novel|comic|manga|adaptation|том|część|deo prvi|deo drugi|premi[eè]re partie/i;
-const ALTRO_ALFABETO = /[\u0370-\u03ff\u0400-\u04ff\u0590-\u06ff\u0e00-\u0e7f\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]/;
 const pianoHC = (s) => chiaveSaga(s).replace(/^the /, "");
-export const inAltroAlfabeto = (t) => ALTRO_ALFABETO.test(String(t || ""));
 // UN TITOLO CHE IL LETTORE SA LEGGERE: se di un numero c'e' solo il
 // giapponese (85 dei 130 numeri di JoJo su Hardcover, il 14 novembre), il
 // nome della serie e il numero; senza l'uno o l'altro resta com'e'

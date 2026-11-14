@@ -5,6 +5,7 @@ import { riconosci, nomeInBiblioteca, chiaveSaga, raccoltaDellaGuida, universiNu
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
 import { dalMetadata } from "./sinossi.js";
 import { collana, chiaveCollana } from "./collana.js";
+import { tieniLeggibile } from "./alfabeto.js";
 import { cheArchivio, tipoImmagine, cbrApribile, PERCHE_CBR_GRANDE } from "./fumetto.js";
 
 // oltre questa taglia il libro non si ricuce: tenere in memoria due
@@ -461,6 +462,7 @@ export async function importFiles(fileList, libri = [], { onProgress, converti =
     } catch {
       /* estrazione fallita: il libro resta col filename come titolo */
     }
+    tieniLeggibile(meta, letto, file.name);
     if (copertinaSua) await putCover(ritorno.id, copertinaSua).catch(() => {});
     // il titolo si sa solo adesso: un'altra edizione dello stesso romanzo
     // entra comunque — tenerne una sola e' una scelta tua, non nostra — ma
@@ -573,6 +575,7 @@ export async function importaDaFuori(voci, libri = [], { apri, onProgress, vivo 
     } catch {
       /* letto male o troppo lento: la scheda entra col nome del file */
     }
+    tieniLeggibile(meta, letto, v.name);
     // IL FILE TORNA NELLA SCHEDA CHE L'AVEVA PERSO (segnalato dal lettore
     // coi Dragonriders of Pern: ogni volume due volte, una scheda col file e
     // una col triangolo «né qui né nel cloud»). Il titolo si sa solo adesso,

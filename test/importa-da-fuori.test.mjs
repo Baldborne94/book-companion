@@ -200,6 +200,16 @@ export default async (t) => {
     const jojo = await importaDaFuori([{ id: "jj", name: "JoJo's_Bizarre_Adventure_Part_5_v16_The_Requiem.cbz", size: 100, byte: cbz }], [], { apri, leggi });
     t.eq("la parte del nome del file diventa il ciclo", `${jojo.added[0]?.saga}|${jojo.added[0]?.series}|${jojo.added[0]?.sagaOrder}`, "JoJo's Bizarre Adventure|Parte 5|16");
     t.eq("e si contano", e.riconosciuti, 2);
+    // un fumetto la cui scheda ComicInfo e' in giapponese (come i JoJo che
+    // il lettore ha visto arrivare da Hardcover): il nome del file vince,
+    // l'autore resta vuoto, la collana giapponese non diventa una raccolta
+    const giapponese = async (meta) => {
+      meta.title = "ジョジョの奇妙な冒険 20";
+      meta.author = "荒木飛呂彦";
+      return { titolo: true, collana: { serie: "ジョジョの奇妙な冒険", numero: 20 } };
+    };
+    const jj20 = (await importaDaFuori([{ id: "j20", name: "JoJo's Bizarre Adventure v20.cbz", size: 100, byte: cbz }], [], { apri, leggi: giapponese })).added[0];
+    t.eq("dal disco, un titolo in un altro alfabeto lascia il posto al nome del file", `${jj20?.title}|${jj20?.author}|${jj20?.saga}|${jj20?.sagaOrder}`, "JoJo's Bizarre Adventure v20||JoJo's Bizarre Adventure|20");
     const fermo = await importaDaFuori(voci, [], { apri, leggi, vivo: () => false });
     t.c("fermato prima di cominciare: niente dentro, e si dice", fermo.fermato && !fermo.added.length);
 

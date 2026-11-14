@@ -592,6 +592,24 @@ const SCENE = [
     },
   },
   {
+    // dopo i JoJo in giapponese, il lettore: «puoi fare in modo che non
+    // ricapiti anche con altri manga o fumetti?». Dal tablet entrano un
+    // fumetto con la scheda ComicInfo in giapponese e un ePub col titolo in
+    // giapponese: tengono il nome del file, senza l'autore illeggibile, e la
+    // collana giapponese non diventa una raccolta
+    nome: "un fumetto e un ePub coi dati in giapponese entrano col nome del file",
+    async fai({ browser }) {
+      const d = await dispositivo(browser, { misura: TABLET });
+      const info = `<?xml version="1.0"?><ComicInfo><Title>ワンピース 1 ROMANCE DAWN</Title><Series>ワンピース</Series><Number>1</Number><Writer>尾田栄一郎</Writer><Manga>YesAndRightToLeft</Manga></ComicInfo>`;
+      await importa(d.p, "One Piece v01.cbz", await fumetto({ info }), "application/zip");
+      await importa(d.p, "Il castello errante di Howl.epub", await epub({ titolo: "ハウルの動く城", autore: "宮崎駿" }), "application/epub+zip");
+      const libri = (await libriDi(d.p)).map((b) => `${b.title}|${b.author}|${b.saga || ""}|${b.sagaOrder ?? ""}|${b.tipo || ""}`).sort();
+      const attesi = ["Il castello errante di Howl|||", "One Piece v01||One Piece|1|manga"].map((x) => (x.split("|").length === 4 ? `${x}|` : x));
+      if (libri.join(" / ") !== attesi.join(" / ")) throw new Error(`le schede: ${libri.join(" / ")}`);
+      return { guasti: d.guasti, nota: libri.join(" / ") };
+    },
+  },
+  {
     // segnalato dal lettore con la scheda del primo JoJo aggiunta da
     // Hardcover: «ジョジョの奇妙な冒険 1 侵略者ディオ», «come mai i titoli sono
     // cosi'?». Nella raccolta aperta l'elenco dei titoli leggibili (dati veri

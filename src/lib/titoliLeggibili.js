@@ -8,7 +8,8 @@
 // Hardcover allo stesso numero, se c'e' (con la chiave); se no il nome della
 // raccolta e il numero (`titoloLeggibile`). Si propone, riga per riga, e si
 // scrive solo quel che resta spuntato.
-import { inAltroAlfabeto, titoloLeggibile } from "./hardcover.js";
+import { titoloLeggibile } from "./hardcover.js";
+import { inAltroAlfabeto } from "./alfabeto.js";
 
 const numeroDi = (b) => {
   const n = Number(b?.sagaOrder);

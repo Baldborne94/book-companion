@@ -88,10 +88,11 @@ export async function fumettoLungo(pagine = 30) {
   return zip.generateAsync({ type: "nodebuffer" });
 }
 
-export async function fumetto({ prima = null } = {}) {
+export async function fumetto({ prima = null, info = null } = {}) {
   const zip = new JSZip();
   const colori = [[180, 40, 40], [40, 120, 180], [60, 160, 80]];
   colori.forEach((c, i) => zip.file(`pagina ${String(i + 1).padStart(2, "0")}.png`, i === 0 && prima ? prima : png(60, 90, c)));
+  if (info) zip.file("ComicInfo.xml", info);
   return zip.generateAsync({ type: "nodebuffer" });
 }
 

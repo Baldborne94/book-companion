@@ -27,6 +27,7 @@ export default async function (t) {
   t.eq("«The prince of nothing ;»", c("The prince of nothing ;")?.saga, "The prince of nothing");
   t.eq("«Shadows of the Apt book one»", c("Shadows of the Apt book one")?.saga, "Shadows of the Apt");
   t.eq("senza numero resta senza", c("The Black Company")?.n, null);
+  t.eq("una collana in un altro alfabeto non e' una saga, anche con delle lettere latine", c("JoJo冒險野郎Part 6 石之海 1"), null);
 
   // ---- IL RUMORE, che e' la parte che sbaglia in silenzio ---------------
   for (const s of [
