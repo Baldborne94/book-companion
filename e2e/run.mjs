@@ -592,6 +592,58 @@ const SCENE = [
     },
   },
   {
+    // segnalato dal lettore con la scheda del primo JoJo aggiunta da
+    // Hardcover: «ジョジョの奇妙な冒険 1 侵略者ディオ», «come mai i titoli sono
+    // cosi'?». Nella raccolta aperta l'elenco dei titoli leggibili (dati veri
+    // di Hardcover del 14 novembre), e si cambia solo quel che resta spuntato
+    nome: "i titoli giapponesi di una raccolta si propongono leggibili, e si cambia solo quel che resta spuntato",
+    async fai({ browser }) {
+      const semina = () => {
+        if (localStorage.getItem("bc_books")) return;
+        localStorage.setItem("bc_hardcover_key", "hc_pat_prova");
+        const t = { 1: "ジョジョの奇妙な冒険 1 侵略者ディオ", 20: "ジョジョの奇妙な冒険 20 爆弾仕かけのオレンジ", 81: "スティール・ボール・ラン 1" };
+        localStorage.setItem("bc_books", JSON.stringify(Object.entries(t).map(([n, title]) => ({ id: `jj${n}`, title, author: "Hirohiko Araki", saga: "JoJo's Bizarre Adventure", sagaOrder: Number(n), fileType: "nessuno", fileTolto: true, tipo: "manga", addedAt: Number(n) }))));
+        localStorage.setItem("bc_vista", JSON.stringify({ aspetto: "raccolte" }));
+      };
+      const libro = (position, id, title, users_count, code3) => ({ position, book: { id, title, release_year: 2000, release_date: "2000-01-01", users_count, contributions: [{ author: { name: "Hirohiko Araki" } }], default_physical_edition: { language: { code3 } } } });
+      const domande = [];
+      const d = await dispositivo(browser, {
+        misura: TABLET,
+        prima: semina,
+        hardcover: async ({ query, variables }) => {
+          domande.push(/query_type: "Series"/.test(query) ? `serie ${variables.q}` : /query_type: "Book"/.test(query) ? "copertina" : `libri ${variables.id}`);
+          if (/query_type: "Series"/.test(query)) return { data: { search: { results: { hits: [{ document: { id: "11127", name: "JoJo’s Bizarre Adventure", readers_count: 900 } }, { document: { id: "167760", name: "JoJo's Bizarre Adventure", readers_count: 2 } }] } } } };
+          if (/series_by_pk/.test(query) && variables.id === 11127)
+            return { data: { series_by_pk: { id: 11127, name: "JoJo’s Bizarre Adventure", book_series: [
+              libro(1, 1, "Jojo's Bizarre Adventure, Tome 1: Dio, L'envahisseur", 7, "fre"),
+              libro(1, 2, "ジョジョの奇妙な冒険 1 侵略者ディオ", 15, "jpn"),
+              libro(20, 3, "ジョジョの奇妙な冒険 20 爆弾仕かけのオレンジ", 4, "jpn"),
+              libro(81, 4, "スティール・ボール・ラン 1", 40, "eng"),
+              libro(81, 5, "JoJo’s Bizarre Adventure: Part 7 — Steel Ball Run, Vol. 1", 6, "eng"),
+            ] } } };
+          return { data: {} };
+        },
+      });
+      const { p } = d;
+      await p.goto(`${URL_APP}?apri=libreria`);
+      await p.getByRole("button", { name: /^JoJo/ }).first().click();
+      await p.getByRole("button", { name: "🔤 3 titoli in un altro alfabeto" }).click();
+      const riga = (t) => p.locator("label", { hasText: t });
+      await finche(() => riga("→ Jojo's Bizarre Adventure, Tome 1: Dio, L'envahisseur").count(), 8000, "il titolo francese del primo volume non si propone");
+      if (!(await riga("→ JoJo’s Bizarre Adventure: Part 7 — Steel Ball Run, Vol. 1").count())) throw new Error("per lo Steel Ball Run non si propone il titolo inglese");
+      if (!(await riga("→ JoJo's Bizarre Adventure, Vol. 20").count())) throw new Error("il volume che ha solo il giapponese non prende il nome della raccolta col numero");
+      await riga("→ JoJo's Bizarre Adventure, Vol. 20").getByRole("checkbox").uncheck();
+      await p.getByRole("button", { name: "🔤 Cambia 2 titoli" }).click();
+      await finche(async () => (await libriDi(p)).some((b) => b.id === "jj1" && /Tome 1/.test(b.title)), 5000, "il titolo non cambia");
+      const titoli = (await libriDi(p)).sort((a, b) => a.sagaOrder - b.sagaOrder).map((b) => b.title).join(" | ");
+      if (titoli !== "Jojo's Bizarre Adventure, Tome 1: Dio, L'envahisseur | ジョジョの奇妙な冒険 20 爆弾仕かけのオレンジ | JoJo’s Bizarre Adventure: Part 7 — Steel Ball Run, Vol. 1") throw new Error(`i titoli: ${titoli}`);
+      const timbrate = await p.evaluate(() => ["jj1", "jj20", "jj81"].map((id) => !!localStorage.getItem(`bc_sch_${id}`)).join());
+      if (timbrate !== "true,false,true") throw new Error(`le schede timbrate: ${timbrate}`);
+      await finche(() => p.getByRole("button", { name: "🔤 Un titolo in un altro alfabeto" }).count(), 5000, "il tasto non conta quel che resta");
+      return { guasti: d.guasti, nota: `domande: ${domande.join(" → ")}; ${titoli}` };
+    },
+  },
+  {
     // chiesto dal lettore dopo Monster: «nella manutenzione un tasto in cui
     // scelgo la raccolta o il libro e gli chiedo di mettermi la copertina
     // corretta». Un libro per titolo e autore, poi una raccolta

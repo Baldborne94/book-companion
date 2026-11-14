@@ -33,6 +33,7 @@ import { camminiDi, guideAccanto, mondiDi, accantoInVista, ACCANTO_IN_VISTA } fr
 import { segnaposto } from "../lib/segnaposto.js";
 import BookCover from "./BookCover.jsx";
 import CopertineDalCatalogo from "./CopertineDalCatalogo.jsx";
+import TitoliLeggibili from "./TitoliLeggibili.jsx";
 import CopertinaGiusta from "./CopertinaGiusta.jsx";
 import { puoEssereSciolta, contoDaEliminare, fraseEliminaRaccolta, sciogliRaccolta } from "../lib/eliminaRaccolta.js";
 import Disposizione from "./Disposizione.jsx";
@@ -497,7 +498,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   );
 }
 
-function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, novita = [], onAvvisami, onSerie, notify, onSciogli, onElimina }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, novita = [], onAvvisami, onSerie, notify, onSciogli, onElimina, onRinomina }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -677,6 +678,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
             (`mostra`, un `Ripiano`) porta gia' quella, e due fratelli con la
             stessa chiave React li confonde a ogni aggiornamento (il tasto
             moltiplicato venti volte e lo scaffale sparito) */}
+        <TitoliLeggibili key={`titoli|${dentro.id}`} r={dentro} onRinomina={onRinomina} />
         <CopertineDalCatalogo key={`copertine|${dentro.id}`} r={dentro} notify={notify} />
         {mostra(dentro)}
       </>
@@ -1056,6 +1058,13 @@ export default function Library({
     updateBooks(dopo);
     onRaccolta?.(null);
     notify?.(`«${r.nome}» sciolta: ${ids.length === 1 ? "il volume resta" : `i ${ids.length} volumi restano`} sullo scaffale, senza raccolta`);
+  };
+  // i titoli in un altro alfabeto scelti nell'elenco (`TitoliLeggibili`),
+  // sulla biblioteca di adesso
+  const rinominaVolumi = (nuovi) => {
+    updateBooks(booksRef.current.map((b) => (nuovi.has(b.id) ? { ...b, title: nuovi.get(b.id) } : b)));
+    for (const id of nuovi.keys()) timbraScheda(id);
+    notify?.(nuovi.size === 1 ? "🔤 Un titolo cambiato" : `🔤 ${nuovi.size} titoli cambiati`);
   };
   const tuttiQuanti = (r, stato, quali) => {
     for (const b of quali) setStatus(b.id, stato);
@@ -2320,6 +2329,7 @@ export default function Library({
         onSerie={serieCercata}
         notify={notify}
         onSciogli={sciogli}
+        onRinomina={rinominaVolumi}
         onElimina={(r, ids) => onEliminaRaccolta?.(r, ids)}
       />
     ),

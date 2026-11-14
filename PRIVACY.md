@@ -122,7 +122,10 @@ a Hardcover, nella richiesta.
 
 Cosa esce, e solo quando tocchi «Cerca i libri» o «Le sue saghe»: il nome
 della saga o dell'autore che hai scritto, poi il numero della serie o
-dell'autore su Hardcover, per leggerne i libri. Quali libri hai e come si
+dell'autore su Hardcover, per leggerne i libri. Lo stesso quando, in una
+raccolta aperta coi titoli in un altro alfabeto, tocchi «🔤 … titoli in un
+altro alfabeto»: parte il nome della raccolta, e i titoli si confrontano
+sul dispositivo. Quali libri hai e come si
 chiamano le tue raccolte non partono: il confronto si fa sul dispositivo.
 Con la chiave, anche **le copertine che mancano**: per un libro senza
 copertina che sta per comparire sullo schermo partono il suo titolo e il suo

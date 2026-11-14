@@ -123,7 +123,30 @@ const straniero = (lingua) => !!lingua && lingua !== "eng";
 const SPEZZATO = /\b(part|book|volume|vol|tom|tome|teil|deo|partie|parte)\b\.?\s*(\d|one|two|three|i\b|ii\b)|\bof \d\b|\(.*split|split edition|dramati[sz]ed|graphic novel|comic|manga|adaptation|том|część|deo prvi|deo drugi|premi[eè]re partie/i;
 const ALTRO_ALFABETO = /[\u0370-\u03ff\u0400-\u04ff\u0590-\u06ff\u0e00-\u0e7f\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]/;
 const pianoHC = (s) => chiaveSaga(s).replace(/^the /, "");
-const megliore = (c, b) => !c || straniero(linguaDi(c)) - straniero(linguaDi(b)) > 0 || (straniero(linguaDi(c)) === straniero(linguaDi(b)) && (b.users_count || 0) > (c.users_count || 0));
+export const inAltroAlfabeto = (t) => ALTRO_ALFABETO.test(String(t || ""));
+// UN TITOLO CHE IL LETTORE SA LEGGERE: se di un numero c'e' solo il
+// giapponese (85 dei 130 numeri di JoJo su Hardcover, il 14 novembre), il
+// nome della serie e il numero; senza l'uno o l'altro resta com'e'
+export function titoloLeggibile(titolo, nome, numero) {
+  const n = Number(numero);
+  if (!inAltroAlfabeto(titolo) || !Number.isInteger(n) || n <= 0 || !String(nome || "").trim() || inAltroAlfabeto(nome)) return titolo;
+  return `${String(nome).trim()}, Vol. ${n}`;
+}
+// QUALE EDIZIONE DI UN NUMERO (segnalato dal lettore con le schede di JoJo
+// scritte in giapponese: «come mai i titoli sono così?»). Alla serie di JoJo
+// numerata come in Giappone Hardcover ha, per ogni numero, l'edizione
+// giapponese e spesso la francese, quasi mai l'inglese, e la piu' letta era
+// la giapponese; e «スティール・ボール・ラン 1» e' segnata inglese. Prima un
+// titolo in alfabeto latino (lo legge il lettore), poi la lingua: l'inglese
+// (o non detta), l'italiano, le altre; poi la piu' letta.
+const LINGUE = { eng: 0, "": 0, ita: 1 };
+const rango = (b) => [ALTRO_ALFABETO.test(b?.title || "") ? 1 : 0, LINGUE[linguaDi(b)] ?? 2, -(b?.users_count || 0)];
+const megliore = (c, b) => {
+  if (!c) return true;
+  const [x, y] = [rango(b), rango(c)];
+  for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] < y[i];
+  return false;
+};
 export function volumiDaHardcover(legami = [], { oggi = new Date().toISOString().slice(0, 10) } = {}) {
   const romanzi = new Map();
   const storie = [];
@@ -234,7 +257,11 @@ export function serieCheValgono(serie = []) {
   return scelte.sort((a, b) => b.lettori - a.lettori);
 }
 
-const perElenco = (nome, volumi) => volumi.map(({ titolo, autore, numero, anno, annunciato, novella }) => ({ titolo, autore, saga: nome, serie: "", numero, anno, annunciato, novella }));
+const perElenco = (nome, volumi) =>
+  volumi.map(({ titolo, autore, numero, anno, annunciato, novella }) => {
+    const leggibile = titoloLeggibile(titolo, nome, numero);
+    return { titolo: leggibile, autore, saga: nome, serie: "", numero, anno, annunciato, novella, ...(leggibile !== titolo ? { ricostruito: true } : {}) };
+  });
 // il conto dell'elenco: i romanzi, e a parte le storie di mezzo
 const conti = (volumi) => ({ quanti: volumi.filter((v) => !v.novella).length, storie: volumi.filter((v) => v.novella).length });
 
