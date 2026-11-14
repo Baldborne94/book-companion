@@ -619,6 +619,52 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore con due raccolte «JoJo's Bizarre Adventure» sullo
+    // scaffale: «mi permetti di cancellare direttamente una raccolta?».
+    // Sciolta, i volumi restano senza raccolta e non ci tornano da soli;
+    // eliminata, le schede e i file se ne vanno, dopo due conferme
+    nome: "una raccolta si scioglie (i volumi restano, e non ci tornano) o si elimina coi suoi volumi, dopo la conferma",
+    async fai({ browser }) {
+      const raccolte = () => localStorage.setItem("bc_vista", JSON.stringify({ aspetto: "raccolte" }));
+      const d = await dispositivo(browser, { misura: TABLET, prima: `(${raccolte})();` });
+      for (const [nome, n] of [["Kingdom", 1], ["Kingdom", 2], ["Monster", 1], ["Monster", 2], ["Monster", 3]])
+        await importa(d.p, `${nome} v0${n}.cbz`, await fumetto({ prima: png(60, 90, [100 + n, nome.charCodeAt(0), 50]) }), "application/zip");
+      const prima = await libriDi(d.p);
+      const ids = (saga) => prima.filter((b) => b.saga === saga).map((b) => b.id);
+      if (ids("Kingdom").length !== 2 || ids("Monster").length !== 3) throw new Error(`le raccolte non sono nate: ${JSON.stringify(prima.map((b) => [b.title, b.saga]))}`);
+      const apri = async (nome) => {
+        await d.p.goto(`${URL_APP}?apri=libreria`);
+        await d.p.getByRole("button", { name: new RegExp(`^${nome}`) }).first().click();
+        await d.p.getByRole("button", { name: "🗑 Elimina raccolta" }).click();
+      };
+      // sciolta
+      await apri("Kingdom");
+      await d.p.getByRole("button", { name: "Sciogli: i volumi restano, senza raccolta" }).click();
+      await finche(() => testoAvviso(d.p, /^«Kingdom» sciolta: i 2 volumi restano/), 8000, "non dice che la raccolta e' sciolta");
+      // la ricarica rifa' il giro delle saghe: i volumi non ci tornano
+      await d.p.goto(`${URL_APP}?apri=libreria`);
+      await aspetta(2500);
+      const sciolti = (await libriDi(d.p)).filter((b) => ids("Kingdom").includes(b.id));
+      if (sciolti.length !== 2 || sciolti.some((b) => b.saga || !b.sagaTolta)) throw new Error(`dopo la ricarica: ${JSON.stringify(sciolti.map((b) => [b.title, b.saga, b.sagaTolta]))}`);
+      // eliminata: prima la scelta, poi la domanda che dice quanti
+      await apri("Monster");
+      await d.p.getByRole("button", { name: "🗑 Elimina i 3 volumi" }).click();
+      const domanda = await finche(() => testoAvviso(d.p, /^Elimino 3 volumi di «Monster», e il file di 3 da questo dispositivo\?/), 5000, "la conferma non dice quanti volumi e quanti file");
+      if (!(await libriDi(d.p)).some((b) => b.saga === "Monster")) throw new Error("prima del si' e' gia' sparito qualcosa");
+      await d.p.getByRole("button", { name: "Sì, elimina" }).click();
+      await finche(() => testoAvviso(d.p, /^«Monster» eliminata: 3 volumi/), 8000, "non dice di aver eliminato");
+      const dopo = await d.p.evaluate(async (via) => {
+        const db = await new Promise((ok, ko) => { const r = indexedDB.open("bc_library"); r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); });
+        const chiavi = await new Promise((ok) => { const r = db.transaction("files").objectStore("files").getAllKeys(); r.onsuccess = () => ok(r.result); });
+        return { libri: JSON.parse(localStorage.getItem("bc_books") || "[]").length, file: chiavi.filter((k) => via.includes(k)).length, altri: chiavi.length };
+      }, ids("Monster"));
+      if (dopo.libri !== 2 || dopo.file !== 0 || dopo.altri !== 2) throw new Error(`dopo l'eliminazione: ${JSON.stringify(dopo)}`);
+      const sborda = await d.p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      if (sborda > 0) throw new Error(`la raccolta sborda di ${sborda}px`);
+      return { guasti: d.guasti, nota: `Kingdom sciolta e rimasta sciolta dopo la ricarica; «${domanda.slice(0, 60)}…», poi Monster via coi suoi 3 file` };
+    },
+  },
+  {
     // segnalato dal lettore con la foto dello scaffale di Kingdom: dal volume
     // 10 la prima pagina e' la sovraccoperta giapponese aperta, 800×543, e
     // sullo scaffale c'erano il dorso e il codice a barre. Manga e' segnato

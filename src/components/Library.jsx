@@ -34,6 +34,7 @@ import { segnaposto } from "../lib/segnaposto.js";
 import BookCover from "./BookCover.jsx";
 import CopertineDalCatalogo from "./CopertineDalCatalogo.jsx";
 import CopertinaGiusta from "./CopertinaGiusta.jsx";
+import { puoEssereSciolta, contoDaEliminare, fraseEliminaRaccolta, sciogliRaccolta } from "../lib/eliminaRaccolta.js";
 import Disposizione from "./Disposizione.jsx";
 import EmptyState from "./EmptyState.jsx";
 import { partenza, dopoIlDisegno, segnaTempo, vocePerTempo } from "../lib/tempi.js";
@@ -496,7 +497,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   );
 }
 
-function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, novita = [], onAvvisami, onSerie, notify }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, novita = [], onAvvisami, onSerie, notify, onSciogli, onElimina }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -671,7 +672,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
           )}
         </div>
         {avviso?.si && <SerieDellaRaccolta r={dentro} lista={novita} onCercata={onSerie} />}
-        <TuttaLaRaccolta r={dentro} voti={voti} onVoto={onVoto} onTutti={onTutti} />
+        <TuttaLaRaccolta r={dentro} voti={voti} onVoto={onVoto} onTutti={onTutti} localIds={localIds} onSciogli={onSciogli} onElimina={onElimina} />
         {/* la chiave non e' quella della raccolta: lo scaffale qui sotto
             (`mostra`, un `Ripiano`) porta gia' quella, e due fratelli con la
             stessa chiave React li confonde a ogni aggiornamento (il tasto
@@ -792,12 +793,13 @@ function Raccolta({ r, amata = false, voto = null, onApri, coverV, conCopertina 
 // saga (o la media dei volumi votati, detta come tale) e tutti i volumi
 // letti o da leggere in un tocco, con una conferma: venti volumi cambiati
 // per sbaglio non si rimettono a posto uno per uno
-function TuttaLaRaccolta({ r, voti, onVoto, onTutti }) {
+function TuttaLaRaccolta({ r, voti, onVoto, onTutti, localIds, onSciogli, onElimina }) {
   const [chiedo, setChiedo] = useState(null);
+  const conto = contoDaEliminare(r, localIds);
   const votabile = puoEssereVotata(r.id);
   const mio = votoMio(voti, r.id);
   const media = mediaDeiVolumi(r.libri);
-  const daCambiare = chiedo ? daSegnare(r.libri, chiedo, getStatus) : [];
+  const daCambiare = chiedo === "read" || chiedo === "unread" ? daSegnare(r.libri, chiedo, getStatus) : [];
   const tasto = (attivo) => ({
     display: "inline-flex",
     alignItems: "center",
@@ -836,7 +838,48 @@ function TuttaLaRaccolta({ r, voti, onVoto, onTutti }) {
         </div>
       )}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginLeft: votabile ? "auto" : 0 }}>
-        {chiedo ? (
+        {chiedo === "elimina" ? (
+          // ELIMINARE UNA RACCOLTA (`lib/eliminaRaccolta.js`): prima si
+          // sceglie cosa, poi per i volumi si conferma una seconda volta
+          <>
+            <span style={{ fontSize: F.nota, color: C.text }}>
+              «{r.nome}»: {conto.ids.length === 1 ? "un volume" : `${conto.ids.length} volumi`}.
+            </span>
+            {puoEssereSciolta(r) && (
+              <button
+                onClick={() => {
+                  onSciogli?.(r, conto.ids);
+                  setChiedo(null);
+                }}
+                style={tasto(false)}
+              >
+                Sciogli: i volumi restano, senza raccolta
+              </button>
+            )}
+            <button onClick={() => setChiedo("eliminaDavvero")} style={{ ...tasto(false), color: C.red, borderColor: C.red }}>
+              🗑 Elimina {conto.ids.length === 1 ? "il volume" : `i ${conto.ids.length} volumi`}
+            </button>
+            <button onClick={() => setChiedo(null)} style={tasto(false)}>
+              Annulla
+            </button>
+          </>
+        ) : chiedo === "eliminaDavvero" ? (
+          <>
+            <span style={{ fontSize: F.nota, color: C.text }}>{fraseEliminaRaccolta(r.nome, conto)}</span>
+            <button
+              onClick={() => {
+                onElimina?.(r, conto.ids);
+                setChiedo(null);
+              }}
+              style={{ ...tasto(true), color: C.red, borderColor: C.red, background: `${C.red}1f` }}
+            >
+              Sì, elimina
+            </button>
+            <button onClick={() => setChiedo(null)} style={tasto(false)}>
+              No
+            </button>
+          </>
+        ) : chiedo ? (
           daCambiare.length ? (
             <>
               <span style={{ fontSize: F.nota, color: C.text }}>
@@ -873,6 +916,9 @@ function TuttaLaRaccolta({ r, voti, onVoto, onTutti }) {
             <button onClick={() => setChiedo("unread")} style={tasto(false)}>
               ○ Tutti da leggere
             </button>
+            <button onClick={() => setChiedo("elimina")} style={tasto(false)}>
+              🗑 Elimina raccolta
+            </button>
           </>
         )}
       </div>
@@ -888,6 +934,7 @@ export default function Library({
   onConvertiTutti,
   doppi = [],
   onUnisciDoppioni,
+  onEliminaRaccolta,
   onFermaLavoro,
   onOpenBook,
   onReadAt,
@@ -1002,6 +1049,14 @@ export default function Library({
   };
   // tutti i volumi letti o da leggere: lo stato di ognuno si timbra da se'
   // (`setStatus`), e la biblioteca ridisegnata parte verso gli altri
+  // una raccolta sciolta: i volumi restano, senza raccolta (`sciogliRaccolta`)
+  const sciogli = (r, ids) => {
+    const dopo = sciogliRaccolta(books, ids);
+    for (const id of ids) timbraScheda(id);
+    updateBooks(dopo);
+    onRaccolta?.(null);
+    notify?.(`«${r.nome}» sciolta: ${ids.length === 1 ? "il volume resta" : `i ${ids.length} volumi restano`} sullo scaffale, senza raccolta`);
+  };
   const tuttiQuanti = (r, stato, quali) => {
     for (const b of quali) setStatus(b.id, stato);
     updateBooks([...books]);
@@ -2264,6 +2319,8 @@ export default function Library({
         onAvvisami={avvisami}
         onSerie={serieCercata}
         notify={notify}
+        onSciogli={sciogli}
+        onElimina={(r, ids) => onEliminaRaccolta?.(r, ids)}
       />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
