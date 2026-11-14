@@ -41,12 +41,17 @@ const DOPO_PAROLA = /(?:(?<![\p{L}])(?:vol(?:ume)?|tome|band|libro|book|n[º°o]
 const DI_TANTI = /\d\s*(?:\/|di|of|sur|de|[-–]\s*(?:vol(?:ume)?\.?\s*)?)\s*\d/iu;
 const IN_CODA = /(?:,|\s)\s*0*(\d{1,3})\s*$/u;
 
+// «( Japanese Edition )» dice la lingua, non un'edizione grande
+const LINGUA = /[\[(]\s*japanese\s+edition\s*[\])]/giu;
+const pulito = (t) => String(t || "").replace(LINGUA, " ");
+
 // il numero del volume nel titolo, se il titolo ha tutte le parole del nome
+// (o di uno dei nomi: quello del lettore e l'originale, `nomeOriginale`)
 export function numeroNelTitolo(titolo, nome) {
-  const t = String(titolo || "");
+  const t = pulito(titolo);
   const nel = new Set(parole(t));
-  const suo = parole(nome);
-  if (!suo.length || !suo.every((p) => nel.has(p))) return null;
+  const nomi = (Array.isArray(nome) ? nome : [nome]).map(parole).filter((n) => n.length);
+  if (!nomi.some((suo) => suo.every((p) => nel.has(p)))) return null;
   if (EDIZIONE.test(t) || DI_TANTI.test(t)) return null;
   const m = t.match(DOPO_PAROLA) || t.match(IN_CODA);
   return m ? Number(m[1]) : null;
@@ -54,7 +59,7 @@ export function numeroNelTitolo(titolo, nome) {
 
 // la forma del titolo: le sue parole senza il numero
 const formaDi = (titolo, n) =>
-  parole(titolo)
+  parole(pulito(titolo))
     .filter((p) => Number(p) !== n)
     .join(" ");
 
@@ -73,10 +78,15 @@ export function autoreDellaRaccolta(libri = []) {
   return [...conti].sort((x, y) => y[1] - x[1])[0]?.[0] || "";
 }
 
-export function domandaSerie(nome, autore, { serie = "" } = {}) {
-  const q = new URLSearchParams({ fields: "key,title,author_name,cover_i", limit: "100" });
+// i titoli delle edizioni vengono con l'opera: dicono il nome di una serie
+// che l'opera scrive nella sua lingua (`nomeOriginale`)
+export const PAGINE_MAX = 3;
+export function domandaSerie(nome, autore, { serie = "", originale = "", pagina = 1 } = {}) {
+  const q = new URLSearchParams({ fields: "key,title,author_name,cover_i,editions,editions.title", limit: "100" });
+  if (pagina > 1) q.set("page", String(pagina));
   const a = autorePerIlCatalogo(autore);
-  if (serie) q.set("q", `${nome} ${serie}`);
+  if (originale) q.set("q", originale);
+  else if (serie) q.set("q", `${nome} ${serie}`);
   else if (a) {
     q.set("title", nome);
     q.set("author", a);
@@ -89,7 +99,8 @@ export function domandaSerie(nome, autore, { serie = "" } = {}) {
 // `opere` sono tutte le opere del catalogo per quel volume, di ogni forma,
 // la forma che vince per prima (le loro edizioni: `scelteDelVolume`).
 // Due schede con lo stesso numero (un doppione) hanno la proposta tutt'e due
-export function copertinePerVolume(docs = [], { nome, libri = [], serie = null } = {}) {
+export function copertinePerVolume(docs = [], { nome, libri = [], serie = null, alias = [] } = {}) {
+  const nomi = [nome, ...alias].filter(Boolean);
   const voluti = new Map();
   for (const b of libri) {
     const n = numeroDi(b);
@@ -101,7 +112,7 @@ export function copertinePerVolume(docs = [], { nome, libri = [], serie = null }
     // in una raccolta numerata per parte il titolo deve dire la parte, e il
     // suo numero non e' quello del volume
     const titolo = serie ? serieNelTitolo(d.title, serie) : d.title;
-    const numero = copertina && titolo ? numeroNelTitolo(titolo, nome) : null;
+    const numero = copertina && titolo ? numeroNelTitolo(titolo, nomi) : null;
     if (numero == null || !voluti.has(numero)) return;
     const f = formaDi(d.title, numero);
     if (!forme.has(f)) forme.set(f, { forma: f, per: new Map(), autori: new Set() });
@@ -120,8 +131,17 @@ export function copertinePerVolume(docs = [], { nome, libri = [], serie = null }
   const VOLUME = new Set(["vol", "volume", "tome", "band", "libro", "book", "no", "n"]);
   const suaForma = prima ? prima.forma.split(" ").filter((p) => p && !VOLUME.has(p)) : [];
   const piuDelNome = suaForma.length > parole(nome).length;
+  // e una forma che e' solo il nome (o l'originale) col suo numero: lo
+  // Shueisha «JOJO'S BIZARRE ADVENTURE Vol.2» accanto a «ジョジョの奇妙な冒険 2»
+  const soloIlNome = (f) => {
+    const sue = f.forma.split(" ").filter((p) => p && !VOLUME.has(p));
+    return nomi.some((n) => {
+      const w = parole(n);
+      return w.length === sue.length && w.every((p, i) => p === sue[i]);
+    });
+  };
   const ordinate = tutte.filter((f) => {
-    if (f === prima || [...f.autori].some((a) => prima.autori.has(a))) return true;
+    if (f === prima || [...f.autori].some((a) => prima.autori.has(a)) || soloIlNome(f)) return true;
     const sue = new Set(f.forma.split(" "));
     return piuDelNome && suaForma.every((p) => sue.has(p));
   });
@@ -200,14 +220,60 @@ export async function cercaCopertineSerie({ nome, libri = [] }, { fetcher = fetc
     return tutte;
   }
   const autore = autoreDellaRaccolta(libri);
-  const chiedi = async (a) => {
-    const r = await fetcher(domandaSerie(nome, a));
+  const leggi = async (url) => {
+    const r = await fetcher(url);
     if (!r?.ok) throw new Error(`catalogo ${r?.status || "?"}`);
-    return copertinePerVolume((await r.json())?.docs || [], { nome, libri });
+    const j = await r.json();
+    return { docs: j?.docs || [], quanti: Number(j?.numFound) || 0 };
   };
-  const prima = await chiedi(autore);
-  if (prima.proposte.length || !autorePerIlCatalogo(autore)) return prima;
-  return chiedi("");
+  // (le risposte si tengono tutte: il nome originale puo' stare nella prima)
+  const { docs } = await leggi(domandaSerie(nome, autore));
+  let esito = copertinePerVolume(docs, { nome, libri });
+  if (!esito.proposte.length && autorePerIlCatalogo(autore)) {
+    docs.push(...(await leggi(domandaSerie(nome, ""))).docs);
+    esito = copertinePerVolume(docs, { nome, libri });
+  }
+  // IL NOME ORIGINALE: se il catalogo scrive la serie nella sua lingua, la
+  // si cerca anche cosi', fino a `PAGINE_MAX` pagine
+  const originale = esito.mancano.length ? nomeOriginale(docs, nome) : null;
+  if (!originale) return esito;
+  // (un'opera gia' vista torna e basta: un volume tiene la prima della sua forma)
+  for (let pagina = 1; pagina <= PAGINE_MAX; pagina++) {
+    const { docs: altri, quanti } = await leggi(domandaSerie(nome, "", { originale, pagina }));
+    docs.push(...altri);
+    if (altri.length < 100 || pagina * 100 >= quanti) break;
+  }
+  return copertinePerVolume(docs, { nome, libri, alias: [originale] });
+}
+
+// IL NOME DELLA SERIE NELLA SUA LINGUA (segnalato dal lettore con la sua
+// raccolta di JoJo numerata come in Giappone, 108 volumi e tre copertine:
+// «come mai alcune copertine non me le trovi mai?»). Il catalogo tiene i
+// volumi giapponesi col titolo giapponese, «ジョジョの奇妙な冒険 20», e la
+// ricerca col nome del lettore li trova solo perche' una loro edizione si
+// chiama «JoJo's Bizarre Adventure Vol. 8» (che e' Viz, numerata per parte:
+// il suo numero non e' quello del volume). Il nome si impara da li': le
+// opere scritte in un altro alfabeto che col nome del lettore hanno a che
+// fare (nel titolo o in un'edizione), e del titolo quel che viene prima del
+// numero; vince il piu' frequente.
+const ALTRO_ALFABETO = /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}ー・]+/u;
+export function nomeOriginale(docs = [], nome) {
+  const suo = parole(nome);
+  if (!suo.length) return null;
+  const dice = (t) => {
+    const nel = new Set(parole(t));
+    return suo.every((p) => nel.has(p));
+  };
+  const conti = new Map();
+  for (const d of docs) {
+    const m = String(d?.title || "").match(ALTRO_ALFABETO);
+    if (!m) continue;
+    const resto = String(d.title).slice(m[0].length);
+    if (!/^\s*\d/.test(resto)) continue;
+    if (!dice(d.title) && !(d.editions?.docs || []).some((e) => dice(e?.title))) continue;
+    conti.set(m[0], (conti.get(m[0]) || 0) + 1);
+  }
+  return [...conti].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
 }
 
 // l'immagine grande; null se non arriva o non e' una copertina
