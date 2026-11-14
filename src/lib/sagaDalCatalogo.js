@@ -24,6 +24,7 @@
 // vista da una sola edizione non si prende: e' il caso di «Howling Dark»
 // (un voto) — e li' ci pensa la deduzione, perche' «Empire of Silence» i
 // due voti ce li ha e i fratelli la ereditano.
+import { inAltroAlfabeto } from "./alfabeto.js";
 import { varianti, autorePerIlCatalogo } from "./retroInRete.js";
 import { chiaveSaga, nienteSaga } from "./sagaBooks.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
@@ -71,7 +72,7 @@ export function candidato(stringa) {
   }
   s = s.replace(/[\s\-–—;:,.]+$/, "").trim();
   if (s.length < 3 || s.length > 60) return null;
-  if (!/[a-z]/i.test(s)) return null;
+  if (!/[a-z]/i.test(s) || inAltroAlfabeto(s)) return null;
   // un numero a quattro cifre e' un catalogo, un intervallo sono pagine
   if (/\d{4}/.test(s) || /\d+\s*-\s*\d+/.test(s)) return null;
   if (RUMORE.test(s) || GENERE.test(s)) return null;
