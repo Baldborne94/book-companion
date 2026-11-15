@@ -8,7 +8,7 @@
 //   node scripts/apk.mjs <codice> <nome-versione>   → twa-manifest.json
 //   node scripts/apk.mjs cuci                        → il nostro codice nel progetto generato
 //   node scripts/apk.mjs impronta <file.apk-certs>  → controlla la firma
-import { readFileSync, writeFileSync, readdirSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 
@@ -31,7 +31,7 @@ export const improntaDelSito = (assetlinks) => assetlinks[0].target.sha256_cert_
 // resta il nome interno del canale (`grimorio:…`) e del log.
 export const ETICHETTA = "Book Companion";
 
-const appiccicoso = (modo) => (modo === "fullscreen" ? "fullscreen-sticky" : modo);
+const TUTTO_SCHERMO = ["fullscreen", "fullscreen-sticky"];
 
 export function guscio(twa, { codice, versione, assetlinks }) {
   if (!Number.isInteger(codice) || codice < 1) throw new Error(`versionCode non valido: ${codice}`);
@@ -47,16 +47,17 @@ export function guscio(twa, { codice, versione, assetlinks }) {
     // come rispondeva il lettore a `init` (docs/TWA.md): l'APK nuovo non
     // cambia come gira lo schermo rispetto a quello che ha sul tablet
     orientation: "default",
-    // TUTTO SCHERMO «APPICCICOSO» (segnalato dal lettore col video della
-    // barra di Android che, tornando o uscendo, spingeva giu' la pagina e poi
-    // la lasciava risalire: «non ci siano questi sbalzi di dimensione»).
-    // L'immersivo semplice («fullscreen») esce dallo schermo intero quando la
-    // barra ricompare, e la pagina si rimpicciolisce finche' Chrome non ci
-    // rientra; lo «sticky» la mostra sopra la pagina, trasparente, e la
-    // ritira da solo, senza cambiare misure. Anche nella lista di ripiego
-    // (`displayOverride`), che altrimenti chiederebbe ancora il primo.
-    display: appiccicoso(twa.display),
-    displayOverride: (twa.displayOverride || []).map(appiccicoso),
+    // LA BARRA DI ANDROID SEMPRE VISIBILE (segnalato dal lettore con due
+    // video: «non ci siano questi sbalzi di dimensione»). A tutto schermo la
+    // pagina scendeva e risaliva a ogni barra che ricompariva; lo schermo
+    // intero «appiccicoso» (APK 1321) ha tolto il salto del trascinamento, ma
+    // chiusa la tendina o uscendo dall'app Chrome toglie da se' lo schermo
+    // intero e lo rimette, e dal guscio non si comanda. Scelto dal lettore:
+    // la barra resta, sul colore dell'app, e la pagina non si muove piu'.
+    // Anche la lista di ripiego (`displayOverride`) senza tutto schermo, o
+    // chiederebbe ancora l'immersivo.
+    display: "standalone",
+    displayOverride: (twa.displayOverride || []).filter((m) => !TUTTO_SCHERMO.includes(m)),
     // la libreria del guscio (android-browser-helper 2.7.4, che il core di
     // Bubblewrap porta con se') vuole Android 7 (API 24) come minimo, e il
     // progetto generato partiva da 21: il merge dei manifest si fermava li',
@@ -128,14 +129,15 @@ function unaVolta(testo, ancora, dove) {
   return prima;
 }
 
-// il tutto schermo appiccicoso (`appiccicoso` in `guscio`) arriva davvero nel
-// manifest generato: se Bubblewrap lo scrivesse in un altro modo, il guscio
-// tornerebbe al salto della barra senza che nessuno se ne accorga
+// la barra sempre visibile (`display` in `guscio`) arriva davvero nel
+// progetto generato: un modo immersivo nel manifest o nella lista di ripiego
+// riporterebbe i salti della pagina senza che nessuno se ne accorga
 
-export function cuciGuscio({ manifest, launcher, gradle, pacchetto }) {
+export function cuciGuscio({ manifest, launcher, gradle, pacchetto, stringhe = "" }) {
   if (!pacchetto) throw new Error("cuci: manca il package dell'APK per le regole ProGuard");
-  if (!/android\.support\.customtabs\.trusted\.DISPLAY_MODE"\s+android:value="sticky-immersive"/.test(manifest))
-    throw new Error("cuci: nel manifest generato il tutto schermo non e' «sticky-immersive»: la barra di Android tornerebbe a spingere giu' la pagina, vedi scripts/apk.mjs");
+  // le richieste vere, non la parola: il modello di strings.xml la nomina sempre in un commento
+  if (/android:value="(sticky-)?immersive"/.test(manifest) || /<item>\s*(sticky-)?immersive\s*<\/item>/.test(stringhe))
+    throw new Error("cuci: il progetto generato chiede ancora il tutto schermo («immersive»): la barra di Android tornerebbe a far saltare la pagina, vedi scripts/apk.mjs");
   let m = manifest;
   if (!m.includes(PERMESSO)) {
     const i = unaVolta(m, "<application", "AndroidManifest.xml");
@@ -172,7 +174,10 @@ function cuci(assetlinks) {
     if (pacchettoDi(java) !== pacchetto) throw new Error(`cuci: android/${f} dichiara il package «${pacchettoDi(java)}», l'APK e' «${pacchetto}»`);
   }
   const vie = { manifest: "app/src/main/AndroidManifest.xml", launcher: `${cartella}/LauncherActivity.java`, gradle: "app/build.gradle" };
-  const cucito = cuciGuscio({ ...Object.fromEntries(Object.entries(vie).map(([k, v]) => [k, readFileSync(v, "utf8")])), pacchetto });
+  // la lista di ripiego del modo dello schermo sta in strings.xml, se il progetto ce l'ha
+  const valori = "app/src/main/res/values/strings.xml";
+  const stringhe = existsSync(valori) ? readFileSync(valori, "utf8") : "";
+  const cucito = cuciGuscio({ ...Object.fromEntries(Object.entries(vie).map(([k, v]) => [k, readFileSync(v, "utf8")])), pacchetto, stringhe });
   for (const [k, v] of Object.entries(vie)) writeFileSync(v, cucito[k]);
   writeFileSync("app/proguard-grimorio.pro", cucito.proguard);
   mkdirSync(cartella, { recursive: true });
