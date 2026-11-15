@@ -135,7 +135,8 @@ function unaVolta(testo, ancora, dove) {
 
 export function cuciGuscio({ manifest, launcher, gradle, pacchetto, stringhe = "" }) {
   if (!pacchetto) throw new Error("cuci: manca il package dell'APK per le regole ProGuard");
-  if (/immersive/.test(manifest) || /immersive/.test(stringhe))
+  // le richieste vere, non la parola: il modello di strings.xml la nomina sempre in un commento
+  if (/android:value="(sticky-)?immersive"/.test(manifest) || /<item>\s*(sticky-)?immersive\s*<\/item>/.test(stringhe))
     throw new Error("cuci: il progetto generato chiede ancora il tutto schermo («immersive»): la barra di Android tornerebbe a far saltare la pagina, vedi scripts/apk.mjs");
   let m = manifest;
   if (!m.includes(PERMESSO)) {

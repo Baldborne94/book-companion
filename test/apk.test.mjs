@@ -61,6 +61,10 @@ export async function cucitura(t) {
   t.c("un manifest generato con lo schermo intero non si cuce", /tutto schermo/.test(ferma({ manifest: meta("sticky-immersive") })) && /tutto schermo/.test(ferma({ manifest: meta("immersive") })));
   t.c("…ne' con lo schermo intero nella lista di ripiego", /tutto schermo/.test(ferma({ stringhe: '<string-array name="display_override">\n        <item>immersive</item>\n    </string-array>' })));
   t.eq("…e con la lista senza schermo intero si cuce", ferma({ stringhe: '<string-array name="display_override">\n        <item>standalone</item>\n    </string-array>' }), "");
+  // il commento che il modello di Bubblewrap (1.25) mette sempre in strings.xml nomina
+  // i modi immersivi: non e' una richiesta (l'APK 1322 si fermava qui)
+  const commento = '<!--\n    The "fullscreen" and "fullscreen-sticky" TWA manifest values correspond to "immersive" and "sticky-immersive"\n    AndroidManifest values.\n  -->';
+  t.eq("…anche col commento del modello che nomina i modi immersivi", ferma({ stringhe: `${commento}\n<string-array name="display_override">\n        <item>standalone</item>\n    </string-array>` }), "");
   t.c("il permesso di cambiare lo sfondo, prima di <application>", /SET_WALLPAPER"\/>[\s\S]*<application/.test(c.manifest));
   // LE NOVITA' (`android/Novita.java`): il guscio va in rete da se' (una TWA
   // di solito non lo fa, ci va Chrome: l'APK 1148 rispondeva «missing
