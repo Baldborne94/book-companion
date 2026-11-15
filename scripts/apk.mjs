@@ -31,6 +31,8 @@ export const improntaDelSito = (assetlinks) => assetlinks[0].target.sha256_cert_
 // resta il nome interno del canale (`grimorio:…`) e del log.
 export const ETICHETTA = "Book Companion";
 
+const appiccicoso = (modo) => (modo === "fullscreen" ? "fullscreen-sticky" : modo);
+
 export function guscio(twa, { codice, versione, assetlinks }) {
   if (!Number.isInteger(codice) || codice < 1) throw new Error(`versionCode non valido: ${codice}`);
   return {
@@ -45,6 +47,16 @@ export function guscio(twa, { codice, versione, assetlinks }) {
     // come rispondeva il lettore a `init` (docs/TWA.md): l'APK nuovo non
     // cambia come gira lo schermo rispetto a quello che ha sul tablet
     orientation: "default",
+    // TUTTO SCHERMO «APPICCICOSO» (segnalato dal lettore col video della
+    // barra di Android che, tornando o uscendo, spingeva giu' la pagina e poi
+    // la lasciava risalire: «non ci siano questi sbalzi di dimensione»).
+    // L'immersivo semplice («fullscreen») esce dallo schermo intero quando la
+    // barra ricompare, e la pagina si rimpicciolisce finche' Chrome non ci
+    // rientra; lo «sticky» la mostra sopra la pagina, trasparente, e la
+    // ritira da solo, senza cambiare misure. Anche nella lista di ripiego
+    // (`displayOverride`), che altrimenti chiederebbe ancora il primo.
+    display: appiccicoso(twa.display),
+    displayOverride: (twa.displayOverride || []).map(appiccicoso),
     // la libreria del guscio (android-browser-helper 2.7.4, che il core di
     // Bubblewrap porta con se') vuole Android 7 (API 24) come minimo, e il
     // progetto generato partiva da 21: il merge dei manifest si fermava li',
@@ -116,8 +128,14 @@ function unaVolta(testo, ancora, dove) {
   return prima;
 }
 
+// il tutto schermo appiccicoso (`appiccicoso` in `guscio`) arriva davvero nel
+// manifest generato: se Bubblewrap lo scrivesse in un altro modo, il guscio
+// tornerebbe al salto della barra senza che nessuno se ne accorga
+
 export function cuciGuscio({ manifest, launcher, gradle, pacchetto }) {
   if (!pacchetto) throw new Error("cuci: manca il package dell'APK per le regole ProGuard");
+  if (!/android\.support\.customtabs\.trusted\.DISPLAY_MODE"\s+android:value="sticky-immersive"/.test(manifest))
+    throw new Error("cuci: nel manifest generato il tutto schermo non e' «sticky-immersive»: la barra di Android tornerebbe a spingere giu' la pagina, vedi scripts/apk.mjs");
   let m = manifest;
   if (!m.includes(PERMESSO)) {
     const i = unaVolta(m, "<application", "AndroidManifest.xml");

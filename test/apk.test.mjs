@@ -8,7 +8,7 @@ import { guscio, firmaDelSito, pacchettoDelSito, ETICHETTA } from "../scripts/ap
 
 export default async function (t) {
   const assetlinks = JSON.parse(readFileSync("public/.well-known/assetlinks.json", "utf8"));
-  const init = { packageId: "app.vercel.book_companion_ruddy.twa", launcherName: "Grimorio", display: "fullscreen", enableNotifications: true, orientation: "any", appVersionCode: 1, signingKey: { path: "./x.keystore", alias: "x" } };
+  const init = { packageId: "app.vercel.book_companion_ruddy.twa", launcherName: "Grimorio", display: "fullscreen", displayOverride: ["fullscreen", "standalone", "minimal-ui"], enableNotifications: true, orientation: "any", appVersionCode: 1, signingKey: { path: "./x.keystore", alias: "x" } };
   const g = guscio(init, { codice: 842, versione: "1.0.0 (842)", assetlinks });
 
   t.eq("il pacchetto e' quello che assetlinks lega al sito", g.packageId, pacchettoDelSito(assetlinks));
@@ -19,7 +19,10 @@ export default async function (t) {
   t.eq("Android 7 come minimo: lo vuole la libreria del guscio", g.minSdkVersion, 24);
   t.eq("…col nome che si legge nelle impostazioni", g.appVersionName, "1.0.0 (842)");
   t.eq("la chiave dove il giro la scrive", `${g.signingKey.path} ${g.signingKey.alias}`, "./android.keystore android");
-  t.eq("quel che dice il manifest del sito resta", g.display, "fullscreen");
+  // il video del lettore: la barra di Android che spingeva giu' la pagina
+  t.eq("tutto schermo appiccicoso: la barra che ricompare non sposta la pagina", g.display, "fullscreen-sticky");
+  t.eq("…anche nella lista di ripiego, e il resto resta", g.displayOverride.join(), "fullscreen-sticky,standalone,minimal-ui");
+  t.eq("un guscio che non e' a tutto schermo resta com'e'", guscio({ ...init, display: "standalone", displayOverride: undefined }, { codice: 842, versione: "x", assetlinks }).display, "standalone");
   // l'etichetta sotto l'icona e' il nome intero, non lo short_name della PWA
   t.eq("l'etichetta sotto l'icona e' il nome intero", g.launcherName, "Book Companion");
   t.c("…che e' il nome del manifest del sito", ETICHETTA === JSON.parse(readFileSync("public/manifest.json", "utf8")).name);
@@ -46,11 +49,14 @@ export default async function (t) {
 export async function cucitura(t) {
   const { cuciGuscio, pacchettoDi, CAMPO_SESSIONE, regoleProguard } = await import("../scripts/apk.mjs");
   const assetlinks = JSON.parse(readFileSync("public/.well-known/assetlinks.json", "utf8"));
-  const manifest = `<manifest package="it.bookcompanion.app">\n    <application android:name="Application">\n        <activity android:name="LauncherActivity" />\n    </application>\n</manifest>\n`;
+  const manifest = `<manifest package="it.bookcompanion.app">\n    <application android:name="Application">\n        <activity android:name="LauncherActivity">\n            <meta-data android:name="android.support.customtabs.trusted.DISPLAY_MODE"\n                android:value="sticky-immersive" />\n        </activity>\n    </application>\n</manifest>\n`;
   const launcher = `package it.bookcompanion.app;\n\npublic class LauncherActivity\n        extends com.google.androidbrowserhelper.trusted.LauncherActivity {\n}\n`;
   const gradle = `android {\n    buildTypes {\n        release {\n            minifyEnabled true\n        }\n    }\n}\n`;
   const pacchetto = pacchettoDelSito(assetlinks);
   const c = cuciGuscio({ manifest, launcher, gradle, pacchetto });
+  // il manifest che Bubblewrap genera dice il tutto schermo appiccicoso, o il giro si ferma
+  const immersivo = manifest.replace("sticky-immersive", "immersive");
+  t.c("un guscio generato con l'immersivo semplice non si cuce", (() => { try { cuciGuscio({ manifest: immersivo, launcher, gradle, pacchetto }); return false; } catch (e) { return /sticky-immersive/.test(e.message); } })());
   t.c("il permesso di cambiare lo sfondo, prima di <application>", /SET_WALLPAPER"\/>[\s\S]*<application/.test(c.manifest));
   // LE NOVITA' (`android/Novita.java`): il guscio va in rete da se' (una TWA
   // di solito non lo fa, ci va Chrome: l'APK 1148 rispondeva «missing
@@ -90,7 +96,7 @@ export async function cucitura(t) {
   const di_nuovo = cuciGuscio({ manifest: c.manifest, launcher: c.launcher, gradle: c.gradle, pacchetto });
   t.c("cucire due volte non raddoppia niente", di_nuovo.manifest === c.manifest && di_nuovo.launcher === c.launcher && di_nuovo.gradle === c.gradle);
   for (const [nome, rotto] of [
-    ["senza <application>", { manifest: "<manifest/>", launcher, gradle, pacchetto }],
+    ["senza <application>", { manifest: manifest.replace(/<\/?application[^>]*>/g, ""), launcher, gradle, pacchetto }],
     ["con due <application>", { manifest: manifest + "<application/>", launcher, gradle, pacchetto }],
     ["con una LauncherActivity che non estende la libreria", { manifest, launcher: "class X {}", gradle, pacchetto }],
     ["senza minifyEnabled", { manifest, launcher, gradle: "android {}", pacchetto }],
