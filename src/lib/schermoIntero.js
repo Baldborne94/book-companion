@@ -10,6 +10,10 @@
 // l'avviso toccandolo. Nella scheda del browser invece resta: li' lo schermo
 // intero si ottiene solo col tasto, e il prezzo e' l'avviso.
 //
+// L'APK invece tiene la barra di Android (`guscio` in `scripts/apk.mjs`: a
+// tutto schermo la pagina saltava a ogni barra che ricompariva), e li' il
+// tasto torna: si legge a tutto schermo quando si vuole.
+//
 // Un browser che la domanda non la capisce (o esplode a farla) vale «non a
 // tutto schermo»: il tasto resta, che e' il lato sicuro — al peggio c'e' un
 // tasto in piu', mai uno schermo intero irraggiungibile.
