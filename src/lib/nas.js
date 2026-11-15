@@ -81,6 +81,26 @@ export function cartellaNas(base, pezzi = [], { chiedi = globalThis.fetch } = {}
   };
 }
 
+// IL PERMESSO DELLA RETE DI CASA (Chrome 142, «Local Network Access»): un
+// sito pubblico che parla con un indirizzo di casa chiede il permesso, e per
+// Chrome lo e' anche quello di Tailscale (100.64.0.0/10), anche fuori casa.
+// Negato, la richiesta cade come una rete che non risponde: lo stato del
+// permesso dice quale delle due. Il nome e' «local-network» da Chrome 145,
+// «local-network-access» prima; un nome che il browser non conosce rifiuta
+// la domanda, e si prova il prossimo.
+const NOMI_PERMESSO = ["local-network", "local-network-access"];
+export async function permessoReteLocale(permessi = globalThis.navigator?.permissions) {
+  for (const name of NOMI_PERMESSO) {
+    try {
+      return (await permessi.query({ name }))?.state || null;
+    } catch {
+      /* nome sconosciuto a questo browser, o nessun `permissions` */
+    }
+  }
+  return null;
+}
+const guastoDiRete = async (e, permessi) => new GuastoNas((await permessoReteLocale(permessi)) === "denied" ? "permesso" : "rete", e?.message);
+
 export class GuastoNas extends Error {
   constructor(motivo, dettaglio = "") {
     super(`${motivo}${dettaglio ? `: ${dettaglio}` : ""}`);
@@ -90,12 +110,12 @@ export class GuastoNas extends Error {
 
 // l'elenco di una cartella, come lo da' nginx con `autoindex_format json`:
 // [{ name, type: "directory" | "file", mtime, size }]
-export async function elencoNas(base, pezzi = [], { chiedi = globalThis.fetch } = {}) {
+export async function elencoNas(base, pezzi = [], { chiedi = globalThis.fetch, permessi } = {}) {
   let r;
   try {
     r = await chiedi(urlNas(base, pezzi, true), { headers: { Accept: "application/json" } });
   } catch (e) {
-    throw new GuastoNas("rete", e?.message);
+    throw await guastoDiRete(e, permessi);
   }
   if (r.status === 401 || r.status === 403) throw new GuastoNas("rifiuta", String(r.status));
   if (r.status === 404) throw new GuastoNas("manca", urlNas(base, pezzi, true));
@@ -113,8 +133,10 @@ export async function elencoNas(base, pezzi = [], { chiedi = globalThis.fetch } 
 // COSA DIRE AL LETTORE: il guasto con la sua strada, mai il testo grezzo
 export function fraseNas(guasto) {
   const m = guasto?.motivo || guasto;
+  if (m === "permesso")
+    return "Chrome non lascia parlare l'app coi dispositivi della rete di casa, e per Chrome il NAS lo è anche fuori casa (Tailscale). Ridai il permesso: in Chrome, Impostazioni → Impostazioni sito → la voce della rete locale, e lì consenti book-companion-ruddy.vercel.app; poi riprova.";
   if (m === "rete")
-    return "Il NAS non risponde da qui. Fuori casa serve Tailscale acceso su questo dispositivo; se è acceso, controlla l'indirizzo e che il NAS lasci entrare l'app (CORS, in docs/NAS.md).";
+    return "Il NAS non risponde da qui. Se Chrome ti chiede di accedere ai dispositivi della rete locale, rispondi Consenti. Fuori casa serve Tailscale acceso su questo dispositivo; se è acceso, controlla l'indirizzo e che il NAS lasci entrare l'app (CORS, in docs/NAS.md).";
   if (m === "rifiuta") return "Il NAS risponde ma non lascia entrare: controlla i permessi della cartella condivisa.";
   if (m === "manca") return "Il NAS risponde, ma a questo indirizzo non c'è la cartella dei libri.";
   if (m === "formato") return "Il NAS risponde, ma non con l'elenco delle cartelle: nella sua configurazione serve «autoindex_format json» (docs/NAS.md).";
@@ -125,10 +147,10 @@ export function fraseNas(guasto) {
 }
 
 // la prova del collegamento: risponde, e cosa c'e' in cima
-export async function provaNas(base, { chiedi = globalThis.fetch } = {}) {
+export async function provaNas(base, { chiedi = globalThis.fetch, permessi } = {}) {
   if (!base) return { ok: false, frase: "Scrivi l'indirizzo del NAS." };
   try {
-    const voci = await elencoNas(base, [], { chiedi });
+    const voci = await elencoNas(base, [], { chiedi, permessi });
     const cartelle = voci.filter((v) => v.type === "directory").map((v) => v.name);
     return { ok: true, cartelle, frase: cartelle.length ? `Il NAS risponde: ${cartelle.join(", ")}.` : "Il NAS risponde, ma la cartella è vuota." };
   } catch (e) {
@@ -167,12 +189,12 @@ const TIPI = { epub: "application/epub+zip", pdf: "application/pdf", cbz: "appli
 // UN LIBRO SCENDE DAL NAS come un file scelto dal lettore: un `File` col suo
 // nome, che entra dalla porta di sempre. Un peso diverso da quello del
 // controllo vuol dire un file cambiato o tagliato a meta': non entra.
-export async function prendiDalNas(base, voce, { chiedi = globalThis.fetch, FileCtor = globalThis.File } = {}) {
+export async function prendiDalNas(base, voce, { chiedi = globalThis.fetch, FileCtor = globalThis.File, permessi } = {}) {
   let r;
   try {
     r = await chiedi(urlNas(base, voce.pezzi));
   } catch (e) {
-    throw new GuastoNas("rete", e?.message);
+    throw await guastoDiRete(e, permessi);
   }
   if (r.status === 401 || r.status === 403) throw new GuastoNas("rifiuta", String(r.status));
   if (r.status === 404) throw new GuastoNas("manca", voce.pezzi.join("/"));

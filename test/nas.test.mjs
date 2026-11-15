@@ -78,6 +78,18 @@ export default async (t) => {
   // i guasti si dicono con la loro strada
   t.eq("fuori casa senza Tailscale", (await provaNas(BASE, { chiedi: async () => { throw new TypeError("Failed to fetch"); } })).motivo, "rete");
   t.c("…e la frase dice Tailscale", /Tailscale/.test(fraseNas("rete")));
+  // IL PERMESSO DELLA RETE DI CASA (Chrome 142): negato, la richiesta cade
+  // come una rete muta, e lo dice lo stato del permesso. «local-network» da
+  // Chrome 145, «local-network-access» prima; un nome sconosciuto rifiuta
+  const muto = async () => { throw new TypeError("Failed to fetch"); };
+  const permessi = (stati) => ({ query: async ({ name }) => { if (!(name in stati)) throw new TypeError(`unknown permission ${name}`); return { state: stati[name] }; } });
+  t.eq("permesso negato: lo si dice, non la rete", (await provaNas(BASE, { chiedi: muto, permessi: permessi({ "local-network": "denied" }) })).motivo, "permesso");
+  t.eq("…anche col nome di prima di Chrome 145", (await provaNas(BASE, { chiedi: muto, permessi: permessi({ "local-network-access": "denied" }) })).motivo, "permesso");
+  t.eq("…il nome nuovo vince sul vecchio", (await provaNas(BASE, { chiedi: muto, permessi: permessi({ "local-network": "granted", "local-network-access": "denied" }) })).motivo, "rete");
+  t.eq("permesso dato o da chiedere: e' la rete", (await provaNas(BASE, { chiedi: muto, permessi: permessi({ "local-network": "prompt" }) })).motivo, "rete");
+  t.eq("un browser che non conosce il permesso: la rete", (await provaNas(BASE, { chiedi: muto, permessi: permessi({}) })).motivo, "rete");
+  t.eq("…anche scendendo un libro", await prendiDalNas(BASE, { pezzi: ["x.epub"] }, { chiedi: muto, permessi: permessi({ "local-network": "denied" }) }).then(() => "sceso", (e) => e.motivo), "permesso");
+  t.c("…e la frase dice dove ridarlo", /rete locale/.test(fraseNas("permesso")) && /Impostazioni sito/.test(fraseNas("permesso")));
   t.eq("una cartella sbagliata", (await provaNas(`${BASE}sbagliata/`, { chiedi: nas })).motivo, "manca");
   t.eq("un NAS che non elenca in JSON", (await provaNas(BASE, { chiedi: async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError("<html>"); } }) })).motivo, "formato");
   t.eq("un NAS che risponde JSON ma non un elenco", (await provaNas(BASE, { chiedi: async () => ({ ok: true, status: 200, json: async () => ({ error: "no index" }) }) })).motivo, "formato");
