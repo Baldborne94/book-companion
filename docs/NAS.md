@@ -25,7 +25,7 @@ Chiesto dal lettore per un **UGREEN NASync DXP2800** (Intel N100, 8 GB, 2,5 GbE,
 
 ### 1. Le cartelle
 
-Una cartella condivisa, per esempio `/volume1/libri`, con dentro `book-companion/` copiata dal disco del computer.
+Una cartella condivisa, per esempio `/volume1/libri`, con dentro `book-companion/` copiata dal disco del computer. **Da verificare sul NAS**: `/volume1/…` è il percorso che si usa di solito, ma quello vero di una cartella condivisa di UGOS va letto dalle sue impostazioni (o da Docker, quando si sceglie la cartella da montare); i percorsi qui sotto vanno corretti di conseguenza.
 
 ### 2. nginx
 
@@ -104,8 +104,10 @@ services:
 
 Nella console di Tailscale vanno accesi **MagicDNS** e **HTTPS Certificates**. L'indirizzo da scrivere nell'app sarà `https://nas.<rete>.ts.net/libri/`.
 
+**Da verificare sul NAS**: che il contenitore di Tailscale sostituisca da sé `${TS_CERT_DOMAIN}` in `serve.json` (se nei log di Tailscale non c'è il certificato, si scrive al suo posto il nome intero, `nas.<rete>.ts.net`), e che il nome `nas` non sia già di un'altra macchina della rete Tailscale (allora l'indirizzo diventa `nas-1…`, e lo dice la console).
+
 ## Da guardare quando il NAS c'è
 
-- **La rete privata di Chrome.** L'app è un sito pubblico, e Chrome chiede un permesso, o una risposta speciale (`Access-Control-Allow-Private-Network`), per parlare con un indirizzo di casa o di Tailscale (100.x). Se il tablet mostra una richiesta di permesso, va accettata. Se la prova fallisce senza dire niente, il rapporto dei guasti e la console di Chrome diranno perché.
+- **Il permesso della rete locale di Chrome** (cercato il 15 novembre 2026, su fonti non ufficiali: la pagina di Chrome per gli sviluppatori da qui non si raggiungeva). Da Chrome 142 un sito pubblico come l'app, per parlare con un indirizzo di casa, **chiede il permesso** («accedere ai dispositivi sulla rete locale»), e secondo le segnalazioni Chrome tratta come casa anche gli indirizzi di Tailscale (100.64.0.0/10), **anche fuori casa**. La prima volta che l'app chiama il NAS («Salva e prova») la richiesta va accettata. Negato, la richiesta cade come una rete muta: l'app guarda lo stato del permesso (`permessoReteLocale` in `lib/nas.js`: «local-network» da Chrome 145, «local-network-access» prima) e dice che è il permesso e dove ridarlo, non Tailscale. L'intestazione `Access-Control-Allow-Private-Network` del nginx è di prima (la «Private Network Access»): non serve più, e non fa danni. **Da guardare sul tablet**: se la richiesta compare anche nell'APK (il guscio è Chrome, ma non è detto che mostri la stessa finestra), e come si chiama la voce nelle impostazioni del sito di Chrome per Android.
 - **I tempi.** Quanto ci mette «Guarda cosa c'è sul NAS» sui volumi veri, e quanto scende un fumetto da un giga fuori casa: si misura, e solo dopo si decide se leggere i fumetti a pezzi dal NAS invece di scaricarli interi.
 - **Solo lettura.** Il NAS per ora si legge e basta: «Riordina» e le copie della biblioteca restano del disco del computer.

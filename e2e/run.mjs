@@ -968,6 +968,30 @@ const SCENE = [
     },
   },
   {
+    // prima che il NAS arrivi (il lettore: «siamo pronti per l'arrivo del
+    // nas?»): da Chrome 142 un sito pubblico che parla con un indirizzo di
+    // casa chiede un permesso, e Tailscale (100.x) per Chrome e' casa. Negato,
+    // la richiesta cade come una rete muta: le Impostazioni dicono il
+    // permesso e dove ridarlo, non Tailscale
+    nome: "il NAS col permesso della rete locale negato: lo si dice, con la strada",
+    async fai({ browser }) {
+      const nega = () => {
+        const q = navigator.permissions.query.bind(navigator.permissions);
+        navigator.permissions.query = (d) => (d?.name === "local-network" ? Promise.resolve({ state: "denied" }) : q(d));
+      };
+      const d = await dispositivo(browser, { misura: TABLET, prima: `(${nega})();` });
+      const { p } = d;
+      await p.goto(URL_APP);
+      await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+      // nessuno risponde a quell'indirizzo, come un NAS che Chrome non lascia raggiungere
+      await p.getByRole("textbox", { name: "Indirizzo del NAS" }).fill("http://localhost:9/libri");
+      await p.getByRole("button", { name: "Salva e prova" }).click();
+      const frase = await finche(() => testoAvviso(p, /^Chrome non lascia parlare l'app/), 8000, "il permesso negato non si dice");
+      if (/Tailscale acceso/.test(frase) || !/Impostazioni sito/.test(frase)) throw new Error(`la frase: «${frase}»`);
+      return { guasti: d.guasti, nota: frase };
+    },
+  },
+  {
     nome: "un ePub si importa e si apre",
     async fai({ browser }) {
       const d = await dispositivo(browser);
