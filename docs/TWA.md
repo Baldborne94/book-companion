@@ -115,11 +115,12 @@ Alle domande di `init`:
   l'icona `iconUrl` (che dev'essere il PNG), l'ID `packageId`. Vale la pena
   mettere anche `"enableNotifications": false`: l'app non manda notifiche,
   e acceso l'APK dichiara un permesso che non usa.
-- **Display mode**: `fullscreen`, come il manifest del sito. **Orientation**: `default`.
+- **Display mode**: `fullscreen`, come il manifest del sito (il giro della CI lo scrive poi `fullscreen-sticky`, vedi sotto). **Orientation**: `default`.
   Nel guscio il modo lo decide il SUO `twa-manifest.json` (campo `display`),
   non il manifest del sito: un APK costruito con `standalone` resta con la
   barra di stato di Android anche dopo che il sito e' passato a tutto
   schermo, finche' non lo si ricostruisce (vedi «Aggiornare»).
+- **Tutto schermo «appiccicoso»** (`appiccicoso` in `scripts/apk.mjs`): il guscio che esce dalla CI non usa l'immersivo semplice ma lo `sticky-immersive`. Col primo, la barra di Android che ricompare (la tendina, il ritorno, l'uscita) fa uscire dallo schermo intero, la pagina si rimpicciolisce e poi risale quando Chrome ci rientra: il salto del video del lettore. Col secondo la barra compare sopra la pagina, trasparente, e se ne va da sola, senza cambiare misure. La cucitura (`cuciGuscio`) ferma il giro se il manifest generato non lo dice.
 - **Status bar color / splash**: lascia quelli del manifest (`#0f0d1a`).
 - **Icon URL**: dev'essere il PNG (`/icons/icon-512.png`), non `icon.svg`:
   Bubblewrap rasterizza con una libreria che l'SVG non lo legge, e il
