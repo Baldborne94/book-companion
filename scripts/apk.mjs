@@ -185,9 +185,42 @@ function cuci(assetlinks) {
   console.log(`cuci: ${nostri.join(", ")} in ${cartella}, manifest, build.gradle e regole ProGuard`);
 }
 
+// L'ICONA DEL GUSCIO SI PRENDE DAL SITO PUBBLICATO (`iconUrl` e le altre
+// sono indirizzi di Vercel, e Bubblewrap le scarica da li'), e il giro parte
+// appena il cambio arriva su main, prima che Vercel abbia finito: con
+// l'icona nuova (lo scheletro che legge, chiesto dal lettore) l'APK sarebbe
+// uscito con quella di prima. Si aspetta che il sito serva le icone PNG del
+// manifest uguali byte per byte a quelle del repository, con un tetto.
+export const iconeDelManifest = (manifest) => (manifest?.icons || []).filter((i) => i.type === "image/png").map((i) => i.src);
+export async function attendiIcone(icone, { chiedi = globalThis.fetch, leggi = (p) => readFileSync(new URL(`public${p}`, qui)), aspetta = (ms) => new Promise((r) => setTimeout(r, ms)), giri = 40, pausa = 15000 } = {}) {
+  let diverse = icone;
+  for (let giro = 0; giro < giri; giro++) {
+    if (giro) await aspetta(pausa);
+    const esiti = await Promise.all(
+      diverse.map(async (src) => {
+        try {
+          const r = await chiedi(`${SITO}${src}?giro=${giro}`, { cache: "no-store" });
+          return r.ok && Buffer.from(await r.arrayBuffer()).equals(Buffer.from(leggi(src))) ? null : src;
+        } catch {
+          return src;
+        }
+      })
+    );
+    diverse = esiti.filter(Boolean);
+    if (!diverse.length) return { pronte: true, giri: giro + 1, diverse };
+  }
+  return { pronte: false, giri, diverse };
+}
+
 async function principale([primo, secondo]) {
   const assetlinks = leggiJson("public/.well-known/assetlinks.json");
   if (primo === "cuci") return cuci(assetlinks);
+  if (primo === "icone") {
+    const esito = await attendiIcone(iconeDelManifest(leggiJson("public/manifest.json")));
+    if (esito.pronte) return console.log(`icone: il sito serve quelle del repository (${esito.giri} ${esito.giri === 1 ? "giro" : "giri"})`);
+    console.error(`icone: dopo ${esito.giri} giri il sito serve ancora icone diverse da quelle del repository (${esito.diverse.join(", ")}): Vercel non ha pubblicato, e l'APK uscirebbe con l'icona di prima`);
+    process.exit(1);
+  }
   if (primo === "impronta") {
     if (firmaDelSito(readFileSync(secondo, "utf8"), assetlinks)) return console.log("firma: e' la chiave di assetlinks.json");
     console.error("firma: l'APK NON e' firmato con la chiave di assetlinks.json — non si pubblica");

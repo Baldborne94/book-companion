@@ -102,6 +102,13 @@ jobs:
             echo "vera=no" >> "$GITHUB_OUTPUT"
           fi
 
+      # Bubblewrap scarica le icone dal sito pubblicato: su main si aspetta che
+      # Vercel serva quelle del repository, o l'APK esce con l'icona di prima
+      # (nei PR il sito e' quello di prima per definizione, e l'APK non si pubblica)
+      - name: Le icone sul sito
+        if: github.event_name != 'pull_request'
+        run: node scripts/apk.mjs icone
+
       - name: Il guscio
         env:
           BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ steps.chiave.outputs.vera == 'si' && secrets.TWA_KEYSTORE_PASSWORD || 'usaegetta' }}

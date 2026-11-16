@@ -4,7 +4,7 @@
 // versionCode fermo non si installa sopra; uno firmato con un'altra chiave
 // si pubblica e il tablet non lo sa.
 import { readFileSync, readdirSync } from "node:fs";
-import { guscio, firmaDelSito, pacchettoDelSito, ETICHETTA } from "../scripts/apk.mjs";
+import { guscio, firmaDelSito, pacchettoDelSito, ETICHETTA, iconeDelManifest, attendiIcone, SITO } from "../scripts/apk.mjs";
 
 export default async function (t) {
   const assetlinks = JSON.parse(readFileSync("public/.well-known/assetlinks.json", "utf8"));
@@ -40,6 +40,33 @@ export default async function (t) {
   t.c("con un'altra chiave no", !firmaDelSito(stampa("ab".repeat(32)), assetlinks));
   t.c("senza impronta leggibile no", !firmaDelSito("", assetlinks));
   await cucitura(t);
+  await icone(t);
+}
+
+// L'ICONA NUOVA ARRIVA NELL'APK (lo scheletro che legge): Bubblewrap la scarica
+// dal sito pubblicato, e su main il giro aspetta che Vercel la serva
+async function icone(t) {
+  const manifest = JSON.parse(readFileSync("public/manifest.json", "utf8"));
+  t.eq("si aspettano le icone PNG del manifest", iconeDelManifest(manifest).join(), "/icons/icon-192.png,/icons/icon-512.png,/icons/icon-maskable-512.png,/icons/icon-mono-512.png");
+  const nuove = { "/a.png": [1, 2, 3], "/b.png": [4, 5] };
+  const leggi = (p) => Uint8Array.from(nuove[p]);
+  const risposta = (byte) => ({ ok: true, arrayBuffer: async () => Uint8Array.from(byte).buffer });
+  // il sito serve la vecchia «b» per due giri, poi la nuova
+  const chieste = [];
+  let attese = 0;
+  const lento = async (url) => {
+    chieste.push(url.replace(SITO, "").replace(/\?.*/, ""));
+    const giro = Number(/giro=(\d+)/.exec(url)[1]);
+    return url.includes("/b.png") && giro < 2 ? risposta([9, 9]) : risposta(nuove[url.replace(SITO, "").replace(/\?.*/, "")]);
+  };
+  const e = await attendiIcone(["/a.png", "/b.png"], { chiedi: lento, leggi, aspetta: async () => attese++, giri: 5 });
+  t.eq("si aspetta finche' il sito serve le icone del repository, e si richiede solo quel che manca", `${e.pronte} ${e.giri} ${attese} ${chieste.join()}`, "true 3 2 /a.png,/b.png,/b.png,/b.png");
+  const mai = await attendiIcone(["/a.png", "/b.png"], { chiedi: async () => risposta([0]), leggi, aspetta: async () => {}, giri: 3 });
+  t.eq("dopo il tetto il giro si ferma e dice quali", `${mai.pronte} ${mai.diverse.join()}`, "false /a.png,/b.png");
+  const giu = await attendiIcone(["/a.png"], { chiedi: async () => { throw new TypeError("rete"); }, leggi, aspetta: async () => {}, giri: 2 });
+  t.eq("…anche se il sito non risponde", giu.pronte, false);
+  const assente = await attendiIcone(["/a.png"], { chiedi: async () => ({ ok: false, arrayBuffer: async () => Uint8Array.from(nuove["/a.png"]).buffer }), leggi, aspetta: async () => {}, giri: 1 });
+  t.eq("…e una risposta d'errore non e' l'icona", assente.pronte, false);
 }
 
 // ---- IL NOSTRO CODICE ANDROID NEL PROGETTO GENERATO ------------------------
