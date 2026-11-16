@@ -123,6 +123,16 @@ jobs:
           npx bubblewrap update --skipVersionUpgrade
           # il nostro codice Android (android/) nel progetto appena generato
           node ../scripts/apk.mjs cuci
+          # GRADLE PRIMA, CON L'USCITA SU FILE: Bubblewrap lo lancia con execFile, che
+          # muore oltre 1 MB scritto sugli errori («stderr maxBuffer length exceeded»,
+          # l'APK 1326 sulla nuova icona) senza dire cosa c'era. Qui l'uscita non ha
+          # tetto, si misura e si mostra; poi `bubblewrap build` trova tutto gia'
+          # fatto, Gradle non scrive quasi niente, e Bubblewrap firma come sempre.
+          if ! ./gradlew assembleRelease --stacktrace > gradle.out 2> gradle.err; then
+            tail -n 150 gradle.out; tail -n 150 gradle.err; exit 1
+          fi
+          echo "Gradle: $(wc -c < gradle.out) byte di uscita, $(wc -c < gradle.err) sugli errori"
+          tail -n 40 gradle.err
           npx bubblewrap build
           "$ANDROID_HOME/build-tools/$ATTREZZI/apksigner" verify --print-certs app-release-signed.apk | tee firma.txt
           mv app-release-signed.apk "BookCompanion-$CODICE.apk"
