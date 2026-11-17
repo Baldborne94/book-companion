@@ -172,7 +172,7 @@ export function CampoChiave({ onSalva, autoFocus }) {
         Salva
       </button>
     </div>
-    <label style={{ display: "block", marginTop: 8, fontSize: F.minuscolo, color: C.dim }}>
+    <label style={{ display: "block", marginTop: 8, fontSize: F.minuscolo, color: C.muted }}>
       Scade il (facoltativo — la data sta scritta accanto alla chiave nella console)
       <input
         type="date"
@@ -201,7 +201,7 @@ export function ScadenzaChiave() {
   const st = statoChiave({});
   const frase = frasScadenza(st);
   if (!frase) return null;
-  const colore = st.stato === "scaduta" ? C.red : st.stato === "inScadenza" ? C.accent : C.dim;
+  const colore = st.stato === "scaduta" ? C.red : st.stato === "inScadenza" ? C.accent : C.muted;
   return (
     <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: colore, lineHeight: 1.5 }}>
       {st.stato === "valida" ? "🔑 " : "⚠️ "}
@@ -232,7 +232,7 @@ export function CambiaChiave() {
       <ScadenzaChiave />
       {aperto && (
         <>
-          <p style={{ margin: "8px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.5 }}>
+          <p style={{ margin: "8px 0 0", fontSize: F.minuscolo, color: C.muted, lineHeight: 1.5 }}>
             Le chiavi di Anthropic scadono. Creane una nuova su console.anthropic.com (Chiavi API →
             Crea chiave) e incollala qui: quella vecchia viene sostituita e resta solo su questo
             dispositivo.
@@ -291,7 +291,7 @@ export function SezioneOracolo() {
       </p>
       {ce && <ScadenzaChiave />}
       {ce && rigaMese() && (
-        <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.5 }}>
+        <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: C.muted, lineHeight: 1.5 }}>
           Hai speso {rigaMese()}.
         </p>
       )}

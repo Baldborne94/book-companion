@@ -563,9 +563,18 @@ export function daPortare(soloNelCloud, idLassu) {
 // `altrove` sono i libri che l'altro dispositivo dice di tenere
 // (`altroveDa`); se lassu' c'e' una copia, vince la nuvoletta, che da qui si
 // apre.
-export function segnoDorso(b, localIds, idLassu, altrove = null) {
-  if (b?.fileTolto) return "tolto";
-  if (!localIds || !b?.id || localIds.has(b.id)) return null;
+//
+// E SI SEGNA L'ECCEZIONE, NON LA NORMA (i ritocchi al tema, novembre 2026:
+// dopo «Libera spazio» quasi ogni copertina portava il segno «senza
+// ebook», e un segno su tutte non dice piu' niente). `normaDelDorso` guarda
+// la biblioteca intera: se piu' di meta' dei libri ha l'ebook tolto, la
+// norma e' quella, il suo segno tace e si segnano i pochi col file `qui`.
+export const normaDelDorso = (libri = []) => (libri.filter((b) => b?.fileTolto).length * 2 > libri.length ? "tolto" : "qui");
+
+export function segnoDorso(b, localIds, idLassu, altrove = null, norma = "qui") {
+  if (b?.fileTolto) return norma === "tolto" ? null : "tolto";
+  if (!localIds || !b?.id) return null;
+  if (localIds.has(b.id)) return norma === "tolto" ? "qui" : null;
   if (altrove?.has(b.id) && !idLassu?.has(b.id)) return "altrove";
   if (idLassu && !idLassu.has(b.id)) return "perduto";
   return "cloud";

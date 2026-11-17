@@ -3226,7 +3226,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 {!puoGiustificare ? "Non si può" : settings.justify ? "Attiva ✒" : "Spenta"}
               </button>
             </div>
-            <p style={{ margin: "5px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.45 }}>
+            <p style={{ margin: "5px 0 0", fontSize: F.minuscolo, color: C.muted, lineHeight: 1.45 }}>
               {puoGiustificare
                 ? "Testo giustificato e parole sillabate a fine riga, come su carta."
                 : !lingua?.dichiarata
@@ -3272,7 +3272,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 })}
               </div>
             </div>
-            <p style={{ margin: "5px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.45 }}>
+            <p style={{ margin: "5px 0 0", fontSize: F.minuscolo, color: C.muted, lineHeight: 1.45 }}>
               {settings.paragrafi === "stacco"
                 ? "Tutte le righe partono dallo stesso punto, e fra un paragrafo e l'altro c'è un respiro."
                 : settings.paragrafi === "libro"
@@ -3306,7 +3306,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 ))}
               </div>
             </div>
-            <p style={{ margin: "5px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.45 }}>
+            <p style={{ margin: "5px 0 0", fontSize: F.minuscolo, color: C.muted, lineHeight: 1.45 }}>
               {settings.svolta === "spazzata"
                 ? "Il foglio scorre via come sfogliato. È la più bella e la più cara: il browser fotografa la pagina due volte, e su uno schermo che fatica l'attesa prima del movimento si sente."
                 : settings.svolta === "dissolvenza"
@@ -3334,7 +3334,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
                 {settings.dizionario !== false ? "Attivo 📖" : "Spento"}
               </button>
             </div>
-            <p style={{ margin: "5px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.45 }}>
+            <p style={{ margin: "5px 0 0", fontSize: F.minuscolo, color: C.muted, lineHeight: 1.45 }}>
               {settings.dizionario !== false
                 ? "Sulla parola selezionata compare «Definisci»: la scheda dell'app, con la resa italiana e il dizionario sul dispositivo."
                 : "Sulla selezione resta solo il dizionario del tablet, quello che Android apre da sé. Il glossario della saga e «Chi è» restano."}

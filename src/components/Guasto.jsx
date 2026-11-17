@@ -106,7 +106,7 @@ export default class Guasto extends Component {
               borderRadius: R.piccolo,
               border: `1px solid ${C.border}`,
               background: C.surface,
-              color: C.dim,
+              color: C.muted,
               fontSize: F.minuscolo,
               lineHeight: 1.45,
               wordBreak: "break-word",

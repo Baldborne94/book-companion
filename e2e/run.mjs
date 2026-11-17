@@ -48,7 +48,7 @@ async function finche(vero, ms, perche) {
   throw new Error(`${perche} (dopo ${ms / 1000} s)`);
 }
 
-async function lanciaBrowser() {
+async function lanciaBrowser(args = []) {
   let chromium;
   try {
     ({ chromium } = await import("playwright"));
@@ -65,7 +65,7 @@ async function lanciaBrowser() {
   let ultimo = "";
   for (const opzioni of strade) {
     try {
-      return { browser: await chromium.launch(opzioni) };
+      return { browser: await chromium.launch({ ...opzioni, args }) };
     } catch (e) {
       ultimo = String(e.message).split("\n")[0];
     }
@@ -125,6 +125,8 @@ async function dispositivo(browser, { sessione = false, prima = null, catalogo =
   return { ctx, p, guasti };
 }
 
+// i caratteri dell'app arrivano dopo la pagina: una misura presa prima vede Georgia
+const caratteriPronti = (p) => p.evaluate(() => document.fonts.ready.then(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)))));
 const libriDi = (p) => p.evaluate(() => JSON.parse(localStorage.getItem("bc_books") || "[]"));
 const testoAvviso = (p, re) =>
   p.evaluate((src) => {
@@ -925,6 +927,97 @@ const SCENE = [
         throw new Error(`${e.message}: ${await scaffale()}`);
       });
       return { guasti: d.guasti, nota: "sei schede da cinque raccolte a due, con la serie e il numero del mondo" };
+    },
+  },
+  {
+    // i ritocchi al tema (il lettore: «sì, fai i ritocchi al tema»): dopo
+    // «Libera spazio» quasi ogni copertina portava il segno «senza ebook»,
+    // e un segno su tutte non dice niente. Si segna l'eccezione: il libro
+    // che il file ce l'ha qui. E il motto sta solo sull'Ingresso
+    nome: "quasi tutti senza ebook: sul dorso si segna il libro che il file ce l'ha qui, e il motto sta solo sull'Ingresso",
+    async fai({ browser }) {
+      const libri = ["La nebbia", "Il bosco", "Il faro"].map((title, i) => ({ id: `s${i}`, title, author: "Autore di Prova", fileType: "epub", fileTolto: true, addedAt: i + 1 }));
+      const d = await dispositivo(browser, { misura: TABLET, prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});` });
+      const { p } = d;
+      await p.goto(URL_APP);
+      await finche(() => p.locator("header p").count(), 8000, "sull'Ingresso il motto non c'e'");
+      await importa(p, "Il ponte.epub", await epub({ titolo: "Il ponte" }), "application/epub+zip");
+      const qui = p.locator('span[title="Il file è su questo dispositivo: si apre"]');
+      await finche(async () => (await qui.count()) === 1, 10000, "il libro col file qui non porta il suo segno");
+      const tolti = await p.locator(`span[title="Tieni la scheda, non l'ebook"]`).count();
+      if (tolti) throw new Error(`${tolti} dorsi portano ancora il segno «senza ebook», che qui e' la norma`);
+      const parola = (await qui.first().textContent()).trim();
+      if (parola !== "qui") throw new Error(`il segno dice «${parola}»`);
+      const motto = await p.locator("header p").count();
+      if (motto) throw new Error("il motto sta anche in Libreria");
+      return { guasti: d.guasti, nota: "tre schede senza ebook senza segno, «qui» su quella col file" };
+    },
+  },
+  {
+    // segnalato con la fotografia del tablet («Pirane / si», «Garde / ns
+    // of»), e il lettore: «sì, sistema i dorsi disegnati». Alla sua misura la
+    // scrittura è ×1,5 e la colonna no: ventidue dorsi su ventinove avevano
+    // una parola spezzata, e la terza riga usciva dal fondo. Ora il titolo si
+    // misura sul suo riquadro, col carattere vero
+    nome: "sul tablet i dorsi disegnati non spezzano le parole, e il titolo sta nel suo riquadro",
+    async fai({ browser }) {
+      const titoli = ["Piranesi", "Gardens of the Moon", "Kagurabachi, Vol. 1", "Morty l'apprendista", "Il colore della magia", "Guida galattica per gli autostoppisti", "The Unremembered Empire", "Oathbringer"];
+      const libri = titoli.map((title, i) => ({ id: `d${i}`, title, author: i % 2 ? "Takeru Hokazono" : "Terry Pratchett", saga: "Dorsi", sagaOrder: i + 1, fileType: "nessuno", fileTolto: true, addedAt: i + 1 }));
+      const guasti = [];
+      const guarda = (p) =>
+        p.evaluate(() =>
+          [...document.querySelectorAll("div")]
+            .filter((x) => x.style.webkitLineClamp === "5" && x.firstChild)
+            .map((t) => {
+              const nodo = t.firstChild;
+              const spezzate = [...nodo.textContent.matchAll(/\S+/g)].filter((m) => {
+                const r = document.createRange();
+                r.setStart(nodo, m.index);
+                r.setEnd(nodo, m.index + m[0].length);
+                return new Set([...r.getClientRects()].map((q) => Math.round(q.top))).size > 1;
+              });
+              const autore = t.parentElement.lastElementChild;
+              return { titolo: nodo.textContent, corpo: parseFloat(getComputedStyle(t).fontSize), autore: parseFloat(getComputedStyle(autore).fontSize), spezzate: spezzate.map((m) => m[0]), tagliato: t.scrollHeight > t.clientHeight + 1 };
+            })
+        );
+      // `tardi`: il carattere dei titoli arriva dopo il primo disegno, e le
+      // misure prese col carattere di ripiego si devono rifare
+      const prova = async (quale, dove, tardi) => {
+        const d = await dispositivo(quale, { misura: TABLET, prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});` });
+        const { p } = d;
+        if (tardi)
+          await d.ctx.route(/cormorant/i, async (route) => {
+            await new Promise((ok) => setTimeout(ok, 600));
+            await route.continue();
+          });
+        await p.goto(`${URL_APP}?apri=libreria`);
+        await finche(async () => (await guarda(p)).length === titoli.length, 10000, `${dove}: i dorsi disegnati non ci sono`);
+        await caratteriPronti(p);
+        const dorsi = await guarda(p);
+        const guai = dorsi.filter((x) => x.spezzate.length || x.tagliato);
+        if (guai.length) throw new Error(`${dove}: dorsi con una parola spezzata o tagliati: ${guai.map((x) => `«${x.titolo}» a ${x.corpo} px${x.spezzate.length ? ` (${x.spezzate})` : " (tagliato)"}`).join(", ")}`);
+        const piccoli = dorsi.filter((x) => x.corpo < 11);
+        if (piccoli.length) throw new Error(`${dove}: titoli troppo piccoli: ${piccoli.map((x) => `«${x.titolo}» ${x.corpo}`).join(", ")}`);
+        const grossi = dorsi.filter((x) => x.autore > x.corpo);
+        if (grossi.length) throw new Error(`${dove}: l'autore più grosso del titolo: ${grossi.map((x) => `«${x.titolo}» ${x.autore} su ${x.corpo}`).join(", ")}`);
+        const corto = dorsi.find((x) => x.titolo === "Piranesi");
+        if (corto.corpo < 21) throw new Error(`${dove}: «Piranesi» è rimpicciolito senza motivo: ${corto.corpo} px`);
+        guasti.push(...d.guasti);
+        return dorsi.map((x) => x.corpo).join(" ");
+      };
+      const lisce = await prova(browser, "lettere lisce", false);
+      const tardive = await prova(browser, "carattere in ritardo", true);
+      if (tardive !== lisce) throw new Error(`col carattere arrivato dopo i corpi non sono quelli di sempre: ${tardive} invece di ${lisce}`);
+      // dove le lettere si aggiustano al pixel (il browser della CI) le parole
+      // sono più larghe della tavola: lì comanda la misura del browser
+      const altro = await lanciaBrowser(["--font-render-hinting=full"]);
+      if (!altro.browser) throw new Error(`il browser con le lettere aggiustate non parte: ${altro.saltato}`);
+      try {
+        const aggiustate = await prova(altro.browser, "lettere aggiustate al pixel", false);
+        return { guasti, nota: `lisce ${lisce} · aggiustate ${aggiustate}` };
+      } finally {
+        await altro.browser.close();
+      }
     },
   },
   {

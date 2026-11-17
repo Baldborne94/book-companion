@@ -911,7 +911,7 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
                     pochissimo, ed è proprio il confronto che serve — una
                     parola spiegata non è una scheda su cento passaggi */}
                 {oracolo.uso && (
-                  <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: C.dim }}>
+                  <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: C.muted }}>
                     {rigaUltima(oracolo.uso)}
                     {rigaMese() ? ` · ${rigaMese()}` : ""}
                   </p>

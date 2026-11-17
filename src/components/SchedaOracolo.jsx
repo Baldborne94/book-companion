@@ -36,7 +36,7 @@ function Costo({ uso }) {
   const mese = rigaMese();
   return (
     <>
-      <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.5 }}>
+      <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: C.muted, lineHeight: 1.5 }}>
         Questa risposta: {riga}
         {mese ? ` · ${mese}` : ""}
         <span style={{ opacity: 0.75 }}>
@@ -94,7 +94,7 @@ function Muti({ tappe, passaggi, lontani }) {
     .filter((l) => l && !conRoba.has(l.id) && !assenti.has(l.id));
   if (!muti.length || !conRoba.size) return null;
   return (
-    <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: C.dim, lineHeight: 1.5 }}>
+    <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: C.muted, lineHeight: 1.5 }}>
       Non l'ho trovato in {muti.map((l) => `«${l.title}»`).join(", ")}.
     </p>
   );
@@ -205,7 +205,7 @@ export default function SchedaOracolo({ scheda, attese, vuoto, onRiprova }) {
       {/* una risposta troncata, mostrata com'e', sembra finita: il lettore
           crede che la storia si fermi li' */}
       {scheda.tagliata && (
-        <p style={{ marginTop: 10, fontSize: F.minuscolo, color: C.dim, lineHeight: 1.5 }}>
+        <p style={{ marginTop: 10, fontSize: F.minuscolo, color: C.muted, lineHeight: 1.5 }}>
           L'Oracolo si è fermato qui: il racconto era troppo lungo per una scheda sola.
         </p>
       )}
@@ -213,7 +213,7 @@ export default function SchedaOracolo({ scheda, attese, vuoto, onRiprova }) {
           controllo dev'essere possibile, non un muro di citazioni sotto ogni
           scheda. */}
       <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
-        <p style={{ margin: 0, fontSize: F.minuscolo, color: C.dim, lineHeight: 1.5 }}>
+        <p style={{ margin: 0, fontSize: F.minuscolo, color: C.muted, lineHeight: 1.5 }}>
           {/* nei fumetti la risposta viene da tavole, non da passaggi: si
               dice quali (`lib/oracoloFumetti.js`) */}
           {scheda.pagine ? `Basata solo su queste tavole del volume: ${dettaPagine(scheda.pagine)}.` : <>Basata solo su quello che hai letto: {raccontaFrontiera(tappe)}.</>}

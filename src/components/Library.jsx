@@ -16,7 +16,7 @@ import { getFavorites, isFile } from "../lib/music.js";
 import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
 import { portaACasa, cloudUsage, localFileIds } from "../lib/sync.js";
 import {
-  frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso, schedeCambiate
+  frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso, normaDelDorso, schedeCambiate
 } from "../lib/syncCore.js";
 import { fmtGoogle } from "../lib/bytes.js";
 import { hddPossibile } from "../lib/hdd.js";
@@ -129,9 +129,11 @@ const SEGNI_DORSO = {
   cloud: { glifo: "☁", titolo: "Nel cloud — portalo qui con «Scarica qui»", colore: () => C.arcane },
   perduto: { glifo: "⚠", titolo: "Né qui né nel cloud — reimporta il file", colore: () => C.accent },
   altrove: { glifo: "📱", titolo: (nome) => `Sta ${sulDispositivo(nome)}: lì si legge`, colore: () => C.muted },
+  // una parola e non un glifo: su Android un'emoji è un quadratino colorato
+  qui: { glifo: "qui", titolo: "Il file è su questo dispositivo: si apre", colore: () => C.green },
 };
 
-function Shelf({ books, onOpenBook, localIds, idLassu, altrove = null, showOrder, coverV = 0, conCopertina = null }) {
+function Shelf({ books, onOpenBook, localIds, idLassu, altrove = null, norma = "qui", showOrder, coverV = 0, conCopertina = null }) {
   // Chi ha il dorso disegnato lo sa solo `BookCover`, che va a guardare in
   // IndexedDB se una copertina c'è: lo dice qui, e lo scaffale evita di
   // ristampare titolo e autore sotto una copertina che li porta già.
@@ -269,7 +271,7 @@ function Shelf({ books, onOpenBook, localIds, idLassu, altrove = null, showOrder
                   rifiutato. Porta un segno suo, perché da lontano si veda
                   che quel libro c'è ma non si apre. */}
               {(() => {
-                const segno = SEGNI_DORSO[segnoDorso(b, localIds, idLassu, altrove)];
+                const segno = SEGNI_DORSO[segnoDorso(b, localIds, idLassu, altrove, norma)];
                 return segno && (
                   <span
                     title={typeof segno.titolo === "function" ? segno.titolo(altrove?.get(b.id)) : segno.titolo}
@@ -513,6 +515,8 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
   // possiedi: un racconto non ha numero di lettura, e senza il posto della
   // tavola il suo capitolo scivolava in fondo.
   const parteDi = riconosciuti ? (b) => capitoloDi(riconosciuti.get(b.id)) : null;
+  // il segno sul dorso dice l'eccezione, e la norma è della biblioteca intera
+  const norma = normaDelDorso(tutti || books);
   const criterio = GROUPS.find((g) => g.id === group)?.per;
   // il genere si raggruppa per FAMIGLIA: «Fantasy · Grimdark» e «Fantasy ·
   // Epico» stanno sullo stesso scaffale. Prendendo il valore intero ogni
@@ -581,11 +585,11 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
                         <span>{p.nome ?? "Fuori dal percorso"}</span>
                         <span>{p.libri.length}</span>
                       </div>
-                      <Shelf books={p.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} altrove={altrove} coverV={coverV} conCopertina={conCopertina} showOrder />
+                      <Shelf books={p.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} altrove={altrove} norma={norma} coverV={coverV} conCopertina={conCopertina} showOrder />
                     </div>
                   ))
                 ) : (
-                  <Shelf books={c.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} altrove={altrove} coverV={coverV} conCopertina={conCopertina} showOrder />
+                  <Shelf books={c.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} altrove={altrove} norma={norma} coverV={coverV} conCopertina={conCopertina} showOrder />
                 )}
               </div>
             ))
@@ -593,7 +597,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
             <Shelf
               books={r.libri}
               onOpenBook={onOpenBook}
-              localIds={localIds} idLassu={idLassu} altrove={altrove}
+              localIds={localIds} idLassu={idLassu} altrove={altrove} norma={norma}
               coverV={coverV}
               conCopertina={conCopertina}
               // il numero del volume ha senso dentro la sua saga; fra i volumi
@@ -604,7 +608,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
         </Ripiano>
     ) : (
       <Ripiano key={r.id || "_"} nome={r.nome} quanti={r.libri.length} spento={!!r.spento}>
-        <Shelf books={r.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} altrove={altrove} coverV={coverV} conCopertina={conCopertina} />
+        <Shelf books={r.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} altrove={altrove} norma={norma} coverV={coverV} conCopertina={conCopertina} />
       </Ripiano>
     );
 
@@ -2270,6 +2274,22 @@ export default function Library({
 
   const tipi = useMemo(() => tipiDi(books), [books]);
   const chipTipi = tipiPresenti(books, tipi);
+  // IL FILETTO FRA STATO E TIPO VALE SULLA STESSA RIGA: quando i tipi vanno
+  // a capo (il tablet in piedi) resterebbe un trattino in testa alla riga.
+  // Si nasconde senza cambiare le misure (`visibility`, `transform`): un
+  // filetto che sparisse davvero stringerebbe il gruppo, che tornerebbe su
+  const tipiRef = useRef(null);
+  const [tipiACapo, setTipiACapo] = useState(false);
+  useLayoutEffect(() => {
+    const el = tipiRef.current;
+    const prima = el?.previousElementSibling;
+    if (!el || !prima) return;
+    const misura = () => setTipiACapo(el.offsetTop > prima.offsetTop + prima.offsetHeight / 2);
+    misura();
+    const ro = new ResizeObserver(misura);
+    ro.observe(el.parentElement.parentElement);
+    return () => ro.disconnect();
+  }, [chipTipi.length, stretto]);
 
   // LA RICERCA NON ASPETTA LO SCAFFALE (chiesto dal lettore: «la ricerca
   // e la visualizzazione delle copertine sono lente»). Misurato con 400
@@ -2529,7 +2549,10 @@ export default function Library({
             dividerli — sono due domande diverse sulla stessa riga */}
         {chipTipi.length > 0 && (
           <>
-            <span aria-hidden style={{ width: 1, height: 22, background: C.border, margin: "0 4px" }} />
+            {/* i tipi restano INSIEME: sul tablet in piedi «Fumetti» andava
+                a capo da solo, staccato da «Tutti» e «Libri» */}
+            <span ref={tipiRef} style={stretto ? { display: "contents" } : { display: "inline-flex", gap: 8, alignItems: "center", flexShrink: 0, transform: tipiACapo ? "translateX(-17px)" : "none" }}>
+            <span aria-hidden style={{ width: 1, height: 22, background: C.border, margin: "0 4px", visibility: tipiACapo && !stretto ? "hidden" : "visible" }} />
             {chipTipi.map((f) => {
               const active = tipo === f.id;
               return (
@@ -2552,6 +2575,7 @@ export default function Library({
                 </button>
               );
             })}
+            </span>
           </>
         )}
         </div>
@@ -2674,7 +2698,7 @@ export default function Library({
           ))}
 
           {!dentro.cercando && dentro.lontani > 0 && (
-            <p style={{ fontSize: F.minuscolo, color: C.dim, margin: "10px 0 0", lineHeight: 1.45 }}>
+            <p style={{ fontSize: F.minuscolo, color: C.muted, margin: "10px 0 0", lineHeight: 1.45 }}>
               {dentro.lontani === 1
                 ? "Un tomo vive solo sull'altro dispositivo e non l'ho aperto: aprilo una volta da qui e la prossima ricerca lo troverà."
                 : `${dentro.lontani} tomi vivono solo sull'altro dispositivo e non li ho aperti: aprili una volta da qui e la prossima ricerca li troverà.`}
@@ -3228,11 +3252,11 @@ export default function Library({
                                   })
                                 }
                                 aria-pressed={!via}
-                                style={{ display: "flex", gap: 8, alignItems: "flex-start", width: "100%", minHeight: 44, textAlign: "left", color: via ? C.dim : C.muted, fontSize: F.piccolo }}
+                                style={{ display: "flex", gap: 8, alignItems: "flex-start", width: "100%", minHeight: 44, textAlign: "left", color: C.muted, fontSize: F.piccolo }}
                               >
-                                <span style={{ color: via ? C.dim : C.accent }}>{via ? "☐" : "☑"}</span>
+                                <span style={{ color: via ? C.muted : C.accent }}>{via ? "☐" : "☑"}</span>
                                 <span style={{ minWidth: 0, overflowWrap: "anywhere", textDecoration: via ? "line-through" : "none" }}>
-                                  <span style={{ color: via ? C.dim : C.text }}>{v.libro.title}</span> · {v.file.cartelle.join(" / ") || "book-companion"} → {v.a.join(" / ")}
+                                  <span style={{ color: via ? C.muted : C.text }}>{v.libro.title}</span> · {v.file.cartelle.join(" / ") || "book-companion"} → {v.a.join(" / ")}
                                 </span>
                               </button>
                             </li>

@@ -347,7 +347,7 @@ export default function Quaderno({ books = [], onClose, onReadAt }) {
                   );
                 })}
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
-                  <span style={{ flex: 1, fontSize: F.minuscolo, color: C.dim }}>
+                  <span style={{ flex: 1, fontSize: F.minuscolo, color: C.muted }}>
                     {v.volte > 1 ? `cercata ${v.volte} volte` : ""}
                   </span>
                   <button
