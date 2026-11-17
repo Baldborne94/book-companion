@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { segnaposto } from "../lib/segnaposto.js";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { getCover, getAux, putAux } from "../lib/bookStore.js";
 import { caricaCopertina, giaVista, ascoltaCopertine, chiaveMin, LATO_MIN, generazione } from "../lib/miniature.js";
 import { preparaCopertina, fronteDaMostrare } from "../lib/copertina.js";
 import { versoDelLibro } from "../lib/library.js";
-import { vestito, gradinoTitolo } from "../lib/dorso.js";
+import { vestito, gradinoTitolo, corpiDelDorso, INTERLINEA_TITOLO, INTERLINEA_AUTORE, RIGHE_AUTORE, STACCO_AUTORE } from "../lib/dorso.js";
 import { chiaveHardcover, domandaHardcover, copertinaHardcover } from "../lib/hardcover.js";
 
 // IL DORSO DISEGNATO, per i libri che una copertina non ce l'hanno.
@@ -18,9 +19,47 @@ import { chiaveHardcover, domandaHardcover, copertinaHardcover } from "../lib/ha
 // Il colore viene dalla SAGA (vedi `lib/dorso.js`), quindi i volumi di una
 // storia stanno nello stesso quartiere e si vede da lontano che vanno
 // insieme; dentro la famiglia si distinguono per una sfumatura.
+// LO SPAZIO DEL DORSO SI MISURA (`corpiDelDorso` in `lib/dorso.js`): quanto è
+// larga la colonna lo sa solo il browser. Si guarda il riquadro dentro i
+// margini, che non cambia con quel che ci si scrive (guardare il titolo
+// vorrebbe dire rimisurarlo ogni volta che l'autore cambia corpo). Un
+// osservatore per tutti i dorsi, e la misura arriva prima del disegno:
+// `flushSync`, o per un fotogramma si vedrebbe la parola spezzata.
+const misure = new WeakMap();
+const osservatore =
+  typeof ResizeObserver === "undefined"
+    ? null
+    : new ResizeObserver((voci) =>
+        flushSync(() => {
+          for (const v of voci) misure.get(v.target)?.(v.contentRect);
+        })
+      );
+
+function useRiquadro() {
+  const ref = useRef(null);
+  const [riquadro, setRiquadro] = useState(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !osservatore) return undefined;
+    misure.set(el, ({ width, height }) => {
+      if (width > 0 && height > 0) setRiquadro((p) => (p && p.larga === width && p.spazio === height ? p : { larga: width, spazio: height }));
+    });
+    osservatore.observe(el);
+    return () => {
+      osservatore.unobserve(el);
+      misure.delete(el);
+    };
+  }, []);
+  return [ref, riquadro];
+}
+
 function Disegnato({ book, radius, compact, numerato }) {
   const v = vestito(book);
   const costola = compact ? 3 : 7;
+  const [spazioRef, riquadro] = useRiquadro();
+  const tetto = F[gradinoTitolo(book.title)];
+  const autore = book.author ? F.minuscolo : 0;
+  const corpi = riquadro ? corpiDelDorso(book.title, { ...riquadro, tetto, autore }) : { titolo: tetto, autore };
   return (
     <div
       style={{
@@ -49,6 +88,7 @@ function Disegnato({ book, radius, compact, numerato }) {
           sopra farebbe solo sporco. */}
       {!compact && (
         <div
+          ref={spazioRef}
           style={{
             position: "absolute",
             inset: 0,
@@ -70,8 +110,8 @@ function Disegnato({ book, radius, compact, numerato }) {
           <div
             style={{
               fontFamily: FONT_TITLE,
-              fontSize: F[gradinoTitolo(book.title)],
-              lineHeight: 1.22,
+              fontSize: corpi.titolo,
+              lineHeight: INTERLINEA_TITOLO,
               color: v.inchiostro,
               display: "-webkit-box",
               WebkitLineClamp: 5,
@@ -96,14 +136,14 @@ function Disegnato({ book, radius, compact, numerato }) {
           </div>
           {book.author && (
             <>
-              <div style={{ height: 1, background: `${v.tenue}55`, marginBottom: 7, maxWidth: 44 }} />
+              <div style={{ height: 1, background: `${v.tenue}55`, marginBottom: STACCO_AUTORE - 1, maxWidth: 44 }} />
               <div
                 style={{
-                  fontSize: F.minuscolo,
-                  lineHeight: 1.3,
+                  fontSize: corpi.autore,
+                  lineHeight: INTERLINEA_AUTORE,
                   color: v.tenue,
                   display: "-webkit-box",
-                  WebkitLineClamp: 2,
+                  WebkitLineClamp: RIGHE_AUTORE,
                   WebkitBoxOrient: "vertical",
                   overflow: "hidden",
                 }}

@@ -6,7 +6,7 @@
 //
 // Qui si prova la parte che si sbaglia in silenzio: il colore. Un dorso
 // storto non solleva nessun errore — si vede e basta, e solo se guardi.
-import { numero, famigliaDi, tonoDi, vestito, gradinoTitolo, GRADINI, SCARTO } from "../src/lib/dorso.js";
+import { numero, famigliaDi, tonoDi, vestito, gradinoTitolo, GRADINI, SCARTO, larghezzaEm, corpoCheEntra, corpiDelDorso, PAROLA_MAX, INTERLINEA_TITOLO } from "../src/lib/dorso.js";
 
 const libro = (o) => ({ id: "x", title: "Un titolo", author: "", saga: "", ...o });
 
@@ -132,4 +132,60 @@ export default async function (t) {
   t.c("un titolo vuoto dà un gradino valido", GRADINI.includes(gradinoTitolo("")));
   t.c("e niente del tutto pure", GRADINI.includes(gradinoTitolo()));
   t.c("ogni gradino è un nome della scala", GRADINI.every((g) => typeof g === "string" && g.length > 2));
+
+  // ---- E IL TITOLO DEVE STARCI DAVVERO ------------------------------------
+  // Il riquadro del titolo sul tablet del lettore (902x1503, scrittura x1,5),
+  // misurato nel browser: 79,56 per 63 con numero e autore. Li' «Pirane / si»,
+  // «Garde / ns of» e ventidue dorsi su ventinove avevano una parola spezzata.
+  const TABLET = { larga: 79.56, alta: 63.06 };
+  const vicino = (a, b, scarto) => Math.abs(a - b) <= scarto;
+  // le larghezze sono quelle del carattere vero (misurate con `measureText`)
+  t.c("«Kagurabachi,» è largo quanto nel Cormorant", vicino(larghezzaEm("Kagurabachi,"), 5.147, 0.05), String(larghezzaEm("Kagurabachi,")));
+  t.c("e «Piranesi» pure", vicino(larghezzaEm("Piranesi"), 3.135, 0.05), String(larghezzaEm("Piranesi")));
+  t.eq("una lettera accentata è larga come la sua lettera", larghezzaEm("è"), larghezzaEm("e"));
+  t.eq("un segno di un altro alfabeto vale il suo quadrato", larghezzaEm("冒険"), 2);
+  t.c("le stesse lettere non sono la stessa larghezza", larghezzaEm("Mummwwmm") > larghezzaEm("Illimiti") * 1.8);
+
+  const entra = (titolo, corpo, larga) => titolo.split(/\s+/).every((p) => larghezzaEm(p) * corpo <= larga);
+  // `stretto`: il titolo che la larghezza ferma prima dell'altezza
+  for (const [titolo, tetto, stretto] of [["Piranesi", 28.5, 1], ["Gardens of the Moon", 25.5, 0], ["Kagurabachi, Vol. 1", 22.5, 1], ["Morty l'apprendista", 25.5, 1], ["Neuromante", 22.5, 1], ["Guida galattica per gli autostoppisti", 22.5, 0]]) {
+    const corpo = corpoCheEntra(titolo, { ...TABLET, massimo: tetto });
+    t.c(`«${titolo}»: nessuna parola si spezza`, entra(titolo, corpo, TABLET.larga) && corpo >= 12.5, String(corpo));
+    if (stretto) t.c(`«${titolo}»: e non si rimpicciolisce più del necessario`, !entra(titolo, corpo + 1.5, TABLET.larga), String(corpo));
+  }
+  t.eq("un titolo corto resta al suo gradino", corpoCheEntra("Mort", { ...TABLET, massimo: 33 }), 33);
+  // «della magia» a 18 px riempiva il riquadro esatto sulla carta, e nel
+  // browser andava a capo: la terza riga usciva dal fondo
+  const magia = corpoCheEntra("Il colore della magia", { ...TABLET, massimo: 25.5 });
+  t.c("una riga piena fino all'orlo non si conta come piena", magia <= 17.5 && magia >= 16, String(magia));
+  // l'altezza conta quanto la larghezza: quattro parole corte in un riquadro basso
+  const basso = corpoCheEntra("Il re di più", { larga: 79.56, alta: 30, massimo: 33 });
+  t.c("le righe stanno nell'altezza", basso * INTERLINEA_TITOLO <= 30 && basso < 33, String(basso));
+  // due parole che una accanto all'altra entrerebbero, senza lo spazio in mezzo
+  t.eq("lo spazio fra due parole conta", corpoCheEntra("nnnn nnnn", { larga: 70.1, alta: 20, massimo: 16 }), 15);
+  t.eq("e si somma, parola dopo parola", corpoCheEntra("nn nn nn", { larga: 56.9, alta: 20, massimo: 16 }), 15);
+  t.eq("ma dopo un trattino non c'è", corpoCheEntra("nnnn-nnnn", { larga: 75.9, alta: 20, massimo: 16 }), 16);
+  t.c("e in un riquadro alto lo stesso titolo resta grande", corpoCheEntra("Il re di più", { larga: 79.56, alta: 200, massimo: 33 }) > basso);
+  t.eq("su una copertina grande comanda il gradino", corpoCheEntra("Kagurabachi, Vol. 1", { larga: 190, alta: 200, massimo: 22 }), 22);
+  // una parola che non entra a nessun corpo che si distingua si spezza, e basta
+  t.eq("una parola enorme si ferma al pavimento", corpoCheEntra("Precipitevolissimevolmente", { ...TABLET, massimo: 21 }), TABLET.larga / PAROLA_MAX);
+  t.c("dopo un trattino si va a capo: comanda il pezzo, non la parola", corpoCheEntra("Dembski-Bowden", { ...TABLET, massimo: 33 }) > corpoCheEntra("DembskiBowden", { ...TABLET, massimo: 33 }));
+  t.eq("senza misura resta il gradino", corpoCheEntra("Kagurabachi, Vol. 1", { larga: 0, alta: 0, massimo: 21 }), 21);
+  t.eq("e senza titolo pure", corpoCheEntra("", { ...TABLET, massimo: 21 }), 21);
+
+  // titolo e autore insieme, nello spazio dentro i margini del dorso
+  const DORSO = { larga: 79.56, spazio: 117.9, tetto: 22.5 };
+  const kagura = corpiDelDorso("Kagurabachi, Vol. 1", { ...DORSO, autore: 18 });
+  t.c("l'autore non è mai più grosso del titolo", kagura.autore <= kagura.titolo && kagura.autore < 18, JSON.stringify(kagura));
+  // qui e' l'altezza a stringere il titolo, non la parola piu' larga
+  const giardini = corpiDelDorso("Gardens of the Moon", { ...DORSO, tetto: 25.5, autore: 18 });
+  t.c("nemmeno quando è l'altezza a stringerlo", giardini.autore <= giardini.titolo && giardini.autore < 18, JSON.stringify(giardini));
+  const magico = corpiDelDorso("Il colore della magia", { ...DORSO, tetto: 25.5, autore: 18 });
+  t.c("e scendendo gli lascia spazio", magico.autore <= magico.titolo && magico.titolo > corpoCheEntra("Il colore della magia", { larga: DORSO.larga, alta: DORSO.spazio - 8 - 2 * 18 * 1.3, massimo: 25.5 }), JSON.stringify(magico));
+  t.eq("e dove il titolo sta largo resta al suo corpo", corpiDelDorso("Mort", { ...DORSO, tetto: 33, autore: 18 }).autore, 18);
+  const lungo = "Guida galattica per gli autostoppisti";
+  const conAutore = corpiDelDorso(lungo, { ...DORSO, spazio: 100, autore: 18 });
+  const senza = corpiDelDorso(lungo, { ...DORSO, spazio: 100 });
+  t.eq("senza autore non c'è un corpo per lui", senza.autore, 0);
+  t.c("e il titolo si prende il suo spazio", senza.titolo > conAutore.titolo, `${senza.titolo} vs ${conAutore.titolo}`);
 }

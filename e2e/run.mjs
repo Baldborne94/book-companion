@@ -125,6 +125,8 @@ async function dispositivo(browser, { sessione = false, prima = null, catalogo =
   return { ctx, p, guasti };
 }
 
+// i caratteri dell'app arrivano dopo la pagina: una misura presa prima vede Georgia
+const caratteriPronti = (p) => p.evaluate(() => document.fonts.ready.then(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)))));
 const libriDi = (p) => p.evaluate(() => JSON.parse(localStorage.getItem("bc_books") || "[]"));
 const testoAvviso = (p, re) =>
   p.evaluate((src) => {
@@ -949,6 +951,49 @@ const SCENE = [
       const motto = await p.locator("header p").count();
       if (motto) throw new Error("il motto sta anche in Libreria");
       return { guasti: d.guasti, nota: "tre schede senza ebook senza segno, «qui» su quella col file" };
+    },
+  },
+  {
+    // segnalato con la fotografia del tablet («Pirane / si», «Garde / ns
+    // of»), e il lettore: «sì, sistema i dorsi disegnati». Alla sua misura la
+    // scrittura è ×1,5 e la colonna no: ventidue dorsi su ventinove avevano
+    // una parola spezzata, e la terza riga usciva dal fondo. Ora il titolo si
+    // misura sul suo riquadro, col carattere vero
+    nome: "sul tablet i dorsi disegnati non spezzano le parole, e il titolo sta nel suo riquadro",
+    async fai({ browser }) {
+      const titoli = ["Piranesi", "Gardens of the Moon", "Kagurabachi, Vol. 1", "Morty l'apprendista", "Il colore della magia", "Guida galattica per gli autostoppisti", "The Unremembered Empire", "Oathbringer"];
+      const libri = titoli.map((title, i) => ({ id: `d${i}`, title, author: i % 2 ? "Takeru Hokazono" : "Terry Pratchett", saga: "Dorsi", sagaOrder: i + 1, fileType: "nessuno", fileTolto: true, addedAt: i + 1 }));
+      const d = await dispositivo(browser, { misura: TABLET, prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});` });
+      const { p } = d;
+      await p.goto(`${URL_APP}?apri=libreria`);
+      const guarda = () =>
+        p.evaluate(() =>
+          [...document.querySelectorAll("div")]
+            .filter((x) => x.style.webkitLineClamp === "5" && x.firstChild)
+            .map((t) => {
+              const nodo = t.firstChild;
+              const spezzate = [...nodo.textContent.matchAll(/\S+/g)].filter((m) => {
+                const r = document.createRange();
+                r.setStart(nodo, m.index);
+                r.setEnd(nodo, m.index + m[0].length);
+                return new Set([...r.getClientRects()].map((q) => Math.round(q.top))).size > 1;
+              });
+              const autore = t.parentElement.lastElementChild;
+              return { titolo: nodo.textContent, corpo: parseFloat(getComputedStyle(t).fontSize), autore: parseFloat(getComputedStyle(autore).fontSize), spezzate: spezzate.map((m) => m[0]), tagliato: t.scrollHeight > t.clientHeight + 1 };
+            })
+        );
+      await finche(async () => (await guarda()).length === titoli.length, 10000, "i dorsi disegnati non ci sono");
+      await caratteriPronti(p);
+      const dorsi = await guarda();
+      const guai = dorsi.filter((x) => x.spezzate.length || x.tagliato);
+      if (guai.length) throw new Error(`dorsi con una parola spezzata o tagliati: ${guai.map((x) => `«${x.titolo}» a ${x.corpo} px${x.spezzate.length ? ` (${x.spezzate})` : " (tagliato)"}`).join(", ")}`);
+      const piccoli = dorsi.filter((x) => x.corpo < 12);
+      if (piccoli.length) throw new Error(`titoli troppo piccoli: ${piccoli.map((x) => `«${x.titolo}» ${x.corpo}`).join(", ")}`);
+      const grossi = dorsi.filter((x) => x.autore > x.corpo);
+      if (grossi.length) throw new Error(`l'autore più grosso del titolo: ${grossi.map((x) => `«${x.titolo}» ${x.autore} su ${x.corpo}`).join(", ")}`);
+      const corto = dorsi.find((x) => x.titolo === "Piranesi");
+      if (corto.corpo < 22) throw new Error(`«Piranesi» è rimpicciolito senza motivo: ${corto.corpo} px`);
+      return { guasti: d.guasti, nota: dorsi.map((x) => `${x.titolo.split(" ")[0]} ${x.corpo}`).join(" · ") };
     },
   },
   {

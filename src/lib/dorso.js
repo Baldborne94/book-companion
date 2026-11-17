@@ -118,3 +118,144 @@ export function gradinoTitolo(titolo, quanti = GRADINI.length) {
   const i = Math.max(passo(t.length, perTutto), passo(lunga, perParola));
   return GRADINI[Math.min(i, quanti - 1)];
 }
+
+// E IL TITOLO DEVE STARCI DAVVERO, NEL RIQUADRO CHE HA (segnalato con la
+// fotografia del tablet: «Pirane / si», «Garde / ns of», «Morty l'apprend»
+// tagliato a meta'). Le soglie qui sopra sono in caratteri e misurate con la
+// scrittura a grandezza naturale; ma la colonna dello scaffale non cresce
+// con la scrittura, e sul tablet del lettore, a scrittura x1,5, il titolo ha
+// 80 pixel per 63: ogni parola da otto lettere si spezzava e la terza riga
+// usciva dal fondo. Un conto in caratteri non lo vede: «Illimitable» e
+// «Mummwwmm» hanno le stesse lettere e larghezze diverse.
+//
+// Quindi il gradino resta il TETTO, e sotto il tetto si misura: le larghezze
+// vere del Cormorant Garamond (centesimi di em, prese dal carattere nel
+// browser), la parola piu' larga contro la larghezza del riquadro, le righe
+// contro la sua altezza. E' un disegno su una copertina, non testo
+// dell'interfaccia: sotto il gradino piu' piccolo si scende, come scende il
+// titolo stampato su una copertina vera in miniatura.
+const LARGHEZZE = {
+  15: "'",
+  19: "’‘·",
+  20: ".:",
+  22: ",`",
+  23: " ;",
+  26: "!jl",
+  27: "[]i",
+  29: '"{}',
+  30: "f",
+  31: "()",
+  32: "-",
+  33: "1J",
+  34: "?Ist",
+  35: "/\\“”",
+  37: "r",
+  40: "23+_z",
+  41: "5<>e",
+  42: "$ac",
+  43: "7y",
+  44: "vx~",
+  45: "4*g",
+  46: "69",
+  47: "=«»",
+  49: "08ko",
+  50: "hqu",
+  51: "Sbdp–",
+  52: "Fn",
+  54: "#L",
+  55: "EP",
+  58: "%B",
+  60: "Z",
+  62: "Y",
+  64: "T",
+  65: "KX",
+  66: "V",
+  67: "…",
+  68: "Cw",
+  69: "R",
+  70: "DU",
+  71: "&A",
+  73: "G@N",
+  76: "H",
+  77: "OQm",
+  83: "—",
+  85: "M",
+  92: "W",
+};
+const EM = new Map(Object.entries(LARGHEZZE).flatMap(([c, lettere]) => [...lettere].map((l) => [l, c / 100])));
+// una lettera che la tavola non ha: larga come una maiuscola, e un segno di
+// un altro alfabeto quanto il suo quadrato
+const emDi = (l) => EM.get(l) ?? EM.get(l.normalize("NFD")[0]) ?? (l.codePointAt(0) >= 0x2e80 ? 1 : 0.7);
+export const larghezzaEm = (testo) => [...String(testo || "")].reduce((s, l) => s + emDi(l), 0);
+
+export const INTERLINEA_TITOLO = 1.22;
+// i pezzi che il browser puo' mandare a capo: le parole, e dopo un trattino
+const pezziDi = (titolo) =>
+  String(titolo || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((parola) => parola.split(/(?<=-)(?=.)/).map(larghezzaEm));
+
+// quante righe prende il titolo in una colonna larga `em`
+function righeIn(parole, em) {
+  const spazio = emDi(" ");
+  let righe = 1;
+  let riga = 0;
+  for (const pezzi of parole) {
+    pezzi.forEach((p, i) => {
+      const prima = riga > 0 && i === 0 ? spazio : 0;
+      if (riga + prima + p > em) {
+        righe += 1;
+        riga = p;
+      } else riga += prima + p;
+    });
+  }
+  return righe;
+}
+
+// UNA PAROLA PIU' LARGA DI COSI' SI SPEZZA: per farla entrare il corpo
+// scenderebbe sotto quel che si distingue (sullo scaffale, 12 px)
+export const PAROLA_MAX = 6.5;
+const PASSO = 0.5;
+// la tavola e' arrotondata al centesimo, lettera per lettera, e il browser
+// impagina al pixel: una riga piena fino all'orlo sulla carta va a capo sullo
+// schermo («della magia» a 18 px riempiva il riquadro esatto, e usciva la
+// terza riga)
+const MARGINE = 0.97;
+
+// Il corpo in pixel: `massimo` e' il gradino della scala, `larga` e `alta`
+// il riquadro del titolo misurato sul dorso.
+export function corpoCheEntra(titolo, { larga, alta, massimo }) {
+  const parole = pezziDi(titolo);
+  if (!parole.length || !(larga > 0) || !(alta > 0)) return massimo;
+  const piuLarga = Math.max(...parole.flat());
+  const utile = larga * MARGINE;
+  const minimo = Math.min(massimo, larga / PAROLA_MAX);
+  let corpo = Math.min(massimo, Math.floor(utile / piuLarga / PASSO) * PASSO);
+  while (corpo > minimo && righeIn(parole, utile / corpo) * corpo * INTERLINEA_TITOLO > alta) corpo -= PASSO;
+  return Math.max(minimo, corpo);
+}
+
+// TITOLO E AUTORE INSIEME, nello spazio del dorso (`larga` per `spazio`: il
+// riquadro dentro i margini, che il dorso misura su di se'). L'autore non e'
+// mai piu' grosso del titolo: dove il titolo deve rimpicciolirsi sotto di
+// lui, scende con lui (e gli lascia lo spazio che perde). Si conta sempre per le sue due
+// righe, anche quando ne prende una: contando quelle vere, ogni misura ne
+// chiederebbe un'altra al browser.
+export const INTERLINEA_AUTORE = 1.3;
+export const RIGHE_AUTORE = 2;
+// il filetto e il suo margine, sopra l'autore
+export const STACCO_AUTORE = 8;
+
+export function corpiDelDorso(titolo, { larga, spazio, tetto, autore = 0 }) {
+  const entra = (alta) => corpoCheEntra(titolo, { larga, alta, massimo: tetto });
+  const sotto = (corpo) => spazio - (autore ? STACCO_AUTORE + RIGHE_AUTORE * corpo * INTERLINEA_AUTORE : 0);
+  let corpoAutore = autore;
+  let corpoTitolo = entra(sotto(corpoAutore));
+  if (corpoAutore > corpoTitolo) {
+    corpoAutore = corpoTitolo;
+    corpoTitolo = entra(sotto(corpoAutore));
+  }
+  return { titolo: corpoTitolo, autore: corpoAutore };
+}
