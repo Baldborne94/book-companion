@@ -48,7 +48,7 @@ async function finche(vero, ms, perche) {
   throw new Error(`${perche} (dopo ${ms / 1000} s)`);
 }
 
-async function lanciaBrowser() {
+async function lanciaBrowser(args = []) {
   let chromium;
   try {
     ({ chromium } = await import("playwright"));
@@ -65,7 +65,7 @@ async function lanciaBrowser() {
   let ultimo = "";
   for (const opzioni of strade) {
     try {
-      return { browser: await chromium.launch(opzioni) };
+      return { browser: await chromium.launch({ ...opzioni, args }) };
     } catch (e) {
       ultimo = String(e.message).split("\n")[0];
     }
@@ -963,10 +963,8 @@ const SCENE = [
     async fai({ browser }) {
       const titoli = ["Piranesi", "Gardens of the Moon", "Kagurabachi, Vol. 1", "Morty l'apprendista", "Il colore della magia", "Guida galattica per gli autostoppisti", "The Unremembered Empire", "Oathbringer"];
       const libri = titoli.map((title, i) => ({ id: `d${i}`, title, author: i % 2 ? "Takeru Hokazono" : "Terry Pratchett", saga: "Dorsi", sagaOrder: i + 1, fileType: "nessuno", fileTolto: true, addedAt: i + 1 }));
-      const d = await dispositivo(browser, { misura: TABLET, prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});` });
-      const { p } = d;
-      await p.goto(`${URL_APP}?apri=libreria`);
-      const guarda = () =>
+      const guasti = [];
+      const guarda = (p) =>
         p.evaluate(() =>
           [...document.querySelectorAll("div")]
             .filter((x) => x.style.webkitLineClamp === "5" && x.firstChild)
@@ -982,18 +980,44 @@ const SCENE = [
               return { titolo: nodo.textContent, corpo: parseFloat(getComputedStyle(t).fontSize), autore: parseFloat(getComputedStyle(autore).fontSize), spezzate: spezzate.map((m) => m[0]), tagliato: t.scrollHeight > t.clientHeight + 1 };
             })
         );
-      await finche(async () => (await guarda()).length === titoli.length, 10000, "i dorsi disegnati non ci sono");
-      await caratteriPronti(p);
-      const dorsi = await guarda();
-      const guai = dorsi.filter((x) => x.spezzate.length || x.tagliato);
-      if (guai.length) throw new Error(`dorsi con una parola spezzata o tagliati: ${guai.map((x) => `«${x.titolo}» a ${x.corpo} px${x.spezzate.length ? ` (${x.spezzate})` : " (tagliato)"}`).join(", ")}`);
-      const piccoli = dorsi.filter((x) => x.corpo < 12);
-      if (piccoli.length) throw new Error(`titoli troppo piccoli: ${piccoli.map((x) => `«${x.titolo}» ${x.corpo}`).join(", ")}`);
-      const grossi = dorsi.filter((x) => x.autore > x.corpo);
-      if (grossi.length) throw new Error(`l'autore più grosso del titolo: ${grossi.map((x) => `«${x.titolo}» ${x.autore} su ${x.corpo}`).join(", ")}`);
-      const corto = dorsi.find((x) => x.titolo === "Piranesi");
-      if (corto.corpo < 22) throw new Error(`«Piranesi» è rimpicciolito senza motivo: ${corto.corpo} px`);
-      return { guasti: d.guasti, nota: dorsi.map((x) => `${x.titolo.split(" ")[0]} ${x.corpo}`).join(" · ") };
+      // `tardi`: il carattere dei titoli arriva dopo il primo disegno, e le
+      // misure prese col carattere di ripiego si devono rifare
+      const prova = async (quale, dove, tardi) => {
+        const d = await dispositivo(quale, { misura: TABLET, prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});` });
+        const { p } = d;
+        if (tardi)
+          await d.ctx.route(/cormorant/i, async (route) => {
+            await new Promise((ok) => setTimeout(ok, 600));
+            await route.continue();
+          });
+        await p.goto(`${URL_APP}?apri=libreria`);
+        await finche(async () => (await guarda(p)).length === titoli.length, 10000, `${dove}: i dorsi disegnati non ci sono`);
+        await caratteriPronti(p);
+        const dorsi = await guarda(p);
+        const guai = dorsi.filter((x) => x.spezzate.length || x.tagliato);
+        if (guai.length) throw new Error(`${dove}: dorsi con una parola spezzata o tagliati: ${guai.map((x) => `«${x.titolo}» a ${x.corpo} px${x.spezzate.length ? ` (${x.spezzate})` : " (tagliato)"}`).join(", ")}`);
+        const piccoli = dorsi.filter((x) => x.corpo < 11);
+        if (piccoli.length) throw new Error(`${dove}: titoli troppo piccoli: ${piccoli.map((x) => `«${x.titolo}» ${x.corpo}`).join(", ")}`);
+        const grossi = dorsi.filter((x) => x.autore > x.corpo);
+        if (grossi.length) throw new Error(`${dove}: l'autore più grosso del titolo: ${grossi.map((x) => `«${x.titolo}» ${x.autore} su ${x.corpo}`).join(", ")}`);
+        const corto = dorsi.find((x) => x.titolo === "Piranesi");
+        if (corto.corpo < 21) throw new Error(`${dove}: «Piranesi» è rimpicciolito senza motivo: ${corto.corpo} px`);
+        guasti.push(...d.guasti);
+        return dorsi.map((x) => x.corpo).join(" ");
+      };
+      const lisce = await prova(browser, "lettere lisce", false);
+      const tardive = await prova(browser, "carattere in ritardo", true);
+      if (tardive !== lisce) throw new Error(`col carattere arrivato dopo i corpi non sono quelli di sempre: ${tardive} invece di ${lisce}`);
+      // dove le lettere si aggiustano al pixel (il browser della CI) le parole
+      // sono più larghe della tavola: lì comanda la misura del browser
+      const altro = await lanciaBrowser(["--font-render-hinting=full"]);
+      if (!altro.browser) throw new Error(`il browser con le lettere aggiustate non parte: ${altro.saltato}`);
+      try {
+        const aggiustate = await prova(altro.browser, "lettere aggiustate al pixel", false);
+        return { guasti, nota: `lisce ${lisce} · aggiustate ${aggiustate}` };
+      } finally {
+        await altro.browser.close();
+      }
     },
   },
   {

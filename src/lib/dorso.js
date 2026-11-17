@@ -189,23 +189,35 @@ const emDi = (l) => EM.get(l) ?? EM.get(l.normalize("NFD")[0]) ?? (l.codePointAt
 export const larghezzaEm = (testo) => [...String(testo || "")].reduce((s, l) => s + emDi(l), 0);
 
 export const INTERLINEA_TITOLO = 1.22;
+
+// MA LA TAVOLA E' UNA STIMA, E IL BROWSER HA L'ULTIMA PAROLA (la scena in CI:
+// «Oathbringer» e «l'apprendista» spezzate, e qui no). Dove le lettere si
+// aggiustano al pixel (`--font-render-hinting`, il browser della CI) ogni
+// parola e' piu' larga della tavola, fino al 10% a 15 px; e l'aggiustamento
+// cambia col corpo, quindi non c'e' un fattore che lo corregga. Chi chiama
+// puo' dare la sua misura: il dorso da' il `measureText` del canvas, che
+// coincide con l'impaginazione in ogni modo di disegno (confrontati, scarto
+// zero). La tavola resta per chi un browser non ce l'ha: le prove in Node.
+export const suTavola = (testo, corpo) => larghezzaEm(testo) * corpo;
+
 // i pezzi che il browser puo' mandare a capo: le parole, e dopo un trattino
 const pezziDi = (titolo) =>
   String(titolo || "")
     .trim()
     .split(/\s+/)
     .filter(Boolean)
-    .map((parola) => parola.split(/(?<=-)(?=.)/).map(larghezzaEm));
+    .map((parola) => parola.split(/(?<=-)(?=.)/));
 
-// quante righe prende il titolo in una colonna larga `em`
-function righeIn(parole, em) {
-  const spazio = emDi(" ");
+// quante righe prende il titolo a quel corpo, in una colonna larga `utile`
+function righeIn(parole, corpo, utile, misura) {
+  const spazio = misura(" ", corpo);
   let righe = 1;
   let riga = 0;
   for (const pezzi of parole) {
-    pezzi.forEach((p, i) => {
+    pezzi.forEach((pezzo, i) => {
+      const p = misura(pezzo, corpo);
       const prima = riga > 0 && i === 0 ? spazio : 0;
-      if (riga + prima + p > em) {
+      if (riga + prima + p > utile) {
         righe += 1;
         riga = p;
       } else riga += prima + p;
@@ -215,25 +227,31 @@ function righeIn(parole, em) {
 }
 
 // UNA PAROLA PIU' LARGA DI COSI' SI SPEZZA: per farla entrare il corpo
-// scenderebbe sotto quel che si distingue (sullo scaffale, 12 px)
-export const PAROLA_MAX = 6.5;
+// scenderebbe sotto quel che si distingue (sul tablet 11 px e mezzo).
+// «Unremembered», che il lettore ha sullo scaffale, a lettere aggiustate al
+// pixel e' larga 6,6: sta dentro
+export const PAROLA_MAX = 7;
 const PASSO = 0.5;
-// la tavola e' arrotondata al centesimo, lettera per lettera, e il browser
-// impagina al pixel: una riga piena fino all'orlo sulla carta va a capo sullo
-// schermo («della magia» a 18 px riempiva il riquadro esatto, e usciva la
-// terza riga)
+// il browser impagina al sessantaquattresimo di pixel e la tavola e'
+// arrotondata al centesimo: una riga piena fino all'orlo sulla carta va a
+// capo sullo schermo («della magia» a 18 px riempiva il riquadro esatto, e
+// usciva la terza riga)
 const MARGINE = 0.97;
 
 // Il corpo in pixel: `massimo` e' il gradino della scala, `larga` e `alta`
-// il riquadro del titolo misurato sul dorso.
-export function corpoCheEntra(titolo, { larga, alta, massimo }) {
+// il riquadro del titolo misurato sul dorso, `misura(testo, corpo)` quanto e'
+// largo un testo a quel corpo. Il primo colpo viene dalla parola piu' larga
+// misurata al gradino; poi si scende finche' entra davvero, a ogni corpo con
+// la sua misura.
+export function corpoCheEntra(titolo, { larga, alta, massimo }, misura = suTavola) {
   const parole = pezziDi(titolo);
   if (!parole.length || !(larga > 0) || !(alta > 0)) return massimo;
-  const piuLarga = Math.max(...parole.flat());
   const utile = larga * MARGINE;
   const minimo = Math.min(massimo, larga / PAROLA_MAX);
-  let corpo = Math.min(massimo, Math.floor(utile / piuLarga / PASSO) * PASSO);
-  while (corpo > minimo && righeIn(parole, utile / corpo) * corpo * INTERLINEA_TITOLO > alta) corpo -= PASSO;
+  const piuLarga = (corpo) => Math.max(...parole.flat().map((p) => misura(p, corpo)));
+  const entra = (corpo) => piuLarga(corpo) <= utile && righeIn(parole, corpo, utile, misura) * corpo * INTERLINEA_TITOLO <= alta;
+  let corpo = Math.min(massimo, Math.floor((utile * massimo) / piuLarga(massimo) / PASSO) * PASSO);
+  while (corpo > minimo && !entra(corpo)) corpo -= PASSO;
   return Math.max(minimo, corpo);
 }
 
@@ -248,8 +266,8 @@ export const RIGHE_AUTORE = 2;
 // il filetto e il suo margine, sopra l'autore
 export const STACCO_AUTORE = 8;
 
-export function corpiDelDorso(titolo, { larga, spazio, tetto, autore = 0 }) {
-  const entra = (alta) => corpoCheEntra(titolo, { larga, alta, massimo: tetto });
+export function corpiDelDorso(titolo, { larga, spazio, tetto, autore = 0 }, misura = suTavola) {
+  const entra = (alta) => corpoCheEntra(titolo, { larga, alta, massimo: tetto }, misura);
   const sotto = (corpo) => spazio - (autore ? STACCO_AUTORE + RIGHE_AUTORE * corpo * INTERLINEA_AUTORE : 0);
   let corpoAutore = autore;
   let corpoTitolo = entra(sotto(corpoAutore));

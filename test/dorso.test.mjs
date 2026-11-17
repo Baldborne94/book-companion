@@ -6,7 +6,7 @@
 //
 // Qui si prova la parte che si sbaglia in silenzio: il colore. Un dorso
 // storto non solleva nessun errore — si vede e basta, e solo se guardi.
-import { numero, famigliaDi, tonoDi, vestito, gradinoTitolo, GRADINI, SCARTO, larghezzaEm, corpoCheEntra, corpiDelDorso, PAROLA_MAX, INTERLINEA_TITOLO } from "../src/lib/dorso.js";
+import { numero, famigliaDi, tonoDi, vestito, gradinoTitolo, GRADINI, SCARTO, larghezzaEm, corpoCheEntra, corpiDelDorso, suTavola, PAROLA_MAX, INTERLINEA_TITOLO } from "../src/lib/dorso.js";
 
 const libro = (o) => ({ id: "x", title: "Un titolo", author: "", saga: "", ...o });
 
@@ -172,6 +172,37 @@ export default async function (t) {
   t.c("dopo un trattino si va a capo: comanda il pezzo, non la parola", corpoCheEntra("Dembski-Bowden", { ...TABLET, massimo: 33 }) > corpoCheEntra("DembskiBowden", { ...TABLET, massimo: 33 }));
   t.eq("senza misura resta il gradino", corpoCheEntra("Kagurabachi, Vol. 1", { larga: 0, alta: 0, massimo: 21 }), 21);
   t.eq("e senza titolo pure", corpoCheEntra("", { ...TABLET, massimo: 21 }), 21);
+
+  // ---- E IL BROWSER HA L'ULTIMA PAROLA --------------------------------------
+  // La scena in CI: dove le lettere si aggiustano al pixel ogni parola e' piu'
+  // larga della tavola, e di piu' ai corpi piccoli («Oathbringer» a 15,5 px:
+  // 5,16 em contro 4,93). Chi ha un browser da' la sua misura; qui la si
+  // imita: ogni lettera arrotondata al pixel intero, per eccesso.
+  const alPixel = (testo, corpo) => [...testo].reduce((somma, l) => somma + Math.ceil(larghezzaEm(l) * corpo), 0);
+  const entraVera = (titolo, corpo) => titolo.split(/\s+/).every((p) => alPixel(p, corpo) <= TABLET.larga);
+  for (const [titolo, tetto] of [["Oathbringer", 22.5], ["Morty l'apprendista", 25.5], ["Kagurabachi, Vol. 1", 22.5]]) {
+    const stimato = corpoCheEntra(titolo, { ...TABLET, massimo: tetto });
+    const vero = corpoCheEntra(titolo, { ...TABLET, massimo: tetto }, alPixel);
+    t.c(`«${titolo}»: con la misura del browser entra davvero`, entraVera(titolo, vero) && !entraVera(titolo, stimato), `${vero} (sulla tavola ${stimato})`);
+    t.c(`«${titolo}»: e scende solo di quel che serve`, vero < stimato && vero >= stimato - 2.5 && !entraVera(titolo, vero + 1), `${vero} (sulla tavola ${stimato})`);
+  }
+  t.eq("la misura di chi non ne dà una è la tavola", corpoCheEntra("Oathbringer", { ...TABLET, massimo: 22.5 }, suTavola), corpoCheEntra("Oathbringer", { ...TABLET, massimo: 22.5 }));
+  // l'aggiustamento cambia col corpo: il primo colpo, preso al gradino, puo'
+  // promettere troppo, e a ogni corpo si richiede la sua misura
+  const strettoSotto16 = (testo, corpo) => suTavola(testo, corpo) * (corpo < 16 ? 1.2 : 1);
+  const prudente = corpoCheEntra("Oathbringer", { ...TABLET, massimo: 22.5 }, strettoSotto16);
+  t.c("una parola sola che al suo corpo non entra più fa scendere ancora", strettoSotto16("Oathbringer", prudente) <= TABLET.larga && prudente <= 13 && prudente >= 12, String(prudente));
+  // il primo colpo viene dalla parola piu' larga: scendere mezzo pixel alla
+  // volta dal gradino sarebbero trentasei misure del canvas per ogni dorso
+  let chieste = 0;
+  corpoCheEntra("Oathbringer", { ...TABLET, massimo: 33 }, (testo, corpo) => ((chieste += 1), alPixel(testo, corpo)));
+  t.c("e la misura si chiede poche volte", chieste <= 12, String(chieste));
+  // anche le righe si contano con quella misura: due parole che sulla tavola stanno accanto
+  const accanto = { larga: 70.1, alta: 20, massimo: 15 };
+  t.eq("sulla tavola stanno su una riga", corpoCheEntra("nnnn nnnn", accanto), 15);
+  t.c("col pixel intero no, e il corpo scende finché ci stanno", corpoCheEntra("nnnn nnnn", accanto, alPixel) < 15, String(corpoCheEntra("nnnn nnnn", accanto, alPixel)));
+  const kaguraVera = corpiDelDorso("Kagurabachi, Vol. 1", { larga: 79.56, spazio: 117.9, tetto: 22.5, autore: 18 }, alPixel);
+  t.c("e titolo e autore insieme usano la stessa misura", entraVera("Kagurabachi, Vol. 1", kaguraVera.titolo) && kaguraVera.autore <= kaguraVera.titolo, JSON.stringify(kaguraVera));
 
   // titolo e autore insieme, nello spazio dentro i margini del dorso
   const DORSO = { larga: 79.56, spazio: 117.9, tetto: 22.5 };

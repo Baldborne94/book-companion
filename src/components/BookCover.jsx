@@ -35,6 +35,44 @@ const osservatore =
         })
       );
 
+// E LA LARGHEZZA DELLE PAROLE LA DICE IL BROWSER (`measureText`, che coincide
+// con l'impaginazione anche dove le lettere si aggiustano al pixel; la tavola
+// di `lib/dorso.js` lì sbaglia fino al 10%). Senza leggere misure dalla
+// pagina, quindi senza farla impaginare. Finché il carattere dei titoli non è
+// arrivato il canvas misura quello di ripiego: quando arriva si dimentica
+// tutto e i dorsi si ridisegnano.
+const tela = typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
+// quante parole ha la biblioteca, per i pochi corpi che un dorso prova
+const larghezze = new Map();
+function misuraVera(testo, corpo) {
+  const chiave = `${corpo}|${testo}`;
+  let larga = larghezze.get(chiave);
+  if (larga === undefined) {
+    tela.font = `${corpo}px ${FONT_TITLE}`;
+    larga = tela.measureText(testo).width;
+    larghezze.set(chiave, larga);
+  }
+  return larga;
+}
+const CARATTERE = `16px ${FONT_TITLE}`;
+let carattereArrivato = typeof document === "undefined" || !document.fonts || document.fonts.check(CARATTERE);
+const arrivo = carattereArrivato
+  ? null
+  : document.fonts.load(CARATTERE).then(
+      () => {
+        larghezze.clear();
+        carattereArrivato = true;
+      },
+      () => {}
+    );
+
+function useCarattere() {
+  const [, ridisegna] = useState(carattereArrivato);
+  useEffect(() => {
+    if (!carattereArrivato) arrivo.then(() => ridisegna(true));
+  }, []);
+}
+
 function useRiquadro() {
   const ref = useRef(null);
   const [riquadro, setRiquadro] = useState(null);
@@ -57,9 +95,10 @@ function Disegnato({ book, radius, compact, numerato }) {
   const v = vestito(book);
   const costola = compact ? 3 : 7;
   const [spazioRef, riquadro] = useRiquadro();
+  useCarattere();
   const tetto = F[gradinoTitolo(book.title)];
   const autore = book.author ? F.minuscolo : 0;
-  const corpi = riquadro ? corpiDelDorso(book.title, { ...riquadro, tetto, autore }) : { titolo: tetto, autore };
+  const corpi = riquadro ? corpiDelDorso(book.title, { ...riquadro, tetto, autore }, tela ? misuraVera : undefined) : { titolo: tetto, autore };
   return (
     <div
       style={{
