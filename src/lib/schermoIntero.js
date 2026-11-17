@@ -17,9 +17,19 @@
 // Un browser che la domanda non la capisce (o esplode a farla) vale «non a
 // tutto schermo»: il tasto resta, che e' il lato sicuro — al peggio c'e' un
 // tasto in piu', mai uno schermo intero irraggiungibile.
+//
+// MA LO SCHERMO INTERO CHIESTO COL TASTO NON E' «L'APP APERTA A TUTTO
+// SCHERMO» (segnalato dal lettore, col tablet in mano: «se metto nel reader
+// lo schermo intero questo non mi permette di tornare fuori»). Chrome risponde
+// `display-mode: fullscreen` anche mentre un elemento e' a tutto schermo per
+// conto della pagina: toccato «Schermo» il tasto si credeva inutile e spariva,
+// e «Esci» con lui. Nel browser bastava il gesto indietro; nell'APK, da quando
+// tiene la barra di Android, il tasto e' la sola porta e la porta si chiudeva
+// alle spalle. Aperta a tutto schermo vuol dire: lo dice il modo, e nessun
+// elemento lo ha chiesto.
 export function apertaATuttoSchermo(finestra = globalThis) {
   try {
-    return !!finestra?.matchMedia?.("(display-mode: fullscreen)")?.matches;
+    return !!finestra?.matchMedia?.("(display-mode: fullscreen)")?.matches && !finestra.document?.fullscreenElement;
   } catch {
     return false;
   }
