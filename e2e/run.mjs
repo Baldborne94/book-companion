@@ -928,6 +928,30 @@ const SCENE = [
     },
   },
   {
+    // i ritocchi al tema (il lettore: «sì, fai i ritocchi al tema»): dopo
+    // «Libera spazio» quasi ogni copertina portava il segno «senza ebook»,
+    // e un segno su tutte non dice niente. Si segna l'eccezione: il libro
+    // che il file ce l'ha qui. E il motto sta solo sull'Ingresso
+    nome: "quasi tutti senza ebook: sul dorso si segna il libro che il file ce l'ha qui, e il motto sta solo sull'Ingresso",
+    async fai({ browser }) {
+      const libri = ["La nebbia", "Il bosco", "Il faro"].map((title, i) => ({ id: `s${i}`, title, author: "Autore di Prova", fileType: "epub", fileTolto: true, addedAt: i + 1 }));
+      const d = await dispositivo(browser, { misura: TABLET, prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});` });
+      const { p } = d;
+      await p.goto(URL_APP);
+      await finche(() => p.locator("header p").count(), 8000, "sull'Ingresso il motto non c'e'");
+      await importa(p, "Il ponte.epub", await epub({ titolo: "Il ponte" }), "application/epub+zip");
+      const qui = p.locator('span[title="Il file è su questo dispositivo: si apre"]');
+      await finche(async () => (await qui.count()) === 1, 10000, "il libro col file qui non porta il suo segno");
+      const tolti = await p.locator(`span[title="Tieni la scheda, non l'ebook"]`).count();
+      if (tolti) throw new Error(`${tolti} dorsi portano ancora il segno «senza ebook», che qui e' la norma`);
+      const parola = (await qui.first().textContent()).trim();
+      if (parola !== "qui") throw new Error(`il segno dice «${parola}»`);
+      const motto = await p.locator("header p").count();
+      if (motto) throw new Error("il motto sta anche in Libreria");
+      return { guasti: d.guasti, nota: "tre schede senza ebook senza segno, «qui» su quella col file" };
+    },
+  },
+  {
     // chiesto dal lettore: «il nas proprio come nas locale», «vorrei leggere
     // anche fuori casa». Il NAS su un'altra origine, come il nginx di
     // docs/NAS.md dietro Tailscale: l'indirizzo nelle Impostazioni, il

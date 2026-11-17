@@ -4,7 +4,7 @@
 // che lo diceva perduto. La decisione e' una sola e deve dire le stesse
 // cose di `senzaCopia`, o dorso e riga si smentirebbero.
 
-import { segnoDorso, senzaCopia } from "../src/lib/syncCore.js";
+import { segnoDorso, normaDelDorso, senzaCopia } from "../src/lib/syncCore.js";
 
 export default async (t) => {
   const qui = new Set(["casa"]);
@@ -30,4 +30,19 @@ export default async (t) => {
   t.eq("dorso e riga d'avviso dicono gli stessi perduti", dalDorso, dallaRiga);
   const alBuio = libri.filter((b) => segnoDorso(b, qui, null) === "perduto").length;
   t.eq("… anche al buio (nessuno)", alBuio, senzaCopia(soloNelCloud, null).length);
+
+  // SI SEGNA L'ECCEZIONE. Dal lettore, dopo «Libera spazio», quasi ogni
+  // libro ha l'ebook tolto: la norma e' quella, e il segno va ai pochi che
+  // il file ce l'hanno qui.
+  const tolti = (n) => Array.from({ length: n }, (_, i) => ({ id: `t${i}`, fileTolto: true }));
+  t.eq("quasi tutti senza ebook: la norma e' quella", normaDelDorso([...tolti(3), { id: "casa" }]), "tolto");
+  t.eq("meta' e meta': resta la norma di sempre", normaDelDorso([...tolti(2), { id: "a" }, { id: "b" }]), "qui");
+  t.eq("uno solo senza ebook fra tanti: la norma di sempre", normaDelDorso([...tolti(1), { id: "a" }, { id: "b" }]), "qui");
+  t.eq("una biblioteca vuota: la norma di sempre", normaDelDorso([]), "qui");
+  t.eq("con quella norma l'ebook tolto non si segna", segnoDorso(libri[3], qui, lassu, null, "tolto"), null);
+  t.eq("… e si segna quello che il file ce l'ha qui", segnoDorso(libri[0], qui, lassu, null, "tolto"), "qui");
+  t.eq("… ma non al buio: senza elenco di casa non si sa", segnoDorso(libri[0], null, lassu, null, "tolto"), null);
+  t.eq("la nuvoletta resta la nuvoletta", segnoDorso(libri[1], qui, lassu, null, "tolto"), "cloud");
+  t.eq("e il perduto resta perduto", segnoDorso(libri[2], qui, lassu, null, "tolto"), "perduto");
+  t.eq("e quello sull'altro dispositivo resta altrove", segnoDorso(libri[2], qui, lassu, new Map([["perso", "tablet"]]), "tolto"), "altrove");
 };

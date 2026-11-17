@@ -260,7 +260,7 @@ function CompactHeader({ onSync, signedIn, syncing, theme, onTheme, stretto }) {
 
 const GIOCO = 8;
 
-function Header({ onSync, syncing, signedIn, theme, onTheme }) {
+function Header({ onSync, syncing, signedIn, theme, onTheme, motto = true }) {
   // IL TITOLO STA FRA I TASTI SOLO SE CI STA. I due tasti stavano in
   // `position: absolute` in cima, e il titolo nel flusso, largo quanto lo
   // schermo: sul tablet non si toccavano per caso, sul telefono la candela
@@ -412,17 +412,21 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
         </span>
         Book Companion
       </h1>
-      <p
-        style={{
-          gridColumn: "1 / -1",
-          marginTop: 2,
-          fontSize: F.corpo,
-          fontStyle: "italic",
-          color: C.muted,
-        }}
-      >
-        {theme.tagline}
-      </p>
+      {/* IL MOTTO È UN BENVENUTO, e sta sull'Ingresso: nelle altre sezioni
+          era una riga in più sopra i libri (i ritocchi al tema) */}
+      {motto && (
+        <p
+          style={{
+            gridColumn: "1 / -1",
+            marginTop: 2,
+            fontSize: F.corpo,
+            fontStyle: "italic",
+            color: C.muted,
+          }}
+        >
+          {theme.tagline}
+        </p>
+      )}
     </header>
   );
 }
@@ -2359,6 +2363,7 @@ export default function App() {
           signedIn={sync.signedIn}
           theme={theme}
           onTheme={() => setThemeOpen(true)}
+          motto={section === "home"}
         />
       ) : (
         <CompactHeader
