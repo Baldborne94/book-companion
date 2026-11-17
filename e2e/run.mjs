@@ -1135,6 +1135,44 @@ const SCENE = [
     },
   },
   {
+    // il lettore, con «A Thousand Sons» e il rapporto dei guasti: «se provo a
+    // cliccare nell'indice… non me lo fa fare», e cinque «No Section Found».
+    // L'indice sta in una cartella a parte e parla da lì; epub.js cercava i
+    // suoi indirizzi nella spina così com'erano scritti
+    nome: "con l'indice in una cartella a parte, l'indice porta al capitolo e il lettore ne dice il nome",
+    async fai({ browser }) {
+      const note = [];
+      const guasti = [];
+      for (const indice of ["nav", "ncx"]) {
+        const d = await dispositivo(browser, { misura: TABLET });
+        const { p } = d;
+        const testo = async () => {
+          let t = "";
+          for (const f of p.frames()) t += await f.evaluate(() => document.body?.innerText || "").catch(() => "");
+          return t;
+        };
+        await importa(p, "Otto capitoli.epub", await epubACapitoli({ indice }), "application/epub+zip");
+        await p.getByText("Otto capitoli").first().tap();
+        await p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().tap();
+        await finche(async () => (await testo()).includes("Capitolo 1, paragrafo 1"), 25000, `${indice}: il testo del libro non compare`);
+        await p.getByRole("button", { name: "Mostra le barre" }).tap();
+        await p.getByRole("button", { name: /Indice/ }).first().tap();
+        await p.getByRole("button", { name: "Capitolo 6", exact: true }).first().tap();
+        await finche(async () => (await testo()).includes("Capitolo 6, paragrafo 1"), 10000, `${indice}: l'indice non porta al capitolo`).catch(async (e) => {
+          throw new Error(`${e.message} (${(await p.evaluate(() => JSON.parse(localStorage.getItem("bc_errori") || "[]").map((x) => x.m))).join(", ") || "registro vuoto"})`);
+        });
+        // e il piede della pagina chiama il capitolo col nome dell'indice
+        const piede = await finche(() => p.evaluate(() => (document.body.innerText.match(/Capitolo 6 · pag\. \d+/) || [])[0]), 8000, `${indice}: il lettore non dice il nome del capitolo`);
+        const registro = await p.evaluate(() => JSON.parse(localStorage.getItem("bc_errori") || "[]").map((x) => x.m));
+        if (registro.length) throw new Error(`${indice}: nel registro ${registro.join(", ")}`);
+        guasti.push(...d.guasti);
+        note.push(`${indice}: ${piede}`);
+        await d.ctx.close();
+      }
+      return { guasti, nota: note.join(" · ") };
+    },
+  },
+  {
     nome: "un ePub si importa e si apre",
     async fai({ browser }) {
       const d = await dispositivo(browser);
