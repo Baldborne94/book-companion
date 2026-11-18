@@ -4,7 +4,7 @@ import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
 import { getAux, putAux, getFile } from "../lib/bookStore.js";
 import {
-  getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights,
+  getCfi, setCfi, getMarks, getHighlights, cambiaSegnalibri, cambiaEvidenziazioni, aggiungi, togli, aggiorna,
 } from "../lib/annotations.js";
 import { getProgress, setProgress, setStatus, getStatus, loadBooks } from "../lib/library.js";
 // il tetto alle schede tenute da parte sta col resto della cache, o le
@@ -59,6 +59,13 @@ const FRAME = 6;
 // candela accesa copre tutto e si mangia i tocchi, quindi nessun ritardo
 // puo' tenerla su all'infinito.
 const SICUREZZA_CANDELA = 2500;
+// IL CAMBIO DI MISURA SI ASSESTA SOTTO UN VELO SOLO (vedi `assestaSottoIlVelo`):
+// il velo cade quando per questo tempo non si e' mosso piu' niente, e
+// comunque entro il tetto. La quiete e' piu' lunga degli 810 ms che passano
+// fra l'osservatore del riquadro e la misura dell'avanzo (110 + 700): se
+// quella misura ritaglia, deve trovare il velo ancora su
+const QUIETE_ASSESTO = 1000;
+const TETTO_ASSESTO = 4000;
 const HEAD = 8;
 const FOOT = 8;
 const EDGE_STRIPES =
@@ -231,6 +238,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   const [toc, setToc] = useState([]);
   const [marks, setMarks] = useState(() => getMarks(book.id));
   const [hls, setHls] = useState(() => getHighlights(book.id));
+  // IL PANNELLO MOSTRA QUEL CHE C'È SALVATO ADESSO: a libro aperto la
+  // sincronizzazione può aver posato qui un segnalibro dell'altro dispositivo
+  useEffect(() => {
+    if (panel === "marks") setMarks(getMarks(book.id));
+    if (panel === "hl") setHls(getHighlights(book.id));
+  }, [panel, book.id]);
   const [selMenu, setSelMenu] = useState(null);
   const [query, setQuery] = useState("");
   const [searchState, setSearchState] = useState({ busy: false, results: null });
@@ -261,6 +274,46 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     el.style.transition = "none";
     el.style.opacity = "1";
   };
+  // IL CAMBIO DI MISURA SI ASSESTA SOTTO UN VELO SOLO (il lettore, entrando e
+  // uscendo dallo schermo intero: «fa questo sfarfallio… che non mi piace»).
+  // Misurato sui fotogrammi: dopo un cambio di misura la pagina spariva e
+  // riappariva tre volte in 2,7 s — epub.js che si reimpagina a vista, poi il
+  // velo dell'osservatore, poi di nuovo il velo quando l'avanzo ritagliava.
+  // Ora il velo sale al primo segno (a mano, come sopra: epub.js si muove
+  // entro 100 ms) e resta finché reimpaginamenti e misure non tacciono per
+  // `QUIETE_ASSESTO`. Chi lavora sotto di lui lo dice richiamando questa
+  // funzione; il tetto lo fa cadere comunque.
+  const [assesto, setAssesto] = useState(false);
+  const assestoRef = useRef(false);
+  const quieteTimer = useRef(null);
+  const tettoAssesto = useRef(null);
+  const assestaSottoIlVelo = useCallback(() => {
+    const fine = () => {
+      clearTimeout(quieteTimer.current);
+      clearTimeout(tettoAssesto.current);
+      assestoRef.current = false;
+      setAssesto(false);
+    };
+    if (!assestoRef.current) {
+      assestoRef.current = true;
+      alzaIlVelo();
+      // lo stile si fissa ADESSO: il render che segue rimette la transizione
+      // prima che il browser abbia guardato, e senza questa lettura vedrebbe
+      // solo «da 0 a 1 in 90 ms», con la pagina che balla lì sotto a vista
+      if (veloRef.current) void getComputedStyle(veloRef.current).opacity;
+      setAssesto(true);
+      tettoAssesto.current = setTimeout(fine, TETTO_ASSESTO);
+    }
+    clearTimeout(quieteTimer.current);
+    quieteTimer.current = setTimeout(fine, QUIETE_ASSESTO);
+  }, []);
+  useEffect(
+    () => () => {
+      clearTimeout(quieteTimer.current);
+      clearTimeout(tettoAssesto.current);
+    },
+    []
+  );
   const [dict, setDict] = useState(null);
   const [endCard, setEndCard] = useState(null);
   // la nota a piè di pagina, letta SUL POSTO: il testo della nota o null.
@@ -430,8 +483,27 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     viewerRef.current.style.paddingTop = `${HEAD + su}px`;
     viewerRef.current.style.paddingBottom = `calc(${FOOT + giu}px + env(safe-area-inset-bottom))`;
     relayout(anchor.current || live.current.cfi);
+    // il ritaglio reimpagina: se c'è un assestamento in corso, è ancora suo
+    if (assestoRef.current) assestaSottoIlVelo();
     return true;
-  }, [relayout, book.id]);
+  }, [relayout, book.id, assestaSottoIlVelo]);
+
+  // UNA MISURA GIÀ VISTA RIPARTE DAL SUO RITAGLIO (lo schermo intero che va
+  // e viene, il tablet che gira): come all'apertura, l'avanzo ricordato per
+  // questo schermo si mette prima di reimpaginare, e la misura poi conferma
+  // o corregge. Senza, ogni cambio rimisurava da zero: ritaglio nuovo,
+  // un altro reimpaginamento, e il velo su un secondo in più.
+  const avanzoDiQuestaMisura = useCallback(() => {
+    if (!avanzoPronto.current || live.current.settings.flow === "scrolled") return;
+    const g = geometria(live.current.settings);
+    const noto = avanzoRicordato(book.id, g) ?? avanzoDaAltri(g);
+    if (noto == null || noto === avanzoRef.current) return;
+    avanzoRef.current = noto;
+    setAvanzo(noto);
+    const { su, giu } = spartiAvanzo(noto);
+    viewerRef.current.style.paddingTop = `${HEAD + su}px`;
+    viewerRef.current.style.paddingBottom = `calc(${FOOT + giu}px + env(safe-area-inset-bottom))`;
+  }, [book.id]);
 
   // il ritardo lascia finire a epub.js il reimpaginamento che ha gia' per
   // le mani: si misura sopra il suo risultato, non mentre lo scrive
@@ -1313,6 +1385,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
     // ha gia' fatto centro — trova l'avanzo giusto e non tocca niente.
     let secondo = null;
     const onSize = () => {
+      if (live.current.locReady && rendRef.current) assestaSottoIlVelo();
       chiediAvanzo(700);
       clearTimeout(secondo);
       secondo = setTimeout(() => chiediAvanzo(0), 1600);
@@ -1324,7 +1397,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       window.removeEventListener("resize", onSize);
       window.removeEventListener("orientationchange", onSize);
     };
-  }, [chiediAvanzo]);
+  }, [chiediAvanzo, assestaSottoIlVelo]);
 
   // IL RIQUADRO SI GUARDA DA SÉ. Il vecchio ResizeObserver decideva LUI
   // quando reimpaginare ed è stato tolto con la pulizia del reader; questo
@@ -1338,16 +1411,25 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   useEffect(() => {
     const el = viewerRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
+    // IL NOSTRO RITAGLIO NON È UN CAMBIO DI SCHERMO: l'avanzo riscrive il
+    // margine del riquadro, l'osservatore lo sente come ogni altra misura e
+    // rifaceva tutto il giro — un secondo reimpaginamento, e il velo su
+    // mezzo secondo in più. Chi ritaglia reimpagina già da sé: qui si guarda
+    // il riquadro da fuori, margini compresi, e se quello è fermo si tace.
+    let fuori = `${el.clientWidth}x${el.clientHeight}`;
     const ro = new ResizeObserver(() => {
+      const adesso = `${el.clientWidth}x${el.clientHeight}`;
+      if (adesso === fuori) return;
+      fuori = adesso;
       clearTimeout(roTimer.current);
       roTimer.current = setTimeout(() => {
         if (!live.current.locReady || !rendRef.current) return;
         if (scartoRiquadro() < 8) return;
-        setVelo(true);
+        assestaSottoIlVelo();
         setTimeout(() => {
+          avanzoDiQuestaMisura();
           relayout(anchor.current || live.current.cfi);
           chiediAvanzo(700);
-          setTimeout(() => setVelo(false), 700);
         }, 110);
       }, 300);
     });
@@ -1356,7 +1438,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       clearTimeout(roTimer.current);
       ro.disconnect();
     };
-  }, [scartoRiquadro, relayout, chiediAvanzo]);
+  }, [scartoRiquadro, relayout, chiediAvanzo, assestaSottoIlVelo, avanzoDiQuestaMisura]);
 
 
 
@@ -1948,9 +2030,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       .filter(Boolean)
       .join(" · ") || "Segnalibro";
     const m = { id: crypto.randomUUID(), cfi: live.current.cfi, label, createdAt: Date.now() };
-    const next = [...marks, m];
-    setMarks(next);
-    saveMarks(book.id, next);
+    setMarks(cambiaSegnalibri(book.id, aggiungi(m)));
     notify("Segnalibro riposto tra le pagine 📑");
   }
 
@@ -1968,9 +2048,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   }
 
   function removeMark(m) {
-    const next = marks.filter((x) => x.id !== m.id);
-    setMarks(next);
-    saveMarks(book.id, next);
+    setMarks(cambiaSegnalibri(book.id, togli(m)));
   }
 
   // Le schede dell'Oracolo — «Chi è costui?» e «Dove eravamo rimasti» — si
@@ -2097,9 +2175,7 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
       createdAt: Date.now(),
     };
     addAnnotation(rendRef.current, h);
-    const next = [...hls, h];
-    setHls(next);
-    saveHighlights(book.id, next);
+    setHls(cambiaEvidenziazioni(book.id, aggiungi(h)));
     setSelMenu(null);
   }
 
@@ -2189,15 +2265,12 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
   }
 
   function saveNotes(next) {
-    setHls(next);
-    saveHighlights(book.id, next);
+    setHls(cambiaEvidenziazioni(book.id, aggiorna(next)));
   }
 
   function removeHighlight(h) {
     try { rendRef.current?.annotations.remove(h.cfi, "highlight"); } catch { /* vista non montata */ }
-    const next = hls.filter((x) => x.id !== h.id);
-    setHls(next);
-    saveHighlights(book.id, next);
+    setHls(cambiaEvidenziazioni(book.id, togli(h)));
   }
 
   async function runSearch() {
@@ -2648,8 +2721,8 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
               zIndex: 4,
               background: theme.bg,
               pointerEvents: "none",
-              opacity: velo ? 1 : 0,
-              transition: `opacity ${velo ? 90 : 300}ms ease-in-out`,
+              opacity: velo || assesto ? 1 : 0,
+              transition: `opacity ${velo || assesto ? 90 : 300}ms ease-in-out`,
             }}
           />
           {/* i veli del libro: l'alfa sta nel colore (un riempimento

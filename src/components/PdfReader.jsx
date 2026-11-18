@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
 import { getFile } from "../lib/bookStore.js";
-import { getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights } from "../lib/annotations.js";
+import { getCfi, setCfi, getMarks, getHighlights, cambiaSegnalibri, cambiaEvidenziazioni, aggiungi, togli, aggiorna } from "../lib/annotations.js";
 import { setProgress, setStatus, getStatus, loadBooks } from "../lib/library.js";
 // il tetto alle schede tenute da parte sta col resto della cache, o le
 // due copie prenderebbero strade diverse
@@ -517,15 +517,12 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
       rects: sel.rects,
       createdAt: Date.now(),
     };
-    const next = [...hls, h];
-    setHls(next);
-    saveHighlights(book.id, next);
+    setHls(cambiaEvidenziazioni(book.id, aggiungi(h)));
     clearSelection();
   }
 
   function saveHls(next) {
-    setHls(next);
-    saveHighlights(book.id, next);
+    setHls(cambiaEvidenziazioni(book.id, aggiorna(next)));
   }
 
   async function runSearch() {
@@ -697,16 +694,12 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
       label: `pag. ${live.current.page}`,
       createdAt: Date.now(),
     };
-    const next = [...marks, m];
-    setMarks(next);
-    saveMarks(book.id, next);
+    setMarks(cambiaSegnalibri(book.id, aggiungi(m)));
     notify("Segnalibro riposto tra le pagine 📑");
   }
 
   function removeMark(m) {
-    const next = marks.filter((x) => x.id !== m.id);
-    setMarks(next);
-    saveMarks(book.id, next);
+    setMarks(cambiaSegnalibri(book.id, togli(m)));
   }
 
   // il margine attorno al foglio non e' terra di nessuno: vale come il bordo
@@ -1329,7 +1322,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
               setPanel(null);
             }}
             onChange={saveHls}
-            onRemove={(h) => saveHls(hls.filter((x) => x.id !== h.id))}
+            onRemove={(h) => setHls(cambiaEvidenziazioni(book.id, togli(h)))}
             empty="Seleziona un passaggio nella pagina per evidenziarlo: lo ritroverai qui e nel giardino delle citazioni."
           />
         </Panel>

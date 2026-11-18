@@ -3,7 +3,7 @@ import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
 import { convertiLibroInCbz } from "../lib/sync.js";
 import { getFile } from "../lib/bookStore.js";
-import { getCfi, setCfi, getMarks, saveMarks } from "../lib/annotations.js";
+import { getCfi, setCfi, getMarks, cambiaSegnalibri, aggiungi, togli } from "../lib/annotations.js";
 import { setProgress, setStatus } from "../lib/library.js";
 import { vocePerVoltata, segnaVoltata } from "../lib/voltate.js";
 import { loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
@@ -780,16 +780,12 @@ export default function ComicReader({ book, startCfi, music, onMusicToggle, onMu
 
   function addMark() {
     const m = { id: crypto.randomUUID(), cfi: String(live.current.page), label: `pag. ${live.current.page}`, createdAt: Date.now() };
-    const next = [...marks, m];
-    setMarks(next);
-    saveMarks(book.id, next);
+    setMarks(cambiaSegnalibri(book.id, aggiungi(m)));
     notify?.("Segnalibro riposto tra le pagine 📑");
   }
 
   function removeMark(m) {
-    const next = marks.filter((x) => x.id !== m.id);
-    setMarks(next);
-    saveMarks(book.id, next);
+    setMarks(cambiaSegnalibri(book.id, togli(m)));
   }
 
   // ---- il gesto: lo stesso della tavola, piu' il tocco e la scorsa ------

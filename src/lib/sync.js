@@ -310,8 +310,15 @@ export async function syncNow({ onProgress, onLibri } = {}) {
     if (row.deleted) continue;
     const r = intere.get(row.id);
     if (!r || r.deleted) continue;
-    const segni = fondiAnnotazioni(row.marks, Array.isArray(r.marks) ? r.marks : []);
-    const evid = fondiAnnotazioni(row.highlights, Array.isArray(r.highlights) ? r.highlights : []);
+    // QUEL CHE C'E' QUI ADESSO, non la riga letta all'inizio del giro: fra
+    // quella lettura e questo punto si aspetta la rete (con duemila libri,
+    // secondi), e un segnalibro messo nell'attesa non stava nella riga. La
+    // fusione lo ignorava e `posaSegnalibri` riscriveva l'elenco senza di
+    // lui: sparito dal dispositivo e mai salito (il lettore: «mi cancella
+    // ancora l'ultimo segnalibro»). Lettura e scrittura stanno nello stesso
+    // respiro, senza attese in mezzo.
+    const segni = fondiAnnotazioni(segnalibriInteri(row.id), Array.isArray(r.marks) ? r.marks : []);
+    const evid = fondiAnnotazioni(evidenziazioniIntere(row.id), Array.isArray(r.highlights) ? r.highlights : []);
     row.marks = segni.lista;
     row.highlights = evid.lista;
     posaSegnalibri(row.id, segni.lista);

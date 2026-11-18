@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { C, TEMA, FONT_TITLE, F, R, px } from "../data/constants.js";
-import { getHighlights, saveHighlights, getMarks } from "../lib/annotations.js";
+import { getHighlights, getMarks, cambiaEvidenziazioni, togli } from "../lib/annotations.js";
 import { raccogli, filtra, conta, testoCitazione, esporta } from "../lib/citazioni.js";
 
 export default function QuoteGarden({ books, onClose, onReadAt }) {
@@ -19,7 +19,7 @@ export default function QuoteGarden({ books, onClose, onReadAt }) {
   const cercando = !!query.trim();
 
   function removeQuote(bookId, quote) {
-    saveHighlights(bookId, getHighlights(bookId).filter((h) => h.id !== quote.id));
+    cambiaEvidenziazioni(bookId, togli(quote));
     setVersion((v) => v + 1);
   }
 

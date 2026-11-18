@@ -1173,6 +1173,122 @@ const SCENE = [
     },
   },
   {
+    // il lettore, due volte: «mi aveva salvato l'ultimo segnalibro, ma quando
+    // poi l'ho riaperto non c'era più», «mi cancella ancora l'ultimo
+    // segnalibro». La sincronizzazione fotografava i segnalibri all'inizio del
+    // giro, aspettava la rete, e in partenza riscriveva quelli del libro dalla
+    // fotografia: il segnalibro messo nell'attesa spariva dal dispositivo
+    nome: "un segnalibro messo mentre la sincronizzazione aspetta la rete resta, qui e nel cloud",
+    async fai({ browser, db }) {
+      const d = await dispositivo(browser, { sessione: true, misura: TABLET });
+      const { p } = d;
+      const testo = async () => {
+        let t = "";
+        for (const f of p.frames()) t += await f.evaluate(() => document.body?.innerText || "").catch(() => "");
+        return t;
+      };
+      const segnalibri = () =>
+        p.evaluate(() => {
+          const id = JSON.parse(localStorage.getItem("bc_books"))[0].id;
+          return JSON.parse(localStorage.getItem(`bc_marks_${id}`) || "[]").filter((m) => !m.deleted).length;
+        });
+      await importa(p, "Otto capitoli.epub", await epubACapitoli(), "application/epub+zip");
+      await finche(() => db.righe().some((r) => r.title === "Otto capitoli"), 20000, "il libro non sale nel cloud");
+      await p.getByText("Otto capitoli").first().tap();
+      await p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().tap();
+      await finche(async () => (await testo()).includes("Capitolo 1, paragrafo 1"), 25000, "il testo del libro non compare");
+      // i giri dell'avvio e dell'apertura sono finiti
+      await aspetta(4000);
+      // da qui il cloud risponde piano alle letture, come con duemila libri
+      let lenta = true;
+      let inAttesa = 0;
+      await d.ctx.route(
+        (u) => u.port === String(PORTA_DB) && u.pathname === "/rest/v1/books",
+        async (route) => {
+          if (lenta && route.request().method() === "GET") {
+            inAttesa += 1;
+            await aspetta(2500);
+          }
+          await route.continue();
+        }
+      );
+      // una voltata (la riga del libro deve salire), poi l'app torna davanti
+      await p.touchscreen.tap(850, 800);
+      await aspetta(1200);
+      await p.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await finche(() => inAttesa > 0, 10000, "la sincronizzazione non parte");
+      // il giro aspetta la rete: adesso si mette il segnalibro
+      await p.getByRole("button", { name: "Mostra le barre" }).tap();
+      await p.getByRole("button", { name: /Segnalibri/ }).first().tap();
+      await p.getByRole("button", { name: "📑 Salva qui" }).tap();
+      await finche(async () => (await segnalibri()) === 1, 5000, "il segnalibro non si salva");
+      // e un'evidenziazione, scritta dove la scrive il lettore: stessa strada
+      await p.evaluate(() => {
+        const id = JSON.parse(localStorage.getItem("bc_books"))[0].id;
+        localStorage.setItem(`bc_hl_${id}`, JSON.stringify([{ id: "ev1", cfi: "epubcfi(/6/2!/4/4,/1:0,/1:20)", text: "la nebbia saliva dal fiume", color: "gold", createdAt: Date.now(), updatedAt: Date.now() }]));
+      });
+      lenta = false;
+      // il giro finisce: il segnalibro e' ancora qui, e sale
+      await finche(() => (db.righe().find((r) => r.title === "Otto capitoli")?.marks || []).filter((m) => !m.deleted).length === 1, 25000, `il segnalibro non arriva nel cloud (qui ne restano ${await segnalibri()})`).catch(async (e) => {
+        throw new Error(`${e.message}; alla fine qui ${await segnalibri()}`);
+      });
+      if ((await segnalibri()) !== 1) throw new Error(`dopo il giro qui restano ${await segnalibri()} segnalibri`);
+      const evidenziate = await p.evaluate(() => JSON.parse(localStorage.getItem(`bc_hl_${JSON.parse(localStorage.getItem("bc_books"))[0].id}`) || "[]").length);
+      const lassu = (db.righe().find((r) => r.title === "Otto capitoli")?.highlights || []).length;
+      if (evidenziate !== 1 || lassu !== 1) throw new Error(`l'evidenziazione messa nell'attesa: qui ${evidenziate}, nel cloud ${lassu}`);
+      // e riaperto il libro c'e'
+      await p.goto(`${URL_APP}?apri=libreria`);
+      await p.getByText("Otto capitoli").first().tap();
+      await p.getByRole("button", { name: /Apri il libro|Riprendi|Continua|Comincia/ }).first().tap();
+      await finche(async () => (await testo()).includes("Capitolo"), 25000, "il libro non si riapre");
+      await p.getByRole("button", { name: "Mostra le barre" }).tap();
+      await p.getByRole("button", { name: /Segnalibri/ }).first().tap();
+      if (await p.getByText("Nessun segnalibro ancora.").count()) throw new Error("riaperto il libro, il segnalibro non c'è più");
+      return { guasti: d.guasti, nota: `messo con ${inAttesa} letture del cloud in attesa, rimasto qui e salito` };
+    },
+  },
+  {
+    // e l'altra strada dello stesso guasto: a libro aperto la sincronizzazione
+    // posa qui un segnalibro dell'altro dispositivo, il lettore ha in mano
+    // l'elenco di quando si è aperto, e salvandone uno suo quello arrivato
+    // diventava una lapide, cancellato ovunque
+    nome: "un segnalibro arrivato dall'altro dispositivo a libro aperto si vede nel pannello, e aggiungerne uno non lo cancella",
+    async fai({ browser }) {
+      const d = await dispositivo(browser, { misura: TABLET });
+      const { p } = d;
+      const testo = async () => {
+        let t = "";
+        for (const f of p.frames()) t += await f.evaluate(() => document.body?.innerText || "").catch(() => "");
+        return t;
+      };
+      await importa(p, "Otto capitoli.epub", await epubACapitoli(), "application/epub+zip");
+      await p.getByText("Otto capitoli").first().tap();
+      await p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().tap();
+      await finche(async () => (await testo()).includes("Capitolo 1, paragrafo 1"), 25000, "il testo del libro non compare");
+      // quel che fa `posaSegnalibri` quando un giro riceve la riga del libro
+      await p.evaluate(() => {
+        const id = JSON.parse(localStorage.getItem("bc_books"))[0].id;
+        localStorage.setItem(`bc_marks_${id}`, JSON.stringify([{ id: "dal-pc", cfi: "epubcfi(/6/8!/4/2/1:0)", label: "Dal computer · 40%", createdAt: Date.now() - 5000, updatedAt: Date.now() - 5000 }]));
+      });
+      await p.getByRole("button", { name: "Mostra le barre" }).tap();
+      await p.getByRole("button", { name: /Segnalibri/ }).first().tap();
+      await finche(() => p.getByText("Dal computer · 40%").count(), 5000, "il segnalibro arrivato dall'altro dispositivo non si vede nel pannello");
+      await p.getByRole("button", { name: "📑 Salva qui" }).tap();
+      const stato = await finche(
+        () =>
+          p.evaluate(() => {
+            const tutti = JSON.parse(localStorage.getItem(`bc_marks_${JSON.parse(localStorage.getItem("bc_books"))[0].id}`) || "[]");
+            return tutti.length === 2 ? tutti.map((m) => (m.deleted ? "lapide" : "vivo")).join(" ") : null;
+          }),
+        5000,
+        "il segnalibro nuovo non si salva"
+      );
+      if (stato !== "vivo vivo") throw new Error(`dopo «Salva qui» i due segnalibri sono: ${stato}`);
+      if (!(await p.getByText("Dal computer · 40%").count())) throw new Error("dopo «Salva qui» quello arrivato sparisce dal pannello");
+      return { guasti: d.guasti, nota: "arrivato a libro aperto, visto nel pannello, vivo dopo il mio" };
+    },
+  },
+  {
     nome: "un ePub si importa e si apre",
     async fai({ browser }) {
       const d = await dispositivo(browser);
@@ -1375,6 +1491,134 @@ const SCENE = [
       const scartate = await d.p.evaluate(() => JSON.parse(localStorage.getItem("bc_pause") || "[]")[0]?.x?.length || 0);
       if (scartate) throw new Error(`${scartate} pause scartate: il tempo nella scheda e' stato buttato`);
       return { guasti: d.guasti, nota: `${Math.round((dopo - prima) / 60)} min contati fra le due voltate` };
+    },
+  },
+  {
+    // segnalato dal lettore: «fa questo sfarfallio tra l'entrare e l'uscire
+    // [dallo schermo intero] che non mi piace». Misurato: a ogni cambio di
+    // misura la pagina spariva e tornava tre volte in 2,7 secondi (epub.js
+    // che reimpagina, noi che riancoriamo, il ritaglio dell'avanzo), e il
+    // velo arrivava dopo. Lo schermo intero vero non cambia la finestra di
+    // un browser senza testa: qui la finestra cambia altezza come quando le
+    // barre di Chrome vanno e vengono
+    nome: "cambiando misura a libro aperto la pagina si assesta sotto un velo solo, che c'e' dal primo fotogramma",
+    async fai({ browser }) {
+      const CON_LE_BARRE = 1435;
+      const SENZA = TABLET.viewport.height;
+      const d = await dispositivo(browser, { misura: { ...TABLET, viewport: { width: TABLET.viewport.width, height: CON_LE_BARRE } } });
+      const { p } = d;
+      const testo = async () => {
+        let t = "";
+        for (const f of p.frames()) t += await f.evaluate(() => document.body?.innerText || "").catch(() => "");
+        return t;
+      };
+      await p.goto(URL_APP);
+      await importa(p, "Otto capitoli.epub", await epubACapitoli(), "application/epub+zip");
+      await p.getByText("Otto capitoli").first().tap();
+      await p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().tap();
+      await finche(async () => (await testo()).includes("Capitolo 1, paragrafo 1"), 25000, "il testo del libro non compare");
+      await aspetta(2500);
+      for (let i = 0; i < 3; i++) {
+        await p.touchscreen.tap(850, 800);
+        await aspetta(900);
+      }
+      await aspetta(1500);
+      const DURATA = 5200;
+      // il velo e il ritaglio del riquadro, fotogramma per fotogramma, da
+      // quando `mossa` scatta; e a ogni pagina rifatta (un iframe nuovo, o
+      // uno che cambia misura) quanto era su il velo in quel momento
+      const segui = async (mossa, quanto = DURATA) => {
+        await p.evaluate((quanto) => {
+          const riquadro = document.querySelector(".epub-container").parentElement;
+          const velo = [...riquadro.parentElement.querySelectorAll('div[aria-hidden="true"]')].find((x) => x.style.zIndex === "4" && x.style.pointerEvents === "none");
+          window.__traccia = [];
+          window.__rifatte = [];
+          window.__zero = null;
+          window.__occhio?.disconnect();
+          window.__occhio = new MutationObserver((mosse) => {
+            const rifatta = mosse.some((m) => (m.type === "attributes" ? m.target.tagName === "IFRAME" : [...m.addedNodes].some((n) => n.nodeType === 1 && (n.tagName === "IFRAME" || n.querySelector?.("iframe")))));
+            if (rifatta) window.__rifatte.push([performance.now(), Number(getComputedStyle(velo).opacity)]);
+          });
+          window.__occhio.observe(riquadro, { childList: true, subtree: true, attributes: true, attributeFilter: ["style"] });
+          window.__via = () => {
+            const t0 = performance.now();
+            window.__zero = t0;
+            const g = () => {
+              const t = performance.now() - t0;
+              window.__traccia.push([Math.round(t), Number(getComputedStyle(velo).opacity), getComputedStyle(riquadro).paddingTop]);
+              if (t < quanto) requestAnimationFrame(g);
+            };
+            requestAnimationFrame(g);
+          };
+        }, quanto);
+        await mossa();
+        await aspetta(quanto + 400);
+        const tr = await p.evaluate(() => window.__traccia);
+        const rifatte = await p.evaluate(() => (window.__occhio.disconnect(), window.__rifatte.map((r) => [Math.round(r[0] - window.__zero), r[1]])));
+        if (tr.length < 20) throw new Error(`la traccia ha ${tr.length} fotogrammi: non si e' misurato niente`);
+        let salite = tr[0][1] >= 0.5 ? 1 : 0;
+        let discese = 0;
+        for (let i = 1; i < tr.length; i++) {
+          if (tr[i - 1][1] < 0.5 && tr[i][1] >= 0.5) salite++;
+          if (tr[i - 1][1] >= 0.5 && tr[i][1] < 0.5) discese++;
+        }
+        const ritaglio = tr.at(-1)[2];
+        return { tr, rifatte, salite, discese, primo: tr[0][1], fine: tr.at(-1)[1], coperta: tr.filter((r) => r[1] >= 0.99).at(-1)?.[0] ?? 0, ritaglio, pronto: tr.find((r) => r[2] === ritaglio)[0], daPrima: tr[0][2] };
+      };
+      const cambia = (alta) =>
+        segui(async () => {
+          await p.evaluate(() => addEventListener("resize", () => window.__via(), { once: true }));
+          await p.setViewportSize({ width: TABLET.viewport.width, height: alta });
+        });
+      const giri = [
+        ["a tutto schermo, misura mai vista", await cambia(SENZA)],
+        ["di nuovo con le barre", await cambia(CON_LE_BARRE)],
+        ["a tutto schermo, misura gia' vista", await cambia(SENZA)],
+      ];
+      // quel che vale per ogni assestamento: un velo solo, ogni pagina
+      // rifatta sotto il velo pieno, e il velo ancora su per un po' dopo
+      // l'ultima (il reimpaginamento finisce dopo che l'iframe e' nato)
+      const DOPO_L_ULTIMA = 400;
+      const sottoUnVeloSolo = (nome, g) => {
+        if (!g.rifatte.length) throw new Error(`${nome}: la pagina non si e' rifatta, la scena non prova niente`);
+        const scoperta = g.rifatte.find((r) => r[1] < 0.99);
+        if (scoperta) throw new Error(`${nome}: a ${scoperta[0]} ms la pagina si rifa' col velo a ${scoperta[1]}, e si vede`);
+        if (g.salite !== 1 || g.discese !== 1) throw new Error(`${nome}: il velo sale ${g.salite} volte e scende ${g.discese}: la pagina va e viene`);
+        if (g.coperta - g.rifatte.at(-1)[0] < DOPO_L_ULTIMA) throw new Error(`${nome}: l'ultima pagina si rifa' a ${g.rifatte.at(-1)[0]} ms e il velo cade a ${g.coperta}: troppo presto`);
+        if (g.fine > 0.01) throw new Error(`${nome}: dopo ${DURATA} ms il velo e' ancora a ${g.fine}`);
+      };
+      for (const [nome, g] of giri) {
+        if (g.primo < 0.99) throw new Error(`${nome}: al primo fotogramma il velo e' a ${g.primo}, e la pagina si vede reimpaginare`);
+        sottoUnVeloSolo(nome, g);
+      }
+      if (!(await testo()).includes("Capitolo")) throw new Error("dopo i cambi di misura il testo non c'e' piu'");
+      // il ritaglio di una misura gia' vista si rimette SUBITO, prima della
+      // misura dell'avanzo (700 ms dopo): se no la pagina si reimpagina due
+      // volte, e il velo resta su 700 ms in piu'. Il confronto e' con la
+      // misura mai vista dello stesso giro, non con un orologio
+      const [mai, , vista] = giri.map((g) => g[1]);
+      if (vista.ritaglio === vista.daPrima) throw new Error(`le due misure hanno lo stesso ritaglio (${vista.ritaglio}): la scena non prova il ritaglio ricordato`);
+      if (!(vista.pronto < 800 || vista.pronto < mai.pronto - 300)) throw new Error(`il ritaglio della misura gia' vista arriva a ${vista.pronto} ms, quello della mai vista a ${mai.pronto}: non e' stato ricordato`);
+      // il nostro ritaglio non e' un cambio di schermo: il margine del
+      // riquadro che cambia da solo non rialza il velo
+      const fermo = await segui(async () => {
+        await p.evaluate(() => {
+          const riquadro = document.querySelector(".epub-container").parentElement;
+          riquadro.style.paddingBottom = `${parseFloat(getComputedStyle(riquadro).paddingBottom) + 6}px`;
+          window.__via();
+        });
+      }, 1500);
+      if (fermo.salite) throw new Error("il margine del riquadro cambia e il velo si alza: il ritaglio e' preso per un cambio di schermo");
+      // e il riquadro che cambia senza che cambi la finestra (lo vede solo
+      // l'osservatore) si assesta sotto il velo anche lui
+      const stretto = await segui(async () => {
+        await p.evaluate(() => {
+          document.querySelector(".epub-container").parentElement.style.bottom = "60px";
+          window.__via();
+        });
+      }, 3200);
+      sottoUnVeloSolo("il riquadro che si stringe da solo", stretto);
+      return { guasti: d.guasti, nota: `velo su ${giri.map((g) => g[1].coperta).join(", ")} ms · ritaglio pronto a ${mai.pronto} ms la prima volta, a ${vista.pronto} la seconda` };
     },
   },
   {
