@@ -42,6 +42,7 @@ import MusicPlayer from "./components/MusicPlayer.jsx";
 import { getBookMusic, setBookMusic, legameMusica, comeRiprendere } from "./lib/music.js";
 import { getJump, clearJump, getMarks } from "./lib/annotations.js";
 import { doppioniInBiblioteca } from "./lib/doppioni.js";
+import { aRiposo } from "./lib/riposo.js";
 import { daAvvisare } from "./lib/oracle.js";
 import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
@@ -128,8 +129,6 @@ function precaricaStanze() {
   };
   aRiposo(prossima);
 }
-const aRiposo = (f) =>
-  typeof window.requestIdleCallback === "function" ? window.requestIdleCallback(f, { timeout: 4000 }) : setTimeout(f, 300);
 const Reader = lazy(() => import("./components/Reader.jsx"));
 const PdfReader = lazy(() => import("./components/PdfReader.jsx"));
 const ComicReader = lazy(() => import("./components/ComicReader.jsx"));
@@ -1879,19 +1878,26 @@ export default function App() {
   // uniscono dalla Manutenzione: di ogni gruppo resta la scheda che conta di
   // piu', le altre se ne vanno.
 
+  //
+  // A RIPOSO: servono alla Manutenzione, e all'avvio l'elenco delle
+  // copertine e il conto (due volte: l'effetto riparte quando arrivano i
+  // file di qui) passavano davanti alle copertine dell'Ingresso
   useEffect(() => {
     let vivo = true;
-    listCoverIds()
-      .then((ids) => new Set(ids))
-      .catch(() => new Set())
-      .then((cop) => {
-        if (!vivo) return;
-        // finche' non si sa quali file stanno qui, nessuno e' «senza file»
-        const conFile = (id) => !localIds || localIds.has(id);
-        setDoppi(doppioniInBiblioteca(books, { progresso: getProgress, stato: getStatus, segni: (id) => getMarks(id).length, copertina: (id) => cop.has(id), conFile }));
-      });
+    const annulla = aRiposo(() =>
+      listCoverIds()
+        .then((ids) => new Set(ids))
+        .catch(() => new Set())
+        .then((cop) => {
+          if (!vivo) return;
+          // finche' non si sa quali file stanno qui, nessuno e' «senza file»
+          const conFile = (id) => !localIds || localIds.has(id);
+          setDoppi(doppioniInBiblioteca(books, { progresso: getProgress, stato: getStatus, segni: (id) => getMarks(id).length, copertina: (id) => cop.has(id), conFile }));
+        })
+    );
     return () => {
       vivo = false;
+      annulla();
     };
   }, [books, localIds]);
   async function unisciDoppioni(gruppi) {

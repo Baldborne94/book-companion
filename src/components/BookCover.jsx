@@ -241,10 +241,14 @@ const ANTICIPO = "900px 0px";
 // — la scheda del libro — e li' si legge l'originale, come prima.
 // `haCopertina` e' quel che la Libreria sa gia' in un colpo solo
 // (`listCoverIds`): `false` disegna il dorso senza chiedere niente.
-export default function BookCover({ book, radius = 8, compact = false, version = 0, onDisegnata, numerato = false, intera = false, haCopertina }) {
+//
+// `subito` e' per chi sa di stare sullo schermo (l'Ingresso, una ventina di
+// copertine): si legge al primo disegno, senza aspettare che l'osservatore
+// lo dica un giro dopo.
+export default function BookCover({ book, radius = 8, compact = false, version = 0, onDisegnata, numerato = false, intera = false, haCopertina, subito = false }) {
   const nota = intera ? undefined : haCopertina === false ? null : giaVista(book.id);
   const [url, setUrl] = useState(nota);
-  const [vicina, setVicina] = useState(intera || nota !== undefined || typeof IntersectionObserver === "undefined");
+  const [vicina, setVicina] = useState(subito || intera || nota !== undefined || typeof IntersectionObserver === "undefined");
   const [giro, setGiro] = useState(0);
   // la copertina di Hardcover, mostrata dove la nostra manca (`copertinaHardcover`)
   const [web, setWeb] = useState(null);

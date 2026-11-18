@@ -9,7 +9,8 @@ import { leggiTempo, pezziDiOggi } from "../lib/tempo.js";
 import { raccogli, conta, rigaGiardino } from "../lib/citazioni.js";
 import { leggiQuaderno, rigaQuaderno } from "../lib/quaderno.js";
 import { leggiDaPrendere, proposte, rigaDaPrendere } from "../lib/daPrendere.js";
-import { aRiposo } from "../lib/riposo.js";
+import { aFette } from "../lib/riposo.js";
+import { riconosci } from "../lib/sagaBooks.js";
 // le uscite del 40K portano Lexicanum: a parte, dopo il primo disegno
 const Uscite40k = lazy(() => import("./Uscite40k.jsx"));
 import { nextInSaga, prossimiPassi, perchePassoTace, frasePassoTace, volumiDelMotivo, inCorsoESeguiti } from "../lib/saga.js";
@@ -54,7 +55,7 @@ function LibroInFila({ book, nota, disegnato, onDisegnata, onClick }) {
   const riga = { overflowWrap: "break-word" };
   return (
     <button onClick={onClick} style={{ flexShrink: 0, alignSelf: "flex-start", width: px(96), textAlign: "left" }}>
-      <BookCover book={book} onDisegnata={onDisegnata} />
+      <BookCover book={book} onDisegnata={onDisegnata} subito />
       {!disegnato && (
         <div style={{ ...riga, marginTop: 6, fontSize: F.piccolo, color: C.text }}>{book.title}</div>
       )}
@@ -122,9 +123,12 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
   // vuota per un secondo e piu'): riconoscere duemila libri contro le guide
   // era piu' di meta' del primo disegno dell'Ingresso, per un numero nella
   // stanza «Da prendere», in fondo. Finche' non c'e', la stanza dice la sua
-  // riga di sempre.
+  // riga di sempre. E A FETTE: in un riposo solo erano 600 ms in cui le
+  // copertine dell'Ingresso non potevano arrivare. Il riconoscimento si
+  // ricorda (`riconosci`), quindi le fette lo scaldano e il conto alla
+  // fine legge solo la memoria.
   const [propostePrendere, setProposte] = useState(null);
-  useEffect(() => aRiposo(() => setProposte(proposte(books, []))), [books]);
+  useEffect(() => aFette(books, (b) => void riconosci(b), { poi: () => setProposte(proposte(books, [])) }), [books]);
   const listaPrendere = leggiDaPrendere();
   const notiPrendere = new Set(listaPrendere.filter((v) => v && !v.deleted).map((v) => v.id));
   const rigaPrendere = rigaDaPrendere(
@@ -343,7 +347,7 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
                   stanno gia' scritti accanto, quindi il dorso disegnato resta
                   muto (`compact`) */}
               <div style={{ width: px(118), flexShrink: 0 }}>
-                <BookCover book={last} compact />
+                <BookCover book={last} compact subito />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div

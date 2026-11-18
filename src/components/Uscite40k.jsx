@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { aFette } from "../lib/riposo.js";
 import { C, FONT_TITLE, F, R } from "../data/constants.js";
 import { controllaUscite, daControllare, leggiUscite, scriviUscite, nuove, segnaViste, fraseUscite, indirizzoPagina } from "../lib/uscite40k.js";
-import { trovaApi, LEXICANUM, SITO, del40k } from "../lib/lexicanum.js";
+import { trovaApi, LEXICANUM, SITO, del40k, scrittoDel40k } from "../lib/lexicanum.js";
 import { idTitolo, leggiDaPrendere, scriviDaPrendere, tieni } from "../lib/daPrendere.js";
 
 const prendi = async (url) => {
@@ -24,7 +25,15 @@ const tasto = (colore) => ({
 // 40K, solo quando c'e' qualcosa di nuovo. Ogni libro: «＋ Da prendere» e la
 // sua pagina su Lexicanum; «✓ Viste» le toglie dall'Ingresso.
 export default function Uscite40k({ books = [], notify }) {
-  const legge40k = useMemo(() => books.some((b) => del40k(b)), [books]);
+  // CHI LEGGE IL 40K SI VEDE DAI NOMI, e solo se i nomi non lo dicono si
+  // riconoscono i libri contro le guide, a fette: in un colpo solo era un
+  // compito di 700 ms subito dopo il primo disegno, e le copertine
+  // dell'Ingresso aspettavano dietro di lui
+  const [legge40k, setLegge40k] = useState(() => books.some(scrittoDel40k));
+  useEffect(() => {
+    if (books.some(scrittoDel40k)) return setLegge40k(true);
+    return aFette(books, del40k, { poi: setLegge40k });
+  }, [books]);
   const [stato, setStato] = useState(leggiUscite);
   const [guasto, setGuasto] = useState(false);
   const [messi, setMessi] = useState(() => new Set(leggiDaPrendere().filter((v) => !v.deleted).map((v) => v.id)));
