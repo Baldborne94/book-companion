@@ -129,6 +129,9 @@ jobs:
           # tetto, si misura e si mostra; poi `bubblewrap build` trova tutto gia'
           # fatto, Gradle non scrive quasi niente, e Bubblewrap firma come sempre.
           if ! ./gradlew assembleRelease --stacktrace > gradle.out 2> gradle.err; then
+            # gli errori del compilatore stanno in testa, la traccia di Gradle in
+            # coda: la sola coda non diceva quale riga di android/ non compila
+            grep -h -B1 -A4 -E "\.java:[0-9]+: error:|^e: " gradle.out gradle.err | head -n 120
             tail -n 150 gradle.out; tail -n 150 gradle.err; exit 1
           fi
           echo "Gradle: $(wc -c < gradle.out) byte di uscita, $(wc -c < gradle.err) sugli errori"
