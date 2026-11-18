@@ -32,9 +32,10 @@ import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.browser.customtabs.CustomTabsService;
 import androidx.browser.customtabs.CustomTabsServiceConnection;
 import androidx.browser.customtabs.CustomTabsSession;
+import androidx.browser.customtabs.TrustedWebUtils;
 import androidx.browser.trusted.TokenStore;
 import androidx.browser.trusted.TrustedWebActivityIntentBuilder;
-import androidx.browser.trusted.TrustedWebUtils;
+import androidx.browser.trusted.splashscreens.SplashScreenVersion;
 
 import com.google.androidbrowserhelper.trusted.LauncherActivityMetadata;
 import com.google.androidbrowserhelper.trusted.QualityEnforcer;
@@ -335,7 +336,6 @@ public final class SchermataDiBlocco {
     // sono finiti nell'intento (`h`), quanto ha aspettato (`i`), e se no
     // perche' (`j`), riprovando lei la consegna per sentire la risposta.
     private static final String PARAMETRI_AVVIO = "androidx.browser.trusted.EXTRA_SPLASH_SCREEN_PARAMS";
-    private static final String SA_MOSTRARLA = "androidx.browser.trusted.category.TrustedWebActivitySplashScreensV1";
 
     private static final class Spia implements SplashScreenStrategy {
         private final SplashScreenStrategy vera;
@@ -353,11 +353,9 @@ public final class SchermataDiBlocco {
         @Override
         public void onTwaLaunchInitiated(String provider, TrustedWebActivityIntentBuilder costruttore) {
             browser = provider;
+            // la stessa domanda che fa la libreria prima di mostrarla
             try {
-                android.content.pm.ResolveInfo r = c.getPackageManager().resolveService(
-                        new Intent(CustomTabsService.ACTION_CUSTOM_TABS_CONNECTION).setPackage(provider),
-                        PackageManager.GET_RESOLVED_FILTER);
-                Diagnosi.segna(c, "b", r != null && r.filter != null && r.filter.hasCategory(SA_MOSTRARLA));
+                Diagnosi.segna(c, "b", TrustedWebUtils.areSplashScreensSupported(c, provider, SplashScreenVersion.V1));
             } catch (Throwable e) {
                 Diagnosi.segna(c, "b", false);
             }
