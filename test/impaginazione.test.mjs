@@ -1,7 +1,7 @@
 // L'aritmetica del ritaglio dell'avanzo di riga. Sono quattro righe di
 // codice e due trappole, e tutt'e due ci sono gia' cascate una volta: al
 // primo tentativo il libro non si apriva affatto.
-import { ritaglioAvanzo, spartiAvanzo, flattenToc } from "../src/lib/readerLayout.js";
+import { ritaglioAvanzo, spartiAvanzo, flattenToc, indiceNellaSpina } from "../src/lib/readerLayout.js";
 import {
   rientrata, spaziatoriFitti, SEGNO_DI_SCENA, RIENTRO_MINIMO, ABBASTANZA_PARAGRAFI,
   curaParagrafi, MODI_PARAGRAFI,
@@ -118,6 +118,37 @@ export default async function (t) {
   t.eq("e torna al livello di prima", toc[2].depth, 0);
   t.eq("una voce senza titolo non resta muta", toc[2].label, "…");
   t.eq("un indice vuoto non esplode", flattenToc().length, 0);
+
+  // ---- LE VOCI DELL'INDICE, VISTE DALLA SPINA ----------------------------
+  // «A Thousand Sons», dal lettore: l'indice in una cartella a parte, e a
+  // ogni tocco «No Section Found». La spina parla dalla cartella del
+  // pacchetto, l'indice dalla sua.
+  const spina = (...h) => (x) => h.includes(x);
+  const href = (voci, indice, s) => indiceNellaSpina(voci.map((h) => ({ href: h, label: "x", depth: 0 })), indice, s).map((v) => v.href).join(" ");
+  t.eq("l'indice accanto ai capitoli, il pacchetto fuori", href(["c1.xhtml", "c2.xhtml"], "Text/nav.xhtml", spina("Text/c1.xhtml", "Text/c2.xhtml")), "Text/c1.xhtml Text/c2.xhtml");
+  t.eq("l'indice in una cartella sua, che risale", href(["../Text/c1.xhtml"], "Misc/toc.ncx", spina("Text/c1.xhtml")), "Text/c1.xhtml");
+  t.eq("l'ancora della voce resta", href(["c1.xhtml#scena2"], "Text/nav.xhtml", spina("Text/c1.xhtml")), "Text/c1.xhtml#scena2");
+  t.eq("l'indice accanto al pacchetto resta com'è", href(["Text/c1.xhtml"], "nav.xhtml", spina("Text/c1.xhtml")), "Text/c1.xhtml");
+  t.eq("uno spazio scritto %20 si ritrova", href(["Capitolo%201.xhtml"], "Text/nav.xhtml", spina("Text/Capitolo 1.xhtml")), "Text/Capitolo 1.xhtml");
+  t.eq("… anche con l'indice accanto al pacchetto", href(["Capitolo%201.xhtml"], "nav.xhtml", spina("Capitolo 1.xhtml")), "Capitolo 1.xhtml");
+  // un indice scritto male, dalla cartella del pacchetto invece che dalla sua
+  t.eq("un indirizzo che vale solo com'è scritto resta quello", href(["Text/c1.xhtml"], "Text/nav.xhtml", spina("Text/c1.xhtml")), "Text/c1.xhtml");
+  // due file con lo stesso nome: vale quello visto dalla cartella dell'indice
+  t.eq("fra due omonimi vince quello accanto all'indice", href(["c1.xhtml"], "Text/nav.xhtml", spina("c1.xhtml", "Text/c1.xhtml")), "Text/c1.xhtml");
+  t.eq("una voce che la spina non conosce resta com'era", href(["boh.xhtml"], "Text/nav.xhtml", spina("Text/c1.xhtml")), "boh.xhtml");
+  t.eq("un %% storto non esplode", href(["100%.xhtml"], "Text/nav.xhtml", spina("Text/c1.xhtml")), "100%.xhtml");
+  t.eq("senza sapere dov'è l'indice non cambia niente", href(["c1.xhtml"], undefined, spina("c1.xhtml")), "c1.xhtml");
+  const tenuta = indiceNellaSpina([{ href: "c1.xhtml", label: "Uno", depth: 2 }], "Text/nav.xhtml", spina("Text/c1.xhtml"))[0];
+  t.eq("titolo e rientro della voce restano", `${tenuta.label}|${tenuta.depth}`, "Uno|2");
+  t.eq("un indice vuoto non esplode nemmeno qui", indiceNellaSpina().length, 0);
+  // epub.js, per un libro senza indice, da' `false` al posto del percorso
+  t.eq("un libro senza indice non fa scoppiare l'apertura", indiceNellaSpina([], false, spina()).length, 0);
+  t.eq("e con un percorso che non c'è le voci si leggono dal pacchetto", href(["../Text/c1.xhtml"], false, spina("Text/c1.xhtml")), "Text/c1.xhtml");
+  // la spina di epub.js, a una domanda vuota, risponde col primo capitolo:
+  // un collegamento a un sito non le si chiede affatto
+  const chieste = [];
+  const sito = indiceNellaSpina([{ href: "https://esempio.it/pagina", label: "Sito", depth: 0 }], "Text/nav.xhtml", (h) => (chieste.push(h), true))[0];
+  t.eq("un collegamento a un sito resta com'è, e alla spina non si chiede", `${sito.href}|${chieste.length}`, "https://esempio.it/pagina|0");
 
   // ---- IL PARAGRAFO SI SEGNA UNA VOLTA SOLA ----------------------------
   // In «Eric» era segnato due volte, col rientro E con lo stacco, e la

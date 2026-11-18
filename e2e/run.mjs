@@ -15,7 +15,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { build, preview } from "vite";
 import { avviaNas } from "./nasFinto.mjs";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
-import { fumetto, fumettoGrosso, fumettoLungo, epub, epubConContorno, epubConPagine, pdf, wav, FRASE, mondoDisco, png, pngRighe, pngFasce } from "./libri.mjs";
+import { fumetto, fumettoGrosso, fumettoLungo, epub, epubACapitoli, epubConContorno, epubConPagine, pdf, wav, FRASE, mondoDisco, png, pngRighe, pngFasce } from "./libri.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
 import catalogoMonster from "../test/monster-catalogo.mjs";
 import { perAutore as jojoPerAutore, giapponese1 as jojoGiapponese } from "../test/jojo-catalogo.mjs";
@@ -1082,6 +1082,94 @@ const SCENE = [
       const frase = await finche(() => testoAvviso(p, /^Chrome non lascia parlare l'app/), 8000, "il permesso negato non si dice");
       if (/Tailscale acceso/.test(frase) || !/Impostazioni sito/.test(frase)) throw new Error(`la frase: «${frase}»`);
       return { guasti: d.guasti, nota: frase };
+    },
+  },
+  {
+    // segnalato dal lettore, col tablet in mano: «se metto nel reader lo
+    // schermo intero questo non mi permette di tornare fuori», e poi l'indice
+    // e il segno. Chrome dice `display-mode: fullscreen` anche a schermo intero
+    // chiesto dalla pagina: toccato «Schermo» il tasto si credeva inutile e
+    // spariva, e «Esci» con lui. Nell'APK che tiene la barra di Android era la
+    // sola porta
+    nome: "sul tablet dallo schermo intero del lettore si esce, e a tutto schermo l'indice porta al capitolo e il segno resta",
+    async fai({ browser }) {
+      const d = await dispositivo(browser, { misura: TABLET });
+      const { p } = d;
+      const testo = async () => {
+        let t = "";
+        for (const f of p.frames()) t += await f.evaluate(() => document.body?.innerText || "").catch(() => "");
+        return t;
+      };
+      const segno = () => p.evaluate(() => localStorage.getItem(`bc_cfi_${JSON.parse(localStorage.getItem("bc_books"))[0].id}`));
+      const aTuttoSchermo = () => p.evaluate(() => !!document.fullscreenElement);
+      const barre = async () => {
+        if (!(await p.getByRole("button", { name: /Indice/ }).count())) await p.getByRole("button", { name: "Mostra le barre" }).tap();
+      };
+      await importa(p, "Otto capitoli.epub", await epubACapitoli(), "application/epub+zip");
+      await p.getByText("Otto capitoli").first().tap();
+      await p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().tap();
+      await finche(async () => (await testo()).includes("Capitolo 1, paragrafo 1"), 25000, "il testo del libro non compare");
+      await barre();
+      await p.getByRole("button", { name: /Schermo/ }).first().tap();
+      await finche(aTuttoSchermo, 5000, "«Schermo» non porta a tutto schermo");
+      // a tutto schermo l'indice porta al capitolo, e il segno lo segue
+      await barre();
+      await p.getByRole("button", { name: /Indice/ }).first().tap();
+      await p.getByRole("button", { name: "Capitolo 6", exact: true }).first().tap();
+      await finche(async () => (await testo()).includes("Capitolo 6, paragrafo 1"), 10000, "a tutto schermo l'indice non porta al capitolo");
+      const alSesto = await finche(async () => ((await segno()) || "").includes("/6/12!") && (await segno()), 5000, `il segno non segue l'indice: ${await segno()}`);
+      // e si esce: il tasto c'e' ancora, e dice «Esci»
+      await barre();
+      const esci = p.getByRole("button", { name: /Esci/ });
+      if (!(await esci.count())) throw new Error("a tutto schermo il tasto per uscire non c'è");
+      await esci.first().tap();
+      await finche(async () => !(await aTuttoSchermo()), 5000, "«Esci» non fa uscire dallo schermo intero");
+      await barre();
+      if (!(await p.getByRole("button", { name: /Schermo/ }).count())) throw new Error("usciti, il tasto «Schermo» non torna");
+      // riaperta l'app, il libro riparte dal capitolo dell'indice
+      await p.goto(`${URL_APP}?apri=libreria`);
+      await p.getByText("Otto capitoli").first().tap();
+      await p.getByRole("button", { name: /Apri il libro|Riprendi|Continua|Comincia/ }).first().tap();
+      await finche(async () => (await testo()).includes("Capitolo 6, paragrafo"), 25000, `riaperto, il libro non riparte dal capitolo 6 (segno ${await segno()})`);
+      return { guasti: d.guasti, nota: `a tutto schermo e fuori; indice al capitolo 6, segno ${alSesto}, ritrovato alla riapertura` };
+    },
+  },
+  {
+    // il lettore, con «A Thousand Sons» e il rapporto dei guasti: «se provo a
+    // cliccare nell'indice… non me lo fa fare», e cinque «No Section Found».
+    // L'indice sta in una cartella a parte e parla da lì; epub.js cercava i
+    // suoi indirizzi nella spina così com'erano scritti
+    nome: "con l'indice in una cartella a parte, l'indice porta al capitolo e il lettore ne dice il nome",
+    async fai({ browser }) {
+      const note = [];
+      const guasti = [];
+      for (const indice of ["nav", "ncx"]) {
+        const d = await dispositivo(browser, { misura: TABLET });
+        const { p } = d;
+        const testo = async () => {
+          let t = "";
+          for (const f of p.frames()) t += await f.evaluate(() => document.body?.innerText || "").catch(() => "");
+          return t;
+        };
+        await importa(p, "Otto capitoli.epub", await epubACapitoli({ indice }), "application/epub+zip");
+        await p.getByText("Otto capitoli").first().tap();
+        await p.getByRole("button", { name: /Apri il libro|Comincia/ }).first().tap();
+        await finche(async () => (await testo()).includes("Capitolo 1, paragrafo 1"), 25000, `${indice}: il testo del libro non compare`);
+        await p.getByRole("button", { name: "Mostra le barre" }).tap();
+        await p.getByRole("button", { name: /Indice/ }).first().tap();
+        await p.getByRole("button", { name: "Capitolo 6", exact: true }).first().tap();
+        await finche(async () => (await testo()).includes("Capitolo 6, paragrafo 1"), 10000, `${indice}: l'indice non porta al capitolo`).catch(async (e) => {
+          throw new Error(`${e.message} (${(await p.evaluate(() => JSON.parse(localStorage.getItem("bc_errori") || "[]").map((x) => x.m))).join(", ") || "registro vuoto"})`);
+        });
+        // e il piede della pagina chiama il capitolo col nome dell'indice
+        const piede = await finche(() => p.evaluate(() => (document.body.innerText.match(/Capitolo 6 · pag\. \d+/) || [])[0]), 8000, `${indice}: il lettore non dice il nome del capitolo`);
+        const registro = await p.evaluate(() => JSON.parse(localStorage.getItem("bc_errori") || "[]").map((x) => x.m));
+        if (registro.length) throw new Error(`${indice}: nel registro ${registro.join(", ")}`);
+        guasti.push(...d.guasti);
+        note.push(`${indice}: ${piede}`);
+        await d.ctx.close();
+      }
+      return { guasti, nota: note.join(" · ") };
     },
   },
   {

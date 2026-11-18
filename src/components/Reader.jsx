@@ -17,7 +17,7 @@ import {
   READER_THEMES, READER_FONTS, HL_COLORS, loadReaderSettings, saveReaderSettings, importDelFont,
 } from "../lib/readerSettings.js";
 import { contentStyles, spegniVuoti, curaParagrafi, MODI_PARAGRAFI, spegniScenografia } from "../lib/readerTheme.js";
-import { ritaglioAvanzo, spartiAvanzo, flattenToc, cfiLeggibile, ultimoSegnalibro } from "../lib/readerLayout.js";
+import { ritaglioAvanzo, spartiAvanzo, flattenToc, indiceNellaSpina, cfiLeggibile, ultimoSegnalibro } from "../lib/readerLayout.js";
 import { misuraPagine, conAttesa, ATTESA } from "../lib/misuraPagine.js";
 import { searchBook } from "../lib/epubSearch.js";
 import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
@@ -1077,7 +1077,9 @@ export default function Reader({ book, startCfi, nextBook, onReadNext, music, on
         const dichiarata = /^[a-z]{2}$/.test(lang) ? lang : null;
         linguaRef.current = dichiarata && sillaba(dichiarata) ? dichiarata : null;
         setLingua({ dichiarata, sillababile: !!linguaRef.current });
-        eb.loaded.navigation.then((nav) => !dead && setToc(flattenToc(nav.toc)));
+        eb.loaded.navigation.then(
+          (nav) => !dead && setToc(indiceNellaSpina(flattenToc(nav.toc), eb.packaging?.navPath || eb.packaging?.ncxPath, (h) => !!eb.spine.get(h)))
+        );
         // IL RIPIEGO E' L'ULTIMO SEGNALIBRO, non la prima pagina. Passa dal
         // solito controllo: un segnalibro storto e' storto come ogni altro
         // CFI, e darlo a epub.js farebbe scoppiare l'apertura allo stesso

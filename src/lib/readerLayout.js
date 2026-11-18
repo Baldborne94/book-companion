@@ -1,3 +1,5 @@
+import { dir, risolvi } from "./percorsi.js";
+
 // I conti del reader che non hanno bisogno di un DOM. Stanno fuori da
 // `Reader.jsx` per la stessa ragione di `readerTheme.js`: sono le parti
 // dove un errore non si vede leggendo il diff, e un test se le puo'
@@ -46,6 +48,36 @@ export function spartiAvanzo(avanzo) {
   const a = Math.max(0, Math.round(Number(avanzo) || 0));
   const su = Math.floor(a / 2);
   return { su, giu: a - su };
+}
+
+// LE VOCI DELL'INDICE PARLANO DALLA CARTELLA DELL'INDICE, LA SPINA DA QUELLA
+// DEL PACCHETTO (segnalato dal lettore con «A Thousand Sons» e il rapporto
+// dei guasti: «se provo a cliccare nell'indice… non me lo fa fare», e cinque
+// «No Section Found»). epub.js consegna gli indirizzi dell'indice come sono
+// scritti, e li cerca nella spina cosi': con l'indice in una cartella a
+// parte (`Text/nav.xhtml` che dice `c1.xhtml`, o `Misc/toc.ncx` che dice
+// `../Text/c1.xhtml`) non trova niente, la promessa cade e il tocco non fa
+// nulla. E' lo stesso conto di `lib/percorsi.js`, che la ricucitura e la
+// diagnosi facevano gia' e il lettore no. Si prova l'indirizzo visto dalla
+// cartella dell'indice, anche senza i `%20`: se la spina lo conosce vale
+// quello, se no la voce resta com'era scritta.
+export function indiceNellaSpina(voci = [], percorsoIndice = "", nellaSpina = () => false) {
+  // un libro senza indice: epub.js da' `false` per percorso, non una stringa
+  const base = dir(percorsoIndice || "");
+  const senzaPercento = (h) => {
+    try {
+      return decodeURIComponent(h);
+    } catch {
+      return h;
+    }
+  };
+  return voci.map((voce) => {
+    const [doc, ancora] = String(voce.href || "").split("#");
+    const visto = risolvi(base, doc);
+    // una domanda vuota alla spina di epub.js risponde col primo capitolo
+    const buono = [visto, visto && senzaPercento(visto)].find((h) => h && nellaSpina(h));
+    return buono ? { ...voce, href: ancora ? `${buono}#${ancora}` : buono } : voce;
+  });
 }
 
 // L'indice del libro, da albero a elenco: epub.js lo consegna annidato, la

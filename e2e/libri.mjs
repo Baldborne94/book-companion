@@ -123,6 +123,40 @@ export async function epub({ titolo = "La nebbia", autore = "Autore di Prova", f
 }
 
 // un WAV di `sec` secondi: un la a 8 kHz, mono, 8 bit
+// un libro con piu' capitoli e un indice che li nomina: per provare l'indice
+// e il segno fra un capitolo e l'altro. `indice` dice dove sta l'indice:
+// accanto al pacchetto (gli indirizzi sono gia' quelli della spina), in una
+// cartella coi capitoli, come nav (`nav`: «A Thousand Sons» della Black
+// Library) o come toc.ncx dei libri di prima (`ncx`)
+export async function epubACapitoli({ capitoli = 8, paragrafi = 60, indice = "accanto" } = {}) {
+  const zip = new JSZip();
+  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+  zip.file("META-INF/container.xml", `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`);
+  const ids = Array.from({ length: capitoli }, (_, i) => `c${i + 1}`);
+  ids.forEach((id, i) =>
+    zip.file(
+      `OEBPS/Text/${id}.xhtml`,
+      `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Capitolo ${i + 1}</title></head><body><h1>Capitolo ${i + 1}</h1>${Array.from({ length: paragrafi }, (_, k) => `<p>Capitolo ${i + 1}, paragrafo ${k + 1}: la nebbia saliva dal fiume e copriva le strade, lenta, mentre in città si accendevano le lanterne una dopo l'altra.</p>`).join("")}</body></html>`
+    )
+  );
+  const nav = (da) => `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Indice</title></head><body><nav epub:type="toc"><ol>${ids.map((id, i) => `<li><a href="${da}${id}.xhtml">Capitolo ${i + 1}</a></li>`).join("")}</ol></nav></body></html>`;
+  let voceIndice = `<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>`;
+  let spina = "<spine>";
+  if (indice === "nav") {
+    zip.file("OEBPS/Text/nav.xhtml", nav(""));
+    voceIndice = `<item id="nav" href="Text/nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>`;
+  } else if (indice === "ncx") {
+    zip.file("OEBPS/Text/toc.ncx", `<?xml version="1.0" encoding="UTF-8"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta name="dtb:uid" content="urn:uuid:otto-capitoli"/></head><docTitle><text>Otto capitoli</text></docTitle><navMap>${ids.map((id, i) => `<navPoint id="n${i}" playOrder="${i + 1}"><navLabel><text>Capitolo ${i + 1}</text></navLabel><content src="${id}.xhtml"/></navPoint>`).join("")}</navMap></ncx>`);
+    voceIndice = `<item id="ncx" href="Text/toc.ncx" media-type="application/x-dtbncx+xml"/>`;
+    spina = `<spine toc="ncx">`;
+  } else zip.file("OEBPS/nav.xhtml", nav("Text/"));
+  zip.file(
+    "OEBPS/content.opf",
+    `<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="${indice === "ncx" ? "2.0" : "3.0"}" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:otto-capitoli-${indice}</dc:identifier><dc:title>Otto capitoli</dc:title><dc:creator>Autore di Prova</dc:creator><dc:language>it</dc:language></metadata><manifest>${voceIndice}${ids.map((id) => `<item id="${id}" href="Text/${id}.xhtml" media-type="application/xhtml+xml"/>`).join("")}</manifest>${spina}${ids.map((id) => `<itemref idref="${id}"/>`).join("")}</spine></package>`
+  );
+  return zip.generateAsync({ type: "nodebuffer", mimeType: "application/epub+zip" });
+}
+
 export function wav(sec = 120, hz = 8000) {
   const n = sec * hz;
   const b = Buffer.alloc(44 + n);
