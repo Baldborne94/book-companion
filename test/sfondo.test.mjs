@@ -4,7 +4,7 @@
 // decide quando parlargli e cosa mandargli.
 import { readFileSync } from "node:fs";
 import {
-  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, portaDelGuscio, annotaMessaggio, messaggiVisti, fraseMessaggi, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, nomeAndroid, fraseEsito, frasePermesso, stradaPermesso, fraseSenzaPrima, ultimoStato, inPiedi, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, fraseInvio, dopoIlSaluto, RISPOSTA_ENTRO, TOGLI,
+  SALUTO, CIAO, PACCHETTO, PEZZO, LATO_MAX, nelGuscio, portaDelGuscio, annotaMessaggio, messaggiVisti, fraseMessaggi, risposta, pezzi, misuraSchermo, dentroIlRettangolo, leggiSfondo, scriviSfondo, infoDalLancio, nomeAndroid, fraseEsito, fraseAvvio, frasePermesso, stradaPermesso, fraseSenzaPrima, ultimoStato, inPiedi, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, fraseInvio, dopoIlSaluto, RISPOSTA_ENTRO, TOGLI,
 } from "../src/lib/sfondo.js";
 
 const memoria = () => {
@@ -180,6 +180,14 @@ export default async function (t) {
   t.eq("il grezzo resta, per la foto", e.grezzo, "l=1;k=1;n=1;u=6;s=1;c=1;r=1;v=0;p=0;a=0;f=0;e=");
   t.eq("l'esito si legge passo per passo", `${e.s}${e.c}${e.r}${e.v}${e.p}`, "11100");
   t.c("…e dice dove ci si e' fermati", /origine/.test(fraseEsito(e)) && /use_as_origin/.test(fraseEsito(e)));
+  // la schermata d'avvio: cosa ne dice il guscio al prossimo avvio
+  t.eq("un guscio di prima non dice niente della schermata d'avvio", fraseAvvio({ l: "1" }), null);
+  t.eq("…ne' una diagnosi azzerata", fraseAvvio(infoDalLancio("?guscio=1340&esito=l=1;g=;b=;h=;i=;j=").esito), null);
+  t.c("passata a Chrome, coi millisecondi", /passata a Chrome in 38 ms$/.test(fraseAvvio(infoDalLancio("?guscio=1340&esito=g=1;b=1;h=1;i=38;j=").esito)));
+  t.c("non passata, col perche'", /NON passata a Chrome \(rifiutata\), dopo 12 ms$/.test(fraseAvvio({ g: "1", b: "1", h: "0", i: "12", j: "rifiutata" })));
+  t.c("il browser che non la sa mostrare si dice prima del resto", /non saperla mostrare/.test(fraseAvvio({ g: "1", b: "0", h: "0", j: "senza file" })));
+  t.c("senza schermata non c'e' niente da passare", /non ne ha una/.test(fraseAvvio({ g: "0" })));
+  t.c("partito e mai arrivato a consegnarla", /non è arrivato/.test(fraseAvvio({ g: "1", b: "1" })));
   t.c("la sessione non letta viene prima di tutto", /sessione/.test(fraseEsito({ l: "1", k: "1", n: "1", s: "0", c: "1", r: "1" })));
   t.c("un guasto si accoda alla frase", /— boom$/.test(fraseEsito({ l: "1", k: "1", n: "1", s: "1", c: "0", e: "boom" })));
   t.c("il canale rifiutato", /rifiutato/.test(fraseEsito({ l: "1", k: "1", n: "1", s: "1", c: "1", r: "0" })));

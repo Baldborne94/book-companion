@@ -63,6 +63,8 @@ export default async function (t) {
   annotaErrore(new Error("secondo"), { dove: "sincronizzazione", ora: Date.UTC(2026, 8, 30, 9), st: st2 });
   const testo = rapporto({ errori: erroriAnnotati(st2), versione: "1.0.0 · 30/09", ambiente: { navigatore: "Chrome", schermo: "1280×800", guscio: "app Android" }, ora: Date.UTC(2026, 8, 30, 10) });
   t.c("dice la versione e il dispositivo", /Versione: 1\.0\.0/.test(testo) && /1280×800/.test(testo) && /app Android/.test(testo) && /Browser: Chrome/.test(testo));
+  t.c("senza notizie dell'avvio non ne parla", !/Avvio:/.test(testo));
+  t.c("…e con le notizie del guscio le dice", /\nAvvio: guscio 1340 · schermata d'avvio: passata a Chrome\n/.test(rapporto({ ambiente: { guscio: "app Android", avvio: "guscio 1340 · schermata d'avvio: passata a Chrome" } })));
   t.c("il piu' recente prima", testo.indexOf("secondo") < testo.indexOf("primo"));
   t.c("…con dove e' successo", testo.includes("· sincronizzazione"));
   t.eq("senza guasti lo dice", rapporto({ errori: [] }).split("\n").at(-1), "Nessun guasto annotato.");

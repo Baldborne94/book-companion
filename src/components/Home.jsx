@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
 import { useViewport } from "../lib/viewport.js";
 import { getFinished, getLastOpened, getProgress, getStarted, getStatus, getUpdatedAt, letturaUnica, appenaArrivati, quandoArrivato } from "../lib/library.js";
@@ -9,6 +9,7 @@ import { leggiTempo, pezziDiOggi } from "../lib/tempo.js";
 import { raccogli, conta, rigaGiardino } from "../lib/citazioni.js";
 import { leggiQuaderno, rigaQuaderno } from "../lib/quaderno.js";
 import { leggiDaPrendere, proposte, rigaDaPrendere } from "../lib/daPrendere.js";
+import { aRiposo } from "../lib/riposo.js";
 // le uscite del 40K portano Lexicanum: a parte, dopo il primo disegno
 const Uscite40k = lazy(() => import("./Uscite40k.jsx"));
 import { nextInSaga, prossimiPassi, perchePassoTace, frasePassoTace, volumiDelMotivo, inCorsoESeguiti } from "../lib/saga.js";
@@ -116,13 +117,20 @@ export default function Home({ books, goTo, onOpenBook, onRead, onGarden, onDiar
   // calcolano coi libri; la lista invece si rilegge a ogni disegno (si
   // cambia nella sua pagina), e cosi' le proposte gia' tenute o scartate
   // spariscono dal conto appena torni qui
-  const propostePrendere = useMemo(() => proposte(books, []), [books]);
+  //
+  // E SI CALCOLANO DOPO IL PRIMO DISEGNO (il video dell'avvio: la pagina
+  // vuota per un secondo e piu'): riconoscere duemila libri contro le guide
+  // era piu' di meta' del primo disegno dell'Ingresso, per un numero nella
+  // stanza «Da prendere», in fondo. Finche' non c'e', la stanza dice la sua
+  // riga di sempre.
+  const [propostePrendere, setProposte] = useState(null);
+  useEffect(() => aRiposo(() => setProposte(proposte(books, []))), [books]);
   const listaPrendere = leggiDaPrendere();
   const notiPrendere = new Set(listaPrendere.filter((v) => v && !v.deleted).map((v) => v.id));
   const rigaPrendere = rigaDaPrendere(
     listaPrendere,
     books,
-    propostePrendere.reduce((n, g) => n + g.voci.filter((v) => !notiPrendere.has(v.id)).length, 0)
+    (propostePrendere || []).reduce((n, g) => n + g.voci.filter((v) => !notiPrendere.has(v.id)).length, 0)
   );
 
   if (books.length === 0) {

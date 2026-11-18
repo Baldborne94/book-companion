@@ -57,6 +57,12 @@ export function guscio(twa, { codice, versione, assetlinks }) {
     // Anche la lista di ripiego (`displayOverride`) senza tutto schermo, o
     // chiederebbe ancora l'immersivo.
     display: "standalone",
+    // LA FINESTRA DI CHROME SI CHIEDE SCURA (`Lanciatore.launch` nel guscio:
+    // i due secondi di bianco all'avvio), e col tema scuro Chrome prende i
+    // colori «Dark» del guscio, che Bubblewrap lascia neri: sono gli stessi
+    // del chiaro, cosi' la barra di stato e quella in fondo non cambiano
+    themeColorDark: twa.themeColor,
+    navigationColorDark: twa.navigationColor,
     displayOverride: (twa.displayOverride || []).filter((m) => !TUTTO_SCHERMO.includes(m)),
     // la libreria del guscio (android-browser-helper 2.7.4, che il core di
     // Bubblewrap porta con se') vuole Android 7 (API 24) come minimo, e il

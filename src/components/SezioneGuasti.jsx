@@ -7,15 +7,19 @@ import { erroriAnnotati, rapporto, svuotaErrori } from "../lib/registro.js";
 import { voltateAnnotate, svuotaVoltate } from "../lib/voltate.js";
 import { tempiAnnotati, svuotaTempi } from "../lib/tempi.js";
 import { leggiPause, svuotaPause } from "../lib/pauseLettura.js";
+import { lancioRicordato, fraseAvvio } from "../lib/sfondo.js";
 
 function ambiente() {
   const n = globalThis.navigator;
   const s = globalThis.screen;
   const installata = globalThis.matchMedia?.("(display-mode: standalone)")?.matches;
+  const lancio = lancioRicordato();
   return {
     navigatore: n?.userAgent || "",
     schermo: s ? `${s.width}×${s.height} · densità ${globalThis.devicePixelRatio || 1}` : "",
     guscio: String(globalThis.document?.referrer || "").startsWith("android-app://") ? "app Android" : installata ? "app installata" : "browser",
+    // com'e' andato l'avvio del guscio (la schermata d'avvio passata a Chrome o no)
+    avvio: lancio?.versione ? `guscio ${lancio.versione}${fraseAvvio(lancio.esito) ? ` · ${fraseAvvio(lancio.esito)}` : ""}` : "",
   };
 }
 
