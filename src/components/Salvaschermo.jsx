@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { C, F, R, FONT_TITLE, px } from "../data/constants.js";
 import { leggiSalvaschermo, scriviSalvaschermo, SCELTE_COPERTINA, SCELTE_SPEGNI, fraseMinuti } from "../lib/salvaschermo.js";
-import { nelGuscio, fraseEsito, messaggiVisti, fraseMessaggi, fraseInvio, LATO_MAX, stradaPermesso, nomeAndroid, ultimoStato } from "../lib/sfondo.js";
+import { nelGuscio, fraseEsito, fraseAvvio, messaggiVisti, fraseMessaggi, fraseInvio, LATO_MAX, stradaPermesso, nomeAndroid, ultimoStato } from "../lib/sfondo.js";
 import { getCover, getFile } from "../lib/bookStore.js";
 import { copertinaOriginale } from "../lib/copertina.js";
 import { copertinaGrande } from "../lib/copertinaGrande.js";
@@ -187,6 +187,7 @@ export function SezioneSfondo({ pronto, info = null, invio = null, acceso, onCam
             {/* com'e' andato l'ultimo avvio, anche a guscio vivo: e' li' che
                 finisce il guasto di una lettura rifiutata */}
             {ultima && <span style={{ display: "block", marginTop: 2, fontSize: F.minuscolo, opacity: 0.7, wordBreak: "break-word" }}>All'ultimo avvio: {ultima}</span>}
+            {fraseAvvio(info?.esito) && <span style={{ display: "block", marginTop: 2, fontSize: F.minuscolo, opacity: 0.7, wordBreak: "break-word" }}>E la {fraseAvvio(info.esito)}</span>}
           </p>
         </>
       ) : (

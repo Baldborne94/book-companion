@@ -100,6 +100,7 @@ export function rapporto({ errori = [], versione = "?", ambiente = {}, ora = Dat
     ambiente.navigatore ? `Browser: ${pulisci(ambiente.navigatore)}` : null,
     ambiente.schermo ? `Schermo: ${ambiente.schermo}` : null,
     ambiente.guscio ? `Aperta come: ${ambiente.guscio}` : null,
+    ambiente.avvio ? `Avvio: ${pulisci(ambiente.avvio)}` : null,
     "",
   ].filter((r) => r !== null);
   if (!errori.length) righe.push("Nessun guasto annotato.");

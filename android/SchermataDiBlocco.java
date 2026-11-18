@@ -19,20 +19,28 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelFileDescriptor;
+import android.os.SystemClock;
+import android.text.TextUtils;
 import android.util.Base64;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.browser.customtabs.CustomTabsCallback;
 import androidx.browser.customtabs.CustomTabsClient;
+import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.browser.customtabs.CustomTabsService;
 import androidx.browser.customtabs.CustomTabsServiceConnection;
 import androidx.browser.customtabs.CustomTabsSession;
+import androidx.browser.customtabs.TrustedWebUtils;
 import androidx.browser.trusted.TokenStore;
+import androidx.browser.trusted.TrustedWebActivityIntentBuilder;
+import androidx.browser.trusted.splashscreens.SplashScreenVersion;
 
 import com.google.androidbrowserhelper.trusted.LauncherActivityMetadata;
 import com.google.androidbrowserhelper.trusted.QualityEnforcer;
 import com.google.androidbrowserhelper.trusted.TwaLauncher;
+import com.google.androidbrowserhelper.trusted.splashscreens.SplashScreenStrategy;
 
 import org.json.JSONObject;
 
@@ -219,7 +227,7 @@ public final class SchermataDiBlocco {
             Uri u = Uri.parse(meta.defaultUrl);
             origine = Uri.parse(u.getScheme() + "://" + u.getAuthority());
         }
-        lanciatore = new Lanciatore(new Contesto(attivita), meta.launchingBrowser, idSessione, store);
+        lanciatore = new Lanciatore(new Contesto(attivita), meta.launchingBrowser, idSessione, store, meta.fileProviderAuthority);
         // una sessione nuova non ha canale ne' saluto
         ciao = false;
         canale = false;
@@ -255,7 +263,7 @@ public final class SchermataDiBlocco {
                 SharedPreferences p = c.getSharedPreferences(NOME, Context.MODE_PRIVATE);
                 if (p.getAll().isEmpty()) return null;
                 StringBuilder s = new StringBuilder();
-                for (String k : new String[] { "l", "k", "n", "u", "s", "c", "r", "q", "v", "p", "a", "f", "e", "z" }) {
+                for (String k : new String[] { "l", "k", "n", "u", "s", "c", "r", "q", "v", "p", "a", "f", "e", "z", "g", "b", "h", "i", "j" }) {
                     if (s.length() > 0) s.append(';');
                     s.append(k).append('=').append(p.getString(k, ""));
                 }
@@ -318,9 +326,104 @@ public final class SchermataDiBlocco {
         }
     }
 
+    // LA SCHERMATA D'AVVIO PASSA A CHROME? La libreria la mostra qui, la
+    // consegna a Chrome (un file, per il `FileProvider`) e Chrome la tiene
+    // sopra la pagina finche' la pagina non disegna: cosi' non si vede mai la
+    // finestra vuota. Sul tablet del lettore non succede (nel video la
+    // finestra di Chrome entra bianca, con la sua animazione), e la libreria
+    // lo dice solo nel log. Questa spia sta fra il lanciatore e la strategia
+    // vera e segna: se Chrome dice di saperla mostrare (`b`), se i parametri
+    // sono finiti nell'intento (`h`), quanto ha aspettato (`i`), e se no
+    // perche' (`j`), riprovando lei la consegna per sentire la risposta.
+    private static final String PARAMETRI_AVVIO = "androidx.browser.trusted.EXTRA_SPLASH_SCREEN_PARAMS";
+
+    private static final class Spia implements SplashScreenStrategy {
+        private final SplashScreenStrategy vera;
+        private final Context c;
+        @Nullable
+        private final String autorita;
+        private String browser;
+
+        Spia(SplashScreenStrategy vera, Context c, @Nullable String autorita) {
+            this.vera = vera;
+            this.c = c;
+            this.autorita = autorita;
+        }
+
+        @Override
+        public void onTwaLaunchInitiated(String provider, TrustedWebActivityIntentBuilder costruttore) {
+            browser = provider;
+            // la stessa domanda che fa la libreria prima di mostrarla
+            try {
+                Diagnosi.segna(c, "b", TrustedWebUtils.areSplashScreensSupported(c, provider, SplashScreenVersion.V1));
+            } catch (Throwable e) {
+                Diagnosi.segna(c, "b", false);
+            }
+            vera.onTwaLaunchInitiated(provider, costruttore);
+        }
+
+        @Override
+        public void configureTwaBuilder(final TrustedWebActivityIntentBuilder costruttore, final CustomTabsSession sessione,
+                final Runnable pronto) {
+            final long da = SystemClock.uptimeMillis();
+            vera.configureTwaBuilder(costruttore, sessione, () -> {
+                try {
+                    boolean passata = costruttore.build(sessione).getIntent().hasExtra(PARAMETRI_AVVIO);
+                    Diagnosi.segna(c, "h", passata);
+                    Diagnosi.segna(c, "i", String.valueOf(SystemClock.uptimeMillis() - da));
+                    // riprovare la consegna e' una chiamata a Chrome che aspetta la
+                    // risposta: fuori dal filo dell'interfaccia
+                    if (!passata) new Thread(() -> Diagnosi.segna(c, "j", perche(sessione))).start();
+                } catch (Throwable e) {
+                    Diagnosi.segna(c, "j", String.valueOf(e));
+                }
+                pronto.run();
+            });
+        }
+
+        private String perche(CustomTabsSession sessione) {
+            if (TextUtils.isEmpty(autorita)) return "senza autorita";
+            File f = new File(new File(c.getFilesDir(), "twa_splash"), "splash_image.png");
+            if (!f.exists()) return "senza file";
+            try {
+                return TrustedWebUtils.transferSplashImage(c, f, autorita, browser, sessione) ? "passata al secondo colpo" : "rifiutata";
+            } catch (Throwable e) {
+                return String.valueOf(e);
+            }
+        }
+    }
+
     private static final class Lanciatore extends TwaLauncher {
-        Lanciatore(Context contesto, @Nullable String provider, @Nullable Integer idSessione, TokenStore store) {
+        private final Context contesto;
+        @Nullable
+        private final String autorita;
+
+        Lanciatore(Context contesto, @Nullable String provider, @Nullable Integer idSessione, TokenStore store,
+                @Nullable String autorita) {
             super(contesto, provider, idSessione, store);
+            this.contesto = contesto;
+            this.autorita = autorita;
+        }
+
+        // LA FINESTRA DI CHROME NASCE SCURA (il lettore, col video dell'avvio:
+        // «senza sfarfalli iniziali, schermo bianco e cose cosi'»). Fra la
+        // schermata d'avvio e il primo disegno della pagina passavano due
+        // secondi di bianco: la libreria chiede a Chrome «il tema del
+        // sistema», e sul tablet il sistema e' chiaro. I tre temi dell'app
+        // sono scuri, quindi si chiede lo scuro: scura la finestra prima
+        // della pagina, e scura la barra di stato, che sui tablet Chrome non
+        // tinge col colore della pagina ma con quello del suo tema.
+        // E si guarda se la schermata d'avvio passa davvero a Chrome (`Spia`).
+        @Override
+        public void launch(TrustedWebActivityIntentBuilder costruttore, CustomTabsCallback ascolto,
+                @Nullable SplashScreenStrategy avvio, @Nullable Runnable fatto, FallbackStrategy ripiego) {
+            try {
+                costruttore.setColorScheme(CustomTabsIntent.COLOR_SCHEME_DARK);
+            } catch (Throwable e) {
+                Log.w(TAG, "lo scuro non si e' potuto chiedere: " + e);
+            }
+            Diagnosi.segna(contesto, "g", avvio != null);
+            super.launch(costruttore, ascolto, avvio == null ? null : new Spia(avvio, contesto, autorita), fatto, ripiego);
         }
 
         // la libreria lo chiama quando l'attivita' muore: la sessione invece

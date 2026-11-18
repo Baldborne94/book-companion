@@ -354,6 +354,21 @@ export function fraseEsito(esito, api = null) {
   return permesso ? `${frase} · ${permesso}` : frase;
 }
 
+// LA SCHERMATA D'AVVIO E' PASSATA A CHROME? (il video dell'avvio: due secondi
+// di bianco fra l'icona e la pagina). Il guscio la mostra e la consegna a
+// Chrome, che la tiene sopra la pagina finche' non disegna; sul tablet non
+// succedeva e nessuno lo diceva. «g» la schermata c'e', «b» Chrome dice di
+// saperla mostrare, «h» e' partita con l'intento, «i» i millisecondi, «j» il
+// perche' del no. Un guscio di prima non scrive niente: nessuna frase.
+export function fraseAvvio(esito) {
+  if (!esito || esito.g === undefined || esito.g === "") return null;
+  if (esito.g !== "1") return "schermata d'avvio: il guscio non ne ha una da passare a Chrome";
+  if (esito.h === "1") return `schermata d'avvio: passata a Chrome${esito.i ? ` in ${esito.i} ms` : ""}`;
+  if (esito.b === "0") return "schermata d'avvio: NON passata, il browser dice di non saperla mostrare";
+  if (esito.h === "0") return `schermata d'avvio: NON passata a Chrome${esito.j ? ` (${esito.j})` : ""}${esito.i ? `, dopo ${esito.i} ms` : ""}`;
+  return "schermata d'avvio: il guscio non è arrivato a passarla a Chrome";
+}
+
 // Il permesso di leggere lo sfondo di prima, in parole: «w» leggibile, «x»
 // da chiedere, «y» negato, «z» quante volte il guscio ha aperto la finestra
 // da solo. Dal tablet si vedeva solo che la finestra non compariva, non

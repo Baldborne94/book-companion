@@ -8,7 +8,7 @@ import { guscio, firmaDelSito, pacchettoDelSito, ETICHETTA, iconeDelManifest, at
 
 export default async function (t) {
   const assetlinks = JSON.parse(readFileSync("public/.well-known/assetlinks.json", "utf8"));
-  const init = { packageId: "app.vercel.book_companion_ruddy.twa", launcherName: "Grimorio", display: "fullscreen", displayOverride: ["fullscreen", "standalone", "minimal-ui"], enableNotifications: true, orientation: "any", appVersionCode: 1, signingKey: { path: "./x.keystore", alias: "x" } };
+  const init = { packageId: "app.vercel.book_companion_ruddy.twa", launcherName: "Grimorio", themeColor: "#0f0d1a", themeColorDark: "#000000", navigationColor: "#101010", navigationColorDark: "#000000", display: "fullscreen", displayOverride: ["fullscreen", "standalone", "minimal-ui"], enableNotifications: true, orientation: "any", appVersionCode: 1, signingKey: { path: "./x.keystore", alias: "x" } };
   const g = guscio(init, { codice: 842, versione: "1.0.0 (842)", assetlinks });
 
   t.eq("il pacchetto e' quello che assetlinks lega al sito", g.packageId, pacchettoDelSito(assetlinks));
@@ -22,6 +22,16 @@ export default async function (t) {
   // i due video del lettore: la barra di Android che faceva saltare la pagina
   t.eq("la barra di Android sempre visibile: la pagina non salta piu'", g.display, "standalone");
   t.eq("…e la lista di ripiego senza tutto schermo, il resto resta", g.displayOverride.join(), "standalone,minimal-ui");
+  // il video dell'avvio: la finestra di Chrome si chiede scura, e i colori
+  // «Dark» che Chrome allora usa sono quelli dell'app, non il nero di Bubblewrap
+  t.eq("col tema scuro la barra di stato resta del colore dell'app", g.themeColorDark, "#0f0d1a");
+  t.eq("…e la barra in fondo resta quella di prima", g.navigationColorDark, "#101010");
+  const java = readFileSync("android/SchermataDiBlocco.java", "utf8");
+  t.c("il guscio chiede a Chrome la finestra scura", /setColorScheme\(CustomTabsIntent\.COLOR_SCHEME_DARK\)/.test(java));
+  t.c("…e la spia della schermata d'avvio sta fra il lanciatore e la strategia vera", /new Spia\(avvio, contesto, autorita\)/.test(java));
+  // ogni lettera che la spia segna deve stare fra quelle che la diagnosi rilegge
+  const rilette = /for \(String k : new String\[\] \{([^}]*)\}/.exec(java)[1];
+  for (const k of ["g", "b", "h", "i", "j"]) t.c(`la lettera «${k}» viaggia nell'indirizzo di avvio`, rilette.includes(`"${k}"`) && new RegExp(`Diagnosi\\.segna\\(c(ontesto)?, "${k}"`).test(java));
   t.eq("…anche quella che chiedeva lo schermo intero appiccicoso", guscio({ ...init, displayOverride: ["fullscreen-sticky", "minimal-ui"] }, { codice: 842, versione: "x", assetlinks }).displayOverride.join(), "minimal-ui");
   t.eq("…e senza lista, nessuna lista", guscio({ ...init, displayOverride: undefined }, { codice: 842, versione: "x", assetlinks }).displayOverride.length, 0);
   // l'etichetta sotto l'icona e' il nome intero, non lo short_name della PWA
@@ -153,7 +163,7 @@ export async function cucitura(t) {
   const permesso = readFileSync("android/PermessoActivity.java", "utf8");
   t.c("una copertina senza permesso si mette da parte e apre la finestra sopra Chrome", /scrivi\(fileAttesa\(app\)[\s\S]*chiediPermesso\(app\)/.test(blocco) && /PermessoActivity\.class\);\s*i\.addFlags\(Intent\.FLAG_ACTIVITY_NEW_TASK\)/.test(blocco));
   t.c("…e risposto il permesso la mette da sola", /permessoRisposto\(this, esiti\);\s*SchermataDiBlocco\.dopoIlPermesso\(this\)/.test(permesso) && /dopoIlPermesso[\s\S]*metti\(app, leggi\(fileAttesa\(app\)\)\)/.test(blocco));
-  t.c("…e la diagnosi conta le finestre aperte (z) dopo i passi del canale", /"f", "e", "z" \}/.test(blocco));
+  t.c("…e la diagnosi conta le finestre aperte (z) dopo i passi del canale", /"f", "e", "z", "g", /.test(blocco));
   const yml = readFileSync(".github/workflows/apk.yml", "utf8");
   t.c("la CI cuce dopo l'update e prima del build", /bubblewrap update[^\n]*\n(?:[^\n]*\n)*?[^\n]*apk\.mjs cuci\n(?:[^\n]*\n)*?[^\n]*bubblewrap build/.test(yml));
   t.c("…e riparte quando cambia android/", /- android\/\*\*/.test(yml));
