@@ -1212,10 +1212,18 @@ export function scriviLoreAMano(id, acceso) {
   }
 }
 
+// a colpo d'occhio: il 40K scritto nella saga, nella serie o nel titolo.
+// Chi lo legge ce l'ha quasi sempre scritto da qualche parte, e guardare
+// i nomi di duemila libri costa niente; riconoscerli contro le guide
+// (`del40k`) costava 700 ms con la CPU del tablet, sull'Ingresso
+export function scrittoDel40k(book) {
+  if (!book) return false;
+  return QUARANTAK.test([book.saga, book.series, book.title].filter(Boolean).join(" · "));
+}
+
 export function del40k(book) {
   if (!book) return false;
-  const campi = [book.saga, book.series, book.title].filter(Boolean).join(" · ");
-  if (QUARANTAK.test(campi)) return true;
+  if (scrittoDel40k(book)) return true;
   const r = riconosci({ title: book.title, author: book.author });
   return !!r && QUARANTAK.test(r.saga || "");
 }
