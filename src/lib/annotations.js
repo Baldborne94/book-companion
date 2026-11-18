@@ -85,6 +85,34 @@ export const saveMarks = (id, list) => scrivi(`bc_marks_${id}`, id, list);
 export const getHighlights = (id) => leggiTutti(`bc_hl_${id}`).filter(vivo);
 export const saveHighlights = (id, list) => scrivi(`bc_hl_${id}`, id, list);
 
+// OGNI MODIFICA PARTE DA QUEL CHE C'E' SALVATO ADESSO, non dall'elenco che
+// il lettore ha in mano (il lettore: «mi cancella ancora l'ultimo
+// segnalibro»). Chi salva passa l'elenco dei vivi, e quel che non c'e'
+// diventa una lapide: ma l'elenco di un lettore aperto e' quello di quando
+// si e' aperto, e nel frattempo la sincronizzazione puo' aver posato qui un
+// segnalibro dell'altro dispositivo. Aggiungendone uno, quello arrivato
+// «non c'era piu'» e moriva ovunque. Le mosse si dicono per quel che sono
+// (`aggiungi`, `togli`, `aggiorna`) e si applicano all'elenco letto qui,
+// nello stesso respiro della scrittura; torna l'elenco nuovo, da mostrare.
+export const cambiaSegnalibri = (id, mossa) => {
+  const dopo = mossa(getMarks(id));
+  saveMarks(id, dopo);
+  return dopo;
+};
+export const cambiaEvidenziazioni = (id, mossa) => {
+  const dopo = mossa(getHighlights(id));
+  saveHighlights(id, dopo);
+  return dopo;
+};
+export const aggiungi = (x) => (lista) => [...lista, x];
+export const togli = (chi) => (lista) => lista.filter((x) => x.id !== chi.id);
+// le versioni nuove di quelle che ci sono: chi non c'e' piu' non torna, e
+// chi e' arrivato nel frattempo resta
+export const aggiorna = (nuove) => (lista) => {
+  const per = new Map((nuove || []).map((x) => [x.id, x]));
+  return lista.map((x) => per.get(x.id) ?? x);
+};
+
 // Le due porte della sincronizzazione: lassu' devono viaggiare anche le
 // lapidi, o l'altro dispositivo non saprebbe mai che hai cancellato — e in
 // ricezione si posa il risultato della fusione COM'E', senza rifare il

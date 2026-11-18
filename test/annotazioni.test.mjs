@@ -104,4 +104,44 @@ export default async function (t) {
   A.removeAnnotations(LIBRO);
   t.eq("cancellato il libro, non resta un'evidenziazione", A.evidenziazioniIntere(LIBRO).length, 0);
   t.eq("né un segnalibro", A.segnalibriInteri(LIBRO).length, 0);
+
+  // ---- OGNI MODIFICA PARTE DA QUEL CHE C'E' SALVATO ADESSO ---------------
+  // Il lettore: «mi cancella ancora l'ultimo segnalibro». A libro aperto la
+  // sincronizzazione posa qui un segnalibro dell'altro dispositivo; il
+  // lettore ha in mano l'elenco di quando si e' aperto, e salvandolo con uno
+  // in piu' quello arrivato «non c'era piu'»: una lapide, e moriva ovunque.
+  const ALTRO = "libro-2";
+  const mio = { id: "mio", cfi: "cfi-1", label: "10%", createdAt: 10 };
+  alle(5000, () => A.cambiaSegnalibri(ALTRO, A.aggiungi(mio)));
+  t.eq("il primo segnalibro si salva", A.getMarks(ALTRO).map((m) => m.id).join(), "mio");
+  // arriva quello del PC, posato com'e' dalla sincronizzazione
+  A.posaSegnalibri(ALTRO, [...A.segnalibriInteri(ALTRO), { id: "dal-pc", cfi: "cfi-2", label: "40%", createdAt: 20, updatedAt: 5500 }]);
+  const nuovo = { id: "nuovo", cfi: "cfi-3", label: "60%", createdAt: 30 };
+  const dopo = alle(6000, () => A.cambiaSegnalibri(ALTRO, A.aggiungi(nuovo)));
+  t.eq("aggiungendone uno, quello arrivato nel frattempo resta", A.segnalibriInteri(ALTRO).filter((m) => !m.deleted).map((m) => m.id).join(), "mio,dal-pc,nuovo");
+  t.eq("e l'elenco che torna è quello da mostrare", dopo.map((m) => m.id).join(), "mio,dal-pc,nuovo");
+  alle(7000, () => A.cambiaSegnalibri(ALTRO, A.togli(mio)));
+  const lapidi = A.segnalibriInteri(ALTRO).filter((m) => m.deleted).map((m) => m.id).join();
+  t.eq("togliendone uno, la lapide è la sua e basta", `${A.getMarks(ALTRO).map((m) => m.id).join()}|${lapidi}`, "dal-pc,nuovo|mio");
+
+  // le note delle evidenziazioni: il pannello rimanda il suo elenco intero,
+  // che puo' essere quello di prima
+  const e1 = { id: "e1", cfi: "c1", text: "uno", color: "oro", createdAt: 1 };
+  alle(8000, () => A.cambiaEvidenziazioni(ALTRO, A.aggiungi(e1)));
+  A.posaEvidenziazioni(ALTRO, [...A.evidenziazioniIntere(ALTRO), { id: "e2", cfi: "c2", text: "dal pc", color: "oro", createdAt: 2, updatedAt: 8500 }]);
+  alle(9000, () => A.cambiaEvidenziazioni(ALTRO, A.aggiorna([{ ...e1, note: "una nota" }])));
+  const ev = A.evidenziazioniIntere(ALTRO);
+  t.eq("la nota si scrive, e l'evidenziazione arrivata nel frattempo resta", ev.map((x) => `${x.id}${x.deleted ? "†" : ""}${x.note ? ":" + x.note : ""}`).join(), "e1:una nota,e2");
+  // un elenco di prima puo' nominare una che nel frattempo e' stata tolta altrove
+  A.posaEvidenziazioni(ALTRO, [{ id: "e2", cfi: "c2", text: "dal pc", color: "oro", createdAt: 2, updatedAt: 8500 }, { id: "e1", cfi: "c1", deleted: 9500 }]);
+  alle(10000, () => A.cambiaEvidenziazioni(ALTRO, A.aggiorna([{ ...e1, note: "un'altra" }])));
+  t.eq("una nota su un'evidenziazione tolta altrove non la riporta in vita", A.getHighlights(ALTRO).map((x) => x.id).join(), "e2");
+  t.eq("aggiornare con niente non cambia niente", alle(11000, () => A.cambiaEvidenziazioni(ALTRO, A.aggiorna())).map((x) => x.id).join(), "e2");
+
+  // e nessun componente salva piu' l'elenco che ha in mano
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const colpevoli = readdirSync("src/components")
+    .filter((f) => f.endsWith(".jsx"))
+    .filter((f) => /\bsave(Marks|Highlights)\(/.test(readFileSync(`src/components/${f}`, "utf8")));
+  t.eq("nei componenti nessuno salva l'elenco che ha in mano", colpevoli.join(" "), "");
 }
