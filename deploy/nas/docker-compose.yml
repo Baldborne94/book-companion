@@ -2,6 +2,11 @@
 # nginx serve l'app, le cartelle dei libri (/libri/) e fa da porta per
 # Supabase (/auth/v1/, /rest/v1/, /storage/v1/), tutto dallo stesso
 # indirizzo; Tailscale lo pubblica in HTTPS su https://<TS_HOSTNAME>.<rete>.ts.net
+#
+# Chiavi, stato di Tailscale e dati di Supabase stanno FUORI dal codice, in
+# ${DATI} (col suo .env): aggiornare il codice sostituisce questa cartella
+# intera, e con lei sparivano chiavi, accesso a Tailscale e database.
+# Si avvia con: sudo docker compose --env-file <DATI>/.env up -d --build
 name: book-companion
 
 services:
@@ -13,7 +18,7 @@ services:
       TS_STATE_DIR: /var/lib/tailscale
       TS_SERVE_CONFIG: /config/serve.json
     volumes:
-      - ./tailscale:/var/lib/tailscale
+      - ${DATI}/tailscale:/var/lib/tailscale
       - ./serve.json:/config/serve.json:ro
     restart: unless-stopped
 
@@ -42,7 +47,7 @@ services:
     volumes:
       - ./supabase/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
       - ./supabase/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro
-      - ./supabase/dati:/var/lib/postgresql/data
+      - ${DATI}/supabase/dati:/var/lib/postgresql/data
       - db-config:/etc/postgresql-custom
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
@@ -139,7 +144,7 @@ services:
       REGION: stub
       ENABLE_IMAGE_TRANSFORMATION: "false"
     volumes:
-      - ./supabase/file:/var/lib/storage
+      - ${DATI}/supabase/file:/var/lib/storage
 
   # Lo schema dell'app (supabase/schema.sql), a ogni avvio: e' rieseguibile
   # (if not exists, drop policy if exists) e va dopo che Auth e Storage

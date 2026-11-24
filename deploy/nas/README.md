@@ -27,46 +27,41 @@ Provato in Docker, con Tailscale sostituito da una porta locale:
 
 ## Prima volta
 
-Dalla cartella `deploy/nas`, collegati via SSH.
+**Chiavi, Tailscale e dati di Supabase stanno fuori dal codice**, in `/volume1/Docker/book-companion-dati`. Aggiornare il codice sostituisce la sua cartella intera: se i dati fossero lì dentro, sparirebbero con lei.
 
-1. Il file `.env` con indirizzo, cartella e chiave Tailscale:
+1. Crea la cartella dei dati e il suo `.env`. Al posto del segnaposto metti la chiave Tailscale, e al posto di `<rete>` il nome della tua rete:
 
 ```bash
-cat > .env <<'EOF'
-BIBLIOTECA_PATH=/volume1/Biblioteca
-TS_HOSTNAME=book-companion
-TS_AUTHKEY=LA_CHIAVE_TAILSCALE
-SUPABASE_PUBLIC_URL=https://book-companion.<rete>.ts.net
-EOF
+sudo mkdir -p /volume1/Docker/book-companion-dati && printf '%s\n' DATI=/volume1/Docker/book-companion-dati BIBLIOTECA_PATH=/volume1/Biblioteca TS_HOSTNAME=book-companion TS_AUTHKEY=LA_CHIAVE_TAILSCALE SUPABASE_PUBLIC_URL=https://book-companion.<rete>.ts.net | sudo tee /volume1/Docker/book-companion-dati/.env > /dev/null
 ```
 
-2. Le chiavi di Supabase si generano una volta sola e si aggiungono in fondo a `.env`. **Non rigenerarle**: cambierebbero la password del database già creato.
+2. Le chiavi di Supabase si generano una volta sola, dalla cartella `deploy/nas` del codice. **Non rigenerarle**: cambierebbero la password del database già creato.
 
 ```bash
-sudo docker run --rm -v "$PWD":/w -w /w node:22-alpine node chiavi.mjs >> .env
+sudo docker run --rm -v "$PWD":/w -w /w node:22-alpine node chiavi.mjs | sudo tee -a /volume1/Docker/book-companion-dati/.env > /dev/null
 ```
 
-3. Avvio. La prima volta impiega qualche minuto:
+3. Avvio. La prima volta impiega qualche minuto. **Ogni comando `docker compose` porta `--env-file`**:
 
 ```bash
-sudo docker compose up -d --build
+sudo docker compose --env-file /volume1/Docker/book-companion-dati/.env up -d --build
 ```
 
-4. Controllo: `schema` deve risultare `Exited (0)`, tutti gli altri `Up`:
+4. Controllo: `schema` deve risultare `Exited (0)`, tutti gli altri `Up`.
 
 ```bash
-sudo docker compose ps -a
+sudo docker compose --env-file /volume1/Docker/book-companion-dati/.env ps -a
 ```
 
 ## Nell'app
 
-1. Apri l'app e tocca la **nuvola** (Sincronizzazione). Tocca **Registrati** con la tua email e una password: entri subito, senza email di conferma, perché sul NAS non c'è un server di posta.
-2. Porta dentro la biblioteca: dalla **vecchia app** «📦 Esporta biblioteca», in quella del NAS **↩ Ripristina**. La sincronizzazione la carica sul NAS. Sull'altro dispositivo basta entrare con lo stesso account.
-3. In **Impostazioni → Il NAS** scrivi `book-companion.<rete>.ts.net/libri/`, poi «Salva e prova».
+1. Apri l'app e tocca la **nuvola** (Sincronizzazione). Tocca **Registrati** con la tua email e una password. Entri subito, senza email di conferma, perché sul NAS non c'è un server di posta.
+2. In **Impostazioni → Il NAS** scrivi `book-companion.<rete>.ts.net/libri/`, poi «Salva e prova».
+3. Sull'altro dispositivo basta entrare con lo stesso account.
 4. Quando tutti i tuoi dispositivi sono entrati, chiudi le registrazioni:
 
 ```bash
-echo "DISABLE_SIGNUP=true" >> .env && sudo docker compose up -d
+echo DISABLE_SIGNUP=true | sudo tee -a /volume1/Docker/book-companion-dati/.env && sudo docker compose --env-file /volume1/Docker/book-companion-dati/.env up -d
 ```
 
 ## Password dimenticata
@@ -74,23 +69,29 @@ echo "DISABLE_SIGNUP=true" >> .env && sudo docker compose up -d
 «Password dimenticata?» manda un'email, e sul NAS la posta non c'è. Si cambia da qui, mettendo la tua email e la nuova password:
 
 ```bash
-sudo docker compose exec db psql -U supabase_admin -d postgres -c "update auth.users set encrypted_password = crypt('NUOVA_PASSWORD', gen_salt('bf')) where email = 'TUA@EMAIL'"
+sudo docker compose --env-file /volume1/Docker/book-companion-dati/.env exec db psql -U supabase_admin -d postgres -c "update auth.users set encrypted_password = crypt('NUOVA_PASSWORD', gen_salt('bf')) where email = 'TUA@EMAIL'"
 ```
 
 ## Copia di sicurezza
 
-I dati di Supabase stanno in `deploy/nas/supabase/dati` (database) e `deploy/nas/supabase/file` (copertine). Una copia del database, senza fermare niente:
+Tutto quello che conta sta in `book-companion-dati`:
+- `supabase/dati`: il database;
+- `supabase/file`: le copertine;
+- `tailscale/`: l'accesso del NAS alla rete;
+- `.env`: senza la sua password il database non si apre, quindi va copiato insieme al resto.
+
+Una copia del database, senza fermare niente:
 
 ```bash
-sudo docker compose exec db pg_dump -U supabase_admin -d postgres --schema=public --schema=auth --schema=storage > copia-$(date +%F).sql
+sudo docker compose --env-file /volume1/Docker/book-companion-dati/.env exec db pg_dump -U supabase_admin -d postgres --schema=public --schema=auth --schema=storage > copia-$(date +%F).sql
 ```
 
 ## Aggiornare
 
-Scarica di nuovo lo ZIP e sostituisci il codice, tenendo `.env`, `tailscale/` e `supabase/dati` e `supabase/file`. Poi:
+Scarica di nuovo lo ZIP ed estrailo sopra quello vecchio: chiavi e dati stanno in `book-companion-dati` e non si toccano. Poi, dalla cartella `deploy/nas`:
 
 ```bash
-sudo docker compose up -d --build
+sudo docker compose --env-file /volume1/Docker/book-companion-dati/.env up -d --build
 ```
 
 ## Ancora da fare
