@@ -136,6 +136,13 @@ Local-first con specchio cloud: l'app funziona identica senza configurazione; co
 - **Merge**: last-write-wins per libro via `bc_upd_<id>` (touch su ogni progresso/stato/annotazione/musica); cancellazioni con lapidi `bc_tombs` che rimuovono anche i file dal bucket; prefs con timestamp `bc_prefs_upd`. Logica pura e testabile in `lib/syncCore.js` (`planSync`/`mergePrefs`).
 - **Trigger**: all'avvio, al ritorno in foreground, al ritorno online, dopo import/eliminazione e alla chiusura del reader (il progresso vola subito sul cloud).
 
+### Fase G — Self-hosting sul NAS
+
+Le app girano direttamente sul NAS di casa (UGREEN, UGOS) accanto alla cartella condivisa `Biblioteca/{Fumetti,Libri,Manga}`.
+- **G1 hosting**: `deploy/nas/` — Caddy serve la build e monta `Biblioteca` read-only su `/biblioteca/` (stessa origine: niente CORS/mixed content; elenco cartelle JSON con `Accept: application/json`); container Tailscale sidecar termina l'HTTPS su `https://<host>.<tailnet>.ts.net`. Lo schema si replica per le altre app (un `TS_HOSTNAME` per app). Il SW esclude `/biblioteca/` dal navigateFallback.
+- **G2 sfoglia NAS**: sezione che naviga `/biblioteca/` e importa il file toccato in IndexedDB (poi è un libro come gli altri, offline incluso).
+- **G3 fumetti/manga**: reader a immagini per CBZ (jszip) con lettura destra→sinistra per i manga; CBR da valutare.
+
 ### Dopo (fuori scope, non iniziare): statistiche di lettura, obiettivi, i18n EN, suite E2E Playwright (riusare l'harness di wh-companion), eventuale wrap TWA/Capacitor per APK (audio a schermo spento, "Apri con" per EPUB).
 
 ## 5. Ordine e granularità
@@ -171,4 +178,4 @@ Su wh-companion l'embed Spotify dava problemi: il controllo `postMessage` dell'i
 
 A ogni fase completata, spunta qui lo stato (✅) così le sessioni successive sanno dove siamo.
 
-Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ · F-sync ✅ — milestone completa 🎉
+Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ · F-sync ✅ · G1 🚧 · G2 ⏳ · G3 ⏳

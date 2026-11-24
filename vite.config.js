@@ -15,6 +15,7 @@ export default defineConfig({
         skipWaiting: false,
         clientsClaim: false,
         navigateFallback: "index.html",
+        navigateFallbackDenylist: [/^\/biblioteca\//],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/,

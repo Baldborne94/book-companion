@@ -18,6 +18,7 @@ App PWA local-first per la biblioteca personale: EPUB/PDF caricati dall'utente, 
 
 - Sync (opzionale): Supabase local-first — client lazy in `lib/supabase.js` (attivo solo con `VITE_SUPABASE_*`), motore in `lib/sync.js`, logica pura di merge in `lib/syncCore.js` (last-write-wins via `bc_upd_<id>`, lapidi `bc_tombs`, prefs `bc_prefs_upd`). File nel bucket privato `books`, download on-demand via `ensureLocalFile` nei reader. Schema/RLS in `supabase/schema.sql`. Senza chiavi l'app resta identica al local-first.
 - PWA: `vite-plugin-pwa` in modalità `prompt` (mai autoUpdate), `skipWaiting`/`clientsClaim` false, precache di tutti i chunk (limite 4 MiB per il worker pdf.js), runtime cache per i Google Fonts. Banner "nuova versione" MAI a reader aperto; update auto al passaggio in background solo se non si sta leggendo (`registerSW` in App.jsx).
+- Hosting NAS: `deploy/nas/` (Dockerfile build→Caddy, sidecar Tailscale per HTTPS). La cartella `Biblioteca` del NAS è servita read-only su `/biblioteca/` alla stessa origine dell'app; il SW la esclude dal navigateFallback.
 
 ## Convenzioni di lavoro
 
