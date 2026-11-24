@@ -6,3 +6,5 @@ dist-e2e
 .env.local
 deploy/nas/.env
 deploy/nas/tailscale
+deploy/nas/supabase/dati
+deploy/nas/supabase/file

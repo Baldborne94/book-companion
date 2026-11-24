@@ -8,3 +8,5 @@ dist-e2e
 scripts/.cache
 deploy/nas/.env
 deploy/nas/tailscale
+deploy/nas/supabase/dati
+deploy/nas/supabase/file
