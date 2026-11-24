@@ -1,0 +1,10 @@
+node_modules
+dist
+dist-e2e
+.git
+.env
+.env.local
+deploy/nas/.env
+deploy/nas/tailscale
+deploy/nas/supabase/dati
+deploy/nas/supabase/file

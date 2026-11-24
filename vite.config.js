@@ -45,6 +45,9 @@ export default defineConfig({
         // (`lib/fonteDizionari.js`), cosi' ogni deployment non porta 32 MB.
         // il wasm e' quello di unrar, 200 KB: precacharlo vuol dire aprire un CBR anche senza rete
         globPatterns: ["**/*.{js,mjs,css,html,svg,png,wasm,woff2}"],
+        // config.js lo riscrive il NAS all'avvio: dalla precache uscirebbe
+        // quello vuoto della build, e l'app sul NAS non vedrebbe il suo Supabase
+        globIgnores: ["config.js"],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         skipWaiting: false,
         clientsClaim: false,
@@ -54,8 +57,15 @@ export default defineConfig({
         // `.well-known`, dove Android viene a leggere `assetlinks.json` per
         // fidarsi del guscio: servirgli l'app al posto del file lascerebbe la
         // barra del browser in cima per sempre.
-        navigateFallbackDenylist: [/^\/privacy/, /^\/\.well-known\//],
+        // e, con l'app ospitata sul NAS, `/libri/`: le cartelle dei libri (deploy/nas)
+        navigateFallbackDenylist: [/^\/privacy/, /^\/\.well-known\//, /^\/libri\//],
         runtimeCaching: [
+          {
+            // la rete prima (cambia col posto), la copia di prima senza rete
+            urlPattern: ({ url }) => url.pathname === "/config.js",
+            handler: "NetworkFirst",
+            options: { cacheName: "config", networkTimeoutSeconds: 3 },
+          },
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/,
             handler: "StaleWhileRevalidate",

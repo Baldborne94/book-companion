@@ -1,0 +1,11 @@
+# Le immagini costruite qui dal codice invece che scaricate da GitHub: per le
+# prove, o se GitHub non le ha ancora pubblicate.
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/nas/Dockerfile
+  db:
+    build:
+      context: ../..
+      dockerfile: deploy/nas/supabase/Dockerfile

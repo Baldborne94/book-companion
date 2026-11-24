@@ -6,3 +6,7 @@ dist-e2e
 .DS_Store
 *.log
 scripts/.cache
+deploy/nas/.env
+deploy/nas/tailscale
+deploy/nas/supabase/dati
+deploy/nas/supabase/file

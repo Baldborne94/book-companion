@@ -1,0 +1,200 @@
+# Book Companion ospitata sul NAS, Supabase compreso: niente fuori di casa.
+# nginx serve l'app, le cartelle dei libri (/libri/) e fa da porta per
+# Supabase (/auth/v1/, /rest/v1/, /storage/v1/), tutto dallo stesso
+# indirizzo; Tailscale lo pubblica in HTTPS su https://<TS_HOSTNAME>.<rete>.ts.net
+#
+# Chiavi, stato di Tailscale e dati di Supabase stanno FUORI dal codice, in
+# DATI (col suo .env). Le immagini dell'app e del database le costruisce
+# GitHub a ogni cambio su main (.github/workflows/nas.yml); l'aggiornatore qui
+# sotto, ogni ora, riprende questo file e serve.json da main, scarica le
+# immagini nuove e riavvia quel che e' cambiato: sul NAS non si tocca piu'
+# niente a mano. Primo avvio e passi in README.md.
+# Per costruire le immagini qui invece che da GitHub (prove):
+#   docker compose -f docker-compose.yml -f docker-compose.costruisci.yml ...
+name: book-companion
+
+services:
+  tailscale:
+    image: tailscale/tailscale:stable
+    hostname: ${TS_HOSTNAME:-book-companion}
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ${DATI}/tailscale:/var/lib/tailscale
+      - ./serve.json:/config/serve.json:ro
+    restart: unless-stopped
+
+  app:
+    image: ghcr.io/baldborne94/book-companion-app:latest
+    network_mode: service:tailscale
+    environment:
+      # scritti in /config.js all'avvio (config.sh); solo la anon, la service_role resta qui
+      SUPABASE_URL: ${SUPABASE_PUBLIC_URL}
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+    volumes:
+      # la cartella condivisa diventa /libri/book-companion/{Libri,Fumetti,Manga}, come vuole lib/nas.js
+      - ${BIBLIOTECA_PATH}:/libri/book-companion:ro
+    depends_on:
+      - tailscale
+    restart: unless-stopped
+
+  # --- Supabase: solo i pezzi che l'app usa (database, accesso, file) ---
+  # Immagini e impostazioni dal self-hosting ufficiale (supabase/docker).
+
+  db:
+    image: ghcr.io/baldborne94/book-companion-db:latest
+    restart: unless-stopped
+    volumes:
+      - ${DATI}/supabase/dati:/var/lib/postgresql/data
+      - db-config:/etc/postgresql-custom
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      # la prima inizializzazione su un disco del NAS e' lenta
+      start_period: 180s
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: 5432
+      POSTGRES_PORT: 5432
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: postgres
+      POSTGRES_DB: postgres
+      JWT_EXP: 3600
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf", "-c", "log_min_messages=fatal"]
+
+  auth:
+    image: supabase/gotrue:v2.198.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:9999/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 180s
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${SUPABASE_PUBLIC_URL}/auth/v1
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      GOTRUE_SITE_URL: ${SUPABASE_PUBLIC_URL}
+      GOTRUE_URI_ALLOW_LIST: ${SUPABASE_PUBLIC_URL}
+      # chi entra la prima volta si registra; poi si puo' chiudere (vedi README)
+      GOTRUE_DISABLE_SIGNUP: ${DISABLE_SIGNUP:-false}
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: "false"
+      # sul NAS non c'e' un server di posta: niente conferma via email
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
+
+  rest:
+    image: postgrest/postgrest:v14.18
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_MAX_ROWS: 1000
+      PGRST_DB_EXTRA_SEARCH_PATH: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_APP_SETTINGS_JWT_EXP: 3600
+    command: ["postgrest"]
+
+  storage:
+    image: supabase/storage-api:v1.98.6
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      rest:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:5000/status"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      # le migrazioni di Storage al primo avvio sul NAS superano i 100 s
+      start_period: 300s
+    environment:
+      ANON_KEY: ${ANON_KEY}
+      SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      POSTGREST_URL: http://rest:3000
+      AUTH_JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      STORAGE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL}
+      REQUEST_ALLOW_X_FORWARDED_PATH: "true"
+      FILE_SIZE_LIMIT: 52428800
+      STORAGE_BACKEND: file
+      GLOBAL_S3_BUCKET: stub
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: stub
+      REGION: stub
+      ENABLE_IMAGE_TRANSFORMATION: "false"
+    volumes:
+      - ${DATI}/supabase/file:/var/lib/storage
+
+  # Lo schema dell'app (supabase/schema.sql), a ogni avvio: e' rieseguibile
+  # (if not exists, drop policy if exists) e va dopo che Auth e Storage
+  # hanno creato le loro tabelle (auth.users, storage.buckets).
+  schema:
+    image: ghcr.io/baldborne94/book-companion-db:latest
+    depends_on:
+      auth:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    entrypoint: ["psql", "-h", "db", "-U", "supabase_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-f", "/schema.sql"]
+    restart: "no"
+
+  # L'AGGIORNATORE: ogni ora riprende la configurazione da main (solo se
+  # docker compose la legge senza errori), scarica le immagini nuove e
+  # riavvia i servizi cambiati. Se stesso non lo ricrea: morirebbe a meta'.
+  aggiornatore:
+    image: docker:cli
+    restart: unless-stopped
+    environment:
+      DATI: ${DATI}
+      OGNI: ${AGGIORNA_OGNI:-3600}
+      FONTE: https://raw.githubusercontent.com/Baldborne94/book-companion/main/deploy/nas
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATI}:${DATI}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        dc() { docker compose -p book-companion --project-directory "$$DATI" -f "$$DATI/docker-compose.yml" --env-file "$$DATI/.env" "$$@"; }
+        while true; do
+          mkdir -p /tmp/nuovi
+          if wget -q -O /tmp/nuovi/docker-compose.yml "$$FONTE/docker-compose.yml" && wget -q -O /tmp/nuovi/serve.json "$$FONTE/serve.json" && docker compose -p book-companion --project-directory "$$DATI" -f /tmp/nuovi/docker-compose.yml --env-file "$$DATI/.env" config -q; then
+            cp /tmp/nuovi/docker-compose.yml /tmp/nuovi/serve.json "$$DATI/"
+          else
+            echo "configurazione da main non presa: resta quella di prima"
+          fi
+          servizi=$$(dc config --services | grep -v '^aggiornatore$$')
+          dc pull --quiet --ignore-pull-failures $$servizi
+          dc up -d $$servizi
+          sleep "$$OGNI"
+        done
+
+volumes:
+  db-config:
