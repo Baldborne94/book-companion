@@ -79,6 +79,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+      start_period: 180s
     environment:
       GOTRUE_API_HOST: 0.0.0.0
       GOTRUE_API_PORT: 9999
@@ -130,7 +131,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
-      start_period: 10s
+      # le migrazioni di Storage al primo avvio sul NAS superano i 100 s
+      start_period: 300s
     environment:
       ANON_KEY: ${ANON_KEY}
       SERVICE_KEY: ${SERVICE_ROLE_KEY}
