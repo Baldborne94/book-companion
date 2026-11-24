@@ -248,7 +248,9 @@ public class Novita extends JobService {
 
     // I LIBRI NUOVI DI UN AUTORE: Open Library, dal piu' nuovo. Un libro mai
     // visto di quest'anno o dell'anno scorso (le date delle uscite annunciate
-    // ci sono gia'); i piu' vecchi si segnano visti senza dire niente
+    // ci sono gia'); i piu' vecchi si segnano visti senza dire niente. E solo
+    // un libro vero in una lingua del lettore, che non sia una ristampa
+    // (`RegoleNovita`: «Rüzgar ve Hakikat» era Wind and Truth in turco)
     private static void controllaAutori(Context app, String id, JSONObject s, String campoVisti, String campoPronta) throws Exception {
         JSONArray autori = s.optJSONArray("autori");
         if (autori == null || autori.length() == 0) return;
@@ -261,7 +263,7 @@ public class Novita extends JobService {
         for (int a = 0; a < autori.length(); a++) {
             String autore = autori.optString(a, "");
             if (autore.isEmpty()) continue;
-            String u = "https://openlibrary.org/search.json?author=" + URLEncoder.encode(autore, "UTF-8") + "&sort=new&limit=20&fields=key,title,first_publish_year";
+            String u = "https://openlibrary.org/search.json?author=" + URLEncoder.encode(autore, "UTF-8") + "&sort=new&limit=20&fields=key,title,first_publish_year,language";
             JSONObject json = chiedi(app, u);
             JSONArray docs = json == null ? null : json.optJSONArray("docs");
             if (docs == null) continue;
@@ -273,17 +275,46 @@ public class Novita extends JobService {
                 giaVisti.add(chiave);
                 visti.put(chiave);
                 int uscito = d.optInt("first_publish_year", 0);
-                if (uscito >= anno - 1) {
-                    String titolo = d.optString("title", "");
-                    if (pronta && !giaDetto(s, titolo)) avvisa(app, id, "📚 Nuovo libro di " + autore, titolo + " (" + uscito + ")");
-                    segnaDetto(s, titolo);
-                }
+                String titolo = d.optString("title", "");
+                if (!RegoleNovita.candidato(titolo, uscito, lingue(d), anno)) continue;
+                if (pronta && !giaDetto(s, titolo) && !RegoleNovita.ristampa(titolo, stessoTitolo(app, titolo, autore), anno))
+                    avvisa(app, id, "📚 Nuovo libro di " + autore, titolo + " (" + uscito + ")");
+                segnaDetto(s, titolo);
             }
             Thread.sleep(1000);
         }
         while (visti.length() > VISTI_MAX) visti.remove(0);
         s.put(campoVisti, visti);
         s.put(campoPronta, true);
+    }
+
+    private static java.util.List<String> lingue(JSONObject d) {
+        JSONArray a = d.optJSONArray("language");
+        if (a == null) return null;
+        java.util.ArrayList<String> l = new java.util.ArrayList<>();
+        for (int k = 0; k < a.length(); k++) l.add(a.optString(k, ""));
+        return l;
+    }
+
+    // le opere dello stesso autore con quel titolo, per vedere se era gia'
+    // uscito: una domanda in piu' solo per chi sta per diventare un avviso.
+    // Senza risposta nessuna ristampa: meglio un avviso in piu' che uno perso
+    private static java.util.List<String[]> stessoTitolo(Context app, String titolo, String autore) {
+        try {
+            Thread.sleep(500);
+            JSONObject json = chiedi(app, "https://openlibrary.org/search.json?title=" + URLEncoder.encode(titolo, "UTF-8") + "&author="
+                    + URLEncoder.encode(autore, "UTF-8") + "&limit=30&fields=title,first_publish_year");
+            JSONArray docs = json == null ? null : json.optJSONArray("docs");
+            if (docs == null) return null;
+            java.util.ArrayList<String[]> l = new java.util.ArrayList<>();
+            for (int k = 0; k < docs.length(); k++) {
+                JSONObject d = docs.optJSONObject(k);
+                if (d != null) l.add(new String[] { d.optString("title", ""), String.valueOf(d.optInt("first_publish_year", 0)) });
+            }
+            return l;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // I TITOLI GIA' DETTI: lo stesso libro arriva dalla serie e dal suo

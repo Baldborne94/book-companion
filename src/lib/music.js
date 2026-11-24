@@ -422,27 +422,46 @@ export function getBookMusic(bookId) {
 // ascoltando la raccolta di Warhammer». Il libro ricordava solo il brano,
 // e «▶ Riprendi» lo suonava da solo, cioe' in ripetizione (una melodia
 // sola gira all'infinito): la raccolta non andava piu' avanti. Adesso si
-// riprende la raccolta da quel brano; `raccolta: null` e' una melodia
-// scelta da sola, e resta in ripetizione.
-export const legameMusica = (music) =>
-  music?.current ? { url: music.current.url, trackId: music.current.trackId, name: music.current.name, raccolta: music.queue?.raccolta || null } : null;
+// riprende la raccolta da quel brano.
+//
+// E LA CODA SI RICORDA ANCHE SENZA RACCOLTA (il lettore, di nuovo: «perche'
+// sta girando in un loop infinito lo stesso brano mentre leggo?»). La
+// raccolta fatta partire a caso, o la lista dei «Brani», suonavano in coda
+// ma senza raccolta, e il legame diceva `raccolta: null`, cioe' «melodia
+// scelta da sola»: «▶ Riprendi» la suonava in ripetizione. Ora il legame
+// dice da dove viene la coda (`raccolta`, anche a caso), che e' una coda
+// (`coda`) e se era a caso (`casuale`); la melodia sola lo dice lei (`sola`).
+export function legameMusica(music) {
+  const c = music?.current;
+  if (!c) return null;
+  const base = { url: c.url, trackId: c.trackId, name: c.name };
+  const q = music.queue;
+  if (!q) return { ...base, raccolta: null, sola: true };
+  return { ...base, raccolta: q.origine || q.raccolta || null, coda: true, ...(q.shuffle ? { casuale: true } : {}) };
+}
 
 const stessaMelodia = (a, b) => (a?.trackId ? a.trackId === b?.trackId : !!a?.url && a.url === b?.url);
 
-// come si riprende la musica di un libro: la raccolta dal suo brano, o la
-// melodia sola. Un legame scritto prima che si ricordasse la raccolta (senza
-// la chiave) prende la raccolta che contiene quel brano, se c'e'
+// come si riprende la musica di un libro: la raccolta dal suo brano, tutte
+// le melodie dal suo brano, o la melodia sola, solo se era sola. Un legame
+// scritto prima (senza `coda` ne' `sola`, con o senza `raccolta: null`, che
+// la coda a caso scriveva per sbaglio) prende la raccolta che contiene quel
+// brano; e cio' che non sta in nessuna raccolta riprende tutte le melodie,
+// mai un brano solo in ripetizione che nessuno ha chiesto
 export function comeRiprendere(pair, { raccolte = getLists(), favs = getFavorites(), tutte = getFavoritesRaw() } = {}) {
   if (!pair) return null;
   // il brano di un libro puo' essere una copia unita a un'altra (`braniDoppi`)
   if (pair.trackId) pair = { ...pair, trackId: tracciaViva(pair.trackId, tutte) };
-  const vecchio = !("raccolta" in pair);
-  const candidate = vecchio ? raccolte : raccolte.filter((r) => r.id === pair.raccolta);
+  if (pair.sola) return { melodia: pair };
+  const casuale = !!pair.casuale;
+  const candidate = pair.raccolta ? raccolte.filter((r) => r.id === pair.raccolta) : pair.coda ? [] : raccolte;
   for (const r of candidate) {
     const brani = braniDi(r, favs);
     const da = brani.findIndex((b) => stessaMelodia(pair, b));
-    if (da >= 0) return { raccolta: r, brani, da };
+    if (da >= 0) return { raccolta: r, brani, da, casuale };
   }
+  const da = favs.findIndex((b) => stessaMelodia(pair, b));
+  if (da >= 0 && favs.length > 1) return { tutte: true, brani: favs, da, casuale };
   return { melodia: pair };
 }
 

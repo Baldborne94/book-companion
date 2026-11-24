@@ -367,8 +367,10 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
     if (!clean.length) return false;
     const order = shuffle ? shuffled(clean) : clean;
     const i = shuffle ? 0 : Math.min(Math.max(0, da), order.length - 1);
-    queueRef.current = { list: order, i, shuffle, raccolta: shuffle ? null : raccolta };
-    setQueue({ total: order.length, shuffle, index: i, raccolta: shuffle ? null : raccolta, elenco: order.map(voceInCoda) });
+    // `raccolta` e' quella che ricorda il suo brano (a caso no); `origine` e'
+    // da dove viene la coda, anche a caso: e' quella che il libro ricorda
+    queueRef.current = { list: order, i, shuffle, raccolta: shuffle ? null : raccolta, origine: raccolta };
+    setQueue({ total: order.length, shuffle, index: i, raccolta: shuffle ? null : raccolta, origine: raccolta, elenco: order.map(voceInCoda) });
     return start(order[i]);
   }
 
@@ -379,7 +381,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
     const q = queueRef.current;
     if (!q.list[i]) return false;
     q.i = i;
-    setQueue({ total: q.list.length, shuffle: q.shuffle, index: i, raccolta: q.raccolta, elenco: q.list.map(voceInCoda) });
+    setQueue({ total: q.list.length, shuffle: q.shuffle, index: i, raccolta: q.raccolta, origine: q.origine, elenco: q.list.map(voceInCoda) });
     return start(q.list[i]);
   }
 
@@ -420,7 +422,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
       i = 0;
     }
     q.i = i;
-    setQueue({ total: q.list.length, shuffle: q.shuffle, index: i, raccolta: q.raccolta, elenco: q.list.map(voceInCoda) });
+    setQueue({ total: q.list.length, shuffle: q.shuffle, index: i, raccolta: q.raccolta, origine: q.origine, elenco: q.list.map(voceInCoda) });
     start(q.list[i]);
   }
   advanceRef.current = advance;
