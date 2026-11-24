@@ -3,14 +3,14 @@
 L'app e la cartella `Biblioteca` servite dallo **stesso indirizzo HTTPS**:
 
 ```
-https://biblioteca.<tua-tailnet>.ts.net/              → l'app (PWA installabile)
-https://biblioteca.<tua-tailnet>.ts.net/biblioteca/   → Fumetti / Libri / Manga, sola lettura
+https://book-companion.<tua-tailnet>.ts.net/              → l'app (PWA installabile)
+https://book-companion.<tua-tailnet>.ts.net/biblioteca/   → Fumetti / Libri / Manga, sola lettura
 ```
 
 Stessa origine, quindi niente CORS né mixed content. L'HTTPS con certificato valido lo fornisce Tailscale, ed è obbligatorio perché la PWA si installi e il service worker parta. Il NAS non apre porte sul router: lo raggiungono solo i tuoi dispositivi collegati a Tailscale, sia a casa sia fuori.
 
 Due container:
-- `tailscale`: mette il NAS nella tailnet con il nome `biblioteca` e termina l'HTTPS.
+- `tailscale`: mette il NAS nella tailnet con il nome `book-companion` e termina l'HTTPS.
 - `app`: Caddy, che serve la build Vite e monta `Biblioteca` in **sola lettura**.
 
 Per le altre app basta lo stesso schema: una cartella, un `TS_HOSTNAME` diverso e un'altra coppia di container.
@@ -43,12 +43,12 @@ cp .env.example .env && nano .env
 sudo docker compose up -d --build
 ```
 
-Dopo circa un minuto la macchina `biblioteca` compare nella console Tailscale. Dal tablet, con Tailscale acceso, apri `https://biblioteca.<tailnet>.ts.net` in Chrome → menu → **Installa app**.
+Dopo circa un minuto la macchina `book-companion` compare nella console Tailscale. Dal tablet, con Tailscale acceso, apri `https://book-companion.<tailnet>.ts.net` in Chrome → menu → **Installa app**.
 
 Verifica rapida della libreria:
 
 ```bash
-curl -H "Accept: application/json" https://biblioteca.<tailnet>.ts.net/biblioteca/
+curl -H "Accept: application/json" https://book-companion.<tailnet>.ts.net/biblioteca/
 ```
 
 ## Aggiornare l'app
@@ -63,4 +63,4 @@ La PWA mostra il banner "nuova versione" come su Vercel, mai mentre stai leggend
 
 - **I dati di lettura non migrano da soli.** IndexedDB e localStorage sono legati all'indirizzo, quindi la versione NAS parte vuota. Per portarli: Esporta dalla versione Vercel e Ripristina da archivio sulla versione NAS. In alternativa, con le chiavi Supabase in `.env`, la sync ripopola tutto.
 - La sezione per sfogliare `/biblioteca/` dall'app arriva nel prossimo PR. Questo PR prepara solo l'hosting.
-- Con Supabase: aggiungi `https://biblioteca.<tailnet>.ts.net` tra i **Redirect URLs** (Authentication → URL Configuration), altrimenti il magic link riporta su Vercel.
+- Con Supabase: aggiungi `https://book-companion.<tailnet>.ts.net` tra i **Redirect URLs** (Authentication → URL Configuration), altrimenti il magic link riporta su Vercel.

@@ -1,11 +1,11 @@
 import { putFile, putCover } from "./bookStore.js";
 
-export async function importFiles(fileList) {
+export async function importFiles(fileList, extraFor = () => null) {
   const added = [];
   const errors = [];
   for (const file of Array.from(fileList)) {
     const lower = file.name.toLowerCase();
-    const fileType = lower.endsWith(".epub") ? "epub" : lower.endsWith(".pdf") ? "pdf" : null;
+    const fileType = lower.match(/\.(epub|pdf|cbz)$/)?.[1] || null;
     if (!fileType) {
       errors.push({ name: file.name, reason: "formato non supportato" });
       continue;
@@ -19,17 +19,19 @@ export async function importFiles(fileList) {
     }
     const meta = {
       id,
-      title: file.name.replace(/\.(epub|pdf)$/i, ""),
+      title: file.name.replace(/\.(epub|pdf|cbz)$/i, ""),
       author: "",
       series: "",
       fileType,
       addedAt: Date.now(),
       rating: 0,
       notes: "",
+      ...extraFor(file),
     };
     try {
       if (fileType === "epub") await enrichEpub(meta, file);
-      else await enrichPdf(meta, file);
+      else if (fileType === "pdf") await enrichPdf(meta, file);
+      else await enrichCbz(meta, file);
     } catch {
       /* estrazione fallita: il libro resta col filename come titolo */
     }
@@ -62,4 +64,10 @@ async function enrichPdf(meta, file) {
   const { renderPdfThumb } = await import("./pdfThumb.js");
   const thumb = await renderPdfThumb(await file.arrayBuffer());
   if (thumb) await putCover(meta.id, thumb);
+}
+
+async function enrichCbz(meta, file) {
+  const { cbzCover } = await import("./comic.js");
+  const cover = await cbzCover(file);
+  if (cover) await putCover(meta.id, cover);
 }

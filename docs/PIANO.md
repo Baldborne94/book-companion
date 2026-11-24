@@ -141,7 +141,8 @@ Local-first con specchio cloud: l'app funziona identica senza configurazione; co
 Le app girano direttamente sul NAS di casa (UGREEN, UGOS) accanto alla cartella condivisa `Biblioteca/{Fumetti,Libri,Manga}`.
 - **G1 hosting**: `deploy/nas/` — Caddy serve la build e monta `Biblioteca` read-only su `/biblioteca/` (stessa origine: niente CORS/mixed content; elenco cartelle JSON con `Accept: application/json`); container Tailscale sidecar termina l'HTTPS su `https://<host>.<tailnet>.ts.net`. Lo schema si replica per le altre app (un `TS_HOSTNAME` per app). Il SW esclude `/biblioteca/` dal navigateFallback.
 - **G2 sfoglia NAS**: sezione che naviga `/biblioteca/` e importa il file toccato in IndexedDB (poi è un libro come gli altri, offline incluso).
-- **G3 fumetti/manga**: reader a immagini per CBZ (jszip) con lettura destra→sinistra per i manga; CBR da valutare.
+- **G2 dettagli**: `lib/nas.js` + `NasBrowser.jsx` (bottone "Dal NAS" in libreria, visibile solo se `/biblioteca/` risponde JSON). Dal percorso: cartella di primo livello → `genre` (Fumetti/Manga), sottocartella → `saga`, numero nel nome → `sagaOrder`; `nasPath` marca i già importati.
+- **G3 fumetti/manga**: `ComicReader.jsx` + `lib/comic.js` per CBZ (jszip, ordine naturale delle pagine, solo ±6 object URL vivi). Manga = `genre` "Manga" → destra→sinistra (override locale `bc_rtl_<id>`); doppia pagina in orizzontale ≥900px con copertina sola; progresso come i PDF (`bc_cfi_<id>` = pagina 1-based). CBR escluso.
 
 ### Dopo (fuori scope, non iniziare): statistiche di lettura, obiettivi, i18n EN, suite E2E Playwright (riusare l'harness di wh-companion), eventuale wrap TWA/Capacitor per APK (audio a schermo spento, "Apri con" per EPUB).
 
@@ -178,4 +179,4 @@ Su wh-companion l'embed Spotify dava problemi: il controllo `postMessage` dell'i
 
 A ogni fase completata, spunta qui lo stato (✅) così le sessioni successive sanno dove siamo.
 
-Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ · F-sync ✅ · G1 🚧 · G2 ⏳ · G3 ⏳
+Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ · F-sync ✅ · G1 ✅ · G2 ✅ · G3 ✅ (da collaudare sul NAS)

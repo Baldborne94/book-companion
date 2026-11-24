@@ -5,6 +5,7 @@ import { storageEstimate } from "../lib/bookStore.js";
 import { importFiles } from "../lib/importBook.js";
 import { exportLibrary } from "../lib/exportLibrary.js";
 import { restoreLibrary } from "../lib/restoreLibrary.js";
+import { nasAvailable } from "../lib/nas.js";
 import BookCover from "./BookCover.jsx";
 import EmptyState from "./EmptyState.jsx";
 
@@ -225,12 +226,20 @@ function Grouped({ books, group, onOpenBook, localIds }) {
   ));
 }
 
-export default function Library({ books, updateBooks, onOpenBook, notify, localIds, onImported, focusSaga }) {
+export default function Library({ books, updateBooks, onOpenBook, notify, localIds, onImported, focusSaga, onNas }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [sort, setSort] = useState("recent");
   const [group, setGroup] = useState("none");
   const [importing, setImporting] = useState(false);
+  const [nas, setNas] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    nasAvailable().then((ok) => alive && setNas(ok));
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [dragOver, setDragOver] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const archiveRef = useRef(null);
@@ -345,7 +354,7 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
       <input
         ref={inputRef}
         type="file"
-        accept=".epub,.pdf"
+        accept=".epub,.pdf,.cbz"
         multiple
         style={{ display: "none" }}
         onChange={(e) => handleFiles(e.target.files)}
@@ -374,6 +383,21 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
         >
           {importing ? "Sto rilegando i tomi…" : "＋ Aggiungi libri"}
         </button>
+        {nas && (
+          <button
+            onClick={onNas}
+            style={{
+              padding: "10px 18px",
+              borderRadius: 12,
+              border: `1px solid ${C.accent}88`,
+              color: C.accent,
+              fontWeight: 600,
+              fontSize: 15,
+            }}
+          >
+            🗄️ Dal NAS
+          </button>
+        )}
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}

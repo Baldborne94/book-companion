@@ -43,7 +43,7 @@ export default function BookCover({ book, radius = 8, compact = false }) {
       ) : (
         <div style={{ padding: compact ? 4 : 10, textAlign: "center" }}>
           <div style={{ fontSize: compact ? 16 : 22, marginBottom: compact ? 0 : 6 }}>
-            {book.fileType === "pdf" ? "📄" : "📖"}
+            {book.fileType === "pdf" ? "📄" : book.fileType === "cbz" ? "🗯️" : "📖"}
           </div>
           {!compact && (
           <div

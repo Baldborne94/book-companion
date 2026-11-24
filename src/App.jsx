@@ -33,6 +33,8 @@ const navIcon = (sectionId, themeId) =>
 
 const Reader = lazy(() => import("./components/Reader.jsx"));
 const PdfReader = lazy(() => import("./components/PdfReader.jsx"));
+const ComicReader = lazy(() => import("./components/ComicReader.jsx"));
+const NasBrowser = lazy(() => import("./components/NasBrowser.jsx"));
 
 const reducedMotion = () =>
   typeof window !== "undefined" &&
@@ -447,6 +449,7 @@ export default function App() {
   const [readingStart, setReadingStart] = useState(null);
   const [gardenOpen, setGardenOpen] = useState(false);
   const [diaryOpen, setDiaryOpen] = useState(false);
+  const [nasOpen, setNasOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [music, setMusic] = useState({ current: null, playing: false, timerEnd: null });
   const [syncOpen, setSyncOpen] = useState(false);
@@ -684,6 +687,7 @@ export default function App() {
             localIds={localIds}
             onImported={() => runSync.current(true)}
             focusSaga={focusSaga}
+            onNas={() => setNasOpen(true)}
           />
         )}
         {section === "music" && <MusicRoom music={music} playerRef={playerRef} notify={notify} />}
@@ -720,6 +724,21 @@ export default function App() {
           onReadAt={(id, cfi) => handleRead(id, cfi)}
         />
       )}
+      {nasOpen && (
+        <Suspense fallback={null}>
+          <NasBrowser
+            books={books}
+            updateBooks={updateBooks}
+            onClose={() => setNasOpen(false)}
+            notify={notify}
+            onImported={() => runSync.current(true)}
+            onRead={(id) => {
+              setNasOpen(false);
+              handleRead(id);
+            }}
+          />
+        </Suspense>
+      )}
       {diaryOpen && (
         <ReadingDiary books={books} onClose={() => setDiaryOpen(false)} onOpenBook={setOpenId} />
       )}
@@ -744,7 +763,25 @@ export default function App() {
             </div>
           }
         >
-          {readingBook.fileType === "epub" ? (
+          {readingBook.fileType === "cbz" ? (
+            <ComicReader
+              key={`${readingBook.id}:${readingStart || ""}`}
+              book={readingBook}
+              startCfi={readingStart}
+              nextBook={nextBook}
+              onReadNext={handleRead}
+              music={music}
+              onMusicToggle={() => (music.playing ? playerRef.current?.pause() : playerRef.current?.resume())}
+              onMusicStop={() => playerRef.current?.stop()}
+              onClose={() => {
+                setReadingId(null);
+                setReadingStart(null);
+                localFileIds().then(setLocalIds);
+                runSync.current(true);
+              }}
+              notify={notify}
+            />
+          ) : readingBook.fileType === "epub" ? (
             <Reader
               key={`${readingBook.id}:${readingStart || ""}`}
               book={readingBook}

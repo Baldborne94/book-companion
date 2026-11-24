@@ -5,7 +5,7 @@ name: book-companion
 services:
   tailscale:
     image: tailscale/tailscale:stable
-    hostname: ${TS_HOSTNAME:-biblioteca}
+    hostname: ${TS_HOSTNAME:-book-companion}
     environment:
       TS_AUTHKEY: ${TS_AUTHKEY}
       TS_STATE_DIR: /var/lib/tailscale
