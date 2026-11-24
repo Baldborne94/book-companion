@@ -1,8 +1,37 @@
+import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // `@xmldom/xmldom` è il ripiego di epub.js per Node e per Internet
+      // Explorer, e in un browser di oggi non viene chiamato mai — il
+      // perché, misurato, sta scritto in `src/lib/xmldomFinto.js`. Senza
+      // questo alias sarebbero 60 kB di codice morto spediti a ogni
+      // lettore, per giunta con due avvisi ALTI di `npm audit` addosso.
+      "@xmldom/xmldom": fileURLToPath(new URL("./src/lib/xmldomFinto.js", import.meta.url)),
+    },
+  },
+  // il timbro di versione visibile in app: senza, e' impossibile sapere
+  // quale build gira davvero sul tablet (il service worker in modalita'
+  // prompt puo' restare indietro di parecchi rilasci). Da quando l'app ha
+  // un guscio Android il timbro porta anche la VERSIONE di `package.json`:
+  // e' quella che si dichiara allo store, e la data della build da sola
+  // non dice a quale rilascio corrisponde.
+  define: {
+    __BC_VERSIONE__: JSON.stringify(
+      `${JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version} · ${new Date().toLocaleString("it-IT", {
+        timeZone: "Europe/Rome",
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`
+    ),
+  },
   plugins: [
     react(),
     VitePWA({
@@ -10,12 +39,23 @@ export default defineConfig({
       manifest: false,
       includeAssets: ["icon.svg", "manifest.json", "icons/*.png"],
       workbox: {
-        globPatterns: ["**/*.{js,mjs,css,html,svg,png}"],
+        // IL DIZIONARIO OFFLINE NON STA QUI DENTRO, ed e' voluto: il lettore
+        // lo scarica quando lo chiede lui (Impostazioni › Il dizionario), e
+        // nemmeno nella build c'e' piu': scende da GitHub
+        // (`lib/fonteDizionari.js`), cosi' ogni deployment non porta 32 MB.
+        // il wasm e' quello di unrar, 200 KB: precacharlo vuol dire aprire un CBR anche senza rete
+        globPatterns: ["**/*.{js,mjs,css,html,svg,png,wasm,woff2}"],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         skipWaiting: false,
         clientsClaim: false,
         navigateFallback: "index.html",
-        navigateFallbackDenylist: [/^\/biblioteca\//],
+        // LE PAGINE FUORI DALL'APP NON PASSANO DAL RIPIEGO: la privacy, che
+        // e' una pagina a se' (lo store la vuole a un indirizzo pubblico), e
+        // `.well-known`, dove Android viene a leggere `assetlinks.json` per
+        // fidarsi del guscio: servirgli l'app al posto del file lascerebbe la
+        // barra del browser in cima per sempre.
+        // e, con l'app ospitata sul NAS, `/libri/`: le cartelle dei libri (deploy/nas)
+        navigateFallbackDenylist: [/^\/privacy/, /^\/\.well-known\//, /^\/libri\//],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/,
@@ -27,7 +67,11 @@ export default defineConfig({
             handler: "CacheFirst",
             options: {
               cacheName: "google-fonts-files",
-              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              // quattro famiglie coi loro pesi e i sottoinsiemi di carattere
+              // (latino, latino esteso) sono una trentina di file: con 20 la
+              // cache buttava via un peso del carattere scelto, e senza rete il
+              // corsivo tornava Georgia a meta' pagina
+              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 365 },
               cacheableResponse: { statuses: [0, 200] },
             },
           },

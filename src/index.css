@@ -1,9 +1,148 @@
-@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap");
+/* I CARATTERI STANNO NELL'APP, non su Google: l'@import di Google teneva
+   fermo il programma finche' il suo foglio non era arrivato (sul banco 250 ms
+   su un avvio di 300; vedi `tappeAvvio` in lib/tempi.js). Solo latino e
+   latino esteso; licenze in src/fonti/LICENZE.txt (SIL Open Font License 1.1). */
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonti/atkinson-hyperlegible-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonti/atkinson-hyperlegible-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Cormorant Garamond";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonti/cormorant-garamond-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Cormorant Garamond";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonti/cormorant-garamond-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Cormorant Garamond";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonti/cormorant-garamond-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Cormorant Garamond";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonti/cormorant-garamond-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "EB Garamond";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonti/eb-garamond-corsivo-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "EB Garamond";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonti/eb-garamond-corsivo-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "EB Garamond";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonti/eb-garamond-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "EB Garamond";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonti/eb-garamond-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "EB Garamond";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonti/eb-garamond-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "EB Garamond";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonti/eb-garamond-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "EB Garamond";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonti/eb-garamond-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "EB Garamond";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonti/eb-garamond-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Literata";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonti/literata-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Literata";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonti/literata-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  /* IL TOCCO RISPONDE CON LA NOSTRA FACCIA, non con quella di Android.
+     Chrome dipinge il suo rettangolo grigio-azzurro su QUALUNQUE elemento
+     che risponda a un tocco, non solo sui tasti: stava spento sui soli
+     `button`, e nel lettore dei fumetti — dove il tocco cade sul riquadro
+     della pagina — ogni voltata era un lampo blu su tutta la tavola
+     (visto nel video del lettore, ~100ms pieni e 200ms di dissolvenza,
+     il colore di sistema). Su `*` si spegne dovunque, una volta sola. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 html,
@@ -13,7 +152,11 @@ body,
 }
 
 body {
-  background: #0f0d1a;
+  /* Il fondo arriva dalla variabile che `index.html` riempie col colore del
+     tema scelto prima ancora che il bundle parta. Il valore di scorta è
+     quello della Biblioteca Magica: è il tema di partenza, quindi al primo
+     avvio in assoluto non c'è nessun lampo da evitare. */
+  background: var(--bc-bg, #0f0d1a);
   color: #e2dac9;
   font-family: "EB Garamond", Georgia, serif;
   font-size: 17px;
@@ -22,13 +165,45 @@ body {
   overscroll-behavior-y: none;
 }
 
+/* IN SCORRIMENTO CONTINUO IL CONTENITORE DI EPUB.JS NON SI ANCORA DA SE'.
+   Quando il lettore risale e il capitolo prima viene aggiunto SOPRA, epub.js
+   sposta lo scroll di quanto e' alto il capitolo nuovo (`counter`) per
+   tenere ferma la pagina sotto gli occhi — ma Chrome e Firefox lo fanno
+   gia' da soli (scroll anchoring, del 2017: epub.js e' di prima), quindi
+   la compensazione arrivava DUE volte e la pagina saltava avanti di un
+   capitolo (misurato con le pile di chiamata: `counter` +2470 e +503 sopra
+   un ancoraggio del browser che aveva gia' fatto +503). L'elemento lo
+   costruisce la libreria, come `.textLayer`: da qui, non in linea. */
+.epub-container {
+  overflow-anchor: none;
+}
+
 /* La barra in basso deve stare ai piedi del visibile, non del documento:
    position:fixed su Android segue il viewport di layout e balla con la
    barra degli indirizzi. Guscio alto quanto lo schermo, scorre solo il
    contenuto. */
+/* IL GUSCIO NON DEVE MAI ESSERE PIU' ALTO DI QUEL CHE SI VEDE, o la barra
+   in basso — che sta in fondo al guscio — finisce sotto il bordo dello
+   schermo e SPARISCE (segnalato: «che è successo alla barra sotto?»).
+   Riprodotto in browser: guscio 830 dentro un'area visibile di 730, e il
+   fondo della barra atterra a 830, cioè fuori.
+
+   `dvh` è il viewport DINAMICO: su Android cresce e cala con le barre di
+   sistema, e in una PWA a tutto schermo può venire più alto dell'area
+   davvero visibile — succede tipicamente a freddo, dopo un riavvio, che è
+   esattamente quando il difetto si è visto. `svh` è il viewport PICCOLO,
+   cioè quello che c'è SEMPRE: più basso è sempre visibile, più alto non
+   può essere. Le tre righe sono una scala di ripiego, e vince l'ultima che
+   il browser capisce.
+
+   Prezzo dichiarato: in una scheda del browser, quando la barra degli
+   indirizzi si ritira, in fondo resta una striscia del colore di fondo —
+   che è il colore del tema, quindi si nota appena. Una striscia è molto
+   meno di una barra di navigazione irraggiungibile. */
 .bc-shell {
   height: 100vh;
   height: 100dvh;
+  height: 100svh;
   overflow: hidden;
 }
 
@@ -43,15 +218,72 @@ body {
   flex-direction: column;
 }
 
+/* LA BARRA DI SCORRIMENTO DEL TEMA (chiesto dal lettore, con la foto del PC:
+   «la barra laterale così fa un po' schifo e non ci azzecca con lo stile
+   dell'app»). Quella di Windows è grigia, larga e con le frecce. Al suo
+   posto un filo arrotondato del colore dell'accento, su fondo trasparente,
+   che si accende quando ci passi sopra, e niente frecce. Solo dove c'è un
+   mouse: sul tablet e sul telefono la barra è quella sottile del sistema,
+   che compare mentre scorri e sparisce, e lì resta. Un pseudo-elemento non
+   si scrive in linea, quindi sta qui; il colore è la variabile del tema
+   (`--bc-accent`), così segue anche il Rifugio Silvano e la Cittadella. */
+@media (hover: hover) and (pointer: fine) {
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--bc-accent, #d9a94e) 48%, transparent);
+    background-clip: padding-box;
+    border: 3px solid transparent;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--bc-accent, #d9a94e) 78%, transparent);
+  }
+  ::-webkit-scrollbar-button {
+    display: none;
+  }
+}
+
 button {
   font-family: inherit;
   cursor: pointer;
   border: none;
   background: none;
   color: inherit;
+  /* il lampo di sistema e' gia' spento su `*` (vedi in cima): qui resta
+     solo la nostra risposta al tocco, in `button:active` */
+  transition: opacity 0.18s ease-out;
 }
 
-input {
+/* Tolto il lampo di sistema serve qualcosa al suo posto, o il tasto non
+   risponde affatto. Gli stili sono tutti in linea e le pseudo-classi lì
+   non arrivano, quindi lo stato premuto può stare solo qui. Solo
+   `opacity` — vedi la lezione 10: scale e layout fanno sfarfallare. */
+button:active {
+  opacity: 0.62;
+  transition: none;
+}
+
+/* L'ANELLO DEL FUOCO. In otto file i campi hanno `outline: none` in linea
+   per togliere quello del browser, che è brutto; ma senza niente al suo
+   posto, con una tastiera collegata al tablet non si sa mai dove si è.
+   L'`!important` è qui perché uno stile in linea batte il foglio, ed è
+   esattamente il caso in cui serve. `:focus-visible` e non `:focus`: col
+   dito l'anello non deve comparire. */
+:focus-visible {
+  outline: 2px solid var(--bc-accent, #d9a94e) !important;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+input,
+textarea {
   font-family: inherit;
 }
 
@@ -128,6 +360,20 @@ input {
   }
 }
 
+/* LA VOLTATA DEI FUMETTI SCORRE (`scorrimento` in lib/fumetto.js): da dove
+   a dove lo dice l'elemento, con `--da` e `--a`, cosi' la stessa regola fa
+   uscire il foglio di prima ed entrare il nuovo, in un verso o nell'altro.
+   Solo `transform` (lezione 10). */
+@keyframes bc-scorri {
+  from {
+    transform: translateX(var(--da, 0px));
+  }
+  to {
+    transform: translateX(var(--a, 0px));
+  }
+}
+
+
 @keyframes bc-flicker {
   0%, 100% {
     opacity: 1;
@@ -143,72 +389,6 @@ input {
   }
 }
 
-@keyframes bc-cast {
-  0%,
-  8% {
-    opacity: 0;
-  }
-  52% {
-    opacity: 0.85;
-  }
-  80% {
-    opacity: 0.5;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes bc-leaf-next {
-  0% {
-    transform: rotateY(0deg);
-    opacity: 0;
-  }
-  8% {
-    transform: rotateY(0deg);
-    opacity: 1;
-  }
-  80% {
-    transform: rotateY(-178deg);
-    opacity: 1;
-  }
-  100% {
-    transform: rotateY(-178deg);
-    opacity: 0;
-  }
-}
-
-@keyframes bc-leaf-prev {
-  0% {
-    transform: rotateY(0deg);
-    opacity: 0;
-  }
-  8% {
-    transform: rotateY(0deg);
-    opacity: 1;
-  }
-  80% {
-    transform: rotateY(178deg);
-    opacity: 1;
-  }
-  100% {
-    transform: rotateY(178deg);
-    opacity: 0;
-  }
-}
-
-@keyframes bc-cover-half {
-  0% {
-    opacity: 0;
-  }
-  8%,
-  80% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-  }
-}
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -275,4 +455,127 @@ input {
 
 .textLayer.selecting .endOfContent {
   top: 0;
+}
+
+/* LA SVOLTA DELLA PAGINA: LA SPAZZATA.
+ *
+ * Sta nel foglio di stile e non in linea per la ragione di sempre: sono
+ * pseudo-elementi (`::view-transition-old`), e li' gli stili in linea non
+ * arrivano — come per `:active` e `:focus-visible`.
+ *
+ * E' il gesto del Kindle chiesto dal lettore, alla SESTA geometria: la
+ * pagina vecchia si stacca INTERA, si inclina e scivola via
+ * rimpicciolendo, e sotto c'e' gia' quella nuova. Due sole fotografie.
+ * La versione 3D (rotate3d + prospettiva sulla coppia) e' stata provata
+ * e RITIRATA con le misure in mano: butta Gecko fuori dal compositore e
+ * sul tablet ticchettava un fotogramma si' e uno no — vedi il commento
+ * sui fotogrammi qui sotto. I segnali del foglio sopravvivono in 2D:
+ * l'inclinazione (la diagonale del Kindle), il rimpicciolire (il
+ * recedere), l'ombra che accompagna, la dissolvenza solo in uscita.
+ *
+ * IL MOVIMENTO E' SOLO `transform` E `opacity` PIATTE, MAI scatole o
+ * ritagli o 3D: `left`/`width`/`clip-path` animano sul FILO PRINCIPALE
+ * (misurato: 4-5 fotogrammi invece di 18 con la CPU strozzata 8×), e il
+ * 3D con prospettiva cade dal compositore su Gecko. L'ombra sta FERMA
+ * nella regola ed e' un `box-shadow`: un `filter` si ricalcola a ogni
+ * fotogramma (misurato: 22 contro 32 su 179). L'altra meta' della cura
+ * sta in `laSvolta`: `reportLocation` si rimanda a transizione chiusa,
+ * cosi' il filo resta libero comunque.
+ *
+ * LA DURATA (620ms): sotto il mezzo secondo il gesto si legge come uno
+ * scatto («troppo veloce»); 620 e' il passo del Kindle misurato sui
+ * fotogrammi del suo video. */
+
+::view-transition-old(bc-pagina),
+::view-transition-new(bc-pagina) {
+  /* niente dissolvenza incrociata del browser: le due pagine si
+   * sovrappongono, e una pagina di testo che traspare da un'altra e'
+   * illeggibile */
+  animation: none;
+  mix-blend-mode: normal;
+  backface-visibility: visible;
+  height: 100%;
+  object-fit: fill;
+}
+
+/* la pagina nuova sta ferma SOTTO; a sfogliarsi via e' sempre la VECCHIA,
+ * avanti e indietro — il prezzo delle due sole fotografie si paga dal
+ * lato dove l'occhio non sta */
+.bc-volta-next::view-transition-new(bc-pagina),
+.bc-volta-prev::view-transition-new(bc-pagina) {
+  z-index: 1;
+}
+/* L'OMBRA E' UN `box-shadow`, NON UN `drop-shadow` — e non e' pignoleria:
+ * misurato su Gecko (giro continuo filmato a 30fps, stessa scena), col
+ * `drop-shadow` l'animazione rende 22 fotogrammi su 179, senza filtro 33,
+ * col `box-shadow` 32. Il filtro si ricalcola a ogni fotogramma della
+ * trasformazione; l'ombra della scatola si cuoce nella texture e viaggia
+ * col foglio. Sulla sfogliata il foglio E' il suo rettangolo, quindi le
+ * due ombre sono identiche a vedersi. CHI RIMETTE UN `filter` SU QUESTE
+ * REGOLE SI RIPORTA A CASA LO SCATTO («non e' fluida come sul Kindle»). */
+.bc-volta-next::view-transition-old(bc-pagina) {
+  z-index: 2;
+  transform-origin: 0% 50%;
+  box-shadow: -14px 8px 30px rgba(0, 0, 0, 0.45);
+  animation: bc-sfoglia-next 620ms linear forwards;
+}
+.bc-volta-prev::view-transition-old(bc-pagina) {
+  z-index: 2;
+  transform-origin: 100% 50%;
+  box-shadow: 14px 8px 30px rgba(0, 0, 0, 0.45);
+  animation: bc-sfoglia-prev 620ms linear forwards;
+}
+
+/* LA SPAZZATA E' PIATTA APPOSTA: NIENTE 3D, NIENTE PROSPETTIVA.
+ *
+ * La rotazione 3D con prospettiva butta Gecko FUORI dal compositore:
+ * misurato al banco a scena identica (giro continuo filmato a 30fps),
+ * il 3D con prospettiva rende 30 fotogrammi su 179, il 3D senza
+ * prospettiva 35, la spazzata 2D 42 — e sul tablet, dove la corsia del
+ * compositore o si prende o si perde per intero, il lettore vedeva la
+ * voltata ticchettare un fotogramma si' e uno no («non vedo
+ * miglioramenti e rallenta l'effetto»). `translate`/`rotate`/`scale`
+ * piatte sono la corsia GARANTITA. I segnali del foglio restano tutti:
+ * il foglio si stacca inclinandosi (il rotate e' la diagonale del
+ * Kindle), rimpicciolisce mentre scivola via (il recedere), l'ombra lo
+ * accompagna e la pagina nuova si scopre sotto. Si perde il rovescio
+ * specchiato del 3D — ed e' il prezzo della fluidita', scelto dopo
+ * averlo misurato. CHI RIMETTE `rotate3d` O `perspective` QUI SI
+ * RIPORTA A CASA LO SCATTO. */
+@keyframes bc-sfoglia-next {
+  0%   { transform: translateX(0%)    rotate(0deg)  scale(1);    opacity: 1; }
+  30%  { transform: translateX(-32%)  rotate(-3deg) scale(0.98); opacity: 1; }
+  60%  { transform: translateX(-68%)  rotate(-6deg) scale(0.95); opacity: 1; }
+  85%  { transform: translateX(-96%)  rotate(-8deg) scale(0.93); opacity: 0.9; }
+  100% { transform: translateX(-112%) rotate(-9deg) scale(0.92); opacity: 0; }
+}
+@keyframes bc-sfoglia-prev {
+  0%   { transform: translateX(0%)   rotate(0deg)  scale(1);    opacity: 1; }
+  30%  { transform: translateX(32%)  rotate(3deg)  scale(0.98); opacity: 1; }
+  60%  { transform: translateX(68%)  rotate(6deg)  scale(0.95); opacity: 1; }
+  85%  { transform: translateX(96%)  rotate(8deg)  scale(0.93); opacity: 0.9; }
+  100% { transform: translateX(112%) rotate(9deg)  scale(0.92); opacity: 0; }
+}
+
+/* NESSUN VELO NEL SIPARIO: I VELI STANNO DENTRO LA FOTOGRAFIA.
+ *
+ * Qui non c'e' nessuna regola per la luminosita' e il filtro caldo, ED E'
+ * VOLUTO: i veli fotografati a parte (`bc-caldo`/`bc-lume`) hanno tradito
+ * su tutt'e due i motori, ognuno in una fase diversa del sipario — su
+ * Gecko la fotografia NUOVA arriva due-tre fotogrammi in ritardo, su
+ * Chromium la VECCHIA e' vuota e la fase d'attesa mostra la pagina nuda
+ * (misurato: 100-200ms di piena luce a ogni voltata, sui fotogrammi del
+ * lettore e al banco). La cura sta in `Reader.jsx`: i veli del libro
+ * vivono DENTRO l'elemento col nome `bc-pagina`, quindi ogni fotografia
+ * nasce gia' velata e non esiste piu' nessuna fase scoperta. CHI RIMETTE
+ * UN NOME DI VIEW TRANSITION SU UN VELO RIAPRE IL LAMPO. */
+
+/* «meno animazioni» del sistema si rispetta anche qui, non solo nel
+ * codice: chi l'ha acceso ha chiesto proprio di non vedere una pagina
+ * che si sfoglia. */
+@media (prefers-reduced-motion: reduce) {
+  .bc-volta-next::view-transition-old(bc-pagina),
+  .bc-volta-prev::view-transition-old(bc-pagina) {
+    animation: none;
+  }
 }

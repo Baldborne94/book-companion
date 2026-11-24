@@ -1,0 +1,13 @@
+La resa italiana dei sensi viene da MultiWordNet 1.5 (Fondazione Bruno
+Kessler, http://multiwordnet.fbk.eu), distribuito attraverso l'Open
+Multilingual Wordnet (https://github.com/omwn/omw-data) con licenza
+Creative Commons Attribution 3.0 Unported (CC BY 3.0):
+https://creativecommons.org/licenses/by/3.0/
+
+Pianta, Emanuele, Luisa Bentivogli e Christian Girardi (2002).
+«MultiWordNet: developing an aligned multilingual database».
+Proceedings of the First International Conference on Global WordNet,
+Mysore, India, 293-302.
+
+Bond, Francis e Ryan Foster (2013). «Linking and extending an open
+multilingual wordnet». Proceedings of ACL 2013, 1352-1362.

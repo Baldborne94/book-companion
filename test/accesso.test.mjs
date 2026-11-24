@@ -1,0 +1,128 @@
+// COSA SI DICE A CHI NON RIESCE A ENTRARE.
+//
+// La trappola vera e' una sola e la copre il terzo blocco: un buco di rete
+// arriva qui come un `TypeError` senza codice e senza stato, e se lo si
+// tratta come una credenziale rifiutata si manda il lettore a riscrivere
+// all'infinito una password che era giusta.
+import { spiegaAccesso, daConfermare, passwordCorta, MIN_PASSWORD, controllaNuova, erroreDelLink } from "../src/lib/accesso.js";
+
+// come li manda supabase-js: un oggetto con `code`, `status` e `message`
+const errore = (code, message = "", status = 400) => ({ code, message, status });
+
+export default async function (t) {
+  // ---- i codici che arrivano davvero ------------------------------------
+  {
+    const m = spiegaAccesso(errore("invalid_credentials", "Invalid login credentials"));
+    t.c("la credenziale rifiutata si dice in italiano", /password/i.test(m) && !/invalid/i.test(m), m);
+    // Supabase risponde uguale per password sbagliata e indirizzo mai
+    // registrato, ed e' voluto: dire «quest'email non esiste» racconterebbe
+    // a chiunque provi chi e' registrato. Qui non si inventa la differenza.
+    t.c("e non promette di sapere se l'indirizzo esiste", !/non esiste|mai registrat/i.test(m), m);
+  }
+  {
+    const m = spiegaAccesso(errore("email_not_confirmed"));
+    t.c("la conferma mancante dice cosa fare", /messaggio|conferma/i.test(m), m);
+  }
+  {
+    const m = spiegaAccesso(errore("user_already_exists"));
+    t.c("l'email gia' registrata manda a entrare", /già registrata/i.test(m), m);
+  }
+  {
+    const m = spiegaAccesso(errore("weak_password"));
+    t.c("la password debole dice quanto dev'essere lunga", m.includes(String(MIN_PASSWORD)), m);
+  }
+  {
+    const m = spiegaAccesso(errore("over_request_rate_limit"));
+    t.c("il troppo-in-fretta dice di aspettare", /aspetta|minuto/i.test(m), m);
+  }
+
+  // ---- la rete che manca NON e' una password sbagliata ------------------
+  {
+    // e' esattamente com'e' fatto un fetch caduto: nessun codice, nessuno
+    // stato utile, solo il messaggio del browser
+    const m = spiegaAccesso(new TypeError("Failed to fetch"));
+    t.c("un buco di rete si riconosce", /rete|raggiungere/i.test(m), m);
+    t.c("e non viene scambiato per una password sbagliata", !/password/i.test(m), m);
+  }
+  {
+    const m = spiegaAccesso(new TypeError("NetworkError when attempting to fetch resource."));
+    t.c("anche detto alla maniera di Firefox", /rete|raggiungere/i.test(m), m);
+  }
+
+  // ---- il ripiego sul testo, per le versioni senza codice ---------------
+  {
+    const m = spiegaAccesso({ status: 400, message: "Invalid login credentials" });
+    t.c("senza codice, il testo basta a riconoscere la credenziale", /password/i.test(m), m);
+  }
+  {
+    const m = spiegaAccesso({ status: 500, message: "Database is unavailable" });
+    t.c("quello che non sappiamo tradurre si mostra com'e'", m.includes("Database is unavailable"), m);
+    t.c("ma non si spaccia per una diagnosi", /Non ha funzionato/i.test(m), m);
+  }
+  {
+    const m = spiegaAccesso({});
+    t.c("un errore muto non lascia il pannello vuoto", !!m && m.length > 5, m);
+  }
+  t.eq("niente errore, niente da dire", spiegaAccesso(null), null);
+
+  // ---- l'unico guaio con una via d'uscita ------------------------------
+  //
+  // `daConfermare` fa comparire un tasto, quindi sbaglia in due modi
+  // opposti e tutt'e due silenziosi: se dice di no dove doveva dire di si',
+  // il lettore resta chiuso fuori per sempre col messaggio «apri la mail
+  // che ti ho mandato» e nessuna mail in mano; se dice di si' dove doveva
+  // dire di no, gli si offre di rimandare una conferma che non c'entra
+  // niente col suo problema.
+  t.c(
+    "l'indirizzo non confermato si riconosce dal codice",
+    // messaggio VOLUTAMENTE diverso: col testo giusto accanto, questo
+    // controllo passerebbe anche togliendo il codice, e non proverebbe niente
+    daConfermare(errore("email_not_confirmed", "Signups require a valid address")) === true
+  );
+  t.c(
+    "e anche dal solo testo, per le versioni che il codice non lo mandano",
+    daConfermare({ status: 400, message: "Email not confirmed" }) === true
+  );
+  t.c(
+    "una password sbagliata NON e' un indirizzo da confermare",
+    daConfermare(errore("invalid_credentials", "Invalid login credentials")) === false
+  );
+  t.c(
+    "e nemmeno un'email gia' registrata",
+    daConfermare(errore("user_already_exists")) === false
+  );
+  // La stretta che serve: `/confirm/` da solo prenderebbe anche questo, e
+  // il tasto comparirebbe a chi sta cambiando indirizzo — dove rimandare
+  // la conferma della REGISTRAZIONE non fa assolutamente niente.
+  t.c(
+    "il cambio d'indirizzo non confermato resta fuori",
+    daConfermare({ status: 400, message: "Confirmation token expired" }) === false
+  );
+  t.c("un buco di rete non e' una conferma mancante", daConfermare(new TypeError("Failed to fetch")) === false);
+  t.c("e senza errore non c'e' niente da offrire", daConfermare(null) === false);
+
+  // ---- il controllo che si fa senza chiedere niente al server -----------
+  t.c("una password corta si ferma qui", passwordCorta("abc") === true);
+  t.c("al pelo della soglia passa", passwordCorta("a".repeat(MIN_PASSWORD)) === false);
+  t.c("un carattere sotto no", passwordCorta("a".repeat(MIN_PASSWORD - 1)) === true);
+  t.c("e il campo vuoto e' corto, non un errore", passwordCorta("") === true);
+  t.c("nemmeno se la password non c'e' proprio", passwordCorta(undefined) === true);
+
+  // LA PASSWORD NUOVA, scritta due volte (come in Ciak)
+  t.eq("uguali e lunghe abbastanza: si salva", controllaNuova("segreta123", "segreta123"), null);
+  t.c("diverse: si dice", /non sono uguali/.test(controllaNuova("segreta123", "segreta124")));
+  t.c("corta: si dice prima della differenza", /almeno/.test(controllaNuova("abc", "abd")));
+  t.c("al pelo della soglia passa", controllaNuova("a".repeat(MIN_PASSWORD), "a".repeat(MIN_PASSWORD)) === null);
+
+  // IL LINK CHE NON FA ENTRARE (il lettore: «faccio sign in e mi apre la
+  // pagina web», con l'errore nel frammento)
+  const scaduto = erroreDelLink("#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired");
+  t.c("il link scaduto si dice scaduto", /scaduto o è già stato usato/.test(scaduto), scaduto);
+  t.c("e dice la strada", /Password dimenticata\?/.test(scaduto), scaduto);
+  const altro = erroreDelLink("#error=server_error&error_description=Qualcosa+non+va");
+  t.c("un altro errore porta il suo perche'", /non ha funzionato \(Qualcosa non va\)/.test(altro), altro);
+  t.c("anche col solo codice", !!erroreDelLink("#error_code=bad_jwt"));
+  t.eq("il frammento con l'accesso non e' un errore", erroreDelLink("#access_token=a.b.c&type=recovery"), null);
+  t.eq("e niente frammento, niente", erroreDelLink(""), null);
+  t.eq("nemmeno se manca", erroreDelLink(undefined), null);
+}

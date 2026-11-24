@@ -1,0 +1,1889 @@
+// LEXICANUM SUL DISPOSITIVO.
+//
+// Chiesto dal lettore: «vorrei poter avere in locale Lexicanum per tutti i
+// miei libri del 40K, senza per forza recuperarmeli online». I romanzi della
+// Black Library sono pieni di nomi, legioni e pianeti che il libro da' per
+// saputi; il wiki li sa, ma aprirlo in rete a ogni nome vuol dire uscire
+// dal libro — e in treno non si apre affatto.
+//
+// La strada: l'API MediaWiki di Lexicanum, chiesta DAL BROWSER (`origin=*`,
+// la richiesta anonima che MediaWiki permette da qualunque sito), cinquanta
+// pagine alla volta, piano. Il wikitesto si riduce qui a paragrafi, link e
+// fonti; ogni voce e' un record suo in IndexedDB (`lex:<chiave>`), cosi'
+// cercarne una e' una lettura sola e scriverne cinquanta una transazione.
+//
+// NIENTE SACCHI, a differenza del dizionario: le voci arrivano in ordine
+// alfabetico di titolo e i sacchi per prefisso sarebbero sbilanciati («The
+// …» da solo e' un migliaio di romanzi), mentre i sacchi per impronta
+// vorrebbero dire riscrivere cinquanta sacchi a ogni pagina scaricata.
+//
+// LE FONTI SONO LA PARTE PREZIOSA. Lexicanum chiede una citazione in fondo a
+// ogni paragrafo (`{{Fn|1}}`) e le elenca sotto «Sources» (`{{Endn|1}}:
+// ''[[Horus Rising (Novel)|Horus Rising]]''`): sapere DA QUALE LIBRO viene
+// un paragrafo e' quel che permette di velare quelli che vengono da un
+// volume che non hai ancora letto (`giudiceFonti`).
+import { getAux, putAux, putAuxMolti, removeAux, removeAuxPrefisso, chiaviAuxPrefisso } from "./bookStore.js";
+import { frontiera } from "./frontiera.js";
+import { riconosci } from "./sagaBooks.js";
+
+const DEPOSITO = {
+  leggi: getAux,
+  scrivi: putAux,
+  scriviMolti: putAuxMolti,
+  togli: removeAux,
+  togliPrefisso: removeAuxPrefisso,
+  chiaviPrefisso: chiaviAuxPrefisso,
+};
+
+export const SITO = "https://wh40k.lexicanum.com";
+// l'indirizzo dell'API non e' scritto da nessuna parte che si possa leggere
+// da qui: si provano i posti dove MediaWiki di solito la mette, e vince il
+// primo che risponde come un MediaWiki
+// I WIKI DEL 40K CHE L'APP SA SCARICARE. Stesso motore, stesse regole,
+// dati separati: ognuno ha il suo prefisso in `aux`, il suo cartellino e il
+// suo segno della ripresa. Lexicanum e' quello coi veli per paragrafo;
+// Fandom (chiesto dal lettore: «aggiungi fandom come seconda scheda con
+// l'avviso») le fonti le elenca tutte in fondo alla voce, e la voce si
+// legge dietro un avviso (`avvisoVoce`).
+export const LEXICANUM = {
+  id: "lex",
+  nome: "Lexicanum",
+  sito: SITO,
+  api: [`${SITO}/mediawiki/api.php`, `${SITO}/w/api.php`, `${SITO}/api.php`],
+  prefisso: "lex:",
+  meta: "lex_meta",
+  giro: "lex_giro",
+};
+export const FANDOM = {
+  id: "fan",
+  nome: "Fandom",
+  sito: "https://warhammer40k.fandom.com",
+  api: ["https://warhammer40k.fandom.com/api.php"],
+  prefisso: "fan:",
+  meta: "fan_meta",
+  giro: "fan_giro",
+};
+const PREFISSO = LEXICANUM.prefisso;
+// cinquanta e' il massimo che MediaWiki concede a chi non e' un bot quando
+// si chiede il testo delle pagine
+const PER_VOLTA = 50;
+// un secondo fra una richiesta e l'altra: il wiki e' di volontari, e lo
+// scaricamento si fa una volta sola
+export const PAUSA_MS = 1000;
+
+export const chiave = (s) =>
+  String(s || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[’‘`]/g, "'")
+    .replace(/_/g, " ")
+    .replace(/[^\p{L}\p{N}' -]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+// «Horus Rising (Novel)» → «Horus Rising»: la parentesi distingue le voci
+// sul wiki, il lettore non la seleziona mai
+export const senzaParentesi = (t) => String(t || "").replace(/\s*\([^()]*\)\s*$/, "").trim();
+
+// ---------------------------------------------------------------------------
+// IL WIKITESTO
+
+const FN = "\u0001";
+const FN_FINE = "\u0002";
+const EN = "\u0003";
+const EN_FINE = "\u0004";
+// il posto di una citazione o di una tabella tolta dal testo: `\u0005Q3\u0006`
+const POSTO = "\u0005";
+const POSTO_FINE = "\u0006";
+
+// le sezioni che non sono racconto: elenchi di fonti, di immagini, di
+// rimandi. Le fonti si leggono prima di buttarle.
+const SEZIONI_VIA = new Set([
+  "sources",
+  "source",
+  "references",
+  "see also",
+  "related articles",
+  "related",
+  "gallery",
+  "image gallery",
+  "external links",
+  "external link",
+  "links",
+  "appearances",
+  "videos",
+]);
+
+const FONTI_SEZIONE = new Set(["sources", "source", "references"]);
+
+const ENTITA = { nbsp: " ", amp: "&", quot: '"', apos: "'", lt: "<", gt: ">", mdash: "—", ndash: "–", hellip: "…", rsquo: "’", lsquo: "‘", ldquo: "“", rdquo: "”" };
+const entita = (s) =>
+  s.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, e) => {
+    if (e[0] === "#") {
+      const n = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return Number.isFinite(n) ? String.fromCodePoint(n) : m;
+    }
+    return ENTITA[e.toLowerCase()] ?? m;
+  });
+
+// `{{…}}` annidati e tabelle `{| … |}` via, tranne le citazioni: diventano
+// segni che sopravvivono alla pulizia e si raccolgono alla fine. Un modello
+// che non si chiude resta testo: mangiarsi il resto della voce per una
+// graffa dimenticata sarebbe peggio.
+// CON LA RACCOLTA (la voce intera, non una riga delle fonti) tre cose non si
+// buttano piu' (chiesto dal lettore: «avere la stessa esperienza della
+// pagina online»): il riquadro dei dati, le citazioni e le tabelle. Il
+// riquadro va nella raccolta, citazioni e tabelle lasciano il loro posto
+// nel testo, perche' stiano dove le aveva messe il wiki.
+function senzaModelli(testo, raccolta = null) {
+  let out = "";
+  let i = 0;
+  const n = testo.length;
+  while (i < n) {
+    const inizioRiga = i === 0 || testo[i - 1] === "\n";
+    if (testo.startsWith("{{", i)) {
+      let prof = 0;
+      let j = i;
+      while (j < n) {
+        if (testo.startsWith("{{", j)) {
+          prof++;
+          j += 2;
+        } else if (testo.startsWith("}}", j)) {
+          prof--;
+          j += 2;
+          if (prof === 0) break;
+        } else j++;
+      }
+      if (prof !== 0) {
+        out += "{{";
+        i += 2;
+        continue;
+      }
+      out += sostituto(testo.slice(i + 2, j - 2), raccolta);
+      i = j;
+    } else if (inizioRiga && testo.startsWith("{|", i)) {
+      let prof = 0;
+      let j = i;
+      while (j < n) {
+        const riga = j === 0 || testo[j - 1] === "\n";
+        if (riga && testo.startsWith("{|", j)) {
+          prof++;
+          j += 2;
+        } else if (riga && testo.startsWith("|}", j)) {
+          prof--;
+          j += 2;
+          if (prof === 0) break;
+        } else j++;
+      }
+      if (raccolta) out += posto(raccolta, "T", testo.slice(i, j));
+      i = j;
+    } else {
+      out += testo[i];
+      i++;
+    }
+  }
+  return out;
+}
+
+function sostituto(dentro, raccolta) {
+  const parti = dentro.split("|");
+  const nome = parti[0].trim().toLowerCase();
+  const argomenti = parti.slice(1).map((a) => a.trim()).filter(Boolean);
+  if (nome === "fn") return argomenti.map((a) => FN + a + FN_FINE).join("");
+  if (nome === "endn") return argomenti.map((a) => EN + a + EN_FINE).join("");
+  if (!raccolta) return "";
+  const m = argomentiDi(dentro);
+  if (CITAZIONI.has(m.nome)) {
+    const testo = m.pos[0] ?? m.nom.text ?? m.nom.quote ?? "";
+    const di = m.pos[1] ?? m.nom.author ?? m.nom.speaker ?? m.nom.source ?? m.nom.by ?? "";
+    return testo.trim() ? posto(raccolta, "Q", { testo, di }) : "";
+  }
+  if (!raccolta.ib) {
+    const c = campiDelRiquadro(m.campi);
+    if (c.length >= 2) raccolta.ib = { n: senzaParentesi(m.vero.replace(/_/g, " ")), c };
+  }
+  return "";
+}
+
+const CITAZIONI = new Set(["quote", "cquote", "quotation", "quote2", "blockquote"]);
+
+// la citazione lascia la riga aperta: il {{Fn}} scritto subito dopo di lei
+// e' la sua fonte, non quella del paragrafo che segue
+const posto = (raccolta, tipo, cosa) => {
+  (raccolta[tipo] ||= []).push(cosa);
+  return `\n${POSTO}${tipo}${raccolta[tipo].length - 1}${POSTO_FINE}${tipo === "Q" ? "" : "\n"}`;
+};
+
+// gli argomenti di un modello, divisi solo dai «|» che non stanno dentro un
+// link o un altro modello: «[[Horus|Horus Lupercal]]» e' un argomento solo
+function argomentiDi(dentro) {
+  const pezzi = [];
+  let prof = 0;
+  let da = 0;
+  for (let i = 0; i < dentro.length; i++) {
+    const due = dentro.slice(i, i + 2);
+    if (due === "[[" || due === "{{") {
+      prof++;
+      i++;
+    } else if ((due === "]]" || due === "}}") && prof > 0) {
+      prof--;
+      i++;
+    } else if (dentro[i] === "|" && prof === 0) {
+      pezzi.push(dentro.slice(da, i));
+      da = i + 1;
+    }
+  }
+  pezzi.push(dentro.slice(da));
+  const vero = pezzi.shift().trim();
+  const nome = vero.toLowerCase();
+  const pos = [];
+  const nom = {};
+  const campi = [];
+  for (const a of pezzi) {
+    const uguale = a.match(/^\s*([\w][\w ./-]*?)\s*=([\s\S]*)$/);
+    if (!uguale) {
+      if (a.trim()) pos.push(a.trim());
+      continue;
+    }
+    const k = uguale[1].toLowerCase();
+    nom[k] = uguale[2].trim();
+    campi.push([uguale[1], uguale[2].trim()]);
+  }
+  return { nome, vero, pos, nom, campi };
+}
+
+// IL RIQUADRO DEI DATI: i campi con un testo da leggere, nell'ordine del
+// wiki. Immagini e didascalie via (le immagini non sono sul dispositivo), e
+// il nome della voce, che sta gia' in testa. «temperature_/_climate» si legge
+// «Temperature / climate»; «title1» «Title».
+const CAMPI_VIA = /^(image|img|picture|pic|caption|imagecaption|image caption|size|width|imagesize|image size|alt|name|pagename|header|footer|align|float|style)\d*$/i;
+const CAMPI_MAX = 24;
+function campiDelRiquadro(campi) {
+  const out = [];
+  for (const [k, grezzo] of campi) {
+    if (CAMPI_VIA.test(k.trim()) || out.length >= CAMPI_MAX) continue;
+    const v = senzaSegni(pulisci(link(senzaModelli(String(grezzo).replace(/<br\s*\/?>/gi, " · ")))))
+      .replace(/^[\s·]+|[\s·]+$/g, "")
+      .replace(/(\s*·\s*)+/g, " · ");
+    if (!testoPiano(v)) continue;
+    const nome = k.replace(/_/g, " ").replace(/\s*\/\s*/g, " / ").replace(/\d+$/, "").replace(/\s+/g, " ").trim();
+    if (nome) out.push([nome[0].toUpperCase() + nome.slice(1), v]);
+  }
+  return out;
+}
+
+const senzaSegni = (s) => String(s).replace(new RegExp(`${FN}[^${FN_FINE}]*${FN_FINE}|${EN}[^${EN_FINE}]*${EN_FINE}`, "g"), "").trim();
+
+// UNA TABELLA del wiki → righe di celle (testo coi link). «|-» apre una
+// riga, «!» e «|» una cella, «!!» e «||» la cella dopo sulla stessa riga;
+// gli attributi («style=…|testo») si lasciano. Una tabella annidata o troppo
+// grande si accorcia: e' una scheda da leggere, non un foglio di calcolo.
+// «style="…"|testo» o «<center>|testo»: prima del primo «|» che non sta in
+// un link ci sono gli attributi della cella, non il suo testo
+function senzaAttributi(cella) {
+  const crudi = cella.split("|");
+  if (crudi.length < 2) return cella;
+  const prima = crudi[0];
+  if (prima.includes("[[") || prima.includes("{{")) return cella;
+  if (!/=|^\s*<[^>]*>\s*$|^\s*$/.test(prima)) return cella;
+  return crudi.slice(1).join("|");
+}
+const RIGHE_MAX = 60;
+const COLONNE_MAX = 8;
+function tabellaDi(grezza) {
+  const righe = [];
+  let riga = null;
+  let didascalia = "";
+  let intestata = false;
+  const cella = (testo, testata) => {
+    if (!riga) {
+      riga = [];
+      righe.push(riga);
+      if (righe.length === 1) intestata = testata;
+    }
+    if (riga.length < COLONNE_MAX) riga.push(senzaAttributi(testo));
+  };
+  const corpo = grezza.split("\n").slice(1);
+  for (const linea of corpo) {
+    const l = linea.trim();
+    if (l.startsWith("|}")) break;
+    if (l.startsWith("{|")) continue;
+    if (l.startsWith("|+")) didascalia = l.slice(2);
+    else if (l.startsWith("|-")) riga = null;
+    else if (l.startsWith("!")) for (const c of l.slice(1).split("!!")) cella(c, true);
+    else if (l.startsWith("|")) for (const c of l.slice(1).split("||")) cella(c, false);
+    else if (riga?.length) riga[riga.length - 1] += " " + l;
+  }
+  const f = [];
+  const testo = (s) =>
+    pulisci(link(senzaModelli(s))).replace(new RegExp(`${FN}([^${FN_FINE}]*)${FN_FINE}`, "g"), (m, n) => {
+      const k = numeroFonte(n);
+      if (k && !f.includes(k)) f.push(k);
+      return "";
+    }).replace(new RegExp(`${EN}[^${EN_FINE}]*${EN_FINE}`, "g"), "").trim();
+  const r = righe
+    .filter((x) => x.length)
+    .slice(0, RIGHE_MAX)
+    .map((x) => x.map(testo))
+    .filter((x) => x.some((c) => testoPiano(c)));
+  if (!r.length) return null;
+  const c = testo(didascalia);
+  return { tab: r, ...(intestata ? { th: 1 } : {}), ...(testoPiano(c) ? { c } : {}), f };
+}
+
+// «1a», «1b» sono pagine diverse della stessa fonte «1»
+const numeroFonte = (s) => String(s).trim().replace(/[a-z]+$/i, "");
+
+// I link doppi: immagini, categorie e rimandi alle altre lingue via (con le
+// didascalie, che possono avere link dentro); gli altri si tengono nella
+// forma `[[Bersaglio|testo]]`, che la scheda rende toccabile.
+function link(testo) {
+  let out = "";
+  let i = 0;
+  const n = testo.length;
+  while (i < n) {
+    if (!testo.startsWith("[[", i)) {
+      out += testo[i];
+      i++;
+      continue;
+    }
+    let prof = 0;
+    let j = i;
+    while (j < n) {
+      if (testo.startsWith("[[", j)) {
+        prof++;
+        j += 2;
+      } else if (testo.startsWith("]]", j)) {
+        prof--;
+        j += 2;
+        if (prof === 0) break;
+      } else j++;
+    }
+    // un link che non si chiude resta testo, e si va avanti: prima si
+    // copiava tutto il resto com'era, e un solo «[[» rotto a meta' voce
+    // lasciava grezzi tutti i link dopo di lui (visto sulle voci di Fandom)
+    if (prof !== 0) {
+      out += "[[";
+      i += 2;
+      continue;
+    }
+    const dentro = testo.slice(i + 2, j - 2);
+    // la coda di lettere attaccata al link fa parte del testo: [[Primarch]]s
+    let coda = "";
+    while (j < n && /[a-z]/.test(testo[j])) coda += testo[j++];
+    i = j;
+    if (/^\s*(file|image|category|media|immagine)\s*:/i.test(dentro)) continue;
+    if (/^[a-z]{2,3}(-[a-z]{2,4})?:/.test(dentro)) continue;
+    const pipe = dentro.indexOf("|");
+    let bersaglio = (pipe < 0 ? dentro : dentro.slice(0, pipe)).replace(/^:/, "").trim();
+    let testoLink = pipe < 0 ? bersaglio : dentro.slice(pipe + 1).trim();
+    if (pipe >= 0 && !testoLink) testoLink = senzaParentesi(bersaglio);
+    testoLink = testoLink.replace(/^:?(category|file|image)\s*:/i, "");
+    bersaglio = bersaglio.split("#")[0].trim();
+    testoLink = (testoLink + coda).replace(/[[\]|]/g, "");
+    // il link col testo uguale al bersaglio si scrive corto: le voci di
+    // Fandom sono lunghe, e il doppio pesava un decimo della voce
+    out += !bersaglio ? testoLink : testoLink === bersaglio ? `[[${bersaglio}]]` : `[[${bersaglio}|${testoLink}]]`;
+  }
+  return out;
+}
+
+function pulisci(s) {
+  return entita(
+    String(s)
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<\/?[a-z][^>]*>/gi, "")
+      .replace(/\[(?:https?:)?\/\/[^\s\]]+\s*([^\]]*)\]/g, "$1")
+      .replace(/__[A-Z]+__/g, "")
+      // il grassetto via (in testa a ogni voce c'e' il suo stesso nome in
+      // neretto), il corsivo resta: e' come si scrivono i titoli dei libri
+      .replace(/'''''/g, "''")
+      .replace(/'''/g, "")
+  )
+    .replace(/[ \t]+/g, " ")
+    .trim();
+}
+
+// il testo di una riga senza segni di wiki: per le fonti e per le prove
+export const testoPiano = (s) =>
+  String(s || "")
+    .replace(/\[\[([^\]|]*)\|([^\]]*)\]\]/g, "$2")
+    .replace(/\[\[([^\]|]*)\]\]/g, "$1")
+    .replace(/''/g, "")
+    .replace(new RegExp(`[${FN}${FN_FINE}${EN}${EN_FINE}]`, "g"), "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+// Di una riga delle fonti serve il TITOLO dell'opera, per riconoscerla fra
+// i libri: il primo link, poi il primo corsivo, poi quel che sta prima della
+// virgola. La parentesi del wiki («(Novel)») via.
+// E VIENE PRIMA CHI VIENE PRIMA: su Lexicanum il titolo e' un link dentro il
+// corsivo, su Fandom e' un corsivo senza link e il link e' l'AUTORE
+// («''Horus Rising'' (Novel) by [[Dan Abnett]]»): prendere il primo link
+// dava «Dan Abnett» per titolo (visto sulle voci vere).
+function titoloFonte(riga) {
+  const c = riga.match(/''(.+?)''/);
+  const l = riga.match(/\[\[([^\]|]*)(?:\|([^\]]*))?\]\]/);
+  if (c && (!l || c.index <= l.index)) {
+    const dentro = c[1].match(/^\s*\[\[([^\]|]*)(?:\|[^\]]*)?\]\]\s*$/);
+    return senzaParentesi(dentro ? dentro[1] : testoPiano(c[1]).trim());
+  }
+  if (l) return senzaParentesi(l[1]) || senzaParentesi(l[2] || "");
+  return senzaParentesi(testoPiano(riga).split(",")[0].replace(/\s+by\s+.*$/i, "").trim());
+}
+
+export function rinvioDi(testo) {
+  const m = String(testo || "").match(/^\s*#\s*redirect\s*:?\s*\[\[([^\]|]+)/i);
+  return m ? m[1].split("#")[0].replace(/_/g, " ").trim() : null;
+}
+
+// Wikitesto → voce. `p` sono i blocchi nell'ordine della pagina: un
+// titoletto `{ h, l }` o un paragrafo `{ x, f, li }` (`f` = i numeri delle
+// fonti citate in fondo al paragrafo). `f` della voce: numero → { t, x }.
+export function daWikitesto(titolo, wikitesto) {
+  let testo = String(wikitesto || "").replace(/\r/g, "").replace(/<!--[\s\S]*?-->/g, "");
+  testo = testo.replace(/<(gallery|imagemap|math|score|timeline)\b[\s\S]*?<\/\1>/gi, "");
+
+  // le <ref> alla Wikipedia: il contenuto E' la fonte, si numera da se'
+  const fonti = {};
+  const rifNomi = new Map();
+  let rif = 0;
+  testo = testo.replace(/<ref\b([^>]*?)(\/>|>([\s\S]*?)<\/ref>)/gi, (m, attr, chiusa, dentro) => {
+    const nome = (attr.match(/name\s*=\s*"?([^"/>]+)"?/i) || [])[1]?.trim();
+    if (dentro == null) return nome && rifNomi.has(nome) ? FN + rifNomi.get(nome) + FN_FINE : "";
+    const k = `r${++rif}`;
+    if (nome) rifNomi.set(nome, k);
+    fonti[k] = { grezza: dentro };
+    return FN + k + FN_FINE;
+  });
+
+  const raccolta = {};
+  testo = link(senzaModelli(testo, raccolta));
+
+  const blocchi = [];
+  let corrente = null;
+  let via = 0; // il livello della sezione che si sta saltando, 0 = nessuna
+  // LE FONTI DELLA VOCE INTERA: le righe d'elenco sotto «Sources» senza il
+  // numero di una citazione. Su Fandom sono le sole fonti che ci sono (niente
+  // citazioni per paragrafo): servono all'avviso, che dice quali di quei
+  // libri il lettore non ha ancora letto
+  let inFonti = false;
+  const fontiVoce = [];
+  const chiudi = () => {
+    if (!corrente) return;
+    const f = [];
+    const x = pulisci(
+      corrente.righe.join(" ").replace(new RegExp(`${FN}([^${FN_FINE}]*)${FN_FINE}`, "g"), (m, n) => {
+        const k = numeroFonte(n);
+        if (k && !f.includes(k)) f.push(k);
+        return "";
+      })
+    );
+    if (testoPiano(x)) blocchi.push(corrente.li ? { x, f, li: true } : { x, f });
+    corrente = null;
+  };
+  const conFonti = (grezzo) => {
+    const f = [];
+    const x = pulisci(
+      link(senzaModelli(grezzo)).replace(new RegExp(`${FN}([^${FN_FINE}]*)${FN_FINE}`, "g"), (m, n) => {
+        const k = numeroFonte(n);
+        if (k && !f.includes(k)) f.push(k);
+        return "";
+      })
+    );
+    return { x: senzaSegni(x), f };
+  };
+
+  for (const grezza of testo.split("\n")) {
+    const riga = grezza.trim();
+    // le righe delle fonti si leggono ovunque stiano, anche nelle sezioni
+    // che poi si buttano
+    if (riga.includes(EN)) {
+      const numeri = [...riga.matchAll(new RegExp(`${EN}([^${EN_FINE}]*)${EN_FINE}`, "g"))].map((m) => numeroFonte(m[1]));
+      const resto = riga
+        .replace(new RegExp(`${EN}[^${EN_FINE}]*${EN_FINE}`, "g"), "")
+        .replace(/^[*#:;\s]+/, "")
+        .replace(/^[:,\s]+/, "");
+      for (const k of numeri) if (k && !fonti[k]) fonti[k] = { grezza: resto };
+      continue;
+    }
+    const h = riga.match(/^(={2,6})\s*(.+?)\s*\1$/);
+    if (h) {
+      chiudi();
+      const livello = h[1].length;
+      const nome = testoPiano(pulisci(h[2]));
+      if (via && livello > via) continue;
+      via = SEZIONI_VIA.has(nome.toLowerCase()) ? livello : 0;
+      inFonti = !!via && FONTI_SEZIONE.has(nome.toLowerCase());
+      if (!via && nome) blocchi.push({ h: nome, l: livello });
+      continue;
+    }
+    if (via) {
+      if (inFonti && /^[*#]/.test(riga)) {
+        const pulita = pulisci(riga.replace(/^[*#:;\s]+/, ""));
+        const t = titoloFonte(pulita);
+        if (t && !fontiVoce.some((x) => x.t === t) && fontiVoce.length < 60) fontiVoce.push({ t, x: testoPiano(pulita) });
+      }
+      continue;
+    }
+    if (!riga) {
+      chiudi();
+      continue;
+    }
+    const segnato = riga.match(new RegExp(`^${POSTO}([QT])(\\d+)${POSTO_FINE}(.*)$`));
+    if (segnato) {
+      chiudi();
+      const cosa = raccolta[segnato[1]]?.[Number(segnato[2])];
+      let coda = segnato[3];
+      if (segnato[1] === "Q" && cosa) {
+        const { x, f } = conFonti(cosa.testo);
+        const di = conFonti(cosa.di).x;
+        coda = coda.replace(new RegExp(`^(\\s*${FN}([^${FN_FINE}]*)${FN_FINE})+`), (tutte) => {
+          for (const m of tutte.matchAll(new RegExp(`${FN}([^${FN_FINE}]*)${FN_FINE}`, "g"))) {
+            const k = numeroFonte(m[1]);
+            if (k && !f.includes(k)) f.push(k);
+          }
+          return "";
+        });
+        if (testoPiano(x)) blocchi.push(testoPiano(di) ? { q: x, di, f } : { q: x, f });
+      } else if (segnato[1] === "T" && cosa) {
+        const tab = tabellaDi(cosa);
+        if (tab) blocchi.push(tab);
+      }
+      if (coda.trim()) corrente = { righe: [coda.trim()] };
+      continue;
+    }
+    // resti di tabelle e di modelli spezzati su piu' righe
+    if (/^(\||!|\{\||\|\})/.test(riga)) continue;
+    const elenco = riga.match(/^([*#;:]+)\s*(.*)$/);
+    if (elenco) {
+      chiudi();
+      corrente = { righe: [elenco[2]], li: /[*#]/.test(elenco[1]) };
+      chiudi();
+      continue;
+    }
+    if (!corrente) corrente = { righe: [] };
+    corrente.righe.push(riga);
+  }
+  chiudi();
+
+  // le fonti citate da nessuno non servono, e quelle citate senza riga
+  // restano senza titolo (un paragrafo che le cita non si vela per loro)
+  const usate = new Set(blocchi.flatMap((b) => b.f || []));
+  const f = {};
+  for (const k of usate) {
+    const grezza = fonti[k]?.grezza;
+    if (grezza == null) continue;
+    const riga = pulisci(link(senzaModelli(grezza)));
+    f[k] = { t: titoloFonte(riga), x: testoPiano(riga) };
+  }
+  return {
+    t: titolo,
+    ...(raccolta.ib ? { ib: raccolta.ib } : {}),
+    p: blocchi,
+    f,
+    ...(fontiVoce.length ? { fv: fontiVoce } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// LO SCARICAMENTO
+
+// IL FORMATO DELLE VOCI SCESE: 2 = col riquadro dei dati, le citazioni e le
+// tabelle. Le voci si riducono quando scendono, quindi quelle scese prima
+// non li hanno: il pannello lo dice accanto a «Aggiorna», che le riscarica.
+// Un giro cominciato col formato di prima e ripreso dopo resta di prima.
+export const FORMATO_VOCI = 2;
+export const vociDiPrima = (stato) => !!stato?.voci && (stato.formato || 1) < FORMATO_VOCI;
+
+const dorme = (ms) => new Promise((r) => setTimeout(r, ms));
+
+export class GuaioLexicanum extends Error {}
+
+// La rete che manca e il sito che non vuole parlare col browser arrivano
+// tutt'e due come `TypeError: Failed to fetch`: non si distinguono, e il
+// messaggio dice tutt'e due le cose invece di indovinarne una.
+const NON_RISPONDE =
+  "Lexicanum non risponde: o manca la rete, o il sito non accetta richieste da un'app nel browser.";
+
+// LO SCARICAMENTO E' PAZIENTE (segnalato dal lettore: «perche' ogni tot lo
+// scaricamento del lexicanum si ferma?»). Prima un buco di rete, un 429 o
+// un server occupato davano quattro tentativi in mezzo minuto, poi il giro
+// si arrendeva — e sul tablet un buco di wifi o l'app in secondo piano
+// durano di piu'. Adesso, a giro avviato (`paziente`), si aspetta e si
+// riprova la STESSA pagina finche' non risponde o finche' il lettore non
+// ferma: l'attesa cresce fino a un minuto e si dice (`onAttesa`). Al primo
+// contatto (`trovaApi`) invece si resta brevi: li' un rifiuto e' la notizia
+// che il sito non parla col browser, e va detta subito.
+const ATTESA_MAX = 60000;
+// una pagina al posto dei dati (il controllo anti-bot) puo' essere un
+// momento: si riprova qualche volta, poi si dice
+const PAGINE_STRANE = 6;
+
+async function chiediJson(url, { fetcher, attesa, tentativi = 4, paziente = false, fermo = () => false, onAttesa }) {
+  let ultimo = null;
+  let strane = 0;
+  for (let t = 0; paziente || t < tentativi; t++) {
+    // fra un tentativo e l'altro si guarda se il lettore ha fermato
+    if (paziente && t > 0 && fermo()) return null;
+    const aspetta = async (ms, motivo) => {
+      onAttesa?.(motivo);
+      await attesa(Math.min(ms, ATTESA_MAX));
+    };
+    let res;
+    try {
+      res = await fetcher(url);
+    } catch (e) {
+      ultimo = new GuaioLexicanum(NON_RISPONDE);
+      await aspetta(2000 * 2 ** Math.min(t, 5), "rete");
+      continue;
+    }
+    // troppe richieste o server occupato: si aspetta quanto chiede, poi si
+    // riprova la STESSA pagina
+    if (res.status === 429 || res.status === 503 || (paziente && res.status >= 500)) {
+      const dopo = Number(res.headers?.get?.("retry-after")) || 10 * Math.min(t + 1, 6);
+      ultimo = new GuaioLexicanum(`Il wiki chiede di rallentare (${res.status}).`);
+      await aspetta(dopo * 1000, "rallenta");
+      continue;
+    }
+    if (!res.ok) throw new GuaioLexicanum(`Il wiki ha risposto ${res.status}.`);
+    const testo = await res.text();
+    let dati;
+    try {
+      dati = JSON.parse(testo);
+    } catch {
+      // una pagina di controllo anti-bot al posto della risposta
+      ultimo = new GuaioLexicanum("Il wiki ha risposto con una pagina invece che coi dati.");
+      if (!paziente || ++strane > PAGINE_STRANE) throw ultimo;
+      await aspetta(ATTESA_MAX, "rallenta");
+      continue;
+    }
+    if (dati?.error?.code === "maxlag") {
+      ultimo = new GuaioLexicanum("Il wiki e' sotto carico.");
+      await aspetta(5000 * Math.min(t + 1, 6), "rallenta");
+      continue;
+    }
+    if (dati?.error) throw new GuaioLexicanum(`Il wiki: ${dati.error.info || dati.error.code}`);
+    return { dati, byte: testo.length };
+  }
+  throw ultimo || new GuaioLexicanum(NON_RISPONDE);
+}
+
+const indirizzo = (api, parametri) =>
+  `${api}?${new URLSearchParams({ format: "json", formatversion: "2", origin: "*", ...parametri })}`;
+
+export async function trovaApi({ fetcher = fetch, attesa = dorme, wiki = LEXICANUM } = {}) {
+  let guaio = null;
+  for (const api of wiki.api) {
+    try {
+      const { dati } = await chiediJson(indirizzo(api, { action: "query", meta: "siteinfo", siprop: "general|statistics" }), {
+        fetcher,
+        attesa,
+        tentativi: 2,
+      });
+      if (dati?.query?.general) return { api, voci: dati.query.statistics?.articles || null };
+    } catch (e) {
+      guaio = e;
+    }
+  }
+  throw guaio || new GuaioLexicanum(NON_RISPONDE);
+}
+
+const contenutoDi = (pagina) => {
+  const r = pagina?.revisions?.[0];
+  return r?.slots?.main?.content ?? r?.content ?? r?.["*"] ?? null;
+};
+
+// Una pagina di risposta → i record da scrivere. Un rinvio che cadrebbe
+// sopra una voce vera si salta: le chiavi non guardano le maiuscole, e
+// «Horus lupercal» → «Horus Lupercal» scritto dopo la voce la farebbe
+// sparire sotto un rinvio a se stessa. Scritto PRIMA (l'ordine alfabetico
+// del wiki mette le maiuscole avanti) lo copre la voce quando arriva.
+export async function recordDi(pagine, leggi, wiki = LEXICANUM) {
+  const fuori = new Map();
+  const giaVera = async (k) => {
+    const qui = fuori.get(k);
+    if (qui) return !qui.s;
+    const v = await leggi(wiki.prefisso + k);
+    return !!v && !v.s;
+  };
+  let voci = 0;
+  let rinvii = 0;
+  for (const pagina of pagine || []) {
+    if (pagina?.ns !== 0 && pagina?.ns != null) continue;
+    const testo = contenutoDi(pagina);
+    if (testo == null || !pagina.title) continue;
+    const k = chiave(pagina.title);
+    if (!k) continue;
+    const verso = rinvioDi(testo);
+    if (verso) {
+      if (await giaVera(k)) continue;
+      fuori.set(k, { t: pagina.title, r: verso });
+      rinvii++;
+      continue;
+    }
+    fuori.set(k, daWikitesto(pagina.title, testo));
+    voci++;
+    // la voce risponde anche senza la parentesi del wiki, finche' nessuna
+    // voce vera porta quel nome: «Garro (Novel)» per chi seleziona «Garro»
+    // solo se «Garro» non c'e'. Segnata `s`, una voce vera la copre.
+    const corta = chiave(senzaParentesi(pagina.title));
+    if (corta && corta !== k && !(await giaVera(corta)) && !fuori.has(corta)) {
+      fuori.set(corta, { t: senzaParentesi(pagina.title), r: pagina.title, s: 1 });
+    }
+  }
+  return { record: [...fuori].map(([k, v]) => [wiki.prefisso + k, v]), voci, rinvii };
+}
+
+// LO SCARICAMENTO SI RIPRENDE. Sono migliaia di pagine: sul tablet l'app va
+// in secondo piano, la rete cade, il lettore chiude. Dopo ogni pagina si
+// scrivono PRIMA le voci e POI il segno di dove si e' arrivati, cosi' una
+// pagina interrotta si rifa' da capo (le voci si riscrivono uguali) e
+// nessuna resta saltata. Il cartellino `lex_meta` si scrive solo alla fine:
+// finche' manca, Lexicanum non si dichiara sul dispositivo.
+export async function scaricaLexicanum({
+  fetcher = fetch,
+  deposito = DEPOSITO,
+  onProgress,
+  fermo = () => false,
+  pausa = PAUSA_MS,
+  attesa = dorme,
+  aggiorna = false,
+  wiki = LEXICANUM,
+} = {}) {
+  // un giro cominciato si riprende sempre; uno nuovo sopra un Lexicanum
+  // gia' sceso parte solo se lo si chiede (`aggiorna`): le voci si
+  // riscrivono una per una e intanto quelle di prima continuano a rispondere
+  let giro = await deposito.leggi(wiki.giro);
+  if (!giro?.api) {
+    const gia = await deposito.leggi(wiki.meta);
+    if (gia?.voci && !aggiorna) return gia;
+    const { api, voci } = await trovaApi({ fetcher, attesa, wiki });
+    giro = { api, cont: null, voci: 0, rinvii: 0, byte: 0, totale: voci, iniziato: Date.now(), formato: FORMATO_VOCI };
+    await deposito.scrivi(wiki.giro, giro);
+  }
+  onProgress?.({ ...giro });
+  for (;;) {
+    if (fermo()) return { ...giro, fermato: true };
+    const parametri = {
+      action: "query",
+      generator: "allpages",
+      gapnamespace: "0",
+      gaplimit: String(PER_VOLTA),
+      gapfilterredir: "all",
+      prop: "revisions",
+      rvprop: "content",
+      rvslots: "main",
+      maxlag: "5",
+      // `continue` vuoto alla prima richiesta: chiede la continuazione
+      // «nuova» anche ai MediaWiki vecchi, quella che si ripassa intera
+      ...(giro.cont || { continue: "" }),
+    };
+    const risposta = await chiediJson(indirizzo(giro.api, parametri), {
+      fetcher,
+      attesa,
+      paziente: true,
+      fermo,
+      onAttesa: (motivo) => onProgress?.({ ...giro, attesa: motivo }),
+    });
+    // fermato mentre aspettava la rete: il segno della ripresa e' gia' giusto
+    if (!risposta) return { ...giro, fermato: true };
+    const { dati, byte } = risposta;
+    const { record, voci, rinvii } = await recordDi(dati?.query?.pages, deposito.leggi, wiki);
+    if (record.length) await deposito.scriviMolti(record);
+    giro = {
+      ...giro,
+      cont: dati?.continue || null,
+      voci: giro.voci + voci,
+      rinvii: giro.rinvii + rinvii,
+      byte: giro.byte + byte,
+    };
+    if (!giro.cont) break;
+    await deposito.scrivi(wiki.giro, giro);
+    onProgress?.({ ...giro });
+    if (pausa) await attesa(pausa);
+  }
+  const meta = { voci: giro.voci, rinvii: giro.rinvii, byte: giro.byte, quando: Date.now(), api: giro.api, formato: giro.formato || 1 };
+  await deposito.scrivi(wiki.meta, meta);
+  await deposito.togli(wiki.giro).catch(() => {});
+  INDICE = null;
+  onProgress?.({ ...giro, finito: true });
+  return meta;
+}
+
+// FERMATO A MANO: il giro lasciato a meta' riparte da solo quando l'app si
+// riapre (un ricaricamento, il sistema che la chiude in secondo piano), ma
+// non quello che il lettore ha fermato lui. Del dispositivo, come il giro.
+const chiaveFermo = (wiki) => `bc_wiki_fermo_${wiki.id}`;
+export function fermatoAMano(wiki = LEXICANUM) {
+  try {
+    return localStorage.getItem(chiaveFermo(wiki)) === "1";
+  } catch {
+    return false;
+  }
+}
+export function segnaFermato(wiki = LEXICANUM, si = true) {
+  try {
+    if (si) localStorage.setItem(chiaveFermo(wiki), "1");
+    else localStorage.removeItem(chiaveFermo(wiki));
+  } catch {
+    /* senza localStorage al massimo riparte: meglio che restare a meta' */
+  }
+}
+
+export async function statoLexicanum(deposito = DEPOSITO, wiki = LEXICANUM) {
+  try {
+    const m = await deposito.leggi(wiki.meta);
+    return m?.voci ? m : null;
+  } catch {
+    return null;
+  }
+}
+
+// lo scaricamento lasciato a meta': quante voci sono gia' qui
+export async function giroLexicanum(deposito = DEPOSITO, wiki = LEXICANUM) {
+  try {
+    const g = await deposito.leggi(wiki.giro);
+    return g?.api ? g : null;
+  } catch {
+    return null;
+  }
+}
+
+// IL GIRO DA RIPRENDERE DA SOLO: uno cominciato e non finito, che il
+// lettore non ha fermato lui. Lo chiede App all'avvio, al ritorno in primo
+// piano e quando torna la rete.
+export async function giroDaRiprendere(deposito = DEPOSITO, wiki = LEXICANUM) {
+  if (fermatoAMano(wiki)) return null;
+  return giroLexicanum(deposito, wiki);
+}
+
+export async function rimuoviLexicanum(deposito = DEPOSITO, wiki = LEXICANUM) {
+  segnaFermato(wiki, false);
+  VOCI.clear();
+  INDICE = null;
+  // il cartellino per primo, come nel dizionario: se la pulizia si
+  // interrompe resta un Lexicanum spento, non uno acceso e bucato
+  await deposito.togli(wiki.meta).catch(() => {});
+  await deposito.togli(wiki.giro).catch(() => {});
+  await deposito.togliPrefisso(wiki.prefisso);
+}
+
+// ---------------------------------------------------------------------------
+// LA RICERCA
+
+const VOCI = new Map();
+const VOCI_MAX = 40;
+
+async function leggiVoce(k, deposito, wiki) {
+  const dove = wiki.prefisso + k;
+  if (deposito === DEPOSITO && VOCI.has(dove)) return VOCI.get(dove);
+  const v = (await deposito.leggi(dove)) || null;
+  if (deposito === DEPOSITO) {
+    VOCI.set(dove, v);
+    if (VOCI.size > VOCI_MAX) VOCI.delete(VOCI.keys().next().value);
+  }
+  return v;
+}
+
+// Un titolo → la voce, seguendo i rinvii (al massimo tre: un giro di rinvii
+// sul wiki non deve diventare un giro infinito qui). `via` e' il nome da cui
+// si e' arrivati, se diverso: la scheda lo dice («Loken → Garviel Loken»).
+export async function voceLore(titolo, deposito = DEPOSITO, wiki = LEXICANUM) {
+  let k = chiave(titolo);
+  let via = null;
+  for (let salti = 0; k && salti < 4; salti++) {
+    const v = await leggiVoce(k, deposito, wiki);
+    if (!v) return null;
+    if (!v.r) return via ? { ...v, via } : v;
+    via = via || v.t;
+    k = chiave(v.r);
+  }
+  return null;
+}
+
+const FORMA = /[\p{L}\p{N}'’-]+/gu;
+
+// La selezione → la voce. Si prova la selezione intera, poi le finestre di
+// parole dalla piu' lunga («Garviel Loken said» → «Garviel Loken»), e per
+// una parola sola anche senza il genitivo («Horus's») e senza il plurale
+// («Primarchs»). Oltre sei parole non e' un nome: e' una frase, e il
+// Lexicanum la' non c'entra.
+export const MAX_PAROLE = 6;
+
+export function candidati(raw) {
+  const parole = (String(raw || "").match(FORMA) || []).map((p) => p.replace(/^['’-]+|['’-]+$/g, "")).filter(Boolean);
+  if (!parole.length || parole.length > MAX_PAROLE) return [];
+  const out = [];
+  const metti = (s) => {
+    const k = chiave(s);
+    if (k && !out.includes(k)) out.push(k);
+  };
+  for (let n = parole.length; n >= 1; n--) {
+    for (let i = 0; i + n <= parole.length; i++) {
+      const pezzo = parole.slice(i, i + n);
+      metti(pezzo.join(" "));
+      const ultima = pezzo[n - 1];
+      const senzaGenitivo = ultima.replace(/['’]s?$/i, "");
+      if (senzaGenitivo !== ultima) metti([...pezzo.slice(0, -1), senzaGenitivo].join(" "));
+      if (/[^s]s$/i.test(ultima) && ultima.length > 3) metti([...pezzo.slice(0, -1), ultima.slice(0, -1)].join(" "));
+    }
+  }
+  // una parola sola di due lettere e' quasi sempre una parola comune
+  return out.filter((k) => k.length >= 3);
+}
+
+// la voce e il nome che l'ha trovata («reavers» dentro «flanking Reavers»)
+async function trovaLore(raw, deposito, wiki) {
+  for (const k of candidati(raw)) {
+    const v = await voceLore(k, deposito, wiki).catch(() => null);
+    if (v) return { voce: v, k };
+  }
+  return null;
+}
+
+export async function cercaLore(raw, deposito = DEPOSITO, wiki = LEXICANUM) {
+  return (await trovaLore(raw, deposito, wiki))?.voce || null;
+}
+
+// ---------------------------------------------------------------------------
+// UN NOME, PIU' VOCI (segnalato dal lettore in Mechanicum: «Reavers» apriva
+// i Reaver Jetbike degli Eldar Oscuri, e lì erano i Titani classe Reaver).
+// Il wiki rinvia un nome a UNA voce, la sua; le altre col nome davanti
+// («Reaver Titan», «Reaver-class Titan», «Reavers (Drukhari)») stanno
+// accanto nell'indice, e si trovano dalle sole chiavi. Scelto dal lettore:
+// la voce si sceglie dal paragrafo che stai leggendo, e sotto le altre per
+// correggerla.
+
+// il nome che ha risposto, e al singolare: «Reaver Titan» comincia con
+// «reaver», non con «reavers»
+const basiDi = (k) => (/[^s]s$/.test(k) && k.length > 3 ? [k, k.slice(0, -1)] : [k]);
+
+export const ALTRE_MAX = 30;
+
+// Le altre voci che portano il nome davanti, gia' seguiti i rinvii, una per
+// voce, senza quella trovata. Le chiavi piu' corte prima: «reaver titan»
+// dice di piu' di «reaver titan (legio metalica)»
+export async function altreVoci(nome, trovata, deposito = DEPOSITO, wiki = LEXICANUM) {
+  const viste = new Set(trovata?.t ? [chiave(trovata.t)] : []);
+  const chiavi = new Set();
+  for (const base of basiDi(chiave(nome))) {
+    for (const dove of (await deposito.chiaviPrefisso(wiki.prefisso + base).catch(() => [])) || []) {
+      const k = String(dove).slice(wiki.prefisso.length);
+      const resto = k.slice(base.length);
+      if (!resto || resto.startsWith(" ") || resto.startsWith("-")) chiavi.add(k);
+    }
+  }
+  const out = [];
+  for (const k of [...chiavi].sort((a, b) => a.length - b.length || (a < b ? -1 : 1)).slice(0, ALTRE_MAX)) {
+    const v = await voceLore(k, deposito, wiki).catch(() => null);
+    if (!v?.t || viste.has(chiave(v.t))) continue;
+    viste.add(chiave(v.t));
+    out.push(v);
+  }
+  return out;
+}
+
+const VUOTE = new Set(
+  "that this with from into were have which there their about they them then than what when where while been only also over upon such more most some each other these those would could should after before under against between being very just like even still because across around toward towards through again itself himself herself whose within without though although every never always".split(" ")
+);
+const radice = (w) => (w.length > 4 && w.endsWith("s") ? w.slice(0, -1) : w);
+const paroleDi = (testo) =>
+  new Set(
+    (chiave(testo).match(/[\p{L}]+/gu) || []).filter((w) => w.length >= 4 && !VUOTE.has(w)).map(radice)
+  );
+const testoDellaVoce = (v) => `${v.t} ${(v.p || []).map((b) => b.x || "").join(" ")}`.slice(0, 4000);
+
+// LA VOCE DAL PARAGRAFO: vince quella che ha in se' piu' parole del
+// paragrafo che stai leggendo (il nome cercato non conta: ce l'hanno tutte).
+// Si cambia la voce del wiki solo con almeno due parole in piu': nel dubbio
+// resta quella a cui il wiki rinvia
+export function sceltaDalContesto(trovata, altre = [], contesto = "", nome = "") {
+  const qui = paroleDi(contesto);
+  for (const w of paroleDi(nome)) qui.delete(w);
+  const punti = (v) => [...paroleDi(testoDellaVoce(v))].filter((w) => qui.has(w)).length;
+  const base = punti(trovata);
+  let meglio = trovata;
+  let max = base;
+  for (const v of altre) {
+    const p = punti(v);
+    if (p > max) {
+      meglio = v;
+      max = p;
+    }
+  }
+  return max >= base + 2 ? meglio : trovata;
+}
+
+// Tutto insieme, per la scheda: la voce da mostrare (`dalParagrafo` se non
+// e' quella del wiki) e le altre, la trovata compresa se e' stata scavalcata
+export async function voceNelContesto(raw, contesto = "", deposito = DEPOSITO, wiki = LEXICANUM) {
+  const preso = await trovaLore(raw, deposito, wiki);
+  if (!preso) return null;
+  const trovata = preso.voce;
+  const altre = await altreVoci(preso.k, trovata, deposito, wiki);
+  const scelta = sceltaDalContesto(trovata, altre, contesto, preso.k);
+  if (scelta === trovata) return { voce: trovata, altre };
+  return { voce: { ...scelta, dalParagrafo: true }, altre: [trovata, ...altre.filter((v) => v !== scelta)] };
+}
+
+// ---------------------------------------------------------------------------
+// I NOMI NEL TESTO
+//
+// Chiesto dal lettore: «segna i nomi del 40K nel testo come il glossario».
+// L'indice e' l'elenco delle CHIAVI delle voci (titoli, rinvii, nomi senza
+// parentesi), letto da IndexedDB senza aprire nessuna voce: cinquantamila
+// articoli interi in memoria per sapere se «Cadia» e' un nome sarebbero
+// centinaia di mega. Si costruisce una volta per sessione e si butta quando
+// Lexicanum si riscarica o si rimuove.
+let INDICE = null;
+const PAROLE_MAX = 6;
+
+async function costruisciIndice(deposito) {
+  const chiavi = await deposito.chiaviPrefisso(PREFISSO);
+  if (!chiavi?.length) return null;
+  const set = new Set();
+  let max = 1;
+  for (const k of chiavi) {
+    const c = String(k).slice(PREFISSO.length);
+    if (!c) continue;
+    set.add(c);
+    max = Math.max(max, c.split(" ").length);
+  }
+  return { chiavi: set, max: Math.min(max, PAROLE_MAX) };
+}
+
+export function indiceLore(deposito = DEPOSITO) {
+  if (deposito !== DEPOSITO) return costruisciIndice(deposito);
+  if (!INDICE) {
+    INDICE = costruisciIndice(deposito).catch(() => {
+      INDICE = null;
+      return null;
+    });
+  }
+  return INDICE;
+}
+
+const PAROLA_RE = /[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu;
+
+// SCRITTO COME UN NOME (segnalato dal lettore: «Two hundred and fifty», la
+// distanza, apriva la voce «Two Hundred», un gruppo degli Emperor's
+// Children). Nei titoli di MediaWiki solo la prima lettera e' indifferente:
+// «Two hundred» non e' «Two Hundred». Un nome di piu' parole ha maiuscole
+// tutte le parole che contano; le paroline di mezzo («Sons of Horus», «Eye
+// of Terror») e i numeri possono restare come sono.
+const PAROLINE = new Set(["of", "the", "and", "in", "on", "at", "to", "for", "a", "an", "de", "du", "del", "la", "le", "von", "van", "der", "den", "al", "el", "upon"]);
+export function scrittoComeNome(testo) {
+  const parole = String(testo || "").match(PAROLA_RE) || [];
+  if (!parole.length) return false;
+  return parole.every((w, i) => /^[\p{Lu}\p{N}]/u.test(w) || (i > 0 && PAROLINE.has(w)));
+}
+
+// Le parole che nel capitolo compaiono anche MINUSCOLE: «battle» minuscola
+// vuol dire che «Battle» a inizio frase e' una parola, non un nome
+// A INIZIO FRASE LA MAIUSCOLA NON DICE NIENTE (segnalato dal lettore: «non
+// capisco perche' mi hai evidenziato la parola kilometres»). Lexicanum ha
+// voci anche per parole comuni, e «Kilometres away, the Titan…» apre la
+// frase con la maiuscola come qualunque parola. Una parola sola che apre la
+// frase si segna solo se nel capitolo compare maiuscola anche IN MEZZO a una
+// frase (`inMezzo`), come «Horus» o «Cadia». Inizio di frase: l'inizio del
+// testo, o dopo . ! ? … : saltando spazi, virgolette e parentesi aperte.
+const APERTURE = /[\s"'“‘«(\[—–-]/u;
+function apreLaFrase(t, da) {
+  let i = da - 1;
+  while (i >= 0 && APERTURE.test(t[i])) {
+    // un a capo e' un paragrafo o un titolo nuovo: «CHAPTER ONE\nKilometres»
+    if (t[i] === "\n") return true;
+    i--;
+  }
+  return i < 0 || /[.!?…:]/u.test(t[i]);
+}
+
+export function maiuscoleInMezzo(testo) {
+  const t = String(testo || "");
+  const s = new Set();
+  for (const m of t.matchAll(PAROLA_RE)) if (/^\p{Lu}/u.test(m[0]) && !apreLaFrase(t, m.index)) s.add(chiave(m[0].replace(/['’]s?$/u, "")));
+  return s;
+}
+
+export function parolePiccole(testo) {
+  const s = new Set();
+  for (const m of String(testo || "").matchAll(PAROLA_RE)) if (/^\p{Ll}/u.test(m[0])) s.add(m[0].toLowerCase());
+  return s;
+}
+
+// I nomi di Lexicanum in un pezzo di testo, dal piu' lungo («Garviel Loken»
+// prima di «Loken»), senza accavallarsi. Le regole tengono la pagina
+// leggibile: un nome comincia con la MAIUSCOLA; fra le sue parole solo spazi
+// (una virgola spezza: «Horus, Loken» sono due nomi); una parola SOLA vale
+// se ha almeno quattro lettere e nel capitolo non compare mai minuscola
+// (`minuscole`) — Lexicanum ha voci anche per «Battle» e «Captain», e
+// segnarle ogni volta che aprono una frase farebbe solo rumore.
+export function nomiNelTesto(testo, ix, minuscole = new Set(), inMezzo = null) {
+  const t = String(testo || "");
+  if (!ix?.chiavi?.size) return [];
+  const parole = [...t.matchAll(PAROLA_RE)].map((m) => ({ da: m.index, a: m.index + m[0].length, w: m[0] }));
+  const out = [];
+  let i = 0;
+  while (i < parole.length) {
+    if (!/^\p{Lu}/u.test(parole[i].w)) {
+      i++;
+      continue;
+    }
+    let preso = 0;
+    for (let n = Math.min(ix.max, parole.length - i); n >= 1 && !preso; n--) {
+      const pezzo = t.slice(parole[i].da, parole[i + n - 1].a);
+      if (n > 1 && /[^\p{L}\p{N}'’ -]/u.test(pezzo)) continue;
+      if (!scrittoComeNome(pezzo)) continue;
+      for (const forma of new Set([pezzo, pezzo.replace(/['’]s?$/u, "")])) {
+        const k = chiave(forma);
+        if (!k || !ix.chiavi.has(k)) continue;
+        if (n === 1 && (k.length < 4 || minuscole.has(k))) continue;
+        if (n === 1 && inMezzo && !inMezzo.has(k) && apreLaFrase(t, parole[i].da)) continue;
+        out.push({ da: parole[i].da, a: parole[i].da + forma.length, testo: forma, chiave: k });
+        preso = n;
+        break;
+      }
+    }
+    i += preso || 1;
+  }
+  return out;
+}
+
+// QUALI NOMI SEGNARE in un pezzo di testo, dato quel che il capitolo ha gia'
+// segnato (`gia`, che si aggiorna). Un segno per VOCE, non per nome: «Garviel
+// Loken» e poi «Loken» sono la stessa persona (il rinvio porta alla stessa
+// voce), e due segni a due righe di distanza erano rumore (visto nel browser).
+// Il nome rimasto senza segno entra lo stesso fra i segnati, perche' il
+// tocco risponda anche li': e' la persona su cui il segno e' gia' passato.
+export async function nomiDaSegnare(testo, ix, minuscole, gia, { risolvi = voceLore, salta = () => false, inMezzo = null } = {}) {
+  const out = [];
+  for (const m of nomiNelTesto(testo, ix, minuscole, inMezzo)) {
+    if (gia.has(`lore:${m.chiave}`) || salta(m)) continue;
+    const voce = await risolvi(m.chiave).catch(() => null);
+    const chi = `voce:${chiave(voce?.t) || m.chiave}`;
+    gia.add(`lore:${m.chiave}`);
+    if (gia.has(chi)) continue;
+    gia.add(chi);
+    out.push(m);
+  }
+  return out;
+}
+
+// Il nome sotto il dito: risponde solo un nome gia' SEGNATO nel capitolo
+// (`segnati`, le chiavi). Con cinquantamila voci quasi ogni maiuscola di un
+// romanzo del 40K e' un nome di Lexicanum, e se ognuna rispondesse al tocco
+// toccare il testo per voltare pagina diventerebbe una lotteria.
+export function nomeSottoIlDito(testo, offset, ix, minuscole, segnati) {
+  return (
+    nomiNelTesto(testo, ix, minuscole).find((m) => m.da <= offset && offset < m.a && (!segnati || segnati.has(m.chiave))) || null
+  );
+}
+
+// ---------------------------------------------------------------------------
+// QUALI LIBRI
+
+// Il Lexicanum risponde solo nei libri del 40K: su un Mondo Disco «Death» e'
+// un altro signore. Si riconosce dalla saga, dalla serie e dal titolo — e
+// dalla tavola dell'Eresia, che sa riconoscere i suoi volumi anche con la
+// saga vuota. Il lettore puo' accenderlo o spegnerlo a mano, libro per
+// libro (`bc_lore_<id>`, di questo dispositivo).
+const QUARANTAK =
+  /\b(?:warhammer|40\s?k|40[.,]?000|horus heresy|siege of terra|eisenhorn|ravenor|bequin|gaunt'?s ghosts|ciaphas cain|night lords|space marine battles|black library|the primarchs|beast arises|dark imperium|dawn of fire|word bearers|soul drinkers|ultramarines|grey knights|blood angels|space wolf|dark angels|inquisition war|imperial guard|astra militarum|necromunda)\b/i;
+
+const chiaveAMano = (id) => `bc_lore_${id}`;
+
+export function loreAMano(id) {
+  try {
+    const v = localStorage.getItem(chiaveAMano(id));
+    return v === "1" ? true : v === "0" ? false : null;
+  } catch {
+    return null;
+  }
+}
+
+export function scriviLoreAMano(id, acceso) {
+  try {
+    if (acceso == null) localStorage.removeItem(chiaveAMano(id));
+    else localStorage.setItem(chiaveAMano(id), acceso ? "1" : "0");
+  } catch {
+    /* senza localStorage resta la regola della saga */
+  }
+}
+
+// a colpo d'occhio: il 40K scritto nella saga, nella serie o nel titolo.
+// Chi lo legge ce l'ha quasi sempre scritto da qualche parte, e guardare
+// i nomi di duemila libri costa niente; riconoscerli contro le guide
+// (`del40k`) costava 700 ms con la CPU del tablet, sull'Ingresso
+export function scrittoDel40k(book) {
+  if (!book) return false;
+  return QUARANTAK.test([book.saga, book.series, book.title].filter(Boolean).join(" · "));
+}
+
+export function del40k(book) {
+  if (!book) return false;
+  if (scrittoDel40k(book)) return true;
+  const r = riconosci({ title: book.title, author: book.author });
+  return !!r && QUARANTAK.test(r.saga || "");
+}
+
+export const loreAttivo = (book, aMano = loreAMano) => {
+  const scelto = book?.id ? aMano(book.id) : null;
+  return scelto ?? del40k(book);
+};
+
+// ---------------------------------------------------------------------------
+// IL VELO SUGLI SPOILER
+
+const stessoTitolo = (a, b) => {
+  const x = chiave(a);
+  const y = chiave(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  // il titolo del file porta spesso il resto («The Horus Heresy 01 - Horus
+  // Rising»): la fonte vale se ci sta dentro a parole intere, e se non e'
+  // cosi' corta da stare dentro qualunque titolo
+  return y.length >= 8 && ` ${x} `.includes(` ${y} `);
+};
+
+// Chi decide se un paragrafo si puo' leggere. Torna una funzione: fonte →
+// `null` (si legge) o il perche' del velo. La regola e' quella della
+// frontiera dell'Oracolo (`frontiera.js`), letta dalla parte delle fonti:
+//
+//   fonte di un'ALTRA saga, o che non si riconosce → si legge
+//   fonte = un volume della saga che hai finito, prima di questo → si legge
+//   fonte = questo stesso libro → velata (potrebbe venire da piu' avanti)
+//   fonte = un volume della saga dopo questo, o mai aperto → velata
+//
+// Un volume che la guida dell'Eresia conosce si colloca anche se non e'
+// nella tua biblioteca: «The Solar War» e' dopo «Horus Rising» anche se il
+// file non ce l'hai. Senza numero di lettura (prologo, antologie) si legge:
+// la guida stessa dice che non e' un punto della storia.
+export function giudiceFonti(book, libri = [], { statusOf, cfiOf, riconosci: ric = riconosci } = {}) {
+  const saga = (book?.saga || "").trim();
+  if (!book || !saga) return () => null;
+  const ordine = book.sagaOrder ?? null;
+  const dellaSaga = libri.filter((b) => b && b.id !== book.id && (b.saga || "").trim() === saga);
+  const interi = new Set(
+    ordine != null
+      ? frontiera(book, libri, { statusOf, cfiOf })
+          .filter((t) => t.tutto)
+          .map((t) => t.libro.id)
+      : dellaSaga.filter((b) => statusOf(b.id) === "read").map((b) => b.id)
+  );
+  const titoloGuida = (t) => ric({ title: t })?.titolo || null;
+  const mio = titoloGuida(book.title);
+  return (fonte) => {
+    const t = fonte?.t;
+    if (!t) return null;
+    const guida = ric({ title: t });
+    const daGuida = guida && (guida.saga || "").trim() === saga ? guida : null;
+    if (stessoTitolo(book.title, t) || (daGuida && mio && daGuida.titolo === mio)) return "da questo libro, forse da più avanti";
+    const libro = dellaSaga.find((b) => stessoTitolo(b.title, t) || (daGuida && titoloGuida(b.title) === daGuida.titolo));
+    if (libro) {
+      if (interi.has(libro.id)) return null;
+      return ordine != null && libro.sagaOrder != null && libro.sagaOrder > ordine
+        ? `da «${libro.title}», che viene dopo`
+        : `da «${libro.title}», che non hai letto`;
+    }
+    if (!daGuida || daGuida.sagaOrder == null) return null;
+    if (ordine != null && daGuida.sagaOrder > ordine) return `da «${daGuida.titolo}», che viene dopo`;
+    return `da «${daGuida.titolo}», che non hai letto`;
+  };
+}
+
+// I blocchi della voce col loro velo: `v` e' il perche', se il paragrafo
+// cita almeno una fonte che non si puo' ancora leggere.
+export function velaVoce(voce, giudice) {
+  if (!voce?.p) return [];
+  return voce.p.map((b) => {
+    if (!b.f?.length) return b;
+    for (const k of b.f) {
+      const perche = giudice(voce.f?.[k]);
+      if (perche) return { ...b, v: perche };
+    }
+    return b;
+  });
+}
+
+// L'AVVISO DI UNA VOCE SENZA CITAZIONI PER PARAGRAFO (Fandom). Non si puo'
+// velare un paragrafo per volta: si guarda la lista delle fonti della voce
+// intera e si dice quali vengono da un volume che non hai ancora letto. Senza
+// lista delle fonti non si sa niente, e lo si dice: anche quello e' un rischio.
+export function avvisoVoce(voce, giudice) {
+  const fonti = voce?.fv || [];
+  const motivi = [];
+  for (const fonte of fonti) {
+    const perche = giudice(fonte);
+    if (perche && !motivi.includes(perche)) motivi.push(perche);
+  }
+  return { motivi, senzaFonti: fonti.length === 0 };
+}
+
+// Il testo con link e corsivi → pezzi da disegnare. `l` = bersaglio del
+// link, `i` = corsivo.
+export function pezzi(x) {
+  const out = [];
+  let corsivo = false;
+  const re = /\[\[([^\]|]*)(?:\|([^\]]*))?\]\]|''/g;
+  let da = 0;
+  for (const m of String(x || "").matchAll(re)) {
+    if (m.index > da) out.push({ s: x.slice(da, m.index), i: corsivo });
+    if (m[0] === "''") corsivo = !corsivo;
+    else out.push({ s: m[2] ?? m[1], l: m[1], i: corsivo });
+    da = m.index + m[0].length;
+  }
+  if (da < String(x || "").length) out.push({ s: x.slice(da), i: corsivo });
+  return out.filter((p) => p.s);
+}
+
+// ---------------------------------------------------------------------------
+// LE IMMAGINI PRINCIPALI
+//
+// Chiesto dal lettore, dopo il riquadro e le citazioni: «passa alle
+// immagini». Non tutte: tutte quelle ridotte di Fandom sono circa un giga, a
+// piena misura otto. Si prende l'immagine principale di ogni voce, quella
+// che il wiki stesso sceglie (PageImages: `prop=pageimages`), gia' ridotta
+// a 400 px dal wiki, cinquanta voci per richiesta come il testo. Un lavoro a
+// parte, chiesto a parte, che si ferma e riparte come quello del testo (le
+// stesse chiavi per il fermo e la ripresa, col suo `id`).
+//
+// PRIMA SI MISURA (`misuraImmagini`): su una pagina di voci si conta quante
+// hanno l'immagine e quanto pesano le prime, e se il wiki lascia salvare le
+// sue immagini al browser — Fandom si' (CORS aperto, provato), Lexicanum non
+// si sa da qui. Il peso si dice prima di scaricare, misurato e non indovinato.
+export const immaginiDi = (wiki = LEXICANUM) => ({
+  id: `${wiki.id}_img`,
+  nome: `le immagini di ${wiki.nome}`,
+  prefisso: `img:${wiki.prefisso}`,
+  giro: `${wiki.id}_img_giro`,
+  meta: `${wiki.id}_img_meta`,
+});
+const LATO_IMMAGINE = 400;
+const IMMAGINI_INSIEME = 3;
+const CAMPIONE_PESI = 4;
+// il campione parte da una lettera di mezzo: le prime pagine dell'alfabeto
+// sono numeri e sigle, voci corte e quasi tutte senza immagine
+const CAMPIONE_DA = "G";
+
+const parametriImmagini = (cont, piu = {}) => ({
+  action: "query",
+  generator: "allpages",
+  gapnamespace: "0",
+  gapfilterredir: "nonredirects",
+  gaplimit: String(PER_VOLTA),
+  prop: "pageimages",
+  piprop: "thumbnail",
+  pithumbsize: String(LATO_IMMAGINE),
+  pilimit: String(PER_VOLTA),
+  maxlag: "5",
+  ...(cont || { continue: "" }),
+  ...piu,
+});
+
+const conImmagine = (pagine) =>
+  (Array.isArray(pagine) ? pagine : Object.values(pagine || {}))
+    .filter((p) => p?.thumbnail?.source && p.title)
+    .map((p) => ({ k: chiave(p.title), src: p.thumbnail.source }))
+    .filter((p) => p.k);
+
+async function apiDelWiki({ deposito, fetcher, attesa, wiki }) {
+  const meta = await deposito.leggi(wiki.meta).catch(() => null);
+  if (meta?.api) return { api: meta.api, voci: meta.voci || null };
+  return trovaApi({ fetcher, attesa, wiki });
+}
+
+// UN'IMMAGINE: tre tentativi, poi e' saltata. Un'immagine che manca e'
+// di quell'immagine sola, e la voce resta col suo testo.
+async function prendiImmagine(src, { fetcher, attesa }) {
+  for (let t = 0; t < 3; t++) {
+    try {
+      const res = await fetcher(src);
+      if (res.ok) {
+        const blob = await res.blob();
+        return blob?.size ? blob : null;
+      }
+      if (res.status === 404 || res.status === 410 || res.status === 403) return null;
+    } catch {
+      /* rete o CORS: si riprova, poi si salta */
+    }
+    await attesa(2000 * 2 ** t);
+  }
+  return null;
+}
+
+export async function misuraImmagini({ fetcher = fetch, deposito = DEPOSITO, attesa = dorme, wiki = LEXICANUM } = {}) {
+  const { api, voci } = await apiDelWiki({ deposito, fetcher, attesa, wiki });
+  const risposta = await chiediJson(indirizzo(api, parametriImmagini(null, { gapfrom: CAMPIONE_DA })), { fetcher, attesa });
+  const pagine = risposta?.dati?.query?.pages || [];
+  const tutte = Array.isArray(pagine) ? pagine.length : Object.keys(pagine).length;
+  const con = conImmagine(pagine);
+  // NESSUNA IMMAGINE PRINCIPALE in tutto il campione (visto su Lexicanum
+  // vero: «0% hanno un'immagine», e il tasto prometteva «circa 1 MB»): il
+  // wiki non segna quale sia l'immagine di una voce, e non c'e' niente da
+  // scaricare per questa strada. Lo si dice, senza tasto
+  if (!con.length) return { voci, senzaPrincipale: true, campione: tutte };
+  const pesi = [];
+  for (const { src } of con.slice(0, CAMPIONE_PESI)) {
+    try {
+      const res = await fetcher(src);
+      if (res.ok) pesi.push((await res.blob()).size);
+    } catch {
+      /* contata fra quelle che non arrivano */
+    }
+  }
+  if (con.length && !pesi.length) return { voci, bloccate: true, campione: tutte };
+  const quota = con.length / tutte;
+  const medio = pesi.length ? pesi.reduce((a, b) => a + b, 0) / pesi.length : 0;
+  return { voci, quota, medio, stima: Math.round((voci || 0) * quota * medio), campione: tutte };
+}
+
+export async function scaricaImmagini({
+  fetcher = fetch,
+  deposito = DEPOSITO,
+  onProgress,
+  fermo = () => false,
+  pausa = PAUSA_MS,
+  attesa = dorme,
+  wiki = LEXICANUM,
+} = {}) {
+  const im = immaginiDi(wiki);
+  let giro = await deposito.leggi(im.giro);
+  if (!giro?.api) {
+    const gia = await deposito.leggi(im.meta);
+    if (gia?.immagini != null) return gia;
+    const { api, voci } = await apiDelWiki({ deposito, fetcher, attesa, wiki });
+    giro = { api, cont: null, immagini: 0, saltate: 0, byte: 0, voci: 0, totale: voci, iniziato: Date.now() };
+    await deposito.scrivi(im.giro, giro);
+  }
+  onProgress?.({ ...giro });
+  for (;;) {
+    if (fermo()) return { ...giro, fermato: true };
+    const risposta = await chiediJson(indirizzo(giro.api, parametriImmagini(giro.cont)), {
+      fetcher,
+      attesa,
+      paziente: true,
+      fermo,
+      onAttesa: (motivo) => onProgress?.({ ...giro, attesa: motivo }),
+    });
+    if (!risposta) return { ...giro, fermato: true };
+    const pagine = risposta.dati?.query?.pages || [];
+    const da = conImmagine(pagine);
+    const record = [];
+    let byte = 0;
+    for (let i = 0; i < da.length; i += IMMAGINI_INSIEME) {
+      const gruppo = da.slice(i, i + IMMAGINI_INSIEME);
+      const blobs = await Promise.all(gruppo.map((p) => prendiImmagine(p.src, { fetcher, attesa })));
+      gruppo.forEach((p, j) => {
+        if (!blobs[j]) return;
+        record.push([im.prefisso + p.k, blobs[j]]);
+        byte += blobs[j].size;
+      });
+    }
+    // la prima pagina dice se il wiki lascia salvare le sue immagini: se
+    // non ne arriva nessuna, le altre migliaia non arriverebbero lo stesso
+    if (!giro.immagini && !giro.saltate && da.length >= 3 && !record.length)
+      throw new GuaioLexicanum(`${wiki.nome} non lascia salvare le sue immagini a un'app nel browser.`);
+    if (record.length) await deposito.scriviMolti(record);
+    giro = {
+      ...giro,
+      cont: risposta.dati?.continue || null,
+      immagini: giro.immagini + record.length,
+      saltate: giro.saltate + da.length - record.length,
+      byte: giro.byte + byte,
+      voci: giro.voci + (Array.isArray(pagine) ? pagine.length : Object.keys(pagine).length),
+    };
+    if (!giro.cont) break;
+    await deposito.scrivi(im.giro, giro);
+    onProgress?.({ ...giro });
+    if (pausa) await attesa(pausa);
+  }
+  const meta = { immagini: giro.immagini, saltate: giro.saltate, byte: giro.byte, quando: Date.now() };
+  await deposito.scrivi(im.meta, meta);
+  await deposito.togli(im.giro).catch(() => {});
+  onProgress?.({ ...giro, finito: true });
+  return meta;
+}
+
+export async function statoImmagini(deposito = DEPOSITO, wiki = LEXICANUM) {
+  try {
+    const m = await deposito.leggi(immaginiDi(wiki).meta);
+    return m?.immagini != null ? m : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function rimuoviImmagini(deposito = DEPOSITO, wiki = LEXICANUM) {
+  const im = immaginiDi(wiki);
+  segnaFermato(im, false);
+  await deposito.togli(im.meta).catch(() => {});
+  await deposito.togli(im.giro).catch(() => {});
+  await deposito.togliPrefisso(im.prefisso);
+}
+
+// l'immagine di una voce, dal suo titolo vero (chi arriva da un rinvio ha
+// gia' il titolo della voce)
+export async function immagineDi(titolo, deposito = DEPOSITO, wiki = LEXICANUM) {
+  const k = chiave(titolo);
+  if (!k) return null;
+  return (await deposito.leggi(immaginiDi(wiki).prefisso + k).catch(() => null)) || null;
+}
+
+// L'IMMAGINE DA MOSTRARE IN UNA VOCE: la sua, e per una voce di Lexicanum,
+// che non segna l'immagine principale, quella della stessa voce di Fandom
+// (chiesto dal lettore, al posto di un secondo giro sul wiki di volontari:
+// i byte sono gia' sul dispositivo). La voce di Fandom si cerca come la
+// cerca la scheda, rinvii compresi. `da` dice di chi e' l'immagine.
+export async function immaginePerVoce(titolo, deposito = DEPOSITO, wiki = LEXICANUM) {
+  const sua = await immagineDi(titolo, deposito, wiki);
+  if (sua) return { blob: sua, da: wiki };
+  const diretta = await immagineDi(titolo, deposito, FANDOM);
+  if (diretta) return { blob: diretta, da: FANDOM };
+  const altra = await voceLore(titolo, deposito, FANDOM).catch(() => null);
+  const suFandom = altra?.t ? await immagineDi(altra.t, deposito, FANDOM) : null;
+  return suFandom ? { blob: suFandom, da: FANDOM } : null;
+}
+
+// ---------------------------------------------------------------------------
+// LE ALTRE ILLUSTRAZIONI DI FANDOM
+//
+// Chiesto dal lettore, misurate prima: circa 20.000 illustrazioni oltre alla
+// principale, 18 KB a 250 px e 37 KB a 400 px. Provata la microSD (una
+// cartella scelta, l'unica strada per la scheda): 5 secondi a file per
+// scrivere, 2 per rileggere, e il permesso da richiedere a ogni apertura.
+// Scelta del lettore: nella memoria dell'app, come le immagini principali.
+//
+// Due passi. L'ELENCO: per ogni voce i file che contiene (`prop=images`),
+// meno l'immagine principale, che c'e' gia'. Le ILLUSTRAZIONI: i file
+// distinti, una volta sola anche se stanno in piu' voci, meno le icone dei
+// modelli (un file che sta in `ICONA_DA` voci o piu', un SVG, un lato sotto
+// i 120 px), ridotti dal wiki alla misura scelta.
+export const illustrazioniDi = (wiki = FANDOM) => ({
+  id: `${wiki.id}_ill`,
+  nome: `le illustrazioni di ${wiki.nome}`,
+  prefisso: `ill:${wiki.prefisso}`,
+  voci: `illv:${wiki.prefisso}`,
+  lista: `${wiki.id}_ill_lista`,
+  giro: `${wiki.id}_ill_giro`,
+  meta: `${wiki.id}_ill_meta`,
+});
+export const LATI_ILLUSTRAZIONI = [250, 400];
+export const ICONA_DA = 25;
+const LATO_MINIMO = 120;
+const CAMPIONE_ILL = 8;
+
+const parametriElenco = (cont, piu = {}) => ({
+  action: "query",
+  generator: "allpages",
+  gapnamespace: "0",
+  gapfilterredir: "nonredirects",
+  gaplimit: String(PER_VOLTA),
+  prop: "images|pageimages",
+  imlimit: "max",
+  piprop: "name",
+  pilimit: String(PER_VOLTA),
+  maxlag: "5",
+  ...(cont || { continue: "" }),
+  ...piu,
+});
+
+const parametriFile = (titoli, lato) => ({
+  action: "query",
+  titles: titoli.join("|"),
+  prop: "imageinfo",
+  iiprop: "url|mime|size",
+  iiurlwidth: String(lato),
+  maxlag: "5",
+});
+
+const nomeFile = (t) => String(t || "").replace(/^(File|Image):/i, "").replace(/_/g, " ");
+// la didascalia che si puo': il nome del file senza estensione
+export const didascaliaDi = (file) => nomeFile(file).replace(/\.[a-z0-9]{2,5}$/i, "").trim();
+const sembraIcona = (file) => /\.svg$/i.test(file);
+
+// i file di ogni voce di una pagina dell'elenco, senza la sua immagine
+// principale e senza gli SVG
+export function fileDelleVoci(pagine) {
+  const fuori = new Map();
+  for (const p of Array.isArray(pagine) ? pagine : Object.values(pagine || {})) {
+    const k = chiave(p?.title);
+    if (!k) continue;
+    const principale = p.pageimage ? nomeFile(p.pageimage) : null;
+    const file = (p.images || []).map((i) => nomeFile(i.title)).filter((f) => f && f !== principale && !sembraIcona(f));
+    if (file.length) fuori.set(k, [...(fuori.get(k) || []), ...file]);
+  }
+  return fuori;
+}
+
+// le illustrazioni vere fra le risposte di `imageinfo`
+export function illustrazioniVere(pagine) {
+  return (Array.isArray(pagine) ? pagine : Object.values(pagine || {}))
+    .map((p) => ({ f: nomeFile(p?.title), ii: (p?.imageinfo || [])[0] }))
+    .filter(({ ii }) => ii?.thumburl && /^image\//.test(ii.mime || "") && !/svg/.test(ii.mime) && Math.min(ii.width || 0, ii.height || 0) >= LATO_MINIMO)
+    .map(({ f, ii }) => ({ f, src: ii.thumburl }));
+}
+
+// la miniatura di Fandom alla misura chiesta: l'indirizzo dice la larghezza
+const allaMisura = (src, lato) => String(src).replace(/\/scale-to-width-down\/\d+/, `/scale-to-width-down/${lato}`);
+
+// PRIMA SI MISURA, sulle stesse voci della misura delle immagini principali:
+// quante illustrazioni per voce, e quanto pesano alle due misure
+export async function misuraIllustrazioni({ fetcher = fetch, deposito = DEPOSITO, attesa = dorme, wiki = FANDOM } = {}) {
+  const { api, voci } = await apiDelWiki({ deposito, fetcher, attesa, wiki });
+  const elenco = await chiediJson(indirizzo(api, parametriElenco(null, { gapfrom: CAMPIONE_DA })), { fetcher, attesa });
+  const pagine = elenco?.dati?.query?.pages || [];
+  const tutte = Array.isArray(pagine) ? pagine.length : Object.keys(pagine).length;
+  const perVoce = fileDelleVoci(pagine);
+  const file = [...new Set([...perVoce.values()].flat())];
+  const quante = [...perVoce.values()].reduce((n, f) => n + f.length, 0);
+  if (!file.length) return { voci, nessuna: true, campione: tutte };
+  const info = await chiediJson(indirizzo(api, parametriFile(file.slice(0, PER_VOLTA), LATI_ILLUSTRAZIONI[1])), { fetcher, attesa });
+  const vere = illustrazioniVere(info?.dati?.query?.pages);
+  const quota = vere.length / Math.min(file.length, PER_VOLTA);
+  const pesi = { 250: [], 400: [] };
+  for (const { src } of vere.slice(0, CAMPIONE_ILL)) {
+    for (const lato of LATI_ILLUSTRAZIONI) {
+      try {
+        const res = await fetcher(allaMisura(src, lato));
+        if (res.ok) pesi[lato].push((await res.blob()).size);
+      } catch {
+        /* contata fra quelle che non arrivano */
+      }
+    }
+  }
+  if (vere.length && !pesi[400].length) return { voci, bloccate: true, campione: tutte };
+  const media = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+  const stimaQuante = Math.round(((voci || 0) * quante * quota) / Math.max(1, tutte));
+  return {
+    voci,
+    campione: tutte,
+    perVoce: (quante * quota) / Math.max(1, tutte),
+    stimaQuante,
+    stime: Object.fromEntries(LATI_ILLUSTRAZIONI.map((l) => [l, Math.round(stimaQuante * media(pesi[l]))])),
+  };
+}
+
+export async function scaricaIllustrazioni({
+  fetcher = fetch,
+  deposito = DEPOSITO,
+  onProgress,
+  fermo = () => false,
+  pausa = PAUSA_MS,
+  attesa = dorme,
+  wiki = FANDOM,
+  lato = LATI_ILLUSTRAZIONI[0],
+  iconaDa = ICONA_DA,
+} = {}) {
+  const il = illustrazioniDi(wiki);
+  let giro = await deposito.leggi(il.giro);
+  if (!giro?.api) {
+    const gia = await deposito.leggi(il.meta);
+    if (gia?.immagini != null) return gia;
+    const { api, voci } = await apiDelWiki({ deposito, fetcher, attesa, wiki });
+    giro = { api, lato, fase: "elenco", cont: null, voci: 0, totale: voci, i: 0, file: 0, immagini: 0, saltate: 0, byte: 0, iniziato: Date.now() };
+    await deposito.scrivi(il.giro, giro);
+  }
+  const paziente = (motivo) => onProgress?.({ ...giro, attesa: motivo });
+  onProgress?.({ ...giro });
+
+  // L'ELENCO: una pagina di voci alla volta, i file di ognuna nel suo record
+  while (giro.fase === "elenco") {
+    if (fermo()) return { ...giro, fermato: true };
+    const risposta = await chiediJson(indirizzo(giro.api, parametriElenco(giro.cont)), { fetcher, attesa, paziente: true, fermo, onAttesa: paziente });
+    if (!risposta) return { ...giro, fermato: true };
+    const pagine = risposta.dati?.query?.pages || [];
+    const perVoce = fileDelleVoci(pagine);
+    // una voce con molti file torna in piu' risposte: i suoi si sommano
+    const record = [];
+    for (const [k, file] of perVoce) {
+      const prima = (await deposito.leggi(il.voci + k).catch(() => null)) || [];
+      record.push([il.voci + k, [...new Set([...prima, ...file])]]);
+    }
+    if (record.length) await deposito.scriviMolti(record);
+    const cont = risposta.dati?.continue || null;
+    // una pagina di voci si conta alla sua prima risposta: le altre, coi
+    // file che non ci stavano (`imcontinue`), sono le stesse voci
+    const nuove = !giro.cont?.imcontinue;
+    giro = { ...giro, cont, voci: giro.voci + (nuove ? (Array.isArray(pagine) ? pagine.length : Object.keys(pagine).length) : 0) };
+    if (!cont) {
+      // fine dell'elenco: i file distinti, meno le icone dei modelli
+      const conti = new Map();
+      for (const k of await deposito.chiaviPrefisso(il.voci)) {
+        for (const f of (await deposito.leggi(k).catch(() => null)) || []) conti.set(f, (conti.get(f) || 0) + 1);
+      }
+      const lista = [...conti].filter(([, n]) => n < iconaDa).map(([f]) => f).sort();
+      await deposito.scrivi(il.lista, lista);
+      giro = { ...giro, fase: "immagini", cont: null, i: 0, file: lista.length };
+    }
+    await deposito.scrivi(il.giro, giro);
+    onProgress?.({ ...giro });
+    if (pausa) await attesa(pausa);
+  }
+
+  // LE ILLUSTRAZIONI: cinquanta file alla volta, ridotti alla misura scelta
+  const lista = (await deposito.leggi(il.lista)) || [];
+  while (giro.i < lista.length) {
+    if (fermo()) return { ...giro, fermato: true };
+    const blocco = lista.slice(giro.i, giro.i + PER_VOLTA);
+    const risposta = await chiediJson(indirizzo(giro.api, parametriFile(blocco.map((f) => `File:${f}`), giro.lato)), {
+      fetcher,
+      attesa,
+      paziente: true,
+      fermo,
+      onAttesa: paziente,
+    });
+    if (!risposta) return { ...giro, fermato: true };
+    const vere = illustrazioniVere(risposta.dati?.query?.pages);
+    const record = [];
+    let byte = 0;
+    for (let j = 0; j < vere.length; j += IMMAGINI_INSIEME) {
+      const gruppo = vere.slice(j, j + IMMAGINI_INSIEME);
+      const blobs = await Promise.all(gruppo.map((x) => prendiImmagine(x.src, { fetcher, attesa })));
+      gruppo.forEach((x, n) => {
+        if (!blobs[n]) return;
+        record.push([il.prefisso + chiave(x.f), blobs[n]]);
+        byte += blobs[n].size;
+      });
+    }
+    if (!giro.immagini && !giro.saltate && vere.length >= 3 && !record.length)
+      throw new GuaioLexicanum(`${wiki.nome} non lascia salvare le sue illustrazioni a un'app nel browser.`);
+    if (record.length) await deposito.scriviMolti(record);
+    giro = {
+      ...giro,
+      i: giro.i + blocco.length,
+      immagini: giro.immagini + record.length,
+      saltate: giro.saltate + blocco.length - record.length,
+      byte: giro.byte + byte,
+    };
+    await deposito.scrivi(il.giro, giro);
+    onProgress?.({ ...giro });
+    if (pausa && giro.i < lista.length) await attesa(pausa);
+  }
+  const meta = { immagini: giro.immagini, saltate: giro.saltate, byte: giro.byte, lato: giro.lato, quando: Date.now() };
+  await deposito.scrivi(il.meta, meta);
+  await deposito.togli(il.giro).catch(() => {});
+  await deposito.togli(il.lista).catch(() => {});
+  onProgress?.({ ...giro, finito: true });
+  return meta;
+}
+
+export async function statoIllustrazioni(deposito = DEPOSITO, wiki = FANDOM) {
+  try {
+    const m = await deposito.leggi(illustrazioniDi(wiki).meta);
+    return m?.immagini != null ? m : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function rimuoviIllustrazioni(deposito = DEPOSITO, wiki = FANDOM) {
+  const il = illustrazioniDi(wiki);
+  segnaFermato(il, false);
+  await deposito.togli(il.meta).catch(() => {});
+  await deposito.togli(il.giro).catch(() => {});
+  await deposito.togli(il.lista).catch(() => {});
+  await deposito.togliPrefisso(il.prefisso);
+  await deposito.togliPrefisso(il.voci);
+}
+
+// LE ILLUSTRAZIONI DI UNA VOCE: quelle scese, nell'ordine in cui la voce le
+// cita. Una voce di Lexicanum prende quelle della stessa voce di Fandom,
+// anche passando da un rinvio, come l'immagine principale.
+export async function illustrazioniPerVoce(titolo, deposito = DEPOSITO, wiki = FANDOM) {
+  const il = illustrazioniDi(FANDOM);
+  let k = chiave(titolo);
+  let file = k ? await deposito.leggi(il.voci + k).catch(() => null) : null;
+  if (!file && wiki !== FANDOM) {
+    const altra = await voceLore(titolo, deposito, FANDOM).catch(() => null);
+    k = altra?.t ? chiave(altra.t) : null;
+    file = k ? await deposito.leggi(il.voci + k).catch(() => null) : null;
+  }
+  const fuori = [];
+  for (const f of file || []) {
+    const blob = await deposito.leggi(il.prefisso + chiave(f)).catch(() => null);
+    if (blob) fuori.push({ f, didascalia: didascaliaDi(f), blob });
+  }
+  return fuori;
+}
+
+export function fraseIllustrazioni(p) {
+  if (!p) return "";
+  if (p.fase === "elenco") {
+    const di = p.totale ? ` di circa ${numero(p.totale)}` : "";
+    return `elenco: ${numero(p.voci || 0)} voci guardate${di}`;
+  }
+  const mb = p.byte >= 1048576 ? ` · ${(p.byte / 1048576).toFixed(0)} MB` : "";
+  const di = p.file ? ` · ${numero(p.i || 0)} file guardati di ${numero(p.file)}` : "";
+  const sosta = p.attesa === "rete" ? " · aspetto la rete…" : p.attesa === "rallenta" ? " · il wiki chiede una pausa…" : "";
+  const quante = p.immagini === 1 ? "un'illustrazione" : `${numero(p.immagini || 0)} illustrazioni`;
+  return `${quante}${mb}${di}${sosta}`;
+}
+
+// IL RIEPILOGO DEI WIKI, in cima alla sezione delle Impostazioni (chiesto
+// dal lettore, che con tutto gia' sceso non capiva se mancasse qualcosa:
+// «non mi dice che c'è altro da scaricare», poi «rendi tutto più chiaro
+// possibile»). Una riga per cosa da scaricare, col suo stato, e una frase
+// che risponde alla domanda. Le immagini di Lexicanum non sono una riga:
+// Lexicanum non le segna, e le sue voci usano quelle di Fandom.
+export function riepilogoWiki({ lex, lexGiro, fan, fanGiro, img, imgGiro, ill, illGiro } = {}) {
+  const riga = (nome, fatto, giro, dettaglio, serve) =>
+    fatto
+      ? { nome, stato: "fatto", dettaglio }
+      : giro
+        ? { nome, stato: "aMeta", dettaglio: "scese a metà: riprendi qui sotto" }
+        : serve
+          ? { nome, stato: "dopo", dettaglio: `dopo ${serve}` }
+          : { nome, stato: "manca", dettaglio: "da scaricare, qui sotto" };
+  const voci = (n) => (n === 1 ? "una voce" : `${numero(n)} voci`);
+  const righe = [
+    riga("Lexicanum", lex, lexGiro, lex && voci(lex.voci)),
+    riga("Fandom", fan, fanGiro, fan && voci(fan.voci)),
+    riga("Immagini principali di Fandom", img, imgGiro, img && fraseImmagini(img), !fan && !img && !imgGiro ? "Fandom" : null),
+    riga("Altre illustrazioni di Fandom", ill, illGiro, ill && `${fraseIllustrazioni(ill)} · ${ill.lato} px`, !fan && !ill && !illGiro ? "Fandom" : null),
+  ];
+  const mancano = righe.filter((r) => r.stato !== "fatto");
+  return {
+    righe,
+    tutto: !mancano.length,
+    frase: mancano.length ? `Da scaricare: ${mancano.map((r) => r.nome).join(", ")}.` : "Tutto è sul dispositivo: non c'è altro da scaricare.",
+  };
+}
+
+// L'IMMAGINE NEL RIQUADRO BREVE della scheda, accanto alla definizione
+// (chiesto dal lettore: «dei termini che definiscono l'universo Warhammer
+// riesci a tirarmi fuori le illustrazioni se esistono e mostrarle insieme
+// alla definizione?»): gli stessi veli della voce intera. Su Fandom sta
+// dietro l'avviso coi libri non letti; su Lexicanum dietro un velo suo,
+// perche' non dice da quale libro viene.
+export function figuraBreve({ wiki, haFigura, chiusa, svelata }) {
+  if (!haFigura || chiusa) return "niente";
+  if (wiki !== FANDOM && !svelata) return "velata";
+  return "visibile";
+}
+
+export function fraseImmagini(p) {
+  if (!p) return "";
+  const mb = p.byte >= 1048576 ? ` · ${(p.byte / 1048576).toFixed(0)} MB` : "";
+  const di = p.totale && p.voci ? ` · ${numero(p.voci)} voci guardate di circa ${numero(p.totale)}` : "";
+  const sosta = p.attesa === "rete" ? " · aspetto la rete…" : p.attesa === "rallenta" ? " · il wiki chiede una pausa…" : "";
+  const quante = p.immagini === 1 ? "un'immagine" : `${numero(p.immagini)} immagini`;
+  return `${quante}${mb}${di}${sosta}`;
+}
+
+export const indirizzoVoce = (titolo, wiki = LEXICANUM) =>
+  `${wiki.sito}/wiki/${encodeURIComponent(String(titolo).replace(/ /g, "_"))}`;
+
+// La riga del lavoro: le voci scese, il totale che il wiki dichiara (e'
+// «circa»: conta anche le voci che non sono racconto) e i byte, che sono
+// quel che il lettore paga in rete.
+const numero = (n) => Number(n || 0).toLocaleString("it-IT");
+export function fraseLexicanum(p) {
+  if (!p) return "";
+  // sotto il mega non si dice: «0 MB» e' uno zero, e gli zeri non si dicono
+  const mb = p.byte >= 1048576 ? ` · ${(p.byte / 1048576).toFixed(0)} MB` : "";
+  const di = p.totale ? ` di circa ${numero(p.totale)}` : "";
+  const sosta = p.attesa === "rete" ? " · aspetto la rete…" : p.attesa === "rallenta" ? " · il wiki chiede una pausa…" : "";
+  return `${numero(p.voci)} voci${di}${mb}${sosta}`;
+}

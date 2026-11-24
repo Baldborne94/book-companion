@@ -9,6 +9,20 @@
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <title>Book Companion</title>
+    <!-- Il colore di fondo del tema scelto, PRIMA che il bundle parta. Il
+         foglio di stile dipinge il body appena arriva, e il tema vero si
+         applicava solo quando React partiva: chi legge col Rifugio Silvano
+         vedeva un lampo di notte viola a ogni avvio a freddo. Qui non c'è
+         nessuna palette duplicata — solo l'ultimo colore già applicato. -->
+    <script>
+      try {
+        var bg = localStorage.getItem("bc_bg");
+        if (bg) {
+          document.documentElement.style.setProperty("--bc-bg", bg);
+          document.querySelector('meta[name="theme-color"]').setAttribute("content", bg);
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,3 +1,4 @@
+import { copertinaCambiata, chiaveMin, NITIDA, chiaveNitida, prefissoNitida } from "./miniature.js";
 const DB_NAME = "bc_library";
 
 let dbPromise;
@@ -5,53 +6,271 @@ let dbPromise;
 function db() {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 2);
+      const req = indexedDB.open(DB_NAME, 3);
       req.onupgradeneeded = () => {
         const d = req.result;
         if (!d.objectStoreNames.contains("files")) d.createObjectStore("files");
         if (!d.objectStoreNames.contains("covers")) d.createObjectStore("covers");
         if (!d.objectStoreNames.contains("aux")) d.createObjectStore("aux");
+        // le tracce audio stanno per conto loro: cancellare un libro non
+        // deve portarsi via la musica, e viceversa
+        if (!d.objectStoreNames.contains("tracks")) d.createObjectStore("tracks");
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
+    }).catch((e) => {
+      // un'apertura andata storta non resta in memoria: tenerla vorrebbe
+      // dire che un intoppo di un attimo spegne IndexedDB fino al riavvio
+      dbPromise = null;
+      throw e;
     });
   }
   return dbPromise;
 }
 
-async function withStore(name, mode, fn) {
-  const d = await db();
+// UNA SCRITTURA E' FATTA QUANDO LA TRANSAZIONE SI CHIUDE, non quando la
+// richiesta risponde. Prima si risolveva su `req.onsuccess`: la richiesta
+// dice di si' subito, e la transazione puo' ancora ABORTIRE dopo — ed e'
+// proprio li' che un file grosso si sente dire «spazio esaurito». L'import
+// diceva «nuovo tomo sullo scaffale» sopra un volume che su disco non
+// c'era, e il lettore rispondeva «non si lascia aprire» (preso al banco con
+// un CBZ da un giga, non dalla lettura). In lettura la differenza non
+// conta, e si resta sulla risposta della richiesta.
+export function attendi(tx, req, mode) {
   return new Promise((resolve, reject) => {
-    const tx = d.transaction(name, mode);
-    const req = fn(tx.objectStore(name));
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    const errore = () => reject(tx.error || req.error || new Error("scrittura annullata"));
+    if (mode === "readwrite") {
+      tx.oncomplete = () => resolve(req.result);
+      tx.onabort = errore;
+      tx.onerror = errore;
+    } else {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    }
   });
 }
 
+async function withStore(name, mode, fn) {
+  const d = await db();
+  const tx = d.transaction(name, mode);
+  return attendi(tx, fn(tx.objectStore(name)), mode);
+}
+
+// Lo spazio esaurito ha un nome suo, perche' chiede al lettore una cosa
+// diversa da «riprova»: fare posto, o togliere l'ebook di un libro finito.
+export const spazioEsaurito = (e) => e?.name === "QuotaExceededError" || /quota/i.test(e?.message || "");
+
 export const putFile = (id, blob) => withStore("files", "readwrite", (s) => s.put(blob, id));
 export const getFile = (id) => withStore("files", "readonly", (s) => s.get(id));
-export const putCover = (id, blob) => withStore("covers", "readwrite", (s) => s.put(blob, id));
+// chi scrive o toglie una copertina fa dimenticare quella che lo scaffale
+// ricordava (`lib/miniature.js`): e' il solo punto da cui passano tutte —
+// la scheda, l'import, la sincronizzazione, «Ritrova le copertine»
+// E una copertina nata nitida lascia il suo segno (`NITIDA` in `miniature.js`)
+export const putCover = (id, blob) =>
+  withStore("covers", "readwrite", (s) => s.put(blob, id))
+    .then(() => (blob?.[NITIDA] ? withStore("aux", "readwrite", (s) => s.put(1, chiaveNitida(id, blob.size))) : null))
+    .then((r) => (copertinaCambiata(id), r));
 export const getCover = (id) => withStore("covers", "readonly", (s) => s.get(id));
+// togliere la copertina scelta a mano non e' cancellare il libro: si torna
+// al dorso disegnato, che e' quello che c'era prima
+export const removeCover = (id) =>
+  withStore("covers", "readwrite", (s) => s.delete(id)).then((r) => (copertinaCambiata(id), r));
+
+export const putTrack = (id, blob) => withStore("tracks", "readwrite", (s) => s.put(blob, id));
+export const getTrack = (id) => withStore("tracks", "readonly", (s) => s.get(id));
+export const removeTrack = (id) => withStore("tracks", "readwrite", (s) => s.delete(id));
+export const listTrackIds = () => withStore("tracks", "readonly", (s) => s.getAllKeys());
 
 export const listFileIds = () => withStore("files", "readonly", (s) => s.getAllKeys());
+// Le copertine che stanno QUI, in un colpo solo: il giro che le va a
+// ripescare dal cloud deve sapere chi manca, e chiederlo una per una
+// sarebbe una transazione a libro.
+export const listCoverIds = () => withStore("covers", "readonly", (s) => s.getAllKeys());
+// QUANTO PESA QUEL CHE STA QUI, per specie.
+//
+// La riga in fondo alla Libreria diceva un numero solo — quello del browser
+// — e lo diceva subito dopo «286 libri custoditi», cioe' come se fossero i
+// libri a pesarlo: dentro pero' ci stanno anche le copertine, le melodie, il
+// dizionario offline e la cache dell'app. Segnalato: «queste diciture mi
+// confondono sempre», con la fotografia dove «978 MB» sta accanto a «286
+// libri» e due righe sotto si legge «274 libri · 940 MB» — quattro numeri
+// che sembrano parlare della stessa cosa e non lo fanno.
+//
+// SI SOMMA `size`, NON SI LEGGONO I BYTE: un Blob in IndexedDB e' un
+// riferimento al file su disco, e la sua misura e' un dato che sta li' —
+// chiederla non tira su un megabyte. Un `getAll` invece materializzerebbe
+// tutti i valori insieme, e su una biblioteca da un gigabyte e' la scheda
+// che si chiude: si passa col cursore, uno per volta.
+//
+// Un valore senza misura (una chiave scritta da una versione vecchia, o un
+// record che non e' un Blob) conta zero e non rompe il giro: qui si misura,
+// non si valida.
+async function pesaStore(nome) {
+  const d = await db();
+  return new Promise((resolve) => {
+    let quanti = 0;
+    let byte = 0;
+    try {
+      const tx = d.transaction(nome, "readonly");
+      const req = tx.objectStore(nome).openCursor();
+      req.onsuccess = () => {
+        const cur = req.result;
+        if (!cur) return resolve({ quanti, byte });
+        quanti += 1;
+        byte += Number(cur.value?.size) || 0;
+        cur.continue();
+      };
+      // un guasto non e' uno zero: chi legge deve poter distinguere «non ho
+      // potuto guardare» da «non c'e' niente», come per l'elenco del secchio
+      req.onerror = () => resolve(null);
+      tx.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+// QUANTO PESA OGNI LIBRO E OGNI COPERTINA QUI, per id: i libri per dire
+// quanto spazio libera «Libera spazio», le copertine per sapere se quella
+// qui e' la stessa che sta nel secchio. Stesso cursore di `pesaStore`, e
+// per la stessa ragione — `size` si legge senza tirare su un byte.
+export const misureFile = () => misureDi("files");
+export const misureCopertine = () => misureDi("covers");
+
+async function misureDi(nome) {
+  const d = await db();
+  return new Promise((resolve) => {
+    const misure = new Map();
+    try {
+      const tx = d.transaction(nome, "readonly");
+      const req = tx.objectStore(nome).openCursor();
+      req.onsuccess = () => {
+        const cur = req.result;
+        if (!cur) return resolve(misure);
+        const n = Number(cur.value?.size);
+        if (n > 0) misure.set(cur.key, n);
+        cur.continue();
+      };
+      req.onerror = () => resolve(misure);
+    } catch {
+      resolve(misure);
+    }
+  });
+}
+
+// I tre pesi di casa, nella stessa forma che `contaSpazio` da' per il secchio
+// (`{quanti, byte}` per specie), cosi' la riga di qui e la barra di lassu'
+// si leggono con lo stesso vocabolario invece di essere due grafici diversi
+// sullo stesso argomento.
+export async function spazioQui() {
+  const [libri, copertine, melodie] = await Promise.all([
+    pesaStore("files"),
+    pesaStore("covers"),
+    pesaStore("tracks"),
+  ]);
+  if (!libri && !copertine && !melodie) return null;
+  return { libri, copertine, melodie };
+}
+
 export const putAux = (key, value) => withStore("aux", "readwrite", (s) => s.put(value, key));
 export const getAux = (key) => withStore("aux", "readonly", (s) => s.get(key));
+export const removeAux = (key) => withStore("aux", "readwrite", (s) => s.delete(key));
+export const chiaviAux = () => withStore("aux", "readonly", (s) => s.getAllKeys());
+// decine di migliaia di voci (Lexicanum) se ne vanno con UNA richiesta: una
+// per chiave vorrebbe dire minuti a schermo fermo
+// le sole CHIAVI sotto un prefisso: l'indice dei nomi di Lexicanum senza
+// tirarsi dietro cinquantamila voci intere
+export const chiaviAuxPrefisso = (prefisso) =>
+  withStore("aux", "readonly", (s) => s.getAllKeys(IDBKeyRange.bound(prefisso, `${prefisso}\uffff`)));
+export const removeAuxPrefisso = (prefisso) =>
+  withStore("aux", "readwrite", (s) => s.delete(IDBKeyRange.bound(prefisso, `${prefisso}￿`)));
+
+// TANTE SCRITTURE IN UNA TRANSAZIONE SOLA. Il dizionario offline entra in
+// settecento sacchi, e settecento transazioni separate su un tablet sono
+// secondi di attesa a schermo fermo. Qui si aspetta la TRANSAZIONE e non la
+// singola richiesta, che e' anche l'unico modo di sapere che sono arrivate
+// davvero tutte: `put` risponde presto, la transazione risponde quando il
+// disco ha finito — e se una sola fallisce si annulla tutto insieme, invece
+// di lasciare un dizionario a meta' che sembrerebbe intero.
+export async function putAuxMolti(voci) {
+  const d = await db();
+  return new Promise((resolve, reject) => {
+    const tx = d.transaction("aux", "readwrite");
+    const s = tx.objectStore("aux");
+    for (const [k, v] of voci) s.put(v, k);
+    tx.oncomplete = () => resolve(voci.length);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+// SOLO I BYTE DEL LIBRO, E NIENT'ALTRO.
+//
+// «Togli l'ebook, tieni la scheda»: la copertina resta (e' lei che tiene
+// il libro sullo scaffale), e restano le evidenziazioni, i segnalibri, le
+// schede dell'Oracolo e il punto di lettura — sono tuoi, e il giardino
+// delle citazioni vive di quelli. Se ne vanno solo le due cose CALCOLATE
+// su questi byte: le posizioni cachate di epub.js, che senza il file non
+// valgono piu' niente, e il verdetto sulla spezzatura, che parla di un
+// file che non c'e'.
+export async function removeFileOnly(id) {
+  await withStore("files", "readwrite", (s) => s.delete(id));
+  await withStore("aux", "readwrite", (s) => s.delete(`loc_${id}`));
+  await withStore("aux", "readwrite", (s) => s.delete(`salute_${id}`));
+}
 
 export async function removeBookData(id) {
   await withStore("files", "readwrite", (s) => s.delete(id));
   await withStore("covers", "readwrite", (s) => s.delete(id));
+  copertinaCambiata(id);
   await withStore("aux", "readwrite", (s) => s.delete(`loc_${id}`));
+  // la miniatura della copertina per lo scaffale, e il segno della nitida
+  await withStore("aux", "readwrite", (s) => s.delete(chiaveMin(id)));
+  await withStore("aux", "readwrite", (s) => s.delete(IDBKeyRange.bound(prefissoNitida(id), `${prefissoNitida(id)}\uffff`)));
+  // le schede dell'Oracolo di questo libro: senza, resterebbero in giro a
+  // occupare spazio per un romanzo che non c'e' piu'
+  await withStore("aux", "readwrite", (s) => s.delete(`schede_${id}`));
+  // la memoria «la collana di questo file l'ho gia' guardata»
+  await withStore("aux", "readwrite", (s) => s.delete(`collana_${id}`));
+  // il testo estratto per la ricerca e per l'Oracolo (`testoLibro.js`)
+  await withStore("aux", "readwrite", (s) => s.delete(`testo_${id}`));
 }
 
-export async function requestPersistence() {
+// LA PERSISTENZA SI CHIEDE, MA SOPRATTUTTO SI GUARDA.
+//
+// Senza, i byte dei libri, le evidenziazioni, il diario e i punti di
+// lettura stanno in una memoria che il browser puo' sfrattare quando gli
+// serve spazio. Android la concede a certe condizioni (PWA installata,
+// abbastanza uso) e la nega senza dire niente: buttare via la risposta
+// voleva dire lasciare il lettore convinto di essere al sicuro.
+//
+// Prende `navigator.storage` invece di andarselo a prendere da solo, cosi'
+// un test puo' passargli le cinque situazioni che capitano davvero senza
+// bisogno di un browser (`test/persistenza.test.mjs`).
+export async function persistenza(storage, chiedi = true) {
+  // niente API: browser vecchio o contesto non sicuro. Non e' un «no», e'
+  // un «non si sa» — e va detto diversamente, perche' non c'e' niente da
+  // riprovare e allarmare a vuoto sarebbe peggio del silenzio
+  if (!storage?.persist) return "sconosciuta";
   try {
-    if (navigator.storage?.persist) return await navigator.storage.persist();
+    // gia' concessa: non si richiede due volte
+    if (storage.persisted && (await storage.persisted())) return "concessa";
+    // solo lettura, e il browser non sa nemmeno dire com'e' messo: non si
+    // spaccia per un «negata», che manderebbe in pagina un avviso inventato
+    if (!chiedi) return storage.persisted ? "negata" : "sconosciuta";
+    return (await storage.persist()) ? "concessa" : "negata";
   } catch {
-    /* alcuni browser lanciano senza permesso: non è un errore per noi */
+    /* alcuni browser lanciano invece di rispondere: per noi e' un non-so */
+    return "sconosciuta";
   }
-  return false;
 }
+
+const suoStorage = () => (typeof navigator === "undefined" ? null : navigator.storage);
+
+// all'avvio si CHIEDE; in Libreria si GUARDA soltanto, o il solo aprire lo
+// scaffale farebbe comparire un permesso a sorpresa
+export const requestPersistence = () => persistenza(suoStorage(), true);
+export const statoPersistenza = () => persistenza(suoStorage(), false);
 
 export async function storageEstimate() {
   try {

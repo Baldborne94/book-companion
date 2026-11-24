@@ -1,8 +1,10 @@
 node_modules
 dist
+dist-e2e
 .env
 .env.local
 .DS_Store
 *.log
+scripts/.cache
 deploy/nas/.env
-deploy/nas/ts-state
+deploy/nas/tailscale

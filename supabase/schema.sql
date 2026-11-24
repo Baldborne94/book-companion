@@ -10,6 +10,21 @@
 --   alter table public.books
 --     add column if not exists started_at  bigint not null default 0,
 --     add column if not exists finished_at bigint not null default 0;
+--   alter table public.books add column if not exists impronta text;  -- doppioni
+--   alter table public.books add column if not exists fav boolean not null default false;  -- cuore dei preferiti
+--   alter table public.prefs add column if not exists glossari jsonb not null default '{}'::jsonb;
+--   alter table public.prefs add column if not exists racconti jsonb not null default '[]'::jsonb;
+--   alter table public.prefs add column if not exists tempo jsonb not null default '{}'::jsonb;      -- tempo di lettura
+--   alter table public.prefs add column if not exists obiettivi jsonb not null default '{}'::jsonb;  -- obiettivo dell'anno
+--   alter table public.prefs add column if not exists quaderno jsonb not null default '[]'::jsonb;   -- il quaderno delle parole
+--   alter table public.prefs add column if not exists da_prendere jsonb not null default '[]'::jsonb; -- i libri da prendere
+--   alter table public.prefs add column if not exists raccolte_fav jsonb not null default '[]'::jsonb; -- il cuore delle raccolte
+--   alter table public.books alter column saga_order type real;  -- numero di collana coi decimali (2.5 = la novella)
+--   alter table public.books add column if not exists saga_tolta boolean not null default false;  -- la saga tolta a mano
+--   alter table public.books add column if not exists file_tolto boolean not null default false;  -- l'ebook tolto a mano
+--   alter table public.books add column if not exists tipo text;  -- fumetto o manga, scelto nella scheda
+--   alter table public.books add column if not exists scheda_at bigint not null default 0;  -- l'ora della scheda
+--   alter table public.books add column if not exists lettura_at bigint not null default 0;  -- l'ora della lettura
 -- Senza, l'app sincronizza comunque tutto il resto: rinuncia solo al
 -- campo mancante e lo tiene in locale. Dopo la migrazione i libri gia'
 -- salvati si ricaricano da soli alla prima sincronizzazione.
@@ -22,7 +37,9 @@ create table if not exists public.books (
   series text not null default '',
   genre text not null default '',
   saga text not null default '',
-  saga_order int,
+  -- coi decimali: Calibre scrive 2.5 per la novella fra il secondo e il
+  -- terzo, e un `int` la rifiuterebbe insieme a tutta la sincronizzazione
+  saga_order real,
   file_type text not null default 'epub',
   added_at bigint not null default 0,
   rating real not null default 0,
@@ -37,8 +54,47 @@ create table if not exists public.books (
   music jsonb,
   file_ext text,
   deleted boolean not null default false,
-  updated_at bigint not null default 0
+  updated_at bigint not null default 0,
+  -- l'impronta SHA-256 dei byte del file: e' quella che riconosce lo stesso
+  -- file importato due volte. Senza questa colonna il doppione fra due
+  -- dispositivi si puo' solo segnalare per titolo e autore, non saltare.
+  impronta text,
+  -- il cuore dei preferiti: una scelta del lettore, non una soglia di stelle
+  fav boolean not null default false,
+  -- LA SAGA TOLTA A MANO: un libro senza saga perche' il lettore gliel'ha
+  -- tolta e uno senza saga perche' nessuno gliel'ha mai data sono lo stesso
+  -- record, e le cinque strade della saga guardano proprio quello. Senza
+  -- questa colonna l'altro dispositivo la rimette al primo giro.
+  saga_tolta boolean not null default false,
+  -- L'EBOOK TOLTO A MANO: «tengo la scheda, il file no». Senza questa
+  -- colonna l'altro dispositivo rispedirebbe i byte nel secchio al primo
+  -- giro, e la nuvoletta tornerebbe a offrire uno scaricamento che il
+  -- lettore aveva appena rifiutato.
+  file_tolto boolean not null default false,
+  -- FUMETTO O MANGA, scelto nella scheda: un manga e un fumetto sono tutt'e
+  -- due CBZ, e a dirli diversi e' il lettore. Vuoto = decide l'app.
+  tipo text,
+  -- L'ORA DELLA SCHEDA (titolo, saga, voto, note…), separata da
+  -- `updated_at`, che si muove anche leggendo: senza, la lettura di un
+  -- dispositivo si portava via la saga scritta sull'altro.
+  scheda_at bigint not null default 0,
+  -- E L'ORA DELLA LETTURA (stato, date, progresso, punto), per la stessa
+  -- ragione al contrario: una scheda cambiata su un dispositivo si portava
+  -- via la lettura fatta sull'altro.
+  lettura_at bigint not null default 0
 );
+
+-- per i database gia' creati: `create table if not exists` non aggiunge le
+-- colonne nuove
+alter table public.books add column if not exists impronta text;
+alter table public.books add column if not exists fav boolean not null default false;
+alter table public.books add column if not exists saga_tolta boolean not null default false;
+alter table public.books add column if not exists file_tolto boolean not null default false;
+alter table public.books add column if not exists tipo text;
+alter table public.books add column if not exists scheda_at bigint not null default 0;
+alter table public.books add column if not exists lettura_at bigint not null default 0;
+-- e il numero di collana regge i decimali (su una colonna gia' `real` non fa niente)
+alter table public.books alter column saga_order type real;
 
 create index if not exists books_user_idx on public.books(user_id);
 alter table public.books enable row level security;
@@ -51,9 +107,42 @@ create table if not exists public.prefs (
   user_id uuid primary key references auth.users(id) on delete cascade,
   reader jsonb,
   music_favs jsonb not null default '[]'::jsonb,
+  music_lists jsonb not null default '[]'::jsonb,
+  -- i termini che il lettore ha scritto nel suo glossario, raccolti per
+  -- saga: la chiave e' la saga, non il singolo volume, quindi stanno qui
+  -- e non con i libri
+  glossari jsonb not null default '{}'::jsonb,
+  -- i racconti delle antologie che il lettore ha spuntato nel cammino:
+  -- non sono file e non hanno uno stato, quindi la spunta e' l'unico
+  -- segno che dice «questa l'ho letta» (chiave: titolo__autore)
+  racconti jsonb not null default '[]'::jsonb,
+  -- il tempo di lettura: dispositivo -> giorno -> secondi. Ogni dispositivo
+  -- scrive solo nel suo cassetto, e la fusione e' un'unione
+  tempo jsonb not null default '{}'::jsonb,
+  -- l'obiettivo di libri per anno: anno -> { n, t }
+  obiettivi jsonb not null default '{}'::jsonb,
+  -- il quaderno delle parole: una voce per parola, con lapidi, fuse per ora
+  quaderno jsonb not null default '[]'::jsonb,
+  -- i libri da prendere: le voci della lista, gli scarti delle proposte e
+  -- le lapidi, fuse per ora come il quaderno
+  da_prendere jsonb not null default '[]'::jsonb,
+  -- il cuore delle raccolte (saghe e autori): una voce per raccolta, con
+  -- la sua ora e la lapide quando il cuore si toglie
+  raccolte_fav jsonb not null default '[]'::jsonb,
   last_opened text,
   updated_at bigint not null default 0
 );
+
+-- per i database gia' creati: `create table if not exists` non aggiunge le
+-- colonne nuove, e senza questa riga le raccolte non salirebbero mai
+alter table public.prefs add column if not exists music_lists jsonb not null default '[]'::jsonb;
+alter table public.prefs add column if not exists glossari jsonb not null default '{}'::jsonb;
+alter table public.prefs add column if not exists racconti jsonb not null default '[]'::jsonb;
+alter table public.prefs add column if not exists tempo jsonb not null default '{}'::jsonb;
+alter table public.prefs add column if not exists obiettivi jsonb not null default '{}'::jsonb;
+alter table public.prefs add column if not exists quaderno jsonb not null default '[]'::jsonb;
+alter table public.prefs add column if not exists da_prendere jsonb not null default '[]'::jsonb;
+alter table public.prefs add column if not exists raccolte_fav jsonb not null default '[]'::jsonb;
 
 alter table public.prefs enable row level security;
 
@@ -80,3 +169,10 @@ create policy "file miei: aggiorno" on storage.objects
 drop policy if exists "file miei: elimino" on storage.objects;
 create policy "file miei: elimino" on storage.objects
   for delete using (bucket_id = 'books' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ============================================================================
+-- IL PERMESSO DI GOOGLE DRIVE A LUNGO TERMINE non serve piu': Google Drive
+-- e' uscito dall'app. L'app toglie da sola la riga di chi entra; qui si
+-- toglie la tabella. Idempotente: si puo' rieseguire.
+-- ============================================================================
+drop table if exists public.google_refresh;

@@ -1,0 +1,181 @@
+// L'ERESIA DI HORUS NEL PERCORSO CD8D. La guida stava in wh-companion e
+// rispondeva a «cosa leggo adesso»; qui risponde a «questo file che ho in
+// libreria, dove sta nel percorso». Sono due domande diverse, e la
+// differenza e' tutta nelle antologie.
+//
+// E soprattutto: aggiungere una seconda saga non deve rompere la prima.
+import { TAVOLE, riconosci, ripassa } from "../src/lib/sagaBooks.js";
+import HORUS, { SAGA as SAGA_HH } from "../src/data/horusHeresy.js";
+import { SAGA as SAGA_DISCO } from "../src/data/discworldBooks.js";
+
+export default async function (t) {
+  // ---- la tavola sta in piedi da sola -----------------------------------
+  t.c("ci sono i volumi", HORUS.length > 60, String(HORUS.length));
+  t.c("ogni volume dice a che parte appartiene", HORUS.every((b) => !!b.c));
+  const titoli = HORUS.map((b) => b.t.toLowerCase());
+  t.eq("nessun titolo ripetuto", new Set(titoli).size, titoli.length);
+
+  // ---- IL NUMERO CONTA I ROMANZI DELL'ERESIA, E BASTA -------------------
+  // Prima contava ogni voce del percorso, prologo compreso, e «Horus
+  // Rising» usciva il quindicesimo del suo stesso inizio. Era sbagliato in
+  // tre modi: il prologo sono quattro percorsi ALTERNATIVI (ne leggi uno),
+  // quei libri non sono nemmeno dell'Eresia, e un'antologia messa davanti
+  // per via di un solo racconto rubava il posto al romanzo che apre tutto.
+  const numerati = HORUS.filter((b) => b.o != null);
+  const ordini = numerati.map((b) => b.o);
+  t.c("i romanzi hanno un posto", numerati.length > 30, String(numerati.length));
+  t.eq("e nessun posto è occupato due volte", new Set(ordini).size, ordini.length);
+  t.c("i posti sono di fila da 1", ordini.every((o, i) => o === i + 1), ordini.slice(0, 5).join(","));
+
+  // il controllo che il lettore ha fatto guardando lo scaffale
+  t.eq("«Horus Rising» è il PRIMO", HORUS.find((b) => b.t === "Horus Rising")?.o, 1);
+  t.eq("e «False Gods» il secondo", HORUS.find((b) => b.t === "False Gods")?.o, 2);
+
+  // quello che un numero NON ce l'ha, e perché
+  t.eq("il prologo non è un passo del cammino", HORUS.find((b) => b.t === "Eisenhorn")?.o, null);
+  t.eq("un'antologia nemmeno", HORUS.find((b) => b.t === "Eye of Terra")?.o, null);
+  t.c(
+    "ma restano nel loro ciclo, che dice quando aprirle",
+    HORUS.find((b) => b.t === "Eye of Terra")?.c.startsWith("Part 1")
+  );
+  t.c(
+    "e i 40k fuori dall'Eresia non contano",
+    HORUS.filter((b) => b.nota === "40k, fuori dall'Eresia").every((b) => b.o === null)
+  );
+
+  // ---- OGNI VOCE RICONOSCE SE STESSA, e nella saga giusta ---------------
+  // e' il controllo che prende le collisioni fra le due tavole: se un
+  // titolo dell'Eresia venisse mangiato da uno del Mondo Disco (o
+  // viceversa) si vedrebbe qui e non fra sei mesi, da uno scaffale storto
+  // TRANNE il contorno che un'altra guida ha come TAPPA: Eisenhorn, Malleus
+  // e Hereticus sono il prologo qui e la storia di Eisenhorn, e sono di la'
+  // (il cammino dell'Eresia li ritrova per titolo)
+  const altrove = (b) =>
+    (b.tipo === "prologo" || b.tipo === "fuori" || b.sfondo) &&
+    TAVOLE.some((tav) => tav.saga !== SAGA_HH && tav.libri.some((v) => v.t === b.t));
+  t.eq(
+    "il contorno che un'altra guida ha come tappa: i tre di Eisenhorn, i Night Lords e Storm of Iron (romanzo a se' del 40K)",
+    HORUS.filter(altrove).map((b) => b.t).join(", "),
+    "Eisenhorn, Malleus, Hereticus, Soul Hunter, Blood Reaver, Void Stalker, Storm of Iron"
+  );
+  const sbagliati = [];
+  for (const b of HORUS) {
+    if (altrove(b)) continue;
+    const r = riconosci({ title: b.t, author: b.a || "" });
+    if (r?.saga !== SAGA_HH || (r?.sagaOrder ?? null) !== b.o) {
+      sbagliati.push(`${b.t} → ${r ? `${r.saga} #${r.sagaOrder}` : "niente"}`);
+    }
+  }
+  t.c("tutte le voci si riconoscono", sbagliati.length === 0, sbagliati.slice(0, 4).join(" · "));
+
+  // ---- il caso di tutti i giorni: un file scaricato ---------------------
+  const daFile = (fileName) => riconosci({ title: "", author: "", fileName });
+  t.eq(
+    "«Horus Rising» dal nome del file",
+    daFile("Horus Rising (The Horus Heresy Book 1) - Dan Abnett.epub")?.saga,
+    SAGA_HH
+  );
+  t.c(
+    "e col titolo nei metadati",
+    riconosci({ title: "Know No Fear", author: "Dan Abnett" })?.saga === SAGA_HH
+  );
+  // IL CASO CHE MI ERA SFUGGITO: nome del file col numero di collana e
+  // SENZA autore, e col nome della saga scritto senza l'articolo. Cercando
+  // «the horus heresy» per intero restava mezza saga attaccata al titolo,
+  // e «Betrayer» copriva un terzo del campo invece che tutto.
+  t.eq(
+    "«Betrayer (Horus Heresy 24).epub», senza autore da nessuna parte",
+    daFile("Betrayer (Horus Heresy 24).epub")?.saga,
+    SAGA_HH
+  );
+  t.eq(
+    "e con l'articolo davanti",
+    daFile("Betrayer (The Horus Heresy Book 24).epub")?.saga,
+    SAGA_HH
+  );
+
+  // ---- `o` E' L'ORDINE DEL PERCORSO, NON IL NUMERO DELLA COLLANA -------
+  // CD8D rimescola apposta: il quattordicesimo della Black Library arriva
+  // sesto nel cammino
+  const primoEretico = riconosci({ title: "The First Heretic", author: "Aaron Dembski-Bowden" });
+  t.eq("«The First Heretic» è il 14 in collana", HORUS.find((b) => b.t === "The First Heretic")?.n, 14);
+  t.eq("ma il 6 nel cammino", primoEretico.sagaOrder, 6);
+
+  // ---- UN TITOLO DI UNA PAROLA SOLA NON BASTA A DECIDERE ---------------
+  // «Scars», «Mortis», «Betrayer»: prese per contenimento si mangerebbero
+  // libri di tutt'altre saghe
+  t.eq(
+    "«Scars» senza il suo autore non è dell'Eresia",
+    riconosci({ title: "Scars of the Past", author: "Qualcun Altro" }),
+    null
+  );
+  t.c(
+    "ma col suo autore sì",
+    riconosci({ title: "Scars", author: "Chris Wraight" })?.saga === SAGA_HH
+  );
+  t.eq(
+    "e un romanzo che si chiama come un volume non viene rapito",
+    riconosci({ title: "Betrayer", author: "Una Sconosciuta" }),
+    null
+  );
+
+  // le antologie l'autore non ce l'hanno: lì il titolo dev'essere TUTTO
+  // quello che c'è scritto
+  t.c("l'antologia «Eye of Terra» si riconosce", riconosci({ title: "Eye of Terra" })?.saga === SAGA_HH);
+  t.eq(
+    "ma non si prende un libro che la cita e basta",
+    riconosci({ title: "Notes on the Eye of Terra and other essays" }),
+    null
+  );
+
+  // ---- NIENTE RIPIEGO SULL'AUTORE PER L'ERESIA -------------------------
+  // la scrivono venti autori che scrivono anche moltissimo altro: col
+  // ripiego, i Gaunt's Ghosts di Abnett diventerebbero Eresia
+  t.eq(
+    "un Abnett che non è dell'Eresia resta fuori",
+    riconosci({ title: "First and Only", author: "Dan Abnett" })?.saga,
+    "Gaunt's Ghosts"
+  );
+  // UN AUTORE SBAGLIATO È UNA PROVA, uno mancante no: metà degli ePub
+  // l'autore non ce l'hanno, e lì il silenzio non vale come smentita
+  t.c(
+    "«Betrayer» senza autore entra lo stesso",
+    riconosci({ title: "Betrayer", author: "" })?.saga === SAGA_HH
+  );
+  // LIMITE DICHIARATO: un titolo che ne contiene un altro, quando la voce
+  // non porta l'autore (le antologie e i libri del prologo), passa. Per
+  // chiuderlo servirebbe il titolo esatto, e allora «Betrayer (Horus
+  // Heresy 24).epub» non si riconoscerebbe più: si è scelta la ricezione.
+
+  // ---- UN TITOLO DENTRO UN ALTRO --------------------------------------
+  // «Garro» (l'antologia 42) sta dentro «Garro: Knight of the Grey», ed è
+  // l'unica coppia del genere fra le due tavole. Vince il più lungo, che è
+  // il libro che hai davvero in mano.
+  const knight = riconosci({ title: "Garro: Knight of the Grey", author: "James Swallow" });
+  t.eq("il titolo lungo vince sul corto", knight?.titolo, "Garro: Knight of the Grey");
+  t.c("e l'antologia resta la sua", riconosci({ title: "Garro" })?.titolo === "Garro");
+
+  // ---- IL MONDO DISCO NON SI ACCORGE DI NIENTE -------------------------
+  const mort = riconosci({ title: "Mort", author: "Terry Pratchett" });
+  t.eq("«Mort» resta del Disco", mort?.saga, SAGA_DISCO);
+  t.eq("e il ripiego sull'autore c'è ancora", riconosci({ title: "Un titolo inventato", author: "Terry Pratchett" })?.saga, SAGA_DISCO);
+  t.eq("coi suoi fuori-saga al loro posto", riconosci({ title: "Good Omens", author: "Terry Pratchett" }), null);
+
+  // ---- e il ripasso dei libri già in libreria --------------------------
+  const tocchi = ripassa({ title: "Betrayer", author: "Aaron Dembski-Bowden", saga: "", series: "" });
+  t.eq("il ripasso gli dà la saga", tocchi?.campi.saga, SAGA_HH);
+  // LA SERIE È LA STORIA, NON IL CAPITOLO. Questo controllo pinnava
+  // «Part …» ed è girato con dentro la ragione: i livelli sono tre —
+  // universo, storia, capitoli — e i campi due, quindi se le tredici parti
+  // si prendono la Serie non resta un posto dove dire «questa è l'Eresia»,
+  // e «Prima di cominciare» (che restringe il racconto alla Serie) sotto un
+  // «Warhammer 40K» pieno di altre serie le racconterebbe tutte insieme.
+  // Il capitolo lo sa la tavola, e lo scaffale lo legge da lì.
+  t.eq("e la SERIE è la storia, non il capitolo", tocchi?.campi.series, SAGA_HH);
+  t.c("il capitolo resta nella guida", /^Part /.test(riconosci({ title: "Betrayer", author: "Aaron Dembski-Bowden" })?.parte || ""));
+  t.c("più il posto nel cammino", Number.isInteger(tocchi?.campi.sagaOrder));
+  // quello che hai scritto tu non si tocca mai
+  const gia = ripassa({ title: "Betrayer", author: "Aaron Dembski-Bowden", saga: "La mia saga", series: "Il mio ciclo" });
+  t.eq("una saga scritta a mano resta la tua", gia?.campi.saga, undefined);
+  t.eq("e il ciclo pure", gia?.campi.series, undefined);
+}

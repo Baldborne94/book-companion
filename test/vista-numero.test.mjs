@@ -1,0 +1,151 @@
+// DUE DECISIONI CHE STAVANO DENTRO I COMPONENTI, fuori dalla portata di
+// ogni test: la disposizione della Libreria che si rilegge dallo storage
+// (`vistaValida`) e il numero di lettura che si scrive nella scheda
+// (`numeroLettura`, `pulisciNumero`). Tutt'e due sbagliano in silenzio:
+// una voce salvata che non esiste piu' lascia il menu in bianco, e un
+// numero letto storto non da' un errore — cancella il posto del volume
+// nella saga, o ci salva un NaN che non torna piu' indietro.
+const memoria = {};
+for (const [nome, fn] of Object.entries({
+  getItem: (k) => (k in memoria ? memoria[k] : null),
+  setItem: (k, v) => {
+    memoria[k] = String(v);
+  },
+  removeItem: (k) => {
+    delete memoria[k];
+  },
+})) {
+  Object.defineProperty(memoria, nome, { value: fn, enumerable: false });
+}
+globalThis.localStorage = memoria;
+
+const { vistaValida, scriviVista, numeroLettura, pulisciNumero, etichettaVista, vistaDiSempre } =
+  await import("../src/lib/library.js");
+
+// le voci come le conosce la Libreria: la prima di ogni elenco e' la
+// disposizione di partenza
+const GRUPPI = [{ id: "shelf" }, { id: "genre" }];
+const ORDINI = [{ id: "title" }, { id: "author" }, { id: "recent" }];
+const vista = () => vistaValida(GRUPPI, ORDINI);
+
+export default async function (t) {
+  // ---- LA DISPOSIZIONE DELLA LIBRERIA -------------------------------------
+  delete memoria.bc_vista;
+  t.eq("mai salvata → la disposizione di sempre", JSON.stringify(vista()), '{"group":"shelf","sort":"title","aspetto":"scaffale"}');
+
+  scriviVista({ group: "genre", sort: "recent" });
+  t.eq("salvata e riconosciuta → si rilegge", JSON.stringify(vista()), '{"group":"genre","sort":"recent","aspetto":"scaffale"}');
+
+  // LA VOCE CHE NON ESISTE PIU': «Niente» e «Saga» sono state tolte, e chi
+  // le aveva scelte non deve restare impigliato in un menu in bianco
+  scriviVista({ group: "none", sort: "recent" });
+  t.eq("un raggruppamento tolto torna alla partenza", vista().group, "shelf");
+  t.eq("ma l'ordinamento buono resta", vista().sort, "recent");
+  scriviVista({ group: "genre", sort: "saga" });
+  t.eq("un ordinamento sconosciuto torna alla partenza", vista().sort, "title");
+  t.eq("e il raggruppamento buono resta", vista().group, "genre");
+
+  // L'ASPETTO — scaffale o raccolte — si ricorda con il resto, e uno
+  // storto torna allo scaffale senza toccare le altre due scelte
+  scriviVista({ group: "genre", sort: "title", aspetto: "raccolte" });
+  t.eq("le raccolte si ricordano", vista().aspetto, "raccolte");
+  t.eq("…insieme al raggruppamento", vista().group, "genre");
+  scriviVista({ group: "genre", sort: "title", aspetto: "cartelline" });
+  t.eq("un aspetto sconosciuto torna allo scaffale", vista().aspetto, "scaffale");
+  t.eq("…e il raggruppamento resta", vista().group, "genre");
+
+  // una vista scritta a meta': la parte che manca prende la partenza
+  memoria.bc_vista = JSON.stringify({ group: "genre" });
+  t.eq("senza ordinamento → titolo", vista().sort, "title");
+  t.eq("col raggruppamento che c'e'", vista().group, "genre");
+
+  // storage corrotto o strano: mai un'esplosione, sempre la partenza.
+  // DICHIARATO: la guardia «e' un oggetto» di `leggiVista` non e' portante
+  // per questi due casi — spargere una stringa o un null lascia comunque
+  // `group` e `sort` della partenza, e `vistaValida` restituisce solo
+  // quei due (mutazione provata: sopravvive). Tiene pulito l'oggetto, non
+  // difende l'esito.
+  memoria.bc_vista = "{non è json";
+  t.eq("json rotto → partenza", JSON.stringify(vista()), '{"group":"shelf","sort":"title","aspetto":"scaffale"}');
+  memoria.bc_vista = '"shelf"';
+  t.eq("una stringa al posto dell'oggetto → partenza", JSON.stringify(vista()), '{"group":"shelf","sort":"title","aspetto":"scaffale"}');
+  memoria.bc_vista = "null";
+  t.eq("null → partenza", JSON.stringify(vista()), '{"group":"shelf","sort":"title","aspetto":"scaffale"}');
+
+  // la partenza e' la PRIMA voce degli elenchi, non un nome scritto a mano:
+  // con altri elenchi cambia con loro
+  delete memoria.bc_vista;
+  t.eq("la partenza segue gli elenchi", JSON.stringify(vistaValida([{ id: "x" }], [{ id: "y" }])), '{"group":"x","sort":"y","aspetto":"scaffale"}');
+
+  // ---- IL NUMERO DI LETTURA -----------------------------------------------
+  t.eq("un intero", numeroLettura("3"), 3);
+  t.eq("con gli spazi attorno", numeroLettura(" 3 "), 3);
+  // IL DECIMALE RESTA: Calibre mette 2.5 alla novella fra il secondo e il
+  // terzo, e arrotondarlo la metterebbe sopra a un romanzo vero
+  t.eq("il decimale resta decimale", numeroLettura("2.5"), 2.5);
+  t.eq("e la virgola vale come il punto", numeroLettura("2,5"), 2.5);
+  t.eq("un numero gia' numero", numeroLettura(7), 7);
+  t.eq("lo zero e' zero, non «nessuno»", numeroLettura("0"), 0);
+  // quel che non e' un numero vale «nessuno»: mai NaN
+  t.eq("vuoto → nessuno", numeroLettura(""), null);
+  t.eq("solo spazi → nessuno", numeroLettura("   "), null);
+  t.eq("null → nessuno", numeroLettura(null), null);
+  t.eq("undefined → nessuno", numeroLettura(undefined), null);
+  t.eq("lettere → nessuno", numeroLettura("due"), null);
+  t.eq("un punto solo → nessuno", numeroLettura("."), null);
+  t.eq("due punti → nessuno", numeroLettura("2.5.1"), null);
+  t.eq("Infinity non e' un posto", numeroLettura("Infinity"), null);
+  t.c("e mai NaN, in nessun caso", ["", "x", ".", "NaN", null].every((s) => !Number.isNaN(numeroLettura(s))));
+
+  // ---- LA CASELLA MENTRE SI SCRIVE ----------------------------------------
+  t.eq("cifre e punto passano", pulisciNumero("2.5"), "2.5");
+  t.eq("la virgola diventa punto", pulisciNumero("2,5"), "2.5");
+  t.eq("le lettere se ne vanno", pulisciNumero("2a"), "2");
+  t.eq("il meno se ne va", pulisciNumero("-3"), "3");
+  // «2.» a meta' battitura e' legittimo: resta stringa, non diventa 2
+  t.eq("il punto in coda resta, a meta' battitura", pulisciNumero("2."), "2.");
+  t.eq("vuoto resta vuoto", pulisciNumero(""), "");
+  t.eq("e null non esplode", pulisciNumero(null), "");
+  // la casella e la lettura si parlano: quel che esce dalla casella si
+  // legge come numero, virgola compresa
+  t.eq("dalla casella alla lettura", numeroLettura(pulisciNumero("2,5x")), 2.5);
+
+  // ---- IL TASTO UNICO DELLA DISPOSIZIONE ----------------------------------
+  //
+  // Le due tendine affiancate sono diventate un tasto solo (segnalato:
+  // «li vedo ancora tutti e due»), e quel tasto deve DIRE la scelta in
+  // corso: sostituire due comandi che almeno si leggevano con la porta
+  // chiusa con una parola sola sarebbe un passo indietro. Le parole
+  // vengono dagli stessi elenchi del menu, passati da fuori come in
+  // `vistaValida`: scritte a mano nel componente sarebbero due posti da
+  // cambiare insieme e da dimenticare separatamente.
+  {
+    const G = [{ id: "shelf", label: "Saga e autore" }, { id: "saga", label: "Saga" }];
+    const O = [{ id: "title", label: "Titolo" }, { id: "recent", label: "Recenti" }];
+    t.eq("il tasto dice tutt'e due le scelte", etichettaVista({ group: "saga", sort: "recent" }, G, O), "Saga · Recenti");
+    t.eq("…e la partenza si legge uguale", etichettaVista({ group: "shelf", sort: "title" }, G, O), "Saga e autore · Titolo");
+    // una voce che non esiste piu' mostra il suo id invece di sparire:
+    // `vistaValida` quel caso lo chiude gia' a monte, ma un buco
+    // nell'etichetta sarebbe un tasto che non dice piu' niente
+    t.eq("una voce ignota si mostra com'e'", etichettaVista({ group: "meringa", sort: "title" }, G, O), "meringa · Titolo");
+    t.eq("e una vista mancante non esplode", etichettaVista(null, G, O), "? · ?");
+  }
+  {
+    // l'ACCESO del tasto: serve solo a dire «lo scaffale adesso non e'
+    // come al solito», e la partenza e' la PRIMA voce di ogni elenco —
+    // la stessa regola di `vistaValida`, non un nome scritto a mano
+    const G = [{ id: "shelf", label: "Saga e autore" }, { id: "saga", label: "Saga" }];
+    const O = [{ id: "title", label: "Titolo" }, { id: "recent", label: "Recenti" }];
+    t.c("la partenza e' la disposizione di sempre", vistaDiSempre({ group: "shelf", sort: "title" }, G, O));
+    t.c("un raggruppamento diverso accende", !vistaDiSempre({ group: "saga", sort: "title" }, G, O));
+    // e l'ORDINE conta quanto il raggruppamento: da quando «Ordina»
+    // sposta anche i ripiani, uno scaffale per data non e' «come al
+    // solito» piu' di quanto lo sia uno raggruppato per genere
+    t.c("un ordinamento diverso accende lo stesso", !vistaDiSempre({ group: "shelf", sort: "recent" }, G, O));
+    t.c("e una vista mancante non e' la partenza", !vistaDiSempre(null, G, O));
+    // le due funzioni e `vistaValida` leggono la stessa partenza: se un
+    // giorno le voci cambiano ordine, si muovono insieme
+    const primo = { group: G[0].id, sort: O[0].id };
+    t.c("la partenza e' la prima voce di ogni elenco", vistaDiSempre(primo, G, O));
+  }
+}

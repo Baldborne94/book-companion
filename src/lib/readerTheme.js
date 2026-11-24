@@ -1,0 +1,514 @@
+// Le due cose che il reader fa al CONTENUTO del libro, tenute fuori da
+// Reader.jsx perche' non hanno un grammo di JSX: cosi' si provano da sole,
+// senza montare un reader intero (`test/tema.test.mjs`).
+import { READER_THEMES, READER_FONTS } from "./readerSettings.js";
+
+// I PARAGRAFI SENZA TESTO NON SONO PARAGRAFI, e il browser non lo sa.
+//
+// Un ePub convertito lascia in giro le ancore delle pagine di carta —
+// `<p><a class="calibre3"></a></p>`, centocinquanta volte in un romanzo
+// (contate su Guards! Guards!). Non hanno testo, ma sono `<p>`, e il libro
+// non li veste con nessuna classe: entra allora il foglio del BROWSER, che
+// ai paragrafi da' `margin: 1em 0`, e in mezzo a una scena si apre una
+// riga bianca. Non e' il nostro tema (misurato: identico con e senza), e'
+// che non normalizzavamo niente. Gli altri reader normalizzano, ed e' per
+// questo che da loro lo stacco non c'e'.
+//
+// Si fa QUI e non in CSS perche' il CSS non sa dire «senza testo»:
+// `p:has(> a:only-child:empty)` guarda i figli elemento e ignora il testo,
+// quindi prende anche la battuta vera che si porta dietro un'ancora, e la
+// schiaccia. Qui invece il testo si legge.
+//
+// Tre cose restano intoccabili: il paragrafo con testo, quello con dentro
+// un'immagine, e lo stacco di scena voluto dal libro — che si riconosce
+// perche' contiene uno spazio unificatore o un `<br>`, cioe' qualcuno ce
+// l'ha messo apposta per aprire una riga.
+export function spegniVuoti(doc) {
+  if (!doc) return 0;
+  let spenti = 0;
+  for (const p of doc.querySelectorAll("p")) {
+    const testo = p.textContent || "";
+    // lo spazio unificatore si scrive per codice: a occhio, nel sorgente,
+    // e' identico a uno spazio normale e la regola sembrerebbe assurda
+    if (testo.includes("\u00a0") || p.querySelector("br")) continue;
+    if (testo.trim()) continue;
+    if (p.querySelector("img, svg, video, canvas, object, iframe")) continue;
+    p.style.margin = "0";
+    p.style.lineHeight = "0";
+    spenti += 1;
+  }
+  return spenti;
+}
+
+// IL PARAGRAFO SI SEGNA UNA VOLTA SOLA: col rientro O con lo stacco.
+//
+// In «Eric» — e in parecchi ePub convertiti — il paragrafo e' segnato DUE
+// volte: rientro E stacco. Il risultato e' la pagina ariosa che il lettore
+// ha visto («perche' vedo tutti questi spazi?»), dove un romanzo stampato
+// e' compatto. Lo stacco puo' venire dal libro o, se il libro tace, dal
+// foglio del BROWSER, che ai paragrafi da' `margin: 1em 0` — misurato: 16px
+// nel primo caso, 13px nel secondo, e a occhio sono identici.
+//
+// Prima non toccavamo i margini della prosa di proposito, e la ragione
+// scritta qui era «un libro che separa la prosa coi margini invece che col
+// rientro deve continuare a farlo». Giusta, ma dava per scontato che un
+// libro ne usasse UNO dei due.
+//
+// IL CASO DA NON ROVINARE, misurato apposta: un libro SENZA rientro, dove
+// lo stacco e' l'unico segnale di paragrafo. Li' togliere i margini
+// incolla il romanzo in un blocco unico. Per questo non si toglie mai a
+// scatola chiusa: prima si guarda se la prosa e' rientrata.
+
+// quanto rientro conta come rientro: sotto, e' polvere di arrotondamento
+export const RIENTRO_MINIMO = 4;
+// quanti paragrafi rientrati bastano per dire che il libro rientra. Non
+// tutti: moltissimi ePub scrivono `p:first-of-type { text-indent: 0 }`, e
+// pretendere l'unanimita' vorrebbe dire non riconoscere mai un libro
+// rientrato.
+export const QUANTI = 0.6;
+
+// Pura apposta: prende i rientri gia' misurati e decide. Un test la chiama
+// con dei numeri, senza montare niente.
+export function rientrata(rientri = []) {
+  const buoni = rientri.filter((v) => Number.isFinite(v));
+  if (buoni.length < 3) return false;
+  return buoni.filter((v) => Math.abs(v) >= RIENTRO_MINIMO).length / buoni.length >= QUANTI;
+}
+
+// quanti paragrafi guardare: bastano per decidere, e leggere lo stile
+// calcolato di un documento intero costerebbe a ogni capitolo
+export const CAMPIONE = 20;
+
+// LA CURA, E IL TRUCCO CHE LA RENDE ACCETTABILE: i margini si azzerano
+// **senza `!important`**, cosi' una CLASSE continua a vincere. E' lo stesso
+// gioco di specificita' gia' usato per l'interlinea, e serve a una cosa
+// sola: lo stacco di scena voluto dal libro (`.scena { margin: 2em 0 }`)
+// resta intatto. Misurato in Chromium: stacco fra paragrafi 16px → 0px,
+// stacco di scena 32px → 32px.
+//
+// UNO SPAZIATORE DOPO OGNI PARAGRAFO NON E' UNO STACCO DI SCENA.
+//
+// `spegniVuoti` conserva apposta i `<p>` con lo spazio unificatore: li' il
+// libro ha aperto una riga di proposito, ed e' la pausa fra due scene.
+// Giusto — finche' sono occasionali. Ma certi ePub ne mettono uno dopo
+// OGNI paragrafo, e allora non sono pause: sono il modo in cui quel libro
+// separa la prosa. Misurato sul libro del lettore: trenta paragrafi veri e
+// trenta spaziatori, alti 24px l'uno — esattamente lo stacco che si vedeva
+// sul tablet, e che la cura dei margini non toccava perche' non e' un
+// margine.
+//
+// La soglia sta larghissima da tutt'e due i lati: in un romanzo vero gli
+// stacchi di scena sono una decina ogni cento paragrafi (10%), mentre un
+// separatore sistematico ne fa uno per paragrafo (100%). A meta' strada non
+// ci arriva ne' l'uno ne' l'altro.
+export const SPAZIATORI_FITTI = 0.5;
+// e su pochi paragrafi non si decide: un frontespizio di tre righe con una
+// riga vuota in mezzo sarebbe «sistematico» per puro caso
+export const ABBASTANZA_PARAGRAFI = 6;
+
+// UN SEGNO DI SCENA NON E' UN PARAGRAFO. Certi libri separano le scene con
+// una riga di asterischi o un fregio invece che con una riga vuota: hanno
+// testo, quindi non sono «vuoti», ma lo spazio attorno ce l'hanno per
+// mestiere e togliergliela li incollerebbe alla prosa. Corti e senza
+// nessuna lettera ne' cifra: «* * *», «⁂», «— — —».
+export const SEGNO_DI_SCENA = /^[^\p{L}\p{N}]{1,12}$/u;
+
+export function spaziatoriFitti(pieni, spaziatori) {
+  return pieni >= ABBASTANZA_PARAGRAFI && spaziatori >= pieni * SPAZIATORI_FITTI;
+}
+
+// Sta in `hooks.content`, come `spegniVuoti`: a documento caricato e a
+// misura NON ancora presa. Cambiare i margini sposta l'impaginazione,
+// quindi va fatto prima che epub.js misuri — rientrarci dopo gli
+// distruggerebbe le viste.
+// il valore piu' frequente; a parita', il piu' piccolo
+export function moda(valori) {
+  const conta = new Map();
+  for (const v of valori) conta.set(v, (conta.get(v) || 0) + 1);
+  let m = 0;
+  let n = -1;
+  for (const [v, c] of conta) if (c > n || (c === n && v < m)) { n = c; m = v; }
+  return m;
+}
+
+export function togliStacco(doc) {
+  if (!doc?.querySelectorAll) return false;
+  const vista = doc.defaultView;
+  if (!vista?.getComputedStyle) return false;
+  const tutti = [...doc.querySelectorAll("p")];
+  const pieni = tutti.filter((p) => (p.textContent || "").trim());
+  const rientri = [];
+  for (const p of pieni.slice(0, CAMPIONE)) {
+    rientri.push(parseFloat(vista.getComputedStyle(p).textIndent));
+  }
+  // il rientro comanda tutt'e due le cure: senza, lo stacco — margine o
+  // spaziatore che sia — e' l'unico segnale di paragrafo che il libro ha
+  if (!rientrata(rientri)) return false;
+
+  // GLI SPAZIATORI FITTI si spengono uno per uno e non in CSS, per la
+  // stessa ragione di `spegniVuoti`: il foglio di stile non sa dire
+  // «paragrafo senza testo», e una regola su `p:empty` prenderebbe le cose
+  // sbagliate. Quelli con dentro un'immagine restano: non sono spaziatori.
+  const spaziatori = tutti.filter(
+    (p) => !(p.textContent || "").trim() && !p.querySelector("img, svg, video, canvas, object, iframe")
+  );
+  if (spaziatoriFitti(pieni.length, spaziatori.length)) {
+    for (const s of spaziatori) {
+      s.style.margin = "0";
+      s.style.lineHeight = "0";
+    }
+  }
+
+  // E I MARGINI MESSI DA UNA CLASSE, che il foglio non riesce a battere.
+  //
+  // La regola qui sotto e' `p { margin: 0 }`: un selettore di TAG, senza
+  // `!important`. Bastava finche' il libro i margini se li metteva sul
+  // tag. Ma **Calibre veste ogni paragrafo con una classe**
+  // (`<p class="calibre2">`), e una classe batte un tag: su quei libri la
+  // cura perdeva e lo stacco restava tutto — misurato, 9,6px sopra e
+  // sotto, ed e' quello che il lettore vedeva ancora sul tablet dopo la
+  // prima cura.
+  //
+  // Si fa allora come `spegniVuoti`: **sugli elementi**, dove la
+  // specificita' non conta piu'. E lo stacco di scena resta protetto da un
+  // criterio migliore di quello vecchio — non piu' «ha una classe» ma «non
+  // e' un paragrafo di prosa»: i vuoti non si toccano (sono gli stacchi),
+  // e nemmeno i SEGNI di scena, quei paragrafi corti fatti solo di
+  // asterischi o fregi, che una riga vuota attorno ce l'hanno per mestiere.
+  //
+  // E SI TOGLIE IL MARGINE SISTEMATICO, NON QUELLO ECCEZIONALE (segnalato
+  // dal lettore su «Between Two Fires»: «gli spazi previsti tra paragrafi a
+  // volte te li mangi»). Certi libri lo stacco di scena lo mettono come
+  // MARGINE piu' largo sul primo paragrafo della scena (`p.break
+  // { margin-top: 2em }`), che ha testo e non e' un segno: la cura lo
+  // azzerava con tutti gli altri, e la scena nuova cominciava incollata
+  // alla vecchia. Lo stacco di prosa e' quello che quasi ogni paragrafo ha
+  // — la MODA dei margini misurati, sopra e sotto a parte — e va via; chi
+  // ne ha uno piu' largo l'ha voluto, e lo tiene. A parita' di conto vince
+  // il valore piu' piccolo: nel dubbio si toglie meno.
+  const misure = pieni.map((p) => {
+    const cs = vista.getComputedStyle(p);
+    return [Math.round(parseFloat(cs.marginTop) || 0), Math.round(parseFloat(cs.marginBottom) || 0)];
+  });
+  const modaSopra = moda(misure.map((m) => m[0]));
+  const modaSotto = moda(misure.map((m) => m[1]));
+  pieni.forEach((p, i) => {
+    if (SEGNO_DI_SCENA.test((p.textContent || "").trim())) return;
+    if (misure[i][0] <= modaSopra) p.style.marginTop = "0";
+    if (misure[i][1] <= modaSotto) p.style.marginBottom = "0";
+  });
+
+  // una volta sola per documento: `hooks.content` oggi gira una volta, ma
+  // un foglio impilato due volte e' il genere di cosa che nessuno nota
+  // finche' non ne trova venti
+  if (doc.querySelector("style[data-bc=stacco]")) return true;
+  const stile = doc.createElement("style");
+  stile.setAttribute("data-bc", "stacco");
+  stile.textContent = "p,li,dd,blockquote{margin-top:0;margin-bottom:0}";
+  (doc.head || doc.documentElement).appendChild(stile);
+  return true;
+}
+
+// L'ALTRA META' DELLA STESSA SCELTA: I PARAGRAFI STACCATI.
+//
+// Due modi di dire «qui comincia un paragrafo nuovo», e i libri ne usano
+// uno solo: il RIENTRO di prima riga (la stampa) o lo STACCO verticale (lo
+// schermo). `togliStacco` serve chi vuole il primo — toglie il respiro di
+// troppo dove il libro rientra gia'. Questa e' la strada opposta, chiesta
+// dal lettore guardando un Pratchett: «perche' il testo e' impaginato
+// cosi' e non e' tutto sulla stessa linea?».
+//
+// Il rientro non e' nostro: sta scritto nel foglio di stile dell'ePub
+// (`.calibre23 { text-indent: 5% }`, misurato), e su una pagina di
+// dialoghi — dove ogni battuta e' un paragrafo di una riga — diventa una
+// scaletta di righe che partono tutte spostate.
+//
+// SI FA SUGLI ELEMENTI, non in CSS, per la ragione di `togliStacco`: il
+// rientro arriva da una CLASSE, e una classe batte un tag. In foglio
+// servirebbe `!important`, che poi calpesterebbe anche gli spaziatori che
+// `spegniVuoti` ha appena spento — un `!important` in un foglio batte uno
+// stile in linea. Sugli elementi la specificita' non conta e non c'e'
+// nessuna guerra da vincere.
+//
+// E TOGLIERE IL RIENTRO NON BASTA: senza rientro e senza stacco la prosa
+// diventa un muro, perche' non resta nessun segnale di paragrafo — su
+// questi libri i margini verticali il foglio del libro li azzera
+// (`margin: 0`). Il rientro se ne va e il respiro arriva insieme, o la
+// cura sarebbe peggio del difetto.
+export const STACCO = "0.8em";
+
+export function staccaParagrafi(doc) {
+  if (!doc?.querySelectorAll) return 0;
+  let staccati = 0;
+  for (const p of doc.querySelectorAll("p")) {
+    const testo = (p.textContent || "").trim();
+    // gli spaziatori restano spaziatori (li ha appena spenti `spegniVuoti`,
+    // e sono la pausa fra due scene), e i segni di scena — asterischi,
+    // fregi — un respiro attorno ce l'hanno per mestiere
+    if (!testo || SEGNO_DI_SCENA.test(testo)) continue;
+    p.style.textIndent = "0";
+    p.style.marginTop = STACCO;
+    p.style.marginBottom = "0";
+    staccati += 1;
+  }
+  return staccati;
+}
+
+// E IL TERZO MODO E' NON TOCCARE NIENTE: «COME NEL LIBRO».
+//
+// Chiesto dal lettore guardando la levetta a due posizioni: «invece di
+// avere paragrafi rientrati o meno non si puo' avere il file originale
+// com'e', e quindi avere gli spazi dei paragrafi solo dove previsti dal
+// libro?». Aveva ragione: tutt'e due i modi di prima CURANO — «rientrati»
+// azzera lo stacco dove il libro rientra gia', «staccati» toglie il rientro
+// e mette il respiro — e non c'era un modo per dire «lascia stare». Chi
+// vuole l'impaginazione dell'editore, con i suoi stacchi dove li ha messi
+// lui, non aveva un tasto.
+//
+// Sta qui e non nel componente per la ragione di sempre: e' una decisione
+// che sbaglia in silenzio (un modo che cura quando non dovrebbe non alza
+// nessun errore, cambia la pagina e basta), e da qui un test in Node la
+// prova con due cure finte senza tirarsi dietro un documento. Le due cure
+// si INIETTANO come `leggiByte` altrove.
+//
+// Cosa resta acceso anche «come nel libro»: `spegniVuoti`, che sta un passo
+// prima. Le ancore di pagina vuote non sono spazi previsti dal libro, sono
+// residui della conversione — e gli stacchi voluti (spazio unificatore,
+// `<br>`) le passano intatti. Quel che il libro ha scritto resta scritto.
+export const MODI_PARAGRAFI = ["rientro", "stacco", "libro"];
+
+export function curaParagrafi(doc, modo, { togli = togliStacco, stacca = staccaParagrafi } = {}) {
+  if (modo === "libro") return "libro";
+  if (modo === "stacco") {
+    stacca(doc);
+    return "stacco";
+  }
+  // «rientro» e tutto quello che non e' un modo: vale il modo di partenza,
+  // come per la svolta — una preferenza scritta male non spegne la cura
+  togli(doc);
+  return "rientro";
+}
+
+// LA SCENOGRAFIA SI SPEGNE: LA CARTA E' QUELLA DEL TEMA, SENZA ECCEZIONI.
+//
+// Certi ePub — l'Eric del lettore, convertito da un flipbook — si portano
+// dentro la LORO scena: un'immagine di libro aperto (dorso, pile di pagine
+// ai bordi) dipinta dietro il testo di OGNI capitolo, ancorata alla
+// finestra perche' sia sempre a fuoco qualunque colonna stia mostrando. Il
+// tema le cambia solo il colore di fondo, e un'immagine copre un colore:
+// il lettore si ritrovava un libro finto dentro il libro vero, col tema
+// Rifugio dipinto sopra una carta che non era la sua. E' la lezione 1
+// dell'inchiostro, girata sulla carta.
+//
+// La scena si riconosce dalla STAZZA, non dal nome: un elemento alto quasi
+// quanto la finestra che porta un'immagine di sfondo non sta decorando un
+// capoverso, sta rifacendo la pagina. Tre cose restano intoccabili:
+//  - i FREGI (uno stacco di scena disegnato, un capolettera): sono piccoli,
+//    e la soglia d'altezza non li raggiunge;
+//  - le TAVOLE nel flusso (un'illustrazione, una mappa): sono `<img>`
+//    statiche, e qui si spengono solo le figure `fixed`/`absolute`, che
+//    e' la tecnica della scena, non dell'illustrazione;
+//  - le pagine SENZA testo (copertina, frontespizio illustrato): li'
+//    l'immagine E' il contenuto, e non si tocca niente.
+//
+// Come `spegniVuoti`, si fa in JS e non in CSS: il foglio non sa dire
+// «alto quanto la finestra». E si spegne con `visibility`, mai con
+// `display: none` — un'ancora puo' puntarci dentro, e deve restare
+// raggiungibile.
+export const SCENA_COPRE = 0.85;
+export const SCENA_TESTO_MINIMO = 200;
+
+export function spegniScenografia(doc) {
+  const vista = doc?.defaultView;
+  if (!vista?.getComputedStyle || !doc.body) return 0;
+  if ((doc.body.textContent || "").trim().length < SCENA_TESTO_MINIMO) return 0;
+  const alto = doc.documentElement?.clientHeight || 0;
+  if (!alto) return 0;
+  let spente = 0;
+  for (const el of doc.body.querySelectorAll("*")) {
+    let r;
+    try {
+      r = el.getBoundingClientRect();
+    } catch {
+      continue;
+    }
+    // il costo sta qui: il rettangolo si guarda per primo, e lo stile
+    // calcolato si paga solo sui pochi elementi a tutta pagina
+    if (r.height < alto * SCENA_COPRE) continue;
+    const cs = vista.getComputedStyle(el);
+    const tag = (el.tagName || "").toLowerCase();
+    if (tag === "img" || tag === "svg" || tag === "image" || tag === "picture" || tag === "video") {
+      if (cs.position === "fixed" || cs.position === "absolute") {
+        el.style.setProperty("visibility", "hidden", "important");
+        spente += 1;
+      }
+    } else if (cs.backgroundImage && cs.backgroundImage !== "none") {
+      // via tutta la scena, colore compreso: la carta base cotta
+      // nell'immagine e' scena quanto l'immagine, e sul tema notte
+      // resterebbe un riquadro chiaro
+      el.style.setProperty("background", "transparent", "important");
+      spente += 1;
+    }
+  }
+  return spente;
+}
+
+// Quanto respiro sopra e sotto DENTRO la pagina. Non zero: una riga
+// appiccicata al bordo della carta si legge peggio, e il velo della
+// voltata la lambisce. Sei pixel sono un soffio, non una fascia.
+export const PAGINA_SU_GIU = 6;
+
+// Il lato del testo in scorrimento, uguale a quello della pagina: epub.js
+// impaginando lascia meta' del `column-gap`, che e' larghezza/12.
+export const SCORRIMENTO_LATI = "calc(100vw / 24)";
+
+export function contentStyles(s, lingua) {
+  const t = READER_THEMES[s.theme];
+  const font = READER_FONTS.find((f) => f.id === s.font)?.css;
+  // L'INCHIOSTRO E' QUELLO DEL TEMA, SENZA ECCEZIONI.
+  //
+  // Prima si elencavano gli elementi da ricolorare, e chi non era in elenco
+  // teneva il colore dell'editore: il primo paragrafo di un capitolo, un
+  // <font> di un vecchio EPUB, una didascalia, una lettera capitale. Su
+  // pergamena si notava appena; sul tema notte quel testo restava nero su
+  // nero. Un elenco di tag e' una partita a rincorrere: qui si dice «tutto
+  // quello che sta nel corpo», e i collegamenti si riprendono il loro colore
+  // subito dopo (stessa specificita', vince la regola che arriva dopo).
+  //
+  // MA L'INCHIOSTRO SI', L'INTERLINEA NO. Il colore su ogni elemento non
+  // sposta niente; l'interlinea si'. Molti ePub fanno gli stacchi con un
+  // paragrafo spaziatore a `line-height: 0`, e riportarglielo a interlinea
+  // piena trasforma un capello in una riga bianca in mezzo a una scena
+  // (misurato: +24px, ed e' lo stacco che il lettore vedeva da noi e non
+  // negli altri reader, che l'interlinea non la forzano su tutto).
+  //
+  // L'interlinea sta quindi su `body`, da cui tutto eredita, e sulla prosa
+  // — e sulla prosa **senza `!important`**, che e' l'altra meta' della
+  // cura: lo spaziatore e' quasi sempre un `<p>`, quindi una regola sulla
+  // prosa lo riprenderebbe comunque. Senza `!important` la gara la decide
+  // la specificita': il `p { line-height }` del libro perde perche' il
+  // nostro foglio arriva dopo — ed e' il caso comune, la levetta continua
+  // a comandare — mentre `.sp { line-height: 0 }` vince, perche' una
+  // classe batte un tag. Ed e' giusto: quella classe e' uno spaziatore
+  // voluto. Il prezzo, accettato: anche `.chapter p { line-height: 1.1 }`
+  // vince li' sulla levetta.
+  const textSel = "body *";
+  // La colonna giustificata si prende solo la prosa. Non `div`, che spesso
+  // avvolge anche i titoli: quelli il libro li centra o li allinea a modo
+  // suo, e giustificarli e' il modo piu' rapido di far sembrare rotta una
+  // pagina impaginata bene.
+  const proseSel = "p, li, dd, blockquote";
+  const rules = {
+    html: { background: `${t.bg} !important` },
+    body: {
+      background: `${t.bg} !important`,
+      color: `${t.fg} !important`,
+      "line-height": `${s.lineHeight} !important`,
+      // I 20px SOPRA E SOTTO NON SONO NOSTRI: li mette epub.js dentro la
+      // pagina (`Contents.columns`, ramo orizzontale), e sono 40px di
+      // carta bianca per facciata che nessuno ha scelto — i nostri
+      // margini veri sono HEAD/FOOT, 8px. Su una colonna che non e' un
+      // multiplo dell'altezza di riga quei 40px possono valere una riga
+      // intera di lettura (misurato: +1 riga a corpo normale). Il
+      // margine laterale invece resta a epub.js: li' il padding e' meta'
+      // del `column-gap`, e toccarlo sfascerebbe il conto delle colonne.
+      // In scorrimento sopra e sotto non si tocca: la' epub.js usa l'asse
+      // verticale e questi due valori sono un'altra cosa.
+      //
+      // MA IN SCORRIMENTO SI TOCCANO I LATI (`SCORRIMENTO_LATI`): li'
+      // epub.js mette `padding: 0 larghezza/12` (`Contents.size`), mentre
+      // impaginando ai lati resta meta' del `column-gap`, cioe'
+      // larghezza/24 — la stessa levetta del margine dava due colonne di
+      // testo diverse secondo il modo (segnalato: «in modalita' scorrimento
+      // i margini sono diversi rispetto alla modalita' pagina»). In
+      // scorrimento non ci sono colonne da tenere in conto, quindi il lato
+      // si puo' riportare a quello della pagina; `vw` dentro l'iframe e'
+      // la larghezza dell'iframe, che e' quella che epub.js divide.
+      ...(s.flow === "scrolled"
+        ? { "padding-left": `${SCORRIMENTO_LATI} !important`, "padding-right": `${SCORRIMENTO_LATI} !important` }
+        : { "padding-top": `${PAGINA_SU_GIU}px !important`, "padding-bottom": `${PAGINA_SU_GIU}px !important` }),
+    },
+    // I FONDI PAGINA SEMPRE PIENI (scelto dal lettore: «sì, fondi pagina
+    // sempre pieni»). Il browser non lascia una riga sola di un paragrafo
+    // in fondo o in cima a una colonna (`widows`/`orphans` = 2): quando
+    // capiterebbe sposta il paragrafo e lascia una riga vuota in fondo, e
+    // la pagina finisce piu' su della sua vicina. A 1 le colonne si
+    // riempiono sempre; il prezzo, accettato, e' la riga sola. Su ogni
+    // elemento e con `!important`: e' una proprieta' che si eredita, e un
+    // `p { widows: 2 }` del libro la riprenderebbe.
+    [textSel]: {
+      color: `${t.fg} !important`,
+      widows: "1 !important",
+      orphans: "1 !important",
+    },
+    [proseSel]: {
+      "line-height": `${s.lineHeight}`,
+    },
+    "h1, h2, h3, h4, h5, h6": { color: `${t.fg} !important` },
+    "a, a *": { color: `${t.link} !important` },
+    img: { "max-width": "100% !important" },
+    // I PARAGRAFI VUOTI NON SONO PARAGRAFI, e il browser non lo sa.
+    //
+    // Un ePub convertito lascia in giro le ancore delle pagine di carta:
+    // `<p><a class="calibre3"></a></p>`, centocinquantacinque volte in un
+    // solo romanzo (misurato su Guards! Guards!). Non hanno testo, ma sono
+    // `<p>`, e il libro non li veste con nessuna classe: entra allora il
+    // foglio di stile del BROWSER, che ai paragrafi da' `margin: 1em 0` —
+    // 16px di riga bianca in mezzo a una scena. Non e' colpa del nostro
+    // tema (misurato: identico con e senza), e' che non normalizzavamo
+    // niente e il default passava. Gli altri reader normalizzano, ed e'
+    // per questo che da loro lo stacco non si vede.
+    //
+    // Si azzerano SOLO i paragrafi senza testo, mai i paragrafi veri: un
+    // libro che separa la prosa con i margini invece che col rientro deve
+    // continuare a farlo. E si azzerano i margini, non `display: none`,
+    // perche' quelle ancore possono essere il bersaglio di un rimando e
+    // devono restare raggiungibili.
+    // Qui sta solo il caso che il CSS sa dire davvero: un `<p>` senza
+    // NIENTE dentro. Tutto il resto — l'ancora vuota dentro un paragrafo
+    // altrimenti vuoto — lo fa `spegniVuoti` a mano, perche' il CSS non
+    // sa distinguere «paragrafo senza testo» da «paragrafo con testo che
+    // contiene anche un'ancora vuota»: `p:has(> a:only-child:empty)`
+    // prende tutti e due, e sul secondo schiaccia una battuta vera (130
+    // paragrafi rovinati in questo libro, presi da un test e non dalla
+    // lettura del diff).
+    "p:empty": { margin: "0", "line-height": "0" },
+  };
+  if (font) {
+    rules.body["font-family"] = `${font} !important`;
+    rules[textSel]["font-family"] = `${font} !important`;
+    rules["h1, h2, h3, h4, h5, h6"]["font-family"] = `${font} !important`;
+  }
+  // GIUSTIFICATO E SILLABATO, o nessuno dei due.
+  //
+  // Giustificare senza poter spezzare le parole apre fiumi di bianco fra
+  // una parola e l'altra: su una colonna stretta da tablet e' peggio del
+  // bordo frastagliato che voleva togliere. E il browser sa sillabare solo
+  // se sa in che lingua sta leggendo — se il libro non lo dichiara, qui non
+  // si tocca niente e il pannello lo spiega.
+  // Spenta, la levetta deve dire ESPLICITAMENTE «a bandiera», non limitarsi
+  // a togliere la regola: epub.js accoda al foglio di stile del capitolo e
+  // non lo ripulisce mai, quindi una regola tolta resta scritta e continua a
+  // valere finche' il libro non viene rifatto da capo. Le regole che
+  // arrivano dopo vincono, quelle che spariscono no.
+  if (lingua) {
+    // si AGGIUNGE alla prosa, non si riscrive: li' c'e' gia' l'interlinea,
+    // e un `=` la porterebbe via insieme alla levetta che la governa
+    Object.assign(rules[proseSel], s.justify
+      ? {
+          "text-align": "justify !important",
+          hyphens: "auto !important",
+          "-webkit-hyphens": "auto !important",
+          // mai spezzare dopo due lettere: sono le sillabazioni che si notano
+          "hyphenate-limit-chars": "6 3 3",
+        }
+      : {
+          // `start`, non `left`: cosi' regge anche un libro che si legge
+          // da destra
+          "text-align": "start !important",
+          hyphens: "manual !important",
+          "-webkit-hyphens": "manual !important",
+        });
+  }
+  return rules;
+}

@@ -1,28 +1,81 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { registerSW } from "virtual:pwa-register";
-import { C, FONT_TITLE, SECTIONS, THEMES, DEFAULT_THEME, applyAppTheme } from "./data/constants.js";
+import {
+  C,
+  FONT_TITLE,
+  SECTIONS,
+  THEMES,
+  DEFAULT_THEME,
+  applyAppTheme,
+  SCALE_UI,
+  leggiScalaUI,
+  applicaScalaUI,
+  risolviScala,
+  scalaDi,
+  AUTO,
+  corpoAlFattore,
+  px,
+  F,
+  R,
+} from "./data/constants.js";
 import Foliage from "./components/Foliage.jsx";
 import Scrolls from "./components/Scrolls.jsx";
 import { CandleIcon, BooksIcon, MusicIcon, LeafIcon, ScrollIcon, CloudIcon } from "./components/Icons.jsx";
+import { SezioneOracolo } from "./components/TettoOracolo.jsx";
+import SezioneDizionario from "./components/SezioneDizionario.jsx";
+import SezioneLexicanum from "./components/SezioneLexicanum.jsx";
 
 import { loadReaderSettings, saveReaderSettings } from "./lib/readerSettings.js";
-import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getStatus, setStatus, touchBook, getProgress } from "./lib/library.js";
-import { removeBookData, requestPersistence } from "./lib/bookStore.js";
+import { loadBooks, saveBooks, removeBookMeta, setLastOpened, getLastOpened, getStatus, setStatus, timbraScheda, getProgress, touchBook, versoDelLibro } from "./lib/library.js";
+import { segnaposto } from "./lib/segnaposto.js";
+import { libroDellaScheda } from "./lib/schedaMusica.js";
+import { leggiSalvaschermo, fase, prossimoCambio } from "./lib/salvaschermo.js";
+import Salvaschermo, { SezioneSalvaschermo, SezioneSfondo } from "./components/Salvaschermo.jsx";
+import { portaDelGuscio, annotaMessaggio, risposta, pezzi, misuraSchermo, copertinaPerSchermo, leggiSfondo, scriviSfondo, infoDalLancio, ricordaLancio, lancioRicordato, segnaInvio, segnaRisposta, ultimoInvio, dopoIlSaluto, SALUTO, CIAO, TOGLI, LATO_MAX, fraseSenzaPrima, inPiedi } from "./lib/sfondo.js";
+import { ascoltaCopertine } from "./lib/miniature.js";
+import { copertinaGrande, dimenticaGrande } from "./lib/copertinaGrande.js";
+import { removeBookData, removeFileOnly, requestPersistence, listCoverIds, putCover } from "./lib/bookStore.js";
+import { cercaNuovaVersione, cercaInSilenzio, siAggiornaNascosta } from "./lib/aggiornamenti.js";
+import Guasto from "./components/Guasto.jsx";
 import Home from "./components/Home.jsx";
-import Library from "./components/Library.jsx";
-import BookSheet from "./components/BookSheet.jsx";
-import QuoteGarden from "./components/QuoteGarden.jsx";
-import ReadingDiary from "./components/ReadingDiary.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
-import MusicRoom from "./components/MusicRoom.jsx";
-import SyncPanel from "./components/SyncPanel.jsx";
-import { getBookMusic, setBookMusic } from "./lib/music.js";
-import { getJump, clearJump } from "./lib/annotations.js";
+import { getBookMusic, setBookMusic, legameMusica, comeRiprendere } from "./lib/music.js";
+import { getJump, clearJump, getMarks } from "./lib/annotations.js";
+import { doppioniInBiblioteca } from "./lib/doppioni.js";
+import { aRiposo } from "./lib/riposo.js";
+import { daAvvisare } from "./lib/oracle.js";
+import { creaIndietro } from "./lib/indietro.js";
 import { nextInSaga } from "./lib/saga.js";
 import { isSyncConfigured } from "./lib/supabase.js";
-import { getSession, syncNow, localFileIds } from "./lib/sync.js";
+import { fraseGiro, ricordaGiro, avvisoArrivi } from "./lib/resoconto.js";
+import { annotaErrore } from "./lib/registro.js";
+import SezioneGuasti from "./components/SezioneGuasti.jsx";
+import { leggiDispositivi, altroveDa, percheNonSiApre } from "./lib/dispositivi.js";
+import { scegliDalDisco } from "./lib/sceltaFile.js";
+import { erroreDelLink } from "./lib/accesso.js";
+import { tipiDaScegliere } from "./lib/importBook.js";
+import { getSession, syncNow, localFileIds, onAuthChange, togliFileDalCloud, convertiLibroInCbz, caricaCopertina } from "./lib/sync.js";
+import { schedaSenzaFile, giaSulloScaffale, copertinaDalCatalogo, fraseAggiunte } from "./lib/senzaFile.js";
+import { preparaCopertina } from "./lib/copertina.js";
+import { rifaiCammino } from "./lib/cammino.js";
+import { riordinaDisco, fraseRiordino, fraseDaParte, fraseRimessi, vociDalDisco, schedeDalDisco } from "./lib/disco.js";
+import { importaDaFuori, resoconto, importFiles } from "./lib/importBook.js";
+import { leggiNovita, scriviNovita, smettiNovita, messaggioNovita, statoNovita } from "./lib/novita.js";
+import SezioneNovita from "./components/SezioneNovita.jsx";
+import SezioneNas from "./components/SezioneNas.jsx";
+// quanto aspetta un libro preso dal NAS di essere entrato, prima di non aprirsi piu' da solo
+const APRI_DAL_NAS_ENTRO = 120_000;
+import { indirizzoNas, sulNas, prendiDalNas, fraseNas } from "./lib/nas.js";
+import SezioneHardcover from "./components/SezioneHardcover.jsx";
+import { EVENTO as EVENTO_CHIAVI } from "./lib/chiaviInViaggio.js";
+import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
+import BarraLavoro from "./components/BarraLavoro.jsx";
+import { spiegaSync, schedaDiversa, eDiRete } from "./lib/syncCore.js";
 import { useViewport } from "./lib/viewport.js";
-import { greeting } from "./lib/greeting.js";
+import { sezioneDaUrl, fileDaLancio, pulisciUrl } from "./lib/lancio.js";
+import { comincia, segnaVita, segnaAttivita, smetti, dispositivo } from "./lib/tempo.js";
+import { sincronizzaPresto, DAVANTI } from "./lib/presto.js";
+import { parti, segnaAvvio } from "./lib/tempi.js";
 
 // L'ingresso porta l'insegna dell'atmosfera scelta: candela di notte,
 // foglia nel boschetto, pergamena nell'archivio.
@@ -31,10 +84,54 @@ const themeIcon = (id) => THEME_ICON[id] || CandleIcon;
 const navIcon = (sectionId, themeId) =>
   sectionId === "home" ? themeIcon(themeId) : sectionId === "library" ? BooksIcon : MusicIcon;
 
+// LE STANZE CHE SI APRONO DI RADO NON STANNO NEL PACCHETTO DELL'AVVIO: il
+// cammino, «Da prendere» coi suoi consigli, il quaderno, la mappa, il
+// diario, il giardino, la sala della musica e il pannello della nuvola.
+// Misurato: tolte, il pacchetto che il tablet legge e compila a ogni avvio
+// scende di un quarto. Per non pagarle al primo tocco si scaricano DOPO,
+// quando l'app e' ferma (`precaricaStanze`): chi apre il quaderno un minuto
+// dopo l'avvio lo trova gia' pronto, e senza rete le serve il service
+// worker, che le tiene tutte.
+const STANZE = {
+  // la Libreria e la scheda del libro per prime: sono le stanze che si
+  // aprono di piu', e all'avvio l'Ingresso non le usa
+  Library: () => import("./components/Library.jsx"),
+  BookSheet: () => import("./components/BookSheet.jsx"),
+  QuoteGarden: () => import("./components/QuoteGarden.jsx"),
+  ReadingDiary: () => import("./components/ReadingDiary.jsx"),
+  Quaderno: () => import("./components/Quaderno.jsx"),
+  DaPrendere: () => import("./components/DaPrendere.jsx"),
+  AggiungiSenzaFile: () => import("./components/AggiungiSenzaFile.jsx"),
+  Mappa: () => import("./components/Mappa.jsx"),
+  Cammino: () => import("./components/Cammino.jsx"),
+  MusicRoom: () => import("./components/MusicRoom.jsx"),
+  SyncPanel: () => import("./components/SyncPanel.jsx"),
+};
+const Library = lazy(STANZE.Library);
+const BookSheet = lazy(STANZE.BookSheet);
+const QuoteGarden = lazy(STANZE.QuoteGarden);
+const ReadingDiary = lazy(STANZE.ReadingDiary);
+const Quaderno = lazy(STANZE.Quaderno);
+const DaPrendere = lazy(STANZE.DaPrendere);
+const AggiungiSenzaFile = lazy(STANZE.AggiungiSenzaFile);
+const Mappa = lazy(STANZE.Mappa);
+const Cammino = lazy(STANZE.Cammino);
+const MusicRoom = lazy(STANZE.MusicRoom);
+const SyncPanel = lazy(STANZE.SyncPanel);
+function precaricaStanze() {
+  // una alla volta e a riposo: scaricarle tutte insieme appena partiti
+  // toglierebbe al primo disegno proprio il tempo che si voleva liberare
+  const coda = Object.values(STANZE);
+  const prossima = () => {
+    const f = coda.shift();
+    if (!f) return;
+    f().catch(() => {}).finally(() => aRiposo(prossima));
+  };
+  aRiposo(prossima);
+}
 const Reader = lazy(() => import("./components/Reader.jsx"));
 const PdfReader = lazy(() => import("./components/PdfReader.jsx"));
 const ComicReader = lazy(() => import("./components/ComicReader.jsx"));
-const NasBrowser = lazy(() => import("./components/NasBrowser.jsx"));
 
 const reducedMotion = () =>
   typeof window !== "undefined" &&
@@ -88,7 +185,7 @@ function Stardust({ theme }) {
   );
 }
 
-function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
+function CompactHeader({ onSync, signedIn, syncing, theme, onTheme, stretto }) {
   const I = themeIcon(theme.id);
   return (
     <header
@@ -109,30 +206,43 @@ function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
           filter: `drop-shadow(0 0 10px ${C.accent}66)`,
         }}
       >
-        <I size={26} active />
+        <I size={px(26)} active />
       </span>
-      <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: "block", fontFamily: FONT_TITLE, fontSize: 23, fontWeight: 600, color: C.text }}>
-          {greeting()}, eccoti.
-        </span>
-        <span style={{ display: "block", fontSize: 12.5, color: C.muted, letterSpacing: "0.04em" }}>
-          Book Companion
-        </span>
+      {/* SU UNA RIGA: a 360 px «Book / Companion» andava a capo e
+          l'intestazione si mangiava due righe di pagina */}
+      <span style={{ flex: 1, minWidth: 0, fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        Book Companion
       </span>
+      {/* stessa cura dell'intestazione grande: la parola scritta accanto al
+          glifo. Qui il titolo ha gia' `minWidth: 0`, quindi si stringe lui
+          se lo schermo e' corto. */}
       <button
         onClick={onTheme}
-        aria-label="Cambia atmosfera"
-        style={{ width: 40, height: 40, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted }}
+        aria-label="Impostazioni: aspetto, Oracolo, sincronizzazione"
+        style={{
+          height: px(40),
+          padding: "0 12px",
+          borderRadius: R.tondo,
+          border: `1px solid ${C.border}`,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          flexShrink: 0,
+          color: C.muted,
+          fontSize: F.piccolo,
+        }}
       >
-        <I size={21} />
+        <I size={px(19)} />
+        {/* sul telefono il glifo basta: il nome resta nell'etichetta */}
+        {!stretto && "Impostazioni"}
       </button>
       <button
         onClick={onSync}
         aria-label="Sincronizzazione"
         style={{
-          width: 40,
-          height: 40,
-          borderRadius: 11,
+          width: px(40),
+          height: px(40),
+          borderRadius: R.piccolo,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -141,53 +251,99 @@ function CompactHeader({ onSync, signedIn, syncing, theme, onTheme }) {
           animation: syncing ? "bc-flicker 1.6s ease-in-out infinite" : "none",
         }}
       >
-        <CloudIcon size={21} active={signedIn} />
+        <CloudIcon size={px(21)} active={signedIn} />
       </button>
     </header>
   );
 }
 
-function Header({ onSync, syncing, signedIn, theme, onTheme }) {
+const GIOCO = 8;
+
+function Header({ onSync, syncing, signedIn, theme, onTheme, motto = true }) {
+  // IL TITOLO STA FRA I TASTI SOLO SE CI STA. I due tasti stavano in
+  // `position: absolute` in cima, e il titolo nel flusso, largo quanto lo
+  // schermo: sul tablet non si toccavano per caso, sul telefono la candela
+  // del titolo — che ha un `filter`, quindi un suo contesto di
+  // sovrapposizione dipinto DOPO i tasti — copriva «Impostazioni» e si
+  // prendeva il tocco (misurato a 412: il centro del tasto restituiva lo svg
+  // dell'h1). Adesso e' una griglia a tre colonne con le laterali uguali,
+  // cosi' il titolo resta al centro dello schermo; se non ci sta fra i due
+  // tasti scende sotto, a tutta riga. Si misura, non si indovina una soglia:
+  // la scala della scrittura cambia la larghezza del titolo e dei tasti.
+  const testaRef = useRef(null);
+  const impRef = useRef(null);
+  const nuvolaRef = useRef(null);
+  const titoloRef = useRef(null);
+  const [affiancato, setAffiancato] = useState(true);
+  useLayoutEffect(() => {
+    const misura = () => {
+      const testa = testaRef.current;
+      if (!testa || !titoloRef.current || !impRef.current || !nuvolaRef.current) return;
+      const cs = getComputedStyle(testa);
+      const dentro = testa.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      const lato = Math.max(impRef.current.offsetWidth, nuvolaRef.current.offsetWidth);
+      // la copia nascosta sta su una riga sola: e' la larghezza che il
+      // titolo vorrebbe, qualunque sia la riga su cui sta adesso
+      setAffiancato(dentro - 2 * (lato + GIOCO) >= titoloRef.current.offsetWidth);
+    };
+    misura();
+    const ro = new ResizeObserver(misura);
+    ro.observe(testaRef.current);
+    return () => ro.disconnect();
+  }, [theme.id]);
   return (
     <header
+      ref={testaRef}
       style={{
         position: "relative",
         zIndex: 2,
-        padding: "26px 20px 14px",
+        padding: "16px 14px 14px",
         textAlign: "center",
+        display: "grid",
+        gridTemplateColumns: "1fr auto 1fr",
+        alignItems: "center",
+        columnGap: GIOCO,
       }}
     >
+      {/* UN'ICONA SPENTA IN MEZZO ALLE FOGLIE NON SI TROVA. Era una foglia
+          grigia nell'angolo, e sul Rifugio Silvano lo sfondo E' fatto di
+          foglie: il lettore cercava dove regolare la misura e non trovava
+          niente da toccare («dove regolo le dimensioni?»). Adesso porta la
+          parola scritta — un bersaglio con un nome sopra si trova sempre,
+          un glifo muto no. */}
+      <div style={{ gridColumn: "1", gridRow: "1", justifySelf: "start" }}>
       <button
+        ref={impRef}
         onClick={onTheme}
-        aria-label="Cambia atmosfera"
+        aria-label="Impostazioni: aspetto, Oracolo, sincronizzazione"
         style={{
-          position: "absolute",
-          top: 16,
-          left: 14,
-          width: 42,
-          height: 42,
-          borderRadius: 12,
+          height: px(42),
+          padding: "0 13px",
+          borderRadius: R.tondo,
+          border: `1px solid ${C.border}`,
           display: "flex",
           alignItems: "center",
-          justifyContent: "center",
+          gap: 7,
           color: C.muted,
+          fontSize: F.piccolo,
         }}
       >
         {(() => {
           const I = themeIcon(theme.id);
-          return <I size={22} />;
+          return <I size={px(20)} />;
         })()}
+        Impostazioni
       </button>
+      </div>
+      <div style={{ gridColumn: "3", gridRow: "1", justifySelf: "end" }}>
       <button
+        ref={nuvolaRef}
         onClick={onSync}
         aria-label="Sincronizzazione"
         style={{
-          position: "absolute",
-          top: 16,
-          right: 14,
-          width: 42,
-          height: 42,
-          borderRadius: 12,
+          width: px(42),
+          height: px(42),
+          borderRadius: R.piccolo,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -196,13 +352,43 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
           animation: syncing ? "bc-flicker 1.6s ease-in-out infinite" : "none",
         }}
       >
-        <CloudIcon size={22} active={signedIn} />
+        <CloudIcon size={px(22)} active={signedIn} />
       </button>
-      <h1
+      </div>
+      {/* dentro un riquadro nullo che taglia: a scala doppia la copia su
+          una riga e' piu' larga del telefono, e senza il taglio farebbe
+          scorrere la pagina di lato */}
+      <div aria-hidden="true" style={{ position: "absolute", top: 0, left: 0, width: 0, height: 0, overflow: "hidden" }}>
+      <span
+        ref={titoloRef}
         style={{
+          display: "inline-block",
+          visibility: "hidden",
+          whiteSpace: "nowrap",
           fontFamily: FONT_TITLE,
           fontWeight: 700,
-          fontSize: 30,
+          fontSize: px(30),
+          letterSpacing: "0.04em",
+          // la candela davanti al titolo: il glifo piu' il suo margine
+          paddingLeft: px(26) + 8,
+        }}
+      >
+        Book Companion
+      </span>
+      </div>
+      <h1
+        style={{
+          gridColumn: affiancato ? "2" : "1 / -1",
+          gridRow: affiancato ? "1" : "2",
+          marginTop: affiancato ? 0 : 10,
+          minWidth: 0,
+          fontFamily: FONT_TITLE,
+          fontWeight: 700,
+          // TESTO, non illustrazione. Sopra i 28px la scala lascia
+          // passare i numeri a mano perche' li' ci sono le emoji grosse
+          // delle schermate vuote — ma questo e' il titolo dell'app, e
+          // restava fermo mentre tutto il resto raddoppiava.
+          fontSize: px(30),
           letterSpacing: "0.04em",
           color: C.text,
           textShadow: `0 0 18px ${C.accent}55, 0 0 42px ${C.accent}22`,
@@ -220,21 +406,26 @@ function Header({ onSync, syncing, signedIn, theme, onTheme }) {
         >
           {(() => {
             const I = themeIcon(theme.id);
-            return <I size={26} active />;
+            return <I size={px(26)} active />;
           })()}
         </span>
         Book Companion
       </h1>
-      <p
-        style={{
-          marginTop: 2,
-          fontSize: 15,
-          fontStyle: "italic",
-          color: C.muted,
-        }}
-      >
-        {theme.tagline}
-      </p>
+      {/* IL MOTTO È UN BENVENUTO, e sta sull'Ingresso: nelle altre sezioni
+          era una riga in più sopra i libri (i ritocchi al tema) */}
+      {motto && (
+        <p
+          style={{
+            gridColumn: "1 / -1",
+            marginTop: 2,
+            fontSize: F.corpo,
+            fontStyle: "italic",
+            color: C.muted,
+          }}
+        >
+          {theme.tagline}
+        </p>
+      )}
     </header>
   );
 }
@@ -248,7 +439,11 @@ function BottomNav({ section, goTo, themeId }) {
         display: "flex",
         justifyContent: "space-around",
         alignItems: "stretch",
-        height: 40,
+        // LA BARRA CRESCE CON LA SUA SCRITTA. Ferma a 40 con la levetta al
+        // massimo, la scritta da 26px ci stava dentro per il rotto della
+        // cuffia e i glifi restavano quelli di prima: testo gigante e icone
+        // minuscole in una barra che non si muoveva.
+        height: px(40),
         flexShrink: 0,
         boxSizing: "content-box",
         background: `${C.surface}f2`,
@@ -271,7 +466,7 @@ function BottomNav({ section, goTo, themeId }) {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: 7,
+              gap: px(7),
               color: active ? C.accent : C.muted,
               transition: "color 0.2s ease-out",
             }}
@@ -281,9 +476,9 @@ function BottomNav({ section, goTo, themeId }) {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                width: 32,
-                height: 27,
-                borderRadius: 8,
+                width: px(32),
+                height: px(27),
+                borderRadius: R.piccolo,
                 background: active ? `${C.accent}1c` : "transparent",
                 filter: active ? `drop-shadow(0 0 7px ${C.accent}66)` : "none",
                 transition: "background 0.2s ease-out, filter 0.2s ease-out",
@@ -291,10 +486,10 @@ function BottomNav({ section, goTo, themeId }) {
             >
               {(() => {
                 const I = navIcon(s.id, themeId);
-                return <I size={20} active={active} />;
+                return <I size={px(20)} active={active} />;
               })()}
             </span>
-            <span style={{ fontSize: 13, fontWeight: active ? 600 : 400 }}>{s.label}</span>
+            <span style={{ fontSize: F.piccolo, fontWeight: active ? 600 : 400 }}>{s.label}</span>
           </button>
         );
       })}
@@ -308,17 +503,18 @@ function Toast({ toast, onDismiss }) {
     <div
       style={{
         position: "fixed",
-        bottom: 86,
+        // sta sopra la barra in basso, che adesso cresce con la levetta
+        bottom: px(86),
         left: "50%",
         transform: "translateX(-50%)",
         zIndex: 60,
-        maxWidth: "min(92vw, 480px)",
+        maxWidth: `min(92vw, ${px(480)}px)`,
         padding: "11px 18px",
-        borderRadius: 12,
+        borderRadius: R.piccolo,
         border: `1px solid ${C.border}`,
         background: `${C.card}f5`,
         color: C.text,
-        fontSize: 14.5,
+        fontSize: F.nota,
         textAlign: "center",
         boxShadow: `0 0 30px ${C.arcane}22, 0 8px 24px #00000066`,
         animation: "bc-fade-in 0.25s ease-out",
@@ -334,10 +530,10 @@ function Toast({ toast, onDismiss }) {
           style={{
             marginLeft: 12,
             padding: "5px 14px",
-            borderRadius: 999,
+            borderRadius: R.tondo,
             border: `1px solid ${C.accent}`,
             color: C.accent,
-            fontSize: 14,
+            fontSize: F.nota,
             fontWeight: 600,
           }}
         >
@@ -348,7 +544,84 @@ function Toast({ toast, onDismiss }) {
   );
 }
 
-function ThemePicker({ current, onPick, onClose }) {
+// QUANTO E' GRANDE LA SCRITTURA, e sta qui dentro perche' e' la stessa
+// domanda del tema: com'e' fatta l'app da guardare. Un pannello a parte
+// vorrebbe dire un'altra voce nel menu, un altro livello per il tasto
+// indietro, e due posti dove cercare la stessa cosa.
+//
+// Si sceglie a tasti, come i generi e il tetto dell'Oracolo: su un tablet
+// un cursore da trascinare e' il comando piu' difficile che ci sia, e qui
+// i gradini sono quattro.
+function MisuraPicker({ current, onPick, consigliata }) {
+  return (
+    <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+      <h3
+        style={{
+          fontFamily: FONT_TITLE,
+          fontSize: F.titoletto,
+          fontWeight: 600,
+          color: C.text,
+          marginBottom: 4,
+        }}
+      >
+        Quanto grande?
+      </h3>
+      <p style={{ fontSize: F.piccolo, color: C.muted, marginBottom: 10, lineHeight: 1.45 }}>
+        La scrittura di tutta l'app. Vale per questo dispositivo: il testo dei libri ha la sua
+        misura, nelle impostazioni del lettore.
+      </p>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {/* L'AUTOMATICA DICE COSA HA DECISO. Un automatismo muto è un
+            automatismo su cui non si può essere d'accordo: se sbaglia, chi
+            guarda non sa nemmeno che c'è stata una scelta. E si scrive nella
+            misura che ha scelto, come tutti gli altri tasti. */}
+        <button
+          onClick={() => onPick(AUTO)}
+          style={{
+            minHeight: 44,
+            padding: "8px 14px",
+            borderRadius: R.tondo,
+            border: `1px solid ${current === AUTO ? C.accent : C.border}`,
+            background: current === AUTO ? `${C.accent}22` : "transparent",
+            color: current === AUTO ? C.accent : C.muted,
+            fontSize: corpoAlFattore(scalaDi(consigliata).fattore),
+          }}
+        >
+          Automatica
+          <span style={{ opacity: 0.75, fontSize: F.minuscolo }}>
+            {" "}· {scalaDi(consigliata).label.toLowerCase()}
+          </span>
+        </button>
+        {SCALE_UI.map((s) => {
+          const attivo = s.id === current;
+          return (
+            <button
+              key={s.id}
+              onClick={() => onPick(s.id)}
+              style={{
+                // il bersaglio non scala con la levetta: 44px e' il dito,
+                // e il dito non cambia misura
+                minHeight: 44,
+                padding: "8px 14px",
+                borderRadius: R.tondo,
+                border: `1px solid ${attivo ? C.accent : C.border}`,
+                background: attivo ? `${C.accent}22` : "transparent",
+                color: attivo ? C.accent : C.muted,
+                // OGNI TASTO SI SCRIVE NELLA MISURA CHE OFFRE: e' il solo
+                // modo di scegliere guardando invece che indovinando
+                fontSize: corpoAlFattore(s.fattore),
+              }}
+            >
+              {s.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Impostazioni({ current, onPick, onClose, misura, onMisura, consigliata, onSync, onMappa, lex, onLex, onFermaLex, fan, onFan, onFermaFan, imm, onImm, onFermaImm, ill, onIll, onFermaIll, wikt, onWikt, onFermaWikt, guscioPronto = false, infoGuscio = null, invioGuscio = null, sfondo = false, onSfondo = () => {}, novita = [], statoNovita: statoAvvisi = null, onSmettiNovita, libri = [] }) {
   return (
     <div
       onClick={onClose}
@@ -369,17 +642,42 @@ function ThemePicker({ current, onPick, onClose }) {
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%",
-          maxWidth: 440,
-          borderRadius: 18,
+          maxWidth: px(440),
+          // IL PANNELLO DEVE STARE DENTRO LO SCHERMO, SEMPRE. A due volte
+          // la scala questa scheda arriva a 1084px in un'area alta 730 e
+          // sbordava sopra E sotto: i tasti per tornare a una misura più
+          // piccola finivano fuori, cioè scegliere «Massima» era una porta
+          // che si chiudeva alle spalle. Misurato, non temuto.
+          maxHeight: "100%",
+          overflowY: "auto",
+          borderRadius: R.grande,
           border: `1px solid ${C.border}`,
           background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
           boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
           padding: 22,
         }}
       >
-        <h2 style={{ fontFamily: FONT_TITLE, fontSize: 23, fontWeight: 600, color: C.text, marginBottom: 14 }}>
-          Dove vuoi leggere?
+        {/* UNA STANZA SOLA PER LE COSE DELL'APP. Il pannello era «Aspetto»
+            e teneva tema e misura; la chiave dell'Oracolo, la sua scadenza e
+            il tetto del mese vivevano invece dentro le schede dell'Oracolo,
+            cioe' raggiungibili solo mentre l'Oracolo lo stavi usando — e la
+            chiave si cambia PRIMA che smetta di funzionare, quando l'Oracolo
+            non lo stai aprendo affatto. Adesso c'e' un posto dove andare a
+            cercarle, ed e' quello che il lettore ha chiesto. */}
+        <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
+          Impostazioni
         </h2>
+        <h3
+          style={{
+            fontFamily: FONT_TITLE,
+            fontSize: F.titoletto,
+            fontWeight: 600,
+            color: C.text,
+            margin: "12px 0 10px",
+          }}
+        >
+          Dove vuoi leggere?
+        </h3>
         {Object.values(THEMES).map((t) => {
           const active = t.id === current;
           return (
@@ -394,7 +692,7 @@ function ThemePicker({ current, onPick, onClose }) {
                 textAlign: "left",
                 padding: "13px 15px",
                 marginBottom: 10,
-                borderRadius: 14,
+                borderRadius: R.medio,
                 border: `1px solid ${active ? t.colors.accent : C.border}`,
                 background: t.gradient,
               }}
@@ -402,7 +700,7 @@ function ThemePicker({ current, onPick, onClose }) {
               <span style={{ color: t.colors.accent, flexShrink: 0 }}>
                 {(() => {
                   const I = themeIcon(t.id);
-                  return <I size={26} active={active} />;
+                  return <I size={px(26)} active={active} />;
                 })()}
               </span>
               <span style={{ flex: 1 }}>
@@ -411,20 +709,213 @@ function ThemePicker({ current, onPick, onClose }) {
                     display: "block",
                     fontFamily: FONT_TITLE,
                     fontWeight: 600,
-                    fontSize: 18,
+                    fontSize: F.rilievo,
                     color: t.colors.text,
                   }}
                 >
                   {t.label}
                 </span>
-                <span style={{ display: "block", fontSize: 13.5, color: t.colors.muted }}>{t.hint}</span>
+                <span style={{ display: "block", fontSize: F.piccolo, color: t.colors.muted }}>{t.hint}</span>
               </span>
-              {active && <span style={{ color: t.colors.accent, fontSize: 18 }}>✓</span>}
+              {active && <span style={{ color: t.colors.accent, fontSize: F.rilievo }}>✓</span>}
             </button>
           );
         })}
+        <MisuraPicker current={misura} onPick={onMisura} consigliata={consigliata} />
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            Il salvaschermo
+          </h3>
+          <SezioneSalvaschermo />
+          <SezioneSfondo pronto={guscioPronto} info={infoGuscio} invio={invioGuscio} acceso={sfondo} onCambia={onSfondo} />
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            Le novità
+          </h3>
+          <SezioneNovita lista={novita} stato={statoAvvisi} nelGuscio={guscioPronto} onSmetti={onSmettiNovita} />
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            Il NAS
+          </h3>
+          <SezioneNas libri={libri} />
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            L'Oracolo
+          </h3>
+          <SezioneOracolo />
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            Le serie da Hardcover
+          </h3>
+          <SezioneHardcover />
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            Il dizionario
+          </h3>
+          <SezioneDizionario wikt={wikt} onScaricaWikt={onWikt} onFermaWikt={onFermaWikt} />
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            I wiki del 40K
+          </h3>
+          <SezioneLexicanum
+            lavoro={lex}
+            onScarica={onLex}
+            onFerma={onFermaLex}
+            lavoroFan={fan}
+            onScaricaFan={onFan}
+            onFermaFan={onFermaFan}
+            immagini={imm}
+            onImmagini={onImm}
+            onFermaImmagini={onFermaImm}
+            illustrazioni={ill}
+            onIllustrazioni={onIll}
+            onFermaIllustrazioni={onFermaIll}
+          />
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            Se qualcosa non va
+          </h3>
+          <SezioneGuasti />
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          {/* COSA SA FARE L'APP, e sta qui perché è la stanza dove uno
+              viene quando si chiede qualcosa sull'app invece che sui suoi
+              libri. Non compare mai da sé e non si mette in mezzo: una
+              mappa serve il giorno che la cerchi, e un tutorial che si
+              apre da solo lo si impara a chiudere senza leggerlo. */}
+          <button
+            onClick={onMappa}
+            style={{
+              width: "100%",
+              minHeight: 44,
+              padding: "10px 14px",
+              textAlign: "left",
+              borderRadius: R.medio,
+              border: `1px solid ${C.border}`,
+              background: C.surface,
+              color: C.text,
+              fontSize: F.corpo,
+            }}
+          >
+            📖 Cosa sa fare l'app
+            <span style={{ display: "block", color: C.muted, fontSize: F.piccolo, marginTop: 2 }}>
+              Le funzioni raccolte per dove stanno, con accanto da dove si aprono
+            </span>
+          </button>
+        </div>
+
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <h3
+            style={{
+              fontFamily: FONT_TITLE,
+              fontSize: F.titoletto,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 8,
+            }}
+          >
+            La sincronizzazione
+          </h3>
+          {/* NON si ricopia qui dentro: e' un pannello suo, con l'accesso, lo
+              spazio e i tomi da portare a casa. Qui ci sta la porta, perche'
+              questa e' la stanza dove uno viene a cercare le impostazioni —
+              non trovarci nemmeno un rimando vorrebbe dire mandarlo via. */}
+          <button
+            onClick={onSync}
+            style={{
+              minHeight: 44,
+              padding: "8px 14px",
+              borderRadius: R.tondo,
+              border: `1px solid ${C.border}`,
+              color: C.muted,
+              fontSize: F.corpo,
+            }}
+          >
+            ☁ Sincronizzazione nel cloud
+          </button>
+        </div>
         <div style={{ marginTop: 8, textAlign: "right" }}>
-          <button onClick={onClose} style={{ color: C.muted, fontSize: 14.5 }}>
+          <button onClick={onClose} style={{ color: C.muted, fontSize: F.nota }}>
             Chiudi
           </button>
         </div>
@@ -434,26 +925,85 @@ function ThemePicker({ current, onPick, onClose }) {
 }
 
 export default function App() {
-  const [section, setSection] = useState("home");
+  // la sezione la puo' dire l'URL: sono le scorciatoie dell'icona
+  // («Libreria», «Musica»), e si legge prima del primo render
+  const [section, setSection] = useState(() => sezioneDaUrl(window.location.search, SECTIONS) || "home");
   const [focusSaga, setFocusSaga] = useState(null);
-  const { tall } = useViewport();
+  // «Apri con»: i file che il sistema ci passa entrano in Libreria dalla
+  // stessa porta dell'input, e la Libreria dice quando ha finito
+  const [daImportare, setDaImportare] = useState(null);
+  const sceltaRef = useRef(null);
+  // I BYTE SONO APPENA CAMBIATI, e lo dice chi li ha cambiati.
+  //
+  // Segnalato dal lettore: «ho tolto un po' di ebook e tenuto solo la
+  // scheda, non dovrei vedere aggiornarsi lo spazio di archiviazione?».
+  // La Libreria le sue due misure le chiede una volta sola — il peso sul
+  // dispositivo quando cambia la biblioteca, il secchio all'apertura dello
+  // scaffale — e togliere un ebook non e' ne' l'una ne' l'altra cosa: la
+  // scheda resta, quindi lassu' un file in meno e qui una riga identica.
+  // Peggio: `updateBooks` cambia `books` PRIMA che il file sia sparito,
+  // quindi quella misura si rileggeva anche troppo presto, sui byte ancora
+  // al loro posto. Questo numero cresce quando i byte sono andati via
+  // davvero, e la Libreria rilegge tutt'e due.
+  const [spazioCambiato, setSpazioCambiato] = useState(0);
+  const { tall, stretto, largo } = useViewport();
   // la saga vale solo per il salto dalla home: tornando dal menu la
   // libreria deve ritrovarsi intera
   const navigate = (id) => {
     setFocusSaga(null);
+    // uscendo dalla Libreria la raccolta aperta si chiude: rientrando si
+    // riparte da tutte le raccolte
+    if (id !== "library") setRaccolta(null);
+    if (id === "library" && section !== "library") parti("libreria");
     setSection(id);
   };
   const [books, setBooks] = useState(() => loadBooks());
+  // l'avvio si misura al primo disegno (`lib/tempi.js`)
+  useEffect(() => segnaAvvio({ n: books.length }), []);
   const [openId, setOpenId] = useState(null);
   const [readingId, setReadingId] = useState(null);
   const [readingStart, setReadingStart] = useState(null);
   const [gardenOpen, setGardenOpen] = useState(false);
   const [diaryOpen, setDiaryOpen] = useState(false);
-  const [nasOpen, setNasOpen] = useState(false);
+  const [quadernoOpen, setQuadernoOpen] = useState(false);
+  const [prendereOpen, setPrendereOpen] = useState(false);
+  // quante voci il cammino ha messo in «Da prendere»: aperta sotto, la
+  // lista si rilegge quando il cammino si chiude
+  const [giroPrendere, setGiroPrendere] = useState(0);
+  // il pannello delle schede senza file (`lib/senzaFile.js`)
+  const [senzaFileOpen, setSenzaFileOpen] = useState(false);
+  const [mappaOpen, setMappaOpen] = useState(false);
+  // LE NOVITA' (`lib/novita.js`): la lista sta nel dispositivo, il guscio la
+  // guarda ad app chiusa e dice lo stato delle notifiche
+  const [novita, setNovita] = useState(leggiNovita);
+  const [statoAvvisi, setStatoAvvisi] = useState(null);
+  // il cammino di una saga: la guida intera con dentro i tuoi volumi
+  const [cammino, setCammino] = useState(null);
+  // la raccolta aperta in Libreria (vedi `Grouped`): qui perche' e' un
+  // livello del tasto indietro
+  const [raccolta, setRaccolta] = useState(null);
+  // la raccolta musicale aperta nella sala: un livello dell'indietro come
+  // quella della Libreria
+  const [raccoltaMusica, setRaccoltaMusica] = useState(null);
   const [toast, setToast] = useState(null);
   const [music, setMusic] = useState({ current: null, playing: false, timerEnd: null });
   const [syncOpen, setSyncOpen] = useState(false);
+  // tornati dal link di «Password dimenticata?» (`PASSWORD_RECOVERY`, sotto):
+  // il pannello si apre sulla password nuova
+  const [chiediPassword, setChiediPassword] = useState(false);
   const [sync, setSync] = useState({ busy: false, message: null, at: 0, signedIn: false });
+  // un link per email andato storto torna con l'errore nel frammento: si
+  // dice, nel pannello dove se ne chiede un altro, e l'indirizzo si pulisce
+  const [guaioLink] = useState(() => erroreDelLink(globalThis.location?.hash));
+  useEffect(() => {
+    if (!guaioLink) return;
+    setSyncOpen(true);
+    try {
+      history.replaceState(history.state, "", location.pathname + location.search);
+    } catch {
+      /* l'indirizzo resta sporco: non rompe niente */
+    }
+  }, [guaioLink]);
   const [localIds, setLocalIds] = useState(null);
   const [themeId, setThemeId] = useState(() => {
     const saved = loadReaderSettings(Math.min(window.innerWidth, window.innerHeight)).appTheme;
@@ -464,6 +1014,22 @@ export default function App() {
   const [themeOpen, setThemeOpen] = useState(false);
   const theme = THEMES[themeId];
 
+  // La misura si applica PRIMA del primo render, come il tema: `F` e `R`
+  // sono oggetti vivi, e chi legge dopo trova gia' i numeri giusti. Non
+  // serve lo script in testa a `index.html` che il colore di fondo si porta
+  // dietro — li' il body e' gia' dipinto prima che il bundle parta, qui non
+  // c'e' una sola parola sullo schermo finche' React non disegna.
+  const [misura, setMisura] = useState(() => {
+    const id = leggiScalaUI();
+    applicaScalaUI(id);
+    return id;
+  });
+
+  function pickMisura(id) {
+    applicaScalaUI(id);
+    setMisura(id);
+  }
+
   function pickTheme(id) {
     applyAppTheme(id);
     setThemeId(id);
@@ -473,33 +1039,223 @@ export default function App() {
   }
   const toastTimer = useRef(null);
   const playerRef = useRef(null);
+  const svegliaRef = useRef(() => {});
+  const segnoRef = useRef(() => {});
+  const [salva, setSalva] = useState(false);
+  // IL GUSCIO ANDROID CHE SALUTA (`lib/sfondo.js`): la porta su cui mandargli
+  // la copertina per la schermata di blocco, e la scelta di farlo
+  const [guscio, setGuscio] = useState(null);
+  // la lista delle novita' va al guscio a ogni porta nuova (il guscio di
+  // prima puo' essere stato ucciso) e a ogni cambio; un guscio vecchio non
+  // la legge e non risponde, e le Impostazioni lo dicono
+  const mandaNovita = (lista) => {
+    setNovita(lista);
+    if (!guscio?.porta) return;
+    try {
+      guscio.porta.postMessage(messaggioNovita(lista));
+    } catch {
+      /* una porta morta: il prossimo saluto rimanda */
+    }
+  };
+  useEffect(() => {
+    // al saluto solo se c'e' qualcosa da seguire: una lista vuota parte dal
+    // tocco che toglie l'ultima, e il saluto resta un saluto
+    if (guscio?.porta && leggiNovita().length) mandaNovita(leggiNovita());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guscio?.porta]);
+  // quale guscio ha aperto la pagina e com'e' andato l'ultimo tentativo di
+  // parlarle: si legge subito, prima che `pulisciUrl` tolga la query
+  const [infoGuscio] = useState(() => {
+    const i = infoDalLancio(window.location.search);
+    if (i.versione) ricordaLancio(i);
+    // dopo una ricarica la query non c'e' piu': vale quel che si ricorda
+    return i.versione ? i : lancioRicordato() || i;
+  });
+  const [sfondo, setSfondo] = useState(leggiSfondo);
+  // IL VERSO DEL TABLET: lo sfondo si manda e si toglie solo in piedi
+  // (Android lo ritaglia per lo schermo com'e' in quel momento), e quando
+  // torna in piedi si rimanda quel che aspettava
+  const [verso, setVerso] = useState(() => inPiedi());
+  const togliInAttesa = useRef(false);
+  useEffect(() => {
+    const mq = window.matchMedia?.("(orientation: portrait)");
+    const aggiorna = () => setVerso(inPiedi());
+    mq?.addEventListener?.("change", aggiorna);
+    window.addEventListener("orientationchange", aggiorna);
+    window.addEventListener("resize", aggiorna);
+    return () => {
+      mq?.removeEventListener?.("change", aggiorna);
+      window.removeEventListener("orientationchange", aggiorna);
+      window.removeEventListener("resize", aggiorna);
+    };
+  }, []);
+  const sfondoMandato = useRef(null);
+  // la copertina che il guscio ha detto di aver messo: quella non si rimanda
+  const sfondoConfermato = useRef(null);
+  const confermaSfondo = useRef(false);
+  // quante volte si e' mandato o risposto: la riga nelle Impostazioni si ridisegna
+  const [invii, setInvii] = useState(0);
+  const invioGuscio = useMemo(() => ultimoInvio(), [invii]);
+  useEffect(() => {
+    // A OGNI SALUTO SI RIPARTE: il guscio saluta a pagina caricata e ogni
+    // volta che la scheda torna davanti, e una copertina mandata senza l'ok
+    // era su una porta morta (il tablet mostrava il libro di prima). Un
+    // oggetto nuovo rifa' l'invio; la chiave confermata lo ferma.
+    const riparti = (porta) => {
+      sfondoMandato.current = dopoIlSaluto(sfondoMandato.current, sfondoConfermato.current);
+      setGuscio({ porta });
+    };
+    const saluto = (e) => {
+      annotaMessaggio(e);
+      const porta = portaDelGuscio(e, window.location.origin);
+      if (!porta) return;
+      porta.onmessage = (m) => {
+        const sn = statoNovita(m.data);
+        if (sn) {
+          setStatoAvvisi(sn);
+          return;
+        }
+        // il saluto viaggia sulla porta: si risponde li', o il guscio risaluta
+        if (m.data === SALUTO) {
+          porta.postMessage(CIAO);
+          riparti(porta);
+          return;
+        }
+        const r = risposta(m.data);
+        if (!r) return;
+        const togliendo = ultimoInvio()?.esito === "togli";
+        segnaRisposta(r);
+        setInvii((v) => v + 1);
+        if (r.errore) notify(togliendo ? `Lo sfondo della schermata di blocco non si è tolto: ${r.errore}` : `La copertina non è andata sulla schermata di blocco: ${r.errore}`);
+        else if (r.rimesso) notify("La schermata di blocco è tornata allo sfondo di prima");
+        else if (r.tolto || togliendo) notify("Sfondo tolto: quello di prima non si era potuto salvare, Android ha messo il suo");
+        else if (r.senzaPrima) {
+          sfondoConfermato.current = sfondoMandato.current;
+          confermaSfondo.current = false;
+          notify(`La copertina è sulla schermata di blocco, ma ${fraseSenzaPrima(infoGuscio?.android)}`);
+        } else {
+          sfondoConfermato.current = sfondoMandato.current;
+          // si dice solo la prima volta dopo l'accensione: poi a ogni libro
+          // sarebbe una riga di troppo
+          if (confermaSfondo.current) {
+            confermaSfondo.current = false;
+            notify("La copertina è sulla schermata di blocco");
+          }
+        }
+      };
+      porta.start?.();
+      // la porta e' la stretta di mano: si risponde subito, e il guscio
+      // smette di risalutare
+      porta.postMessage(CIAO);
+      riparti(porta);
+    };
+    // e quando la pagina torna davanti da sola, quel che aspetta ancora
+    // l'ok si riprova sulla porta che c'e'
+    const davanti = () => {
+      if (document.visibilityState !== "visible") return;
+      setGuscio((g) => {
+        if (!g || !sfondoMandato.current || sfondoMandato.current === sfondoConfermato.current) return g;
+        sfondoMandato.current = null;
+        return { ...g };
+      });
+    };
+    window.addEventListener("message", saluto);
+    document.addEventListener("visibilitychange", davanti);
+    return () => {
+      window.removeEventListener("message", saluto);
+      document.removeEventListener("visibilitychange", davanti);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  function accendiSfondo(acceso) {
+    setSfondo(scriviSfondo(acceso));
+    // riacceso si rimanda da capo; spento, il guscio toglie lo sfondo che
+    // ha messo lui (il lettore: «ho bloccato la feature e vedo ancora
+    // Asterix»), e la schermata di blocco torna a quello della iniziale
+    sfondoMandato.current = null;
+    sfondoConfermato.current = null;
+    confermaSfondo.current = acceso;
+    if (!acceso && guscio) {
+      if (!inPiedi()) {
+        togliInAttesa.current = true;
+        segnaInvio({ quando: Date.now(), esito: "togli sdraiato" });
+      } else {
+        guscio.porta.postMessage(TOGLI);
+        segnaInvio({ quando: Date.now(), esito: "togli" });
+      }
+      setInvii((v) => v + 1);
+    }
+  }
+  useEffect(() => {
+    if (!verso || !togliInAttesa.current || !guscio) return;
+    togliInAttesa.current = false;
+    guscio.porta.postMessage(TOGLI);
+    segnaInvio({ quando: Date.now(), esito: "togli" });
+    setInvii((v) => v + 1);
+  }, [verso, guscio]);
   const swUpdate = useRef(null);
   const [updateReady, setUpdateReady] = useState(false);
-  const flags = useRef({ reading: false, updateReady: false });
+  const flags = useRef({ reading: false, updateReady: false, lavoroLungo: false });
+  const swReg = useRef(null);
+
+  useEffect(() => {
+    pulisciUrl();
+    // «Apri con» e la condivisione: il sistema apre l'app (o richiama
+    // quella aperta, `focus-existing` nel manifest) e passa i file di qui.
+    // Il consumatore resta registrato per tutta la vita dell'app: il
+    // secondo file condiviso arriva sulla stessa finestra.
+    try {
+      window.launchQueue?.setConsumer?.((params) => {
+        fileDaLancio(params).then((files) => {
+          if (!files.length) return;
+          daFuori(files);
+        });
+      });
+    } catch {
+      /* senza launchQueue si importa dal tasto, come sempre */
+    }
+  }, []);
 
   useEffect(() => {
     requestPersistence();
+    precaricaStanze();
     try {
       swUpdate.current = registerSW({
         onNeedRefresh: () => {
           flags.current.updateReady = true;
           setUpdateReady(true);
         },
+        onRegisteredSW: (_url, reg) => {
+          swReg.current = reg || null;
+        },
       });
     } catch {
       /* service worker non disponibile (dev / browser antico): l'app funziona uguale */
     }
     const onVis = () => {
-      if (
-        document.visibilityState === "hidden" &&
-        flags.current.updateReady &&
-        !flags.current.reading
-      ) {
+      const f = flags.current;
+      if (siAggiornaNascosta({ nascosta: document.visibilityState === "hidden", pronta: f.updateReady, leggendo: f.reading, lavoroLungo: f.lavoroLungo })) {
         swUpdate.current?.(true);
       }
     };
     document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
+    // La caccia all'aggiornamento non si ferma al primo controllo: aperta
+    // l'app e infilatosi subito nel libro, il banner non compare (mai a
+    // lettore aperto) e il passaggio in background non aggiorna (si sta
+    // leggendo) — si puo' restare indietro di rilasci per giorni senza
+    // accorgersene. Un giro d'orologio ogni mezz'ora rimette in pari senza
+    // disturbare: se la novita' c'e', il banner aspetta il momento buono.
+    // Si CERCA soltanto: update() sulla registrazione scopre se c'e' una
+    // versione nuova, e semmai fa scattare onNeedRefresh. Chiamare invece
+    // la funzione di registerSW ricaricherebbe la pagina — un reload a
+    // lettore aperto, proprio cio' che non si deve fare mai.
+    const ronda = setInterval(() => {
+      cercaInSilenzio(swReg.current);
+    }, 30 * 60 * 1000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      clearInterval(ronda);
+    };
   }, []);
 
   function notify(message, action = null) {
@@ -508,59 +1264,675 @@ export default function App() {
     toastTimer.current = setTimeout(() => setToast(null), action ? 8000 : 4500);
   }
 
+  // una scheda cambiata parte da sola dopo un attimo (`lib/presto.js`)
+  const occupato = useRef(false);
+  occupato.current = sync.busy;
+  const presto = useRef(null);
+  if (!presto.current) presto.current = sincronizzaPresto(() => runSync.current(true), { occupato: () => occupato.current });
+  useEffect(() => () => presto.current?.ferma(), []);
+  // una chiave salvata o tolta parte da sola verso gli altri dispositivi (`chiaviInViaggio.js`)
+  useEffect(() => {
+    const via = () => presto.current?.();
+    window.addEventListener(EVENTO_CHIAVI, via);
+    return () => window.removeEventListener(EVENTO_CHIAVI, via);
+  }, []);
+
   function updateBooks(next) {
     saveBooks(next);
     setBooks(next);
+    presto.current?.();
+  }
+
+  // LE SCHEDE SENZA FILE (`lib/senzaFile.js`): entrano subito, col dorso
+  // disegnato, e le copertine scendono dopo, due alla volta — una saga da
+  // quindici volumi non aspetta quindici immagini per farsi vedere. Quel che
+  // e' gia' sullo scaffale (anche solo come scheda) non si raddoppia.
+  function aggiungiSenzaFile(voci = []) {
+    const ora = Date.now();
+    const nuove = [];
+    let gia = 0;
+    for (const [i, v] of voci.entries()) {
+      if (giaSulloScaffale(v, [...books, ...nuove])) {
+        gia += 1;
+        continue;
+      }
+      const s = schedaSenzaFile(v, { ora: ora + i });
+      if (s) nuove.push(s);
+    }
+    if (nuove.length) {
+      const tutti = [...books, ...nuove];
+      updateBooks(tutti);
+      for (const b of nuove) timbraScheda(b.id);
+      copertineDelleNuove(nuove);
+    }
+    notify(fraseAggiunte({ aggiunte: nuove.length, gia }));
+    return nuove;
+  }
+
+  async function copertineDelleNuove(nuove) {
+    let fatte = 0;
+    for (let i = 0; i < nuove.length; i += 2) {
+      await Promise.all(
+        nuove.slice(i, i + 2).map(async (b) => {
+          const blob = await copertinaDalCatalogo({ titolo: b.title, autore: b.author }).catch(() => null);
+          const pronta = blob ? await preparaCopertina(blob).catch(() => null) : null;
+          if (!pronta) return;
+          await putCover(b.id, pronta).catch(() => {});
+          touchBook(b.id);
+          caricaCopertina(b.id);
+          fatte += 1;
+        })
+      );
+    }
+    if (fatte < nuove.length) notify(fatte ? `🖼 Copertine trovate: ${fatte} di ${nuove.length}` : "🖼 Nel catalogo non ho trovato le copertine: restano i dorsi disegnati");
+  }
+
+  // dal cammino: i volumi che mancano entrano, e il cammino si rifà con loro
+  function mettiInBiblioteca(voci) {
+    const nuove = aggiungiSenzaFile(voci);
+    const rifatto = nuove.length ? rifaiCammino(cammino, [...books, ...nuove]) : null;
+    if (rifatto) setCammino(rifatto);
+  }
+
+  // I NUMERI DELLA GUIDA, scritti dal pannello del cammino. Si scrive la
+  // biblioteca di ADESSO e non la copia che il pannello aveva davanti: nel
+  // frattempo puo' essere entrato un libro. E ogni volume toccato si
+  // timbra, o il numero nuovo resterebbe su questo dispositivo.
+  function scriviNumeriCammino(campi) {
+    if (!campi?.size) return;
+    updateBooks(books.map((b) => (campi.has(b.id) ? { ...b, ...campi.get(b.id) } : b)));
+    for (const id of campi.keys()) timbraScheda(id);
+    setCammino(null);
+    notify(`${campi.size} ${campi.size === 1 ? "volume messo" : "volumi messi"} nell'ordine della guida`);
+    runSync.current?.(true);
   }
 
   const runSync = useRef(() => {});
   runSync.current = async (quiet = false) => {
-    if (!isSyncConfigured() || sync.busy) return;
-    if (!(await getSession())) return;
+    if (sync.busy) return;
+    if (!isSyncConfigured() || !(await getSession())) return;
     setSync((s) => ({ ...s, busy: true, message: quiet ? s.message : "Sincronizzo…" }));
     try {
       const res = await syncNow({
-        onProgress: (message) => setSync((s) => ({ ...s, message })),
+        // le schede scese si vedono subito: le copertine arrivano dopo
+        onLibri: (libri) => setBooks(libri),
+        // il dettaglio si azzera insieme al messaggio: senza, il testo
+        // tecnico del guasto di prima resterebbe ripiegato sotto la riga
+        // di avanzamento del giro nuovo — un «dettagli» che racconta
+        // un'altra storia
+        onProgress: (message) => setSync((s) => ({ ...s, message, dettaglio: null })),
       });
       if (res.books) setBooks(res.books);
       setLocalIds(await localFileIds());
-      const moved = (res.pulled || 0) + (res.pushed || 0) + (res.removed || 0);
+      // DETTO LIBRO PER LIBRO (`raccontaGiro`): «Aggiornati 12 elementi»
+      // non diceva se la saga scritta sul PC fosse arrivata
+      const racconto = res.racconto || [];
+      ricordaGiro(racconto);
       setSync({
         busy: false,
-        message: moved ? `Aggiornati ${moved} elementi` : "Tutto già allineato",
+        message: fraseGiro(racconto),
+        racconto,
         at: Date.now(),
         signedIn: true,
       });
-      if (!quiet && moved) notify("Biblioteca sincronizzata ✨");
+      // quel che e' arrivato si dice anche dal giro silenzioso dell'avvio
+      const arrivi = avvisoArrivi(racconto);
+      if (arrivi) notify(arrivi);
+      else if (!quiet && racconto.length) notify(`Biblioteca sincronizzata ✨ ${fraseGiro(racconto)}`);
     } catch (e) {
-      setSync((s) => ({ ...s, busy: false, message: `Sincronizzazione fallita: ${e?.message || "errore"}` }));
+      // IL TESTO GREZZO DI POSTGRES NON ARRIVA PIÙ SULLO SCHERMO: qui
+      // c'era `e.message` incollato com'era, e il lettore si è ritrovato
+      // davanti «null value in column "fav" … violates not-null
+      // constraint». Ora `spiegaSync` dice cos'è successo e cosa farci, e
+      // il testo tecnico resta sotto «dettagli» per quando arriva la
+      // fotografia a chi deve ripararlo.
+      const guaio = spiegaSync(e);
+      if (!eDiRete(e)) annotaErrore(e, { dove: "sincronizzazione" });
+      setSync((s) => ({ ...s, busy: false, message: guaio.frase, dettaglio: guaio.dettaglio }));
       if (!quiet) notify("Sincronizzazione fallita — riprovo più tardi");
     }
   };
 
+  // LA CHIAVE DELL'ORACOLO SCADE, E LO SI DICE PRIMA che smetta di
+  // rispondere. La riga dentro la scheda dell'Oracolo la vede solo chi
+  // l'Oracolo lo sta aprendo — e chi deve sostituire una chiave che ancora
+  // funziona sta leggendo, non interrogando. Una volta al giorno: un avviso
+  // che torna a ogni avvio si impara a chiudere senza leggerlo.
+  useEffect(() => {
+    const frase = daAvvisare();
+    if (frase) notify(`🔑 ${frase} La cambi da Impostazioni, in alto.`);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!isSyncConfigured()) return;
     let alive = true;
+    // «dentro» vive fuori dallo stato apposta: serve a distinguere la
+    // sessione CADUTA da quella che non c'e' mai stata, e un updater di
+    // React non deve fare toast (StrictMode lo chiamerebbe due volte)
+    let dentro = false;
     getSession().then((s) => {
       if (!alive || !s) return;
+      dentro = true;
       setSync((v) => ({ ...v, signedIn: true }));
       runSync.current(true);
     });
+    // LA SESSIONE CHE CADE SI DICE: la libreria di Supabase la butta via da
+    // sola quando il server rifiuta il refresh token, e fin qui la nuvoletta
+    // restava accesa e il pannello riproponeva l'accesso senza una riga di
+    // spiegazione. L'uscita premuta col dito ha gia' il suo toast nel
+    // pannello, e qui si tace.
+    const viaAuth = onAuthChange((evento, sessione, voluta) => {
+      if (!alive) return;
+      if (evento === "SIGNED_OUT") {
+        const era = dentro;
+        dentro = false;
+        setSync((v) => (v.signedIn ? { ...v, signedIn: false } : v));
+        if (era && !voluta) notify("☁ La sessione nel cloud è scaduta: rientra dal pannello della nuvola. I libri restano qui.");
+      } else if (sessione) {
+        dentro = true;
+        setSync((v) => (v.signedIn ? v : { ...v, signedIn: true }));
+      }
+      // come in Ciak: il link dell'email di reimpostazione fa entrare, e
+      // senza chiedere subito la password nuova si resterebbe dentro senza
+      // saperla
+      if (evento === "PASSWORD_RECOVERY") {
+        setChiediPassword(true);
+        setSyncOpen(true);
+      }
+    });
     localFileIds().then((ids) => alive && setLocalIds(ids));
-    const onOnline = () => runSync.current(true);
-    const onVis = () => document.visibilityState === "visible" && runSync.current(true);
-    window.addEventListener("online", onOnline);
+    // QUANDO L'APP TORNA DAVANTI SI SINCRONIZZA, e sul PC «davanti» e' anche
+    // tornare sulla sua finestra (chiesto dal lettore: «quando apro l'app
+    // questa si sincronizzi tutto»): la finestra resta visibile per ore e
+    // `visibilitychange` non scatta mai, cosi' il libro aperto sul tablet
+    // restava «Da leggere» sul PC. Finestra e visibilita' arrivano insieme
+    // e fanno un giro solo, e un giro chiesto mentre un altro gira non si
+    // perde: riparte dopo (`sincronizzaPresto`)
+    const davanti = sincronizzaPresto(() => runSync.current(true), { attesa: DAVANTI, occupato: () => occupato.current });
+    const onVis = () => document.visibilityState === "visible" && davanti();
+    window.addEventListener("online", davanti);
+    window.addEventListener("focus", davanti);
     document.addEventListener("visibilitychange", onVis);
     return () => {
       alive = false;
-      window.removeEventListener("online", onOnline);
+      viaAuth();
+      davanti.ferma();
+      window.removeEventListener("online", davanti);
+      window.removeEventListener("focus", davanti);
       document.removeEventListener("visibilitychange", onVis);
     };
   }, []);
 
+  // SENZA SUPABASE l'effetto qui sopra si ferma subito, e con lui il conto
+  // dei byte di casa: qui si fa quel poco.
+  useEffect(() => {
+    if (isSyncConfigured()) return;
+    let alive = true;
+    localFileIds().then((ids) => alive && setLocalIds(ids));
+    return () => { alive = false; };
+  }, []);
+
+  // si timbra solo quel che viaggia: la quarta di copertina scaricata
+  // aprendo la scheda non e' una scheda cambiata, e timbrarla farebbe
+  // vincere questa copia (saga vecchia compresa) su quella cambiata altrove
   function handleSaveMeta(patch) {
-    touchBook(patch.id);
+    const prima = books.find((b) => b.id === patch.id);
+    if (schedaDiversa(prima, { ...prima, ...patch })) timbraScheda(patch.id);
     updateBooks(books.map((b) => (b.id === patch.id ? { ...b, ...patch } : b)));
+  }
+
+  // IL CBR DIVENTATO CBZ (`convertiLibroInCbz`): la scheda si legge da
+  // disco e non dallo stato, perche' il giro della Manutenzione dura minuti
+  // e nel frattempo la biblioteca puo' essere cambiata
+  function applicaConversione(id, patch) {
+    const ora = loadBooks();
+    const prima = ora.find((b) => b.id === id);
+    if (!prima) return;
+    if (schedaDiversa(prima, { ...prima, ...patch })) timbraScheda(id);
+    updateBooks(ora.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  }
+
+  async function handleConvertiCbr(id, onProgress) {
+    const b = loadBooks().find((x) => x.id === id);
+    if (!b) return false;
+    try {
+      applicaConversione(id, await convertiLibroInCbz(b, { onProgress }));
+      setLocalIds(await localFileIds());
+      notify(`«${b.title}» è un CBZ: da adesso si apre a pezzi, senza scaricarlo intero ✓`);
+      return true;
+    } catch (e) {
+      notify(`La conversione non è riuscita: ${e?.message || e}`);
+      return false;
+    }
+  }
+
+  // IL GIRO DEI CBR VIVE QUI, SOPRA LE SEZIONI (chiesto dal lettore: «tutti
+  // caricamenti e lavorazioni in generale possono sempre tenersi in
+  // background…?»). Stava nella Libreria: uscendo il giro continuava di
+  // nascosto, il tasto tornava «Converti», e un secondo tocco faceva partire
+  // due giri insieme sugli stessi volumi. Qui ce n'e' uno solo, lo si vede
+  // da ogni sezione (`BarraLavoro`), e i libri chiesti si ricordano
+  // (`ricordaLavoro`) perche' un'app chiusa a meta' possa riprendere.
+  const [lavoro, setLavoro] = useState(null);
+  const filoLavoro = useRef(null);
+  // i doppioni dei fumetti (vedi sotto, «I DOPPIONI DEI FUMETTI»): le copie
+  // da togliere non si convertono
+  const [doppi, setDoppi] = useState([]);
+  const copieDaTogliere = new Set(doppi.flatMap((g) => g.via));
+  const [sospeso, setSospeso] = useState(() => lavoroSospeso());
+  const cbrDaFare = cbrDaConvertire(books, { qui: localIds || new Set() }).filter((b) => !copieDaTogliere.has(b.id));
+  const restanti = sospeso && !lavoro && localIds ? restantiDelLavoro(sospeso, cbrDaFare) : [];
+  useEffect(() => {
+    // ricordati tutti convertiti (o tolti): non c'e' niente da riprendere
+    if (sospeso && !lavoro && localIds && !restanti.length) {
+      dimenticaLavoro();
+      setSospeso(null);
+    }
+  }, [sospeso, lavoro, localIds, restanti.length]);
+
+  async function convertiICbr(lista) {
+    if (filoLavoro.current || !lista.length) return;
+    const mio = {};
+    filoLavoro.current = mio;
+    ricordaLavoro(lista.map((b) => b.id));
+    setSospeso(null);
+    setLavoro({ i: 0, totale: lista.length, titolo: lista[0].title, passo: null });
+    try {
+      const esito = await convertiTutti(lista, {
+        converti: (b, onProgress) => convertiLibroInCbz(b, { onProgress }),
+        applica: applicaConversione,
+        vivo: () => filoLavoro.current === mio,
+        onProgress: (p) => filoLavoro.current === mio && setLavoro(p),
+      });
+      // fermato resta da riprendere; finito, si dimentica
+      if (esito.fermato) setSospeso(lavoroSospeso());
+      else dimenticaLavoro();
+      notify(resocontoConversioni(esito));
+    } catch (e) {
+      setSospeso(lavoroSospeso());
+      notify(e?.message || "La conversione non è partita");
+    } finally {
+      if (filoLavoro.current === mio) filoLavoro.current = null;
+      setLavoro(null);
+      setLocalIds(await localFileIds().catch(() => null));
+    }
+  }
+  const fermaLavoro = () => {
+    filoLavoro.current = null;
+  };
+
+  // LEXICANUM SCENDE QUI, come gli altri lavori lunghi: dalle Impostazioni
+  // si chiede, da ogni sezione si vede e si ferma (`BarraLavoro`). Dove era
+  // arrivato lo ricorda il modulo (`lex_giro`), quindi un'app chiusa a meta'
+  // riprende dalla pagina dopo. E' solo rete: puo' scendere mentre un altro
+  // lavoro gira.
+  // E FANDOM ALLO STESSO MODO, con la sua riga: sono due wiki, due host,
+  // due lavori che possono scendere insieme.
+  const [lex, setLex] = useState(null);
+  const [fan, setFan] = useState(null);
+  const filoLex = useRef(null);
+  const filoFan = useRef(null);
+  // un wiki che ha risposto con un guasto vero non si riprova da solo a ogni
+  // ritorno davanti: l'avviso si e' gia' visto, si riprende a mano
+  const wikiGuasti = useRef(new Set());
+  async function scaricaWikiQui(quale, { aggiorna = false, daSolo = false } = {}) {
+    const filo = quale === "fan" ? filoFan : filoLex;
+    const metti = quale === "fan" ? setFan : setLex;
+    if (filo.current) return;
+    const mio = {};
+    filo.current = mio;
+    metti({ voci: 0, totale: null, byte: 0 });
+    const nome = quale === "fan" ? "Fandom" : "Lexicanum";
+    try {
+      const { scaricaLexicanum, fraseLexicanum, segnaFermato, LEXICANUM, FANDOM } = await import("./lib/lexicanum.js");
+      const wiki = quale === "fan" ? FANDOM : LEXICANUM;
+      if (!daSolo) {
+        segnaFermato(wiki, false);
+        wikiGuasti.current.delete(quale);
+      }
+      const esito = await scaricaLexicanum({
+        aggiorna,
+        wiki,
+        fermo: () => filo.current !== mio,
+        onProgress: (p) => filo.current === mio && metti(p),
+      });
+      notify(
+        esito.fermato
+          ? `${nome} fermato a ${fraseLexicanum(esito)}: si riprende dalle Impostazioni.`
+          : `${quale === "fan" ? "📜" : "⚔"} ${nome} sul dispositivo: ${fraseLexicanum(esito)} ✓`
+      );
+    } catch (e) {
+      wikiGuasti.current.add(quale);
+      notify(`${e?.message || `${nome} non è sceso.`} Quel che è già qui resta: si riprende dalle Impostazioni.`);
+    } finally {
+      if (filo.current === mio) filo.current = null;
+      metti(null);
+    }
+  }
+  const scaricaLex = (o) => scaricaWikiQui("lex", o);
+  const scaricaFan = (o) => scaricaWikiQui("fan", o);
+  const fermaWiki = (quale) => {
+    (quale === "fan" ? filoFan : filoLex).current = null;
+    import("./lib/lexicanum.js").then((m) => m.segnaFermato(quale === "fan" ? m.FANDOM : m.LEXICANUM, true));
+  };
+  const fermaLex = () => fermaWiki("lex");
+  const fermaFan = () => fermaWiki("fan");
+
+  // LE IMMAGINI PRINCIPALI DEI WIKI scendono allo stesso modo, a parte e
+  // solo a richiesta: un giro per volta (sono centinaia di mega), con la sua
+  // riga, che si ferma e riparte come quello del testo.
+  const [imm, setImm] = useState(null);
+  const filoImm = useRef(null);
+  const immGuaste = useRef(false);
+  // solo Fandom: Lexicanum non segna l'immagine principale, e le sue voci
+  // prendono quelle di Fandom. `quale` resta nello stato per la riga del
+  // lavoro e per il blocco del wiki
+  async function scaricaImmaginiQui(quale = "fan", { daSolo = false } = {}) {
+    if (filoImm.current) return;
+    const mio = { quale };
+    filoImm.current = mio;
+    setImm({ quale, immagini: 0, byte: 0 });
+    try {
+      const m = await import("./lib/lexicanum.js");
+      if (!daSolo) {
+        m.segnaFermato(m.immaginiDi(m.FANDOM), false);
+        immGuaste.current = false;
+      }
+      const esito = await m.scaricaImmagini({
+        wiki: m.FANDOM,
+        fermo: () => filoImm.current !== mio,
+        onProgress: (p) => filoImm.current === mio && setImm({ quale, ...p }),
+      });
+      notify(
+        esito.fermato
+          ? `Immagini di Fandom fermate a ${m.fraseImmagini(esito)}: si riprendono dalle Impostazioni.`
+          : `🖼 Immagini di Fandom sul dispositivo: ${m.fraseImmagini(esito)} ✓`
+      );
+    } catch (e) {
+      immGuaste.current = true;
+      notify(`${e?.message || "Le immagini di Fandom non sono scese."} Quelle già qui restano.`);
+    } finally {
+      if (filoImm.current === mio) filoImm.current = null;
+      setImm(null);
+    }
+  }
+  const fermaImm = () => {
+    filoImm.current = null;
+    import("./lib/lexicanum.js").then((m) => m.segnaFermato(m.immaginiDi(m.FANDOM), true));
+  };
+  // LE ALTRE ILLUSTRAZIONI DI FANDOM: lo stesso giro, piu' lungo (prima
+  // l'elenco dei file di ogni voce, poi i file), alla misura scelta
+  const [ill, setIll] = useState(null);
+  const filoIll = useRef(null);
+  const illGuasto = useRef(false);
+  async function scaricaIllustrazioniQui(lato, { daSolo = false } = {}) {
+    if (filoIll.current) return;
+    const mio = {};
+    filoIll.current = mio;
+    setIll({ fase: "elenco", voci: 0 });
+    try {
+      const m = await import("./lib/lexicanum.js");
+      if (!daSolo) {
+        m.segnaFermato(m.illustrazioniDi(m.FANDOM), false);
+        illGuasto.current = false;
+      }
+      const esito = await m.scaricaIllustrazioni({
+        wiki: m.FANDOM,
+        ...(lato ? { lato } : {}),
+        fermo: () => filoIll.current !== mio,
+        onProgress: (p) => filoIll.current === mio && setIll(p),
+      });
+      notify(
+        esito.fermato
+          ? `Illustrazioni di Fandom fermate a ${m.fraseIllustrazioni(esito)}: si riprendono dalle Impostazioni.`
+          : `🖼 Illustrazioni di Fandom sul dispositivo: ${m.fraseIllustrazioni(esito)} ✓`
+      );
+    } catch (e) {
+      illGuasto.current = true;
+      notify(`${e?.message || "Le illustrazioni di Fandom non sono scese."} Quelle già qui restano.`);
+    } finally {
+      if (filoIll.current === mio) filoIll.current = null;
+      setIll(null);
+    }
+  }
+  const fermaIll = () => {
+    filoIll.current = null;
+    import("./lib/lexicanum.js").then((m) => m.segnaFermato(m.illustrazioniDi(m.FANDOM), true));
+  };
+  // IL GIRO LASCIATO A META' RIPARTE DA SOLO: all'avvio (il sistema chiude
+  // l'app in secondo piano), al ritorno davanti e quando torna la rete.
+  // Quello fermato dal lettore resta fermo finche' non lo riprende lui.
+  useEffect(() => {
+    const riprendi = async () => {
+      if (document.visibilityState !== "visible") return;
+      const { giroDaRiprendere, immaginiDi, illustrazioniDi, LEXICANUM, FANDOM } = await import("./lib/lexicanum.js");
+      for (const [quale, filo, wiki] of [["lex", filoLex, LEXICANUM], ["fan", filoFan, FANDOM]]) {
+        if (filo.current || wikiGuasti.current.has(quale)) continue;
+        if (await giroDaRiprendere(undefined, wiki)) scaricaWikiQui(quale, { daSolo: true });
+      }
+      if (!filoImm.current && !immGuaste.current && (await giroDaRiprendere(undefined, immaginiDi(FANDOM)))) scaricaImmaginiQui("fan", { daSolo: true });
+      if (!filoIll.current && !illGuasto.current && (await giroDaRiprendere(undefined, illustrazioniDi(FANDOM)))) scaricaIllustrazioniQui(null, { daSolo: true });
+    };
+    const t = setTimeout(riprendi, 4000);
+    document.addEventListener("visibilitychange", riprendi);
+    window.addEventListener("online", riprendi);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("visibilitychange", riprendi);
+      window.removeEventListener("online", riprendi);
+    };
+  }, []);
+
+  // WIKTIONARY SUL DISPOSITIVO scende allo stesso modo: qualche decina di
+  // mega in una trentina di file, che sul tablet sono minuti — un lavoro
+  // lungo, visibile da ogni sezione, che si riprende dal file dopo.
+  const [wikt, setWikt] = useState(null);
+  const filoWikt = useRef(null);
+  async function scaricaWikt() {
+    if (filoWikt.current) return;
+    const mio = {};
+    filoWikt.current = mio;
+    setWikt({ fatti: 0, file: 0, scaricati: 0, totale: 0 });
+    try {
+      const { scaricaWiktionary } = await import("./lib/wiktionaryOffline.js");
+      const esito = await scaricaWiktionary({
+        fermo: () => filoWikt.current !== mio,
+        onProgress: (p) => filoWikt.current === mio && setWikt(p),
+      });
+      notify(
+        esito.fermato
+          ? "Wiktionary fermato a metà: si riprende dalle Impostazioni, dal punto dove era arrivato."
+          : `📚 Wiktionary inglese sul dispositivo: ${esito.voci.toLocaleString("it-IT")} voci ✓`
+      );
+    } catch (e) {
+      notify(`${e?.message || "Wiktionary non è sceso."} Quel che è già qui resta: si riprende dalle Impostazioni.`);
+    } finally {
+      if (filoWikt.current === mio) filoWikt.current = null;
+      setWikt(null);
+    }
+  }
+  const fermaWikt = () => {
+    filoWikt.current = null;
+  };
+
+  // I CBR CHE STANNO SOLO SUL DISCO (segnalato dal lettore: «ci sono file
+  // CBR che non mi fa mettere in CBZ»): non sono qui, e il
+  // giro di sopra non aveva niente da leggere. Si convertono sul disco
+  // (`convertiSulDisco`), sulla stessa riga del giro dei CBR: uno solo alla
+  // volta, si vede e si ferma da ogni sezione.
+  async function convertiDalDiscoQui(voci, radice) {
+    if (filoLavoro.current || !voci.length) return;
+    const mio = {};
+    filoLavoro.current = mio;
+    setLavoro({ i: 0, totale: voci.length, titolo: voci[0].libro.title, passo: null, da: "disco" });
+    try {
+      const { convertiSulDisco, fraseConvertitiDisco } = await import("./lib/disco.js");
+      const { convertiInCbz, apriFumetto } = await import("./lib/archivioFumetto.js");
+      const { formatoDaByte } = await import("./lib/fumetto.js");
+      const { copertinaOriginale } = await import("./lib/copertina.js");
+      const { improntaDi } = await import("./lib/importBook.js");
+      const { getCover, putCover } = await import("./lib/bookStore.js");
+      const esito = await convertiSulDisco(voci, {
+        radice,
+        eZip: async (f) => formatoDaByte(new Uint8Array(await f.slice(0, 8).arrayBuffer())) === "cbz",
+        converti: (f, onProgress) => convertiInCbz({ blob: f }, { onProgress }),
+        // il CBR si toglie solo se il CBZ scritto sul disco si apre davvero
+        apre: async (f) => ((await apriFumetto(f))?.pagine?.length || 0) > 0,
+        vivo: () => filoLavoro.current === mio,
+        onProgress: (p) => filoLavoro.current === mio && setLavoro({ ...p, da: "disco" }),
+      });
+      for (const c of esito.convertiti) {
+        const impronta = await improntaDi(c.cbz).catch(() => undefined);
+        applicaConversione(c.libro.id, { fileType: "cbz", ...(impronta ? { impronta } : {}) });
+        if (!(await getCover(c.libro.id).catch(() => null))) {
+          const cover = await copertinaOriginale({ ...c.libro, fileType: "cbz" }, c.cbz).catch(() => null);
+          if (cover) await putCover(c.libro.id, cover).catch(() => {});
+        }
+      }
+      notify(fraseConvertitiDisco(esito));
+    } catch (e) {
+      notify(e?.message || "La conversione non è partita");
+    } finally {
+      if (filoLavoro.current === mio) filoLavoro.current = null;
+      setLavoro(null);
+    }
+  }
+
+  // L'IMPORTAZIONE DA DRIVE VIVE QUI, come il giro dei CBR (segnalato dal
+  // lettore: «stavo importando i miei fumetti di Walking Dead, ho navigato
+  // un po' ed è sparito il caricamento»). Stava nella Libreria: uscendo
+  // continuava di nascosto, e alla fine scriveva la biblioteca di QUANDO
+  // ERA PARTITA — quel che era cambiato nel frattempo (un libro adottato,
+  // una saga scritta) tornava indietro. Qui si vede da ogni sezione, si
+  // ferma dalla barra, e alla fine si aggiunge alla biblioteca di adesso.
+  const [importo, setImporto] = useState(null);
+  const filoImport = useRef(null);
+  // IMPORTARE DAL DISCO (`vociDalDisco`, `schedeDalDisco`, `importaDaFuori`):
+  // nessun byte nel browser, e ogni scheda nasce gia' sul disco
+  async function importaDalDiscoQui(file) {
+    if (filoImport.current || !file.length) return;
+    const mio = {};
+    filoImport.current = mio;
+    const vivo = () => filoImport.current === mio;
+    const da = "📥 Dal disco";
+    setImporto({ da, fatti: 0, totale: file.length, nome: file[0].nome });
+    try {
+      const voci = vociDalDisco(file);
+      const aperti = new Map();
+      for (const v of voci) aperti.set(v.id, await v.handle.getFile());
+      const qui = await localFileIds().catch(() => null);
+      const esito = await importaDaFuori(voci, loadBooks(), {
+        senzaFile: (id) => !!qui && !qui.has(id),
+        apri: (v) => aperti.get(v.id),
+        onProgress: (p) => vivo() && setImporto({ ...p, da }),
+        vivo,
+      });
+      for (const r of esito.ritrovati || []) timbraScheda(r.id);
+      if (esito.added.length || esito.ritrovati?.length) {
+        updateBooks(schedeDalDisco(loadBooks(), esito));
+        runSync.current(true);
+      }
+      notify([resoconto(esito), esito.fermato ? "fermato: il resto lo aggiungi riprovando" : ""].filter((x) => x && x !== "Nessun file importato").join(" · ") || "Nessun tomo aggiunto");
+    } catch (e) {
+      notify(e?.message || "Il disco non ha risposto");
+    } finally {
+      if (filoImport.current === mio) filoImport.current = null;
+      setImporto(null);
+    }
+  }
+  const fermaImport = () => {
+    filoImport.current = null;
+  };
+
+
+  // I LAVORI SUL DISCO (riordinare, convertire): lunghi, vivono qui, si
+  // vedono e si fermano da ogni sezione, uno alla volta.
+  const [hdd, setHdd] = useState(null);
+  const filoHdd = useRef(null);
+  // RIORDINARE IL DISCO (`riordinaDisco`): ogni file nella casa della sua
+  // scheda, dentro lo stesso disco.
+  // anche «Metti da parte» (`daMettereDaParte`): lo stesso spostamento,
+  // verso `_Doppioni`
+  async function riordinaQui(voci, casa, { cosa = "🗂 Riordino il disco", frase = fraseRiordino } = {}) {
+    if (!voci.length) return;
+    if (filoHdd.current) return notify("Sto già lavorando sul disco: aspetta che finisca, o fermalo dalla barra in basso");
+    const mio = {};
+    filoHdd.current = mio;
+    const vivo = () => filoHdd.current === mio;
+    setHdd({ cosa, i: 0, totale: voci.length, nome: voci[0].file.nome, presi: 0, byte: 0 });
+    try {
+      const esito = await riordinaDisco(voci, { radice: casa, vivo, onProgress: (p) => vivo() && setHdd({ ...p, cosa }) });
+      notify(frase(esito));
+    } catch (e) {
+      notify(e?.message || "Il disco non ha risposto");
+    } finally {
+      if (filoHdd.current === mio) filoHdd.current = null;
+      setHdd(null);
+    }
+  }
+
+  // I DOPPIONI (`doppioniInBiblioteca`): lo stesso volume in due o tre
+  // schede — fumetti nati prima che l'importazione saltasse i gemelli di
+  // Colab, libri reimportati da Drive accanto alla scheda rimasta senza file.
+  // Si contano qui (servono le copertine, che stanno nel database) e si
+  // uniscono dalla Manutenzione: di ogni gruppo resta la scheda che conta di
+  // piu', le altre se ne vanno.
+
+  //
+  // A RIPOSO: servono alla Manutenzione, e all'avvio l'elenco delle
+  // copertine e il conto (due volte: l'effetto riparte quando arrivano i
+  // file di qui) passavano davanti alle copertine dell'Ingresso
+  useEffect(() => {
+    let vivo = true;
+    const annulla = aRiposo(() =>
+      listCoverIds()
+        .then((ids) => new Set(ids))
+        .catch(() => new Set())
+        .then((cop) => {
+          if (!vivo) return;
+          // finche' non si sa quali file stanno qui, nessuno e' «senza file»
+          const conFile = (id) => !localIds || localIds.has(id);
+          setDoppi(doppioniInBiblioteca(books, { progresso: getProgress, stato: getStatus, segni: (id) => getMarks(id).length, copertina: (id) => cop.has(id), conFile }));
+        })
+    );
+    return () => {
+      vivo = false;
+      annulla();
+    };
+  }, [books, localIds]);
+  async function unisciDoppioni(gruppi) {
+    // il giro dei CBR potrebbe star convertendo proprio una copia da togliere
+    if (filoLavoro.current || filoImport.current) {
+      notify("Prima ferma il lavoro in corso, poi unisci i doppioni.");
+      return;
+    }
+    const via = gruppi.flatMap((g) => g.via);
+    for (const id of via) {
+      removeBookMeta(id);
+      await removeBookData(id).catch(() => {});
+    }
+    setBooks(loadBooks());
+    setSpazioCambiato((n) => n + 1);
+    notify(`${gruppi.length === 1 ? "Un volume" : `${gruppi.length} volumi`} di nuovo con una scheda sola: ${via.length === 1 ? "tolta una copia" : `tolte ${via.length} copie`} ✓`);
+    runSync.current(true);
+  }
+
+  // ELIMINARE I VOLUMI DI UNA RACCOLTA (`lib/eliminaRaccolta.js`): come
+  // «Elimina» nella scheda, uno per uno, e la raccolta si chiude
+  async function eliminaRaccolta(r, ids) {
+    if (filoLavoro.current || filoImport.current) {
+      notify("Prima ferma il lavoro in corso, poi elimina la raccolta.");
+      return;
+    }
+    for (const id of ids) {
+      removeBookMeta(id);
+      await removeBookData(id).catch(() => {});
+    }
+    setBooks(loadBooks());
+    setRaccolta(null);
+    setSpazioCambiato((n) => n + 1);
+    notify(`«${r.nome}» eliminata: ${ids.length === 1 ? "un volume" : `${ids.length} volumi`} tornati alla polvere 🕯️`);
+    runSync.current(true);
   }
 
   async function handleDelete(id) {
@@ -572,14 +1944,133 @@ export default function App() {
     } catch {
       /* i metadati sono già rimossi: i bytes orfani non sono raggiungibili dalla UI */
     }
+    setSpazioCambiato((n) => n + 1);
     notify("Il tomo è tornato alla polvere 🕯️");
     runSync.current(true);
   }
 
+  // TOGLIERE L'EBOOK NON È ELIMINARE IL LIBRO (chiesto dal lettore: «se
+  // decidessi di togliere l'ebook vorrei che comunque rimanesse la
+  // copertina per tenerlo nella libreria, semplicemente non potrei aprirlo
+  // per leggerlo»). Se ne vanno i byte — di qui e dal secchio — e restano
+  // la scheda, la copertina, il voto, le note, le evidenziazioni e il punto
+  // di lettura: un libro letto resta nella tua biblioteca anche quando il
+  // file non ti serve più.
+  //
+  // IL SEGNO SI SCRIVE, o non lo sa nessuno: un libro senza byte perché li
+  // hai buttati e uno senza byte perché sono andati persi sono lo stesso
+  // record, e l'app griderebbe all'infinito di ricaricare il file. È la
+  // lezione della saga tolta a mano, sul campo vuoto che non si vede.
+  async function handleTogliEbook(id) {
+    const b = books.find((x) => x.id === id);
+    if (!b) return;
+    await togliEbook([id]);
+    notify(`«${b.title}» resta in biblioteca, senza ebook 📗`);
+  }
+
+  // anche in fila («Libera spazio»): le schede si segnano tutte insieme, o
+  // ognuna partirebbe dalla biblioteca di prima e resterebbe segnata l'ultima
+  async function togliEbook(ids) {
+    const via = new Set(ids);
+    const tolti = books.filter((x) => via.has(x.id));
+    if (!tolti.length) return 0;
+    for (const b of tolti) timbraScheda(b.id);
+    updateBooks(books.map((x) => (via.has(x.id) ? { ...x, fileTolto: true } : x)));
+    for (const b of tolti) {
+      try {
+        await removeFileOnly(b.id);
+      } catch {
+        /* i byte restano orfani: la scheda dice già che l'ebook non c'è */
+      }
+      await togliFileDalCloud(b).catch(() => {});
+    }
+    setSpazioCambiato((n) => n + 1);
+    runSync.current(true);
+    return tolti.length;
+  }
+
+  // i file arrivati da fuori entrano in Libreria dalla porta dell'input
+  // `casa`: la scheda da cui il file e' stato scelto, dove deve entrare
+  // anche se il titolo dentro il file e' scritto in un altro modo
+  function daFuori(files, casa = null) {
+    setFocusSaga(null);
+    const elenco = Array.from(files || []);
+    if (casa) elenco.casa = casa;
+    setDaImportare(elenco);
+    setSection("library");
+  }
+
+  // IL FILE DI UN LIBRO CHE QUI NON C'E' si sceglie subito, dentro il tocco
+  // di «Apri»: entrato, torna nella sua scheda (`ritornaACasa`, e `casa`)
+  const casaScelta = useRef(null);
+  function scegliIlFile(casa = null) {
+    casaScelta.current = casa;
+    scegliDalDisco().then((files) => {
+      if (files === null) sceltaRef.current?.click();
+      else if (files.length) daFuori(files, casa);
+    });
+  }
+
+  // IL LIBRO CHE QUI NON HA IL FILE, E SUL NAS SI', SCENDE DA LI' (chiesto
+  // dal lettore: «vorrei leggere anche fuori casa», `lib/nas.js`): entra
+  // dalla porta di sempre, nella sua scheda, e si apre appena e' qui
+  // (`apriPresto`, con un tetto: un'importazione andata storta non lascia
+  // un libro in attesa di aprirsi per sempre)
+  const [apriPresto, setApriPresto] = useState(null);
+  const nasInCorso = useRef(null);
+  async function prendiDalNasEApri(b, base, voce) {
+    if (nasInCorso.current) return;
+    nasInCorso.current = b.id;
+    notify(`⬇ Prendo «${b.title}» dal NAS…`);
+    try {
+      const file = await prendiDalNas(base, voce);
+      setApriPresto(b.id);
+      setTimeout(() => setApriPresto((p) => (p === b.id ? null : p)), APRI_DAL_NAS_ENTRO);
+      daFuori([file], b.id);
+    } catch (e) {
+      notify(fraseNas(e));
+      setOpenId(b.id);
+    } finally {
+      nasInCorso.current = null;
+    }
+  }
+  useEffect(() => {
+    if (!apriPresto) return;
+    const b = books.find((x) => x.id === apriPresto);
+    if (b && !b.fileTolto && localIds?.has(apriPresto)) {
+      setApriPresto(null);
+      handleRead(apriPresto);
+    }
+  }, [apriPresto, books, localIds]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function handleRead(id, startCfi = null) {
     const b = books.find((x) => x.id === id);
     if (!b) return;
+    const voceNas = localIds && !localIds.has(id) ? sulNas(id) : null;
+    const baseNas = voceNas ? indirizzoNas() : null;
+    if (voceNas && baseNas) {
+      prendiDalNasEApri(b, baseNas, voceNas);
+      return;
+    }
+    // un libro svuotato apposta non si apre e non si va a cercare nel
+    // cloud: si busserebbe a vuoto e il reader finirebbe
+    // sulla schermata del guasto, che qui sarebbe una bugia
+    if (b.fileTolto) {
+      notify(segnaposto(b) ? "Questa scheda non ha ancora il suo ebook 📥: scegli il file" : "Di questo libro tieni la scheda, non l'ebook 📗: scegli il file per rimetterlo");
+      setOpenId(id);
+      scegliIlFile(id);
+      return;
+    }
+    // senza byte qui il reader finirebbe sul guasto, e il guasto non c'e'
+    const perche = percheNonSiApre(id, { qui: localIds, altrove: altroveDa(leggiDispositivi(), dispositivo()) });
+    if (perche) {
+      notify(perche);
+      setOpenId(id);
+      scegliIlFile(id);
+      return;
+    }
     setLastOpened(id);
+    parti(`lettura:${id}`);
     if (getStatus(id) === "unread") setStatus(id, "reading");
     setOpenId(null);
     setReadingStart(startCfi);
@@ -598,28 +2089,261 @@ export default function App() {
     }
 
     if (music.playing && music.current) {
-      setBookMusic(id, { url: music.current.url, name: music.current.name });
+      // il legame porta con se' la sorgente: un file ha il suo trackId,
+      // un video il suo indirizzo
+      setBookMusic(id, legameMusica(music));
     } else {
-      const pair = getBookMusic(id);
-      if (pair) {
-        notify(`Questo libro suona con «${pair.name || "la sua melodia"}»`, {
-          label: "▶ Riprendi",
-          onClick: () => playerRef.current?.play(pair.url, pair.name),
-        });
+      const come = comeRiprendere(getBookMusic(id));
+      if (come) {
+        const aCaso = come.casuale ? ", a caso" : "";
+        notify(
+          come.raccolta
+            ? `Questo libro suona con la raccolta «${come.raccolta.name}»${aCaso}`
+            : come.tutte
+              ? `Questo libro suona con le tue melodie${aCaso}`
+              : `Questo libro suona con «${come.melodia.name || "la sua melodia"}»`,
+          {
+            label: "▶ Riprendi",
+            onClick: () =>
+              come.brani
+                ? playerRef.current?.playQueue(come.brani, come.casuale, { da: come.da, raccolta: come.raccolta?.id || null })
+                : playerRef.current?.play(come.melodia),
+          }
+        );
       }
     }
   }
 
+  // I LIVELLI CHE IL TASTO INDIETRO DEVE CHIUDERE, dal fondo alla cima.
+  //
+  // L'ordine e' quello in cui stanno sullo schermo, non quello in cui li
+  // ho scritti: l'indietro serve SEMPRE l'ultimo della fila. Il libro sta
+  // in cima perche' copre tutto il resto; la sezione sta in fondo perche'
+  // e' il pavimento — tornare all'ingresso e' l'ultimo passo prima di
+  // uscire davvero dall'app.
+  //
+  // Il libro chiude per mano sua (`chiudeIlLettore`): dentro ha i suoi
+  // pannelli, e soprattutto il punto di lettura si salva solo passando
+  // dalla porta di sempre.
+  const chiudeIlLettore = useRef(null);
+  const livelli = [];
+  if (section !== "home") livelli.push(() => navigate("home"));
+  // la raccolta aperta in Libreria: l'indietro torna a tutte le raccolte
+  // prima di lasciare la Libreria
+  if (section === "library" && raccolta != null) livelli.push(() => setRaccolta(null));
+  if (section === "music" && raccoltaMusica != null) livelli.push(() => setRaccoltaMusica(null));
+  // «Da prendere» prima del cammino: la guida si apre anche da li', sopra
+  if (prendereOpen) livelli.push(() => setPrendereOpen(false));
+  if (senzaFileOpen) livelli.push(() => setSenzaFileOpen(false));
+  // prima della scheda, che il cammino sa aprire: l'ultimo livello si
+  // chiude per primo, e con la scheda aperta sopra dev'essere lei ad
+  // andarsene col primo indietro
+  if (cammino) livelli.push(() => setCammino(null));
+  if (openId) livelli.push(() => setOpenId(null));
+  if (gardenOpen) livelli.push(() => setGardenOpen(false));
+  if (diaryOpen) livelli.push(() => setDiaryOpen(false));
+  if (quadernoOpen) livelli.push(() => setQuadernoOpen(false));
+  if (syncOpen) livelli.push(() => setSyncOpen(false));
+  if (themeOpen) livelli.push(() => setThemeOpen(false));
+  if (mappaOpen) livelli.push(() => setMappaOpen(false));
+  if (readingId) livelli.push(() => chiudeIlLettore.current?.());
+  const livelliRef = useRef(livelli);
+  livelliRef.current = livelli;
+  const indietro = useRef(null);
+
+  useEffect(() => {
+    const gestore = creaIndietro(window.history);
+    indietro.current = gestore;
+    const tornato = () => {
+      if (!gestore.tornato()) return;
+      const chiudi = livelliRef.current[livelliRef.current.length - 1];
+      // Il reader si tiene i suoi pannelli e risponde `true` quando ne ha
+      // chiuso uno restando aperto: li' dentro non cambia niente di App,
+      // quindi nessun nuovo giro di render verrebbe a rimettere la
+      // guardia, e il prossimo indietro se ne porterebbe via l'app.
+      if (chiudi && chiudi() === true) gestore.sincronizza(true);
+    };
+    window.addEventListener("popstate", tornato);
+    return () => window.removeEventListener("popstate", tornato);
+  }, []);
+
+  // A ogni giro, senza elenco di dipendenze: la guardia dipende da mezza
+  // dozzina di stati diversi, e dimenticarne uno vorrebbe dire un indietro
+  // che ogni tanto scappa fuori dall'app. E' un confronto fra due booleani.
+  useEffect(() => {
+    indietro.current?.sincronizza(livelli.length > 0);
+  });
+
   const openBook = books.find((b) => b.id === openId);
   const readingBook = books.find((b) => b.id === readingId);
+  const libroScheda = libroDellaScheda({ aperto: readingBook, ultimoId: getLastOpened(), libri: books, statoDi: getStatus });
+  // LA COPERTINA VA AL GUSCIO quando cambia il libro in mano o la sua
+  // copertina, se il lettore l'ha chiesto e il guscio ha salutato. Composta
+  // qui per lo schermo di QUESTO dispositivo (`misuraSchermo`), a pezzi.
+  const idScheda = libroScheda?.id || null;
+  const [copVScheda, setCopVScheda] = useState(0);
+  useEffect(
+    () =>
+      ascoltaCopertine((id) => {
+        dimenticaGrande(id);
+        if (id === idScheda) setCopVScheda((v) => v + 1);
+      }),
+    [idScheda]
+  );
+  useEffect(() => {
+    if (!guscio || !sfondo || !idScheda) return;
+    let vivo = true;
+    const titolo = libroScheda?.title || "";
+    // ogni invio si segna, anche quello che non parte: le Impostazioni lo dicono
+    const segna = (esito) => {
+      segnaInvio({ id: idScheda, titolo, quando: Date.now(), esito });
+      setInvii((v) => v + 1);
+    };
+    (async () => {
+      const { getCover, getFile } = await import("./lib/bookStore.js");
+      const { copertinaOriginale } = await import("./lib/copertina.js");
+      // la copertina grande, dal file (`copertinaGrande.js`): quella
+      // salvata e' da 800 e sullo schermo da 2000 arrivava morbida
+      const blob = await copertinaGrande(libroScheda, { leggiFile: getFile, leggiCover: getCover, estrai: copertinaOriginale, max: LATO_MAX, verso: versoDelLibro(libroScheda) });
+      if (!vivo) return;
+      if (!blob) return segna("senza copertina");
+      const chiave = `${idScheda}:${blob.size}:${copVScheda}`;
+      if (sfondoMandato.current === chiave) return;
+      if (!inPiedi()) return segna("sdraiato");
+      const base64 = await copertinaPerSchermo(blob, misuraSchermo({ width: window.screen?.width, height: window.screen?.height, dpr: window.devicePixelRatio || 1 }));
+      if (!vivo) return;
+      if (!base64) return segna("illeggibile");
+      sfondoMandato.current = chiave;
+      for (const p of pezzi(idScheda, base64)) guscio.porta.postMessage(p);
+      segna("mandata");
+    })().catch(() => {
+      // senza canvas: lo sfondo resta quello di prima, e lo si dice
+      if (vivo) segna("illeggibile");
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [guscio, sfondo, idScheda, copVScheda, verso]);
   const nextBook = readingBook ? nextInSaga(readingBook, books) : null;
   flags.current.reading = !!readingBook;
+  flags.current.lavoroLungo = !!(lex || fan || imm || ill || wikt || lavoro || importo || hdd);
 
   useEffect(() => {
     if (readingId && music.current) {
-      setBookMusic(readingId, { url: music.current.url, name: music.current.name });
+      setBookMusic(readingId, legameMusica(music));
     }
   }, [music.current, readingId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // IL TEMPO DI LETTURA si conta da qui, sugli stessi segnali della veglia
+  // (le voltate dei due reader, `lib/tempo.js`): si comincia ad aprire il
+  // libro, ci si ferma a chiuderlo e quando l'app va in secondo piano — il
+  // libro aperto dietro un'altra app non si sta leggendo.
+  useEffect(() => {
+    if (!readingId) return;
+    comincia();
+    const vis = () => (document.visibilityState === "visible" ? comincia() : smetti());
+    document.addEventListener("visibilitychange", vis);
+    // un tocco, uno scorrimento, un tasto: anche nella scheda del dizionario
+    // e nelle voci dei wiki si sta leggendo (`segnaAttivita`). Lo
+    // scorrimento non sale: si ascolta in cattura
+    const vivo = () => segnaAttivita();
+    const segni = ["pointerdown", "keydown", "wheel", "scroll"];
+    for (const t of segni) document.addEventListener(t, vivo, { capture: true, passive: true });
+    return () => {
+      document.removeEventListener("visibilitychange", vis);
+      for (const t of segni) document.removeEventListener(t, vivo, { capture: true });
+      smetti();
+    };
+  }, [readingId]);
+
+  // LO SCHERMO NON SI SPEGNE FINCHE' L'APP E' DAVANTI (chiesto dal lettore:
+  // «quando l'app è aperta il tablet non mi si spegne?»). Prima valeva solo
+  // a libro aperto e si arrendeva dopo un quarto d'ora senza tocchi; e
+  // tornando da un'altra app non si richiedeva mai: il sistema toglie il
+  // blocco quando la pagina va in secondo piano, ma qui la presa restava
+  // segnata come viva e `chiedi` non chiedeva piu' niente. Adesso la presa
+  // si dimentica quando il sistema la toglie (`release`), e si richiede a
+  // ogni ritorno davanti e a ogni tocco. Copre anche il giro dei CBR, che
+  // aveva il suo blocco.
+  //
+  // E POI IL SALVASCHERMO (`lib/salvaschermo.js`, chiesto dal lettore: «le
+  // copertine sono artistiche, averle tipo salvaschermo sarebbe figo»).
+  // Ogni segno di vita — tocco, tasto, ritorno davanti, voltata dei reader,
+  // anche quelle della lettura ad alta voce — riparte il conto; un timer
+  // solo porta alla copertina e poi, piu' tardi, lascia la presa, cosi' chi
+  // si addormenta col libro aperto non ritrova il tablet acceso al mattino.
+  // A presa lasciata non si richiede finche' non torna un segno di vita.
+  useEffect(() => {
+    let attivo = true;
+    let presa = null;
+    let chiedendo = false;
+    let lasciata = false;
+    let ultimo = Date.now();
+    let timer = null;
+    const chiedi = async () => {
+      if (!navigator.wakeLock) return;
+      if (!attivo || lasciata || presa || chiedendo || document.visibilityState !== "visible") return;
+      chiedendo = true;
+      try {
+        const p = await navigator.wakeLock.request("screen");
+        if (!attivo) return p.release().catch(() => {});
+        presa = p;
+        p.addEventListener?.("release", () => {
+          if (presa === p) presa = null;
+        });
+      } catch {
+        /* negato o non permesso qui: l'app va lo stesso */
+      } finally {
+        chiedendo = false;
+      }
+    };
+    const guarda = () => {
+      clearTimeout(timer);
+      if (!attivo) return;
+      const misura = { ...leggiSalvaschermo(), fermo: Date.now() - ultimo, lavoroLungo: flags.current.lavoroLungo };
+      const f = fase(misura);
+      if (f !== "sveglio") setSalva((v) => v || "copertina");
+      if (f === "spento" && !lasciata) {
+        lasciata = true;
+        presa?.release?.().catch(() => {});
+        presa = null;
+      }
+      const tra = prossimoCambio(misura);
+      if (tra != null) timer = setTimeout(guarda, tra + 50);
+    };
+    // un segno di vita: il conto riparte e la presa si richiede. La
+    // copertina NON si chiude qui: si chiude al tocco finito, sul
+    // salvaschermo stesso (vedi `Salvaschermo.jsx`)
+    const segno = () => {
+      ultimo = Date.now();
+      lasciata = false;
+      chiedi();
+      guarda();
+    };
+    // la voltata e il tasto non passano dal salvaschermo: lo chiudono da qui
+    const sveglia = () => {
+      setSalva(false);
+      segno();
+    };
+    // il segnale dai reader: il testo sta dentro un iframe, e un dito che
+    // sfoglia li' dentro non fa alzare un solo evento qui fuori
+    svegliaRef.current = sveglia;
+    segnoRef.current = segno;
+    segno();
+    document.addEventListener("visibilitychange", segno);
+    document.addEventListener("pointerdown", segno);
+    document.addEventListener("keydown", sveglia);
+    return () => {
+      attivo = false;
+      clearTimeout(timer);
+      svegliaRef.current = () => {};
+      segnoRef.current = () => {};
+      document.removeEventListener("visibilitychange", segno);
+      document.removeEventListener("pointerdown", segno);
+      document.removeEventListener("keydown", sveglia);
+      presa?.release?.().catch(() => {});
+    };
+  }, []);
 
   return (
     <div
@@ -631,6 +2355,18 @@ export default function App() {
       }}
     >
       {theme.decor === "foliage" && <Foliage />}
+      <input
+        ref={sceltaRef}
+        type="file"
+        accept={tipiDaScegliere()}
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const files = [...(e.target.files || [])];
+          e.target.value = "";
+          if (files.length) daFuori(files, casaScelta.current);
+          casaScelta.current = null;
+        }}
+      />
       {theme.decor === "scrolls" && <Scrolls />}
       <Stardust theme={theme} />
       <div className="bc-scroll">
@@ -641,9 +2377,11 @@ export default function App() {
           signedIn={sync.signedIn}
           theme={theme}
           onTheme={() => setThemeOpen(true)}
+          motto={section === "home"}
         />
       ) : (
         <CompactHeader
+          stretto={stretto}
           onSync={() => setSyncOpen(true)}
           syncing={sync.busy}
           signedIn={sync.signedIn}
@@ -658,9 +2396,14 @@ export default function App() {
           zIndex: 2,
           flex: 1,
           width: "100%",
-          maxWidth: 960,
+          // LO SCHERMO DEL COMPUTER SI USA TUTTO (chiesto dal lettore sul PC,
+          // due volte: a 960 restava mezzo schermo vuoto; poi, a 1440 su una
+          // finestra da 1867, «non riesci ad adattare su desktop affinché venga
+          // preso tutto lo schermo?»: 214 pixel vuoti per parte). Nessun tetto:
+          // la colonna e' la finestra, col suo margine (`largo`: piu' ampio sul
+          // computer); sul tablet e sul telefono come sempre
           margin: "0 auto",
-          padding: "8px 16px 26px",
+          padding: largo ? "8px 32px 26px" : "8px 16px 26px",
           animation: "bc-fade-in 0.35s ease-out",
         }}
       >
@@ -672,29 +2415,103 @@ export default function App() {
             onRead={handleRead}
             onGarden={() => setGardenOpen(true)}
             onDiary={() => setDiaryOpen(true)}
-            onSaga={(name) => {
-              setFocusSaga(name);
-              setSection("library");
-            }}
+            onQuaderno={() => setQuadernoOpen(true)}
+            onDaPrendere={() => setPrendereOpen(true)}
+            notify={notify}
           />
         )}
         {section === "library" && (
+          <Suspense fallback={null}>
           <Library
+            onCambiate={() => presto.current?.()}
+            onNovita={mandaNovita}
+            onTogliEbook={togliEbook}
             books={books}
             updateBooks={updateBooks}
+            lavoroCbr={lavoro}
+            cbrDaFare={cbrDaFare}
+            onConvertiTutti={() => convertiICbr(cbrDaFare)}
+            doppi={doppi}
+            onUnisciDoppioni={unisciDoppioni}
+            onEliminaRaccolta={eliminaRaccolta}
+            onFermaLavoro={fermaLavoro}
             onOpenBook={setOpenId}
+            onReadAt={(id, punto) => handleRead(id, punto)}
             notify={notify}
             localIds={localIds}
-            onImported={() => runSync.current(true)}
+            // i file di qui si ricontano subito: senza cloud il giro non
+            // parte, e un libro appena entrato sembrerebbe senza file
+            onImported={async () => {
+              setLocalIds(await localFileIds().catch(() => null));
+              runSync.current(true);
+            }}
+            importo={importo}
+            onFermaImport={fermaImport}
+            onRiordina={riordinaQui}
+            onMettiDaParte={(voci, casa) => riordinaQui(voci, casa, { cosa: "🗃 Metto da parte le copie", frase: fraseDaParte })}
+            onRimettiAPosto={(voci, casa) => riordinaQui(voci, casa, { cosa: "↩ Rimetto a posto", frase: fraseRimessi })}
+            onImportaDalDisco={importaDalDiscoQui}
+            onConvertiDalDisco={convertiDalDiscoQui}
+            daImportare={daImportare}
+            onImportati={() => setDaImportare(null)}
             focusSaga={focusSaga}
-            onNas={() => setNasOpen(true)}
+            collegato={sync.signedIn}
+            // i byte scesi in casa non sono roba da sincronizzare: basta
+            // ricontare chi c'e', e le nuvolette si spengono subito
+            onFileLocali={async () => setLocalIds(await localFileIds())}
+            spazioCambiato={spazioCambiato}
+            onCammino={setCammino}
+            onSenzaFile={() => setSenzaFileOpen(true)}
+            raccolta={raccolta}
+            onRaccolta={setRaccolta}
+            // il controllo aggiornamenti col dito: qui siamo in Libreria,
+            // nessun libro aperto, quindi installare subito e' lecito —
+            // e' l'unico posto dove il reload non costa niente
+            aggiorna={{
+              cerca: () => cercaNuovaVersione(swReg.current),
+              applica: () => swUpdate.current?.(true),
+            }}
           />
+          </Suspense>
         )}
-        {section === "music" && <MusicRoom music={music} playerRef={playerRef} notify={notify} />}
+        {section === "music" && (
+          <Suspense fallback={null}>
+            <MusicRoom music={music} playerRef={playerRef} notify={notify} onCambiata={() => presto.current?.()} aperta={raccoltaMusica} onApri={setRaccoltaMusica} />
+          </Suspense>
+        )}
       </main>
       </div>
+      {(lavoro || importo || hdd || lex || fan || imm || ill || wikt || restanti.length > 0) && (
+        <BarraLavoro
+          lex={lex}
+          onFermaLex={fermaLex}
+          fan={fan}
+          onFermaFan={fermaFan}
+          imm={imm}
+          onFermaImm={fermaImm}
+          ill={ill}
+          onFermaIll={fermaIll}
+          wikt={wikt}
+          onFermaWikt={fermaWikt}
+          hdd={hdd}
+          onFermaHdd={() => {
+            filoHdd.current = null;
+          }}
+          importo={importo}
+          onFermaImport={fermaImport}
+          lavoro={lavoro}
+          restanti={restanti.length}
+          onFerma={fermaLavoro}
+          onRiprendi={() => convertiICbr(restanti)}
+          onLascia={() => {
+            dimenticaLavoro();
+            setSospeso(null);
+          }}
+        />
+      )}
       <BottomNav section={section} goTo={navigate} themeId={themeId} />
       {openBook && (
+        <Suspense fallback={null}>
         <BookSheet
           key={openBook.id}
           book={openBook}
@@ -702,19 +2519,90 @@ export default function App() {
           onClose={() => setOpenId(null)}
           onSaveMeta={handleSaveMeta}
           onDelete={handleDelete}
+          onTogliEbook={handleTogliEbook}
+          onConvertiCbr={handleConvertiCbr}
           onRead={handleRead}
           notify={notify}
         />
+        </Suspense>
       )}
       {themeOpen && (
-        <ThemePicker current={themeId} onPick={pickTheme} onClose={() => setThemeOpen(false)} />
+        <Impostazioni
+          libri={books}
+          current={themeId}
+          onPick={pickTheme}
+          onClose={() => setThemeOpen(false)}
+          misura={misura}
+          onMisura={pickMisura}
+          consigliata={risolviScala(AUTO)}
+          onSync={() => { setThemeOpen(false); setSyncOpen(true); }}
+          onMappa={() => setMappaOpen(true)}
+          lex={lex}
+          onLex={scaricaLex}
+          onFermaLex={fermaLex}
+          fan={fan}
+          onFan={scaricaFan}
+          onFermaFan={fermaFan}
+          imm={imm}
+          onImm={scaricaImmaginiQui}
+          onFermaImm={fermaImm}
+          ill={ill}
+          onIll={scaricaIllustrazioniQui}
+          onFermaIll={fermaIll}
+          wikt={wikt}
+          onWikt={scaricaWikt}
+          onFermaWikt={fermaWikt}
+          guscioPronto={!!guscio}
+          infoGuscio={infoGuscio}
+          invioGuscio={invioGuscio}
+          sfondo={sfondo}
+          onSfondo={accendiSfondo}
+          novita={novita}
+          statoNovita={statoAvvisi}
+          onSmettiNovita={(id) => mandaNovita(scriviNovita(smettiNovita(leggiNovita(), id)))}
+        />
+      )}
+      {/* le stanze di rado arrivano da un pacchetto loro: finche' non c'e',
+          niente al posto loro — si apre un attimo dopo, gia' completa */}
+      <Suspense fallback={null}>
+      {mappaOpen && <Mappa onClose={() => setMappaOpen(false)} />}
+      {/* «Da prendere» sotto il cammino: la guida si apre anche da li' */}
+      {prendereOpen && (
+        <DaPrendere books={books} onClose={() => setPrendereOpen(false)} onGuida={setCammino} rileggi={cammino ? 0 : giroPrendere} />
+      )}
+      {cammino && (
+        <Cammino
+          cammino={cammino}
+          libri={books}
+          onClose={() => setCammino(null)}
+          onOpenBook={setOpenId}
+          onNumera={scriviNumeriCammino}
+          onDaPrendere={(v) => {
+            setGiroPrendere((n) => n + 1);
+            notify(`🛒 «${v.titolo}» in Da prendere`);
+            presto.current?.();
+          }}
+          onMettiInBiblioteca={mettiInBiblioteca}
+        />
+      )}
+      {senzaFileOpen && (
+        <AggiungiSenzaFile
+          books={books}
+          onClose={() => setSenzaFileOpen(false)}
+          // IL PANNELLO RESTA APERTO (chiesto dal lettore: «quando aggiungo
+          // una saga non tornare subito alla pagina principale, magari voglio
+          // rimanere lì e aggiungerne altre»): si chiude con la ✕
+          onAggiungi={(voci) => aggiungiSenzaFile(voci)}
+        />
       )}
       {syncOpen && (
         <SyncPanel
           status={sync}
-          onClose={() => setSyncOpen(false)}
+          onClose={() => { setSyncOpen(false); setChiediPassword(false); }}
           onSync={() => runSync.current(false)}
           notify={notify}
+          chiediPassword={chiediPassword}
+          avviso={guaioLink}
         />
       )}
       {gardenOpen && (
@@ -724,25 +2612,29 @@ export default function App() {
           onReadAt={(id, cfi) => handleRead(id, cfi)}
         />
       )}
-      {nasOpen && (
-        <Suspense fallback={null}>
-          <NasBrowser
-            books={books}
-            updateBooks={updateBooks}
-            onClose={() => setNasOpen(false)}
-            notify={notify}
-            onImported={() => runSync.current(true)}
-            onRead={(id) => {
-              setNasOpen(false);
-              handleRead(id);
-            }}
-          />
-        </Suspense>
-      )}
       {diaryOpen && (
         <ReadingDiary books={books} onClose={() => setDiaryOpen(false)} onOpenBook={setOpenId} />
       )}
+      {quadernoOpen && (
+        // come il giardino: il libro si apre SOPRA il quaderno, e chiuso il
+        // libro si torna al quaderno da cui si era partiti
+        <Quaderno books={books} onClose={() => setQuadernoOpen(false)} onReadAt={(id, dove) => handleRead(id, dove)} />
+      )}
+      </Suspense>
       {readingBook && (
+        // L'ANELLO STRETTO. Il reader è la parte più complicata dell'app,
+        // ed è quella dove un difetto è più probabile: un guasto lì dentro
+        // deve riportarti in biblioteca, non portarsi via anche lei. La
+        // chiave sul libro aperto serve a ricominciare pulito quando ne
+        // apri un altro — senza, un guasto resterebbe appeso al prossimo.
+        <Guasto
+          key={`guasto:${readingBook.id}`}
+          dentroIlLibro
+          onChiudi={() => {
+            setReadingId(null);
+            setReadingStart(null);
+          }}
+        >
         <Suspense
           fallback={
             <div
@@ -756,23 +2648,33 @@ export default function App() {
                 justifyContent: "center",
                 color: C.muted,
                 fontFamily: FONT_TITLE,
-                fontSize: 18,
+                fontSize: F.rilievo,
               }}
             >
               🕯️ Apro il tomo…
             </div>
           }
         >
-          {readingBook.fileType === "cbz" ? (
-            <ComicReader
+          {readingBook.fileType === "epub" ? (
+            <Reader
               key={`${readingBook.id}:${readingStart || ""}`}
               book={readingBook}
               startCfi={readingStart}
+              indietro={chiudeIlLettore}
               nextBook={nextBook}
               onReadNext={handleRead}
               music={music}
               onMusicToggle={() => (music.playing ? playerRef.current?.pause() : playerRef.current?.resume())}
               onMusicStop={() => playerRef.current?.stop()}
+              onMusicVolume={(v) => playerRef.current?.setVolume(v)}
+              onMusicNext={() => playerRef.current?.next()}
+              onMusicRoom={() => navigate("music")}
+              onMusicSottovoce={(si) => playerRef.current?.sottovoce(si)}
+              onAlive={() => { svegliaRef.current(); segnaVita(Date.now(), "epub"); }}
+              // un tocco dentro il testo: il testo sta in un iframe e un dito
+              // li' dentro non fa alzare un solo evento qui fuori — il
+              // salvaschermo arrivava sotto le dita del lettore
+              onSegno={() => { segnoRef.current(); segnaAttivita(); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);
@@ -781,16 +2683,22 @@ export default function App() {
               }}
               notify={notify}
             />
-          ) : readingBook.fileType === "epub" ? (
-            <Reader
+          ) : readingBook.fileType === "pdf" ? (
+            <PdfReader
               key={`${readingBook.id}:${readingStart || ""}`}
               book={readingBook}
               startCfi={readingStart}
+              indietro={chiudeIlLettore}
               nextBook={nextBook}
               onReadNext={handleRead}
               music={music}
               onMusicToggle={() => (music.playing ? playerRef.current?.pause() : playerRef.current?.resume())}
               onMusicStop={() => playerRef.current?.stop()}
+              onMusicVolume={(v) => playerRef.current?.setVolume(v)}
+              onMusicNext={() => playerRef.current?.next()}
+              onMusicRoom={() => navigate("music")}
+              onMusicSottovoce={(si) => playerRef.current?.sottovoce(si)}
+              onAlive={() => { svegliaRef.current(); segnaVita(Date.now(), "pdf"); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);
@@ -800,15 +2708,21 @@ export default function App() {
               notify={notify}
             />
           ) : (
-            <PdfReader
+            <ComicReader
               key={`${readingBook.id}:${readingStart || ""}`}
               book={readingBook}
               startCfi={readingStart}
+              onCambiaLibro={(patch) => applicaConversione(readingBook.id, patch)}
+              indietro={chiudeIlLettore}
               nextBook={nextBook}
               onReadNext={handleRead}
               music={music}
               onMusicToggle={() => (music.playing ? playerRef.current?.pause() : playerRef.current?.resume())}
               onMusicStop={() => playerRef.current?.stop()}
+              onMusicVolume={(v) => playerRef.current?.setVolume(v)}
+              onMusicNext={() => playerRef.current?.next()}
+              onMusicRoom={() => navigate("music")}
+              onAlive={() => { svegliaRef.current(); segnaVita(Date.now(), "fumetto"); }}
               onClose={() => {
                 setReadingId(null);
                 setReadingStart(null);
@@ -819,13 +2733,24 @@ export default function App() {
             />
           )}
         </Suspense>
+        </Guasto>
       )}
       <MusicPlayer
         ref={playerRef}
         onInfo={setMusic}
         hideMini={section === "music" || !!readingBook}
+        onOpen={() => navigate("music")}
         notify={notify}
+        libro={libroScheda}
       />
+      {salva && libroScheda && (
+        <Salvaschermo
+          key={libroScheda.id}
+          libro={libroScheda}
+          onTocco={() => setSalva(false)}
+          onSenza={() => setSalva(false)}
+        />
+      )}
       {updateReady && !readingBook && (
         <div
           style={{
@@ -837,13 +2762,13 @@ export default function App() {
             display: "flex",
             alignItems: "center",
             gap: 12,
-            maxWidth: "min(94vw, 460px)",
+            maxWidth: `min(94vw, ${px(460)}px)`,
             padding: "10px 16px",
-            borderRadius: 12,
+            borderRadius: R.piccolo,
             border: `1px solid ${C.accent}66`,
             background: `${C.card}f8`,
             color: C.text,
-            fontSize: 14.5,
+            fontSize: F.nota,
             boxShadow: `0 0 30px ${C.accent}22, 0 8px 24px #00000066`,
             animation: "bc-fade-in 0.3s ease-out",
           }}
@@ -853,11 +2778,11 @@ export default function App() {
             onClick={() => swUpdate.current?.(true)}
             style={{
               padding: "6px 14px",
-              borderRadius: 999,
+              borderRadius: R.tondo,
               border: `1px solid ${C.accent}`,
               color: C.accent,
               fontWeight: 600,
-              fontSize: 14,
+              fontSize: F.nota,
               whiteSpace: "nowrap",
             }}
           >

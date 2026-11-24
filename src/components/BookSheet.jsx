@@ -1,108 +1,79 @@
-import { useState } from "react";
-import { C, FONT_TITLE } from "../data/constants.js";
-import { getProgress, getStatus, setStatus } from "../lib/library.js";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import Stars from "./Stelle.jsx";
+import { fraseDelPasso } from "../lib/convertiCbr.js";
+import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
+import {
+  getProgress,
+  getStatus,
+  setStatus,
+  touchBook,
+  numeroLettura,
+  pulisciNumero,
+  annoFinito,
+  segnaAnnoFine,
+  tipiDi,
+} from "../lib/library.js";
+import { eFumetto } from "../lib/fumetto.js";
+import { SENZA } from "../lib/segnaposto.js";
+import { getCover, getFile, putCover, removeCover } from "../lib/bookStore.js";
+import { recupera, senzaEtichetta } from "../lib/sinossi.js";
+import { preparaCopertina, copertinaOriginale } from "../lib/copertina.js";
+import { segnaAMano } from "../lib/copertinaGrande.js";
+import { caricaCopertina } from "../lib/sync.js";
+import { chiaveGlossario, vociDi, salvaVoci, togli } from "../lib/glossarioMio.js";
+import { statoLexicanum, del40k, loreAMano, scriviLoreAMano, FANDOM } from "../lib/lexicanum.js";
+import { getCfi } from "../lib/annotations.js";
+import { frontiera } from "../lib/frontiera.js";
+import { soloDellaSerie, perchePrimaTace, fraseTace } from "../lib/trama.js";
+import { scritturaSaga } from "../lib/sagaBooks.js";
+import { TUTTI } from "../data/generi.js";
 import BookCover from "./BookCover.jsx";
 
-const GENRE_HINTS = [
-  "Fantasy",
-  "Fantascienza",
-  "Horror",
-  "Giallo",
-  "Thriller",
-  "Avventura",
-  "Storico",
-  "Romanzo",
-  "Saggistica",
-  "Biografia",
-  "Poesia",
-  "Fumetti",
-  "Manuali",
-];
+// la scheda dell'Oracolo arriva solo se la si chiede: qui dentro non
+// serve quasi mai, e pesa quanto il reader
+const SchedaOracolo = lazy(() => import("./SchedaOracolo.jsx"));
+// e l'elenco dei generi solo a chi tocca «Scegli»
+const GenrePicker = lazy(() => import("./GenrePicker.jsx"));
 
+// «Abbandonato» non è un giudizio sul libro, è la verità su di te: senza,
+// un romanzo mollato resta «in lettura» per sempre — in cima all'Ingresso,
+// a fingere che tu lo stia leggendo — e l'unico modo di toglierlo di lì era
+// dichiararlo letto, cioè una bugia che poi ti ritrovi nel diario.
 const STATUSES = [
   { id: "unread", label: "Da leggere", color: null },
   { id: "reading", label: "In lettura", color: null },
   { id: "read", label: "Letto", color: "green" },
+  { id: "abandoned", label: "Abbandonato", color: "red" },
 ];
 
-const fieldStyle = {
+// LETTO AL RENDER, NON AL CARICAMENTO DEL MODULO. Era un oggetto costante,
+// e un oggetto costante congela i valori che legge: questo file e' importato
+// in cima ad `App.jsx`, quindi girava PRIMA che il tema scelto venisse
+// applicato — sul Rifugio Silvano e sulla Cittadella il campo restava col
+// bordo viola della notte. Adesso e' una funzione, cosi' segue anche la
+// levetta della dimensione dell'interfaccia, che muta `F` e `R` da viva.
+const fieldStyle = () => ({
   width: "100%",
   padding: "9px 12px",
-  borderRadius: 10,
+  borderRadius: R.piccolo,
   border: `1px solid ${C.border}`,
   background: C.surface,
   color: C.text,
-  fontSize: 15,
+  fontSize: F.corpo,
   outline: "none",
-};
+});
 
-function Stars({ value, onChange }) {
-  const half = (n) => Math.min(1, Math.max(0, value - (n - 1)));
-  const set = (v) => onChange(v === value ? 0 : v);
-
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-      {[1, 2, 3, 4, 5].map((n) => {
-        const fill = half(n);
-        const star = (color) => (
-          <span
-            style={{
-              display: "block",
-              width: 32,
-              fontSize: 27,
-              lineHeight: "32px",
-              textAlign: "center",
-              color,
-              filter: color === C.accent ? `drop-shadow(0 0 6px ${C.accent}66)` : "none",
-            }}
-          >
-            ★
-          </span>
-        );
-        return (
-          <span key={n} style={{ position: "relative", width: 32, height: 32 }}>
-            {star(C.dim)}
-            <span
-              style={{
-                position: "absolute",
-                inset: 0,
-                width: `${fill * 100}%`,
-                overflow: "hidden",
-                pointerEvents: "none",
-              }}
-            >
-              {star(C.accent)}
-            </span>
-            <button
-              onClick={() => set(n - 0.5)}
-              aria-label={`${n - 0.5} stelle`}
-              style={{ position: "absolute", left: 0, top: 0, width: "50%", height: "100%" }}
-            />
-            <button
-              onClick={() => set(n)}
-              aria-label={`${n} stelle`}
-              style={{ position: "absolute", right: 0, top: 0, width: "50%", height: "100%" }}
-            />
-          </span>
-        );
-      })}
-      <span style={{ marginLeft: 8, fontSize: 14, color: C.muted }}>
-        {value ? String(value).replace(".", ",") : "—"}
-      </span>
-    </div>
-  );
-}
 
 function Field({ label, value, onChange, placeholder, options, listId }) {
   return (
     <label style={{ display: "block", marginBottom: 10 }}>
-      <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 3 }}>{label}</span>
+      <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 3 }}>{label}</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         list={listId}
-        style={fieldStyle}
+        style={fieldStyle()}
       />
       {options && (
         <datalist id={listId}>
@@ -115,11 +86,12 @@ function Field({ label, value, onChange, placeholder, options, listId }) {
   );
 }
 
-export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDelete, onRead, notify }) {
+export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDelete, onTogliEbook, onConvertiCbr, onRead, notify }) {
   const [title, setTitle] = useState(book.title);
   const [author, setAuthor] = useState(book.author || "");
   const [series, setSeries] = useState(book.series || "");
   const [genre, setGenre] = useState(book.genre || "");
+  const [sceltaGenere, setSceltaGenere] = useState(false);
   const [saga, setSaga] = useState(book.saga || "");
   const [sagaOrder, setSagaOrder] = useState(
     book.sagaOrder === null || book.sagaOrder === undefined ? "" : String(book.sagaOrder)
@@ -128,44 +100,363 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
   const uniq = (key) => [...new Set(books.map((b) => (b[key] || "").trim()).filter(Boolean))].sort();
   const [notes, setNotes] = useState(book.notes || "");
   const [rating, setRating] = useState(book.rating || 0);
+  // IL CUORE NON È UN VOTO: le stelle dicono quanto è buono, il cuore dice
+  // che sta nella tua vetrina. Prima i preferiti dell'Ingresso erano «tutti
+  // i libri da quattro stelle in su», e il lettore non poteva sceglierli
+  // (chiesto: «metto io quali sono i miei preferiti»).
+  const [fav, setFav] = useState(!!book.fav);
+  // fumetto o manga: `null` finche' il lettore non sceglie, e allora
+  // decide l'app (la scheda del CBZ, la saga) — il tasto acceso dice cosa
+  // ha deciso, perche' un automatismo muto non si puo' correggere
+  const [tipo, setTipo] = useState(book.tipo || null);
+  const tipoDeciso = useMemo(() => tipiDi(books.some((b) => b.id === book.id) ? books : [...books, book]).get(book.id), [books, book]);
   const [status, setStatusState] = useState(getStatus(book.id));
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confermaEbook, setConfermaEbook] = useState(false);
+  // l'anno di fine, come stringa perché mentre lo scrivi passa per «2», «20»,
+  // «201»: sono anni che non stanno in piedi, e `segnaAnnoFine` li rifiuta
+  // senza toccare quello salvato — si scrive solo quando ne esce uno vero
+  const [anno, setAnno] = useState(() => String(annoFinito(book.id) || ""));
+
+  // IL RETRO DEL LIBRO. Nei libri importati da adesso arriva già scritto;
+  // per quelli entrati prima si va a prenderlo qui, una volta sola, e si
+  // salva — così un ePub da trenta megabyte non si riapre a ogni tocco
+  // sulla scheda. Aperto di suo solo su un libro che non hai mai aperto:
+  // chi riprende a pagina duecento sa già cosa sta leggendo.
+  const [retro, setRetro] = useState(typeof book.sinossi === "string" ? book.sinossi : "");
+  // da dove viene il retro, perché l'etichetta lo dica: «file» è la quarta
+  // dell'editore, «rete» il catalogo, «oracolo» le prime pagine lette
+  const [fonte, setFonte] = useState(book.sinossiMia ? "oracolo" : book.sinossiFonte || "file");
+  // FINCHÉ SI CERCA NON SI DICE CHE NON C'È. Il giro nel catalogo sono
+  // fino a tre domande, e intanto il retro mostrava già «non l'ho
+  // trovata»: una risposta data prima di aver guardato.
+  const [cercando, setCercando] = useState(typeof book.sinossi !== "string" || !book.sinossi);
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+     try {
+      // 1. il file: l'ha scritta l'editore, funziona offline, vince sempre
+      let testo = typeof book.sinossi === "string" ? book.sinossi : null;
+      if (testo === null) {
+        testo = await recupera(book, getFile);
+        if (!vivo) return;
+        // `null` VUOL DIRE «il file non ho potuto guardarlo»: i byte sono
+        // rimasti nel cloud, o l'archivio non si apre. Prima si tornava
+        // indietro di qui, e il CATALOGO — a cui bastano titolo e autore,
+        // e che il file non lo tocca nemmeno — non veniva mai provato.
+        // Non si scrive niente sul libro: il file si riguarderà la
+        // prossima volta che i suoi byte sono qui.
+        if (testo !== null) {
+          setRetro(testo);
+          if (testo) {
+            onSaveMeta?.({ ...book, sinossi: testo });
+            return;
+          }
+          onSaveMeta?.({ ...book, sinossi: "" });
+        }
+      } else if (testo) {
+        // il retro salvato prima della cura dell'etichetta puo' portarsi
+        // ancora il suo «SUMMARY:» in testa: si pulisce una volta e si
+        // riscrive, cosi' non lo rivedi mai piu'
+        const pulito = senzaEtichetta(testo);
+        setRetro(pulito);
+        if (pulito !== testo) onSaveMeta?.({ ...book, sinossi: pulito });
+        return;
+      }
+      // 2. IL CATALOGO IN RETE, da solo (chiesto dal lettore: «tanto lo
+      //    trovi online»). Un titolo per volta, solo quando apri QUESTA
+      //    scheda, e la fonte si dichiara sotto il testo. Un buco di rete
+      //    non si salva: si riproverà alla prossima apertura.
+      const { cercaRetro } = await import("../lib/retroInRete.js");
+      const inRete = await cercaRetro({ title: book.title, author: book.author });
+      if (!vivo || !inRete) return;
+      setRetro(inRete.testo);
+      setFonte("rete");
+      // `girata` si decide al montaggio, quando il retro non c'è ancora:
+      // un libro che il retro ce l'ha solo dal catalogo non si girava MAI
+      // da solo, cioè proprio il caso per cui la regola esiste. Vale la
+      // stessa condizione: solo su un libro che non hai mai aperto.
+      if (getProgress(book.id) <= 0) setGirata(true);
+      onSaveMeta?.({ ...book, sinossi: inRete.testo, sinossiFonte: "rete" });
+     } finally {
+      // in un `finally` perché le uscite sono cinque: una sola dimenticata
+      // lascerebbe il retro a girare la clessidra per sempre
+      if (vivo) setCercando(false);
+     }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [book.id]);
+
+  // LA COPERTINA SI GIRA, come un libro in mano (chiesto dal lettore:
+  // «clicco la copertina e mi appare il retro»). Solo transform, mai
+  // layout: lezione 10.
+  const [girata, setGirata] = useState(() => !!(typeof book.sinossi === "string" && book.sinossi) && getProgress(book.id) <= 0);
+  const [retroBusy, setRetroBusy] = useState(false);
+
+  async function chiediIlRetro() {
+    if (retroBusy) return;
+    setRetroBusy(true);
+    try {
+      const { raccogliApertura, chiediRetro } = await import("../lib/sinossi.js");
+      const passaggi = await raccogliApertura(book, getFile);
+      if (!passaggi.length) {
+        notify?.("Non riesco a leggere le prime pagine di questo tomo");
+        return;
+      }
+      const res = await chiediRetro(passaggi);
+      if (res.error === "chiave") {
+        notify?.("Serve la chiave dell'Oracolo: la trovi toccando una parola nel libro");
+        return;
+      }
+      if (!res.answer) {
+        notify?.(res.error === "rete" ? "L'Oracolo ha bisogno della rete" : "L'Oracolo non ha risposto");
+        return;
+      }
+      setRetro(res.answer);
+      setFonte("oracolo");
+      setGirata(true);
+      onSaveMeta?.({ ...book, sinossi: res.answer, sinossiMia: true });
+    } finally {
+      setRetroBusy(false);
+    }
+  }
+
+  // LA COPERTINA A MANO. `coverV` è l'appiglio che fa ricaricare l'immagine:
+  // l'id del libro non cambia, quindi da solo non basterebbe.
+  const coverRef = useRef(null);
+  const [coverV, setCoverV] = useState(0);
+  const [coverBusy, setCoverBusy] = useState(false);
+  const [haCopertina, setHaCopertina] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    getCover(book.id).then((b) => vivo && setHaCopertina(!!b));
+    return () => {
+      vivo = false;
+    };
+  }, [book.id, coverV]);
+
+  async function cambiaCopertina(file) {
+    if (!file || coverBusy) return;
+    setCoverBusy(true);
+    try {
+      const blob = await preparaCopertina(file);
+      if (!blob) {
+        notify?.("Quella non sembra un'immagine");
+        return;
+      }
+      await putCover(book.id, blob);
+      // a tutto schermo resta questa, non quella dentro il file (`copertinaGrande.js`)
+      segnaAMano(book.id, true);
+      // il libro è cambiato anche se i suoi campi no: senza questo la
+      // sincronizzazione non saprebbe che c'è qualcosa di nuovo
+      touchBook(book.id);
+      setCoverV((v) => v + 1);
+      caricaCopertina(book.id);
+      notify?.("Copertina rivestita 🖼");
+    } catch {
+      notify?.("Non sono riuscito a leggere quell'immagine");
+    } finally {
+      setCoverBusy(false);
+      if (coverRef.current) coverRef.current.value = "";
+    }
+  }
+
+  // «Torna indietro» vuol dire rimettere la copertina DEL LIBRO, non restare
+  // senza: quella sta ancora dentro il file, e tirarla fuori è lo stesso
+  // giro che fa l'import. Solo se il libro davvero non ne ha una si resta
+  // col dorso disegnato, che lì è lo stato di partenza.
+  async function togliCopertina() {
+    if (coverBusy) return;
+    setCoverBusy(true);
+    try {
+      const bytes = await getFile(book.id).catch(() => null);
+      // senza il file non si guarda, e buttare via la copertina buona di un
+      // libro rimasto nel cloud sarebbe il danno peggiore
+      if (!bytes) {
+        notify?.("Il file non è su questo dispositivo: la copertina resta com'è");
+        return;
+      }
+      const originale = await copertinaOriginale(book, bytes);
+      segnaAMano(book.id, false);
+      if (originale) await putCover(book.id, originale);
+      else await removeCover(book.id);
+      touchBook(book.id);
+      setCoverV((v) => v + 1);
+      caricaCopertina(book.id);
+      notify?.(originale ? "Rimessa la copertina del libro 🖼" : "Tornata al dorso disegnato");
+    } catch {
+      notify?.("Non sono riuscito a rimettere la copertina originale");
+    } finally {
+      setCoverBusy(false);
+    }
+  }
+
+  // Il glossario tuo è legato alla SAGA, e la saga si può stare cambiando
+  // proprio qui sopra: si rilegge dal campo, non dal libro salvato.
+  const chiaveMia = chiaveGlossario({ ...book, saga });
+  const [glossOpen, setGlossOpen] = useState(false);
+  const [glossV, setGlossV] = useState(0);
+  const mieVoci = useMemo(() => vociDi(chiaveMia), [chiaveMia, glossV]);
+  function togliVoce(t) {
+    salvaVoci(chiaveMia, togli(mieVoci, t));
+    setGlossV((v) => v + 1);
+  }
+
+  // LEXICANUM PER QUESTO LIBRO. Si accende da se' sui libri che la saga, la
+  // serie o il titolo dicono del 40K; qui si corregge a mano dove la regola
+  // sbaglia (un 40K con la saga vuota, o il contrario). Solo se Lexicanum e'
+  // sceso: un interruttore che non accende niente promette il falso.
+  const [lexQui, setLexQui] = useState(false);
+  const [loreMano, setLoreMano] = useState(() => loreAMano(book.id));
+  useEffect(() => {
+    let vivo = true;
+    // Lexicanum o Fandom: l'interruttore vale per tutti e due i wiki
+    Promise.all([statoLexicanum(), statoLexicanum(undefined, FANDOM)]).then(([l, f]) => vivo && setLexQui(!!(l || f)));
+    return () => {
+      vivo = false;
+    };
+  }, []);
+  const loreDaSe = del40k({ ...book, saga });
+  const loreAcceso = loreMano ?? loreDaSe;
+  function cambiaLore() {
+    // tornare a quel che direbbe la regola cancella la scelta: cosi' una
+    // saga sistemata dopo torna a decidere da sola
+    const nuovo = !loreAcceso === loreDaSe ? null : !loreAcceso;
+    scriviLoreAMano(book.id, nuovo);
+    setLoreMano(nuovo);
+  }
 
   const pct = Math.round(getProgress(book.id) * 100);
 
-  function commitAndClose() {
-    onSaveMeta({
-      ...book,
-      title: title.trim() || book.title,
-      author: author.trim(),
-      series: series.trim(),
-      genre: genre.trim(),
-      saga: saga.trim(),
-      sagaOrder: sagaOrder.trim() === "" ? null : Number(sagaOrder),
-      notes,
-      rating,
+  // «PRIMA DI COMINCIARE»: c'è solo se davvero c'è un prima, cioè se di
+  // questa saga hai già letto (o stai leggendo) qualche volume che viene
+  // avanti nell'ordine. Vale per qualunque saga: l'ordine lo dici tu qui
+  // sopra, nei campi Saga e Numero.
+  const [prima, setPrima] = useState(null);
+  const filoPrima = useRef(0);
+  const comEditato = {
+    ...book,
+    saga: saga.trim(),
+    series: series.trim(),
+    sagaOrder: numeroLettura(sagaOrder),
+  };
+  // stesso raggruppamento della scheda: se il volume dichiara una serie i
+  // precedenti sono quelli della SUA serie. Il conteggio nel tasto deve
+  // dire lo stesso numero che poi verrà davvero sfogliato.
+  const precedenti = soloDellaSerie(
+    comEditato,
+    frontiera(comEditato, books, { statusOf: getStatus, cfiOf: getCfi }).filter(
+      (t) => t.libro.id !== book.id
+    )
+  );
+  // quando il tasto non c'è ma un prima dovrebbe esserci, la scheda dice
+  // DOVE si rompe la catena: un tasto che sparisce in silenzio trasforma
+  // un campo sbagliato in un mistero
+  const primaTace =
+    precedenti.length === 0
+      ? perchePrimaTace(comEditato, books, { statusOf: getStatus, cfiOf: getCfi })
+      : null;
+
+  async function chiediPrimaDiCominciare() {
+    const mio = ++filoPrima.current;
+    const vivo = () => filoPrima.current === mio;
+    setPrima({ fase: "cerco", tappe: precedenti });
+    const { schedaPrima } = await import("../lib/trama.js");
+    const finito = await schedaPrima({
+      book: comEditato,
+      libri: books,
+      statusOf: getStatus,
+      // il volume che sta per cominciare non ha un «fin dove»: quello che
+      // conta è tutto quello che viene prima
+      cfiOf: (id) => (id === book.id ? null : getCfi(id)),
+      vivo,
+      passo: (s) => vivo() && setPrima(s),
     });
+    if (vivo() && finito) setPrima(finito);
+  }
+
+  // I due salvataggi scrivono gli stessi campi, e la saga passa da
+  // `scritturaSaga`: svuotare il campo è una SCELTA, e va scritta o nessuna
+  // delle cinque strade può saperla (vedi `nienteSaga` in `sagaBooks.js`).
+  const metaEditata = () => ({
+    ...book,
+    title: title.trim() || book.title,
+    author: author.trim(),
+    series: series.trim(),
+    genre: genre.trim(),
+    ...scritturaSaga(book, saga),
+    sagaOrder: numeroLettura(sagaOrder),
+    notes,
+    rating,
+    fav,
+    // «📖 Libro» su una scheda senza file e' l'assenza di un tipo
+    tipo: tipo === "libri" ? null : tipo,
+  });
+
+  function commitAndClose() {
+    onSaveMeta(metaEditata());
     onClose();
   }
 
   function changeStatus(s) {
     setStatus(book.id, s);
     setStatusState(s);
+    // `setStatus` può aver scritto (finito qui, ora) o tolto (abbandonato)
+    // la data: il campo racconta quello che c'è, non quello che c'era
+    setAnno(String(annoFinito(book.id) || ""));
+  }
+
+  function cambiaAnno(v) {
+    const solo = v.replace(/\D/g, "").slice(0, 4);
+    setAnno(solo);
+    segnaAnnoFine(book.id, solo);
   }
 
   function openBook() {
-    onSaveMeta({
-      ...book,
-      title: title.trim() || book.title,
-      author: author.trim(),
-      series: series.trim(),
-      genre: genre.trim(),
-      saga: saga.trim(),
-      sagaOrder: sagaOrder.trim() === "" ? null : Number(sagaOrder),
-      notes,
-      rating,
-    });
+    onSaveMeta(metaEditata());
     onRead(book.id);
+  }
+
+  // i campi editati si salvano PRIMA: il giro dell'ebook riscrive il libro
+  // in biblioteca, e un titolo appena corretto e non ancora salvato
+  // finirebbe sotto quella riscrittura
+  // SE IL FILE C'E' QUI (un CBR si converte solo coi byte in mano).
+  // `undefined` = non ancora guardato, `0` = qui non c'e'.
+  const [pesoQui, setPesoQui] = useState(undefined);
+  useEffect(() => {
+    let vivo = true;
+    getFile(book.id)
+      .then((f) => vivo && setPesoQui(f?.size || 0))
+      .catch(() => vivo && setPesoQui(0));
+    return () => {
+      vivo = false;
+    };
+  }, [book.id]);
+  // UN CBR SI CONVERTE IN CBZ DA QUI (vedi `lib/convertiCbr.js`): un CBZ si
+  // legge a pezzi
+  const [convertendo, setConvertendo] = useState(null);
+  async function convertiQui() {
+    if (convertendo || !onConvertiCbr) return;
+    setConvertendo({});
+    try {
+      if (await onConvertiCbr(book.id, setConvertendo)) setPesoQui((await getFile(book.id).catch(() => null))?.size || 0);
+    } finally {
+      setConvertendo(null);
+    }
+  }
+
+  function togliEbook() {
+    setConfermaEbook(false);
+    onSaveMeta(metaEditata());
+    // E LA SCHEDA LO DEVE VEDERE: resta aperta, e col tasto di prima ancora
+    // li' sembrava che il gesto non fosse successo («non me l'ha eseguito»)
+    // mentre il file se n'era andato davvero. Si riguarda a lavoro finito.
+    Promise.resolve(onTogliEbook(book.id))
+      .then(() => getFile(book.id))
+      .then((f) => setPesoQui(f?.size || 0))
+      .catch(() => {});
   }
 
   return (
@@ -188,10 +479,10 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%",
-          maxWidth: 600,
+          maxWidth: px(600),
           maxHeight: "90vh",
           overflowY: "auto",
-          borderRadius: 18,
+          borderRadius: R.grande,
           border: `1px solid ${C.border}`,
           background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
           boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
@@ -200,20 +491,133 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
       >
         <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
           <div style={{ width: 150, flexShrink: 0, margin: "0 auto" }}>
-            <BookCover book={book} radius={10} />
+            {/* LA COPERTINA SI GIRA, come un libro preso in mano: sul retro
+                c'è la quarta di copertina. Solo `transform` (lezione 10), e
+                le due facce nascondono il proprio rovescio, o il testo del
+                retro si vedrebbe allo specchio dietro la copertina. */}
+            <button
+              onClick={() => setGirata((v) => !v)}
+              aria-label={girata ? "Gira sulla copertina" : "Gira sul retro del libro"}
+              style={{ display: "block", width: "100%", padding: 0, perspective: 700 }}
+            >
+              <div
+                style={{
+                  position: "relative",
+                  width: "100%",
+                  aspectRatio: "2 / 3",
+                  transformStyle: "preserve-3d",
+                  transition: "transform 0.55s ease",
+                  transform: girata ? "rotateY(180deg)" : "rotateY(0deg)",
+                }}
+              >
+                <div style={{ position: "absolute", inset: 0, backfaceVisibility: "hidden" }}>
+                  <BookCover book={book} radius={10} version={coverV} intera />
+                </div>
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    backfaceVisibility: "hidden",
+                    transform: "rotateY(180deg)",
+                    borderRadius: R.piccolo,
+                    border: `1px solid ${C.border}`,
+                    background: `linear-gradient(165deg, ${C.card}, ${C.surface})`,
+                    padding: "10px 11px",
+                    overflowY: "auto",
+                    textAlign: "left",
+                  }}
+                >
+                  {retro ? (
+                    <>
+                      <div
+                        style={{
+                          fontSize: F.minuscolo,
+                          color: C.text,
+                          lineHeight: 1.4,
+                          whiteSpace: "pre-line",
+                        }}
+                      >
+                        {retro}
+                      </div>
+                      {/* la provenienza si dice solo quando NON è ovvia:
+                          «dal file del libro» è il caso normale, e
+                          dichiararlo è rumore — gli zeri non si dicono */}
+                      {fonte !== "file" && (
+                        <div style={{ marginTop: 7, fontSize: F.minuscolo, color: C.muted, opacity: 0.8 }}>
+                          {fonte === "oracolo" ? "— dalle prime pagine" : "— dal catalogo in rete"}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div style={{ fontSize: F.minuscolo, color: C.muted, lineHeight: 1.45 }}>
+                      {retroBusy
+                        ? "✨ Leggo le prime pagine…"
+                        : cercando
+                          ? "Cerco nel catalogo…"
+                          : book.fileType !== "epub"
+                            ? "Il file non porta la quarta di copertina, e nel catalogo non l'ho trovata."
+                            : "Il file non porta la quarta di copertina, e nel catalogo non l'ho trovata. Tocca «✨ Di cosa parla?» qui sotto."}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </button>
+            {/* Titolo, autore, saga e genere si correggono qui da sempre; la
+                copertina no, e un ePub senza copertina restava un dorso muto
+                per sempre. Il tasto sta sotto l'immagine, dov'è la cosa che
+                cambia. */}
+            <input
+              ref={coverRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={(e) => cambiaCopertina(e.target.files?.[0])}
+            />
+            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+              <button
+                onClick={() => coverRef.current?.click()}
+                disabled={coverBusy}
+                style={{
+                  flex: 1,
+                  padding: "7px 0",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.border}`,
+                  color: coverBusy ? C.muted : C.text,
+                  fontSize: F.minuscolo,
+                }}
+              >
+                {coverBusy ? "…" : "🖼 Copertina"}
+              </button>
+              {haCopertina && (
+                <button
+                  onClick={togliCopertina}
+                  disabled={coverBusy}
+                  aria-label="Rimetti la copertina del libro"
+                  style={{
+                    padding: "7px 10px",
+                    borderRadius: R.piccolo,
+                    border: `1px solid ${C.border}`,
+                    color: C.muted,
+                    fontSize: F.minuscolo,
+                  }}
+                >
+                  ↺
+                </button>
+              )}
+            </div>
             {status === "reading" && pct > 0 && (
               <div style={{ marginTop: 10 }}>
-                <div style={{ height: 5, borderRadius: 3, background: C.dim, overflow: "hidden" }}>
+                <div style={{ height: 5, borderRadius: R.minimo, background: C.dim, overflow: "hidden" }}>
                   <div
                     style={{
                       width: `${pct}%`,
                       height: "100%",
-                      borderRadius: 3,
+                      borderRadius: R.minimo,
                       background: `linear-gradient(90deg, ${C.accent}, ${C.arcane})`,
                     }}
                   />
                 </div>
-                <div style={{ marginTop: 4, fontSize: 12.5, color: C.muted, textAlign: "center" }}>{pct}%</div>
+                <div style={{ marginTop: 4, fontSize: F.minuscolo, color: C.muted, textAlign: "center" }}>{pct}%</div>
               </div>
             )}
           </div>
@@ -233,15 +637,15 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                 />
               </div>
               <label style={{ display: "block", marginBottom: 10, width: 96, flexShrink: 0 }}>
-                <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 3 }}>
+                <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 3 }}>
                   N° lettura
                 </span>
                 <input
                   value={sagaOrder}
-                  onChange={(e) => setSagaOrder(e.target.value.replace(/[^\d]/g, ""))}
-                  inputMode="numeric"
+                  onChange={(e) => setSagaOrder(pulisciNumero(e.target.value))}
+                  inputMode="decimal"
                   placeholder="1"
-                  style={{ ...fieldStyle, textAlign: "center" }}
+                  style={{ ...fieldStyle(), textAlign: "center" }}
                 />
               </label>
             </div>
@@ -253,22 +657,119 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
               options={uniq("series")}
               listId="bc-series"
             />
-            <Field
-              label="Genere"
-              value={genre}
-              onChange={setGenre}
-              placeholder="es. Fantasy"
-              options={[...new Set([...uniq("genre"), ...GENRE_HINTS])]}
-              listId="bc-genres"
-            />
+            {/* la casella resta scrivibile — quello che ci scrivi tu vale
+                sempre — ma il tasto accanto apre l'elenco da toccare, che
+                e' l'unico modo civile di scegliere «Sword & sorcery» su un
+                tablet senza tirare su la tastiera */}
+            <label style={{ display: "block", marginBottom: 10 }}>
+              <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 3 }}>
+                Genere
+              </span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  value={genre}
+                  onChange={(e) => setGenre(e.target.value)}
+                  placeholder="es. Fantasy"
+                  list="bc-genres"
+                  style={{ ...fieldStyle(), flex: 1, minWidth: 0 }}
+                />
+                <button
+                  onClick={() => setSceltaGenere((v) => !v)}
+                  aria-expanded={sceltaGenere}
+                  style={{
+                    flexShrink: 0,
+                    padding: "9px 16px",
+                    borderRadius: R.piccolo,
+                    fontSize: F.nota,
+                    cursor: "pointer",
+                    border: `1px solid ${sceltaGenere ? C.accent : C.border}`,
+                    background: sceltaGenere ? `${C.accent}22` : "transparent",
+                    color: sceltaGenere ? C.accent : C.text,
+                  }}
+                >
+                  Scegli
+                </button>
+              </div>
+              <datalist id="bc-genres">
+                {[...new Set([...uniq("genre"), ...TUTTI])].map((o) => (
+                  <option key={o} value={o} />
+                ))}
+              </datalist>
+            </label>
+            {sceltaGenere && (
+              <Suspense fallback={null}>
+                <GenrePicker value={genre} onChange={setGenre} miei={uniq("genre")} />
+              </Suspense>
+            )}
+
+            {/* IL TIPO NON E' UN GENERE («non dovrebbe essere un genere il
+                manga»): un manga fantasy e' fantasy nel genere e manga qui.
+                Solo sui fumetti, perche' un ePub e' un libro e basta; e
+                sulle schede senza file, che un formato non ce l'hanno. */}
+            {(eFumetto(book) || book.fileType === SENZA) && (
+              <div style={{ marginBottom: 10 }}>
+                <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 3 }}>Tipo</span>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {[
+                    ...(eFumetto(book) ? [] : [{ id: "libri", label: "📖 Libro" }]),
+                    { id: "fumetti", label: "💬 Fumetto" },
+                    { id: "manga", label: "🏮 Manga" },
+                  ].map((o) => {
+                    const acceso = (tipo || tipoDeciso) === o.id;
+                    return (
+                      <button
+                        key={o.id}
+                        onClick={() => setTipo(o.id)}
+                        aria-pressed={acceso}
+                        style={{
+                          padding: "8px 14px",
+                          minHeight: 44,
+                          borderRadius: R.tondo,
+                          fontSize: F.piccolo,
+                          border: `1px solid ${acceso ? C.accent : C.border}`,
+                          color: acceso ? C.accent : C.muted,
+                          background: acceso ? `${C.accent}14` : "transparent",
+                        }}
+                      >
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {!tipo && (
+                  <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginTop: 3 }}>
+                    {!eFumetto(book)
+                      ? "Segnane uno come fumetto o manga: gli altri volumi senza file della saga seguono."
+                      : tipoDeciso === "manga"
+                        ? "Riconosciuto come manga. Segnane uno: gli altri volumi della saga seguono."
+                        : "Segnane uno come manga: gli altri volumi della saga seguono."}
+                  </span>
+                )}
+              </div>
+            )}
 
             <div style={{ marginBottom: 10 }}>
-              <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 3 }}>Valutazione</span>
-              <Stars value={rating} onChange={setRating} />
+              <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 3 }}>Valutazione</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <Stars value={rating} onChange={setRating} />
+                <button
+                  onClick={() => setFav((v) => !v)}
+                  style={{
+                    padding: "8px 14px",
+                    minHeight: 44,
+                    borderRadius: R.tondo,
+                    border: `1px solid ${fav ? C.accent : C.border}`,
+                    color: fav ? C.accent : C.muted,
+                    fontSize: F.piccolo,
+                  }}
+                >
+                  {fav ? "♥ Nei preferiti" : "♡ Tra i preferiti"}
+                </button>
+              </div>
             </div>
 
             <div style={{ marginBottom: 12 }}>
-              <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 4 }}>Stato</span>
+              <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 4 }}>Stato</span>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {STATUSES.map((s) => {
                   const active = status === s.id;
@@ -279,8 +780,8 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                       onClick={() => changeStatus(s.id)}
                       style={{
                         padding: "6px 14px",
-                        borderRadius: 999,
-                        fontSize: 14,
+                        borderRadius: R.tondo,
+                        fontSize: F.nota,
                         border: `1px solid ${active ? tone : C.border}`,
                         color: active ? tone : C.muted,
                         background: active ? `${tone}14` : "transparent",
@@ -291,60 +792,311 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                   );
                 })}
               </div>
+              {/* L'ANNO, E SOLO SU «Letto». Sotto lo stato perché è la sua
+                  seconda metà: dire «letto» senza dire quando mandava il
+                  libro nel conto dell'anno in corso. Vuoto è una risposta
+                  buona — il libro resta fra i letti, in fondo al diario. */}
+              {status === "read" && (
+                <label style={{ display: "block", marginTop: 10 }}>
+                  <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 3 }}>
+                    Finito nell'anno
+                  </span>
+                  <input
+                    value={anno}
+                    onChange={(e) => cambiaAnno(e.target.value)}
+                    inputMode="numeric"
+                    maxLength={4}
+                    placeholder="—"
+                    style={{ ...fieldStyle(), width: 110, textAlign: "center" }}
+                  />
+                  <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginTop: 3 }}>
+                    Lascialo vuoto se non ricordi l'anno.
+                  </span>
+                </label>
+              )}
             </div>
           </div>
         </div>
 
+        {/* IL RETRO DEL LIBRO. Sta sopra le tue note e sopra «Prima di
+            cominciare» perché risponde alla domanda più semplice di tutte
+            — «cosa sto per leggere?» — e perché l'ha scritta l'editore:
+            non è un riassunto della storia, è l'invito ad aprirla, e
+            quindi non contiene spoiler. Ripiegato: una quarta di
+            copertina lunga non deve spingere in fondo i campi. */}
+        {/* Nessuna descrizione nel file: si può chiederla all'Oracolo, ma
+            SOLO dalle prime pagine e senza mandargli il titolo — se
+            riconoscesse il libro risponderebbe a memoria, cioè con tutta
+            la trama, finale compreso. L'etichetta dice da dove viene. */}
+        {!retro && book.fileType === "epub" && (
+          <button
+            onClick={chiediIlRetro}
+            disabled={retroBusy}
+            style={{
+              margin: "6px 0 14px",
+              padding: "7px 14px",
+              borderRadius: R.tondo,
+              border: `1px solid ${C.arcane}55`,
+              color: retroBusy ? C.muted : C.arcane,
+              fontSize: F.piccolo,
+            }}
+          >
+            {retroBusy ? "✨ Leggo le prime pagine…" : "✨ Di cosa parla?"}
+          </button>
+        )}
+
         <label style={{ display: "block", margin: "6px 0 14px" }}>
-          <span style={{ display: "block", fontSize: 12.5, color: C.muted, marginBottom: 3 }}>Note personali</span>
+          <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 3 }}>Note personali</span>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
             placeholder="Pensieri, citazioni, dove l'hai lasciato…"
-            style={{ ...fieldStyle, resize: "vertical", fontFamily: "inherit", lineHeight: 1.4 }}
+            style={{ ...fieldStyle(), resize: "vertical", fontFamily: "inherit", lineHeight: 1.4 }}
           />
         </label>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        {/* Il richiamo dei volumi precedenti: c'è solo se un prima esiste
+            davvero, e sta sopra «Apri il libro» perché è lì che serve —
+            un attimo prima di cominciare. */}
+        {precedenti.length > 0 ? (
+          <div style={{ marginBottom: 14 }}>
+            {prima ? (
+              <div
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.border}`,
+                  background: `${C.bg}88`,
+                  maxHeight: "44vh",
+                  overflowY: "auto",
+                }}
+              >
+                <Suspense fallback={<p style={{ color: C.muted, fontSize: F.nota, margin: 0 }}>…</p>}>
+                  <SchedaOracolo
+                    scheda={prima}
+                    attese={{
+                      cerco: `Rileggo ${precedenti.length === 1 ? "il volume che viene prima" : `i ${precedenti.length} volumi che vengono prima`}…`,
+                      chiedo: `✨ L'Oracolo sta leggendo ${prima.passaggi?.length || 0} passaggi…`,
+                    }}
+                    vuoto="Di questa saga non trovo volumi precedenti già letti su questo dispositivo."
+                    onRiprova={chiediPrimaDiCominciare}
+                  />
+                </Suspense>
+              </div>
+            ) : (
+              <button
+                onClick={chiediPrimaDiCominciare}
+                style={{
+                  width: "100%",
+                  padding: "10px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.arcane}66`,
+                  color: C.arcane,
+                  fontSize: F.nota,
+                  textAlign: "left",
+                  lineHeight: 1.4,
+                }}
+              >
+                ✨ Prima di cominciare: cosa è successo{" "}
+                {precedenti.length === 1
+                  ? "nel volume precedente"
+                  : `nei ${precedenti.length} volumi precedenti`}
+              </button>
+            )}
+          </div>
+        ) : primaTace ? (
+          <p style={{ margin: "0 0 14px", fontSize: F.minuscolo, color: C.muted, lineHeight: 1.5 }}>
+            ✨ «Prima di cominciare» non compare: {fraseTace(primaTace)}
+          </p>
+        ) : null}
+
+        {/* IL GLOSSARIO TUO. Le voci si scrivono nel reader, toccando la
+            parola: qui si rileggono tutte insieme, che è l'unico posto dove
+            ci si accorge di una spiegazione sbagliata scritta di fretta. La
+            chiave è la saga, quindi la stessa lista vale per tutti i volumi. */}
+        {mieVoci.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <button
+              onClick={() => setGlossOpen((v) => !v)}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 14px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.border}`,
+                color: C.text,
+                fontSize: F.nota,
+              }}
+            >
+              📖 Il tuo glossario · {mieVoci.length}{" "}
+              {mieVoci.length === 1 ? "termine" : "termini"}
+              {saga.trim() ? ` di «${saga.trim()}»` : " di questo libro"}
+              <span style={{ float: "right", color: C.muted }}>{glossOpen ? "▾" : "▸"}</span>
+            </button>
+            {glossOpen && (
+              <div style={{ marginTop: 8 }}>
+                {mieVoci.map((v) => (
+                  <div
+                    key={v.t}
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "flex-start",
+                      padding: "9px 12px",
+                      marginBottom: 6,
+                      borderRadius: R.piccolo,
+                      background: C.surface,
+                      border: `1px solid ${C.border}`,
+                    }}
+                  >
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: F.nota, color: C.accent, fontWeight: 600 }}>
+                        {v.t}
+                      </span>
+                      <span style={{ display: "block", fontSize: F.piccolo, color: C.text, lineHeight: 1.45 }}>
+                        {v.d}
+                      </span>
+                    </span>
+                    <button
+                      onClick={() => togliVoce(v.t)}
+                      aria-label={`Togli «${v.t}» dal glossario`}
+                      style={{ color: C.muted, padding: 4 }}
+                    >
+                      🗑
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {lexQui && (
           <button
-            onClick={openBook}
+            onClick={cambiaLore}
+            aria-pressed={loreAcceso}
             style={{
-              flex: 1,
-              minWidth: 170,
-              padding: "12px 20px",
-              borderRadius: 12,
-              background: `linear-gradient(180deg, ${C.accent}, #b8893a)`,
-              color: "#241c0a",
-              fontWeight: 700,
-              fontSize: 16,
-              fontFamily: FONT_TITLE,
-              letterSpacing: "0.02em",
-              boxShadow: `0 0 24px ${C.accent}33`,
+              width: "100%",
+              textAlign: "left",
+              marginBottom: 14,
+              padding: "10px 14px",
+              minHeight: 44,
+              borderRadius: R.piccolo,
+              border: `1px solid ${loreAcceso ? `${C.arcane}55` : C.border}`,
+              color: loreAcceso ? C.text : C.muted,
+              fontSize: F.nota,
             }}
           >
-            📖 Apri il libro
+            ⚔ I wiki del 40K nella scheda del dizionario: {loreAcceso ? "accesi" : "spenti"}
+            <span style={{ float: "right", color: C.muted, fontSize: F.minuscolo }}>
+              {loreMano == null ? (loreDaSe ? "dalla saga" : "") : "scelto da te"}
+            </span>
           </button>
+        )}
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          {/* SENZA EBOOK NON SI APRE: si sceglie il file (chiesto dal
+              lettore: «portarmi alle cartelle locali»), e la ragione resta
+              accanto al tasto */}
+          {book.fileTolto ? (
+            <span style={{ flex: 1, minWidth: 170, display: "flex", flexDirection: "column", gap: 6 }}>
+              <button
+                onClick={openBook}
+                style={{
+                  padding: "12px 20px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.accent}88`,
+                  color: C.accent,
+                  fontWeight: 700,
+                  fontSize: F.corpo,
+                  fontFamily: FONT_TITLE,
+                }}
+              >
+                📂 Scegli il file
+              </button>
+              <span style={{ color: C.muted, fontSize: F.piccolo, lineHeight: 1.45 }}>
+                📗 Di questo libro tieni la scheda, non l'ebook: scelto il file, torna in questa scheda.
+              </span>
+            </span>
+          ) : (
+            <button
+              onClick={openBook}
+              style={{
+                flex: 1,
+                minWidth: 170,
+                padding: "12px 20px",
+                borderRadius: R.piccolo,
+                background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+                color: C.onAccent,
+                fontWeight: 700,
+                fontSize: F.corpo,
+                fontFamily: FONT_TITLE,
+                letterSpacing: "0.02em",
+                boxShadow: `0 0 24px ${C.accent}33`,
+              }}
+            >
+              📖 Apri il libro
+            </button>
+          )}
           <button
             onClick={commitAndClose}
             style={{
               padding: "12px 18px",
-              borderRadius: 12,
+              borderRadius: R.piccolo,
               border: `1px solid ${C.border}`,
               color: C.muted,
-              fontSize: 15,
+              fontSize: F.corpo,
             }}
           >
             Chiudi
           </button>
         </div>
 
-        <div style={{ marginTop: 14, textAlign: "center" }}>
+        <div style={{ marginTop: 14, textAlign: "center", display: "grid", gap: 8 }}>
+          {/* TOGLIERE L'EBOOK NON È ELIMINARE IL LIBRO, e le due cose stanno
+              vicine perché è lì che uno le cerca — ma dicono per intero cosa
+              se ne va e cosa resta, che è l'unica differenza che conta. */}
+          {book.fileType === "cbr" && onConvertiCbr && pesoQui > 0 && (
+            <>
+              <button
+                onClick={convertiQui}
+                disabled={!!convertendo}
+                style={{
+                  justifySelf: "center",
+                  minHeight: 44,
+                  padding: "8px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.accent}66`,
+                  color: C.accent,
+                  fontSize: F.nota,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {convertendo ? fraseDelPasso(convertendo) : "🔁 Converti in CBZ"}
+              </button>
+              <span style={{ fontSize: F.piccolo, color: C.muted }}>
+                Un CBZ si apre senza caricare il volume intero. Stesse pagine, stesso segno.
+              </span>
+            </>
+          )}
+          {!book.fileTolto && onTogliEbook && (
+            <button
+              onClick={() => (confermaEbook ? togliEbook() : setConfermaEbook(true))}
+              style={{ fontSize: F.piccolo, color: confermaEbook ? C.accent : C.muted, textDecoration: "underline" }}
+            >
+              {confermaEbook
+                ? "Confermi? L'ebook sparisce da qui e dal cloud, la scheda e la copertina restano — tocca di nuovo"
+                : "Togli l'ebook, tieni la scheda"}
+            </button>
+          )}
           <button
             onClick={() => (confirmDelete ? onDelete(book.id) : setConfirmDelete(true))}
-            style={{ fontSize: 13.5, color: confirmDelete ? C.red : C.muted, textDecoration: "underline" }}
+            style={{ fontSize: F.piccolo, color: confirmDelete ? C.red : C.muted, textDecoration: "underline" }}
           >
-            {confirmDelete ? "Confermi? Il file verrà rimosso per sempre — tocca di nuovo" : "Elimina questo libro"}
+            {confirmDelete
+              ? "Confermi? Il file verrà rimosso per sempre — tocca di nuovo"
+              : "Elimina questo libro"}
           </button>
         </div>
       </div>

@@ -1,12 +1,649 @@
-import { useState } from "react";
-import { C, FONT_TITLE } from "../data/constants.js";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
+import { lemmaDoppione, lookup, lookupPhrase, wordCount } from "../lib/dictionary.js";
+import { statoDizionario, scaricaDizionario, cartellinoInRete } from "../lib/dizionarioOffline.js";
+import { consultaOracolo, hasOracle, setOracleKey } from "../lib/oracle.js";
+import { rigaUltima, rigaMese, riassunto, costo, leggiTetto } from "../lib/spesa.js";
+import { TettoFinito } from "./TettoOracolo.jsx";
+import { daAnnotare, fraseAttorno, annota, togliParola, leggiQuaderno, scriviQuaderno } from "../lib/quaderno.js";
+import { chiaveGlossario, vociDi, salvaVoci, aggiungi, togli, cerca } from "../lib/glossarioMio.js";
+import { voceNelContesto, scrittoComeNome, loreAttivo, statoLexicanum, giudiceFonti, velaVoce, avvisoVoce, immaginePerVoce, illustrazioniPerVoce, figuraBreve, LEXICANUM, FANDOM } from "../lib/lexicanum.js";
+import { loadBooks, getStatus } from "../lib/library.js";
+import { getCfi } from "../lib/annotations.js";
+import VoceLore, { Testo, Velo, AvvisoFandom, Lightbox } from "./VoceLore.jsx";
 
 // La scheda del dizionario e' identica nei due reader: qui una volta sola,
-// cosi' EPUB e PDF non divergono.
-export default function DictionaryCard({ dict, bottom, onClose }) {
-  const [all, setAll] = useState(false);
+// cosi' EPUB e PDF non divergono. Risponde con quello che il tablet non puo'
+// sapere — glossario della saga, modi di dire, l'Oracolo — e con la voce di
+// vocabolario, prima dal disco e poi dalla rete.
+// LA VOCE, RIFATTA (chiesto dal lettore: «il dizionario non mi piace come
+// e' stato fatto» — le definizioni, l'impaginazione, la lentezza).
+//
+// L'ordine e' quello con cui uno legge una voce bilingue: PRIMA la resa
+// italiana, grande, per categoria grammaticale — e' la risposta alla
+// domanda che si fa toccando una parola — e POI le definizioni in inglese,
+// numerate, con la loro resa accanto quando il senso ce l'ha. Le prime
+// quattro in vista, il resto ripiegato: otto sensi in fila erano il muro
+// che rendeva la scheda illeggibile.
+//
+// La resa italiana viene da MultiWordNet, sul dispositivo: e' un dizionario,
+// non una traduzione a macchina, e per questo sta in cima senza avvisi.
+// MyMemory resta solo dove il disco tace, con la sua banda che lo dice.
+const SENSI_IN_VISTA = 4;
+
+// la BANDA dice da dove viene la risposta, come sul Collins del tablet
+function banda(testo) {
+  return (
+    <div
+      style={{
+        padding: "5px 12px",
+        background: `${C.surface}e6`,
+        borderBottom: `1px solid ${C.border}`,
+        borderTop: `1px solid ${C.border}`,
+        fontSize: F.minuscolo,
+        letterSpacing: 0.6,
+        textTransform: "uppercase",
+        color: C.muted,
+      }}
+    >
+      {testo}
+    </div>
+  );
+}
+
+function Voce({ dict, titolo }) {
+  const entries = dict.entries || [];
+  const italiano = dict.italiano || [];
+  const [tutte, setTutte] = useState(false);
+  if (!entries.length && !dict.translation && !italiano.length) return null;
+  const lingua = (dict.lang || "en") === "en" ? "inglese" : (dict.lang || "").toUpperCase();
+  const lemma = dict.lemma || dict.word;
+  const dueVolte = lemmaDoppione(dict, titolo);
+  const mostrate = tutte ? entries : entries.slice(0, SENSI_IN_VISTA);
+  const nascoste = entries.length - mostrate.length;
+  const etichetta = (pos) => (
+    <span
+      style={{
+        flexShrink: 0,
+        fontSize: F.minuscolo,
+        letterSpacing: 0.5,
+        textTransform: "uppercase",
+        color: C.arcane,
+      }}
+    >
+      {pos}
+    </span>
+  );
+
+  return (
+    <div
+      style={{
+        marginBottom: 12,
+        border: `1px solid ${C.border}`,
+        borderRadius: R.piccolo,
+        overflow: "hidden",
+        background: `${C.surface}55`,
+      }}
+    >
+      {!dueVolte && (
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "9px 12px 0" }}>
+          <span style={{ fontSize: F.corpo, fontWeight: 600, color: C.text }}>{lemma}</span>
+          {dict.forma && (
+            <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>
+              ({dict.forma} «{dict.lemma}»)
+            </span>
+          )}
+        </div>
+      )}
+
+      {italiano.length > 0 ? (
+        <div style={{ padding: "9px 12px 11px" }}>
+          {italiano.map((g) => (
+            <div key={g.pos} style={{ display: "flex", gap: 10, alignItems: "baseline", marginBottom: 4 }}>
+              {g.pos && etichetta(g.pos)}
+              <span style={{ fontSize: F.rilievo, fontWeight: 600, color: C.text, lineHeight: 1.4 }}>
+                {g.parole.join(", ")}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : dict.translation ? (
+        <>
+          {banda(dict.machine ? "Reso a macchina, dall'inglese" : "Dall'inglese all'italiano")}
+          <div style={{ padding: "8px 12px 10px" }}>
+            <span style={{ fontSize: F.rilievo, fontWeight: 600, color: C.text, lineHeight: 1.4 }}>
+              {dict.translation}
+            </span>
+            {dict.machine && (
+              <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 5, lineHeight: 1.4 }}>
+                Nessuna voce di vocabolario per questo passaggio: qui sopra c'è una traduzione
+                automatica, non il senso del modo di dire.
+              </div>
+            )}
+          </div>
+        </>
+      ) : null}
+
+      {entries.length > 0 && (
+        <>
+          {/* la banda dice la fonte, come sul Collins: una definizione di
+              WordNet è più scarna di una di Wiktionary, e sapere da dove
+              viene è la differenza fra «il dizionario oggi dice poco» e
+              «questa è la voce che sta sul dispositivo» — e dice anche se
+              la rete sta ancora cercando */}
+          {banda(
+            `${dict.dalDisco ? "WordNet · sul dispositivo" : entries.some((e) => e.qui) ? "Wiktionary · sul dispositivo" : `Wiktionary · ${lingua}`}${dict.cercando ? " · cerco anche in rete…" : ""}`
+          )}
+          <div style={{ padding: "9px 12px 11px" }}>
+            {mostrate.map((e, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, marginBottom: 7 }}>
+                <span style={{ flexShrink: 0, fontSize: F.piccolo, color: C.accent, minWidth: 12 }}>
+                  {i + 1}
+                </span>
+                <div style={{ minWidth: 0 }}>
+                  {e.pos && <span style={{ marginRight: 7 }}>{etichetta(e.pos)}</span>}
+                  <span style={{ fontSize: F.nota, color: C.text, lineHeight: 1.5 }}>{e.text}</span>
+                  {/* la resa del SINGOLO senso, quando c'è: è quel che dice
+                      quale dei cinque sensi è «gatto» e quale «vomitare» */}
+                  {e.ita?.length > 0 && (
+                    <span style={{ fontSize: F.nota, color: C.accent, marginLeft: 6 }}>— {e.ita.join(", ")}</span>
+                  )}
+                  {/* l'esempio d'uso di Wiktionary: il senso in una frase
+                      vera dice piu' della definizione da sola */}
+                  {e.es && (
+                    <div style={{ marginTop: 3, fontSize: F.piccolo, color: C.muted, fontStyle: "italic", lineHeight: 1.45 }}>
+                      «{e.es}»
+                    </div>
+                  )}
+                  {/* «The quality or state of being gormless» non spiega
+                      niente a chi non sa cosa vuol dire «gormless»: la sua
+                      definizione va qui, rientrata, come il rimando di un
+                      vocabolario di carta — e non fra i sensi qui sopra,
+                      che sono di un'ALTRA parola */}
+                  {e.rimando && (
+                    <div
+                      style={{
+                        marginTop: 6,
+                        paddingLeft: 9,
+                        borderLeft: `2px solid ${C.border}`,
+                      }}
+                    >
+                      <span style={{ fontSize: F.minuscolo, fontWeight: 600, color: C.accent }}>
+                        {e.rimando.parola}
+                      </span>
+                      {e.rimando.sensi.map((s, k) => (
+                        <div
+                          key={k}
+                          style={{ fontSize: F.minuscolo, color: C.muted, lineHeight: 1.45, marginTop: 2 }}
+                        >
+                          {s.pos && <span style={{ marginRight: 6 }}>{etichetta(s.pos)}</span>}
+                          {s.text}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {nascoste > 0 && (
+              <button
+                onClick={() => setTutte(true)}
+                style={{ fontSize: F.piccolo, color: C.muted, padding: "4px 0 0 20px", minHeight: 32 }}
+              >
+                {nascoste === 1 ? "un altro senso" : `altri ${nascoste} sensi`} ▾
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// IL DIZIONARIO SI SCARICA ANCHE DA QUI. Stava solo nelle Impostazioni — e
+// il ragionamento era giusto: si scarica PRIMA di averne bisogno. Ma da
+// quando la resa italiana viene dal disco, chi non l'ha scaricato apre la
+// scheda e non capisce perche' la parola gli arriva solo in inglese: il
+// posto dove si nota la mancanza e' anche il posto dove va offerto il
+// rimedio. Un tocco, e la scheda si rilegge da sola.
+function ScaricaQui({ cartellino, onFatto }) {
+  const [avanzamento, setAvanzamento] = useState(null);
+  const [guaio, setGuaio] = useState("");
+  const mb = (n) => `${(n / 1048576).toFixed(1)} MB`;
+  async function scarica() {
+    if (avanzamento) return;
+    setGuaio("");
+    setAvanzamento({ scaricati: 0, totale: cartellino?.byte || null });
+    try {
+      await scaricaDizionario({ onProgress: setAvanzamento });
+      onFatto();
+    } catch (e) {
+      setGuaio(e?.message || "non sono riuscito a scaricarlo");
+    } finally {
+      setAvanzamento(null);
+    }
+  }
+  return (
+    <div style={{ marginBottom: 12, padding: "9px 12px", border: `1px dashed ${C.border}`, borderRadius: R.piccolo }}>
+      <p style={{ margin: "0 0 8px", fontSize: F.piccolo, color: C.muted, lineHeight: 1.45 }}>
+        Col dizionario sul dispositivo la scheda dice la parola <strong>in italiano</strong>, subito e
+        anche senza rete.
+      </p>
+      {guaio && <p style={{ margin: "0 0 8px", fontSize: F.minuscolo, color: C.red }}>{guaio}</p>}
+      <button
+        onClick={scarica}
+        disabled={!!avanzamento}
+        style={{
+          minHeight: 40,
+          fontSize: F.piccolo,
+          color: avanzamento ? C.muted : C.arcane,
+          border: `1px solid ${C.arcane}55`,
+          borderRadius: R.tondo,
+          padding: "6px 14px",
+        }}
+      >
+        {avanzamento
+          ? `Scarico… ${mb(avanzamento.scaricati)}${avanzamento.totale ? ` di ${mb(avanzamento.totale)}` : ""}`
+          : `📖 Scarica il dizionario${cartellino?.byte ? ` · ${mb(cartellino.byte)}` : ""}`}
+      </button>
+    </div>
+  );
+}
+
+
+// le voci col nome che stanno in vista: oltre, un nome comune («Horus»)
+// riempirebbe la scheda di titoli
+const ALTRE_IN_VISTA = 8;
+
+export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) {
+  // {loading} | {answer} | {error}; la chiave si chiede qui dentro, dove
+  // l'Oracolo si usa, non in un pannello di impostazioni da scoprire
+  const [oracolo, setOracolo] = useState(null);
+  const [keyOpen, setKeyOpen] = useState(false);
+  const [keyDraft, setKeyDraft] = useState("");
+  // il glossario tuo: `giro` serve solo a rileggere le voci dopo aver
+  // salvato — stanno in localStorage, e senza un rendering non si rileggono
+  const [glossOpen, setGlossOpen] = useState(false);
+  const [glossDraft, setGlossDraft] = useState("");
+  const [, setGiro] = useState(0);
+  // il dizionario sul dispositivo: `null` = non c'e', e allora la scheda
+  // offre di scaricarlo; `extra` e' la voce riletta dopo lo scaricamento,
+  // che il reader non sa rifare da solo
+  const [installato, setInstallato] = useState(undefined);
+  const [cartellino, setCartellino] = useState(null);
+  const [extra, setExtra] = useState(null);
+  // LEXICANUM: `lexQui` come `installato` (undefined = non ancora guardato),
+  // `lore` la voce trovata per QUESTA selezione, `loreAperta` la voce intera
+  // al posto della scheda
+  const [lexQui, setLexQui] = useState(undefined);
+  const [lore, setLore] = useState(null);
+  const [loreAperta, setLoreAperta] = useState(false);
+  const [incipitAperto, setIncipitAperto] = useState(false);
+  // FANDOM, la seconda scheda: stessa ricerca, il suo deposito, e quale delle
+  // due si sta guardando (`null` = Lexicanum se c'e', se no Fandom)
+  const [fanQui, setFanQui] = useState(undefined);
+  const [fan, setFan] = useState(null);
+  const [scheda, setScheda] = useState(null);
+  // L'IMMAGINE della voce accanto alla definizione (`figuraBreve`): i byte
+  // dal dispositivo, l'indirizzo fatto qui e buttato quando la voce cambia
+  const [figura, setFigura] = useState(null);
+  const [figuraSvelata, setFiguraSvelata] = useState(false);
+  // le altre illustrazioni della stessa voce, e quale si guarda in grande
+  // (chiesto dal lettore: «non è troppo piccola? e se volessi vedere più
+  // illustrazioni dello stesso elemento?»)
+  const [altre, setAltre] = useState(null);
+  const [grande, setGrande] = useState(null);
+  // la scheda resta montata tra una selezione e l'altra: la risposta della
+  // frase di prima non deve comparire sotto la frase nuova
+  const tagRef = useRef();
+  const tag = dictProp ? `${dictProp.raw || ""}|${dictProp.word || ""}` : "";
+  if (tagRef.current !== tag) {
+    tagRef.current = tag;
+    if (oracolo) setOracolo(null);
+    if (keyOpen) setKeyOpen(false);
+    if (glossOpen) setGlossOpen(false);
+    if (loreAperta) setLoreAperta(false);
+    if (incipitAperto) setIncipitAperto(false);
+    if (scheda) setScheda(null);
+    if (figuraSvelata) setFiguraSvelata(false);
+    if (grande != null) setGrande(null);
+  }
+  const dict = extra && extra.tag === tag ? { ...dictProp, ...extra.res, loading: false, cercando: false } : dictProp;
+
+  useEffect(() => {
+    let vivo = true;
+    statoDizionario().then((s) => vivo && setInstallato(s));
+    statoLexicanum().then((s) => vivo && setLexQui(s));
+    statoLexicanum(undefined, FANDOM).then((s) => vivo && setFanQui(s));
+    cartellinoInRete().then((c) => vivo && setCartellino(c));
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  // La voce di Lexicanum si cerca qui e non nei due reader: e' la stessa
+  // nell'ePub e nel PDF, e sta sul dispositivo — risponde in un attimo e
+  // senza rete. Solo nei libri del 40K (`loreAttivo`).
+  const loreQui = !!lexQui && loreAttivo(book);
+  const fandomQui = !!fanQui && loreAttivo(book);
+  const testoSel = dictProp ? dictProp.raw?.trim() || dictProp.word || "" : "";
+  useEffect(() => {
+    if (!loreQui || !testoSel) return;
+    let vivo = true;
+    const mio = tag;
+    voceNelContesto(testoSel, dictProp?.context || "")
+      .catch(() => null)
+      .then((r) => vivo && setLore({ tag: mio, voce: r?.voce || null, altre: r?.altre || [] }));
+    return () => {
+      vivo = false;
+    };
+  }, [loreQui, tag]);
+  useEffect(() => {
+    if (!fandomQui || !testoSel) return;
+    let vivo = true;
+    const mio = tag;
+    voceNelContesto(testoSel, dictProp?.context || "", undefined, FANDOM)
+      .catch(() => null)
+      .then((r) => vivo && setFan({ tag: mio, voce: r?.voce || null, altre: r?.altre || [] }));
+    return () => {
+      vivo = false;
+    };
+  }, [fandomQui, tag]);
+  const voceLex = lore && lore.tag === tag ? lore.voce : null;
+  const voceFan = fan && fan.tag === tag ? fan.voce : null;
+  const wikiScelto = (scheda === "fan" && voceFan) || (!voceLex && voceFan) ? FANDOM : LEXICANUM;
+  const voceLore = wikiScelto === FANDOM ? voceFan : voceLex;
+  // LE ALTRE VOCI COL NOME (vedi `voceNelContesto`): un tocco la mette al
+  // posto di quella mostrata, che passa fra le altre
+  const altreLore = (wikiScelto === FANDOM ? fan : lore)?.altre || [];
+  const scegliAltra = (v) => {
+    const metti = wikiScelto === FANDOM ? setFan : setLore;
+    const pulita = ({ dalParagrafo, ...resto }) => resto;
+    metti((x) => ({ ...x, voce: v, altre: [pulita(x.voce), ...x.altre.filter((a) => a !== v)] }));
+    setIncipitAperto(false);
+    setFiguraSvelata(false);
+  };
+  const cercaWiki = (loreQui && lore?.tag !== tag) || (fandomQui && fan?.tag !== tag);
+  const giudice = useMemo(
+    () => (voceLore ? giudiceFonti(book, loadBooks(), { statusOf: getStatus, cfiOf: getCfi }) : null),
+    [voceLore, book]
+  );
+  // l'incipit: il primo paragrafo, velato se cita un volume non ancora letto
+  const incipit = voceLore && giudice ? velaVoce(voceLore, giudice).find((b) => b.x) : null;
+  // su Fandom il velo e' la voce intera: l'avviso sta davanti all'incipit
+  const avvisoFan = wikiScelto === FANDOM && voceLore && giudice ? avvisoVoce(voceLore, giudice) : null;
+  const fanChiusa = !!avvisoFan && (avvisoFan.motivi.length > 0 || avvisoFan.senzaFonti) && !incipitAperto;
+  useEffect(() => {
+    if (!voceLore?.t) return;
+    let vivo = true;
+    let url = null;
+    immaginePerVoce(voceLore.t, undefined, wikiScelto)
+      .then((trovata) => {
+        if (!vivo || !trovata) return;
+        url = URL.createObjectURL(trovata.blob);
+        setFigura({ t: voceLore.t, wiki: wikiScelto, url, da: trovata.da === wikiScelto ? null : trovata.da.nome });
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [voceLore?.t, wikiScelto]);
+  useEffect(() => {
+    if (!voceLore?.t) return;
+    let vivo = true;
+    let urls = [];
+    illustrazioniPerVoce(voceLore.t, undefined, wikiScelto)
+      .then((lista) => {
+        if (!vivo) return;
+        urls = lista.map((x) => URL.createObjectURL(x.blob));
+        setAltre({ t: voceLore.t, wiki: wikiScelto, lista: lista.map((x, i) => ({ f: x.f, didascalia: x.didascalia, url: urls[i] })) });
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [voceLore?.t, wikiScelto]);
+  const figuraQui = figura && voceLore && figura.t === voceLore.t && figura.wiki === wikiScelto ? figura : null;
+  const altreQui = altre && voceLore && altre.t === voceLore.t && altre.wiki === wikiScelto ? altre.lista : [];
+  // LA PRINCIPALE PER PRIMA, poi le altre illustrazioni; senza principale,
+  // la prima illustrazione fa da immagine della voce
+  const galleriaBreve = [...(figuraQui ? [{ f: "", didascalia: voceLore.t, url: figuraQui.url, da: figuraQui.da }] : []), ...altreQui];
+  const modoFigura = figuraBreve({ wiki: wikiScelto, haFigura: galleriaBreve.length > 0, chiusa: fanChiusa, svelata: figuraSvelata });
+
+  // IL QUADERNO DELLE PAROLE si scrive da se', a risposta completa: la
+  // ricerca e' gia' il gesto che dice «questa non la sapevo». Una volta per
+  // selezione — la scheda si ridisegna a ogni tappa della risposta, e senza
+  // il registro la stessa parola si conterebbe tre volte in un tocco solo.
+  const annotate = useRef(new Set());
+  const [quaderno, setQuaderno] = useState(null);
+  useEffect(() => {
+    const voce = daAnnotare(dict);
+    if (!voce || annotate.current.has(tag)) return;
+    annotate.current.add(tag);
+    const forma = String(dict.raw || dict.word || "").trim();
+    scriviQuaderno(annota(leggiQuaderno(), voce, { libro: book, frase: fraseAttorno(dict.context, forma), forma, dove: dict.dove }));
+    setQuaderno({ tag, id: voce.id, tolta: false });
+  });
+
+  function togliDalQuaderno() {
+    if (!quaderno) return;
+    scriviQuaderno(togliParola(leggiQuaderno(), quaderno.id));
+    setQuaderno({ ...quaderno, tolta: true });
+  }
+
+  async function riletta() {
+    setInstallato(await statoDizionario());
+    const raw = dictProp?.raw?.trim() || dictProp?.word || "";
+    if (!raw) return;
+    const mio = tag;
+    const cerca = wordCount(raw) > 1 ? lookupPhrase : lookup;
+    const res = await cerca(raw, dictProp.lang || "en").catch(() => null);
+    if (res && tagRef.current === mio) setExtra({ tag: mio, res });
+  }
+
+  async function chiedi() {
+    setOracolo({ loading: true });
+    const mio = tag;
+    const res = await consultaOracolo({
+      text: dict.raw?.trim() || dict.word,
+      context: dict.context,
+      book,
+    });
+    if (tagRef.current === mio) setOracolo(res);
+  }
+
+  function salvaChiave() {
+    const k = keyDraft.trim();
+    if (!k) return;
+    setOracleKey(k);
+    setKeyDraft("");
+    setKeyOpen(false);
+    chiedi();
+  }
+
+  // IL GLOSSARIO TUO, per qualunque saga. Le nostre voci coprono un mondo
+  // solo; questa è la strada perché il lettore tenga i termini del mondo
+  // che sta attraversando davvero.
+  const chiaveMia = chiaveGlossario(book);
+  const termine = (dict?.raw?.trim() || dict?.word || "").trim();
+  // solo su un TERMINE, non su un periodo: un glossario di paragrafi non è
+  // un glossario
+  const segnabile = !!chiaveMia && !!termine && termine.split(/\s+/).length <= 4 && termine.length <= 60;
+  const mie = segnabile ? vociDi(chiaveMia) : [];
+  const mia = segnabile ? cerca(mie, termine) : null;
+
+  function apriGloss() {
+    // prefilled con quello che c'è già, o con la risposta dell'Oracolo: è
+    // proprio la spiegazione che altrimenti butteresti via chiudendo la scheda
+    setGlossDraft(mia?.d || oracolo?.answer || "");
+    setGlossOpen(true);
+  }
+
+  function salvaGloss() {
+    const d = glossDraft.trim();
+    if (!d) return;
+    salvaVoci(chiaveMia, aggiungi(mie, termine, d));
+    setGlossOpen(false);
+    setGiro((g) => g + 1);
+  }
+
+  function rimuoviGloss() {
+    salvaVoci(chiaveMia, togli(mie, termine));
+    setGlossOpen(false);
+    setGiro((g) => g + 1);
+  }
+
   if (!dict) return null;
-  const shown = dict.translation ? 2 : 3;
+  // Chi seleziona UNA FRASE sta chiedendo cosa vuol dire quella frase: in
+  // cima ci va il modo di dire, non il nome proprio che capita di trovarci
+  // dentro. Chiedere il senso di un periodo e vedersi rispondere con la voce
+  // di un termine appena cercato e' l'errore piu' irritante che questa
+  // scheda possa fare, e lo faceva.
+  // Se nella frase c'e' piu' di una cosa da spiegare, sceglierne una sola da
+  // mettere in cima e' arbitrario: la prima in ordine di lettura non e' per
+  // forza quella che non si capiva. Si elencano tutte, in ordine di lettura.
+  const tutte = dict.found || [];
+  const elenco = dict.frase && tutte.length > 1;
+  const primaria = elenco ? null : dict.frase ? dict.slang || dict.gloss : dict.gloss || dict.slang;
+  const secondaria = elenco || primaria !== dict.gloss ? (elenco ? null : dict.gloss) : dict.slang;
+  const voce = !!(dict.entries?.length || dict.translation);
+  const local = primaria || secondaria || elenco || voce || voceLore;
+  const rest = elenco ? tutte : tutte.filter((e) => e.t !== primaria?.t && e.t !== secondaria?.t);
+  const testo = dict.raw?.trim() || dict.word || "";
+  const titolo = primaria?.t || (testo.length > 44 ? `${testo.slice(0, 44)}…` : testo);
+
+  const primaIlWiki = dict.soloLore || scrittoComeNome(testoSel);
+  const bloccoWiki = voceLore ? (
+      <div
+        style={{
+          marginBottom: 12,
+          border: `1px solid ${C.border}`,
+          borderRadius: R.piccolo,
+          overflow: "hidden",
+          background: `${C.surface}55`,
+        }}
+      >
+        {banda(`${wikiScelto.nome} · sul dispositivo`)}
+        {/* le due schede, quando la voce c'e' in tutti e due i wiki */}
+        {voceLex && voceFan && (
+          <div role="tablist" style={{ display: "flex", gap: 6, padding: "8px 12px 0" }}>
+            {[
+              [LEXICANUM, "lex"],
+              [FANDOM, "fan"],
+            ].map(([w, id]) => (
+              <button
+                key={id}
+                role="tab"
+                aria-selected={wikiScelto === w}
+                onClick={() => {
+                  setScheda(id);
+                  setIncipitAperto(false);
+                }}
+                style={{
+                  minHeight: 36,
+                  padding: "4px 12px",
+                  borderRadius: R.tondo,
+                  fontSize: F.piccolo,
+                  border: `1px solid ${wikiScelto === w ? `${C.arcane}88` : C.border}`,
+                  color: wikiScelto === w ? C.arcane : C.muted,
+                  background: wikiScelto === w ? `${C.arcane}14` : "transparent",
+                }}
+              >
+                {w.nome}
+                {w === FANDOM ? " ⚠" : ""}
+              </button>
+            ))}
+          </div>
+        )}
+        <div style={{ padding: "9px 12px 11px", display: "flow-root" }}>
+          {/* PIU' GRANDE E INTERA: una foto su fondo bianco o un quadro alto
+              non si ritagliano; un tocco la apre in grande, con le altre */}
+          {modoFigura === "visibile" && (
+            <button
+              onClick={() => setGrande(0)}
+              aria-label={`Guarda le immagini di ${voceLore.t}${galleriaBreve.length > 1 ? ` (${galleriaBreve.length})` : ""}`}
+              style={{ float: "right", position: "relative", margin: "2px 0 8px 12px", padding: 0, textAlign: "center" }}
+            >
+              <img
+                src={galleriaBreve[0].url}
+                alt={galleriaBreve[0].didascalia}
+                style={{ display: "block", width: px(160), maxHeight: px(230), objectFit: "contain", background: C.bg, borderRadius: R.piccolo, border: `1px solid ${C.border}` }}
+              />
+              {galleriaBreve.length > 1 && (
+                <span
+                  style={{ position: "absolute", right: 6, bottom: galleriaBreve[0].da ? 26 : 6, padding: "2px 8px", borderRadius: R.tondo, background: `${C.bg}dd`, color: C.text, fontSize: F.minuscolo }}
+                >
+                  🖼 +{galleriaBreve.length - 1}
+                </span>
+              )}
+              {galleriaBreve[0].da && <span style={{ display: "block", marginTop: 2, fontSize: F.minuscolo, color: C.muted }}>da {galleriaBreve[0].da}</span>}
+            </button>
+          )}
+          {grande != null && modoFigura === "visibile" && (
+            <Lightbox galleria={galleriaBreve} indice={grande} onCambia={setGrande} onChiudi={() => setGrande(null)} />
+          )}
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: F.corpo, fontWeight: 600, color: C.text }}>{voceLore.t}</span>
+            {voceLore.dalParagrafo ? (
+              <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>scelta dal paragrafo che leggi</span>
+            ) : (
+              voceLore.via && <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>da «{voceLore.via}»</span>
+            )}
+          </div>
+          {fanChiusa ? (
+            <AvvisoFandom avviso={avvisoFan} corto onApri={() => setIncipitAperto(true)} />
+          ) : incipit?.v && !incipitAperto ? (
+            <Velo perche={incipit.v} onApri={() => setIncipitAperto(true)} />
+          ) : incipit ? (
+            <p style={{ fontSize: F.nota, color: C.text, lineHeight: 1.5, margin: "0 0 8px" }}>
+              <Testo x={incipit.x} />
+            </p>
+          ) : null}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              onClick={() => setLoreAperta(true)}
+              style={{
+                minHeight: 40,
+                fontSize: F.piccolo,
+                color: C.accent,
+                border: `1px solid ${C.accent}55`,
+                borderRadius: R.tondo,
+                padding: "5px 14px",
+              }}
+            >
+              Leggi la voce ▸
+            </button>
+            {modoFigura === "velata" && (
+              <button
+                onClick={() => setFiguraSvelata(true)}
+                title="Non dice da quale libro viene, e può mostrare come va a finire"
+                style={{ minHeight: 40, fontSize: F.piccolo, color: C.muted, border: `1px dashed ${C.border}`, borderRadius: R.tondo, padding: "5px 14px" }}
+              >
+                🖼 Immagine velata · mostrala
+              </button>
+            )}
+          </div>
+          {altreLore.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: F.minuscolo, color: C.muted, marginBottom: 4 }}>Altre voci con questo nome</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {altreLore.slice(0, ALTRE_IN_VISTA).map((v) => (
+                  <button
+                    key={v.t}
+                    onClick={() => scegliAltra(v)}
+                    style={{ minHeight: 40, fontSize: F.piccolo, color: C.text, border: `1px solid ${C.border}`, borderRadius: R.tondo, padding: "5px 12px", textAlign: "left" }}
+                  >
+                    {v.t}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+  ) : null;
 
   return (
     <div
@@ -17,76 +654,425 @@ export default function DictionaryCard({ dict, bottom, onClose }) {
         zIndex: 30,
         background: "#0806115e",
         display: "flex",
-        alignItems: "flex-end",
+        // LA SCHEDA STA IN CIMA, come il menu da cui si apre: sotto c'è la
+        // scheda di dizionario che Android apre sulla selezione, appoggiata
+        // al bordo e sempre alla stessa altezza, e le due si coprivano a
+        // vicenda. Sopra non ci arriva. Il passaggio che stai leggendo resta
+        // scoperto lo stesso — prima restava scoperto quello sopra, adesso
+        // quello sotto — quindi non si perde niente.
+        alignItems: "flex-start",
         justifyContent: "center",
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "min(94%, 460px)",
-          marginBottom: bottom,
-          maxHeight: "52%",
+          // LA COLONNA DI UNA VOCE DI VOCABOLARIO E' UNA LUNGHEZZA DI RIGA:
+          // ferma a 460 mentre la scrittura cresce, la riga si accorcia in
+          // caratteri e la definizione si spezza in tre pezzi con mezzo
+          // schermo vuoto ai lati. Passa per `px` come le altre colonne.
+          // una voce bilingue ha due colonne di roba da dire: piu' larga di
+          // prima, e piu' alta, o la resa italiana in cima spingeva le
+          // definizioni sotto la piega
+          width: `min(94%, ${px(560)}px)`,
+          marginTop: alto,
+          // la voce intera e' una pagina da leggere: prende quasi tutto lo
+          // schermo, la scheda della parola resta piccola
+          maxHeight: loreAperta && voceLore ? `calc(100% - ${alto}px - 16px)` : "62%",
           overflowY: "auto",
           background: `${C.card}fa`,
           border: `1px solid ${C.border}`,
-          borderRadius: 16,
+          borderRadius: R.medio,
           boxShadow: "0 12px 44px #000000aa",
           padding: "13px 16px 15px",
           animation: "bc-fade-in 0.2s ease-out",
         }}
       >
+        {loreAperta && voceLore ? (
+          <VoceLore
+            key={wikiScelto.id}
+            voce={voceLore}
+            giudice={giudice}
+            wiki={wikiScelto}
+            aperta={incipitAperto}
+            onChiudi={() => setLoreAperta(false)}
+          />
+        ) : (
+        <>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
-          <span style={{ fontFamily: FONT_TITLE, fontSize: 21, fontWeight: 600, color: C.text }}>
-            {dict.word}
+          <span style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
+            {titolo}
           </span>
-          {dict.foreign && <span style={{ fontSize: 11.5, color: C.muted }}>in lingua originale</span>}
-          <button onClick={onClose} style={{ marginLeft: "auto", color: C.muted, fontSize: 17 }}>
+          {primaria?.k && <span style={{ fontSize: F.minuscolo, color: C.arcane }}>{primaria.k}</span>}
+          {primaria?.r && (
+            <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>{primaria.r}</span>
+          )}
+          <button onClick={onClose} style={{ marginLeft: "auto", color: C.muted, fontSize: F.rilievo }}>
             ✕
           </button>
         </div>
 
-        {dict.translation && (
-          <p style={{ fontSize: 16.5, color: C.accent, lineHeight: 1.4, margin: "0 0 10px" }}>
-            {dict.translation}
+        {primaria && (
+          <div style={{ marginBottom: 12 }}>
+            <p style={{ fontSize: F.corpo, color: C.text, lineHeight: 1.5, margin: "0 0 8px" }}>
+              {primaria.d}
+            </p>
+            {primaria.wiki && (
+            <a
+              href={primaria.wiki}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: "inline-block",
+                fontSize: F.piccolo,
+                color: C.accent,
+                border: `1px solid ${C.accent}55`,
+                borderRadius: R.tondo,
+                padding: "5px 12px",
+                textDecoration: "none",
+              }}
+            >
+              Apri sul wiki ↗
+            </a>
+            )}
+            {primaria.wiki && (
+              <span style={{ fontSize: F.minuscolo, color: C.muted, marginLeft: 9 }}>di là si spoilera</span>
+            )}
+          </div>
+        )}
+
+        {/* Il rimando al wiki della saga quando il glossario tace: senza
+            piu' il dizionario in rete non sappiamo se la parola e' inglese
+            comune, ma chi apre questa scheda in un libro di saga sta quasi
+            sempre chiedendo di un nome del mondo, non di un vocabolo. */}
+        {!primaria && dict.wikiSearch && !dict.loading && (
+          <a
+            href={dict.wikiSearch.url}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: "inline-block",
+              marginBottom: 12,
+              fontSize: F.piccolo,
+              color: C.accent,
+              border: `1px solid ${C.accent}55`,
+              borderRadius: R.tondo,
+              padding: "5px 12px",
+              textDecoration: "none",
+            }}
+          >
+            Cerca «{dict.wikiSearch.term}» sul wiki ↗
+          </a>
+        )}
+
+        {/* LEXICANUM: l'incipit della voce, e la voce intera a un tocco.
+            Sta prima del vocabolario quando la selezione e' scritta come
+            un nome: in un romanzo del 40K chi tocca «Cadia» chiede del
+            pianeta. «Two hundred» in minuscolo e' un numero, e la voce
+            «Two Hundred» viene dopo la parola (`scrittoComeNome`). */}
+        {voceLore && primaIlWiki && bloccoWiki}
+
+        <Voce key={tag} dict={dict} titolo={titolo} />
+
+        {voceLore && !primaIlWiki && bloccoWiki}
+
+        {/* la parola e' finita nel quaderno: detto, e reversibile. Senza
+            questa riga il quaderno si riempirebbe a tua insaputa, e l'unico
+            modo di scoprirlo sarebbe trovarlo pieno */}
+        {quaderno?.tag === tag && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "-4px 0 12px", fontSize: F.minuscolo, color: C.muted }}>
+            <span style={{ flex: 1 }}>
+              {quaderno.tolta ? "Tolta dal quaderno delle parole." : "📒 Tenuta nel quaderno delle parole, per ripassarla."}
+            </span>
+            {!quaderno.tolta && (
+              <button onClick={togliDalQuaderno} style={{ fontSize: F.minuscolo, color: C.muted, padding: "6px 8px", textDecoration: "underline" }}>
+                Non tenerla
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* il dizionario manca e la parola e' inglese: qui si vede la
+            mancanza, e qui si offre il rimedio */}
+        {installato === null && !dict.loading && !dict.soloLore && (dict.lang || "en") === "en" && !!dict.word && (
+          <ScaricaQui cartellino={cartellino} onFatto={riletta} />
+        )}
+
+        {secondaria && (
+          <div
+            style={{
+              marginBottom: 12,
+              paddingLeft: 10,
+              borderLeft: `2px solid ${C.arcane}66`,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 3 }}>
+              <span style={{ fontSize: F.nota, color: C.text, fontWeight: 600 }}>{secondaria.t}</span>
+              {(secondaria.r || secondaria.k) && (
+                <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>
+                  {secondaria.r || secondaria.k}
+                </span>
+              )}
+            </div>
+            <p style={{ fontSize: F.corpo, color: C.text, lineHeight: 1.45, margin: 0 }}>
+              {secondaria.d}
+            </p>
+            {secondaria.wiki && (
+              <a
+                href={secondaria.wiki}
+                target="_blank"
+                rel="noreferrer"
+                style={{ display: "inline-block", marginTop: 6, fontSize: F.minuscolo, color: C.accent, textDecoration: "none" }}
+              >
+                Apri sul wiki ↗
+              </a>
+            )}
+          </div>
+        )}
+
+        {rest.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: F.minuscolo, color: C.muted, marginBottom: 6 }}>
+              {elenco ? "In questa frase riconosco" : "Nel brano riconosco anche"}
+            </div>
+            {rest.slice(0, 12).map((e, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, marginBottom: 5, alignItems: "baseline" }}>
+                {e.wiki ? (
+                  <a
+                    href={e.wiki}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ flexShrink: 0, minWidth: 96, fontSize: F.piccolo, color: C.accent, fontWeight: 600, textDecoration: "none" }}
+                  >
+                    {e.t} ↗
+                  </a>
+                ) : (
+                  <span style={{ flexShrink: 0, minWidth: 96, fontSize: F.piccolo, color: C.text, fontWeight: 600 }}>
+                    {e.t}
+                  </span>
+                )}
+                <span style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.4 }}>{e.d}</span>
+              </div>
+            ))}
+            {rest.length > 12 && (
+              <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 4 }}>
+                e altre {rest.length - 12} voci
+              </div>
+            )}
+          </div>
+        )}
+
+        {!dict.loading && !local && dict.frase && !dict.wikiSearch && (
+          <a
+            href={`https://www.google.com/search?q=${encodeURIComponent(`"${dict.word}" meaning`)}`}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: "inline-block",
+              marginBottom: 10,
+              fontSize: F.piccolo,
+              color: C.arcane,
+              border: `1px solid ${C.arcane}55`,
+              borderRadius: R.tondo,
+              padding: "5px 12px",
+              textDecoration: "none",
+            }}
+          >
+            Cerca questa espressione ↗
+          </a>
+        )}
+
+        {dict.loading || (dict.soloLore && !local && cercaWiki) ? (
+          <p style={{ color: C.muted, fontSize: F.nota }}>Cerco…</p>
+        ) : local ? null : dict.soloLore ? (
+          <p style={{ color: C.muted, fontSize: F.nota, lineHeight: 1.5 }}>«{dict.word}» non ha una voce nei wiki scaricati.</p>
+        ) : (
+          // il glossario che tace non chiude la scheda: resta l'Oracolo, e
+          // per la definizione nuda c'e' il dizionario del tablet
+          <p style={{ color: C.muted, fontSize: F.nota, lineHeight: 1.5 }}>
+            {dict.offline
+              ? "Senza rete il vocabolario non risponde: le parole già cercate restano consultabili, le altre aspettano."
+              : dict.frase
+                ? "Questo passaggio non è un modo di dire che conosco."
+                : `Né il glossario né il vocabolario conoscono «${dict.word}». C'è anche il dizionario del tablet, nel menu della selezione.`}
           </p>
         )}
 
-        {dict.loading ? (
-          <p style={{ color: C.muted, fontSize: 14.5 }}>Consulto il dizionario…</p>
-        ) : dict.entries.length === 0 && !dict.translation ? (
-          <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.5 }}>
-            {dict.offline
-              ? "Il dizionario ha bisogno della rete: riprova quando sei online."
-              : `Nessuna voce per «${dict.word}».`}
-          </p>
-        ) : (
-          <>
-            {(all ? dict.entries : dict.entries.slice(0, shown)).map((e, i) => (
-              <div key={i} style={{ display: "flex", gap: 9, marginBottom: 9 }}>
-                {e.pos && (
-                  <span
-                    style={{
-                      flexShrink: 0,
-                      fontSize: 11.5,
-                      color: C.arcane,
-                      fontStyle: "italic",
-                      paddingTop: 3,
-                      minWidth: 66,
-                    }}
-                  >
-                    {e.pos}
-                  </span>
+        {/* L'Oracolo: glossario e dizionario spiegano parole e modi di dire,
+            ma il senso di una battuta sta nel paragrafo. Si offre sempre,
+            anche quando una risposta di casa c'e' gia'. */}
+        {(dict.raw || dict.word) && !dict.loading && (
+          <div style={{ marginTop: 10, paddingTop: 11, borderTop: `1px solid ${C.border}66` }}>
+            {oracolo?.answer ? (
+              <>
+                <div style={{ fontSize: F.minuscolo, color: C.arcane, marginBottom: 4 }}>✨ L'Oracolo dice</div>
+                <p style={{ fontSize: F.corpo, color: C.text, lineHeight: 1.5, margin: 0 }}>{oracolo.answer}</p>
+                {/* quanto è costata: qui le domande sono piccole e costano
+                    pochissimo, ed è proprio il confronto che serve — una
+                    parola spiegata non è una scheda su cento passaggi */}
+                {oracolo.uso && (
+                  <p style={{ margin: "6px 0 0", fontSize: F.minuscolo, color: C.muted }}>
+                    {rigaUltima(oracolo.uso)}
+                    {rigaMese() ? ` · ${rigaMese()}` : ""}
+                  </p>
                 )}
-                <span style={{ fontSize: 15, color: C.text, lineHeight: 1.45 }}>{e.text}</span>
+              </>
+            ) : oracolo?.loading ? (
+              <p style={{ fontSize: F.piccolo, color: C.muted, margin: 0 }}>✨ L'Oracolo sta leggendo il passaggio…</p>
+            ) : oracolo?.error === "chiave" ? (
+              <div>
+                <p style={{ fontSize: F.piccolo, color: C.muted, margin: "0 0 8px" }}>
+                  L'Oracolo non ha accettato la chiave.
+                </p>
+                <button
+                  onClick={() => { setOracolo(null); setKeyOpen(true); }}
+                  style={{ fontSize: F.piccolo, color: C.arcane, border: `1px solid ${C.arcane}55`, borderRadius: R.tondo, padding: "5px 12px" }}
+                >
+                  Cambia chiave
+                </button>
               </div>
-            ))}
-            {!all && dict.entries.length > shown && (
-              <button onClick={() => setAll(true)} style={{ fontSize: 13.5, color: C.accent, paddingTop: 2 }}>
-                Altri {dict.entries.length - shown} significati
+            ) : oracolo?.error === "tetto" ? (
+              // il tetto del mese non e' un guasto dell'Oracolo: e' la
+              // decisione del lettore che sta funzionando, e si dice coi
+              // numeri veri invece che con «non ha risposto»
+              <TettoFinito
+                speso={costo(riassunto().mese)}
+                tetto={oracolo.tettoMese ?? leggiTetto()}
+                onRiprova={() => { setOracolo(null); chiedi(); }}
+              />
+            ) : oracolo?.error ? (
+              <div>
+                <p style={{ fontSize: F.piccolo, color: C.muted, margin: "0 0 8px" }}>
+                  {oracolo.error === "rete"
+                    ? "L'Oracolo ha bisogno della rete: riprova quando sei online."
+                    : "L'Oracolo non ha risposto: riprova tra un momento."}
+                </p>
+                <button
+                  onClick={chiedi}
+                  style={{ fontSize: F.piccolo, color: C.arcane, border: `1px solid ${C.arcane}55`, borderRadius: R.tondo, padding: "5px 12px" }}
+                >
+                  Riprova
+                </button>
+              </div>
+            ) : keyOpen ? (
+              <div>
+                <p style={{ fontSize: F.piccolo, color: C.muted, margin: "0 0 8px", lineHeight: 1.45 }}>
+                  Serve una chiave API di Anthropic (console.anthropic.com). Resta solo su questo
+                  dispositivo e paghi solo quel che chiedi.
+                </p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    type="password"
+                    value={keyDraft}
+                    onChange={(e) => setKeyDraft(e.target.value)}
+                    placeholder="sk-ant-…"
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      background: "transparent",
+                      border: `1px solid ${C.border}`,
+                      borderRadius: R.piccolo,
+                      padding: "7px 10px",
+                      fontSize: F.nota,
+                      color: C.text,
+                    }}
+                  />
+                  <button
+                    onClick={salvaChiave}
+                    style={{ flexShrink: 0, fontSize: F.piccolo, color: C.arcane, border: `1px solid ${C.arcane}55`, borderRadius: R.tondo, padding: "5px 12px" }}
+                  >
+                    Salva e chiedi
+                  </button>
+                </div>
+              </div>
+            ) : hasOracle() ? (
+              <button
+                onClick={chiedi}
+                style={{ fontSize: F.piccolo, color: C.arcane, border: `1px solid ${C.arcane}55`, borderRadius: R.tondo, padding: "5px 12px" }}
+              >
+                ✨ Spiegami questo passaggio
+              </button>
+            ) : (
+              <button
+                onClick={() => setKeyOpen(true)}
+                style={{ fontSize: F.minuscolo, color: C.muted, textAlign: "left", padding: 0, lineHeight: 1.45 }}
+              >
+                ✨ L'Oracolo può spiegarti cosa vuol dire qui, nel contesto del libro — serve una
+                chiave API, tocca per impostarla
               </button>
             )}
-          </>
+          </div>
+        )}
+
+        {/* IL GLOSSARIO TUO. Le nostre voci coprono un mondo solo, e la
+            spiegazione dell'Oracolo finora si buttava via chiudendo la
+            scheda: qui si tiene, sulla saga del libro, e da domani quel
+            termine si spiega da solo — anche senza rete e senza chiave. */}
+        {segnabile && (
+          <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+            {glossOpen ? (
+              <div>
+                <textarea
+                  value={glossDraft}
+                  onChange={(e) => setGlossDraft(e.target.value)}
+                  rows={3}
+                  autoFocus
+                  placeholder={`Cosa vuol dire «${termine}», con parole tue`}
+                  style={{
+                    width: "100%",
+                    padding: "9px 12px",
+                    borderRadius: R.piccolo,
+                    border: `1px solid ${C.border}`,
+                    background: C.surface,
+                    color: C.text,
+                    fontSize: F.nota,
+                    lineHeight: 1.45,
+                    resize: "vertical",
+                    outline: "none",
+                  }}
+                />
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <button
+                    onClick={salvaGloss}
+                    style={{
+                      fontSize: F.piccolo,
+                      color: C.accent,
+                      border: `1px solid ${C.accent}55`,
+                      borderRadius: R.tondo,
+                      padding: "5px 14px",
+                    }}
+                  >
+                    Tieni nel glossario
+                  </button>
+                  <button onClick={() => setGlossOpen(false)} style={{ fontSize: F.piccolo, color: C.muted, padding: "5px 8px" }}>
+                    Lascia stare
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button
+                  onClick={apriGloss}
+                  style={{
+                    fontSize: F.piccolo,
+                    color: mia ? C.muted : C.accent,
+                    border: `1px solid ${mia ? C.border : `${C.accent}55`}`,
+                    borderRadius: R.tondo,
+                    padding: "5px 14px",
+                  }}
+                >
+                  {mia ? "✎ Cambia la tua voce" : "📖 Tieni nel glossario"}
+                </button>
+                {mia && (
+                  <button onClick={rimuoviGloss} aria-label="Togli dal glossario" style={{ color: C.muted, padding: 6 }}>
+                    🗑
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        </>
         )}
       </div>
     </div>

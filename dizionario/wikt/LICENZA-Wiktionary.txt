@@ -1,0 +1,12 @@
+Le definizioni di questo dizionario vengono da Wiktionary inglese
+(https://en.wiktionary.org), dei suoi autori, e sono distribuite con la
+licenza Creative Commons Attribuzione-Condividi allo stesso modo 4.0:
+https://creativecommons.org/licenses/by-sa/4.0/
+
+Estratte con wiktextract e pubblicate da kaikki.org:
+Tatu Ylonen (2022). «Wiktextract: Wiktionary as Machine-Readable
+Structured Data». Proceedings of the 13th Conference on Language
+Resources and Evaluation (LREC), 1317-1325.
+
+Questo dizionario e' una riduzione (sensi, esempi brevi) fatta da
+scripts/dizionarioWiktionary.mjs, con la stessa licenza.

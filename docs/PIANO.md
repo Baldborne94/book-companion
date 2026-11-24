@@ -12,7 +12,7 @@ App PWA per la biblioteca personale dell'utente: carica i **suoi** EPUB/PDF, li 
 
 **Scope di questa milestone (deciso dall'utente):** Libreria + Reader + Player **solo YouTube**. Niente Spotify (vedi §6), niente Supabase/login per ora: tutto **local-first** (IndexedDB + localStorage). Sync cloud, statistiche e i18n verranno dopo.
 
-**Dispositivo principale dell'utente: tablet Android.** La strada scelta è PWA installata da Chrome (niente APK per ora): su Android una PWA installata ha schermo intero, storage persistente e offline completo. Se un domani servissero vantaggi nativi (audio a schermo spento, "Apri con" per gli EPUB), si aggiunge una fase dedicata TWA/Capacitor **senza riscrivere nulla** — la decisione non è irreversibile.
+**Dispositivo principale dell'utente: tablet Android.** La strada scelta è PWA installata da Chrome: su Android una PWA installata ha schermo intero, storage persistente e offline completo. Dalla Fase H la stessa PWA ha anche un **guscio TWA** (`docs/TWA.md`): l'APK apre il sito, niente è stato riscritto, e l'«Apri con» per EPUB e PDF arriva dal manifest. L'audio a schermo spento resterebbe una fase Capacitor, e non risolve YouTube.
 
 ## 2. Stato del repo
 
@@ -136,15 +136,26 @@ Local-first con specchio cloud: l'app funziona identica senza configurazione; co
 - **Merge**: last-write-wins per libro via `bc_upd_<id>` (touch su ogni progresso/stato/annotazione/musica); cancellazioni con lapidi `bc_tombs` che rimuovono anche i file dal bucket; prefs con timestamp `bc_prefs_upd`. Logica pura e testabile in `lib/syncCore.js` (`planSync`/`mergePrefs`).
 - **Trigger**: all'avvio, al ritorno in foreground, al ritorno online, dopo import/eliminazione e alla chiusura del reader (il progresso vola subito sul cloud).
 
-### Fase G — Self-hosting sul NAS
+### Fase G — Compagno di lettura in lingua originale (G1–G3 ✅)
 
-Le app girano direttamente sul NAS di casa (UGREEN, UGOS) accanto alla cartella condivisa `Biblioteca/{Fumetti,Libri,Manga}`.
-- **G1 hosting**: `deploy/nas/` — Caddy serve la build e monta `Biblioteca` read-only su `/biblioteca/` (stessa origine: niente CORS/mixed content; elenco cartelle JSON con `Accept: application/json`); container Tailscale sidecar termina l'HTTPS su `https://<host>.<tailnet>.ts.net`. Lo schema si replica per le altre app (un `TS_HOSTNAME` per app). Il SW esclude `/biblioteca/` dal navigateFallback.
-- **G2 sfoglia NAS**: sezione che naviga `/biblioteca/` e importa il file toccato in IndexedDB (poi è un libro come gli altri, offline incluso).
-- **G2 dettagli**: `lib/nas.js` + `NasBrowser.jsx` (bottone "Dal NAS" in libreria, visibile solo se `/biblioteca/` risponde JSON). Dal percorso: cartella di primo livello → `genre` (Fumetti/Manga), sottocartella → `saga`, numero nel nome → `sagaOrder`; `nasPath` marca i già importati.
-- **G3 fumetti/manga**: `ComicReader.jsx` + `lib/comic.js` per CBZ (jszip, ordine naturale delle pagine, solo ±6 object URL vivi). Manga = `genre` "Manga" → destra→sinistra (override locale `bc_rtl_<id>`); doppia pagina in orizzontale ≥900px con copertina sola; progresso come i PDF (`bc_cfi_<id>` = pagina 1-based). CBR escluso.
+Chi legge in inglese inciampa in due cose che il dizionario non copre: i nomi propri di una saga e i modi di dire. Il glossario è **dati nostri**, non una fonte da interrogare: risponde prima della rete e anche senza.
+- **G1 ✅** — Tre elenchi curati in italiano, tutti caricati lazy: `data/glossaryDiscworld.js` (Mondo Disco, senza spoiler, con rimando al wiki), `data/slangEn.js` (slang britannico, col significato e non la traduzione letterale) e `data/spokenEn.js` (il parlato scritto com'è pronunciato — *wossname*, *thass*, *inna*, gli Igor, i Feegle — che non sta su nessun dizionario). Motore in `lib/glossary.js`: indice normalizzato e `scan()` che legge la selezione da sinistra a destra prendendo ogni volta il pezzo più lungo riconosciuto, quindi su un paragrafo di parlato biascicato restituisce **tutte** le chiavi in ordine di lettura. Parole comuni (`c: 1`) solo se selezionate da sole, nomi propri solo se maiuscoli nel testo. Il libro si lega al glossario dall'autore o dalla saga (`glossaryOf`); se il termine non è fra le voci ma il libro è di quella saga, la scheda offre comunque **"Cerca sul wiki"** — l'elenco scritto a mano non coprirà mai un mondo intero.
+- **G2 ✅** — I termini si vedono nel testo: prima occorrenza per capitolo, segnata con le annotazioni di epub.js (disegnate SOPRA la pagina, mai nel DOM — avvolgere le parole in uno `<span>` cambierebbe i percorsi dei CFI e sposterebbe segnalibri ed evidenziazioni già salvati). Il tocco però non passa dall'annotazione ma dalla **parola sotto il dito** (`caretRangeFromPoint`): così risponde ogni occorrenza e non solo quella segnata, e non ci si contende l'evento con la fascia del cambio pagina. Il gestore dell'annotazione va lasciato vuoto: col dito epub.js lo chiamerebbe già al `touchstart`, e il `click` successivo cadrebbe sullo sfondo della scheda appena aperta richiudendola. Interruttore «Segna i termini della saga» nelle impostazioni, tetto di 60 segni per capitolo.
+- **G3 ✅ (Oracolo)** — Quando glossario e dizionario non bastano, il senso sta nel **contesto**: `lib/oracle.js` manda passaggio + paragrafo + titolo del libro all'API Anthropic (modello `claude-opus-5`, chiamata diretta dal browser con l'header `anthropic-dangerous-direct-browser-access`) e riceve una spiegazione in italiano, 2–5 frasi, senza spoiler oltre il punto mostrato. La chiave API è dell'utente, sta in `bc_ai_key` sul dispositivo e si imposta **dentro la scheda del dizionario**, dove serve, non in un pannello da scoprire. Il paragrafo attorno si cattura al momento della selezione (`contextAround`) perché al primo tocco sul menu la selezione è già svanita. Risposte in cache di sessione; errori distinti: chiave rifiutata (si ripropone il campo), rete assente, API muta (riprova).
+- **G4** (da valutare) — Estratto del wiki dal vivo via API MediaWiki, con ripiego sulla voce locale quando la rete o il CORS non collaborano.
 
-### Dopo (fuori scope, non iniziare): statistiche di lettura, obiettivi, i18n EN, suite E2E Playwright (riusare l'harness di wh-companion), eventuale wrap TWA/Capacitor per APK (audio a schermo spento, "Apri con" per EPUB).
+### Fase H — Il guscio Android (TWA) ✅
+
+Deciso dal lettore («vai di TWA»). L'app resta la PWA: il guscio è un APK che la apre a schermo intero e la fa comparire fra le app. Nel repository sta tutto quello che il guscio pretende dal sito; l'APK si costruisce fuori, con Bubblewrap, e la guida è `docs/TWA.md`.
+- `public/manifest.json`: `id`, `scope`, `display_override`, `launch_handler: focus-existing`, `categories`, icona **monocroma** (temi di Android 13), **`shortcuts`** (Libreria, Musica) e **`file_handlers`** per `.epub`/`.pdf` — l'«Apri con» che il piano nominava come primo vantaggio nativo.
+- `lib/lancio.js`: `sezioneDaUrl` (le scorciatoie arrivano come `/?apri=libreria`, si legge prima del primo render e poi l'URL si ripulisce tenendo lo `state`, dove `indietro.js` segna la guardia), `fileDaLancio` (dai `FileSystemFileHandle` di `launchQueue` ai `File`, un handle rotto non porta via gli altri). `App.jsx` registra il consumatore una volta per tutta la vita dell'app e passa i file alla Libreria (`daImportare`/`onImportati`), che li fa entrare dalla stessa porta dell'input.
+- `public/.well-known/assetlinks.json` con package `it.bookcompanion.app` e il **segnaposto** dell'impronta: quella ce l'ha solo chi firma l'APK. Fuori dal ripiego del service worker (`navigateFallbackDenylist`), o Android leggerebbe l'HTML dell'app e terrebbe la barra del browser in cima per sempre.
+- **La privacy a un URL**: `public/privacy.html` generata da `PRIVACY.md` a ogni build (`scripts/privacy.mjs`, convertitore minimo in `scripts/markdown.mjs`), fuori dal ripiego e dal guscio React. `PRIVACY.md` aggiornato: le melodie da file non salgono più, la saga chiesta al catalogo, il dizionario offline, il guscio stesso.
+- `version` in `package.json` (1.0.0) dentro il timbro in fondo alla Libreria e nel reader.
+- Test: `manifest.test.mjs` (il contratto col sistema: scope, icone che esistono, scorciatoie verso sezioni vere, «Apri con» che accetta quel che `importFiles` accetta, forma di `assetlinks`, denylist), `lancio.test.mjs`, `markdown.test.mjs` (il documento vero passa senza segni crudi e la pagina in `public/` è in pari).
+- Fuori, e dichiarato in `docs/TWA.md`: `share_target` con POST (vorrebbe un service worker scritto a mano), la musica a schermo spento (Capacitor, e non per YouTube).
+
+### Dopo (fuori scope, non iniziare): statistiche di lettura, obiettivi, i18n EN, suite E2E Playwright (riusare l'harness di wh-companion), Capacitor per l'audio in primo piano.
 
 ## 5. Ordine e granularità
 
@@ -173,10 +184,18 @@ Su wh-companion l'embed Spotify dava problemi: il controllo `postMessage` dell'i
 - Branch `claude/*` → PR draft → **squash merge** su `main`; dopo lo squash, `git rebase origin/main` prima del push successivo.
 - Stili 100% inline JSX (le keyframes CSS globali in `index.css` sono l'unica eccezione). Nessuna libreria UI. Stato locale `useState`/`useEffect`.
 - UI in **italiano**. Niente commenti nel codice salvo WHY non ovvi.
-- Aggiorna `CLAUDE.md` del repo quando una fase introduce architettura nuova (il file tramanda le lezioni di §7 — se manca, crealo con quel contenuto).
+- Aggiorna `CLAUDE.md` (le regole vive, in breve) e `docs/STORIA.md` (il perché, un paragrafo per cambiamento) quando una fase introduce architettura nuova.
 
 ## 9. Come usare questo file
 
 A ogni fase completata, spunta qui lo stato (✅) così le sessioni successive sanno dove siamo.
 
-Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ · F-sync ✅ · G1 ✅ · G2 ✅ · G3 ✅ (da collaudare sul NAS)
+Stato fasi: A ✅ · B ✅ · C-EPUB ✅ · C3 ✅ · C-PDF ✅ · D ✅ · E ✅ · F-sync ✅ · G1-glossario ✅ · G2-segni ✅ · G3-oracolo ✅ · H-guscio ✅ — milestone completa 🎉
+
+Dopo la milestone, sulla frontiera di lettura (`lib/frontiera.js`): «Chi è costui?» in tutti e due i reader e «Dove eravamo rimasti» (`lib/trama.js`), scheda condivisa in `components/SchedaOracolo.jsx` con dentro il campo per la chiave. Il dettaglio sta in `docs/STORIA.md`.
+
+I fumetti (CBZ e CBR, manga compresi): `lib/fumetto.js` e `components/ComicReader.jsx`. Il dettaglio sta in `docs/STORIA.md`.
+
+Lexicanum sul dispositivo per i libri del 40K (`lib/lexicanum.js`, `components/VoceLore.jsx`): voci senza rete nella scheda del dizionario, paragrafi velati per fonte. Dopo, se il lettore li vuole: i nomi del 40K segnati nel testo come il glossario del Mondo Disco, l'elenco dei personaggi incontrati fin dove sei, il capitolo delle fonti («Chapter 9») per non velare quel che di questo libro hai già letto, il wiki di Fandom come seconda fonte.
+
+Wiktionary inglese sul dispositivo (`lib/wiktionaryOffline.js`, costruito dalla CI da kaikki.org): i significati in inglese, con esempi d'uso, senza rete, accanto alla resa italiana di WordNet.

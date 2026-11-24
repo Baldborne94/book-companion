@@ -1,48 +1,171 @@
-import { useEffect, useRef, useState } from "react";
-import { C, FONT_TITLE } from "../data/constants.js";
-import { getProgress, getStatus } from "../lib/library.js";
-import { storageEstimate } from "../lib/bookStore.js";
-import { importFiles } from "../lib/importBook.js";
-import { exportLibrary } from "../lib/exportLibrary.js";
-import { restoreLibrary } from "../lib/restoreLibrary.js";
-import { nasAvailable } from "../lib/nas.js";
+import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
+import { getProgress, getStatus, setStatus, combacia, vistaValida, scriviVista, timbraScheda, scaffaleVuoto, TIPI, delTipo, tipiDi, tipoDi, tipiPresenti } from "../lib/library.js";
+import { disponi, aEtichette, criterioVoto, criterioStato, altezzaStimata, ALTEZZA_SCHEDA, COLONNA_CSS, SPAZIO_COLONNE, SPAZIO_RIGHE, inRaccolte, copertinaDi, contoRaccolta, nellOrdineScelto } from "../lib/ripiani.js";
+import { leggiPreferite, scriviPreferite, preferiteVive, segnaPreferita, puoEssereFavorita, ePreferito } from "../lib/raccoltePreferite.js";
+import { GUAI, grave, esamina, fattiDaEpub } from "../lib/visita.js";
+import { ascoltaCopertine } from "../lib/miniature.js";
+import { storageEstimate, spazioQui, statoPersistenza, requestPersistence, getFile, putFile, getAux, putAux, putCover, listCoverIds, chiaviAux, misureFile, misureCopertine, chiaviAuxPrefisso } from "../lib/bookStore.js";
+import { importFiles, resoconto, impronteDaFare, tipiDaScegliere } from "../lib/importBook.js";
+import { chiaveCollana } from "../lib/collana.js";
+import { preparaArchivio, segnaArchivio, ultimoArchivio, promemoriaArchivio, indiceSoloSchede } from "../lib/exportLibrary.js";
+import PezziArchivio from "./PezziArchivio.jsx";
+import { restoreLibrary, sbircia } from "../lib/restoreLibrary.js";
+import { frasiDiario } from "../lib/archivioDiario.js";
+import { getFavorites, isFile } from "../lib/music.js";
+import { cercaOvunque, abbastanzaLunga } from "../lib/librarySearch.js";
+import { portaACasa, cloudUsage, localFileIds } from "../lib/sync.js";
+import {
+  frasePortata, senzaCopia, fraseSenzaCopia, daPortare, segnoDorso, normaDelDorso, schedeCambiate
+} from "../lib/syncCore.js";
+import { fmtGoogle } from "../lib/bytes.js";
+import { hddPossibile } from "../lib/hdd.js";
+import { eFumetto } from "../lib/fumetto.js";
+import { fraseDelPasso, fraseImport } from "../lib/convertiCbr.js";
+import { senzaCopertina, copertineDaDove, fraseCopertineAltrove, copertineDaRifare } from "../lib/copertina.js";
+import { aMano } from "../lib/copertinaGrande.js";
+import { spartisciQui } from "../lib/spazio.js";
+import { BarraCloud, PesoQui } from "./BarraCloud.jsx";
+import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
+import { famigliaDi } from "../data/generi.js";
+import { riconosci, capitoloDi } from "../lib/sagaBooks.js";
+import { camminiDi, guideAccanto, mondiDi, accantoInVista, ACCANTO_IN_VISTA } from "../lib/cammino.js";
+import { segnaposto } from "../lib/segnaposto.js";
 import BookCover from "./BookCover.jsx";
+import CopertineDalCatalogo from "./CopertineDalCatalogo.jsx";
+import TitoliLeggibili from "./TitoliLeggibili.jsx";
+import CopertinaGiusta from "./CopertinaGiusta.jsx";
+import { puoEssereSciolta, contoDaEliminare, fraseEliminaRaccolta, sciogliRaccolta } from "../lib/eliminaRaccolta.js";
+import Disposizione from "./Disposizione.jsx";
 import EmptyState from "./EmptyState.jsx";
+import { partenza, dopoIlDisegno, segnaTempo, vocePerTempo } from "../lib/tempi.js";
+import { leggiNovita, scriviNovita, seguiNovita, smettiNovita, vocePerRaccolta, tastoNovita, conSerie } from "../lib/novita.js";
+import SerieDellaRaccolta from "./SerieDellaRaccolta.jsx";
+import { leggiVoti, scriviVoti, segnaVoto, votoMio, votoDaMostrare, mediaDeiVolumi, dettoVoto, puoEssereVotata, daSegnare } from "../lib/votiRaccolte.js";
+import Stars from "./Stelle.jsx";
+import { leggiDispositivi, scriviDispositivi, altroveDa, sulDispositivo, aggiornaDisco, sulDiscoDa } from "../lib/dispositivi.js";
+import { daLiberare, senzaCopiaNota, pesoTotale } from "../lib/liberaSpazio.js";
+import { ID_DISCO } from "../lib/sceltaFile.js";
+import { dispositivo } from "../lib/tempo.js";
+import { useViewport } from "../lib/viewport.js";
 
 const FILTERS = [
   { id: "all", label: "Tutti" },
   { id: "unread", label: "Da leggere" },
   { id: "reading", label: "In lettura" },
   { id: "read", label: "Letti" },
+  { id: "abandoned", label: "Abbandonati" },
+  // i libri col cuore, e quelli delle raccolte col cuore (`ePreferito`)
+  { id: "fav", label: "♥ Preferiti" },
 ];
 
+// Il titolo per primo perché è l'ordine di partenza: dentro un ripiano
+// «per data d'ingresso» è l'ordine che l'occhio non riconosce.
 const SORTS = [
-  { id: "recent", label: "Recenti" },
   { id: "title", label: "Titolo" },
   { id: "author", label: "Autore" },
+  { id: "recent", label: "Recenti" },
+  // le raccolte e i libri col cuore in cima, e sotto l'alfabeto: un ordine
+  // da scegliere, non un'abitudine dello scaffale (vedi `preferitiPrima`)
+  { id: "preferiti", label: "Preferiti prima" },
 ];
 
+// OGNI VOCE DICE IL CRITERIO, non il mobile: «Scaffale» era l'unica che
+// non diceva in base a cosa raccoglie, e sullo schermo si leggeva
+// «Raggruppa: Scaffale» sopra a intestazioni che sono saghe (segnalato dal
+// lettore). Il criterio è la saga se c'è, altrimenti l'autore.
+//
+// E DUE VOCI, NON TRE. La terza era il NON raggruppamento: «Tutti in
+// fila», poi «Niente» — un raggruppamento che spegne il raggruppamento,
+// che è una voce di menu che non vuol dire niente (chiesto dal lettore di
+// toglierla). Le due ragioni per cui l'avevo tenuta reggevano male:
+// ritrovare un libro finito in un ripiano strano lo fa meglio la casella
+// di ricerca, che cerca anche fra le note; e i libri appena arrivati
+// meritano una casa vera — una fila sull'Ingresso — non una modalità che
+// spegne lo scaffale. Chi aveva scelto «Niente» non resta impigliato:
+// `vistaValida` non riconosce più quell'id e torna alla disposizione di
+// sempre.
+//
+// E I DUE CRITERI SI POSSONO CHIEDERE ANCHE DA SOLI (chiesto dal lettore:
+// «il raggruppamento me lo dividi per saga o per autore e non tutto
+// assieme»). «Saga e autore» resta la prima voce e la disposizione di
+// sempre — è quella che sa cavarsela su una biblioteca mista — ma ognuna
+// delle due metà ha un lavoro che l'altra non fa: «Saga» tiene insieme
+// solo le storie dichiarate, «Autore» scioglie le saghe e rimette i volumi
+// sotto chi li ha scritti, che su una saga a venti mani come l'Eresia di
+// Horus è proprio l'informazione che la voce combinata nasconde.
 const GROUPS = [
-  { id: "none", label: "Scaffale" },
-  { id: "genre", label: "Genere", empty: "Senza genere" },
-  { id: "saga", label: "Saga", empty: "Fuori saga" },
+  { id: "shelf", label: "Saga e autore", per: "auto" },
+  { id: "saga", label: "Saga", per: "saga" },
+  // `autore` e non `author`: fra gli ORDINAMENTI esiste già un `author`, e
+  // i due elenchi si leggono dallo stesso `bc_vista`. Non collidono (ognuno
+  // si controlla sul suo elenco), ma due chiavi uguali con due mestieri
+  // diversi nello stesso oggetto sono una trappola per chi legge dopo.
+  { id: "autore", label: "Autore", per: "autore" },
+  // Le tre a ETICHETTA passano tutte dalla stessa porta (`aEtichette`): una
+  // chiave per libro, un mucchio per chiave, e chi non ce l'ha chiude la
+  // fila. Quel che cambia è solo il PESO che mette i ripiani in ordine —
+  // alfabetico per il genere, dal voto più alto, e per lo stato l'ordine
+  // della vita di un libro.
+  { id: "genre", label: "Genere" },
+  { id: "rating", label: "Voto" },
+  { id: "status", label: "Stato" },
 ];
 
-const fmtBytes = (n) =>
-  n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1e6))} MB`;
+// I tomi gia' aperti che dentro una copertina non ce l'hanno: stanno nello
+// store `aux` come `copertina_<id>`, e le chiavi si chiedono tutte insieme.
+const guardate = () =>
+  chiaviAux()
+    .then((k) => new Set(k.filter((x) => typeof x === "string" && x.startsWith("copertina_")).map((x) => x.slice(10))))
+    .catch(() => null);
 
-function Shelf({ books, onOpenBook, localIds, showOrder }) {
+// I SEGNI SUL DORSO. L'ebook tolto a mano non e' «nel cloud» (la nuvoletta
+// prometterebbe uno scaricamento che il lettore ha appena rifiutato), e il
+// tomo che non e' ne' qui ne' lassu' nemmeno: a lui la nuvoletta prometteva
+// uno scaricamento impossibile, a mezzo centimetro dalla riga che lo diceva
+// perduto. Il colore si legge quando si disegna (`C` cambia col tema).
+const SEGNI_DORSO = {
+  tolto: { glifo: "📗", titolo: "Tieni la scheda, non l'ebook", colore: () => C.muted },
+  cloud: { glifo: "☁", titolo: "Nel cloud — portalo qui con «Scarica qui»", colore: () => C.arcane },
+  perduto: { glifo: "⚠", titolo: "Né qui né nel cloud — reimporta il file", colore: () => C.accent },
+  altrove: { glifo: "📱", titolo: (nome) => `Sta ${sulDispositivo(nome)}: lì si legge`, colore: () => C.muted },
+  // una parola e non un glifo: su Android un'emoji è un quadratino colorato
+  qui: { glifo: "qui", titolo: "Il file è su questo dispositivo: si apre", colore: () => C.green },
+};
+
+function Shelf({ books, onOpenBook, localIds, idLassu, altrove = null, norma = "qui", showOrder, coverV = 0, conCopertina = null }) {
+  // Chi ha il dorso disegnato lo sa solo `BookCover`, che va a guardare in
+  // IndexedDB se una copertina c'è: lo dice qui, e lo scaffale evita di
+  // ristampare titolo e autore sotto una copertina che li porta già.
+  const [dorsi, setDorsi] = useState({});
+  const segnaDorso = (id, v) =>
+    setDorsi((d) => (d[id] === v ? d : { ...d, [id]: v }));
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(108px, 1fr))",
-        gap: "20px 16px",
+        gridTemplateColumns: `repeat(auto-fill, minmax(${COLONNA_CSS}, 1fr))`,
+        gap: `${SPAZIO_RIGHE}px ${SPAZIO_COLONNE}px`,
+        // I LIBRI SI ALLINEANO IN ALTO. Un `<button>` più basso della sua
+        // riga centra il contenuto — è il browser che lo fa — e da quando la
+        // didascalia compare solo sotto le copertine VERE le righe hanno
+        // altezze diverse: i dorsi disegnati scivolavano in basso di
+        // quaranta pixel, e lo scaffale sembrava storto.
+        alignItems: "start",
       }}
     >
       {books.map((b) => {
         const status = getStatus(b.id);
         const pct = Math.round(getProgress(b.id) * 100);
+        // IL TITOLO NON SI SCRIVE DUE VOLTE. Sul dorso disegnato c'è già,
+        // composto come si deve: ripeterlo qui sotto era rumore, e per
+        // giunta faceva venire le righe sfrangiate perché certe didascalie
+        // andavano a capo e altre no. Con una copertina VERA invece la
+        // didascalia è l'unico posto dove il titolo si legge, e resta.
+        // quel che la Libreria sa gia' in un colpo solo vince sull'avviso
+        // di ogni copertina: con 400 libri erano 400 avvisi, e ognuno
+        // ridisegnava lo scaffale intero
+        const disegnato = conCopertina ? !conCopertina.has(b.id) : dorsi[b.id];
         return (
           <button
             key={b.id}
@@ -51,10 +174,24 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
               display: "block",
               textAlign: "center",
               animation: "bc-fade-in 0.4s ease-out",
+              // LA SCHEDA FUORI SCHERMO NON SI IMPAGINA (`content-visibility`):
+              // con centinaia di libri il grosso dell'apertura era il browser
+              // che disponeva schede che nessuno guardava. La larghezza la
+              // dice la griglia; l'altezza, finche' la scheda non e' stata
+              // disegnata una volta, e' una stima — poi il browser ricorda
+              // quella vera (`auto`), e scorrendo non salta niente.
+              contentVisibility: "auto",
+              containIntrinsicBlockSize: `auto ${ALTEZZA_SCHEDA}px`,
             }}
           >
-            <div style={{ position: "relative" }}>
-              <BookCover book={b} />
+            <div style={{ position: "relative", opacity: status === "abandoned" ? 0.55 : 1 }}>
+              <BookCover
+                book={b}
+                version={coverV}
+                haCopertina={conCopertina ? conCopertina.has(b.id) : undefined}
+                onDisegnata={conCopertina ? undefined : (v) => segnaDorso(b.id, v)}
+                numerato={showOrder && b.sagaOrder != null}
+              />
               {status === "reading" && pct > 0 && (
                 <span
                   style={{
@@ -62,8 +199,8 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
                     top: 6,
                     right: 6,
                     padding: "2px 7px",
-                    borderRadius: 10,
-                    fontSize: 12,
+                    borderRadius: R.piccolo,
+                    fontSize: F.minuscolo,
                     fontWeight: 600,
                     background: `${C.bg}cc`,
                     border: `1px solid ${C.accent}88`,
@@ -80,14 +217,34 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
                     top: 6,
                     right: 6,
                     padding: "2px 7px",
-                    borderRadius: 10,
-                    fontSize: 12,
+                    borderRadius: R.piccolo,
+                    fontSize: F.minuscolo,
                     background: `${C.bg}cc`,
                     border: `1px solid ${C.green}88`,
                     color: C.green,
                   }}
                 >
                   ✓
+                </span>
+              )}
+              {/* Abbandonato: un segno suo, non il ✓ dei finiti. E la
+                  copertina si smorza, perche' sullo scaffale si deve
+                  vedere da lontano che quel libro è fermo. */}
+              {status === "abandoned" && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 6,
+                    right: 6,
+                    padding: "2px 7px",
+                    borderRadius: R.piccolo,
+                    fontSize: F.minuscolo,
+                    background: `${C.bg}cc`,
+                    border: `1px solid ${C.red}88`,
+                    color: C.red,
+                  }}
+                >
+                  ⏸
                 </span>
               )}
               {showOrder && b.sagaOrder != null && (
@@ -98,8 +255,8 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
                     left: 6,
                     minWidth: 20,
                     padding: "1px 6px",
-                    borderRadius: 10,
-                    fontSize: 12.5,
+                    borderRadius: R.piccolo,
+                    fontSize: F.minuscolo,
                     fontWeight: 600,
                     background: `${C.bg}dd`,
                     border: `1px solid ${C.accent}88`,
@@ -109,24 +266,31 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
                   {b.sagaOrder}
                 </span>
               )}
-              {localIds && !localIds.has(b.id) && (
-                <span
-                  title="Nel cloud — si scarica quando lo apri"
-                  style={{
-                    position: "absolute",
-                    bottom: 6,
-                    left: 6,
-                    padding: "1px 6px",
-                    borderRadius: 10,
-                    fontSize: 12,
-                    background: `${C.bg}cc`,
-                    border: `1px solid ${C.arcane}77`,
-                    color: C.arcane,
-                  }}
-                >
-                  ☁
-                </span>
-              )}
+              {/* L'EBOOK TOLTO A MANO NON È «NEL CLOUD»: la nuvoletta
+                  prometterebbe uno scaricamento che il lettore ha appena
+                  rifiutato. Porta un segno suo, perché da lontano si veda
+                  che quel libro c'è ma non si apre. */}
+              {(() => {
+                const segno = SEGNI_DORSO[segnoDorso(b, localIds, idLassu, altrove, norma)];
+                return segno && (
+                  <span
+                    title={typeof segno.titolo === "function" ? segno.titolo(altrove?.get(b.id)) : segno.titolo}
+                    style={{
+                      position: "absolute",
+                      bottom: 6,
+                      left: 6,
+                      padding: "1px 6px",
+                      borderRadius: R.piccolo,
+                      fontSize: F.minuscolo,
+                      background: `${C.bg}cc`,
+                      border: `1px solid ${segno.colore()}77`,
+                      color: segno.colore(),
+                    }}
+                  >
+                    {segno.glifo}
+                  </span>
+                );
+              })()}
             </div>
             <div
               style={{
@@ -136,28 +300,30 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
                 background: `linear-gradient(180deg, ${C.accent}55, #3a2b1466)`,
               }}
             />
-            <div
-              style={{
-                marginTop: 7,
-                fontSize: 14,
-                lineHeight: 1.25,
-                color: C.text,
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-              }}
-            >
-              {b.title}
-            </div>
-            {b.author && (
+            {!disegnato && (
               <div
                 style={{
-                  fontSize: 12.5,
+                  marginTop: 7,
+                  fontSize: F.nota,
+                  lineHeight: 1.25,
+                  color: C.text,
+                  // IL TITOLO INTERO (scelto dal lettore fra le proposte:
+                  // «Cthulhu. I racconti del..», «Il peggiore dei mondi…»
+                  // dicevano meta' del libro), a capo fra le parole: la
+                  // riga si allunga, i libri restano in alto
+                  overflowWrap: "break-word",
+                }}
+              >
+                {b.title}
+              </div>
+            )}
+            {!disegnato && b.author && (
+              <div
+                style={{
+                  fontSize: F.minuscolo,
+                  lineHeight: 1.25,
                   color: C.muted,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  overflowWrap: "break-word",
                 }}
               >
                 {b.author}
@@ -170,142 +336,1926 @@ function Shelf({ books, onOpenBook, localIds, showOrder }) {
   );
 }
 
-function Grouped({ books, group, onOpenBook, localIds }) {
-  if (group === "none") return <Shelf books={books} onOpenBook={onOpenBook} localIds={localIds} />;
+// LA PORTA DEL CAMMINO, sull'intestazione del ripiano.
+//
+// Sta lì perché è lì che guardi quella saga, e compare solo dove c'è una
+// guida da mostrare: un ripiano di romanzi che nessuna tavola conosce non
+// ha un percorso, e un tasto che apre una pagina vuota è peggio di un
+// tasto che manca.
+//
+// E il tasto NON guarda il nome della saga sul ripiano, guarda i titoli:
+// sul tablet del lettore i volumi dell'Eresia stanno sotto una saga
+// scritta a mano («Warhammer 40K») che nessuna tavola conosce, e un tasto
+// legato al nome non sarebbe mai comparso proprio dov'è nato il bisogno.
+function TastoCammino({ libri, tutti, riconosciuti, onCammino }) {
+  // UNA GUIDA, UN TASTO: sul ripiano «Warhammer 40K» del lettore stanno
+  // l'Eresia e Gaunt's Ghosts, e ognuna ha il suo cammino (`camminiDi`).
+  // Il tasto sta dove ci sono i suoi volumi, contati sul ripiano.
+  // E ACCANTO, LE GUIDE DELLO STESSO UNIVERSO ANCORA DA COMINCIARE
+  // (`guideAccanto`): sotto «Warhammer 40K» c'è anche Gaunt's Ghosts a zero
+  // volumi, col conto, perché «dove vedo le saghe che mi mancano?» trovi
+  // la risposta dove l'ha cercata
+  // E DAVANTI, L'ORDINE DEL MONDO INTERO (`mondiDi`, chiesto dal lettore:
+  // «l'ordine di lettura di tutti i libri del malazan universe e non solo
+  // delle singole serie»): «🌐 Tutto Malazan»
+  const { cammini, accanto, mondi } = useMemo(() => {
+    if (!onCammino || !riconosciuti) return { cammini: [], accanto: [], mondi: [] };
+    const riconosce = (b) => riconosciuti.get(b.id);
+    const qui = camminiDi(tutti || libri, { riconosce, scaffale: libri });
+    return {
+      cammini: qui,
+      accanto: guideAccanto(qui, tutti || libri, { riconosce }),
+      mondi: mondiDi(qui, tutti || libri, { riconosce, scaffale: libri }),
+    };
+  }, [libri, tutti, riconosciuti, onCammino]);
+  // le guide accanto, quando sono tante, dietro un tasto solo (le saghe del
+  // 40K sono venti)
+  const [aperte, setAperte] = useState(false);
+  if (!cammini.length) return null;
+  const tutteQui = [...mondi, ...cammini, ...accantoInVista(accanto, aperte)];
+  const chiuse = accanto.length > ACCANTO_IN_VISTA;
+  return (
+    <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+      {tutteQui.map((cammino) => (
+        <button
+          key={cammino.saga}
+          onClick={() => onCammino(cammino)}
+          style={{
+            fontSize: F.piccolo,
+            fontFamily: "inherit",
+            fontWeight: 400,
+            color: C.muted,
+            padding: "2px 8px",
+            minHeight: 32,
+            borderRadius: R.tondo,
+            border: `1px solid ${C.border}`,
+          }}
+        >
+          {/* con due guide sullo stesso ripiano il tasto dice quale, e
+              quella che non sta sul ripiano dice anche quanti ne hai */}
+          {tutteQui.length === 1
+            ? "📜 Il cammino"
+            : cammino.mondo
+              ? `🌐 ${cammino.saga}`
+              : accanto.includes(cammino)
+              ? `📜 ${cammino.saga} · ${cammino.tue}/${cammino.volumi}`
+              : `📜 ${cammino.saga}`}
+        </button>
+      ))}
+      {chiuse && (
+        <button
+          onClick={() => setAperte((a) => !a)}
+          aria-expanded={aperte}
+          style={{
+            fontSize: F.piccolo,
+            fontFamily: "inherit",
+            fontWeight: 400,
+            color: C.muted,
+            padding: "2px 8px",
+            minHeight: 32,
+            borderRadius: R.tondo,
+            border: `1px dashed ${C.border}`,
+          }}
+        >
+          {aperte ? "▴ Meno guide" : `📜 Altre ${accanto.length} guide`}
+        </button>
+      )}
+    </span>
+  );
+}
 
-  const cfg = GROUPS.find((g) => g.id === group);
-  const buckets = new Map();
-  for (const b of books) {
-    const key = (b[group] || "").trim();
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key).push(b);
-  }
-  // dentro una saga comanda l'ordine di lettura; i libri senza numero in coda
-  if (group === "saga") {
-    for (const [key, list] of buckets) {
-      if (!key) continue;
-      list.sort((a, b) => {
-        const x = a.sagaOrder ?? Infinity;
-        const y = b.sagaOrder ?? Infinity;
-        return x === y ? 0 : x - y;
-      });
-    }
-  }
-  // i libri senza etichetta chiudono la fila
-  const names = [...buckets.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b, "it"));
-  if (buckets.has("")) names.push("");
+// UN RIPIANO LONTANO DALLO SCHERMO NON SI COSTRUISCE: misurato con 400
+// libri, il grosso dell'apertura era React che creava schede che nessuno
+// guardava. Finche' il ripiano non arriva a una schermata e mezza di
+// distanza, al posto dei libri c'e' uno spazio alto quanto la stima delle
+// sue righe — cosi' la barra di scorrimento dice il vero — e una volta
+// costruito resta costruito. Senza IntersectionObserver si costruisce
+// subito, come prima.
+const ANTICIPO_RIPIANO = "1200px 0px";
+function useVicino() {
+  const rif = useRef(null);
+  const [vicino, setVicino] = useState(() => typeof IntersectionObserver === "undefined");
+  // PRIMA DI OGNI DISEGNO, finche' non e' costruito: un ripiano che si
+  // ritrova sullo schermo — alla nascita, o perche' una ricerca ha tolto
+  // quelli sopra di lui — non deve lampeggiare vuoto per un fotogramma
+  // aspettando l'osservatore, che risponde dopo
+  useLayoutEffect(() => {
+    if (vicino || !rif.current) return;
+    const r = rif.current.getBoundingClientRect();
+    if (r.top < window.innerHeight + 1200 && r.bottom > -1200) setVicino(true);
+  });
+  useEffect(() => {
+    if (vicino || !rif.current) return;
+    const oss = new IntersectionObserver(
+      (voci) => {
+        if (voci.some((v) => v.isIntersecting)) {
+          setVicino(true);
+          oss.disconnect();
+        }
+      },
+      { rootMargin: ANTICIPO_RIPIANO }
+    );
+    oss.observe(rif.current);
+    return () => oss.disconnect();
+  }, [vicino]);
+  return [rif, vicino];
+}
 
-  return names.map((name) => (
-    <section key={name || "_"} style={{ marginBottom: 26 }}>
+// L'intestazione di un ripiano, una sola per tutti i raggruppamenti: due
+// intestazioni scritte a mano prenderebbero strade diverse alla prima
+// modifica, ed è già successo. `sotto` è l'autore di una saga — e c'è solo
+// quando l'autore è uno: le saghe scritte da venti mani, con un nome solo
+// sotto, racconterebbero una bugia.
+function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
+  const [rif, vicino] = useVicino();
+  return (
+    <section ref={rif} style={{ marginBottom: 26 }}>
       <h3
         style={{
           display: "flex",
           alignItems: "baseline",
           gap: 8,
+          flexWrap: "wrap",
           fontFamily: FONT_TITLE,
           fontWeight: 600,
-          fontSize: 19,
-          color: name ? C.accent : C.muted,
+          fontSize: F.titoletto,
+          color: spento ? C.muted : C.accent,
           marginBottom: 10,
           paddingBottom: 5,
           borderBottom: `1px solid ${C.border}`,
         }}
       >
-        <span>{name || cfg.empty}</span>
-        <span style={{ fontSize: 13, color: C.muted, fontFamily: "inherit" }}>
-          {buckets.get(name).length}
-        </span>
+        <span>{nome}</span>
+        {sotto && (
+          <span style={{ fontSize: F.piccolo, color: C.muted, fontFamily: "inherit", fontWeight: 400 }}>
+            {sotto}
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
+        {azione}
+        <span style={{ fontSize: F.piccolo, color: C.muted, fontFamily: "inherit" }}>{quanti}</span>
       </h3>
-      <Shelf
-        books={buckets.get(name)}
-        onOpenBook={onOpenBook}
-        localIds={localIds}
-        showOrder={group === "saga" && !!name}
-      />
+      {vicino ? children : <div style={{ height: altezzaStimata(quanti, rif.current?.clientWidth || window.innerWidth - 32) }} />}
     </section>
-  ));
+  );
 }
 
-export default function Library({ books, updateBooks, onOpenBook, notify, localIds, onImported, focusSaga, onNas }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, novita = [], onAvvisami, onSerie, notify, onSciogli, onElimina, onRinomina }) {
+  // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
+  // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
+  // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
+  // del volume, e dove non c'è resta l'ordine che hai scelto tu.
+  //
+  // E `sort` scende fino in fondo perché deve ordinare anche i RIPIANI:
+  // prima si fermava ai libri, quindi «Ordina: Recenti» non spostava mai
+  // un'intestazione e il comando sembrava non fare niente.
+  // IL CAPITOLO DELLA GUIDA NON STA SUL LIBRO: lo sa la tavola, e il
+  // riconoscimento è già fatto una volta per tutta la biblioteca qui sopra.
+  // e l'ORDINE del capitolo è quello della guida, non quello dei volumi che
+  // possiedi: un racconto non ha numero di lettura, e senza il posto della
+  // tavola il suo capitolo scivolava in fondo.
+  const parteDi = riconosciuti ? (b) => capitoloDi(riconosciuti.get(b.id)) : null;
+  // il segno sul dorso dice l'eccezione, e la norma è della biblioteca intera
+  const norma = normaDelDorso(tutti || books);
+  const criterio = GROUPS.find((g) => g.id === group)?.per;
+  // il genere si raggruppa per FAMIGLIA: «Fantasy · Grimdark» e «Fantasy ·
+  // Epico» stanno sullo stesso scaffale. Prendendo il valore intero ogni
+  // sottogenere farebbe un gruppo da un libro, e uno scaffale di gruppi da
+  // uno non è un raggruppamento.
+  const CRITERIO = {
+    genre: { chiave: (b) => famigliaDi(b.genre), vuoto: "Senza genere" },
+    rating: criterioVoto(),
+    // lo stato vive in `localStorage`, non sul libro: la funzione che lo
+    // legge si passa da fuori, come `leggiByte` altrove
+    status: criterioStato((b) => getStatus(b.id)),
+  }[group];
+
+  const disposti = criterio ? disponi(books, null, criterio, sort, parteDi) : aEtichette(books, CRITERIO, sort);
+  const ripiani = nellOrdineScelto(disposti, sort, preferite);
+  // un ripiano disegnato sempre dallo stesso posto, esposto o dentro la sua
+  // raccolta: due strade scritte a mano divergerebbero alla prima modifica
+  const mostra = (r) =>
+    criterio ? (
+        <Ripiano
+          key={r.id}
+          nome={r.nome}
+          sotto={r.autore}
+          quanti={r.libri.length}
+          spento={r.tipo === "soli"}
+          azione={<TastoCammino libri={r.libri} tutti={tutti} riconosciuti={riconosciuti} onCammino={onCammino} />}
+        >
+          {r.cicli ? (
+            // I CICLI DENTRO LA SAGA (chiesto dal lettore): un sotto-ripiano
+            // per ciclo, nell'ordine in cui la storia li incontra. Il nome
+            // del ciclo sta in una riga piu' discreta dell'intestazione della
+            // saga, o le due gerarchie si confonderebbero.
+            r.cicli.map((c) => (
+              <div key={c.nome ?? "_"} style={{ marginBottom: 14 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 8,
+                    fontFamily: FONT_TITLE,
+                    fontSize: F.nota,
+                    color: c.nome ? C.text : C.muted,
+                    marginBottom: 8,
+                  }}
+                >
+                  <span>{c.nome ?? "Volumi a sé"}</span>
+                  <span style={{ fontSize: F.minuscolo, color: C.muted }}>{c.libri.length}</span>
+                </div>
+                {/* E DENTRO, I CAPITOLI DELLA GUIDA — il terzo livello. Il
+                    rientro e il corpo più piccolo sono tutto quel che li
+                    distingue dal ciclo che li contiene: tre intestazioni
+                    della stessa misura non sarebbero una gerarchia. */}
+                {c.parti ? (
+                  c.parti.map((p) => (
+                    <div key={p.nome ?? "_"} style={{ marginLeft: 12, marginBottom: 12 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "baseline",
+                          gap: 8,
+                          fontSize: F.minuscolo,
+                          color: C.muted,
+                          marginBottom: 6,
+                        }}
+                      >
+                        <span>{p.nome ?? "Fuori dal percorso"}</span>
+                        <span>{p.libri.length}</span>
+                      </div>
+                      <Shelf books={p.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} altrove={altrove} norma={norma} coverV={coverV} conCopertina={conCopertina} showOrder />
+                    </div>
+                  ))
+                ) : (
+                  <Shelf books={c.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} altrove={altrove} norma={norma} coverV={coverV} conCopertina={conCopertina} showOrder />
+                )}
+              </div>
+            ))
+          ) : (
+            <Shelf
+              books={r.libri}
+              onOpenBook={onOpenBook}
+              localIds={localIds} idLassu={idLassu} altrove={altrove} norma={norma}
+              coverV={coverV}
+              conCopertina={conCopertina}
+              // il numero del volume ha senso dentro la sua saga; fra i volumi
+              // soli sarebbe un numero senza la storia che lo spiega
+              showOrder={r.tipo === "saga"}
+            />
+          )}
+        </Ripiano>
+    ) : (
+      <Ripiano key={r.id || "_"} nome={r.nome} quanti={r.libri.length} spento={!!r.spento}>
+        <Shelf books={r.libri} onOpenBook={onOpenBook} localIds={localIds} idLassu={idLassu} altrove={altrove} norma={norma} coverV={coverV} conCopertina={conCopertina} />
+      </Ripiano>
+    );
+
+  if (!raccolte) return ripiani.map(mostra);
+
+  // LE RACCOLTE (vedi `inRaccolte`): una cartella per ripiano, e i libri
+  // che non stanno con nessuno sciolti sotto. Aperta una cartella, si vede
+  // il suo ripiano com'era sullo scaffale, coi cicli e i numeri.
+  const dentro = aperta != null ? ripiani.find((r) => r.id === aperta) : null;
+  if (dentro) {
+    const amata = preferite.has(dentro.id);
+    const avviso = tastoNovita(dentro, novita);
+    return (
+      <>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+          <button
+            onClick={() => onApri(null)}
+            style={{ display: "inline-flex", alignItems: "center", gap: 8, minHeight: 44, padding: "0 14px", borderRadius: R.tondo, border: `1px solid ${C.border}`, color: C.muted, fontSize: F.nota }}
+          >
+            ‹ Tutte le raccolte
+          </button>
+          {/* il cuore di una raccolta: solo saghe e autori (vedi
+              `puoEssereFavorita`), lo stesso gesto della scheda del libro */}
+          {puoEssereFavorita(dentro.id) && (
+            <button
+              onClick={() => onCuore?.(dentro, !amata)}
+              aria-pressed={amata}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                minHeight: 44,
+                padding: "0 14px",
+                borderRadius: R.tondo,
+                border: `1px solid ${amata ? C.accent : C.border}`,
+                background: amata ? `${C.accent}1f` : "transparent",
+                color: amata ? C.accent : C.muted,
+                fontSize: F.nota,
+              }}
+            >
+              {amata ? "♥ Fra i preferiti" : "♡ Metti fra i preferiti"}
+            </button>
+          )}
+          {/* LE NOVITA' (`lib/novita.js`): si segue solo quel che si sceglie,
+              e la notifica la manda il guscio Android */}
+          {avviso && (
+            <button
+              onClick={() => onAvvisami?.(dentro, !avviso.si)}
+              aria-pressed={avviso.si}
+              title={avviso.spiega}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                minHeight: 44,
+                padding: "0 14px",
+                borderRadius: R.tondo,
+                border: `1px solid ${avviso.si ? C.green : C.border}`,
+                background: avviso.si ? `${C.green}1f` : "transparent",
+                color: avviso.si ? C.green : C.muted,
+                fontSize: F.nota,
+              }}
+            >
+              {avviso.testo}
+            </button>
+          )}
+        </div>
+        {avviso?.si && <SerieDellaRaccolta r={dentro} lista={novita} onCercata={onSerie} />}
+        <TuttaLaRaccolta r={dentro} voti={voti} onVoto={onVoto} onTutti={onTutti} localIds={localIds} onSciogli={onSciogli} onElimina={onElimina} />
+        {/* la chiave non e' quella della raccolta: lo scaffale qui sotto
+            (`mostra`, un `Ripiano`) porta gia' quella, e due fratelli con la
+            stessa chiave React li confonde a ogni aggiornamento (il tasto
+            moltiplicato venti volte e lo scaffale sparito) */}
+        <TitoliLeggibili key={`titoli|${dentro.id}`} r={dentro} onRinomina={onRinomina} />
+        <CopertineDalCatalogo key={`copertine|${dentro.id}`} r={dentro} notify={notify} />
+        {mostra(dentro)}
+      </>
+    );
+  }
+  const { raccolte: cartelle, sciolti } = inRaccolte(ripiani);
+  return (
+    <>
+      {cartelle.length > 0 && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(auto-fill, minmax(${COLONNA_CSS}, 1fr))`,
+            gap: `${SPAZIO_RIGHE}px ${SPAZIO_COLONNE}px`,
+            alignItems: "start",
+            marginBottom: 26,
+          }}
+        >
+          {cartelle.map((r) => (
+            <Raccolta key={r.id} r={r} amata={preferite.has(r.id)} voto={puoEssereVotata(r.id) ? votoDaMostrare(voti, r.id, r.libri) : null} onApri={() => onApri(r.id)} coverV={coverV} conCopertina={conCopertina} />
+          ))}
+        </div>
+      )}
+      {sciolti.map(mostra)}
+    </>
+  );
+}
+
+// UNA RACCOLTA: la copertina del volume da cui ripartire (`copertinaDi`),
+// due dorsi dietro che dicono «qui dentro ce n'e' piu' d'uno» — il segno
+// delle cartelle del Kindle — il numero dei volumi, e quanti ne hai letti.
+function Raccolta({ r, amata = false, voto = null, onApri, coverV, conCopertina }) {
+  const b = copertinaDi(r.libri, getStatus);
+  const { quanti, letti } = contoRaccolta(r.libri, getStatus);
+  if (!b) return null;
+  return (
+    <button
+      onClick={onApri}
+      aria-label={`${r.nome}: ${quanti} ${quanti === 1 ? "volume" : "volumi"}`}
+      style={{ display: "block", textAlign: "center", animation: "bc-fade-in 0.4s ease-out" }}
+    >
+      <div style={{ position: "relative", paddingTop: 10 }}>
+        <div aria-hidden style={{ position: "absolute", top: 0, left: "14%", right: "14%", height: 3, borderRadius: R.minimo, background: C.border }} />
+        <div aria-hidden style={{ position: "absolute", top: 5, left: "7%", right: "7%", height: 3, borderRadius: R.minimo, background: C.muted }} />
+        <div style={{ position: "relative" }}>
+          <BookCover book={b} version={coverV} haCopertina={conCopertina ? conCopertina.has(b.id) : undefined} />
+          {/* un segno, non un tasto: un bersaglio minuscolo sopra una
+              copertina da toccare si prende per sbaglio */}
+          {amata && (
+            <span
+              aria-label="fra i preferiti"
+              style={{ position: "absolute", left: 6, top: 6, padding: "1px 6px", borderRadius: R.tondo, fontSize: F.minuscolo, background: `${C.bg}e6`, border: `1px solid ${C.accent}88`, color: C.accent }}
+            >
+              ♥
+            </span>
+          )}
+          <span
+            style={{
+              // in basso a DESTRA: a sinistra il dorso disegnato scrive
+              // l'autore, e il numero ci finiva sopra
+              position: "absolute",
+              right: 6,
+              bottom: 6,
+              minWidth: 26,
+              padding: "2px 7px",
+              borderRadius: R.tondo,
+              fontSize: F.minuscolo,
+              fontWeight: 700,
+              background: `${C.bg}e6`,
+              border: `1px solid ${C.accent}88`,
+              color: C.accent,
+            }}
+          >
+            {quanti}
+          </span>
+        </div>
+      </div>
+      <div
+        style={{
+          marginTop: 6,
+          fontFamily: FONT_TITLE,
+          fontWeight: 600,
+          fontSize: F.nota,
+          color: C.text,
+          lineHeight: 1.2,
+          // IL NOME INTERO (chiesto dal lettore: «far vedere il nome per
+          // intero delle saghe e non tagliarli»): due righe troncavano «The
+          // Blacktongue…», «The Realm of the…», e il nome di una raccolta e'
+          // l'unica cosa che la distingue da un'altra con la stessa faccia
+          overflowWrap: "break-word",
+        }}
+      >
+        {r.nome}
+      </div>
+      {/* gli zeri non si dicono: «0 letti» sotto una saga appena arrivata
+          sarebbe rumore */}
+      {letti > 0 && (
+        <div style={{ fontSize: F.minuscolo, color: letti === quanti ? C.green : C.muted, marginTop: 2 }}>
+          {letti === quanti ? "tutti letti ✓" : `${letti} di ${quanti} letti`}
+        </div>
+      )}
+      {/* il voto della saga, o la media dei volumi votati detta come tale */}
+      {voto && (
+        <div style={{ fontSize: F.minuscolo, color: voto.mio ? C.accent : C.muted, marginTop: 2 }}>
+          ★ {dettoVoto(voto.voto)}
+          {voto.media ? " media" : ""}
+        </div>
+      )}
+    </button>
+  );
+}
+
+// LA RACCOLTA APERTA, TUTTA INSIEME (`lib/votiRaccolte.js`): il voto della
+// saga (o la media dei volumi votati, detta come tale) e tutti i volumi
+// letti o da leggere in un tocco, con una conferma: venti volumi cambiati
+// per sbaglio non si rimettono a posto uno per uno
+function TuttaLaRaccolta({ r, voti, onVoto, onTutti, localIds, onSciogli, onElimina }) {
+  const [chiedo, setChiedo] = useState(null);
+  const conto = contoDaEliminare(r, localIds);
+  const votabile = puoEssereVotata(r.id);
+  const mio = votoMio(voti, r.id);
+  const media = mediaDeiVolumi(r.libri);
+  const daCambiare = chiedo === "read" || chiedo === "unread" ? daSegnare(r.libri, chiedo, getStatus) : [];
+  const tasto = (attivo) => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    minHeight: 44,
+    padding: "0 14px",
+    borderRadius: R.tondo,
+    border: `1px solid ${attivo ? C.accent : C.border}`,
+    background: attivo ? `${C.accent}1f` : "transparent",
+    color: attivo ? C.accent : C.muted,
+    fontSize: F.nota,
+  });
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        gap: "10px 18px",
+        padding: "10px 14px",
+        marginBottom: 14,
+        borderRadius: R.medio,
+        border: `1px solid ${C.border}`,
+        background: `linear-gradient(135deg, ${C.card}, ${C.surface})`,
+      }}
+    >
+      {votabile && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: F.nota, color: C.muted }}>Il tuo voto alla saga</span>
+          <Stars value={mio} onChange={(v) => onVoto?.(r, v)} misura={28} />
+          {media && (
+            <span style={{ fontSize: F.piccolo, color: C.muted }}>
+              {mio ? "· " : ""}media dei volumi ★ {dettoVoto(media.media)} ({media.votati} {media.votati === 1 ? "votato" : "votati"} su {media.di})
+            </span>
+          )}
+        </div>
+      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginLeft: votabile ? "auto" : 0 }}>
+        {chiedo === "elimina" ? (
+          // ELIMINARE UNA RACCOLTA (`lib/eliminaRaccolta.js`): prima si
+          // sceglie cosa, poi per i volumi si conferma una seconda volta
+          <>
+            <span style={{ fontSize: F.nota, color: C.text }}>
+              «{r.nome}»: {conto.ids.length === 1 ? "un volume" : `${conto.ids.length} volumi`}.
+            </span>
+            {puoEssereSciolta(r) && (
+              <button
+                onClick={() => {
+                  onSciogli?.(r, conto.ids);
+                  setChiedo(null);
+                }}
+                style={tasto(false)}
+              >
+                Sciogli: i volumi restano, senza raccolta
+              </button>
+            )}
+            <button onClick={() => setChiedo("eliminaDavvero")} style={{ ...tasto(false), color: C.red, borderColor: C.red }}>
+              🗑 Elimina {conto.ids.length === 1 ? "il volume" : `i ${conto.ids.length} volumi`}
+            </button>
+            <button onClick={() => setChiedo(null)} style={tasto(false)}>
+              Annulla
+            </button>
+          </>
+        ) : chiedo === "eliminaDavvero" ? (
+          <>
+            <span style={{ fontSize: F.nota, color: C.text }}>{fraseEliminaRaccolta(r.nome, conto)}</span>
+            <button
+              onClick={() => {
+                onElimina?.(r, conto.ids);
+                setChiedo(null);
+              }}
+              style={{ ...tasto(true), color: C.red, borderColor: C.red, background: `${C.red}1f` }}
+            >
+              Sì, elimina
+            </button>
+            <button onClick={() => setChiedo(null)} style={tasto(false)}>
+              No
+            </button>
+          </>
+        ) : chiedo ? (
+          daCambiare.length ? (
+            <>
+              <span style={{ fontSize: F.nota, color: C.text }}>
+                {chiedo === "read"
+                  ? `Segno ${daCambiare.length === 1 ? "1 volume letto" : `${daCambiare.length} volumi letti`}?`
+                  : `Rimetto ${daCambiare.length === 1 ? "1 volume" : `${daCambiare.length} volumi`} da leggere?`}
+              </span>
+              <button
+                onClick={() => {
+                  onTutti?.(r, chiedo, daCambiare);
+                  setChiedo(null);
+                }}
+                style={tasto(true)}
+              >
+                Sì
+              </button>
+              <button onClick={() => setChiedo(null)} style={tasto(false)}>
+                No
+              </button>
+            </>
+          ) : (
+            <>
+              <span style={{ fontSize: F.nota, color: C.muted }}>{chiedo === "read" ? "Sono già tutti letti" : "Sono già tutti da leggere"}</span>
+              <button onClick={() => setChiedo(null)} style={tasto(false)}>
+                Ok
+              </button>
+            </>
+          )
+        ) : (
+          <>
+            <button onClick={() => setChiedo("read")} style={tasto(false)}>
+              ✓ Tutti letti
+            </button>
+            <button onClick={() => setChiedo("unread")} style={tasto(false)}>
+              ○ Tutti da leggere
+            </button>
+            <button onClick={() => setChiedo("elimina")} style={tasto(false)}>
+              🗑 Elimina raccolta
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function Library({
+  books,
+  updateBooks,
+  lavoroCbr = null,
+  cbrDaFare = [],
+  onConvertiTutti,
+  doppi = [],
+  onUnisciDoppioni,
+  onEliminaRaccolta,
+  onFermaLavoro,
+  onOpenBook,
+  onReadAt,
+  notify,
+  localIds,
+  onImported,
+  importo = null,
+  onFermaImport,
+  daImportare,
+  onSenzaFile,
+  onImportati,
+  focusSaga,
+  collegato,
+  onFileLocali,
+  spazioCambiato = 0,
+  aggiorna,
+  onCammino,
+  // la raccolta aperta sta in App: e' un livello che il tasto indietro del
+  // tablet deve saper chiudere, e i livelli li conosce App
+  raccolta = null,
+  onRaccolta = () => {},
+  // un cambio che non tocca le schede (il cuore, il voto di una raccolta)
+  // parte lo stesso verso gli altri dispositivi
+  onCambiate,
+  // le raccolte da seguire per le novita' cambiate: App le manda al guscio
+  onNovita,
+  onTogliEbook,
+  onRiordina,
+  onMettiDaParte,
+  onRimettiAPosto,
+  onImportaDalDisco,
+  onConvertiDalDisco,
+}) {
+  const { stretto } = useViewport();
   const [query, setQuery] = useState("");
+  // il controllo aggiornamenti col dito: `agg` e' l'esito in corso, e le
+  // parole stanno in ESITI_CONTROLLO — un esito senza frase e' un tasto
+  // che tace. Su «nuova» si installa subito: siamo in Libreria, nessun
+  // libro aperto, il reload non costa niente.
+  const [agg, setAgg] = useState(null);
+  // la cassetta degli attrezzi: chiusa a riposo, e resta aperta finche'
+  // la Libreria e' aperta — cosi' il tasto «Fermo qui» di un giro lungo
+  // avviato da dentro non sparisce sotto il ripiego
+  const [manutenzione, setManutenzione] = useState(false);
+  async function controllaAggiornamenti() {
+    if (agg === "cerco" || agg === "nuova") return;
+    setAgg("cerco");
+    const esito = await aggiorna.cerca();
+    setAgg(esito);
+    if (esito === "nuova") {
+      setTimeout(() => aggiorna.applica(), 900);
+    } else {
+      setTimeout(() => setAgg((v) => (v === esito ? null : v)), 6000);
+    }
+  }
+  // la ricerca dentro i tomi: `vivo` e' il filo che la tiene in vita, e
+  // spezzarlo e' l'unico modo per fermarla a meta'
+  const [dentro, setDentro] = useState(null);
+  const vivo = useRef(null);
   const [filter, setFilter] = useState("all");
-  const [sort, setSort] = useState("recent");
-  const [group, setGroup] = useState("none");
-  const [importing, setImporting] = useState(false);
-  const [nas, setNas] = useState(false);
+  // libri o fumetti: un filtro come lo stato, e come lo stato non si ricorda
+  const [tipo, setTipo] = useState("tutti");
+  // Come avevi lasciato lo scaffale. Il filtro NO, ed è voluto: una
+  // Libreria che si riapre con metà dei libri nascosti sembra una libreria
+  // che ha perso dei libri.
+  const vista = useRef(vistaValida(GROUPS, SORTS));
+  const [sort, setSort] = useState(vista.current.sort);
+  const [group, setGroup] = useState(vista.current.group);
+  // scaffale coi libri esposti o raccolte: si ricorda come il resto
+  const [aspetto, setAspetto] = useState(vista.current.aspetto);
+  // la Libreria aperta dal menu, misurata fino al disegno (`lib/tempi.js`)
   useEffect(() => {
-    let alive = true;
-    nasAvailable().then((ok) => alive && setNas(ok));
-    return () => {
-      alive = false;
-    };
+    const t0 = partenza("libreria");
+    if (t0 == null) return;
+    dopoIlDisegno((t) => segnaTempo(vocePerTempo({ cosa: "libreria", t0, tappe: [["disegno", t]], n: books.length, vista: aspetto })));
   }, []);
+  // IL CUORE DELLE RACCOLTE si rilegge a ogni disegno: lo scrive anche la
+  // sincronizzazione, e una copia tenuta qui resterebbe quella di prima
+  const [, setCuori] = useState(0);
+  const preferite = preferiteVive(leggiPreferite());
+  const cuore = (r, si) => {
+    scriviPreferite(segnaPreferita(leggiPreferite(), r.id, si, { nome: r.nome }));
+    setCuori((n) => n + 1);
+    onCambiate?.();
+    notify?.(si ? `♥ «${r.nome}» fra i preferiti` : `«${r.nome}» non è più fra i preferiti`);
+  };
+  // LE NOVITA' DA SEGUIRE si rileggono a ogni disegno, come il cuore; ogni
+  // cambio va al guscio (`onNovita`), che le guarda ad app chiusa
+  const novita = leggiNovita();
+  const avvisami = (r, si) => {
+    const voce = vocePerRaccolta(r);
+    if (!voce) return;
+    const lista = scriviNovita(si ? seguiNovita(leggiNovita(), voce) : smettiNovita(leggiNovita(), r.id));
+    setCuori((n) => n + 1);
+    onNovita?.(lista);
+    notify?.(si ? `🔔 Ti avviso delle novità di «${r.nome}»` : `Niente più avvisi per «${r.nome}»`);
+  };
+  // la saga trovata (o non trovata) su Wikidata: la lista cambia, e va al
+  // guscio come ogni cambio
+  const serieCercata = (id, serie) => {
+    const lista = scriviNovita(conSerie(leggiNovita(), id, serie));
+    setCuori((n) => n + 1);
+    onNovita?.(lista);
+  };
+  // IL VOTO DELLE RACCOLTE si rilegge a ogni disegno, come il cuore
+  const voti = leggiVoti();
+  const vota = (r, v) => {
+    scriviVoti(segnaVoto(leggiVoti(), r.id, v, { nome: r.nome }));
+    setCuori((n) => n + 1);
+    onCambiate?.();
+    notify?.(v ? `★ ${dettoVoto(v)} a «${r.nome}»` : `Tolto il voto a «${r.nome}»: resta la media dei volumi`);
+  };
+  // tutti i volumi letti o da leggere: lo stato di ognuno si timbra da se'
+  // (`setStatus`), e la biblioteca ridisegnata parte verso gli altri
+  // una raccolta sciolta: i volumi restano, senza raccolta (`sciogliRaccolta`)
+  const sciogli = (r, ids) => {
+    const dopo = sciogliRaccolta(books, ids);
+    for (const id of ids) timbraScheda(id);
+    updateBooks(dopo);
+    onRaccolta?.(null);
+    notify?.(`«${r.nome}» sciolta: ${ids.length === 1 ? "il volume resta" : `i ${ids.length} volumi restano`} sullo scaffale, senza raccolta`);
+  };
+  // i titoli in un altro alfabeto scelti nell'elenco (`TitoliLeggibili`),
+  // sulla biblioteca di adesso
+  const rinominaVolumi = (nuovi) => {
+    updateBooks(booksRef.current.map((b) => (nuovi.has(b.id) ? { ...b, title: nuovi.get(b.id) } : b)));
+    for (const id of nuovi.keys()) timbraScheda(id);
+    notify?.(nuovi.size === 1 ? "🔤 Un titolo cambiato" : `🔤 ${nuovi.size} titoli cambiati`);
+  };
+  const tuttiQuanti = (r, stato, quali) => {
+    for (const b of quali) setStatus(b.id, stato);
+    updateBooks([...books]);
+    notify?.(`«${r.nome}»: ${quali.length === 1 ? "1 volume" : `${quali.length} volumi`} ${stato === "read" ? "segnati letti ✓" : "di nuovo da leggere"}`);
+  };
+  // il pannello della disposizione resta aperto finché non lo richiudi:
+  // le scelte sono DUE, e chiudersi al primo tocco vorrebbe dire riaprirlo
+  // per fare la seconda. Non si ricorda però fra un'apertura e l'altra
+  // della Libreria — quella che si ricorda è la scelta, non il comando.
+  const [vistaAperta, setVistaAperta] = useState(false);
+  const ricorda = (patch) => {
+    vista.current = { ...vista.current, ...patch };
+    scriviVista(vista.current);
+  };
+  const [importing, setImporting] = useState(false);
+  const [vediDoppi, setVediDoppi] = useState(false);
+  const [vediLibera, setVediLibera] = useState(false);
+  const [liberando, setLiberando] = useState(false);
+  const [pesi, setPesi] = useState(null);
+  // il disco controllato (`controllaDisco`): il rapporto e la sua casa
+  const [disco, setDisco] = useState(null);
+  const [giroImport, setGiroImport] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  // il richiamo dei tomi dal cloud: {i, totale, titolo} mentre scende, e
+  // `filoTomi` e' il modo di fermarlo a meta'
+  const [portando, setPortando] = useState(null);
+  const filoTomi = useRef(null);
+  // il ripasso delle impronte e' l'altra passata lunga: stessa forma,
+  // stesso modo di fermarla
+  const [improntando, setImprontando] = useState(null);
+  const filoImpronte = useRef(null);
+  const [copertinando, setCopertinando] = useState(null);
+  const filoCopertine = useRef(null);
+  // quali libri il dorso disegnato ce l'hanno per davvero: si chiede una
+  // volta all'apertura dello scaffale, non un libro per volta
+  const [conCopertina, setConCopertina] = useState(null);
+  // i pesi delle copertine e i segni delle nitide: chi ha una copertina di
+  // fumetto da rifare (`copertineDaRifare`)
+  const [nitidezza, setNitidezza] = useState(null);
+  const rileggiNitidezza = () =>
+    Promise.all([misureCopertine(), chiaviAuxPrefisso("nitida_")])
+      .then(([misure, chiavi]) => setNitidezza(misure ? { misure, nitide: new Set(chiavi || []) } : null))
+      .catch(() => setNitidezza(null));
+  // i tomi gia' aperti che dentro una copertina non ce l'hanno: le chiavi
+  // dello store `aux` si chiedono in un colpo solo, come le copertine
+  const [copGuardate, setCopGuardate] = useState(null);
+  // cambia dopo un ripasso: senza, `BookCover` non torna a guardare in
+  // IndexedDB e resteresti davanti ai dorsi disegnati di prima
+  const [coverV, setCoverV] = useState(0);
+  // il riconoscimento delle saghe adesso apre i file dei tomi che una saga
+  // non ce l'hanno, quindi e' diventato una passata lunga come le altre:
+  // avanzamento col titolo e fermabile a meta'
+  const [collane, setCollane] = useState(null);
+  const filoCollane = useRef(null);
+  // la biblioteca di ADESSO, per chi scrive a fine di un giro lungo: un
+  // giro che dura un minuto non deve riscrivere sopra un voto messo nel
+  // frattempo con la copia di quando e' partito
+  const booksRef = useRef(books);
+  booksRef.current = books;
+  // la visita: terza passata lunga, stessa forma delle altre due
+  const [visitando, setVisitando] = useState(null);
+  // la copertina giusta dal catalogo, per una raccolta o un libro scelto
+  const [copertinaGiusta, setCopertinaGiusta] = useState(false);
+  const [referto, setReferto] = useState(null);
+  const filoVisita = useRef(null);
   const archiveRef = useRef(null);
   const [estimate, setEstimate] = useState(null);
+  // quanto pesa, per specie, quel che sta QUI: si misura dai Blob e non si
+  // chiede al browser, che del dettaglio non sa niente
+  const [qui, setQui] = useState(null);
+  // Quanto pesi lassu'. Si chiede una volta sola, all'apertura dello
+  // scaffale e solo a cloud collegato.
+  const [cloud, setCloud] = useState(null);
   const inputRef = useRef(null);
+  // Le melodie caricate da file vivono solo qui, come i libri: chi ne ha
+  // deve poter fare un archivio anche senza avere un libro in libreria.
+  const melodie = getFavorites().filter(isFile).length;
 
+  // Lo sfratto della memoria: se il browser non ha concesso la persistenza,
+  // biblioteca, evidenziazioni, diario e punti di lettura stanno in uno
+  // spazio che puo' essere buttato via quando serve posto. Qui si GUARDA
+  // soltanto — chiedere all'apertura della Libreria farebbe comparire un
+  // permesso a sorpresa — e la richiesta vera resta quella dell'avvio.
+  const [persist, setPersist] = useState("concessa");
+
+  // i byte cambiati da dentro la Libreria (uno scaricamento in massa):
+  // `spazioCambiato` porta quelli cambiati da fuori, questo quelli di qui
+  const [giroSpazio, setGiroSpazio] = useState(0);
+
+  // E SI RILEGGE ANCHE QUANDO I BYTE CAMBIANO SENZA CHE CAMBI LA
+  // BIBLIOTECA. Togliendo un ebook la scheda resta, quindi `books` cambia
+  // per il solo segno `fileTolto` — e cambia PRIMA che il file sia
+  // sparito, quindi questa misura si rileggeva sui byte ancora al loro
+  // posto. Da sapere, perche' e' meta' della risposta: `storage.estimate`
+  // e' del BROWSER e non si sbriga — misurato in Chromium, scritti e poi
+  // cancellati 20 MB, la stima non cala nemmeno dieci secondi dopo, con
+  // lo store gia' vuoto. Quel numero quindi puo' restare fermo lo stesso,
+  // e non c'e' niente da curare di nostro: chi lo rimisura di piu' non lo
+  // fa scendere prima.
   useEffect(() => {
     storageEstimate().then(setEstimate);
-  }, [books]);
+    spazioQui().then(setQui).catch(() => setQui(null));
+    statoPersistenza().then(setPersist);
+    // chi la copertina ce l'ha qui, in un colpo solo: chiederlo un libro
+    // per volta sarebbe una transazione IndexedDB per tomo
+    listCoverIds()
+      .then((ids) => setConCopertina(new Set(ids)))
+      .catch(() => setConCopertina(null));
+    rileggiNitidezza();
+    guardate().then(setCopGuardate);
+  }, [books, spazioCambiato, giroSpazio]);
+  // una copertina messa o tolta altrove (la scheda del libro, la
+  // sincronizzazione) cambia chi ce l'ha: senza, lo scaffale
+  // disegnerebbe il dorso sopra un libro che la copertina l'ha appena avuta
+  useEffect(
+    () =>
+      ascoltaCopertine(() =>
+        listCoverIds()
+          .then((ids) => setConCopertina(new Set(ids)))
+          .catch(() => {})
+      ),
+    []
+  );
+  // NON si aggancia a `books` come i due qui sopra: quello e' un giro di
+  // rete che elenca il secchio, e rifarlo a ogni import o a ogni voto messo
+  // a un romanzo sarebbe traffico buttato — per giunta sul piano gratuito,
+  // dove anche il traffico e' contato. Un errore lascia la riga senza la
+  // parte del cloud: non e' un guasto da raccontare, e' un numero in meno.
+  //
+  // MA SI RIFA' QUANDO IL SECCHIO E' CAMBIATO PER MANO NOSTRA, e non e'
+  // contro quella ragione: e' la stessa regola vista dall'altra parte.
+  // Togliere un ebook cancella il file anche lassu' (`togliFileDalCloud`),
+  // quindi questa barra resta a raccontare un secchio che non esiste piu'
+  // — e siccome la Libreria non si smonta finche' non cambi sezione, per
+  // il lettore quel numero non si muove mai («ho tolto un po' di ebook e
+  // tenuto solo la scheda, non dovrei vedere aggiornarsi lo spazio di
+  // archiviazione?»). Non e' un giro a ogni tocco: e' un giro per un
+  // gesto raro che sposta dei megabyte.
+  useEffect(() => {
+    if (!collegato) return setCloud(null);
+    let vivo = true;
+    cloudUsage()
+      .then((d) => vivo && setCloud(d || null))
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [collegato, spazioCambiato]);
+
+  async function richiediPersistenza() {
+    // riprovare ha senso davvero: Android la concede quando la PWA viene
+    // installata o quando l'app se l'e' guadagnata con l'uso
+    setPersist(await requestPersistence());
+  }
+
+  // I tomi che stanno solo nel cloud: sono quelli con la nuvoletta, e sono
+  // quelli che le domande sulla saga non possono sfogliare. Senza un cloud
+  // collegato non c'e' niente da richiamare: offrirlo lo stesso sarebbe una
+  // promessa che nessuno puo' mantenere.
+  // i libri che l'altro dispositivo dice di tenere (`dispositivi.js`)
+  const altrove = useMemo(() => altroveDa(leggiDispositivi(), dispositivo()), [books, localIds]);
+  const nelCloud = collegato && localIds ? books.filter((b) => !localIds.has(b.id)) : [];
+  // L'elenco del secchio arriva allo scaffale per il segno sul dorso: e' lo
+  // stesso che decide la riga dei perduti qui sotto, cosi' le due non si
+  // smentiscono. Finche' l'elenco non e' arrivato si risponde «non so», che
+  // non accusa nessuno.
+  const idLassu = collegato && cloud?.idLibri ? new Set(cloud.idLibri) : null;
+
+  // La nuvoletta promette uno scaricamento, e su qualche tomo quella
+  // promessa non si puo' mantenere: i byte non sono ne' qui ne' lassu'.
+  // Finche' non si diceva, «Porta qui i tomi» falliva e basta.
+  // e chi sta sull'altro dispositivo non e' perduto: e' la'
+  const perduti = fraseSenzaCopia(senzaCopia(nelCloud.filter((b) => !altrove.has(b.id)), idLassu));
+  // E il tasto conta solo quelli che puo' DAVVERO portare giu': contando
+  // anche i perduti offriva di scaricare file che l'app sapeva gia' non
+  // esserci, e la riga qui sopra lo diceva a mezzo centimetro di distanza.
+  const daScendere = daPortare(nelCloud, idLassu);
+
+  // LIBERA SPAZIO (`liberaSpazio.js`): i letti che il disco del computer ha.
+  // I pesi si leggono solo a cassetta aperta: un cursore su tutti i file.
+  useEffect(() => {
+    if (!manutenzione || !localIds) return;
+    let vivo = true;
+    misureFile().then((m) => vivo && setPesi(m)).catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [manutenzione, localIds, spazioCambiato]);
+  // e si rilegge dopo ogni «Controlla il disco» (`disco`), che riscrive la
+  // voce del disco: senza, la riga delle copertine diceva «non so dove»
+  // per i volumi che il controllo aveva appena trovato (preso dalla prova
+  // e2e del disco)
+  const discoNoto = useMemo(() => sulDiscoDa(leggiDispositivi()), [books, localIds, manutenzione, disco]);
+  const liberabili = useMemo(
+    () => (manutenzione ? daLiberare(books, { qui: localIds, sulDisco: discoNoto.ids, pesi, stato: getStatus }) : []),
+    [books, localIds, manutenzione, pesi, discoNoto]
+  );
+  const senzaCopiaSulDisco = useMemo(
+    () => (manutenzione ? senzaCopiaNota(books, { qui: localIds, sulDisco: discoNoto.ids, stato: getStatus }) : []),
+    [books, localIds, manutenzione, discoNoto]
+  );
+
+
+  // IL RICONOSCIMENTO GIRA SOLO ALL'IMPORT, e i libri entrati prima non
+  // tornano indietro a farsi guardare. Chi ha importato i Pratchett prima
+  // che il ciclo venisse salvato ha saga e numero ma serie vuota, e senza
+  // serie «Prima di cominciare» non sa quale storia stai continuando.
+  //
+  // Questo giro ripassa quello che c'e' gia': riempie i campi vuoti e
+  // aggiorna i cicli che avevamo scritto NOI, che nel frattempo hanno
+  // cambiato nome. Quello che hai scritto a mano non si tocca mai, nemmeno
+  // quando il riconoscimento la pensa diversamente — su questi campi
+  // l'ultima parola e' del lettore. Il conto dice le due cose separate,
+  // perche' «rinominati» e' un intervento su roba che c'era gia'.
+  // L'OPF DI UN TOMO CHE E' GIA' IN CASA. Aprire il libro sta qui e non in
+  // `collana.js` per la stessa ragione della visita: la' si decide soltanto,
+  // e senza epub.js quel giro si prova con una mappa.
+  //
+  // `null` vuol dire «i byte non sono qui» e `""` «aperto, e l'OPF non si e'
+  // letto»: sono due risposte diverse, e chi legge il conto deve poterle
+  // distinguere. Quel che esplode arriva a chi chiama come guasto del file.
+  async function leggiOpf(id) {
+    const file = await getFile(id);
+    if (!file) return null;
+    const { default: ePub } = await import("epubjs");
+    const book = ePub(await file.arrayBuffer());
+    try {
+      await book.opened;
+      const percorso = book.container?.packagePath;
+      if (!percorso || !book.archive?.getText) return "";
+      // lo slash davanti non e' un dettaglio: `Archive.getText` fa
+      // `url.substr(1)`, e senza torna `undefined` SENZA alzare niente
+      return (await book.archive.getText(`/${String(percorso).replace(/^\/+/, "")}`)) || "";
+    } finally {
+      // un ePub aperto e non chiuso resta in memoria, e qui se ne aprono
+      // cinquanta di fila
+      book.destroy?.();
+    }
+  }
+
+  // LA MEMORIA DELLA COLLANA («collana_<id>» nello store aux, con la misura
+  // del file come impronta, come `salute_<id>`): e' quel che rende la
+  // passata automatica sostenibile. Senza, ogni apertura della Libreria
+  // riaprirebbe gli stessi tomi per ritrovare le stesse collane assenti.
+  // Cambiano i byte — una ricucitura, un reimport — cambia la misura, e si
+  // riguarda. Un tomo senza byte non entra mai: quando scendera' va guardato.
+  const ricordoCollana = chiaveCollana;
+  async function collanaVista(b) {
+    const [ricordo, file] = await Promise.all([getAux(ricordoCollana(b.id)), getFile(b.id)]);
+    return !!file && !!ricordo && ricordo.size === file.size;
+  }
+  async function segnaCollana(b, cosa) {
+    const file = await getFile(b.id);
+    if (file) await putAux(ricordoCollana(b.id), { size: file.size, ...cosa });
+  }
+  // la memoria del catalogo non guarda i byte: la domanda e' su titolo e
+  // autore, e cambiano quelli — nella scheda — non il file
+  const ricordoCatalogo = (id) => `catalogo_${id}`;
+  async function catalogoVisto(b) {
+    const ricordo = await getAux(ricordoCatalogo(b.id));
+    return !!ricordo && ricordo.titolo === b.title && ricordo.autore === (b.author || "");
+  }
+  async function segnaCatalogo(b, cosa) {
+    await putAux(ricordoCatalogo(b.id), { titolo: b.title, autore: b.author || "", quando: Date.now(), ...cosa });
+  }
+  // I TOMI SU CUI IL CATALOGO HA GIA' DETTO «nessuna collana, su nessuna
+  // edizione»: sono i soli a cui la deduzione dai fratelli non deve dare
+  // niente. La risposta sta su disco perché la veto vale anche domani e
+  // senza rete — richiederla a ogni apertura sarebbe una domanda per tomo
+  // per sempre. Una memoria illeggibile NON veta: il lato sicuro è lasciar
+  // fare quel che si è sempre fatto.
+  async function senzaTracce(libri) {
+    const fuori = new Set();
+    await Promise.all(
+      (libri || []).map(async (b) => {
+        if (!b?.id || String(b.saga || "").trim()) return;
+        try {
+          const r = await getAux(ricordoCatalogo(b.id));
+          if (r && r.tracce === 0 && r.titolo === b.title && r.autore === (b.author || "")) fuori.add(b.id);
+        } catch {
+          /* non veta */
+        }
+      })
+    );
+    return fuori;
+  }
+
+  // E LA PASSATA GIRA DA SE', all'apertura della Libreria. Il lettore ha
+  // scritto «automaticamente» due volte, e aveva ragione: un tasto in un
+  // pannello ripiegato non lo e'. Qui si aprono SOLO i tomi senza saga che
+  // non abbiamo mai guardato — una volta nella vita del file, poi e' gratis
+  // — in silenzio, e si parla solo se si e' trovato qualcosa. Il tasto
+  // resta per chi vuole rifare tutto adesso, e quello i file li riapre.
+  //
+  // NESSUNA GUARDIA «GIA' PARTITO» IN UN REF, ed e' una lezione presa da un
+  // banco end-to-end e non dalla lettura del codice: in sviluppo React monta
+  // gli effetti DUE volte (`StrictMode` in `main.jsx`) — monta, smonta,
+  // rimonta — e un ref sopravvive a quel giro. Con la guardia, il primo
+  // giro partiva e veniva fermato dalla pulizia, il secondo trovava la
+  // guardia alzata e non partiva: nessun errore, nessuna saga, nessun
+  // toast. La memoria su disco rende il giro ripetibile e quasi gratis, e
+  // ripetibile e' l'unica forma che regge: riparte a ogni montaggio e a
+  // ogni libro in piu', e riapre solo quel che non ha mai visto.
+  //
+  // E LE RACCOLTE NON SI TOCCANO (chiesto dal lettore: «fai lasciare stare
+  // le raccolte anche al giro automatico»). Qui una volta si riunivano le
+  // grafie di tutta la biblioteca, prima di tutto il resto: riscriveva le
+  // saghe che il lettore aveva messo a posto a mano. Ora il giro scrive solo
+  // sui libri che erano sciolti quando e' partito, e una grafia nuova si
+  // adegua a quella della raccolta (`tocca` in `unificaSaghe`).
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      const { unificaSaghe, deduciSaghe, nienteSaga, sciolto } = await import("../lib/sagaBooks.js");
+      if (!vivo) return;
+      // chi ha ancora una strada davanti: la saga non ce l'ha E non se l'è
+      // tolta a mano. Le due passate lunghe la ricontrollano da sé, ma
+      // senza questa riga si aprirebbero i file e si chiamerebbe il
+      // catalogo per un elenco vuoto.
+      const daCercare = (b) => !String(b.saga || "").trim() && !nienteSaga(b);
+      // I TOCCHI SI ACCUMULANO, e si riapplicano ogni volta sulla biblioteca
+      // di ADESSO: `booksRef` resta quella vecchia finche' React non
+      // ridisegna, quindi il passo dopo un `updateBooks` leggerebbe i libri
+      // di prima — e un import arrivato durante il giro lungo non va
+      // sovrascritto con la copia di quando si e' partiti
+      const tocchi = {};
+      // com'era ogni libro quando il giro l'ha guardato: un tocco su un
+      // libro che nel frattempo hai cambiato tu non si rimette (vedi
+      // `tocchiAncoraBuoni`)
+      const visti = {};
+      const applica = (campi) => {
+        for (const [id, c] of Object.entries(campi)) {
+          if (!visti[id]) visti[id] = attuale.find((b) => b.id === id) || {};
+          tocchi[id] = { ...(tocchi[id] || {}), ...c };
+        }
+        const prima = booksRef.current;
+        const buoni = tocchiAncoraBuoni(prima, tocchi, visti);
+        for (const id of Object.keys(tocchi)) if (!buoni[id]) delete tocchi[id];
+        const adesso = prima.map((b) => (buoni[b.id] ? { ...b, ...buoni[b.id] } : b));
+        const cambiati = new Set(Object.keys(campi));
+        for (const id of schedeCambiate(prima, adesso)) if (cambiati.has(id)) timbraScheda(id);
+        updateBooks(adesso);
+        return adesso;
+      };
+      const parti = [];
+      let attuale = booksRef.current;
+      // LA MEMORIA DEL GIRO (`lib/giroSaghe.js`): se da quello di ieri non e'
+      // cambiato niente di quel che il giro guarda, il giro non ha niente da
+      // dire — e per saperlo tomo per tomo erano centinaia di letture di
+      // IndexedDB a ogni apertura. I byte si chiedono in un colpo solo.
+      const { firmaGiro, leggiGiro, ricordaGiro, giroFinito, tocchiAncoraBuoni } = await import("../lib/giroSaghe.js");
+      const conByte = await localFileIds();
+      if (!vivo) return;
+      const versione = typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "";
+      if (leggiGiro() === firmaGiro(attuale, { conByte, versione })) return;
+      const giro = {};
+      const scioltiAllInizio = new Set(attuale.filter(sciolto).map((b) => b.id));
+      const tocca = (b) => scioltiAllInizio.has(b.id);
+      if (attuale.some((b) => b.fileType === "epub" && daCercare(b))) {
+        const { ripassaCollane } = await import("../lib/collana.js");
+        // la biblioteca INTERA, non i soli candidati: la grafia di casa si
+        // cerca sui libri che la saga ce l'hanno gia'
+        const esito = await ripassaCollane(attuale, {
+          leggiOpf,
+          giaVista: collanaVista,
+          segnaVista: segnaCollana,
+          // il tasto premuto a mano ha la precedenza: due giri sugli stessi
+          // file sarebbero lavoro doppio
+          vivo: () => vivo && !filoCollane.current,
+        });
+        if (!vivo) return;
+        giro.collane = esito;
+        if (esito.scritte) {
+          attuale = applica(esito.campi);
+          parti.push(`${esito.scritte} ${esito.scritte === 1 ? "saga letta" : "saghe lette"} dal file`);
+        }
+      }
+      // PRIMA IL TITOLO, che sta scritto sul libro. La deduzione dai
+      // fratelli NON si fa qui: è la sola strada che il libro non lo
+      // guarda affatto, e va in fondo — dopo il catalogo, che invece lo
+      // guarda. Con l'ordine di prima si prendeva il posto del catalogo
+      // senza nemmeno lasciarglielo dire, ed è così che «Between Two
+      // Fires» è finito dentro «The Blacktongue Thief».
+      const daiTitoli = deduciSaghe(attuale, { dallaBiblioteca: false });
+      if (daiTitoli.dalTitolo) {
+        attuale = applica(daiTitoli.campi);
+        parti.push(`${daiTitoli.dalTitolo} ${daiTitoli.dalTitolo === 1 ? "saga letta" : "saghe lette"} dal titolo`);
+        // i titoli appena letti possono portare la stessa saga scritta
+        // storta («Bizzare»): si riunisce subito, non alla prossima apertura
+        const ancora = unificaSaghe(attuale, { tocca });
+        if (ancora.unificate) attuale = applica(ancora.campi);
+      }
+      // E POI IL CATALOGO, sui soli tomi rimasti senza saga dopo
+      // tutto il resto (chiesto dal lettore: «perche' non hai riconosciuto
+      // la saga di Cook, Ruocchio e Lynch?»). Una domanda per tomo, una
+      // volta nella vita del tomo — la memoria si scrive su una risposta,
+      // trovata o «non la so», mai su un buco di rete. Poi la deduzione
+      // rifa' il suo giro: trovata la saga di un volume, i fratelli la
+      // ereditano senza chiedere niente al catalogo.
+      if (attuale.some(daCercare)) {
+        const { ripassaCatalogo, cercaSaga } = await import("../lib/sagaDalCatalogo.js");
+        const { nomeInBiblioteca } = await import("../lib/sagaBooks.js");
+        const dalCatalogo = await ripassaCatalogo(attuale, {
+          cerca: (b) => cercaSaga({ title: b.title, author: b.author }),
+          giaVista: catalogoVisto,
+          segnaVista: segnaCatalogo,
+          nomeInCasa: nomeInBiblioteca,
+          vivo: () => vivo && !filoCollane.current,
+        });
+        if (!vivo) return;
+        giro.catalogo = dalCatalogo;
+        if (dalCatalogo.trovate) {
+          attuale = applica(dalCatalogo.campi);
+          parti.push(`${dalCatalogo.trovate} ${dalCatalogo.trovate === 1 ? "saga trovata" : "saghe trovate"} nel catalogo`);
+        }
+      }
+      // E PER ULTIMA LA DEDUZIONE DAI FRATELLI, che adesso sa di chi non
+      // deve parlare: un tomo di cui il catalogo ha letto le edizioni senza
+      // trovare nessuna collana una saga non la eredita. Chi il catalogo
+      // non l'ha mai visto — rete assente, opera introvabile — resta
+      // servito come sempre.
+      const senzaTraccia = await senzaTracce(attuale);
+      if (!vivo) return;
+      const dedotte = deduciSaghe(attuale, { senzaTraccia });
+      if (dedotte.dedotte) {
+        attuale = applica(dedotte.campi);
+        // la saga dedotta si dice a parte da quella letta dal titolo: una
+        // sta scritta sul libro, l'altra è copiata dai suoi fratelli
+        parti.push(`${dedotte.dedotte} ${dedotte.dedotte === 1 ? "saga dedotta" : "saghe dedotte"} dalla tua biblioteca`);
+      }
+      // la firma di DOPO il giro, cioe' della biblioteca che la prossima
+      // apertura trovera': e solo se il giro ha detto tutto
+      if (giroFinito(giro)) ricordaGiro(firmaGiro(attuale, { conByte, versione }));
+      if (parti.length) notify?.(parti.join(", "));
+    })().catch(() => {
+      /* un giro silenzioso che fallisce resta silenzioso: si riprova al prossimo montaggio */
+    });
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [books.length]);
+
+  async function riconosciSaghe() {
+    if (collane) {
+      filoCollane.current = null;
+      setCollane(null);
+      return;
+    }
+    const { ripassaSciolti, sciolto, nienteSaga } = await import("../lib/sagaBooks.js");
+    const scioltiAllInizio = new Set(books.filter(sciolto).map((b) => b.id));
+    const daRipassare = (b) => scioltiAllInizio.has(b.id);
+    let sistemati = 0;
+    let rinominati = 0;
+    let dedotte = 0;
+    let dalTitolo = 0;
+    const conta = (b, esito) => {
+      if (esito.dalTitolo) dalTitolo += 1;
+      else if (esito.dedotta) dedotte += 1;
+      else if ((b.series || "").trim() && "series" in esito.campi) rinominati += 1;
+      else sistemati += 1;
+    };
+    // SOLO I LIBRI SCIOLTI (`ripassaSciolti`): chi ha gia' una saga sta in
+    // una raccolta che il lettore ha messo a posto, e il tasto non la tocca
+    // — nemmeno per riunirne la grafia. La DEDUZIONE dai fratelli non
+    // ancora: è la sola strada che il libro non lo guarda, e parla per
+    // ultima, in fondo, dopo il file e il catalogo
+    const primo = ripassaSciolti(books, { dallaBiblioteca: false }, daRipassare);
+    for (const [b, esito] of primo.esiti) conta(b, esito);
+    const next = primo.libri;
+
+    // E POI SI APRONO I FILE. La tavola conosce tre saghe e la deduzione ha
+    // bisogno di un ALTRO libro dello stesso autore: per «Empire in Black
+    // and Gold», unico Tchaikovsky in casa, nessuna delle due poteva dire
+    // niente — e il tasto rispondeva «erano gia' tutti a posto» dicendo il
+    // vero. La collana pero' sta scritta nel file, e fin qui la leggevamo
+    // solo all'import.
+    const { ripassaCollane } = await import("../lib/collana.js");
+    const mio = {};
+    filoCollane.current = mio;
+    setCollane({ i: 0, totale: next.filter((b) => b.fileType === "epub" && !b.saga).length, titolo: next[0]?.title || "" });
+    // col tasto si riapre TUTTO (niente `giaVista`): chi lo preme vuole la
+    // risposta di adesso, non quella di ieri — ma la memoria si aggiorna,
+    // cosi' la passata automatica non rifa' questo lavoro
+    const daiFile = await ripassaCollane(next, {
+      leggiOpf,
+      segnaVista: segnaCollana,
+      vivo: () => filoCollane.current === mio,
+      onProgress: (p) => filoCollane.current === mio && setCollane(p),
+    });
+    if (filoCollane.current !== mio) return;
+    filoCollane.current = null;
+    setCollane(null);
+
+    // quel che e' stato letto resta scritto anche se il giro e' stato
+    // fermato: e' la promessa di ogni passata lunga
+    let conCollane = next.map((b) => (daiFile.campi[b.id] ? { ...b, ...daiFile.campi[b.id] } : b));
+
+    // E IL CATALOGO, su chi e' rimasto senza: col tasto si richiede tutto,
+    // memoria o no, perche' chi lo preme vuole la risposta di adesso
+    const { ripassaCatalogo, cercaSaga, frasiSenzaSaga } = await import("../lib/sagaDalCatalogo.js");
+    const { nomeInBiblioteca } = await import("../lib/sagaBooks.js");
+    filoCollane.current = mio;
+    const dalCatalogo = await ripassaCatalogo(conCollane, {
+      cerca: (b) => cercaSaga({ title: b.title, author: b.author }),
+      segnaVista: segnaCatalogo,
+      nomeInCasa: nomeInBiblioteca,
+      vivo: () => filoCollane.current === mio,
+      onProgress: (p) => filoCollane.current === mio && setCollane({ ...p, catalogo: true }),
+    });
+    if (filoCollane.current !== mio) return;
+    filoCollane.current = null;
+    setCollane(null);
+    conCollane = conCollane.map((b) => (dalCatalogo.campi[b.id] ? { ...b, ...dalCatalogo.campi[b.id] } : b));
+
+    // E PER ULTIMA LA DEDUZIONE DAI FRATELLI. Adesso che le saghe del file
+    // e del catalogo le sappiamo, un altro libro dello stesso autore può
+    // ereditarle — e senza questo passaggio il lettore dovrebbe premere il
+    // tasto due volte per ottenere quel che il primo tocco poteva già
+    // dargli. Non apre niente ed è l'unico posto dove la deduzione parla:
+    // per questo gira SEMPRE, e non più solo se il file o il catalogo
+    // avevano trovato qualcosa.
+    // e anche qui solo chi era sciolto quando il tasto e' stato premuto
+    const senzaTraccia = await senzaTracce(conCollane);
+    const ultimo = ripassaSciolti(conCollane, { senzaTraccia }, daRipassare);
+    for (const [b, esito] of ultimo.esiti) conta(b, esito);
+    conCollane = ultimo.libri;
+
+    if (sistemati || rinominati || dedotte || dalTitolo || daiFile.scritte || dalCatalogo.trovate) {
+      for (const id of schedeCambiate(books, conCollane)) timbraScheda(id);
+      updateBooks(conCollane);
+    }
+    const parti = [];
+    // le collane lette si dicono a parte: non le abbiamo riconosciute né
+    // dedotte, le abbiamo trovate scritte dentro il file
+    if (daiFile.scritte)
+      parti.push(
+        `${daiFile.scritte} ${daiFile.scritte === 1 ? "saga letta" : "saghe lette"} dal file`
+      );
+    if (dalTitolo)
+      parti.push(`${dalTitolo} ${dalTitolo === 1 ? "saga letta" : "saghe lette"} dal titolo`);
+    if (sistemati) parti.push(`${sistemati} ${sistemati === 1 ? "libro sistemato" : "libri sistemati"}`);
+    if (rinominati)
+      parti.push(`${rinominati} ${rinominati === 1 ? "serie rinominata" : "serie rinominate"}`);
+    // la saga dedotta si dice a parte: non l'abbiamo riconosciuta, l'abbiamo
+    // copiata dagli altri libri di quell'autore, e il lettore deve saperlo
+    if (dedotte)
+      parti.push(
+        `${dedotte} ${dedotte === 1 ? "saga dedotta" : "saghe dedotte"} dalla tua biblioteca`
+      );
+    // i tomi rimasti lassù si contano e si dicono, come ovunque: lì non c'è
+    // un guasto, c'è un file che su questo dispositivo non c'è — e la cura
+    // è il tasto qui accanto
+    if (daiFile.senzaByte)
+      parti.push(
+        `${daiFile.senzaByte} ${daiFile.senzaByte === 1 ? "non è" : "non sono"} su questo dispositivo`
+      );
+    if (daiFile.illeggibili)
+      parti.push(`${daiFile.illeggibili} non si ${daiFile.illeggibili === 1 ? "è" : "sono"} ${daiFile.illeggibili === 1 ? "aperto" : "aperti"}`);
+    // E I MUTI SI DICONO, o «erano già tutti a posto» sarebbe una bugia
+    // detta sopra un volume che sta ancora fra i soli (successo: il file di
+    // «Empire in Black and Gold» puo' non dichiarare nessuna collana, e il
+    // messaggio non lo diceva). Qui non c'e' un guasto: c'e' un file che
+    // la saga non la sa, e la sola strada che resta e' scriverla nella
+    // scheda — il messaggio deve dire ANCHE questo, o il lettore cerca un
+    // guasto che non c'e'.
+    if (dalCatalogo.trovate)
+      parti.push(`${dalCatalogo.trovate} ${dalCatalogo.trovate === 1 ? "saga trovata" : "saghe trovate"} nel catalogo`);
+    // la rete caduta si dice: quei tomi non sono muti, non sono stati chiesti
+    if (dalCatalogo.rete)
+      parti.push(`${dalCatalogo.rete} non ${dalCatalogo.rete === 1 ? "chiesto" : "chiesti"} al catalogo: manca la rete`);
+    // e chi resta senza si conta ALLA FINE, dopo file e catalogo: e' la
+    // sola strada rimasta, e va detta — un «erano gia' tutti a posto» sopra
+    // un volume ancora fra i soli sarebbe una bugia.
+    //
+    // MA I TOMI SENZA SAGA SONO DUE SPECIE, e dirgli la stessa cosa era
+    // l'errore: a chi il catalogo ha letto le edizioni senza trovare
+    // nessuna collana non si chiede niente, perché una saga da scrivere non
+    // c'è. La riga con la strada da prendere resta agli altri.
+    //
+    // E CHI LA SAGA SE L'È TOLTA A MANO NON SI CONTA AFFATTO: non è un
+    // lavoro che aspetta né una scoperta nostra — è una scelta già presa, e
+    // ridirgliela a ogni giro è il modo di insegnargli a non leggere la riga.
+    const ancoraSenza =
+      conCollane.filter((b) => !String(b.saga || "").trim() && !nienteSaga(b)).length - dalCatalogo.rete;
+    if (ancoraSenza > 0) {
+      const aSe = Math.min(dalCatalogo.senzaTraccia, ancoraSenza);
+      parti.push(...frasiSenzaSaga({ aSe, daScrivere: ancoraSenza - aSe }));
+    }
+    notify?.(parti.length ? parti.join(", ") : "Erano già tutti a posto");
+  }
+
+  // I LIBRI GIA' IN CASA NON HANNO L'IMPRONTA, e sono la biblioteca intera
+  // di chi c'era prima della cura sui doppioni. Senza, rimettere dentro lo
+  // stesso file non lo fa SALTARE: resta solo il sospetto per titolo e
+  // autore, che si limita a dirtelo.
+  const senzaImpronta = impronteDaFare(books, { qui: localIds });
+
+  // I tomi col dorso disegnato. `conCopertina` è `null` finché l'elenco non
+  // è arrivato, e lì NON si offre niente: un tasto «ritrova 115 copertine»
+  // su una biblioteca che ce l'ha già tutte sarebbe una promessa a vuoto.
+  // e il tasto conta solo quelle che può ritrovare QUI (segnalato sul PC:
+  // «Ritrova 183 copertine», e al tocco «183 non sono su questo
+  // dispositivo»); le altre si dicono con la loro strada
+  const dove = conCopertina && localIds ? copertineDaDove(books, { conCopertina, guardati: copGuardate, qui: localIds, sulDisco: discoNoto.ids, altrove }) : null;
+  const mancaLaCopertina = dove ? dove.qui : [];
+  const daRifare = nitidezza && localIds ? copertineDaRifare(books, { qui: localIds, ...nitidezza, aMano }) : [];
+
+  // LE COPERTINE CHE MANCANO SI RITROVANO NEL FILE. Il dorso disegnato vuol
+  // dire che quell'immagine qui non c'e' — l'estrazione all'import non l'ha
+  // trovata, la memoria del browser e' stata sfrattata, o non e' mai tornata
+  // giu' — e il file ce l'hai: e' lo stesso giro del tasto ↺ della scheda,
+  // fatto su tutta la biblioteca.
+  // LE COPERTINE DEI VOLUMI CHE STANNO SOLO SUL DISCO (segnalato: «vedo che
+  // mancano ancora copertine» — dodici fumetti sull'HDD, e «Ritrova
+  // copertine» diceva «non sono su questo dispositivo»). Stesso giro, coi
+  // file del disco controllato al posto dei byte di qui.
+  async function copertineDalDisco(voci) {
+    if (copertinando || !voci.length) return;
+    const mio = {};
+    filoCopertine.current = mio;
+    const mancanti = voci.map((v) => v.libro);
+    const handle = new Map(voci.map((v) => [v.libro.id, v.file.handle]));
+    // `da: "disco"`: il conto di questo giro sta sul suo tasto, nel pannello
+    // del disco, non su «Ritrova N copertine» (segnalato: «perché i fermo
+    // qui non corrispondono?»)
+    setCopertinando({ i: 0, totale: mancanti.length, titolo: mancanti[0].title, da: "disco" });
+    const { ritrovaCopertine, resocontoCopertine, copertinaOriginale } = await import("../lib/copertina.js");
+    const esito = await ritrovaCopertine(mancanti, {
+      leggiByte: async (id) => (handle.has(id) ? handle.get(id).getFile() : null),
+      estrai: (b, bytes) => copertinaOriginale(b, bytes),
+      posa: (id, blob) => putCover(id, blob),
+      segnaGuardato: (id) => putAux(`copertina_${id}`, 1),
+      vivo: () => filoCopertine.current === mio,
+      onProgress: (p) => filoCopertine.current === mio && setCopertinando({ ...p, da: "disco" }),
+    });
+    if (filoCopertine.current !== mio) return;
+    filoCopertine.current = null;
+    setCopertinando(null);
+    if (esito.ritrovate) {
+      setConCopertina(new Set(await listCoverIds().catch(() => [])));
+      setCoverV((v) => v + 1);
+    }
+    if (esito.senzaImmagine) setCopGuardate(await guardate());
+    notify?.(resocontoCopertine(esito));
+  }
+
+  async function ritrovaLeCopertine() {
+    if (copertinando) return;
+    const mancanti = mancaLaCopertina;
+    if (!mancanti.length) {
+      notify?.("Le copertine erano già tutte al loro posto");
+      return;
+    }
+    const mio = {};
+    filoCopertine.current = mio;
+    setCopertinando({ i: 0, totale: mancanti.length, titolo: mancanti[0].title });
+    const { ritrovaCopertine, resocontoCopertine, copertinaOriginale } = await import("../lib/copertina.js");
+    const esito = await ritrovaCopertine(mancanti, {
+      leggiByte: (id) => getFile(id).catch(() => null),
+      // aprire il tomo sta QUI e non dentro la passata, come nella visita:
+      // così il giro si prova in Node con dei finti, senza epub.js
+      estrai: (b, bytes) => copertinaOriginale(b, bytes),
+      posa: (id, blob) => putCover(id, blob),
+      // «guardato, e dentro non c'era»: senza il segno il tasto lo
+      // riproporrebbe a ogni apertura della Libreria
+      segnaGuardato: (id) => putAux(`copertina_${id}`, 1),
+      vivo: () => filoCopertine.current === mio,
+      onProgress: (p) => filoCopertine.current === mio && setCopertinando(p),
+    });
+    if (filoCopertine.current !== mio) return;
+    filoCopertine.current = null;
+    setCopertinando(null);
+    if (esito.ritrovate) {
+      setConCopertina(new Set(await listCoverIds().catch(() => [])));
+      setCoverV((v) => v + 1);
+    }
+    if (esito.senzaImmagine) setCopGuardate(await guardate());
+    notify?.(resocontoCopertine(esito));
+  }
+
+  // LE COPERTINE DEI FUMETTI SI RIFANNO DAL FILE (`copertineDaRifare`): lo
+  // stesso giro di «Ritrova», sopra una copertina che c'e' gia'. Il segno
+  // della nitida lo lascia `putCover`, e il tasto non torna.
+  async function rifaiLeCopertine() {
+    if (copertinando || !daRifare.length) return;
+    const mio = {};
+    filoCopertine.current = mio;
+    const quali = daRifare;
+    setCopertinando({ i: 0, totale: quali.length, titolo: quali[0].title, da: "rifai" });
+    const { ritrovaCopertine, resocontoCopertine, copertinaOriginale } = await import("../lib/copertina.js");
+    const esito = await ritrovaCopertine(quali, {
+      leggiByte: (id) => getFile(id).catch(() => null),
+      estrai: (b, bytes) => copertinaOriginale(b, bytes),
+      posa: (id, blob) => putCover(id, blob),
+      vivo: () => filoCopertine.current === mio,
+      onProgress: (p) => filoCopertine.current === mio && setCopertinando({ ...p, da: "rifai" }),
+    });
+    if (filoCopertine.current !== mio) return;
+    filoCopertine.current = null;
+    setCopertinando(null);
+    await rileggiNitidezza();
+    if (esito.ritrovate) setCoverV((v) => v + 1);
+    notify?.(resocontoCopertine(esito, { rifatte: true }));
+  }
+
+  async function ripassaLeImpronte() {
+    if (!senzaImpronta.length || improntando) return;
+    const mio = {};
+    filoImpronte.current = mio;
+    setImprontando({ i: 0, totale: senzaImpronta.length, titolo: senzaImpronta[0].title });
+    const { ripassaImpronte } = await import("../lib/importBook.js");
+    const esito = await ripassaImpronte(senzaImpronta, {
+      leggiByte: (id) => getFile(id),
+      vivo: () => filoImpronte.current === mio,
+      onProgress: (p) => filoImpronte.current === mio && setImprontando(p),
+    });
+    if (filoImpronte.current !== mio) return;
+    filoImpronte.current = null;
+    setImprontando(null);
+    // quel che e' stato letto resta scritto anche se il giro e' stato
+    // fermato: e' la stessa promessa di «Porta qui i tomi»
+    const quante = Object.keys(esito.campi).length;
+    if (quante) updateBooks(books.map((b) => (esito.campi[b.id] ? { ...b, impronta: esito.campi[b.id] } : b)));
+    const parti = [];
+    if (esito.scritte) parti.push(`${esito.scritte} ${esito.scritte === 1 ? "tomo riconosciuto" : "tomi riconosciuti"}`);
+    // i tomi rimasti lassu' si contano e si dicono, come ovunque: qui non
+    // c'e' un guasto, c'e' un file che su questo dispositivo non c'e'
+    if (esito.senzaByte)
+      parti.push(`${esito.senzaByte} ${esito.senzaByte === 1 ? "non è" : "non sono"} su questo dispositivo`);
+    if (esito.illeggibili) parti.push(`${esito.illeggibili} non si ${esito.illeggibili === 1 ? "è" : "sono"} letti`);
+    notify?.(parti.length ? parti.join(", ") : "Erano già tutti a posto");
+  }
+
+  // LA VISITA AI LIBRI. L'import dice com'è andata il giorno che il libro
+  // è entrato e poi tace per sempre, ma i guai di un ePub si scoprono a
+  // pagina duecento — e lì non sai nemmeno se è colpa del file o dell'app.
+  async function visitaLibri() {
+    // i fumetti non hanno testo ne' spina: la visita non sa che guardarci
+    const daVisitare = books.filter((b) => !eFumetto(b));
+    if (!daVisitare.length || visitando) return;
+    const mio = {};
+    filoVisita.current = mio;
+    setVisitando({ i: 0, totale: daVisitare.length, titolo: daVisitare[0].title });
+    const { visita, fattiDaEpub, resocontoVisita } = await import("../lib/visita.js");
+    const esito = await visita(daVisitare, {
+      leggiByte: (id) => getFile(id),
+      // aprire il tomo sta QUI e non dentro `visita` perché così la
+      // passata si prova in Node con un finto, senza epub.js
+      apri: async (b, file) => {
+        const buf = await file.arrayBuffer();
+        if (b.fileType === "pdf") {
+          const { loadPdf, pageText, chiudiPdf } = await import("../lib/pdfThumb.js");
+          const pdf = await loadPdf(buf);
+          try {
+            // in un PDF il guaio vero è la scansione senza livello di
+            // testo: si vede dalle prime pagine, non serve leggerlo tutto
+            let caratteri = 0;
+            const cache = new Map();
+            const quante = Math.min(pdf.numPages, 8);
+            for (let n = 1; n <= quante; n++) caratteri += (await pageText(pdf, n, cache)).length;
+            // si riporta in scala sull'intero volume, o un PDF lungo
+            // sembrerebbe vuoto per via del campione
+            return { caratteri: Math.round((caratteri / quante) * pdf.numPages), documenti: pdf.numPages, indice: 2 };
+          } finally {
+            chiudiPdf(pdf);
+          }
+        }
+        const { default: ePub } = await import("epubjs");
+        const eb = ePub(buf);
+        try {
+          return await fattiDaEpub(eb);
+        } finally {
+          try { eb.destroy(); } catch { /* già chiuso */ }
+        }
+      },
+      // LA CURA: quello che si risolve ricucendo lo fa la visita, da sé
+      // (chiesto dal lettore: «mi serve così che TU possa correggere il
+      // problema, non io»). MA MAI su un libro in lettura o con segni:
+      // la ricucitura cambia i CFI, e sposterebbe segnalibri,
+      // evidenziazioni e punto di lettura — lì si spiega, non si agisce.
+      cura: async (b, file) => {
+        const pieno = (k) => {
+          try {
+            const v = JSON.parse(localStorage.getItem(k) || "[]");
+            return Array.isArray(v) && v.length > 0;
+          } catch {
+            return false;
+          }
+        };
+        const inLettura =
+          getProgress(b.id) > 0 ||
+          !!localStorage.getItem(`bc_cfi_${b.id}`) ||
+          pieno(`bc_marks_${b.id}`) ||
+          pieno(`bc_hl_${b.id}`);
+        if (inLettura) return { protetto: true };
+        return ricuciDavvero(b, file);
+      },
+      vivo: () => filoVisita.current === mio,
+      onProgress: (p) => filoVisita.current === mio && setVisitando(p),
+    });
+    if (filoVisita.current !== mio) return;
+    filoVisita.current = null;
+    setVisitando(null);
+    notify?.(resocontoVisita(esito));
+    // il referto si apre solo se c'è qualcosa da leggere: un pannello che
+    // dice «tutto a posto» è un pannello da chiudere e basta
+    if (esito.malati.length || esito.lontani.length || esito.curati.length) setReferto(esito);
+  }
+
+  // la ricucitura vera e propria: la usa la visita (sui libri non protetti)
+  // e il consenso esplicito del lettore dal referto
+  async function ricuciDavvero(b, file) {
+    if (b.fileType !== "epub") return null;
+    // il giro condiviso (`ricuciLibro`): riscrive i byte, rimette il libro
+    // in coda per il cloud e butta le locations cachate del libro vecchio
+    const { ricuciLibro } = await import("../lib/ricuci.js");
+    const r = await ricuciLibro(b.id, file);
+    if (!r?.blob) return null;
+    // e non ci si fida: si riapre il libro NUOVO e si riesamina
+    const { default: ePub } = await import("epubjs");
+    const eb = ePub(await r.blob.arrayBuffer());
+    try {
+      return { fatti: await fattiDaEpub(eb) };
+    } finally {
+      try { eb.destroy(); } catch { /* già chiuso */ }
+    }
+  }
+
+  // IL CONSENSO DEL LETTORE SCAVALCA LA PROTEZIONE. Su un libro in lettura
+  // la visita non ricuce da sé — il segno può spostarsi — ma l'ultima
+  // parola è di chi legge: convivere per un intero romanzo con le facciate
+  // tagliate a metà frase è peggio di un segno da rimettere. Il prezzo
+  // sta scritto sul tasto, e il tasto sta solo nel referto.
+  const [ricucendo, setRicucendo] = useState(null);
+  async function ricuciForzato(id) {
+    const b = books.find((x) => x.id === id);
+    if (!b || ricucendo) return;
+    setRicucendo(id);
+    try {
+      const file = await getFile(id).catch(() => null);
+      if (!file) return notify?.("I byte di questo tomo non sono su questo dispositivo");
+      const r = await ricuciDavvero(b, file);
+      if (!r?.fatti) return notify?.("Non ho trovato pezzi da unire: il libro resta com'è");
+      const dopo = esamina(r.fatti);
+      setReferto((v) =>
+        v && {
+          ...v,
+          curati: [...(v.curati || []), { id, title: b.title }],
+          malati: (v.malati || [])
+            .map((m) => (m.id === id ? { ...m, guai: dopo, protetto: false } : m))
+            .filter((m) => m.guai.length),
+        }
+      );
+      notify?.(`«${b.title}» ricucito 🪡 — se il segno si è spostato, rimettilo con un tocco`);
+    } finally {
+      setRicucendo(null);
+    }
+  }
+
+  async function richiamaTomi() {
+    if (!daScendere.length || portando) return;
+    const mio = {};
+    filoTomi.current = mio;
+    setPortando({ i: 0, totale: daScendere.length, titolo: daScendere[0].title });
+    const esito = await portaACasa(daScendere, {
+      vivo: () => filoTomi.current === mio,
+      onProgress: (p) => filoTomi.current === mio && setPortando(p),
+    });
+    if (filoTomi.current !== mio) return;
+    filoTomi.current = null;
+    setPortando(null);
+    // quel che e' sceso resta sceso anche se il giro e' stato fermato: si
+    // dice quanto si e' fatto, non «annullato». Le parole stanno in
+    // `syncCore` perche' un test le possa chiamare.
+    notify?.(frasePortata(esito));
+    // le nuvolette si spengono qui, senza aspettare una sincronizzazione
+    // intera: quel che e' cambiato sta tutto in casa — e col peso del
+    // dispositivo vale il rovescio di «togli l'ebook»: sono appena scesi
+    // dei byte, quindi la misura di prima non vale piu'
+    if (esito.scesi) { onFileLocali?.(); setGiroSpazio((n) => n + 1); }
+  }
+
+  // uscendo dalla libreria la ricerca in corso non serve piu' a nessuno, e
+  // continuerebbe ad aprire tomi a vuoto
+  useEffect(() => () => { if (vivo.current) vivo.current.acceso = false; }, []);
+
+  // Spezzare il filo ferma il giro, ma il giro fermato non torna piu' a
+  // scrivere lo stato: la chiusura tocca a qui, o la riga «sfoglio…»
+  // resterebbe appesa per sempre. Quello che ha gia' trovato resta a
+  // schermo: e' il senso di fermarsi invece di annullare.
+  function fermaRicerca() {
+    if (vivo.current) vivo.current.acceso = false;
+    vivo.current = null;
+    setDentro((d) => (d?.cercando ? { ...d, cercando: false, dove: null } : d));
+  }
+
+  async function cercaDentro() {
+    fermaRicerca();
+    const q = query.trim();
+    if (!abbastanzaLunga(q)) return;
+    const filo = { acceso: true };
+    vivo.current = filo;
+    setDentro({ q, cercando: true, dove: null, fatti: 0, totale: books.length, esiti: [], lontani: 0 });
+    const { lontani, esaminati } = await cercaOvunque(books, q, {
+      vivo: () => filo.acceso,
+      onLibro: ({ i, titolo }) =>
+        filo.acceso && setDentro((d) => (d ? { ...d, fatti: i, dove: titolo } : d)),
+      onTrovato: ({ libro, trovati }) =>
+        filo.acceso && setDentro((d) => (d ? { ...d, esiti: [...d.esiti, { libro, trovati }] } : d)),
+    });
+    if (!filo.acceso) return;
+    vivo.current = null;
+    setDentro((d) => (d ? { ...d, cercando: false, dove: null, lontani, esaminati } : d));
+  }
 
   // arrivo dalla home toccando una saga: la libreria si apre gia' raccolta
-  // per saghe e ristretta a quella
+  // per ripiani e ristretta a quella
   useEffect(() => {
     if (!focusSaga) return;
-    setGroup("saga");
+    setGroup("shelf");
     setQuery(focusSaga);
   }, [focusSaga]);
 
-  async function handleFiles(fileList) {
+  // «Apri con»: i file passati dal sistema entrano dalla stessa porta
+  // dell'input. Il ref tiene l'ultimo elenco servito, perche' in sviluppo
+  // React monta gli effetti due volte e lo stesso libro entrerebbe due
+  // volte — sarebbe un doppione saltato, ma con due toast.
+  const lancioServito = useRef(null);
+  useEffect(() => {
+    if (!daImportare?.length || lancioServito.current === daImportare) return;
+    lancioServito.current = daImportare;
+    handleFiles(daImportare, { casa: daImportare.casa || null }).finally(() => onImportati?.());
+  }, [daImportare]);
+
+  async function controllaIlDisco() {
+    let scelta = null;
+    try {
+      scelta = await window.showDirectoryPicker({ id: ID_DISCO, mode: "readwrite" });
+    } catch {
+      return;
+    }
+    setDisco({ guardo: true });
+    // misurato per il rapporto dei guasti: elenco dei file, abbinamento, il resto
+    const t0 = performance.now();
+    try {
+      const { RADICE } = await import("../lib/casa.js");
+      const { elencaDisco, controllaDisco, lavoriDalDisco, cbrNeiConvertiti, daRimettereAPosto } = await import("../lib/disco.js");
+      const casa = String(scelta.name || "").trim().toLowerCase() === RADICE ? scelta : await scelta.getDirectoryHandle(RADICE).catch(() => null);
+      if (!casa) {
+        setDisco(null);
+        notify("Qui dentro non c'è la cartella «book-companion»: scegli quella che la contiene, o lei");
+        return;
+      }
+      const file = await elencaDisco(casa, [], { onFile: (letti, totale) => (letti % 25 === 0 || letti === totale) && setDisco((d) => (d?.guardo ? { ...d, letti, totale } : d)) });
+      const tElenco = performance.now();
+      const rapporto = controllaDisco(booksRef.current, file, {
+        tipoDi: (b) => tipoDi(b, tipi),
+        qui: (id) => !!localIds?.has(id),
+        sullAltro: (id) => altrove.has(id),
+        leggendo: (id) => getStatus(id) === "reading",
+      });
+      // quel che il disco ha lo sanno anche gli altri dispositivi: e' la
+      // copia che permette al tablet di togliere i suoi ebook letti
+      scriviDispositivi(aggiornaDisco(leggiDispositivi(), [...rapporto.aPosto, ...rapporto.daSpostare].map((x) => x.libro.id), { dispositivo: dispositivo() }));
+      onCambiate?.();
+      const tControllo = performance.now();
+      const senza = new Set(senzaCopertina(booksRef.current, conCopertina || new Set(), copGuardate).map((b) => b.id));
+      const convertiti = await cbrNeiConvertiti(casa, file).catch(() => null);
+      const daParte = await daRimettereAPosto(casa).catch(() => []);
+      // la copia della biblioteca accanto ai libri (vedi `lib/copiaDisco.js`):
+      // un intoppo qui e' della copia, non del controllo, e si dice
+      const copia = await (async () => {
+        const { scriviCopia } = await import("../lib/copiaDisco.js");
+        const { default: JSZip } = await import("jszip");
+        const fatta = await scriviCopia(casa, { indice: indiceSoloSchede(), JSZip });
+        segnaArchivio();
+        return fatta;
+      })().catch((e) => ({ guaio: e?.message || "il disco non ha risposto" }));
+      segnaTempo(vocePerTempo({ cosa: "disco", t0, tappe: [["elenco", tElenco], ["abbina", tControllo], ["resto", performance.now()]], n: file.length }));
+      setDisco({ rapporto, casa, tolti: new Set(), lavori: lavoriDalDisco(rapporto, { haCopertina: (id) => !senza.has(id) }), convertiti, daParte, copia });
+    } catch (err) {
+      setDisco(null);
+      notify(err?.message || "Il disco non ha risposto");
+    }
+  }
+
+
+
+  async function handleFiles(fileList, { casa = null } = {}) {
     const files = Array.from(fileList || []);
     if (!files.length || importing) return;
     setImporting(true);
     try {
-      const { added, errors } = await importFiles(files);
-      if (added.length) {
-        updateBooks([...books, ...added]);
+      // la libreria di adesso serve a riconoscere i doppioni: senza, lo
+      // stesso file importato due volte fa due libri distinti
+      const esito = await importFiles(files, books, { onProgress: setGiroImport, casa: casa ? books.find((b) => b.id === casa) || null : null });
+      // I FILE TORNATI A CASA dentro una scheda che era rimasta senza byte.
+      // La scheda non si tocca — titolo, saga, voto e note sono del lettore
+      // — si scrive la sola impronta, e si timbra perché la riga risalga.
+      const ritrovati = esito.ritrovati || [];
+      const conImpronta = new Map(ritrovati.filter((r) => r.impronta).map((r) => [r.id, r.impronta]));
+      // una scheda senza file (`segnaposto`) il formato non l'aveva: lo
+      // prende dal file che arriva, o il lettore non saprebbe aprirlo
+      const formato = new Map(ritrovati.filter((r) => r.fileType).map((r) => [r.id, r.fileType]));
+      for (const r of ritrovati) {
+        timbraScheda(r.id);
+      }
+      // e il segno «tieni la scheda, non l'ebook» si spegne: il file è
+      // appena tornato dentro quella scheda, quindi il libro si riapre —
+      // `false` scritto e non tolto, o lassù resterebbe acceso per sempre
+      const tornati = new Set(ritrovati.map((r) => r.id));
+      const base = tornati.size
+        ? books.map((b) =>
+            tornati.has(b.id)
+              ? {
+                  ...b,
+                  ...(conImpronta.has(b.id) ? { impronta: conImpronta.get(b.id) } : {}),
+                  ...(segnaposto(b) && formato.has(b.id) ? { fileType: formato.get(b.id) } : {}),
+                  fileTolto: false,
+                }
+              : b
+          )
+        : books;
+      if (esito.added.length || ritrovati.length) {
+        updateBooks([...base, ...esito.added]);
         onImported?.();
       }
-      const parts = [];
-      if (added.length)
-        parts.push(added.length === 1 ? "Un nuovo tomo sullo scaffale ✨" : `${added.length} nuovi tomi sullo scaffale ✨`);
-      errors.forEach((e) => parts.push(`«${e.name}»: ${e.reason}`));
-      notify(parts.join(" · ") || "Nessun file importato");
+      notify(resoconto(esito));
     } finally {
       setImporting(false);
+      setGiroImport(null);
       if (inputRef.current) inputRef.current.value = "";
     }
   }
 
+  // Da quanto non c'e' una copia al sicuro. Sta accanto all'avviso sulla
+  // persistenza perche' sono la stessa preoccupazione vista da due lati:
+  // uno dice che il browser puo' sfrattarti, l'altro da quanto non hai una
+  // copia fuori dal browser.
+  const [ultimoArch, setUltimoArch] = useState(ultimoArchivio);
+  const promemoria = promemoriaArchivio({
+    ultimo: ultimoArch,
+    roba: books.length + melodie,
+    persistenza: persist,
+  });
+
+  // L'ARCHIVIO A PEZZI: una biblioteca coi fumetti pesa giga, e uno zip
+  // solo costruito in memoria fa chiudere la scheda del tablet. Piccola,
+  // resta un file solo e parte subito come sempre; grande, si apre il
+  // pannello e i pezzi si scaricano uno per volta.
+  const [pezzi, setPezzi] = useState(null);
+
   async function handleExport() {
-    if (!books.length) return;
+    // anche una biblioteca senza libri vale un archivio, se ci sono melodie
+    // caricate da file: quei byte stanno solo qui
+    if (!books.length && !melodie) return;
     notify("Preparo il backup…");
     try {
-      const n = await exportLibrary();
-      notify(`Backup scaricato: ${n} ${n === 1 ? "libro" : "libri"} al sicuro 🕯️`);
+      const prep = await preparaArchivio();
+      if (prep.piano.di > 1) {
+        setPezzi({ prep, fatti: new Set(), lavora: null });
+        return;
+      }
+      await prep.scarica(1);
+      segnaArchivio();
+      setUltimoArch(Date.now());
+      notify(`Backup scaricato: ${quantoArchivio(prep)} al sicuro 🕯️`);
     } catch {
       notify("Esportazione fallita, riprova");
     }
   }
 
-  async function handleRestore(file) {
-    if (!file || restoring) return;
+  async function scaricaPezzo(n) {
+    if (!pezzi || pezzi.lavora) return;
+    setPezzi((p) => ({ ...p, lavora: n }));
+    try {
+      await pezzi.prep.scarica(n);
+      const fatti = new Set(pezzi.fatti).add(n);
+      setPezzi((p) => (p ? { ...p, fatti, lavora: null } : p));
+      if (fatti.size === pezzi.prep.piano.di && pezzi.fatti.size < fatti.size) {
+        segnaArchivio();
+        setUltimoArch(Date.now());
+        notify(`Archivio completo: ${quantoArchivio(pezzi.prep)} in ${fatti.size} pezzi 🕯️`);
+      }
+    } catch (err) {
+      setPezzi((p) => (p ? { ...p, lavora: null } : p));
+      notify(err?.message || `Il pezzo ${n} non si è scaricato, riprova`);
+    }
+  }
+
+  // PRIMA SI SBIRCIA, POI SI SCEGLIE. L'archivio e' un blocco unico e
+  // finora entrava tutto senza chiedere: chi voleva solo i libri si
+  // ritrovava in casa anche le melodie. Qui si legge il solo indice — non
+  // si estrae un byte — e si mostra cosa c'e' dentro.
+  const [archivio, setArchivio] = useState(null);
+  // I titoli proposti e quelli spuntati: `null` = pannello chiuso
+  const [titoli, setTitoli] = useState(null);
+  // le saghe proposte dai titoli (`saghePropose`): stessa forma, stesso pannello
+  const [saghe, setSaghe] = useState(null);
+
+  async function proponiSagheOra() {
+    const { saghePropose, fraseSaga } = await import("../lib/sagaBooks.js");
+    const voci = saghePropose(booksRef.current);
+    if (!voci.length) {
+      notify?.("Le saghe che i titoli dicono sono già tutte al loro posto");
+      return;
+    }
+    const proposte = voci.map((v) => ({ ...v, sopra: v.titolo, da: fraseSaga(v.prima), a: fraseSaga(v.dopo) }));
+    setSaghe({ proposte, scelti: new Set(proposte.map((p) => p.id)) });
+  }
+
+  function sistemaSaghe() {
+    const { proposte, scelti } = saghe;
+    const nuove = new Map(proposte.filter((p) => scelti.has(p.id)).map((p) => [p.id, p.dopo]));
+    setSaghe(null);
+    if (!nuove.size) return;
+    updateBooks(
+      booksRef.current.map((b) => {
+        const d = nuove.get(b.id);
+        return d ? { ...b, saga: d.saga, series: d.series, sagaOrder: d.sagaOrder } : b;
+      })
+    );
+    for (const id of nuove.keys()) timbraScheda(id);
+    notify?.(`${nuove.size} ${nuove.size === 1 ? "saga sistemata" : "saghe sistemate"}`);
+  }
+
+  async function proponiTitoliOra() {
+    const { proponiTitoli } = await import("../lib/titoli.js");
+    const proposte = proponiTitoli(booksRef.current);
+    if (!proposte.length) {
+      notify?.("I titoli erano già tutti puliti");
+      return;
+    }
+    // partono tutti spuntati: chi conferma senza leggere ottiene la cura
+    // intera, e chi legge toglie quello che non gli torna
+    setTitoli({ proposte, scelti: new Set(proposte.map((p) => p.id)) });
+  }
+
+  function rinominaTitoli() {
+    const { proposte, scelti } = titoli;
+    const nuovi = new Map(
+      proposte.filter((p) => scelti.has(p.id)).map((p) => [p.id, p.a])
+    );
+    setTitoli(null);
+    if (!nuovi.size) return;
+    // la biblioteca di ADESSO, non quella di quando il pannello si è
+    // aperto: nel frattempo può essere entrato un libro
+    updateBooks(booksRef.current.map((b) => (nuovi.has(b.id) ? { ...b, title: nuovi.get(b.id) } : b)));
+    for (const id of nuovi.keys()) timbraScheda(id);
+    notify?.(`${nuovi.size} ${nuovi.size === 1 ? "titolo ripulito" : "titoli ripuliti"}`);
+  }
+
+  async function apriArchivio(files) {
+    if (!files?.length || restoring) return;
+    try {
+      const dentro = await sbircia(files);
+      setArchivio({ dentro, prendi: { libri: dentro.libri > 0, melodie: dentro.melodie > 0, diario: !!dentro.diario } });
+    } catch (err) {
+      notify(err?.message || "Archivio illeggibile");
+    } finally {
+      if (archiveRef.current) archiveRef.current.value = "";
+    }
+  }
+
+  async function handleRestore(dentro, cosa) {
+    if (!dentro || restoring) return;
+    setArchivio(null);
     setRestoring(true);
     try {
-      const r = await restoreLibrary(file, { onProgress: notify });
+      const r = await restoreLibrary(dentro, { onProgress: notify, cosa });
       updateBooks(r.books);
       onImported?.();
       const parts = [
         r.added ? `${r.added} ${r.added === 1 ? "libro tornato" : "libri tornati"}` : null,
         r.files ? `${r.files} ${r.files === 1 ? "file" : "file"} recuperati` : null,
+        r.melodie ? `${r.melodie} ${r.melodie === 1 ? "melodia tornata" : "melodie tornate"}` : null,
+        r.raccolte ? `${r.raccolte} ${r.raccolte === 1 ? "raccolta" : "raccolte"}` : null,
+        r.termini ? `${r.termini} ${r.termini === 1 ? "termine" : "termini"} di glossario` : null,
+        ...frasiDiario(r.diario),
         r.kept ? `${r.kept} gia' in libreria` : null,
+        // detto per ultimo perche' e' l'unica voce che chiede qualcosa
+        r.senzaFile
+          ? `${r.senzaFile} ${r.senzaFile === 1 ? "tomo aspetta" : "tomi aspettano"} il file dal pezzo che manca`
+          : null,
       ].filter(Boolean);
       notify(parts.length ? `Ripristino: ${parts.join(", ")} 🕯️` : "Nell'archivio non c'era nulla di nuovo");
-      if (r.partial) {
-        notify("Archivio vecchio: segnalibri ed evidenziazioni non erano stati salvati");
-      }
+      // l'avviso sull'archivio vecchio ora lo da' il pannello, PRIMA di
+      // partire: a ripristino fatto sarebbe solo un rimpianto
     } catch (err) {
       notify(err?.message || "Ripristino fallito, riprova");
     } finally {
@@ -314,23 +2264,98 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
     }
   }
 
-  const q = query.trim().toLowerCase();
+  // IL RICONOSCIMENTO SI FA UNA VOLTA SOLA, qui: `riconosci` scorre tutto
+  // l'indice delle tavole per ogni libro, e rifarlo dentro ogni ripiano a
+  // ogni render sarebbe lo stesso giro moltiplicato per venti.
+  const riconosciuti = useMemo(
+    () => new Map(books.map((b) => [b.id, riconosci({ title: b.title, author: b.author, saga: b.saga })])),
+    [books]
+  );
+
+  const tipi = useMemo(() => tipiDi(books), [books]);
+  const chipTipi = tipiPresenti(books, tipi);
+  // IL FILETTO FRA STATO E TIPO VALE SULLA STESSA RIGA: quando i tipi vanno
+  // a capo (il tablet in piedi) resterebbe un trattino in testa alla riga.
+  // Si nasconde senza cambiare le misure (`visibility`, `transform`): un
+  // filetto che sparisse davvero stringerebbe il gruppo, che tornerebbe su
+  const tipiRef = useRef(null);
+  const [tipiACapo, setTipiACapo] = useState(false);
+  useLayoutEffect(() => {
+    const el = tipiRef.current;
+    const prima = el?.previousElementSibling;
+    if (!el || !prima) return;
+    const misura = () => setTipiACapo(el.offsetTop > prima.offsetTop + prima.offsetHeight / 2);
+    misura();
+    const ro = new ResizeObserver(misura);
+    ro.observe(el.parentElement.parentElement);
+    return () => ro.disconnect();
+  }, [chipTipi.length, stretto]);
+
+  // LA RICERCA NON ASPETTA LO SCAFFALE (chiesto dal lettore: «la ricerca
+  // e la visualizzazione delle copertine sono lente»). Misurato con 400
+  // libri e il processore rallentato quattro volte: ogni lettera teneva il
+  // campo fermo 220-300 ms, perche' ridisegnava lo scaffale intero prima di
+  // mostrare la lettera. Adesso lo scaffale filtra su `cercata`, che React
+  // aggiorna un attimo dopo e a bassa priorita', e il giro nato da una
+  // lettera appena scritta NON ridisegna lo scaffale (`giroScaffale`): quel
+  // giro ha ancora la ricerca di prima, quindi lo scaffale sarebbe identico.
+  // Ogni altro giro — un libro cambiato, un filtro, un lettore chiuso — lo
+  // ridisegna come sempre, o spunte e percentuali, che si leggono da fuori
+  // dell'elenco dei libri, resterebbero quelle di prima.
+  const cercata = useDeferredValue(query);
+  const giroScaffale = useRef({ q: query, n: 0 });
+  if (giroScaffale.current.q === query) giroScaffale.current.n += 1;
+  else giroScaffale.current.q = query;
+
   const visible = books
-    .filter(
-      (b) =>
-        !q ||
-        b.title.toLowerCase().includes(q) ||
-        (b.author || "").toLowerCase().includes(q) ||
-        (b.saga || "").toLowerCase().includes(q)
-    )
-    .filter((b) => filter === "all" || getStatus(b.id) === filter)
+    .filter((b) => combacia(b, cercata))
+    .filter((b) => filter === "all" || (filter === "fav" ? ePreferito(b, preferite) : getStatus(b.id) === filter))
+    .filter((b) => delTipo(b, tipo, tipi))
     .sort((a, b) =>
-      sort === "title"
+      sort === "preferiti"
+        ? Number(!!b.fav) - Number(!!a.fav) || a.title.localeCompare(b.title, "it")
+        : sort === "title"
         ? a.title.localeCompare(b.title, "it")
         : sort === "author"
           ? (a.author || "~").localeCompare(b.author || "~", "it")
           : b.addedAt - a.addedAt
     );
+
+  const scaffale = useMemo(
+    () => (
+      <Grouped
+        books={visible}
+        tutti={books}
+        group={group}
+        sort={sort}
+        onOpenBook={onOpenBook}
+        localIds={localIds} idLassu={idLassu} altrove={altrove}
+        coverV={coverV}
+        conCopertina={conCopertina}
+        riconosciuti={riconosciuti}
+        onCammino={onCammino}
+        // CHI CERCA VUOLE IL VOLUME, NON LA CARTELLA: con una ricerca in
+        // corso le raccolte si aprono tutte, e «v07» trova il settimo
+        raccolte={aspetto === "raccolte" && !cercata.trim()}
+        aperta={raccolta}
+        onApri={onRaccolta}
+        preferite={preferite}
+        onCuore={cuore}
+        voti={voti}
+        onVoto={vota}
+        onTutti={tuttiQuanti}
+        novita={novita}
+        onAvvisami={avvisami}
+        onSerie={serieCercata}
+        notify={notify}
+        onSciogli={sciogli}
+        onRinomina={rinominaVolumi}
+        onElimina={(r, ids) => onEliminaRaccolta?.(r, ids)}
+      />
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [giroScaffale.current.n, cercata]
+  );
 
   return (
     <div
@@ -345,7 +2370,7 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
         handleFiles(e.dataTransfer.files);
       }}
       style={{
-        borderRadius: 16,
+        borderRadius: R.medio,
         outline: dragOver ? `2px dashed ${C.accent}` : "2px dashed transparent",
         outlineOffset: 6,
         transition: "outline-color 0.2s ease-out",
@@ -354,7 +2379,9 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
       <input
         ref={inputRef}
         type="file"
-        accept=".epub,.pdf,.cbz"
+        // a filtrare per davvero e' `importFiles`, che guarda l'estensione
+        // e rifiuta quel che non e' un libro (vedi `tipiDaScegliere`)
+        accept={tipiDaScegliere()}
         multiple
         style={{ display: "none" }}
         onChange={(e) => handleFiles(e.target.files)}
@@ -362,61 +2389,139 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
       <input
         ref={archiveRef}
         type="file"
-        accept=".zip"
+        // I PEZZI SI SCELGONO TUTTI INSIEME, e non sono solo zip: un fumetto
+        // grosso esce dall'archivio com'e' (.cbz, .epub, .mp3). Nessun filtro
+        // sui tipi — il selettore di Android ne metterebbe in grigio qualcuno
+        // — e a riconoscere i pezzi e' `sbircia`, dal contenuto e dal nome.
+        multiple
         style={{ display: "none" }}
-        onChange={(e) => handleRestore(e.target.files?.[0])}
+        onChange={(e) => apriArchivio(e.target.files ? [...e.target.files] : [])}
       />
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
         <button
           onClick={() => inputRef.current?.click()}
-          disabled={importing}
+          disabled={importing || !!importo}
           style={{
             padding: "10px 20px",
-            borderRadius: 12,
-            background: importing ? C.dim : `linear-gradient(180deg, ${C.accent}, #b8893a)`,
-            color: importing ? C.muted : "#241c0a",
+            borderRadius: R.piccolo,
+            background: importing || importo ? C.dim : `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+            color: importing || importo ? C.muted : C.onAccent,
             fontWeight: 600,
-            fontSize: 15,
-            boxShadow: importing ? "none" : `0 0 20px ${C.accent}2e`,
+            fontSize: F.corpo,
+            boxShadow: importing || importo ? "none" : `0 0 20px ${C.accent}2e`,
           }}
         >
-          {importing ? "Sto rilegando i tomi…" : "＋ Aggiungi libri"}
+          {importing ? fraseImport(giroImport || {}) : importo ? fraseImport(importo) : "＋ Aggiungi libri"}
         </button>
-        {nas && (
+        {/* SENZA FILE (chiesto dal lettore: «inserisco solo il titolo della
+            raccolta o saga e tu mi aggiungi la copertina»): una saga dal
+            suo nome o un libro solo, la scheda con la copertina, il file poi */}
+        {onSenzaFile && !importing && !importo && (
           <button
-            onClick={onNas}
-            style={{
-              padding: "10px 18px",
-              borderRadius: 12,
-              border: `1px solid ${C.accent}88`,
-              color: C.accent,
-              fontWeight: 600,
-              fontSize: 15,
-            }}
+            onClick={onSenzaFile}
+            style={{ minHeight: 44, padding: "10px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}66`, color: C.accent, fontSize: F.corpo }}
           >
-            🗄️ Dal NAS
+            📥 Senza file
           </button>
         )}
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Cerca per titolo o autore…"
-          style={{
-            flex: 1,
-            minWidth: 180,
-            padding: "10px 14px",
-            borderRadius: 12,
-            border: `1px solid ${C.border}`,
-            background: C.surface,
-            color: C.text,
-            fontSize: 15,
-            outline: "none",
-          }}
-        />
+        {importo && (
+          <button
+            onClick={onFermaImport}
+            style={{
+              padding: "10px 18px",
+              minHeight: 44,
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.border}`,
+              color: C.muted,
+              fontSize: F.corpo,
+            }}
+          >
+            Fermo qui
+          </button>
+        )}
+        {/* LA ✕ SVUOTA LA RICERCA IN UN COLPO (chiesto dal lettore: «invece di
+            farmi selezionare e cancellare una lettera per volta»). Sta dentro
+            il campo, a destra, e c'e' solo quando c'e' qualcosa da togliere;
+            il bersaglio e' da 44px anche se il glifo e' piccolo. Non riprende
+            il fuoco: sul tablet farebbe salire la tastiera a chi voleva solo
+            tornare allo scaffale intero. */}
+        <div style={{ position: "relative", flex: 1, minWidth: 180, display: "flex" }}>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && cercaDentro()}
+            placeholder="Titolo, autore, saga, genere, le tue note…"
+            style={{
+              flex: 1,
+              minWidth: 0,
+              padding: "10px 14px",
+              paddingRight: query ? 44 : 14,
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.border}`,
+              background: C.surface,
+              color: C.text,
+              fontSize: F.corpo,
+              outline: "none",
+            }}
+          />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              aria-label="Cancella la ricerca"
+              title="Cancella la ricerca"
+              style={{
+                position: "absolute",
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: 44,
+                minHeight: 44,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "transparent",
+                border: "none",
+                color: C.muted,
+                fontSize: F.corpo,
+                cursor: "pointer",
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        {/* lo scaffale risponde subito su titoli e autori; questo va a
+            guardare dentro, ed e' un altro mestiere: si chiede a mano */}
+        {abbastanzaLunga(query) && books.length > 0 && (
+          <button
+            onClick={dentro?.cercando ? fermaRicerca : cercaDentro}
+            style={{
+              padding: "10px 18px",
+              borderRadius: R.piccolo,
+              fontSize: F.nota,
+              border: `1px solid ${dentro?.cercando ? C.border : C.arcane}88`,
+              color: dentro?.cercando ? C.muted : C.arcane,
+              background: dentro?.cercando ? "transparent" : `${C.arcane}14`,
+            }}
+          >
+            {dentro?.cercando ? "Ferma" : "🔍 Cerca dentro i tomi"}
+          </button>
+        )}
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 20 }}>
+        {/* SUL TELEFONO I FILTRI STANNO IN UNA FILA CHE SCORRE DI LATO:
+            andando a capo erano quattro righe, e i libri cominciavano a meta'
+            schermo (misurato a 360 px). Altrove la fila non esiste
+            (`contents`) e i tasti si dispongono come sempre */}
+        <div
+          style={
+            stretto
+              ? { display: "flex", gap: 8, flex: "1 1 100%", minWidth: 0, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 2, maskImage: "linear-gradient(to right, #000 85%, transparent)", WebkitMaskImage: "linear-gradient(to right, #000 85%, transparent)" }
+              : { display: "contents" }
+          }
+        >
         {FILTERS.map((f) => {
           const active = filter === f.id;
           return (
@@ -424,9 +2529,11 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
               key={f.id}
               onClick={() => setFilter(f.id)}
               style={{
+                flexShrink: 0,
+                whiteSpace: "nowrap",
                 padding: "6px 14px",
-                borderRadius: 999,
-                fontSize: 14,
+                borderRadius: R.tondo,
+                fontSize: F.nota,
                 border: `1px solid ${active ? C.accent : C.border}`,
                 color: active ? C.accent : C.muted,
                 background: active ? `${C.accent}14` : "transparent",
@@ -437,64 +2544,238 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
             </button>
           );
         })}
+        {/* LIBRI E FUMETTI, quando ci sono tutt'e due: un filtro a parte
+            dallo stato (un fumetto letto e' letto), con un filetto a
+            dividerli — sono due domande diverse sulla stessa riga */}
+        {chipTipi.length > 0 && (
+          <>
+            {/* i tipi restano INSIEME: sul tablet in piedi «Fumetti» andava
+                a capo da solo, staccato da «Tutti» e «Libri» */}
+            <span ref={tipiRef} style={stretto ? { display: "contents" } : { display: "inline-flex", gap: 8, alignItems: "center", flexShrink: 0, transform: tipiACapo ? "translateX(-17px)" : "none" }}>
+            <span aria-hidden style={{ width: 1, height: 22, background: C.border, margin: "0 4px", visibility: tipiACapo && !stretto ? "hidden" : "visible" }} />
+            {chipTipi.map((f) => {
+              const active = tipo === f.id;
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => setTipo(f.id)}
+                  style={{
+                    flexShrink: 0,
+                    whiteSpace: "nowrap",
+                    padding: "6px 14px",
+                    borderRadius: R.tondo,
+                    fontSize: F.nota,
+                    border: `1px solid ${active ? C.accent : C.border}`,
+                    color: active ? C.accent : C.muted,
+                    background: active ? `${C.accent}14` : "transparent",
+                    transition: "color 0.2s ease-out, border-color 0.2s ease-out",
+                  }}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+            </span>
+          </>
+        )}
+        </div>
         <span style={{ flex: 1 }} />
-        <select
-          value={group}
-          onChange={(e) => setGroup(e.target.value)}
-          style={{
-            padding: "6px 10px",
-            borderRadius: 10,
-            border: `1px solid ${group === "none" ? C.border : C.accent}`,
-            background: C.surface,
-            color: group === "none" ? C.muted : C.accent,
-            fontSize: 14,
-            fontFamily: "inherit",
+        {/* SCAFFALE O RACCOLTE (chiesto dal lettore, col Kindle in mano):
+            due tasti attaccati, quindi da 44px, e la scelta si ricorda */}
+        <div role="group" aria-label="Come mostrare i libri" style={{ display: "flex", borderRadius: R.tondo, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+          {[
+            { id: "scaffale", label: "Scaffale", glifo: "▦" },
+            { id: "raccolte", label: "Raccolte", glifo: "🗂" },
+          ].map((a) => {
+            const attivo = aspetto === a.id;
+            return (
+              <button
+                key={a.id}
+                aria-pressed={attivo}
+                onClick={() => {
+                  setAspetto(a.id);
+                  ricorda({ aspetto: a.id });
+                  onRaccolta(null);
+                }}
+                style={{
+                  minHeight: 44,
+                  padding: "0 14px",
+                  fontSize: F.nota,
+                  color: attivo ? C.accent : C.muted,
+                  background: attivo ? `${C.accent}1f` : "transparent",
+                }}
+              >
+                {a.glifo} {a.label}
+              </button>
+            );
+          })}
+        </div>
+        {/* UN TASTO SOLO al posto delle due tendine affiancate: le due
+            scelte restano — sono ortogonali, e fonderle darebbe diciotto
+            voci di menu — ma a stare sempre in vista è la SCELTA IN CORSO,
+            non i due comandi (segnalato: «li vedo ancora tutti e due»). */}
+        <Disposizione
+          vista={{ group, sort }}
+          gruppi={GROUPS}
+          ordini={SORTS}
+          aperto={vistaAperta}
+          onApri={setVistaAperta}
+          onCambia={(v) => {
+            if (v.group !== undefined) setGroup(v.group);
+            if (v.sort !== undefined) setSort(v.sort);
+            ricorda(v);
+            // un altro raggruppamento, altre raccolte: quella aperta non
+            // esiste piu'
+            if (v.group !== undefined) onRaccolta(null);
           }}
-        >
-          {GROUPS.map((g) => (
-            <option key={g.id} value={g.id}>
-              Raggruppa: {g.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={sort}
-          onChange={(e) => setSort(e.target.value)}
-          style={{
-            padding: "6px 10px",
-            borderRadius: 10,
-            border: `1px solid ${C.border}`,
-            background: C.surface,
-            color: C.muted,
-            fontSize: 14,
-            fontFamily: "inherit",
-          }}
-        >
-          {SORTS.map((s) => (
-            <option key={s.id} value={s.id}>
-              Ordina: {s.label}
-            </option>
-          ))}
-        </select>
+        />
       </div>
 
-      {books.length === 0 ? (
-        <EmptyState
-          emoji="📜"
-          title="Il tuo grimorio è ancora vuoto…"
-          text="Porta qui i tuoi EPUB e PDF: appariranno come tomi su uno scaffale incantato, con le loro copertine. Puoi anche trascinarli direttamente in questa pagina."
-          action="Aggiungi il primo libro"
-          onAction={() => inputRef.current?.click()}
-        />
-      ) : visible.length === 0 ? (
-        <p style={{ textAlign: "center", color: C.muted, padding: "32px 0" }}>
-          Nessun tomo risponde all'appello con questi filtri…
-        </p>
-      ) : (
-        <Grouped books={visible} group={group} onOpenBook={onOpenBook} localIds={localIds} />
+      {dentro && (
+        <div
+          style={{
+            marginBottom: 22,
+            padding: "14px 16px",
+            borderRadius: R.medio,
+            border: `1px solid ${C.arcane}55`,
+            background: `linear-gradient(135deg, ${C.arcane}12, ${C.card})`,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+            <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.rilievo, fontWeight: 600, color: C.text }}>
+              <span style={{ color: C.arcane, marginRight: 6 }}>✦</span>
+              «{dentro.q}» dentro i tomi
+            </h3>
+            <span style={{ flex: 1 }} />
+            {dentro.cercando ? (
+              <span style={{ fontSize: F.piccolo, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: px(320) }}>
+                sfoglio «{dentro.dove || "…"}» · {dentro.fatti + 1} di {dentro.totale}
+              </span>
+            ) : (
+              <button onClick={() => setDentro(null)} aria-label="Chiudi i risultati" style={{ color: C.muted, padding: 4, fontSize: F.corpo }}>
+                ✕
+              </button>
+            )}
+          </div>
+
+          {dentro.esiti.length === 0 && !dentro.cercando && (
+            <p style={{ fontSize: F.piccolo, color: C.muted, margin: 0, lineHeight: 1.5 }}>
+              Non l'ho trovata in nessuno dei tomi che hai qui.
+            </p>
+          )}
+
+          {dentro.esiti.map(({ libro, trovati }) => (
+            <div key={libro.id} style={{ marginTop: 12 }}>
+              <div style={{ fontSize: F.nota, color: C.text, fontWeight: 600, marginBottom: 4 }}>
+                {libro.title}
+                {libro.author && <span style={{ color: C.muted, fontWeight: 400 }}> · {libro.author}</span>}
+              </div>
+              {trovati.map((t, i) => (
+                <button
+                  key={i}
+                  onClick={() => onReadAt?.(libro.id, t.punto)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "8px 10px",
+                    marginBottom: 6,
+                    borderRadius: R.piccolo,
+                    border: `1px solid ${C.border}`,
+                    background: C.surface,
+                    color: C.muted,
+                    fontSize: F.piccolo,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {t.dove && <span style={{ color: C.arcane, marginRight: 6 }}>{t.dove}</span>}
+                  {t.prima}
+                  <mark style={{ background: "transparent", color: C.accent, fontWeight: 600 }}>{t.dentro}</mark>
+                  {t.dopo}
+                </button>
+              ))}
+            </div>
+          ))}
+
+          {!dentro.cercando && dentro.lontani > 0 && (
+            <p style={{ fontSize: F.minuscolo, color: C.muted, margin: "10px 0 0", lineHeight: 1.45 }}>
+              {dentro.lontani === 1
+                ? "Un tomo vive solo sull'altro dispositivo e non l'ho aperto: aprilo una volta da qui e la prossima ricerca lo troverà."
+                : `${dentro.lontani} tomi vivono solo sull'altro dispositivo e non li ho aperti: aprili una volta da qui e la prossima ricerca li troverà.`}
+            </p>
+          )}
+        </div>
       )}
 
-      {books.length > 0 && (
+      {books.length === 0 ? (
+        <>
+          <EmptyState
+            emoji="📜"
+            title="Il tuo grimorio è ancora vuoto…"
+            text="Porta qui i tuoi EPUB, PDF e fumetti (CBZ e CBR): appariranno come tomi su uno scaffale incantato, con le loro copertine. Puoi anche trascinarli direttamente in questa pagina."
+            action="Aggiungi il primo libro"
+            onAction={() => inputRef.current?.click()}
+          />
+        </>
+      ) : visible.length === 0 ? (
+        /* NON È PIÙ UN VICOLO CIECO. C'era una riga sola — «Nessun tomo
+           risponde all'appello con questi filtri…» — che dice il vero e non
+           serve a niente: lo scaffale sembra aver perso i libri e non c'è
+           niente da toccare per riaverli. Adesso dice QUALE delle due leve
+           sta nascondendo, e la molla con un tocco. */
+        (() => {
+          // il tipo e' una leva come lo stato: allo scaffale vuoto si
+          // dicono tutt'e due per nome, e «Mostra tutti i tomi» le molla insieme
+          const leve = [
+            filter !== "all" ? FILTERS.find((f) => f.id === filter)?.label : null,
+            tipo !== "tutti" ? TIPI.find((f) => f.id === tipo)?.label : null,
+          ].filter(Boolean);
+          const vuoto = scaffaleVuoto({
+            totale: books.length,
+            query: cercata,
+            filtro: leve.length ? (filter !== "all" ? filter : tipo) : "all",
+            nomeFiltro: leve.join(" · "),
+            // quanti risponderebbero alla SOLA ricerca: è il numero che
+            // dice «la ricerca trova, è il filtro a nascondere»
+            conLaSolaRicerca: cercata ? books.filter((b) => combacia(b, cercata)).length : null,
+          });
+          return (
+            <div style={{ textAlign: "center", padding: "32px 0" }}>
+              <p style={{ color: C.muted, margin: "0 0 14px" }}>{vuoto.frase}</p>
+              <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                {vuoto.vie.map((v) => (
+                  <button
+                    key={v.id}
+                    onClick={() => {
+                      if (v.id === "query") setQuery("");
+                      else {
+                        setFilter("all");
+                        setTipo("tutti");
+                      }
+                    }}
+                    style={{
+                      minHeight: 44,
+                      padding: "10px 16px",
+                      borderRadius: R.tondo,
+                      border: `1px solid ${C.accent}`,
+                      color: C.accent,
+                      background: `${C.accent}14`,
+                      fontSize: F.nota,
+                    }}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()
+      ) : (
+        scaffale
+      )}
+
+      {(books.length > 0 || melodie > 0) && (
+        <>
         <div
           style={{
             marginTop: 32,
@@ -505,43 +2786,1277 @@ export default function Library({ books, updateBooks, onOpenBook, notify, localI
             flexWrap: "wrap",
             alignItems: "center",
             justifyContent: "space-between",
-            fontSize: 13.5,
+            fontSize: F.piccolo,
             color: C.muted,
           }}
         >
-          <span>
-            {books.length} {books.length === 1 ? "libro custodito" : "libri custoditi"}
-            {estimate?.usage ? ` · ${fmtBytes(estimate.usage)} usati` : ""}
-            {estimate?.quota ? ` di ${fmtBytes(estimate.quota)}` : ""}
+          {/* mentre i tomi scendono, il posto del conteggio lo prende il
+              titolo: un giro lungo deve dire a che punto e' e su cosa */}
+          {portando ? (
+            <span style={{ color: C.arcane }}>
+              ☁ Porto qui «{portando.titolo}» — {portando.i + 1} di {portando.totale}
+            </span>
+          ) : visitando ? (
+            <span style={{ color: C.arcane }}>
+              🩺 Guardo «{visitando.titolo}» — {visitando.i + 1} di {visitando.totale}
+            </span>
+          ) : improntando ? (
+            <span style={{ color: C.arcane }}>
+              👯 Guardo «{improntando.titolo}» — {improntando.i + 1} di {improntando.totale}
+            </span>
+          ) : collane ? (
+            <span style={{ color: C.arcane }}>
+              {collane.catalogo ? "🌐 Chiedo al catalogo" : "🔖 Guardo"} «{collane.titolo}» — {collane.i + 1} di {collane.totale}
+            </span>
+          ) : (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {books.length} {books.length === 1 ? "libro custodito" : "libri custoditi"}
+              {melodie ? ` · ${melodie} ${melodie === 1 ? "melodia" : "melodie"}` : ""}
+              {/* IL PESO NON STA PIU' QUI, ed e' la cura di un numero che
+                  diceva il falso per posizione: «286 libri custoditi · 978
+                  MB» si legge come «i tuoi libri pesano 978 MB», mentre
+                  quella e' la stima del browser su TUTTO quel che l'app
+                  tiene qui — copertine, melodie, dizionario offline, cache.
+                  E due righe sotto la barra del cloud dice «274 libri · 940
+                  MB»: quattro numeri vicini che sembrano parlare della
+                  stessa cosa (segnalato: «queste diciture mi confondono
+                  sempre»). Adesso sta nella riga sua, qui sotto, col nome
+                  del posto che misura e spartito per specie — la stessa
+                  forma della barra di lassu'. */}
+              {/* L'unico spazio che vincola davvero non e' piu' una riga di
+                  testo qui dentro: e' la barra qui sotto, che dice anche DI
+                  COSA e' fatto quel gigabyte. Libri e melodie stanno nello
+                  stesso secchio, e un totale non dice quale dei due lo sta
+                  riempiendo — che e' esattamente la domanda («quanto spazio
+                  ho ancora per la musica»). */}
+              {` · v. ${typeof __BC_VERSIONE__ !== "undefined" ? __BC_VERSIONE__ : "?"}`}
+              {aggiorna &&
+                (agg ? (
+                  <span style={{ color: agg === "nuova" ? C.accent : C.arcane }}>{ESITI_CONTROLLO[agg]}</span>
+                ) : (
+                  <button
+                    onClick={controllaAggiornamenti}
+                    style={{
+                      padding: "3px 10px",
+                      borderRadius: R.tondo,
+                      border: `1px solid ${C.border}`,
+                      color: C.muted,
+                      fontSize: F.minuscolo,
+                    }}
+                  >
+                    🔄 Controlla
+                  </button>
+                ))}
+            </span>
+          )}
+          {/* Non un allarme: uno STATO. Sparisce da solo quando il browser
+              concede la persistenza — cosa che su Android succede quando la
+              PWA viene installata — e finche' c'e' sta accanto al tasto che
+              lo risolve davvero, che e' l'archivio. */}
+          {persist === "negata" && !portando && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+                color: C.accent,
+              }}
+            >
+              ⚠ Il browser non ha promesso di conservare questi dati: può
+              liberarli se gli serve spazio.
+              <button
+                onClick={richiediPersistenza}
+                style={{
+                  padding: "3px 10px",
+                  borderRadius: R.tondo,
+                  border: `1px solid ${C.accent}66`,
+                  color: C.accent,
+                  fontSize: F.minuscolo,
+                }}
+              >
+                Richiedi
+              </button>
+            </span>
+          )}
+          {/* L'altra meta' della stessa preoccupazione: non «il browser può
+              sfrattarti» ma «da quanto non hai una copia fuori dal browser».
+              Sotto soglia tace — e la soglia si stringe a una settimana se
+              la persistenza è stata negata, perché lì il rischio è vero. */}
+          {promemoria && !portando && (
+            <span style={{ color: C.muted }}>
+              ⧗ {promemoria} <span style={{ color: C.arcane }}>Esportala qui accanto.</span>
+            </span>
+          )}
+          {/* Sta IN VISTA come gli altri due avvisi, e per la stessa
+              ragione: è un guaio che solo il lettore può risolvere, e la
+              strada è una sola — il file originale. Ripiegato sotto la
+              cassetta degli attrezzi sarebbe un romanzo perso in silenzio. */}
+          {perduti && !portando && (
+            <span style={{ color: C.accent }}>⚠ {perduti}</span>
+          )}
+          {/* IN VISTA RESTANO SOLO L'ARCHIVIO E LA CASSETTA DEGLI ATTREZZI.
+              I tasti di manutenzione erano arrivati a sei tutti in fila —
+              saghe, visita, doppioni, tomi dal cloud, ripristino — e sono
+              lavori da una volta al mese: sepolti lì sotto seppellivano
+              anche «Esporta», che invece e' il tasto di ogni settimana e
+              quello a cui gli avvisi qui sopra puntano («Esportala qui
+              accanto»): quello non si ripiega. */}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <button
+              onClick={() => setManutenzione((v) => !v)}
+              style={{
+                padding: "7px 16px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.border}`,
+                color: C.text,
+                fontSize: F.nota,
+              }}
+            >
+              {/* il conto accanto al nome dice che la' dentro c'e' del
+                  lavoro che aspetta (impronte da fare, copertine da
+                  ritrovare): senza, ripiegare i tasti nasconderebbe anche il
+                  bisogno. I TOMI LASSU' NON CONTANO PIU': un libro che sta
+                  la' e scende quando lo apri e' uno stato normale, e un «· 508»
+                  fisso sul tasto diceva al lettore che c'era del lavoro
+                  arretrato dove non ce n'era («è corretto?»). */}
+              🧰 Manutenzione
+              {!manutenzione && senzaImpronta.length + mancaLaCopertina.length + daRifare.length + cbrDaFare.length + doppi.length > 0
+                ? ` · ${senzaImpronta.length + mancaLaCopertina.length + daRifare.length + cbrDaFare.length + doppi.length}`
+                : ""}{" "}
+              {manutenzione ? "▾" : "▸"}
+            </button>
+            <button
+              onClick={handleExport}
+              style={{
+                padding: "7px 16px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.arcane}66`,
+                color: C.arcane,
+                fontSize: F.nota,
+              }}
+            >
+              📦 Esporta biblioteca
+            </button>
           </span>
-          <button
-            onClick={() => archiveRef.current?.click()}
-            disabled={restoring}
-            style={{
-              padding: "7px 16px",
-              borderRadius: 10,
-              border: `1px solid ${C.border}`,
-              color: restoring ? C.muted : C.text,
-              fontSize: 14,
-              marginRight: 8,
-            }}
-          >
-            {restoring ? "Ripristino…" : "↩ Ripristina"}
-          </button>
-          <button
-            onClick={handleExport}
-            style={{
-              padding: "7px 16px",
-              borderRadius: 10,
-              border: `1px solid ${C.arcane}66`,
-              color: C.arcane,
-              fontSize: 14,
-            }}
-          >
-            📦 Esporta biblioteca
-          </button>
         </div>
+        {/* E PRIMA DI QUEL CHE STA LASSÙ, QUEL CHE STA QUI. Le due righe
+            stanno una sopra l'altra apposta: sono la stessa domanda in due
+            posti, e finché il peso locale era un numero nudo in mezzo alla
+            riga di servizio nessuno poteva accorgersi che misurava un'altra
+            cosa. Stesso vocabolario, stessi colori: i libri sono i libri in
+            tutt'e due. */}
+        <PesoQui parti={spartisciQui(qui)} estimate={estimate} />
+        {/* DI COSA È FATTO IL GIGABYTE. Sta su una riga sua e non dentro
+            quella di servizio: là è una frase che scorre fra il conteggio,
+            gli avvisi e i tasti, e una barra là in mezzo non si guarderebbe.
+            C'è solo a cloud collegato, come il numero che ha sostituito:
+            senza, sarebbe una promessa che nessuno può mantenere. */}
+        {cloud && <BarraCloud dati={cloud} compatta />}
+        {manutenzione && (
+          <div
+            style={{
+              marginTop: 10,
+              padding: "10px 12px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.border}`,
+              background: `${C.bg}66`,
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            {/* Il richiamo dei tomi: c'e' solo se qualcosa e' rimasto lassu',
+                e il numero E IL PESO stanno nel tasto perche' chi lo tocca
+                sappia in anticipo quanta connessione e quanto tablet ci
+                vogliono. Non e' un lavoro da fare: e' per leggerli senza
+                rete, e lo dice. */}
+            {daScendere.length > 0 && (() => {
+              return (
+              <span style={{ display: "flex", flexDirection: "column", gap: 4, flexBasis: "100%" }}>
+              <button
+                onClick={portando ? () => { filoTomi.current = null; setPortando(null); } : richiamaTomi}
+                style={{
+                  alignSelf: "flex-start",
+                  padding: "7px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.arcane}66`,
+                  color: C.arcane,
+                  fontSize: F.nota,
+                }}
+              >
+                {portando
+                  ? `Fermo qui (${portando.i + 1} di ${portando.totale})`
+                  : `⬇ Scarica qui ${daScendere.length === 1 ? "il tomo" : `tutti i ${daScendere.length} tomi`} rimasti lassù`}
+              </button>
+              {!portando && (
+                <span style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.4 }}>
+                  Dal cloud non si aprono: per leggerli qui servono qui.
+                </span>
+              )}
+              </span>
+              );
+            })()}
+            {liberabili.length > 0 && !vediLibera && (
+              <button
+                onClick={() => setVediLibera(true)}
+                style={{ padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.arcane}66`, color: C.arcane, fontSize: F.nota }}
+              >
+                {`🧹 Libera spazio: ${liberabili.length === 1 ? "un libro letto è" : `${liberabili.length} libri letti sono`} anche sul disco del computer${pesoTotale(liberabili) ? ` (${fmtGoogle(pesoTotale(liberabili))})` : ""}`}
+              </button>
+            )}
+            {liberabili.length > 0 && vediLibera && (
+              <div style={{ flexBasis: "100%", padding: 12, borderRadius: R.piccolo, border: `1px solid ${C.border}`, background: C.surface }}>
+                <p style={{ margin: "0 0 8px", color: C.text, fontSize: F.nota, lineHeight: 1.45 }}>
+                  {`Di questi libri letti se ne va l'ebook, qui e sugli altri dispositivi: restano la scheda, la copertina, il voto e i tuoi segni. Il file resta sul disco del computer${discoNoto.quando ? ` (controllato il ${new Date(discoNoto.quando).toLocaleDateString("it-IT")})` : ""}, e da lì si reimporta.`}
+                </p>
+                <ul style={{ margin: "0 0 10px", padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" }}>
+                  {liberabili.map((x) => (
+                    <li key={x.id} style={{ fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" }}>
+                      <span style={{ color: C.text }}>{x.titolo}</span>
+                      {x.byte ? ` · ${fmtGoogle(x.byte)}` : ""}
+                    </li>
+                  ))}
+                </ul>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    disabled={liberando}
+                    onClick={async () => {
+                      setLiberando(true);
+                      try {
+                        const quanti = await onTogliEbook?.(liberabili.map((x) => x.id));
+                        if (quanti) notify(`🧹 ${quanti === 1 ? "Un ebook tolto" : `${quanti} ebook tolti`}: le schede restano in biblioteca 📗`);
+                      } finally {
+                        setLiberando(false);
+                        setVediLibera(false);
+                      }
+                    }}
+                    style={{ minHeight: 44, padding: "8px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                  >
+                    {liberando ? "Tolgo…" : `Togli ${liberabili.length === 1 ? "l'ebook" : `i ${liberabili.length} ebook`}`}
+                  </button>
+                  <button onClick={() => setVediLibera(false)} style={{ minHeight: 44, padding: "8px 16px", color: C.muted, fontSize: F.nota }}>
+                    Lascia stare
+                  </button>
+                </div>
+              </div>
+            )}
+            {senzaCopiaSulDisco.length > 0 && (
+              <span style={{ flexBasis: "100%", fontSize: F.piccolo, color: C.muted, lineHeight: 1.4 }}>
+                {discoNoto.quando
+                  ? `${senzaCopiaSulDisco.length === 1 ? "Un libro letto non era" : `${senzaCopiaSulDisco.length} libri letti non erano`} sul disco del computer al controllo del ${new Date(discoNoto.quando).toLocaleDateString("it-IT")}: copiali lì e rifai «🔍 Controlla il disco» dal computer, poi si possono togliere da qui.`
+                  : `Di ${senzaCopiaSulDisco.length === 1 ? "un libro letto" : `${senzaCopiaSulDisco.length} libri letti`} non so se il disco del computer ha una copia: dal computer usa «🔍 Controlla il disco», poi si possono togliere da qui.`}
+              </span>
+            )}
+            <button
+              onClick={riconosciSaghe}
+              style={{
+                padding: "7px 16px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.border}`,
+                color: C.text,
+                fontSize: F.nota,
+              }}
+            >
+              {collane
+                ? `Fermo qui (${collane.i + 1} di ${collane.totale})`
+                : "🔖 Riconosci saghe e cicli"}
+            </button>
+            {/* Sta accanto al riconoscimento delle saghe perché legge la
+                stessa etichettatura: là si tiene la saga, qui quel che
+                resta. */}
+            <button
+              onClick={proponiTitoliOra}
+              style={{
+                padding: "7px 16px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.border}`,
+                color: C.text,
+                fontSize: F.nota,
+              }}
+            >
+              ✍ Ripulisci i titoli
+            </button>
+            {/* le saghe che il titolo dice diverse dalla scheda: si propongono */}
+            <button
+              onClick={proponiSagheOra}
+              style={{
+                padding: "7px 16px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.border}`,
+                color: C.text,
+                fontSize: F.nota,
+              }}
+            >
+              📚 Saghe da sistemare
+            </button>
+            {/* LE COPERTINE CHE MANCANO SI RITROVANO NEL FILE. Compare solo
+                se qualcuno ne ha bisogno, e col numero sopra: è un giro che
+                apre ogni tomo senza copertina, e chi lo tocca deve sapere
+                quanto dura. */}
+            {mancaLaCopertina.length > 0 && (
+              <button
+                onClick={copertinando ? () => { filoCopertine.current = null; setCopertinando(null); } : ritrovaLeCopertine}
+                disabled={!!copertinando?.da}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.border}`,
+                  color: C.text,
+                  fontSize: F.nota,
+                }}
+              >
+                {copertinando && !copertinando.da
+                  ? `Fermo qui (${copertinando.i + 1} di ${copertinando.totale})`
+                  : `🖼 Ritrova ${mancaLaCopertina.length === 1 ? "una copertina" : `${mancaLaCopertina.length} copertine`}`}
+              </button>
+            )}
+            {/* LE COPERTINE DEI FUMETTI SGRANATE si rifanno dal file: col
+                numero sopra, perché apre ogni fumetto, e il suo conto sul
+                suo tasto mentre gira */}
+            {daRifare.length > 0 && (
+              <button
+                onClick={copertinando?.da === "rifai" ? () => { filoCopertine.current = null; setCopertinando(null); } : rifaiLeCopertine}
+                disabled={!!copertinando && copertinando.da !== "rifai"}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.border}`,
+                  color: C.text,
+                  fontSize: F.nota,
+                }}
+              >
+                {copertinando?.da === "rifai"
+                  ? `Fermo qui (${copertinando.i + 1} di ${copertinando.totale})`
+                  : `🖼 Rifai ${daRifare.length === 1 ? "la copertina di un fumetto" : `le copertine di ${daRifare.length} fumetti`}`}
+              </button>
+            )}
+            {/* LA COPERTINA GIUSTA DAL CATALOGO: si sceglie la raccolta o il
+                libro, e si guarda prima di mettere (`CopertinaGiusta`) */}
+            <button
+              onClick={() => setCopertinaGiusta((v) => !v)}
+              aria-expanded={copertinaGiusta}
+              style={{
+                padding: "7px 16px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${copertinaGiusta ? C.accent : C.border}`,
+                color: copertinaGiusta ? C.accent : C.text,
+                fontSize: F.nota,
+              }}
+            >
+              🖼 Copertina dal catalogo
+            </button>
+            {copertinaGiusta && <CopertinaGiusta books={books} notify={notify} />}
+            {/* e quelle che da qui non si ritrovano, con la loro strada:
+                il tasto le contava e al tocco diceva «non sono su questo
+                dispositivo» */}
+            {dove && fraseCopertineAltrove(dove) && (
+              <p style={{ flexBasis: "100%", fontSize: F.minuscolo, color: C.muted, lineHeight: 1.5 }}>{fraseCopertineAltrove(dove)}</p>
+            )}
+            {/* Il ripasso delle impronte c'e' solo se qualcuno ne ha bisogno:
+                a biblioteca gia' a posto sarebbe un tasto che non fa niente.
+                Il numero sta scritto sopra perche' e' un giro che legge i
+                byte di ogni tomo, e chi lo tocca deve sapere quanto dura. */}
+            <button
+              onClick={visitando ? () => { filoVisita.current = null; setVisitando(null); } : visitaLibri}
+              style={{
+                padding: "7px 16px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.border}`,
+                color: C.text,
+                fontSize: F.nota,
+              }}
+            >
+              {visitando
+                ? `Fermo qui (${visitando.i + 1} di ${visitando.totale})`
+                : "🩺 Controlla i tuoi libri"}
+            </button>
+            {/* I CBR CHE SCENDONO INTERI A OGNI APERTURA, tutti in CBZ: una
+                discesa ciascuno, una volta sola. Col numero sopra, perche'
+                e' un giro lungo; fermarlo lascia convertito quel che e'
+                gia' convertito. */}
+            {/* il giro dei CBR del disco (`da: "disco"`) ha il suo conto nella
+                barra in basso: qui non si scrive il suo «Fermo qui» */}
+            {(cbrDaFare.length > 0 || (lavoroCbr && !lavoroCbr.da)) && (
+              <button
+                onClick={lavoroCbr ? (lavoroCbr.da ? undefined : onFermaLavoro) : onConvertiTutti}
+                disabled={!!lavoroCbr?.da}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.border}`,
+                  color: C.text,
+                  fontSize: F.nota,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {lavoroCbr && !lavoroCbr.da
+                  ? `Fermo qui (${lavoroCbr.i + 1} di ${lavoroCbr.totale}) · ${fraseDelPasso(lavoroCbr.passo)}`
+                  : `🔁 Converti ${cbrDaFare.length === 1 ? "un CBR" : `${cbrDaFare.length} CBR`} in CBZ`}
+              </button>
+            )}
+            {/* IL DISCO CONTROLLATO (vedi `controllaDisco`): cosa c'è, cosa
+                manca e dove sta, cosa è fuori posto; riordinare è un tocco a
+                parte, dopo aver visto l'elenco */}
+            {onRiordina && hddPossibile() && !disco?.rapporto && (
+              <button
+                onClick={controllaIlDisco}
+                disabled={!!disco}
+                style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}
+              >
+                {disco?.guardo ? `Guardo il disco…${disco.totale ? ` ${disco.letti} di ${disco.totale} file` : ""}` : "🔍 Controlla il disco"}
+              </button>
+            )}
+            {disco?.rapporto &&
+              (() => {
+                const r = disco.rapporto;
+                const sulDisco = r.aPosto.length + r.daSpostare.length;
+                const m = r.mancano;
+                const lista = { flexBasis: "100%", margin: 0, padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" };
+                const voce = { fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" };
+                const titoli = (bs) => bs.map((b) => b.title).join(" · ");
+                const mancanti = [
+                  [m.qui, "solo su questo dispositivo"],
+                  [m.altrove, "non qui: forse sull'altro dispositivo"],
+                  [m.nessuno, "senza il file da nessuna parte"],
+                ].filter(([bs]) => bs.length);
+                return (
+                  <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: F.nota, color: C.muted, lineHeight: 1.45 }}>
+                    <span style={{ flexBasis: "100%", color: C.text }}>
+                      {`Sul disco ci sono ${sulDisco} ${sulDisco === 1 ? "volume" : "volumi"} della biblioteca (${fmtGoogle(r.byte)})${r.daSpostare.length ? `, e ${r.daSpostare.length === 1 ? "uno non sta" : `${r.daSpostare.length} non stanno`} nella cartella della ${r.daSpostare.length === 1 ? "sua" : "loro"} saga` : ", ognuno nella cartella della sua saga"}.`}
+                    </span>
+                    {disco.copia && (
+                      <span style={{ flexBasis: "100%", color: disco.copia.guaio ? C.accent : C.muted }}>
+                        {disco.copia.guaio
+                          ? `📦 La copia della biblioteca sul disco non è riuscita: ${disco.copia.guaio}.`
+                          : `📦 Copia della biblioteca scritta sul disco: «${disco.copia.percorso}» (${disco.copia.schede} ${disco.copia.schede === 1 ? "scheda" : "schede"} con lettura, segni e diario, ${fmtGoogle(disco.copia.byte)}). Se un giorno servisse, si riapre con «↩ Ripristina».`}
+                      </span>
+                    )}
+                    {r.daSpostare.length > 0 && (
+                      <ul style={lista}>
+                        {/* ogni riga si toglie: la casa la dice la scheda, e una
+                            saga scritta male sulla scheda («Ttm») va corretta lì,
+                            non portata sul disco */}
+                        {r.daSpostare.map((v, i) => {
+                          const via = disco.tolti.has(i);
+                          return (
+                            <li key={`${v.file.cartelle.join("/")}/${v.file.nome}`} style={voce}>
+                              <button
+                                onClick={() =>
+                                  setDisco((d) => {
+                                    const tolti = new Set(d.tolti);
+                                    if (tolti.has(i)) tolti.delete(i);
+                                    else tolti.add(i);
+                                    return { ...d, tolti };
+                                  })
+                                }
+                                aria-pressed={!via}
+                                style={{ display: "flex", gap: 8, alignItems: "flex-start", width: "100%", minHeight: 44, textAlign: "left", color: C.muted, fontSize: F.piccolo }}
+                              >
+                                <span style={{ color: via ? C.muted : C.accent }}>{via ? "☐" : "☑"}</span>
+                                <span style={{ minWidth: 0, overflowWrap: "anywhere", textDecoration: via ? "line-through" : "none" }}>
+                                  <span style={{ color: via ? C.muted : C.text }}>{v.libro.title}</span> · {v.file.cartelle.join(" / ") || "book-companion"} → {v.a.join(" / ")}
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                    {mancanti.map(([bs, dove]) => (
+                      <span key={dove} style={{ flexBasis: "100%", overflowWrap: "anywhere" }}>
+                        {`Mancano dal disco ${bs.length === 1 ? "un volume" : `${bs.length} volumi`} ${dove}: `}
+                        <span style={{ color: C.text }}>{titoli(bs.slice(0, 12))}</span>
+                        {bs.length > 12 ? ` e altri ${bs.length - 12}` : ""}
+                      </span>
+                    ))}
+                    {r.senzaScheda.length > 0 && (
+                      <span style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, overflowWrap: "anywhere" }}>
+                        <span style={{ flexBasis: "100%" }}>
+                          {`${r.senzaScheda.length === 1 ? "Un file" : `${r.senzaScheda.length} file`} sul disco che nessuna scheda riconosce (restano dove sono): `}
+                          <span style={{ color: C.text }}>{r.senzaScheda.slice(0, 12).map((f) => [...f.cartelle, f.nome].join(" / ")).join(" · ")}</span>
+                          {r.senzaScheda.length > 12 ? ` e altri ${r.senzaScheda.length - 12}` : ""}
+                        </span>
+                        {/* IN BIBLIOTECA: solo la scheda (titolo, saga,
+                            copertina), il file resta sul disco */}
+                        {onImportaDalDisco && (
+                          <button
+                            onClick={() => {
+                              const file = r.senzaScheda;
+                              setDisco(null);
+                              onImportaDalDisco(file);
+                            }}
+                            style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                          >
+                            {`📥 Aggiungili alla biblioteca (solo dal disco)`}
+                          </button>
+                        )}
+                        <span style={{ flexBasis: "100%", fontSize: F.piccolo }}>Entrano le schede con titolo, saga e copertina; il file resta sul disco.</span>
+                      </span>
+                    )}
+                    {/* un'altra edizione di un volume che il suo file ce l'ha:
+                        non e' «senza scheda», e «Aggiungili» farebbe un doppione */}
+                    {r.altreEdizioni?.length > 0 && (
+                      <span style={{ flexBasis: "100%", overflowWrap: "anywhere" }}>
+                        {`${r.altreEdizioni.length === 1 ? "Un file è un'altra edizione" : `${r.altreEdizioni.length} file sono altre edizioni`} di volumi che hanno già il loro file (restano dove sono): `}
+                        <span style={{ color: C.text }}>{r.altreEdizioni.slice(0, 12).map((x) => `${[...x.file.cartelle, x.file.nome].join(" / ")} → ${x.libro.title}`).join(" · ")}</span>
+                        {r.altreEdizioni.length > 12 ? ` e altri ${r.altreEdizioni.length - 12}` : ""}
+                      </span>
+                    )}
+                    {r.daSegnare?.length > 0 && (
+                      <span style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, overflowWrap: "anywhere" }}>
+                        <span style={{ flexBasis: "100%" }}>
+                          {`${r.daSegnare.length === 1 ? "Un volume è" : `${r.daSegnare.length} volumi sono`} sul disco, ma la scheda non lo sa e in Libreria ${r.daSegnare.length === 1 ? "risulta" : "risultano"} «né qui né nel cloud»: `}
+                          <span style={{ color: C.text }}>{r.daSegnare.slice(0, 12).map((b) => b.title).join(" · ")}</span>
+                          {r.daSegnare.length > 12 ? ` e altri ${r.daSegnare.length - 12}` : ""}
+                        </span>
+                        {!disco.segnati && (
+                          <button
+                            onClick={() => {
+                              const ids = new Set(r.daSegnare.map((b) => b.id));
+                              updateBooks(booksRef.current.map((b) => (ids.has(b.id) ? { ...b, fileTolto: true } : b)));
+                              for (const id of ids) timbraScheda(id);
+                              setDisco((d) => ({ ...d, segnati: true }));
+                              notify(`📦 ${ids.size === 1 ? "Un volume segnato" : `${ids.size} volumi segnati`} come spostati sull'HDD`);
+                            }}
+                            style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                          >
+                            {`📦 Segna ${r.daSegnare.length} come sul disco`}
+                          </button>
+                        )}
+                      </span>
+                    )}
+                    {r.vuoti?.length > 0 && (
+                      <span style={{ flexBasis: "100%", overflowWrap: "anywhere" }}>
+                        {`${r.vuoti.length === 1 ? "Un file vuoto" : `${r.vuoti.length} file vuoti`}: copie rimaste a metà, da riempire o togliere a mano: `}
+                        <span style={{ color: C.text }}>{r.vuoti.map((f) => [...f.cartelle, f.nome].join(" / ")).join(" · ")}</span>
+                      </span>
+                    )}
+                    {r.doppioni.length > 0 && (
+                      <span style={{ flexBasis: "100%", overflowWrap: "anywhere" }}>
+                        {`${r.doppioni.length === 1 ? "Una copia in più" : `${r.doppioni.length} copie in più`} (stesso nome e stesso peso) di volumi che sono già sul disco: `}
+                        <span style={{ color: C.text }}>{r.doppioni.slice(0, 12).map((f) => [...f.cartelle, f.nome].join(" / ")).join(" · ")}</span>
+                      </span>
+                    )}
+                    {/* METTERE DA PARTE, mai cancellare (`daMettereDaParte`) */}
+                    {onMettiDaParte && r.doppioni.length > 0 && (
+                      <span style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                        <button
+                          onClick={async () => {
+                            const { daMettereDaParte } = await import("../lib/disco.js");
+                            const casa = disco.casa;
+                            const voci = daMettereDaParte(r);
+                            setDisco(null);
+                            onMettiDaParte(voci, casa);
+                          }}
+                          style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                        >
+                          {`🗃 Metti da parte ${r.doppioni.length === 1 ? "la copia in più" : `le ${r.doppioni.length} copie in più`} (${fmtGoogle(r.doppioni.reduce((t, f) => t + f.byte, 0))})`}
+                        </button>
+                        <span style={{ flexBasis: "100%", fontSize: F.piccolo }}>
+                          Solo le copie identiche (stesso nome, stesso peso) vanno in «book-companion / _Doppioni», con le loro cartelle: non si cancella niente. Le altre edizioni restano dove sono: possono essere libri diversi, e decidi tu.
+                        </span>
+                      </span>
+                    )}
+                    {/* RIMETTERE A POSTO quel che e' in `_Doppioni` (`daRimettereAPosto`) */}
+                    {onRimettiAPosto && disco.daParte?.length > 0 && (
+                      <button
+                        onClick={() => {
+                          const { daParte, casa } = disco;
+                          setDisco(null);
+                          onRimettiAPosto(daParte, casa);
+                        }}
+                        style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}
+                      >
+                        {`↩ Rimetti a posto ${disco.daParte.length === 1 ? "il file" : `i ${disco.daParte.length} file`} di «_Doppioni»`}
+                      </button>
+                    )}
+                    {/* QUEL CHE SI FA COI FILE DEL DISCO: le copertine che
+                        mancano e i CBR delle schede che stanno solo lì
+                        (`lavoriDalDisco`) */}
+                    {disco.lavori?.copertine.length > 0 && (
+                      <button
+                        onClick={copertinando?.da === "disco" ? () => { filoCopertine.current = null; setCopertinando(null); } : () => copertineDalDisco(disco.lavori.copertine)}
+                        disabled={!!copertinando && copertinando.da !== "disco"}
+                        style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota, fontVariantNumeric: "tabular-nums" }}
+                      >
+                        {copertinando?.da === "disco"
+                          ? `Fermo qui (${copertinando.i + 1} di ${copertinando.totale})`
+                          : `🖼 ${disco.lavori.copertine.length === 1 ? "La copertina" : `${disco.lavori.copertine.length} copertine`} dal disco`}
+                      </button>
+                    )}
+                    {onConvertiDalDisco && disco.lavori?.cbr.length > 0 && (
+                      <span style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                        <button
+                          onClick={() => {
+                            const voci = disco.lavori.cbr;
+                            const casa = disco.casa;
+                            setDisco(null);
+                            onConvertiDalDisco(voci, casa);
+                          }}
+                          style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                        >
+                          {`🔁 Converti in CBZ ${disco.lavori.cbr.length === 1 ? "il CBR" : `i ${disco.lavori.cbr.length} CBR`} del disco`}
+                        </button>
+                        <span style={{ flexBasis: "100%", fontSize: F.piccolo }}>Il CBZ va nella cartella della sua saga; il CBR si toglie solo quando il CBZ è scritto col peso giusto e si apre.</span>
+                      </span>
+                    )}
+                    {/* la cartella «CBR convertiti» di quel giorno: via i CBR
+                        il cui CBZ sta già sul disco (`cbrNeiConvertiti`) */}
+                    {disco.convertiti && (disco.convertiti.conCbz.length > 0 || disco.convertiti.senza.length > 0) && (
+                      <span style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                        {disco.convertiti.conCbz.length > 0 && (
+                          <button
+                            onClick={async () => {
+                              const { svuotaConvertiti } = await import("../lib/disco.js");
+                              const e = await svuotaConvertiti(disco.convertiti, disco.casa);
+                              setDisco((d) => ({ ...d, convertiti: null }));
+                              notify(`🗑 ${e.tolti === 1 ? "Un CBR tolto" : `${e.tolti} CBR tolti`} da «CBR convertiti»${e.restano ? `; ${e.restano === 1 ? "uno resta" : `${e.restano} restano`}: il loro CBZ non c'è` : ", e la cartella non c'è più"}`);
+                            }}
+                            style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                          >
+                            {`🗑 Svuota «CBR convertiti»: ${disco.convertiti.conCbz.length === 1 ? "un CBR" : `${disco.convertiti.conCbz.length} CBR`} già CBZ · ${fmtGoogle(disco.convertiti.byte)}`}
+                          </button>
+                        )}
+                        {disco.convertiti.senza.length > 0 && (
+                          <span style={{ flexBasis: "100%", fontSize: F.piccolo }}>
+                            {`In «CBR convertiti» ${disco.convertiti.senza.length === 1 ? "c'è un CBR" : `ci sono ${disco.convertiti.senza.length} CBR`} senza il suo CBZ sul disco: ${disco.convertiti.senza.length === 1 ? "resta" : "restano"}. `}
+                            <span style={{ color: C.text }}>{disco.convertiti.senza.slice(0, 6).map((f) => f.nome).join(" · ")}</span>
+                          </span>
+                        )}
+                      </span>
+                    )}
+                    {r.daSpostare.length - disco.tolti.size > 0 && (
+                      <button
+                        onClick={() => {
+                          const daSpostare = r.daSpostare.filter((_, i) => !disco.tolti.has(i));
+                          const casa = disco.casa;
+                          setDisco(null);
+                          onRiordina(daSpostare, casa);
+                        }}
+                        style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                      >
+                        {`🗂 Riordina ${r.daSpostare.length - disco.tolti.size}`}
+                      </button>
+                    )}
+                    {/* il pannello taglia le liste lunghe: il rapporto intero si copia */}
+                    <button
+                      onClick={async () => {
+                        const { rapportoDisco } = await import("../lib/disco.js");
+                        try {
+                          await navigator.clipboard.writeText(rapportoDisco(r));
+                          notify("Rapporto del disco copiato: incollalo dove vuoi");
+                        } catch {
+                          notify("Il browser non mi lascia copiare: riprova con la finestra in primo piano");
+                        }
+                      }}
+                      style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}
+                    >
+                      📋 Copia il rapporto
+                    </button>
+                    <button onClick={() => setDisco(null)} style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}>
+                      Chiudi
+                    </button>
+                  </div>
+                );
+              })()}
+            {/* I DOPPIONI (vedi `doppioniInBiblioteca`): prima si vede
+                quali, poi si uniscono. Si tiene la scheda col file, poi
+                quella che stai leggendo, poi il CBZ con la copertina */}
+            {doppi.length > 0 && !vediDoppi && (
+              <button
+                onClick={() => setVediDoppi(true)}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.accent}88`,
+                  color: C.accent,
+                  fontSize: F.nota,
+                }}
+              >
+                {`👯 ${doppi.length === 1 ? "Un volume ha" : `${doppi.length} volumi hanno`} una copia in più: unisci`}
+              </button>
+            )}
+            {doppi.length > 0 && vediDoppi && (
+              <div style={{ flexBasis: "100%", padding: 12, borderRadius: R.piccolo, border: `1px solid ${C.border}`, background: C.surface }}>
+                <p style={{ margin: "0 0 8px", color: C.text, fontSize: F.nota, lineHeight: 1.45 }}>
+                  Di ogni volume resta una scheda sola: quella che ha il file, poi quella che stai leggendo, poi il CBZ con la copertina; una
+                  scheda senza ebook nello stesso posto di un libro vero se ne va lei. Le altre se ne vanno.
+                </p>
+                <ul style={{ margin: "0 0 10px", padding: 0, listStyle: "none", maxHeight: px(200), overflowY: "auto" }}>
+                  {doppi.map((g) => {
+                    // le copie che se ne vanno si dicono per nome quando non
+                    // sono lo stesso titolo: due «The Crystal Shard» si
+                    // distinguono dall'autore, «Kagurabachi, Vol. 1» dal titolo
+                    const di = (id) => books.find((b) => b.id === id);
+                    const tieni = di(g.tieni);
+                    const chi = (b) => [b?.author, b?.saga && b.saga !== tieni?.saga ? `in «${b.saga}»` : "", b?.fileType === "nessuno" ? "senza ebook" : ""].filter(Boolean).join(", ");
+                    const via = g.via.map(di).filter(Boolean);
+                    const parlante = via.some((b) => b.title !== tieni?.title || b.author !== tieni?.author || b.saga !== tieni?.saga);
+                    return (
+                      <li key={g.tieni} style={{ fontSize: F.piccolo, color: C.muted, padding: "2px 0", overflowWrap: "anywhere" }}>
+                        <span style={{ color: C.text }}>{g.titolo}</span>
+                        {parlante ? (
+                          <>
+                            {tieni?.author ? ` (${tieni.author})` : ""} · via: {via.map((b) => `«${b.title}»${chi(b) ? ` (${chi(b)})` : ""}`).join(", ")}
+                          </>
+                        ) : (
+                          <> · {g.via.length === 1 ? "una copia" : `${g.via.length} copie`} in più</>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    onClick={async () => {
+                      await onUnisciDoppioni?.(doppi);
+                      setVediDoppi(false);
+                    }}
+                    style={{ minHeight: 44, padding: "8px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                  >
+                    Unisci i doppioni
+                  </button>
+                  <button onClick={() => setVediDoppi(false)} style={{ minHeight: 44, padding: "8px 16px", color: C.muted, fontSize: F.nota }}>
+                    Lascia stare
+                  </button>
+                </div>
+              </div>
+            )}
+            {senzaImpronta.length > 0 && (
+              <button
+                onClick={improntando ? () => { filoImpronte.current = null; setImprontando(null); } : ripassaLeImpronte}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: R.piccolo,
+                  border: `1px solid ${C.border}`,
+                  color: C.text,
+                  fontSize: F.nota,
+                }}
+              >
+                {improntando
+                  ? `Fermo qui (${improntando.i + 1} di ${improntando.totale})`
+                  : `👯 Riconosci i doppioni di ${senzaImpronta.length} ${senzaImpronta.length === 1 ? "tomo" : "tomi"}`}
+              </button>
+            )}
+            <button
+              onClick={() => archiveRef.current?.click()}
+              disabled={restoring}
+              style={{
+                padding: "7px 16px",
+                borderRadius: R.piccolo,
+                border: `1px solid ${C.border}`,
+                color: restoring ? C.muted : C.text,
+                fontSize: F.nota,
+              }}
+            >
+              {restoring ? "Ripristino…" : "↩ Ripristina"}
+            </button>
+          </div>
+        )}
+      </>
+      )}
+
+      {referto && <Referto esito={referto} onChiudi={() => setReferto(null)} onRicuci={ricuciForzato} ricucendo={ricucendo} />}
+      {saghe && (
+        <SceltaTitoli
+          titolo="📚 Saghe da sistemare"
+          spiega="Rilette dal titolo, queste schede starebbero in un'altra saga, o nella stessa con la parte e il numero. Guarda e spunta: quello che lasci non si tocca."
+          verbo="Sistema"
+          proposte={saghe.proposte}
+          scelti={saghe.scelti}
+          onCambia={(id) =>
+            setSaghe((t) => {
+              if (!t) return t;
+              const scelti = new Set(t.scelti);
+              if (scelti.has(id)) scelti.delete(id);
+              else scelti.add(id);
+              return { ...t, scelti };
+            })
+          }
+          onChiudi={() => setSaghe(null)}
+          onVai={sistemaSaghe}
+        />
+      )}
+      {titoli && (
+        <SceltaTitoli
+          proposte={titoli.proposte}
+          scelti={titoli.scelti}
+          onCambia={(id) =>
+            setTitoli((t) => {
+              if (!t) return t;
+              const scelti = new Set(t.scelti);
+              if (scelti.has(id)) scelti.delete(id);
+              else scelti.add(id);
+              return { ...t, scelti };
+            })
+          }
+          onChiudi={() => setTitoli(null)}
+          onVai={rinominaTitoli}
+        />
+      )}
+      {archivio && (
+        <SceltaArchivio
+          archivio={archivio}
+          onCambia={(prendi) => setArchivio((a) => (a ? { ...a, prendi } : a))}
+          onChiudi={() => setArchivio(null)}
+          onVai={() => handleRestore(archivio.dentro, archivio.prendi)}
+        />
+      )}
+      {pezzi && (
+        <PezziArchivio
+          piano={pezzi.prep.piano}
+          nome={pezzi.prep.nome}
+          fatti={pezzi.fatti}
+          lavora={pezzi.lavora}
+          onScarica={scaricaPezzo}
+          onChiudi={() => !pezzi.lavora && setPezzi(null)}
+        />
       )}
     </div>
   );
+}
+
+// Il pannello che si apre PRIMA di ripristinare. Non chiede «vuoi
+// continuare?» — quello sarebbe un intralcio — ma dice cosa c'e' dentro
+// l'archivio e lascia scegliere quale meta' prendere. Le caselle partono
+// spuntate: chi tocca «Ripristina» e conferma senza leggere ottiene quello
+// che otteneva prima, cioe' tutto.
+// IL REFERTO DELLA VISITA. Non un numero: i tomi PER NOME, cosa non va e
+// cosa puoi farci. Un elenco di guai senza la cura accanto lascia il
+// lettore esattamente dov'era — sapere che un libro è rotto e non sapere
+// se è colpa del file o dell'app è peggio che non saperlo.
+function Referto({ esito, onChiudi, onRicuci, ricucendo }) {
+  const { malati = [], lontani = [], curati = [], esaminati = 0 } = esito;
+  return (
+    <div
+      onClick={onChiudi}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 55,
+        background: "#080611cc",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        animation: "bc-fade-in 0.25s ease-out",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: px(520),
+          maxHeight: "84vh",
+          overflowY: "auto",
+          borderRadius: R.grande,
+          border: `1px solid ${C.border}`,
+          background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
+          boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
+          padding: 22,
+        }}
+      >
+        <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
+          🩺 La visita ai tuoi libri
+        </h2>
+        <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 16 }}>
+          {malati.length || curati.length
+            ? `Ho guardato ${esaminati} ${esaminati === 1 ? "tomo" : "tomi"}. Quello che sapevo curare l'ho curato io; qui sotto c'è il resto.`
+            : `Ho guardato ${esaminati} ${esaminati === 1 ? "tomo" : "tomi"} e non ho trovato niente da segnalare.`}
+        </p>
+
+        {/* PRIMA QUELLO CHE HO SISTEMATO IO: il lettore non deve fare
+            niente, ma va detto — un libro ricucito in silenzio è un libro
+            cambiato in silenzio. */}
+        {curati.length > 0 && (
+          <div
+            style={{
+              padding: "12px 14px",
+              marginBottom: 8,
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.green}55`,
+              background: `${C.green}0e`,
+            }}
+          >
+            <div style={{ fontSize: F.nota, color: C.green, marginBottom: 4 }}>
+              🪡 {curati.length === 1 ? "Ricucito da me" : `Ricuciti da me (${curati.length})`}
+            </div>
+            <div style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.5 }}>
+              {curati.map((c) => c.title).join(" · ")}
+            </div>
+            <div style={{ marginTop: 4, fontSize: F.minuscolo, color: C.muted, opacity: 0.8 }}>
+              Le facciate bianche in mezzo alle scene sono sparite. Da parte tua non serve niente.
+            </div>
+          </div>
+        )}
+
+        {malati.map((m) => (
+          <div
+            key={m.id}
+            style={{
+              padding: "12px 14px",
+              marginBottom: 8,
+              borderRadius: R.piccolo,
+              border: `1px solid ${grave(m.guai) ? `${C.red}66` : C.border}`,
+              background: grave(m.guai) ? `${C.red}12` : "transparent",
+            }}
+          >
+            <div style={{ fontSize: F.nota, color: C.text, marginBottom: 5 }}>{m.title}</div>
+            {m.guai.map((g) => (
+              <div key={g} style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.5 }}>
+                <span style={{ color: GUAI[g].grave ? C.red : C.arcane }}>·</span> {GUAI[g].dice} —{" "}
+                <span style={{ opacity: 0.85 }}>
+                  {m.protetto && grave(m.guai) === false
+                    ? "non l'ho toccato da me: lo stai leggendo, e ricucirlo può spostare segnalibri e punto di lettura."
+                    : GUAI[g].cura}
+                </span>
+              </div>
+            ))}
+            {/* l'ultima parola e' del lettore: il prezzo sta scritto sul
+                tasto, e chi legge decide se pagarlo adesso o a libro chiuso */}
+            {m.protetto && (
+              <button
+                onClick={() => onRicuci?.(m.id)}
+                disabled={!!ricucendo}
+                style={{
+                  marginTop: 8,
+                  padding: "7px 14px",
+                  borderRadius: R.tondo,
+                  border: `1px solid ${C.arcane}66`,
+                  color: ricucendo ? C.muted : C.arcane,
+                  fontSize: F.piccolo,
+                }}
+              >
+                {ricucendo === m.id ? "🪡 Ricucio…" : "🪡 Ricuci lo stesso — il segno può spostarsi"}
+              </button>
+            )}
+          </div>
+        ))}
+
+        {/* i tomi rimasti nel cloud si contano e si dicono, come ovunque:
+            scaricarne venti per una visita sarebbe un prezzo che nessuno
+            ha chiesto di pagare */}
+        {lontani.length > 0 && (
+          <p style={{ fontSize: F.piccolo, color: C.muted, marginTop: 10, lineHeight: 1.5 }}>
+            {lontani.length === 1
+              ? `«${lontani[0]}» non è su questo dispositivo, quindi non l'ho guardato.`
+              : `${lontani.length} tomi non sono su questo dispositivo, quindi non li ho guardati.`}
+          </p>
+        )}
+
+        <button
+          onClick={onChiudi}
+          style={{
+            marginTop: 16,
+            padding: "9px 18px",
+            borderRadius: R.piccolo,
+            border: `1px solid ${C.border}`,
+            color: C.text,
+            fontSize: F.nota,
+          }}
+        >
+          Chiudi
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// I TITOLI SI PROPONGONO, NON SI RISCRIVONO. La ragione sta in
+// `lib/titoli.js`: il parser sbaglia in silenzio, e un romanzo
+// ribattezzato male non alza nessun errore. Qui si vede «da → a» riga per
+// riga e si spunta — un titolo sbagliato non passa perché lo guardi prima.
+function SceltaTitoli({
+  proposte,
+  scelti,
+  onCambia,
+  onChiudi,
+  onVai,
+  titolo = "✍ Titoli da ripulire",
+  spiega = "Davanti o in coda a questi titoli c'è l'etichettatura di chi ha impacchettato il file. Guarda e spunta: quello che lasci non si tocca.",
+  verbo = "Rinomina",
+}) {
+  const quanti = scelti.size;
+  return (
+    <div
+      onClick={onChiudi}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 55,
+        background: "#080611cc",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        animation: "bc-fade-in 0.25s ease-out",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: px(520),
+          // un pannello deve stare dentro lo schermo SEMPRE: qui l'elenco
+          // è lungo quanto la biblioteca, e senza questo i tasti in fondo
+          // finirebbero fuori
+          maxHeight: "100%",
+          overflowY: "auto",
+          borderRadius: R.grande,
+          border: `1px solid ${C.border}`,
+          background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
+          boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
+          padding: 22,
+        }}
+      >
+        <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
+          {titolo}
+        </h2>
+        <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 16 }}>{spiega}</p>
+
+        {proposte.map((p) => {
+          const on = scelti.has(p.id);
+          return (
+            <button
+              key={p.id}
+              onClick={() => onCambia(p.id)}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 12,
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 12px",
+                marginBottom: 6,
+                borderRadius: R.piccolo,
+                border: `1px solid ${on ? `${C.accent}88` : C.border}`,
+                background: on ? `${C.accent}14` : "transparent",
+              }}
+            >
+              <span style={{ fontSize: F.rilievo, color: on ? C.accent : C.muted }}>
+                {on ? "☑" : "☐"}
+              </span>
+              <span style={{ minWidth: 0 }}>
+                {p.sopra && (
+                  <span style={{ display: "block", color: C.text, fontSize: F.piccolo, overflowWrap: "anywhere" }}>{p.sopra}</span>
+                )}
+                <span
+                  style={{
+                    display: "block",
+                    color: C.muted,
+                    fontSize: F.minuscolo,
+                    textDecoration: "line-through",
+                  }}
+                >
+                  {p.da}
+                </span>
+                <span style={{ display: "block", color: C.text, fontSize: F.corpo, marginTop: 2 }}>
+                  {p.a}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+
+        <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "flex-end" }}>
+          <button
+            onClick={onChiudi}
+            style={{
+              padding: "10px 18px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.border}`,
+              color: C.muted,
+              fontSize: F.nota,
+            }}
+          >
+            Lascia stare
+          </button>
+          <button
+            onClick={onVai}
+            disabled={!quanti}
+            style={{
+              padding: "10px 20px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${quanti ? `${C.accent}88` : C.border}`,
+              background: quanti ? `${C.accent}22` : "transparent",
+              color: quanti ? C.accent : C.muted,
+              fontSize: F.nota,
+            }}
+          >
+            {quanti ? `${verbo} ${quanti}` : "Nessuno spuntato"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SceltaArchivio({ archivio, onCambia, onChiudi, onVai }) {
+  const { dentro, prendi } = archivio;
+  const niente = !prendi.libri && !prendi.melodie && !prendi.diario;
+  const righe = [
+    dentro.libri && {
+      id: "libri",
+      testo: `${dentro.libri} ${dentro.libri === 1 ? "libro" : "libri"}`,
+      // quello che viaggia col libro e non si vede nel conto
+      sotto: dentro.termini
+        ? `con segnalibri, evidenziazioni, punto di lettura e ${dentro.termini} ${
+            dentro.termini === 1 ? "termine" : "termini"
+          } di glossario`
+        : "con segnalibri, evidenziazioni e punto di lettura",
+    },
+    dentro.melodie && {
+      id: "melodie",
+      testo: `${dentro.melodie} ${dentro.melodie === 1 ? "melodia" : "melodie"}`,
+      // le raccolte seguono le melodie: sono elenchi di quei brani
+      sotto: dentro.raccolte
+        ? `con ${dentro.raccolte} ${dentro.raccolte === 1 ? "raccolta" : "raccolte"}`
+        : "i file caricati da te",
+    },
+    dentro.diario && {
+      id: "diario",
+      testo: "Il tuo diario di lettura",
+      sotto: frasiDiario(dentro.diario).join(" · "),
+    },
+  ].filter(Boolean);
+
+  return (
+    <div
+      onClick={onChiudi}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 55,
+        background: "#080611cc",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        animation: "bc-fade-in 0.25s ease-out",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: px(420),
+          borderRadius: R.grande,
+          border: `1px solid ${C.border}`,
+          background: `linear-gradient(180deg, ${C.card}, ${C.surface})`,
+          boxShadow: `0 0 60px ${C.arcane}22, 0 20px 50px #00000088`,
+          padding: 22,
+        }}
+      >
+        <h2 style={{ fontFamily: FONT_TITLE, fontSize: F.titolo, fontWeight: 600, color: C.text }}>
+          ↩ Cosa porto dentro?
+        </h2>
+        <p style={{ color: C.muted, fontSize: F.piccolo, marginTop: 6, marginBottom: 16 }}>
+          {righe.length
+            ? "Quello che è già qui resta com'è: dall'archivio si prende solo ciò che manca."
+            : "Questo archivio è vuoto: non c'è nulla da riportare dentro."}
+        </p>
+
+        {righe.map((r) => (
+          <button
+            key={r.id}
+            onClick={() => onCambia({ ...prendi, [r.id]: !prendi[r.id] })}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              width: "100%",
+              textAlign: "left",
+              padding: "12px 14px",
+              marginBottom: 8,
+              borderRadius: R.piccolo,
+              border: `1px solid ${prendi[r.id] ? `${C.accent}88` : C.border}`,
+              background: prendi[r.id] ? `${C.accent}14` : "transparent",
+            }}
+          >
+            <span style={{ fontSize: F.rilievo, color: prendi[r.id] ? C.accent : C.muted }}>
+              {prendi[r.id] ? "☑" : "☐"}
+            </span>
+            <span>
+              <span style={{ display: "block", color: C.text, fontSize: F.corpo }}>{r.testo}</span>
+              <span style={{ display: "block", color: C.muted, fontSize: F.minuscolo, marginTop: 2 }}>
+                {r.sotto}
+              </span>
+            </span>
+          </button>
+        ))}
+
+        {/* Quali pezzi hai scelto e quale manca: un pezzo dimenticato non e'
+            un errore — quei tomi entrano e aspettano il loro file — ma va
+            detto PRIMA, con quanti sono, o sembrerebbe un ripristino rotto. */}
+        {dentro.pezzi && (
+          <p style={{ color: dentro.insieme?.mancanti?.length ? C.accent : C.muted, fontSize: F.minuscolo, marginTop: 10 }}>
+            🧩 {dentro.pezzi}
+            {dentro.insieme?.mancanti?.length
+              ? ". Quel che sta nei pezzi mancanti entra senza file: sceglili dopo, insieme a uno .zip, e il file torna al suo posto."
+              : ""}
+          </p>
+        )}
+        {dentro.soloSchede && (
+          <p style={{ color: C.muted, fontSize: F.minuscolo, marginTop: 10 }}>
+            ☁ Archivio delle schede{dentro.quando ? ` del ${new Date(dentro.quando).toLocaleDateString("it-IT", { day: "numeric", month: "long" })}` : ""}: i file dei libri non ci sono, si rimettono aggiungendoli.
+          </p>
+        )}
+        {dentro.estranei > 0 && (
+          <p style={{ color: C.muted, fontSize: F.minuscolo, marginTop: 6 }}>
+            {dentro.estranei === 1
+              ? "Un file scelto non è di questo archivio: lo lascio stare."
+              : `${dentro.estranei} file scelti non sono di questo archivio: li lascio stare.`}
+          </p>
+        )}
+        {/* Detto prima, non dopo: a ripristino fatto sarebbe solo un rimpianto. */}
+        {dentro.parziale && dentro.libri > 0 && prendi.libri && (
+          <p style={{ color: C.accent, fontSize: F.minuscolo, marginTop: 10 }}>
+            ⚠ Archivio vecchio: segnalibri ed evidenziazioni non erano stati salvati.
+          </p>
+        )}
+
+        <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "flex-end" }}>
+          <button
+            onClick={onChiudi}
+            style={{
+              padding: "10px 18px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${C.border}`,
+              color: C.muted,
+              fontSize: F.nota,
+            }}
+          >
+            Lascia stare
+          </button>
+          <button
+            onClick={onVai}
+            disabled={niente}
+            style={{
+              padding: "10px 20px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${niente ? C.border : `${C.accent}88`}`,
+              background: niente ? "transparent" : `${C.accent}22`,
+              color: niente ? C.muted : C.accent,
+              fontSize: F.nota,
+            }}
+          >
+            Ripristina
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function quantoArchivio(prep) {
+  const parti = [
+    prep.libri ? `${prep.libri} ${prep.libri === 1 ? "libro" : "libri"}` : null,
+    prep.melodie ? `${prep.melodie} ${prep.melodie === 1 ? "melodia" : "melodie"}` : null,
+  ].filter(Boolean);
+  return parti.join(" e ");
 }

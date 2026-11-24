@@ -1,4 +1,94 @@
+import { putTrack, getTrack, removeTrack } from "./bookStore.js";
+
 const FAVS_KEY = "bc_music_favs";
+
+// DUE SORGENTI, UN SOLO ELENCO DI MELODIE.
+//
+// La riga che divide tutto e' una sola: CHI SUONA. Un file caricato dal
+// lettore lo suona un <audio> nostro, in cima alla pagina, e il browser
+// tiene viva la scheda a schermo spento — e' lo stesso meccanismo con cui
+// sul web suonano radio e podcast. YouTube no: quel lettore sta in un
+// iframe, quando la pagina va in secondo piano si mette in pausa da solo e
+// il browser gli toglie il tempo. Non c'e' chiamata che lo impedisca,
+// perche' non e' nostro — e non lo sarebbe nemmeno dentro un'app Android,
+// dove a schermo spento la pagina e' in secondo piano lo stesso.
+//
+// C'e' stata per poco anche una terza sorgente, l'indirizzo diretto di un
+// flusso audio. Tolta: nessuno la usava, e portava con se' un pezzo di
+// fragilita' tutto suo (riconnessioni, mixed content, indirizzi che non
+// sono audio) per una funzione che non serviva.
+//
+// `trackId` → file dell'utente; `url` → YouTube.
+export const isFile = (f) => !!f?.trackId;
+
+const AUDIO_OK = /^audio\//;
+// un file letto da una cartella puo' arrivare senza tipo, o con quello
+// generico di chi non sa: Android non sempre lo dice, e allora decide
+// l'estensione. Un tipo vero che non e' audio resta un no («audio.mp3» che
+// si dichiara testo non entra)
+const AUDIO_EST = { mp3: "audio/mpeg", m4a: "audio/mp4", aac: "audio/aac", ogg: "audio/ogg", oga: "audio/ogg", opus: "audio/ogg", flac: "audio/flac", wav: "audio/wav", weba: "audio/webm" };
+const estensione = (nome) => (String(nome || "").match(/\.([a-z0-9]+)$/i)?.[1] || "").toLowerCase();
+const SENZA_TIPO = new Set(["", "application/octet-stream"]);
+export const tipoAudio = (file) =>
+  AUDIO_OK.test(file?.type || "") ? file.type : SENZA_TIPO.has(file?.type || "") ? AUDIO_EST[estensione(file?.name)] || "" : "";
+export const nomeMelodia = (nomeFile) => String(nomeFile || "").replace(/\.[^.]+$/, "") || "Melodia senza nome";
+
+export async function addTrackFile(file) {
+  const mime = tipoAudio(file);
+  if (!mime) return null;
+  const trackId = crypto.randomUUID();
+  await putTrack(trackId, file);
+  const now = Date.now();
+  // `file`: il nome del file com'era, perche' un brano rinominato qui si
+  // riconosca lo stesso quando lo stesso file arriva sull'altro dispositivo
+  return {
+    id: crypto.randomUUID(),
+    name: nomeMelodia(file.name),
+    file: file.name,
+    trackId,
+    mime,
+    size: file.size,
+    addedAt: now,
+    updatedAt: now,
+  };
+}
+
+// I BRANI VIAGGIANO, I BYTE NO (chiesto dal lettore, con le raccolte del
+// tablet vuote sul PC: «c'è modo di allineare i due dispositivi senza però
+// usare il cloud?»). Il nome di ogni brano arriva sull'altro dispositivo,
+// dove non suona finche' non ci porti il file (cavo, Quick Share, una
+// chiavetta). Il file portato si riconosce dalla voce che c'e' gia' — stesso
+// peso, e lo stesso nome o lo stesso nome di file — e i suoi byte si
+// custodiscono sotto la SUA chiave: le raccolte restano quelle, senza un
+// doppione col suo id nuovo. Senza un nome uguale (un brano rinominato prima
+// che si ricordasse il nome del file) basta il peso, se e' uno solo fra i
+// brani che qui mancano e il tipo e' lo stesso: due audio diversi con gli
+// stessi byte contati non capitano.
+const stessoNome = (f, file) => f.name === nomeMelodia(file.name) || (!!f.file && f.file === file.name);
+
+export function voceDaAdottare(file, favs = [], qui = new Set()) {
+  if (!file) return null;
+  const mancano = favs.filter((f) => !f.deleted && f.trackId && !qui.has(f.trackId) && f.size === file.size);
+  const perNome = mancano.find((f) => stessoNome(f, file));
+  if (perNome) return perNome;
+  const tipo = tipoAudio(file);
+  return mancano.length === 1 && tipo && mancano[0].mime === tipo ? mancano[0] : null;
+}
+
+// i byte di un file portato qui, sotto la chiave del brano che li aspettava
+export async function adottaFile(voce, file) {
+  if (!voce?.trackId || !tipoAudio(file)) return false;
+  await putTrack(voce.trackId, file);
+  return true;
+}
+
+// i brani da file di cui questo dispositivo non ha i byte
+export const braniAltrove = (favs = [], qui) =>
+  qui ? favs.filter((f) => !f.deleted && f.trackId && !qui.has(f.trackId)) : [];
+
+export const loadTrack = (trackId) => getTrack(trackId);
+
+export const dropTrack = (trackId) => removeTrack(trackId).catch(() => {});
 
 export function parseYouTube(input) {
   try {
@@ -19,9 +109,9 @@ export function parseYouTube(input) {
   }
 }
 
-export function embedUrl(src) {
+export function embedUrl(src, { inizio = 0 } = {}) {
   const base = "https://www.youtube-nocookie.com/embed/";
-  const params = "autoplay=1&enablejsapi=1&rel=0";
+  const params = `autoplay=1&enablejsapi=1&rel=0${inizio > 0 && src.kind === "video" ? `&start=${Math.floor(inizio)}` : ""}`;
   if (src.kind === "playlist")
     return `${base}${src.video || "videoseries"}?list=${src.list}&${params}`;
   return `${base}${src.video}?${params}`;
@@ -40,13 +130,283 @@ export function getFavoritesRaw() {
 
 export const getFavorites = () => getFavoritesRaw().filter((f) => !f.deleted);
 
+// LA SALA SI RILEGGE QUANDO LA MUSICA CAMBIA SOTTO DI LEI (chiesto dal
+// lettore: «se metto nuove raccolte o altro devo vederle anche sugli altri
+// dispositivi»): la sincronizzazione scrive melodie e raccolte mentre la
+// sala e' aperta, e la sala le aveva lette una volta sola, all'apertura
+export const MUSICA_CAMBIATA = "bc:musica";
+const avvisa = () => {
+  try {
+    globalThis.dispatchEvent?.(new Event(MUSICA_CAMBIATA));
+  } catch {
+    /* fuori dal browser nessuno ascolta */
+  }
+};
+
 export function writeFavorites(list) {
   localStorage.setItem(FAVS_KEY, JSON.stringify(list));
+  avvisa();
 }
 
 export function saveFavorites(list) {
   writeFavorites(list);
   localStorage.setItem("bc_prefs_upd", String(Date.now()));
+}
+
+// LE RACCOLTE. Una raccolta e' un nome e un ELENCO DI ID di melodie, mai
+// le melodie stesse: rinominare o togliere una melodia non deve costringere
+// a rincorrerla dentro ogni raccolta. Il rovescio e' che un id puo' non
+// esistere piu', e allora si salta — `braniDi` lo fa da solo.
+// Stessa forma dei preferiti (id, addedAt, updatedAt, deleted), cosi' la
+// sincronizzazione le fonde con la stessa funzione senza casi speciali.
+const LISTS_KEY = "bc_music_lists";
+
+export function getListsRaw() {
+  try {
+    const v = JSON.parse(localStorage.getItem(LISTS_KEY));
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+export const getLists = () => getListsRaw().filter((r) => !r.deleted);
+
+export function writeLists(list) {
+  localStorage.setItem(LISTS_KEY, JSON.stringify(list));
+  avvisa();
+}
+
+export function saveLists(list) {
+  writeLists(list);
+  localStorage.setItem("bc_prefs_upd", String(Date.now()));
+}
+
+export function nuovaRaccolta(name) {
+  const now = Date.now();
+  return { id: crypto.randomUUID(), name: name || "Raccolta senza nome", brani: [], addedAt: now, updatedAt: now };
+}
+
+// UNA CARTELLA DIVENTA UNA RACCOLTA (chiesto dal lettore, con la foto della
+// cartella «Music» del tablet: «Atmosfera - Fantasy epica», «Horror
+// playlist», «WARHAMMER 40k»…: «mi permetti di caricare sul player
+// direttamente una raccolta?»). Ogni sottocartella con della musica e' una
+// raccolta col suo nome, e i brani sciolti della cartella scelta fanno una
+// raccolta col nome di lei; una cartella sola e' una raccolta sola. Le
+// cartelle nascoste («.thumbnails») non si guardano. Dentro una raccolta i
+// brani stanno nell'ordine dei nomi, coi numeri contati da numeri («2 -» prima
+// di «10 -»). E SI PUO' RIFARE: una raccolta col nome che c'e' gia' prende
+// solo i brani che le mancano, e un brano gia' custodito (stesso nome, stesso
+// peso) non si custodisce due volte, si rimette nella raccolta.
+//
+// `voci`: { file, percorso } con il percorso DENTRO la cartella scelta
+// («WARHAMMER 40k/Battle.mp3» → ["WARHAMMER 40k", "Battle.mp3"]).
+const nomeGiusto = (s) => String(s || "").trim().toLocaleLowerCase();
+const ordineNaturale = new Intl.Collator("it", { numeric: true, sensitivity: "base" });
+
+export function pianoDaCartella(radice, voci, { raccolte = [], favs = [], qui = null } = {}) {
+  const gruppi = new Map();
+  for (const v of voci || []) {
+    const percorso = (v.percorso || []).filter(Boolean);
+    if (!v.file || !percorso.length || percorso.some((p) => p.startsWith("."))) continue;
+    if (!tipoAudio(v.file)) continue;
+    const nome = percorso.length > 1 ? percorso[0] : radice || "Raccolta senza nome";
+    if (!gruppi.has(nome)) gruppi.set(nome, []);
+    gruppi.get(nome).push({ file: v.file, ordine: percorso.join("/") });
+  }
+  const vive = raccolte.filter((r) => !r.deleted);
+  const custodite = favs.filter((f) => !f.deleted && f.trackId);
+  // i brani arrivati dall'altro dispositivo senza byte: un file della
+  // cartella che e' uno di loro porta i byte a lui (`voceDaAdottare`)
+  const adottati = [];
+  const presi = new Set();
+  const qua = qui || new Set(custodite.map((f) => f.trackId));
+  const piano = [];
+  for (const [nome, brani] of gruppi) {
+    brani.sort((a, b) => ordineNaturale.compare(a.ordine, b.ordine));
+    const esistente = vive.find((r) => nomeGiusto(r.name) === nomeGiusto(nome)) || null;
+    const dentro = new Set(esistente?.brani || []);
+    const nuovi = [];
+    const rimessi = [];
+    // `sequenza`: i brani da mettere nella raccolta, nell'ordine dei nomi,
+    // ognuno o un file da custodire o una melodia che c'e' gia'
+    const sequenza = [];
+    for (const { file } of brani) {
+      const lontano = voceDaAdottare(file, custodite.filter((f) => !presi.has(f.id)), qua);
+      if (lontano) {
+        presi.add(lontano.id);
+        adottati.push({ voce: lontano, file });
+      }
+      const gia = lontano || custodite.find((f) => stessoNome(f, file) && f.size === file.size);
+      if (gia) {
+        if (!dentro.has(gia.id) && !rimessi.includes(gia.id)) {
+          rimessi.push(gia.id);
+          sequenza.push({ id: gia.id });
+        }
+      } else {
+        nuovi.push(file);
+        sequenza.push({ file });
+      }
+    }
+    piano.push({ nome, id: esistente?.id || null, nuovi, rimessi, sequenza, tutti: brani.length });
+  }
+  piano.sort((a, b) => ordineNaturale.compare(a.nome, b.nome));
+  // la lista dei brani da adottare sta sulla lista, non in ogni raccolta: un
+  // brano e' uno anche se sta in due cartelle
+  piano.adottati = adottati;
+  return piano;
+}
+
+// I BRANI DOPPI (segnalato dal lettore con la sala del tablet: «65 brani · 32
+// non qui», e la raccolta aperta in due giri alfabetici, il secondo tutto «non
+// è su questo dispositivo»). La stessa cartella importata su tutt'e due i
+// dispositivi prima che i brani viaggiassero: ogni importazione ha fatto le
+// sue voci, la sincronizzazione le ha messe insieme nella raccolta col suo
+// nome, e ogni canzone c'e' due volte, una coi byte qui e una coi byte
+// sull'altro. Doppi sono i brani da file con lo STESSO PESO e lo stesso nome
+// (o lo stesso nome di file). Si tiene quello coi byte qui, poi il piu'
+// vecchio; gli altri diventano lapidi che dicono dove sono andati (`unito`).
+const nomiDi = (f) => [f.name, f.file ? nomeMelodia(f.file) : null].filter(Boolean).map(nomeGiusto);
+export function braniDoppi(favs = [], qui = null) {
+  const perPeso = new Map();
+  for (const f of favs) {
+    if (f?.deleted || !f?.trackId || !(f.size > 0)) continue;
+    if (!perPeso.has(f.size)) perPeso.set(f.size, []);
+    perPeso.get(f.size).push(f);
+  }
+  const doppi = [];
+  for (const stessi of perPeso.values()) {
+    const resto = [...stessi];
+    while (resto.length > 1) {
+      const loro = [resto.shift()];
+      const nomi = new Set(nomiDi(loro[0]));
+      for (let i = 0; i < resto.length; i++) {
+        if (!nomiDi(resto[i]).some((n) => nomi.has(n))) continue;
+        for (const n of nomiDi(resto[i])) nomi.add(n);
+        loro.push(...resto.splice(i, 1));
+        i = -1;
+      }
+      if (loro.length < 2) continue;
+      const qua = (f) => (qui?.has(f.trackId) ? 1 : 0);
+      loro.sort((a, b) => qua(b) - qua(a) || (a.addedAt || 0) - (b.addedAt || 0) || String(a.id).localeCompare(String(b.id)));
+      doppi.push({ tieni: loro[0], via: loro.slice(1) });
+    }
+  }
+  return doppi.sort((a, b) => ordineNaturale.compare(a.tieni.name || "", b.tieni.name || ""));
+}
+
+// L'UNIONE: le voci in piu' diventano lapidi con `unito`, e nelle raccolte il
+// brano tenuto prende il posto della prima delle sue copie, le altre escono
+export function unisciDoppi(favs = [], raccolte = [], doppi = [], ora = Date.now()) {
+  const verso = new Map();
+  for (const d of doppi) for (const v of d.via) verso.set(v.id, d.tieni.id);
+  const nuoveFavs = favs.map((f) => (verso.has(f.id) ? { ...f, deleted: true, unito: verso.get(f.id), updatedAt: ora } : f));
+  const nuoveRac = raccolte.map((r) => {
+    if (r.deleted || !(r.brani || []).some((id) => verso.has(id))) return r;
+    const brani = [...new Set(r.brani.map((id) => verso.get(id) || id))];
+    return { ...r, brani, updatedAt: ora };
+  });
+  return { favs: nuoveFavs, raccolte: nuoveRac };
+}
+
+// la voce viva in cui un brano unito e' andato (anche dopo due unioni)
+export function doveUnito(f, favs = []) {
+  let x = f;
+  for (let i = 0; i < 5 && x?.deleted && x.unito; i++) x = favs.find((y) => y.id === x.unito);
+  return x && !x.deleted ? x : null;
+}
+
+// la chiave dei byte che un legame vecchio (un libro, un brano) deve cercare
+export function tracciaViva(trackId, favs = []) {
+  const morto = trackId && favs.find((f) => f.deleted && f.unito && f.trackId === trackId);
+  return (morto && doveUnito(morto, favs)?.trackId) || trackId;
+}
+
+// I BYTE DELLE LAPIDI. Una lapide qualunque lascia andare i suoi byte; una
+// lapide unita PRIMA li porta sotto la chiave del brano tenuto, se qui lui
+// non li ha: sul PC i file sono quelli delle voci tolte dall'unione fatta sul
+// tablet, e cancellarli lascerebbe il brano tenuto muto. Si decide sullo
+// stato (byte qui, voce tenuta), quindi si puo' rifare: un trasloco
+// interrotto riprende al giro dopo. Un intoppo e' di quel brano, e i suoi
+// byte restano.
+export async function traslocaLapidi(favs = [], { qui, prendi = getTrack, metti = putTrack, togli = removeTrack } = {}) {
+  const esito = { spostati: 0, tolti: 0 };
+  if (!qui) return esito;
+  for (const f of favs) {
+    if (!f?.deleted || !f.trackId || !qui.has(f.trackId)) continue;
+    try {
+      const tenuto = f.unito ? doveUnito(f, favs) : null;
+      if (tenuto?.trackId && tenuto.trackId !== f.trackId && !qui.has(tenuto.trackId)) {
+        const blob = await prendi(f.trackId);
+        if (!blob) continue;
+        await metti(tenuto.trackId, blob);
+        qui.add(tenuto.trackId);
+        esito.spostati += 1;
+      }
+      if (tenuto?.trackId === f.trackId) continue;
+      await togli(f.trackId);
+      qui.delete(f.trackId);
+      esito.tolti += 1;
+    } catch {
+      /* i byte restano dove sono: il prossimo giro riprova */
+    }
+  }
+  return esito;
+}
+
+// i file di una cartella scelta con `showDirectoryPicker`, sottocartelle
+// comprese (fino a tre livelli: una raccolta di raccolte, non un disco)
+export async function vociDellaCartella(cartella, percorso = [], fuori = []) {
+  if (percorso.length > 3) return fuori;
+  for await (const [nome, voce] of cartella.entries()) {
+    if (nome.startsWith(".")) continue;
+    if (voce.kind === "file") fuori.push({ file: await voce.getFile(), percorso: [...percorso, nome] });
+    else if (voce.kind === "directory") await vociDellaCartella(voce, [...percorso, nome], fuori);
+  }
+  return fuori;
+}
+
+// i brani di una raccolta che qui non sono ancora arrivati: un file sale su
+// Drive dal dispositivo dove l'hai caricato, e solo da li' viaggia. Un brano
+// tolto (lapide) non e' «in arrivo»: e' andato
+export const nonArrivati = (raccolta, favsRaw = []) =>
+  (raccolta?.brani || []).filter((id) => !favsRaw.some((f) => f.id === id)).length;
+
+// le melodie di una raccolta, nell'ordine in cui sono state messe, saltando
+// quelle che nel frattempo sono sparite
+export const braniDi = (raccolta, favs) =>
+  (raccolta?.brani || []).map((id) => favs.find((f) => f.id === id && !f.deleted)).filter(Boolean);
+
+// IL VOLUME IN APP. Serve a tenere la musica sotto la lettura senza
+// abbassare tutto il tablet — le notifiche e la sveglia restano dove sono.
+// E' una cosa del dispositivo, non della biblioteca (sul tablet a letto si
+// tiene basso, altrove no): per questo sta fuori dalle preferenze che
+// viaggiano nella sincronizzazione. Parte da 1: chi aggiorna non deve
+// trovarsi la musica piu' bassa di ieri senza averla toccata.
+const VOL_KEY = "bc_music_vol";
+
+export function getVolume() {
+  const v = parseFloat(localStorage.getItem(VOL_KEY));
+  return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
+}
+
+// Quanto manca allo spegnimento, in poche lettere: sta accanto ai comandi
+// del player, dove lo spazio e' quello che e'. Sotto il minuto passa ai
+// secondi — e' il tratto in cui la musica sta gia' sfumando, e vedere
+// «1 min» fermo li' sembrerebbe un conto rotto.
+export function restaDa(ms) {
+  if (ms == null) return null;
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  if (s < 60) return `${s} s`;
+  const m = Math.ceil(s / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return r ? `${h} h ${r}` : `${h} h`;
+}
+
+export function saveVolume(v) {
+  localStorage.setItem(VOL_KEY, String(Math.min(1, Math.max(0, v))));
 }
 
 export function getBookMusic(bookId) {
@@ -57,7 +417,176 @@ export function getBookMusic(bookId) {
   }
 }
 
+// IL LEGAME FRA UN LIBRO E LA SUA MUSICA porta anche la RACCOLTA che
+// suonava. Segnalato dal lettore: «riproduce sempre la stessa canzone… sto
+// ascoltando la raccolta di Warhammer». Il libro ricordava solo il brano,
+// e «▶ Riprendi» lo suonava da solo, cioe' in ripetizione (una melodia
+// sola gira all'infinito): la raccolta non andava piu' avanti. Adesso si
+// riprende la raccolta da quel brano.
+//
+// E LA CODA SI RICORDA ANCHE SENZA RACCOLTA (il lettore, di nuovo: «perche'
+// sta girando in un loop infinito lo stesso brano mentre leggo?»). La
+// raccolta fatta partire a caso, o la lista dei «Brani», suonavano in coda
+// ma senza raccolta, e il legame diceva `raccolta: null`, cioe' «melodia
+// scelta da sola»: «▶ Riprendi» la suonava in ripetizione. Ora il legame
+// dice da dove viene la coda (`raccolta`, anche a caso), che e' una coda
+// (`coda`) e se era a caso (`casuale`); la melodia sola lo dice lei (`sola`).
+export function legameMusica(music) {
+  const c = music?.current;
+  if (!c) return null;
+  const base = { url: c.url, trackId: c.trackId, name: c.name };
+  const q = music.queue;
+  if (!q) return { ...base, raccolta: null, sola: true };
+  return { ...base, raccolta: q.origine || q.raccolta || null, coda: true, ...(q.shuffle ? { casuale: true } : {}) };
+}
+
+const stessaMelodia = (a, b) => (a?.trackId ? a.trackId === b?.trackId : !!a?.url && a.url === b?.url);
+
+// come si riprende la musica di un libro: la raccolta dal suo brano, tutte
+// le melodie dal suo brano, o la melodia sola, solo se era sola. Un legame
+// scritto prima (senza `coda` ne' `sola`, con o senza `raccolta: null`, che
+// la coda a caso scriveva per sbaglio) prende la raccolta che contiene quel
+// brano; e cio' che non sta in nessuna raccolta riprende tutte le melodie,
+// mai un brano solo in ripetizione che nessuno ha chiesto
+export function comeRiprendere(pair, { raccolte = getLists(), favs = getFavorites(), tutte = getFavoritesRaw() } = {}) {
+  if (!pair) return null;
+  // il brano di un libro puo' essere una copia unita a un'altra (`braniDoppi`)
+  if (pair.trackId) pair = { ...pair, trackId: tracciaViva(pair.trackId, tutte) };
+  if (pair.sola) return { melodia: pair };
+  const casuale = !!pair.casuale;
+  const candidate = pair.raccolta ? raccolte.filter((r) => r.id === pair.raccolta) : pair.coda ? [] : raccolte;
+  for (const r of candidate) {
+    const brani = braniDi(r, favs);
+    const da = brani.findIndex((b) => stessaMelodia(pair, b));
+    if (da >= 0) return { raccolta: r, brani, da, casuale };
+  }
+  const da = favs.findIndex((b) => stessaMelodia(pair, b));
+  if (da >= 0 && favs.length > 1) return { tutte: true, brani: favs, da, casuale };
+  return { melodia: pair };
+}
+
 export function setBookMusic(bookId, pair) {
   localStorage.setItem(`bc_music_${bookId}`, JSON.stringify(pair));
   localStorage.setItem(`bc_upd_${bookId}`, String(Date.now()));
+}
+
+// IL PUNTO DI OGNI MELODIA (chiesto dal lettore: «quando si ferma la
+// melodia ripartire dal punto in cui si è interrotta e non farla partire di
+// nuovo dall'inizio»). Spenta a mano, addormentata dal timer o chiusa con
+// l'app: rimessa, riparte da dov'era. Una melodia arrivata in fondo riparte
+// dall'inizio, e i primi secondi non contano. E' una cosa del dispositivo,
+// come il volume: non viaggia. Le playlist di YouTube non hanno un punto
+// solo, e restano fuori.
+const PUNTI_KEY = "bc_melodia_punti";
+export const PUNTI_TENUTI = 60;
+export const MARGINE = 5;
+
+export function chiaveMelodia(voce) {
+  if (voce?.trackId) return `f:${voce.trackId}`;
+  const src = parseYouTube(voce?.url || "");
+  return src?.kind === "video" ? `y:${src.video}` : null;
+}
+
+const leggiMappa = (st, k) => {
+  try {
+    const v = JSON.parse(st.getItem(k));
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+};
+const scriviMappa = (st, k, m) => {
+  try {
+    st.setItem(k, JSON.stringify(m));
+  } catch {
+    /* un punto che non si scrive non deve fermare la musica */
+  }
+};
+
+export function puntoDi(voce, st = globalThis.localStorage) {
+  const k = chiaveMelodia(voce);
+  return leggiMappa(st, PUNTI_KEY)[k]?.t || 0;
+}
+
+export function segnaPunto(voce, t, durata, { st = globalThis.localStorage, ora = Date.now() } = {}) {
+  const k = chiaveMelodia(voce);
+  if (!k || !Number.isFinite(t)) return;
+  const m = leggiMappa(st, PUNTI_KEY);
+  if (t < MARGINE || durata - t < MARGINE) delete m[k];
+  else m[k] = { t: Math.floor(t), q: ora };
+  const tenuti = Object.entries(m).sort((a, b) => b[1].q - a[1].q).slice(0, PUNTI_TENUTI);
+  scriviMappa(st, PUNTI_KEY, Object.fromEntries(tenuti));
+}
+
+// arrivata in fondo: la prossima volta da capo
+export function dimenticaPunto(voce, st = globalThis.localStorage) {
+  const m = leggiMappa(st, PUNTI_KEY);
+  delete m[chiaveMelodia(voce)];
+  scriviMappa(st, PUNTI_KEY, m);
+}
+
+// dove riprendere una melodia appena si e' caricata: un punto oltre la
+// fine (il file e' cambiato) non vale
+export const daDoveRiprendere = (punto, durata) => (punto >= MARGINE && (!(durata > 0) || durata - punto >= MARGINE) ? punto : 0);
+
+// la raccolta ricorda il brano a cui si era: «▶» riparte da lui
+const DOVE_KEY = "bc_raccolta_dove";
+
+export function segnaDove(raccoltaId, melodiaId, st = globalThis.localStorage) {
+  scriviMappa(st, DOVE_KEY, { ...leggiMappa(st, DOVE_KEY), [raccoltaId]: melodiaId });
+}
+
+export function doveDi(raccolta, brani, st = globalThis.localStorage) {
+  const id = leggiMappa(st, DOVE_KEY)[raccolta?.id];
+  const i = brani.findIndex((b) => b.id === id);
+  return i < 0 ? 0 : i;
+}
+
+// «2:13», «1:02:05»
+export function minuti(sec) {
+  const s = Math.max(0, Math.floor(sec || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = String(s % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${r}` : `${m}:${r}`;
+}
+
+// IL LETTORE COME QUELLI CHE SI CONOSCONO (chiesto dal lettore: «un mini
+// player fatto come si deve, come se avessi YouTube o Spotify»).
+//
+// «⏮» come li': a brano avviato da piu' di tre secondi lo riavvolge, nei
+// primi secondi torna al brano prima. Al primo brano riavvolge e basta,
+// e fuori da una coda (sempre al primo) non c'e' un «prima».
+export const RIAVVOLGE_DOPO = 3;
+export function indietroDa({ i = 0, t = 0 } = {}) {
+  if (t > RIAVVOLGE_DOPO || i <= 0) return { riavvolgi: true };
+  return { i: i - 1 };
+}
+
+// i brani che vengono dopo quello che suona, nell'ordine in cui verranno:
+// in fondo alla coda si ricomincia
+export function prossimi(elenco = [], i = 0, quanti = 5) {
+  const fuori = [];
+  for (let k = 1; k <= Math.min(quanti, elenco.length - 1); k++) {
+    const j = (i + k) % elenco.length;
+    fuori.push({ ...elenco[j], indice: j });
+  }
+  return fuori;
+}
+
+// LA COPERTINA DI UNA MELODIA, che un file audio non ha: un riquadro coi
+// colori del tema, girato e segnato in modo diverso per ogni nome, cosi'
+// due brani si distinguono a colpo d'occhio e lo stesso brano ha sempre la
+// stessa faccia
+const GLIFI = ["♫", "♪", "☾", "✦", "♬", "✧", "❦", "☽"];
+export function facciaDi(nome = "") {
+  let h = 2166136261;
+  for (const ch of String(nome)) h = Math.imul(h ^ ch.codePointAt(0), 16777619) >>> 0;
+  return { angolo: h % 360, glifo: GLIFI[(h >>> 9) % GLIFI.length], verso: (h >>> 13) % 2 === 0 };
+}
+
+// la posizione toccata sulla barra, in secondi: dentro il brano, sempre
+export function tempoAl(frazione, durata) {
+  if (!(durata > 0) || !Number.isFinite(durata)) return 0;
+  return Math.min(durata, Math.max(0, frazione * durata));
 }

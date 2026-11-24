@@ -1,0 +1,622 @@
+import { testoDelLibro, eContorno, testoBlocco, puntoBlocco } from "./testoLibro.js";
+import { eFumetto } from "./fumetto.js";
+import { chiedi, getOracleKey, TETTO_SCHEDA } from "./oracle.js";
+import { parteDiUnaStoria } from "./saga.js";
+import { frontiera } from "./frontiera.js";
+
+// «DOVE ERAVAMO RIMASTI» — la storia fin qui, e non una riga oltre.
+//
+// Riprendi un libro dopo tre settimane e non ti serve sapere chi è un
+// personaggio: ti serve sapere cosa stava succedendo. È la stessa promessa
+// della scheda di un personaggio, con la stessa difesa — al modello arriva
+// solo quello che sta dentro la frontiera di lettura — ma raccolta al
+// contrario: qui non si cerca un nome, si campiona la storia.
+//
+// Si chiede col dito, mai da sola all'apertura del libro. Un riassunto che
+// parte da solo ogni volta che apri il tomo è una chiamata sprecata nove
+// volte su dieci, ed è anche un'invadenza: chi sa benissimo dov'era rimasto
+// vuole solo leggere.
+
+// Sotto questa misura sono titoletti e monosillabi. La soglia sta bassa
+// apposta: in un romanzo dialogato quasi ogni riga e' corta, e alzarla
+// svuoterebbe proprio la coda — cioe' la scena che avevi sotto gli occhi.
+const MIN_PARAGRAFO = 60;
+const PARAGRAFO = 480;
+// quanti paragrafi si tengono in mano per volume prima di diradare
+const TETTO = 300;
+// la finestra di coda resta a densità piena: è il «dove eri rimasto», e va
+// letta di fila come una scena, non a campione
+const CODA = 60;
+
+const DA_APERTURA = 4;
+const DA_CORPO = 8;
+const DA_CODA = 12;
+const DA_PRIMA = 6;
+const APERTURA = 0.2;
+// quanti paragrafi bastano per dire «siamo dentro la storia»: prima di
+// questi, un titolo tipo «Indice» o «Copyright» e' materiale di TESTA e si
+// salta; dopo, e' il materiale di coda e la storia e' finita li'
+const DENTRO_LA_STORIA = 30;
+
+const SISTEMA = [
+  "Sei l'Oracolo di un'app di lettura. Il lettore riprende un libro dopo",
+  "averlo lasciato lì per un po' e ti chiede dove eravamo rimasti. Gli mostri",
+  "dei passaggi presi da quello che ha letto FINORA, in ordine di lettura.",
+  "REGOLA ASSOLUTA: racconta soltanto ciò che si ricava da quei passaggi.",
+  "Non usare nulla che sai di questo libro o di questa saga da altre fonti:",
+  "quel che sai potrebbe venire da pagine che non ha ancora letto, e",
+  "rovinargliele. Non anticipare MAI cosa succederà, nemmeno per accennarlo.",
+  "LINGUA: scrivi SEMPRE IN ITALIANO, anche quando i passaggi sono in",
+  "un'altra lingua — la scheda è parte di un'app italiana. Nomi di persone",
+  "e di luoghi restano come stanno nei passaggi, senza tradurli. Scrivi un",
+  "italiano curato e naturale, da lettore che racconta.",
+  "FORMA: prosa, non un elenco. Due paragrafi brevi separati da una riga",
+  "vuota, testo puro senza markdown, senza titoletti.",
+  "Il primo paragrafo è la storia fin qui: da dove è partita, chi ci si muove",
+  "dentro, cosa è successo di importante, come si è arrivati al punto in cui",
+  "il lettore si è fermato.",
+  "Il secondo paragrafo è dove si è fermato: la scena che aveva sotto gli",
+  "occhi, chi c'era, cosa stava per succedere. Chiudilo lì, sulla soglia,",
+  "senza dire una parola di quello che viene dopo.",
+  "Se i passaggi non bastano a ricostruire il filo, dillo in una riga invece",
+  "di inventare.",
+].join(" ");
+
+// Un paragrafo per volta, e la lista non cresce all'infinito: quando supera
+// il tetto si dirada tenendo uno su due. Il passo raddoppia, la copertura
+// resta distesa su tutto il letto, e la memoria non se ne accorge.
+// Esportate per essere provate, come `contentStyles`: il diradamento e la
+// finestra di coda sono la parte che sbaglia in silenzio — una coda che
+// cresce senza limite o un corpo che non si dirada non alzano errori,
+// mandano al modello la storia sbagliata.
+export function nuovaRaccolta() {
+  // `esteso` = quanto testo si e' scorso davvero: e' la misura del volume,
+  // e serve a capire quanti LIBRI tiene dentro un file solo
+  return { corpo: [], coda: [], passo: 1, visti: 0, esteso: 0 };
+}
+
+export function raccogli(r, testo) {
+  const t = String(testo || "").replace(/\s+/g, " ").trim();
+  if (t.length < MIN_PARAGRAFO) return;
+  r.esteso += t.length;
+  const pezzo = t.length > PARAGRAFO ? `${t.slice(0, PARAGRAFO)}…` : t;
+  r.coda.push(pezzo);
+  if (r.coda.length > CODA) r.coda.shift();
+  if (r.visti++ % r.passo === 0) r.corpo.push(pezzo);
+  if (r.corpo.length > TETTO) {
+    r.corpo = r.corpo.filter((_, i) => i % 2 === 0);
+    r.passo *= 2;
+  }
+}
+
+// LE ULTIME PAGINE DEL FILE NON SONO IL FINALE DELLA STORIA.
+//
+// In fondo a un romanzo ci sono l'elenco dei personaggi, i ringraziamenti,
+// l'appendice, l'estratto del prossimo volume. La coda si prende dal
+// FONDO del testo, e su un libro finito finiva dritta lì dentro: alla
+// domanda «come si è chiuso?» la scheda rispondeva «le ultime pagine che
+// ho sono un elenco di personaggi» (segnalato dal lettore). Da un elenco
+// di nomi non si ricava una scena.
+//
+// Si riconosce dal titolo del documento o dalla sua prima intestazione:
+// quando comincia il materiale di contorno, la storia è finita lì.
+// (la regola sta in `testoLibro.js`: l'estrazione segna il contorno una volta
+// sola per capitolo, e qui si legge il segno)
+export { eContorno };
+
+// La raccolta si fa sul TESTO TENUTO (`testoLibro.js`): i volumi finiti non
+// cambiano piu', e rileggerli da capo a ogni scheda era il grosso dell'attesa.
+// Le regole sono quelle di quando si apriva il libro — lo stesso ordine dei
+// paragrafi, lo stesso taglio sul segno, lo stesso contorno che chiude.
+export function tramaDaTesto(testo, fino, cmp) {
+  const r = nuovaRaccolta();
+  if (testo?.tipo === "pdf") {
+    const pagine = testo.pagine || [];
+    const limite = fino ? Math.min(parseInt(fino, 10) || pagine.length, pagine.length) : pagine.length;
+    // nei PDF non c'e' un paragrafo: la pagina e' l'unita' piu' piccola di
+    // cui si conosca con certezza il posto nella lettura
+    for (let n = 0; n < limite; n++) raccogli(r, pagine[n]);
+    return r;
+  }
+  const spina = testo?.capitoli || [];
+  const dopoIlSegno = (c) => {
+    try {
+      return cmp(c, fino) > 0;
+    } catch {
+      return null;
+    }
+  };
+  for (let i = 0; i < spina.length; i++) {
+    const cap = spina[i];
+    if (fino && dopoIlSegno(`epubcfi(${cap.base}!/0)`) === true) break;
+    // Il confronto col segno si fa SOLO nel capitolo dove sta il segno, cioe'
+    // quello dopo il quale la spina esce dalla frontiera. Negli altri il
+    // capitolo intero e' dietro al segno e non c'e' niente da tagliare.
+    let taglia = false;
+    if (fino) {
+      const dopo = spina[i + 1];
+      taglia = !dopo || dopoIlSegno(`epubcfi(${dopo.base}!/0)`) !== false;
+    }
+    // Il materiale di contorno chiude la storia: da li' in poi non e' piu'
+    // romanzo, e la coda deve fermarsi prima. Ma le stesse parole stanno
+    // anche in TESTA a un libro — indice, copyright, «dello stesso autore» —
+    // e fermarsi li' vorrebbe dire non raccogliere niente: in apertura si
+    // salta e si tira dritto, in fondo si chiude.
+    if (cap.contorno) {
+      if (r.corpo.length >= DENTRO_LA_STORIA) break;
+      continue;
+    }
+    for (const k of cap.prosa) {
+      const t = testoBlocco(cap, k);
+      // un paragrafo senza testo non ha un posto, e non ha niente da dare:
+      // si salta prima di chiedergli dove sta (una spaziatura vuota prima del
+      // segno non deve chiudere la raccolta)
+      if (!t || !t.trim()) continue;
+      // un paragrafo che non sa dire dove si trova si considera oltre: nel
+      // dubbio si taglia, perche' qui l'errore per generosita' e' uno spoiler
+      if (taglia) {
+        const c = puntoBlocco(cap, k);
+        if (!c || dopoIlSegno(c) !== false) break;
+      }
+      raccogli(r, t);
+    }
+  }
+  return r;
+}
+
+async function cmpCfi() {
+  const { default: ePub } = await import("epubjs");
+  const cfi = new ePub.CFI();
+  return (a, b) => cfi.compare(a, b);
+}
+
+async function tramaDaLibro(libro, fino, leggiTesto) {
+  const testo = await leggiTesto(libro);
+  if (!testo) return null;
+  return tramaDaTesto(testo, fino, testo.tipo === "pdf" ? null : await cmpCfi());
+}
+
+// Come nella scheda personaggio: un tomo che non e' su questo dispositivo
+// non si legge, e non dirlo significa dichiarare nella provenienza un
+// volume che nessuno ha aperto.
+export async function raccogliTrama(tappe, { vivo, leggiTesto = testoDelLibro } = {}) {
+  const attivo = vivo || (() => true);
+  const out = [];
+  const lontani = [];
+  // IL POSTO NELLA FRONTIERA, non quello nel raccolto: un tomo rimasto nel
+  // cloud non si sfoglia e salta il giro, quindi gli indici dei due elenchi
+  // divergono — e i numeri di volume tornano titoli contando su `tappe`
+  // (`conTitoli`). Senza il posto vero, con un volume lontano in mezzo la
+  // scheda avrebbe messo sopra a un racconto il titolo del libro sbagliato:
+  // proprio quello che non aveva potuto leggere.
+  for (const [i, t] of tappe.entries()) {
+    if (!attivo()) break;
+    // un fumetto non ha una storia scritta da campionare
+    if (eFumetto(t.libro)) continue;
+    try {
+      const fino = t.tutto ? null : t.fino;
+      const r = await tramaDaLibro(t.libro, fino, leggiTesto);
+      if (r) out.push({ libro: t.libro, posto: i, ...r });
+      else lontani.push(t.libro);
+    } catch {
+      /* tomo che non si apre: gli altri bastano */
+      lontani.push(t.libro);
+    }
+  }
+  return { raccolto: out, lontani };
+}
+
+function sparsi(lista, n) {
+  if (n <= 0 || !lista.length) return [];
+  if (lista.length <= n) return lista;
+  if (n === 1) return [lista[0]];
+  const passo = (lista.length - 1) / (n - 1);
+  return [...new Set(Array.from({ length: n }, (_, i) => lista[Math.round(passo * i)]))];
+}
+
+// I volumi precedenti sono lo sfondo: quanto basta a non partire per aria.
+// Il volume aperto e' la storia, e la sua coda e' il motivo per cui hai
+// chiesto — quella si prende di fila, non a campione.
+export function scegliTrama(raccolto) {
+  if (!raccolto.length) return [];
+  const qui = raccolto[raccolto.length - 1];
+  const prima = raccolto.slice(0, -1);
+  const fuori = sparsi(prima.flatMap((r) => r.corpo), DA_PRIMA).map((testo) => ({
+    testo,
+    quando: "prima",
+  }));
+  const coda = qui.coda.slice(-DA_CODA);
+  // la coda sta gia' dentro il corpo: senza toglierla, le ultime scene
+  // arriverebbero due volte e mangerebbero i posti dell'inizio
+  const corpo = qui.corpo.filter((t) => !coda.includes(t));
+  const taglio = Math.max(DA_APERTURA, Math.round(corpo.length * APERTURA));
+  const scelti = [
+    ...sparsi(corpo.slice(0, taglio), DA_APERTURA),
+    ...sparsi(corpo.slice(taglio), DA_CORPO),
+  ];
+  return [
+    ...fuori,
+    ...scelti.map((testo) => ({ testo, quando: "qui" })),
+    ...coda.map((testo) => ({ testo, quando: "coda" })),
+  ];
+}
+
+// Il giro intero, uguale per i due reader: cambia solo da dove arriva il
+// segno vivo. `passo` racconta a che punto è, `vivo` permette di fermarlo.
+export async function schedaRiassunto({ book, libri, statusOf, cfiOf, vivo, passo }) {
+  const tappe = frontiera(book, libri, { statusOf, cfiOf });
+  passo({ fase: "cerco", tappe });
+  const { raccolto, lontani } = await raccogliTrama(tappe, { vivo });
+  const scelti = scegliTrama(raccolto);
+  if (!vivo()) return null;
+  if (!scelti.length) return { fase: "vuoto", tappe, lontani, passaggi: [] };
+  passo({ fase: "chiedo", tappe, lontani, passaggi: scelti });
+  const res = await chiediRiassunto({ passaggi: scelti, tappe });
+  if (!vivo()) return null;
+  return { fase: res.answer ? "fatto" : "errore", tappe, lontani, passaggi: scelti, ...res };
+}
+
+// «PRIMA DI COMINCIARE» — cosa è successo nei volumi che vengono prima.
+//
+// Stessa raccolta di «Dove eravamo rimasti», ma su un libro che NON hai
+// ancora aperto: la frontiera, non trovando un segno per il volume
+// corrente, restituisce da sola i soli volumi precedenti. Non serve
+// nessuna lista di saghe: vale per qualunque saga hai in libreria e per
+// quelle che ci metterai, perche' l'ordine lo dici tu nella scheda del
+// libro (saga + numero d'ordine).
+//
+// Il volume che stai per cominciare resta FUORI anche se ci hai messo il
+// naso una volta: qui si chiede cosa viene prima, e una riga del libro
+// nuovo sarebbe uno spoiler chiesto per sbaglio.
+const SISTEMA_PRIMA = [
+  "Sei l'Oracolo di un'app di lettura. Il lettore sta per cominciare un",
+  "volume di una saga e vuole ricordarsi cosa è successo nei volumi",
+  "precedenti, che ha già letto.",
+  "REGOLA ASSOLUTA: racconta soltanto ciò che si ricava dai passaggi che",
+  "ti mostro. Non usare nulla che sai di questa saga da altre fonti, e non",
+  "dire una parola su cosa succederà nel volume che sta per aprire: non",
+  "l'ha ancora letto, e rovinarglielo è il danno peggiore che puoi fare.",
+  "LINGUA: scrivi SEMPRE IN ITALIANO, anche quando i passaggi sono in",
+  "un'altra lingua. Nomi di persone e di luoghi restano come stanno.",
+  "FORMA: prosa, non un elenco. Due o tre paragrafi brevi separati da una",
+  "riga vuota, testo puro senza markdown e senza titoletti.",
+  "MISURA: sulle 250 parole. Serve a rimettersi in pari in mezzo minuto.",
+  "CONTENUTO: la storia com'è arrivata fin qui — da dove è partita, chi ci",
+  "si muove dentro e cosa vuole, i fatti che contano e i conti rimasti",
+  "aperti. Chiudi dicendo dove sono arrivate le cose alla fine dell'ultimo",
+  "volume, che è il punto da cui riparte quello che ha in mano.",
+  "NIENTE PREMESSE E NIENTE SCUSE: attacca dal racconto. Non aprire",
+  "dicendo che i passaggi sono pochi o frammentari, non commentare il",
+  "materiale che ti ho dato e non parlare di te — al lettore serve la",
+  "storia, e da dove viene la risposta glielo dichiara già l'app.",
+  "I passaggi sono un campione, non il libro intero: è normale che siano",
+  "scene sparse. Ricava quello che si può ricavare e raccontalo con",
+  "sicurezza, senza riempire i buchi con roba inventata; su quello che",
+  "davvero non c'è, taci invece di segnalarlo.",
+].join(" ");
+
+// QUI I VOLUMI PRECEDENTI SONO IL SOGGETTO, NON LO SFONDO.
+//
+// `scegliTrama` è fatta per «dove eravamo rimasti»: il libro in mano è la
+// storia, e ai volumi di prima bastano sei frammenti a collocare i nomi.
+// Con quella spartizione questa scheda usciva fatta di schegge — «nomi e
+// luoghi da tenere a mente, non una storia» (parole sue, e aveva ragione).
+//
+// Qui la proporzione si rovescia: l'ultimo volume finito è quello da cui
+// riparti e prende la parte grossa, compresa la sua chiusura vera; i più
+// vecchi hanno ciascuno la propria quota, non una in comune.
+const PRIMA_APERTURA = 5;
+const PRIMA_CORPO = 14;
+const PRIMA_CODA = 10;
+const PRIMA_VECCHI = 10;
+// Il tetto e' sui libri-equivalenti, non sui file: un cofanetto da tre
+// romanzi ne vale tre, e il suo spazio deve poterci stare. Sta largo
+// abbastanza da non stringere prima dei sette libri: con cinque
+// volumi-tipo (un cofanetto piu' due romanzi) tagliava gia', e le saghe
+// lunghe sono proprio quelle in cui questa scheda serve di piu'.
+const PRIMA_TETTO_VECCHI = 72;
+
+// E UN COFANETTO NON E' UN VOLUME COME GLI ALTRI.
+//
+// Con una quota fissa per volume, il tomo che tiene dentro tre romanzi
+// riceveva quanto una raccolta di racconti: dieci paragrafi sparsi su un
+// milione e mezzo di caratteri, cioe' niente. La scheda finiva per
+// saltare quei romanzi, e di loro restava solo l'eco nei ricordi dei
+// personaggi dei volumi dopo (segnalato dal lettore: «sembra che ti sei
+// saltato totalmente gli eventi della prima trilogia»).
+//
+// Si contano i libri in «volumi tipo», con la MEDIANA dei precedenti come
+// unita' — la stessa misura della scheda personaggio — e la quota va a
+// libri-equivalenti, non a file.
+function quantiLibri(vecchi) {
+  const pesi = vecchi.map((r) => Math.max(1, r.esteso || 1));
+  const ordinate = [...pesi].sort((a, b) => a - b);
+  const unita = ordinate[Math.floor(ordinate.length / 2)] || 1;
+  return pesi.map((p) => Math.max(1, Math.round(p / unita)));
+}
+
+// IL TETTO DEVE ESSERE UN TETTO, E LA VICINANZA CONTA.
+//
+// Con un minimo fisso per volume il tetto era una raccomandazione: tredici
+// volumi davano 78 passaggi su 72, quaranta ne davano 160 — novantamila
+// caratteri davanti al modello. E la spartizione era piatta: prima di
+// aprire il quattordicesimo, il primo libro pesava quanto il tredicesimo,
+// mentre quello che serve per ripartire sta soprattutto negli ultimi.
+//
+// Qui i posti si assegnano ESATTAMENTE quanti sono, col metodo del resto
+// piu' grande: un posto garantito a testa finche' bastano — nessun volume
+// resta muto — e il resto a peso, dove il peso e' quanti libri tiene il
+// volume, sfumato dalla distanza. Una saga da quaranta libri sta nel
+// tetto come una da tre.
+const VICINANZA = 0.85;
+// oltre questi volumi la saga e' «lunga»: passarli tutti in rassegna
+// diventa un elenco di titoli, e si cambia richiesta al modello
+const SAGA_CORTA = 5;
+
+function spartisci(pesi, budget) {
+  const n = pesi.length;
+  if (!n || budget <= 0) return pesi.map(() => 0);
+  const minimo = budget >= n ? 1 : 0;
+  const somma = pesi.reduce((a, b) => a + b, 0) || 1;
+  const resto = Math.max(0, budget - minimo * n);
+  const grezzi = pesi.map((p) => minimo + (resto * p) / somma);
+  const quote = grezzi.map((g) => Math.floor(g));
+  // i posti avanzati dall'arrotondamento vanno a chi ha il resto piu' grosso
+  const ordine = grezzi
+    .map((g, i) => ({ i, r: g - Math.floor(g) }))
+    .sort((a, b) => b.r - a.r);
+  let avanzo = budget - quote.reduce((a, b) => a + b, 0);
+  for (let k = 0; avanzo > 0; k = (k + 1) % n) {
+    quote[ordine[k % n].i] += 1;
+    avanzo -= 1;
+  }
+  return quote;
+}
+
+export function scegliPrima(raccolto) {
+  if (!raccolto.length) return [];
+  const ultimo = raccolto[raccolto.length - 1];
+  const vecchi = raccolto.slice(0, -1);
+  const libri = vecchi.length ? quantiLibri(vecchi) : [];
+  const totLibri = libri.reduce((a, b) => a + b, 0);
+  const budget = Math.min(PRIMA_TETTO_VECCHI, PRIMA_VECCHI * totLibri);
+  // il peso: quanti libri tiene il volume, sfumato da quanto è lontano
+  const quote = spartisci(
+    libri.map((n, i) => n * Math.pow(VICINANZA, vecchi.length - 1 - i)),
+    budget
+  );
+  // Ogni passaggio dei volumi vecchi si porta dietro il suo NUMERO di
+  // volume: senza, i frammenti arrivano al modello tutti mescolati sotto
+  // un'etichetta sola, e non puo' raccontarli in ordine nemmeno volendo.
+  // Il numero torna titolo sullo schermo (`conTitoli`), mai al modello.
+  // e quanti ROMANZI tiene: un cofanetto etichettato come un volume solo
+  // si prende una riga come tutti gli altri, per quanti passaggi gli si
+  // diano — il modello non puo' sapere che sono tre libri se non glielo
+  // si dice (segnalato: «la trilogia me la scarnifichi»)
+  const numero = (r, i) => (r.posto ?? i) + 1;
+  const fuori = vecchi.flatMap((r, i) =>
+    sparsi(r.corpo, quote[i]).map((testo) => ({
+      testo,
+      quando: "prima",
+      libri: libri[i],
+      volume: numero(r, i),
+    }))
+  );
+  const coda = ultimo.coda.slice(-PRIMA_CODA);
+  const corpo = ultimo.corpo.filter((t) => !coda.includes(t));
+  const taglio = Math.max(PRIMA_APERTURA, Math.round(corpo.length * APERTURA));
+  const scelti = [
+    ...sparsi(corpo.slice(0, taglio), PRIMA_APERTURA),
+    ...sparsi(corpo.slice(taglio), PRIMA_CORPO),
+  ];
+  // ANCHE IL VOLUME PIU' RECENTE HA IL SUO NUMERO. Era l'unico senza —
+  // i suoi passaggi arrivavano marcati solo [inizio] e [ultime pagine] —
+  // quindi il modello non aveva un modo di chiamarlo e scriveva «nel
+  // volume appena chiuso»; e una frase non e' un numero, quindi `conTitoli`
+  // non aveva niente da sostituire e il titolo vero non compariva mai.
+  // Su una scheda che percorre tre volumi in fila, l'ultimo paragrafo
+  // sembrava cosi' un'aggiunta senza padrone (segnalato dal lettore).
+  const suo = numero(ultimo, vecchi.length);
+  return [
+    ...fuori,
+    ...scelti.map((testo) => ({ testo, quando: "qui", volume: suo })),
+    ...coda.map((testo) => ({ testo, quando: "coda", volume: suo })),
+  ];
+}
+
+// «PRIMA» VUOL DIRE LA STESSA STORIA, NON LO STESSO MONDO.
+//
+// Una saga grande e' divisa in cicli: nel Mondo Disco, chi apre un
+// romanzo delle Guardie vuole sapere cosa e' successo nelle Guardie, non
+// negli altri quaranta libri dell'universo (segnalato dal lettore). Se il
+// volume dichiara una serie, i precedenti sono quelli della SUA serie; se
+// non la dichiara, resta l'universo intero — che e' il caso di una saga
+// senza cicli, dove i due raggruppamenti coincidono.
+//
+// Vale qui e non nella scheda personaggio: li' il campo largo aiuta —
+// chiedere di Vetinari leggendo le Streghe deve poter pescare dalle
+// Guardie — e la difesa dagli spoiler regge lo stesso, perche' i volumi
+// dopo il corrente restano fuori in ogni caso.
+// E UNA PARTE NON E' UN CICLO: su una guida di lettura le «serie» sono i
+// capitoli di una storia sola, e restringersi al capitolo in cui stai
+// toglierebbe il racconto di tutto quel che viene prima — cioe' proprio
+// quel che questo tasto deve dare. La differenza la dicono i numeri e la
+// misura `parteDiUnaStoria`; qui si guarda la stessa domanda con gli
+// stessi dati, o le due risposte potrebbero divergere.
+export function soloDellaSerie(book, tappe) {
+  const serie = (book.series || "").trim().toLowerCase();
+  if (!serie) return tappe;
+  if (parteDiUnaStoria(book)) return tappe;
+  return tappe.filter((t) => (t.libro.series || "").trim().toLowerCase() === serie);
+}
+
+// PERCHÉ IL TASTO TACE. «Prima di cominciare» compare solo se un «prima»
+// esiste, ma sparire in silenzio trasforma un campo sbagliato in un
+// mistero: il lettore coi primi volumi letti guardava la scheda del nono
+// e il tasto non c'era, senza una riga a dire il perché — e da fuori le
+// cause possibili sono quattro, tutte invisibili. Qui si percorre la
+// stessa catena del tasto — saga, numeri, stato, serie — e si torna il
+// PRIMO anello rotto, coi numeri per dirlo. `null` = niente da spiegare:
+// o il tasto c'è, o un prima non è mai esistito (primo volume, nessuna
+// saga dichiarata), e lì una riga sarebbe rumore.
+export function perchePrimaTace(corrente, libri, { statusOf, cfiOf }) {
+  const saga = (corrente.saga || "").trim();
+  if (!saga) return null;
+  const ordine = corrente.sagaOrder;
+  // il primo volume non ha un prima: è la norma, non un guaio
+  if (ordine != null && ordine <= 1) return null;
+  const altri = libri.filter((b) => b.id !== corrente.id && (b.saga || "").trim() === saga);
+  if (!altri.length) return ordine == null ? null : { perche: "soli", saga };
+  if (ordine == null) return { perche: "senzaNumero", saga };
+  const davanti = altri.filter((b) => b.sagaOrder != null && b.sagaOrder < ordine);
+  if (!davanti.length) return { perche: "numeri", saga, ordine };
+  const tappe = frontiera(corrente, libri, { statusOf, cfiOf }).filter((t) => t.libro.id !== corrente.id);
+  if (!tappe.length) return { perche: "stato", saga, quanti: davanti.length };
+  if (!soloDellaSerie(corrente, tappe).length)
+    return { perche: "serie", serie: (corrente.series || "").trim(), quanti: tappe.length };
+  return null;
+}
+
+// Gli anelli che `perchePrimaTace` sa nominare. Stanno in un elenco per
+// la stessa ragione di `GUAI` ed `ESITI_CONTROLLO`: il test pretende che
+// ognuno abbia una frase, cosi' un anello nuovo senza parole non passa.
+export const PERCHE_TACE = ["soli", "senzaNumero", "numeri", "stato", "serie"];
+
+// LE PAROLE PER OGNI ANELLO ROTTO: ognuna dice cosa manca E dove si mette
+// a posto, o la riga sarebbe solo un mistero spiegato con un altro
+// mistero. Sta qui e non nella scheda perche' un test in Node non importa
+// un `.jsx` — e qui accanto a chi produce le cause, cosi' chi ne aggiunge
+// una vede subito dove va la frase. Una causa che non si riconosce non si
+// traveste da «serie» (prima era il ramo di ripiego, e avrebbe scritto
+// «una Serie diversa da «undefined»»): si dice il generico.
+export function fraseTace(t) {
+  if (t.perche === "soli")
+    return `nessun altro libro in biblioteca ha «${t.saga}» nel campo Saga — se i volumi precedenti ci sono, guarda com'è scritta la saga sulle loro schede`;
+  if (t.perche === "senzaNumero")
+    return "questo volume non ha il numero di lettura, e senza numero non so cosa viene prima";
+  if (t.perche === "numeri")
+    return `nessun altro volume di «${t.saga}» ha un numero di lettura minore di ${t.ordine} — metti i numeri sulle loro schede e saprò cosa viene prima`;
+  if (t.perche === "stato")
+    return t.quanti === 1
+      ? "il volume precedente non risulta «Letto», né «In lettura» con un segno di pagina"
+      : `nessuno dei ${t.quanti} volumi precedenti risulta «Letto», né «In lettura» con un segno di pagina`;
+  if (t.perche === "serie")
+    return `${t.quanti === 1 ? "il volume precedente letto dichiara" : `i ${t.quanti} volumi precedenti letti dichiarano`} una Serie diversa da «${t.serie}» — correggi la loro, o svuota questa per contare tutta la saga`;
+  return "non riesco a ricostruire i volumi precedenti — controlla saga, numero di lettura e serie nella scheda";
+}
+
+export async function schedaPrima({ book, libri, statusOf, cfiOf, vivo, passo }) {
+  const tappe = soloDellaSerie(
+    book,
+    frontiera(book, libri, { statusOf, cfiOf }).filter((t) => t.libro.id !== book.id)
+  );
+  if (!tappe.length) return { fase: "vuoto", tappe: [], lontani: [], passaggi: [] };
+  passo({ fase: "cerco", tappe });
+  const { raccolto, lontani } = await raccogliTrama(tappe, { vivo });
+  const scelti = scegliPrima(raccolto);
+  if (!vivo()) return null;
+  if (!scelti.length) return { fase: "vuoto", tappe, lontani, passaggi: [] };
+  passo({ fase: "chiedo", tappe, lontani, passaggi: scelti });
+  const res = await chiediPrima({ passaggi: scelti, tappe });
+  if (!vivo()) return null;
+  return { fase: res.answer ? "fatto" : "errore", tappe, lontani, passaggi: scelti, ...res };
+}
+
+export async function chiediPrima({ passaggi, tappe }, fetcher) {
+  if (!getOracleKey()) return { error: "chiave" };
+  if (!passaggi.length) return { error: "nessunPassaggio" };
+  const righe = ["Il lettore chiede: cosa è successo nei volumi precedenti?"];
+  righe.push(
+    tappe.length === 1
+      ? "Ha letto il volume che viene prima di quello che sta per aprire. Non ti dico quale libro né quale saga, apposta: devi rispondere da questi passaggi e non da quello che ricordi."
+      : `Ha letto ${tappe.length} volumi che vengono prima. ` +
+        "Non ti dico quale saga né quali titoli, apposta: devi rispondere da questi passaggi e non da quello che ricordi."
+  );
+  righe.push(
+    "Passaggi in ordine di lettura. [inizio] e [ultime pagine] vengono dal volume più recente, " +
+      "quello che ha appena finito: le [ultime pagine] sono come si è chiuso, ed è da lì che riparte."
+  );
+  if (tappe.length > 1) {
+    // Su una saga corta si può passare per ogni volume. Su una da dieci o
+    // quaranta no: chiederlo in duecentocinquanta parole vorrebbe dire un
+    // elenco di titoli, e chi sta per aprire il quattordicesimo vuole
+    // sapere soprattutto come si è arrivati fin qui.
+    righe.push(
+      tappe.length <= SAGA_CORTA
+        ? "I passaggi marcati «Volume N» vengono dai volumi ancora precedenti, campionati lungo tutto " +
+            "il loro corso. PASSA PER OGNI VOLUME, in ordine, dal primo: bastano poche frasi a testa, " +
+            "ma non saltarne nessuno e non spendere tutto sull'ultimo."
+        : `I passaggi marcati «Volume N» vengono dai ${tappe.length - 1} volumi precedenti, campionati ` +
+            "lungo tutto il loro corso. È una saga lunga e non ci stanno tutti: tieni il filo che arriva " +
+            "fino a qui — da dove è partita, cosa si trascina dietro — e racconta con più agio i volumi " +
+            "più recenti, quelli da cui il lettore riparte davvero. Dei più lontani basta quello che " +
+            "serve a capire il presente."
+    );
+    // OGNI VOLUME SI CHIAMA COL SUO NUMERO, l'ultimo compreso: solo cosi'
+    // `conTitoli` puo' rimettere i titoli veri sullo schermo. Senza questa
+    // riga il modello scriveva «nel volume appena chiuso» — una frase, non
+    // un numero — e il lettore si trovava un paragrafo che non diceva di
+    // quale libro stesse parlando.
+    righe.push(
+      "Quando dici dove accade una cosa, scrivi proprio «Volume 1», «Volume 2»: l'app mostrerà al " +
+        "lettore i titoli veri. Vale per OGNI volume, anche il più recente: chiamalo col suo numero " +
+        "e non «il volume appena chiuso» o «il precedente», o il lettore non saprà di quale libro " +
+        "stai parlando. Nomina il volume ogni volta che cambi volume. Racconta quello che i passaggi " +
+        "mostrano, senza dedurne fatti che non ci sono."
+    );
+  }
+  // un volume che ne raccoglie tre va detto, o si prende lo spazio di uno
+  const cofanetti = passaggi.filter((p) => p.quando === "prima" && p.libri > 1);
+  if (cofanetti.length) {
+    const quali = [...new Set(cofanetti.map((p) => `«Volume ${p.volume}» (${p.libri} romanzi)`))];
+    righe.push(
+      `Attenzione: ${quali.join(", ")} non è un romanzo solo ma un'edizione che ne raccoglie ` +
+        "più d'uno, e i suoi passaggi vengono da storie diverse che si susseguono. Dagli lo spazio " +
+        "che merita — più o meno quanto daresti a quei romanzi presi uno per uno — e racconta i " +
+        "suoi archi in ordine, invece di liquidarlo con una frase come fosse un volume qualunque."
+    );
+  }
+  const eti = { qui: "inizio", coda: "ultime pagine" };
+  passaggi.forEach((p, i) => {
+    const dove =
+      p.quando === "prima"
+        ? `Volume ${p.volume}${p.libri > 1 ? `, ${p.libri} romanzi in uno` : ""}`
+        : // il volume più recente porta il numero come tutti gli altri, o
+          // resta l'unico che il modello non sa come chiamare
+          `${p.volume ? `Volume ${p.volume}, ` : ""}${eti[p.quando]}`;
+    righe.push(`${i + 1}. [${dove}] «${p.testo}»`);
+  });
+  return chiedi({ system: SISTEMA_PRIMA, user: righe.join("\n"), tetto: TETTO_SCHEDA }, fetcher);
+}
+
+export async function chiediRiassunto({ passaggi, tappe }, fetcher) {
+  if (!getOracleKey()) return { error: "chiave" };
+  if (!passaggi.length) return { error: "nessunPassaggio" };
+  const righe = ["Il lettore chiede: dove eravamo rimasti?"];
+  righe.push(
+    tappe.length === 1
+      ? "Sta leggendo un libro ed è arrivato a un certo punto. Non ti dico quale libro, apposta: devi rispondere da questi passaggi e non da quello che ricordi."
+      : `Ha letto ${tappe.length} volumi di una saga, l'ultimo solo in parte. ` +
+        "Non ti dico quale saga né quali titoli, apposta: devi rispondere da questi passaggi e non da quello che ricordi."
+  );
+  righe.push(
+    "Passaggi in ordine di lettura. [inizio] viene dal libro che ha in mano, [ultime pagine] da " +
+      "subito prima del punto in cui si è fermato: il racconto sta lì, ed è lì che deve stare la tua risposta."
+  );
+  // I volumi di prima arrivano come pochi frammenti sparsi su interi romanzi:
+  // riassumerli da quelli sarebbe inventare. Dirlo al modello e' l'unico modo
+  // di impedirglielo — senza, quei frammenti li tratta come una sinossi.
+  if (tappe.length > 1) {
+    righe.push(
+      "I passaggi [prima] sono pochi frammenti sparsi su interi volumi precedenti: servono solo a " +
+        "collocare nomi e luoghi che tornano. NON riassumere quei volumi da lì e non dedurne la trama."
+    );
+  }
+  const eti = { prima: "prima", qui: "inizio", coda: "ultime pagine" };
+  passaggi.forEach((p, i) => {
+    righe.push(`${i + 1}. [${eti[p.quando]}] «${p.testo}»`);
+  });
+  // stesso tetto della scheda personaggio: la risposta e' corta, ma il
+  // ragionamento su decine di passaggi attinge allo stesso budget
+  return chiedi({ system: SISTEMA, user: righe.join("\n"), tetto: TETTO_SCHEDA }, fetcher);
+}

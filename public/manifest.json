@@ -1,20 +1,28 @@
 {
+  "id": "/",
   "name": "Book Companion",
-  "short_name": "Book Companion",
+  "short_name": "Grimorio",
   "description": "La tua biblioteca personale: libri, lettura e musica in un unico regno.",
   "lang": "it",
   "start_url": "/",
-  "display": "standalone",
+  "scope": "/",
+  "display": "fullscreen",
+  "display_override": [
+    "fullscreen",
+    "standalone",
+    "minimal-ui"
+  ],
   "orientation": "any",
   "background_color": "#0f0d1a",
   "theme_color": "#0f0d1a",
+  "categories": [
+    "books",
+    "education"
+  ],
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
   "icons": [
-    {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
@@ -32,6 +40,65 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-mono-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "monochrome"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Libreria",
+      "short_name": "Libreria",
+      "description": "Apri lo scaffale dei tuoi libri",
+      "url": "/?apri=libreria",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Musica",
+      "short_name": "Musica",
+      "description": "Apri la sala della musica",
+      "url": "/?apri=musica",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "file_handlers": [
+    {
+      "action": "/?apri=libreria",
+      "accept": {
+        "application/epub+zip": [
+          ".epub"
+        ],
+        "application/pdf": [
+          ".pdf"
+        ],
+        "application/vnd.comicbook+zip": [
+          ".cbz"
+        ],
+        "application/vnd.comicbook-rar": [
+          ".cbr"
+        ]
+      }
     }
   ]
 }

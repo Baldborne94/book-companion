@@ -9,12 +9,51 @@ export const READER_THEMES = {
   oled: { label: "Nero", bg: "#000000", fg: "#c9c2b2", link: "#a98fdd", cover: "#1b1b1b" },
 };
 
+// `google` e' la famiglia da chiedere a Google Fonts, coi soli pesi che il
+// testo usa (normale, grassetto, corsivo): ogni peso in piu' e' un file in
+// piu' da scaricare e da tenere nella cache per leggere senza rete. Chi non
+// ha `google` usa i caratteri del sistema e non scarica niente.
+//
+// LITERATA e ATKINSON HYPERLEGIBLE sono disegnati per lo schermo, non per la
+// carta: Literata e' il carattere di Google Play Libri, con occhio grande e
+// grazie robuste che reggono a densita' 1; Atkinson e' fatto per chi legge a
+// fatica, con le lettere che si confondono (I l 1, O 0, b d) ridisegnate
+// apposta. EB Garamond resta: su carta e' il piu' bello dei quattro, ma sul
+// tablet del lettore — un pixel CSS e' un pixel vero — le sue aste sottili
+// si impastano, ed e' per questo che servivano gli altri due.
 export const READER_FONTS = [
   { id: "original", label: "Originale del libro", css: null },
-  { id: "garamond", label: "EB Garamond", css: '"EB Garamond", Georgia, "Noto Serif", serif' },
+  {
+    id: "literata",
+    label: "Literata",
+    css: 'Literata, Georgia, "Noto Serif", serif',
+    google: "Literata:ital,wght@0,400;0,600;1,400",
+  },
+  {
+    id: "garamond",
+    label: "EB Garamond",
+    css: '"EB Garamond", Georgia, "Noto Serif", serif',
+    google: "EB+Garamond:ital,wght@0,400;0,500;0,600;1,400",
+  },
+  {
+    id: "atkinson",
+    label: "Atkinson Hyperlegible",
+    css: '"Atkinson Hyperlegible", system-ui, Roboto, sans-serif',
+    google: "Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400",
+  },
   { id: "serif", label: "Serif classico", css: 'Georgia, "Noto Serif", "Times New Roman", serif' },
   { id: "sans", label: "Moderno", css: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' },
 ];
+
+// Il foglio da iniettare nel capitolo per il carattere scelto, o `null` se
+// il carattere non si scarica. Il capitolo vive in un iframe e non vede i
+// font della pagina: il suo @font-face gli va dato dentro. Un id che non
+// esiste piu' vale «niente da scaricare», non un import rotto.
+export function importDelFont(id) {
+  const f = READER_FONTS.find((x) => x.id === id);
+  if (!f?.google) return null;
+  return `@import url('https://fonts.googleapis.com/css2?family=${f.google}&display=swap');`;
+}
 
 export const HL_COLORS = [
   { id: "gold", label: "Oro", value: "#d9a94e" },
@@ -34,16 +73,97 @@ export function deviceDefaults(shortSide) {
     spread: shortSide < 520 ? "none" : "auto",
     warmth: 0,
     brightness: 1,
-    pageTurn: true,
+    terms: true,
+    // la colonna come in stampa: giustificata E sillabata, mai una sola
+    justify: true,
+    // Come si segna un paragrafo nuovo: col RIENTRO di prima riga (la
+    // stampa), con uno STACCO verticale (lo schermo), o come nel LIBRO,
+    // senza toccare niente. Di partenza vale il rientro — quel che quasi
+    // ogni libro dice — con lo stacco di troppo tolto: cambiarlo di nostra
+    // iniziativa vorrebbe dire reimpaginare ogni romanzo per una preferenza
+    // che non ci ha chiesto nessuno. Chi vuole il file com'e' sceglie
+    // «Come nel libro» dal pannello.
+    paragrafi: "rientro",
+    // solo per i PDF: toglie i margini bianchi della carta
+    ritaglia: true,
+    // COME VOLTA LA PAGINA, e sono TRE, non due (chiesto dal lettore:
+    // «l'animazione e' un po' scattosa, non si puo' rendere piu' fluida e
+    // meno pesante?»). La spazzata e' bella e costa: misurata col
+    // processore strozzato sei volte, una voltata blocca il filo
+    // principale per ~510ms contro i ~140 di una voltata nuda, perche' le
+    // View Transitions fotografano la pagina DUE volte — prima e dopo. La
+    // dissolvenza non fotografa niente: il velo copre, la pagina cambia
+    // sotto, il velo scende.
+    //
+    // DI PARTENZA C'ERA LA SPAZZATA, E NON CI STA PIU'. Il lettore ha
+    // segnalato una seconda volta che scattava, e stavolta i fotogrammi
+    // sono stati contati sul serio invece che a occhio — non dal suo video
+    // (il registratore del tablet emette ~20 fotogrammi al secondo qualunque
+    // cosa succeda: ferma o in movimento dava lo stesso numero, quindi non
+    // poteva dimostrare niente), ma in un browser strozzato quattro volte,
+    // contando i fotogrammi PRESENTATI, su cinque voltate per modo:
+    //
+    //   spazzata     37 fps mediani | 33 scatti oltre 50ms | il peggiore 330ms
+    //   dissolvenza  61 fps mediani |  1 scatto  oltre 50ms | il peggiore 265ms
+    //
+    // Il numero che si sente non e' la mediana, sono gli SCATTI: sei o sette
+    // inciampi per voltata contro nessuno. Una cosa bella che inciampa a
+    // ogni pagina, in un'app dove voltare e' il gesto che si fa piu' spesso
+    // di tutti, e' una cosa bella al posto sbagliato. La spazzata resta —
+    // su uno schermo che non fatica e' la piu' bella delle tre — ma se la
+    // sceglie chi la vuole, e ora sa cosa costa perche' c'e' scritto sotto
+    // la levetta.
+    //
+    // Il conteggio via `requestAnimationFrame` dava un divario ancora piu'
+    // largo (20 fps contro 60) ed e' stato SCARTATO: `startViewTransition`
+    // sospende il rendering nel suo callback, quindi quel metodo misurava
+    // in parte se stesso. Sono i fotogrammi presentati a valere.
+    svolta: "dissolvenza",
+    // IL DIZIONARIO DELL'APP SI PUO' SPEGNERE (chiesto dal lettore: «metti
+    // un'opzione nel reader dove posso scegliere se attivare il mio
+    // dizionario o meno, un po' come succede per l'animazione della
+    // pagina»). Sulla parola selezionata ci sono DUE dizionari: la nostra
+    // scheda, dal tasto «Definisci» del menu di selezione, e quello del
+    // tablet, che Android apre da se' sulla selezione. Chi preferisce il
+    // secondo si ritrovava il primo comunque, un tasto in piu' in mezzo ai
+    // colori dell'evidenziazione. Spento, il tasto sparisce: il glossario
+    // della saga e «Chi e'» restano, perche' quelli non li ha nessun altro.
+    dizionario: true,
     appTheme: "night",
   };
 }
+
+const MODI = ["spazzata", "dissolvenza", "nessuna"];
+
+// LA SVOLTA ERA UN SÌ/NO E ADESSO SONO TRE MODI. Chi aveva già scelto se
+// la ritrova scritta come un booleano — nelle preferenze qui e nel cloud,
+// dove viaggia con tutto il resto — e un `true` confrontato con
+// «spazzata» non e' «spazzata»: senza questa riga la levetta si
+// ritroverebbe su nessuna delle tre, e la pagina volterebbe nuda.
+//
+// UN `true` NON E' MAI STATO «VOGLIO LA SPAZZATA», ed e' il punto in cui
+// prima si sbagliava. Quando la preferenza era un sì/no la scelta era
+// «animazione sì o no»: di spazzata e dissolvenza non c'era traccia, e
+// nessuna delle due aveva un nome da scegliere. Tradurre quel sì nella
+// piu' cara delle tre vuol dire attribuire al lettore una scelta che non
+// gli e' mai stata offerta — e per giunta lasciarlo sugli scatti a sua
+// insaputa. Quel sì vuol dire «voglio vedere qualcosa quando volto», e la
+// risposta giusta e' il modo di partenza.
+//
+// Una «spazzata» SCRITTA invece resta: quella e' una scelta vera, presa
+// davanti a tre tasti, e non si tocca — vale la regola di sempre, quello
+// che il lettore ha scelto comanda anche quando la pensiamo diversamente.
+export const modoSvolta = (v) => {
+  if (v === false) return "nessuna";
+  return MODI.includes(v) ? v : "dissolvenza";
+};
 
 export function loadReaderSettings(shortSide) {
   const defaults = deviceDefaults(shortSide);
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) || "{}");
-    return { ...defaults, ...saved };
+    const fuse = { ...defaults, ...saved };
+    return { ...fuse, svolta: modoSvolta(fuse.svolta) };
   } catch {
     return defaults;
   }

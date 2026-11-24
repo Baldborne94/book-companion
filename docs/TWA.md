@@ -1,0 +1,289 @@
+# Il guscio Android (Trusted Web Activity)
+
+L'app resta la PWA che gira su `book-companion-ruddy.vercel.app`: il guscio
+è un APK di poche centinaia di kilobyte che apre quel sito a schermo intero
+dentro Chrome, senza barra degli indirizzi, e lo fa comparire come app fra
+le app — nel launcher, nel menu «Apri con» degli EPUB e dei PDF, nel foglio
+di condivisione. **Niente viene riscritto**: ogni aggiornamento del sito
+arriva al guscio dal service worker, come oggi, e lo store si rifà solo
+quando cambia il guscio stesso (icona, nome, permessi).
+
+Quello che il repository fornisce già:
+
+| Cosa | Dove | A che serve |
+| --- | --- | --- |
+| `id`, `scope`, `launch_handler` | `public/manifest.json` | identità stabile dell'app e seconda apertura sulla stessa finestra |
+| `file_handlers` | `public/manifest.json` + `launchQueue` in `App.jsx` | «Apri con» per `.epub` e `.pdf` |
+| `shortcuts` | `public/manifest.json` + `sezioneDaUrl` | tenere premuta l'icona → Libreria / Musica |
+| icona monocroma | `public/icons/icon-mono-512.png` | temi di Android 13 |
+| `assetlinks.json` | `public/.well-known/` | dice ad Android che sito e APK sono la stessa cosa |
+| pagina della privacy | `public/privacy.html`, generata da `PRIVACY.md` a ogni build | lo store la vuole a un URL pubblico |
+| versione | `package.json` → timbro in fondo alla Libreria | quale rilascio del sito gira |
+
+## L'APK che si pubblica da solo
+
+Il guscio lo costruisce GitHub (`.github/workflows/apk.yml`): a ogni
+merge su `main` che tocca quel che il guscio porta con sé (manifest del
+sito, icone, `assetlinks.json`), oppure a comando da **Actions → APK →
+Run workflow**, costruisce l'APK con Bubblewrap, lo firma con la chiave di
+sempre, controlla che la firma sia quella di `assetlinks.json` e lo
+pubblica fra le **Releases** come `BookCompanion-<numero>.apk`. Il link del
+README punta sempre all'ultima.
+
+Il `twa-manifest.json` non si tiene da nessuna parte: si genera a ogni giro
+dal manifest del sito (`scripts/apk.mjs`), con sopra le risposte che `init`
+chiedeva — pacchetto `it.bookcompanion.app`, notifiche spente,
+orientamento `default`. Il numero di versione è il numero di commit di
+`main`: cresce sempre, quindi il nuovo APK si installa **sopra** quello di
+prima, e i libri restano.
+
+### Una volta sola: la chiave a GitHub
+
+La chiave sta nel progetto del PC (`book-companion-twa\android.keystore` nella tua cartella utente)
+e **non va nel repository**: va nei segreti, che GitHub non mostra a
+nessuno, nemmeno nei log. Da PowerShell, per copiarla in testo:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\book-companion-twa\android.keystore")) | Set-Clipboard
+```
+
+Poi su GitHub: **Settings → Secrets and variables → Actions → New
+repository secret**, tre volte:
+
+| Nome | Valore |
+| --- | --- |
+| `TWA_KEYSTORE` | quel che hai appena copiato (Ctrl+V) |
+| `TWA_KEYSTORE_PASSWORD` | la password del keystore |
+| `TWA_KEY_PASSWORD` | la password della chiave (spesso la stessa) |
+
+Fatto questo, **Actions → APK → Run workflow** su `main` pubblica il primo.
+Se la chiave caricata non è quella dell'impronta in `assetlinks.json`, il
+giro si ferma prima di pubblicare e lo dice: un APK firmato con un'altra
+chiave non si installerebbe sopra il tuo.
+
+Senza segreti, nei PR il giro firma con una chiave usa e getta: prova che
+il guscio si costruisce, e l'APK resta fra gli artefatti del giro, mai fra
+le Releases. Su `main` senza segreti si ferma.
+
+## Costruire l'APK
+
+Serve **Node** (LTS, da <https://nodejs.org> o `winget install
+OpenJS.NodeJS.LTS`); il JDK 17 e l'SDK Android li scarica Bubblewrap da sé
+alla prima chiamata. Si lavora in una cartella tua (`cd ~`), in una
+PowerShell **normale**, non da amministratore — quella si apre in
+`C:\WINDOWS\system32` e non è un posto dove tenere un progetto. Dopo aver
+installato Node, e di nuovo dopo `npm i -g`, apri una finestra nuova: il
+percorso dei comandi si legge solo all'apertura, e finché non lo fai
+`npm` o `bubblewrap` risultano «non riconosciuti». E se `npm -v` risponde
+«L'esecuzione di script è disabilitata nel sistema in uso», è la politica
+di esecuzione di PowerShell (`npm` è uno script `.ps1`): si sblocca una
+volta sola con `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`,
+oppure si chiama la versione `.cmd` (`npm.cmd`, `bubblewrap.cmd`), che
+non passa da PowerShell.
+
+```sh
+npm i -g @bubblewrap/cli
+mkdir book-companion-twa && cd book-companion-twa
+bubblewrap init --manifest https://book-companion-ruddy.vercel.app/manifest.json
+```
+
+Su **Windows PowerShell** (5.1, quella di sistema) il `&&` non esiste: i
+comandi vanno uno per riga.
+
+```powershell
+npm i -g @bubblewrap/cli
+mkdir book-companion-twa
+cd book-companion-twa
+bubblewrap init --manifest https://book-companion-ruddy.vercel.app/manifest.json
+```
+
+Alle domande di `init`:
+
+- **Application ID**: `it.bookcompanion.app` — è quello scritto in
+  `assetlinks.json`; se lo cambi, cambialo anche lì. Il valore proposto
+  è il dominio di Vercel rovesciato: NON accettarlo.
+- **Short name**: `Grimorio` (massimo 12 caratteri: «Book Companion» ne
+  ha 14 e Bubblewrap propone «BkC»). Nel `twa-manifest.json` il campo si
+  chiama `launcherName`, e lì `apk.mjs` (`guscio`, `ETICHETTA`) scrive
+  «Book Companion»: Android non ha il tetto dei dodici caratteri, e il
+  core di Bubblewrap controlla solo che il nome ci sia. Il lettore l'ha
+  chiesto: «invece di Grimorio chiama l'app Book Companion». «Grimorio»
+  resta il nome interno del canale (`grimorio:…`) e del log.
+- Una risposta sbagliata si corregge dopo, senza rifare `init`: in
+  `twa-manifest.json`, poi `bubblewrap update` e `bubblewrap build`. I campi
+  non si chiamano come le domande: il nome corto è **`launcherName`**,
+  l'icona `iconUrl` (che dev'essere il PNG), l'ID `packageId`. Vale la pena
+  mettere anche `"enableNotifications": false`: l'app non manda notifiche,
+  e acceso l'APK dichiara un permesso che non usa.
+- **Display mode**: `fullscreen`, come il manifest del sito (il giro della CI lo scrive poi `standalone`, vedi sotto). **Orientation**: `default`.
+  Nel guscio il modo lo decide il SUO `twa-manifest.json` (campo `display`),
+  non il manifest del sito: un APK costruito con `standalone` resta con la
+  barra di stato di Android anche dopo che il sito e' passato a tutto
+  schermo, finche' non lo si ricostruisce (vedi «Aggiornare»).
+- **La barra di Android sempre visibile** (`display: "standalone"` in `guscio`, `scripts/apk.mjs`, scelto dal lettore dopo due video): a tutto schermo la pagina scendeva e risaliva a ogni barra che ricompariva. Lo schermo intero «appiccicoso» (`sticky-immersive`, APK 1321) ha tolto il salto del trascinamento, ma chiusa la tendina o uscendo dall'app Chrome toglie da sé lo schermo intero e lo rimette, e dal guscio non si comanda. Il guscio della CI tiene la barra, sul colore dell'app, anche nella lista di ripiego (`displayOverride`); la cucitura (`cuciGuscio`) ferma il giro se il manifest generato o la sua `strings.xml` chiedono un modo `immersive`. Nei lettori torna il tasto «Schermo» (`serveTastoSchermo`), per leggere a tutto schermo quando si vuole.
+- **Gradle si lancia prima di `bubblewrap build`**, con l'uscita su file: Bubblewrap lo lancia con `execFile`, che muore oltre 1 MB scritto sugli errori («stderr maxBuffer length exceeded», APK 1326). Il log del giro dice quanti byte Gradle ha scritto sugli errori e le ultime righe.
+- **Le icone** si rifanno con `node scripts/icone.mjs` (lo scheletro che legge). Bubblewrap le scarica dal **sito pubblicato**, non dal repository: sul giro di `main` il passo «Le icone sul sito» aspetta che Vercel serva quelle nuove prima di costruire, o l'APK uscirebbe con l'icona di prima. Sul tablet, dopo l'APK nuovo, il launcher può tenere l'icona vecchia in memoria per un po': si aggiorna da solo, o togliendo e rimettendo l'icona dalla schermata Home.
+- **Status bar color / splash**: lascia quelli del manifest (`#0f0d1a`).
+- **Icon URL**: dev'essere il PNG (`/icons/icon-512.png`), non `icon.svg`:
+  Bubblewrap rasterizza con una libreria che l'SVG non lo legge, e il
+  `build` si ferma su «could not load icon». Il manifest tiene i PNG per
+  primi apposta, e `init` propone il primo.
+- **Signing key**: lascialo creare un keystore nuovo e **conserva il file e
+  le due password**: perdere il keystore vuol dire non poter più aggiornare
+  l'app sullo store, mai. Non va nel repository.
+- **Start URL**: `/`.
+
+Poi:
+
+```sh
+bubblewrap build
+```
+
+produce `app-release-signed.apk` (per provarlo sul tablet: `adb install`) e
+`app-release-bundle.aab` (per lo store).
+
+Le due password le chiede PRIMA di guardare se il keystore esiste: se non
+esiste, con quelle lo crea. Vanno scelte lì e segnate fuori dal PC: non
+stanno scritte in nessun file, e non si recuperano. Nel certificato
+(nome, organizzazione) va `Baldborne94`, non il nome vero: chiunque abbia
+l'APK lo può leggere.
+
+Se il `build` cade su «Failed to load signer» e «android.keystore
+(Impossibile trovare il file specificato)», il keystore non è mai stato
+creato: `build` firma soltanto, la creazione sta nel giro di `init`. Si
+fa a mano dalla cartella del progetto, col `keytool` del JDK scaricato da
+Bubblewrap:
+
+```powershell
+& "$env:USERPROFILE\.bubblewrap\jdk\jdk-17.0.11+9\bin\keytool.exe" -genkeypair -v -keystore android.keystore -alias android -keyalg RSA -keysize 2048 -validity 10000
+```
+
+**E se il `build` fallisce nella firma, la password finisce IN CHIARO a
+schermo**: l'errore riporta l'intera riga di comando di `apksigner`,
+`--ks-pass pass:"…"` compreso. Una password vista in un terminale (o in
+uno screenshot) è da considerare bruciata: si rifà il keystore con
+un'altra, finché non ha firmato niente che sia uscito di casa.
+
+Se il `build` cade su «Could not reserve enough space for … object heap»,
+Gradle vuole 1,5 GB per il suo processo e Windows non glieli dà: in
+`gradle.properties` del progetto abbassa `org.gradle.jvmargs=-Xmx1536m`
+a `-Xmx1024m` (o `768m`) e rilancia. **La modifica va fatta DOPO
+`bubblewrap update`**: l'update rigenera il progetto Android, e con lui
+`gradle.properties`, quindi una modifica fatta prima sparisce e l'errore
+torna identico.
+
+## Collegare il guscio al sito
+
+Finché Android non trova il collegamento, l'app parte con la barra di Chrome
+in cima: non è un errore del guscio, è che manca la firma.
+
+1. L'impronta del certificato:
+
+   ```sh
+   keytool -list -v -keystore android.keystore -alias android | grep SHA256
+   ```
+
+   Su PowerShell, col `keytool` del JDK scaricato da Bubblewrap e senza
+   `grep`:
+
+   ```powershell
+   & "$env:USERPROFILE\.bubblewrap\jdk\jdk-17.0.11+9\bin\keytool.exe" -list -v -keystore android.keystore -alias android | Select-String SHA256
+   ```
+
+   **`bubblewrap fingerprint list` non serve a questo**: elenca le impronte
+   registrate in `twa-manifest.json`, che all'inizio sono zero, e risponde
+   senza dire niente. Se pubblichi sul Play Store con
+   la firma gestita da Google, l'impronta giusta è quella in Play Console →
+   *Integrità dell'app* → *Certificato della chiave di firma dell'app*, e
+   di norma vanno messe **tutt'e due**, la tua e quella di Google.
+2. Scrivila in `public/.well-known/assetlinks.json` al posto del segnaposto
+   (forma `AA:BB:…`, 32 coppie). Il test `test/manifest.test.mjs` accetta
+   il segnaposto o un'impronta nella forma giusta, niente in mezzo.
+3. Merge e deploy. Verifica da un terminale:
+
+   ```sh
+   curl https://book-companion-ruddy.vercel.app/.well-known/assetlinks.json
+   ```
+
+   Su PowerShell `curl` è un alias di `Invoke-WebRequest` e chiede
+   conferma con un avviso sugli script: rispondi `S`, oppure scrivi
+   `curl.exe`, che è il curl vero. Deve tornare il JSON, non l'HTML
+   dell'app (il service worker lo esclude apposta dal ripiego,
+   `navigateFallbackDenylist`).
+4. Reinstalla l'APK: al primo avvio dopo il deploy la barra sparisce.
+
+## Aggiornare
+
+- **Il sito**: come sempre, merge su `main`. Il guscio non c'entra.
+- **Il guscio a tutto schermo** (per chi l'aveva costruito in `standalone`):
+  in `twa-manifest.json` metti `"display": "fullscreen"`, poi
+  `bubblewrap update` e `bubblewrap build` con lo STESSO `android.keystore`
+  e le stesse password, e installa sopra il nuovo `app-release-signed.apk`
+  (senza disinstallare: la firma e' la stessa, i dati restano).
+- **Il guscio** (nuova icona, nuovo nome, `file_handlers` cambiati): il
+  merge su `main` basta, l'APK nuovo esce da solo fra le Releases (vedi
+  sopra). A mano, dal PC, resta la strada di prima: `bubblewrap update &&
+  bubblewrap build`.
+
+## Il codice nostro nel guscio: la copertina sulla schermata di blocco
+
+Il guscio ha due classi sue, in `android/` (`GuscioActivity`,
+`SchermataDiBlocco`): la pagina gli manda la copertina del libro che hai in
+mano e lui la mette come sfondo della schermata di blocco (`SET_WALLPAPER`,
+`WallpaperManager.FLAG_LOCK`), così a tablet spento si riaccende sul libro,
+come il Kindle. Si accende da **Impostazioni → Il salvaschermo → «Copertina
+sulla schermata di blocco»**, solo dentro l'app Android, ed è spento
+finché non lo accendi tu: sostituisce lo sfondo che avevi, che poi rimetti
+dalle impostazioni di Android.
+
+Spegnendo l'interruttore il guscio rimette lo sfondo che c'era: l'ha
+salvato alla prima copertina, e per leggerlo chiede una volta il permesso
+«foto e contenuti» (fino ad Android 12; dal 13 non si può, e Android
+rimette il suo). Senza permesso la prima copertina non si mette.
+
+Come funziona, in breve: Chrome dà alle Trusted Web Activity un canale
+`postMessage` fra app e pagina. Il guscio lo apre a ogni pagina caricata
+(l'origine del sito va dichiarata in `assetlinks.json` anche con
+`delegate_permission/common.use_as_origin`), saluta la pagina con
+`grimorio:pronto`, e la pagina risponde con la copertina già composta per lo
+schermo, a pezzi. Il guscio risaluta anche ogni volta che la scheda torna
+davanti: riaperta l'app dall'icona la sessione di Chrome cambia e la porta
+di prima muore senza dirlo, e la pagina a ogni saluto rimanda la copertina
+che non ha avuto l'ok. Sotto l'interruttore le Impostazioni dicono
+l'ultima copertina mandata e cosa ne ha detto il guscio. Dettagli e scogli
+in `docs/STORIA.md` («il guscio che parla con la pagina», «la porta
+morta»).
+
+Bubblewrap non prevede codice proprio e a ogni `update` riscrive il
+progetto: `node scripts/apk.mjs cuci` lo cuce dentro **dopo**
+`bubblewrap update` e **prima** di `bubblewrap build` (la CI lo fa da sé).
+A mano, dalla cartella del progetto:
+
+```sh
+bubblewrap update --skipVersionUpgrade
+node ../book-companion/scripts/apk.mjs cuci
+bubblewrap build
+```
+
+Se `cuci` si ferma su «l'ancora … non c'è», Bubblewrap ha cambiato il
+progetto che genera: le ancore stanno in `scripts/apk.mjs`.
+
+Per vedere cosa dice il guscio sul tablet: `adb logcat -s Grimorio`.
+Senza `adb`: il guscio apre la pagina con `?guscio=<versione>` e, dal
+secondo avvio dall'icona, `&esito=…` con com'è andato l'ultimo tentativo
+(sessione letta, browser scaldato, canale chiesto, origine verificata,
+canale pronto, risposta della pagina, copertine messe). Le Impostazioni, in
+«Anche a tablet spento», lo dicono in italiano quando il saluto non è
+arrivato.
+
+## Quel che il guscio NON cambia
+
+- **La musica a schermo spento**: YouTube si mette in pausa da solo in
+  secondo piano e dentro la TWA è lo stesso; i file audio reggono già da
+  PWA. Servirebbe un servizio in primo piano, cioè Capacitor e codice
+  nativo — fuori da questo giro, e non per YouTube.
+- **Lo storage**: è il profilo di Chrome, lo stesso della PWA installata.
+  Se sul tablet c'è già la PWA con la biblioteca dentro, il guscio la vede.
+- **La condivisione di file** verso l'app (`share_target` con POST) non
+  è dichiarata: vorrebbe un service worker scritto a mano al posto di
+  quello generato. «Apri con» copre lo stesso gesto per gli EPUB e i PDF.

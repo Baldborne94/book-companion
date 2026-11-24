@@ -1,5 +1,5 @@
-# Book Companion sul NAS: Caddy serve l'app + la cartella Biblioteca,
-# Tailscale le espone in HTTPS su https://<TS_HOSTNAME>.<tailnet>.ts.net
+# Book Companion ospitata sul NAS: nginx serve l'app e le cartelle dei libri,
+# Tailscale le pubblica in HTTPS su https://<TS_HOSTNAME>.<rete>.ts.net
 name: book-companion
 
 services:
@@ -10,9 +10,8 @@ services:
       TS_AUTHKEY: ${TS_AUTHKEY}
       TS_STATE_DIR: /var/lib/tailscale
       TS_SERVE_CONFIG: /config/serve.json
-      TS_USERSPACE: "true"
     volumes:
-      - ./ts-state:/var/lib/tailscale
+      - ./tailscale:/var/lib/tailscale
       - ./serve.json:/config/serve.json:ro
     restart: unless-stopped
 
@@ -25,7 +24,8 @@ services:
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
     network_mode: service:tailscale
     volumes:
-      - ${BIBLIOTECA_PATH}:/srv/biblioteca:ro
+      # la cartella condivisa diventa /libri/book-companion/{Libri,Fumetti,Manga}, come vuole lib/nas.js
+      - ${BIBLIOTECA_PATH}:/libri/book-companion:ro
     depends_on:
       - tailscale
     restart: unless-stopped

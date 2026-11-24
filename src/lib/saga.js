@@ -1,27 +1,720 @@
-import { getStatus } from "./library.js";
+import { getStatus, getProgress } from "./library.js";
+import { PARTI_DI_GUIDA, contornoDiUnaGuida, universiNumerati } from "./sagaBooks.js";
+
+// UN VOLUME CHE HAI GIA' APERTO NON E' «IL PROSSIMO».
+//
+// Il filtro era «non letto», e guardava il solo STATO: un romanzo al 27%
+// che il lettore non aveva mai dichiarato «in lettura» risultava intatto e
+// si proponeva come passo successivo — segnalato con l'Ingresso in mano,
+// dove «Moving Pictures» compariva insieme fra quelli che stava leggendo E
+// fra i prossimi passi, a due righe di distanza.
+//
+// La domanda giusta non e' «l'hai finito?» ma «l'hai MAI aperto?», e le
+// risposte sono due e vanno guardate tutt'e due: lo stato, che dichiari
+// tu, e il progresso, che lo dice il libro. L'abbandonato resta fuori per
+// la ragione opposta e altrettanto buona: quella storia l'hai lasciata
+// apposta, e riproportela e' il difetto per cui quello stato esiste.
+//
+// E ADESSO DECIDE LO STATO DA SOLO (segnalato: «Moving Pictures» tolto a
+// mano dalla lettura spariva da tutt'e due le file). Quando il progresso
+// contava, «Stai leggendo anche» guardava anch'essa il progresso, e un
+// romanzo al 27% stava in due righe. Oggi quella fila guarda lo STATO, e
+// aprire un libro lo dichiara «in lettura» da solo (`handleRead`): un
+// volume «Da leggere» col progresso sopra zero e' uno che il lettore ha
+// rimesso li' a mano. Tenerlo fuori anche da qui lo lasciava senza posto
+// sull'Ingresso; adesso torna seguito, e la nota dice «gia' al 12%».
+const maiAperto = (b, statusOf) => statusOf(b.id) === "unread";
+
+// E DOVE IL CAMPO «SERIE» E' VUOTO, LO DICONO I NUMERI.
+//
+// La regola del ciclo funziona solo se il ciclo e' SCRITTO, e quel campo lo
+// riempiono la tavola del Mondo Disco, quella dell'Eresia e il lettore a
+// mano: su un autore che nessuna tavola conosce — Sanderson, per dirne uno
+// che ha due storie grosse dentro la stessa saga — e' quasi sempre vuoto, e
+// la cura del ciclo non scatta. Misurato sulla scena della segnalazione, coi
+// tre Mistborn letti e la Folgoluce mai aperta: col campo Serie pieno non si
+// propone niente (giusto), col campo vuoto torna «Rhythm of War — Cosmoverse
+// n° 4», cioe' il difetto identico a quello segnalato.
+//
+// Il secondo segnale pero' c'e' gia' nei dati: se in una saga DUE TITOLI
+// DIVERSI portano lo stesso numero di lettura, quella non e' una sequenza
+// sola — sono due storie numerate ognuna da uno. Non serve sapere quali
+// siano: basta sapere che il numero non e' una fila, e allora «il prossimo»
+// non si puo' calcolare.
+//
+// DUE COPIE DELLO STESSO TITOLO NON SONO DUE STORIE: due edizioni, o un
+// doppione dichiarato, condividono il numero perche' sono lo stesso volume —
+// e quel caso ha gia' la sua regola («a pari ordine vince chi e' arrivato
+// prima»). Si confrontano percio' i TITOLI, non gli id.
+//
+// Si tace, non si indovina: e' la stessa regola del volume senza numero.
+// Meglio nessuna proposta di una sbagliata, perche' in una saga il volume
+// sbagliato e' uno spoiler servito dall'app.
+export function numeriMescolati(libri = [], saga = "") {
+  const nome = String(saga || "").trim();
+  if (!nome) return false;
+  const visti = new Map();
+  for (const b of libri) {
+    if (!b || (b.saga || "").trim() !== nome) continue;
+    if (b.sagaOrder == null) continue;
+    const titolo = String(b.title || "").trim().toLowerCase();
+    const gia = visti.get(b.sagaOrder);
+    if (gia === undefined) visti.set(b.sagaOrder, titolo);
+    else if (gia !== titolo) return true;
+  }
+  return false;
+}
+
+export const cicloDi = (b) => (b?.series || "").trim();
+
+// I volumi fra cui cercare «il prossimo» di un libro: la SAGA INTERA dove
+// il numero e' della saga, la sua SERIE solo dove ogni serie si numera da
+// se' (`numeriMescolati`).
+//
+// QUESTA REGOLA E' STATA GIRATA TRE VOLTE, e l'ultima l'ha scelta il
+// lettore fra tre strade messe in fila (uno per saga sempre; una scelta per
+// saga; solo le saghe delle nostre tavole): «uno per saga, sempre». Il
+// Mondo Disco gli proponeva cinque seguiti e il Malazan tre: «mostrami solo
+// il numero successivo al numero che sto leggendo o che ho gia' letto». Il
+// racconto delle due giravolte prima resta qui sotto, perche' il prossimo
+// che pensa «ma il Malazan ha quattro storie» sappia che lo si e' gia'
+// pensato, e che il lettore ha deciso sapendolo.
+//
+// LE DUE GIRATE DI PRIMA. Per un giro il gruppo e' stato la
+// SAGA INTERA dove i numeri erano una fila sola — i quarantun Pratchett
+// numerati da 1 a 41 — e la serie entrava in gioco solo dove i numeri si
+// ripetevano, come nel Cosmoverse. L'aveva chiesto il lettore con quattro
+// Pratchett in fila, e l'ha disdetto lui stesso guardando il Malazan: «per
+// malazan pero' o altre saghe considera non tutto il ciclo ma la singola
+// serie per sapere cosa devo leggere dopo; ho sbagliato prima a bloccarti,
+// era giusto suggerirmi i volumi successivi alle serie che avevo gia'
+// iniziato».
+//
+// Il ragionamento di allora: IL NUMERO E LA SERIE RISPONDONO A
+// DUE DOMANDE DIVERSE. Il numero dice in che ordine leggere, la serie dice
+// DI QUALE STORIA stiamo parlando — e in un universo come il Malazan i
+// numeri sono una fila sola solo perche' se li e' scritti lui in un ordine
+// di lettura unico, mentre le storie restano quattro. Chi ha in mano il
+// Path to Ascendancy non aspetta «il numero dopo», aspetta il prossimo di
+// QUELLA storia; il numero dopo puo' essere un Kharkanas che col filo in
+// mano non c'entra niente. Vero, ma il lettore ha preferito il numero.
+//
+// Dove il filo e' la serie, i senza-serie sono un gruppo come gli altri — «Volumi a se'» sullo
+// scaffale — e su una saga che la serie non ce l'ha su nessuno il gruppo e'
+// la saga intera: li' i due raggruppamenti coincidono e non cambia niente.
+// MA UNA PARTE NON E' UN CICLO, E NON LO SI PUO' INDOVINARE.
+//
+// La regola qui sopra da' per scontato che una serie scritta sia sempre una
+// STORIA A SE'. Nel Malazan e nel Cosmoverse e' vero; su una GUIDA DI
+// LETTURA non lo e' affatto — l'Eresia di Horus e' divisa in tredici
+// «parti», ma sono i capitoli di una storia sola, letti in fila. Trattarle
+// da cicli vorrebbe dire che «Prima di cominciare», aperto il volume 25,
+// riassume i due volumi della sua parte e tace sui ventidue che vengono
+// prima: cioe' proprio il racconto per cui quel tasto esiste.
+//
+// LA STRADA DEI NUMERI E' STATA PROVATA E SCARTATA, e va scritta o la
+// riprova il prossimo. L'idea era: due storie parallele si INTERLACCIANO
+// nell'ordine di lettura (Mistborn 1, Folgoluce 1, Mistborn 2) mentre le
+// parti di una storia sola sono blocchi CONTIGUI. Misurata sulle tavole,
+// sembrava perfetta — nel Mondo Disco tutti e otto i cicli con piu' volumi
+// sono sparsi, nell'Eresia tutte e dodici le parti sono contigue. Ma il
+// Malazan del lettore la smentisce: i suoi numeri se li e' scritti lui in
+// un ordine di lettura unico, quindi Book of the Fallen 1-3 e Path to
+// Ascendancy 7-8 sono blocchi contigui esattamente come le parti — e la
+// regola avrebbe rifatto proprio il difetto che lui aveva fatto togliere.
+// Dalla forma dei numeri le due cose non si distinguono.
+//
+// La differenza vera e' un'altra e la sappiamo per davvero: LE PARTI LE
+// DICHIARA UNA GUIDA CHE SPEDIAMO NOI, i cicli li scrive il lettore. Quindi
+// non si indovina: si guarda se quel nome e' una parte di una delle nostre
+// guide. Una tavola nuova lo dichiara con `parti: true` e i suoi capitoli
+// entrano qui dentro; tutto il resto resta un ciclo, che e' il lato giusto
+// in cui sbagliare — al massimo si racconta piu' storia del necessario,
+// mai di meno.
+export function parteDiUnaStoria(book) {
+  const serie = cicloDi(book).toLowerCase();
+  return !!serie && PARTI_DI_GUIDA.has(serie);
+}
+
+export function gruppoDi(book, books = []) {
+  const saga = (book?.saga || "").trim();
+  if (!saga) return null;
+  const dellaSaga = books.filter((b) => b && (b.saga || "").trim() === saga);
+  // dove la serie e' la PARTE di una guida il filo e' la saga intera: «il
+  // prossimo» di un cammino in tredici capitoli e' il capitolo dopo, non
+  // il prossimo volume del capitolo in cui stai
+  // E DOVE IL NUMERO E' DELLA SAGA IL FILO E' LA SAGA INTERA (la terza
+  // volta, e scelta dal lettore fra tre strade: «uno per saga, sempre»).
+  // Solo dove ogni serie si numera da se' (`numeriMescolati`) il numero e'
+  // della serie, e la serie resta il filo: li' «il numero dopo» della saga
+  // non esiste
+  const dove =
+    parteDiUnaStoria(book) || !numeriMescolati(books, saga)
+      ? dellaSaga
+      : dellaSaga.filter((b) => cicloDi(b).toLowerCase() === cicloDi(book).toLowerCase());
+  // IL VETO NON STA PIU' QUI: raggruppare e' una cosa, decidere se il numero
+  // si puo' leggere e' un'altra. La domanda «e' una fila sola?» si fa in
+  // `passoDentro`, dove si sa anche quale volume si starebbe per proporre.
+  return dove;
+}
+
+// UN DOPPIONE LONTANO NON E' «DUE STORIE».
+//
+// Segnalato con l'Ingresso in mano: «controlla le saghe perche' dopo
+// Mechanicum ci sono altri libri, usa la stessa logica che hai usato per le
+// altre saghe». Misurato al banco sull'Eresia intera — settantun volumi coi
+// numeri del cammino, letti fino al quindici: **propone il sedici**. Ma
+// basta UN secondo titolo sul numero 24 — un racconto comprato da solo col
+// numero della collana addosso, un numero scritto a mano male — e tutta la
+// saga ammutolisce, per sempre, da un doppione che sta ventiquattro volumi
+// piu' in la' di dove stai leggendo.
+//
+// Era il veto di `numeriMescolati`, e la sua ragione resta buona: nel
+// Cosmoverse Mistborn e la Folgoluce sono numerate tutt'e due da uno, e li'
+// «il prossimo» non si puo' proprio calcolare. Ma quella e' una saga in cui
+// il lettore NON ha dichiarato le storie: col campo Serie vuoto due fili si
+// distinguono solo dai numeri, e i numeri mentono.
+//
+// QUANDO LA SERIE E' SCRITTA, E UGUALE SU TUTTO IL GRUPPO, il lettore ha
+// gia' detto che quella e' UNA storia: li' due titoli sullo stesso numero
+// non sono due sequenze, sono un campo sbagliato su un volume. E un campo
+// sbagliato lontano non deve zittire una fila che si legge benissimo.
+const unaStoriaSola = (dove) => {
+  const primo = cicloDi(dove[0] || {}).toLowerCase();
+  return !!primo && dove.every((b) => cicloDi(b).toLowerCase() === primo);
+};
+
+// LA COPPIA CHE LITIGA, per nome. «Due volumi portano lo stesso numero»
+// senza dire QUALI lascia il lettore a cercarli fra settanta schede: e' la
+// regola di `spiegaSync` — il guasto dice cos'e' successo E cosa farci, e
+// qui il cosa farci sono due titoli e un numero.
+const coppiaDoppia = (dove, contorno) => {
+  const visti = new Map();
+  for (const b of dove) {
+    if (b.sagaOrder == null || contorno(b)) continue;
+    const titolo = String(b.title || "").trim().toLowerCase();
+    const gia = visti.get(b.sagaOrder);
+    if (!gia) visti.set(b.sagaOrder, b);
+    else if (String(gia.title || "").trim().toLowerCase() !== titolo) return { uno: gia, due: b };
+  }
+  return {};
+};
+
+// Chi altro, nel gruppo, porta il numero di questo volume. Sono i RIVALI
+// del passo: se ce n'e' uno, qual e' «il prossimo» non lo sa nessuno — e
+// allora si tace, ma dicendo QUALI, che e' l'unica cosa che il lettore puo'
+// mettere a posto.
+const rivaliDi = (libro, dove, contorno) => {
+  const titolo = String(libro?.title || "").trim().toLowerCase();
+  return dove.filter(
+    (b) =>
+      b.id !== libro.id &&
+      b.sagaOrder === libro.sagaOrder &&
+      String(b.title || "").trim().toLowerCase() !== titolo &&
+      // un contorno non e' una tappa, quindi non e' un rivale del passo
+      !contorno(b)
+  );
+};
 
 // Il prossimo passo dentro la stessa saga: la voce di libreria non ancora
-// letta con l'ordine di lettura piu' basso dopo quella corrente. Un omnibus
+// aperta con l'ordine di lettura piu' basso dopo quella corrente. Un omnibus
 // che racchiude una trilogia e' una voce come le altre — conta il numero
 // d'ordine assegnato, non cosa contiene. Si guarda solo in avanti: un
 // volume precedente lasciato indietro non e' "il prossimo".
-export function nextInSaga(book, books, statusOf = getStatus) {
+//
+// E LE DUE REGOLE DELLE SAGHE GRANDI STANNO QUI DENTRO, NON NEI CHIAMANTI.
+// Il primo giro le aveva messe in `prossimiPassi`, e curavano la sola fila
+// nuova dell'Ingresso: il riquadro in cima («Il prossimo della saga») e la
+// proposta a libro chiuso in `App.jsx` chiamano `nextInSaga` DIRETTA e
+// restavano indietro. Misurato al banco sulla scena del lettore, col campo
+// Serie vuoto: il riquadro in cima diceva «Rhythm of War · il passo n° 4 di
+// Cosmoverse», che sono le sue parole esatte — cioe' la cura di ieri aveva
+// preso la fila e mancato proprio il posto da cui il difetto si vedeva.
+// Una regola che vale per «il prossimo volume» vale ovunque lo si proponga:
+// sta nella funzione che risponde a quella domanda, e chi ne aggiunge un
+// quarto chiamante la eredita senza doverlo sapere.
+//
+// E IL PROSSIMO E' QUELLO SUBITO DOPO, NON IL PRIMO LIBERO PIU' IN LA'
+// (chiesto dal lettore con l'Ingresso in mano: «ha senso suggerire solo i
+// libri successivi alle saghe gia' iniziate e libri gia' letti, e non
+// numeri o volumi a caso come succede ora»). Prima si SCAVALCAVA tutto quel
+// che non era intatto: finito il primo e aperto il secondo, si proponeva il
+// terzo — cioe' un volume che viene dopo un libro che non hai ancora letto.
+// Nella sua fotografia: «Warrior Prophet» proposto con «The Darkness That
+// Comes Before» al 2%. Adesso si guarda il volume che SEGUE, e se quello lo
+// stai gia' leggendo — o l'hai aperto e lasciato li' — non c'e' un «prossimo»
+// da dire: il passo dopo ce l'hai gia' in mano, e sta nella fila di quelli
+// in lettura. I LETTI si scavalcano ancora (chi rilegge il primo di una saga
+// letta fino al terzo vuole il quarto), e l'abbandonato pure, come sempre.
+//
+// E IL PROSSIMO STA DENTRO LA SERIE: lo decide `gruppoDi`, dove sta scritto
+// perche' quella regola e' stata girata due volte. Qui basta sapere che il
+// gruppo arriva di li' e che `null` vuol dire «non si puo' dire»: dentro
+// quella serie due titoli diversi portano lo stesso numero, e indovinare
+// vorrebbe dire servire uno spoiler.
+export function nextInSaga(
+  book,
+  books,
+  statusOf = getStatus,
+  progressoOf = getProgress,
+  contorno = contornoDiUnaGuida
+) {
+  return passoDentro(book, books, statusOf, progressoOf, contorno).libro;
+}
+
+// LO STESSO CAMMINO, MA DICE ANCHE PERCHE' SI E' FERMATO.
+//
+// Segnalato con l'Ingresso in mano, il giorno dopo aver tolto la proposta
+// sbagliata del 40K: «adesso non mi proponi piu' nulla?». Sette righe
+// c'erano, e la sua non c'era — e una riga che sparisce in silenzio
+// trasforma una regola in un mistero. E' la lezione di `perchePrimaTace`,
+// dove un tasto che non compare spiega quale anello si e' rotto.
+//
+// LA RAGIONE ESCE DALLA STESSA CAMMINATA che sceglie il volume, non da una
+// seconda funzione che la ricostruisce: due copie della stessa regola
+// divergono senza che nessun errore lo dica, e qui la copia sbagliata
+// direbbe al lettore una cosa che non e' successa. `nextInSaga` e'
+// diventata una riga sopra questa.
+export function passoDentro(
+  book,
+  books,
+  statusOf = getStatus,
+  progressoOf = getProgress,
+  contorno = contornoDiUnaGuida
+) {
   const saga = (book?.saga || "").trim();
-  if (!saga) return null;
+  if (!saga) return { libro: null, motivo: "senzaSaga" };
+  const dove = gruppoDi(book, books);
+  if (!dove) return { libro: null, motivo: "senzaSaga" };
+  // DOVE LA STORIA NON E' DICHIARATA, un numero ripetuto vuol dire due fili
+  // numerati ognuno da uno, e «il prossimo» non si puo' calcolare: si tace
+  // su tutto il gruppo, come si e' sempre fatto. Dove invece la Serie e'
+  // scritta e uguale su tutti, il filo e' uno solo per dichiarazione del
+  // lettore, e basta guardare il passo che si starebbe per proporre.
+  //
+  // E LA DOMANDA E' UNA SOLA, `coppiaDoppia`, non `numeriMescolati`: quella
+  // conta anche i contorni, e un'antologia che porta per sbaglio il numero
+  // di un romanzo non fa due sequenze — non e' una tappa. `numeriMescolati`
+  // resta dov'e' serve, a decidere come si CHIAMA la riga.
+  const coppia = unaStoriaSola(dove) ? {} : coppiaDoppia(dove, contorno);
+  if (coppia.uno) return { libro: null, motivo: "mescolati", ...coppia };
   const ord = (b) => (b.sagaOrder ?? Infinity);
   const cur = book.sagaOrder ?? null;
-  return (
-    books
-      .filter(
-        (b) =>
-          b.id !== book.id &&
-          (b.saga || "").trim() === saga &&
-          statusOf(b.id) !== "read" &&
-          // senza numero d'ordine non si indovina: meglio nessuna proposta
-          // di una sbagliata
-          b.sagaOrder != null &&
-          (cur == null || ord(b) > cur)
-      )
-      .sort((a, b) => ord(a) - ord(b) || (a.addedAt || 0) - (b.addedAt || 0))[0] || null
+  // MA IN UN MONDO IL PASSO E' IL PRIMO VOLUME NON LETTO, anche prima del
+  // piu' avanti letto (chiesto dal lettore: «mi proponi Warbreaker ma il
+  // primo che non e' stato letto del Cosmoverso e' Elantris»). Un mondo
+  // numerato col mondo (`universiNumerati`, deciso sui numeri dei volumi) e'
+  // fatto di serie che si leggono a pezzi, e un volume rimasto indietro non
+  // e' uno spoiler: e' una serie che non hai ancora cominciato. Altrove
+  // resta il numero dopo (il Mondo Disco, l'Eresia: «un volume lasciato
+  // indietro non e' il prossimo»).
+  const nelMondo = universiNumerati(dove).size > 0;
+  // `dove` e' gia' della sola saga del libro: lo garantisce `gruppoDi`
+  const dopo = dove
+    .filter(
+      (b) =>
+        b.id !== book.id &&
+        // senza numero d'ordine non si indovina: meglio nessuna proposta
+        // di una sbagliata
+        b.sagaOrder != null &&
+        (nelMondo || cur == null || ord(b) > cur)
+    )
+    .sort((a, b) => ord(a) - ord(b) || (a.addedAt || 0) - (b.addedAt || 0));
+  let sfondo = 0;
+  let letti = 0;
+  let mollati = 0;
+  let aperto = null;
+  for (const b of dopo) {
+    // QUEL CHE LA GUIDA NON CONTA COME TAPPA SI SCAVALCA, non ferma la
+    // ricerca: non sta in questo filo affatto, quindi non e' il passo dopo
+    // e nemmeno il volume che te lo trattiene in mano. Chiuso «Fallen
+    // Angels» (9) con «Night Lords Omnibus» (9,04) sullo scaffale, il passo
+    // resta il numero 10.
+    if (contorno(b)) {
+      sfondo += 1;
+      continue;
+    }
+    const stato = statusOf(b.id);
+    // letto e abbandonato si scavalcano tutt'e due, ma NON vogliono dire la
+    // stessa cosa a chi legge la riga: «li hai letti» e «li hai lasciati»
+    // sono due storie diverse, e contarli insieme farebbe dire all'app una
+    // cosa che non e' successa
+    if (stato === "read") {
+      letti += 1;
+      continue;
+    }
+    if (stato === "abandoned") {
+      mollati += 1;
+      continue;
+    }
+    // e sul passo che si sta per proporre il numero dev'essere di UNO solo:
+    // se un altro titolo lo porta, proporre l'uno o l'altro e' tirare a
+    // sorte — e in una saga il volume sbagliato e' uno spoiler servito
+    // dall'app
+    const rivali = rivaliDi(b, dove, contorno);
+    if (rivali.length) return { libro: null, motivo: "mescolati", uno: b, due: rivali[0] };
+    if (maiAperto(b, statusOf)) return { libro: b, motivo: null };
+    // nel mondo un volume in mano e' una serie che stai leggendo: il passo
+    // e' il primo che non hai aperto, piu' in la'
+    if (nelMondo) {
+      aperto ??= b;
+      continue;
+    }
+    // il seguito c'e' e l'hai gia' aperto: il passo ce l'hai in mano, e
+    // dirlo per nome e' meglio che tacere
+    return { libro: null, motivo: "aperto", volume: b };
+  }
+  if (aperto) return { libro: null, motivo: "aperto", volume: aperto };
+  // i tre silenzi non sono la stessa cosa, e chiedono al lettore tre cose
+  // diverse: comprare il volume dopo, non cercarlo perche' l'hai letto,
+  // sapere che quel che resta la guida non te lo chiede
+  if (letti) return { libro: null, motivo: "tuttiLetti" };
+  if (mollati) return { libro: null, motivo: "abbandonati" };
+  if (sfondo) return { libro: null, motivo: "soloSfondo" };
+  return { libro: null, motivo: "ultimo" };
+}
+
+// I PROSSIMI PASSI DI TUTTE LE SAGHE CHE HAI COMINCIATO.
+//
+// `nextInSaga` risponde su UN libro, e l'Ingresso la usava in un caso solo:
+// avevi appena chiuso un volume e l'app ti proponeva il successivo. Ma
+// «cosa leggo adesso» uno se lo chiede anche a meta' di un romanzo, e con
+// dieci saghe in corso la risposta non e' una sola (chiesto dal lettore
+// guardando l'Ingresso).
+//
+// SOLO LE SAGHE GIA' COMINCIATE, E «COMINCIATA» VUOL DIRE UN VOLUME FINITO.
+// Proporre il primo volume di una saga mai aperta non e' «il prossimo
+// passo», e' un consiglio di lettura — e quello lo fa la Libreria, dove i
+// libri stanno tutti. Al primo giro bastava aver APERTO un volume (stato o
+// progresso), e il lettore si e' trovato in fila «The Eye of the World»
+// perche' New Spring era stato aperto per un attimo, allo 0,4%: «volumi a
+// caso», parole sue. Un'apertura non e' un filo in mano; un libro finito
+// si'. Quindi la storia comincia col primo volume LETTO; il riferimento e'
+// il piu' avanti fra quelli DICHIARATI, letti o in lettura, e se e' in
+// lettura non c'e' un passo dopo — lo hai in mano (letto il primo e in
+// lettura il terzo, il secondo saltato non e' «il prossimo» e il terzo ce
+// l'hai gia'). L'abbandonato non apre niente, come sempre: quella storia
+// l'hai lasciata apposta.
+//
+// UN FILO PER SAGA, DOVE IL NUMERO E' DELLA SAGA (girata per la terza
+// volta, e stavolta scelta dal lettore fra tre strade: «uno per saga,
+// sempre», guardando un Mondo Disco con cinque seguiti e un Malazan con
+// tre). Il passo e' il numero dopo il piu' alto che hai letto o stai
+// leggendo, di qualunque serie. Solo dove ogni serie si numera da se'
+// (Mistborn e la Folgoluce da uno) il filo resta la serie: li' il numero
+// della saga non esiste. La storia delle due giravolte sta in `gruppoDi`.
+//
+// MA IL NOME DELLA RIGA NON SEGUE IL GRUPPO: SEGUE IL NUMERO. Il numero
+// mostrato accanto e' quello che il lettore ha scritto sul volume, e va
+// letto sotto l'etichetta giusta. Dove ogni serie si numera da se' — nel
+// Cosmoverse Mistborn e la Folgoluce partono tutt'e due da uno — l'etichetta
+// e' la serie: «Mistborn n° 4» dice qualcosa, «Cosmoverse n° 4» non si
+// poteva verificare a occhio, ed e' il difetto segnalato allora («sanderson
+// mi sta suggerendo il numero 4 del cosmoverso a caso»). Dove invece il
+// numero e' della SAGA, come nel Mondo Disco che corre da 1 a 41, l'etichetta
+// e' la saga: «Rincewind n° 13» direbbe «il tredicesimo Rincewind», che non
+// e' vero — il tredici e' il numero sul dorso, e sul dorso c'e' scritto
+// Discworld. Le due righe di una stessa saga si distinguono dal titolo e
+// dalla copertina, che sono li' accanto; un'etichetta che mente no.
+//
+// IL RIFERIMENTO E' IL VOLUME PIU' AVANTI CHE HAI DICHIARATO, non l'ultimo che
+// hai aperto: chi rilegge il secondo di una saga letta fino al settimo non
+// vuole sentirsi proporre il terzo. Da li' in poi comanda `nextInSaga` con
+// le sue guardie — senza numero d'ordine non si indovina, il volume che
+// segue dev'essere intatto, e in una saga il volume sbagliato e' uno
+// spoiler servito dall'app.
+//
+// L'ORDINE E' L'ULTIMO TOCCO SULLA SAGA, mai il titolo: la saga che stai
+// leggendo stasera sta per prima e quella lasciata a meta' l'anno scorso
+// chiude la fila. A parita' decide l'alfabeto, o due saghe ferme allo
+// stesso istante cambierebbero posto a ogni apertura.
+
+// I FILI CHE HAI IN MANO, raccolti una volta sola: li leggono sia chi
+// propone il passo sia chi spiega perche' non lo propone, e devono vedere
+// gli stessi gruppi — se divergessero, la spiegazione parlerebbe di una
+// storia diversa da quella che e' rimasta muta.
+function raccogliStorie(books, statusOf, tocco, contorno) {
+  // dove ogni serie si numera da se', il numero e' della SERIE e l'etichetta
+  // pure, e il filo e' la serie; dove la fila e' una sola, il numero e'
+  // della saga, e la saga e' un filo solo.
+  // UNA DOMANDA PER SAGA, NON PER LIBRO: chi non aveva i numeri doppi non si
+  // segnava da nessuna parte, e la stessa domanda — un giro sull'intera
+  // biblioteca — si rifaceva per ogni suo volume. Misurato con 650 libri e
+  // il processore rallentato quattro volte: 140 ms dell'Ingresso solo qui.
+  const suoi = new Set();
+  const guardate = new Set();
+  for (const b of books) {
+    const saga = (b?.saga || "").trim();
+    if (!saga || guardate.has(saga)) continue;
+    guardate.add(saga);
+    if (numeriMescolati(books, saga)) suoi.add(saga);
+  }
+  const storie = new Map();
+  for (const b of books) {
+    const saga = (b?.saga || "").trim();
+    if (!saga) continue;
+    // contano i volumi DICHIARATI, letti o in lettura: un'apertura di
+    // passaggio non e' niente, e l'abbandonato e' una storia lasciata
+    const stato = statusOf(b.id);
+    if (stato !== "read" && stato !== "reading") continue;
+    // E NON APRE UN FILO NEMMENO DA RIFERIMENTO. Era la meta' che si vedeva
+    // nella fotografia: l'unico volume letto senza Serie era «Eisenhorn»
+    // — il prologo, che la guida chiama fondazione del 40K e non tappa
+    // dell'Eresia — e bastava lui a far nascere una riga «Warhammer 40K»
+    // che poi proponeva la lettura di sfondo dopo di lui. Un libro che la
+    // guida non conta come tappa non e' un filo in mano.
+    if (contorno(b)) continue;
+    // un filo per serie cominciata, e le maiuscole non ne fanno un secondo;
+    // il volume che non sta in nessun gruppo — numeri doppi dentro la sua
+    // stessa serie — lo zittisce `nextInSaga`
+    // UN FILO PER SAGA, dove il numero e' della saga; uno per serie solo
+    // dove ogni serie si numera da se' (vedi `gruppoDi`)
+    const ciclo = suoi.has(saga) ? cicloDi(b) : "";
+    const chiave = `${saga}\u0000${ciclo.toLowerCase()}`;
+    // `finito: false` qui e' cintura e bretelle e NON e' portante (mutazione
+    // provata, sopravvive): il campo assente e' falso lo stesso. Sta scritto
+    // perche' dice la forma dell'oggetto a chi legge.
+    const e = storie.get(chiave) || { saga, ciclo, avanti: null, finito: false, quando: 0 };
+    // UN FILO SI APRE CON UN VOLUME FINITO, e «finito» e' una proprieta' del
+    // FILO, non del volume piu' avanti: chi ha chiuso l'ottavo e sta al 12%
+    // del quindicesimo questa storia l'ha cominciata eccome, e il passo dopo
+    // glielo si puo' dire. Pretendendolo sul riferimento si zittiva proprio
+    // il filo che hai in mano.
+    if (stato === "read") e.finito = true;
+    // il piu' avanti: `-Infinity` tiene i senza-numero sotto a chiunque
+    // ne abbia uno, cosi' un volume non numerato non fa da riferimento
+    // finche' c'e' di meglio
+    if (!e.avanti || (b.sagaOrder ?? -Infinity) > (e.avanti.sagaOrder ?? -Infinity)) e.avanti = b;
+    e.quando = Math.max(e.quando, tocco(b.id) || 0);
+    storie.set(chiave, e);
+  }
+  for (const e of storie.values()) e.nome = suoi.has(e.saga) ? e.ciclo || e.saga : e.saga;
+  return storie;
+}
+
+export function prossimiPassi(
+  books = [],
+  {
+    statusOf = getStatus,
+    progressoOf = getProgress,
+    tocco = () => 0,
+    escludi = null,
+    contorno = contornoDiUnaGuida,
+  } = {}
+) {
+  const storie = raccogliStorie(books, statusOf, tocco, contorno);
+
+  const passi = [];
+  for (const e of storie.values()) {
+    // il filo si apre con un volume FINITO: un'apertura di passaggio non e'
+    // una storia cominciata. Ma il riferimento resta il piu' avanti che hai
+    // DICHIARATO, anche se lo stai leggendo — il passo dopo e' quello che
+    // segue lui.
+    if (!e.finito) continue;
+    // il ciclo qui serve a RAGGRUPPARE le storie e a dare il nome alla riga;
+    // a cercare il candidato dentro il ciclo giusto — e a tacere dove i
+    // numeri non sono una fila — ci pensa `nextInSaga`, che il ciclo lo
+    // legge dal volume che le si passa
+    const libro = nextInSaga(e.avanti, books, statusOf, progressoOf, contorno);
+    // il libro gia' in cima all'Ingresso non si ripete due righe piu' sotto
+    if (!libro || libro.id === escludi) continue;
+    passi.push({ saga: e.saga, ciclo: e.ciclo, nome: e.nome, libro, da: e.avanti, quando: e.quando, inizio: inizioDiCiclo(libro, books, contorno) });
+  }
+  // e a parita' di nome decide il NUMERO del volume proposto: da quando due
+  // serie della stessa saga possono chiamarsi tutt'e due come la saga
+  // («Discworld» due volte), l'alfabeto non le distingue piu' e senza questo
+  // terzo criterio l'ordine sarebbe quello in cui i libri sono entrati in
+  // biblioteca, cioe' diverso a ogni import
+  return passi.sort(
+    (a, b) =>
+      b.quando - a.quando ||
+      a.nome.localeCompare(b.nome, "it") ||
+      (a.libro.sagaOrder ?? Infinity) - (b.libro.sagaOrder ?? Infinity)
   );
+}
+
+// IL PASSO CHE APRE UN CICLO LO DICE («Discworld n° 10 · inizia
+// Industrial Revolution»): nessun volume della sua serie viene prima di
+// lui. Prima era una proposta a parte (`iniziDeiCicli`, l'inizio del primo
+// ciclo non cominciato, uno per saga); col filo che e' la saga intera resta
+// la nota sul passo. Un volume senza serie da' "" da solo
+function inizioDiCiclo(libro, books, contorno) {
+  const ciclo = cicloDi(libro).toLowerCase();
+  const saga = (libro.saga || "").trim();
+  const prima = books.some(
+    (b) => b && b.id !== libro.id && (b.saga || "").trim() === saga && cicloDi(b).toLowerCase() === ciclo && b.sagaOrder != null && b.sagaOrder < libro.sagaOrder && !contorno(b)
+  );
+  return prima ? "" : cicloDi(libro);
+}
+
+// E LE SAGHE CHE TACCIONO DICONO PERCHE'.
+//
+// Segnalato con l'Ingresso in mano: «adesso non mi proponi piu' nulla?».
+// Sette righe c'erano, e quella del 40K no — e da fuori le ragioni per cui
+// un filo non propone niente sono indistinguibili fra loro: il volume dopo
+// non ce l'hai, l'hai gia' aperto, stai ancora leggendo quello di prima,
+// due volumi portano lo stesso numero. Tutte e quattro si vedono uguali:
+// una riga che non c'e'.
+//
+// E' la lezione di `perchePrimaTace`, dove il tasto che non compare nomina
+// il PRIMO anello rotto e dice dove si mette a posto. Qui la ragione non si
+// ricostruisce: viene da `passoDentro`, la stessa camminata che sceglie il
+// volume.
+//
+// TACE CHI NON HA NIENTE DA DIRE: una saga mai cominciata non compare (non
+// e' un filo in mano), e nemmeno una che il passo ce l'ha — quella sta gia'
+// nella fila sopra. Resta solo chi un filo lo ha e non riceve una proposta.
+export function perchePassoTace(
+  books = [],
+  {
+    statusOf = getStatus,
+    progressoOf = getProgress,
+    tocco = () => 0,
+    escludi = null,
+    contorno = contornoDiUnaGuida,
+  } = {}
+) {
+  const storie = raccogliStorie(books, statusOf, tocco, contorno);
+  const muti = [];
+  for (const e of storie.values()) {
+    // di questa storia non hai ancora finito niente: e' un'apertura di
+    // passaggio, non un filo in mano, e la riga lo dice invece di sparire
+    if (!e.finito) {
+      muti.push({ ...e, motivo: "inMano", da: e.avanti });
+      continue;
+    }
+    // SI SPREME TUTTO L'ESITO, non i campi che oggi mi vengono in mente:
+    // `passoDentro` porta con se' i volumi che la frase deve nominare
+    // (`volume`, `uno`, `due`), e un motivo nuovo ne portera' altri —
+    // elencandoli a mano, il prossimo li perde per strada e la riga torna
+    // generica senza che nessun errore lo dica (preso dal test)
+    const esito = passoDentro(e.avanti, books, statusOf, progressoOf, contorno);
+    const { libro } = esito;
+    // chi un passo ce l'ha non si spiega: o sta nella fila qui sopra, o e'
+    // il libro gia' in cima all'Ingresso (`escludi`), che la fila salta
+    // apposta per non dirlo due volte. In tutt'e due i casi la riga c'e',
+    // ed e' per questo che il confronto con `escludi` NON si scrive: una
+    // guardia che non guarda e' peggio di nessuna guardia (mutazione
+    // provata, sopravviveva)
+    if (libro) continue;
+    muti.push({ ...e, ...esito, da: e.avanti });
+  }
+  // UNA SAGA CON PIU' FILI LI NOMINA PER SERIE, E LI TIENE VICINI. Segnalato
+  // dal lettore: «Circle of the World: "Red Country" e' l'ultimo volume che
+  // hai», e venti righe piu' giu' la stessa saga con «The Wisdom of Crowds»
+  // e «Last Argument of Kings». Erano tre serie (il filo e' la serie), ma
+  // col solo nome della saga davanti sembravano tre risposte alla stessa
+  // domanda, e la prima sbagliata. Le righe di una saga stanno insieme,
+  // nell'ordine dei volumi; le saghe nell'ordine dell'ultima toccata
+  const quante = new Map();
+  const ultima = new Map();
+  for (const t of muti) {
+    quante.set(t.saga, (quante.get(t.saga) || 0) + 1);
+    ultima.set(t.saga, Math.max(ultima.get(t.saga) || 0, t.quando));
+  }
+  // E UNA SAGA LETTA TUTTA STA IN UNA RIGA SOLA (chiesto dal lettore fra le
+  // proposte): The Black Company erano quattro righe, una per serie, e tutte
+  // dicevano la stessa cosa — non c'e' altro da leggere. Solo se TUTTI i
+  // volumi della saga sono letti: con uno solo ancora da leggere, anche di
+  // un'altra serie, «hai letto tutto» sarebbe falso, e le righe per serie
+  // restano. L'ultimo e' il piu' avanti nella saga. Col filo che e' la saga
+  // intera la riga e' gia' una, e lo dice lo stesso: «hai letto tutti i 4
+  // volumi» dice piu' di «e' l'ultimo che hai» (un volume solo no: «tutti i
+  // 1 volumi»)
+  const suoi = new Map();
+  for (const b of books) {
+    const saga = (b?.saga || "").trim();
+    if (!saga) continue;
+    if (!suoi.has(saga)) suoi.set(saga, []);
+    suoi.get(saga).push(b);
+  }
+  const lette = new Set([...quante.keys()].filter((saga) => suoi.get(saga).length > 1 && suoi.get(saga).every((b) => statusOf(b.id) === "read")));
+  const righe = muti.filter((t) => !lette.has(t.saga));
+  for (const saga of lette) {
+    const tutti = suoi.get(saga);
+    const da = tutti.reduce((a, b) => ((b.sagaOrder ?? -Infinity) > (a.sagaOrder ?? -Infinity) ? b : a));
+    righe.push({ saga, ciclo: "", nome: saga, motivo: "sagaLetta", da, quanti: tutti.length });
+  }
+  for (const t of righe) if (quante.get(t.saga) > 1 && !lette.has(t.saga)) t.nome = `${t.saga} · ${t.ciclo || "senza serie"}`;
+  return righe.sort(
+    (a, b) =>
+      ultima.get(b.saga) - ultima.get(a.saga) ||
+      a.saga.localeCompare(b.saga, "it") ||
+      (a.da?.sagaOrder ?? Infinity) - (b.da?.sagaOrder ?? Infinity) ||
+      a.nome.localeCompare(b.nome, "it")
+  );
+}
+
+// Le parole, una per ragione. Stanno in un elenco per la ragione di `GUAI` e
+// di `PERCHE_TACE`: un motivo senza frase non alza nessun errore, scrive
+// «undefined» dentro una riga in italiano — e il test pretende che ognuno
+// sappia parlare.
+export const MOTIVI_PASSO = {
+  inMano: (t) =>
+    `non hai ancora finito nessun volume di questa storia: stai leggendo «${t.da?.title || "il primo che hai aperto"}».`,
+  aperto: (t) => `il seguito «${t.volume?.title || "che viene dopo"}» l'hai già aperto: il passo ce l'hai in mano.`,
+  ultimo: (t) => `«${t.da?.title || "l'ultimo che hai letto"}» è l'ultimo volume che hai di questa storia.`,
+  tuttiLetti: (t) => `dopo «${t.da?.title || "l'ultimo"}» hai già letto tutto quello che hai.`,
+  abbandonati: (t) => `dopo «${t.da?.title || "l'ultimo"}» hai solo volumi che avevi lasciato.`,
+  soloSfondo: (t) =>
+    `dopo «${t.da?.title || "l'ultimo"}» ti restano solo letture di sfondo, che la guida non chiede come tappa.`,
+  mescolati: (t) =>
+    t?.uno && t?.due
+      ? `«${t.uno.title}» e «${t.due.title}» portano tutt'e due il n° ${t.uno.sagaOrder}: finché è così non so dire qual è il prossimo — correggi il numero di uno dei due nella scheda.`
+      : "due volumi portano lo stesso numero di lettura: finché è così non so dire qual è il prossimo — correggi i numeri nella scheda.",
+  senzaSaga: () => "non ha una saga scritta nella scheda.",
+  sagaLetta: (t) =>
+    `hai letto ${t?.quanti ? `tutti i ${t.quanti} volumi` : "tutti i volumi"} che hai: l'ultimo è «${t?.da?.title || "il più avanti"}».`,
+};
+
+// I VOLUMI DI CUI LA RIGA PARLA, da aprire col tocco (chiesto dal lettore:
+// «correggi il numero di uno dei due nella scheda» diceva dove, ma non ci
+// portava — e la scheda andava cercata in Libreria). Due volumi col
+// numero uguale si aprono tutt'e due; il seguito gia' aperto e' lui;
+// altrimenti il volume da cui la riga parte.
+export function volumiDelMotivo(t) {
+  const v = t?.motivo === "mescolati" ? [t.uno, t.due] : t?.motivo === "aperto" ? [t.volume || t.da] : [t?.da];
+  return v.filter((b) => b?.id);
+}
+
+// La frase intera, col nome del filo davanti. Un motivo che non conosciamo
+// si dice com'e' invece di sparire: e' la regola di `spiegaSync` — quel che
+// non sappiamo tradurre resta l'unico appiglio.
+export function frasePassoTace(t) {
+  const dillo = MOTIVI_PASSO[t?.motivo];
+  return `${t?.nome || "Questa storia"}: ${dillo ? dillo(t) : `non ho un passo da proporti (${t?.motivo}).`}`;
+}
+
+// LE DUE FILE DELL'INGRESSO (chiesto dal lettore: «dividere in due parti,
+// da una parte i libri in corso e dall'altra i suggerimenti delle saghe»):
+// i libri cominciati, che il tocco riapre, e i seguiti mai aperti, che il
+// tocco mostra nella scheda. Nella stessa fila avevano la stessa faccia e
+// due gesti diversi. Un libro non sta due volte, e vince la fila «in corso»:
+// un volume che stai gia' leggendo non e' un consiglio. Gli zeri non si
+// dicono («0% letto» sotto un libro appena aperto).
+export function inCorsoESeguiti(inLettura = [], passi = [], progressoOf = getProgress) {
+  const visti = new Set();
+  const inCorso = [];
+  for (const b of inLettura || []) {
+    if (!b || visti.has(b.id)) continue;
+    visti.add(b.id);
+    const p = Math.round((Number(progressoOf(b.id)) || 0) * 100);
+    inCorso.push({ book: b, nota: p > 0 ? `${p}% letto` : "appena cominciato" });
+  }
+  const seguiti = [];
+  for (const p of passi || []) {
+    const b = p?.libro;
+    if (!b || visti.has(b.id)) continue;
+    visti.add(b.id);
+    // il CICLO quando c'e', la saga quando non c'e': dentro una saga grande
+    // «Cosmoverse n° 4» non si puo' verificare a occhio, «Mistborn n° 4» si'.
+    // L'inizio di un ciclo nuovo lo dice, e un volume rimesso «Da leggere»
+    // dopo averlo aperto dice dove eri arrivato.
+    const letto = Math.round((Number(progressoOf(b.id)) || 0) * 100);
+    const pezzi = [`${p.nome} n° ${String(b.sagaOrder).replace(".", ",")}`];
+    if (p.inizio) pezzi.push(`inizia ${p.inizio}`);
+    if (letto > 0) pezzi.push(`già al ${letto}%`);
+    seguiti.push({ book: b, nota: pezzi.join(" · ") });
+  }
+  return { inCorso, seguiti };
 }

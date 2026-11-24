@@ -1,0 +1,527 @@
+// COSA SA FARE L'APP, scritto una volta in un posto solo.
+//
+// Chiesto dal lettore («c'è modo di rendere più user friendly
+// l'applicazione?») dopo che sei segnalazioni su sei dicevano la stessa
+// cosa: «dove regolo le dimensioni?», «ma dove sarebbe quello che hai
+// fatto?», «serve avere sia raggruppa che ordina?». Non che l'app sia
+// fatta male — che **non dice quello che sa fare**, e le funzioni si
+// scoprono per caso o chiedendole a qualcun altro.
+//
+// NON E' UN TUTORIAL, ED E' LA DIFFERENZA CHE CONTA: un tutorial si legge
+// una volta, quando non serve, e non lo si ritrova il giorno che servirebbe.
+// Questa e' una MAPPA — si apre quando ti chiedi «ma l'app lo sa fare?» e
+// si scorre. Per questo non compare mai da sola e non si mette in mezzo.
+//
+// **E SI RAGGRUPPA PER DOVE SEI, non per categoria**: la domanda che uno
+// ha in testa non e' «quali funzioni di annotazione esistono», e' «sto
+// leggendo, cosa posso fare da qui». I luoghi sono i posti dove ti trovi
+// davvero, e il primo e' il libro perche' e' li' che si passa il tempo.
+//
+// STA IN `data/` E NON NEL COMPONENTE per la ragione di sempre: un test in
+// Node non importa un `.jsx`, e qui c'e' qualcosa da difendere. Una voce
+// muta — senza il cosa o senza il dove — non alza nessun errore: si legge
+// e lascia il lettore esattamente dov'era, che e' il difetto da cui questa
+// pagina nasce. Vale la regola di `GUAI` e di `ESITI_CONTROLLO`.
+//
+// **IL PERICOLO VERO E' L'INVECCHIAMENTO**: una mappa che nomina una
+// funzione tolta e' PEGGIO di nessuna mappa, perche' il lettore le crede e
+// va a cercare un tasto che non c'e'. Una parte si puo' difendere — le
+// voci che nominano una levetta del reader portano la sua `chiave`, e il
+// test pretende che quella chiave esista davvero in `deviceDefaults` —
+// ma il resto no: che un tasto sia ancora sullo schermo nessun test in
+// Node lo sa. **Chi toglie una funzione la toglie anche da qui**, ed e'
+// scritto qui perche' non si dimentichi.
+
+// I luoghi, nell'ordine in cui ci si passa il tempo. `sezione` lega il
+// luogo a una voce di `SECTIONS` quando ce n'e' una: il test controlla che
+// esista, o la mappa manderebbe in una stanza che non c'e'.
+export const LUOGHI = [
+  {
+    id: "libro",
+    nome: "Mentre leggi",
+    sotto: "I tasti nelle due barre, che compaiono toccando il centro della pagina",
+  },
+  {
+    id: "parola",
+    nome: "Su una parola",
+    sotto: "Tieni premuto su una parola del testo: si apre il menu della selezione",
+  },
+  {
+    id: "scheda",
+    nome: "Nella scheda di un libro",
+    sotto: "Si apre toccando la copertina, in Libreria o nell'Ingresso",
+  },
+  { id: "libreria", nome: "In Libreria", sezione: "library", sotto: "Lo scaffale e la cassetta degli attrezzi" },
+  { id: "ingresso", nome: "Nell'Ingresso", sezione: "home", sotto: "La prima schermata" },
+  { id: "musica", nome: "Nella sala della musica", sezione: "music" },
+  { id: "impostazioni", nome: "In Impostazioni", sotto: "Il tasto in cima a ogni schermata" },
+];
+
+// Ogni voce: COSA FA e DOVE si tocca. Il «dove» non e' un ornamento — e'
+// la meta' che serve, perche' sapere che una funzione esiste senza sapere
+// da dove si apre lascia esattamente dove si era.
+export const MAPPA = [
+  // ---- MENTRE LEGGI ------------------------------------------------------
+  {
+    luogo: "libro",
+    nome: "Le barre vanno e vengono",
+    cosa: "Un tocco al centro della pagina le nasconde e le rimette; ai bordi, volta la pagina.",
+    dove: "Se il tocco non risponde, c'è una linguetta sul bordo in alto che le richiama sempre.",
+  },
+  {
+    luogo: "libro",
+    nome: "Mappe e illustrazioni da vicino",
+    cosa: "Una mappa o un'illustrazione del libro si apre a tutto schermo: due dita o un doppio tocco per avvicinarti, il dito per spostarti.",
+    dove: "Tocca l'immagine al centro della pagina (ai bordi il tocco volta pagina). Negli ePub; nei PDF c'è già lo zoom.",
+  },
+  {
+    luogo: "libro",
+    nome: "Fumetti e manga",
+    cosa: "Un fumetto (CBZ o CBR) si legge una pagina per volta: un tocco ai bordi volta, due dita o un doppio tocco avvicinano. «Verso» lo gira da destra a sinistra come un manga. «Doppia» affianca due pagine col tablet sdraiato (una tavola doppia sta da sola). «Scorri» mette le pagine una sotto l'altra, larghe quanto lo schermo, e si scorre col dito senza voltare. I bordi neri o bianchi della scansione si tolgono da soli (levetta nel pannello 🌙).",
+    dove: "I tasti ⇨/⇦, 📖 e ↕ nella barra in alto, che compare toccando il centro della pagina.",
+  },
+  {
+    luogo: "libro",
+    nome: "Indice",
+    cosa: "I capitoli del libro, per saltare dove vuoi.",
+    dove: "Il tasto ☰ nella barra in alto.",
+  },
+  {
+    luogo: "libro",
+    nome: "Segnalibri",
+    cosa: "Segni un punto e gli dai un'etichetta; li ritrovi tutti in un elenco.",
+    dove: "Il tasto 🔖 nella barra.",
+  },
+  {
+    luogo: "libro",
+    nome: "Evidenziazioni",
+    cosa: "Le frasi che hai segnato, con la tua nota accanto; da qui si torna al punto del libro.",
+    dove: "Il tasto ✍ nella barra.",
+  },
+  {
+    luogo: "libro",
+    nome: "Cerca nel tomo",
+    cosa: "Cerca una frase dentro il libro, e trova anche le forme flesse: «correva» risponde a «correre».",
+    dove: "Il tasto 🔍 nella barra.",
+  },
+  {
+    luogo: "libro",
+    nome: "Dove eravamo rimasti",
+    cosa: "Il riassunto della storia fino al punto in cui sei, senza una riga su quel che viene dopo. Vuole la chiave dell'Oracolo.",
+    dove: "Il tasto 🧭 nella barra.",
+  },
+  {
+    luogo: "libro",
+    nome: "Leggi ad alta voce",
+    cosa: "La voce del tablet legge la pagina e la gira da sé, con la voce della lingua del libro (quelle del dispositivo parlano anche senza rete). La musica si abbassa mentre parla. Pausa, velocità e stop restano a schermo anche a barre nascoste; se giri pagina col dito riparte da lì. Negli ePub a pagine, non nello scorrimento.",
+    dove: "Il tasto 🔊 «Ascolta» nella barra.",
+  },
+  {
+    luogo: "libro",
+    nome: "Come volta la pagina",
+    cosa: "Dissolvenza, spazzata o niente. La spazzata è la più bella e costa: sotto la levetta c'è scritto quanto.",
+    dove: "Il tasto «Aa» → «La pagina svolta».",
+    chiave: "svolta",
+  },
+  {
+    luogo: "libro",
+    nome: "Come si segnano i paragrafi",
+    cosa: "Rientrati, staccati, o come nel libro senza toccare niente. Su certi ePub convertiti cambia tutta la pagina.",
+    dove: "Il tasto «Aa» → «Paragrafi».",
+    chiave: "paragrafi",
+  },
+  {
+    luogo: "libro",
+    nome: "Corpo, interlinea, margine, colonna",
+    cosa: "La misura del testo, e una pagina sola o due affiancate. In verticale la doppia pagina non esiste e la levetta sparisce.",
+    dove: "Il tasto «Aa».",
+    chiave: "fontSize",
+  },
+  {
+    luogo: "libro",
+    nome: "Carattere",
+    cosa: "Il carattere del testo: quello del libro, oppure Literata (fatto per lo schermo), EB Garamond, Atkinson Hyperlegible (le lettere che si confondono ridisegnate apposta), un serif classico o uno moderno.",
+    dove: "Il tasto «Aa» → «Carattere».",
+    chiave: "font",
+  },
+  {
+    luogo: "libro",
+    nome: "Caldo e luminosità",
+    cosa: "Due veli sulla pagina, per leggere al buio senza cambiare tema.",
+    dove: "Il tasto «Aa».",
+    chiave: "warmth",
+  },
+  {
+    luogo: "libro",
+    nome: "Schermo intero",
+    cosa: "L'app installata si apre già a tutto schermo, senza le barre di Android. Nella scheda del browser toglie di mezzo la barra degli indirizzi: su un PDF è un terzo di pagina in più.",
+    dove: "Da installata non serve niente; nel browser, il tasto ⛶ nella barra del libro.",
+  },
+  {
+    luogo: "libro",
+    nome: "Le note a piè di pagina si leggono sul posto",
+    cosa: "Tocchi l'asterisco e la nota arriva in una scheda: chiusa quella, sei dove eri. Anche le note dentro le note.",
+    dove: "Il rimando nel testo — il bersaglio è più largo di quel che sembra.",
+  },
+  {
+    luogo: "libro",
+    nome: "Ritaglio dei margini (solo PDF)",
+    cosa: "Toglie il bianco attorno alla stampa, così il testo riempie lo schermo.",
+    dove: "Il pannello delle impostazioni del PDF.",
+    chiave: "ritaglia",
+  },
+  {
+    luogo: "libro",
+    nome: "La musica ti segue",
+    cosa: "La barra dice cosa sta suonando e ti porta alla sala della musica chiudendo il libro dalla porta giusta.",
+    dove: "La striscia nella barra, quando una melodia suona.",
+  },
+
+  // ---- SU UNA PAROLA -----------------------------------------------------
+  {
+    luogo: "parola",
+    nome: "Definisci",
+    cosa: "Il dizionario dell'app: sensi numerati con un esempio d'uso, resa italiana, modi di dire e verbi frasali. Risponde anche senza rete se hai scaricato i dizionari (WordNet per la resa italiana, Wiktionary per i significati inglesi).",
+    dove: "Tieni premuto su una parola → «Definisci».",
+    chiave: "dizionario",
+  },
+  {
+    luogo: "parola",
+    nome: "Chi è costui?",
+    cosa: "La scheda di un personaggio cucita SOLO su quello che hai letto: niente arriva dai volumi che non hai ancora aperto. Vuole la chiave dell'Oracolo.",
+    dove: "Tieni premuto su un nome → «Chi è».",
+  },
+  {
+    luogo: "parola",
+    nome: "Evidenzia",
+    cosa: "Quattro colori, e la citazione finisce nel giardino con la tua nota.",
+    dove: "Tieni premuto → i pallini colorati.",
+  },
+  {
+    luogo: "parola",
+    nome: "Il glossario della saga",
+    cosa: "I termini di una saga restano segnati sulla pagina; tocchi e ti dice cosa sono. Puoi aggiungere le tue voci.",
+    dove: "I termini segnati nel testo, e «📖 Tieni nel glossario» nella scheda del dizionario.",
+    chiave: "terms",
+  },
+  {
+    luogo: "parola",
+    nome: "Lexicanum",
+    cosa: "Nei libri del 40K i nomi di Lexicanum sono segnati nel testo come i termini del glossario: tocchi e la scheda mostra la voce, senza rete, coi link alle altre voci. I paragrafi che vengono da un volume della saga che non hai ancora letto restano velati finché non li tocchi. La voce è come sul wiki: il riquadro dei dati (velato, perché può dire come va a finire), le citazioni, le tabelle e l'indice delle sezioni, con l'immagine di Fandom se l'hai scaricata.",
+    dove: "Tocca un nome segnato, o tieni premuto su un nome → «Definisci» → «Leggi la voce». I segni si spengono con «Segna i termini della saga». Si scarica da Impostazioni → I wiki del 40K.",
+  },
+  {
+    luogo: "parola",
+    nome: "Fandom",
+    cosa: "La voce del Warhammer 40k Wiki di Fandom, come seconda scheda accanto a Lexicanum, senza rete. Fandom non dice da quale libro viene ogni paragrafo: davanti alla voce c'è un avviso coi libri delle sue fonti che non hai ancora letto, e la voce si legge solo se lo tocchi. In fondo alla voce, se le hai scaricate, le altre illustrazioni: un tocco le apre in grande.",
+    dove: "Nella scheda del dizionario di un nome del 40K → scheda «Fandom ⚠». Si scarica da Impostazioni → I wiki del 40K.",
+  },
+
+  // ---- NELLA SCHEDA DI UN LIBRO ------------------------------------------
+  {
+    luogo: "scheda",
+    nome: "La copertina si gira",
+    cosa: "Sul rovescio c'è la quarta di copertina, presa dal file o cercata nei cataloghi in rete.",
+    dove: "Tocca l'immagine della copertina.",
+  },
+  {
+    luogo: "scheda",
+    nome: "Prima di cominciare",
+    cosa: "Il riassunto dei volumi PRECEDENTI, da leggere prima di aprire il libro nuovo. Se il tasto non c'è, una riga dice perché.",
+    dove: "Sopra «Apri il libro», sui volumi di una saga dal secondo in poi.",
+  },
+  {
+    luogo: "scheda",
+    nome: "Stato, voto, cuore",
+    cosa: "Da leggere · In lettura · Letto · Abbandonato; le stelle sono un voto, il cuore mette il libro fra i preferiti: in Libreria li trovi col filtro «♥ Preferiti», o in cima con l'ordine «Preferiti prima».",
+    dove: "In cima alla scheda.",
+  },
+  {
+    luogo: "scheda",
+    nome: "L'anno in cui l'hai finito",
+    cosa: "Sui libri vecchi, che hai letto prima di metterli qui, l'app non inventa una data: l'anno lo scrivi tu, e lasciarlo vuoto va bene lo stesso.",
+    dove: "Sotto lo stato, quando il libro è segnato «Letto».",
+  },
+  {
+    luogo: "scheda",
+    nome: "Togli l'ebook, tieni la scheda",
+    cosa: "Il file se ne va da qui e dal cloud; copertina, voto, note, evidenziazioni e il posto sullo scaffale restano. Per rileggerlo, reimporta il file: torna nella stessa scheda.",
+    dove: "In fondo alla scheda, sopra «Elimina questo libro».",
+  },
+  {
+    luogo: "scheda",
+    nome: "Saga, serie e numero",
+    cosa: "L'app prova a riconoscerli da sola in cinque modi, ma quel che scrivi tu comanda sempre. Da qui dipendono lo scaffale e i riassunti.",
+    dove: "I campi della scheda.",
+  },
+  {
+    luogo: "scheda",
+    nome: "Il genere si sceglie col dito",
+    cosa: "Un pannello di famiglie e sottogeneri, senza aprire la tastiera.",
+    dove: "Il tasto «Scegli» accanto al campo Genere.",
+  },
+  {
+    luogo: "scheda",
+    nome: "La copertina si mette a mano",
+    cosa: "Una foto dal rullino, rimpicciolita da sola; con ↺ torna quella del file.",
+    dove: "Il tasto 🖼 sotto l'immagine.",
+  },
+  {
+    luogo: "scheda",
+    nome: "La musica di questo libro",
+    cosa: "Leghi una melodia o una raccolta a un romanzo: riaprendolo riparte da sola.",
+    dove: "Nella scheda, sezione della musica.",
+  },
+
+  // ---- IN LIBRERIA -------------------------------------------------------
+  {
+    luogo: "libreria",
+    nome: "Fumetti in CBZ e CBR",
+    cosa: "Entrano come i libri, con la prima pagina per copertina; se l'archivio porta la sua scheda (ComicInfo) arrivano anche serie, numero e autore, e i manga si aprono già nel verso giusto. Un CBZ si legge a pezzi, anche da un giga; un CBR oltre i 300 MB va convertito in CBZ.",
+    dove: "«+ Aggiungi libri», o trascinali sulla pagina; «Apri con» da Android.",
+  },
+  {
+    luogo: "libreria",
+    nome: "La ricerca cerca anche le tue note",
+    cosa: "Titolo, autore, saga, genere, ciclo e le note che hai scritto nella scheda — accenti compresi. La ✕ a destra la svuota in un colpo.",
+    dove: "La casella in cima.",
+  },
+  {
+    luogo: "libreria",
+    nome: "Cerca dentro i tomi",
+    cosa: "Cerca una frase dentro TUTTI i libri, uno per volta. I tomi rimasti nel cloud si contano e si dicono.",
+    dove: "Il tasto 🔍 accanto alla ricerca.",
+  },
+  {
+    luogo: "libreria",
+    nome: "Il cammino di una saga",
+    cosa: "La guida di lettura per intero — anche i volumi che non hai — con dentro i tuoi, in ordine e divisa per parti; quel che manca va in Da prendere con un tocco. Le guide: Mondo Disco, l'Eresia di Horus (il percorso CD8D: settantuno tappe, antologie e romanzi 40K al loro posto), la Seconda Apocalisse, Hellboy, Gaunt's Ghosts (i quindici romanzi in quattro cicli), Eisenhorn e Ravenor (con l'omnibus che contiene i romanzi), il Libro dei Caduti di Malazan, le Cronache della Folgorluce, Mistborn (le due ere), Lockwood & Co., Bartimaeus e le Cronache dell'assassino del re (anche coi titoli italiani), e le saghe del 40K più belle e famose (Ciaphas Cain, Night Lords, Space Wolf, Bequin, Cadia e altre undici) con una guida dei romanzi a sé consigliati.",
+    dove: "Il tasto 📜 sull'intestazione del ripiano, uno per guida; sotto «Warhammer 40K» ci sono tutte le guide del 40K, anche quelle che non hai cominciato (col conto: «📜 Ravenor · 0/3»); quando sono tante stanno dietro «📜 Altre N guide». Tutte le guide si aprono anche da «Da prendere», in «📜 Le guide complete».",
+  },
+  {
+    luogo: "libreria",
+    nome: "L'ordine di lettura di un mondo intero",
+    cosa: "Tutti i romanzi di Malazan, del Cosmere o del mondo di Elan (Riyria e le altre serie di Sullivan) in un cammino solo, nell'ordine in cui sono usciti (quello che consigliano gli autori): a Malazan il Libro dei Caduti, i romanzi di Esslemont, Kharkanas e Witness; al Cosmere Mistborn, le Cronache della Folgorluce, Elantris, Warbreaker e i Secret Projects, con le storie di mezzo (Edgedancer, Dawnshard, Secret History…) al loro posto, una serie dopo l'altra come si alternano. Il prossimo passo è il primo che non hai letto, e «🔢 Mettili in ordine di guida» scrive sui tuoi volumi il loro posto nel mondo (1, 2, 3…): lo scaffale resta diviso per serie, ogni volume col suo numero nell'ordine di lettura, i libri nuovi entrano al loro posto, e l'Oracolo vede tutto il mondo come una storia sola.",
+    dove: "I tasti «🌐 Tutto Malazan», «🌐 Tutto il Cosmere» e «🌐 Tutto il mondo di Elan» (questo nell'ordine che consiglia Sullivan) sull'intestazione del ripiano dove tieni quel mondo, prima dei tasti 📜 delle singole serie.",
+  },
+  {
+    luogo: "libreria",
+    nome: "Il tuo prossimo passo nel cammino",
+    cosa: "In cima al cammino, dove sei arrivato e cosa viene dopo: il passo della guida — anche quando è un volume che non hai — e, quando non ce l'hai, il primo che puoi aprire stasera. Il prologo dell'Eresia sono quattro percorsi alternativi, quindi ne propone uno solo dopo che ne hai cominciato uno tu.",
+    dove: "In cima a «Il cammino», sopra i filtri.",
+  },
+  {
+    luogo: "libreria",
+    nome: "I racconti delle antologie",
+    cosa: "Nel cammino ogni racconto e audiodramma ha la sua riga, nel punto in cui la guida lo chiede, e dice da quale antologia si pesca: non sono file, quindi si spuntano invece di aprirsi. La spunta viaggia col resto delle preferenze.",
+    dove: "Dentro «Il cammino», fra un volume e l'altro.",
+  },
+  {
+    luogo: "libreria",
+    nome: "Mettere i volumi in ordine di guida",
+    cosa: "Scrive su ogni tuo volume il posto e la parte che ha nella guida: il numero è quel che dice all'Oracolo cosa viene prima e cosa viene dopo, la parte è quel che divide lo scaffale nei capitoli della storia. Propone «da → a» una riga per volta, e quello che lasci non si tocca.",
+    dove: "Dentro «Il cammino», il tasto 🔢 sotto il conto dei volumi.",
+  },
+  {
+    luogo: "libreria",
+    nome: "Libri, fumetti e manga separati",
+    cosa: "Quando in casa ci sono almeno due tipi, i chip filtrano lo scaffale: «📚 Libri», «💬 Fumetti» e «🏮 Manga». Un manga si segna nella scheda del volume, alla voce «Tipo» (basta farlo su uno: gli altri della stessa saga seguono), o lo dice da sé la scheda del CBZ. Vale anche insieme allo stato e alla ricerca, e non si ricorda fra un'apertura e l'altra.",
+    dove: "Nella riga dei filtri, dopo «Abbandonati».",
+  },
+  {
+    luogo: "libreria",
+    nome: "Come è disposto lo scaffale",
+    cosa: "Raggruppa per saga e autore, solo saga, solo autore, genere, voto o stato; e l'ordine dentro e fra i ripiani.",
+    dove: "Il tasto ⇅ in fondo alla riga dei filtri.",
+  },
+  {
+    luogo: "libreria",
+    nome: "Controlla i tuoi libri",
+    cosa: "Apre ogni tomo e dice per nome cosa non va e cosa farci — e quel che sa curare da sé lo cura.",
+    dove: "🧰 Manutenzione → «🩺 Controlla i tuoi libri».",
+  },
+  {
+    luogo: "libreria",
+    nome: "Riconosci saghe e cicli",
+    cosa: "Ripassa i libri che una saga non ce l'hanno: tavole, collana nel file, titolo, catalogo in rete, e i tuoi altri libri.",
+    dove: "🧰 Manutenzione.",
+  },
+  {
+    luogo: "libreria",
+    nome: "Ripulisci i titoli",
+    cosa: "Toglie dal titolo l'etichettatura di chi ha impacchettato il file. Ti mostra «da → a» e rinomina solo quel che spunti.",
+    dove: "🧰 Manutenzione.",
+  },
+  {
+    luogo: "libreria",
+    nome: "Ritrova le copertine",
+    cosa: "Va a ripescare nel file le copertine che mancano sullo scaffale.",
+    dove: "🧰 Manutenzione.",
+  },
+  {
+    luogo: "libreria",
+    nome: "Rifai le copertine dei fumetti",
+    cosa: "Le copertine dei fumetti salvate prima che le riducessimo in qualità alta erano sgranate: le rifà dalla prima pagina del file, tutte in fila. Quelle messe a mano restano, e il tasto c'è solo finché ce n'è da rifare.",
+    dove: "🧰 Manutenzione.",
+  },
+  {
+    luogo: "libreria",
+    nome: "Riconosci i doppioni",
+    cosa: "Calcola l'impronta dei libri entrati prima che l'app la calcolasse, così lo stesso file non entra due volte.",
+    dove: "🧰 Manutenzione.",
+  },
+  {
+    luogo: "libreria",
+    nome: "Unisci i doppioni",
+    cosa: "Lo stesso volume in due schede (un CBR e il suo CBZ, un libro reimportato, una scheda senza ebook accanto al libro vero): prima l'elenco, che dice quale resta e quale se ne va, poi un tocco.",
+    dove: "🧰 Manutenzione → «👯 … una copia in più: unisci».",
+  },
+  {
+    luogo: "libreria",
+    nome: "Esporta e ripristina",
+    cosa: "Un archivio con libri, segni, glossari e melodie. Se la biblioteca è grande esce in più pezzi da scaricare uno per volta: per ripristinare li scegli tutti insieme, e un pezzo dimenticato si aggiunge dopo. Ripristinando puoi scegliere cosa far entrare.",
+    dove: "«Esporta biblioteca» in vista, «↩ Ripristina» nella cassetta degli attrezzi.",
+  },
+
+  // ---- NELL'INGRESSO -----------------------------------------------------
+  {
+    luogo: "ingresso",
+    nome: "Continua da dove ti sei fermato",
+    cosa: "L'ultimo libro aperto, col punto di lettura e quanto manca alla fine.",
+    dove: "In cima all'Ingresso.",
+  },
+  {
+    luogo: "ingresso",
+    nome: "Il prossimo della saga",
+    cosa: "Finito un volume, ti propone quello dopo — e solo se sa davvero qual è. In un mondo numerato col mondo (il Cosmoverse, Malazan) è il primo volume che non hai ancora letto, anche se viene prima di quelli letti.",
+    dove: "Nell'Ingresso, sotto il libro in corso.",
+  },
+  {
+    luogo: "ingresso",
+    nome: "Il giardino delle citazioni",
+    cosa: "Tutte le frasi che hai evidenziato, cercabili anche nelle tue note; si copiano e si esportano in un quaderno.",
+    dove: "Il tasto nell'Ingresso.",
+  },
+  {
+    luogo: "ingresso",
+    nome: "Il diario di lettura",
+    cosa: "Cosa hai letto e quando, anno per anno.",
+    dove: "Il tasto nell'Ingresso.",
+  },
+  {
+    luogo: "ingresso",
+    nome: "Il quaderno delle parole",
+    cosa: "Ogni parola che cerchi col dizionario finisce qui da sola, con la resa italiana e la frase in cui l'hai incontrata. Si ripassa a giri di dieci, si cerca e si esporta.",
+    dove: "Il tasto nell'Ingresso; nella scheda del dizionario «Non tenerla» la toglie subito.",
+  },
+  {
+    luogo: "libreria",
+    nome: "Le novità delle tue saghe e dei tuoi autori",
+    cosa: "Una notifica di Android, anche ad app chiusa, quando esce un volume nuovo di una saga che segui (riconosciuta su Wikidata dai titoli che hai) o un libro nuovo dei suoi autori; per i manga, i capitoli nuovi. Sotto il tasto la raccolta dice cosa guarda. Nelle Impostazioni, «Le novità», c'è l'elenco e si smette con ✕.",
+    dove: "Nella raccolta aperta di una saga o di un autore, «🔕 Avvisami delle novità».",
+  },
+  {
+    luogo: "libreria",
+    nome: "Schede senza file",
+    cosa: "Scrivi il nome di una saga o di un mondo intero (il Cosmere, Malazan, il 40K), o di un autore per vedere tutte le sue saghe (e i suoi libri che non stanno in nessuna serie), e l'app trova i libri in ordine (dalle guide dell'app, se no da Hardcover se hai messo la sua chiave nelle Impostazioni, se no da Wikidata), te li mostra (le storie di mezzo al loro numero, senza spunta: le aggiungi se le spunti) e li mette sullo scaffale con la copertina, senza ebook, nella raccolta e nella serie che scegli (una serie dentro una raccolta è un ripiano suo, in ordine, come l'Eresia nel 40K); o aggiungi un libro solo, scegliendo la raccolta fra quelle che hai: «🔍 Di che saga è?» ti dice in quale delle tue raccolte va (dalle guide, dagli altri libri dell'autore o dalla sua serie su Wikidata). Vale anche per fumetti e manga: scegli in cima «💬 Fumetti» o «🏮 Manga», e le schede stanno subito fra i fumetti o i manga (un manga si leggerà da destra). Un libro che hai già non si aggiunge di nuovo. Il pannello resta aperto per aggiungerne altri. Quando avrai il file, dalla scheda «📂 Scegli il file» e l'ebook entra lì. Dal cammino di una guida, «📥 Metti sullo scaffale» fa lo stesso coi volumi che mancano.",
+    dove: "In Libreria, «📥 Senza file» accanto ad «Aggiungi libri»; nel cammino di una guida.",
+  },
+  {
+    luogo: "ingresso",
+    nome: "Da prendere",
+    cosa: "La lista dei libri da procurarti: quelli che scrivi tu, i consigli gratuiti dal catalogo di Open Library — il volume dopo l'ultimo che hai letto di ogni saga e i più votati sui tuoi generi, con la copertina — e, se vuoi, quelli su misura dell'Oracolo. Si copia per portarla in libreria, e ti dice quando un libro è arrivato.",
+    dove: "Il tasto nell'Ingresso.",
+  },
+  {
+    luogo: "ingresso",
+    nome: "Uscite del 40K",
+    cosa: "Se leggi il 40K, quando apri l'app controlla su Lexicanum le pagine appena aperte per un libro (di solito annunciato o appena uscito) e te le mostra: un tocco lo mette in Da prendere, «Lexicanum ↗» apre la sua pagina, «✓ Viste» le toglie. Al più una volta ogni sei ore, solo ad app aperta.",
+    dove: "Nell'Ingresso, sotto «Appena arrivati», solo quando c'è qualcosa di nuovo.",
+  },
+  {
+    luogo: "ingresso",
+    nome: "Obiettivo e tempo di lettura",
+    cosa: "Quanti libri vuoi finire quest'anno e se sei al passo, più il tempo passato a leggere, i giorni di lettura e quanti di fila.",
+    dove: "In cima al diario di lettura, «Il tuo anno». Il tempo si conta voltando le pagine, anche fra tablet e telefono.",
+  },
+
+  // ---- MUSICA ------------------------------------------------------------
+  {
+    luogo: "musica",
+    nome: "Due sorgenti, un elenco solo",
+    cosa: "I tuoi file audio e i link di YouTube. Solo i file suonano a schermo spento: il lettore di YouTube si mette in pausa da sé, e non è nostro.",
+    dove: "La sala della musica.",
+  },
+  {
+    luogo: "musica",
+    nome: "Raccolte e timer del sonno",
+    cosa: "Metti insieme le melodie che ti accompagnano, e la musica si spegne da sola con una dissolvenza.",
+    dove: "La sala della musica.",
+  },
+  {
+    luogo: "musica",
+    nome: "Una cartella, le sue raccolte",
+    cosa: "Scegli una cartella del tablet: ogni sottocartella con della musica diventa una raccolta col suo nome, i brani in ordine. Rifarlo aggiunge solo i brani nuovi.",
+    dove: "La sala della musica → «＋ Aggiungi» → «📁 Da una cartella».",
+  },
+  {
+    luogo: "musica",
+    nome: "Le stesse raccolte su ogni dispositivo",
+    cosa: "Raccolte e nomi dei brani arrivano sugli altri tuoi dispositivi; i file no, restano dove li hai caricati. Copiali tu (cavo, Quick Share, chiavetta) e sceglili: si riconoscono dal nome e dal peso e suonano nelle stesse raccolte. Un brano che manca si salta.",
+    dove: "La sala della musica: l'avviso «… stanno su un altro dispositivo», con «📁 Scegli la cartella» e «♫ Scegli i file».",
+  },
+  {
+    luogo: "musica",
+    nome: "I brani doppi si uniscono",
+    cosa: "La stessa cartella importata su due dispositivi lascia ogni canzone due volte, una «non qui». Prima l'elenco, poi un tocco: resta un brano per canzone, nelle stesse raccolte, e ogni dispositivo tiene il suo file.",
+    dove: "La sala della musica: l'avviso «… ci sono due volte», con «Guarda i doppioni».",
+  },
+  {
+    luogo: "musica",
+    nome: "Cerca, scegli, suona",
+    cosa: "Le raccolte in griglia e i brani in ordine coi salti per lettera; una ricerca sola per brani e raccolte, a parole sparse. Il tocco su un brano suona da lì in avanti, e il suo menu «⋯» lo mette nelle raccolte, lo rinomina o lo dimentica. Una raccolta si rinomina o si elimina dal «⋯» della sua casella (i brani restano).",
+    dove: "La sala della musica: la ricerca in cima, poi «Raccolte» e «Brani».",
+  },
+
+  // ---- IMPOSTAZIONI ------------------------------------------------------
+  {
+    luogo: "impostazioni",
+    nome: "Tema e dimensione",
+    cosa: "Quattro temi e sei misure della scrittura, o «Automatica», che guarda lo schermo e decide — e dice cosa ha deciso.",
+    dove: "Impostazioni → Aspetto.",
+  },
+  {
+    luogo: "impostazioni",
+    nome: "L'Oracolo",
+    cosa: "La chiave di Anthropic, la sua scadenza, il tetto di spesa del mese e quanto hai speso. Con la sincronizzazione accesa la chiave arriva anche sugli altri tuoi dispositivi.",
+    dove: "Impostazioni → Oracolo.",
+  },
+  {
+    luogo: "impostazioni",
+    nome: "Il dizionario sul dispositivo",
+    cosa: "Due dizionari da scaricare una volta: WordNet (quattro megabyte) per la resa italiana, e Wiktionary inglese (ventotto) per i significati in inglese, con esempi d'uso e parole rare e arcaiche. Poi la scheda risponde senza rete.",
+    dove: "Impostazioni → Il dizionario.",
+  },
+  {
+    luogo: "impostazioni",
+    nome: "Lexicanum sul dispositivo",
+    cosa: "Lexicanum e Fandom da scaricare una volta, con calma, e a parte le loro immagini principali e le altre illustrazioni di Fandom (prima si misura quanto pesano, e per le illustrazioni si sceglie la misura): se l'app si chiude o la rete cade lo scaricamento riparte da solo da dove era arrivato; se lo fermi tu resta fermo. Poi le voci rispondono nella scheda del dizionario, senza rete.",
+    dove: "Impostazioni → I wiki del 40K; accesi o spenti libro per libro nella scheda del libro.",
+  },
+  {
+    luogo: "impostazioni",
+    nome: "Il NAS",
+    cosa: "L'indirizzo del NAS di casa (anche da fuori, con Tailscale): l'app guarda quali libri ci sono, e un libro che qui non ha il file si prende dal NAS toccando «Apri». Come preparare il NAS: docs/NAS.md.",
+    dove: "Impostazioni → Il NAS.",
+  },
+  {
+    luogo: "impostazioni",
+    nome: "La sincronizzazione",
+    cosa: "Facoltativa: schede, progressi, evidenziazioni e copertine viaggiano fra i tuoi dispositivi. Parte da sola quando apri l'app, quando torna davanti (sul computer anche quando torni sulla sua finestra), quando chiudi un libro e poco dopo ogni cambio di una scheda.",
+    dove: "Impostazioni → il rimando al pannello della nuvola.",
+  },
+];
+
+// Le voci di un luogo, nell'ordine in cui stanno scritte: l'ordine e' una
+// scelta (prima quel che si usa sempre), non l'alfabeto.
+export const vociDi = (luogo) => MAPPA.filter((v) => v.luogo === luogo);

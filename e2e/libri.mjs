@@ -1,0 +1,302 @@
+// I LIBRI DELLE PROVE, costruiti al volo: niente binari nel repository, e
+// un libro che si legge a occhio in questo file.
+import { deflateSync } from "node:zlib";
+import JSZip from "jszip";
+
+// Un PNG vero di un colore solo: il fumetto deve avere pagine che il
+// browser sa disegnare, o la copertina e le misure cadono per altro.
+function pngDa(larghezza, altezza, grezzo) {
+  const crc = (buf) => {
+    let c = ~0;
+    for (const x of buf) {
+      c ^= x;
+      for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xedb88320 : c >>> 1;
+    }
+    return ~c >>> 0;
+  };
+  const pezzo = (tipo, dati) => {
+    const t = Buffer.from(tipo);
+    const out = Buffer.alloc(12 + dati.length);
+    out.writeUInt32BE(dati.length, 0);
+    t.copy(out, 4);
+    dati.copy(out, 8);
+    out.writeUInt32BE(crc(Buffer.concat([t, dati])), 8 + dati.length);
+    return out;
+  };
+  const testa = Buffer.alloc(13);
+  testa.writeUInt32BE(larghezza, 0);
+  testa.writeUInt32BE(altezza, 4);
+  testa[8] = 8;
+  testa[9] = 2;
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pezzo("IHDR", testa),
+    pezzo("IDAT", deflateSync(grezzo, { level: 1 })),
+    pezzo("IEND", Buffer.alloc(0)),
+  ]);
+}
+// righe orizzontali alte `passo` pixel, di due colori: una copertina che
+// ingrandita da piccola si scioglie, e si vede (`copertinaGrande`)
+export function pngRighe(larghezza, altezza, passo, a, b) {
+  const riga = (c) => {
+    const r = Buffer.alloc(1 + larghezza * 3);
+    for (let x = 0; x < larghezza; x++) r.set(c, 1 + x * 3);
+    return r;
+  };
+  const [ra, rb] = [riga(a), riga(b)];
+  return pngDa(larghezza, altezza, Buffer.concat(Array.from({ length: altezza }, (_, y) => (Math.floor(y / passo) % 2 ? rb : ra))));
+}
+
+// fasce verticali di colori diversi, [fino a x, colore]: la sovraccoperta
+// aperta di un manga (fronte, dorso, retro)
+export function pngFasce(larghezza, altezza, fasce) {
+  const riga = Buffer.alloc(1 + larghezza * 3);
+  for (let x = 0; x < larghezza; x++) riga.set(fasce.find(([fino]) => x < fino)[1], 1 + x * 3);
+  return pngDa(larghezza, altezza, Buffer.concat(Array.from({ length: altezza }, () => riga)));
+}
+
+export function png(larghezza, altezza, [r, g, b]) {
+  const riga = Buffer.alloc(1 + larghezza * 3);
+  for (let x = 0; x < larghezza; x++) riga.set([r, g, b], 1 + x * 3);
+  return pngDa(larghezza, altezza, Buffer.concat(Array.from({ length: altezza }, () => riga)));
+}
+
+// UN FUMETTO CHE DA DRIVE SI LEGGE A PEZZI: oltre i 20 MB, con pagine di
+// rumore da un mega l'una (il rumore non si comprime: ogni pagina e' una
+// richiesta a Drive, e le richieste si possono contare)
+export async function fumettoGrosso(pagine = 24) {
+  const zip = new JSZip();
+  const L = 600;
+  const A = 580;
+  const passo = 1 + L * 3;
+  let x = 7;
+  for (let i = 0; i < pagine; i++) {
+    const righe = Buffer.alloc(A * passo);
+    for (let k = 0; k < righe.length; k++) {
+      x = (Math.imul(x, 1103515245) + 12345) & 0x7fffffff;
+      righe[k] = k % passo === 0 ? 0 : (x >> 16) & 255;
+    }
+    zip.file(`pagina ${String(i + 1).padStart(2, "0")}.png`, pngDa(L, A, righe), { compression: "STORE" });
+  }
+  return zip.generateAsync({ type: "nodebuffer" });
+}
+
+// un volume di `pagine` tavole piccole, ognuna del suo colore
+export async function fumettoLungo(pagine = 30) {
+  const zip = new JSZip();
+  for (let i = 0; i < pagine; i++) zip.file(`pagina ${String(i + 1).padStart(2, "0")}.png`, png(60, 90, [(i * 37) % 256, (i * 91) % 256, (i * 53) % 256]));
+  return zip.generateAsync({ type: "nodebuffer" });
+}
+
+export async function fumetto({ prima = null, info = null } = {}) {
+  const zip = new JSZip();
+  const colori = [[180, 40, 40], [40, 120, 180], [60, 160, 80]];
+  colori.forEach((c, i) => zip.file(`pagina ${String(i + 1).padStart(2, "0")}.png`, i === 0 && prima ? prima : png(60, 90, c)));
+  if (info) zip.file("ComicInfo.xml", info);
+  return zip.generateAsync({ type: "nodebuffer" });
+}
+
+export const FRASE = "La nebbia saliva dal fiume e copriva le strade di Ankh-Morpork.";
+
+export async function epub({ titolo = "La nebbia", autore = "Autore di Prova", frase = FRASE, lingua = "it", quanti = 12, rientri = false, copertina = null } = {}) {
+  const zip = new JSZip();
+  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+  zip.file(
+    "META-INF/container.xml",
+    `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`
+  );
+  zip.file(
+    "OEBPS/content.opf",
+    `<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:prova-nebbia</dc:identifier><dc:title>${titolo}</dc:title><dc:creator>${autore}</dc:creator><dc:language>${lingua}</dc:language><meta property="dcterms:modified">2026-01-01T00:00:00Z</meta>${copertina ? '<meta name="cover" content="cover"/>' : ""}</metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/>${copertina ? '<item id="cover" href="cover.png" media-type="image/png" properties="cover-image"/>' : ""}</manifest><spine><itemref idref="c1"/></spine></package>`
+  );
+  zip.file(
+    "OEBPS/nav.xhtml",
+    `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Indice</title></head><body><nav epub:type="toc"><ol><li><a href="c1.xhtml">Uno</a></li></ol></nav></body></html>`
+  );
+  const paragrafi = Array.from({ length: quanti }, (_, i) => `<p>${i === 0 ? frase : `Paragrafo ${i + 1} della prova, con abbastanza parole da fare una riga intera sulla pagina.`}</p>`).join("");
+  zip.file(
+    "OEBPS/c1.xhtml",
+    `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Uno</title>${rientri ? "<style>p { text-indent: 1.5em; margin: 0 }</style>" : ""}</head><body><h1>Capitolo uno</h1>${paragrafi}</body></html>`
+  );
+  if (copertina) zip.file("OEBPS/cover.png", copertina);
+  return zip.generateAsync({ type: "nodebuffer", mimeType: "application/epub+zip" });
+}
+
+// un WAV di `sec` secondi: un la a 8 kHz, mono, 8 bit
+// un libro con piu' capitoli e un indice che li nomina: per provare l'indice
+// e il segno fra un capitolo e l'altro. `indice` dice dove sta l'indice:
+// accanto al pacchetto (gli indirizzi sono gia' quelli della spina), in una
+// cartella coi capitoli, come nav (`nav`: «A Thousand Sons» della Black
+// Library) o come toc.ncx dei libri di prima (`ncx`)
+export async function epubACapitoli({ capitoli = 8, paragrafi = 60, indice = "accanto" } = {}) {
+  const zip = new JSZip();
+  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+  zip.file("META-INF/container.xml", `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`);
+  const ids = Array.from({ length: capitoli }, (_, i) => `c${i + 1}`);
+  ids.forEach((id, i) =>
+    zip.file(
+      `OEBPS/Text/${id}.xhtml`,
+      `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Capitolo ${i + 1}</title></head><body><h1>Capitolo ${i + 1}</h1>${Array.from({ length: paragrafi }, (_, k) => `<p>Capitolo ${i + 1}, paragrafo ${k + 1}: la nebbia saliva dal fiume e copriva le strade, lenta, mentre in città si accendevano le lanterne una dopo l'altra.</p>`).join("")}</body></html>`
+    )
+  );
+  const nav = (da) => `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Indice</title></head><body><nav epub:type="toc"><ol>${ids.map((id, i) => `<li><a href="${da}${id}.xhtml">Capitolo ${i + 1}</a></li>`).join("")}</ol></nav></body></html>`;
+  let voceIndice = `<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>`;
+  let spina = "<spine>";
+  if (indice === "nav") {
+    zip.file("OEBPS/Text/nav.xhtml", nav(""));
+    voceIndice = `<item id="nav" href="Text/nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>`;
+  } else if (indice === "ncx") {
+    zip.file("OEBPS/Text/toc.ncx", `<?xml version="1.0" encoding="UTF-8"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta name="dtb:uid" content="urn:uuid:otto-capitoli"/></head><docTitle><text>Otto capitoli</text></docTitle><navMap>${ids.map((id, i) => `<navPoint id="n${i}" playOrder="${i + 1}"><navLabel><text>Capitolo ${i + 1}</text></navLabel><content src="${id}.xhtml"/></navPoint>`).join("")}</navMap></ncx>`);
+    voceIndice = `<item id="ncx" href="Text/toc.ncx" media-type="application/x-dtbncx+xml"/>`;
+    spina = `<spine toc="ncx">`;
+  } else zip.file("OEBPS/nav.xhtml", nav("Text/"));
+  zip.file(
+    "OEBPS/content.opf",
+    `<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="${indice === "ncx" ? "2.0" : "3.0"}" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:otto-capitoli-${indice}</dc:identifier><dc:title>Otto capitoli</dc:title><dc:creator>Autore di Prova</dc:creator><dc:language>it</dc:language></metadata><manifest>${voceIndice}${ids.map((id) => `<item id="${id}" href="Text/${id}.xhtml" media-type="application/xhtml+xml"/>`).join("")}</manifest>${spina}${ids.map((id) => `<itemref idref="${id}"/>`).join("")}</spine></package>`
+  );
+  return zip.generateAsync({ type: "nodebuffer", mimeType: "application/epub+zip" });
+}
+
+export function wav(sec = 120, hz = 8000) {
+  const n = sec * hz;
+  const b = Buffer.alloc(44 + n);
+  b.write("RIFF", 0);
+  b.writeUInt32LE(36 + n, 4);
+  b.write("WAVEfmt ", 8);
+  b.writeUInt32LE(16, 16);
+  b.writeUInt16LE(1, 20);
+  b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(hz, 24);
+  b.writeUInt32LE(hz, 28);
+  b.writeUInt16LE(1, 32);
+  b.writeUInt16LE(8, 34);
+  b.write("data", 36);
+  b.writeUInt32LE(n, 40);
+  for (let i = 0; i < n; i++) b[44 + i] = 128 + Math.round(20 * Math.sin((2 * Math.PI * 440 * i) / hz));
+  return b;
+}
+
+// un PDF di poche pagine scritto a mano: Helvetica, una riga per pagina
+export function pdf(pagine = 3) {
+  const ogg = ["<< /Type /Catalog /Pages 2 0 R >>"];
+  const kids = Array.from({ length: pagine }, (_, i) => `${3 + i * 2} 0 R`).join(" ");
+  ogg.push(`<< /Type /Pages /Kids [${kids}] /Count ${pagine} >>`);
+  const font = 3 + pagine * 2;
+  for (let i = 0; i < pagine; i++) {
+    ogg.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${font} 0 R >> >> /Contents ${4 + i * 2} 0 R >>`);
+    const testo = `BT /F1 18 Tf 72 760 Td (Pagina ${i + 1} della prova) Tj ET`;
+    ogg.push(`<< /Length ${testo.length} >>\nstream\n${testo}\nendstream`);
+  }
+  ogg.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  let s = "%PDF-1.4\n";
+  const off = [];
+  ogg.forEach((o, i) => {
+    off.push(s.length);
+    s += `${i + 1} 0 obj\n${o}\nendobj\n`;
+  });
+  const xref = s.length;
+  s += `xref\n0 ${ogg.length + 1}\n0000000000 65535 f \n` + off.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("");
+  s += `trailer\n<< /Size ${ogg.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(s, "latin1");
+}
+
+// una biblioteca del Mondo Disco coi primi nove letti e «Moving Pictures»
+// rimesso «Da leggere» dopo averlo aperto: il caso dell'Ingresso
+export function mondoDisco() {
+  if (localStorage.getItem("bc_books")) return;
+  const D = (id, n, title, series) => ({ id, title, author: "Terry Pratchett", saga: "Discworld", sagaOrder: n, series, fileType: "epub", addedAt: n });
+  const libri = [
+    D("cm", 1, "The Colour of Magic", "Rincewind"),
+    D("lf", 2, "The Light Fantastic", "Rincewind"),
+    D("er", 3, "Equal Rites", "The Witches"),
+    D("mo", 4, "Mort", "Death"),
+    D("so", 5, "Sourcery", "Rincewind"),
+    D("ws", 6, "Wyrd Sisters", "The Witches"),
+    D("py", 7, "Pyramids", "Ancient Civilizations"),
+    D("gg", 8, "Guards! Guards!", "City Watch"),
+    D("ec", 9, "Eric", "Rincewind"),
+    D("mp", 10, "Moving Pictures", "Industrial Revolution"),
+    D("rm", 11, "Reaper Man", "Death"),
+    D("ma", 15, "Men at Arms", "City Watch"),
+    // il libro in mano, in cima all'Ingresso: senza, «Continua» prenderebbe
+    // Moving Pictures (e' aperto al 12%) e fra i seguiti giustamente non ci sarebbe
+    { id: "mech", title: "Mechanicum", author: "Graham McNeill", fileType: "epub", addedAt: 50 },
+    // e il Cosmoverse numerato col mondo, coi Mistborn letti ed Elantris no:
+    // il seguito di un mondo e' il primo non letto, non il numero dopo
+    ...[
+      ["el", 1, "Elantris", "Cosmere Standalones"],
+      ["fe", 2, "The Final Empire", "Mistborn"],
+      ["wa", 3, "The Well of Ascension", "Mistborn"],
+      ["ha", 4, "The Hero of Ages", "Mistborn"],
+      ["wb", 5, "Warbreaker", "Cosmere Standalones"],
+    ].map(([id, n, title, series]) => ({ id, title, author: "Brandon Sanderson", saga: "Cosmoverse", sagaOrder: n, series, fileType: "epub", addedAt: 60 + n })),
+  ];
+  localStorage.setItem("bc_books", JSON.stringify(libri));
+  for (const id of ["cm", "lf", "er", "mo", "so", "ws", "py", "gg", "ec", "fe", "wa", "ha"]) localStorage.setItem(`bc_status_${id}`, "read");
+  localStorage.setItem("bc_status_mp", "unread");
+  localStorage.setItem("bc_prog_mp", "0.12");
+  // e il seguito di una storia cominciata (Mort letto), aperto e rimesso li':
+  // non si propone, perche' il seguito della saga e' uno, il numero 10
+  localStorage.setItem("bc_status_rm", "unread");
+  localStorage.setItem("bc_prog_rm", "0.3");
+  localStorage.setItem("bc_status_mech", "reading");
+  localStorage.setItem("bc_prog_mech", "0.12");
+  localStorage.setItem("bc_lastopen", "mech");
+}
+
+// UN LIBRO COL CONTORNO IN TESTA, come quelli della Black Library:
+// frontespizio, motto, introduzione e pagina dei contenuti FUORI
+// dall'indice (che comincia da «Dramatis Personae»), poi i capitoli
+export async function epubConContorno({ cartella = "" } = {}) {
+  const zip = new JSZip();
+  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+  zip.file("META-INF/container.xml", `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`);
+  const doc = (titolo, corpo) => `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${titolo}</title></head><body>${corpo}</body></html>`;
+  const prosa = (n, inizio) => Array.from({ length: n }, (_, i) => `<p>${i === 0 ? inizio : "The Space Marines and their primarch leaders conquer the galaxy in the name of the Emperor, world after world."}</p>`).join("");
+  const pezzi = [
+    ["titolo", false, doc("Titolo", "<h1>A THOUSAND SONS</h1><h2>All is dust...</h2>")],
+    ["serie", false, doc("Serie", "<p>The Horus Heresy</p><p>Book Twelve</p>")],
+    ["motto", false, doc("Motto", "<p>All is dust. Knowledge is power.</p>")],
+    ["leggenda", false, doc("Leggenda", prosa(8, "It is a time of legend."))],
+    ["contenuti", false, doc("Contenuti", '<h1>CONTENTS</h1><p><a href="personae.xhtml">DRAMATIS PERSONAE</a></p><p><a href="c1.xhtml">CHAPTER ONE</a></p>')],
+    ["personae", true, doc("Dramatis Personae", "<h1>DRAMATIS PERSONAE</h1>" + prosa(6, "Magnus the Red, Primarch of the Thousand Sons."))],
+    ["c1", true, doc("Chapter One", "<h1>CHAPTER ONE</h1>" + prosa(40, "The Mountain had existed for tens of thousands of years."))],
+  ];
+  for (const [id, , xml] of pezzi) zip.file(`OEBPS/${cartella}${id}.xhtml`, xml);
+  const voci = pezzi.filter(([, inToc]) => inToc).map(([id]) => `<li><a href="${id}.xhtml">${id}</a></li>`).join("");
+  zip.file(`OEBPS/${cartella}nav.xhtml`, `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Indice</title></head><body><nav epub:type="toc"><ol>${voci}</ol></nav></body></html>`);
+  zip.file(
+    "OEBPS/content.opf",
+    `<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:contorno</dc:identifier><dc:title>Mille Figli</dc:title><dc:creator>Autore di Prova</dc:creator><dc:language>en</dc:language><meta property="dcterms:modified">2026-01-01T00:00:00Z</meta></metadata><manifest><item id="nav" href="${cartella}nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>${pezzi.map(([id]) => `<item id="${id}" href="${cartella}${id}.xhtml" media-type="application/xhtml+xml"/>`).join("")}</manifest><spine>${pezzi.map(([id]) => `<itemref idref="${id}"/>`).join("")}</spine></package>`
+  );
+  return zip.generateAsync({ type: "nodebuffer", mimeType: "application/epub+zip" });
+}
+
+// UN ePub CON L'ELENCO DELLE PAGINE nel nav (`page-list`, come le edizioni
+// che riportano i numeri della carta): fra due capitoli dell'indice cinque
+// pezzi corti che solo l'elenco delle pagine nomina. La diagnosi (che legge
+// il solo indice) li conta come giunture, la cura (che prende ogni rimando
+// del nav) non li tocca: e' il caso in cui la ricucitura passa a vuoto
+export async function epubConPagine() {
+  const zip = new JSZip();
+  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+  zip.file("META-INF/container.xml", `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`);
+  const doc = (titolo, corpo) => `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${titolo}</title></head><body>${corpo}</body></html>`;
+  const prosa = (n) => Array.from({ length: n }, () => "<p>The fleet gathered above the world, and the Legion waited for the order.</p>").join("");
+  const pezzi = [
+    ["c1", true, doc("Uno", "<h1>CHAPTER ONE</h1>" + prosa(40))],
+    ...[1, 2, 3, 4, 5].map((n) => [`p${n}`, false, doc(`Pagina ${n}`, `<p>The warriors marched on in silence, page ${n}.</p>`)]),
+    ["c2", true, doc("Due", "<h1>CHAPTER TWO</h1>" + prosa(40))],
+  ];
+  for (const [id, , xml] of pezzi) zip.file(`OEBPS/${id}.xhtml`, xml);
+  const li = (l) => l.map(([id]) => `<li><a href="${id}.xhtml">${id}</a></li>`).join("");
+  zip.file(
+    "OEBPS/nav.xhtml",
+    `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Indice</title></head><body><nav epub:type="toc"><ol>${li(pezzi.filter(([, t]) => t))}</ol></nav><nav epub:type="page-list"><ol>${li(pezzi)}</ol></nav></body></html>`
+  );
+  zip.file(
+    "OEBPS/content.opf",
+    `<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:pagine</dc:identifier><dc:title>Le Pagine</dc:title><dc:creator>Autore di Prova</dc:creator><dc:language>en</dc:language><meta property="dcterms:modified">2026-01-01T00:00:00Z</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>${pezzi.map(([id]) => `<item id="${id}" href="${id}.xhtml" media-type="application/xhtml+xml"/>`).join("")}</manifest><spine>${pezzi.map(([id]) => `<itemref idref="${id}"/>`).join("")}</spine></package>`
+  );
+  return zip.generateAsync({ type: "nodebuffer", mimeType: "application/epub+zip" });
+}

@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -8,6 +8,6 @@ ARG VITE_SUPABASE_ANON_KEY=""
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 RUN npm run build
 
-FROM caddy:2-alpine
-COPY deploy/nas/Caddyfile /etc/caddy/Caddyfile
-COPY --from=build /app/dist /srv/app
+FROM nginx:stable-alpine
+COPY deploy/nas/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html

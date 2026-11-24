@@ -7,16 +7,56 @@ export function loadPdf(arrayBuffer) {
   return pdfjs.getDocument({ data: arrayBuffer }).promise;
 }
 
+import { chiudiPdf } from "./pdfChiudi.js";
+
+// chi apre un PDF da qui lo chiude da qui: i reader e le passate lunghe
+// ricevono il modulo intero, e la porta per chiuderlo viaggia con lui
+export { chiudiPdf };
+
 // il livello di testo trasparente sopra il canvas: senza, un PDF non si
 // puo' selezionare, quindi niente dizionario
 export const makeTextLayer = (opts) => new pdfjs.TextLayer(opts);
 
-export async function renderPdfThumb(arrayBuffer) {
-  const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+// `larghezza` in pixel: 320 per la miniatura della scheda; la copertina
+// grande per lo schermo intero (`copertinaGrande.js`) ne chiede di piu'
+export async function renderPdfThumb(arrayBuffer, larghezza = 320) {
+  return disegnaPrima(pdfjs.getDocument({ data: arrayBuffer }).promise, larghezza);
+}
+
+// LA PRIMA PAGINA DI UN PDF CHE STA ALTROVE (un file di Drive letto a
+// pezzi): pdf.js sa chiedere solo i pezzi che gli servono — la tabella in
+// fondo e gli oggetti della prima pagina — se gli si da' un trasporto a
+// intervalli invece dei byte. `disableAutoFetch` e' quel che gli impedisce
+// di scaricare il resto in sottofondo, che e' proprio quel che si evita.
+export async function renderPdfThumbDa(blob) {
+  return disegnaPrima(apriAIntervalli(blob).promise);
+}
+
+function apriAIntervalli(blob) {
+  const trasporto = new pdfjs.PDFDataRangeTransport(blob.size, null);
+  const chiedi = (da, a) =>
+    blob
+      .slice(da, a)
+      .arrayBuffer()
+      .then((b) => trasporto.onDataRange(da, new Uint8Array(b)))
+      .catch(() => {});
+  trasporto.requestDataRange = chiedi;
+  const promise = pdfjs.getDocument({
+    range: trasporto,
+    length: blob.size,
+    disableAutoFetch: true,
+    disableStream: true,
+    rangeChunkSize: 64 * 1024,
+  }).promise;
+  return { promise };
+}
+
+async function disegnaPrima(aperto, larghezza = 320) {
+  const pdf = await aperto;
   try {
     const page = await pdf.getPage(1);
     const base = page.getViewport({ scale: 1 });
-    const viewport = page.getViewport({ scale: 320 / base.width });
+    const viewport = page.getViewport({ scale: larghezza / base.width });
     const canvas = document.createElement("canvas");
     canvas.width = Math.ceil(viewport.width);
     canvas.height = Math.ceil(viewport.height);
@@ -24,6 +64,6 @@ export async function renderPdfThumb(arrayBuffer) {
     await page.render({ canvas, canvasContext, viewport }).promise;
     return await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.82));
   } finally {
-    pdf.destroy();
+    chiudiPdf(pdf);
   }
 }

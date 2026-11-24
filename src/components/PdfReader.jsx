@@ -1,30 +1,50 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { C, FONT_TITLE } from "../data/constants.js";
-import { ensureLocalFile } from "../lib/sync.js";
-import { getCfi, setCfi, getMarks, saveMarks, getHighlights, saveHighlights } from "../lib/annotations.js";
-import { getProgress, setProgress, setStatus } from "../lib/library.js";
+import { C, FONT_TITLE, F, R, px } from "../data/constants.js";
+import TastoBarra, { barBtn, useNomiNeiTasti, useDueRighe, BarraDelLibro, MusicaInBarra } from "./TastoBarra.jsx";
+import { getFile } from "../lib/bookStore.js";
+import { getCfi, setCfi, getMarks, getHighlights, cambiaSegnalibri, cambiaEvidenziazioni, aggiungi, togli, aggiorna } from "../lib/annotations.js";
+import { setProgress, setStatus, getStatus, loadBooks } from "../lib/library.js";
+// il tetto alle schede tenute da parte sta col resto della cache, o le
+// due copie prenderebbero strade diverse
+import { leggiSchede, scriviSchede, riponi, tocca, daTenere, MAX_SCHEDE } from "../lib/schedeCache.js";
+import { schedaChiE, nuoveMenzioni } from "../lib/chiSono.js";
+import { schedaRiassunto } from "../lib/trama.js";
+import { sembraUnNome } from "../lib/nomi.js";
 import { HL_COLORS, loadReaderSettings, saveReaderSettings } from "../lib/readerSettings.js";
-import { lookup, wordCount, cleanWord } from "../lib/dictionary.js";
+import { lookup, lookupPhrase, wordCount, cleanWord } from "../lib/dictionary.js";
+import { explain } from "../lib/glossary.js";
+import { contextAround } from "../lib/oracle.js";
 import { toPageRects, rectStyle, pageOf } from "../lib/pdfHighlights.js";
-import { searchPdf } from "../lib/pdfSearch.js";
+import { searchPdf, normalizeWithMap } from "../lib/pdfSearch.js";
+import { TUTTA, getCrop, saveCrop, misuraLibro, vuoto } from "../lib/pdfCrop.js";
+import { pushSample, medianMs, formatLeft, loadSamples, saveSamples } from "../lib/readingSpeed.js";
 import BookCover from "./BookCover.jsx";
 import DictionaryCard from "./DictionaryCard.jsx";
 import HighlightList from "./HighlightList.jsx";
+import SchedaOracolo, { attese } from "./SchedaOracolo.jsx";
+import { apertaATuttoSchermo, serveTastoSchermo } from "../lib/schermoIntero.js";
+import { creaVoce, testoDellaPagina } from "../lib/vocePdf.js";
+import { leggiVelocita, scriviVelocita, prossimaVelocita } from "../lib/voce.js";
+import { misuraApertura } from "../lib/tempi.js";
+
+// stesse fasce del reader EPUB, misurate sullo schermo: cosi' anche il
+// margine attorno alla pagina volta, non solo il foglio
+const TAP_PREV = 0.28;
+const TAP_NEXT = 0.72;
+// stesso limite del reader EPUB per la scheda del significato
+const PHRASE_WORDS = 300;
+// Oltre questa lunghezza la selezione non e' piu' una frase ma un brano, e
+// cercarci dentro un modo di dire non ha senso.
+const NET_WORDS = 30;
 
 const isTouch = () => navigator.maxTouchPoints > 0;
 
-const barBtn = (active) => ({
-  width: 40,
-  height: 40,
-  borderRadius: 10,
-  fontSize: 19,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  color: active ? C.accent : C.text,
-  background: active ? `${C.accent}1a` : "transparent",
-});
-
+// Il riquadro segue la scritta che ci sta dentro: con `F.titoletto` a due
+// volte la scala il glifo e' 38px in una scatola da 40, cioe' un tasto
+// scritto male proprio nella barra dove si sta piu' a lungo. I margini
+// della PAGINA (HEAD/FOOT) restano fermi e non si scalano mai: li' un
+// pixel in piu' reimpagina ogni libro, ed e' da li' che erano cominciati
+// i salti.
 function Panel({ title, onClose, children }) {
   return (
     <div
@@ -45,7 +65,7 @@ function Panel({ title, onClose, children }) {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <h3 style={{ fontFamily: FONT_TITLE, fontSize: 20, fontWeight: 600, color: C.text }}>{title}</h3>
+          <h3 style={{ fontFamily: FONT_TITLE, fontSize: F.titoletto, fontWeight: 600, color: C.text }}>{title}</h3>
           <button onClick={onClose} style={barBtn(false)}>✕</button>
         </div>
         {children}
@@ -54,17 +74,46 @@ function Panel({ title, onClose, children }) {
   );
 }
 
-export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusicStop, onClose, notify, nextBook, onReadNext }) {
+// Arrivando da un risultato di ricerca, la riga del livello testo che
+// contiene il passaggio si accende un attimo: senza, si atterra sulla pagina
+// giusta ma il punto tocca trovarlo a occhio. Confronto sul testo
+// normalizzato come fa la ricerca, cosi' accenti e maiuscole non ingannano.
+function accendiRisultato(flashRef, layer, pageNum) {
+  const f = flashRef.current;
+  if (!f || !layer) return;
+  if (pageNum != null && f.page !== pageNum) return;
+  flashRef.current = null;
+  const cerca = normalizeWithMap(f.hit || "").text.trim().slice(0, 20);
+  if (!cerca) return;
+  for (const span of layer.querySelectorAll("span")) {
+    if (normalizeWithMap(span.textContent || "").text.includes(cerca)) {
+      span.style.background = `${C.accent}55`;
+      span.style.borderRadius = "3px";
+      setTimeout(() => { span.style.background = "transparent"; }, 2600);
+      return;
+    }
+  }
+}
+
+export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusicStop, onMusicVolume, onMusicNext, onMusicRoom, onMusicSottovoce, onAlive, onClose, notify, nextBook, onReadNext, indietro }) {
+  const rootRef = useRef(null);
   const containerRef = useRef(null);
   const pageBoxRef = useRef(null);
+  // La cornice della pagina INTERA, margini compresi, che scorre sotto la
+  // finestra ritagliata. Testo ed evidenziazioni vivono qui dentro: cosi'
+  // le frazioni salvate restano frazioni della pagina vera, e accendere o
+  // spegnere il ritaglio non sposta niente di quel che avevi segnato.
+  const pageFullRef = useRef(null);
   const canvasRef = useRef(null);
   const textRef = useRef(null);
   const pdfRef = useRef(null);
   const modRef = useRef(null);
   const renderTask = useRef(null);
   const renderToken = useRef(0);
+  // l'apertura misurata (`lib/tempi.js`): finisce alla prima pagina disegnata
+  const apertura = useRef(null);
   const textLayer = useRef(null);
-  const langRef = useRef("en");
+  const flashRef = useRef(null);
   const textCache = useRef(new Map());
   const searchRun = useRef(0);
   const live = useRef({
@@ -81,15 +130,30 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   const [page, setPage] = useState(live.current.page);
   const [pages, setPages] = useState(0);
   const [zoom, setZoom] = useState(1);
+  const [isFs, setIsFs] = useState(false);
+  const nomiNeiTasti = useNomiNeiTasti();
+  const dueRighe = useDueRighe();
+  // quanto e' alta la barra in cima: chi si appoggia sotto di lei non puo'
+  // piu' supporre un numero, con due righe dipende da cosa c'e' dentro
+  const [altezzaBarra, setAltezzaBarra] = useState(0);
   const [endCard, setEndCard] = useState(null);
   const [marks, setMarks] = useState(() => getMarks(book.id));
   const [hls, setHls] = useState(() => getHighlights(book.id));
   const [outline, setOutline] = useState([]);
   const [sel, setSel] = useState(null);
   const [dict, setDict] = useState(null);
+  const [chi, setChi] = useState(null);
   const [jump, setJump] = useState("");
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState({ busy: false, results: null, scanned: 0, full: false });
+  const [crop, setCrop] = useState(() => getCrop(book.id));
+  const [campioni, setCampioni] = useState(() => loadSamples("pdf"));
+  const ultimoGiro = useRef(0);
+
+  // il ritaglio in mano al disegno, che vive fuori da React
+  const rotella = useRef(0);
+  const cropRef = useRef(TUTTA);
+  cropRef.current = settings.ritaglia !== false && crop ? crop : TUTTA;
 
   const flush = useCallback(() => {
     const s = live.current;
@@ -112,6 +176,44 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     setPage(Math.min(max, Math.max(1, n)));
   }, []);
 
+  // LEGGI AD ALTA VOCE (le decisioni in lib/vocePdf.js): la pagina a
+  // schermo, a frasi, e la pagina si gira da sola come col dito
+  const sintesi = typeof window !== "undefined" && window.speechSynthesis && typeof window.SpeechSynthesisUtterance === "function" ? window.speechSynthesis : null;
+  const [voce, setVoce] = useState(null);
+  const [velocita, setVelocita] = useState(() => leggiVelocita());
+  const velRef = useRef(velocita);
+  velRef.current = velocita;
+  const sottoRef = useRef(onMusicSottovoce);
+  sottoRef.current = onMusicSottovoce;
+  const linguaRef = useRef("");
+  const voceRef = useRef(null);
+  if (sintesi && !voceRef.current) {
+    voceRef.current = creaVoce({
+      sintesi,
+      Frase: window.SpeechSynthesisUtterance,
+      testo: async (n) => testoDellaPagina((await (await pdfRef.current.getPage(n)).getTextContent()).items),
+      gira: goToPage,
+      pagine: () => live.current.pages,
+      // la lingua dichiarata dal PDF, e senza quella la lingua del tablet
+      lingua: () => linguaRef.current || navigator.language || "",
+      velocita: () => velRef.current,
+      cambia: setVoce,
+      avvisa: (m) => notify?.(m),
+      sottovoce: (si) => sottoRef.current?.(si),
+    });
+  }
+  useEffect(() => {
+    voceRef.current?.vista(page);
+  }, [page]);
+  useEffect(() => () => voceRef.current?.chiudi(), []);
+  function voceVelocita() {
+    const n = prossimaVelocita(velocita);
+    setVelocita(n);
+    scriviVelocita(n);
+    velRef.current = n;
+    voceRef.current?.rifrasa();
+  }
+
   const renderPage = useCallback(
     async (pageNum, zoomLevel) => {
       const pdf = pdfRef.current;
@@ -132,24 +234,46 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
         if (renderToken.current !== token) return;
         const p = await pdf.getPage(pageNum);
         if (renderToken.current !== token) return;
+        // Il foglio si misura sul RITAGLIO, non sulla pagina: e' la parte
+        // scritta a doversi prendere lo schermo. La stessa scala vale poi
+        // per la cornice piena, o testo e disegno si sfaserebbero.
+        const rit = cropRef.current;
         const base = p.getViewport({ scale: 1 });
-        const cssWidth = Math.min(container.clientWidth - 8, (container.clientHeight - 8) * (base.width / base.height));
-        const scale = (cssWidth / base.width) * zoomLevel;
+        const largo = base.width * (rit.r - rit.l);
+        const alto = base.height * (rit.b - rit.t);
+        const cssWidth = Math.min(container.clientWidth - 8, (container.clientHeight - 8) * (largo / alto));
+        const scale = (cssWidth / largo) * zoomLevel;
         const dpr = window.devicePixelRatio || 1;
-        const viewport = p.getViewport({ scale: scale * dpr });
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        const cssW = Math.ceil(viewport.width / dpr);
-        const cssH = Math.ceil(viewport.height / dpr);
+        const pieno = p.getViewport({ scale: scale * dpr });
+        // gli scostamenti spostano il disegno, non la misura del riquadro:
+        // la tela grande quanto il ritaglio ritaglia da se'
+        const viewport = p.getViewport({
+          scale: scale * dpr,
+          offsetX: -rit.l * pieno.width,
+          offsetY: -rit.t * pieno.height,
+        });
+        canvas.width = Math.ceil(pieno.width * (rit.r - rit.l));
+        canvas.height = Math.ceil(pieno.height * (rit.b - rit.t));
+        const cssW = Math.ceil(canvas.width / dpr);
+        const cssH = Math.ceil(canvas.height / dpr);
         canvas.style.width = `${cssW}px`;
         canvas.style.height = `${cssH}px`;
         if (pageBoxRef.current) {
           pageBoxRef.current.style.width = `${cssW}px`;
           pageBoxRef.current.style.height = `${cssH}px`;
         }
+        if (pageFullRef.current) {
+          const pw = pieno.width / dpr;
+          const ph = pieno.height / dpr;
+          pageFullRef.current.style.width = `${pw}px`;
+          pageFullRef.current.style.height = `${ph}px`;
+          pageFullRef.current.style.left = `${-rit.l * pw}px`;
+          pageFullRef.current.style.top = `${-rit.t * ph}px`;
+        }
         const task = p.render({ canvas, canvasContext: canvas.getContext("2d"), viewport });
         renderTask.current = task;
         await task.promise;
+        if (renderToken.current === token) apertura.current?.fine();
 
         const layer = textRef.current;
         const mod = modRef.current;
@@ -163,6 +287,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
           });
           textLayer.current = tl;
           await tl.render();
+          if (renderToken.current === token) accendiRisultato(flashRef, layer, pageNum);
         }
       } catch (e) {
         if (e?.name !== "RenderingCancelledException" && e?.message !== "TextLayer task cancelled.") throw e;
@@ -175,26 +300,38 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     let dead = false;
     (async () => {
       try {
-        const blob = await ensureLocalFile(book);
+        const misura = (apertura.current = misuraApertura("pdf", book.id));
+        misura.tappa("codice");
+        const blob = await getFile(book.id);
         if (!blob) throw new Error("file mancante");
+        misura.tappa("byte", { kb: Math.round((blob.size || 0) / 1024) });
         const mod = await import("../lib/pdfThumb.js");
         modRef.current = mod;
         const pdf = await mod.loadPdf(await blob.arrayBuffer());
         if (dead) {
-          pdf.destroy();
+          mod.chiudiPdf(pdf);
           return;
         }
         pdfRef.current = pdf;
+        misura.tappa("libro");
+        pdf.getMetadata().then((m) => {
+          linguaRef.current = String(m?.info?.Language || "");
+        }).catch(() => {});
         live.current.pages = pdf.numPages;
         live.current.page = Math.min(live.current.page, pdf.numPages);
         setPages(pdf.numPages);
         setPage(live.current.page);
         setStatusUi("ready");
 
-        pdf.getMetadata().then((m) => {
-          const l = (m?.info?.Language || "").slice(0, 2).toLowerCase();
-          if (l) langRef.current = l;
-        }).catch(() => { /* metadati assenti: resta l'inglese */ });
+        // i margini si misurano una volta sola per libro: dalla seconda
+        // apertura il ritaglio e' gia' li' e il foglio nasce gia' giusto
+        if (!getCrop(book.id)) {
+          misuraLibro(pdf).then((c) => {
+            if (dead) return;
+            saveCrop(book.id, c);
+            setCrop(c);
+          }).catch(() => { /* niente misura: si legge la pagina intera */ });
+        }
 
         // l'indice del PDF, se c'e': i titoli puntano a riferimenti interni
         // che vanno risolti in numeri di pagina uno per uno
@@ -235,7 +372,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
       window.removeEventListener("beforeunload", flush);
       renderTask.current?.cancel();
       flush();
-      try { pdfRef.current?.destroy(); } catch { /* già distrutto */ }
+      modRef.current?.chiudiPdf(pdfRef.current);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -253,17 +390,68 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
 
   useEffect(() => {
     if (status !== "ready") return;
+    renderPage(live.current.page, zoom);
+  }, [status, crop, settings.ritaglia]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Il passo di lettura, misurato sul tempo fra una pagina e l'altra. Sta
+  // in un cassetto suo e non in quello dei libri sfogliati: una pagina A4
+  // non e' una schermata di EPUB, e mescolarle sballerebbe tutt'e due le
+  // stime.
+  useEffect(() => {
+    if (status !== "ready") return;
+    const ora = Date.now();
+    const prima = ultimoGiro.current;
+    ultimoGiro.current = ora;
+    if (!prima) return;
+    // una voltata e' la prova che qualcuno sta leggendo: e' da qui che lo
+    // schermo si guadagna un altro quarto d'ora di veglia
+    onAlive?.();
+    const next = pushSample(campioni, ora - prima);
+    if (next === campioni) return;
+    setCampioni(next);
+    saveSamples(next, "pdf");
+  }, [page, status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (status !== "ready") return;
     const onResize = () => renderPage(live.current.page, zoom);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [status, zoom, renderPage]);
 
-  // il riquadro cambia misura col mostrarsi delle barre: si ridisegna
+  // SCHERMO INTERO, come nell'EPUB — e nel PDF vale di piu': un foglio ha
+  // margini fissi che non si possono reimpaginare, quindi l'unico modo di
+  // far crescere il testo e' dargli piu' vetro, e la barra del browser su un
+  // tablet se ne mangia una fetta buona. Misurato su un tablet in verticale:
+  // il foglio passa da 628×864 a 715×985, cioe' un terzo di area in piu'.
+  //
+  // QUI SI ASCOLTA SOLO PER L'ETICHETTA DEL TASTO, e il ridisegno non c'entra
+  // — che e' il contrario di quel che sembra, visto che la pagina e' un
+  // canvas misurato sulla scatola che lo contiene. Il motivo e' che il root
+  // del reader e' gia' `position: fixed; inset: 0`: lo schermo intero non
+  // puo' cambiargli la scatola, cambia la FINESTRA (sparisce la barra del
+  // browser), e quello fa scattare il `resize` qui sopra, che ridisegna.
+  // Provato: aggiunto un secondo ridisegno su `fullscreenchange`, le misure
+  // sono identiche con e senza. Era codice che non serviva a nessuno.
+  useEffect(() => {
+    const onFs = () => setIsFs(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.();
+    } else {
+      rootRef.current?.requestFullscreen?.().catch(() => notify("Schermo intero non disponibile qui"));
+    }
+  }
+
   useEffect(() => {
     if (status !== "ready") return;
     const id = requestAnimationFrame(() => renderPage(live.current.page, zoom));
     return () => cancelAnimationFrame(id);
-  }, [chrome, status, zoom, renderPage]);
+  }, [status, zoom, renderPage]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -274,6 +462,22 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [panel, handleClose, goToPage]);
+
+  // Il tasto indietro del dispositivo, girato da App: stessa fila
+  // dell'Escape — il menu della selezione, poi il pannello, e per ultimo
+  // il libro, chiuso dalla porta di sempre perche' e' li' che il numero di
+  // pagina si salva. `true` dice «l'ho chiuso io e il libro resta aperto»,
+  // ed e' quello che la' fuori fa rimettere la guardia nella storia.
+  useEffect(() => {
+    if (!indietro) return;
+    indietro.current = () => {
+      if (sel) { setSel(null); return true; }
+      if (panel) { setPanel(null); return true; }
+      handleClose();
+      return false;
+    };
+    return () => { indietro.current = null; };
+  }, [indietro, panel, sel, handleClose]);
 
   // chiuso il pannello, sfogliare il resto del tomo non serve piu' a nessuno
   useEffect(() => {
@@ -291,9 +495,11 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
   function readSelection() {
     const s = window.getSelection();
     const text = (s?.toString() || "").trim();
-    if (!text || !s.rangeCount || !pageBoxRef.current) return setSel(null);
-    const rects = toPageRects(s.getRangeAt(0).getClientRects(), pageBoxRef.current.getBoundingClientRect());
-    setSel({ text, rects });
+    // le frazioni si prendono sulla pagina INTERA, mai sulla finestra
+    // ritagliata: quel che si salva deve valere anche a ritaglio spento
+    if (!text || !s.rangeCount || !pageFullRef.current) return setSel(null);
+    const rects = toPageRects(s.getRangeAt(0).getClientRects(), pageFullRef.current.getBoundingClientRect());
+    setSel({ text, rects, context: contextAround(s) });
   }
 
   function clearSelection() {
@@ -311,15 +517,12 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
       rects: sel.rects,
       createdAt: Date.now(),
     };
-    const next = [...hls, h];
-    setHls(next);
-    saveHighlights(book.id, next);
+    setHls(cambiaEvidenziazioni(book.id, aggiungi(h)));
     clearSelection();
   }
 
   function saveHls(next) {
-    setHls(next);
-    saveHighlights(book.id, next);
+    setHls(cambiaEvidenziazioni(book.id, aggiorna(next)));
   }
 
   async function runSearch() {
@@ -347,21 +550,141 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
     }
   }
 
+  // Le schede dell'Oracolo, identiche a quelle del reader EPUB: la macchina
+  // sotto sa gia' leggere i PDF (il segno e' il numero di pagina), mancava
+  // solo il tasto. La frontiera vale anche qui, saga compresa.
+  const chiRun = useRef(0);
+  const chiCache = useRef(new Map());
+  // come nel reader EPUB: la cache sopravvive al libro chiuso, o la regola
+  // «si rifà solo se è successo qualcosa di nuovo» non avrebbe mai una
+  // scheda vecchia con cui confrontarsi
+  useEffect(() => {
+    let vivo = true;
+    leggiSchede(book.id).then((voci) => {
+      if (!vivo) return;
+      for (const v of voci) if (!chiCache.current.has(v.chiave)) chiCache.current.set(v.chiave, v);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [book.id]);
+
+  const posa = (chiave, voce) => {
+    if (!daTenere(chiave)) return;
+    leggiSchede(book.id)
+      .then((voci) => scriviSchede(book.id, riponi(voci, { chiave, ...voce })))
+      .catch(() => {});
+  };
+
+  const doveSono = () => ({
+    book,
+    libri: loadBooks(),
+    statusOf: getStatus,
+    // nel PDF il segno e' un numero di pagina, e quello vivo e' piu' avanti
+    // di quello salvato: fra un flush e l'altro passano pagine gia' lette
+    cfiOf: (id) => (id === book.id ? String(live.current.page) : getCfi(id)),
+  });
+
+  async function scheda(chiave, avvia, riusa, tocco) {
+    setSel(null);
+    setPanel("chi");
+    const gia = chiCache.current.get(chiave);
+    if (gia && (!riusa || (await riusa(gia)))) {
+      if (daTenere(chiave)) {
+        leggiSchede(book.id).then((v) => scriviSchede(book.id, tocca(v, chiave))).catch(() => {});
+      }
+      return setChi(gia.dato);
+    }
+    const mio = ++chiRun.current;
+    const vivo = () => chiRun.current === mio;
+    const finito = await avvia({ ...doveSono(), vivo, passo: (s) => vivo() && setChi(s) });
+    if (!vivo() || !finito) return;
+    if (finito.answer) {
+      const voce = { dato: finito, segno: String(live.current.page), tocco };
+      chiCache.current.set(chiave, voce);
+      if (chiCache.current.size > MAX_SCHEDE) {
+        chiCache.current.delete(chiCache.current.keys().next().value);
+      }
+      posa(chiave, voce);
+    }
+    setChi(finito);
+  }
+
+  // come nel reader EPUB: la scheda si rifà solo se da allora il
+  // personaggio è tornato in scena — qui il segno è il numero di pagina
+  // come nell'EPUB: si conta dalla menzione TOCCATA — qui, dalla pagina su
+  // cui l'avevi toccata — e non da dove eri
+  const chiE = (nome, tocco) =>
+    scheda(
+      `chi:${nome}`,
+      (ctx) => schedaChiE({ nome, ...ctx }),
+      async (gia) => {
+        setChi({ ...gia.dato, fase: "cerco" });
+        return !(await nuoveMenzioni(
+          book,
+          [nome, ...(gia.dato.alias || [])],
+          gia.tocco || gia.segno,
+          String(live.current.page)
+        ));
+      },
+      tocco
+    );
+  // il riassunto si rifà ogni volta: il senso è «fin dove sono ADESSO», e
+  // una risposta in cache racconterebbe dov'eri la volta scorsa
+  const dovEravamo = () => {
+    chiCache.current.delete("trama");
+    return scheda("trama", schedaRiassunto);
+  };
+
+  // come nel reader EPUB: prima il glossario di casa, che risponde anche
+  // offline, poi il vocabolario in rete che completa la scheda. Un PDF non
+  // dichiara la lingua come un ePub: si cerca in inglese, che e' la lingua
+  // dei libri per cui questa scheda serve.
   async function defineSelection() {
-    const word = cleanWord(sel?.text);
+    const raw = sel?.text || "";
+    const context = sel?.context || "";
+    // il PDF mostra una pagina per volta: e' quella il punto dove torna il quaderno
+    const dove = String(page);
+    const word = cleanWord(raw);
     if (!word) return;
     setSel(null);
-    setDict({ word, loading: true, entries: [] });
+    const frase = wordCount(raw) > 1;
+    setDict({ word, raw, context, dove, loading: true });
     setPanel("dict");
-    const res = await lookup(word, langRef.current);
-    setDict({
-      word: res.word || word,
-      loading: false,
-      entries: res.entries,
-      translation: res.translation,
-      foreign: res.foreign,
-      offline: res.offline,
-    });
+    const mio = raw;
+    const local = await explain(raw, book);
+    setDict((d) => (d && d.raw === mio ? { ...d, ...local } : d));
+    if (wordCount(raw) > NET_WORDS) {
+      setDict((d) => (d && d.raw === mio ? { ...d, loading: false, frase } : d));
+      return;
+    }
+    // prima il disco, poi la rete: come nel reader EPUB
+    const onParziale = (p) =>
+      setDict((d) => (d && d.raw === mio ? { ...d, ...p, loading: false, frase, lang: "en" } : d));
+    const res = await (frase ? lookupPhrase(raw, "en", { onParziale }) : lookup(word, "en", { onParziale })).catch(
+      () => ({ entries: [], offline: true })
+    );
+    setDict((d) =>
+      d && d.raw === mio
+        ? {
+            ...d,
+            word: res.word || word,
+            loading: false,
+            cercando: false,
+            frase,
+            lang: "en",
+            entries: res.entries,
+            translation: res.translation,
+            italiano: res.italiano,
+            dalDisco: res.dalDisco,
+            lemma: res.lemma,
+            forma: res.forma,
+            offline: res.offline,
+            machine: res.machine,
+            idiom: res.idiom,
+          }
+        : d
+    );
   }
 
   function addMark() {
@@ -371,24 +694,60 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
       label: `pag. ${live.current.page}`,
       createdAt: Date.now(),
     };
-    const next = [...marks, m];
-    setMarks(next);
-    saveMarks(book.id, next);
+    setMarks(cambiaSegnalibri(book.id, aggiungi(m)));
     notify("Segnalibro riposto tra le pagine 📑");
   }
 
   function removeMark(m) {
-    const next = marks.filter((x) => x.id !== m.id);
-    setMarks(next);
-    saveMarks(book.id, next);
+    setMarks(cambiaSegnalibri(book.id, togli(m)));
+  }
+
+  // il margine attorno al foglio non e' terra di nessuno: vale come il bordo
+  // della pagina. Qui arrivano solo i tocchi sullo sfondo — barre, pannelli e
+  // menu sono altri elementi, o ogni loro bottone avrebbe voltato pagina.
+  function tapAside(e) {
+    if (e.target !== rootRef.current) return;
+    if (zoom === 1) {
+      const rel = e.clientX / (window.innerWidth || 1);
+      if (rel < TAP_PREV) return goToPage(live.current.page - 1);
+      if (rel > TAP_NEXT) return goToPage(live.current.page + 1);
+    }
+    setChrome((v) => !v);
   }
 
   const pct = pages > 0 ? Math.round((page / pages) * 100) : 0;
+  const pagineLeft = pages > 0 ? Math.max(0, pages - page) : 0;
+  const passo = medianMs(campioni);
+  const tempoLeft = passo && pagineLeft > 0 ? formatLeft(pagineLeft * passo) : null;
+  const quantoManca = !pages
+    ? null
+    : pagineLeft === 0
+      ? "ultima pagina"
+      : [
+          `${pagineLeft} ${pagineLeft === 1 ? "pagina" : "pagine"}`,
+          tempoLeft ? `${tempoLeft.startsWith("meno") ? "" : "~"}${tempoLeft} alla fine` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
   const edge = "clamp(3px, 0.9vw, 10px)";
   const pageHls = hls.filter((h) => pageOf(h) === page && h.rects?.length);
 
   return (
     <div
+      ref={rootRef}
+      onClick={tapAside}
+      onWheel={(e) => {
+        // col mouse la pagina si volta con la rotellina: non litiga con la
+        // selezione del testo, che e' esattamente quel che facevano i
+        // bottoni invisibili di prima. A zoom aperto no: li' la rotellina
+        // serve a scorrere il foglio ingrandito.
+        if (isTouch() || zoom !== 1 || status !== "ready") return;
+        if (Math.abs(e.deltaY) < 4) return;
+        const ora = Date.now();
+        if (ora - rotella.current < 220) return;
+        rotella.current = ora;
+        goToPage(live.current.page + (e.deltaY > 0 ? 1 : -1));
+      }}
       style={{
         position: "fixed",
         inset: 0,
@@ -404,10 +763,9 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
         onClick={(e) => {
           if (window.getSelection()?.toString().trim()) return;
           if (isTouch() && zoom === 1) {
-            const r = containerRef.current.getBoundingClientRect();
-            const rel = (e.clientX - r.left) / (r.width || 1);
-            if (rel < 0.22) return goToPage(live.current.page - 1);
-            if (rel > 0.78) return goToPage(live.current.page + 1);
+            const rel = e.clientX / (window.innerWidth || 1);
+            if (rel < TAP_PREV) return goToPage(live.current.page - 1);
+            if (rel > TAP_NEXT) return goToPage(live.current.page + 1);
           }
           setChrome((v) => !v);
         }}
@@ -415,36 +773,47 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
           position: "absolute",
           left: edge,
           right: edge,
-          top: chrome ? 59 : edge,
-          bottom: chrome ? "calc(69px + env(safe-area-inset-bottom))" : edge,
+          // il foglio non cambia mai misura: le barre compaiono sopra la
+          // fascia sempre lasciata libera a testa e piede, cosi' la pagina
+          // non viene ridisegnata e non balla sotto le dita
+          top: 59,
+          bottom: "calc(69px + env(safe-area-inset-bottom))",
           overflow: "auto",
           display: "flex",
           alignItems: zoom > 1 ? "flex-start" : "center",
           justifyContent: zoom > 1 ? "flex-start" : "center",
         }}
       >
-        <div ref={pageBoxRef} style={{ position: "relative", flexShrink: 0, boxShadow: "0 4px 30px #00000088" }}>
+        <div
+          ref={pageBoxRef}
+          style={{ position: "relative", flexShrink: 0, overflow: "hidden", boxShadow: "0 4px 30px #00000088" }}
+        >
           <canvas ref={canvasRef} style={{ display: "block" }} />
-          {/* sotto il livello testo: sopra, ruberebbe la selezione proprio
-              dove si e' gia' evidenziato */}
-          <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none" }}>
-            {pageHls.map((h) =>
-              h.rects.map((r, i) => (
-                <div
-                  key={`${h.id}-${i}`}
-                  style={{
-                    position: "absolute",
-                    ...rectStyle(r),
-                    background: h.color,
-                    opacity: 0.36,
-                    mixBlendMode: "multiply",
-                    borderRadius: 2,
-                  }}
-                />
-              ))
-            )}
+          {/* la pagina intera, margini compresi: sporge dalla finestra e
+              viene tagliata da lei. Dentro ci stanno testo ed evidenziazioni,
+              che cosi' continuano a misurarsi sulla pagina vera */}
+          <div ref={pageFullRef} style={{ position: "absolute", left: 0, top: 0 }}>
+            {/* sotto il livello testo: sopra, ruberebbe la selezione proprio
+                dove si e' gia' evidenziato */}
+            <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none" }}>
+              {pageHls.map((h) =>
+                h.rects.map((r, i) => (
+                  <div
+                    key={`${h.id}-${i}`}
+                    style={{
+                      position: "absolute",
+                      ...rectStyle(r),
+                      background: h.color,
+                      opacity: 0.36,
+                      mixBlendMode: "multiply",
+                      borderRadius: R.minimo,
+                    }}
+                  />
+                ))
+              )}
+            </div>
+            <div ref={textRef} className="textLayer" />
           </div>
-          <div ref={textRef} className="textLayer" />
         </div>
       </div>
 
@@ -486,7 +855,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
           }}
         >
           <span style={{ fontSize: 40, animation: "bc-flicker 3s ease-in-out infinite" }}>🕯️</span>
-          <span style={{ fontFamily: FONT_TITLE, fontSize: 18 }}>Apro il tomo…</span>
+          <span style={{ fontFamily: FONT_TITLE, fontSize: F.rilievo }}>Apro il tomo…</span>
         </div>
       )}
 
@@ -514,33 +883,26 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
           </span>
           <button
             onClick={handleClose}
-            style={{ padding: "10px 22px", borderRadius: 10, border: `1px solid ${C.border}`, color: C.muted }}
+            style={{ padding: "10px 22px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.muted }}
           >
             Torna alla Libreria
           </button>
         </div>
       )}
 
-      {status === "ready" && zoom === 1 && !isTouch() && (
-        <>
-          <button
-            aria-label="Pagina precedente"
-            onClick={() => goToPage(live.current.page - 1)}
-            style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: "13%", zIndex: 10, cursor: "w-resize" }}
-          />
-          <button
-            aria-label="Pagina successiva"
-            onClick={() => goToPage(live.current.page + 1)}
-            style={{ position: "absolute", right: 0, top: "15%", bottom: "15%", width: "13%", zIndex: 10, cursor: "e-resize" }}
-          />
-        </>
-      )}
+      {/* Come nel reader EPUB: col mouse niente bottoni invisibili sulle
+          fasce laterali. Stavano sopra il livello del testo e li' dentro non
+          si poteva selezionare niente — cliccare voltava e basta. Restano la
+          rotellina, le frecce e il margine attorno al foglio. */}
 
       {sel && (
         <div
           style={{
             position: "absolute",
-            bottom: chrome ? 92 : 24,
+            // in cima come nell'EPUB, e per la stessa ragione: la scheda di
+            // dizionario che Android apre sulla selezione sta appoggiata al
+            // bordo di sotto e si mangiava questo menu per intero
+            top: chrome ? altezzaBarra + px(12) : px(24),
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 35,
@@ -548,7 +910,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             alignItems: "center",
             gap: 10,
             padding: "10px 14px",
-            borderRadius: 14,
+            borderRadius: R.medio,
             background: `${C.card}f8`,
             border: `1px solid ${C.border}`,
             boxShadow: "0 8px 30px #00000088",
@@ -571,104 +933,180 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                 }}
               />
             ))}
-          {wordCount(sel.text) <= 3 && (
+          {settings.dizionario !== false && wordCount(sel.text) <= PHRASE_WORDS && (
             <button
               onClick={defineSelection}
               style={{
                 marginLeft: 4,
                 padding: "6px 12px",
-                borderRadius: 999,
+                borderRadius: R.tondo,
                 border: `1px solid ${C.arcane}88`,
                 color: C.arcane,
-                fontSize: 14,
+                fontSize: F.nota,
                 whiteSpace: "nowrap",
               }}
             >
-              📖 Definisci
+              {wordCount(sel.text) > 1 ? "🔎 Significato" : "📖 Definisci"}
             </button>
           )}
-          <button onClick={clearSelection} style={{ fontSize: 14.5, color: C.muted, marginLeft: 4 }}>
+          {sembraUnNome(sel.text) && (
+            <button
+              onClick={() => chiE(sel.text.trim(), String(live.current.page))}
+              style={{
+                padding: "6px 12px",
+                borderRadius: R.tondo,
+                border: `1px solid ${C.accent}88`,
+                color: C.accent,
+                fontSize: F.nota,
+                whiteSpace: "nowrap",
+              }}
+            >
+              🕮 Chi è
+            </button>
+          )}
+          <button onClick={clearSelection} style={{ fontSize: F.nota, color: C.muted, marginLeft: 4 }}>
             Annulla
+          </button>
+        </div>
+      )}
+
+      {/* I COMANDI DELLA VOCE restano a schermo anche a barre nascoste, come
+          nell'ePub: chi ascolta posa il tablet */}
+      {voce && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            bottom: chrome ? px(84) : px(16),
+            transform: "translateX(-50%)",
+            zIndex: 26,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            padding: 4,
+            borderRadius: R.tondo,
+            background: `${C.card}f2`,
+            border: `1px solid ${C.border}`,
+            boxShadow: "0 6px 24px #00000066",
+            animation: "bc-fade-in 0.2s ease-out",
+          }}
+        >
+          <button
+            onClick={() => (voce === "legge" ? voceRef.current.pausa() : voceRef.current.comincia(live.current.page))}
+            aria-label={voce === "legge" ? "Pausa" : "Riprendi a leggere"}
+            style={{ minWidth: 44, height: 44, borderRadius: R.tondo, color: C.accent, fontSize: F.rilievo }}
+          >
+            {voce === "legge" ? "⏸" : "▶"}
+          </button>
+          <button
+            onClick={voceVelocita}
+            aria-label={`Velocità ${velocita}×, tocca per cambiarla`}
+            style={{ minWidth: 52, height: 44, borderRadius: R.tondo, color: C.text, fontSize: F.nota }}
+          >
+            {String(velocita).replace(".", ",")}×
+          </button>
+          <button
+            onClick={() => voceRef.current.taci()}
+            aria-label="Smetti di leggere"
+            style={{ minWidth: 44, height: 44, borderRadius: R.tondo, color: C.muted, fontSize: F.rilievo }}
+          >
+            ■
           </button>
         </div>
       )}
 
       {chrome && (
         <>
-          <div
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              zIndex: 25,
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "8px 10px",
-              background: `${C.surface}f2`,
-              backdropFilter: "blur(8px)",
-              borderBottom: `1px solid ${C.border}`,
-              animation: "bc-fade-in 0.2s ease-out",
-            }}
-          >
-            <button onClick={handleClose} style={barBtn(false)} aria-label="Chiudi il libro">✕</button>
-            <span
-              style={{
-                flex: 1,
-                fontFamily: FONT_TITLE,
-                fontSize: 16.5,
-                fontWeight: 600,
-                color: C.text,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {book.title}
-            </span>
-            {music?.current && (
+          <BarraDelLibro
+            titolo={book.title}
+            onClose={handleClose}
+            conNome={nomiNeiTasti}
+            dueRighe={dueRighe}
+            onAltezza={setAltezzaBarra}
+            musica={<MusicaInBarra music={music} onMusicToggle={onMusicToggle} onMusicNext={onMusicNext} onMusicVolume={onMusicVolume} onMusicStop={onMusicStop} onMusicRoom={onMusicRoom} onClose={handleClose} />}
+            tasti={
               <>
-                <button onClick={onMusicToggle} style={barBtn(false)} aria-label={music.playing ? "Pausa musica" : "Riprendi musica"}>
-                  {music.playing ? "⏸" : "▶"}
+                {outline.length > 0 && (
+                  <TastoBarra
+                    onClick={() => setPanel(panel === "toc" ? null : "toc")}
+                    attivo={panel === "toc"}
+                    conNome={nomiNeiTasti}
+                    nome="Indice"
+                    glifo="☰"
+                  />
+                )}
+                <TastoBarra
+                  onClick={() => setPanel(panel === "search" ? null : "search")}
+                  attivo={panel === "search"}
+                  conNome={nomiNeiTasti}
+                  nome="Cerca"
+                  glifo="🔍"
+                />
+                <TastoBarra
+                  onClick={() => setPanel(panel === "marks" ? null : "marks")}
+                  attivo={panel === "marks"}
+                  conNome={nomiNeiTasti}
+                  nome="Segnalibri"
+                  glifo="📑"
+                />
+                <TastoBarra
+                  onClick={() => setPanel(panel === "hl" ? null : "hl")}
+                  attivo={panel === "hl"}
+                  conNome={nomiNeiTasti}
+                  nome="Evidenziazioni"
+                  glifo="🖍️"
+                />
+                <TastoBarra onClick={dovEravamo} conNome={nomiNeiTasti} nome="Dove eravamo" glifo="🧭" />
+                {sintesi && status === "ready" && (
+                  <TastoBarra
+                    onClick={() => (voce ? voceRef.current.taci() : voceRef.current.comincia(live.current.page))}
+                    attivo={!!voce}
+                    conNome={nomiNeiTasti}
+                    nome={voce ? "Smetti" : "Ascolta"}
+                    glifo="🔊"
+                  />
+                )}
+                <button
+                  onClick={() => setZoom((z) => Math.max(1, +(z - 0.25).toFixed(2)))}
+                  style={barBtn(false)}
+                  aria-label="Riduci zoom"
+                >
+                  −
                 </button>
-                <button onClick={onMusicStop} style={{ ...barBtn(false), fontSize: 16, color: C.muted }} aria-label="Spegni musica">
-                  🔇
+                <button
+                  onClick={() => setZoom((z) => Math.min(3, +(z + 0.25).toFixed(2)))}
+                  style={barBtn(false)}
+                  aria-label="Aumenta zoom"
+                >
+                  ＋
                 </button>
+                {/* dietro a `fullscreenEnabled` come nell'EPUB: dove il browser
+                    non lo permette (un iframe senza permesso, certi iOS) un tasto
+                    che non fa niente e' peggio di un tasto che non c'e' */}
+                {serveTastoSchermo({ abilitato: document.fullscreenEnabled, giaTuttoSchermo: apertaATuttoSchermo() }) && (
+                  <TastoBarra
+                    onClick={toggleFullscreen}
+                    attivo={isFs}
+                    conNome={nomiNeiTasti}
+                    nome={isFs ? "Esci" : "Schermo"}
+                    glifo="⛶"
+                  />
+                )}
               </>
-            )}
-            {outline.length > 0 && (
-              <button onClick={() => setPanel(panel === "toc" ? null : "toc")} style={barBtn(panel === "toc")} aria-label="Indice">
-                ☰
-              </button>
-            )}
-            <button onClick={() => setPanel(panel === "search" ? null : "search")} style={barBtn(panel === "search")} aria-label="Cerca">
-              🔍
-            </button>
-            <button onClick={() => setPanel(panel === "marks" ? null : "marks")} style={barBtn(panel === "marks")} aria-label="Segnalibri">
-              📑
-            </button>
-            <button onClick={() => setPanel(panel === "hl" ? null : "hl")} style={barBtn(panel === "hl")} aria-label="Evidenziazioni">
-              🖍️
-            </button>
-            <button
-              onClick={() => setZoom((z) => Math.max(1, +(z - 0.25).toFixed(2)))}
-              style={barBtn(false)}
-              aria-label="Riduci zoom"
-            >
-              −
-            </button>
-            <button
-              onClick={() => setZoom((z) => Math.min(3, +(z + 0.25).toFixed(2)))}
-              style={barBtn(false)}
-              aria-label="Aumenta zoom"
-            >
-              ＋
-            </button>
-            <button onClick={() => setPanel(panel === "night" ? null : "night")} style={{ ...barBtn(panel === "night"), fontSize: 17 }} aria-label="Filtro notte">
-              🌙
-            </button>
-          </div>
+            }
+            // 🌙 apre il filtro notte E il ritaglio dei margini: una luna da
+            // sola non lo dice a nessuno
+            coda={
+              <TastoBarra
+                onClick={() => setPanel(panel === "night" ? null : "night")}
+                attivo={panel === "night"}
+                conNome={nomiNeiTasti}
+                nome="Notte"
+                glifo="🌙"
+                stile={{ fontSize: F.rilievo }}
+              />
+            }
+          />
 
           <div
             style={{
@@ -692,8 +1130,13 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
               onChange={(e) => setPage(parseInt(e.target.value, 10))}
               style={{ width: "100%", accentColor: C.accent }}
             />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12.5, color: C.muted, marginTop: 2 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: F.minuscolo, color: C.muted, marginTop: 2 }}>
               <span>{pct}%</span>
+              {quantoManca && (
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 10px" }}>
+                  {quantoManca}
+                </span>
+              )}
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -712,11 +1155,11 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                   style={{
                     width: 58,
                     padding: "3px 7px",
-                    borderRadius: 8,
+                    borderRadius: R.piccolo,
                     border: `1px solid ${C.border}`,
                     background: C.card,
                     color: C.text,
-                    fontSize: 12.5,
+                    fontSize: F.minuscolo,
                     textAlign: "right",
                     outline: "none",
                   }}
@@ -728,7 +1171,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
         </>
       )}
 
-      {panel === "night" && (
+      {chrome && panel === "night" && (
         <div
           style={{
             position: "absolute",
@@ -737,14 +1180,14 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             zIndex: 30,
             width: 260,
             padding: 16,
-            borderRadius: 14,
+            borderRadius: R.medio,
             border: `1px solid ${C.border}`,
             background: `${C.surface}fa`,
             boxShadow: "0 10px 40px #00000088",
             animation: "bc-fade-in 0.2s ease-out",
           }}
         >
-          <div style={{ fontSize: 14, color: C.muted, marginBottom: 4 }}>Filtro notte caldo</div>
+          <div style={{ fontSize: F.nota, color: C.muted, marginBottom: 4 }}>Filtro notte caldo</div>
           <input
             type="range"
             min={0}
@@ -754,7 +1197,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             onChange={(e) => updateSettings({ warmth: parseFloat(e.target.value) })}
             style={{ width: "100%", accentColor: C.accent, marginBottom: 12 }}
           />
-          <div style={{ fontSize: 14, color: C.muted, marginBottom: 4 }}>Luminosità</div>
+          <div style={{ fontSize: F.nota, color: C.muted, marginBottom: 4 }}>Luminosità</div>
           <input
             type="range"
             min={0.4}
@@ -764,6 +1207,60 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             onChange={(e) => updateSettings({ brightness: parseFloat(e.target.value) })}
             style={{ width: "100%", accentColor: C.accent }}
           />
+
+          <div style={{ height: 1, background: C.border, margin: "14px 0 12px" }} />
+          <button
+            onClick={() => updateSettings({ ritaglia: settings.ritaglia === false })}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "8px 10px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${settings.ritaglia !== false ? C.accent : C.border}`,
+              color: settings.ritaglia !== false ? C.accent : C.muted,
+              fontSize: F.nota,
+              textAlign: "left",
+            }}
+          >
+            <span style={{ fontSize: F.corpo }}>{settings.ritaglia !== false ? "☑" : "☐"}</span>
+            <span style={{ flex: 1 }}>Togli i margini bianchi</span>
+          </button>
+          <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 6, lineHeight: 1.45 }}>
+            {crop === null
+              ? "Sto misurando i margini di questo tomo…"
+              : vuoto(crop)
+                ? "Questo tomo non ha margini da togliere."
+                : `Qui se ne va ${Math.round((1 - (crop.r - crop.l) * (crop.b - crop.t)) * 100)}% di carta bianca.`}
+          </div>
+
+          {/* la stessa levetta del reader EPUB: e' una preferenza sola,
+              condivisa in `bc_reader`, e da qui si legge e si cambia */}
+          <button
+            onClick={() => updateSettings({ dizionario: settings.dizionario === false })}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              marginTop: 10,
+              padding: "8px 10px",
+              borderRadius: R.piccolo,
+              border: `1px solid ${settings.dizionario !== false ? C.arcane : C.border}`,
+              color: settings.dizionario !== false ? C.arcane : C.muted,
+              fontSize: F.nota,
+              textAlign: "left",
+            }}
+          >
+            <span style={{ fontSize: F.corpo }}>{settings.dizionario !== false ? "☑" : "☐"}</span>
+            <span style={{ flex: 1 }}>Dizionario dell'app</span>
+          </button>
+          <div style={{ fontSize: F.minuscolo, color: C.muted, marginTop: 6, lineHeight: 1.45 }}>
+            {settings.dizionario !== false
+              ? "Sulla parola selezionata compare «Definisci»."
+              : "Resta solo il dizionario del tablet, quello che Android apre da sé."}
+          </div>
         </div>
       )}
 
@@ -774,12 +1271,12 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             style={{
               width: "100%",
               padding: "11px 0",
-              borderRadius: 12,
+              borderRadius: R.piccolo,
               marginBottom: 14,
-              background: `linear-gradient(180deg, ${C.accent}, #b8893a)`,
-              color: "#241c0a",
+              background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`,
+              color: C.onAccent,
               fontWeight: 600,
-              fontSize: 15,
+              fontSize: F.corpo,
             }}
           >
             📑 Salva qui
@@ -787,8 +1284,13 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
           {marks.length === 0 ? (
             <p style={{ color: C.muted }}>Nessun segnalibro ancora.</p>
           ) : (
+            // L'ultimo messo in cima, come nell'EPUB: erano ordinati per
+            // numero di pagina, che è un ordine sensato ma non è quello
+            // che serve quando apri il pannello — lì stai cercando quasi
+            // sempre l'ultimo che hai riposto. La pagina resta scritta su
+            // ogni riga, quindi non si perde niente.
             [...marks]
-              .sort((a, b) => (parseInt(a.cfi, 10) || 0) - (parseInt(b.cfi, 10) || 0))
+              .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
               .map((m) => (
                 <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.border}44` }}>
                   <button
@@ -796,10 +1298,10 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                       goToPage(parseInt(m.cfi, 10) || 1);
                       setPanel(null);
                     }}
-                    style={{ flex: 1, textAlign: "left", padding: "11px 6px", fontSize: 15, color: C.text }}
+                    style={{ flex: 1, textAlign: "left", padding: "11px 6px", fontSize: F.corpo, color: C.text }}
                   >
                     {m.label}
-                    <span style={{ display: "block", fontSize: 12.5, color: C.muted }}>
+                    <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted }}>
                       {pages ? `al ${Math.round(((parseInt(m.cfi, 10) || 1) / pages) * 100)}% · ` : ""}
                       {new Date(m.createdAt).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                     </span>
@@ -820,7 +1322,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
               setPanel(null);
             }}
             onChange={saveHls}
-            onRemove={(h) => saveHls(hls.filter((x) => x.id !== h.id))}
+            onRemove={(h) => setHls(cambiaEvidenziazioni(book.id, togli(h)))}
             empty="Seleziona un passaggio nella pagina per evidenziarlo: lo ritroverai qui e nel giardino delle citazioni."
           />
         </Panel>
@@ -837,17 +1339,17 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
               style={{
                 flex: 1,
                 padding: "10px 14px",
-                borderRadius: 10,
+                borderRadius: R.piccolo,
                 border: `1px solid ${C.border}`,
                 background: C.card,
                 color: C.text,
-                fontSize: 15,
+                fontSize: F.corpo,
                 outline: "none",
               }}
             />
             <button
               onClick={runSearch}
-              style={{ padding: "0 18px", borderRadius: 10, background: `linear-gradient(180deg, ${C.accent}, #b8893a)`, color: "#241c0a", fontWeight: 600 }}
+              style={{ padding: "0 18px", borderRadius: R.piccolo, background: `linear-gradient(180deg, ${C.accent}, ${C.accentDeep})`, color: C.onAccent, fontWeight: 600 }}
             >
               {search.busy ? "…" : "Cerca"}
             </button>
@@ -861,7 +1363,7 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             <p style={{ color: C.muted }}>Nessuna traccia di «{query}» in questo tomo.</p>
           )}
           {search.full && (
-            <p style={{ color: C.muted, fontSize: 13, marginBottom: 8 }}>
+            <p style={{ color: C.muted, fontSize: F.piccolo, marginBottom: 8 }}>
               Primi {search.results.length} passaggi: affina la ricerca per vedere gli altri.
             </p>
           )}
@@ -869,7 +1371,10 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             <button
               key={`${r.page}-${i}`}
               onClick={() => {
-                goToPage(r.page);
+                flashRef.current = { page: r.page, hit: r.hit };
+                // pagina gia' aperta: nessun ridisegno in arrivo, si accende ora
+                if (r.page === page) accendiRisultato(flashRef, textRef.current, null);
+                else goToPage(r.page);
                 setPanel(null);
               }}
               style={{
@@ -877,13 +1382,13 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                 width: "100%",
                 textAlign: "left",
                 padding: "10px 6px",
-                fontSize: 14.5,
+                fontSize: F.nota,
                 color: C.text,
                 lineHeight: 1.4,
                 borderBottom: `1px solid ${C.border}44`,
               }}
             >
-              <span style={{ display: "block", fontSize: 12, color: C.muted, marginBottom: 2 }}>pag. {r.page}</span>
+              <span style={{ display: "block", fontSize: F.minuscolo, color: C.muted, marginBottom: 2 }}>pag. {r.page}</span>
               {r.before}
               <mark style={{ background: "transparent", color: C.accent, fontWeight: 600 }}>{r.hit}</mark>
               {r.after}
@@ -909,19 +1414,37 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                 padding: "10px 6px",
                 paddingLeft: 6 + it.depth * 14,
                 borderBottom: `1px solid ${C.border}44`,
-                fontSize: 15,
+                fontSize: F.corpo,
                 color: it.page === page ? C.accent : C.text,
               }}
             >
               <span style={{ flex: 1 }}>{it.title || "…"}</span>
-              <span style={{ fontSize: 12.5, color: C.muted }}>{it.page}</span>
+              <span style={{ fontSize: F.minuscolo, color: C.muted }}>{it.page}</span>
             </button>
           ))}
         </Panel>
       )}
 
+      {panel === "chi" && chi && (
+        <Panel
+          title={chi.nome ? `Chi è ${chi.nome}` : "Dove eravamo rimasti"}
+          onClose={() => setPanel(null)}
+        >
+          <SchedaOracolo
+            scheda={chi}
+            attese={attese(chi)}
+            vuoto={
+              chi.nome
+                ? `Non trovo «${chi.nome}» in quello che hai letto finora.`
+                : "Non riesco a rileggere quello che hai letto finora."
+            }
+            onRiprova={() => (chi.nome ? chiE(chi.nome) : dovEravamo())}
+          />
+        </Panel>
+      )}
+
       {panel === "dict" && (
-        <DictionaryCard dict={dict} bottom={chrome ? 92 : 26} onClose={() => setPanel(null)} />
+        <DictionaryCard dict={dict} book={book} alto={chrome ? altezzaBarra + px(12) : px(26)} onClose={() => setPanel(null)} />
       )}
 
       {endCard === "shown" && nextBook && (
@@ -930,14 +1453,14 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             position: "absolute",
             left: "50%",
             transform: "translateX(-50%)",
-            bottom: chrome ? 96 : 30,
+            bottom: chrome ? px(96) : px(30),
             zIndex: 32,
-            width: "min(94%, 440px)",
+            width: `min(94%, ${px(440)}px)`,
             display: "flex",
             gap: 14,
             alignItems: "center",
             padding: "13px 16px",
-            borderRadius: 16,
+            borderRadius: R.medio,
             background: `${C.card}fa`,
             border: `1px solid ${C.accent}55`,
             boxShadow: "0 12px 44px #000000aa",
@@ -948,12 +1471,12 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
             <BookCover book={nextBook} radius={6} compact />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12.5, color: C.muted }}>Fine del volume — il prossimo della saga</div>
+            <div style={{ fontSize: F.minuscolo, color: C.muted }}>Fine del volume — il prossimo della saga</div>
             <div
               style={{
                 fontFamily: FONT_TITLE,
                 fontWeight: 600,
-                fontSize: 17,
+                fontSize: F.rilievo,
                 color: C.text,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -968,11 +1491,11 @@ export default function PdfReader({ book, startCfi, music, onMusicToggle, onMusi
                   flush();
                   onReadNext(nextBook.id);
                 }}
-                style={{ fontSize: 14, fontWeight: 600, color: C.accent }}
+                style={{ fontSize: F.nota, fontWeight: 600, color: C.accent }}
               >
                 Leggilo ora
               </button>
-              <button onClick={() => setEndCard("dismissed")} style={{ fontSize: 14, color: C.muted }}>
+              <button onClick={() => setEndCard("dismissed")} style={{ fontSize: F.nota, color: C.muted }}>
                 Più tardi
               </button>
             </div>
