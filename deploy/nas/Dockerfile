@@ -3,9 +3,6 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-ARG VITE_SUPABASE_URL=""
-ARG VITE_SUPABASE_ANON_KEY=""
-ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 RUN npm run build
 
 FROM nginx:stable-alpine
@@ -15,3 +12,6 @@ FROM nginx:stable-alpine
 RUN sed -i 's/^user .*;/user root;/' /etc/nginx/nginx.conf && grep -q '^user root;' /etc/nginx/nginx.conf
 COPY deploy/nas/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
+# l'immagine e' una sola per tutti: Supabase lo dice il .env del NAS all'avvio
+COPY deploy/nas/config.sh /docker-entrypoint.d/40-config.sh
+RUN chmod 755 /docker-entrypoint.d/40-config.sh

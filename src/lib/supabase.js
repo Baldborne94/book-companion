@@ -1,5 +1,9 @@
-const url = import.meta.env.VITE_SUPABASE_URL;
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+import { configSupabase } from "./configSupabase.js";
+
+const { url, key } = configSupabase(
+  { VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY },
+  typeof window !== "undefined" ? window.__BC_CONFIG__ : null
+);
 
 let clientPromise = null;
 

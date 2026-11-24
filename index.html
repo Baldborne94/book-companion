@@ -23,6 +23,9 @@
         }
       } catch (e) {}
     </script>
+    <!-- La configurazione del posto dove gira l'app (Supabase del NAS),
+         scritta da nginx all'avvio; su Vercel e' vuota. Prima del bundle. -->
+    <script src="/config.js"></script>
   </head>
   <body>
     <div id="root"></div>
