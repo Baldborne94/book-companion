@@ -33,3 +33,20 @@ export function casaDelVolume(b, tipo) {
   if (saga && ciclo && ciclo.toLowerCase() !== saga.toLowerCase()) pezzi.push(ciclo);
   return pezzi;
 }
+
+// QUALE CARTELLA E' LA CASA DEI LIBRI, fra quella scelta e le sue figlie: lei
+// se si chiama «book-companion», la sua figlia con quel nome, oppure lei se
+// dentro ha subito Libri, Fumetti o Manga. L'ultima strada e' per il NAS
+// collegato come unita' di rete (Y:): la cartella condivisa si chiama
+// book-companion, ma Windows la presenta col nome dell'unita', e il controllo
+// diceva «qui dentro non c'e' la cartella».
+export async function casaDelDisco(scelta) {
+  if (!scelta) return null;
+  if (String(scelta.name || "").trim().toLowerCase() === RADICE) return scelta;
+  const figlia = await scelta.getDirectoryHandle(RADICE).catch(() => null);
+  if (figlia) return figlia;
+  for (const nome of [CARTELLE.libri, CARTELLE.fumetti, CARTELLE.manga]) {
+    if (await scelta.getDirectoryHandle(nome).catch(() => null)) return scelta;
+  }
+  return null;
+}

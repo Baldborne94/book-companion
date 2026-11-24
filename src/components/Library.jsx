@@ -2013,9 +2013,9 @@ export default function Library({
     // misurato per il rapporto dei guasti: elenco dei file, abbinamento, il resto
     const t0 = performance.now();
     try {
-      const { RADICE } = await import("../lib/casa.js");
+      const { casaDelDisco } = await import("../lib/casa.js");
       const { elencaDisco, controllaDisco, lavoriDalDisco, cbrNeiConvertiti, daRimettereAPosto } = await import("../lib/disco.js");
-      const casa = String(scelta.name || "").trim().toLowerCase() === RADICE ? scelta : await scelta.getDirectoryHandle(RADICE).catch(() => null);
+      const casa = await casaDelDisco(scelta);
       if (!casa) {
         setDisco(null);
         notify("Qui dentro non c'è la cartella «book-companion»: scegli quella che la contiene, o lei");
