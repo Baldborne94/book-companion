@@ -42,11 +42,12 @@ services:
   # Immagini e impostazioni dal self-hosting ufficiale (supabase/docker).
 
   db:
-    image: supabase/postgres:17.6.1.136
+    build:
+      context: ../..
+      dockerfile: deploy/nas/supabase/Dockerfile
+    image: book-companion-db
     restart: unless-stopped
     volumes:
-      - ./supabase/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
-      - ./supabase/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro
       - ${DATI}/supabase/dati:/var/lib/postgresql/data
       - db-config:/etc/postgresql-custom
     healthcheck:
@@ -54,6 +55,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+      # la prima inizializzazione su un disco del NAS e' lenta
+      start_period: 180s
     environment:
       POSTGRES_HOST: /var/run/postgresql
       PGPORT: 5432
@@ -150,7 +153,7 @@ services:
   # (if not exists, drop policy if exists) e va dopo che Auth e Storage
   # hanno creato le loro tabelle (auth.users, storage.buckets).
   schema:
-    image: supabase/postgres:17.6.1.136
+    image: book-companion-db
     depends_on:
       auth:
         condition: service_healthy
@@ -158,8 +161,6 @@ services:
         condition: service_healthy
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - ../../supabase/schema.sql:/schema.sql:ro
     entrypoint: ["psql", "-h", "db", "-U", "supabase_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-f", "/schema.sql"]
     restart: "no"
 
