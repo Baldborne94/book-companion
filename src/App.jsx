@@ -2095,13 +2095,21 @@ export default function App() {
     } else {
       const come = comeRiprendere(getBookMusic(id));
       if (come) {
-        notify(come.raccolta ? `Questo libro suona con la raccolta «${come.raccolta.name}»` : `Questo libro suona con «${come.melodia.name || "la sua melodia"}»`, {
-          label: "▶ Riprendi",
-          onClick: () =>
-            come.raccolta
-              ? playerRef.current?.playQueue(come.brani, false, { da: come.da, raccolta: come.raccolta.id })
-              : playerRef.current?.play(come.melodia),
-        });
+        const aCaso = come.casuale ? ", a caso" : "";
+        notify(
+          come.raccolta
+            ? `Questo libro suona con la raccolta «${come.raccolta.name}»${aCaso}`
+            : come.tutte
+              ? `Questo libro suona con le tue melodie${aCaso}`
+              : `Questo libro suona con «${come.melodia.name || "la sua melodia"}»`,
+          {
+            label: "▶ Riprendi",
+            onClick: () =>
+              come.brani
+                ? playerRef.current?.playQueue(come.brani, come.casuale, { da: come.da, raccolta: come.raccolta?.id || null })
+                : playerRef.current?.play(come.melodia),
+          }
+        );
       }
     }
   }

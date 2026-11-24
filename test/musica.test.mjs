@@ -240,15 +240,29 @@ export default async function (t) {
   const altra = { id: "r-x", name: "Altro", brani: ["f2"] };
   const tutto = { raccolte: [altra, wh], favs: [battaglia, marcia, coro] };
   const suona = { current: { trackId: "t2", name: "Marcia" }, queue: { raccolta: "r-wh" } };
-  t.eq("il legame porta la raccolta che suonava", JSON.stringify(M.legameMusica(suona)), JSON.stringify({ trackId: "t2", name: "Marcia", raccolta: "r-wh" }));
-  t.eq("…una melodia sola non ha raccolta", M.legameMusica({ current: { trackId: "t2", name: "Marcia" }, queue: null }).raccolta, null);
+  t.eq("il legame porta la raccolta che suonava, e che era una coda", JSON.stringify(M.legameMusica(suona)), JSON.stringify({ trackId: "t2", name: "Marcia", raccolta: "r-wh", coda: true }));
+  t.eq("…una melodia sola lo dice", JSON.stringify(M.legameMusica({ current: { trackId: "t2", name: "Marcia" }, queue: null })), JSON.stringify({ trackId: "t2", name: "Marcia", raccolta: null, sola: true }));
   t.eq("…niente che suona, niente legame", M.legameMusica({ current: null }), null);
+  // il lettore: «perche' sta girando in un loop infinito lo stesso brano?».
+  // La raccolta a caso non ha `raccolta` nella coda (non ricorda il brano),
+  // ma ha la sua origine; e la lista dei brani e' una coda senza raccolta
+  const aCaso = M.legameMusica({ current: { trackId: "t2", name: "Marcia" }, queue: { raccolta: null, origine: "r-wh", shuffle: true } });
+  t.c("la raccolta a caso si ricorda, col caso", aCaso.raccolta === "r-wh" && aCaso.coda && aCaso.casuale && !aCaso.sola, JSON.stringify(aCaso));
+  const ripresaACaso = M.comeRiprendere(aCaso, tutto);
+  t.c("…e si riprende la raccolta, a caso, non il brano da solo", ripresaACaso.raccolta?.id === "r-wh" && ripresaACaso.casuale === true && !ripresaACaso.melodia, JSON.stringify(ripresaACaso));
+  const dallaLista = M.legameMusica({ current: { trackId: "t1", name: "Battaglia" }, queue: { raccolta: null, origine: null } });
+  t.c("la lista dei brani si ricorda come una coda senza raccolta", dallaLista.coda && dallaLista.raccolta === null && !dallaLista.sola && !dallaLista.casuale, JSON.stringify(dallaLista));
+  const ripresaLista = M.comeRiprendere(dallaLista, tutto);
+  t.c("…e si riprendono tutte le melodie da quel brano, non la raccolta che lo contiene", ripresaLista.tutte && ripresaLista.da === 0 && ripresaLista.brani.length === 3 && !ripresaLista.raccolta && !ripresaLista.melodia, JSON.stringify(ripresaLista));
   const r = M.comeRiprendere(M.legameMusica(suona), tutto);
-  t.c("si riprende la raccolta da quel brano, non il brano da solo", r.raccolta?.id === "r-wh" && r.da === 1 && r.brani.map((b) => b.id).join() === "f1,f2,f3" && !r.melodia);
+  t.c("si riprende la raccolta da quel brano, non il brano da solo", r.raccolta?.id === "r-wh" && r.da === 1 && r.brani.map((b) => b.id).join() === "f1,f2,f3" && !r.melodia && r.casuale === false);
   t.eq("…anche un brano di YouTube", M.comeRiprendere({ url: coro.url, name: "Coro", raccolta: "r-wh" }, tutto).da, 2);
-  t.eq("una melodia scelta da sola resta da sola", M.comeRiprendere({ trackId: "t2", name: "Marcia", raccolta: null }, tutto).melodia?.name, "Marcia");
+  t.eq("una melodia scelta da sola resta da sola", M.comeRiprendere({ trackId: "t2", name: "Marcia", raccolta: null, sola: true }, tutto).melodia?.name, "Marcia");
+  t.eq("il legame scritto dalla coda a caso di prima («raccolta: null» senza altro) prende la raccolta che contiene il brano", M.comeRiprendere({ trackId: "t1", name: "Battaglia", raccolta: null }, tutto).raccolta?.id, "r-wh");
   t.eq("un legame di prima prende la raccolta che contiene il brano", M.comeRiprendere({ trackId: "t1", name: "Battaglia" }, tutto).raccolta?.id, "r-wh");
   t.eq("…la prima che lo contiene", M.comeRiprendere({ trackId: "t2", name: "Marcia" }, tutto).raccolta?.id, "r-x");
-  t.eq("una raccolta tolta, o senza piu' quel brano: la melodia da sola", M.comeRiprendere({ trackId: "t1", name: "Battaglia", raccolta: "r-via" }, tutto).melodia?.name, "Battaglia");
+  t.c("una raccolta tolta, o senza piu' quel brano: tutte le melodie da quel brano, non lui da solo", (() => { const x = M.comeRiprendere({ trackId: "t1", name: "Battaglia", raccolta: "r-via", coda: true }, tutto); return x.tutte && x.da === 0 && !x.melodia; })());
+  t.eq("…e un brano che non c'e' piu' nemmeno fra le melodie resta com'era", M.comeRiprendere({ trackId: "zz", name: "Sparita", raccolta: "r-via", coda: true }, tutto).melodia?.name, "Sparita");
+  t.eq("…come un brano che e' l'unica melodia", M.comeRiprendere({ trackId: "t1", name: "Battaglia", coda: true, raccolta: null }, { raccolte: [], favs: [battaglia] }).melodia?.name, "Battaglia");
   t.eq("nessun legame, niente da riprendere", M.comeRiprendere(null, tutto), null);
 }

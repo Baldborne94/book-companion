@@ -813,7 +813,7 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
                 {inAscolto ? (playing ? "❚❚ Pausa" : "▶ Riprendi") : riprendi ? "▶ Riprendi" : "▶ In ordine"}
               </button>
               <button
-                onClick={() => playerRef.current?.playQueue(brani, true)}
+                onClick={() => playerRef.current?.playQueue(brani, true, { raccolta: r.id })}
                 disabled={brani.length < 2}
                 aria-label={`${r.name} a caso`}
                 style={{ ...pillola(), display: "flex", alignItems: "center", gap: 6, opacity: brani.length > 1 ? 1 : 0.5 }}
