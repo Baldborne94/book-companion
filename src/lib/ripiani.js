@@ -12,7 +12,7 @@
 // i libri di un autore stanno insieme, e i volumi che non hanno fratelli
 // chiudono la fila. Qui si costruiscono quei ripiani, e stanno in `lib`
 // perche' e' la parte che un test puo' chiamare senza montare niente.
-import { chiaveAutore } from "./sagaBooks.js";
+import { chiaveAutore, nucleoSerie } from "./sagaBooks.js";
 
 // L'ultimo ripiano, quello dei libri che non stanno con nessuno.
 export const SOLI = "__soli__";
@@ -206,16 +206,7 @@ const capitoli = (libri, parteDi) => {
 // i file dicevano «Red Rising», «Red Rising Trilogy» e «The Red Rising
 // Saga»: tre ripiani per una saga. Si confronta il NUCLEO del nome, senza
 // articoli, punteggiatura e le parole che dicono «serie» in genere.
-const GENERICHE_SERIE = new Set(["the", "a", "an", "il", "lo", "la", "i", "gli", "le", "saga", "series", "serie", "trilogy", "trilogia", "cycle", "ciclo", "sequence", "novels", "romanzi"]);
-export const nucleoSerie = (s) =>
-  testo(s)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .split(" ")
-    .filter((w) => w && !GENERICHE_SERIE.has(w))
-    .join(" ");
+
 export function raccogliCicli(libri = [], campo = "series", parteDi = null, nomeRipiano = null) {
   const casa = nomeRipiano ? nucleoSerie(nomeRipiano) : "";
   const ciclo = (b) => {
