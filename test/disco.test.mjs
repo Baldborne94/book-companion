@@ -97,7 +97,12 @@ export default async (t) => {
   await metti(radice, "Fumetti/Locke & Key v06 - Alpha & Omega (2014).cbz", 30);
   await metti(radice, "Fumetti/Nessuno.cbz", 5);
   await metti(radice, "Libri/note.txt", 1);
-  const file = await elencaDisco(radice);
+  // il giro delle cartelle si dice mentre si fa: ogni cartella, coi file
+  // trovati fin li' e il percorso (il NAS come unita' di rete e' lento)
+  const giro = [];
+  const file = await elencaDisco(radice, [], { onCartella: (n, trovati, dove) => giro.push(`${n}:${trovati}:${dove.join("/")}`) });
+  t.eq("il giro dice ogni cartella, l'ultima e' la casa coi file tutti trovati", `${giro.length} ${giro.at(-1)}`, "9 9:7:");
+  t.c("…e i conti crescono", giro.every((g, i) => i === 0 || Number(g.split(":")[0]) === i + 1));
   t.eq("si elencano i soli libri, col percorso", file.map((f) => `${f.cartelle.join("/")}|${f.nome}|${f.byte}`).sort().join(" "), "Fumetti/The Deluxe Edition Book|The Sandman Book 02.cbz|20 Fumetti/The Sandman|The Sandman Book 02.cbz|20 Fumetti|Locke & Key v06 - Alpha & Omega (2014).cbz|30 Fumetti|Nessuno.cbz|5 Manga/JoJo's_Bizarre_Adventure/Parte 7|Volume 20 - Love Train.cbz|70 Manga/Kagurabachi|Kagurabachi 101.cbz|11 Manga|Kagurabachi 100.cbz|10");
 
   const libri = [

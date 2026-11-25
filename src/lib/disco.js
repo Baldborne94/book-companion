@@ -37,14 +37,21 @@ export const DA_PARTE = "_Doppioni";
 // controllare il disco», 1698 volumi): si chiedono `INSIEME` alla volta,
 // e l'elenco resta nell'ordine delle cartelle
 export const INSIEME = 16;
-export async function elencaDisco(dir, via = [], { onFile, insieme = INSIEME } = {}) {
+// IL GIRO DELLE CARTELLE SI DICE MENTRE SI FA (segnalato dal lettore: «se
+// faccio controlla disco lo seleziono e rimane piantato li»). Il conto
+// arrivava solo coi pesi, dopo il giro intero: sul NAS come unita' di rete
+// il giro e' lungo, e «Guardo il disco…» senza numeri non diceva se era
+// lento o fermo. `onCartella` dice le cartelle viste, i file trovati e dove.
+export async function elencaDisco(dir, via = [], { onFile, onCartella, insieme = INSIEME } = {}) {
   const voci = [];
+  let cartelle = 0;
   const giu = async (d, v) => {
     for await (const [nome, h] of d.entries()) {
       if (h.kind === "directory" && !v.length && (nome === CBR_CONVERTITI || nome === DA_PARTE)) continue;
       if (h.kind === "directory") await giu(h, [...v, nome]);
       else if (EST_DISCO.test(nome)) voci.push({ cartelle: v, nome, byte: 0, handle: h, dir: d });
     }
+    onCartella?.(++cartelle, voci.length, v);
   };
   await giu(dir, via);
   let prossimo = 0;

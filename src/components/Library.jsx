@@ -2022,7 +2022,10 @@ export default function Library({
         notify("Qui dentro non c'è la cartella «book-companion»: scegli quella che la contiene, o lei");
         return;
       }
-      const file = await elencaDisco(casa, [], { onFile: (letti, totale) => (letti % 25 === 0 || letti === totale) && setDisco((d) => (d?.guardo ? { ...d, letti, totale } : d)) });
+      const file = await elencaDisco(casa, [], {
+        onCartella: (cartelle, trovati, dove) => setDisco((d) => (d?.guardo ? { ...d, cartelle, trovati, dove: dove.join(" / ") } : d)),
+        onFile: (letti, totale) => (letti % 25 === 0 || letti === totale) && setDisco((d) => (d?.guardo ? { ...d, letti, totale } : d)),
+      });
       const tElenco = performance.now();
       const rapporto = controllaDisco(booksRef.current, file, {
         tipoDi: (b) => tipoDi(b, tipi),
@@ -3206,8 +3209,11 @@ export default function Library({
                 disabled={!!disco}
                 style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, color: C.text, fontSize: F.nota }}
               >
-                {disco?.guardo ? `Guardo il disco…${disco.totale ? ` ${disco.letti} di ${disco.totale} file` : ""}` : "🔍 Controlla il disco"}
+                {disco?.guardo ? `Guardo il disco…${disco.totale ? ` ${disco.letti} di ${disco.totale} file` : disco.cartelle ? ` ${disco.cartelle} cartelle, ${disco.trovati} file` : ""}` : "🔍 Controlla il disco"}
               </button>
+            )}
+            {disco?.guardo && !disco.totale && disco.dove != null && (
+              <span style={{ flexBasis: "100%", fontSize: F.minuscolo, color: C.muted, overflowWrap: "anywhere" }}>{`Cartella appena vista: ${disco.dove || "book-companion"}`}</span>
             )}
             {disco?.rapporto &&
               (() => {
