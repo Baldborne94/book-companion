@@ -1186,20 +1186,6 @@ function nomiPerNucleo(libri) {
   for (const [n, nomi] of conti) fuori.set(n, [...nomi].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0]))[0][0]);
   return fuori;
 }
-// i mondi le cui guide stanno ognuna nella sua raccolta (almeno due), o che
-// hanno gia' una raccolta col loro nome
-function mondiSparsi(libri) {
-  const perMondo = new Map();
-  const conRaccolta = new Set();
-  const chiavi = new Set(libri.map((b) => chiaveSaga(b.saga)).filter(Boolean));
-  const nuclei = new Set(libri.map((b) => nucleoSerie(b.saga)).filter(Boolean));
-  for (const t of TAVOLE) {
-    if (!t.universo) continue;
-    if (nuclei.has(nucleoSerie(t.universo))) conRaccolta.add(t.universo);
-    if (chiavi.has(chiaveSaga(t.saga))) perMondo.set(t.universo, (perMondo.get(t.universo) || 0) + 1);
-  }
-  return new Set([...conRaccolta, ...[...perMondo].filter(([, n]) => n >= 2).map(([m]) => m)]);
-}
 export function saghePropose(libri = []) {
   const tutti = (libri || []).filter((b) => b?.id);
   const out = [];
@@ -1231,23 +1217,21 @@ export function saghePropose(libri = []) {
       if (dopo.saga !== prima.saga || dopo.series !== prima.series || dopo.sagaOrder !== prima.sagaOrder) out.push({ id: b.id, titolo: b.title || "", prima, dopo });
       continue;
     }
-    // UN MONDO SPARSO IN TANTE RACCOLTE QUANTE LE SUE GUIDE si riunisce
-    // (chiesto dal lettore: «perche' non vedo warhammer 40K?», dopo una
-    // biblioteca rifatta dal disco: senza una raccolta del mondo, ogni libro
-    // era finito nella raccolta col nome della sua guida, «The Horus Heresy»,
-    // «Gaunt's Ghosts»…). Si propone solo per chi sta nella raccolta col nome
-    // della sua guida, e solo se il mondo e' davvero sparso (due guide in due
-    // raccolte) o la sua raccolta c'e' gia': la guida diventa la serie
+    // IL LIBRO DI UNA GUIDA DI UN MONDO VA NELLA RACCOLTA DEL MONDO (chiesto
+    // dal lettore: «perche' non vedo warhammer 40K?», dopo una biblioteca
+    // rifatta dal disco: senza una raccolta del mondo ogni libro era finito
+    // nella raccolta col nome della sua guida, «The Horus Heresy»). Si
+    // propone per chi sta nella raccolta col nome della sua guida: la guida
+    // diventa la serie, il numero resta. La prima versione voleva il mondo
+    // sparso in due raccolte, e con la sola Eresia non proponeva niente
+    // («non ci sono saghe da sistemare ma io warhammer non lo vedo")
     if (guida?.titolo && chiaveSaga(prima.saga) === chiaveSaga(guida.saga)) {
       const mondo = TAVOLE.find((t) => t.saga === guida.saga)?.universo;
       if (mondo) {
-        const sparso = (cache.sparsi ??= mondiSparsi(tutti));
-        if (sparso.has(mondo)) {
-          const saga = (cache.nomi ??= nomiPerNucleo(tutti)).get(nucleoSerie(mondo)) || mondo;
-          const dopo = { saga, series: chiaveSaga(guida.saga).startsWith(chiaveSaga(mondo)) ? "" : guida.saga, sagaOrder: prima.sagaOrder };
-          out.push({ id: b.id, titolo: b.title || "", prima, dopo });
-          continue;
-        }
+        const saga = (cache.nomi ??= nomiPerNucleo(tutti)).get(nucleoSerie(mondo)) || mondo;
+        const dopo = { saga, series: chiaveSaga(guida.saga).startsWith(chiaveSaga(mondo)) ? "" : guida.saga, sagaOrder: prima.sagaOrder };
+        out.push({ id: b.id, titolo: b.title || "", prima, dopo });
+        continue;
       }
     }
     // DUE RACCOLTE CON LO STESSO NUCLEO SONO UNA (chiesto dal lettore: «fallo

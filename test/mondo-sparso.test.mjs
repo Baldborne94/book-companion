@@ -13,10 +13,13 @@ export default async (t) => {
   const p = Object.fromEntries(saghePropose(libri).map((x) => [x.id, x.dopo]));
   t.eq("l'Eresia va nel 40K, con la guida come serie e il suo numero", JSON.stringify(p.hh), JSON.stringify({ saga: "Warhammer 40K", series: "The Horus Heresy", sagaOrder: 2 }));
   t.eq("…e Gaunt's Ghosts accanto", p.gg?.series, "Gaunt's Ghosts");
-  t.eq("un mondo in una raccolta sola non e' sparso: Malazan resta", p.mz, undefined);
+  t.eq("anche un mondo con una guida sola va nella raccolta del mondo", p.mz?.saga, "Malazan");
+  // il caso del lettore: la sola Eresia, 63 libri in «The Horus Heresy»
+  const soloEresia = saghePropose([libri[0]]);
+  t.eq("la sola Eresia si propone nel 40K", soloEresia.map((x) => `${x.dopo.saga}/${x.dopo.series}`).join(), "Warhammer 40K/The Horus Heresy");
   // una guida sola nel suo nome, ma la raccolta del mondo c'e' gia'
   const una = saghePropose([...libri.slice(1), { id: "w", title: "Horus Rising", author: "Dan Abnett", saga: "Warhammer 40K", series: "The Horus Heresy", sagaOrder: 1 }]);
-  t.eq("con la raccolta del mondo gia' sullo scaffale, ci va anche una guida sola", una.map((x) => `${x.id}>${x.dopo.saga}`).join(), "gg>Warhammer 40K");
+  t.eq("con la raccolta del mondo gia' sullo scaffale, ci vanno le guide (e Malazan nella sua)", una.map((x) => `${x.id}>${x.dopo.saga}`).join(), "gg>Warhammer 40K,mz>Malazan");
   // chi sta gia' in una raccolta scelta dal lettore non si tocca
   t.eq("un libro in una raccolta del lettore non si propone", saghePropose([...libri, { id: "x", title: "Xenos", author: "Dan Abnett", saga: "Inquisitori", sagaOrder: 1 }]).some((x) => x.id === "x"), false);
   // i romanzi a se' del mondo non sono una serie: entrano senza
