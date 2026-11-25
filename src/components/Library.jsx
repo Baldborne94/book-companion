@@ -3269,7 +3269,7 @@ export default function Library({
                     {r.daRaccogliere?.length > 0 && (
                       <span style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, overflowWrap: "anywhere" }}>
                         <span style={{ flexBasis: "100%" }}>
-                          {`${fraseRaccogliere(r.daRaccogliere.length)} `}
+                          {`${fraseRaccogliere(r.daRaccogliere.length, !!disco.raccolti)} `}
                           <span style={{ color: C.text }}>
                             {r.daRaccogliere
                               .slice(0, 12)

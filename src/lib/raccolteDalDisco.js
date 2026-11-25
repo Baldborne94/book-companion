@@ -19,7 +19,11 @@ export function raccogliDallaCartella(libri, voci) {
   });
 }
 
-export const fraseRaccogliere = (n) =>
-  n === 1
+// e dopo il tocco lo dice: la frase di prima restava, e sembrava che il
+// tasto sparito non avesse fatto niente
+export const fraseRaccogliere = (n, fatto = false) =>
+  fatto
+    ? `✓ ${n === 1 ? "Un volume messo" : `${n} volumi messi`} nella raccolta della ${n === 1 ? "sua" : "loro"} cartella:`
+    : n === 1
     ? "Un volume senza raccolta sta nella cartella della sua saga: mettilo in quella raccolta."
     : `${n} volumi senza raccolta stanno nella cartella della loro saga: mettili in quelle raccolte.`;
