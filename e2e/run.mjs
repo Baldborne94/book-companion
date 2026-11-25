@@ -1040,10 +1040,10 @@ const SCENE = [
         await p.getByRole("button", { name: "🔍 Guarda cosa c'è sul NAS" }).click();
         const trovati = await finche(() => testoAvviso(p, /un libro della biblioteca ha il file sul NAS/), 8000, "il controllo del NAS non trova il libro");
         if (!/un file senza scheda/.test(trovati)) throw new Error(`il fumetto senza scheda non si dice: «${trovati}»`);
-        // il libro senza file qui: «Scegli il file» lo prende dal NAS e lo apre
+        // il libro senza file qui: la scheda dice «Apri dal NAS», non «Scegli il file», e lo prende dal NAS e lo apre
         await p.goto(`${URL_APP}?apri=libreria`);
         await p.getByText("La nebbia").first().click();
-        await p.getByRole("button", { name: "📂 Scegli il file" }).click();
+        await p.getByRole("button", { name: "📖 Apri dal NAS" }).click();
         await finche(
           async () => {
             for (const f of p.frames()) if ((await f.evaluate(() => document.body?.innerText || "").catch(() => "")).includes(FRASE)) return true;
