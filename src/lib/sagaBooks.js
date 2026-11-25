@@ -847,6 +847,22 @@ export const chiaveSaga = (s) => senzaArticolo(s);
 // scrive COME e' gia' scritta, qualunque cosa dica il file nuovo. E' la
 // cura all'ingresso; `unificaSaghe` e' la stessa cura per chi era gia'
 // dentro.
+// IL NUCLEO DEL NOME DI UNA SAGA: senza articoli, punteggiatura e le parole
+// che dicono «serie» in genere. «Red Rising», «Red Rising Trilogy» e «The Red
+// Rising Saga» sono la stessa saga; «Witcher» e «The Witcher» pure. Lo usano
+// lo scaffale (una serie col nome della raccolta non la divide) e «Saghe da
+// sistemare» (due raccolte con lo stesso nucleo sono una).
+const GENERICHE_SERIE = new Set(["the", "a", "an", "il", "lo", "la", "i", "gli", "le", "saga", "series", "serie", "trilogy", "trilogia", "cycle", "ciclo", "sequence", "novels", "romanzi", "universe", "universo"]);
+export const nucleoSerie = (s) =>
+  String(s || "").trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .split(" ")
+    .filter((w) => w && !GENERICHE_SERIE.has(w))
+    .join(" ");
+
 export function nomeInBiblioteca(saga, libri = []) {
   const k = chiaveSaga(saga);
   if (!k) return saga;
@@ -1155,6 +1171,35 @@ const siglaDi = (b) => {
   const m = SIGLA_NEL_TITOLO.exec(String(b?.title || ""));
   return !!m && chiaveSaga(b?.saga) === m[1];
 };
+// per ogni nucleo la grafia che vince: la piu' usata, a pari libri la piu'
+// lunga (quella con l'articolo), poi l'alfabeto, come in `unificaSaghe`
+function nomiPerNucleo(libri) {
+  const conti = new Map();
+  for (const b of libri) {
+    const s = String(b?.saga || "").trim();
+    const n = nucleoSerie(s);
+    if (!n) continue;
+    if (!conti.has(n)) conti.set(n, new Map());
+    conti.get(n).set(s, (conti.get(n).get(s) || 0) + 1);
+  }
+  const fuori = new Map();
+  for (const [n, nomi] of conti) fuori.set(n, [...nomi].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0]))[0][0]);
+  return fuori;
+}
+// i mondi le cui guide stanno ognuna nella sua raccolta (almeno due), o che
+// hanno gia' una raccolta col loro nome
+function mondiSparsi(libri) {
+  const perMondo = new Map();
+  const conRaccolta = new Set();
+  const chiavi = new Set(libri.map((b) => chiaveSaga(b.saga)).filter(Boolean));
+  const nuclei = new Set(libri.map((b) => nucleoSerie(b.saga)).filter(Boolean));
+  for (const t of TAVOLE) {
+    if (!t.universo) continue;
+    if (nuclei.has(nucleoSerie(t.universo))) conRaccolta.add(t.universo);
+    if (chiavi.has(chiaveSaga(t.saga))) perMondo.set(t.universo, (perMondo.get(t.universo) || 0) + 1);
+  }
+  return new Set([...conRaccolta, ...[...perMondo].filter(([, n]) => n >= 2).map(([m]) => m)]);
+}
 export function saghePropose(libri = []) {
   const tutti = (libri || []).filter((b) => b?.id);
   const out = [];
@@ -1184,6 +1229,34 @@ export function saghePropose(libri = []) {
       // (Thomas Covenant, l'Enderverse); per Elan ciclo e guida coincidono
       const dopo = { saga: casa, series: guida.ciclo || guida.saga, sagaOrder: numeroPerLaBiblioteca(guida, numerati) ?? prima.sagaOrder };
       if (dopo.saga !== prima.saga || dopo.series !== prima.series || dopo.sagaOrder !== prima.sagaOrder) out.push({ id: b.id, titolo: b.title || "", prima, dopo });
+      continue;
+    }
+    // UN MONDO SPARSO IN TANTE RACCOLTE QUANTE LE SUE GUIDE si riunisce
+    // (chiesto dal lettore: «perche' non vedo warhammer 40K?», dopo una
+    // biblioteca rifatta dal disco: senza una raccolta del mondo, ogni libro
+    // era finito nella raccolta col nome della sua guida, «The Horus Heresy»,
+    // «Gaunt's Ghosts»…). Si propone solo per chi sta nella raccolta col nome
+    // della sua guida, e solo se il mondo e' davvero sparso (due guide in due
+    // raccolte) o la sua raccolta c'e' gia': la guida diventa la serie
+    if (guida?.titolo && chiaveSaga(prima.saga) === chiaveSaga(guida.saga)) {
+      const mondo = TAVOLE.find((t) => t.saga === guida.saga)?.universo;
+      if (mondo) {
+        const sparso = (cache.sparsi ??= mondiSparsi(tutti));
+        if (sparso.has(mondo)) {
+          const saga = (cache.nomi ??= nomiPerNucleo(tutti)).get(nucleoSerie(mondo)) || mondo;
+          const dopo = { saga, series: chiaveSaga(guida.saga).startsWith(chiaveSaga(mondo)) ? "" : guida.saga, sagaOrder: prima.sagaOrder };
+          out.push({ id: b.id, titolo: b.title || "", prima, dopo });
+          continue;
+        }
+      }
+    }
+    // DUE RACCOLTE CON LO STESSO NUCLEO SONO UNA (chiesto dal lettore: «fallo
+    // per tutti i libri che appartengono alla stessa saga»): «Witcher» e «The
+    // Witcher», «Red Rising» e «The Red Rising Saga». Si va nella grafia che
+    // ha piu' libri; serie e numero restano
+    const unica = (cache.nomi ??= nomiPerNucleo(tutti)).get(nucleoSerie(prima.saga));
+    if (prima.saga && unica && unica !== prima.saga) {
+      out.push({ id: b.id, titolo: b.title || "", prima, dopo: { ...prima, saga: unica } });
       continue;
     }
     if (guida?.forma) {
