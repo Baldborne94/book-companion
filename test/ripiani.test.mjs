@@ -216,6 +216,15 @@ export default async function (t) {
   // un ripiano d'autore non ha cicli: il ciclo vive dentro una saga
   t.eq("l'autore non ha cicli", disponi([libro("A", "X"), libro("B", "X")])[0].cicli, null);
 
+  // ---- UNA SERIE CHE SI CHIAMA COME LA RACCOLTA NON DIVIDE ---------------
+  // il Red Rising del lettore: tre nomi della stessa saga, tre ripiani
+  const rr = [["Golden Son", "Red Rising", 2], ["Morning Star", "Red Rising", 3], ["Red Rising", "Red Rising Trilogy", 1], ["Light Bringer", "The Red Rising Saga", 6], ["Dark Age", "", 5]].map(([title, series, sagaOrder], i) => ({ id: `rr${i}`, title, author: "Pierce Brown", saga: "The Red Rising Saga", series, sagaOrder }));
+  const [ripRR] = disponi(rr, null, "auto");
+  t.eq("Red Rising, Red Rising Trilogy e The Red Rising Saga sono una fila sola", `${ripRR.cicli} ${ripRR.libri.map((b) => b.sagaOrder).join(",")}`, "null 1,2,3,5,6");
+  // ma una serie vera resta il suo ripiano
+  const mondo = [{ id: "m1", title: "Horus Rising", saga: "Warhammer 40K", series: "The Horus Heresy", sagaOrder: 1 }, { id: "m2", title: "First and Only", saga: "Warhammer 40K", series: "Gaunt's Ghosts", sagaOrder: 2 }];
+  t.eq("una serie che non e' la raccolta resta un ripiano", disponi(mondo, null, "auto")[0].cicli.map((c) => c.nome).join(","), "The Horus Heresy,Gaunt's Ghosts");
+
   // ---- una biblioteca vuota non inventa ripiani -------------------------
   t.eq("niente libri, niente ripiani", disponi([]).length, 0);
 }

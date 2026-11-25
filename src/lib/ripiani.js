@@ -200,11 +200,37 @@ const capitoli = (libri, parteDi) => {
   });
 };
 
-export function raccogliCicli(libri = [], campo = "series", parteDi = null) {
-  if (!libri.some((b) => testo(b[campo]))) return null;
+// UNA SERIE CHE SI CHIAMA COME LA SUA RACCOLTA NON E' UN'ALTRA SERIE
+// (segnalato dal lettore con Red Rising: «perche' dividere i libri?
+// riconosci la saga e mettili tutti in una»). Dentro «The Red Rising Saga»
+// i file dicevano «Red Rising», «Red Rising Trilogy» e «The Red Rising
+// Saga»: tre ripiani per una saga. Si confronta il NUCLEO del nome, senza
+// articoli, punteggiatura e le parole che dicono «serie» in genere.
+const GENERICHE_SERIE = new Set(["the", "a", "an", "il", "lo", "la", "i", "gli", "le", "saga", "series", "serie", "trilogy", "trilogia", "cycle", "ciclo", "sequence", "novels", "romanzi"]);
+export const nucleoSerie = (s) =>
+  testo(s)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .split(" ")
+    .filter((w) => w && !GENERICHE_SERIE.has(w))
+    .join(" ");
+export function raccogliCicli(libri = [], campo = "series", parteDi = null, nomeRipiano = null) {
+  const casa = nomeRipiano ? nucleoSerie(nomeRipiano) : "";
+  const ciclo = (b) => {
+    const s = testo(b[campo]);
+    return s && casa && nucleoSerie(s) === casa ? "" : s;
+  };
+  if (!libri.some((b) => ciclo(b))) {
+    // tutte le serie erano il nome della raccolta: un ciclo solo, che
+    // `senzaDoppione` toglie lasciando salire i capitoli della guida
+    if (!casa || !libri.some((b) => testo(b[campo]))) return null;
+    return [{ nome: testo(nomeRipiano), libri, primo: null, parti: capitoli(libri, parteDi) }];
+  }
   const gruppi = new Map();
   for (const b of libri) {
-    const nome = testo(b[campo]) || null;
+    const nome = ciclo(b) || null;
     const k = nome === null ? null : nome.toLowerCase();
     if (!gruppi.has(k)) gruppi.set(k, { nome, libri: [], primo: null });
     const g = gruppi.get(k);
@@ -370,8 +396,8 @@ export const criterioStato = (leggiStato) => ({
 // livello sotto.
 const senzaDoppione = (cicli, nomeRipiano) => {
   if (!cicli || cicli.length !== 1) return cicli;
-  const solo = testo(cicli[0].nome).toLowerCase();
-  if (!solo || solo !== testo(nomeRipiano).toLowerCase()) return cicli;
+  const solo = nucleoSerie(cicli[0].nome);
+  if (!solo || solo !== nucleoSerie(nomeRipiano)) return cicli;
   // e i capitoli SALGONO di un piano invece di sparire col loro
   // contenitore: quel che si toglie e' l'intestazione che ripeteva il nome
   // del ripiano, non il livello sotto
@@ -420,7 +446,7 @@ export function disponi(libri = [], confronta = null, per = "auto", ordine = nul
       // una guida direbbe una cosa che li' non si sta chiedendo
       cicli:
         g.tipo === "saga"
-          ? senzaDoppione(raccogliCicli(g.libri, "series", parteDi), g.nome)
+          ? senzaDoppione(raccogliCicli(g.libri, "series", parteDi, g.nome), g.nome)
           : modo === "autore"
             ? raccogliCicli(g.libri, "saga")
             : null,

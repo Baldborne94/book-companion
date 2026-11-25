@@ -1155,6 +1155,19 @@ const siglaDi = (b) => {
   const m = SIGLA_NEL_TITOLO.exec(String(b?.title || ""));
   return !!m && chiaveSaga(b?.saga) === m[1];
 };
+// i mondi le cui guide stanno ognuna nella sua raccolta (almeno due), o che
+// hanno gia' una raccolta col loro nome
+function mondiSparsi(libri) {
+  const perMondo = new Map();
+  const conRaccolta = new Set();
+  const chiavi = new Set(libri.map((b) => chiaveSaga(b.saga)).filter(Boolean));
+  for (const t of TAVOLE) {
+    if (!t.universo) continue;
+    if (chiavi.has(chiaveSaga(t.universo))) conRaccolta.add(t.universo);
+    if (chiavi.has(chiaveSaga(t.saga))) perMondo.set(t.universo, (perMondo.get(t.universo) || 0) + 1);
+  }
+  return new Set([...conRaccolta, ...[...perMondo].filter(([, n]) => n >= 2).map(([m]) => m)]);
+}
 export function saghePropose(libri = []) {
   const tutti = (libri || []).filter((b) => b?.id);
   const out = [];
@@ -1185,6 +1198,25 @@ export function saghePropose(libri = []) {
       const dopo = { saga: casa, series: guida.ciclo || guida.saga, sagaOrder: numeroPerLaBiblioteca(guida, numerati) ?? prima.sagaOrder };
       if (dopo.saga !== prima.saga || dopo.series !== prima.series || dopo.sagaOrder !== prima.sagaOrder) out.push({ id: b.id, titolo: b.title || "", prima, dopo });
       continue;
+    }
+    // UN MONDO SPARSO IN TANTE RACCOLTE QUANTE LE SUE GUIDE si riunisce
+    // (chiesto dal lettore: «perche' non vedo warhammer 40K?», dopo una
+    // biblioteca rifatta dal disco: senza una raccolta del mondo, ogni libro
+    // era finito nella raccolta col nome della sua guida, «The Horus Heresy»,
+    // «Gaunt's Ghosts»…). Si propone solo per chi sta nella raccolta col nome
+    // della sua guida, e solo se il mondo e' davvero sparso (due guide in due
+    // raccolte) o la sua raccolta c'e' gia': la guida diventa la serie
+    if (guida?.titolo && chiaveSaga(prima.saga) === chiaveSaga(guida.saga)) {
+      const mondo = TAVOLE.find((t) => t.saga === guida.saga)?.universo;
+      if (mondo) {
+        const sparso = (cache.sparsi ??= mondiSparsi(tutti));
+        if (sparso.has(mondo)) {
+          const saga = nomeInBiblioteca(mondo, tutti);
+          const dopo = { saga, series: chiaveSaga(guida.saga).startsWith(chiaveSaga(mondo)) ? "" : guida.saga, sagaOrder: prima.sagaOrder };
+          out.push({ id: b.id, titolo: b.title || "", prima, dopo });
+          continue;
+        }
+      }
     }
     if (guida?.forma) {
       const dopo = { saga: nomeInBiblioteca(guida.saga, tutti), series: prima.series || guida.ciclo || "", sagaOrder: guida.sagaOrder };
