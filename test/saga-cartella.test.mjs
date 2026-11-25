@@ -5,7 +5,7 @@
 import { sagaDallaCartella, numeroDalNome } from "../src/lib/casa.js";
 import { completaSaga } from "../src/lib/importBook.js";
 import { controllaDisco } from "../src/lib/disco.js";
-import { raccogliDallaCartella } from "../src/lib/raccolteDalDisco.js";
+import { raccogliDallaCartella, fraseRaccogliere } from "../src/lib/raccolteDalDisco.js";
 
 export default async (t) => {
   t.eq("dentro Manga la prima cartella e' la saga", JSON.stringify(sagaDallaCartella(["Manga", "BLAME!"])), JSON.stringify({ saga: "BLAME!" }));
@@ -59,4 +59,6 @@ export default async (t) => {
   const dopo = raccogliDallaCartella([...libri, { id: "x", title: "Blame! v02", saga: "Blame!" }], r.daRaccogliere);
   t.eq("confermato, la scheda prende saga e numero, con la grafia di casa", `${dopo[0].saga} ${dopo[0].sagaOrder}`, "Blame! 1");
   t.eq("…e una serie scritta a mano resta", `${dopo[1].saga} ${dopo[1].series} ${dopo[1].sagaOrder}`, "Freesia a mano 3");
+  t.c("prima del tocco la frase propone", fraseRaccogliere(9).includes("mettili"));
+  t.eq("dopo il tocco dice che e' fatto", fraseRaccogliere(9, true), "✓ 9 volumi messi nella raccolta della loro cartella:");
 };
