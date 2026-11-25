@@ -99,6 +99,12 @@ export default async function (t) {
     ["Blue Lock - Volume 03", "Blue Lock", 3],
     ["Chainsaw Man - v03", "Chainsaw Man", 3],
     ["Dragon Ball Tomo 12", "Dragon Ball", 12],
+    // i nomi del lettore scritti per un disco: le parentesi diventate
+    // trattini bassi, il rumore comincia dall'anno; e «v08v2», la seconda
+    // uscita del volume 8
+    ["Fullmetal_Alchemist_v24_2011_Digital_LostNerevarine_Empire", "Fullmetal Alchemist", 24],
+    ["The_Girl_From_the_Other_Side_Siúil,_a_Rún_v01_2017_Digital_danke", "The Girl From the Other Side Siúil, a Rún", 1],
+    ["Kingdom v08v2 [TurnipFarmers]", "Kingdom", 8],
   ];
   for (const [titolo, saga, n] of FORME) {
     const r = s(titolo);

@@ -70,6 +70,11 @@ export function senzaEtichette(titolo) {
   }
 }
 const PALLINO = /^[\s•·●▪◦‣∙]+/u;
+// I NOMI SCRITTI PER UN DISCO: le parentesi sono diventate trattini bassi
+// («Fullmetal_Alchemist_v01_2005_Digital_LostNerevarine_Empire»), e
+// l'etichetta in coda comincia dall'anno subito dopo il volume
+const DISCO_ANNO = /^(.*?\bv\d{1,3}(?:v\d)?)\s+(?:19|20)\d{2}\b.*$/i;
+const dalDisco = (t) => (/_/.test(t) ? t.replace(/_+/g, " ").replace(/\s+/g, " ").trim().replace(DISCO_ANNO, "$1") : t);
 // «Saga v03 - Titolo», «v06: Titolo»: la forma dei fumetti che il parser
 // delle saghe non legge (vuole «Vol.» o il numero senza la «v»)
 const VOLUME_V = /^(?:.*?\s)?v\d{1,3}\s*[-–—:]\s*(.+)$/i;
@@ -84,7 +89,7 @@ export function titoloPulito({ title, fileType, sagaOrder } = {}) {
   // il pallino davanti («• The Crippled God») viene dall'elenco da cui il
   // titolo e' stato copiato: non e' del titolo, in nessun libro
   const senzaPallino = originale.replace(PALLINO, "");
-  const base = fumetto ? senzaEtichette(senzaPallino) : senzaPallino;
+  const base = fumetto ? senzaEtichette(dalDisco(senzaPallino)) : senzaPallino;
   const pezzi = pezziDalTitolo(base);
   const resto = pezzi?.forma === "v" && !fumetto ? null : pezzi?.resto;
   const senzaNumero = !fumetto || Number(sagaOrder) > 0 ? resto || (fumetto && VOLUME_V.exec(base)?.[1]) : null;
