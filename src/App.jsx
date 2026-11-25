@@ -65,7 +65,7 @@ import SezioneNovita from "./components/SezioneNovita.jsx";
 import SezioneNas from "./components/SezioneNas.jsx";
 // quanto aspetta un libro preso dal NAS di essere entrato, prima di non aprirsi piu' da solo
 const APRI_DAL_NAS_ENTRO = 120_000;
-import { indirizzoNas, sulNas, prendiDalNas, fraseNas } from "./lib/nas.js";
+import { daPrendereSulNas, prendiDalNas, fraseNas } from "./lib/nas.js";
 import SezioneHardcover from "./components/SezioneHardcover.jsx";
 import { EVENTO as EVENTO_CHIAVI } from "./lib/chiaviInViaggio.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
@@ -2046,10 +2046,9 @@ export default function App() {
   function handleRead(id, startCfi = null) {
     const b = books.find((x) => x.id === id);
     if (!b) return;
-    const voceNas = localIds && !localIds.has(id) ? sulNas(id) : null;
-    const baseNas = voceNas ? indirizzoNas() : null;
-    if (voceNas && baseNas) {
-      prendiDalNasEApri(b, baseNas, voceNas);
+    const dalNas = localIds ? daPrendereSulNas(id, localIds.has(id)) : null;
+    if (dalNas) {
+      prendiDalNasEApri(b, dalNas.base, dalNas.voce);
       return;
     }
     // un libro svuotato apposta non si apre e non si va a cercare nel

@@ -15,6 +15,7 @@ import {
 } from "../lib/library.js";
 import { eFumetto } from "../lib/fumetto.js";
 import { SENZA } from "../lib/segnaposto.js";
+import { daPrendereSulNas } from "../lib/nas.js";
 import { getCover, getFile, putCover, removeCover } from "../lib/bookStore.js";
 import { recupera, senzaEtichetta } from "../lib/sinossi.js";
 import { preparaCopertina, copertinaOriginale } from "../lib/copertina.js";
@@ -999,7 +1000,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
           {/* SENZA EBOOK NON SI APRE: si sceglie il file (chiesto dal
               lettore: «portarmi alle cartelle locali»), e la ragione resta
               accanto al tasto */}
-          {book.fileTolto ? (
+          {book.fileTolto && !(pesoQui === 0 && daPrendereSulNas(book.id, false)) ? (
             <span style={{ flex: 1, minWidth: 170, display: "flex", flexDirection: "column", gap: 6 }}>
               <button
                 onClick={openBook}
@@ -1036,7 +1037,7 @@ export default function BookSheet({ book, books = [], onClose, onSaveMeta, onDel
                 boxShadow: `0 0 24px ${C.accent}33`,
               }}
             >
-              📖 Apri il libro
+              {book.fileTolto ? "📖 Apri dal NAS" : "📖 Apri il libro"}
             </button>
           )}
           <button

@@ -1,7 +1,7 @@
 // IL NAS DI CASA (`lib/nas.js`), chiesto dal lettore per leggere anche fuori
 // casa. Un NAS finto che risponde come nginx con `autoindex_format json`: le
 // cartelle del disco, i file col peso, e i guasti che il lettore puo' vedere.
-import { controllaNas, casaSulNas, normalizzaNas, cartellaNas, elencoNas, provaNas, libriSulNas, prendiDalNas, fraseNas, salvaLibriSulNas, leggiLibriSulNas, sulNas, salvaIndirizzoNas, indirizzoNas } from "../src/lib/nas.js";
+import { controllaNas, casaSulNas, normalizzaNas, cartellaNas, elencoNas, provaNas, libriSulNas, prendiDalNas, fraseNas, salvaLibriSulNas, leggiLibriSulNas, sulNas, salvaIndirizzoNas, indirizzoNas, daPrendereSulNas } from "../src/lib/nas.js";
 import { elencaDisco, controllaDisco } from "../src/lib/disco.js";
 
 const BASE = "https://nas.tail1234.ts.net/libri/";
@@ -94,6 +94,16 @@ export default async (t) => {
   t.eq("un NAS che non elenca in JSON", (await provaNas(BASE, { chiedi: async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError("<html>"); } }) })).motivo, "formato");
   t.eq("un NAS che risponde JSON ma non un elenco", (await provaNas(BASE, { chiedi: async () => ({ ok: true, status: 200, json: async () => ({ error: "no index" }) }) })).motivo, "formato");
   t.eq("un NAS che non lascia entrare", (await provaNas(BASE, { chiedi: async () => ({ ok: false, status: 403 }) })).motivo, "rifiuta");
+  // l'«Apri» e il tasto della scheda: dal NAS solo senza il file qui, con
+  // l'indirizzo, e solo i libri che il NAS ha
+  const sn = memoria();
+  salvaLibriSulNas({ am: { pezzi: ["book-companion", "Libri", "Age of Myth.epub"], byte: 1200 } }, 5, sn);
+  t.eq("senza indirizzo non si prende dal NAS", daPrendereSulNas("am", false, sn), null);
+  salvaIndirizzoNas(BASE, sn);
+  t.eq("un libro che il NAS ha, senza file qui, si prende dal NAS", `${daPrendereSulNas("am", false, sn)?.base} ${daPrendereSulNas("am", false, sn)?.voce.byte}`, `${BASE} 1200`);
+  t.eq("…col file qui si apre il suo", daPrendereSulNas("am", true, sn), null);
+  t.eq("…e uno che il NAS non ha no", daPrendereSulNas("xx", false, sn), null);
+
   const ok = await provaNas(BASE, { chiedi: nas });
   t.eq("il NAS che risponde dice cosa c'e' in cima", `${ok.ok} ${ok.frase}`, "true Il NAS risponde: book-companion.");
 };

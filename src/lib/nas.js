@@ -184,6 +184,17 @@ export function leggiLibriSulNas(st = globalThis.localStorage) {
 }
 export const sulNas = (id, st = globalThis.localStorage) => leggiLibriSulNas(st).libri[id] || null;
 
+// UN LIBRO SI PRENDE DAL NAS se qui non ha il file, il NAS ce l'ha e
+// l'indirizzo c'e': una regola sola per l'«Apri» (App) e per il tasto della
+// scheda, che altrimenti diceva «📂 Scegli il file» a un libro che si apre
+// col tocco (chiesto dal lettore: «non devo poterli aprire puntando al nas?»)
+export function daPrendereSulNas(id, qui, st = globalThis.localStorage) {
+  if (qui) return null;
+  const base = indirizzoNas(st);
+  const voce = base ? sulNas(id, st) : null;
+  return voce ? { base, voce } : null;
+}
+
 const TIPI = { epub: "application/epub+zip", pdf: "application/pdf", cbz: "application/vnd.comicbook+zip", cbr: "application/vnd.comicbook-rar" };
 
 // UN LIBRO SCENDE DAL NAS come un file scelto dal lettore: un `File` col suo
