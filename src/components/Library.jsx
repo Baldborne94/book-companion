@@ -36,7 +36,7 @@ import BookCover from "./BookCover.jsx";
 import CopertineDalCatalogo from "./CopertineDalCatalogo.jsx";
 import TitoliLeggibili from "./TitoliLeggibili.jsx";
 import CopertinaGiusta from "./CopertinaGiusta.jsx";
-import { puoEssereSciolta, contoDaEliminare, fraseEliminaRaccolta, sciogliRaccolta } from "../lib/eliminaRaccolta.js";
+import { puoEssereSciolta, contoDaEliminare, fraseEliminaRaccolta, sciogliRaccolta, rinominaRaccolta, nomeDaRaccolta } from "../lib/eliminaRaccolta.js";
 import Disposizione from "./Disposizione.jsx";
 import EmptyState from "./EmptyState.jsx";
 import { partenza, dopoIlDisegno, segnaTempo, vocePerTempo } from "../lib/tempi.js";
@@ -501,7 +501,7 @@ function Ripiano({ nome, sotto, quanti, spento, azione = null, children }) {
   );
 }
 
-function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, novita = [], onAvvisami, onSerie, notify, onSciogli, onElimina, onRinomina }) {
+function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, altrove = null, coverV = 0, conCopertina = null, riconosciuti, onCammino, raccolte = false, aperta = null, onApri, preferite = new Set(), onCuore, voti = [], onVoto, onTutti, novita = [], onAvvisami, onSerie, notify, onSciogli, onElimina, onRinomina, onRinominaRaccolta }) {
   // LO SCAFFALE VERO: saghe e autori, ognuno sul suo ripiano. I libri
   // arrivano già ordinati dalla Libreria e `disponi` non li rimescola
   // (l'ordinamento è stabile): dentro un ripiano comanda solo il numero
@@ -678,7 +678,7 @@ function Grouped({ books, tutti, group, sort, onOpenBook, localIds, idLassu, alt
           )}
         </div>
         {avviso?.si && <SerieDellaRaccolta r={dentro} lista={novita} onCercata={onSerie} />}
-        <TuttaLaRaccolta r={dentro} voti={voti} onVoto={onVoto} onTutti={onTutti} localIds={localIds} onSciogli={onSciogli} onElimina={onElimina} />
+        <TuttaLaRaccolta r={dentro} tutti={tutti} voti={voti} onVoto={onVoto} onTutti={onTutti} localIds={localIds} onSciogli={onSciogli} onElimina={onElimina} onRinominaRaccolta={onRinominaRaccolta} />
         {/* la chiave non e' quella della raccolta: lo scaffale qui sotto
             (`mostra`, un `Ripiano`) porta gia' quella, e due fratelli con la
             stessa chiave React li confonde a ogni aggiornamento (il tasto
@@ -800,8 +800,11 @@ function Raccolta({ r, amata = false, voto = null, onApri, coverV, conCopertina 
 // saga (o la media dei volumi votati, detta come tale) e tutti i volumi
 // letti o da leggere in un tocco, con una conferma: venti volumi cambiati
 // per sbaglio non si rimettono a posto uno per uno
-function TuttaLaRaccolta({ r, voti, onVoto, onTutti, localIds, onSciogli, onElimina }) {
+const conto0 = (r) => (r?.libri || []).map((b) => b.id);
+function TuttaLaRaccolta({ r, tutti = [], voti, onVoto, onTutti, localIds, onSciogli, onElimina, onRinominaRaccolta }) {
   const [chiedo, setChiedo] = useState(null);
+  const [nome, setNome] = useState(r.nome);
+  const unita = chiedo === "rinomina" ? nomeDaRaccolta(tutti, conto0(r), nome) : null;
   const conto = contoDaEliminare(r, localIds);
   const votabile = puoEssereVotata(r.id);
   const mio = votoMio(voti, r.id);
@@ -845,7 +848,39 @@ function TuttaLaRaccolta({ r, voti, onVoto, onTutti, localIds, onSciogli, onElim
         </div>
       )}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginLeft: votabile ? "auto" : 0 }}>
-        {chiedo === "elimina" ? (
+        {chiedo === "rinomina" ? (
+          // RINOMINARE (`rinominaRaccolta`): il nome si scrive su tutti i
+          // volumi; un nome gia' di un'altra raccolta le unisce, e si dice
+          <>
+            <input
+              aria-label="Nome nuovo della raccolta"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              autoFocus
+              style={{ flex: 1, minWidth: 200, minHeight: 44, padding: "0 12px", borderRadius: R.piccolo, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: F.nota }}
+            />
+            <button
+              disabled={!nome.trim() || nome.trim() === r.nome}
+              onClick={() => {
+                onRinominaRaccolta?.(r, nome);
+                setChiedo(null);
+              }}
+              style={tasto(true)}
+            >
+              {unita ? `Unisci a «${unita}»` : "Rinomina"}
+            </button>
+            <button
+              onClick={() => {
+                setNome(r.nome);
+                setChiedo(null);
+              }}
+              style={tasto(false)}
+            >
+              Annulla
+            </button>
+            {unita && <span style={{ flexBasis: "100%", fontSize: F.piccolo, color: C.muted }}>{`C'è già una raccolta «${unita}»: i volumi ci entrano, con serie e numeri che hanno.`}</span>}
+          </>
+        ) : chiedo === "elimina" ? (
           // ELIMINARE UNA RACCOLTA (`lib/eliminaRaccolta.js`): prima si
           // sceglie cosa, poi per i volumi si conferma una seconda volta
           <>
@@ -923,6 +958,11 @@ function TuttaLaRaccolta({ r, voti, onVoto, onTutti, localIds, onSciogli, onElim
             <button onClick={() => setChiedo("unread")} style={tasto(false)}>
               ○ Tutti da leggere
             </button>
+            {puoEssereSciolta(r) && onRinominaRaccolta && (
+              <button onClick={() => setChiedo("rinomina")} style={tasto(false)}>
+                ✏ Rinomina raccolta
+              </button>
+            )}
             <button onClick={() => setChiedo("elimina")} style={tasto(false)}>
               🗑 Elimina raccolta
             </button>
@@ -1063,6 +1103,18 @@ export default function Library({
     updateBooks(dopo);
     onRaccolta?.(null);
     notify?.(`«${r.nome}» sciolta: ${ids.length === 1 ? "il volume resta" : `i ${ids.length} volumi restano`} sullo scaffale, senza raccolta`);
+  };
+  // una raccolta rinominata: tutti i suoi volumi prendono il nome nuovo, e la
+  // raccolta aperta resta aperta col nome nuovo (`rinominaRaccolta`)
+  const rinominaLaRaccolta = (r, nuovo) => {
+    const ids = r.libri.map((b) => b.id);
+    const unita = nomeDaRaccolta(booksRef.current, ids, nuovo);
+    const nome = unita || nuovo.trim();
+    const dopo = rinominaRaccolta(booksRef.current, ids, nuovo);
+    for (const id of ids) timbraScheda(id);
+    updateBooks(dopo);
+    onRaccolta?.(`saga:${nome.toLowerCase()}`);
+    notify?.(unita ? `«${r.nome}» unita a «${nome}»` : `«${r.nome}» ora si chiama «${nome}»`);
   };
   // i titoli in un altro alfabeto scelti nell'elenco (`TitoliLeggibili`),
   // sulla biblioteca di adesso
@@ -2353,6 +2405,7 @@ export default function Library({
         onSerie={serieCercata}
         notify={notify}
         onSciogli={sciogli}
+        onRinominaRaccolta={rinominaLaRaccolta}
         onRinomina={rinominaVolumi}
         onElimina={(r, ids) => onEliminaRaccolta?.(r, ids)}
       />
