@@ -49,4 +49,35 @@ export default async (t) => {
     ]).map((x) => [x.id, x.dopo])
   );
   t.eq("il mondo va nella raccolta che il lettore gli ha gia' dato", malazan.m1?.saga, "Malazan universe");
+
+  // ---- IL MONDO DI ABERCROMBIE, com'era nella foto del lettore ------------
+  // «mi sistemi anche tutti i libri del mondo circle of the world?»
+  const A = "Joe Abercrombie";
+  const fl = [
+    ["sh", "Sharp Ends: Stories from the World of The First Law", "Circle of the World", ""],
+    ["bs", "Best Served Cold", "The Age of Madness", ""],
+    ["bi", "The Blade Itself", "The Age of Madness", ""],
+    ["lh", "A Little Hatred", "The First Law", "The Age of Madness"],
+    ["la", "Last Argument of Kings", "The First Law", ""],
+    ["fl2", "The Trouble with Peace", "The First Law", "The Age of Madness"],
+    ["dv", "The Devils", "The Devils", ""],
+  ].map(([id, title, saga, series], i) => ({ id, title, author: A, saga, series, sagaOrder: i + 1 }));
+  const pfl = Object.fromEntries(saghePropose(fl).map((x) => [x.id, x.dopo]));
+  t.eq("un libro nella raccolta di un'altra guida dello stesso mondo va nel mondo, con la serie della sua guida", `${pfl.bi?.saga}/${pfl.bi?.series}`, "The First Law/The First Law Trilogy");
+  t.eq("…anche The First Law Standalones, che porta il nome del mondo, ha la sua serie", pfl.bs?.series, "The First Law Standalones");
+  t.eq("chi sta nel mondo senza serie prende quella della sua guida", pfl.la?.series, "The First Law Trilogy");
+  t.eq("chi sta nel mondo con la sua serie resta", pfl.lh, undefined);
+  const mano = saghePropose([...fl, { id: "wc", title: "The Wisdom of Crowds", author: A, saga: "The First Law", series: "La mia trilogia", sagaOrder: 9 }]);
+  t.eq("…anche una serie scritta a mano, diversa da quella della guida", mano.some((x) => x.id === "wc"), false);
+  t.eq("«Circle of the World» e' un nome del mondo: Sharp Ends va nella raccolta del mondo", pfl.sh?.saga, "The First Law");
+  t.eq("The Devils e' un altro mondo e resta", pfl.dv, undefined);
+  // e se la raccolta del mondo il lettore la chiama «Circle of the World»
+  const cw = fl.map((b) => (b.saga === "The First Law" ? { ...b, saga: "Circle of the World" } : b));
+  t.eq("col nome d'uso piu' usato, il mondo va li'", Object.fromEntries(saghePropose(cw).map((x) => [x.id, x.dopo])).bi?.saga, "Circle of the World");
+
+  // ---- BLACK COMPANY: «The Chronicles of the Black Company» e' la stessa
+  const bc = [["The Black Company", "The Black Company"], ["Shadows Linger", "The Black Company"], ["Shadow Games", "The Chronicles of the Black Company"], ["Dreams of Steel", "Books of the South"]].map(([title, saga], i) => ({ id: `c${i}`, title, author: "Glen Cook", saga, sagaOrder: i + 1 }));
+  const pbc = Object.fromEntries(saghePropose(bc).map((x) => [x.id, x.dopo]));
+  t.eq("«The Chronicles of the Black Company» va in «The Black Company»", pbc.c2?.saga, "The Black Company");
+  t.eq("…e un ciclo col suo nome («Books of the South») resta", pbc.c3, undefined);
 };
