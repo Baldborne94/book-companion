@@ -36,6 +36,12 @@
 // separatamente.
 export const PIANO = 1e9;
 
+// SUL NAS IL PIANO NON C'E': Supabase sta sui dischi di casa, e «di 1 GB del
+// piano gratuito» era una bugia (segnalato dal lettore col tablet in mano).
+// Il NAS si riconosce dal Supabase scritto a runtime in /config.js
+// (`configSupabase`): Vercel lo ha nella build e config.js vuoto.
+export const pianoDelPosto = (cfg = globalThis.window?.__BC_CONFIG__) => (cfg?.supabaseUrl ? null : PIANO);
+
 // Oltre questa parte del piano si comincia a stare stretti, e la barra lo
 // dice a parole invece di lasciartelo dedurre da una striscia colorata.
 export const PIENO = 0.8;
@@ -73,7 +79,7 @@ export function parteDelPiano(totale) {
 // La frazione da disegnare in una barra: non esce mai dal binario, o una
 // biblioteca piu' grande del piano darebbe una striscia piu' lunga del suo
 // contenitore.
-export const fetta = (n) => `${Math.max(0, Math.min(1, (Number(n) || 0) / PIANO)) * 100}%`;
+export const fetta = (n, base = PIANO) => `${Math.max(0, Math.min(1, (Number(n) || 0) / (base || 1))) * 100}%`;
 
 // DI COSA E' FATTO IL GIGABYTE, in tre pezzi: i libri, le melodie, e quel che
 // resta. In Libreria si leggeva solo il totale, ed e' il numero giusto ma non
@@ -89,7 +95,7 @@ export const fetta = (n) => `${Math.max(0, Math.min(1, (Number(n) || 0) / PIANO)
 //
 // Sta qui e non nel componente per la ragione di sempre: senza JSX un test la
 // puo' chiamare.
-export function spartisci(dati) {
+export function spartisci(dati, piano = PIANO) {
   if (!dati) return null;
   const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   const libri = n(dati.libri?.byte) + n(dati.copertine?.byte);
@@ -102,8 +108,9 @@ export function spartisci(dati) {
     // quel che il secchio pesa davvero, e se un giorno ci finisse dentro una
     // terza specie di file la barra direbbe meno spazio libero — che e' la
     // bugia giusta da dire, perche' quello spazio davvero non c'e' piu'
-    liberi: Math.max(0, PIANO - totale),
-    sforato: Math.max(0, totale - PIANO),
+    // senza piano (il NAS) non c'e' un vuoto da dire ne' un oltre
+    liberi: piano ? Math.max(0, piano - totale) : null,
+    sforato: piano ? Math.max(0, totale - piano) : 0,
   };
 }
 

@@ -13,6 +13,7 @@ import {
   fetta,
   spartisci,
   spartisciQui,
+  pianoDelPosto,
   PIANO,
   PIENO,
   QUOTA_PARTE,
@@ -213,4 +214,15 @@ export default async function (t) {
     t.c("uno store non pesato vale zero", zoppo.libri === 0);
     t.eq("e gli altri si contano lo stesso", zoppo.melodie, 4 * M);
   }
+  // ---- SUL NAS IL PIANO NON C'E' ---------------------------------------
+  // «341 MB lassù di 1.0 GB del piano gratuito» sul Supabase del NAS
+  t.eq("su Vercel (config.js vuoto) il piano c'e'", pianoDelPosto({}), PIANO);
+  t.eq("senza config.js il piano c'e'", pianoDelPosto(undefined), PIANO);
+  t.eq("col Supabase del NAS il piano non c'e'", pianoDelPosto({ supabaseUrl: "https://book-companion.x.ts.net" }), null);
+  const M2 = 1e6;
+  const nas = spartisci({ libri: { byte: 300 * M2 }, copertine: { byte: 41 * M2 }, melodie: { byte: 0 }, totale: 341 * M2 }, null);
+  t.eq("senza piano nessun «liberi»", nas.liberi, null);
+  t.eq("…e niente «oltre il piano», anche oltre il gigabyte", spartisci({ libri: { byte: 3e9 }, totale: 3e9 }, null).sforato, 0);
+  t.eq("la fetta si misura sulla base data", fetta(50, 200), "25%");
 }
+
