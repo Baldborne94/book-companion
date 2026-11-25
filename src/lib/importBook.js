@@ -3,6 +3,7 @@ import { getProgress } from "./library.js";
 import { getMarks, getHighlights } from "./annotations.js";
 import { riconosci, nomeInBiblioteca, chiaveSaga, raccoltaDellaGuida, universiNumerati, numeroPerLaBiblioteca } from "./sagaBooks.js";
 import { sagaDalTitolo } from "./sagaDalTitolo.js";
+import { sagaDallaCartella, numeroDalNome } from "./casa.js";
 import { dalMetadata } from "./sinossi.js";
 import { collana, chiaveCollana } from "./collana.js";
 import { tieniLeggibile } from "./alfabeto.js";
@@ -594,7 +595,7 @@ export async function importaDaFuori(voci, libri = [], { apri, onProgress, vivo 
       continue;
     }
     // si contano solo le schede entrate
-    if (completaSaga(meta, letto, v.name, [...libri, ...added])) riconosciuti += 1;
+    if (completaSaga(meta, letto, v.name, [...libri, ...added], { cartelle: v.cartelle })) riconosciuti += 1;
     if (!letto?.titolo) senzaMetadati += 1;
     if (!letto?.copertina) senzaCopertina += 1;
     if (sembraGiaLetto(meta, [...libri, ...added])) sospetti.push({ title: meta.title });
@@ -655,7 +656,7 @@ export async function leggiEpubLontano(meta, blob) {
 // scritta nel file, il titolo. Una funzione sola per le due porte da cui un
 // libro entra — il file scelto dal tablet e quello che sta su Drive — o
 // le due porte riconoscerebbero le saghe in due modi.
-export function completaSaga(meta, letto, fileName, libri) {
+export function completaSaga(meta, letto, fileName, libri, { cartelle } = {}) {
   let riconosciuto = false;
   // saga e numero d'ordine dal titolo, senza chiederli a mano: e' quello
   // che accende il glossario e fa funzionare il «prossimo della saga»
@@ -700,6 +701,16 @@ export function completaSaga(meta, letto, fileName, libri) {
     // dice quale storia continua un volume: nel Mondo Disco «cosa e'
     // successo prima» sono le Guardie, non tutti e quarantuno i romanzi.
     if (saga.ciclo && !meta.series) meta.series = saga.ciclo;
+  }
+  // E PER ULTIMA LA CARTELLA DEL DISCO, dove il nome del file non dice
+  // niente («0 (1)», «v03» dentro «Manga/BLAME!»): e' il posto che qualcuno
+  // ha scelto per lui, a mano o con «Riordina» (`sagaDallaCartella`)
+  const cartella = meta.saga ? null : sagaDallaCartella(cartelle);
+  if (cartella) {
+    riconosciuto = true;
+    meta.saga = nomeInBiblioteca(cartella.saga, libri);
+    if (cartella.ciclo && !meta.series) meta.series = cartella.ciclo;
+    if (meta.sagaOrder == null) meta.sagaOrder = sagaDalTitolo({ title: meta.title, fileName, fileType: meta.fileType })?.sagaOrder ?? numeroDalNome(fileName);
   }
   return riconosciuto;
 }
