@@ -725,6 +725,37 @@ const SCENE = [
     },
   },
   {
+    // chiesto dal lettore con «Malazan Book of the Fallen» aperta: «mi
+    // permetti di rinominare una raccolta?». Il nome nuovo va su tutti i
+    // volumi e la raccolta resta aperta; un nome gia' di un'altra le unisce
+    nome: "una raccolta si rinomina dalla raccolta aperta, e un nome gia' usato la unisce all'altra",
+    async fai({ browser }) {
+      const raccolte = () => localStorage.setItem("bc_vista", JSON.stringify({ aspetto: "raccolte" }));
+      const d = await dispositivo(browser, { misura: TABLET, prima: `(${raccolte})();` });
+      for (const [nome, n] of [["Kingdom", 1], ["Kingdom", 2], ["Monster", 1]])
+        await importa(d.p, `${nome} v0${n}.cbz`, await fumetto({ prima: png(60, 90, [100 + n, nome.charCodeAt(0), 50]) }), "application/zip");
+      const rinomina = async (da, a) => {
+        await d.p.goto(`${URL_APP}?apri=libreria`);
+        await d.p.getByRole("button", { name: new RegExp(`^${da}`) }).first().click();
+        await d.p.getByRole("button", { name: "✏ Rinomina raccolta" }).click();
+        await d.p.getByRole("textbox", { name: "Nome nuovo della raccolta" }).fill(a);
+      };
+      await rinomina("Kingdom", "Regno");
+      await d.p.getByRole("button", { name: "Rinomina", exact: true }).click();
+      await finche(() => testoAvviso(d.p, /^«Kingdom» ora si chiama «Regno»$/), 8000, "non dice il nome nuovo");
+      const saghe = async () => (await libriDi(d.p)).map((b) => b.saga).sort().join();
+      if ((await saghe()) !== "Monster,Regno,Regno") throw new Error(`dopo la rinomina: ${await saghe()}`);
+      // un nome gia' di un'altra raccolta: il tasto lo dice, e le unisce
+      await rinomina("Monster", "regno");
+      await d.p.getByRole("button", { name: "Unisci a «Regno»" }).click();
+      await finche(() => testoAvviso(d.p, /^«Monster» unita a «Regno»$/), 8000, "non dice dell'unione");
+      if ((await saghe()) !== "Regno,Regno,Regno") throw new Error(`dopo l'unione: ${await saghe()}`);
+      const sborda = await d.p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      if (sborda > 0) throw new Error(`la raccolta sborda di ${sborda}px`);
+      return { guasti: d.guasti, nota: "Kingdom → Regno, Monster unita a Regno" };
+    },
+  },
+  {
     // chiesto dal lettore con due raccolte «JoJo's Bizarre Adventure» sullo
     // scaffale: «mi permetti di cancellare direttamente una raccolta?».
     // Sciolta, i volumi restano senza raccolta e non ci tornano da soli;

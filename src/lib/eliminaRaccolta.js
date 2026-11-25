@@ -33,3 +33,21 @@ export function fraseEliminaRaccolta(nome, { ids = [], conFile = 0 } = {}) {
   const file = conFile ? (conFile === 1 ? ", e il file di uno da questo dispositivo" : `, e il file di ${conFile} da questo dispositivo`) : "";
   return `Elimino ${volumi} di «${nome}»${file}? Le schede spariscono anche dall'altro dispositivo, e non si torna indietro.`;
 }
+
+// RINOMINARE UNA RACCOLTA (chiesto dal lettore, con la raccolta «Malazan Book
+// of the Fallen» aperta: «mi permetti di rinominare una raccolta?»). La
+// raccolta e' la saga scritta sui volumi: si riscrive su tutti, e solo
+// quella (serie e numero restano). Un nome che e' gia' di un'altra raccolta
+// la unisce a quella, con la sua grafia: lo si dice prima del tasto.
+export function nomeDaRaccolta(libri = [], ids = [], nuovo = "") {
+  const k = String(nuovo || "").trim().toLowerCase();
+  if (!k) return null;
+  const miei = new Set(ids);
+  return libri.find((b) => !miei.has(b.id) && String(b.saga || "").trim().toLowerCase() === k)?.saga.trim() || null;
+}
+export function rinominaRaccolta(libri = [], ids = [], nuovo = "") {
+  const nome = nomeDaRaccolta(libri, ids, nuovo) || String(nuovo || "").trim();
+  if (!nome) return libri;
+  const miei = new Set(ids);
+  return libri.map((b) => (miei.has(b.id) && b.saga !== nome ? { ...b, saga: nome } : b));
+}

@@ -1,7 +1,7 @@
 // ELIMINARE UNA RACCOLTA (`lib/eliminaRaccolta.js`), chiesto dal lettore con
 // due raccolte «JoJo's Bizarre Adventure» una accanto all'altra: «mi permetti
 // di cancellare direttamente una raccolta?». Sciogliere o eliminare i volumi.
-import { puoEssereSciolta, contoDaEliminare, sciogliRaccolta, fraseEliminaRaccolta } from "../src/lib/eliminaRaccolta.js";
+import { puoEssereSciolta, contoDaEliminare, sciogliRaccolta, fraseEliminaRaccolta, rinominaRaccolta, nomeDaRaccolta } from "../src/lib/eliminaRaccolta.js";
 
 export default async (t) => {
   const J = "JoJo's Bizarre Adventure";
@@ -29,4 +29,19 @@ export default async (t) => {
   t.eq("la domanda dice quanti volumi e quanti file", fraseEliminaRaccolta(J, conto), `Elimino 2 volumi di «${J}», e il file di uno da questo dispositivo? Le schede spariscono anche dall'altro dispositivo, e non si torna indietro.`);
   t.eq("…senza file qui non li nomina", fraseEliminaRaccolta("X", { ids: ["a"], conFile: 0 }), "Elimino un volume di «X»? Le schede spariscono anche dall'altro dispositivo, e non si torna indietro.");
   t.c("…e piu' file", fraseEliminaRaccolta("X", { ids: ["a", "b", "c"], conFile: 3 }).includes("il file di 3 da questo dispositivo"));
+
+  // ---- RINOMINARE: «mi permetti di rinominare una raccolta?» ------------
+  const mz = [
+    { id: "g", title: "Gardens of the Moon", saga: "Malazan Book of the Fallen", series: "Main", sagaOrder: 1 },
+    { id: "d", title: "Deadhouse Gates", saga: "Malazan Book of the Fallen", sagaOrder: 2 },
+    { id: "n", title: "Night of Knives", saga: "Malazan universe", sagaOrder: 1 },
+    { id: "x", title: "Mort", saga: "Mondo Disco", sagaOrder: 4 },
+  ];
+  const nuovi = rinominaRaccolta(mz, ["g", "d"], "  Malazan  ");
+  t.eq("i volumi della raccolta prendono il nome nuovo, serie e numero restano", nuovi.slice(0, 2).map((b) => `${b.saga}|${b.series || ""}|${b.sagaOrder}`).join(" "), "Malazan|Main|1 Malazan||2");
+  t.c("gli altri restano lo stesso oggetto", nuovi[2] === mz[2] && nuovi[3] === mz[3]);
+  t.eq("un nome gia' di un'altra raccolta la unisce, con la sua grafia", rinominaRaccolta(mz, ["g", "d"], "malazan UNIVERSE")[0].saga, "Malazan universe");
+  t.eq("…e lo si dice prima", nomeDaRaccolta(mz, ["g", "d"], "malazan universe"), "Malazan universe");
+  t.eq("…ma il nome della raccolta stessa non e' un'altra", nomeDaRaccolta(mz, ["g", "d"], "malazan book of the fallen"), null);
+  t.c("un nome vuoto non cambia niente", rinominaRaccolta(mz, ["g"], "  ") === mz);
 };
